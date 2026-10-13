@@ -447,6 +447,47 @@ static void a_synchronized_frame_that_scrolls_shows_what_in_place_drawing_shows(
     }
 }
 
+static int texts_of(char ch)
+{
+    int i, n = 0;
+    for (i = 0; i < gf_n; i++)
+        n += gf_log[i].kind == GF_TEXT && strchr(gf_log[i].str, ch) != 0; /* (both due: one run) */
+    return n;
+}
+
+/* W-T2: blinking in time, not in frames. A slow (SGR 5) and a rapid (SGR 6) cell over 3 s of frames 20 ms apart
+ * and 160 ms apart (the frame clock follows what a frame costs, pace.h): the slow one changes 6 times either way
+ * (500 ms a phase), the rapid one every 150 ms (one change a frame at most). Counted in frames (every 10th and 3rd),
+ * the rates moved with the clock: 15 and 50 changes at 20 ms, 1 and 6 at 160 ms. */
+static void slow_and_rapid_blink_keep_their_rates_whatever_the_frame_interval(void)
+{
+    static const unsigned long step[] = { 20000UL, 160000UL };
+    int k;
+    for (k = 0; k < 2; k++) {
+        int slow = 0, fast = 0, f, frames = (int)(3040000UL / step[k]);
+        BYTE so, fo;
+        open_term_in(0, VT_XTERM);
+        pass("\x1b[?25l\x1b[5mS\x1b[6mR\x1b[m");
+        CHECK(rn.has_blink);
+        so = rn.blink_slow_off;
+        fo = rn.blink_fast_off;
+        gf_clear_log();
+        for (f = 0; f < frames; f++) {
+            vr_blink_tick(&rn, step[k]);
+            slow += rn.blink_slow_off != so;
+            fast += rn.blink_fast_off != fo;
+            so = rn.blink_slow_off;
+            fo = rn.blink_fast_off;
+        }
+        CHECK_INT(slow, 6);
+        CHECK(fast >= 19 && fast <= 20);
+        /* and the window: each cell drawn again at each change of its own rate */
+        CHECK_INT(texts_of('S'), slow);
+        CHECK_INT(texts_of('R'), fast);
+        close_term();
+    }
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
@@ -455,6 +496,7 @@ int main(void)
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
     neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels();
     the_same_joining_on_a_true_colour_screen();
+    slow_and_rapid_blink_keep_their_rates_whatever_the_frame_interval();
     a_synchronized_frame_reaches_the_window_in_one_blit_after_it_is_drawn();
     output_without_a_synchronized_frame_is_drawn_in_place();
     a_synchronized_frame_that_scrolls_shows_what_in_place_drawing_shows();

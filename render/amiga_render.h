@@ -80,9 +80,10 @@ typedef struct vr_render {
     LONG dflt_obtained[2];  /* the pens vr_set_defaults obtained, -1 none */
     /* fonts for SGR 11-19 (1-9) and Fraktur, SGR 20 (10); 0 = the primary */
     struct TextFont *alt_font[11];
-    /* blinking: a blinking cell was drawn; frames counted; the off phases */
+    /* blinking: a blinking cell was drawn; the off phases; the microseconds
+     * each rate's phase has lasted (vr_blink_tick) */
     BYTE has_blink, blink_slow_off, blink_fast_off;
-    ULONG blink_frames;
+    ULONG blink_slow_us, blink_fast_us;
     BYTE bell_flash;      /* the visual bell's reversed frame */
     /* Speed on planar screens (ledger S1, after the ROM console and CCON):
      * mask is the planes the pens drawn so far occupy -- every other plane
@@ -180,8 +181,18 @@ typedef struct vr_render {
 #define VR_KEEP 0xFFFFFFFFUL
 void vr_set_defaults(vr_render *r, ULONG fg_rgb, ULONG bg_rgb);
 
-/* Blinking cells: call once per frame; 1 while any blink on screen. */
-int  vr_blink_tick(vr_render *r);
+/* Blinking (SGR 5 slow, SGR 6 rapid, and a blinking cursor at the slow
+ * rate): each phase, on or off, lasts this long. ECMA-48 (5th ed., 8.3.117):
+ * 5 "slowly blinking (less then 150 per minute)", 6 "rapidly blinking (150
+ * per minute or more)". Slow: 1 s a blink, 60 a minute; rapid: 300 ms, 200 a
+ * minute. In time, not frames: the frame clock's interval follows what a
+ * frame costs (pace.h, 20 to 160 ms), so a count of frames blinked at the
+ * rate of the drawing (W-T2). */
+#define VR_BLINK_SLOW_US 500000UL
+#define VR_BLINK_FAST_US 150000UL
+/* Blinking cells: call once per frame with the microseconds since the last
+ * call; 1 while any blink on screen. */
+int  vr_blink_tick(vr_render *r, ULONG us);
 /* The visual bell: every cell reversed for one frame; call once per frame,
  * 1 when the frame just ended (a re-render is due). The terminal's own
  * reverse-video mode is not touched. */

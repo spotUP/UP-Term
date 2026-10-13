@@ -250,7 +250,7 @@ DCH, SU, SD, TBC, LNM 20, AWM ?7, SGR 0/1/3/4/7/8/22-28/30-37/39/40-47/49
 | 2 | Faint ("secondary color"); the pen it uses is unverified | Faint | Bold off (treated as intensity off) |
 | 3 | Italic | Italic | Ignored |
 | 4 | Underscore | Underline (`4:0..5` styles with colon) | Underline |
-| 5, 6 | Not documented | Blink (6 rapid; xterm renders as blink) | **Bright background** (bg + 8, iCE colours) |
+| 5, 6 | Not documented | Blink (6 rapid; xterm renders as blink). vtcon: 5 slow, phases of 500 ms (60 a minute), 6 rapid, 150 ms (200 a minute) -- ECMA-48 8.3.117: slow under 150 a minute, rapid 150 or more; the later of 5 and 6 counts | **Bright background** (bg + 8, iCE colours) |
 | 7 | Reverse character/cell colours | Inverse | Inverse (swap resolved fg/bg, l.262) |
 | 8 | Concealed. Before V39 masked all RastPort output (avoid); V39+: text hidden by pen choice, scrolling/clearing unaffected | Invisible | Ignored |
 | 9 | Not documented | Crossed out | Ignored |

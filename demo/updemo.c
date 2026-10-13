@@ -905,7 +905,7 @@ static void sc_styles(long t, int first)
         { "1", "bold" }, { "2", "faint" }, { "3", "italic" }, { "4", "underline" },
         { "21", "double underline" }, { "4:3", "curly underline" }, { "4:4", "dotted underline" },
         { "4:5", "dashed underline" }, { "4:3;58;5;196", "red curly underline" }, { "53", "overline" },
-        { "9", "strike through" }, { "7", "inverse" }, { "5", "blink" }, { "6;5", "rapid blink" },
+        { "9", "strike through" }, { "7", "inverse" }, { "5", "blink" }, { "5;6", "rapid blink" },
         { "73", "superscript" }, { "74", "subscript" }, { "51", "framed" }, { "52", "encircled" },
         { "8", "concealed (select it)" }, { "1;4;38;5;208", "several at once" }
     };

@@ -594,7 +594,7 @@ ULONG vtwin_tick(vtwin *w)
             settle(w); /* the output has stopped: the jump scroll ends */
         w->wrote = 0;
         note_tick(w, w->frame_wait); /* a notice in the title counts down */
-        if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r)))
+        if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r, w->frame_wait)))
             frame_start(w); /* that frame ended a flash or a blink phase */
     }
     if (!w->frame_open) {

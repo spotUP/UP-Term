@@ -273,7 +273,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
         r->exact_key[i] = 0;
     r->dflt_obtained[0] = r->dflt_obtained[1] = -1;
     r->has_blink = 0;
-    r->blink_frames = 0;
+    r->blink_slow_us = r->blink_fast_us = 0;
     r->blink_slow_off = r->blink_fast_off = 0;
     for (i = 0; i <= 10; i++)
         r->alt_font[i] = 0;
@@ -2134,9 +2134,6 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
     SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
 }
 
-/* Blinking (SGR 5 slow, 6 rapid): called every frame (50 ms). Slow cells
- * change every 10 frames (1 Hz), rapid ones every 3. Returns 1 while any
- * blinking cell is on screen, so the caller keeps the frames coming. */
 /* A blinking cursor: ?12, or a blinking DECSCUSR shape (1, 3, 5). */
 int vr_cursor_blinks(vr_render *r)
 {
@@ -2144,7 +2141,21 @@ int vr_cursor_blinks(vr_render *r)
     return (vt_modes(r->t) & VT_MODE_CURSOR_BLINK) || style == 1 || style == 3 || style == 5;
 }
 
-int vr_blink_tick(vr_render *r)
+/* One phase of a blink rate over: acc holds the time it has lasted. */
+static int blink_due(ULONG *acc, ULONG us, ULONG period)
+{
+    *acc += us;
+    if (*acc < period)
+        return 0;
+    *acc -= period;
+    if (*acc >= period)
+        *acc = 0; /* a long gap (the window was hidden): one change, not a burst */
+    return 1;
+}
+
+/* Blinking cells and cursor (VR_BLINK_*_US). Returns 1 while any blinking
+ * cell is on screen, so the caller keeps the frames coming. */
+int vr_blink_tick(vr_render *r, ULONG us)
 {
     int slow, fast, y, x, n, cursor;
     if (!r->win)
@@ -2152,9 +2163,8 @@ int vr_blink_tick(vr_render *r)
     cursor = vr_cursor_blinks(r);
     if ((!r->has_blink && !cursor) || r->hidden || r->view)
         return 0;
-    r->blink_frames++;
-    slow = r->blink_frames % 10 == 0;
-    fast = r->blink_frames % 3 == 0;
+    slow = blink_due(&r->blink_slow_us, us, VR_BLINK_SLOW_US);
+    fast = blink_due(&r->blink_fast_us, us, VR_BLINK_FAST_US);
     if (cursor && slow) {
         /* the cursor's own blink, at the slow rate */
         if (r->cursor_drawn)
