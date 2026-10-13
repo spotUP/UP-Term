@@ -8,7 +8,7 @@ is named.
 
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
-UP-Term own programs and      No licence file (own code)       vtcon repo. Programs: vtcon-handler,
+UP-Term own programs and      MIT, Copyright (c) 2026 spotUP   vtcon repo LICENSE. Programs: vtcon-handler,
 scripts                                                        up-console.device, UPConsole, UPTerm, UPDemo,
                                                                UP-Term Prefs, vsh, uptelnet, hl, mdv, sz, rz,
                                                                upgetty, upicon, ixkill, pty-handler,

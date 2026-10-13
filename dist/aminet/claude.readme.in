@@ -17,4 +17,4 @@ Needs the base archive UP-Term.lha (version @NEEDSBASE@ or newer) installed firs
 Install: unpack, double-click Install. Uninstall removes C:Claude and C:ClaudeCode and keeps
 your settings in ENVARC:Claude.
 
-Licence: PLACEHOLDER: UP-Term's own licence is not decided yet (ledger K4); until it is set this archive cannot be uploaded.
+Licence: MIT (UP-Term's own code).
