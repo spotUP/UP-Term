@@ -253,5 +253,90 @@ class OverHttp(unittest.TestCase):
         self.assertEqual((r.status, data), (200, fx.PAGE))
 
 
+class OAuthServer(unittest.TestCase):
+    """--oauth DIR: amiga-pi's /login tests (phase O) play the providers' OAuth servers from DIR/script.json."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        cls.dir = tempfile.mkdtemp()
+        fx.Handler.oauth = fx.OAuthScript(cls.dir)
+        fx.Handler.forced = None
+        fx.Handler.delay = 0
+        cls.srv = ThreadingHTTPServer(("127.0.0.1", 0), fx.Handler)
+        cls.port = cls.srv.server_address[1]
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        fx.Handler.oauth = None
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def script(self, responses):
+        with open(os.path.join(self.dir, "script.json"), "w") as f:
+            json.dump({"responses": responses}, f)
+        try:
+            os.remove(os.path.join(self.dir, "requests.log"))
+        except OSError:
+            pass
+
+    def call(self, method, path, body=b"", headers=None):
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        h = {"Content-Type": "application/x-www-form-urlencoded", **(headers or {})}
+        c.request(method, path, body or None, h)
+        r = c.getresponse()
+        data = r.read()
+        c.close()
+        return r, data
+
+    def log(self):
+        with open(os.path.join(self.dir, "requests.log"), encoding="utf-8") as f:
+            return f.read()
+
+    def test_answers_in_order_per_url_and_the_last_repeats(self):
+        url = "https://auth.example.org/oauth/token"
+        self.script([{"url": url, "status": 400, "json": {"error": "authorization_pending"}},
+                     {"url": url, "status": 200, "json": {"access_token": "a"}},
+                     {"url": "https://other.example.org/x", "status": 200, "text": "plain"}])
+        r, data = self.call("POST", "/auth.example.org/oauth/token", b"a=1")
+        self.assertEqual((r.status, data), (400, b'{"error":"authorization_pending"}'))
+        r, data = self.call("POST", "/auth.example.org/oauth/token", b"a=1")
+        self.assertEqual((r.status, data), (200, b'{"access_token":"a"}'))
+        r, data = self.call("POST", "/auth.example.org/oauth/token", b"a=1")
+        self.assertEqual((r.status, data), (200, b'{"access_token":"a"}'))
+        r, data = self.call("GET", "/other.example.org/x")
+        self.assertEqual((r.status, data, r.getheader("Content-Type")), (200, b"plain", "text/plain"))
+
+    def test_unscripted_url_is_404_and_the_script_is_read_again_when_it_changes(self):
+        self.script([])
+        r, _ = self.call("POST", "/auth.example.org/nothing", b"x")
+        self.assertEqual(r.status, 404)
+        self.script([{"url": "https://auth.example.org/nothing", "status": 201, "json": {}}])
+        r, _ = self.call("POST", "/auth.example.org/nothing", b"x")
+        self.assertEqual(r.status, 201)
+
+    def test_the_request_log_is_the_oracles_text(self):
+        self.script([{"url": "https://auth.example.org/t?x=1", "json": {}}])
+        self.call("POST", "/auth.example.org/t?x=1", b"grant_type=refresh_token&client_id=c",
+                  {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"})
+        self.assertEqual(self.log(), "POST https://auth.example.org/t?x=1\naccept: application/json\n"
+                         "content-type: application/x-www-form-urlencoded\n\ngrant_type=refresh_token&client_id=c\n--\n")
+
+    def test_a_path_without_a_host_is_not_oauth(self):
+        self.script([])
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        c.request("POST", "/v1/messages", b"{", {"Content-Length": "1"})
+        r = c.getresponse()
+        r.read()
+        c.close()
+        self.assertEqual(r.status, 400)             # the Messages route's "the body is not JSON"
+
+    def test_extra_headers_are_sent(self):
+        self.script([{"url": "https://auth.example.org/h", "status": 429, "text": "", "headers": {"Retry-After": "2"}}])
+        r, _ = self.call("GET", "/auth.example.org/h")
+        self.assertEqual((r.status, r.getheader("Retry-After")), (429, "2"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

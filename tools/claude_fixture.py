@@ -72,6 +72,14 @@ amiga-pi phase K), "startup" or
 Authorization header came (over plain http it must not), and a line per
 tool result gives its text (the first 300 characters, newlines as \\n).
 
+It also plays the subscription providers' OAuth servers for amiga-pi's /login tests (phase O): with --oauth DIR a request
+to /<host>/<path> (the first segment names a host, with a dot: "/auth.openai.com/api/accounts/oauth/token", amiga-pi's
+tests map every https://host/path there) is answered from DIR/script.json, {"responses": [{"url": "https://host/path",
+"status": 200, "json": {...} | "text": "...", "headers": {...}}]}: per url in order, the last one repeating; the script is
+read again (and its counters start over) when the file changes. Each request is appended to DIR/requests.log as
+"METHOD URL", its headers but host, content-length, connection and accept-encoding (names in lower case, sorted), a blank line and the body,
+then a line "--": the text tools/pi_oracle/gen_oauth.mjs writes for pi's own flows, so the two compare byte for byte.
+
 On the Amiga:  Claude URL=http://<this machine>:8080/v1/messages ROOT=SYS:
 Each request is summarised here: model, messages, tool results, and whether
 an x-api-key header came (it must not: the key only goes over https).
@@ -231,11 +239,14 @@ class Handler(BaseHTTPRequestHandler):
     page_host = None
     dump = None
     ndump = 0
+    oauth = None                # OAuthScript with --oauth
 
     def log_message(self, fmt, *args):
         pass
 
     def do_GET(self):
+        if oauth_answer(self, "GET"):
+            return
         # WebFetch's page (tool_fetch.sse asks for /page)
         if self.path != "/page":
             self.send_error(404)
@@ -248,6 +259,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(PAGE)
 
     def do_POST(self):
+        if oauth_answer(self, "POST"):
+            return
         n = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(n)
         try:
@@ -304,6 +317,91 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
+# ---- the subscription providers' OAuth servers (amiga-pi phase O; see the docstring) ----
+
+OAUTH_SKIP = ("host", "content-length", "connection", "accept-encoding")
+
+
+class OAuthScript:
+    """DIR/script.json's responses, taken in order per URL (the last repeats); reloaded when the file changes."""
+
+    def __init__(self, directory):
+        self.dir = directory
+        self.text = None
+        self.by_url = {}
+        self.used = {}
+
+    def load(self):
+        try:
+            with open(os.path.join(self.dir, "script.json"), "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            text = ""
+        if text != self.text:
+            self.text = text
+            self.by_url = {}
+            self.used = {}
+            for r in (json.loads(text)["responses"] if text else []):
+                self.by_url.setdefault(r["url"], []).append(r)
+
+    def next(self, url):
+        self.load()
+        rs = self.by_url.get(url)
+        if not rs:
+            return None
+        i = self.used.get(url, 0)
+        self.used[url] = i + 1
+        return rs[min(i, len(rs) - 1)]
+
+
+def oauth_url(path):
+    """/auth.openai.com/oauth/token?x=1 -> https://auth.openai.com/oauth/token?x=1; None when the first segment is no host"""
+    parts = path.split("/", 2)
+    if len(parts) < 2 or "." not in parts[1] or parts[1] == "":
+        return None
+    return "https://" + parts[1] + "/" + (parts[2] if len(parts) > 2 else "")
+
+
+def oauth_record(method, url, headers, body):
+    """the request as the oracle writes it: METHOD URL, sorted headers, blank line, body, --"""
+    lines = ["%s %s" % (method, url)]
+    for k, v in sorted((k.lower(), v) for k, v in headers.items() if k.lower() not in OAUTH_SKIP):
+        lines.append("%s: %s" % (k, v))
+    return "\n".join(lines) + "\n\n" + body + "\n--\n"
+
+
+def oauth_answer(handler, method):
+    """Answer an OAuth request of the script; False when this is no such request (or --oauth is off)."""
+    script = Handler.oauth
+    if script is None:
+        return False
+    url = oauth_url(handler.path)
+    if url is None:
+        return False
+    n = int(handler.headers.get("Content-Length", "0"))
+    body = handler.rfile.read(n).decode("utf-8", "replace") if n else ""
+    with open(os.path.join(script.dir, "requests.log"), "a", encoding="utf-8") as f:
+        f.write(oauth_record(method, url, dict(handler.headers.items()), body))
+    r = script.next(url)
+    if r is None:
+        data, status, ctype, extra = b'{"error":"no script for this url"}', 404, "application/json", {}
+    else:
+        status = r.get("status", 200)
+        extra = r.get("headers", {})
+        if "json" in r:
+            data, ctype = json.dumps(r["json"], separators=(",", ":")).encode(), "application/json"
+        else:
+            data, ctype = r.get("text", "").encode(), "text/plain"
+    handler.send_response(status)
+    handler.send_header("Content-Type", ctype)
+    handler.send_header("Content-Length", str(len(data)))
+    for k, v in extra.items():
+        handler.send_header(k, v)
+    handler.end_headers()
+    handler.wfile.write(data)
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--port", type=int, default=8080)
@@ -312,6 +410,7 @@ def main():
     ap.add_argument("--stream", help="answer every request with tests/claude/NAME.sse")
     ap.add_argument("--delay", type=float, default=0.05, help="seconds between 64-byte chunks")
     ap.add_argument("--dump", help="write each request body to DIR/NNN.json (tools/rig/claude_rig.py reads them)")
+    ap.add_argument("--oauth", help="play the OAuth servers of amiga-pi's /login tests from DIR/script.json (see the module doc)")
     ap.add_argument("--page-host", help="host:port WebFetch's recorded call fetches /page from (default 127.0.0.1:8080)")
     a = ap.parse_args()
     if a.stream and not os.path.exists(os.path.join(STREAMS, a.stream + ".sse")):
@@ -321,10 +420,13 @@ def main():
     Handler.page_host = a.page_host
     Handler.dump = a.dump
     Handler.ndump = 0
+    if a.oauth:
+        os.makedirs(a.oauth, exist_ok=True)
+        Handler.oauth = OAuthScript(a.oauth)
     if a.dump:
         os.makedirs(a.dump, exist_ok=True)
     srv = ThreadingHTTPServer((a.bind, a.port), Handler)
-    print("[INFO] serving the recorded streams on port %d (Ctrl+C ends)" % a.port, flush=True)
+    print("[INFO] serving the recorded streams on port %d (Ctrl+C ends)" % srv.server_address[1], flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
