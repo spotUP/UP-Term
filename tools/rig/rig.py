@@ -142,7 +142,15 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
                ("UPDemo", "C:UPDemo", "C-UPDemo"),
                ("upgetty", "C:upgetty", "C-upgetty"),
                ("ixkill", "C:ixkill", "C-ixkill"),
-               ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device")]
+               ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device"),
+               # the preferences editor: the kit's file keeps the space (install.dos), which
+               # the handler's menu runs as C:"UP-Term Prefs" (launcher)
+               ("upprefs", "C:UP-Term Prefs", "C-UP-Term-Prefs")]
+
+
+def q(path):
+    """path as an AmigaDOS argument: quoted when it holds a space."""
+    return '"%s"' % path if " " in path else path
 
 
 def kit_guard(dest, body):
@@ -151,7 +159,7 @@ def kit_guard(dest, body):
     pre, post = [], []
     if dest.startswith("UP-Term:"):
         pre, post = ["C:Assign >NIL: UP-Term: EXISTS", "If NOT WARN"], ["EndIf"]
-    return pre + ["If EXISTS %s" % dest] + ["  " + l for l in body] + ["EndIf"] + post
+    return pre + ["If EXISTS %s" % q(dest)] + ["  " + l for l in body] + ["EndIf"] + post
 
 
 def kit_shadow_lines(upterm):
@@ -162,14 +170,14 @@ def kit_shadow_lines(upterm):
     out = ["If NOT EXISTS VTC:kit-orig", "  C:MakeDir >NIL: VTC:kit-orig", "EndIf",
            "If EXISTS VTC:kit-restore"]
     for _, dest, bak in shadows:
-        out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, dest), "EndIf"])
+        out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
     out.append("Else")
     for src, dest, bak in shadows:
         out += kit_guard(dest, ["If EXISTS VTC:%s" % src,
                                 "  If NOT EXISTS VTC:kit-orig/%s" % bak,
-                                "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (dest, bak),
+                                "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
                                 "  EndIf",
-                                "  C:Copy >NIL: VTC:%s %s CLONE" % (src, dest), "EndIf"])
+                                "  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
     out.append("EndIf")
     return "\n".join(out)
 
@@ -179,6 +187,14 @@ Echo >BOOTX:boot.log "go started"
 %(shadows)s
 C:Wait 15
 %(shadows_up)s
+; the Prefs editor on a rig with no kit (W-R3): C:"UP-Term Prefs", where the handler's
+; menu runs it. A kit's own file is already there and is shadowed above; once this copy
+; exists the shadow keeps it current.
+If EXISTS VTC:upprefs
+  If NOT EXISTS "C:UP-Term Prefs"
+    C:Copy >NIL: VTC:upprefs "C:UP-Term Prefs" CLONE
+  EndIf
+EndIf
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
@@ -234,6 +250,18 @@ If NOT WARN
   If EXISTS UP-Term:UP-Term.info
     If NOT EXISTS SYS:System/UP-Term.info
       C:Copy UP-Term:UP-Term UP-Term:UP-Term.info SYS:System CLONE
+    EndIf
+  EndIf
+EndIf
+; and the Prefs icon in SYS:Prefs, a plain program icon as install.dos puts it there
+C:Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  If EXISTS UP-Term:UP-Term-Prefs.info
+    If NOT EXISTS SYS:Prefs/UP-Term-Prefs.info
+      If NOT EXISTS SYS:Prefs
+        C:MakeDir >NIL: SYS:Prefs
+      EndIf
+      C:Copy UP-Term:UP-Term-Prefs UP-Term:UP-Term-Prefs.info SYS:Prefs CLONE
     EndIf
   EndIf
 EndIf
@@ -492,6 +520,10 @@ def stage_upterm(dest, vsh):
     shutil.copyfile(vsh, dest / "bin/vsh")
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
     (dest / "UP-Term").write_text("UP-Term: double-click the icon to open a terminal with vsh.\n")
+    # the Prefs editor's icon (W-R3), as make dist-base makes it; GO copies it to SYS:Prefs
+    subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term-Prefs.info"),
+                    "--tool", "C:UP-Term Prefs", "--plain"], check=True)
+    (dest / "UP-Term-Prefs").write_text("UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n")
 
 def stage_terminfo(src, dest):
     """VTC:terminfo (the rig's TERMINFO, GO) as the kit's terminal entries (make build/kit-terminfo/stamp:
@@ -520,6 +552,10 @@ def install():
         if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
             shutil.copyfile(f, dst)
             print("refreshed", f.name, dst.stat().st_size, "bytes")
+    # the Prefs editor (W-R3): GO puts VTC:upprefs at C:"UP-Term Prefs" (no kit) or over the
+    # kit's copy (KIT_SHADOWS), so it is there even when the drawer never held it
+    if (ROOT / "build/amiga/upprefs").is_file():
+        shutil.copyfile(ROOT / "build/amiga/upprefs", RIG / "vtc/upprefs")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)

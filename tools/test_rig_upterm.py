@@ -5,6 +5,7 @@ is UP-Term:bin/vsh and the rig's UP-Term: held only glyph pages), SYS:System had
 icon, and the boot set a global TERM vtcon that no kit sets.
 """
 import pathlib
+import shlex
 import sys
 import tempfile
 
@@ -39,6 +40,7 @@ with tempfile.TemporaryDirectory() as tmp:
         check((tmp / "upterm/bin/vsh").read_bytes() == b"vsh-binary", "UP-Term:bin/vsh is vsh")
         check(b"UP-Term:bin/vsh" in (tmp / "upterm/UP-Term.info").read_bytes(), "the icon's tool is UP-Term:bin/vsh")
         check((tmp / "upterm/UP-Term").is_file(), "the icon has its file")
+        check(b"UP-Term Prefs" in (tmp / "upterm/UP-Term-Prefs.info").read_bytes(), "the Prefs icon's tool is C:UP-Term Prefs")
     else:
         check(False, "rig.stage_upterm exists")
 
@@ -62,7 +64,7 @@ def boot(go, assigns, files):
 
     stack, warn = [True], False
     for l in (l.strip() for l in go.splitlines()):
-        w = l.split()
+        w = [] if l.startswith((";", "Echo")) else shlex.split(l)
         if not w or w[0].startswith(";"):
             continue
         live = all(stack)
@@ -85,10 +87,11 @@ def boot(go, assigns, files):
             elif name in ("UP-TERM",):
                 assigns[name] = w[3]
         elif w[0] == "C:Copy":
-            srcs = [a for a in w[1:] if ":" in a and not a.upper().startswith("SYS:")]
-            for a in srcs:
+            args = [a for a in w[1:] if a not in (">NIL:", "CLONE")]
+            dst = args[-1].rstrip("/").lower()
+            for a in args[:-1]:
                 if ask(a):
-                    files.add("sys:system/" + a.split(":", 1)[1].lower())
+                    files.add(dst + "/" + a.split(":", 1)[1].lower())
     return assigns, files, requesters
 
 
@@ -97,6 +100,14 @@ ICON = {"vtc:upterm/up-term.info", "vtc:upterm/up-term"}
 a, f, req = boot(rig.GO, {}, ICON)
 check(not req and a.get("UP-TERM") == "VTC:upterm", "no kit: UP-Term: is VTC:upterm")
 check("sys:system/up-term.info" in f, "no kit: the icon is copied to SYS:System")
+# W-R3: the Prefs editor's plain icon goes to SYS:Prefs, a kit's own stays
+PICON = ICON | {"vtc:upterm/up-term-prefs.info", "vtc:upterm/up-term-prefs"}
+a, f, req = boot(rig.GO, {}, PICON)
+check("sys:prefs/up-term-prefs.info" in f, "no kit: the Prefs icon is copied to SYS:Prefs")
+a, f, req = boot(rig.GO, {}, PICON | {"sys:prefs/up-term-prefs.info"})
+check("sys:prefs/up-term-prefs" not in f, "a kit's Prefs icon in SYS:Prefs stays")
+check('C:Copy >NIL: VTC:upprefs "C:UP-Term Prefs" CLONE' in [l.strip() for l in rig.GO.splitlines()], "GO installs C:UP-Term Prefs")
+
 # regression (rig 1, 2026-10-13): an installer_rig run left ENVARC:up-term/Dir naming
 # SYS:UP-Term, a drawer it had deleted; the boot asked for the volume UP-Term: and froze
 # after "go started"
