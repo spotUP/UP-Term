@@ -1737,6 +1737,7 @@ static int play(int first, long scene_ticks)
         act = 0;
         while ((t = io->ticks(io->user) - t0) < dur) {
             long spent;
+            int pass;
             ps("\033[?2026h"); /* a frame: shown whole (synchronized output), not as its writes arrive */
             sc->fn(t, fresh);
             if (sc->pixels)
@@ -1765,12 +1766,26 @@ static int play(int first, long scene_ticks)
                     break;
                 }
             }
-            /* 25 frames a second at most: the rest of the two ticks waits for a key */
-            spent = io->ticks(io->user) - t0 - t;
-            if (touring)
-                act = read_event(spent >= 2 ? 0 : (int)(2 - spent) * 20) == EV_KEY ? 3 : 0;
-            else
-                act = key_action(io->key(io->user, spent >= 2 ? 0 : (int)(2 - spent) * 20));
+            /* 25 frames a second at most: the rest of the two ticks waits
+             * for a key. A frame lasts until the terminal has drawn it: a
+             * console draws what it holds before it answers WaitForChar,
+             * so a look for a key comes first and the time is read after
+             * it. (Read before it, the wait began with the drawing and
+             * the whole 40 ms came after it: plasma at 12 frames a second
+             * on a 68060 that draws it in 22 ms; ledger S2.) */
+            for (pass = 0; pass < 2 && !act; pass++) {
+                int wait = 0;
+                if (pass) {
+                    spent = io->ticks(io->user) - t0 - t;
+                    if (spent >= 2)
+                        break;
+                    wait = (int)(2 - spent) * 20;
+                }
+                if (touring)
+                    act = read_event(wait) == EV_KEY ? 3 : 0;
+                else
+                    act = key_action(io->key(io->user, wait));
+            }
             if (act)
                 break;
         }

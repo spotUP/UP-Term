@@ -306,6 +306,11 @@ LONG vr_cgx_write_lut(struct Library *l, APTR src, UWORD sx, UWORD sy, UWORD smo
     (void)h; (void)fmt;
     return 0;
 }
+ULONG vr_cgx_fill(struct Library *l, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb)
+{
+    (void)l; (void)rp; (void)x; (void)y; (void)w; (void)h; (void)argb;
+    return 0;
+}
 
 /* the outline font (render/outline.c, bullet.library): no outline font is ever open in these tests */
 void vo_set_cell(vo_font *f, WORD cw, WORD ch, WORD base) { (void)f; (void)cw; (void)ch; (void)base; }

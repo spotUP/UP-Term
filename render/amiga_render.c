@@ -33,11 +33,17 @@ extern struct GfxBase *GfxBase;
 #ifdef VR_HOST_TEST /* the host test (tests/test_render.c) links a fake of it */
 LONG vr_cgx_write_lut(struct Library *, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp,
                       APTR ctab, UWORD dx, UWORD dy, UWORD w, UWORD h, UBYTE fmt);
+ULONG vr_cgx_fill(struct Library *, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb);
 #else
 LONG vr_cgx_write_lut(__reg("a6") struct Library *, __reg("a0") APTR src, __reg("d0") UWORD sx,
                       __reg("d1") UWORD sy, __reg("d2") UWORD smod, __reg("a1") struct RastPort *rp,
                       __reg("a2") APTR ctab, __reg("d3") UWORD dx, __reg("d4") UWORD dy,
                       __reg("d5") UWORD w, __reg("d6") UWORD h, __reg("d7") UBYTE fmt) = "\tjsr\t-198(a6)";
+/* cybergraphics.library V41 FillPixelArray (LVO -150): a rectangle in a
+ * 0xAARRGGBB colour, no pen, through the RastPort's layer. */
+ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp, __reg("d0") UWORD x,
+                  __reg("d1") UWORD y, __reg("d2") UWORD w, __reg("d3") UWORD h,
+                  __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
 #endif
 
 #include "pen_rule.h"
@@ -612,6 +618,17 @@ static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
         return;
     if (pen != r->bg_ink)
         r->blank = 0;
+    if ((pen & VR_INK_RGB) && r->cgx) {
+        /* a direct colour on a true-colour screen: filled as the colour
+         * itself. Through a scratch pen it was a SetRGB32 first, 84 us a
+         * call on the 68060 rig: UPDemo's colour scenes are fills (half
+         * blocks, blanks), and SetRGB32 was 70-80 % of their drawing --
+         * palette cycling 931 a frame, 113 ms a frame (ledger S2) */
+        vr_cgx_fill(r->cgx, r->rp, (UWORD)x0, (UWORD)y0, (UWORD)(x1 - x0 + 1), (UWORD)(y1 - y0 + 1),
+                    pen & 0xFFFFFFUL);
+        SetDrMd(r->rp, JAM1); /* as after a pen fill: the drawing after it (lines, marks) expects it */
+        return;
+    }
     ink_a(r, pen);
     SetDrMd(r->rp, JAM1);
     RectFill(r->rp, x0, y0, x1, y1);
