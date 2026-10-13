@@ -2,7 +2,7 @@
 date: 2026-10-13
 topic: Grouping ~/Code into per-project umbrellas, and stale worktrees
 tags: [layout, repos, worktrees]
-status: draft
+status: final
 ---
 
 # ~/Code grouping proposal (outside UP-Term)
@@ -13,15 +13,15 @@ top-level files. "?" = membership guessed, not confirmed.
 | Umbrella | Members |
 |---|---|
 | `UP-Term/` (plan 2026-10-13-source-umbrella.md) | + `reference/`: creep-AmigaTools (ccon, conbench: S2 research), wasabi-eval, rlaunch-eval (both 2026-10-03 rig evaluations, cited in vtcon thoughts) |
-| `UpRough/` | Up_Rough_Demo_System, uprough-ec41, -hdfs7, -psub, -s3, -sizing-stamp-verify, -triphop, -uade, urds-prof, urds-tmcrash (all worktrees of up-rough-demo-system), uprough-backups, uprough-releases-server, makerelease (UP-* release archives), demomaniacdev ? |
+| `UpRough/` | Up_Rough_Demo_System, uprough-ec41, -hdfs7, -psub, -s3, -sizing-stamp-verify, -triphop, -uade, urds-prof, urds-tmcrash (all worktrees of up-rough-demo-system), uprough-backups, uprough-releases-server, makerelease (UP-* release archives) |
 | `DCTelnet/` | dctelnet-petscii-recovered (main repo), dctelnet-ibmfont, dctelnet-v2, dctelnet-vtcon (worktrees), DCTelnet-PETSCII (no git) |
-| `AmiExpress/` | amiexpress-web, amiexpress-doorserver, "amiexpress-typescript-doors " (name ends in a space: rename), EALLc64bbsads ?, LVLLVL2ANSI ? |
-| `DEViLBOX/` | DEViLBOX, DEViLBOX-backup-2026-10-04.git, ft2-clone (reference) ?, kling ? |
+| `AmiExpress/` | amiexpress-web, amiexpress-doorserver, "amiexpress-typescript-doors " (name ends in a space: rename) |
+| `DEViLBOX/` | DEViLBOX, DEViLBOX-backup-2026-10-04.git, ft2-clone (reference) |
 | `Emulators/` | amiberry, vAmigaWeb, EmulatorJS, emulatorjs-build, emulatorjs-retroarch, libretro-uae, libretro-uae-ejs, mega-bezel-reflection-shader-web |
 | `Web/` | asciiarena, pong-websocket-server, space-blazers, house-rental, hippoplayer.se, retroranks, bratwurst, cygnus-edd-develop, deploypulse-web-hosting |
-| `Jobb/` (exists) | + font-ligatures (process_guardtools.py), icon-font-builder ? |
+| `Jobb/` (exists) | + font-ligatures (process_guardtools.py) |
 | `Reference/` | "Reference Code", "Reference Docs", amigadeveloperdocs, ArduinoFloppyDiskReader-master, dpaintiii |
-| stays alone | CGTerm-2.0 (owner: its own project) |
+| stays alone (owner: own projects) | CGTerm-2.0, demomaniacdev, LVLLVL2ANSI, kling, icon-font-builder; EALLc64bbsads moved by the owner |
 | delete | "…" (empty, 0 B), logs (two stray UP-Term-era logs) |
 
 ## Move constraints (every umbrella)
@@ -46,3 +46,7 @@ top-level files. "?" = membership guessed, not confirmed.
 - DEViLBOX: 42 merged remote branches (deletable), 12 unmerged remote, 7 unmerged local.
 - amiexpress-web: 16 merged local + 5 merged remote (deletable), 26 unmerged local, 13 unmerged remote.
 Dirty or unmerged = possibly the only copy of work: owner decides per item, nothing removed blind.
+
+## Owner decisions 2026-10-13
+- Grouping approved with the corrections above.
+- Cleanup: remove clean+merged worktrees and merged branches (local+remote) in all repos; list dirty/unmerged per repo for the owner.
