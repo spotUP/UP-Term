@@ -3,7 +3,7 @@ UP-Term-Claude: parts, licences and where the source is
 
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
-Claude, ClaudeCode            No licence file (own code)       vtcon repo: claude/, llm/, dist/ClaudeCode
+Claude, ClaudeCode            MIT, Copyright (c) 2026 spotUP   vtcon repo LICENSE: claude/, llm/, dist/ClaudeCode
 
 Notes
 - The Claude and ClaudeCode programs talk to Anthropic's API; AmiSSL 5 (used at
