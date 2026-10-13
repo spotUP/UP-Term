@@ -24,6 +24,10 @@ enum {
 /* a block's kind; LB_RAW is a provider block pi-ai does not model */
 enum { LB_TEXT, LB_THINKING, LB_TOOLCALL, LB_RAW };
 
+/* the longest error text kept (accumulated message, retry loop, the gate): pi keeps the SDK's text whole (an HTTP body up to 4000
+ * characters); a longer one is cut here, Amiga stack and memory being what they are */
+#define LLM_ERR_MAX 1536
+
 typedef struct llm_event {
     int type;                   /* LE_* */
     long index;                 /* contentIndex */

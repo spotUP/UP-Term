@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "backend.h"
+#include "httperr.h"
 #include "registry.h"
 #include "constrain.h"
 #include "estimate.h"
@@ -876,6 +877,8 @@ static void finish(or_dec *d, const llm_sink *k, jv resp)
         e.has_reasoning = 1;    /* finalizeResponse: output_tokens_details?.reasoning_tokens || 0 */
         if (json_get(u, "output_tokens_details", &det) && json_type(det) == J_OBJ && json_get(det, "reasoning_tokens", &x))
             e.reasoning = json_long(x, 0);
+        e.has_total = 1;        /* totalTokens: response.usage.total_tokens || 0 (openai-responses-shared.ts:573) */
+        e.total = json_get(u, "total_tokens", &x) ? json_long(x, 0) : 0;
         emit(k, &e);
     }
     if (json_get(resp, "status", &v) && json_type(v) == J_STR)
@@ -1177,8 +1180,21 @@ static int r_feed(void *dv, const char *event, const char *data, long n, const l
     return llm_responses_feed(dv, event, data, n, k);
 }
 
+/* openai-responses.ts:222-226: "<OpenAI|provider> API error" */
+static void r_http_err(const llm_http_fail *f, char *out, long cap)
+{
+    char prefix[100];
+    const char *pv = f->model && f->model->provider ? f->model->provider : "";
+    if (!strcmp(pv, "openai"))
+        cl_copy(prefix, "OpenAI", sizeof(prefix));
+    else
+        cl_copy(prefix, pv, sizeof(prefix));
+    cl_cat(prefix, " API error", sizeof(prefix));
+    llm_httperr_openai(f, prefix, 0, out, cap);
+}
+
 const llm_backend llm_be_openai_responses = {
     "openai-responses", "Authorization", "/responses", r_head, r_body, r_xhead, llm_responses_new, r_feed,
     llm_responses_free,
-    "OpenAI Responses stream ended before a terminal response event", 0, 0, 0, 0
+    "OpenAI Responses stream ended before a terminal response event", 0, 0, 0, r_http_err, 0
 };

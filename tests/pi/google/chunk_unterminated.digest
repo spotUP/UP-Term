@@ -1,0 +1,7 @@
+stop=error
+error=Incomplete JSON segment at the end
+usage=0,0,0,0
+usage2=-1
+total=0
+raw=- rid=r1
+text="hello" sig=-

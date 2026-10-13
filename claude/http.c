@@ -202,6 +202,14 @@ static int status_line(http_resp *r)
     if (*s && *s != ' ')
         return -1;
     r->status = st;
+    r->reason[0] = 0;
+    if (*s == ' ') {
+        size_t k = strlen(s + 1);
+        if (k >= sizeof(r->reason))
+            k = sizeof(r->reason) - 1;
+        memcpy(r->reason, s + 1, k);
+        r->reason[k] = 0;
+    }
     return 0;
 }
 

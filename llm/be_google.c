@@ -15,12 +15,14 @@
  * is replaced by every chunk that carries usageMetadata, the finish reason maps STOP -> stop (toolUse when the answer
  * has a call), MAX_TOKENS -> length, every other one is an error ("Provider stopped with: X"). The stream has no
  * terminal event: llm_backend.fin closes it when the body ends.
- * Not ported (COMPATIBILITY.md): tool_choice, temperature, custom thinking budgets, the SDK's x-goog-api-client header.
+ * Also as pi sends them: x-goog-api-client, toolChoice, temperature and custom thinking budgets (llm_ctx), and the SDK's own
+ * framing of the stream (g_raw: processStreamResponse).
  * Portable C89, host-tested (tests/test_pi_llm.c, goldens from pi). */
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include "backend.h"
+#include "httperr.h"
 #include "registry.h"
 #include "constrain.h"
 #include "estimate.h"
@@ -62,14 +64,18 @@ llm_ts llm_wall(void)
 static long g_head(const char *host, int port, int tls, const char *path, const char *key,
                    const char *user_agent, long body_len, char *out, long cap)
 {
-    http_hdr h[3];
+    http_hdr h[4];
     h[0].name = "User-Agent";
     h[0].value = user_agent;
     h[1].name = "x-goog-api-key";
     h[1].value = key ? key : "";
     h[2].name = "Content-Type";
     h[2].value = "application/json";
-    return http_post_head(host, port, tls, path, h, 3, body_len, out, cap);
+    /* the SDK's library label and the runtime's (getHeadersInternal: LIBRARY_LABEL + userAgentExtra "gl-node/<node>");
+     * pi 1.1.0 runs on Node 24, the goldens are made with v24.10.0 (tools/gen_pi_google.mjs fixes it) */
+    h[3].name = "x-goog-api-client";
+    h[3].value = "google-genai-sdk/2.21.0 gl-node/v24.10.0";
+    return http_post_head(host, port, tls, path, h, 4, body_len, out, cap);
 }
 
 /* @google/genai: models/<id>:streamGenerateContent?alt=sse below the base URL (pi sets apiVersion "": the base URL
@@ -170,14 +176,16 @@ static const char *level_word(const llm_model *m, int lv)
     return 0;
 }
 
-/* getGoogleBudget (google-generative-ai.ts:440-470); lv LT_MINIMAL..LT_HIGH */
-static long budget(const char *id, int lv)
+/* getGoogleBudget (google-generative-ai.ts:440-470); lv LT_MINIMAL..LT_HIGH; a custom budget of the level wins */
+static long budget(const llm_ctx *x, const char *id, int lv)
 {
     static const long pro[5] = { 0, 128, 2048, 8192, 32768 };
     static const long lite[5] = { 0, 512, 2048, 8192, 24576 };
     static const long flash[5] = { 0, 128, 2048, 8192, 24576 };
     if (lv < LT_MINIMAL || lv > LT_HIGH)
         return -1;
+    if (x->think_budget_set & (1u << lv))
+        return x->think_budget[lv];
     if (strstr(id, "2.5-pro"))
         return pro[lv];
     if (strstr(id, "2.5-flash-lite"))
@@ -185,6 +193,33 @@ static long budget(const char *id, int lv)
     if (strstr(id, "2.5-flash"))
         return flash[lv];
     return -1;
+}
+
+/* a temperature (millionths) as JavaScript writes the number: 0.7, 1, 0 */
+static void temp_text(jw *w, long micro)
+{
+    char b[24];
+    int n = 0;
+    long ip, fp;
+    if (micro < 0) {
+        jw_rawz(w, "-");
+        micro = -micro;
+    }
+    ip = micro / 1000000L;
+    fp = micro % 1000000L;
+    jw_long(w, ip);
+    if (fp) {
+        long d;
+        b[n++] = '.';
+        for (d = 100000L; d > 0; d /= 10) {
+            b[n++] = (char)('0' + fp / d);
+            fp %= d;
+        }
+        while (b[n - 1] == '0')
+            n--;
+        b[n] = 0;
+        jw_rawz(w, b);
+    }
 }
 
 /* ---- the body: contents ---- */
@@ -555,19 +590,39 @@ static int g_body(const llm_ctx *x, jw *w)
         }
         jw_rawz(w, "]}]");
         jw_free(&sch);
-        if (strict_any)
-            jw_rawz(w, ",\"toolConfig\":{\"functionCallingConfig\":{\"mode\":\"VALIDATED\"}}");
+        {
+            /* resolveGoogleFunctionCallingMode: none / any as asked; else VALIDATED when a tool is strict; else the choice
+             * (auto, or what mapToolChoice makes of an unknown one) */
+            const char *tc = x->tool_choice && *x->tool_choice ? x->tool_choice : 0, *mode = 0;
+            if (tc && !strcmp(tc, "none"))
+                mode = "NONE";
+            else if (tc && !strcmp(tc, "any"))
+                mode = "ANY";
+            else if (strict_any)
+                mode = "VALIDATED";
+            else if (tc)
+                mode = "AUTO";
+            if (mode) {
+                jw_rawz(w, ",\"toolConfig\":{\"functionCallingConfig\":{\"mode\":\"");
+                jw_rawz(w, mode);
+                jw_rawz(w, "\"}}");
+            }
+        }
     }
     jw_rawz(w, ",\"generationConfig\":{");
+    if (x->has_temperature) {
+        jw_rawz(w, "\"temperature\":");
+        temp_text(w, x->temperature_micro);
+    }
     if (maxt > 0) {
-        jw_rawz(w, "\"maxOutputTokens\":");
+        jw_rawz(w, x->has_temperature ? ",\"maxOutputTokens\":" : "\"maxOutputTokens\":");
         jw_long(w, maxt);
     }
     /* streamSimple: no level, or one that clamps to off, disables thinking; else the level or budget of the model */
     lv = llm_think_clamp(md, x->thinking);
     enabled = x->thinking != LT_OFF && lv != LT_OFF;
     if (enabled && md->reasoning) {
-        jw_rawz(w, maxt > 0 ? ",\"thinkingConfig\":{\"includeThoughts\":true," : "\"thinkingConfig\":{\"includeThoughts\":true,");
+        jw_rawz(w, (x->has_temperature || maxt > 0) ? ",\"thinkingConfig\":{\"includeThoughts\":true," : "\"thinkingConfig\":{\"includeThoughts\":true,");
         if (uses_level(md->id)) {
             const char *wd = level_word(md, lv);
             if (!wd)
@@ -576,12 +631,12 @@ static int g_body(const llm_ctx *x, jw *w)
             jw_strz(w, wd);
         } else {
             jw_rawz(w, "\"thinkingBudget\":");
-            jw_long(w, budget(md->id, lv));
+            jw_long(w, budget(x, md->id, lv));
         }
         jw_rawz(w, "}");
     } else if (!enabled && md->reasoning) {
         /* getDisabledGoogleThinkingConfig */
-        jw_rawz(w, maxt > 0 ? ",\"thinkingConfig\":{" : "\"thinkingConfig\":{");
+        jw_rawz(w, (x->has_temperature || maxt > 0) ? ",\"thinkingConfig\":{" : "\"thinkingConfig\":{");
         if (!uses_level(md->id)) {
             jw_rawz(w, "\"thinkingBudget\":0");
         } else {
@@ -617,6 +672,9 @@ typedef struct gd_dec {
     char raw[48];
     int ntools;
     char ids[GD_IDS][100];
+    char *buf;                  /* raw: the SDK's buffer of bytes that no blank line has closed yet */
+    long bn, bcap;
+    int rawmode;                /* g_raw ran: the SDK frames the stream (processStreamResponse) */
 } gd_dec;
 
 static void *g_new(void)
@@ -631,6 +689,8 @@ static void *g_new(void)
 
 static void g_free(void *d)
 {
+    if (d)
+        free(((gd_dec *)d)->buf);
     free(d);
 }
 
@@ -876,9 +936,146 @@ static int g_feed(void *dv, const char *event, const char *data, long n, const l
         e.cache_w = 0;
         e.reasoning = th;
         e.has_reasoning = 1;
+        e.has_total = 1;        /* totalTokens: chunk.usageMetadata.totalTokenCount || 0 (google-generative-ai.ts:241) */
+        e.total = json_get(um, "totalTokenCount", &v) ? json_long(v, 0) : 0;
         emit(k, &e);
     }
     return 0;
+}
+
+/* the template literal `${v}` of a parsed value */
+static void js_str(jw *w, jv v)
+{
+    switch (json_type(v)) {
+    case J_STR:
+        {
+            char *d;
+            long l;
+            d = json_strdup(v, &l);
+            jw_raw(w, d ? d : "", d ? l : 0);
+            free(d);
+        }
+        break;
+    case J_OBJ:
+        jw_rawz(w, "[object Object]");
+        break;
+    case J_ARR:
+        {
+            jit it;
+            jv x;
+            int n = 0;
+            json_iter(v, &it);
+            while (json_next(&it, 0, &x)) {
+                jw_rawz(w, n++ ? "," : "");
+                if (json_type(x) != J_NULL)
+                    js_str(w, x);
+            }
+        }
+        break;
+    default:
+        jw_raw(w, v.p, v.n);
+        break;
+    }
+}
+
+static int js_space(char c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r';
+}
+
+/* @google/genai processStreamResponse (dist/node/index.mjs:13780-): a network chunk that is a JSON object with an
+ * `error` member whose code is 400..599 is an ApiError "got status: <status>. <chunk>"; the bytes are framed by a blank
+ * line ("\n\n", "\r\r" or "\r\n\r\n") and only an event starting with "data:" is an answer. The stream's end with
+ * bytes no blank line closed is "Incomplete JSON segment at the end" (g_fin). */
+static int g_raw(void *dv, const char *p, long n, const llm_sink *k)
+{
+    gd_dec *d = (gd_dec *)dv;
+    jv root, err, st, code;
+    int rc = 0;
+    if (!d || d->done || n <= 0)
+        return 0;
+    d->rawmode = 1;
+    if (d->bn + n + 1 > d->bcap) {
+        long nc = (d->bn + n + 1) * 2;
+        char *nb = (char *)realloc(d->buf, (size_t)nc);
+        if (!nb)
+            return -1;
+        d->buf = nb;
+        d->bcap = nc;
+    }
+    memcpy(d->buf + d->bn, p, (size_t)n);
+    d->bn += n;
+    /* the SDK looks at each network chunk; the transport cuts the body where it likes, so the bytes no blank line has
+     * closed are looked at instead: a buffer that is one JSON object with an error member whose code is 400..599 */
+    {
+        long a0 = 0;
+        while (a0 < d->bn && js_space(d->buf[a0]))
+            a0++;
+        if (a0 < d->bn && d->buf[a0] == '{' && json_parse(d->buf, d->bn, &root) == 0 && json_type(root) == J_OBJ &&
+            json_get(root, "error", &err) && json_type(err) == J_OBJ && json_get(err, "code", &code)) {
+            long c = -1;
+            if (json_type(code) == J_NUM)
+                c = json_long(code, -1);
+            else if (json_type(code) == J_STR && code.n > 2) {
+                char t[24];
+                json_str(code, t, sizeof(t));
+                c = atol(t);
+            }
+            if (c >= 400 && c < 600) {
+                jw m;
+                jw_init(&m);
+                jw_rawz(&m, "got status: ");
+                if (json_get(err, "status", &st))
+                    js_str(&m, st);
+                else
+                    jw_rawz(&m, "undefined");
+                jw_rawz(&m, ". ");
+                llm_json_compact(&m, root, 0);
+                if (!d->started)
+                    start(d, k, "");
+                end_cur(d, k);
+                gfail(d, k, "error", m.p ? m.p : "error", 0);
+                jw_free(&m);
+                return 0;
+            }
+        }
+    }
+    for (;;) {
+        long i, at = -1, dl = 0, a, b;
+        static const char *const delim[3] = { "\n\n", "\r\r", "\r\n\r\n" };
+        int j;
+        for (j = 0; j < 3; j++) {
+            long l = (long)strlen(delim[j]);
+            for (i = 0; i + l <= d->bn; i++)
+                if (!memcmp(d->buf + i, delim[j], (size_t)l)) {
+                    if (at < 0 || i < at) {
+                        at = i;
+                        dl = l;
+                    }
+                    break;
+                }
+        }
+        if (at < 0)
+            break;
+        a = 0;
+        b = at;
+        while (a < b && js_space(d->buf[a]))
+            a++;
+        while (b > a && js_space(d->buf[b - 1]))
+            b--;
+        if (b - a >= 5 && !memcmp(d->buf + a, "data:", 5)) {
+            a += 5;
+            while (a < b && js_space(d->buf[a]))
+                a++;
+            if (!rc && g_feed(d, "", d->buf + a, b - a, k))
+                rc = -1;
+        }
+        memmove(d->buf, d->buf + at + dl, (size_t)(d->bn - at - dl));
+        d->bn -= at + dl;
+        if (d->done)
+            break;
+    }
+    return rc;
 }
 
 /* the body ended (google-generative-ai.ts:253-296): close the open block, then the answer is an error without a finish
@@ -892,6 +1089,15 @@ static void g_fin(void *dv, const llm_sink *k)
     if (!d->started)
         start(d, k, "");
     end_cur(d, k);
+    if (d->rawmode) {
+        long i;
+        for (i = 0; i < d->bn && js_space(d->buf[i]); i++)
+            ;
+        if (i < d->bn) {
+            gfail(d, k, "error", "Incomplete JSON segment at the end", 0);
+            return;
+        }
+    }
     if (d->stop == LS_PENDING) {
         gfail(d, k, "error", "Google stream ended without a finish reason", 0);
         return;
@@ -918,7 +1124,12 @@ static void g_fin(void *dv, const llm_sink *k)
     d->done = 1;
 }
 
+static void g_http_err(const llm_http_fail *f, char *out, long cap)
+{
+    llm_httperr_google(f, out, cap);
+}
+
 const llm_backend llm_be_google = {
     "google-generative-ai", "x-goog-api-key", "/models", g_head, g_body, 0, g_new, g_feed, g_free,
-    "Google stream ended without a finish reason", g_route, g_fin, 0, 0
+    "Google stream ended without a finish reason", g_route, g_fin, 0, g_http_err, g_raw
 };

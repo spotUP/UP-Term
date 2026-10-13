@@ -2,6 +2,7 @@ stop=toolUse
 error=-
 usage=12,8,0,0
 usage2=0
+total=20
 raw=STOP rid=resp-dup
 tool=dup read {"path":"a"} sig=-
 tool=read_1760100000000_1 read {"path":"b"} sig=-

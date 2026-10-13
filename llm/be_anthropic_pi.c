@@ -6,6 +6,7 @@
 #include "be_anthropic.h"
 #include "../claude/http.h"
 #include "registry.h"
+#include "httperr.h"
 #include "constrain.h"
 #include "estimate.h"
 #include "transcript.h"
@@ -818,7 +819,12 @@ static void a_free(void *dec)
     free(dec);
 }
 
+static void a_http_err(const llm_http_fail *f, char *out, long cap)
+{
+    llm_httperr_anthropic(f, out, cap);
+}
+
 const llm_backend llm_be_anthropic = {
     "anthropic-messages", "x-api-key", "/v1/messages", a_head, a_body, a_xhead, a_new, a_feed, a_free,
-    "Anthropic stream ended before message_stop", 0, 0, 0, 0
+    "Anthropic stream ended before message_stop", 0, 0, 0, a_http_err, 0
 };

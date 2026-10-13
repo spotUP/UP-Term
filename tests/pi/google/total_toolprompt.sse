@@ -1,0 +1,2 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"checked"}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":30,"candidatesTokenCount":4,"toolUsePromptTokenCount":20,"thoughtsTokenCount":2,"cachedContentTokenCount":5,"totalTokenCount":61},"responseId":"resp-total-1"}
+

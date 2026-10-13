@@ -12,7 +12,7 @@
 typedef struct gate {
     const llm_sink *out;
     int content, done, err;
-    char et[48], em[256];
+    char et[48], em[LLM_ERR_MAX];
     char raw[48];               /* the held error's stop_raw (the provider's own reason), "" none */
 } gate;
 
@@ -61,6 +61,7 @@ typedef struct rq {
     llm_req *q;
     llm_hooks inner;
     char errtype[100];          /* the answer's x-amzn-errortype header (AWS APIs), "" none */
+    char ctype[100];            /* its Content-Type header, "" none */
 } rq;
 
 static int rq_head(void *u, const char **head, long *hn)
@@ -90,6 +91,8 @@ static int rq_poll(void *u)
 static void rq_header(void *u, const char *name, const char *value)
 {
     rq *r = (rq *)u;
+    if (!strcmp(name, "content-type"))
+        cl_copy(r->ctype, value, sizeof(r->ctype));
     if (!strcmp(name, "x-amzn-errortype"))
         cl_copy(r->errtype, value, sizeof(r->errtype));
     if (r->inner.header)
@@ -129,12 +132,20 @@ static void key_notice(llm_req *q)
         q->h.notice(q->h.u, m);
 }
 
-static void http_error(const llm_backend *be, const char *errtype, jw *body, int status, char *out, long cap)
+static void http_error(const llm_req *q, const rq *r, const http_resp *resp, jw *body, char *out, long cap)
 {
     jv v, e, x;
     char num[16], msg[200];
-    if (be->http_err) {
-        be->http_err(status, errtype, body->p ? body->p : "", body->n, out, cap);
+    if (q->be->http_err) {
+        llm_http_fail f;
+        f.status = resp->status;
+        f.reason = resp->reason;
+        f.ctype = r->ctype;
+        f.errtype = r->errtype;
+        f.body = body->p ? body->p : "";
+        f.bn = body->n;
+        f.model = q->model;
+        q->be->http_err(&f, out, cap);
         return;
     }
     msg[0] = 0;
@@ -147,7 +158,7 @@ static void http_error(const llm_backend *be, const char *errtype, jw *body, int
         }
     }
     cl_copy(out, "HTTP ", cap);
-    cl_ltoa(status, num);
+    cl_ltoa(resp->status, num);
     cl_cat(out, num, cap);
     if (msg[0]) {
         cl_cat(out, ": ", cap);
@@ -158,7 +169,8 @@ static void http_error(const llm_backend *be, const char *errtype, jw *body, int
 int llm_request(llm_req *q)
 {
     http_url u;
-    char path[300], buf[2048], err[300];
+    char path[300], buf[2048];
+    static char err[LLM_ERR_MAX];
     static char xb[4096];
     const char *key = q->key;
     int key_given = key && *key;       /* a bearer credential is configured, sent or not */
@@ -306,6 +318,7 @@ int llm_request(llm_req *q)
         g.err = 0;
         g.raw[0] = 0;
         r.errtype[0] = 0;
+        r.ctype[0] = 0;
         memset(&es, 0, sizeof(es));
         q->attempts = attempt;
         rc = llm_post(&c);
@@ -334,7 +347,7 @@ int llm_request(llm_req *q)
                 retry = !g.content;
             }
         } else if (rc == LP_OK) {
-            http_error(q->be, r.errtype, &errbody, resp.status, err, sizeof(err));
+            http_error(q, &r, &resp, &errbody, err, sizeof(err));
             retry = resp.status == 429 || resp.status == 408 || (resp.status >= 500 && resp.status <= 599);
             if (resp.retry_after > 0)
                 wait = resp.retry_after * 1000L;

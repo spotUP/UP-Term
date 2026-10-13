@@ -1064,6 +1064,1084 @@
    ],
    "sse": "plain",
    "window": 2000
+  },
+  {
+   "name": "total_toolprompt",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "total_toolprompt"
+  },
+  {
+   "name": "total_missing",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "total_missing"
+  },
+  {
+   "name": "choice_any_g3",
+   "model": "google/gemini-3-flash-preview",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "any"
+  },
+  {
+   "name": "choice_none_g3",
+   "model": "google/gemini-3-flash-preview",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "none"
+  },
+  {
+   "name": "choice_auto_g3",
+   "model": "google/gemini-3-flash-preview",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "auto"
+  },
+  {
+   "name": "choice_any_25",
+   "model": "google/gemini-2.5-flash",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "any"
+  },
+  {
+   "name": "choice_none_25",
+   "model": "google/gemini-2.5-flash",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "none"
+  },
+  {
+   "name": "choice_auto_25",
+   "model": "google/gemini-2.5-flash",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "toolChoice": "auto"
+  },
+  {
+   "name": "choice_notools",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "toolChoice": "any"
+  },
+  {
+   "name": "temp_07",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "temperature": 0.7
+  },
+  {
+   "name": "temp_0",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "temperature": 0
+  },
+  {
+   "name": "temp_1",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "temperature": 1
+  },
+  {
+   "name": "temp_fine",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "temperature": 0.123456
+  },
+  {
+   "name": "temp_tools",
+   "model": "google/gemini-3-flash-preview",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ],
+   "temperature": 0.3,
+   "toolChoice": "any"
+  },
+  {
+   "name": "tb_medium",
+   "model": "google/gemini-2.5-flash",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "thinkingBudgets": {
+    "medium": 1234
+   }
+  },
+  {
+   "name": "tb_other_level",
+   "model": "google/gemini-2.5-flash",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "thinkingBudgets": {
+    "high": 99
+   }
+  },
+  {
+   "name": "tb_zero",
+   "model": "google/gemini-2.5-flash",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "thinkingBudgets": {
+    "medium": 0
+   }
+  },
+  {
+   "name": "tb_dynamic",
+   "model": "google/gemini-2.5-flash",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "thinkingBudgets": {
+    "medium": -1
+   }
+  },
+  {
+   "name": "tb_pro_high",
+   "model": "google/gemini-2.5-pro",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "thinkingBudgets": {
+    "high": 5000,
+    "low": 1
+   }
+  },
+  {
+   "name": "tb_xhigh",
+   "model": "google/gemini-2.5-flash",
+   "level": "xhigh",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "thinkingBudgets": {
+    "high": 7777
+   }
+  },
+  {
+   "name": "tb_minimal",
+   "model": "google/gemini-2.5-flash",
+   "level": "minimal",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "thinkingBudgets": {
+    "minimal": 256
+   }
+  },
+  {
+   "name": "tb_level_model",
+   "model": "google/gemini-3-flash-preview",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "thinkingBudgets": {
+    "high": 4000
+   }
+  },
+  {
+   "name": "chunk_data_error",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_data_error",
+   "chunks": [
+    "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"hello\"}]},\"index\":0}],\"responseId\":\"r1\"}\n\ndata: {\"error\":{\"code\":503,\"status\":\"UNAVAILABLE\",\"message\":\"overloaded\"}}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" world\"}]},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":2,\"totalTokenCount\":5},\"responseId\":\"r1\"}\n\n"
+   ]
+  },
+  {
+   "name": "chunk_data_error_only",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_data_error_only",
+   "chunks": [
+    "data: {\"error\":{\"code\":503,\"status\":\"UNAVAILABLE\",\"message\":\"overloaded\"}}\n\n"
+   ]
+  },
+  {
+   "name": "chunk_raw_mid",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_raw_mid",
+   "chunks": [
+    "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"hello\"}]},\"index\":0}],\"responseId\":\"r1\"}\n\n",
+    "{\"error\":{\"code\":503,\"status\":\"UNAVAILABLE\",\"message\":\"overloaded\"}}",
+    "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" world\"}]},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":2,\"totalTokenCount\":5},\"responseId\":\"r1\"}\n\n"
+   ]
+  },
+  {
+   "name": "chunk_raw_first",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_raw_first",
+   "chunks": [
+    "{\"error\":{\"code\":503,\"status\":\"UNAVAILABLE\",\"message\":\"overloaded\"}}"
+   ]
+  },
+  {
+   "name": "chunk_raw_code200",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_raw_code200",
+   "chunks": [
+    "{\"error\":{\"code\":200,\"status\":\"OK\",\"message\":\"m\"}}"
+   ]
+  },
+  {
+   "name": "chunk_raw_nocode",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_raw_nocode",
+   "chunks": [
+    "{\"error\":{\"status\":\"X\",\"message\":\"m\"}}"
+   ]
+  },
+  {
+   "name": "chunk_raw_string_error",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_raw_string_error",
+   "chunks": [
+    "{\"error\":\"plain text\"}"
+   ]
+  },
+  {
+   "name": "chunk_raw_array",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_raw_array",
+   "chunks": [
+    "[{\"error\":{\"code\":503}}]"
+   ]
+  },
+  {
+   "name": "chunk_unterminated",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_unterminated",
+   "chunks": [
+    "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"hello\"}]},\"index\":0}],\"responseId\":\"r1\"}\n\n",
+    "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" world\"}]},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":2,\"totalTokenCount\":5},\"responseId\":\"r1\"}"
+   ]
+  },
+  {
+   "name": "chunk_two_events",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_two_events",
+   "chunks": [
+    "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"hello\"}]},\"index\":0}],\"responseId\":\"r1\"}\n\n",
+    "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\" world\"}]},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":2,\"totalTokenCount\":5},\"responseId\":\"r1\"}\n\n"
+   ]
+  },
+  {
+   "name": "chunk_empty",
+   "model": "google/gemini-3-flash-preview",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "chunk_empty",
+   "chunks": []
   }
  ]
 }

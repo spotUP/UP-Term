@@ -24,13 +24,17 @@ const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "tests", "pi", "
 const { cases } = JSON.parse(readFileSync(join(dir, "cases.json"), "utf8"));
 const NOW = 1760100000000;
 Date.now = () => NOW;
+// the SDK's x-goog-api-client header carries the runtime's version (gl-node/<process.version>): fixed, so the goldens do not
+// depend on the Node that makes them
+Object.defineProperty(process, "version", { value: "v24.10.0" });
 const replies = {};
 
 function digest(m) {
 	const j = (v) => JSON.stringify(v);
 	let s = `stop=${m.stopReason}\nerror=${m.errorMessage ?? "-"}\n`;
 	s += `usage=${m.usage.input},${m.usage.output},${m.usage.cacheRead},${m.usage.cacheWrite}\n`;
-	s += `usage2=${m.usage.reasoning}\n`;
+	s += `usage2=${m.usage.reasoning ?? -1}\n`;
+	s += `total=${m.usage.totalTokens}\n`;
 	s += `raw=${m.rawStopReason ?? "-"} rid=${m.responseId ?? "-"}\n`;
 	for (const b of m.content) {
 		if (b.type === "thinking") s += `thinking=${j(b.thinking)} sig=${b.thinkingSignature === undefined ? "-" : j(b.thinkingSignature)}\n`;
@@ -58,22 +62,31 @@ let n = 0;
 for (const c of cases) {
 	const [provider, id] = c.model.split("/");
 	const model = c.window ? { ...MODELS[provider][id], contextWindow: c.window } : MODELS[provider][id];
-	const sse = readFileSync(join(dir, c.sse + ".sse"), "utf8");
+	// "chunks": the body as separate network chunks (the SDK looks at each one: a chunk that is a JSON error object is an
+	// error); the answer is also kept as <sse>.http, HTTP chunked encoding with one chunk each, for the test's replay
+	const chunks = c.chunks ?? [readFileSync(join(dir, c.sse + ".sse"), "utf8")];
+	if (c.chunks) {
+		const enc = (x) => Buffer.byteLength(x).toString(16) + "\r\n" + x + "\r\n";
+		writeFileSync(join(dir, c.sse + ".http"), "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n" + c.chunks.map(enc).join("") + "0\r\n\r\n");
+	}
 	let url, init;
 	globalThis.fetch = async (u, i) => {
 		url = String(u);
 		init = i;
-		return new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } });
+		const te = new TextEncoder();
+		return new Response(new ReadableStream({ start(ctl) { for (const x of chunks) ctl.enqueue(te.encode(x)); ctl.close(); } }), { status: 200, headers: { "content-type": "text/event-stream" } });
 	};
 	const { streamSimple } = await imp("api/google-generative-ai.js", "?case=" + n++);
 	const context = normalizeContext({ systemPrompt: c.system, messages: c.messages.map(expand), tools: c.tools });
-	const s = streamSimple(model, context, { apiKey: "sk-test-not-real", reasoning: c.level === "off" ? undefined : c.level });
+	const s = streamSimple(model, context, { apiKey: "sk-test-not-real", reasoning: c.level === "off" ? undefined : c.level,
+		...(c.temperature !== undefined && { temperature: c.temperature }), ...(c.toolChoice && { toolChoice: c.toolChoice }),
+		...(c.thinkingBudgets && { thinkingBudgets: c.thinkingBudgets }) });
 	let final;
 	for await (const ev of s) if (ev.type === "done" || ev.type === "error") final = ev.type === "done" ? ev.message : ev.error;
 	replies[c.name] = final;
 	const h = new Headers(init.headers);
 	writeFileSync(join(dir, c.name + ".body"), init.body);
-	writeFileSync(join(dir, c.name + ".req"), `POST ${url}\nx-goog-api-key: ${h.get("x-goog-api-key")}\ncontent-type: ${h.get("content-type")}\n`);
+	writeFileSync(join(dir, c.name + ".req"), `POST ${url}\nx-goog-api-key: ${h.get("x-goog-api-key")}\ncontent-type: ${h.get("content-type")}\nx-goog-api-client: ${h.get("x-goog-api-client")}\n`);
 	writeFileSync(join(dir, c.name + ".digest"), digest(final));
 }
 console.log("[OK] tests/pi/google written, " + cases.length + " cases");

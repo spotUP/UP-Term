@@ -303,7 +303,7 @@ void llm_acc_event(void *u, const llm_event *e)
         break;
     case LE_STOP:
         if (e->stop == LS_ERROR) {
-            char m[256];
+            char m[LLM_ERR_MAX];
             fail(a, LS_ERROR, ev_text(e, m, sizeof(m)) ? m : "error");  /* pi-ai: an error stop ends as an error */
         } else if (!a->failed)
             a->stop = e->stop;
@@ -317,7 +317,7 @@ void llm_acc_event(void *u, const llm_event *e)
         break;
     case LE_ERROR:
         {
-            char m[256];
+            char m[LLM_ERR_MAX];
             fail(a, e->stop == LS_ABORTED ? LS_ABORTED : LS_ERROR,
                  ev_text(e, m, sizeof(m)) ? m : e->err_type ? e->err_type : "error");
         }
