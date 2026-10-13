@@ -576,7 +576,7 @@ static int bedrock_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
     char region[48], dregion[48], profile[100], access[130], secret[130], skip[8];
     static char token[4100];
     llm_bedrock_env e;
-    char key[1100];
+    static char key[4100];             /* an OAuth access token is a JWT of a few KB */
     const char *src;
     region[0] = dregion[0] = profile[0] = access[0] = secret[0] = skip[0] = token[0] = 0;
     env_into(c, "AWS_REGION", region, sizeof(region), 0);
@@ -614,7 +614,7 @@ int llm_cfg_authed(llm_cfg *c, const llm_model *m)
     char v[300];
     static const char *const more[] = { "AWS_PROFILE", "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
                                         "AWS_CONTAINER_CREDENTIALS_FULL_URI", "AWS_WEB_IDENTITY_TOKEN_FILE" };
-    char key[1100];
+    static char key[4100];             /* an OAuth access token is a JWT of a few KB */
     int i;
     if (llm_cfg_key(c, m, key, sizeof(key), 0) > 0)
         return 1;
