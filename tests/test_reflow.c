@@ -321,8 +321,52 @@ static void full_screen_keeps_its_bottom_on_resize(void)
     vt_free(t);
 }
 
+/* W-T5: a line exactly as wide as the screen that went on to the next row, scrolled up so
+ * its first row is in the scrollback, then a clear: the scrollback row still says "the text
+ * continues on the next line", and the next line is now the cleared screen's first row.
+ * A resize joined them ("0123456789new"). The flag belongs to the line below it (kitty keeps
+ * it there, as line_attrs.continued of the next line, which erasing the line resets). */
+static void a_clear_cuts_the_line_above_the_screen(void)
+{
+    static const char *const clears[] = {"\033[2J\033[H", "\033[H\033[J", "\033[2J"};
+    size_t i;
+    vt_term *t;
+    for (i = 0; i < sizeof(clears) / sizeof(clears[0]); i++) {
+        t = reflowing(10, 3);
+        h_put(t, "0123456789abc\r\nx\r\ny");
+        CHECK_STR(history(t), "0123456789|abc|x|y");
+        CHECK(vt_row_wrapped(t, -1));
+        h_put(t, clears[i]);
+        h_put(t, "\033[Hnew");
+        CHECK(!vt_row_wrapped(t, -1));
+        vt_resize(t, 20, 3);
+        CHECK_STR(history(t), "0123456789|new");
+        vt_free(t);
+    }
+    /* erasing the first row alone cuts it too (the rows below stay) */
+    t = reflowing(10, 3);
+    h_put(t, "0123456789abc\r\nx\r\ny\033[H\033[2Knew");
+    CHECK(!vt_row_wrapped(t, -1));
+    vt_resize(t, 20, 3);
+    CHECK(strncmp(history(t), "0123456789|new", 14) == 0);
+    vt_free(t);
+    /* the join survives a clear that leaves the first row's text: erase only below row 0 */
+    t = reflowing(10, 3);
+    h_put(t, "0123456789abc\r\nx\r\ny\033[2;1H\033[J");
+    CHECK(vt_row_wrapped(t, -1));
+    vt_resize(t, 20, 3);
+    CHECK_STR(history(t), "0123456789abc");
+    vt_free(t);
+    /* a full-screen program's clear (alternate screen) leaves the primary screen's join alone */
+    t = reflowing(10, 3);
+    h_put(t, "0123456789abc\r\nx\r\ny\033[?1049h\033[2J\033[H\033[?1049l");
+    CHECK(vt_row_wrapped(t, -1));
+    vt_free(t);
+}
+
 void suite_reflow(void)
 {
+    a_clear_cuts_the_line_above_the_screen();
     prompt_near_the_top_stays_there_on_resize();
     full_screen_keeps_its_bottom_on_resize();
     scrollback_lines_rewrap_with_the_screen();

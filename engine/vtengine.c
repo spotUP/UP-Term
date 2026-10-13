@@ -1573,6 +1573,27 @@ static void scroll_down(vt_term *t, int top, int bot, int n)
     pend_scroll(t, top, bot, -n);
 }
 
+/* The wrapped flag of the line above the screen says its text goes on in
+ * the screen's first row. Erasing that row whole ends the join: kept as it
+ * was, a reflow glued the next thing written there to the old line. (kitty
+ * keeps the flag on the continuing line, as line_attrs.continued, and
+ * erasing the line resets it.) The alternate screen has no line above. */
+static void cut_line_above(vt_term *t)
+{
+    if (t->scr != t->pri)
+        return;
+    if (t->novf)
+        t->ovf[t->novf - 1]->wrapped = 0;
+    else if (t->sb_len) {
+        vt_sbl *s = SB_AT(t, -1);
+        int k;
+        s->wrapped = 0;
+        for (k = 0; k < VT_SBC; k++) /* a decoded copy (sb_cells) is read by the reflow: it must not keep the flag */
+            if (t->sbc[k].s == s)
+                t->sbc[k].l->wrapped = 0;
+    }
+}
+
 static void erase_cells(vt_term *t, int y, int x0, int x1)
 {
     vt_line *l;
@@ -1580,6 +1601,8 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
     x1 = clampi(x1, 0, t->cols);
     if (x0 >= x1)
         return;
+    if (y == 0 && !x0 && x1 == t->cols)
+        cut_line_above(t);
     unwide(t, x0, y);
     if (x1 < t->cols)
         unwide(t, x1 - 1, y);
@@ -2632,6 +2655,7 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
                     t->scr[y]->wrapped = 0;
                     t->scr[y]->dbl = 0;
                 }
+                cut_line_above(t);
                 mark_rows(t, 0, t->rows);
                 move_to(t, 0, 0);
             } else {
