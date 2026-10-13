@@ -1,0 +1,14 @@
+HTTP/1.1 200 OK
+content-type: text/event-stream
+transfer-encoding: chunked
+
+18f
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"hello"}]},"index":0}],"responseId":"r1"}
+
+data: {"error":{"code":503,"status":"UNAVAILABLE","message":"overloaded"}}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":" world"}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5},"responseId":"r1"}
+
+
+0
+

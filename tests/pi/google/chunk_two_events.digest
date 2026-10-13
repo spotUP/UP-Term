@@ -1,0 +1,7 @@
+stop=stop
+error=-
+usage=3,2,0,0
+usage2=0
+total=5
+raw=STOP rid=r1
+text="hello world" sig=-

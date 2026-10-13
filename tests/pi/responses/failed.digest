@@ -1,3 +1,4 @@
 stop=error
 error=server_error: The model is overloaded.
 usage=0,0,0,0
+total=0

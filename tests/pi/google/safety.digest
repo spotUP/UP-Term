@@ -2,4 +2,5 @@ stop=error
 error=Provider stopped with: SAFETY
 usage=10,0,0,0
 usage2=0
+total=10
 raw=SAFETY rid=resp-safe

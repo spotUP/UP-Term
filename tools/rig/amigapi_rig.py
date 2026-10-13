@@ -178,6 +178,7 @@ import paths  # noqa: E402
 import condev_rig as c  # noqa: E402
 import ami  # noqa: E402
 import typewin as tw  # noqa: E402
+import piscript  # noqa: E402
 
 ROOT = paths.VTCON
 VTC = paths.RIG / 'vtc'
@@ -210,12 +211,10 @@ def step1(port):
             out.unlink()
         c.run('Delete RAM:pi1-done QUIET')
         with open(VTC / 'pi1.dos', 'w') as f:
-            f.write('Echo "amiga-pi step 1: one prompt through llm_request to the fixture"\n'
-                    'VTC:pi-llmprobe http://127.0.0.1:%d/v1 qwen2.5-coder:7b sk-must-not-be-sent hello >VTC:pi1.out\n'
-                    'Type VTC:pi1.out\n'
-                    'Echo >RAM:pi1-done "done"\n'
-                    'Wait 3\n'
-                    'EndCLI\n' % port)
+            f.write(piscript.script_text([
+                'Echo "amiga-pi step 1: one prompt through llm_request to the fixture"',
+                'VTC:pi-llmprobe http://127.0.0.1:%d/v1 qwen2.5-coder:7b sk-must-not-be-sent hello >VTC:pi1.out' % port,
+                'Type VTC:pi1.out'], 'pi1-done'))
         c.run('Run >NIL: NewShell "CON:0/12/640/200/amiga-pi step 1/CLOSE" FROM VTC:pi1.dos')
         for _ in range(120):
             if there('RAM:pi1-done'):
@@ -243,7 +242,7 @@ def run_window(name, title, lines, done):
     """lines as a script in a visible, titled window; True when it ended"""
     c.run('Delete RAM:%s QUIET' % done)
     with open(VTC / (name + '.dos'), 'w') as f:
-        f.write(''.join(l + '\n' for l in lines) + 'Echo >RAM:%s "done"\nWait 3\nEndCLI\n' % done)
+        f.write(piscript.script_text(lines, done))
     c.run('Run >NIL: NewShell "CON:0/12/640/200/%s/CLOSE" FROM VTC:%s.dos' % (title, name))
     for _ in range(240):
         if there('RAM:' + done):
@@ -378,7 +377,7 @@ def run_watched(name, title, lines, done):
     """run_window, polling amiagent's UI tree for a requester the while: (ended, requester titles seen)"""
     c.run('Delete RAM:%s QUIET' % done)
     with open(VTC / (name + '.dos'), 'w') as f:
-        f.write(''.join(l + '\n' for l in lines) + 'Echo >RAM:%s "done"\nWait 3\nEndCLI\n' % done)
+        f.write(piscript.script_text(lines, done))
     c.run('Run >NIL: NewShell "CON:0/12/640/200/%s/CLOSE" FROM VTC:%s.dos' % (title, name))
     seen = set()
     for _ in range(240):

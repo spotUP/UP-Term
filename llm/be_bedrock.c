@@ -1263,8 +1263,11 @@ static void b_fin(void *dv, const llm_sink *k)
 
 /* ---- the text of a failed HTTP answer (the SDK's error for the status, formatBedrockError) ---- */
 
-static void b_http_err(int status, const char *errtype, const char *body, long bn, char *out, long cap)
+static void b_http_err(const llm_http_fail *f, char *out, long cap)
 {
+    int status = f->status;
+    const char *errtype = f->errtype, *body = f->body;
+    long bn = f->bn;
     static const struct { const char *name, *prefix; } map[] = {
         { "InternalServerException", "Internal server error" },
         { "ModelStreamErrorException", "Model stream error" },
@@ -1342,5 +1345,5 @@ joined:
 
 const llm_backend llm_be_bedrock = {
     "bedrock-converse-stream", "Authorization", "/model", b_head, b_body, 0, b_new, b_feed, b_free,
-    "Bedrock stream ended without a stop reason", b_route, b_fin, b_sign, b_http_err
+    "Bedrock stream ended without a stop reason", b_route, b_fin, b_sign, b_http_err, 0
 };

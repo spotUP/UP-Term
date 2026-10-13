@@ -40,7 +40,7 @@ typedef struct llm_acc {
     char id[96];
     int stop;                   /* LS_* */
     char stop_raw[32];
-    char err[256];
+    char *err;                  /* the error text (LLM_ERR_MAX), allocated by the first failure, "" before */
     llm_usage usage;
     int started, done, failed;
     llm_ablock *b;

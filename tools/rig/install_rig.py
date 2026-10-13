@@ -394,6 +394,16 @@ def prepare(dest, addons=()):
 FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:amiga-pi/settings.json', 'ENVARC:UP-Term.prefs', 'S:User-Startup')   # the move pass appends a user line to the last (ten were left by 2026-10-10)
 FIXTURE_ASSIGNS = ('GG', 'UP-Term')
 
+def strip_upterm_blocks(data):
+    """data without the ;BEGIN UP-Term ... ;END UP-Term blocks (every flavour:
+    assign, python, tmp, console, device ...) that Install writes."""
+    out, skip = [], False
+    for line in data.decode('latin-1').splitlines(True):
+        if line.startswith(';BEGIN UP-Term'): skip = True
+        if not skip: out.append(line)
+        if skip and line.startswith(';END UP-Term'): skip = False
+    return ''.join(out).encode('latin-1')
+
 class Fixtures:
     """take() once the rig is up (a reboot keeps the disk, so any time after the
     first boot is the same), restore() in a finally. restore() without take() does nothing."""
@@ -409,6 +419,19 @@ class Fixtures:
         # at every boot (rig 1, 2026-10-10)
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
         self.files = {p: ami.read_file(p) for p in self.paths}
+        # the "as it was" of every check is a startup without UP-Term blocks;
+        # restore() puts the file back whole (K3: the rig image carried the
+        # blocks of an install whose drawer is gone, so Uninstall could not
+        # strip them and NOCONSOLE/NODEVICE found them already written)
+        saved = self.files.get('S:User-Startup')
+        if saved is not None:
+            clean = strip_upterm_blocks(saved)
+            if clean != saved:
+                print('install_rig: S:User-Startup held UP-Term blocks from before the run; the run starts without them')
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False) as t: t.write(clean)
+                try: ami.put(t.name, 'S:User-Startup')
+                finally: os.unlink(t.name)
         rc, out = run('Assign LIST')
         self.assigns = {}
         for l in out.splitlines():

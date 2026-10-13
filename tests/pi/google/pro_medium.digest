@@ -2,6 +2,7 @@ stop=stop
 error=-
 usage=12,12,8,0
 usage2=7
+total=32
 raw=STOP rid=resp-think-1
 thinking="**Plan** Read the file first." sig="c2lnLW9uZQ=="
 text="The file says hi." sig="c2lnLXR3bw=="
