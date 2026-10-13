@@ -1,0 +1,4 @@
+stop=stop
+error=-
+usage=15,7,10,0
+text="Hello from the Amiga." sig="{\"v\":1,\"id\":\"msg_plain\"}"

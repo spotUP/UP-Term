@@ -1,0 +1,1 @@
+{"contents":[{"parts":[{"text":"hello"}],"role":"user"}],"systemInstruction":{"parts":[{"text":"You are amiga-pi, a coding agent."}],"role":"user"},"generationConfig":{"maxOutputTokens":65536,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"MEDIUM"}}}

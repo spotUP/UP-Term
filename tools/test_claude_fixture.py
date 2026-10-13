@@ -140,6 +140,24 @@ RESPONSES = [
 ]
 
 
+GOOGLE = [
+    ("text", {"contents": [{"role": "user", "parts": [{"text": "hello"}]}]}, "google/plain"),
+    ("startup", {"contents": [{"role": "user", "parts": [{"text": "the startup"}]}]}, "google/tools2"),
+    ("after a result", {"contents": [{"role": "user", "parts": [{"text": "the startup"}]},
+                                      {"role": "model", "parts": [{"functionCall": {"name": "read", "args": {}}}]},
+                                      {"role": "user", "parts": [{"functionResponse": {"name": "read", "response": {"output": "x"}}}]}]},
+     "google/plain"),
+]
+
+
+class GoogleRoute(unittest.TestCase):
+    def test_every_route_picks_its_recording(self):
+        for what, b, want in GOOGLE:
+            with self.subTest(what):
+                self.assertEqual(fx.pick_google(b), want)
+                self.assertTrue((ROOT / "tests" / "pi" / (want + ".sse")).is_file())
+
+
 class ResponsesRoute(unittest.TestCase):
     def test_every_route_picks_its_recording(self):
         for what, b, want in RESPONSES:
@@ -201,6 +219,20 @@ class OverHttp(unittest.TestCase):
         for what, b, want in RESPONSES:
             with self.subTest(what):
                 r, data = self.post(b, "/v1/responses")
+                self.assertEqual(r.status, 200)
+                self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".sse")).read_bytes())
+
+    def test_azure_responses_with_an_api_version_query_gets_the_responses_recording(self):
+        for what, b, want in RESPONSES:
+            with self.subTest(what):
+                r, data = self.post(b, "/openai/v1/responses?api-version=v1")
+                self.assertEqual(r.status, 200)
+                self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".sse")).read_bytes())
+
+    def test_google_streams_the_google_recording(self):
+        for what, b, want in GOOGLE:
+            with self.subTest(what):
+                r, data = self.post(b, "/v1beta/models/gemini-3-flash-preview:streamGenerateContent?alt=sse")
                 self.assertEqual(r.status, 200)
                 self.assertEqual(data, (ROOT / "tests" / "pi" / (want + ".sse")).read_bytes())
 

@@ -3,7 +3,8 @@
  * the decoder from the API's stream events to the neutral ones
  * (llm/event.h). llm/be_anthropic.c (anthropic-messages, shared with
  * C:Claude) and llm/be_openai_chat.c (openai-completions) and llm/be_openai_responses.c
- * (openai-responses) implement it;
+ * (openai-responses), llm/be_azure.c (azure-openai-responses) and llm/be_google.c
+ * (google-generative-ai) implement it;
  * llm/request.c drives any of them.
  * Portable C89. */
 #ifndef LLM_BACKEND_H
@@ -71,6 +72,9 @@ typedef struct llm_model {
     const char *headers;        /* a JSON object {"Name":"value"} of extra request headers, 0 none */
     const char *key;            /* models.json apiKey, unresolved (a config value), 0 none */
     int auth_header;            /* models.json authHeader: also send "Authorization: Bearer <key>" */
+    /* azure-openai-responses (llm_cfg_endpoint): the api-version query and the deployment named as the request's
+     * model; 0: "v1" and the id */
+    const char *api_version, *deployment;
 } llm_model;
 
 /* a model with nothing set: the compat flags LC_UNSET (detect), the rest 0 */
@@ -112,11 +116,19 @@ typedef struct llm_backend {
     /* pi-ai's error text when the stream ends without the API's terminal event ("OpenAI Responses stream ended before
      * a terminal response event"); 0: the generic one */
     const char *cut;
+    /* the request path below the base URL's own path, when it depends on the request (google: the model's id in it,
+     * azure: the api-version query); into out: its length, -1 too long. 0 pointer: path */
+    long (*route)(const llm_ctx *c, char *out, long cap);
+    /* the stream's end, once the response ended cleanly: for an API whose stream carries no terminal event (google:
+     * the answer is complete when the body ends). Emits the closing events; 0 pointer: none */
+    void (*fin)(void *dec, const llm_sink *k);
 } llm_backend;
 
 extern const llm_backend llm_be_anthropic;
 extern const llm_backend llm_be_openai_chat;
 extern const llm_backend llm_be_openai_responses;
+extern const llm_backend llm_be_azure;
+extern const llm_backend llm_be_google;
 
 /* the thinking level an anthropic-messages request records on its answer (pi: providerThinkingLevel, set when the
  * model's supportsMidConvoEffort is on): "low".."max", 0 when the model does not manage the effort */
@@ -124,9 +136,23 @@ const char *llm_ant_effort(const llm_model *m, int thinking);
 /* does the model take the transcript's system messages mid-conversation (pi-ai supportsMidConvoSystemMessages on
  * anthropic-messages or openai-responses): its requests carry them in place, the first as the initial one */
 int llm_mid_system(const llm_model *m);
+/* the pieces of the Responses backend that azure-openai-responses shares (llm/be_azure.c): the body for the model
+ * named `name` on the wire, and the decoder; strict: the tools carry their strict flag */
+int llm_responses_body(const llm_ctx *x, jw *w, const char *name, int strict);
+void *llm_responses_new(void);
+int llm_responses_feed(void *dec, const char *event, const char *data, long n, const llm_sink *k);
+void llm_responses_free(void *dec);
+/* google-shared.ts requiresToolCallId: the model's function calls and responses carry ids (their ids are normalised) */
+int llm_google_call_ids(const char *model_id);
 /* the backend of an api name, 0 none */
 const llm_backend *llm_backend_of(const char *api);
 /* calls of each backend's feed since the start (the reachability tests' sentinel) */
-extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses;
+extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses, llm_feeds_azure, llm_feeds_google;
+
+/* the wall clock the generated tool-call ids read (google: pi's `${name}_${Date.now()}_${++counter}`); the host sets it
+ * before a request (now: seconds and ms since 1970); unset, the ids read time() */
+void llm_set_wall(llm_ts (*now)(void *u), void *u);
+/* pi's module-level counter of generated ids: set to n (the tests start each case at 0) */
+void llm_google_counter(long n);
 
 #endif

@@ -1,0 +1,8 @@
+stop=toolUse
+error=-
+usage=30,24,0,0
+usage2=0
+raw=STOP rid=resp-tools-1
+text="I will read both." sig="dGV4dHNpZw=="
+tool=read_1760100000000_1 read {"path":"S:Startup-Sequence"} sig="Y2FsbHNpZzE="
+tool=call_ls_2 bash {"command":"list S:"} sig=-

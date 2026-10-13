@@ -1,0 +1,7 @@
+stop=toolUse
+error=-
+usage=182,52,128,0
+thinking="Reading the request.\n\nPlanning the answer." sig="{\"id\":\"rs_001\",\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"Reading the request.\"},{\"type\":\"summary_text\",\"text\":\"Planning the answer.\"}],\"encrypted_content\":\"gAAAAABencrypted==\"}"
+text="Let me look." sig="{\"v\":1,\"id\":\"msg_tool\"}"
+tool=call_ReadStartup|fc_aaa111 read {"path":"S:Startup-Sequence","limit":20}
+tool=call_Ls|fc_bbb222 bash {"command":"ls"}

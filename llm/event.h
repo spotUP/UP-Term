@@ -13,7 +13,7 @@ enum {
     LE_START,                   /* the answer begins: model, id (p/n) */
     LE_BLOCK_START,             /* a content block: kind, index, raw/rn, first bytes in p/n */
     LE_DELTA,                   /* text / thinking / toolCall argument JSON / a raw block's input JSON */
-    LE_SIG_DELTA,               /* thinking: signature bytes */
+    LE_SIG_DELTA,               /* thinking, text, tool call: signature bytes */
     LE_BLOCK_END,
     LE_USAGE,                   /* token counts so far (-1: not in this event) */
     LE_STOP,                    /* why the answer stopped: stop, stop_raw, stop_detail; p/n pi-ai's errorMessage when stop is LS_ERROR */
@@ -47,6 +47,7 @@ typedef struct llm_event {
     int has_w1h;                /* cache_w1h is in this event (0 for every event C:Claude's decoder makes) */
     long reasoning;             /* LE_USAGE: usage.reasoning, a subset of out (amiga-pi's decoders only) */
     int has_reasoning;          /* reasoning is in this event */
+    int replace;                /* LE_SIG_DELTA: the bytes replace the signature so far (google's retainThoughtSignature) */
 } llm_event;
 
 typedef struct llm_sink {

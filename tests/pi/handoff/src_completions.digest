@@ -1,0 +1,7 @@
+stop=toolUse
+error=-
+usage=300,40,0,0
+thinking="Plan the reads." sig="reasoning_content"
+text="Let me look." sig=-
+tool=call_ReadStartup read {"path":"S:Startup-Sequence","limit":20}
+tool=call_ListS ls {"path":"S:","pattern":"*"}

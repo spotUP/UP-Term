@@ -1,0 +1,2 @@
+POST https://myres.services.ai.azure.com/api/projects/x/responses?api-version=v1
+api-key: sk-test-not-real

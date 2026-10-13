@@ -238,6 +238,15 @@ long llm_cfg_value_strict(llm_cfg *c, const char *cfg, const char *what, char *o
 void llm_key_env_name(const char *provider, char *out, long cap)
 {
     long i, n = 0;
+    /* env-api-keys.ts: the two providers whose variable is not <PROVIDER>_API_KEY */
+    if (!strcmp(provider, "azure")) {
+        cl_copy(out, "AZURE_OPENAI_API_KEY", cap);
+        return;
+    }
+    if (!strcmp(provider, "google")) {
+        cl_copy(out, "GEMINI_API_KEY", cap);
+        return;
+    }
     for (i = 0; provider[i] && n < cap - 9; i++) {
         char ch = provider[i];
         out[n++] = ch == '-' ? '_' : ch >= 'a' && ch <= 'z' ? (char)(ch - 32) : ch;
@@ -360,4 +369,27 @@ int llm_cfg_headers(llm_cfg *c, const llm_model *m, const char *key, jw *w)
         jw_raw(w, t.p, t.n);
     jw_free(&t);
     return rc;
+}
+
+int llm_cfg_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap)
+{
+    char eb[300], er[100], ev[48], em[600];
+    llm_model t;
+    if (!m->api || strcmp(m->api, "azure-openai-responses"))
+        return 0;
+    eb[0] = er[0] = ev[0] = em[0] = 0;
+    env_into(c, "AZURE_OPENAI_BASE_URL", eb, sizeof(eb), 0);
+    env_into(c, "AZURE_OPENAI_RESOURCE_NAME", er, sizeof(er), 0);
+    env_into(c, "AZURE_OPENAI_API_VERSION", ev, sizeof(ev), 0);
+    env_into(c, "AZURE_OPENAI_DEPLOYMENT_NAME_MAP", em, sizeof(em), 0);
+    if (m->base_url != c->az.base)
+        cl_copy(c->az_orig, m->base_url ? m->base_url : "", sizeof(c->az_orig));   /* the catalog's, kept across requests */
+    t = *m;
+    t.base_url = c->az_orig;
+    if (llm_azure_resolve(&t, eb, er, ev, em, &c->az, err, errcap))
+        return -1;
+    m->base_url = c->az.base;
+    m->api_version = c->az.version;
+    m->deployment = c->az.deployment;
+    return 0;
 }

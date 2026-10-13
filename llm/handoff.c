@@ -81,8 +81,10 @@ static void resp_id(const llm_model *to, const char *id, const char *sp, const c
 {
     const char *bar = strchr(id, '|'), *bar2;
     char call[80], item[80], tmp[100];
+    /* OPENAI_TOOL_CALL_PROVIDERS (openai-responses.ts:31), AZURE_TOOL_CALL_PROVIDERS adds "azure" (azure-openai-responses.ts:17) */
     int provider_ok = !strcmp(to->provider, "openai") || !strcmp(to->provider, "openai-codex") ||
-                      !strcmp(to->provider, "opencode");
+                      !strcmp(to->provider, "opencode") ||
+                      (!strcmp(to->api, "azure-openai-responses") && !strcmp(to->provider, "azure"));
     if (!provider_ok || !bar) {
         id_part(id, (long)strlen(id), out, cap);
         return;
@@ -127,10 +129,17 @@ static int norm_id(const llm_model *to, const char *id, const char *sp, const ch
     if (l >= cap)
         return 0;
     strcpy(out, id);
-    if (!strcmp(to->api, "openai-responses")) {
+    if (!strcmp(to->api, "openai-responses") || !strcmp(to->api, "azure-openai-responses")) {
         if (cap < 200)
             return 0;
         resp_id(to, id, sp, sa, out, cap);
+    } else if (!strcmp(to->api, "google-generative-ai")) {
+        /* google-shared.ts convertMessages: models that need call ids get [^a-zA-Z0-9_-] -> "_", 64 characters */
+        if (llm_google_call_ids(to->id)) {
+            clean_id(out);
+            if (strlen(out) > 64)
+                out[64] = 0;
+        }
     } else if (!strcmp(to->api, "anthropic-messages")) {
         clean_id(out);
         if (strlen(out) > 64)

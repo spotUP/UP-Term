@@ -17,6 +17,7 @@
 #define LLM_CREDS_H
 
 #include "backend.h"
+#include "be_azure.h"
 
 #define LLM_CMDS 16
 
@@ -35,6 +36,10 @@ typedef struct llm_cfg {
     /* auth.json text (pi: {"provider":{"type":"api_key","key":"..."}}), 0 none; owned by the caller */
     const char *auth;
     long auth_n;
+    /* llm_cfg_endpoint: the strings an azure model's base URL, api-version and deployment point to, and the base URL
+     * the catalog gave it */
+    llm_azure_ep az;
+    char az_orig[300];
 } llm_cfg;
 
 void llm_cfg_init(llm_cfg *c);
@@ -49,7 +54,11 @@ long llm_cfg_value_strict(llm_cfg *c, const char *cfg, const char *what, char *o
 /* the model's credential: the length, 0 none; *src names where it came from ("--api-key", "auth.json",
  * "models.json", "environment", 0 none) */
 long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char **src);
-/* "OPENAI_API_KEY" for provider "openai" */
+/* azure-openai-responses: m's base URL, api version and deployment name from the environment (AZURE_OPENAI_BASE_URL,
+ * _RESOURCE_NAME, _API_VERSION, _DEPLOYMENT_NAME_MAP; pi's api/azure-openai-config.ts) and the model's own; the strings
+ * live in c. Any other api: m untouched. 0, or -1 with pi's message in err */
+int llm_cfg_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap);
+/* "OPENAI_API_KEY" for provider "openai" (pi's env-api-keys.ts names for azure and google) */
 void llm_key_env_name(const char *provider, char *out, long cap);
 /* the model's extra request headers (models.json headers, resolved; authHeader's Authorization) as lines
  * "Name: value\r\n" into w; 0, -1 when a value cannot be resolved (w untouched then) */

@@ -15,6 +15,8 @@ const pkg = JSON.parse((await import("node:fs")).readFileSync(join(npm, "package
 const subset = {
 	anthropic: ["claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-haiku-4-5"],
 	openai: ["gpt-5.5", "gpt-4.1", "gpt-4"],
+	google: ["gemini-3-flash-preview", "gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro"],
+	azure: ["gpt-5.5", "gpt-4.1", "gpt-4"],
 };
 const out = { pi: pkg.name + "@" + pkg.version, providers: {} };
 for (const [p, ids] of Object.entries(subset)) {

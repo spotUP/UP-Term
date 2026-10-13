@@ -55,6 +55,11 @@ It also answers amiga-pi's POST .../responses (openai-responses) from
 tests/pi/responses/*.sse: after a function_call_output plain, a prompt naming
 "startup" or "tool" tool (a read and a bash call), else plain.
 
+It also answers amiga-pi's Azure requests (POST .../responses?api-version=..., azure-openai-responses, the key in an
+api-key header) like the Responses ones, and its Google requests (POST .../models/<id>:streamGenerateContent?alt=sse,
+google-generative-ai, the key in x-goog-api-key) from tests/pi/google/*.sse: after a functionResponse plain, a prompt
+naming "startup" or "tool" tools2 (a read and a bash call), else plain.
+
 It also answers amiga-pi's POST .../chat/completions (openai-completions)
 from tests/pi/openai_*.sse: after the results of openai_edit's calls
 openai_edit_final, after other tool results openai_final, a prompt naming
@@ -187,6 +192,21 @@ def pick_responses(body):
     return "responses/plain"
 
 
+def pick_google(body):
+    """amiga-pi's google-generative-ai requests (POST .../models/<id>:streamGenerateContent): after a functionResponse
+    -> google/plain.sse, a prompt naming "startup" or "tool" -> google/tools2.sse (read and bash calls), else
+    google/plain.sse."""
+    contents = body.get("contents") or []
+    last = contents[-1] if contents else {}
+    parts = last.get("parts") or []
+    if any(isinstance(p, dict) and "functionResponse" in p for p in parts):
+        return "google/plain"
+    text = " ".join(p.get("text", "") for p in parts if isinstance(p, dict)).lower()
+    if "startup" in text or "tool" in text:
+        return "google/tools2"
+    return "google/plain"
+
+
 def tool_tail(msgs):
     """the tool messages at the end of an openai conversation (the last round's results)"""
     tail = []
@@ -235,26 +255,32 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_error(400, "the body is not JSON")
             return
-        responses = self.path.endswith("/responses")
-        openai = self.path.endswith("/chat/completions") or responses
-        name = pick_responses(body) if responses else pick_openai(body) if openai else pick(body, self.forced)
+        route = self.path.split("?")[0]
+        responses = route.endswith("/responses")            # openai-responses and azure-openai-responses (?api-version=)
+        google = ":streamGenerateContent" in route
+        openai = route.endswith("/chat/completions") or responses or google
+        name = (pick_responses(body) if responses else pick_google(body) if google
+                else pick_openai(body) if openai else pick(body, self.forced))
         if self.dump:
             # every request body as it came, numbered, for the rig checks to read
             Handler.ndump += 1
             with open(os.path.join(self.dump, "%03d.json" % Handler.ndump), "wb") as f:
                 f.write(raw)
-        msgs = body.get("messages") or body.get("input") or []
+        msgs = body.get("messages") or body.get("input") or body.get("contents") or []
         results = sum(1 for m in msgs if isinstance(m.get("content"), list)
                       for b in m["content"] if b.get("type") == "tool_result")
-        if responses:
+        if google:
+            results = sum(1 for m in msgs for p in (m.get("parts") or []) if isinstance(p, dict) and "functionResponse" in p)
+        elif responses:
             results = sum(1 for m in msgs if m.get("type") == "function_call_output")
         elif openai:
             results = sum(1 for m in msgs if m.get("role") == "tool")
-        key = self.headers.get("Authorization") if openai else self.headers.get("x-api-key")
+        key = (self.headers.get("x-goog-api-key") if google else self.headers.get("api-key") if "api-version=" in self.path
+               else self.headers.get("Authorization") if openai else self.headers.get("x-api-key"))
         print("[INFO] %s model=%s messages=%d tool_results=%d key_header=%s -> %s.sse" % (
             self.path, body.get("model"), len(msgs), results,
             "PRESENT (wrong!)" if key else "none", name), flush=True)
-        if openai and not responses:
+        if openai and not responses and not google:
             # the latest tool results' text (amiga-pi's rig checks read it)
             for m in tool_tail(msgs):
                 print("[INFO]   tool_result %s: %s" % (m.get("tool_call_id"), result_text(m)), flush=True)

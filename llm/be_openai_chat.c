@@ -312,10 +312,11 @@ static int o_body(const llm_ctx *x, jw *w)
         } else if (json_streq(r, "toolResult")) {
             if (!json_get(m, "toolCallId", &v) || !json_get(m, "content", &c))
                 return -1;
-            jw_rawz(w, "{\"role\":\"tool\",\"tool_call_id\":");
-            w_id(w, v);
-            jw_rawz(w, ",\"content\":");
+            /* openai-completions.ts:1424-1431: role, content, tool_call_id, then name */
+            jw_rawz(w, "{\"role\":\"tool\",\"content\":");
             w_text(w, c);
+            jw_rawz(w, ",\"tool_call_id\":");
+            w_id(w, v);
             if (cp.tool_result_name && json_get(m, "toolName", &v)) {
                 jw_rawz(w, ",\"name\":");
                 jw_raw(w, v.p, v.n);
@@ -678,7 +679,7 @@ static int o_feed(void *dv, const char *event, const char *data, long n, const l
 }
 
 const llm_backend llm_be_openai_chat = {
-    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, 0
+    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, 0, 0, 0
 };
 
 const llm_backend *llm_backend_of(const char *api)
@@ -689,5 +690,9 @@ const llm_backend *llm_backend_of(const char *api)
         return &llm_be_openai_chat;
     if (api && !strcmp(api, llm_be_openai_responses.api))
         return &llm_be_openai_responses;
+    if (api && !strcmp(api, llm_be_azure.api))
+        return &llm_be_azure;
+    if (api && !strcmp(api, llm_be_google.api))
+        return &llm_be_google;
     return 0;
 }

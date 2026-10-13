@@ -1,0 +1,1058 @@
+{
+ "cases": [
+  {
+   "name": "plain",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com"
+  },
+  {
+   "name": "path_openai",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com/openai/"
+  },
+  {
+   "name": "path_v1_responses",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.cognitiveservices.azure.com/openai/v1/responses"
+  },
+  {
+   "name": "path_ai_azure",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.services.ai.azure.com/api/projects/x"
+  },
+  {
+   "name": "path_proxy",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://proxy.example/azure/"
+  },
+  {
+   "name": "reasoning",
+   "model": "azure/gpt-5.5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "reasoning",
+   "baseUrl": "https://myres.openai.azure.com"
+  },
+  {
+   "name": "level_low",
+   "model": "azure/gpt-5.5",
+   "level": "low",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com"
+  },
+  {
+   "name": "tool",
+   "model": "azure/gpt-5.5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool",
+   "baseUrl": "https://myres.openai.azure.com",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_rt",
+   "model": "azure/gpt-5.5",
+   "level": "medium",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "$reply": "tool"
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "call_ReadStartup|fc_aaa111",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "; Startup\nEcho hi"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100002000
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "call_Ls|fc_bbb222",
+     "toolName": "bash",
+     "content": [
+      {
+       "type": "text",
+       "text": "S:\nC:"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100002000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "tool_41",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "show me the startup sequence"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "tool",
+   "baseUrl": "https://myres.openai.azure.com",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "session",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com",
+   "sessionId": "sess-azure-1"
+  },
+  {
+   "name": "env_base",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "",
+   "env": {
+    "AZURE_OPENAI_BASE_URL": " https://other.cognitiveservices.azure.com/openai/ ",
+    "AZURE_OPENAI_API_VERSION": "2025-03-01-preview"
+   }
+  },
+  {
+   "name": "env_resource",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "",
+   "env": {
+    "AZURE_OPENAI_RESOURCE_NAME": "contoso"
+   }
+  },
+  {
+   "name": "env_beats_model",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com",
+   "env": {
+    "AZURE_OPENAI_RESOURCE_NAME": "contoso"
+   }
+  },
+  {
+   "name": "deployment",
+   "model": "azure/gpt-4.1",
+   "level": "off",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ],
+     "timestamp": 1760100000000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com",
+   "env": {
+    "AZURE_OPENAI_DEPLOYMENT_NAME_MAP": "gpt-5.5=other, gpt-4.1 = prod-41 ,bad,x=y=z"
+   }
+  },
+  {
+   "name": "handoff_anthropic",
+   "model": "azure/gpt-5.5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "look"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "Read it first.",
+       "thinkingSignature": "sig=="
+      },
+      {
+       "type": "text",
+       "text": "Let me look."
+      },
+      {
+       "type": "toolCall",
+       "id": "toolu_01AbC.d/e",
+       "name": "read",
+       "arguments": {
+        "path": "S:Startup-Sequence"
+       }
+      }
+     ],
+     "api": "anthropic-messages",
+     "provider": "anthropic",
+     "model": "claude-opus-5-5",
+     "usage": {
+      "input": 1,
+      "output": 1,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1760100001000
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "toolu_01AbC.d/e",
+     "toolName": "read",
+     "content": [
+      {
+       "type": "text",
+       "text": "; Startup"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100002000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "thanks"
+      }
+     ],
+     "timestamp": 1760100003000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "handoff_chat",
+   "model": "azure/gpt-5.5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "look"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "text",
+       "text": "Checking."
+      },
+      {
+       "type": "toolCall",
+       "id": "call_chat123",
+       "name": "bash",
+       "arguments": {
+        "command": "ls"
+       }
+      }
+     ],
+     "api": "openai-completions",
+     "provider": "openai",
+     "model": "gpt-4.1",
+     "usage": {
+      "input": 1,
+      "output": 1,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1760100001000
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "call_chat123",
+     "toolName": "bash",
+     "content": [
+      {
+       "type": "text",
+       "text": "S:"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100002000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "thanks"
+      }
+     ],
+     "timestamp": 1760100003000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "handoff_openai",
+   "model": "azure/gpt-5.5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "look"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "x",
+       "thinkingSignature": "{\"id\":\"rs_old\",\"type\":\"reasoning\",\"summary\":[],\"encrypted_content\":\"enc\"}"
+      },
+      {
+       "type": "text",
+       "text": "Checking.",
+       "textSignature": "{\"v\":1,\"id\":\"msg_old1\",\"phase\":\"commentary\"}"
+      },
+      {
+       "type": "toolCall",
+       "id": "call_r1|fc_old1",
+       "name": "bash",
+       "arguments": {
+        "command": "ls"
+       }
+      }
+     ],
+     "api": "openai-responses",
+     "provider": "openai",
+     "model": "gpt-4.1",
+     "usage": {
+      "input": 1,
+      "output": 1,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1760100001000
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "call_r1|fc_old1",
+     "toolName": "bash",
+     "content": [
+      {
+       "type": "text",
+       "text": "S:"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100002000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "thanks"
+      }
+     ],
+     "timestamp": 1760100003000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  },
+  {
+   "name": "handoff_same_azure",
+   "model": "azure/gpt-5.5",
+   "level": "high",
+   "system": "You are amiga-pi, a coding agent.",
+   "messages": [
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "look"
+      }
+     ],
+     "timestamp": 1760100000000
+    },
+    {
+     "role": "assistant",
+     "content": [
+      {
+       "type": "thinking",
+       "thinking": "x",
+       "thinkingSignature": "{\"id\":\"rs_old\",\"type\":\"reasoning\",\"summary\":[],\"encrypted_content\":\"enc\"}"
+      },
+      {
+       "type": "text",
+       "text": "Checking.",
+       "textSignature": "{\"v\":1,\"id\":\"msg_old1\",\"phase\":\"commentary\"}"
+      },
+      {
+       "type": "toolCall",
+       "id": "call_r1|fc_old1",
+       "name": "bash",
+       "arguments": {
+        "command": "ls"
+       }
+      }
+     ],
+     "api": "azure-openai-responses",
+     "provider": "azure",
+     "model": "gpt-5.5",
+     "usage": {
+      "input": 1,
+      "output": 1,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "totalTokens": 2,
+      "cost": {
+       "input": 0,
+       "output": 0,
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "total": 0
+      }
+     },
+     "stopReason": "toolUse",
+     "timestamp": 1760100001000
+    },
+    {
+     "role": "toolResult",
+     "toolCallId": "call_r1|fc_old1",
+     "toolName": "bash",
+     "content": [
+      {
+       "type": "text",
+       "text": "S:"
+      }
+     ],
+     "isError": false,
+     "timestamp": 1760100002000
+    },
+    {
+     "role": "user",
+     "content": [
+      {
+       "type": "text",
+       "text": "thanks"
+      }
+     ],
+     "timestamp": 1760100003000
+    }
+   ],
+   "sse": "plain",
+   "baseUrl": "https://myres.openai.azure.com",
+   "tools": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  }
+ ]
+}

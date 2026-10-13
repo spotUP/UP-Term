@@ -464,12 +464,13 @@ static int w_sys_item(jw *w, const llm_model *md, jv m, int update)
     return 1;
 }
 
-static int r_body(const llm_ctx *x, jw *w)
+/* the Responses request for the model named `name` on the wire (the model's id; azure: the deployment's name);
+ * strict: tools go out with their strict flag (openai: supportsStrictMode on, azure: on unless the model says off) */
+int llm_responses_body(const llm_ctx *x, jw *w, const char *name, int strict)
 {
     const llm_model *md = x->model;
     int i, k = 0, lv, rc = -1;
     long msgidx = 0, maxt = llm_ctx_max_tokens(x);
-    int strict = md->compat.strict_tools == 1;
     int mid = md->compat.mid_system == 1;
     int add = md->compat.add_tools == 1;
     llm_tx tx;
@@ -486,7 +487,7 @@ static int r_body(const llm_ctx *x, jw *w)
     reqt = anchors ? tx.itl : tx.tl;
     nreq = anchors ? tx.nitl : tx.ntl;
     jw_rawz(w, "{\"model\":");
-    jw_strz(w, md->id);
+    jw_strz(w, name);
     jw_rawz(w, ",\"input\":[");
     if (tx.has_init) {
         k += w_sys_item(w, md, tx.init, 0);
@@ -613,6 +614,11 @@ out:
     return rc;
 }
 
+static int r_body(const llm_ctx *x, jw *w)
+{
+    return llm_responses_body(x, w, x->model->id, x->model->compat.strict_tools == 1);
+}
+
 /* ---- the decoder ---- */
 
 #define OR_SLOTS 32
@@ -635,7 +641,7 @@ typedef struct or_dec {
     or_slot s[OR_SLOTS];
 } or_dec;
 
-static void *r_new(void)
+void *llm_responses_new(void)
 {
     or_dec *d = (or_dec *)malloc(sizeof(or_dec));
     int i;
@@ -647,7 +653,7 @@ static void *r_new(void)
     return d;
 }
 
-static void r_free(void *dv)
+void llm_responses_free(void *dv)
 {
     or_dec *d = (or_dec *)dv;
     int i;
@@ -1016,14 +1022,13 @@ static void sdk_error(or_dec *d, const llm_sink *k, jv err)
     fail(d, k, "error", msg);
 }
 
-static int r_feed(void *dv, const char *event, const char *data, long n, const llm_sink *k)
+int llm_responses_feed(void *dv, const char *event, const char *data, long n, const llm_sink *k)
 {
     or_dec *d = (or_dec *)dv;
     jv ev, v, item;
     char type[64];
     long oi = 0;
     or_slot *s;
-    llm_feeds_responses++;
     if (d->bad)
         return -1;
     if (d->done)
@@ -1166,7 +1171,14 @@ static int r_feed(void *dv, const char *event, const char *data, long n, const l
     return 0;
 }
 
+static int r_feed(void *dv, const char *event, const char *data, long n, const llm_sink *k)
+{
+    llm_feeds_responses++;
+    return llm_responses_feed(dv, event, data, n, k);
+}
+
 const llm_backend llm_be_openai_responses = {
-    "openai-responses", "Authorization", "/responses", r_head, r_body, r_xhead, r_new, r_feed, r_free,
-    "OpenAI Responses stream ended before a terminal response event"
+    "openai-responses", "Authorization", "/responses", r_head, r_body, r_xhead, llm_responses_new, r_feed,
+    llm_responses_free,
+    "OpenAI Responses stream ended before a terminal response event", 0, 0
 };

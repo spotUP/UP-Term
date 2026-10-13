@@ -1,0 +1,2 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"dup","name":"read","args":{"path":"a"}}},{"functionCall":{"id":"dup","name":"read","args":{"path":"b"}}}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":8,"totalTokenCount":20},"responseId":"resp-dup"}
+
