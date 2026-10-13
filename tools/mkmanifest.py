@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """mkmanifest.py -- the kit's Files/MANIFEST, for the Installer's update.
 
-  python3 tools/mkmanifest.py <kit drawer> [dist/parts.txt] [Files/install.dos]
+  python3 tools/mkmanifest.py <kit drawer> [dist/parts.txt] [Files/install.dos] [--package <id>]
 
 One line per file of the kit, sorted by path (bytes):
   <part> <size> <crc32, 8 hex digits> <kit path>
@@ -11,11 +11,17 @@ kit path that matches; "-" for none). And one line per part of install.dos:
 ("all" for the text before the first part: every part reads it), so a part whose
 script changed runs again. And one line per copy part (dist/parts.txt's third column):
   <part> 0 00000000 copy#<kit drawer>#<drawer in UP-Term:>
-the drawers its files go between. The Amiga compares two manifests (upupdate) and
+the drawers its files go between. With --package base, one line per path the base
+hands over to an add-on archive (dist/packages.txt, last column):
+  handed 0 00000000 handed#<kit path>
+so that an Update over the single kit (before the split) leaves the installed
+copies of those files alone (install/updiff.c). The Amiga compares two manifests (upupdate) and
 hashes nothing itself. A kit file no line of parts.txt claims stops `make dist`."""
 import pathlib, re, sys, zlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'tools'))
+import pkgs
 SKIP = {"Files/MANIFEST"}
 
 
@@ -50,7 +56,19 @@ def sections(dos):
     return [('all', chunks[0])] + list(zip(chunks[1::2], chunks[2::2]))
 
 
-def manifest(kit, parts, dos):
+def handed_paths(pkg_id, rows=None):
+    """The kit paths package pkg_id hands over to other archives: the base's table
+    entry for every add-on (dist/packages.txt, column handed); none for an add-on."""
+    if pkg_id != 'base':
+        return []
+    out = []
+    for r in (pkgs.rows() if rows is None else rows):
+        if r['id'] != 'base' and r['handed'] != '-':
+            out += r['handed'].split(',')
+    return out
+
+
+def manifest(kit, parts, dos, handed=()):
     lines, missing = [], []
     for f in sorted(kit.rglob('*')):
         if not f.is_file():
@@ -70,6 +88,9 @@ def manifest(kit, parts, dos):
         if drawer:
             rel = 'copy#%s#%s' % (prefix, drawer)
             lines.append((rel.encode('latin-1'), '%s 0 00000000 %s' % (name, rel)))
+    for path in handed:
+        rel = 'handed#' + path
+        lines.append((rel.encode('latin-1'), 'handed 0 00000000 ' + rel))
     for name, text in sections(dos):
         rel = 'install.dos#' + name
         lines.append((rel.encode('latin-1'), '%s 0 %08x %s' % (name, zlib.crc32(text.encode('latin-1')), rel)))
@@ -77,10 +98,15 @@ def manifest(kit, parts, dos):
 
 
 def main(a):
+    pkg_id = None
+    if '--package' in a:
+        k = a.index('--package')
+        pkg_id = a[k + 1]
+        a = a[:k] + a[k + 2:]
     kit = pathlib.Path(a[0])
     parts = read_parts(pathlib.Path(a[1] if len(a) > 1 else ROOT / 'dist/parts.txt').read_text())
     dos = pathlib.Path(a[2] if len(a) > 2 else kit / 'Files/install.dos').read_text(encoding='latin-1')
-    (kit / 'Files/MANIFEST').write_text(manifest(kit, parts, dos), encoding='latin-1')
+    (kit / 'Files/MANIFEST').write_text(manifest(kit, parts, dos, handed_paths(pkg_id)), encoding='latin-1')
 
 
 if __name__ == '__main__':

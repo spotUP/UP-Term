@@ -50,6 +50,42 @@ class Manifest(unittest.TestCase):
         self.assertNotIn("MANIFEST", mm.manifest(k, mm.read_parts("system  Files/vsh\n"), ""))
 
 
+class HandedLines(unittest.TestCase):
+    """The base's manifest names the paths it hands to the add-on archives, from dist/packages.txt
+    (kit-split D7): the line an Update over the single kit reads to leave those files alone."""
+    def test_the_base_hands_over_every_add_ons_paths_in_sorted_order(self):
+        k = kit({"Files/vsh": b"v"})
+        lines = mm.manifest(k, mm.read_parts("system  Files/vsh\n"), "", mm.handed_paths('base')).splitlines()
+        want = ["handed 0 00000000 handed#" + p for p in
+                ("Files/Claude", "Files/ClaudeCode", "Files/amiga-pi", "Files/nvim", "Files/python3")]
+        self.assertEqual([l for l in lines if l.startswith("handed ")], sorted(want, key=lambda l: l.split(' ', 3)[3].encode()))
+        paths = [l.split(' ', 3)[3].encode() for l in lines]
+        self.assertEqual(paths, sorted(paths))
+
+    def test_an_add_on_hands_nothing_over(self):
+        self.assertEqual(mm.handed_paths('nvim'), [])
+
+    def test_the_handed_paths_are_not_in_the_base_kit(self):
+        """handed paths come from packages.txt; no file of the base kit's parts.txt is under one"""
+        handed = mm.handed_paths('base')
+        self.assertTrue(handed)
+        for _, path, _ in PARTS:
+            for h in handed:
+                self.assertFalse(path == h or path.startswith(h + '/'), "%s is handed over but the base kit lists %s" % (h, path))
+
+
+@unittest.skipUnless((ROOT / "build/dist/UP-Term/Files/MANIFEST").exists(), "no built kit (make dist)")
+class BuiltBase(unittest.TestCase):
+    def test_the_built_base_holds_no_handed_file_and_its_manifest_names_the_paths(self):
+        kit = ROOT / "build/dist/UP-Term"
+        lines = (kit / "Files/MANIFEST").read_text(encoding="latin-1").splitlines()
+        for h in mm.handed_paths('base'):
+            self.assertFalse((kit / h).exists(), h)
+            self.assertIn("handed 0 00000000 handed#" + h, lines)
+        self.assertFalse((kit / "ClaudeCode").exists())
+        self.assertTrue((kit / "Files/UP-Term.version").read_text().startswith("$VER: UP-Term 1.0 ("))
+
+
 class PartsTable(unittest.TestCase):
     def test_every_part_named_is_a_part_of_install_dos(self):
         labs = set(re.findall(r'(?m)^Lab (\S+)', DOS))
