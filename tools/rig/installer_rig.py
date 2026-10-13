@@ -21,12 +21,21 @@ and clicks them, then checks what landed and runs Uninstall.
 After each Install: UP-Term: names the drawer, ENVARC:up-term/Dir, the
 marked UP-Term: block in S:User-Startup (before the GG: block), the files in
 the drawer and in C:/L:/LIBS: (the original ixemul kept as .orig), every file
-of the kit's nvim drawer copied (copyfiles (all) takes the subdrawers),
-Python3: assigned, UPConsole STATUS prints the kit line. Then Uninstall:
+of the kit's unifont drawer copied (copyfiles (all) takes the subdrawers),
+UPConsole STATUS prints the kit line. Then Uninstall:
 S:User-Startup byte for byte as before, no UP-Term:, the drawer gone, the
 original libraries back. (install_rig.py drives install.dos directly, with
 the full set of checks; this one proves the Installer path reaches the same
 result.)
+
+  addon-<id>  (one per add-on of dist/packages.txt, K2-11) the base by its Installer, then the add-on's own
+            Install icon, both AVERAGE with every page answered by its default; the add-on's files, its
+            record and its program answering; its Uninstall; the base Uninstall
+  migrate     the single kit of 0cd6f0b (LEGACY_KIT) by its Installer, then the new base's Install over it
+            (the Update path: no drawer page, an edit planted in an unchanged file survives, the handed
+            nvim keeps its date, UP-Term:pkg/legacy is kept), then the nvim add-on's Install (Update from
+            "installed by the single kit", the planted edit survives, the changed files are the new ones);
+            the base Uninstall takes everything away
 
 Every page seen is logged to build/rig/installer/<case>.pages.txt (UITREE
 text, for reading what the Installer showed); the verdict goes to
@@ -62,13 +71,28 @@ CLEAN = "--os" in os.environ.get("UPTERM_RIG_FLAGS", "")
 WORKDEST = "Work:Apps/UP-Term"
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:Apps/UP-Term"),
          "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None)}
+for _pkg in ir.addon_ids():
+    CASES["addon-" + _pkg] = ("AVERAGE", None)
+CASES["migrate"] = ("AVERAGE", None)
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
+KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs
 RAMIGA = 0x0080
 KEY_X, KEY_RETURN = 0x32, 0x44
 
 
-def fingerprint():
-    return verdicts.fingerprint(*ir.assembled_scripts(), KIT / "Install", KIT / "Files/install.dos")
+def case_packages(case):
+    """([packages the case installs], [more files its fingerprint reads])."""
+    if case and case.startswith("addon-"):
+        return ["base", case[len("addon-"):]], []
+    if case == "migrate":
+        return ["base", "nvim"], [ir.LEGACY_KIT / "Files/MANIFEST", ir.LEGACY_KIT / "Install"]
+    return ["base"], []
+
+
+def fingerprint(case=None):
+    pk, extra = case_packages(case)
+    built = [f for p in pk for f in (ir.kit_dir(p) / "Install", ir.kit_dir(p) / "Files/install.dos")]
+    return verdicts.fingerprint(ir.kit_fingerprint(*pk).encode(), *built, *extra)
 
 
 STORE = verdicts.Store(OUT)
@@ -76,7 +100,7 @@ verdict, record_verdict = STORE.verdict, STORE.record
 
 
 def record(case, ok, detail):
-    STORE.record(case, ok, detail, fingerprint())
+    STORE.record(case, ok, detail, fingerprint(case))
 
 
 Checks = verdicts.Checks
@@ -185,7 +209,7 @@ def text_faults(tree):
     for line in tree.splitlines():
         if line.startswith('W '):
             f = shlex.split(line)
-            cur = f[-1].startswith('VTC:distkit/Install')
+            cur = bool(KITWINDOW.match(f[-1]))
             if cur:
                 w, h = map(int, f[4].split('x'))
                 box = (int(f[2]), int(f[3]), w, h)
@@ -421,6 +445,14 @@ def update_phase(ck, inst, level, base, t_install):
 
 
 def run_case(case):
+    if case.startswith("addon-"):
+        return run_addon_case(case[len("addon-"):])
+    if case == "migrate":
+        return run_migrate()
+    return run_base_case(case)
+
+
+def run_base_case(case):
     level, dest = CASES[case]
     drawer = dest or "SYS:UP-Term"
     ck = Checks()
@@ -495,15 +527,6 @@ def run_case(case):
     ck(ir.run('Assign >NIL: PTY: EXISTS DEVICES')[0] == 0, 'PTY: is mounted')
     rc, out = ir.run('C:UPConsole STATUS')
     ck('kit:' in out, 'UPConsole STATUS prints the kit line (UP-Term:VERSIONS)', out)
-    ck(ir.run('Assign >NIL: Python3: EXISTS')[0] == 0 and
-       ir.run('Search >NIL: S:User-Startup "Assign Python3: UP-Term:Python3"')[0] == 0,
-       'Python3: assigned, and at every boot')
-    want = sum(1 for p in (KIT / "Files/nvim").rglob('*') if p.is_file())
-    rc, out = ir.run_slow('nvimcount', 'List UP-Term:nvim ALL FILES LFORMAT "%N"', 900)
-    got = len([l for l in out.splitlines() if l.strip()])
-    ck(got == want, 'copyfiles copied every file of the nvim drawer, subdrawers too (%d of %d)' % (got, want))
-    rc, out = ir.run_slow('pyrun', 'Stack 1000000\nUP-Term:Python3/bin/python3 -c "print(6*7)"', 400)
-    ck(out.strip().splitlines()[-1:] == ['42'], 'python3 runs from the Installer\'s copy', out[-200:])
     if case == 'update':
         update_phase(ck, inst, level, base, t_install)
     # Uninstall gives it all back
@@ -529,6 +552,166 @@ def run_case(case):
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 
 
+def manifest_entries(text):
+    """{kit path: (size, crc)} of the files in a MANIFEST text (its install.dos#, copy# and handed# lines left out)."""
+    out = {}
+    for line in text.splitlines():
+        f = line.split(None, 3)
+        if len(f) == 4 and "#" not in f[3]:
+            out[f[3]] = (f[1], f[2])
+    return out
+
+
+def unchanged_file(old, new, prefix):
+    """A kit path under `prefix` that both manifests list with the same size and CRC, a text file by preference:
+    an Update leaves it alone, a full Install copies it again. None when there is none."""
+    both = sorted(p for p in new if p.startswith(prefix) and old.get(p) == new[p] and new[p][0] != "0")
+    texty = [p for p in both if p.lower().endswith((".txt", ".md", ".vim", ".lua"))]
+    return (texty or both or [None])[0]
+
+
+def changed_files(old, new, prefix):
+    """The kit paths under `prefix` an Update copies: new, or listed with another size or CRC."""
+    return sorted(p for p in new if p.startswith(prefix) and old.get(p) != new[p])
+
+
+def asked_drawer(log):
+    """True when the Installer showed the drawer page (the askdir string, id 92): a full Install. An Update asks nothing."""
+    return any(l.startswith("page [") and re.search(r"\bids\b.*\b92\b", l) for l in log)
+
+
+def installer_run(tag, inst, kitdir, appname, level, base, dest=None):
+    """Start the kit's Install icon (VTC:<kitdir>/Install) in the real Installer and answer its pages:
+    (finished, log, seconds)."""
+    t = time.time()
+    ir.run('Run >NIL: "%s" VTC:%s/Install APPNAME %s MINUSER %s DEFUSER %s NOLOG' % (inst, kitdir, appname, level, level), 30)
+    time.sleep(5)
+    finished, log = drive(tag, inst, dest, base)
+    (OUT / (tag + ".log.txt")).write_text("\n".join(log) + "\n")
+    return finished, log, time.time() - t
+
+
+def installer_done(ck, inst, tag, finished, log, readable=True):
+    """The checks every Installer run has: it ran to its end, its pages are readable. False when it did not finish
+    (the Installer is then ended, the case stops)."""
+    ck(finished, "%s: the Installer ran to its end" % tag, log[-1] if log else "")
+    if readable:
+        lay = [l for l in log if l.startswith("LAYOUT")]
+        ck(not lay, "%s: every page\'s text readable" % tag, "; ".join(lay[:4]))
+    if not finished and installer_running(inst):
+        ir.run("Break >NIL: `Status COM \"%s\"` C" % inst)
+    return finished
+
+
+def read_installer():
+    inst = find_installer()
+    if not inst:
+        raise SystemExit("installer_rig: no Installer on the rig (Which Installer, SYS:System, SYS:Utilities, C:)")
+    return inst, {t for t, _ in windows(ami.req(0x0D).decode("latin-1"))}
+
+
+def run_addon_case(pkg):
+    """The base by its Installer, then the add-on's own Install icon, both with every page answered by its default."""
+    case, ck = "addon-" + pkg, Checks()
+    ir.prepare(None, [pkg])
+    before = ir.Before()
+    ir.plant(pkg)
+    inst, base = read_installer()
+    ok = installer_done(ck, inst, case + " base", *installer_run(case + "-base", inst, "distkit", "UP-Term", "AVERAGE", base)[:2])
+    if ok:
+        ck(ir.run("List >NIL: UP-Term:UP-Term.version")[0] == 0, "the base Installer wrote UP-Term:UP-Term.version")
+        ir.addon_absent(ck, pkg, "before its Install")
+        ok = installer_done(ck, inst, case, *installer_run(case, inst, "kit-" + pkg, ir.archive(pkg), "AVERAGE", base)[:2])
+    if ok:
+        ir.addon_verify(ck, pkg, remote=False)
+        ir.base_whole(ck, "with %s installed" % pkg)
+        rc, out = ir.run_long("rununinstall-" + pkg)
+        ck(rc == 0, "%s: its Uninstall runs" % pkg, out)
+        ir.addon_gone(ck, pkg, remote=False)
+        ir.base_whole(ck, "after %s\'s Uninstall" % pkg)
+    if not ok:
+        ir.run_long("rununinstall")
+    else:
+        ir.base_uninstall(ck, before)
+    print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
+    return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
+
+
+def plant_edit(path):
+    """Append a line to an installed file; (it survives an Update that leaves the file alone, a full Install overwrites it)."""
+    ir.run("Echo >>%s \"installer_rig planted\"" % path)
+
+
+def edit_survived(path):
+    return ir.run("Type %s" % path)[1].rstrip().endswith("installer_rig planted")
+
+
+def run_migrate():
+    """The single kit's Installer, then the new base over it, then the nvim add-on: the Update path both times."""
+    case, ck = "migrate", Checks()
+    ir.prepare(None, ["nvim"])
+    ir.prepare_legacy()
+    try:
+        return _migrate(case, ck)
+    finally:
+        ir.run_slow("deletelegacy", "Delete VTC:legacykit ALL QUIET")
+
+
+def _migrate(case, ck):
+    legacy = manifest_entries((ir.LEGACY_KIT / "Files/MANIFEST").read_text(errors="replace"))
+    newbase = manifest_entries((ir.kit_dir("base") / "Files/MANIFEST").read_text(errors="replace"))
+    newnvim = manifest_entries((ir.kit_dir("nvim") / "Files/MANIFEST").read_text(errors="replace"))
+    p_base = unchanged_file(legacy, newbase, "Files/unifont/")
+    p_nvim = unchanged_file(legacy, newnvim, "Files/nvim/")
+    ck(p_base and p_nvim, "the single kit and the new kits share an unchanged file to plant an edit in", "%s %s" % (p_base, p_nvim))
+    if not (p_base and p_nvim):
+        return False, "; ".join(ck.failed)
+    at = lambda p: "UP-Term:" + p.split("/", 1)[1]
+    before = ir.Before()
+    inst, base = read_installer()
+    if not installer_done(ck, inst, "migrate legacy", *installer_run("migrate-legacy", inst, "legacykit", "UP-Term", "AVERAGE", base)[:2], readable=False):
+        ir.run_long("rununinstall")
+        return False, "; ".join(ck.failed)
+    for f in ("UP-Term:nvim/bin/nvim", "UP-Term:Python3/bin/python3", "C:Claude", "C:amiga-pi"):
+        ck(ir.run("List >NIL: %s" % f)[0] == 0, "the single kit installed %s" % f)
+    ck(ir.run("List >NIL: UP-Term:pkg")[0] != 0, "the single kit leaves no UP-Term:pkg")
+    nvim_date = ir.run('List UP-Term:nvim/bin/nvim LFORMAT "%D %T"')[1].strip()
+    plant_edit(at(p_base))
+    # the new base over the single kit: the Installer offers Update (no drawer page), hands nvim over
+    finished, log, _ = installer_run("migrate-base", inst, "distkit", "UP-Term", "AVERAGE", base)
+    if installer_done(ck, inst, "migrate base", finished, log):
+        ck(not asked_drawer(log), "the base Install over the single kit is the Update path (no drawer page)", "; ".join(log[:6]))
+        ck(edit_survived(at(p_base)), "the Update left an unchanged file alone (%s kept the planted edit)" % at(p_base))
+        ck(ir.run('List UP-Term:nvim/bin/nvim LFORMAT "%D %T"')[1].strip() == nvim_date, "the handed nvim keeps its date", nvim_date)
+        rc, out = ir.run_slow("nvimverrun", "UP-Term:nvim/bin/nvim --version", 400)
+        ck(rc == 0 and "NVIM v0.12" in out, "nvim still answers after the new base", out[-200:])
+        for f in ("MANIFEST", "VERSIONS"):
+            ck(ir.run("List >NIL: UP-Term:pkg/legacy/%s" % f)[0] == 0, "UP-Term:pkg/legacy/%s was kept" % f)
+        ck(ami.read_file("UP-Term:MANIFEST") == (ir.kit_dir("base") / "Files/MANIFEST").read_bytes(), "UP-Term:MANIFEST is the new base\'s")
+        ck(ir.run("List >NIL: UP-Term:UP-Term.version")[0] == 0, "the base wrote UP-Term:UP-Term.version")
+        # the nvim add-on over the single kit's files: Update "installed by the single kit"
+        plant_edit(at(p_nvim))
+        finished, log, _ = installer_run("migrate-nvim", inst, "kit-nvim", ir.archive("nvim"), "AVERAGE", base)
+        if installer_done(ck, inst, "migrate nvim", finished, log):
+            ck(edit_survived(at(p_nvim)), "the add-on\'s Update left an unchanged file alone (%s kept the planted edit)" % at(p_nvim))
+            changed = changed_files(legacy, newnvim, "Files/nvim/")[:20]
+            if changed:
+                sizes = [ir.run('List "%s" LFORMAT "%%L"' % at(p))[1].strip() for p in changed]
+                want = [str(newnvim[p][0]) for p in changed]
+                ck(sizes == want, "the files that differ are the add-on kit\'s now (%d)" % len(changed), "%s vs %s" % (sizes, want))
+            ck(ir.run("List >NIL: UP-Term:pkg/UP-Term-nvim/MANIFEST")[0] == 0 and
+               ami.read_file("UP-Term:pkg/UP-Term-nvim/MANIFEST") == (ir.kit_dir("nvim") / "Files/MANIFEST").read_bytes(),
+               "the nvim add-on made its record (its MANIFEST)")
+            rc, out = ir.run_slow("nvimverrun", "UP-Term:nvim/bin/nvim --version", 400)
+            ck(rc == 0 and "NVIM v0.12" in out, "nvim answers after its add-on", out[-200:])
+    ir.base_uninstall(ck, before)
+    for f in ("C:Claude", "C:ClaudeCode", "C:amiga-pi", "UP-Term:nvim"):
+        ck(ir.run("List >NIL: %s" % f)[0] != 0, "after the base Uninstall %s is gone (the legacy block)" % f)
+    ck(ir.run("Assign >NIL: Python3: EXISTS")[0] != 0, "after the base Uninstall no Python3: assign")
+    print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
+    return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
+
+
 def main():
     fx = ir.Fixtures(('ENVARC:up-term/Dir',))
     with paths.rig_lock():
@@ -544,10 +727,11 @@ def _main(fx):
     only = [args[args.index("ONLY") + 1]] if "ONLY" in args else []
     # space needs a volume too small for the kit (the old 12 MB clean images; not run any more, 19f4c95 recorded 7/7)
     names = [c for c in CASES if only or c != 'space']
-    if not (KIT / "Install").exists():
-        raise SystemExit('no kit: make dist first')
-    fp = fingerprint()
-    todo, skip = verdicts.select(STORE, names, lambda c: fp, only, "FAILED" in args, "FORCE" in args)
+    for case in (c for c in names if not only or c in only):
+        for pkg in case_packages(case)[0]:
+            if not (ir.kit_dir(pkg) / "Install").exists():
+                raise SystemExit('no kit %s: make dist first' % ir.kit_dir(pkg))
+    todo, skip = verdicts.select(STORE, names, fingerprint, only, "FAILED" in args, "FORCE" in args)
     for c, why in skip:
         print("[SKIP] %s: %s" % (c, why))
     booted = False

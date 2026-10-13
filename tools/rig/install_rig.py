@@ -987,8 +987,9 @@ def plant(pkg):
         run('Echo >ENVARC:amiga-pi/settings.json "userfile-keepme"')
 
 
-def addon_verify(ck, pkg):
-    """After the add-on's Install: its record, and its program answering from where Install put it (the sentinel)."""
+def addon_verify(ck, pkg, remote=True):
+    """After the add-on's Install: its record, and its program answering from where Install put it (the sentinel).
+    `remote`: Claude's Install was given REMOTE (the Shell line has it; the Installer's page is left empty)."""
     sys.path.insert(0, str(ROOT / 'tools'))
     import pkgs
     row = {r['id']: r for r in pkgs.rows()}[pkg]
@@ -1003,9 +1004,10 @@ def addon_verify(ck, pkg):
         ck(rc == 0 and out.strip()[1:2].lower() == 's', 'claude: C:ClaudeCode is a script command (s bit)', out)   # protection bits hsparwed, s second
         rc, out = run('Stack 32768\nC:Claude --version')
         ck(rc == 0 and out.strip(), 'claude: C:Claude answers --version', out)
-        rc, out = run('Type ENVARC:Claude/remote')
-        ck(rc == 0 and '127.0.0.1 2399' in out, 'claude: Install wrote ENVARC:Claude/remote', out)
-        remote_banner(ck)
+        if remote:
+            rc, out = run('Type ENVARC:Claude/remote')
+            ck(rc == 0 and '127.0.0.1 2399' in out, 'claude: Install wrote ENVARC:Claude/remote', out)
+            remote_banner(ck)
     elif pkg == 'pi':
         rc, out = run('C:amiga-pi --version')
         ck(rc == 0 and '1.1.0' in out, 'pi: C:amiga-pi prints --version 1.1.0', out)
@@ -1028,7 +1030,7 @@ def addon_verify(ck, pkg):
            'python: Python3: assigned, and at every boot')
 
 
-def addon_gone(ck, pkg, base_stays=True):
+def addon_gone(ck, pkg, base_stays=True, remote=True):
     """After the add-on's Uninstall (or the base's): its files, its record and its block are gone, what is yours stays."""
     sys.path.insert(0, str(ROOT / 'tools'))
     import pkgs
@@ -1045,7 +1047,7 @@ def addon_gone(ck, pkg, base_stays=True):
     if pkg == 'pi':
         ck(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
            'pi: Uninstall kept the user\'s ENVARC:amiga-pi/settings.json')
-    if pkg == 'claude':
+    if pkg == 'claude' and remote:
         ck(run('List >NIL: ENVARC:Claude/remote')[0] == 0, 'claude: Uninstall kept ENVARC:Claude (the user\'s settings)')
         run('Delete >NIL: ENVARC:Claude/remote ENV:Claude/remote QUIET')
 

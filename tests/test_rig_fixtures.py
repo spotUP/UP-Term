@@ -423,6 +423,101 @@ class AddonCases(unittest.TestCase):
         self.assertTrue(any('block is out of S:User-Startup' in f for f in ck.failed), ck.failed)
 
 
+class InstallerCases(unittest.TestCase):
+    """K2-11: installer_rig.py's add-on and migrate cases on the host: the case table, the fingerprints, the
+    manifest helpers migrate uses, and the add-on case on a scripted Amiga (the Installer replaced by the
+    kit's install.dos, recorded call by call)."""
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import pkgs, verdicts, installer_rig
+        self.ir2, self.pkgs, self.verdicts = installer_rig, pkgs, verdicts
+        import tempfile
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.env = os.environ.get('UPTERM_KITS')
+
+    def tearDown(self):
+        if self.env is None: os.environ.pop('UPTERM_KITS', None)
+        else: os.environ['UPTERM_KITS'] = self.env
+
+    def kit(self, pkg, manifest=b'm\n'):
+        d = self.tmp / ir.archive(pkg) / 'Files'
+        d.mkdir(parents=True, exist_ok=True)
+        (d / 'MANIFEST').write_bytes(manifest)
+        os.environ['UPTERM_KITS'] = str(self.tmp)
+
+    def test_there_is_an_installer_case_for_every_add_on_and_one_for_the_migration(self):
+        for r in self.pkgs.rows():
+            if r['id'] != 'base':
+                self.assertIn('addon-' + r['id'], self.ir2.CASES)
+        self.assertIn('migrate', self.ir2.CASES)
+
+    def test_an_add_on_case_follows_its_archive_and_the_base_only(self):
+        for pkg in ir.package_ids(): self.kit(pkg)
+        a, b = self.ir2.fingerprint('addon-pi'), self.ir2.fingerprint('default')
+        self.kit('nvim', b'changed\n')
+        self.assertEqual((self.ir2.fingerprint('addon-pi'), self.ir2.fingerprint('default')), (a, b))
+        n = self.ir2.fingerprint('addon-nvim')
+        self.kit('nvim', b'changed again\n')
+        self.assertNotEqual(self.ir2.fingerprint('addon-nvim'), n)
+        self.assertNotEqual(self.ir2.fingerprint('migrate'), self.ir2.fingerprint('addon-nvim'))
+
+    MAN = ("copy-nvim 100 aaaaaaaa Files/nvim/bin/nvim\ncopy-nvim 5 bbbbbbbb Files/nvim/share/README.txt\n"
+           "copy-nvim 7 cccccccc Files/nvim/share/old.txt\ncopy-unifont 0 00000000 copy#Files/unifont#unifont\n"
+           "- 0 11111111 install.dos#copy-nvim\n")
+
+    def test_manifest_entries_keep_files_only(self):
+        e = self.ir2.manifest_entries(self.MAN)
+        self.assertEqual(sorted(e), ['Files/nvim/bin/nvim', 'Files/nvim/share/README.txt', 'Files/nvim/share/old.txt'])
+        self.assertEqual(e['Files/nvim/bin/nvim'], ('100', 'aaaaaaaa'))
+
+    def test_the_planted_file_is_one_both_kits_list_the_same_and_the_changed_files_are_the_others(self):
+        old = self.ir2.manifest_entries(self.MAN)
+        new = dict(old)
+        new['Files/nvim/bin/nvim'] = ('101', 'dddddddd')
+        new['Files/nvim/share/new.txt'] = ('3', 'eeeeeeee')
+        self.assertEqual(self.ir2.unchanged_file(old, new, 'Files/nvim/'), 'Files/nvim/share/README.txt')
+        self.assertEqual(self.ir2.changed_files(old, new, 'Files/nvim/'), ['Files/nvim/bin/nvim', 'Files/nvim/share/new.txt'])
+        self.assertIsNone(self.ir2.unchanged_file(old, new, 'Files/python3/'))
+
+    def test_the_legacy_kit_and_itself_share_a_file_to_plant_in(self):
+        m = ir.LEGACY_KIT / 'Files/MANIFEST'
+        if not m.exists(): self.skipTest('no legacy kit at %s' % ir.LEGACY_KIT)
+        e = self.ir2.manifest_entries(m.read_text(errors='replace'))
+        self.assertTrue(self.ir2.unchanged_file(e, e, 'Files/nvim/').startswith('Files/nvim/'))
+        self.assertTrue(self.ir2.unchanged_file(e, e, 'Files/unifont/').startswith('Files/unifont/'))
+        self.assertEqual(self.ir2.changed_files(e, e, 'Files/nvim/'), [])
+
+    def test_the_drawer_page_is_what_tells_a_full_install_from_an_update(self):
+        full = ['page [VTC:distkit/Install] ids 89 90 91 92', 'Proceed (id 90)']
+        upd = ['page [VTC:distkit/Install] ids 1 2 90 91', 'Proceed (id 90)']
+        self.assertTrue(self.ir2.asked_drawer(full))
+        self.assertFalse(self.ir2.asked_drawer(upd))
+        self.assertFalse(self.ir2.asked_drawer(['page [x] ids 90 920']))
+
+    def test_the_installer_window_of_any_kit_is_judged_for_layout(self):
+        for t in ('VTC:distkit/Install', 'VTC:kit-nvim/Install', 'VTC:legacykit/Install'):
+            self.assertTrue(self.ir2.KITWINDOW.match(t), t)
+        self.assertFalse(self.ir2.KITWINDOW.match('Make New Drawer'))
+
+    def test_the_add_on_case_starts_the_add_ons_own_install_icon_after_the_base(self):
+        import verdicts
+        for pkg in ir.addon_ids():
+            sim = ScriptedAmiga(self.pkgs)
+            started = []
+            def installer_run(tag, inst, kitdir, appname, level, base, dest=None):
+                started.append((kitdir, appname))
+                sim.run_long('runinstall' if kitdir == 'distkit' else 'runinstall-' + kitdir[len('kit-'):])
+                return True, [], 0.0
+            saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, self.ir2.installer_run, self.ir2.read_installer)
+            ir.run, ir.run_long, ir.run_slow, ir.prepare = sim.run, sim.run_long, sim.run_slow, lambda dest, addons=(): None
+            self.ir2.installer_run, self.ir2.read_installer = installer_run, lambda: ('Installer', set())
+            try:
+                ok, detail = self.ir2.run_addon_case(pkg)
+            finally:
+                ir.run, ir.run_long, ir.run_slow, ir.prepare, self.ir2.installer_run, self.ir2.read_installer = saved
+            self.assertTrue(ok, (pkg, detail))
+            self.assertEqual(started, [('distkit', 'UP-Term'), ('kit-' + pkg, ir.archive(pkg))], 'base first, then its own icon')
+
 class NoBaseCase(unittest.TestCase):
     """The nobase case on a scripted Amiga: it drives every add-on's install.dos (call-count) and it fails
     when an add-on installs without the base."""
