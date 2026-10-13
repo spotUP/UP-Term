@@ -233,9 +233,10 @@ class PythonUninstall(unittest.TestCase):
         v = un.index('UP-Term:bin/vsh ENVARC:up-term/unstartup.sh Python3')
         self.assertLess(un.index('Assign >NIL: UP-Term: EXISTS', un.index('Search >NIL: S:User-Startup')), v)
         # ... else by restoring the S:User-Startup Install kept, only when it is still that plus the block
-        self.assertIn('Compare >NIL: T:User-Startup.python S:User-Startup', un)
+        self.assertNotIn('Compare ', un.replace('no C:Compare', ''), 'a stock Workbench has no C:Compare (rig 2, 2026-10-13)')
+        self.assertIn('If "$uspsize" EQ "$usnsize"', un)
         self.assertIn('Copy ENVARC:uppkg/Python3/User-Startup.before S:User-Startup CLONE QUIET', un)
-        self.assertLess(v, un.index('Compare >NIL:'))
+        self.assertLess(v, un.index('If "$uspsize" EQ "$usnsize"'))
         # ... else it stays, and says so
         self.assertIn('S:User-Startup changed since Python3 was installed', un)
 
