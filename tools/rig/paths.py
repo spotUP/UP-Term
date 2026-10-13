@@ -53,8 +53,9 @@ def repo(name):
 
 
 # The default Kickstart 3.1 (40.068) ROM; UPTERM_ROM names another file.
+UPROUGH_ROOT = pathlib.Path(os.environ.get("UPROUGH_ROOT") or UPTERM_ROOT / "UpRough")
 KICKSTART = pathlib.Path(os.environ.get("UPTERM_ROM") or
-    UPTERM_ROOT / "Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
+    UPROUGH_ROOT / "Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
 
 
 # The rest of the rig's inputs, each an environment variable with the owner's
