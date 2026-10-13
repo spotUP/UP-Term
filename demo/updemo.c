@@ -15,6 +15,7 @@
 static const updemo_io *io;
 static int W, R, H; /* columns; the picture's text rows (the last row is the status line); its pixel rows (2 R) */
 static int touring;  /* the tour plays (updemo_tour): captions, any key ends it */
+static int only_one;  /* updemo_only: scene `first` alone */
 
 /* ---- output -------------------------------------------------------------- */
 
@@ -904,7 +905,7 @@ static void sc_styles(long t, int first)
         { "1", "bold" }, { "2", "faint" }, { "3", "italic" }, { "4", "underline" },
         { "21", "double underline" }, { "4:3", "curly underline" }, { "4:4", "dotted underline" },
         { "4:5", "dashed underline" }, { "4:3;58;5;196", "red curly underline" }, { "53", "overline" },
-        { "9", "strike through" }, { "7", "inverse" }, { "5", "blink" }, { "6;5", "rapid blink" },
+        { "9", "strike through" }, { "7", "inverse" }, { "5", "blink" }, { "5;6", "rapid blink" },
         { "73", "superscript" }, { "74", "subscript" }, { "51", "framed" }, { "52", "encircled" },
         { "8", "concealed (select it)" }, { "1;4;38;5;208", "several at once" }
     };
@@ -1713,7 +1714,8 @@ static int play(int first, long scene_ticks)
     ps("\033[?1049h\033[?25l");
     if (touring)
         ps("\033[22;0t\033]2;UP-Term tour\007"); /* the title, pushed to be put back */
-    for (s = first < 0 || first >= played_n ? 0 : first; s >= 0 && s < played_n && act != 3;
+    for (s = first < 0 || first >= played_n ? 0 : first; s >= 0 && s < played_n && act != 3 &&
+         (!only_one || s == first);
          s += act == 2 ? -1 : 1) {
         const scene_def *sc = &played[s];
         long t0, dur = scene_ticks ? scene_ticks : sc->ticks;
@@ -1829,6 +1831,11 @@ static int begin(const updemo_io *i, int cols, int rows, int tour_on)
     played = tour_on ? tour : show;
     played_n = tour_on ? TOUR_N : SHOW_N;
     return set_size(cols, rows);
+}
+
+void updemo_only(int on)
+{
+    only_one = on;
 }
 
 int updemo_run(const updemo_io *i, int cols, int rows, int first, long scene_ticks)

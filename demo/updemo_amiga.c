@@ -1,6 +1,6 @@
-/* UPDemo [SCENE | BENCH | TOUR [SCENE]]: updemo in the console window it is
+/* UPDemo [SCENE | BENCH [SCENE] | TOUR [SCENE]]: updemo in the console window it is
  * started from (an XCON: window in its xterm dialect, the default). BENCH:
- * every scene for three seconds, then the frames a second each one reached
+ * every scene (or SCENE alone) for three seconds, then the frames a second each one reached
  * -- what the terminal draws in a second, scene by scene. TOUR: the tour
  * of what the terminal does (Help > Demo tour runs it in a tab of its
  * own; any key ends it). The window's size is
@@ -87,8 +87,14 @@ int main(int argc, char **argv)
         rc = 2;
     else if (tour)
         rc = updemo_tour(&io, cols, rows, argc > 2 ? atoi(argv[2]) - 1 : 0, 0);
-    else
-        rc = updemo_run(&io, cols, rows, argc > 1 && !bench ? atoi(argv[1]) - 1 : 0, bench ? 150 : 0);
+    else {
+        int first = argc > 1 && !bench ? atoi(argv[1]) - 1 : 0;
+        if (bench && argc > 2) {
+            first = atoi(argv[2]) - 1; /* BENCH n: scene n alone */
+            updemo_only(1);
+        }
+        rc = updemo_run(&io, cols, rows, first, bench ? 150 : 0);
+    }
     if (rc == 1 && tour) {
         /* from the menu the tab closes when this ends: the reason stays
          * readable until a key, or ten seconds */

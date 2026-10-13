@@ -14,7 +14,7 @@ static const char *inject;            /* typed in at keys_left == 0, instead of 
 static char back[256];                /* the terminal's replies, read back as input */
 static int back_len, back_pos;
 static int layout_cols[8], n_layout;  /* DECCOLM widths the terminal was asked for */
-static int saw_image, saw_link, saw_wide, saw_text;
+static int saw_image, saw_link, saw_wide, saw_text, saw_slow, saw_rapid;
 static const char *needle;            /* saw_text: the output had it */
 
 static void scan(void)
@@ -22,9 +22,15 @@ static void scan(void)
     int y, x, n;
     if (vt_images(t))
         saw_image = 1;
-    for (y = 0; y < vt_rows(t) && (!saw_link || !saw_wide); y++) {
+    for (y = 0; y < vt_rows(t); y++) {
         const vt_cell *c = vt_row(t, y, &n);
         for (x = 0; x < n; x++) {
+            if (c[x].attr & VT_ATTR_BLINK) {
+                if (c[x].attr & VT_ATTR_RAPID)
+                    saw_rapid = 1;
+                else
+                    saw_slow = 1;
+            }
             if (c[x].width == 2)
                 saw_wide = 1;
             if (c[x].ext && vt_cell_link(t, &c[x]))
@@ -123,7 +129,7 @@ static void start(int cols, int rows)
     needle = 0;
     back_len = back_pos = 0;
     n_layout = 0;
-    saw_image = saw_link = saw_wide = saw_text = 0;
+    saw_image = saw_link = saw_wide = saw_text = saw_slow = saw_rapid = 0;
 }
 
 static int tour_scene(const char *name)
@@ -252,6 +258,20 @@ static void the_unicode_scene_shows_emoji(void)
     CHECK_INT(updemo_tour(&io, 80, 24, 0, 90), 0);
     CHECK(saw_text);
     needle = 0;
+    vt_free(t);
+}
+
+/* W-T2 (owner: the styles scene's two blink speeds blink at the same rate): its "rapid blink" line is SGR 5 then 6,
+ * so a terminal that knows 6 blinks it fast and one that does not still blinks it. It sent 6;5: the 5 after the 6
+ * asked for the slow rate again (ECMA-48 8.3.117: 5 and 6 are alternatives, the last one counts). */
+static void the_styles_scene_shows_slow_and_rapid_blink(void)
+{
+    start(80, 24);
+    updemo_only(1);
+    CHECK_INT(updemo_tour(&io, 80, 24, tour_scene("styles"), 150), 0);
+    updemo_only(0);
+    CHECK(saw_slow);
+    CHECK(saw_rapid);
     vt_free(t);
 }
 
@@ -419,6 +439,7 @@ void suite_updemo(void)
     the_tour_plays_every_scene_and_puts_the_terminal_back();
     the_tour_has_every_scene_of_the_show();
     the_unicode_scene_shows_emoji();
+    the_styles_scene_shows_slow_and_rapid_blink();
     any_key_ends_the_tour();
     the_mouse_scene_shows_a_click();
     the_resize_scene_leaves_the_width_as_it_was();

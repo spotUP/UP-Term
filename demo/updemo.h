@@ -30,6 +30,10 @@ typedef struct updemo_io {
  * 0 when it ran, 1 when the terminal is smaller than UPDEMO_MIN_*. */
 int updemo_run(const updemo_io *io, int cols, int rows, int first, long scene_ticks);
 
+/* 1: the next updemo_run plays scene `first` alone (UPDemo BENCH n: one
+ * scene's frame rate, and a PROF=1 handler's profile of it alone). */
+void updemo_only(int on);
+
 /* The tour (UPDemo TOUR; the window menu's Help > Demo tour plays it in a
  * tab): what the terminal does, a scene each with a caption -- styles,
  * colours, character sets, Unicode, scroll regions, a tmux split, vsh,

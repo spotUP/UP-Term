@@ -6,7 +6,8 @@
 #define TimerBase vtwin_timer
 extern struct Device *vtwin_timer;
 #include <proto/timer.h>
-ULONG vr_prof[4]; /* PROF=1: EClock ticks in painter_run, Text() runs; painter / Text calls */
+ULONG vr_prof[7]; /* PROF=1: EClock ticks in painter_run, WaitBlit; painter calls; ticks in fill(), fills;
+                   * ticks in the composed frames' blits, blits */
 #endif
 #include <string.h>
 
@@ -272,7 +273,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
         r->exact_key[i] = 0;
     r->dflt_obtained[0] = r->dflt_obtained[1] = -1;
     r->has_blink = 0;
-    r->blink_frames = 0;
+    r->blink_slow_us = r->blink_fast_us = 0;
     r->blink_slow_off = r->blink_fast_off = 0;
     for (i = 0; i <= 10; i++)
         r->alt_font[i] = 0;
@@ -304,6 +305,9 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->img_buf_size = 0;
     r->img_serial = 0;
     r->n_img_runs = 0;
+    r->back = 0;
+    r->front_rp = 0;
+    r->sync_seen = vt_sync_frames(t); /* frames before this window are not its to compose */
     /* true colour: images straight from their indices (P96 and CGX both
      * offer cybergraphics.library); else the pens path below */
     r->cgx = r->truecolor ? OpenLibrary((STRPTR)"cybergraphics.library", 41) : 0;
@@ -474,6 +478,11 @@ void vr_free(vr_render *r)
         FreeVec(r->img_buf);
     if (r->cgx)
         CloseLibrary(r->cgx);
+    if (r->back) {
+        if (r->back->bm)
+            FreeBitMap(r->back->bm);
+        FreeVec(r->back);
+    }
     /* inert until the next vr_init: the handler closes an AUTO window and
      * opens another, and vt_new's reset flushes damage through this
      * renderer before vr_init runs -- it drew into the closed window's
@@ -612,7 +621,25 @@ int vr_layout(vr_render *r)
 
 /* ---- drawing ------------------------------------------------------------- */
 
+static void fill_pen(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen);
 static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
+{
+#ifdef VTCON_PROF
+    struct EClockVal f0, f1;
+    if (vtwin_timer)
+        ReadEClock(&f0);
+    fill_pen(r, x0, y0, x1, y1, pen);
+    if (vtwin_timer) {
+        ReadEClock(&f1);
+        vr_prof[3] += f1.ev_lo - f0.ev_lo;
+        vr_prof[4]++;
+    }
+#else
+    fill_pen(r, x0, y0, x1, y1, pen);
+#endif
+}
+
+static void fill_pen(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 {
     if (x1 < x0 || y1 < y0)
         return;
@@ -1711,6 +1738,121 @@ static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
     }
 }
 
+/* ---- a synchronized frame composed off screen (W-T3) ------------------------ */
+
+/* What the composed pass drew so far into the window: one blit a rectangle. */
+static void back_present(vr_render *r)
+{
+    int i;
+#ifdef VTCON_PROF
+    struct EClockVal b0, b1;
+    if (vtwin_timer)
+        ReadEClock(&b0);
+    vr_prof[6] += r->back->n;
+#endif
+    for (i = 0; i < r->back->n; i++) {
+        const WORD *b = r->back->rect[i];
+        BltBitMapRastPort(r->back->bm, b[0], b[1], r->front_rp, b[0], b[1], (WORD)(b[2] - b[0] + 1),
+                          (WORD)(b[3] - b[1] + 1), 0xC0);
+    }
+#ifdef VTCON_PROF
+    if (vtwin_timer) {
+        ReadEClock(&b1);
+        vr_prof[5] += b1.ev_lo - b0.ev_lo;
+    }
+#endif
+    r->back->n = 0;
+}
+
+/* Pixels x0..x1, y0..y1 of the back bitmap now hold what the window must show. */
+static void back_add(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1)
+{
+    WORD *b;
+    if (!r->front_rp || x1 < x0 || y1 < y0)
+        return;
+    if (r->back->n) {
+        b = r->back->rect[r->back->n - 1];
+        if (b[0] == x0 && b[2] == x1 && b[3] + 1 == y0) {
+            b[3] = y1; /* the next rows of the same columns: one blit */
+            return;
+        }
+    }
+    if (r->back->n == VR_BACK_RECTS)
+        back_present(r); /* the list is full: these go now */
+    b = r->back->rect[r->back->n++];
+    b[0] = x0;
+    b[1] = y0;
+    b[2] = x1;
+    b[3] = y1;
+}
+
+/* Inside a composed pass, drawing that is not a damaged cell (the cursor, a
+ * scroll) acts on the window itself: what is composed so far goes first.
+ * to_back puts the pass back on the back bitmap. */
+static struct RastPort *to_front(vr_render *r)
+{
+    struct RastPort *f = r->front_rp;
+    if (f) {
+        back_present(r);
+        r->rp = f;
+        r->front_rp = 0;
+    }
+    return f;
+}
+
+static void to_back(vr_render *r, struct RastPort *f)
+{
+    if (f) {
+        r->front_rp = f;
+        r->rp = &r->back->rp;
+    }
+}
+
+int vr_compose_begin(vr_render *r)
+{
+    struct Window *w = r->win;
+    struct vr_back *k;
+    long f;
+    if (!w || !r->t || r->front_rp)
+        return 0;
+    f = vt_sync_frames(r->t);
+    if (f == r->sync_seen)
+        return 0; /* no frame ended: output as it comes, drawn in place */
+    r->sync_seen = f;
+    if (r->planar || r->hidden || r->off || r->view)
+        return 0;
+    if (!r->back) {
+        r->back = (struct vr_back *)AllocVec(sizeof(struct vr_back), MEMF_ANY | MEMF_CLEAR);
+        if (!r->back)
+            return 0;
+    }
+    k = r->back;
+    if (!k->bm || k->w < w->Width || k->h < w->Height) {
+        if (k->bm)
+            FreeBitMap(k->bm);
+        /* a friend of the window's bitmap: the same pixel format, on the
+         * graphics card, where a blit to the window is the card's copy */
+        k->bm = AllocBitMap((ULONG)w->Width, (ULONG)w->Height, GetBitMapAttr(w->RPort->BitMap, BMA_DEPTH),
+                            BMF_MINPLANES, w->RPort->BitMap);
+        if (!k->bm)
+            return 0; /* no memory for it: drawn in place, as before */
+        k->w = w->Width;
+        k->h = w->Height;
+    }
+    InitRastPort(&k->rp);
+    k->rp.BitMap = k->bm;
+    SetFont(&k->rp, r->font);
+    k->n = 0;
+    r->front_rp = r->rp;
+    r->rp = &k->rp;
+    return 1;
+}
+
+void vr_compose_end(vr_render *r)
+{
+    to_front(r);
+}
+
 static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
@@ -1754,6 +1896,8 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         }
     }
     r->was_blank = (UBYTE)(r->blank && !r->cursor_drawn); /* a drawn cursor is pixels too */
+    if (r->front_rp)
+        r->was_blank = 0; /* composing: the back bitmap is not the window, every cell is drawn */
     if (x0 <= 0 && y0 <= 0 && x1 >= vis_cols(r) && y1 >= vis_rows(r) && !r->view) {
         r->blank = 1; /* the whole grid again: blank unless a row draws something */
         if (r->planar && r->mask_on && !r->cursor_drawn && !(tail_bg & VR_INK_RGB)) {
@@ -1794,6 +1938,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
             continue;
         if (!r->view && vt_row_size(r->t, gy)) {
             draw_double_row(r, y, c, ncells, vt_row_size(r->t, gy));
+            back_add(r, r->ox, py, (WORD)(r->ox + vis_cols(r) * r->cw - 1), (WORD)(py + r->ch - 1));
             continue;
         }
         n = 0;
@@ -1802,6 +1947,9 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         if (x > 0 && x < ncells && c[x].width == 0 && (r->outline || r->unifont || r->emoji.store))
             x--; /* the right half of a wide glyph: a mask glyph spans both, draw it whole */
         xe = x1 < ncells ? x1 : ncells;
+        /* composing: these cells (and a wide glyph's right half past x1) are the window's next */
+        back_add(r, (WORD)(r->ox + x * r->cw), py,
+                 (WORD)(r->ox + (xe + (xe < ncells && c[xe].width == 0)) * r->cw - 1), (WORD)(py + r->ch - 1));
         if (tail_ok) {
             /* the row's tail of default blanks: one fill, or nothing on a
              * blank screen, instead of a look at every cell (a full
@@ -1986,9 +2134,6 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
     SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
 }
 
-/* Blinking (SGR 5 slow, 6 rapid): called every frame (50 ms). Slow cells
- * change every 10 frames (1 Hz), rapid ones every 3. Returns 1 while any
- * blinking cell is on screen, so the caller keeps the frames coming. */
 /* A blinking cursor: ?12, or a blinking DECSCUSR shape (1, 3, 5). */
 int vr_cursor_blinks(vr_render *r)
 {
@@ -1996,7 +2141,21 @@ int vr_cursor_blinks(vr_render *r)
     return (vt_modes(r->t) & VT_MODE_CURSOR_BLINK) || style == 1 || style == 3 || style == 5;
 }
 
-int vr_blink_tick(vr_render *r)
+/* One phase of a blink rate over: acc holds the time it has lasted. */
+static int blink_due(ULONG *acc, ULONG us, ULONG period)
+{
+    *acc += us;
+    if (*acc < period)
+        return 0;
+    *acc -= period;
+    if (*acc >= period)
+        *acc = 0; /* a long gap (the window was hidden): one change, not a burst */
+    return 1;
+}
+
+/* Blinking cells and cursor (VR_BLINK_*_US). Returns 1 while any blinking
+ * cell is on screen, so the caller keeps the frames coming. */
+int vr_blink_tick(vr_render *r, ULONG us)
 {
     int slow, fast, y, x, n, cursor;
     if (!r->win)
@@ -2004,9 +2163,8 @@ int vr_blink_tick(vr_render *r)
     cursor = vr_cursor_blinks(r);
     if ((!r->has_blink && !cursor) || r->hidden || r->view)
         return 0;
-    r->blink_frames++;
-    slow = r->blink_frames % 10 == 0;
-    fast = r->blink_frames % 3 == 0;
+    slow = blink_due(&r->blink_slow_us, us, VR_BLINK_SLOW_US);
+    fast = blink_due(&r->blink_fast_us, us, VR_BLINK_FAST_US);
     if (cursor && slow) {
         /* the cursor's own blink, at the slow rate */
         if (r->cursor_drawn)
@@ -2266,7 +2424,18 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
 
 /* Rows [top, bottom) of the screen up by n (down when n < 0), the vacated
  * rows in the default background. */
+static void raw_scroll_now(vr_render *r, int top, int bottom, int n);
+
+/* A scroll in a composed pass moves the window's pixels: what is composed
+ * so far reaches it first, so the blit moves the frame's rows as drawn. */
 static void raw_scroll(vr_render *r, int top, int bottom, int n)
+{
+    struct RastPort *f = to_front(r);
+    raw_scroll_now(r, top, bottom, n);
+    to_back(r, f);
+}
+
+static void raw_scroll_now(vr_render *r, int top, int bottom, int n)
 {
     WORD dy = (WORD)(n * r->ch);
     vt_cell blank;
@@ -2455,13 +2624,24 @@ void vr_cursor_off(vr_render *r)
         /* the cell comes back as it was: a blank screen with a cursor on
          * it is blank again */
         UBYTE was = r->blank;
+        struct RastPort *f = to_front(r);
         cursor_draw(r, 0);
+        to_back(r, f);
         r->cursor_drawn = 0;
         r->blank = was;
     }
 }
 
+static void cursor_on_now(vr_render *r);
+
 void vr_cursor_on(vr_render *r)
+{
+    struct RastPort *f = to_front(r);
+    cursor_on_now(r);
+    to_back(r, f);
+}
+
+static void cursor_on_now(vr_render *r)
 {
     int x, y;
     if (!r->win)

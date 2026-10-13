@@ -132,6 +132,7 @@ struct vt_term {
     vt_u8 amiga_keys;      /* vt_set_amiga_keys: Shift+Left / Right send Home / End (host setting) */
     struct vt_sbl **sb;    /* scrollback ring: lines packed (sb_store) */
     long scrolled;         /* lines scrolled off the primary screen's top */
+    long sync_frames;      /* ?2026 frames ended (vt_sync_frames) */
     int sb_cap, sb_len, sb_head; /* head: next slot to write */
     struct vt_sbblk *sb_blk;   /* the block new scrollback lines go into */
     struct vt_sbblk *sb_spare; /* an empty block kept for the next one */
@@ -2986,8 +2987,10 @@ static void set_mode(vt_term *t, int on)
             case 2026:
                 if (on)
                     t->modes |= VT_MODE_SYNC;
-                else
+                else if (t->modes & VT_MODE_SYNC) {
                     t->modes &= ~(vt_u32)VT_MODE_SYNC;
+                    t->sync_frames++; /* a frame ended: the host may show it as one picture */
+                }
                 break;
             case 2048: /* in-band resize: the size now, then at each resize */
                 if (on) {
@@ -7059,6 +7062,11 @@ int vt_scrollback_lines(const vt_term *t)
 long vt_lines_scrolled(const vt_term *t)
 {
     return t->scrolled;
+}
+
+long vt_sync_frames(const vt_term *t)
+{
+    return t->sync_frames;
 }
 
 int vt_wrap_pending(const vt_term *t)

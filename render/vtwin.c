@@ -541,7 +541,14 @@ void vtwin_render(vtwin *w)
             vr_cursor_off(&w->r);
             PROF_OUT(w, 2);
         }
-        vt_flush(w->t);
+        {
+            /* a ?2026 frame ended since the last pass: drawn off screen,
+             * shown at once (vr_compose_begin; W-T3) */
+            int composed = vr_compose_begin(&w->r);
+            vt_flush(w->t);
+            if (composed)
+                vr_compose_end(&w->r);
+        }
         {
             PROF_IN(w);
             vr_cursor_on(&w->r);
@@ -587,7 +594,7 @@ ULONG vtwin_tick(vtwin *w)
             settle(w); /* the output has stopped: the jump scroll ends */
         w->wrote = 0;
         note_tick(w, w->frame_wait); /* a notice in the title counts down */
-        if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r)))
+        if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r, w->frame_wait)))
             frame_start(w); /* that frame ended a flash or a blink phase */
     }
     if (!w->frame_open) {
