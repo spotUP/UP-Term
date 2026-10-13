@@ -8,6 +8,8 @@ tmux-amiga, ... side by side (the meta-repo `upterm` creates it). Default:
 the parent of this vtcon checkout. The Makefile's default is the same
 (`UPTERM_ROOT ?= $(abspath ..)`).
 """
+import contextlib
+import fcntl
 import os
 import pathlib
 import subprocess
@@ -107,3 +109,36 @@ def require_rom(path):
     if not pathlib.Path(path).is_file():
         sys.exit("rig: Kickstart ROM not found: %s (set UPTERM_ROM=<file> or "
                  "pass --kick <file>)" % path)
+
+
+@contextlib.contextmanager
+def rig_lock(rig_dir=None):
+    """Hold the rig for this run: an exclusive flock on <rig dir>/rig.lock, released when
+    the block ends or the process dies (the kernel drops it). A rig is one FS-UAE with one
+    amiagent port, so two scripts on it corrupt each other's state; the second stops with
+    the holder's pid instead (one agent per rig). `rig_dir` defaults to this instance's."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    if os.environ.get("UPTERM_RIG_LOCK_HELD") == str(d):
+        yield   # a script run by the holder (assign_rig runs install_rig): the holder has it
+        return
+    d.mkdir(parents=True, exist_ok=True)
+    f = open(d / "rig.lock", "a+")
+    try:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            f.seek(0)
+            holder = f.read().strip()
+            raise SystemExit("rig: %s is in use by pid %s (%s); one script per rig. "
+                             "Wait for it, or use the other rig (UPTERM_RIG=2)."
+                             % (d.name, holder.split(None, 1)[0] if holder else "unknown", holder[:120] or "no details"))
+        f.seek(0)
+        f.truncate()
+        f.write("%d %s\n" % (os.getpid(), " ".join(sys.argv)[:200]))
+        f.flush()
+        os.environ["UPTERM_RIG_LOCK_HELD"] = str(d)
+        yield
+    finally:
+        if os.environ.get("UPTERM_RIG_LOCK_HELD") == str(d):
+            del os.environ["UPTERM_RIG_LOCK_HELD"]
+        f.close()

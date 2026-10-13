@@ -44,10 +44,11 @@ Confirmed on the rig (2026-10-07, Installer 47.19): the Installer's custom gadge
 are driven by gadget id (90 Proceed, 91 Abort, 89 Make New Drawer, 92 the askdir string); the string gadget keeps
 only a path that exists, so the dest drawer is made through Make New Drawer (dialog: string 1, OK 90, Cancel 91).
 A page unchanged 60 s after a click is a FAIL (never a hang)."""
-import hashlib, json, os, pathlib, re, shlex, sys, time
+import os, pathlib, re, shlex, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ami
+import verdicts
 import install_rig as ir
 from assign_rig import rig
 
@@ -67,35 +68,18 @@ KEY_X, KEY_RETURN = 0x32, 0x44
 
 
 def fingerprint():
-    h = hashlib.sha256()
-    for script in ir.assembled_scripts():
-        h.update(script)
-    for f in (KIT / "Install", KIT / "Files/install.dos"):
-        h.update(f.read_bytes() if f.exists() else b"missing " + str(f).encode())
-    return h.hexdigest()[:16]
+    return verdicts.fingerprint(*ir.assembled_scripts(), KIT / "Install", KIT / "Files/install.dos")
 
 
-def verdict(case):
-    f = OUT / (case + ".json")
-    return json.loads(f.read_text()) if f.exists() else None
+STORE = verdicts.Store(OUT)
+verdict, record_verdict = STORE.verdict, STORE.record
 
 
 def record(case, ok, detail):
-    OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / (case + ".json")).write_text(json.dumps(
-        {"case": case, "verdict": "pass" if ok else "fail", "fp": fingerprint(), "detail": detail, "time": time.time()}))
-    print("[%s] %s %s" % ("PASS" if ok else "FAIL", case, ("" if ok else detail[-400:])))
+    STORE.record(case, ok, detail, fingerprint())
 
 
-class Checks:
-    def __init__(self):
-        self.failed, self.total = [], 0
-
-    def __call__(self, ok, what, seen=''):
-        self.total += 1
-        if not ok:
-            self.failed.append('%s: %s' % (what, str(seen).strip()[-200:]))
-        print('%s %d %s' % ('ok' if ok else 'FAIL', self.total, what))
+Checks = verdicts.Checks
 
 
 def windows(tree):
@@ -547,30 +531,27 @@ def run_case(case):
 
 def main():
     fx = ir.Fixtures(('ENVARC:up-term/Dir',))
-    try:
-        return _main(fx)
-    finally:
-        fx.restore()   # a killed or failing run leaves nothing planted
-        ir.show_close()
+    with paths.rig_lock():
+        try:
+            return _main(fx)
+        finally:
+            fx.restore()   # a killed or failing run leaves nothing planted
+            ir.show_close()
 
 
 def _main(fx):
     args = sys.argv[1:]
-    only = args[args.index("ONLY") + 1] if "ONLY" in args else None
-    if only and only not in CASES:
-        raise SystemExit('cases: ' + ' '.join(CASES))
-    todo = [only] if only else [c for c in CASES if c != 'space']   # space needs a volume too small for the kit (the old 12 MB clean images; not run any more, 19f4c95 recorded 7/7)
+    only = [args[args.index("ONLY") + 1]] if "ONLY" in args else []
+    # space needs a volume too small for the kit (the old 12 MB clean images; not run any more, 19f4c95 recorded 7/7)
+    names = [c for c in CASES if only or c != 'space']
     if not (KIT / "Install").exists():
         raise SystemExit('no kit: make dist first')
     fp = fingerprint()
+    todo, skip = verdicts.select(STORE, names, lambda c: fp, only, "FAILED" in args, "FORCE" in args)
+    for c, why in skip:
+        print("[SKIP] %s: %s" % (c, why))
     booted = False
-    for case in todo:
-        v = verdict(case)
-        if not only and "FORCE" not in args and v and v["verdict"] == "pass" and v["fp"] == fp:
-            print("[SKIP] %s passed with this kit" % case)
-            continue
-        if "FAILED" in args and not (v and v["verdict"] == "fail"):
-            continue
+    for case, _ in todo:
         if not booted:
             rig("stop")
             rig("start")
@@ -583,7 +564,7 @@ def _main(fx):
             print("[ABORT] %s: %s (no verdict written)" % (case, e))
             return 2
         record(case, ok, detail)
-    bad = [c for c in todo if (verdict(c) or {}).get("verdict") == "fail"]
+    bad = STORE.failed([c for c, _ in todo])
     print("installer_rig: %d of %d cases failed: %s" % (len(bad), len(todo), " ".join(bad)))
     return 1 if bad else 0
 

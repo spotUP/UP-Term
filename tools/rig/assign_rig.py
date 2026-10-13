@@ -25,10 +25,11 @@ skipped.
   assign_rig.py FAILED          only the cases that failed last time
   assign_rig.py FORCE           all, from zero
 Not run by `make test`: it needs the emulator."""
-import hashlib, json, os, pathlib, struct, subprocess, sys, time
+import os, pathlib, struct, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ami
+import verdicts
 import install_rig as ir
 
 ROOT = ir.ROOT
@@ -87,26 +88,16 @@ def rig(cmd):
 
 
 def fingerprint():
-    h = hashlib.sha256()
-    for script in ir.assembled_scripts():
-        h.update(script)
-    for p in ("build/amiga/vsh", "build/amiga/vtcon-handler",
-              "build/amiga/UPConsole", "build/amiga/up-console.device"):
-        f = ROOT / p
-        h.update(f.read_bytes() if f.exists() else b"missing " + p.encode())
-    return h.hexdigest()[:16]
+    return verdicts.fingerprint(*ir.assembled_scripts(), *(ROOT / p for p in (
+        "build/amiga/vsh", "build/amiga/vtcon-handler", "build/amiga/UPConsole", "build/amiga/up-console.device")))
 
 
-def verdict(case):
-    f = OUT / (case + ".json")
-    return json.loads(f.read_text()) if f.exists() else None
+STORE = verdicts.Store(OUT)
+verdict = STORE.verdict
 
 
 def record(case, ok, detail):
-    OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / (case + ".json")).write_text(json.dumps(
-        {"case": case, "verdict": "pass" if ok else "fail", "fp": fingerprint(), "detail": detail, "time": time.time()}))
-    print("[%s] %s %s" % ("PASS" if ok else "FAIL", case, ("" if ok else detail[-300:])))
+    STORE.record(case, ok, detail, fingerprint(), 300)
 
 
 def requester_seen():
@@ -176,25 +167,22 @@ def lazy(case):
 
 def main():
     fx = ir.Fixtures(('ENVARC:up-term/Dir',))
-    try:
-        return _main(fx)
-    finally:
-        fx.restore()   # a killed or failing run leaves nothing planted
+    with paths.rig_lock():
+        try:
+            return _main(fx)
+        finally:
+            fx.restore()   # a killed or failing run leaves nothing planted
 
 
 def _main(fx):
     args = sys.argv[1:]
-    only = args[args.index("ONLY") + 1] if "ONLY" in args else None
-    todo = [only] if only else CASES
+    only = [args[args.index("ONLY") + 1]] if "ONLY" in args else []
     fp = fingerprint()
+    todo, skip = verdicts.select(STORE, CASES, lambda c: fp, only, "FAILED" in args, "FORCE" in args)
+    for c, why in skip:
+        print("[SKIP] %s: %s" % (c, why))
     ran_boot = installed = False
-    for case in todo:
-        v = verdict(case)
-        if not only and "FORCE" not in args and v and v["verdict"] == "pass" and v["fp"] == fp:
-            print("[SKIP] %s passed with this kit" % case)
-            continue
-        if "FAILED" in args and not (v and v["verdict"] == "fail"):
-            continue
+    for case, _ in todo:
         if not ran_boot:
             rig("stop")
             rig("start")
@@ -222,7 +210,7 @@ def _main(fx):
             print("[ABORT] %s: %s (no verdict written)" % (case, e))
             return 2
         record(case, ok, detail)
-    bad = [c for c in todo if (verdict(c) or {}).get("verdict") == "fail"]
+    bad = STORE.failed([c for c, _ in todo])
     print("assign_rig: %d of %d cases failed: %s" % (len(bad), len(todo), " ".join(bad)))
     return 1 if bad else 0
 

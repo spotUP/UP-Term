@@ -65,6 +65,7 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_assemble.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_verdicts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
@@ -970,6 +971,7 @@ dist-check:
 	python3 tests/test_dist_addons.py
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py
+	python3 tests/test_rig_verdicts.py
 	@set -e; for a in $$(python3 tools/pkgs.py archives); do \
 	  test -s $(BUILD)/$$a.lha || { echo "dist-check: $(BUILD)/$$a.lha missing: make dist"; exit 1; }; \
 	  lha l $(BUILD)/$$a.lha > $(BUILD)/$$a.lst; \
