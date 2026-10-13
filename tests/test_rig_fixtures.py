@@ -283,6 +283,19 @@ class InstallCases(unittest.TestCase):
         self.assertEqual(rc, 20)
         self.assertTrue(written['wrap'].startswith('FailAt 1000\n'), 'a script ending with 20 stopped the wrapper at FailAt 10')
 
+    def test_run_long_returns_the_agents_code_when_quit_ended_the_wrapper(self):
+        """nobase waited out its 1500 s timeout: `Quit 20` in install.dos ends the wrapper too (FailAt 1000
+        does not keep it alive), so longdone is never written; the agent's own return code is the answer."""
+        saved = (ir.VTC, ir.ami.req, ir.SHOW)
+        try:
+            ir.VTC = self.tmp / 'vtc3'; ir.VTC.mkdir()
+            ir.SHOW = ''
+            ir.ami.req = lambda code, payload=b'', timeout=150: struct.pack('>I', 20) + b'refused\n'
+            rc, out = ir.run_long('runinstall-nvim', 5)
+        finally:
+            ir.VTC, ir.ami.req, ir.SHOW = saved
+        self.assertEqual((rc, out), (20, 'refused\n'))
+
 
 class ScriptedAmiga:
     """Just enough Amiga for the add-on cases of install_rig.py to run on the host: it keeps the files an

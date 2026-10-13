@@ -312,10 +312,11 @@ def run_long(script, timeout=1500):
     The script runs inside a wrapper that writes its return code to
     VTC:longdone, and this waits for that file."""
     (VTC / "longdone").unlink(missing_ok=True)
-    # FailAt 1000: a script that ends with 10 or 20 (a refused install) must not stop the wrapper before
-    # it writes the return code (then this waited out its timeout and reported nothing)
+    # FailAt 1000 covers a script that fails with 10 or 20; a `Quit 20` in it ends the wrapper anyway (the
+    # agent's own return code is used below)
     (VTC / "longwrap").write_text("FailAt 1000\nExecute VTC:%s\nEcho >VTC:longdone \"$RC\"\n" % script)
     out = ''
+    agent_rc = 0
     end = time.time() + timeout
     if SHOW:
         # An Execute in the watched window prints into the window and nowhere
@@ -327,7 +328,9 @@ def run_long(script, timeout=1500):
         show('Echo "run_long: Execute VTC:%s"' % script, 60)
     while True:
         try:
-            out = ami.req(0x02, struct.pack('>H', 120) + b'Execute VTC:longwrap', 150)[4:].decode('latin-1')
+            b = ami.req(0x02, struct.pack('>H', 120) + b'Execute VTC:longwrap', 150)
+            out = b[4:].decode('latin-1')
+            agent_rc = struct.unpack('>I', b[:4])[0]
         except SystemExit as e:
             # "a command is still running ... runs one at a time": the agent
             # is busy with an earlier command and did NOT start this one
@@ -339,6 +342,11 @@ def run_long(script, timeout=1500):
             if 'still running' not in str(e):
                 raise
         break
+    if agent_rc != 0 and not (VTC / "longdone").exists():
+        # the command ended inside the agent's window and the wrapper never reached its Echo: a `Quit 20` in
+        # the Execute'd script ends the wrapper too, whatever FailAt says (rig 2, 2026-10-13: FailAt 1000
+        # did not help). The agent's own return code is the script's.
+        return agent_rc, out
     while not (VTC / "longdone").exists():
         if time.time() > end:
             return 1, 'run_long: %s did not finish in %d s' % (script, timeout)
@@ -805,7 +813,9 @@ def var_check():
         check(run('Type %s/var/Claude/history' % D)[1].strip() == 'old prompt', 'var: Uninstall answered No keeps var/Claude/history', out)
         check(run('List >NIL: %s/VERSIONS' % D)[0] != 0 and run('List >NIL: %s/bin' % D)[0] != 0,
               'var: ... and removes the rest of the drawer', '')
-        check(('stayed in %s/var' % D) in out, 'var: ... and says where the data stayed', out)
+        # the script prints the drawer under its volume name (System:UP-Term/var), D is spelt SYS:...
+        check(re.search(r'stayed in \S+:%s/var' % re.escape(D.split(':', 1)[1]), out) is not None,
+              'var: ... and says where the data stayed', out)
         check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'var: ... and removes the UP-Term: assign', '')
         rc, out = run_long('runinstall')
         check(rc == 0 and run('Type %s/var/Claude/history' % D)[1].strip() == 'old prompt',
