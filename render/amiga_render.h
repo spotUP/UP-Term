@@ -40,6 +40,7 @@ struct vr_images {
 };
 
 #define VR_BACK_RECTS 32
+#define VR_STRIP 128   /* the cells block_run writes at a time */
 
 /* The back bitmap (a friend of the window's, at least its size), its
  * RastPort, and the rectangles drawn into it since the last blit (pixels,
@@ -50,6 +51,26 @@ struct vr_back {
     WORD w, h;
     WORD n;
     WORD rect[VR_BACK_RECTS][4];
+    /* A planar (AGA) window's frame (W-T4): planes of its own in any memory
+     * (fast RAM where there is some), written by the CPU paths alone, and
+     * copied into the screen's planes a row at a time (every plane of a row
+     * before the next row) at frame end. Window pixel (x, y) is bit
+     * phase + x of row y (phase: the window's screen x mod 32, so a copy
+     * moves whole longwords). pmem 0 until a window's first planar frame. */
+    UBYTE *pmem;
+    ULONG psize;
+    UBYTE *planes[8];
+    LONG bpr;
+    WORD depth, phase;
+    UBYTE planar;         /* this pass composes in these planes, not in bm */
+    UBYTE copy_mask;      /* the planes a copy writes: the pass's write mask before and after */
+    UBYTE in_rows;        /* inside draw_rows: cur is the cells it is drawing */
+    WORD nd;              /* the cells drawn into the planes since the last copy (draw_rows' x0 y0 x1 y1) */
+    WORD dmg[VR_BACK_RECTS][4];
+    WORD cur[4];
+    /* block_run's cells (top and bottom pen) and one plane's two rows of bits */
+    UBYTE tp[VR_STRIP], bp[VR_STRIP];
+    UBYTE strip[2][VR_STRIP + 1];
 };
 
 typedef struct vr_render {
@@ -173,6 +194,11 @@ typedef struct vr_render {
     struct vr_back *back;
     struct RastPort *front_rp;
     long sync_seen;
+    /* A planar composed pass (W-T4): the CPU paths write back->planes, and
+     * anything only graphics.library can draw sets cpu_fail -- that pass is
+     * then drawn in place. n_copies: the frames copied to the window. */
+    UBYTE cpu, cpu_fail;
+    ULONG n_copies;
 } vr_render;
 
 /* Default colours from RGB (0xRRGGBB; VR_KEEP leaves the screen's text /
@@ -250,10 +276,13 @@ void vr_mask_end(vr_render *r);
  * the pass draws into an off-screen bitmap and vr_compose_end puts what it
  * drew into the window in one blit per rectangle, so the frame appears at
  * once instead of row by row as it is drawn (W-T3: UPDemo's effects swept
- * down the window over 12-27 ms on the 68060's RTG screen). Palette and
- * true-colour RTG screens only: a planar (AGA) window keeps drawing in place
- * -- its fast paths write the screen's planes, and a blit of the planes
- * goes plane by plane, no more at once. 1 when the pass is composed. */
+ * down the window over 12-27 ms on the 68060's RTG screen). A planar (AGA)
+ * window not covered by another composes in planes of its own that the CPU
+ * writes (fast RAM: no RectFill, no chip bus), copied into the screen's
+ * planes row by row once the beam is off the rows copied (a blit would go
+ * plane by plane: wrong colours while it runs); a frame with cells only
+ * graphics.library draws is drawn in place (W-T4). 1 when the pass is
+ * composed. */
 int  vr_compose_begin(vr_render *r);
 void vr_compose_end(vr_render *r);
 void vr_redraw(vr_render *r);
