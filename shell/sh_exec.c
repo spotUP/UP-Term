@@ -2749,7 +2749,9 @@ static int sh_test_unary(tctx *t, char op, const char *a)
     case 'k': return (st.mode & 01000) != 0;
     case 'O': return st.owned;
     case 'G': return st.group;
-    case 'N': return st.mtime >= st.atime;
+    /* bash: modified since last read = the modification time is later than the access time, to the
+     * nanosecond; equal times are not (test -N f after touch -a -m -t T f is false) */
+    case 'N': return st.mtime > st.atime || (st.mtime == st.atime && st.mtime_ns > st.atime_ns);
     }
     return 0;
 }
