@@ -5,9 +5,17 @@
 # blank_cell in the AMIGA personality). vtcon declares bce (back colour
 # erase); a program told bce skips the repaint of its background after a
 # clear and so leaves the old background where console.device put it. This
-# entry is vtcon without bce, so TERM describes the window. vsh gets it for
+# entry is vtcon without bce, so TERM describes the window.
+#
+# console.device also wraps at once: the character in the last column puts
+# the cursor on the next row (at the bottom right the window scrolls), where
+# vtcon (xterm) holds it in the last column until the next character (xenl).
+# A program told xenl writes a full row and then CR LF, and on this window
+# that moves two rows: every second row is skipped (W-N1, measured on the ROM
+# console in the conformance matrix, engine: the AMIGA branch of the printable
+# run in engine/vtengine.c). So no xenl either. vsh gets it for
 # AMIGA windows from the console (ACTION_VTCON_ENV, handler/slash.c).
 #
 # Build after terminfo/vtcon.terminfo: tic -x -o <dir> terminfo/vtcon-amiga.terminfo
-vtcon-amiga|vtcon Amiga console (AMIGA personality, no back colour erase),
-	bce@, use=vtcon,
+vtcon-amiga|vtcon Amiga console (AMIGA personality, no back colour erase, wraps at once),
+	bce@, xenl@, use=vtcon,
