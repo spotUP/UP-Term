@@ -33,6 +33,10 @@ static struct DrawInfo dinfo;
 static UWORD pens[16];
 static int *canvas, *bgc, cw_px, ch_px, W, H;
 static int truecolor;
+/* gf_palette: a full colour map of npal entries (0: the default model below); the pens held from it */
+static unsigned long fpal[256];
+static int npal;
+int gf_pens_held;
 static struct Library cgx_lib;
 /* The one bitmap the window's size or more, a friend of the window's: the renderer's back bitmap
  * (vr_compose_begin). Its own canvas; BltBitMapRastPort copies from it into the window's. */
@@ -103,6 +107,16 @@ void gf_open(int w, int h, int cw, int ch, int base)
     gf_beam = 0;
     gf_n = 0;
     truecolor = 0;
+    npal = 0;
+    gf_pens_held = 0;
+}
+
+void gf_palette(const unsigned long *rgb, int n)
+{
+    int i;
+    npal = n;
+    for (i = 0; i < n; i++)
+        fpal[i] = rgb[i];
 }
 
 void gf_truecolor(int on) { truecolor = on; }
@@ -386,8 +400,17 @@ LONG BltBitMap(CONST struct BitMap *s, LONG sx, LONG sy, struct BitMap *d, LONG 
 
 VOID BltTemplate(CONST PLANEPTR src, LONG sx, LONG sm, struct RastPort *rp, LONG x, LONG y, LONG w, LONG h)
 {
-    (void)src; (void)sx; (void)sm;
+    long i, j;
     rec(GF_OTHER, x, y, w, h);
+    /* the planes: the template's set bits in the A pen, the rest in the B pen under JAM2 */
+    for (j = 0; pdepth && j < h; j++)
+        for (i = 0; i < w; i++) {
+            long b = sx + i;
+            if ((src[j * sm + (b >> 3)] >> (7 - (b & 7))) & 1)
+                pset(rp, x + i, y + j, rp->FgPen, 0);
+            else if (rp->DrawMode == JAM2)
+                pset(rp, x + i, y + j, rp->BgPen, 0);
+        }
     paint(rp, x, y, x + w - 1, y + h - 1, '?', 0); /* a template glyph: some glyph, not a code */
 }
 
@@ -477,13 +500,41 @@ ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
 }
 LONG ObtainBestPenA(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, CONST struct TagItem *t)
 {
-    (void)cm; (void)t;
+    (void)cm;
     if (truecolor)
         return -1; /* every pen taken */
+    if (npal) {
+        /* a full map: exact (OBP_FailIfBad) is an entry of that colour or nothing; else the nearest entry by
+         * plain RGB distance, as the rig's Workbench drew the light cube colours in its grey pen 6 */
+        unsigned long want = ((r >> 24) << 16) | ((g >> 24) << 8) | (b >> 24);
+        int i, k = 0, exact = 0;
+        long bd = -1;
+        for (; t && t->ti_Tag != TAG_DONE; t++)
+            if (t->ti_Tag == OBP_FailIfBad && t->ti_Data)
+                exact = 1;
+        for (i = 0; i < npal; i++) {
+            long dr = (long)((fpal[i] >> 16) & 255) - (long)((want >> 16) & 255);
+            long dg = (long)((fpal[i] >> 8) & 255) - (long)((want >> 8) & 255);
+            long db = (long)(fpal[i] & 255) - (long)(want & 255), d = dr * dr + dg * dg + db * db;
+            if (bd < 0 || d < bd) {
+                bd = d;
+                k = i;
+            }
+        }
+        if (exact && bd)
+            return -1;
+        gf_pens_held++;
+        return k;
+    }
     /* a pen per colour (channels quartered), so a test can tell colours apart by their pen */
     return 8 + (LONG)(((r >> 30) << 4) | ((g >> 30) << 2) | (b >> 30));
 }
-VOID ReleasePen(struct ColorMap *cm, ULONG n) { (void)cm; (void)n; }
+VOID ReleasePen(struct ColorMap *cm, ULONG n)
+{
+    (void)cm; (void)n;
+    if (npal)
+        gf_pens_held--;
+}
 VOID SetRGB32(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b)
 {
     (void)vp; (void)r; (void)g; (void)b;
@@ -492,9 +543,13 @@ VOID SetRGB32(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b)
 VOID GetRGB32(CONST struct ColorMap *cm, ULONG first, ULONG n, ULONG *t)
 {
     ULONG i;
-    (void)cm; (void)first;
-    for (i = 0; i < n; i++)
-        t[i * 3] = t[i * 3 + 1] = t[i * 3 + 2] = 0;
+    (void)cm;
+    for (i = 0; i < n; i++) {
+        unsigned long c = npal && first + i < (ULONG)npal ? fpal[first + i] : 0;
+        t[i * 3] = ((c >> 16) & 255) * 0x01010101UL;
+        t[i * 3 + 1] = ((c >> 8) & 255) * 0x01010101UL;
+        t[i * 3 + 2] = (c & 255) * 0x01010101UL;
+    }
 }
 WORD TextLength(struct RastPort *rp, CONST_STRPTR s, ULONG n)
 {

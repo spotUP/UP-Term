@@ -50,6 +50,7 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
 #endif
 
 #include "pen_rule.h"
+#include "pen_match.h"
 
 #define RUN_MAX 256
 
@@ -86,6 +87,23 @@ static LONG obtain(vr_render *r, ULONG rgb)
  * screen VR_INK_RGB | 0xRRGGBB, loaded into a scratch pen just before the
  * drawing call that uses it (ink_pen). */
 #define VR_INK_RGB 0x80000000UL
+/* An area's ink on a screen of few pens (W-T7): pens a (bits 0-7) and b
+ * (8-15) in the 8 x 8 ordered pattern of level lev (16-21, 1..63: pen b on
+ * lev / 64 of the pixels), cell-anchored (pat_bits). Only fills take it
+ * (fill, block_run); anything that draws with one pen takes the pen that
+ * covers more of the pattern (ink_solid). */
+#define VR_INK_DITH 0x00400000UL
+#define IS_DITH(ink) (((ink) & (VR_INK_RGB | VR_INK_DITH)) == VR_INK_DITH)
+#define DITH_A(ink) ((UBYTE)((ink) & 0xFF))
+#define DITH_B(ink) ((UBYTE)(((ink) >> 8) & 0xFF))
+#define DITH_LEV(ink) ((int)(((ink) >> 16) & 63))
+
+static ULONG ink_solid(ULONG ink)
+{
+    if (!IS_DITH(ink))
+        return ink;
+    return DITH_LEV(ink) < PM_LEVELS / 2 ? DITH_A(ink) : DITH_B(ink);
+}
 
 /* The pen that draws ink as pen A (slot 0) or pen B (slot 1). On a screen
  * of more than 8 bits a pen is only the colour of the next drawing, not a
@@ -95,6 +113,7 @@ static LONG obtain(vr_render *r, ULONG rgb)
 static UBYTE ink_pen(vr_render *r, ULONG ink, int slot)
 {
     ULONG rgb;
+    ink = ink_solid(ink);
     if (!(ink & VR_INK_RGB)) {
         if ((UBYTE)ink & ~r->mask) {
             /* a pen with a plane not in use yet: those planes hold zeros
@@ -162,6 +181,94 @@ static ULONG truecolor_ink(vr_render *r, ULONG rgb)
     return (ULONG)p;
 }
 
+/* A pen showing exactly rgb (a colour the map has), held by this window
+ * (one ReleasePen owed): that entry, or another of the same colour; -1 when
+ * it is nobody's to share (an exclusive pen, which may change colour). */
+static LONG hold_pen(vr_render *r, ULONG rgb)
+{
+    return best_pen(r->cm, rgb, 1);
+}
+
+/* Palette index c on a screen of few pens whose map has no entry left for
+ * its colour (W-T7): the pen that looks nearest for text, and for areas the
+ * two-pen mix when no pen comes close (pen_match.h), every pen used held.
+ * The pens to choose from are read from the colour map; a pen that cannot
+ * be held is left out. Returns the text's pen, or -1 (then the screen's
+ * own nearest, as on any other screen). */
+static LONG few_obtain(vr_render *r, int c, ULONG rgb)
+{
+    ULONG tab[16 * 3];
+    unsigned long pal[16], usable;
+    struct vr_dither *d = r->dith;
+    int n = 1 << GetBitMapAttr(r->win->WScreen->RastPort.BitMap, BMA_DEPTH), i, k, tries;
+    pm_pick pk;
+    LONG solid, a, b;
+    if (!d) {
+        if (!(d = r->dith = (struct vr_dither *)AllocVec(sizeof(struct vr_dither), MEMF_ANY | MEMF_CLEAR)))
+            return -1;
+        for (i = 0; i < PM_LEVELS; i++)
+            for (k = 0; k < 8; k++)
+                d->pat[i][k] = pm_pattern(i, k);
+    }
+    if (n > 16)
+        n = 16;
+    GetRGB32(r->cm, 0, (ULONG)n, tab);
+    for (i = 0; i < n; i++)
+        pal[i] = ((tab[i * 3] >> 24) << 16) | ((tab[i * 3 + 1] >> 24) << 8) | (tab[i * 3 + 2] >> 24);
+    usable = (1UL << n) - 1;
+    for (tries = 0; tries < n; tries++) {
+        pm_match(pal, n, usable, rgb, 1, &pk);
+        if (pk.solid < 0)
+            return -1;
+        solid = hold_pen(r, pal[pk.solid]);
+        if (solid < 0) {
+            usable &= ~(1UL << pk.solid);
+            continue;
+        }
+        if (!pk.lev) {
+            d->lev[c] = 0;
+            return solid;
+        }
+        a = hold_pen(r, pal[pk.a]);
+        b = a >= 0 ? hold_pen(r, pal[pk.b]) : -1;
+        if (a < 0 || b < 0) {
+            /* that mix is not to be had: those pens left out, the choice again */
+            ReleasePen(r->cm, (ULONG)solid);
+            if (a >= 0)
+                ReleasePen(r->cm, (ULONG)a);
+            usable &= ~(1UL << (a < 0 ? pk.a : pk.b));
+            continue;
+        }
+        d->a[c] = (UBYTE)a;
+        d->b[c] = (UBYTE)b;
+        d->lev[c] = (UBYTE)pk.lev;
+        d->held[c] = 3;
+        return solid;
+    }
+    return -1;
+}
+
+/* The pens few_obtain held for palette index c's dither, given back. */
+static void dither_release(vr_render *r, int c)
+{
+    struct vr_dither *d = r->dith;
+    if (!d)
+        return;
+    if (r->cm && (d->held[c] & 1))
+        ReleasePen(r->cm, (ULONG)d->a[c]);
+    if (r->cm && (d->held[c] & 2))
+        ReleasePen(r->cm, (ULONG)d->b[c]);
+    d->held[c] = 0;
+    d->lev[c] = 0;
+}
+
+/* A palette colour (or a direct one on a palette screen): its index in the
+ * xterm 256 */
+static int cube_index(vt_color c)
+{
+    return c & VT_COLOR_RGB ? vt_rgb_to_256(VT_RGB_OF(c)) : (int)(c & 0xFF);
+}
+
 /* The ink for a resolved engine colour. */
 static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
 {
@@ -179,7 +286,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
          * obtained once and shared with SGR 38;5 -- a pen per new colour
          * ran out after 64 and the rest fell to one colour (AGA 256: 63
          * colours on screen for 320 asked, mean error 161) */
-        c = (vt_color)vt_rgb_to_256(VT_RGB_OF(c));
+        c = (vt_color)cube_index(c);
     }
     c &= 0xFF;
     /* the 240 extended colours on a true-colour screen: exact, as a direct
@@ -189,7 +296,14 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
     if (r->truecolor && c >= 16)
         return truecolor_ink(r, vt_palette_rgb(r->t, c));
     if (!r->have[c]) {
-        LONG p = obtain(r, vt_palette_rgb(r->t, c));
+        ULONG rgb = vt_palette_rgb(r->t, c);
+        /* exact first (pen_rule.h); on a screen of few pens a full map then
+         * gets few_obtain's choice, not graphics' nearest */
+        LONG p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
+        if (p < 0 && r->few && r->cm)
+            p = few_obtain(r, (int)c, rgb);
+        if (p < 0)
+            p = obtain(r, rgb);
         if (p >= 0) {
             r->pens[c] = (UBYTE)p;
             r->obtained[c] = p;
@@ -203,6 +317,21 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
     return is_bg ? r->pen_default_bg : r->pen_default_fg;
 }
 
+/* The ink an area of colour c is filled with, its text drawn in `ink`
+ * (pen_for's): on a screen of few pens the dither of its palette index when
+ * it has one, else the same ink. */
+static ULONG area_ink(vr_render *r, vt_color c, ULONG ink)
+{
+    int i;
+    if (!r->dith || (ink & VR_INK_RGB) || c == VT_COLOR_DEFAULT || c == VT_COLOR_DEFAULT_BG ||
+        (vt_personality(r->t) == VT_AMIGA && !(c & VT_COLOR_RGB)))
+        return ink;
+    i = cube_index(c);
+    if (r->have[i] != 1 || !r->dith->lev[i] || r->pens[i] != ink)
+        return ink;
+    return VR_INK_DITH | ((ULONG)r->dith->lev[i] << 16) | ((ULONG)r->dith->b[i] << 8) | r->dith->a[i];
+}
+
 static void extract_glyphs(vr_render *r);
 static void fb_sync(vr_render *r);
 
@@ -210,6 +339,7 @@ static void fb_sync(vr_render *r);
  * the colour map. */
 static ULONG ink_rgb(vr_render *r, ULONG ink)
 {
+    ink = ink_solid(ink);
     return ink & VR_INK_RGB ? ink & 0xFFFFFFUL : vr_pen_rgb(r, (UBYTE)ink);
 }
 
@@ -253,6 +383,10 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->bg_ink = r->pad_ink = r->pen_default_bg;
     r->planar = (UBYTE)((GetBitMapAttr(win->RPort->BitMap, BMA_FLAGS) & BMF_STANDARD) &&
                         GetBitMapAttr(win->RPort->BitMap, BMA_DEPTH) <= 8);
+    /* 16 pens or fewer: palette colours no pen shows closely are dithered
+     * (W-T7); 256-pen and true-colour screens never */
+    r->few = (UBYTE)(win->WScreen && GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) <= 4);
+    r->dith = 0;
     di = win->WScreen ? GetScreenDrawInfo(win->WScreen) : 0;
     if (di) {
         r->pen_default_fg = (UBYTE)di->dri_Pens[TEXTPEN];
@@ -433,6 +567,7 @@ void vr_palette_changed(vr_render *r)
             if (r->obtained[i] >= 0)
                 ReleasePen(r->cm, (ULONG)r->obtained[i]);
     for (i = 0; i < 256; i++) {
+        dither_release(r, i);
         r->have[i] = 0;
         r->obtained[i] = -1;
     }
@@ -445,6 +580,16 @@ void vr_free(vr_render *r)
         for (i = 0; i < 256; i++)
             if (r->obtained[i] >= 0)
                 ReleasePen(r->cm, (ULONG)r->obtained[i]);
+    if (r->dith) {
+        for (i = 0; i < 256; i++)
+            dither_release(r, i);
+        if (r->dith->tmpl) {
+            WaitBlit(); /* a template blit may still read it */
+            FreeVec(r->dith->tmpl);
+        }
+        FreeVec(r->dith);
+        r->dith = 0;
+    }
     for (i = 0; i < 2; i++)
         if (r->cm && r->scratch[i] >= 0)
             ReleasePen(r->cm, (ULONG)r->scratch[i]);
@@ -644,6 +789,64 @@ static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 }
 
 static void back_fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE pen);
+static void back_fill_pat(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink);
+
+/* A dither ink's pattern for window pixels x .. x + 7 of pixel row y, the
+ * leftmost the top bit, set where pen b goes. Anchored to the cells: the
+ * row of the 8 x 8 tile is the pixel row within the cell, the column the
+ * pixel column within the cell -- the same bits in place, composed
+ * (block_run, back_fill_pat), and after a scroll of whole cells. */
+static UBYTE pat_bits(vr_render *r, ULONG ink, WORD x, WORD y)
+{
+    int gy = (y - r->oy) % r->ch, gx = (x - r->ox) % r->cw, i;
+    UBYTE pr, v = 0;
+    if (gy < 0)
+        gy += r->ch;
+    if (gx < 0)
+        gx += r->cw;
+    pr = r->dith->pat[DITH_LEV(ink)][gy & 7];
+    if (r->cw == 8)
+        return gx ? (UBYTE)((pr << gx) | (pr >> (8 - gx))) : pr;
+    for (i = 0; i < 8; i++, gx = gx + 1 < r->cw ? gx + 1 : 0)
+        if ((pr >> (7 - (gx & 7))) & 1)
+            v |= (UBYTE)(0x80 >> i);
+    return v;
+}
+
+/* A dither fill in place: the pattern as a template in chip RAM, drawn in
+ * JAM2 with pen b for its set bits and pen a for the rest (BltTemplate puts
+ * the template's first bit at x0, so the pixels are pat_bits' exactly; an
+ * area pattern (SetAfPt) is aligned where graphics puts it, not to the
+ * cells). Without the memory: the pen that covers more of the pattern. */
+static void pat_fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink)
+{
+    struct vr_dither *d = r->dith;
+    WORD w = (WORD)(x1 - x0 + 1), h = (WORD)(y1 - y0 + 1), bpr = (WORD)(((w + 15) >> 4) << 1), y, i;
+    ULONG need = (ULONG)bpr * (ULONG)h;
+    if (need > d->tmpl_size) {
+        if (d->tmpl) {
+            WaitBlit(); /* a template blit may still read it */
+            FreeVec(d->tmpl);
+        }
+        d->tmpl = (UBYTE *)AllocVec(need, MEMF_CHIP);
+        d->tmpl_size = d->tmpl ? need : 0;
+    }
+    if (!d->tmpl) {
+        ink_a(r, ink);
+        SetDrMd(r->rp, JAM1);
+        RectFill(r->rp, x0, y0, x1, y1);
+        return;
+    }
+    WaitBlit(); /* the last template blit has read it */
+    for (y = 0; y < h; y++) {
+        UBYTE *row = d->tmpl + (LONG)y * bpr;
+        for (i = 0; i < bpr; i++)
+            row[i] = pat_bits(r, ink, (WORD)(x0 + i * 8), (WORD)(y0 + y));
+    }
+    SetABPenDrMd(r->rp, ink_pen(r, DITH_B(ink), 0), ink_pen(r, DITH_A(ink), 1), JAM2);
+    BltTemplate((PLANEPTR)d->tmpl, 0, bpr, r->rp, x0, y0, w, h);
+    SetDrMd(r->rp, JAM1);
+}
 
 static void fill_pen(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 {
@@ -657,7 +860,14 @@ static void fill_pen(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen
             r->cpu_fail = 1;
             return;
         }
-        back_fill(r, x0, y0, x1, y1, ink_pen(r, pen, 0));
+        if (IS_DITH(pen))
+            back_fill_pat(r, x0, y0, x1, y1, pen);
+        else
+            back_fill(r, x0, y0, x1, y1, ink_pen(r, pen, 0));
+        return;
+    }
+    if (IS_DITH(pen)) {
+        pat_fill(r, x0, y0, x1, y1, pen);
         return;
     }
     if ((pen & VR_INK_RGB) && r->cgx) {
@@ -871,6 +1081,7 @@ static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, U
 /* How a run of cells is drawn: equal styles make one Text() call. */
 typedef struct vr_style {
     ULONG fg, bg, ul;   /* inks; ul the underline's (the text's unless SGR 58) */
+    ULONG fgf, bgf;     /* the inks fg's and bg's areas are filled with: a dither on a screen of few pens (area_ink) */
     vt_attr attr;       /* the attributes that change the drawing */
     vt_u8 deco, font;
 } vr_style;
@@ -887,7 +1098,8 @@ long vr_asm_row_scan(const vt_cell *c, long n, UBYTE *out);
 
 static int same_style(const vr_style *a, const vr_style *b)
 {
-    return a->fg == b->fg && a->bg == b->bg && a->ul == b->ul && a->attr == b->attr &&
+    return a->fg == b->fg && a->bg == b->bg && a->fgf == b->fgf && a->bgf == b->bgf && a->ul == b->ul &&
+           a->attr == b->attr &&
            a->deco == b->deco && a->font == b->font;
 }
 
@@ -1074,13 +1286,21 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
         if (i == n) {
             /* a blank screen's blank cells are there already (a flood of
              * newlines redrew 32 empty rows a frame) */
-            if (!(r->was_blank && st->bg == r->bg_ink))
-                fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, st->bg);
+            if (!(r->was_blank && st->bgf == r->bg_ink))
+                fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, st->bgf);
             return;
         }
     }
-    if (painter_run(r, run, n, px, py, st) || cpu_refuses(r))
+    if (IS_DITH(st->bgf)) {
+        /* text on a dithered background (W-T7): the background's pattern,
+         * then the glyphs over it in JAM1 -- through graphics.library, so a
+         * composed planar pass is drawn in place */
+        if (cpu_refuses(r))
+            return;
+        fill(r, px, py, px + n * r->cw - 1, py + r->ch - 1, st->bgf);
+    } else if (painter_run(r, run, n, px, py, st) || cpu_refuses(r)) {
         return;
+    }
     r->n_text++;
     r->blank = 0;
     if (st->font && st->font <= 10 && r->alt_font[st->font])
@@ -1088,7 +1308,12 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
     if (!(st->attr & (VT_ATTR_SUPER | VT_ATTR_SUB)) || !draw_script(r, run, n, px, py, st, font)) {
         if (font != r->font)
             SetFont(r->rp, font);
-        ink_ab(r, st->fg, st->bg);
+        if (IS_DITH(st->bgf)) {
+            ink_a(r, st->fg);
+            SetDrMd(r->rp, JAM1);
+        } else {
+            ink_ab(r, st->fg, st->bg);
+        }
         /* Bold as the glyphs again 1 px right, in JAM1: the soft style's
          * smear made Text() one pixel wider than the run and painted the
          * next cell's first column in this run's background, which a
@@ -1452,23 +1677,31 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
     vt_resolve_colors(r->t, c, &f, &b);
     st->fg = pen_for(r, f, 0);
     st->bg = pen_for(r, b, 1);
+    st->fgf = area_ink(r, f, st->fg);
+    st->bgf = area_ink(r, b, st->bg);
     if (st->fg == st->bg && f != b)
         /* a screen with few pens (a 4-colour Workbench) gave the text the
          * background's pen: the text went invisible (rig 3.2, the line
          * editor's green command word). The plain text pen then, or the
          * background's opposite. Conceal and the blink's off phase hide
-         * text on purpose below. */
+         * text on purpose below. Only the glyphs: an area of the colour
+         * (a block's, fgf) is that colour's pen -- the default text pen
+         * there drew a half block of two neighbouring colours half in it,
+         * a quarter of UPDemo's plasma in the Workbench's grey (W-T7). */
         st->fg = st->bg == r->pen_default_fg ? r->pen_default_bg : r->pen_default_fg;
     if (selected_cell) {
         /* the profile's selection colours, else the swapped cell */
         if (r->sel_ink[0] != VR_KEEP)
-            st->fg = r->sel_ink[0];
+            st->fg = st->fgf = r->sel_ink[0];
         if (r->sel_ink[1] != VR_KEEP)
-            st->bg = r->sel_ink[1];
+            st->bg = st->bgf = r->sel_ink[1];
         if (r->sel_ink[0] == VR_KEEP && r->sel_ink[1] == VR_KEEP) {
             ULONG tmp = st->fg;
             st->fg = st->bg;
             st->bg = tmp;
+            tmp = st->fgf;
+            st->fgf = st->bgf;
+            st->bgf = tmp;
         }
     }
     if (r->bell_flash) {
@@ -1477,6 +1710,9 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
         ULONG tmp = st->fg;
         st->fg = st->bg;
         st->bg = tmp;
+        tmp = st->fgf;
+        st->fgf = st->bgf;
+        st->bgf = tmp;
     }
     u = vt_cell_underline_color(r->t, c);
     st->ul = u == VT_COLOR_DEFAULT ? st->fg : pen_for(r, u, 0);
@@ -1486,8 +1722,10 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
     if ((c->attr & VT_ATTR_BLINK) && vt_personality(r->t) != VT_PCANSI) {
         /* pcansi's blink is the iCE bright background, never a blink */
         r->has_blink = 1;
-        if (c->attr & VT_ATTR_RAPID ? r->blink_fast_off : r->blink_slow_off)
+        if (c->attr & VT_ATTR_RAPID ? r->blink_fast_off : r->blink_slow_off) {
             st->fg = st->ul = st->bg; /* the off phase: text and lines hidden */
+            st->fgf = st->bgf;
+        }
     }
 }
 
@@ -1937,6 +2175,43 @@ static void back_fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE pe
     }
 }
 
+/* back_fill with a dither ink: per byte of the planes the pattern's bits
+ * (pat_bits), pen b's plane bit where set and pen a's elsewhere. */
+static void back_fill_pat(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink)
+{
+    struct vr_back *k = r->back;
+    UBYTE pa = ink_pen(r, DITH_A(ink), 0), pb = ink_pen(r, DITH_B(ink), 0), lm, rm, m, pat, v;
+    LONG b0, b1, i0, i1, i;
+    WORD y;
+    int p;
+    if (x0 < 0)
+        x0 = 0;
+    if (y0 < 0)
+        y0 = 0;
+    if (x1 >= k->w)
+        x1 = (WORD)(k->w - 1);
+    if (y1 >= k->h)
+        y1 = (WORD)(k->h - 1);
+    if (x1 < x0 || y1 < y0)
+        return;
+    b0 = k->phase + x0;
+    b1 = k->phase + x1;
+    i0 = b0 >> 3;
+    i1 = b1 >> 3;
+    lm = (UBYTE)(0xFF >> (b0 & 7));
+    rm = (UBYTE)(0xFF << (7 - (b1 & 7)));
+    for (y = y0; y <= y1; y++)
+        for (i = i0; i <= i1; i++) {
+            m = (UBYTE)((i == i0 ? lm : 0xFF) & (i == i1 ? rm : 0xFF));
+            pat = pat_bits(r, ink, (WORD)((i << 3) - k->phase), y);
+            for (p = 0; p < k->depth; p++) {
+                UBYTE *d = k->planes[p] + (LONG)y * k->bpr + i;
+                v = (UBYTE)(((pb >> p) & 1 ? pat : 0) | ((pa >> p) & 1 ? (UBYTE)~pat : 0));
+                *d = (UBYTE)((*d & ~m) | (v & m));
+            }
+        }
+}
+
 /* Bytes i0..i1 of one plane row from the composed planes to the screen's,
  * the edge bytes masked (lm, rm); the bytes between as longwords where
  * the two rows are aligned alike (the phase makes them so on a screen of
@@ -2268,6 +2543,8 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
  * fills make (draw_block: a half is (h * 4 + 4) / 8 rows, so only an even
  * cell height splits evenly); generic, those were two fills and a style
  * and glyph lookup a cell (UPDemo's plasma: 2310 cells a frame, W-T4).
+ * A dithered half (W-T7) is still a byte a plane a pixel row: its pattern's
+ * row (pat_bits), so a run with one makes its bits row by row.
  * Returns the cells written (0: the cell at x is not one). */
 static int block_run(vr_render *r, const vt_cell *c, int x, int xe, WORD py)
 {
@@ -2275,13 +2552,14 @@ static int block_run(vr_render *r, const vt_cell *c, int x, int xe, WORD py)
     WORD h = r->ch, s = (WORD)((h * 4 + 4) / 8), row;
     const vt_cell *last = 0;
     vr_style st;
-    UBYTE pens = 0, top, bot;
+    ULONG top, bot;
+    UBYTE pens = 0, dith = 0;
     int n = 0, i, p;
     LONG b0, i0;
     UBYTE sh, lm;
     if (r->cw != 8 || s * 2 != h || r->outline || r->sel)
         return 0;
-    st.fg = st.bg = 0;
+    st.fgf = st.bgf = 0;
     while (x + n < xe && n < VR_STRIP) {
         const vt_cell *cc = &c[x + n];
         vt_glyph g;
@@ -2289,12 +2567,13 @@ static int block_run(vr_render *r, const vt_cell *c, int x, int xe, WORD py)
             break;
         if (!last || cc->fg != last->fg || cc->bg != last->bg || cc->attr != last->attr || cc->deco != last->deco) {
             cell_style(r, cc, 0, &st);
-            if (st.attr || st.deco || st.font || ((st.fg | st.bg) & VR_INK_RGB) || st.fg > 255 || st.bg > 255)
+            if (st.attr || st.deco || st.font || ((st.fgf | st.bgf) & VR_INK_RGB) ||
+                (st.fgf > 255 && !IS_DITH(st.fgf)) || (st.bgf > 255 && !IS_DITH(st.bgf)))
                 break;
             last = cc;
         }
         if (cc->ch == ' ') {
-            top = bot = (UBYTE)st.bg;
+            top = bot = st.bgf;
         } else {
             WORD bh;
             if (cc->ch < 0x80)
@@ -2304,17 +2583,23 @@ static int block_run(vr_render *r, const vt_cell *c, int x, int xe, WORD py)
                 break;
             bh = (WORD)((h * (g.code & 15) + 4) / 8);
             if (bh == h) {
-                top = bot = (UBYTE)st.fg;
+                top = bot = st.fgf;
             } else if (bh == s) {
-                top = (UBYTE)((g.code >> 4) & 3 ? st.bg : st.fg);
-                bot = (UBYTE)((g.code >> 4) & 3 ? st.fg : st.bg);
+                top = (g.code >> 4) & 3 ? st.bgf : st.fgf;
+                bot = (g.code >> 4) & 3 ? st.fgf : st.bgf;
             } else {
                 break;
             }
         }
-        k->tp[n] = top;
-        k->bp[n] = bot;
-        pens |= (UBYTE)(top | bot);
+        /* a plain pen is a dither of level 0: pen a alone */
+        k->tp[n] = DITH_A(top);
+        k->bp[n] = DITH_A(bot);
+        k->tb[n] = DITH_B(top);
+        k->bb[n] = DITH_B(bot);
+        k->tl[n] = (UBYTE)(IS_DITH(top) ? DITH_LEV(top) : 0);
+        k->bl[n] = (UBYTE)(IS_DITH(bot) ? DITH_LEV(bot) : 0);
+        dith |= (UBYTE)(k->tl[n] | k->bl[n]);
+        pens |= (UBYTE)(k->tp[n] | k->bp[n] | (k->tl[n] ? k->tb[n] : 0) | (k->bl[n] ? k->bb[n] : 0));
         n++;
     }
     if (!n)
@@ -2326,7 +2611,28 @@ static int block_run(vr_render *r, const vt_cell *c, int x, int xe, WORD py)
     i0 = b0 >> 3;
     sh = (UBYTE)(b0 & 7);
     lm = (UBYTE)(0xFF >> sh);
-    for (p = 0; p < k->depth; p++) {
+    for (p = 0; p < k->depth && dith; p++) {
+        /* a dithered half in the run: each pixel row its own bits */
+        UBYTE *dst = k->planes[p] + (LONG)py * k->bpr + i0;
+        for (row = 0; row < h; row++, dst += k->bpr) {
+            const UBYTE *pa = row >= s ? k->bp : k->tp, *pb = row >= s ? k->bb : k->tb;
+            const UBYTE *lv = row >= s ? k->bl : k->tl;
+            UBYTE *o = k->strip[0], prev = 0, v, pat;
+            for (i = 0; i < n; i++) {
+                pat = r->dith && lv[i] ? r->dith->pat[lv[i]][row & 7] : 0;
+                v = (UBYTE)(((pb[i] >> p) & 1 ? pat : 0) | ((pa[i] >> p) & 1 ? (UBYTE)~pat : 0));
+                o[i] = (UBYTE)((prev << (8 - sh)) | (v >> sh));
+                prev = v;
+            }
+            o[n] = (UBYTE)(prev << (8 - sh));
+            dst[0] = (UBYTE)((dst[0] & ~lm) | (o[0] & lm));
+            for (i = 1; i < n; i++)
+                dst[i] = o[i];
+            if (sh)
+                dst[n] = (UBYTE)((dst[n] & lm) | (o[n] & ~lm));
+        }
+    }
+    for (p = 0; p < k->depth && !dith; p++) {
         UBYTE *dst = k->planes[p] + (LONG)py * k->bpr + i0;
         int half;
         for (half = 0; half < 2; half++) {
@@ -2479,7 +2785,7 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
                 if (!k)
                     break;
                 cell_style(r, &c[x], 0, &fs);
-                if (fs.attr || fs.deco || fs.font || fs.ul != fs.fg ||
+                if (fs.attr || fs.deco || fs.font || fs.ul != fs.fg || IS_DITH(fs.bgf) ||
                     !painter_run(r, run, (int)k, r->ox + x * r->cw, py, &fs))
                     break;
                 x += (int)k;
@@ -2509,7 +2815,7 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
                 cell_style(r, &c[x], selected(r, x, gy), &ws);
                 flush_run(r, run, n, run_x, py, &run_st);
                 n = 0;
-                fill(r, r->ox + x * r->cw, py, r->ox + (x + 1) * r->cw - 1, py + r->ch - 1, ws.bg);
+                fill(r, r->ox + x * r->cw, py, r->ox + (x + 1) * r->cw - 1, py + r->ch - 1, ws.bgf);
                 last = 0;
                 continue;
             }
@@ -2561,7 +2867,7 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
                         run[0] = g.code;
                         flush_run(r, run, 1, px, py, &st);
                     } else {
-                        draw_special(r, px, py, g, st.fg, st.bg, 1);
+                        draw_special(r, px, py, g, g.kind == VT_GLYPH_BLOCK ? st.fgf : st.fg, st.bgf, 1);
                     }
                     draw_marks(r, px, py, cp + 1, ncp - 1, cells, &st);
                     if (g.kind == VT_GLYPH_MISSING && cells == 2 && x + 1 < ncells && c[x + 1].width == 0)
@@ -2583,14 +2889,15 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
                                c[x + cells].deco == c[x].deco && !c[x + cells].ext && !c[x].ext)
                             cells++;
                     }
-                    draw_special(r, r->ox + x * r->cw, py, g, st.fg, st.bg, cells);
+                    draw_special(r, r->ox + x * r->cw, py, g, g.kind == VT_GLYPH_BLOCK ? st.fgf : st.fg, st.bgf,
+                                 cells);
                     x += cells - 1;
                 }
                 if (g.kind == VT_GLYPH_MISSING && g.code == 2 && x + 1 < ncells && c[x + 1].width == 0)
                     x++; /* the box spans its right half */
                 continue;
             }
-            if (want_direct && plain_style(&st) && nd < DCELL_MAX) {
+            if (want_direct && plain_style(&st) && !IS_DITH(st.bgf) && nd < DCELL_MAX) {
                 flush_run(r, run, n, run_x, py, &run_st);
                 n = 0;
                 dc[nd].x = (WORD)x;
@@ -2623,8 +2930,8 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
                 while (j < nd && dc[j].x == dc[i].x + (j - i) && dc[j].fg == dc[i].fg &&
                        dc[j].bg == dc[i].bg && dc[j].attr == dc[i].attr && n < RUN_MAX)
                     run[n++] = dc[j++].ch;
-                ds.fg = ds.ul = dc[i].fg;
-                ds.bg = dc[i].bg;
+                ds.fg = ds.ul = ds.fgf = dc[i].fg;
+                ds.bg = ds.bgf = dc[i].bg;
                 ds.attr = dc[i].attr;
                 ds.deco = (vt_u8)(dc[i].attr & VT_ATTR_UNDERLINE ? VT_UL_SINGLE : 0);
                 ds.font = 0;

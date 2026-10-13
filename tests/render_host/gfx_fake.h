@@ -41,6 +41,11 @@ struct Window *gf_window(void);
  * screen that has used them up: a direct colour is then the renderer's VR_INK_RGB case (scratch pens, or
  * FillPixelArray for a fill). Call after gf_open, before vr_init. Off by default. */
 void gf_truecolor(int on);
+/* A full colour map of n entries 0xRRGGBB (W-T7): ObtainBestPen exact finds an entry of the colour or fails,
+ * not exact the nearest entry by plain RGB distance; GetRGB32 reads it back; gf_pens_held counts the pens
+ * obtained and not yet released. Call after gf_open (which clears it), before vr_init. */
+void gf_palette(const unsigned long *rgb, int n);
+extern int gf_pens_held;
 /* A planar screen (W-T4): the window's bitmap is `depth` real bitplanes in chip RAM (TypeOfMem says so),
  * BMF_STANDARD, the window at screen pixel (left, top) on it, one unobscured ClipRect over it, and the font
  * 8 pixels wide with glyph data (so the renderer's planar fast paths run). RectFill, Text, ScrollRaster and

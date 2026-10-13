@@ -68,9 +68,26 @@ struct vr_back {
     WORD nd;              /* the cells drawn into the planes since the last copy (draw_rows' x0 y0 x1 y1) */
     WORD dmg[VR_BACK_RECTS][4];
     WORD cur[4];
-    /* block_run's cells (top and bottom pen) and one plane's two rows of bits */
+    /* block_run's cells (top and bottom pen; on a few-pen screen also the
+     * dither's second pen and level, 0: solid) and one plane's two rows of bits */
     UBYTE tp[VR_STRIP], bp[VR_STRIP];
+    UBYTE tb[VR_STRIP], bb[VR_STRIP], tl[VR_STRIP], bl[VR_STRIP];
     UBYTE strip[2][VR_STRIP + 1];
+};
+
+/* A screen of few pens (W-T7, 16 or fewer: a 4-plane Workbench): a palette
+ * colour no pen shows closely fills its areas (backgrounds, blocks) with
+ * two pens in an 8 x 8 ordered pattern (render/pen_match.h). Per palette
+ * index the mix (pen b on lev / 64 of the pixels, pen a on the rest; lev 0
+ * none) and which of a, b this window holds a pen for (1 a, 2 b: the
+ * ReleasePen it owes); the pattern's rows per level; a chip-RAM template the
+ * pattern fills in place are drawn from (BltTemplate). Made at the first
+ * colour such a screen has no exact pen for, freed by vr_free. */
+struct vr_dither {
+    UBYTE a[256], b[256], lev[256], held[256];
+    UBYTE pat[64][8];
+    UBYTE *tmpl;
+    ULONG tmpl_size;
 };
 
 typedef struct vr_render {
@@ -199,6 +216,9 @@ typedef struct vr_render {
      * then drawn in place. n_copies: the frames copied to the window. */
     UBYTE cpu, cpu_fail;
     ULONG n_copies;
+    /* W-T7: a screen of 16 pens or fewer, and its dithers (0 until needed) */
+    UBYTE few;
+    struct vr_dither *dith;
 } vr_render;
 
 /* Default colours from RGB (0xRRGGBB; VR_KEEP leaves the screen's text /
