@@ -57,8 +57,12 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Cross build (vbcc, 68020) | `make amiga`. Needs the AmigaOS 3.2 SDK headers once: unpack `NDK3.2R4` to `vendor/ndk-3.2r4-Include_H` (gitignored), or pass `make amiga VTCON_NDK=<path-to-Include_H>` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | hl and mdv for the host terminal (build/hl, build/mdv; suites `ONLY=hl`, `ONLY=md`) | `make view-host` |
-| Install kit (build/UP-Term.lha: Install with Installer, or Files/install.dos) | `make dist` |
-| Install kit on the rig: Install, check, Uninstall | `python3 tools/rig/install_rig.py` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first) |
+| Install kit, every archive (kit split K2, `dist/packages.txt`: base `UP-Term.lha` + `UP-Term-Claude`, `-pi`, `-nvim`, `-python`, and `UP-Term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (writes the single `build/UP-Term.lha` until K2-7 is merged) |
+| One archive | `make dist-<id>` (id = `python3 tools/pkgs.py names`: base, claude, pi, nvim, python; K2-7, not yet in the Makefile) |
+| Archives checked: each lists Install, Uninstall, Files/VERSIONS; per-archive manifest, versions, modes | `make dist-check` (today the single kit; per archive from K2-7) |
+| Install kit on the rig: Install, check, Uninstall (passes: `--default`, `--dest`, `--move`, `--show-check`; no flag = all) | `python3 tools/rig/install_rig.py [--default|--dest|--move|--show-check]` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first). K2-10 turns the passes into cases (`base`, `claude`, `pi`, `nvim`, `python`, `all`, `legacy`, `nobase`) with `--only <case>`, `--failed`, `--force` |
+| Which add-on works without UP-Term (ROM CON: and KingCON, one verdict per add-on and console; K2-1, not yet written) | `python3 -I tools/rig/standalone_rig.py [--failed]` (rig up; `make dist`) |
+| Aminet readme of one archive (Short at most 40 characters, Version and Requires from `dist/packages.txt`; `--release` refuses while a placeholder is left) | `python3 tools/mkreadme.py <id> [--release]` writes `build/<archive>.readme`; `make test ONLY=packages` |
 | Width tables (engine/vtwidth.h) from the Unicode database, glibc's wcwidth rules | `make widths` (`UNICODE=16.0.0`; fetches the UCD into build/ucd once) |
 | Mac end for uptelnet (A1, LAN only, unencrypted; password in ~/.config/uptelnetd/password, 0600) | `python3 tools/uptelnetd.py [--command 'tmux new -A -s claude claude']` |
 | Its tests alone | `make test ONLY=uptelnetd` |
@@ -79,3 +83,25 @@ A change that crosses two or more UP-Term repos is one commit per repo, all with
 same subject line, plus one `repos.lock` update in the `upterm` meta-repo (re-pin with
 `bin/upterm-bootstrap --update`) carrying that subject line too. Release step:
 `upterm-bootstrap --update`, then `make dist` in vtcon; run `bin/upterm-doctor` first.
+
+## Release steps (kit archives)
+
+Each archive has its own `<major>.<minor>` in `dist/packages.txt` (first release 1.0; an
+add-on names the lowest base version it needs in the same table). Aminet readmes are made
+from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
+
+1. Bump `dist/packages.txt`: the changed archive's minor (major when an add-on needs
+   something the base did not have before). Base first when an add-on needs new base
+   behaviour, then that add-on's `needs-base`.
+2. Pins: `bin/upterm-doctor`, then `bin/upterm-bootstrap --update` in `~/Code/upterm`, commit
+   `repos.lock` (see Cross-repo changes). `amiga-pi` is pinned there too.
+3. `make dist dist-check` (and `make test`).
+4. Rig: the cases of the changed archives only (`install_rig.py --only <case>`, never the
+   whole set by reflex); the owner's real-Amiga check stays manual.
+5. Fill what the readmes still leave open: `python3 tools/mkreadme.py <id> --release` fails
+   while any `PLACEHOLDER` is left (today: the UP-Term licence line, ledger K4; the uploader
+   address).
+6. Upload `UP-Term.lha` and `UP-Term-src.lha` together, then the add-ons, each with its
+   `build/<archive>.readme`. Directories (owner 2026-10-13): base and source `comm/term`,
+   UP-Term-nvim `text/edit`, UP-Term-python `dev/lang`, UP-Term-Claude and UP-Term-pi
+   `comm/misc`. The upload is the owner's.
