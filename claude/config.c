@@ -11,7 +11,11 @@ const char *const cfg_hook_events[HK_COUNT] = {
     "StopFailure", "UserPromptExpansion", "CwdChanged", "DirectoryAdded", "PreModelSwitch", "PostModelSwitch",
     "InstructionsLoaded", "PostToolBatch", "ConfigChange", "Setup", "FileChanged", "MessageDisplay",
     "session_start", "input", "agent_start", "turn_start", "message_start", "message_end", "tool_call",
-    "tool_execution_start", "tool_execution_update", "tool_result", "tool_execution_end", "agent_end", "agent_settled"
+    "tool_execution_start", "tool_execution_update", "tool_result", "tool_execution_end", "agent_end", "agent_settled",
+    "message_update", "turn_end", "agent_before_settle", "before_agent_start", "context", "context_with_system",
+    "ui_prompt_start", "ui_prompt_end", "session_info_changed", "session_shutdown", "session_before_switch",
+    "session_before_fork", "session_before_compact", "session_compact", "session_compact_failed", "session_before_tree",
+    "session_tree", "model_select", "thinking_level_select", "user_bash", "resources_discover"
 };
 
 static char *dupn(const char *s, long n)
