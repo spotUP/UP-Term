@@ -17,7 +17,7 @@ dump = os.path.join(here, "pi_models_dump.json")
 jsn = os.path.join(root, "models_builtin.json")
 hdr = os.path.join(root, "models_builtin.h")
 KEYS = ["id", "name", "api", "baseUrl", "reasoning", "input", "cost", "contextWindow", "maxTokens",
-        "thinkingLevelMap", "compat"]
+        "thinkingLevelMap", "compat", "headers"]
 
 
 def from_pi():

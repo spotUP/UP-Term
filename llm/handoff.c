@@ -129,7 +129,8 @@ static int norm_id(const llm_model *to, const char *id, const char *sp, const ch
     if (l >= cap)
         return 0;
     strcpy(out, id);
-    if (!strcmp(to->api, "openai-responses") || !strcmp(to->api, "azure-openai-responses")) {
+    if (!strcmp(to->api, "openai-responses") || !strcmp(to->api, "azure-openai-responses") ||
+        !strcmp(to->api, "openai-codex-responses")) {
         if (cap < 200)
             return 0;
         resp_id(to, id, sp, sa, out, cap);

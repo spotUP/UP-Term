@@ -27,6 +27,9 @@ typedef struct http_hdr {
  * provider's headers come from its backend (llm/be_*.c). */
 long http_post_head(const char *host, int port, int tls, const char *path, const http_hdr *h, int nh,
                     long body_len, char *out, long cap);
+/* The same for any method; body_len < 0 sends no Content-Length (a GET). */
+long http_head(const char *method, const char *host, int port, int tls, const char *path, const http_hdr *h, int nh,
+               long body_len, char *out, long cap);
 /* head[0..n) with the value of every header called name (any case)
  * replaced by "[redacted]" into out: its length, or -1 when it does not
  * fit. The only form of a request head that may reach a log. */

@@ -89,8 +89,8 @@ static void put(obuf *o, const char *s)
     o->n += l;
 }
 
-long http_post_head(const char *host, int port, int tls, const char *path, const http_hdr *h, int nh,
-                    long body_len, char *out, long cap)
+long http_head(const char *method, const char *host, int port, int tls, const char *path, const http_hdr *h, int nh,
+               long body_len, char *out, long cap)
 {
     obuf o;
     char num[32];
@@ -99,7 +99,8 @@ long http_post_head(const char *host, int port, int tls, const char *path, const
     o.n = 0;
     o.cap = cap;
     o.over = 0;
-    put(&o, "POST ");
+    put(&o, method);
+    put(&o, " ");
     put(&o, path);
     put(&o, " HTTP/1.1\r\nHost: ");
     put(&o, host);
@@ -117,11 +118,20 @@ long http_post_head(const char *host, int port, int tls, const char *path, const
         put(&o, h[i].value);
         put(&o, "\r\n");
     }
-    cl_ltoa(body_len, num);
-    put(&o, "Content-Length: ");
-    put(&o, num);
-    put(&o, "\r\nConnection: keep-alive\r\n\r\n");
+    if (body_len >= 0) {
+        cl_ltoa(body_len, num);
+        put(&o, "Content-Length: ");
+        put(&o, num);
+        put(&o, "\r\n");
+    }
+    put(&o, "Connection: keep-alive\r\n\r\n");
     return o.over ? -1 : o.n;
+}
+
+long http_post_head(const char *host, int port, int tls, const char *path, const http_hdr *h, int nh,
+                    long body_len, char *out, long cap)
+{
+    return http_head("POST", host, port, tls, path, h, nh, body_len, out, cap);
 }
 
 long http_redact_header(const char *head, long n, const char *name, char *out, long cap)

@@ -209,6 +209,8 @@ static int rd_input(ctx *c, jv iv, llm_model *m)
     return 0;
 }
 
+static const char *rd_headers(ctx *c, jv h);
+
 /* the fields model definitions and overrides share */
 static int rd_common(ctx *c, jv d, llm_model *m, int full)
 {
@@ -241,6 +243,13 @@ static int rd_common(ctx *c, jv d, llm_model *m, int full)
     }
     if (json_get(d, "compat", &v) && rd_compat(c, v, m))
         return -1;
+    if (json_get(d, "headers", &v)) {
+        /* a model's own headers (GitHub Copilot's catalog carries four): they replace the provider's */
+        const char *hd = rd_headers(c, v);
+        if (!hd)
+            return -1;
+        m->headers = hd;
+    }
     return c->r->oom ? -1 : 0;
 }
 

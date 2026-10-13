@@ -18,6 +18,8 @@ const subset = {
 	google: ["gemini-3-flash-preview", "gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro"],
 	azure: ["gpt-5.5", "gpt-4.1", "gpt-4"],
 };
+// the subscription providers (amiga-pi phase O, /login): every model pi offers for them, so what a login unlocks is what pi shows
+for (const p of ["openai-codex", "github-copilot", "kimi-coding", "xai", "meta"]) subset[p] = Object.keys(MODELS[p]);
 const out = { pi: pkg.name + "@" + pkg.version, providers: {} };
 for (const [p, ids] of Object.entries(subset)) {
 	out.providers[p] = ids.map((id) => {

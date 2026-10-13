@@ -125,13 +125,24 @@ typedef struct llm_req {
     const char *xhead;          /* extra header lines "Name: value\r\n" added to the head (models.json), 0 none */
     llm_hooks h;
     const llm_sink *sink;
+    /* OAuth credentials (amiga-pi login.c): bearer: the key goes out as "Authorization: Bearer <key>" in place of the
+     * backend's own key header (kimi-coding, copilot's anthropic-messages), and like any key never over plain http;
+     * copilot: GitHub Copilot's per-request headers (X-Initiator, Openai-Intent, Copilot-Vision-Request); reauth: asked
+     * once when the answer is 401 -- it renews the credential and sets q->key (and q->xhead) for the retry, which comes
+     * at once and does not count as one of the retries: 0 renewed, else -1 with err (the message the request then fails
+     * with; "" keeps the HTTP 401's). Called at most once per llm_request. */
+    int bearer, copilot;
+    int (*reauth)(void *u, struct llm_req *q, char *err, long cap);
+    void *reauth_u;
+    int status;                 /* out: the HTTP status of the last attempt, 0 none */
+    int reauthed;               /* out: reauth was called */
     int retries;                /* 0: 3, -1: none (the caller retries: amiga-pi's agent loop, as pi's agent session does) */
     long base_ms, cap_ms, idle_ms;  /* 0: 2000, 60000, 300000 */
     /* out */
     int attempts;
     int key_sent;               /* the credential header went out */
     long slept_ms;              /* waits between attempts, summed */
-    char head[1536];            /* the last head sent (the tests read it) */
+    char head[6144];            /* the last head sent (the tests read it) */
     long hn;
 } llm_req;
 

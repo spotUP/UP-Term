@@ -20,7 +20,7 @@ static long o_head(const char *host, int port, int tls, const char *path, const 
                    const char *user_agent, long body_len, char *out, long cap)
 {
     http_hdr h[4];
-    char bearer[600];
+    char bearer[4200];
     bearer[0] = 0;
     if (key && *key) {
         cl_copy(bearer, "Bearer ", sizeof(bearer));
@@ -694,5 +694,7 @@ const llm_backend *llm_backend_of(const char *api)
         return &llm_be_azure;
     if (api && !strcmp(api, llm_be_google.api))
         return &llm_be_google;
+    if (api && !strcmp(api, llm_be_openai_codex.api))
+        return &llm_be_openai_codex;
     return 0;
 }

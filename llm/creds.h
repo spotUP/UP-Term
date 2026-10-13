@@ -58,6 +58,28 @@ long llm_cfg_key(llm_cfg *c, const llm_model *m, char *out, long cap, const char
  * _RESOURCE_NAME, _API_VERSION, _DEPLOYMENT_NAME_MAP; pi's api/azure-openai-config.ts) and the model's own; the strings
  * live in c. Any other api: m untouched. 0, or -1 with pi's message in err */
 int llm_cfg_endpoint(llm_cfg *c, llm_model *m, char *err, long errcap);
+/* does pi 1.1.0 offer a subscription login for the provider here (openai, openai-codex, github-copilot, kimi-coding, xai,
+ * meta; never anthropic) */
+int llm_oauth_provider(const char *provider);
+/* what a stored OAuth credential (auth.json {"type":"oauth","access":...}) changes about the request (the provider's
+ * toAuth, auth/oauth/<provider>.ts): the access token is llm_cfg_key's credential; base: the base URL the credential carries
+ * (github-copilot, from the token's proxy-ep, else the enterprise domain), "" none; bearer: the credential goes out as
+ * Authorization: Bearer in place of the backend's own key header (kimi-coding, copilot's anthropic-messages);
+ * copilot: Copilot's per-request headers (api/github-copilot-headers.ts) go along. 1 when the provider's stored
+ * credential is OAuth, else 0 (u zeroed) */
+typedef struct llm_oauth_use {
+    char base[300];
+    int bearer, copilot;
+} llm_oauth_use;
+int llm_cfg_oauth(llm_cfg *c, const llm_model *m, llm_oauth_use *u);
+/* github-copilot's filterModels: with an OAuth credential that lists availableModelIds only those models are the
+ * account's; 1 for every other model and credential */
+int llm_cfg_model_ok(llm_cfg *c, const llm_model *m);
+/* base64url (or base64) text into bytes: the count, -1 not base64 / too long */
+long llm_b64url_decode(const char *s, long n, unsigned char *out, long cap);
+/* the chatgpt_account_id claim of an OpenAI access token (a JWT; pi extracts it with atob, this decodes base64url):
+ * 0, -1 */
+int llm_jwt_account_id(const char *token, char *out, long cap);
 /* "OPENAI_API_KEY" for provider "openai" (pi's env-api-keys.ts names for azure and google) */
 void llm_key_env_name(const char *provider, char *out, long cap);
 /* the model's extra request headers (models.json headers, resolved; authHeader's Authorization) as lines
