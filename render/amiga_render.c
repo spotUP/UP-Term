@@ -30,10 +30,15 @@ extern struct GfxBase *GfxBase;
  * table of 0x00RRGGBB, on true-colour screens. No SDK header here, so
  * the call is declared as vbcc's inline. */
 #define VR_CTABFMT_XRGB8 0
+#ifdef VR_HOST_TEST /* the host test (tests/test_render.c) links a fake of it */
+LONG vr_cgx_write_lut(struct Library *, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp,
+                      APTR ctab, UWORD dx, UWORD dy, UWORD w, UWORD h, UBYTE fmt);
+#else
 LONG vr_cgx_write_lut(__reg("a6") struct Library *, __reg("a0") APTR src, __reg("d0") UWORD sx,
                       __reg("d1") UWORD sy, __reg("d2") UWORD smod, __reg("a1") struct RastPort *rp,
                       __reg("a2") APTR ctab, __reg("d3") UWORD dx, __reg("d4") UWORD dy,
                       __reg("d5") UWORD w, __reg("d6") UWORD h, __reg("d7") UBYTE fmt) = "\tjsr\t-198(a6)";
+#endif
 
 #include "pen_rule.h"
 
