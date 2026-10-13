@@ -115,10 +115,11 @@ class Readme(unittest.TestCase):
         for i, d in want.items():
             self.assertEqual(mr.fields(mr.build(i)[1])['Type'], d, i)
 
-    def test_licences_pi_is_mit_and_the_base_one_is_a_marked_placeholder(self):
-        self.assertIn('Licence: MIT', mr.build('pi')[1])
-        base = mr.build('base')[1]
-        self.assertIn('Licence: PLACEHOLDER', base)
+    def test_licences_are_mit_for_pi_base_and_claude(self):
+        # owner 2026-10-13: amiga-pi and UP-Term's own code are MIT
+        for i in ('pi', 'base', 'claude'):
+            self.assertIn('Licence: MIT', mr.build(i)[1], i)
+            self.assertNotIn('Licence: PLACEHOLDER', mr.build(i)[1], i)
 
     def test_release_refuses_a_readme_with_a_placeholder(self):
         import subprocess

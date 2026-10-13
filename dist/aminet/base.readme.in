@@ -26,6 +26,6 @@ Install: unpack, double-click Install (Installer 43 or newer). A second Install 
 installed UP-Term offers Update and leaves your settings alone. Uninstall removes it; it
 asks before it removes UP-Term:var (sessions and history).
 
-Licence: PLACEHOLDER: UP-Term's own licence is not decided yet (ledger K4); until it is set this archive cannot be uploaded.
+Licence: MIT (UP-Term's own code).
 The parts it ships carry their own licences: LICENSES.txt in the archive lists each
 part, its licence and where its source is.
