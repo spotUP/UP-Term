@@ -66,7 +66,8 @@ openai_edit_final, after other tool results openai_final, a prompt naming
 "edit" openai_edit (edit RAM:pi-test.txt "hello" -> "hello from the Amiga"
 and bash List RAM:; Echo hello >RAM:pi-test.txt first), "shell"
 openai_shell (bash with a command only vsh answers, read of
-RAM:pi-wide.bmp), "mcp" openai_mcp (mcp__fake__echo and mcp__amiga__echo,
+RAM:pi-wide.bmp), "blocked bash" openai_bash (one bash call writing
+RAM:pi-blocked.txt, rig step 11), "mcp" openai_mcp (mcp__fake__echo and mcp__amiga__echo,
 amiga-pi phase K), "startup" or
 "tool" openai_tools, else openai_text; the log line says whether an
 Authorization header came (over plain http it must not), and a line per
@@ -152,7 +153,8 @@ def pick_openai(body):
     after openai_edit's results (call_Pi...) -> openai_edit_final.sse, after other
     tool results -> openai_final.sse, a prompt naming "edit" -> openai_edit.sse
     (edit and bash), "shell" -> openai_shell.sse (bash with a command only vsh
-    answers, and read of RAM:pi-wide.bmp), "mcp" -> openai_mcp.sse (mcp__fake__echo
+    answers, and read of RAM:pi-wide.bmp), "blocked bash" -> openai_bash.sse (one bash
+    call that writes RAM:pi-blocked.txt: amiga-pi rig step 11, an extension blocks it), "mcp" -> openai_mcp.sse (mcp__fake__echo
     and mcp__amiga__echo: amiga-pi phase K, rig step 10), "startup" or
     "tool" -> openai_tools.sse (read and ls, the arguments in pieces), else
     openai_text.sse."""
@@ -168,6 +170,8 @@ def pick_openai(body):
         return "openai_edit"
     if "shell" in text:
         return "openai_shell"
+    if "blocked bash" in text:
+        return "openai_bash"
     if "mcp" in text:
         return "openai_mcp"
     if "startup" in text or "tool" in text:
