@@ -52,3 +52,4 @@ Dirty or unmerged = possibly the only copy of work: owner decides per item, noth
 - Cleanup: remove clean+merged worktrees and merged branches (local+remote) in all repos; list dirty/unmerged per repo for the owner.
 - Owner: cygnus-edd-develop and dpaintiii belong with hippoplayer.se: all three in `HippoPlayer/` (moved 2026-10-13). urds-* are worktrees of Up_Rough_Demo_System (UpRough/).
 - Owner: ft2-clone also in `HippoPlayer/` (not DEViLBOX).
+- Owner: pong-websocket-server is the server for space-blazers: both in `SpaceBlazers/` (moved 2026-10-13).
