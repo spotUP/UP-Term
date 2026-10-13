@@ -1180,7 +1180,25 @@ static void pi_widget_rows(cl_tui *t, const char *lines, int cut)
     }
 }
 
-/* pi's footer.js: the directory, then the usage with the model on the right (padding of at least two) */
+/* the bytes of s (n long) that fit in room columns */
+static long cut_cols(const char *s, long n, int room)
+{
+    long k = 0;
+    int w = 0;
+    while (k < n) {
+        unsigned long cp;
+        int l = vw_char(s + k, n - k, &cp), c1 = vw_cp_width(cp);
+        if (w + c1 > room)
+            break;
+        w += c1;
+        k += l;
+    }
+    return k;
+}
+
+/* pi's footer.js: the directory, then the usage with the model on the right (padding of at least two). The usage wider than
+ * the window is cut to it with "..." and the model dropped (footer.ts:171-176, 231-233); truncateToWidth puts a reset on each
+ * side of the dots, so they are not dim */
 static void pi_footer_rows(cl_tui *t)
 {
     row r;
@@ -1196,6 +1214,24 @@ static void pi_footer_rows(cl_tui *t)
     rw = vw_width(t->pi_right, (long)strlen(t->pi_right));
     if (lw && t->pi_ctx[0])
         lw++;                   /* the space between the usage and the context figure */
+    if (lw + cw > t->cols) {
+        int room = t->cols - 3;
+        long k = cut_cols(t->pi_left, (long)strlen(t->pi_left), room);
+        pi_role(t, &r, PR_DIM);
+        r_text(&r, t->pi_left, k);
+        if (t->pi_left[k] == 0 && t->pi_ctx[0] && r.w + (t->pi_left[0] ? 1 : 0) <= room) {
+            if (t->pi_left[0])
+                r_text(&r, " ", 1);
+            if (t->pi_ctx_role)
+                pi_role(t, &r, t->pi_ctx_role - 1);
+            r_text(&r, t->pi_ctx, cut_cols(t->pi_ctx, (long)strlen(t->pi_ctx), room - r.w));
+        }
+        r_sgr(&r, SGR0);
+        r_textz(&r, "...");
+        r_sgr(&r, SGR0);
+        want(t, &r);
+        return;
+    }
     pad = t->cols - lw - cw - rw;
     pi_role(t, &r, PR_DIM);
     if (t->pi_left[0]) {
@@ -1228,16 +1264,7 @@ static void pi_footer_rows(cl_tui *t)
         if (w <= t->cols)
             r_textz(&r, t->pi_extstat);
         else {
-            long k = 0;
-            int cw = 0;
-            while (k < n) {
-                unsigned long cp;
-                int l = vw_char(t->pi_extstat + k, n - k, &cp), c1 = vw_cp_width(cp);
-                if (cw + c1 > t->cols - 3)
-                    break;
-                cw += c1;
-                k += l;
-            }
+            long k = cut_cols(t->pi_extstat, n, t->cols - 3);
             r_text(&r, t->pi_extstat, k);
             pi_role(t, &r, PR_DIM);
             r_textz(&r, "...");
