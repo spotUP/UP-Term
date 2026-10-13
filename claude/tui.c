@@ -155,6 +155,7 @@ int tui_init(cl_tui *t, cl_io *io)
     t->m_btab = -1;
     t->m_afk_ms = -1;
     t->m_left = -1;
+    t->m_timeout_ms = -1;
     t->m_ctx = KC_SELECT;
     t->focus = -1;
     t->notify_after_s = 10;
@@ -1241,7 +1242,23 @@ static void pi_menu_rows(cl_tui *t)
     want(t, &r);
     r_init(&r, t->cols);
     want(t, &r);
-    pi_wrapped(t, BOLD, t->m_title ? t->m_title : "", 1);
+    if (t->m_ext) {
+        /* pi's ExtensionSelectorComponent: the title in bold and the accent colour, with the seconds left when it times out */
+        char sgr[64], acc[48], title[600];
+        cl_copy(sgr, BOLD, sizeof(sgr));
+        pitheme_sgr(t->pith, PR_ACCENT, acc);
+        cl_cat(sgr, acc, sizeof(sgr));
+        cl_copy(title, t->m_title ? t->m_title : "", sizeof(title));
+        if (t->m_left > 0) {
+            char num[16];
+            cl_cat(title, " (", sizeof(title));
+            cl_ltoa(t->m_left, num);
+            cl_cat(title, num, sizeof(title));
+            cl_cat(title, "s)", sizeof(title));
+        }
+        pi_wrapped(t, sgr, title, 1);
+    } else
+        pi_wrapped(t, BOLD, t->m_title ? t->m_title : "", 1);
     if (t->m_q && *t->m_q) {
         r_init(&r, t->cols);
         want(t, &r);
@@ -1252,8 +1269,15 @@ static void pi_menu_rows(cl_tui *t)
     for (i = 0; i < t->m_n; i++) {
         r_init(&r, t->cols);
         r_text(&r, " ", 1);
-        r_text(&r, i == t->m_sel ? "\342\206\222 " : "  ", i == t->m_sel ? 4 : 2);
-        r_textz(&r, t->m_opt[i]);
+        if (t->m_ext) {
+            pi_role(t, &r, i == t->m_sel ? PR_ACCENT : PR_TEXT);
+            r_text(&r, i == t->m_sel ? "\342\206\222 " : "  ", i == t->m_sel ? 4 : 2);
+            r_textz(&r, t->m_opt[i]);
+            r_sgr(&r, SGR0);
+        } else {
+            r_text(&r, i == t->m_sel ? "\342\206\222 " : "  ", i == t->m_sel ? 4 : 2);
+            r_textz(&r, t->m_opt[i]);
+        }
         want(t, &r);
     }
     r_init(&r, t->cols);
@@ -1370,9 +1394,61 @@ static void pi_pick_rows(cl_tui *t)
     pi_rule_row(t, PR_BORDER);
 }
 
+/* pi's ExtensionInputComponent: a rule, the title in the accent colour (the seconds left after it), the input, the keys, a rule */
+static void pi_ext_input_rows(cl_tui *t)
+{
+    row r;
+    char title[300];
+    pi_rule_row(t, PR_BORDER);
+    r_init(&r, t->cols);
+    want(t, &r);
+    cl_copy(title, t->pi_in_title, sizeof(title));
+    if (t->m_left > 0) {
+        char num[16];
+        cl_cat(title, " (", sizeof(title));
+        cl_ltoa(t->m_left, num);
+        cl_cat(title, num, sizeof(title));
+        cl_cat(title, "s)", sizeof(title));
+    }
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    pi_role(t, &r, PR_ACCENT);
+    r_textz(&r, title);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    want(t, &r);
+    r_init(&r, t->cols);
+    r_text(&r, "> ", 2);
+    r_textz(&r, t->pi_in);
+    r_sgr(&r, REV);
+    r_text(&r, " ", 1);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    want(t, &r);
+    r_init(&r, t->cols);
+    r_text(&r, " ", 1);
+    pi_role(t, &r, PR_DIM);
+    r_textz(&r, "enter submit");
+    r_sgr(&r, SGR0);
+    r_text(&r, "  ", 2);
+    pi_role(t, &r, PR_DIM);
+    r_textz(&r, "escape/ctrl+c cancel");
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    r_init(&r, t->cols);
+    want(t, &r);
+    pi_rule_row(t, PR_BORDER);
+}
+
 static void pi_input_rows(cl_tui *t)
 {
     row r;
+    if (t->pi_in_ext) {
+        pi_ext_input_rows(t);
+        return;
+    }
     pi_blank_row(t);
     pi_rule_row(t, PR_BORDER);
     r_init(&r, t->cols);
@@ -3322,7 +3398,7 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
              int esc)
 {
     int busy = t->busy, choice = -1;
-    unsigned long idle0;
+    unsigned long idle0, start;
     t->modal = 1;
     t->m_title = title;
     t->m_q = question;
@@ -3333,12 +3409,24 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
     t->m_noting = -1;
     t->m_note[0] = 0;
     t->m_left = -1;
-    idle0 = now(t);
+    idle0 = start = now(t);
     for (;;) {
         cl_key k;
         int r;
         long wait = 500;
-        if (t->m_afk_ms >= 0) {
+        if (t->m_timeout_ms >= 0) {
+            /* an extension's dialog with a timeout (ExtensionUIDialogOptions.timeout): runs out whatever is typed */
+            long left = t->m_timeout_ms - (long)(now(t) - start);
+            long next;
+            if (left <= 0) {
+                choice = TUI_AWAY;
+                break;
+            }
+            t->m_left = (int)((left + 999) / 1000);
+            next = left % 1000 ? left % 1000 : 1000;      /* the next time the shown seconds change */
+            if (next < wait)
+                wait = next;
+        } else if (t->m_afk_ms >= 0) {
             /* AskUserQuestion's auto-continue: idle time counts while the
              * window is not known to have the focus; a key starts it over */
             long left;
@@ -3441,11 +3529,11 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
             case KA_PREV:
             case KA_PREV_FIELD:
             case KA_SEL_PREV:
-                t->m_sel = (t->m_sel + n - 1) % n;
+                t->m_sel = t->m_ext ? (t->m_sel > 0 ? t->m_sel - 1 : 0) : (t->m_sel + n - 1) % n;
                 continue;
             case KA_NEXT:
             case KA_SEL_NEXT:
-                t->m_sel = (t->m_sel + 1) % n;
+                t->m_sel = t->m_ext ? (t->m_sel + 1 < n ? t->m_sel + 1 : n - 1) : (t->m_sel + 1) % n;
                 continue;
             case KA_SEL_FIRST:
             case KA_SEL_PGUP:
@@ -3471,6 +3559,12 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
                 if (k.k == K_CTRL && k.ch == 'c') {
                     choice = esc;
                     done = 1;
+                } else if (t->m_ext) {
+                    /* pi's ExtensionSelectorComponent: j and k move like the arrows, nothing else is bound */
+                    if (k.k == K_CHAR && k.ch == 'k')
+                        t->m_sel = t->m_sel > 0 ? t->m_sel - 1 : 0;
+                    else if (k.k == K_CHAR && k.ch == 'j')
+                        t->m_sel = t->m_sel + 1 < n ? t->m_sel + 1 : n - 1;
                 } else if (k.k == K_CHAR && k.ch >= '1' && k.ch < (unsigned long)('1' + n) && k.ch <= '9') {
                     choice = (int)(k.ch - '1');
                     done = 1;
@@ -3492,6 +3586,8 @@ int tui_menu(cl_tui *t, const char *title, const char *question, const char *con
     t->m_ctx = KC_SELECT;
     t->m_afk_ms = -1;
     t->m_left = -1;
+    t->m_ext = 0;
+    t->m_timeout_ms = -1;
     if (choice < 0 || choice != t->m_noting)
         t->m_note[0] = 0;           /* a comment goes only with its own option */
     t->m_noting = -1;
@@ -3568,18 +3664,36 @@ int tui_pick_run(cl_tui *t, tui_pick *p)
     return res;
 }
 
-int tui_line_input(cl_tui *t, const char *title, char *out, long cap)
+static int line_input(cl_tui *t, const char *title, char *out, long cap, int ext, long timeout_ms)
 {
     int res = -1;
+    unsigned long start = now(t);
     t->modal = 3;
+    t->pi_in_ext = ext;
+    t->m_timeout_ms = timeout_ms;
+    t->m_left = -1;
     t->pi_in_title = title;
     t->pi_in[0] = 0;
     for (;;) {
         cl_key k;
         int r;
         long l = (long)strlen(t->pi_in);
+        long wait = 500;
+        if (t->m_timeout_ms >= 0) {
+            /* ExtensionUIDialogOptions.timeout: runs out whatever is typed; pi's CountdownTimer shows the seconds */
+            long left = t->m_timeout_ms - (long)(now(t) - start);
+            long next;
+            if (left <= 0) {
+                res = 0;
+                break;
+            }
+            t->m_left = (int)((left + 999) / 1000);
+            next = left % 1000 ? left % 1000 : 1000;
+            if (next < wait)
+                wait = next;
+        }
         tui_frame(t);
-        r = next_key(t, &k, 500);
+        r = next_key(t, &k, wait);
         if (r < 0)
             break;
         if (!r) {
@@ -3608,6 +3722,26 @@ int tui_line_input(cl_tui *t, const char *title, char *out, long cap)
         }
     }
     t->modal = 0;
+    t->pi_in_ext = 0;
+    t->m_timeout_ms = -1;
+    t->m_left = -1;
     tui_frame(t);
     return res;
+}
+
+int tui_line_input(cl_tui *t, const char *title, char *out, long cap)
+{
+    return line_input(t, title, out, cap, 0, -1);
+}
+
+int tui_ext_input(cl_tui *t, const char *title, char *out, long cap, long timeout_ms)
+{
+    return line_input(t, title, out, cap, 1, timeout_ms > 0 ? timeout_ms : -1);
+}
+
+int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, long timeout_ms)
+{
+    t->m_ext = 1;
+    t->m_timeout_ms = timeout_ms > 0 ? timeout_ms : -1;
+    return tui_menu(t, title, 0, opt, n, 0, -1);
 }
