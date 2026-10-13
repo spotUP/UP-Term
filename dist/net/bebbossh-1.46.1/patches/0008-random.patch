@@ -1,0 +1,517 @@
+From 7636bb2fa95962647f5147338392b3163b75f37e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 18:52:36 +0200
+Subject: [PATCH] libcryptossh: entropy pool for randfill(), bebbosshkeygen
+ fixes
+
+randfill() mixed rand(), the DateStamp tick and the beam position - a few
+dozen bits of entropy at best ("not cryptographically secure" said the
+comment). It produces the ed25519 secret keys of bebbosshkeygen and the
+ephemeral x25519 keys of every session, so both could be recovered with
+moderate effort.
+
+randpool.cpp: a SHA-512 pool fed with E-clock time stamps and beam
+positions sampled across task switches, exec dispatch/idle counters,
+free memory and a seed file ENVARC:.ssh/random_seed that is mixed in and
+replaced on every first use. Output is SHA-512(pool | counter), the pool
+is hashed forward after every call and gets a fresh time stamp on each.
+
+bebbosshkeygen:
+- the argument line is only flushed from a console; a redirected stdin
+  is read unbuffered (it starts with the injected argument line, and
+  flushing it seeks before the start of the file)
+- write errors are detected, a truncated key file is deleted, exit 10
+- the secret key material is cleared before exit, ge_new_keypair_ed25519
+  clears the expanded secret on its stack
+---
+ Makefile               |   2 +-
+ src/bebbosshkeygen.cpp |  98 +++++++++++++-----
+ src/ed25519s.cpp       |   3 +
+ src/rand.c             |  24 ++---
+ src/randpool.cpp       | 222 +++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 309 insertions(+), 40 deletions(-)
+ create mode 100644 src/randpool.cpp
+
+diff --git a/Makefile b/Makefile
+index 5d06db8..38e223e 100644
+--- a/Makefile
++++ b/Makefile
+@@ -71,7 +71,7 @@ ASMOBJECTS = $(patsubst $(srcdir)/%.asm,$(OUTDIR)/%.o,$(ASMSOURCES))
+ LIB_SOURCES = bc.cpp aes.cpp chacha20.cpp poly1305.cpp chacha20poly1305ssh.cpp \
+ 			dump.c gcm.cpp log.c md.cpp sha256.cpp sha512.cpp sha384512.cpp \
+ 			ssh.cpp loaded25519key.cpp splitline.cpp fastmath.cpp vector.cpp \
+-			mimedecode.c mimeencode.c rand.c equals.cpp unhexlify.c \
++			mimedecode.c mimeencode.c rand.c randpool.cpp equals.cpp unhexlify.c \
+ 			x25519.c ed25519.c ed25519s.c ed25519v.c c++support-lib.cpp home.cpp\
+ 			$(EXTRA_LIB_SOURCES)
+ LIB_OBJECTS = $(patsubst %.asm,$(OUTDIR)/%.o, $(patsubst %.cpp,$(OUTDIR)/%.o, $(patsubst %.c,$(OUTDIR)/%.o,$(LIB_SOURCES))))
+diff --git a/src/bebbosshkeygen.cpp b/src/bebbosshkeygen.cpp
+index de876fe..80df5fa 100644
+--- a/src/bebbosshkeygen.cpp
++++ b/src/bebbosshkeygen.cpp
+@@ -61,6 +61,44 @@ static char outfilename[256];
+ 
+ static char comment[256] = "Amiga";
+ 
++static uint8_t pk[32];
++static uint8_t sk[64];
++static uint8_t key[512];
++static uint8_t mime[1024];
++
++// clear the secret key material - the Amiga keeps freed memory as it is
++static void wipeSecrets() {
++	for (volatile uint8_t *v = sk; v < sk + sizeof(sk); ++v)
++		*v = 0;
++	for (volatile uint8_t *v = key; v < key + sizeof(key); ++v)
++		*v = 0;
++	for (volatile uint8_t *v = mime; v < mime + sizeof(mime); ++v)
++		*v = 0;
++}
++
++// read an answer line; a redirected stdin is read unbuffered - its buffer
++// starts with the argument line the shell injects, and flushing that would
++// seek before the start of the file
++static void readLine(char *buf, int size) {
++	*buf = 0;
++#ifdef __AMIGA__
++	if (!IsInteractive(Input())) {
++		int n = 0;
++		char c;
++		while (n < size - 1 && Read(Input(), &c, 1) == 1 && c != '\n')
++			buf[n++] = c;
++		buf[n] = 0;
++		return;
++	}
++#endif
++	gets_n(buf, size);
++}
++
++// Write() everything or report the failure
++static bool writeAll(BPTR fh, void const *p, LONG len) {
++	return Write(fh, (APTR) p, len) == len;
++}
++
+ static void printUsage() {
+     puts(__VERSION);
+     puts("USAGE: bebbosshkeygen [-f <output_keyfile>] [-C <comment>]");
+@@ -132,9 +170,12 @@ __stdargs int main(int argc, char **argv) {
+ 	parseParams(argc, argv);
+ 
+ #ifdef __AMIGA__
+-	// remove the program arguments from stdin
+-	FGetC(stdin);
+-	fflush(stdin);
++	// remove the program arguments from stdin - only for a console, see
++	// readLine() for redirected input
++	if (IsInteractive(Input())) {
++		FGetC(stdin);
++		fflush(stdin);
++	}
+ #endif
+ 
+ 	puts("Generating public/private ed25519 key pair");
+@@ -142,7 +183,7 @@ __stdargs int main(int argc, char **argv) {
+ 	if (0 == strcmp(outfilename, filename)) {
+ 		printf("Enter file in which to save the key (%s): ", outfilename);
+ 		fflush(stdout);
+-		gets_n(buf, 255);
++		readLine(buf, 255);
+ 		if (*buf > 32) {
+ 			char *p = buf;
+ 			for (; *p > ' '; ++p)
+@@ -162,13 +203,11 @@ __stdargs int main(int argc, char **argv) {
+ 		printf("%s already exists.\nOverwrite (y/n)? ", outfilename);
+ 		static char buf2[4];
+ 		fflush(stdout);
+-		gets_n(buf2, 3);
++		readLine(buf2, 3);
+ 		if (*buf2 != 'y' && *buf2 != 'Y')
+ 			return 0;
+ 	}
+ 
+-	static uint8_t pk[32];
+-	static uint8_t sk[64];
+ 	ge_new_keypair_ed25519(pk, sk);
+ 
+ 	static char gfx[9][21];
+@@ -219,13 +258,14 @@ __stdargs int main(int argc, char **argv) {
+ 		}
+ 		out = Open(outfilename, MODE_NEWFILE);
+ 		if (!out) {
+-			printf("can't write to: %s", outfilename);
++			printf("can't write to: %s\n", outfilename);
++			wipeSecrets();
+ 			return 10;
+ 		}
+ 	}
+ 
+ 	/* Build OpenSSH private key blob */
+-	static uint8_t key[512] = {
++	static const uint8_t keyHeader[] = {
+ 			'o', 'p', 'e', 'n', 's', 's', 'h', '-', 'k', 'e', 'y', '-', 'v', '1', 0,
+ 			0, 0, 0, 4, 'n', 'o', 'n', 'e', /* ciphername */
+ 			0, 0, 0, 4, 'n', 'o', 'n', 'e', /* kdfname */
+@@ -235,6 +275,7 @@ __stdargs int main(int argc, char **argv) {
+ 			0, 0, 0, 0x0b, 's', 's', 'h', '-', 'e', 'd', '2', '5', '5', '1', '9',
+ 			0, 0, 0, 0x20 /* pubkey length (32), data follows at runtime */
+ 	};
++	memcpy(key, keyHeader, sizeof(keyHeader));
+ 
+ 	/* Fill public key in the header */
+ 	uint8_t *t = key + 62; /* 15 + 4 + 4 + 4 + 4 + 4 + 11 + 4 = 62 */
+@@ -279,21 +320,26 @@ __stdargs int main(int argc, char **argv) {
+ 	/* MIME-encode private key */
+ 	// base64 of the private key blob: up to ~500 bytes with a 255 character
+ 	// comment -> 4/3 of that plus line breaks; 512 overflowed from ~150 chars
+-	static uint8_t mime[1024];
+ 	mimeEncode(mime, key, t - key);
+ 
+-	Write(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
++	bool ok = writeAll(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
+ 
+-	for (uint8_t *p = mime, *q = p + strlen((char*) mime); p < q; p += 72) {
++	for (uint8_t *p = mime, *q = p + strlen((char*) mime); ok && p < q; p += 72) {
+ 		int l = q - p;
+ 		if (l > 72)
+ 			l = 72;
+-		Write(out, p, l);
+-		Write(out, "\n", 1);
++		ok = writeAll(out, p, l) && writeAll(out, "\n", 1);
+ 	}
+ 
+-	Write(out, "-----END OPENSSH PRIVATE KEY-----\n", 34);
+-	Close(out);
++	ok = ok && writeAll(out, "-----END OPENSSH PRIVATE KEY-----\n", 34);
++	ok = Close(out) && ok;
++	wipeSecrets();
++	if (!ok) {
++		// never leave a truncated key behind
++		DeleteFile(outfilename);
++		printf("error writing %s\n", outfilename);
++		return 10;
++	}
+ 
+ 	/* write public key */
+ 	uint8_t pubbuf[4 + 11 + 4 + 32];
+@@ -307,17 +353,21 @@ __stdargs int main(int argc, char **argv) {
+ 	strcat(outfilename, ".pub");
+ 	out = Open(outfilename, MODE_NEWFILE);
+ 	if (!out) {
+-		printf("can't write %s", outfilename);
++		printf("can't write %s\n", outfilename);
+ 		return 5;
+ 	}
+ 
+-	Write(out, "ssh-ed25519 ", 12);
+-	Write(out, mime, strlen((char* )mime));
+-	Write(out, " ", 1);
+-	Write(out, comment, strlen(comment));
+-	Write(out, "\n", 1);
+-
+-	Close(out);
++	ok = writeAll(out, "ssh-ed25519 ", 12)
++			&& writeAll(out, mime, strlen((char* )mime))
++			&& writeAll(out, " ", 1)
++			&& writeAll(out, comment, strlen(comment))
++			&& writeAll(out, "\n", 1);
++	ok = Close(out) && ok;
++	if (!ok) {
++		DeleteFile(outfilename);
++		printf("error writing %s\n", outfilename);
++		return 5;
++	}
+ 
+ 	return 0;
+ }
+diff --git a/src/ed25519s.cpp b/src/ed25519s.cpp
+index cdc3e64..af07a80 100644
+--- a/src/ed25519s.cpp
++++ b/src/ed25519s.cpp
+@@ -156,4 +156,7 @@ void ge_new_keypair_ed25519(unsigned char *pk, unsigned char *sk) {
+ 	secret_expand(az, sk);
+ 	ge_pubkey(pk, az);
+ 	memcpy(sk + 32, pk, 32);
++	// the expanded secret must not stay on the stack
++	for (volatile uint8_t *v = az; v < az + sizeof(az); ++v)
++		*v = 0;
+ }
+diff --git a/src/rand.c b/src/rand.c
+index 3ab7030..0c8d556 100644
+--- a/src/rand.c
++++ b/src/rand.c
+@@ -21,14 +21,14 @@
+  *
+  * Purpose:
+  *  - Provide pseudo-random filler for buffers
+- *    * Amiga: uses hardware vhposr + DateStamp ticks
++ *    * Amiga: SHA-512 entropy pool with seed file (randpool.cpp)
+  *    * POSIX: uses random()
+  *    * FAKERAND: deterministic sequence for testing
+  *  - Provide unzero() utility to replace zero bytes with their position index
+  *
+  * Notes:
+- *  - Amiga has no /dev/urandom; vhposr is sufficient for entropy in this context
+- *  - Not cryptographically secure; intended for filler and testing and the AMIGA
++ *  - Amiga has no /dev/urandom; randpool.cpp collects timing jitter and
++ *    keeps a seed file (vhposr + DateStamp alone gave only a few dozen bits)
+  *  - Contributions must preserve author attribution and GPL licensing
+  * ----------------------------------------------------------------------
+  */
+@@ -51,20 +51,14 @@
+ // #define FAKERAND 1
+ 
+ #ifndef FAKERAND
+-void randfill(void * _to, unsigned len) {
+ #ifdef __AMIGA__
+-	char * to = (char *)_to;
+-	volatile struct Custom * c = (struct Custom *)0xdff000;
+-	struct DateStamp ds;
+-	DateStamp(&ds);
+-	unsigned t = ds.ds_Tick;
+-	srand(rand() ^ t);
++// SHA-512 entropy pool with seed file, see randpool.cpp
++extern void amiga_randfill(void * to, unsigned len);
++#endif
+ 
+-	for (unsigned i = 0; i < len; ++i) {
+-		unsigned x = rand() ^ t ^ c->vhposr;
+-		t = (t >> 31) | (t << 1);
+-		*to++ = x;
+-	}
++void randfill(void * _to, unsigned len) {
++#ifdef __AMIGA__
++	amiga_randfill(_to, len);
+ #elif defined(__unix__)
+     unsigned char *to = (unsigned char *)_to;
+     if (getrandom(to, len, 0) < 0) {
+diff --git a/src/randpool.cpp b/src/randpool.cpp
+new file mode 100644
+index 0000000..cb6ff43
+--- /dev/null
++++ b/src/randpool.cpp
+@@ -0,0 +1,222 @@
++/*
++ * randpool - entropy pool for randfill() on the Amiga
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License,
++ * or (at your option) any later version (GPLv3+).
++ *
++ * ----------------------------------------------------------------------
++ * The Amiga has no system random source. The old randfill() mixed rand(),
++ * the DateStamp tick and the beam position - a few dozen bits at best,
++ * while it produces the ed25519 secret keys (bebbosshkeygen) and the
++ * ephemeral x25519 keys of every session.
++ *
++ * Now a SHA-512 pool collects:
++ *  - E-clock time stamps and the beam position, sampled across task
++ *    switches (Delay) so interrupt and scheduling jitter gets in
++ *  - DateStamp, exec dispatch/idle counters, free memory, task address
++ *  - a seed file ENVARC:.ssh/random_seed, mixed in and replaced on every
++ *    first use, so entropy accumulates across runs
++ * Output is SHA-512(pool | counter) blocks; after each call the pool is
++ * hashed forward, so earlier output can't be derived from a later state.
++ * Every call also mixes in a fresh time stamp.
++ *
++ * Limit: on a fresh system without the seed file the first keys depend on
++ * the timing jitter alone.
++ * ----------------------------------------------------------------------
++ */
++#ifdef __AMIGA__
++
++#include <stdint.h>
++#include <string.h>
++
++#include <exec/execbase.h>
++#include <exec/memory.h>
++#include <exec/semaphores.h>
++#include <devices/timer.h>
++#include <hardware/custom.h>
++#include <dos/dos.h>
++#include <dos/dosextens.h>
++
++#include <proto/exec.h>
++#include <proto/dos.h>
++#include <proto/timer.h>
++
++#include "sha512.h"
++
++#define SEED_FILE "ENVARC:.ssh/random_seed"
++#define SEED_TMP  "ENVARC:.ssh/random_seed.tmp"
++
++static struct SignalSemaphore poolSem;
++static volatile char semReady;
++static char seeded;
++static uint8_t pool[64];
++static uint32_t outCount;
++
++struct Sample {
++	struct EClockVal ec;
++	uint32_t eFreq;
++	struct DateStamp ds;
++	uint32_t dispCount;
++	uint32_t idleCount;
++	uint32_t availFast;
++	uint32_t availChip;
++	void *task;
++	uint16_t vhpos;
++	uint16_t vhpos2;
++};
++
++static void wipe(void *p, unsigned len) {
++	volatile uint8_t *v = (volatile uint8_t*) p;
++	while (len--)
++		*v++ = 0;
++}
++
++// one sample; TimerBase may be 0 if timer.device could not be opened
++static void takeSample(struct Sample *s, struct Device *TimerBase) {
++	volatile struct Custom *c = (struct Custom*) 0xdff000;
++	struct ExecBase *eb = SysBase;
++
++	s->vhpos = c->vhposr;
++	if (TimerBase)
++		s->eFreq = ReadEClock(&s->ec);
++	DateStamp(&s->ds);
++	s->dispCount = eb->DispCount;
++	s->idleCount = eb->IdleCount;
++	s->availFast = AvailMem(MEMF_FAST);
++	s->availChip = AvailMem(MEMF_CHIP);
++	s->task = FindTask(0);
++	s->vhpos2 = c->vhposr;
++}
++
++// rounds > 0: also sample across task switches (only for processes)
++static void collect(SHA512 &sha, int rounds) {
++	struct timerequest tr;
++	struct Device *TimerBase = 0;
++	struct Sample s;
++
++	memset(&tr, 0, sizeof(tr));
++	if (0 == OpenDevice((STRPTR) TIMERNAME, UNIT_ECLOCK, &tr.tr_node, 0))
++		TimerBase = tr.tr_node.io_Device;
++
++	memset(&s, 0, sizeof(s));
++	takeSample(&s, TimerBase);
++	sha.update(&s, sizeof(s));
++
++	struct Task *me = FindTask(0);
++	bool isProcess = me->tc_Node.ln_Type == NT_PROCESS;
++	for (int r = 0; r < rounds; ++r) {
++		// a burst of fast samples: the beam and the E-clock run against
++		// the CPU, DMA and interrupts disturb the loop
++		for (int i = 0; i < 32; ++i) {
++			takeSample(&s, TimerBase);
++			sha.update(&s.ec, sizeof(s.ec));
++			sha.update(&s.vhpos, 4);
++		}
++		// wake up at a scheduler tick: latency depends on the system load
++		if (isProcess)
++			Delay(1);
++		takeSample(&s, TimerBase);
++		sha.update(&s, sizeof(s));
++	}
++
++	if (TimerBase)
++		CloseDevice(&tr.tr_node);
++	wipe(&s, sizeof(s));
++}
++
++static void writeSeed() {
++	uint8_t seed[64];
++	SHA512 sha;
++	sha.update(pool, 64);
++	sha.update("seed", 4);
++	sha.digest(seed);
++
++	BPTR fh = Open((STRPTR) SEED_TMP, MODE_NEWFILE);
++	if (fh) {
++		LONG w = Write(fh, seed, 64);
++		Close(fh);
++		if (w == 64) {
++			DeleteFile((STRPTR) SEED_FILE);
++			Rename((STRPTR) SEED_TMP, (STRPTR) SEED_FILE);
++		} else
++			DeleteFile((STRPTR) SEED_TMP);
++	}
++	wipe(seed, 64);
++}
++
++static void seedPool() {
++	SHA512 sha;
++	sha.update(pool, 64);
++	sha.update("init", 4);
++
++	uint8_t seed[64];
++	BPTR fh = Open((STRPTR) SEED_FILE, MODE_OLDFILE);
++	if (fh) {
++		LONG r = Read(fh, seed, 64);
++		Close(fh);
++		if (r > 0)
++			sha.update(seed, r);
++		wipe(seed, 64);
++	}
++
++	collect(sha, 8);
++	sha.digest(pool);
++
++	// the next run starts from a new seed, independent of what we hand out
++	writeSeed();
++	seeded = 1;
++}
++
++extern "C" void amiga_randfill(void *to, unsigned len) {
++	if (!semReady) {
++		Forbid();
++		if (!semReady) {
++			InitSemaphore(&poolSem);
++			semReady = 1;
++		}
++		Permit();
++	}
++	ObtainSemaphore(&poolSem);
++
++	if (!seeded)
++		seedPool();
++
++	// fresh time stamp for every call
++	{
++		SHA512 sha;
++		sha.update(pool, 64);
++		sha.update("stir", 4);
++		collect(sha, 0);
++		sha.digest(pool);
++	}
++
++	uint8_t *p = (uint8_t*) to;
++	uint8_t block[64];
++	while (len) {
++		SHA512 sha;
++		sha.update(pool, 64);
++		sha.update("out", 3);
++		++outCount;
++		sha.update(&outCount, 4);
++		sha.digest(block);
++		unsigned n = len < 64 ? len : 64;
++		memcpy(p, block, n);
++		p += n;
++		len -= n;
++	}
++	wipe(block, 64);
++
++	// forward: the new pool reveals nothing about the output just given
++	{
++		SHA512 sha;
++		sha.update(pool, 64);
++		sha.update("next", 4);
++		sha.digest(pool);
++	}
++
++	ReleaseSemaphore(&poolSem);
++}
++
++#endif // __AMIGA__
+-- 
+2.55.0
+

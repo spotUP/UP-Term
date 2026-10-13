@@ -1,0 +1,98 @@
+From b58656c7450473d205c73c3dd30889560dced741 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 07:04:16 +0200
+Subject: [PATCH 5/5] fix out-of-bounds writes in barrett_reduce() and
+ bebbosshkeygen
+
+- ed25519.cpp barrett_reduce(): the final carry of the second loop was
+  added to r2[33] for i == 0, one element past the end of r2[33].
+  Mathematically r2 = m * q3 mod b^(k+1), so the carry beyond r2[32] is
+  simply discarded. Found with AddressSanitizer (Linux build); affects
+  every Ed25519 key generation/signature in libcryptossh.
+- bebbosshkeygen: the base64 buffer mime[512] overflowed for comments
+  from ~150 characters (the private key blob grows to ~500 bytes with a
+  255 character comment); now 1024 bytes. Output file names are limited
+  so that appending ".pub" cannot overflow outfilename[256].
+- bebbosshkeygen: fallback definition of gets_n() for libnix versions
+  whose amistdio.h does not provide it.
+
+Tested with AddressSanitizer (comments 1..255 characters, overlong file
+name) and on a Vampire V4SA with the rebuilt libcryptossh.library:
+keys valid for OpenSSH, signatures verify, logins and 1 MiB transfers ok.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012seUKBRfgcTt43vbc21K3j
+---
+ src/bebbosshkeygen.cpp | 18 ++++++++++++++++--
+ src/ed25519.cpp        |  5 ++++-
+ 2 files changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/src/bebbosshkeygen.cpp b/src/bebbosshkeygen.cpp
+index a3f321f..de876fe 100644
+--- a/src/bebbosshkeygen.cpp
++++ b/src/bebbosshkeygen.cpp
+@@ -48,6 +48,9 @@
+ #include <amistdio.h>
+ #include <proto/dos.h>
+ #include <proto/exec.h>
++#ifndef gets_n // older libnix amistdio.h lacks it
++#define gets_n(a,b) FGets(stdin,a,b)
++#endif
+ #else
+ #include "amiemul.h"
+ #endif
+@@ -82,7 +85,12 @@ static void parseParams(unsigned argc, char **argv) {
+ 
+ 				if (i + 1 == argc)
+ 					goto missing;
+-				strcpy(outfilename, argv[++i]);
++				// room for the ".pub" that is appended later
++				if (strlen(argv[++i]) >= sizeof(outfilename) - 4) {
++					printf("file name too long: %s\r\n", argv[i]);
++					exit(10);
++				}
++				strcpy(outfilename, argv[i]);
+ 				continue;
+ 			case 'C':
+ 			    if (arg[2])
+@@ -140,6 +148,10 @@ __stdargs int main(int argc, char **argv) {
+ 			for (; *p > ' '; ++p)
+ 				;
+ 			*p = 0;
++			if (strlen(buf) >= sizeof(outfilename) - 4) {
++				printf("file name too long: %s\n", buf);
++				return 10;
++			}
+ 			strcpy(outfilename, buf);
+ 		}
+ 	}
+@@ -265,7 +277,9 @@ __stdargs int main(int argc, char **argv) {
+ 	putInt32Aligned(privLenPos, privLen);
+ 
+ 	/* MIME-encode private key */
+-	static uint8_t mime[512];
++	// base64 of the private key blob: up to ~500 bytes with a 255 character
++	// comment -> 4/3 of that plus line breaks; 512 overflowed from ~150 chars
++	static uint8_t mime[1024];
+ 	mimeEncode(mime, key, t - key);
+ 
+ 	Write(out, "-----BEGIN OPENSSH PRIVATE KEY-----\n", 36);
+diff --git a/src/ed25519.cpp b/src/ed25519.cpp
+index 3916af7..f0915c2 100644
+--- a/src/ed25519.cpp
++++ b/src/ed25519.cpp
+@@ -261,7 +261,10 @@ void barrett_reduce(uint16_t r[32], const uint16_t x[64]) {
+ 			r2[i + j] = u & 0xff;
+ 			u >>= 8;
+ 		}
+-		r2[i + j] += u;
++		// r2 = m * q3 mod b^(k+1): a carry beyond r2[32] is discarded
++		// (for i == 0 this used to write r2[33], one past the array)
++		if (i + j < 33)
++			r2[i + j] += u;
+ 	}
+ 
+ 	unsigned int pb = 0;
+-- 
+2.55.0
+

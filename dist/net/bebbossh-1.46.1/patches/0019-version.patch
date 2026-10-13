@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Mon, 12 Oct 2026 17:56:36 +0200
+Subject: [PATCH] version 1.46.1: mark the patched build in $VER and the SSH
+ ident
+
+The patched build now reports 1.46.1 instead of upstream's 1.46, so it
+can be told apart from the original: $VER (Version, -?) and the SSH
+identification string (SSH-2.0-BebboSSH-1.46.1).
+
+__VERSION_MINOR stays "46": the Makefile passes it to the linker as
+libVersionMinor, which must be numeric, so the ".1" is a separate
+__VERSION_SUFFIX. The library therefore keeps version 1.46.
+
+client.cpp: server_version[24] held "SSH-2.0-BebboSSH-1.46\r\n" plus NUL
+exactly; it is now sized by its initializer (sizeof - 1 is still the
+string length that is sent).
+---
+ include/revision.h | 6 ++++--
+ src/client.cpp     | 2 +-
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/include/revision.h b/include/revision.h
+index 2e37b73..15e879f 100644
+--- a/include/revision.h
++++ b/include/revision.h
+@@ -2,7 +2,9 @@
+ #define __REVISION_H__
+ #define __VERSION_MAJOR "1"
+ #define __VERSION_MINOR "46"
+-#define __V__ __VERSION_MAJOR "." __VERSION_MINOR
++/* suffix of this patched build; MINOR must stay numeric (libVersionMinor) */
++#define __VERSION_SUFFIX ".1"
++#define __V__ __VERSION_MAJOR "." __VERSION_MINOR __VERSION_SUFFIX
+ 
+ 
+ #define BUILD_YEAR_CH0 (__DATE__[ 7])
+@@ -51,7 +53,7 @@
+ 
+ const char __VERSION [] = {
+ 		'$', 'V', 'E', 'R', ':', ' ',
+-		__VERSION_MAJOR[0], '.', __VERSION_MINOR[0], __VERSION_MINOR[1], ' ', '(',
++		__VERSION_MAJOR[0], '.', __VERSION_MINOR[0], __VERSION_MINOR[1], __VERSION_SUFFIX[0], __VERSION_SUFFIX[1], ' ', '(',
+ 		BUILD_DAY_CH0, BUILD_DAY_CH1, '.',
+ 		BUILD_MONTH_CH0, BUILD_MONTH_CH1, '.',
+ 		__DATE__[7], __DATE__[8], __DATE__[9], __DATE__[10],
+diff --git a/src/client.cpp b/src/client.cpp
+index 92ed88b..1dc7aef 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -109,7 +109,7 @@ static char const * ERR_MSG[] = {
+ 
+ struct Library *SocketBase = 0;
+ 
+-static uint8_t server_version[24] = "SSH-2.0-" _VNAME "\r\n";
++static uint8_t server_version[] = "SSH-2.0-" _VNAME "\r\n";
+ 
+ extern char const * sshDir;
+ extern char const * sshDotDir;
+-- 
+2.56.0
+

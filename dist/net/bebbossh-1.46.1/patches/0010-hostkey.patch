@@ -1,0 +1,189 @@
+From 474602ffc4801f035dcd9ed1dea87137c27c2be2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 19:36:02 +0200
+Subject: [PATCH] host key check: refuse changed keys, ask only at a console, S
+ < L
+
+- a host key that differs from known_hosts is refused with a clear
+  warning (like OpenSSH); it was a "yes" prompt that replaced the entry
+- an unknown host is only asked about at a console; the answer was read
+  from stdin even when redirected (an upload file starting with "yes")
+- Seek() calls on known_hosts had position and mode swapped and only
+  worked because the bad seek failed
+- ge_verify_ed25519() rejects S >= L (RFC 8032 5.1.7); S + L verified
+  as well (malleable signatures)
+---
+ src/client.cpp   | 95 +++++++++++++++++-------------------------------
+ src/ed25519v.cpp | 18 +++++++++
+ 2 files changed, 51 insertions(+), 62 deletions(-)
+
+diff --git a/src/client.cpp b/src/client.cpp
+index 0ae5033..053c4f3 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -508,18 +508,6 @@ static void parse_line(char *line, char **n, char **c, char **k) {
+     *k = next_token(&p);
+ }
+ 
+-// helper: write one line into a memory buffer
+-static char *append_line(char *out, const char *n, const char *c, const char *k) {
+-    out = stpcpy(out, n);
+-    *out++ = ' ';
+-    out = stpcpy(out, c);
+-    *out++ = ' ';
+-    out = stpcpy(out, k);
+-    *out++ = '\n';
+-    *out = '\0';
+-    return out;
+-}
+-
+ static bool verifyHost(uint8_t const * hostBase64) {
+ 	if (!knownHosts) knownHosts = concat(getSshDotDir(), "/known_hosts", NULL);
+ 
+@@ -538,9 +526,10 @@ static bool verifyHost(uint8_t const * hostBase64) {
+  	}
+ 
+ 	char * buf = (char *)buffer;
+-	bool replace = false;
+ 	bool r = false;
+-	Seek(f, OFFSET_BEGINNING, 0);
++	bool changed = false;
++	char stored[100];
++	Seek(f, 0, OFFSET_BEGINNING);
+ 	while(!r) {
+ 		char * p = buf + 1000;
+ 		if (!fgets(p, buffersize - 1000, f))
+@@ -552,65 +541,47 @@ static bool verifyHost(uint8_t const * hostBase64) {
+ 		if (0 == strcmp(n, hostname) && 0 == strcmp(c, "ssh-ed25519")) {
+ 			r = 0 == strcmp(k, (char *)hostBase64);
+ 			if (!r) {
+-				printf("host key %s differs from stored host key %s for host %s\n", hostBase64, k, hostname);
+-				replace = true;
++				strncpy(stored, k, sizeof(stored) - 1);
++				stored[sizeof(stored) - 1] = 0;
++				changed = true;
+ 			}
+ 			break;
+ 		}
+ 	}
++
++	// a changed key is never accepted here - like OpenSSH: it may be an
++	// attack, the user has to remove the old entry deliberately
++	if (changed) {
++		printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
++		       "@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n"
++		       "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
++		       "Someone could be eavesdropping on you right now (man-in-the-\n"
++		       "middle attack), or the host key of %s has just been changed.\n"
++		       "ssh-ed25519 key sent by the host: %s\n"
++		       "key stored in %s: %s\n"
++		       "If the change is expected, remove the line for %s from that file.\n",
++		       hostname, hostBase64, knownHosts, stored, hostname);
++		Close(f);
++		return false;
++	}
++
+ 	if (!r) {
++		// only ask at a console - never take the answer from redirected input
++		if (!IsInteractive(stdin)) { // DOSTRUE on the Amiga, 1 from isatty()
++			printf("unknown host %s with ssh-ed25519 key %s\n"
++			       "not asking - stdin is not a console; connect once interactively\n"
++			       "or add the key to %s\n", hostname, hostBase64, knownHosts);
++			Close(f);
++			return false;
++		}
+ 		printf("do you trust host %s with ssh-ed25519 key %s? Then enter: yes\n", hostname, hostBase64);
+ 		fflush(stdout);
+ 		*buf = 0;
+ 		fgets(buf, 5, stdin);
+ 		if (0 == strncmp("yes", (char *)buffer, 3)) {
+ 			r = true;
+-			if (replace) {
+-				// Get file size
+-				Seek(f, 0, OFFSET_END);
+-				long size = Seek(f, 0, OFFSET_CURRENT);
+-
+-				Close(f);
+-				f = Open(knownHosts, MODE_OLDFILE);
+-
+-				size += 1024;// extra room
+-				char *mem = (char *)malloc(size);
+-				if (!mem) {
+-					logme(L_ERROR, "out of memory for %ld bytes", size);
+-					exit(10);
+-				}
+-
+-				char *out = mem;
+-				char * p = buf + 1000;
+-				while (fgets(p, buffersize - 1000, f)) {
+-					char *n, *c, *k;
+-					parse_line(p, &n, &c, &k);
+-
+-					// skip lines without 3 values
+-					if (!*n || !*c || !*k)
+-						continue;
+-
+-					if (strcmp(n, hostname) == 0 && strcmp(c, "ssh-ed25519") == 0) {
+-						// skip old entry
+-						continue;
+-					}
+-					out = append_line(out, n, c, k);
+-				}
+-
+-				// append new entry
+-				out = append_line(out, hostname, "ssh-ed25519", (char *)hostBase64);
+-
+-				// rewind and truncate
+-				Close(f);
+-				f = Open(knownHosts, MODE_NEWFILE);
+-				Write(f, mem, out - mem);
+-
+-				free(mem);
+-			} else {
+-				// just append
+-				Seek(f, OFFSET_END, 0);
+-				fprintf(f, "%s ssh-ed25519 %s\n", hostname, hostBase64);
+-			}
++			Seek(f, 0, OFFSET_END);
++			fprintf(f, "%s ssh-ed25519 %s\n", hostname, hostBase64);
+ 		}
+ 	}
+ 
+diff --git a/src/ed25519v.cpp b/src/ed25519v.cpp
+index 9c2db6c..08673f6 100644
+--- a/src/ed25519v.cpp
++++ b/src/ed25519v.cpp
+@@ -124,12 +124,30 @@ int ge25519_unpackneg_vartime(ge25519 *r, const uint8_t p[32]) {
+ 	return 0;
+ }
+ 
++// RFC 8032 5.1.7: S must be < L, else the signature is malleable
++// (S + L verifies as well)
++static int scalarIsCanonical(uint8_t const *s) {
++	static const uint8_t L[32] = {
++		0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58,
++		0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10 };
++	for (int i = 31; i >= 0; --i) {
++		if (s[i] < L[i])
++			return 1;
++		if (s[i] > L[i])
++			return 0;
++	}
++	return 0; // S == L
++}
++
+ int ge_verify_ed25519(uint8_t *m, unsigned mlen, uint8_t const *sm, uint8_t const *pk) {
+ 	ge25519 pkPoint;
+ 	uint16_t schram[32], scs[32];
+ 
+ 	if (ge25519_unpackneg_vartime(&pkPoint, pk))
+ 		return 0;
++	if (!scalarIsCanonical(sm + 32))
++		return 0;
+ 
+ 
+ 	ed25519_from32bytes(scs, sm + 32);
+-- 
+2.55.0
+

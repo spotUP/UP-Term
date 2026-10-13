@@ -1,0 +1,96 @@
+From e7afaa52b7c567f21505844211ae7ea5a5e07443 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 20:23:04 +0200
+Subject: [PATCH] crypto hardening: constant-time MAC, reject zero DH, wipe
+ keys
+
+- the AEAD tag was compared with memcmp(); use a constant-time compare so
+  a forged packet leaks nothing through timing (low risk on its own, as
+  the connection is torn down on a MAC failure, but cheap and correct)
+- reject an all-zero X25519 shared secret: a low-order server key would
+  make the session keys fully predictable (RFC 7748 6.1). The host-key
+  signature already stops a MITM, this guards the endpoint case too
+- cleanup() now wipes the session keys, the X25519 secret and the user's
+  private key; AmigaOS leaves freed memory intact, so they stayed
+  readable for the next task after exit
+
+No change in normal operation: login, exit codes, 1 MiB up/download
+verified against OpenSSH on the V4SA; ed25519 verification still passes
+all 241 reference cases.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012seUKBRfgcTt43vbc21K3j
+---
+ src/client.cpp | 35 ++++++++++++++++++++++++++++++++++-
+ 1 file changed, 34 insertions(+), 1 deletion(-)
+
+diff --git a/src/client.cpp b/src/client.cpp
+index 6e0d8c6..7d6db75 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -263,6 +263,14 @@ static bool ensureBufferSize(unsigned nsize) {
+ 	return true;
+ }
+ 
++// constant-time compare, so a forged AEAD tag leaks nothing via timing
++static int ctcmp(uint8_t const *a, uint8_t const *b, unsigned n) {
++	uint8_t r = 0;
++	for (unsigned i = 0; i < n; ++i)
++		r |= a[i] ^ b[i];
++	return r; // 0 == equal
++}
++
+ static void increment(uint8_t iv[12]) {
+ 	for (int i = 11; i >= 0; --i) {
+ 		if (++iv[i])
+@@ -461,7 +469,7 @@ int receiveEncryptedPacket() {
+ 
+ 	uint8_t check[16];
+ 	readAead->calcHash(check);
+-	if (0 != memcmp(check, p + len, 16)) {
++	if (0 != ctcmp(check, p + len, 16)) {
+ 		error = ERROR_SIGNATURE_MISMATCH;
+ 		return 0;
+ 	}
+@@ -678,6 +686,17 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
+ 	logme(L_DEBUG, "calculating shared secret using X25519 START");
+ 	fe_scalarmult_x25519(sharedSecret.data, csk, p);
+ 	logme(L_DEBUG, "calculating shared secret using X25519 STOP");
++	{
++		// a low-order server key yields an all-zero secret and fully
++		// predictable session keys - refuse it (RFC 7748 6.1)
++		uint8_t z = 0;
++		for (int i = 0; i < 32; ++i)
++			z |= sharedSecret.data[i];
++		if (z == 0) {
++			error = ERROR_SERVER_PUBKEY;
++			return false;
++		}
++	}
+ 	p += length;
+ 	if ((int8_t)sharedSecret.data[0] < 0) {
+ 		sharedSecret.size = 33;
+@@ -1097,6 +1116,20 @@ void cleanup() {
+ 	if (readCounterBc) delete readCounterBc;
+ 	if (writeCounterBc) delete writeCounterBc;
+ 
++	// wipe key material - AmigaOS does not clear freed memory, so the
++	// session keys, the X25519 secret and the user's private key would
++	// otherwise stay readable for the next task
++	{
++		volatile uint8_t *v = (volatile uint8_t *)&keyMat;
++		for (unsigned i = 0; i < sizeof(keyMat); ++i) v[i] = 0;
++		v = (volatile uint8_t *)&sharedSecret;
++		for (unsigned i = 0; i < sizeof(sharedSecret); ++i) v[i] = 0;
++		v = (volatile uint8_t *)csk;
++		for (unsigned i = 0; i < sizeof(csk); ++i) v[i] = 0;
++		v = (volatile uint8_t *)userSK;
++		for (unsigned i = 0; i < sizeof(userSK); ++i) v[i] = 0;
++	}
++
+ 	if (sockfd != 0)
+ 		CloseSocket(sockfd);
+ 
+-- 
+2.55.0
+

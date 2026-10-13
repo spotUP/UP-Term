@@ -1,0 +1,67 @@
+From b57b362963960f59d811d18915a8d38109b3a703 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sun, 4 Oct 2026 00:07:38 +0200
+Subject: [PATCH] bebbosshd: require authentication before the connection
+ protocol
+
+Found by coverage-guided fuzzing. consumeSocketData() dispatched the same
+message switch for the AUTH and LOGGEDIN states, and neither
+handleOpenChannel() nor handleChannelRequest() checked the state - so a
+client that had only completed the key exchange (state AUTH, NOT
+authenticated) could send CHANNEL_OPEN "session" + CHANNEL_REQUEST
+"exec"/"shell" and have the server run a command. On Linux startCommand()
+then dereferenced getpwnam(NULL) (DoS); on the Amiga it would launch the
+command via the user shell - an unauthenticated command execution.
+
+Now every message except SERVICE_REQUEST and USERAUTH_REQUEST is refused
+(session dropped) until state == LOGGEDIN, as the SSH connection protocol
+requires. startCommand() also guards against a NULL user name.
+
+Verified on the V4SA over a LAN: public-key login then exec and a 300 KB
+download still work (the authenticated path is unchanged).
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012seUKBRfgcTt43vbc21K3j
+---
+ src/shellchannel.cpp |  2 ++
+ src/sshsession.cpp   | 11 +++++++++++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/src/shellchannel.cpp b/src/shellchannel.cpp
+index ec54d8f..3967d63 100644
+--- a/src/shellchannel.cpp
++++ b/src/shellchannel.cpp
+@@ -974,6 +974,8 @@ bool ShellChannel::startCommand(char const * cmd){
+     int slave;
+ 
+     const char *username = server->getUser();
++    if (!username)                      // never reached unauthenticated now,
++    	return false;                     // but guard getpwnam(NULL) anyway
+     struct passwd *pw = getpwnam(username);
+     if (!pw)
+     	return false;
+diff --git a/src/sshsession.cpp b/src/sshsession.cpp
+index 786ffe5..b5aa5db 100644
+--- a/src/sshsession.cpp
++++ b/src/sshsession.cpp
+@@ -839,6 +839,17 @@ int SshSession::consumeSocketData(char *indata, int len) {
+ 		g_pktEnd = (uint8_t*) indata + 5 + len;
+ 		g_parseBad = false;
+ 
++		// the connection protocol (channels) is only valid after a
++		// successful authentication - before that only service and
++		// user-auth requests are allowed
++		if (state != LOGGEDIN
++				&& indata[5] != SSH_MSG_SERVICE_REQUEST
++				&& indata[5] != SSH_MSG_USERAUTH_REQUEST) {
++			logme(L_ERROR, "@%ld message %ld before authentication, dropping",
++					sockFd, indata[5]);
++			return -1;
++		}
++
+ 		switch (indata[5]) {
+ 		case SSH_MSG_SERVICE_REQUEST:
+ 			logme(L_FINE, "@%ld got SSH_MSG_SERVICE_REQUEST", sockFd);
+-- 
+2.55.0
+

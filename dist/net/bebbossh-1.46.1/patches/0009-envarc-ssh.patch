@@ -1,0 +1,344 @@
+From 4f954976d3edc34c6326016b6b76913fb0f4cc24 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 19:11:41 +0200
+Subject: [PATCH] use ENVARC:ssh instead of envarc:.ssh on the Amiga
+
+Keys, known_hosts, ssh_config, authorized_keys and the random seed now
+live in ENVARC:ssh, the usual Amiga form and the directory bebbosshd
+already uses for its own files. getSshDotDir() (home.cpp) resolves it
+once; if only the old envarc:.ssh exists, that one is still used, so
+existing installations keep working until the directory is renamed.
+---
+ README.md              |  2 +-
+ bebbossh.readme        |  8 ++++----
+ src/bebboscp.cpp       |  4 ++--
+ src/bebbossh.cpp       |  6 +++---
+ src/bebbosshkeygen.cpp |  6 +++---
+ src/client.cpp         |  8 ++++----
+ src/home.cpp           | 29 +++++++++++++++++++++++++++--
+ src/loaded25519key.cpp |  4 ++--
+ src/randpool.cpp       | 37 +++++++++++++++++++++++++++++--------
+ src/sshsession.cpp     |  4 ++--
+ 10 files changed, 77 insertions(+), 31 deletions(-)
+
+diff --git a/README.md b/README.md
+index 73f4520..19d8c1e 100644
+--- a/README.md
++++ b/README.md
+@@ -192,7 +192,7 @@ see bebbossh.readme
+   Or try https://aminet.net/util/cdity/OkayDokey14.lha.
+ 
+ - public key authentication does not work!?
+-  Check the file ENVARC:.ssh/authorized_keys if your 
++  Check the file ENVARC:ssh/authorized_keys if your 
+   public key is listed there.
+ 
+ - can't scp to a server named 'ram', e.g. amigascp c:s* ram:folder 
+diff --git a/bebbossh.readme b/bebbossh.readme
+index fc5e6a2..72f5584 100644
+--- a/bebbossh.readme
++++ b/bebbossh.readme
+@@ -83,9 +83,9 @@ PROGRAMS
+ USAGE: bebbossh [options] [user@]host[:port] [command [args...]]
+     -?            display this help
+     -c <file>     select the config file
+-                  defaults to envarc:.ssh/ssh_config
++                  defaults to ENVARC:ssh/ssh_config
+     -i <file>     select the private key file for public key authentication
+-                  defaults to envarc:.ssh/id_ed25519
++                  defaults to ENVARC:ssh/id_ed25519
+     -L [bind_address:]port:host:hostport
+                   listen at bind_address:port and forward to host:hostport
+     -p <port>     connect to the host at port <port>
+@@ -140,7 +140,7 @@ USAGE: bebboscp [options] [source] [target]
+     one of [source]/[target] must be remote, the other local
+     -?            display this help
+     -c <file>     select the config file
+-                  defaults to envarc:.ssh/ssh_config
++                  defaults to ENVARC:ssh/ssh_config
+     -i <file>     select the private key file for public key authentication
+     -p <port>     connect to the host at port <port>
+     -t            allocate a pseudo terminal
+@@ -551,7 +551,7 @@ RANDOM HINTS
+   Or try https://aminet.net/util/cdity/OkayDokey14.lha.
+ 
+ * public key authentication does not work!?
+-  Check the file ENVARC:.ssh/authorized_keys if your 
++  Check the file ENVARC:ssh/authorized_keys if your 
+   public key is listed there.
+ 
+ * can't scp to a server named 'ram', e.g. amigascp c:s* ram:folder 
+diff --git a/src/bebboscp.cpp b/src/bebboscp.cpp
+index ebf2b79..feba420 100644
+--- a/src/bebboscp.cpp
++++ b/src/bebboscp.cpp
+@@ -100,7 +100,7 @@ static inline long delta_ms(const struct DateStamp &now,
+ #include "client.h"
+ #include "clientchannel.h"
+ 
+-extern char const * sshDir;
++extern char const * getSshDotDir();
+ 
+ static bool pty = false;
+ 
+@@ -1347,7 +1347,7 @@ static void printUsage() {
+ 	puts("    one of [source]/[target] must be remote, the other local");
+ 	puts("    -?            display this help");
+ 	puts("    -c <file>     select the config file");
+-	printf("                  defaults to %s.ssh/ssh_config\n", sshDir);
++	printf("                  defaults to %s/ssh_config\n", getSshDotDir());
+ 	puts("    -i <file>     select the private key file for public key authentication");
+ 	puts("    -p <port>     connect to the host at port <port>");
+ 	puts("    -t            allocate a pseudo terminal");
+diff --git a/src/bebbossh.cpp b/src/bebbossh.cpp
+index 4a6320c..c276923 100644
+--- a/src/bebbossh.cpp
++++ b/src/bebbossh.cpp
+@@ -81,7 +81,7 @@
+ #include "client.h"
+ #include "clientchannel.h"
+ 
+-extern char const * sshDir;
++extern char const * getSshDotDir();
+ 
+ //#define LOG_KEYS
+ #if defined LOG_KEYS
+@@ -1088,9 +1088,9 @@ static void printUsage() {
+ 	puts("USAGE: bebbossh [options] [user@]host[:port] [command [args...]]");
+ 	puts("    -?            display this help");
+ 	puts("    -c <file>     select the config file");
+-	printf("                  defaults to %s.ssh/ssh_config\n", sshDir);
++	printf("                  defaults to %s/ssh_config\n", getSshDotDir());
+ 	puts("    -i <file>     select the private key file for public key authentication");
+-	printf("                  defaults to %s.ssh/id_ed25519\n", sshDir);
++	printf("                  defaults to %s/id_ed25519\n", getSshDotDir());
+ 	puts("    -L [bind_address:]port:host:hostport");
+ 	puts("                  listen at bind_address:port and forward to host:hostport");
+ 	puts("    -p <port>     connect to the host at port <port>");
+diff --git a/src/bebbosshkeygen.cpp b/src/bebbosshkeygen.cpp
+index 80df5fa..1aec240 100644
+--- a/src/bebbosshkeygen.cpp
++++ b/src/bebbosshkeygen.cpp
+@@ -26,7 +26,7 @@
+  *
+  * Notes:
+  *  - Contributions must preserve author attribution and GPL licensing.
+- *  - Outputs to ENVARC:.ssh/id_ed25519 by default.
++ *  - Outputs to ENVARC:ssh/id_ed25519 by default.
+  *
+  * Author's intent:
+  *  Provide Amiga developers with a native tool to generate secure SSH keys.
+@@ -158,12 +158,12 @@ static void parseParams(unsigned argc, char **argv) {
+ 	exit(10);
+ }
+ 
+-extern char const * sshDir;
++extern char const * getSshDotDir();
+ 
+ __stdargs int main(int argc, char **argv) {
+ 	static char buf[256];
+ 
+-	filename = concat(sshDir, ".ssh/id_ed25519", NULL);
++	filename = concat(getSshDotDir(), "/id_ed25519", NULL);
+ 
+ 	strcpy(outfilename, filename);
+ 
+diff --git a/src/client.cpp b/src/client.cpp
+index 89f4df2..0ae5033 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -113,6 +113,7 @@ static uint8_t server_version[24] = "SSH-2.0-" _VNAME "\r\n";
+ 
+ extern char const * sshDir;
+ extern char const * sshDotDir;
++extern char const * getSshDotDir();
+ char const * configFile;
+ char const * knownHosts;
+ 
+@@ -520,12 +521,11 @@ static char *append_line(char *out, const char *n, const char *c, const char *k)
+ }
+ 
+ static bool verifyHost(uint8_t const * hostBase64) {
+-	if (!sshDotDir) sshDotDir = concat(sshDir, ".ssh", NULL);
+-	if (!knownHosts) knownHosts = concat(sshDotDir, "/known_hosts", NULL);
++	if (!knownHosts) knownHosts = concat(getSshDotDir(), "/known_hosts", NULL);
+ 
+ 	BPTR f = Open(knownHosts, MODE_READWRITE);
+ 	if (!f) {
+-		mkdir(sshDotDir, 0755);
++		mkdir(getSshDotDir(), 0755);
+ 		f = Open(knownHosts, MODE_NEWFILE);
+ 		if (!f)
+ 			return false;
+@@ -1691,7 +1691,7 @@ bool startAcceptors() {
+ extern bool addForwardAcceptor(char const *s);
+ 
+ void parseConfigFile(int ssh) {
+-	if (!configFile) configFile = concat(sshDir, ".ssh/ssh_config", NULL);
++	if (!configFile) configFile = concat(getSshDotDir(), "/ssh_config", NULL);
+ 	BPTR ini = Open(configFile, MODE_OLDFILE);
+ 	if (!ini) {
+ 		logme(L_DEBUG, "can't open %s", configFile);
+diff --git a/src/home.cpp b/src/home.cpp
+index 70dffec..604a1b7 100644
+--- a/src/home.cpp
++++ b/src/home.cpp
+@@ -1,7 +1,28 @@
+ #ifdef __AMIGA__
+-char const * sshDir = "envarc:";
+-char const * sshDotDir = "envarc:.ssh";
++#include <proto/dos.h>
++
++char const * sshDir = "ENVARC:";
++char const * sshDotDir = "ENVARC:ssh";
+ char const * keyFile;
++
++/* The directory for keys, known_hosts and ssh_config. "ENVARC:ssh" like
++ * other Amiga programs (bebbosshd uses it too); versions up to 1.45 used
++ * the Unix-like "envarc:.ssh", which is still used if only it exists. */
++char const * getSshDotDir() {
++	static char const * dir;
++	if (!dir) {
++		dir = "ENVARC:ssh";
++		BPTR l = Lock((STRPTR) "ENVARC:ssh", ACCESS_READ);
++		if (l)
++			UnLock(l);
++		else if ((l = Lock((STRPTR) "ENVARC:.ssh", ACCESS_READ))) {
++			UnLock(l);
++			dir = "ENVARC:.ssh";
++		}
++		sshDotDir = dir;
++	}
++	return dir;
++}
+ #else
+ #include "amiemul.h"
+ 
+@@ -47,4 +68,8 @@ static struct __ {
+     }
+ } __;
+ 
++char const * getSshDotDir() {
++	return sshDotDir;
++}
++
+ #endif
+diff --git a/src/loaded25519key.cpp b/src/loaded25519key.cpp
+index ac9db61..63b40c1 100644
+--- a/src/loaded25519key.cpp
++++ b/src/loaded25519key.cpp
+@@ -61,11 +61,11 @@ const static uint8_t KEYSTART[47] {
+ 		0, 0, 0, 0x20,
+ };
+ 
+-extern char const * sshDir;
++extern char const * getSshDotDir();
+ extern char const * keyFile;
+ 
+ bool loadEd25519Key(uint8_t * pk, uint8_t * sk, char const * keyfilename) {
+-	if (!keyFile) keyFile = concat(sshDir, ".ssh/id_ed25519", NULL);
++	if (!keyFile) keyFile = concat(getSshDotDir(), "/id_ed25519", NULL);
+ 	if (!keyfilename) keyfilename = keyFile;
+ 
+ 	BPTR kfile = Open(keyfilename, MODE_OLDFILE);
+diff --git a/src/randpool.cpp b/src/randpool.cpp
+index cb6ff43..1064bcb 100644
+--- a/src/randpool.cpp
++++ b/src/randpool.cpp
+@@ -16,7 +16,7 @@
+  *  - E-clock time stamps and the beam position, sampled across task
+  *    switches (Delay) so interrupt and scheduling jitter gets in
+  *  - DateStamp, exec dispatch/idle counters, free memory, task address
+- *  - a seed file ENVARC:.ssh/random_seed, mixed in and replaced on every
++ *  - a seed file ENVARC:ssh/random_seed, mixed in and replaced on every
+  *    first use, so entropy accumulates across runs
+  * Output is SHA-512(pool | counter) blocks; after each call the pool is
+  * hashed forward, so earlier output can't be derived from a later state.
+@@ -45,8 +45,7 @@
+ 
+ #include "sha512.h"
+ 
+-#define SEED_FILE "ENVARC:.ssh/random_seed"
+-#define SEED_TMP  "ENVARC:.ssh/random_seed.tmp"
++extern char const * getSshDotDir();
+ 
+ static struct SignalSemaphore poolSem;
+ static volatile char semReady;
+@@ -126,6 +125,26 @@ static void collect(SHA512 &sha, int rounds) {
+ 	wipe(&s, sizeof(s));
+ }
+ 
++// the seed lives next to the keys (ENVARC:ssh, see home.cpp)
++static char seedFile[64], seedTmp[64];
++
++static void setSeedNames() {
++	char const *dir = getSshDotDir();
++	if (strlen(dir) > sizeof(seedFile) - 17)
++		dir = "ENVARC:ssh";
++	strcpy(seedFile, dir);
++	strcat(seedFile, "/random_seed");
++	strcpy(seedTmp, seedFile);
++	strcat(seedTmp, ".tmp");
++
++	// create the directory if there is none yet
++	BPTR l = Lock((STRPTR) dir, ACCESS_READ);
++	if (!l)
++		l = CreateDir((STRPTR) dir);
++	if (l)
++		UnLock(l);
++}
++
+ static void writeSeed() {
+ 	uint8_t seed[64];
+ 	SHA512 sha;
+@@ -133,15 +152,15 @@ static void writeSeed() {
+ 	sha.update("seed", 4);
+ 	sha.digest(seed);
+ 
+-	BPTR fh = Open((STRPTR) SEED_TMP, MODE_NEWFILE);
++	BPTR fh = Open((STRPTR) seedTmp, MODE_NEWFILE);
+ 	if (fh) {
+ 		LONG w = Write(fh, seed, 64);
+ 		Close(fh);
+ 		if (w == 64) {
+-			DeleteFile((STRPTR) SEED_FILE);
+-			Rename((STRPTR) SEED_TMP, (STRPTR) SEED_FILE);
++			DeleteFile((STRPTR) seedFile);
++			Rename((STRPTR) seedTmp, (STRPTR) seedFile);
+ 		} else
+-			DeleteFile((STRPTR) SEED_TMP);
++			DeleteFile((STRPTR) seedTmp);
+ 	}
+ 	wipe(seed, 64);
+ }
+@@ -151,8 +170,10 @@ static void seedPool() {
+ 	sha.update(pool, 64);
+ 	sha.update("init", 4);
+ 
++	setSeedNames();
++
+ 	uint8_t seed[64];
+-	BPTR fh = Open((STRPTR) SEED_FILE, MODE_OLDFILE);
++	BPTR fh = Open((STRPTR) seedFile, MODE_OLDFILE);
+ 	if (fh) {
+ 		LONG r = Read(fh, seed, 64);
+ 		Close(fh);
+diff --git a/src/sshsession.cpp b/src/sshsession.cpp
+index 5e6594b..0ada4a2 100644
+--- a/src/sshsession.cpp
++++ b/src/sshsession.cpp
+@@ -1175,9 +1175,9 @@ void SshSession::sendOpenChannelConfirmation(Channel *c, uint32_t windowsize, ui
+ }
+ 
+ static bool authorizeKey(uint8_t *hostBase64, uint8_t *buffer) {
+-	extern char const * sshDotDir;
++	extern char const * getSshDotDir();
+ 	static char const * authorized_keys;
+-	if (!authorized_keys) authorized_keys = concat(sshDotDir, "/authorized_keys", NULL);
++	if (!authorized_keys) authorized_keys = concat(getSshDotDir(), "/authorized_keys", NULL);
+ 	BPTR f = Open(authorized_keys, MODE_OLDFILE);
+ 	if (!f)
+ 		return false;
+-- 
+2.55.0
+
