@@ -1915,7 +1915,7 @@ typedef struct scene_def {
 static const scene_def scenes[] = {
     { "text", sc_text, 0, 450, "Text styles, double-size lines, box drawing", 0, 1, 0 },
     { "styles", sc_styles, 0, 400, "Every text style a program can ask for", 0, 0, 0 },
-    { "colours", sc_colours, 0, 400, "16, 256 and 24-bit colours", 0, 1, "The 16 ANSI colours and gradients of shade blocks" },
+    { "colours", sc_colours, 0, 400, "16, 256 and 24-bit colours", 0, 1, "The 16 ANSI colours and their gradients" },
     { "character sets", sc_charsets, 0, 400, "DEC line graphics, Latin-1 and UTF-8", 0, 0, 0 },
     { "unicode", sc_unicode, 0, 450, "Unicode: scripts, wide characters, accents", 0, 0, 0 },
     { "scroll regions", sc_region, 0, 350, "Scroll regions: the header stays put", 0, 1, 0 },
