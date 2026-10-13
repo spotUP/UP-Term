@@ -279,6 +279,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->bell_flash = 0;
     r->cursor_x = r->cursor_y = 0;
     r->view = 0;
+    r->view_stale = 0;
     r->sel = 0;
     r->lay_rows = r->lay_cols = r->lay_x = r->lay_y = -1;
     SetFont(r->rp, font);
@@ -2029,8 +2030,10 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
 {
     if (!r->win)
         return; /* no window (before vr_init, after vr_free) */
-    if (r->view)
-        return; /* looking at the scrollback: the live rows are not shown */
+    if (r->view) {
+        r->view_stale = 1; /* looking at the scrollback: the live rows are not shown, and the next move must redraw */
+        return;
+    }
     if (r->jump) {
         /* grid row g shows on screen row g - jump (vr_scroll's jump) */
         y0 -= r->jump;
@@ -2042,6 +2045,8 @@ void vr_damage(vr_render *r, int x0, int y0, int x1, int y1)
     }
     draw_rows(r, x0, y0, x1, y1);
 }
+
+static void raw_scroll(vr_render *r, int top, int bottom, int n);
 
 void vr_set_view(vr_render *r, int lines)
 {
@@ -2056,9 +2061,21 @@ void vr_set_view(vr_render *r, int lines)
     if (lines == r->view)
         return;
     vr_settle(r);
-    r->view = (WORD)lines;
-    vr_cursor_off(r);
-    vr_redraw(r);
+    {
+        int n, y0, y1, was = r->view;
+        r->view = (WORD)lines;
+        vr_cursor_off(r);
+        /* Scrollback to scrollback, the screen unchanged since it was drawn: move the pixels
+         * (vr_scroll's blit) and draw the rows the move exposed. A selection moves with its
+         * lines; images are pixels; double-size rows are live-only. */
+        if (!r->hidden && !r->off &&
+            vti_view_scroll(was, lines, vis_rows(r), r->view_stale, &n, &y0, &y1)) {
+            raw_scroll(r, 0, vis_rows(r), n);
+            draw_rows(r, 0, y0, r->cols, y1);
+            return;
+        }
+        vr_redraw(r);
+    }
 }
 
 int vr_selection(const vr_render *r, int *ax, int *ay, int *bx, int *by)
@@ -2119,6 +2136,7 @@ void vr_redraw(vr_render *r)
         return; /* a tab another one covers: its pixels are not ours */
     r->jump = 0; /* every row drawn again where the grid has it */
     r->jump_step = 0;
+    r->view_stale = 0;
     top = w->BorderTop + r->inset_top; /* the tab bar above stays the host's */
     if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= top) {
         /* every plane written: from here the planes in use are the
@@ -2137,7 +2155,6 @@ void vr_redraw(vr_render *r)
     draw_rows(r, 0, 0, r->cols, r->rows);
 }
 
-static void raw_scroll(vr_render *r, int top, int bottom, int n);
 
 /* Jump scroll (S1, creep's CCON 1.2.8): while scrolls keep coming frame
  * after frame -- a flood of output, or a program that waits for each line
@@ -2168,6 +2185,8 @@ void vr_scroll(vr_render *r, int top, int bottom, int n)
 {
     if (!r->win)
         return; /* no window (before vr_init, after vr_free) */
+    if (r->view)
+        r->view_stale = 1; /* the grid scrolled under the scrollback view */
     if (r->hidden || r->view)
         return;
     vr_cursor_off(r);
