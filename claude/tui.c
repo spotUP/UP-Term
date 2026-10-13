@@ -1421,6 +1421,87 @@ static void pi_blank_row(cl_tui *t)
     want(t, &r);
 }
 
+/* a line the program composed (SGR kept) as one row */
+static void pi_ansi_row(cl_tui *t, const char *line)
+{
+    row r;
+    r_init(&r, t->cols);
+    r_ansi(&r, line, (long)strlen(line));
+    r_sgr(&r, SGR0);
+    want(t, &r);
+}
+
+/* pi's SessionSelectorComponent frame (tui_pick.session) */
+static void pi_session_rows(cl_tui *t)
+{
+    const tui_pick *p = t->pick;
+    row r;
+    int i, start, end, maxv = p->maxrows > 0 ? p->maxrows : 10;
+    char line[600], num[16], hint[600];
+    const char *h = p->help ? p->help : "", *nl;
+    pi_blank_row(t);
+    pi_rule_row(t, PR_ACCENT);
+    pi_blank_row(t);
+    pi_ansi_row(t, p->title ? p->title : "");
+    for (;;) {
+        long n;
+        nl = strchr(h, '\n');
+        n = nl ? nl - h : (long)strlen(h);
+        if (n >= (long)sizeof(hint))
+            n = (long)sizeof(hint) - 1;
+        memcpy(hint, h, (size_t)n);
+        hint[n] = 0;
+        pi_ansi_row(t, hint);
+        if (!nl)
+            break;
+        h = nl + 1;
+    }
+    pi_blank_row(t);
+    r_init(&r, t->cols);
+    r_text(&r, "> ", 2);
+    r_textz(&r, p->query);
+    r_sgr(&r, REV);
+    r_text(&r, " ", 1);
+    r_sgr(&r, SGR0);
+    want(t, &r);
+    pi_blank_row(t);
+    if (!p->n) {
+        r_init(&r, t->cols);
+        pi_role(t, &r, PR_MUTED);
+        r_textz(&r, p->empty ? p->empty : "");
+        r_sgr(&r, SGR0);
+        want(t, &r);
+    } else {
+        start = p->sel - maxv / 2;
+        if (start > p->n - maxv)
+            start = p->n - maxv;
+        if (start < 0)
+            start = 0;
+        end = start + maxv < p->n ? start + maxv : p->n;
+        for (i = start; i < end; i++) {
+            line[0] = 0;
+            p->row(p->u, i, i == p->sel, line, sizeof(line));
+            pi_ansi_row(t, line);
+        }
+        if (start > 0 || end < p->n) {
+            r_init(&r, t->cols);
+            pi_role(t, &r, PR_MUTED);
+            cl_copy(line, "  (", sizeof(line));
+            cl_ltoa(p->sel + 1, num);
+            cl_cat(line, num, sizeof(line));
+            cl_cat(line, "/", sizeof(line));
+            cl_ltoa(p->n, num);
+            cl_cat(line, num, sizeof(line));
+            cl_cat(line, ")", sizeof(line));
+            r_textz(&r, line);
+            r_sgr(&r, SGR0);
+            want(t, &r);
+        }
+    }
+    pi_blank_row(t);
+    pi_rule_row(t, PR_ACCENT);
+}
+
 /* pi's OAuthSelectorComponent (modes/interactive/components/oauth-selector.ts:75-130, updateList 147-190) */
 static void pi_auth_pick_rows(cl_tui *t)
 {
@@ -1505,6 +1586,10 @@ static void pi_pick_rows(cl_tui *t)
     row r;
     int i, start, end, maxv = p->maxrows > 0 ? p->maxrows : 5;
     char line[600], num[16];
+    if (p->layout == TUI_PICK_SESSION) {
+        pi_session_rows(t);
+        return;
+    }
     if (p->layout == TUI_PICK_AUTH) {
         pi_auth_pick_rows(t);
         return;
