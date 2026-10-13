@@ -1915,6 +1915,17 @@ static void test_completions(void)
 }
 
 /* B3: done, a cut stream, a 429 with Retry-After 2, Ctrl+C mid-stream, the idle limit; usage */
+/* the stack below the caller filled with non-zero bytes: a local the next call leaves unset is not 0 by chance */
+static void dirty_stack(void)
+{
+    volatile unsigned char junk[32768];
+    size_t i;
+    for (i = 0; i < sizeof(junk); i++)
+        junk[i] = 0xa5;
+}
+/* called through a pointer the compiler cannot see through: inlined, junk would sit in the caller's frame instead */
+static void (*volatile dirty_stack_fn)(void) = dirty_stack;
+
 static void test_request(void)
 {
     llm_model mo = ps_model_openai("http://192.168.1.10:11434/v1");
@@ -2039,6 +2050,33 @@ static void test_request(void)
     llm_acc_message(&a, ts_of(1, 0), &m);
     CHECK(strstr(m.p, "\"stopReason\":\"error\"") != 0);
     llm_acc_free(&a);
+
+    /* N1: nothing listening on the base URL's port (pi 1.1.0 with http://127.0.0.1:9/v1: "Connection error." after
+     * 2 + 4 + 8 s of its agent retries). A connect that fails frees the answer's stream state that llm_post never set
+     * up: it must be empty, not the stack's leftovers (free() of those hung or crashed amiga-pi on the Amiga) -- the
+     * stack under llm_request is dirtied first. The error is pi's, so pi's agent retry patterns match it. */
+    {
+        int ri;
+        for (ri = 0; ri < 2; ri++) {
+            ps_reset();
+            ps_pool_up(LLM_POOL);
+            ps.refuse = 10;
+            llm_acc_init(&a, mo.api, mo.provider);
+            k = llm_acc_sink(&a);
+            q = req_of(&mo, &c, &k, 0);
+            q.retries = ri ? 0 : -1;    /* -1: amiga-pi's agent loop retries; 0: llm/'s own 3 retries */
+            dirty_stack_fn();
+            CHECK_INT(llm_request(&q), -1);
+            CHECK_INT(q.attempts, ri ? 4 : 1);
+            CHECK_INT(ps.slept, ri ? 2000 + 4000 + 8000 : 0);
+            CHECK_INT(ps.nreq, 0);
+            CHECK_INT(ps.refused, ri ? 4 : 1);
+            jw_reset(&m);
+            llm_acc_message(&a, ts_of(1, 0), &m);
+            CHECK(strstr(m.p, ",\"errorMessage\":\"Connection error.\"}") != 0);
+            llm_acc_free(&a);
+        }
+    }
 
     /* cut off after part of the answer: an error, not tried again (the text kept) */
     ps_reset();
