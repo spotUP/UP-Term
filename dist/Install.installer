@@ -510,8 +510,8 @@
 
 (set #step "tools" #kb #kb-tools #n 3
      #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo,\n"
-               "upgetty, uptelnet, Claude, ClaudeCode), the network\n"
-               "tools you chose, and Claude's settings."))
+               "upgetty, uptelnet, Claude, amiga-pi, ClaudeCode),\n"
+               "the network tools you chose, and Claude's settings."))
 (P_STEP)
 
 ; the Python / Neovim page: n = 5 lines, one more for each of the two
@@ -637,7 +637,7 @@
          "UP-Term: Unix commands, man pages, network tools, sz, rz"
          (if (<> #xl "") (cat ",\n" (substr #xl 2 (strlen #xl))) "") "\n"
          "C: vsh, tmux, screen, UPConsole, UPTerm, UPDemo,\n"
-         "   Claude, ClaudeCode\n"
+         "   Claude, amiga-pi, ClaudeCode\n"
          "L: and DEVS:DOSDrivers: XCON:, PTY:, IXPIPE:\n"
          "LIBS: ixemul.library, ixnet.library (old ones: .orig)\n"
          "SYS:System/UP-Term, SYS:Prefs/UP-Term-Prefs\n"
