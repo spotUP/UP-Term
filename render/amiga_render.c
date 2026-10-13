@@ -6,8 +6,9 @@
 #define TimerBase vtwin_timer
 extern struct Device *vtwin_timer;
 #include <proto/timer.h>
-ULONG vr_prof[7]; /* PROF=1: EClock ticks in painter_run, WaitBlit; painter calls; ticks in fill(), fills;
-                   * ticks in the composed frames' blits, blits */
+ULONG vr_prof[9]; /* PROF=1: EClock ticks in painter_run, WaitBlit; painter calls; ticks in fill(), fills;
+                   * ticks in the composed frames' blits (planar: copies), blits; ticks waiting for the
+                   * beam to leave the rows a planar copy writes (WaitTOF), waits */
 #endif
 #include <string.h>
 
@@ -23,6 +24,7 @@ ULONG vr_prof[7]; /* PROF=1: EClock ticks in painter_run, WaitBlit; painter call
 #include <graphics/clip.h>
 #include <graphics/layers.h>
 #include <graphics/gfxbase.h>
+#include <graphics/view.h>
 
 extern struct GfxBase *GfxBase;
 
@@ -481,6 +483,8 @@ void vr_free(vr_render *r)
     if (r->back) {
         if (r->back->bm)
             FreeBitMap(r->back->bm);
+        if (r->back->pmem)
+            FreeVec(r->back->pmem);
         FreeVec(r->back);
     }
     /* inert until the next vr_init: the handler closes an AUTO window and
@@ -639,12 +643,23 @@ static void fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 #endif
 }
 
+static void back_fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE pen);
+
 static void fill_pen(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, ULONG pen)
 {
     if (x1 < x0 || y1 < y0)
         return;
     if (pen != r->bg_ink)
         r->blank = 0;
+    if (r->cpu) {
+        /* a planar composed pass: the CPU fills its planes (W-T4) */
+        if (pen & VR_INK_RGB) {
+            r->cpu_fail = 1;
+            return;
+        }
+        back_fill(r, x0, y0, x1, y1, ink_pen(r, pen, 0));
+        return;
+    }
     if ((pen & VR_INK_RGB) && r->cgx) {
         /* a direct colour on a true-colour screen: filled as the colour
          * itself. Through a scratch pen it was a SetRGB32 first, 84 us a
@@ -697,6 +712,17 @@ void vr_mask_end(vr_render *r)
         return;
     r->mask_on = 0;
     SetWriteMask(r->rp, 0xFF);
+}
+
+/* Drawing only graphics.library does, asked for inside a planar composed
+ * pass (whose planes the CPU paths alone write): 1, and the pass is drawn
+ * in place instead (draw_rows, compose_abandon). */
+static int cpu_refuses(vr_render *r)
+{
+    if (!r->cpu)
+        return 0;
+    r->cpu_fail = 1;
+    return 1;
 }
 
 static void line(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1)
@@ -791,6 +817,8 @@ static int block_joins(vt_glyph g)
 static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg, int cells)
 {
     WORD x1 = px + r->cw * (g.kind == VT_GLYPH_MISSING && g.code == 2 ? 2 : cells) - 1, y1 = py + r->ch - 1;
+    if ((g.kind != VT_GLYPH_BLOCK || (g.code & 0x80)) && cpu_refuses(r))
+        return; /* lines and shade patterns: not the CPU fills' */
     r->blank = 0;
     fill(r, px, py, x1, y1, bg);
     switch (g.kind) {
@@ -1051,7 +1079,7 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
             return;
         }
     }
-    if (painter_run(r, run, n, px, py, st))
+    if (painter_run(r, run, n, px, py, st) || cpu_refuses(r))
         return;
     r->n_text++;
     r->blank = 0;
@@ -1123,17 +1151,17 @@ static void extract_glyphs(vr_render *r)
     }
 }
 
-/* May cells be written straight into the screen's bitplanes now, at
- * any bit phase (the painter, render/painter.h)? The caller holds the
+/* May the CPU write the screen's bitplanes under the text area now (at
+ * any bit phase; aligned: on a byte boundary)? The caller holds the
  * window's layer lock. */
-static int planes_ok(vr_render *r, int aligned)
+static int screen_planes_ok(vr_render *r, int aligned)
 {
     struct Window *w = r->win;
     struct BitMap *bm = r->rp->BitMap;
     struct ClipRect *cr = w->WLayer ? w->WLayer->ClipRect : 0;
     WORD sx0 = w->LeftEdge + r->ox, sy0 = w->TopEdge + r->oy;
     WORD sx1 = sx0 + vis_cols(r) * r->cw - 1, sy1 = sy0 + vis_rows(r) * r->ch - 1;
-    if (!r->glyphs || !bm || bm->Depth > 8 || (aligned && (sx0 & 7)))
+    if (!bm || bm->Depth > 8 || (aligned && (sx0 & 7)))
         return 0;
     if (bm != r->chip_bm || bm->Planes[0] != r->chip_plane0) {
         /* Once a bitmap (it is asked for every run the painter draws: S1,
@@ -1157,6 +1185,44 @@ static int planes_ok(vr_render *r, int aligned)
            cr->bounds.MaxY >= sy1;
 }
 
+/* ...and cells written there now, at any bit phase (the painter, render/painter.h)? */
+static int planes_ok(vr_render *r, int aligned)
+{
+    return r->glyphs && screen_planes_ok(r, aligned);
+}
+
+/* The planes the CPU paths write: the screen's (under the layer lock,
+ * planes_ok), or a planar composed pass's own (r->cpu). Window pixel
+ * (x, y) is bit x0 + x of row y0 + y; mask: the planes written. */
+typedef struct vr_planes {
+    UBYTE **planes;
+    LONG bpr, x0, y0;
+    WORD depth;
+    UBYTE mask;
+} vr_planes;
+
+static void target(vr_render *r, vr_planes *t)
+{
+    if (r->cpu) {
+        /* every plane: one not in the mask holds zeros on screen, and the
+         * copy writes it only while the mask has it (copy_mask) */
+        t->planes = r->back->planes;
+        t->bpr = r->back->bpr;
+        t->depth = r->back->depth;
+        t->x0 = r->back->phase;
+        t->y0 = 0;
+        t->mask = 0xFF;
+    } else {
+        struct BitMap *bm = r->rp->BitMap;
+        t->planes = (UBYTE **)bm->Planes;
+        t->bpr = bm->BytesPerRow;
+        t->depth = bm->Depth;
+        t->x0 = r->win->LeftEdge;
+        t->y0 = r->win->TopEdge;
+        t->mask = r->mask;
+    }
+}
+
 /* ...on a byte boundary of the screen (vr_asm_cell's one byte a cell). */
 static int direct_ok(vr_render *r)
 {
@@ -1172,7 +1238,7 @@ static int direct_ok(vr_render *r)
 static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
 {
     struct Layer *layer = r->win->WLayer;
-    struct BitMap *bm;
+    vr_planes t;
     UBYTE pens;
     int ok;
     if (!r->planar || !r->glyphs || st->attr || st->deco || st->font || ((st->fg | st->bg) & VR_INK_RGB) ||
@@ -1184,8 +1250,12 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
     if (vtwin_timer)
         ReadEClock(&pe0);
 #endif
-    LockLayer(0, layer);
-    ok = planes_ok(r, 0);
+    if (r->cpu) {
+        ok = 1; /* the composed pass's own planes */
+    } else {
+        LockLayer(0, layer);
+        ok = planes_ok(r, 0);
+    }
     if (ok) {
         if (pens & ~r->mask) {
             /* a pen's plane not in use yet holds zeros: from here on it is
@@ -1195,7 +1265,9 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
                 SetWriteMask(r->rp, r->mask);
         }
         r->seen |= pens;
-        bm = r->rp->BitMap;
+        target(r, &t);
+    }
+    if (ok && !r->cpu) {
 #ifdef VTCON_PROF
         {
             struct EClockVal w0, w1;
@@ -1210,11 +1282,12 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
 #else
         WaitBlit(); /* the scroll and fills before it are in the planes first */
 #endif
-        vp_span_fast((vp_u8 **)bm->Planes, bm->Depth, bm->BytesPerRow, (long)(r->win->LeftEdge + px),
-                     (long)(r->win->TopEdge + py), r->glyphs, r->font->tf_YSize, run, n, (int)st->fg,
-                     (int)st->bg, r->mask);
     }
-    UnlockLayer(layer);
+    if (ok)
+        vp_span_fast((vp_u8 **)t.planes, t.depth, t.bpr, (long)(t.x0 + px), (long)(t.y0 + py), r->glyphs,
+                     r->font->tf_YSize, run, n, (int)st->fg, (int)st->bg, t.mask);
+    if (!r->cpu)
+        UnlockLayer(layer);
 #ifdef VTCON_PROF
     if (vtwin_timer) {
         ReadEClock(&pe1);
@@ -1236,11 +1309,10 @@ void vr_asm_cell(UBYTE **planes, long depth, long off, long bpr, const UBYTE *ro
                  long mask);
 #endif
 
-static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg, vt_u8 attr)
+static void direct_cell(vr_render *r, const vr_planes *t, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg, vt_u8 attr)
 {
-    struct BitMap *bm = r->rp->BitMap;
-    WORD bpr = bm->BytesPerRow;
-    LONG off = (LONG)(r->win->TopEdge + r->oy + y * r->ch) * bpr + ((r->win->LeftEdge + r->ox) >> 3) + x;
+    LONG bpr = t->bpr;
+    LONG off = (t->y0 + r->oy + y * r->ch) * bpr + ((t->x0 + r->ox) >> 3) + x;
     const UBYTE *g0 = r->glyphs + ch * r->ch;
     UBYTE rows[32];
 #ifndef VR_ASM
@@ -1259,12 +1331,12 @@ static void direct_cell(vr_render *r, int x, int y, UBYTE ch, UBYTE fg, UBYTE bg
         rows[h / 2] = 0xFF;
 #ifdef VR_ASM
     /* the loop below in assembler (amiga_render_68k.s) */
-    vr_asm_cell((UBYTE **)bm->Planes, bm->Depth, off, bpr, rows, h, fg, bg, r->mask);
+    vr_asm_cell(t->planes, t->depth, off, bpr, rows, h, fg, bg, t->mask);
 #else
-    for (p = 0; p < bm->Depth; p++) {
-        UBYTE *d = (UBYTE *)bm->Planes[p] + off;
+    for (p = 0; p < t->depth; p++) {
+        UBYTE *d = t->planes[p] + off;
         int f = (fg >> p) & 1, b = (bg >> p) & 1;
-        if (!((r->mask >> p) & 1))
+        if (!((t->mask >> p) & 1))
             continue; /* a plane not in use: it holds zeros, and both pens' bits are 0 */
         if (f == b) {
             UBYTE v = f ? 0xFF : 0x00;
@@ -1339,12 +1411,17 @@ static int direct_wins(const dcell *d, int n)
 static int direct_row(vr_render *r, int y, const dcell *d, int n)
 {
     struct Layer *layer = r->win->WLayer;
+    vr_planes t;
     int i, ok;
     UBYTE pens = 0;
     for (i = 0; i < n; i++)
         pens |= (UBYTE)(d[i].fg | d[i].bg);
-    LockLayer(0, layer);
-    ok = direct_ok(r);
+    if (r->cpu) {
+        ok = !((r->back->phase + r->ox) & 7); /* the composed planes: the screen's bit phase */
+    } else {
+        LockLayer(0, layer);
+        ok = direct_ok(r);
+    }
     if (ok) {
         if (pens & ~r->mask) {
             /* a pen's plane not in use yet: it holds zeros, the cells
@@ -1354,11 +1431,14 @@ static int direct_row(vr_render *r, int y, const dcell *d, int n)
                 SetWriteMask(r->rp, r->mask);
         }
         r->seen |= pens;
-        WaitBlit(); /* earlier blits (scroll, fills, Text, the cursor) finish first */
+        if (!r->cpu)
+            WaitBlit(); /* earlier blits (scroll, fills, Text, the cursor) finish first */
+        target(r, &t);
         for (i = 0; i < n; i++)
-            direct_cell(r, d[i].x, y, d[i].ch, d[i].fg, d[i].bg, d[i].attr);
+            direct_cell(r, &t, d[i].x, y, d[i].ch, d[i].fg, d[i].bg, d[i].attr);
     }
-    UnlockLayer(layer);
+    if (!r->cpu)
+        UnlockLayer(layer);
     r->n_direct += ok ? n : 0;
     if (ok)
         r->blank = 0;
@@ -1444,6 +1524,13 @@ static void draw_double_row(vr_render *r, int y, const vt_cell *c, int ncells, i
     struct BitScaleArgs bsa;
     int x, half = (r->cols + 1) / 2;
     vr_style st;
+    if (cpu_refuses(r)) {
+        if (full)
+            FreeBitMap(full);
+        if (big)
+            FreeBitMap(big);
+        return;
+    }
     fill(r, r->ox, py, (WORD)(r->ox + vis_cols(r) * cw - 1), (WORD)(py + ch - 1), r->pen_default_bg);
     if (!full || !big) {
         if (full)
@@ -1538,6 +1625,8 @@ static void fb_sync(vr_render *r)
 static void draw_marks(vr_render *r, WORD px, WORD py, const vt_u32 *mk, int n, int cells, const vr_style *st)
 {
     int i;
+    if (n > 0 && r->outline && cpu_refuses(r))
+        return;
     for (i = 0; i < n && r->outline; i++) {
         WORD bpr;
         const UBYTE *m = vo_mark(r->outline, mk[i], cells, &bpr);
@@ -1556,6 +1645,8 @@ static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bp
                          const vr_style *st)
 {
     WORD w = (WORD)(cells * r->cw);
+    if (cpu_refuses(r))
+        return;
     fill(r, px, py, (WORD)(px + w - 1), (WORD)(py + r->ch - 1), st->bg);
     ink_a(r, st->fg);
     SetDrMd(r->rp, JAM1);
@@ -1576,6 +1667,8 @@ static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bp
  * alone. 0 when nothing could be drawn (the caller draws the box). */
 static int draw_colour(vr_render *r, WORD px, WORD py, const vr_style *st)
 {
+    if (cpu_refuses(r))
+        return 1; /* drawn again in place */
     if (st->fg == st->bg)
         fill(r, px, py, (WORD)(px + 2 * r->cw - 1), (WORD)(py + r->ch - 1), st->bg);
     else if (!ce_paint(&r->emoji, px, py, ink_rgb(r, st->bg)))
@@ -1732,13 +1825,18 @@ static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
                 }
                 for (a = x; x < xe && (c[x].pad & VT_CELL_IMAGE); x++)
                     ;
+                if (cpu_refuses(r))
+                    return;
                 img_run(r, &v, a, x, y);
             }
         }
     }
 }
 
-/* ---- a synchronized frame composed off screen (W-T3) ------------------------ */
+/* ---- a synchronized frame composed off screen (W-T3, W-T4) -------------------- */
+
+static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1);
+static void planar_present(vr_render *r);
 
 /* What the composed pass drew so far into the window: one blit a rectangle. */
 static void back_present(vr_render *r)
@@ -1777,8 +1875,13 @@ static void back_add(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1)
             return;
         }
     }
-    if (r->back->n == VR_BACK_RECTS)
-        back_present(r); /* the list is full: these go now */
+    if (r->back->n == VR_BACK_RECTS) {
+        /* the list is full: these go now */
+        if (r->cpu)
+            planar_present(r);
+        else
+            back_present(r);
+    }
     b = r->back->rect[r->back->n++];
     b[0] = x0;
     b[1] = y0;
@@ -1786,15 +1889,240 @@ static void back_add(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1)
     b[3] = y1;
 }
 
+/* The CPU's fill of window pixels x0..x1, y0..y1 in the composed planes,
+ * every plane (target): pen's bit set or cleared, a byte at a time with
+ * the two edge bytes masked. */
+static void back_fill(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE pen)
+{
+    struct vr_back *k = r->back;
+    LONG b0, b1, i0, i1, i;
+    UBYTE lm, rm;
+    WORD y;
+    int p;
+    if (x0 < 0)
+        x0 = 0;
+    if (y0 < 0)
+        y0 = 0;
+    if (x1 >= k->w)
+        x1 = (WORD)(k->w - 1);
+    if (y1 >= k->h)
+        y1 = (WORD)(k->h - 1);
+    if (x1 < x0 || y1 < y0)
+        return;
+    b0 = k->phase + x0;
+    b1 = k->phase + x1;
+    i0 = b0 >> 3;
+    i1 = b1 >> 3;
+    lm = (UBYTE)(0xFF >> (b0 & 7));
+    rm = (UBYTE)(0xFF << (7 - (b1 & 7)));
+    if (i0 == i1)
+        lm = rm = (UBYTE)(lm & rm);
+    for (p = 0; p < k->depth; p++) {
+        UBYTE *row = k->planes[p] + (LONG)y0 * k->bpr;
+        if ((pen >> p) & 1) {
+            for (y = y0; y <= y1; y++, row += k->bpr) {
+                row[i0] |= lm;
+                for (i = i0 + 1; i < i1; i++)
+                    row[i] = 0xFF;
+                row[i1] |= rm;
+            }
+        } else {
+            for (y = y0; y <= y1; y++, row += k->bpr) {
+                row[i0] &= (UBYTE)~lm;
+                for (i = i0 + 1; i < i1; i++)
+                    row[i] = 0;
+                row[i1] &= (UBYTE)~rm;
+            }
+        }
+    }
+}
+
+/* Bytes i0..i1 of one plane row from the composed planes to the screen's,
+ * the edge bytes masked (lm, rm); the bytes between as longwords where
+ * the two rows are aligned alike (the phase makes them so on a screen of
+ * longword rows). */
+static void copy_row(const UBYTE *s, UBYTE *d, LONG i0, LONG i1, UBYTE lm, UBYTE rm)
+{
+    LONG i;
+    if (i0 == i1) {
+        UBYTE m = (UBYTE)(lm & rm);
+        d[i0] = (UBYTE)((d[i0] & ~m) | (s[i0] & m));
+        return;
+    }
+    d[i0] = (UBYTE)((d[i0] & ~lm) | (s[i0] & lm));
+    i = i0 + 1;
+    if (!(((unsigned long)(s + i) ^ (unsigned long)(d + i)) & 3)) {
+        for (; i < i1 && ((unsigned long)(d + i) & 3); i++)
+            d[i] = s[i];
+        for (; i + 4 <= i1; i += 4)
+            *(unsigned int *)(d + i) = *(const unsigned int *)(s + i);
+    }
+    for (; i < i1; i++)
+        d[i] = s[i];
+    d[i1] = (UBYTE)((d[i1] & ~rm) | (s[i1] & rm));
+}
+
+/* The beam lines that show window rows y0..y1 (a conservative guess
+ * from the View and the screen's ViewPort: one line a row, two rows a
+ * line when interlaced); while the beam is on them (or just above), wait
+ * for the next frame's top, so the copy runs ahead of the beam and every
+ * row it writes is shown new in the same frame. 1 when it waited. */
+#define VR_BEAM_LEAD 8
+static int beam_wait(vr_render *r, WORD y0, WORD y1)
+{
+    struct View *v = GfxBase->ActiView;
+    struct ViewPort *vp = r->win->WScreen ? &r->win->WScreen->ViewPort : 0;
+    LONG top, bot, b;
+    int sh;
+    if (!v || !vp)
+        return 0;
+    sh = (vp->Modes & LACE) ? 1 : 0;
+    top = v->DyOffset + ((vp->DyOffset + r->win->TopEdge + y0) >> sh);
+    bot = v->DyOffset + ((vp->DyOffset + r->win->TopEdge + y1) >> sh);
+    b = (LONG)VBeamPos();
+    if (b < top - VR_BEAM_LEAD || b > bot)
+        return 0;
+    WaitTOF();
+    return 1;
+}
+
+/* The composed planes' rectangles into the screen's, every plane of a
+ * pixel row before the next row, top down, behind the beam (beam_wait);
+ * 0 when the window cannot take it now (covered since the pass began). */
+static int back_copy(vr_render *r)
+{
+    struct vr_back *k = r->back;
+    struct Window *w = r->win;
+    struct Layer *layer = w->WLayer;
+    struct BitMap *bm;
+    UBYTE cm = (UBYTE)(k->copy_mask | r->mask);
+    WORD y0 = 0x7FFF, y1 = -1;
+    int i, p, ok;
+#ifdef VTCON_PROF
+    struct EClockVal b0, b1;
+#endif
+    for (i = 0; i < k->n; i++) {
+        if (k->rect[i][1] < y0)
+            y0 = k->rect[i][1];
+        if (k->rect[i][3] > y1)
+            y1 = k->rect[i][3];
+    }
+#ifdef VTCON_PROF
+    if (vtwin_timer)
+        ReadEClock(&b0);
+#endif
+    i = beam_wait(r, y0, y1); /* not under the layer lock: it sleeps */
+#ifdef VTCON_PROF
+    if (vtwin_timer) {
+        ReadEClock(&b1);
+        vr_prof[7] += b1.ev_lo - b0.ev_lo;
+        vr_prof[8] += i;
+        b0 = b1;
+    }
+#endif
+    LockLayer(0, layer);
+    ok = screen_planes_ok(r, 0);
+    if (ok) {
+        LONG sbase;
+        bm = r->rp->BitMap;
+        sbase = (LONG)(w->LeftEdge >> 5) << 2; /* the screen byte of the composed planes' byte 0 */
+        WaitBlit(); /* the window's blits so far (the cursor, a scroll) are in the planes first */
+        for (i = 0; i < k->n; i++) {
+            const WORD *b = k->rect[i];
+            LONG bx0 = k->phase + b[0], bx1 = k->phase + b[2];
+            UBYTE lm = (UBYTE)(0xFF >> (bx0 & 7)), rm = (UBYTE)(0xFF << (7 - (bx1 & 7)));
+            WORD y;
+            for (y = b[1]; y <= b[3]; y++) {
+                const UBYTE *src = 0;
+                UBYTE *dst;
+                for (p = 0; p < k->depth; p++) {
+                    if (!((cm >> p) & 1))
+                        continue;
+                    src = k->planes[p] + (LONG)y * k->bpr;
+                    dst = (UBYTE *)bm->Planes[p] + (LONG)(w->TopEdge + y) * bm->BytesPerRow + sbase;
+                    copy_row(src, dst, bx0 >> 3, bx1 >> 3, lm, rm);
+                }
+            }
+        }
+        r->n_copies++;
+        r->blank = 0;
+    }
+    UnlockLayer(layer);
+#ifdef VTCON_PROF
+    if (vtwin_timer) {
+        ReadEClock(&b1);
+        vr_prof[5] += b1.ev_lo - b0.ev_lo;
+        vr_prof[6]++;
+    }
+#endif
+    return ok;
+}
+
+/* The cells drawn into the composed planes since the last copy, drawn
+ * again in place (through the RastPort: the layer clips). */
+static void replay(vr_render *r)
+{
+    struct vr_back *k = r->back;
+    struct RastPort *f = r->front_rp;
+    UBYTE cpu = r->cpu;
+    int i;
+    r->front_rp = 0;
+    r->cpu = 0;
+    for (i = 0; i < k->nd; i++)
+        draw_rows_now(r, k->dmg[i][0], k->dmg[i][1], k->dmg[i][2], k->dmg[i][3]);
+    r->front_rp = f;
+    r->cpu = cpu;
+}
+
+/* A planar pass's planes so far to the window: copied, or -- covered
+ * since the pass began -- the cells drawn again in place. The pass goes
+ * on composing; inside draw_rows its cells so far are drawn again too
+ * should it fail later (cur). */
+static void planar_present(vr_render *r)
+{
+    struct vr_back *k = r->back;
+    if (k->n && !back_copy(r))
+        replay(r);
+    k->n = 0;
+    k->nd = 0;
+    if (k->in_rows) {
+        k->dmg[0][0] = k->cur[0];
+        k->dmg[0][1] = k->cur[1];
+        k->dmg[0][2] = k->cur[2];
+        k->dmg[0][3] = k->cur[3];
+        k->nd = 1;
+    }
+    k->copy_mask = r->mask;
+}
+
+/* A cell only graphics.library draws: the rest of the pass in place, and
+ * what was composed since the last copy drawn again there. */
+static void compose_abandon(vr_render *r)
+{
+    struct vr_back *k = r->back;
+    r->cpu = 0;
+    r->cpu_fail = 0;
+    r->front_rp = 0;
+    k->n = 0;
+    k->in_rows = 0;
+    replay(r);
+    k->nd = 0;
+}
+
 /* Inside a composed pass, drawing that is not a damaged cell (the cursor, a
  * scroll) acts on the window itself: what is composed so far goes first.
- * to_back puts the pass back on the back bitmap. */
+ * to_back puts the pass back on the back bitmap (or the planar planes). */
 static struct RastPort *to_front(vr_render *r)
 {
     struct RastPort *f = r->front_rp;
     if (f) {
-        back_present(r);
-        r->rp = f;
+        if (r->cpu) {
+            planar_present(r);
+            r->cpu = 0;
+        } else {
+            back_present(r);
+            r->rp = f;
+        }
         r->front_rp = 0;
     }
     return f;
@@ -1804,8 +2132,60 @@ static void to_back(vr_render *r, struct RastPort *f)
 {
     if (f) {
         r->front_rp = f;
-        r->rp = &r->back->rp;
+        if (r->back->planar) {
+            r->cpu = 1;
+            r->back->copy_mask = r->mask;
+        } else {
+            r->rp = &r->back->rp;
+        }
     }
+}
+
+/* A planar window's composed pass: its own planes, the window's size at
+ * the window's bit phase, in any memory; 0 when the window is covered (the
+ * layer must clip: in place) or there is no memory. */
+static int planar_begin(vr_render *r)
+{
+    struct Window *w = r->win;
+    struct vr_back *k = r->back;
+    struct BitMap *bm = r->rp->BitMap;
+    LONG bpr, plane;
+    WORD phase;
+    int ok, p;
+    LockLayer(0, w->WLayer);
+    ok = screen_planes_ok(r, 0);
+    UnlockLayer(w->WLayer);
+    if (!ok)
+        return 0;
+    phase = (WORD)(w->LeftEdge & 31);
+    bpr = (LONG)((phase + w->Width + 31) >> 5) << 2;
+    plane = bpr * w->Height;
+    if (!k->pmem || k->psize < (ULONG)(plane * bm->Depth)) {
+        if (k->pmem)
+            FreeVec(k->pmem);
+        k->psize = (ULONG)(plane * bm->Depth);
+        k->pmem = (UBYTE *)AllocVec(k->psize, MEMF_ANY);
+        if (!k->pmem) {
+            k->psize = 0;
+            return 0; /* no memory for it: drawn in place, as before */
+        }
+    }
+    for (p = 0; p < bm->Depth; p++)
+        k->planes[p] = k->pmem + p * plane;
+    k->bpr = bpr;
+    k->depth = bm->Depth;
+    k->phase = phase;
+    k->w = w->Width;
+    k->h = w->Height;
+    k->n = 0;
+    k->nd = 0;
+    k->in_rows = 0;
+    k->planar = 1;
+    k->copy_mask = r->mask;
+    r->front_rp = r->rp; /* the window's, as it stays: only the CPU paths draw, into k->planes */
+    r->cpu = 1;
+    r->cpu_fail = 0;
+    return 1;
 }
 
 int vr_compose_begin(vr_render *r)
@@ -1819,14 +2199,17 @@ int vr_compose_begin(vr_render *r)
     if (f == r->sync_seen)
         return 0; /* no frame ended: output as it comes, drawn in place */
     r->sync_seen = f;
-    if (r->planar || r->hidden || r->off || r->view)
+    if (r->hidden || r->off || r->view)
         return 0;
     if (!r->back) {
         r->back = (struct vr_back *)AllocVec(sizeof(struct vr_back), MEMF_ANY | MEMF_CLEAR);
         if (!r->back)
             return 0;
     }
+    if (r->planar)
+        return planar_begin(r);
     k = r->back;
+    k->planar = 0;
     if (!k->bm || k->w < w->Width || k->h < w->Height) {
         if (k->bm)
             FreeBitMap(k->bm);
@@ -1853,7 +2236,122 @@ void vr_compose_end(vr_render *r)
     to_front(r);
 }
 
+/* Draw screen rows [y0, y1), columns [x0, x1): in a planar composed pass
+ * the cells are kept (dmg) until copied, to be drawn again in place should
+ * one of them need graphics.library (cpu_fail). */
 static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
+{
+    struct vr_back *k = r->back;
+    if (!r->cpu) {
+        draw_rows_now(r, x0, y0, x1, y1);
+        return;
+    }
+    if (k->nd == VR_BACK_RECTS)
+        planar_present(r);
+    k->cur[0] = k->dmg[k->nd][0] = (WORD)x0;
+    k->cur[1] = k->dmg[k->nd][1] = (WORD)y0;
+    k->cur[2] = k->dmg[k->nd][2] = (WORD)x1;
+    k->cur[3] = k->dmg[k->nd][3] = (WORD)y1;
+    k->nd++;
+    k->in_rows = 1;
+    draw_rows_now(r, x0, y0, x1, y1);
+    k->in_rows = 0;
+    if (r->cpu_fail)
+        compose_abandon(r);
+}
+
+/* A run of cells from x that are two flat halves each -- a blank, an upper
+ * or lower half block, a full block, in a plain style -- in a planar
+ * composed pass: per plane the top half's row of bits and the bottom
+ * half's are made once (a byte a cell, at the window's bit phase) and
+ * stored in each pixel row of their half. The same pixels draw_special's
+ * fills make (draw_block: a half is (h * 4 + 4) / 8 rows, so only an even
+ * cell height splits evenly); generic, those were two fills and a style
+ * and glyph lookup a cell (UPDemo's plasma: 2310 cells a frame, W-T4).
+ * Returns the cells written (0: the cell at x is not one). */
+static int block_run(vr_render *r, const vt_cell *c, int x, int xe, WORD py)
+{
+    struct vr_back *k = r->back;
+    WORD h = r->ch, s = (WORD)((h * 4 + 4) / 8), row;
+    const vt_cell *last = 0;
+    vr_style st;
+    UBYTE pens = 0, top, bot;
+    int n = 0, i, p;
+    LONG b0, i0;
+    UBYTE sh, lm;
+    if (r->cw != 8 || s * 2 != h || r->outline || r->sel)
+        return 0;
+    st.fg = st.bg = 0;
+    while (x + n < xe && n < VR_STRIP) {
+        const vt_cell *cc = &c[x + n];
+        vt_glyph g;
+        if (cc->width != 1 || cc->ext)
+            break;
+        if (!last || cc->fg != last->fg || cc->bg != last->bg || cc->attr != last->attr || cc->deco != last->deco) {
+            cell_style(r, cc, 0, &st);
+            if (st.attr || st.deco || st.font || ((st.fg | st.bg) & VR_INK_RGB) || st.fg > 255 || st.bg > 255)
+                break;
+            last = cc;
+        }
+        if (cc->ch == ' ') {
+            top = bot = (UBYTE)st.bg;
+        } else {
+            WORD bh;
+            if (cc->ch < 0x80)
+                break;
+            g = vt_map_glyph(cc->ch, r->enc);
+            if (g.kind != VT_GLYPH_BLOCK || (g.code & 0xC0) || ((g.code >> 4) & 3) > 1)
+                break;
+            bh = (WORD)((h * (g.code & 15) + 4) / 8);
+            if (bh == h) {
+                top = bot = (UBYTE)st.fg;
+            } else if (bh == s) {
+                top = (UBYTE)((g.code >> 4) & 3 ? st.bg : st.fg);
+                bot = (UBYTE)((g.code >> 4) & 3 ? st.fg : st.bg);
+            } else {
+                break;
+            }
+        }
+        k->tp[n] = top;
+        k->bp[n] = bot;
+        pens |= (UBYTE)(top | bot);
+        n++;
+    }
+    if (!n)
+        return 0;
+    /* the pens' planes in use from here on, as ink_pen does */
+    ink_pen(r, pens, 0);
+    r->blank = 0;
+    b0 = k->phase + r->ox + (LONG)x * 8;
+    i0 = b0 >> 3;
+    sh = (UBYTE)(b0 & 7);
+    lm = (UBYTE)(0xFF >> sh);
+    for (p = 0; p < k->depth; p++) {
+        UBYTE *dst = k->planes[p] + (LONG)py * k->bpr + i0;
+        int half;
+        for (half = 0; half < 2; half++) {
+            const UBYTE *pen = half ? k->bp : k->tp;
+            UBYTE *o = k->strip[half], prev = 0, v;
+            for (i = 0; i < n; i++) {
+                v = (UBYTE)((pen[i] >> p) & 1 ? 0xFF : 0x00);
+                o[i] = (UBYTE)((prev << (8 - sh)) | (v >> sh));
+                prev = v;
+            }
+            o[n] = (UBYTE)(prev << (8 - sh));
+        }
+        for (row = 0; row < h; row++, dst += k->bpr) {
+            const UBYTE *o = k->strip[row >= s];
+            dst[0] = (UBYTE)((dst[0] & ~lm) | (o[0] & lm));
+            for (i = 1; i < n; i++)
+                dst[i] = o[i];
+            if (sh)
+                dst[n] = (UBYTE)((dst[n] & lm) | (o[n] & ~lm));
+        }
+    }
+    return n;
+}
+
+static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
 {
     UBYTE run[RUN_MAX];
     dcell dc[DCELL_MAX];
@@ -1915,11 +2413,13 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
                 struct Window *w = r->win;
                 WORD gx1 = (WORD)(r->ox + vis_cols(r) * r->cw), gy1 = (WORD)(r->oy + vis_rows(r) * r->ch);
                 WORD ax1 = (WORD)(w->Width - w->BorderRight - 1), ay1 = (WORD)(w->Height - w->BorderBottom - 1);
-                UBYTE keep = r->was_blank;
+                UBYTE keep = r->was_blank, cpu = r->cpu;
+                r->cpu = 0; /* outside the grid, which is all a composed pass copies: in place */
                 fill(r, gx1, r->oy, ax1, ay1, tail_bg);
                 fill(r, r->ox, gy1, (WORD)(gx1 - 1), ay1, tail_bg);
                 if (w->BorderLeft < r->ox)
                     fill(r, w->BorderLeft, r->oy, (WORD)(r->ox - 1), ay1, tail_bg);
+                r->cpu = cpu;
                 r->pad_ink = tail_bg;
                 r->was_blank = keep;
                 r->blank = 1;
@@ -1934,6 +2434,8 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
         vr_style st, run_st;
         /* the last cell's look: runs of equal cells skip the lookups */
         const vt_cell *last = 0;
+        if (r->cpu_fail)
+            break; /* the pass goes in place (draw_rows) */
         if (!c)
             continue;
         if (!r->view && vt_row_size(r->t, gy)) {
@@ -1991,6 +2493,16 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
 #endif
         for (; x < xe; x++) {
             vt_glyph g;
+            if (r->cpu) {
+                int b = block_run(r, c, x, xe, py);
+                if (b) {
+                    flush_run(r, run, n, run_x, py, &run_st);
+                    n = 0;
+                    last = 0;
+                    x += b - 1;
+                    continue;
+                }
+            }
             if (c[x].width == 0) {
                 /* the right half of a wide glyph: its '?' took the left */
                 vr_style ws;
@@ -2128,8 +2640,10 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
     r->was_blank = 0;
     if (r->full_pass) {
         r->full_pass = 0;
-        r->mask = r->seen;
-        SetWriteMask(r->rp, r->mask_on ? r->mask : 0xFF);
+        if (!r->cpu_fail) { /* else the pens are not all seen: the pass in place sets it */
+            r->mask = r->seen;
+            SetWriteMask(r->rp, r->mask_on ? r->mask : 0xFF);
+        }
     }
     SetSoftStyle(r->rp, 0, FSF_BOLD | FSF_UNDERLINED | FSF_ITALIC);
 }

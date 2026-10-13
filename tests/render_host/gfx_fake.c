@@ -7,6 +7,7 @@ void *calloc(unsigned long, unsigned long);
 void free(void *);
 void abort(void);
 
+#include <exec/memory.h>
 #include <graphics/gfx.h>
 #include <graphics/view.h>
 #include <graphics/scale.h>
@@ -37,6 +38,15 @@ static struct Library cgx_lib;
  * (vr_compose_begin). Its own canvas; BltBitMapRastPort copies from it into the window's. */
 static struct BitMap back;
 static int *bcanvas, *bbgc, back_on;
+/* the planar screen (gf_planar): its planes, the window's place on it, the window's layer */
+static int pdepth, pleft, ptop, pbpr, prows;
+static UBYTE *pmem;
+static struct Layer layer;
+static struct ClipRect clip, clip2;
+static struct View view;
+static UBYTE fdata[256 * 8];
+static ULONG floc[256];
+long gf_beam;
 
 static int *canvas_of(struct RastPort *rp) { return rp && back_on && rp->BitMap == &back ? bcanvas : canvas; }
 static int *bgc_of(struct RastPort *rp) { return rp && back_on && rp->BitMap == &back ? bbgc : bgc; }
@@ -86,7 +96,11 @@ void gf_open(int w, int h, int cw, int ch, int base)
     win.RPort = &rport;
     win.WScreen = &scr;
     gfxbase.LibNode.lib_Version = 40;
+    memset(&view, 0, sizeof(view));
+    view.DyOffset = 44;
+    gfxbase.ActiView = &view;
     GfxBase = &gfxbase;
+    gf_beam = 0;
     gf_n = 0;
     truecolor = 0;
 }
@@ -100,10 +114,84 @@ void gf_close(void)
 {
     if (back_on)
         FreeBitMap(&back);
+    free(pmem);
+    pmem = 0;
+    pdepth = 0;
     gf_no_back = 0;
     free(canvas);
     free(bgc);
     canvas = bgc = 0;
+}
+
+/* the glyph rows of the planar tests' font: a pattern of the code, nothing for a blank */
+static UBYTE glyph_row(int c, int k) { return c == ' ' ? 0 : (UBYTE)((c * 37) ^ (k * 0x55) ^ (c >> 1) ^ 0x81); }
+
+void gf_planar(int depth, int left, int top)
+{
+    int p, c, k;
+    pdepth = depth;
+    pleft = left;
+    ptop = top;
+    pbpr = ((left + W + 63) / 64) * 8; /* AGA rows: a multiple of 8 bytes */
+    prows = top + H;
+    pmem = (UBYTE *)calloc((size_t)(pbpr * prows * depth), 1);
+    bm.BytesPerRow = (UWORD)pbpr;
+    bm.Rows = (UWORD)prows;
+    bm.Depth = (UBYTE)depth;
+    for (p = 0; p < depth; p++)
+        bm.Planes[p] = pmem + p * pbpr * prows;
+    win.LeftEdge = (WORD)left;
+    win.TopEdge = (WORD)top;
+    memset(&layer, 0, sizeof(layer));
+    memset(&clip, 0, sizeof(clip));
+    memset(&clip2, 0, sizeof(clip2));
+    clip.bounds.MinX = (WORD)left;
+    clip.bounds.MinY = (WORD)top;
+    clip.bounds.MaxX = (WORD)(left + W - 1);
+    clip.bounds.MaxY = (WORD)(top + H - 1);
+    layer.ClipRect = &clip;
+    win.WLayer = &layer;
+    for (c = 0; c < 256; c++) {
+        floc[c] = ((ULONG)(c * 8) << 16) | 8;
+        for (k = 0; k < 8; k++)
+            fdata[k * 256 + c] = glyph_row(c, k);
+    }
+    font.tf_CharData = fdata;
+    font.tf_CharLoc = floc;
+    font.tf_Modulo = 256;
+    font.tf_LoChar = 0;
+    font.tf_HiChar = 255;
+}
+
+void gf_cover(int on) { clip.Next = on ? &clip2 : 0; }
+
+/* window pixel (x, y) of the planes: its pen, and setting it under the write mask */
+static int ppen(long x, long y)
+{
+    long sx = pleft + x, sy = ptop + y;
+    int p, v = 0;
+    for (p = 0; p < pdepth; p++)
+        v |= ((bm.Planes[p][sy * pbpr + (sx >> 3)] >> (7 - (sx & 7))) & 1) << p;
+    return v;
+}
+
+static void pset(struct RastPort *rp, long x, long y, int pen, int flip)
+{
+    long sx = pleft + x, sy = ptop + y;
+    int p;
+    if (!pdepth || rp->BitMap != &bm || x < 0 || y < 0 || x >= W || y >= H)
+        return;
+    for (p = 0; p < pdepth; p++) {
+        UBYTE *b = &bm.Planes[p][sy * pbpr + (sx >> 3)], m = (UBYTE)(0x80 >> (sx & 7));
+        if (!((rp->Mask >> p) & 1))
+            continue;
+        if (flip)
+            *b ^= m;
+        else if ((pen >> p) & 1)
+            *b |= m;
+        else
+            *b &= (UBYTE)~m;
+    }
 }
 
 struct Window *gf_window(void) { return &win; }
@@ -111,6 +199,8 @@ struct TextFont *gf_font(void) { return &font; }
 
 int gf_pixel(int x, int y)
 {
+    if (pdepth)
+        return x >= 0 && y >= 0 && x < W && y < H ? ppen(x, y) : -1;
     return x >= 0 && y >= 0 && x < W && y < H ? canvas[y * W + x] : -1;
 }
 
@@ -195,6 +285,14 @@ LONG Text(struct RastPort *rp, CONST_STRPTR s, ULONG n)
         g->str[i] = s[i];
     for (i = 0; i < n; i++, x += rp->Font->tf_XSize)
     {
+        long gx, gy;
+        for (gy = 0; pdepth && gy < rp->Font->tf_YSize; gy++)
+            for (gx = 0; gx < 8; gx++) {
+                if ((glyph_row((unsigned char)s[i], (int)gy) >> (7 - gx)) & 1)
+                    pset(rp, x + gx, y + gy, rp->FgPen, 0);
+                else if (rp->DrawMode != JAM1)
+                    pset(rp, x + gx, y + gy, rp->BgPen, 0);
+            }
         paint(rp, x, y, x + rp->Font->tf_XSize - 1, y + rp->Font->tf_YSize - 1, (unsigned char)s[i], 0);
         if (rp->DrawMode != JAM1)
             paint_bg(rp, x, y, x + rp->Font->tf_XSize - 1, y + rp->Font->tf_YSize - 1, rp->BgPen);
@@ -232,7 +330,11 @@ VOID SetAfPt(struct RastPort *rp, UWORD *p, BYTE n) { (void)rp; (void)p; (void)n
 
 VOID RectFill(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
 {
+    long x, y;
     rec(GF_RECT, x0, y0, x1, y1);
+    for (y = y0; pdepth && y <= y1; y++)
+        for (x = x0; x <= x1; x++)
+            pset(rp, x, y, rp->FgPen, rp->DrawMode & COMPLEMENT);
     paint(rp, x0, y0, x1, y1, GF_FILL | rp->FgPen, rp->DrawMode & COMPLEMENT);
     if (!(rp->DrawMode & COMPLEMENT))
         paint_bg(rp, x0, y0, x1, y1, rp->FgPen);
@@ -245,6 +347,18 @@ VOID ScrollRaster(struct RastPort *rp, LONG dx, LONG dy, LONG x0, LONG y0, LONG 
     /* dy > 0: the contents move up by dy, the rows below are vacated in the background pen */
     if (dx || canvas_of(rp) != canvas)
         abort(); /* the renderer scrolls rows only, and the window's */
+    if (pdepth) {
+        /* the planes' pixels move the same way, the vacated rows in the background pen */
+        if (dy > 0) {
+            for (y = y0; y <= y1; y++)
+                for (x = x0; x <= x1; x++)
+                    pset(rp, x, y, y + dy <= y1 ? ppen(x, y + dy) : rp->BgPen, 0);
+        } else if (dy < 0) {
+            for (y = y1; y >= y0; y--)
+                for (x = x0; x <= x1; x++)
+                    pset(rp, x, y, y + dy >= y0 ? ppen(x, y + dy) : rp->BgPen, 0);
+        }
+    }
     if (dy > 0) {
         for (y = y0; y <= y1; y++)
             for (x = x0; x <= x1; x++)
@@ -280,11 +394,28 @@ VOID BltTemplate(CONST PLANEPTR src, LONG sx, LONG sm, struct RastPort *rp, LONG
 ULONG GetBitMapAttr(CONST struct BitMap *b, ULONG a)
 {
     (void)b;
+    if (pdepth)
+        return a == BMA_DEPTH ? (ULONG)pdepth : a == BMA_FLAGS ? BMF_STANDARD : 0;
     return a == BMA_DEPTH ? (truecolor ? 24 : 8) : 0; /* 8 bits, not BMF_STANDARD: the chunky path, no planar tricks */
 }
 
 VOID WaitBlit(VOID) { }
-VOID Draw(struct RastPort *rp, LONG x, LONG y) { (void)rp; rec(GF_OTHER, x, y, 0, 0); }
+VOID Draw(struct RastPort *rp, LONG x, LONG y)
+{
+    long n, i, dx = x - rp->cp_x, dy = y - rp->cp_y;
+    rec(GF_OTHER, x, y, 0, 0);
+    n = (dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy) ? (dx < 0 ? -dx : dx) : (dy < 0 ? -dy : dy);
+    for (i = 0; pdepth && i <= n; i++)
+        pset(rp, rp->cp_x + (n ? dx * i / n : 0), rp->cp_y + (n ? dy * i / n : 0), rp->FgPen, 0);
+    rp->cp_x = (WORD)x;
+    rp->cp_y = (WORD)y;
+}
+VOID WaitTOF(VOID)
+{
+    rec(GF_TOF, 0, 0, 0, 0);
+    gf_beam = 0;
+}
+ULONG VBeamPos(VOID) { return (ULONG)gf_beam; }
 LONG WritePixel(struct RastPort *rp, LONG x, LONG y) { (void)rp; rec(GF_OTHER, x, y, 0, 0); return 0; }
 struct BitMap *AllocBitMap(ULONG sx, ULONG sy, ULONG d, ULONG f, CONST struct BitMap *fr)
 {
@@ -385,7 +516,10 @@ struct Library *OpenLibrary(CONST_STRPTR n, ULONG v)
 VOID CloseLibrary(struct Library *l) { (void)l; }
 APTR AllocVec(ULONG n, ULONG req) { (void)req; return calloc(1, n ? n : 1); }
 VOID FreeVec(APTR p) { free(p); }
-ULONG TypeOfMem(CONST_APTR a) { (void)a; return 0; }
+ULONG TypeOfMem(CONST_APTR a)
+{
+    return pmem && (const UBYTE *)a >= pmem && (const UBYTE *)a < pmem + pbpr * prows * pdepth ? MEMF_CHIP : 0;
+}
 ULONG ReadEClock(struct EClockVal *e) { (void)e; return 0; }
 
 /* cybergraphics (declared in amiga_render.c; VR_HOST_TEST turns the vbcc inline into a plain call) */

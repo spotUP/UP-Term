@@ -12,7 +12,7 @@
 #include <graphics/gfxbase.h>
 #include <graphics/rastport.h>
 
-enum gf_kind { GF_TEXT, GF_RECT, GF_SCROLL, GF_BLT, GF_MOVE, GF_CGXFILL, GF_SETRGB, GF_ALLOC, GF_OTHER };
+enum gf_kind { GF_TEXT, GF_RECT, GF_SCROLL, GF_BLT, GF_MOVE, GF_CGXFILL, GF_SETRGB, GF_ALLOC, GF_TOF, GF_OTHER };
 
 typedef struct gf_call {
     enum gf_kind kind;
@@ -41,6 +41,18 @@ struct Window *gf_window(void);
  * screen that has used them up: a direct colour is then the renderer's VR_INK_RGB case (scratch pens, or
  * FillPixelArray for a fill). Call after gf_open, before vr_init. Off by default. */
 void gf_truecolor(int on);
+/* A planar screen (W-T4): the window's bitmap is `depth` real bitplanes in chip RAM (TypeOfMem says so),
+ * BMF_STANDARD, the window at screen pixel (left, top) on it, one unobscured ClipRect over it, and the font
+ * 8 pixels wide with glyph data (so the renderer's planar fast paths run). RectFill, Text, ScrollRaster and
+ * Draw write the planes under the RastPort's write mask; gf_pixel reads the pen back from them. Call after
+ * gf_open, before vr_init. */
+void gf_planar(int depth, int left, int top);
+/* Another window over part of this one (a second ClipRect): the layer must clip, nothing may write the
+ * planes directly. */
+void gf_cover(int on);
+/* The raster line VBeamPos reports (WaitTOF records GF_TOF and sets it to 0, the top of the next frame). The
+ * View starts the display at line 44, the screen at its top, not interlaced. */
+extern long gf_beam;
 struct TextFont *gf_font(void);
 int gf_pixel(int x, int y);
 /* The glyph at cell (col, row), ' ' for anything that is not a glyph. */

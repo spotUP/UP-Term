@@ -1,8 +1,8 @@
 /* The Amiga renderer's draw wiring on the host (ledger R8): render/amiga_render.c itself, compiled
  * against the NDK's structs and a fake graphics.library (tests/render_host/gfx_fake.c) that logs every
  * call and draws Text, RectFill and ScrollRaster into a pixel canvas. A real vt_term feeds it through
- * the callbacks vtwin.c gives the engine. Not covered: the planar fast path and the DIRECT blit
- * (they need a real bitmap), vtwin's own frame loop.
+ * the callbacks vtwin.c gives the engine. The planar fast paths run on gf_planar's bitplanes (W-T4);
+ * not covered: the DIRECT blit, vtwin's own frame loop.
  *
  * Its own binary (build/render_host, `make test ONLY=render`): the NDK headers and the engine's host
  * build cannot share a translation unit (struct timeval). */
@@ -17,6 +17,9 @@
 
 static vr_render rn;
 static vt_term *term;
+/* open_term_in's screen: planar (gf_planar) of this depth with the window at screen x planar_left, y 10; 0: the
+ * chunky screen */
+static int planar_depth, planar_left;
 
 static void cb_damage(void *u, int x0, int y0, int x1, int y1)
 {
@@ -55,6 +58,8 @@ static void open_term_in(int lines, enum vt_personality pers)
     cb.damage = cb_damage;
     cb.scroll = cb_scroll;
     gf_open(COLS * CW, ROWS * CH, CW, CH, 6);
+    if (planar_depth)
+        gf_planar(planar_depth, planar_left, 10);
     term = vt_new(COLS, ROWS, 100, &cb, &rn);
     vt_set_personality(term, pers);
     vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
@@ -488,6 +493,127 @@ static void slow_and_rapid_blink_keep_their_rates_whatever_the_frame_interval(vo
     }
 }
 
+/* ---- W-T4: a planar (AGA) window's synchronized frame ---- */
+
+/* An effect frame with text: half blocks over the top rows, lower half and full blocks and blanks between them, a
+ * run of plain text (the painter) and a row of a colour a character (the planar cell path where the text is on a
+ * byte boundary) */
+static const char *planar_frame(int phase, const char *extra)
+{
+    static char buf[8300];
+    snprintf(buf, sizeof(buf),
+             "%s\x1b[6;3H\x1b[38;5;%d;48;5;50m\xe2\x96\x84\xe2\x96\x88  \xe2\x96\x84\x1b[44m \xe2\x96\x80"
+             "\x1b[7;1Hplain text %d\x1b[8;1H\x1b[31ma\x1b[32mb\x1b[33mc\x1b[34md\x1b[35me\x1b[m%s",
+             effect_frame(phase), 100 + phase, phase, extra);
+    return buf;
+}
+
+/* the frames drawn in place on a planar screen of `depth` planes, the window at screen x `left`: the reference */
+static void planar_reference(int depth, int left, const char *extra)
+{
+    planar_depth = depth;
+    planar_left = left;
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l");
+    pass(planar_frame(0, ""));
+    pass(planar_frame(7, extra));
+    snapshot();
+    close_term();
+}
+
+/* W-T4 (owner: "AGA is important"; UPDemo's effects swept down an AGA window row by row, 20-54 ms a frame on the
+ * 68060): on a planar screen the frame is composed by the CPU in planes of its own -- nothing reaches the window
+ * while it is drawn, no RectFill -- and reaches the window in one copy, the pixels those of the frame drawn in
+ * place; at any bit phase of the window, 4 and 8 planes. Before W-T4 vr_compose_begin refused planar windows. */
+static void a_planar_synchronized_frame_reaches_the_window_in_one_copy_with_the_in_place_pixels(void)
+{
+    static const int depths[] = { 4, 8 }, lefts[] = { 0, 4, 13 };
+    static int before[COLS * CW * ROWS * CH];
+    int d, l, x, y, composed, same;
+    unsigned long copies;
+    for (d = 0; d < 2; d++)
+        for (l = 0; l < 3; l++) {
+            planar_reference(depths[d], lefts[l], "");
+            open_term_in(0, VT_XTERM);
+            pass("\x1b[?25l");
+            pass(synced(planar_frame(0, "")));
+            for (y = 0; y < ROWS * CH; y++)
+                for (x = 0; x < COLS * CW; x++)
+                    before[y * COLS * CW + x] = gf_pixel(x, y);
+            vr_mask_begin(&rn);
+            vr_cursor_off(&rn);
+            vt_feed(term, (const vt_u8 *)synced(planar_frame(7, "")), (long)strlen(framebuf));
+            gf_clear_log();
+            copies = rn.n_copies;
+            composed = vr_compose_begin(&rn);
+            CHECK(composed);
+            vt_flush(term);
+            same = 1;
+            for (y = 0; y < ROWS * CH; y++)
+                for (x = 0; x < COLS * CW; x++)
+                    if (gf_pixel(x, y) != before[y * COLS * CW + x])
+                        same = 0;
+            CHECK(same);                     /* drawn, not shown */
+            CHECK_INT(gf_count(GF_RECT), 0); /* the CPU drew it, not the blitter */
+            CHECK_INT(gf_count(GF_TEXT), 0);
+            if (composed)
+                vr_compose_end(&rn);
+            vr_cursor_on(&rn);
+            vr_mask_end(&rn);
+            CHECK_INT(rn.n_copies - copies, 1);
+            CHECK(same_as_snapshot());
+            close_term();
+        }
+    planar_depth = 0;
+}
+
+/* The copy goes behind the beam: with the beam on the window's rows it waits for the next frame's top (WaitTOF)
+ * first, so every row is shown new in the same frame; with the beam below them or well above, it copies at once. */
+static void a_planar_frame_is_copied_once_the_beam_has_left_its_rows(void)
+{
+    static const long beam[] = { 44 + 10 + 20, 300, 20 };
+    static const int waits[] = { 1, 0, 0 };
+    int k;
+    planar_depth = 4;
+    planar_left = 0;
+    for (k = 0; k < 3; k++) {
+        open_term_in(0, VT_XTERM);
+        pass("\x1b[?25l");
+        gf_beam = beam[k];
+        gf_clear_log();
+        rn.n_copies = 0;
+        pass(synced(planar_frame(k, "")));
+        CHECK_INT(gf_count(GF_TOF), waits[k]);
+        CHECK_INT(rn.n_copies, 1);
+        close_term();
+    }
+    planar_depth = 0;
+}
+
+/* What only graphics.library draws (box drawing: lines) in a frame, or another window over this one: that frame
+ * is drawn in place, through the RastPort and its layer -- the pixels the same as in place. */
+static void a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place(void)
+{
+    static const char box[] = "\x1b[3;3H\xe2\x94\x80\xe2\x94\x82\x1b[m";
+    int k;
+    for (k = 0; k < 2; k++) {
+        planar_reference(4, 4, k ? "" : box);
+        open_term_in(0, VT_XTERM);
+        pass("\x1b[?25l");
+        pass(synced(planar_frame(0, "")));
+        gf_cover(k);
+        rn.n_copies = 0;
+        gf_clear_log();
+        pass(synced(planar_frame(7, k ? "" : box)));
+        CHECK_INT(rn.n_copies, 0);
+        CHECK(gf_count(GF_RECT) > 0);
+        gf_cover(0);
+        CHECK(same_as_snapshot());
+        close_term();
+    }
+    planar_depth = 0;
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
@@ -500,6 +626,9 @@ int main(void)
     a_synchronized_frame_reaches_the_window_in_one_blit_after_it_is_drawn();
     output_without_a_synchronized_frame_is_drawn_in_place();
     a_synchronized_frame_that_scrolls_shows_what_in_place_drawing_shows();
+    a_planar_synchronized_frame_reaches_the_window_in_one_copy_with_the_in_place_pixels();
+    a_planar_frame_is_copied_once_the_beam_has_left_its_rows();
+    a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }
