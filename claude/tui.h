@@ -131,6 +131,13 @@ typedef struct cl_tui {
     /* slash commands */
     const cl_cmd *cmds;
     int ncmds;
+    /* the menu's filter: the indexes into cmds (room for ncmds in idx) of the commands that match the box's text (len bytes,
+     * from the '/'), in the order the menu shows them; the count. 0 (C:Claude): the commands whose name starts with the text,
+     * at most eight (pi's look: all of them). amiga-pi sets pi-tui's fuzzy filter here */
+    int (*slash_filter)(void *u, const cl_cmd *cmds, int n, const char *text, long len, int *idx);
+    void *slash_u;
+    int *smatch;                /* the matches (tui.c), ncmds of room */
+    int smatch_cap;
     int msel;                   /* the slash menu's selection */
     int mclosed;                /* Esc closed it for this text */
     /* a modal menu */
