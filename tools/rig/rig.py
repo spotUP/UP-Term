@@ -154,14 +154,17 @@ def kit_guard(dest, body):
     return pre + ["If EXISTS %s" % dest] + ["  " + l for l in body] + ["EndIf"] + post
 
 
-def kit_shadow_lines():
-    """The boot lines of KIT_SHADOWS: shadow, or restore when VTC:kit-restore exists."""
+def kit_shadow_lines(upterm):
+    """The boot lines of KIT_SHADOWS: shadow, or restore when VTC:kit-restore exists. UP-Term:
+    is the kit's assign from its User-Startup block, which has run only after go's Wait:
+    upterm=True gives the UP-Term: places, False all the others."""
+    shadows = [x for x in KIT_SHADOWS if x[1].startswith("UP-Term:") == upterm]
     out = ["If NOT EXISTS VTC:kit-orig", "  C:MakeDir >NIL: VTC:kit-orig", "EndIf",
            "If EXISTS VTC:kit-restore"]
-    for _, dest, bak in KIT_SHADOWS:
+    for _, dest, bak in shadows:
         out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, dest), "EndIf"])
     out.append("Else")
-    for src, dest, bak in KIT_SHADOWS:
+    for src, dest, bak in shadows:
         out += kit_guard(dest, ["If EXISTS VTC:%s" % src,
                                 "  If NOT EXISTS VTC:kit-orig/%s" % bak,
                                 "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (dest, bak),
@@ -175,6 +178,7 @@ GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
 %(shadows)s
 C:Wait 15
+%(shadows_up)s
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
@@ -237,7 +241,7 @@ Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent PORT=%(port)d TOKEN=rigtoken
 Echo >>BOOTX:boot.log "amiagent started"
-""" % {"port": paths.AGENT_PORT, "shadows": kit_shadow_lines(), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.AGENT_PORT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
