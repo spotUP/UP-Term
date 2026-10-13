@@ -110,7 +110,7 @@ SESSIONS = ['claude-rom', 'claude-king', 'pi-rom', 'pi-king'] + \
 CHECKS = {'claude': ['start', 'conversation', 'keys', 'history', 'bash', 'screen', 'data'],
           'pi': ['start', 'conversation', 'keys', 'history', 'bash', 'screen', 'data'],
           'nvim': ['start', 'edit', 'screen'],
-          'python': ['start', 'repl', 'ctrlc', 'history', 'screen']}
+          'python': ['start', 'repl', 'ctrlc', 'history', 'afterup', 'screen']}
 
 
 def say(s):
@@ -982,8 +982,14 @@ def python_session(kind, libs, term):
         again = amiga_text('RAM:q.txt')
         res['history'] = ('pass' if again == 'x' else 'fail',
                           'after Up+Return RAM:q.txt=%r; screen: %s' % (again, ' | '.join(recalled.splitlines()[-2:])))
+        # ROM CON: sends Up as the 8-bit CSI 0x9B 'A'; PyREPL (TERM=vtcon) kept that undecodable byte and every
+        # later key stayed behind it (Y2-TERM b): a line typed after the Up must still run
+        typeline("open('RAM:u.txt','w').write('u')", wait=3)
+        after = amiga_text('RAM:u.txt')
+        res['afterup'] = ('pass' if after == 'u' else 'fail', 'a typed line after Up+Return: RAM:u.txt=%r' % after)
+        run('Delete >NIL: RAM:u.txt QUIET')
     except StopIteration:
-        for ck in ('screen', 'repl', 'ctrlc', 'history'):
+        for ck in ('screen', 'repl', 'ctrlc', 'history', 'afterup'):
             res[ck] = ('fail', 'did not start')
     finally:
         step('python leaving')

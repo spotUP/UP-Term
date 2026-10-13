@@ -432,5 +432,36 @@ class LinkedEnvOn32(unittest.TestCase):
             self.assertLess(both[0].index(' env:%s' % name), both[0].index(' envarc:%s' % name), both[0])
 
 
+class TermOnlyInUpTermWindows(unittest.TestCase):
+    """Y2-TERM: TERM=vtcon is vsh's to give, per window (it asks the console). A global TERM
+    that says vtcon -- an earlier kit's README had the user SetEnv it -- makes a ROM CON: window
+    get xterm sequences it cannot show (python3's REPL hangs on Up there, ledger Y1). Install and
+    Uninstall delete such a TERM from ENV: and ENVARC:, and only when it says vtcon."""
+
+    def guarded_delete(self, script, where):
+        lines = [l.strip() for l in script.splitlines() if not l.strip().startswith(';')]
+        for i, l in enumerate(lines):
+            if re.fullmatch(r'(?i)delete\s+>nil:\s+%s:TERM\s+quiet' % where, l):
+                return (re.fullmatch(r'(?i)search\s+>nil:\s+%s:TERM\s+vtcon' % where, lines[i - 2]) is not None
+                        and lines[i - 1].lower() == 'if not warn')
+        return False
+
+    def test_install_removes_an_old_global_term_vtcon(self):
+        for where in ('ENV', 'ENVARC'):
+            self.assertTrue(self.guarded_delete(DOS, where), 'install.dos: no guarded delete of %s:TERM' % where)
+
+    def test_uninstall_removes_an_old_global_term_vtcon(self):
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        for where in ('ENV', 'ENVARC'):
+            self.assertTrue(self.guarded_delete(un, where), 'Uninstall: no guarded delete of %s:TERM' % where)
+
+    def test_the_kit_never_sets_a_global_term(self):
+        for name in ('dist/install.dos', 'dist/Install.installer', 'dist/up-term.conf', 'dist/vshrc'):
+            for l in (ROOT / name).read_text().splitlines():
+                self.assertFalse(re.match(r'(?i)\s*(c:)?setenv\s+(>nil:\s+)?term\s', l), '%s sets TERM globally: %s' % (name, l))
+        readme = (ROOT / "dist/README.txt").read_text()
+        self.assertNotRegex(readme, r'(?im)^\s*SetEnv TERM ')
+
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

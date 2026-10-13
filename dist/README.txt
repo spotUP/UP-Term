@@ -89,9 +89,10 @@ USE
   Terminal type: vsh sets TERM=vtcon and TERMCAP for the programs it runs
   when it is in an XCON: window. From the AmigaDOS Shell in XCON:, or in
   tcsh, set them for that shell:
-                         SetEnv TERM vtcon
-                         SetEnv TERMCAP /ENV/up-term/termcap.vtcon
-   (not globally: a ROM CON: window cannot show vtcon's sequences).
+                         Set TERM vtcon
+                         Set TERMCAP /ENV/up-term/termcap.vtcon
+   (Set, not SetEnv: SetEnv is global, and a ROM CON: window cannot show
+   vtcon's sequences. Install and Uninstall delete a global TERM that says vtcon.)
    TERMINFO (set by Install) is /ENV/up-term/terminfo.
 
 CONFIGURATION (profiles)

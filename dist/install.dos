@@ -225,6 +225,23 @@ If NOT EXISTS ENVARC:up-term-orig
     EndIf
   EndIf
 EndIf
+; An earlier kit's README told the user to SetEnv TERM vtcon for ixemul
+; programs, which put it in every window; a ROM CON: window then gets xterm
+; sequences it cannot show (python3's REPL hangs on Up there, ledger Y1).
+; vsh gives TERM=vtcon to the programs of an UP-Term window itself (it asks
+; the console), so a global TERM that says vtcon goes; another value stays.
+If EXISTS ENV:TERM
+  Search >NIL: ENV:TERM vtcon
+  If NOT WARN
+    Delete >NIL: ENV:TERM QUIET
+  EndIf
+EndIf
+If EXISTS ENVARC:TERM
+  Search >NIL: ENVARC:TERM vtcon
+  If NOT WARN
+    Delete >NIL: ENVARC:TERM QUIET
+  EndIf
+EndIf
 Delete >NIL: ENVARC:terminfo/v/vtcon ENV:terminfo/v/vtcon QUIET
 Delete >NIL: ENVARC:terminfo/v ENVARC:terminfo ENV:terminfo/v ENV:terminfo QUIET
 Delete >NIL: ENVARC:termcap.vtcon ENV:termcap.vtcon QUIET
