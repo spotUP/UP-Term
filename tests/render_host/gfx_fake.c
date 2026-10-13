@@ -31,6 +31,8 @@ static struct TextFont font;
 static struct DrawInfo dinfo;
 static UWORD pens[16];
 static int *canvas, *bgc, cw_px, ch_px, W, H;
+static int truecolor;
+static struct Library cgx_lib;
 
 static gf_call *rec(enum gf_kind k, long a, long b, long c, long d)
 {
@@ -79,7 +81,10 @@ void gf_open(int w, int h, int cw, int ch, int base)
     gfxbase.LibNode.lib_Version = 40;
     GfxBase = &gfxbase;
     gf_n = 0;
+    truecolor = 0;
 }
+
+void gf_truecolor(int on) { truecolor = on; }
 
 void gf_close(void)
 {
@@ -261,7 +266,7 @@ VOID BltTemplate(CONST PLANEPTR src, LONG sx, LONG sm, struct RastPort *rp, LONG
 ULONG GetBitMapAttr(CONST struct BitMap *b, ULONG a)
 {
     (void)b;
-    return a == BMA_DEPTH ? 8 : 0; /* 8 bits, not BMF_STANDARD: the chunky path, no planar tricks */
+    return a == BMA_DEPTH ? (truecolor ? 24 : 8) : 0; /* 8 bits, not BMF_STANDARD: the chunky path, no planar tricks */
 }
 
 VOID WaitBlit(VOID) { }
@@ -298,11 +303,17 @@ ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
 LONG ObtainBestPenA(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, CONST struct TagItem *t)
 {
     (void)cm; (void)t;
+    if (truecolor)
+        return -1; /* every pen taken */
     /* a pen per colour (channels quartered), so a test can tell colours apart by their pen */
     return 8 + (LONG)(((r >> 30) << 4) | ((g >> 30) << 2) | (b >> 30));
 }
 VOID ReleasePen(struct ColorMap *cm, ULONG n) { (void)cm; (void)n; }
-VOID SetRGB32(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b) { (void)vp; (void)n; (void)r; (void)g; (void)b; }
+VOID SetRGB32(struct ViewPort *vp, ULONG n, ULONG r, ULONG g, ULONG b)
+{
+    (void)vp; (void)r; (void)g; (void)b;
+    rec(GF_SETRGB, (long)n, 0, 0, 0);
+}
 VOID GetRGB32(CONST struct ColorMap *cm, ULONG first, ULONG n, ULONG *t)
 {
     ULONG i;
@@ -322,7 +333,11 @@ struct DrawInfo *GetScreenDrawInfo(struct Screen *s) { (void)s; return &dinfo; }
 VOID FreeScreenDrawInfo(struct Screen *s, struct DrawInfo *d) { (void)s; (void)d; }
 VOID LockLayer(LONG dummy, struct Layer *l) { (void)dummy; (void)l; }
 VOID UnlockLayer(struct Layer *l) { (void)l; }
-struct Library *OpenLibrary(CONST_STRPTR n, ULONG v) { (void)n; (void)v; return 0; }
+struct Library *OpenLibrary(CONST_STRPTR n, ULONG v)
+{
+    (void)v;
+    return truecolor && !strcmp((const char *)n, "cybergraphics.library") ? &cgx_lib : 0;
+}
 VOID CloseLibrary(struct Library *l) { (void)l; }
 APTR AllocVec(ULONG n, ULONG req) { (void)req; return calloc(1, n ? n : 1); }
 VOID FreeVec(APTR p) { free(p); }
@@ -339,7 +354,10 @@ LONG vr_cgx_write_lut(struct Library *l, APTR src, UWORD sx, UWORD sy, UWORD smo
 }
 ULONG vr_cgx_fill(struct Library *l, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb)
 {
-    (void)l; (void)rp; (void)x; (void)y; (void)w; (void)h; (void)argb;
+    (void)l; (void)rp;
+    rec(GF_CGXFILL, x, y, w, h);
+    paint(x, y, x + w - 1, y + h - 1, GF_CGX | (int)(argb & 0xFFFFFF), 0);
+    paint_bg(x, y, x + w - 1, y + h - 1, GF_CGX | (int)(argb & 0xFFFFFF));
     return 0;
 }
 

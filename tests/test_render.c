@@ -211,11 +211,51 @@ static void direct_colour_background_in_the_amiga_personality_is_drawn_in_its_co
     CHECK_INT(bg_pen_after(VT_AMIGA, "\x1b[48;5;9mhi"), 9);
 }
 
+/* ---- S3: the fill paths (S2's FillPixelArray, and the cells joined into one fill) ---- */
+
+#define UPPER "\xe2\x96\x80"
+
+/* S2: a direct colour on a true-colour screen with no pen to spare is filled by FillPixelArray (cybergraphics
+ * LVO -150), not by a scratch pen reloaded with SetRGB32 (84 us a call on the 68060: 70-80 % of UPDemo's
+ * colour scenes). The fake's OpenLibrary used to return 0, so this path was never reached. */
+static void direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray(void)
+{
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(1);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vr_redraw(&rn);
+    CHECK(rn.cgx != 0);
+    gf_clear_log();
+    pass("\x1b[48;2;200;100;50m   \x1b[48;2;1;2;3m  ");
+    CHECK(gf_count(GF_CGXFILL) >= 2);
+    CHECK_INT(gf_count(GF_SETRGB), 0);
+    CHECK_INT(gf_pixel(0, 0), GF_CGX | 0xC86432);
+    CHECK_INT(gf_pixel(3 * CW - 1, CH - 1), GF_CGX | 0xC86432);
+    CHECK_INT(gf_pixel(3 * CW, 0), GF_CGX | 0x010203);
+    CHECK_INT(gf_pixel(5 * CW, 0) & GF_CGX, 0); /* the rest of the row is not that colour */
+    /* a half block in two direct colours: both parts */
+    gf_clear_log();
+    pass("\x1b[2;1H\x1b[38;2;9;8;7;48;2;70;80;90m" UPPER);
+    CHECK_INT(gf_count(GF_SETRGB), 0);
+    CHECK_INT(gf_pixel(0, CH), GF_CGX | 0x090807);
+    CHECK_INT(gf_pixel(0, CH + CH - 1), GF_CGX | 0x46505A);
+    close_term();
+    /* and on a palette screen it is not used */
+    open_term_in(0, VT_XTERM);
+    gf_clear_log();
+    pass("\x1b[48;2;200;100;50m   ");
+    CHECK_INT(gf_count(GF_CGXFILL), 0);
+    CHECK(gf_count(GF_RECT) > 0);
+    close_term();
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
+    direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }
