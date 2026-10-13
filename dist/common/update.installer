@@ -3,7 +3,8 @@
 ; record part of the last install) and that install's options
 ; (ENVARC:up-term/opts) there, upupdate (Files/upupdate, no ixemul) compares
 ; the installed manifest with this kit's and writes what changed into ENV:
-; (UPTUPD<part>: the KB of each part to run, UPTUPDKB, UPTVEROLD/NEW) and
+; (UPTUPD<part>: the KB of each part to run, UPTUPDKB, UPTVEROLD/NEW, UPTHANDED:
+; the old kit's paths an add-on archive installs now) and
 ; T:UPTUPD-<part>, a copy part's script. Update then asks nothing: the
 ; options come back from the record, P_STEP and P_COPY run only the parts
 ; upupdate named, and the bar counts only their KB.
@@ -14,6 +15,7 @@
              (exists (tackon #files "upupdate")))
         (
             (run "Delete >NIL: ENV:UPTUPD#? ENV:UPTVER#? T:UPTUPD-#? QUIET")
+            (run "Delete >NIL: ENV:UPTHANDED QUIET")
             (if (= 0 (run (cat "\"" (tackon #files "upupdate") "\" @RECORD@MANIFEST \""
                                 (tackon #files "MANIFEST") "\" \"" (pathonly @icon) "\"")))
                 (set #update
