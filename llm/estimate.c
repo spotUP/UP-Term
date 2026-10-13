@@ -305,9 +305,16 @@ long llm_think_budget_of(int level)
     return level <= LT_MINIMAL ? 1024 : level == LT_LOW ? 2048 : level == LT_MEDIUM ? 8192 : 16384;
 }
 
-void llm_think_budget(const llm_model *m, long est, long base, int lv, long *maxt, long *budget)
+long llm_ctx_custom_budget(const llm_ctx *x, int lv)
 {
-    long mm = m->max_tokens > 0 ? m->max_tokens : 8192, b = llm_think_budget_of(lv), m1, room;
+    if (lv > LT_HIGH)
+        lv = LT_HIGH;
+    return lv >= LT_MINIMAL && (x->think_budget_set & (1u << lv)) ? x->think_budget[lv] : -1;
+}
+
+void llm_think_budget(const llm_model *m, long est, long base, int lv, long custom, long *maxt, long *budget)
+{
+    long mm = m->max_tokens > 0 ? m->max_tokens : 8192, b = custom >= 0 ? custom : llm_think_budget_of(lv), m1, room;
     /* adjustMaxTokensForThinking, clampMaxTokensToContext again, then min(budget, maxTokens - 1024) */
     m1 = base + b < mm ? base + b : mm;
     if (m1 <= b)

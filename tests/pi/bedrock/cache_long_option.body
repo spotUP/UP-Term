@@ -1,0 +1,1 @@
+{"messages":[{"role":"user","content":[{"text":"hello"},{"cachePoint":{"type":"default","ttl":"1h"}}]}],"system":[{"text":"You are amiga-pi, a coding agent."},{"cachePoint":{"type":"default","ttl":"1h"}}],"inferenceConfig":{"maxTokens":128000}}

@@ -1,0 +1,9 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"resp_cut","object":"response","created_at":1760100000,"status":"in_progress","model":"gpt-5.5-2026-01-01","output":[]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":1,"output_index":0,"item":{"id":"fc_c1","type":"function_call","status":"in_progress","arguments":"","call_id":"call_c1","name":"read"}}
+
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","sequence_number":2,"output_index":0,"item_id":"fc_c1","delta":"{\"path\":\"S:Star"}
+

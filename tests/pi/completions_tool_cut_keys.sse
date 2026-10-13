@@ -1,0 +1,2 @@
+data: {"id":"chatcmpl-cut","object":"chat.completion.chunk","created":1760100000,"model":"qwen2.5-coder:7b","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"read","arguments":"{\"path\":\"S:A\",\"offset\":12,\"lim"},"id":"call_c3","type":"function"}]},"finish_reason":null}]}
+

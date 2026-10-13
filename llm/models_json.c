@@ -117,6 +117,8 @@ static int rd_compat(ctx *c, jv cv, llm_model *m)
         m->compat.eager_tools = json_type(v) == J_TRUE;
     if (json_get(cv, "supportsCacheControlOnTools", &v))
         m->compat.cache_tools = json_type(v) == J_TRUE;
+    if (json_get(cv, "supportsTemperature", &v))
+        m->compat.temperature = json_type(v) == J_TRUE;
     if (json_get(cv, "allowEmptySignature", &v))
         m->compat.empty_signature = json_type(v) == J_TRUE;
     if (json_get(cv, "forceAdaptiveThinking", &v))

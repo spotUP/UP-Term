@@ -845,6 +845,54 @@ typedef struct api_spec {
     const char *line, *auth;
 } api_spec;
 
+/* pi's SimpleStreamOptions of a case (tools/gen_pi_*.mjs): temperature, toolChoice (a string, or {type:"tool", name} as
+ * "tool:<name>"), thinkingBudgets, cacheRetention */
+static void case_options(llm_ctx *cxp, jv c)
+{
+#define cx (*cxp)
+    static char tc[80], cr[16];
+    jv t, tb;
+    if (json_get(c, "cacheRetention", &t)) {
+        json_str(t, cr, sizeof(cr));
+        cx.cache_retention = cr;
+    }
+    /* pi's SimpleStreamOptions of the case: temperature, toolChoice, thinkingBudgets (tools/gen_pi_google.mjs) */
+    if (json_get(c, "temperature", &t)) {
+        /* the JSON number to millionths: digits of the integer part and up to six of the fraction */
+        char num[40];
+        const char *q;
+        long ip = 0, fp = 0, sc = 100000L;
+        memcpy(num, t.p, t.n < 39 ? (size_t)t.n : 39);
+        num[t.n < 39 ? t.n : 39] = 0;
+        for (q = num; *q >= '0' && *q <= '9'; q++)
+            ip = ip * 10 + (*q - '0');
+        if (*q == '.')
+            for (q++; *q >= '0' && *q <= '9' && sc; q++, sc /= 10)
+                fp += (*q - '0') * sc;
+        cx.has_temperature = 1;
+        cx.temperature_micro = ip * 1000000L + fp;
+    }
+    if (json_get(c, "toolChoice", &t)) {
+        jv nm;
+        if (json_type(t) == J_OBJ && json_get(t, "name", &nm)) {
+            strcpy(tc, "tool:");
+            json_str(nm, tc + 5, sizeof(tc) - 5);
+        } else
+            json_str(t, tc, sizeof(tc));
+        cx.tool_choice = tc;
+    }
+    if (json_get(c, "thinkingBudgets", &tb)) {
+        static const char *const lv_names[] = { "off", "minimal", "low", "medium", "high" };
+        int li;
+        for (li = LT_MINIMAL; li <= LT_HIGH; li++)
+            if (json_get(tb, lv_names[li], &t)) {
+                cx.think_budget_set |= 1u << li;
+                cx.think_budget[li] = json_long(t, 0);
+            }
+    }
+#undef cx
+}
+
 static void run_api_cases(const api_spec *sp)
 {
     char *cases_txt, name[64], path[96];
@@ -1019,39 +1067,7 @@ static void run_api_cases(const api_spec *sp)
         cx.tools_n = tools_n;
         cx.thinking = lv;
         cx.session_id = sid[0] ? sid : 0;
-        {
-            /* pi's SimpleStreamOptions of the case: temperature, toolChoice, thinkingBudgets (tools/gen_pi_google.mjs) */
-            static char tc[16];
-            jv t, tb;
-            if (json_get(c, "temperature", &t)) {
-                /* the JSON number to millionths: digits of the integer part and up to six of the fraction */
-                char num[40];
-                const char *q;
-                long ip = 0, fp = 0, sc = 100000L;
-                memcpy(num, t.p, t.n < 39 ? (size_t)t.n : 39);
-                num[t.n < 39 ? t.n : 39] = 0;
-                for (q = num; *q >= '0' && *q <= '9'; q++)
-                    ip = ip * 10 + (*q - '0');
-                if (*q == '.')
-                    for (q++; *q >= '0' && *q <= '9' && sc; q++, sc /= 10)
-                        fp += (*q - '0') * sc;
-                cx.has_temperature = 1;
-                cx.temperature_micro = ip * 1000000L + fp;
-            }
-            if (json_get(c, "toolChoice", &t)) {
-                json_str(t, tc, sizeof(tc));
-                cx.tool_choice = tc;
-            }
-            if (json_get(c, "thinkingBudgets", &tb)) {
-                static const char *const lv_names[] = { "off", "minimal", "low", "medium", "high" };
-                int li;
-                for (li = LT_MINIMAL; li <= LT_HIGH; li++)
-                    if (json_get(tb, lv_names[li], &t)) {
-                        cx.think_budget_set |= 1u << li;
-                        cx.think_budget[li] = json_long(t, 0);
-                    }
-            }
-        }
+        case_options(&cx, c);
         ps_reset();
         ps_pool_up(LLM_POOL);
         strcpy(file, "../pi/");
@@ -1232,7 +1248,7 @@ static void test_responses(void)
     api_spec sp;
     sp.dir = "responses";
     sp.feeds = &llm_feeds_responses;
-    sp.min_cases = 31;
+    sp.min_cases = 35;
     sp.ext = 0;
     sp.line = "POST /v1/responses HTTP/1.1\r\nHost: api.openai.com\r\n";
     sp.auth = "Authorization: Bearer sk-test-not-real\r\n";
@@ -1502,7 +1518,7 @@ static void test_bedrock(void)
     api_spec sp;
     sp.dir = "bedrock";
     sp.feeds = &llm_feeds_bedrock;
-    sp.min_cases = 96;
+    sp.min_cases = 127;
     sp.ext = 2;
     sp.line = 0;
     sp.auth = 0;
@@ -1777,7 +1793,7 @@ static void test_anthropic_pi(void)
 {
     char *cases_txt, name[64];
     long cn, nreq0, feeds0 = llm_feeds_anthropic;
-    jv root, cs, c, v, ms, mv;
+    jv root, cs, c, v, ms, mv, tb;
     jit it;
     llm_reg r;
     int ncase = 0, i, mid_cases = 0;
@@ -1823,6 +1839,8 @@ static void test_anthropic_pi(void)
             /* a models.json model with only forceAdaptiveThinking: the managed-effort flags are unset */
             cmod = *md;
             cmod.compat.mid_effort = cmod.compat.mid_system = cmod.compat.mid_tools = cmod.compat.strict_tools = LC_UNSET;
+            if (json_get(v, "supportsTemperature", &tb))
+                cmod.compat.temperature = json_type(tb) == J_TRUE;
             md = &cmod;
         }
         json_get(c, "level", &v);
@@ -1873,6 +1891,7 @@ static void test_anthropic_pi(void)
         cx.tools = tools;
         cx.tools_n = tools_n;
         cx.thinking = lv;
+        case_options(&cx, c);
         ps_reset();
         ps_pool_up(LLM_POOL);
         strcpy(file, "../pi/anthropic/");
@@ -1945,7 +1964,7 @@ static void test_anthropic_pi(void)
                 free(msgs[i]);
         ncase++;
     }
-    CHECK(ncase >= 24);
+    CHECK(ncase >= 62);
     CHECK(mid_cases >= 8);                          /* the managed-effort model's cases ran */
     CHECK(llm_feeds_anthropic > feeds0);            /* the backend ran */
     for (i = 0; i < RC_MAX; i++) {
@@ -2203,7 +2222,7 @@ static void test_completions(void)
     long cn;
     jv root, cs, c, v, mv, ms, mc;
     jit it;
-    int ncase = 0, strict_cases = 0;
+    int ncase = 0, strict_cases = 0, digest_cases = 0;
     cases_txt = claude_load("../pi/completions/cases.json", &cn);
     CHECK(cases_txt != 0);
     if (!cases_txt)
@@ -2279,6 +2298,46 @@ static void test_completions(void)
         if (strstr(w.p, "\"strict\":true"))
             strict_cases++;
         free(want);
+        if (json_get(c, "digest", &v)) {
+            /* the stream pi decoded (gen_pi_completions.mjs "digest"): what the accumulator makes of the same bytes */
+            llm_acc a;
+            llm_sink k;
+            llm_req q;
+            jw msg, dig;
+            char *wd;
+            long dn;
+            ps_reset();
+            ps_pool_up(LLM_POOL);
+            json_get(c, "sse", &v);
+            json_str(v, file, sizeof(file));
+            memmove(file + 6, file, strlen(file) + 1);
+            memcpy(file, "../pi/", 6);
+            strcat(file, ".sse");
+            ps_sse(file, 0);
+            llm_acc_init(&a, md.api, md.provider);
+            k = llm_acc_sink(&a);
+            q = req_of(&md, &cx, &k, "sk-test-not-real");
+            q.retries = -1;
+            llm_request(&q);
+            jw_init(&msg);
+            jw_init(&dig);
+            llm_acc_message(&a, ts_of(1760100000L, 0), &msg);
+            resp_digest(msg.p, &dig, 0);
+            strcpy(file, "../pi/completions/");
+            strcat(file, name);
+            strcat(file, ".digest");
+            wd = claude_load(file, &dn);
+            CHECK(wd != 0);
+            if (wd && strcmp(wd, dig.p)) {
+                printf("    case %s digest\n      got  %s\n      want %s\n", name, dig.p, wd);
+                CHECK(0);
+            }
+            free(wd);
+            jw_free(&dig);
+            jw_free(&msg);
+            llm_acc_free(&a);
+            digest_cases++;
+        }
         jw_free(&w);
         llm_view_free(&vw);
         free(tools);
@@ -2286,8 +2345,9 @@ static void test_completions(void)
             free(msgs[--nm]);
         ncase++;
     }
-    CHECK(ncase >= 8);
+    CHECK(ncase >= 12);
     CHECK(strict_cases >= 2);
+    CHECK(digest_cases >= 4);
     free(cases_txt);
 }
 

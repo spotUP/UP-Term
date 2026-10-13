@@ -6,11 +6,12 @@
 //   <name>.headers  the anthropic-beta header pi sent, when it sent one
 // A message {"$reply": "<case>"} in a case's messages is replaced by the assistant message pi made for that case. Unaltered models: the compat
 // flags (supportsMidConvo*) are pi's own.
-//   node tools/gen_pi_anthropic.mjs        (PI_NPM: the pi install, default the Homebrew one)
+//   PI_NPM=<dir holding node_modules/@earendil-works/pi-ai> node tools/gen_pi_anthropic.mjs   (the pinned amiga-pi/vendor/pi-1.1.0)
+// A case may carry pi's SimpleStreamOptions "temperature", "toolChoice" and "thinkingBudgets".
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-const npm = process.env.PI_NPM || "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent";
+const npm = process.env.PI_NPM || join(dirname(fileURLToPath(import.meta.url)), "..", "..", "amiga-pi", "vendor", "pi-1.1.0");
 const dist = join(npm, "node_modules/@earendil-works/pi-ai/dist");
 const imp = (p) => import(pathToFileURL(join(dist, p)).href);
 const { MODELS } = await imp("models.generated.js");
@@ -48,7 +49,9 @@ for (const c of cases) {
 	};
 	const context = normalizeContext({ systemPrompt: c.system, messages, tools: c.tools });
 	const level = clampThinkingLevel(model, c.level);
-	const s = streamSimple(model, context, { apiKey: "sk-test-not-real", fetch, reasoning: level === "off" ? undefined : level });
+	const s = streamSimple(model, context, { apiKey: "sk-test-not-real", fetch, reasoning: level === "off" ? undefined : level,
+		...(c.temperature !== undefined && { temperature: c.temperature }), ...(c.toolChoice && { toolChoice: c.toolChoice }),
+		...(c.thinkingBudgets && { thinkingBudgets: c.thinkingBudgets }) });
 	let final;
 	for await (const ev of s) if (ev.type === "done" || ev.type === "error") final = ev.type === "done" ? ev.message : ev.error;
 	replies[c.name] = final;

@@ -41,6 +41,7 @@ typedef struct llm_compat {
     int eager_tools;            /* supportsEagerToolInputStreaming (default on) */
     int cache_tools;            /* supportsCacheControlOnTools (default on) */
     int empty_signature;        /* allowEmptySignature: an unsigned thinking block keeps an empty signature */
+    int temperature;            /* supportsTemperature (default on): the request may carry a temperature */
     llm_fallback fb[LLM_FALLBACKS];     /* allowedFallbackModels: the request names them ("fallbacks", the server-side-fallback beta) */
     int nfb;
 } llm_compat;
@@ -60,6 +61,8 @@ typedef struct llm_aws {
     char cfg_region[48];        /* AWS_REGION / AWS_DEFAULT_REGION as set, "" none (GovCloud's rule reads it) */
     char access[130], secret[130];  /* AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY; "" none */
     char token[4100];           /* AWS_SESSION_TOKEN, "" none */
+    int force_cache;            /* AWS_BEDROCK_FORCE_CACHE=1: cache points for a model whose id and name do not say Claude */
+    int cache_long;             /* PI_CACHE_RETENTION=long: the cache points carry a one hour ttl */
     int skip_auth;              /* AWS_BEDROCK_SKIP_AUTH=1: sign with dummy keys (a proxy that checks nothing) */
 } llm_aws;
 
@@ -115,13 +118,18 @@ typedef struct llm_ctx {
     long est_tokens;            /* estimateContextTokens of the transcript the request answers (llm_estimate_context), 0 when unknown */
     int thinking;               /* the thinking level, LT_*; clamped to the model's here (llm_think_clamp) */
     const char *session_id;     /* the session's id (pi's sessionId: openai-responses prompt_cache_key and headers), 0 none */
-    /* pi's SimpleStreamOptions that the coding agent or an SDK user passes (google-generative-ai only so far) */
-    const char *tool_choice;    /* "auto" | "none" | "any", 0 none (google: toolConfig) */
+    /* pi's SimpleStreamOptions that the coding agent or an SDK user passes (google-generative-ai, anthropic-messages,
+     * bedrock-converse-stream) */
+    const char *tool_choice;    /* "auto" | "none" | "any" | "tool:<name>", 0 none (google: toolConfig; anthropic: tool_choice; bedrock: toolConfig.toolChoice) */
     int has_temperature;
-    long temperature_micro;     /* temperature * 1000000 (google: generationConfig.temperature) */
+    long temperature_micro;     /* temperature * 1000000 (google: generationConfig.temperature; anthropic: temperature; bedrock: inferenceConfig.temperature) */
     unsigned think_budget_set;  /* bit LT_x: a custom thinking budget for that level (settings.json thinkingBudgets) */
-    long think_budget[8];       /* tokens, by LT_* (google: thinkingConfig.thinkingBudget) */
+    const char *cache_retention;    /* "none" | "short" | "long", 0: PI_CACHE_RETENTION, else short (bedrock: cachePoint ttl) */
+    long think_budget[8];       /* tokens, by LT_* (google: thinkingConfig.thinkingBudget; anthropic, bedrock: the budget before adjustMaxTokensForThinking) */
 } llm_ctx;
+
+/* the custom thinking budget of a level (xhigh and max count as high, simple-options.ts clampReasoning), -1 none */
+long llm_ctx_custom_budget(const llm_ctx *x, int lv);
 
 typedef struct llm_backend {
     const char *api;

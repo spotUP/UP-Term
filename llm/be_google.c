@@ -195,33 +195,6 @@ static long budget(const llm_ctx *x, const char *id, int lv)
     return -1;
 }
 
-/* a temperature (millionths) as JavaScript writes the number: 0.7, 1, 0 */
-static void temp_text(jw *w, long micro)
-{
-    char b[24];
-    int n = 0;
-    long ip, fp;
-    if (micro < 0) {
-        jw_rawz(w, "-");
-        micro = -micro;
-    }
-    ip = micro / 1000000L;
-    fp = micro % 1000000L;
-    jw_long(w, ip);
-    if (fp) {
-        long d;
-        b[n++] = '.';
-        for (d = 100000L; d > 0; d /= 10) {
-            b[n++] = (char)('0' + fp / d);
-            fp %= d;
-        }
-        while (b[n - 1] == '0')
-            n--;
-        b[n] = 0;
-        jw_rawz(w, b);
-    }
-}
-
 /* ---- the body: contents ---- */
 
 /* a thought signature is kept when it is valid base64 (TYPE_BYTES) and the message came from this provider and model */
@@ -612,7 +585,7 @@ static int g_body(const llm_ctx *x, jw *w)
     jw_rawz(w, ",\"generationConfig\":{");
     if (x->has_temperature) {
         jw_rawz(w, "\"temperature\":");
-        temp_text(w, x->temperature_micro);
+        llm_temp_text(w, x->temperature_micro);
     }
     if (maxt > 0) {
         jw_rawz(w, x->has_temperature ? ",\"maxOutputTokens\":" : "\"maxOutputTokens\":");

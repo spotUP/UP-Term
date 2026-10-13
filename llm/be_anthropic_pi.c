@@ -406,7 +406,7 @@ static int think_mode(const llm_ctx *c, long *maxt, long *budget)
         return m->thinking_map[LT_OFF].kind == LTM_NULL ? 0 : 3;
     if (m->adaptive)
         return 2;
-    llm_think_budget(m, c->est_tokens, base, lv, maxt, budget);
+    llm_think_budget(m, c->est_tokens, base, lv, llm_ctx_custom_budget(c, lv), maxt, budget);
     return 1;
 }
 
@@ -716,6 +716,13 @@ static int a_body(const llm_ctx *c, jw *w)
         jw_rawz(w, AP_CACHE "}]");
     if (w->p)
         w->p[w->n] = 0;
+    /* buildParams: a temperature goes unless thinking is on, the model manages its own effort, or its compat refuses it
+     * (anthropic-messages.ts:1196-1202) */
+    if (c->has_temperature && llm_think_clamp(c->model, c->thinking) == LT_OFF && !a.mid_effort &&
+        flag(c->model->compat.temperature, 1)) {
+        jw_rawz(w, ",\"temperature\":");
+        llm_temp_text(w, c->temperature_micro);
+    }
     if (a.native_tools) {
         jw_rawz(w, ",\"tools\":[");
         if (w_tools(w, a.tx.itl, a.tx.nitl, a.eager, a.cache_tools, a.strict))
@@ -742,6 +749,16 @@ static int a_body(const llm_ctx *c, jw *w)
         jw_raw(w, "}", 1);
     } else if (tm == 3)
         jw_rawz(w, ",\"thinking\":{\"type\":\"disabled\"}");
+    if (c->tool_choice && *c->tool_choice) {
+        /* a string is {type}, a named tool ("tool:<name>") is {type:"tool", name} (anthropic-messages.ts:1273-1278) */
+        jw_rawz(w, ",\"tool_choice\":{\"type\":");
+        if (!strncmp(c->tool_choice, "tool:", 5)) {
+            jw_rawz(w, "\"tool\",\"name\":");
+            jw_strz(w, c->tool_choice + 5);
+        } else
+            jw_strz(w, c->tool_choice);
+        jw_raw(w, "}", 1);
+    }
     if (c->model->compat.nfb > 0) {     /* last (buildParams): the models the server may fall back to */
         jw_rawz(w, ",\"fallbacks\":[");
         for (i = 0; i < c->model->compat.nfb; i++) {
