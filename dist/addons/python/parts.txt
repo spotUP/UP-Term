@@ -1,0 +1,13 @@
+# Which part of Files/install.dos installs each file of this archive (see dist/parts.txt).
+-               Install
+-               Install.info
+-               Uninstall
+-               Uninstall.info
+-               README.txt
+-               LICENSES.txt
+-               Files/install.dos
+-               Files/upupdate
+record          Files/VERSIONS
+ixemul          Files/libs/ixemul.library
+ixemul          Files/libs/ixnet.library
+copy-python     Files/python3

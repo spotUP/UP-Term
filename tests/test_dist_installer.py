@@ -158,7 +158,8 @@ class OneListOfParts(unittest.TestCase):
             self.assertEqual(DOS.count('{%s}' % n), 1, '{%s} is read once, into $o_%s' % (n, n.lower()))
         self.assertEqual(sorted(re.findall(r'\{(\w+)\}', DOS.replace('{STEP}', '').replace('{DIR}', ''))),
                          sorted(names), 'a {KEYWORD} used outside the prelude')
-        opts = INSTALLER[INSTALLER.index('(procedure P_OPTIONS'):INSTALLER.index('(procedure P_OPTIONS_END')]
+        opts = INSTALLER[INSTALLER.index('(procedure P_OPTIONS_LIST'):INSTALLER.index('(procedure P_OPTIONS_LIST') + 1200]
+        opts = opts[:opts.index('(P_OPT))\n') + 9]
         for n in set(names) - {'CONSOLE', 'NOCONSOLE', 'DEVICE', 'NODEVICE'}:
             self.assertIn('"%s"' % n, opts, 'the Installer never writes UPTOPT%s' % n)
         self.assertIn('(set #name #con #val #con)', opts)
@@ -168,62 +169,90 @@ class OneListOfParts(unittest.TestCase):
         self.assertRegex(INSTALLER, r'\(P_OPTIONS_END\)\n\s+\(abort', 'a failed part removes them too')
 
 
-class ClaudeRemoteFile(unittest.TestCase):
-    """CLAUDE-REMOTE-KEPT: the Installer's server page starts with the host and
-    port of an existing ENVARC:Claude/remote, and install.dos writes the chosen
-    value (a kept file ignored the owner's answer)."""
-    FILE = ("; Claude Code on another computer: host and port. With no API key,\n"
-            "; plain Claude connects there (uptelnet). Delete this file to stop.\n"
-            "192.168.0.198 2323\n")
+class TheBaseNamesNoAddOn(unittest.TestCase):
+    """KIT-SPLIT: Neovim, Python, Claude and amiga-pi are archives of their own; the base's scripts, parts
+    and keywords name none of the paths dist/packages.txt hands over, and the Installer has no page for them."""
+    import mkmanifest
+    HANDED = mkmanifest.handed_paths('base')
 
-    def test_page_default_is_the_existing_files_host_line(self):
-        self.assertIn('(default #oldremote)', INSTALLER)
-        self.assertNotIn('(default "192.168.0.198 2323")', INSTALLER)
-        self.assertIn('(set #oldremote "")', INSTALLER)
-        self.assertNotIn('192.168.', INSTALLER, 'no private LAN address as a default')
-        self.assertIn('(set #remotetext #remote)', INSTALLER)
-        # one parser: C:Claude's own (cli_remote_parse, tested in test_claude_cli.c); a Search
-        # PATTERN matches anywhere in a line, so it listed the comment lines too
-        self.assertNotIn('Search ENVARC:Claude/remote', INSTALLER)
-        self.assertIn('REMOTE-ADDRESS >ENV:UPTermRemote', INSTALLER)
-        self.assertIn('Stack 32768', INSTALLER, 'Claude refuses a stack under 16000')
-        # the read only happens when the file exists, before the page asks
-        self.assertLess(INSTALLER.index('(exists "ENVARC:Claude/remote")'), INSTALLER.index('(set #remote\n'))
+    def test_the_base_install_dos_never_copies_a_handed_path(self):
+        self.assertTrue(self.HANDED)
+        for path in self.HANDED:
+            name = path.split('/', 1)[1]            # Files/nvim -> nvim
+            self.assertNotRegex(DOS, r'(?m)^\s*(Copy|Protect)\b[^;\n]*\b%s\b' % re.escape(name), path)
+            self.assertNotIn('copy-' + name.lower(), [n for n, _ in dos_parts()], path)
 
-    def test_install_writes_the_chosen_remote_even_when_the_file_exists(self):
-        a = DOS.index('If NOT "$optremote" EQ ""')
-        blk = DOS[a:DOS.index('If NOT "{STEP}" EQ ""', a)]
-        self.assertNotIn('If NOT EXISTS ENVARC:Claude/remote', blk, 'an existing file must not block the write')
-        want = ['Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"',
-                'Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."',
-                'Echo >>ENVARC:Claude/remote "$optremote"']
-        lines = [l.strip() for l in blk.splitlines()]
-        for w in want:
-            self.assertIn(w, lines)
-        self.assertEqual([lines.index(w) for w in want], sorted(lines.index(w) for w in want))
-        self.assertIn('Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET', lines)
+    def test_the_keywords_of_the_moved_parts_are_gone(self):
+        keys = re.match(r'\.KEY (\S+)', DOS).group(1)
+        for kw in ('PYTHON', 'NVIM', 'REMOTE'):
+            self.assertNotIn(kw, keys)
+            self.assertNotIn('opt' + kw.lower(), DOS)
+            self.assertNotIn('"%s"' % kw, INSTALLER)
 
+    def test_the_installer_has_no_python_neovim_or_server_page(self):
+        for word in ('#python', '#nvim', '#remote', 'ENVARC:Claude', 'UPTermRemote'):
+            self.assertNotIn(word, INSTALLER, word)
 
-class AmigaPiInstall(unittest.TestCase):
-    """C:amiga-pi is installed as C:Claude is (same part, same drawer rule): the binary
-    to C:, ENVARC:amiga-pi made when missing, and no settings.json, models.json or
-    auth.json written by Install; Uninstall removes the binary and leaves the drawer."""
-    def test_amiga_pi_follows_claude_in_the_tools_part(self):
-        self.assertIn("Copy amiga-pi C:amiga-pi CLONE QUIET\nIf NOT EXISTS ENVARC:amiga-pi\n  MakeDir ENVARC:amiga-pi\nEndIf", DOS)
-        self.assertLess(DOS.index("Copy Claude C:Claude"), DOS.index("Copy amiga-pi C:amiga-pi"))
-        self.assertLess(DOS.index("Copy amiga-pi C:amiga-pi"), DOS.index("Lab copy-python"))
+    def test_the_welcome_and_the_drawer_prompt_name_the_add_ons_as_archives(self):
+        self.assertIn('Neovim, Python, Claude and amiga-pi are archives of', INSTALLER)
+        self.assertIn('the files of the add-on archives', INSTALLER)
 
-    def test_install_never_writes_a_file_of_the_users_amiga_pi_drawer(self):
-        for l in DOS.splitlines():
-            self.assertFalse(re.search(r"(>|Copy .* )ENVARC:amiga-pi/", l), l)
-
-    def test_uninstall_removes_the_binary_not_the_drawer(self):
+    def test_uninstall_leaves_the_add_ons_binaries_to_their_own_uninstall(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
-        self.assertIn(" C:amiga-pi ", un)
-        self.assertNotIn("ENVARC:amiga-pi", un)
+        delete = [l for l in un.splitlines() if l.startswith('Delete >NIL: L:vtcon-handler')][0]
+        for name in ('C:Claude', 'C:ClaudeCode', 'C:amiga-pi'):
+            self.assertNotIn(name + ' ', delete + ' ')
+        # the add-ons' own Uninstall runs first, from their records, then the single kit's leftovers
+        self.assertLess(un.index('Execute UP-Term:pkg/UP-Term-nvim/Uninstall'), un.index('Delete >NIL: L:vtcon-handler'))
+        self.assertLess(un.index('If EXISTS UP-Term:pkg/legacy'), un.index('Delete >NIL: L:vtcon-handler'))
+        # only what needs the base is run from its record; the stand-alone ones (Claude, amiga-pi, Python3,
+        # record in ENVARC:uppkg) are left alone, and the single kit's leftovers go unless they took over
+        self.assertNotIn('Execute ENVARC:uppkg', un)
+        self.assertNotIn('Execute UP-Term:pkg/UP-Term-Claude', un)
+        legacy = un[un.index('If EXISTS UP-Term:pkg/legacy'):]
+        self.assertIn('If NOT EXISTS ENVARC:uppkg/Claude', legacy.split('Set unst')[0])
+        self.assertIn('If NOT EXISTS ENVARC:uppkg/amiga-pi', legacy.split('Set unst')[0])
 
-    def test_the_kit_manifest_names_the_binary(self):
-        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/amiga-pi$")
+    def test_the_bases_uninstall_keeps_what_the_stand_alone_archives_share_with_it(self):
+        """C:uptelnet is the base's and Claude.lha's; Python3: is the base's old block's or Python3.lha's"""
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        self.assertNotRegex(un, r'Delete >NIL: [^\n]*C:uptelnet [^\n]*L:vtcon|Delete >NIL: L:vtcon-handler[^\n]*C:uptelnet')
+        self.assertIn('If NOT EXISTS ENVARC:uppkg/Claude\n  Delete >NIL: C:uptelnet QUIET', un)
+        self.assertIn('If NOT EXISTS ENVARC:uppkg/Python3\n  Assign >NIL: Python3: EXISTS', un)
+
+    def test_uninstall_asks_about_the_var_drawer_once_before_the_add_ons_run(self):
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        self.assertEqual(un.count('Ask "Also delete your data'), 1)
+        self.assertLess(un.index('Ask "Also delete your data'), un.index('Execute UP-Term:pkg/'))
+        self.assertLess(un.index('Set upvardelete NO'), un.index('Execute UP-Term:pkg/'))
+
+    def test_update_over_the_single_kit_names_what_stays(self):
+        self.assertIn('(getenv "UPTHANDED")', INSTALLER)
+        for path in ('Files/nvim', 'Files/python3', 'Files/Claude', 'Files/amiga-pi'):
+            self.assertIn('(patmatch "#?%s#?" #handed)' % path, INSTALLER)
+
+    def test_the_base_record_keeps_a_single_kits_manifest_before_replacing_it(self):
+        rec = dict(dos_parts())['record']
+        self.assertLess(rec.index('Copy UP-Term:MANIFEST UP-Term:VERSIONS UP-Term:pkg/legacy'), rec.index('Copy MANIFEST UP-Term:MANIFEST'))
+        for path in self.HANDED:
+            if not any(q != path and path.startswith(q) for q in self.HANDED):
+                self.assertIn('Search >NIL: UP-Term:MANIFEST " %s"' % path, rec)
+
+    def test_the_readme_lists_every_add_on_archive_and_holds_none_of_their_manuals(self):
+        readme = (ROOT / "dist/README.txt").read_text(encoding="latin-1")
+        section = readme[readme.index("\nADD-ONS\n"):readme.index("\nSTATUS\n")]
+        import pkgs
+        for r in pkgs.rows():
+            if r['id'] != 'base':
+                self.assertIn(r['archive'] + '.lha', section, r['id'])
+        for heading in ("CLAUDE", "CLAUDE FROM THE AMIGA", "AMIGA-PI"):
+            self.assertNotIn("\n" + heading + "\n", readme)
+        for kw in ("PYTHON", "NVIM", "REMOTE"):
+            self.assertNotIn("[" + kw, readme)
+
+    def test_the_base_version_file_is_installed_by_the_tools_part(self):
+        self.assertIn('Copy UP-Term.version UP-Term:UP-Term.version CLONE', dict(dos_parts())['tools'])
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/UP-Term.version$")
 
 
 class AmiagentOption(unittest.TestCase):
@@ -243,7 +272,7 @@ class AmiagentOption(unittest.TestCase):
     def test_the_cpu_picks_the_build_and_the_option_travels(self):
         self.assertIn('"CPU000"', INSTALLER)
         self.assertIn('(set #name "AMIAGENT" #val #agent) (P_OPT)', mi.build(ROOT / "dist/Install.installer", "base"))
-        blk = DOS[DOS.index('If "$optamiagent" EQ "AMIAGENT"'):DOS.index('; C:Claude, the native Claude client')]
+        blk = DOS[DOS.index('If "$optamiagent" EQ "AMIAGENT"'):DOS.index('Lab fonts')]
         self.assertIn('Copy net/amiagent-0.13.2/amiagent.020 UP-Term:bin/amiagent CLONE QUIET', blk)
         self.assertLess(blk.index('If "$optcpu000" EQ "CPU000"'), blk.index('amiagent.020'))
         self.assertIn('Copy net/amiagent-0.13.2/amiagent UP-Term:bin/amiagent CLONE QUIET', blk.split('Else')[0])
@@ -273,7 +302,7 @@ class AmigaDosVariableNames(unittest.TestCase):
     """AmigaDOS ends a $name at the first character that is not a letter or a
     digit: $o_dest was the variable "o" (none), and the literal "$o_dest" went
     into a Replay's S:User-Startup, whose boot then failed (2026-10-07)."""
-    SCRIPTS = ("install.dos", "Uninstall", "ClaudeCode")
+    SCRIPTS = ("install.dos", "Uninstall")
 
     def test_no_variable_name_in_the_kits_amigados_scripts_has_other_characters(self):
         for name in self.SCRIPTS:
@@ -285,12 +314,7 @@ class AmigaDosVariableNames(unittest.TestCase):
 
     def test_the_installer_writes_the_option_files_install_dos_reads(self):
         self.assertIn('(cat "ENV:UPTOPT" #name)', INSTALLER)
-        for kw in ("DEST", "REMOTE"):
-            self.assertIn('Set opt%s "$UPTOPT%s"' % (kw.lower(), kw), DOS)
-
-    def test_the_remote_default_loses_claudes_newline(self):
-        a = INSTALLER.index('(set #oldremote (getenv "UPTermRemote"))')
-        self.assertIn('(= (substr #oldremote (- (strlen #oldremote) 1) 1) "\\n")', INSTALLER[a:a + 400])
+        self.assertIn('Set optdest "$UPTOPTDEST"', DOS)
 
 
 class ClaudeCodeScript(unittest.TestCase):
@@ -321,10 +345,10 @@ class ClaudeCodeScript(unittest.TestCase):
         self.assertEqual(self.SCRIPT.count('If '), self.SCRIPT.count('EndIf'))
 
 
-def step_command_line(files, dest, remote):
+def step_command_line(files, dest, installer=INSTALLER):
     """The AmigaDOS line P_STEP's (execute ...) makes, worst case: every option on.
     Each argument of the form is evaluated: strings, (cat ...) and #variables."""
-    toks = tokens(INSTALLER)
+    toks = tokens(installer)
     # the form starts after "(set #rc" of P_STEP: the first (execute in the procedure
     p = next(k for k in range(len(toks) - 2) if toks[k] == ('word', 'procedure') and toks[k + 1] == ('word', 'P_STEP'))
     i = next(k for k in range(p, len(toks)) if toks[k] == ('word', 'execute')) - 1
@@ -345,7 +369,7 @@ def step_command_line(files, dest, remote):
         elif depth >= 1 and not (depth == 1 and text == 'execute'):
             (cur if depth == 2 else args).append((kind, text))
         j += 1
-    kw = {'con': 'NOCONSOLE', 'dev': 'NODEVICE', 'bget': 'BEBBOGET', 'remote': 'REMOTE="%s"' % remote,
+    kw = {'con': 'NOCONSOLE', 'dev': 'NODEVICE', 'bget': 'BEBBOGET',
           'files': files, 'script': files + '/install.dos', 'dest': dest, 'step': 'copy-coreutils'}
     def val(tok):
         kind, text = tok
@@ -368,10 +392,10 @@ def step_command_line(files, dest, remote):
 class StepCommandLine(unittest.TestCase):
     def test_worst_case_step_line_fits_the_255_character_limit(self):
         """INSTALLER-CMDLINE-TOO-LONG: a kit in a long path, every option on, a long
-        DEST and REMOTE: the line P_STEP hands the Shell stays under AmigaDOS's limit."""
+        DEST: the line P_STEP hands the Shell stays under AmigaDOS's limit."""
         files = 'Work:' + 'k' * 49 + '/Files'          # 60 characters
         self.assertEqual(len(files), 60)
-        line = step_command_line(files, 'D' * 40, 'r' * 30 + ' 2323')
+        line = step_command_line(files, 'D' * 40)
         self.assertLess(len(line), 255, '%d characters: %s' % (len(line), line))
 
 

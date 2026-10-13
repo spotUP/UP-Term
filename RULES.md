@@ -53,12 +53,12 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | pty-handler with a serial trace (build/rig/serial.log) | `make build/amiga/pty-handler DEBUG=1` |
 | amiga-pi on the rig, one numbered step per plan phase (CON: scripts; step 13 types into an UP-Term window and reads the screen back as text through the clipboard; verdicts of step 13 in build/<rig>/amigapi13.verdicts.json, passed checks skipped, `--force` runs all) | `UPTERM_RIG=3 AMIGA_PI_BIN=<amiga-pi build/amiga/amiga-pi> python3 -I tools/rig/amigapi_rig.py --step 13 [--force]` (rig up, handler installed; `make amiga build/amiga/snipprobe` here, `make amiga` in `~/Code/amiga-pi`; mathieeedoubbas.library is in the rig's DH0:Libs, so LIBS: has it) |
 | Glyphs above U+00FF on the rig (UT1: UP-Term: assigned to VTC:upterm, the Unifont pages in VTC:upterm/unifont; "?" and U+280B must draw differently) and a selection ending where output overwrites it (UT5) | `python3 tools/rig/glyph_rig.py` (rig up, handler installed; `make amiga build/amiga/snipprobe`, `make unifont`, `rig.py install`; `rig.py setup` once for the assign) |
-| Rig (FS-UAE A1200, amiagent; what it needs, flags, what each script proves: `tools/rig/README.md`) | `python3 tools/rig/rig.py setup|start [--max]|install|stop|status`; drive with `tools/rig/ami.py` |
+| Rig (FS-UAE A1200, amiagent; what it needs, flags, what each script proves: `tools/rig/README.md`) | `python3 tools/rig/rig.py setup|start|install|stop|status` (start boots the 68060 at full speed; `--a1200` the stock 68020 at real speed, timing runs only; stop waits for the running command and flushes before it quits FS-UAE); drive with `tools/rig/ami.py` |
 | Set up the whole workspace from zero (host tools, toolchains, repos, kit, rig, real Amiga, NAS) | `~/Code/upterm/README.md`, section "Set up the whole thing" |
 | Cross build (vbcc, 68020) | `make amiga`. Needs the AmigaOS 3.2 SDK headers once: unpack `NDK3.2R4` to `vendor/ndk-3.2r4-Include_H` (gitignored), or pass `make amiga VTCON_NDK=<path-to-Include_H>` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | hl and mdv for the host terminal (build/hl, build/mdv; suites `ONLY=hl`, `ONLY=md`) | `make view-host` |
-| Install kit, every archive (kit split K2, `dist/packages.txt`: base `UP-Term.lha` + `UP-Term-Claude`, `-pi`, `-nvim`, `-python`, and `UP-Term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (writes the single `build/UP-Term.lha` until K2-7 is merged) |
+| Install kit, every archive (kit split K2, `dist/packages.txt`: base `UP-Term.lha` + `UP-Term-nvim` (needs the base) and the stand-alone `Claude`, `amiga-pi`, `Python3`, and `UP-Term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (writes the single `build/UP-Term.lha` until K2-7 is merged) |
 | One archive | `make dist-<id>` (id = `python3 tools/pkgs.py names`: base, claude, pi, nvim, python; K2-7, not yet in the Makefile) |
 | Archives checked: each lists Install, Uninstall, Files/VERSIONS; per-archive manifest, versions, modes | `make dist-check` (today the single kit; per archive from K2-7) |
 | Install kit on the rig: Install, check, Uninstall (passes: `--default`, `--dest`, `--move`, `--show-check`; no flag = all) | `python3 tools/rig/install_rig.py [--default|--dest|--move|--show-check]` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first). K2-10 turns the passes into cases (`base`, `claude`, `pi`, `nvim`, `python`, `all`, `legacy`, `nobase`) with `--only <case>`, `--failed`, `--force` |
@@ -104,5 +104,5 @@ from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
    address).
 6. Upload `UP-Term.lha` and `UP-Term-src.lha` together, then the add-ons, each with its
    `build/<archive>.readme`. Directories (owner 2026-10-13): base and source `comm/term`,
-   UP-Term-nvim `text/edit`, UP-Term-python `dev/lang`, UP-Term-Claude and UP-Term-pi
+   UP-Term-nvim `text/edit`, Python3 `dev/lang`, Claude and amiga-pi
    `comm/misc`. The upload is the owner's.

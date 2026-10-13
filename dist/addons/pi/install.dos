@@ -1,0 +1,30 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; amiga-pi install: C:amiga-pi, the pi coding agent. It stands alone: nothing here needs
+; UP-Term, and nothing here looks at an UP-Term: assign (that would ask for the volume).
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. The Installer
+; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
+; the same list); the first part, check, has nothing to check for a stand-alone archive.
+FailAt 21
+; the archive's Files drawer: every name below is relative to it
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab pi
+; C:amiga-pi, the pi coding agent (README): needs a TCP/IP stack, AmiSSL 5 for https;
+; ENVARC:amiga-pi is where its settings go (Install never writes settings.json,
+; models.json or auth.json); its data goes to UP-Term:var/amiga-pi
+Copy amiga-pi C:amiga-pi CLONE QUIET
+If NOT EXISTS ENVARC:amiga-pi
+  MakeDir ENVARC:amiga-pi
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "amiga-pi installed: type  amiga-pi  in a Shell or an UP-Term window."

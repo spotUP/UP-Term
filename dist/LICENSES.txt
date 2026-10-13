@@ -12,21 +12,14 @@ UP-Term own programs and      MIT, Copyright (c) 2026 spotUP   vtcon repo LICENS
 scripts                                                        up-console.device, UPConsole, UPTerm, UPDemo,
                                                                UP-Term Prefs, vsh, uptelnet, hl, mdv, sz, rz,
                                                                upgetty, upicon, ixkill, pty-handler,
-                                                               ixpipe-handler, Claude, wasabikey, Install,
+                                                               ixpipe-handler, wasabikey, Install,
                                                                Uninstall, install.dos, config files
-amiga-pi (C:amiga-pi)         MIT, Copyright (c) 2026 spotUP   amiga-pi repo LICENSE
-pi, the coding agent that     MIT, Copyright (c) 2025 Mario    amiga-pi repo vendor/pi-src/LICENSE
-amiga-pi follows (Earendil,   Zechner (pi's prompts, tool     (upstream: pi.dev)
-earendil-works/pi)            texts and file formats)
-Lua 5.4 (in amiga-pi, for     MIT (Lua.org, PUC-Rio; the       amiga-pi repo vendor/lua-5.4 (the
-extensions)                   notice is at the end of lua.h)   copyright notice at the end of lua.h)
-stb_image, stb_image_write    Public domain, or MIT (Sean      amiga-pi repo vendor/stb (notice at
-(in amiga-pi)                 Barrett), your choice            the end of each header)
 ixemul.library, ixnet.library GNU LGPL v2 or later (parts from ixemul-vtcon repo (COPYING.LIB,
 and libixcompat (linked into  BSD and other authors keep       LICENSES.README), a fork of ixemul 48.2
 every Amiga program)          their notices in their files)
-GNU coreutils 5.2.1 (Files/   GPL v2 (Files/coreutils/COPYING) Files/coreutils/coreutils-5.2.1-src.tar.bz2;
-coreutils)                                                     vtcon dist/gg/coreutils-5.2.1/SOURCE.txt
+GNU coreutils 5.2.1 (Files/   GPL v2 (Files/coreutils/COPYING) UP-Term-src.lha (published next to
+coreutils)                                                     UP-Term.lha): coreutils-5.2.1-src.tar.bz2;
+                                                               vtcon dist/gg/coreutils-5.2.1/SOURCE.txt
 Unix tool ports (Files/       per package, the licence files   UP-Term-src.lha (published next to
 userland, UP-Term:bin): GNU   in UP-Term:licenses/<package>;   UP-Term.lha): each upstream archive with
 grep, sed, findutils,         GPL v3 or later: grep, sed,      UP-Term's patches, recipes and build
@@ -78,19 +71,13 @@ libevent 2.1.12 (in tmux)     3-clause BSD                     tmux-amiga/libeve
 ncurses 5.5 (GG build, linked unconfirmed: no licence file    screen-amiga/src/Makefile.amiga (NCURSES path);
 into screen and tmux)         looked at; ncurses is MIT (X11)  looked in screen-amiga, tmux-amiga
                               per upterm-ports SOURCES.txt
-Python 3.14 (Files/python3)   Python Software Foundation       cpython-amiga repo (vendor/cpython/LICENSE)
-                              licence (vendor/cpython/LICENSE)
-Neovim 0.12 and runtime       Apache 2.0, with Vim-licensed    neovim-amiga repo (vendor012/neovim/
-(Files/nvim)                  parts (LICENSE.txt)              LICENSE.txt)
-Neovim bundled libraries      unconfirmed per library: each    neovim-amiga vendor012/ and vendor/ (luv:
-(libuv, luv, lpeg,            tree carries its own LICENSE     Apache 2.0; tree-sitter, unibilium: LICENSE
-tree-sitter, unibilium, ...)  file where one exists            files present)
 
 Notes
 - GNU Unifont is also offered under GPL v2 or later; the kit uses the OFL.
-- The Claude and ClaudeCode programs talk to Anthropic's API, and amiga-pi
-  to the API of the provider you choose; AmiSSL 5 (used at run time) is not
-  part of the kit.
 - Source for the GPL parts is in the kit as source archives where the table
-  says so; for GNU screen, tmux, Python and Neovim it is in the repositories
-  named, which the upterm meta-repo pins to the commits the kit was built from.
+  says so, or in UP-Term-src.lha; for GNU screen and tmux it is in the
+  repositories named, which the upterm meta-repo pins to the commits the kit
+  was built from.
+- Claude, amiga-pi, Python and Neovim are archives of their own
+  (Claude.lha, amiga-pi.lha, Python3.lha, UP-Term-nvim.lha),
+  each with its own LICENSES.txt.

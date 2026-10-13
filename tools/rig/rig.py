@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""The vtcon test rig: FS-UAE, A1200 (68020, KS 3.1 40.068, 8 MB fast), driven
+"""The vtcon test rig: FS-UAE, A1200 (68060 at full speed by default, 68020 with --a1200; KS 3.1 40.068), driven
 through amiagent (TCP 7846, tools/rig/ami.py). UPTERM_RIG=2 selects a second,
 independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (--060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
-                  --max: the --060 machine with 1 GB Zorro III RAM;
+  rig.py start    boot it in the background; the default machine is the 68060 + FPU at the host's speed
+                  with 1 GB Zorro III RAM (what --max was); --a1200: the stock 68020 at real speed
+                  (timing runs only; --stock, --exact and --fast also keep the 020);
+                  --060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
                   --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
@@ -203,7 +205,11 @@ STOCK = "--stock" in sys.argv
 # (uae_cpu/fpu_no_unimplemented false), so no 68060.library is needed.
 # --max: the --060 machine with as much Zorro III RAM as FS-UAE gives
 # (owner 2026-10-07: "max it for the next run").
-MAX = "--max" in sys.argv
+# The default machine is this one (owner 2026-10-13: every test rig runs as the 060 at full speed; a 68020 at
+# real speed made an install take ages). --a1200 asks for the stock 68020 at real speed (timing runs);
+# --stock, --exact and --fast are their own machines and keep the 020.
+A1200 = any(f in sys.argv for f in ("--a1200", "--stock", "--exact", "--fast"))
+MAX = "--max" in sys.argv or not A1200
 M060 = "--060" in sys.argv or MAX
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
@@ -579,14 +585,34 @@ def retry_wb_reset():
     print("[WARN] the Workbench stayed PAL (W43)")
 
 def stop():
+    """Safe stop: killing FS-UAE while the Amiga writes to its disk corrupts the filesystem (rig 2, 2026-10-13).
+    Wait until the agent takes a command (nothing else is running), lock the volumes (the OS flushes them), stay
+    quiet for 8 s, ask FS-UAE to quit (TERM), and kill it only if it ignores that."""
     if mine() and status(quiet=True):
-        try:  # write-protect DH0: first, which flushes it (matters with --rw)
+        try:
             sys.path.insert(0, str(ROOT / "tools/rig"))
             import ami
-            ami.req(0x02, (10).to_bytes(2, "big") + b"C:Lock DH0: ON", timeout=15)
+            for _ in range(60):   # a running command answers "one at a time"/"still running": wait it out
+                try:
+                    ami.req(0x02, (10).to_bytes(2, "big") + b"Echo >NIL: idle", timeout=15)
+                    break
+                except BaseException:
+                    time.sleep(5)
+            for vol in ("DH0:", "DH1:"):
+                try:
+                    ami.req(0x02, (10).to_bytes(2, "big") + b"C:Lock " + vol.encode() + b" ON", timeout=15)
+                except BaseException:
+                    pass
+            time.sleep(8)
         except BaseException:
             pass
-    subprocess.run(["pkill", "-9", "-f", str(CFG)])
+    subprocess.run(["pkill", "-TERM", "-f", str(CFG)])
+    for _ in range(90):   # FS-UAE closes its disks before it exits
+        if not mine():
+            break
+        time.sleep(1)
+    if mine():
+        subprocess.run(["pkill", "-9", "-f", str(CFG)])
     print("stopped" if not mine() else "[ERROR] still running")
 
 def status(quiet=False):

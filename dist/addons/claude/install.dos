@@ -1,0 +1,56 @@
+.KEY DIR/A,STEP/K,REMOTE/K
+.BRA {
+.KET }
+; Claude install: C:Claude, C:ClaudeCode and C:uptelnet. It stands alone: nothing here
+; needs UP-Term, and nothing here looks at an UP-Term: assign (that would ask for the volume).
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. The Installer
+; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
+; the same list); the first part, check, has nothing to check for a stand-alone archive.
+FailAt 21
+; the archive's Files drawer: every name below is relative to it
+CD "{DIR}"
+; REMOTE "host port": ENVARC:Claude/remote, where Claude Code runs (the NAS); plain
+; Claude, with no API key, connects there. Written whenever given (ENVARC: and ENV:).
+; The Installer passes it in the variable file ENV:UPTOPTREMOTE (as the base's
+; Install does its options: a long path made the command line too long).
+Set optremote "{REMOTE}"
+If NOT "{STEP}" EQ ""
+  If EXISTS ENV:UPTOPTREMOTE
+    Set optremote "$UPTOPTREMOTE"
+  EndIf
+EndIf
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab claude
+; C:Claude, the native Claude client (README), and C:ClaudeCode: Claude Code on the
+; NAS through C:uptelnet (this archive's copy: the same program as UP-Term.lha's; no
+; ixemul); a script, so the s bit makes it a command.
+; Its talking to Anthropic needs AmiSSL 5; ENVARC:Claude is where its settings go
+; (Install never writes a key).
+Copy Claude C:Claude CLONE QUIET
+Copy ClaudeCode C:ClaudeCode CLONE QUIET
+Protect C:ClaudeCode +s QUIET
+Copy uptelnet C:uptelnet CLONE QUIET
+If NOT EXISTS ENVARC:Claude
+  MakeDir ENVARC:Claude
+EndIf
+If NOT "$optremote" EQ ""
+  ; the chosen value always wins (the Installer's page starts with the
+  ; existing file's host and port, so a kept answer is the same line)
+  If NOT EXISTS ENV:Claude
+    MakeDir ENV:Claude
+  EndIf
+  Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"
+  Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."
+  Echo >>ENVARC:Claude/remote "$optremote"
+  Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "Claude installed: type  Claude  in a Shell or an UP-Term window, or double-click ClaudeCode."

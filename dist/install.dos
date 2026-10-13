@@ -1,4 +1,4 @@
-.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S,AMIAGENT/S,CPU000/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S,AMIAGENT/S,CPU000/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -12,11 +12,8 @@
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
-;     [REMOTE "host port"]  (ENVARC:Claude/remote: plain Claude, with no API
-;               key, connects to Claude Code there -- the NAS; written whenever given,
-;               ENVARC: and ENV:)
-;     [PYTHON]  (Python 3.14 in UP-Term:Python3, 15 MB; Python3: assigned at boot)
-;     [NVIM]    (Neovim 0.12 in UP-Term:nvim, 32 MB; nvim on vsh's path)
+; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
+;  UP-Term-nvim, Claude and amiga-pi, each with its own Install.)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
 ;     [AMIAGENT] [CPU000]  (amiagent, so Claude on another computer can drive this
 ;               Amiga: UP-Term:bin/amiagent, never started here and never without a
@@ -34,7 +31,7 @@ CD "{DIR}"
 ; The options. The kit's Install passes none of them on the command line (a
 ; kit in a long path made that line longer than AmigaDOS takes, 255): it
 ; writes each one it needs into the variable file ENV:UPTOPT<keyword> (the
-; keyword itself, or for DEST and REMOTE the value) before the first STEP and
+; keyword itself, or for DEST the value) before the first STEP and
 ; removes them at the end. A STEP run reads them here; run by hand (no STEP,
 ; tools/rig/install_rig.py) the keywords on the command line are the options.
 ; Below, $opt<keyword> is the option, whichever way it came.
@@ -52,9 +49,6 @@ Set optssh "{SSH}"
 Set optbebboget "{BEBBOGET}"
 Set optcurl "{CURL}"
 Set optwasabi "{WASABI}"
-Set optpython "{PYTHON}"
-Set optnvim "{NVIM}"
-Set optremote "{REMOTE}"
 Set optcpu040 "{CPU040}"
 Set optcpu060 "{CPU060}"
 Set optunifont "{UNIFONT}"
@@ -94,15 +88,6 @@ If NOT "{STEP}" EQ ""
   EndIf
   If EXISTS ENV:UPTOPTWASABI
     Set optwasabi WASABI
-  EndIf
-  If EXISTS ENV:UPTOPTPYTHON
-    Set optpython PYTHON
-  EndIf
-  If EXISTS ENV:UPTOPTNVIM
-    Set optnvim NVIM
-  EndIf
-  If EXISTS ENV:UPTOPTREMOTE
-    Set optremote "$UPTOPTREMOTE"
   EndIf
   If EXISTS ENV:UPTOPTCPU040
     Set optcpu040 CPU040
@@ -303,8 +288,8 @@ If NOT "{STEP}" EQ ""
 EndIf
 Lab copy-coreutils
 ; The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
-; wc... GPL v2: COPYING and the complete source are in the kit's
-; coreutils-5.2.1 drawer) in UP-Term's own drawer UP-Term:bin, not C::
+; wc... GPL v2: COPYING is in the kit's coreutils drawer, the complete
+; source in UP-Term-src.lha) in UP-Term's own drawer UP-Term:bin, not C::
 ; AmigaDOS names ignore case, so GNU sort, date, join and install would be
 ; C:Sort, C:Date, C:Join and C:Install, which the system's scripts need.
 ; vsh finds them through $PATH (vshrc puts /UP-Term/bin first), and so
@@ -369,10 +354,13 @@ If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 Lab tools
-; the kit's own commands, the network tools and Claude
+; the kit's own commands and the network tools
 MakeDir >NIL: UP-Term:bin
 ; VERSIONS: what this kit was built from (C:UPConsole STATUS prints its first line)
 Copy VERSIONS UP-Term:VERSIONS CLONE
+; UP-Term.version: the base's version, which the add-on archives' Install checks
+; (a plain file with a $VER: line, for the Version command)
+Copy UP-Term.version UP-Term:UP-Term.version CLONE
 ; sz / rz: ZMODEM over the shell's own line (UP-Term's, no ixemul), beside
 ; coreutils; C:upgetty: a shell on the serial port (see the README)
 Copy sz rz UP-Term:bin CLONE
@@ -386,12 +374,8 @@ Copy ps top UP-Term:bin CLONE
 Copy UPDemo C:UPDemo CLONE
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
 Copy UPTerm C:UPTerm CLONE
-; C:ClaudeCode: Claude Code on the NAS through uptelnet (README, CLAUDE FROM
-; THE AMIGA); a script, so the s bit makes it a command
-Copy ClaudeCode C:ClaudeCode CLONE QUIET
-Protect C:ClaudeCode +s QUIET
 ; C:uptelnet: a telnet client for the window (no ixemul; needs a TCP/IP
-; stack), the Amiga end of Claude Code on a Mac (README, CLAUDE FROM THE AMIGA)
+; stack), the Amiga end of Claude Code on a Mac
 Copy uptelnet C:uptelnet CLONE
 ; The network tools, beside coreutils: BebboSSH 1.45 (bebbossh, bebboscp,
 ; bebbosshkeygen, bebbosshd) and bebboget 1.11, by Stefan Franke, GPL v3+,
@@ -436,69 +420,6 @@ If "$optamiagent" EQ "AMIAGENT"
     Copy net/amiagent-0.13.2/amiagent.020 UP-Term:bin/amiagent CLONE QUIET
   EndIf
   Echo >ENVARC:up-term/amiagent "installed by UP-Term"
-EndIf
-; C:Claude, the native Claude client (README, Claude), always: its talking
-; to Anthropic needs AmiSSL 5; ENVARC:Claude is where its settings go
-; (Install never writes a key).
-Copy Claude C:Claude CLONE QUIET
-If NOT EXISTS ENVARC:Claude
-  MakeDir ENVARC:Claude
-EndIf
-; REMOTE: where Claude Code runs (the NAS); plain Claude goes there
-If NOT "$optremote" EQ ""
-  ; the chosen value always wins (the Installer's page starts with the
-  ; existing file's host and port, so a kept answer is the same line)
-  If NOT EXISTS ENV:Claude
-    MakeDir ENV:Claude
-  EndIf
-  Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"
-  Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."
-  Echo >>ENVARC:Claude/remote "$optremote"
-  Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET
-EndIf
-; C:amiga-pi, the pi coding agent (README, AMIGA-PI): the same needs as
-; Claude; ENVARC:amiga-pi is where its settings go (Install never writes
-; settings.json, models.json or auth.json); its data goes to UP-Term:var/amiga-pi
-Copy amiga-pi C:amiga-pi CLONE QUIET
-If NOT EXISTS ENVARC:amiga-pi
-  MakeDir ENVARC:amiga-pi
-EndIf
-If NOT "{STEP}" EQ ""
-  Quit 0
-EndIf
-Lab copy-python
-; Python 3.14 (README, PYTHON): UP-Term:Python3, its programs run as
-; Python3:bin/python3 or python3 from vsh (vshrc's path); Python3: is
-; assigned at every boot (a marked block in S:User-Startup).
-If "$optpython" EQ "PYTHON"
-  MakeDir >NIL: UP-Term:Python3
-  Copy python3 UP-Term:Python3 ALL CLONE QUIET
-EndIf
-If NOT "{STEP}" EQ ""
-  Quit 0
-EndIf
-Lab python
-If "$optpython" EQ "PYTHON"
-  Assign Python3: UP-Term:Python3
-  Search >NIL: S:User-Startup ";BEGIN UP-Term python"
-  If WARN
-    If NOT EXISTS S:User-Startup.before-UP-Term
-      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
-    EndIf
-    Echo >>S:User-Startup ";BEGIN UP-Term python"
-    Echo >>S:User-Startup "Assign Python3: UP-Term:Python3"
-    Echo >>S:User-Startup ";END UP-Term python"
-  EndIf
-EndIf
-If NOT "{STEP}" EQ ""
-  Quit 0
-EndIf
-Lab copy-nvim
-; Neovim 0.12 (README, NEOVIM): UP-Term:nvim (its runtime beside the
-; binary); nvim from vsh (vshrc's path).
-If "$optnvim" EQ "NVIM"
-  MakeDir >NIL: UP-Term:nvim
-  Copy nvim UP-Term:nvim ALL CLONE QUIET
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0

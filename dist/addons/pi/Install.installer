@@ -1,0 +1,51 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 7, lead 3
+(message
+    "\n\n\na m i g a - p i\n\n"
+    "pi, the coding agent, for the Amiga. C:amiga-pi\n"
+    "needs a TCP/IP stack and, for https, AmiSSL 5; the\n"
+    "key is yours. No UP-Term needed.\n"
+    (all))
+(set #totalkb (+ 1600 20))
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "amiga-pi needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install amiga-pi into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "pi" #kb 1600 #n 3
+     #why (cat "Installing C:amiga-pi and making ENVARC:amiga-pi\n"
+               "for its settings (Install writes none)."))
+(P_STEP)
+
+(set #n 8)
+(P_LEAD)
+(set #done
+    (cat #lead "amiga-pi is installed. In a Shell or UP-Term window:\n"
+         "  amiga-pi\n\n"
+         "Its key: SetEnv SAVE ANTHROPIC_API_KEY <key> (or\n"
+         "the provider's variable). Settings are yours, in\n"
+         "ENVARC:amiga-pi. Uninstall (beside Install) takes\n"
+         "the program out again."))
+; @include dist/common/addon-tail.installer

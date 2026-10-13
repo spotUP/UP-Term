@@ -1,9 +1,9 @@
 ; ---- requirements ---------------------------------------------------------
 
 (if (< (/ (getversion "exec.library" (resident)) 65536) 39)
-    (abort "UP-Term needs AmigaOS 3.0 or newer."))
+    (abort "@ARCHIVE@ needs AmigaOS 3.0 or newer."))
 (if (or (= (database "cpu") "68000") (= (database "cpu") "68010"))
-    (abort "UP-Term needs a 68020 or better (the terminal and its ixemul.library are 68020 code)."))
+    (abort "@ARCHIVE@ needs a 68020 or better (the terminal and its ixemul.library are 68020 code)."))
 (if (not (exists #script))
     (abort "The Files drawer is missing: unpack the whole archive and start Install from its drawer."))
 

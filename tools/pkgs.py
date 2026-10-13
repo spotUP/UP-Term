@@ -9,7 +9,7 @@ import pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TABLE = ROOT / 'dist/packages.txt'
-COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed')
+COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed', 'consumes')
 
 
 def parse(text):

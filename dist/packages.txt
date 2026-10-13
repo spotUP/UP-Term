@@ -4,14 +4,23 @@
 #   archive     the lha archive and the drawer in it
 #   version     <major>.<minor> of this archive
 #   needs-base  lowest base version the archive needs; "-" for the base itself
-#               and for a standalone package
-#   ixemul      "80" when the archive needs UP-Term's patched ixemul.library
-#   record      where an install leaves its MANIFEST, VERSIONS and options
+#               and for a stand-alone package (own name, no UP-Term prefix: it
+#               installs on a Workbench with no UP-Term, K2-1 and the owner 2026-10-13)
+#   ixemul      lowest ixemul.library version the archive needs. With a needs-base
+#               it is the base's (nvim: "80", the patched library). A stand-alone
+#               archive with a version here carries an ixemul.library of its own and
+#               installs it only when no library of that version or newer is there
+#               (Python3: 47, never a downgrade, never over UP-Term's patched one)
+#   record      where an install leaves its MANIFEST, VERSIONS and options:
+#               UP-Term:pkg/<archive> when it needs the base, ENVARC:uppkg/<archive>
+#               when it stands alone
 #   handed      kit paths (comma separated) the base hands over to this
 #               archive: the base's Update leaves them alone (kit-split D7)
-# id      archive          version  needs-base  ixemul  record                       handed
-base      UP-Term          1.0      -           -       UP-Term:                     -
-claude    UP-Term-Claude   1.0      1.0         -       UP-Term:pkg/UP-Term-Claude   Files/Claude,Files/ClaudeCode
-pi        UP-Term-pi       1.0      1.0         -       UP-Term:pkg/UP-Term-pi       Files/amiga-pi
-nvim      UP-Term-nvim     1.0      1.0         80      UP-Term:pkg/UP-Term-nvim     Files/nvim
-python    UP-Term-python   1.0      1.0         80      UP-Term:pkg/UP-Term-python   Files/python3
+#   consumes    the repositories (comma separated; vtcon is this one) the archive is
+#               built from: the lines of its Files/VERSIONS (tools/mkversions.sh)
+# id      archive          version  needs-base  ixemul  record                       handed                         consumes
+base      UP-Term          1.0      -           -       UP-Term:                     -                              vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src
+claude    Claude           1.0      -           -       ENVARC:uppkg/Claude          Files/Claude,Files/ClaudeCode  vtcon
+pi        amiga-pi         1.0      -           -       ENVARC:uppkg/amiga-pi        Files/amiga-pi                 amiga-pi,vtcon
+nvim      UP-Term-nvim     1.0      1.0         80      UP-Term:pkg/UP-Term-nvim     Files/nvim                     neovim-amiga,ixemul-vtcon
+python    Python3          1.0      -           47      ENVARC:uppkg/Python3         Files/python3                  cpython-amiga,ixemul-vtcon

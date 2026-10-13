@@ -1,0 +1,15 @@
+; Installed over the single kit (before the kit split)? Its manifest names
+; the paths the add-on archives install now. It is kept once, with its VERSIONS,
+; in UP-Term:pkg/legacy, where an add-on's Install finds the files it takes over
+; (upupdate ... ONLY=); this kit's manifest replaces it below.
+If EXISTS UP-Term:MANIFEST
+  If NOT EXISTS UP-Term:pkg/legacy/MANIFEST
+    Set uplegacy ""
+@HANDEDSEARCH@
+    If "$uplegacy" EQ "YES"
+      MakeDir >NIL: UP-Term:pkg UP-Term:pkg/legacy
+      Copy UP-Term:MANIFEST UP-Term:VERSIONS UP-Term:pkg/legacy CLONE QUIET
+    EndIf
+    UnSet uplegacy
+  EndIf
+EndIf

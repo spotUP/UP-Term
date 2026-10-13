@@ -5,7 +5,8 @@ OS4 port, as published on Aminet:
     bin/   the 68020 soft-float binaries of that archive (coreutils-020s-bin),
            unmodified
     coreutils-5.2.1-src.tar.bz2   its src.tar.bz2: the complete
-           corresponding source
+           corresponding source; it is in UP-Term-src.lha, published next
+           to UP-Term.lha (the kit itself holds the binaries and COPYING)
 
 Licence: GNU General Public License version 2 (COPYING, beside this file).
 The archive's readme asks for ixemul 48.3; measured on the rig, the tools run

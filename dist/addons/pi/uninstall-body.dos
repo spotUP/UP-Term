@@ -1,0 +1,2 @@
+; the settings in ENVARC:amiga-pi are yours and stay
+Delete >NIL: C:amiga-pi QUIET

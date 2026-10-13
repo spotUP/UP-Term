@@ -1,0 +1,22 @@
+(complete 100)
+
+(set #step "record" #kb 20 #n 2
+     #why (cat "Writing down this archive's list of files,\n"
+               "for a later Update and for Uninstall."))
+(P_STEP)
+
+; ---- an Update ends here -----------------------------------------------------
+(if #update
+    (
+        (P_OPTIONS_END)
+        (run "Delete >NIL: T:UPTUPD-#? ENV:UPTUPD#? QUIET")
+        (set #n 5)
+        (P_LEAD)
+        (set #updated (cat #lead "@ARCHIVE@ is updated:\n" (getenv "UPTVEROLD") "\nto\n"
+                        (getenv "UPTVERNEW") "\n\nNothing else changed."))
+        (run "Delete >NIL: ENV:UPTVER#? ENV:UPTHANDED QUIET")
+        (exit #updated)))
+
+; the parts are done: the options and the UPTKIT: assign go
+(P_OPTIONS_END)
+(exit #done)

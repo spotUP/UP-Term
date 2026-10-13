@@ -1,0 +1,72 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; Python3 install: Python 3.14 in SYS:Python3, with the ixemul.library it runs on
+; It stands alone: nothing here needs UP-Term, and nothing here looks at an UP-Term:
+; assign (that would ask for the volume).
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. The Installer
+; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
+; the same list); the first part, check, has nothing to check for a stand-alone archive.
+FailAt 21
+; the archive's Files drawer: every name below is relative to it
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab ixemul
+; Python needs ixemul.library 47 or newer. A library of that version or newer that is
+; already in LIBS: stays as it is: never a downgrade, and never over UP-Term's patched
+; ixemul.library (version 80), which Python then uses. Only when there is none that new
+; this archive's ixemul.library 80.1 goes in, with the ixnet.library of the same build
+; (ixnet refuses an ixemul of another revision); an older one is kept as
+; <name>.before-Python3 and put back by Uninstall. ENVARC:uppkg/ixemul records it: the
+; marker installed-by-Python3 says this archive put the library there, and needs/<archive>
+; says who needs it (Uninstall removes the library only when nobody else does).
+MakeDir >NIL: ENVARC:uppkg ENVARC:uppkg/ixemul ENVARC:uppkg/ixemul/needs
+Version >NIL: LIBS:ixemul.library 47
+If WARN
+  If EXISTS LIBS:ixemul.library
+    Copy LIBS:ixemul.library LIBS:ixemul.library.before-Python3 CLONE QUIET
+  EndIf
+  If EXISTS LIBS:ixnet.library
+    Copy LIBS:ixnet.library LIBS:ixnet.library.before-Python3 CLONE QUIET
+  EndIf
+  Copy libs/ixemul.library LIBS:ixemul.library CLONE QUIET
+  Copy libs/ixnet.library LIBS:ixnet.library CLONE QUIET
+  Echo >ENVARC:uppkg/ixemul/installed-by-Python3 "Python3.lha put ixemul.library and ixnet.library in LIBS:"
+EndIf
+Echo >ENVARC:uppkg/ixemul/needs/Python3 "Python3"
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-python
+; Python 3.14 (README): SYS:Python3, its programs run as Python3:bin/python3 (the assign,
+; the next part) or SYS:Python3/bin/python3; vsh's path names /SYS/Python3/bin.
+MakeDir >NIL: SYS:Python3
+Copy python3 SYS:Python3 ALL CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab python
+; Python3: assigned now and at every boot: a block in S:User-Startup that assigns only while
+; SYS:Python3 is there, so one left behind by an Uninstall that could not take it out does no
+; harm. S:User-Startup as it was is kept (record drawer) for Uninstall to put back.
+Assign Python3: SYS:Python3
+Search >NIL: S:User-Startup ";BEGIN Python3"
+If WARN
+  MakeDir >NIL: ENVARC:uppkg ENVARC:uppkg/Python3
+  Copy S:User-Startup ENVARC:uppkg/Python3/User-Startup.before CLONE QUIET
+  Echo >>S:User-Startup ";BEGIN Python3"
+  Echo >>S:User-Startup "If EXISTS SYS:Python3"
+  Echo >>S:User-Startup "  Assign Python3: SYS:Python3"
+  Echo >>S:User-Startup "EndIf"
+  Echo >>S:User-Startup ";END Python3"
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "Python3 installed: Python3:bin/python3 (in an UP-Term window: python3)."

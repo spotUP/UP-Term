@@ -1,18 +1,19 @@
-Short:        Claude Code client for UP-Term
+Short:        Claude Code client for the Amiga
 Author:       spotUP
 Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
 Type:         comm/misc
 Version:      @VERSION@
 Replaces:     none
 Architecture: m68k-amigaos >= 3.0.0; m68k-020
-Requires:     comm/term/UP-Term.lha >= @NEEDSBASE@, TCP/IP stack (Roadshow, Miami, AmiTCP), util/libs/AmiSSL-v5-OS3.lha for https
+Requires:     TCP/IP stack (Roadshow, Miami, AmiTCP), util/libs/AmiSSL-v5-OS3.lha for https
 Distribution: Aminet
 
-C:Claude and C:ClaudeCode: a Claude Code client for an UP-Term window. It reads, searches
-and edits files and runs commands with your own Anthropic API key (billed to that key).
-Without an UP-Term window it falls back to a line mode.
-
-Needs the base archive UP-Term.lha (version @NEEDSBASE@ or newer) installed first.
+C:Claude and C:ClaudeCode: a Claude Code client. It reads, searches and edits files and runs
+commands with your own Anthropic API key (billed to that key), or connects to Claude Code on
+another computer (C:uptelnet comes with it). It stands alone: it installs on a plain
+Workbench (AmigaOS 3.0 or newer) and runs in the Shell window, in a line mode; in an UP-Term
+window (comm/term/UP-Term.lha, optional) it gets the full-screen mode and keeps its data in
+UP-Term:var.
 
 Install: unpack, double-click Install. Uninstall removes C:Claude and C:ClaudeCode and keeps
 your settings in ENVARC:Claude.
