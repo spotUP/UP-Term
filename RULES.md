@@ -22,6 +22,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 |------|---------|
 | Host tests (CI) | `make test` |
 | One suite | `make test ONLY=<name>` (e.g. `ONLY=xterm`) |
+| The renderer's draw wiring without a rig: render/amiga_render.c itself against a fake RastPort (tests/render_host/gfx_fake.c logs every graphics.library call and draws Text/RectFill/ScrollRaster into a pixel canvas; NDK structs from `VTCON_NDK`; tests/test_render.c: the scrollback blit draws only the exposed rows, the cursor glyph under jump scroll) | `make test ONLY=render` (own binary `build/render_host`; a new renderer behaviour with a draw-call effect gets its test here, not a rig step) |
 | Reference diff vs libvterm + pyte | `make test-ref` (needs `make venv` once; clones libvterm into `build/`) |
 | Re-record streams from real programs | `make capture` |
 | pcansi vs DCTelnet term-engine on BBS art | `make te-diff` (`DCTELNET=`, `ART=`; `build/te_diff -f file` names the first diverging byte) |
