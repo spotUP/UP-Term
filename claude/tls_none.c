@@ -27,9 +27,11 @@ cl_tls *tls_new(long sock, const char *host, char *err, int cap)
     return 0;
 }
 
-int tls_handshake(cl_tls *t, char *err, int cap)
+int tls_handshake(cl_tls *t, int (*idle)(void *iu), void *iu, char *err, int cap)
 {
     (void)t;
+    (void)idle;
+    (void)iu;
     cl_copy(err, why, cap);
     return TLS_ERROR;
 }

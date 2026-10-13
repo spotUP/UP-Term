@@ -3,10 +3,14 @@
  *
  * The socket is non-blocking and every wait is a WaitSelect that also
  * waits for Ctrl+C, so a break ends a connect, a handshake or a quiet
- * stream at once (NET_BREAK). Name lookup (gethostbyname) is the one call
- * that cannot be broken; it is short on a working network. bsdsocket.library
- * opens on the first connection and AmiSSL on the first https one, so a
- * plain http URL (the rig's fixture server) works without AmiSSL. */
+ * stream at once (NET_BREAK). With the caller's idle hook (net.h) the
+ * waits are cut in NET_SLICE_MS slices and the hook runs between them and
+ * between the TLS handshake's steps, so the caller's screen goes on. Two
+ * calls hold the task: the name lookup (gethostbyname, under 20 ms on the
+ * rig) and AmiSSL's opening (tls_init, once a run: 5.3 s on a 68020 at
+ * real speed, 0.2 s on a 68060). bsdsocket.library opens on the first
+ * connection and AmiSSL on the first https one, so a plain http URL (the
+ * rig's fixture server) works without AmiSSL. */
 #include <string.h>
 #include <exec/types.h>
 #include <dos/dos.h>
@@ -42,8 +46,8 @@ static void set_err(net_amiga *n, const char *a, const char *b)
         cl_cat(n->err, b, sizeof(n->err));
 }
 
-/* 1 ready, 0 timeout, NET_BREAK, NET_ERROR */
-static int wait_sock(net_amiga *n, int for_write, long timeout_ms)
+/* one wait: 1 ready, 0 timeout, NET_BREAK, NET_ERROR */
+static int wait_once(net_amiga *n, int for_write, long timeout_ms)
 {
     fd_set fs;
     struct timeval tv;
@@ -62,6 +66,23 @@ static int wait_sock(net_amiga *n, int for_write, long timeout_ms)
         return NET_ERROR;
     }
     return rc > 0 ? 1 : 0;
+}
+
+/* the same in slices of NET_SLICE_MS with the caller's idle hook between them (net.h) */
+static int wait_sock(net_amiga *n, int for_write, long timeout_ms)
+{
+    long left = timeout_ms;
+    for (;;) {
+        long slice = n->net->idle && left > NET_SLICE_MS ? NET_SLICE_MS : left;
+        int w = wait_once(n, for_write, slice);
+        if (w)
+            return w;
+        left -= slice;
+        if (left <= 0)
+            return 0;
+        if (n->net->idle(n->net->iu))
+            return NET_BREAK;
+    }
 }
 
 static void drop(net_amiga *n)
@@ -184,9 +205,13 @@ static int a_open(void *u, const char *host, int port, int tls)
         return NET_ERROR;
     }
     for (;;) {
-        int r = tls_handshake((cl_tls *)n->tls, n->err, sizeof(n->err)), w;
+        int r = tls_handshake((cl_tls *)n->tls, n->net->idle, n->net->iu, n->err, sizeof(n->err)), w;
         if (!r)
             return 0;
+        if (r == TLS_BREAK) {
+            drop(n);
+            return NET_BREAK;
+        }
         if (r == TLS_ERROR) {
             drop(n);
             return NET_ERROR;
@@ -295,12 +320,15 @@ void net_amiga_init(net_amiga *n, cl_net *net)
 {
     memset(n, 0, sizeof(*n));
     n->sock = -1;
+    n->net = net;
     net->u = n;
     net->open = a_open;
     net->send = a_send;
     net->recv = a_recv;
     net->close = a_close;
     net->err = a_err;
+    net->idle = 0;
+    net->iu = 0;
 }
 
 void net_amiga_exit(net_amiga *n)

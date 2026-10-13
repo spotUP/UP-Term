@@ -29,6 +29,13 @@ typedef struct pstub {
     char notice[160];
     jw log;
     unsigned long clock;
+    /* a slow transport, as net_amiga waits: the next open takes open_ms (a connect, a TLS handshake on a 68020) and the
+     * answer's first byte comes quiet_ms after the request (the server thinking), both waited in NET_SLICE_MS slices,
+     * the open with the net's idle hook between them, the answer as recv timeouts; waited is told each slice (a test
+     * moves its screen's clock); open_broken: the idle hook stopped the open */
+    long open_ms, quiet_ms;
+    void (*waited)(long ms);
+    int open_broken;
 } pstub;
 
 extern pstub ps;

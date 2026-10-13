@@ -36,6 +36,9 @@
 
 struct cl_tls {
     SSL *ssl;
+    int (*idle)(void *iu);      /* the caller's, during tls_handshake only */
+    void *iu;
+    int stop;                   /* idle said stop */
 };
 
 static SSL_CTX *ctx;
@@ -45,6 +48,34 @@ struct Library *AmiSSLMasterBase;
 struct Library *AmiSSLBase;
 struct Library *AmiSSLExtBase;
 #endif
+
+/* the caller's idle hook between the handshake's steps: AmiSSL computes
+ * each step in one call (measured on the rig, a 68020 at real speed: the
+ * second SSL_connect call 11-12.5 s, of it the server's key exchange, three
+ * certificates verified and the server's signature; a 68060 does it in
+ * 0.4 s), the info callback runs between those steps and the verify
+ * callback after each certificate. Called back on the stack, AmiSSL's OS3
+ * convention (SDK README section 9), as vbcc calls. */
+static void step_idle(cl_tls *t)
+{
+    if (t && t->idle && !t->stop && t->idle(t->iu))
+        t->stop = 1;
+}
+
+static void info_cb(const SSL *s, int where, int ret)
+{
+    (void)where;
+    (void)ret;
+    step_idle((cl_tls *)SSL_get_app_data(s));
+}
+
+static int verify_cb(int ok, X509_STORE_CTX *x)
+{
+    SSL *s = (SSL *)X509_STORE_CTX_get_ex_data(x, SSL_get_ex_data_X509_STORE_CTX_idx());
+    cl_tls *t = s ? (cl_tls *)SSL_get_app_data(s) : 0;
+    step_idle(t);
+    return t && t->stop ? 0 : ok;   /* a stop ends the handshake here */
+}
 
 static void ssl_reason(char *err, int cap, const char *what)
 {
@@ -88,7 +119,8 @@ int tls_init(void *socketbase, char *err, int cap)
         return TLS_ERROR;
     }
     SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, 0);
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, verify_cb);
+    SSL_CTX_set_info_callback(ctx, info_cb);
     if (!SSL_CTX_set_default_verify_paths(ctx)) {
         ssl_reason(err, cap, "the certificate store (AmiSSL:Certs) did not load");
         tls_exit();
@@ -116,7 +148,7 @@ void tls_exit(void)
 
 cl_tls *tls_new(long sock, const char *host, char *err, int cap)
 {
-    cl_tls *t = (cl_tls *)malloc(sizeof(*t));
+    cl_tls *t = (cl_tls *)calloc(1, sizeof(*t));
     if (!t || !ctx) {
         cl_copy(err, t ? "TLS is not set up" : "out of memory", cap);
         free(t);
@@ -124,7 +156,7 @@ cl_tls *tls_new(long sock, const char *host, char *err, int cap)
     }
     t->ssl = SSL_new(ctx);
     if (!t->ssl || !SSL_set_fd(t->ssl, (int)sock) ||
-        !SSL_set_tlsext_host_name(t->ssl, host) || !SSL_set1_host(t->ssl, host)) {
+        !SSL_set_tlsext_host_name(t->ssl, host) || !SSL_set1_host(t->ssl, host) || !SSL_set_app_data(t->ssl, t)) {
         ssl_reason(err, cap, "TLS session setup failed");
         tls_free(t);
         return 0;
@@ -142,10 +174,16 @@ static int want(cl_tls *t, int rc)
     return TLS_ERROR;
 }
 
-int tls_handshake(cl_tls *t, char *err, int cap)
+int tls_handshake(cl_tls *t, int (*idle)(void *iu), void *iu, char *err, int cap)
 {
-    int rc = SSL_connect(t->ssl), w;
+    int rc, w;
     long v;
+    t->idle = idle;                 /* not during reads: their keys are the caller's recv loop's */
+    t->iu = iu;
+    rc = SSL_connect(t->ssl);
+    t->idle = 0;
+    if (t->stop)
+        return TLS_BREAK;
     if (rc == 1) {
         v = SSL_get_verify_result(t->ssl);
         if (v != X509_V_OK) {

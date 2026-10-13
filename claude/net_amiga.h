@@ -8,6 +8,7 @@ typedef struct net_amiga {
     long sock;
     void *tls;                  /* cl_tls *, 0 for a plain connection */
     char err[200];
+    cl_net *net;                /* its interface: the caller's idle hook */
 } net_amiga;
 
 void net_amiga_init(net_amiga *n, cl_net *net);

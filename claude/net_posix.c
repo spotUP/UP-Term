@@ -114,4 +114,6 @@ void net_posix_init(net_posix *p, cl_net *n)
     n->recv = p_recv;
     n->close = p_close;
     n->err = p_err;
+    n->idle = 0;            /* its waits are the caller's recv timeouts; connect blocks */
+    n->iu = 0;
 }

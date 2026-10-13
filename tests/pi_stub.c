@@ -113,11 +113,24 @@ void ps_raw(const char *name)
 
 static int s_open(void *u, const char *host, int port, int tls)
 {
-    (void)u;
+    cl_net *net = (cl_net *)u;
+    long left = ps.open_ms;
     (void)host;
     (void)port;
     (void)tls;
     ps.opens++;
+    ps.open_ms = 0;
+    while (left > 0) {
+        long slice = net->idle && left > NET_SLICE_MS ? NET_SLICE_MS : left;
+        ps.clock += (unsigned long)slice;
+        if (ps.waited)
+            ps.waited(slice);
+        left -= slice;
+        if (left > 0 && net->idle(net->iu)) {
+            ps.open_broken = 1;
+            return NET_BREAK;
+        }
+    }
     if (ps.refuse > 0) {
         ps.refuse--;
         ps.refused++;
@@ -159,6 +172,13 @@ static long s_recv(void *u, char *b, long cap, int timeout_ms)
     ps.clock += 250;
     if (ps.silent || ps.cur < 0)
         return ps.silent ? NET_TIMEOUT : 0;
+    if (ps.quiet_ms > 0 && !ps.pos) {
+        long w = timeout_ms < ps.quiet_ms ? timeout_ms : ps.quiet_ms;
+        ps.quiet_ms -= w;
+        if (ps.waited)
+            ps.waited(w);
+        return NET_TIMEOUT;
+    }
     len = ps.rlen[ps.cur] < 0 ? -ps.rlen[ps.cur] : ps.rlen[ps.cur];
     n = len - ps.pos;
     if (!n)
@@ -243,6 +263,7 @@ void ps_pool_up(int n)
     int i;
     for (i = 0; i < LLM_POOL; i++) {
         memset(&ps_nets[i], 0, sizeof(ps_nets[i]));
+        ps_nets[i].u = &ps_nets[i];         /* s_open reaches the idle hook */
         ps_nets[i].open = s_open;
         ps_nets[i].send = s_send;
         ps_nets[i].recv = s_recv;
