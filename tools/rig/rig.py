@@ -607,7 +607,7 @@ def stop():
         except BaseException:
             pass
     subprocess.run(["pkill", "-TERM", "-f", str(CFG)])
-    for _ in range(20):
+    for _ in range(90):   # FS-UAE closes its disks before it exits
         if not mine():
             break
         time.sleep(1)
