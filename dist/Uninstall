@@ -249,6 +249,19 @@ If EXISTS ENVARC:TERMINFO
     Delete >NIL: ENVARC:TERMINFO QUIET
   EndIf
 EndIf
+; a global TERM=vtcon (an earlier kit's README had the user set it) goes too
+If EXISTS ENV:TERM
+  Search >NIL: ENV:TERM vtcon
+  If NOT WARN
+    Delete >NIL: ENV:TERM QUIET
+  EndIf
+EndIf
+If EXISTS ENVARC:TERM
+  Search >NIL: ENVARC:TERM vtcon
+  If NOT WARN
+    Delete >NIL: ENVARC:TERM QUIET
+  EndIf
+EndIf
 If EXISTS ENVARC:up-term-orig/env
   Copy ENVARC:up-term-orig/env ENV:TERMINFO CLONE
 EndIf
