@@ -1,0 +1,20 @@
+Short:        Neovim 0.12 for UP-Term
+Author:       spotUP
+Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
+Type:         text/edit
+Version:      @VERSION@
+Replaces:     none
+Architecture: m68k-amigaos >= 3.0.0; m68k-020
+Requires:     comm/term/UP-Term.lha >= @NEEDSBASE@ (it brings the patched ixemul.library)
+Distribution: Aminet
+
+Neovim 0.12 with its runtime for an UP-Term window (TERM=vtcon, the patched ixemul.library of
+the base archive).
+
+Needs the base archive UP-Term.lha (version @NEEDSBASE@ or newer) installed first. About
+32 MB installed.
+
+Install: unpack, double-click Install. Uninstall removes UP-Term:nvim.
+
+Licence: Apache 2.0 with Vim-licensed parts (Neovim); bundled libraries carry their own
+(see LICENSES.txt in the base archive).
