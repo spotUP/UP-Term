@@ -871,7 +871,11 @@ AMIGA_PI_BIN := $(AMIGA_PI)/build/amiga/amiga-pi
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
+dist: dist-base dist-src
+
+# the base archive build/UP-Term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
+# Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
+dist-base: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
 	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -891,7 +895,7 @@ dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.devi
 	  dist/up-term.conf $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
-	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 $(KIT)/Files/coreutils/
+	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
 	@# the ports (copy-userland: bin; userland: share, etc, licenses) and
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
@@ -901,8 +905,7 @@ dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.devi
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(KIT)/Files/
-	cp $(AMIGA_PI_BIN) $(KIT)/Files/amiga-pi
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
 	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
@@ -919,22 +922,26 @@ dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.devi
 	python3 tools/mkinstaller.py dist/Uninstall base > $(KIT)/Uninstall
 	cp dist/README.txt dist/LICENSES.txt $(KIT)/
 	sh tools/mkversions.sh $(UPTERM_ROOT) > $(KIT)/Files/VERSIONS
-	rm -rf $(KIT)/Files/python3 $(KIT)/Files/nvim
-	cp -R $(PYTHON_DIST) $(KIT)/Files/python3
-	cp -R $(NVIM_DIST) $(KIT)/Files/nvim
-	cp dist/ClaudeCode $(KIT)/ClaudeCode
-	cp dist/ClaudeCode $(KIT)/Files/ClaudeCode
-	python3 tools/mkicon.py $(KIT)/ClaudeCode.info --tool C:IconX \
-	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE" --tooltype DELAY=0
+	# the base's version, which the add-on archives' Install checks (a $$VER: line the Version command reads)
+	printf '$$VER: UP-Term %s (%s)\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" > $(KIT)/Files/UP-Term.version
 	python3 tools/mkicon.py $(KIT)/Uninstall.info --tool C:IconX --plain
 	# every file's mode by one rule (lha carries it to the Amiga as protection bits: a file
 	# without u+w cannot be replaced by the next Install or an Update); stops on one left without u+w
 	python3 tools/kitmodes.py $(KIT)
 	# last: every file of the kit, its part and CRC, for the Installer's update (dist/parts.txt)
-	python3 tools/mkmanifest.py $(KIT)
+	python3 tools/mkmanifest.py $(KIT) --package base
 	cd $(BUILD)/dist && rm -f ../UP-Term.lha && lha -aq ../UP-Term.lha UP-Term
 	@ls -la $(BUILD)/UP-Term.lha
+
+# build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
+# complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
+.PHONY: dist-base dist-src
+dist-src:
+	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-src: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
+	cp dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/COPYING $(BUILD)/dist-src/coreutils-5.2.1/
 	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/UP-Term-src.lha && lha -aq $(CURDIR)/$(BUILD)/UP-Term-src.lha userland-src
+	cd $(BUILD)/dist-src && lha -aq ../UP-Term-src.lha coreutils-5.2.1
 	@ls -la $(BUILD)/UP-Term-src.lha
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
@@ -942,7 +949,6 @@ dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.devi
 dist-check:
 	python3 tests/test_dist_versions.py
 	python3 tests/test_dist_installer.py
-	@test -s $(KIT)/Files/amiga-pi || { echo "dist-check: $(KIT)/Files/amiga-pi missing: make dist"; exit 1; }
 	python3 tests/test_dist_manifest.py
 	python3 tests/test_dist_modes.py
 	python3 tests/test_rig_fixtures.py
