@@ -287,7 +287,7 @@ static void the_styles_scene_shows_slow_and_rapid_blink(void)
     vt_free(t);
 }
 
-static void any_key_ends_the_demo(void)
+static void q_ends_the_demo_and_any_other_key_does_not(void)
 {
     long all;
     start(80, 24);
@@ -295,7 +295,7 @@ static void any_key_ends_the_demo(void)
     all = bytes;
     vt_free(t);
     start(80, 24);
-    next_key = 'x';
+    next_key = 'q';
     keys_left = 3;
     CHECK_INT(updemo_run(&io, 80, 24, 0, 0), 0);
     CHECK(bytes < all / 4);
@@ -303,11 +303,79 @@ static void any_key_ends_the_demo(void)
     CHECK_STR(row_text(0), "before the demo");
     vt_free(t);
     start(80, 24);
-    inject = "\033[A"; /* a cursor key is a key too */
+    inject = "\033"; /* Esc */
     keys_left = 3;
     CHECK_INT(updemo_run(&io, 80, 24, 0, 0), 0);
     CHECK(bytes < all / 4);
     vt_free(t);
+}
+
+/* W-D2 (owner 2026-10-14: the demo must not exit on a key; a key skips to the next scene). Every scene runs 40
+ * ticks; `seq` is typed after 3 polls, in scene `first`. The frames and ticks each scene got say where the demo went. */
+static long fr[24], tk[24];
+
+static int run_keys(int first, const char *seq)
+{
+    int s, rc;
+    start(80, 24);
+    inject = seq;
+    keys_left = 3;
+    rc = updemo_run(&io, 80, 24, first, 40);
+    for (s = 0; s < 24; s++)
+        updemo_stats(s, &fr[s], &tk[s]);
+    return rc;
+}
+
+static void a_key_goes_to_the_next_scene_and_the_demo_keeps_running(void)
+{
+    const char *seq[] = { " ", "\r", "\n", "\033[C", "\033OC" };
+    int i;
+    for (i = 0; i < 5; i++) {
+        CHECK_INT(run_keys(1, seq[i]), 0);
+        CHECK(tk[1] < 40);                       /* cut short */
+        CHECK(tk[2] >= 40);                      /* the next scene ran its time out */
+        CHECK(fr[23] > 0);                       /* and the demo went on to the last scene */
+        vt_free(t);
+    }
+}
+
+static void left_and_b_go_back_a_scene(void)
+{
+    const char *seq[] = { "b", "B", "\033[D", "\033OD" };
+    int i;
+    for (i = 0; i < 4; i++) {
+        CHECK_INT(run_keys(2, seq[i]), 0);
+        CHECK(fr[1] > 0); /* the scene before was played again */
+        CHECK(tk[1] >= 40);
+        CHECK(fr[23] > 0);
+        vt_free(t);
+    }
+}
+
+static void q_esc_and_ctrl_c_end_the_demo(void)
+{
+    const char *seq[] = { "q", "Q", "\033", "\003" };
+    int i;
+    for (i = 0; i < 4; i++) {
+        CHECK_INT(run_keys(1, seq[i]), 0);
+        CHECK_INT((int)fr[2], 0); /* nothing after the scene it was typed in */
+        CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN));
+        CHECK_STR(row_text(0), "before the demo");
+        vt_free(t);
+    }
+}
+
+/* ESC [ A is a cursor key, not an Esc followed by a bracket; other keys and replies do nothing */
+static void an_arrow_key_sequence_is_not_taken_as_esc_and_a_mouse_report_is_no_key(void)
+{
+    const char *seq[] = { "\033[A", "\033[B", "\033OA", "\033[1;5C", "x", "\033[<0;10;12M", "\033[<0;10;12m", "\033[M \"#" };
+    int i;
+    for (i = 0; i < 8; i++) {
+        CHECK_INT(run_keys(1, seq[i]), 0);
+        CHECK(tk[1] >= 40);  /* the scene was not left */
+        CHECK(fr[23] > 0);
+        vt_free(t);
+    }
 }
 
 /* a click arrives as an SGR mouse report: the mouse scene shows it, and
@@ -451,7 +519,11 @@ void suite_updemo(void)
     bench_picks_the_effect_scenes_of_the_one_list();
     the_unicode_scene_shows_emoji();
     the_styles_scene_shows_slow_and_rapid_blink();
-    any_key_ends_the_demo();
+    q_ends_the_demo_and_any_other_key_does_not();
+    a_key_goes_to_the_next_scene_and_the_demo_keeps_running();
+    left_and_b_go_back_a_scene();
+    q_esc_and_ctrl_c_end_the_demo();
+    an_arrow_key_sequence_is_not_taken_as_esc_and_a_mouse_report_is_no_key();
     the_mouse_scene_shows_a_click();
     the_resize_scene_leaves_the_width_as_it_was();
     a_window_made_too_small_ends_the_demo();

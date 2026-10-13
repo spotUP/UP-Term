@@ -697,8 +697,10 @@ DEMO
   sixel image, synchronized output, a program resizing the window (from
   80 columns), reflow (drag the size gadget when it asks), then the
   text-mode demo effects: copper bars, plasma, fire, a rotozoomer, vector
-  cubes, a sine scroller, palette cycling. Any key ends it; UPDemo 17
-  starts at scene 17 (the effects). Your shell comes back as it was.
+  cubes, a sine scroller, palette cycling. Space, Return or the Right
+  arrow key goes to the next scene, B or the Left arrow key back, Q, Esc
+  or Ctrl-C quits (no other key does anything); UPDemo 17 starts at
+  scene 17 (the effects). Your shell comes back as it was.
   Help > Demo tour (or /demo) plays the same in a tab of its own, which
   closes when the demo ends.
   UPDemo BENCH runs the effect scenes (text, colours, scroll regions and
