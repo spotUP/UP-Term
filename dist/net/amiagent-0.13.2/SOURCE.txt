@@ -1,0 +1,11 @@
+amiagent 0.13.2, the Amiga half of amimcp, by Thomas Luebker.
+Licence: Apache License 2.0 (LICENSE in this drawer).
+Source: https://github.com/thomas-luebker/amimcp (the archive itself does not
+carry the source; the 68080 target mentioned in amiagent.readme builds from there).
+Taken unchanged from Aminet comm/net/amiagent-0.13.2.lha
+  archive sha256  d893cabeb50e49678f47bbad192a0c921bde0ee410d61ee65b1724b05430fae3
+  amiagent        599243457d3cd64e81dd2b81ab8e8139a8b4e190ed65cf76345468be009c0432  (68000)
+  amiagent.020    de6ad5acd4ee88930bda25ce865773c08583d74639f88447d43b688bce04c0ac  (68020 and up)
+amimon, amimon-mui and the icons of the archive are not vendored.
+amiagent.readme is the archive's README.txt. amiagent runs whatever it is sent:
+never start it without TOKEN=<secret>.
