@@ -502,7 +502,7 @@ IXEMUL
   LIBS:ixnet.library.orig; to go back:
     Copy LIBS:ixemul.library.orig LIBS:ixemul.library
     Copy LIBS:ixnet.library.orig LIBS:ixnet.library
-  To tell which one is in:  Search LIBS:ixemul.library vtcon-1
+  To tell which one is in:  Search LIBS:ixemul.library vtcon-2
 
 SCREEN
   GNU screen 4.9.1: C-a c new window, C-a n / C-a p next / previous,

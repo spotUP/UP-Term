@@ -574,7 +574,7 @@ def run_base_case(case):
         ck(ir.run('List >NIL: %s' % f)[0] == 0, '%s is there' % f)
     st = ir.lib_state()
     ck(st.get('ixemul.library.orig') == before.get('ixemul.library'), 'the original ixemul kept as .orig', str(st))
-    ck(ir.run('Search >NIL: LIBS:ixemul.library vtcon-1')[0] == 0, 'the patched ixemul is in LIBS:')
+    ck(ir.run('Search >NIL: LIBS:ixemul.library vtcon-2')[0] == 0, 'the patched ixemul is in LIBS:')
     ck(ir.run('Assign >NIL: PTY: EXISTS DEVICES')[0] == 0, 'PTY: is mounted')
     rc, out = ir.run('C:UPConsole STATUS')
     ck('kit:' in out, 'UPConsole STATUS prints the kit line (UP-Term:VERSIONS)', out)
