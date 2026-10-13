@@ -571,8 +571,8 @@ def _main(dest=None):
     kit_ixnet = (VTC / "distkit/Files/libs/ixnet.library").stat().st_size
     check(st.get('ixnet.library.orig') == ixnet_before and st.get('ixnet.library') == str(kit_ixnet),
           'the kit\'s ixnet in LIBS:, the original kept as .orig', str(st))
-    rc, out = run('Search LIBS:ixemul.library UP-Term')
-    check('UP-Term' in out, 'the patched ixemul is in LIBS:', out)
+    rc, out = run('Search LIBS:ixemul.library vtcon-1')
+    check('vtcon-1' in out, 'the patched ixemul is in LIBS:', out)
     rc, out = run('C:UPConsole STATUS')
     check('CON: ROM' in out, 'Install NOCONSOLE leaves CON: the ROM\'s', out)
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term console"')[0] != 0,
