@@ -158,23 +158,28 @@ EndIf
 ; UP-Term: for the rig with no kit installed (UT1): the glyph pages are read
 ; through UP-Term:unifont/ and UP-Term:emoji/ (render/unifont.h, emoji.h), and
 ; `install` puts them in VTC:upterm (a drawer, not the root of VTC:: dd_dir asks UP-Term: for a
-; directory and a device root is not one). A kit's install writes ENVARC:up-term/Dir and
-; makes its own assign, which wins.
+; directory and a device root is not one). A kit's assign wins: its block in
+; S:User-Startup either ran already (the assign exists) or runs later and
+; replaces this one. ENVARC:up-term/Dir is no sign of a kit: an installer_rig
+; run can leave it naming a drawer it deleted (rig 1, 2026-10-13).
 C:Assign >NIL: UP-Term: EXISTS
 If WARN
-  If NOT EXISTS ENVARC:up-term/Dir
-    C:Assign >NIL: UP-Term: VTC:upterm
-  EndIf
+  C:Assign >NIL: UP-Term: VTC:upterm
 EndIf
 ; no global TERM: a kit sets none either (vsh sets it in UP-Term windows, and a
 ; ROM CON: window with TERM=vtcon would be sent xterm sequences)
 C:SetEnv TERMINFO /VTC/terminfo
 C:SetEnv TERMCAP /etc/termcap
 ; the UP-Term icon beside Shell in SYS:System, as install.dos puts it there (its
-; tool UP-Term:bin/vsh is in VTC:upterm, rig.py install); a kit's own icon stays
-If EXISTS UP-Term:UP-Term.info
-  If NOT EXISTS SYS:System/UP-Term.info
-    C:Copy UP-Term:UP-Term UP-Term:UP-Term.info SYS:System CLONE
+; tool UP-Term:bin/vsh is in VTC:upterm, rig.py install); a kit's own icon stays.
+; Only through an assign that exists: EXISTS on a missing UP-Term: puts up
+; "Please insert volume UP-Term" and the boot waits there for ever.
+C:Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  If EXISTS UP-Term:UP-Term.info
+    If NOT EXISTS SYS:System/UP-Term.info
+      C:Copy UP-Term:UP-Term UP-Term:UP-Term.info SYS:System CLONE
+    EndIf
   EndIf
 EndIf
 Echo >>BOOTX:boot.log "assigns done"
