@@ -419,6 +419,16 @@ static int f_stat(void *os, const char *path, sh_stat *st, int nofollow)
             st->type = SH_ST_FILE;
             st->size = 1;
             st->ino = i + 1;
+            /* test -N: the times of four files, set by the name */
+            if (!strcmp(path, "nmod")) {        /* modified after the read */
+                st->mtime = 100; st->atime = 50;
+            } else if (!strcmp(path, "nread")) { /* read after the modification */
+                st->mtime = 50; st->atime = 100;
+            } else if (!strcmp(path, "nsame")) { /* the same second, the modification a nanosecond later */
+                st->mtime = st->atime = 100; st->mtime_ns = 2; st->atime_ns = 1;
+            } else if (!strcmp(path, "nequal")) { /* the same instant */
+                st->mtime = st->atime = 100; st->mtime_ns = st->atime_ns = 7;
+            }
             return 0;
         }
     return -1;
@@ -966,6 +976,10 @@ static void jobs_aliases_and_dirs(void)
     CHECK_STR(run("cd Work:; pwd; (cd SYS:; pwd); pwd"), "Work:\nSYS:\nWork:\n");
     CHECK_STR(run("cd nowhere; echo $?"), "1\n");
     CHECK_STR(run("[ -d SYS: ] && echo dir"), "dir\n");
+    /* test -N as bash does it: the modification later than the access time, to the nanosecond; equal is not */
+    CHECK_STR(run("echo x >nmod; echo x >nread; echo x >nsame; echo x >nequal; "
+                  "for f in nmod nread nsame nequal nnone; do [ -N $f ]; echo $f $?; done"),
+              "nmod 0\nnread 1\nnsame 0\nnequal 1\nnnone 1\n");
     CHECK_STR(run("stack; stack 100000; stack; stack 12 || echo refused"),
               "stack 4096\nstack 100000\nrefused\n");
     CHECK_STR(run("[ -t 1 ] && echo tty; [ -t 1 ] >f || echo redirected; [ -t 7 ] || echo no"),

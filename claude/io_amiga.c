@@ -120,6 +120,15 @@ static int c_raw(void *u, int on)
     return 0;
 }
 
+/* UP-Term's consoles (the handler, PTY:) answer the line discipline's packet; a ROM CON: or a KingCON window refuses it */
+static int c_upterm(void *u)
+{
+    struct FileHandle *fh = console(Input());
+    vt_termios t;
+    (void)u;
+    return fh && DoPkt(fh->fh_Type, ACTION_VTCON_TCGETA, fh->fh_Arg1, (LONG)&t, 0, 0, 0) ? 1 : 0;
+}
+
 static long c_rd(void *u, char *buf, long cap, long ms)
 {
     BPTR in = Input();
@@ -182,6 +191,7 @@ int io_amiga_screen(cl_io *io)
     io->size = c_size;
     io->raw = c_raw;
     io->edit = c_edit;
+    io->upterm = c_upterm;
     return 1;
 }
 

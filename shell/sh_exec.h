@@ -52,6 +52,7 @@ typedef struct sh_stat {
     int link;              /* a symbolic link (nofollow lookup only) */
     long size;
     long mtime, atime;     /* seconds */
+    long mtime_ns, atime_ns; /* and their nanoseconds (0 where the system has none) */
     unsigned mode;         /* rwxrwxrwx plus 04000 set-uid, 02000 set-gid, 01000 sticky */
     unsigned access;       /* what this user may do: 4 read, 2 write, 1 execute */
     int owned, group;      /* owned by the effective user / group */
