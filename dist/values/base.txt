@@ -1,0 +1,4 @@
+# Values for @NAME@ in the base's templates (tools/mkinstaller.py), beside the
+# columns of dist/packages.txt. One NAME=value a line.
+VARDIR=$updest/var
+VARWHAT=UP-Term:var (Claude and amiga-pi sessions and history)

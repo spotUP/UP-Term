@@ -1,0 +1,5 @@
+stop=error
+error=Throttling error: Too many requests, please wait before trying again.
+usage=0,0,0,0
+total=0 w1h=-
+raw=-

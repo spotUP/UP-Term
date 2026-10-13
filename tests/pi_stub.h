@@ -22,6 +22,7 @@ typedef struct pstub {
     long brk_at;                /* the poll says stop once this many bytes went out */
     int brk;
     int silent;                 /* answer nothing at all (the idle limit) */
+    int refuse, refused;        /* this many connects fail (nothing listening on the port), then they succeed; how many did */
     int sleeps;
     long slept;
     int notices;
@@ -40,6 +41,10 @@ void ps_reset(void);
 void ps_sse(const char *name, int cut);
 /* the same from SSE text in memory */
 void ps_sse_text(const char *sse, long n, int cut);
+/* a body of any content type (an AWS event stream: application/vnd.amazon.eventstream) as a chunked 200 answer; a
+ * recording from tests/pi named by file */
+void ps_body_text(const char *body, long n, const char *ctype, int cut);
+void ps_stream(const char *name, const char *ctype);
 /* a whole HTTP answer from memory, as it is */
 void ps_http_text(const char *http, long n);
 /* a whole HTTP answer queued as it is in the file */

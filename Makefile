@@ -59,6 +59,8 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_assemble.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
@@ -862,7 +864,14 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # into build/UP-Term-src.lha, published next to the kit (plan D2)
 UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
-dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
+# amiga-pi, the pi coding agent port (its own repo): built by its Makefile, which reads
+# vtcon's core in place; the kit gets the binary as C:Claude's sits beside it
+AMIGA_PI ?= $(UPTERM_ROOT)/amiga-pi
+AMIGA_PI_BIN := $(AMIGA_PI)/build/amiga/amiga-pi
+.PHONY: amiga-pi-bin
+amiga-pi-bin:
+	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
+dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
 	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -876,7 +885,9 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
-	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/install.dos dist/vshrc \
+	# install.dos, Install and Uninstall: the templates in dist/ with dist/common/'s shared parts (tools/mkinstaller.py)
+	python3 tools/mkinstaller.py dist/install.dos base > $(KIT)/Files/install.dos
+	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/vshrc \
 	  dist/up-term.conf $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
@@ -891,6 +902,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
 	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(KIT)/Files/
+	cp $(AMIGA_PI_BIN) $(KIT)/Files/amiga-pi
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
 	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
@@ -901,10 +913,11 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
 	# the top drawer: Install (the Installer script), Uninstall, README, Files
-	cp dist/Install.installer $(KIT)/Install
+	python3 tools/mkinstaller.py dist/Install.installer base > $(KIT)/Install
 	python3 tools/mkicon.py $(KIT)/Install.info --tool Installer --plain \
 	  --tooltype APPNAME=UP-Term --tooltype MINUSER=AVERAGE --tooltype DEFUSER=AVERAGE
-	cp dist/Uninstall dist/README.txt dist/LICENSES.txt $(KIT)/
+	python3 tools/mkinstaller.py dist/Uninstall base > $(KIT)/Uninstall
+	cp dist/README.txt dist/LICENSES.txt $(KIT)/
 	sh tools/mkversions.sh $(UPTERM_ROOT) > $(KIT)/Files/VERSIONS
 	rm -rf $(KIT)/Files/python3 $(KIT)/Files/nvim
 	cp -R $(PYTHON_DIST) $(KIT)/Files/python3
@@ -929,6 +942,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 dist-check:
 	python3 tests/test_dist_versions.py
 	python3 tests/test_dist_installer.py
+	@test -s $(KIT)/Files/amiga-pi || { echo "dist-check: $(KIT)/Files/amiga-pi missing: make dist"; exit 1; }
 	python3 tests/test_dist_manifest.py
 	python3 tests/test_dist_modes.py
 	python3 tests/test_rig_fixtures.py

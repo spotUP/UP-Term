@@ -20,8 +20,10 @@ rig). Checked:
 import pathlib, re, sys, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-INSTALLER = (ROOT / "dist/Install.installer").read_text(encoding="latin-1")
-DOS = (ROOT / "dist/install.dos").read_text(encoding="latin-1")
+sys.path.insert(0, str(ROOT / "tools"))
+import mkinstaller as mi
+INSTALLER = mi.build(ROOT / "dist/Install.installer", "base")
+DOS = mi.build(ROOT / "dist/install.dos", "base")
 
 # Installer.guide 1.19 (43.3): statements, functions, parameters
 KNOWN_43 = set("""
@@ -202,6 +204,28 @@ class ClaudeRemoteFile(unittest.TestCase):
         self.assertIn('Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET', lines)
 
 
+class AmigaPiInstall(unittest.TestCase):
+    """C:amiga-pi is installed as C:Claude is (same part, same drawer rule): the binary
+    to C:, ENVARC:amiga-pi made when missing, and no settings.json, models.json or
+    auth.json written by Install; Uninstall removes the binary and leaves the drawer."""
+    def test_amiga_pi_follows_claude_in_the_tools_part(self):
+        self.assertIn("Copy amiga-pi C:amiga-pi CLONE QUIET\nIf NOT EXISTS ENVARC:amiga-pi\n  MakeDir ENVARC:amiga-pi\nEndIf", DOS)
+        self.assertLess(DOS.index("Copy Claude C:Claude"), DOS.index("Copy amiga-pi C:amiga-pi"))
+        self.assertLess(DOS.index("Copy amiga-pi C:amiga-pi"), DOS.index("Lab copy-python"))
+
+    def test_install_never_writes_a_file_of_the_users_amiga_pi_drawer(self):
+        for l in DOS.splitlines():
+            self.assertFalse(re.search(r"(>|Copy .* )ENVARC:amiga-pi/", l), l)
+
+    def test_uninstall_removes_the_binary_not_the_drawer(self):
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        self.assertIn(" C:amiga-pi ", un)
+        self.assertNotIn("ENVARC:amiga-pi", un)
+
+    def test_the_kit_manifest_names_the_binary(self):
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/amiga-pi$")
+
+
 class AmigaDosVariableNames(unittest.TestCase):
     """AmigaDOS ends a $name at the first character that is not a letter or a
     digit: $o_dest was the variable "o" (none), and the literal "$o_dest" went
@@ -210,7 +234,7 @@ class AmigaDosVariableNames(unittest.TestCase):
 
     def test_no_variable_name_in_the_kits_amigados_scripts_has_other_characters(self):
         for name in self.SCRIPTS:
-            text = (ROOT / "dist" / name).read_text(encoding="latin-1")
+            text = mi.build(ROOT / "dist" / name, "base")
             body = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith(";"))
             self.assertEqual(re.findall(r'\$[A-Za-z0-9]+[^A-Za-z0-9\s"*/:;.,()<>{}\[\]=-]', body), [], name)
             self.assertEqual(re.findall(r'(?im)^\s*(?:Set|UnSet)(?:\s+[<>]\S*)*\s+(?![<>])([A-Za-z0-9]*[^A-Za-z0-9\s][^\s]*)', body),
@@ -333,7 +357,7 @@ class LinkedEnvOn32(unittest.TestCase):
         self.assertEqual(filled, {'up-term', 'vsh'})
 
     def test_uninstall_deletes_env_before_envarc(self):
-        un = (ROOT / "dist/Uninstall").read_text(encoding="latin-1")
+        un = mi.build(ROOT / "dist/Uninstall", "base")
         for name in ('up-term', 'vsh'):
             both = [l.lower() for l in un.splitlines() if l.lower().startswith('delete')
                     and re.search(r'\benv:%s\s' % name, l.lower()) and re.search(r'\benvarc:%s\s' % name, l.lower())]

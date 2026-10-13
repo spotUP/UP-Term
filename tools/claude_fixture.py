@@ -60,13 +60,20 @@ api-key header) like the Responses ones, and its Google requests (POST .../model
 google-generative-ai, the key in x-goog-api-key) from tests/pi/google/*.sse: after a functionResponse plain, a prompt
 naming "startup" or "tool" tools2 (a read and a bash call), else plain.
 
+It also answers amiga-pi's Amazon Bedrock requests (POST .../model/<id>/converse-stream, bedrock-converse-stream, signed
+with AWS Signature Version 4 or sent with a bearer token) with AWS event-stream answers (Content-Type
+application/vnd.amazon.eventstream, the binary framing of llm/evstream.c) from tests/pi/bedrock/*.es: after a toolResult
+plain, a prompt naming "startup" or "tool" tools2 (a read and a bash call), else plain. The log line says how the request
+was authenticated (sigv4, bearer, none).
+
 It also answers amiga-pi's POST .../chat/completions (openai-completions)
 from tests/pi/openai_*.sse: after the results of openai_edit's calls
 openai_edit_final, after other tool results openai_final, a prompt naming
 "edit" openai_edit (edit RAM:pi-test.txt "hello" -> "hello from the Amiga"
 and bash List RAM:; Echo hello >RAM:pi-test.txt first), "shell"
 openai_shell (bash with a command only vsh answers, read of
-RAM:pi-wide.bmp), "mcp" openai_mcp (mcp__fake__echo and mcp__amiga__echo,
+RAM:pi-wide.bmp), "blocked bash" openai_bash (one bash call writing
+RAM:pi-blocked.txt, rig step 11), "mcp" openai_mcp (mcp__fake__echo and mcp__amiga__echo,
 amiga-pi phase K), "startup" or
 "tool" openai_tools, else openai_text; the log line says whether an
 Authorization header came (over plain http it must not), and a line per
@@ -160,7 +167,8 @@ def pick_openai(body):
     after openai_edit's results (call_Pi...) -> openai_edit_final.sse, after other
     tool results -> openai_final.sse, a prompt naming "edit" -> openai_edit.sse
     (edit and bash), "shell" -> openai_shell.sse (bash with a command only vsh
-    answers, and read of RAM:pi-wide.bmp), "mcp" -> openai_mcp.sse (mcp__fake__echo
+    answers, and read of RAM:pi-wide.bmp), "blocked bash" -> openai_bash.sse (one bash
+    call that writes RAM:pi-blocked.txt: amiga-pi rig step 11, an extension blocks it), "mcp" -> openai_mcp.sse (mcp__fake__echo
     and mcp__amiga__echo: amiga-pi phase K, rig step 10), "startup" or
     "tool" -> openai_tools.sse (read and ls, the arguments in pieces), else
     openai_text.sse."""
@@ -176,6 +184,8 @@ def pick_openai(body):
         return "openai_edit"
     if "shell" in text:
         return "openai_shell"
+    if "blocked bash" in text:
+        return "openai_bash"
     if "mcp" in text:
         return "openai_mcp"
     if "startup" in text or "tool" in text:
@@ -213,6 +223,21 @@ def pick_google(body):
     if "startup" in text or "tool" in text:
         return "google/tools2"
     return "google/plain"
+
+
+def pick_bedrock(body):
+    """amiga-pi's bedrock-converse-stream requests (POST .../model/<id>/converse-stream): after a toolResult
+    -> bedrock/plain.es, a prompt naming "startup" or "tool" -> bedrock/tools2.es (read and bash calls), else
+    bedrock/plain.es."""
+    msgs = body.get("messages") or []
+    last = msgs[-1] if msgs else {}
+    blocks = last.get("content") or []
+    if any(isinstance(b, dict) and "toolResult" in b for b in blocks):
+        return "bedrock/plain"
+    text = " ".join(b.get("text", "") for b in blocks if isinstance(b, dict)).lower()
+    if "startup" in text or "tool" in text:
+        return "bedrock/tools2"
+    return "bedrock/plain"
 
 
 def tool_tail(msgs):
@@ -271,8 +296,9 @@ class Handler(BaseHTTPRequestHandler):
         route = self.path.split("?")[0]
         responses = route.endswith("/responses")            # openai-responses and azure-openai-responses (?api-version=)
         google = ":streamGenerateContent" in route
-        openai = route.endswith("/chat/completions") or responses or google
-        name = (pick_responses(body) if responses else pick_google(body) if google
+        bedrock = route.endswith("/converse-stream")
+        openai = route.endswith("/chat/completions") or responses or google or bedrock
+        name = (pick_responses(body) if responses else pick_google(body) if google else pick_bedrock(body) if bedrock
                 else pick_openai(body) if openai else pick(body, self.forced))
         if self.dump:
             # every request body as it came, numbered, for the rig checks to read
@@ -282,7 +308,9 @@ class Handler(BaseHTTPRequestHandler):
         msgs = body.get("messages") or body.get("input") or body.get("contents") or []
         results = sum(1 for m in msgs if isinstance(m.get("content"), list)
                       for b in m["content"] if b.get("type") == "tool_result")
-        if google:
+        if bedrock:
+            results = sum(1 for m in msgs for b in (m.get("content") or []) if isinstance(b, dict) and "toolResult" in b)
+        elif google:
             results = sum(1 for m in msgs for p in (m.get("parts") or []) if isinstance(p, dict) and "functionResponse" in p)
         elif responses:
             results = sum(1 for m in msgs if m.get("type") == "function_call_output")
@@ -290,19 +318,26 @@ class Handler(BaseHTTPRequestHandler):
             results = sum(1 for m in msgs if m.get("role") == "tool")
         key = (self.headers.get("x-goog-api-key") if google else self.headers.get("api-key") if "api-version=" in self.path
                else self.headers.get("Authorization") if openai else self.headers.get("x-api-key"))
-        print("[INFO] %s model=%s messages=%d tool_results=%d key_header=%s -> %s.sse" % (
-            self.path, body.get("model"), len(msgs), results,
-            "PRESENT (wrong!)" if key else "none", name), flush=True)
+        if bedrock:
+            # AWS authenticates with a signature (it is no secret and goes over plain http) or a bearer token (it must not)
+            auth = self.headers.get("Authorization") or ""
+            sig = auth.startswith("AWS4-HMAC-SHA256 Credential=")
+            print("[INFO] %s messages=%d tool_results=%d auth=%s -> %s.es" % (
+                self.path, len(msgs), results, "sigv4" if sig else "bearer (wrong!)" if auth else "none", name), flush=True)
+        else:
+            print("[INFO] %s model=%s messages=%d tool_results=%d key_header=%s -> %s.sse" % (
+                self.path, body.get("model"), len(msgs), results,
+                "PRESENT (wrong!)" if key else "none", name), flush=True)
         if openai and not responses and not google:
             # the latest tool results' text (amiga-pi's rig checks read it)
             for m in tool_tail(msgs):
                 print("[INFO]   tool_result %s: %s" % (m.get("tool_call_id"), result_text(m)), flush=True)
-        with open(os.path.join(PI if openai else STREAMS, name + ".sse"), "rb") as f:
+        with open(os.path.join(PI if openai else STREAMS, name + (".es" if bedrock else ".sse")), "rb") as f:
             data = f.read()
         if self.page_host and name == "tool_fetch":
             data = data.replace(b"127.0.0.1:8080", self.page_host.encode())
         self.send_response(200)
-        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Content-Type", "application/vnd.amazon.eventstream" if bedrock else "text/event-stream; charset=utf-8")
         self.send_header("Transfer-Encoding", "chunked")
         self.send_header("request-id", "req_fixture")
         self.end_headers()

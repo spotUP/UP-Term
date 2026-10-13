@@ -1,0 +1,6 @@
+stop=error
+error=Provider stopped with: guardrail_intervened
+usage=1,1,0,0
+total=2 w1h=-
+raw=guardrail_intervened
+text="Hi"

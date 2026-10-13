@@ -1,0 +1,1 @@
+{"messages":[{"role":"user","content":[{"text":"hello"},{"cachePoint":{"type":"default"}}]}],"system":[{"text":"You are amiga-pi, a coding agent."},{"cachePoint":{"type":"default"}}],"inferenceConfig":{"maxTokens":128000},"additionalModelRequestFields":{"thinking":{"type":"enabled","budget_tokens":8192},"anthropic_beta":["interleaved-thinking-2025-05-14"]}}

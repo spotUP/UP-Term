@@ -1,0 +1,2 @@
+; curl is ticked when AmiSSL is there (curl cannot run without it)
+(set #amissl (exists "LIBS:amisslmaster.library"))

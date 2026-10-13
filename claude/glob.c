@@ -4,8 +4,12 @@
 #include "glob.h"
 #include "util.h"
 
+static int case_sensitive;      /* set for the length of one glob_match_case call */
+
 static int lower(int c)
 {
+    if (case_sensitive)
+        return c;
     if (c >= 'A' && c <= 'Z')
         return c + 32;
     if (c >= 0xc0 && c <= 0xde && c != 0xd7)
@@ -157,6 +161,15 @@ static int match(const char *p, const char *s, int depth)
 int glob_match(const char *pat, const char *path)
 {
     return match(pat, path, 0);
+}
+
+int glob_match_case(const char *pat, const char *path)
+{
+    int r;
+    case_sensitive = 1;
+    r = match(pat, path, 0);
+    case_sensitive = 0;
+    return r;
 }
 
 int glob_wild(const char *p)

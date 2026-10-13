@@ -14,6 +14,14 @@ scripts                                                        up-console.device
                                                                upgetty, upicon, ixkill, pty-handler,
                                                                ixpipe-handler, Claude, wasabikey, Install,
                                                                Uninstall, install.dos, config files
+amiga-pi (C:amiga-pi)         MIT, Copyright (c) 2026 spotUP   amiga-pi repo LICENSE
+pi, the coding agent that     MIT, Copyright (c) 2025 Mario    amiga-pi repo vendor/pi-src/LICENSE
+amiga-pi follows (Earendil,   Zechner (pi's prompts, tool     (upstream: pi.dev)
+earendil-works/pi)            texts and file formats)
+Lua 5.4 (in amiga-pi, for     MIT (Lua.org, PUC-Rio; the       amiga-pi repo vendor/lua-5.4 (the
+extensions)                   notice is at the end of lua.h)   copyright notice at the end of lua.h)
+stb_image, stb_image_write    Public domain, or MIT (Sean      amiga-pi repo vendor/stb (notice at
+(in amiga-pi)                 Barrett), your choice            the end of each header)
 ixemul.library, ixnet.library GNU LGPL v2 or later (parts from ixemul-vtcon repo (COPYING.LIB,
 and libixcompat (linked into  BSD and other authors keep       LICENSES.README), a fork of ixemul 48.2
 every Amiga program)          their notices in their files)
@@ -77,8 +85,9 @@ tree-sitter, unibilium, ...)  file where one exists            files present)
 
 Notes
 - GNU Unifont is also offered under GPL v2 or later; the kit uses the OFL.
-- The Claude and ClaudeCode programs talk to Anthropic's API; AmiSSL 5 (used
-  at run time) is not part of the kit.
+- The Claude and ClaudeCode programs talk to Anthropic's API, and amiga-pi
+  to the API of the provider you choose; AmiSSL 5 (used at run time) is not
+  part of the kit.
 - Source for the GPL parts is in the kit as source archives where the table
   says so; for GNU screen, tmux, Python and Neovim it is in the repositories
   named, which the upterm meta-repo pins to the commits the kit was built from.

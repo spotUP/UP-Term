@@ -1,0 +1,8 @@
+HTTP/1.1 400 X
+content-type: application/json
+x-amzn-requestid: req-123
+x-amzn-errortype: ValidationException
+content-length: 76
+connection: keep-alive
+
+{"message": "data retention mode 'default' is not available for this model"}

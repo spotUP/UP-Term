@@ -137,5 +137,5 @@ static int c_feed(void *dv, const char *event, const char *data, long n, const l
 
 const llm_backend llm_be_openai_codex = {
     "openai-codex-responses", "Authorization", "/codex/responses", c_head, c_body, c_xhead, llm_responses_new, c_feed,
-    llm_responses_free, "OpenAI Responses stream ended before a terminal response event", 0, 0
+    llm_responses_free, "OpenAI Responses stream ended before a terminal response event", 0, 0, 0, 0
 };

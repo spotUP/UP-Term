@@ -240,6 +240,8 @@ static void header_line(http_resp *r)
     } else if (!strcmp(r->line, "content-type")) {
         if (starts_ci(v, "text/event-stream"))
             r->event_stream = 1;
+        else if (starts_ci(v, "application/vnd.amazon.eventstream"))
+            r->event_stream = r->aws_stream = 1;
     } else if (!strcmp(r->line, "retry-after")) {
         char *end;
         long s = strtol(v, &end, 10);

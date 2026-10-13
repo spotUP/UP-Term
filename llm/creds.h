@@ -18,6 +18,7 @@
 
 #include "backend.h"
 #include "be_azure.h"
+#include "be_bedrock.h"
 
 #define LLM_CMDS 16
 
@@ -40,6 +41,9 @@ typedef struct llm_cfg {
      * the catalog gave it */
     llm_azure_ep az;
     char az_orig[300];
+    /* llm_cfg_endpoint for bedrock-converse-stream: the credentials and region, the endpoint, and the catalog's base URL */
+    llm_aws aws;
+    char bd_ep[300], bd_orig[300];
 } llm_cfg;
 
 void llm_cfg_init(llm_cfg *c);
@@ -80,7 +84,11 @@ long llm_b64url_decode(const char *s, long n, unsigned char *out, long cap);
 /* the chatgpt_account_id claim of an OpenAI access token (a JWT; pi extracts it with atob, this decodes base64url):
  * 0, -1 */
 int llm_jwt_account_id(const char *token, char *out, long cap);
-/* "OPENAI_API_KEY" for provider "openai" (pi's env-api-keys.ts names for azure and google) */
+/* pi's checkAuth for a model: a credential for its provider (llm_cfg_key), or for amazon-bedrock the AWS ones too
+ * (AWS_PROFILE, AWS_ACCESS_KEY_ID with AWS_SECRET_ACCESS_KEY, the container and web identity variables: pi's
+ * env-api-keys.ts lists them; a request can use the access keys and the bearer token only, llm_cfg_endpoint says so) */
+int llm_cfg_authed(llm_cfg *c, const llm_model *m);
+/* "OPENAI_API_KEY" for provider "openai" (pi's env-api-keys.ts names for azure, google and amazon-bedrock) */
 void llm_key_env_name(const char *provider, char *out, long cap);
 /* the model's extra request headers (models.json headers, resolved; authHeader's Authorization) as lines
  * "Name: value\r\n" into w; 0, -1 when a value cannot be resolved (w untouched then) */

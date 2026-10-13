@@ -15,6 +15,10 @@
 #include "../llm/handoff.h"
 #include "../llm/creds.h"
 #include "../llm/be_azure.h"
+#include "../llm/evstream.h"
+#include "../llm/sha256.h"
+#include "../llm/sigv4.h"
+#include "../claude/util.h"
 #include "claude_load.h"
 #include "pi_stub.h"
 
@@ -576,13 +580,30 @@ static void resp_digest(const char *msg, jw *o, int ext)
             jw_rawz(o, i ? "," : "");
             jw_long(o, json_get(v, k[i], &x) ? json_long(x, -1) : -1);
         }
-        if (ext) {
+        if (ext == 2) {
+            /* bedrock: the API's own totalTokens and the 1 hour part of the cache writes */
+            jw_rawz(o, "\ntotal=");
+            jw_long(o, json_get(v, "totalTokens", &x) ? json_long(x, -1) : -1);
+            jw_rawz(o, " w1h=");
+            if (json_get(v, "cacheWrite1h", &x))
+                jw_long(o, json_long(x, -1));
+            else
+                jw_rawz(o, "-");
+        } else if (ext) {
             jw_rawz(o, "\nusage2=");
             jw_long(o, json_get(v, "reasoning", &x) ? json_long(x, -1) : -1);
         }
     }
     jw_rawz(o, "\n");
-    if (ext) {
+    if (ext == 2) {
+        jw_rawz(o, "raw=");
+        if (json_get(m, "rawStopReason", &v)) {
+            json_str(v, buf, sizeof(buf));
+            jw_rawz(o, buf);
+        } else
+            jw_rawz(o, "-");
+        jw_rawz(o, "\n");
+    } else if (ext) {
         jw_rawz(o, "raw=");
         if (json_get(m, "rawStopReason", &v)) {
             json_str(v, buf, sizeof(buf));
@@ -608,11 +629,17 @@ static void resp_digest(const char *msg, jw *o, int ext)
             jw_rawz(o, th ? "thinking=" : "text=");
             if (json_get(b, th ? "thinking" : "text", &v))
                 jw_raw(o, v.p, v.n);
+            if (ext == 2 && !th) {
+                jw_rawz(o, "\n");
+                continue;
+            }
             jw_rawz(o, " sig=");
             if (json_get(b, th ? "thinkingSignature" : "textSignature", &v))
                 jw_raw(o, v.p, v.n);
             else
                 jw_rawz(o, "-");
+            if (ext == 2)
+                jw_rawz(o, json_get(b, "redacted", &v) && json_type(v) == J_TRUE ? " red=1" : " red=0");
             jw_rawz(o, "\n");
         } else if (json_streq(t, "toolCall")) {
             jw_rawz(o, "tool=");
@@ -628,7 +655,7 @@ static void resp_digest(const char *msg, jw *o, int ext)
             jw_rawz(o, " ");
             if (json_get(b, "arguments", &v))
                 jw_raw(o, v.p, v.n);
-            if (ext) {
+            if (ext == 1) {
                 jw_rawz(o, " sig=");
                 if (json_get(b, "thoughtSignature", &v))
                     jw_raw(o, v.p, v.n);
@@ -782,7 +809,7 @@ static llm_ts fixed_wall(void *u)
     return ts_of(1760100000L, 0);
 }
 
-static char *case_env_name[8], *case_env_val[8];
+static char *case_env_name[12], *case_env_val[12];
 static int case_nenv;
 
 static long case_getenv(void *u, const char *name, char *out, long cap)
@@ -790,7 +817,7 @@ static long case_getenv(void *u, const char *name, char *out, long cap)
     int i;
     (void)u;
     for (i = 0; i < case_nenv; i++)
-        if (!strcmp(case_env_name[i], name) && (long)strlen(case_env_val[i]) < cap) {
+        if (!strcmp(case_env_name[i], name) && case_env_val[i][0] && (long)strlen(case_env_val[i]) < cap) {
             strcpy(out, case_env_val[i]);
             return (long)strlen(out);
         }
@@ -861,12 +888,28 @@ static void run_api_cases(const api_spec *sp)
             continue;
         wmod = *md;
         md = &wmod;
+        if (json_get(c, "override", &v)) {
+            /* the generator's "override" {id, name}: a model under another id (an inference profile ARN) */
+            static char oid[8][220], onm[8][100];
+            static int no;
+            jv x;
+            if (json_get(v, "id", &x)) {
+                json_str(x, oid[no % 8], sizeof(oid[0]));
+                wmod.id = oid[no % 8];
+            }
+            if (json_get(v, "name", &x)) {
+                json_str(x, onm[no % 8], sizeof(onm[0]));
+                wmod.name = onm[no % 8];
+            }
+            no++;
+        }
         json_get(c, "level", &v);
         json_str(v, lvl, sizeof(lvl));
         lv = llm_think_of(lvl);
         json_get(c, "system", &v);
         json_str(v, sys, sizeof(sys));
-        json_get(c, "sse", &v);
+        if (!json_get(c, "sse", &v))
+            json_get(c, "stream", &v);              /* the bedrock cases name an event-stream or error recording */
         json_str(v, sse, sizeof(sse));
         sid[0] = 0;
         if (json_get(c, "sessionId", &v))
@@ -910,19 +953,38 @@ static void run_api_cases(const api_spec *sp)
         llm_cfg_init(&cfg);
         cfg.getenv = case_getenv;
         case_nenv = 0;
+        if (!strcmp(md->api, "bedrock-converse-stream")) {
+            /* the generator's default credentials (tools/gen_pi_bedrock.mjs BASE_ENV); a case's null removes one */
+            case_env_name[case_nenv] = strcpy((char *)malloc(32), "AWS_ACCESS_KEY_ID");
+            case_env_val[case_nenv++] = strcpy((char *)malloc(32), "AKIDEXAMPLE");
+            case_env_name[case_nenv] = strcpy((char *)malloc(32), "AWS_SECRET_ACCESS_KEY");
+            case_env_val[case_nenv++] = strcpy((char *)malloc(64), "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY");
+        }
         if (json_get(c, "env", &v)) {
             jit eit;
             jv ek, ev;
             json_iter(v, &eit);
-            while (json_next(&eit, &ek, &ev) && case_nenv < 8) {
+            while (json_next(&eit, &ek, &ev) && case_nenv < 12) {
                 char tmp[200];
+                int j, at = case_nenv;
                 json_str(ek, tmp, sizeof(tmp));
-                case_env_name[case_nenv] = (char *)malloc(strlen(tmp) + 1);
-                strcpy(case_env_name[case_nenv], tmp);
-                json_str(ev, tmp, sizeof(tmp));
-                case_env_val[case_nenv] = (char *)malloc(strlen(tmp) + 1);
-                strcpy(case_env_val[case_nenv], tmp);
-                case_nenv++;
+                for (j = 0; j < case_nenv; j++)
+                    if (!strcmp(case_env_name[j], tmp))
+                        at = j;
+                if (at == case_nenv) {
+                    case_env_name[at] = (char *)malloc(strlen(tmp) + 1);
+                    strcpy(case_env_name[at], tmp);
+                    case_env_val[at] = 0;
+                    case_nenv++;
+                }
+                free(case_env_val[at]);
+                case_env_val[at] = 0;
+                if (json_type(ev) == J_STR) {
+                    json_str(ev, tmp, sizeof(tmp));
+                    case_env_val[at] = (char *)malloc(strlen(tmp) + 1);
+                    strcpy(case_env_val[at], tmp);
+                } else
+                    case_env_val[at] = strcpy((char *)malloc(2), "");     /* null: unset */
             }
         }
         if (json_get(c, "baseUrl", &v)) {
@@ -953,15 +1015,42 @@ static void run_api_cases(const api_spec *sp)
         strcat(file, sp->dir);
         strcat(file, "/");
         strcat(file, sse);
-        strcat(file, ".sse");
-        ps_sse(file, 0);
+        strcat(file, ".es");
+        {
+            /* an AWS event-stream recording (.es), a recorded error answer (.http), else an SSE one */
+            long ln;
+            char *probe = claude_load_opt(file, &ln);
+            if (probe) {
+                free(probe);
+                ps_stream(file, "application/vnd.amazon.eventstream");
+            } else {
+                strcpy(file + strlen(file) - 3, ".http");
+                probe = claude_load_opt(file, &ln);
+                if (probe) {
+                    free(probe);
+                    ps_raw(file);
+                } else {
+                    strcpy(file + strlen(file) - 5, ".sse");
+                    ps_sse(file, 0);
+                }
+            }
+        }
         llm_google_counter(0);          /* pi's generated tool-call ids count from 1 in every case (tools/gen_pi_google.mjs) */
         llm_acc_init(&a, md->api, md->provider);
         llm_acc_model(&a, md->id, md->cost);
         k = llm_acc_sink(&a);
-        q = req_of(md, &cx, &k, "sk-test-not-real");
-        nreq0 = ps.nreq;
-        llm_request(&q);
+        {
+            const char *key = "sk-test-not-real";
+            char bkey[200];
+            if (!strcmp(md->api, "bedrock-converse-stream")) {
+                /* the bearer token (AWS_BEARER_TOKEN_BEDROCK), else none: the request is signed */
+                key = llm_cfg_key(&cfg, md, bkey, sizeof(bkey), 0) > 0 ? bkey : 0;
+            }
+            q = req_of(md, &cx, &k, key);
+            q.retries = -1;                 /* pi's agent retries a failed answer itself (amiga-pi agent.c) */
+            nreq0 = ps.nreq;
+            llm_request(&q);
+        }
         /* the request on the wire: pi's body, byte for byte */
         strcpy(file, "../pi/");
         strcat(file, sp->dir);
@@ -1007,8 +1096,20 @@ static void run_api_cases(const api_spec *sp)
                         CHECK(0);
                     }
                     first = 0;
-                } else
+                } else if (!strncmp(line, "credential: ", 12)) {
+                    /* the Credential= part of the SDK's Authorization: access key, date, region, service */
+                    char want[200];
+                    strcpy(want, "Credential=");
+                    strcat(want, line + 12);
+                    strcat(want, ",");
+                    if (!(ps.nreq && strstr(ps.head[0], want)))
+                        printf("    case %s head lacks %s\n      head %.600s\n", name, want, ps.nreq ? ps.head[0] : "");
+                    CHECK(ps.nreq && strstr(ps.head[0], want) != 0);
+                } else {
+                    if (!(ps.nreq && head_has(ps.head[0], line)))
+                        printf("    case %s head lacks [%s]\n      head %.600s\n", name, line, ps.nreq ? ps.head[0] : "");
                     CHECK(ps.nreq && head_has(ps.head[0], line));
+                }
                 *e = save;
                 line = e + 1;
             }
@@ -1151,11 +1252,27 @@ static void test_google(void)
     run_api_cases(&sp);
 }
 
-/* M7: the handoff between apis. tests/pi/handoff (tools/gen_pi_handoff.mjs): six models, each also a target. A stream
+/* M6: bedrock-converse-stream against the SDK's own request (tests/pi/bedrock, tools/gen_pi_bedrock.mjs): the body, the
+ * path, the region and endpoint rules, the bearer / SigV4 credential, and the answers (event streams, exceptions,
+ * damaged frames, HTTP errors) as pi made them */
+static void test_bedrock(void)
+{
+    api_spec sp;
+    sp.dir = "bedrock";
+    sp.feeds = &llm_feeds_bedrock;
+    sp.min_cases = 96;
+    sp.ext = 2;
+    sp.line = 0;
+    sp.auth = 0;
+    run_api_cases(&sp);
+}
+
+/* M7: the handoff between apis. tests/pi/handoff (tools/gen_pi_handoff.mjs): eight models, each also a target. A stream
  * recorded for each is decoded by our backend (its digest must be pi's), and the conversation it produced -- the user's
  * prompt, the answer, a result for each tool call, a second prompt -- is replayed to every other model: our request body
- * is the one pi built (pi's transformMessages inside its provider), byte for byte. 30 ordered pairs, 20 of them between
- * the five apis (anthropic-messages, openai-completions, google-generative-ai, openai-responses, azure-openai-responses). */
+ * is the one pi built (pi's transformMessages inside its provider), byte for byte. 56 ordered pairs among eight models,
+ * covering all 30 ordered pairs of the six apis (anthropic-messages, openai-completions, google-generative-ai,
+ * openai-responses, azure-openai-responses, bedrock-converse-stream; Phase M7, bedrock with two models). */
 #define HP_MAX 8
 
 typedef struct hp_src {
@@ -1176,7 +1293,7 @@ static void test_handoff_pairs(void)
     hp_src hs[HP_MAX];
     int n = 0, i, j, pairs = 0, api_pairs = 0;
     long f_a = llm_feeds_anthropic, f_o = llm_feeds_openai, f_g = llm_feeds_google, f_r = llm_feeds_responses,
-         f_z = llm_feeds_azure;
+         f_z = llm_feeds_azure, f_b = llm_feeds_bedrock;
     memset(hs, 0, sizeof(hs));
     cases_txt = claude_load("../pi/handoff/cases.json", &cn);
     CHECK(cases_txt != 0);
@@ -1190,6 +1307,12 @@ static void test_handoff_pairs(void)
     llm_reg_init(&r);
     CHECK_INT(llm_reg_builtin(&r), 0);
     llm_cfg_init(&cfg);
+    cfg.getenv = case_getenv;           /* the keys of a bedrock source (tools/gen_pi_handoff.mjs) */
+    case_nenv = 0;
+    case_env_name[case_nenv] = strcpy((char *)malloc(32), "AWS_ACCESS_KEY_ID");
+    case_env_val[case_nenv++] = strcpy((char *)malloc(32), "AKIDEXAMPLE");
+    case_env_name[case_nenv] = strcpy((char *)malloc(32), "AWS_SECRET_ACCESS_KEY");
+    case_env_val[case_nenv++] = strcpy((char *)malloc(64), "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY");
     llm_set_wall(fixed_wall, 0);
     json_get(root, "sources", &srcs);
     json_iter(srcs, &it);
@@ -1209,7 +1332,8 @@ static void test_handoff_pairs(void)
         long onen[1];
         json_get(c, "name", &v);
         json_str(v, h->name, sizeof(h->name));
-        json_get(c, "sse", &v);
+        if (!json_get(c, "sse", &v))
+            json_get(c, "stream", &v);              /* a bedrock source: an event stream */
         json_str(v, h->sse, sizeof(h->sse));
         if (json_get(c, "custom", &cust)) {
             h->m = ps_model_openai("http://192.168.1.10:11434/v1");
@@ -1264,13 +1388,18 @@ static void test_handoff_pairs(void)
         ps_pool_up(LLM_POOL);
         strcpy(file, "../pi/handoff/");
         strcat(file, h->sse);
-        strcat(file, ".sse");
-        ps_sse(file, 0);
+        if (!strcmp(h->m.api, "bedrock-converse-stream")) {
+            strcat(file, ".es");
+            ps_stream(file, "application/vnd.amazon.eventstream");
+        } else {
+            strcat(file, ".sse");
+            ps_sse(file, 0);
+        }
         llm_google_counter(0);
         llm_acc_init(&a, h->m.api, h->m.provider);
         llm_acc_model(&a, h->m.id, h->m.cost);
         k = llm_acc_sink(&a);
-        q = req_of(&h->m, &cx, &k, "sk-test-not-real");
+        q = req_of(&h->m, &cx, &k, strcmp(h->m.api, "bedrock-converse-stream") ? "sk-test-not-real" : 0);
         llm_request(&q);
         {
             jw msg;
@@ -1377,10 +1506,16 @@ static void test_handoff_pairs(void)
                 free(msgs[k2]);
             llm_view_free(&vw);
         }
-    CHECK_INT(pairs, 30);
-    CHECK_INT(api_pairs, 28);
+    CHECK_INT(n, 8);
+    CHECK_INT(pairs, 56);
+    CHECK_INT(api_pairs, 52);           /* all 30 ordered pairs of the six apis, some more than once (two models of google, two of bedrock) */
     CHECK(llm_feeds_anthropic > f_a && llm_feeds_openai > f_o && llm_feeds_google > f_g && llm_feeds_responses > f_r &&
-          llm_feeds_azure > f_z);       /* every source stream went through its own decoder */
+          llm_feeds_azure > f_z && llm_feeds_bedrock > f_b);       /* every source stream went through its own decoder */
+    for (i = 0; i < case_nenv; i++) {
+        free(case_env_name[i]);
+        free(case_env_val[i]);
+    }
+    case_nenv = 0;
     llm_set_wall(0, 0);
     for (i = 0; i < n; i++)
         free(hs[i].msg);
@@ -1915,6 +2050,17 @@ static void test_completions(void)
 }
 
 /* B3: done, a cut stream, a 429 with Retry-After 2, Ctrl+C mid-stream, the idle limit; usage */
+/* the stack below the caller filled with non-zero bytes: a local the next call leaves unset is not 0 by chance */
+static void dirty_stack(void)
+{
+    volatile unsigned char junk[32768];
+    size_t i;
+    for (i = 0; i < sizeof(junk); i++)
+        junk[i] = 0xa5;
+}
+/* called through a pointer the compiler cannot see through: inlined, junk would sit in the caller's frame instead */
+static void (*volatile dirty_stack_fn)(void) = dirty_stack;
+
 static void test_request(void)
 {
     llm_model mo = ps_model_openai("http://192.168.1.10:11434/v1");
@@ -2039,6 +2185,33 @@ static void test_request(void)
     llm_acc_message(&a, ts_of(1, 0), &m);
     CHECK(strstr(m.p, "\"stopReason\":\"error\"") != 0);
     llm_acc_free(&a);
+
+    /* N1: nothing listening on the base URL's port (pi 1.1.0 with http://127.0.0.1:9/v1: "Connection error." after
+     * 2 + 4 + 8 s of its agent retries). A connect that fails frees the answer's stream state that llm_post never set
+     * up: it must be empty, not the stack's leftovers (free() of those hung or crashed amiga-pi on the Amiga) -- the
+     * stack under llm_request is dirtied first. The error is pi's, so pi's agent retry patterns match it. */
+    {
+        int ri;
+        for (ri = 0; ri < 2; ri++) {
+            ps_reset();
+            ps_pool_up(LLM_POOL);
+            ps.refuse = 10;
+            llm_acc_init(&a, mo.api, mo.provider);
+            k = llm_acc_sink(&a);
+            q = req_of(&mo, &c, &k, 0);
+            q.retries = ri ? 0 : -1;    /* -1: amiga-pi's agent loop retries; 0: llm/'s own 3 retries */
+            dirty_stack_fn();
+            CHECK_INT(llm_request(&q), -1);
+            CHECK_INT(q.attempts, ri ? 4 : 1);
+            CHECK_INT(ps.slept, ri ? 2000 + 4000 + 8000 : 0);
+            CHECK_INT(ps.nreq, 0);
+            CHECK_INT(ps.refused, ri ? 4 : 1);
+            jw_reset(&m);
+            llm_acc_message(&a, ts_of(1, 0), &m);
+            CHECK(strstr(m.p, ",\"errorMessage\":\"Connection error.\"}") != 0);
+            llm_acc_free(&a);
+        }
+    }
 
     /* cut off after part of the answer: an error, not tried again (the text kept) */
     ps_reset();
@@ -2862,6 +3035,735 @@ static void test_fallbacks(void)
     llm_reg_free(&r2);
 }
 
+
+/* ---- M4: the AWS event-stream framing (tests/pi/evstream, tools/gen_pi_evstream.mjs) ---- */
+
+typedef struct evgot {
+    jw w;
+    int n;
+} evgot;
+
+static void ev_cb(void *u, const llm_evmsg *m)
+{
+    evgot *g = (evgot *)u;
+    jw_rawz(&g->w, g->n ? "\n" : "");
+    g->n++;
+    jw_rawz(&g->w, m->message_type);
+    jw_rawz(&g->w, "|");
+    jw_rawz(&g->w, m->event_type);
+    jw_rawz(&g->w, "|");
+    jw_rawz(&g->w, m->exception_type);
+    jw_rawz(&g->w, "|");
+    jw_rawz(&g->w, m->content_type);
+    jw_rawz(&g->w, "|");
+    jw_raw(&g->w, (const char *)m->payload, m->n);
+}
+
+/* the stream cut into pieces of `step` bytes (the first piece `first` bytes): the messages seen, the failure */
+static int ev_run(const char *bin, long bn, long first, long step, evgot *g, char *err, long errcap)
+{
+    llm_evs s;
+    long off = 0, k;
+    int rc = 0;
+    llm_evs_init(&s, ev_cb, g);
+    k = first < bn ? first : bn;
+    if (k > 0) {
+        rc = llm_evs_feed(&s, bin, k);
+        off = k;
+    }
+    while (rc == 0 && off < bn) {
+        k = bn - off < step ? bn - off : step;
+        rc = llm_evs_feed(&s, bin + off, k);
+        off += k;
+    }
+    if (rc == 0)
+        rc = llm_evs_end(&s);
+    cl_copy(err, rc ? s.err : "", errcap);
+    if (rc) {
+        /* a failed decoder stays failed */
+        CHECK_INT(llm_evs_feed(&s, "x", 1), -1);
+    }
+    llm_evs_free(&s);
+    return rc;
+}
+
+static void test_evstream(void)
+{
+    char *txt;
+    long tn;
+    jv root, cs, c, v, ms, m, p;
+    jit it, mit;
+    int ncase = 0, nerr = 0;
+    txt = claude_load("../pi/evstream/cases.json", &tn);
+    CHECK(txt != 0);
+    if (!txt)
+        return;
+    CHECK_INT(json_parse(txt, tn, &root), 0);
+    CHECK(json_get(root, "cases", &cs) != 0);
+    json_iter(cs, &it);
+    while (json_next(&it, 0, &c)) {
+        char name[48], file[96], want_err[300], ours[96], err[200];
+        char *bin;
+        long bn, first;
+        jw want;
+        int n = 0, has_err;
+        static const long steps[] = { 1, 5, 12, 100, 4093 };
+        int si;
+        json_get(c, "name", &v);
+        json_str(v, name, sizeof(name));
+        strcpy(file, "../pi/evstream/");
+        strcat(file, name);
+        strcat(file, ".bin");
+        bin = claude_load(file, &bn);
+        CHECK(bin != 0);
+        if (!bin)
+            continue;
+        jw_init(&want);
+        json_get(c, "messages", &ms);
+        json_iter(ms, &mit);
+        while (json_next(&mit, 0, &m)) {
+            const char *k[4] = { "message_type", "event_type", "exception_type", "content_type" };
+            int i;
+            char tmp[400];
+            jw_rawz(&want, n++ ? "\n" : "");
+            for (i = 0; i < 4; i++) {
+                json_get(m, k[i], &p);
+                json_str(p, tmp, sizeof(tmp));
+                jw_rawz(&want, tmp);
+                jw_rawz(&want, "|");
+            }
+            json_get(m, "payload", &p);
+            {
+                char *d;
+                long dl;
+                d = json_strdup(p, &dl);
+                if (d)
+                    jw_raw(&want, d, dl);
+                free(d);
+            }
+        }
+        json_get(c, "error", &v);
+        has_err = json_type(v) == J_STR;
+        want_err[0] = ours[0] = 0;
+        if (has_err)
+            json_str(v, want_err, sizeof(want_err));
+        if (json_get(c, "ours", &v))
+            json_str(v, ours, sizeof(ours));
+        /* whole, then in pieces of every size, then split once at every offset (the small streams) */
+        for (si = 0; si < 5; si++) {
+            evgot g;
+            int rc;
+            memset(&g, 0, sizeof(g));
+            jw_init(&g.w);
+            rc = ev_run(bin, bn, steps[si], steps[si], &g, err, sizeof(err));
+            CHECK_INT(rc != 0, has_err);
+            if (has_err) {
+                if (ours[0])
+                    CHECK(strncmp(err, ours, strlen(ours)) == 0);
+                else
+                    CHECK_STR(err, want_err);
+            }
+            CHECK_STR(g.w.p ? g.w.p : "", want.p ? want.p : "");
+            jw_free(&g.w);
+        }
+        for (first = 1; bn < 700 && first < bn; first++) {
+            evgot g;
+            int rc;
+            memset(&g, 0, sizeof(g));
+            jw_init(&g.w);
+            rc = ev_run(bin, bn, first, bn, &g, err, sizeof(err));
+            CHECK_INT(rc != 0, has_err);
+            if (has_err && !ours[0])
+                CHECK_STR(err, want_err);
+            CHECK_STR(g.w.p ? g.w.p : "", want.p ? want.p : "");
+            jw_free(&g.w);
+        }
+        nerr += has_err;
+        jw_free(&want);
+        free(bin);
+        ncase++;
+    }
+    CHECK(ncase >= 12 && nerr >= 6);
+    /* the CRC-32 of the standard check string, and the encoder's message read back */
+    CHECK(llm_crc32(0, "123456789", 9) == 0xcbf43926UL);
+    {
+        const char *h[4] = { ":event-type", "ping", ":message-type", "event" };
+        unsigned char out[200];
+        long n = llm_evs_encode(h, 2, "{}", 2, out, sizeof(out));
+        evgot g;
+        char e[100];
+        CHECK(n > 0);
+        memset(&g, 0, sizeof(g));
+        jw_init(&g.w);
+        CHECK_INT(ev_run((const char *)out, n, 3, 3, &g, e, sizeof(e)), 0);
+        CHECK_STR(g.w.p, "event|ping|||{}");
+        jw_free(&g.w);
+        out[n - 6] ^= 1;
+        memset(&g, 0, sizeof(g));
+        jw_init(&g.w);
+        CHECK_INT(ev_run((const char *)out, n, 3, 3, &g, e, sizeof(e)), -1);
+        jw_free(&g.w);
+    }
+    free(txt);
+}
+
+
+/* ---- M5: SHA-256, HMAC and Signature Version 4 (tests/pi/sigv4: AWS's published test suite) ---- */
+
+/* a line of an expected file with the trailing newline cut */
+static char *sv_load(const char *c, const char *f, long *n)
+{
+    char path[160], *t;
+    strcpy(path, "../pi/sigv4/v4/");
+    strcat(path, c);
+    strcat(path, "/");
+    strcat(path, f);
+    t = claude_load(path, n);
+    if (t)
+        while (*n > 0 && (t[*n - 1] == '\n' || t[*n - 1] == '\r'))
+            t[--*n] = 0;
+    return t;
+}
+
+/* the value of header `name` ("Authorization") in a signed request text, cut at its line end */
+static void sv_authz(const char *req, char *out, long cap)
+{
+    const char *p = strstr(req, "Authorization:");
+    long n;
+    out[0] = 0;
+    if (!p)
+        return;
+    p += 14;
+    n = 0;
+    while (p[n] && p[n] != '\n' && p[n] != '\r' && n < cap - 1)
+        n++;
+    memcpy(out, p, (size_t)n);
+    out[n] = 0;
+}
+
+/* one case of the suite signed in both forms against every expected file; returns the number of files compared */
+static int sv_case(const char *name)
+{
+    long rn, cn, n;
+    char *req, *ctx, *txt;
+    jv root, cr, v;
+    char access[64], secret[96], token[800], region[32], service[32], stamp[32], amz[20], method[12];
+    char path[200], query[200];
+    llm_sig_hdr hdr[12];
+    char *hname[12], *hvalue[12];
+    int nh = 0, i, form, files = 0, body_at = 0;
+    const char *p, *body = "";
+    long bodyn = 0;
+    llm_sigv4 in;
+    req = sv_load(name, "request.txt", &rn);
+    ctx = sv_load(name, "context.json", &cn);
+    CHECK(req != 0 && ctx != 0);
+    if (!req || !ctx) {
+        free(req);
+        free(ctx);
+        return 0;
+    }
+    CHECK_INT(json_parse(ctx, cn, &root), 0);
+    json_get(root, "credentials", &cr);
+    json_get(cr, "access_key_id", &v);
+    json_str(v, access, sizeof(access));
+    json_get(cr, "secret_access_key", &v);
+    json_str(v, secret, sizeof(secret));
+    token[0] = 0;
+    if (json_get(cr, "token", &v))
+        json_str(v, token, sizeof(token));
+    json_get(root, "region", &v);
+    json_str(v, region, sizeof(region));
+    json_get(root, "service", &v);
+    json_str(v, service, sizeof(service));
+    json_get(root, "timestamp", &v);
+    json_str(v, stamp, sizeof(stamp));
+    {
+        /* 2015-08-30T12:36:00Z -> 20150830T123600Z */
+        int k = 0;
+        for (i = 0; stamp[i] && k < 19; i++)
+            if (stamp[i] != '-' && stamp[i] != ':')
+                amz[k++] = stamp[i];
+        amz[k] = 0;
+    }
+    memset(&in, 0, sizeof(in));
+    in.normalize = json_get(root, "normalize", &v) && json_type(v) == J_TRUE;
+    in.sign_body = json_get(root, "sign_body", &v) && json_type(v) == J_TRUE;
+    in.sign_token = !(json_get(root, "omit_session_token", &v) && json_type(v) == J_TRUE);
+    in.expires = json_get(root, "expiration_in_seconds", &v) ? json_long(v, 0) : 0;
+    /* the request: "METHOD /path?query HTTP/1.1", header lines (a line that starts with white space continues the last),
+     * a blank line, the body */
+    p = req;
+    {
+        const char *sp1 = strchr(p, ' '), *sp2, *q;
+        long ml = (long)(sp1 - p), pl, ql = 0;
+        memcpy(method, p, (size_t)ml);
+        method[ml] = 0;
+        sp2 = strstr(sp1 + 1, " HTTP/1.1");
+        q = (const char *)memchr(sp1 + 1, '?', (size_t)(sp2 - sp1 - 1));
+        pl = (long)((q ? q : sp2) - (sp1 + 1));
+        memcpy(path, sp1 + 1, (size_t)pl);
+        path[pl] = 0;
+        query[0] = 0;
+        if (q) {
+            ql = (long)(sp2 - q - 1);
+            memcpy(query, q + 1, (size_t)ql);
+            query[ql] = 0;
+        }
+        p = strchr(sp2, '\n');
+        p = p ? p + 1 : sp2 + strlen(sp2);
+    }
+    while (*p && *p != '\n' && !(p[0] == '\r' && p[1] == '\n')) {
+        const char *e = strchr(p, '\n');
+        long ll = e ? (long)(e - p) : (long)strlen(p);
+        if (ll > 0 && p[ll - 1] == '\r')
+            ll--;
+        if ((*p == ' ' || *p == '\t') && nh > 0) {
+            long ol = (long)strlen(hvalue[nh - 1]);
+            hvalue[nh - 1] = (char *)realloc(hvalue[nh - 1], (size_t)(ol + ll + 2));
+            hvalue[nh - 1][ol] = '\n';
+            memcpy(hvalue[nh - 1] + ol + 1, p, (size_t)ll);
+            hvalue[nh - 1][ol + 1 + ll] = 0;
+        } else {
+            const char *c = (const char *)memchr(p, ':', (size_t)ll);
+            long nl = (long)(c - p), vl = ll - nl - 1;
+            hname[nh] = (char *)malloc((size_t)nl + 1);
+            memcpy(hname[nh], p, (size_t)nl);
+            hname[nh][nl] = 0;
+            hvalue[nh] = (char *)malloc((size_t)vl + 1);
+            memcpy(hvalue[nh], c + 1, (size_t)vl);
+            hvalue[nh][vl] = 0;
+            nh++;
+        }
+        p = e ? e + 1 : p + ll;
+    }
+    if (*p == '\r')
+        p++;
+    if (*p == '\n') {
+        body_at = 1;
+        p++;
+    }
+    if (body_at) {
+        body = p;
+        bodyn = (long)strlen(p);
+    }
+    for (i = 0; i < nh; i++) {
+        hdr[i].name = hname[i];
+        hdr[i].value = hvalue[i];
+    }
+    in.method = method;
+    in.path = path;
+    in.query = query;
+    in.hdr = hdr;
+    in.nhdr = nh;
+    in.body = body;
+    in.bn = bodyn;
+    in.access = access;
+    in.secret = secret;
+    in.token = token[0] ? token : 0;
+    in.region = region;
+    in.service = service;
+    in.amzdate = amz;
+    for (form = 0; form < 2; form++) {
+        const char *pre = form ? "query-" : "header-";
+        char fname[48];
+        llm_sigout o;
+        in.query_form = form;
+        llm_sigout_init(&o);
+        CHECK_INT(llm_sigv4_sign(&in, &o), 0);
+        strcpy(fname, pre);
+        strcat(fname, "canonical-request.txt");
+        txt = sv_load(name, fname, &n);
+        CHECK(txt != 0 && o.creq.p != 0 && !strcmp(txt, o.creq.p));
+        if (txt && o.creq.p && strcmp(txt, o.creq.p))
+            printf("    %s %s\n      got  [%s]\n      want [%s]\n", name, fname, o.creq.p, txt);
+        free(txt);
+        files++;
+        strcpy(fname, pre);
+        strcat(fname, "string-to-sign.txt");
+        txt = sv_load(name, fname, &n);
+        CHECK(txt != 0 && o.sts.p != 0 && !strcmp(txt, o.sts.p));
+        free(txt);
+        files++;
+        strcpy(fname, pre);
+        strcat(fname, "signature.txt");
+        txt = sv_load(name, fname, &n);
+        CHECK(txt != 0 && !strcmp(txt, o.sig));
+        if (txt && strcmp(txt, o.sig))
+            printf("    %s %s got %s want %s\n", name, fname, o.sig, txt);
+        free(txt);
+        files++;
+        strcpy(fname, pre);
+        strcat(fname, "signed-request.txt");
+        txt = sv_load(name, fname, &n);
+        CHECK(txt != 0);
+        if (txt && !form) {
+            char want[400];
+            sv_authz(txt, want, sizeof(want));
+            CHECK_STR(o.auth.p, want);                  /* the Authorization header, byte for byte */
+        } else if (txt) {
+            CHECK(strstr(txt, o.auth.p) != 0);          /* the X-Amz-* query the presigned request carries */
+        }
+        free(txt);
+        files++;
+        llm_sigout_free(&o);
+    }
+    for (i = 0; i < nh; i++) {
+        free(hname[i]);
+        free(hvalue[i]);
+    }
+    free(req);
+    free(ctx);
+    return files;
+}
+
+static void test_sigv4(void)
+{
+    char *list;
+    long ln;
+    char *p;
+    int ncase = 0, files = 0;
+    unsigned char d[32];
+    char hexs[65];
+    /* SHA-256 (FIPS 180-4 examples) and HMAC-SHA256 (RFC 4231 cases 1, 2 and 6: a key longer than the block) */
+    llm_sha256_hex("abc", 3, hexs);
+    CHECK_STR(hexs, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    llm_sha256_hex("", 0, hexs);
+    CHECK_STR(hexs, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    llm_sha256_hex("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 56, hexs);
+    CHECK_STR(hexs, "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+    {
+        unsigned char key[131];
+        const char *m6 = "Test Using Larger Than Block-Size Key - Hash Key First";
+        int i;
+        llm_hmac_sha256("\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b", 20, "Hi There", 8, d);
+        for (i = 0; i < 32; i++) {
+            hexs[2 * i] = "0123456789abcdef"[d[i] >> 4];
+            hexs[2 * i + 1] = "0123456789abcdef"[d[i] & 15];
+            hexs[64] = 0;
+        }
+        CHECK_STR(hexs, "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+        llm_hmac_sha256("Jefe", 4, "what do ya want for nothing?", 28, d);
+        for (i = 0; i < 32; i++) {
+            hexs[2 * i] = "0123456789abcdef"[d[i] >> 4];
+            hexs[2 * i + 1] = "0123456789abcdef"[d[i] & 15];
+            hexs[64] = 0;
+        }
+        CHECK_STR(hexs, "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
+        memset(key, 0xaa, sizeof(key));
+        llm_hmac_sha256(key, 131, m6, (long)strlen(m6), d);
+        for (i = 0; i < 32; i++) {
+            hexs[2 * i] = "0123456789abcdef"[d[i] >> 4];
+            hexs[2 * i + 1] = "0123456789abcdef"[d[i] & 15];
+            hexs[64] = 0;
+        }
+        CHECK_STR(hexs, "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54");
+    }
+    {
+        char dt[20];
+        llm_sigv4_date(ts_of(1760100000L, 0), dt);
+        CHECK_STR(dt, "20251010T124000Z");
+        llm_sigv4_date(ts_of(1440938160L, 0), dt);
+        CHECK_STR(dt, "20150830T123600Z");
+        llm_sigv4_date(ts_of(951782400L, 0), dt);       /* 2000-02-29 00:00:00 */
+        CHECK_STR(dt, "20000229T000000Z");
+        llm_sigv4_date(ts_of(0, 0), dt);
+        CHECK_STR(dt, "19700101T000000Z");
+    }
+    list = claude_load("../pi/sigv4/cases.txt", &ln);
+    CHECK(list != 0);
+    for (p = list; list && *p;) {
+        char *e = strchr(p, '\n');
+        char name[80];
+        long l = e ? (long)(e - p) : (long)strlen(p);
+        if (l <= 0)
+            break;
+        memcpy(name, p, (size_t)l);
+        name[l] = 0;
+        files += sv_case(name);
+        ncase++;
+        p = e ? e + 1 : p + l;
+    }
+    free(list);
+    CHECK_INT(ncase, 38);
+    CHECK_INT(files, 38 * 8);       /* creq, string to sign, signature and signed request, header form and query form */
+}
+
+/* M5/M6: llm/sigv4.c signs the requests the AWS SDK signed (tests/pi/bedrock/sdkauth.json, tools/gen_pi_bedrock.mjs): from
+ * the headers the SDK signed, the body and the same credentials, the Authorization it wrote byte for byte */
+static void test_bedrock_sigv4(void)
+{
+    char *txt, *auth_want;
+    long tn;
+    jv root, rs, r, v, hs, k, hv;
+    jit it, hit;
+    int n = 0, i;
+    txt = claude_load("../pi/bedrock/sdkauth.json", &tn);
+    CHECK(txt != 0);
+    if (!txt)
+        return;
+    CHECK_INT(json_parse(txt, tn, &root), 0);
+    CHECK(json_get(root, "requests", &rs) != 0);
+    json_iter(rs, &it);
+    while (json_next(&it, 0, &r)) {
+        char name[64], path[400], access[64], secret[96], token[200], region[32], service[32], amz[24], sdk_auth[600];
+        char *body;
+        long bl;
+        llm_sig_hdr hdr[16];
+        char hn[16][48], hvv[16][256];
+        int nh = 0, has_token, sign_body = 0;
+        llm_sigv4 in;
+        llm_sigout o;
+        json_get(r, "name", &v);
+        json_str(v, name, sizeof(name));
+        json_get(r, "path", &v);
+        json_str(v, path, sizeof(path));
+        json_get(r, "access", &v);
+        json_str(v, access, sizeof(access));
+        json_get(r, "secret", &v);
+        json_str(v, secret, sizeof(secret));
+        has_token = json_get(r, "token", &v) && json_type(v) == J_STR;
+        token[0] = 0;
+        if (has_token)
+            json_str(v, token, sizeof(token));
+        json_get(r, "region", &v);
+        json_str(v, region, sizeof(region));
+        json_get(r, "service", &v);
+        json_str(v, service, sizeof(service));
+        json_get(r, "amzdate", &v);
+        json_str(v, amz, sizeof(amz));
+        json_get(r, "authorization", &v);
+        json_str(v, sdk_auth, sizeof(sdk_auth));
+        json_get(r, "body", &v);
+        body = json_strdup(v, &bl);
+        json_get(r, "headers", &hs);
+        json_iter(hs, &hit);
+        while (json_next(&hit, &k, &hv) && nh < 16) {
+            json_str(k, hn[nh], sizeof(hn[0]));
+            json_str(hv, hvv[nh], sizeof(hvv[0]));
+            /* x-amz-date, the session token and the body hash are what llm_sigv4 adds itself */
+            if (!strcmp(hn[nh], "x-amz-date") || !strcmp(hn[nh], "x-amz-security-token"))
+                continue;
+            if (!strcmp(hn[nh], "x-amz-content-sha256")) {
+                sign_body = 1;
+                continue;
+            }
+            hdr[nh].name = hn[nh];
+            hdr[nh].value = hvv[nh];
+            nh++;
+        }
+        memset(&in, 0, sizeof(in));
+        in.method = "POST";
+        in.path = path;
+        in.hdr = hdr;
+        in.nhdr = nh;
+        in.body = body ? body : "";
+        in.bn = bl;
+        in.access = access;
+        in.secret = secret;
+        in.token = has_token ? token : 0;
+        in.sign_token = 1;
+        in.sign_body = sign_body;
+        in.region = region;
+        in.service = service;
+        in.amzdate = amz;
+        in.normalize = 1;
+        llm_sigout_init(&o);
+        CHECK_INT(llm_sigv4_sign(&in, &o), 0);
+        auth_want = sdk_auth;
+        if (strcmp(o.auth.p, auth_want))
+            printf("    %s\n      got  %s\n      want %s\n", name, o.auth.p, auth_want);
+        CHECK_STR(o.auth.p, auth_want);
+        llm_sigout_free(&o);
+        free(body);
+        n++;
+        (void)i;
+    }
+    CHECK(n >= 91);
+    free(txt);
+}
+
+/* one bedrock request on the stub: the model sonnet 5.5 of the catalog with base_url, the environment given as
+ * "NAME=value" strings (0 ended), the bearer key (0 none); the head of the request in ps.head[0], rc of llm_request */
+static jw bd_msg;          /* the answer's message of the last bd_run */
+static int bd_run(const char *base_url, const char *const *env, const char *key, llm_req *qout, const char *stream_file)
+{
+    llm_reg r;
+    const llm_model *md;
+    llm_model m;
+    llm_cfg cfg;
+    llm_ctx cx;
+    llm_req q;
+    llm_acc a;
+    llm_sink k;
+    llm_view vw;
+    char err[300], *msgs[1], bkey[100];
+    long mn[1];
+    int rc, i;
+    static const char user[] = "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hello\"}],\"timestamp\":1760100000000}";
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    md = llm_reg_find(&r, "amazon-bedrock", "anthropic.claude-sonnet-5-5");
+    CHECK(md != 0);
+    m = *md;
+    if (base_url)
+        m.base_url = base_url;
+    llm_cfg_init(&cfg);
+    cfg.getenv = case_getenv;
+    case_nenv = 0;
+    for (i = 0; env && env[i]; i++) {
+        const char *eq = strchr(env[i], '=');
+        case_env_name[case_nenv] = (char *)malloc((size_t)(eq - env[i]) + 1);
+        memcpy(case_env_name[case_nenv], env[i], (size_t)(eq - env[i]));
+        case_env_name[case_nenv][eq - env[i]] = 0;
+        case_env_val[case_nenv] = (char *)malloc(strlen(eq));
+        strcpy(case_env_val[case_nenv], eq + 1);
+        case_nenv++;
+    }
+    err[0] = 0;
+    rc = llm_cfg_endpoint(&cfg, &m, err, sizeof(err));
+    if (rc) {
+        strcpy(qout->head, err);
+        qout->hn = -1;
+        goto done;
+    }
+    msgs[0] = (char *)user;
+    mn[0] = (long)strlen(user);
+    CHECK_INT(llm_prepare(&m, (const char *const *)msgs, mn, 1, ts_of(1760100000L, 0), &vw), 0);
+    memset(&cx, 0, sizeof(cx));
+    cx.model = &m;
+    cx.system = "S";
+    cx.msgs = vw.m;
+    cx.msg_n = vw.n;
+    cx.nmsg = vw.count;
+    cx.est_tokens = 10;
+    llm_set_wall(fixed_wall, 0);
+    ps_reset();
+    ps_pool_up(LLM_POOL);
+    if (stream_file)
+        ps_raw(stream_file);
+    else
+        ps_stream("../pi/bedrock/plain.es", "application/vnd.amazon.eventstream");
+    llm_acc_init(&a, m.api, m.provider);
+    llm_acc_model(&a, m.id, m.cost);
+    k = llm_acc_sink(&a);
+    q = req_of(&m, &cx, &k, key ? key : (llm_cfg_key(&cfg, &m, bkey, sizeof(bkey), 0) > 0 ? bkey : 0));
+    q.retries = -1;
+    rc = llm_request(&q);
+    *qout = q;
+    jw_free(&bd_msg);
+    jw_init(&bd_msg);
+    llm_acc_message(&a, ts_of(1760100000L, 0), &bd_msg);
+    llm_acc_free(&a);
+    llm_view_free(&vw);
+done:
+    for (i = 0; i < case_nenv; i++) {
+        free(case_env_name[i]);
+        free(case_env_val[i]);
+    }
+    case_nenv = 0;
+    llm_cfg_free(&cfg);
+    llm_reg_free(&r);
+    return rc;
+}
+
+/* M6: pi's credential, region and endpoint rules (stream() :160-230) and what this build cannot do, beside the goldens */
+static void test_bedrock_cred(void)
+{
+    static llm_req q;
+    static const char *const keys[] = { "AWS_ACCESS_KEY_ID=AKIDEXAMPLE", "AWS_SECRET_ACCESS_KEY=secret+key/abc", 0 };
+    static const char *const profile[] = { "AWS_PROFILE=work", 0 };
+    static const char *const profile_region[] = { "AWS_PROFILE=work", "AWS_REGION=eu-west-1", "AWS_ACCESS_KEY_ID=A", "AWS_SECRET_ACCESS_KEY=B", 0 };
+    static const char *const container[] = { "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI=/v2/credentials/x", 0 };
+    static const char *const bearer[] = { "AWS_BEARER_TOKEN_BEDROCK=brk-1", 0 };
+    static const char *const toolong[] = { "AWS_ACCESS_KEY_ID=A", "AWS_SECRET_ACCESS_KEY=B", 0 };
+    llm_cfg cfg;
+    llm_model m;
+    llm_reg r;
+    const llm_model *md;
+    char key[100];
+    (void)toolong;
+    /* no credentials, a profile, a container role: pi's SDK would find them in ~/.aws or the metadata service; this build says so */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run(0, 0, 0, &q, 0), -1);
+    CHECK(q.hn == -1 && strstr(q.head, "No Amazon Bedrock credentials amiga-pi can use") != 0);
+    CHECK(strstr(q.head, "AWS_BEARER_TOKEN_BEDROCK") != 0 && strstr(q.head, "AWS_PROFILE") != 0);
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run(0, profile, 0, &q, 0), -1);
+    CHECK(q.hn == -1 && strstr(q.head, "AWS_PROFILE is set without AWS_REGION") != 0);
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run(0, container, 0, &q, 0), -1);
+    CHECK(q.hn == -1 && strstr(q.head, "container or web identity credentials are not supported") != 0);
+    /* keys beat a profile (pi: config.credentials is set when the options name no profile) */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run(0, profile_region, 0, &q, 0), 0);
+    CHECK(strstr(q.head, "Host: bedrock-runtime.eu-west-1.amazonaws.com\r\n") != 0 && q.signed_auth == 1);
+    /* signed: x-amz-date and Authorization, the secret nowhere in the head or the log; the signature is for this date */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run(0, keys, 0, &q, 0), 0);
+    CHECK(q.signed_auth == 1 && q.key_sent == 0);
+    CHECK(strstr(ps.head[0], "x-amz-date: 20251010T124000Z\r\n") != 0);
+    CHECK(strstr(ps.head[0], "Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20251010/us-east-1/bedrock/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature=") != 0);
+    CHECK(strstr(ps.head[0], "secret+key") == 0 && strstr(ps.log.p, "secret+key") == 0);
+    CHECK(strstr(ps.log.p, "AKIDEXAMPLE") == 0 && strstr(ps.log.p, "AWS4-HMAC") == 0);         /* the log has the head redacted */
+    CHECK(strstr(ps.log.p, "x-amz-date: 20251010T124000Z") != 0);
+    /* a session token is a header and redacted in the log as well */
+    {
+        static const char *const tok[] = { "AWS_ACCESS_KEY_ID=AKIDEXAMPLE", "AWS_SECRET_ACCESS_KEY=s", "AWS_SESSION_TOKEN=tok-abc-123", 0 };
+        memset(&q, 0, sizeof(q));
+        CHECK_INT(bd_run(0, tok, 0, &q, 0), 0);
+        CHECK(strstr(ps.head[0], "x-amz-security-token: tok-abc-123\r\n") != 0 && strstr(ps.head[0], "SignedHeaders=content-type;host;x-amz-date;x-amz-security-token") != 0);
+        CHECK(strstr(ps.log.p, "tok-abc-123") == 0);
+    }
+    /* a bearer token: Authorization: Bearer, nothing signed even with keys beside it */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run(0, bearer, 0, &q, 0), 0);
+    CHECK(q.signed_auth == 0 && q.key_sent == 1 && strstr(ps.head[0], "Authorization: Bearer brk-1\r\n") != 0);
+    CHECK(strstr(ps.head[0], "x-amz-date") == 0 && strstr(ps.log.p, "brk-1") == 0);
+    /* plain http to a LAN endpoint: the bearer token stays home (the key rule), the request is not signed behind its back */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run("http://192.168.1.10:9000", bearer, 0, &q, 0), 0);
+    CHECK(q.key_sent == 0 && q.signed_auth == 0 && strstr(ps.head[0], "Authorization") == 0 && strstr(ps.head[0], "x-amz-date") == 0);
+    CHECK(strstr(ps.head[0], "POST /model/anthropic.claude-sonnet-5-5/converse-stream HTTP/1.1\r\nHost: 192.168.1.10:9000\r\n") == ps.head[0]);
+    /* with keys instead, plain http signs (a signature is no secret) and the Host header carries the port the signature covers */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run("http://192.168.1.10:9000", keys, 0, &q, 0), 0);
+    CHECK(q.signed_auth == 1 && strstr(ps.head[0], "Host: 192.168.1.10:9000\r\n") != 0 && strstr(ps.head[0], "Signature=") != 0);
+    /* a gateway answering with a page, not an AWS error body: the status and what it said (pi shows the SDK's JSON.parse error) */
+    memset(&q, 0, sizeof(q));
+    CHECK_INT(bd_run(0, keys, 0, &q, "../pi/bedrock/gateway_502.http"), -1);
+    CHECK(strstr(bd_msg.p, "\"errorMessage\":\"HTTP 502: <html>Bad Gateway</html>\"") != 0);
+    jw_free(&bd_msg);
+    /* the catalog's models, the key name, checkAuth */
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    md = llm_reg_find(&r, "amazon-bedrock", "amazon.nova-pro-v1:0");
+    CHECK(md != 0 && !strcmp(md->api, "bedrock-converse-stream"));
+    m = *md;
+    key[0] = 0;
+    llm_key_env_name("amazon-bedrock", key, sizeof(key));
+    CHECK_STR(key, "AWS_BEARER_TOKEN_BEDROCK");
+    llm_cfg_init(&cfg);
+    cfg.getenv = case_getenv;
+    case_nenv = 0;
+    CHECK_INT(llm_cfg_authed(&cfg, &m), 0);
+    case_env_name[0] = strcpy((char *)malloc(32), "AWS_PROFILE");
+    case_env_val[0] = strcpy((char *)malloc(8), "work");
+    case_nenv = 1;
+    CHECK_INT(llm_cfg_authed(&cfg, &m), 1);             /* pi's env-api-keys.ts counts it (a request then says it is not supported) */
+    free(case_env_name[0]);
+    free(case_env_val[0]);
+    case_env_name[0] = strcpy((char *)malloc(32), "AWS_ACCESS_KEY_ID");
+    case_env_val[0] = strcpy((char *)malloc(8), "A");
+    case_nenv = 1;
+    CHECK_INT(llm_cfg_authed(&cfg, &m), 0);             /* the key id alone is not a credential */
+    free(case_env_name[0]);
+    free(case_env_val[0]);
+    case_nenv = 0;
+    llm_cfg_free(&cfg);
+    llm_reg_free(&r);
+}
+
 void suite_pi_llm(void)
 {
     claude_load_errors = 0;
@@ -2873,6 +3775,11 @@ void suite_pi_llm(void)
     test_google();
     test_azure();
     test_azure_endpoint();
+    test_bedrock();
+    test_bedrock_sigv4();
+    test_bedrock_cred();
+    test_evstream();
+    test_sigv4();
     test_handoff_pairs();
     test_anthropic_pi();
     test_openai_bodies();

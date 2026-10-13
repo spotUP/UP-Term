@@ -1,0 +1,8 @@
+HTTP/1.1 424 X
+content-type: application/json
+x-amzn-requestid: req-123
+x-amzn-errortype: ModelErrorException
+content-length: 55
+connection: keep-alive
+
+{"message": "model said no", "originalStatusCode": 400}

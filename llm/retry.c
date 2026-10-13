@@ -60,6 +60,7 @@ static void final_error(const llm_sink *k, int stop, const char *type, const cha
 typedef struct rq {
     llm_req *q;
     llm_hooks inner;
+    char errtype[100];          /* the answer's x-amzn-errortype header (AWS APIs), "" none */
 } rq;
 
 static int rq_head(void *u, const char **head, long *hn)
@@ -84,6 +85,15 @@ static int rq_poll(void *u)
 {
     rq *r = (rq *)u;
     return r->inner.poll ? r->inner.poll(r->inner.u) : 0;
+}
+
+static void rq_header(void *u, const char *name, const char *value)
+{
+    rq *r = (rq *)u;
+    if (!strcmp(name, "x-amzn-errortype"))
+        cl_copy(r->errtype, value, sizeof(r->errtype));
+    if (r->inner.header)
+        r->inner.header(r->inner.u, name, value);
 }
 
 static void rq_status(void *u, int what)
@@ -119,10 +129,14 @@ static void key_notice(llm_req *q)
         q->h.notice(q->h.u, m);
 }
 
-static void http_error(jw *body, int status, char *out, long cap)
+static void http_error(const llm_backend *be, const char *errtype, jw *body, int status, char *out, long cap)
 {
     jv v, e, x;
     char num[16], msg[200];
+    if (be->http_err) {
+        be->http_err(status, errtype, body->p ? body->p : "", body->n, out, cap);
+        return;
+    }
     msg[0] = 0;
     if (body->p && json_parse(body->p, body->n, &v) == 0) {
         if (json_get(v, "error", &e)) {
@@ -235,12 +249,16 @@ static int add_line(llm_req *q, const char *a, long an, const char *b, long bn, 
 
 /* the head of the request for key: the backend's, then the extra header lines (models.json's, Copilot's, the OAuth
  * credential's Bearer) before the blank line. 0, or -1 with the error in the stream */
-static int mk_head(llm_req *q, const http_url *u, const char *path, const char *key, long body_n)
+static int mk_head(llm_req *q, const http_url *u, const char *path, const char *key, const jw *bodyw)
 {
-    char xb[640], cx[200];
+    static char xb[4096];
+    char cx[200], err[300];
     const char *hkey;
     int bearer = 0;
+    long body_n = bodyw->n;
+    int key_given = key && *key;       /* a bearer credential is configured, sent or not */
     xb[0] = 0;
+    q->signed_auth = 0;
     if (!u->tls && key && *key) {
         key_notice(q);
         key = 0;
@@ -253,12 +271,22 @@ static int mk_head(llm_req *q, const http_url *u, const char *path, const char *
     q->hn = q->be->head(u->host, u->port, u->tls, path, hkey, q->user_agent, body_n, q->head, sizeof(q->head));
     q->key_sent = key && *key && q->hn > 0;
     if (q->be->xhead)
-        q->be->xhead(q->ctx, xb, 256);
-    if (q->xhead && strlen(q->xhead) < 256)
+        q->be->xhead(q->ctx, xb, 512);
+    if (q->xhead && strlen(q->xhead) + strlen(xb) < 1024)
         strcat(xb, q->xhead);
     if (q->copilot) {
         copilot_headers(q->ctx, cx, sizeof(cx));
         strcat(xb, cx);
+    }
+    if (q->be->sign) {
+        /* an authentication over the finished request (Signature Version 4): its header lines follow */
+        long sn = q->be->sign(q->ctx, u->host, u->port, u->tls, path, bodyw->p ? bodyw->p : "", body_n, key_given,
+                              xb + strlen(xb), (long)sizeof(xb) - (long)strlen(xb) - 1, err, sizeof(err));
+        if (sn < 0) {
+            final_error(q->sink, LS_ERROR, "auth", err);
+            return -1;
+        }
+        q->signed_auth = sn > 0;
     }
     if (q->hn >= 4 && xb[0])
         q->hn = strip_dups(q->head, q->hn, xb);
@@ -285,6 +313,13 @@ static int mk_head(llm_req *q, const http_url *u, const char *path, const char *
                 rn = r2;
             }
         }
+        if (rn > 0 && q->signed_auth) {
+            long r2 = http_redact_header(red, rn, "x-amz-security-token", red2, sizeof(red2));
+            if (r2 > 0) {
+                memcpy(red, red2, (size_t)r2);
+                rn = r2;
+            }
+        }
         if (rn > 0)
             q->h.log(q->h.u, red, rn);
     }
@@ -298,6 +333,7 @@ int llm_request(llm_req *q)
     jw body, errbody;
     http_resp resp;
     sse ss;
+    llm_evs es;
     gate g;
     llm_sink gk;
     rq r;
@@ -310,6 +346,7 @@ int llm_request(llm_req *q)
     q->status = 0;
     q->reauthed = 0;
     rerr[0] = 0;
+    q->signed_auth = 0;
     memset(&g, 0, sizeof(g));
     g.out = q->sink;
     gk.u = &g;
@@ -343,13 +380,15 @@ int llm_request(llm_req *q)
     }
     jw_init(&body);
     jw_init(&errbody);
+    sse_init(&ss, 0, 0);            /* freed after every attempt, also one that never reached llm_post's sse_init */
     if (q->be->body(q->ctx, &body) || body.oom) {
         jw_free(&body);
         final_error(q->sink, LS_ERROR, "body", "the request could not be built");
         return -1;
     }
-    if (mk_head(q, &u, path, q->key, body.n)) {
+    if (mk_head(q, &u, path, q->key, &body)) {
         jw_free(&body);
+        jw_free(&errbody);
         return -1;
     }
     r.q = q;
@@ -371,6 +410,8 @@ int llm_request(llm_req *q)
         c.h.status = rq_status;
         c.h.ms = rq_ms;
         c.h.head = rq_head;
+        c.h.header = rq_header;
+        c.es = &es;
         c.h.event = q->h.log ? rq_event : 0;
         c.be = q->be;
         c.dec = dec;
@@ -383,6 +424,8 @@ int llm_request(llm_req *q)
         c.errbody = &errbody;
         g.err = 0;
         g.raw[0] = 0;
+        r.errtype[0] = 0;
+        memset(&es, 0, sizeof(es));
         q->attempts = attempt;
         rc = llm_post(&c);
         err[0] = 0;
@@ -390,12 +433,15 @@ int llm_request(llm_req *q)
         if (rc == LP_BREAK) {
             final_error(q->sink, LS_ABORTED, "aborted", "Request aborted");
         } else if (rc == LP_OK && resp.status == 200 && resp.event_stream) {
+            if (resp.aws_stream && !c.bad && llm_evs_end(&es))
+                c.bad = 1;          /* the answer ended inside a message */
             if (!c.bad && !g.done && !g.err && q->be->fin)
                 q->be->fin(dec, &gk);       /* the body ended: an API without a terminal event ends here */
             if (c.bad)
-                cl_copy(err, "the answer's stream was malformed", sizeof(err));
+                cl_copy(err, resp.aws_stream && es.err[0] ? es.err : "the answer's stream was malformed", sizeof(err));
             else if (g.done && !g.err) {
                 sse_free(&ss);
+                llm_evs_free(&es);
                 jw_free(&errbody);
                 q->be->dec_free(dec);
                 jw_free(&body);
@@ -408,22 +454,25 @@ int llm_request(llm_req *q)
                 retry = !g.content;
             }
         } else if (rc == LP_OK) {
-            http_error(&errbody, resp.status, err, sizeof(err));
+            http_error(q->be, r.errtype, &errbody, resp.status, err, sizeof(err));
             retry = resp.status == 429 || resp.status == 408 || (resp.status >= 500 && resp.status <= 599);
             if (resp.retry_after > 0)
                 wait = resp.retry_after * 1000L;
         } else {
-            static const char *const why[] = { "", "cannot connect", "sending failed", "the connection failed",
+            /* no request reached a server (connect or send failed): pi's SDKs' APIConnectionError (core/error.js),
+             * a text pi's agent retry patterns match; the transport's reason is not part of it */
+            static const char *const why[] = { "", "Connection error.", "Connection error.", "the connection failed",
                                                "the connection closed early", "the answer was not valid HTTP",
                                                "no answer within the idle limit" };
             cl_copy(err, rc > 0 && rc <= LP_IDLE ? why[rc] : "the request failed", sizeof(err));
-            if (c.err && *c.err) {
+            if (rc != LP_CONNECT && rc != LP_SEND && c.err && *c.err) {
                 cl_cat(err, ": ", sizeof(err));
                 cl_cat(err, c.err, sizeof(err));
             }
             retry = rc != LP_BADHTTP && !g.content;
         }
         sse_free(&ss);
+        llm_evs_free(&es);
         jw_free(&errbody);
         q->be->dec_free(dec);
         if (rc == LP_BREAK)
@@ -432,7 +481,7 @@ int llm_request(llm_req *q)
             /* the credential was refused: renewed once, the request goes again at once with the new one */
             q->reauthed = 1;
             if (q->reauth(q->reauth_u, q, rerr, sizeof(rerr)) == 0) {
-                if (mk_head(q, &u, path, q->key, body.n))
+                if (mk_head(q, &u, path, q->key, &body))
                     break;
                 attempt--;
                 continue;

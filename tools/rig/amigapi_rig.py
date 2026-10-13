@@ -119,6 +119,19 @@ ENVARC:amiga-pi/mcp.json is removed again. A visible window titled
 "amiga-pi step 10". The tree the binary was built in gives mcp-echo and
 fake_mcp.py (make -C <amiga-pi> amiga build/amiga/mcp-echo).
 
+Step 11 (L10): Lua extensions on the Amiga. ENVARC:amiga-pi/extensions holds a-block.lua (blocks the bash tool with "no shell today",
+adding the 13-digit turn_start timestamp and the literal 1760000000123 as json.encode writes them) and b-bad.lua (a handler that raises
+an error); "amiga-pi --no-session -p 'try the blocked bash'" against the fixture, whose openai_bash.sse calls bash with a command
+that would write RAM:pi-blocked.txt, then answers openai_final.sse; run through vsh so stderr goes to a file:
+  11a exit code 0, the final text printed, two requests (the session went on after the other extension's error)
+  11b the bash call was blocked: RAM:pi-blocked.txt was not written, and the second request's tool message holds
+      the reason "no shell today" (pi's text for a blocked call)
+  11c b-bad.lua's error is reported as `Extension "<path>" error: <message>` on stderr and the run continued (11a)
+  11d (L13) the reason carries the turn_start timestamp as 13 digits and 1760000000123 exactly (64-bit Lua numbers, JSON written
+      as JS writes it)
+The extensions are removed again (an extensions directory that was there is put aside first and restored after). A visible
+window titled "amiga-pi step 11". Needs rig 2 or another free rig, never 3.
+
 Step 13 (N8): the TUI in an UP-Term window. amiga-pi runs in a visible XCON: window titled "amiga-pi step 13a/b/c" and
 the keys are typed into it the way claude_rig.py types them (tools/rig/typewin.py); the screen is read back as TEXT
 (Right Amiga A, Right Amiga C, VTC:snipprobe CLIP <file>), the rest from the fixture's request bodies and the
@@ -142,7 +155,7 @@ not run again; a phase with every check recorded is skipped. --force runs everyt
 
   make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C ~/Code/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
-  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|8|9|10|13|14] [--force]
+  UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|8|9|10|11|13|14] [--force]
 """
 import argparse
 import json
@@ -1063,6 +1076,79 @@ def step8(port):
         c.run('Delete RAM:pi8-done VTC:pi8.dos VTC:g8-skill.md VTC:g8-hidden.md QUIET')
 
 
+LUA_BLOCK_11 = """local ts = nil
+pi.on("turn_start", function(event, ctx) ts = event.timestamp end)
+pi.on("tool_call", function(event, ctx)
+  if event.toolName == "bash" then
+    return { block = true, reason = "no shell today ts=" .. json.encode(ts) .. " big=" .. json.encode(json.decode("1760000000123")) }
+  end
+end)
+"""
+LUA_BAD_11 = """pi.on("agent_start", function(event, ctx) error("rig boom", 0) end)
+"""
+
+
+def step11(port):
+    import re
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    log = paths.RIG / 'amigapi_fixture11.log'
+    dump = paths.RIG / 'amigapi_dump11'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    (VTC / 'x11-block.lua').write_text(LUA_BLOCK_11)
+    (VTC / 'x11-bad.lua').write_text(LUA_BAD_11)
+    (VTC / 'pi11.sh').write_text('VTC:amiga-pi --model fixture/qwen2.5-coder:7b --base-url http://127.0.0.1:%d/v1 --no-session '
+                                 '-p "try the blocked bash" >VTC:pi11.out 2>VTC:pi11.err\necho "rc=$?" >VTC:pi11.rc\n' % port)
+    # an extensions directory that was there already would add its own handlers: put it aside, restore it after
+    had_ext = there('ENVARC:amiga-pi/extensions')
+    if had_ext:
+        c.run('Rename ENVARC:amiga-pi/extensions ENVARC:amiga-pi/extensions.l10bak')
+    # MakeDir on a directory that is there complains (and an owner watching the window sees it): make only what is missing
+    for d in ('ENVARC:amiga-pi', 'ENVARC:amiga-pi/extensions'):
+        if not there(d):
+            c.run('MakeDir ' + d)
+    try:
+        for f in ('pi11.out', 'pi11.err', 'pi11.rc'):
+            if (VTC / f).exists():
+                (VTC / f).unlink()
+        ended, req = run_watched('pi11', 'amiga-pi step 11', [
+            'Echo "amiga-pi step 11: Lua extensions in ENVARC:amiga-pi/extensions, one blocks bash, one raises an error"',
+            'Copy VTC:x11-block.lua ENVARC:amiga-pi/extensions/a-block.lua QUIET',
+            'Copy VTC:x11-bad.lua ENVARC:amiga-pi/extensions/b-bad.lua QUIET',
+            'Delete RAM:pi-blocked.txt QUIET',
+            'CD RAM:',
+            'VTC:vsh VTC:pi11.sh <NIL:',   # the Shell has no 2>; vsh does
+            'Delete ENVARC:amiga-pi/extensions ALL QUIET',
+            'Type VTC:pi11.out'], 'pi11-done')
+        check('11 the window ended', ended)
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        out, err, rc = rd('pi11.out'), rd('pi11.err'), rd('pi11.rc').strip()
+        b1, b2 = body_of(dump, 1), body_of(dump, 2)
+        tool_msgs = [m for m in b2.get('messages', []) if m.get('role') == 'tool']
+        reason = str(tool_msgs[-1].get('content')) if tool_msgs else ''
+        check('11a exit code 0, the final text printed, two requests', rc == 'rc=0' and 'Startup-Sequence' in out and b1 and b2
+              and not body_of(dump, 3), repr((rc, out[:200], err[:200])))
+        check('11b bash was blocked: the command did not run, the model got pi\'s text',
+              not there('RAM:pi-blocked.txt') and reason.startswith('no shell today'), repr(reason[:200]))
+        check('11c the other extension\'s error is reported as pi words it, and the run went on',
+              re.search(r'Extension "[^"]*b-bad\.lua" error: rig boom', out + err) is not None and b2 != {}, repr((out + err)[:300]))
+        m = re.search(r'ts=(\d+) big=(\d+)', reason)
+        check('11d a 13-digit number round-trips (the timestamp, and 1760000000123 exactly)',
+              m is not None and len(m.group(1)) == 13 and m.group(2) == '1760000000123', repr(reason[:200]))
+    finally:
+        fx.terminate()
+        c.run('Delete ENVARC:amiga-pi/extensions ALL QUIET')
+        if had_ext:
+            c.run('Rename ENVARC:amiga-pi/extensions.l10bak ENVARC:amiga-pi/extensions')
+        c.run('Delete RAM:pi11-done VTC:pi11.dos VTC:x11-block.lua VTC:x11-bad.lua VTC:pi11.sh RAM:pi-blocked.txt QUIET')
+
+
 def mask_rpc(o, spec):
     """A record of pi's RPC/JSON stream after the masks of amiga-pi's tests/pi/rpc/masks.json (spec: that file, parsed),
     the one list of this rig and of amiga-pi's tests/test_pi_modes.c, with each mask's reason. The rules are those of
@@ -1421,7 +1507,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14), help='one step only (default: all but 13 and 14)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14), help='one step only (default: all but 13 and 14)')
     ap.add_argument('--force', action='store_true', help='step 13: run every check again')
     a = ap.parse_args()
     global force13
@@ -1446,6 +1532,8 @@ def main():
         step9(a.port + 8)
     if a.step in (None, 10):
         step10(a.port + 9)
+    if a.step in (None, 11):
+        step11(a.port + 10)
     if a.step == 13:
         step13(a.port + 12)
     if a.step == 14:

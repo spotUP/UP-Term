@@ -17,6 +17,10 @@ const subset = {
 	openai: ["gpt-5.5", "gpt-4.1", "gpt-4"],
 	google: ["gemini-3-flash-preview", "gemini-3.1-pro-preview", "gemini-2.5-flash", "gemini-2.5-pro"],
 	azure: ["gpt-5.5", "gpt-4.1", "gpt-4"],
+	"amazon-bedrock": [
+		"anthropic.claude-sonnet-5-5", "anthropic.claude-opus-5-5", "anthropic.claude-haiku-4-5-20251001-v1:0",
+		"eu.anthropic.claude-sonnet-5-5", "amazon.nova-pro-v1:0", "global.openai.gpt-5.6-sol", "deepseek.v3.2",
+	],
 };
 // the subscription providers (amiga-pi phase O, /login): every model pi offers for them, so what a login unlocks is what pi shows
 for (const p of ["openai-codex", "github-copilot", "kimi-coding", "xai", "meta"]) subset[p] = Object.keys(MODELS[p]);

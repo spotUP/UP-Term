@@ -23,14 +23,16 @@ void ps_reset(void)
     jw_init(&ps.log);
 }
 
-/* SSE text as a chunked 200 answer (cut: no terminating chunk, the connection closes) */
-void ps_sse_text(const char *sse, long n, int cut)
+/* a body of the content type as a chunked 200 answer in pieces of 100 bytes (cut: no terminating chunk, the connection closes) */
+void ps_body_text(const char *sse, long n, const char *ctype, int cut)
 {
     long i;
     jw w;
     static const char hex[] = "0123456789abcdef";
     jw_init(&w);
-    jw_rawz(&w, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n");
+    jw_rawz(&w, "HTTP/1.1 200 OK\r\nContent-Type: ");
+    jw_rawz(&w, ctype);
+    jw_rawz(&w, "\r\nTransfer-Encoding: chunked\r\n\r\n");
     for (i = 0; i < n; i += 100) {
         long k = n - i < 100 ? n - i : 100;
         char h[8];
@@ -47,6 +49,22 @@ void ps_sse_text(const char *sse, long n, int cut)
         jw_rawz(&w, "0\r\n\r\n");
     ps.resp[ps.nresp] = w.p;
     ps.rlen[ps.nresp++] = cut ? -w.n : w.n;     /* negative: close after it */
+}
+
+/* SSE text as a chunked 200 answer (cut: no terminating chunk, the connection closes) */
+void ps_sse_text(const char *sse, long n, int cut)
+{
+    ps_body_text(sse, n, "text/event-stream", cut);
+}
+
+void ps_stream(const char *name, const char *ctype)
+{
+    long n;
+    char *b = claude_load(name, &n);
+    if (!b)
+        return;
+    ps_body_text(b, n, ctype, 0);
+    free(b);
 }
 
 /* a whole HTTP answer from memory, as it is */
@@ -89,6 +107,11 @@ static int s_open(void *u, const char *host, int port, int tls)
     (void)port;
     (void)tls;
     ps.opens++;
+    if (ps.refuse > 0) {
+        ps.refuse--;
+        ps.refused++;
+        return NET_ERROR;
+    }
     return 0;
 }
 
@@ -150,7 +173,7 @@ static void s_close(void *u)
 static const char *s_err(void *u)
 {
     (void)u;
-    return "stub";
+    return ps.refused ? "cannot connect to 127.0.0.1: connection refused" : "stub";
 }
 
 int ps_poll(void *u)

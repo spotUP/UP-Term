@@ -4,7 +4,7 @@
  * (llm/event.h). llm/be_anthropic.c (anthropic-messages, shared with
  * C:Claude) and llm/be_openai_chat.c (openai-completions) and llm/be_openai_responses.c
  * (openai-responses), llm/be_azure.c (azure-openai-responses) and llm/be_google.c
- * (google-generative-ai) implement it;
+ * (google-generative-ai) and llm/be_bedrock.c (bedrock-converse-stream) implement it;
  * llm/request.c drives any of them.
  * Portable C89. */
 #ifndef LLM_BACKEND_H
@@ -54,6 +54,15 @@ typedef struct llm_tmap {
     const char *val;            /* LTM_STR */
 } llm_tmap;
 
+/* amazon-bedrock credentials and endpoint (llm_cfg_endpoint fills it from the environment: pi's api/bedrock-converse-stream.ts) */
+typedef struct llm_aws {
+    char region[48];            /* the signing region */
+    char cfg_region[48];        /* AWS_REGION / AWS_DEFAULT_REGION as set, "" none (GovCloud's rule reads it) */
+    char access[130], secret[130];  /* AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY; "" none */
+    char token[4100];           /* AWS_SESSION_TOKEN, "" none */
+    int skip_auth;              /* AWS_BEDROCK_SKIP_AUTH=1: sign with dummy keys (a proxy that checks nothing) */
+} llm_aws;
+
 typedef struct llm_model {
     const char *id;             /* "claude-opus-5-5", "qwen2.5-coder:7b" */
     const char *api;            /* "anthropic-messages", "openai-completions" */
@@ -75,6 +84,8 @@ typedef struct llm_model {
     /* azure-openai-responses (llm_cfg_endpoint): the api-version query and the deployment named as the request's
      * model; 0: "v1" and the id */
     const char *api_version, *deployment;
+    /* bedrock-converse-stream (llm_cfg_endpoint): the credentials and region; 0: none */
+    const llm_aws *aws;
 } llm_model;
 
 /* a model with nothing set: the compat flags LC_UNSET (detect), the rest 0 */
@@ -122,6 +133,15 @@ typedef struct llm_backend {
     /* the stream's end, once the response ended cleanly: for an API whose stream carries no terminal event (google:
      * the answer is complete when the body ends). Emits the closing events; 0 pointer: none */
     void (*fin)(void *dec, const llm_sink *k);
+    /* the headers of an authentication that needs the finished request (AWS Signature Version 4: the body's hash is in
+     * it): into out as "Name: value\r\n" lines, their length, 0 none, -1 with the reason in err. host, port, tls and
+     * path as sent in the head; bearer: a bearer credential is configured (the head sends it, or withholds it on plain
+     * http): nothing is signed then. 0 pointer: none */
+    long (*sign)(const llm_ctx *c, const char *host, int port, int tls, const char *path, const char *body, long bn,
+                 int bearer, char *out, long cap, char *err, long errcap);
+    /* the text of a failed HTTP answer (status, the x-amzn-errortype header or "", the body) for an API whose errors the
+     * SDK words its own way; 0 pointer: "HTTP <status>: <message>" */
+    void (*http_err)(int status, const char *errtype, const char *body, long bn, char *out, long cap);
 } llm_backend;
 
 extern const llm_backend llm_be_anthropic;
@@ -130,6 +150,7 @@ extern const llm_backend llm_be_openai_responses;
 extern const llm_backend llm_be_azure;
 extern const llm_backend llm_be_google;
 extern const llm_backend llm_be_openai_codex;
+extern const llm_backend llm_be_bedrock;
 
 /* the thinking level an anthropic-messages request records on its answer (pi: providerThinkingLevel, set when the
  * model's supportsMidConvoEffort is on): "low".."max", 0 when the model does not manage the effort */
@@ -152,11 +173,13 @@ int llm_google_call_ids(const char *model_id);
 /* the backend of an api name, 0 none */
 const llm_backend *llm_backend_of(const char *api);
 /* calls of each backend's feed since the start (the reachability tests' sentinel) */
-extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses, llm_feeds_azure, llm_feeds_google, llm_feeds_codex;
+extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses, llm_feeds_azure, llm_feeds_google, llm_feeds_bedrock, llm_feeds_codex;
 
 /* the wall clock the generated tool-call ids read (google: pi's `${name}_${Date.now()}_${++counter}`); the host sets it
  * before a request (now: seconds and ms since 1970); unset, the ids read time() */
 void llm_set_wall(llm_ts (*now)(void *u), void *u);
+/* the clock as set (llm_set_wall), else time(): the wall clock now */
+llm_ts llm_wall(void);
 /* pi's module-level counter of generated ids: set to n (the tests start each case at 0) */
 void llm_google_counter(long n);
 

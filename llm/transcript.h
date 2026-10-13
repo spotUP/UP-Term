@@ -35,4 +35,10 @@ typedef struct llm_tx {
 int llm_tx_plan(const llm_ctx *c, int mid_sys, llm_tx *t);
 void llm_tx_free(llm_tx *t);
 
+/* a JSON value written compact (JSON.stringify of the parsed value); drop_empty_keys: members with the key "" left out */
+void llm_json_compact(jw *w, jv v, int drop_empty_keys);
+
+/* a JSON string value that is blank (empty after JS String.prototype.trim()) */
+int llm_tx_blank(jv s);
+
 #endif

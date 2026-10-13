@@ -311,7 +311,7 @@ def prepare(dest):
 # What a run plants or removes on the Amiga that a user may own: each is saved
 # before the run and put back in a finally, so a failing or killed run (the
 # killed one that left 127.0.0.1 2399 in ENVARC:Claude/remote) leaves nothing.
-FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:UP-Term.prefs', 'S:User-Startup')   # the move pass appends a user line to the last (ten were left by 2026-10-10)
+FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:amiga-pi/settings.json', 'ENVARC:UP-Term.prefs', 'S:User-Startup')   # the move pass appends a user line to the last (ten were left by 2026-10-10)
 FIXTURE_ASSIGNS = ('GG', 'UP-Term')
 
 class Fixtures:
@@ -374,6 +374,9 @@ def _main(dest=None):
     sseq_before = run('Type S:Startup-Sequence')[1]  # no part of UP-Term edits it (UPTERM-VOLUME-REQUESTER)
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
     run('Delete >NIL: ENVARC:Claude/remote QUIET')  # an earlier run's remote (Install keeps one)
+    # a user's amiga-pi settings, planted before Install: neither Install nor Uninstall may touch it
+    run('MakeDir >NIL: ENVARC:amiga-pi')
+    run('Echo >ENVARC:amiga-pi/settings.json "userfile-keepme"')
     ls_before = run('List >NIL: C:ls')[0] == 0  # Install puts no Unix command in C:
     shell_before = run('VTC:iconprobe SYS:System/Shell')[1]  # SHELLICON must give it back
     tmp_before = run('Assign >NIL: TMP: EXISTS')[0] == 0
@@ -444,6 +447,10 @@ def _main(dest=None):
     rc, out = run('List C:ClaudeCode LFORMAT "%A"')
     check(rc == 0 and out.strip()[1:2].lower() == 's',   # protection bits hsparwed, s second
           'C:ClaudeCode installed as a script command (s bit)', out)
+    rc, out = run('C:amiga-pi --version')
+    check(rc == 0 and '1.1.0' in out, 'C:amiga-pi installed and prints --version 1.1.0', out)
+    check(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
+          'Install kept the user\'s ENVARC:amiga-pi/settings.json', '')
     rc, out = run('C:UPConsole STATUS')
     check('CON: ROM' in out, 'Install NOCONSOLE leaves CON: the ROM\'s', out)
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term console"')[0] != 0,
@@ -626,7 +633,7 @@ def _main(dest=None):
           'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
-    left = [f for f in ('C:ClaudeCode', 'DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
+    left = [f for f in ('C:ClaudeCode', 'C:amiga-pi', 'DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
                         'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO', 'ENVARC:vsh', 'ENV:vsh',
                         'SYS:System/UP-Term', 'SYS:System/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
                         '"C:UP-Term Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
@@ -638,6 +645,8 @@ def _main(dest=None):
         left.remove('"%s"' % drawer)
     check(not left, 'Uninstall removed the files (UP-Term:var stays)', ' '.join(left))
     check(run('List >NIL: ENVARC:UP-Term.prefs')[0] == 0, 'Uninstall kept the user\'s preferences', '')
+    check(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
+          'Uninstall kept the user\'s ENVARC:amiga-pi/settings.json', '')
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')
     if rig_gg:
         run('Assign GG: VTC:gg')

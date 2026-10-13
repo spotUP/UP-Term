@@ -167,6 +167,12 @@ typedef struct cl_tui {
      * for its last m_afk_count_ms; tui_menu resets it */
     long m_afk_ms, m_afk_count_ms;
     int m_left;                 /* the countdown's seconds shown, -1 none */
+    /* an extension's dialog in pi's look (tui_ext_menu, tui_ext_input; pi's ExtensionSelectorComponent and
+     * ExtensionInputComponent): m_ext marks the menu (accent title and choice, j and k move, no wrap, digits and Tab
+     * inert), pi_in_ext the line input; m_timeout_ms (-1 none) closes either by itself after that long, and the title
+     * counts the seconds down in m_left (pi's CountdownTimer). The menu and the input reset all three. */
+    int m_ext, pi_in_ext;
+    long m_timeout_ms;
     int m_ctx;                  /* the menu's binding context (keys.h KC_CONFIRM, KC_MSGSEL, KC_THEME;
                                  * KC_SELECT the others); tui_menu resets it */
     /* A4 gaps 3: Esc or Ctrl+C on the idle, empty box: 1 when it was taken
@@ -302,6 +308,13 @@ int tui_pick_run(cl_tui *t, tui_pick *p);
 int tui_line_input(cl_tui *t, const char *title, char *out, long cap);
 /* the same with the hint's first word given ("enter submit"; 0: "enter save") */
 int tui_line_input_hint(cl_tui *t, const char *title, const char *hint, char *out, long cap);
+/* TUI_LOOK_PI: an extension's selector (ctx.ui.select, confirm) -- title may hold several lines, as pi's confirm puts the
+ * message under the title: the option chosen (0..n-1), -1 for Esc, Ctrl+C and the end of input, TUI_AWAY when timeout_ms
+ * (0 none) ran out; the keys of pi's ExtensionSelectorComponent (up, down, j, k, Enter) */
+int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, long timeout_ms);
+/* TUI_LOOK_PI: an extension's text input (ctx.ui.input): 1 with the text in out, 0 for Esc, Ctrl+C and timeout_ms (0 none)
+ * running out, -1 the end of input */
+int tui_ext_input(cl_tui *t, const char *title, char *out, long cap, long timeout_ms);
 
 /* 0, or -1 when out of memory. cols x rows from io->size (80x24 when it
  * says nothing). */

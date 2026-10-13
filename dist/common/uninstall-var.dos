@@ -1,0 +1,16 @@
+Set upkeepvar ""
+If EXISTS "@VARDIR@"
+  If "$upvardelete" EQ "YES"
+    Set upkeepvar ""
+  Else
+    If "$upvardelete" EQ "NO"
+      Set upkeepvar "YES"
+    Else
+      Set upkeepvar "YES"
+      Ask "Also delete your data in @VARWHAT@? y/N"
+      If WARN
+        Set upkeepvar ""
+      EndIf
+    EndIf
+  EndIf
+EndIf
