@@ -84,7 +84,8 @@ amiagent on the Amiga, an MCP server (pure Python 3 standard library) beside
 Claude Code. amiagent runs whatever it is sent and the link is NOT encrypted:
 always set a TOKEN, keep it on a LAN you trust, never forward the port (7846).
 
-1. On the Amiga: install amiagent (Aminet comm/net/amiagent) and start it with
+1. On the Amiga: install amiagent (Aminet comm/net/amiagent, or tick it in the
+   UP-Term kit's Install, which copies it to UP-Term:bin/amiagent) and start it with
    a token, at every boot from S:User-Startup:
 
        Run >NIL: amiagent TOKEN=pick-a-secret QUIET
