@@ -10,6 +10,8 @@
 
 /* Does path ('/'-separated, relative to the search's root) match pat? */
 int glob_match(const char *pat, const char *path);
+/* The same with the case of letters mattering (amiga-pi matches pi's settings.json patterns the way minimatch does) */
+int glob_match_case(const char *pat, const char *path);
 /* An AmigaDOS pattern written as a glob into out: 0, or -1 with the
  * reason in out when it uses what a glob cannot say (~, #x other than #?). */
 int glob_from_amiga(const char *in, char *out, long cap);
