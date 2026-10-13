@@ -166,6 +166,27 @@ Evidence:
   the session as failed with that text and the last step, waits for the rig (starting
   it again if FS-UAE is gone), and goes on (`crashes.log` in the verdict folder).
 
+- **Cause found (Y1, 2026-10-13): Ctrl-C, not Up, and not TERM.** The reset is ixemul
+  delivering SIGINT: Python installs every handler with `SA_ONSTACK` (PyOS_setsig), and
+  ixemul's `sendsig` (library/machdep.c) then put the signal frame at `u_sigsp`, which is NULL
+  when no `sigstack()` was set: the handler's stack went just below address 0. Smallest case,
+  no console at all: `python3 -c "import os,signal; os.kill(os.getpid(), signal.SIGINT)"` resets
+  the machine on the kit's 80.1 (the stock 48.3 has the same code). The matrix and the hand
+  probes always ended with a Ctrl-C (`Break C` in the script's kill, or the close gadget's
+  Ctrl-C) after Up had hung the REPL; with TERM unset the REPL kept working, `exit()` ended it,
+  and no Ctrl-C was sent. Fixed in ixemul-vtcon (`feature/y1-python-term`): the signal stack
+  only when one was set (4.4BSD's SAS_ALTSTACK). Same rig, patched library: the kill case prints
+  KeyboardInterrupt; Ctrl-C then a line works in ROM CON:, KingCON and XCON:.
+- **Up with TERM=vtcon in ROM CON:/KingCON** is a separate hang, no crash: the REPL is
+  PyREPL (it runs when terminfo for TERM is found; TERM unset gives the basic REPL), and these
+  consoles send Up as the 8-bit CSI `9B 41`. PyREPL's event queue (`_pyrepl/base_eventqueue.py`
+  `push`) keeps bytes it cannot decode as UTF-8 and waits for more, so `9B` holds every later
+  key in its buffer for good (PYREPL_TRACE shows each key pushed, no event). Upstream main has
+  the same code. vtcon's terminfo is right for an XCON: window (Up recalls history there);
+  it describes a terminal the ROM console is not.
+- In ROM CON: and KingCON the Read cannot be interrupted, so with TERM unset a Ctrl-C is
+  delivered when the next line is read and the KeyboardInterrupt takes that line.
+
 ## Answers to the plan's unverified claims
 
 | Claim | Answer |
