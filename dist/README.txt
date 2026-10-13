@@ -703,6 +703,15 @@ DEMO
   scene 17 (the effects). Your shell comes back as it was.
   Help > Demo tour (or /demo) plays the same in a tab of its own, which
   closes when the demo ends.
+  On a screen of 16 colours (an AGA screen of 4 planes) UPDemo plays a
+  version made for the 16 ANSI colours by itself: the same 24 scenes,
+  only SGR 30-37, 90-97, 40-47 and 100-107, gradients from the shade
+  blocks and the full block as in classic ANSI art, and colour cycling
+  through the 16 colours instead of palette writes. It asks the window
+  how many colours it has (XTGETTCAP colors; UP-Term answers with the
+  screen's colours). UPDemo ANSI plays that version anywhere, UPDemo
+  FULL the 256 and 24-bit colour one (dithered on a 16-colour screen);
+  both go with a scene number or BENCH: UPDemo FULL 3, UPDemo BENCH ANSI 17.
   UPDemo BENCH runs the effect scenes (text, colours, scroll regions and
   the effects) for three seconds each and prints the frames a second
   each reached: a benchmark of the terminal on your machine. UPDemo BENCH

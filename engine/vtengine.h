@@ -390,6 +390,12 @@ void     vt_screen_reverse(vt_term *t, int on);
 /* The cell size in pixels, for the size reports programs ask for (CSI 14t,
  * 16t). */
 void     vt_set_cell_pixels(vt_term *t, int w, int h);
+/* How many colours the screen can show at once (16 pens on a 4-plane AGA
+ * screen, 256 on a card): what XTGETTCAP colors (and Co) answers, so a
+ * program can pick its palette -- xterm defines that query ("XTGETTCAP",
+ * ctlseqs.txt: DCS + q Pt ST). 0: not told, the terminfo entry's 256. A host
+ * setting; vt_reset leaves it. */
+void     vt_set_screen_colors(vt_term *t, int n);
 /* DECSCUSR: 0/1 blinking block, 2 block, 3 blinking underline, 4 underline,
  * 5 blinking bar, 6 bar. */
 int      vt_cursor_style(const vt_term *t);

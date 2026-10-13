@@ -16,6 +16,9 @@ static int back_len, back_pos;
 static int layout_cols[8], n_layout;  /* DECCOLM widths the terminal was asked for */
 static int saw_image, saw_link, saw_wide, saw_text, saw_slow, saw_rapid;
 static const char *needle;            /* saw_text: the output had it */
+static char cap[4 << 20];             /* capturing: everything the demo wrote */
+static long cap_len;
+static int capturing;
 
 static void scan(void)
 {
@@ -43,6 +46,10 @@ static void out(void *user, const char *buf, long len)
 {
     (void)user;
     bytes += len;
+    if (capturing && cap_len + len <= (long)sizeof(cap)) {
+        memcpy(cap + cap_len, buf, (size_t)len);
+        cap_len += len;
+    }
     if (needle && len >= (long)strlen(needle)) {
         long i, k = (long)strlen(needle);
         for (i = 0; i + k <= len && !saw_text; i++)
@@ -130,6 +137,8 @@ static void start(int cols, int rows)
     back_len = back_pos = 0;
     n_layout = 0;
     saw_image = saw_link = saw_wide = saw_text = saw_slow = saw_rapid = 0;
+    updemo_colours(UPDEMO_AUTO);
+    capturing = 0;
 }
 
 static int scene_index(const char *name)
@@ -508,6 +517,300 @@ static void palette_cycling_tells_the_renderer_once_a_frame(void)
     vt_free(t);
 }
 
+/* ---- the 16-colour version (W-D3) ---- */
+
+static int cap_has(const char *s)
+{
+    long i, k = (long)strlen(s);
+    for (i = 0; i + k <= cap_len; i++)
+        if (!memcmp(cap + i, s, (size_t)k))
+            return 1;
+    return 0;
+}
+
+/* every SGR (ESC [ params m) of the capture: 1 when one has a parameter 38, 48 or 58 */
+static int sgr_has_param_in(const int *bad, int nbad)
+{
+    long i = 0;
+    while (i + 2 < cap_len) {
+        if (cap[i] == 27 && cap[i + 1] == '[') {
+            long j = i + 2, start = j;
+            int hit = 0;
+            while (j < cap_len && ((cap[j] >= '0' && cap[j] <= '9') || cap[j] == ';' || cap[j] == ':'))
+                j++;
+            if (j < cap_len && cap[j] == 'm') {
+                long q = start;
+                while (q <= j) {
+                    long e = q;
+                    int v = 0, k;
+                    while (e < j && cap[e] != ';' && cap[e] != ':') {
+                        v = v * 10 + (cap[e] - '0');
+                        e++;
+                    }
+                    for (k = 0; k < nbad; k++)
+                        if (e > q && v == bad[k])
+                            hit = 1;
+                    q = e + 1;
+                }
+            }
+            if (hit)
+                return 1;
+            i = j;
+        } else
+            i++;
+    }
+    return 0;
+}
+
+static int cap_extended_colour(void)
+{
+    static const int bad[3] = { 38, 48, 58 };
+    return sgr_has_param_in(bad, 3);
+}
+
+static void play_alone(int scene, int colours)
+{
+    start(80, 24);
+    capturing = 1;
+    cap_len = 0;
+    updemo_colours(colours);
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene, 120), 0);
+    updemo_only(0);
+    capturing = 0;
+}
+
+/* The point of the 16-colour version: no scene -- text or effect -- sends a 256-colour or true-colour SGR
+ * (38;5, 48;5, 38;2, 48;2, 58;5) or touches the palette (OSC 4, 10, 11, 104, 110, 111), and the engine knows
+ * every sequence. The full version of the same scene does (so the scan can fail). */
+static void ansi_mode_sends_only_the_16_colours_in_every_scene(void)
+{
+    const char *kinds[16];
+    long counts[16];
+    int s;
+    for (s = 0; s < updemo_scenes(); s++) {
+        play_alone(s, UPDEMO_ANSI);
+        if (cap_extended_colour() || cap_has("\033]4") || cap_has("\033]10;") || cap_has("\033]11;") ||
+            cap_has("\033]104") || cap_has("\033]110") || cap_has("\033]111")) {
+            CHECK_STR(updemo_scene_name(s), "a scene with no 256-colour or palette sequence");
+        }
+        CHECK(updemo_ansi());
+        CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+        vt_free(t);
+    }
+    play_alone(scene_index("colours"), UPDEMO_FULL);
+    CHECK(cap_has("\033[48;5;"));
+    CHECK(cap_has("\033[38;2;"));
+    CHECK(cap_extended_colour());
+    CHECK(!updemo_ansi());
+    vt_free(t);
+    play_alone(scene_index("palette cycling"), UPDEMO_FULL);
+    CHECK(cap_has("\033]4;"));
+    vt_free(t);
+}
+
+/* the effects draw their gradients with the shade blocks U+2591-2593 (and the full block), in SGR 30-37 / 90-97 / 40-47 / 100-107 */
+static void ansi_effects_draw_gradients_from_shade_blocks(void)
+{
+    static const char *const effects[] = { "copper bars", "plasma", "fire", "rotozoomer", "sine scroller", "colours" };
+    unsigned i;
+    for (i = 0; i < sizeof(effects) / sizeof(effects[0]); i++) {
+        play_alone(scene_index(effects[i]), UPDEMO_ANSI);
+        CHECK_STR(effects[i], effects[i]);
+        CHECK(cap_has("\342\226\221") || cap_has("\342\226\222") || cap_has("\342\226\223"));
+        CHECK(cap_has("\033[9") || cap_has("\033[10") || cap_has("\033[3") || cap_has("\033[4"));
+        vt_free(t);
+    }
+    play_alone(scene_index("plasma"), UPDEMO_ANSI);
+    CHECK(cap_has("\342\226\222") && cap_has("\342\226\221") && cap_has("\342\226\223"));
+    CHECK(cap_has("\342\226\210") || cap_has("m "));
+    vt_free(t);
+}
+
+/* palette cycling in the 16-colour version moves colour numbers: the picture is redrawn each frame and the
+ * renderer is told of no palette change */
+static void ansi_palette_cycling_changes_colour_indices_not_the_palette(void)
+{
+    static vt_callbacks cb;
+    long frames, tk;
+    cb.colors = told;
+    cb.reply = reply;
+    t = vt_new(80, 24, 100, &cb, 0);
+    now = bytes = 0;
+    next_key = -1;
+    inject = 0;
+    needle = 0;
+    colours_told = 0;
+    back_len = back_pos = 0;
+    updemo_colours(UPDEMO_ANSI);
+    capturing = 1;
+    cap_len = 0;
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("palette cycling"), 40), 0);
+    capturing = 0;
+    updemo_stats(scene_index("palette cycling"), &frames, &tk);
+    CHECK(frames >= 10);
+    CHECK_INT(colours_told, 0);
+    CHECK(cap_has("\033[91m") || cap_has("\033[101m") || cap_has("\033[41m"));
+    updemo_colours(UPDEMO_AUTO);
+    vt_free(t);
+}
+
+/* each ramp maps a value range monotonically: the step never goes down as the value rises, it starts at 0 and
+ * reaches the last step; the bright steps get brighter (luminance never drops); every colour is one of the 16 */
+static int lum16(int c)
+{
+    static const unsigned long rgb[16] = {
+        0x000000UL, 0xCD0000UL, 0x00CD00UL, 0xCDCD00UL, 0x0000EEUL, 0xCD00CDUL, 0x00CDCDUL, 0xE5E5E5UL,
+        0x7F7F7FUL, 0xFF0000UL, 0x00FF00UL, 0xFFFF00UL, 0x5C5CFFUL, 0xFF00FFUL, 0x00FFFFUL, 0xFFFFFFUL
+    };
+    return (int)((299 * ((rgb[c] >> 16) & 255) + 587 * ((rgb[c] >> 8) & 255) + 114 * (rgb[c] & 255)) / 1000);
+}
+
+static void the_shade_ramps_map_a_value_range_monotonically(void)
+{
+    int k;
+    CHECK(updemo_ramp_count() >= 8);
+    for (k = 0; k < updemo_ramp_count(); k++) {
+        int v, f, b, sh, prev = -1, prev_lum = -1, last = 0, rising = k != 0; /* the rainbow is a ring: hues, not brightness */
+        for (v = 0; v < 256; v++) {
+            int step = updemo_ramp_step(k, v, &f, &b, &sh), lum;
+            CHECK(step >= prev);
+            CHECK(f >= 0 && f < 16 && b >= 0 && b < 16 && sh >= 0 && sh <= 3);
+            CHECK(sh || f == b);              /* a solid step is one colour */
+            lum = (lum16(b) * (4 - sh) + lum16(f) * sh) / 4;
+            if (rising)
+                CHECK(lum >= prev_lum);
+            prev = step;
+            prev_lum = lum;
+            last = step;
+        }
+        CHECK_INT(updemo_ramp_step(k, 0, &f, &b, &sh), 0);
+        CHECK(last >= 12);                    /* an in-between step for every quarter between its colours */
+        CHECK_INT(updemo_ramp_step(k, 256, &f, &b, &sh), -1);
+        CHECK_INT(updemo_ramp_step(updemo_ramp_count(), 0, &f, &b, &sh), -1);
+    }
+    /* the fire runs black, red, bright red, yellow, white */
+    {
+        int f, b, sh;
+        updemo_ramp_step(1, 0, &f, &b, &sh);
+        CHECK_INT(b, 0);
+        updemo_ramp_step(1, 255, &f, &b, &sh);
+        CHECK_INT(b, 15);
+    }
+}
+
+/* the colour count XTGETTCAP answers */
+static void the_colour_count_is_read_from_the_xtgettcap_answer(void)
+{
+    static const char a16[] = "\033P1+r636F6C6F7273=3136\033\\";
+    static const char a256[] = "\033P1+r636F6C6F7273=323536\033\\";
+    static const char no[] = "\033P0+r636F6C6F7273\033\\";
+    CHECK_INT(updemo_colour_count(a16, (long)sizeof(a16) - 1), 16);
+    CHECK_INT(updemo_colour_count(a256, (long)sizeof(a256) - 1), 256);
+    CHECK_INT(updemo_colour_count(no, (long)sizeof(no) - 1), 0);
+    CHECK_INT(updemo_colour_count("", 0), 0);
+    CHECK_INT(updemo_colour_count("\033P1+r636F6C6F7273=ZZ\033\\", 22), 0);
+}
+
+/* a window that says it has 16 colours (or fewer) gets the 16-colour version by itself, 256 the full one, a
+ * terminal that does not answer the full one; ANSI and FULL force */
+static int plays_ansi(int told, int mode)
+{
+    int r;
+    start(80, 24);
+    if (told >= 0)
+        vt_set_screen_colors(t, told);
+    updemo_colours(mode);
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("plasma"), 12), 0);
+    updemo_only(0);
+    r = updemo_ansi();
+    vt_free(t);
+    return r;
+}
+
+static void the_demo_picks_the_version_from_the_colours_the_window_reports(void)
+{
+    CHECK_INT(plays_ansi(16, UPDEMO_AUTO), 1);
+    CHECK_INT(plays_ansi(8, UPDEMO_AUTO), 1);
+    CHECK_INT(plays_ansi(2, UPDEMO_AUTO), 1);
+    CHECK_INT(plays_ansi(32, UPDEMO_AUTO), 0);
+    CHECK_INT(plays_ansi(256, UPDEMO_AUTO), 0);
+    CHECK_INT(plays_ansi(-1, UPDEMO_AUTO), 0);     /* not told: the entry's 256 */
+    CHECK_INT(plays_ansi(256, UPDEMO_ANSI), 1);    /* ANSI forces */
+    CHECK_INT(plays_ansi(16, UPDEMO_FULL), 0);     /* FULL forces */
+    CHECK_INT(plays_ansi(-1, UPDEMO_ANSI), 1);
+}
+
+/* UPDemo ANSI, FULL, BENCH ANSI n, in any order and case */
+static void the_arguments_ansi_and_full_force_a_version(void)
+{
+    char *a1[] = { "UPDemo", "ANSI" }, *a2[] = { "UPDemo", "full", "5" }, *a3[] = { "UPDemo", "BENCH", "ANSI", "17" };
+    char *a4[] = { "UPDemo", "bench" }, *a5[] = { "UPDemo", "3" }, *a6[] = { "UPDemo" }, *a7[] = { "UPDemo", "17", "Bench", "Ansi" };
+    updemo_args a;
+    updemo_parse_args(2, a1, &a);
+    CHECK_INT(a.colours, UPDEMO_ANSI);
+    CHECK_INT(a.bench, 0);
+    CHECK_INT(a.scene, 0);
+    updemo_parse_args(3, a2, &a);
+    CHECK_INT(a.colours, UPDEMO_FULL);
+    CHECK_INT(a.scene, 5);
+    updemo_parse_args(4, a3, &a);
+    CHECK_INT(a.colours, UPDEMO_ANSI);
+    CHECK_INT(a.bench, 1);
+    CHECK_INT(a.scene, 17);
+    updemo_parse_args(2, a4, &a);
+    CHECK_INT(a.bench, 1);
+    CHECK_INT(a.colours, UPDEMO_AUTO);
+    updemo_parse_args(2, a5, &a);
+    CHECK_INT(a.scene, 3);
+    CHECK_INT(a.bench, 0);
+    updemo_parse_args(1, a6, &a);
+    CHECK_INT(a.colours, UPDEMO_AUTO);
+    CHECK_INT(a.scene, 0);
+    updemo_parse_args(4, a7, &a);
+    CHECK_INT(a.scene, 17);
+    CHECK_INT(a.bench, 1);
+    CHECK_INT(a.colours, UPDEMO_ANSI);
+}
+
+/* BENCH keeps working in both versions: the same eleven scenes, frames in each */
+static void bench_works_in_the_16_colour_version(void)
+{
+    long frames, tk;
+    int s, n = 0, mode;
+    for (mode = UPDEMO_ANSI; mode <= UPDEMO_FULL; mode++) {
+        n = 0;
+        start(80, 24);
+        updemo_colours(mode);
+        updemo_bench(1);
+        CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
+        updemo_bench(0);
+        CHECK_INT(updemo_ansi(), mode == UPDEMO_ANSI);
+        for (s = 0; s < updemo_scenes(); s++) {
+            updemo_stats(s, &frames, &tk);
+            CHECK_INT(frames > 0, updemo_scene_benchmarked(s));
+            n += frames > 0;
+        }
+        CHECK_INT(n, 11);
+        vt_free(t);
+    }
+}
+
+/* the 16-colour version's status line says what it plays */
+static void the_16_colour_captions_say_so(void)
+{
+    start(80, 24);
+    updemo_colours(UPDEMO_ANSI);
+    needle = "A plasma in the 16 ANSI colours";
+    updemo_only(1);
+    CHECK_INT(updemo_run(&io, 80, 24, scene_index("plasma"), 6), 0);
+    updemo_only(0);
+    CHECK(saw_text);
+    needle = 0;
+    vt_free(t);
+}
+
 void suite_updemo(void)
 {
     big_windows_are_drawn_within_bounds();
@@ -529,4 +832,13 @@ void suite_updemo(void)
     a_window_made_too_small_ends_the_demo();
     a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second();
     palette_cycling_tells_the_renderer_once_a_frame();
+    ansi_mode_sends_only_the_16_colours_in_every_scene();
+    ansi_effects_draw_gradients_from_shade_blocks();
+    ansi_palette_cycling_changes_colour_indices_not_the_palette();
+    the_shade_ramps_map_a_value_range_monotonically();
+    the_colour_count_is_read_from_the_xtgettcap_answer();
+    the_demo_picks_the_version_from_the_colours_the_window_reports();
+    the_arguments_ansi_and_full_force_a_version();
+    bench_works_in_the_16_colour_version();
+    the_16_colour_captions_say_so();
 }

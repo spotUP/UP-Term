@@ -394,6 +394,26 @@ static void decrqss_decrqm_and_version(void)
     vt_free(t);
 }
 
+/* XTGETTCAP colors / Co is the screen's pen count once the host tells it (a 4-plane AGA screen: 16), else the
+ * entry's 256: UPDemo picks its 16-colour version from it */
+static void xtgettcap_colors_is_the_screens_pen_count(void)
+{
+    vt_term *t = h_new(80, 24, VT_XTERM);
+    h_reply_clear();
+    h_put(t, "\033P+q636F6C6F7273\033\\"); /* colors, not told */
+    check_reply("\033P1+r636F6C6F7273=323536\033\\");
+    vt_set_screen_colors(t, 16);
+    h_put(t, "\033P+q636F6C6F7273;436F\033\\"); /* colors, Co */
+    check_reply("\033P1+r636F6C6F7273=3136\033\\\033P1+r436F=3136\033\\");
+    vt_reset(t); /* a host setting: a reset leaves it */
+    h_put(t, "\033P+q636F6C6F7273\033\\");
+    check_reply("\033P1+r636F6C6F7273=3136\033\\");
+    vt_set_screen_colors(t, 0);
+    h_put(t, "\033P+q636F6C6F7273\033\\");
+    check_reply("\033P1+r636F6C6F7273=323536\033\\");
+    vt_free(t);
+}
+
 static void window_reports_and_title_stack(void)
 {
     vt_term *t = h_new(80, 24, VT_XTERM);
@@ -1267,6 +1287,7 @@ void suite_xterm(void)
     rare_style_table_is_swept_when_full();
     colour_queries_and_changes();
     decrqss_decrqm_and_version();
+    xtgettcap_colors_is_the_screens_pen_count();
     window_reports_and_title_stack();
     modes_of_phase_a5();
     deccolm_only_when_allowed();

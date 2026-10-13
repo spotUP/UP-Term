@@ -45,6 +45,39 @@ void updemo_only(int on);
 /* 1: the next updemo_run plays only the benchmarked scenes (UPDemo BENCH) */
 void updemo_bench(int on);
 
+/* Which colours the demo plays in. UPDEMO_ANSI: the 16-colour version, made for the standard ANSI colours
+ * (SGR 30-37, 90-97, 40-47, 100-107 and no palette writes; shade blocks
+ * U+2591-2593 and the full block for gradients). UPDEMO_FULL: the 256 and
+ * 24-bit colours version. UPDEMO_AUTO (the default): the 16-colour one when
+ * the terminal says it has 16 colours or fewer (XTGETTCAP colors, which
+ * UP-Term answers with the screen's pens), else the full one. */
+#define UPDEMO_AUTO 0
+#define UPDEMO_ANSI 1
+#define UPDEMO_FULL 2
+void updemo_colours(int mode);
+
+/* After updemo_run: 1 when it played the 16-colour version */
+int updemo_ansi(void);
+
+/* The count in XTGETTCAP's answer to a colors query (DCS 1 + r 636F6C6F7273=hex ST); 0 when none */
+int updemo_colour_count(const char *reply, long len);
+
+/* The command line of UPDemo and updemo: [n] [BENCH [n]] [ANSI | FULL] */
+typedef struct updemo_args {
+    int bench;   /* BENCH */
+    int scene;   /* n, 1-based; 0: none */
+    int colours; /* UPDEMO_AUTO, _ANSI or _FULL */
+} updemo_args;
+void updemo_parse_args(int argc, char **argv, updemo_args *a);
+
+/* The 16-colour version's ramps (an effect's value -> a foreground, a
+ * background and a shade: 0 a solid colour, 1-3 the blocks U+2591-2593 of
+ * the foreground over the background), k in 0..updemo_ramp_count() - 1.
+ * v in 0..255; returns the step's number on the ramp, -1 for a bad k or v. */
+int updemo_ramp_count(void);
+const char *updemo_ramp_name(int k);
+int updemo_ramp_step(int k, int v, int *fgc, int *bgc, int *shade);
+
 /* how many scenes there are, scene s's name, and whether BENCH measures it */
 int updemo_scenes(void);
 const char *updemo_scene_name(int s);
