@@ -2,7 +2,7 @@
 """tools/rig on the host, against a fake agent (no emulator): gclick matches a
 gadget id exactly ('90' is not '290': it clicked a radio button), and a rig run
 puts back what it planted (ENVARC:Claude/remote from a killed run) even when it fails."""
-import pathlib, struct, sys, unittest
+import os, pathlib, shlex, struct, sys, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import ami, install_rig as ir
@@ -125,6 +125,338 @@ class Fingerprints(unittest.TestCase):
         self.assertNotEqual(after[0], before[0], 'assign_rig fingerprint ignores dist/common')
         self.assertNotEqual(after[1], before[1], 'installer_rig fingerprint ignores dist/common')
         self.assertEqual((assign_rig.fingerprint(), installer_rig.fingerprint()), before)
+
+class InstallCases(unittest.TestCase):
+    """K2-10: install_rig.py's case table, its verdicts and the scripts it writes, on the host (no rig)."""
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import pkgs, verdicts
+        self.pkgs, self.verdicts = pkgs, verdicts
+        self.addons = [r['id'] for r in pkgs.rows() if r['id'] != 'base']
+        import tempfile
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.env = {k: os.environ.get(k) for k in ('UPTERM_KITS', 'UPTERM_KIT')}
+
+    def tearDown(self):
+        for k, v in self.env.items():
+            if v is None: os.environ.pop(k, None)
+            else: os.environ[k] = v
+
+    def kit(self, pkg, manifest=b'm\n'):
+        d = self.tmp / ir.archive(pkg) / 'Files'
+        d.mkdir(parents=True, exist_ok=True)
+        (d / 'MANIFEST').write_bytes(manifest)
+        os.environ['UPTERM_KITS'] = str(self.tmp)
+
+    def test_the_table_names_every_add_on_of_packages_txt(self):
+        names = list(ir.case_table())
+        for pkg in self.addons:
+            self.assertIn(pkg, names, 'no case for the package %s' % pkg)
+        for case in ('base', 'base-dest', 'base-move', 'base-libs', 'base-var', 'all', 'legacy', 'nobase'):
+            self.assertIn(case, names)
+        self.assertEqual(len(names), len(set(names)))
+
+    def test_every_case_installs_the_base_it_needs(self):
+        for name, (pk, _, fn) in ir.case_table().items():
+            self.assertIn('base' if name != 'nobase' else self.addons[0], pk, name)
+            self.assertTrue(callable(fn), name)
+
+    def test_a_pass_with_the_same_kit_is_skipped_and_a_changed_archive_runs_again(self):
+        for pkg in ir.package_ids(): self.kit(pkg)
+        table = ir.case_table()
+        store = self.verdicts.Store(self.tmp / 'install')
+        fp = lambda c: ir.case_fingerprint(table[c])
+        store.record('nvim', True, 'ok', fp('nvim'))
+        run, skip = self.verdicts.select(store, list(table), fp)
+        self.assertIn('nvim', [c for c, _ in skip])
+        self.kit('nvim', b'a different payload\n')
+        run, skip = self.verdicts.select(store, list(table), fp)
+        self.assertIn('nvim', [c for c, _ in run], 'a changed nvim archive must run its case again')
+        self.assertIn('all', [c for c, _ in run])
+
+    def test_a_case_does_not_follow_an_archive_it_does_not_install(self):
+        for pkg in ir.package_ids(): self.kit(pkg)
+        table = ir.case_table()
+        before = ir.case_fingerprint(table['pi'])
+        self.kit('nvim', b'changed\n')
+        self.assertEqual(ir.case_fingerprint(table['pi']), before, 'pi installs the base and pi only')
+        self.assertNotEqual(ir.case_fingerprint(table['nobase']), ir.case_fingerprint(table['base']))
+
+    def test_the_legacy_case_follows_the_legacy_kit(self):
+        for pkg in ir.package_ids(): self.kit(pkg)
+        saved = ir.LEGACY_KIT
+        try:
+            ir.LEGACY_KIT = self.tmp / 'legacy'
+            (ir.LEGACY_KIT / 'Files').mkdir(parents=True)
+            (ir.LEGACY_KIT / 'Files/MANIFEST').write_bytes(b'one')
+            a = ir.case_fingerprint(ir.case_table()['legacy'])
+            (ir.LEGACY_KIT / 'Files/MANIFEST').write_bytes(b'two')
+            self.assertNotEqual(a, ir.case_fingerprint(ir.case_table()['legacy']))
+        finally:
+            ir.LEGACY_KIT = saved
+
+    def test_the_flags(self):
+        names = list(ir.case_table())
+        self.assertEqual(ir.parse_args(['--only', 'nvim', '--case', 'pi'], names)[0], ['nvim', 'pi'])
+        self.assertEqual(ir.parse_args(['--failed', '--force'], names)[1:3], (True, True))
+        self.assertEqual(ir.parse_args(['--default', '--dest', '--move', '--var', '--libs'], names)[0],
+                         ['base', 'base-dest', 'base-move', 'base-var', 'base-libs'])
+        with self.assertRaises(SystemExit): ir.parse_args(['--only'], names)
+        with self.assertRaises(SystemExit): ir.parse_args(['--nonsense'], names)
+
+    def test_the_add_on_install_lines_use_keywords_the_install_dos_has(self):
+        for pkg in self.addons:
+            key = ir.assembled_scripts(pkg)[1].decode('latin-1').splitlines()[0]
+            self.assertTrue(key.startswith('.KEY DIR/A,STEP/K'), key)
+            words = {w.split('/')[0] for w in key.split()[1].split(',')}
+            line = ir.addon_install_line(pkg)
+            self.assertIn('VTC:kit-%s/Files/install.dos' % pkg, line)
+            for kw in shlex.split(line)[3:]:
+                self.assertIn(kw.split('=')[0], words, '%s: %s is not in %s' % (pkg, kw, key))
+
+    def test_the_base_install_lines_use_keywords_the_base_install_dos_has(self):
+        key = ir.assembled_scripts('base')[1].decode('latin-1').splitlines()[0]
+        words = {w.split('/')[0] for w in key.split()[1].split(',')}
+        for kw in 'NOCONSOLE NODEVICE CONSOLE DEVICE SHELLICON DEST'.split():
+            self.assertIn(kw, words)
+        self.assertNotIn('PYTHON', words, 'the base lost Python; the rig must not pass it')
+        self.assertNotIn('NVIM', words)
+        self.assertNotIn('REMOTE', words)
+        legacy = ir.LEGACY_KIT / 'Files/install.dos'
+        if legacy.exists():
+            lkey = legacy.read_text(encoding='latin-1').splitlines()[0]
+            lwords = {w.split('/')[0] for w in lkey.split()[1].split(',')}
+            for kw in shlex.split(ir.legacy_install_line())[3:]:
+                self.assertIn(kw.split('=')[0], lwords, 'the single kit has no %s' % kw)
+
+    def test_prepare_unpacks_each_add_on_with_its_run_scripts(self):
+        calls = []
+        saved = (ir.VTC, ir.KIT, ir.run, ir.SYSVOL)
+        try:
+            ir.VTC = self.tmp / 'vtc'; ir.VTC.mkdir()
+            (self.tmp / 'basekit').mkdir(); (self.tmp / 'basekit/Install').write_text('x')
+            ir.KIT = self.tmp / 'basekit'
+            for pkg in ir.package_ids(): self.kit(pkg)
+            (self.tmp / ir.archive('nvim') / 'Install').write_text('i')
+            (ROOT / 'build/amiga').mkdir(parents=True, exist_ok=True)
+            made = []
+            for n in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
+                f = ROOT / 'build/amiga' / n
+                if not f.exists(): f.write_bytes(b''); made.append(f)
+            ir.run = lambda cmd, timeout=60: calls.append(cmd) or (0, '')
+            try:
+                ir.prepare(None, ['nvim'])
+            finally:
+                for f in made: f.unlink()
+            self.assertTrue((ir.VTC / 'kit-nvim/Install').exists())
+            self.assertEqual((ir.VTC / 'runinstall-nvim').read_text(), ir.addon_install_line('nvim') + '\n')
+            un = (ir.VTC / 'rununinstall-nvim').read_text()
+            self.assertIn('Set upvardelete YES', un); self.assertIn('CD VTC:kit-nvim', un); self.assertIn('Execute Uninstall', un)
+            self.assertFalse((ir.VTC / 'kit-pi').exists(), 'only the add-ons asked for are unpacked')
+        finally:
+            ir.VTC, ir.KIT, ir.run, ir.SYSVOL = saved
+
+    def test_run_long_keeps_its_wrapper_alive_when_the_script_returns_20(self):
+        written = {}
+        saved = (ir.VTC, ir.ami.req, ir.SHOW)
+        try:
+            ir.VTC = self.tmp / 'vtc2'; ir.VTC.mkdir()
+            ir.SHOW = ''
+            def req(code, payload=b'', timeout=150):
+                written['wrap'] = (ir.VTC / 'longwrap').read_text()
+                (ir.VTC / 'longdone').write_text('20\n')
+                return struct.pack('>I', 0) + b''
+            ir.ami.req = req
+            time_sleep = ir.time.sleep; ir.time.sleep = lambda s: None
+            try:
+                rc, _ = ir.run_long('runinstall-nvim')
+            finally:
+                ir.time.sleep = time_sleep
+        finally:
+            ir.VTC, ir.ami.req, ir.SHOW = saved
+        self.assertEqual(rc, 20)
+        self.assertTrue(written['wrap'].startswith('FailAt 1000\n'), 'a script ending with 20 stopped the wrapper at FailAt 10')
+
+
+class ScriptedAmiga:
+    """Just enough Amiga for the add-on cases of install_rig.py to run on the host: it keeps the files an
+    Install and an Uninstall put down and answers the commands the checks send. `skip` names a thing a
+    broken add-on forgets (the case must then fail)."""
+    def __init__(self, pkgs, skip=()):
+        self.rows = {r['id']: r for r in pkgs.rows()}
+        self.skip, self.files, self.log = set(skip), set(), []
+        self.startup0 = '; user line\n'
+        self.startup = self.startup0
+        self.base = False
+
+    def _add(self, pkg):
+        r = self.rows[pkg]
+        rec = r['record']
+        for f in ir.ADDON_FILES[pkg]:
+            self.files.add(f)
+        if 'record' not in self.skip:
+            self.files |= {rec + '/MANIFEST', rec + '/VERSIONS', rec + '/Uninstall'}
+        if pkg == 'claude':
+            self.files.add('ENVARC:Claude/remote')
+        if pkg == 'python':
+            self.startup += ';BEGIN UP-Term python\nAssign Python3: UP-Term:Python3\n;END UP-Term python\n'
+
+    def _remove(self, pkg):
+        rec = self.rows[pkg]['record']
+        if 'uninstall' in self.skip and pkg == 'python':
+            self.files -= set(ir.ADDON_FILES[pkg]) | {f for f in self.files if f.startswith(rec)}
+            return
+        self.files -= set(ir.ADDON_FILES[pkg]) | {f for f in self.files if f.startswith(rec)}
+        if pkg == 'python':
+            self.startup = self.startup.replace(';BEGIN UP-Term python\nAssign Python3: UP-Term:Python3\n;END UP-Term python\n', '')
+
+    def python_block(self):
+        return ';BEGIN UP-Term python' in self.startup
+
+    def run(self, cmd, timeout=60):
+        self.log.append(cmd)
+        c = cmd.split('\n')[-1]
+        if c.startswith('List >NIL: '):
+            p = c[11:].strip('"')
+            return (0 if p in self.files or any(f.startswith(p + '/') for f in self.files) else 5), ''
+        if c == 'Type S:User-Startup': return 0, self.startup
+        if c == 'Type S:Startup-Sequence': return 0, 'ss'
+        if c == 'Type UP-Term:UP-Term.version': return 0, '$VER: UP-Term 1.0 (13.10.2026)'
+        if c.startswith('Type ') and c.endswith('/VERSIONS'):
+            rec = c[5:-len('/VERSIONS')]
+            r = [x for x in self.rows.values() if x['record'] == rec][0]
+            return 0, '%s %s abc 2026-10-13\n' % (r['archive'], r['version'])
+        if c == 'C:vsh -c "ls --version"': return 0, 'ls (GNU coreutils) 5.2.1'
+        if c.startswith('List C:ClaudeCode LFORMAT'): return 0, '-s------'
+        if c.endswith('C:Claude --version'): return 0, 'Claude 1.0'
+        if c == 'Type ENVARC:Claude/remote': return 0, '127.0.0.1 2399'
+        if c == 'C:amiga-pi --version': return 0, 'amiga-pi 1.1.0'
+        if c == 'Type ENVARC:amiga-pi/settings.json': return 0, 'userfile-keepme'
+        if c.startswith('Echo >ENVARC:amiga-pi'): return 0, ''
+        if 'python3 -c "print(6*7)"' in c: return 0, '42'
+        if c == 'C:vsh VTC:py8.sh': return 0, '8'
+        if c.startswith('Assign >NIL: Python3: EXISTS'): return (0 if self.python_block() else 5), ''
+        if c.startswith('Assign >NIL: UP-Term: EXISTS'): return (0 if self.base else 5), ''
+        if c.startswith('Search >NIL: S:User-Startup'):
+            want = c.split('"')[1]
+            return (0 if want in self.startup else 5), ''
+        if c.startswith('GetEnv UPTCHECK'): return 5, ''
+        if c.startswith('List LIBS:'): return 0, 'ixemul.library 100\nixnet.library 50\n'
+        return 0, ''
+
+    def run_long(self, script, timeout=1500):
+        self.log.append(script)
+        if script == 'runinstall':
+            self.base = True
+            self.files |= {'UP-Term:UP-Term.version', 'UP-Term:VERSIONS', 'SYS:UP-Term'}
+            self.startup += ';BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n'
+        elif script.startswith('runinstall-'):
+            self._add(script[len('runinstall-'):])
+        elif script.startswith('rununinstall-'):
+            self._remove(script[len('rununinstall-'):])
+        elif script == 'rununinstall':
+            for pkg in self.rows:
+                if pkg != 'base': self._remove(pkg)
+            self.files = {f for f in self.files if not f.startswith(('UP-Term', 'SYS:UP-Term'))}
+            self.base, self.startup = False, self.startup0
+        return 0, ''
+
+    def run_slow(self, name, cmd, timeout=600):
+        self.log.append(name)
+        return 0, 'NVIM v0.12.0'
+
+
+class AddonCases(unittest.TestCase):
+    """case_addon and case_all of install_rig.py on a scripted Amiga (no rig): the case installs the base and the
+    add-on through the add-on's own run script (call count), checks its record and the program answering, and
+    fails when an add-on forgets its record or leaves its block in S:User-Startup behind."""
+    def play(self, case, skip=()):
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import pkgs, verdicts
+        sim = ScriptedAmiga(pkgs, skip)
+        saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep)
+        ir.run, ir.run_long, ir.run_slow = sim.run, sim.run_long, sim.run_slow
+        ir.prepare = lambda dest, addons=(): sim.log.append('prepare %s' % ','.join(addons))
+        ir.remote_banner = lambda ck: sim.log.append('banner')
+        ck = verdicts.Checks()
+        try:
+            case(ck)
+        finally:
+            ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep = saved
+        return ck, sim
+
+    def ids(self):
+        return ir.addon_ids()
+
+    def test_every_add_on_case_drives_its_own_install_and_uninstall(self):
+        for pkg in self.ids():
+            ck, sim = self.play(lambda ck, pkg=pkg: ir.case_addon(ck, pkg))
+            self.assertEqual(ck.failed, [], pkg)
+            self.assertIn('runinstall-' + pkg, sim.log)
+            self.assertIn('rununinstall-' + pkg, sim.log)
+            self.assertEqual([l for l in sim.log if l.startswith('runinstall-')], ['runinstall-' + pkg], 'only its own')
+            self.assertGreater(ck.total, 15, pkg)
+
+    def test_the_all_case_removes_every_add_on_with_the_base_alone(self):
+        ck, sim = self.play(ir.case_all)
+        self.assertEqual(ck.failed, [])
+        self.assertEqual([l for l in sim.log if l.startswith('runinstall-')], ['runinstall-' + i for i in self.ids()])
+        self.assertFalse([l for l in sim.log if l.startswith('rununinstall-')], 'no add-on Uninstall of its own in all')
+        self.assertEqual(sim.files - {'ENVARC:Claude/remote'}, set(), 'the base Uninstall left files (only the user\'s ENVARC:Claude stays)')
+
+    def test_an_add_on_without_its_record_fails_its_case(self):
+        ck, _ = self.play(lambda ck: ir.case_addon(ck, 'nvim'), skip=('record',))
+        self.assertTrue(any('its record has' in f for f in ck.failed), ck.failed)
+
+    def test_python_leaving_its_block_behind_fails_its_case(self):
+        sim_cls = ScriptedAmiga
+        orig = sim_cls._remove
+        def keeps_block(self, pkg):
+            keep = self.startup
+            orig(self, pkg)
+            if pkg == 'python': self.startup = keep
+        sim_cls._remove = keeps_block
+        try:
+            ck, _ = self.play(lambda ck: ir.case_addon(ck, 'python'))
+        finally:
+            sim_cls._remove = orig
+        self.assertTrue(any('block is out of S:User-Startup' in f for f in ck.failed), ck.failed)
+
+
+class NoBaseCase(unittest.TestCase):
+    """The nobase case on a scripted Amiga: it drives every add-on's install.dos (call-count) and it fails
+    when an add-on installs without the base."""
+    def run_case(self, refuses):
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import pkgs, verdicts
+        ids = [r['id'] for r in pkgs.rows() if r['id'] != 'base']
+        ran, files = [], {'S:User-Startup': 'u'}
+        def run(cmd, timeout=60):
+            if cmd.startswith('Type S:User-Startup'): return 0, files['S:User-Startup']
+            if cmd.startswith('Type ENV:UPTCHECK'): return 0, 'UP-Term-nvim needs UP-Term 1.0 or newer. Install UP-Term.lha first.'
+            if cmd.startswith('List >NIL: C:') or cmd.startswith('List >NIL: UP-Term:'): return (0 if ran and not refuses else 5), ''
+            return 0, ''
+        def run_long(script, timeout=1500):
+            if script.startswith('runinstall-'): ran.append(script)
+            return (20 if refuses else 0), ''
+        saved = (ir.run, ir.run_long, ir.prepare, ir.Before)
+        class FakeBefore: startup = 'u'
+        ir.run, ir.run_long, ir.prepare, ir.Before = run, run_long, lambda dest, addons=(): None, FakeBefore
+        ck = verdicts.Checks()
+        try:
+            ir.case_nobase(ck)
+        finally:
+            ir.run, ir.run_long, ir.prepare, ir.Before = saved
+        return ck, ran, ids
+
+    def test_it_tries_every_add_on_and_passes_when_each_is_refused_with_20(self):
+        ck, ran, ids = self.run_case(refuses=True)
+        self.assertEqual(ran, ['runinstall-' + i for i in ids])
+        self.assertEqual(ck.failed, [])
+
+    def test_it_fails_when_an_add_on_installs_without_the_base(self):
+        ck, ran, ids = self.run_case(refuses=False)
+        self.assertTrue(any('returns 20' in f for f in ck.failed), ck.failed)
 
 class Step12(unittest.TestCase):
     """M9: the fixture answers every route and answer text of amigapi_rig.py's step 12 (host, no rig)."""

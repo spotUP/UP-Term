@@ -132,7 +132,7 @@ def window_case(name, text):
 
 def case_install():
     import subprocess
-    rc = subprocess.run([sys.executable, "-u", str(ROOT / "tools/rig/install_rig.py")], timeout=3600).returncode
+    rc = subprocess.run([sys.executable, "-u", str(ROOT / "tools/rig/install_rig.py"), "--only", "base"], timeout=3600).returncode
     return rc == 0, "install_rig exit %d" % rc
 
 
