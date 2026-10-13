@@ -1,7 +1,7 @@
 /* UPDemo [SCENE | BENCH [SCENE]]: updemo in the console window it is
  * started from (an XCON: window in its xterm dialect, the default): one
- * list of scenes with captions, from SCENE (1-based) on; any key ends it
- * (Help > Demo tour runs it in a tab of its own). BENCH: the effect scenes
+ * list of scenes with captions, from SCENE (1-based) on; Space next scene,
+ * B back, Q quit (Help > Demo tour runs it in a tab of its own). BENCH: the effect scenes
  * (or SCENE alone) for three seconds, then the frames a second each one
  * reached -- what the terminal draws in a second, scene by scene. The window's size is
  * the cursor's position after a move to the far corner (DSR 6): a query

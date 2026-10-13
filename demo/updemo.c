@@ -354,7 +354,7 @@ static void sc_text(long t, int first)
             break;
         case 10:
             fg(244);
-            centred(18, "a tour of what UP-Term does: any key ends it");
+            centred(18, "a tour of what UP-Term does: Space for the next scene, Q to quit");
             sgr0();
             break;
         default:
@@ -733,12 +733,17 @@ static void sc_cycle(long t, int first)
 
 /* ---- reading the terminal back ---------------------------------------------- */
 
-/* What the demo reads back from the terminal: keys end it; mouse reports
- * are kept for the mouse scene; the window's size (CSI 18 t) is how it
- * follows a resize. */
+/* What the demo reads back from the terminal: keys move through the scenes;
+ * mouse reports are kept for the mouse scene; the window's size (CSI 18 t)
+ * is how it follows a resize. A key with no meaning is no event. */
 enum { EV_NONE, EV_KEY, EV_MOUSE, EV_SIZE };
 
-static int quit_req;         /* a key came while the demo waited for something else */
+/* what a key means (ev_act, set with every EV_KEY) */
+enum { ACT_NONE, ACT_NEXT, ACT_BACK, ACT_QUIT };
+static int ev_act;
+
+static int quit_req;         /* quit came while the demo waited for something else */
+static int pend_act;         /* next or back came while the demo waited for something else */
 static int want_size;        /* a scene asks: the size, after this frame */
 static int ev_rows, ev_cols; /* the size the terminal reported last */
 static struct { int b, x, y, press; } mev[64];
@@ -772,8 +777,22 @@ static void add_mouse(int b, int x, int y, int press)
     nmev++;
 }
 
+/* a key's meaning in the demo. BENCH is a measurement: any key ends it. */
+static int act_key(int act)
+{
+    ev_act = bench_only ? ACT_QUIT : act;
+    return ev_act == ACT_NONE ? EV_NONE : EV_KEY;
+}
+
+/* a cursor key's final letter (ESC [ C, CSI C, ESC O C): Right is next, Left is back */
+static int cursor_act(int f)
+{
+    return f == 'C' ? ACT_NEXT : f == 'D' ? ACT_BACK : ACT_NONE;
+}
+
 /* One thing from the terminal, waiting up to wait_ms for it. A key's
- * sequence (a cursor key: ESC [ A, CSI A, ESC O P) is one key. */
+ * sequence (a cursor key: ESC [ A, CSI A, ESC O P) is one key; an Esc with
+ * nothing after it within 40 ms is the Esc key. */
 static int read_event(int wait_ms)
 {
     char sq[40];
@@ -782,20 +801,29 @@ static int read_event(int wait_ms)
         return EV_NONE;
     if (k == 27) {
         k = io->key(io->user, 40);
+        if (k < 0)
+            return act_key(ACT_QUIT); /* Esc alone */
         if (k == 'O') {
-            io->key(io->user, 40);
-            return EV_KEY;
+            f = io->key(io->user, 40);
+            return act_key(cursor_act(f));
         }
         if (k != '[')
-            return EV_KEY; /* Esc alone, or Meta and a key */
+            return act_key(ACT_NONE); /* Meta and a key */
         k = 0x9B;
     }
-    if (k != 0x9B)
-        return EV_KEY;
+    if (k != 0x9B) {
+        if (k == 'q' || k == 'Q' || k == 3)
+            return act_key(ACT_QUIT);
+        if (k == 'b' || k == 'B')
+            return act_key(ACT_BACK);
+        if (k == ' ' || k == '\r' || k == '\n')
+            return act_key(ACT_NEXT);
+        return act_key(ACT_NONE);
+    }
     for (;;) {
         f = io->key(io->user, 40);
         if (f < 0)
-            return EV_KEY;
+            return act_key(ACT_NONE);
         if (f >= 0x40 && f <= 0x7E)
             break;
         if (n < (int)sizeof(sq) - 1)
@@ -822,7 +850,7 @@ static int read_event(int wait_ms)
         ev_cols = v[1];
         return EV_SIZE;
     }
-    return EV_KEY;
+    return act_key(n == 0 ? cursor_act(f) : ACT_NONE);
 }
 
 /* The window's size, asked (CSI 18 t); 1 when the answer came */
@@ -836,7 +864,10 @@ static int ask_size(void)
         case EV_SIZE:
             return 1;
         case EV_KEY:
-            quit_req = 1;
+            if (ev_act == ACT_QUIT)
+                quit_req = 1;
+            else
+                pend_act = ev_act; /* the scene it was asked in goes on or back */
             break;
         default:
             break;
@@ -1513,7 +1544,7 @@ static void sc_reflow(long t, int first)
         ps(para);
         ps("\r\n\r\n");
         fg(244);
-        ps("(the size is in the title bar; any key ends the demo)");
+        ps("(the size is in the title bar; Q quits the demo)");
         sgr0();
         ps("\r\n");
     }
@@ -1600,10 +1631,10 @@ static void status(int s)
     pn(SCENE_N);
     ps("  ");
     ps(cap);
-    if (W - n >= 24) {
-        for (; n < W - 22; n++)
+    if (W - n >= 30) {
+        for (; n < W - 26; n++)
             pc(' ');
-        ps("Any key ends the demo");
+        ps("Space next  B back  Q quit");
     }
     ps("\033[K\0338");
     cfg = cbg = -1;
@@ -1622,21 +1653,25 @@ static void size_title(void)
 
 /* The demo, from scene `first`. It asks the window's size before each scene
  * (it follows a resize), draws some scenes on the main screen, and puts back
- * what a scene changed. Any key ends it. */
+ * what a scene changed. Space, Return and Right go to the next scene, B and Left
+ * to the one before, Q, Esc and Ctrl-C end it; no other key does anything
+ * (BENCH: any key ends it). */
 static int play(int first, long scene_ticks)
 {
-    int s, ended = 0, alt = 1;
+    int s, ended = 0, alt = 1, nav, moved;
     numbers_init();
     memset(stat_frames, 0, sizeof(stat_frames));
     memset(stat_ticks, 0, sizeof(stat_ticks));
-    quit_req = want_size = nmev = colm_on = 0;
+    quit_req = pend_act = want_size = nmev = colm_on = 0;
     ps("\033[?1049h\033[?25l");
     ps("\033[22;0t\033]2;UP-Term demo\007"); /* the title, pushed to be put back */
-    for (s = first < 0 || first >= SCENE_N ? 0 : first; s < SCENE_N && !ended && (!only_one || s == first); s++) {
+    for (s = first < 0 || first >= SCENE_N ? 0 : first; s < SCENE_N && !ended && (!only_one || s == first); s = s + nav < 0 ? 0 : s + nav) {
         const scene_def *sc = &scenes[s];
         long t0, dur = scene_ticks ? scene_ticks : sc->ticks;
         long t;
         int fresh = 1;
+        nav = 1; /* the next scene, as the time runs out */
+        moved = 0;
         if (bench_only && !sc->bench)
             continue;
         if (sc->main_screen == alt) {
@@ -1648,6 +1683,11 @@ static int play(int first, long scene_ticks)
             break;
         if (quit_req)
             break;
+        if (pend_act) { /* a key came with the size's answer */
+            nav = pend_act == ACT_BACK ? -1 : 1;
+            pend_act = 0;
+            moved = 1;
+        }
         nmev = 0;
         ps("\033[?25l");
         t0 = io->ticks(io->user);
@@ -1656,7 +1696,7 @@ static int play(int first, long scene_ticks)
         if (!sc->main_screen)
             ps("\033[2J");
         old_ok = 0;
-        while ((t = io->ticks(io->user) - t0) < dur) {
+        while (!moved && (t = io->ticks(io->user) - t0) < dur) {
             long spent;
             int pass;
             ps("\033[?2026h"); /* a frame: shown whole (synchronized output), not as its writes arrive */
@@ -1677,6 +1717,12 @@ static int play(int first, long scene_ticks)
                     ended = 1;
                     break;
                 }
+                if (pend_act) {
+                    nav = pend_act == ACT_BACK ? -1 : 1;
+                    pend_act = 0;
+                    moved = 1;
+                    break;
+                }
             }
             /* 25 frames a second at most: the rest of the two ticks waits
              * for a key. A frame lasts until the terminal has drawn it: a
@@ -1693,9 +1739,16 @@ static int play(int first, long scene_ticks)
                         break;
                     wait = (int)(2 - spent) * 20;
                 }
-                ended = read_event(wait) == EV_KEY;
+                if (read_event(wait) == EV_KEY) {
+                    if (ev_act == ACT_QUIT)
+                        ended = 1;
+                    else {
+                        nav = ev_act == ACT_BACK ? -1 : 1;
+                        moved = 1;
+                    }
+                }
             }
-            if (ended)
+            if (ended || moved)
                 break;
         }
         flush();

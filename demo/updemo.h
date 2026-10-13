@@ -28,8 +28,9 @@ typedef struct updemo_io {
  * vsh, completion, themes switched live, mouse reports, links, sixel
  * images, synchronized output, a resize, reflow -- then the demoscene
  * effects (copper bars, plasma, fire, rotozoomer, vector cubes, a sine
- * scroller, palette cycling). Any key ends it (a mouse report does not:
- * the mouse scene shows them). It asks the window's size (CSI 18 t)
+ * scroller, palette cycling). Space, Return and Right go to the next scene, B and Left back,
+ * Q, Esc and Ctrl-C end it; a mouse report is no key (the mouse scene shows
+ * them). BENCH: any key ends it. It asks the window's size (CSI 18 t)
  * before each scene and follows it.
  * Runs the scenes from `first` (0-based) in a cols x rows terminal, on the
  * alternate screen, and leaves the terminal as it was. scene_ticks: every
