@@ -989,6 +989,120 @@ static void drawing_never_touches_the_window_borders_at_an_odd_inner_width(void)
         }
 }
 
+/* ---- W-T12: the window has one background ---- */
+
+/* vtwin's colours callback (render/vtwin.c cb_colors): a program changed the palette or the defaults (OSC 4, 10, 11) */
+static void cb_colors(void *u)
+{
+    vr_palette_changed((vr_render *)u);
+    vr_set_defaults((vr_render *)u, vt_default_color(term, 0), vt_default_color(term, 1));
+}
+
+/* Pixels of the window's inside that do not show `bg`: the strips beside the grid (above, left, right of the last
+ * whole cell, below the last whole row), and the cells holding default blanks past each row's used width (not the
+ * cursor's). */
+static int off_background(int bl, int bt, int iw, int ih, int bg)
+{
+    int x, y, n = 0, cx, cy;
+    vt_cursor(term, &cx, &cy);
+    for (y = 0; y < ih; y++)
+        for (x = 0; x < iw; x++) {
+            int col = x / CW, row = y / CH, ncells;
+            if (col < vt_cols(term) && row < vt_rows(term)) {
+                const vt_cell *c = vt_row(term, row, &ncells);
+                if (col < vt_row_used(term, row) || (c && col < ncells && c[col].bg != VT_COLOR_DEFAULT) ||
+                    (col == cx && row == cy))
+                    continue;
+            }
+            n += gf_bg(bl + x, bt + y) != bg;
+        }
+    return n;
+}
+
+static void feed(const char *s)
+{
+    vt_feed(term, (const vt_u8 *)s, (long)strlen(s));
+}
+
+/* W-T12 (owner: "the grey bg is visible around the white bg at some window sizes", "it looks like we paint over the
+ * bg"): a window whose inside is not a whole number of cells, its default background changed by OSC 11 (white on a
+ * window opened black), then cleared, a region scrolled, a line erased; then reverse video, a region scroll in it
+ * and a redraw (what a resize and a refresh do); an Amiga-dialect window given a global background pen. Every pixel
+ * of the inside outside the cells, and every default blank cell, shows the window's background -- in place and as a
+ * synchronized frame, on a chunky screen and a planar one. On old code a true-colour window kept the strips and the
+ * blank cells in the old background (the default blank's look was cached before OSC 11 was read), and a redraw
+ * filled the window with the default background pen whatever reverse video or the global background said. */
+static void the_strips_beside_the_grid_and_blank_cells_show_the_window_background(void)
+{
+    static const int depths[] = { 0, 4 };
+    static const char *const steps[] = {
+        "\x1b]11;#ffffff\x07\x1b[2J\x1b[Hheader",
+        "\x1b[3;6r\x1b[6;1H\nA\nB\nC\x1b[r",
+        "\x1b[7;1H\x1b[44mblue\x1b[K\x1b[m\x1b[8;1Hx\x1b[K",
+        "\x1b[?5h",
+        "\x1b[2;5r\x1b[5;1H\nD\nE\x1b[r",
+    };
+    vt_callbacks cb;
+    int m, k, i;
+    for (m = 0; m < 2; m++)
+        for (k = 0; k < 3; k++) {
+            memset(&cb, 0, sizeof(cb));
+            cb.damage = cb_damage;
+            cb.scroll = cb_scroll;
+            cb.colors = cb_colors;
+            /* borders 4, 11, 18, 2; inside 173 x 67: 21 x 8 cells and 5 x 3 pixels over */
+            gf_open(4 + 173 + 18, 11 + 67 + 2, CW, CH, 6);
+            if (depths[m]) {
+                gf_planar(depths[m], 0, 10);
+                gf_palette(wb16, 16);
+            }
+            gf_borders(4, 11, 18, 2);
+            term = vt_new(21, 8, 100, &cb, &rn);
+            vt_set_personality(term, VT_XTERM);
+            vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+            /* vtwin's settings(): the window's own defaults (an XCON: window: light grey on black) */
+            vr_set_defaults(&rn, 0xC0C0C0UL, 0x000000UL);
+            vt_set_default_colors(term, 0xC0C0C0UL, 0x000000UL, 0xC0C0C0UL);
+            vr_redraw(&rn);
+            pass("hello\r\nworld");
+            CHECK_INT(off_background(4, 11, 173, 67, (int)rn.pen_default_bg), 0);
+            for (i = 0; i < 5; i++) {
+                if (k == 2) {
+                    pass(steps[i]); /* read inside the pass: OSC 11 after the cursor went off */
+                } else {
+                    /* as vtwin has it: the write read first (the colours callback at its end), drawn at the next
+                     * frame, which takes the cursor off first */
+                    feed(k ? synced(steps[i]) : steps[i]);
+                    pass("");
+                }
+                CHECK_INT(off_background(4, 11, 173, 67, (int)(i < 3 ? rn.pen_default_bg : rn.pen_default_fg)), 0);
+            }
+            vr_redraw(&rn); /* vtwin_resize, vtwin_refresh */
+            CHECK_INT(off_background(4, 11, 173, 67, (int)rn.pen_default_fg), 0);
+            CHECK_INT(gf_border_hits(), 0);
+            close_term();
+            /* the Amiga dialect: the window's background is the global background pen (SGR >3), a form feed clears */
+            gf_open(4 + 173 + 18, 11 + 67 + 2, CW, CH, 6);
+            if (depths[m]) {
+                gf_planar(depths[m], 0, 10);
+                gf_palette(wb16, 16);
+            }
+            gf_borders(4, 11, 18, 2);
+            term = vt_new(21, 8, 100, &cb, &rn);
+            vt_set_personality(term, VT_AMIGA);
+            vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+            vr_redraw(&rn);
+            pass(k == 1 ? synced("\x1b[>3m\x0chello") : "\x1b[>3m\x0chello");
+            CHECK_INT(off_background(4, 11, 173, 67, 3), 0);
+            pass(k == 1 ? synced("\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\nscrolled") : "\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\nscrolled");
+            CHECK_INT(off_background(4, 11, 173, 67, 3), 0);
+            vr_redraw(&rn);
+            CHECK_INT(off_background(4, 11, 173, 67, 3), 0);
+            CHECK_INT(gf_border_hits(), 0);
+            close_term();
+        }
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
@@ -1010,6 +1124,7 @@ int main(void)
     screens_of_more_than_16_pens_are_not_dithered();
     a_half_block_of_two_colours_sharing_a_pen_is_drawn_in_that_pen();
     drawing_never_touches_the_window_borders_at_an_odd_inner_width();
+    the_strips_beside_the_grid_and_blank_cells_show_the_window_background();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }
