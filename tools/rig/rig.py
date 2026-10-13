@@ -166,9 +166,17 @@ If WARN
     C:Assign >NIL: UP-Term: VTC:upterm
   EndIf
 EndIf
-C:SetEnv TERM vtcon
+; no global TERM: a kit sets none either (vsh sets it in UP-Term windows, and a
+; ROM CON: window with TERM=vtcon would be sent xterm sequences)
 C:SetEnv TERMINFO /VTC/terminfo
 C:SetEnv TERMCAP /etc/termcap
+; the UP-Term icon beside Shell in SYS:System, as install.dos puts it there (its
+; tool UP-Term:bin/vsh is in VTC:upterm, rig.py install); a kit's own icon stays
+If EXISTS UP-Term:UP-Term.info
+  If NOT EXISTS SYS:System/UP-Term.info
+    C:Copy UP-Term:UP-Term UP-Term:UP-Term.info SYS:System CLONE
+  EndIf
+EndIf
 Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent PORT=%(port)d TOKEN=rigtoken
@@ -417,6 +425,14 @@ def setup_config_only():
     if (RIG / "sys.hdf").exists():
         setup()
 
+def stage_upterm(dest, vsh):
+    """The kit's UP-Term: drawer as far as the icon needs it (R9): bin/vsh, the tool
+    of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them."""
+    (dest / "bin").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(vsh, dest / "bin/vsh")
+    subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
+    (dest / "UP-Term").write_text("UP-Term: double-click the icon to open a terminal with vsh.\n")
+
 def install():
     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
@@ -443,6 +459,7 @@ def install():
                     shutil.copyfile(f, dst / f.name)
         else:
             print("no %s: run make %s for glyphs above U+00FF on the rig" % (src, drawer))
+    stage_upterm(RIG / "vtc" / "upterm", ROOT / "build/amiga/vsh")
     (RIG / "vtc/themes").mkdir(exist_ok=True)
     for f in sorted((ROOT / "themes").glob("*.conf")):
         shutil.copyfile(f, RIG / "vtc/themes" / f.name)
