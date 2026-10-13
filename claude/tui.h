@@ -99,7 +99,13 @@ typedef struct tui_pick {
     void (*row)(void *u, int i, int selected, char *out, long cap);
     int (*key)(void *u, const cl_key *k, int act);
     void *u;
+    /* TUI_PICK_AUTH: pi's OAuthSelectorComponent (the /login provider list): a rule, the title in bold and the accent colour,
+     * the search input ("> " and the query, a cursor), the rows (one column in), "(sel/total)" only while the list scrolls,
+     * a rule. status and help are not shown; `empty` is the row for no match (0: "No matching providers") */
+    int layout;
+    const char *empty;
 } tui_pick;
+enum { TUI_PICK_TREE, TUI_PICK_AUTH };
 typedef struct cl_tui {
     cl_io *io;
     int cols, rows;
@@ -289,6 +295,7 @@ typedef struct cl_tui {
     void (*on_expand)(void *u);
     void *qu;
     const tui_pick *pick;       /* the picker that is open (modal 2), the line input (modal 3: pi_in) */
+    struct tui_dialog *dlg;     /* the sign-in dialog that is open (tui_dialog_open) */
     char pi_in[1100];           /* a pasted redirect URL of /login is the longest line */
     const char *pi_in_title;
     const char *pi_in_hint;     /* the first hint word of the line input ("enter save"), 0: "enter save" */
@@ -317,6 +324,20 @@ int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, lo
 /* TUI_LOOK_PI: an extension's text input (ctx.ui.input): 1 with the text in out, 0 for Esc, Ctrl+C and timeout_ms (0 none)
  * running out, -1 the end of input */
 int tui_ext_input(cl_tui *t, const char *title, char *out, long cap, long timeout_ms);
+/* TUI_LOOK_PI: pi's LoginDialogComponent (components/login-dialog.ts), which takes the editor's place while a sign-in runs: a
+ * rule, the title in bold and the accent colour, the content, a rule, the footer. The content is rows the program adds in
+ * order and shows as it goes: blank rows, text (wrapped one column in, in a theme role), one row of text that carries its
+ * own SGR, and the input line ("> " and the typed text; once read it stays as the text typed). */
+enum { TUI_DLG_BLANK, TUI_DLG_TEXT, TUI_DLG_ANSI, TUI_DLG_INPUT };
+void tui_dialog_open(cl_tui *t, const char *title);
+void tui_dialog_clear(cl_tui *t);
+/* role: a PR_* of the theme (TUI_DLG_TEXT) */
+void tui_dialog_add(cl_tui *t, int kind, int role, const char *text);
+/* the last input line typed into: 1 with the text in out, 0 for Esc and Ctrl+C, -1 the end of input */
+int tui_dialog_read(cl_tui *t, char *out, long cap);
+/* keys typed meanwhile (the program is waiting for the provider): 1 when Esc or Ctrl+C was among them */
+int tui_dialog_cancelled(cl_tui *t);
+void tui_dialog_close(cl_tui *t);
 
 /* 0, or -1 when out of memory. cols x rows from io->size (80x24 when it
  * says nothing). */
