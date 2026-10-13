@@ -11,6 +11,9 @@ BUILD   := build
 # side (see the upterm meta-repo); every sibling default below hangs off it.
 # tools/rig/paths.py reads the same variable, with the same default.
 UPTERM_ROOT ?= $(abspath ..)
+# Repositories grouped into umbrella directories next to vtcon (override each to relocate).
+DCTELNET_ROOT ?= $(UPTERM_ROOT)/DCTelnet
+AMIEXPRESS_ROOT ?= $(UPTERM_ROOT)/AmiExpress
 
 ENGINE  := engine/vtengine.c
 RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
@@ -221,8 +224,8 @@ $(BUILD)/vterm_dump: tools/vterm_dump.c $(LIBVTERM)/src/vterm.c
 # The xterm personality against libvterm and pyte on tests/streams (ONLY= a name part).
 # pcansi against DCTelnet's term-engine.c on BBS art, pixel for pixel
 # (tools/te_diff). Needs a DCTelnet checkout and an art directory.
-DCTELNET ?= $(UPTERM_ROOT)/dctelnet-v2
-ART ?= $(UPTERM_ROOT)/amiexpress-doorserver/bbs_ads
+DCTELNET ?= $(DCTELNET_ROOT)/dctelnet-v2
+ART ?= $(AMIEXPRESS_ROOT)/amiexpress-doorserver/bbs_ads
 $(BUILD)/te_diff: tools/te_diff/te_diff.c tools/te_diff/te_shim.h engine/vtengine.c engine/vtengine.h engine/vtwidth.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=gnu99 -O1 -g -w -Itools/te_diff -I$(DCTELNET)/src/third_party/retro32-term \
@@ -699,7 +702,7 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h $(BUILD)/amiga/o
 # C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
 # Roadshow SDK's network headers ("Freely Distributable"): vendor/ (gitignored)
 # when unpacked there, else DCTelnet's copy, or VTCON_NETINC=<netinclude>.
-VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(UPTERM_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
+VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(DCTELNET_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
 $(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 	@test -d $(VTCON_NETINC) || { echo "[ERROR] C:uptelnet needs the Roadshow netinclude headers, not found at $(VTCON_NETINC): unpack them to vendor/roadshow-netinclude, or pass VTCON_NETINC=<dir> (DCTelnet's copy: dctelnet-v2, optional in upterm's repos.lock)"; exit 1; }
 	@mkdir -p $(BUILD)/amiga
