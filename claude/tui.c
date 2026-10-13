@@ -179,6 +179,8 @@ void tui_free(cl_tui *t)
         free(t->ring[i]);
         t->ring[i] = 0;
     }
+    free(t->smatch);
+    t->smatch = 0;
     free(t->saved);
     t->saved = 0;
     free(t->stash);
@@ -514,10 +516,11 @@ static void status_row(cl_tui *t)
     want(t, &r);
 }
 
-#define SLASH_MAX(t) ((t)->look == TUI_LOOK_PI ? 64 : 8)
+/* the most matches C:Claude's menu shows; pi's look shows (and scrolls) all of them */
+#define SLASH_MAX(t) ((t)->look == TUI_LOOK_PI ? (t)->ncmds : 8)
 
-/* the slash commands matching the box's text: their indexes */
-static int slash_matches(cl_tui *t, int *idx, int max)
+/* the slash commands matching the box's text: their indexes (t->smatch, which the caller must not keep past the next call) */
+static int slash_matches(cl_tui *t, int **out, int max)
 {
     int i, n = 0;
     const char *s = t->ed.b;
@@ -526,9 +529,19 @@ static int slash_matches(cl_tui *t, int *idx, int max)
         memchr(s, ' ', (size_t)len) ||
         memchr(s, '\n', (size_t)len))
         return 0;
+    if (t->ncmds > t->smatch_cap) {
+        int *g = (int *)realloc(t->smatch, sizeof(int) * (size_t)t->ncmds);
+        if (!g)
+            return 0;
+        t->smatch = g;
+        t->smatch_cap = t->ncmds;
+    }
+    *out = t->smatch;
+    if (t->slash_filter)
+        return t->slash_filter(t->slash_u, t->cmds, t->ncmds, s, len, t->smatch);
     for (i = 0; i < t->ncmds && n < max; i++)
         if (!strncmp(t->cmds[i].name, s, (size_t)len))
-            idx[n++] = i;
+            t->smatch[n++] = i;
     return n;
 }
 
@@ -1050,12 +1063,16 @@ static void pi_list_rows(cl_tui *t, const char *const *label, const char *const 
         r.w = r.w;              /* "→" is one column: r_text counted its bytes' width */
         r_textz(&r, label[i]);
         if (desc && desc[i] && desc[i][0] && t->cols > 40) {
-            int room = t->cols - (2 + colw) - 2;
+            int room;
             if (i != sel)
                 pi_role(t, &r, PR_DIM);
             r_pad(&r, 2 + (lw + 2 > colw ? lw + 2 : colw));
-            if (room > 10)
+            /* select-list.ts:199-203: the description gets what is left of the width less two, when that is more than ten */
+            room = t->cols - r.w - 2;
+            if (room > 10) {
+                r.max = r.w + room;
                 r_text(&r, desc[i], (long)strlen(desc[i]));
+            }
         }
         r_sgr(&r, SGR0);
         want(t, &r);
@@ -1080,13 +1097,17 @@ static void pi_list_rows(cl_tui *t, const char *const *label, const char *const 
 
 static void pi_slash_rows(cl_tui *t, int *idx, int n)
 {
-    const char *label[64], *desc[64];
+    const char **label = (const char **)malloc(sizeof(char *) * 2 * (size_t)n), **desc;
     int i;
+    if (!label)
+        return;
+    desc = label + n;
     for (i = 0; i < n; i++) {
         label[i] = t->cmds[idx[i]].name[0] == '/' ? t->cmds[idx[i]].name + 1 : t->cmds[idx[i]].name;
         desc[i] = t->cmds[idx[i]].help;
     }
     pi_list_rows(t, label, desc, n, t->msel);
+    free(label);
 }
 
 /* pi's footer.js: the directory, then the usage with the model on the right (padding of at least two) */
@@ -1382,7 +1403,7 @@ static void pi_input_rows(cl_tui *t)
 
 static void build_pi(cl_tui *t)
 {
-    int idx[64], nm;
+    int *idx = 0, nm;
     t->nwant = 0;
     t->crow = 0;
     if (t->modal) {
@@ -1403,7 +1424,7 @@ static void build_pi(cl_tui *t)
         want(t, &r);
     }
     pi_editor_rows(t);
-    nm = slash_matches(t, idx, SLASH_MAX(t));
+    nm = slash_matches(t, &idx, SLASH_MAX(t));
     if (t->msel >= nm)
         t->msel = nm ? nm - 1 : 0;
     if (nm)
@@ -1413,7 +1434,7 @@ static void build_pi(cl_tui *t)
 
 static void build(cl_tui *t)
 {
-    int idx[64], nm;
+    int *idx = 0, nm;
     if (t->look == TUI_LOOK_PI) {
         build_pi(t);
         return;
@@ -1436,7 +1457,7 @@ static void build(cl_tui *t)
         help_rows(t);
         return;
     }
-    nm = slash_matches(t, idx, SLASH_MAX(t));
+    nm = slash_matches(t, &idx, SLASH_MAX(t));
     if (t->msel >= nm)
         t->msel = nm ? nm - 1 : 0;
     if (nm) {
@@ -2163,7 +2184,7 @@ static void tick(cl_tui *t)
 /* the slash menu's chosen command written into the box; 1 when it took */
 static int complete(cl_tui *t)
 {
-    int idx[64], n = slash_matches(t, idx, SLASH_MAX(t));
+    int *idx = 0, n = slash_matches(t, &idx, SLASH_MAX(t));
     if (!n)
         return 0;
     ed_set(&t->ed, t->cmds[idx[t->msel < n ? t->msel : 0]].name);
@@ -2733,13 +2754,13 @@ static int submit(cl_tui *t, int busy, char *buf, long cap, int queue)
  * (clear the draft, or the rewind menu) */
 static int cancel(cl_tui *t, int busy)
 {
-    int idx[8];
+    int *idx = 0;
     if (t->ed.vim == VIM_INSERT || t->ed.vim == VIM_VISUAL || t->ed.vim == VIM_VLINE ||
         (t->ed.vim == VIM_NORMAL && !vim_idle(&t->ed))) {
         edit_as(t, K_ESC, 0, 0);
         return H_GO;
     }
-    if (slash_matches(t, idx, SLASH_MAX(t))) {
+    if (slash_matches(t, &idx, SLASH_MAX(t))) {
         t->mclosed = 1;
         return H_GO;
     }
@@ -2780,7 +2801,7 @@ static int cancel(cl_tui *t, int busy)
  * the queue taken back, else the editor (a row up, then the history) */
 static int history_step(cl_tui *t, int up)
 {
-    int idx[64], n = slash_matches(t, idx, SLASH_MAX(t));
+    int *idx = 0, n = slash_matches(t, &idx, SLASH_MAX(t));
     if (n) {
         t->msel = (t->msel + (up ? n - 1 : 1)) % n;
         return H_GO;
