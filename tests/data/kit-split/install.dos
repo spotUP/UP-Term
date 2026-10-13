@@ -1,0 +1,842 @@
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,PYTHON/S,NVIM/S,REMOTE/K,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
+.BRA {
+.KET }
+; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
+; the patched ixemul.library, the fonts by pixel shape.
+; Run by the kit's Install (an Installer script), which asks the questions:
+;   Execute <kit>/Files/install.dos <kit>/Files [DEST <drawer>] [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
+;     [DEST <drawer>]   (UP-Term's own drawer, SYS:UP-Term unless named; its
+;               parent must exist. Assigned as UP-Term: now and at every boot,
+;               and every program finds the files through UP-Term:)
+;     [SHELLICON]   (the Shell icon opens an UP-Term window: no unless asked)
+;     [SERIAL]   (a serial login at every boot: no unless asked)
+;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
+;     [WASABI]  (wasabid, remote development, with a key: no unless asked)
+;     [REMOTE "host port"]  (ENVARC:Claude/remote: plain Claude, with no API
+;               key, connects to Claude Code there -- the NAS; written whenever given,
+;               ENVARC: and ENV:)
+;     [PYTHON]  (Python 3.14 in UP-Term:Python3, 15 MB; Python3: assigned at boot)
+;     [NVIM]    (Neovim 0.12 in UP-Term:nvim, 32 MB; nvim on vsh's path)
+;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
+;     [STEP <part>]  (only that part: see "The parts" below)
+; From a Shell without Installer, the same line installs (and asks itself).
+; It asks whether UP-Term should also serve the system's CON: and RAW:
+; (every new Shell window); CONSOLE answers yes, NOCONSOLE no, unasked.
+; And whether console.device itself should be UP-Term's (every program's
+; console window); DEVICE / NODEVICE answer that one.
+; (The brackets are { } here: the script's > redirections stay as they are.)
+FailAt 21
+; the kit's Files drawer: every name below is relative to it
+CD "{DIR}"
+; The options. The kit's Install passes none of them on the command line (a
+; kit in a long path made that line longer than AmigaDOS takes, 255): it
+; writes each one it needs into the variable file ENV:UPTOPT<keyword> (the
+; keyword itself, or for DEST and REMOTE the value) before the first STEP and
+; removes them at the end. A STEP run reads them here; run by hand (no STEP,
+; tools/rig/install_rig.py) the keywords on the command line are the options.
+; Below, $opt<keyword> is the option, whichever way it came.
+; Variable names here are letters and digits only: AmigaDOS ends a $name at
+; the first other character, so $o_dest was the variable "o" (none) and the
+; literal text "$o_dest" went into S:User-Startup (2026-10-07, a Replay).
+Set optdest "{DEST}"
+Set optconsole "{CONSOLE}"
+Set optnoconsole "{NOCONSOLE}"
+Set optdevice "{DEVICE}"
+Set optnodevice "{NODEVICE}"
+Set optshellicon "{SHELLICON}"
+Set optserial "{SERIAL}"
+Set optssh "{SSH}"
+Set optbebboget "{BEBBOGET}"
+Set optcurl "{CURL}"
+Set optwasabi "{WASABI}"
+Set optpython "{PYTHON}"
+Set optnvim "{NVIM}"
+Set optremote "{REMOTE}"
+Set optcpu040 "{CPU040}"
+Set optcpu060 "{CPU060}"
+Set optunifont "{UNIFONT}"
+Set optemoji "{EMOJI}"
+If NOT "{STEP}" EQ ""
+  If EXISTS ENV:UPTOPTDEST
+    Set optdest "$UPTOPTDEST"
+  EndIf
+  If EXISTS ENV:UPTOPTCONSOLE
+    Set optconsole CONSOLE
+  EndIf
+  If EXISTS ENV:UPTOPTNOCONSOLE
+    Set optnoconsole NOCONSOLE
+  EndIf
+  If EXISTS ENV:UPTOPTDEVICE
+    Set optdevice DEVICE
+  EndIf
+  If EXISTS ENV:UPTOPTNODEVICE
+    Set optnodevice NODEVICE
+  EndIf
+  If EXISTS ENV:UPTOPTSHELLICON
+    Set optshellicon SHELLICON
+  EndIf
+  If EXISTS ENV:UPTOPTSERIAL
+    Set optserial SERIAL
+  EndIf
+  If EXISTS ENV:UPTOPTSSH
+    Set optssh SSH
+  EndIf
+  If EXISTS ENV:UPTOPTBEBBOGET
+    Set optbebboget BEBBOGET
+  EndIf
+  If EXISTS ENV:UPTOPTCURL
+    Set optcurl CURL
+  EndIf
+  If EXISTS ENV:UPTOPTWASABI
+    Set optwasabi WASABI
+  EndIf
+  If EXISTS ENV:UPTOPTPYTHON
+    Set optpython PYTHON
+  EndIf
+  If EXISTS ENV:UPTOPTNVIM
+    Set optnvim NVIM
+  EndIf
+  If EXISTS ENV:UPTOPTREMOTE
+    Set optremote "$UPTOPTREMOTE"
+  EndIf
+  If EXISTS ENV:UPTOPTCPU040
+    Set optcpu040 CPU040
+  EndIf
+  If EXISTS ENV:UPTOPTCPU060
+    Set optcpu060 CPU060
+  EndIf
+  If EXISTS ENV:UPTOPTUNIFONT
+    Set optunifont UNIFONT
+  EndIf
+  If EXISTS ENV:UPTOPTEMOJI
+    Set optemoji EMOJI
+  EndIf
+EndIf
+; The parts, each from its Lab line to the next. With no STEP every part runs,
+; in this order (a Shell install, tools/rig/install_rig.py). The kit's Install
+; runs them one at a time with STEP, so the Installer can say what each part
+; does and move its progress bar between them; it copies the copy-<part>
+; drawers itself (copyfiles shows every file it copies) and never runs those
+; parts. tests/test_dist_installer.py holds the two to the same list. Every
+; part after "drawer" reaches the files through the assign UP-Term: that
+; "drawer" makes.
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+Lab drawer
+; UP-Term's own drawer, wherever the owner put it: DEST, else SYS:UP-Term.
+; Every later line and every program reaches it as UP-Term: (assigned now,
+; and at every boot by a marked block in S:User-Startup, written before the
+; blocks that use it, and named in ENVARC:up-term/Dir for the programs that
+; run before that block; Uninstall finds the drawer through the assign).
+Set updest "$optdest"
+If "$updest" EQ ""
+  Set updest SYS:UP-Term
+EndIf
+MakeDir >NIL: "$updest"
+If NOT EXISTS "$updest"
+  Echo "UP-Term: cannot make the drawer $updest (its parent must exist)"
+  UnSet updest
+  Quit 20
+EndIf
+Assign UP-Term: "$updest"
+; The same drawer, written down where UP-Term itself can read it: XCON:, PTY:
+; and console.device are mounted BEFORE S:User-Startup runs, so a window
+; opened early (or a boot whose block below was lost) would find no
+; UP-Term: and AmigaDOS would ask "insert volume UP-Term:". Every program of
+; the kit that reads UP-Term: first makes the assign from this file when it
+; is missing (config/upassign.h). ENVARC:up-term goes whole at Uninstall.
+MakeDir >NIL: ENVARC:up-term
+Echo >ENVARC:up-term/Dir "$updest"
+If NOT EXISTS S:User-Startup
+  Echo >S:User-Startup ""
+EndIf
+; An exact line first: the same drawer again (an Install over an Install)
+; changes nothing. A marked block that names another drawer (an Install over
+; an Install with a different DEST) is rewritten to this one by reassign.sh
+; (vsh, from the earlier Install: the block keeps its place before the blocks
+; that use it, every other line stays byte for byte); the assign moved
+; already, above. S:User-Startup.before-UP-Term is the file as it was before
+; any UP-Term block, made once: it is never made from a file that holds our
+; block (here: only when no block is in it yet).
+Search >NIL: S:User-Startup "Assign UP-Term: *"$updest*""
+If WARN
+  Search >NIL: S:User-Startup ";BEGIN UP-Term assign"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term assign"
+    Echo >>S:User-Startup "Assign UP-Term: *"$updest*""
+    Echo >>S:User-Startup ";END UP-Term assign"
+  Else
+    Delete >NIL: ENV:upold T:User-Startup.up-term QUIET
+    ; this kit's own vsh (the current drawer): nothing of the old install is needed
+    vsh reassign.sh "$updest"
+    If EXISTS T:User-Startup.up-term
+      Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+      Delete >NIL: T:User-Startup.up-term QUIET
+      Echo "UP-Term: S:User-Startup now assigns UP-Term: to $updest (it named another drawer)."
+      If EXISTS ENV:upold
+        If EXISTS "$upold"
+          Echo "UP-Term: old drawer $upold is left in place: delete it or run Uninstall of that kit first."
+        EndIf
+        Delete >NIL: ENV:upold QUIET
+      EndIf
+    Else
+      Echo "UP-Term: cannot rewrite the UP-Term: block in S:User-Startup (this kit's vsh did not run): edit its Assign line to $updest."
+    EndIf
+  EndIf
+EndIf
+UnSet updest
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab system
+; the handlers and their DOSDrivers, the terminal entries, the commands in C:
+Copy vtcon-handler L: CLONE
+Copy XCON DEVS:DOSDrivers/XCON CLONE
+Copy pty-handler L: CLONE
+Copy PTY DEVS:DOSDrivers/PTY CLONE
+; The terminal entries live in ENVARC:up-term (ENV:up-term after a boot).
+; Not in ENVARC:terminfo: AmigaDOS names ignore case, so that drawer IS the
+; variable TERMINFO, and TERMINFO could no longer be set at all (an earlier
+; kit did that; its entry goes). TERMINFO is set for every program: ncurses
+; still finds the other terminals in its own directories. TERM and TERMCAP
+; are not: TERM=vtcon in a ROM CON: window would send it xterm sequences.
+; vsh sets both for itself on a vtcon console.
+; A TERMINFO the user had is kept in ENVARC:up-term-orig for Uninstall:
+; "env" the value of this boot, "envarc" the saved one. Once only, and never
+; our own value (an Install over an Install). Before the drawer clean-up
+; below, whose "Delete ENV:terminfo" is also the variable. Search gives 5
+; for another value and 20 for the old kit's drawer (skipped).
+If NOT EXISTS ENVARC:up-term-orig
+  MakeDir >NIL: ENVARC:up-term-orig
+  If EXISTS ENV:TERMINFO
+    Search >NIL: ENV:TERMINFO /ENV/up-term/terminfo
+    If WARN
+      If NOT ERROR
+        Copy ENV:TERMINFO ENVARC:up-term-orig/env CLONE
+      EndIf
+    EndIf
+  EndIf
+  If EXISTS ENVARC:TERMINFO
+    Search >NIL: ENVARC:TERMINFO /ENV/up-term/terminfo
+    If WARN
+      If NOT ERROR
+        Copy ENVARC:TERMINFO ENVARC:up-term-orig/envarc CLONE
+      EndIf
+    EndIf
+  EndIf
+EndIf
+Delete >NIL: ENVARC:terminfo/v/vtcon ENV:terminfo/v/vtcon QUIET
+Delete >NIL: ENVARC:terminfo/v ENVARC:terminfo ENV:terminfo/v ENV:terminfo QUIET
+Delete >NIL: ENVARC:termcap.vtcon ENV:termcap.vtcon QUIET
+MakeDir >NIL: ENVARC:up-term ENVARC:up-term/terminfo
+; Uninstall's S:User-Startup filter first, before any block goes in: an
+; Install cut short (the Replay lost its network mid-Install) still leaves
+; the script that takes its blocks out again
+Copy unstartup.sh ENVARC:up-term/unstartup.sh CLONE
+Copy terminfo ENVARC:up-term/terminfo ALL CLONE QUIET
+; colour themes for UP-Term Prefs' Theme... requester (one profile section
+; each; ENVARC:up-term goes whole at Uninstall)
+MakeDir >NIL: ENVARC:up-term/themes
+Copy themes ENVARC:up-term/themes ALL CLONE QUIET
+Copy termcap.vtcon ENVARC:up-term/termcap.vtcon CLONE
+; ENV: first emptied, then copied. On AmigaOS 3.2 ENV: is a link to ENVARC:
+; (S:Startup-Sequence: MakeLink RAM:ENV to ENVARC:) that shows ENVARC:up-term
+; as ENV:up-term before anything is copied; a Copy into that linked drawer
+; leaves a drawer whose Delete ALL never returns and stops the RAM disk with it
+; (Uninstall in the same boot hung, 2026-10-08). Deleted first, the copy is a
+; plain RAM: drawer, as on 3.1, where this Delete takes an older Install's copy.
+Delete >NIL: ENV:up-term ALL QUIET
+Copy ENVARC:up-term ENV:up-term ALL CLONE QUIET
+; the window-preferences sample (/ENV/up-term/up-term, read by the XCON:
+; handler, written by UP-Term Prefs): laid down where the user has no file,
+; never over a file that is there
+; (up-term.conf in the kit: a file named up-term would be UP-Term, the
+; icon's stub, to AmigaDOS, which ignores case.) Preferences an earlier
+; Uninstall kept in ENVARC:UP-Term.prefs come back first.
+If NOT EXISTS ENVARC:up-term/up-term
+  If EXISTS ENVARC:UP-Term.prefs
+    Copy ENVARC:UP-Term.prefs ENVARC:up-term/up-term CLONE QUIET
+  Else
+    Copy up-term.conf ENVARC:up-term/up-term CLONE QUIET
+  EndIf
+EndIf
+If NOT EXISTS ENV:up-term/up-term
+  Copy ENVARC:up-term/up-term ENV:up-term/up-term CLONE QUIET
+EndIf
+SetEnv TERMINFO /ENV/up-term/terminfo
+Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
+; vsh: UP-Term:bin/vsh is the UP-Term icon's tool and what every UP-Term
+; program runs first, so a chosen drawer needs nothing in C:. C:vsh stays
+; for scripts that name it and for UP-Term programs of an older install.
+MakeDir >NIL: UP-Term:bin
+Copy vsh UP-Term:bin/vsh CLONE
+Copy vsh C:vsh CLONE
+Copy ixkill C:ixkill CLONE
+; the preferences editor: C:UP-Term Prefs (its file keeps the space) and a
+; plain program icon in SYS:Prefs
+Copy "UP-Term Prefs" "C:UP-Term Prefs" CLONE
+; GNU screen, and its system screenrc (the port reads /ENV/screenrc)
+Copy screen C:screen CLONE
+Copy screenrc ENVARC:screenrc CLONE
+Copy screenrc ENV:screenrc CLONE
+; tmux, and its system tmux.conf (the port reads /ENV/tmux.conf)
+Copy tmux C:tmux CLONE
+Copy tmux.conf ENVARC:tmux.conf CLONE
+Copy tmux.conf ENV:tmux.conf CLONE
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-coreutils
+; The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
+; wc... GPL v2: COPYING and the complete source are in the kit's
+; coreutils-5.2.1 drawer) in UP-Term's own drawer UP-Term:bin, not C::
+; AmigaDOS names ignore case, so GNU sort, date, join and install would be
+; C:Sort, C:Date, C:Join and C:Install, which the system's scripts need.
+; vsh finds them through $PATH (vshrc puts /UP-Term/bin first), and so
+; do ixemul programs (execvp reads the same $PATH); the AmigaDOS Shell
+; keeps its own commands.
+MakeDir >NIL: UP-Term:bin
+Copy coreutils/bin UP-Term:bin ALL CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-userland
+; The Unix tool ports (upterm-ports), beside coreutils in UP-Term:bin: grep,
+; sed, awk, less, nano, find, xargs, diff, cmp, diff3, sdiff, patch, man,
+; gzip, bzip2, xz, tar, cpio, zip and ncurses' tput, reset, clear... No name
+; is one of coreutils'. Their pages, nano's files and licences: next part.
+MakeDir >NIL: UP-Term:bin
+Copy userland/bin UP-Term:bin ALL CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab userland
+; The ports' manual pages and UP-Term's own (vsh, UPTerm, upgetty, sz, rz)
+; in UP-Term:share/man (man's default MANPATH, /UP-Term/share/man), nano's
+; syntax files and its system nanorc (UP-Term:etc/nanorc), and every
+; package's licence in UP-Term:licenses. SOURCES.txt there names each one's
+; version and upstream archive; the complete source with UP-Term's patches
+; and build recipes is UP-Term-src.lha, published next to UP-Term.lha.
+; one MakeDir each: an Install over an Install finds them there
+MakeDir >NIL: UP-Term:share
+MakeDir >NIL: UP-Term:etc
+MakeDir >NIL: UP-Term:licenses
+Copy userland/share UP-Term:share ALL CLONE QUIET
+Copy userland/etc UP-Term:etc ALL CLONE QUIET
+Copy userland/licenses UP-Term:licenses ALL CLONE QUIET
+Copy userland/SOURCES.txt UP-Term:licenses/SOURCES.txt CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-unifont
+; [UNIFONT]: GNU Unifont's glyphs (SIL Open Font License 1.1: OFL-1.1.txt
+; and SOURCE.txt go with them), one file per 256 characters, 1.8 MB: drawn
+; for every character up to U+FFFF and every emoji (U+1F000-1FAFF) the
+; window's font lacks, at 8 and 16 pixels high. Not in FONTS: (FixFonts below scans it). Uninstall takes the
+; whole of UP-Term:.
+If "$optunifont" EQ "UNIFONT"
+  MakeDir >NIL: UP-Term:unifont
+  Copy unifont UP-Term:unifont ALL CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-emoji
+; [EMOJI]: Twemoji's colour emoji (CC-BY 4.0: CC-BY-4.0.txt and SOURCE.txt
+; go with them), one file per 256 characters, 0.5 MB: drawn over two cells
+; on an RTG screen of 15 bits or more with cybergraphics.library; other
+; screens keep Unifont's one-colour glyph.
+If "$optemoji" EQ "EMOJI"
+  MakeDir >NIL: UP-Term:emoji
+  Copy emoji UP-Term:emoji ALL CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab tools
+; the kit's own commands, the network tools and Claude
+MakeDir >NIL: UP-Term:bin
+; VERSIONS: what this kit was built from (C:UPConsole STATUS prints its first line)
+Copy VERSIONS UP-Term:VERSIONS CLONE
+; sz / rz: ZMODEM over the shell's own line (UP-Term's, no ixemul), beside
+; coreutils; C:upgetty: a shell on the serial port (see the README)
+Copy sz rz UP-Term:bin CLONE
+Copy upgetty C:upgetty CLONE
+; hl and mdv: a source file in colour, Markdown formatted for the window
+; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
+Copy hl mdv UP-Term:bin CLONE
+; ps and top: the tasks, and the tasks by CPU use (sampled at the vertical blank)
+Copy ps top UP-Term:bin CLONE
+; UPDemo: the terminal's show-off and benchmark (README, DEMO)
+Copy UPDemo C:UPDemo CLONE
+; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
+Copy UPTerm C:UPTerm CLONE
+; C:ClaudeCode: Claude Code on the NAS through uptelnet (README, CLAUDE FROM
+; THE AMIGA); a script, so the s bit makes it a command
+Copy ClaudeCode C:ClaudeCode CLONE QUIET
+Protect C:ClaudeCode +s QUIET
+; C:uptelnet: a telnet client for the window (no ixemul; needs a TCP/IP
+; stack), the Amiga end of Claude Code on a Mac (README, CLAUDE FROM THE AMIGA)
+Copy uptelnet C:uptelnet CLONE
+; The network tools, beside coreutils: BebboSSH 1.45 (bebbossh, bebboscp,
+; bebbosshkeygen, bebbosshd) and bebboget 1.11, by Stefan Franke, GPL v3+,
+; and curl 8.22.0 (below):
+; COPYING and the complete source are in the kit's net drawer. vshrc makes
+; ssh and scp of them. Their library goes to LIBS: unless one is there (a
+; user's own BebboSSH keeps its library; Uninstall removes only ours).
+If "$optssh" EQ "SSH"
+  Copy net/bebbossh-1.45/bebbossh net/bebbossh-1.45/bebboscp net/bebbossh-1.45/bebbosshkeygen net/bebbossh-1.45/bebbosshd UP-Term:bin CLONE QUIET
+  If NOT EXISTS LIBS:libcryptossh.library
+    If "$optcpu060" EQ "CPU060"
+      Copy net/bebbossh-1.45/libcryptossh.library060 LIBS:libcryptossh.library CLONE
+    Else
+      Copy net/bebbossh-1.45/libcryptossh.library020 LIBS:libcryptossh.library CLONE
+    EndIf
+    Echo >ENVARC:up-term/cryptossh "installed by UP-Term"
+  EndIf
+EndIf
+If "$optbebboget" EQ "BEBBOGET"
+  Copy net/bebboget-1.11/bebboget net/bebboget-1.11/installcerts UP-Term:bin CLONE QUIET
+EndIf
+; curl 8.22.0 (the curl licence, net/curl-8.22.0); it needs AmiSSL 5
+If "$optcurl" EQ "CURL"
+  If "$optcpu060" EQ "CPU060"
+    Copy net/curl-8.22.0/curl.060 UP-Term:bin/curl CLONE QUIET
+  Else
+    If "$optcpu040" EQ "CPU040"
+      Copy net/curl-8.22.0/curl.040 UP-Term:bin/curl CLONE QUIET
+    Else
+      Copy net/curl-8.22.0/curl.020 UP-Term:bin/curl CLONE QUIET
+    EndIf
+  EndIf
+EndIf
+; C:Claude, the native Claude client (README, Claude), always: its talking
+; to Anthropic needs AmiSSL 5; ENVARC:Claude is where its settings go
+; (Install never writes a key).
+Copy Claude C:Claude CLONE QUIET
+If NOT EXISTS ENVARC:Claude
+  MakeDir ENVARC:Claude
+EndIf
+; REMOTE: where Claude Code runs (the NAS); plain Claude goes there
+If NOT "$optremote" EQ ""
+  ; the chosen value always wins (the Installer's page starts with the
+  ; existing file's host and port, so a kept answer is the same line)
+  If NOT EXISTS ENV:Claude
+    MakeDir ENV:Claude
+  EndIf
+  Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"
+  Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."
+  Echo >>ENVARC:Claude/remote "$optremote"
+  Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET
+EndIf
+; C:amiga-pi, the pi coding agent (README, AMIGA-PI): the same needs as
+; Claude; ENVARC:amiga-pi is where its settings go (Install never writes
+; settings.json, models.json or auth.json); its data goes to UP-Term:var/amiga-pi
+Copy amiga-pi C:amiga-pi CLONE QUIET
+If NOT EXISTS ENVARC:amiga-pi
+  MakeDir ENVARC:amiga-pi
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-python
+; Python 3.14 (README, PYTHON): UP-Term:Python3, its programs run as
+; Python3:bin/python3 or python3 from vsh (vshrc's path); Python3: is
+; assigned at every boot (a marked block in S:User-Startup).
+If "$optpython" EQ "PYTHON"
+  MakeDir >NIL: UP-Term:Python3
+  Copy python3 UP-Term:Python3 ALL CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab python
+If "$optpython" EQ "PYTHON"
+  Assign Python3: UP-Term:Python3
+  Search >NIL: S:User-Startup ";BEGIN UP-Term python"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term python"
+    Echo >>S:User-Startup "Assign Python3: UP-Term:Python3"
+    Echo >>S:User-Startup ";END UP-Term python"
+  EndIf
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab copy-nvim
+; Neovim 0.12 (README, NEOVIM): UP-Term:nvim (its runtime beside the
+; binary); nvim from vsh (vshrc's path).
+If "$optnvim" EQ "NVIM"
+  MakeDir >NIL: UP-Term:nvim
+  Copy nvim UP-Term:nvim ALL CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab fonts
+; The fonts by pixel shape (fonts/SOURCE.txt): TopazPro 16, IBM 8 / 11 /
+; 16 into FONTS:, only the sizes not there yet -- a user's own IBM.font
+; keeps its files -- each marked for Uninstall; FixFonts then lists every
+; size in the .font files
+MakeDir >NIL: FONTS:TopazPro FONTS:IBM
+If NOT EXISTS FONTS:TopazPro/16
+  Copy fonts/TopazPro/16 FONTS:TopazPro/16 CLONE QUIET
+  Echo >ENVARC:up-term/font-TopazPro-16 "installed by UP-Term"
+Else
+  ; ours from an earlier kit: replaced, its baseline is fixed (13, not 6)
+  If EXISTS ENVARC:up-term/font-TopazPro-16
+    Copy fonts/TopazPro/16 FONTS:TopazPro/16 CLONE QUIET
+  EndIf
+EndIf
+If NOT EXISTS FONTS:IBM/8
+  Copy fonts/IBM/8 FONTS:IBM/8 CLONE QUIET
+  Echo >ENVARC:up-term/font-IBM-8 "installed by UP-Term"
+EndIf
+If NOT EXISTS FONTS:IBM/11
+  Copy fonts/IBM/11 FONTS:IBM/11 CLONE QUIET
+  Echo >ENVARC:up-term/font-IBM-11 "installed by UP-Term"
+EndIf
+If NOT EXISTS FONTS:IBM/16
+  Copy fonts/IBM/16 FONTS:IBM/16 CLONE QUIET
+  Echo >ENVARC:up-term/font-IBM-16 "installed by UP-Term"
+EndIf
+If NOT EXISTS FONTS:TopazPro.font
+  Copy fonts/TopazPro.font FONTS: CLONE QUIET
+EndIf
+If NOT EXISTS FONTS:IBM.font
+  Copy fonts/IBM.font FONTS: CLONE QUIET
+EndIf
+If EXISTS SYS:System/FixFonts
+  SYS:System/FixFonts
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab unix
+; The shell ixemul programs run (system(), popen(), tmux's jobs) is
+; /gg/bin/sh -- GG:bin/sh, where Geek Gadgets keeps its sh: vsh, as
+; UP-Term:bin/sh. Without a GG: UP-Term: is GG:, assigned at every
+; boot by a marked block in S:User-Startup (Uninstall takes it out, its
+; marker says Install made it). An existing GG: is left as it is.
+Copy vsh UP-Term:bin/sh CLONE
+Assign >NIL: GG: EXISTS
+If NOT WARN
+  ; an Install over an Install with another DEST: a GG: that is ours (its
+  ; marker) was assigned to the old drawer, and follows UP-Term: now
+  If EXISTS ENVARC:up-term/gg
+    Assign GG: UP-Term:
+  EndIf
+EndIf
+Assign >NIL: GG: EXISTS
+If WARN
+  Assign GG: UP-Term:
+  Echo >ENVARC:up-term/gg "installed by UP-Term"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  ; its own line, not ";BEGIN UP-Term": that also starts the other blocks
+  Search >NIL: S:User-Startup "Assign GG: UP-Term:"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term"
+    Echo >>S:User-Startup "Assign >NIL: GG: EXISTS"
+    Echo >>S:User-Startup "If WARN"
+    Echo >>S:User-Startup "  Assign GG: UP-Term:"
+    Echo >>S:User-Startup "EndIf"
+    Echo >>S:User-Startup ";END UP-Term"
+  EndIf
+EndIf
+; /tmp: ixemul programs put their temporary files there (sort, mktemp,
+; vim's swap), and to ixemul /tmp is the volume TMP:, which AmigaOS does
+; not assign. Without one UP-Term assigns it to T:, at every boot by a
+; marked block in S:User-Startup; Uninstall takes both away. An existing
+; TMP: is left as it is.
+Assign >NIL: TMP: EXISTS
+If WARN
+  Assign TMP: T:
+  Echo >ENVARC:up-term/tmp "installed by UP-Term"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup "Assign TMP: T:"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term tmp"
+    Echo >>S:User-Startup "Assign >NIL: TMP: EXISTS"
+    Echo >>S:User-Startup "If WARN"
+    Echo >>S:User-Startup "  Assign TMP: T:"
+    Echo >>S:User-Startup "EndIf"
+    Echo >>S:User-Startup ";END UP-Term tmp"
+  EndIf
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab desktop
+; the Workbench way in: double-click UP-Term (its tool is UP-Term:bin/vsh; the
+; window is its WINDOW tooltype)
+; the UP-Term icon goes beside Shell in SYS:System, the preferences editor
+; into SYS:Prefs. A kit older than this one put both in SYS:Utilities: those
+; copies are removed.
+Copy UP-Term UP-Term.info SYS:System CLONE
+If NOT EXISTS SYS:Prefs
+  MakeDir SYS:Prefs
+EndIf
+Copy UP-Term-Prefs UP-Term-Prefs.info SYS:Prefs CLONE
+Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-Term-Prefs SYS:Utilities/UP-Term-Prefs.info QUIET
+; SHELLICON: the Shell icon (SYS:System/Shell) opens its window on XCON:,
+; its place, size, title and options as they were (upicon swaps only the
+; WINDOW tooltype's device). The icon as it was is kept in
+; ENVARC:up-term-orig for Uninstall (a second Install keeps the first copy).
+If "$optshellicon" EQ "SHELLICON"
+  If EXISTS SYS:System/Shell.info
+    If NOT EXISTS ENVARC:up-term-orig/Shell.info
+      Copy SYS:System/Shell.info ENVARC:up-term-orig/Shell.info CLONE
+    EndIf
+    upicon SYS:System/Shell WINDOWDEV=XCON
+  EndIf
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab boot
+; SERIAL: a Unix-style login on the serial port at every boot (upgetty LOOP:
+; vsh for whoever connects, see the README's SERIAL LOGIN), from a marked
+; block in S:User-Startup that Uninstall takes out. upgetty then holds
+; serial.device: nothing else can use the port while it runs.
+If "$optserial" EQ "SERIAL"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup "C:upgetty LOOP"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term serial"
+    Echo >>S:User-Startup "Run >NIL: C:upgetty LOOP"
+    Echo >>S:User-Startup ";END UP-Term serial"
+  EndIf
+EndIf
+; WASABI: wasabid in C: (wasabi/SOURCE.txt), for working on this Amiga
+; from another machine over the network. It runs any command a client with
+; the key sends -- and with no key set, any client's: wasabikey makes one
+; (a key already set stays), saved in ENVARC:wasabi.key (a marker when it
+; is ours, for Uninstall). Started now and at every boot from a marked
+; block in S:User-Startup.
+If "$optwasabi" EQ "WASABI"
+  If NOT EXISTS C:wasabid
+    Echo >ENVARC:up-term/wasabid "installed by UP-Term"
+  EndIf
+  Copy wasabi/wasabid C:wasabid CLONE
+  If NOT EXISTS ENV:wasabi.key
+    Echo >ENVARC:up-term/wasabikey "installed by UP-Term"
+  EndIf
+  wasabi/wasabikey >NIL:
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup "C:wasabid"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term wasabi"
+    Echo >>S:User-Startup "Run >NIL: C:wasabid"
+    Echo >>S:User-Startup ";END UP-Term wasabi"
+  EndIf
+  Status >NIL: COM C:wasabid
+  If WARN
+    Run >NIL: C:wasabid
+  EndIf
+EndIf
+MakeDir >NIL: ENVARC:vsh
+Copy vshrc ENVARC:vsh/vshrc CLONE
+Copy banner ENVARC:vsh/banner CLONE
+; ENV:vsh emptied first, as ENV:up-term above (3.2's linked ENV:)
+Delete >NIL: ENV:vsh ALL QUIET
+MakeDir >NIL: ENV:vsh
+Copy vshrc ENV:vsh/vshrc CLONE
+Copy banner ENV:vsh/banner CLONE
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab libs
+; ixemul.library with the UP-Term patches (termios, PTY: ptys, job
+; control), and ixnet.library from the same build: ixnet refuses an ixemul
+; of another version or revision. Each library there is kept once as
+; <name>.orig, beside the library it replaces. LIBS: can be several drawers
+; (Copy and Open of LIBS:<name> only look in the first one), so the real place
+; of the library (Which) is written to ENVARC:up-term-orig/<name>.path by the
+; first Install, the kit's library replaces it there, and Uninstall puts the
+; .orig back at that path. Without an earlier library it goes to LIBS:.
+If NOT EXISTS ENVARC:up-term-orig
+  MakeDir >NIL: ENVARC:up-term-orig
+EndIf
+; a second Install on a system that had none finds only the kit's own library
+; there: the .none marker keeps it from being recorded as the original
+If NOT EXISTS ENVARC:up-term-orig/ixemul.path
+ If NOT EXISTS ENVARC:up-term-orig/ixemul.none
+  Which >NIL: LIBS:ixemul.library
+  If NOT WARN
+    Which >ENV:upixemul LIBS:ixemul.library
+    Copy >NIL: ENV:upixemul ENVARC:up-term-orig/ixemul.path CLONE
+    If NOT EXISTS "$upixemul.orig"
+      Copy "$upixemul" "$upixemul.orig" CLONE
+    EndIf
+  EndIf
+ EndIf
+EndIf
+If EXISTS ENVARC:up-term-orig/ixemul.path
+  Copy >NIL: ENVARC:up-term-orig/ixemul.path ENV:upixemul CLONE
+  Copy libs/ixemul.library "$upixemul" CLONE
+Else
+  Copy libs/ixemul.library LIBS:ixemul.library CLONE
+  ; no library of the system's was replaced: Uninstall removes ours (a system
+  ; without ixemul.library was left with the kit's after Uninstall, 2026-10-11)
+  Echo >ENVARC:up-term-orig/ixemul.none ""
+EndIf
+; a second Install on a system that had none finds only the kit's own library
+; there: the .none marker keeps it from being recorded as the original
+If NOT EXISTS ENVARC:up-term-orig/ixnet.path
+ If NOT EXISTS ENVARC:up-term-orig/ixnet.none
+  Which >NIL: LIBS:ixnet.library
+  If NOT WARN
+    Which >ENV:upixnet LIBS:ixnet.library
+    Copy >NIL: ENV:upixnet ENVARC:up-term-orig/ixnet.path CLONE
+    If NOT EXISTS "$upixnet.orig"
+      Copy "$upixnet" "$upixnet.orig" CLONE
+    EndIf
+  EndIf
+ EndIf
+EndIf
+If EXISTS ENVARC:up-term-orig/ixnet.path
+  Copy >NIL: ENVARC:up-term-orig/ixnet.path ENV:upixnet CLONE
+  Copy libs/ixnet.library "$upixnet" CLONE
+Else
+  Copy libs/ixnet.library LIBS:ixnet.library CLONE
+  Echo >ENVARC:up-term-orig/ixnet.none ""
+EndIf
+Delete >NIL: ENV:upixemul ENV:upixnet QUIET
+Avail >NIL: FLUSH
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab mount
+; a DOSDrivers file is mounted by its path ("Mount XCON: FROM file" looks
+; for an XCON: entry inside, which a DOSDrivers file has not; >NIL: hid
+; that, so XCON: only appeared after a reboot). Not twice: it is there.
+Assign >NIL: XCON: EXISTS DEVICES
+If WARN
+  Mount DEVS:DOSDrivers/XCON
+EndIf
+; IXPIPE: (ixemul's own handler): kept as it is when ixemul's install put
+; it there; ENVARC:up-term/ixpipe marks ours for Uninstall
+If NOT EXISTS DEVS:DOSDrivers/IXPIPE
+  Copy ixpipe-handler L: CLONE
+  Copy IXPIPE DEVS:DOSDrivers/IXPIPE CLONE
+  Echo >ENVARC:up-term/ixpipe "installed by UP-Term"
+EndIf
+Assign >NIL: IXPIPE: EXISTS DEVICES
+If WARN
+  Mount DEVS:DOSDrivers/IXPIPE
+EndIf
+Assign >NIL: PTY: EXISTS DEVICES
+If WARN
+  Mount DEVS:DOSDrivers/PTY
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab console
+; CON: and RAW: served by UP-Term (opt-in): C:UPConsole switches them at
+; every boot from its own marked block in S:User-Startup, and now (on 3.2 too).
+Copy UPConsole C:UPConsole CLONE
+Set upcon "$optconsole"
+If "$optnoconsole" EQ "NOCONSOLE"
+  Set upcon ""
+Else
+  If "$optconsole" EQ ""
+    Ask "Should UP-Term also serve CON: and RAW: (every new Shell window)? y/N"
+    If WARN
+      Set upcon "CONSOLE"
+    EndIf
+  EndIf
+EndIf
+If "$upcon" EQ "CONSOLE"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup ";BEGIN UP-Term console"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term console"
+    Echo >>S:User-Startup "C:UPConsole >NIL: CON ON"
+    Echo >>S:User-Startup ";END UP-Term console"
+  EndIf
+  C:UPConsole CON ON
+EndIf
+UnSet upcon
+; console.device served by UP-Term (opt-in): UPConsole DEVICE ON at every
+; boot from its own block, and now.
+Copy up-console.device DEVS:up-console.device CLONE
+Set updev "$optdevice"
+If "$optnodevice" EQ "NODEVICE"
+  Set updev ""
+Else
+  If "$optdevice" EQ ""
+    Ask "Should console.device be UP-Term's too (every program's console window)? y/N"
+    If WARN
+      Set updev "DEVICE"
+    EndIf
+  EndIf
+EndIf
+If "$updev" EQ "DEVICE"
+  If NOT EXISTS S:User-Startup
+    Echo >S:User-Startup ""
+  EndIf
+  Search >NIL: S:User-Startup ";BEGIN UP-Term device"
+  If WARN
+    If NOT EXISTS S:User-Startup.before-UP-Term
+      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    EndIf
+    Echo >>S:User-Startup ";BEGIN UP-Term device"
+    Echo >>S:User-Startup "C:UPConsole >NIL: DEVICE ON"
+    Echo >>S:User-Startup ";END UP-Term device"
+  EndIf
+  C:UPConsole DEVICE ON
+EndIf
+UnSet updev
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab record
+; What a later Install's Update compares and keeps (the Installer offers it
+; when both are there): this kit's manifest (every file, its part and CRC,
+; tools/mkmanifest.py) and the options of this install, the Installer's
+; ENV:UPTOPT<keyword> files as P_OPTIONS wrote them. An install from a Shell
+; has no such files and leaves no options: the next Install asks again.
+Copy MANIFEST UP-Term:MANIFEST CLONE
+If EXISTS ENV:UPTOPTDEST
+  Delete >NIL: ENVARC:up-term/opts ALL QUIET
+  MakeDir >NIL: ENVARC:up-term/opts
+  Copy ENV:UPTOPT#? ENVARC:up-term/opts CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Echo "UP-Term installed. Try:  NewShell XCON:0/20/640/300/UP-Term/CLOSE"
+Echo "The Unix-style shell: type  vsh  in an XCON: window (exit returns to the Shell)"

@@ -20,8 +20,10 @@ rig). Checked:
 import pathlib, re, sys, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-INSTALLER = (ROOT / "dist/Install.installer").read_text(encoding="latin-1")
-DOS = (ROOT / "dist/install.dos").read_text(encoding="latin-1")
+sys.path.insert(0, str(ROOT / "tools"))
+import mkinstaller as mi
+INSTALLER = mi.build(ROOT / "dist/Install.installer", "base")
+DOS = mi.build(ROOT / "dist/install.dos", "base")
 
 # Installer.guide 1.19 (43.3): statements, functions, parameters
 KNOWN_43 = set("""
@@ -216,7 +218,7 @@ class AmigaPiInstall(unittest.TestCase):
             self.assertFalse(re.search(r"(>|Copy .* )ENVARC:amiga-pi/", l), l)
 
     def test_uninstall_removes_the_binary_not_the_drawer(self):
-        un = (ROOT / "dist/Uninstall").read_text(encoding="latin-1")
+        un = mi.build(ROOT / "dist/Uninstall", "base")
         self.assertIn(" C:amiga-pi ", un)
         self.assertNotIn("ENVARC:amiga-pi", un)
 
@@ -232,7 +234,7 @@ class AmigaDosVariableNames(unittest.TestCase):
 
     def test_no_variable_name_in_the_kits_amigados_scripts_has_other_characters(self):
         for name in self.SCRIPTS:
-            text = (ROOT / "dist" / name).read_text(encoding="latin-1")
+            text = mi.build(ROOT / "dist" / name, "base")
             body = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith(";"))
             self.assertEqual(re.findall(r'\$[A-Za-z0-9]+[^A-Za-z0-9\s"*/:;.,()<>{}\[\]=-]', body), [], name)
             self.assertEqual(re.findall(r'(?im)^\s*(?:Set|UnSet)(?:\s+[<>]\S*)*\s+(?![<>])([A-Za-z0-9]*[^A-Za-z0-9\s][^\s]*)', body),
@@ -355,7 +357,7 @@ class LinkedEnvOn32(unittest.TestCase):
         self.assertEqual(filled, {'up-term', 'vsh'})
 
     def test_uninstall_deletes_env_before_envarc(self):
-        un = (ROOT / "dist/Uninstall").read_text(encoding="latin-1")
+        un = mi.build(ROOT / "dist/Uninstall", "base")
         for name in ('up-term', 'vsh'):
             both = [l.lower() for l in un.splitlines() if l.lower().startswith('delete')
                     and re.search(r'\benv:%s\s' % name, l.lower()) and re.search(r'\benvarc:%s\s' % name, l.lower())]
