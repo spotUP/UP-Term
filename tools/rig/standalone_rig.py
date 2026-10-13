@@ -914,6 +914,7 @@ def nvim_session(kind, libs, term):
         rows = text.splitlines()
         tildes = sum(1 for r in rows if r.startswith('~'))
         bad = garbled(text, unknown)
+        basic_repl = "can't use pyrepl" in text.replace('\n', ' ')
         res['screen'] = ('pass' if rows and 'hello' in rows[0] and tildes >= 3 and not bad else 'fail',
                          'first row %r, %d rows of ~, %s' % (rows[0] if rows else '', tildes, bad or 'no escape sequences shown'))
         tw.key(ESC, wait=0.7)
@@ -993,6 +994,7 @@ def python_session(kind, libs, term):
         seen += [dismiss(w) for w in foreign(title)]
         text, unknown = screen(title, dev, session + '-screen')
         bad = garbled(text, unknown)
+        basic_repl = "can't use pyrepl" in text.replace('\n', ' ')
         res['screen'] = ('pass' if ok and not bad else 'fail',
                          'prompt on screen=%s, %s; screen: %s' % (ok, bad or 'no escape sequences shown', ' | '.join(text.splitlines()[-3:])))
         step('python typed line')
@@ -1016,14 +1018,22 @@ def python_session(kind, libs, term):
                         'Ctrl-C at the prompt, then a typed line: RAM:c.txt=%r after %d line(s)%s' % (
                             got, tries, ' (the first went to the KeyboardInterrupt)' if tries == 2 and got == 'c' else ''))
         step('python up')
+        # Up recalls the LAST line typed (the Ctrl-C step's RAM:c.txt line, not the q.txt one of the repl step):
+        # delete its file so Return after Up proves the recalled line ran. The console sends Up as the 8-bit
+        # CSI 0x9B 'A' (ROM CON: and KingCON); PyREPL must take that as the Up key (cpython-amiga patch 0015)
+        run('Delete >NIL: RAM:c.txt QUIET')
         tw.key(UP, wait=1)
         recalled, _ = screen(title, dev)
         tw.key(RET, wait=3)
-        again = amiga_text('RAM:q.txt')
-        res['history'] = ('pass' if again == 'x' else 'fail',
-                          'after Up+Return RAM:q.txt=%r; screen: %s' % (again, ' | '.join(recalled.splitlines()[-2:])))
-        # ROM CON: sends Up as the 8-bit CSI 0x9B 'A'; PyREPL (TERM=vtcon) kept that undecodable byte and every
-        # later key stayed behind it (Y2-TERM b): a line typed after the Up must still run
+        again = amiga_text('RAM:c.txt')
+        detail = 'after Up+Return RAM:c.txt=%r; screen: %s' % (again, ' | '.join(recalled.splitlines()[-2:]))
+        if basic_repl:
+            # no terminal type: PyREPL refuses ("can't use pyrepl", no clear capability) and Python reads a
+            # cooked line; Up is then the console's own business (ROM CON: has no history for a Read, KingCON has)
+            res['history'] = ('observed', 'basic REPL (TERM unset), Up is the console\'s: ' + detail)
+        else:
+            res['history'] = ('pass' if again == 'c' else 'fail', detail)
+        # a line typed after the Up must still run (Y2-TERM b: the undecodable 0x9B once stayed in the buffer)
         typeline("open('RAM:u.txt','w').write('u')", wait=3)
         after = amiga_text('RAM:u.txt')
         res['afterup'] = ('pass' if after == 'u' else 'fail', 'a typed line after Up+Return: RAM:u.txt=%r' % after)
