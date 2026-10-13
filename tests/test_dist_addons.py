@@ -348,8 +348,9 @@ class NvimShell(unittest.TestCase):
     def test_sysinit_sets_shell_to_the_bases_vsh(self):
         vim = (ROOT / 'dist/addons/nvim/sysinit.vim').read_text()
         code = [l.strip() for l in vim.splitlines() if not l.strip().startswith('"')]
-        self.assertIn('set shell=UP-Term:bin/vsh', code)
-        self.assertIn('set shell=C:vsh', code)
+        self.assertIn('set shell=/UP-Term/bin/vsh', code)
+        self.assertIn('set shell=/c/vsh', code)
+        # ixemul's Unix form of the base's UP-Term:bin/vsh and C:vsh (nvim's executable('C:vsh') is 0 on the rig)
         # the base installs vsh in both places (dist/install.dos: Copy vsh UP-Term:bin/vsh, C:vsh)
         dos = (ROOT / 'dist/install.dos').read_text()
         self.assertIn('Copy vsh UP-Term:bin/vsh', dos)
@@ -357,7 +358,7 @@ class NvimShell(unittest.TestCase):
 
     def test_a_shell_the_user_named_is_not_replaced(self):
         vim = (ROOT / 'dist/addons/nvim/sysinit.vim').read_text()
-        self.assertIn("empty($SHELL)", vim)
+        self.assertIn("empty(getenv('SHELL'))", vim)
 
     def test_the_kit_stages_sysinit_where_nvim_reads_it(self):
         mk = (ROOT / 'Makefile').read_text()

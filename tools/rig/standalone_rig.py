@@ -109,7 +109,7 @@ SESSIONS = ['claude-rom', 'claude-king', 'pi-rom', 'pi-king'] + \
     ['%s-%s-%s-%s' % (p, k, l, t) for p in ('nvim', 'python') for k in CONSOLES for l in LIBS for t in TERMS]
 CHECKS = {'claude': ['start', 'conversation', 'keys', 'history', 'bash', 'screen', 'data'],
           'pi': ['start', 'conversation', 'keys', 'history', 'bash', 'screen', 'data'],
-          'nvim': ['start', 'edit', 'screen'],
+          'nvim': ['start', 'edit', 'screen', 'terminal'],
           'python': ['start', 'repl', 'ctrlc', 'history', 'screen']}
 
 
@@ -905,8 +905,26 @@ def nvim_session(kind, libs, term):
         res['edit'] = ('pass' if got == 'hello' and not alive('nvim') else 'fail',
                        'RAM:t.txt=%r after ihello<Esc>:wq, nvim still running=%s; screen: %s'
                        % (got, alive('nvim'), ' | '.join(after.splitlines()[-4:])))
+        # N1: nvim's default 'shell' is sh, which AmigaOS has not (E475 ... 'sh' is not executable); the kit's
+        # share/nvim/sysinit.vim names the base's vsh. Started without -u NONE, as a user does.
+        step('nvim :terminal')
+        # the base installs vsh in C: and UP-Term:bin; this rig has no base, so C: gets a copy for this check.
+        # Evidence is files (no screen read): the 'shell' nvim ended with, and the exit status of the job.
+        run('Copy VTC:vsh C:vsh CLONE')
+        run('Delete >NIL: RAM:n1.txt RAM:n1.sh RAM:n1.st QUIET')
+        put('VTC:sa/n1.vim', "call writefile([&shell], 'RAM:n1.sh')\n"
+                             "autocmd TermClose * call writefile([string(v:event.status)], 'RAM:n1.st')\n")
+        typeline('VTC:sa/nvim/bin/nvim -S VTC:sa/n1.vim', wait=10)
+        typeline(':terminal', wait=6)
+        tw.typ('i')
+        typeline('echo hi >RAM:n1.txt', wait=4)
+        typeline('exit', wait=6)
+        sh, hi, st = amiga_text('RAM:n1.sh'), amiga_text('RAM:n1.txt'), amiga_text('RAM:n1.st')
+        run('Delete >NIL: C:vsh QUIET')
+        res['terminal'] = ('pass' if sh and 'vsh' in sh and (hi or '').strip() == 'hi' and (st or '').strip() == '0' else 'fail',
+                           ":terminal: 'shell'=%r, echo hi wrote %r, job exit status %r" % (sh, hi, st))
     except StopIteration:
-        for ck in ('edit', 'screen'):
+        for ck in ('edit', 'screen', 'terminal'):
             res[ck] = ('fail', 'did not start')
     finally:
         if alive('nvim'):
