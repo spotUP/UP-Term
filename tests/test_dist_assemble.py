@@ -1,22 +1,18 @@
 #!/usr/bin/env python3
-"""tools/mkinstaller.py: the base's Install, install.dos and Uninstall, assembled from
-dist/ and dist/common/, are byte for byte the files they were before the shared parts
-moved out (copies in tests/data/kit-split/, dropped when the base changes in K2-4)."""
+"""tools/mkinstaller.py: the scripts of a package, assembled from dist/ and dist/common/.
+(K2-3 proved the base's assembled Install, install.dos and Uninstall byte for byte equal
+to the files before the shared parts moved out; K2-4 changed the base, so the copies went.)"""
 import pathlib, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import mkinstaller as mi
 
-DATA = ROOT / 'tests/data/kit-split'
-
 
 class Assemble(unittest.TestCase):
-    def test_the_base_scripts_are_byte_for_byte_the_ones_before_the_split(self):
+    def test_every_name_in_the_base_scripts_has_a_value(self):
         for name in ('Install.installer', 'install.dos', 'Uninstall'):
-            want = (DATA / name).read_bytes()
-            got = mi.build(ROOT / 'dist' / name, 'base').encode('latin-1')
-            self.assertEqual(got, want, name)
+            self.assertNotRegex(mi.build(ROOT / 'dist' / name, 'base'), r'@[A-Z0-9]+@', name)
 
     def test_the_templates_do_include_the_shared_parts(self):
         for name, frag in (('Install.installer', 'procs.installer'), ('install.dos', 'record.dos'),
@@ -50,6 +46,17 @@ class Assemble(unittest.TestCase):
         self.assertEqual(v['OPTS'], 'UP-Term:pkg/UP-Term-nvim/opts')
         self.assertEqual((v['BASEMAJOR'], v['BASEMINOR']), ('1', '0'))
         self.assertEqual(mi.read_values('base')['OPTS'], 'ENVARC:up-term/opts')
+        self.assertEqual(mi.read_values('nvim')['RECORDPRE'], 'none.dos')
+
+    def test_the_base_gets_the_add_ons_uninstall_blocks_and_search_lines_from_the_table(self):
+        v = mi.read_values('base')
+        for e in ('Claude', 'pi', 'nvim', 'python'):
+            self.assertIn('If EXISTS UP-Term:pkg/UP-Term-%s/Uninstall\n  Execute UP-Term:pkg/UP-Term-%s/Uninstall\nEndIf' % (e, e),
+                          v['ADDONUNINSTALL'])
+        # Files/Claude finds Files/ClaudeCode by substring: one search for both
+        self.assertEqual(v['HANDEDSEARCH'].count('Search >NIL: UP-Term:MANIFEST'), 4)
+        self.assertNotIn('Files/ClaudeCode', v['HANDEDSEARCH'])
+        self.assertEqual(mi.read_values('nvim')['ADDONUNINSTALL'], '')
 
     def test_an_unknown_package_stops_the_tool(self):
         with self.assertRaises(SystemExit):

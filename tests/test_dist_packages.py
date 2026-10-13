@@ -57,14 +57,16 @@ class Packages(unittest.TestCase):
         for r in ROWS:
             self.assertIn(r['ixemul'], ('-', '80'), r['id'])
 
-    def test_handed_paths_are_kit_paths_of_parts_txt(self):
+    def test_handed_paths_are_kit_paths_the_base_no_longer_lists(self):
+        """K2-2 had them in parts.txt (the single kit); the split moved them to the add-on archives"""
         kit_paths = {p for _, p, _ in PARTS}
         seen = set()
         for r in ROWS:
             if r['handed'] == '-':
                 continue
             for p in r['handed'].split(','):
-                self.assertIn(p, kit_paths, '%s: %s' % (r['id'], p))
+                self.assertTrue(p.startswith('Files/'), '%s: %s' % (r['id'], p))
+                self.assertNotIn(p, kit_paths, '%s: %s is still in the base parts.txt' % (r['id'], p))
                 self.assertNotIn(p, seen, 'handed twice: ' + p)
                 seen.add(p)
 
