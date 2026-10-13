@@ -226,6 +226,49 @@ class AmigaPiInstall(unittest.TestCase):
         self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/amiga-pi$")
 
 
+class AmiagentOption(unittest.TestCase):
+    """amiagent is an optional part of the kit's Install, off by default: one page that says what it
+    is and that it needs a TOKEN, the 68020 build (the 68000 one on a 68000/68010), never started by
+    Install, and removed (after being stopped) by Uninstall."""
+    def test_the_page_is_off_by_default_and_says_token(self):
+        a = INSTALLER.index('(set #agentpage')
+        page = INSTALLER[a:INSTALLER.index('(if (in #agentpage 0)', a)]
+        self.assertIn('(default 0)', page)
+        self.assertIn('amiagent', page)
+        self.assertRegex(page, r'(?s)\(choices "[^"]*TOKEN[^"]*"\)')
+        self.assertIn('starts it', page)
+        self.assertIn('(if (in #agentpage 0) (set #agent "AMIAGENT"))', INSTALLER)
+        self.assertIn('(set #agent "")', INSTALLER)
+
+    def test_the_cpu_picks_the_build_and_the_option_travels(self):
+        self.assertIn('"CPU000"', INSTALLER)
+        self.assertIn('(set #name "AMIAGENT" #val #agent) (P_OPT)', mi.build(ROOT / "dist/Install.installer", "base"))
+        blk = DOS[DOS.index('If "$optamiagent" EQ "AMIAGENT"'):DOS.index('; C:Claude, the native Claude client')]
+        self.assertIn('Copy net/amiagent-0.13.2/amiagent.020 UP-Term:bin/amiagent CLONE QUIET', blk)
+        self.assertLess(blk.index('If "$optcpu000" EQ "CPU000"'), blk.index('amiagent.020'))
+        self.assertIn('Copy net/amiagent-0.13.2/amiagent UP-Term:bin/amiagent CLONE QUIET', blk.split('Else')[0])
+        self.assertIn('Echo >ENVARC:up-term/amiagent', blk)
+        self.assertNotRegex(blk, r'(?im)^\s*(Run|UP-Term:bin/amiagent)\b', 'Install never starts it')
+
+    def test_the_files_are_in_the_vendored_drawer(self):
+        d = ROOT / "dist/net/amiagent-0.13.2"
+        for f in ("amiagent", "amiagent.020", "LICENSE", "SOURCE.txt"):
+            self.assertTrue((d / f).stat().st_size > 0, f)
+        self.assertIn("Apache License", (d / "LICENSE").read_text())
+        lic = (ROOT / "dist/LICENSES.txt").read_text(encoding="latin-1")
+        self.assertIn("amiagent 0.13.2", lic)
+        self.assertIn("Apache License 2.0", lic[lic.index("amiagent 0.13.2"):][:400])
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/net$")
+        self.assertIn("amiagent", (ROOT / "dist/README.txt").read_text(encoding="latin-1"))
+
+    def test_uninstall_stops_it_before_the_drawer_goes(self):
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        stop = un.index("If EXISTS ENVARC:up-term/amiagent")
+        self.assertIn("Break $upw C", un[stop:stop + 400])
+        self.assertLess(stop, un.index('Delete >NIL: "$updest" ALL QUIET'))
+        self.assertLess(stop, un.index("Delete >NIL: ENV:up-term ENVARC:up-term ALL QUIET"))
+
+
 class AmigaDosVariableNames(unittest.TestCase):
     """AmigaDOS ends a $name at the first character that is not a letter or a
     digit: $o_dest was the variable "o" (none), and the literal "$o_dest" went

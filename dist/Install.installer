@@ -95,6 +95,8 @@
 (set #nvim "")
 (set #unifont "")
 (set #emoji "")
+(set #agent "")
+(set #cpu000 (if (or (= (database "cpu") "68000") (= (database "cpu") "68010")) "CPU000" ""))
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 ; @include dist/common/amissl.installer
@@ -170,6 +172,27 @@
 (if (in #boot 0) (set #serial "SERIAL"))
 (if (in #boot 1) (set #wasabi "WASABI"))
 
+(set #agentpage
+    (askoptions
+        (prompt "Let Claude Code on another computer drive this\n"
+                "Amiga? Off unless you tick it.")
+        (help "amiagent 0.13.2 (Apache 2.0), the Amiga half of amimcp by "
+              "Thomas Luebker: Claude Code on another computer (the NAS, "
+              "a Mac) reads files, runs commands and uses the screen of "
+              "this Amiga through it.\n\n"
+              "amiagent runs ANY command a client that knows its TOKEN "
+              "sends, and the link is not encrypted. Always start it with "
+              "a TOKEN, only on a network you trust, and never forward its "
+              "port to the internet.\n\n"
+              "Install only copies it to UP-Term:bin/amiagent (the 68020 "
+              "build; the 68000 build on a 68000 or 68010) and never "
+              "starts it. Start it yourself:\n"
+              "  Run >NIL: UP-Term:bin/amiagent TOKEN=pick-a-secret QUIET\n"
+              "Uninstall stops and removes it. See tools/nas/README.md.")
+        (choices "Install amiagent (always run it with a TOKEN)")
+        (default 0)))
+(if (in #agentpage 0) (set #agent "AMIAGENT"))
+
 ; the page's default is the host and port of an existing
 ; ENVARC:Claude/remote: the kit's own Claude prints them (Claude REMOTE-ADDRESS,
 ; the parser C:Claude itself uses: comments skipped, port 2323 when left out)
@@ -243,7 +266,7 @@
 (set #kb-userland 8800)
 (set #kb-unifont (if #unifont 1800 0))
 (set #kb-emoji (if #emoji 500 0))
-(set #kb-tools (+ 900 (if #ssh 300 0) (if #bget 210 0) (if #curl 1200 0)))
+(set #kb-tools (+ 900 (if #ssh 300 0) (if #bget 210 0) (if #curl 1200 0) (if #agent 90 0)))
 (set #kb-python (if #python 15040 0))
 (set #kb-nvim (if #nvim 27500 0))
 ; fonts, unix, desktop, boot, libs, mount, console, record: their #kb below
@@ -297,6 +320,8 @@
         (set #nvim (getenv "UPTOPTNVIM"))
         (set #unifont (getenv "UPTOPTUNIFONT"))
         (set #emoji (getenv "UPTOPTEMOJI"))
+        (set #agent (getenv "UPTOPTAMIAGENT"))
+        (set #cpu000 (getenv "UPTOPTCPU000"))
         (set #cpu040 (getenv "UPTOPTCPU040"))
         (set #cpu060 (getenv "UPTOPTCPU060"))
         (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-userland 0 #kb-unifont 0 #kb-emoji 0
