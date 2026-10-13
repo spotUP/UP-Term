@@ -4,7 +4,7 @@ If NOT WARN
 EndIf
 ; this archive's block in S:User-Startup (";BEGIN Python3" to ";END Python3"). Three ways, in this order:
 ; 1. UP-Term is installed: its unstartup.sh takes out just this block, whatever else was added since;
-; 2. Install kept S:User-Startup as it was: it is put back when the file is still exactly that plus the block;
+; 2. Install kept S:User-Startup as it was: it is put back when the file is still as long as that plus the block;
 ; 3. neither: the block stays (it assigns only while SYS:Python3 exists, so it does nothing now) and
 ;    the message says where it is.
 Search >NIL: S:User-Startup ";BEGIN Python3"
@@ -32,11 +32,17 @@ If NOT WARN
     Echo >>T:User-Startup.python "  Assign Python3: SYS:Python3"
     Echo >>T:User-Startup.python "EndIf"
     Echo >>T:User-Startup.python ";END Python3"
-    Compare >NIL: T:User-Startup.python S:User-Startup
-    If NOT WARN
+    ; the same bytes? (no C:Compare in a stock Workbench: the two sizes, written as Set lines and read back)
+    List >T:User-Startup.size1 T:User-Startup.python LFORMAT "Set uspsize %L"
+    List >T:User-Startup.size2 S:User-Startup LFORMAT "Set usnsize %L"
+    Execute T:User-Startup.size1
+    Execute T:User-Startup.size2
+    If "$uspsize" EQ "$usnsize"
       Copy ENVARC:uppkg/Python3/User-Startup.before S:User-Startup CLONE QUIET
     EndIf
-    Delete >NIL: T:User-Startup.python QUIET
+    UnSet uspsize
+    UnSet usnsize
+    Delete >NIL: T:User-Startup.python T:User-Startup.size1 T:User-Startup.size2 QUIET
   EndIf
 EndIf
 Search >NIL: S:User-Startup ";BEGIN Python3"

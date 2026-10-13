@@ -45,6 +45,6 @@ USE
 UNINSTALL
   Double-click Uninstall (or Execute Uninstall). It removes SYS:Python3, the Python3: assign,
   this archive's block in S:User-Startup, and the ixemul.library as THE IXEMUL.LIBRARY RULE
-  says. S:User-Startup is put back as Install found it when it is still exactly that plus
+  says. S:User-Startup is put back as Install found it when it is still as long as that plus
   the block; otherwise the block stays (it does nothing without SYS:Python3) and Uninstall
   says so. Uninstall of UP-Term.lha leaves this program alone.
