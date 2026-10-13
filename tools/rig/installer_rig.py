@@ -669,7 +669,13 @@ def _migrate(case, ck):
     at = lambda p: "UP-Term:" + p.split("/", 1)[1]
     before = ir.Before()
     inst, base = read_installer()
-    if not installer_done(ck, inst, "migrate legacy", *installer_run("migrate-legacy", inst, "legacykit", "UP-Term", "AVERAGE", base)[:2], readable=False):
+    # The single kit with Python and Neovim ticked (its defaults) is 75 MB: more than the 3.1 rig's System volume
+    # has free (65 MB), so Neovim never got copied and the Installer's last requester was clicked away. The drawer
+    # goes to the host drawer VTC: as in the dest case; the new kits find it through the UP-Term: assign (Update).
+    legacy_dest = "VTC:Apps/UP-Term"
+    ir.run("MakeDir >NIL: VTC:Apps")
+    ir.run_slow("deletedest", 'Delete "%s" ALL QUIET' % legacy_dest)
+    if not installer_done(ck, inst, "migrate legacy", *installer_run("migrate-legacy", inst, "legacykit", "UP-Term", "AVERAGE", base, legacy_dest)[:2], readable=False):
         ir.run_long("rununinstall")
         return False, "; ".join(ck.failed)
     for f in ("UP-Term:nvim/bin/nvim", "UP-Term:Python3/bin/python3", "C:Claude", "C:amiga-pi"):
