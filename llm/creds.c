@@ -602,48 +602,57 @@ static int has_header(const char *p, long n, const char *name, long nl)
 /* the Anthropic SDK's ANTHROPIC_CUSTOM_HEADERS (pi 1.1.0 builds every anthropic-messages client with it; client.js
  * constructor): lines "Name: value", split at the first colon and trimmed, under the headers pi passes itself (models.json),
  * which win by name. This is the only way pi 1.1.0 sends anthropic-workspace-id with an API key. */
+static int is_ws(char ch)
+{
+    return ch == ' ' || ch == '\t' || ch == '\r';
+}
+
+/* one "Name: value" line env[0..len): trimmed, appended unless a header of that name is already among t's first base bytes */
+static void custom_line(const char *env, long len, jw *t, long base)
+{
+    long colon = 0, a = 0, b, e = len;
+    while (colon < len && env[colon] != ':')
+        colon++;
+    if (colon >= len)
+        return;
+    b = colon;
+    while (a < b && is_ws(env[a]))
+        a++;
+    while (b > a && is_ws(env[b - 1]))
+        b--;
+    colon++;
+    while (colon < e && is_ws(env[colon]))
+        colon++;
+    while (e > colon && is_ws(env[e - 1]))
+        e--;
+    if (b > a && !has_header(t->p ? t->p : "", base, env + a, b - a)) {
+        jw_raw(t, env + a, b - a);
+        jw_rawz(t, ": ");
+        jw_raw(t, env + colon, e - colon);
+        jw_rawz(t, "\r\n");
+    }
+}
+
 static void custom_headers(llm_cfg *c, const llm_model *m, jw *t)
 {
     char env[1024];
+    const char *pc;
     long n, i = 0, base;
     if (!m->api || strcmp(m->api, "anthropic-messages"))
         return;
-    {   /* the SDK reads process.env itself: a credential's env does not reach it */
-        const char *pc = c->cenv;
-        c->cenv = 0;
-        n = env_into(c, "ANTHROPIC_CUSTOM_HEADERS", env, sizeof(env), 0);
-        c->cenv = pc;
-    }
+    /* the SDK reads process.env itself: a credential's env does not reach it */
+    pc = c->cenv;
+    c->cenv = 0;
+    n = env_into(c, "ANTHROPIC_CUSTOM_HEADERS", env, sizeof(env), 0);
+    c->cenv = pc;
     if (n <= 0)
         return;
     base = t->n;
     while (i < n) {
-        long j = i, colon = -1, a, b, e;
-        while (j < n && env[j] != '\n') {
-            if (colon < 0 && env[j] == ':')
-                colon = j;
+        long j = i;
+        while (j < n && env[j] != '\n')
             j++;
-        }
-        e = j;
-        if (colon >= 0) {
-            a = i;
-            b = colon;
-            while (a < b && (env[a] == ' ' || env[a] == '\t' || env[a] == '\r'))
-                a++;
-            while (b > a && (env[b - 1] == ' ' || env[b - 1] == '\t' || env[b - 1] == '\r'))
-                b--;
-            colon++;
-            while (colon < e && (env[colon] == ' ' || env[colon] == '\t' || env[colon] == '\r'))
-                colon++;
-            while (e > colon && (env[e - 1] == ' ' || env[e - 1] == '\t' || env[e - 1] == '\r'))
-                e--;
-            if (b > a && !has_header(t->p ? t->p : "", base, env + a, b - a)) {
-                jw_raw(t, env + a, b - a);
-                jw_rawz(t, ": ");
-                jw_raw(t, env + colon, e - colon);
-                jw_rawz(t, "\r\n");
-            }
-        }
+        custom_line(env + i, j - i, t, base);
         i = j + 1;
     }
 }
