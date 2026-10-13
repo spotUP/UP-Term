@@ -520,15 +520,18 @@ static void status_row(cl_tui *t)
 /* the most matches C:Claude's menu shows; pi's look shows (and scrolls) all of them */
 #define SLASH_MAX(t) ((t)->look == TUI_LOOK_PI ? (t)->ncmds : 8)
 
-/* the slash commands matching the box's text: their indexes (t->smatch, which the caller must not keep past the next call) */
-static int slash_matches(cl_tui *t, int **out, int max)
+/* the slash commands matching the box's text: their indexes (t->smatch, which the caller must not keep past the next call);
+ * *from the offset in the box where the text begins that a chosen command replaces, up to the cursor (0 without a filter hook:
+ * the whole box) */
+static int slash_matches_at(cl_tui *t, int **out, int max, long *from)
 {
     int i, n = 0;
     const char *s = t->ed.b;
     long len = t->ed.n;
-    if (t->modal || t->search || t->box != BOX_PROMPT || !t->cmds || len < 1 || s[0] != '/' || t->mclosed ||
-        memchr(s, ' ', (size_t)len) ||
-        memchr(s, '\n', (size_t)len))
+    *from = 0;
+    if (t->modal || t->search || t->box != BOX_PROMPT || !t->cmds || len < 1 || t->mclosed)
+        return 0;
+    if (!t->slash_filter && (s[0] != '/' || memchr(s, ' ', (size_t)len) || memchr(s, '\n', (size_t)len)))
         return 0;
     if (t->ncmds > t->smatch_cap) {
         int *g = (int *)realloc(t->smatch, sizeof(int) * (size_t)t->ncmds);
@@ -539,11 +542,17 @@ static int slash_matches(cl_tui *t, int **out, int max)
     }
     *out = t->smatch;
     if (t->slash_filter)
-        return t->slash_filter(t->slash_u, t->cmds, t->ncmds, s, len, t->smatch);
+        return t->slash_filter(t->slash_u, t->cmds, t->ncmds, s, len, t->ed.cur, from, t->smatch);
     for (i = 0; i < t->ncmds && n < max; i++)
         if (!strncmp(t->cmds[i].name, s, (size_t)len))
             t->smatch[n++] = i;
     return n;
+}
+
+static int slash_matches(cl_tui *t, int **out, int max)
+{
+    long from;
+    return slash_matches_at(t, out, max, &from);
 }
 
 static void slash_rows(cl_tui *t, int *idx, int n)
@@ -2267,13 +2276,24 @@ static void tick(cl_tui *t)
     }
 }
 
-/* the slash menu's chosen command written into the box; 1 when it took */
+/* the slash menu's chosen command written into the box in place of the text before the cursor (pi's applyCompletion:
+ * what follows the cursor stays); 1 when it took */
 static int complete(cl_tui *t)
 {
-    int *idx = 0, n = slash_matches(t, &idx, SLASH_MAX(t));
+    int *idx = 0, n;
+    long from, cur;
+    const char *name;
+    n = slash_matches_at(t, &idx, SLASH_MAX(t), &from);
     if (!n)
         return 0;
-    ed_set(&t->ed, t->cmds[idx[t->msel < n ? t->msel : 0]].name);
+    name = t->cmds[idx[t->msel < n ? t->msel : 0]].name;
+    cur = t->ed.cur;
+    if (!t->slash_filter || (from == 0 && cur == t->ed.n)) {
+        ed_set(&t->ed, name);
+        return 1;
+    }
+    ed_cut(&t->ed, from, cur, 0);
+    ed_insert(&t->ed, name, (long)strlen(name));
     return 1;
 }
 
@@ -2677,6 +2697,13 @@ static void edit(cl_tui *t, cl_key *k)
         t->mclosed = 0;
         t->msel = 0;
         t->cclosed = 0;
+    }
+    if (t->slash_filter && (t->ed.n != n0 || t->ed.cur != c0)) {
+        /* pi's menu is open or closed (editor.ts updateAutocomplete, cancelAutocomplete): typing opens it, a change that leaves
+         * nothing to list closes it, and a cursor move alone does not open a closed one */
+        int *idx = 0;
+        if (!t->mclosed && !slash_matches(t, &idx, SLASH_MAX(t)))
+            t->mclosed = 1;
     }
     if (t->ed.n != n0 || t->ed.cur != c0)
         comp_live(t);
