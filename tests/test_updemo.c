@@ -318,6 +318,87 @@ static void a_window_made_too_small_ends_the_tour(void)
     vt_free(t);
 }
 
+/* ---- what a frame costs the terminal (ledger S2) ---- */
+
+/* A console like ours: the output is drawn when the program looks for a
+ * key (WaitForChar draws what is pending first), the drawing takes
+ * draw_ticks, and a wait of w ms then lasts w ms. */
+static long draw_ticks, colours_told;
+static int drawn;
+
+static void out_slow(void *user, const char *buf, long len)
+{
+    (void)user;
+    vt_write(t, (const unsigned char *)buf, len);
+    drawn = 0;
+}
+
+static int key_slow(void *user, int wait_ms)
+{
+    (void)user;
+    if (!drawn) {
+        now += draw_ticks;
+        drawn = 1;
+    }
+    now += wait_ms / 20;
+    return -1;
+}
+
+static void told(void *user)
+{
+    (void)user;
+    colours_told++;
+}
+
+static long fps_of(int s)
+{
+    long frames, tk;
+    updemo_stats(s, &frames, &tk);
+    return tk > 0 ? frames * 50 / tk : 0;
+}
+
+/* The 25 frames a second hold when a frame takes the terminal 20 ms to
+ * draw: the frame's time is read after the drawing, not before it, so
+ * the drawing is part of the 40 ms and not added to them (plasma came at
+ * 12 frames a second on a 68060 that draws one in 22 ms). */
+static void a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second(void)
+{
+    updemo_io slow = { out_slow, key_slow, ticks, 0 };
+    start(80, 24);
+    draw_ticks = 1;
+    CHECK_INT(updemo_run(&slow, 80, 24, 4, 100), 0); /* plasma onwards, two seconds each */
+    CHECK_INT(fps_of(4), 25);                         /* plasma */
+    CHECK_INT(fps_of(9), 25);                         /* palette cycling */
+    vt_free(t);
+    start(80, 24);
+    draw_ticks = 3; /* 60 ms a frame: as fast as the terminal draws, no wait on top */
+    CHECK_INT(updemo_run(&slow, 80, 24, 4, 100), 0);
+    CHECK_INT(fps_of(4), 16);
+    vt_free(t);
+}
+
+/* Palette cycling sets 32 colours a frame (OSC 4 each): the renderer
+ * hears of it once a frame, not 32 times -- each time it gave its pens
+ * back and obtained them again. */
+static void palette_cycling_tells_the_renderer_once_a_frame(void)
+{
+    static vt_callbacks cb;
+    long frames, tk;
+    cb.colors = told;
+    t = vt_new(80, 24, 100, &cb, 0);
+    now = bytes = 0;
+    next_key = -1;
+    inject = 0;
+    needle = 0;
+    colours_told = 0;
+    CHECK_INT(updemo_run(&io, 80, 24, 9, 40), 0); /* palette cycling, then the end */
+    updemo_stats(9, &frames, &tk);
+    CHECK(frames >= 10);
+    CHECK(colours_told >= frames);     /* every frame's colours reached it */
+    CHECK(colours_told <= frames + 2); /* once a frame, and the OSC 104 after each scene */
+    vt_free(t);
+}
+
 void suite_updemo(void)
 {
     CHECK_INT(updemo_scenes(), 11);
@@ -332,4 +413,6 @@ void suite_updemo(void)
     the_mouse_scene_shows_a_click();
     the_resize_scene_leaves_the_width_as_it_was();
     a_window_made_too_small_ends_the_tour();
+    a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second();
+    palette_cycling_tells_the_renderer_once_a_frame();
 }

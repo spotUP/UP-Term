@@ -29,6 +29,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | terminfo proof: recapture with TERM=vtcon, check | `make test-terminfo` |
 | Amiga build with the handler trace (RAM:vtcon.log) | `make amiga DEBUG=1` |
 | Reachability test on the rig (V3) | `make test-rig` (rig up first) |
+| UPDemo BENCH on the rig, frames a second per scene, UP-Term against CCON in the same window (S2; recorded in build/rig/updemo/<label>-<tag>.txt, recorded runs skipped, `--force` again) | `python3 tools/rig/updemo_rig.py [upterm|ccon128b9|ccon128b10 ...] [--tag T] [--force]` (rig up, `rig.py install` after `make amiga`; CCON's handlers and mount files in VTC:) |
 | 256-colour cube on the rig, every cell vs the xterm palette | `python3 tools/rig/cube_rig.py` (rig up; handler + vsh in VTC:, kit not installed) |
 | GNU screen on the rig: 256 colours inside screen, colours done in 20 s | `python3 tools/rig/screen_rig.py` (rig up; VTC:screen from ~/Code/screen-amiga/src, kit not installed) |
 | Userland ports on the rig: each package's check cases through vsh, diffed against the Mac's outputs (0.5; verdicts in build/rig/userland/, passed ones skipped) | `python3 tools/rig/userland_rig.py [--only <pkg> [--case <name>]] [--failed] [--force]` (rig up; `make build/amiga/vsh`; `make <pkg>` and `make host-<pkg>` in `~/Code/upterm-ports`, `UPTERM_PORTS=` to move it) |

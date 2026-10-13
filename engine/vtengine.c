@@ -232,6 +232,13 @@ struct vt_term {
 
     /* per-row dirty spans, flushed at the end of each write */
     int dirty;
+    /* The palette or the default colours changed (colors_changed) and the
+     * colours callback has not been told yet: it is told once, when the
+     * write's bytes are all read (or before a flush draws), not once for
+     * every OSC 4 in it -- each call gives the renderer's pens back and
+     * obtains them again (UPDemo's palette cycling: 32 a frame, 10 ms of
+     * a frame's 113 on a 68060; ledger S2). in_feed: vt_feed is reading. */
+    int colors_pending, in_feed;
     int full_y0, full_y1;      /* rows damaged whole since the last flush (damage_rows) */
     /* A scroll the renderer has not been told about yet: the pixels are
      * pend_n rows behind the grid in [pend_top, pend_bot) (negative: down).
@@ -714,11 +721,22 @@ static void mark_rows(vt_term *t, int y0, int y1)
         mark(t, 0, y, t->cols);
 }
 
+/* The colours callback, once for all the changes since it was last told. */
+static void colors_tell(vt_term *t)
+{
+    if (!t->colors_pending)
+        return;
+    t->colors_pending = 0;
+    if (t->cb.colors)
+        t->cb.colors(t->user);
+}
+
 /* Tell the renderer about everything marked, one call per run of rows with
  * the same span. */
 static void flush(vt_term *t)
 {
     int y, y0;
+    colors_tell(t); /* the pens first: the damage below is drawn with them */
     if (t->pend_n) {
         int n = t->pend_n;
         t->pend_n = 0;
@@ -4058,8 +4076,9 @@ static void scheme_check(vt_term *t)
 static void colors_changed(vt_term *t)
 {
     mark_rows(t, 0, t->rows);
-    if (t->cb.colors)
-        t->cb.colors(t->user);
+    t->colors_pending = 1;
+    if (!t->in_feed)
+        colors_tell(t); /* a host call (vt_set_palette): at once */
     scheme_check(t);
 }
 
@@ -6373,6 +6392,7 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
      * the colours are the default ones (ASM1: the five tests a run cost 17
      * instructions, twice a line) */
     int text = -1;
+    t->in_feed++;
     while (i < len) {
         vt_u8 b = buf[i];
         if (b != 0x09)
@@ -6426,6 +6446,8 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
         text = -1;
         i++;
     }
+    if (!--t->in_feed)
+        colors_tell(t); /* the write's palette changes, told once */
 }
 
 /* ---- reflow (vt_set_reflow) ---------------------------------------------- */
