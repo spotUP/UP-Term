@@ -52,6 +52,12 @@ extern int gf_pens_held;
  * Draw write the planes under the RastPort's write mask; gf_pixel reads the pen back from them. Call after
  * gf_open, before vr_init. */
 void gf_planar(int depth, int left, int top);
+/* The window's borders (W-T10): BorderLeft/Top/Right/Bottom set, their pixels marked GF_BORDER in the canvas and
+ * the last pen (every plane set) in the planes; gf_border_hits counts those changed since -- the renderer must
+ * draw only inside the borders. Call after gf_open (and gf_planar), before vr_init. */
+#define GF_BORDER 0x2000
+void gf_borders(int l, int t, int r, int b);
+int gf_border_hits(void);
 /* Another window over part of this one (a second ClipRect): the layer must clip, nothing may write the
  * planes directly. */
 void gf_cover(int on);

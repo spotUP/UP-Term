@@ -944,6 +944,51 @@ static void a_half_block_of_two_colours_sharing_a_pen_is_drawn_in_that_pen(void)
     test_npal = 0;
 }
 
+/* ---- W-T10: nothing drawn over the window's borders ---- */
+
+/* W-T10 (owner: "something black draws over the right shell window border"; rig 1, UPDemo's headings): a window
+ * with borders whose inner width is not a whole number of cells -- 21 columns and 5 pixels over -- shows double-size
+ * rows (whose last cell is half in the grid: the engine gives such a row (21 + 1) / 2 cells), the cursor on that half
+ * cell, half blocks, dithered colours and text up to the last column; drawn in place and as a synchronized frame, on
+ * a chunky screen and a planar one at two bit phases. No pixel of the borders may change: the double-size row's last
+ * cell was filled and drawn 2 cells wide, 3 pixels past the inner box into the right border. */
+static void drawing_never_touches_the_window_borders_at_an_odd_inner_width(void)
+{
+    static const char frame[] =
+        "\x1b[H\x1b#6ABCDEFGHIJK"
+        "\x1b[2;1H\x1b#3Heading line\x1b[3;1H\x1b#4Heading line"
+        "\x1b[4;1H\x1b[38;5;196;48;5;21m" UPPER UPPER UPPER UPPER UPPER UPPER UPPER UPPER UPPER UPPER UPPER UPPER
+        UPPER UPPER UPPER UPPER UPPER UPPER UPPER UPPER UPPER
+        "\x1b[5;1H\x1b[48;5;172m                     \x1b[m"
+        "\x1b[6;1H\x1b[4mtext to the last colum\x1b[m"
+        "\x1b[7;1H\x1b#6\x1b[44mblue double row\x1b[m";
+    static const int depths[] = { 0, 4, 4 }, lefts[] = { 0, 0, 3 };
+    vt_callbacks cb;
+    int m, k;
+    for (m = 0; m < 3; m++)
+        for (k = 0; k < 2; k++) {
+            memset(&cb, 0, sizeof(cb));
+            cb.damage = cb_damage;
+            cb.scroll = cb_scroll;
+            /* borders 4, 11, 18, 2; inside 173 x 67: 21 x 8 cells and 5 x 3 pixels over */
+            gf_open(4 + 173 + 18, 11 + 67 + 2, CW, CH, 6);
+            if (depths[m]) {
+                gf_planar(depths[m], lefts[m], 10);
+                gf_palette(wb16, 16);
+            }
+            gf_borders(4, 11, 18, 2);
+            term = vt_new(21, 8, 100, &cb, &rn);
+            vt_set_personality(term, VT_XTERM);
+            vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+            vr_redraw(&rn);
+            pass(k ? synced(frame) : frame);
+            pass(k ? synced("\x1b[1;11H") : "\x1b[1;11H"); /* the cursor on the double-size row's half cell */
+            pass("\x1b[7;11H");
+            CHECK_INT(gf_border_hits(), 0);
+            close_term();
+        }
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
@@ -964,6 +1009,7 @@ int main(void)
     a_dithered_frame_composed_and_drawn_in_place_has_the_same_pixels();
     screens_of_more_than_16_pens_are_not_dithered();
     a_half_block_of_two_colours_sharing_a_pen_is_drawn_in_that_pen();
+    drawing_never_touches_the_window_borders_at_an_odd_inner_width();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }
