@@ -7,6 +7,7 @@ keep the kit's own in VTC:kit-orig, bring it back on `kit-restore`, and touch no
 put a copy (and never ask for a volume that is not there).
 """
 import pathlib
+import shlex
 import sys
 import tempfile
 
@@ -49,7 +50,7 @@ def boot(files, assigns=None):
 
     stack, warn = [True], False
     for l in (l.strip() for l in rig.GO.splitlines()):
-        w = l.split()
+        w = [] if l.startswith((";", "Echo")) else shlex.split(l)
         if not w or w[0].startswith(";") or w[0] in ("FailAt", "Echo"):
             continue
         live = all(stack)
@@ -104,6 +105,18 @@ check(f2["vtc:kit-orig/l-vtcon-handler"] == "kit-handler", "second boot: the kit
 f3, _ = boot({**f2, "VTC:kit-restore": ""}, {"UP-TERM": "SYS:UP-Term"})
 check(f3["l:vtcon-handler"] == "kit-handler", "kit-restore: L:vtcon-handler is the kit's again")
 check(f3["l:pty-handler"] == "kit-pty", "kit-restore: L:pty-handler is the kit's again")
+
+# W-R3: the Prefs editor is C:"UP-Term Prefs" (the handler's menu runs that name); a kit's copy
+# is refreshed from VTC:upprefs, and the kit's own is kept for kit-restore
+PK = {"C:UP-Term Prefs": "kit-prefs"}
+fp, reqp = boot({**KIT, **PK, **BUILD, "VTC:upprefs": "new-prefs"}, {"UP-TERM": "SYS:UP-Term"})
+check(fp["c:up-term prefs"] == "new-prefs", "kit: C:UP-Term Prefs is the VTC: build")
+check(fp["vtc:kit-orig/c-up-term-prefs"] == "kit-prefs", "kit: the kit's Prefs editor is kept in VTC:kit-orig")
+fp2, _ = boot({**fp, "VTC:kit-restore": ""}, {"UP-TERM": "SYS:UP-Term"})
+check(fp2["c:up-term prefs"] == "kit-prefs", "kit-restore: the kit's Prefs editor is back")
+fp3, reqp3 = boot({**BUILD, "VTC:upprefs": "new-prefs"})
+check(fp3.get("c:up-term prefs") == "new-prefs", "no kit: C:UP-Term Prefs is installed from VTC:upprefs")
+check(not reqp3, "no kit, Prefs: the boot asks for no volume (asked for %s)" % reqp3)
 
 # no kit: nothing is put in SYS: and no volume is asked for (UP-Term: is not assigned)
 f4, req4 = boot({**BUILD})
