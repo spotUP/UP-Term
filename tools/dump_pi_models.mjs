@@ -22,6 +22,9 @@ const subset = {
 		"eu.anthropic.claude-sonnet-5-5", "amazon.nova-pro-v1:0", "global.openai.gpt-5.6-sol", "deepseek.v3.2",
 	],
 };
+// OpenRouter (amiga-pi L2: /login "Sign in with OpenRouter" gives a plain API key): pi's default model and a few openai-completions
+// models from the big vendors; pi lists 401, the catalog here is a handful
+subset.openrouter = ["moonshotai/kimi-k2.6", "openai/gpt-5.5", "google/gemini-3.1-pro-preview", "deepseek/deepseek-v3.2", "x-ai/grok-4.7"];
 // the subscription providers (amiga-pi phase O, /login): every model pi offers for them, so what a login unlocks is what pi shows
 for (const p of ["openai-codex", "github-copilot", "kimi-coding", "xai", "meta"]) subset[p] = Object.keys(MODELS[p]);
 const out = { pi: pkg.name + "@" + pkg.version, providers: {} };
