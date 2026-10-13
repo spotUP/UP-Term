@@ -4,7 +4,7 @@ sleep 2 &
 sleep 2 &
 sleep 2 &
 jobs | sed "s/[0-9][0-9][0-9][0-9]*/PID/" | sed -n l
-jobs -l | sed 's/[0-9]\{3,\}/PID/' | sed "s/[0-9][0-9][0-9][0-9]*/PID/" | sed -n l
+jobs -l | sed 's/ *[0-9]\{3,\}/ PID/' | sed "s/[0-9][0-9][0-9][0-9]*/PID/" | sed -n l
 jobs -p | sed 's/[0-9]\{3,\}/PID/'
 jobs -r | sed "s/[0-9][0-9][0-9][0-9]*/PID/" | sed -n l
 jobs -s | sed "s/[0-9][0-9][0-9][0-9]*/PID/" | sed -n l
