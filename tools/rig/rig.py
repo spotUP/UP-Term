@@ -93,13 +93,19 @@ C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
 # LIBS: as the rig runs: the patched ixemul first, then the system's (with
-# Classes and MUI) and ncurses. The boot script uses it, and install_rig.py
-# puts it back after testing Install/Uninstall against the stock library.
+# Classes and MUI), ncurses and AmiSSL's drawer. The boot script uses it, and
+# install_rig.py puts it back after testing Install/Uninstall against the
+# stock library. AmiSSL: S:User-Startup adds AmiSSL:Libs before go runs, and
+# go's first line here assigns LIBS: anew, so without the last line
+# amisslmaster.library was not found and every https request failed
+# (amiga-pi: "Connection error.", 2026-10-13; tools/test_rig_libs.py). By its
+# volume, not AmiSSL:, which a rig image without AmiSSL would ask for.
 RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:Libs ADD",
             "Assign >NIL: LIBS: DH0:Classes ADD",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
-            "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD"]
+            "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",
+            "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD"]
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please

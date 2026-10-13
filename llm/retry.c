@@ -570,6 +570,13 @@ static int request_run(llm_req *q)
             if (rc != LP_CONNECT && rc != LP_SEND && c.err && *c.err) {
                 cl_cat(err, ": ", sizeof(err));
                 cl_cat(err, c.err, sizeof(err));
+            } else if (c.err && *c.err && q->h.log) {
+                /* the reason pi's text leaves out (no route, no AmiSSL, the certificate) goes to the debug log */
+                q->h.log(q->h.u, "llm: ", 5);
+                q->h.log(q->h.u, err, (long)strlen(err));
+                q->h.log(q->h.u, ": ", 2);
+                q->h.log(q->h.u, c.err, (long)strlen(c.err));
+                q->h.log(q->h.u, "\n", 1);
             }
             retry = rc != LP_BADHTTP && !g.content;
         }
