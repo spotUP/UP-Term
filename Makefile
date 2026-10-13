@@ -59,6 +59,8 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_addons.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_userdata.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_assemble.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
@@ -852,6 +854,10 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c handler/pty_name.h handler/han
 # The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
 # Installer script and its icon), Uninstall, README.txt, LICENSES.txt and Files/ (the rest).
 KIT := $(BUILD)/dist/UP-Term
+KIT_claude := $(BUILD)/dist/UP-Term-Claude
+KIT_pi := $(BUILD)/dist/UP-Term-pi
+KIT_nvim := $(BUILD)/dist/UP-Term-nvim
+KIT_python := $(BUILD)/dist/UP-Term-python
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
@@ -871,12 +877,13 @@ AMIGA_PI_BIN := $(AMIGA_PI)/build/amiga/amiga-pi
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-src
+dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-src
 
+# every archive of dist/packages.txt, and the source archive
 # the base archive build/UP-Term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
 dist-base: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
-	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
+	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
 	cp dist/screenrc $(KIT)/Files/screenrc
@@ -889,8 +896,6 @@ dist-base: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUI
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
-	# install.dos, Install and Uninstall: the templates in dist/ with dist/common/'s shared parts (tools/mkinstaller.py)
-	python3 tools/mkinstaller.py dist/install.dos base > $(KIT)/Files/install.dos
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/vshrc \
 	  dist/up-term.conf $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
@@ -915,23 +920,36 @@ dist-base: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUI
 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
 	cp $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
-	# the top drawer: Install (the Installer script), Uninstall, README, Files
-	python3 tools/mkinstaller.py dist/Install.installer base > $(KIT)/Install
-	python3 tools/mkicon.py $(KIT)/Install.info --tool Installer --plain \
-	  --tooltype APPNAME=UP-Term --tooltype MINUSER=AVERAGE --tooltype DEFUSER=AVERAGE
-	python3 tools/mkinstaller.py dist/Uninstall base > $(KIT)/Uninstall
-	cp dist/README.txt dist/LICENSES.txt $(KIT)/
-	sh tools/mkversions.sh $(UPTERM_ROOT) > $(KIT)/Files/VERSIONS
-	# the base's version, which the add-on archives' Install checks (a $$VER: line the Version command reads)
-	printf '$$VER: UP-Term %s (%s)\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" > $(KIT)/Files/UP-Term.version
-	python3 tools/mkicon.py $(KIT)/Uninstall.info --tool C:IconX --plain
-	# every file's mode by one rule (lha carries it to the Amiga as protection bits: a file
-	# without u+w cannot be replaced by the next Install or an Update); stops on one left without u+w
-	python3 tools/kitmodes.py $(KIT)
-	# last: every file of the kit, its part and CRC, for the Installer's update (dist/parts.txt)
-	python3 tools/mkmanifest.py $(KIT) --package base
-	cd $(BUILD)/dist && rm -f ../UP-Term.lha && lha -aq ../UP-Term.lha UP-Term
+	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
+	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)
+	python3 tools/mkkit.py base
 	@ls -la $(BUILD)/UP-Term.lha
+
+# The add-on archives (dist/packages.txt): each stages its payload into build/dist/<archive>/Files and
+# tools/mkkit.py does the rest. They need the base (UP-Term.lha) installed first on the Amiga.
+ADDON_STAGE = rm -rf $(BUILD)/dist/$(call pkg,$(1),archive) && mkdir -p $(BUILD)/dist/$(call pkg,$(1),archive)/Files \
+	&& cp $(BUILD)/amiga/upupdate $(BUILD)/dist/$(call pkg,$(1),archive)/Files/
+pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
+.PHONY: dist-claude dist-pi dist-nvim dist-python
+dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,claude)
+	cp $(BUILD)/amiga/Claude dist/ClaudeCode $(KIT_claude)/Files/
+	cp dist/ClaudeCode $(KIT_claude)/ClaudeCode
+	python3 tools/mkicon.py $(KIT_claude)/ClaudeCode.info --tool C:IconX \
+	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE" --tooltype DELAY=0
+	python3 tools/mkkit.py claude
+dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,pi)
+	cp $(AMIGA_PI_BIN) $(KIT_pi)/Files/amiga-pi
+	python3 tools/mkkit.py pi
+dist-nvim: $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,nvim)
+	cp -R $(NVIM_DIST) $(KIT_nvim)/Files/nvim
+	python3 tools/mkkit.py nvim
+dist-python: $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,python)
+	cp -R $(PYTHON_DIST) $(KIT_python)/Files/python3
+	python3 tools/mkkit.py python
 
 # build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
@@ -942,16 +960,29 @@ dist-src:
 	cp dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/COPYING $(BUILD)/dist-src/coreutils-5.2.1/
 	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/UP-Term-src.lha && lha -aq $(CURDIR)/$(BUILD)/UP-Term-src.lha userland-src
 	cd $(BUILD)/dist-src && lha -aq ../UP-Term-src.lha coreutils-5.2.1
+	python3 tools/mkreadme.py src
 	@ls -la $(BUILD)/UP-Term-src.lha
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
 dist-check:
-	python3 tests/test_dist_versions.py
 	python3 tests/test_dist_installer.py
-	python3 tests/test_dist_manifest.py
-	python3 tests/test_dist_modes.py
+	python3 tests/test_dist_addons.py
+	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py
+	@set -e; for a in $$(python3 tools/pkgs.py archives); do \
+	  test -s $(BUILD)/$$a.lha || { echo "dist-check: $(BUILD)/$$a.lha missing: make dist"; exit 1; }; \
+	  lha l $(BUILD)/$$a.lha > $(BUILD)/$$a.lst; \
+	  for f in Install Uninstall Files/VERSIONS Files/MANIFEST Files/install.dos; do \
+	    grep -q " $$a/$$f$$" $(BUILD)/$$a.lst || { echo "dist-check: $$a.lha lacks $$a/$$f"; exit 1; }; done; \
+	  test -s $(BUILD)/$$a.readme || { echo "dist-check: $(BUILD)/$$a.readme missing"; exit 1; }; \
+	  echo "dist-check: $$a"; \
+	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_versions.py; \
+	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_manifest.py; \
+	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_modes.py; \
+	done
+	@test -s $(BUILD)/UP-Term-src.lha || { echo "dist-check: $(BUILD)/UP-Term-src.lha missing: make dist"; exit 1; }
+	@lha l $(BUILD)/UP-Term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: UP-Term-src.lha lacks the coreutils source"; exit 1; }
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga

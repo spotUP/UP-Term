@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The kit's Files/MANIFEST (tools/mkmanifest.py) and dist/parts.txt, on the host: the
 lines the Installer's update compares (installer update plan, U1 U2)."""
-import pathlib, re, sys, tempfile, unittest, zlib
+import os, pathlib, re, sys, tempfile, unittest, zlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import mkmanifest as mm
@@ -74,10 +74,33 @@ class HandedLines(unittest.TestCase):
                 self.assertFalse(path == h or path.startswith(h + '/'), "%s is handed over but the base kit lists %s" % (h, path))
 
 
-@unittest.skipUnless((ROOT / "build/dist/UP-Term/Files/MANIFEST").exists(), "no built kit (make dist)")
-class BuiltBase(unittest.TestCase):
-    def test_the_built_base_holds_no_handed_file_and_its_manifest_names_the_paths(self):
-        kit = ROOT / "build/dist/UP-Term"
+# KIT=build/dist/<archive>: make dist-check runs this once for each archive
+KITDIR = pathlib.Path(os.environ.get("KIT", ROOT / "build/dist/UP-Term"))
+if not KITDIR.is_absolute():
+    KITDIR = ROOT / KITDIR
+
+
+@unittest.skipUnless((KITDIR / "Files/MANIFEST").exists(), "no built kit (make dist)")
+class BuiltKit(unittest.TestCase):
+    def test_every_file_of_the_archive_is_in_its_manifest_with_its_crc(self):
+        lines = {l.split(" ", 3)[3]: l.split(" ", 3) for l in (KITDIR / "Files/MANIFEST").read_text(encoding="latin-1").splitlines()}
+        for f in KITDIR.rglob("*"):
+            rel = f.relative_to(KITDIR).as_posix()
+            if f.is_file() and rel != "Files/MANIFEST":
+                self.assertIn(rel, lines, rel)
+                self.assertEqual(int(lines[rel][2], 16), zlib.crc32(f.read_bytes()), rel)
+
+    def test_the_manifest_has_a_line_for_every_part_of_install_dos(self):
+        dos = (KITDIR / "Files/install.dos").read_text(encoding="latin-1")
+        text = (KITDIR / "Files/MANIFEST").read_text(encoding="latin-1")
+        for name, _ in mm.sections(dos):
+            self.assertIn(" install.dos#%s\n" % name, text)
+
+    def test_only_the_base_hands_paths_over_and_holds_none_of_them(self):
+        if KITDIR.name != "UP-Term":
+            self.assertNotIn("handed#", (KITDIR / "Files/MANIFEST").read_text(encoding="latin-1"))
+            self.skipTest("an add-on")
+        kit = KITDIR
         lines = (kit / "Files/MANIFEST").read_text(encoding="latin-1").splitlines()
         for h in mm.handed_paths('base'):
             self.assertFalse((kit / h).exists(), h)
