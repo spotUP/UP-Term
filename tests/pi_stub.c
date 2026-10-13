@@ -107,6 +107,11 @@ static int s_open(void *u, const char *host, int port, int tls)
     (void)port;
     (void)tls;
     ps.opens++;
+    if (ps.refuse > 0) {
+        ps.refuse--;
+        ps.refused++;
+        return NET_ERROR;
+    }
     return 0;
 }
 
@@ -168,7 +173,7 @@ static void s_close(void *u)
 static const char *s_err(void *u)
 {
     (void)u;
-    return "stub";
+    return ps.refused ? "cannot connect to 127.0.0.1: connection refused" : "stub";
 }
 
 int ps_poll(void *u)

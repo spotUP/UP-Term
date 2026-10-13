@@ -213,6 +213,7 @@ int llm_request(llm_req *q)
     }
     jw_init(&body);
     jw_init(&errbody);
+    sse_init(&ss, 0, 0);            /* freed after every attempt, also one that never reached llm_post's sse_init */
     if (q->be->body(q->ctx, &body) || body.oom) {
         jw_free(&body);
         final_error(q->sink, LS_ERROR, "body", "the request could not be built");
@@ -338,11 +339,13 @@ int llm_request(llm_req *q)
             if (resp.retry_after > 0)
                 wait = resp.retry_after * 1000L;
         } else {
-            static const char *const why[] = { "", "cannot connect", "sending failed", "the connection failed",
+            /* no request reached a server (connect or send failed): pi's SDKs' APIConnectionError (core/error.js),
+             * a text pi's agent retry patterns match; the transport's reason is not part of it */
+            static const char *const why[] = { "", "Connection error.", "Connection error.", "the connection failed",
                                                "the connection closed early", "the answer was not valid HTTP",
                                                "no answer within the idle limit" };
             cl_copy(err, rc > 0 && rc <= LP_IDLE ? why[rc] : "the request failed", sizeof(err));
-            if (c.err && *c.err) {
+            if (rc != LP_CONNECT && rc != LP_SEND && c.err && *c.err) {
                 cl_cat(err, ": ", sizeof(err));
                 cl_cat(err, c.err, sizeof(err));
             }

@@ -22,6 +22,7 @@ typedef struct pstub {
     long brk_at;                /* the poll says stop once this many bytes went out */
     int brk;
     int silent;                 /* answer nothing at all (the idle limit) */
+    int refuse, refused;        /* this many connects fail (nothing listening on the port), then they succeed; how many did */
     int sleeps;
     long slept;
     int notices;
