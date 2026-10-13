@@ -12,7 +12,9 @@ its keys work in both consoles (line mode counts, a garbled screen does not).
   claude   C:Claude   against tools/claude_fixture.py (plain http, no key)
   pi       amiga-pi   against the same fixture (openai-completions, models.json in ENVARC:amiga-pi)
   nvim     Neovim     -u NONE RAM:t.txt, typed "ihello<Esc>:wq", RAM:t.txt must say hello
-  python   Python 3   -c print(6*7), then the REPL: a typed line runs, Up recalls it
+  python   Python 3   -c print(6*7), then the REPL: a typed line runs, Ctrl-C at the prompt and a typed
+                      line after it runs (ixemul without the Y1 fix put the SIGINT frame below address 0
+                      and the machine reset), Up recalls it
   each of nvim and python under three LIBS: states (none: no ixemul; stock: GG-Lite's ixemul 48.x;
   kit: the kit's patched 80.1 + ixnet) and TERM unset / TERM=vtcon with TERMINFO at a copy of the kit's terminfo.
 
@@ -108,7 +110,7 @@ SESSIONS = ['claude-rom', 'claude-king', 'pi-rom', 'pi-king'] + \
 CHECKS = {'claude': ['start', 'conversation', 'keys', 'history', 'bash', 'screen', 'data'],
           'pi': ['start', 'conversation', 'keys', 'history', 'bash', 'screen', 'data'],
           'nvim': ['start', 'edit', 'screen'],
-          'python': ['start', 'repl', 'history', 'screen']}
+          'python': ['start', 'repl', 'ctrlc', 'history', 'screen']}
 
 
 def say(s):
@@ -924,7 +926,7 @@ def python_session(kind, libs, term):
     title = TITLE + 'python'
     res = {}
     py = 'VTC:sa/python3/bin/python3'
-    run('Delete >NIL: RAM:p.txt RAM:q.txt RAM:p.rc QUIET')
+    run('Delete >NIL: RAM:p.txt RAM:q.txt RAM:c.txt RAM:p.rc QUIET')
     seen = []
     open_window(dev, title, prelude_for(libs, term))
     try:
@@ -958,6 +960,21 @@ def python_session(kind, libs, term):
         first = amiga_text('RAM:q.txt')
         res['repl'] = ('pass' if first == 'x' else 'fail', 'typed line ran: RAM:q.txt=%r' % first)
         run('Delete >NIL: RAM:q.txt QUIET')
+        step('python ctrl-c')
+        # Python installs its SIGINT handler with SA_ONSTACK: an ixemul that then used the signal stack
+        # nobody set (ixemul-vtcon sendsig, Y1) reset the machine at the first key after the Ctrl-C
+        # A ROM CON: or KingCON Read cannot be interrupted (no vtcon handler): the KeyboardInterrupt comes
+        # when the next line is read and takes that line, so the line may need typing twice
+        tw.key(KEY_C, CTRL, wait=2)
+        tries = 0
+        for tries in (1, 2):
+            typeline("open('RAM:c.txt','w').write('c')", wait=3)
+            got = amiga_text('RAM:c.txt')
+            if got == 'c':
+                break
+        res['ctrlc'] = ('pass' if got == 'c' else 'fail',
+                        'Ctrl-C at the prompt, then a typed line: RAM:c.txt=%r after %d line(s)%s' % (
+                            got, tries, ' (the first went to the KeyboardInterrupt)' if tries == 2 and got == 'c' else ''))
         step('python up')
         tw.key(UP, wait=1)
         recalled, _ = screen(title, dev)
@@ -966,7 +983,7 @@ def python_session(kind, libs, term):
         res['history'] = ('pass' if again == 'x' else 'fail',
                           'after Up+Return RAM:q.txt=%r; screen: %s' % (again, ' | '.join(recalled.splitlines()[-2:])))
     except StopIteration:
-        for ck in ('screen', 'repl', 'history'):
+        for ck in ('screen', 'repl', 'ctrlc', 'history'):
             res[ck] = ('fail', 'did not start')
     finally:
         step('python leaving')
