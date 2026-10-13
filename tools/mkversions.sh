@@ -6,7 +6,7 @@
 # Usage: tools/mkversions.sh [UPTERM_ROOT]   (default: the parent of vtcon)
 here=$(cd "$(dirname "$0")/.." && pwd)
 root=${1:-${UPTERM_ROOT:-$(dirname "$here")}}
-parts="vtcon ixemul-vtcon upterm-ports neovim-amiga tmux-amiga cpython-amiga screen-amiga/src"
+parts="vtcon amiga-pi ixemul-vtcon upterm-ports neovim-amiga tmux-amiga cpython-amiga screen-amiga/src"
 
 rev() {  # rev <dir>: "<branch> <commit>[+dirty]" or "none unknown"
     d=$1

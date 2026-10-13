@@ -39,6 +39,7 @@ userland        Files/userland
 copy-unifont    Files/unifont           unifont
 copy-emoji      Files/emoji             emoji
 tools           Files/Claude
+tools           Files/amiga-pi
 tools           Files/ClaudeCode
 tools           Files/UPDemo
 tools           Files/UPTerm

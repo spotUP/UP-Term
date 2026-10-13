@@ -7,7 +7,7 @@ import os, shutil, subprocess, tempfile, unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 SCRIPT = os.path.join(ROOT, 'tools', 'mkversions.sh')
-PARTS = ['vtcon', 'ixemul-vtcon', 'upterm-ports', 'neovim-amiga', 'tmux-amiga',
+PARTS = ['vtcon', 'amiga-pi', 'ixemul-vtcon', 'upterm-ports', 'neovim-amiga', 'tmux-amiga',
          'cpython-amiga', 'screen-amiga/src']
 
 

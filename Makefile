@@ -862,7 +862,14 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # into build/UP-Term-src.lha, published next to the kit (plan D2)
 UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
-dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
+# amiga-pi, the pi coding agent port (its own repo): built by its Makefile, which reads
+# vtcon's core in place; the kit gets the binary as C:Claude's sits beside it
+AMIGA_PI ?= $(UPTERM_ROOT)/amiga-pi
+AMIGA_PI_BIN := $(AMIGA_PI)/build/amiga/amiga-pi
+.PHONY: amiga-pi-bin
+amiga-pi-bin:
+	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
+dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
 	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -891,6 +898,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
 	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(KIT)/Files/
+	cp $(AMIGA_PI_BIN) $(KIT)/Files/amiga-pi
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
 	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
@@ -929,6 +937,7 @@ dist: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/t
 dist-check:
 	python3 tests/test_dist_versions.py
 	python3 tests/test_dist_installer.py
+	@test -s $(KIT)/Files/amiga-pi || { echo "dist-check: $(KIT)/Files/amiga-pi missing: make dist"; exit 1; }
 	python3 tests/test_dist_manifest.py
 	python3 tests/test_dist_modes.py
 	python3 tests/test_rig_fixtures.py

@@ -433,6 +433,13 @@ If NOT "$optremote" EQ ""
   Echo >>ENVARC:Claude/remote "$optremote"
   Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET
 EndIf
+; C:amiga-pi, the pi coding agent (README, AMIGA-PI): the same needs as
+; Claude; ENVARC:amiga-pi is where its settings go (Install never writes
+; settings.json, models.json or auth.json); its data goes to UP-Term:var/amiga-pi
+Copy amiga-pi C:amiga-pi CLONE QUIET
+If NOT EXISTS ENVARC:amiga-pi
+  MakeDir ENVARC:amiga-pi
+EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf

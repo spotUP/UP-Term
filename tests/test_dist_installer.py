@@ -202,6 +202,28 @@ class ClaudeRemoteFile(unittest.TestCase):
         self.assertIn('Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET', lines)
 
 
+class AmigaPiInstall(unittest.TestCase):
+    """C:amiga-pi is installed as C:Claude is (same part, same drawer rule): the binary
+    to C:, ENVARC:amiga-pi made when missing, and no settings.json, models.json or
+    auth.json written by Install; Uninstall removes the binary and leaves the drawer."""
+    def test_amiga_pi_follows_claude_in_the_tools_part(self):
+        self.assertIn("Copy amiga-pi C:amiga-pi CLONE QUIET\nIf NOT EXISTS ENVARC:amiga-pi\n  MakeDir ENVARC:amiga-pi\nEndIf", DOS)
+        self.assertLess(DOS.index("Copy Claude C:Claude"), DOS.index("Copy amiga-pi C:amiga-pi"))
+        self.assertLess(DOS.index("Copy amiga-pi C:amiga-pi"), DOS.index("Lab copy-python"))
+
+    def test_install_never_writes_a_file_of_the_users_amiga_pi_drawer(self):
+        for l in DOS.splitlines():
+            self.assertFalse(re.search(r"(>|Copy .* )ENVARC:amiga-pi/", l), l)
+
+    def test_uninstall_removes_the_binary_not_the_drawer(self):
+        un = (ROOT / "dist/Uninstall").read_text(encoding="latin-1")
+        self.assertIn(" C:amiga-pi ", un)
+        self.assertNotIn("ENVARC:amiga-pi", un)
+
+    def test_the_kit_manifest_names_the_binary(self):
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/amiga-pi$")
+
+
 class AmigaDosVariableNames(unittest.TestCase):
     """AmigaDOS ends a $name at the first character that is not a letter or a
     digit: $o_dest was the variable "o" (none), and the literal "$o_dest" went
