@@ -312,7 +312,11 @@ def prepare(dest):
         (VTC / "Apps").mkdir(exist_ok=True)   # the drawer's parent must exist
     (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s NOCONSOLE NODEVICE\n" % destarg)
     (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s CONSOLE DEVICE SHELLICON PYTHON NVIM REMOTE=\"127.0.0.1 2399\"\n" % destarg)
-    (VTC / "rununinstall").write_text("CD VTC:distkit\nExecute Uninstall\n")
+    # the rig's Uninstall answers YES to the var question: UP-Term:var holds only
+    # what earlier rig steps (amiga-pi, Claude sessions) wrote, and a kept var
+    # leaves the drawer behind for the next pass (K3). var_check() covers the
+    # default No with its own scripts.
+    (VTC / "rununinstall").write_text("Set upvardelete YES\nCD VTC:distkit\nExecute Uninstall\n")
     # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
     # and Install would then replace and keep the copy there)
     run('Assign LIBS: %sLibs' % SYSVOL)
@@ -644,16 +648,15 @@ def _main(dest=None):
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
     left = [f for f in ('C:ClaudeCode', 'C:amiga-pi', 'DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', 'SYS:UP-Term', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO', 'ENVARC:vsh', 'ENV:vsh',
+                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO', 'ENVARC:vsh', 'ENV:vsh',
                         'SYS:System/UP-Term', 'SYS:System/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
                         '"C:UP-Term Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
             if run('List >NIL: %s' % f)[0] == 0]
     if not tmp_before:
         check(run('Assign >NIL: TMP: EXISTS')[0] != 0, 'after Uninstall: no TMP: (Install made it)')
-    # Uninstall keeps UP-Term:var unless told otherwise (the question's default is No)
-    if '"%s"' % drawer in left and set(run('List "%s" LFORMAT "%%N"' % drawer)[1].split()) <= {'var'}:
-        left.remove('"%s"' % drawer)
-    check(not left, 'Uninstall removed the files (UP-Term:var stays)', ' '.join(left))
+    # the rig's rununinstall answers YES to the var question, so the drawer goes whole
+    inside = run('List "%s" ALL' % drawer)[1][:600] if left else ''
+    check(not left, 'Uninstall removed the files', ' '.join(left) + ' | ' + inside)
     check(run('List >NIL: ENVARC:UP-Term.prefs')[0] == 0, 'Uninstall kept the user\'s preferences', '')
     check(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
           'Uninstall kept the user\'s ENVARC:amiga-pi/settings.json', '')
