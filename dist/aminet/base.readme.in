@@ -1,0 +1,31 @@
+Short:        UP-Term: XCON: console, vsh, tools
+Author:       spotUP
+Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
+Type:         comm/term
+Version:      @VERSION@
+Replaces:     PLACEHOLDER (the Aminet path of an earlier UP-Term upload, if there is one)
+Architecture: m68k-amigaos >= 3.0.0; m68k-020
+Requires:     AmigaOS 3.0 or newer, a 68020 or better
+Distribution: Aminet
+
+UP-Term is a console window for AmigaOS 3.x with a modern terminal inside (xterm,
+Amiga and PC-ANSI dialects: 256 colours and RGB, scroll regions, alternate screen,
+mouse, sixel images, UTF-8 with Unifont and emoji pages), a shell (vsh), GNU coreutils
+and a set of Unix tools, the patched ixemul.library that Unix ports run on, and the
+terminfo entry for TERM=vtcon.
+
+This is the base archive. Neovim, Python, the Claude Code client and the pi coding
+agent are separate archives that need this one:
+  comm/term/UP-Term-src.lha      source of the Unix tools and of coreutils (GPL)
+  comm/misc/UP-Term-Claude.lha   Claude Code client
+  comm/misc/UP-Term-pi.lha       pi coding agent (amiga-pi)
+  text/edit/UP-Term-nvim.lha     Neovim 0.12
+  dev/lang/UP-Term-python.lha    Python 3.14
+
+Install: unpack, double-click Install (Installer 43 or newer). A second Install over an
+installed UP-Term offers Update and leaves your settings alone. Uninstall removes it; it
+asks before it removes UP-Term:var (sessions and history).
+
+Licence: PLACEHOLDER: UP-Term's own licence is not decided yet (ledger K4); until it is set this archive cannot be uploaded.
+The parts it ships carry their own licences: LICENSES.txt in the archive lists each
+part, its licence and where its source is.
