@@ -214,6 +214,96 @@ static void direct_colour_background_in_the_amiga_personality_is_drawn_in_its_co
 /* ---- S3: the fill paths (S2's FillPixelArray, and the cells joined into one fill) ---- */
 
 #define UPPER "\xe2\x96\x80"
+#define PAINT "\x1b[38;5;196;48;5;21m"
+#define OTHER "\x1b[38;5;46;48;5;226m"
+
+static int snap[COLS * CW * ROWS * CH];
+
+static void snapshot(void)
+{
+    int x, y;
+    for (y = 0; y < ROWS * CH; y++)
+        for (x = 0; x < COLS * CW; x++)
+            snap[y * COLS * CW + x] = gf_pixel(x, y);
+}
+
+/* the fills a pass of `s` makes: FillPixelArray calls on a true-colour screen (the cursor is a RectFill),
+ * else RectFills less the cursor's own (what an empty pass makes) */
+static int fills_of(const char *s)
+{
+    int base, n;
+    gf_clear_log();
+    pass("");
+    base = gf_count(GF_RECT);
+    gf_clear_log();
+    pass(s);
+    n = rn.cgx ? gf_count(GF_CGXFILL) : gf_count(GF_RECT) - base;
+    return n;
+}
+
+static int same_as_snapshot(void)
+{
+    int x, y;
+    for (y = 0; y < ROWS * CH; y++)
+        for (x = 0; x < COLS * CW; x++)
+            if (snap[y * COLS * CW + x] != gf_pixel(x, y))
+                return 0;
+    return 1;
+}
+
+/* the row drawn in one pass, and the same cells one pass each (a lone cell is never joined) */
+static void row_joined_equals_row_cell_by_cell(int truecolor, int *fills_joined, int *fills_alone)
+{
+    static const char *const cells[] = { PAINT UPPER, PAINT UPPER, PAINT UPPER, OTHER UPPER, OTHER UPPER, PAINT UPPER };
+    char all[256] = "";
+    int i;
+    open_term_in(0, VT_XTERM);
+    if (truecolor) {
+        gf_truecolor(1);
+        vr_free(&rn);
+        vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+        vr_redraw(&rn);
+    }
+    for (i = 0; i < 6; i++)
+        strcat(all, cells[i]);
+    *fills_joined = fills_of(all);
+    snapshot();
+    close_term();
+    open_term_in(0, VT_XTERM);
+    if (truecolor) {
+        gf_truecolor(1);
+        vr_free(&rn);
+        vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+        vr_redraw(&rn);
+    }
+    *fills_alone = 0;
+    for (i = 0; i < 6; i++) {
+        char at[16];
+        snprintf(at, sizeof(at), "\x1b[1;%dH", i + 1);
+        pass(at);
+        *fills_alone += fills_of(cells[i]);
+    }
+    CHECK(same_as_snapshot());
+    close_term();
+}
+
+/* UPDemo's plasma: ~22 ms a frame of per-cell RectFill. Neighbouring half blocks of one look are one pair of fills
+ * (the background, the band): 3 runs here are 6 fills, not 12, and the pixels are those of cell by cell. */
+static void neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels(void)
+{
+    int joined, alone;
+    row_joined_equals_row_cell_by_cell(0, &joined, &alone);
+    CHECK_INT(joined, 6);
+    CHECK_INT(alone, 12);
+}
+
+static void the_same_joining_on_a_true_colour_screen(void)
+{
+    int joined, alone;
+    row_joined_equals_row_cell_by_cell(1, &joined, &alone);
+    CHECK_INT(joined, 6);
+    CHECK_INT(alone, 12);
+}
 
 /* S2: a direct colour on a true-colour screen with no pen to spare is filled by FillPixelArray (cybergraphics
  * LVO -150), not by a scratch pen reloaded with SetRGB32 (84 us a call on the 68060: 70-80 % of UPDemo's
@@ -256,6 +346,8 @@ int main(void)
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
+    neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels();
+    the_same_joining_on_a_true_colour_screen();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }
