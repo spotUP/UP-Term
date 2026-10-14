@@ -57,9 +57,9 @@ Decisions:
   Evidence (dist/install.dos, Install.installer, Uninstall, README, LICENSES, SOURCE.txt, kitsize, Makefile dist (daemon and client from build/wasabi, no binary in git); dist/net/amiagent-0.13.2 moved to tools/rig/amiagent-0.13.2 for the rig until WM2/3 drop it; tests/test_dist_installer.py WasabiDaemonOption (7 tests); make dist-check green on a kit re-staged from the main build + mkkit.py base (a from-scratch make dist needs vendor/ NDK, not in a worktree); tools/rig/install_rig.py --only wasabi on rig 3: 29 of 29 (old amiagent removed, wasabid 0.2 replaced by 0.9b2, key, startup block, started, Mac client pings it, Uninstall clean))
 - [ ] **WM7** Docs and skills: RULES.md, tools/rig/README.md (Debugging recipe, MCP), NAS
   README, amiga-pi skills, memory notes that name amiagent.
-- [ ] **WM8** Up Rough Demo System: `a1200.py`'s own AMI0 client + its 5 tests move to
+- [x] **WM8** (done in that repo by another session: 4e44b0865, 98806b0c8, 280d855fe, merge 6578dd989; vendored client tools/wasabi pinned ee23c09; owner M1 on the Replay open) Up Rough Demo System: `a1200.py`'s own AMI0 client + its 5 tests move to
   wasabi's client (that repo's rules; its own branch, no push).
-- [ ] **WM9** Other repos: neovim-amiga (2 scripts import vtcon's ami.py: verify they work
+- [x] **WM9** Other repos: neovim-amiga (2 scripts import vtcon's ami.py: verify they work
   through the adapter), DCTelnet vendored copies (replace or delete), list any others found.
 - [ ] **WM10** Gaps list for creep kept current in the research doc (owner relays).
 
@@ -68,3 +68,5 @@ Decisions:
 Host: ami.py adapter tests against wasabi's mock daemon; make test (affected suites);
 dist-check. Rig (2 or 3, 060): rig boot with wasabid only, 3 rig suites through ami.py, MCP
 stdio run, kit install case. Owner: NAS deploy, real Amiga.
+
+WM9 exemption: DCTelnet (dctelnet-vtcon, dctelnet-v2) holds a vendored snapshot of vtcon under src/third_party/vtcon (ami.py, rig.py, vttest_rig.py): it changes only by that repo's resync from vtcon, which another session owns; nothing edited from here.
