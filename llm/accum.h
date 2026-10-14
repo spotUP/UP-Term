@@ -42,6 +42,7 @@ typedef struct llm_acc {
     jw usage_raw;               /* the usage object as the server sent it (LE_META), empty none */
     jw rewrite;                 /* the rewrite impact object (LE_META), empty none */
     llm_ts rewrite_ts;          /* when it arrived (llm_wall): the diagnostic's timestamp */
+    jw diag;                    /* the diagnostics LE_META events carried, JSON objects joined by commas */
     int have_cost;              /* usage.cost is the server's (LE_USAGE has_cost) */
     int meta_seen;              /* LE_META came: the server's own terminal event follows (pi-messages) */
     int stop;                   /* LS_* */

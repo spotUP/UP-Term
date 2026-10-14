@@ -64,6 +64,8 @@ typedef struct llm_meta {       /* an assistant message's own fields */
     const char *rewrite;        /* pi-messages: the gateway's rewrite impact object, kept as the diagnostic pi_messages_rewrite; 0 none */
     long rewrite_n;
     llm_ts rewrite_ts;          /* the diagnostic's timestamp */
+    const char *diag;           /* the diagnostics array's members, JSON objects joined by commas (anthropic-messages strict fallback), 0 none */
+    long diag_n;
     int pi_order;               /* a pi-messages answer, its keys in the order api/pi-messages.ts assigns them: 2 the server's terminal event (done:
                                  * responseId, providerThinkingLevel, diagnostics; error: errorMessage first), 1 a failure made anew (errorMessage before
                                  * timestamp); 0 any other API */

@@ -11,6 +11,7 @@ void llm_acc_init(llm_acc *a, const char *api, const char *provider)
     a->provider = provider;
     jw_init(&a->usage_raw);
     jw_init(&a->rewrite);
+    jw_init(&a->diag);
 }
 
 void llm_acc_model(llm_acc *a, const char *id, const long price[4])
@@ -74,6 +75,10 @@ void llm_acc_meta(const llm_acc *a, llm_meta *m)
         m->rewrite_n = a->rewrite.n;
         m->rewrite_ts = a->rewrite_ts;
     }
+    if (a->diag.n) {
+        m->diag = a->diag.p;
+        m->diag_n = a->diag.n;
+    }
     m->pi_order = !strcmp(a->api ? a->api : "", "pi-messages") ? (a->meta_seen ? 2 : 1) : 0;
     m->raw_stop = a->stop_raw[0] ? a->stop_raw : 0;
     m->response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
@@ -100,6 +105,7 @@ void llm_acc_free(llm_acc *a)
     int i;
     jw_free(&a->usage_raw);
     jw_free(&a->rewrite);
+    jw_free(&a->diag);
     for (i = 0; i < a->nb; i++) {
         jw_free(&a->b[i].a);
         jw_free(&a->b[i].sig);
@@ -617,6 +623,11 @@ void llm_acc_event(void *u, const llm_event *e)
             jw_reset(&a->rewrite);
             jw_raw(&a->rewrite, e->rewrite, e->rewrite_n);
             a->rewrite_ts = llm_wall();
+        }
+        if (e->diag && e->diag_n > 0) {
+            if (a->diag.n)
+                jw_rawz(&a->diag, ",");
+            jw_raw(&a->diag, e->diag, e->diag_n);
         }
         break;
     case LE_STOP:

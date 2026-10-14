@@ -483,5 +483,5 @@ static void pm_http_err(const llm_http_fail *f, char *out, long cap)
 }
 
 const llm_backend llm_be_pi_messages = {
-    "pi-messages", "authorization", "/messages", pm_head, pm_body, 0, pm_new, pm_feed, pm_free, 0, 0, pm_fin, 0, pm_http_err, 0
+    "pi-messages", "authorization", "/messages", pm_head, pm_body, 0, pm_new, pm_feed, pm_free, 0, 0, pm_fin, 0, pm_http_err, 0, 0
 };
