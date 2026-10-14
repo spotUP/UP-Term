@@ -3332,6 +3332,7 @@ static void edit(cl_tui *t, cl_key *k)
 {
     long n0 = t->ed.n, c0 = t->ed.cur;
     t->ed.now_ms = now(t);          /* vim's remapped sequences are timed */
+    t->ed.piword = t->look == TUI_LOOK_PI;  /* pi's Editor word rules in pi's look, Claude Code's otherwise (look is set after tui_init) */
     ed_key(&t->ed, k);
     if (t->ed.n != n0) {
         t->suggest[0] = 0;          /* typing drops the suggestion */
