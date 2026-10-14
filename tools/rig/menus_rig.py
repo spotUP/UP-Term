@@ -6,11 +6,13 @@ itself is read from the window's menus.
   1. The strip: UP-Term, Edit, View, Settings; Edit holds Copy, Paste,
      Select all, Find..., Find next, Clear screen, Clear scrollback, Reset
      terminal; View Bigger font, Smaller font, 80 x 24, 132 x 43.
-  2. /size 80x24: the window's inner area is 80 x 24 cells.
-  3. /font-size smaller: the cells shrink (the face's next designed size:
-     topaz 11 under TopazPro 16 on the rig's square pixels); /size 40x12
-     again makes the window shorter; /font-size bigger goes back.
-  4. /select-all: the text area shows the selection (a pixel of the empty
+  2. /size COLSxROWS: the window's inner area is that many cells, or the
+     command is refused and the window stays when the screen is too small
+     (80x24 on the rig's 640x256 screen).
+  3. /font-size to the face's next designed size (topaz 9 up from topaz 8
+     on tall pixels, topaz 11 down from TopazPro 16 on square ones): /size
+     40x12 again gives another height; the opposite step goes back.
+  4. Select all (Right Amiga A): the text area shows the selection (a pixel of the empty
      area changes colour); a click clears it.
   5. /clear scrollback: a word scrolled off the top is no longer found
      (UPTerm find; the word comes through a shell variable so the typed
@@ -30,6 +32,7 @@ import ami, condev_rig as c
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / 'vtc'
 RET = 0x44
+RCMD = 0x0080
 TITLE = 'menus'
 passed = total = 0
 
@@ -76,19 +79,32 @@ def pixel(x, y):
 
 
 def find_cursor():
-    """the middle of the block cursor: a run of 8 lit pixels on a text row
-    (glyphs are never that solid); None when not found"""
+    """the middle of the block cursor: a run of 8 pixels of one colour that
+    is not the background, on a text row (glyph strokes are at most 6 wide;
+    the title bar above and the scroll bar and borders are left out). Its
+    colour is the palette's, not the default foreground: the planar cursor
+    flips the planes in use, a blue pen on the rig's Workbench (2026-10-15).
+    None when not found"""
     b = ami.req(0x07)
     w, h = struct.unpack('>HH', b[2:6])
     x0, y0, ww, hh = box()
-    for y in range(y0 + 12, y0 + hh - 4):
-        run = 0
+    for y in range(y0 + 14, y0 + hh - 4):
+        run, last = 0, None
         for x in range(x0 + 4, x0 + ww - 20):
             o = 8 + (y * w + x) * 3
-            run = run + 1 if sum(b[o:o + 3]) > 500 else 0  # the default foreground, C0C0C0
+            px = tuple(b[o:o + 3])
+            run = run + 1 if px == last and px != (0, 0, 0) else 1
+            last = px
             if run == 8:
                 return (x - 4, y + 2)
     return None
+
+
+def screen_width():
+    for l in ami.req(0x0D).decode('latin-1').splitlines():
+        if l.startswith('S '):
+            return int(l.split()[2].split('x')[0])
+    return 640
 
 
 def rc_of(cmd):
@@ -123,34 +139,62 @@ def main():
         check(st.get('Edit') == want_edit and st.get('View') == want_view, 'the Edit and View items',
               (st.get('Edit'), st.get('View')))
 
-        # 2, 3: the cell size from two /size 80x24 windows
+        # 2, 3: /size sets the window to cols x rows cells, or is refused
+        # (window unchanged) when the screen is too small for the grid. The
+        # rig's screen is the Workbench's (PAL 640x256 since wasabi, topaz 8
+        # on tall pixels): 80 columns of topaz 8 plus the borders do not fit
+        # it, and the handler answers "the screen is too small for it".
+        # The cell size comes from two sizes that fit.
+        sw = screen_width()
+        t('/size 60x10', wait=3)
+        x, y, wa, ha = box()
+        t('/size 40x12', wait=3)
+        x, y, w1, h1 = box()
+        cw, bw = (wa - w1) // 20, w1 - 40 * ((wa - w1) // 20)
+        check(wa > w1 and (wa - w1) % 20 == 0 and 6 <= cw <= 16 and bw < 40,
+              '/size 60x10 and 40x12: the width follows the columns, a whole cell each', (wa, w1))
         t('/size 80x24', wait=3)
-        x, y, w1, h1 = box()
-        check(w1 > 500, '/size 80x24 widens the window to 80 cells', (w1, h1))
-        # 40 x 12 for the heights: the next topaz (9) is 10 pixels wide, and
-        # 80 of those are wider than the rig's 800-pixel screen (refused)
+        got = box()[2:]
+        if bw + 80 * cw > sw:
+            check(got == (w1, h1), '/size 80x24 on a %d pixel screen: refused, the window stays' % sw, (got, w1, h1))
+        else:
+            check(got[0] == bw + 80 * cw, '/size 80x24 gives the window 80 cells', got)
         t('/size 40x12', wait=3)
+        # /font-size steps to the face's next designed size: a rig with
+        # tall pixels has topaz 8 -> 9 up and nothing down, square pixels
+        # (TopazPro 16) topaz 11 down. Whichever direction exists changes
+        # the 40 x 12 window's height, and the opposite one goes back.
         x, y, w1, h1 = box()
-        # the rig's Workbench has square pixels: topaz is drawn as TopazPro
-        # 16, the face's biggest -- down first (topaz 11), then up again
-        t('/font-size smaller', wait=4)
-        t('/size 40x12', wait=3)
-        x, y, w2, h2 = box()
-        check(0 < h2 < h1, '/font-size smaller: the face\'s next designed size, the 40 x 12 window is shorter',
+        stepped = None
+        for way, back in (('bigger', 'smaller'), ('smaller', 'bigger')):
+            t('/font-size ' + way, wait=4)
+            t('/size 40x12', wait=3)
+            x, y, w2, h2 = box()
+            if h2 != h1:
+                stepped = (way, back)
+                break
+        check(stepped is not None, '/font-size steps to the face\'s next designed size: the 40 x 12 window changes',
               (h1, h2))
-        t('/font-size bigger', wait=4)
-        t('/size 40x12', wait=3)
-        x, y, w3, h3 = box()
-        check(h3 == h1, '/font-size bigger goes back (TopazPro 16)', (h1, h3))
-        t('/size 80x24', wait=3)
+        if stepped:
+            t('/font-size ' + stepped[1], wait=4)
+            t('/size 40x12', wait=3)
+            x, y, w3, h3 = box()
+            check(h3 == h1, '/font-size %s goes back' % stepped[1], (h1, h3))
+        else:
+            check(False, '/font-size back: no step to go back from')
+        t('/size 60x10', wait=3)
 
         # 4
         x, y, w, h = box()
         empty = (x + w - 40, y + h - 30)
         before = pixel(*empty)
-        t('/select-all')
+        # Right Amiga A, the menu item's shortcut: a typed /select-all is
+        # followed by the new prompt, which writes over the selected cells
+        # and drops the selection (xterm's rule, UT5) before it can be read
+        ami.key(0x20, RCMD)
+        time.sleep(3)
         sel = pixel(*empty)
-        check(sel != before, '/select-all shows the whole area selected', (before, sel))
+        check(sel != before, 'Select all shows the whole area selected', (before, sel))
         click(x + 40, y + 40)
         check(pixel(*empty) == before, 'a click clears the selection', pixel(*empty))
 
