@@ -42,6 +42,7 @@
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
+#include "../tty/qmark.h"
 #include "repl.h"
 #include "cli.h"
 #include "print.h"
@@ -171,24 +172,13 @@ static void open_err(void)
     }
 }
 
-/* The command line, both forms (cli.c). `Claude ?` shows the template and
- * reads the arguments from the next line, as ReadArgs does. 0, or -1
- * with the reason shown. */
+/* The command line, both forms (cli.c). A lone `?` never gets here: main
+ * shows the template and ends first (qmark.h). 0, or -1 with the reason
+ * shown. */
 static int args(cl_cli *c)
 {
-    char line[1024];
-    if (cli_parse_line(c, (const char *)GetArgStr()))
-        goto bad;
-    if (!c->ask_template)
+    if (!cli_parse_line(c, (const char *)GetArgStr()))
         return 0;
-    say(CLI_TEMPLATE);
-    say(CLI_TEMPLATE_MORE ": ");
-    if (!FGets(Input(), (STRPTR)line, sizeof(line)))
-        line[0] = 0;
-    cli_free(c);
-    if (cli_parse_line(c, line) == 0 && !c->ask_template)
-        return 0;
-bad:
     say(c->err[0] ? c->err : "Claude: bad arguments (Claude ? shows the template)");
     say("\n");
     return -1;
@@ -210,6 +200,12 @@ int main(void)
     int rc = 0, have_key;
     if (!vers[0] || !stack_cookie[0])
         return 20;
+    /* `Claude ?` shows the template and ends: no ReadArgs prompt waiting for the arguments */
+    if (qmark_line((const char *)GetArgStr())) {
+        say(CLI_TEMPLATE);
+        say(CLI_TEMPLATE_MORE "\n");
+        return 0;
+    }
     if ((ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower < MIN_STACK) {
         say("Claude needs a stack of 16000 bytes or more: type Stack 32768 first.\n");
         return 20;

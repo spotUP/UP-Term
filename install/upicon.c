@@ -16,6 +16,7 @@
 #include <proto/icon.h>
 #include <string.h>
 #include "iconspec.h"
+#include "../tty/qmark.h"
 
 struct Library *IconBase;
 
@@ -31,13 +32,20 @@ static int is_window(const char *t)
 
 int main(void)
 {
+    static const char tmpl[] = "NAME/A,WINDOWDEV/K/A";
     LONG args[2] = { 0, 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)"NAME/A,WINDOWDEV/K/A", args, 0);
+    struct RDArgs *rd;
     struct DiskObject *d;
     STRPTR *old, *tt = 0;
     char value[256 + 8];
     const char *was = 0;
     int n = 0, i, at = -1, r, rc = 20;
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)tmpl);
+        PutStr((STRPTR)"\n");
+        return RETURN_OK;
+    }
+    rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"upicon");
         return 20;

@@ -39,6 +39,7 @@
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
+#include "../tty/qmark.h"
 
 static const char vers[] = "$VER: uptelnet 1.0 (4.10.2026) UP-Term";
 
@@ -213,10 +214,16 @@ int main(void)
 {
     static const char tmpl[] = "HOST/A,PORT/N,TERM/K";
     LONG args[3] = { 0, 0, 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)tmpl, args, 0);
+    struct RDArgs *rd;
     static sess s;
     LONG port;
     int cols = 80, rows = 24, rc = RETURN_OK;
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)tmpl);
+        PutStr((STRPTR)"\n");
+        return RETURN_OK;
+    }
+    rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"uptelnet");
         return RETURN_FAIL;

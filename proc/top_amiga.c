@@ -24,6 +24,7 @@
 #include "tasks_amiga.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../tty/qmark.h"
 
 #define MAX_TASKS 256
 
@@ -121,6 +122,10 @@ int main(int argc, char **argv)
     char line[200];
     int batch = 0, secs = 2, count = -1, cols = 80, rows = 24, i, n, shown = 0;
     unsigned long from;
+    if (qmark_argv(argc, argv)) { /* `top ?` shows the usage and ends */
+        usage();
+        return 0;
+    }
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-b"))
             batch = 1;
@@ -130,7 +135,7 @@ int main(int argc, char **argv)
             count = atoi(argv[++i]);
         else {
             usage();
-            return strcmp(argv[i], "-h") && strcmp(argv[i], "--help") && strcmp(argv[i], "?") ? 10 : 0;
+            return strcmp(argv[i], "-h") && strcmp(argv[i], "--help") ? 10 : 0;
         }
     }
     if (secs < 1 || secs > 20) {
