@@ -49,6 +49,7 @@
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
 #include "../render/vtwin.h"
+#include "../render/vtinput.h"
 #include "../device/upc_public.h"
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
@@ -4964,6 +4965,15 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
 {
     switch (cls) {
     case IDCMP_RAWKEY:
+        {
+            /* the wheel of a machine without IDCMP_EXTENDEDMOUSE (Kickstart 3.1, FS-UAE):
+             * NewMouse's raw keys 0x7A / 0x7B, not typing */
+            int up;
+            if (vti_newmouse_wheel(code, &up)) {
+                vtwin_wheel(&c->w, up, qual, mx, my);
+                break;
+            }
+        }
         /* Right Amiga F: the find prompt, opened here rather than in vtwin
          * because the prompt is a window of ours */
         if ((qual & IEQUALIFIER_RCOMMAND) && code == 0x46) {

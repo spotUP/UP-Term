@@ -208,6 +208,29 @@ static void middle_button_and_modifiers_reach_the_program(void)
     vt_free(t);
 }
 
+/* mouse wheel does not scroll on Kickstart 3.1 / FS-UAE: the wheel arrives as RAWKEY 0x7A / 0x7B
+ * (NewMouse), which the handler took for typing and dropped; vti_newmouse_wheel names the notch and
+ * vti_wheel then moves the scrollback */
+static void newmouse_wheel_raw_keys_scroll_the_scrollback(void)
+{
+    vt_term *t = h_new(20, 4, VT_XTERM);
+    int up = -1, lines = 0;
+    CHECK_INT(vti_newmouse_wheel(0x7A, &up), 1);
+    CHECK_INT(up, 1);
+    CHECK_STR(wheel(t, 0, up, 0, 0, &lines), "");
+    CHECK_INT(lines, VTI_WHEEL_LINES);
+    CHECK_INT(vti_newmouse_wheel(0x7B, &up), 1);
+    CHECK_INT(up, 0);
+    wheel(t, 0, up, 0, 0, &lines);
+    CHECK_INT(lines, -VTI_WHEEL_LINES);
+    /* a release, a letter, the arrow keys: not a notch */
+    CHECK_INT(vti_newmouse_wheel(0xFA, &up), 0);
+    CHECK_INT(vti_newmouse_wheel(0x7C, &up), 0);
+    CHECK_INT(vti_newmouse_wheel(0x20, &up), 0);
+    CHECK_INT(vti_newmouse_wheel(0x4C, &up), 0);
+    vt_free(t);
+}
+
 /* gap #14: double-click selects a word, triple-click the line */
 static void double_click_word_triple_click_line(void)
 {
@@ -518,6 +541,7 @@ void suite_input(void)
     bracketed_paste_drops_escape_and_controls();
     shift_page_keys_reach_full_screen_programs();
     middle_click_pastes_when_nobody_asked();
+    newmouse_wheel_raw_keys_scroll_the_scrollback();
     double_click_word_triple_click_line();
     middle_button_and_modifiers_reach_the_program();
     motion_reaches_the_program_in_the_motion_modes();

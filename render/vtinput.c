@@ -196,6 +196,14 @@ int vti_page_keys_scroll(const vt_term *t)
     return !(vt_modes(t) & (VT_MODE_ALT_SCREEN | MOUSE_MODES));
 }
 
+int vti_newmouse_wheel(unsigned code, int *up)
+{
+    if (code != 0x7A && code != 0x7B)
+        return 0;
+    *up = code == 0x7A;
+    return 1;
+}
+
 int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
               int px, int py, vt_u8 *out, int *lines)
 {
