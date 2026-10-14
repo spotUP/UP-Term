@@ -2,7 +2,7 @@
 date: 2026-10-14
 topic: Claude Code on the NAS feels local on the Amiga (one Claude, key login, NAS Claude controls the connected Amiga, one-key start)
 tags: [claude, uptelnet, uptelnetd, nas, amiagent, amimcp, security, CL1]
-status: draft
+status: final
 ---
 
 # NAS Claude Code feels local
@@ -20,6 +20,8 @@ Done = NL1..NL22 ticked, each with its test; the manual items (NL21, NL22) colle
 for the owner.
 
 ## Decisions for the owner
+
+Owner answers 2026-10-14: D1 key per Amiga (challenge-response HMAC-SHA256 in the telnet link); D2 pair once (password once, then the NAS hands the key over; `pairs add` kept); D3 + D5 session agent (uptelnet starts its own C:amiagent from Claude.lha, port 7847, per-session token, NAS forwards 127.0.0.1:7846 to the Amiga that logged in); D4 read-only tools free, exec/put/input/rexx ask; D6 'Claude' menu item on Right Amiga L + /claude opening a new tab.
 
 Each has a recommendation. Nothing below NL5 starts before D1-D3 are answered.
 
