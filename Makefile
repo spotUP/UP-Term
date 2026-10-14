@@ -47,11 +47,11 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_upassign.c
 
-.PHONY: amimcp amimcp-clean wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
-# ONLY=rig_amimcp tools/rig/amimcp.py picks the amiagent target from the environment (tools/test_rig_amimcp.py)
+# ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_wasabi rig.py wasabi: arguments, the port per rig, the log paths, the process list parser (tools/test_rig_wasabi.py)
 # ONLY=rig_muforce rig.py muforce: the MuForce report parser and argument handling (tools/test_rig_muforce.py)
 # ONLY=rig_stdin amiga-pi in a rig window script gets <NIL: (tools/test_rig_stdin.py)
@@ -64,11 +64,11 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py); ONLY=ixemul the patched
 # ixemul's host tests (IXEMUL_SRC/tests/host: its argument line parser)
 test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != render ] && [ "$(ONLY)" != terminfo_amiga ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_amimcp ] && [ "$(ONLY)" != rig_muforce ] && [ "$(ONLY)" != rig_wasabi ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != rig_upterm ] && [ "$(ONLY)" != rig_kit ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != docs_setenv ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != render ] && [ "$(ONLY)" != terminfo_amiga ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_wasabimcp ] && [ "$(ONLY)" != rig_muforce ] && [ "$(ONLY)" != rig_wasabi ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != rig_upterm ] && [ "$(ONLY)" != rig_kit ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != docs_setenv ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_amimcp ]; then python3 -I tools/test_rig_amimcp.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabimcp ]; then python3 -I tools/test_rig_wasabimcp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_muforce ]; then python3 -I tools/test_rig_muforce.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
@@ -274,23 +274,6 @@ test-ref: $(BUILD)/vtdump $(BUILD)/vterm_dump
 golden: $(BUILD)/vtdump
 	@mkdir -p tests/golden
 	.venv/bin/python tools/refdiff.py --write-golden $(ONLY)
-
-# amimcp (Apache 2.0, stdlib only: no venv needed) pinned, for the "amiga" MCP server in .mcp.json.
-# Idempotent: the stamp holds the pinned commit. Uninstall: make amimcp-clean.
-AMIMCP_REPO := https://github.com/thomas-luebker/amimcp
-# one pin for the Mac and the NAS image: tools/nas/amimcp.rev (tools/nas/Dockerfile copies the same file)
-AMIMCP_REV  := $(strip $(shell cat tools/nas/amimcp.rev))
-amimcp: $(BUILD)/amimcp/.stamp-$(AMIMCP_REV)
-	@python3 -I tools/rig/amimcp.py --print >/dev/null && echo "[OK] amimcp $(AMIMCP_REV) ready; the wrapper starts."
-	@echo "[INFO] Next: start Claude Code in this repo and approve the 'amiga' project MCP server (rig 1; UPTERM_RIG=2 for rig 2)."
-$(BUILD)/amimcp/.stamp-$(AMIMCP_REV):
-	rm -rf $(BUILD)/amimcp
-	git clone -q $(AMIMCP_REPO) $(BUILD)/amimcp
-	git -C $(BUILD)/amimcp checkout -q $(AMIMCP_REV)
-	touch $@
-
-amimcp-clean:
-	rm -rf $(BUILD)/amimcp
 
 # wasabi (MIT, https://github.com/creep-ltx/wasabi) pinned, for `rig.py wasabi`: wasabid (Amiga daemon, Bebbo gcc)
 # and its stdlib Python client in build/wasabi. Pinned at 67379c2 (v0.2), not upstream HEAD: from 0.3 (health.c needs

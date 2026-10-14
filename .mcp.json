@@ -2,7 +2,7 @@
   "mcpServers": {
     "amiga": {
       "command": "python3",
-      "args": ["-I", "tools/rig/amimcp.py"]
+      "args": ["-I", "tools/rig/wasabimcp.py"]
     }
   }
 }
