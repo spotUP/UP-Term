@@ -131,6 +131,25 @@ def drawer_delete(drawer):
     return 'Delete "%s" "%s.info" ALL QUIET' % (drawer, drawer)
 
 
+def dest_cleanup(dest, parent_existed):
+    """The commands that take a case's chosen drawer away: the drawer with its icon, and the drawer
+    above it with its icon when the case made it (the Installer writes the parent's .info; VTCX:Apps.info
+    stayed on rig 1 after Apps was deleted, 2026-10-14). A parent that was there before is not ours."""
+    cmds = [drawer_delete(dest)]
+    parent = dest.rsplit('/', 1)[0]
+    if not parent_existed and '/' in dest:
+        cmds.append(drawer_delete(parent))
+    return cmds
+
+
+def make_dest_parent(dest):
+    """MakeDir the parent of a chosen drawer; True when it was there already."""
+    parent = dest.rsplit('/', 1)[0]
+    existed = ir.run('List >NIL: "%s"' % parent)[0] == 0
+    ir.run('MakeDir >NIL: "%s"' % parent)
+    return existed
+
+
 def click(box):
     # UITREE gives screen pixels, CLICK takes Intuition pointer units: the same on the 3.1 rig's RTG screen,
     # y doubled on 3.2's native non-interlaced Workbench (a raw click at Proceed's y 191 landed at y 95, in
@@ -515,9 +534,10 @@ def run_base_case(case):
     ir.prepare(dest)
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
+    parent_existed = True
     if dest:
-        ir.run('MakeDir >NIL: %s' % dest.rsplit('/', 1)[0])   # the new drawer's parent must exist
-        ir.run_slow('deletedest', 'Delete "%s" ALL QUIET' % dest)
+        parent_existed = make_dest_parent(dest)   # the new drawer's parent must exist
+        ir.run_slow('deletedest', drawer_delete(dest))
     startup_before = ir.run('Type S:User-Startup')[1]
     before = ir.lib_state()
     rig_gg = ir.run('Assign >NIL: GG: EXISTS')[0] == 0
@@ -605,6 +625,9 @@ def run_base_case(case):
     ir.run('Avail >NIL: FLUSH')
     for line in ir.rig_libs():
         ir.run(line)
+    if dest:
+        for cmd in dest_cleanup(dest, parent_existed)[1:]:   # the drawer went with Uninstall; the parent we made goes too
+            ir.run_slow('deletedest', cmd)
     print('installer_rig %s: passed %d of %d' % (case, ck.total - len(ck.failed), ck.total))
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 
@@ -730,10 +753,12 @@ def _migrate(case, ck):
     # has free (65 MB), so Neovim never got copied and the Installer's last requester was clicked away. The drawer
     # goes to the host drawer VTC: as in the dest case; the new kits find it through the UP-Term: assign (Update).
     legacy_dest = "VTC:Apps/UP-Term"
-    ir.run("MakeDir >NIL: VTC:Apps")
+    apps_existed = make_dest_parent(legacy_dest)
     ir.run_slow("deletedest", drawer_delete(legacy_dest))
     if not installer_done(ck, inst, "migrate legacy", *installer_run("migrate-legacy", inst, "legacykit", "UP-Term", "AVERAGE", base, legacy_dest)[:2], readable=False):
         ir.run_long("rununinstall")
+        for cmd in dest_cleanup(legacy_dest, apps_existed):
+            ir.run_slow("deletedest", cmd)
         return False, "; ".join(ck.failed)
     for f in ("UP-Term:nvim/bin/nvim", "UP-Term:Python3/bin/python3", "C:Claude", "C:amiga-pi"):
         ck(ir.run("List >NIL: %s" % f)[0] == 0, "the single kit installed %s" % f)
@@ -771,6 +796,8 @@ def _migrate(case, ck):
     for f in ("C:Claude", "C:ClaudeCode", "C:amiga-pi", "UP-Term:nvim"):
         ck(ir.run("List >NIL: %s" % f)[0] != 0, "after the base Uninstall %s is gone (the legacy block)" % f)
     ck(ir.run("Assign >NIL: Python3: EXISTS")[0] != 0, "after the base Uninstall no Python3: assign")
+    for cmd in dest_cleanup(legacy_dest, apps_existed):   # VTC:Apps and VTC:Apps.info, when this case made them
+        ir.run_slow("deletedest", cmd)
     print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
 

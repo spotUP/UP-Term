@@ -71,6 +71,16 @@ class Rig(unittest.TestCase):
         self.assertIn('"VTC:Apps/UP-Term.info"', cmd)
         self.assertIn(' ALL', cmd)
 
+    def test_a_case_removes_the_apps_drawer_it_made_with_its_icon(self):
+        # VTCX:Apps.info stayed on rig 1 after Apps was deleted (2026-10-14): the Installer writes the parent's .info
+        import installer_rig
+        made = installer_rig.dest_cleanup("VTC:Apps/UP-Term", False)
+        self.assertEqual(made, [installer_rig.drawer_delete("VTC:Apps/UP-Term"), installer_rig.drawer_delete("VTC:Apps")])
+        self.assertIn('"VTC:Apps.info"', made[1])
+        # a parent that was there before is not ours; nor is a volume root
+        self.assertEqual(len(installer_rig.dest_cleanup("VTC:Apps/UP-Term", True)), 1)
+        self.assertEqual(len(installer_rig.dest_cleanup("VTC:UP-Term", False)), 1)
+
     def test_a_shot_with_indices_past_the_palette_keeps_its_rows(self):
         # 3.2's native 16-colour screen: SHOT sent indices 16 and 32; a palette lookup past the end gave
         # no bytes and sheared every later row (2026-10-08). Only the screen's depth counts.
