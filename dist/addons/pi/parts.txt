@@ -10,4 +10,5 @@
 record          Files/VERSIONS
 pi              Files/amiga-pi
 pi              Files/CHANGELOG.md
+skills          Files/skills
 launch          Files/launch
