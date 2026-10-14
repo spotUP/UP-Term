@@ -726,7 +726,7 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
         self.assertIn('restoreassign', self.log)
         self.assertLess(self.log.index('restoreassign'), self.log.index('runinstall-claude'))
         self.assertEqual((self.tmp / 'restoreassign').read_text(), rig.UPTERM_ASSIGN + '\n')
-        self.assertIn('Assign >NIL: UP-Term: VTC:upterm', rig.GO, 'GO uses the same lines')
+        self.assertIn('Assign >NIL: UP-Term: VTC:Apps', rig.GO, 'GO uses the same lines')
 
     def test_an_add_on_the_rig_does_not_hold_is_not_installed_afterwards(self):
         self.installed = {'pi'}

@@ -6,7 +6,7 @@ The windows read their Unifont and emoji pages through UP-Term:unifont/ and UP-T
 no kit had no UP-Term: assign, so every such glyph drew the replacement. This prints "?" and then, in
 a second run, the braille cell U+280B after the same "?", into an XCON: window, grabs the first text
 row both times (ami.grab, a pixel compare, never a screenshot read by eye) and requires:
-  - the assign UP-Term: exists and VTC:upterm/unifont/28 is there,
+  - the assign UP-Term: exists and VTC:Apps/unifont/28 is there,
   - the row with "?" has ink in its first cell, and
   - the row with U+280B differs from the one with a second "?" (a replacement would draw "?"), and
   - a selection does not survive output over it (UT5): Select all, type an Echo, Copy finds nothing new.
@@ -77,7 +77,7 @@ def check(name, ok, detail=''):
 def main():
     out = c.run('Assign >NIL: UP-Term: EXISTS')[0]
     check('UP-Term: is assigned', out == 0, 'rig.py setup, then a reboot, writes the assign into boot/go')
-    check('VTC:upterm/unifont/28 is there (rig.py install copies it)', (VTC / 'upterm' / 'unifont' / '28').is_file())
+    check('VTC:Apps/unifont/28 is there (rig.py install copies it)', (VTC / paths.UPTERM_DRAWER / 'unifont' / '28').is_file())
     tw.open_xcon(TITLE)
     try:
         a = first_row('glyph_qq.txt', '??')

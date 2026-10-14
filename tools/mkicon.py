@@ -10,7 +10,7 @@ for a plain program icon (UP-Term Prefs: its own tool, no window);
 --tooltype adds tooltypes to it (a WINDOW= one replaces the default window) (the kit's Install icon: Installer's
 APPNAME, MINUSER). --drawer writes a drawer icon (WBDRAWER with a DrawerData, 62 bytes as
 workbench.h DRAWERDATAFILESIZE: the NewWindow, origin, dd_Flags, dd_ViewModes), a drawer drawn in the
-same four pens, for a drawer Workbench has no icon for (VTC:upterm.info on the rig)."""
+same four pens, for a drawer Workbench has no icon for (VTC:Apps.info on the rig)."""
 import argparse, struct
 
 WINDOW = "XCON:0/20/640/400/UP-Term/CLOSE"

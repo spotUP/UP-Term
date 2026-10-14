@@ -193,8 +193,8 @@ def kit_shadow_lines(upterm):
 # the boot's own UP-Term: assign (a kit's wins); install_rig.py runs it again when it has put the owner's add-ons back
 UPTERM_ASSIGN = """C:Assign >NIL: UP-Term: EXISTS
 If WARN
-  C:Assign >NIL: UP-Term: VTC:upterm
-EndIf"""
+  C:Assign >NIL: UP-Term: VTC:%s
+EndIf""" % paths.UPTERM_DRAWER
 
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
@@ -234,7 +234,7 @@ If EXISTS VTC:gg/bin/sh
 EndIf
 ; UP-Term: for the rig with no kit installed (UT1): the glyph pages are read
 ; through UP-Term:unifont/ and UP-Term:emoji/ (render/unifont.h, emoji.h), and
-; `install` puts them in VTC:upterm (a drawer, not the root of VTC:: dd_dir asks UP-Term: for a
+; `install` puts them in VTC:Apps (a drawer, not the root of VTC:: dd_dir asks UP-Term: for a
 ; directory and a device root is not one). A kit's assign wins: its block in
 ; S:User-Startup either ran already (the assign exists) or runs later and
 ; replaces this one. ENVARC:up-term/Dir is no sign of a kit: an installer_rig
@@ -245,7 +245,7 @@ EndIf
 C:SetEnv TERMINFO /VTC/terminfo
 C:SetEnv TERMCAP /etc/termcap
 ; the UP-Term icon beside Shell in SYS:System, as install.dos puts it there (its
-; tool UP-Term:bin/vsh is in VTC:upterm, rig.py install); a kit's own icon stays.
+; tool UP-Term:bin/vsh is in VTC:Apps, rig.py install); a kit's own icon stays.
 ; Only through an assign that exists: EXISTS on a missing UP-Term: puts up
 ; "Please insert volume UP-Term" and the boot waits there for ever.
 C:Assign >NIL: UP-Term: EXISTS
@@ -527,7 +527,7 @@ def stage_upterm(dest, vsh):
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term-Prefs.info"),
                     "--tool", "C:UP-Term Prefs", "--plain"], check=True)
     (dest / "UP-Term-Prefs").write_text("UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n")
-    # the drawer's own icon, beside it (VTC:upterm.info): without it the drawer cannot be opened from the
+    # the drawer's own icon, beside it (VTC:Apps.info): without it the drawer cannot be opened from the
     # Workbench, and Directory Opus showed only the stale Apps and UP-Term icons (rig 1, 2026-10-14)
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"),
                     str(dest.with_name(dest.name + ".info")), "--drawer"], check=True)
@@ -535,9 +535,15 @@ def stage_upterm(dest, vsh):
 def clean_stale_icons(vtc):
     """Icons at the root of the host drawer that belong to nothing the rig or a kit has: VTC:UP-Term and
     VTC:UP-Term.info (a launcher project copied there by hand on 2026-09-29 while P8 was written; no committed
-    rig code makes them, and the kit's launcher is VTC:upterm/UP-Term), and a drawer icon whose drawer is gone
+    rig code makes them, and the kit's launcher is VTC:Apps/UP-Term), and a drawer icon whose drawer is gone
     (VTC:Apps.info after installer_rig deleted Apps). The .uaem files are FS-UAE's metadata of them."""
-    gone = ["UP-Term", "UP-Term.info"]
+    gone = []
+    old = vtc / "UP-Term"
+    if old.is_file():   # the drawer of that name (and its drawer icon) is the rig's own
+        gone.append("UP-Term")
+    info = vtc / "UP-Term.info"
+    if info.is_file() and info.read_bytes()[48:49] == b"\x04":   # a project icon, not the drawer icon
+        gone.append("UP-Term.info")
     for icon in sorted(vtc.glob("*.info")):
         data = icon.read_bytes()
         # do_Type 2 = WBDRAWER (a volume's Disk.info and project icons have no drawer to miss)
@@ -548,6 +554,23 @@ def clean_stale_icons(vtc):
             if f.is_file():
                 f.unlink()
                 print("removed stale", f.name)
+
+def migrate_upterm_drawer(vtc):
+    """VTC:upterm -> VTC:Apps, with its icon made again by stage_upterm. Through a temporary name:
+    the Mac's filesystem is case-insensitive, and a half-done rename must not lose the drawer."""
+    old, new = vtc / paths.OLD_UPTERM_DRAWER, vtc / paths.UPTERM_DRAWER
+    tmp = vtc / "Apps.migrating"
+    if old.is_dir() and not new.is_dir():
+        old.rename(tmp)
+        tmp.rename(new)
+        print("renamed", old.name, "to", new.name, "in", vtc)
+    elif old.is_dir():   # an Apps drawer already there (installer_rig makes one): move in what it lacks
+        for f in sorted(old.iterdir()):
+            if not (new / f.name).exists():
+                f.rename(new / f.name)
+        shutil.rmtree(old, ignore_errors=True)
+    for name in (paths.OLD_UPTERM_DRAWER + ".info", paths.OLD_UPTERM_DRAWER + ".uaem", paths.OLD_UPTERM_DRAWER + ".info.uaem"):
+        (vtc / name).unlink(missing_ok=True)
 
 def stage_terminfo(src, dest):
     """VTC:terminfo (the rig's TERMINFO, GO) as the kit's terminal entries (make build/kit-terminfo/stamp:
@@ -586,20 +609,22 @@ def install():
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)
-    # the glyph pages (UT1): UP-Term: is assigned to VTC:upterm on a rig with no
+    # the glyph pages (UT1): UP-Term: is assigned to VTC:Apps on a rig with no
     # kit (GO), and the windows read UP-Term:unifont/ and emoji/
     for drawer in ("unifont", "emoji"):
         src = ROOT / "build" / drawer / "pages"
         if src.is_dir():
-            dst = RIG / "vtc" / "upterm" / drawer
+            dst = RIG / "vtc" / paths.UPTERM_DRAWER / drawer
             dst.mkdir(parents=True, exist_ok=True)
             for f in sorted(src.iterdir()):
                 if f.is_file() and f.name != "stamp" and not (dst / f.name).is_file():
                     shutil.copyfile(f, dst / f.name)
         else:
             print("no %s: run make %s for glyphs above U+00FF on the rig" % (src, drawer))
-    clean_stale_icons(RIG / "vtc")
-    stage_upterm(RIG / "vtc" / "upterm", ROOT / "build/amiga/vsh")
+    for vtc in sorted(paths.RIG_HOME.glob("rig*/vtc")):   # every rig drawer, the ones that are off too
+        clean_stale_icons(vtc)
+        migrate_upterm_drawer(vtc)
+    stage_upterm(RIG / "vtc" / paths.UPTERM_DRAWER, ROOT / "build/amiga/vsh")
     if (ROOT / "build/kit-terminfo/stamp").is_file():
         stage_terminfo(ROOT / "build/kit-terminfo", RIG / "vtc/terminfo")
     else:

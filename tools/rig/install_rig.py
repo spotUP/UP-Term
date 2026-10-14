@@ -1035,7 +1035,7 @@ class OwnersAddons:
 
     def restore(self):
         if self.pkgs:
-            # the rig with no kit has UP-Term: assigned to VTC:upterm by its boot script; the cases' base Uninstall
+            # the rig with no kit has UP-Term: assigned to VTC:Apps by its boot script; the cases' base Uninstall
             # removed it, and an add-on's Install puts its launchers there only through that assign
             import rig
             (VTC / 'restoreassign').write_text(rig.UPTERM_ASSIGN + '\n')

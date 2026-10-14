@@ -358,7 +358,7 @@ RIG_ASSIGN = False   # drop_rig_assign took the rig's own UP-Term: (VTC:) away; 
 
 def drop_rig_assign(had):
     """Steps 4-6 start from a rig with no UP-Term: and no Dir file. rig.py's boot script assigns UP-Term:
-    to VTC:upterm for the glyph pages (UT1) when no kit is installed; take that one away for the step."""
+    to VTC:Apps for the glyph pages (UT1) when no kit is installed; take that one away for the step."""
     global RIG_ASSIGN
     if 'UP-TERM' in had and ami.read_file('ENVARC:up-term/Dir') is None:
         c.run('Assign UP-Term: REMOVE')
@@ -371,7 +371,7 @@ def restore_rig_assign():
     global RIG_ASSIGN
     if RIG_ASSIGN:
         c.run('Assign UP-Term: REMOVE')
-        c.run('Assign UP-Term: VTC:upterm')
+        c.run('Assign UP-Term: VTC:' + paths.UPTERM_DRAWER)
         RIG_ASSIGN = False
 
 
@@ -1453,7 +1453,7 @@ def step13(port):
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     log = paths.RIG / 'amigapi_fixture13.log'
     dump = paths.RIG / 'amigapi_dump13'
-    kit = VTC / 'upterm'    # UP-Term: is the rig's own (rig.py, UT1): VTC:upterm holds unifont/ and emoji/, the sessions go to VTC:upterm/var/amiga-pi (UT2)
+    kit = VTC / paths.UPTERM_DRAWER    # UP-Term: is the rig's own (rig.py, UT1): VTC:Apps holds unifont/ and emoji/, the sessions go to VTC:Apps/var/amiga-pi (UT2)
     sess = kit / 'var' / 'amiga-pi' / 'sessions'
     agent = VTC / 'pi13agent'
     base = 'http://127.0.0.1:%d' % port
@@ -1512,11 +1512,11 @@ def step13(port):
             'fixo': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
                      'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
         (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixa/m1', 'fixo/m2']}))
-        # UP-Term: stays the rig's (VTC:upterm, UT1): the pages the windows read are there. A drawer of its own
+        # UP-Term: stays the rig's (VTC:Apps, UT1): the pages the windows read are there. A drawer of its own
         # for the kit lacked unifont/ and emoji/; an assign with the kit first and VTC: added moved the
         # sessions out of amiga-pi's reach (measured 2026-10-12), so the run uses the rig's drawer itself.
-        assert 'UP-TERM' in had, 'rig.py setup (UT1) assigns UP-Term: to VTC:upterm; reboot the rig'
-        c.run('Delete VTC:upterm/var/amiga-pi ALL QUIET')    # from the Amiga's side: the emulator caches a drawer removed behind its back
+        assert 'UP-TERM' in had, 'rig.py setup (UT1) assigns UP-Term: to VTC:Apps; reboot the rig'
+        c.run('Delete VTC:%s/var/amiga-pi ALL QUIET' % paths.UPTERM_DRAWER)    # from the Amiga's side: the emulator caches a drawer removed behind its back
         if phase_due('a'):
             fixture()
             launch('amiga-pi step 13a', '')
@@ -1585,7 +1585,7 @@ def step13(port):
     finally:
         if fx:
             fx.terminate()
-        c.run('Delete VTC:upterm/var/amiga-pi ALL QUIET')
+        c.run('Delete VTC:%s/var/amiga-pi ALL QUIET' % paths.UPTERM_DRAWER)
         c.run('Delete VTC:pi13agent ALL QUIET')
         shutil.rmtree(agent, ignore_errors=True)
         if saved_dir is not None:
