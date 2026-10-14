@@ -39,8 +39,10 @@ AMIGA-PI
   https, a 68020 or better, and an API key of your own for the provider.
     amiga-pi                  a conversation (/help lists the commands)
     amiga-pi --version        the version (1.1.0, the pi it follows)
-  The key: SetEnv SAVE ANTHROPIC_API_KEY yourkey (OPENAI_API_KEY and the
-  provider's other variables the same way), or in
+  The key: SetEnv ANTHROPIC_API_KEY yourkey, then Copy ENV:ANTHROPIC_API_KEY
+  ENVARC: to keep it (OS 3.2 and later: SetEnv SAVE ANTHROPIC_API_KEY
+  yourkey does both; OPENAI_API_KEY and the provider's other variables
+  the same way), or in
   ENVARC:amiga-pi/auth.json. What it uses is billed to that key.
   Its settings are small files in ENVARC:amiga-pi: settings.json,
   models.json (more models and servers), auth.json, keybindings.json,

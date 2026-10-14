@@ -76,7 +76,9 @@ CLAUDE
   or later; checks the TCP/IP stack, AmiSSL 5 (key) or C:uptelnet (other
   computer) and that the computer answers; offers amimcp/amiagent; writes
   the settings. `Claude SETUP` (or /setup) runs it again.
-  The key: SetEnv SAVE ANTHROPIC_API_KEY yourkey, or put it alone in the
+  The key: SetEnv ANTHROPIC_API_KEY yourkey, then Copy ENV:ANTHROPIC_API_KEY
+  ENVARC: to keep it (OS 3.2 and later: SetEnv SAVE ANTHROPIC_API_KEY
+  yourkey does both), or put it alone in the
   file ENVARC:Claude/key (Install makes the drawer, never a key; Uninstall
   leaves the drawer and your key). Claude never shows the key and never
   writes it to a log; DEBUG logs to T:Claude.log with the key blanked. The

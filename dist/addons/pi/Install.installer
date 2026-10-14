@@ -54,7 +54,8 @@
 (set #done
     (cat #lead "amiga-pi is installed. In a Shell or UP-Term window:\n"
          "  amiga-pi\n\n"
-         "Its key: SetEnv SAVE ANTHROPIC_API_KEY <key> (or\n"
+         "Its key: SetEnv ANTHROPIC_API_KEY <key>, then\n"
+         "Copy ENV:ANTHROPIC_API_KEY ENVARC: to keep it (or\n"
          "the provider's variable). Settings are yours, in\n"
          "ENVARC:amiga-pi. Uninstall (beside Install) takes\n"
          "the program out again."))
