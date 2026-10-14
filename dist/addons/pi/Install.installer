@@ -39,6 +39,11 @@
                "for its settings (Install writes none)."))
 (P_STEP)
 
+(set #step "skills" #kb @KBSKILLS@ #n 3
+     #why (cat "Installing the Amiga skills (AmigaDOS, ARexx,\n"
+               "building C, autodocs) beside your own."))
+(P_STEP)
+
 (set #step "launch" #kb @KBLAUNCH@ #n 3
      #why (cat "Putting the quick-launch icon (amiga-pi) in\n"
                "UP-Term: when it is there; else nothing."))

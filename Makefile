@@ -916,6 +916,8 @@ PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
 # vtcon's core in place; the kit gets the binary as C:Claude's sits beside it
 AMIGA_PI ?= $(UPTERM_ROOT)/amiga-pi
 AMIGA_PI_BIN := $(AMIGA_PI)/build/amiga/amiga-pi
+# the Amiga-dev skills amiga-pi ships (one drawer each, SKILL.md): the add-on installs them beside the user's own
+AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
@@ -990,6 +992,7 @@ dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,pi)
 	cp $(AMIGA_PI_BIN) $(KIT_pi)/Files/amiga-pi
 	cp $(AMIGA_PI)/CHANGELOG.md $(KIT_pi)/Files/CHANGELOG.md
+	cp -R $(AMIGA_PI_SKILLS) $(KIT_pi)/Files/skills
 	$(call LAUNCHER,$(KIT_pi),dist/addons/pi/launch/amiga-pi,amiga-pi,800/560)
 	python3 tools/mkkit.py pi
 dist-nvim: $(BUILD)/amiga/upupdate
@@ -1040,6 +1043,7 @@ dist-check:
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_manifest.py; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_modes.py; \
 	done
+	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " amiga-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/amiga-pi.lst || { echo "dist-check: amiga-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
 	@test -s $(BUILD)/UP-Term-src.lha || { echo "dist-check: $(BUILD)/UP-Term-src.lha missing: make dist"; exit 1; }
 	@lha l $(BUILD)/UP-Term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: UP-Term-src.lha lacks the coreutils source"; exit 1; }
 

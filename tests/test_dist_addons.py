@@ -420,6 +420,9 @@ class ClaudeInstall(unittest.TestCase):
         self.assertIn('Assign >NIL: UP-Term: EXISTS\nIf WARN\n  Delete >NIL: C:uptelnet QUIET', un)
 
 
+SKILLS = ['amigados', 'arexx', 'amiga-c-build', 'amiga-autodocs']
+
+
 class PiInstall(unittest.TestCase):
     """amiga-pi (moved from the base's suite): the binary to C:, ENVARC:amiga-pi made when missing, no settings
     file written; Uninstall removes the binary and leaves the drawer."""
@@ -442,7 +445,46 @@ class PiInstall(unittest.TestCase):
     def test_uninstall_removes_the_binary_not_the_settings_drawer(self):
         un = self.S['uninstall']
         self.assertIn('Delete >NIL: C:amiga-pi QUIET', un)
-        self.assertNotRegex(un, r'(?m)^\s*Delete[^;\n]*ENVARC:amiga-pi')
+        self.assertNotRegex(un, r'(?m)^\s*Delete[^;\n]*ENVARC:amiga-pi(?!/skills/(?:%s)\b)' % '|'.join(SKILLS))
+
+    def test_the_skills_are_four_named_drawers_beside_the_users_own(self):
+        """Amiga-dev skills (owner 2026-10-14): Files/skills/<name>/SKILL.md goes to UP-Term:var/amiga-pi/skills with an UP-Term:
+        assign, else ENVARC:amiga-pi/skills (the loader reads both). Install replaces exactly its four drawers (each one deleted
+        whole, so an update leaves no stale file) and never the skills drawer; Uninstall removes the same four by name."""
+        dos = self.S['dos']
+        part = dos.split('Lab skills\n')[1].split('Lab launch\n')[0]
+        self.assertIn('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  MakeDir >NIL: UP-Term:var UP-Term:var/amiga-pi UP-Term:var/amiga-pi/skills', part)
+        for where in ('UP-Term:var/amiga-pi/skills', 'ENVARC:amiga-pi/skills'):
+            copied = re.findall(r'Copy skills/(\S+) %s/(\S+) ALL CLONE QUIET' % re.escape(where), part)
+            self.assertEqual(sorted(copied), sorted((n, n) for n in SKILLS), where)
+            dels = re.findall(r'Delete >NIL: %s/(\S+) ALL QUIET' % re.escape(where), part)
+            self.assertEqual(sorted(dels), sorted(SKILLS), where)
+        self.assertNotRegex(part, r'(?m)^\s*Delete[^\n]*/skills( |$)')       # the user's drawers are not ours to delete
+        self.assertNotIn('#?', part)
+        self.assertIn('Quit 0', part.split('Lab launch')[0])                 # a step (STEP) ends here
+        un = self.S['uninstall']
+        self.assertEqual(sorted(re.findall(r'ENVARC:amiga-pi/skills/(\S+)', un)), sorted(SKILLS))
+        self.assertEqual(sorted(re.findall(r'UP-Term:var/amiga-pi/skills/(\S+)', un)), sorted(SKILLS))
+        self.assertLess(un.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  Delete >NIL: UP-Term:var/amiga-pi/skills/'),
+                        un.index('/skills/amigados UP-Term:var'))   # the UP-Term: drawers are looked at only when the assign exists
+
+    def test_the_kit_stages_the_skills_and_lists_them_as_the_skills_part(self):
+        parts = mm.read_parts((ROOT / 'dist/addons/pi/parts.txt').read_text())
+        self.assertIn(('skills', 'Files/skills', None), parts)
+        mk = (ROOT / 'Makefile').read_text()
+        self.assertIn('cp -R $(AMIGA_PI_SKILLS) $(KIT_pi)/Files/skills', mk)
+        self.assertIn('AMIGA_PI_SKILLS := $(AMIGA_PI)/skills', mk)
+        self.assertIn('(set #step "skills" #kb @KBSKILLS@', (ROOT / 'dist/addons/pi/Install.installer').read_text())
+        check = re.search(r'(?ms)^dist-check:\n.*?^\t@test -s \$\(BUILD\)/UP-Term-src.lha', mk).group(0)
+        for n in SKILLS:     # dist-check lists the four SKILL.md in the lha
+            self.assertIn(n, check)
+        self.assertIn('amiga-pi/Files/skills/$$s/SKILL.md', check)
+
+    def test_the_readme_names_the_ndk_convention_and_that_the_autodocs_are_not_shipped(self):
+        rd = (ROOT / 'dist/addons/pi/README.txt').read_text()
+        self.assertIn('Assign NDK:', rd)
+        self.assertIn('not in this archive', rd)
+        self.assertIn('UP-Term:var/amiga-pi/skills', rd)
 
 
 class NvimShell(unittest.TestCase):

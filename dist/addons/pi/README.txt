@@ -53,3 +53,17 @@ AMIGA-PI
   and try again; that file says why (no answer from the address, AmiSSL
   not in LIBS:, the certificate). It also holds each request, the key
   left out, and each answer; UnSetEnv PI_DEBUG_LOG turns it off.
+
+AMIGA SKILLS
+  Install puts four Agent Skills (one drawer each with a SKILL.md) beside your own: amigados
+  (Shell commands, scripts, assigns, protection bits, redirection pitfalls), arexx (rx, ports,
+  RexxMast, ADDRESS), amiga-c-build (vbcc, vasm and vlink flags with a worked example, gcc) and
+  amiga-autodocs (how to look a call up). They go to UP-Term:var/amiga-pi/skills when UP-Term is
+  installed, else to ENVARC:amiga-pi/skills. Install replaces only these four drawers; a skill of
+  another name in that drawer is yours and stays, and Uninstall removes only these four. Keep a
+  changed copy under another name: Install overwrites these.
+  The Amiga autodocs are not in this archive (Hyperion's licence). The amiga-autodocs skill reads
+  them from your own NDK when you have one: make an assign NDK: to the NDK drawer (the one holding
+  Autodocs, Include_H and FD), e.g.  Assign NDK: Work:NDK3.2R4  and put the line in S:User-Startup.
+  amiga-pi then greps NDK:Autodocs/<library>.doc for the one function it needs and reads those
+  lines only; without the NDK it says so.
