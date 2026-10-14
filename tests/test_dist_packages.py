@@ -94,7 +94,7 @@ class Packages(unittest.TestCase):
     def test_the_cli_answers_what_the_makefile_asks(self):
         self.assertEqual(pkgs.get('nvim', 'archive'), 'UP-Term-nvim')
         self.assertEqual(pkgs.get('python', 'archive'), 'Python3')
-        self.assertEqual(pkgs.get('claude', 'handed'), 'Files/Claude,Files/ClaudeCode')
+        self.assertEqual(pkgs.get('claude', 'handed'), 'Files/Claude')
         with self.assertRaises(SystemExit):
             pkgs.get('nope', 'archive')
         with self.assertRaises(SystemExit):

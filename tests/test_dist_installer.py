@@ -317,32 +317,17 @@ class AmigaDosVariableNames(unittest.TestCase):
         self.assertIn('Set optdest "$UPTOPTDEST"', DOS)
 
 
-class ClaudeCodeScript(unittest.TestCase):
-    """C:ClaudeCode (dist/ClaudeCode, an AmigaDOS script, so only its text is checked here): with
-    no HOST it reads ENVARC:Claude/remote, the file the setup wizard writes, so the double-click
-    icon works; HOST [PORT] still win; with neither it points to `Claude SETUP`."""
-    SCRIPT = (ROOT / "dist/ClaudeCode").read_text(encoding="latin-1")
-    WIZARD = ("; Claude Code on another computer: host and port. With no API key,\n"
-              "; plain Claude connects there (uptelnet). Delete this file to stop.\n"
-              "192.0.2.10 2323\n")
+class OneClaudeApp(unittest.TestCase):
+    """CL1: Claude and ClaudeCode are one app. The ClaudeCode script is gone; C:Claude asks
+    Amiga-or-NAS itself (claude/launch.c, tests ONLY=claude_cli / claude_tui). REMOTE-ADDRESS stays:
+    the Installer's server page reads the old file's host and port through it."""
 
-    def test_no_host_argument_is_optional(self):
-        self.assertTrue(self.SCRIPT.startswith('.KEY HOST,PORT/N\n'), 'HOST is no longer required (/A)')
-
-    def test_reads_the_wizards_file_with_claudes_own_parser(self):
-        """Search PATTERN matches anywhere in a line, so the pattern that was here
-        also printed the comment lines (they hold a space and a digit)."""
-        self.assertNotIn('Search', self.SCRIPT.replace('`Claude SETUP`', ''))
-        self.assertIn('Claude REMOTE-ADDRESS >ENV:ClaudeCodeRemote\n  If NOT WARN\n    uptelnet $ClaudeCodeRemote\n',
-                      self.SCRIPT)
-        self.assertLess(self.SCRIPT.index('Stack 32768'), self.SCRIPT.index('Claude REMOTE-ADDRESS'))
-
-    def test_arguments_still_win_and_missing_setup_is_explained(self):
-        self.assertTrue(self.SCRIPT.rstrip().endswith('uptelnet {HOST} {PORT$2323}'))
-        self.assertLess(self.SCRIPT.index('If "{HOST}" EQ ""'), self.SCRIPT.index('Claude REMOTE-ADDRESS'))
-        self.assertGreaterEqual(self.SCRIPT.count('`Claude SETUP`'), 2)
-        self.assertGreaterEqual(self.SCRIPT.count('Quit 10'), 2)
-        self.assertEqual(self.SCRIPT.count('If '), self.SCRIPT.count('EndIf'))
+    def test_the_script_is_gone_and_the_installer_still_reads_the_remote_file_through_claude(self):
+        self.assertFalse((ROOT / "dist/ClaudeCode").exists())
+        page = (ROOT / "dist/addons/claude/Install.installer").read_text(encoding="latin-1")
+        self.assertIn('REMOTE-ADDRESS >ENV:UPTermRemote', page)
+        self.assertNotIn('C:ClaudeCode and', page)
+        self.assertNotIn('ClaudeCode', page.replace('(an old C:ClaudeCode is removed)', '').replace('(the old ClaudeCode icon goes)', ''))
 
 
 def step_command_line(files, dest, installer=INSTALLER):

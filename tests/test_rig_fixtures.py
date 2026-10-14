@@ -384,7 +384,6 @@ class ScriptedAmiga:
             r = [x for x in self.rows.values() if x['record'] == rec][0]
             return 0, '%s %s abc 2026-10-13\n' % (r['archive'], r['version'])
         if c == 'C:vsh -c "ls --version"': return 0, 'ls (GNU coreutils) 5.2.1'
-        if c.startswith('List C:ClaudeCode LFORMAT'): return 0, '-s------'
         if c.endswith('C:Claude --version'): return 0, 'Claude 1.0'
         if c == 'Type ENVARC:Claude/remote': return 0, '127.0.0.1 2399'
         if c == 'C:amiga-pi --version': return 0, 'amiga-pi 1.1.0'

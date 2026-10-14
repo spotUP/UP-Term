@@ -9,7 +9,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import pkgs
 
-LAUNCHERS = {'pi': ['amiga-pi'], 'nvim': ['Neovim'], 'python': ['Python 3'], 'claude': ['Claude', 'ClaudeCode']}
+LAUNCHERS = {'pi': ['amiga-pi'], 'nvim': ['Neovim'], 'python': ['Python 3'], 'claude': ['Claude']}
 ARCHIVE = {r['id']: r['archive'] for r in pkgs.rows()}
 
 

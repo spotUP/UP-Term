@@ -1,7 +1,7 @@
 .KEY DIR/A,STEP/K,REMOTE/K
 .BRA {
 .KET }
-; Claude install: C:Claude, C:ClaudeCode and C:uptelnet. It stands alone: nothing here
+; Claude install: C:Claude and C:uptelnet. It stands alone: nothing here
 ; needs UP-Term, and nothing here looks at an UP-Term: assign (that would ask for the volume).
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
@@ -26,14 +26,14 @@ If NOT "{STEP}" EQ ""
 EndIf
 ; @include dist/common/@CHECKFRAG@
 Lab claude
-; C:Claude, the native Claude client (README), and C:ClaudeCode: Claude Code on the
-; NAS through C:uptelnet (this archive's copy: the same program as UP-Term.lha's; no
-; ixemul); a script, so the s bit makes it a command.
+; C:Claude, the native Claude client (README): with an API key it is Claude here, with
+; ENVARC:Claude/remote it is Claude Code on the NAS through C:uptelnet (this archive's
+; copy: the same program as UP-Term.lha's; no ixemul), and with both it asks (CL1).
+; An earlier Claude.lha also had C:ClaudeCode (a script) and its icon: they are one app now.
 ; Its talking to Anthropic needs AmiSSL 5; ENVARC:Claude is where its settings go
 ; (Install never writes a key).
 Copy Claude C:Claude CLONE QUIET
-Copy ClaudeCode C:ClaudeCode CLONE QUIET
-Protect C:ClaudeCode +s QUIET
+Delete >NIL: C:ClaudeCode QUIET
 Copy uptelnet C:uptelnet CLONE QUIET
 If NOT EXISTS ENVARC:Claude
   MakeDir ENVARC:Claude
@@ -59,10 +59,12 @@ Lab launch
 ; put them in (XCON: is the UP-Term handler), so nothing is installed and nothing named UP-Term: is touched.
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  Copy "launch/Claude" "launch/Claude.info" "launch/ClaudeCode" "launch/ClaudeCode.info" UP-Term: CLONE QUIET
+  Copy "launch/Claude" "launch/Claude.info" UP-Term: CLONE QUIET
+  ; the old second icon of Claude.lha 1.0
+  Delete >NIL: UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 ; @include dist/common/record.dos
-Echo "Claude installed: type  Claude  in a Shell or an UP-Term window, or double-click ClaudeCode."
+Echo "Claude installed: type  Claude  in a Shell or an UP-Term window, or double-click Claude."

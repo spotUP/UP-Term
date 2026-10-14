@@ -223,7 +223,12 @@ class EveryAddOn(unittest.TestCase):
 
 # W-I1: the quick-launch icons. id -> (launcher names, the app command vsh -c runs, window size)
 LAUNCHERS = {'pi': (['amiga-pi'], 'C:amiga-pi', '800/560'), 'nvim': (['Neovim'], 'nvim', '800/560'),
-             'python': (['Python 3'], 'python3', '640/400'), 'claude': (['Claude', 'ClaudeCode'], 'C:Claude', '800/560')}
+             'python': (['Python 3'], 'python3', '640/400'), 'claude': (['Claude'], 'C:Claude', '800/560')}
+
+
+def kit_block(mk, pid):
+    """the Makefile's dist-<pid> recipe"""
+    return re.search(r'(?ms)^dist-%s:.*?^(?:dist-|# build)' % pid, mk).group(0)
 
 
 class QuickLaunchIcons(unittest.TestCase):
@@ -296,12 +301,9 @@ class QuickLaunchIcons(unittest.TestCase):
                 # the current directory is UP-Term:, which holds a script named like the app: C: by its path
                 self.assertTrue(app in ('nvim', 'python3') or app.startswith('C:'), pid)
                 self.assertIn('Stack 32768', text, pid)
-        # ClaudeCode's launcher is the C:ClaudeCode script itself (uptelnet to the NAS); run from UP-Term: it
-        # must name C:Claude by its path (UP-Term:Claude is the Claude launcher script)
-        cc = (ROOT / 'dist/ClaudeCode').read_text()
-        self.assertIn('C:Claude REMOTE-ADDRESS', cc)
-        self.assertNotRegex(cc, r'(?m)^\s*Claude ')
-        self.assertIn('call LAUNCHER,$(KIT_claude),dist/ClaudeCode,ClaudeCode,', mk)
+        # CL1: one Claude app, one icon: no ClaudeCode script, no ClaudeCode launcher in the Makefile
+        self.assertFalse((ROOT / 'dist/ClaudeCode').exists())
+        self.assertNotIn('ClaudeCode', kit_block(mk, 'claude'))
 
 
 class PythonUninstall(unittest.TestCase):
@@ -401,9 +403,18 @@ class ClaudeInstall(unittest.TestCase):
     def test_the_binaries_and_the_icon_script(self):
         dos = self.S['dos']
         self.assertIn('Copy Claude C:Claude CLONE QUIET', dos)
-        self.assertIn('Copy ClaudeCode C:ClaudeCode CLONE QUIET\nProtect C:ClaudeCode +s QUIET', dos)
+        # CL1: one app. The kit copies no ClaudeCode; install removes the old copies (script and icon),
+        # Uninstall removes them too
+        self.assertNotIn('Copy ClaudeCode', dos)
+        self.assertNotIn('Protect C:ClaudeCode', dos)
+        self.assertIn('Delete >NIL: C:ClaudeCode QUIET', dos)
+        self.assertIn('Delete >NIL: UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET', dos)
+        self.assertNotIn('launch/ClaudeCode', dos)
         self.assertIn(' C:Claude C:ClaudeCode ', self.S['uninstall'])
-        # C:uptelnet comes with it (ClaudeCode needs it) and goes with it only when UP-Term is not installed
+        parts = (ROOT / 'dist/addons/claude/parts.txt').read_text()
+        self.assertNotIn('ClaudeCode', parts)
+        self.assertNotIn('ClaudeCode', (ROOT / 'dist/packages.txt').read_text())
+        # C:uptelnet comes with it (Claude on the NAS needs it) and goes with it only when UP-Term is not installed
         self.assertIn('Copy uptelnet C:uptelnet CLONE QUIET', dos)
         un = self.S['uninstall']
         self.assertIn('Assign >NIL: UP-Term: EXISTS\nIf WARN\n  Delete >NIL: C:uptelnet QUIET', un)
