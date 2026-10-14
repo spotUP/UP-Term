@@ -125,6 +125,12 @@ def windows(tree):
     return out
 
 
+def drawer_delete(drawer):
+    """A drawer and its icon gone: Delete DIR ALL leaves DIR.info, and Workbench then shows a drawer icon
+    that opens nothing (VTCX:Apps/UP-Term.info on rig 1, 2026-10-14, left by the migrate case)."""
+    return 'Delete "%s" "%s.info" ALL QUIET' % (drawer, drawer)
+
+
 def click(box):
     # UITREE gives screen pixels, CLICK takes Intuition pointer units: the same on the 3.1 rig's RTG screen,
     # y doubled on 3.2's native non-interlaced Workbench (a raw click at Proceed's y 191 landed at y 95, in
@@ -725,7 +731,7 @@ def _migrate(case, ck):
     # goes to the host drawer VTC: as in the dest case; the new kits find it through the UP-Term: assign (Update).
     legacy_dest = "VTC:Apps/UP-Term"
     ir.run("MakeDir >NIL: VTC:Apps")
-    ir.run_slow("deletedest", 'Delete "%s" ALL QUIET' % legacy_dest)
+    ir.run_slow("deletedest", drawer_delete(legacy_dest))
     if not installer_done(ck, inst, "migrate legacy", *installer_run("migrate-legacy", inst, "legacykit", "UP-Term", "AVERAGE", base, legacy_dest)[:2], readable=False):
         ir.run_long("rununinstall")
         return False, "; ".join(ck.failed)

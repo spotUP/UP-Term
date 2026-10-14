@@ -63,6 +63,14 @@ class Rig(unittest.TestCase):
         x, y = struct.unpack('>HH', self.fake.clicks[0][1:5])
         self.assertEqual((x, y), (120, 220))
 
+    def test_the_migrate_case_deletes_the_old_drawer_with_its_icon(self):
+        # VTCX:Apps/UP-Term.info stayed on rig 1 after the drawer went: a drawer icon nothing opens (2026-10-14)
+        import installer_rig
+        cmd = installer_rig.drawer_delete("VTC:Apps/UP-Term")
+        self.assertIn('"VTC:Apps/UP-Term"', cmd)
+        self.assertIn('"VTC:Apps/UP-Term.info"', cmd)
+        self.assertIn(' ALL', cmd)
+
     def test_a_shot_with_indices_past_the_palette_keeps_its_rows(self):
         # 3.2's native 16-colour screen: SHOT sent indices 16 and 32; a palette lookup past the end gave
         # no bytes and sheared every later row (2026-10-08). Only the screen's depth counts.
