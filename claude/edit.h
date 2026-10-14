@@ -40,6 +40,10 @@ typedef struct cl_edit {
     long ya, yz;        /* the text the last Ctrl+Y / Alt+Y put in */
     int yidx;           /* which kill it was (0 the newest), -1 the register */
     int yanked;         /* the last key was Ctrl+Y or Alt+Y */
+    /* piword: pi's Input rules (tui/src/components/input.ts, word-navigation.ts) instead of Claude Code's: a word ends at punctuation, Ctrl+W
+     * deletes a word, kills in a row join one ring entry, a typed space starts a new undo step. killed: the last key was a kill */
+    int piword;
+    int killed;
     ed_snapshot undo[ED_UNDO];
     int nundo;
     int lastk;          /* the last key's kind: typed characters undo as one */

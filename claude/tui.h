@@ -95,6 +95,8 @@ typedef struct tui_pick {
     char query[96];             /* the search line's text */
     int qcur1;                  /* the search line's cursor: its byte offset + 1, 0 at the end of the text (the default). pi's Input.setValue
                                  * keeps the cursor where it was, at the start of a new one (input.ts:66), so a program that sets query sets 1 */
+    int qundo;                  /* set by tui_pick_run before each key to the keymap's answer for pi's tui.editor.undo: 1 this key is it, -1 it is not,
+                                 * 0 not asked (tui_pick_qkey then takes the default, Ctrl+Minus) */
     int n, sel;
     int maxrows;                /* rows shown at most */
     char status[64];            /* after "(sel/total)" */
@@ -341,6 +343,7 @@ typedef struct cl_tui {
 /* the row chosen (accept), -1 cancelled or the end of input */
 int tui_pick_run(cl_tui *t, tui_pick *p);
 int tui_pick_qkey(tui_pick *p, const cl_key *key);   /* the search line's keys, see tui.c */
+void tui_pick_qreset(const tui_pick *p);             /* a picker is opened: its search line starts with no undo steps and no kills (tui_pick_run does it) */
 /* TUI_LOOK_PI: a one-line input under a title (Enter: 1 with the text in out, Esc: 0, the end of input: -1); pasted
  * text is taken (its line breaks left out) and a line longer than the screen shows its end */
 int tui_line_input(cl_tui *t, const char *title, char *out, long cap);

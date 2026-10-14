@@ -1586,90 +1586,103 @@ static void pi_session_rows(cl_tui *t)
     pi_rule_row(t, PR_ACCENT);
 }
 
-/* the search line's keys (pi's Input.handleInput, tui/src/components/input.ts:130-203 with the default keybindings, keybindings.ts:82-122): a
- * character or a paste inserts at the cursor, Backspace and Delete (Ctrl+D) remove the character before or at it, Left (Ctrl+B) and Right
- * (Ctrl+F) step one character, Home (Ctrl+A) and End (Ctrl+E) go to the ends. The cursor is p->qcur1 (see tui.h). 1 when the key was one of
- * them (the text or the cursor may have changed: compare the query). Word moves, the kill ring and undo are not built. */
+/* the search line (pi's Input, tui/src/components/input.ts) is the chat editor's cl_edit (edit.c) in its piword mode: the same cursor, kill ring
+ * (Ctrl+K/U/W, Alt+D, Ctrl+Y, Alt+Y) and undo, with pi's word rules (word-navigation.ts) and pi's joining of kills in a row (kill-ring.ts:19-26).
+ * One picker is open at a time, so one editor serves them all; it is rebuilt when another picker, or a query the program changed, comes in. */
+static cl_edit qed;
+static const tui_pick *qown;
+
+void tui_pick_qreset(const tui_pick *p)
+{
+    (void)p;
+    ed_free(&qed);
+    qown = 0;
+}
+
+/* the search line's keys, pi's Input.handleInput (input.ts:111-215) with the default keybindings (keybindings.ts:82-122):
+ *   a character, a paste                       insert at the cursor (input.ts:254-263, 403-415)
+ *   Backspace, Delete / Ctrl+D                 cursorLeft/Right deleteChar (keybindings.ts:114-122)
+ *   Left Ctrl+B, Right Ctrl+F, Home Ctrl+A, End Ctrl+E     (keybindings.ts:82-102)
+ *   Alt+Left, Ctrl+Left, Alt+B / Alt+Right, Ctrl+Right, Alt+F    word moves (keybindings.ts:90-98)
+ *   Ctrl+W, Alt+Backspace / Alt+D, Alt+Delete  delete word back / forward (keybindings.ts:123-130)
+ *   Ctrl+U, Ctrl+K                             delete to line start / end (keybindings.ts:131-138)
+ *   Ctrl+Y, Alt+Y                              yank, yank pop (keybindings.ts:139-140)
+ *   Ctrl+Minus (the keymap's tui.editor.undo)  undo (keybindings.ts:141, input.ts:118)
+ * The cursor is p->qcur1 (see tui.h). 1 when the key was one of them (the text or the cursor may have changed: compare the query). */
 int tui_pick_qkey(tui_pick *p, const cl_key *key)
 {
-    long ql = (long)strlen(p->query), cur = p->qcur1 ? p->qcur1 - 1 : ql, n = 0;
-    cl_edit e;
-    char ins[8];
-    int plain = !(key->mods & (KM_CTRL | KM_ALT));
-    memset(&e, 0, sizeof(e));
-    e.b = p->query;
-    e.n = ql;
-    if (cur > ql)
-        cur = ql;
+    cl_key k = *key;
+    char paste[4 * 96];
+    long cur, ql = (long)strlen(p->query);
+    if (p->qundo > 0 || (p->qundo == 0 && key->k == K_CTRL && key->ch == '_')) {
+        k.k = K_CTRL;                   /* the user's binding for tui.editor.undo, whichever key it is */
+        k.ch = '_';
+        k.mods = KM_CTRL;
+        goto run;
+    }
+    if (key->k == K_CTRL && key->ch == '_')
+        return 0;
     switch (key->k) {
-    case K_BS:
-        if (cur) {
-            long from = ed_prev(&e, cur);
-            memmove(p->query + from, p->query + cur, (size_t)(ql - cur + 1));
-            cur = from;
-        }
-        break;
-    case K_DEL:
-        if (cur < ql) {
-            long to = ed_next(&e, cur);
-            memmove(p->query + cur, p->query + to, (size_t)(ql - to + 1));
-        }
-        break;
-    case K_LEFT:
-        if (!plain)
-            return 0;
-        cur = ed_prev(&e, cur);
-        break;
-    case K_RIGHT:
-        if (!plain)
-            return 0;
-        cur = ed_next(&e, cur);
-        break;
-    case K_HOME:
-        cur = 0;
-        break;
-    case K_END:
-        cur = ql;
-        break;
-    case K_CTRL:
-        switch (key->ch) {
-        case 'a': cur = 0; break;
-        case 'e': cur = ql; break;
-        case 'b': cur = ed_prev(&e, cur); break;
-        case 'f': cur = ed_next(&e, cur); break;
-        case 'd':
-            if (cur < ql) {
-                long to = ed_next(&e, cur);
-                memmove(p->query + cur, p->query + to, (size_t)(ql - to + 1));
-            }
-            break;
-        default:
-            return 0;
-        }
-        break;
     case K_CHAR:
-        if (key->ch >= 0x20 && ql + 5 < (long)sizeof(p->query)) {
-            n = vw_put_utf8(ins, key->ch);
-            memmove(p->query + cur + n, p->query + cur, (size_t)(ql - cur + 1));
-            memcpy(p->query + cur, ins, (size_t)n);
-            cur += n;
-        }
+        if (key->ch < 0x20 || key->ch == 0x7f || (key->mods & (KM_CTRL | KM_ALT)))
+            return 0;
         break;
     case K_PASTE: {
-        long i;
-        for (i = 0; i < key->n && ql + n + 1 < (long)sizeof(p->query); i++)
-            if ((unsigned char)key->text[i] >= 0x20) {
-                memmove(p->query + cur + 1, p->query + cur, (size_t)(ql + n - cur + 1));
-                p->query[cur++] = key->text[i];
-                n++;
-            }
+        /* pi: line breaks removed, a tab is four spaces (input.ts:403-415) */
+        long i, n = 0;
+        for (i = 0; i < key->n && n + 4 < (long)sizeof(paste); i++) {
+            char c = key->text[i];
+            if (c == '\t') {
+                memcpy(paste + n, "    ", 4);
+                n += 4;
+            } else if ((unsigned char)c >= 0x20)
+                paste[n++] = c;
+        }
+        k.text = paste;
+        k.n = n;
         break;
     }
+    case K_BS:
+    case K_HOME:
+    case K_END:
+        break;
+    case K_DEL:
+        break;
+    case K_LEFT:
+    case K_RIGHT:
+        if (key->mods & KM_SHIFT)
+            return 0;
+        break;
+    case K_ALT:
+        if (key->ch != 'b' && key->ch != 'f' && key->ch != 'd' && key->ch != 'y' && key->ch != 0x7f)
+            return 0;
+        break;
+    case K_CTRL:
+        if (!key->ch || !strchr("abefdkuwy", (int)key->ch))
+            return 0;
+        break;
     default:
         return 0;
     }
-    ql = (long)strlen(p->query);
-    p->qcur1 = cur >= ql ? 0 : (int)cur + 1;
+run:
+    if (p != qown || !qed.b || strcmp(qed.b, p->query)) {
+        ed_free(&qed);
+        ed_init(&qed);
+        qed.piword = 1;
+        ed_set(&qed, p->query);
+        qown = p;
+    }
+    qed.cur = p->qcur1 ? p->qcur1 - 1 : ql;
+    if (qed.cur > ql)
+        qed.cur = ql;
+    ed_key(&qed, &k);
+    if (qed.n + 1 > (long)sizeof(p->query)) {
+        qown = 0;                       /* too long for the query: the key is dropped whole, the editor rebuilt */
+        return 1;
+    }
+    memcpy(p->query, qed.b, (size_t)qed.n + 1);
+    cur = qed.cur;
+    p->qcur1 = cur >= qed.n ? 0 : (int)cur + 1;
     return 1;
 }
 
@@ -4306,6 +4319,7 @@ int tui_pick_run(cl_tui *t, tui_pick *p)
     ctx[0] = KC_TREE;
     t->modal = 2;
     t->pick = p;
+    tui_pick_qreset(p);
     for (;;) {
         cl_key k;
         int r, act;
@@ -4320,6 +4334,13 @@ int tui_pick_run(cl_tui *t, tui_pick *p)
         act = km_action(&t->km, ctx, 1, &k, now(t));
         if (act == KA_PENDING || act == KA_CHORD_MISS)
             continue;
+        p->qundo = -1;
+        if (act == KA_NONE) {
+            /* pi's tui.editor.undo is the keymap's (KC_CHAT KA_UNDO): the search line asks it, without starting a chord */
+            int chat = KC_CHAT;
+            p->qundo = km_action(&t->km, &chat, 1, &k, now(t)) == KA_UNDO ? 1 : -1;
+            t->km.pending = 0;
+        }
         if (p->key && p->key(p->u, &k, act)) {
             if (p->done) {
                 res = p->n ? p->sel : -1;

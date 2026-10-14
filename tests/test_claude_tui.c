@@ -1269,8 +1269,86 @@ static void pick_search_line_keys(void)
     CHECK(key1("\006", &k) && tui_pick_qkey(&p, &k) && p.qcur1 == 2);   /* Ctrl+F */
     CHECK(key1("\177", &k) && tui_pick_qkey(&p, &k));        /* Backspace at the cursor */
     CHECK_STR(p.query, "\303\274z");
-    CHECK(key1("\033[1;5C", &k) && !tui_pick_qkey(&p, &k));  /* Ctrl+Right is a word move: not the search line's */
+    CHECK(key1("\033[1;2C", &k) && !tui_pick_qkey(&p, &k));  /* Shift+Right is not the search line's */
     CHECK(key1("\033[A", &k) && !tui_pick_qkey(&p, &k));     /* Up is the list's */
+}
+
+/* Q3-20: the rest of pi's Input editing in the search line (input.ts:111-215, keybindings.ts:82-141): word moves, kills and the kill ring,
+ * yank, undo. Every row drives tui_pick_qkey, the entry the selectors call; the editor under it is edit.c's in piword mode. */
+static int pk_keys(tui_pick *p, const char *seq)
+{
+    cl_key k;
+    return key1(seq, &k) && tui_pick_qkey(p, &k);
+}
+
+static void pick_search_line_edit(void)
+{
+    tui_pick p;
+    memset(&p, 0, sizeof(p));
+    tui_pick_qreset(&p);
+    strcpy(p.query, "foo.bar  baz");                 /* cursor at the end */
+    CHECK(pk_keys(&p, "\033b") && p.qcur1 == 10);    /* Alt+B: before baz */
+    CHECK(pk_keys(&p, "\033[1;3D") && p.qcur1 == 5); /* Alt+Left: before bar (the dot ends a word, word-navigation.ts) */
+    CHECK(pk_keys(&p, "\033[1;5D") && p.qcur1 == 4); /* Ctrl+Left: before the dot's run */
+    CHECK(pk_keys(&p, "\033[1;5C") && p.qcur1 == 5); /* Ctrl+Right: the dot */
+    CHECK(pk_keys(&p, "\033f") && p.qcur1 == 8);     /* Alt+F: past bar */
+    CHECK(pk_keys(&p, "\033[1;3C") && p.qcur1 == 0);  /* Alt+Right: past baz, the end */
+    /* Ctrl+W: a word back, into the kill ring; Ctrl+Y yanks it, Ctrl+Minus undoes the yank */
+    CHECK(pk_keys(&p, "\027"));
+    CHECK_STR(p.query, "foo.bar  ");
+    CHECK(pk_keys(&p, "\031"));
+    CHECK_STR(p.query, "foo.bar  baz");
+    CHECK(pk_keys(&p, "\037"));
+    CHECK_STR(p.query, "foo.bar  ");
+    CHECK(pk_keys(&p, "\037"));                      /* ... and the kill */
+    CHECK_STR(p.query, "foo.bar  baz");
+    /* Alt+Backspace the same as Ctrl+W; kills in a row are one ring entry (kill-ring.ts:19-26) */
+    CHECK(pk_keys(&p, "\033\177") && pk_keys(&p, "\033\177"));
+    CHECK_STR(p.query, "foo.");
+    CHECK(pk_keys(&p, "\031"));
+    CHECK_STR(p.query, "foo.bar  baz");
+    /* Ctrl+U to the start, Ctrl+K to the end; Alt+D / Alt+Delete a word forward */
+    CHECK(pk_keys(&p, "\001") && pk_keys(&p, "\033d"));
+    CHECK_STR(p.query, ".bar  baz");
+    CHECK(pk_keys(&p, "\033[3;3~"));                 /* Alt+Delete: the dot's run */
+    CHECK_STR(p.query, "bar  baz");
+    CHECK(pk_keys(&p, "\013"));                      /* Ctrl+K: to the end */
+    CHECK_STR(p.query, "");
+    CHECK(pk_keys(&p, "\031"));                      /* the forward kills in a row joined: foo . bar  baz */
+    CHECK_STR(p.query, "foo.bar  baz");
+    /* Alt+Y after Ctrl+Y: the next older kill in its place */
+    strcpy(p.query, "one two");
+    p.qcur1 = 0;
+    tui_pick_qreset(&p);
+    CHECK(pk_keys(&p, "\027") && pk_keys(&p, "\001") && pk_keys(&p, "\013"));   /* kills "two", then "one " */
+    CHECK_STR(p.query, "");
+    CHECK(pk_keys(&p, "\031"));
+    CHECK_STR(p.query, "one ");
+    CHECK(pk_keys(&p, "\033y"));
+    CHECK_STR(p.query, "two");
+    CHECK(pk_keys(&p, "\025") && pk_keys(&p, "\031"));   /* Ctrl+U kills it, Ctrl+Y brings it back */
+    CHECK_STR(p.query, "two");
+    /* the keys the list owns still go to it */
+    CHECK(!pk_keys(&p, "\033[1;2D") && !pk_keys(&p, "\033[5~") && !pk_keys(&p, "\033x"));
+}
+
+/* the undo binding is the keymap's: tui_pick_run sets qundo; Ctrl+Minus is the default, a rebinding moves it */
+static void pick_search_line_undo_binding(void)
+{
+    tui_pick p;
+    cl_key k;
+    memset(&p, 0, sizeof(p));
+    tui_pick_qreset(&p);
+    strcpy(p.query, "ab");
+    CHECK(pk_keys(&p, "X"));
+    CHECK_STR(p.query, "abX");
+    p.qundo = -1;                                    /* the keymap says Ctrl+Minus is not undo */
+    CHECK(!pk_keys(&p, "\037"));
+    CHECK_STR(p.query, "abX");
+    p.qundo = 1;                                     /* ... and that this key (Ctrl+Z, say) is */
+    CHECK(key1("\032", &k) && tui_pick_qkey(&p, &k));
+    CHECK_STR(p.query, "ab");
+    tui_pick_qreset(&p);
 }
 
 static void keys_rest(void)
@@ -2423,6 +2501,8 @@ void suite_claude_tui(void)
     queue_while_busy();
     keys_rest();
     pick_search_line_keys();
+    pick_search_line_edit();
+    pick_search_line_undo_binding();
     transcript_view();
     transcript_resize();
     esc_esc();

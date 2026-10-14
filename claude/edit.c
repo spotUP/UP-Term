@@ -113,12 +113,33 @@ void ed_cut(cl_edit *e, long a, long z, int keep)
 {
     if (z <= a)
         return;
-    if (keep) {
+    if (keep && e->piword && e->killed && e->nring) {
+        /* pi's KillRing.push(accumulate): a kill right after a kill joins the newest entry, before it for a backward kill */
+        char *old = e->ring[e->nring - 1], *j = (char *)malloc(strlen(old) + (size_t)(z - a) + 1);
+        if (j) {
+            size_t ol = strlen(old);
+            if (z == e->cur) {
+                memcpy(j, e->b + a, (size_t)(z - a));
+                memcpy(j + (z - a), old, ol + 1);
+            } else {
+                memcpy(j, old, ol);
+                memcpy(j + ol, e->b + a, (size_t)(z - a));
+                j[ol + (size_t)(z - a)] = 0;
+            }
+            free(old);
+            e->ring[e->nring - 1] = j;
+            free(e->kill);
+            e->kill = dup(j, (long)strlen(j));
+            e->kill_lines = 0;
+        }
+    } else if (keep) {
         free(e->kill);
         e->kill = dup(e->b + a, z - a);
         e->kill_lines = 0;
         ed_ring_add(e, e->b + a, z - a);
     }
+    if (keep)
+        e->killed = 1;
     memmove(e->b + a, e->b + z, (size_t)(e->n - z) + 1);
     e->n -= z - a;
     e->cur = a;
@@ -168,8 +189,49 @@ static int is_blank(int c)
     return c == ' ' || c == '\t' || c == '\n';
 }
 
+/* pi's findWordBackward / findWordForward (tui/src/word-navigation.ts:22-76, 78-110) on bytes: blanks are skipped, then one run of word
+ * characters (letters, digits, _, non-ASCII; PUNCTUATION_REGEX, utils.ts:1006, ends a word even inside one segment) or one run of
+ * punctuation and other symbols */
+static int pi_wordch(int c)
+{
+    return is_word(c) || c == '_';
+}
+
+static int pi_blank(int c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+}
+
+static long pi_word_back(const cl_edit *e, long i)
+{
+    while (i > 0 && pi_blank((unsigned char)e->b[i - 1]))
+        i--;
+    if (i > 0 && pi_wordch((unsigned char)e->b[i - 1]))
+        while (i > 0 && pi_wordch((unsigned char)e->b[i - 1]))
+            i--;
+    else
+        while (i > 0 && !pi_wordch((unsigned char)e->b[i - 1]) && !pi_blank((unsigned char)e->b[i - 1]))
+            i--;
+    return i;
+}
+
+static long pi_word_fwd(const cl_edit *e, long i)
+{
+    while (i < e->n && pi_blank((unsigned char)e->b[i]))
+        i++;
+    if (i < e->n && pi_wordch((unsigned char)e->b[i]))
+        while (i < e->n && pi_wordch((unsigned char)e->b[i]))
+            i++;
+    else
+        while (i < e->n && !pi_wordch((unsigned char)e->b[i]) && !pi_blank((unsigned char)e->b[i]))
+            i++;
+    return i;
+}
+
 static long word_back(const cl_edit *e, long i)
 {
+    if (e->piword)
+        return pi_word_back(e, i);
     while (i > 0 && !is_word((unsigned char)e->b[i - 1]))
         i--;
     while (i > 0 && is_word((unsigned char)e->b[i - 1]))
@@ -188,6 +250,8 @@ static long blank_back(const cl_edit *e, long i)
 
 static long word_fwd(const cl_edit *e, long i)
 {
+    if (e->piword)
+        return pi_word_fwd(e, i);
     while (i < e->n && !is_word((unsigned char)e->b[i]))
         i++;
     while (i < e->n && is_word((unsigned char)e->b[i]))
@@ -301,6 +365,9 @@ int ed_key(cl_edit *e, const cl_key *k)
     long n0 = e->n, c0 = e->cur;
     if (!(k->k == K_CTRL && k->ch == 'y') && !(k->k == K_ALT && k->ch == 'y'))
         e->yanked = 0;
+    if (!((k->k == K_CTRL && (k->ch == 'k' || k->ch == 'u' || k->ch == 'w')) || (k->k == K_ALT && (k->ch == 'd' || k->ch == 0x7f))
+          || (k->k == K_DEL && (k->mods & KM_ALT))))
+        e->killed = 0;
     if (e->vim != VIM_OFF)
         vim_record(e, k);
     if (e->vim == VIM_NORMAL || e->vim == VIM_VISUAL || e->vim == VIM_VLINE) {
@@ -325,7 +392,8 @@ int ed_key(cl_edit *e, const cl_key *k)
     }
     /* typed characters in a row undo as one; in vim the command that
      * started INSERT took the snapshot */
-    if (changes(k) && e->vim != VIM_INSERT && !(k->k == K_CHAR && e->lastk == K_CHAR)) {
+    if (changes(k) && e->vim != VIM_INSERT
+        && !(k->k == K_CHAR && e->lastk == K_CHAR && !(e->piword && (k->ch == ' ' || k->ch == '\t')))) {
         ed_snap(e);
         snapped = 1;
     }
@@ -404,7 +472,10 @@ static int edit_key(cl_edit *e, const cl_key *k)
         ed_cut(e, ed_prev(e, e->cur), e->cur, 0);
         return 1;
     case K_DEL:
-        ed_cut(e, e->cur, ed_next(e, e->cur), 0);
+        if (e->piword && (k->mods & KM_ALT))
+            ed_cut(e, e->cur, word_fwd(e, e->cur), 1);      /* pi's tui.editor.deleteWordForward: alt+d, alt+delete */
+        else
+            ed_cut(e, e->cur, ed_next(e, e->cur), 0);
         return 1;
     case K_LEFT:    /* Shift: the line's start, as AmigaShell's Shift+Left */
         e->cur = k->mods & (KM_CTRL | KM_ALT) ? word_back(e, e->cur)
@@ -488,7 +559,7 @@ static int edit_key(cl_edit *e, const cl_key *k)
             return 1;
         }
         case 'w':
-            ed_cut(e, blank_back(e, e->cur), e->cur, 1);
+            ed_cut(e, e->piword ? pi_word_back(e, e->cur) : blank_back(e, e->cur), e->cur, 1);
             return 1;
         case 'd':
             ed_cut(e, e->cur, ed_next(e, e->cur), 0);
