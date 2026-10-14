@@ -1,0 +1,8 @@
+#!/bin/sh
+# as-claude: runs "$@" as the claude user, with the claude user's own
+# environment. Every root entry point that touches /home/claude goes through
+# this (entrypoint.sh, setpw, amiga-target): root writing into a directory the
+# claude user owns would follow symlinks that user can plant there.
+exec setpriv --reuid=claude --regid=claude --init-groups --reset-env \
+    env HOME=/home/claude USER=claude LOGNAME=claude SHELL=/bin/bash LANG=C.UTF-8 PATH="$PATH" \
+    NPM_CONFIG_PREFIX="$NPM_CONFIG_PREFIX" "$@"

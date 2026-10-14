@@ -23,7 +23,7 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
 
 ## Set up (Synology DSM 7, Container Manager)
 
-1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, setpw, pairs, amiga-target, seed-claude-files,
+1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, as-claude, setpw, pairs, amiga-target, seed-claude-files,
    amimcp.rev, mcp.json, skills/, README.md) and
    `tools/uptelnetd.py` into one folder on the NAS, e.g. `/volume1/docker/claude-amiga`,
    and create `home` inside it (the container's /home/claude volume).
