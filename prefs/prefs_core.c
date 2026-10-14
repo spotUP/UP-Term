@@ -898,3 +898,13 @@ int prefs_theme_index(const char *names, int n, const char *file)
             return i;
     return -1;
 }
+
+int prefs_grad_pens(unsigned short out[3], long p0, long p1)
+{
+    out[0] = out[1] = out[2] = 0xFFFF;
+    if (p0 < 0 || p1 < 0 || p0 >= 0xFFFF || p1 >= 0xFFFF)
+        return 0;
+    out[0] = (unsigned short)p0;
+    out[1] = (unsigned short)p1;
+    return 1;
+}
