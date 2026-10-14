@@ -27,7 +27,7 @@ CLAUDE_CORE := $(call cl_src,claude/util.c claude/http.c claude/net_posix.c clau
                claude/webfetch.c claude/subagent.c claude/tasks.c claude/sched.c claude/watch.c claude/trust.c \
                claude/keys.c claude/edit.c claude/tui.c claude/show.c) $(CLAUDE_INPUT) \
                $(call cl_src,claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
-               claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c claude/datadir.c) $(LLM_CORE)
+               claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/launch.c claude/print.c claude/datadir.c) $(LLM_CORE)
 CLAUDE_HDR := $(wildcard $(CL_DIR)claude/*.h) $(LLM_HDR)
 
 # C:Claude on the Amiga: the same core over sys_amiga, the console (io_amiga) and
@@ -39,4 +39,4 @@ CLAUDE_PORTABLE := $(call cl_src,claude/util.c claude/http.c claude/json.c claud
                    claude/keys.c claude/edit.c claude/tui.c claude/show.c) $(CLAUDE_INPUT) $(VIEW_MD) $(call cl_src,tty/ldisc.c tty/bmsg.c \
                    handler/clip.c handler/clipfmt.c \
                    claude/config.c claude/memory.c claude/commands.c claude/hooks.c claude/session.c claude/checkpoint.c \
-                   claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/print.c claude/datadir.c) $(LLM_CLAUDE)
+                   claude/policy.c claude/slash.c claude/setup.c claude/cli.c claude/launch.c claude/print.c claude/datadir.c) $(LLM_CLAUDE)

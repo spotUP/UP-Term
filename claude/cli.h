@@ -43,7 +43,7 @@
     "APPEND-SUBAGENT-SYSTEM-PROMPT/K,APPEND-SUBAGENT-SYSTEM-PROMPT-FILE/K,DISABLE-SLASH-COMMANDS/S,"            \
     "SETTING-SOURCES/K,BETAS/K,AUTOCOMPACT/K,FORWARD-SUBAGENT-TEXT/S,DEBUG-FILE/K,PERMISSION-PROMPTS/K,"        \
     "INIT/S,INIT-ONLY/S,MAINTENANCE/S,INCLUDE-HOOK-EVENTS/S,PROMPT-SUGGESTIONS/S,"                              \
-    "EXCLUDE-DYNAMIC-SYSTEM-PROMPT-SECTIONS/S,REMOTE-ADDRESS/S"
+    "EXCLUDE-DYNAMIC-SYSTEM-PROMPT-SECTIONS/S,REMOTE-ADDRESS/S,LOCAL/S,REMOTE/S"
 
 enum { CLI_TEXT, CLI_JSON, CLI_STREAM };
 /* Claude Code's subcommands that exist here */
@@ -55,6 +55,7 @@ typedef struct cl_strs {
 } cl_strs;
 
 typedef struct cl_cli {
+    int local, remote;                      /* LOCAL/S, REMOTE/S: where Claude runs, asked when both are possible */
     int print, ping, setup, remote_addr, debug, plain, verbose, partial, version, help, ask_template;
     int cont, fork, no_persist, resume;     /* resume: -r given (resume_name "" = the picker) */
     int skip_perms;                         /* --dangerously-skip-permissions */
@@ -135,6 +136,16 @@ int cli_remote_parse(const char *text, char *host, long hcap, long *port);
  * never by pattern-matching the file): written to out, 1; 0 when the file
  * names no host (nothing written). */
 int cli_remote_line(const char *text, char *out, long cap);
+
+/* Where a plain start goes (W49 + CL1): LAUNCH_LOCAL (this Amiga, the API
+ * key), LAUNCH_REMOTE (uptelnet to ENVARC:Claude/remote), LAUNCH_ASK (both
+ * possible: ask), LAUNCH_SETUP (the wizard). SETUP wins; LOCAL and REMOTE
+ * answer in advance (cli_parse refuses both, and REMOTE with PRINT, PING,
+ * URL or a prompt); what only the API here can do (PRINT, PING, URL, a
+ * prompt) is LOCAL and never asks; with a remote file and no key REMOTE
+ * (as W49), with neither LOCAL. */
+enum { LAUNCH_LOCAL, LAUNCH_REMOTE, LAUNCH_ASK, LAUNCH_SETUP };
+int cli_launch_mode(const cl_cli *c, int have_key, int have_remote);
 
 /* After repl_init: everything but the session flags applied to r (the
  * settings layer, the system prompt flags, --tools and --disallowedTools,

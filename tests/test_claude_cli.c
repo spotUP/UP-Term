@@ -270,6 +270,60 @@ static void test_remote(void)
     }
 }
 
+/* CL1: where a plain start goes (cli_launch_mode) and the LOCAL / REMOTE switches */
+static int mode_of(const char *line, int key, int remote)
+{
+    CHECK_INT(parse(line), 0);
+    return cli_launch_mode(&c, key, remote);
+}
+
+static void test_launch(void)
+{
+    /* the table: key x remote file, nothing else given */
+    CHECK_INT(mode_of("", 0, 0), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("", 1, 0), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("", 0, 1), LAUNCH_REMOTE);        /* W49: no key, a remote file */
+    CHECK_INT(mode_of("", 1, 1), LAUNCH_ASK);           /* CL1: both */
+    /* the switches answer in advance, in both syntaxes */
+    CHECK_INT(mode_of("LOCAL", 1, 1), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("local", 0, 1), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("--local", 1, 1), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("REMOTE", 1, 1), LAUNCH_REMOTE);
+    CHECK_INT(mode_of("--remote", 1, 1), LAUNCH_REMOTE);
+    CHECK_INT(mode_of("REMOTE", 1, 0), LAUNCH_REMOTE);  /* no file: main says "names no computer" */
+    CHECK_INT(c.remote, 1);
+    CHECK_INT(c.remote_addr, 0);                        /* REMOTE-ADDRESS is another keyword */
+    /* what only the API here can do never asks, never goes remote */
+    CHECK_INT(mode_of("PRINT hello", 1, 1), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("-p hello", 0, 1), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("PING", 1, 1), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("URL=http://10.0.2.2:8080/v1/messages", 1, 1), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("explain the startup", 1, 1), LAUNCH_LOCAL);
+    CHECK_INT(mode_of("explain the startup", 0, 1), LAUNCH_LOCAL);
+    /* SETUP is the wizard */
+    CHECK_INT(mode_of("SETUP", 1, 1), LAUNCH_SETUP);
+    CHECK_INT(mode_of("SETUP", 0, 0), LAUNCH_SETUP);
+    /* both switches refused; REMOTE with what runs here refused */
+    CHECK_INT(parse("LOCAL REMOTE"), -1);
+    CHECK(strstr(c.err, "exclude each other") != 0);
+    CHECK_INT(parse("--local --remote"), -1);
+    CHECK_INT(parse("REMOTE PRINT"), -1);
+    CHECK_INT(parse("--remote -p"), -1);
+    CHECK_INT(parse("REMOTE PING"), -1);
+    CHECK_INT(parse("REMOTE URL=http://x/"), -1);
+    CHECK_INT(parse("--remote hello"), -1);
+    CHECK_INT(parse("LOCAL PRINT hello"), 0);           /* harmless */
+    /* the template: the switches are in it, whole, and each literal fits C89's 509 */
+    CHECK(strstr(CLI_TEMPLATE_MORE, ",LOCAL/S,REMOTE/S") != 0);
+    CHECK(strlen(CLI_TEMPLATE) < 509 && strlen(CLI_TEMPLATE_MORE) < 509);
+    {
+        int i, found = 0;
+        for (i = 0; cli_usage(i); i++)
+            found |= strstr(cli_usage(i), "LOCAL") != 0 && strstr(cli_usage(i), "REMOTE") != 0;
+        CHECK(found);
+    }
+}
+
 void suite_claude_cli(void)
 {
     cli_init(&c);
@@ -278,5 +332,6 @@ void suite_claude_cli(void)
     test_amiga();
     test_errors();
     test_remote();
+    test_launch();
     cli_free(&c);
 }

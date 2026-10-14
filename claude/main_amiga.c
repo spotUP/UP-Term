@@ -45,6 +45,7 @@
 #include "../tty/qmark.h"
 #include "repl.h"
 #include "cli.h"
+#include "launch.h"
 #include "print.h"
 #include "net_amiga.h"
 #include "io_amiga.h"
@@ -56,6 +57,8 @@ static const char vers[] = "$VER: Claude 1.0 (5.10.2026) UP-Term";
 const char stack_cookie[] = "$STACK: 32768";
 
 #define MIN_STACK 16000
+
+#define NAS_KEY_FILE "ENVARC:Claude/nas-key"
 
 static char key[512];
 static BPTR logf;
@@ -97,20 +100,52 @@ static int load_key(char *source, long cap)
     return cl_key_clean(key) == 0;
 }
 
+/* ENVARC:Claude/remote: 1 with the host and port it names, 0 when there is no file or it names none */
+static int remote_named(char *host, long hcap, long *port)
+{
+    char text[512];
+    LONG n;
+    BPTR f = Open((STRPTR)"ENVARC:Claude/remote", MODE_OLDFILE);
+    if (!f)
+        return 0;
+    n = Read(f, text, sizeof(text) - 1);
+    Close(f);
+    text[n > 0 ? n : 0] = 0;
+    return cli_remote_parse(text, host, hcap, port);
+}
+
+/* ENVARC:Claude/last-mode: the choice the question highlights (LAUNCH_LOCAL when there is none) */
+static int last_mode(void)
+{
+    char text[16];
+    LONG n;
+    BPTR f = Open((STRPTR)LAUNCH_LAST_FILE, MODE_OLDFILE);
+    if (!f)
+        return LAUNCH_LOCAL;
+    n = Read(f, text, sizeof(text) - 1);
+    Close(f);
+    text[n > 0 ? n : 0] = 0;
+    return launch_last_parse(text);
+}
+
+static void save_last_mode(int mode)
+{
+    const char *t = launch_last_text(mode);
+    BPTR f = Open((STRPTR)LAUNCH_LAST_FILE, MODE_NEWFILE);
+    if (f) {
+        Write(f, (APTR)t, (LONG)strlen(t));
+        Close(f);
+    }
+}
+
 /* ENVARC:Claude/remote names Claude Code on another computer: uptelnet
  * there in this window, its return code; -1 when the file names none */
 static int remote(void)
 {
-    char text[512], host[200], cmd[260], num[12];
+    char host[200], cmd[320], num[12];
     long port, i;
-    LONG n, rc;
-    BPTR f = Open((STRPTR)"ENVARC:Claude/remote", MODE_OLDFILE);
-    if (!f)
-        return -1;
-    n = Read(f, text, sizeof(text) - 1);
-    Close(f);
-    text[n > 0 ? n : 0] = 0;
-    if (!cli_remote_parse(text, host, sizeof(host), &port))
+    LONG rc;
+    if (!remote_named(host, sizeof(host), &port))
         return -1;
     /* the file names a computer: its uptelnet has to be in C: */
     {
@@ -132,6 +167,8 @@ static int remote(void)
     cl_cat(cmd, host, sizeof(cmd));
     cl_cat(cmd, "\" ", sizeof(cmd));
     cl_cat(cmd, num + i, sizeof(cmd));
+    /* the key login (net/tn.h): the Amiga's key for this NAS; a missing file asks the NAS to pair */
+    cl_cat(cmd, " KEY " NAS_KEY_FILE, sizeof(cmd));
     rc = SystemTags((STRPTR)cmd, SYS_Input, Input(), SYS_Output, Output(), SYS_UserShell, TRUE, TAG_END);
     return rc == -1 ? 20 : (int)rc;
 }
@@ -247,12 +284,34 @@ int main(void)
     }
     url = cli.url[0] ? cli.url : CL_DEFAULT_URL;
     have_key = load_key(cli.key_source, sizeof(cli.key_source));
-    /* no key and nothing asked of the API itself: Claude Code on the
-     * computer ENVARC:Claude/remote names, if it names one (W49) */
-    if (!have_key && !cli.print && !cli.ping && !cli.setup && !cli.url[0] && !cli.prompt) {
-        int rr = remote();
-        if (rr >= 0) {
+    /* the console first: the launch question needs it (CL1) */
+    memset(&io, 0, sizeof(io));
+    io_amiga_args();
+    io_amiga_line(&io);
+    io.log = c_log;
+    if (!cli.print && !cli.ping && !cli.plain)
+        io_amiga_screen(&io);
+    {
+        char h[200];
+        long pt;
+        int mode = cli_launch_mode(&cli, have_key, remote_named(h, sizeof(h), &pt));
+        if (mode == LAUNCH_ASK) {
+            mode = launch_ask(&io, last_mode());
+            if (mode < 0) {             /* Esc, Ctrl+C: nothing started */
+                io_amiga_end();
+                cli_free(&cli);
+                return 5;
+            }
+            save_last_mode(mode);
+        }
+        if (mode == LAUNCH_REMOTE) {
+            int rr = remote();
+            io_amiga_end();
             cli_free(&cli);
+            if (rr < 0) {
+                say("Claude: ENVARC:Claude/remote names no computer. Run `Claude SETUP` to store the address.\n");
+                return 10;
+            }
             return rr;
         }
     }
@@ -277,12 +336,6 @@ int main(void)
     }
     if (cli.print)
         open_err();
-    memset(&io, 0, sizeof(io));
-    io_amiga_args();
-    io_amiga_line(&io);
-    io.log = c_log;
-    if (!cli.print && !cli.ping && !cli.plain)
-        io_amiga_screen(&io);
     net_amiga_init(&na, &net);
     net_amiga_init(&wa, &wnet);     /* WebFetch's own connection (ledger A4 WP2) */
     sys_amiga_init(&sa, &sys);
