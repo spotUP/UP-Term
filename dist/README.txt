@@ -105,15 +105,29 @@ CONFIGURATION (profiles)
    tool is "C:UP-Term Prefs") writes it. Install lays down a fully
    commented sample; without the file every window behaves as before.
 
-   Prefs: three pages, General, Colors and Advanced (the screen, the
-   Backspace key, AmigaShell keys, Highlight files shown with cat, what
-   programs may do). Type the profile name in the
-   Profile field, press Load to edit an existing profile or New to start
-   one, change the values, press Save. Save writes ENVARC:up-term/up-term
-   and keeps the file that was there as up-term.orig; Cancel closes without
-   writing. Open windows keep the settings they started with; a new window
-   takes the file. Preferences apply to XCON:, PTY: and RAW: windows (the
-   console.device ones, CON: under console.device, are not touched).
+   Prefs: five pages, General (profile, font, fallback font, scrollback,
+   cursor, bell), Colors (text, background, selection, Theme...), Palette
+   (the 16 colours by name), Keyboard (Meta key, AmigaShell keys, Backspace,
+   Tab completion and KingCON's style, Copy on select, the wheel) and
+   Advanced (the screen, its mode and depth, Programs may, Highlight files
+   shown with cat, the link command). Each value has a control that fits
+   it: Font, Fallback font and Screen mode open the system requesters, a
+   colour swatch opens a colour window (colour wheel, brightness, Red,
+   Green, Blue and the hex digits RRGGBB, all following each other), KingCON
+   style is a cycle and two boxes. The Profile gadget lists the profiles of
+   the file; New..., Rename... and Delete (asks first) change the list.
+   Hold the pointer over a control for its help line; the underlined letter
+   of a label is its key. Save writes ENVARC:up-term/up-term and ENV:, keeps
+   the file that was there as up-term.orig, applies the settings and ends
+   Prefs; Use does the same for ENV: only (until the next reboot); Cancel
+   ends Prefs with nothing written or applied. The close gadget asks
+   "Discard changes?" when there are unsaved edits. Windows already open
+   take the new settings at once: colours, palette, font, scrollback, scroll
+   bar, cursor, bell, keys and completion. These need a new window: the
+   screen, its mode and depth (Screen, Screen mode), and TERM / colors /
+   Highlight files shown with cat for programs already started. Preferences
+   apply to XCON:, PTY: and RAW: windows (the console.device ones, CON:
+   under console.device, are not touched).
 
    A window takes the profile named by the spec option  PROFILE <name>
    (otherwise the "default" profile). Precedence, low to high: the built-in
@@ -127,7 +141,7 @@ CONFIGURATION (profiles)
                                an installed outline font for what the font
                                cannot show (see OUTLINE FONTS below)
      fg = C0C0C0  bg = 000000  default foreground / background (RRGGBB hex)
-     scrollback = 2000         lines to keep (0 = the built-in 500, -1 = none)
+     scrollback = 2000         lines to keep (no key = the built-in 500; 0 or less = none)
      cursor = block            block | underline | bar
      cursor-blink = off        on | off
      cursor-color = inverse    inverse (the flipped cell) or RRGGBB
