@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "amiga": {
-      "command": "sh",
-      "args": ["-c", "D=\"$HOME/.config/amimcp\"; [ -s \"$D/port\" ] && export AMIGA_PORT=$(cat \"$D/port\"); AMIGA_HOST=$(cat \"$D/host\") AMIGA_TOKEN=$(cat \"$D/token\") exec python3 /opt/amimcp/server/amimcp.py"]
+      "command": "python3",
+      "args": ["/opt/wasabi/wasabi_mcp.py"]
     }
   }
 }

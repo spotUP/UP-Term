@@ -24,7 +24,7 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
 ## Set up (Synology DSM 7, Container Manager)
 
 1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, as-claude, setpw, pairs, amiga-target, seed-claude-files,
-   amimcp.rev, mcp.json, skills/, README.md) and
+   wasabi.rev, mcp.json, skills/, README.md) and
    `tools/uptelnetd.py` into one folder on the NAS, e.g. `/volume1/docker/claude-amiga`,
    and create `home` inside it (the container's /home/claude volume).
 2. Container Manager > Project > Create, source: the existing compose.yaml; edit
@@ -99,53 +99,55 @@ Claude should edit files there).
 Status: built and running on the owner's DS218+ (DSM 7.2.2) 2026-10-05. Needs an
 x86-64 or ARM64 Synology with Container Manager.
 
-## Give Claude control of the Amiga (amimcp)
+## Give Claude control of the Amiga (wasabi)
 
 With this, the Claude Code in the container can act on the Amiga you talk to
 it from: run AmigaDOS commands, read and write files, list drawers, see the
-screen, click and type. It uses amimcp (https://github.com/thomas-luebker/amimcp):
-amiagent on the Amiga, an MCP server (pure Python 3 standard library) beside
-Claude Code. amiagent runs whatever it is sent and the link is NOT encrypted:
-always set a TOKEN, keep it on a LAN you trust, never forward the port (7846).
+screen, click and type. It uses wasabi (https://github.com/creep-ltx/wasabi, MIT):
+wasabid on the Amiga and an MCP server (`wasabi_mcp.py`, pure Python 3 standard
+library) beside Claude Code. wasabid runs whatever it is sent, as you. It answers only
+clients with the key and only from private addresses; the link is encrypted only when
+wasabid has AmiSSL and keys, otherwise it is plain. Keep the key to yourself, keep
+the Amiga on a LAN you trust, never forward the port (1234).
 
-1. On the Amiga: install amiagent (Aminet comm/net/amiagent, or tick it in the
-   UP-Term kit's Install, which copies it to UP-Term:bin/amiagent) and start it with
-   a token, at every boot from S:User-Startup:
-
-       Run >NIL: amiagent TOKEN=pick-a-secret QUIET
-
-   Note the Amiga's IP address.
+1. On the Amiga: tick wasabid in the UP-Term kit's Install (it puts wasabid in
+   C:, makes a key in ENVARC:wasabi.key, shows it, and starts it at every boot).
+   Note the Amiga's IP address and the key.
 
 2. On the NAS: rebuild the image (Build section below: copy this whole drawer,
-   including `skills/`, `mcp.json`, `amimcp.rev`, `amiga-target` and `seed-claude-files`,
-   raise the `image:` tag, Project > Action > Build). The image then holds amimcp's
-   server at `/opt/amimcp/server` (cloned at the commit in `amimcp.rev`, its LICENSE
+   including `skills/`, `mcp.json`, `wasabi.rev`, `amiga-target` and `seed-claude-files`,
+   raise the `image:` tag, Project > Action > Build). The image then holds wasabi's
+   client and MCP server in `/opt/wasabi` (cloned at the commit in `wasabi.rev`, its LICENSE
    beside it) and the entrypoint seeds the skill (`~/.claude/skills/amiga-upterm`,
    which teaches Claude AmigaDOS, the UP-Term layout and the safety rules) and the MCP
    config (`~/work/.mcp.json`) into the volume.
 
    Then, in Container Manager > Container > claude-amiga > Action > Open terminal >
    Create > Launch with command `amiga-target`, give the Amiga's IP address, the
-   amiagent port (Return = 7846) and the TOKEN (not echoed). They are kept 0600 in
-   `home/.config/amimcp/`, in neither the config nor any chat. `amiga-target show`
-   prints the address and port (never the token); `amiga-target clear` removes them.
+   wasabid port (Return = 1234) and the KEY (not echoed). They go into
+   `home/.config/wasabi/config` (0600), the file wasabi reads itself, in neither the
+   compose file nor any chat; other lines in it are kept. `amiga-target show`
+   prints the address and port (never the key); `amiga-target clear` removes them.
+   Coming from the amimcp image: run `amiga-target` again (the old amiagent token does not
+   open wasabid); the old `home/.config/amimcp/` can be deleted.
 
    Seeding rule: a missing file is copied. A file that is still the copy we seeded
-   (its sha256 matches `~/.config/amimcp/seeded/<name>`) is replaced when a newer
+   (its sha256 matches `~/.config/wasabi/seeded/<name>`) is replaced when a newer
    image brings a new one. A file you edited is never touched (the log says "kept");
-   delete it to get the image's copy back at the next start.
+   delete it to get the image's copy back at the next start. The records of the amimcp
+   image (`~/.config/amimcp/seeded`) are carried over, so its `.mcp.json` is replaced too.
 
 3. Start `claude` from UP-Term (C:Claude, and pick the NAS). Claude asks once to
    approve the project's `amiga` MCP server: approve it. Check: ask "what
    volumes does my Amiga have?" -- it runs a command on the Amiga and answers.
 
-The Mac's `amiga` MCP server (the rig or a real Amiga) is installed with
-`make amimcp`; see tools/rig/README.md.
+The Mac's `amiga` MCP server (the rig or a real Amiga) is `.mcp.json` with
+`tools/rig/wasabimcp.py`, after `make wasabi`; see tools/rig/README.md.
 
-Not covered here: amiagent on the Amiga is the only thing that makes the link
+Not covered here: wasabid on the Amiga is the only thing that makes the link
 that Claude controls the machine; without step 1 above the container's Claude
 Code is just a terminal session. The rig (tools/rig/README.md) uses the same
-amiagent, with token `rigtoken`, on an emulated Amiga: never reuse that token
+wasabid, with key `rigwasabi`, on an emulated Amiga: never reuse that key
 on a real one.
 
 ## ssh to the NAS (for setting this up from another computer)

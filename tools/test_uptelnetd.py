@@ -19,6 +19,7 @@ dropped by the client.
 """
 import hashlib
 import hmac
+import json
 import os
 import pathlib
 import re
@@ -780,37 +781,42 @@ class Reach(unittest.TestCase):
 
 
 class AmigaTargetTool(unittest.TestCase):
-    """tools/nas/amiga-target and seed-claude-files (amimcp installer), against temp dirs."""
+    """tools/nas/amiga-target and seed-claude-files (wasabi installer), against temp dirs."""
     NAS = ROOT / "tools/nas"
 
     def target(self, d, *args, stdin=""):
         return subprocess.run(["sh", str(self.NAS / "amiga-target")] + list(args), input=stdin,
-                              capture_output=True, text=True, env=dict(os.environ, AMIMCP_DIR=d))
+                              capture_output=True, text=True, env=dict(os.environ, WASABI_DIR=d))
 
-    def test_set_show_clear_modes_and_the_token_is_never_shown(self):
+    def test_set_show_clear_modes_and_the_key_is_never_shown(self):
         with tempfile.TemporaryDirectory() as tmp:
-            d = os.path.join(tmp, "amimcp")
+            d = os.path.join(tmp, "wasabi")
+            cfg = os.path.join(d, "config")
             r = self.target(d, "show")
             self.assertEqual(r.returncode, 1)
-            r = self.target(d, "set", stdin="192.168.1.77\n\ns3cret-token\n")
+            r = self.target(d, "set", stdin="192.168.1.77\n\ns3cret-key\n")
             self.assertEqual(r.returncode, 0, r.stderr)
-            for n in ("host", "token"):
-                self.assertEqual(stat.S_IMODE(os.stat(os.path.join(d, n)).st_mode), 0o600)
-            self.assertEqual(open(os.path.join(d, "host")).read(), "192.168.1.77")
-            self.assertEqual(open(os.path.join(d, "token")).read(), "s3cret-token")
-            self.assertFalse(os.path.exists(os.path.join(d, "port")))   # default port: no file
+            self.assertEqual(stat.S_IMODE(os.stat(cfg).st_mode), 0o600)
+            self.assertEqual(open(cfg).read(), "host = 192.168.1.77\nkey = s3cret-key\n")   # wasabi's own file; default port: no line
             self.assertEqual(stat.S_IMODE(os.stat(d).st_mode), 0o700)
             r = self.target(d, "show")
             self.assertIn("host 192.168.1.77", r.stdout)
-            self.assertIn("port 7846", r.stdout)
-            self.assertNotIn("s3cret-token", r.stdout + r.stderr)
-            r = self.target(d, "set", stdin="10.0.0.2\n7000\ntok2\n")
-            self.assertEqual(open(os.path.join(d, "port")).read(), "7000")
-            self.assertEqual(stat.S_IMODE(os.stat(os.path.join(d, "port")).st_mode), 0o600)
+            self.assertIn("port 1234", r.stdout)
+            self.assertNotIn("s3cret-key", r.stdout + r.stderr)
+            open(cfg, "a").write("protect = AmigaOS,Work\n")                                # wasabi's other settings
+            r = self.target(d, "set", stdin="10.0.0.2\n7000\nkey2\n")
+            self.assertEqual(open(cfg).read(), "protect = AmigaOS,Work\nhost = 10.0.0.2\nport = 7000\nkey = key2\n")
+            self.assertEqual(stat.S_IMODE(os.stat(cfg).st_mode), 0o600)
             self.assertIn("port 7000", self.target(d, "show").stdout)
-            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n70x\ntok\n").returncode, 1)
-            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n\n\n").returncode, 1)  # no token
+            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n70x\nkey\n").returncode, 1)
+            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n\nke#y\n").returncode, 1)   # wasabi cuts the line at #
+            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n\n\n").returncode, 1)     # no key
+            self.assertEqual(open(cfg).read().count("host"), 1)                                 # refused sets changed nothing
             self.assertEqual(self.target(d, "clear").returncode, 0)
+            self.assertEqual(open(cfg).read(), "protect = AmigaOS,Work\n")                     # only ours removed
+            os.remove(cfg)
+            self.target(d, "set", stdin="1.2.3.4\n\nk\n")
+            self.target(d, "clear")
             self.assertEqual(os.listdir(d), [])
 
     def seed(self, home, src):
@@ -829,8 +835,8 @@ class AmigaTargetTool(unittest.TestCase):
                 (fake / f).chmod(0o755)
             for tool in ("amiga-target", "setpw"):
                 (t / "called").unlink(missing_ok=True)
-                d = t / "amimcp"
-                env = dict(os.environ, PATH="%s:%s" % (fake, os.environ["PATH"]), AMIMCP_DIR=str(d))
+                d = t / "wasabi"
+                env = dict(os.environ, PATH="%s:%s" % (fake, os.environ["PATH"]), WASABI_DIR=str(d))
                 subprocess.run(["sh", str(self.NAS / tool), "set"], input="1.2.3.4\n\ntok\n", text=True,
                                env=env, capture_output=True, timeout=10)
                 called = (t / "called").read_text() if (t / "called").exists() else ""
@@ -867,24 +873,48 @@ class AmigaTargetTool(unittest.TestCase):
             self.seed(home, src)
             self.assertEqual(open(ds).read(), "skill v3\n")        # deleted: back from the image
 
-    def test_one_file_pins_amimcp_for_the_makefile_and_the_dockerfile(self):
-        rev = (self.NAS / "amimcp.rev").read_text().strip()
+    def test_one_file_pins_wasabi_for_the_makefile_and_the_dockerfile(self):
+        rev = (self.NAS / "wasabi.rev").read_text().strip()
         self.assertRegex(rev, r"^[0-9a-f]{40}$")
+        self.assertFalse((self.NAS / "amimcp.rev").exists())
         mk = (ROOT / "Makefile").read_text()
-        self.assertIn("AMIMCP_REV  := $(strip $(shell cat tools/nas/amimcp.rev))", mk)
         self.assertNotIn(rev, mk)                               # no second copy of the pin
         df = (self.NAS / "Dockerfile").read_text()
-        self.assertIn("COPY amimcp.rev /opt/amimcp/amimcp.rev", df)
-        self.assertIn('checkout -q "$(cat /opt/amimcp/amimcp.rev)"', df)
+        self.assertIn("COPY wasabi.rev /opt/wasabi/wasabi.rev", df)
+        self.assertIn('checkout -q "$(cat /opt/wasabi/wasabi.rev)"', df)
         self.assertNotIn(rev, df)
-        for line in ("COPY amiga-target /usr/local/bin/amiga-target", "cp /tmp/amimcp/LICENSE /opt/amimcp/LICENSE",
-                     "COPY skills /opt/amimcp/seed/skills", "COPY mcp.json /opt/amimcp/seed/mcp.json"):
+        self.assertNotIn("amimcp", df)
+        for line in ("COPY amiga-target /usr/local/bin/amiga-target", "/tmp/wasabi/wasabi_mcp.py /tmp/wasabi/LICENSE /opt/wasabi/",
+                     "COPY skills /opt/wasabi/seed/skills", "COPY mcp.json /opt/wasabi/seed/mcp.json"):
             self.assertIn(line, df)
         ep = (self.NAS / "entrypoint.sh").read_text()
         self.assertIn("(as_claude seed-claude-files)", ep)   # never as root: it follows symlinks in the home
         self.assertNotRegex(ep, r"(?m)^seed-claude-files")
         self.assertLess(ep.index("chown -R claude:claude"), ep.index("(as_claude seed-claude-files)"))
-        self.assertIn("/opt/amimcp/server/amimcp.py", (self.NAS / "mcp.json").read_text())
+        mcp = json.loads((self.NAS / "mcp.json").read_text())["mcpServers"]["amiga"]
+        self.assertEqual(mcp["args"], ["/opt/wasabi/wasabi_mcp.py"])    # host, port, key: ~/.config/wasabi/config
+        self.assertNotIn("amimcp", (self.NAS / "skills/amiga-upterm/SKILL.md").read_text() + (self.NAS / "compose.yaml").read_text())
+
+    def test_the_makefile_wasabi_target_reads_the_one_pin_file(self):
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("$(strip $(shell cat tools/nas/wasabi.rev))", mk)
+
+    def test_seeding_carries_the_amimcp_records_over_so_the_old_mcp_json_is_replaced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, home = os.path.join(tmp, "seed"), os.path.join(tmp, "home")
+            os.makedirs(os.path.join(src, "skills/amiga-upterm"))
+            open(os.path.join(src, "skills/amiga-upterm/SKILL.md"), "w").write("skill new\n")
+            open(os.path.join(src, "mcp.json"), "w").write("mcp wasabi\n")
+            old = os.path.join(home, ".config/amimcp/seeded")
+            os.makedirs(old)
+            dm = os.path.join(home, "work/.mcp.json")
+            os.makedirs(os.path.dirname(dm))
+            open(dm, "w").write("mcp amimcp\n")                  # what the amimcp image seeded
+            open(os.path.join(old, "mcp.json"), "w").write(hashlib.sha256(b"mcp amimcp\n").hexdigest() + "\n")
+            self.assertEqual(self.seed(home, src).returncode, 0)
+            self.assertEqual(open(dm).read(), "mcp wasabi\n")
+            self.assertTrue(os.path.isdir(os.path.join(home, ".config/wasabi/seeded")))
+            self.assertFalse(os.path.exists(old))
 
 
 if __name__ == "__main__":
