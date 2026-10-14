@@ -1,0 +1,321 @@
+Short:        SSH2 client/server suite, security fixes
+Author:       Stefan "Bebbo" Franke (bebbossh), fixes by Matthias Muench
+Uploader:     bebbossh@amigaworld.de (Matthias Muench)
+Type:         comm/net
+Version:      1.46.1
+Requires:     68020+ (programs), AmigaOS 3.x, bsdsocket.library;
+              optional: codesets.library 6+
+Architecture: m68k-amigaos >= 3.0
+Distribution: Aminet
+
+This is an UNOFFICIAL modified build of bebbossh by Stefan "Bebbo" Franke:
+the 1.45 sources with the fixes below and the upstream 1.46 key-exchange
+fix merged (0017), marked as version 1.46.1 (0019). Included are the changed
+programs bebbossh, bebboscp, bebbosshkeygen and the server bebbosshd
+(68020 builds) and libcryptossh.library in the same three variants as the
+original release:
+
+  libcryptossh.library      68000 code, runs everywhere
+  libcryptossh.library020   for 68020-68040 and the 68080 (Vampire)
+  libcryptossh.library060   for the 68060
+
+Install ONE of them as LIBS:libcryptossh.library (see INSTALLATION).
+Read the SECURITY note before running bebbosshd.
+
+Also in the archive, like the upstream release: the native Linux builds of
+the four programs (linux/), server templates (template/sshd_config,
+template/passwd), the xterm-amiga terminfo (compiled and source), the
+workbench icon, Bebbo's original 1.46 readme (bebbossh.readme.orig) and
+all source changes as patches (src/).
+
+Note: the programs are 68020 builds (the original ships 68000 programs).
+During the first tests a 68000 build showed sporadic 4-byte memory
+corruption on the 68080 (about 2 of 13 transfers, and only with the 68000
+programs together with the generic 68000 library). This was then chased in
+depth on the real V4SA and could NOT be reproduced: ~230 transfers stayed
+clean (including the exact build that first failed, both ciphers, up- and
+downloads), a standalone stress test of the generic library's crypto ran
+10 million operations (AES, Poly1305, x25519, Ed25519) with zero wrong
+results, and the hand-written assembler was audited and is ABI-correct. An
+emulator (Amiberry, exact 68000/68020) ran clean too. No software defect
+was found; the single early event was most likely a transient 68080 state.
+The 68020 programs are shipped as the conservative choice and are verified
+clean; the generic 68000 library is audited and stress-tested for real
+68000 machines.
+
+Upstream: https://franke.ms/git/bebbo/bebbossh
+Base: commit 057c7f3 ("cleanup and release 1.45").
+
+CHANGES (all as patches in src/)
+
+0001  Non-interactive use (scripts, file transfer, exit code)
+      - downloads ("bebbossh -T host cmd >file") were cut off at 64 KiB
+        boundaries: the client quit on "exit-status" instead of waiting
+        for CHANNEL_CLOSE
+      - the remote exit code is now returned as the AmigaDOS return code
+      - uploads ("bebbossh -T host cmd <file") read the whole file into a
+        35 KB buffer (crash on larger files) and never sent EOF (remote
+        commands such as cat/md5sum hung); now 16 KiB chunks, flow control
+        and EOF
+      - OpenSSH opens sessions with window 0 - the WINDOW_ADJUST is no
+        longer dropped; channel 0 is confirmed and only removed on CLOSE
+
+0002  Character set conversion in interactive sessions
+      UTF-8 (server) <-> system codeset (Amiga console), via
+      codesets.library if present (follows the system codeset, readable
+      replacements for unmappable characters), otherwise built-in
+      ISO-8859-1. Only if input AND output are a console - redirected
+      data is never changed. LANG=C is only sent for non-interactive use.
+      Note: codesets.library 6.22 frees a caller-supplied CSA_Dest buffer
+      when CSA_MapForeignChars expands a character - worked around.
+
+0003  Window title / OSC sequences
+      All OSC sequences (ESC ] n ; ... BEL or ESC \) are removed from the
+      output, OSC 0 and 2 set the window title (oh-my-zsh etc.). The old
+      code only knew "ESC ]0;" and could loop forever on a title split
+      across packets.
+
+0004  Uploads from RAM:
+      The argument line in the input buffer was always flushed; on a
+      redirected file Flush() seeks before the start of the file, and the
+      OS 3.2 RAM handler then delivers foreign memory (~70 bytes of
+      garbage in front of the data). Now only done for a console.
+
+0005  Out-of-bounds writes in libcryptossh and bebbosshkeygen
+      - barrett_reduce() (Ed25519, used for every key generation and
+        signature) wrote one element past a stack array
+      - bebbosshkeygen overflowed its base64 buffer for comments from
+        ~150 characters; output file names are now length-checked
+      Found with AddressSanitizer on a Linux build.
+
+0006  Downloads into a file started from a shell
+      The OSC filter (0003) and the "report mouse/resize events" request
+      were tied to stdin being a console. "bebbossh host "cat x" >file"
+      typed in a shell therefore lost every byte from an ESC ] up to the
+      next BEL, and 10 bytes of escape sequence ended up at the start of
+      the file. Both now only apply if the output is a console. Also
+      fixes a use-after-free when a channel is closed.
+
+0007  bebboscp (SFTP copy)
+      - uploads truncate the remote file; overwriting a longer file left
+        its old tail behind
+      - the reply to every write is checked; a full disk or quota was
+        ignored and the copy reported success
+      - exit code 10 if a copy step fails (it was always 0)
+      - an existing remote file as target is overwritten (it tried
+        "<file>/<name>" and failed)
+      - "dir/" as local target wrote into the parent directory
+      - remote names with '/' or ':' are skipped, a malicious server
+        could otherwise write outside the target directory
+      - a one-byte heap overflow parsing user@host:path, wrong speed and
+        time display after a minute boundary
+
+0008  Random numbers (libcryptossh) and bebbosshkeygen
+      The old randfill() mixed rand(), the DateStamp tick and the beam
+      position - a few dozen bits of entropy. It made the ed25519 secret
+      keys of bebbosshkeygen and the x25519 keys of every session, so
+      both could be recovered with moderate effort. Now a SHA-512 pool
+      collects E-clock and beam position samples across task switches,
+      exec counters and a seed file ENVARC:ssh/random_seed (renewed on
+      every run). Without the seed file - first run on a fresh system -
+      the keys depend on the timing jitter alone.
+      bebbosshkeygen: answers from a redirected file work, write errors
+      are detected (no truncated key file), the secret key is cleared
+      from memory.
+
+0009  ENVARC:ssh instead of envarc:.ssh
+      Keys, known_hosts, ssh_config, authorized_keys and the random seed
+      are now in ENVARC:ssh - the usual Amiga form, and the directory
+      bebbosshd already uses. If only the old envarc:.ssh exists it is
+      still used, so nothing breaks before you rename it (INSTALLATION).
+
+0010  Host key check
+      - a host key that differs from known_hosts is refused with a clear
+        warning, like OpenSSH; it was a "yes" prompt that replaced the
+        entry. If the change is expected, delete the host's line from
+        ENVARC:ssh/known_hosts.
+      - an unknown host is only asked about at a console; the answer was
+        also read from redirected input
+      - signatures with a non-canonical S (S >= L) are rejected
+        (RFC 8032)
+
+0011  Hardened packet parsing (malicious/broken server)
+      String and data lengths sent by the server were used without
+      bounds checks. The USERAUTH_BANNER length was written as a NUL
+      terminator at an attacker-chosen offset (out-of-bounds write);
+      channel data length and the key-exchange reply fields were trusted
+      as well, and the length checks there wrapped at 32 bit on m68k.
+      All of these are now bounds-checked against the received packet.
+
+0012  Crypto hardening
+      - the AEAD tag is compared in constant time (no timing leak)
+      - an all-zero X25519 shared secret (low-order server key, which
+        would make the session keys predictable) is refused
+      - the session keys, the key-exchange secret and the user's private
+        key are wiped from memory on exit (AmigaOS keeps freed memory)
+
+0013  bebbosshd: hardened packet parsing (server)
+      Every length a client sends is bounds-checked against the packet,
+      in the handshake, the user-auth request and the channel messages;
+      a malformed packet drops the session instead of reading out of
+      bounds. Affects the server only.
+
+0014  bebbosshd: public-key authentication bypass fixed (server)
+      A public-key QUERY (no signature) only asks whether a key would be
+      accepted. The server acknowledged it with PK_OK but then treated
+      the session as logged in - so naming any key from authorized_keys
+      (public keys are not secret) was enough to get in without the
+      private key. The login is now granted only after the signature in
+      the following request is verified.
+
+0015  bebbosshd: SFTP/shell bounds and AllowTcpForwarding (server)
+      Post-authentication hardening from a full server audit: SFTP read
+      length clamped to the reply buffer; SFTP write length checked
+      against the packet; file-attribute parsing bounded; the shell
+      input-forward buffer capped; new config AllowTcpForwarding to
+      refuse port forwarding. See RUNNING THE SERVER.
+
+0016  bebbosshd: authentication required before the connection protocol
+      Found by coverage-guided fuzzing. CHANNEL_OPEN/REQUEST were handled
+      in the AUTH state too, so a client that had only done the key
+      exchange could open a session and run a command WITHOUT logging in
+      (unauthenticated command execution; on Linux a getpwnam(NULL)
+      crash). Channels are now refused until authentication succeeds.
+
+0017  Merge upstream 1.46: normalize the X25519 shared secret
+      Upstream 1.46 canonicalizes the shared secret K as an RFC 4251
+      mpint. The old code only added the sign byte and never stripped
+      leading zero bytes, so a K starting with 0x00 (about 1 in 256
+      connections) was hashed non-canonically - the exchange hash then
+      differed from OpenSSH and the handshake failed with "incorrect
+      signature". (Our call sites also set size=32 first, which upstream's
+      own 1.46 omits.) This brings the build to version 1.46.
+
+0018  Linux build only
+      amiemul.h defines APTR, LONG and RETURN_* so the native Linux
+      programs build again. No change to the Amiga programs.
+
+0019  Version 1.46.1
+      The programs report 1.46.1 (Version, -?, the SSH identification
+      SSH-2.0-BebboSSH-1.46.1), so this build can be told apart from the
+      original 1.46. libcryptossh.library keeps version 1.46: its
+      version number must be numeric.
+
+SECURITY NOTE
+
+bebbosshd is now included. The server code was reviewed: the packet parsing
+was hardened (0013), a public-key authentication bypass was fixed (0014),
+the SFTP/shell handlers were bounds-checked (0015), and an unauthenticated
+command-execution path was found by coverage-guided fuzzing and fixed
+(0016). It was fuzzed under AddressSanitizer (parsers, SFTP, shell, crypto;
+coverage-guided for the auth path) but that is not a proof of correctness,
+and AmigaOS has no per-user file permissions, so any account that can log in
+has full access to every mounted volume. Run it on a trusted local network
+only, never exposed to the internet. An authenticated user can also use port
+forwarding (disable it with AllowTcpForwarding no). Tested on a home LAN:
+public-key login, exec, and SFTP up/download.
+
+Keys made with the original bebbosshkeygen (comment "Amiga" by default)
+are weak, see 0008: create a new key and replace the old one in the
+server's authorized_keys.
+
+INSTALLATION
+
+  Copy C:bebbossh C:bebbossh.orig                       ; keep originals
+  Copy C:bebbosshkeygen C:bebbosshkeygen.orig
+  Copy LIBS:libcryptossh.library LIBS:libcryptossh.library.orig
+  Copy C:bebboscp C:bebboscp.orig                       ; if installed
+  Copy bebbossh bebboscp bebbosshkeygen C:
+  ; the server is optional, see RUNNING THE SERVER:
+  ; Copy bebbosshd C:
+  Copy libcryptossh.library020 LIBS:libcryptossh.library  ; 68020-68040, 68080
+  ; or: Copy libcryptossh.library060 LIBS:libcryptossh.library   (68060)
+  Avail FLUSH                                           ; drop the old one
+  Rename ENVARC:.ssh ENVARC:ssh                         ; once, see 0009
+
+SERVER SIDE (Linux/OpenSSH)
+
+Many sshd configurations ignore LANG from the client. With charset
+conversion the session should run with a UTF-8 locale, e.g. in ~/.zshrc
+or ~/.bashrc:
+
+  [[ "$TERM" == "xterm-amiga" ]] && export LANG=de_DE.UTF-8
+
+RUNNING THE SERVER (bebbosshd)
+
+Read the SECURITY note first - trusted LAN only. Setup in ENVARC:ssh:
+
+  Copy bebbosshd C:
+  MakeDir ENVARC:ssh                                    ; if missing
+  bebbosshkeygen -f ENVARC:ssh/ssh_host_ed25519_key -C host
+  ; put the client public keys into ENVARC:ssh/authorized_keys
+  ; (one "ssh-ed25519 <base64> comment" line each)
+
+ENVARC:ssh/sshd_config (no ListenAddress - the Roadshow stack binds all
+interfaces; a specific address or 127.0.0.1 fails to bind):
+
+  Port 2222
+  Ciphers chacha20-poly1305@openssh.com,aes128-gcm@openssh.com
+  HostKey ENVARC:ssh/ssh_host_ed25519_key
+  AllowTcpForwarding no        ; refuse port forwarding (default: yes)
+  DebugLevel info
+
+Start it (stop with Break <cli>):
+
+  Run >NIL: C:bebbosshd
+
+Password login uses ENVARC:ssh/passwd; public-key login uses
+ENVARC:ssh/authorized_keys.
+
+Access notes: a logged-in user reaches every mounted volume (AmigaOS has
+no per-user file rights), and - unless AllowTcpForwarding no is set - can
+have the server open TCP connections to other hosts. Keep this to a
+trusted LAN.
+
+BUILD
+
+Built with bebbo's m68k-amigaos-gcc 6.5.0b (snapshot 2026-03-03, NDK
+with newer headers) - the 1.45 sources do not build with older NDKs:
+
+  git checkout 057c7f3 && git am --keep-cr src/00*.patch
+  (--keep-cr: some sources use CRLF line endings)
+  make CPU=-m68020 STRIP="-s -Wl,--gc-sections" Release=1 pre
+  make CPU=-m68020 STRIP="-s -Wl,--gc-sections" Release=1 \
+       "C++FLAGS=-fno-exceptions -fno-rtti -I<libcodesets>/include" \
+       Release/bebbossh Release/bebboscp Release/bebbosshkeygen \
+       Release/bebbosshd Release/libcryptossh.library
+  (this is the 68020 build; the library variants like the original
+   mkrelease: CPU=-m68060 for library060, no CPU option for the 68000
+   library - "make clean" between the builds)
+
+TESTED
+
+Vampire V4 Standalone (68080), AmigaOS 3.2, codesets.library 6.22, against
+OpenSSH 10.0 (Fedora 43): 1 MiB down-/uploads bit-exact (RAM:, Work:,
+network volume), exit codes, interactive sessions with umlauts, window
+titles, downloads into a file from an interactive shell. bebboscp: files and
+directory trees in both directions, overwriting, "dir/" targets, error cases
+(missing source, no permission, disk full via /dev/full) with exit code 10.
+bebbosshkeygen: keys checked with OpenSSH (ssh-keygen -y, signing),
+overwrite answer from a file; seed file renewed per run; logins with all
+three library variants. Paths: old envarc:.ssh used while ENVARC:ssh is
+missing, after renaming everything in ENVARC:ssh. Host keys: changed key
+refused, unknown host without console refused, unknown host at a terminal
+stored after "yes"; Ed25519 verification against OpenSSL (241 cases incl.
+tampered and non-canonical signatures). Parsing hardening: login, 1 MiB
+up/download and exit codes unchanged against OpenSSH, shared code clean
+under AddressSanitizer. All three library variants: login and 1 MiB
+transfers on the 68080. Amiberry (68000, 68020): 12 sessions each with up-
+and downloads, bit-exact. Not tested on a real 68000, 68020-68040 or 68060,
+nor against other servers. Crypto: ed25519 verification against OpenSSL (241
+cases), constant-time tag compare, zero-DH refused, key material wiped on
+exit. bebbosshd was run on the V4SA on a home LAN: public-key login, exec
+and a 1 MiB download bit-exact over several sessions; its parsing was also
+checked on Linux under AddressSanitizer. Not audited against a hostile
+client; the public-key auth bypass is fixed (0014, see SECURITY).
+
+LICENSE
+
+GPLv3+ like the original (see COPYING). The complete source changes are
+in src/; the unchanged sources are available from the upstream
+repository above.

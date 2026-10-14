@@ -1,0 +1,57 @@
+From a18438e1748b667a8c9db428bc444b968abf4c29 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 22:06:45 +0200
+Subject: [PATCH] bebbosshd: fix public-key authentication bypass
+
+A public-key auth QUERY (SSH_MSG_USERAUTH_REQUEST with the boolean 0 and
+no signature) only asks whether a key would be accepted; the server
+answers SSH_MSG_USERAUTH_PK_OK and must then wait for a signed request
+that proves possession of the private key. bebbosshd instead returned
+true for the query, so the dispatcher set the session to LOGGEDIN - a
+client was authenticated merely for naming a key present in
+authorized_keys. Public keys are not secret, so this allowed login
+without the private key.
+
+The query path now sends PK_OK and returns false (stays in AUTH); the
+login is granted only after ge_verify_ed25519() accepts the signature in
+the following request, exactly as the password path requires login().
+
+Verified on the V4SA over a LAN: the normal two-step public-key login
+(query -> PK_OK -> signed request -> SUCCESS) and a 1 MiB transfer still
+work. Affects bebbosshd only.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012seUKBRfgcTt43vbc21K3j
+---
+ src/sshsession.cpp | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/sshsession.cpp b/src/sshsession.cpp
+index 9edd14b..c4a9999 100644
+--- a/src/sshsession.cpp
++++ b/src/sshsession.cpp
+@@ -1349,13 +1349,19 @@ bool SshSession::handleUserAuthRequest(uint8_t *p) {
+ 								}
+ 							}
+ 						} else {
++							// this is only a "would you accept this key?"
++							// query (no signature). Acknowledge the key with
++							// PK_OK, but do NOT grant the login - the client
++							// must still prove possession of the private key
++							// with a signed request (auth != 0 above). A public
++							// key is not a secret, so returning true here let
++							// anyone in who merely names an authorized key.
+ 							outdata[5] = SSH_MSG_USERAUTH_PK_OK;
+ 							memcpy(&outdata[6], blob, 70);
+ 
+ 							write(outdata + 5, 71);
+ 							logme(L_FINE, "@%ld sent SSH_MSG_USERAUTH_PK_OK", sockFd);
+-							username = strdup((char *)user);
+-							return true;
++							return false; // stay in AUTH, wait for the signature
+ 						}
+ 					}
+ 				}
+-- 
+2.55.0
+

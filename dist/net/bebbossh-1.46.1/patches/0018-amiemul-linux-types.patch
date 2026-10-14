@@ -1,0 +1,44 @@
+From 1f09e6f52e02bf7d93bc311c805306afbf42246d Mon Sep 17 00:00:00 2001
+From: b <b@l>
+Date: Sun, 4 Oct 2026 10:52:33 +0200
+Subject: [PATCH] amiemul.h: define APTR, LONG and RETURN_* for the Linux build
+
+Our patches use a few AmigaOS symbols the Linux compatibility shim did not
+provide, so the native Linux programs failed to compile:
+  - APTR (bebbosshkeygen writeAll cast, patch 0005)
+  - LONG (bebbosshkeygen writeAll length, patch 0005)
+  - RETURN_OK / RETURN_ERROR (bebboscp exit code, patch 0007)
+Added to amiemul.h (Linux-only header; never seen by the m68k build), so
+bebbossh/bebboscp/bebbosshkeygen/bebbosshd build natively again.
+---
+ include/amiemul.h | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/include/amiemul.h b/include/amiemul.h
+index e7cdcaf..e65eed1 100644
+--- a/include/amiemul.h
++++ b/include/amiemul.h
+@@ -40,6 +40,20 @@
+ #endif
+ 
+ typedef unsigned long ULONG;
++typedef long LONG;
++typedef void * APTR;
++#ifndef RETURN_OK
++#define RETURN_OK 0
++#endif
++#ifndef RETURN_WARN
++#define RETURN_WARN 5
++#endif
++#ifndef RETURN_ERROR
++#define RETURN_ERROR 10
++#endif
++#ifndef RETURN_FAIL
++#define RETURN_FAIL 20
++#endif
+ typedef FILE * BPTR;
+ typedef char * STRPTR;
+ 
+-- 
+2.55.0
+

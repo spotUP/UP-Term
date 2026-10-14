@@ -1,0 +1,210 @@
+From 0f86765aca10cba468afb0176a670306adf07e79 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 18:04:16 +0200
+Subject: [PATCH] bebboscp: fix overwrite, error handling, exit code and paths
+
+- uploads open the remote file with TRUNCATE; overwriting a longer file
+  left its old tail behind
+- the status of every SSH_FXP_WRITE is checked; errors (disk full,
+  quota) were ignored and the copy reported success
+- a local read error is no longer taken as end of file
+- the exit code is 10 when a copy step fails (missing source, open or
+  write error, CTRL+C); it was always 0
+- an existing remote file as target is overwritten instead of trying
+  "<file>/<name>"
+- "dir/" as local target no longer becomes "dir//name" (the parent)
+- remote names containing '/' or ':' are skipped, they could address a
+  directory outside the target on the Amiga
+- isLocal(): the host name buffer had no room for the terminating 0
+- transfer speed and time were wrong after a minute boundary (a minute
+  was counted as 50 ticks)
+---
+ src/bebboscp.cpp | 83 +++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 68 insertions(+), 15 deletions(-)
+
+diff --git a/src/bebboscp.cpp b/src/bebboscp.cpp
+index 4160fce..ebf2b79 100644
+--- a/src/bebboscp.cpp
++++ b/src/bebboscp.cpp
+@@ -76,15 +76,11 @@ typedef BPTR FPTR;
+ #define DateStampF DateStamp
+ static inline long delta_ms(const struct DateStamp &now,
+                             const struct DateStamp &then) {
+-    /* convert both to total ticks since epoch */
+-    long ticks_now  = now.ds_Tick
+-                    + now.ds_Minute * 50
+-                    + now.ds_Days * 24 * 60 * 50;
+-    long ticks_then = then.ds_Tick
+-                    + then.ds_Minute * 50
+-                    + then.ds_Days * 24 * 60 * 50;
+-
+-    long diff_ticks = ticks_now - ticks_then;
++    /* difference per field - a minute has 60 * 50 ticks, a day
++       24 * 60 * 60 * 50; total ticks since 1978 would overflow a long */
++    long diff_ticks = (now.ds_Tick - then.ds_Tick)
++                    + (now.ds_Minute - then.ds_Minute) * 60 * 50
++                    + (now.ds_Days - then.ds_Days) * 24 * 60 * 60 * 50;
+ 
+     /* each tick = 20 ms */
+     return diff_ticks * 20;
+@@ -114,6 +110,9 @@ static char *dst;
+ static void erase();
+ static void printStats(bool);
+ 
++// set on every failed copy step - error only covers the SSH layer
++static bool scpFailed;
++
+ extern char portSet, usernameSet, keyfileSet, loglevelSet;
+ extern char const * configFile;
+ extern char const * encOrder;
+@@ -349,6 +348,10 @@ public:
+ 	ScpChannel(bool pty_, bool localSrc_, char *src_, char *dst_);
+ 	bool start();
+ 	virtual int processChannelData(void *data, int len);
++private:
++	bool startSftp();
++	int processSftp(void *data, int len);
++public:
+ 
+ 	void sendChannelData(uint8_t *p);
+ 
+@@ -429,7 +432,7 @@ void ScpChannel::openFile(CopyState * cs, bool write) {
+ 	putString(p, write ? cs->dst : cs->src);
+ 
+ 	if (write) {
+-		putInt32AndInc(p, 0xa); // CREATE
++		putInt32AndInc(p, 0x1a); // WRITE | CREATE | TRUNCATE - else an old, longer file keeps its tail
+ 		putInt32AndInc(p, SSH_FILEXFER_ATTR_PERMISSIONS);
+ 		putInt32AndInc(p, a2sshmode(cs->protect));
+ 	} else {
+@@ -548,7 +551,8 @@ static char * concatPath(char * a, char * b) {
+ 	while (*q) {
+ 		++q;
+ 	}
+-	if (q[-1] == ':')
++	// "dir/" + "name" must not become "dir//name" - that is the parent on the Amiga
++	if (q == a || q[-1] == ':' || q[-1] == '/')
+ 		return concat(a, b, 0);
+ 	return concat(a, "/", b, 0);
+ }
+@@ -565,6 +569,13 @@ void ScpChannel::appendOutname() {
+ }
+ 
+ int ScpChannel::processChannelData(void *data, int length) {
++	int r = processSftp(data, length);
++	if (r < 0)
++		scpFailed = true;
++	return r;
++}
++
++int ScpChannel::processSftp(void *data, int length) {
+ 	static int pendingRead;
+ 
+ 	if (stack.getCount() == 0)
+@@ -758,6 +769,17 @@ OpenRemoteDirOrFile:
+ 			return 0;
+ 		}
+ 
++		// local -> remote: an existing remote file is overwritten, the source
++		// name is only appended if the target is a directory
++		if (!CopyState::dummy.setAttrs(p)) {
++			if (currentCs->srcIsDir || outname) {
++				logme(L_ERROR, "not a dir: %s", dst);
++				return -1;
++			}
++			free(currentCs->outname);
++			currentCs->outname = 0;
++		}
++
+ OpenLocalDirOrFile:
+ 		appendOutname();
+ 
+@@ -898,15 +920,29 @@ OpenLocalDirOrFile:
+ 
+ 		currentCs->pos = 0;
+ 		state = STATE_DST_WRITE;
++		goto WriteNext;
+ 
+-		/* no break */
+ 	case STATE_DST_WRITE:
+ //		logme(L_ERROR, "STATE_DST_WRITE");
+-		if (writeData(currentCs) <= 0) {
++		// every SSH_FXP_WRITE is answered with a status - stop on errors
++		// (disk full, quota) instead of silently losing the data
++		if (k != SSH_FXP_STATUS || getInt32(p) != SSH_FX_OK) {
++			logme(L_ERROR, "write failed for remote `%s`: %ld", currentCs->dst,
++					k == SSH_FXP_STATUS ? getInt32(p) : -1);
++			return -1;
++		}
++	WriteNext: {
++		int r = writeData(currentCs);
++		if (r < 0) {
++			logme(L_ERROR, "read failed for `%s`", currentCs->src);
++			return -1;
++		}
++		if (r == 0) {
+ 			closeFile(currentCs);
+ 			state = STATE_DST_CLOSE;
+ 		}
+ 		return 0;
++	}
+ 
+ 	case STATE_DST_CLOSE: {
+ //		logme(L_ERROR, "STATE_DST_CLOSE");
+@@ -973,6 +1009,13 @@ DstDone:
+ 				if (p < buffer || p - length > data)
+ 					return -1;
+ 
++				// a name with '/' or ':' would address another dir on the
++				// Amiga ("/" is the parent) - never write outside the target
++				if (*name == 0 || strchr((char *)name, '/') || strchr((char *)name, ':')) {
++					logme(L_ERROR, "skipping invalid remote name `%s`", name);
++					CopyState::dummy.setAttrs(p);
++					continue;
++				}
+ 				if (strcmp(".", (char *)name) && strcmp("..", (char *)name) &&
+ 						(!pattern || 0 == fnmatch(pattern, (char *)name, FNM_IGNORECASE))) {
+ 					CopyState * cs = new CopyState(false,
+@@ -1068,6 +1111,13 @@ ExamineNext:
+ }
+ 
+ bool ScpChannel::start() {
++	bool r = startSftp();
++	if (!r)
++		scpFailed = true;
++	return r;
++}
++
++bool ScpChannel::startSftp() {
+ 	logme(L_DEBUG, "starting sftp channel");
+ 	// open new channel
+ 	if (pty) {
+@@ -1285,6 +1335,7 @@ void handleKeyboard() {
+ 					theSCP->closeFile(cs);
+ 			}
+ 
++			scpFailed = true;
+ 			stopped = 1;
+ 		}
+ 	}
+@@ -1445,7 +1496,7 @@ static bool isLocal(char *&path) {
+ 		username = q;
+ 
+ 		l = colon - at - 1;
+-		q = (char*) malloc(l);
++		q = (char*) malloc(l + 1);
+ 		if (!q)
+ 			exit(10);
+ 		strncpy(q, at + 1, l);
+@@ -1526,5 +1577,7 @@ __stdargs int main(int argc, char **argv) {
+ 	if (firstDone)
+ 		puts("");
+ 
+-	return error;
++	if (error)
++		return error;
++	return scpFailed ? RETURN_ERROR : RETURN_OK;
+ }
+-- 
+2.55.0
+

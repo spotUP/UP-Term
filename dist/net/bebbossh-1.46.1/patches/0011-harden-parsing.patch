@@ -1,0 +1,192 @@
+From 46a7c585ee538fac9ae9260d2e5607ad826f5323 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 19:54:14 +0200
+Subject: [PATCH] harden packet parsing against a malicious server
+
+All lengths below come from the server and were used without bounds
+checks; a hostile or broken server could crash the client or worse.
+
+- authenticate(): the USERAUTH_BANNER string length was written as a NUL
+  terminator (buffer[10 + len] = 0) and printed without any check - an
+  out-of-bounds write with an attacker-chosen offset. The length is now
+  clamped to the received packet, and the auth method name-list is
+  NUL-terminated at the packet end before strstr().
+- clientchannel CHANNEL_DATA: the data length was used for p[length] = 0
+  and passed on unchecked; it is now rejected if it exceeds the packet.
+  handleMessage() gets the real number of bytes available (len - 5).
+- exit-status/exit-signal are only parsed when the request actually fits
+  in the packet.
+- handleKexEcdhReply(): every string-length check added the offset before
+  comparing, which wraps at 32 bit on m68k and could be bypassed; the
+  checks now subtract instead and guard the host key length (>= 32).
+
+No change in normal operation: login, 1 MiB up/download, exit codes
+verified against OpenSSH on the V4SA; shared code clean under ASan.
+---
+ src/client.cpp        | 45 ++++++++++++++++++++++++++++---------------
+ src/clientchannel.cpp | 12 ++++++++++--
+ 2 files changed, 39 insertions(+), 18 deletions(-)
+
+diff --git a/src/client.cpp b/src/client.cpp
+index 053c4f3..6e0d8c6 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -602,9 +602,11 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
+ 		return false;
+ 	}
+ 
+-	// get host digest
++	// get host digest - compare without adding, length is attacker
++	// controlled and unsigned long is only 32 bit on m68k (the sum wraps)
+ 	unsigned long length = getInt32(p);
+-	if (length + (p - buffer) > packetSize) {
++	if ((unsigned long)(p - buffer) > packetSize + 5 ||
++	    length > packetSize + 5 - (p - buffer)) {
+ 		error = ERROR_INVALID_PACKET;
+ 		return false;
+ 	}
+@@ -616,11 +618,6 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
+ 	handshakeMD.update(p, length);
+ 	HSU(p, 0, length);
+ 
+-	if (length + (p - buffer) > packetSize) {
+-		error = ERROR_INVALID_PACKET;
+-		return false;
+-	}
+-
+ 	uint8_t hostBase64[64];
+ 	{
+ 		uint8_t hostDigest[32];
+@@ -634,7 +631,8 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
+ 
+ 	length = getInt32(p);
+ 	p += 4;
+-	if (length + (p - buffer) > packetSize) {
++	if ((unsigned long)(p - buffer) > packetSize + 5 ||
++	    length > packetSize + 5 - (p - buffer)) {
+ 		error = ERROR_INVALID_PACKET;
+ 		return false;
+ 	}
+@@ -643,7 +641,8 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
+ 	// host public key
+ 	length = getInt32(p);
+ 	p += 4;
+-	if (length + (p - buffer) > packetSize) {
++	if (length < 32 || (unsigned long)(p - buffer) > packetSize + 5 ||
++	    length > packetSize + 5 - (p - buffer)) {
+ 		error = ERROR_INVALID_PACKET;
+ 		return false;
+ 	}
+@@ -706,27 +705,31 @@ static bool handleKexEcdhReply(SHA256 &handshakeMD, unsigned long packetSize) {
+ 	_dump("hash", hash, 32);
+ #endif
+ 
++	// all three length fields come from the server - compare without
++	// adding (unsigned long wraps at 32 bit on m68k)
+ 	unsigned long sigBlobLength = getInt32(p);
+-	if (sigBlobLength + (p - buffer) - 1 > packetSize) {
+-		printf("%ld > %ld\n", sigBlobLength + (p - buffer), packetSize);
++	if ((unsigned long)(p - buffer) > packetSize + 5 ||
++	    sigBlobLength > packetSize + 5 - (p - buffer)) {
+ 		error = ERROR_INVALID_PACKET;
+ 		return false;
+ 	}
+ 	p += 4;
+ 
+ 	length = getInt32(p);
+-	if (length + (p - buffer) - 1 > packetSize) {
++	if ((unsigned long)(p - buffer) > packetSize + 5 ||
++	    length > packetSize + 5 - (p - buffer)) {
+ 		error = ERROR_INVALID_PACKET;
+ 		return false;
+ 	}
+ 	p += 4;
+ 	p += length; // check the name? no, check will fail else.
+ 	length = getInt32(p);
+-	if (length != 64 || length + (p - buffer) - 1 > packetSize) {
++	p += 4;
++	if (length != 64 || (unsigned long)(p - buffer) > packetSize + 5 ||
++	    length > packetSize + 5 - (p - buffer)) {
+ 		error = ERROR_INVALID_PACKET;
+ 		return false;
+ 	}
+-	p += 4;
+ 
+ 	logme(L_DEBUG, "verifying server signature ed25519 START");
+ 	int r = ge_verify_ed25519(hash, 32, p, hpk);
+@@ -1020,17 +1023,27 @@ static bool authenticate() {
+ 	if (!sendEncrypted(buffer + 5, len))
+ 		return false;
+ 
++	unsigned plen;
+ 	for(;;) {
+-		if (receiveEncryptedPacket() == 0)
++		plen = receiveEncryptedPacket();
++		if (plen == 0)
+ 			return false;
+ 		if (buffer[5] != SSH_MSG_USERAUTH_BANNER)
+ 			break;
+ 
++		// the banner string length comes from the server - never write or
++		// read past the packet that was actually received
+ 		len = getInt32Aligned(buffer + 6); // even
++		if (len > plen - 9) // 5 (hdr+type) + 4 (length field)
++			len = plen - 9;
+ 		buffer[10 + len] = 0;
+ 		puts((char *)buffer + 10);
+ 	}
+ 
++	// the auth method name-list is an SSH string, not NUL terminated -
++	// terminate it at the end of the packet before strstr()
++	buffer[5 + plen] = 0;
++
+ 	// try loginPass with public key
+ 	if (strstr((char *)buffer + 10, "publickey")) {
+ 		if (loginPK())
+@@ -1626,7 +1639,7 @@ void eventLoop() {
+ 				if (!cc) {
+ 					logme(L_ERROR, "got packet for invalid channel %ld", channelNo);
+ 				} else {
+-					bool r = cc->handleMessage(k, p, len - 9); // 9 = PACKETLEN + MSG + CHANNELNO = 4 + 1 + 4
++					bool r = cc->handleMessage(k, p, len - 5); // bytes available from p (MSG + CHANNELNO consumed)
+ 					if (!r)
+ 						stopped = 1;
+ 				}
+diff --git a/src/clientchannel.cpp b/src/clientchannel.cpp
+index fb2b2fd..c5332ef 100644
+--- a/src/clientchannel.cpp
++++ b/src/clientchannel.cpp
+@@ -101,6 +101,13 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
+ 	if (msg == SSH_MSG_CHANNEL_DATA) {
+ 		uint32_t length = getInt32(p);
+ 		p += 4;
++		// length comes from the server - maxLen counts from before the
++		// 4-byte length field, so the data must fit in maxLen - 4
++		if (maxLen < 4 || length > maxLen - 4) {
++			logme(L_ERROR, "channel %ld: data length %ld exceeds packet %ld",
++					channelNo, length, maxLen);
++			return false;
++		}
+ 		p[length] = 0;
+ 
+ 		logme(L_FINE, "channel %ld got %ld bytes in %ld", channelNo, length, maxLen);
+@@ -131,13 +138,14 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
+ 
+ 		// exit-status: remember the code, but keep reading until the server
+ 		// sends CHANNEL_CLOSE - output may still follow (RFC 4254 6.10)
+-		if (*(uint32_t *)(p) == 11 && 0 == strncmp((char *)p + 4, "exit-status", 11)) {
++		if (maxLen >= 4 + 11 + 1 + 4 &&
++				*(uint32_t *)(p) == 11 && 0 == strncmp((char *)p + 4, "exit-status", 11)) {
+ 			if (channelNo == 0) {
+ 				remoteExitStatus = (int)getInt32(p + 4 + 11 + 1);
+ 				logme(L_DEBUG, "channel %ld exit-status %ld", channelNo, remoteExitStatus);
+ 			}
+ 		}
+-		if (*(uint32_t *)(p) == 11 && 0 == strncmp((char *)p + 4, "exit-signal", 11)) {
++		if (maxLen >= 4 + 11 && *(uint32_t *)(p) == 11 && 0 == strncmp((char *)p + 4, "exit-signal", 11)) {
+ 			if (channelNo == 0) {
+ 				remoteExitStatus = 255;
+ 				logme(L_DEBUG, "channel %ld exit-signal", channelNo);
+-- 
+2.55.0
+

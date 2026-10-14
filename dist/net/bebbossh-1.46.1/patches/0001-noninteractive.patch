@@ -1,0 +1,212 @@
+From fecf066d4be536128c367b5cf37fec538c89305f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 01:42:18 +0200
+Subject: [PATCH 1/5] bebbossh: fix non-interactive stdin/stdout handling and
+ exit status
+
+- Read redirected stdin in chunks (max 16 KiB, bounded by maxBuffer and
+  the server's channel window) instead of reading the whole file into
+  the 35 KB packet buffer at once (heap overflow -> crash on large input).
+- Track the server's window for channel 0: initial window from the
+  OPEN_CONFIRMATION, WINDOW_ADJUST in ConsoleChannel::start() and in the
+  event loop (OpenSSH opens sessions with window 0).
+- Send SSH_MSG_CHANNEL_EOF once stdin reaches EOF, so remote commands
+  reading stdin (md5sum, cat, tar) terminate.
+- Mark channel 0 as confirmed so it is only removed on CHANNEL_CLOSE,
+  not already on the server's EOF.
+- Do not exit on "exit-status": remember the code and keep reading until
+  CHANNEL_CLOSE (output may still follow, RFC 4254 6.10); return the
+  remote exit code (255 on exit-signal) from main().
+
+Tested on Vampire V4SA (OS 3.2) against OpenSSH 10.0: 1 MiB download
+complete and bit-exact without "; sleep", uploads 28 B..1 MiB bit-exact
+with EOF, exit code propagated, interactive session unchanged.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012seUKBRfgcTt43vbc21K3j
+---
+ src/bebbossh.cpp      | 45 ++++++++++++++++++++++++++++++++++---------
+ src/client.cpp        | 11 +++++++++++
+ src/clientchannel.cpp | 17 +++++++++++++---
+ 3 files changed, 61 insertions(+), 12 deletions(-)
+
+diff --git a/src/bebbossh.cpp b/src/bebbossh.cpp
+index 79804f1..c85daa6 100644
+--- a/src/bebbossh.cpp
++++ b/src/bebbossh.cpp
+@@ -221,6 +221,10 @@ int ConsoleChannel::processChannelData(void *data, int length) {
+ 	return 0;
+ }
+ 
++extern uint32_t maxBuffer;
++extern uint32_t remoteWindow;
++extern int remoteExitStatus;
++
+ bool ConsoleChannel::start() {
+ 	// open new channel
+ 	if (pty) {
+@@ -263,6 +267,10 @@ bool ConsoleChannel::start() {
+ 			return false;
+ 		if (buffer[5] == SSH_MSG_CHANNEL_SUCCESS)
+ 			break;
++		// OpenSSH opens the session with window 0 and grants it here -
++		// do not drop it, stdin forwarding depends on it
++		if (buffer[5] == SSH_MSG_CHANNEL_WINDOW_ADJUST)
++			remoteWindow += getInt32(buffer + 10);
+ 	}
+ 
+ 	if (stdoutBptr) {
+@@ -349,6 +357,8 @@ static uint8_t* makeMouseClick(uint8_t *c) {
+ 
+ #include <stdbool.h>
+ 
++static bool stdinEof;
++
+ void handleKeyboard() {
+ 	uint8_t *b5 = buffer + 5;
+ 	uint8_t *c = b5 + 9; // chars
+@@ -356,23 +366,37 @@ void handleKeyboard() {
+ 	uint8_t *p = c;
+ #ifdef __AMIGA__
+ 	if (!stdoutBptr) {
+-		int sz = 512;
++		// non-interactive: forward stdin in chunks that fit the buffer, the
++		// max packet size and the server's window; send EOF at the end.
++		static bool modeChecked;
++		if (stdinEof)
++			return;
++
++		uint32_t sz = 16384;
++		if (sz > maxBuffer)
++			sz = maxBuffer;
++		if (sz > remoteWindow)
++			sz = remoteWindow;
++		if (!sz)
++			return; // wait for SSH_MSG_CHANNEL_WINDOW_ADJUST
+ 
+ 		struct FileHandle * fh = (struct FileHandle *)BADDR(stdinBptr);
+-		if (fh->fh_Type) { // fix for NIL:
++		if (fh->fh_Type && !modeChecked) { // fix for NIL:
+ 			D_S(struct FileInfoBlock, fib);
+-			if (ExamineFH(stdinBptr, fib))
+-				sz = fib->fib_Size;
+-			else
++			if (!ExamineFH(stdinBptr, fib))
+ 				SetMode(stdinBptr, 1);
+-
+-			if (!sz)
+-				return;
++			modeChecked = true;
+ 		}
+ 
+ 		int n = Read(stdinBptr, p, sz);
+-		if (n <= 0)
++		if (n <= 0) {
++			uint8_t *e = b5;
++			*e++ = SSH_MSG_CHANNEL_EOF;
++			*(uint32_t*) e = 0; // channel
++			sendEncrypted(b5, 5);
++			stdinEof = true;
+ 			return;
++		}
+ 		p += n;
+ 	} else if (WaitForChar(stdinBptr, 1) == DOSTRUE) {
+ 		Read(stdinBptr, p, 1);
+@@ -498,6 +522,7 @@ void handleKeyboard() {
+ #endif
+ 
+ 		sendEncrypted(b5, 9 + len);
++		remoteWindow = remoteWindow > len ? remoteWindow - len : 0;
+ 	}
+ }
+ 
+@@ -1042,5 +1067,7 @@ keylog = Open("key.log", MODE_NEWFILE);
+ Close(keylog);
+ #endif
+ 
++	if (error == NO_ERROR && remoteExitStatus >= 0)
++		return remoteExitStatus;
+ 	return error;
+ }
+diff --git a/src/client.cpp b/src/client.cpp
+index 537d869..2418a3e 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -122,6 +122,8 @@ char const * username;
+ short stopped;
+ 
+ uint32_t maxBuffer;
++uint32_t remoteWindow;          // send window of channel 0 (server side)
++int remoteExitStatus = -1;      // exit-status/-signal of channel 0, -1 = none
+ 
+ // the client's channels
+ Stack<ClientChannel> clientChannels(33);
+@@ -1472,12 +1474,21 @@ bool openChannels() {
+ 	if (buffer[5] != SSH_MSG_CHANNEL_OPEN_CONFIRMATION)
+ 		return false;
+ 
++	uint8_t * pw = buffer + 14;
++	remoteWindow = getInt32(pw);
+ 	uint8_t * pp = buffer + 18;
+ 	maxBuffer = getInt32(pp);
+ 	if (maxBuffer > 32768)
+ 		maxBuffer = 32768;
+ 	maxBuffer -= 512;
+ 
++	// mark channel 0 as confirmed: otherwise it counts as removable and is
++	// dropped on the server's EOF - before exit-status and CLOSE arrive
++	if (clientChannels[0]) {
++		uint8_t * pr = buffer + 10;
++		clientChannels[0]->confirm(getInt32(pr), maxBuffer);
++	}
++
+ 	uint32_t sz = clientChannels.getMax();
+ 	for (int i = 0; i < sz; ++i) {
+ 		auto c = clientChannels[i];
+diff --git a/src/clientchannel.cpp b/src/clientchannel.cpp
+index 02517c7..fb2b2fd 100644
+--- a/src/clientchannel.cpp
++++ b/src/clientchannel.cpp
+@@ -41,6 +41,8 @@ extern uint32_t maxBuffer;
+ extern uint8_t *buffer;
+ 
+ extern void checkChannelFinished(ClientChannel * cc);
++extern uint32_t remoteWindow;
++extern int remoteExitStatus;
+ 
+ ClientChannel::ClientChannel(uint32_t no) :
+ 		channelNo(no), remoteChannelNo(-1), windowSize(0x20000000), maxBuffer(::maxBuffer), state(0) {
+@@ -127,11 +129,18 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
+ 
+ 	if (msg == SSH_MSG_CHANNEL_REQUEST) {
+ 
+-		// it's a logout
++		// exit-status: remember the code, but keep reading until the server
++		// sends CHANNEL_CLOSE - output may still follow (RFC 4254 6.10)
+ 		if (*(uint32_t *)(p) == 11 && 0 == strncmp((char *)p + 4, "exit-status", 11)) {
+ 			if (channelNo == 0) {
+-				logme(L_DEBUG, "exit since channel %ld ended", channelNo);
+-				return false;
++				remoteExitStatus = (int)getInt32(p + 4 + 11 + 1);
++				logme(L_DEBUG, "channel %ld exit-status %ld", channelNo, remoteExitStatus);
++			}
++		}
++		if (*(uint32_t *)(p) == 11 && 0 == strncmp((char *)p + 4, "exit-signal", 11)) {
++			if (channelNo == 0) {
++				remoteExitStatus = 255;
++				logme(L_DEBUG, "channel %ld exit-signal", channelNo);
+ 			}
+ 		}
+ 
+@@ -177,6 +186,8 @@ bool ClientChannel::handleMessage(uint8_t msg, uint8_t * p, uint32_t maxLen) {
+ 	}
+ 
+ 	if (msg == SSH_MSG_CHANNEL_WINDOW_ADJUST) {
++		if (channelNo == 0)
++			remoteWindow += getInt32(p);
+ 		return true;
+ 	}
+ 
+-- 
+2.55.0
+

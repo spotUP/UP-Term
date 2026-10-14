@@ -1,0 +1,48 @@
+BebboSSH 1.46.1: SSH2 client, server, scp and key generator for the Amiga
+(68020 and up), as published on Aminet:
+
+  https://aminet.net/comm/net/bebbossh_1.46.1.lha   ($VER: 1.46.1)
+    sha256 a2c588a59a44f81fed3e2890b43cf5ff437e116cdcbfa26b0441382f95bc0bb1
+    (393853 bytes, fetched 2026-10-14; SHA256SUMS here lists the files taken
+    from it and the 1.45 source tarball)
+    An UNOFFICIAL modified build by Matthias Muench of Stefan "Bebbo"
+    Franke's BebboSSH 1.45, with the upstream 1.46 key-exchange fix merged
+    and security fixes (see bebbossh.readme, CHANGES 0001-0019).
+    The Aminet archive's binaries are NOT shipped. UP-Term builds its own
+    from the source and patches below (make bebbossh, tools/build_bebbossh.sh;
+    the build's SHA256SUMS and TOOLCHAIN.txt are in the kit's drawer):
+    bebbossh, bebboscp, bebbosshkeygen, bebbosshd (68020 builds),
+    libcryptossh.library (68000), libcryptossh.library020 (68020-68040,
+    68080), libcryptossh.library060 (68060).
+    bebbossh.readme, bebbossh.readme.orig (Bebbo's original 1.46 readme),
+    COPYING, template/sshd_config, patches/: from the archive
+    (template/passwd, the author's sample login, is left out; so are the
+    Linux builds, the icon and the xterm-amiga terminfo)
+
+  The complete corresponding source is in this drawer:
+    bebbossh-1.45-src.tar.bz2: the author's repository
+    https://franke.ms/git/bebbo/bebbossh at commit 057c7f3 ("cleanup and
+    release 1.45"), the base of this build.
+    patches/0001..0019: the changes, applied in order on top of it
+    (patch -p1 in the unpacked bebbossh-1.45 directory; tested: all 19
+    apply). Build steps are in bebbossh.readme (BUILD).
+
+Build: Bebbo's m68k-amigaos-gcc, "m68k-amigaos-gcc (GCC) 6.5.0b 20260819091705"
+(the fork's author used the 2026-03-03 snapshot; the code differs in size
+only, the strings are the same). The source's own Makefile and flags, as in
+its mkrelease and the BUILD section of bebbossh.readme:
+  make CPU=-m68020 STRIP="-s -Wl,--gc-sections" Release=1 <programs> libcryptossh.library
+  (CPU=-m68060 and no CPU for the other two library variants, make clean
+  between the builds)
+Two additions to those flags, build time only: CC gets "-include
+hardware/custom.h" (src/log.c uses struct Custom and relied on a newer
+NDK's transitive include), and C++FLAGS gets -I to the libcodesets 6.22
+headers (github.com/jens-maus/libcodesets, 34442b7), which bebbossh.cpp
+includes and the installed NDK lacks; no libcodesets code is linked.
+The binaries carry the build date in their $VER.
+
+Licence: GNU General Public License version 3 or later (COPYING, beside
+this file); some files are public domain, as their headers say.
+UP-Term installs the client tools in UP-Term:bin and the library in
+LIBS: (README, NETWORK); thoughts/shared/research/2026-10-03_ssh-for-up-term.md
+in UP-Term's source has what was measured on 1.45.

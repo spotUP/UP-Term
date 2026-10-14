@@ -656,7 +656,7 @@ FONTS BY PIXEL SHAPE
 NETWORK
   Install puts network tools in UP-Term:bin when you say yes (the
   Installer asks); they need a TCP/IP stack (Roadshow, AmiTCP):
-    ssh, scp        BebboSSH 1.45 (bebbossh, bebboscp), with bebbosshkeygen
+    ssh, scp        BebboSSH 1.46.1 (bebbossh, bebboscp), with bebbosshkeygen
                     and the server bebbosshd; libcryptossh.library in LIBS:
     bebboget        https downloads (installcerts adds root certificates)
     curl            curl 8.22.0; it also needs AmiSSL 5 (Aminet
@@ -665,8 +665,11 @@ NETWORK
   which is what an UP-Term window is to a Unix machine (no remote host has
   a vtcon entry). UP_REMOTE_TERM=name in $HOME/.vshrc sends another name;
   a TERM that is not vtcon (inside screen) goes as it is. Keys: bebbosshkeygen makes one
-  (ENVARC:.ssh/id_ed25519); bebbossh -i names another. The first connection
-  to a host asks whether to trust its key.
+  (ENVARC:ssh/id_ed25519; an older ENVARC:.ssh is still used when ENVARC:ssh
+  does not exist); bebbossh -i names another. The first connection
+  to a host asks whether to trust its key; a host key that later differs is
+  refused (delete its line in ENVARC:ssh/known_hosts if the change is real).
+  This is BebboSSH 1.45 with the fixes of Matthias Muench (Aminet bebbossh_1.46.1), built by UP-Term from source.
   bebbosshd, the server, answers a login with its own simple shell, not a
   terminal: full-screen programs do not run through it.
   Licences: BebboSSH and bebboget by Stefan Franke, GPL v3 or later; curl

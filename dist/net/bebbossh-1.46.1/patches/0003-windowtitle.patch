@@ -1,0 +1,134 @@
+From 45ffa0347180427d1eae8d5370d508210cccd8d7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 06:29:12 +0200
+Subject: [PATCH 3/5] bebbossh: strip OSC sequences, set window title from OSC
+ 0 and 2
+
+The old title handling only knew "ESC ]0;" with a BEL terminator.
+Shells like oh-my-zsh use "ESC ]2;" (title) and "ESC ]1;" (icon name),
+which appeared as garbage text, and a title without BEL - e.g. split
+across two packets - made the strstr() loop spin forever.
+
+Replace it with a small state machine that survives packet boundaries:
+all OSC sequences (ESC ] n ; text, terminated by BEL or ST "ESC \") are
+removed from the output, OSC 0 and 2 set the window title, other ESC
+sequences (CSI colours etc.) pass through unchanged. Titles are capped
+at 255 characters.
+
+Tested with host-side unit tests (split sequences, ST terminator,
+unterminated title, double ESC, CSI at packet end, overlong title) and
+on a Vampire V4SA with oh-my-zsh: title follows the prompt/command,
+no garbage lines.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012seUKBRfgcTt43vbc21K3j
+---
+ src/bebbossh.cpp | 84 +++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 66 insertions(+), 18 deletions(-)
+
+diff --git a/src/bebbossh.cpp b/src/bebbossh.cpp
+index 99ac2f2..8bbe995 100644
+--- a/src/bebbossh.cpp
++++ b/src/bebbossh.cpp
+@@ -377,32 +377,80 @@ int ConsoleChannel::processChannelData(void *data, int length) {
+ 				mouseOn = x1006[6] == 'h';
+ 		}
+ 
+-		// handle title somewhere...
+-		char *title;
+-		while ((title = strstr((char*) c, "\x1b]0;"))) {
+-			unsigned l = title - (char*) c;
+-			if (l) {
+-				consoleWrite(c, l);
+-				length -= l;
+-			}
+-
+-			title += 4;
+-			char *end = strchr(title, '\7');
+-			if (!end)
++		// Strip all OSC sequences (ESC ] n ; text BEL|ESC \) - the Amiga
++		// console understands none of them. OSC 0 and 2 set the window
++		// title. The state survives packet boundaries, so split sequences
++		// are handled (the old strstr loop spun forever without a BEL).
++		enum { OSC_NONE, OSC_GOT_ESC, OSC_NUM, OSC_TEXT, OSC_TEXT_ESC };
++		static int oscState = OSC_NONE;
++		static unsigned oscNum, oscLen;
++		static char oscText[256];
++
++		char *run = c;
++		for (char *q = c; q < c + length; ++q) {
++			char ch = *q;
++			switch (oscState) {
++			case OSC_NONE:
++				if (ch == 0x1b) {
++					if (q > run)
++						consoleWrite(run, q - run);
++					oscState = OSC_GOT_ESC;
++				}
+ 				continue;
++			case OSC_GOT_ESC:
++				if (ch == ']') {
++					oscState = OSC_NUM;
++					oscNum = oscLen = 0;
++				} else {
++					consoleWrite("\x1b", 1); // not an OSC: keep the ESC
++					oscState = OSC_NONE;
++					run = q;
++					--q; // ch may be another ESC
++				}
++				continue;
++			case OSC_NUM:
++				if (ch >= '0' && ch <= '9') {
++					oscNum = oscNum * 10 + (ch - '0');
++					continue;
++				}
++				oscState = OSC_TEXT;
++				if (ch == ';')
++					continue;
++				// fall through: unusual OSC without ';'
++			case OSC_TEXT:
++				if (ch == 0x07)
++					break; // complete
++				if (ch == 0x1b) {
++					oscState = OSC_TEXT_ESC;
++					continue;
++				}
++				if (oscLen < sizeof(oscText) - 1)
++					oscText[oscLen++] = ch;
++				continue;
++			case OSC_TEXT_ESC:
++				// ESC \ (ST) ends the OSC; any other ESC also ends it and is
++				// looked at again as the start of a new sequence
++				if (ch != '\\')
++					--q;
++				break;
++			}
+ 
+-			*end++ = 0;
+-			length -= end - title + 4;
++			// OSC complete
++			oscText[oscLen] = 0;
+ #ifdef __AMIGA__
+-			if (theWindow) {
++			if ((oscNum == 0 || oscNum == 2) && theWindow) {
+ 				free(myWindowTitle);
+-				utf8ToLatin1(title);
+-				myWindowTitle = strdup(title);
++				utf8ToLatin1(oscText);
++				myWindowTitle = strdup(oscText);
+ 				SetWindowTitles(theWindow, myWindowTitle, 0);
+ 			}
+ #endif
+-			c = end;
++			oscState = OSC_NONE;
++			run = q + 1;
+ 		}
++		if (oscState == OSC_NONE && run < c + length)
++			consoleWrite(run, c + length - run);
++		return 0;
+ 	}
+ 	if (length) {
+ 		consoleWrite(c, length);
+-- 
+2.55.0
+

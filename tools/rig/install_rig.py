@@ -25,6 +25,8 @@ One case per package on the base, and the combinations (K2-10, plan 2026-10-13-k
   all         the base and every add-on; Python3 uninstalled with the base there; the base's Uninstall takes
               nvim out and leaves Claude and amiga-pi (stand-alone); then their own Uninstall, bare
   legacy      LEGACY_KIT (the single kit of 0cd6f0b) installed, the new base over it, the nvim add-on, base Uninstall
+  net         Install SSH BEBBOGET: BebboSSH and bebboget at the kit's versions, ssh/scp run them, a closed port, the Mac's sshd (if one
+              runs) reaches the host key check, Uninstall takes it all away (K6)
   nobase      an add-on that needs the base (nvim): install.dos with no UP-Term: returns 20, ENV:UPTCHECK names UP-Term.lha
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/install/<case>.json when the case
@@ -1377,6 +1379,44 @@ def case_nobase(ck):
     run('Delete >NIL: ENV:UPTCHECK QUIET')
 
 
+def case_net(ck):
+    """The network tools (Install SSH BEBBOGET, K6): the kit's BebboSSH version is the one in UP-Term:bin and
+    answers, ssh and scp are vsh functions of it, a closed port gives its connect error, and (sshd on the Mac
+    only, never started here) the key exchange with the Mac's sshd reaches the host key check with the Mac's
+    own ed25519 key. Uninstall takes the programs and the library it put there away again."""
+    import socket, subprocess
+    prepare(None)
+    before = Before()
+    bv = sorted((KIT / 'Files/net').glob('bebbossh-*'))[0].name.split('-', 1)[1]
+    gv = sorted((KIT / 'Files/net').glob('bebboget-*'))[0].name.split('-', 1)[1]
+    (VTC / 'runinstallnet').write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE SSH BEBBOGET\n")
+    base_install(ck, 'runinstallnet')
+    for prog in ('bebbossh', 'bebboscp', 'bebbosshd', 'bebbosshkeygen'):
+        rc, out = run('Search UP-Term:bin/%s "VER: %s"' % (prog, bv))
+        ck(rc == 0, 'net: UP-Term:bin/%s is BebboSSH %s ($VER)' % (prog, bv), out)
+    rc, out = run('Search UP-Term:bin/bebboget "VER: amigaget %s"' % gv)
+    ck(rc == 0, 'net: UP-Term:bin/bebboget is %s ($VER)' % gv, out)
+    ck(run('List >NIL: LIBS:libcryptossh.library')[0] == 0, 'net: LIBS:libcryptossh.library is there')
+    rc, out = run('UP-Term:bin/bebbossh')
+    ck('$VER: %s' % bv in out and 'USAGE: bebbossh' in out, 'net: bebbossh prints $VER %s and its usage' % bv, out[:200])
+    rc, out = run('C:vsh -c "scp"')
+    ck('$VER: %s' % bv in out and 'USAGE: amigascp' in out, 'net: scp (vsh function) runs bebboscp %s' % bv, out[:200])
+    rc, out = run('C:vsh -c "ssh nobody@127.0.0.1:2"')
+    ck(rc == 14 and "can't connect to given host" in out, 'net: ssh to a closed port: error 14, cannot connect', out)
+    if socket.socket().connect_ex(('127.0.0.1', 22)) == 0:
+        scan = subprocess.run('ssh-keyscan -t ed25519 127.0.0.1 2>/dev/null | ssh-keygen -lf -', shell=True,
+                              capture_output=True, text=True).stdout.split()
+        fp = scan[1].split(':', 1)[1] if len(scan) > 1 else '?'
+        rc, out = run('C:vsh -c "ssh nobody@127.0.0.1 </dev/null"', 40)
+        ck(rc == 21 and ('ssh-ed25519 key %s' % fp) in out,
+           "net: ssh to the Mac's sshd: key exchange done, the host key shown is the Mac's (%s)" % fp, out)
+    else:
+        print('install_rig net: no sshd on 127.0.0.1:22 here; the Mac connection is not checked')
+    base_uninstall(ck, before)
+    ck(run('List >NIL: LIBS:libcryptossh.library')[0] != 0, 'net: after Uninstall LIBS:libcryptossh.library is gone')
+    ck(run('List >NIL: UP-Term:bin/bebbossh')[0] != 0, 'net: after Uninstall bebbossh is gone')
+
+
 def _global_pass(fn, *args):
     """A pass written with the module's own check(): its failures become the case's."""
     def run_(ck):
@@ -1409,6 +1449,7 @@ def case_table():
     t['all'] = (package_ids(), [], case_all)
     t['legacy'] = (['base', 'nvim'], [LEGACY_KIT / 'Files/MANIFEST', LEGACY_KIT / 'Files/install.dos'], case_legacy)
     t['nobase'] = (based_ids(), [], case_nobase)
+    t['net'] = (['base'], [], case_net)
     return t
 
 

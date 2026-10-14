@@ -1,0 +1,324 @@
+From 0ca17ad05c66fc231b6e84d2d3d5018d09da7881 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 06:17:20 +0200
+Subject: [PATCH 2/5] bebbossh: convert UTF-8 <-> console codeset in
+ interactive sessions
+
+The server side talks UTF-8, the Amiga console uses the system codeset
+(usually ISO-8859-1/-15). Interactive sessions (stdin AND stdout are a
+console) now convert in both directions; redirected data stays untouched.
+
+- Output: UTF-8 -> system codeset via codesets.library (optional, opened
+  at runtime, V6), CSA_MapForeignChars for unmappable characters; a
+  built-in ISO-8859-1 conversion is used if the library is missing.
+  Sequences split across packets are buffered; invalid UTF-8 (e.g. from a
+  Latin-1 server) is passed through unchanged. Window titles too.
+- Input: typed characters (system codeset) -> UTF-8.
+- LANG=C is only sent for non-interactive sessions.
+
+Note: codesets.library 6.22 frees a caller-supplied CSA_Dest buffer when
+CSA_MapForeignChars expands a character (crash) and reports a wrong
+CSA_DestLenPtr, so the result buffer is allocated by the library.
+
+Build: needs the codesets.library headers, e.g.
+  make ... "C++FLAGS=-fno-exceptions -fno-rtti -I<libcodesets>/include"
+
+Tested on Vampire V4SA (OS 3.2, codesets.library 6.22) against OpenSSH
+10.0 with LANG=de_DE.UTF-8: umlauts, typographic quotes, dashes and
+German system messages display correctly, typed umlauts arrive as UTF-8.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012seUKBRfgcTt43vbc21K3j
+---
+ src/bebbossh.cpp | 233 ++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 230 insertions(+), 3 deletions(-)
+
+diff --git a/src/bebbossh.cpp b/src/bebbossh.cpp
+index c85daa6..99ac2f2 100644
+--- a/src/bebbossh.cpp
++++ b/src/bebbossh.cpp
+@@ -57,6 +57,8 @@
+ #include <proto/exec.h>
+ #include <proto/icon.h>
+ #include <proto/intuition.h>
++#include <libraries/codesets.h>
++#include <proto/codesets.h>
+ #include <proto/socket.h>
+ 
+ #include <stabs.h>
+@@ -179,6 +181,192 @@ public:
+ 	virtual int processChannelData(void *data, int len);
+ };
+ 
++// --- character set ---------------------------------------------------
++// The server side talks UTF-8, the Amiga console ISO-8859-1. Interactive
++// sessions (stdoutBptr set) convert in both directions; redirected data
++// (scripts, file transfer) is passed through untouched.
++static bool charsetConv; // set in ConsoleChannel::start(): console in AND out
++static uint8_t u8pend[4];
++static unsigned u8npend;
++
++static uint8_t latin1For(uint32_t cp) {
++	if (cp < 0x100)
++		return (uint8_t) cp;
++	switch (cp) {
++	case 0x2018: case 0x2019: case 0x201A: case 0x2032: return '\'';
++	case 0x201C: case 0x201D: case 0x201E: case 0x2033: return '"';
++	case 0x2010: case 0x2011: case 0x2013: case 0x2014: case 0x2212: return '-';
++	case 0x2022: case 0x2219: return 0xB7;
++	case 0x20AC: return 0xA4; // ISO-8859-1 has no euro sign
++	case 0x2192: case 0x276F: case 0x279C: case 0x25B6: return '>';
++	case 0x2190: case 0x276E: return '<';
++	case 0x00A0: case 0x2002: case 0x2003: case 0x2009: return ' ';
++	}
++	return '?';
++}
++
++static uint32_t utf8Decode(uint8_t const *s, unsigned n) {
++	if (n == 2)
++		return ((s[0] & 0x1F) << 6) | (s[1] & 0x3F);
++	if (n == 3)
++		return ((s[0] & 0x0F) << 12) | ((s[1] & 0x3F) << 6) | (s[2] & 0x3F);
++	return ((s[0] & 0x07) << 18) | ((s[1] & 0x3F) << 12) | ((s[2] & 0x3F) << 6) | (s[3] & 0x3F);
++}
++
++#ifdef __AMIGA__
++struct Library *CodesetsBase;
++
++static void closeCodesets(void) {
++	if (CodesetsBase) {
++		CloseLibrary(CodesetsBase);
++		CodesetsBase = 0;
++	}
++}
++
++// codesets.library is optional: with it, conversion follows the system's
++// codeset (ISO-8859-15, Amiga-1251, ...); without it ISO-8859-1 is built in
++static void openCodesets(void) {
++	if (!CodesetsBase && (CodesetsBase = OpenLibrary((CONST_STRPTR) "codesets.library", 6)))
++		atexit(closeCodesets);
++}
++#endif
++
++// structural UTF-8 check of a block without a trailing partial sequence
++static bool validUtf8(uint8_t const *s, unsigned n) {
++	for (unsigned i = 0; i < n;) {
++		uint8_t b = s[i];
++		unsigned need = b < 0x80 ? 1 : b >= 0xC2 && b < 0xE0 ? 2 : b >= 0xE0 && b < 0xF0 ? 3 : b >= 0xF0 && b <= 0xF4 ? 4 : 0;
++		if (!need || i + need > n)
++			return false;
++		for (unsigned k = 1; k < need; ++k)
++			if ((s[i + k] & 0xC0) != 0x80)
++				return false;
++		i += need;
++	}
++	return true;
++}
++
++// UTF-8 -> console codeset, sequences may be split across packets.
++// Invalid UTF-8 (e.g. from a Latin-1 server) is passed through unchanged.
++static void consoleWrite(char const *s, int len) {
++	if (!charsetConv) {
++		fwrite(s, len, 1, stdout);
++		return;
++	}
++#ifdef __AMIGA__
++	if (CodesetsBase) {
++		static uint8_t *cs;
++		static unsigned csSize;
++		unsigned total = u8npend + len;
++		if (csSize < total + 1) {
++			free(cs);
++			csSize = total + 1;
++			cs = (uint8_t*) malloc(csSize);
++			if (!cs) {
++				csSize = 0;
++				fwrite(s, len, 1, stdout);
++				return;
++			}
++		}
++		memcpy(cs, u8pend, u8npend);
++		memcpy(cs + u8npend, s, len);
++
++		// keep a trailing incomplete sequence for the next packet
++		unsigned end = total;
++		for (unsigned k = 1; k <= 3 && k <= total; ++k) {
++			uint8_t b = cs[total - k];
++			if ((b & 0xC0) == 0x80)
++				continue;
++			if (b >= 0xC2 && b <= 0xF4) {
++				unsigned need = b >= 0xF0 ? 4 : b >= 0xE0 ? 3 : 2;
++				if (k < need)
++					end = total - k;
++			}
++			break;
++		}
++		u8npend = total - end;
++		memcpy(u8pend, cs + end, u8npend);
++		if (!end)
++			return;
++
++		if (!validUtf8(cs, end)) {
++			fwrite(cs, end, 1, stdout);
++			return;
++		}
++		// Let the library allocate the result: codesets.library 6.22 frees a
++		// caller-supplied CSA_Dest buffer when CSA_MapForeignChars expands a
++		// character (e.g. euro -> "EUR") and reports a wrong CSA_DestLenPtr.
++		ULONG outLen = 0;
++		STRPTR out = CodesetsUTF8ToStr(CSA_Source, (Tag) cs, CSA_SourceLen, end,
++				CSA_DestLenPtr, (Tag) &outLen, CSA_MapForeignChars, TRUE, TAG_DONE);
++		if (out) {
++			fwrite(out, outLen, 1, stdout);
++			CodesetsFreeA(out, NULL);
++		} else
++			fwrite(cs, end, 1, stdout);
++		return;
++	}
++#endif
++	static char out[1024];
++	int o = 0;
++	for (int i = 0; i < len; ++i) {
++		uint8_t b = (uint8_t) s[i];
++		if (u8npend) {
++			if ((b & 0xC0) == 0x80) {
++				u8pend[u8npend++] = b;
++				unsigned need = u8pend[0] >= 0xF0 ? 4 : u8pend[0] >= 0xE0 ? 3 : 2;
++				if (u8npend < need)
++					continue;
++				out[o++] = latin1For(utf8Decode(u8pend, need));
++				u8npend = 0;
++			} else {
++				for (unsigned k = 0; k < u8npend; ++k)
++					out[o++] = u8pend[k];
++				u8npend = 0;
++				--i; // look at b again
++				continue;
++			}
++		} else if (b >= 0xC2 && b <= 0xF4) {
++			u8pend[u8npend++] = b;
++		} else {
++			out[o++] = b;
++		}
++		if (o > (int) sizeof(out) - 8) {
++			fwrite(out, o, 1, stdout);
++			o = 0;
++		}
++	}
++	if (o)
++		fwrite(out, o, 1, stdout);
++}
++
++// UTF-8 -> ISO-8859-1 in place, for complete strings (window title)
++static void utf8ToLatin1(char *s) {
++#ifdef __AMIGA__
++	if (CodesetsBase && *s) {
++		STRPTR t = CodesetsUTF8ToStr(CSA_Source, (Tag) s, CSA_MapForeignChars, TRUE, TAG_DONE);
++		if (t) {
++			strcpy(s, (char*) t); // never longer than the UTF-8 source
++			CodesetsFreeA(t, NULL);
++			return;
++		}
++	}
++#endif
++	uint8_t *r = (uint8_t*) s, *w = (uint8_t*) s;
++	while (*r) {
++		unsigned need = *r >= 0xF0 && *r <= 0xF4 ? 4 : *r >= 0xE0 ? 3 : *r >= 0xC2 && *r < 0xE0 ? 2 : 1;
++		unsigned k = 1;
++		while (k < need && (r[k] & 0xC0) == 0x80)
++			++k;
++		if (need > 1 && k == need) {
++			*w++ = latin1For(utf8Decode(r, need));
++			r += need;
++		} else
++			*w++ = *r++;
++	}
++	*w = 0;
++}
++
+ int ConsoleChannel::processChannelData(void *data, int length) {
+ 	char *c = (char*) data;
+ 	if (escape) {
+@@ -194,7 +382,7 @@ int ConsoleChannel::processChannelData(void *data, int length) {
+ 		while ((title = strstr((char*) c, "\x1b]0;"))) {
+ 			unsigned l = title - (char*) c;
+ 			if (l) {
+-				fwrite(c, l, 1, stdout);
++				consoleWrite(c, l);
+ 				length -= l;
+ 			}
+ 
+@@ -208,6 +396,7 @@ int ConsoleChannel::processChannelData(void *data, int length) {
+ #ifdef __AMIGA__
+ 			if (theWindow) {
+ 				free(myWindowTitle);
++				utf8ToLatin1(title);
+ 				myWindowTitle = strdup(title);
+ 				SetWindowTitles(theWindow, myWindowTitle, 0);
+ 			}
+@@ -216,7 +405,7 @@ int ConsoleChannel::processChannelData(void *data, int length) {
+ 		}
+ 	}
+ 	if (length) {
+-		fwrite(c, length, 1, stdout);
++		consoleWrite(c, length);
+ 	}
+ 	return 0;
+ }
+@@ -241,7 +430,15 @@ bool ConsoleChannel::start() {
+ 	remoteChannelNo = 0;
+ 
+ #ifdef __AMIGA__
+-	if (!sendEncrypted(ENV_LANG_C, sizeof(ENV_LANG_C)))
++#ifdef __AMIGA__
++	// convert only if both ends are a console - never touch redirected data
++	charsetConv = stdoutBptr && IsInteractive(stdoutBptr) == DOSTRUE;
++	if (charsetConv)
++		openCodesets();
++#endif
++	// interactive sessions convert UTF-8 <-> ISO-8859-1 (see consoleWrite),
++	// so keep the server's own (UTF-8) locale; scripts get LANG=C as before
++	if (!charsetConv && !sendEncrypted(ENV_LANG_C, sizeof(ENV_LANG_C)))
+ 		return false;
+ #endif
+ 
+@@ -505,6 +702,36 @@ void handleKeyboard() {
+ 		}
+ 	}
+ #endif
++#ifdef __AMIGA__
++	if (charsetConv && CodesetsBase && p > c) {
++		// typed characters (system codeset) -> UTF-8
++		bool high = false;
++		for (uint8_t *q = c; q < p; ++q)
++			high |= *q >= 0x80;
++		if (high) {
++			uint8_t tmp[512];
++			ULONG l = 0;
++			if (p - c < 200 && CodesetsUTF8Create(CSA_Source, (Tag) c, CSA_SourceLen, (ULONG) (p - c),
++					CSA_Dest, (Tag) tmp, CSA_DestLen, sizeof(tmp), CSA_DestLenPtr, (Tag) &l, TAG_DONE)) {
++				memcpy(c, tmp, l);
++				p = c + l;
++			}
++		}
++	} else
++#endif
++	if (charsetConv) {
++		// typed ISO-8859-1 characters -> UTF-8
++		for (uint8_t *q = c; q < p; ++q) {
++			if (*q >= 0xA0) {
++				uint8_t ch = *q;
++				memmove(q + 2, q + 1, p - q - 1);
++				*q++ = 0xC0 | (ch >> 6);
++				*q = 0x80 | (ch & 0x3F);
++				++p;
++			}
++		}
++	}
++
+ 	unsigned len = p - c;
+ 	if (len) {
+ 		uint8_t *p = b5;
+-- 
+2.55.0
+

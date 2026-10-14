@@ -111,7 +111,7 @@
     (askoptions
         (prompt "Network tools, in UP-Term:bin (they need a TCP/IP stack\n"
                 "such as Roadshow or AmiTCP):")
-        (help "ssh and scp: BebboSSH 1.45 by Stefan Franke (GPL v3+), an SSH "
+        (help "ssh and scp: BebboSSH 1.46.1 (Matthias Muench's fixed build of Stefan Franke's program, GPL v3+), an SSH "
               "client for remote Unix machines, with scp, a key generator and "
               "a simple server. Its libcryptossh.library goes to LIBS: unless "
               "one is there.\n\n"

@@ -1,0 +1,78 @@
+From 1b1d7b724d1ec6eb9de93c999d64ba4413bd76f2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 17:47:23 +0200
+Subject: [PATCH] bebbossh: escape handling only for console output, fix
+ use-after-free
+
+The OSC filter and the "start mouse/resize events" sequence depended on
+stdin being a console. With output redirected to a file (bebbossh host
+"cat x" >file, started from a shell) the filter dropped every byte from
+an ESC ] up to the next BEL and the event request ended up at the start
+of the file. Both now only apply if stdout is a console.
+
+checkChannelFinished() logged the channel numbers after deleting the
+channel object.
+---
+ src/bebbossh.cpp | 7 +++++--
+ src/client.cpp   | 3 ++-
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/bebbossh.cpp b/src/bebbossh.cpp
+index 8bbe995..4a6320c 100644
+--- a/src/bebbossh.cpp
++++ b/src/bebbossh.cpp
+@@ -186,6 +186,7 @@ public:
+ // sessions (stdoutBptr set) convert in both directions; redirected data
+ // (scripts, file transfer) is passed through untouched.
+ static bool charsetConv; // set in ConsoleChannel::start(): console in AND out
++static bool consoleOut;  // stdout is a console: filter and inject escape sequences
+ static uint8_t u8pend[4];
+ static unsigned u8npend;
+ 
+@@ -369,7 +370,8 @@ static void utf8ToLatin1(char *s) {
+ 
+ int ConsoleChannel::processChannelData(void *data, int length) {
+ 	char *c = (char*) data;
+-	if (escape) {
++	// ESC handling only for a console - redirected output is binary data
++	if (escape && consoleOut) {
+ 		// enable da mouse - can remain there, doesn't disturb
+ 		if (c[0] == 0x1b && c[1] == '[') {
+ 			char *x1006 = strstr((char*) c, "[?1006");
+@@ -478,6 +480,7 @@ bool ConsoleChannel::start() {
+ 	remoteChannelNo = 0;
+ 
+ #ifdef __AMIGA__
++	consoleOut = stdoutBptr && IsInteractive(stdoutBptr) == DOSTRUE;
+ #ifdef __AMIGA__
+ 	// convert only if both ends are a console - never touch redirected data
+ 	charsetConv = stdoutBptr && IsInteractive(stdoutBptr) == DOSTRUE;
+@@ -518,7 +521,7 @@ bool ConsoleChannel::start() {
+ 			remoteWindow += getInt32(buffer + 10);
+ 	}
+ 
+-	if (stdoutBptr) {
++	if (consoleOut) {
+ 		Write(stdoutBptr, "\x1b[2;11;12{", 10); // start events mouse, close, resize
+ 	}
+ 	return true;
+diff --git a/src/client.cpp b/src/client.cpp
+index 5afc68d..89f4df2 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -1520,10 +1520,11 @@ void checkChannelFinished(ClientChannel * cc) {
+ 	}
+ 
+ 	clientChannels.remove(cc->getChannelNo());
++	// log before delete - cc must not be touched afterwards
++	logme(L_DEBUG, "closed channel %ld/%ld, ccsize=%ld", cc->getChannelNo(), cc->getRemoteChannelNo(), clientChannels.getCount());
+ 	delete cc;
+ 
+ 	stopped |= !clientChannels.getCount();
+-	logme(L_DEBUG, "closed channel %ld/%ld, ccsize=%ld", cc->getChannelNo(), cc->getRemoteChannelNo(), clientChannels.getCount());
+ }
+ 
+ void eventLoop() {
+-- 
+2.55.0
+

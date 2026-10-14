@@ -1,0 +1,48 @@
+From 006e104ce289bf7ed01aae076bd593e97c6674fe Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Matthias=20M=C3=BCnch?= <claude@djbase.de>
+Date: Sat, 3 Oct 2026 06:41:21 +0200
+Subject: [PATCH 4/5] bebbossh: only flush the argument line from stdin if it
+ is a console
+
+connectClient() always did FGetC(stdin); fflush(stdin) to drop the
+argument line that RunCommand() injects into the input handle's buffer.
+On a redirected file (bebbossh ... <file) Flush() returns the unread
+buffer by seeking back - over the injected argument line, i.e. before
+the start of the file. FFS refuses that; the OS 3.2 RAM handler
+(ram-handler 47.57) accepts it and delivers ~70 bytes of foreign memory
+in front of the data, so uploads from RAM: arrived with garbage.
+
+Only do it if stdin is interactive.
+
+Tested on a Vampire V4SA: uploads from RAM: (1000 B, 1 MiB) and Work:
+byte-identical, interactive start unchanged (no argument line as input).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_012seUKBRfgcTt43vbc21K3j
+---
+ src/client.cpp | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/src/client.cpp b/src/client.cpp
+index 2418a3e..5afc68d 100644
+--- a/src/client.cpp
++++ b/src/client.cpp
+@@ -1189,8 +1189,13 @@ bool connectClient() {
+ 
+ #ifdef __AMIGA__
+ 	// see DOS RKRM: converted to a buffered stream before flushing!
+-	FGetC(stdin);
+-	fflush(stdin);
++	// Only for a console: on a redirected file (bebbossh ... <file) Flush()
++	// seeks back over the injected argument line, i.e. before the start of
++	// the file - FFS refuses that, RAM: delivers foreign memory instead.
++	if (IsInteractive(stdin) == DOSTRUE) {
++		FGetC(stdin);
++		fflush(stdin);
++	}
+ 
+ 	if (escape && !theWindow) {
+ 		theWindow = IntuitionBase->ActiveWindow;
+-- 
+2.55.0
+

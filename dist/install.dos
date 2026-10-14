@@ -394,19 +394,19 @@ Copy UPTerm C:UPTerm CLONE
 ; C:uptelnet: a telnet client for the window (no ixemul; needs a TCP/IP
 ; stack), the Amiga end of Claude Code on a Mac
 Copy uptelnet C:uptelnet CLONE
-; The network tools, beside coreutils: BebboSSH 1.45 (bebbossh, bebboscp,
+; The network tools, beside coreutils: BebboSSH 1.46.1 (bebbossh, bebboscp,
 ; bebbosshkeygen, bebbosshd) and bebboget 1.11, by Stefan Franke, GPL v3+,
 ; and curl 8.22.0 (below):
 ; COPYING and the complete source are in the kit's net drawer. vshrc makes
 ; ssh and scp of them. Their library goes to LIBS: unless one is there (a
 ; user's own BebboSSH keeps its library; Uninstall removes only ours).
 If "$optssh" EQ "SSH"
-  Copy net/bebbossh-1.45/bebbossh net/bebbossh-1.45/bebboscp net/bebbossh-1.45/bebbosshkeygen net/bebbossh-1.45/bebbosshd UP-Term:bin CLONE QUIET
+  Copy net/bebbossh-1.46.1/bebbossh net/bebbossh-1.46.1/bebboscp net/bebbossh-1.46.1/bebbosshkeygen net/bebbossh-1.46.1/bebbosshd UP-Term:bin CLONE QUIET
   If NOT EXISTS LIBS:libcryptossh.library
     If "$optcpu060" EQ "CPU060"
-      Copy net/bebbossh-1.45/libcryptossh.library060 LIBS:libcryptossh.library CLONE
+      Copy net/bebbossh-1.46.1/libcryptossh.library060 LIBS:libcryptossh.library CLONE
     Else
-      Copy net/bebbossh-1.45/libcryptossh.library020 LIBS:libcryptossh.library CLONE
+      Copy net/bebbossh-1.46.1/libcryptossh.library020 LIBS:libcryptossh.library CLONE
     EndIf
     Echo >ENVARC:up-term/cryptossh "installed by UP-Term"
   EndIf

@@ -32,7 +32,7 @@ zip; zlib (linked)            domain; libarchive BSD-2; zip
                               Info-ZIP; zlib Zlib
 bebboget 1.11                 GPL v3 or later (COPYING,        Files/net/bebboget-1.11/bebboget-1.11-src.tar.bz2
                               LICENSE)
-BebboSSH 1.45 (bebbossh,      GPL v3 or later (COPYING); some  Files/net/bebbossh-1.45/bebbossh-1.45-src.tar.bz2
+BebboSSH 1.46.1 (bebbossh,    GPL v3 or later (COPYING); some  Files/net/bebbossh-1.46.1/ (bebbossh-1.45-src.tar.bz2 + patches/)
 bebbosshd, bebboscp, ...)     files public domain per header
 curl 8.22.0 (AmigaOS port)    curl licence (COPYING)           https://github.com/boingball/curl branch
                                                                amigaos, commit 8347cfe (BUILD-INFO.txt)

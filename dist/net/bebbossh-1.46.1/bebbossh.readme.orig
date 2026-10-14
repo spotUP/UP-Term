@@ -3,7 +3,7 @@ Author:       s.franke@bebbosoft.de
 Uploader:     s.franke@bebbosoft.de
 Architecture: m68k-amigaos
 Type:         comm/net
-Version:      1.45
+Version:      1.46
 Required:     bsdsocket.library (e.g AmiTCP)
 
 ===============================================================================
@@ -221,6 +221,9 @@ SOFTWARE, EVEN IF I HAVE ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
 ===============================================================================
 HISTORY
+
+bebbossh V1.46
+* properly normalize the secret. use portable intptr_t.
 
 bebbossh V1.45
 * wrapped the entire KEX reply in a constant-upper-bound timing envelope 
