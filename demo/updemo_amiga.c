@@ -70,15 +70,27 @@ static int size(int *cols, int *rows)
     return 1;
 }
 
+#define UPDEMO_TEMPLATE "SCENE/N,ANSI/S,FULL/S,SOLID/S,BENCH/S"
+
 int main(int argc, char **argv)
 {
     updemo_io io;
     int cols = 0, rows = 0, rc, bench;
     updemo_args args;
     LONG opts[5] = { 0, 0, 0, 0, 0 }; /* SCENE (a pointer to a LONG), ANSI, FULL, SOLID, BENCH */
-    struct RDArgs *rda = ReadArgs((STRPTR) "SCENE/N,ANSI/S,FULL/S,SOLID/S,BENCH/S", opts, 0);
+    struct RDArgs *rda;
+    const char *line = (const char *)GetArgStr();
     (void)argc;
     (void)argv;
+    /* `UPDemo ?` shows the template and ends (owner 2026-10-14: no
+     * ReadArgs prompt waiting for the arguments) */
+    while (*line == ' ' || *line == '\t')
+        line++;
+    if (line[0] == '?' && (line[1] == 0 || line[1] == '\n' || line[1] == ' ' || line[1] == '\t')) {
+        PutStr((STRPTR)UPDEMO_TEMPLATE "\n");
+        return 0;
+    }
+    rda = ReadArgs((STRPTR)UPDEMO_TEMPLATE, opts, 0);
     if (!rda) {
         PrintFault(IoErr(), (STRPTR) "UPDemo");
         return 20;
