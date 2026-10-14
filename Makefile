@@ -630,6 +630,9 @@ $(BUILD)/amiga/dsrtime: tests/amiga/dsrtime.c
 
 # UP-Term's show-off (demo/updemo.h): the Amiga program, and the same
 # scenes for a Unix terminal (make demo-host; build/updemo)
+# W-A3: the commands answering a lone ? (tty/qmark.h, header-only) rebuild when it changes
+$(BUILD)/amiga/UPDemo $(BUILD)/amiga/UPConsole $(BUILD)/amiga/UPTerm $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upgetty $(BUILD)/amiga/uptelnet $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/Claude $(BUILD)/amiga/upprefs $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh: tty/qmark.h
+
 $(BUILD)/amiga/UPDemo: demo/updemo.c demo/updemo_amiga.c demo/updemo.h demo/tour_themes.inc $(BUILD)/amiga/obj/cpuchk-UPDemo.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ demo/updemo.c demo/updemo_amiga.c $(BUILD)/amiga/obj/cpuchk-UPDemo.o
