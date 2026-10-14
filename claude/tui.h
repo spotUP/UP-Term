@@ -93,6 +93,8 @@ typedef struct tui_pick {
     const char *title;
     const char *help;           /* dim, wrapped, two spaces in */
     char query[96];             /* the search line's text */
+    int qcur1;                  /* the search line's cursor: its byte offset + 1, 0 at the end of the text (the default). pi's Input.setValue
+                                 * keeps the cursor where it was, at the start of a new one (input.ts:66), so a program that sets query sets 1 */
     int n, sel;
     int maxrows;                /* rows shown at most */
     char status[64];            /* after "(sel/total)" */
