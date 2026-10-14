@@ -6,11 +6,7 @@ set -e
 mkdir -p /home/claude/.config/uptelnetd /home/claude/work
 chown -R claude:claude /home/claude
 # replaces the shell with "$@" run as the claude user (in a subshell: returns)
-as_claude() {
-    exec setpriv --reuid=claude --regid=claude --init-groups --reset-env \
-        env HOME=/home/claude USER=claude LOGNAME=claude SHELL=/bin/bash LANG=C.UTF-8 PATH="$PATH" \
-        NPM_CONFIG_PREFIX="$NPM_CONFIG_PREFIX" "$@"
-}
+as_claude() { exec as-claude "$@"; }
 # the image's skill and MCP config into the home, as the claude user: root would
 # follow symlinks the user can plant in it (~/work/.mcp.json, the seeded records)
 (as_claude seed-claude-files)

@@ -817,6 +817,29 @@ class AmigaTargetTool(unittest.TestCase):
         return subprocess.run(["sh", str(self.NAS / "seed-claude-files")], capture_output=True, text=True,
                               env=dict(os.environ, SEED_HOME=home, SEED_SRC=src))
 
+    def test_root_runs_of_setpw_and_amiga_target_become_the_claude_user_before_any_write(self):
+        # as root they would write into a directory the claude user owns and follow its symlinks
+        import tempfile, subprocess, os, stat
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            fake = t / "bin"; fake.mkdir()
+            (fake / "id").write_text("#!/bin/sh\necho 0\n")
+            (fake / "as-claude").write_text('#!/bin/sh\necho "as-claude $*" > "%s/called"\n' % t)
+            for f in ("id", "as-claude"):
+                (fake / f).chmod(0o755)
+            for tool in ("amiga-target", "setpw"):
+                (t / "called").unlink(missing_ok=True)
+                d = t / "amimcp"
+                env = dict(os.environ, PATH="%s:%s" % (fake, os.environ["PATH"]), AMIMCP_DIR=str(d))
+                subprocess.run(["sh", str(self.NAS / tool), "set"], input="1.2.3.4\n\ntok\n", text=True,
+                               env=env, capture_output=True, timeout=10)
+                called = (t / "called").read_text() if (t / "called").exists() else ""
+                self.assertIn("as-claude", called, tool)
+                self.assertIn(tool, called, tool)
+                self.assertFalse(d.exists(), "%s wrote as root" % tool)
+            self.assertIn("COPY as-claude /usr/local/bin/as-claude", (self.NAS / "Dockerfile").read_text())
+            self.assertIn('exec as-claude "$@"', (self.NAS / "entrypoint.sh").read_text())
+
     def test_seeding_copies_missing_updates_ours_keeps_user_edits(self):
         with tempfile.TemporaryDirectory() as tmp:
             src, home = os.path.join(tmp, "seed"), os.path.join(tmp, "home")

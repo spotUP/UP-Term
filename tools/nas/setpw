@@ -1,9 +1,10 @@
 #!/bin/sh
 # setpw: the password the Amiga's uptelnet asks for, read without echo, kept
 # 0600 on the volume (never in an image, a compose file or a log).
+[ "$(id -u)" != 0 ] || exec as-claude "$0" "$@"   # never write into the claude user's home as root
 PW=/home/claude/.config/uptelnetd/password
 mkdir -p "$(dirname "$PW")"
 stty -echo; printf 'New uptelnet password (8+ characters): '; read p; stty echo; echo
 [ ${#p} -ge 8 ] || { echo "too short"; exit 1; }
-umask 077; printf '%s\n' "$p" > "$PW"; chown claude:claude "$PW" 2>/dev/null; chmod 600 "$PW"
+umask 077; printf '%s\n' "$p" > "$PW"; chmod 600 "$PW"
 echo "saved; the server starts within 30 s"

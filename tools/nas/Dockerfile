@@ -21,11 +21,12 @@ ENV NPM_CONFIG_PREFIX=/home/claude/.npm-global PATH=/home/claude/.npm-global/bin
 
 COPY uptelnetd.py /usr/local/bin/uptelnetd.py
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY as-claude /usr/local/bin/as-claude
 COPY setpw /usr/local/bin/setpw
 COPY pairs /usr/local/bin/pairs
 COPY amiga-target /usr/local/bin/amiga-target
 COPY seed-claude-files /usr/local/bin/seed-claude-files
-RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/setpw /usr/local/bin/pairs \
+RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/as-claude /usr/local/bin/setpw /usr/local/bin/pairs \
     /usr/local/bin/amiga-target /usr/local/bin/seed-claude-files
 
 # amimcp (Apache 2.0, Python standard library only), at the one commit in amimcp.rev
