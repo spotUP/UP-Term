@@ -655,7 +655,7 @@ NETWORK
   does not exist); bebbossh -i names another. The first connection
   to a host asks whether to trust its key; a host key that later differs is
   refused (delete its line in ENVARC:ssh/known_hosts if the change is real).
-  This is Matthias Muench's fixed build of BebboSSH (Aminet bebbossh_1.46.1).
+  This is BebboSSH 1.45 with the fixes of Matthias Muench (Aminet bebbossh_1.46.1), built by UP-Term from source.
   bebbosshd, the server, answers a login with its own simple shell, not a
   terminal: full-screen programs do not run through it.
   Licences: BebboSSH and bebboget by Stefan Franke, GPL v3 or later; curl
