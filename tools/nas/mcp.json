@@ -2,7 +2,7 @@
   "mcpServers": {
     "amiga": {
       "command": "sh",
-      "args": ["-c", "AMIGA_HOST=$(cat \"$HOME/.config/amimcp/host\") AMIGA_TOKEN=$(cat \"$HOME/.config/amimcp/token\") exec python3 \"$HOME/amimcp/server/amimcp.py\""]
+      "args": ["-c", "D=\"$HOME/.config/amimcp\"; [ -s \"$D/port\" ] && export AMIGA_PORT=$(cat \"$D/port\"); AMIGA_HOST=$(cat \"$D/host\") AMIGA_TOKEN=$(cat \"$D/token\") exec python3 /opt/amimcp/server/amimcp.py"]
     }
   }
 }

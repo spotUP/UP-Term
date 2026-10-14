@@ -106,6 +106,26 @@ a real Amiga running amiagent:
 (`AMI_PORT`, default 7846.) amiagent runs whatever it is sent and the link is
 unencrypted: use a token and a trusted network (see tools/nas/README.md).
 
+## Mac: amiga MCP for Claude Code
+
+Claude Code in this repo gets an `amiga` MCP server (upstream amimcp, Apache 2.0,
+pinned to 3145dee, Python standard library only, no venv) that drives a rig's
+amiagent: run commands, read and write files, screenshots, input.
+
+- Install: `make amimcp` (fetches the pinned commit into build/amimcp, checks the
+  wrapper starts, prints the next step; a second run changes nothing).
+  Remove: `make amimcp-clean`. Nothing outside the repo is touched.
+- Next step: start Claude Code in the repo and approve the `amiga` project MCP
+  server from `.mcp.json`.
+- Target: rig 1 (127.0.0.1:7846, token `rigtoken`) by default. `UPTERM_RIG=2` or
+  `3` selects that rig's port (the rule is paths.py's). A real Amiga: `AMI_HOST`,
+  `AMI_PORT`, `AMI_TOKEN`, the same variables as ami.py. Set them in the shell
+  that starts Claude Code.
+- Token safety: the amiagent link is unencrypted and the token travels in clear.
+  Use it on a LAN you trust only; never commit a real Amiga's token.
+- Wrapper: `tools/rig/amimcp.py` (`--print` shows the chosen host and port);
+  test: `make test ONLY=rig_amimcp`.
+
 ## Which script proves what
 
 One reachability test per feature; the rest test where the behaviour lives.

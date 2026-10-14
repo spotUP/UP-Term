@@ -11,6 +11,9 @@ as_claude() {
         env HOME=/home/claude USER=claude LOGNAME=claude SHELL=/bin/bash LANG=C.UTF-8 PATH="$PATH" \
         NPM_CONFIG_PREFIX="$NPM_CONFIG_PREFIX" "$@"
 }
+# the image's skill and MCP config into the home, as the claude user: root would
+# follow symlinks the user can plant in it (~/work/.mcp.json, the seeded records)
+(as_claude seed-claude-files)
 # Claude Code on the volume (its auto-updater writes there): installed once
 if [ ! -x "$NPM_CONFIG_PREFIX/bin/claude" ]; then
     echo "claude-amiga: installing Claude Code into $NPM_CONFIG_PREFIX"
