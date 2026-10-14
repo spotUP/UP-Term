@@ -2,7 +2,7 @@
 """autoprobe_rig.py [CON|XCON] -- H5.2 on the rig: drives
 tests/amiga/autoprobe (an AUTO/CLOSE window: close gadget, reopen on
 write, ACTION_DISK_INFO / ACTION_UNDISK_INFO) and says after each step
-whether the window is on the screen (amiagent's window list). Prints one
+whether the window is on the screen (wasabi's window list). Prints one
 "STEP phase: window yes|no" line per step, then the probe's log; saves both
 as build/rig/shots/autoprobe-<dev>-<dos version>.log. The rig must be up;
 `make build/amiga/autoprobe` first. The XCON reopen hang it caught (fixed

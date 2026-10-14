@@ -313,7 +313,7 @@ SWIFT_WINDOWS = (
 def emulator_text():
     """What the emulator's own window shows, read by Tesseract (macOS screencapture of this rig's FS-UAE
     window, found by the config path in its command line): an Exec alert ("Software Failure", "Guru
-    Meditation #xxxxxxxx.xxxxxxxx") is drawn outside the Workbench screen, where amiagent cannot see it.
+    Meditation #xxxxxxxx.xxxxxxxx") is drawn outside the Workbench screen, where wasabid cannot see it.
     Returns the non-empty lines of the top fifth of the window, or a note why it could not be read."""
     try:
         cfg = str(RIG / 'vtcon-rig.fs-uae')

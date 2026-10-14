@@ -34,7 +34,7 @@ Step 4 (parity Q9-Q11): the bash tool's shell and read's images on the Amiga.
 bash with a command only vsh answers (echo $((1+2)), quoting, a here-document read by a loop,
 $0) and read on RAM:pi-wide.bmp (2400x10):
   4a without UP-Term: (no assign, no ENVARC:up-term/Dir, no C:vsh): the run
-     ends, no requester window appears (amiagent's UI tree, polled), the
+     ends, no requester window appears (wasabi's UI tree, polled), the
      prompt says vsh is not installed, the AmigaShell ran the command; read
      sent the BMP as PNG at 2000x8 with pi's notes
   4b UP-Term: the kit's way: VTC:pi-kit/bin/vsh and ENVARC:up-term/Dir naming
@@ -376,7 +376,7 @@ def restore_rig_assign():
 
 
 def run_watched(name, title, lines, done):
-    """run_window, polling amiagent's UI tree for a requester the while: (ended, requester titles seen)"""
+    """run_window, polling wasabi's UI tree for a requester the while: (ended, requester titles seen)"""
     c.run('Delete RAM:%s QUIET' % done)
     with open(VTC / (name + '.dos'), 'w') as f:
         f.write(piscript.script_text(lines, done))

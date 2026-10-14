@@ -6,7 +6,7 @@
  * (default) or XCON: the same steps against the ROM and against vtcon.
  * The probe prints "PHASE name" and waits for RAM:autoprobe.go to hold that
  * name; tools/rig/autoprobe_rig.py looks for the window from the host
- * (amiagent's window list), clicks its close gadget where a step says so,
+ * (wasabi's window list), clicks its close gadget where a step says so,
  * and writes the file. Output also in RAM:autoprobe.log. */
 #include <stdio.h>
 #include <string.h>

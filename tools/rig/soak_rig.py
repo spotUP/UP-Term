@@ -86,7 +86,7 @@ def main():
             typeline('list S: QUICK', 2)
             typeline('endcli', 2)
         except (TimeoutError, OSError, SystemExit) as e:
-            # a request amiagent did not answer: record what the machine
+            # a request wasabid did not answer: record what the machine
             # shows, then go on (a stall is a finding, not the end)
             stalls += 1
             say('STALL round %d at %s: %r' % (rounds, time.strftime('%H:%M:%S'), e))
@@ -96,7 +96,7 @@ def main():
                 ami.main(['shot', str(OUT / ('soak-stall-%d.png' % rounds))])
                 typeline('endcli', 2)
             except Exception as e2:
-                say('  amiagent still silent: %r' % e2)
+                say('  wasabid still silent: %r' % e2)
                 break
         n = 0 if rom else units()
         if n != 0:

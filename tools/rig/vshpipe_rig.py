@@ -8,7 +8,7 @@ and the subshell's echo walked a garbage count of closed streams), while
 the same line with an external first stage worked.
 
 Each case is a vsh script run detached (`Run`), so a hang does not hold
-amiagent; a case that has not ended after 20 s is a FAIL. The binary goes to
+wasabid; a case that has not ended after 20 s is a FAIL. The binary goes to
 RAM:vshpipe/ (VTC: is not touched). The rig must be up; `make
 build/amiga/vsh` first (VSH= names another binary). A hung case leaves its
 processes running: restart the rig after a FAIL."""

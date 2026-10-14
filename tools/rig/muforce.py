@@ -3,7 +3,7 @@
 MuForce (Thomas Richter's Enforcer for the MMU, NDK 3.2R4 MuTools) reports every access to address 0 or to
 non-existent memory, and writes to ROM, with the registers, the PC and the task's name. Its FILE option
 (MuForce.guide, "Option: FILE") sends the report to a file; here the file is VTC:muforce/hits.log, which is
-the host drawer <rig>/vtc/muforce/hits.log, so the Mac and an agent read it without amiagent. (The guide
+the host drawer <rig>/vtc/muforce/hits.log, so the Mac and an agent read it without wasabid. (The guide
 warns that a file on a disk can be damaged by the crash that follows a hit; VTC: is a host drawer.)
 
   rig.py muforce on           install MuForce + mmu.library + disassembler.library into VTC:muforce, start MuForce
