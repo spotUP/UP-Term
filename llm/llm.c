@@ -350,6 +350,12 @@ void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts
     jw_strz(w, m->stop ? llm_stop_name(m->stop) : "stop");
     key(w, "timestamp");
     llm_w_ts(w, ts);
+    if (m->diag && m->diag_n > 0) {     /* appendAssistantMessageDiagnostic: before the stream's own keys (the request was refused first) */
+        key(w, "diagnostics");
+        jw_rawz(w, "[");
+        jw_raw(w, m->diag, m->diag_n);
+        jw_rawz(w, "]");
+    }
     /* the keys in the order pi-ai assigns them: the id and the server's model at the start of the answer, the provider's
      * stop reason at its end, an error in the stream's catch, the session's level last (the agent loop) */
     if (m->response_id && *m->response_id) {

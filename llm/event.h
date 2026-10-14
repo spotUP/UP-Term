@@ -62,6 +62,8 @@ typedef struct llm_event {
     const char *level;          /* LE_META: providerThinkingLevel, 0 none */
     const char *rewrite;        /* LE_META: the rewrite impact object (JSON), 0 none */
     long rewrite_n;
+    const char *diag;           /* LE_META: one diagnostic object (JSON, its timestamp in it) for the message's "diagnostics", 0 none */
+    long diag_n;
 } llm_event;
 
 typedef struct llm_sink {

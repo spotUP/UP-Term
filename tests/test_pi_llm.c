@@ -526,6 +526,14 @@ static void test_anthropic_baseurl(void)
         CHECK_INT(mp->context_window, 1000000);
         CHECK_INT(mp->max_tokens, 128000);
     }
+    /* pi 1.2.0 catalog (P12-A1): three added models and the sonnet-5-5 cache read price halved to 0.1 */
+    CHECK(llm_reg_find(&r, "github-copilot", "claude-haiku-5.5") != 0);
+    CHECK(llm_reg_find(&r, "meta", "muse-wonder-1.0") != 0);
+    CHECK(llm_reg_find(&r, "radius", "claude-haiku-5-5") != 0);
+    mp = llm_reg_find(&r, "anthropic", "claude-sonnet-5-5");
+    CHECK(mp != 0);
+    if (mp)
+        CHECK_INT(mp->cost[2], 100000);
     llm_reg_free(&r);
 }
 
@@ -3009,6 +3017,75 @@ static void test_post_hooks(void)
     jw_free(&big);
 }
 
+/* P12-A3 (pi 1.2.0 anthropic-messages.ts:636-690): a 400 invalid_request_error naming a strict-tools limit, on a request that carried
+ * a "prefer" tool as strict, is sent once more with that tool plain and the answer carries the diagnostic; a "require" tool stays strict,
+ * a second refusal fails, another 400 fails at once */
+static void test_strict_fallback(void)
+{
+    static const char tools_prefer[] =
+        "[{\"name\":\"t\",\"description\":\"d\",\"parameters\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"string\"}},"
+        "\"required\":[\"x\"]},\"constrainedSampling\":{\"type\":\"json_schema\",\"strict\":\"prefer\"}}]";
+    static const char tools_require[] =
+        "[{\"name\":\"t\",\"description\":\"d\",\"parameters\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"string\"}},"
+        "\"required\":[\"x\"]},\"constrainedSampling\":{\"type\":\"json_schema\",\"strict\":\"require\"}}]";
+    static const char *const msg[3] = { "The compiled grammar is too large", "Too many strict tools (21)",
+                                        "Schemas contains too many parameters with union types (3)" };
+    llm_model mo = ps_model_anthropic();
+    llm_ctx c;
+    llm_req q;
+    llm_acc a;
+    llm_sink k;
+    jw m;
+    int pass;
+    jw_init(&m);
+    mo.compat.strict_tools = 1;
+    for (pass = 0; pass < 6; pass++) {
+        char body[400], http[600], num[16];
+        const char *tools = pass == 4 ? tools_require : tools_prefer;
+        const char *text = pass == 3 ? "messages: text content blocks must be non-empty" : msg[pass % 3];
+        strcpy(body, "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"");
+        strcat(body, text);
+        strcat(body, "\"}}");
+        cl_ltoa((long)strlen(body), num);
+        strcpy(http, "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: ");
+        strcat(http, num);
+        strcat(http, "\r\n\r\n");
+        strcat(http, body);
+        ps_reset();
+        ps_pool_up(LLM_POOL);
+        ps_http_text(http, (long)strlen(http));
+        if (pass == 5)
+            ps_http_text(http, (long)strlen(http));     /* the plain request is refused too */
+        else if (pass != 3)
+            ps_sse("tool_use.sse", 0);
+        c = ctx_of(&mo, 1);
+        c.tools = tools;
+        c.tools_n = (long)strlen(tools);
+        llm_acc_init(&a, mo.api, mo.provider);
+        k = llm_acc_sink(&a);
+        q = req_of(&mo, &c, &k, "k");
+        jw_reset(&m);
+        if (pass < 3) {
+            CHECK_INT(llm_request(&q), 0);
+            CHECK_INT(ps.nreq, 2);
+            CHECK(ps.nreq > 0 && strstr(ps.body[0], "\"strict\":true") != 0);
+            CHECK(ps.nreq > 1 && strstr(ps.body[1], "\"strict\":true") == 0);
+            CHECK_INT(llm_acc_message(&a, ts_of(1760100000L, 0), &m), 0);
+            CHECK(strstr(m.p, "\"diagnostics\":[{\"type\":\"anthropic_strict_tools_fallback\",\"timestamp\":") != 0);
+            CHECK(strstr(m.p, "\"details\":{\"reason\":\"strict_tool_limits_exceeded\"}}]") != 0);
+            CHECK(strstr(m.p, text) != 0);
+        } else if (pass == 5) {
+            CHECK_INT(llm_request(&q), -1);
+            CHECK_INT(ps.nreq, 2);              /* never twice */
+        } else {
+            CHECK_INT(llm_request(&q), -1);
+            CHECK_INT(ps.nreq, 1);              /* another 400, or a "require" tool: no second request */
+        }
+        llm_acc_free(&a);
+    }
+    jw_free(&m);
+}
+
 /* B8, B9: plain http only on the LAN, no key over it, a notice once; the log never holds the key */
 static void test_lan(void)
 {
@@ -4426,6 +4503,7 @@ void suite_pi_llm(void)
     test_pool();
     test_post_hooks();
     test_lan();
+    test_strict_fallback();
     test_stops();
     test_phs();
     test_reasoning();
