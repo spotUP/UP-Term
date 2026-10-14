@@ -687,7 +687,7 @@ def cleanup():
     run('Delete >NIL: ENVARC:Claude ENVARC:amiga-pi RAM:S RAM:.claude ALL QUIET')
 
 
-RIG_UPTERM_DRAWER = 'VTCX:upterm'   # what rig.py's boot assigns UP-Term: to when no kit is installed (UT1)
+RIG_UPTERM_DRAWER = 'VTCX:' + paths.UPTERM_DRAWER   # what rig.py's boot assigns UP-Term: to when no kit is installed (UT1)
 rig_upterm_removed = False
 
 

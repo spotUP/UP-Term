@@ -66,10 +66,20 @@ class Rig(unittest.TestCase):
     def test_the_migrate_case_deletes_the_old_drawer_with_its_icon(self):
         # VTCX:Apps/UP-Term.info stayed on rig 1 after the drawer went: a drawer icon nothing opens (2026-10-14)
         import installer_rig
-        cmd = installer_rig.drawer_delete("VTC:Apps/UP-Term")
-        self.assertIn('"VTC:Apps/UP-Term"', cmd)
-        self.assertIn('"VTC:Apps/UP-Term.info"', cmd)
+        cmd = installer_rig.drawer_delete("VTC:KitTest/UP-Term")
+        self.assertIn('"VTC:KitTest/UP-Term"', cmd)
+        self.assertIn('"VTC:KitTest/UP-Term.info"', cmd)
         self.assertIn(' ALL', cmd)
+
+    def test_a_case_removes_the_parent_drawer_it_made_with_its_icon(self):
+        # VTCX:Apps.info stayed on rig 1 after Apps was deleted (2026-10-14): the Installer writes the parent's .info
+        import installer_rig
+        made = installer_rig.dest_cleanup("VTC:KitTest/UP-Term", False)
+        self.assertEqual(made, [installer_rig.drawer_delete("VTC:KitTest/UP-Term"), installer_rig.drawer_delete("VTC:KitTest")])
+        self.assertIn('"VTC:KitTest.info"', made[1])
+        # a parent that was there before is not ours; nor is a volume root
+        self.assertEqual(len(installer_rig.dest_cleanup("VTC:KitTest/UP-Term", True)), 1)
+        self.assertEqual(len(installer_rig.dest_cleanup("VTC:UP-Term", False)), 1)
 
     def test_a_shot_with_indices_past_the_palette_keeps_its_rows(self):
         # 3.2's native 16-colour screen: SHOT sent indices 16 and 32; a palette lookup past the end gave
@@ -716,7 +726,7 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
         self.assertIn('restoreassign', self.log)
         self.assertLess(self.log.index('restoreassign'), self.log.index('runinstall-claude'))
         self.assertEqual((self.tmp / 'restoreassign').read_text(), rig.UPTERM_ASSIGN + '\n')
-        self.assertIn('Assign >NIL: UP-Term: VTC:upterm', rig.GO, 'GO uses the same lines')
+        self.assertIn('Assign >NIL: UP-Term: VTC:Apps', rig.GO, 'GO uses the same lines')
 
     def test_an_add_on_the_rig_does_not_hold_is_not_installed_afterwards(self):
         self.installed = {'pi'}

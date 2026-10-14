@@ -6,8 +6,8 @@ The rig must be up; `make dist` first.
 
 One case per package on the base, and the combinations (K2-10, plan 2026-10-13-kit-split.md):
   base        the default drawer (SYS:UP-Term): PTY:, the patched ixemul with the original kept, the console, ...
-  base-dest   a non-default drawer (DEST=VTC:Apps/UP-Term); both reach the files through the assign UP-Term:
-  base-move   Install into the default drawer, then again with DEST=VTC:Apps/UP-Term (the assign moves)
+  base-dest   a non-default drawer (DEST=VTC:KitTest/UP-Term); both reach the files through the assign UP-Term:
+  base-move   Install into the default drawer, then again with DEST=VTC:KitTest/UP-Term (the assign moves)
   base-libs   LIBS: a multi-assign (the rig's normal boot)
   base-var    Uninstall and UP-Term:var (No keeps it, Yes removes it)
   claude pi nvim python
@@ -834,7 +834,7 @@ def var_check():
     return 0 if passed == total else 1
 
 OLD = "SYS:UP-Term"
-NEW = "VTC:Apps/UP-Term"
+NEW = "VTC:KitTest/UP-Term"
 
 def move():
     fx = Fixtures()
@@ -1035,7 +1035,7 @@ class OwnersAddons:
 
     def restore(self):
         if self.pkgs:
-            # the rig with no kit has UP-Term: assigned to VTC:upterm by its boot script; the cases' base Uninstall
+            # the rig with no kit has UP-Term: assigned to VTC:Apps by its boot script; the cases' base Uninstall
             # removed it, and an add-on's Install puts its launchers there only through that assign
             import rig
             (VTC / 'restoreassign').write_text(rig.UPTERM_ASSIGN + '\n')
@@ -1378,7 +1378,7 @@ def case_table():
     """{case: (packages it installs, extra files its fingerprint reads, function(ck))}, in the order they run.
     The add-on cases come from dist/packages.txt: a new row gets a case."""
     t = {'base': (['base'], [], _global_pass(main)),
-         'base-dest': (['base'], [], _global_pass(main, 'VTC:Apps/UP-Term')),
+         'base-dest': (['base'], [], _global_pass(main, 'VTC:KitTest/UP-Term')),
          'base-move': (['base'], [], _global_pass(move)),
          'base-libs': (['base'], [], _libs_case),
          'base-var': (['base'], [], _global_pass(var_check))}

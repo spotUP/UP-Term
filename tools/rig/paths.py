@@ -17,6 +17,10 @@ import sys
 
 VTCON = pathlib.Path(__file__).resolve().parents[2]
 UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
+# the rig's own UP-Term: drawer in the host drawer VTC: (the Workbench labels a drawer icon with the file name,
+# so the owner sees Apps); rig.py, the rig scripts and their tests all take it from here
+UPTERM_DRAWER = "Apps"
+OLD_UPTERM_DRAWER = "upterm"   # its name until 2026-10-14; rig.py install renames it
 
 
 def code_root(upterm_root=None):
