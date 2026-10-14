@@ -1240,6 +1240,39 @@ static void note_look(void)
 
 /* R4-R7, R10: Ctrl+Enter / Ctrl+X Ctrl+S, Ctrl+S, Alt+Y, Ctrl+B, ?,
  * Alt+P, Shift+Tab and Tab on a permission question */
+/* Q3-18: the picker's search line (pi Input): Left, Right, Home, End, Ctrl+A/E/B/F, Delete and Ctrl+D move or remove at the cursor, by character;
+ * typed text and a paste insert at it; a query set by the program has its cursor at the start (qcur1 = 1) */
+static void pick_search_line_keys(void)
+{
+    tui_pick p;
+    cl_key k;
+    memset(&p, 0, sizeof(p));
+    strcpy(p.query, "a\303\274z");                           /* a, u-umlaut (2 bytes), z */
+    p.qcur1 = 1;                                            /* preset: the cursor at the start */
+    CHECK(key1("\033[C", &k) && tui_pick_qkey(&p, &k));      /* Right: over a */
+    CHECK(p.qcur1 == 2);
+    CHECK(key1("\033[C", &k) && tui_pick_qkey(&p, &k));      /* Right: over the two-byte character */
+    CHECK(p.qcur1 == 4);
+    CHECK(key1("\033[D", &k) && tui_pick_qkey(&p, &k));      /* Left: back over it whole */
+    CHECK(p.qcur1 == 2);
+    CHECK(key1("X", &k) && tui_pick_qkey(&p, &k));            /* typed text goes in at the cursor */
+    CHECK_STR(p.query, "aX\303\274z");
+    CHECK(p.qcur1 == 3);
+    CHECK(key1("\033[F", &k) && tui_pick_qkey(&p, &k));      /* End: after the text, qcur1 0 */
+    CHECK(p.qcur1 == 0);
+    CHECK(key1("\033[H", &k) && tui_pick_qkey(&p, &k));      /* Home */
+    CHECK(p.qcur1 == 1);
+    CHECK(key1("\005", &k) && tui_pick_qkey(&p, &k) && p.qcur1 == 0);   /* Ctrl+E */
+    CHECK(key1("\001", &k) && tui_pick_qkey(&p, &k) && p.qcur1 == 1);   /* Ctrl+A */
+    CHECK(key1("\033[3~", &k) && tui_pick_qkey(&p, &k));     /* Delete: the character at the cursor */
+    CHECK_STR(p.query, "X\303\274z");
+    CHECK(key1("\006", &k) && tui_pick_qkey(&p, &k) && p.qcur1 == 2);   /* Ctrl+F */
+    CHECK(key1("\177", &k) && tui_pick_qkey(&p, &k));        /* Backspace at the cursor */
+    CHECK_STR(p.query, "\303\274z");
+    CHECK(key1("\033[1;5C", &k) && !tui_pick_qkey(&p, &k));  /* Ctrl+Right is a word move: not the search line's */
+    CHECK(key1("\033[A", &k) && !tui_pick_qkey(&p, &k));     /* Up is the list's */
+}
+
 static void keys_rest(void)
 {
     static const char *s_c1[] = { "\t", "ok but short", "\r", 0 };
@@ -2389,6 +2422,7 @@ void suite_claude_tui(void)
     at_completion();
     queue_while_busy();
     keys_rest();
+    pick_search_line_keys();
     transcript_view();
     transcript_resize();
     esc_esc();

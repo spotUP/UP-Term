@@ -1485,6 +1485,39 @@ static void pi_ansi_row(cl_tui *t, const char *line)
     want(t, &r);
 }
 
+/* the search line's text and its cursor (pi's Input.render): the cursor cell is the character it stands on, a blank at the end of the
+ * text. A query longer than the room shows its end when the cursor is there, else its start, cut at a character boundary */
+static void pick_query_text(row *r, const tui_pick *p, long room)
+{
+    const char *q = p->query;
+    long l = (long)strlen(q), cur = p->qcur1 ? p->qcur1 - 1 : l, cl = 1, shown;
+    if (cur > l)
+        cur = l;
+    if (cur >= l) {
+        if (room > 0 && l > room) {
+            q += l - room;
+            while (*q && ((unsigned char)*q & 0xc0) == 0x80)
+                q++;
+        }
+        r_textz(r, q);
+        r_sgr(r, REV);
+        r_text(r, " ", 1);
+        r_sgr(r, SGR0);
+        return;
+    }
+    while (cur + cl < l && ((unsigned char)q[cur + cl] & 0xc0) == 0x80)
+        cl++;
+    shown = room > 0 && l > room ? room : l;
+    while (shown < l && shown > cur + cl && ((unsigned char)q[shown] & 0xc0) == 0x80)
+        shown--;
+    r_text(r, q, cur);
+    r_sgr(r, REV);
+    r_text(r, q + cur, cl);
+    r_sgr(r, SGR0);
+    if (shown > cur + cl)
+        r_text(r, q + cur + cl, shown - cur - cl);
+}
+
 /* pi's SessionSelectorComponent frame (tui_pick.session) */
 static void pi_session_rows(cl_tui *t)
 {
@@ -1513,10 +1546,7 @@ static void pi_session_rows(cl_tui *t)
     pi_blank_row(t);
     r_init(&r, t->cols);
     r_text(&r, "> ", 2);
-    r_textz(&r, p->query);
-    r_sgr(&r, REV);
-    r_text(&r, " ", 1);
-    r_sgr(&r, SGR0);
+    pick_query_text(&r, p, (long)t->cols - 3);
     want(t, &r);
     pi_blank_row(t);
     if (!p->n) {
@@ -1556,37 +1586,91 @@ static void pi_session_rows(cl_tui *t)
     pi_rule_row(t, PR_ACCENT);
 }
 
-/* the search line's text and its cursor (pi's Input.render): the cursor cell is the character it stands on, a blank at the end of the
- * text. A query longer than the room shows its end when the cursor is there, else its start, cut at a character boundary */
-static void pick_query_text(row *r, const tui_pick *p, long room)
+/* the search line's keys (pi's Input.handleInput, tui/src/components/input.ts:130-203 with the default keybindings, keybindings.ts:82-122): a
+ * character or a paste inserts at the cursor, Backspace and Delete (Ctrl+D) remove the character before or at it, Left (Ctrl+B) and Right
+ * (Ctrl+F) step one character, Home (Ctrl+A) and End (Ctrl+E) go to the ends. The cursor is p->qcur1 (see tui.h). 1 when the key was one of
+ * them (the text or the cursor may have changed: compare the query). Word moves, the kill ring and undo are not built. */
+int tui_pick_qkey(tui_pick *p, const cl_key *key)
 {
-    const char *q = p->query;
-    long l = (long)strlen(q), cur = p->qcur1 ? p->qcur1 - 1 : l, cl = 1, shown;
-    if (cur > l)
-        cur = l;
-    if (cur >= l) {
-        if (room > 0 && l > room) {
-            q += l - room;
-            while (*q && ((unsigned char)*q & 0xc0) == 0x80)
-                q++;
+    long ql = (long)strlen(p->query), cur = p->qcur1 ? p->qcur1 - 1 : ql, n = 0;
+    cl_edit e;
+    char ins[8];
+    int plain = !(key->mods & (KM_CTRL | KM_ALT));
+    memset(&e, 0, sizeof(e));
+    e.b = p->query;
+    e.n = ql;
+    if (cur > ql)
+        cur = ql;
+    switch (key->k) {
+    case K_BS:
+        if (cur) {
+            long from = ed_prev(&e, cur);
+            memmove(p->query + from, p->query + cur, (size_t)(ql - cur + 1));
+            cur = from;
         }
-        r_textz(r, q);
-        r_sgr(r, REV);
-        r_text(r, " ", 1);
-        r_sgr(r, SGR0);
-        return;
+        break;
+    case K_DEL:
+        if (cur < ql) {
+            long to = ed_next(&e, cur);
+            memmove(p->query + cur, p->query + to, (size_t)(ql - to + 1));
+        }
+        break;
+    case K_LEFT:
+        if (!plain)
+            return 0;
+        cur = ed_prev(&e, cur);
+        break;
+    case K_RIGHT:
+        if (!plain)
+            return 0;
+        cur = ed_next(&e, cur);
+        break;
+    case K_HOME:
+        cur = 0;
+        break;
+    case K_END:
+        cur = ql;
+        break;
+    case K_CTRL:
+        switch (key->ch) {
+        case 'a': cur = 0; break;
+        case 'e': cur = ql; break;
+        case 'b': cur = ed_prev(&e, cur); break;
+        case 'f': cur = ed_next(&e, cur); break;
+        case 'd':
+            if (cur < ql) {
+                long to = ed_next(&e, cur);
+                memmove(p->query + cur, p->query + to, (size_t)(ql - to + 1));
+            }
+            break;
+        default:
+            return 0;
+        }
+        break;
+    case K_CHAR:
+        if (key->ch >= 0x20 && ql + 5 < (long)sizeof(p->query)) {
+            n = vw_put_utf8(ins, key->ch);
+            memmove(p->query + cur + n, p->query + cur, (size_t)(ql - cur + 1));
+            memcpy(p->query + cur, ins, (size_t)n);
+            cur += n;
+        }
+        break;
+    case K_PASTE: {
+        long i;
+        for (i = 0; i < key->n && ql + n + 1 < (long)sizeof(p->query); i++)
+            if ((unsigned char)key->text[i] >= 0x20) {
+                memmove(p->query + cur + 1, p->query + cur, (size_t)(ql + n - cur + 1));
+                p->query[cur++] = key->text[i];
+                n++;
+            }
+        break;
     }
-    while (cur + cl < l && ((unsigned char)q[cur + cl] & 0xc0) == 0x80)
-        cl++;
-    shown = room > 0 && l > room ? room : l;
-    while (shown < l && shown > cur + cl && ((unsigned char)q[shown] & 0xc0) == 0x80)
-        shown--;
-    r_text(r, q, cur);
-    r_sgr(r, REV);
-    r_text(r, q + cur, cl);
-    r_sgr(r, SGR0);
-    if (shown > cur + cl)
-        r_text(r, q + cur + cl, shown - cur - cl);
+    default:
+        return 0;
+    }
+    ql = (long)strlen(p->query);
+    p->qcur1 = cur >= ql ? 0 : (int)cur + 1;
+    return 1;
 }
 
 /* pi's OAuthSelectorComponent (modes/interactive/components/oauth-selector.ts:75-130, updateList 147-190) */
