@@ -95,6 +95,33 @@ agent's file, left alone), and `dvmatrix.sh` still logs to `build/rig/shots`.
 Amiberry (`/Applications/Amiberry.app`) could become a rig 3 with another
 config writer; it was not needed because a second FS-UAE runs beside the first.
 
+## MuForce: crash feedback on a rig
+
+`rig.py muforce on|off|log` runs MuForce (Thomas Richter's Enforcer for the MMU; NDK 3.2R4 MuTools) on the
+rig. It reports an access to address 0 or to missing memory, and a write to ROM, with the PC, the registers
+and the task, and lets the program go on. Its `FILE` option (documented in `MuForce.guide`) writes the report
+to `VTC:muforce/hits.log`, which is the host file `build/<rig>/vtc/muforce/hits.log`: the Mac and an agent read
+it with no amiagent call.
+
+    python3 tools/rig/rig.py start --max --mmu    # once: a 68060 with an emulated MMU (slower, no JIT)
+    python3 tools/rig/rig.py muforce on           # copies MuForce + libraries to VTC:muforce, starts MuForce
+    python3 tools/rig/ami.py exec "VTC:muhit"     # make build/amiga/muhit: one read of address 0 (muhit rom: a ROM write)
+    python3 tools/rig/rig.py muforce log          # one line per hit: access, address, PC, task, CLI command
+    python3 tools/rig/rig.py muforce log --raw    # the report itself
+    python3 tools/rig/rig.py muforce off          # MuForce QUIT
+
+- The default rig is 68060-NOMMU (the JIT needs that) and cannot run MuForce: `muforce on` stops with the
+  `--mmu` hint. Restart without `--mmu` for the normal machine. With the JIT on the emulated MMU is not seen
+  (`MuForce requires a working MMU`), so `--mmu` also turns the JIT off.
+- Inputs, from the Mac (`paths.py`): `UPTERM_MUTOOLS` (default `~/Downloads/NDK3.2R4/MuTools`: MuForce,
+  disassembler.library) and `UPTERM_MMULIB` (default `~/Library/CloudStorage/Dropbox/WB/Libs/mmu.library`, 42.8).
+  The NDK does not ship mmu.library (only its MuManual); it is in Thomas Richter's MMULib archive.
+- Licence: MuForce and mmu.library are under the THOR-Software Licence (v3 for MuForce, `MuForce.guide`):
+  freely distributable, no payment, no modified redistribution. Nothing of it is in this repository or the
+  kit; the rig copies it from the Mac. SegTracker is not installed (it is a separate Aminet tool): hits then
+  carry the task and the CLI command name, which `muhit` shows as `Background CLI` / `VTC:muhit`.
+- `make test ONLY=rig_muforce` tests the report parser and the arguments.
+
 ## The client, and a real Amiga
 
 `ami.py` is the client for amiagent: `ping | info | exec "cmd" [secs] | shot out.png | get | put | uitree | ui | key | rexx | menus | screens | gclick`

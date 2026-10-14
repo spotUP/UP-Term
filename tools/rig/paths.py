@@ -94,6 +94,16 @@ OS32_ROM = pathlib.Path(os.environ.get("UPTERM_OS32_ROM") or
     pathlib.Path.home() / "Desktop/KICK_323.rom")
 
 
+# UPTERM_MUTOOLS    the NDK 3.2R4 MuTools drawer (MuForce, disassembler.library), for `rig.py muforce`
+# UPTERM_MMULIB     Thomas Richter's mmu.library (not in the NDK: its Developer Distribution only documents it)
+# Licence (THOR-Software Licence v3, MuForce.guide): free to distribute, not for payment, no modified
+# redistribution. So the rig installs them from these paths and no repository or kit archive holds them.
+MUTOOLS = pathlib.Path(os.environ.get("UPTERM_MUTOOLS") or
+    pathlib.Path.home() / "Downloads/NDK3.2R4/MuTools")
+MMULIB = pathlib.Path(os.environ.get("UPTERM_MMULIB") or
+    pathlib.Path.home() / "Library/CloudStorage/Dropbox/WB/Libs/mmu.library")
+
+
 # --os <name>: a clean installed Workbench image per OS (the owner's, read
 # only: the rig boots its own copy) and the Kickstart that goes with it.
 # UPTERM_OS_IMAGES  the drawer of Workbench_<version>.hdf files
