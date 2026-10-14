@@ -27,6 +27,8 @@ One case per package on the base, and the combinations (K2-10, plan 2026-10-13-k
   legacy      LEGACY_KIT (the single kit of 0cd6f0b) installed, the new base over it, the nvim add-on, base Uninstall
   net         Install SSH BEBBOGET: BebboSSH and bebboget at the kit's versions, ssh/scp run them, a closed port, the Mac's sshd (if one
               runs) reaches the host key check, Uninstall takes it all away (K6)
+  wasabi      Install WASABI (wasabid 0.9b2): C:wasabid, key, startup block, started, the Mac's client pings it (rig 3); our old
+              amiagent is removed and our wasabid 0.2 replaced; Uninstall takes it away (WM6)
   net-upgrade Install SSH over a 1.45 libcryptossh.library: with our marker it is replaced by 1.46, without it (the user's own) it is kept
               with a note and the replace command; Uninstall removes only ours (K6 fix)
   nobase      an add-on that needs the base (nvim): install.dos with no UP-Term: returns 20, ENV:UPTCHECK names UP-Term.lha
@@ -51,6 +53,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
 # the kit under test: build/dist/UP-Term, or UPTERM_KIT=<drawer> (build/dist is
 # shared with every agent's `make dist`, so a rig run takes a private copy)
+WASABI_PORT = 1233 + paths.RIG_N     # the rig's own wasabid port (tools/rig/wasabi.py: 1234 + N - 1)
 KIT = pathlib.Path(os.environ.get('UPTERM_KIT') or ROOT / "build/dist/UP-Term")
 
 
@@ -1474,6 +1477,76 @@ def case_net_upgrade(ck):
         run('Delete >NIL: LIBS:libcryptossh.library ENVARC:up-term/cryptossh QUIET')
 
 
+def case_wasabi(ck):
+    """The kit's one daemon option (Install WASABI, WM6): wasabid 0.9b2 lands in C: with our marker, a key
+    (ENVARC:wasabi.key), a marked block in S:User-Startup, and is started; it answers a ping from the Mac's
+    client (restarted on the rig's own port 1236 so the Mac's 1234, rig 1's, is not held; this case is for rig 3).
+    Earlier kits' daemons go: our amiagent (UP-Term:bin/amiagent + marker) is deleted, our wasabid 0.2 is
+    replaced. Uninstall takes the daemon, its key and the block away again."""
+    import subprocess
+    old = subprocess.run(['git', '-C', str(ROOT), 'show', '063bed5:dist/wasabi/wasabid'], capture_output=True).stdout
+    ck(len(old) > 10000 and b'wasabid 0.2' in old, 'wasabi: the 0.2 wasabid of the old kit is at hand (git history)', len(old))
+    prepare(None)
+    (VTC / 'old-wasabid').write_bytes(old)
+    rigkey = run('Type ENV:wasabi.key')[1].strip()         # the rig's own (rig.py wasabi on); wasabikey keeps a key that is set
+    run('Delete >NIL: ENV:wasabi.key ENVARC:wasabi.key QUIET')
+    before = Before()
+    (VTC / 'runinstallbase').write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE\n")
+    (VTC / 'runinstallwasabi').write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE WASABI\n")
+    base_install(ck, 'runinstallbase')
+    ck(run('List >NIL: C:wasabid')[0] != 0, 'wasabi: not ticked, no wasabid')
+    # earlier kits left these: our amiagent copy and our wasabid 0.2 with its markers
+    ck(run('Copy VTC:old-wasabid UP-Term:bin/amiagent CLONE')[0] == 0, 'wasabi: planted an old amiagent file')
+    run('Echo >ENVARC:up-term/amiagent "installed by UP-Term"')
+    ck(run('Copy VTC:old-wasabid C:wasabid CLONE')[0] == 0, 'wasabi: planted the old wasabid 0.2')
+    run('Echo >ENVARC:up-term/wasabid "installed by UP-Term"')
+    rc, out = run_long('runinstallbase')
+    ck(rc == 0, 'wasabi: Install without WASABI runs', out)
+    ck(run('List >NIL: UP-Term:bin/amiagent')[0] != 0 and run('List >NIL: ENVARC:up-term/amiagent')[0] != 0,
+       'wasabi: Install removed our old amiagent and its marker')
+    ck(run('List >NIL: C:wasabid')[0] != 0 and 'older wasabid' in out,
+       'wasabi: unticked, our wasabid 0.2 is removed, with a note', out[-300:])
+    ck(run('Copy VTC:old-wasabid C:wasabid CLONE')[0] == 0, 'wasabi: planted the old wasabid 0.2 again')
+    run('Echo >ENVARC:up-term/wasabid "installed by UP-Term"')
+    rc, out = run_long('runinstallwasabi')
+    ck(rc == 0, 'wasabi: Install WASABI runs', out)
+    ck(run('Search >NIL: C:wasabid "wasabid 0.9b2"')[0] == 0 and run('Search >NIL: C:wasabid "wasabid 0.2"')[0] != 0,
+       'wasabi: C:wasabid is 0.9b2 (the 0.2 replaced)')
+    ck(run('List >NIL: ENVARC:up-term/wasabid')[0] == 0, 'wasabi: our marker is there')
+    rc, key = run('Type ENVARC:wasabi.key')
+    key = key.strip()
+    ck(rc == 0 and len(key) > 8, 'wasabi: a key was made (ENVARC:wasabi.key)', '%d %r' % (rc, key))
+    rc2, key2 = run('Type ENV:wasabi.key')
+    ck(rc2 == 0 and key2.strip() == key, 'wasabi: ENV:wasabi.key (what wasabid reads) is the same', '%d %r' % (rc2, key2))
+    ck(key != rigkey, 'wasabi: the kit made a key of its own')
+    ck(';BEGIN UP-Term wasabi' in run('Type S:User-Startup')[1], 'wasabi: the S:User-Startup block is there')
+    ck(run('Status >NIL: COM C:wasabid')[0] == 0, 'wasabi: Install started wasabid')
+    # restart on the rig's port: the Mac's end of 1234 is rig 1's
+    run('Status COM C:wasabid >T:wpid')
+    rc, pid = run('Type T:wpid')
+    pid = pid.split()[0] if pid.split() else ''
+    ck(pid.isdigit(), 'wasabi: found the running wasabid', pid)
+    run('Break %s C' % pid)
+    time.sleep(3)
+    run('Run >NIL: <NIL: C:wasabid %d name rig%d' % (WASABI_PORT, paths.RIG_N))
+    time.sleep(3)
+    client = ROOT / 'build/wasabi/wasabi'
+    r = subprocess.run([sys.executable, '-I', str(client), '--host', '127.0.0.1', '--port', str(WASABI_PORT),
+                        '--key', key, '--plain', 'ping'], capture_output=True, text=True, timeout=60)
+    ck(r.returncode == 0 and 'wasabid 0.9b2' in (r.stdout + r.stderr), 'wasabi: the Mac client pings the kit-installed wasabid',
+       (r.stdout + r.stderr)[:300])
+    run('Status COM C:wasabid >T:wpid')
+    pid = (run('Type T:wpid')[1].split() or [''])[0]
+    run('Break %s C' % pid)
+    time.sleep(3)
+    base_uninstall(ck, before)
+    ck(run('List >NIL: C:wasabid')[0] != 0, 'wasabi: after Uninstall C:wasabid is gone')
+    ck(run('List >NIL: ENVARC:wasabi.key')[0] != 0, 'wasabi: after Uninstall the key is gone')
+    ck(run('List >NIL: ENVARC:up-term/wasabid')[0] != 0, 'wasabi: after Uninstall the marker is gone')
+    if rigkey:
+        run('SetEnv wasabi.key %s' % rigkey)
+
+
 def _global_pass(fn, *args):
     """A pass written with the module's own check(): its failures become the case's."""
     def run_(ck):
@@ -1508,6 +1581,7 @@ def case_table():
     t['nobase'] = (based_ids(), [], case_nobase)
     t['net'] = (['base'], [], case_net)
     t['net-upgrade'] = (['base'], [], case_net_upgrade)
+    t['wasabi'] = (['base'], [], case_wasabi)
     return t
 
 

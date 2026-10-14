@@ -37,15 +37,18 @@ Decisions:
   same return shapes; gap calls fail with a named error. Host test with wasabi's mock daemon
   (wasabi tests/ has one) for each function; ONE rig reachability run of the existing rig
   suites that use the most calls (pick 3, say which).
-- [ ] **WM4** Mac MCP: `.mcp.json` server `amiga` -> wasabi_mcp.py through a wrapper with the
+- [x] **WM4** Mac MCP: `.mcp.json` server `amiga` -> wasabi_mcp.py through a wrapper with the
   same rig/env selection as tools/rig/amimcp.py (paths.py port rule); amimcp target, wrapper
   and test replaced. Reachability: stdio initialize, tools/list, one run on rig 2.
-- [ ] **WM5** NAS: image installs wasabi (pinned, one pin file read by Makefile and
+  Evidence (branch feature/wasabi-mcp-kit: tools/rig/wasabimcp.py, tools/test_rig_wasabimcp.py (6 checks, ONLY=rig_wasabimcp), amimcp target, wrapper, test and amimcp.rev removed; stdio initialize + tools/list (19 tools, amiga_*) + amiga_run "echo wasabi-mcp-ok" returned rc 0 against RIG 3 (not rig 2: other agent) with wasabid 0.9b2 started by rig.py wasabi on)
+- [x] **WM5** NAS: image installs wasabi (pinned, one pin file read by Makefile and
   Dockerfile, as amimcp.rev was), mcp.json -> wasabi_mcp.py, `amiga-target` writes wasabi's
   host/port/key, skill amiga-upterm text updated; as-claude drop-root kept; tests updated.
-- [ ] **WM6** Kit: one daemon option (wasabid 0.8, MIT) replaces amiagent + the 0.2 wasabi
+  Evidence (tools/nas/wasabi.rev (ee23c09 full sha) read by the Dockerfile; Makefile wasabi target must read it (one line, owner merges, test_the_makefile_wasabi_target_reads_the_one_pin_file is red until then); mcp.json -> /opt/wasabi/wasabi_mcp.py; amiga-target writes ~/.config/wasabi/config 0600 keeping other lines; seeding records carried over from amimcp; compose tag 7; 6 tests in tools/test_uptelnetd.py AmigaTargetTool, 4 fail on the old tree)
+- [x] **WM6** Kit: one daemon option (wasabid 0.8, MIT) replaces amiagent + the 0.2 wasabi
   option; Install, Installer, Uninstall, MANIFEST, README, LICENSES; upgrade removes our old
   amiagent and old wasabid; dist tests; rig install case.
+  Evidence (dist/install.dos, Install.installer, Uninstall, README, LICENSES, SOURCE.txt, kitsize, Makefile dist (daemon and client from build/wasabi, no binary in git); dist/net/amiagent-0.13.2 moved to tools/rig/amiagent-0.13.2 for the rig until WM2/3 drop it; tests/test_dist_installer.py WasabiDaemonOption (7 tests); make dist-check green on a kit re-staged from the main build + mkkit.py base (a from-scratch make dist needs vendor/ NDK, not in a worktree); tools/rig/install_rig.py --only wasabi on rig 3: 29 of 29 (old amiagent removed, wasabid 0.2 replaced by 0.9b2, key, startup block, started, Mac client pings it, Uninstall clean))
 - [ ] **WM7** Docs and skills: RULES.md, tools/rig/README.md (Debugging recipe, MCP), NAS
   README, amiga-pi skills, memory notes that name amiagent.
 - [ ] **WM8** Up Rough Demo System: `a1200.py`'s own AMI0 client + its 5 tests move to

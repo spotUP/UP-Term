@@ -20,7 +20,7 @@ Nothing below is in any repository (all of it is licensed material or large);
 | Kickstart 3.1 ROM (40.068, A1200) | `$UPTERM_ROM`, else `$UPTERM_ROOT/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200` (another repo of the owner's, not in `repos.lock`); `--kick <file>` for one boot | Your own legal copy (Amiga Forever, or dumped from your A1200). Set `UPTERM_ROM=<file>`. |
 | System disk | `~/Downloads/nyhd2.hdf`, copied once to `build/rig/sys.hdf` (1.5 GB) | A hard-disk image of a working Workbench 3.x install (the owner's own; there is no public source). Set `UPTERM_SYSTEM_HDF=<image>` (default `~/Downloads/nyhd2.hdf`). What it must hold, not verified for a smaller image: C:Assign, S:Startup-Sequence, Libs/Devs/Fonts, the Classes and MUI drawers the rig adds to `LIBS:`. |
 | AmigaOS 3.2 tree (only for `--os32`) | `~/Downloads/AmigaOS-3.2-full (1)` (a host drawer, copied to `build/rig/os32`), ROM `~/Desktop/KICK_323.rom` (3.2.3) | An installed AmigaOS 3.2 tree and its Kickstart 3.2.3 ROM, from Hyperion (licensed). Set `UPTERM_OS32_TREE=<drawer>` and `UPTERM_OS32_ROM=<rom>` (defaults as shown). Also needs `media/AmigaOS3.2CD/ADF/Extras3.2.adf` inside the tree and `xdftool` (`pip install amitools`) to make SYS:L once. |
-| amiagent | `build/rig/boot/amiagent`, copied from the kit's vendored 68020 build on every `setup`/`start` | `dist/net/amiagent-0.13.2/amiagent.020` (Aminet `comm/net/amiagent-0.13.2`, the agent of https://github.com/thomas-luebker/amimcp; sha256s in its `SOURCE.txt`), the same file the kit's Install offers. Nothing to copy by hand. 0.13.2 sets `pr_WindowPtr` to -1: a command naming an unmounted volume fails at once instead of putting up a requester. `--stock` runs a copy (`boot/amiagent.stock`) with the command stack 16384 instead of 262144; `tools/rig/agentpatch.py` finds the two places by the NP_StackSize tag (offsets 0x744 and 0x13e88) and refuses any build but that sha256. |
+| amiagent | `build/rig/boot/amiagent`, copied from the kit's vendored 68020 build on every `setup`/`start` | `tools/rig/amiagent-0.13.2/amiagent.020` (Aminet `comm/net/amiagent-0.13.2`, the agent of https://github.com/thomas-luebker/amimcp; sha256s in its `SOURCE.txt`), the same file the kit's Install offers. Nothing to copy by hand. 0.13.2 sets `pr_WindowPtr` to -1: a command naming an unmounted volume fails at once instead of putting up a requester. `--stock` runs a copy (`boot/amiagent.stock`) with the command stack 16384 instead of 262144; `tools/rig/agentpatch.py` finds the two places by the NP_StackSize tag (offsets 0x744 and 0x13e88) and refuses any build but that sha256. |
 | ncurses 5.5, less, nano, BitchX (what the userland and tmux/screen rigs and the tmux and screen builds use) | `build/rig/vtc/pkgs/ncurses-5.5-1-p-bin-m68k` and siblings | Aminet `dev/gg/ncurses-5.5-1-bin-m68k` (Geek Gadgets) unpacked there. The `-p-` in the directory name is the owner's; whether it marks a modified unpack is not verified. tmux-amiga and screen-amiga read the same directory (`NCURSES=`), so build the rig tree before them. |
 | Python 3.14 | the host | `python3 --version` must be 3.14 or newer (the upterm doctor checks). The rig scripts use the standard library plus Pillow (`import PIL`, for screenshots: `python3 -m pip install pillow`; found by grepping the imports, not run on a clean machine). |
 
@@ -135,23 +135,28 @@ unencrypted: use a token and a trusted network (see tools/nas/README.md).
 
 ## Mac: amiga MCP for Claude Code
 
-Claude Code in this repo gets an `amiga` MCP server (upstream amimcp, Apache 2.0,
-pinned to 3145dee, Python standard library only, no venv) that drives a rig's
-amiagent: run commands, read and write files, screenshots, input.
+Claude Code in this repo gets an `amiga` MCP server (wasabi's `wasabi_mcp.py`, MIT,
+pinned in tools/nas/wasabi.rev, Python standard library only, no venv) that drives a
+rig's wasabid: tools `amiga_run`, `amiga_ls`, `amiga_read_file`, `amiga_write_file`,
+`amiga_ps`, `amiga_kill`, `amiga_arexx`, `amiga_screenshot`, `amiga_windows`,
+`amiga_ui_*`, `amiga_mouse`, `amiga_key_*`, `amiga_health`, `amiga_info`.
 
-- Install: `make amimcp` (fetches the pinned commit into build/amimcp, checks the
-  wrapper starts, prints the next step; a second run changes nothing).
-  Remove: `make amimcp-clean`. Nothing outside the repo is touched.
+- Install: `make wasabi` (builds wasabid and the client into build/wasabi; the wrapper
+  finds wasabi_mcp.py there). Nothing outside the repo is touched.
+- The rig must have wasabid running: `rig.py wasabi on` (a rig started without it has
+  nothing for the server to talk to).
 - Next step: start Claude Code in the repo and approve the `amiga` project MCP
   server from `.mcp.json`.
-- Target: rig 1 (127.0.0.1:7846, token `rigtoken`) by default. `UPTERM_RIG=2` or
-  `3` selects that rig's port (the rule is paths.py's). A real Amiga: `AMI_HOST`,
-  `AMI_PORT`, `AMI_TOKEN`, the same variables as ami.py. Set them in the shell
-  that starts Claude Code.
-- Token safety: the amiagent link is unencrypted and the token travels in clear.
-  Use it on a LAN you trust only; never commit a real Amiga's token.
-- Wrapper: `tools/rig/amimcp.py` (`--print` shows the chosen host and port);
-  test: `make test ONLY=rig_amimcp`.
+- Target: rig 1 (127.0.0.1:1234, key `rigwasabi`) by default. `UPTERM_RIG=2` or `3`
+  selects that rig's port (1234 + N - 1, the rule of tools/rig/wasabi.py). A real
+  Amiga: `AMI_HOST`, `AMI_PORT`, `AMI_TOKEN` (the wasabid key), or wasabi's own
+  `WASABI_HOST`, `WASABI_PORT`, `WASABI_KEY`, which win. Set them in the shell that
+  starts Claude Code.
+- Key safety: never commit a real Amiga's key; the rig's `rigwasabi` is not a secret.
+  The link is encrypted only when the Amiga has AmiSSL and keys (the rig is local and
+  plain).
+- Wrapper: `tools/rig/wasabimcp.py` (`--print` shows the chosen host and port);
+  test: `make test ONLY=rig_wasabimcp`.
 
 ## Debugging on a rig: which tool answers which question
 

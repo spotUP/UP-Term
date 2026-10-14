@@ -1,7 +1,7 @@
 """The rig's amiagent: where it comes from and the --stock stack patch.
 
 The rig runs the 68020 build of amiagent 0.13.2 (Aminet comm/net/amiagent,
-vendored in dist/net/amiagent-0.13.2, SOURCE.txt has the sha256s). The agent
+vendored in tools/rig/amiagent-0.13.2, SOURCE.txt has the sha256s). The agent
 gives every command process a 256 KB stack (NP_StackSize 262144); on the 2 MB
 --stock machine that took an eighth of memory per command, so --stock runs a
 copy with 16384 there (a stock Shell has 4 KB; 16 KB keeps Avail honest).
