@@ -1127,6 +1127,19 @@ def plant(pkg):
         run('Echo >ENVARC:amiga-pi/settings.json "userfile-keepme"')
 
 
+OLD_CLAUDECODE = ('C:ClaudeCode', 'UP-Term:ClaudeCode', 'UP-Term:ClaudeCode.info')   # what Claude.lha 1.0 left (CL1/NL4)
+
+
+def plant_old_claude(with_base=True):
+    """A 1.0 install of Claude.lha: C:ClaudeCode (a script with the s bit) and, over UP-Term, the launcher ClaudeCode
+    with its icon. The new install.dos must delete them (NL4). Without the base there is no UP-Term: to put them in."""
+    for f in OLD_CLAUDECODE:
+        if f.startswith('UP-Term:') and not with_base:
+            continue
+        run('Echo >%s "old ClaudeCode of 1.0"' % f)
+    run('Protect C:ClaudeCode +s')
+
+
 def addon_verify(ck, pkg, remote=True, with_base=True):
     """After the add-on's Install: its record, and its program answering from where Install put it (the sentinel).
     `remote`: Claude's Install was given REMOTE (the Shell line has it; the Installer's page is left empty).
@@ -1141,7 +1154,10 @@ def addon_verify(ck, pkg, remote=True, with_base=True):
     ck(first and first[0].startswith('%s %s ' % (row['archive'], row['version'])),
        '%s: its VERSIONS names the archive and version' % pkg, ' '.join(first))
     if pkg == 'claude':
-        ck(run('List >NIL: C:ClaudeCode')[0] != 0, 'claude: no C:ClaudeCode (one app since CL1; an old copy is deleted by Install)')
+        for f in OLD_CLAUDECODE:
+            if f.startswith('UP-Term:') and not with_base:
+                continue
+            ck(run('List >NIL: %s' % f)[0] != 0, 'claude: no %s (one app since CL1; the 1.0 copy is deleted by Install)' % f)
         rc, out = run('Stack 32768\nC:Claude --version')
         ck(rc == 0 and out.strip(), 'claude: C:Claude answers --version', out)
         if remote:
@@ -1217,6 +1233,8 @@ def case_addon(ck, pkg):
     plant(pkg)
     base_install(ck)
     addon_absent(ck, pkg, 'before its Install')
+    if pkg == 'claude':
+        plant_old_claude()
     addon_install(ck, pkg)
     base_whole(ck, 'with %s installed' % pkg)
     rc, out = run_long('rununinstall-' + pkg)
@@ -1237,6 +1255,8 @@ def case_bare(ck, pkg):
     run('Assign UP-Term:')
     ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, '%s-bare: there is no UP-Term: assign' % pkg)
     addon_absent(ck, pkg, 'before its Install')
+    if pkg == 'claude':
+        plant_old_claude(with_base=False)
     addon_install(ck, pkg, with_base=False)
     rc, out = run_long('rununinstall-' + pkg)
     ck(rc == 0, '%s: its Uninstall runs' % pkg, out)

@@ -351,6 +351,8 @@ class ScriptedAmiga:
             self.files |= {rec + '/MANIFEST', rec + '/VERSIONS', rec + '/Uninstall'}
         if pkg == 'claude':
             self.files |= {'ENVARC:Claude/remote', 'C:uptelnet'}
+            if 'oldclaude' not in self.skip:   # install.dos deletes the 1.0 leftovers (NL4)
+                self.files -= set(ir.OLD_CLAUDECODE)
         if pkg == 'python':
             self.files.add('ENVARC:uppkg/ixemul/needs/Python3')
             self.startup += ';BEGIN Python3\nIf EXISTS SYS:Python3\n  Assign Python3: SYS:Python3\nEndIf\n;END Python3\n'
@@ -389,6 +391,9 @@ class ScriptedAmiga:
         if c == 'C:amiga-pi --version': return 0, 'amiga-pi 1.1.0'
         if c == 'Type ENVARC:amiga-pi/settings.json': return 0, 'userfile-keepme'
         if c.startswith('Echo >ENVARC:amiga-pi'): return 0, ''
+        if c.startswith('Echo >') and c.split()[1][1:].startswith(('C:ClaudeCode', 'UP-Term:ClaudeCode')):
+            self.files.add(c.split()[1][1:])
+            return 0, ''
         if 'python3 -c "print(6*7)"' in c: return 0, '42'
         if c == 'C:vsh VTC:py8.sh': return 0, '8'
         if c.startswith('Assign >NIL: Python3: EXISTS'): return (0 if self.python_block() else 5), ''
@@ -481,6 +486,15 @@ class AddonCases(unittest.TestCase):
     def test_an_add_on_without_its_record_fails_its_case(self):
         ck, _ = self.play(lambda ck: ir.case_addon(ck, 'nvim'), skip=('record',))
         self.assertTrue(any('its record has' in f for f in ck.failed), ck.failed)
+
+    def test_an_install_that_leaves_the_1_0_claudecode_behind_fails_the_claude_cases(self):
+        ck, sim = self.play(lambda ck: ir.case_addon(ck, 'claude'))
+        self.assertEqual(ck.failed, [])
+        self.assertTrue(any(l.startswith('Echo >UP-Term:ClaudeCode.info') for l in sim.log), 'the 1.0 icon was planted')
+        ck, _ = self.play(lambda ck: ir.case_addon(ck, 'claude'), skip=('oldclaude',))
+        self.assertTrue(any('no UP-Term:ClaudeCode.info' in f for f in ck.failed), ck.failed)
+        ck, _ = self.play(lambda ck: ir.case_bare(ck, 'claude'), skip=('oldclaude',))
+        self.assertTrue(any('no C:ClaudeCode' in f for f in ck.failed), ck.failed)
 
     def test_python_leaving_its_block_behind_fails_its_case(self):
         sim_cls = ScriptedAmiga

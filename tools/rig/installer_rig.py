@@ -701,6 +701,8 @@ def run_addon_case(pkg):
     if ok:
         ck(ir.run("List >NIL: UP-Term:UP-Term.version")[0] == 0, "the base Installer wrote UP-Term:UP-Term.version")
         ir.addon_absent(ck, pkg, "before its Install")
+        if pkg == "claude":
+            ir.plant_old_claude()
         ok = installer_done(ck, inst, case, *installer_run(case, inst, "kit-" + pkg, ir.archive(pkg), "AVERAGE", base)[:2])
     if ok:
         ir.addon_verify(ck, pkg, remote=False)
