@@ -4334,9 +4334,14 @@ int tui_dialog_cancelled(cl_tui *t)
     return stop;
 }
 
-int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, long timeout_ms)
+int tui_ext_menu_sel(cl_tui *t, const char *title, const char *const *opt, int n, int sel, long timeout_ms)
 {
     t->m_ext = 1;
     t->m_timeout_ms = timeout_ms > 0 ? timeout_ms : -1;
-    return tui_menu(t, title, 0, opt, n, 0, -1);
+    return tui_menu(t, title, 0, opt, n, sel >= 0 && sel < n ? sel : 0, -1);
+}
+
+int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, long timeout_ms)
+{
+    return tui_ext_menu_sel(t, title, opt, n, 0, timeout_ms);
 }

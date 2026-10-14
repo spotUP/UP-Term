@@ -8,14 +8,14 @@ Architecture: m68k-amigaos >= 3.0.0; m68k-020
 Requires:     TCP/IP stack (Roadshow, Miami, AmiTCP), util/libs/AmiSSL-v5-OS3.lha for https
 Distribution: Aminet
 
-C:Claude and C:ClaudeCode: a Claude Code client. It reads, searches and edits files and runs
+C:Claude: a Claude Code client. It reads, searches and edits files and runs
 commands with your own Anthropic API key (billed to that key), or connects to Claude Code on
-another computer (C:uptelnet comes with it). It stands alone: it installs on a plain
+another computer (C:uptelnet comes with it; with both, it asks which). It stands alone: it installs on a plain
 Workbench (AmigaOS 3.0 or newer) and runs in the Shell window, in a line mode; in an UP-Term
 window (comm/term/UP-Term.lha, optional) it gets the full-screen mode and keeps its data in
 UP-Term:var.
 
-Install: unpack, double-click Install. Uninstall removes C:Claude and C:ClaudeCode and keeps
+Install: unpack, double-click Install. Uninstall removes C:Claude (and an old C:ClaudeCode) and keeps
 your settings in ENVARC:Claude.
 
 Licence: MIT (UP-Term's own code).

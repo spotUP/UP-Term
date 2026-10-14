@@ -57,7 +57,7 @@ class HandedLines(unittest.TestCase):
         k = kit({"Files/vsh": b"v"})
         lines = mm.manifest(k, mm.read_parts("system  Files/vsh\n"), "", mm.handed_paths('base')).splitlines()
         want = ["handed 0 00000000 handed#" + p for p in
-                ("Files/Claude", "Files/ClaudeCode", "Files/amiga-pi", "Files/nvim", "Files/python3")]
+                ("Files/Claude", "Files/amiga-pi", "Files/nvim", "Files/python3")]
         self.assertEqual([l for l in lines if l.startswith("handed ")], sorted(want, key=lambda l: l.split(' ', 3)[3].encode()))
         paths = [l.split(' ', 3)[3].encode() for l in lines]
         self.assertEqual(paths, sorted(paths))

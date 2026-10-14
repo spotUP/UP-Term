@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs as root: the volume Container Manager made is root's; give the claude
-# user its home, then run uptelnetd as that user. Without a password it waits
-# (no restart loop) and says how to set one.
+# user its home, then run uptelnetd as that user. Without a login (a password, or
+# a file of paired Amigas) it waits (no restart loop) and says how to set one.
 set -e
 mkdir -p /home/claude/.config/uptelnetd /home/claude/work
 chown -R claude:claude /home/claude
@@ -17,8 +17,9 @@ if [ ! -x "$NPM_CONFIG_PREFIX/bin/claude" ]; then
     (as_claude npm install -g @anthropic-ai/claude-code)
 fi
 PW=/home/claude/.config/uptelnetd/password
-while [ ! -s "$PW" ] && [ -z "$UPTELNETD_PASSWORD" ]; do
-    echo "claude-amiga: no login password yet. In Container Manager > claude-amiga > Terminal, run: setpw"
+CLIENTS=/home/claude/.config/uptelnetd/clients
+while [ ! -s "$PW" ] && [ ! -s "$CLIENTS" ] && [ -z "$UPTELNETD_PASSWORD" ]; do
+    echo "claude-amiga: no login yet. In Container Manager > claude-amiga > Terminal, run: setpw (a password), or: pairs add (a key for one Amiga)"
     sleep 30
 done
 # NAS_IP and ALLOW may each hold several, space-separated: the LAN address

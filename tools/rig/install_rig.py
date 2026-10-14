@@ -948,7 +948,7 @@ def _move():
 # the Install lines' keywords beyond DIR: Claude's server page, as the base's runinstallcon had it
 ADDON_OPTIONS = {'claude': 'REMOTE="127.0.0.1 2399"'}
 # what each add-on's Install puts down: the files its Uninstall must take away again
-ADDON_FILES = {'claude': ('C:Claude', 'C:ClaudeCode'), 'pi': ('C:amiga-pi',), 'nvim': ('UP-Term:nvim/bin/nvim',),
+ADDON_FILES = {'claude': ('C:Claude',), 'pi': ('C:amiga-pi',), 'nvim': ('UP-Term:nvim/bin/nvim',),
                'python': ('SYS:Python3/bin/python3',)}
 
 
@@ -1141,8 +1141,7 @@ def addon_verify(ck, pkg, remote=True, with_base=True):
     ck(first and first[0].startswith('%s %s ' % (row['archive'], row['version'])),
        '%s: its VERSIONS names the archive and version' % pkg, ' '.join(first))
     if pkg == 'claude':
-        rc, out = run('List C:ClaudeCode LFORMAT "%A"')
-        ck(rc == 0 and out.strip()[1:2].lower() == 's', 'claude: C:ClaudeCode is a script command (s bit)', out)   # protection bits hsparwed, s second
+        ck(run('List >NIL: C:ClaudeCode')[0] != 0, 'claude: no C:ClaudeCode (one app since CL1; an old copy is deleted by Install)')
         rc, out = run('Stack 32768\nC:Claude --version')
         ck(rc == 0 and out.strip(), 'claude: C:Claude answers --version', out)
         if remote:

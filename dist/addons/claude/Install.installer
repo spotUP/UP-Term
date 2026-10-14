@@ -5,8 +5,8 @@
 ; welcome: n = 7, lead 3
 (message
     "\n\n\nC L A U D E\n\n"
-    "Claude for the Amiga: C:Claude, and C:ClaudeCode\n"
-    "to reach Claude Code on a server. It needs no\n"
+    "Claude for the Amiga: C:Claude, here with your\n"
+    "API key or Claude Code on a server. It needs no\n"
     "UP-Term; in an UP-Term window it fills the screen.\n"
     (all))
 
@@ -35,12 +35,13 @@
 (set #remote
     (askstring
         (prompt "Claude Code on your server (the NAS): address and port,\n"
-                "like nas.local 2323. Then Claude in a Shell goes\n"
-                "straight there. Empty: none.")
-        (help "C:Claude and C:ClaudeCode are always installed (README.txt, "
+                "like nas.local 2323. With an API key too, Claude\n"
+                "asks which at every start. Empty: none.")
+        (help "C:Claude is always installed (README.txt, "
               "CLAUDE FROM THE AMIGA). C:Claude without an API key connects to "
               "Claude Code on this computer with uptelnet (your Claude "
-              "subscription, through the server). Kept in ENVARC:Claude/remote; "
+              "subscription, through the server); with a key and this address "
+              "it asks which. Kept in ENVARC:Claude/remote; "
               "edit or delete it later. The answer replaces an existing file; its "
               "address is what this page starts with. With no file the page starts empty "
               "and nothing is written: type your server's address and port (the port is "
@@ -74,12 +75,12 @@
 (P_OPTIONS)
 
 (set #step "claude" #kb @KBCLAUDE@ #n 3
-     #why (cat "Installing C:Claude, C:ClaudeCode and C:uptelnet, and\n"
+     #why (cat "Installing C:Claude and C:uptelnet\n"            "(an old C:ClaudeCode is removed), and\n"
                "its settings drawer ENVARC:Claude (no key written)."))
 (P_STEP)
 
 (set #step "launch" #kb @KBLAUNCH@ #n 3
-     #why (cat "Putting the quick-launch icon (Claude, ClaudeCode) in\n"
+     #why (cat "Putting the Claude quick-launch icon\n"               "(the old ClaudeCode icon goes) in\n"
                "UP-Term: when it is there; else nothing."))
 (P_STEP)
 

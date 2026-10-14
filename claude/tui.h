@@ -343,6 +343,8 @@ int tui_line_input_hint(cl_tui *t, const char *title, const char *hint, char *ou
  * message under the title: the option chosen (0..n-1), -1 for Esc, Ctrl+C and the end of input, TUI_AWAY when timeout_ms
  * (0 none) ran out; the keys of pi's ExtensionSelectorComponent (up, down, j, k, Enter) */
 int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, long timeout_ms);
+/* the same with option sel highlighted at the start (the launch question: the last choice) */
+int tui_ext_menu_sel(cl_tui *t, const char *title, const char *const *opt, int n, int sel, long timeout_ms);
 /* TUI_LOOK_PI: an extension's text input (ctx.ui.input): 1 with the text in out, 0 for Esc, Ctrl+C and timeout_ms (0 none)
  * running out, -1 the end of input */
 int tui_ext_input(cl_tui *t, const char *title, char *out, long cap, long timeout_ms);

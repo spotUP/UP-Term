@@ -8,9 +8,6 @@
 -               Files/install.dos
 -               Files/upupdate
 record          Files/VERSIONS
--               ClaudeCode
--               ClaudeCode.info
 claude          Files/Claude
-claude          Files/ClaudeCode
 claude          Files/uptelnet
 launch          Files/launch

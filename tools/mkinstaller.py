@@ -42,7 +42,7 @@ def handed_search(rows):
     """The Search lines of the base's record part (dist/common/record-legacy.dos): one for each
     path the base hands to an add-on archive, setting $uplegacy when the old manifest names it."""
     paths = sorted({p for r in rows if r['id'] != 'base' and r['handed'] != '-' for p in r['handed'].split(',')})
-    # Search matches a substring: Files/Claude finds Files/ClaudeCode too
+    # Search matches a substring: Files/Claude finds Files/Claude... (an old Files/ClaudeCode too)
     paths = [p for p in paths if not any(q != p and p.startswith(q) for q in paths)]
     out = []
     for path in paths:

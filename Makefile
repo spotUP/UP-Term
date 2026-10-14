@@ -231,9 +231,9 @@ $(BUILD)/vtreply: $(ENGINE) engine/vtengine.h engine/vtwidth.h tools/vtreply.c
 
 # uptelnet's protocol on a POSIX socket, for the interop test against
 # tools/uptelnetd.py (tools/test_uptelnetd.py).
-$(BUILD)/tn_host: $(HOST_HDR) net/tn.c net/tn.h tools/tn_host.c
+$(BUILD)/tn_host: $(HOST_HDR) net/tn.c net/tn.h llm/sha256.c llm/sha256.h tools/tn_host.c
 	@mkdir -p $(BUILD)
-	$(HOSTCC) -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -o $@ net/tn.c tools/tn_host.c
+	$(HOSTCC) -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -o $@ net/tn.c llm/sha256.c tools/tn_host.c
 
 # libvterm (neovim's terminal) as the reference, built from source into build/.
 LIBVTERM := $(BUILD)/third_party/libvterm
@@ -730,10 +730,10 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h $(BUILD)/amiga/o
 # Roadshow SDK's network headers ("Freely Distributable"): vendor/ (gitignored)
 # when unpacked there, else DCTelnet's copy, or VTCON_NETINC=<netinclude>.
 VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(DCTELNET_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
-$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 	@test -d $(VTCON_NETINC) || { echo "[ERROR] C:uptelnet needs the Roadshow netinclude headers, not found at $(VTCON_NETINC): unpack them to vendor/roadshow-netinclude, or pass VTCON_NETINC=<dir> (DCTelnet's copy: dctelnet-v2, optional in upterm's repos.lock)"; exit 1; }
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+	$(VC) -Dmain=up_main -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
 $(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
@@ -983,12 +983,8 @@ LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 .PHONY: dist-claude dist-pi dist-nvim dist-python
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,claude)
-	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet dist/ClaudeCode $(KIT_claude)/Files/
-	cp dist/ClaudeCode $(KIT_claude)/ClaudeCode
+	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
 	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
-	$(call LAUNCHER,$(KIT_claude),dist/ClaudeCode,ClaudeCode,800/560)
-	python3 tools/mkicon.py $(KIT_claude)/ClaudeCode.info --tool C:IconX \
-	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE"
 	python3 tools/mkkit.py claude
 dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,pi)

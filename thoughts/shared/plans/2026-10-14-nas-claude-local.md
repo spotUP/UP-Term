@@ -211,14 +211,16 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
 
 ### Phase A: one Claude (CL1)
 
-- [ ] **NL1** Launch choice as a pure function `cl_launch_mode` (key?, remote file?,
+- [x] **NL1** Launch choice as a pure function `cl_launch_mode` (key?, remote file?,
   LOCAL, REMOTE, PRINT, PING, SETUP, URL, PROMPT) -> LOCAL | REMOTE | ASK | SETUP.
   Files: `claude/cli.c`, `claude/cli.h`. Test: host `ONLY=claude_cli` (every row of the
   table, incl. print mode never asks, both switches refused). S.
-- [ ] **NL2** `LOCAL/S`, `REMOTE/S` in the template (`claude/cli.h:46`) and `--local`,
+  Evidence: 0e7aa14; ONLY=claude_cli test_launch (table rows, switches refused); does not build on main (no cli_launch_mode)
+- [x] **NL2** `LOCAL/S`, `REMOTE/S` in the template (`claude/cli.h:46`) and `--local`,
   `--remote`; `Claude ?` and `--help` updated (W-A3). REMOTE with no remote file:
   the existing "no host" message. Files: `claude/cli.c`, `claude/cli.h`. Test: host
   `ONLY=claude_cli` (both syntaxes). S.
+  Evidence: 0e7aa14; ONLY=claude_cli (both syntaxes, template holds LOCAL/S,REMOTE/S, each literal < 509); tests/test_qmark_commands.py passes
 - [ ] **NL3** The question at start, wired at `claude/main_amiga.c:252`: on an UP-Term
   console `tui_ext_menu` with "Claude on the Amiga (API key)" and "Claude Code on the NAS
   (subscription)", last choice highlighted (ENVARC:Claude/last-mode); a plain console
@@ -227,6 +229,7 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
   `cli.c` if small), `claude/repl.h`. Test: host `ONLY=claude_tui` golden screen of the
   question + keys; reachability: rig, Claude with both a key and a remote file shows the
   question and REMOTE goes to uptelnet (counter: uptelnet's connect line). M.
+  Evidence: 0e7aa14; ONLY=claude_tui launch_question (selector keys, last choice, Esc, line question); rig reachability open (coordinator)
 - [ ] **NL4** ClaudeCode leaves the kit: delete `dist/ClaudeCode`, its rows in
   `dist/packages.txt:23` and `dist/addons/claude/parts.txt:11-14`, copy/protect/launch
   lines in `dist/addons/claude/install.dos`, the Installer texts, `tools/mkicon.py:151`;
@@ -234,23 +237,27 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
   `UP-Term:ClaudeCode(.info)` on reinstall (Uninstall already does). Test: host
   `ONLY=packages`, `make dist-check`; rig `install_rig.py --only` the Claude cases (old
   ClaudeCode gone after a reinstall over a 1.0 install). M.
-- [ ] **NL5** Docs: `dist/addons/claude/README.txt`, `dist/README.txt` (CLAUDE FROM THE
+  Evidence: e14300c; test_dist_addons/_installer/_manifest/_packages, dist-claude archive has no ClaudeCode; rig install case open (coordinator)
+- [x] **NL5** Docs: `dist/addons/claude/README.txt`, `dist/README.txt` (CLAUDE FROM THE
   AMIGA, 677, 794), `dist/aminet/claude.readme.in`, `dist/addons/claude/LICENSES.txt`,
   `tools/nas/README.md` steps 4-5; bump Claude's minor in `dist/packages.txt`.
   Test: `python3 tools/mkreadme.py claude`, host `ONLY=packages`. S.
+  Evidence: efb87e7; mkreadme via make dist-claude, ONLY=packages-side tests pass
 
 ### Phase B: key login (D1 a, D2 a)
 
-- [ ] **NL6** Protocol written down: `net/tn.h` header comment and the uptelnetd
+- [x] **NL6** Protocol written down: `net/tn.h` header comment and the uptelnetd
   docstring (the section above). Files: `net/tn.h`, `tools/uptelnetd.py`. Test: none
   (text), reviewed with NL7/NL8. S.
-- [ ] **NL7** Client half in `net/tn.c`: KEY given -> WILL AUTH; build IS with
+  Evidence: e6870fe (net/tn.h, uptelnetd docstring)
+- [x] **NL7** Client half in `net/tn.c`: KEY given -> WILL AUTH; build IS with
   `llm_hmac_sha256`; check smac; PAIR -> a `save_key` callback; AGENT message; grow
   `sb` 64 -> 128. Files: `net/tn.c`, `net/tn.h`, Makefile (link `llm/sha256.c` into
   uptelnet and tn_host). Test: host `ONLY=telnet`: key login bytes against a fixed vector,
   bad smac closes, PAIR stores, no key -> WONT and today's bytes unchanged, IAC (255) in a
   nonce doubled and split bytewise. M.
-- [ ] **NL8** Server half in `tools/uptelnetd.py`: clients file (same 0600/owner/no-link
+  Evidence: e6870fe; ONLY=telnet 89 checks (fixed HMAC vector from Python, bytewise split, bad smac closes, PAIR stores, no key -> WONT, oversize SB dropped); does not build on main (no tn_set_key)
+- [x] **NL8** Server half in `tools/uptelnetd.py`: clients file (same 0600/owner/no-link
   checks as `load_password`), DO AUTH, nonce, constant-time mac check, failures through
   `RateLimiter`, fallback to Password, PAIR after a password login, log "key login ID".
   `--clients-file`. Start allowed with a password OR a clients file. Files:
@@ -259,8 +266,10 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
   `net/tn.c`) through `main()` logs in with no `Password:` on the line, server log has
   "key login" (sentinel); a fresh tn_host with an empty key file pairs after the password
   and the second run logs in without it; a revoked ID gets `Password:`. L.
-- [ ] **NL9** `tools/tn_host.c`: KEY= argument and key-file writing, so NL8 drives the real
+  Evidence: e6870fe; ONLY=uptelnetd 51 tests incl. KeyLogin/Clients units and the reachability test via tn_host (log sentinel "key login"); 22 errors + 1 failure against main uptelnetd.py
+- [x] **NL9** `tools/tn_host.c`: KEY= argument and key-file writing, so NL8 drives the real
   protocol code. Files: `tools/tn_host.c`, Makefile. Test: part of NL8. S.
+  Evidence: e6870fe; part of NL8
 - [ ] **NL10** uptelnet on the Amiga: `KEY/K` (file; PAIR writes it and its ENV: copy),
   cn from ReadEClock + DateStamp + FindTask, messages "paired with this NAS", "the NAS
   does not know this Amiga's key any more: type the password", "not the NAS this Amiga
@@ -268,14 +277,17 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
   uptelnet to `tools/uptelnetd.py --bind 127.0.0.1` on the Mac (FS-UAE's bsdsocket uses
   host sockets): first run asks the password and writes the key, second run reaches the
   session with no prompt (screen read back). M.
+  Evidence: e6870fe; builds with vbcc (make amiga); rig check open (coordinator)
 - [ ] **NL11** C:Claude's remote path passes `KEY=ENVARC:Claude/nas-key` (`remote()`,
   `claude/main_amiga.c:102-136`). Files: `claude/main_amiga.c`. Test: covered by NL10's rig
   run started through `Claude REMOTE`. S.
-- [ ] **NL12** NAS side: `entrypoint.sh` starts with a password or a clients file;
+  Evidence: 0e7aa14; covered by the NL10 rig run through Claude REMOTE (open)
+- [x] **NL12** NAS side: `entrypoint.sh` starts with a password or a clients file;
   new `tools/nas/pairs` (list, add, revoke; add prints a key for D2 b); Dockerfile COPY;
   `compose.yaml` image tag 4 -> 5; README section rewritten. Files: `tools/nas/*`.
   Test: host `ONLY=uptelnetd` runs `pairs` against a temp home (list/add/revoke file
   contents and modes); NAS check in NL21. S.
+  Evidence: b5365d7; ONLY=uptelnetd PairsTool; NAS check is NL21
 
 ### Phase C: Claude Code on the NAS works on that Amiga (D3 a, D4, D5)
 

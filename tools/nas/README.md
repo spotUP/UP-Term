@@ -17,12 +17,13 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
   TCP/IP stack running (Roadshow, Miami or AmiTCP). The Amiga's side is in
   dist/README.txt, section CLAUDE FROM THE AMIGA: the Installer asks where
   Claude Code runs and writes `ENVARC:Claude/remote` ("host port"); the first
-  run of `C:Claude` asks the same (`Claude SETUP` asks again), and the
-  `ClaudeCode` icon reads that file (or takes a host and port as arguments).
+  run of `C:Claude` asks the same (`Claude SETUP` asks again). There is one
+  Claude app: with an API key and that file it asks "Claude on the Amiga" or "Claude Code
+  on the NAS" at every start (`Claude LOCAL` and `Claude REMOTE` answer in advance).
 
 ## Set up (Synology DSM 7, Container Manager)
 
-1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, setpw, README.md) and
+1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, setpw, pairs, README.md) and
    `tools/uptelnetd.py` into one folder on the NAS, e.g. `/volume1/docker/claude-amiga`,
    and create `home` inside it (the container's /home/claude volume).
 2. Container Manager > Project > Create, source: the existing compose.yaml; edit
@@ -39,8 +40,30 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
    (subscription) option, open the printed URL in a browser, sign in, paste the code
    back. Never set ANTHROPIC_API_KEY in the container: Claude Code would use it
    instead of the subscription. `/status` shows which one is in use.
-5. On the Amiga: `uptelnet <NAS_IP> 2323`, the password, and you are in Claude Code.
-   Ctrl+] leaves; Claude keeps running in tmux for the next connection.
+5. On the Amiga: `Claude REMOTE` (or `Claude` and pick the NAS; `uptelnet <NAS_IP> 2323`
+   does the same without C:Claude). The first time it asks for the password and then says
+   "paired with this NAS": the NAS handed this Amiga a key, kept in `ENVARC:Claude/nas-key`.
+   From then on no password is typed. Ctrl+] leaves; Claude keeps running in tmux for the
+   next connection.
+
+### Key login instead of the password
+
+The password crossed the LAN in clear at every start. An Amiga with a key does not send it
+again: the first connection uses the password (step 3) and the NAS hands the Amiga a key over
+that one session; from then on uptelnetd and the Amiga prove the key to each other with an
+HMAC-SHA256 challenge-response (protocol: `net/tn.h` and the docstring of `uptelnetd.py`).
+A sniffer on the LAN sees one-time values, and a fake NAS cannot pass the Amiga's check.
+The session itself is still plain telnet. The keys are in `home/.config/uptelnetd/clients`
+(0600); manage them in the container's terminal:
+
+    pairs list              the paired Amigas (ID, date, first address)
+    pairs revoke <ID>       that Amiga is asked for the password again
+    pairs add               a key for an Amiga you pair by hand: prints the line to put in
+                            ENVARC:Claude/nas-key (no wire exposure at all; the careful case)
+
+The server needs a new `uptelnetd.py` for this: copy tools/uptelnetd.py again with the other
+files, raise the image tag and Build. A plain password login still works for an Amiga that is
+not paired (older uptelnet, no key file, or `Claude` without KEY).
 
 Without Synology: put the same files in one folder, set `NAS_IP` (the address the
 Amiga reaches, space-separated with any others to listen on) and `ALLOW` (the
@@ -54,7 +77,7 @@ Claude Code itself is installed on the volume (`home/.npm-global`, owned by the
 survive a rebuild; delete that folder to force a fresh install.
 
 Changed Dockerfile or entrypoint.sh: raise the `image:` tag in compose.yaml
-(claude-amiga:4 -> 5), then Project > Action > Build. With the same tag, Build
+(claude-amiga:5 -> 6), then Project > Action > Build. With the same tag, Build
 reuses the old image.
 
 If a Build leaves DSM showing a container named `<id>_claude-amiga` that it cannot
@@ -118,7 +141,7 @@ always set a TOKEN, keep it on a LAN you trust, never forward the port (7846).
 
    It waits for the token (not echoed), then Return.
 
-4. Start `claude` from UP-Term (C:Claude or ClaudeCode). Claude asks once to
+4. Start `claude` from UP-Term (C:Claude, and pick the NAS). Claude asks once to
    approve the project's `amiga` MCP server: approve it. Check: ask "what
    volumes does my Amiga have?" -- it runs a command on the Amiga and answers.
 

@@ -55,7 +55,7 @@ class Assemble(unittest.TestCase):
         # only the archive that needs the base is run from UP-Term:pkg; the stand-alone ones (ENVARC:uppkg) are left alone
         self.assertEqual(v['ADDONUNINSTALL'],
                          'If EXISTS UP-Term:pkg/UP-Term-nvim/Uninstall\n  Execute UP-Term:pkg/UP-Term-nvim/Uninstall\nEndIf')
-        # Files/Claude finds Files/ClaudeCode by substring: one search for both
+        # Files/Claude finds an old Files/ClaudeCode by substring too: one search covers both
         self.assertEqual(v['HANDEDSEARCH'].count('Search >NIL: UP-Term:MANIFEST'), 4)
         self.assertNotIn('Files/ClaudeCode', v['HANDEDSEARCH'])
         self.assertEqual(mi.read_values('nvim')['ADDONUNINSTALL'], '')
