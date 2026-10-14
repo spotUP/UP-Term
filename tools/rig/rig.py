@@ -26,6 +26,9 @@ independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
                   reboot the rig after install). The kit's own files are kept in
                   VTC:kit-orig and come back with `rig.py kit-restore` + a reboot.
   rig.py status   is it up (amiagent ping)
+  rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
+  rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
+  rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts amiagent), vtc/ (VTC:, the binaries
@@ -310,6 +313,9 @@ STOCK = "--stock" in sys.argv
 A1200 = any(f in sys.argv for f in ("--a1200", "--stock", "--exact", "--fast"))
 MAX = "--max" in sys.argv or not A1200
 M060 = "--060" in sys.argv or MAX
+# --mmu: the 68060 with its MMU emulated (FS-UAE "68060", no JIT, slower): what MuForce needs
+# (`rig.py muforce`). Only on the 060 machines; the next start without it is back on 68060-NOMMU.
+MMU = "--mmu" in sys.argv and M060
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -460,7 +466,7 @@ def setup():
         "bsdsocket_library = 1",
     ] if STOCK else [
         "[fs-uae]", "amiga_model = A1200",
-        "cpu = %s" % ("68060-NOMMU" if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
+        "cpu = %s" % (("68060" if MMU else "68060-NOMMU") if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
         "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
@@ -470,7 +476,7 @@ def setup():
         # hidden and drawn again around every blit, so it flickered with the
         # blinking cursor (owner 2026-10-03: "the mouse pointer still blinks")
         "uae_gfxcard_hardware_sprite = true",
-        "jit_compiler = %d" % (0 if EXACT else 1),
+        "jit_compiler = %d" % (0 if EXACT or MMU else 1),   # the JIT and the emulated MMU exclude each other
         # without this FS-UAE runs the A1200's 68020 at about its real speed
         # (no JIT on an ARM host): UPDemo BENCH and cellbench measured a
         # stock machine, 2026-10-04
@@ -815,7 +821,15 @@ def status(quiet=False):
             print("down")
         return False
 
+def muforce():
+    import muforce as mf
+    mf.main(sys.argv[2:])
+
+def wasabi():
+    import wasabi as wb
+    wb.main(sys.argv[2:])
+
 if __name__ == "__main__":
     {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
-     "status": status, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
+     "status": status, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
      "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()
