@@ -145,10 +145,21 @@ try:
     check(len(b) >= 4 and struct.unpack(">I", b[:4])[0] == 10, "rexx: rc u32 + result (the mock answers rc 10 to a program)")
     check(ami.req(0x0A)[0] == 2, "screens: two screens in the legacy binary shape")
     # gaps are named, not silent
-    for what, fn, a in (("BREAK", ami.req, (0x09,)), ("POINTER", ami.req, (0x0B,)),
+    for what, fn, a in (("POINTER", ami.req, (0x0B,)),
                         ("INPUT operation", ami.req, (0x08, bytes([77]))), ("UIACT verb", ami.req, (0x0E, b"zap\tx\ty"))):
         g = gap(fn, *a)
         check(g and g.startswith("ami.py gap: ") and what in g, "gap named: %s -> %r" % (what, g))
+    # BREAK ends a running exec (Ctrl-C to its slot), the exec returns, and BREAK with nothing running is a no-op
+    import threading
+    res = []
+    th = threading.Thread(target=lambda: res.append(ami.req(0x02, struct.pack(">H", 0) + b"sleep 30")))
+    t0 = time.time()
+    th.start()
+    time.sleep(1.0)
+    check(ami.req(0x09) == b"", "BREAK: answers empty")
+    th.join(10)
+    check(not th.is_alive() and time.time() - t0 < 10, "BREAK: the running exec ended well before its 30 s")
+    check(ami.req(0x09) == b"", "BREAK with nothing running is a no-op")
     # a bad key is an ERR exit like amiagent's, a dead port is not ERR
     try:
         ami.req(0x03, b"RAM:no/such")

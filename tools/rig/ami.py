@@ -15,8 +15,10 @@ Coordinates: wasabi's mouse and window lists are in grab space (rows doubled on 
 the pointer units the old INPUT calls took. UITREE text is rebuilt in screen pixels (rows divided back), so
 pointer_scale() is (1, row_scale) and every script that scales a uitree box by it keeps working.
 
-Gaps (raise Gap, named, SystemExit): BREAK of the running command (wasabi kills by task name: wasabi.py ps/kill),
-POINTER (wasabi has no pointer query), and any INPUT sub-operation or UIACT verb that has no wasabi command.
+BREAK (0x09) is Ctrl-C to every command running in a run slot (SLOTS, then FREE with the Ctrl-C-only flag: reaches
+exactly that command, not a same-named task).
+Gaps (raise Gap, named, SystemExit): POINTER (wasabi has no pointer query: MOUSE only moves, WINDOWS/INFO carry no
+pointer position), and any INPUT sub-operation or UIACT verb that has no wasabi command.
 Mapped to the nearest command: raw key codes -> KEY frame with raw (code, qualifier) events; region grab -> crop
 of the full grab (raw, rows not doubled); gadget by id -> id from the gadget list, then a mouse click; tick-timed
 input script -> mouse move/down/up frames with the waits timed on the host (50 ticks per second): a held button
@@ -86,6 +88,16 @@ def _exec(c, payload):
     out = []
     rc = m.do_run(c, payload[2:].decode('latin-1'), merge=True, sink=out.append, max_time=secs or None)
     return struct.pack('>I', rc) + ''.join(out).encode('latin-1')
+
+
+def _break(c):
+    """Ctrl-C to each command running in a run slot (one connection per RUN, so this one is a second connection)."""
+    m = _m()
+    for slot, state, _, _, _ in m.slot_rows(c):
+        if state == 'running':
+            c.send(m.FREE, struct.pack('>II', slot, m.FREE_BREAK_ONLY))
+            m.drain_to_end(c, [].append)
+    return b''
 
 
 def _get(c, path):
@@ -266,8 +278,6 @@ def _rexx(c, prog):
 def req(code, payload=b'', timeout=150):
     """One legacy operation, answered in the legacy shape. timeout: the connection's silence limit."""
     m = _m()
-    if code == 0x09:
-        raise Gap('BREAK of the running command: wasabi kills by task name (rig.py wasabi ps, wasabi kill NAME)')
     if code == 0x0B:
         raise Gap('POINTER position: wasabi has no pointer query (pointer_scale() is (1, row_scale))')
     with _conn(timeout) as c:
@@ -279,6 +289,7 @@ def req(code, payload=b'', timeout=150):
                 n = struct.unpack('>H', payload[:2])[0]
                 m.put_bytes(c, payload[2 + n:], payload[2:2 + n].decode('latin-1')); return b''
             if code == 0x06: return _text(c, m.INFO)
+            if code == 0x09: return _break(c)
             if code == 0x07: return _shot(c, payload)
             if code == 0x08: _input(c, payload); return b''
             if code == 0x0A: return _screens(c)
