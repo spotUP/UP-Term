@@ -971,10 +971,11 @@ ADDON_STAGE = rm -rf $(BUILD)/dist/$(call pkg,$(1),archive) && mkdir -p $(BUILD)
 pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
 # W-I1: a quick-launch icon of an add-on, staged in Files/launch (the add-on's install.dos copies it into
 # UP-Term:, part launch): an IconX script (dist/addons/<id>/launch/<name>) and its icon, which opens an UP-Term
-# window (XCON:, close gadget, closed when the app ends). $(1) kit drawer, $(2) script, $(3) name, $(4) size.
+# window (XCON:, close gadget, closed when the app ends; no DELAY tooltype: IconX's own few seconds keep an error
+# readable, and DELAY=0 kept the window open for ever, rig 3 2026-10-14). $(1) kit drawer, $(2) script, $(3) name, $(4) size.
 LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
-	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE" --tooltype DELAY=0
+	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
 .PHONY: dist-claude dist-pi dist-nvim dist-python
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,claude)
@@ -983,7 +984,7 @@ dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupda
 	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
 	$(call LAUNCHER,$(KIT_claude),dist/ClaudeCode,ClaudeCode,800/560)
 	python3 tools/mkicon.py $(KIT_claude)/ClaudeCode.info --tool C:IconX \
-	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE" --tooltype DELAY=0
+	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE"
 	python3 tools/mkkit.py claude
 dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,pi)

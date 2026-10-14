@@ -1,4 +1,4 @@
 ; amiga-pi: the pi coding agent in this UP-Term window (double-click the icon). The window
-; closes when amiga-pi ends. vsh gives it TERM=vtcon, the path and the window's size.
+; closes when amiga-pi ends. The path is C:amiga-pi: the current directory is UP-Term:, which holds this script.
 Stack 32768
-UP-Term:bin/vsh -c amiga-pi
+UP-Term:bin/vsh -c C:amiga-pi

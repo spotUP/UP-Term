@@ -222,8 +222,8 @@ class EveryAddOn(unittest.TestCase):
 
 
 # W-I1: the quick-launch icons. id -> (launcher names, the app command vsh -c runs, window size)
-LAUNCHERS = {'pi': (['amiga-pi'], 'amiga-pi', '800/560'), 'nvim': (['Neovim'], 'nvim', '800/560'),
-             'python': (['Python 3'], 'python3', '640/400'), 'claude': (['Claude', 'ClaudeCode'], 'Claude', '800/560')}
+LAUNCHERS = {'pi': (['amiga-pi'], 'C:amiga-pi', '800/560'), 'nvim': (['Neovim'], 'nvim', '800/560'),
+             'python': (['Python 3'], 'python3', '640/400'), 'claude': (['Claude', 'ClaudeCode'], 'C:Claude', '800/560')}
 
 
 class QuickLaunchIcons(unittest.TestCase):
@@ -284,6 +284,7 @@ class QuickLaunchIcons(unittest.TestCase):
         mk = (ROOT / 'Makefile').read_text()
         self.assertIn('--tool C:IconX', mk.split('LAUNCHER =')[1].split('\n\n')[0])
         self.assertIn('"WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"', mk)
+        self.assertNotIn('DELAY=', re.sub(r'(?m)^#.*$', '', mk), 'IconX DELAY=0 never closes the window')
         for pid, (names, app, size) in LAUNCHERS.items():
             kit = re.search(r'(?ms)^dist-%s:.*?^(?:dist-|# build)' % ('claude' if pid == 'claude' else pid), mk).group(0)
             for n in names:
@@ -292,8 +293,14 @@ class QuickLaunchIcons(unittest.TestCase):
             if pid != 'claude' or names[0] == 'Claude':
                 text = [l for l in script.read_text().splitlines() if l and not l.startswith(';')]
                 self.assertEqual(text[-1], 'UP-Term:bin/vsh -c %s' % app, pid)
+                # the current directory is UP-Term:, which holds a script named like the app: C: by its path
+                self.assertTrue(app in ('nvim', 'python3') or app.startswith('C:'), pid)
                 self.assertIn('Stack 32768', text, pid)
-        # ClaudeCode's launcher is the C:ClaudeCode script itself (uptelnet to the NAS)
+        # ClaudeCode's launcher is the C:ClaudeCode script itself (uptelnet to the NAS); run from UP-Term: it
+        # must name C:Claude by its path (UP-Term:Claude is the Claude launcher script)
+        cc = (ROOT / 'dist/ClaudeCode').read_text()
+        self.assertIn('C:Claude REMOTE-ADDRESS', cc)
+        self.assertNotRegex(cc, r'(?m)^\s*Claude ')
         self.assertIn('call LAUNCHER,$(KIT_claude),dist/ClaudeCode,ClaudeCode,', mk)
 
 
