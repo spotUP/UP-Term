@@ -221,7 +221,7 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
   the existing "no host" message. Files: `claude/cli.c`, `claude/cli.h`. Test: host
   `ONLY=claude_cli` (both syntaxes). S.
   Evidence: 0e7aa14; ONLY=claude_cli (both syntaxes, template holds LOCAL/S,REMOTE/S, each literal < 509); tests/test_qmark_commands.py passes
-- [ ] **NL3** The question at start, wired at `claude/main_amiga.c:252`: on an UP-Term
+- [x] **NL3** The question at start, wired at `claude/main_amiga.c:252`: on an UP-Term
   console `tui_ext_menu` with "Claude on the Amiga (API key)" and "Claude Code on the NAS
   (subscription)", last choice highlighted (ENVARC:Claude/last-mode); a plain console
   gets a numbered line question. The question logic lives in a host-testable file, the
@@ -229,15 +229,15 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
   `cli.c` if small), `claude/repl.h`. Test: host `ONLY=claude_tui` golden screen of the
   question + keys; reachability: rig, Claude with both a key and a remote file shows the
   question and REMOTE goes to uptelnet (counter: uptelnet's connect line). M.
-  Evidence: 0e7aa14; ONLY=claude_tui launch_question (selector keys, last choice, Esc, line question); rig reachability open (coordinator)
-- [ ] **NL4** ClaudeCode leaves the kit: delete `dist/ClaudeCode`, its rows in
+  Evidence: 0e7aa14; ONLY=claude_tui launch_question (selector keys, last choice, Esc, line question); rig 2 2026-10-14: 'Where should Claude run?' with both items, choice 2 -> uptelnetd 'key login amiga-1bc054', last-mode remote highlights item 2 on the next start, REMOTE/LOCAL skip the question
+- [x] **NL4** ClaudeCode leaves the kit: delete `dist/ClaudeCode`, its rows in
   `dist/packages.txt:23` and `dist/addons/claude/parts.txt:11-14`, copy/protect/launch
   lines in `dist/addons/claude/install.dos`, the Installer texts, `tools/mkicon.py:151`;
   install.dos and the Installer delete an old `C:ClaudeCode` and
   `UP-Term:ClaudeCode(.info)` on reinstall (Uninstall already does). Test: host
   `ONLY=packages`, `make dist-check`; rig `install_rig.py --only` the Claude cases (old
   ClaudeCode gone after a reinstall over a 1.0 install). M.
-  Evidence: e14300c; test_dist_addons/_installer/_manifest/_packages, dist-claude archive has no ClaudeCode; rig install case open (coordinator)
+  Evidence: e14300c; test_dist_addons/_installer/_manifest/_packages, dist-claude archive has no ClaudeCode; rig 3 2026-10-14 install_rig --only claude --only claude-bare PASS with the 1.0 files seeded (c4d4002 plant_old_claude; before it the check passed with nothing seeded): 'no C:ClaudeCode', 'no UP-Term:ClaudeCode', 'no UP-Term:ClaudeCode.info', Uninstall leaves no C:Claude/record. Installer path (installer_rig addon-claude) not run on the rig
 - [x] **NL5** Docs: `dist/addons/claude/README.txt`, `dist/README.txt` (CLAUDE FROM THE
   AMIGA, 677, 794), `dist/aminet/claude.readme.in`, `dist/addons/claude/LICENSES.txt`,
   `tools/nas/README.md` steps 4-5; bump Claude's minor in `dist/packages.txt`.
@@ -270,18 +270,18 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
 - [x] **NL9** `tools/tn_host.c`: KEY= argument and key-file writing, so NL8 drives the real
   protocol code. Files: `tools/tn_host.c`, Makefile. Test: part of NL8. S.
   Evidence: e6870fe; part of NL8
-- [ ] **NL10** uptelnet on the Amiga: `KEY/K` (file; PAIR writes it and its ENV: copy),
+- [x] **NL10** uptelnet on the Amiga: `KEY/K` (file; PAIR writes it and its ENV: copy),
   cn from ReadEClock + DateStamp + FindTask, messages "paired with this NAS", "the NAS
   does not know this Amiga's key any more: type the password", "not the NAS this Amiga
   paired with". Template and `uptelnet ?` updated. Files: `net/uptelnet.c`. Test: rig,
   uptelnet to `tools/uptelnetd.py --bind 127.0.0.1` on the Mac (FS-UAE's bsdsocket uses
   host sockets): first run asks the password and writes the key, second run reaches the
   session with no prompt (screen read back). M.
-  Evidence: e6870fe; builds with vbcc (make amiga); rig check open (coordinator)
-- [ ] **NL11** C:Claude's remote path passes `KEY=ENVARC:Claude/nas-key` (`remote()`,
+  Evidence: e6870fe; builds with vbcc (make amiga); rig 2 2026-10-14 against tools/uptelnetd.py on 127.0.0.1:2399: first run Password: then 'paired with this NAS as amiga-1bc054', key in ENVARC:+ENV:Claude/nas-key (78 B), second run no prompt (log 'key login'), emptied clients file -> 'does not know this Amiga's key any more' + Password:. Not run: 'not the NAS this Amiga paired with'
+- [x] **NL11** C:Claude's remote path passes `KEY=ENVARC:Claude/nas-key` (`remote()`,
   `claude/main_amiga.c:102-136`). Files: `claude/main_amiga.c`. Test: covered by NL10's rig
   run started through `Claude REMOTE`. S.
-  Evidence: 0e7aa14; covered by the NL10 rig run through Claude REMOTE (open)
+  Evidence: 0e7aa14; rig 2: Claude REMOTE and the NAS choice log in by key from ENVARC:Claude/nas-key
 - [x] **NL12** NAS side: `entrypoint.sh` starts with a password or a clients file;
   new `tools/nas/pairs` (list, add, revoke; add prints a key for D2 b); Dockerfile COPY;
   `compose.yaml` image tag 4 -> 5; README section rewritten. Files: `tools/nas/*`.
