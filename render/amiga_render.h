@@ -138,6 +138,8 @@ typedef struct vr_render {
     ULONG bg_ink;         /* the ink of a default blank cell: what `blank` and the skipped fills mean */
     ULONG pad_ink;        /* what the strips of the text area beside the grid hold */
     UBYTE dither_on;      /* W-T9: a screen of few pens dithers colours no pen shows closely (1, default); 0 the nearest pen only */
+    UBYTE pad_extend;     /* W-T14: the strips beside the grid take their nearest edge cell's colour (0: the window background) */
+    UBYTE pad_dirty;      /* cells were drawn since the strips were extended */
     UBYTE was_blank;      /* inside draw_rows: blank when it began (its blank runs need no fill) */
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
@@ -263,6 +265,12 @@ void vr_palette_changed(vr_render *r);
  * way). A change gives the pens back to be chosen again; the caller then
  * redraws (vr_redraw). */
 void vr_set_dither(vr_render *r, int on);
+
+/* W-T14, the profile's `padding-color`: the strips of the window beside the
+ * grid (right of the last whole column, below the last whole row, and the
+ * offsets above and left) are the window's background (off, the default) or
+ * extend the colour of the nearest edge cell (on). The caller redraws. */
+void vr_set_pad_extend(vr_render *r, int on);
 
 /* Another fixed-width font for the text: cell size, baseline, the
  * rastport's font and the planar glyphs follow; the caller resizes the

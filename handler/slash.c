@@ -19,6 +19,9 @@ static const slash_value v_meta[] = {
 static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
 static const slash_value v_amigakeys[] = ONOFF(MENU_SET_AMIGA_KEYS);
 static const slash_value v_dither[] = ONOFF(MENU_SET_DITHER);
+static const slash_value v_padding[] = {
+    { "background", MENU_SET_PAD_BG, 1 }, { "extend", MENU_SET_PAD_EXTEND, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_reflow[] = ONOFF(MENU_SET_REFLOW);
 static const slash_value v_backspace[] = {
     { "del", MENU_SET_BS_DEL, 1 }, { "bs", MENU_SET_BS_BS, 1 }, { 0, 0, 0 }
@@ -92,6 +95,8 @@ static const slash_def table[] = {
     { "link-open", SL_ARG, SLASH_LINK_OPEN, 1, 0, "COMMAND | none",
       "what a Ctrl + click on a link runs (%s: the URL)" },
     { "meta", SL_CHOICE, 0, 0, v_meta, "amiga | alt", "the key that is Meta (ESC prefix)" },
+    { "padding-color", SL_CHOICE, 0, 0, v_padding, "background | extend",
+      "the strips beside the character grid: the background, or the colour of the cell next to them" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
     { "profile", SL_ARG, SLASH_PROFILE, 1, 0, "NAME", "switch to a profile" },

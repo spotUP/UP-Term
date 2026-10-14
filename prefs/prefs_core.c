@@ -98,6 +98,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     f->backspace_bs = pc_ieq(upconf_str(c, p, "backspace", "del"), "bs");
     f->amiga_keys = !pc_ieq(upconf_str(c, p, "amiga-keys", "on"), "off");
     f->dither = !pc_ieq(upconf_str(c, p, "dither", "on"), "off");
+    f->pad_extend = pc_ieq(upconf_str(c, p, "padding-color", "background"), "extend");
     f->hlcat = !pc_ieq(upconf_str(c, p, "highlight-cat", "on"), "off");
     v = upconf_str(c, p, "program-clipboard", "write");
     f->clipboard = pc_ieq(v, "off") ? PREFS_CLIP_OFF
@@ -251,6 +252,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     upconf_set(w, p, "backspace", f->backspace_bs ? "bs" : "del");
     upconf_set(w, p, "amiga-keys", f->amiga_keys ? "on" : "off");
     upconf_set(w, p, "dither", f->dither ? "on" : "off");
+    upconf_set(w, p, "padding-color", f->pad_extend ? "extend" : "background");
     upconf_set(w, p, "highlight-cat", f->hlcat ? "on" : "off");
     upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"
                                           : f->clipboard == PREFS_CLIP_READ_WRITE ? "read-write"

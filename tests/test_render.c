@@ -1159,6 +1159,108 @@ static void dither_off_draws_the_nearest_single_pen_and_on_dithers_again(void)
     test_npal = 0;
 }
 
+/* ---- W-T14: padding colour ---- */
+
+/* The window's inside is 173 x 67 pixels under borders 4, 11, 18, 2: 21 x 8 cells of 8 x 8 and strips 5 pixels
+ * right and 3 below; lx, ly shift the grid (an Amiga console's offsets) so there is a strip left of and above it. */
+#define PAD_BL 4
+#define PAD_BT 11
+#define PAD_IW 173
+#define PAD_IH 67
+
+/* what the strip pixel (cx, cy) -- relative to the grid's corner, outside it -- should show: the pixel of the edge
+ * cell next to it at the same place in the cell (a pattern of two pens continues past the grid, anchored to the cells) */
+static int pad_expect(int lx, int ly, int cx, int cy)
+{
+    int col = cx < 0 ? 0 : cx / CW, row = cy < 0 ? 0 : cy / CH;
+    int ox = ((cx % CW) + CW) % CW, oy = ((cy % CH) + CH) % CH;
+    col = col > 20 ? 20 : col;
+    row = row > 7 ? 7 : row;
+    return gf_bg(PAD_BL + lx + col * CW + ox, PAD_BT + ly + row * CH + oy);
+}
+
+/* a blank cell's first pixel, clamped to the grid */
+static int pad_cell_pen(int lx, int ly, int col, int row)
+{
+    return pad_expect(lx, ly, col * CW, row * CH);
+}
+
+/* Pixels of the strips that do not show what they should: the edge cell's look (extend), else `bg` */
+static int pad_wrong(int lx, int ly, int extend, int bg)
+{
+    int x, y, n = 0, gw = 21 * CW, gh = 8 * CH;
+    for (y = 0; y < PAD_IH; y++)
+        for (x = 0; x < PAD_IW; x++) {
+            int cx = x - lx, cy = y - ly;
+            if (cx >= 0 && cx < gw && cy >= 0 && cy < gh)
+                continue; /* a cell */
+            n += gf_bg(PAD_BL + x, PAD_BT + y) != (extend ? pad_expect(lx, ly, cx, cy) : bg);
+        }
+    return n;
+}
+
+/* the screen the strips are checked against: every edge a different colour (blue left column, red third row, green
+ * last row, yellow top-right cell, magenta last column of the fifth row) */
+static const char *pad_scene(int phase)
+{
+    return phase ? "\x1b[?25l\x1b[46m\x1b[2J\x1b[2;1H\x1b[43m\x1b[K\x1b[7;1H\x1b[45m\x1b[K\x1b[8;1H\x1b[41m\x1b[K\x1b[m"
+                 : "\x1b[?25l\x1b[44m\x1b[2J\x1b[3;1H\x1b[41m\x1b[K\x1b[8;1H\x1b[42m\x1b[K\x1b[1;21H\x1b[43m \x1b[5;21H\x1b[45m \x1b[m";
+}
+
+/* W-T14 (owner 2026-10-14, Ghostty's window-padding-color = extend): with vr_set_pad_extend(1) every pixel of the
+ * strips -- right of the last whole column, below the last whole row, and the offsets above and left of the grid --
+ * shows the pen of the cell next to it, corners included; with it off (the default) all of them the window's
+ * background. The strips follow output that changes the edge cells (a scroll, an erase), a synchronized frame drawn
+ * composed, and the setting turned off and on again by the live redraw; on a chunky and a planar screen. */
+static void padding_extend_gives_the_strips_the_colour_of_the_edge_cells(void)
+{
+    static const int depths[] = { 0, 4 };
+    static const int shifts[][2] = { { 0, 0 }, { 5, 3 } };
+    int m, k, sh, phase;
+    for (m = 0; m < 2; m++)
+        for (sh = 0; sh < 2; sh++)
+            for (k = 0; k < 2; k++) {
+                int lx = shifts[sh][0], ly = shifts[sh][1];
+                vt_callbacks cb;
+                memset(&cb, 0, sizeof(cb));
+                cb.damage = cb_damage;
+                cb.scroll = cb_scroll;
+                cb.colors = cb_colors;
+                gf_open(PAD_BL + PAD_IW + 18, PAD_BT + PAD_IH + 2, CW, CH, 6);
+                if (depths[m]) {
+                    gf_planar(depths[m], 0, 10);
+                    gf_palette(wb16, 16);
+                }
+                gf_borders(PAD_BL, PAD_BT, 18, 2);
+                term = vt_new(21, 8, 100, &cb, &rn);
+                vt_set_personality(term, VT_XTERM);
+                vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+                rn.lay_x = (WORD)lx;
+                rn.lay_y = (WORD)ly;
+                vr_layout(&rn);
+                CHECK_INT(rn.cols, 21);
+                CHECK_INT(rn.rows, 8);
+                vr_redraw(&rn);
+                CHECK_INT(rn.pad_extend, 0); /* the default: the background */
+                for (phase = 0; phase < 2; phase++) {
+                    pass(k ? synced(pad_scene(phase)) : pad_scene(phase));
+                    CHECK(pad_cell_pen(lx, ly, 0, 2) != (int)rn.pen_default_bg); /* the scene has colours */
+                    CHECK_INT(pad_wrong(lx, ly, 0, (int)rn.pen_default_bg), 0);
+                    vr_set_pad_extend(&rn, 1);
+                    vr_redraw(&rn); /* what vtwin_apply_settings does */
+                    CHECK_INT(pad_wrong(lx, ly, 1, 0), 0);
+                    pass(k ? synced("\x1b[8;1H\n\x1b[1;1H\x1b[44m\x1b[K\x1b[8;1H\x1b[42m\x1b[K\x1b[m")
+                           : "\x1b[8;1H\n\x1b[1;1H\x1b[44m\x1b[K\x1b[8;1H\x1b[42m\x1b[K\x1b[m");
+                    CHECK_INT(pad_wrong(lx, ly, 1, 0), 0); /* the strips followed the scroll and the erase */
+                    vr_set_pad_extend(&rn, 0);
+                    vr_redraw(&rn);
+                    CHECK_INT(pad_wrong(lx, ly, 0, (int)rn.pen_default_bg), 0);
+                }
+                CHECK_INT(gf_border_hits(), 0);
+                close_term();
+            }
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
@@ -1182,6 +1284,7 @@ int main(void)
     drawing_never_touches_the_window_borders_at_an_odd_inner_width();
     the_strips_beside_the_grid_and_blank_cells_show_the_window_background();
     dither_off_draws_the_nearest_single_pen_and_on_dithers_again();
+    padding_extend_gives_the_strips_the_colour_of_the_edge_cells();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }
