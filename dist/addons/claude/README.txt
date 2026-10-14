@@ -1,8 +1,7 @@
 Claude - Claude for the Amiga
 =============================
 
-Claude, Anthropic's AI model: C:Claude, and C:ClaudeCode (with C:uptelnet) for Claude Code
-on a server. It stands alone; UP-Term.lha is optional.
+Claude, Anthropic's AI model: C:Claude (with C:uptelnet, for Claude Code on a server). It stands alone; UP-Term.lha is optional.
 
 WHAT YOU NEED
   AmigaOS 3.0 or newer, a 68020 or better, a TCP/IP stack (Roadshow, Miami, AmiTCP) and,
@@ -28,19 +27,31 @@ USE
   The sections below.
 
 UNINSTALL
-  Double-click Uninstall (or Execute Uninstall). It removes C:Claude and C:ClaudeCode, and
-  C:uptelnet unless UP-Term is installed; your settings in ENVARC:Claude stay. With UP-Term
+  Double-click Uninstall (or Execute Uninstall). It removes C:Claude (and an old C:ClaudeCode,
+  which Claude.lha 1.0 had), and C:uptelnet unless UP-Term is installed; your settings in ENVARC:Claude stay. With UP-Term
   installed it asks whether to delete your data in UP-Term:var/Claude (default No).
   Uninstall of UP-Term.lha leaves this program alone.
 
 CLAUDE FROM THE AMIGA
-  Quickest: Claude. Install asked where Claude Code runs (the NAS) and
-  wrote it to ENVARC:Claude/remote ("host port"; edit or delete it): with
-  no API key set, Claude connects there in the window. Or ClaudeCode
-  (or double-click ClaudeCode)
-  connects to the host and port in ENVARC:Claude/remote (Claude SETUP
-  writes it) -- ClaudeCode HOST PORT names another -- asks its password
-  and starts Claude Code in tmux.
+  One app, one icon. Install asked where Claude Code runs (the NAS) and
+  wrote it to ENVARC:Claude/remote ("host port"; Claude SETUP writes it too;
+  edit or delete it). Then:
+    Claude            with no API key set, Claude Code on the NAS in this
+                      window; with an API key too, a question first: Claude
+                      on the Amiga (API key) or Claude Code on the NAS
+                      (subscription). The last answer is the one highlighted
+                      (ENVARC:Claude/last-mode). Up, Down, Enter, or 1 and 2.
+    Claude LOCAL      Claude on this Amiga with the API key, no question
+    Claude REMOTE     Claude Code on the NAS, no question
+  Print mode (Claude -p ...), PING, URL= and a prompt on the command line
+  always run on this Amiga and never ask. Double-click the Claude icon in
+  UP-Term: for the same.
+  The NAS first asks the password; then it pairs: it hands this Amiga a key
+  (ENVARC:Claude/nas-key) and from then on no password is typed or sent: the
+  Amiga and the NAS prove the key to each other (HMAC-SHA256 challenge-response,
+  net/tn.h). Revoke an Amiga on the NAS with: pairs revoke ID. The NAS starts
+  Claude Code in tmux. (An old ClaudeCode icon and C:ClaudeCode are removed by
+  Install: the one Claude does both.)
   Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
   To set up the NAS end (a Synology container that keeps Claude Code in
   tmux), see tools/nas/README.md in the vtcon source tree; to let Claude

@@ -674,7 +674,8 @@ AMIAGENT
 
 UPTELNET
   uptelnet is a telnet client for the window (no ixemul; needs a TCP/IP
-  stack). Claude.lha's ClaudeCode uses it (that archive carries its own copy) to reach Claude Code on a Mac.
+  stack). Claude.lha's C:Claude uses it (that archive carries its own copy) to reach Claude Code on the NAS
+  or a Mac, with a key instead of the password once the NAS has paired this Amiga (KEY file).
  On the Mac, from an UP-Term source checkout (nothing is installed; it
   runs until Ctrl-C):
     (umask 077; mkdir -p ~/.config/uptelnetd; read -rs p; printf '%s\n' "$p" > ~/.config/uptelnetd/password)
@@ -791,7 +792,7 @@ ADD-ONS
     Python3.lha        Python 3.14 (SYS:Python3, Python3: assigned at boot).
                        Stands alone: brings an ixemul.library when LIBS: has
                        none of version 47 or newer, and uses this kit's.
-    Claude.lha         C:Claude, C:ClaudeCode and C:uptelnet (Claude,
+    Claude.lha         C:Claude and C:uptelnet (Claude,
                        Anthropic's AI model). Stands alone.
     amiga-pi.lha       C:amiga-pi (pi, the coding agent). Stands alone.
   The stand-alone ones install on a Workbench with no UP-Term and record
