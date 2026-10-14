@@ -272,7 +272,8 @@ golden: $(BUILD)/vtdump
 # amimcp (Apache 2.0, stdlib only: no venv needed) pinned, for the "amiga" MCP server in .mcp.json.
 # Idempotent: the stamp holds the pinned commit. Uninstall: make amimcp-clean.
 AMIMCP_REPO := https://github.com/thomas-luebker/amimcp
-AMIMCP_REV  := 3145dee16730dd9f8b14366c5226b315e197b375
+# one pin for the Mac and the NAS image: tools/nas/amimcp.rev (tools/nas/Dockerfile copies the same file)
+AMIMCP_REV  := $(strip $(shell cat tools/nas/amimcp.rev))
 amimcp: $(BUILD)/amimcp/.stamp-$(AMIMCP_REV)
 	@python3 -I tools/rig/amimcp.py --print >/dev/null && echo "[OK] amimcp $(AMIMCP_REV) ready; the wrapper starts."
 	@echo "[INFO] Next: start Claude Code in this repo and approve the 'amiga' project MCP server (rig 1; UPTERM_RIG=2 for rig 2)."

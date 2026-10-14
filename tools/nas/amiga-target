@@ -1,0 +1,33 @@
+#!/bin/sh
+# amiga-target: which Amiga the amiga MCP server (amimcp) controls: its address,
+# optionally its port, and the amiagent TOKEN, kept 0600 in ~/.config/amimcp on
+# the volume (never in an image, a compose file or a log).
+#   amiga-target [set]   asks for the address, the port (Return = 7846) and the token (not echoed)
+#   amiga-target show    prints the address and port, never the token
+#   amiga-target clear   removes all three
+# AMIMCP_DIR moves the directory (tests).
+D=${AMIMCP_DIR:-/home/claude/.config/amimcp}
+case "${1:-set}" in
+show)
+    [ -s "$D/host" ] || { echo "no Amiga set: run amiga-target"; exit 1; }
+    printf 'host %s\nport %s\n' "$(cat "$D/host")" "$( [ -s "$D/port" ] && cat "$D/port" || echo 7846 )"
+    [ -s "$D/token" ] && echo "token set" || echo "token missing"
+    ;;
+clear)
+    rm -f "$D/host" "$D/port" "$D/token"; echo "cleared"
+    ;;
+set)
+    printf 'Amiga IP address: '; read h
+    printf 'amiagent port [7846]: '; read p
+    stty -echo 2>/dev/null; printf 'amiagent TOKEN: '; read t; stty echo 2>/dev/null; echo
+    [ -n "$h" ] || { echo "no address"; exit 1; }
+    [ -n "$t" ] || { echo "no token"; exit 1; }
+    case "${p:-7846}" in *[!0-9]*) echo "bad port"; exit 1 ;; esac
+    umask 077; mkdir -p "$D"; rm -f "$D/port"
+    printf '%s' "$h" > "$D/host"; printf '%s' "$t" > "$D/token"
+    [ -z "$p" ] || [ "$p" = 7846 ] || printf '%s' "$p" > "$D/port"
+    chown -R claude:claude "$D" 2>/dev/null; chmod 700 "$D"; chmod 600 "$D"/*
+    echo "saved; start claude from the Amiga and approve the amiga MCP server"
+    ;;
+*) echo "usage: amiga-target [set|show|clear]"; exit 2 ;;
+esac

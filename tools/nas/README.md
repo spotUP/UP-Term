@@ -23,7 +23,8 @@ UNENCRYPTED telnet: LAN only, never forward the port on the router.
 
 ## Set up (Synology DSM 7, Container Manager)
 
-1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, setpw, pairs, README.md) and
+1. Copy this drawer (Dockerfile, compose.yaml, entrypoint.sh, setpw, pairs, amiga-target, seed-claude-files,
+   amimcp.rev, mcp.json, skills/, README.md) and
    `tools/uptelnetd.py` into one folder on the NAS, e.g. `/volume1/docker/claude-amiga`,
    and create `home` inside it (the container's /home/claude volume).
 2. Container Manager > Project > Create, source: the existing compose.yaml; edit
@@ -115,35 +116,31 @@ always set a TOKEN, keep it on a LAN you trust, never forward the port (7846).
 
    Note the Amiga's IP address.
 
-2. On the NAS (container volume = /volume1/docker/claude-amiga/home, which is
-   /home/claude inside the container), put three things beside Claude Code:
+2. On the NAS: rebuild the image (Build section below: copy this whole drawer,
+   including `skills/`, `mcp.json`, `amimcp.rev`, `amiga-target` and `seed-claude-files`,
+   raise the `image:` tag, Project > Action > Build). The image then holds amimcp's
+   server at `/opt/amimcp/server` (cloned at the commit in `amimcp.rev`, its LICENSE
+   beside it) and the entrypoint seeds the skill (`~/.claude/skills/amiga-upterm`,
+   which teaches Claude AmigaDOS, the UP-Term layout and the safety rules) and the MCP
+   config (`~/work/.mcp.json`) into the volume.
 
-   - amimcp's server: clone https://github.com/thomas-luebker/amimcp and copy its
-     `server/` drawer to `home/amimcp/server/`.
-   - the skill: copy `skills/amiga-upterm/` (beside this README) to
-     `home/.claude/skills/amiga-upterm/`. It teaches Claude AmigaDOS, the
-     UP-Term layout and the safety rules (requesters block amiagent, never
-     kill an install, read before writing).
-   - the MCP config: copy `mcp.json` (beside this README) to
-     `home/work/.mcp.json`. Claude Code starts in ~/work, so it finds it; the
-     server reads the Amiga's address and token from two files at start, so
-     the token is in neither the config nor any chat.
+   Then, in Container Manager > Container > claude-amiga > Action > Open terminal >
+   Create > Launch with command `amiga-target`, give the Amiga's IP address, the
+   amiagent port (Return = 7846) and the TOKEN (not echoed). They are kept 0600 in
+   `home/.config/amimcp/`, in neither the config nor any chat. `amiga-target show`
+   prints the address and port (never the token); `amiga-target clear` removes them.
 
-   Copying from a Mac: Synology's scp/SFTP may be off; tar over ssh works:
+   Seeding rule: a missing file is copied. A file that is still the copy we seeded
+   (its sha256 matches `~/.config/amimcp/seeded/<name>`) is replaced when a newer
+   image brings a new one. A file you edited is never touched (the log says "kept");
+   delete it to get the image's copy back at the next start.
 
-       tar -C staging -cf - amimcp .claude/skills/amiga-upterm work/.mcp.json \
-         | ssh -p <port> <user>@<nas> "tar -C /volume1/docker/claude-amiga/home -xf -"
-
-3. The address and token, written as the container's claude user (Container
-   Manager > Container > claude-amiga > Terminal > Create > bash):
-
-       su -s /bin/sh claude -c 'umask 077; mkdir -p ~/.config/amimcp; printf "%s" "AMIGA_IP" > ~/.config/amimcp/host; read -rs T; printf "%s" "$T" > ~/.config/amimcp/token'
-
-   It waits for the token (not echoed), then Return.
-
-4. Start `claude` from UP-Term (C:Claude, and pick the NAS). Claude asks once to
+3. Start `claude` from UP-Term (C:Claude, and pick the NAS). Claude asks once to
    approve the project's `amiga` MCP server: approve it. Check: ask "what
    volumes does my Amiga have?" -- it runs a command on the Amiga and answers.
+
+The Mac's `amiga` MCP server (the rig or a real Amiga) is installed with
+`make amimcp`; see tools/rig/README.md.
 
 Not covered here: amiagent on the Amiga is the only thing that makes the link
 that Claude controls the machine; without step 1 above the container's Claude

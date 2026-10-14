@@ -4,6 +4,7 @@
 # a file of paired Amigas) it waits (no restart loop) and says how to set one.
 set -e
 mkdir -p /home/claude/.config/uptelnetd /home/claude/work
+seed-claude-files
 chown -R claude:claude /home/claude
 # replaces the shell with "$@" run as the claude user (in a subshell: returns)
 as_claude() {

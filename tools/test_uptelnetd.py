@@ -418,7 +418,7 @@ class PairsTool(unittest.TestCase):
     def test_the_container_files_carry_it(self):
         nas = ROOT / "tools/nas"
         self.assertIn("COPY pairs /usr/local/bin/pairs", (nas / "Dockerfile").read_text())
-        self.assertIn("image: claude-amiga:5", (nas / "compose.yaml").read_text())
+        self.assertIn("image: claude-amiga:6", (nas / "compose.yaml").read_text())
         ep = (nas / "entrypoint.sh").read_text()
         self.assertIn('[ ! -s "$CLIENTS" ]', ep)                 # it starts with a password OR a clients file
         self.assertIn('/home/claude/.config/uptelnetd/clients', ep)
@@ -777,6 +777,88 @@ class Reach(unittest.TestCase):
             self.assertEqual(rc, 3)
             self.assertIn(b"auth bad-server", err)
             self.assertNotIn(b"Password", out)             # nothing from that server is shown
+
+
+class AmigaTargetTool(unittest.TestCase):
+    """tools/nas/amiga-target and seed-claude-files (amimcp installer), against temp dirs."""
+    NAS = ROOT / "tools/nas"
+
+    def target(self, d, *args, stdin=""):
+        return subprocess.run(["sh", str(self.NAS / "amiga-target")] + list(args), input=stdin,
+                              capture_output=True, text=True, env=dict(os.environ, AMIMCP_DIR=d))
+
+    def test_set_show_clear_modes_and_the_token_is_never_shown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = os.path.join(tmp, "amimcp")
+            r = self.target(d, "show")
+            self.assertEqual(r.returncode, 1)
+            r = self.target(d, "set", stdin="192.168.1.77\n\ns3cret-token\n")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            for n in ("host", "token"):
+                self.assertEqual(stat.S_IMODE(os.stat(os.path.join(d, n)).st_mode), 0o600)
+            self.assertEqual(open(os.path.join(d, "host")).read(), "192.168.1.77")
+            self.assertEqual(open(os.path.join(d, "token")).read(), "s3cret-token")
+            self.assertFalse(os.path.exists(os.path.join(d, "port")))   # default port: no file
+            self.assertEqual(stat.S_IMODE(os.stat(d).st_mode), 0o700)
+            r = self.target(d, "show")
+            self.assertIn("host 192.168.1.77", r.stdout)
+            self.assertIn("port 7846", r.stdout)
+            self.assertNotIn("s3cret-token", r.stdout + r.stderr)
+            r = self.target(d, "set", stdin="10.0.0.2\n7000\ntok2\n")
+            self.assertEqual(open(os.path.join(d, "port")).read(), "7000")
+            self.assertEqual(stat.S_IMODE(os.stat(os.path.join(d, "port")).st_mode), 0o600)
+            self.assertIn("port 7000", self.target(d, "show").stdout)
+            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n70x\ntok\n").returncode, 1)
+            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n\n\n").returncode, 1)  # no token
+            self.assertEqual(self.target(d, "clear").returncode, 0)
+            self.assertEqual(os.listdir(d), [])
+
+    def seed(self, home, src):
+        return subprocess.run(["sh", str(self.NAS / "seed-claude-files")], capture_output=True, text=True,
+                              env=dict(os.environ, SEED_HOME=home, SEED_SRC=src))
+
+    def test_seeding_copies_missing_updates_ours_keeps_user_edits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, home = os.path.join(tmp, "seed"), os.path.join(tmp, "home")
+            skill = os.path.join(src, "skills/amiga-upterm/SKILL.md")
+            os.makedirs(os.path.dirname(skill))
+            mcp = os.path.join(src, "mcp.json")
+            open(skill, "w").write("skill v1\n")
+            open(mcp, "w").write("mcp v1\n")
+            ds = os.path.join(home, ".claude/skills/amiga-upterm/SKILL.md")
+            dm = os.path.join(home, "work/.mcp.json")
+            self.assertEqual(self.seed(home, src).returncode, 0)
+            self.assertEqual((open(ds).read(), open(dm).read()), ("skill v1\n", "mcp v1\n"))   # missing: copied
+            open(skill, "w").write("skill v2\n")
+            open(mcp, "w").write("mcp v2\n")
+            open(dm, "w").write("my own mcp\n")
+            r = self.seed(home, src)
+            self.assertEqual(open(ds).read(), "skill v2\n")        # still ours: updated
+            self.assertEqual(open(dm).read(), "my own mcp\n")      # user-edited: kept
+            self.assertIn("kept", r.stdout)
+            open(skill, "w").write("skill v3\n")
+            open(ds, "w").write("edited skill\n")
+            self.seed(home, src)
+            self.assertEqual(open(ds).read(), "edited skill\n")
+            os.remove(ds)
+            self.seed(home, src)
+            self.assertEqual(open(ds).read(), "skill v3\n")        # deleted: back from the image
+
+    def test_one_file_pins_amimcp_for_the_makefile_and_the_dockerfile(self):
+        rev = (self.NAS / "amimcp.rev").read_text().strip()
+        self.assertRegex(rev, r"^[0-9a-f]{40}$")
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("AMIMCP_REV  := $(strip $(shell cat tools/nas/amimcp.rev))", mk)
+        self.assertNotIn(rev, mk)                               # no second copy of the pin
+        df = (self.NAS / "Dockerfile").read_text()
+        self.assertIn("COPY amimcp.rev /opt/amimcp/amimcp.rev", df)
+        self.assertIn('checkout -q "$(cat /opt/amimcp/amimcp.rev)"', df)
+        self.assertNotIn(rev, df)
+        for line in ("COPY amiga-target /usr/local/bin/amiga-target", "cp /tmp/amimcp/LICENSE /opt/amimcp/LICENSE",
+                     "COPY skills /opt/amimcp/seed/skills", "COPY mcp.json /opt/amimcp/seed/mcp.json"):
+            self.assertIn(line, df)
+        self.assertIn("seed-claude-files", (self.NAS / "entrypoint.sh").read_text())
+        self.assertIn("/opt/amimcp/server/amimcp.py", (self.NAS / "mcp.json").read_text())
 
 
 if __name__ == "__main__":
