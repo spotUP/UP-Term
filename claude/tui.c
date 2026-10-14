@@ -1556,6 +1556,39 @@ static void pi_session_rows(cl_tui *t)
     pi_rule_row(t, PR_ACCENT);
 }
 
+/* the search line's text and its cursor (pi's Input.render): the cursor cell is the character it stands on, a blank at the end of the
+ * text. A query longer than the room shows its end when the cursor is there, else its start, cut at a character boundary */
+static void pick_query_text(row *r, const tui_pick *p, long room)
+{
+    const char *q = p->query;
+    long l = (long)strlen(q), cur = p->qcur1 ? p->qcur1 - 1 : l, cl = 1, shown;
+    if (cur > l)
+        cur = l;
+    if (cur >= l) {
+        if (room > 0 && l > room) {
+            q += l - room;
+            while (*q && ((unsigned char)*q & 0xc0) == 0x80)
+                q++;
+        }
+        r_textz(r, q);
+        r_sgr(r, REV);
+        r_text(r, " ", 1);
+        r_sgr(r, SGR0);
+        return;
+    }
+    while (cur + cl < l && ((unsigned char)q[cur + cl] & 0xc0) == 0x80)
+        cl++;
+    shown = room > 0 && l > room ? room : l;
+    while (shown < l && shown > cur + cl && ((unsigned char)q[shown] & 0xc0) == 0x80)
+        shown--;
+    r_text(r, q, cur);
+    r_sgr(r, REV);
+    r_text(r, q + cur, cl);
+    r_sgr(r, SGR0);
+    if (shown > cur + cl)
+        r_text(r, q + cur + cl, shown - cur - cl);
+}
+
 /* pi's OAuthSelectorComponent (modes/interactive/components/oauth-selector.ts:75-130, updateList 147-190) */
 static void pi_auth_pick_rows(cl_tui *t)
 {
@@ -1577,18 +1610,8 @@ static void pi_auth_pick_rows(cl_tui *t)
     r_text(&r, "> ", 2);
     {
         /* a query longer than the row shows its end, from a character boundary */
-        const char *shown = p->query;
-        long l = (long)strlen(shown), room = (long)t->cols - 4;
-        if (room > 0 && l > room) {
-            shown += l - room;
-            while (*shown && ((unsigned char)*shown & 0xc0) == 0x80)
-                shown++;
-        }
-        r_textz(&r, shown);
+        pick_query_text(&r, p, (long)t->cols - 4);
     }
-    r_sgr(&r, REV);
-    r_text(&r, " ", 1);
-    r_sgr(&r, SGR0);
     want(t, &r);
     pi_blank_row(t);
     start = p->sel - maxv / 2;
@@ -1667,19 +1690,9 @@ static void pi_frame_pick_rows(cl_tui *t)
     if (p->top && p->top[0])
         pi_frame_text_rows(t, p->top + (p->top[0] == '\002'));
     if (p->search) {
-        const char *shown = p->query;
-        long l = (long)strlen(shown), room = (long)t->cols - 3;
-        if (room > 0 && l > room) {
-            shown += l - room;
-            while (*shown && ((unsigned char)*shown & 0xc0) == 0x80)
-                shown++;
-        }
         r_init(&r, t->cols);
         r_text(&r, "> ", 2);
-        r_textz(&r, shown);
-        r_sgr(&r, REV);
-        r_text(&r, " ", 1);
-        r_sgr(&r, SGR0);
+        pick_query_text(&r, p, (long)t->cols - 3);
         want(t, &r);
         pi_blank_row(t);
     }

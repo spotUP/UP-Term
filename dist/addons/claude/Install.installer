@@ -89,7 +89,8 @@
 (set #done
     (cat #lead "Claude is installed. In a Shell or an UP-Term window:\n"
          "  Claude\n\n"
-         "With an API key: SetEnv SAVE ANTHROPIC_API_KEY <key>."
+         "With an API key: SetEnv ANTHROPIC_API_KEY <key>, then\n"
+         "Copy ENV:ANTHROPIC_API_KEY ENVARC: to keep it."
          (if (<> #remote "") (cat "\nClaude Code server: " #remote) "")
          "\nUninstall (beside Install) takes the programs out;\n"
          "your settings in ENVARC:Claude stay."))

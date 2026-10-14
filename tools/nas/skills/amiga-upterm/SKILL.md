@@ -35,7 +35,7 @@ commands, read and write files, list drawers, see the screen, click and type.
   shows them; `Assign NAME: path` makes one, `Assign NAME:` removes it.
 - Common commands: `List`, `Dir`, `Type`, `Copy FROM TO ALL CLONE`,
   `Delete ... ALL QUIET`, `MakeDir`, `Rename`, `Protect`, `Execute script`,
-  `Version name`, `Avail`, `Info`, `Search`, `Which`, `GetEnv`, `SetEnv [SAVE]`.
+  `Version name`, `Avail`, `Info`, `Search`, `Which`, `GetEnv`, `SetEnv name value` (global; keep it with `Copy ENV:name ENVARC:`; the SAVE keyword, `SetEnv SAVE name value`, is OS 3.2 and later only: on 3.1 it sets a variable called SAVE).
   `Status` lists processes; `Break N C` sends Ctrl-C to process N.
 - Return codes: 0 ok, 5 warn, 10 error, 20 failure. Scripts use `If WARN`,
   `If ERROR`, `FailAt`, `Skip`/`Lab`.
