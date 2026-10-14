@@ -1607,6 +1607,74 @@ static void pi_auth_pick_rows(cl_tui *t)
     pi_rule_row(t, PR_BORDER);
 }
 
+/* pi's selectors of a frame of their own (model-selector.ts, thinking-selector.ts, user-message-selector.ts): see tui_pick.top */
+static void pi_frame_text_rows(cl_tui *t, const char *text)
+{
+    const char *a = text;
+    row r;
+    for (;;) {
+        const char *nl = strchr(a, '\n');
+        long n = nl ? (long)(nl - a) : (long)strlen(a);
+        if (n == 1 && a[0] == '\001')
+            pi_rule_row(t, PR_BORDER);
+        else {
+            r_init(&r, t->cols);
+            r_ansi(&r, a, n);
+            r_sgr(&r, SGR0);
+            want(t, &r);
+        }
+        if (!nl)
+            break;
+        a = nl + 1;
+    }
+}
+
+static void pi_frame_pick_rows(cl_tui *t)
+{
+    const tui_pick *p = t->pick;
+    row r;
+    int i, start, end, maxv = p->maxrows > 0 ? p->maxrows : 10;
+    char line[600], tail[1200];
+    if (!p->top || p->top[0] != '\002')
+        pi_rule_row(t, PR_BORDER);
+    if (p->top && p->top[0])
+        pi_frame_text_rows(t, p->top + (p->top[0] == '\002'));
+    if (p->search) {
+        const char *shown = p->query;
+        long l = (long)strlen(shown), room = (long)t->cols - 3;
+        if (room > 0 && l > room) {
+            shown += l - room;
+            while (*shown && ((unsigned char)*shown & 0xc0) == 0x80)
+                shown++;
+        }
+        r_init(&r, t->cols);
+        r_text(&r, "> ", 2);
+        r_textz(&r, shown);
+        r_sgr(&r, REV);
+        r_text(&r, " ", 1);
+        r_sgr(&r, SGR0);
+        want(t, &r);
+        pi_blank_row(t);
+    }
+    start = p->sel - maxv / 2;
+    if (start > p->n - maxv)
+        start = p->n - maxv;
+    if (start < 0)
+        start = 0;
+    end = start + maxv < p->n ? start + maxv : p->n;
+    for (i = start; i < end; i++) {
+        line[0] = 0;
+        p->row(p->u, i, i == p->sel, line, sizeof(line));
+        pi_frame_text_rows(t, line);
+    }
+    if (p->tail) {
+        tail[0] = 0;
+        p->tail(p->u, tail, sizeof(tail));
+        pi_frame_text_rows(t, tail);
+    }
+    pi_rule_row(t, PR_BORDER);
+}
+
 static void pi_pick_rows(cl_tui *t)
 {
     const tui_pick *p = t->pick;
@@ -1619,6 +1687,10 @@ static void pi_pick_rows(cl_tui *t)
     }
     if (p->layout == TUI_PICK_AUTH) {
         pi_auth_pick_rows(t);
+        return;
+    }
+    if (p->layout == TUI_PICK_FRAME) {
+        pi_frame_pick_rows(t);
         return;
     }
     pi_blank_row(t);
@@ -4107,9 +4179,14 @@ int tui_pick_run(cl_tui *t, tui_pick *p)
         act = km_action(&t->km, ctx, 1, &k, now(t));
         if (act == KA_PENDING || act == KA_CHORD_MISS)
             continue;
-        if (p->key && p->key(p->u, &k, act))
+        if (p->key && p->key(p->u, &k, act)) {
+            if (p->done) {
+                res = p->n ? p->sel : -1;
+                break;
+            }
             continue;
-        if (p->layout == TUI_PICK_AUTH && k.k == K_CTRL && k.ch == 'c')
+        }
+        if ((p->layout == TUI_PICK_AUTH || p->layout == TUI_PICK_FRAME) && k.k == K_CTRL && k.ch == 'c')
             break;                  /* pi's tui.select.cancel: Esc or Ctrl+C */
         if (act == KA_SEL_NEXT || (act == KA_NONE && k.k == K_DOWN)) {
             if (p->n)
