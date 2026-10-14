@@ -679,8 +679,9 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
                 return (0 if pkg in self.installed else 5), ''
         return 0, ''
     def fake_long(self, script, timeout=1500):
-        kind, pkg = script.split('-', 1)
         self.log.append(script)
+        if '-' not in script: return 0, ''
+        kind, pkg = script.split('-', 1)
         (self.installed.discard if kind == 'rununinstall' else self.installed.add)(pkg)
         return 0, ''
 
@@ -700,12 +701,21 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
                         min(i for i, l in enumerate(self.log) if l.startswith('runinstall')))
         self.assertFalse(ir.PREINSTALLED.exists())
 
+    def test_the_rigs_own_up_term_assign_is_restored_before_the_add_ons_are_installed(self):
+        import rig
+        ir.case_table = lambda: {'claude': (['claude'], [], self.own(lambda ck: None))}
+        ir.cli([])
+        self.assertIn('restoreassign', self.log)
+        self.assertLess(self.log.index('restoreassign'), self.log.index('runinstall-claude'))
+        self.assertEqual((self.tmp / 'restoreassign').read_text(), rig.UPTERM_ASSIGN + '\n')
+        self.assertIn('Assign >NIL: UP-Term: VTC:upterm', rig.GO, 'GO uses the same lines')
+
     def test_an_add_on_the_rig_does_not_hold_is_not_installed_afterwards(self):
         self.installed = {'pi'}
         ir.case_table = lambda: {'claude': (['claude'], [], self.own(lambda ck: None))}
         ir.cli([])
         self.assertEqual(self.installed, {'pi'})
-        self.assertEqual(self.log, ['rununinstall-pi', 'runinstall-pi'])
+        self.assertEqual(self.log, ['rununinstall-pi', 'restoreassign', 'runinstall-pi'])
 
     def test_the_add_ons_are_put_back_when_a_case_aborts(self):
         def case(ck): raise SystemExit('the agent is gone')

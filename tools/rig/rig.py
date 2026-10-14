@@ -190,6 +190,12 @@ def kit_shadow_lines(upterm):
     return "\n".join(out)
 
 
+# the boot's own UP-Term: assign (a kit's wins); install_rig.py runs it again when it has put the owner's add-ons back
+UPTERM_ASSIGN = """C:Assign >NIL: UP-Term: EXISTS
+If WARN
+  C:Assign >NIL: UP-Term: VTC:upterm
+EndIf"""
+
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
 %(shadows)s
@@ -233,10 +239,7 @@ EndIf
 ; S:User-Startup either ran already (the assign exists) or runs later and
 ; replaces this one. ENVARC:up-term/Dir is no sign of a kit: an installer_rig
 ; run can leave it naming a drawer it deleted (rig 1, 2026-10-13).
-C:Assign >NIL: UP-Term: EXISTS
-If WARN
-  C:Assign >NIL: UP-Term: VTC:upterm
-EndIf
+%(upterm_assign)s
 ; no global TERM: a kit sets none either (vsh sets it in UP-Term windows, and a
 ; ROM CON: window with TERM=vtcon would be sent xterm sequences)
 C:SetEnv TERMINFO /VTC/terminfo
@@ -269,7 +272,7 @@ Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent PORT=%(port)d TOKEN=rigtoken
 Echo >>BOOTX:boot.log "amiagent started"
-""" % {"port": paths.AGENT_PORT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.AGENT_PORT, "upterm_assign": UPTERM_ASSIGN, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
