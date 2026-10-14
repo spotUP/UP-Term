@@ -450,7 +450,7 @@ def bash_fingerprint(area):
 
 
 def run_watched(pkg, name, limit=90):
-    """One probe in the background (Run), so a probe that never ends cannot wedge amiagent: the host
+    """One probe in the background (Run), so a probe that never ends cannot wedge wasabid: the host
     waits for its done-file up to limit seconds. A probe that did not end: 'HANG', and the rig is
     rebooted (a vsh blocked in a PIPE: read ignores Ctrl-C) so the next probe has a clean machine."""
     done = VTC / "out" / pkg / (name + ".done")

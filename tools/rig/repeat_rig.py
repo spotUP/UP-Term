@@ -55,7 +55,7 @@ def one_pass(label, limit):
     try:
         U.run("Run >NIL: VTC:vsh VTC:userland/repeat/%s.run" % label, 20)
     except OSError:
-        return "agent"   # amiagent itself no longer answers
+        return "agent"   # wasabid itself no longer answers
     end = time.time() + limit
     while time.time() < end:
         if done.exists():
@@ -103,7 +103,7 @@ def main():
             try:
                 dump = U.run("VTC:taskdump", 30)[1]
             except OSError:
-                dump = "amiagent does not answer (%s)\n" % how
+                dump = "wasabid does not answer (%s)\n" % how
             for code in (0x0D,):   # UITREE: the windows open now (a DOS requester a process waits in)
                 try:
                     dump += "\n" + U.ami.req(code, timeout=30).decode("latin-1")

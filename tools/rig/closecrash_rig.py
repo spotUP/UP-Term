@@ -2,7 +2,7 @@
 """closecrash_rig.py [rounds] -- the XCON: close-path crash (handoff
 2026-10-02): an XCON: window is resized with its zoom gadget (that is what
 installs the SIGWINCH input handler close_window takes out again), then
-closed with its close gadget; repeated. PASS: amiagent answers after every
+closed with its close gadget; repeated. PASS: wasabid answers after every
 round and no window is left. The rig must be up with the current handler
 installed (rig.py install)."""
 import os, struct, sys, time
@@ -54,7 +54,7 @@ def main():
             alive = False
         ok = gone and alive
         bad += not ok
-        print('%s round %d: closed %s, amiagent %s' % ('ok' if ok else 'FAIL', i, gone, 'alive' if alive else 'DEAD'),
+        print('%s round %d: closed %s, wasabid %s' % ('ok' if ok else 'FAIL', i, gone, 'alive' if alive else 'DEAD'),
               flush=True)
         if not alive:
             break

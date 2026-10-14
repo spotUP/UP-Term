@@ -53,7 +53,7 @@ def k(code, q=0):
     time.sleep(0.7)
 
 
-# The Complete menu, on the Workbench screen's bar (topaz 8). amiagent's MENUS
+# The Complete menu, on the Workbench screen's bar (topaz 8). wasabi's MENUS
 # lists the strip (titles and items in order, separators as empty disabled
 # rows) but no boxes, so the places are derived from that live listing, never
 # hardcoded: titles sit side by side, 8 px per character, so the pointer x is
