@@ -1,0 +1,4 @@
+; Python 3 in this UP-Term window (double-click the icon): the interactive prompt. Ctrl-D
+; ends it and closes the window. vsh's path names SYS:Python3/bin (dist/vshrc).
+Stack 32768
+UP-Term:bin/vsh -c python3

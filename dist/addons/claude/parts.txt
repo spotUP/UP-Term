@@ -13,3 +13,4 @@ record          Files/VERSIONS
 claude          Files/Claude
 claude          Files/ClaudeCode
 claude          Files/uptelnet
+launch          Files/launch

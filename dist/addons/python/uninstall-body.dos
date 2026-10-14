@@ -72,3 +72,8 @@ If EXISTS ENVARC:uppkg/ixemul/installed-by-Python3
 Else
   Delete >NIL: ENVARC:uppkg/ixemul/needs ENVARC:uppkg/ixemul QUIET
 EndIf
+; the quick-launch icon in UP-Term: (only when there is an UP-Term: to look in)
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  Delete >NIL: "UP-Term:Python 3" "UP-Term:Python 3.info" QUIET
+EndIf

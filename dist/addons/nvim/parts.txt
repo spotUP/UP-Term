@@ -9,3 +9,4 @@
 -               Files/upupdate
 record          Files/VERSIONS
 copy-nvim       Files/nvim              nvim
+launch          Files/launch

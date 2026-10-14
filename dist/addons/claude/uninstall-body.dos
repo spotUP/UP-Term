@@ -6,3 +6,8 @@ Assign >NIL: UP-Term: EXISTS
 If WARN
   Delete >NIL: C:uptelnet QUIET
 EndIf
+; the quick-launch icons in UP-Term: (only when there is an UP-Term: to look in)
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  Delete >NIL: UP-Term:Claude UP-Term:Claude.info UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET
+EndIf

@@ -68,5 +68,17 @@ EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
+Lab launch
+; Quick-launch icons: double-click one in UP-Term: to open an UP-Term window running the app
+; (IconX opens the XCON: window; it closes when the app ends).
+; Stand-alone archive: with no UP-Term: assign there is no UP-Term window and no UP-Term: drawer to
+; put them in (XCON: is the UP-Term handler), so nothing is installed and nothing named UP-Term: is touched.
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  Copy "launch/Python 3" "launch/Python 3.info" UP-Term: CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
 ; @include dist/common/record.dos
 Echo "Python3 installed: Python3:bin/python3 (in an UP-Term window: python3)."

@@ -973,22 +973,33 @@ dist-base: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUI
 ADDON_STAGE = rm -rf $(BUILD)/dist/$(call pkg,$(1),archive) && mkdir -p $(BUILD)/dist/$(call pkg,$(1),archive)/Files \
 	&& cp $(BUILD)/amiga/upupdate $(BUILD)/dist/$(call pkg,$(1),archive)/Files/
 pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
+# W-I1: a quick-launch icon of an add-on, staged in Files/launch (the add-on's install.dos copies it into
+# UP-Term:, part launch): an IconX script (dist/addons/<id>/launch/<name>) and its icon, which opens an UP-Term
+# window (XCON:, close gadget, closed when the app ends; no DELAY tooltype: IconX's own few seconds keep an error
+# readable, and DELAY=0 kept the window open for ever, rig 3 2026-10-14). $(1) kit drawer, $(2) script, $(3) name, $(4) size.
+LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
+	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
+	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
 .PHONY: dist-claude dist-pi dist-nvim dist-python
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet dist/ClaudeCode $(KIT_claude)/Files/
 	cp dist/ClaudeCode $(KIT_claude)/ClaudeCode
+	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
+	$(call LAUNCHER,$(KIT_claude),dist/ClaudeCode,ClaudeCode,800/560)
 	python3 tools/mkicon.py $(KIT_claude)/ClaudeCode.info --tool C:IconX \
-	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE" --tooltype DELAY=0
+	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE"
 	python3 tools/mkkit.py claude
 dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,pi)
 	cp $(AMIGA_PI_BIN) $(KIT_pi)/Files/amiga-pi
+	$(call LAUNCHER,$(KIT_pi),dist/addons/pi/launch/amiga-pi,amiga-pi,800/560)
 	python3 tools/mkkit.py pi
 dist-nvim: $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,nvim)
 	cp -R $(NVIM_DIST) $(KIT_nvim)/Files/nvim
 	cp dist/addons/nvim/sysinit.vim $(KIT_nvim)/Files/nvim/share/nvim/sysinit.vim
+	$(call LAUNCHER,$(KIT_nvim),dist/addons/nvim/launch/Neovim,Neovim,800/560)
 	python3 tools/mkkit.py nvim
 dist-python: $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,python)
@@ -996,6 +1007,7 @@ dist-python: $(BUILD)/amiga/upupdate
 	mkdir -p $(KIT_python)/Files/libs
 	cp $(IXEMUL_LIB) $(KIT_python)/Files/libs/ixemul.library
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
+	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
 
 # build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
@@ -1016,6 +1028,7 @@ dist-check:
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
+	python3 tests/test_dist_launch.py
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py
 	python3 tests/test_rig_verdicts.py

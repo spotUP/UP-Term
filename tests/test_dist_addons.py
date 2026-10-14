@@ -221,6 +221,89 @@ class EveryAddOn(unittest.TestCase):
         self.assertEqual(names, want)
 
 
+# W-I1: the quick-launch icons. id -> (launcher names, the app command vsh -c runs, window size)
+LAUNCHERS = {'pi': (['amiga-pi'], 'C:amiga-pi', '800/560'), 'nvim': (['Neovim'], 'nvim', '800/560'),
+             'python': (['Python 3'], 'python3', '640/400'), 'claude': (['Claude', 'ClaudeCode'], 'C:Claude', '800/560')}
+
+
+class QuickLaunchIcons(unittest.TestCase):
+    """W-I1 (owner 2026-10-14): each add-on installs an icon into UP-Term: that opens an UP-Term window running the
+    app; its Uninstall removes it. A stand-alone add-on touches UP-Term: only behind a check of the assign."""
+
+    def test_every_add_on_has_a_launch_part_before_record_that_copies_the_scripts_and_infos(self):
+        for pid, (names, _, _) in LAUNCHERS.items():
+            s = scripts(pid)
+            parts = [n for n, _ in parts_of(s['dos'])]
+            self.assertEqual(parts[-2:], ['launch', 'record'], pid)
+            body = dict(parts_of(s['dos']))['launch']
+            want = 'Copy %s UP-Term: CLONE QUIET' % ' '.join('"launch/%s" "launch/%s.info"' % (n, n) for n in names)
+            self.assertIn(want, body, pid)
+            self.assertIn('(set #step "launch"', s['installer'], pid)
+
+    def test_a_stand_alone_add_on_copies_only_when_the_up_term_assign_exists_nvim_needs_the_base_anyway(self):
+        rows = {r['id']: r for r in ADDONS}
+        for pid in LAUNCHERS:
+            body = dict(parts_of(scripts(pid)['dos']))['launch']
+            guard = 'Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  Copy '
+            if rows[pid]['needs-base'] == '-':
+                self.assertIn(guard, body, pid)
+            else:
+                self.assertNotIn('Assign >NIL', body, pid)       # the check part already stopped without the base
+
+    def test_uninstall_deletes_each_script_and_its_info_from_up_term_and_guards_it_when_stand_alone(self):
+        rows = {r['id']: r for r in ADDONS}
+        for pid, (names, _, _) in LAUNCHERS.items():
+            body = (ROOT / 'dist/addons' / pid / 'uninstall-body.dos').read_text()
+            for n in names:
+                q = '"UP-Term:%s" "UP-Term:%s.info"' % (n, n) if ' ' in n else 'UP-Term:%s UP-Term:%s.info' % (n, n)
+                self.assertIn(q, body, pid)
+            if rows[pid]['needs-base'] == '-':
+                self.assertLess(body.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN'), body.index('UP-Term:' + names[0]), pid)
+
+    def test_an_icon_with_its_own_window_tooltype_has_that_one_window_tooltype_only(self):
+        """Two WINDOW= tooltypes (the default and the launcher's) opened the default 640x400 "UP-Term" window
+        (rig 3, 2026-10-14: ClaudeCode's icon had it from the start)."""
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            out = pathlib.Path(d) / 'x.info'
+            subprocess.run([sys.executable, str(ROOT / 'tools/mkicon.py'), str(out), '--tool', 'C:IconX',
+                            '--tooltype', 'WINDOW=XCON:0/12/800/560/Neovim/CLOSE', '--tooltype', 'DELAY=0'], check=True)
+            data = out.read_bytes()
+            self.assertEqual(data.count(b'WINDOW='), 1)
+            self.assertIn(b'WINDOW=XCON:0/12/800/560/Neovim/CLOSE', data)
+            base = pathlib.Path(d) / 'y.info'
+            subprocess.run([sys.executable, str(ROOT / 'tools/mkicon.py'), str(base)], check=True)
+            self.assertIn(b'WINDOW=XCON:0/20/640/400/UP-Term/CLOSE', base.read_bytes())    # the UP-Term icon keeps its default
+
+    def test_parts_txt_maps_the_launch_drawer_to_the_launch_part(self):
+        for pid in LAUNCHERS:
+            parts = mm.read_parts((ROOT / 'dist/addons' / pid / 'parts.txt').read_text())
+            self.assertIn(('launch', 'Files/launch', None), parts, pid)
+
+    def test_each_launcher_runs_the_app_through_vsh_and_the_makefile_gives_it_an_xcon_window_icon(self):
+        mk = (ROOT / 'Makefile').read_text()
+        self.assertIn('--tool C:IconX', mk.split('LAUNCHER =')[1].split('\n\n')[0])
+        self.assertIn('"WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"', mk)
+        self.assertNotIn('DELAY=', re.sub(r'(?m)^#.*$', '', mk), 'IconX DELAY=0 never closes the window')
+        for pid, (names, app, size) in LAUNCHERS.items():
+            kit = re.search(r'(?ms)^dist-%s:.*?^(?:dist-|# build)' % ('claude' if pid == 'claude' else pid), mk).group(0)
+            for n in names:
+                self.assertRegex(kit, r'call LAUNCHER,[^,]+,[^,]*%s,%s,%s\)' % (re.escape(n), re.escape(n), re.escape(size)), (pid, n))
+            script = ROOT / 'dist/addons' / pid / 'launch' / names[0]
+            if pid != 'claude' or names[0] == 'Claude':
+                text = [l for l in script.read_text().splitlines() if l and not l.startswith(';')]
+                self.assertEqual(text[-1], 'UP-Term:bin/vsh -c %s' % app, pid)
+                # the current directory is UP-Term:, which holds a script named like the app: C: by its path
+                self.assertTrue(app in ('nvim', 'python3') or app.startswith('C:'), pid)
+                self.assertIn('Stack 32768', text, pid)
+        # ClaudeCode's launcher is the C:ClaudeCode script itself (uptelnet to the NAS); run from UP-Term: it
+        # must name C:Claude by its path (UP-Term:Claude is the Claude launcher script)
+        cc = (ROOT / 'dist/ClaudeCode').read_text()
+        self.assertIn('C:Claude REMOTE-ADDRESS', cc)
+        self.assertNotRegex(cc, r'(?m)^\s*Claude ')
+        self.assertIn('call LAUNCHER,$(KIT_claude),dist/ClaudeCode,ClaudeCode,', mk)
+
+
 class PythonUninstall(unittest.TestCase):
     S = scripts('python')
 
@@ -284,7 +367,7 @@ class PythonUninstall(unittest.TestCase):
     def test_the_installer_runs_ixemul_before_the_copy_and_the_block(self):
         inst = self.S['installer']
         steps = re.findall(r'\(set #step "([a-z-]+)"', inst)
-        self.assertEqual(steps, ['ixemul', 'copy-python', 'python', 'record'])
+        self.assertEqual(steps, ['ixemul', 'copy-python', 'python', 'launch', 'record'])
 
 
 class ClaudeInstall(unittest.TestCase):

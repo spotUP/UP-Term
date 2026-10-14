@@ -21,7 +21,7 @@ If "{HOST}" EQ ""
   ; ENV:ClaudeCodeRemote, which $ClaudeCodeRemote expands to; it needs a
   ; 16000 byte stack
   Stack 32768
-  Claude REMOTE-ADDRESS >ENV:ClaudeCodeRemote
+  C:Claude REMOTE-ADDRESS >ENV:ClaudeCodeRemote
   If NOT WARN
     uptelnet $ClaudeCodeRemote
     Delete >NIL: ENV:ClaudeCodeRemote QUIET

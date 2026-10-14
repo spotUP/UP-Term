@@ -1,2 +1,7 @@
 ; the settings in ENVARC:amiga-pi are yours and stay
 Delete >NIL: C:amiga-pi QUIET
+; the quick-launch icon in UP-Term: (only when there is an UP-Term: to look in)
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  Delete >NIL: UP-Term:amiga-pi UP-Term:amiga-pi.info QUIET
+EndIf
