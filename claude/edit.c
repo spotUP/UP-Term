@@ -199,31 +199,37 @@ static int pi_wordch(int c)
 
 static int pi_blank(int c)
 {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+    return c == ' ' || c == '\t' || c == '\r' || c == '\v' || c == '\f';
 }
 
+/* pi's Editor works per logical line (editor.ts moveWordBackwards / deleteWordBackwards): a newline is never inside a word or blank run;
+ * at column 0 the move goes to the end of the previous line and the delete removes the newline */
 static long pi_word_back(const cl_edit *e, long i)
 {
+    if (i > 0 && e->b[i - 1] == '\n')
+        return i - 1;
     while (i > 0 && pi_blank((unsigned char)e->b[i - 1]))
         i--;
     if (i > 0 && pi_wordch((unsigned char)e->b[i - 1]))
         while (i > 0 && pi_wordch((unsigned char)e->b[i - 1]))
             i--;
     else
-        while (i > 0 && !pi_wordch((unsigned char)e->b[i - 1]) && !pi_blank((unsigned char)e->b[i - 1]))
+        while (i > 0 && !pi_wordch((unsigned char)e->b[i - 1]) && e->b[i - 1] != '\n' && !pi_blank((unsigned char)e->b[i - 1]))
             i--;
     return i;
 }
 
 static long pi_word_fwd(const cl_edit *e, long i)
 {
+    if (i < e->n && e->b[i] == '\n')
+        return i + 1;
     while (i < e->n && pi_blank((unsigned char)e->b[i]))
         i++;
     if (i < e->n && pi_wordch((unsigned char)e->b[i]))
         while (i < e->n && pi_wordch((unsigned char)e->b[i]))
             i++;
     else
-        while (i < e->n && !pi_wordch((unsigned char)e->b[i]) && !pi_blank((unsigned char)e->b[i]))
+        while (i < e->n && !pi_wordch((unsigned char)e->b[i]) && e->b[i] != '\n' && !pi_blank((unsigned char)e->b[i]))
             i++;
     return i;
 }

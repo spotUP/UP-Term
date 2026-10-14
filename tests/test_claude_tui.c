@@ -121,6 +121,64 @@ static void type(cl_edit *e, const char *bytes)
     keys_free(&ks);
 }
 
+/* Q3-26: pi's Editor works per logical line (editor.ts moveWordBackwards 1973, moveWordForwards 2168, deleteWordBackwards 1692, deleteWordForward 1737):
+ * a word move stops at the line's ends and crosses a newline only as a step of its own; Ctrl+W / Alt+D at a line's end join the lines.
+ * C:Claude (piword off) keeps its whole-buffer word rule. */
+static void piword_lines(void)
+{
+    cl_edit e;
+    ed_init(&e);
+    e.piword = 1;
+    ed_set(&e, "ab cd\nef.gh\nij");
+    e.cur = 6;                                       /* start of line 2 */
+    type(&e, "\033b");
+    CHECK_INT((int)e.cur, 5);                        /* Alt+B at column 0: the end of the line above, not the word start */
+    type(&e, "\033f");
+    CHECK_INT((int)e.cur, 6);                        /* Alt+F at a line's end: the start of the next line */
+    type(&e, "\033[1;5D\033[1;5C");
+    CHECK_INT((int)e.cur, 6);                        /* Ctrl+Left / Ctrl+Right the same */
+    type(&e, "\033f");
+    CHECK_INT((int)e.cur, 8);                        /* inside the line: the word "ef" */
+    e.cur = 12;                                      /* start of line 3 */
+    type(&e, "\033[1;3D");
+    CHECK_INT((int)e.cur, 11);                       /* Alt+Left at column 0 */
+    e.cur = 13;                                      /* "i|j": Alt+B stops at the line's start, never crossing it */
+    type(&e, "\033b");
+    CHECK_INT((int)e.cur, 12);
+    e.cur = 6;
+    type(&e, "\027");
+    CHECK_STR(e.b, "ab cdef.gh\nij");                /* Ctrl+W at column 0 deletes the newline only */
+    CHECK_INT((int)e.cur, 5);
+    type(&e, "\033d");
+    CHECK_STR(e.b, "ab cd.gh\nij");                  /* Alt+D: the word "ef" (a mid-line delete), not the newline */
+    e.cur = 8;
+    type(&e, "\033d");
+    CHECK_STR(e.b, "ab cd.ghij");                    /* Alt+D at a line's end joins the next line */
+    e.cur = 10;
+    type(&e, "\033d");
+    CHECK_STR(e.b, "ab cd.ghij");                    /* ... and at the buffer's end does nothing */
+    ed_set(&e, "ab\n  cd");
+    e.cur = 7;
+    type(&e, "\033\177");
+    CHECK_STR(e.b, "ab\n  ");                        /* Alt+Backspace: the word cd, the blanks before it stay */
+    e.cur = 3;
+    type(&e, "\033\177");
+    CHECK_STR(e.b, "ab  ");                          /* ... at column 0 only the newline goes */
+    ed_set(&e, "ab\n");
+    e.cur = 3;
+    type(&e, "\033[3;3~");
+    CHECK_STR(e.b, "ab\n");                          /* Alt+Delete at the buffer's end */
+    e.cur = 2;
+    type(&e, "\033[3;3~");
+    CHECK_STR(e.b, "ab");                            /* ... at the end of a line, the newline */
+    e.piword = 0;                                    /* C:Claude: unchanged, the move crosses lines */
+    ed_set(&e, "ab cd\nef");
+    e.cur = 6;
+    type(&e, "\033b");
+    CHECK_INT((int)e.cur, 3);
+    ed_free(&e);
+}
+
 static void editor(void)
 {
     cl_edit e;
@@ -2528,6 +2586,7 @@ void suite_claude_tui(void)
     keys_rest();
     pick_search_line_keys();
     pick_search_line_edit();
+    piword_lines();
     pick_search_line_undo_binding();
     transcript_view();
     transcript_resize();
