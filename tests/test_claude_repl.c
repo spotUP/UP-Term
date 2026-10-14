@@ -2370,7 +2370,7 @@ static void test_setup_reach(void)
     CHECK_INT(sb.opens, 1);                                         /* the sentinel: the connect test ran */
     CHECK_STR(open_host, "192.0.2.10");
     CHECK_INT(open_port, 2323);
-    CHECK(strstr(cn.screen.p, "github.com/thomas-luebker") == 0);     /* n: the optional page skipped */
+    CHECK(strstr(cn.screen.p, "github.com/creep-ltx/wasabi") == 0);     /* n: the optional page skipped */
     CHECK(strstr(cn.screen.p, "Setup, step 4 of 4: done.") != 0);
     CHECK(home_has("remote") && home_has("setup-done"));
     strcpy(p, dir);
@@ -2422,7 +2422,9 @@ static void test_setup_steps(void)
     CHECK_INT(home_has("remote"), 1);
     CHECK_INT(home_has("setup-done"), 0);
     repl_line(&r, "y");
-    CHECK(strstr(cn.screen.p, "github.com/thomas-luebker/amimcp") != 0);
+    CHECK(strstr(cn.screen.p, "github.com/creep-ltx/wasabi") != 0);
+    CHECK(strstr(cn.screen.p, "claude mcp add wasabi -- python3 wasabi_mcp.py") != 0);
+    CHECK(strstr(cn.screen.p, "amiagent") == 0 && strstr(cn.screen.p, "amimcp") == 0);
     CHECK(strstr(cn.screen.p, "never") != 0 && strstr(cn.screen.p, "forward the port") != 0);
     CHECK_INT(r.wiz.step, SETUP_OFF);
     CHECK_INT(home_has("setup-done"), 1);
@@ -2539,7 +2541,7 @@ static void test_setup_menu(void)
     CHECK_INT(cs.next, 13);
     CHECK_INT(home_has("remote"), 1);
     CHECK_INT(home_has("setup-done"), 1);
-    CHECK(strstr(cn.screen.p, "github.com/thomas-luebker") == 0);
+    CHECK(strstr(cn.screen.p, "github.com/creep-ltx/wasabi") == 0);
     setup_done_mark(0);
 
     open_fail = 0;
@@ -2547,7 +2549,7 @@ static void test_setup_menu(void)
     repl_line(&r, "nas.local 2399");
     CHECK_INT(r.wiz.step, SETUP_OFF);                       /* answers; Show */
     CHECK_INT(cs.next, 15);
-    CHECK(strstr(cn.screen.p, "github.com/thomas-luebker") != 0 || cs_find("amimcp") >= 0);
+    CHECK(strstr(cn.screen.p, "github.com/creep-ltx/wasabi") != 0 || cs_find("wasabi") >= 0);
     setup_done_mark(0);
 
     setup_begin(&r);

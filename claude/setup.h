@@ -10,7 +10,7 @@
  *   1 mode: Claude Code on another computer / an API key here / later
  *   2 checks: TCP/IP stack, AmiSSL 5 (key), C:uptelnet (remote), the
  *     computer reached (named errors) or the key's test request
- *   3 optional: amimcp / amiagent
+ *   3 optional: wasabi
  *   4 the settings written, a summary, ENVARC:Claude/setup-done
  *
  * The key goes through /login's own path (slash.c) and is never echoed or

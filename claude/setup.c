@@ -96,7 +96,7 @@ static const char *const keep_opt[] = {
     "Back to the first question"
 };
 static const char *const info_opt[] = {
-    "Show the page about amimcp and amiagent",
+    "Show the page about wasabi",
     "Skip it"
 };
 
@@ -193,7 +193,7 @@ static void page_info(cl_repl *r)
     ui_line(&r->ui, "");
     ui_line(&r->ui, "Setup, step 3 of 4 (optional): let Claude control this Amiga.");
     r->wiz.step = SETUP_INFO;
-    c = ask(r, "Show the page about amimcp and amiagent?", info_opt, 2, "Type 1 or 2 (y shows it, n skips it).");
+    c = ask(r, "Show the page about wasabi?", info_opt, 2, "Type 1 or 2 (y shows it, n skips it).");
     if (c >= 0)
         info_chosen(r, c == 0);
     else if (c == -1)
@@ -202,12 +202,14 @@ static void page_info(cl_repl *r)
 
 static void show_info(cl_repl *r)
 {
-    ui_line(&r->ui, "amimcp and amiagent (github.com/thomas-luebker/amimcp) let Claude Code on another");
-    ui_line(&r->ui, "computer read and drive this Amiga: amiagent runs here and waits for connections, amimcp");
-    ui_line(&r->ui, "is the MCP server on that computer. They share a token: set it on both sides, and anything");
-    ui_line(&r->ui, "that connects without it is refused. Use them on your local network only, and never");
-    ui_line(&r->ui, "forward the port to the internet: whoever holds the token controls this machine.");
-    ui_line(&r->ui, "The UP-Term kit's Install can install amiagent (a tick box; it never starts it).");
+    ui_line(&r->ui, "wasabi (github.com/creep-ltx/wasabi, MIT licence) lets Claude Code on another computer");
+    ui_line(&r->ui, "read and drive this Amiga: wasabid runs here and waits for connections, and wasabi_mcp.py");
+    ui_line(&r->ui, "is the MCP server on that computer. They share a key: set it on both sides (the kit's");
+    ui_line(&r->ui, "Install makes one in ENVARC:wasabi.key), and anything that connects without it is refused.");
+    ui_line(&r->ui, "On the other computer: WASABI_KEY=yourkey claude mcp add wasabi -- python3 wasabi_mcp.py");
+    ui_line(&r->ui, "Use it on your local network only, and never forward the port to the internet: whoever");
+    ui_line(&r->ui, "holds the key controls this machine.");
+    ui_line(&r->ui, "The UP-Term kit's Install can install wasabid (a tick box).");
 }
 
 static void finish(cl_repl *r)
