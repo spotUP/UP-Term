@@ -26,17 +26,23 @@ Decisions:
 
 ## Checklist
 
-- [ ] **WM1** Pin wasabi 0.9b2 (ee23c09, 2026-10-14 21:29, owner: 'there is a new version
+- [x] **WM1** Pin wasabi 0.9b2 (ee23c09, 2026-10-14 21:29, owner: 'there is a new version
   released'; 'builds without the CyberGraphX developer headers'): Makefile target from
   feature/wasabi-0.8 updated to ee23c09; drop tools/rig/wasabi_shim if the build no longer needs
   it; 68020 build if the kit's floor wants it.
-- [ ] **WM2** Rig boot (tools/rig GO/startup): start wasabid (rig key, port per rig as
+  DONE (feature/wasabi-rig 82d1e58): pinned ee23c09, shim deleted, `make wasabi` and `wasabid.020` build (102 KB each) without it.
+- [x] **WM2** Rig boot (tools/rig GO/startup): start wasabid (rig key, port per rig as
   tools/rig/wasabi.py does) instead of amiagent; `rig.py start` waits for wasabi's ping.
-- [ ] **WM3** `ami.py` over wasabid: every function the importers call (count from the
+  DONE: GO starts `BOOTX:wasabid <port> name rigN` after `SetEnv wasabi.key`; paths.wasabi_port/WASABI_KEY are the one source;
+  agentpatch.py and its test deleted; rig 2 `start --max` came up with no amiagent (Status FULL lists wasabid only).
+- [x] **WM3** `ami.py` over wasabid: every function the importers call (count from the
   imports: key 84, window 51, exec 48, script 25, uitree 22, get 21, ...): same signature,
   same return shapes; gap calls fail with a named error. Host test with wasabi's mock daemon
   (wasabi tests/ has one) for each function; ONE rig reachability run of the existing rig
   suites that use the most calls (pick 3, say which).
+  DONE: ami.py = translator over wasabi's client (Conn, do_run, read_ui, grab_pixels, ...); tools/test_rig_ami.py (mock daemon)
+  covers every function; rig 2: prefs_rig (42 ami calls), snip_rig (13), pf1_rig (12) pass; tabs_rig (15) and menus_rig (11) see
+  Gaps. Named gaps: BREAK, POINTER. Mapped: raw keys, region grab, gadget by id, tick-timed script (host-timed waits).
 - [ ] **WM4** Mac MCP: `.mcp.json` server `amiga` -> wasabi_mcp.py through a wrapper with the
   same rig/env selection as tools/rig/amimcp.py (paths.py port rule); amimcp target, wrapper
   and test replaced. Reachability: stdio initialize, tools/list, one run on rig 2.

@@ -1,6 +1,6 @@
 # The test rig
 
-An emulated Amiga (FS-UAE) that the host drives through amiagent. Every
+An emulated Amiga (FS-UAE) that the host drives through wasabid. Every
 `*_rig.py` here boots nothing itself: it needs the rig up (`rig.py start`) and
 then types into it, reads its files and screen, and prints PASS or FAIL.
 No real Amiga is needed to develop UP-Term; the rig is how the Amiga code is
@@ -20,7 +20,7 @@ Nothing below is in any repository (all of it is licensed material or large);
 | Kickstart 3.1 ROM (40.068, A1200) | `$UPTERM_ROM`, else `$UPTERM_ROOT/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200` (another repo of the owner's, not in `repos.lock`); `--kick <file>` for one boot | Your own legal copy (Amiga Forever, or dumped from your A1200). Set `UPTERM_ROM=<file>`. |
 | System disk | `~/Downloads/nyhd2.hdf`, copied once to `build/rig/sys.hdf` (1.5 GB) | A hard-disk image of a working Workbench 3.x install (the owner's own; there is no public source). Set `UPTERM_SYSTEM_HDF=<image>` (default `~/Downloads/nyhd2.hdf`). What it must hold, not verified for a smaller image: C:Assign, S:Startup-Sequence, Libs/Devs/Fonts, the Classes and MUI drawers the rig adds to `LIBS:`. |
 | AmigaOS 3.2 tree (only for `--os32`) | `~/Downloads/AmigaOS-3.2-full (1)` (a host drawer, copied to `build/rig/os32`), ROM `~/Desktop/KICK_323.rom` (3.2.3) | An installed AmigaOS 3.2 tree and its Kickstart 3.2.3 ROM, from Hyperion (licensed). Set `UPTERM_OS32_TREE=<drawer>` and `UPTERM_OS32_ROM=<rom>` (defaults as shown). Also needs `media/AmigaOS3.2CD/ADF/Extras3.2.adf` inside the tree and `xdftool` (`pip install amitools`) to make SYS:L once. |
-| amiagent | `build/rig/boot/amiagent`, copied from the kit's vendored 68020 build on every `setup`/`start` | `dist/net/amiagent-0.13.2/amiagent.020` (Aminet `comm/net/amiagent-0.13.2`, the agent of https://github.com/thomas-luebker/amimcp; sha256s in its `SOURCE.txt`), the same file the kit's Install offers. Nothing to copy by hand. 0.13.2 sets `pr_WindowPtr` to -1: a command naming an unmounted volume fails at once instead of putting up a requester. `--stock` runs a copy (`boot/amiagent.stock`) with the command stack 16384 instead of 262144; `tools/rig/agentpatch.py` finds the two places by the NP_StackSize tag (offsets 0x744 and 0x13e88) and refuses any build but that sha256. |
+| wasabid | `build/rig/boot/wasabid`, copied from `build/wasabi/wasabid` (`make wasabi`, pinned) on every `setup`/`start` | https://github.com/creep-ltx/wasabi (MIT). The rig key is `rigwasabi`, set in `go` with `SetEnv wasabi.key`; it listens on 1234 + N - 1 (`paths.wasabi_port`). `--stock` no longer changes the daemon. |
 | ncurses 5.5, less, nano, BitchX (what the userland and tmux/screen rigs and the tmux and screen builds use) | `build/rig/vtc/pkgs/ncurses-5.5-1-p-bin-m68k` and siblings | Aminet `dev/gg/ncurses-5.5-1-bin-m68k` (Geek Gadgets) unpacked there. The `-p-` in the directory name is the owner's; whether it marks a modified unpack is not verified. tmux-amiga and screen-amiga read the same directory (`NCURSES=`), so build the rig tree before them. |
 | Python 3.14 | the host | `python3 --version` must be 3.14 or newer (the upterm doctor checks). The rig scripts use the standard library plus Pillow (`import PIL`, for screenshots: `python3 -m pip install pillow`; found by grepping the imports, not run on a clean machine). |
 
@@ -28,12 +28,12 @@ Nothing below is in any repository (all of it is licensed material or large);
 
     export UPTERM_ROM=<path to your Kickstart 3.1 A1200 ROM>   # once per shell
     python3 tools/rig/rig.py setup          # copies the system disk once, writes build/rig/vtcon-rig.fs-uae and the boot drawer
-    python3 tools/rig/rig.py start --max    # boots it in the background, waits for amiagent (two retries)
-    python3 tools/rig/rig.py status         # is amiagent answering on 127.0.0.1:7846
+    python3 tools/rig/rig.py start --max    # boots it in the background, waits for wasabid (two retries)
+    python3 tools/rig/rig.py status         # is wasabid answering on 127.0.0.1:1234 (rig 1)
     python3 tools/rig/ami.py exec "Version" # a command on the emulated Amiga; the first thing to try
     python3 tools/rig/rig.py stop           # kills this rig only (matched by its config path)
 
-`start` prints the boot log (`build/rig/boot/boot.log`) when amiagent never
+`start` prints the boot log (`build/rig/boot/boot.log`) when wasabid never
 answers. Keep the machine flags the same between `setup` and `start`.
 
 Machine flags (on `start`, and `setup` when the config alone changes):
@@ -60,7 +60,7 @@ handler. `rig.py aga` and `rig.py rtg` choose the Workbench screen mode from the
 next boot.
 
 Layout of `build/rig/` (gitignored): `sys.hdf` (DH0:), `boot/` (BOOTX:, boots
-first: assigns, mounts XCON:, starts amiagent with token `rigtoken`), `vtc/`
+first: assigns, mounts XCON:, starts wasabid with key `rigwasabi`), `vtc/`
 (VTC:, the binaries under test), `shots/` (screenshots), `serial.log`.
 
 ## A second rig, to run two jobs in parallel
@@ -71,7 +71,7 @@ generator (`rig.py`), so results are comparable, but a separate machine:
 | | rig 1 (default) | rig 2 (`UPTERM_RIG=2`) |
 |---|---|---|
 | directory | `build/rig` | `build/rig2` (own `sys.hdf`, `vtc/`, `boot/`, `shots/`, config) |
-| amiagent | port 7846 | port 7847 (`go` starts `amiagent PORT=7847`) |
+| wasabid | port 1234 | port 1235 (`go` starts `wasabid 1235 name rig2`) |
 | FS-UAE process | matched by `build/rig/vtcon-rig.fs-uae` | matched by `build/rig2/vtcon-rig.fs-uae` |
 
 ```
@@ -81,7 +81,7 @@ UPTERM_RIG=2 python3 tools/rig/ami.py ping
 UPTERM_RIG=2 python3 tools/rig/<script>_rig.py
 ```
 
-`paths.py` is the one reader of `UPTERM_RIG` (`paths.RIG`, `paths.AGENT_PORT`);
+`paths.py` is the one reader of `UPTERM_RIG` (`paths.RIG`, `paths.WASABI_PORT, paths.WASABI_KEY, paths.wasabi_port()`);
 `ami.py` takes its port from it (`AMI_PORT` still wins) and the scripts take
 their `build/rig` directories from `paths.RIG`. `stop` kills only the FS-UAE
 whose config path is that rig's. The two machines share nothing but the
@@ -101,7 +101,7 @@ config writer; it was not needed because a second FS-UAE runs beside the first.
 rig. It reports an access to address 0 or to missing memory, and a write to ROM, with the PC, the registers
 and the task, and lets the program go on. Its `FILE` option (documented in `MuForce.guide`) writes the report
 to `VTC:muforce/hits.log`, which is the host file `build/<rig>/vtc/muforce/hits.log`: the Mac and an agent read
-it with no amiagent call.
+it with no wasabid call.
 
     python3 tools/rig/rig.py start --max --mmu    # once: a 68060 with an emulated MMU (slower, no JIT)
     python3 tools/rig/rig.py muforce on           # copies MuForce + libraries to VTC:muforce, starts MuForce
@@ -124,14 +124,14 @@ it with no amiagent call.
 
 ## The client, and a real Amiga
 
-`ami.py` is the client for amiagent: `ping | info | exec "cmd" [secs] | shot out.png | get | put | uitree | ui | key | rexx | menus | screens | gclick`
+`ami.py` is the rig's client of wasabid (wasabi's own Python client, build/wasabi, behind the API the rig scripts use): `ping | info | exec "cmd" [secs] | shot out.png | get | put | uitree | ui | key | type | rexx | menus | screens | gclick`
 (its docstring has the exact forms). It talks to the emulator by default. For
-a real Amiga running amiagent:
+a real Amiga running wasabid:
 
-    AMI_HOST=<the Amiga's address> AMI_TOKEN=<its amiagent token> python3 tools/rig/ami.py ping
+    AMI_HOST=<the Amiga's address> AMI_PORT=<its port> AMI_TOKEN=<its wasabi key> python3 tools/rig/ami.py ping
 
-(`AMI_PORT`, default 7846.) amiagent runs whatever it is sent and the link is
-unencrypted: use a token and a trusted network (see tools/nas/README.md).
+(`AMI_PORT`, default 1234 + rig - 1.) Gaps are named errors (`ami.py gap: ...`): BREAK of the running command and the pointer position have no wasabi command; raw key codes, region grabs, gadgets by id and tick-timed input are mapped (the docstring says how). wasabid runs whatever it is sent: use the key and a trusted network (see tools/nas/README.md).
+
 
 ## Mac: amiga MCP for Claude Code
 
@@ -187,10 +187,10 @@ The rest of the wasabi client works on a rig too, with the flags `rig.py wasabi`
 
 wasabi (MIT, https://github.com/creep-ltx/wasabi) is a daemon on the Amiga (`wasabid`) that patches ~30 dos/exec/icon/diskfont
 calls (SnoopDOS style), RawPutChar and `Alert()`, and a one-file Python client. `make wasabi` clones it into
-`build/wasabi`, pinned at 67379c2 (v0.2), builds `wasabid` with Bebbo's gcc (`~/opt/amiga`, `AGCC=`) against the
-CyberGraphX stub headers in `tools/rig/wasabi_shim` (written by us), and keeps the client beside it;
-`make wasabi-clean` removes it. Upstream HEAD (56f7197, 45 commits on) was tried and is not used: from 0.3 `health.c`
-needs `proto/devicetree.h` (Emu68), from 0.6b1 every connection is TLS (AmiSSL on the Amiga, no plain fallback).
+`build/wasabi`, pinned at ee23c09 (0.9b2), builds `wasabid` with Bebbo's gcc (`~/opt/amiga`, `AGCC=`) against the
+AmiSSL 5.27 SDK (`AMISSL_SDK`, the one `make amiga` uses; the CyberGraphX headers are upstream's own since 0.9b2), and keeps the client, `wasabi_mcp.py` and the helper modules beside it;
+`make wasabi-clean` removes it. TLS is optional at run time since 0.8: an emulator on loopback and an Amiga without
+AmiSSL or keys run plain. Research: thoughts/shared/research/2026-10-14_wasabi-0.8-eval.md.
 
     rig.py wasabi on                              wasabid into VTC:wasabi, key set, started, waits for a ping
     rig.py wasabi off                             stops the daemon (its patches come off with it)
@@ -198,16 +198,11 @@ needs `proto/devicetree.h` (Emu68), from 0.6b1 every connection is TLS (AmiSSL o
     rig.py wasabi guru | ps [PATTERN]
 
 Rig N listens on port 1234 + N - 1 (TCP, and UDP for discovery): FS-UAE's bsdsocket gives the Amiga the Mac's
-sockets, so two rigs on one port clash (the same rule as amiagent's 7846 + N - 1). The key is the rig key
+sockets, so two rigs on one port clash (`paths.wasabi_port`, the one place). The key is the rig key
 `rigwasabi` (set with `SetEnv wasabi.key`, i.e. RAM only), never a real one.
 
-Coexistence with amiagent: both may run. Checked on rig 3 with wasabid up: `ami.py ping`, `uitree`, `shot` and
-`exec` answered, and wasabi's snoop trace showed amiagent's own calls (`BOOTX:amiagent  Open("T:amiagent-....out")`).
-The research note (2026-10-03) said not to run both for one test because wasabid patches system calls; the rig
-evidence is that rig control keeps working. The rule: leave wasabid off unless you are debugging (every patched call costs
-time, so no timing runs with it on), filter the amiagent noise with `snoop start --task`, and if a rig behaves
-strangely with wasabid on, `wasabi off` first. Whether amiagent patches anything itself is not established (its
-PROTOCOL.md says nothing; the binary was not disassembled).
+`rig.py start` boots wasabid in every rig (it is the only daemon: no amiagent). Its patches are off until `snoop`/`debug`
+start a stream, so rig control and timing runs are unaffected; `rig.py wasabi on` only restarts it after `off`.
 
 ## Which script proves what
 

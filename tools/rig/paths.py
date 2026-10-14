@@ -54,20 +54,30 @@ def _main_checkout(checkout):
     return pathlib.Path(common).resolve().parent
 
 
-# The rigs are machine resources (an FS-UAE each, a fixed amiagent port, a
+# The rigs are machine resources (an FS-UAE each, a fixed wasabid port, a
 # 1.5 GB system disk), so they live in the main checkout's build/ for every
 # worktree. A worktree has no build/rig2: FS-UAE started from one booted with
 # no bootable device (2026-10-12).
 RIG_HOME = _main_checkout(VTCON) / "build"
 
-# Which rig: UPTERM_RIG unset or 1 is the first (build/rig, amiagent port 7846);
-# UPTERM_RIG=2 is the second (build/rig2, port 7847), a separate FS-UAE with
+# Which rig: UPTERM_RIG unset or 1 is the first (build/rig, wasabid port 1234);
+# UPTERM_RIG=2 is the second (build/rig2, port 1235), a separate FS-UAE with
 # its own system disk copy. Every rig script reads the instance from here.
 RIG_N = int(os.environ.get("UPTERM_RIG") or 1)
 RIG_NAME = "rig" if RIG_N == 1 else "rig%d" % RIG_N
 RIG = RIG_HOME / RIG_NAME
-AGENT_PORT = 7846 + RIG_N - 1
-os.environ.setdefault("AMI_PORT", str(AGENT_PORT))   # ami.py reads it
+
+
+def wasabi_port(rig_n=None):
+    """The TCP/UDP port wasabid listens on in rig `rig_n` (this one by default): wasabid's own default 1234 for
+    rig 1, +1 per rig. FS-UAE's bsdsocket passes the Amiga's sockets to the Mac's, so two rigs on one port clash.
+    The one place the rule lives: rig.py (boot), wasabi.py, ami.py and the MCP wrapper read it from here."""
+    return 1234 + (RIG_N if rig_n is None else rig_n) - 1
+
+
+WASABI_PORT = wasabi_port()
+WASABI_KEY = "rigwasabi"   # the rig key (wasabid's ENV:wasabi.key in the rig). Not a secret.
+os.environ.setdefault("AMI_PORT", str(WASABI_PORT))   # ami.py reads it
 
 
 def repo(name):
