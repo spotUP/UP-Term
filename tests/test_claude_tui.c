@@ -1824,6 +1824,32 @@ static void notifications(void)
 /* amiga-pi's /settings rows that reach the screen (pi 1.2.0 settings-selector.ts): editorPaddingX is the editor's side padding, showHardwareCursor
  * leaves the window's cursor on the editor's cursor cell, doubleEscapeAction opens /tree or /fork on Esc Esc over an empty editor (or nothing).
  * amiga-pi's tests compare these against pi's own captures (pad_editor, pad_menu, menu_max3); here the screen's own behaviour */
+/* Q3-22: the main editor takes pi's Editor word rules (word-navigation.ts, Ctrl+W = deleteWordBackward) in pi's look only;
+ * C:Claude's look keeps Claude Code's rule (Ctrl+W deletes back to blank). Typed "a.b c.d" then Ctrl+W */
+static void main_editor_word_rule_follows_the_look(void)
+{
+    static const char *typed[] = { "a.b c.d", "\027", 0 };
+    static cl_pitheme th;
+    char line[64];
+    pitheme_system(&th);
+    screen(40, 12, typed);
+    CHECK_INT(tui_start(&tui), 0);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "a.b ");            /* C:Claude: the whole blank-delimited word */
+    CHECK_INT(tui.ed.piword, 0);
+    unscreen();
+    cs_close();
+    screen(40, 12, typed);
+    tui.pith = &th;
+    tui.look = TUI_LOOK_PI;
+    CHECK_INT(tui_start(&tui), 0);
+    tui_read(&tui, line, sizeof(line));
+    CHECK_STR(tui.ed.b, "a.b c.");          /* pi: the word "d" only */
+    CHECK_INT(tui.ed.piword, 1);
+    unscreen();
+    cs_close();
+}
+
 static void pi_look_settings_reach_the_screen(void)
 {
     static const char *typed[] = { "abc", 0 };
@@ -2511,6 +2537,7 @@ void suite_claude_tui(void)
     themes();
     notifications();
     pi_look_settings_reach_the_screen();
+    main_editor_word_rule_follows_the_look();
     fullscreen_external_editor_returns_to_the_alternate_screen();
     redraw_editor_todos();
     gaps3_think();
