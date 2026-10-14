@@ -1710,6 +1710,61 @@ static void notifications(void)
     cs_close();
 }
 
+/* amiga-pi's /settings rows that reach the screen (pi 1.2.0 settings-selector.ts): editorPaddingX is the editor's side padding, showHardwareCursor
+ * leaves the window's cursor on the editor's cursor cell, doubleEscapeAction opens /tree or /fork on Esc Esc over an empty editor (or nothing).
+ * amiga-pi's tests compare these against pi's own captures (pad_editor, pad_menu, menu_max3); here the screen's own behaviour */
+static void pi_look_settings_reach_the_screen(void)
+{
+    static const char *typed[] = { "abc", 0 };
+    static const char *esc2[] = { "\033", "\033", 0 };
+    static cl_pitheme th;
+    char line[64];
+    int i, at = -1, x, y;
+    pitheme_system(&th);
+    /* editorPaddingX 2 and showHardwareCursor: the text starts in column 3 of its row, the cursor sits after it */
+    screen(40, 12, typed);
+    tui.pith = &th;
+    tui.look = TUI_LOOK_PI;
+    tui.pi_edpad = 2;
+    tui.pi_hwcursor = 1;
+    CHECK_INT(tui_start(&tui), 0);
+    tui_read(&tui, line, sizeof(line));
+    for (i = 0; i < 12; i++)
+        if (strstr(cs_row(i), "abc"))
+            at = i;
+    CHECK(at >= 0 && !strncmp(cs_row(at), "  abc", 5));
+    vt_cursor(cs.vt, &x, &y);
+    CHECK(y == at && x == 5 && (vt_modes(cs.vt) & VT_MODE_CURSOR_VISIBLE));
+    unscreen();
+    cs_close();
+    /* no padding, no hardware cursor: the text at the edge and the cursor away */
+    screen(40, 12, typed);
+    tui.pith = &th;
+    tui.look = TUI_LOOK_PI;
+    CHECK_INT(tui_start(&tui), 0);
+    tui_read(&tui, line, sizeof(line));
+    for (at = -1, i = 0; i < 12; i++)
+        if (strstr(cs_row(i), "abc"))
+            at = i;
+    CHECK(at >= 0 && !strncmp(cs_row(at), "abc", 3));
+    CHECK(!(vt_modes(cs.vt) & VT_MODE_CURSOR_VISIBLE));
+    unscreen();
+    cs_close();
+    /* Esc twice on the empty editor: /tree (default), /fork, or nothing */
+    for (i = 0; i < 3; i++) {
+        screen(40, 12, esc2);
+        tui.pith = &th;
+        tui.look = TUI_LOOK_PI;
+        tui.pi_dbl_esc = i;
+        CHECK_INT(tui_start(&tui), 0);
+        line[0] = 0;
+        tui_read(&tui, line, sizeof(line));
+        CHECK_STR(line, i == 0 ? "/tree" : i == 1 ? "/fork" : "");
+        unscreen();
+        cs_close();
+    }
+}
+
 /* 1.12: Ctrl+L redraws, Ctrl+G edits in the editor; Ctrl+T the todo list */
 static char ed_saw[64];
 static int ed_raw;
@@ -2341,6 +2396,7 @@ void suite_claude_tui(void)
     thinking_shown();
     themes();
     notifications();
+    pi_look_settings_reach_the_screen();
     fullscreen_external_editor_returns_to_the_alternate_screen();
     redraw_editor_todos();
     gaps3_think();
