@@ -526,6 +526,14 @@ static void test_anthropic_baseurl(void)
         CHECK_INT(mp->context_window, 1000000);
         CHECK_INT(mp->max_tokens, 128000);
     }
+    /* pi 1.2.0 catalog (P12-A1): three added models and the sonnet-5-5 cache read price halved to 0.1 */
+    CHECK(llm_reg_find(&r, "github-copilot", "claude-haiku-5.5") != 0);
+    CHECK(llm_reg_find(&r, "meta", "muse-wonder-1.0") != 0);
+    CHECK(llm_reg_find(&r, "radius", "claude-haiku-5-5") != 0);
+    mp = llm_reg_find(&r, "anthropic", "claude-sonnet-5-5");
+    CHECK(mp != 0);
+    if (mp)
+        CHECK_INT(mp->cost[2], 100000);
     llm_reg_free(&r);
 }
 
