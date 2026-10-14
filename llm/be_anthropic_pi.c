@@ -115,6 +115,8 @@ const char *llm_ant_effort(const llm_model *m, int thinking)
 
 int llm_mid_system(const llm_model *m)
 {
+    if (m && m->api && !strcmp(m->api, "pi-messages"))
+        return 1;                   /* the gateway takes pi's transcript with every system message in place */
     return m && m->api && (!strcmp(m->api, "anthropic-messages") || !strcmp(m->api, "openai-responses") ||
                           !strcmp(m->api, "azure-openai-responses") || !strcmp(m->api, "openai-codex-responses")) &&
            m->compat.mid_system == 1;

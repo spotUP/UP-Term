@@ -295,10 +295,11 @@ void llm_key_env_name(const char *provider, char *out, long cap)
 /* the providers pi 1.1.0 lets a subscription log into besides Anthropic (ai/src/providers/<provider>.ts oauth entries): the six
  * subscriptions and OpenRouter, whose OAuth result is a plain API key (openrouter.ts toAuth: { apiKey: credential.access }).
  * Anthropic is not among them on purpose: a stored Anthropic OAuth entry gives no credential (owner decision 2026-10-07).
- * Radius (oauth/radius.ts) also has a token, but its api is pi-messages, which this build does not speak (no model to send it to) */
+ * Radius (oauth/radius.ts toAuth: { apiKey: credential.access }) is the eighth: its models speak pi-messages (llm/be_pi_messages.c), the
+ * access token is the Bearer key of the gateway */
 int llm_oauth_provider(const char *provider)
 {
-    static const char *const ids[] = { "openai", "openai-codex", "github-copilot", "kimi-coding", "xai", "meta", "openrouter" };
+    static const char *const ids[] = { "openai", "openai-codex", "github-copilot", "kimi-coding", "xai", "meta", "openrouter", "radius" };
     unsigned i;
     for (i = 0; i < sizeof(ids) / sizeof(ids[0]); i++)
         if (provider && !strcmp(provider, ids[i]))
@@ -798,6 +799,13 @@ static int cfg_endpoint_in(llm_cfg *c, llm_model *m, char *err, long errcap)
     llm_model t;
     if (m->api && !strcmp(m->api, "bedrock-converse-stream"))
         return bedrock_endpoint(c, m, err, errcap);
+    if (m->api && !strcmp(m->api, "pi-messages")) {
+        char retention[16];
+        retention[0] = 0;
+        env_into(c, "PI_CACHE_RETENTION", retention, sizeof(retention), 0);
+        m->cache_long = !strcmp(retention, "long");     /* resolveCacheRetention: the legacy env opt-in */
+        return 0;
+    }
     if (!m->api || strcmp(m->api, "azure-openai-responses"))
         return 0;
     eb[0] = er[0] = ev[0] = em[0] = 0;

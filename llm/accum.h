@@ -38,6 +38,12 @@ typedef struct llm_acc {
     int has_duration;
     long price[4];              /* its price per million tokens in micro-dollars: input, output, cacheRead, cacheWrite */
     char id[96];
+    char level_srv[16];         /* providerThinkingLevel the server sent (LE_META), "" none */
+    jw usage_raw;               /* the usage object as the server sent it (LE_META), empty none */
+    jw rewrite;                 /* the rewrite impact object (LE_META), empty none */
+    llm_ts rewrite_ts;          /* when it arrived (llm_wall): the diagnostic's timestamp */
+    int have_cost;              /* usage.cost is the server's (LE_USAGE has_cost) */
+    int meta_seen;              /* LE_META came: the server's own terminal event follows (pi-messages) */
     int stop;                   /* LS_* */
     char stop_raw[32];
     char *err;                  /* the error text (LLM_ERR_MAX), allocated by the first failure, "" before */

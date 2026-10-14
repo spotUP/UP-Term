@@ -399,3 +399,12 @@ int llm_reg_resolve(llm_reg *r, const char *cli_provider, const char *pattern, l
     free(cand);
     return -1;
 }
+
+void llm_reg_drop_provider(llm_reg *r, const char *provider)
+{
+    int i, k = 0;
+    for (i = 0; i < r->n; i++)
+        if (strcmp(r->m[i].provider, provider))
+            r->m[k++] = r->m[i];
+    r->n = k;
+}

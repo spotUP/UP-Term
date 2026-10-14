@@ -19,9 +19,19 @@
 
 #include "backend.h"
 
+/* the Radius gateways the registry knows (pi: radiusProvider(), model-runtime.ts configureRadiusProviders): the public one under the id
+ * "radius", and every models.json provider with "oauth":"radius" on its baseUrl without the /v1 */
+#define LLM_RADIUS_MAX 4
+typedef struct llm_rad {
+    char id[48];
+    char gateway[200];
+} llm_rad;
+
 typedef struct llm_reg {
     llm_model *m;               /* the models; their strings live in own[] */
     int n, cap;
+    llm_rad rad[LLM_RADIUS_MAX];
+    int nrad;
     char **own;
     int nown, owncap;
     int oom;
@@ -40,6 +50,12 @@ char *llm_reg_dup(llm_reg *r, const char *s, long n);
 int llm_reg_builtin(llm_reg *r);
 /* models.json text laid over the registry: 0, or -1 with r->err set (the registry is unchanged then) */
 int llm_reg_overlay(llm_reg *r, const char *text, long n);
+
+/* the models of a provider removed (a catalog that replaces them); their strings stay in the registry */
+void llm_reg_drop_provider(llm_reg *r, const char *provider);
+/* the Radius gateways: the public one, then those the models.json text names (providers with "oauth":"radius" and a baseUrl; a
+ * provider of the same id replaces the earlier one). 0, -1 when the text is not models.json (the overlay says why) */
+int llm_reg_radius_scan(llm_reg *r, const char *text, long n);
 
 /* a provider's model by id (exact), 0 none */
 const llm_model *llm_reg_find(const llm_reg *r, const char *provider, const char *id);

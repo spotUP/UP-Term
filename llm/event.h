@@ -18,7 +18,9 @@ enum {
     LE_USAGE,                   /* token counts so far (-1: not in this event) */
     LE_STOP,                    /* why the answer stopped: stop, stop_raw, stop_detail; p/n pi-ai's errorMessage when stop is LS_ERROR */
     LE_DONE,                    /* the answer is complete */
-    LE_ERROR                    /* the answer failed: stop LS_ERROR or LS_ABORTED, err_type, p/n message */
+    LE_ERROR,                   /* the answer failed: stop LS_ERROR or LS_ABORTED, err_type, p/n message */
+    LE_META                     /* what the server owns of the finished message (pi-messages): p/n responseId, raw/rn the usage object as sent,
+                                 * level providerThinkingLevel, rewrite/rewrite_n the gateway's rewrite impact; before LE_STOP / LE_ERROR */
 };
 
 /* a block's kind; LB_RAW is a provider block pi-ai does not model */
@@ -54,7 +56,12 @@ typedef struct llm_event {
     int has_total;              /* total is in this event */
     long reasoning;             /* LE_USAGE: usage.reasoning, a subset of out (amiga-pi's decoders only) */
     int has_reasoning;          /* reasoning is in this event */
-    int replace;                /* LE_SIG_DELTA: the bytes replace the signature so far (google's retainThoughtSignature) */
+    int replace;                /* LE_SIG_DELTA: the bytes replace the signature so far (google's retainThoughtSignature); LE_DELTA: the text so far (pi-messages' *_end content) */
+    int has_cost;               /* LE_USAGE: cost[] holds the server's price (pi-messages), not to be recomputed from the model's */
+    long cost[4];               /* micro-dollars: input, output, cacheRead, cacheWrite */
+    const char *level;          /* LE_META: providerThinkingLevel, 0 none */
+    const char *rewrite;        /* LE_META: the rewrite impact object (JSON), 0 none */
+    long rewrite_n;
 } llm_event;
 
 typedef struct llm_sink {
