@@ -857,7 +857,10 @@ class AmigaTargetTool(unittest.TestCase):
         for line in ("COPY amiga-target /usr/local/bin/amiga-target", "cp /tmp/amimcp/LICENSE /opt/amimcp/LICENSE",
                      "COPY skills /opt/amimcp/seed/skills", "COPY mcp.json /opt/amimcp/seed/mcp.json"):
             self.assertIn(line, df)
-        self.assertIn("seed-claude-files", (self.NAS / "entrypoint.sh").read_text())
+        ep = (self.NAS / "entrypoint.sh").read_text()
+        self.assertIn("(as_claude seed-claude-files)", ep)   # never as root: it follows symlinks in the home
+        self.assertNotRegex(ep, r"(?m)^seed-claude-files")
+        self.assertLess(ep.index("chown -R claude:claude"), ep.index("(as_claude seed-claude-files)"))
         self.assertIn("/opt/amimcp/server/amimcp.py", (self.NAS / "mcp.json").read_text())
 
 
