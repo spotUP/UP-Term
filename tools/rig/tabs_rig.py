@@ -26,10 +26,28 @@ VTC = paths.RIG / 'vtc'
 RET, RCMD = 0x44, 0x0080
 # the window, its bar and two points inside it (screen pixels, topaz 8 on
 # the rig's Workbench): the bar is one font row under the title bar
-WX, WY, WW, WH = 0, 20, 640, 300
-BAR_Y = WY + 16
-TAB_X = (WW // 4, 3 * WW // 4)
-EMPTY = (WW // 2, WY + WH - 40)
+# the box asked of XCON:, and the box the window gets: Intuition clamps a
+# window to its screen (640x300 on the rig's 640x256 screen opens as
+# 640x256 at the top, 2026-10-15), so the points below follow the clamp
+ASK = (0, 20, 640, 300)
+WX, WY, WW, WH = ASK
+BAR_Y = TAB_X = EMPTY = None
+
+
+def clamp_to_screen():
+    """WX, WY, WW, WH and the points inside the window from the front
+    screen's size (the uitree's S line) and the box asked"""
+    global WX, WY, WW, WH, BAR_Y, TAB_X, EMPTY
+    sw, sh = 640, 256
+    for l in ami.req(0x0D).decode('latin-1').splitlines():
+        if l.startswith('S '):
+            sw, sh = map(int, l.split()[2].split('x'))
+            break
+    WW, WH = min(ASK[2], sw), min(ASK[3], sh)
+    WX, WY = min(ASK[0], sw - WW), min(ASK[1], sh - WH)
+    BAR_Y = WY + 16
+    TAB_X = (WW // 4, 3 * WW // 4)
+    EMPTY = (WW // 2, WY + WH - 40)
 passed = total = 0
 
 
@@ -87,9 +105,17 @@ def click(x, y):
 
 
 def profile_checked():
-    for l in ami.req(0x0F).decode('latin-1').splitlines():
+    """the ticked entry of the Profile submenu (found by its name: its
+    item number moves whenever the Settings menu gains an item)"""
+    lines = ami.req(0x0F).decode('latin-1').splitlines()
+    at = None
+    for l in lines:
         f = l.split()
-        if l.startswith('I 1 13 ') and len(f) > 4 and f[3] != '-' and 'checked' in f[5]:
+        if l.startswith('I ') and len(f) > 5 and f[3] == '-' and f[5] == 'submenu' and l.endswith('"Profile"'):
+            at = f[1:3]
+    for l in lines:
+        f = l.split()
+        if at and l.startswith('I ') and len(f) > 5 and f[1:3] == at and f[3] != '-' and f[5] == 'checked':
             return l.split('"')[-2]
     return None
 
@@ -117,8 +143,10 @@ def main():
     c.run('Copy VTC:tabs-rig.conf ENV:up-term/up-term QUIET')
     c.run('Copy VTC:vsh C:vsh CLONE QUIET')
     try:
-        c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/tabs/CLOSE/PROFILE blue"' % (WX, WY, WW, WH))
-        check(until(lambda: ours() == 'tabs'), 'the window opens', ours())
+        clamp_to_screen()
+        c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/tabs/CLOSE/PROFILE blue"' % ASK)
+        check(until(lambda: ours() == 'tabs'), 'the window opens, clamped to the screen (%dx%d at %d,%d)' % (WW, WH, WX, WY),
+              ours())
         click(*EMPTY)  # active, for the keys
         check(near(pixel(*EMPTY), (0, 0, 0xAA)), 'the window draws on its profile (blue)', pixel(*EMPTY))
         bare = pixel(TAB_X[0], BAR_Y)
