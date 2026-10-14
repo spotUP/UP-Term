@@ -37,7 +37,6 @@ OPTIONS = {
               ('one', ['net/bebbossh-*/libcryptossh.library0?0'])],
     'KBBEBBOGET': [('all', ['net/bebboget-*/bebboget', 'net/bebboget-*/installcerts'])],
     'KBCURL': [('one', ['net/curl-*/curl.0?0'])],
-    'KBAMIAGENT': [('one', ['net/amiagent-*/amiagent', 'net/amiagent-*/amiagent.020'])],
     'KBWASABI': [('all', ['wasabi'])],
 }
 # kit files no Install copies, whatever the options: the network tools' licences and sources

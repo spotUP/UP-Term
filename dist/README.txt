@@ -32,15 +32,15 @@ INSTALL
   It copies the handlers, DOSDrivers entries, vsh, ixkill, the terminal
   entries to ENVARC:up-term, sets TERMINFO, puts in the patched
   ixemul.library and mounts XCON: and PTY:. A page of check boxes picks
-  the optional parts: ssh and scp, bebboget, curl (see NETWORK), amiagent
-  (see CLAUDE FROM THE AMIGA), the serial login (SERIAL LOGIN), the UP-Term icon in SYS:System and the
+  the optional parts: ssh and scp, bebboget, curl (see NETWORK), wasabi
+  (see WASABI), the serial login (SERIAL LOGIN), the UP-Term icon in SYS:System and the
   Shell icon. On 3.0/3.1 a second page asks whether UP-Term should also
   serve CON: and RAW: (see CON: AND RAW: below) and console.device (see
   CONSOLE.DEVICE below). Install first asks where UP-Term's own drawer
   goes (see WHERE IT IS INSTALLED).
   From a Shell, without Installer, cd into the drawer, then:
     Execute Files/install.dos Files [DEST <drawer>] [CONSOLE|NOCONSOLE] [DEVICE|NODEVICE]
-      [SERIAL] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [AMIAGENT] [CPU040|CPU060]
+      [SERIAL] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [CPU040|CPU060]
   (each optional part only when named).
   Remove everything again: double-click Uninstall (or Execute Uninstall).
 
@@ -676,19 +676,6 @@ NETWORK
   under the curl licence. Their COPYING files and sources (or where the
   source is) are in the kit's Files/net drawer.
 
-AMIAGENT
-  amiagent 0.13.2 (Apache 2.0, by Thomas Luebker; Aminet comm/net/amiagent)
-  is an optional part of Install, off unless you tick it: it copies the
-  68020 build (on a 68000 or 68010 the 68000 build) to UP-Term:bin/amiagent
-  and never starts it. It runs ANY command that a client knowing its TOKEN
-  sends, over an unencrypted link: start it only with a TOKEN, on a network
-  you trust, and never forward its port (7846) to the internet:
-    Run >NIL: UP-Term:bin/amiagent TOKEN=pick-a-secret QUIET
-  Uninstall stops it (when started as UP-Term:bin/amiagent or amiagent;
-  stop one started another way with Ctrl-C first) and removes it.
-  Claude Code on another computer drives this Amiga through it (amimcp; tools/nas/README.md
-  in the vtcon source tree). Never run amiagent without a TOKEN.
-
 UPTELNET
   uptelnet is a telnet client for the window (no ixemul; needs a TCP/IP
   stack). Claude.lha's C:Claude uses it (that archive carries its own copy) to reach Claude Code on the NAS
@@ -752,20 +739,27 @@ DEMO
   emulator at full speed); a stock A1200 draws them at about a frame a
   second.
 
-WASABI (REMOTE DEVELOPMENT)
+WASABI (REMOTE DEVELOPMENT, CLAUDE CODE ON ANOTHER COMPUTER)
   For working on this Amiga from a Mac or Linux machine on the same
   network: copy files to it, run commands with their output on the other
   machine, grab its screen, read its debug output and a SnoopDOS-style
-  trace. wasabi by Tobias Karlsson, MIT licence (Files/wasabi).
+  trace. wasabi 0.9b2 by Tobias Karlsson, MIT licence (Files/wasabi).
+  It replaces the wasabid 0.2 and the amiagent of earlier kits: Install
+  stops and replaces our older wasabid, and removes our amiagent.
   Install puts wasabid in C: when you tick it, starts it, and starts it at
   every boot. It makes a key (ENVARC:wasabi.key; one you set before stays)
   and shows it at the end. On the other machine, with Python 3:
     WASABI_KEY=yourkey ./wasabi discover
     WASABI_KEY=yourkey ./wasabi run "Dir RAM:"
   (the client is Files/wasabi/wasabi in the kit; ~/.config/wasabi/config
-  with "key = yourkey" saves typing it). Anyone with the key can run any
-  command on this Amiga: keep it to yourself. wasabid answers only private
-  network addresses. Uninstall stops and removes it.
+  with "key = yourkey" saves typing it). Claude Code on that machine
+  drives this Amiga through Files/wasabi/wasabi_mcp.py, which sits beside
+  the client:  claude mcp add wasabi -- python3 /path/to/wasabi_mcp.py
+  (tools/nas/README.md in the vtcon source tree: the NAS image). Anyone
+  with the key can run any command on this Amiga: keep it to yourself.
+  wasabid answers only private network addresses; the link is encrypted
+  only when the Amiga has AmiSSL 5 and keys (wasabi's README). Uninstall
+  stops and removes it.
 
 CON: AND RAW:
   UP-Term can serve the system's CON: and RAW: too, so every new Shell

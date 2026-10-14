@@ -135,23 +135,28 @@ a real Amiga running wasabid:
 
 ## Mac: amiga MCP for Claude Code
 
-Claude Code in this repo gets an `amiga` MCP server (upstream amimcp, Apache 2.0,
-pinned to 3145dee, Python standard library only, no venv) that drives a rig's
-amiagent: run commands, read and write files, screenshots, input.
+Claude Code in this repo gets an `amiga` MCP server (wasabi's `wasabi_mcp.py`, MIT,
+pinned in tools/nas/wasabi.rev, Python standard library only, no venv) that drives a
+rig's wasabid: tools `amiga_run`, `amiga_ls`, `amiga_read_file`, `amiga_write_file`,
+`amiga_ps`, `amiga_kill`, `amiga_arexx`, `amiga_screenshot`, `amiga_windows`,
+`amiga_ui_*`, `amiga_mouse`, `amiga_key_*`, `amiga_health`, `amiga_info`.
 
-- Install: `make amimcp` (fetches the pinned commit into build/amimcp, checks the
-  wrapper starts, prints the next step; a second run changes nothing).
-  Remove: `make amimcp-clean`. Nothing outside the repo is touched.
+- Install: `make wasabi` (builds wasabid and the client into build/wasabi; the wrapper
+  finds wasabi_mcp.py there). Nothing outside the repo is touched.
+- The rig must have wasabid running: `rig.py wasabi on` (a rig started without it has
+  nothing for the server to talk to).
 - Next step: start Claude Code in the repo and approve the `amiga` project MCP
   server from `.mcp.json`.
-- Target: rig 1 (127.0.0.1:7846, token `rigtoken`) by default. `UPTERM_RIG=2` or
-  `3` selects that rig's port (the rule is paths.py's). A real Amiga: `AMI_HOST`,
-  `AMI_PORT`, `AMI_TOKEN`, the same variables as ami.py. Set them in the shell
-  that starts Claude Code.
-- Token safety: the amiagent link is unencrypted and the token travels in clear.
-  Use it on a LAN you trust only; never commit a real Amiga's token.
-- Wrapper: `tools/rig/amimcp.py` (`--print` shows the chosen host and port);
-  test: `make test ONLY=rig_amimcp`.
+- Target: rig 1 (127.0.0.1:1234, key `rigwasabi`) by default. `UPTERM_RIG=2` or `3`
+  selects that rig's port (1234 + N - 1, the rule of tools/rig/wasabi.py). A real
+  Amiga: `AMI_HOST`, `AMI_PORT`, `AMI_TOKEN` (the wasabid key), or wasabi's own
+  `WASABI_HOST`, `WASABI_PORT`, `WASABI_KEY`, which win. Set them in the shell that
+  starts Claude Code.
+- Key safety: never commit a real Amiga's key; the rig's `rigwasabi` is not a secret.
+  The link is encrypted only when the Amiga has AmiSSL and keys (the rig is local and
+  plain).
+- Wrapper: `tools/rig/wasabimcp.py` (`--print` shows the chosen host and port);
+  test: `make test ONLY=rig_wasabimcp`.
 
 ## Debugging on a rig: which tool answers which question
 

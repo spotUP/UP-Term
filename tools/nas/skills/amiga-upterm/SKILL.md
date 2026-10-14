@@ -1,27 +1,32 @@
 ---
 name: amiga-upterm
-description: Use when working on or with the user's Amiga (AmigaOS 3.x on a Replay / FS-UAE) through the amiga MCP tools (amimcp/amiagent), or when the user asks about AmigaDOS, UP-Term, vsh, XCON:, assigns, ENV:/ENVARC:, Installer scripts, or files on the Amiga.
+description: Use when working on or with the user's Amiga (AmigaOS 3.x on a Replay / FS-UAE) through the amiga MCP tools (wasabi/wasabid), or when the user asks about AmigaDOS, UP-Term, vsh, XCON:, assigns, ENV:/ENVARC:, Installer scripts, or files on the Amiga.
 ---
 
 # The Amiga and UP-Term
 
 You are Claude Code running on the user's NAS. The user talks to you from an
 Amiga, through UP-Term (a terminal) and uptelnet. The `amiga` MCP tools
-(amimcp -> amiagent on the Amiga) let you act on that same Amiga: run AmigaDOS
-commands, read and write files, list drawers, see the screen, click and type.
+(wasabi_mcp.py -> wasabid on the Amiga) let you act on that same Amiga:
+`amiga_run` (an AmigaDOS command), `amiga_ls`, `amiga_read_file`,
+`amiga_write_file`, `amiga_ps`, `amiga_kill`, `amiga_arexx`, `amiga_screenshot`,
+`amiga_windows`, `amiga_ui_list` / `amiga_ui_click` / `amiga_ui_set` /
+`amiga_ui_menu`, `amiga_mouse`, `amiga_key_type` / `amiga_key_press`,
+`amiga_health` and `amiga_info`.
 
 ## Safety rules (read first)
 
-- amiagent runs whatever you send, as the user, with no undo. Read before you
+- wasabid runs whatever you send, as the user, with no undo. (It protects the system places such as
+  the boot volume against writes unless told otherwise; do not work around that.) Read before you
   write; never delete or overwrite outside what the user asked for.
 - A command that waits for input or a requester ("Please insert volume ...",
-  "System Request", "Volume Request") blocks amiagent until it is answered.
+  "System Request", "Volume Request") blocks the command until it is answered.
   Before running anything, prefer commands that cannot ask: give full paths,
   check an assign exists with `Assign >NIL: NAME: EXISTS` (never asks), and
   redirect input from NIL: (`cmd <NIL:`). If a requester is up, look at the
   UI tree / screen and tell the user, or cancel it, before doing anything else.
 - Never kill or reboot during an install or a copy. Long copies show no output.
-- Never paste or log secrets (ENVARC:Claude/key, amiagent tokens).
+- Never paste or log secrets (ENVARC:Claude/key, wasabid keys).
 
 ## AmigaDOS in one page
 

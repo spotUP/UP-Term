@@ -3,12 +3,14 @@
 # claude user's home (entrypoint.sh runs it at every start).
 # Rule per file: missing -> copied. Present -> replaced ONLY when it is still
 # the copy we seeded last (its sha256 equals the one recorded in
-# ~/.config/amimcp/seeded/NAME) and the image has a newer one. A file you edited
+# ~/.config/wasabi/seeded/NAME) and the image has a newer one. A file you edited
 # (or one with no record that differs from the image's) is never touched.
-# SEED_SRC (default /opt/amimcp/seed) and SEED_HOME (default /home/claude) move both ends (tests).
-SRC=${SEED_SRC:-/opt/amimcp/seed}
+# SEED_SRC (default /opt/wasabi/seed) and SEED_HOME (default /home/claude) move both ends (tests).
+SRC=${SEED_SRC:-/opt/wasabi/seed}
 H=${SEED_HOME:-/home/claude}
-REC=$H/.config/amimcp/seeded
+REC=$H/.config/wasabi/seeded
+OLD=$H/.config/amimcp/seeded   # the records of the amimcp image: carried over, so its mcp.json counts as ours and is replaced
+if [ ! -d "$REC" ] && [ -d "$OLD" ]; then mkdir -p "$(dirname "$REC")" && mv "$OLD" "$REC"; fi
 sum() { sha256sum "$1" | cut -d' ' -f1; }
 seed() { # NAME SRCFILE DSTFILE
     mkdir -p "$(dirname "$3")" "$REC"

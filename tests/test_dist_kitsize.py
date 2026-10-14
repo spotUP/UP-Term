@@ -59,7 +59,7 @@ class ABaseTooSmallForTheChoicesAsksForAnotherDrawer(unittest.TestCase):
 
     def test_the_check_comes_after_the_choices_and_before_any_copying(self):
         s = self.s
-        self.assertLess(s.index('(set #agent ""'), s.index('(while (not #roomok)'))
+        self.assertLess(s.index('(set #wasabi ""'), s.index('(while (not #roomok)'))
         self.assertLess(s.index('(while (not #roomok)'), s.index('(P_OPTIONS)'))
         self.assertLess(s.index('(while (not #roomok)'), s.index('(P_STEP)'))
 

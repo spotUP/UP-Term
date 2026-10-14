@@ -29,18 +29,18 @@ COPY seed-claude-files /usr/local/bin/seed-claude-files
 RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/as-claude /usr/local/bin/setpw /usr/local/bin/pairs \
     /usr/local/bin/amiga-target /usr/local/bin/seed-claude-files
 
-# amimcp (Apache 2.0, Python standard library only), at the one commit in amimcp.rev
-# (the Makefile's amimcp target reads the same file). Its server/ and LICENSE live in
-# the image; the skill and mcp.json are seeded into the claude user's home by the
-# entrypoint (seed-claude-files).
-COPY amimcp.rev /opt/amimcp/amimcp.rev
-RUN git clone -q https://github.com/thomas-luebker/amimcp /tmp/amimcp \
- && git -C /tmp/amimcp checkout -q "$(cat /opt/amimcp/amimcp.rev)" \
- && cp -r /tmp/amimcp/server /opt/amimcp/server \
- && cp /tmp/amimcp/LICENSE /opt/amimcp/LICENSE \
- && rm -rf /tmp/amimcp
-COPY skills /opt/amimcp/seed/skills
-COPY mcp.json /opt/amimcp/seed/mcp.json
+# wasabi (MIT, Python standard library only), at the one commit in wasabi.rev (the Makefile's
+# wasabi target reads the same file). Its client `wasabi`, the MCP server wasabi_mcp.py and the
+# LICENSE live in /opt/wasabi; the skill and mcp.json are seeded into the claude user's home
+# by the entrypoint (seed-claude-files). Host, port and key come from ~/.config/wasabi/config
+# (amiga-target writes them).
+COPY wasabi.rev /opt/wasabi/wasabi.rev
+RUN git clone -q https://github.com/creep-ltx/wasabi /tmp/wasabi \
+ && git -C /tmp/wasabi checkout -q "$(cat /opt/wasabi/wasabi.rev)" \
+ && cp /tmp/wasabi/wasabi /tmp/wasabi/wasabi_mcp.py /tmp/wasabi/LICENSE /opt/wasabi/ \
+ && rm -rf /tmp/wasabi
+COPY skills /opt/wasabi/seed/skills
+COPY mcp.json /opt/wasabi/seed/mcp.json
 
 WORKDIR /home/claude/work
 ENV LANG=C.UTF-8 SHELL=/bin/bash
