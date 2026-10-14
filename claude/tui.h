@@ -294,6 +294,10 @@ typedef struct cl_tui {
      * thinking level's); the messages waiting (steering, then follow-up) shown above the editor */
     int look;
     const cl_pitheme *pith;
+    /* TUI_LOOK_PI -- settings.json's editorPaddingX (0..3: the editor's and the slash menu's side padding), autocompleteMaxVisible (3..20, 0: 5: the
+     * slash menu's rows), doubleEscapeAction (0 tree, 1 fork, 2 none: Esc twice on an empty editor submits /tree or /fork) and showHardwareCursor
+     * (the window's cursor rests on the editor's cursor cell) */
+    int pi_edpad, pi_menu_max, pi_dbl_esc, pi_hwcursor;
     char pi_title[200];         /* the window title in pi's look: the program's (pi's updateTerminalTitle), never C:Claude's */
     char pi_cwd[300], pi_left[160], pi_ctx[48], pi_right[120], pi_work[96];
     int pi_ctx_role, pi_rule;

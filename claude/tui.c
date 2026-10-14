@@ -992,7 +992,15 @@ static void pi_scroll_rule(cl_tui *t, const char *arrow, int hidden)
 static void pi_editor_rows(cl_tui *t)
 {
     long a[64], z[64];
-    int n, crow, ccol, show, maxv, i, lw = t->cols > 1 ? t->cols - 1 : 1;
+    int n, crow, ccol, show, maxv, i, lw, pad = t->pi_edpad, maxpad = (t->cols - 1) / 2;
+    if (pad > maxpad)
+        pad = maxpad;
+    if (pad < 0)
+        pad = 0;
+    /* Editor.render: with padding the cursor may overflow into it, without it one column is kept for the cursor */
+    lw = t->cols - pad * 2 - (pad ? 0 : 1);
+    if (lw < 1)
+        lw = 1;
     maxv = t->rows * 3 / 10;
     if (maxv < 5)
         maxv = 5;
@@ -1021,6 +1029,12 @@ static void pi_editor_rows(cl_tui *t)
         int k = t->scroll + i, w = 0;
         long b = a[k];
         r_init(&r, t->cols);
+        if (pad)
+            r_pad(&r, pad);
+        if (k == crow && t->pi_hwcursor) {
+            t->crow = t->nwant + 1;
+            t->ccol = 1 + pad + ccol;
+        }
         if (k == crow) {
             /* the text up to the cursor, the cursor cell reversed (the character under it, or a space) */
             while (b < z[k] && w < ccol) {
@@ -1054,7 +1068,11 @@ static void pi_editor_rows(cl_tui *t)
  * column as wide as the widest label + 2 (12..32), "(n/total)" when there is more than the window */
 static void pi_list_rows(cl_tui *t, const char *const *label, const char *const *desc, int n, int sel)
 {
-    int i, start, end, colw = 0, maxv = 5;
+    int i, start, end, colw = 0, maxv = t->pi_menu_max > 0 ? t->pi_menu_max : 5, pad = t->pi_edpad;
+    if (pad > (t->cols - 1) / 2)
+        pad = (t->cols - 1) / 2;
+    if (pad < 0)
+        pad = 0;
     for (i = 0; i < n; i++) {
         int w = vw_width(label[i], (long)strlen(label[i])) + 2;
         if (w > colw)
@@ -1071,6 +1089,8 @@ static void pi_list_rows(cl_tui *t, const char *const *label, const char *const 
         row r;
         int lw = vw_width(label[i], (long)strlen(label[i]));
         r_init(&r, t->cols);
+        if (pad)
+            r_pad(&r, pad);
         if (i == sel)
             pi_role(t, &r, PR_ACCENT);
         r_text(&r, i == sel ? "\342\206\222 " : "  ", i == sel ? 4 : 2);
@@ -1080,9 +1100,9 @@ static void pi_list_rows(cl_tui *t, const char *const *label, const char *const 
             int room;
             if (i != sel)
                 pi_role(t, &r, PR_DIM);
-            r_pad(&r, 2 + (lw + 2 > colw ? lw + 2 : colw));
+            r_pad(&r, pad + 2 + (lw + 2 > colw ? lw + 2 : colw));
             /* select-list.ts:199-203: the description gets what is left of the width less two, when that is more than ten */
-            room = t->cols - r.w - 2;
+            room = t->cols - r.w - pad - 2;
             if (room > 10) {
                 r.max = r.w + room;
                 r_text(&r, desc[i], (long)strlen(desc[i]));
@@ -1095,6 +1115,8 @@ static void pi_list_rows(cl_tui *t, const char *const *label, const char *const 
         row r;
         char m[48], num[16];
         r_init(&r, t->cols);
+        if (pad)
+            r_pad(&r, pad);
         pi_role(t, &r, PR_DIM);
         cl_copy(m, "  (", sizeof(m));
         cl_ltoa(sel + 1, num);
@@ -3369,7 +3391,7 @@ static int submit(cl_tui *t, int busy, char *buf, long cap, int queue)
 /* chat:cancel (Esc): vim's own first, then the slash menu, the box's
  * mode, a turn, a pending /loop wakeup on the empty box, and Esc Esc
  * (clear the draft, or the rewind menu) */
-static int cancel(cl_tui *t, int busy)
+static int cancel(cl_tui *t, int busy, char *buf, long cap)
 {
     int *idx = 0;
     if (t->ed.vim == VIM_INSERT || t->ed.vim == VIM_VISUAL || t->ed.vim == VIM_VLINE ||
@@ -3392,6 +3414,23 @@ static int cancel(cl_tui *t, int busy)
     }
     if (!t->ed.n && t->esc_idle && t->esc_idle(t->iu))
         return H_GO;                /* A4 gaps 3: a pending /loop wakeup cancelled */
+    if (t->look == TUI_LOOK_PI && !t->ed.n && t->box == BOX_PROMPT) {
+        /* interactive-mode.ts onEscape: Esc twice within 500 ms on an empty editor opens /tree or /fork (doubleEscapeAction), or nothing */
+        if (t->pi_dbl_esc != 2) {
+            if (t->esc_armed && now(t) - t->esc_ms < 500) {
+                t->esc_armed = 0;
+                if (buf) {
+                    cl_copy(buf, t->pi_dbl_esc == 1 ? "/fork" : "/tree", cap);
+                    t->keycmd = 1;
+                    return H_SUBMIT;
+                }
+            } else {
+                t->esc_armed = 1;
+                t->esc_ms = now(t);
+            }
+        }
+        return H_GO;
+    }
     if (t->esc_armed && now(t) - t->esc_ms <= 1000) {
         t->esc_armed = 0;
         t->hint[0] = 0;
@@ -3487,7 +3526,7 @@ static int act_chat(cl_tui *t, int act, cl_key *k, int busy, char *buf, long cap
     case KA_HIST_NEXT:
         return history_step(t, act == KA_HIST_PREV);
     case KA_CANCEL:
-        return cancel(t, busy);
+        return cancel(t, busy, buf, cap);
     case KA_KILL_AGENTS:
         cl_copy(t->hint, "No background agents run here: subagents run in the foreground", sizeof(t->hint));
         return H_GO;
