@@ -640,5 +640,79 @@ class Step12(unittest.TestCase):
             self.assertEqual(sum(1 for l in out.splitlines() if l.startswith('[INFO] ' + route + ' ')), 1, route)
         self.assertEqual(sum(1 for l in out.splitlines() if l == '[INFO]   codex originator=pi'), 1)    # the rig step reads this line
 
+class OwnersAddonsOnTheRig(unittest.TestCase):
+    """The owner keeps Claude, amiga-pi and Python3 on the rigs; the 'X is not there before its Install' checks need
+    them out. A fake rig state (records in ENVARC:uppkg, the scripts the cases run): cli() takes the installed
+    add-ons out with each one's own Uninstall before the first case and installs them again after the last."""
+    def setUp(self):
+        import contextlib, tempfile
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import pkgs
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.rec = {r['id']: r['record'] for r in pkgs.rows() if r['id'] != 'base'}
+        self.installed = {'claude', 'pi', 'python'}
+        self.log = []
+        self.saved = {k: getattr(ir, k) for k in ('run', 'run_long', 'stage_addon', 'PREINSTALLED', 'VTC', 'case_table', 'kit_dir', 'show_close')}
+        self.saved_rig, self.saved_lock = ir.paths.RIG, ir.paths.rig_lock
+        ir.paths.RIG = self.tmp
+        ir.paths.rig_lock = contextlib.nullcontext
+        ir.VTC, ir.PREINSTALLED = self.tmp, self.tmp / 'preinstalled.json'
+        ir.run, ir.run_long, ir.stage_addon = self.fake_run, self.fake_long, lambda pkg: None
+        ir.show_close = lambda: None
+        ir.kit_dir = lambda pkg: self.tmp / 'kit'
+        (self.tmp / 'kit').mkdir()
+        (self.tmp / 'kit/Install').write_text('x')
+    def tearDown(self):
+        for k, v in self.saved.items(): setattr(ir, k, v)
+        ir.paths.RIG, ir.paths.rig_lock = self.saved_rig, self.saved_lock
+    def own(self, fn):
+        fn.own_fixtures = True   # no Fixtures: the fake rig has no files to save
+        return fn
+    def fake_run(self, cmd, timeout=60):
+        for pkg, rec in self.rec.items():
+            if cmd == 'List >NIL: %s/MANIFEST' % rec:
+                return (0 if pkg in self.installed else 5), ''
+        return 0, ''
+    def fake_long(self, script, timeout=1500):
+        kind, pkg = script.split('-', 1)
+        self.log.append(script)
+        (self.installed.discard if kind == 'rununinstall' else self.installed.add)(pkg)
+        return 0, ''
+
+    def test_installed_add_ons_are_taken_out_before_the_cases_and_put_back_after(self):
+        seen = []
+        def case(ck): seen.append(sorted(self.installed))
+        ir.case_table = lambda: {'claude': (['claude'], [], self.own(case))}
+        rc = ir.cli([])
+        self.assertEqual(rc, 0)
+        self.assertEqual(seen, [[]], 'a case ran with an add-on still on the rig')
+        self.assertEqual(self.installed, {'claude', 'pi', 'python'}, 'the owner\'s add-ons are back')
+        self.assertEqual(sorted(l for l in self.log if l.startswith('rununinstall')),
+                         ['rununinstall-claude', 'rununinstall-pi', 'rununinstall-python'])
+        self.assertEqual(sorted(l for l in self.log if l.startswith('runinstall')),
+                         ['runinstall-claude', 'runinstall-pi', 'runinstall-python'])
+        self.assertLess(max(i for i, l in enumerate(self.log) if l.startswith('rununinstall')),
+                        min(i for i, l in enumerate(self.log) if l.startswith('runinstall')))
+        self.assertFalse(ir.PREINSTALLED.exists())
+
+    def test_an_add_on_the_rig_does_not_hold_is_not_installed_afterwards(self):
+        self.installed = {'pi'}
+        ir.case_table = lambda: {'claude': (['claude'], [], self.own(lambda ck: None))}
+        ir.cli([])
+        self.assertEqual(self.installed, {'pi'})
+        self.assertEqual(self.log, ['rununinstall-pi', 'runinstall-pi'])
+
+    def test_the_add_ons_are_put_back_when_a_case_aborts(self):
+        def case(ck): raise SystemExit('the agent is gone')
+        ir.case_table = lambda: {'claude': (['claude'], [], self.own(case))}
+        self.assertEqual(ir.cli([]), 2)
+        self.assertEqual(self.installed, {'claude', 'pi', 'python'})
+
+    def test_a_rig_with_no_add_on_runs_no_script(self):
+        self.installed = set()
+        ir.case_table = lambda: {'claude': (['claude'], [], self.own(lambda ck: None))}
+        ir.cli([])
+        self.assertEqual(self.log, [])
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

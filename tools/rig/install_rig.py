@@ -391,6 +391,14 @@ def lib_state():
     rc, out = run('List LIBS:(ixemul|ixnet).library#? LFORMAT "%N %L"')
     return dict(l.split() for l in out.splitlines() if l.strip())
 
+def stage_addon(pkg):
+    """The add-on's archive unpacked into VTC:kit-<id>, with its runinstall-<id> and rununinstall-<id> scripts."""
+    shutil.rmtree(VTC / ("kit-" + pkg), ignore_errors=True)
+    shutil.copytree(kit_dir(pkg), VTC / ("kit-" + pkg))
+    (VTC / ("runinstall-" + pkg)).write_text(addon_install_line(pkg) + "\n")
+    (VTC / ("rununinstall-" + pkg)).write_text("Set upvardelete YES\nCD VTC:kit-%s\nExecute Uninstall\n" % pkg)
+
+
 def prepare(dest, addons=()):
     """The kit unpacked into VTC:distkit, the helper programs and the run scripts beside it, LIBS: as the rig boots it.
     Each add-on in `addons` is unpacked too, into VTC:kit-<id>, with runinstall-<id> and rununinstall-<id>."""
@@ -398,10 +406,7 @@ def prepare(dest, addons=()):
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
     shutil.copytree(KIT, VTC / "distkit")
     for pkg in addons:
-        shutil.rmtree(VTC / ("kit-" + pkg), ignore_errors=True)
-        shutil.copytree(kit_dir(pkg), VTC / ("kit-" + pkg))
-        (VTC / ("runinstall-" + pkg)).write_text(addon_install_line(pkg) + "\n")
-        (VTC / ("rununinstall-" + pkg)).write_text("Set upvardelete YES\nCD VTC:kit-%s\nExecute Uninstall\n" % pkg)
+        stage_addon(pkg)
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     if dest:
@@ -947,9 +952,10 @@ ADDON_FILES = {'claude': ('C:Claude', 'C:ClaudeCode'), 'pi': ('C:amiga-pi',), 'n
                'python': ('SYS:Python3/bin/python3',)}
 
 
-def addon_install_line(pkg):
-    """The Shell line that installs the add-on from its unpacked archive VTC:kit-<id> (what its Installer runs part by part)."""
-    opts = ADDON_OPTIONS.get(pkg)
+def addon_install_line(pkg, options=True):
+    """The Shell line that installs the add-on from its unpacked archive VTC:kit-<id> (what its Installer runs part by part).
+    options=False leaves ADDON_OPTIONS out (the put-back of an owner's add-on writes no test REMOTE)."""
+    opts = ADDON_OPTIONS.get(pkg) if options else None
     return 'Execute VTC:kit-%s/Files/install.dos VTC:kit-%s/Files%s' % (pkg, pkg, (' ' + opts) if opts else '')
 
 
@@ -966,6 +972,60 @@ def prepare_legacy():
     shutil.rmtree(VTC / "legacykit", ignore_errors=True)
     shutil.copytree(LEGACY_KIT, VTC / "legacykit")
     (VTC / "runinstall-legacy").write_text(legacy_install_line() + "\n")
+
+
+PREINSTALLED = paths.RIG / 'preinstalled.json'   # survives a run that dies between the Uninstall and the put-back
+
+
+def installed_addons():
+    """The add-ons the rig holds now, in dist/packages.txt order: those whose record (packages.txt `record`, where
+    their install.dos leaves MANIFEST, VERSIONS and options) has a MANIFEST. A record under UP-Term: counts only
+    while that assign exists (asking for it otherwise puts up a requester). The leftover of a run that died
+    (PREINSTALLED) is counted too: those add-ons were the owner's."""
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import json, pkgs
+    found = []
+    for pkg in addon_ids():
+        rec = pkgs.get(pkg, 'record')
+        if rec.upper().startswith('UP-TERM:') and run('Assign >NIL: UP-Term: EXISTS')[0] != 0:
+            continue
+        if run('List >NIL: %s/MANIFEST' % rec)[0] == 0:
+            found.append(pkg)
+    if PREINSTALLED.exists():
+        found = [p for p in addon_ids() if p in found or p in json.loads(PREINSTALLED.read_text())]
+    return found
+
+
+class OwnersAddons:
+    """The rig as its owner keeps it: Claude, amiga-pi, Python3 installed on purpose. A case checks that an add-on
+    is not there before its Install, so take them out first with each archive's own Uninstall (stand-alone ones
+    first, then those that need the base) and put them back from the same archive through its install.dos."""
+    def __init__(self):
+        self.pkgs = []
+
+    def remove(self):
+        import json
+        self.pkgs = installed_addons()
+        if not self.pkgs:
+            return
+        PREINSTALLED.write_text(json.dumps(self.pkgs))
+        print('install_rig: the rig holds %s; their own Uninstall first, put back after the run' % ' '.join(self.pkgs))
+        for pkg in reversed(self.pkgs):
+            stage_addon(pkg)
+            rc, out = run_long('rununinstall-' + pkg)
+            if rc != 0:
+                raise SystemExit('install_rig: Uninstall of %s failed (rc %d): %s' % (pkg, rc, out[-200:]))
+
+    def restore(self):
+        for pkg in self.pkgs:
+            stage_addon(pkg)
+            (VTC / ('runinstall-' + pkg)).write_text(addon_install_line(pkg, options=False) + '\n')
+            rc, out = run_long('runinstall-' + pkg, 3600)
+            if rc != 0 or 'Unknown command' in out:
+                print('[WARN] %s not put back (rc %d): %s' % (pkg, rc, out[-200:]))
+        if self.pkgs:
+            PREINSTALLED.unlink(missing_ok=True)
+            print('install_rig: put back %s' % ' '.join(self.pkgs))
 
 
 class Before:
@@ -1382,7 +1442,14 @@ def cli(argv):
             if not (kit_dir(pkg) / 'Install').exists():
                 raise SystemExit('install_rig: no kit %s: make dist first' % kit_dir(pkg))
     with paths.rig_lock():
+        owners = OwnersAddons()
         try:
+            if todo:
+                try:
+                    owners.remove()
+                except SystemExit as e:
+                    print('[ABORT] %s (no verdict written)' % e)
+                    return 2
             for c, why in todo:
                 print('install_rig: case %s (%s)' % (c, why))
                 try:
@@ -1392,6 +1459,10 @@ def cli(argv):
                     return 2
                 store.record(c, ok, detail, case_fingerprint(table[c]))
         finally:
+            try:
+                owners.restore()
+            except BaseException as e:
+                print('[WARN] the owner\'s add-ons are not put back: %s (%s lists them)' % (e, PREINSTALLED))
             show_close()
     bad = store.failed([c for c, _ in todo])
     print('install_rig: %d of %d cases failed: %s' % (len(bad), len(todo), ' '.join(bad)))
