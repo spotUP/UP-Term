@@ -4,7 +4,7 @@
 - dist/net/bebbossh-1.46.1 holds the source tarball (GPL), the 19 patches in a gap-free order, SOURCE.txt, the licence and
   no binary; the tarball is the one SHA256SUMS names;
 - `make dist` stages build/bebbossh/out over that drawer (the Makefile line and the build script's patch count);
-- the staged kit (build/dist/UP-Term/Files/net/bebbossh-1.46.1, when `make dist` ran): our seven binaries, each with the
+- the staged kit (build/dist/UP-Term/Files/net/bebbossh-1.46.1, when `make dist` ran): our six binaries, each with the
   checksum its SHA256SUMS lists, the programs and libraries with a $VER of 1.46.1. Skipped when no kit is staged,
   unless BEBBOSSH_REQUIRE=1 (make dist-check)."""
 import hashlib, os, pathlib, re, unittest
@@ -13,7 +13,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 DRAWER = ROOT / 'dist/net/bebbossh-1.46.1'
 KIT = ROOT / 'build/dist/UP-Term/Files/net/bebbossh-1.46.1'
 BINARIES = ['bebbossh', 'bebboscp', 'bebbosshd', 'bebbosshkeygen',
-            'libcryptossh.library', 'libcryptossh.library020', 'libcryptossh.library060']
+            'libcryptossh.library020', 'libcryptossh.library060']
+PLAIN = 'libcryptossh.library'  # the 68000 build: the kit needs a 68020, nothing installs it, so it is not built or shipped
 
 
 def sha(p):
@@ -43,6 +44,49 @@ class RepoDrawer(unittest.TestCase):
         self.assertIn('6.5.0b', (DRAWER / 'SOURCE.txt').read_text())
 
 
+class InstallScript(unittest.TestCase):
+    '''dist/install.dos, the SSH block: an upgrade replaces the library of an earlier UP-Term install (our marker), a
+    library without the marker is the user's own and is kept with a note when it is older. (Run on the rig: install_rig.py
+    net-upgrade.) Install.installer runs this same script; Uninstall removes only the marked library.'''
+    @classmethod
+    def setUpClass(cls):
+        s = (ROOT / 'dist/install.dos').read_text()
+        cls.block = s[s.index('If "$optssh" EQ "SSH"'):s.index('If "$optbebboget" EQ "BEBBOGET"')]
+
+    def test_an_upgrade_over_an_earlier_install_replaces_the_library(self):
+        # the old guard "If NOT EXISTS LIBS:libcryptossh.library" around the Copy kept the 1.45 library on an upgrade
+        self.assertNotRegex(self.block, r'(?m)^  If NOT EXISTS LIBS:libcryptossh\.library\n    If "\$optcpu060"')
+
+        copy = self.block.index('Copy net/bebbossh-1.46.1/libcryptossh.library060')
+        self.assertIn('If "$cslib" EQ "install"', self.block[:copy])
+        marker = self.block.index('Set cslib "install"')
+        keep = self.block.index('If NOT EXISTS ENVARC:up-term/cryptossh')
+        self.assertLess(marker, keep)  # install is the default; only a library without our marker turns it into keep
+        self.assertIn('Set cslib "keep"', self.block[keep:copy])
+
+    def test_the_users_own_older_library_is_kept_with_the_replace_command(self):
+        keep = self.block[self.block.index('Set cslib "keep"'):self.block.index('If "$cslib" EQ "install"')]
+        self.assertIn('Search >NIL: LIBS:libcryptossh.library "libcryptossh (1.4[6-9]', keep)
+        self.assertIn('PATTERN', keep)
+        self.assertIn('Copy <kit>/Files/net/bebbossh-1.46.1/libcryptossh.library020 LIBS:libcryptossh.library CLONE', keep)
+        self.assertIn('Copy <kit>/Files/net/bebbossh-1.46.1/libcryptossh.library060 LIBS:libcryptossh.library CLONE', keep)
+        self.assertNotIn('Copy net/', keep)  # the kept branch only says the command, never runs it
+
+    def test_the_marker_is_written_with_every_install_and_uninstall_removes_only_ours(self):
+        self.assertIn('Echo >ENVARC:up-term/cryptossh "installed by UP-Term"', self.block)
+        un = (ROOT / 'dist/Uninstall').read_text()
+        self.assertRegex(un, r'If EXISTS ENVARC:up-term/cryptossh\n  Delete >NIL: LIBS:libcryptossh\.library')
+
+    def test_only_install_dos_installs_the_library(self):
+        # Install.installer runs install.dos (its help text only names the library); no add-on or base part copies it
+        for p in (ROOT / 'dist').rglob('*'):
+            if p.is_file() and 'net/bebbossh' not in str(p) and p.suffix not in ('.lha', '.txt'):
+                t = p.read_bytes()
+                if p.name not in ('install.dos', 'Uninstall', 'Install.installer') and b'LIBS:libcryptossh' in t:
+                    self.fail('%s installs or touches the library' % p)
+        self.assertNotRegex((ROOT / 'dist/Install.installer').read_text(), r'\(copyfiles[^)]*cryptossh')
+
+
 class StagedKit(unittest.TestCase):
     def setUp(self):
         if not KIT.is_dir():
@@ -55,6 +99,11 @@ class StagedKit(unittest.TestCase):
         for b in BINARIES:
             self.assertEqual(sums['./' + b], sha(KIT / b), b)
         self.assertEqual(sums['./bebbossh-1.45-src.tar.bz2'], sha(KIT / 'bebbossh-1.45-src.tar.bz2'))
+
+    def test_the_unused_68000_library_is_not_shipped(self):
+        self.assertFalse((KIT / PLAIN).exists())
+        self.assertNotIn('./' + PLAIN + '\n', (KIT / 'SHA256SUMS').read_text() + '\n')
+        self.assertNotIn('out/' + PLAIN + '"', (ROOT / 'tools/build_bebbossh.sh').read_text())
 
     def test_the_binaries_say_1_46_1(self):
         for b in BINARIES[:4]:

@@ -51,14 +51,11 @@ mk CPU=-m68060 pre
 mk CPU=-m68060 Release/libcryptossh.library
 cp Release/libcryptossh.library "$b/out/libcryptossh.library060"
 make Release=1 clean >/dev/null 2>&1
-mk pre
-mk Release/libcryptossh.library
-cp Release/libcryptossh.library "$b/out/libcryptossh.library"
 
 # SHA256SUMS of the kit's drawer: the files kept in the repo (everything but our binaries) + our binaries
 cd "$drawer"
 grep -v -E ' \./(bebbossh|bebboscp|bebbosshd|bebbosshkeygen|libcryptossh\.library(020|060)?)$' SHA256SUMS > "$b/out/SHA256SUMS"
-(cd "$b/out" && for f in bebbossh bebboscp bebbosshd bebbosshkeygen libcryptossh.library libcryptossh.library020 libcryptossh.library060; do
+(cd "$b/out" && for f in bebbossh bebboscp bebbosshd bebbosshkeygen libcryptossh.library020 libcryptossh.library060; do
    printf '%s  ./%s\n' "$(shasum -a 256 "$f" | cut -d' ' -f1)" "$f"; done) >> "$b/out/SHA256SUMS"
 m68k-amigaos-gcc --version | head -1 > "$b/out/TOOLCHAIN.txt"
 echo "[OK] bebbossh: built in $b/out"

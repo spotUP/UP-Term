@@ -12,8 +12,9 @@ BebboSSH 1.46.1: SSH2 client, server, scp and key generator for the Amiga
     from the source and patches below (make bebbossh, tools/build_bebbossh.sh;
     the build's SHA256SUMS and TOOLCHAIN.txt are in the kit's drawer):
     bebbossh, bebboscp, bebbosshkeygen, bebbosshd (68020 builds),
-    libcryptossh.library (68000), libcryptossh.library020 (68020-68040,
-    68080), libcryptossh.library060 (68060).
+    libcryptossh.library020 (68020-68040,
+    68080), libcryptossh.library060 (68060). The plain 68000 library of the
+    readme is not built: the kit needs a 68020.
     bebbossh.readme, bebbossh.readme.orig (Bebbo's original 1.46 readme),
     COPYING, template/sshd_config, patches/: from the archive
     (template/passwd, the author's sample login, is left out; so are the
