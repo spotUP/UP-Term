@@ -203,15 +203,8 @@ void le_kc_insert(le_line *le, int start, int quote_at, const unsigned char *ent
  * quote one entry needed is gone again when the next does not. */
 void le_kc_redo(le_line *le, const unsigned char *snap, int snap_pos, int start, int quote_at,
                 const unsigned char *entry, int n);
-/* KingCON's FNCMODE letters (W window, L list, B cycle, C common prefix
- * first, S silent; any case, other characters ignored) as LE_KC_* bits.
- * W clears L and B, as in KingCON. 0 letters: W. */
-#define LE_KC_WINDOW 1
-#define LE_KC_LIST   2
-#define LE_KC_CYCLE  4
-#define LE_KC_COMMON 8
-#define LE_KC_SILENT 16
-int  le_kc_fncmode(const char *letters);
+/* KingCON's FNCMODE letters as LE_KC_* bits: handler/kcmode.h (shared with UP-Term Prefs). */
+#include "kcmode.h"
 void le_hist_add(le_line *le, const unsigned char *s, int n);
 /* The list for a shell's `history` builtin (ACTION_VTCON_HISTORY): the lines are numbered from 0, oldest first.
  * le_hist_get copies line i (NUL-terminated, cut to max-1) into buf and returns its length, -1 if there is none;

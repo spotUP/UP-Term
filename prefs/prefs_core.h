@@ -73,11 +73,102 @@ void prefs_defaults(prefs_fields *f);
 void prefs_from_conf(prefs_fields *f, const upconf *c, const char *profile);
 
 /* The fields the file cannot hold as typed: 0 when all are good, else
- * PREFS_BAD_PAL + i (palette entry i), PREFS_BAD_SELFG or PREFS_BAD_SELBG. */
-#define PREFS_BAD_PAL   1
-#define PREFS_BAD_SELFG 17
-#define PREFS_BAD_SELBG 18
+ * PREFS_BAD_PAL + i (palette entry i), or the PREFS_BAD_* of the colour. Every
+ * colour field is strictly RRGGBB (prefs_hex_parse), blank allowed; the
+ * cursor colour may also be "inverse". */
+#define PREFS_BAD_PAL    1
+#define PREFS_BAD_SELFG  17
+#define PREFS_BAD_SELBG  18
+#define PREFS_BAD_FG     19
+#define PREFS_BAD_BG     20
+#define PREFS_BAD_CURCOL 21
 int prefs_validate(const prefs_fields *f);
+/* The label of the field a prefs_validate result names, as the window
+ * shows it ("Text colour", "Palette entry Bright Red"); out: cap bytes. */
+void prefs_bad_label(int bad, char *out, int cap);
+
+/* ---- colours ------------------------------------------------------------ */
+/* "RRGGBB", with "#" or "0x" before it when wanted and nothing else (no
+ * blanks, not 3 digits): 1 and *rgb, else 0 and *rgb untouched. */
+int prefs_hex_parse(const char *s, uc_u32 *rgb);
+/* rgb as "RRGGBB" (7 bytes at least) */
+void prefs_hex_format(uc_u32 rgb, char *out);
+/* The name of palette entry i (0..15) as the window labels it: the ANSI
+ * names, Black, Red ... White, Bright Black ... Bright White. */
+const char *prefs_pal_name(int i);
+
+/* ---- the colour window's wheel ------------------------------------------ */
+/* Hue, saturation and brightness as colorwheel.gadget holds them: each a
+ * 32-bit fraction, 0 to 0xFFFFFFFF (hue is the angle round the wheel). */
+typedef struct prefs_hsb {
+    uc_u32 hue, sat, bri;
+} prefs_hsb;
+void prefs_rgb_to_hsb(uc_u32 rgb, prefs_hsb *out);
+uc_u32 prefs_hsb_to_rgb(const prefs_hsb *hsb);
+
+/* ---- KingCON's completion style (kingcon-mode) -------------------------- */
+/* What the window offers for the FNCMODE letters: one choice for what
+ * happens when several names match, and two switches. Decoded through
+ * le_kc_fncmode (handler/kcmode.c), the function the handler runs, so the
+ * window and the handler cannot read a letter set differently. */
+enum {
+    PREFS_KC_WINDOW,      /* a selection window (W) */
+    PREFS_KC_LIST,        /* the list under the line (L) */
+    PREFS_KC_CYCLE,       /* Tab cycles through the names (B) */
+    PREFS_KC_LISTCYCLE,   /* the list, and Tab cycles (LB) */
+    PREFS_KC_COMMON_ONLY  /* only the common part (C with none of W, L, B) */
+};
+typedef struct prefs_kc {
+    int match;   /* PREFS_KC_* */
+    int common;  /* the common part first (C); always on for PREFS_KC_COMMON_ONLY */
+    int silent;  /* no beeps (S) */
+} prefs_kc;
+void prefs_kc_decode(const char *letters, prefs_kc *out);
+/* Normalised letters, cap bytes at least 6: the match letters (W, L, B in
+ * that order; "C" alone for common-only), then C, then S. The default (a
+ * window, nothing else) is "" -- the key is then not written. */
+void prefs_kc_encode(const prefs_kc *k, char *out, int cap);
+
+/* ---- font strings ------------------------------------------------------- */
+/* A font requester's result (ta_Name "topaz.font", size 8) as the profile's
+ * font value "topaz:8" (".font" cut, any case). 0 and out "" when the name
+ * is empty, holds a blank or a colon (the handler splits the value there)
+ * or the result does not fit cap; a size under 1 gives the bare name. */
+int prefs_font_compose(const char *name, long size, char *out, int cap);
+/* The profile's font value back into what a requester starts from: name
+ * with ".font" ("topaz:8" -> "topaz.font"), size 0 when none. 0 on "". */
+int prefs_font_parse(const char *spec, char *name, int cap, long *size);
+/* An outline font's .otag file (a requester's drawer + file, or a bare
+ * file) as the font-fallback value: the file name without drawer and
+ * ".otag". 0 and out "" when the file is not an .otag. */
+int prefs_otag_basename(const char *path, char *out, int cap);
+
+/* ---- scrollback, screen mode and depth ---------------------------------- */
+#define PREFS_SB_DEFAULT 500   /* the lines of a window with no scrollback key */
+#define PREFS_SB_MAX     99999
+/* scrollback: blank (and anything that is no number) is the built-in, 0 or
+ * negative "none", else 1..PREFS_SB_MAX (more is cut). *lines is what the
+ * integer gadget shows (PREFS_SB_DEFAULT when blank), *none the checkbox. */
+void prefs_sb_parse(const char *s, long *lines, int *none);
+/* The value to write: "0" for none, "" when lines is the built-in's, else
+ * the number (clamped). out: 8 bytes at least. */
+void prefs_sb_format(long lines, int none, char *out);
+/* screen-mode "0x00029000" (the 0x optional, 1 to 8 hex digits and nothing
+ * else): 1 and *id, else 0. */
+int prefs_mode_parse(const char *s, unsigned long *id);
+/* "0x%08lx"; 11 bytes at least. id 0 gives "" (the Workbench's mode). */
+void prefs_mode_format(unsigned long id, char *out);
+/* screen-depth: 4..8 (a deeper or shallower number is cut to it, as the
+ * handler does); 0 when blank or no number. */
+#define PREFS_DEPTH_MIN 4
+#define PREFS_DEPTH_MAX 8
+int prefs_depth_parse(const char *s);
+/* the depth as a value: "" for 0, else "4".."8"; 2 bytes at least */
+void prefs_depth_format(int depth, char *out);
+
+/* 1 when the two sets of fields would write the same profile (the window's
+ * "unsaved changes" test): every field, the strings by their text. */
+int prefs_equal(const prefs_fields *a, const prefs_fields *b);
 
 /* A theme file (UP-Term's themes drawer, one .conf per theme: one profile section) applied to
  * f: its colours -- fg, bg, cursor-color, selection-fg/bg, palette --
@@ -88,6 +179,13 @@ int prefs_apply_theme(prefs_fields *f, upconf *work, const char *text, long len)
 
 /* 1 when the table has a profile of that name (case-insensitive). */
 int prefs_profile_exists(const upconf *c, const char *profile);
+
+/* Rename profile `from` to `to` in the table, keys and comments staying with
+ * it. PREFS_RENAME_OK, or why not: _MISSING (no such profile), _EMPTY (no
+ * name once cleaned), _EXISTS (another profile has that name, any case).
+ * `to` as typed: prefs_clean_name is applied. */
+enum { PREFS_RENAME_OK, PREFS_RENAME_MISSING, PREFS_RENAME_EMPTY, PREFS_RENAME_EXISTS };
+int prefs_rename_profile(upconf *c, const char *from, const char *to);
 
 /* The profile name as typed: blanks trimmed, [ and ] dropped, cut to cap. */
 void prefs_clean_name(const char *in, char *out, int cap);
