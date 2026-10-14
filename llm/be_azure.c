@@ -220,5 +220,5 @@ static void a_http_err(const llm_http_fail *f, char *out, long cap)
 
 const llm_backend llm_be_azure = {
     "azure-openai-responses", "api-key", "/responses", a_head, a_body, 0, llm_responses_new, a_feed,
-    llm_responses_free, "OpenAI Responses stream ended before a terminal response event", a_route, 0, 0, a_http_err, 0
+    llm_responses_free, "OpenAI Responses stream ended before a terminal response event", a_route, 0, 0, a_http_err, 0, 0
 };

@@ -59,6 +59,13 @@ int llm_reg_builtin(llm_reg *r)
     return llm_reg_overlay(r, llm_models_builtin, (long)strlen(llm_models_builtin));
 }
 
+const char *llm_reg_builtin_text(long *n)
+{
+    if (n)
+        *n = (long)strlen(llm_models_builtin);
+    return llm_models_builtin;
+}
+
 const llm_model *llm_reg_find(const llm_reg *r, const char *provider, const char *id)
 {
     int i;

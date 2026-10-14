@@ -48,6 +48,8 @@ char *llm_reg_dup(llm_reg *r, const char *s, long n);
 
 /* the bundled catalog: 0, -1 */
 int llm_reg_builtin(llm_reg *r);
+/* the bundled catalog's text (models.json form), n its length */
+const char *llm_reg_builtin_text(long *n);
 /* models.json text laid over the registry: 0, or -1 with r->err set (the registry is unchanged then) */
 int llm_reg_overlay(llm_reg *r, const char *text, long n);
 

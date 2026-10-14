@@ -1104,5 +1104,5 @@ static void g_http_err(const llm_http_fail *f, char *out, long cap)
 
 const llm_backend llm_be_google = {
     "google-generative-ai", "x-goog-api-key", "/models", g_head, g_body, 0, g_new, g_feed, g_free,
-    "Google stream ended without a finish reason", g_route, g_fin, 0, g_http_err, g_raw
+    "Google stream ended without a finish reason", g_route, g_fin, 0, g_http_err, g_raw, 0
 };

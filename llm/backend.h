@@ -129,6 +129,10 @@ typedef struct llm_ctx {
     unsigned think_budget_set;  /* bit LT_x: a custom thinking budget for that level (settings.json thinkingBudgets) */
     const char *cache_retention;    /* "none" | "short" | "long", 0: PI_CACHE_RETENTION, else short (bedrock: cachePoint ttl) */
     long think_budget[8];       /* tokens, by LT_* (google: thinkingConfig.thinkingBudget; anthropic, bedrock: the budget before adjustMaxTokensForThinking) */
+    /* anthropic-messages strict-tool fallback (pi 1.2.0 disablePreferredStrictTools): in: send the tools whose constrainedSampling
+     * is strict "prefer" as non-strict; out (when not 0): the body just built carried such a tool as strict (hasPreferredStrictTools) */
+    int no_prefer_strict;
+    int *prefer_strict_out;
 } llm_ctx;
 
 /* the custom thinking budget of a level (xhigh and max count as high, simple-options.ts clampReasoning), -1 none */
@@ -174,6 +178,9 @@ typedef struct llm_backend {
      * itself (google: processStreamResponse looks at every network chunk): it replaces the SSE parser, and calls feed for
      * each event it finds. 0 pointer: the SSE parser. Returns -1 when the stream is malformed. */
     int (*raw)(void *dec, const char *p, long n, const llm_sink *k);
+    /* a 400 invalid_request_error whose text names a limit of strict tools (anthropic-messages): 1 when the request may go
+     * again with its preferred strict tools non-strict (llm_ctx.no_prefer_strict). 0 pointer: never */
+    int (*strict_limit)(const char *errtext);
 } llm_backend;
 
 extern const llm_backend llm_be_anthropic;

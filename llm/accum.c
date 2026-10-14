@@ -11,6 +11,7 @@ void llm_acc_init(llm_acc *a, const char *api, const char *provider)
     a->provider = provider;
     jw_init(&a->usage_raw);
     jw_init(&a->rewrite);
+    jw_init(&a->diag);
 }
 
 void llm_acc_model(llm_acc *a, const char *id, const long price[4])
@@ -74,7 +75,11 @@ void llm_acc_meta(const llm_acc *a, llm_meta *m)
         m->rewrite_n = a->rewrite.n;
         m->rewrite_ts = a->rewrite_ts;
     }
-    m->pi_order = !strcmp(a->api ? a->api : "", "pi-messages") ? (a->meta_seen ? 2 : 1) : 0;
+    if (a->diag.n) {
+        m->diag = a->diag.p;
+        m->diag_n = a->diag.n;
+    }
+    m->pi_order = !strcmp(a->api ? a->api : "", "pi-messages") ? (a->meta_seen ? 2 : 1) : a->anew ? 1 : 0;
     m->raw_stop = a->stop_raw[0] ? a->stop_raw : 0;
     m->response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
     m->usage = a->usage;
@@ -100,6 +105,7 @@ void llm_acc_free(llm_acc *a)
     int i;
     jw_free(&a->usage_raw);
     jw_free(&a->rewrite);
+    jw_free(&a->diag);
     for (i = 0; i < a->nb; i++) {
         jw_free(&a->b[i].a);
         jw_free(&a->b[i].sig);
@@ -618,6 +624,11 @@ void llm_acc_event(void *u, const llm_event *e)
             jw_raw(&a->rewrite, e->rewrite, e->rewrite_n);
             a->rewrite_ts = llm_wall();
         }
+        if (e->diag && e->diag_n > 0) {
+            if (a->diag.n)
+                jw_rawz(&a->diag, ",");
+            jw_raw(&a->diag, e->diag, e->diag_n);
+        }
         break;
     case LE_STOP:
         if (e->stop == LS_ERROR) {
@@ -708,7 +719,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     jw_raw(&c, "[", 1);
     /* pi-messages: a failure that is not the server's own error event is a message made anew (api/pi-messages.ts createErrorEvent):
      * no content, no usage, no ids */
-    fresh = !strcmp(a->api ? a->api : "", "pi-messages") && !a->meta_seen && (a->failed || !a->done);
+    fresh = (a->anew || !strcmp(a->api ? a->api : "", "pi-messages")) && !a->meta_seen && (a->failed || !a->done);
     for (i = 0; i < a->nb && !fresh; i++) {
         const llm_ablock *b = &a->b[ord[i]];
         jw part;
@@ -799,4 +810,9 @@ const llm_ablock *llm_acc_tool(const llm_acc *a, int k)
             return &a->b[best];
         last = a->b[best].index;
     }
+}
+
+void llm_acc_anew(llm_acc *a)
+{
+    a->anew = 1;
 }
