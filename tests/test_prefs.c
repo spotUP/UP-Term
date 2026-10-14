@@ -402,6 +402,18 @@ static void amiga_keys_and_highlight_cat_round_trip(void)
 
 /* W-T9 dither (on by default) and W-T14 padding-color (background by default): no key gives the defaults, the
  * editor writes both, and what it wrote reads back -- the words the handler reads (apply_profile) */
+/* The brightness slider got a LONG array it read as UWORDs ({0, p0, 0, p1,
+ * 0xFFFF} on a 68k): the list is UWORDs ended by 0xFFFF. */
+static void the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff(void)
+{
+    unsigned short g[3];
+    CHECK(prefs_grad_pens(g, 5, 9) == 1);
+    CHECK(sizeof(g[0]) == 2 && g[0] == 5 && g[1] == 9 && g[2] == 0xFFFF);
+    CHECK(prefs_grad_pens(g, -1, 9) == 0 && g[0] == 0xFFFF);
+    CHECK(prefs_grad_pens(g, 5, -1) == 0 && g[0] == 0xFFFF);
+    CHECK(prefs_grad_pens(g, 5, 0xFFFF) == 0 && g[0] == 0xFFFF);
+}
+
 static void dither_and_padding_color_round_trip(void)
 {
     static upconf conf, work;
@@ -1225,4 +1237,5 @@ void suite_prefs(void)
     keep_cases();
     amiga_keys_and_highlight_cat_round_trip();
     dither_and_padding_color_round_trip();
+    the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
 }

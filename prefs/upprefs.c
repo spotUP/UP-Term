@@ -1074,7 +1074,7 @@ struct colwin {
     struct Gadget *gr, *gg, *gb, *ghex;
     Object *wheel, *grad;
     LONG pen;                 /* the preview swatch's pen */
-    LONG gpens[3];            /* the brightness gradient's pens, ~0 ended */
+    UWORD gpens[3];           /* the brightness gradient's pens, ~0 ended */
     uc_u32 rgb;
     prefs_hsb hsb;
     WORD sx, sy, sw, sh;      /* the preview swatch, window coordinates */
@@ -1155,10 +1155,12 @@ static int pick_colour(struct app *a, const char *title, uc_u32 *rgb)
     struct Gadget **sg[3];
     struct RastPort mr;
     ULONG hue, sat;
+    struct Library *wheelbase = 0, *gradbase = 0;
+    char wtitle[100];
     memset(&c, 0, sizeof(c));
     c.a = a;
     c.pen = -1;
-    c.gpens[0] = c.gpens[1] = c.gpens[2] = ~0;
+    c.gpens[0] = c.gpens[1] = c.gpens[2] = (UWORD)~0;
     c.rgb = *rgb;
     prefs_rgb_to_hsb(*rgb, &c.hsb);
     sg[0] = &c.gr;
@@ -1259,35 +1261,49 @@ static int pick_colour(struct app *a, const char *title, uc_u32 *rgb)
      * classes or the pens are not there the sliders and the hex field do it all */
     {
         LONG p0 = pen_for(a, 0x000000UL), p1 = pen_for(a, 0xFFFFFFUL);
-        if (p0 >= 0 && p1 >= 0) {
-            c.gpens[0] = p0;
-            c.gpens[1] = p1;
-        } else {
+        const char *why = 0;
+        if (!prefs_grad_pens(c.gpens, p0, p1)) {
             if (p0 >= 0)
                 ReleasePen(a->scr->ViewPort.ColorMap, (ULONG)p0);
             if (p1 >= 0)
                 ReleasePen(a->scr->ViewPort.ColorMap, (ULONG)p1);
+            why = "No free colours for the colour wheel: use the sliders.";
+        } else if (!(wheelbase = OpenLibrary((STRPTR)"gadgets/colorwheel.gadget", 39L))) {
+            why = "The colour wheel needs gadgets/colorwheel.gadget, which cannot be opened: use the sliders.";
+        } else if (!(gradbase = OpenLibrary((STRPTR)"gadgets/gradientslider.gadget", 39L))) {
+            why = "The colour wheel needs gadgets/gradientslider.gadget, which cannot be opened: use the sliders.";
         }
-    }
-    if (c.gpens[0] != ~0) {
-        struct TagItem wl[14], gl[14];
-        c.wheel = NewObjectA(0, (UBYTE *)"colorwheel.gadget",
-                             tl(wl, GA_Left, (ULONG)ox, GA_Top, (ULONG)oy, GA_Width, (ULONG)wheel_sz,
-                                GA_Height, (ULONG)wheel_sz, GA_ID, PC_WHEEL, WHEEL_Screen, (ULONG)a->scr,
-                                WHEEL_MaxPens, 16, WHEEL_BevelBox, TRUE, WHEEL_Hue, c.hsb.hue,
-                                WHEEL_Saturation, c.hsb.sat, ICA_TARGET, (ULONG)ICTARGET_IDCMP, TAG_DONE));
-        if (c.wheel)
-            c.grad = NewObjectA(0, (UBYTE *)"gradientslider.gadget",
-                                tl(gl, GA_Left, (ULONG)(ox + wheel_sz + gap), GA_Top, (ULONG)oy,
-                                   GA_Width, (ULONG)grad_w, GA_Height, (ULONG)wheel_sz, GA_ID, PC_BRIGHTNESS,
-                                   GA_Previous, (ULONG)c.wheel, GRAD_MaxVal, 0xFFFF,
-                                   GRAD_CurVal, c.hsb.bri >> 16, GRAD_PenArray, (ULONG)c.gpens,
-                                   PGA_FREEDOM, FREEVERT, ICA_TARGET, (ULONG)ICTARGET_IDCMP, TAG_DONE));
-        if (c.wheel && c.grad)
-            AddGList(c.m.win, (struct Gadget *)c.wheel, (UWORD)~0, 2, 0);
-        else if (c.wheel) {
-            DisposeObject(c.wheel);
-            c.wheel = 0;
+        if (!why) {
+            struct TagItem wl[14], gl[14];
+            c.wheel = NewObjectA(0, (UBYTE *)"colorwheel.gadget",
+                                 tl(wl, GA_Left, (ULONG)ox, GA_Top, (ULONG)oy, GA_Width, (ULONG)wheel_sz,
+                                    GA_Height, (ULONG)wheel_sz, GA_ID, PC_WHEEL, WHEEL_Screen, (ULONG)a->scr,
+                                    WHEEL_MaxPens, 16, WHEEL_BevelBox, TRUE, WHEEL_Hue, c.hsb.hue,
+                                    WHEEL_Saturation, c.hsb.sat, ICA_TARGET, (ULONG)ICTARGET_IDCMP, TAG_DONE));
+            if (c.wheel)
+                c.grad = NewObjectA(0, (UBYTE *)"gradientslider.gadget",
+                                    tl(gl, GA_Left, (ULONG)(ox + wheel_sz + gap), GA_Top, (ULONG)oy,
+                                       GA_Width, (ULONG)grad_w, GA_Height, (ULONG)wheel_sz, GA_ID, PC_BRIGHTNESS,
+                                       GA_Previous, (ULONG)c.wheel, GRAD_MaxVal, 0xFFFF,
+                                       GRAD_CurVal, c.hsb.bri >> 16, GRAD_PenArray, (ULONG)c.gpens,
+                                       PGA_FREEDOM, FREEVERT, ICA_TARGET, (ULONG)ICTARGET_IDCMP, TAG_DONE));
+            if (c.wheel && c.grad)
+                AddGList(c.m.win, (struct Gadget *)c.wheel, (UWORD)~0, 2, 0);
+            else {
+                if (c.wheel)
+                    DisposeObject(c.wheel);
+                c.wheel = 0;
+                why = "The colour wheel could not be made: use the sliders.";
+            }
+        }
+        if (why)
+            set_status(a, why);
+        else {
+            /* the sentinel: the title names the wheel only when the object exists */
+            strncpy(wtitle, title, 60);
+            wtitle[60] = 0;
+            strcat(wtitle, " (colour wheel)");
+            SetWindowTitles(c.m.win, (STRPTR)wtitle, (STRPTR)~0);
         }
     }
     GT_RefreshWindow(c.m.win, 0);
@@ -1379,10 +1395,14 @@ static int pick_colour(struct app *a, const char *title, uc_u32 *rgb)
         DisposeObject(c.grad);
         DisposeObject(c.wheel);
     }
+    if (gradbase)
+        CloseLibrary(gradbase);
+    if (wheelbase)
+        CloseLibrary(wheelbase);
     if (c.pen >= 0)
         ReleasePen(a->scr->ViewPort.ColorMap, (ULONG)c.pen);
     for (i = 0; i < 2; i++)
-        if (c.gpens[i] != ~0)
+        if (c.gpens[i] != (UWORD)~0)
             ReleasePen(a->scr->ViewPort.ColorMap, (ULONG)c.gpens[i]);
     modal_close(a, &c.m);
     if (ok)

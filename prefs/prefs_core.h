@@ -105,6 +105,11 @@ typedef struct prefs_hsb {
 } prefs_hsb;
 void prefs_rgb_to_hsb(uc_u32 rgb, prefs_hsb *out);
 uc_u32 prefs_hsb_to_rgb(const prefs_hsb *hsb);
+/* The brightness slider's pen list as gradientslider.gadget reads it
+ * (GRAD_PenArray: a UWORD array ended by 0xFFFF). out holds 3 entries.
+ * 1 with {p0, p1, 0xFFFF} when both pens are real; 0 with {0xFFFF} (an empty
+ * list, nothing to release) when either is missing (negative) or too big. */
+int prefs_grad_pens(unsigned short out[3], long p0, long p1);
 
 /* ---- KingCON's completion style (kingcon-mode) -------------------------- */
 /* What the window offers for the FNCMODE letters: one choice for what

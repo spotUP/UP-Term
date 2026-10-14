@@ -446,6 +446,10 @@ def ui_run(table):
     cw = win('Colour')
     check("the colour window opens on the swatch", cw is not None and cw['g'].get(ID['PC_HEX'], [0, 0, 0, 0, ''])[4] == 'AA0000',
           str(cw['g'].get(ID['PC_HEX']) if cw else None))
+    # the wheel is BOOPSI and not in UITREE: the title names it only when
+    # NewObject made it (colorwheel.gadget and gradientslider.gadget opened)
+    check("the colour window has a colour wheel (title says so)",
+          cw is not None and 'colour wheel' in cw['title'], cw['title'] if cw else None)
     if cw:
         click_gad('Colour', ID['PC_HEX'], right=True, settle=0.5)
         for _ in range(8):
