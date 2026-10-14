@@ -15,7 +15,7 @@ In amiagent.020 0.13.2 the values are at 0x744 and 0x13e88 (the 68000 build:
 here: a new amiagent gets its offsets looked at and listed, never guessed."""
 import hashlib, pathlib, re
 
-DIST = pathlib.Path(__file__).resolve().parents[2] / "dist/net/amiagent-0.13.2"
+DIST = pathlib.Path(__file__).resolve().parents[2] / "tools/rig/amiagent-0.13.2"
 SOURCE = DIST / "amiagent.020"     # what the rig installs as boot/amiagent
 
 # sha256 of the build -> the offsets of the 262144 values

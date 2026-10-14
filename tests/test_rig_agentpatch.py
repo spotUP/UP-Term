@@ -8,8 +8,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import agentpatch as ap
 
-D68K = ROOT / "dist/net/amiagent-0.13.2/amiagent"
-D020 = ROOT / "dist/net/amiagent-0.13.2/amiagent.020"
+D68K = ROOT / "tools/rig/amiagent-0.13.2/amiagent"
+D020 = ROOT / "tools/rig/amiagent-0.13.2/amiagent.020"
 
 
 class StockPatch(unittest.TestCase):

@@ -1016,8 +1016,10 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
+	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (make wasabi, the pin tools/nas/wasabi.rev)
+	@test -f $(BUILD)/wasabi/wasabid -a -f $(BUILD)/wasabi/wasabi -a -f $(BUILD)/wasabi/wasabi_mcp.py || { echo "dist: no $(BUILD)/wasabi/{wasabid,wasabi,wasabi_mcp.py}: make wasabi first"; exit 1; }
 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
-	cp $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
+	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
 	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
 	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)

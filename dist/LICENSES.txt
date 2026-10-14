@@ -36,11 +36,10 @@ BebboSSH 1.46.1 (bebbossh,    GPL v3 or later (COPYING); some  Files/net/bebboss
 bebbosshd, bebboscp, ...)     files public domain per header
 curl 8.22.0 (AmigaOS port)    curl licence (COPYING)           https://github.com/boingball/curl branch
                                                                amigaos, commit 8347cfe (BUILD-INFO.txt)
-amiagent 0.13.2 (optional;    Apache License 2.0 (Files/net/   Aminet comm/net/amiagent; source
-by Thomas Luebker)            amiagent-0.13.2/LICENSE)         https://github.com/thomas-luebker/amimcp;
-                                                               see Files/net/amiagent-0.13.2/SOURCE.txt
-wasabi / wasabid              MIT (Files/wasabi/LICENSE)       https://github.com/creep-ltx/wasabi; see
-                                                               Files/wasabi/SOURCE.txt
+wasabi 0.9b2 (optional:       MIT (Files/wasabi/LICENSE)       https://github.com/creep-ltx/wasabi, commit
+wasabid, the client wasabi,                                    ee23c09 (built by UP-Term); see
+wasabi_mcp.py; by Tobias                                       Files/wasabi/SOURCE.txt
+Karlsson)
 GNU Unifont 17.0.05 pages     SIL OFL 1.1 (Files/unifont/      https://unifoundry.com; Files/unifont/SOURCE.txt
                               OFL-1.1.txt)
 Twemoji 17.0.3 emoji pages    CC-BY 4.0 (Files/emoji/          https://github.com/jdecked/twemoji;

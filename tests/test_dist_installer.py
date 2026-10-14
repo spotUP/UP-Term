@@ -255,47 +255,70 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
         self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/UP-Term.version$")
 
 
-class AmiagentOption(unittest.TestCase):
-    """amiagent is an optional part of the kit's Install, off by default: one page that says what it
-    is and that it needs a TOKEN, the 68020 build (the 68000 one on a 68000/68010), never started by
-    Install, and removed (after being stopped) by Uninstall."""
-    def test_the_page_is_off_by_default_and_says_token(self):
-        a = INSTALLER.index('(set #agentpage')
-        page = INSTALLER[a:INSTALLER.index('(if (in #agentpage 0)', a)]
+class WasabiDaemonOption(unittest.TestCase):
+    """wasabid 0.9b2 is the ONE daemon option of the kit's Install (off by default): it replaces the
+    amiagent option and the wasabid 0.2 one. Install removes our old amiagent, stops and replaces our
+    old wasabid, and Uninstall still takes both out. The binaries come from the build, not the repository."""
+    PIN = (ROOT / "tools/nas/wasabi.rev").read_text().strip()
+
+    def test_there_is_no_amiagent_option_any_more(self):
+        self.assertNotIn("#agent", INSTALLER)
+        self.assertNotIn("AMIAGENT", INSTALLER)
+        self.assertNotIn("CPU000", INSTALLER)
+        self.assertNotIn("AMIAGENT", DOS.splitlines()[0])
+        self.assertNotIn("optamiagent", DOS)
+        self.assertNotIn("Copy net/amiagent", DOS)
+        self.assertFalse((ROOT / "dist/net/amiagent-0.13.2").exists())
+        self.assertNotIn("AMIAGENT", (ROOT / "dist/README.txt").read_text(encoding="latin-1"))
+
+    def test_the_boot_page_offers_wasabi_0_9b2_off_by_default_and_names_the_key(self):
+        a = INSTALLER.index('(set #boot')
+        page = INSTALLER[a:INSTALLER.index('(if (in #boot 0)', a)]
         self.assertIn('(default 0)', page)
-        self.assertIn('amiagent', page)
-        self.assertRegex(page, r'(?s)\(choices "[^"]*TOKEN[^"]*"\)')
-        self.assertIn('starts it', page)
-        self.assertIn('(if (in #agentpage 0) (set #agent "AMIAGENT"))', INSTALLER)
-        self.assertIn('(set #agent "")', INSTALLER)
+        self.assertIn('wasabi 0.9b2', page)
+        self.assertIn('wasabi_mcp.py', page)
+        self.assertIn('ENVARC:wasabi.key', page)
+        self.assertIn('(if (in #boot 1) (set #wasabi "WASABI"))', INSTALLER)
+        self.assertIn('(set #name "WASABI" #val #wasabi) (P_OPT)', mi.build(ROOT / "dist/Install.installer", "base"))
 
-    def test_the_cpu_picks_the_build_and_the_option_travels(self):
-        self.assertIn('"CPU000"', INSTALLER)
-        self.assertIn('(set #name "AMIAGENT" #val #agent) (P_OPT)', mi.build(ROOT / "dist/Install.installer", "base"))
-        blk = DOS[DOS.index('If "$optamiagent" EQ "AMIAGENT"'):DOS.index('Lab fonts')]
-        self.assertIn('Copy net/amiagent-0.13.2/amiagent.020 UP-Term:bin/amiagent CLONE QUIET', blk)
-        self.assertLess(blk.index('If "$optcpu000" EQ "CPU000"'), blk.index('amiagent.020'))
-        self.assertIn('Copy net/amiagent-0.13.2/amiagent UP-Term:bin/amiagent CLONE QUIET', blk.split('Else')[0])
-        self.assertIn('Echo >ENVARC:up-term/amiagent', blk)
-        self.assertNotRegex(blk, r'(?im)^\s*(Run|UP-Term:bin/amiagent)\b', 'Install never starts it')
+    def test_install_removes_our_old_amiagent_stopped_first_and_only_by_its_marker(self):
+        blk = DOS[DOS.index('If EXISTS ENVARC:up-term/amiagent'):DOS.index('Lab fonts')]
+        self.assertIn('Break $upw C', blk)
+        self.assertLess(blk.index('Break $upw C'), blk.index('Delete >NIL: UP-Term:bin/amiagent'))
+        self.assertIn('ENVARC:up-term/amiagent QUIET', blk)
 
-    def test_the_files_are_in_the_vendored_drawer(self):
-        d = ROOT / "dist/net/amiagent-0.13.2"
-        for f in ("amiagent", "amiagent.020", "LICENSE", "SOURCE.txt"):
-            self.assertTrue((d / f).stat().st_size > 0, f)
-        self.assertIn("Apache License", (d / "LICENSE").read_text())
+    def test_install_replaces_an_old_wasabid_of_ours_but_keeps_a_0_9_when_unticked(self):
+        blk = DOS[DOS.index('Set oldwasabid ""'):DOS.index('MakeDir >NIL: ENVARC:vsh')]
+        self.assertIn('Search >NIL: C:wasabid "wasabid 0.9"', blk)        # the version marks the old one
+        self.assertLess(blk.index('Break $upw C'), blk.index('Copy wasabi/wasabid C:wasabid CLONE'))
+        rm = blk[blk.index('If NOT "$optwasabi" EQ "WASABI"'):blk.index('UnSet >NIL: oldwasabid')]
+        self.assertIn('If "$oldwasabid" EQ "1"', rm)                       # unticked removes only the old one
+        self.assertIn('Delete >NIL: C:wasabid ENVARC:up-term/wasabid QUIET', rm)
+        self.assertRegex(blk, r'(?im)^\s*Run >NIL: C:wasabid')            # a ticked install starts the new one
+
+    def test_the_drawer_holds_licence_and_source_note_but_no_binary(self):
+        d = ROOT / "dist/wasabi"
+        self.assertEqual(sorted(p.name for p in d.iterdir()), ["LICENSE", "SOURCE.txt"])
+        self.assertIn("MIT License", (d / "LICENSE").read_text())
+        self.assertIn(self.PIN, (d / "SOURCE.txt").read_text())            # the pin of the build is the one named
+        self.assertIn("wasabid 0.9b2", (d / "SOURCE.txt").read_text())
         lic = (ROOT / "dist/LICENSES.txt").read_text(encoding="latin-1")
-        self.assertIn("amiagent 0.13.2", lic)
-        self.assertIn("Apache License 2.0", lic[lic.index("amiagent 0.13.2"):][:400])
-        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/net$")
-        self.assertIn("amiagent", (ROOT / "dist/README.txt").read_text(encoding="latin-1"))
+        self.assertIn("wasabi 0.9b2", lic)
+        self.assertIn("MIT", lic[lic.index("wasabi 0.9b2"):][:200])
+        self.assertNotIn("amiagent", lic)
+        self.assertIn("wasabi_mcp.py", (ROOT / "dist/README.txt").read_text(encoding="latin-1"))
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py", mk)
+        self.assertNotIn("dist/net/amiagent", mk)
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^boot\s+Files/wasabi$")
 
-    def test_uninstall_stops_it_before_the_drawer_goes(self):
+    def test_uninstall_stops_and_removes_both_daemons_before_the_drawer_goes(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
         stop = un.index("If EXISTS ENVARC:up-term/amiagent")
         self.assertIn("Break $upw C", un[stop:stop + 400])
         self.assertLess(stop, un.index('Delete >NIL: "$updest" ALL QUIET'))
         self.assertLess(stop, un.index("Delete >NIL: ENV:up-term ENVARC:up-term ALL QUIET"))
+        self.assertIn("Delete >NIL: C:wasabid QUIET", un[un.index("If EXISTS ENVARC:up-term/wasabid"):][:100])
 
 
 class AmigaDosVariableNames(unittest.TestCase):

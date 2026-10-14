@@ -55,8 +55,8 @@ CLAUDE FROM THE AMIGA
   Claude Code runs on your Mac; the Amiga is its terminal over the LAN.
   To set up the NAS end (a Synology container that keeps Claude Code in
   tmux), see tools/nas/README.md in the vtcon source tree; to let Claude
-  there run commands on this Amiga, amimcp and amiagent are described in
-  the same file (never run amiagent without a TOKEN).
+  there run commands on this Amiga, wasabi (wasabid on the Amiga) is described
+  in the same file (never share its key).
 
 CLAUDE
   C:Claude talks to Claude, Anthropic's AI model, from an UP-Term window,
