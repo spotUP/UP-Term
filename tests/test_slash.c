@@ -78,6 +78,13 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.on, 0);
     CHECK_INT(parse("/amiga-keys on"), SLASH_OK);
     CHECK_INT(cmd.on, 1);
+    /* W-T9 */
+    CHECK_INT(parse("/dither off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_DITHER);
+    CHECK_INT(cmd.on, 0);
+    CHECK_INT(parse("/dither on"), SLASH_OK);
+    CHECK_INT(cmd.on, 1);
+    CHECK_INT(parse("/dither maybe"), SLASH_ERROR);
     CHECK_INT(parse("/program-clipboard read-write"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_CLIP_READ_WRITE);
     CHECK_INT(parse("/program-clipboard off"), SLASH_OK);

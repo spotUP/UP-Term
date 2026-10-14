@@ -1103,6 +1103,62 @@ static void the_strips_beside_the_grid_and_blank_cells_show_the_window_backgroun
         }
 }
 
+/* ---- W-T9: the dither is a setting ---- */
+
+/* the cells of the grey cube colours, 0 uniform or 1 mixed of two or more pens */
+static int mixed_cells(int n)
+{
+    int i, x, y, mixed = 0;
+    for (i = 0; i < n; i++) {
+        int first = gf_pixel((i % COLS) * CW, (i / COLS) * CH), diff = 0;
+        for (y = 0; y < CH; y++)
+            for (x = 0; x < CW; x++)
+                diff |= gf_pixel((i % COLS) * CW + x, (i / COLS) * CH + y) != first;
+        mixed += diff;
+    }
+    return mixed;
+}
+
+/* W-T9 (owner 2026-10-14: "make it an option"): vr_set_dither(0), as the profile's dither = off and /dither off
+ * reach it through vtwin's settings(), makes every colour on a 16-pen screen one pen again -- no pattern is drawn --
+ * while a half block of two colours sharing a pen still keeps that pen (W-T7's same-pen rule); the setting turned
+ * back on, with the same redraw a live change gets, dithers the cells again. */
+static void dither_off_draws_the_nearest_single_pen_and_on_dithers_again(void)
+{
+    int cols[64], n = grey_colours(cols), i, x, y, other = 0;
+    char buf[64];
+    planar_depth = 4;
+    planar_left = 0;
+    test_pal = wb16;
+    test_npal = 16;
+    open_term_in(0, VT_XTERM);
+    CHECK_INT(rn.dither_on, 1); /* the default */
+    pass("\x1b[?25l\x1b[2J");
+    for (i = 0; i < n; i++) {
+        snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[48;5;%dm \x1b[m", 1 + i / COLS, 1 + i % COLS, cols[i]);
+        pass(buf);
+    }
+    CHECK(mixed_cells(n) * 2 >= n); /* on: most of them two pens */
+    vr_set_dither(&rn, 0);
+    vr_redraw(&rn);
+    gf_clear_log();
+    vr_redraw(&rn);
+    CHECK_INT(gf_count(GF_OTHER), 0); /* no pattern template */
+    CHECK_INT(mixed_cells(n), 0);     /* off: each cell one pen */
+    pass("\x1b[2;2H\x1b[38;5;226;48;5;190m\xe2\x96\x80\x1b[m");
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            other |= gf_pixel(CW + x, CH + y) != 9;
+    CHECK_INT(other, 0); /* the block's two colours share pen 9: all of the cell */
+    vr_set_dither(&rn, 1);
+    vr_redraw(&rn);
+    CHECK(mixed_cells(n) * 2 >= n);
+    close_term();
+    CHECK_INT(gf_pens_held, 0);
+    planar_depth = 0;
+    test_npal = 0;
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
@@ -1125,6 +1181,7 @@ int main(void)
     a_half_block_of_two_colours_sharing_a_pen_is_drawn_in_that_pen();
     drawing_never_touches_the_window_borders_at_an_odd_inner_width();
     the_strips_beside_the_grid_and_blank_cells_show_the_window_background();
+    dither_off_draws_the_nearest_single_pen_and_on_dithers_again();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }

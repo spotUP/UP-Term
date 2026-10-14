@@ -18,6 +18,7 @@ static const slash_value v_meta[] = {
 };
 static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
 static const slash_value v_amigakeys[] = ONOFF(MENU_SET_AMIGA_KEYS);
+static const slash_value v_dither[] = ONOFF(MENU_SET_DITHER);
 static const slash_value v_reflow[] = ONOFF(MENU_SET_REFLOW);
 static const slash_value v_backspace[] = {
     { "del", MENU_SET_BS_DEL, 1 }, { "bs", MENU_SET_BS_BS, 1 }, { 0, 0, 0 }
@@ -76,6 +77,8 @@ static const slash_def table[] = {
     { "cursor-blink", SL_CHOICE, 0, 0, v_blink, "on | off", "the cursor blinks" },
     { "cursor-color", SL_ARG, SLASH_CURSOR_COLOR, 1, 0, "RRGGBB | none", "the cursor's colour (none: inverted)" },
     { "demo", SL_ACTION, MENU_DEMO, 0, 0, "", "the tour of what UP-Term does, in a new tab" },
+    { "dither", SL_CHOICE, 0, 0, v_dither, "on | off",
+      "a screen of 16 colours or fewer dithers colours no pen shows closely (off: the nearest pen)" },
     { "fg", SL_ARG, SLASH_FG, 1, 0, "RRGGBB | none", "the text colour" },
     { "find", SL_ARG, SLASH_FIND, 0, 0, "[TEXT]", "find in the scrollback (again: the next)" },
     { "font", SL_ARG, SLASH_FONT, 0, 0, "[NAME SIZE]", "the font (no name: the requester)" },

@@ -217,7 +217,7 @@ static LONG few_obtain(vr_render *r, int c, ULONG rgb)
         pal[i] = ((tab[i * 3] >> 24) << 16) | ((tab[i * 3 + 1] >> 24) << 8) | (tab[i * 3 + 2] >> 24);
     usable = (1UL << n) - 1;
     for (tries = 0; tries < n; tries++) {
-        pm_match(pal, n, usable, rgb, 1, &pk);
+        pm_match(pal, n, usable, rgb, r->dither_on, &pk);
         if (pk.solid < 0)
             return -1;
         solid = hold_pen(r, pal[pk.solid]);
@@ -387,6 +387,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
      * (W-T7); 256-pen and true-colour screens never */
     r->few = (UBYTE)(win->WScreen && GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) <= 4);
     r->dith = 0;
+    r->dither_on = 1;
     di = win->WScreen ? GetScreenDrawInfo(win->WScreen) : 0;
     if (di) {
         r->pen_default_fg = (UBYTE)di->dri_Pens[TEXTPEN];
@@ -574,6 +575,14 @@ void vr_palette_changed(vr_render *r)
         r->have[i] = 0;
         r->obtained[i] = -1;
     }
+}
+
+void vr_set_dither(vr_render *r, int on)
+{
+    if ((r->dither_on != 0) == (on != 0))
+        return;
+    r->dither_on = (UBYTE)(on != 0);
+    vr_palette_changed(r);
 }
 
 void vr_free(vr_render *r)

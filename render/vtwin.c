@@ -298,6 +298,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->meta_alt = 0;
     w->copy_on_select = 0;
     w->amiga_keys = 1;   /* on by default */
+    w->dither = 1;       /* few-pen screens dither (W-T9) */
     w->backspace_bs = 0; /* DEL, ^?: a profile without the key must not keep the last one's bs */
     w->clip_access = VT_CLIP_WRITE; /* OSC 52 sets the clipboard, never reads it */
     for (i = 0; i < 16; i++)
@@ -833,6 +834,7 @@ struct TextFont *vtwin_open_font(vtwin *w)
 static void settings(vtwin *w)
 {
     int i;
+    vr_set_dither(&w->r, w->dither); /* before the defaults: a change gives the pens back */
     vr_set_defaults(&w->r, w->fg_rgb, w->bg_rgb);
     report_defaults(w);
     /* after report_defaults(): the default colours must be in place so a

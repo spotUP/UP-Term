@@ -154,6 +154,9 @@ CONFIGURATION (profiles)
                                CSI 1;2D / 1;2C. Off for nvim or tmux bindings
                                that use the xterm codes. The console line
                                editor and C:Claude take both either way.
+     dither = on               on | off: on a screen of 16 colours or fewer, a colour no
+                               pen shows closely is drawn with two pens in a fixed
+                               pattern; off draws the nearest single pen
      highlight-cat = on        on | off: vsh's cat shows files through hl -p
                                (see VIEWING FILES). The save also writes it
                                to ENV:up-term/highlight-cat (and ENVARC:'s),
@@ -237,7 +240,7 @@ COMMANDS (/cursor bar)
      /fg C0C0C0         /theme dracula-default /profile vim       /tab new
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
      /backspace bs      /program-clipboard read-write
-     /amiga-keys off
+     /amiga-keys off    /dither off
      /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.
    "/" alone, "//", "/Work" and every other path are the shell's as

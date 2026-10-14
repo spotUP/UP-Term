@@ -76,7 +76,7 @@ enum {
     ID_CURSOR, ID_BLINK, ID_BELL, ID_BOLD, ID_META, ID_COPY, ID_WHEEL, ID_REFLOW, ID_SCROLLBAR, ID_COMPLETE, ID_KCMODE, ID_KCINFO, ID_KCCACHE,
     ID_FG, ID_BG, ID_SELFG, ID_SELBG, ID_PAL,           /* ID_PAL + 0..15 */
     ID_SAVE = ID_PAL + 16, ID_USE, ID_CANCEL, ID_STATUS, ID_PALTEXT, ID_THEME,
-    ID_SCREEN, ID_SMODE, ID_SDEPTH, ID_ASPECT, ID_BACKSPACE, ID_CLIP, ID_LINK, ID_ADVTEXT, ID_AMIGAKEYS, ID_HLCAT
+    ID_SCREEN, ID_SMODE, ID_SDEPTH, ID_ASPECT, ID_BACKSPACE, ID_CLIP, ID_LINK, ID_ADVTEXT, ID_AMIGAKEYS, ID_HLCAT, ID_DITHER
 };
 
 #define N_PAGES 3
@@ -104,7 +104,7 @@ struct app {
     struct Gadget *glist[N_PAGES]; /* the General, Colors and Advanced pages */
     int page;                 /* the page in the window, -1 none yet */
     struct Gadget *gstatus, *gcursor, *gblink, *gbell, *gbold, *gmeta, *gcopy, *gwheel, *greflow, *gscrollbar, *gcomplete, *gkcinfo, *gkccache;
-    struct Gadget *gscreen, *gaspect, *gbackspace, *gclip, *gamigakeys, *ghlcat;
+    struct Gadget *gscreen, *gaspect, *gbackspace, *gclip, *gamigakeys, *ghlcat, *gdither;
     struct strfield str[N_STR];
     int nstr;
     upconf conf;              /* the file's table, as loaded and as last written */
@@ -216,6 +216,7 @@ static void show_fields(struct app *a)
     set_attr(a, a->gclip, 2, GTCY_Active, (ULONG)a->f.clipboard);
     set_attr(a, a->gamigakeys, 2, GTCB_Checked, (ULONG)a->f.amiga_keys);
     set_attr(a, a->ghlcat, 2, GTCB_Checked, (ULONG)a->f.hlcat);
+    set_attr(a, a->gdither, 1, GTCB_Checked, (ULONG)a->f.dither);
 }
 
 /* Take the text of every string field: a string gadget reports only Return
@@ -526,6 +527,9 @@ static int build_gadgets(struct app *a)
     g = str_gad(a, g, 1, FIELD_X, ROW(7), 80, "Selected text", ID_SELFG, a->f.selfg, UC_MAX_VALUE);
     g = str_gad(a, g, 1, FIELD_X, ROW(8), 80, "Selection", ID_SELBG, a->f.selbg, UC_MAX_VALUE);
     g = gad(a, g, BUTTON_KIND, FIELD_X, ROW(9), 120, 14, "Theme...", ID_THEME, PLACETEXT_IN, 0);
+    /* W-T9: a screen of 16 pens or fewer shows a colour no pen matches as two pens in a pattern (dither) */
+    g = a->gdither = gad(a, g, CHECKBOX_KIND, 430, ROW(7) + 1, 26, 11, "Dither on few colours", ID_DITHER,
+                         PLACETEXT_LEFT, 0);
     if (!g)
         return 0;
 
@@ -736,6 +740,9 @@ static int gadget_up(struct app *a, struct Gadget *g, UWORD code)
         break;
     case ID_AMIGAKEYS:
         a->f.amiga_keys = (g->Flags & GFLG_SELECTED) ? 1 : 0;
+        break;
+    case ID_DITHER:
+        a->f.dither = (g->Flags & GFLG_SELECTED) ? 1 : 0;
         break;
     case ID_HLCAT:
         a->f.hlcat = (g->Flags & GFLG_SELECTED) ? 1 : 0;
