@@ -28,6 +28,7 @@
 #define DIM    "\033[2m"
 #define BOLD   "\033[1m"
 #define REV    "\033[7m"
+#define NOREV  "\033[27m"
 
 const char *const tui_mode_names[4] = { "default", "accept edits", "plan", "bypass permissions" };
 
@@ -1044,7 +1045,10 @@ static void pi_editor_rows(cl_tui *t)
                 b += l;
             }
             r_text(&r, t->ed.b + a[k], b - a[k]);
-            r_sgr(&r, REV);
+            /* pi 1.2.0 tui.ts resolveFakeCursors: with showHardwareCursor the cell is plain (the terminal's cursor
+               marks it), otherwise ESC[7m cell ESC[27m (only reverse ends; the row has no other attribute here) */
+            if (!t->pi_hwcursor)
+                r_sgr(&r, REV);
             if (b < z[k]) {
                 unsigned long cp;
                 int l = vw_char(t->ed.b + b, z[k] - b, &cp);
@@ -1052,7 +1056,8 @@ static void pi_editor_rows(cl_tui *t)
                 b += l;
             } else
                 r_text(&r, " ", 1);
-            r_sgr(&r, SGR0);
+            if (!t->pi_hwcursor)
+                r_sgr(&r, NOREV);
             r_text(&r, t->ed.b + b, z[k] - b);
         } else
             r_text(&r, t->ed.b + a[k], z[k] - a[k]);
