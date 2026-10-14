@@ -654,6 +654,10 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
         self.log = []
         self.saved = {k: getattr(ir, k) for k in ('run', 'run_long', 'stage_addon', 'PREINSTALLED', 'VTC', 'case_table', 'kit_dir', 'show_close')}
         self.saved_rig, self.saved_lock = ir.paths.RIG, ir.paths.rig_lock
+        self.startup = b'Echo hi\n'
+        self.saved_ami = (ami.read_file, ami.put)
+        ami.read_file = lambda p: self.startup
+        ami.put = lambda local, remote: setattr(self, 'startup', open(local, 'rb').read())
         ir.paths.RIG = self.tmp
         ir.paths.rig_lock = contextlib.nullcontext
         ir.VTC, ir.PREINSTALLED = self.tmp, self.tmp / 'preinstalled.json'
@@ -665,6 +669,7 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
     def tearDown(self):
         for k, v in self.saved.items(): setattr(ir, k, v)
         ir.paths.RIG, ir.paths.rig_lock = self.saved_rig, self.saved_lock
+        ami.read_file, ami.put = self.saved_ami
     def own(self, fn):
         fn.own_fixtures = True   # no Fixtures: the fake rig has no files to save
         return fn
@@ -707,6 +712,14 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
         ir.case_table = lambda: {'claude': (['claude'], [], self.own(case))}
         self.assertEqual(ir.cli([]), 2)
         self.assertEqual(self.installed, {'claude', 'pi', 'python'})
+
+    def test_a_python3_block_its_uninstall_leaves_is_taken_out_for_the_cases(self):
+        # Python3's Uninstall keeps ;BEGIN Python3 when S:User-Startup is not what its Install kept
+        self.startup = b'Echo hi\n;BEGIN Python3\nAssign Python3: SYS:Python3\n;END Python3\n;BEGIN Other\nx\n;END Other\n'
+        seen = []
+        ir.case_table = lambda: {'python': (['python'], [], self.own(lambda ck: seen.append(self.startup)))}
+        ir.cli([])
+        self.assertEqual(seen, [b'Echo hi\n;BEGIN Other\nx\n;END Other\n'])
 
     def test_a_rig_with_no_add_on_runs_no_script(self):
         self.installed = set()

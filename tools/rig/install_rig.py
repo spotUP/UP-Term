@@ -429,14 +429,14 @@ def prepare(dest, addons=()):
 FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:amiga-pi/settings.json', 'ENVARC:UP-Term.prefs', 'S:User-Startup')   # the move pass appends a user line to the last (ten were left by 2026-10-10)
 FIXTURE_ASSIGNS = ('GG', 'UP-Term')
 
-def strip_upterm_blocks(data):
-    """data without the ;BEGIN UP-Term ... ;END UP-Term blocks (every flavour:
+def strip_upterm_blocks(data, name='UP-Term'):
+    """data without the ;BEGIN <name> ... ;END <name> blocks (UP-Term: every flavour:
     assign, python, tmp, console, device ...) that Install writes."""
     out, skip = [], False
     for line in data.decode('latin-1').splitlines(True):
-        if line.startswith(';BEGIN UP-Term'): skip = True
+        if line.startswith(';BEGIN ' + name): skip = True
         if not skip: out.append(line)
-        if skip and line.startswith(';END UP-Term'): skip = False
+        if skip and line.startswith(';END ' + name): skip = False
     return ''.join(out).encode('latin-1')
 
 class Fixtures:
@@ -1015,6 +1015,23 @@ class OwnersAddons:
             rc, out = run_long('rununinstall-' + pkg)
             if rc != 0:
                 raise SystemExit('install_rig: Uninstall of %s failed (rc %d): %s' % (pkg, rc, out[-200:]))
+        self.strip_blocks()
+
+    def strip_blocks(self):
+        """Python3's Uninstall leaves its ;BEGIN Python3 block when S:User-Startup is not what its Install kept
+        (a block from an older install is in the file and no User-Startup.before was kept): "delete them by
+        hand". That block is the rig's leftover, not the kit's under test; it goes the way Fixtures.take
+        takes UP-Term's blocks, and the put-back writes a fresh one with its record."""
+        data = ami.read_file('S:User-Startup')
+        clean = data
+        for pkg in self.pkgs:
+            clean = strip_upterm_blocks(clean, archive(pkg))
+        if clean != data:
+            print('install_rig: S:User-Startup held a block of an uninstalled add-on; removed')
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False) as t: t.write(clean)
+            try: ami.put(t.name, 'S:User-Startup')
+            finally: os.unlink(t.name)
 
     def restore(self):
         for pkg in self.pkgs:
