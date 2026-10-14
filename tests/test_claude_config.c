@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include "harness.h"
@@ -1391,6 +1392,54 @@ static void test_runcommand_args(void)
     CHECK_INT(cl_runcommand_args(buf, 0, 0, 0), 0);
 }
 
+/* sys_posix's run at a hook's timeout (pi_hooks' test_real_timeout failed under load): the whole group is gone when it
+ * returns, a command that keeps forking included (one group SIGKILL misses a child forked that instant); the timeout is
+ * a full 1000 ms, not "until the clock's next second"; and it holds after the command closes its output */
+static long mono_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long)ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
+
+static void test_run_timeout(void)
+{
+    char file[600], cmd[900], out[64];
+    long on, rc, t0, ms;
+    int round;
+    at(file, "t/pgid.txt");
+    snprintf(cmd, sizeof(cmd), "echo $$ > %s; while :; do (sleep 5); done", file);
+    for (round = 0; round < 3; round++) {
+        FILE *f;
+        long pg = 0;
+        remove(file);
+        t0 = mono_ms();
+        CHECK_INT(sys.run(sys.u, cmd, 1, out, sizeof(out), &on, &rc), SYS_TIMEOUT);
+        ms = mono_ms() - t0;
+        CHECK(ms >= 1000);
+        f = fopen(file, "r");
+        if (f) {
+            if (fscanf(f, "%ld", &pg) != 1)
+                pg = 0;
+            fclose(f);
+        }
+        CHECK(pg > 1);
+        if (pg > 1) {
+            int alive = kill(-(pid_t)pg, 0) == 0;
+            CHECK(!alive);
+            if (alive)
+                kill(-(pid_t)pg, SIGKILL);
+        }
+    }
+    t0 = mono_ms();
+    CHECK_INT(sys.run(sys.u, "exec >/dev/null 2>&1; sleep 5", 1, out, sizeof(out), &on, &rc), SYS_TIMEOUT);
+    ms = mono_ms() - t0;
+    CHECK(ms < 4000);
+    CHECK_INT(sys.run(sys.u, "echo ok", 5, out, sizeof(out), &on, &rc), 0);
+    CHECK_INT(on, 3);
+    CHECK_INT(rc, 0);
+}
+
 void suite_claude_config(void)
 {
     char cmd[600];
@@ -1412,6 +1461,7 @@ void suite_claude_config(void)
     test_gaps3();
     test_datadir();
     test_runcommand_args();
+    test_run_timeout();
     strcpy(cmd, "rm -rf ");
     strcat(cmd, dir);
     if (system(cmd))
