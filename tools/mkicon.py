@@ -8,7 +8,9 @@ strings. The image is a small terminal window in the Workbench's four pens
 (0 grey, 1 black, 2 white, 3 blue). --tool with --plain is the same image
 for a plain program icon (UP-Term Prefs: its own tool, no window);
 --tooltype adds tooltypes to it (a WINDOW= one replaces the default window) (the kit's Install icon: Installer's
-APPNAME, MINUSER)."""
+APPNAME, MINUSER). --drawer writes a drawer icon (WBDRAWER with a DrawerData, 62 bytes as
+workbench.h DRAWERDATAFILESIZE: the NewWindow, origin, dd_Flags, dd_ViewModes), a drawer drawn in the
+same four pens, for a drawer Workbench has no icon for (VTC:upterm.info on the rig)."""
 import argparse, struct
 
 WINDOW = "XCON:0/20/640/400/UP-Term/CLOSE"
@@ -39,6 +41,31 @@ ART = [
     "............................................",
     "............................................",
 ]
+# 44 x 22 drawer: a black outline with a blue front, a white tab
+DRAWER_ART = [
+    "............................................",
+    "............................................",
+    "..ooooooooooooooooooooooooo.................",
+    "..o#########################...............",
+    "..o#bbbbbbbbbbbbbbbbbbbbbbb#................",
+    "..o#bbbbbbbbbbbbbbbbbbbbbbb#................",
+    ".o##########################################",
+    ".o#oooooooooooooooooooooooooooooooooooooooo#.",
+    ".o#o#######################################.",
+    ".o#o#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#..",
+    ".o#o#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#..",
+    ".o#o#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#..",
+    ".o#o#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#..",
+    ".o#o#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#..",
+    ".o#o#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#..",
+    ".o#o#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#..",
+    ".o#o#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#..",
+    ".o#o#######################################..",
+    ".o#########################################..",
+    "............................................",
+    "............................................",
+    "............................................",
+]
 PEN = {'.': 0, '#': 1, 'o': 2, 'b': 3}
 
 
@@ -62,8 +89,23 @@ def bstr(s):
     return struct.pack('>L', len(b)) + b
 
 
-def icon(x, y, tool, tooltypes):
-    w, h = len(ART[0]), len(ART)
+# DrawerData as workbench.h writes it (DRAWERDATAFILESIZE = 62): NewWindow (48 bytes, intuition.h),
+# dd_CurrentX/Y, dd_Flags, dd_ViewModes
+def drawer_data():
+    new_window = struct.pack('>hhhhBBLLLLLLLhhHHH',
+                             50, 50, 400, 150,      # LeftEdge, TopEdge, Width, Height
+                             255, 255,              # DetailPen, BlockPen: the screen's
+                             0,                     # IDCMPFlags
+                             0x000F,                # Flags: SIZEGADGET | DRAGBAR | DEPTHGADGET | CLOSEGADGET
+                             0, 0, 0, 0, 0,         # FirstGadget, CheckMark, Title, Screen, BitMap
+                             90, 40, 0xFFFF, 0xFFFF,  # MinWidth, MinHeight, MaxWidth, MaxHeight
+                             1)                     # Type: WBENCHSCREEN
+    return new_window + struct.pack('>llLH', 0, 0, 0, 0)   # origin 0/0, DDFLAGS_SHOWDEFAULT, DDVM_BYDEFAULT
+
+
+def icon(x, y, tool, tooltypes, drawer=False):
+    art = DRAWER_ART if drawer else ART
+    w, h = len(art[0]), len(art)
     gadget = struct.pack('>LhhhhHHHLLLLLHL',
                          0,             # NextGadget
                          0, 0, w, h,    # Left, Top, Width, Height
@@ -76,12 +118,17 @@ def icon(x, y, tool, tooltypes):
                          1)             # UserData: WB_DISKREVISION
     diskobj = struct.pack('>HH', 0xE310, 1) + gadget + struct.pack(
         '>BBLLllLLl',
-        4, 0,                          # do_Type WBPROJECT, pad
-        1, 1 if tooltypes else 0,      # do_DefaultTool, do_ToolTypes: present
+        2 if drawer else 4, 0,         # do_Type WBDRAWER or WBPROJECT, pad
+        0 if drawer else 1, 1 if tooltypes else 0,   # do_DefaultTool, do_ToolTypes: present
         x, y,                          # do_CurrentX/Y
-        0, 0,                          # do_DrawerData, do_ToolWindow
-        65536)                         # do_StackSize
-    image = struct.pack('>hhhhhLBBL', 0, 0, w, h, 2, 1, 3, 0, 0) + planes(ART)
+        1 if drawer else 0, 0,         # do_DrawerData, do_ToolWindow
+        0 if drawer else 65536)        # do_StackSize
+    image = struct.pack('>hhhhhLBBL', 0, 0, w, h, 2, 1, 3, 0, 0) + planes(art)
+    if drawer:
+        tt = b''
+        if tooltypes:
+            tt = struct.pack('>L', (len(tooltypes) + 1) * 4) + b''.join(bstr(t) for t in tooltypes)
+        return diskobj + drawer_data() + image + tt
     tt = b''
     if tooltypes:
         tt = struct.pack('>L', (len(tooltypes) + 1) * 4) + b''.join(bstr(t) for t in tooltypes)
@@ -94,6 +141,7 @@ def main():
     ap.add_argument('--x', type=int)
     ap.add_argument('--y', type=int)
     ap.add_argument('--tool', default='UP-Term:bin/vsh')
+    ap.add_argument('--drawer', action='store_true')
     ap.add_argument('--plain', action='store_true')
     ap.add_argument('--tooltype', action='append', default=[])
     a = ap.parse_args()
@@ -104,7 +152,7 @@ def main():
     own_window = any(t.startswith("WINDOW=") for t in a.tooltype)
     tooltypes = ([] if a.plain or own_window else ["WINDOW=" + WINDOW]) + a.tooltype
     data = icon(x - (1 << 32) if x >= 1 << 31 else x, y - (1 << 32) if y >= 1 << 31 else y,
-                a.tool, tooltypes)
+                a.tool, [] if a.drawer else tooltypes, a.drawer)
     open(a.out, 'wb').write(data)
 
 

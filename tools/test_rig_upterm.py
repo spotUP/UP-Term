@@ -40,9 +40,36 @@ with tempfile.TemporaryDirectory() as tmp:
         check((tmp / "upterm/bin/vsh").read_bytes() == b"vsh-binary", "UP-Term:bin/vsh is vsh")
         check(b"UP-Term:bin/vsh" in (tmp / "upterm/UP-Term.info").read_bytes(), "the icon's tool is UP-Term:bin/vsh")
         check((tmp / "upterm/UP-Term").is_file(), "the icon has its file")
+        drawer = (tmp / "upterm.info").read_bytes() if (tmp / "upterm.info").is_file() else b""
+        check(len(drawer) > 78 + 62, "the app drawer gets a drawer icon, VTC:upterm.info (Workbench could not open it)")
+        check(drawer[:4].hex() == "e3100001" and drawer[48:49] == b"\x02",
+              "upterm.info is a WBDRAWER disk object (magic, version, do_Type 2)")
+        # do_DefaultTool 0, do_DrawerData present: the 62-byte DrawerData follows the 78-byte DiskObject
+        check(drawer[50:54] == b"\0\0\0\0" and drawer[66:70] != b"\0\0\0\0",
+              "the drawer icon has no default tool and carries a DrawerData")
         check(b"UP-Term Prefs" in (tmp / "upterm/UP-Term-Prefs.info").read_bytes(), "the Prefs icon's tool is C:UP-Term Prefs")
     else:
         check(False, "rig.stage_upterm exists")
+
+# install removes what no committed code makes at the root of the host drawer, and an orphan drawer icon
+import subprocess
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = pathlib.Path(tmp)
+    mk = lambda out, *a: subprocess.run([sys.executable, str(HERE / "mkicon.py"), str(out), *a], check=True)
+    mk(tmp / "UP-Term.info")
+    (tmp / "UP-Term").write_text("old launcher\n")
+    mk(tmp / "Apps.info", "--drawer")        # its drawer is gone
+    (tmp / "Apps.info.uaem").write_text("x")
+    mk(tmp / "kept.info", "--drawer")        # its drawer is there
+    (tmp / "kept").mkdir()
+    (tmp / "Disk.info").write_bytes(b"\xe3\x10\x00\x01" + bytes(44) + b"\x01" + bytes(40))   # a volume icon
+    (tmp / "upterm").mkdir()
+    if hasattr(rig, "clean_stale_icons"):
+        rig.clean_stale_icons(tmp)
+        left = sorted(f.name for f in tmp.iterdir() if f.is_file())
+        check(left == ["Disk.info", "kept.info"], "stale VTC:UP-Term, UP-Term.info and the orphan Apps.info go, the rest stays: %s" % left)
+    else:
+        check(False, "rig.clean_stale_icons exists")
 
 def boot(go, assigns, files):
     """Run GO's If/EndIf, Assign and Copy lines over a model of the disk. Returns

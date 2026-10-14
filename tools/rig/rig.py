@@ -527,6 +527,27 @@ def stage_upterm(dest, vsh):
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term-Prefs.info"),
                     "--tool", "C:UP-Term Prefs", "--plain"], check=True)
     (dest / "UP-Term-Prefs").write_text("UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n")
+    # the drawer's own icon, beside it (VTC:upterm.info): without it the drawer cannot be opened from the
+    # Workbench, and Directory Opus showed only the stale Apps and UP-Term icons (rig 1, 2026-10-14)
+    subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"),
+                    str(dest.with_name(dest.name + ".info")), "--drawer"], check=True)
+
+def clean_stale_icons(vtc):
+    """Icons at the root of the host drawer that belong to nothing the rig or a kit has: VTC:UP-Term and
+    VTC:UP-Term.info (a launcher project copied there by hand on 2026-09-29 while P8 was written; no committed
+    rig code makes them, and the kit's launcher is VTC:upterm/UP-Term), and a drawer icon whose drawer is gone
+    (VTC:Apps.info after installer_rig deleted Apps). The .uaem files are FS-UAE's metadata of them."""
+    gone = ["UP-Term", "UP-Term.info"]
+    for icon in sorted(vtc.glob("*.info")):
+        data = icon.read_bytes()
+        # do_Type 2 = WBDRAWER (a volume's Disk.info and project icons have no drawer to miss)
+        if len(data) > 48 and data[48] == 2 and not (vtc / icon.name[:-5]).is_dir():
+            gone.append(icon.name)
+    for name in gone:
+        for f in (vtc / name, vtc / (name + ".uaem")):
+            if f.is_file():
+                f.unlink()
+                print("removed stale", f.name)
 
 def stage_terminfo(src, dest):
     """VTC:terminfo (the rig's TERMINFO, GO) as the kit's terminal entries (make build/kit-terminfo/stamp:
@@ -577,6 +598,7 @@ def install():
                     shutil.copyfile(f, dst / f.name)
         else:
             print("no %s: run make %s for glyphs above U+00FF on the rig" % (src, drawer))
+    clean_stale_icons(RIG / "vtc")
     stage_upterm(RIG / "vtc" / "upterm", ROOT / "build/amiga/vsh")
     if (ROOT / "build/kit-terminfo/stamp").is_file():
         stage_terminfo(ROOT / "build/kit-terminfo", RIG / "vtc/terminfo")
