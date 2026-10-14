@@ -7,7 +7,7 @@ its planar data, then the default tool and the tooltypes as length-prefixed
 strings. The image is a small terminal window in the Workbench's four pens
 (0 grey, 1 black, 2 white, 3 blue). --tool with --plain is the same image
 for a plain program icon (UP-Term Prefs: its own tool, no window);
---tooltype adds tooltypes to it (the kit's Install icon: Installer's
+--tooltype adds tooltypes to it (a WINDOW= one replaces the default window) (the kit's Install icon: Installer's
 APPNAME, MINUSER)."""
 import argparse, struct
 
@@ -99,7 +99,10 @@ def main():
     a = ap.parse_args()
     x = a.x if a.x is not None else NO_ICON_POSITION
     y = a.y if a.y is not None else NO_ICON_POSITION
-    tooltypes = ([] if a.plain else ["WINDOW=" + WINDOW]) + a.tooltype
+    # a --tooltype WINDOW=... replaces the default window: two WINDOW tooltypes made Workbench use the
+    # first, the default 640x400 "UP-Term" window (W-I1: ClaudeCode's icon opened it, not its own)
+    own_window = any(t.startswith("WINDOW=") for t in a.tooltype)
+    tooltypes = ([] if a.plain or own_window else ["WINDOW=" + WINDOW]) + a.tooltype
     data = icon(x - (1 << 32) if x >= 1 << 31 else x, y - (1 << 32) if y >= 1 << 31 else y,
                 a.tool, tooltypes)
     open(a.out, 'wb').write(data)

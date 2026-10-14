@@ -260,6 +260,21 @@ class QuickLaunchIcons(unittest.TestCase):
             if rows[pid]['needs-base'] == '-':
                 self.assertLess(body.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN'), body.index('UP-Term:' + names[0]), pid)
 
+    def test_an_icon_with_its_own_window_tooltype_has_that_one_window_tooltype_only(self):
+        """Two WINDOW= tooltypes (the default and the launcher's) opened the default 640x400 "UP-Term" window
+        (rig 3, 2026-10-14: ClaudeCode's icon had it from the start)."""
+        import subprocess, tempfile
+        with tempfile.TemporaryDirectory() as d:
+            out = pathlib.Path(d) / 'x.info'
+            subprocess.run([sys.executable, str(ROOT / 'tools/mkicon.py'), str(out), '--tool', 'C:IconX',
+                            '--tooltype', 'WINDOW=XCON:0/12/800/560/Neovim/CLOSE', '--tooltype', 'DELAY=0'], check=True)
+            data = out.read_bytes()
+            self.assertEqual(data.count(b'WINDOW='), 1)
+            self.assertIn(b'WINDOW=XCON:0/12/800/560/Neovim/CLOSE', data)
+            base = pathlib.Path(d) / 'y.info'
+            subprocess.run([sys.executable, str(ROOT / 'tools/mkicon.py'), str(base)], check=True)
+            self.assertIn(b'WINDOW=XCON:0/20/640/400/UP-Term/CLOSE', base.read_bytes())    # the UP-Term icon keeps its default
+
     def test_parts_txt_maps_the_launch_drawer_to_the_launch_part(self):
         for pid in LAUNCHERS:
             parts = mm.read_parts((ROOT / 'dist/addons' / pid / 'parts.txt').read_text())

@@ -30,6 +30,7 @@ class BuiltArchives(unittest.TestCase):
                 self.assertIn(b'C:IconX', info)
                 self.assertIn(b'WINDOW=XCON:0/12/', info)
                 self.assertIn(b'/CLOSE', info)
+                self.assertEqual(info.count(b'WINDOW='), 1, '%s: more than one WINDOW tooltype' % n)
 
     def test_the_install_script_in_the_archive_copies_what_the_archive_holds(self):
         for pid, names in LAUNCHERS.items():
