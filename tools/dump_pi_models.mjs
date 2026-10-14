@@ -4,7 +4,7 @@
 // tests and `python3 tools/gen_models_builtin.py --check` need no npm. tools/gen_models_builtin.py --from-pi turns it
 // into llm/models_builtin.json.
 import { pathToFileURL } from "node:url";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 const npm = process.env.PI_NPM || "/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent";
 // pi-ai sits inside the package's node_modules, or beside it when npm hoisted it (the vendor/pi-1.1.0 oracle install)
 import { existsSync } from "node:fs";
@@ -27,6 +27,11 @@ const subset = {
 subset.openrouter = ["moonshotai/kimi-k2.6", "openai/gpt-5.5", "google/gemini-3.1-pro-preview", "deepseek/deepseek-v3.2", "x-ai/grok-4.7"];
 // the subscription providers (amiga-pi phase O, /login): every model pi offers for them, so what a login unlocks is what pi shows
 for (const p of ["openai-codex", "github-copilot", "kimi-coding", "xai", "meta"]) subset[p] = Object.keys(MODELS[p]);
+// Radius (amiga-pi L3): the shipped catalog of the public gateway (providers/radius.models.ts, pi-messages), the baseline before an account's
+// own catalog is fetched from <gateway>/v1/config; not in MODELS, the provider owns it
+const { RADIUS_MODELS } = await import(pathToFileURL(join(dirname(ai), "providers/radius.models.js")).href);
+MODELS.radius = RADIUS_MODELS;
+subset.radius = Object.keys(RADIUS_MODELS);
 const out = { pi: pkg.name + "@" + pkg.version, providers: {} };
 for (const [p, ids] of Object.entries(subset)) {
 	out.providers[p] = ids.map((id) => {
