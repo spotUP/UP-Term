@@ -293,14 +293,14 @@ amimcp-clean:
 	rm -rf $(BUILD)/amimcp
 
 # wasabi (MIT, https://github.com/creep-ltx/wasabi) pinned, for `rig.py wasabi`: wasabid (Amiga daemon, Bebbo gcc)
-# and its stdlib Python client in build/wasabi. Pinned at 68ef646 (v0.8, 2026-10-14). wasabid's TLS (optional at run
+# and its stdlib Python client in build/wasabi. Pinned at ee23c09 (0.9b2, 2026-10-14: builds without the CyberGraphX developer headers). wasabid's TLS (optional at run
 # time since 0.8: an emulator on loopback and an Amiga without AmiSSL or keys run plain) is compiled against the
-# AmiSSL 5.27 SDK: AMISSL_SDK (the one `make amiga` uses, vendor/amissl-5.27/AmiSSL/Developer). tools/rig/wasabi_shim
-# holds the CyberGraphX stub headers Bebbo's install lacks. The upstream Makefile's own flags (-fbbb=-: Bebbo's
-# loop pass miscompiles small structs) are kept; only CC, the SDK and the shim include path are ours.
+# AmiSSL 5.27 SDK: AMISSL_SDK (the one `make amiga` uses, vendor/amissl-5.27/AmiSSL/Developer). The CyberGraphX
+# headers are upstream's own since 0.9b2 (include/wasabi_cgx.h); no shim. The upstream Makefile's own flags (-fbbb=-: Bebbo's
+# loop pass miscompiles small structs) are kept; only CC and the SDK are ours.
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
 WASABI_REPO := https://github.com/creep-ltx/wasabi
-WASABI_REV  := 68ef646a055baae4a25aec88537fbcc28b4f86e1
+WASABI_REV  := ee23c091c6d7a02d92c2f241044e9bb8638f8161
 wasabi: $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@echo "[OK] wasabi $(WASABI_REV) built: $(BUILD)/wasabi/wasabid and the client $(BUILD)/wasabi/wasabi."
 $(BUILD)/wasabi/.stamp-$(WASABI_REV):
@@ -310,7 +310,7 @@ $(BUILD)/wasabi/.stamp-$(WASABI_REV):
 	git clone -q $(WASABI_REPO) $(BUILD)/wasabi/src
 	git -C $(BUILD)/wasabi/src checkout -q $(WASABI_REV)
 	$(MAKE) -C $(BUILD)/wasabi/src wasabid CC=$(AGCC) SSL=$(AMISSL_SDK) \
-	  CFLAGS="-O2 -fbbb=- -noixemul -fomit-frame-pointer -Wall -Wno-pointer-sign -Iinclude -I$(abspath tools/rig/wasabi_shim)"
+	  CFLAGS="-O2 -fbbb=- -noixemul -fomit-frame-pointer -Wall -Wno-pointer-sign -Iinclude"
 	cp $(BUILD)/wasabi/src/wasabid $(BUILD)/wasabi/src/wasabi $(BUILD)/wasabi/src/wasabi_*.py $(BUILD)/wasabi/src/LICENSE $(BUILD)/wasabi/
 	touch $@
 

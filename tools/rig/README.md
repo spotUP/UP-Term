@@ -187,9 +187,8 @@ The rest of the wasabi client works on a rig too, with the flags `rig.py wasabi`
 
 wasabi (MIT, https://github.com/creep-ltx/wasabi) is a daemon on the Amiga (`wasabid`) that patches ~30 dos/exec/icon/diskfont
 calls (SnoopDOS style), RawPutChar and `Alert()`, and a one-file Python client. `make wasabi` clones it into
-`build/wasabi`, pinned at 68ef646 (v0.8), builds `wasabid` with Bebbo's gcc (`~/opt/amiga`, `AGCC=`) against the
-AmiSSL 5.27 SDK (`AMISSL_SDK`, the one `make amiga` uses) and the CyberGraphX stub headers in `tools/rig/wasabi_shim`
-(written by us), and keeps the client, `wasabi_mcp.py` and the helper modules beside it;
+`build/wasabi`, pinned at ee23c09 (0.9b2), builds `wasabid` with Bebbo's gcc (`~/opt/amiga`, `AGCC=`) against the
+AmiSSL 5.27 SDK (`AMISSL_SDK`, the one `make amiga` uses; the CyberGraphX headers are upstream's own since 0.9b2), and keeps the client, `wasabi_mcp.py` and the helper modules beside it;
 `make wasabi-clean` removes it. TLS is optional at run time since 0.8: an emulator on loopback and an Amiga without
 AmiSSL or keys run plain. Research: thoughts/shared/research/2026-10-14_wasabi-0.8-eval.md.
 
