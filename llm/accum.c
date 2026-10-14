@@ -79,7 +79,7 @@ void llm_acc_meta(const llm_acc *a, llm_meta *m)
         m->diag = a->diag.p;
         m->diag_n = a->diag.n;
     }
-    m->pi_order = !strcmp(a->api ? a->api : "", "pi-messages") ? (a->meta_seen ? 2 : 1) : 0;
+    m->pi_order = !strcmp(a->api ? a->api : "", "pi-messages") ? (a->meta_seen ? 2 : 1) : a->anew ? 1 : 0;
     m->raw_stop = a->stop_raw[0] ? a->stop_raw : 0;
     m->response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
     m->usage = a->usage;
@@ -719,7 +719,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     jw_raw(&c, "[", 1);
     /* pi-messages: a failure that is not the server's own error event is a message made anew (api/pi-messages.ts createErrorEvent):
      * no content, no usage, no ids */
-    fresh = !strcmp(a->api ? a->api : "", "pi-messages") && !a->meta_seen && (a->failed || !a->done);
+    fresh = (a->anew || !strcmp(a->api ? a->api : "", "pi-messages")) && !a->meta_seen && (a->failed || !a->done);
     for (i = 0; i < a->nb && !fresh; i++) {
         const llm_ablock *b = &a->b[ord[i]];
         jw part;
@@ -810,4 +810,9 @@ const llm_ablock *llm_acc_tool(const llm_acc *a, int k)
             return &a->b[best];
         last = a->b[best].index;
     }
+}
+
+void llm_acc_anew(llm_acc *a)
+{
+    a->anew = 1;
 }
