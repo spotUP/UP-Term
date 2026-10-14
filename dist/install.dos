@@ -398,11 +398,33 @@ Copy uptelnet C:uptelnet CLONE
 ; bebbosshkeygen, bebbosshd) and bebboget 1.11, by Stefan Franke, GPL v3+,
 ; and curl 8.22.0 (below):
 ; COPYING and the complete source are in the kit's net drawer. vshrc makes
-; ssh and scp of them. Their library goes to LIBS: unless one is there (a
-; user's own BebboSSH keeps its library; Uninstall removes only ours).
+; ssh and scp of them. Their library goes to LIBS: (replacing an older one of ours;
+; a user's own BebboSSH keeps its library, with a note when it is older;
+; Uninstall removes only ours).
 If "$optssh" EQ "SSH"
   Copy net/bebbossh-1.46.1/bebbossh net/bebbossh-1.46.1/bebboscp net/bebbossh-1.46.1/bebbosshkeygen net/bebbossh-1.46.1/bebbosshd UP-Term:bin CLONE QUIET
-  If NOT EXISTS LIBS:libcryptossh.library
+  ; Our marker (ENVARC:up-term/cryptossh) or no library: install this CPU's library,
+  ; replacing an older one of ours (an upgrade over an earlier UP-Term install).
+  ; A library without our marker is the user's own BebboSSH: kept; one older than
+  ; ours (no VER of 1.46 or later in it) is reported with the command to replace it.
+  Set cslib "install"
+  If EXISTS LIBS:libcryptossh.library
+    If NOT EXISTS ENVARC:up-term/cryptossh
+      Set cslib "keep"
+      Search >NIL: LIBS:libcryptossh.library "libcryptossh (1.4[6-9]|1.[5-9]|[2-9].)#?" PATTERN
+      If WARN
+        Echo "Note: LIBS:libcryptossh.library is your own and older than the 1.46 one of this kit,"
+        Echo "so it is kept. To use the kit's library instead, in a Shell:"
+        If "$optcpu060" EQ "CPU060"
+          Echo "  Copy <kit>/Files/net/bebbossh-1.46.1/libcryptossh.library060 LIBS:libcryptossh.library CLONE"
+        Else
+          Echo "  Copy <kit>/Files/net/bebbossh-1.46.1/libcryptossh.library020 LIBS:libcryptossh.library CLONE"
+        EndIf
+        Echo "(<kit> is the drawer you unpacked the UP-Term archive into)"
+      EndIf
+    EndIf
+  EndIf
+  If "$cslib" EQ "install"
     If "$optcpu060" EQ "CPU060"
       Copy net/bebbossh-1.46.1/libcryptossh.library060 LIBS:libcryptossh.library CLONE
     Else

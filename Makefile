@@ -317,7 +317,7 @@ wasabi-clean:
 # BebboSSH 1.46.1 built from source (owner 2026-10-13: ours, not the fork's binaries): the 1.45 tarball unpacked in
 # build/bebbossh/src, the 19 patches applied in order (any reject stops the build), built with the Bebbo gcc at AGCCBIN
 # by the source's own Makefile and flags (tools/build_bebbossh.sh). Out: build/bebbossh/out (bebbossh, bebboscp,
-# bebbosshd, bebbosshkeygen, libcryptossh.library plain/020/060, SHA256SUMS) which `make dist` puts in the kit's
+# bebbosshd, bebbosshkeygen, libcryptossh.library 020/060, SHA256SUMS) which `make dist` puts in the kit's
 # net/bebbossh-1.46.1. Needs the libcodesets 6.22 headers (git clone, build time only). Rebuilds when the tarball or a
 # patch changes. Uninstall: make bebbossh-clean.
 BEBBO_DIR := dist/net/bebbossh-1.46.1

@@ -27,6 +27,8 @@ One case per package on the base, and the combinations (K2-10, plan 2026-10-13-k
   legacy      LEGACY_KIT (the single kit of 0cd6f0b) installed, the new base over it, the nvim add-on, base Uninstall
   net         Install SSH BEBBOGET: BebboSSH and bebboget at the kit's versions, ssh/scp run them, a closed port, the Mac's sshd (if one
               runs) reaches the host key check, Uninstall takes it all away (K6)
+  net-upgrade Install SSH over a 1.45 libcryptossh.library: with our marker it is replaced by 1.46, without it (the user's own) it is kept
+              with a note and the replace command; Uninstall removes only ours (K6 fix)
   nobase      an add-on that needs the base (nvim): install.dos with no UP-Term: returns 20, ENV:UPTCHECK names UP-Term.lha
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/install/<case>.json when the case
@@ -1417,6 +1419,61 @@ def case_net(ck):
     ck(run('List >NIL: UP-Term:bin/bebbossh')[0] != 0, 'net: after Uninstall bebbossh is gone')
 
 
+def case_net_upgrade(ck):
+    """Install SSH over an earlier install (K6 fix): LIBS:libcryptossh.library is a 1.45 one.
+    A) with our marker (ENVARC:up-term/cryptossh): replaced by the kit's 1.46, marker kept, Uninstall removes it.
+    B) without the marker (the user's own BebboSSH): kept as it is, Install prints the note and the replace command, Uninstall
+       leaves it. The old library is the 1.45 one of the 020 build from the git history of dist/net/bebbossh-1.45."""
+    import subprocess
+    old = subprocess.run(['git', '-C', str(ROOT), 'show', 'f0727e4^:dist/net/bebbossh-1.45/libcryptossh.library020'],
+                         capture_output=True).stdout
+    ck(len(old) > 10000 and b'libcryptossh 1.45 ' in old, 'net-upgrade: the 1.45 library is at hand (git history)', len(old))
+    prepare(None)
+    (VTC / 'old145.library').write_bytes(old)
+    (VTC / 'runinstallnet').write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE SSH\n")
+    before = Before()
+    def seed(marker):
+        run('Avail FLUSH >NIL:')
+        rc, out = run('Copy VTC:old145.library LIBS:libcryptossh.library CLONE')
+        ck(rc == 0, 'net-upgrade: seeded LIBS:libcryptossh.library with 1.45', out)
+        if marker:
+            run('MakeDir >NIL: ENVARC:up-term')
+            run('Echo >ENVARC:up-term/cryptossh "installed by UP-Term"')
+    def is_ver(v):
+        return run('Search >NIL: LIBS:libcryptossh.library "libcryptossh %s "' % v)[0] == 0
+    try:
+        seed(True)
+        ck(is_ver('1.45'), 'net-upgrade A: the seeded library is 1.45')
+        rc, out = run_long('runinstallnet')
+        ck(rc == 0, 'net-upgrade A: Install SSH runs', out)
+        ck(is_ver('1.46') and not is_ver('1.45'), 'net-upgrade A: marked 1.45 library replaced by 1.46 ($VER libcryptossh 1.46)')
+        ck('is your own' not in out, 'net-upgrade A: no note about a user library', out)
+        ck(run('List >NIL: ENVARC:up-term/cryptossh')[0] == 0, 'net-upgrade A: the marker is still there')
+        base_uninstall(ck, before)
+        ck(run('List >NIL: LIBS:libcryptossh.library')[0] != 0, 'net-upgrade A: Uninstall removed our library')
+        prepare(None)
+        (VTC / 'old145.library').write_bytes(old)
+        (VTC / 'runinstallnet').write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE SSH\n")
+        seed(False)
+        rc, out = run_long('runinstallnet')
+        ck(rc == 0, 'net-upgrade B: Install SSH runs', out)
+        ck(is_ver('1.45') and not is_ver('1.46'), "net-upgrade B: the user's own 1.45 library is kept")
+        ck('is your own and older' in out and 'Copy <kit>/Files/net/bebbossh-1.46.1/libcryptossh.library0' in out,
+           'net-upgrade B: the note and the replace command are printed', out[-600:])
+        ck(run('List >NIL: ENVARC:up-term/cryptossh')[0] != 0, 'net-upgrade B: no marker written')
+        base_uninstall(ck, before)
+        ck(is_ver('1.45'), "net-upgrade B: Uninstall leaves the user's library")
+        # a current library of the user's own (the kit's 020 one, no marker): kept, no note
+        run('Copy VTC:distkit/Files/net/bebbossh-1.46.1/libcryptossh.library020 LIBS:libcryptossh.library CLONE')
+        prepare(None)
+        (VTC / 'runinstallnet').write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE SSH\n")
+        rc, out = run_long('runinstallnet')
+        ck(is_ver('1.46') and 'is your own' not in out, "net-upgrade C: the user's own 1.46 library: kept, no note", out[-300:])
+        run_long('rununinstall')
+    finally:
+        run('Delete >NIL: LIBS:libcryptossh.library ENVARC:up-term/cryptossh QUIET')
+
+
 def _global_pass(fn, *args):
     """A pass written with the module's own check(): its failures become the case's."""
     def run_(ck):
@@ -1450,6 +1507,7 @@ def case_table():
     t['legacy'] = (['base', 'nvim'], [LEGACY_KIT / 'Files/MANIFEST', LEGACY_KIT / 'Files/install.dos'], case_legacy)
     t['nobase'] = (based_ids(), [], case_nobase)
     t['net'] = (['base'], [], case_net)
+    t['net-upgrade'] = (['base'], [], case_net_upgrade)
     return t
 
 

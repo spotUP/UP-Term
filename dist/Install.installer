@@ -113,8 +113,9 @@
                 "such as Roadshow or AmiTCP):")
         (help "ssh and scp: BebboSSH 1.46.1 (Matthias Muench's fixed build of Stefan Franke's program, GPL v3+), an SSH "
               "client for remote Unix machines, with scp, a key generator and "
-              "a simple server. Its libcryptossh.library goes to LIBS: unless "
-              "one is there.\n\n"
+              "a simple server. Its libcryptossh.library goes to LIBS: (an older one "
+              "of UP-Term's is replaced; your own BebboSSH library is kept, "
+              "with a note if it is older).\n\n"
               "bebboget: https downloads (GPL v3+), by the same author.\n\n"
               "curl 8.22.0: downloads and transfers (the curl licence). It needs "
               "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha), so it is ticked "
