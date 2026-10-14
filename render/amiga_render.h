@@ -131,7 +131,6 @@ typedef struct vr_render {
      * blank: the text area is known to be all default background, so a
      * scroll moves nothing and is skipped. */
     UBYTE mask, mask_on, planar, blank;
-    UBYTE cursor_flip;    /* the drawn cursor is an inversion in these planes (0: it is not) */
     UBYTE full_pass;      /* inside a draw of the whole grid on a planar screen: `seen` becomes the mask */
     UBYTE in_pass, bs_valid, bs_ok; /* a render pass is on; the default blank's style is known for it, and plain */
     UBYTE seen;           /* the pens drawn since that pass began */
