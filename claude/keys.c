@@ -1057,12 +1057,52 @@ static int pi_base(cl_keymap *m)
     return 0;
 }
 
-static int pi_bind_keys(cl_keymap *m, const pi_bind *b, const char *keys, long n)
+/* pi 1.2.0 key-id-schema.ts: a key id is up to four modifiers (ctrl, shift, alt, super, each at most once, lower case) and one
+ * base key: a letter or digit, a named key (Key in pi-tui keys.ts) or a symbol. A value that is not a key id, or a list of
+ * them, is dropped by keybindings.ts toKeybindingsConfig (the default applies). */
+static int key_id_ok(const char *s)
+{
+    static const char *const mods[] = { "ctrl", "shift", "alt", "super", 0 };
+    static const char *const bases[] = { "escape", "esc", "enter", "return", "tab", "space", "backspace", "delete", "insert",
+        "clear", "home", "end", "pageUp", "pageDown", "up", "down", "left", "right", "f1", "f2", "f3", "f4", "f5", "f6", "f7",
+        "f8", "f9", "f10", "f11", "f12", 0 };
+    int seen = 0, nm = 0;
+    for (;;) {
+        int i, hit = 0;
+        for (i = 0; mods[i]; i++) {
+            long l = (long)strlen(mods[i]);
+            if (!strncmp(s, mods[i], (size_t)l) && s[l] == '+' && s[l + 1]) {
+                if ((seen & (1 << i)) || ++nm > 4)
+                    return 0;
+                seen |= 1 << i;
+                s += l + 1;
+                hit = 1;
+                break;
+            }
+        }
+        if (!hit)
+            break;
+    }
+    if (s[0] && !s[1])
+        return (s[0] >= 'a' && s[0] <= 'z') || (s[0] >= '0' && s[0] <= '9') || strchr("`-=[]\\;',./!@#$%^&*()_+|~{}:<>?", s[0]) != 0;
+    {
+        int i;
+        for (i = 0; bases[i]; i++)
+            if (!strcmp(s, bases[i]))
+                return 1;
+    }
+    return 0;
+}
+
+/* the stroke(s) of keys: several separated by '|' (the table's defaults), or, split 0, the one key a user wrote */
+static int pi_bind_keys(cl_keymap *m, const pi_bind *b, const char *keys, long n, int split)
 {
     long a = 0, i;
     for (i = 0; i <= n; i++) {
         kb_stroke st;
-        if (i < n && keys[i] != '|')
+        if (split && i < n && keys[i] != '|')
+            continue;
+        if (!split && i < n)
             continue;
         if (i > a && !parse_stroke(m, keys + a, i - a, &st, keys) && add(m, b->ctx, b->act, &st, 1))
             return -1;
@@ -1081,33 +1121,46 @@ static int pi_build(cl_keymap *m, jv over)
         return -1;
     for (b = pi_binds; b->id; b++) {
         jv v;
+        int user = 0;
         if (json_type(over) == J_OBJ && json_get(over, b->id, &v)) {
             if (json_type(v) == J_STR) {
                 char k[64];
                 json_str(v, k, sizeof(k));
-                if (pi_bind_keys(m, b, k, (long)strlen(k)))
-                    return -1;
+                if (key_id_ok(k)) {
+                    user = 1;
+                    if (pi_bind_keys(m, b, k, (long)strlen(k), 0))
+                        return -1;
+                }
             } else if (json_type(v) == J_ARR) {
                 jit it;
                 jv e;
+                int ok = 1;
                 json_iter(v, &it);
                 while (json_next(&it, 0, &e)) {
                     char k[64];
                     if (json_type(e) != J_STR) {
                         km_warn(m, "keybindings: a key must be a string in ", b->id, 0);
+                        ok = 0;
                         continue;
                     }
                     json_str(e, k, sizeof(k));
-                    if (strchr(k, '|')) {
-                        km_warn(m, "keybindings: a bad key in ", b->id, 0);
-                        continue;
+                    if (!key_id_ok(k))
+                        ok = 0;
+                }
+                if (ok) {
+                    user = 1;
+                    json_iter(v, &it);
+                    while (json_next(&it, 0, &e)) {
+                        char k[64];
+                        json_str(e, k, sizeof(k));
+                        if (pi_bind_keys(m, b, k, (long)strlen(k), 0))
+                            return -1;
                     }
-                    if (pi_bind_keys(m, b, k, (long)strlen(k)))
-                        return -1;
                 }
             } else
                 km_warn(m, "keybindings: a key or a list of keys is expected for ", b->id, 0);
-        } else if (pi_bind_keys(m, b, b->keys, (long)strlen(b->keys)))
+        }
+        if (!user && pi_bind_keys(m, b, b->keys, (long)strlen(b->keys), 1))
             return -1;
     }
     m->ndef = m->n;
@@ -1148,6 +1201,8 @@ int km_load_pi(cl_keymap *m, const char *json, long n)
         char id[96];
         const pi_bind *b;
         json_str(k, id, sizeof(id));
+        if (!strcmp(id, "$schema"))             /* keybindings.ts toKeybindingsConfig: skipped, no warning */
+            continue;
         for (b = pi_binds; b->id && strcmp(b->id, id); b++)
             ;
         if (!b->id)
