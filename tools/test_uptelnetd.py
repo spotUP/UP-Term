@@ -671,9 +671,8 @@ class Reach(unittest.TestCase):
             try:
                 for _ in range(d.LOCK_FAILURES):
                     s = socket.create_connection(("127.0.0.1", srv.port))
-                    got = read_until(s, rb"\xff\xfa\x25\x01\x75", timeout=0.3) if False else b""
                     s.sendall(bytes([255, 251, 37]))
-                    got = read_until(s, rb"\xff\xfa\x25\x01\x75.{16,32}\xff\xf0", timeout=5)
+                    got = read_until(s, rb"(?s)\xff\xfa\x25\x01\x75.{16,32}\xff\xf0", timeout=5)
                     m = re.search(rb"\xff\xfa\x25\x01\x75(.*?)\xff\xf0", got, re.S)
                     self.assertIsNotNone(m, got)
                     cn = bytes(16)
@@ -698,7 +697,7 @@ class Reach(unittest.TestCase):
             try:
                 s = socket.create_connection(("127.0.0.1", srv.port))
                 s.sendall(bytes([255, 251, 37]))
-                got = read_until(s, rb"\xff\xfa\x25\x01\x75.*?\xff\xf0", timeout=5)
+                got = read_until(s, rb"(?s)\xff\xfa\x25\x01\x75.*?\xff\xf0", timeout=5)
                 m = re.search(rb"\xff\xfa\x25\x01\x75(.*?)(?<!\xff)\xff\xf0", got, re.S)
                 sn = m.group(1).replace(b"\xff\xff", b"\xff")
                 self.assertEqual(len(sn), 16)
