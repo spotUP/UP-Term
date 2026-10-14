@@ -520,9 +520,9 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 # program (its own window), so vc links it. vbcc warns (153, 65) on the
 # (void) parameter casts of the file callbacks, as for vsh.
 # The kit ships it as "UP-Term Prefs" (make cannot hold a space in a target).
-$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h handler/kcmode.c handler/kcmode.h config/upconf.c config/upconf.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
+$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h handler/kcmode.c handler/kcmode.h config/upconf.c config/upconf.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_core.c prefs/prefs_dos.c handler/kcmode.c config/upconf.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_core.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c handler/kcmode.c config/upconf.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (no -m68020: the SDK has no libm020 multilib)
