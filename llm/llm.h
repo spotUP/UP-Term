@@ -59,6 +59,14 @@ typedef struct llm_meta {       /* an assistant message's own fields */
     const char *raw_stop;       /* rawStopReason: the provider's stop_reason / finish_reason / status as sent, 0 none */
     const char *thinking_level; /* thinkingLevel: the session's level the request was made at, "off" included; 0 none (the
                                  * agent loop adds it to the finished message, pi-agent-core agent-loop.js) */
+    const char *usage_json;     /* the usage object as the server sent it (pi-messages: verbatim, its own cost and extra keys), 0: written from usage */
+    long usage_json_n;
+    const char *rewrite;        /* pi-messages: the gateway's rewrite impact object, kept as the diagnostic pi_messages_rewrite; 0 none */
+    long rewrite_n;
+    llm_ts rewrite_ts;          /* the diagnostic's timestamp */
+    int pi_order;               /* a pi-messages answer, its keys in the order api/pi-messages.ts assigns them: 2 the server's terminal event (done:
+                                 * responseId, providerThinkingLevel, diagnostics; error: errorMessage first), 1 a failure made anew (errorMessage before
+                                 * timestamp); 0 any other API */
     long duration_ms;           /* durationMs: ms from the request's start to the final message (pi-ai 1.1.0
                                  * AssistantMessageEventStream #time, rounded, never below 0); written only when has_duration */
     int has_duration;
