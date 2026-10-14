@@ -10,10 +10,15 @@ BUILD   := build
 # The workspace directory that holds vtcon and the other UP-Term repos side by
 # side (see the upterm meta-repo); every sibling default below hangs off it.
 # tools/rig/paths.py reads the same variable, with the same default.
-UPTERM_ROOT ?= $(abspath ..)
-# Repositories grouped into umbrella directories next to vtcon (override each to relocate).
-DCTELNET_ROOT ?= $(UPTERM_ROOT)/DCTelnet
-AMIEXPRESS_ROOT ?= $(UPTERM_ROOT)/AmiExpress
+UPTERM_ROOT ?= $(abspath $(CURDIR)/..)
+# The directory of the projects that are not UP-Term repos (DCTelnet/, AmiExpress/, UpRough/): CODE_ROOT, else the
+# nearest ancestor of UPTERM_ROOT holding DCTelnet/. One rule for the flat layout and the ~/Code/UP-Term umbrella;
+# it lives in tools/rig/paths.py (code_root), which the rig scripts read too.
+ifndef CODE_ROOT
+CODE_ROOT := $(shell UPTERM_ROOT='$(UPTERM_ROOT)' python3 -I $(CURDIR)/tools/rig/paths.py code-root)
+endif
+DCTELNET_ROOT ?= $(CODE_ROOT)/DCTelnet
+AMIEXPRESS_ROOT ?= $(CODE_ROOT)/AmiExpress
 
 ENGINE  := engine/vtengine.c
 RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
