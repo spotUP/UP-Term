@@ -12,7 +12,7 @@ given that must stay home:
   1c. the probe said "key for fixture not sent: plain http"
 The run is in a visible window titled "amiga-pi step 1".
 
-Step 2 (C10, C12, C15): amiga-pi itself (~/Code/amiga-pi build/amiga/amiga-pi)
+Step 2 (C10, C12, C15): amiga-pi itself ($UPTERM_ROOT/amiga-pi build/amiga/amiga-pi)
 in print mode against the same fixture, with ENV:PI_MEM set:
   2a. "amiga-pi -p hello" printed the recorded text and returned 0
   2b. one more /chat/completions request, no Authorization header
@@ -154,14 +154,14 @@ fixture, settings.json enables both. The fixture answers slowly (--delay 0.4: ab
   13c /tree: the selector shows ("Session Tree", "Type to search:")
 Step 14 (H8): `amiga-pi --mode rpc` fed from a file through `<`, its stdout in a file. The fixture answers the model
 fake-model with tests/claude/pirpc_text.sse (the golden's answer); the output file is compared line by line with
-~/Code/amiga-pi tests/pi/rpc/prompt.out, masked as that suite's tests/test_pi_modes.c masks (mask_rpc below), then
+$UPTERM_ROOT/amiga-pi tests/pi/rpc/prompt.out, masked as that suite's tests/test_pi_modes.c masks (mask_rpc below), then
 get_messages and get_session_stats must answer. 14e (HF1): `--mode json` with a broken models.json in its own agent dir, run through vsh with 2> to a file:
 the "[WARN] ..." diagnostic is ONE line in the error file and not in the stdout JSONL. Verdicts in build/<rig>/amigapi14.verdicts.json, output kept as
 amigapi14-out.jsonl.
 Verdicts are recorded in build/rig3/amigapi13.verdicts.json (build/<rig>/ of the rig used): a check that passed is
 not run again; a phase with every check recorded is skipped. --force runs everything again.
 
-  make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C ~/Code/amiga-pi amiga
+  make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C $UPTERM_ROOT/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
   UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|8|9|10|11|13|14] [--force]
 """
@@ -255,7 +255,7 @@ def run_window(name, title, lines, done):
 
 def step2(port):
     claude = ROOT / 'build' / 'amiga' / 'Claude'
-    for b, hint in ((AMIGA_PI, 'make -C ~/Code/amiga-pi amiga'), (claude, 'make build/amiga/Claude')):
+    for b, hint in ((AMIGA_PI, 'make -C $UPTERM_ROOT/amiga-pi amiga'), (claude, 'make build/amiga/Claude')):
         if not b.exists():
             sys.exit('[ERROR] %s missing: %s' % (b, hint))
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
@@ -306,7 +306,7 @@ def step2(port):
 
 def step3(port):
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture3.log'
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -459,7 +459,7 @@ def amigados_quote(cmd):
 
 def step4(port):
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     if not (VTC / 'vsh').exists():
         sys.exit('[ERROR] VTC:vsh missing')
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
@@ -582,7 +582,7 @@ def step5(port):
     import json
     import re
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     had = assigns()
     had = drop_rig_assign(had)
@@ -701,7 +701,7 @@ def step5(port):
 def step6(port):
     import json
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     had = assigns()
     had = drop_rig_assign(had)
@@ -880,7 +880,7 @@ def user_text(body):
 
 def step9(port):
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture9.log'
     dump = paths.RIG / 'amigapi_dump9'
@@ -941,7 +941,7 @@ def system_text(body):
 def step7(port):
     import re
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture7.log'
     dump = paths.RIG / 'amigapi_dump7'
@@ -1022,7 +1022,7 @@ def user_text(body):
 
 def step8(port):
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture8.log'
     dump = paths.RIG / 'amigapi_dump8'
@@ -1098,7 +1098,7 @@ LUA_BAD_11 = """pi.on("agent_start", function(event, ctx) error("rig boom", 0) e
 def step11(port):
     import re
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture11.log'
     dump = paths.RIG / 'amigapi_dump11'
@@ -1178,7 +1178,7 @@ def step12(port):
     run each, against tools/claude_fixture.py's routes."""
     import json
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture12.log'
     dump = paths.RIG / 'amigapi_dump12'
@@ -1299,7 +1299,7 @@ def step14(port):
     the amiga-pi tree), line by line, masked as tests/test_pi_modes.c masks. The commands are the golden's prompt.in and a
     get_state, a get_messages and a get_session_stats read after the run (the Amiga reads the lines one after the other)."""
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     gold = AMIGA_PI.parents[2] / 'tests' / 'pi' / 'rpc'
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture14.log'
@@ -1441,7 +1441,7 @@ def user_texts(entries):
 def step13(port):
     global force13
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     if not (ROOT / 'build' / 'amiga' / 'snipprobe').exists():
         sys.exit('[ERROR] build/amiga/snipprobe missing: make build/amiga/snipprobe')
     if not any(phase_due(p) for p in STEP13):

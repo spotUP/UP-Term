@@ -38,7 +38,7 @@ shots/. Resumable: a recorded verdict with the same fingerprint is skipped.
 
 Rig: UPTERM_RIG=<n> python3 -I tools/rig/rig.py setup --os 32 --max, then start --os 32 --max (a clean
 installed 3.2: no UP-Term:, no ixemul in SYS:Libs). Build first: `make build/amiga/Claude` here,
-`make -C ~/Code/amiga-pi amiga`; nvim, python3 and its ixemul come from the staged archives
+`make -C $UPTERM_ROOT/amiga-pi amiga`; nvim, python3 and its ixemul come from the staged archives
 (build/dist/UP-Term-nvim, Python3, terminfo from UP-Term; STANDALONE_DIST= one Files drawer with all). Needs xdftool only once, to read the owner's KingCON handler out of
 UPTERM_SYSTEM_HDF (read only); stock ixemul from UPTERM_IXSTOCK (default GG-Lite's Libs drawer).
 Not run by `make test`: it needs the emulator."""
@@ -636,7 +636,7 @@ def stage():
     SA.mkdir(parents=True, exist_ok=True)
     for src, dst in ((CLAUDE_BIN, 'Claude'), (PI_BIN, 'amiga-pi')):
         if not src.exists():
-            sys.exit('[ERROR] %s missing: make build/amiga/Claude / make -C ~/Code/amiga-pi amiga' % src)
+            sys.exit('[ERROR] %s missing: make build/amiga/Claude / make -C $UPTERM_ROOT/amiga-pi amiga' % src)
         if not (SA / dst).exists() or (SA / dst).read_bytes() != src.read_bytes():
             shutil.copyfile(src, SA / dst)
     for sub in ('nvim', 'python3'):

@@ -1,5 +1,5 @@
 # Source lists another program builds from in place: vtcon's Makefile includes
-# this file, and so does amiga-pi's (~/Code/amiga-pi/Makefile, with
+# this file, and so does amiga-pi's ($UPTERM_ROOT/amiga-pi/Makefile, with
 # CL_DIR = $(VTCON_DIR)/), so C:Claude's core, the view and llm/ are listed once.
 # Every path is below $(CL_DIR) (empty here).
 CL_DIR ?=

@@ -6,7 +6,7 @@ UPTERM_OS32_TREE, UPTERM_OS32_ROM).
 UPTERM_ROOT is the workspace directory that holds vtcon, ixemul-vtcon,
 tmux-amiga, ... side by side (the meta-repo `upterm` creates it). Default:
 the parent of this vtcon checkout. The Makefile's default is the same
-(`UPTERM_ROOT ?= $(abspath ..)`).
+(`UPTERM_ROOT ?= $(abspath $(CURDIR)/..)`).
 """
 import contextlib
 import fcntl
@@ -17,6 +17,25 @@ import sys
 
 VTCON = pathlib.Path(__file__).resolve().parents[2]
 UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
+
+
+def code_root(upterm_root=None):
+    """The directory that holds the projects which are not UP-Term repos
+    (DCTelnet/, AmiExpress/, UpRough/). CODE_ROOT if set, else the nearest
+    ancestor of UPTERM_ROOT (itself included) that contains DCTelnet/, else
+    UPTERM_ROOT. Right in both layouts: UPTERM_ROOT = ~/Code (flat) and
+    UPTERM_ROOT = ~/Code/UP-Term (umbrella). The Makefile asks this function
+    (`python3 -I tools/rig/paths.py code-root`), so the rule lives here once."""
+    if os.environ.get("CODE_ROOT"):
+        return pathlib.Path(os.environ["CODE_ROOT"])
+    root = pathlib.Path(upterm_root or UPTERM_ROOT).resolve()
+    for d in (root, *root.parents):
+        if (d / "DCTelnet").is_dir():
+            return d
+    return root
+
+
+CODE_ROOT = code_root()
 
 
 def _main_checkout(checkout):
@@ -53,7 +72,7 @@ def repo(name):
 
 
 # The default Kickstart 3.1 (40.068) ROM; UPTERM_ROM names another file.
-UPROUGH_ROOT = pathlib.Path(os.environ.get("UPROUGH_ROOT") or UPTERM_ROOT / "UpRough")
+UPROUGH_ROOT = pathlib.Path(os.environ.get("UPROUGH_ROOT") or CODE_ROOT / "UpRough")
 KICKSTART = pathlib.Path(os.environ.get("UPTERM_ROM") or
     UPROUGH_ROOT / "Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
 
@@ -143,3 +162,7 @@ def rig_lock(rig_dir=None):
         if os.environ.get("UPTERM_RIG_LOCK_HELD") == str(d):
             del os.environ["UPTERM_RIG_LOCK_HELD"]
         f.close()
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["code-root"]:
+    print(CODE_ROOT)
