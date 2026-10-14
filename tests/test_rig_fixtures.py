@@ -11,16 +11,15 @@ TREE = b"W 1 \"Install\" 0 0 400 300\nG 290 10 10 20x10 radio\nG 90 100 100 40x2
 
 class FakeAmiga:
     def __init__(self, files, yunits=1):
-        # yunits: pointer units per screen pixel vertically (2 on a native
-        # non-interlaced screen such as the Replay's PAL Hires, 1 on RTG)
-        self.files, self.clicks, self.cmds, self.yunits, self.ptr = dict(files), [], [], yunits, (0, 0)
+        # yunits: wasabi's mouse units per uitree row (the screen's row_scale: 2 on a native non-interlaced
+        # screen such as the Replay's PAL Hires, 1 on RTG); ami.pointer_scale() is the one place it is read
+        self.files, self.clicks, self.cmds, self.yunits = dict(files), [], [], yunits
+    def pointer_scale(self): return 1.0, float(self.yunits)
     def req(self, code, payload=b'', timeout=150):
         if code == 0x0D: return TREE
         if code == 0x08:
-            if payload[:1] == b'\x01': self.ptr = struct.unpack('>HH', payload[1:5])   # MOVE
-            else: self.clicks.append(payload)
+            self.clicks.append(payload)
             return b''
-        if code == 0x0B: return struct.pack('>HH', self.ptr[0], self.ptr[1] // self.yunits)
         if code == 0x03:
             p = payload.decode('latin-1')
             if p not in self.files: raise SystemExit('ERR: not found')
@@ -36,10 +35,10 @@ class FakeAmiga:
 class Rig(unittest.TestCase):
     def setUp(self):
         self.fake = FakeAmiga({'ENVARC:Claude/remote': b'; c\n192.168.0.198 2323\n'})
-        self.saved = (ami.req, ami.put, ir.run)
-        ami.req, ami.put = self.fake.req, self.fake.put
+        self.saved = (ami.req, ami.put, ami.pointer_scale, ir.run)
+        ami.req, ami.put, ami.pointer_scale = self.fake.req, self.fake.put, self.fake.pointer_scale
         ir.run = lambda cmd, timeout=60: (struct.unpack('>I', self.fake.req(0x02, struct.pack('>H', 1) + cmd.encode('latin-1'))[:4])[0], 'GG   VTC:gg\n' if cmd == 'Assign LIST' else '')
-    def tearDown(self): ami.req, ami.put, ir.run = self.saved
+    def tearDown(self): ami.req, ami.put, ami.pointer_scale, ir.run = self.saved
 
     def test_gclick_matches_the_gadget_id_exactly(self):
         ami.main(['gclick', 'Install', '90'])
@@ -81,19 +80,19 @@ class Rig(unittest.TestCase):
         self.assertEqual(len(installer_rig.dest_cleanup("VTC:KitTest/UP-Term", True)), 1)
         self.assertEqual(len(installer_rig.dest_cleanup("VTC:UP-Term", False)), 1)
 
-    def test_a_shot_with_indices_past_the_palette_keeps_its_rows(self):
-        # 3.2's native 16-colour screen: SHOT sent indices 16 and 32; a palette lookup past the end gave
-        # no bytes and sheared every later row (2026-10-08). Only the screen's depth counts.
-        pal = bytes([170, 170, 170, 0, 0, 0]) + bytes(14 * 3)
-        px = bytes([0, 1, 16, 33, 1, 0, 32, 17])        # 4x2: 16 -> 0, 33 -> 1, 32 -> 0, 17 -> 1
-        body = bytes([1, 0]) + struct.pack('>HHH', 4, 2, 16) + pal + px
+    def test_a_shot_keeps_its_rows(self):
+        # Restated for wasabi: its grab is RGB, there is no palette to index past (the 2026-10-08 palette shear cannot
+        # happen). What is left to guard is that grab() cuts the reply into h rows of w*3 bytes, none sheared.
+        g, k = bytes([170, 170, 170]), bytes(3)
+        px = g + k + g + k + k + g + g + k       # 4x2 RGB
+        body = bytes([2, 0]) + struct.pack('>HHH', 4, 2, 0) + px
         saved = ami.req
         ami.req = lambda code, payload=b'', timeout=150: body
         try:
             w, h, rows = ami.grab()
         finally:
             ami.req = saved
-        g, k = bytes([170, 170, 170]), bytes(3)
+        self.assertEqual((w, h), (4, 2))
         self.assertEqual(rows, [g + k + g + k, k + g + g + k])
 
     def test_a_failing_run_puts_back_the_users_remote_file(self):
