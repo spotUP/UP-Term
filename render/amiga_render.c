@@ -217,7 +217,7 @@ static LONG few_obtain(vr_render *r, int c, ULONG rgb)
         pal[i] = ((tab[i * 3] >> 24) << 16) | ((tab[i * 3 + 1] >> 24) << 8) | (tab[i * 3 + 2] >> 24);
     usable = (1UL << n) - 1;
     for (tries = 0; tries < n; tries++) {
-        pm_match(pal, n, usable, rgb, 1, &pk);
+        pm_match(pal, n, usable, rgb, r->dither_on, &pk);
         if (pk.solid < 0)
             return -1;
         solid = hold_pen(r, pal[pk.solid]);
@@ -387,6 +387,8 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
      * (W-T7); 256-pen and true-colour screens never */
     r->few = (UBYTE)(win->WScreen && GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) <= 4);
     r->dith = 0;
+    r->dither_on = 1;
+    r->pad_extend = r->pad_dirty = 0;
     di = win->WScreen ? GetScreenDrawInfo(win->WScreen) : 0;
     if (di) {
         r->pen_default_fg = (UBYTE)di->dri_Pens[TEXTPEN];
@@ -574,6 +576,20 @@ void vr_palette_changed(vr_render *r)
         r->have[i] = 0;
         r->obtained[i] = -1;
     }
+}
+
+void vr_set_dither(vr_render *r, int on)
+{
+    if ((r->dither_on != 0) == (on != 0))
+        return;
+    r->dither_on = (UBYTE)(on != 0);
+    vr_palette_changed(r);
+}
+
+void vr_set_pad_extend(vr_render *r, int on)
+{
+    r->pad_extend = (UBYTE)(on != 0);
+    r->pad_dirty = (UBYTE)(on != 0);
 }
 
 void vr_free(vr_render *r)
@@ -2088,6 +2104,7 @@ static void draw_images(vr_render *r, int x0, int y0, int x1, int y1)
 /* ---- a synchronized frame composed off screen (W-T3, W-T4) -------------------- */
 
 static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1);
+static void pad_flush(vr_render *r);
 static void planar_present(vr_render *r);
 
 /* What the composed pass drew so far into the window: one blit a rectangle. */
@@ -2523,6 +2540,7 @@ int vr_compose_begin(vr_render *r)
 void vr_compose_end(vr_render *r)
 {
     to_front(r);
+    pad_flush(r);
 }
 
 /* Draw screen rows [y0, y1), columns [x0, x1): in a planar composed pass
@@ -2533,6 +2551,7 @@ static void draw_rows(vr_render *r, int x0, int y0, int x1, int y1)
     struct vr_back *k = r->back;
     if (!r->cpu) {
         draw_rows_now(r, x0, y0, x1, y1);
+        pad_flush(r);
         return;
     }
     if (k->nd == VR_BACK_RECTS)
@@ -2721,6 +2740,114 @@ static void pad_fill(vr_render *r)
     to_back(r, f);
     r->pad_ink = r->bg_ink;
     r->was_blank = keep;
+}
+
+/* W-T14, padding-color = extend. Ghostty's window-padding-color = extend
+ * (docs: https://ghostty.org/docs/config/reference#window-padding-color,
+ * quoted from memory, not fetched: "background" paints the padding in the
+ * terminal background, "extend" extends the background colour of the nearest
+ * cell on each edge into the padding, so an application with its own
+ * background -- an editor, a status line -- has no differently coloured
+ * frame; Ghostty leaves the padding alone when a cell's background is the
+ * default). The colour of the displayed cell at column x, row y (clamped to
+ * the grid by the caller): its area ink (a pattern of two pens on a screen of few pens). */
+static ULONG edge_ink(vr_render *r, int x, int y)
+{
+    int n, gy = y - r->view + r->jump;
+    const vt_cell *row = vt_row(r->t, gy, &n);
+    vt_cell b;
+    vr_style st;
+    if (row && vt_row_size(r->t, gy))
+        x /= 2; /* a double-size row holds a cell for two columns */
+    if (row && x < n) {
+        b = row[x];
+    } else {
+        b.ch = ' ';
+        b.fg = VT_COLOR_DEFAULT;
+        b.bg = VT_COLOR_DEFAULT;
+        b.attr = 0;
+        b.width = 1;
+        b.deco = 0;
+        b.ext = 0;
+        b.pad = 0;
+    }
+    cell_style(r, &b, 0, &st);
+    return st.bgf;
+}
+
+/* The strips beside the grid in the colour of the cell next to them, a run
+ * of equal cells one fill. In place on the window (the caller has taken a
+ * composed pass to the front), all planes written: the strips hold pens the
+ * grid's narrowed write mask may leave out. */
+static void pad_extend_now(vr_render *r)
+{
+    struct Window *w = r->win;
+    WORD top = (WORD)(w->BorderTop + r->inset_top), left = w->BorderLeft;
+    int cols = vis_cols(r), rows = vis_rows(r), side, i, start;
+    WORD gx1, gy1, ax1, ay1;
+    UBYTE keep = r->was_blank, blank = r->blank, mask_on = r->mask_on;
+    ULONG ink, cur;
+    if (r->hidden || cols < 1 || rows < 1)
+        return;
+    gx1 = (WORD)(r->ox + cols * r->cw);
+    gy1 = (WORD)(r->oy + rows * r->ch);
+    ax1 = (WORD)(w->Width - w->BorderRight - 1);
+    ay1 = (WORD)(w->Height - w->BorderBottom - 1);
+    if (mask_on) {
+        r->mask_on = 0; /* ink_pen widens the mask, but must not narrow the write mask now */
+        SetWriteMask(r->rp, 0xFF);
+    }
+    /* left and right, the corners with them: per grid row, the first or last column's cell */
+    for (side = 0; side < 2; side++) {
+        WORD x0 = side ? gx1 : left, x1 = side ? ax1 : (WORD)(r->ox - 1);
+        int col = side ? cols - 1 : 0;
+        if (x1 < x0)
+            continue;
+        start = 0;
+        cur = edge_ink(r, col, 0);
+        for (i = 1; i <= rows; i++) {
+            ink = i < rows ? edge_ink(r, col, i) : cur;
+            if (i == rows || ink != cur) {
+                WORD y0 = start ? (WORD)(r->oy + start * r->ch) : top;
+                WORD y1 = i == rows ? ay1 : (WORD)(r->oy + i * r->ch - 1);
+                fill(r, x0, y0, x1, y1, cur);
+                start = i;
+                cur = ink;
+            }
+        }
+    }
+    /* above and below the grid, between the corners: per column, the first or last row's cell */
+    for (side = 0; side < 2; side++) {
+        WORD y0 = side ? gy1 : top, y1 = side ? ay1 : (WORD)(r->oy - 1);
+        int row = side ? rows - 1 : 0;
+        if (y1 < y0)
+            continue;
+        start = 0;
+        cur = edge_ink(r, 0, row);
+        for (i = 1; i <= cols; i++) {
+            ink = i < cols ? edge_ink(r, i, row) : cur;
+            if (i == cols || ink != cur) {
+                fill(r, (WORD)(r->ox + start * r->cw), y0, (WORD)(r->ox + i * r->cw - 1), y1, cur);
+                start = i;
+                cur = ink;
+            }
+        }
+    }
+    r->mask_on = mask_on;
+    if (mask_on)
+        SetWriteMask(r->rp, r->mask);
+    r->blank = blank; /* the grid's pixels are untouched */
+    r->was_blank = keep;
+}
+
+/* Cells were drawn: the strips follow them, once the pass is on the window
+ * (a composed pass is not yet: vr_compose_end). */
+static void pad_flush(vr_render *r)
+{
+    if (!r->pad_extend || !r->pad_dirty || r->front_rp)
+        return;
+    r->pad_dirty = 0;
+    pad_extend_now(r);
 }
 
 static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
@@ -2978,6 +3105,7 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
     }
     if (vt_images(r->t))
         draw_images(r, x0, y0, x1, y1); /* the one test a frame pays when there are none */
+    r->pad_dirty = r->pad_extend; /* W-T14: the strips follow these cells (pad_flush) */
     r->was_blank = 0;
     if (r->full_pass) {
         r->full_pass = 0;
