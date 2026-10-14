@@ -340,6 +340,7 @@ typedef struct cl_tui {
 
 /* the row chosen (accept), -1 cancelled or the end of input */
 int tui_pick_run(cl_tui *t, tui_pick *p);
+int tui_pick_qkey(tui_pick *p, const cl_key *key);   /* the search line's keys, see tui.c */
 /* TUI_LOOK_PI: a one-line input under a title (Enter: 1 with the text in out, Esc: 0, the end of input: -1); pasted
  * text is taken (its line breaks left out) and a line longer than the screen shows its end */
 int tui_line_input(cl_tui *t, const char *title, char *out, long cap);
