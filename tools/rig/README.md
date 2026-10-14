@@ -133,6 +133,62 @@ a real Amiga running amiagent:
 (`AMI_PORT`, default 7846.) amiagent runs whatever it is sent and the link is
 unencrypted: use a token and a trusted network (see tools/nas/README.md).
 
+## Debugging on a rig: which tool answers which question
+
+| Question | Tool | Example (rig 3; drop `UPTERM_RIG=3` for rig 1) |
+|---|---|---|
+| Which files, libraries and DOS calls does a program make, and which fail | wasabi snoop | `rig.py wasabi on; rig.py wasabi snoop start; ami.py exec "List SYS:"; rig.py wasabi snoop stop; rig.py wasabi snoop log 40` (`--task 'List*'` on start filters by task name; a `= fail (Error 205: Object not found)` line is the failing call) |
+| What does the program print with KPrintF / RawPutChar | wasabi debug | `rig.py wasabi debug start; ami.py exec "VTC:myprog"; rig.py wasabi debug log` |
+| The program died with a system alert: which alert, which task, which PC | wasabi guru | `rig.py wasabi guru` (the last alert, `T:lastguru`, and alert lines in the two logs). Only alerts that reach `Alert()`: a program that faults on a CPU trap is not caught here, MuForce is the tool for that |
+| Did a task run out of stack, which tasks are alive | wasabi ps | `rig.py wasabi ps` (column FREE = stack headroom; `rig.py wasabi ps 'vsh*'` filters) |
+| An illegal memory access (address 0, ROM write, non-existent memory) with registers and PC | MuForce | `rig.py start --mmu` (slower, no JIT), `rig.py muforce on`, run the program, `rig.py muforce log` |
+
+Steps: `rig.py wasabi on` once, start the streams before the program, stop them after, read the logs from the host
+(`build/rig<N>/wasabi/snoop.log`, `debug.log`); `rig.py wasabi off` when done.
+
+The rest of the wasabi client works on a rig too, with the flags `rig.py wasabi` itself uses:
+
+    python3 build/wasabi/wasabi --host 127.0.0.1 --port $((1233+N)) --key rigwasabi <command>
+
+| Client command | What it does on a rig | State |
+|---|---|---|
+| `ping`, `info` | daemon alive; versions, memory, volumes | tested (rig 3) |
+| `ls`, `put`, `get`, `del`, `mkdir` | files by the network, `get X -` prints to stdout | tested |
+| `run "cmd"` | a command with live output and its exit code | tested (`Echo hi`) |
+| `screen --list`, `grab file.png` | screens; the front screen as a PNG (native path) | tested; the PNG was not looked at, the corrupted-column finding of the 2026-10-03 research is not re-checked |
+| `speedtest 1MB --pings 5` | latency and throughput | tested |
+| `discover` | finds daemons by broadcast (each rig answers with `name rig<N>`) | tested |
+| `snoop`, `debug` streams | as above | snoop tested; debug: the stream opens, no KPrintF output was produced to see |
+| `mouse move|click|doubleclick|down|up`, `kill target [--force]` | pointer and menus; stop a task (Ctrl-C, or RemTask) | untested |
+| `deploy` (put + run/reboot/restart), `reboot`, `restart`, `update`, `quit` | `quit` is `rig.py wasabi off` (tested); the others are untested. `reboot` would reboot the rig: use `rig.py stop` / `start` | untested |
+| Guru report | no alert was provoked | untested |
+
+## wasabi (call trace, debug output, Guru, task list)
+
+wasabi (MIT, https://github.com/creep-ltx/wasabi) is a daemon on the Amiga (`wasabid`) that patches ~30 dos/exec/icon/diskfont
+calls (SnoopDOS style), RawPutChar and `Alert()`, and a one-file Python client. `make wasabi` clones it into
+`build/wasabi`, pinned at 67379c2 (v0.2), builds `wasabid` with Bebbo's gcc (`~/opt/amiga`, `AGCC=`) against the
+CyberGraphX stub headers in `tools/rig/wasabi_shim` (written by us), and keeps the client beside it;
+`make wasabi-clean` removes it. Upstream HEAD (56f7197, 45 commits on) was tried and is not used: from 0.3 `health.c`
+needs `proto/devicetree.h` (Emu68), from 0.6b1 every connection is TLS (AmiSSL on the Amiga, no plain fallback).
+
+    rig.py wasabi on                              wasabid into VTC:wasabi, key set, started, waits for a ping
+    rig.py wasabi off                             stops the daemon (its patches come off with it)
+    rig.py wasabi snoop|debug start|stop|log [N]  streams into build/rig<N>/wasabi/{snoop,debug}.log; log = last N lines (snoop: with a count per call)
+    rig.py wasabi guru | ps [PATTERN]
+
+Rig N listens on port 1234 + N - 1 (TCP, and UDP for discovery): FS-UAE's bsdsocket gives the Amiga the Mac's
+sockets, so two rigs on one port clash (the same rule as amiagent's 7846 + N - 1). The key is the rig key
+`rigwasabi` (set with `SetEnv wasabi.key`, i.e. RAM only), never a real one.
+
+Coexistence with amiagent: both may run. Checked on rig 3 with wasabid up: `ami.py ping`, `uitree`, `shot` and
+`exec` answered, and wasabi's snoop trace showed amiagent's own calls (`BOOTX:amiagent  Open("T:amiagent-....out")`).
+The research note (2026-10-03) said not to run both for one test because wasabid patches system calls; the rig
+evidence is that rig control keeps working. The rule: leave wasabid off unless you are debugging (every patched call costs
+time, so no timing runs with it on), filter the amiagent noise with `snoop start --task`, and if a rig behaves
+strangely with wasabid on, `wasabi off` first. Whether amiagent patches anything itself is not established (its
+PROTOCOL.md says nothing; the binary was not disassembled).
+
 ## Which script proves what
 
 One reachability test per feature; the rest test where the behaviour lives.

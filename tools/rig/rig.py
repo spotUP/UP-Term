@@ -28,6 +28,7 @@ independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
   rig.py status   is it up (amiagent ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
+  rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts amiagent), vtc/ (VTC:, the binaries
@@ -824,7 +825,11 @@ def muforce():
     import muforce as mf
     mf.main(sys.argv[2:])
 
+def wasabi():
+    import wasabi as wb
+    wb.main(sys.argv[2:])
+
 if __name__ == "__main__":
     {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
-     "status": status, "muforce": muforce, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
+     "status": status, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
      "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()
