@@ -39,6 +39,11 @@
                "for its settings (Install writes none)."))
 (P_STEP)
 
+(set #step "launch" #kb @KBLAUNCH@ #n 3
+     #why (cat "Putting the quick-launch icon (amiga-pi) in\n"
+               "UP-Term: when it is there; else nothing."))
+(P_STEP)
+
 (set #n 8)
 (P_LEAD)
 (set #done

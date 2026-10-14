@@ -40,6 +40,11 @@
      #why "Copying Neovim 0.12 and its runtime to UP-Term:nvim.")
 (P_COPY)
 
+(set #step "launch" #kb @KBLAUNCH@ #n 3
+     #why (cat "Putting the quick-launch icon (Neovim)\n"
+               "in UP-Term:, beside the UP-Term icon."))
+(P_STEP)
+
 (set #n 6)
 (P_LEAD)
 (set #done

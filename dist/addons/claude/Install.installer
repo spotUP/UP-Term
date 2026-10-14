@@ -78,6 +78,11 @@
                "its settings drawer ENVARC:Claude (no key written)."))
 (P_STEP)
 
+(set #step "launch" #kb @KBLAUNCH@ #n 3
+     #why (cat "Putting the quick-launch icon (Claude, ClaudeCode) in\n"
+               "UP-Term: when it is there; else nothing."))
+(P_STEP)
+
 (set #n 9)
 (P_LEAD)
 (set #done

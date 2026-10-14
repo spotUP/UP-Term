@@ -1,0 +1,4 @@
+; Claude in this UP-Term window (double-click the icon): C:Claude, the native client. The
+; window closes when Claude ends. Claude refuses a stack under 16000.
+Stack 32768
+UP-Term:bin/vsh -c Claude

@@ -23,5 +23,12 @@ Copy nvim UP-Term:nvim ALL CLONE QUIET
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
+Lab launch
+; Quick-launch icons: double-click one in UP-Term: to open an UP-Term window running the app
+; (IconX opens the XCON: window; it closes when the app ends).
+Copy "launch/Neovim" "launch/Neovim.info" UP-Term: CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
 ; @include dist/common/record.dos
 Echo "Neovim installed: type  nvim  in an UP-Term window (vsh)."
