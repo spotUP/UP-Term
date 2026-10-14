@@ -6,8 +6,8 @@ wasabi (MIT, https://github.com/creep-ltx/wasabi, `make wasabi` pins it into bui
 RawPutChar (KPrintF) and keeps the last system alert; the client streams those. Here the daemon runs in the rig
 under a rig key and the streams go to files the host reads: build/rig<N>/wasabi/snoop.log and debug.log.
 
-  rig.py wasabi on                 install wasabid into VTC:wasabi, set the key, start it, wait for ping
-  rig.py wasabi off                stop the daemon (the patches come off with it)
+  rig.py wasabi on                 start wasabid again after `off` (rig.py start boots it already), wait for ping
+  rig.py wasabi off                stop the daemon (the patches come off with it; ami.py has no daemon then)
   rig.py wasabi snoop start [--task PATTERN] | stop | log [N]    call trace; log = the last N lines (30) and a count
   rig.py wasabi debug start | stop | log [N]                      KPrintF / RawPutChar output
   rig.py wasabi guru               the last Guru (T:lastguru on the Amiga) and alert lines in the two logs
@@ -31,8 +31,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 
 DRAWER = "wasabi"                       # VTC:wasabi, <rig>/vtc/wasabi
-BASE_PORT = 1234                        # wasabid's own default; rig N: BASE_PORT + N - 1
-KEY = "rigwasabi"                       # the rig key, like amiagent's rigtoken. Not a secret.
+BASE_PORT = 1234                        # wasabid's own default; rig N: BASE_PORT + N - 1 (paths.wasabi_port)
+KEY = paths.WASABI_KEY                  # the rig key. Not a secret.
 STREAMS = ("snoop", "debug")
 USAGE = ("usage: rig.py wasabi on | off | snoop start [--task PATTERN] | stop | log [N]"
          " | debug start | stop | log [N] | guru | ps [PATTERN]")
@@ -40,7 +40,26 @@ USAGE = ("usage: rig.py wasabi on | off | snoop start [--task PATTERN] | stop | 
 
 def port(rig_n=None):
     """The TCP/UDP port wasabid listens on in rig `rig_n` (this one by default)."""
-    return BASE_PORT + (paths.RIG_N if rig_n is None else rig_n) - 1
+    return paths.wasabi_port(rig_n)
+
+
+_CLIENT = []
+
+
+def load_client():
+    """wasabi's own client file (build/wasabi/wasabi, no .py) imported as a module: Conn, do_run, read_ui,
+    grab_pixels ... ami.py is a thin client of these; the protocol is not re-implemented anywhere in vtcon."""
+    if not _CLIENT:
+        import importlib.machinery
+        import importlib.util
+        path = str(build_dir() / "wasabi")
+        loader = importlib.machinery.SourceFileLoader("wasabi_client", path)
+        spec = importlib.util.spec_from_loader("wasabi_client", loader)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["wasabi_client"] = mod
+        loader.exec_module(mod)
+        _CLIENT.append(mod)
+    return _CLIENT[0]
 
 
 def out_dir(rig=None):

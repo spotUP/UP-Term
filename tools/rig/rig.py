@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The vtcon test rig: FS-UAE, A1200 (68060 at full speed by default, 68020 with --a1200; KS 3.1 40.068), driven
-through amiagent (TCP 7846, tools/rig/ami.py). UPTERM_RIG=2 selects a second,
-independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
+through wasabid (TCP 1234, tools/rig/ami.py). UPTERM_RIG=2 selects a second,
+independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
   rig.py start    boot it in the background; the default machine is the 68060 + FPU at the host's speed
@@ -25,18 +25,19 @@ independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
                   these builds over the copies a kit installed in SYS: (KIT_SHADOWS;
                   reboot the rig after install). The kit's own files are kept in
                   VTC:kit-orig and come back with `rig.py kit-restore` + a reboot.
-  rig.py status   is it up (amiagent ping)
+  rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
   rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
-first: assigns, mounts XCON:, starts amiagent), vtc/ (VTC:, the binaries
+first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
 import os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths, agentpatch
+import paths
+import wasabi as rigwasabi
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
@@ -45,8 +46,8 @@ CFG = RIG / "vtcon-rig.fs-uae"
 # the old source sat in a session scratchpad that is gone). Only read: the
 # rig works on its own copy, build/rig/sys.hdf.
 SRC_HDF = paths.SYSTEM_HDF        # UPTERM_SYSTEM_HDF
-# amiagent: the 68020 build vendored in dist/net/amiagent-0.13.2, copied to
-# boot/amiagent on every start (tools/rig/agentpatch.py)
+# wasabid: the pinned build in build/wasabi (`make wasabi`), copied to boot/wasabid on every start; the port per
+# rig and the rig key come from paths.py (wasabi_port, WASABI_KEY)
 # The default ROM's header says 40.63 (the A500/A600/A2000 3.1), whatever
 # its file name says (measured 2026-09-30). --kick <file> boots another ROM
 # (DP6 of the console.device plan); the config is rewritten on every start,
@@ -60,7 +61,7 @@ if "--serial" in sys.argv:
 # --os32: AmigaOS 3.2 (ledger T3; the owner's Replay runs 3.2): the 3.2.3
 # Kickstart and the owner's installed 3.2 tree (a host drawer, its .uaem
 # files carry the protection bits), copied once to build/rig/os32 -- the
-# owner's tree is only read. Same boot drawer, VTC: and amiagent.
+# owner's tree is only read. Same boot drawer, VTC: and wasabid.
 OS32 = "--os32" in sys.argv
 OS32_SRC = paths.OS32_TREE        # UPTERM_OS32_TREE
 OS32_KICK = paths.OS32_ROM        # UPTERM_OS32_ROM
@@ -121,7 +122,7 @@ RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
 # (go assigned it after its Wait 15), or on a boot without the rig; that
 # requester kept Intuition from resetting the Workbench screen ("attempting
 # to reset the Workbench screen") when Install CONSOLE DEVICE ran, and
-# amiagent stopped answering until both were closed (2026-10-07).
+# wasabid stopped answering until both were closed (2026-10-07).
 # Assign EXISTS never asks for a volume.
 SHELL_STARTUP_PATH = ["Assign >NIL: VTC: EXISTS", "If NOT WARN",
                       "  Path >NIL: VTC:gg/bin ADD", "EndIf"]
@@ -226,7 +227,7 @@ EndIf
 If EXISTS VTC:gg/bin/sh
   C:Assign >NIL: GG: VTC:gg
   ; the Unix commands (ls, dircolors, ...) on every Shell's command path,
-  ; as the kit puts UP-Term:bin there. amiagent gives its commands a
+  ; as the kit puts UP-Term:bin there. wasabid gives its commands a
   ; bare path (Current_directory, C:), so a Path here would not reach the
   ; windows: S:Shell-Startup runs in each new Shell. Added once, guarded
   ; (SHELL_STARTUP_PATH): the disk boots without the rig too.
@@ -273,9 +274,10 @@ If NOT WARN
 EndIf
 Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
-Run >NIL: BOOTX:amiagent PORT=%(port)d TOKEN=rigtoken
-Echo >>BOOTX:boot.log "amiagent started"
-""" % {"port": paths.AGENT_PORT, "upterm_assign": UPTERM_ASSIGN, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+C:SetEnv wasabi.key %(key)s
+C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
+Echo >>BOOTX:boot.log "wasabid started"
+""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -452,14 +454,9 @@ def setup():
         shutil.copyfile(RIG / "os32/Devs/system-configuration", sysconf)
     elif sysconf.exists():
         sysconf.unlink()
-    # the vendored 68020 build, every start (dist/net/amiagent-0.13.2)
-    agentpatch.install(RIG / "boot/amiagent")
-    # --stock: the agent's command stack is 16 KB, not 256 KB (agentpatch.py)
-    if STOCK:
-        (RIG / "boot/amiagent.stock").write_bytes(
-            agentpatch.stock_patch((RIG / "boot/amiagent").read_bytes()))
-    (RIG / "boot/go").write_text(GO.replace("BOOTX:amiagent PORT", "BOOTX:amiagent.stock PORT")
-                                 if STOCK else GO)
+    # the pinned wasabid (`make wasabi`), every start; one daemon, no other agent in the boot
+    shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
+    (RIG / "boot/go").write_text(GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     machine = [
         "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
@@ -490,7 +487,7 @@ def setup():
         ] + (["hard_drive_0_label = %s" % (RIG / ("os-%s.label" % OS)).read_text()] if OS else []) + [
         # Writable: read-only (--ro) put up "Volume System is write
         # protected" requesters that stalled the rig (the owner saw them,
-        # 2026-09-29). stop write-protects DH0: through amiagent before its
+        # 2026-09-29). stop write-protects DH0: through wasabid before its
         # SIGKILL, so no write is left in flight to validate on next boot.
         "hard_drive_0_read_only = %d" % (0 if RW else 1),
     ] + (["hard_drive_0_priority = 10"] if OS else []) + [
@@ -687,7 +684,7 @@ def start(retries=2):
         text = log.read_text() if log.exists() else ""
         if i >= 60 and "go started" in text and "assigns done" not in text:
             break  # frozen early boot
-    print("[ERROR] no amiagent; boot.log:",
+    print("[ERROR] no wasabid answer; boot.log:",
           log.read_text().strip().replace("\n", " | ") if log.exists() else "(none: go never ran)")
     if retries > 0:
         print("retrying the boot")
@@ -737,7 +734,7 @@ def retry_wb_reset():
     to reset the Workbench screen ... close all windows" requester (IPrefs'
     switch to the saved RTG mode raced a window; ledger W43). Retry then
     succeeds (the owner, 2026-10-05). The requester shows a while after
-    amiagent answers, so wait for it (up to two minutes) and click the
+    wasabid answers, so wait for it (up to two minutes) and click the
     gadget labelled Retry.
     What it saw goes to build/rig/retry.log."""
     sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -755,13 +752,13 @@ def retry_wb_reset():
             continue
         tree = ami.req(0x0D).decode("latin-1").splitlines()
         log.write("%.0fs PAL\n%s\n" % (time.time() - t0, "\n".join(tree[:20])))
-        # the requester: the gadget labelled Retry; UITREE gives gadgets
-        # relative to their window
+        # the requester: the gadget labelled Retry; ami.py's UITREE gives gadgets
+        # in absolute screen pixels
         win, gads = None, []
         for line in tree:
             f = line.split()
             if line.startswith("W "):
-                win = (int(f[2]), int(f[3]))
+                win = (0, 0)
             elif line.startswith("G ") and win and line.rstrip().endswith('"Retry"'):
                 w, h = map(int, f[4].split("x"))
                 gads.append((win[0] + int(f[2]), win[1] + int(f[3]), w, h))
@@ -779,7 +776,7 @@ def retry_wb_reset():
 
 def stop():
     """Safe stop: killing FS-UAE while the Amiga writes to its disk corrupts the filesystem (rig 2, 2026-10-13).
-    Wait until the agent takes a command (nothing else is running), lock the volumes (the OS flushes them), stay
+    Wait until wasabid takes a command (nothing else is running), lock the volumes (the OS flushes them), stay
     quiet for 8 s, ask FS-UAE to quit (TERM), and kill it only if it ignores that."""
     if mine() and status(quiet=True):
         try:
