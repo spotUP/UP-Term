@@ -32,6 +32,7 @@
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
+#include "../tty/qmark.h"
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 #include "../config/termurl.h"
@@ -2518,6 +2519,8 @@ int main(int argc, char **argv)
     APTR stack;
     if (argc == 0)
         return wb_start((struct WBStartup *)argv);
+    if (qmark_argv(argc, argv))
+        argv[1] = (char *)"--help"; /* `vsh ?` shows the usage and ends, as --help does (sh_invoke) */
     g_argc = argc;
     g_argv = argv;
     if ((ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower >= VSH_STACK)

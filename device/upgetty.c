@@ -39,6 +39,7 @@
 extern struct DosLibrary *DOSBase;
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
+#include "../tty/qmark.h"
 
 static const char vers[] = "$VER: upgetty 0.1 (30.9.2026)";
 
@@ -192,11 +193,17 @@ int main(void)
 {
     static const char tmpl[] = "UNIT/K/N,BAUD/K/N,ROWS/K/N,COLS/K/N,TERM/K,SHELL/K,DEVICE/K,LOOP/S,RTSCTS/S";
     LONG args[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)tmpl, args, 0);
+    struct RDArgs *rd;
     getty g;
     LONG unit, baud, rows, cols;
     const char *term, *shell, *dev;
     int loop, rc = RETURN_OK, running = 1;
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)tmpl);
+        PutStr((STRPTR)"\n");
+        return RETURN_OK;
+    }
+    rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"upgetty");
         return RETURN_FAIL;

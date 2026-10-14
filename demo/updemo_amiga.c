@@ -14,6 +14,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "updemo.h"
+#include "../tty/qmark.h"
 
 static BPTR con;
 
@@ -83,10 +84,8 @@ int main(int argc, char **argv)
     (void)argc;
     (void)argv;
     /* `UPDemo ?` shows the template and ends (owner 2026-10-14: no
-     * ReadArgs prompt waiting for the arguments) */
-    while (*line == ' ' || *line == '\t')
-        line++;
-    if (line[0] == '?' && (line[1] == 0 || line[1] == '\n' || line[1] == ' ' || line[1] == '\t')) {
+     * ReadArgs prompt waiting for the arguments; tty/qmark.h) */
+    if (qmark_line(line)) {
         PutStr((STRPTR)UPDEMO_TEMPLATE "\n");
         return 0;
     }

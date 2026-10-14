@@ -19,6 +19,7 @@
 #include "zmodem.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../tty/qmark.h"
 
 #ifdef ZM_SZ
 static const char vers[] = "$VER: sz 1.0 (2.10.2026) UP-Term";
@@ -169,10 +170,16 @@ int main(void)
     static const char tmpl[] = "OVERWRITE/S";
 #endif
     LONG args[1] = { 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)tmpl, args, 0);
+    struct RDArgs *rd;
     static aline al;
     zm_line line;
     int rc, n = 0;
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)tmpl);
+        PutStr((STRPTR)"\n");
+        return RETURN_OK;
+    }
+    rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)(vers[0] ? (vers + 6) : ""));
         return RETURN_FAIL;

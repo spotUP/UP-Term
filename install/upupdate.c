@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "updiff.h"
+#include "../tty/qmark.h"
 
 /* vbcc's startup (vc.lib) reads ___stack and runs main on a stack of this
  * size, so upupdate does not depend on the stack the Installer's run gives it */
@@ -121,12 +122,19 @@ static void version(const char *manifest, const char *var)
 
 int main(void)
 {
+    static const char tmpl[] = "OLD/A,NEW/A,KIT/A,ONLY/K";
     LONG args[4] = { 0, 0, 0, 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)"OLD/A,NEW/A,KIT/A,ONLY/K", args, 0);
+    struct RDArgs *rd;
     char *a = 0, *b = 0, name[64], kb[16];
     ud_result *r = 0;
     int i, parts = 0, rc = 20;
     unsigned long total = 0;
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)tmpl);
+        PutStr((STRPTR)"\n");
+        return RETURN_OK;
+    }
+    rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"upupdate");
         return 20;

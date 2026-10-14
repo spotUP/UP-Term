@@ -51,6 +51,7 @@
 extern struct DosLibrary *DOSBase;
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
+#include "../tty/qmark.h"
 
 static const char vers[] = "$VER: UPConsole 0.1 (30.9.2026)";
 
@@ -578,8 +579,14 @@ int main(void)
 {
     static const char tmpl[] = "CON/K,DEVICE/K,EXCLUDE/K,STATUS/S,HANDLER/K,FILE/K,TRACE/S";
     LONG args[7] = { 0, 0, 0, 0, 0, 0, 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)tmpl, args, 0);
+    struct RDArgs *rd;
     int rc = RETURN_OK;
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)tmpl);
+        PutStr((STRPTR)"\n");
+        return RETURN_OK;
+    }
+    rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"UPConsole");
         return RETURN_FAIL;

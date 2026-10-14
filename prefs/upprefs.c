@@ -40,6 +40,7 @@
 
 #include "../config/upconf.h"
 #include "prefs_core.h"
+#include "../tty/qmark.h"
 #include "prefs_dos.h"
 
 /* The clib's calls read these; startup.o provides DOSBase only. */
@@ -776,6 +777,11 @@ int main(void)
     ULONG sig;
     int done = 0, rc = 1;
 
+    /* `UP-Term Prefs ?` shows the usage and ends; the tool takes no arguments */
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)"UP-Term Prefs: no arguments; opens the preferences window\n");
+        return RETURN_OK;
+    }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39L);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39L);
     GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39L);

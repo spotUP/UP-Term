@@ -12,6 +12,7 @@
 #include "hl_lex.h"
 #include "vw_cli.h"
 #include "vw_plat.h"
+#include "../tty/qmark.h"
 
 static const char vers[] = "$VER: mdv 1.0 (4.10.2026) UP-Term";
 
@@ -35,6 +36,10 @@ int main(int argc, char **argv)
     long width = 0;
     char **files;
     (void)vers;
+    if (qmark_argv(argc, argv)) { /* `mdv ?` shows the usage and ends */
+        usage();
+        return 0;
+    }
     mo.urls = 1;
     vw_cli_init(&cli);
     files = (char **)malloc(sizeof(char *) * (argc + 1));
@@ -57,7 +62,7 @@ int main(int argc, char **argv)
             osc8 = 0;
         } else if (!strcmp(a, "-U") || !strcmp(a, "--no-urls")) {
             mo.urls = 0;
-        } else if (!strcmp(a, "-h") || !strcmp(a, "--help") || !strcmp(a, "?")) {
+        } else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
             usage();
             return 0;
         } else if (a[0] == '-' && a[1]) {
