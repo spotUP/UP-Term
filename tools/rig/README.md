@@ -187,10 +187,11 @@ The rest of the wasabi client works on a rig too, with the flags `rig.py wasabi`
 
 wasabi (MIT, https://github.com/creep-ltx/wasabi) is a daemon on the Amiga (`wasabid`) that patches ~30 dos/exec/icon/diskfont
 calls (SnoopDOS style), RawPutChar and `Alert()`, and a one-file Python client. `make wasabi` clones it into
-`build/wasabi`, pinned at 67379c2 (v0.2), builds `wasabid` with Bebbo's gcc (`~/opt/amiga`, `AGCC=`) against the
-CyberGraphX stub headers in `tools/rig/wasabi_shim` (written by us), and keeps the client beside it;
-`make wasabi-clean` removes it. Upstream HEAD (56f7197, 45 commits on) was tried and is not used: from 0.3 `health.c`
-needs `proto/devicetree.h` (Emu68), from 0.6b1 every connection is TLS (AmiSSL on the Amiga, no plain fallback).
+`build/wasabi`, pinned at 68ef646 (v0.8), builds `wasabid` with Bebbo's gcc (`~/opt/amiga`, `AGCC=`) against the
+AmiSSL 5.27 SDK (`AMISSL_SDK`, the one `make amiga` uses) and the CyberGraphX stub headers in `tools/rig/wasabi_shim`
+(written by us), and keeps the client, `wasabi_mcp.py` and the helper modules beside it;
+`make wasabi-clean` removes it. TLS is optional at run time since 0.8: an emulator on loopback and an Amiga without
+AmiSSL or keys run plain. Research: thoughts/shared/research/2026-10-14_wasabi-0.8-eval.md.
 
     rig.py wasabi on                              wasabid into VTC:wasabi, key set, started, waits for a ping
     rig.py wasabi off                             stops the daemon (its patches come off with it)

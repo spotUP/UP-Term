@@ -293,22 +293,25 @@ amimcp-clean:
 	rm -rf $(BUILD)/amimcp
 
 # wasabi (MIT, https://github.com/creep-ltx/wasabi) pinned, for `rig.py wasabi`: wasabid (Amiga daemon, Bebbo gcc)
-# and its stdlib Python client in build/wasabi. Pinned at 67379c2 (v0.2), not upstream HEAD: from 0.3 (health.c needs
-# proto/devicetree.h) and 0.6b1 (TLS on every connection, AmiSSL, no plain fallback) on, wasabid needs more than
-# this rig has. tools/rig/wasabi_shim holds the CyberGraphX stub headers Bebbo's install lacks.
+# and its stdlib Python client in build/wasabi. Pinned at 68ef646 (v0.8, 2026-10-14). wasabid's TLS (optional at run
+# time since 0.8: an emulator on loopback and an Amiga without AmiSSL or keys run plain) is compiled against the
+# AmiSSL 5.27 SDK: AMISSL_SDK (the one `make amiga` uses, vendor/amissl-5.27/AmiSSL/Developer). tools/rig/wasabi_shim
+# holds the CyberGraphX stub headers Bebbo's install lacks. The upstream Makefile's own flags (-fbbb=-: Bebbo's
+# loop pass miscompiles small structs) are kept; only CC, the SDK and the shim include path are ours.
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
 WASABI_REPO := https://github.com/creep-ltx/wasabi
-WASABI_REV  := 67379c2d9c083faf562ce03f159b72b26c24c6d6
+WASABI_REV  := 68ef646a055baae4a25aec88537fbcc28b4f86e1
 wasabi: $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@echo "[OK] wasabi $(WASABI_REV) built: $(BUILD)/wasabi/wasabid and the client $(BUILD)/wasabi/wasabi."
 $(BUILD)/wasabi/.stamp-$(WASABI_REV):
+	@test -d "$(AMISSL_SDK)/include" || { echo "[ERROR] wasabi needs the AmiSSL 5.27 SDK: AMISSL_SDK=<its Developer directory>"; exit 1; }
 	rm -rf $(BUILD)/wasabi
 	mkdir -p $(BUILD)/wasabi
 	git clone -q $(WASABI_REPO) $(BUILD)/wasabi/src
 	git -C $(BUILD)/wasabi/src checkout -q $(WASABI_REV)
-	$(MAKE) -C $(BUILD)/wasabi/src wasabid CC=$(AGCC) \
-	  CFLAGS="-O2 -noixemul -fomit-frame-pointer -Wall -Wno-pointer-sign -I$(abspath tools/rig/wasabi_shim)"
-	cp $(BUILD)/wasabi/src/wasabid $(BUILD)/wasabi/src/wasabi $(BUILD)/wasabi/src/LICENSE $(BUILD)/wasabi/
+	$(MAKE) -C $(BUILD)/wasabi/src wasabid CC=$(AGCC) SSL=$(AMISSL_SDK) \
+	  CFLAGS="-O2 -fbbb=- -noixemul -fomit-frame-pointer -Wall -Wno-pointer-sign -Iinclude -I$(abspath tools/rig/wasabi_shim)"
+	cp $(BUILD)/wasabi/src/wasabid $(BUILD)/wasabi/src/wasabi $(BUILD)/wasabi/src/wasabi_*.py $(BUILD)/wasabi/src/LICENSE $(BUILD)/wasabi/
 	touch $@
 
 wasabi-clean:
