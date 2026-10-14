@@ -8,7 +8,17 @@ refused peers, a wrong password, the right one, then the shell's pty with
 the client's TERM and window size. A second sends the same login through
 build/tn_host -- uptelnet's own protocol code (net/tn.c) -- so the Amiga's
 client and the Mac's server are proved to agree.
+
+The key login (plan 2026-10-14-nas-claude-local.md NL6-NL9) has its units here (the clients
+file, the server's AUTH half of Telnet, the vector shared with tests/test_telnet.c, the
+configure rules) and ONE reachability test: build/tn_host with KEY= -- the real net/tn.c --
+through uptelnetd's main() logs in with no Password: on the line, the server log says "key
+login" (the sentinel); with an empty key file it pairs after the password and the next run
+needs none; a revoked ID is sent back to the password; a server that fails the proof is
+dropped by the client.
 """
+import hashlib
+import hmac
 import os
 import pathlib
 import re
@@ -28,6 +38,7 @@ import uptelnetd as d  # noqa: E402
 
 PW = "correct horse battery"
 # the session proves it ran, with what it was given
+WONT_AUTH = bytes([255, 252, 37])     # a client with no key: today's answer to an option it does not know
 SENTINEL_CMD = "printf 'SENTINEL term=%s size=%s pw=%s\\n' \"$TERM\" \"$(stty size)\" \"${UPTELNETD_PASSWORD:-none}\""
 
 
@@ -226,6 +237,193 @@ class TelnetServer(unittest.TestCase):
         self.assertEqual(bytes(t.out), bytes([255, 252, 39]))
 
 
+# the vector tests/test_telnet.c pins in C: same K, sn, cn, ID, same bytes
+K_VEC = bytes(range(32))
+SN_VEC = bytes([0xff, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0xfe])
+CN_VEC = bytes([0x20, 0xff] + list(range(0x22, 0x30)))
+MAC_VEC = bytes.fromhex("7dd70132a3e24c22590aba7ee40ac9efae39edb5100d73abaaf37d5895d260d2")
+SMAC_VEC = bytes.fromhex("aecac79e686576e2c254b18fb0d1b1865b89ef395872e5e169bc278bf529dbd8")
+
+
+class KeyLogin(unittest.TestCase):
+    def test_the_hmacs_are_the_vector_the_c_client_pins(self):
+        self.assertEqual(d.hmac_sha256(K_VEC, b"upt1-client", SN_VEC, CN_VEC, b"amiga-1"), MAC_VEC)
+        self.assertEqual(d.hmac_sha256(K_VEC, b"upt1-server", SN_VEC, CN_VEC), SMAC_VEC)
+
+    def test_the_server_asks_for_auth_only_when_it_can_check_one(self):
+        t = d.Telnet(auth=True)
+        t.start()
+        self.assertIn(bytes([255, 253, 37]), bytes(t.out))
+        t = d.Telnet()
+        t.start()
+        self.assertNotIn(bytes([255, 253, 37]), bytes(t.out))
+
+    def test_will_auth_gets_the_challenge_with_the_nonce_doubled(self):
+        t = d.Telnet(auth=True)
+        t.start()
+        t.out.clear()
+        t.sn = SN_VEC
+        t.feed(bytes([255, 251, 37]))
+        self.assertEqual(bytes(t.out), bytes([255, 250, 37, 1, 0x75, 255, 255]) + SN_VEC[1:15] + bytes([0xfe, 255, 240]))
+
+    def test_the_answer_is_parsed_bytewise_with_doubled_255(self):
+        t = d.Telnet(auth=True)
+        t.start()
+        t.feed(bytes([255, 251, 37]))
+        msg = bytes([255, 250, 37, 0, 0x75]) + (b"amiga-1\0" + CN_VEC + MAC_VEC).replace(b"\xff", b"\xff\xff") + bytes([255, 240])
+        for c in msg:
+            t.feed(bytes([c]))
+        self.assertEqual(t.auth_msg, (b"amiga-1", CN_VEC, MAC_VEC))
+
+    def test_a_pairing_request_has_no_id_and_no_mac(self):
+        t = d.Telnet(auth=True)
+        t.start()
+        t.feed(bytes([255, 251, 37]))
+        t.feed(bytes([255, 250, 37, 0, 0x75, 0]) + CN_VEC.replace(b"\xff", b"\xff\xff") + bytes([255, 240]))
+        self.assertEqual(t.auth_msg, (b"", CN_VEC, None))
+
+    def test_a_malformed_answer_becomes_an_id_nobody_has_and_a_second_one_is_ignored(self):
+        t = d.Telnet(auth=True)
+        t.start()
+        t.feed(bytes([255, 251, 37]))
+        t.feed(bytes([255, 250, 37, 0, 0x75, 1, 2, 3, 255, 240]))
+        self.assertEqual(t.auth_msg[0], b"\0malformed")
+        t2 = d.Telnet(auth=True)
+        t2.start()
+        t2.feed(bytes([255, 251, 37]))
+        t2.feed(bytes([255, 250, 37, 0, 0x75]) + b"x\0" + CN_VEC + bytes([255, 240]))
+        first = t2.auth_msg
+        t2.feed(bytes([255, 250, 37, 0, 0x75]) + b"y\0" + CN_VEC + bytes([255, 240]))
+        self.assertEqual(t2.auth_msg, first)
+
+    def test_an_unsolicited_auth_answer_is_ignored_without_the_option(self):
+        t = d.Telnet()          # auth off: this server never offered it
+        t.start()
+        t.feed(bytes([255, 250, 37, 0, 0x75, 0]) + CN_VEC + bytes([255, 240]))
+        self.assertIsNone(t.auth_msg)
+
+
+class Clients(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.dir.name, "sub", "clients")
+        self.c = d.ClientStore(self.path)
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_add_list_revoke_with_the_file_kept_private(self):
+        self.assertEqual(self.c.rows(), [])
+        cid, key = self.c.add("192.168.0.77")
+        self.assertRegex(cid, r"^amiga-[0-9a-f]{6}$")
+        self.assertEqual(len(key), 32)
+        self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(os.stat(os.path.dirname(self.path)).st_mode), 0o700)
+        cid2, _ = self.c.add("192.168.0.78", cid="studio")
+        self.assertEqual(self.c.keys()[cid], key)
+        rows = self.c.rows()
+        self.assertEqual([r[0] for r in rows], [cid, "studio"])
+        self.assertEqual(rows[1][3], "192.168.0.78")
+        self.assertEqual(open(self.path).read().split()[1], key.hex())
+        with self.assertRaises(d.ConfigError):
+            self.c.add(cid=cid)                   # an ID is paired once
+        with self.assertRaises(d.ConfigError):
+            self.c.add(cid="bad id")
+        self.assertTrue(self.c.revoke(cid))
+        self.assertFalse(self.c.revoke(cid))
+        self.assertEqual([r[0] for r in self.c.rows()], ["studio"])
+        self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
+
+    def test_a_file_others_can_read_gives_no_keys_and_no_pairing(self):
+        self.c.add(cid="studio")
+        os.chmod(self.path, 0o644)
+        self.assertIn("chmod 600", self.c.check())
+        self.assertEqual(self.c.rows(), [])
+        with self.assertRaises(d.ConfigError):
+            self.c.add(cid="other")
+        with self.assertRaises(d.ConfigError):
+            self.c.revoke("studio")
+
+    def test_a_link_or_someone_elses_file_is_refused(self):
+        self.c.add(cid="studio")
+        link = os.path.join(self.dir.name, "link")
+        os.symlink(self.path, link)
+        self.assertIn("not a regular file", d.ClientStore(link).check())
+        self.assertIn("someone else", d.ClientStore(self.path, uid=os.getuid() + 1).check())
+
+    def test_bad_lines_are_skipped(self):
+        os.makedirs(os.path.dirname(self.path))
+        with open(self.path, "w") as f:
+            f.write("# comment\nshort 00ff\nbad/id %s\ngood %s 2026-10-14 10.0.0.1\n" % ("00" * 32, "ab" * 32))
+        os.chmod(self.path, 0o600)
+        self.assertEqual([r[0] for r in self.c.rows()], ["good"])
+
+    def test_the_clients_file_stands_in_for_the_password_but_neither_alone_is_nothing(self):
+        env = {}
+        args = lambda *extra: d.parse_args(["--bind", "127.0.0.1", "--password-file", os.path.join(self.dir.name, "pw"),
+                                            "--clients-file", self.path] + list(extra))
+        with self.assertRaises(d.ConfigError) as cm:
+            d.configure(args(), env=env)
+        self.assertIn("no password", str(cm.exception))
+        self.c.add(cid="studio")
+        _, _, password, _ = d.configure(args(), env=env)
+        self.assertIsNone(password)
+        os.chmod(self.path, 0o644)
+        with self.assertRaises(d.ConfigError) as cm:
+            d.configure(args(), env=env)
+        self.assertIn("chmod 600", str(cm.exception))
+        os.chmod(self.path, 0o600)
+        _, _, password, _ = d.configure(args(), env={d.PASSWORD_ENV: PW})
+        self.assertEqual(password, PW)
+
+    def test_a_short_password_is_still_an_error_even_with_clients(self):
+        self.c.add(cid="studio")
+        with self.assertRaises(d.ConfigError):
+            d.configure(d.parse_args(["--bind", "127.0.0.1", "--clients-file", self.path]), env={d.PASSWORD_ENV: "short"})
+
+
+class PairsTool(unittest.TestCase):
+    """tools/nas/pairs (NL12): list, add, revoke against a temp clients file."""
+    PAIRS = ROOT / "tools/nas/pairs"
+
+    def pairs(self, path, *args):
+        return subprocess.run([sys.executable, str(self.PAIRS), "--file", path] + list(args),
+                              capture_output=True, text=True)
+
+    def test_list_add_revoke_and_the_file_modes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "nas", "clients")
+            r = self.pairs(path, "list")
+            self.assertEqual(r.returncode, 0)
+            self.assertIn("no Amiga is paired", r.stdout)
+            r = self.pairs(path, "add")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            m = re.search(r"^(amiga-[0-9a-f]{6}) ([0-9a-f]{64})$", r.stdout, re.M)
+            self.assertIsNotNone(m, r.stdout)
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+            self.assertEqual(d.ClientStore(path).keys()[m.group(1)].hex(), m.group(2))
+            r = self.pairs(path, "list")
+            self.assertIn(m.group(1), r.stdout)
+            self.assertNotIn(m.group(2), r.stdout)               # the key is never listed
+            r = self.pairs(path, "revoke", "nope")
+            self.assertEqual(r.returncode, 1)
+            r = self.pairs(path, "revoke", m.group(1))
+            self.assertEqual(r.returncode, 0)
+            self.assertEqual(d.ClientStore(path).rows(), [])
+            os.chmod(path, 0o644)
+            r = self.pairs(path, "add")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("chmod 600", r.stderr)
+
+    def test_the_container_files_carry_it(self):
+        nas = ROOT / "tools/nas"
+        self.assertIn("COPY pairs /usr/local/bin/pairs", (nas / "Dockerfile").read_text())
+        self.assertIn("image: claude-amiga:6", (nas / "compose.yaml").read_text())
+        ep = (nas / "entrypoint.sh").read_text()
+        self.assertIn('[ ! -s "$CLIENTS" ]', ep)                 # it starts with a password OR a clients file
+        self.assertIn('/home/claude/.config/uptelnetd/clients', ep)
+
+
 def free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -237,11 +435,18 @@ def free_port():
 class Server:
     """uptelnetd started through its real entry point, as the owner does."""
 
-    def __init__(self, *extra, command=SENTINEL_CMD):
+    def __init__(self, *extra, command=SENTINEL_CMD, clients=None, password=True):
         self.port = free_port()
-        env = dict(os.environ, **{d.PASSWORD_ENV: PW})
+        self.tmp = tempfile.TemporaryDirectory()
+        # never the real ~/.config/uptelnetd/clients: a file of this test's own (absent until paired)
+        self.clients = clients or os.path.join(self.tmp.name, "clients")
+        env = {k: v for k, v in os.environ.items() if k != d.PASSWORD_ENV}
+        if password:
+            env[d.PASSWORD_ENV] = PW
         self.p = subprocess.Popen([sys.executable, str(ROOT / "tools/uptelnetd.py"), "--bind", "127.0.0.1",
-                                   "--port", str(self.port), "--shell", "/bin/sh", "--command", command] + list(extra),
+                                   "--port", str(self.port), "--shell", "/bin/sh", "--command", command,
+                                   "--clients-file", self.clients, "--password-file",
+                                   os.path.join(self.tmp.name, "no-password")] + list(extra),
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         line = self.p.stdout.readline().decode()
         if "listening on 127.0.0.1" not in line:
@@ -256,7 +461,9 @@ class Server:
             self.p.kill()
             self.p.wait()
         self.p.stdout.close()
+        self.log = self.p.stderr.read().decode("utf-8", "replace")
         self.p.stderr.close()
+        self.tmp.cleanup()
 
 
 def read_until(sock, pattern, timeout=10.0):
@@ -280,7 +487,7 @@ class Reach(unittest.TestCase):
         try:
             s = socket.create_connection(("127.0.0.1", srv.port))
             # a client that agrees to NAWS and TTYPE, 100 x 30
-            s.sendall(bytes([255, 251, 31, 255, 250, 31, 0, 100, 0, 30, 255, 240, 255, 251, 24]))
+            s.sendall(WONT_AUTH + bytes([255, 251, 31, 255, 250, 31, 0, 100, 0, 30, 255, 240, 255, 251, 24]))
             got = read_until(s, rb"Password: ")
             self.assertIn(b"unencrypted", got)
             self.assertIn(bytes([255, 251, 1]), got)  # WILL ECHO: the password is not echoed
@@ -308,6 +515,7 @@ class Reach(unittest.TestCase):
         srv = Server(command="echo READY; sleep 20; echo SURVIVED")
         try:
             s = socket.create_connection(("127.0.0.1", srv.port))
+            s.sendall(WONT_AUTH)
             read_until(s, rb"Password: ")
             s.sendall(PW.encode() + b"\r\0")
             self.assertIn(b"READY", read_until(s, rb"READY"))
@@ -380,6 +588,303 @@ class Reach(unittest.TestCase):
             self.assertNotIn(PW.encode(), out)  # the server echoes nothing of it, the client neither
         finally:
             srv.stop()
+
+    # ---- the key login, through main() with the real net/tn.c ----
+
+    def run_tn_host(self, srv, keyfile, send_password=True, timeout=12):
+        """build/tn_host KEY=keyfile against srv: (stdout, stderr, returncode); types the password when asked."""
+        tn_host = ROOT / "build/tn_host"
+        if not tn_host.exists():
+            self.fail("build/tn_host missing: make build/tn_host (make test builds it)")
+        c = subprocess.Popen([str(tn_host), "127.0.0.1", str(srv.port), "132", "43", "KEY=" + keyfile],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out = b""
+        end = time.time() + timeout
+        sent = False
+        while time.time() < end:
+            r, _, _ = select.select([c.stdout], [], [], 0.1)
+            if r:
+                chunk = os.read(c.stdout.fileno(), 4096)
+                if not chunk:
+                    break
+                out += chunk
+            if send_password and not sent and b"Password: " in out:
+                c.stdin.write(PW.encode() + b"\n")
+                c.stdin.flush()
+                sent = True
+            if re.search(rb"SENTINEL[^\n]*\n", out):
+                break
+            if not send_password and b"Password: " in out:
+                break
+        try:
+            c.stdin.close()
+        except OSError:
+            pass
+        try:
+            rc = c.wait(10)
+        except subprocess.TimeoutExpired:
+            c.kill()
+            rc = c.wait()
+        err = c.stderr.read()
+        c.stdout.close()
+        c.stderr.close()
+        return out, err, rc
+
+    def test_key_login_through_main_pairs_once_then_needs_no_password(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            keyfile = os.path.join(tmp, "nas-key")
+            open(keyfile, "w").close()                 # an empty key file asks to be paired
+            srv = Server()
+            try:
+                # 1: the password, once: the server hands a key over, the client writes the file
+                out, err, _ = self.run_tn_host(srv, keyfile)
+                self.assertIn(b"Password: ", out)
+                self.assertRegex(out, rb"SENTINEL term=xterm-256color size=43 132")
+                line = open(keyfile).read()
+                m = re.match(r"^(amiga-[0-9a-f]{6}) ([0-9a-f]{64})\n$", line)
+                self.assertIsNotNone(m, line)
+                store = d.ClientStore(srv.clients)
+                self.assertEqual(store.keys()[m.group(1)].hex(), m.group(2))
+                self.assertEqual(stat.S_IMODE(os.stat(srv.clients).st_mode), 0o600)
+                # 2: the second run: no Password: on the line at all, the server log says key login
+                out, err, _ = self.run_tn_host(srv, keyfile, send_password=False)
+                self.assertNotIn(b"Password", out)
+                self.assertRegex(out, rb"SENTINEL term=xterm-256color size=43 132")
+                self.assertIn(b"auth ok", err)
+                self.assertNotIn(PW.encode(), out)
+                # 3: revoked on the server: back to the password, and the client says it was rejected
+                store.revoke(m.group(1))
+                out, err, _ = self.run_tn_host(srv, keyfile)
+                self.assertIn(b"Password: ", out)
+                self.assertIn(b"auth rejected", err)
+            finally:
+                srv.stop()
+            self.assertIn("paired as amiga-", srv.log)
+            self.assertEqual(srv.log.count("key login amiga-"), 1)        # the sentinel: the second run only
+            self.assertIn("key rejected (unknown or revoked ID)", srv.log)
+
+    def test_a_wrong_key_is_rejected_and_five_of_them_lock_the_address(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = d.ClientStore(os.path.join(tmp, "clients"))
+            cid, key = store.add(cid="studio")
+            srv = Server(clients=store.path)
+            try:
+                for _ in range(d.LOCK_FAILURES):
+                    s = socket.create_connection(("127.0.0.1", srv.port))
+                    s.sendall(bytes([255, 251, 37]))
+                    got = read_until(s, rb"(?s)\xff\xfa\x25\x01\x75.{16,32}\xff\xf0", timeout=5)
+                    m = re.search(rb"\xff\xfa\x25\x01\x75(.*?)\xff\xf0", got, re.S)
+                    self.assertIsNotNone(m, got)
+                    cn = bytes(16)
+                    bad = hmac.new(os.urandom(32), b"x", hashlib.sha256).digest()
+                    s.sendall(bytes([255, 250, 37, 0, 0x75]) + (cid.encode() + b"\0" + cn + bad).replace(b"\xff", b"\xff\xff")
+                              + bytes([255, 240]))
+                    got = read_until(s, rb"\xff\xfa\x25\x02\x75\x00\xff\xf0", timeout=5)
+                    self.assertIn(bytes([255, 250, 37, 2, 0x75, 0, 255, 240]), got)    # REJECT
+                    s.close()
+                s = socket.create_connection(("127.0.0.1", srv.port))
+                self.assertEqual(read_until(s, rb"Password", timeout=1.5), b"")        # locked out: closed at once
+                s.close()
+            finally:
+                srv.stop()
+            self.assertIn("locked out", srv.log)
+
+    def test_a_right_key_by_hand_gets_the_servers_proof_and_no_prompt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = d.ClientStore(os.path.join(tmp, "clients"))
+            cid, key = store.add(cid="studio")
+            srv = Server(clients=store.path)
+            try:
+                s = socket.create_connection(("127.0.0.1", srv.port))
+                s.sendall(bytes([255, 251, 37]))
+                got = read_until(s, rb"(?s)\xff\xfa\x25\x01\x75.*?\xff\xf0", timeout=5)
+                m = re.search(rb"\xff\xfa\x25\x01\x75(.*?)(?<!\xff)\xff\xf0", got, re.S)
+                sn = m.group(1).replace(b"\xff\xff", b"\xff")
+                self.assertEqual(len(sn), 16)
+                cn = os.urandom(16)
+                mac = d.hmac_sha256(key, b"upt1-client", sn, cn, cid.encode())
+                s.sendall(bytes([255, 250, 37, 0, 0x75]) + (cid.encode() + b"\0" + cn + mac).replace(b"\xff", b"\xff\xff")
+                          + bytes([255, 240]))
+                got = read_until(s, rb"SENTINEL[^\n]*\n|Password", timeout=8)
+                self.assertNotIn(b"Password", got)
+                smac = d.hmac_sha256(key, b"upt1-server", sn, cn)
+                self.assertIn(bytes([255, 250, 37, 2, 0x75, 1]) + smac.replace(b"\xff", b"\xff\xff") + bytes([255, 240]), got)
+                s.close()
+            finally:
+                srv.stop()
+
+    def test_old_clients_still_get_the_password_prompt(self):
+        srv = Server()
+        try:
+            # answers WONT: at once
+            s = socket.create_connection(("127.0.0.1", srv.port))
+            t0 = time.time()
+            s.sendall(WONT_AUTH)
+            self.assertIn(b"Password: ", read_until(s, rb"Password: "))
+            self.assertLess(time.time() - t0, d.AUTH_WAIT - 1)
+            s.close()
+            # never answers (a telnet that ignores unknown options): after AUTH_WAIT
+            s = socket.create_connection(("127.0.0.1", srv.port))
+            t0 = time.time()
+            self.assertIn(b"Password: ", read_until(s, rb"Password: ", timeout=d.AUTH_WAIT + 4))
+            self.assertGreaterEqual(time.time() - t0, d.AUTH_WAIT - 0.3)
+            s.close()
+        finally:
+            srv.stop()
+
+    def test_a_server_with_only_keys_closes_on_a_client_without_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = d.ClientStore(os.path.join(tmp, "clients"))
+            store.add(cid="studio")
+            srv = Server(clients=store.path, password=False)
+            try:
+                s = socket.create_connection(("127.0.0.1", srv.port))
+                s.sendall(WONT_AUTH)
+                got = read_until(s, rb"key only", timeout=5)
+                self.assertIn(b"logs in with a key only", got)
+                self.assertNotIn(b"Password", got)
+                s.close()
+            finally:
+                srv.stop()
+
+    def test_the_client_drops_a_server_that_fails_the_proof(self):
+        """A fake NAS that sends SEND and then a wrong ACCEPT: tn_host (net/tn.c) ends the line."""
+        tn_host = ROOT / "build/tn_host"
+        with tempfile.TemporaryDirectory() as tmp:
+            keyfile = os.path.join(tmp, "nas-key")
+            with open(keyfile, "w") as f:
+                f.write("studio %s\n" % ("11" * 32))
+            ls = socket.socket()
+            ls.bind(("127.0.0.1", 0))
+            ls.listen(1)
+            port = ls.getsockname()[1]
+            c = subprocess.Popen([str(tn_host), "127.0.0.1", str(port), "80", "24", "KEY=" + keyfile],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            conn, _ = ls.accept()
+            conn.sendall(bytes([255, 253, 37]))
+            read_until(conn, rb"\xff\xfb\x25")
+            conn.sendall(bytes([255, 250, 37, 1, 0x75]) + bytes(16) + bytes([255, 240]))
+            read_until(conn, rb"\xff\xf0", timeout=3)
+            conn.sendall(bytes([255, 250, 37, 2, 0x75, 1]) + bytes(32) + bytes([255, 240]) + b"Password: ")
+            rc = c.wait(10)
+            out = c.stdout.read()
+            err = c.stderr.read()
+            c.stdin.close()
+            c.stdout.close()
+            c.stderr.close()
+            conn.close()
+            ls.close()
+            self.assertEqual(rc, 3)
+            self.assertIn(b"auth bad-server", err)
+            self.assertNotIn(b"Password", out)             # nothing from that server is shown
+
+
+class AmigaTargetTool(unittest.TestCase):
+    """tools/nas/amiga-target and seed-claude-files (amimcp installer), against temp dirs."""
+    NAS = ROOT / "tools/nas"
+
+    def target(self, d, *args, stdin=""):
+        return subprocess.run(["sh", str(self.NAS / "amiga-target")] + list(args), input=stdin,
+                              capture_output=True, text=True, env=dict(os.environ, AMIMCP_DIR=d))
+
+    def test_set_show_clear_modes_and_the_token_is_never_shown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = os.path.join(tmp, "amimcp")
+            r = self.target(d, "show")
+            self.assertEqual(r.returncode, 1)
+            r = self.target(d, "set", stdin="192.168.1.77\n\ns3cret-token\n")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            for n in ("host", "token"):
+                self.assertEqual(stat.S_IMODE(os.stat(os.path.join(d, n)).st_mode), 0o600)
+            self.assertEqual(open(os.path.join(d, "host")).read(), "192.168.1.77")
+            self.assertEqual(open(os.path.join(d, "token")).read(), "s3cret-token")
+            self.assertFalse(os.path.exists(os.path.join(d, "port")))   # default port: no file
+            self.assertEqual(stat.S_IMODE(os.stat(d).st_mode), 0o700)
+            r = self.target(d, "show")
+            self.assertIn("host 192.168.1.77", r.stdout)
+            self.assertIn("port 7846", r.stdout)
+            self.assertNotIn("s3cret-token", r.stdout + r.stderr)
+            r = self.target(d, "set", stdin="10.0.0.2\n7000\ntok2\n")
+            self.assertEqual(open(os.path.join(d, "port")).read(), "7000")
+            self.assertEqual(stat.S_IMODE(os.stat(os.path.join(d, "port")).st_mode), 0o600)
+            self.assertIn("port 7000", self.target(d, "show").stdout)
+            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n70x\ntok\n").returncode, 1)
+            self.assertEqual(self.target(d, "set", stdin="10.0.0.2\n\n\n").returncode, 1)  # no token
+            self.assertEqual(self.target(d, "clear").returncode, 0)
+            self.assertEqual(os.listdir(d), [])
+
+    def seed(self, home, src):
+        return subprocess.run(["sh", str(self.NAS / "seed-claude-files")], capture_output=True, text=True,
+                              env=dict(os.environ, SEED_HOME=home, SEED_SRC=src))
+
+    def test_root_runs_of_setpw_and_amiga_target_become_the_claude_user_before_any_write(self):
+        # as root they would write into a directory the claude user owns and follow its symlinks
+        import tempfile, subprocess, os, stat
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            fake = t / "bin"; fake.mkdir()
+            (fake / "id").write_text("#!/bin/sh\necho 0\n")
+            (fake / "as-claude").write_text('#!/bin/sh\necho "as-claude $*" > "%s/called"\n' % t)
+            for f in ("id", "as-claude"):
+                (fake / f).chmod(0o755)
+            for tool in ("amiga-target", "setpw"):
+                (t / "called").unlink(missing_ok=True)
+                d = t / "amimcp"
+                env = dict(os.environ, PATH="%s:%s" % (fake, os.environ["PATH"]), AMIMCP_DIR=str(d))
+                subprocess.run(["sh", str(self.NAS / tool), "set"], input="1.2.3.4\n\ntok\n", text=True,
+                               env=env, capture_output=True, timeout=10)
+                called = (t / "called").read_text() if (t / "called").exists() else ""
+                self.assertIn("as-claude", called, tool)
+                self.assertIn(tool, called, tool)
+                self.assertFalse(d.exists(), "%s wrote as root" % tool)
+            self.assertIn("COPY as-claude /usr/local/bin/as-claude", (self.NAS / "Dockerfile").read_text())
+            self.assertIn('exec as-claude "$@"', (self.NAS / "entrypoint.sh").read_text())
+
+    def test_seeding_copies_missing_updates_ours_keeps_user_edits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src, home = os.path.join(tmp, "seed"), os.path.join(tmp, "home")
+            skill = os.path.join(src, "skills/amiga-upterm/SKILL.md")
+            os.makedirs(os.path.dirname(skill))
+            mcp = os.path.join(src, "mcp.json")
+            open(skill, "w").write("skill v1\n")
+            open(mcp, "w").write("mcp v1\n")
+            ds = os.path.join(home, ".claude/skills/amiga-upterm/SKILL.md")
+            dm = os.path.join(home, "work/.mcp.json")
+            self.assertEqual(self.seed(home, src).returncode, 0)
+            self.assertEqual((open(ds).read(), open(dm).read()), ("skill v1\n", "mcp v1\n"))   # missing: copied
+            open(skill, "w").write("skill v2\n")
+            open(mcp, "w").write("mcp v2\n")
+            open(dm, "w").write("my own mcp\n")
+            r = self.seed(home, src)
+            self.assertEqual(open(ds).read(), "skill v2\n")        # still ours: updated
+            self.assertEqual(open(dm).read(), "my own mcp\n")      # user-edited: kept
+            self.assertIn("kept", r.stdout)
+            open(skill, "w").write("skill v3\n")
+            open(ds, "w").write("edited skill\n")
+            self.seed(home, src)
+            self.assertEqual(open(ds).read(), "edited skill\n")
+            os.remove(ds)
+            self.seed(home, src)
+            self.assertEqual(open(ds).read(), "skill v3\n")        # deleted: back from the image
+
+    def test_one_file_pins_amimcp_for_the_makefile_and_the_dockerfile(self):
+        rev = (self.NAS / "amimcp.rev").read_text().strip()
+        self.assertRegex(rev, r"^[0-9a-f]{40}$")
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("AMIMCP_REV  := $(strip $(shell cat tools/nas/amimcp.rev))", mk)
+        self.assertNotIn(rev, mk)                               # no second copy of the pin
+        df = (self.NAS / "Dockerfile").read_text()
+        self.assertIn("COPY amimcp.rev /opt/amimcp/amimcp.rev", df)
+        self.assertIn('checkout -q "$(cat /opt/amimcp/amimcp.rev)"', df)
+        self.assertNotIn(rev, df)
+        for line in ("COPY amiga-target /usr/local/bin/amiga-target", "cp /tmp/amimcp/LICENSE /opt/amimcp/LICENSE",
+                     "COPY skills /opt/amimcp/seed/skills", "COPY mcp.json /opt/amimcp/seed/mcp.json"):
+            self.assertIn(line, df)
+        ep = (self.NAS / "entrypoint.sh").read_text()
+        self.assertIn("(as_claude seed-claude-files)", ep)   # never as root: it follows symlinks in the home
+        self.assertNotRegex(ep, r"(?m)^seed-claude-files")
+        self.assertLess(ep.index("chown -R claude:claude"), ep.index("(as_claude seed-claude-files)"))
+        self.assertIn("/opt/amimcp/server/amimcp.py", (self.NAS / "mcp.json").read_text())
 
 
 if __name__ == "__main__":

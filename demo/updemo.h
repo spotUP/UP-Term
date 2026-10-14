@@ -23,32 +23,74 @@ typedef struct updemo_io {
 #define UPDEMO_MIN_COLS 76
 #define UPDEMO_MIN_ROWS 20
 
-/* Runs the scenes from `first` (0-based) in a cols x rows terminal, on the
+/* The demo: one list of scenes, each with a caption on the status line --
+ * styles, colours, character sets, Unicode, scroll regions, a tmux split,
+ * vsh, completion, themes switched live, mouse reports, links, sixel
+ * images, synchronized output, a resize, reflow -- then the demoscene
+ * effects (copper bars, plasma, fire, rotozoomer, vector cubes, a sine
+ * scroller, palette cycling). Space, Return and Right go to the next scene, B and Left back,
+ * Q, Esc and Ctrl-C end it; a mouse report is no key (the mouse scene shows
+ * them). BENCH: any key ends it. It asks the window's size (CSI 18 t)
+ * before each scene and follows it.
+ * Runs the scenes from `first` (0-based) in a cols x rows terminal, on the
  * alternate screen, and leaves the terminal as it was. scene_ticks: every
- * scene's length in 1/50 s, 0 for each scene's own. Keys: Space / Return
- * the next scene, B the one before, Q / Esc / Ctrl-C quit.
+ * scene's length in 1/50 s, 0 for each scene's own.
  * 0 when it ran, 1 when the terminal is smaller than UPDEMO_MIN_*. */
 int updemo_run(const updemo_io *io, int cols, int rows, int first, long scene_ticks);
 
-/* The tour (UPDemo TOUR; the window menu's Help > Demo tour plays it in a
- * tab): what the terminal does, a scene each with a caption -- styles,
- * colours, character sets, Unicode, scroll regions, a tmux split, vsh,
- * completion, themes switched live, mouse reports, links, sixel images,
- * synchronized output, a resize, reflow -- then some of the show's
- * effects. Any key ends it (a mouse report does not: the mouse scene
- * shows them). It asks the window's size (CSI 18 t) before each scene
- * and follows it. Arguments and result as updemo_run. */
-int updemo_tour(const updemo_io *io, int cols, int rows, int first, long scene_ticks);
+/* 1: the next updemo_run plays scene `first` alone (UPDemo BENCH n: one
+ * scene's frame rate, and a PROF=1 handler's profile of it alone). */
+void updemo_only(int on);
 
-/* how many scenes there are, and scene s's name: the show's, the tour's */
+/* 1: the next updemo_run plays only the benchmarked scenes (UPDemo BENCH) */
+void updemo_bench(int on);
+
+/* Which colours the demo plays in. UPDEMO_ANSI: the 16-colour version, made for the standard ANSI colours
+ * (SGR 30-37, 90-97, 40-47, 100-107 and no palette writes; shade blocks
+ * U+2591-2593 and the full block for gradients). UPDEMO_FULL: the 256 and
+ * 24-bit colours version. UPDEMO_AUTO (the default): the 16-colour one when
+ * the terminal says it has 16 colours or fewer (XTGETTCAP colors, which
+ * UP-Term answers with the screen's pens), else the full one. */
+#define UPDEMO_AUTO 0
+#define UPDEMO_ANSI 1
+#define UPDEMO_FULL 2
+/* UPDEMO_SOLID: the 16-colour version with no shade blocks: every ramp step is drawn as the solid
+ * ANSI colour nearest to it (half blocks of two solid colours keep the half-cell resolution) */
+#define UPDEMO_SOLID 3
+void updemo_colours(int mode);
+
+/* After updemo_run: 1 when it played the 16-colour version */
+int updemo_ansi(void);
+
+/* The count in XTGETTCAP's answer to a colors query (DCS 1 + r 636F6C6F7273=hex ST); 0 when none */
+int updemo_colour_count(const char *reply, long len);
+
+/* The command line of UPDemo and updemo: [n] [BENCH [n]] [ANSI | SOLID | FULL] */
+typedef struct updemo_args {
+    int bench;   /* BENCH */
+    int scene;   /* n, 1-based; 0: none */
+    int colours; /* UPDEMO_AUTO, _ANSI, _SOLID or _FULL */
+} updemo_args;
+void updemo_parse_args(int argc, char **argv, updemo_args *a);
+/* The settings from parsed options (the Amiga's ReadArgs template SCENE/N,ANSI/S,FULL/S,SOLID/S,BENCH/S):
+ * scene 0: none; SOLID beats ANSI beats FULL */
+void updemo_args_make(updemo_args *a, int scene, int bench, int ansi_w, int full_w, int solid_w);
+
+/* The 16-colour version's ramps (an effect's value -> a foreground, a
+ * background and a shade: 0 a solid colour, 1-3 the blocks U+2591-2593 of
+ * the foreground over the background), k in 0..updemo_ramp_count() - 1.
+ * v in 0..255; returns the step's number on the ramp, -1 for a bad k or v. */
+int updemo_ramp_count(void);
+const char *updemo_ramp_name(int k);
+int updemo_ramp_step(int k, int v, int *fgc, int *bgc, int *shade);
+
+/* how many scenes there are, scene s's name, and whether BENCH measures it */
 int updemo_scenes(void);
 const char *updemo_scene_name(int s);
-int updemo_tour_scenes(void);
-const char *updemo_tour_scene_name(int s);
+int updemo_scene_benchmarked(int s);
 
-/* After updemo_run (or updemo_tour: its scenes): what scene s drew --
- * frames, and the 1/50 s they took (a terminal benchmark: UPDemo BENCH
- * prints frames a second per scene). */
+/* After updemo_run: what scene s drew -- frames, and the 1/50 s they took
+ * (a terminal benchmark: UPDemo BENCH prints frames a second per scene). */
 void updemo_stats(int s, long *frames, long *ticks);
 
 #endif

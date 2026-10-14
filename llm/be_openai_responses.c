@@ -1288,5 +1288,5 @@ static void r_http_err(const llm_http_fail *f, char *out, long cap)
 const llm_backend llm_be_openai_responses = {
     "openai-responses", "Authorization", "/responses", r_head, r_body, r_xhead, llm_responses_new, r_feed,
     llm_responses_free,
-    "OpenAI Responses stream ended before a terminal response event", 0, 0, 0, r_http_err, 0
+    "OpenAI Responses stream ended before a terminal response event", 0, 0, 0, r_http_err, 0, 0
 };

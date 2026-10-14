@@ -1,0 +1,14 @@
+UP-Term-nvim: parts, licences and where the source is
+(rows moved from the single kit's LICENSES.txt by the kit split; K2-6 completes them)
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+Neovim 0.12 and runtime       Apache 2.0, with Vim-licensed    neovim-amiga repo (vendor012/neovim/
+(Files/nvim)                  parts (LICENSE.txt)              LICENSE.txt)
+Neovim bundled libraries      unconfirmed per library: each    neovim-amiga vendor012/ and vendor/ (luv:
+(libuv, luv, lpeg,            tree carries its own LICENSE     Apache 2.0; tree-sitter, unibilium: LICENSE
+tree-sitter, unibilium, ...)  file where one exists            files present)
+
+Notes
+- The source is in the repositories named, which the upterm meta-repo pins to the
+  commits the archive was built from.

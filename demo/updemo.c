@@ -5,7 +5,15 @@
  * its background the bottom one), and blit() sends only the rows that
  * changed, with a colour sequence only where the colour changes. The
  * vector scene uses the quadrant blocks instead: four pixels a cell.
- * All arithmetic is integer; the sine table is built at the start. */
+ * All arithmetic is integer; the sine table is built at the start.
+ *
+ * The 16-colour version (ansi, updemo_colours): the standard ANSI colours
+ * only -- SGR 30-37, 90-97, 40-47, 100-107 -- and no palette writes. The
+ * picture then holds codes into acode[]: 0-15 are the solid colours, the
+ * rest the steps of the ramps (ramps[]), each a (foreground, background,
+ * shade block) triple: the classic ANSI art gradient, ' ', U+2591-2593 and
+ * the full block between two colours. A cell shows one code, so the
+ * picture is a row of cells high, not of half cells. */
 #include <string.h>
 #include "updemo.h"
 
@@ -14,7 +22,11 @@
 
 static const updemo_io *io;
 static int W, R, H; /* columns; the picture's text rows (the last row is the status line); its pixel rows (2 R) */
-static int touring;  /* the tour plays (updemo_tour): captions, any key ends it */
+static int bench_only; /* updemo_bench: the benchmarked scenes only */
+static int want_colours; /* updemo_colours: UPDEMO_AUTO, _ANSI or _FULL */
+static int ansi;         /* the run plays the 16-colour version */
+static int solid;        /* ... in solid colours: no shade blocks (UPDEMO_SOLID) */
+static int only_one;  /* updemo_only: scene `first` alone */
 
 /* ---- output -------------------------------------------------------------- */
 
@@ -69,6 +81,150 @@ static void at(int row, int col)
 /* the colours the terminal has now, as far as we set them: -1 unknown */
 static int cfg = -1, cbg = -1;
 
+/* ---- the 16 ANSI colours -------------------------------------------------- */
+
+/* xterm's default 16 (0xRRGGBB) */
+static const unsigned long ansi_rgb[16] = {
+    0x000000UL, 0xCD0000UL, 0x00CD00UL, 0xCDCD00UL, 0x0000EEUL, 0xCD00CDUL, 0x00CDCDUL, 0xE5E5E5UL,
+    0x7F7F7FUL, 0xFF0000UL, 0x00FF00UL, 0xFFFF00UL, 0x5C5CFFUL, 0xFF00FFUL, 0x00FFFFUL, 0xFFFFFFUL
+};
+
+static unsigned char near16[256]; /* a 256-colour index -> the ANSI colour nearest to it */
+
+static unsigned long rgb_of_256(int c)
+{
+    static const int lv[6] = { 0, 95, 135, 175, 215, 255 };
+    int g;
+    if (c < 16)
+        return ansi_rgb[c];
+    if (c < 232) {
+        c -= 16;
+        return ((unsigned long)lv[c / 36] << 16) | ((unsigned long)lv[c / 6 % 6] << 8) | (unsigned long)lv[c % 6];
+    }
+    g = 8 + 10 * (c - 232);
+    return ((unsigned long)g << 16) | ((unsigned long)g << 8) | (unsigned long)g;
+}
+
+static void near16_init(void)
+{
+    int c, i;
+    for (c = 0; c < 256; c++) {
+        unsigned long rgb = rgb_of_256(c), best = 0xFFFFFFFFUL;
+        near16[c] = 0;
+        for (i = 0; i < 16; i++) {
+            long dr = (long)((rgb >> 16) & 255) - (long)((ansi_rgb[i] >> 16) & 255);
+            long dg = (long)((rgb >> 8) & 255) - (long)((ansi_rgb[i] >> 8) & 255);
+            long db = (long)(rgb & 255) - (long)(ansi_rgb[i] & 255);
+            unsigned long d = (unsigned long)(2 * dr * dr + 4 * dg * dg + 3 * db * db);
+            if (c < 16 ? i == c : d < best) {
+                best = d;
+                near16[c] = (unsigned char)i;
+            }
+        }
+    }
+}
+
+/* a colour for a solid area of the picture: the 256-colour index, or its ANSI colour */
+static int col(int c)
+{
+    return ansi ? near16[c] : c;
+}
+
+/* ---- the ramps: a value -> (foreground, background, shade) ------------------ */
+
+/* A ramp is a list of ANSI colours; between two neighbours the steps are the
+ * first colour, then the second over it through U+2591, U+2592, U+2593
+ * (a quarter, a half, three quarters), so n colours give 4 (n - 1) + 1 steps.
+ * Every ramp's steps have their own codes in acode[], from 16 up. */
+typedef struct ramp {
+    const char *name;
+    unsigned char n;
+    unsigned char stops[12];
+    unsigned char base, steps;
+} ramp;
+
+enum { RAMP_RAINBOW, RAMP_FIRE, RAMP_BAR, RAMP_N = RAMP_BAR + 6 }; /* six bars, one a hue */
+
+static ramp ramps[RAMP_N] = {
+    { "rainbow", 12, { 1, 9, 11, 10, 2, 6, 14, 12, 4, 5, 13, 1 }, 0, 0 }, /* a ring: its end is its start */
+    { "fire", 5, { 0, 1, 9, 11, 15 }, 0, 0 },
+    { "red bar", 4, { 0, 1, 9, 15 }, 0, 0 },
+    { "yellow bar", 4, { 0, 3, 11, 15 }, 0, 0 },
+    { "green bar", 4, { 0, 2, 10, 15 }, 0, 0 },
+    { "cyan bar", 4, { 0, 6, 14, 15 }, 0, 0 },
+    { "blue bar", 4, { 0, 4, 12, 15 }, 0, 0 },
+    { "magenta bar", 4, { 0, 5, 13, 15 }, 0, 0 }
+};
+
+/* the picture's codes in the 16-colour version: shade 0 is the solid colour
+ * bg, 1-3 the block over it in fg */
+static struct { unsigned char fg, bg, shade; } acode[256];
+static int acode_ready;
+
+static void acode_init(void)
+{
+    int i, k, next = 16;
+    if (acode_ready)
+        return;
+    acode_ready = 1;
+    near16_init();
+    for (i = 0; i < 16; i++)
+        acode[i].fg = acode[i].bg = (unsigned char)i;
+    for (k = 0; k < RAMP_N; k++) {
+        ramp *r = &ramps[k];
+        r->base = (unsigned char)next;
+        r->steps = (unsigned char)((r->n - 1) * 4 + 1);
+        for (i = 0; i < r->steps; i++, next++) {
+            int a = i / 4, sh = i % 4;
+            acode[next].bg = r->stops[a];
+            acode[next].fg = r->stops[sh ? a + 1 : a];
+            acode[next].shade = (unsigned char)sh;
+        }
+    }
+}
+
+/* the code of value v (0..255) on ramp k */
+static int ramp_code(int k, int v)
+{
+    return ramps[k].base + (v & 255) * ramps[k].steps / 256;
+}
+
+int updemo_ramp_count(void)
+{
+    return RAMP_N;
+}
+
+const char *updemo_ramp_name(int k)
+{
+    return k >= 0 && k < RAMP_N ? ramps[k].name : "";
+}
+
+int updemo_ramp_step(int k, int v, int *fgc, int *bgc, int *shade)
+{
+    int c;
+    acode_init();
+    if (k < 0 || k >= RAMP_N || v < 0 || v > 255)
+        return -1;
+    c = ramp_code(k, v);
+    *fgc = acode[c].fg;
+    *bgc = acode[c].bg;
+    *shade = acode[c].shade;
+    return c - ramps[k].base;
+}
+
+/* the colour a text takes for the value a code stands for (fg() takes it) */
+static int code_colour(int code)
+{
+    return acode[code].shade >= 2 ? acode[code].fg : acode[code].bg;
+}
+
+static void sgr_ansi(int base, int c)
+{
+    ps("\033[");
+    pn(c < 8 ? base + c : base + 60 + c - 8);
+    pc('m');
+}
+
 static void sgr0(void)
 {
     ps("\033[0m");
@@ -77,21 +233,33 @@ static void sgr0(void)
 
 static void fg(int c)
 {
+    if (ansi)
+        c = near16[c];
     if (c == cfg)
         return;
-    ps("\033[38;5;");
-    pn(c);
-    pc('m');
+    if (ansi) {
+        sgr_ansi(30, c);
+    } else {
+        ps("\033[38;5;");
+        pn(c);
+        pc('m');
+    }
     cfg = c;
 }
 
 static void bg(int c)
 {
+    if (ansi)
+        c = near16[c];
     if (c == cbg)
         return;
-    ps("\033[48;5;");
-    pn(c);
-    pc('m');
+    if (ansi) {
+        sgr_ansi(40, c);
+    } else {
+        ps("\033[48;5;");
+        pn(c);
+        pc('m');
+    }
     cbg = c;
 }
 
@@ -144,9 +312,26 @@ static int cube(int r, int g, int b)
 
 static unsigned char pal[256]; /* the scene's value -> 256-colour index */
 
+static void pal_ramp(int k)
+{
+    int i;
+    for (i = 0; i < 256; i++)
+        pal[i] = (unsigned char)ramp_code(k, i);
+}
+
+/* the colour for a text of palette value v: fg() and bg() take it */
+static int pal_col(int v)
+{
+    return ansi ? code_colour(pal[v & 255]) : pal[v & 255];
+}
+
 static void pal_rainbow(void)
 {
     int i;
+    if (ansi) {
+        pal_ramp(RAMP_RAINBOW);
+        return;
+    }
     for (i = 0; i < 256; i++)
         pal[i] = (unsigned char)cube(((SN(i) + 127) * 5 + 127) / 254, ((SN(i + 85) + 127) * 5 + 127) / 254,
                                      ((SN(i + 170) + 127) * 5 + 127) / 254);
@@ -155,6 +340,10 @@ static void pal_rainbow(void)
 static void pal_fire(void)
 {
     int i;
+    if (ansi) {
+        pal_ramp(RAMP_FIRE);
+        return;
+    }
     for (i = 0; i < 256; i++) {
         if (i < 64)
             pal[i] = (unsigned char)cube(i * 5 / 63, 0, 0);
@@ -179,6 +368,29 @@ static void pix_clear(int c)
         memset(pix[y], c, (size_t)W);
 }
 
+/* one cell of the 16-colour version: the code's colours and its shade block */
+static void put_code(int code)
+{
+    static const char *const shade[4] = { " ", "\342\226\221", "\342\226\222", "\342\226\223" };
+    int f = acode[code].fg, b = acode[code].bg;
+    if (solid && acode[code].shade)
+        b = code_colour(code); /* the nearer of the step's two colours: a quarter shade is its background, a half or more its foreground */
+    if (solid || !acode[code].shade) { /* a solid colour: a blank on it, or a full block when it is the foreground already */
+        if (cbg == b)
+            pc(' ');
+        else if (cfg == b)
+            ps("\342\226\210");
+        else {
+            bg(b);
+            pc(' ');
+        }
+        return;
+    }
+    fg(f);
+    bg(b);
+    ps(shade[acode[code].shade]);
+}
+
 /* The rows that changed, to the terminal. A cell of one colour is a blank
  * on that background (or a full block when it is the foreground already);
  * two colours are a half block, the upper or the lower one, whichever the
@@ -195,7 +407,17 @@ static void blit(void)
         at(r + 1, 1);
         for (x = 0; x < W; x++) {
             int t = a[x], u = b[x];
-            if (t == u) {
+            if (ansi && (t != u && t < 16 && u < 16)) {
+                if (cfg == u && cbg == t)
+                    ps("\342\226\204");
+                else {
+                    fg(t);
+                    bg(u);
+                    ps("\342\226\200");
+                }
+            } else if (ansi) {
+                put_code(t >= 16 ? t : u); /* a cell shows one code: the top one, else the bottom */
+            } else if (t == u) {
                 if (cbg == t)
                     pc(' ');
                 else if (cfg == t)
@@ -320,7 +542,7 @@ static void sc_text(long t, int first)
                     pc(' ');
                 pal_rainbow();
                 for (i = 0; title[i]; i++) {
-                    fg(pal[i * 24]);
+                    fg(pal_col(i * 24));
                     pc(title[i]);
                 }
                 sgr0();
@@ -353,8 +575,7 @@ static void sc_text(long t, int first)
             break;
         case 10:
             fg(244);
-            centred(18, touring ? "a tour of what UP-Term does: any key ends it"
-                                : "next: colours, then the demoscene part");
+            centred(18, "a tour of what UP-Term does: Space for the next scene, Q to quit");
             sgr0();
             break;
         default:
@@ -371,9 +592,46 @@ static void rgb_of_hue(int h, int dim, int *r, int *g, int *b)
     *b = (SN(h + 170) + 128) >> dim;
 }
 
+/* the 16-colour version: the 16 colours, a gradient of shade blocks from black through each hue to white,
+ * and bands of the rainbow ramp sliding along */
+static void sc_colours_ansi(long t, int first)
+{
+    int x0 = (W - 72) / 2 + 1, i, k, row;
+    if (first) {
+        at(2, x0);
+        ps("16 colours");
+        at(3, x0);
+        for (i = 0; i < 16; i++) {
+            bg(i);
+            ps("    ");
+        }
+        sgr0();
+        at(5, x0);
+        ps("Shade blocks between two colours: a gradient in 16 colours");
+        for (k = 0; k < 6; k++) {
+            at(6 + k, x0);
+            for (i = 0; i < 64; i++)
+                put_code(ramp_code(RAMP_BAR + k, i * 4));
+            sgr0();
+        }
+        at(13, x0);
+        ps("Bands sliding along");
+    }
+    for (row = 0; row < 2; row++) {
+        at(14 + row, x0);
+        for (i = 0; i < 72; i++)
+            put_code(ramp_code(RAMP_RAINBOW, i * 3 + (int)t * 2 + row * 128));
+        sgr0();
+    }
+}
+
 static void sc_colours(long t, int first)
 {
     int x0 = (W - 72) / 2 + 1, i, r, g, b, row;
+    if (ansi) {
+        sc_colours_ansi(t, first);
+        return;
+    }
     if (first) {
         at(2, x0);
         ps("16 colours");
@@ -470,17 +728,7 @@ static void sc_region(long t, int first)
 
 static void sc_end(long t, int first)
 {
-    static const char *const show_lines[] = {
-        "UP-Term",
-        "",
-        "an xterm on the Amiga, by Up Rough",
-        "",
-        "everything you saw was plain text:",
-        "escape sequences, UTF-8, 256 and 24-bit colours",
-        "",
-        "your shell is behind this screen, as you left it"
-    };
-    static const char *const tour_lines[] = {
+    static const char *const end_lines[] = {
         "UP-Term",
         "",
         "an xterm on the Amiga, by Up Rough",
@@ -490,14 +738,14 @@ static void sc_end(long t, int first)
         "",
         "Help > Demo tour (or /demo) plays it again"
     };
-    const char *const *lines = touring ? tour_lines : show_lines;
+    const char *const *lines = end_lines;
     int i;
     if (first)
         pal_rainbow();
     for (i = 0; i < 8; i++) {
         if (i == 0)
             ps("\033[1m");
-        fg(pal[(i * 20 + (int)t * 3) & 255]);
+        fg(pal_col(i * 20 + (int)t * 3));
         centred(R / 2 - 4 + i, lines[i]);
         if (i == 0)
             ps("\033[22m");
@@ -512,14 +760,16 @@ static void sc_bars(long t, int first)
     static const unsigned char hue[6][3] = { { 1, 0, 0 }, { 1, 1, 0 }, { 0, 1, 0 }, { 0, 1, 1 }, { 0, 0, 1 }, { 1, 0, 1 } };
     int k, d, x0, y0;
     (void)first;
-    pix_clear(16);
+    pix_clear(col(16));
     for (k = 0; k < 6; k++) {
         int yc = H / 2 + SN((int)t * 2 + k * 22) * (H / 2 - 6) / 127;
         for (d = -5; d <= 5; d++) {
             int y = yc + d, s = 5 - (d < 0 ? -d : d);
             if (y < 0 || y >= H)
                 continue;
-            if (s == 5) /* the bar's highlight: its colour towards white */
+            if (ansi) /* the bar's ramp from black to white, the highlight its end */
+                memset(pix[y], ramp_code(RAMP_BAR + k, s * 51), (size_t)W);
+            else if (s == 5) /* the bar's highlight: its colour towards white */
                 memset(pix[y], cube(hue[k][0] ? 5 : 3, hue[k][1] ? 5 : 3, hue[k][2] ? 5 : 3), (size_t)W);
             else
                 memset(pix[y], cube(hue[k][0] * (s + 1), hue[k][1] * (s + 1), hue[k][2] * (s + 1)), (size_t)W);
@@ -527,8 +777,8 @@ static void sc_bars(long t, int first)
     }
     x0 = (W - 41) / 2 + SN((int)t * 3) * 6 / 127;
     y0 = ((H - 14) / 2) & ~1;
-    big_text("UP-TERM", x0 + 1, y0 + 2, 16);
-    big_text("UP-TERM", x0, y0, 231);
+    big_text("UP-TERM", x0 + 1, y0 + 2, col(16));
+    big_text("UP-TERM", x0, y0, col(231));
 }
 
 static void sc_plasma(long t, int first)
@@ -567,7 +817,7 @@ static void sc_fire(long t, int first)
             int l = x ? x - 1 : 0, r = x < W - 1 ? x + 1 : x;
             int v = (b1[l] + b1[x] + b1[r] + b2[x]) * 8 / 33;
             p[x] = (unsigned char)v;
-            o[x] = v < 12 ? 16 : pal[v];
+            o[x] = v < 12 ? col(16) : pal[v];
         }
     }
 }
@@ -584,7 +834,7 @@ static void sc_roto(long t, int first)
         unsigned char *p = pix[y];
         for (x = 0; x < W; x++) {
             int c = (int)(((u >> 12) ^ (v >> 12)) & 31);
-            p[x] = c & 16 ? pal[(c * 8 + (int)t) & 255] : 16 + (c & 1 ? 0 : 1);
+            p[x] = c & 16 ? pal[(c * 8 + (int)t) & 255] : ansi ? (c & 1 ? 0 : 8) : 16 + (c & 1 ? 0 : 1);
             u += du;
             v += dv;
         }
@@ -659,7 +909,7 @@ static void sc_cube(long t, int first)
     for (r = 0; r < R; r++) {
         const unsigned char *u = qb[2 * r], *l = qb[2 * r + 1];
         at(r + 1, 1);
-        fg(pal[(r * 9 + a * 2) & 255]);
+        fg(pal_col(r * 9 + a * 2));
         for (x = 0; x < W; x++)
             ps(quad[u[2 * x] | u[2 * x + 1] << 1 | l[2 * x] << 2 | l[2 * x + 1] << 3]);
     }
@@ -682,12 +932,13 @@ static void sc_scroll(long t, int first)
             star[i].speed = 1 + rnd() % 3;
         }
     }
-    pix_clear(16);
+    pix_clear(col(16));
     for (i = 0; i < 64; i++) {
+        static const unsigned char ansi_star[4] = { 0, 8, 7, 15 }; /* dim, grey, light, white by speed */
         star[i].x -= star[i].speed * 6;
         if (star[i].x < 0)
             star[i].x += W * 16;
-        pix[star[i].y][star[i].x >> 4] = (unsigned char)(236 + star[i].speed * 6);
+        pix[star[i].y][star[i].x >> 4] = (unsigned char)(ansi ? ansi_star[star[i].speed] : 236 + star[i].speed * 6);
     }
     if (amp < 0)
         amp = 0;
@@ -712,6 +963,26 @@ static void sc_scroll(long t, int first)
 static void sc_cycle(long t, int first)
 {
     int x, y, k;
+    if (ansi) {
+        /* no palette to write: the rings are drawn again each frame in the next of the 16 colours, bright
+         * hues and dark ones in turn (the colour numbers move, nothing else) */
+        static const unsigned char bright[6] = { 9, 11, 10, 14, 12, 13 }, dark[6] = { 1, 3, 2, 6, 4, 5 };
+        static unsigned char band[MAXR * 2][MAXC];
+        if (first)
+            for (y = 0; y < H; y++)
+                for (x = 0; x < W; x++) {
+                    long dx = x - W / 2, dy = y - H / 2, d2 = dx * dx + dy * dy, d = 0;
+                    while ((d + 1) * (d + 1) <= d2)
+                        d++;
+                    band[y][x] = (unsigned char)((d * 3 / 2 + (dx * dy >> 5)) & 31);
+                }
+        for (y = 0; y < H; y++)
+            for (x = 0; x < W; x++) {
+                k = band[y][x];
+                pix[y][x] = (k & 8 ? dark : bright)[(((k * 8 - (int)t * 5) & 255) * 6) >> 8];
+            }
+        return;
+    }
     if (first) {
         for (y = 0; y < H; y++)
             for (x = 0; x < W; x++) {
@@ -741,14 +1012,19 @@ static void sc_cycle(long t, int first)
 }
 
 
-/* ---- the tour (updemo_tour) ----------------------------------------------------- */
+/* ---- reading the terminal back ---------------------------------------------- */
 
-/* What the tour reads back from the terminal: keys end it; mouse reports
- * are kept for the mouse scene; the window's size (CSI 18 t) is how it
- * follows a resize. */
+/* What the demo reads back from the terminal: keys move through the scenes;
+ * mouse reports are kept for the mouse scene; the window's size (CSI 18 t)
+ * is how it follows a resize. A key with no meaning is no event. */
 enum { EV_NONE, EV_KEY, EV_MOUSE, EV_SIZE };
 
-static int quit_req;         /* a key came while the tour waited for something else */
+/* what a key means (ev_act, set with every EV_KEY) */
+enum { ACT_NONE, ACT_NEXT, ACT_BACK, ACT_QUIT };
+static int ev_act;
+
+static int quit_req;         /* quit came while the demo waited for something else */
+static int pend_act;         /* next or back came while the demo waited for something else */
 static int want_size;        /* a scene asks: the size, after this frame */
 static int ev_rows, ev_cols; /* the size the terminal reported last */
 static struct { int b, x, y, press; } mev[64];
@@ -782,8 +1058,22 @@ static void add_mouse(int b, int x, int y, int press)
     nmev++;
 }
 
+/* a key's meaning in the demo. BENCH is a measurement: any key ends it. */
+static int act_key(int act)
+{
+    ev_act = bench_only ? ACT_QUIT : act;
+    return ev_act == ACT_NONE ? EV_NONE : EV_KEY;
+}
+
+/* a cursor key's final letter (ESC [ C, CSI C, ESC O C): Right is next, Left is back */
+static int cursor_act(int f)
+{
+    return f == 'C' ? ACT_NEXT : f == 'D' ? ACT_BACK : ACT_NONE;
+}
+
 /* One thing from the terminal, waiting up to wait_ms for it. A key's
- * sequence (a cursor key: ESC [ A, CSI A, ESC O P) is one key. */
+ * sequence (a cursor key: ESC [ A, CSI A, ESC O P) is one key; an Esc with
+ * nothing after it within 40 ms is the Esc key. */
 static int read_event(int wait_ms)
 {
     char sq[40];
@@ -792,20 +1082,29 @@ static int read_event(int wait_ms)
         return EV_NONE;
     if (k == 27) {
         k = io->key(io->user, 40);
+        if (k < 0)
+            return act_key(ACT_QUIT); /* Esc alone */
         if (k == 'O') {
-            io->key(io->user, 40);
-            return EV_KEY;
+            f = io->key(io->user, 40);
+            return act_key(cursor_act(f));
         }
         if (k != '[')
-            return EV_KEY; /* Esc alone, or Meta and a key */
+            return act_key(ACT_NONE); /* Meta and a key */
         k = 0x9B;
     }
-    if (k != 0x9B)
-        return EV_KEY;
+    if (k != 0x9B) {
+        if (k == 'q' || k == 'Q' || k == 3)
+            return act_key(ACT_QUIT);
+        if (k == 'b' || k == 'B')
+            return act_key(ACT_BACK);
+        if (k == ' ' || k == '\r' || k == '\n')
+            return act_key(ACT_NEXT);
+        return act_key(ACT_NONE);
+    }
     for (;;) {
         f = io->key(io->user, 40);
         if (f < 0)
-            return EV_KEY;
+            return act_key(ACT_NONE);
         if (f >= 0x40 && f <= 0x7E)
             break;
         if (n < (int)sizeof(sq) - 1)
@@ -832,7 +1131,57 @@ static int read_event(int wait_ms)
         ev_cols = v[1];
         return EV_SIZE;
     }
-    return EV_KEY;
+    return act_key(n == 0 ? cursor_act(f) : ACT_NONE);
+}
+
+/* The number in XTGETTCAP's answer for colors: DCS 1 + r 636F6C6F7273 = hex ST, the hex the digits of the
+ * count ("3136" is 16). 0 when it is no such answer (DCS 0 + r: unknown). */
+int updemo_colour_count(const char *reply, long len)
+{
+    static const char name[] = "636F6C6F7273=";
+    long i = 0, n = 0;
+    int digits_seen = 0;
+    while (i < len && reply[i] == 27)
+        i++;
+    if (i + 6 > len || reply[i] != 'P' || reply[i + 1] != '1' || reply[i + 2] != '+' || reply[i + 3] != 'r')
+        return 0;
+    i += 4;
+    if (len - i < (long)sizeof(name) - 1 || memcmp(reply + i, name, sizeof(name) - 1))
+        return 0;
+    i += (long)sizeof(name) - 1;
+    while (i + 1 < len) {
+        int h = reply[i] >= '0' && reply[i] <= '9' ? reply[i] - '0' : reply[i] >= 'A' && reply[i] <= 'F' ? reply[i] - 'A' + 10 : -1;
+        int l = reply[i + 1] >= '0' && reply[i + 1] <= '9' ? reply[i + 1] - '0' : reply[i + 1] >= 'A' && reply[i + 1] <= 'F' ? reply[i + 1] - 'A' + 10 : -1;
+        int ch;
+        if (h < 0 || l < 0)
+            break;
+        ch = h * 16 + l;
+        if (ch < '0' || ch > '9' || n > 99999)
+            return 0;
+        n = n * 10 + (ch - '0');
+        digits_seen = 1;
+        i += 2;
+    }
+    return digits_seen ? (int)n : 0;
+}
+
+/* How many colours the terminal has: XTGETTCAP colors (xterm's ctlseqs, DCS + q Pt ST), which UP-Term
+ * answers with the screen's pen count. 0 when nothing answered in a third of a second. */
+static int ask_colours(void)
+{
+    char b[64];
+    int k, n = 0;
+    ps("\033P+q636F6C6F7273\033\\");
+    flush();
+    while (n < (int)sizeof(b)) {
+        k = io->key(io->user, 300);
+        if (k < 0)
+            break;
+        b[n++] = (char)k;
+        if (n >= 2 && b[n - 2] == 27 && b[n - 1] == '\\')
+            break;
+    }
+    return updemo_colour_count(b, n);
 }
 
 /* The window's size, asked (CSI 18 t); 1 when the answer came */
@@ -846,7 +1195,10 @@ static int ask_size(void)
         case EV_SIZE:
             return 1;
         case EV_KEY:
-            quit_req = 1;
+            if (ev_act == ACT_QUIT)
+                quit_req = 1;
+            else
+                pend_act = ev_act; /* the scene it was asked in goes on or back */
             break;
         default:
             break;
@@ -900,13 +1252,13 @@ static void grey_line(int row, const char *s)
 /* every SGR style, one more each 6 ticks */
 static void sc_styles(long t, int first)
 {
-    static const char *const st[][2] = {
-        { "1", "bold" }, { "2", "faint" }, { "3", "italic" }, { "4", "underline" },
-        { "21", "double underline" }, { "4:3", "curly underline" }, { "4:4", "dotted underline" },
-        { "4:5", "dashed underline" }, { "4:3;58;5;196", "red curly underline" }, { "53", "overline" },
-        { "9", "strike through" }, { "7", "inverse" }, { "5", "blink" }, { "6;5", "rapid blink" },
-        { "73", "superscript" }, { "74", "subscript" }, { "51", "framed" }, { "52", "encircled" },
-        { "8", "concealed (select it)" }, { "1;4;38;5;208", "several at once" }
+    static const char *const st[][3] = {
+        { "1", "bold", 0 }, { "2", "faint", 0 }, { "3", "italic", 0 }, { "4", "underline", 0 },
+        { "21", "double underline", 0 }, { "4:3", "curly underline", 0 }, { "4:4", "dotted underline", 0 },
+        { "4:5", "dashed underline", 0 }, { "4:3;58;5;196", "red curly underline", "4:3;31" }, { "53", "overline", 0 },
+        { "9", "strike through", 0 }, { "7", "inverse", 0 }, { "5", "blink", 0 }, { "5;6", "rapid blink", 0 },
+        { "73", "superscript", 0 }, { "74", "subscript", 0 }, { "51", "framed", 0 }, { "52", "encircled", 0 },
+        { "8", "concealed (select it)", 0 }, { "1;4;38;5;208", "several at once", "1;4;33" }
     };
     int n = (int)(sizeof(st) / sizeof(st[0])), half = (n + 1) / 2;
     if (first) {
@@ -918,10 +1270,10 @@ static void sc_styles(long t, int first)
         at(row, col);
         fg(244);
         ps("SGR ");
-        padded(st[shown][0], 13);
+        padded(ansi && st[shown][2] ? st[shown][2] : st[shown][0], 13);
         sgr0();
         ps("\033[");
-        ps(st[shown][0]);
+        ps(ansi && st[shown][2] ? st[shown][2] : st[shown][0]);
         pc('m');
         ps(st[shown][1]);
         sgr0();
@@ -1001,7 +1353,11 @@ static void sc_unicode(long t, int first)
         fg(244);
         padded(rows[shown][0], 18);
         sgr0();
-        ps(rows[shown][1]);
+        if (solid && rows[shown][1][1] == '\226' && rows[shown][1][2] == '\221')
+            ps("\342\226\210 \342\226\200\342\226\204\342\226\214\342\226\220 \342\227\242\342\227\243\342\227\244\342\227\245 "
+               "\342\227\217\342\227\213\342\227\206\342\227\207"); /* the Blocks row without its shade blocks */
+        else
+            ps(rows[shown][1]);
         shown++;
         if (shown == n)
             grey_line(4 + gap * n, "What your font lacks comes from an outline font (/font-fallback NAME) "
@@ -1233,7 +1589,8 @@ static void sc_themes(long t, int first)
     int k = (int)(t / 120) % (int)(sizeof(tour_themes) / sizeof(tour_themes[0])), i;
     if (first) {
         cur = -1;
-        heading("Themes, switched live", "the 16 colours and the default ones change; what is on screen follows");
+        heading("Themes, switched live", ansi ? "a theme sets the 16 colours; what is on screen follows"
+                                              : "the 16 colours and the default ones change; what is on screen follows");
         at(5, 4);
         ps("\033[36m~\033[0m % ls --color");
         at(6, 4);
@@ -1254,6 +1611,11 @@ static void sc_themes(long t, int first)
             sgr0();
         }
         grey_line(13, "Settings > Theme... picks one of the kit's 112 for this window.");
+    }
+    if (ansi) { /* no palette writes in the 16-colour version: the swatches, and where themes come from */
+        if (first)
+            grey_line(15, "UPDemo FULL switches them live here, one after the other.");
+        return;
     }
     if (k == cur)
         return;
@@ -1326,15 +1688,19 @@ static void sc_links(long t, int first)
         heading("Hyperlinks and notifications", "OSC 8 makes text a link, OSC 9 tells you something");
         grey_line(4, "Ctrl + click a link to open it (link-open in the profile; OpenURL by default):");
         at(6, 4);
-        ps("\033]8;;https://aminet.net/\033\\\033[4;38;5;75mAminet, the Amiga's software archive\033[0m"
+        ps("\033]8;;https://aminet.net/\033\\\033[4;");
+        ps(ansi ? "96" : "38;5;75");
+        ps("mAminet, the Amiga's software archive\033[0m"
            "\033]8;;\033\\");
         at(7, 4);
-        ps("\033]8;;https://www.amigaos.net/\033\\\033[4;38;5;75mAmigaOS\033[0m\033]8;;\033\\");
+        ps("\033]8;;https://www.amigaos.net/\033\\\033[4;");
+        ps(ansi ? "96" : "38;5;75");
+        ps("mAmigaOS\033[0m\033]8;;\033\\");
         cfg = cbg = -1;
         grey_line(9, "ls --hyperlink, gcc and delta print their links this way.");
     }
     if (!told && t >= 100) {
-        ps("\033]9;UP-Term tour: a notification from a program\007");
+        ps("\033]9;UP-Term demo: a notification from a program\007");
         at(11, 2);
         ps("A program's notification (OSC 9: a build finished...) shows in the title bar.");
         told = 1;
@@ -1364,7 +1730,7 @@ static void ball_sixel(int phase)
     pn(BALL);
     pc(';');
     pn(BALL);
-    ps("#1;2;87;0;0#2;2;100;100;100");
+    ps(ansi ? "#1;2;80;0;0#2;2;100;100;100" : "#1;2;87;0;0#2;2;100;100;100"); /* 16-colour version: ANSI red and white */
     for (band = 0; band < BALL; band += 6)
         for (c = 1; c <= 2; c++) {
             int run = 0, prev = -1;
@@ -1435,8 +1801,8 @@ static void sc_sync(long t, int first)
     for (f = frame, i = 4; i >= 0; i--, f /= 10)
         num[i] = (char)('0' + f % 10);
     num[5] = 0;
-    pix_clear(16);
-    big_text(on ? "SYNC ON" : "SYNC OFF", (W - (on ? 41 : 47)) / 2, H / 2 - 18, 231);
+    pix_clear(col(16));
+    big_text(on ? "SYNC ON" : "SYNC OFF", (W - (on ? 41 : 47)) / 2, H / 2 - 18, col(231));
     big_text(num, (W - 29) / 2, H / 2 + 2, pal[(int)(t * 4) & 255]);
 }
 
@@ -1464,7 +1830,7 @@ static void sc_resize(long t, int first)
             at(4, 2);
             ps("This window is ");
             pn(W);
-            ps(" columns wide; from 80 the tour shows it.");
+            ps(" columns wide; from 80 the demo shows it.");
             grey_line(6, "View > 80 x 24 and View > 132 x 43 size the window from the menu.");
             colm_step = 9;
             return;
@@ -1507,7 +1873,7 @@ static void sc_reflow(long t, int first)
     static const char para[] =
         "UP-Term keeps a line that wrapped as one line. Drag the window's size gadget now: make it "
         "narrower, then wider. This paragraph wraps again to fit, as the text in a word processor "
-        "does, instead of being cut at the edge. The tour runs on the alternate screen, as vim and "
+        "does, instead of being cut at the edge. The demo runs on the alternate screen, as vim and "
         "less do; this is the main screen, where a shell's text stays. reflow = off in the profile "
         "keeps the old way.";
     static long last;
@@ -1523,7 +1889,7 @@ static void sc_reflow(long t, int first)
         ps(para);
         ps("\r\n\r\n");
         fg(244);
-        ps("(the size is in the title bar; any key ends the tour)");
+        ps("(the size is in the title bar; Q quits the demo)");
         sgr0();
         ps("\r\n");
     }
@@ -1540,155 +1906,90 @@ typedef struct scene_def {
     void (*fn)(long t, int first);
     int pixels;          /* draws into the picture: blit() after it */
     long ticks;
-    const char *caption; /* the tour's status line */
-    int main_screen;     /* the tour draws it on the main screen, with no status line */
+    const char *caption; /* the status line */
+    int main_screen;     /* drawn on the main screen, with no status line */
+    int bench;           /* UPDemo BENCH measures it (the frame rate of the scene) */
+    const char *caption_ansi; /* the status line of the 16-colour version, when it says something else */
 } scene_def;
 
-static const scene_def show[] = {
-    { "text", sc_text, 0, 500, 0, 0 },
-    { "colours", sc_colours, 0, 450, 0, 0 },
-    { "scroll regions", sc_region, 0, 400, 0, 0 },
-    { "copper bars", sc_bars, 1, 500, 0, 0 },
-    { "plasma", sc_plasma, 1, 500, 0, 0 },
-    { "fire", sc_fire, 1, 500, 0, 0 },
-    { "rotozoomer", sc_roto, 1, 500, 0, 0 },
-    { "vector cubes", sc_cube, 0, 500, 0, 0 },
-    { "sine scroller", sc_scroll, 1, 900, 0, 0 },
-    { "palette cycling", sc_cycle, 1, 500, 0, 0 },
-    { "the end", sc_end, 0, 400, 0, 0 }
+static const scene_def scenes[] = {
+    { "text", sc_text, 0, 450, "Text styles, double-size lines, box drawing", 0, 1, 0 },
+    { "styles", sc_styles, 0, 400, "Every text style a program can ask for", 0, 0, 0 },
+    { "colours", sc_colours, 0, 400, "16, 256 and 24-bit colours", 0, 1, "The 16 ANSI colours and their gradients" },
+    { "character sets", sc_charsets, 0, 400, "DEC line graphics, Latin-1 and UTF-8", 0, 0, 0 },
+    { "unicode", sc_unicode, 0, 450, "Unicode: scripts, wide characters, accents", 0, 0, 0 },
+    { "scroll regions", sc_region, 0, 350, "Scroll regions: the header stays put", 0, 1, 0 },
+    { "tmux", sc_tmux, 0, 450, "tmux and screen: each pane a scroll region", 0, 0, 0 },
+    { "vsh", sc_vsh, 0, 500, "vsh, the shell of UP-Term windows", 0, 0, 0 },
+    { "completion", sc_complete, 0, 450, "Tab completion, Unix style and KingCON style", 0, 0, 0 },
+    { "themes", sc_themes, 0, 480, "Themes switched live (OSC 4, 10, 11)", 0, 0, "Themes: the 16 colours a theme sets" },
+    { "mouse", sc_mouse, 0, 600, "Mouse reports: click in the window", 0, 0, 0 },
+    { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0, 0, 0 },
+    { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0, 0, 0 },
+    { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0, 0, 0 },
+    { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0, 0, 0 },
+    { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1, 0, 0 },
+    { "copper bars", sc_bars, 1, 350, "The demoscene part: copper bars", 0, 1, 0 },
+    { "plasma", sc_plasma, 1, 350, "A plasma in 256 colours", 0, 1, "A plasma in the 16 ANSI colours" },
+    { "fire", sc_fire, 1, 350, "Fire", 0, 1, 0 },
+    { "rotozoomer", sc_roto, 1, 350, "A rotozoomer", 0, 1, 0 },
+    { "vector cubes", sc_cube, 0, 350, "Vector cubes in quadrant blocks", 0, 1, 0 },
+    { "sine scroller", sc_scroll, 1, 500, "A sine scroller over a star field", 0, 1, 0 },
+    { "palette cycling", sc_cycle, 1, 350, "Palette cycling (OSC 4)", 0, 1, "Colour cycling through the 16 ANSI colours" },
+    { "the end", sc_end, 0, 350, "The end", 0, 1, 0 }
 };
 
-static const scene_def tour[] = {
-    { "text", sc_text, 0, 450, "Text styles, double-size lines, box drawing", 0 },
-    { "styles", sc_styles, 0, 400, "Every text style a program can ask for", 0 },
-    { "colours", sc_colours, 0, 400, "16, 256 and 24-bit colours", 0 },
-    { "character sets", sc_charsets, 0, 400, "DEC line graphics, Latin-1 and UTF-8", 0 },
-    { "unicode", sc_unicode, 0, 450, "Unicode: scripts, wide characters, accents", 0 },
-    { "scroll regions", sc_region, 0, 350, "Scroll regions: the header stays put", 0 },
-    { "tmux", sc_tmux, 0, 450, "tmux and screen: each pane a scroll region", 0 },
-    { "vsh", sc_vsh, 0, 500, "vsh, the shell of UP-Term windows", 0 },
-    { "completion", sc_complete, 0, 450, "Tab completion, Unix style and KingCON style", 0 },
-    { "themes", sc_themes, 0, 480, "Themes switched live (OSC 4, 10, 11)", 0 },
-    { "mouse", sc_mouse, 0, 600, "Mouse reports: click in the window", 0 },
-    { "links", sc_links, 0, 400, "Hyperlinks (OSC 8) and notifications (OSC 9)", 0 },
-    { "sixel", sc_sixel, 0, 450, "Sixel images: pictures in the text", 0 },
-    { "synchronized output", sc_sync, 1, 400, "Synchronized output: frames shown whole", 0 },
-    { "resize", sc_resize, 0, 400, "A program resizes the window (DECCOLM)", 0 },
-    { "reflow", sc_reflow, 0, 750, "Reflow on resize", 1 },
-    { "plasma", sc_plasma, 1, 350, "The demoscene part: a plasma in 256 colours", 0 },
-    { "vector cubes", sc_cube, 0, 350, "Vector cubes in quadrant blocks", 0 },
-    { "sine scroller", sc_scroll, 1, 500, "A sine scroller over a star field", 0 },
-    { "the end", sc_end, 0, 350, "The end", 0 }
-};
-
-#define SHOW_N ((int)(sizeof(show) / sizeof(show[0])))
-#define TOUR_N ((int)(sizeof(tour) / sizeof(tour[0])))
+#define SCENE_N ((int)(sizeof(scenes) / sizeof(scenes[0])))
 #define STAT_N 32
 
 static long stat_frames[STAT_N], stat_ticks[STAT_N];
-static const scene_def *played = show; /* the scenes updemo_stats speaks of */
-static int played_n = SHOW_N;
 
 int updemo_scenes(void)
 {
-    return SHOW_N;
+    return SCENE_N;
 }
 
 const char *updemo_scene_name(int s)
 {
-    return s >= 0 && s < SHOW_N ? show[s].name : "";
+    return s >= 0 && s < SCENE_N ? scenes[s].name : "";
 }
 
-int updemo_tour_scenes(void)
+int updemo_scene_benchmarked(int s)
 {
-    return TOUR_N;
-}
-
-const char *updemo_tour_scene_name(int s)
-{
-    return s >= 0 && s < TOUR_N ? tour[s].name : "";
+    return s >= 0 && s < SCENE_N && scenes[s].bench;
 }
 
 void updemo_stats(int s, long *frames, long *ticks)
 {
-    *frames = s >= 0 && s < played_n ? stat_frames[s] : 0;
-    *ticks = s >= 0 && s < played_n ? stat_ticks[s] : 0;
+    *frames = s >= 0 && s < SCENE_N ? stat_frames[s] : 0;
+    *ticks = s >= 0 && s < SCENE_N ? stat_ticks[s] : 0;
 }
 
-static void status(int s, long fps)
+static void status(int s)
 {
-    if (touring) {
-        const char *cap = played[s].caption;
-        int n = 6 + digits(s + 1) + 1 + digits(played_n) + 2 + (int)strlen(cap);
-        ps("\0337"); /* a scene may be typing: its cursor stays where it is */
-        at(R + 1, 1);
-        ps("\033[0;30;47m Tour ");
-        pn(s + 1);
-        pc('/');
-        pn(played_n);
-        ps("  ");
-        ps(cap);
-        if (W - n >= 24) {
-            for (; n < W - 22; n++)
-                pc(' ');
-            ps("Any key ends the tour");
-        }
-        ps("\033[K\0338");
-        cfg = cbg = -1;
-        return;
-    }
+    const char *cap = ansi && scenes[s].caption_ansi ? scenes[s].caption_ansi : scenes[s].caption;
+    int n = 6 + digits(s + 1) + 1 + digits(SCENE_N) + 2 + (int)strlen(cap);
+    ps("\0337"); /* a scene may be typing: its cursor stays where it is */
     at(R + 1, 1);
-    ps("\033[0;30;47m");
-    cfg = cbg = -1;
-    ps(" UP-Term demo  ");
+    ps("\033[0;30;47m Demo ");
     pn(s + 1);
     pc('/');
-    pn(played_n);
+    pn(SCENE_N);
     ps("  ");
-    ps(played[s].name);
-    ps("   ");
-    pn(fps);
-    ps(" fps   Space next  B back  Q quit\033[K");
-    sgr0();
-}
-
-/* a key's meaning in the show: 0 nothing, 1 next, 2 back, 3 quit. A
- * function key's sequence (ESC [ ... or CSI ...) is read to its end and
- * means nothing. */
-static int key_action(int k)
-{
-    int n;
-    if (k < 0)
-        return 0;
-    if (k == 27) {
-        k = io->key(io->user, 40);
-        if (k < 0)
-            return 3; /* Esc alone */
-        if (k != '[' && k != 'O')
-            return 0;
-        k = 0x9B;
+    ps(cap);
+    if (W - n >= 30) {
+        for (; n < W - 26; n++)
+            pc(' ');
+        ps("Space next  B back  Q quit");
     }
-    if (k == 0x9B) {
-        for (n = 0; n < 16; n++) {
-            k = io->key(io->user, 40);
-            if (k < 0 || (k >= 0x40 && k <= 0x7E))
-                break;
-        }
-        return 0;
-    }
-    if (k == 'q' || k == 'Q' || k == 3)
-        return 3;
-    if (k == 'b' || k == 'B' || k == 8 || k == 127)
-        return 2;
-    if (k == ' ' || k == '\r' || k == '\n' || k == 'n' || k == 'N')
-        return 1;
-    return 0;
+    ps("\033[K\0338");
+    cfg = cbg = -1;
 }
 
 /* the reflow scene's title: the window's size */
 static void size_title(void)
 {
-    ps("\033]2;UP-Term tour: ");
+    ps("\033]2;UP-Term demo: ");
     pn(ev_cols);
     ps(" x ");
     pn(ev_rows);
@@ -1696,63 +1997,68 @@ static void size_title(void)
     flush();
 }
 
-/* The show or the tour (played), from scene `first`. The tour also asks
- * the window's size before each scene (it follows a resize), draws some
- * scenes on the main screen, and puts back what a scene changed. */
+/* The demo, from scene `first`. It asks the window's size before each scene
+ * (it follows a resize), draws some scenes on the main screen, and puts back
+ * what a scene changed. Space, Return and Right go to the next scene, B and Left
+ * to the one before, Q, Esc and Ctrl-C end it; no other key does anything
+ * (BENCH: any key ends it). */
 static int play(int first, long scene_ticks)
 {
-    int s, act = 0, alt = 1;
+    int s, ended = 0, alt = 1, nav, moved;
     numbers_init();
+    acode_init();
+    ansi = want_colours == UPDEMO_ANSI || want_colours == UPDEMO_SOLID;
+    solid = want_colours == UPDEMO_SOLID;
+    if (want_colours == UPDEMO_AUTO) {
+        int n = ask_colours();
+        ansi = n > 0 && n <= 16; /* a 16-colour screen: the version made for it */
+    }
     memset(stat_frames, 0, sizeof(stat_frames));
     memset(stat_ticks, 0, sizeof(stat_ticks));
-    quit_req = want_size = nmev = colm_on = 0;
+    quit_req = pend_act = want_size = nmev = colm_on = 0;
     ps("\033[?1049h\033[?25l");
-    if (touring)
-        ps("\033[22;0t\033]2;UP-Term tour\007"); /* the title, pushed to be put back */
-    for (s = first < 0 || first >= played_n ? 0 : first; s >= 0 && s < played_n && act != 3;
-         s += act == 2 ? -1 : 1) {
-        const scene_def *sc = &played[s];
+    ps("\033[22;0t\033]2;UP-Term demo\007"); /* the title, pushed to be put back */
+    for (s = first < 0 || first >= SCENE_N ? 0 : first; s < SCENE_N && !ended && (!only_one || s == first); s = s + nav < 0 ? 0 : s + nav) {
+        const scene_def *sc = &scenes[s];
         long t0, dur = scene_ticks ? scene_ticks : sc->ticks;
-        long t, mark = 0, frames = 0, fps = 0;
+        long t;
         int fresh = 1;
-        if (touring) {
-            if (sc->main_screen == alt) {
-                ps(alt ? "\033[?1049l" : "\033[?1049h");
-                alt = !alt;
-            }
-            /* the window may have changed: the tour follows it */
-            if (ask_size() && !set_size(ev_cols, ev_rows))
-                break;
-            if (quit_req)
-                break;
-            nmev = 0;
-            ps("\033[?25l");
+        nav = 1; /* the next scene, as the time runs out */
+        moved = 0;
+        if (bench_only && !sc->bench)
+            continue;
+        if (sc->main_screen == alt) {
+            ps(alt ? "\033[?1049l" : "\033[?1049h");
+            alt = !alt;
         }
+        /* the window may have changed: the demo follows it */
+        if (ask_size() && !set_size(ev_cols, ev_rows))
+            break;
+        if (quit_req)
+            break;
+        if (pend_act) { /* a key came with the size's answer */
+            nav = pend_act == ACT_BACK ? -1 : 1;
+            pend_act = 0;
+            moved = 1;
+        }
+        nmev = 0;
+        ps("\033[?25l");
         t0 = io->ticks(io->user);
         ps("\033[r");
         sgr0();
         if (!sc->main_screen)
             ps("\033[2J");
         old_ok = 0;
-        act = 0;
-        while ((t = io->ticks(io->user) - t0) < dur) {
+        while (!moved && (t = io->ticks(io->user) - t0) < dur) {
             long spent;
+            int pass;
             ps("\033[?2026h"); /* a frame: shown whole (synchronized output), not as its writes arrive */
             sc->fn(t, fresh);
             if (sc->pixels)
                 blit();
-            frames++;
             stat_frames[s]++;
-            if (fresh || t - mark >= 50) {
-                if (t > mark)
-                    fps = frames * 50 / (t - mark);
-                if (!fresh) {
-                    frames = 0;
-                    mark = t;
-                }
-                if (!sc->main_screen)
-                    status(s, fps);
-            }
+            if (fresh && !sc->main_screen)
+                status(s);
             fresh = 0;
             ps("\033[?2026l");
             flush();
@@ -1761,38 +2067,60 @@ static int play(int first, long scene_ticks)
                 if (ask_size() && sc->main_screen)
                     size_title();
                 if (quit_req) {
-                    act = 3;
+                    ended = 1;
+                    break;
+                }
+                if (pend_act) {
+                    nav = pend_act == ACT_BACK ? -1 : 1;
+                    pend_act = 0;
+                    moved = 1;
                     break;
                 }
             }
-            /* 25 frames a second at most: the rest of the two ticks waits for a key */
-            spent = io->ticks(io->user) - t0 - t;
-            if (touring)
-                act = read_event(spent >= 2 ? 0 : (int)(2 - spent) * 20) == EV_KEY ? 3 : 0;
-            else
-                act = key_action(io->key(io->user, spent >= 2 ? 0 : (int)(2 - spent) * 20));
-            if (act)
+            /* 25 frames a second at most: the rest of the two ticks waits
+             * for a key. A frame lasts until the terminal has drawn it: a
+             * console draws what it holds before it answers WaitForChar,
+             * so a look for a key comes first and the time is read after
+             * it. (Read before it, the wait began with the drawing and
+             * the whole 40 ms came after it: plasma at 12 frames a second
+             * on a 68060 that draws it in 22 ms; ledger S2.) */
+            for (pass = 0; pass < 2 && !ended; pass++) {
+                int wait = 0;
+                if (pass) {
+                    spent = io->ticks(io->user) - t0 - t;
+                    if (spent >= 2)
+                        break;
+                    wait = (int)(2 - spent) * 20;
+                }
+                if (read_event(wait) == EV_KEY) {
+                    if (ev_act == ACT_QUIT)
+                        ended = 1;
+                    else {
+                        nav = ev_act == ACT_BACK ? -1 : 1;
+                        moved = 1;
+                    }
+                }
+            }
+            if (ended || moved)
                 break;
         }
         flush();
         stat_ticks[s] += io->ticks(io->user) - t0;
-        ps("\033[r\033]104\007"); /* the whole screen scrolls again; the palette is the terminal's */
-        if (touring) {
-            /* what a scene may have changed: the width, the mouse, the default
-             * colours, the line graphics, the title */
-            if (colm_on)
-                ps("\033[?3l");
-            colm_on = 0;
-            ps("\033[?1000l\033[?1006l\033[?40l\033]110\007\033]111\007\033(B\033]2;UP-Term tour\007");
-        }
-        if (act == 2 && s == 0) {
-            act = 0; /* back from the first scene: the first again */
-            s = -1;
-        }
+        ps("\033[r"); /* the whole screen scrolls again */
+        if (!ansi)
+            ps("\033]104\007"); /* the palette is the terminal's */
+        /* what a scene may have changed: the width, the mouse, the default
+         * colours, the line graphics, the title */
+        if (colm_on)
+            ps("\033[?3l");
+        colm_on = 0;
+        ps("\033[?1000l\033[?1006l\033[?40l");
+        if (!ansi)
+            ps("\033]110\007\033]111\007");
+        ps("\033(B\033]2;UP-Term demo\007");
     }
     sgr0();
-    if (touring)
-        ps("\033[23;0t"); /* the title as it was */
+    ps("\033[23;0t"); /* the title as it was */
     ps("\033[?25h");
     if (alt)
         ps("\033[?1049l");
@@ -1800,24 +2128,73 @@ static int play(int first, long scene_ticks)
     return 0;
 }
 
-static int begin(const updemo_io *i, int cols, int rows, int tour_on)
+void updemo_only(int on)
 {
-    if (cols < UPDEMO_MIN_COLS || rows < UPDEMO_MIN_ROWS)
-        return 0;
-    io = i;
-    on = 0;
-    touring = tour_on;
-    played = tour_on ? tour : show;
-    played_n = tour_on ? TOUR_N : SHOW_N;
-    return set_size(cols, rows);
+    only_one = on;
+}
+
+void updemo_colours(int mode)
+{
+    want_colours = mode == UPDEMO_ANSI || mode == UPDEMO_FULL || mode == UPDEMO_SOLID ? mode : UPDEMO_AUTO;
+}
+
+int updemo_ansi(void)
+{
+    return ansi;
+}
+
+static int same_word(const char *a, const char *w)
+{
+    for (; *w; a++, w++)
+        if ((*a >= 'a' && *a <= 'z' ? *a - 32 : *a) != *w)
+            return 0;
+    return !*a;
+}
+
+/* The play settings from the options, the one place that makes them: scene n (0: none), BENCH, and the
+ * colour words (SOLID beats ANSI beats FULL, SOLID implying ANSI). Both the command-line words
+ * (updemo_parse_args) and the Amiga's ReadArgs result come here. */
+void updemo_args_make(updemo_args *a, int scene, int bench, int ansi_w, int full_w, int solid_w)
+{
+    a->scene = scene > 0 ? scene : 0;
+    a->bench = bench != 0;
+    a->colours = solid_w ? UPDEMO_SOLID : ansi_w ? UPDEMO_ANSI : full_w ? UPDEMO_FULL : UPDEMO_AUTO;
+}
+
+/* UPDemo [n] [BENCH [n]] [ANSI | SOLID | FULL], in any order and any case; other words are ignored */
+void updemo_parse_args(int argc, char **argv, updemo_args *a)
+{
+    int i, scene = 0, bench = 0, ansi_w = 0, full_w = 0, solid_w = 0;
+    for (i = 1; i < argc; i++) {
+        const char *w = argv[i];
+        if (same_word(w, "BENCH"))
+            bench = 1;
+        else if (same_word(w, "SOLID"))
+            solid_w = 1;
+        else if (same_word(w, "ANSI"))
+            ansi_w = 1, full_w = 0; /* the later of ANSI and FULL */
+        else if (same_word(w, "FULL"))
+            full_w = 1, ansi_w = 0;
+        else if (*w >= '0' && *w <= '9') {
+            int n = 0;
+            for (; *w >= '0' && *w <= '9' && n < 10000; w++)
+                n = n * 10 + (*w - '0');
+            scene = n;
+        }
+    }
+    updemo_args_make(a, scene, bench, ansi_w, full_w, solid_w);
+}
+
+void updemo_bench(int on)
+{
+    bench_only = on;
 }
 
 int updemo_run(const updemo_io *i, int cols, int rows, int first, long scene_ticks)
 {
-    return begin(i, cols, rows, 0) ? play(first, scene_ticks) : 1;
-}
-
-int updemo_tour(const updemo_io *i, int cols, int rows, int first, long scene_ticks)
-{
-    return begin(i, cols, rows, 1) ? play(first, scene_ticks) : 1;
+    if (cols < UPDEMO_MIN_COLS || rows < UPDEMO_MIN_ROWS)
+        return 1;
+    io = i;
+    on = 0;
+    return set_size(cols, rows) ? play(first, scene_ticks) : 1;
 }

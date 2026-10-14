@@ -96,6 +96,11 @@ typedef struct tui_pick {
     int n, sel;
     int maxrows;                /* rows shown at most */
     char status[64];            /* after "(sel/total)" */
+    /* TUI_PICK_SESSION: pi's SessionSelectorComponent instead of the tree's frame (session-selector.ts:741-755, 313-342):
+     * a blank row, a rule, a blank row, title (the header row, composed by the program, SGR kept), help (the hint
+     * rows, '\n' between, SGR kept), a blank row, "> " and the search text with a cursor cell, a blank row, the rows
+     * (empty: the message when n is 0), "(sel/total)" only where the list scrolls, a blank row, a rule. The frame is
+     * left on the screen when the picker ends: pi's -r keeps its selector in the scrollback. */
     void (*row)(void *u, int i, int selected, char *out, long cap);
     int (*key)(void *u, const cl_key *k, int act);
     void *u;
@@ -104,8 +109,19 @@ typedef struct tui_pick {
      * a rule. status and help are not shown; `empty` is the row for no match (0: "No matching providers") */
     int layout;
     const char *empty;
+    /* TUI_PICK_FRAME: the frame of pi's model, thinking and message selectors (model-selector.ts, thinking-selector.ts,
+     * user-message-selector.ts): a rule, the rows of `top` (the program's text, SGR kept, '\n' between, an empty row is a
+     * blank one), when `search` the search input ("> " and the query, a cursor) and a blank row, the list (row(); at most
+     * maxrows around the selection, no scroll indicator: the program writes it into `tail`), the rows `tail` composes
+     * (SGR kept, '\n' between; an empty text is one blank row; 0: none), a rule. A row of `top` that is \001 is a rule; a `top` that
+     * begins with \002 has no opening rule (user-message-selector.ts has its own after the header). A list row may hold '\n' (a
+     * message and its position line). The program's key function sees every key first. */
+    const char *top;
+    int search;
+    void (*tail)(void *u, char *out, long cap);
+    int done;                   /* the program's key function sets it: the picker ends with the selection as it is */
 } tui_pick;
-enum { TUI_PICK_TREE, TUI_PICK_AUTH };
+enum { TUI_PICK_TREE, TUI_PICK_AUTH, TUI_PICK_SESSION, TUI_PICK_FRAME };
 typedef struct cl_tui {
     cl_io *io;
     int cols, rows;
@@ -278,6 +294,10 @@ typedef struct cl_tui {
      * thinking level's); the messages waiting (steering, then follow-up) shown above the editor */
     int look;
     const cl_pitheme *pith;
+    /* TUI_LOOK_PI -- settings.json's editorPaddingX (0..3: the editor's and the slash menu's side padding), autocompleteMaxVisible (3..20, 0: 5: the
+     * slash menu's rows), doubleEscapeAction (0 tree, 1 fork, 2 none: Esc twice on an empty editor submits /tree or /fork) and showHardwareCursor
+     * (the window's cursor rests on the editor's cursor cell) */
+    int pi_edpad, pi_menu_max, pi_dbl_esc, pi_hwcursor;
     char pi_title[200];         /* the window title in pi's look: the program's (pi's updateTerminalTitle), never C:Claude's */
     char pi_cwd[300], pi_left[160], pi_ctx[48], pi_right[120], pi_work[96];
     int pi_ctx_role, pi_rule;
@@ -327,6 +347,8 @@ int tui_line_input_hint(cl_tui *t, const char *title, const char *hint, char *ou
  * message under the title: the option chosen (0..n-1), -1 for Esc, Ctrl+C and the end of input, TUI_AWAY when timeout_ms
  * (0 none) ran out; the keys of pi's ExtensionSelectorComponent (up, down, j, k, Enter) */
 int tui_ext_menu(cl_tui *t, const char *title, const char *const *opt, int n, long timeout_ms);
+/* the same with option sel highlighted at the start (the launch question: the last choice) */
+int tui_ext_menu_sel(cl_tui *t, const char *title, const char *const *opt, int n, int sel, long timeout_ms);
 /* TUI_LOOK_PI: an extension's text input (ctx.ui.input): 1 with the text in out, 0 for Esc, Ctrl+C and timeout_ms (0 none)
  * running out, -1 the end of input */
 int tui_ext_input(cl_tui *t, const char *title, char *out, long cap, long timeout_ms);

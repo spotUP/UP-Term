@@ -50,6 +50,8 @@ typedef struct prefs_fields {
     int kcinfo;     /* KingCON completion lists .info files too */
     int kccache;    /* KingCON's directory cache (DIRCACHE; on by default) */
     int amiga_keys; /* amiga-keys: Shift+Left / Right send Home / End (on by default) */
+    int dither;     /* dither: few-pen screens dither colours no pen shows closely (W-T9; on by default) */
+    int pad_extend; /* padding-color: extend (W-T14) -- the strips beside the grid take the edge cells' colour; background is the default */
     int hlcat;      /* highlight-cat: vsh's cat is hl -p (on by default; see prefs_hlcat_text) */
 } prefs_fields;
 

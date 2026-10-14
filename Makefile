@@ -4,10 +4,21 @@ HOSTCC  ?= cc
 HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
 BUILD   := build
 
+# a recipe that fails must not leave its target behind: a 0-byte build/amiga/wbrun once counted as up to date (M2)
+.DELETE_ON_ERROR:
+
 # The workspace directory that holds vtcon and the other UP-Term repos side by
 # side (see the upterm meta-repo); every sibling default below hangs off it.
 # tools/rig/paths.py reads the same variable, with the same default.
-UPTERM_ROOT ?= $(abspath ..)
+UPTERM_ROOT ?= $(abspath $(CURDIR)/..)
+# The directory of the projects that are not UP-Term repos (DCTelnet/, AmiExpress/, UpRough/): CODE_ROOT, else the
+# nearest ancestor of UPTERM_ROOT holding DCTelnet/. One rule for the flat layout and the ~/Code/UP-Term umbrella;
+# it lives in tools/rig/paths.py (code_root), which the rig scripts read too.
+ifndef CODE_ROOT
+CODE_ROOT := $(shell UPTERM_ROOT='$(UPTERM_ROOT)' python3 -I $(CURDIR)/tools/rig/paths.py code-root)
+endif
+DCTELNET_ROOT ?= $(CODE_ROOT)/DCTelnet
+AMIEXPRESS_ROOT ?= $(CODE_ROOT)/AmiExpress
 
 ENGINE  := engine/vtengine.c
 RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
@@ -34,23 +45,36 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
-           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_upassign.c
+           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_upassign.c
 
-.PHONY: bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: amimcp amimcp-clean wasabi wasabi-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
+# ONLY=rig_amimcp tools/rig/amimcp.py picks the amiagent target from the environment (tools/test_rig_amimcp.py)
+# ONLY=rig_wasabi rig.py wasabi: arguments, the port per rig, the log paths, the process list parser (tools/test_rig_wasabi.py)
+# ONLY=rig_muforce rig.py muforce: the MuForce report parser and argument handling (tools/test_rig_muforce.py)
 # ONLY=rig_stdin amiga-pi in a rig window script gets <NIL: (tools/test_rig_stdin.py)
+# ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
+# ONLY=rig_kit a rig with a kit boots the builds of VTC: over the kit's copies in SYS: (tools/test_rig_kit.py)
+# ONLY=rig_upterm the rig has UP-Term:bin/vsh, the SYS:System icon and no global TERM (tools/test_rig_upterm.py)
 # ONLY=pi_recordings amiga-pi's OpenAI recordings against OpenAI's schema (tools/test_pi_recordings.py)
 # ONLY=layers amiga-pi's layering rule over llm/, claude/http.c and UPTERM_ROOT/amiga-pi (tools/check_layers.py)
+# ONLY=render render/amiga_render.c on the host against a fake RastPort (tests/test_render.c, tests/render_host/)
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py); ONLY=ixemul the patched
 # ixemul's host tests (IXEMUL_SRC/tests/host: its argument line parser)
-test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != render ] && [ "$(ONLY)" != terminfo_amiga ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_amimcp ] && [ "$(ONLY)" != rig_muforce ] && [ "$(ONLY)" != rig_wasabi ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != rig_upterm ] && [ "$(ONLY)" != rig_kit ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_amimcp ]; then python3 -I tools/test_rig_amimcp.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_muforce ]; then python3 -I tools/test_rig_muforce.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_upterm ]; then python3 -I tools/test_rig_upterm.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_kit ]; then python3 -I tools/test_rig_kit.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_recordings ]; then python3 -I tools/test_pi_recordings.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = layers ]; then python3 -I tools/test_check_layers.py && python3 -I tools/check_layers.py --strict; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_llm ]; then python3 -I tools/gen_models_builtin.py --check || { echo "[ERROR] llm/models_builtin.json or .h is out of date: python3 tools/gen_models_builtin.py --from-pi && python3 tools/gen_models_builtin.py"; exit 1; }; fi
@@ -58,26 +82,45 @@ test: $(BUILD)/vttest_host $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = unorm ]; then python3 -I tests/test_unorm.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_search ]; then python3 -I tests/test_pi_search.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = updiff ]; then ./$(BUILD)/updiff_stack_drv; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = render ]; then ./$(BUILD)/render_host; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_kitsize.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_addons.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_userdata.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_assemble.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_verdicts.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_agentpatch.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = entry ]; then python3 tests/test_entry_stub.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = qmark ]; then python3 -I tests/test_qmark_commands.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = deps ]; then python3 tests/test_host_deps.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul ]; then $(MAKE) -s -C $(IXEMUL_SRC)/tests/host test; fi
 	@# UP-Term's own manual pages (man/*.1, mdoc): no mandoc warning (macOS has mandoc)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = man ]; then for f in man/*.1; do mandoc -T lint -W warning $$f || exit 1; done; echo "[OK] man/*.1 lint clean"; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
-$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
+$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h tty/qmark.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
+
+# render/amiga_render.c itself on the host (ledger R8): the NDK's structs and a fake graphics.library
+# (tests/render_host/gfx_fake.c) that logs the calls and draws into a pixel canvas. Its own binary: the
+# NDK headers and the engine's strict host build cannot share a translation unit (struct timeval).
+# Needs the NDK of `make amiga` (VTCON_NDK); the sanitizers stay on.
+RENDER_HOST_SRC := tests/test_render.c tests/render_host/gfx_fake.c render/amiga_render.c tests/harness.c $(ENGINE) render/glyphmap.c render/unifont.c render/emoji.c render/painter.c render/vtinput.c
+$(BUILD)/render_host: $(HOST_HDR) tests/render_host/gfx_fake.h tests/render_host/proto/*.h $(RENDER_HOST_SRC)
+	@mkdir -p $(BUILD)
+	@test -d $(VTCON_NDK) || { echo "[ERROR] the NDK headers are missing: unpack NDK3.2R4 to $(VTCON_NDK) (see make amiga)"; exit 1; }
+	$(HOSTCC) -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter -O1 -g -fsanitize=address,undefined -Itests -Itests/render_host -I$(VTCON_NDK) -DAMIGA_STDC_C99 -DVR_HOST_TEST -o $@ $(RENDER_HOST_SRC)
 
 # amiga-pi's NFKC (claude/unorm.c) for tests/test_unorm.py
 $(BUILD)/unorm_drv: tests/unorm_drv.c claude/unorm.c claude/unorm.h claude/unorm_tab.h claude/json.c claude/util.c
@@ -194,9 +237,9 @@ $(BUILD)/vtreply: $(ENGINE) engine/vtengine.h engine/vtwidth.h tools/vtreply.c
 
 # uptelnet's protocol on a POSIX socket, for the interop test against
 # tools/uptelnetd.py (tools/test_uptelnetd.py).
-$(BUILD)/tn_host: $(HOST_HDR) net/tn.c net/tn.h tools/tn_host.c
+$(BUILD)/tn_host: $(HOST_HDR) net/tn.c net/tn.h llm/sha256.c llm/sha256.h tools/tn_host.c
 	@mkdir -p $(BUILD)
-	$(HOSTCC) -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -o $@ net/tn.c tools/tn_host.c
+	$(HOSTCC) -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -o $@ net/tn.c llm/sha256.c tools/tn_host.c
 
 # libvterm (neovim's terminal) as the reference, built from source into build/.
 LIBVTERM := $(BUILD)/third_party/libvterm
@@ -210,8 +253,8 @@ $(BUILD)/vterm_dump: tools/vterm_dump.c $(LIBVTERM)/src/vterm.c
 # The xterm personality against libvterm and pyte on tests/streams (ONLY= a name part).
 # pcansi against DCTelnet's term-engine.c on BBS art, pixel for pixel
 # (tools/te_diff). Needs a DCTelnet checkout and an art directory.
-DCTELNET ?= $(UPTERM_ROOT)/dctelnet-v2
-ART ?= $(UPTERM_ROOT)/amiexpress-doorserver/bbs_ads
+DCTELNET ?= $(DCTELNET_ROOT)/dctelnet-v2
+ART ?= $(AMIEXPRESS_ROOT)/amiexpress-doorserver/bbs_ads
 $(BUILD)/te_diff: tools/te_diff/te_diff.c tools/te_diff/te_shim.h engine/vtengine.c engine/vtengine.h engine/vtwidth.h
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=gnu99 -O1 -g -w -Itools/te_diff -I$(DCTELNET)/src/third_party/retro32-term \
@@ -229,6 +272,45 @@ test-ref: $(BUILD)/vtdump $(BUILD)/vterm_dump
 golden: $(BUILD)/vtdump
 	@mkdir -p tests/golden
 	.venv/bin/python tools/refdiff.py --write-golden $(ONLY)
+
+# amimcp (Apache 2.0, stdlib only: no venv needed) pinned, for the "amiga" MCP server in .mcp.json.
+# Idempotent: the stamp holds the pinned commit. Uninstall: make amimcp-clean.
+AMIMCP_REPO := https://github.com/thomas-luebker/amimcp
+# one pin for the Mac and the NAS image: tools/nas/amimcp.rev (tools/nas/Dockerfile copies the same file)
+AMIMCP_REV  := $(strip $(shell cat tools/nas/amimcp.rev))
+amimcp: $(BUILD)/amimcp/.stamp-$(AMIMCP_REV)
+	@python3 -I tools/rig/amimcp.py --print >/dev/null && echo "[OK] amimcp $(AMIMCP_REV) ready; the wrapper starts."
+	@echo "[INFO] Next: start Claude Code in this repo and approve the 'amiga' project MCP server (rig 1; UPTERM_RIG=2 for rig 2)."
+$(BUILD)/amimcp/.stamp-$(AMIMCP_REV):
+	rm -rf $(BUILD)/amimcp
+	git clone -q $(AMIMCP_REPO) $(BUILD)/amimcp
+	git -C $(BUILD)/amimcp checkout -q $(AMIMCP_REV)
+	touch $@
+
+amimcp-clean:
+	rm -rf $(BUILD)/amimcp
+
+# wasabi (MIT, https://github.com/creep-ltx/wasabi) pinned, for `rig.py wasabi`: wasabid (Amiga daemon, Bebbo gcc)
+# and its stdlib Python client in build/wasabi. Pinned at 67379c2 (v0.2), not upstream HEAD: from 0.3 (health.c needs
+# proto/devicetree.h) and 0.6b1 (TLS on every connection, AmiSSL, no plain fallback) on, wasabid needs more than
+# this rig has. tools/rig/wasabi_shim holds the CyberGraphX stub headers Bebbo's install lacks.
+# Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
+WASABI_REPO := https://github.com/creep-ltx/wasabi
+WASABI_REV  := 67379c2d9c083faf562ce03f159b72b26c24c6d6
+wasabi: $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+	@echo "[OK] wasabi $(WASABI_REV) built: $(BUILD)/wasabi/wasabid and the client $(BUILD)/wasabi/wasabi."
+$(BUILD)/wasabi/.stamp-$(WASABI_REV):
+	rm -rf $(BUILD)/wasabi
+	mkdir -p $(BUILD)/wasabi
+	git clone -q $(WASABI_REPO) $(BUILD)/wasabi/src
+	git -C $(BUILD)/wasabi/src checkout -q $(WASABI_REV)
+	$(MAKE) -C $(BUILD)/wasabi/src wasabid CC=$(AGCC) \
+	  CFLAGS="-O2 -noixemul -fomit-frame-pointer -Wall -Wno-pointer-sign -I$(abspath tools/rig/wasabi_shim)"
+	cp $(BUILD)/wasabi/src/wasabid $(BUILD)/wasabi/src/wasabi $(BUILD)/wasabi/src/LICENSE $(BUILD)/wasabi/
+	touch $@
+
+wasabi-clean:
+	rm -rf $(BUILD)/wasabi
 
 venv:
 	python3 -m venv .venv && .venv/bin/pip install pyte
@@ -256,11 +338,12 @@ $(BUILD)/terminfo/76/vtcon: terminfo/vtcon.terminfo
 # directories (v/vtcon), which the Amiga's ncurses 5.5 reads, and in the hex
 # ones tic on macOS writes (76/vtcon), which ncurses 6 reads (upterm-ports'
 # less, nano, tput: built with cf_cv_mixedcase=no, Amiga names ignore case).
-KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/screen.terminfo
+# vtcon-amiga says use=vtcon: after it, and TERMINFO points tic at the entries made so far
+KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/vtcon-amiga.terminfo terminfo/screen.terminfo
 $(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
 	rm -rf $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
 	mkdir -p $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
-	for f in $(KIT_TERMINFO); do tic -x -o $(BUILD)/kit-terminfo.tmp $$f; done
+	for f in $(KIT_TERMINFO); do TERMINFO=$(CURDIR)/$(BUILD)/kit-terminfo.tmp tic -x -o $(BUILD)/kit-terminfo.tmp $$f || exit 1; done
 	cd $(BUILD)/kit-terminfo.tmp && for p in */*; do n=$${p#*/}; c=$$(printf %s "$$n" | cut -c1); \
 	  mkdir -p ../kit-terminfo/$$c && cp "$$p" ../kit-terminfo/$$c/; done
 	cp -R $(BUILD)/kit-terminfo.tmp/. $(BUILD)/kit-terminfo/
@@ -409,6 +492,11 @@ $(BUILD)/amiga/winbox: tests/amiga/winbox.c
 $(BUILD)/amiga/sizewatch: tests/amiga/sizewatch.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/sizewatch.c
+
+# muhit: one illegal access on purpose, for MuForce (rig.py muforce, tools/rig/muforce.py)
+$(BUILD)/amiga/muhit: tests/amiga/muhit.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/muhit.c
 
 $(BUILD)/amiga/pipeprobe: tests/amiga/pipeprobe.c
 	@mkdir -p $(BUILD)/amiga
@@ -592,6 +680,9 @@ $(BUILD)/amiga/dsrtime: tests/amiga/dsrtime.c
 
 # UP-Term's show-off (demo/updemo.h): the Amiga program, and the same
 # scenes for a Unix terminal (make demo-host; build/updemo)
+# W-A3: the commands answering a lone ? (tty/qmark.h, header-only) rebuild when it changes
+$(BUILD)/amiga/UPDemo $(BUILD)/amiga/UPConsole $(BUILD)/amiga/UPTerm $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upgetty $(BUILD)/amiga/uptelnet $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/Claude $(BUILD)/amiga/upprefs $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh: tty/qmark.h
+
 $(BUILD)/amiga/UPDemo: demo/updemo.c demo/updemo_amiga.c demo/updemo.h demo/tour_themes.inc $(BUILD)/amiga/obj/cpuchk-UPDemo.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ demo/updemo.c demo/updemo_amiga.c $(BUILD)/amiga/obj/cpuchk-UPDemo.o
@@ -688,11 +779,11 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h $(BUILD)/amiga/o
 # C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
 # Roadshow SDK's network headers ("Freely Distributable"): vendor/ (gitignored)
 # when unpacked there, else DCTelnet's copy, or VTCON_NETINC=<netinclude>.
-VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(UPTERM_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
-$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(DCTELNET_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
+$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 	@test -d $(VTCON_NETINC) || { echo "[ERROR] C:uptelnet needs the Roadshow netinclude headers, not found at $(VTCON_NETINC): unpack them to vendor/roadshow-netinclude, or pass VTCON_NETINC=<dir> (DCTelnet's copy: dctelnet-v2, optional in upterm's repos.lock)"; exit 1; }
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+	$(VC) -Dmain=up_main -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
 $(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
@@ -854,6 +945,11 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c handler/pty_name.h handler/han
 # The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
 # Installer script and its icon), Uninstall, README.txt, LICENSES.txt and Files/ (the rest).
 KIT := $(BUILD)/dist/UP-Term
+# the archive names are dist/packages.txt's (Claude, amiga-pi and Python3 stand alone)
+KIT_claude := $(BUILD)/dist/Claude
+KIT_pi := $(BUILD)/dist/amiga-pi
+KIT_nvim := $(BUILD)/dist/UP-Term-nvim
+KIT_python := $(BUILD)/dist/Python3
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
@@ -870,11 +966,18 @@ PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
 # vtcon's core in place; the kit gets the binary as C:Claude's sits beside it
 AMIGA_PI ?= $(UPTERM_ROOT)/amiga-pi
 AMIGA_PI_BIN := $(AMIGA_PI)/build/amiga/amiga-pi
+# the Amiga-dev skills amiga-pi ships (one drawer each, SKILL.md): the add-on installs them beside the user's own
+AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
-	rm -rf $(BUILD)/dist && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
+dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-src
+
+# every archive of dist/packages.txt, and the source archive
+# the base archive build/UP-Term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
+# Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
+dist-base: amiga $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
+	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
 	cp dist/screenrc $(KIT)/Files/screenrc
@@ -887,13 +990,11 @@ dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.devi
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
-	# install.dos, Install and Uninstall: the templates in dist/ with dist/common/'s shared parts (tools/mkinstaller.py)
-	python3 tools/mkinstaller.py dist/install.dos base > $(KIT)/Files/install.dos
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/vshrc \
 	  dist/up-term.conf $(KIT)/Files/
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
-	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 $(KIT)/Files/coreutils/
+	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
 	@# the ports (copy-userland: bin; userland: share, etc, licenses) and
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
@@ -903,8 +1004,7 @@ dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.devi
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(KIT)/Files/
-	cp $(AMIGA_PI_BIN) $(KIT)/Files/amiga-pi
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
 	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
@@ -914,40 +1014,88 @@ dist: amiga amiga-pi-bin $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.devi
 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
 	cp $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
-	# the top drawer: Install (the Installer script), Uninstall, README, Files
-	python3 tools/mkinstaller.py dist/Install.installer base > $(KIT)/Install
-	python3 tools/mkicon.py $(KIT)/Install.info --tool Installer --plain \
-	  --tooltype APPNAME=UP-Term --tooltype MINUSER=AVERAGE --tooltype DEFUSER=AVERAGE
-	python3 tools/mkinstaller.py dist/Uninstall base > $(KIT)/Uninstall
-	cp dist/README.txt dist/LICENSES.txt $(KIT)/
-	sh tools/mkversions.sh $(UPTERM_ROOT) > $(KIT)/Files/VERSIONS
-	rm -rf $(KIT)/Files/python3 $(KIT)/Files/nvim
-	cp -R $(PYTHON_DIST) $(KIT)/Files/python3
-	cp -R $(NVIM_DIST) $(KIT)/Files/nvim
-	cp dist/ClaudeCode $(KIT)/ClaudeCode
-	cp dist/ClaudeCode $(KIT)/Files/ClaudeCode
-	python3 tools/mkicon.py $(KIT)/ClaudeCode.info --tool C:IconX \
-	  --tooltype "WINDOW=XCON:0/12/800/560/Claude Code/CLOSE" --tooltype DELAY=0
-	python3 tools/mkicon.py $(KIT)/Uninstall.info --tool C:IconX --plain
-	# every file's mode by one rule (lha carries it to the Amiga as protection bits: a file
-	# without u+w cannot be replaced by the next Install or an Update); stops on one left without u+w
-	python3 tools/kitmodes.py $(KIT)
-	# last: every file of the kit, its part and CRC, for the Installer's update (dist/parts.txt)
-	python3 tools/mkmanifest.py $(KIT)
-	cd $(BUILD)/dist && rm -f ../UP-Term.lha && lha -aq ../UP-Term.lha UP-Term
+	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
+	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)
+	python3 tools/mkkit.py base
 	@ls -la $(BUILD)/UP-Term.lha
+
+# The add-on archives (dist/packages.txt): each stages its payload into build/dist/<archive>/Files and
+# tools/mkkit.py does the rest. UP-Term-nvim needs the base (UP-Term.lha) installed first on the
+# Amiga; Claude, amiga-pi and Python3 stand alone.
+ADDON_STAGE = rm -rf $(BUILD)/dist/$(call pkg,$(1),archive) && mkdir -p $(BUILD)/dist/$(call pkg,$(1),archive)/Files \
+	&& cp $(BUILD)/amiga/upupdate $(BUILD)/dist/$(call pkg,$(1),archive)/Files/
+pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
+# W-I1: a quick-launch icon of an add-on, staged in Files/launch (the add-on's install.dos copies it into
+# UP-Term:, part launch): an IconX script (dist/addons/<id>/launch/<name>) and its icon, which opens an UP-Term
+# window (XCON:, close gadget, closed when the app ends; no DELAY tooltype: IconX's own few seconds keep an error
+# readable, and DELAY=0 kept the window open for ever, rig 3 2026-10-14). $(1) kit drawer, $(2) script, $(3) name, $(4) size.
+LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
+	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
+	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
+.PHONY: dist-claude dist-pi dist-nvim dist-python
+dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,claude)
+	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
+	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
+	python3 tools/mkkit.py claude
+dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,pi)
+	cp $(AMIGA_PI_BIN) $(KIT_pi)/Files/amiga-pi
+	cp $(AMIGA_PI)/CHANGELOG.md $(KIT_pi)/Files/CHANGELOG.md
+	cp -R $(AMIGA_PI_SKILLS) $(KIT_pi)/Files/skills
+	$(call LAUNCHER,$(KIT_pi),dist/addons/pi/launch/amiga-pi,amiga-pi,800/560)
+	python3 tools/mkkit.py pi
+dist-nvim: $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,nvim)
+	cp -R $(NVIM_DIST) $(KIT_nvim)/Files/nvim
+	cp dist/addons/nvim/sysinit.vim $(KIT_nvim)/Files/nvim/share/nvim/sysinit.vim
+	$(call LAUNCHER,$(KIT_nvim),dist/addons/nvim/launch/Neovim,Neovim,800/560)
+	python3 tools/mkkit.py nvim
+dist-python: $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,python)
+	cp -R $(PYTHON_DIST) $(KIT_python)/Files/python3
+	mkdir -p $(KIT_python)/Files/libs
+	cp $(IXEMUL_LIB) $(KIT_python)/Files/libs/ixemul.library
+	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
+	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
+	python3 tools/mkkit.py python
+
+# build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
+# complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
+.PHONY: dist-base dist-src
+dist-src:
+	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-src: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
+	cp dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/COPYING $(BUILD)/dist-src/coreutils-5.2.1/
 	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/UP-Term-src.lha && lha -aq $(CURDIR)/$(BUILD)/UP-Term-src.lha userland-src
+	cd $(BUILD)/dist-src && lha -aq ../UP-Term-src.lha coreutils-5.2.1
+	python3 tools/mkreadme.py src
 	@ls -la $(BUILD)/UP-Term-src.lha
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
 dist-check:
-	python3 tests/test_dist_versions.py
 	python3 tests/test_dist_installer.py
-	@test -s $(KIT)/Files/amiga-pi || { echo "dist-check: $(KIT)/Files/amiga-pi missing: make dist"; exit 1; }
-	python3 tests/test_dist_manifest.py
-	python3 tests/test_dist_modes.py
+	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
+	python3 tests/test_dist_addons.py
+	python3 tests/test_dist_launch.py
+	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py
+	python3 tests/test_rig_verdicts.py
+	@set -e; for a in $$(python3 tools/pkgs.py archives); do \
+	  test -s $(BUILD)/$$a.lha || { echo "dist-check: $(BUILD)/$$a.lha missing: make dist"; exit 1; }; \
+	  lha l $(BUILD)/$$a.lha > $(BUILD)/$$a.lst; \
+	  for f in Install Uninstall Files/VERSIONS Files/MANIFEST Files/install.dos; do \
+	    grep -q " $$a/$$f$$" $(BUILD)/$$a.lst || { echo "dist-check: $$a.lha lacks $$a/$$f"; exit 1; }; done; \
+	  test -s $(BUILD)/$$a.readme || { echo "dist-check: $(BUILD)/$$a.readme missing"; exit 1; }; \
+	  echo "dist-check: $$a"; \
+	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_versions.py; \
+	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_manifest.py; \
+	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_modes.py; \
+	done
+	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " amiga-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/amiga-pi.lst || { echo "dist-check: amiga-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
+	@test -s $(BUILD)/UP-Term-src.lha || { echo "dist-check: $(BUILD)/UP-Term-src.lha missing: make dist"; exit 1; }
+	@lha l $(BUILD)/UP-Term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: UP-Term-src.lha lacks the coreutils source"; exit 1; }
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga

@@ -18,19 +18,27 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "vtcon_packets.h"
+#include "../tty/qmark.h"
 
 static const char vers[] = "$VER: UPTerm 1.0 (3.10.2026) UP-Term";
 
 int main(void)
 {
     LONG args[1] = { 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)"COMMAND/F", args, 0);
+    static const char tmpl[] = "COMMAND/F";
+    struct RDArgs *rd;
     static char line[256], ans[4096];
     struct FileHandle *fh;
     BPTR out = Output();
     LONG r;
     int i;
     const char *a;
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)tmpl);
+        PutStr((STRPTR)"\n");
+        return RETURN_OK;
+    }
+    rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"UPTerm");
         return RETURN_FAIL;

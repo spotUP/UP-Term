@@ -250,7 +250,7 @@ DCH, SU, SD, TBC, LNM 20, AWM ?7, SGR 0/1/3/4/7/8/22-28/30-37/39/40-47/49
 | 2 | Faint ("secondary color"); the pen it uses is unverified | Faint | Bold off (treated as intensity off) |
 | 3 | Italic | Italic | Ignored |
 | 4 | Underscore | Underline (`4:0..5` styles with colon) | Underline |
-| 5, 6 | Not documented | Blink (6 rapid; xterm renders as blink) | **Bright background** (bg + 8, iCE colours) |
+| 5, 6 | Not documented | Blink (6 rapid; xterm renders as blink). vtcon: 5 slow, phases of 500 ms (60 a minute), 6 rapid, 150 ms (200 a minute) -- ECMA-48 8.3.117: slow under 150 a minute, rapid 150 or more; the later of 5 and 6 counts | **Bright background** (bg + 8, iCE colours) |
 | 7 | Reverse character/cell colours | Inverse | Inverse (swap resolved fg/bg, l.262) |
 | 8 | Concealed. Before V39 masked all RastPort output (avoid); V39+: text hidden by pen choice, scrolling/clearing unaffected | Invisible | Ignored |
 | 9 | Not documented | Crossed out | Ignored |
@@ -748,9 +748,13 @@ does XCON:/AMIGA through DOS (identical output, window size included).
   the cursor stays on its character (or as far past the text as it was).
   Where the personality keeps a scrollback (xterm, pcansi) it is laid out with the
   screen as one text (2026-10-04, gaps #11): a line that began in the scrollback joins
-  its rest, the screen is the bottom of the result (rows below the cursor dropped
-  first), the rows above go back to the scrollback, and a taller window brings rows
-  down from it (iTerm2, Terminal.app, Alacritty). Not reflowed: the alternate screen
+  its rest, the rows above go back to the scrollback. A screen whose text reached
+  its last row stays bottom-anchored (rows below the cursor dropped first, a taller
+  window brings rows down from the scrollback: iTerm2, Terminal.app, Alacritty); a
+  screen with room under its text stays top-anchored (W-T1, 2026-10-13: the first
+  screen row keeps its place and the cursor its place in the text, the scrollback is
+  not pulled under a prompt near the top; kitty screen_resize, xterm resizeGravity
+  default). Not reflowed: the alternate screen
   (xterm does not; its program redraws on SIGWINCH), DEC double-size rows (cut or
   padded in place). Tests: `make test ONLY=reflow`.
   Narrowing was not measured on the ROM; the engine treats it as the inverse.
@@ -815,4 +819,4 @@ pinned by `tests/test_protocol.c` (`make test ONLY=protocol`). Plan and ledger:
 | OSC 133 `OSC 133 ; A/B/C/D[;..] ST` | Marks the cursor's line: prompt, command, output, done (`vt_row_marks`); `vt_find_mark` walks scrollback and grid; an erased or cleared line loses its marks (a reflow too). Host: Right Amiga + Shift + Up / Down scrolls the previous / next prompt to the top | `osc133_prompt_marks_and_jumps` |
 | OSC 9 / OSC 777 | `OSC 9 ; text` (iTerm2) and `OSC 777 ; notify ; title ; body` (urxvt, foot) reach the host (`notify`); `OSC 9 ; n ; ...` (ConEmu progress) does not. Host: the notice holds the title bar 5 s, then the title (or one set meanwhile) returns | `osc9_and_777_notify` |
 | terminfo `vtcon` (2026-10-04) | Adds Sync, rep, Cs/Cr, Ms, Tc, fe/fd, cvvis, smm/rmm (km honest: ?1034), ka1/ka3/kb2/kc1/kc3, kUP/kDN, kUP3-kNXT7 (Alt, Shift+Alt, Ctrl, Shift+Ctrl, Ctrl+Alt), kf25-kf63; rs1 also resets the palette. `tic -cx` clean; termcap regenerated (`infocmp -CrT`). Proven by `make test-terminfo` (tmux now wraps its redraws in Sync, bash sets smm; 14 captures match libvterm, nothing unhandled). Host: Shift+PgUp/PgDn reach programs on the alternate screen (kPRV/kNXT) | `make test-terminfo` |
-| XTGETTCAP `DCS + q hexname ; ... ST` | Every capability of `terminfo/vtcon.terminfo` (booleans without a value, numbers and strings as the entry has them), from `engine/vtcaps.inc` that `tools/gen_vtcaps.py` generates from the entry (make); plus xterm's TN / name (vtcon), Co, RGB (8/8/8). Unknown: `DCS 0 + r hexname ST` | `xtgettcap_answers_every_terminfo_capability` (parses the entry itself and asks for each) |
+| XTGETTCAP `DCS + q hexname ; ... ST` | Every capability of `terminfo/vtcon.terminfo` (booleans without a value, numbers and strings as the entry has them), from `engine/vtcaps.inc` that `tools/gen_vtcaps.py` generates from the entry (make); plus xterm's TN / name (vtcon), Co, RGB (8/8/8). `colors` and `Co` answer the screen's pen count once the host tells it (`vt_set_screen_colors`; the handler does, 16 on a 4-plane AGA screen, 256 from 8 planes), else the entry's 256: UPDemo picks its 16-colour version from it. Unknown: `DCS 0 + r hexname ST` | `xtgettcap_answers_every_terminfo_capability` (parses the entry itself and asks for each), `xtgettcap_colors_is_the_screens_pen_count` |

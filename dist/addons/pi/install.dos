@@ -1,0 +1,78 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; amiga-pi install: C:amiga-pi, the pi coding agent. It stands alone: nothing here needs
+; UP-Term, and nothing here looks at an UP-Term: assign (that would ask for the volume).
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. The Installer
+; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
+; the same list); the first part, check, has nothing to check for a stand-alone archive.
+FailAt 21
+; the archive's Files drawer: every name below is relative to it
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab pi
+; C:amiga-pi, the pi coding agent (README): needs a TCP/IP stack, AmiSSL 5 for https;
+; ENVARC:amiga-pi is where its settings go (Install never writes settings.json,
+; models.json or auth.json); its data goes to UP-Term:var/amiga-pi
+Copy amiga-pi C:amiga-pi CLONE QUIET
+If NOT EXISTS ENVARC:amiga-pi
+  MakeDir ENVARC:amiga-pi
+EndIf
+; CHANGELOG.md: what amiga-pi shows as What's New after an update and for /changelog. pi reads its own from its package directory; this
+; archive's record drawer (ENVARC:uppkg/amiga-pi, made by Install, removed whole by Uninstall) is where the program's own files
+; are kept apart from the user's settings. A later Install replaces it. Nothing is written into ENVARC:amiga-pi.
+MakeDir >NIL: @PKGDIR@ @RECORD@
+Copy CHANGELOG.md @RECORDP@CHANGELOG.md CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab skills
+; Agent Skills for the Amiga (README): one drawer per skill, installed beside the skills of the user. They go where amiga-pi
+; keeps its growing data: UP-Term:var/amiga-pi/skills when there is an UP-Term: assign, else ENVARC:amiga-pi/skills (the loader
+; reads both). Only the four drawers below are replaced (each one whole, so an update leaves no stale file); any other drawer
+; in skills is the user's and is never touched. The autodocs are not part of this archive: the amiga-autodocs skill looks in the
+; user's own NDK (assign NDK:).
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  MakeDir >NIL: UP-Term:var UP-Term:var/amiga-pi UP-Term:var/amiga-pi/skills
+  Delete >NIL: UP-Term:var/amiga-pi/skills/amigados ALL QUIET
+  Copy skills/amigados UP-Term:var/amiga-pi/skills/amigados ALL CLONE QUIET
+  Delete >NIL: UP-Term:var/amiga-pi/skills/arexx ALL QUIET
+  Copy skills/arexx UP-Term:var/amiga-pi/skills/arexx ALL CLONE QUIET
+  Delete >NIL: UP-Term:var/amiga-pi/skills/amiga-c-build ALL QUIET
+  Copy skills/amiga-c-build UP-Term:var/amiga-pi/skills/amiga-c-build ALL CLONE QUIET
+  Delete >NIL: UP-Term:var/amiga-pi/skills/amiga-autodocs ALL QUIET
+  Copy skills/amiga-autodocs UP-Term:var/amiga-pi/skills/amiga-autodocs ALL CLONE QUIET
+Else
+  MakeDir >NIL: ENVARC:amiga-pi ENVARC:amiga-pi/skills
+  Delete >NIL: ENVARC:amiga-pi/skills/amigados ALL QUIET
+  Copy skills/amigados ENVARC:amiga-pi/skills/amigados ALL CLONE QUIET
+  Delete >NIL: ENVARC:amiga-pi/skills/arexx ALL QUIET
+  Copy skills/arexx ENVARC:amiga-pi/skills/arexx ALL CLONE QUIET
+  Delete >NIL: ENVARC:amiga-pi/skills/amiga-c-build ALL QUIET
+  Copy skills/amiga-c-build ENVARC:amiga-pi/skills/amiga-c-build ALL CLONE QUIET
+  Delete >NIL: ENVARC:amiga-pi/skills/amiga-autodocs ALL QUIET
+  Copy skills/amiga-autodocs ENVARC:amiga-pi/skills/amiga-autodocs ALL CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab launch
+; Quick-launch icons: double-click one in UP-Term: to open an UP-Term window running the app
+; (IconX opens the XCON: window; it closes when the app ends).
+; Stand-alone archive: with no UP-Term: assign there is no UP-Term window and no UP-Term: drawer to
+; put them in (XCON: is the UP-Term handler), so nothing is installed and nothing named UP-Term: is touched.
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  Copy "launch/amiga-pi" "launch/amiga-pi.info" UP-Term: CLONE QUIET
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "amiga-pi installed: type  amiga-pi  in a Shell or an UP-Term window."

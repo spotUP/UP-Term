@@ -13,6 +13,7 @@
 #include "md.h"
 #include "vw_cli.h"
 #include "vw_plat.h"
+#include "../tty/qmark.h"
 
 static const char vers[] = "$VER: hl 1.0 (4.10.2026) UP-Term";
 
@@ -228,6 +229,10 @@ int main(int argc, char **argv)
     int i = 1, nfiles = 0, tty, numbers, rc = 0, r;
     char **files;
     (void)vers;
+    if (qmark_argv(argc, argv)) { /* `hl ?` shows the usage and ends */
+        usage();
+        return 0;
+    }
     op.numbers = -1;
     op.plain = 0;
     op.tabs = 8;
@@ -277,7 +282,7 @@ int main(int argc, char **argv)
         } else if (!strcmp(a, "--list")) {
             list_langs();
             return 0;
-        } else if (!strcmp(a, "-h") || !strcmp(a, "--help") || !strcmp(a, "?")) {
+        } else if (!strcmp(a, "-h") || !strcmp(a, "--help")) {
             usage();
             return 0;
         } else if (a[0] == '-' && a[1]) {

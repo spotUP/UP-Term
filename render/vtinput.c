@@ -196,6 +196,14 @@ int vti_page_keys_scroll(const vt_term *t)
     return !(vt_modes(t) & (VT_MODE_ALT_SCREEN | MOUSE_MODES));
 }
 
+int vti_newmouse_wheel(unsigned code, int *up)
+{
+    if (code != 0x7A && code != 0x7B)
+        return 0;
+    *up = code == 0x7A;
+    return 1;
+}
+
 int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
               int px, int py, vt_u8 *out, int *lines)
 {
@@ -274,6 +282,22 @@ int vti_sel_dirty(int on_old, long ax, long ay, long bx, long by,
             y = m2 - 1;
     }
     return any;
+}
+
+int vti_view_scroll(int old_view, int new_view, int rows, int stale, int *n, int *y0, int *y1)
+{
+    int d = new_view - old_view, a = d < 0 ? -d : d;
+    if (stale || old_view <= 0 || new_view <= 0 || !d || a >= rows)
+        return 0;
+    *n = -d;
+    if (d > 0) {
+        *y0 = 0;
+        *y1 = a; /* scrolled back: the text moves down, the top rows are new */
+    } else {
+        *y0 = rows - a;
+        *y1 = rows;
+    }
+    return 1;
 }
 
 /* A selection stays only while the cells under it are the text that was selected (xterm's rule: a

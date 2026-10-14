@@ -1,0 +1,86 @@
+{
+ "cases": [
+  {
+   "name": "literal",
+   "key": "sk-literal",
+   "credEnv": {
+    "A": "cred"
+   },
+   "procEnv": {
+    "A": "proc"
+   },
+   "want": "sk-literal"
+  },
+  {
+   "name": "cred_wins",
+   "key": "$A",
+   "credEnv": {
+    "A": "cred"
+   },
+   "procEnv": {
+    "A": "proc"
+   },
+   "want": "cred"
+  },
+  {
+   "name": "proc_when_no_cred_env",
+   "key": "$A",
+   "procEnv": {
+    "A": "proc"
+   },
+   "want": "proc"
+  },
+  {
+   "name": "proc_when_cred_value_empty",
+   "key": "$A",
+   "credEnv": {
+    "A": ""
+   },
+   "procEnv": {
+    "A": "proc"
+   },
+   "want": "proc"
+  },
+  {
+   "name": "per_name_merge",
+   "key": "${A}-${B}",
+   "credEnv": {
+    "A": "cred"
+   },
+   "procEnv": {
+    "A": "proc",
+    "B": "procB"
+   },
+   "want": "cred-procB"
+  },
+  {
+   "name": "cred_only",
+   "key": "pre-$A-post",
+   "credEnv": {
+    "A": "cred"
+   },
+   "procEnv": {},
+   "want": "pre-cred-post"
+  },
+  {
+   "name": "unresolved",
+   "key": "$A",
+   "credEnv": {
+    "B": "cred"
+   },
+   "procEnv": {},
+   "want": null
+  },
+  {
+   "name": "workspace_id",
+   "key": "$ANTHROPIC_WORKSPACE_ID",
+   "credEnv": {
+    "ANTHROPIC_WORKSPACE_ID": "wrkspc_cred"
+   },
+   "procEnv": {
+    "ANTHROPIC_WORKSPACE_ID": "wrkspc_proc"
+   },
+   "want": "wrkspc_cred"
+  }
+ ]
+}

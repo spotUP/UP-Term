@@ -1,0 +1,4 @@
+; Neovim in this UP-Term window (double-click the icon). The window closes when nvim ends.
+; vsh gives it TERM=vtcon and the path to UP-Term:nvim/bin (dist/vshrc).
+Stack 32768
+UP-Term:bin/vsh -c nvim

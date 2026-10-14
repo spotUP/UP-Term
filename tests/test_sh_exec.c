@@ -419,6 +419,16 @@ static int f_stat(void *os, const char *path, sh_stat *st, int nofollow)
             st->type = SH_ST_FILE;
             st->size = 1;
             st->ino = i + 1;
+            /* test -N: the times of four files, set by the name */
+            if (!strcmp(path, "nmod")) {        /* modified after the read */
+                st->mtime = 100; st->atime = 50;
+            } else if (!strcmp(path, "nread")) { /* read after the modification */
+                st->mtime = 50; st->atime = 100;
+            } else if (!strcmp(path, "nsame")) { /* the same second, the modification a nanosecond later */
+                st->mtime = st->atime = 100; st->mtime_ns = 2; st->atime_ns = 1;
+            } else if (!strcmp(path, "nequal")) { /* the same instant */
+                st->mtime = st->atime = 100; st->mtime_ns = st->atime_ns = 7;
+            }
             return 0;
         }
     return -1;
@@ -966,6 +976,10 @@ static void jobs_aliases_and_dirs(void)
     CHECK_STR(run("cd Work:; pwd; (cd SYS:; pwd); pwd"), "Work:\nSYS:\nWork:\n");
     CHECK_STR(run("cd nowhere; echo $?"), "1\n");
     CHECK_STR(run("[ -d SYS: ] && echo dir"), "dir\n");
+    /* test -N as bash does it: the modification later than the access time, to the nanosecond; equal is not */
+    CHECK_STR(run("echo x >nmod; echo x >nread; echo x >nsame; echo x >nequal; "
+                  "for f in nmod nread nsame nequal nnone; do [ -N $f ]; echo $f $?; done"),
+              "nmod 0\nnread 1\nnsame 0\nnequal 1\nnnone 1\n");
     CHECK_STR(run("stack; stack 100000; stack; stack 12 || echo refused"),
               "stack 4096\nstack 100000\nrefused\n");
     CHECK_STR(run("[ -t 1 ] && echo tty; [ -t 1 ] >f || echo redirected; [ -t 7 ] || echo no"),
@@ -1306,7 +1320,7 @@ static void vshrc_unix_names(void)
     CHECK_STR(with_vshrc("echo $hlcat"), "\n");   /* nothing left behind */
     vshrc_pre = 0;
     /* the Unix $PATH: UP-Term's bin first, kept when the user set one */
-    CHECK_STR(with_vshrc("echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c\n");
+    CHECK_STR(with_vshrc("echo $PATH"), "/UP-Term/bin:/UP-Term/Python3/bin:/SYS/Python3/bin:/UP-Term/nvim/bin:/gg/bin:/c\n");
     vshrc_pre = "PATH=/mine";
     CHECK_STR(with_vshrc("echo $PATH"), "/mine\n");
     vshrc_pre = 0;
@@ -1327,6 +1341,8 @@ static void remote_logins_send_xterm_256color(void)
     CHECK_STR(with_vshrc("telnet bbs.example 23"), "<uptelnet><TERM=vtcon><bbs.example><23><TERM><xterm-256color>\n");
     CHECK_STR(with_vshrc("rlogin box"), "<rlogin><TERM=xterm-256color><box>\n");
     CHECK_STR(with_vshrc("ssh h; echo $TERM"), "<bebbossh><TERM=xterm-256color><h>\nvtcon\n");
+    vshrc_pre = "TERM=vtcon-amiga"; /* an AMIGA window: still no vtcon-amiga entry on the host */
+    CHECK_STR(with_vshrc("ssh -l me host"), "<bebbossh><TERM=xterm-256color><-l><me><host>\n");
     vshrc_pre = "TERM=vtcon; UP_REMOTE_TERM=xterm-amiga";
     CHECK_STR(with_vshrc("ssh h"), "<bebbossh><TERM=xterm-amiga><h>\n");
     vshrc_pre = "TERM=screen";
@@ -1634,6 +1650,58 @@ static void uninstall_removes_every_up_term_block(void)
              " ';BEGIN UP-Terminal' '  spaced \\\\ line  ' >S:User-Startup\n"
              "%s\ncat <T:User-Startup.up-term\n", script);
     CHECK_STR(run(text), "Run >NIL: amiagent TOKEN=x\n;BEGIN UP-Terminal\n  spaced \\\\ line  \n");
+}
+
+/* An add-on archive's Uninstall takes out only its own block: unstartup.sh with a block name
+ * (kit-split D6, "unstartup.sh python"); the other blocks, the base's included, stay. */
+static void unstartup_with_a_name_removes_only_that_block(void)
+{
+    FILE *f = fopen("dist/unstartup.sh", "rb");
+    char script[4096];
+    char text[8192];
+    size_t n;
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    n = fread(script, 1, sizeof(script) - 1, f);
+    fclose(f);
+    script[n] = 0;
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' ';BEGIN UP-Term assign' 'Assign UP-Term: SYS:UP-Term' ';END UP-Term assign'"
+             " ';BEGIN UP-Term python' 'Assign Python3: UP-Term:Python3' ';END UP-Term python'"
+             " ';BEGIN UP-Term pythonic' 'C:Other' ';END UP-Term pythonic' 'user line' >S:User-Startup\n"
+             "set -- python\n%s\ncat <T:User-Startup.up-term\n", script);
+    CHECK_STR(run(text), ";BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n"
+                         ";BEGIN UP-Term pythonic\nC:Other\n;END UP-Term pythonic\nuser line\n");
+}
+
+/* A stand-alone archive (Python3.lha) writes ";BEGIN Python3" without UP-Term in the name: with its name
+ * unstartup.sh takes out that block only (an older base copy without this rule leaves it, and the
+ * archive's Uninstall notices); with no name the base's Uninstall leaves it alone. */
+static void unstartup_takes_a_stand_alone_block_by_its_name_only(void)
+{
+    FILE *f = fopen("dist/unstartup.sh", "rb");
+    char script[4096];
+    char text[8192];
+    size_t n;
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    n = fread(script, 1, sizeof(script) - 1, f);
+    fclose(f);
+    script[n] = 0;
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' ';BEGIN UP-Term assign' 'Assign UP-Term: SYS:UP-Term' ';END UP-Term assign'"
+             " ';BEGIN Python3' 'If EXISTS SYS:Python3' '  Assign Python3: SYS:Python3' 'EndIf' ';END Python3'"
+             " ';BEGIN Python33' 'C:Other' ';END Python33' 'user line' >S:User-Startup\n"
+             "set -- Python3\n%s\ncat <T:User-Startup.up-term\n", script);
+    CHECK_STR(run(text), ";BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n"
+                         ";BEGIN Python33\nC:Other\n;END Python33\nuser line\n");
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' ';BEGIN UP-Term assign' 'Assign UP-Term: SYS:UP-Term' ';END UP-Term assign'"
+             " ';BEGIN Python3' 'Assign Python3: SYS:Python3' ';END Python3' 'user line' >S:User-Startup\n"
+             "%s\ncat <T:User-Startup.up-term\n", script);
+    CHECK_STR(run(text), ";BEGIN Python3\nAssign Python3: SYS:Python3\n;END Python3\nuser line\n");
 }
 
 /* eval, exec, trap, local, getopts, umask (plan unix-tool-ports row 0.6) */
@@ -1952,5 +2020,7 @@ void suite_sh_exec(void)
     word_lists();
     the_console_env_is_exported_and_unset();
     uninstall_removes_every_up_term_block();
+    unstartup_with_a_name_removes_only_that_block();
+    unstartup_takes_a_stand_alone_block_by_its_name_only();
     sh_shell_free(&sh);
 }

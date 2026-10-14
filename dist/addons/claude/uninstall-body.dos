@@ -1,0 +1,14 @@
+; the settings and key in ENVARC:Claude are yours and stay
+; C:ClaudeCode: the second program of Claude.lha 1.0, one app since CL1; an old copy goes too
+Delete >NIL: C:Claude C:ClaudeCode QUIET
+; C:uptelnet is UP-Term.lha's program too: it stays while UP-Term is installed (its Uninstall
+; removes it when no Claude record is left)
+Assign >NIL: UP-Term: EXISTS
+If WARN
+  Delete >NIL: C:uptelnet QUIET
+EndIf
+; the quick-launch icons in UP-Term: (only when there is an UP-Term: to look in)
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  Delete >NIL: UP-Term:Claude UP-Term:Claude.info UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET
+EndIf

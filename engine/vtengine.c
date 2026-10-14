@@ -132,6 +132,7 @@ struct vt_term {
     vt_u8 amiga_keys;      /* vt_set_amiga_keys: Shift+Left / Right send Home / End (host setting) */
     struct vt_sbl **sb;    /* scrollback ring: lines packed (sb_store) */
     long scrolled;         /* lines scrolled off the primary screen's top */
+    long sync_frames;      /* ?2026 frames ended (vt_sync_frames) */
     int sb_cap, sb_len, sb_head; /* head: next slot to write */
     struct vt_sbblk *sb_blk;   /* the block new scrollback lines go into */
     struct vt_sbblk *sb_spare; /* an empty block kept for the next one */
@@ -232,6 +233,13 @@ struct vt_term {
 
     /* per-row dirty spans, flushed at the end of each write */
     int dirty;
+    /* The palette or the default colours changed (colors_changed) and the
+     * colours callback has not been told yet: it is told once, when the
+     * write's bytes are all read (or before a flush draws), not once for
+     * every OSC 4 in it -- each call gives the renderer's pens back and
+     * obtains them again (UPDemo's palette cycling: 32 a frame, 10 ms of
+     * a frame's 113 on a 68060; ledger S2). in_feed: vt_feed is reading. */
+    int colors_pending, in_feed;
     int full_y0, full_y1;      /* rows damaged whole since the last flush (damage_rows) */
     /* A scroll the renderer has not been told about yet: the pixels are
      * pend_n rows behind the grid in [pend_top, pend_bot) (negative: down).
@@ -247,6 +255,7 @@ struct vt_term {
     vt_u32 dflt[3];            /* the host's default text, background, cursor */
     vt_u32 dflt_set[3];        /* OSC 10-12: 0x01RRGGBB, 0 = the host's */
     int cell_w, cell_h;        /* pixels, for CSI 14t / 16t */
+    int screen_colors;         /* the pens the screen has (vt_set_screen_colors); 0: not told, the entry's 256 */
     vt_u8 cursor_style;        /* DECSCUSR */
     vt_u8 cursor_dflt;         /* the host's DECSCUSR default (vt_set_cursor_style): RIS's */
     vt_u8 allow_cols;          /* ?40: DECCOLM may change the width */
@@ -714,11 +723,22 @@ static void mark_rows(vt_term *t, int y0, int y1)
         mark(t, 0, y, t->cols);
 }
 
+/* The colours callback, once for all the changes since it was last told. */
+static void colors_tell(vt_term *t)
+{
+    if (!t->colors_pending)
+        return;
+    t->colors_pending = 0;
+    if (t->cb.colors)
+        t->cb.colors(t->user);
+}
+
 /* Tell the renderer about everything marked, one call per run of rows with
  * the same span. */
 static void flush(vt_term *t)
 {
     int y, y0;
+    colors_tell(t); /* the pens first: the damage below is drawn with them */
     if (t->pend_n) {
         int n = t->pend_n;
         t->pend_n = 0;
@@ -1554,6 +1574,27 @@ static void scroll_down(vt_term *t, int top, int bot, int n)
     pend_scroll(t, top, bot, -n);
 }
 
+/* The wrapped flag of the line above the screen says its text goes on in
+ * the screen's first row. Erasing that row whole ends the join: kept as it
+ * was, a reflow glued the next thing written there to the old line. (kitty
+ * keeps the flag on the continuing line, as line_attrs.continued, and
+ * erasing the line resets it.) The alternate screen has no line above. */
+static void cut_line_above(vt_term *t)
+{
+    if (t->scr != t->pri)
+        return;
+    if (t->novf)
+        t->ovf[t->novf - 1]->wrapped = 0;
+    else if (t->sb_len) {
+        vt_sbl *s = SB_AT(t, -1);
+        int k;
+        s->wrapped = 0;
+        for (k = 0; k < VT_SBC; k++) /* a decoded copy (sb_cells) is read by the reflow: it must not keep the flag */
+            if (t->sbc[k].s == s)
+                t->sbc[k].l->wrapped = 0;
+    }
+}
+
 static void erase_cells(vt_term *t, int y, int x0, int x1)
 {
     vt_line *l;
@@ -1561,6 +1602,8 @@ static void erase_cells(vt_term *t, int y, int x0, int x1)
     x1 = clampi(x1, 0, t->cols);
     if (x0 >= x1)
         return;
+    if (y == 0 && !x0 && x1 == t->cols)
+        cut_line_above(t);
     unwide(t, x0, y);
     if (x1 < t->cols)
         unwide(t, x1 - 1, y);
@@ -2613,6 +2656,7 @@ static void esc_dispatch(vt_term *t, vt_u8 final)
                     t->scr[y]->wrapped = 0;
                     t->scr[y]->dbl = 0;
                 }
+                cut_line_above(t);
                 mark_rows(t, 0, t->rows);
                 move_to(t, 0, 0);
             } else {
@@ -2968,8 +3012,10 @@ static void set_mode(vt_term *t, int on)
             case 2026:
                 if (on)
                     t->modes |= VT_MODE_SYNC;
-                else
+                else if (t->modes & VT_MODE_SYNC) {
                     t->modes &= ~(vt_u32)VT_MODE_SYNC;
+                    t->sync_frames++; /* a frame ended: the host may show it as one picture */
+                }
                 break;
             case 2048: /* in-band resize: the size now, then at each resize */
                 if (on) {
@@ -4058,8 +4104,9 @@ static void scheme_check(vt_term *t)
 static void colors_changed(vt_term *t)
 {
     mark_rows(t, 0, t->rows);
-    if (t->cb.colors)
-        t->cb.colors(t->user);
+    t->colors_pending = 1;
+    if (!t->in_feed)
+        colors_tell(t); /* a host call (vt_set_palette): at once */
     scheme_check(t);
 }
 
@@ -4683,11 +4730,27 @@ static const char *const caps_extra[][2] = {
     { "TN", "vtcon" }, { "name", "vtcon" }, { "Co", "256" }, { "RGB", "8/8/8" }
 };
 
+/* The screen's pen count as the text of a number, for the two names xterm
+ * and terminfo give it (colors, Co): what the host told, else the entry's. */
+static const char *caps_colors(const vt_term *t, const char *dflt, char *buf)
+{
+    int n = t->screen_colors, i = 0, k;
+    char r[8];
+    if (n <= 0)
+        return dflt;
+    for (k = 0; n > 0 && k < 7; k++, n /= 10)
+        r[k] = (char)('0' + n % 10);
+    while (k)
+        buf[i++] = r[--k];
+    buf[i] = 0;
+    return buf;
+}
+
 static void xtgettcap(vt_term *t, const char *s, int len)
 {
     static const char hex[] = "0123456789ABCDEF";
     while (len > 0) {
-        char name[16], b[320];
+        char name[16], b[320], cbuf[8];
         int k = 0, i, n = 0, h1, h2, found = 0;
         const char *v = 0;
         while (len >= 2 && *s != ';') {
@@ -4712,6 +4775,8 @@ static void xtgettcap(vt_term *t, const char *s, int len)
                 found = 1;
                 v = vt_caps[i].kind == 'b' ? 0 : vt_caps[i].value; /* a boolean: no value */
             }
+        if (found && v && (!strcmp(name, "colors") || !strcmp(name, "Co")))
+            v = caps_colors(t, v, cbuf); /* the screen's own count, not the entry's */
         if (v && (int)strlen(v) * 2 + 2 * k + 16 > (int)sizeof(b))
             found = 0, v = 0; /* cannot happen with the entry's lengths */
         b[n++] = 0x1B;
@@ -5982,6 +6047,11 @@ void vt_screen_reverse(vt_term *t, int on)
         t->modes &= ~(vt_u32)VT_MODE_SCREEN_REVERSE;
 }
 
+void vt_set_screen_colors(vt_term *t, int n)
+{
+    t->screen_colors = n > 0 && n < 100000 ? n : 0;
+}
+
 void vt_set_cell_pixels(vt_term *t, int w, int h)
 {
     t->cell_w = w;
@@ -6373,6 +6443,7 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
      * the colours are the default ones (ASM1: the five tests a run cost 17
      * instructions, twice a line) */
     int text = -1;
+    t->in_feed++;
     while (i < len) {
         vt_u8 b = buf[i];
         if (b != 0x09)
@@ -6426,6 +6497,8 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
         text = -1;
         i++;
     }
+    if (!--t->in_feed)
+        colors_tell(t); /* the write's palette changes, told once */
 }
 
 /* ---- reflow (vt_set_reflow) ---------------------------------------------- */
@@ -6515,6 +6588,19 @@ static int rw_retire(vt_rewrap *w, int upto)
     return 1;
 }
 
+/* True when the row holds no glyph, whatever its colours: an erase with a
+ * background pen set (the Amiga Shell's ESC[0;31;40m) paints the blank
+ * rows, and they are still empty rows to anchor the screen by. */
+static int row_no_glyphs(const vt_line *l)
+{
+    int x;
+    for (x = 0; x < l->n; x++)
+        if (l->c[x].ch != ' ' || l->c[x].width != 1 || l->c[x].attr || l->c[x].deco || l->c[x].ext ||
+            l->c[x].pad)
+            return 0;
+    return 1;
+}
+
 /* A blank line of w->cols cells for row w->ny (the rows before it are
  * done). 0 when out of memory. */
 static vt_line *rw_line(vt_rewrap *w)
@@ -6561,9 +6647,9 @@ static int rw_wrap(vt_rewrap *w)
  * same character, or as many cells past the text as it was. Leaves w->ny
  * on the line's last row; 0 when out of memory. */
 static int rewrap_line(vt_rewrap *w, vt_rfin *in, int s, int e, int oc,
-                       int cx, int cy, int wp, int *ncx, int *ncy, int *nwp)
+                       int cx, int cy, int wp, int *ncx, int *ncy, int *nwp, int scr, int *nscr)
 {
-    int r, x, n, last, width, found = 0;
+    int r, x, n, last, width, found = 0, want;
     long d;
     const vt_cell *c;
     const vt_line *lr;
@@ -6576,6 +6662,7 @@ static int rewrap_line(vt_rewrap *w, vt_rfin *in, int s, int e, int oc,
     for (r = s; r <= e; r++) {
         lr = OLD(r);
         n = r < e ? lr->n : last; /* a scrollback row keeps the width it had */
+        want = r == scr; /* *nscr: the new row where old row scr begins */
         for (x = 0; x < n; x++) {
             c = &lr->c[x];
             if (c->width == 0)
@@ -6586,6 +6673,10 @@ static int rewrap_line(vt_rewrap *w, vt_rfin *in, int s, int e, int oc,
             width = c->width == 2 && w->cols >= 2 ? 2 : 1;
             if (w->nx + width > w->cols && !rw_wrap(w))
                 return 0;
+            if (want) {
+                *nscr = w->ny;
+                want = 0;
+            }
             if (r == cy && (x == cx || (width == 2 && x + 1 == cx))) {
                 *ncx = w->nx + (x != cx);
                 *ncy = w->ny;
@@ -6607,6 +6698,8 @@ static int rewrap_line(vt_rewrap *w, vt_rfin *in, int s, int e, int oc,
             if (w->eager && w->nx >= w->cols && !rw_wrap(w))
                 return 0;
         }
+        if (want) /* no cell of its own: after the text before it, on a row of its own */
+            *nscr = w->nx > 0 ? w->ny + 1 : w->ny;
     }
     if (cy < s || cy > e)
         return 1;
@@ -6643,9 +6736,10 @@ static int rewrap_line(vt_rewrap *w, vt_rfin *in, int s, int e, int oc,
  * or -height row is never joined: it keeps its place, cut or padded. The
  * new rows below `retire` go to the scrollback as they are done (out[i]
  * NULL for them). Returns the row count, -1 when out of memory (the rows
- * made so far stay in out and the scrollback). */
+ * made so far stay in out and the scrollback). *nscr gets the new row
+ * where old row `scr` (the screen's first) begins. */
 static int reflow_pass(vt_term *t, vt_rfin *in, int nold, int oc, vt_line **out, int cols, int cx, int cy,
-                       int wp, int *ncx, int *ncy, int *nwp, int retire)
+                       int wp, int *ncx, int *ncy, int *nwp, int retire, int scr, int *nscr)
 {
     vt_line *l;
     const vt_line *o;
@@ -6664,9 +6758,12 @@ static int reflow_pass(vt_term *t, vt_rfin *in, int nold, int oc, vt_line **out,
         if (o->wrapped || o->dbl || line_text_len(o, o->n))
             break;
     }
+    *nscr = 0;
     for (s = 0; s <= last; s = e + 1) {
         e = s;
         if (OLD(s)->dbl) {
+            if (s <= scr && scr <= e)
+                *nscr = w.ny;
             if (out) {
                 if (!(l = rw_line(&w)))
                     goto fail;
@@ -6689,7 +6786,7 @@ static int reflow_pass(vt_term *t, vt_rfin *in, int nold, int oc, vt_line **out,
         } else {
             while (OLD(e)->wrapped && e + 1 < nold && !OLD(e + 1)->dbl)
                 e++;
-            if (!rewrap_line(&w, in, s, e, oc, cx, cy, wp, ncx, ncy, nwp))
+            if (!rewrap_line(&w, in, s, e, oc, cx, cy, wp, ncx, ncy, nwp, scr, nscr))
                 goto fail;
         }
         w.ny++;
@@ -6722,7 +6819,7 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
     vt_sbl **oring = t->sb, **ring = 0;
     int ocap = t->sb_cap, olen = t->sb_len, ohead = t->sb_head;
     int nsb = hist ? t->sb_len : 0, above = nsb + t->novf, nold = above + t->rows, nln = t->novf + t->rows;
-    int total, i, ok, ncx = 0, ncy = 0, nwp = 0, excess, below = 0, drop_top = 0;
+    int total, i, ok, ncx = 0, ncy = 0, nwp = 0, excess, below = 0, drop_top = 0, nscr = 0, nvis, full;
     vt_rfin in;
     /* the scrollback (oldest first), the rows an earlier resize pushed out,
      * then the screen: laid out together, as one screen `above` rows taller */
@@ -6739,14 +6836,42 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
     in.nsb = nsb;
     in.ln = ln;
     in.fail = 0;
-    total = reflow_pass(t, &in, nold, t->cols, 0, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp, 0);
-    if (total > rows) { /* rows below the cursor go first, then rows off the top */
+    total = reflow_pass(t, &in, nold, t->cols, 0, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp, 0, above, &nscr);
+    /* Which rows show. A screen whose text reached the last row stays
+     * bottom-anchored: rows below the cursor go first, then rows off the top
+     * (a grow brings the scrollback down). A screen with room left under its
+     * text stays top-anchored, as kitty's screen_resize does (it reflows the
+     * screen alone and fills a taller one from the scrollback only when the
+     * scrollback_fill_enlarged_window option is set, default no) and xterm's
+     * default resizeGravity: the first screen row keeps its place, the cursor
+     * its place in the text, and the scrollback above is not pulled onto the
+     * screen under a prompt that stood near the top (W-T1). */
+    full = 1;
+    if (total >= 0) {
+        for (i = t->rows - 1; i > *cy; i--)
+            if (t->pri[i]->wrapped || t->pri[i]->dbl || !row_no_glyphs(t->pri[i]))
+                break;
+        full = i == t->rows - 1;
+    }
+    if (total >= 0 && !full) {
+        drop_top = nscr;
+        if (drop_top > ncy)
+            drop_top = ncy;
+        if (drop_top < ncy + 1 - rows)
+            drop_top = ncy + 1 - rows;
+        if (drop_top < 0)
+            drop_top = 0;
+        below = total - drop_top - rows;
+        if (below < 0)
+            below = 0;
+    } else if (total > rows) { /* rows below the cursor go first, then rows off the top */
         excess = total - rows;
         below = total - 1 - ncy;
         if (below > excess)
             below = excess;
         drop_top = excess - below;
     }
+    nvis = total - drop_top - below; /* rows of the new screen the text fills */
     if (total >= 0) {
         nr = (vt_line **)VT_MALLOC((total ? total : 1) * sizeof(vt_line *));
         nw = (vt_line **)VT_MALLOC(rows * sizeof(vt_line *));
@@ -6771,8 +6896,8 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
         t->sb_len = t->sb_head = 0;
     }
     ok = reflow_pass(t, &in, nold, t->cols, nr, cols, *cx, *cy + above, *wp, &ncx, &ncy, &nwp,
-                     hist ? drop_top : 0) >= 0;
-    for (i = total; ok && i < rows; i++) { /* the blank rows below */
+                     hist ? drop_top : 0, above, &nscr) >= 0;
+    for (i = nvis; ok && i < rows; i++) { /* the blank rows below */
         nw[i] = line_new(cols);
         if (nw[i])
             line_clear(t, nw[i], cols);
@@ -6783,7 +6908,7 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
         for (i = 0; i < total; i++)
             if (nr[i])
                 line_free(t, nr[i]);
-        for (i = total; i < rows; i++)
+        for (i = nvis; i < rows; i++)
             if (nw[i])
                 VT_FREE(nw[i]);
         if (hist) { /* the new history goes, the old one is back */
@@ -6802,12 +6927,9 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
         VT_FREE(ln);
         return 0;
     }
-    if (total > rows) {
-        for (i = total - below; i < total; i++)
-            line_free(t, nr[i]);
-        total = rows;
-        ncy -= drop_top;
-    }
+    for (i = total - below; i < total; i++)
+        line_free(t, nr[i]);
+    ncy -= drop_top;
     /* the old rows (the scrollback's and the pushed-out ones among them)
      * are laid out anew */
     if (hist) {
@@ -6823,7 +6945,7 @@ static int reflow_screen(vt_term *t, int cols, int rows, int *cx, int *cy, int *
     if (!hist) /* (with the history they are in the scrollback already) */
         for (i = 0; i < drop_top; i++)
             ovf_push(t, nr[i]); /* pushed out now: back on a later grow */
-    for (i = 0; i < total; i++)
+    for (i = 0; i < nvis; i++)
         nw[i] = nr[drop_top + i];
     VT_FREE(nr);
     t->pri = nw;
@@ -7037,6 +7159,11 @@ int vt_scrollback_lines(const vt_term *t)
 long vt_lines_scrolled(const vt_term *t)
 {
     return t->scrolled;
+}
+
+long vt_sync_frames(const vt_term *t)
+{
+    return t->sync_frames;
 }
 
 int vt_wrap_pending(const vt_term *t)

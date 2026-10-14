@@ -267,6 +267,10 @@ void     vt_clear_scrollback(vt_term *t);
  * grid row y + vt_lines_scrolled() names a line for good (a selection
  * stays on its text while output scrolls). */
 long     vt_lines_scrolled(const vt_term *t);
+/* Synchronized-output frames (?2026 set, then reset) ended since vt_new: a
+ * host whose count moved since its last flush has a whole frame to show,
+ * and may compose it off screen and show it at once (W-T3). */
+long     vt_sync_frames(const vt_term *t);
 void     vt_cursor(const vt_term *t, int *x, int *y);
 /* 1 while the cursor waits on the last column for the next character to
  * wrap it (xterm's deferred wrap): logically it stands one cell further. */
@@ -386,6 +390,12 @@ void     vt_screen_reverse(vt_term *t, int on);
 /* The cell size in pixels, for the size reports programs ask for (CSI 14t,
  * 16t). */
 void     vt_set_cell_pixels(vt_term *t, int w, int h);
+/* How many colours the screen can show at once (16 pens on a 4-plane AGA
+ * screen, 256 on a card): what XTGETTCAP colors (and Co) answers, so a
+ * program can pick its palette -- xterm defines that query ("XTGETTCAP",
+ * ctlseqs.txt: DCS + q Pt ST). 0: not told, the terminfo entry's 256. A host
+ * setting; vt_reset leaves it. */
+void     vt_set_screen_colors(vt_term *t, int n);
 /* DECSCUSR: 0/1 blinking block, 2 block, 3 blinking underline, 4 underline,
  * 5 blinking bar, 6 bar. */
 int      vt_cursor_style(const vt_term *t);

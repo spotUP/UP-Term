@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "amiga": {
+      "command": "python3",
+      "args": ["-I", "tools/rig/amimcp.py"]
+    }
+  }
+}

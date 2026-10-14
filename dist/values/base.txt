@@ -2,3 +2,4 @@
 # columns of dist/packages.txt. One NAME=value a line.
 VARDIR=$updest/var
 VARWHAT=UP-Term:var (Claude and amiga-pi sessions and history)
+RECORDPRE=record-legacy.dos

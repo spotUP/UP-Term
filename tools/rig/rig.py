@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""The vtcon test rig: FS-UAE, A1200 (68020, KS 3.1 40.068, 8 MB fast), driven
+"""The vtcon test rig: FS-UAE, A1200 (68060 at full speed by default, 68020 with --a1200; KS 3.1 40.068), driven
 through amiagent (TCP 7846, tools/rig/ami.py). UPTERM_RIG=2 selects a second,
 independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
 
   rig.py setup    copy the system disk once, write the config and boot drawer
-  rig.py start    boot it in the background (--060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
-                  --max: the --060 machine with 1 GB Zorro III RAM;
+  rig.py start    boot it in the background; the default machine is the 68060 + FPU at the host's speed
+                  with 1 GB Zorro III RAM (what --max was); --a1200: the stock 68020 at real speed
+                  (timing runs only; --stock, --exact and --fast also keep the 020);
+                  --060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
                   --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
@@ -19,8 +21,14 @@ independent rig: build/rig2, amiagent on 7847 (tools/rig/README.md).
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
   owner's way, 2026-09-29. aga/rtg need the rig up and reboot it.)
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
-  rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer
+  rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer; the boot then puts
+                  these builds over the copies a kit installed in SYS: (KIT_SHADOWS;
+                  reboot the rig after install). The kit's own files are kept in
+                  VTC:kit-orig and come back with `rig.py kit-restore` + a reboot.
   rig.py status   is it up (amiagent ping)
+  rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
+  rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
+  rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts amiagent), vtc/ (VTC:, the binaries
@@ -28,7 +36,7 @@ under test), shots/.
 """
 import os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths
+import paths, agentpatch
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
@@ -37,8 +45,8 @@ CFG = RIG / "vtcon-rig.fs-uae"
 # the old source sat in a session scratchpad that is gone). Only read: the
 # rig works on its own copy, build/rig/sys.hdf.
 SRC_HDF = paths.SYSTEM_HDF        # UPTERM_SYSTEM_HDF
-# amiagent itself lives in build/rig/boot (the Up Rough demo system's agent,
-# copied there once); the rig refuses to start without it
+# amiagent: the 68020 build vendored in dist/net/amiagent-0.13.2, copied to
+# boot/amiagent on every start (tools/rig/agentpatch.py)
 # The default ROM's header says 40.63 (the A500/A600/A2000 3.1), whatever
 # its file name says (measured 2026-09-30). --kick <file> boots another ROM
 # (DP6 of the console.device plan); the config is rewritten on every start,
@@ -93,13 +101,19 @@ C:Run >NIL: C:Execute BOOTX:go
 C:Execute DH0:S/Startup-Sequence
 """
 # LIBS: as the rig runs: the patched ixemul first, then the system's (with
-# Classes and MUI) and ncurses. The boot script uses it, and install_rig.py
-# puts it back after testing Install/Uninstall against the stock library.
+# Classes and MUI), ncurses and AmiSSL's drawer. The boot script uses it, and
+# install_rig.py puts it back after testing Install/Uninstall against the
+# stock library. AmiSSL: S:User-Startup adds AmiSSL:Libs before go runs, and
+# go's first line here assigns LIBS: anew, so without the last line
+# amisslmaster.library was not found and every https request failed
+# (amiga-pi: "Connection error.", 2026-10-13; tools/test_rig_libs.py). By its
+# volume, not AmiSSL:, which a rig image without AmiSSL would ask for.
 RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:Libs ADD",
             "Assign >NIL: LIBS: DH0:Classes ADD",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
-            "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD"]
+            "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",
+            "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD"]
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
@@ -113,9 +127,83 @@ SHELL_STARTUP_PATH = ["Assign >NIL: VTC: EXISTS", "If NOT WARN",
                       "  Path >NIL: VTC:gg/bin ADD", "EndIf"]
 BARE_SHELL_PATH = "Path >NIL: VTC:gg/bin ADD"
 
+# The kit's install copies the programs this repo builds into SYS: (L:, C:, DEVS:,
+# UP-Term:bin), and what the system runs is those copies: XCON: is mounted from
+# DEVS:DOSDrivers/XCON, Handler = L:vtcon-handler, and C: comes before the
+# shell's path to VTC:. A `rig.py install` that writes only VTC: left a rig with
+# a kit running the OLD handler (W-R1, 2026-10-13: three rig checks tested it).
+# So the boot, before any of them is first used, puts the VTC: build over every
+# copy the system already holds, and the C: commands the kit installs even where no kit put
+# one (W-R4: plain `UPDemo` must run the build on every rig), after keeping the
+# kit's own once in VTC:kit-orig. `kit-restore` makes the boot put those back.
+# (VTC: name, SYS: place, backup name)
+KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
+               ("pty-handler", "L:pty-handler", "L-pty-handler"),
+               ("ixpipe-handler", "L:ixpipe-handler", "L-ixpipe-handler"),
+               ("vsh", "C:vsh", "C-vsh"),
+               ("vsh", "UP-Term:bin/vsh", "UP-Term-bin-vsh"),
+               ("UPConsole", "C:UPConsole", "C-UPConsole"),
+               ("UPDemo", "C:UPDemo", "C-UPDemo"),
+               ("upgetty", "C:upgetty", "C-upgetty"),
+               ("ixkill", "C:ixkill", "C-ixkill"),
+               ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device"),
+               # the preferences editor: the kit's file keeps the space (install.dos), which
+               # the handler's menu runs as C:"UP-Term Prefs" (launcher)
+               ("upprefs", "C:UP-Term Prefs", "C-UP-Term-Prefs")]
+
+
+def q(path):
+    """path as an AmigaDOS argument: quoted when it holds a space."""
+    return '"%s"' % path if " " in path else path
+
+
+def kit_guard(dest, body):
+    """body only if dest exists. UP-Term: is asked with Assign EXISTS first: EXISTS on an
+    assign that is not there (a rig with no kit) puts up a "insert volume" requester."""
+    pre, post = [], []
+    if dest.startswith("UP-Term:"):
+        pre, post = ["C:Assign >NIL: UP-Term: EXISTS", "If NOT WARN"], ["EndIf"]
+    return pre + ["If EXISTS %s" % q(dest)] + ["  " + l for l in body] + ["EndIf"] + post
+
+
+def kit_shadow_lines(upterm):
+    """The boot lines of KIT_SHADOWS: shadow, or restore when VTC:kit-restore exists. UP-Term:
+    is the kit's assign from its User-Startup block, which has run only after go's Wait:
+    upterm=True gives the UP-Term: places, False all the others."""
+    shadows = [x for x in KIT_SHADOWS if x[1].startswith("UP-Term:") == upterm]
+    out = ["If NOT EXISTS VTC:kit-orig", "  C:MakeDir >NIL: VTC:kit-orig", "EndIf",
+           "If EXISTS VTC:kit-restore"]
+    for _, dest, bak in shadows:
+        out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
+    out.append("Else")
+    for src, dest, bak in shadows:
+        copy = ["If EXISTS VTC:%s" % src]
+        if dest.startswith("C:"):
+            # a C: command the kit installs: on a rig with no kit it is put there too (W-R4)
+            copy += ["  If EXISTS %s" % q(dest), "    If NOT EXISTS VTC:kit-orig/%s" % bak,
+                     "      C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak), "    EndIf", "  EndIf"]
+            copy += ["  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"]
+            out += copy
+            continue
+        out += kit_guard(dest, copy[:1] + ["  If NOT EXISTS VTC:kit-orig/%s" % bak,
+                                "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
+                                "  EndIf",
+                                "  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
+    out.append("EndIf")
+    return "\n".join(out)
+
+
+# the boot's own UP-Term: assign (a kit's wins); install_rig.py runs it again when it has put the owner's add-ons back
+UPTERM_ASSIGN = """C:Assign >NIL: UP-Term: EXISTS
+If WARN
+  C:Assign >NIL: UP-Term: VTC:%s
+EndIf""" % paths.UPTERM_DRAWER
+
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
+%(shadows)s
 C:Wait 15
+%(shadows_up)s
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
@@ -149,23 +237,45 @@ If EXISTS VTC:gg/bin/sh
 EndIf
 ; UP-Term: for the rig with no kit installed (UT1): the glyph pages are read
 ; through UP-Term:unifont/ and UP-Term:emoji/ (render/unifont.h, emoji.h), and
-; `install` puts them in VTC:upterm (a drawer, not the root of VTC:: dd_dir asks UP-Term: for a
-; directory and a device root is not one). A kit's install writes ENVARC:up-term/Dir and
-; makes its own assign, which wins.
-C:Assign >NIL: UP-Term: EXISTS
-If WARN
-  If NOT EXISTS ENVARC:up-term/Dir
-    C:Assign >NIL: UP-Term: VTC:upterm
-  EndIf
-EndIf
-C:SetEnv TERM vtcon
+; `install` puts them in VTC:Apps (a drawer, not the root of VTC:: dd_dir asks UP-Term: for a
+; directory and a device root is not one). A kit's assign wins: its block in
+; S:User-Startup either ran already (the assign exists) or runs later and
+; replaces this one. ENVARC:up-term/Dir is no sign of a kit: an installer_rig
+; run can leave it naming a drawer it deleted (rig 1, 2026-10-13).
+%(upterm_assign)s
+; no global TERM: a kit sets none either (vsh sets it in UP-Term windows, and a
+; ROM CON: window with TERM=vtcon would be sent xterm sequences)
 C:SetEnv TERMINFO /VTC/terminfo
 C:SetEnv TERMCAP /etc/termcap
+; the UP-Term icon beside Shell in SYS:System, as install.dos puts it there (its
+; tool UP-Term:bin/vsh is in VTC:Apps, rig.py install); a kit's own icon stays.
+; Only through an assign that exists: EXISTS on a missing UP-Term: puts up
+; "Please insert volume UP-Term" and the boot waits there for ever.
+C:Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  If EXISTS UP-Term:UP-Term.info
+    If NOT EXISTS SYS:System/UP-Term.info
+      C:Copy UP-Term:UP-Term UP-Term:UP-Term.info SYS:System CLONE
+    EndIf
+  EndIf
+EndIf
+; and the Prefs icon in SYS:Prefs, a plain program icon as install.dos puts it there
+C:Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  If EXISTS UP-Term:UP-Term-Prefs.info
+    If NOT EXISTS SYS:Prefs/UP-Term-Prefs.info
+      If NOT EXISTS SYS:Prefs
+        C:MakeDir >NIL: SYS:Prefs
+      EndIf
+      C:Copy UP-Term:UP-Term-Prefs UP-Term:UP-Term-Prefs.info SYS:Prefs CLONE
+    EndIf
+  EndIf
+EndIf
 Echo >>BOOTX:boot.log "assigns done"
 Run >NIL: SYS:System/RexxMast
 Run >NIL: BOOTX:amiagent PORT=%(port)d TOKEN=rigtoken
 Echo >>BOOTX:boot.log "amiagent started"
-""" % {"port": paths.AGENT_PORT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.AGENT_PORT, "upterm_assign": UPTERM_ASSIGN, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -197,8 +307,15 @@ STOCK = "--stock" in sys.argv
 # (uae_cpu/fpu_no_unimplemented false), so no 68060.library is needed.
 # --max: the --060 machine with as much Zorro III RAM as FS-UAE gives
 # (owner 2026-10-07: "max it for the next run").
-MAX = "--max" in sys.argv
+# The default machine is this one (owner 2026-10-13: every test rig runs as the 060 at full speed; a 68020 at
+# real speed made an install take ages). --a1200 asks for the stock 68020 at real speed (timing runs);
+# --stock, --exact and --fast are their own machines and keep the 020.
+A1200 = any(f in sys.argv for f in ("--a1200", "--stock", "--exact", "--fast"))
+MAX = "--max" in sys.argv or not A1200
 M060 = "--060" in sys.argv or MAX
+# --mmu: the 68060 with its MMU emulated (FS-UAE "68060", no JIT, slower): what MuForce needs
+# (`rig.py muforce`). Only on the 060 machines; the next start without it is back on 68060-NOMMU.
+MMU = "--mmu" in sys.argv and M060
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -335,41 +452,21 @@ def setup():
         shutil.copyfile(RIG / "os32/Devs/system-configuration", sysconf)
     elif sysconf.exists():
         sysconf.unlink()
-    # --stock: the agent gives every command process a 256 KB stack; on the
-    # 2 MB machine that took an eighth of memory each and the window under
-    # test ran out (2026-10-04, allocwatch). A stock A1200's Shell has 4 KB;
-    # 16 KB keeps Avail readings honest.
-    # The agent sets its commands' stack itself (NP_StackSize 262144, two
-    # places in the binary): --stock runs a copy with 16384 there.
-    # The two places are found by the tag, NP_StackSize (0x800003f3), not by
-    # offset: once as move.l #262144,(a0)+ after the tag, once as a TagItem.
-    # Offsets moved between 0.13.0 and 0.13.2.
+    # the vendored 68020 build, every start (dist/net/amiagent-0.13.2)
+    agentpatch.install(RIG / "boot/amiagent")
+    # --stock: the agent's command stack is 16 KB, not 256 KB (agentpatch.py)
     if STOCK:
-        a = bytearray((RIG / "boot/amiagent").read_bytes())
-        offs = [m.end() - 4 for m in re.finditer(
-            rb"\x80\x00\x03\xf3(?:\x20\xfc)?\x00\x04\x00\x00", bytes(a))]
-        if len(offs) != 2:
-            sys.exit(f"rig: amiagent has {len(offs)} NP_StackSize 262144 places, not 2; the --stock patch needs a look")
-        for off in offs:
-            a[off:off + 4] = (16384).to_bytes(4, "big")
-        (RIG / "boot/amiagent.stock").write_bytes(bytes(a))
+        (RIG / "boot/amiagent.stock").write_bytes(
+            agentpatch.stock_patch((RIG / "boot/amiagent").read_bytes()))
     (RIG / "boot/go").write_text(GO.replace("BOOTX:amiagent PORT", "BOOTX:amiagent.stock PORT")
                                  if STOCK else GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
-    # once, like the disk: the sources were in a session scratchpad, which
-    # is gone after that session (the rig failed to start, 2026-09-30)
-    if not (RIG / "boot/amiagent").exists() and paths.RIG_N > 1:
-        # rig 2 takes its own copy of rig 1's agent (only read there)
-        shutil.copyfile(paths.RIG_HOME / "rig/boot/amiagent", RIG / "boot/amiagent")
-        os.chmod(RIG / "boot/amiagent", 0o755)
-    if not (RIG / "boot/amiagent").exists():
-        sys.exit("rig: build/rig/boot/amiagent is missing (copy it from the Up Rough demo system)")
     machine = [
         "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
         "bsdsocket_library = 1",
     ] if STOCK else [
         "[fs-uae]", "amiga_model = A1200",
-        "cpu = %s" % ("68060-NOMMU" if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
+        "cpu = %s" % (("68060" if MMU else "68060-NOMMU") if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
         "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
@@ -379,7 +476,7 @@ def setup():
         # hidden and drawn again around every blit, so it flickered with the
         # blinking cursor (owner 2026-10-03: "the mouse pointer still blinks")
         "uae_gfxcard_hardware_sprite = true",
-        "jit_compiler = %d" % (0 if EXACT else 1),
+        "jit_compiler = %d" % (0 if EXACT or MMU else 1),   # the JIT and the emulated MMU exclude each other
         # without this FS-UAE runs the A1200's 68020 at about its real speed
         # (no JIT on an ARM host): UPDemo BENCH and cellbench measured a
         # stock machine, 2026-10-04
@@ -425,7 +522,79 @@ def setup_config_only():
     if (RIG / "sys.hdf").exists():
         setup()
 
+def stage_upterm(dest, vsh):
+    """The kit's UP-Term: drawer as far as the icon needs it (R9): bin/vsh, the tool
+    of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them."""
+    (dest / "bin").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(vsh, dest / "bin/vsh")
+    subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
+    (dest / "UP-Term").write_text("UP-Term: double-click the icon to open a terminal with vsh.\n")
+    # the Prefs editor's icon (W-R3), as make dist-base makes it; GO copies it to SYS:Prefs
+    subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term-Prefs.info"),
+                    "--tool", "C:UP-Term Prefs", "--plain"], check=True)
+    (dest / "UP-Term-Prefs").write_text("UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n")
+    # the drawer's own icon, beside it (VTC:Apps.info): without it the drawer cannot be opened from the
+    # Workbench, and Directory Opus showed only the stale Apps and UP-Term icons (rig 1, 2026-10-14)
+    subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"),
+                    str(dest.with_name(dest.name + ".info")), "--drawer"], check=True)
+
+def clean_stale_icons(vtc):
+    """Icons at the root of the host drawer that belong to nothing the rig or a kit has: VTC:UP-Term and
+    VTC:UP-Term.info (a launcher project copied there by hand on 2026-09-29 while P8 was written; no committed
+    rig code makes them, and the kit's launcher is VTC:Apps/UP-Term), and a drawer icon whose drawer is gone
+    (VTC:Apps.info after installer_rig deleted Apps). The .uaem files are FS-UAE's metadata of them."""
+    gone = []
+    old = vtc / "UP-Term"
+    if old.is_file():   # the drawer of that name (and its drawer icon) is the rig's own
+        gone.append("UP-Term")
+    info = vtc / "UP-Term.info"
+    if info.is_file() and info.read_bytes()[48:49] == b"\x04":   # a project icon, not the drawer icon
+        gone.append("UP-Term.info")
+    for icon in sorted(vtc.glob("*.info")):
+        data = icon.read_bytes()
+        # do_Type 2 = WBDRAWER (a volume's Disk.info and project icons have no drawer to miss)
+        if len(data) > 48 and data[48] == 2 and not (vtc / icon.name[:-5]).is_dir():
+            gone.append(icon.name)
+    for name in gone:
+        for f in (vtc / name, vtc / (name + ".uaem")):
+            if f.is_file():
+                f.unlink()
+                print("removed stale", f.name)
+
+def migrate_upterm_drawer(vtc):
+    """VTC:upterm -> VTC:Apps, with its icon made again by stage_upterm. Through a temporary name:
+    the Mac's filesystem is case-insensitive, and a half-done rename must not lose the drawer."""
+    old, new = vtc / paths.OLD_UPTERM_DRAWER, vtc / paths.UPTERM_DRAWER
+    tmp = vtc / "Apps.migrating"
+    if old.is_dir() and not new.is_dir():
+        old.rename(tmp)
+        tmp.rename(new)
+        print("renamed", old.name, "to", new.name, "in", vtc)
+    elif old.is_dir():   # an Apps drawer already there (installer_rig makes one): move in what it lacks
+        for f in sorted(old.iterdir()):
+            if not (new / f.name).exists():
+                f.rename(new / f.name)
+        shutil.rmtree(old, ignore_errors=True)
+    for name in (paths.OLD_UPTERM_DRAWER + ".info", paths.OLD_UPTERM_DRAWER + ".uaem", paths.OLD_UPTERM_DRAWER + ".info.uaem"):
+        (vtc / name).unlink(missing_ok=True)
+
+def stage_terminfo(src, dest):
+    """VTC:terminfo (the rig's TERMINFO, GO) as the kit's terminal entries (make build/kit-terminfo/stamp:
+    vtcon, vtcon-amiga, screen, in first-letter and hex directories). An older copy of it lacked
+    vtcon-amiga, the TERM of an AMIGA-personality vsh window, and ncurses' clear answered
+    "'vtcon-amiga': unknown terminal type" and printed nothing (W-T6, 2026-10-13)."""
+    for f in sorted(src.glob("*/*")):
+        if f.is_file():
+            (dest / f.parent.name).mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(f, dest / f.parent.name / f.name)
+
+def kit_restore():
+    """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
+    (RIG / "vtc/kit-restore").write_text("")
+    print("kit-restore: reboot the rig (stop, start); the kit's files come back from VTC:kit-orig")
+
 def install():
+    (RIG / "vtc/kit-restore").unlink(missing_ok=True)
     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
     # every other build/amiga program the drawer already holds: rig 2's VTC:
@@ -436,24 +605,40 @@ def install():
         if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
             shutil.copyfile(f, dst)
             print("refreshed", f.name, dst.stat().st_size, "bytes")
+    # every program the boot puts at a kit name (KIT_SHADOWS) is in VTC: even when the drawer
+    # never held it (W-R3 Prefs editor, W-R4 UPDemo and the other C: commands)
+    for name in sorted({x[0] for x in KIT_SHADOWS}):
+        src, dst = ROOT / "build/amiga" / name, RIG / "vtc" / name
+        if src.is_file() and not dst.is_file():
+            shutil.copyfile(src, dst)
+            print("added", name, dst.stat().st_size, "bytes")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)
-    # the glyph pages (UT1): UP-Term: is assigned to VTC:upterm on a rig with no
+    # the glyph pages (UT1): UP-Term: is assigned to VTC:Apps on a rig with no
     # kit (GO), and the windows read UP-Term:unifont/ and emoji/
     for drawer in ("unifont", "emoji"):
         src = ROOT / "build" / drawer / "pages"
         if src.is_dir():
-            dst = RIG / "vtc" / "upterm" / drawer
+            dst = RIG / "vtc" / paths.UPTERM_DRAWER / drawer
             dst.mkdir(parents=True, exist_ok=True)
             for f in sorted(src.iterdir()):
                 if f.is_file() and f.name != "stamp" and not (dst / f.name).is_file():
                     shutil.copyfile(f, dst / f.name)
         else:
             print("no %s: run make %s for glyphs above U+00FF on the rig" % (src, drawer))
+    for vtc in sorted(paths.RIG_HOME.glob("rig*/vtc")):   # every rig drawer, the ones that are off too
+        clean_stale_icons(vtc)
+        migrate_upterm_drawer(vtc)
+    stage_upterm(RIG / "vtc" / paths.UPTERM_DRAWER, ROOT / "build/amiga/vsh")
+    if (ROOT / "build/kit-terminfo/stamp").is_file():
+        stage_terminfo(ROOT / "build/kit-terminfo", RIG / "vtc/terminfo")
+    else:
+        print("no %s: run make build/kit-terminfo/stamp, or VTC:terminfo stays as it was" % (ROOT / "build/kit-terminfo"))
     (RIG / "vtc/themes").mkdir(exist_ok=True)
     for f in sorted((ROOT / "themes").glob("*.conf")):
         shutil.copyfile(f, RIG / "vtc/themes" / f.name)
+    print("installed in VTC:; a rig with a kit runs the build after the next boot (KIT_SHADOWS copy it over the kit's files)")
 
 def screenmode(name):
     """Install a ScreenMode prefs file (saved from ours) and reboot."""
@@ -593,14 +778,34 @@ def retry_wb_reset():
     print("[WARN] the Workbench stayed PAL (W43)")
 
 def stop():
+    """Safe stop: killing FS-UAE while the Amiga writes to its disk corrupts the filesystem (rig 2, 2026-10-13).
+    Wait until the agent takes a command (nothing else is running), lock the volumes (the OS flushes them), stay
+    quiet for 8 s, ask FS-UAE to quit (TERM), and kill it only if it ignores that."""
     if mine() and status(quiet=True):
-        try:  # write-protect DH0: first, which flushes it (matters with --rw)
+        try:
             sys.path.insert(0, str(ROOT / "tools/rig"))
             import ami
-            ami.req(0x02, (10).to_bytes(2, "big") + b"C:Lock DH0: ON", timeout=15)
+            for _ in range(60):   # a running command answers "one at a time"/"still running": wait it out
+                try:
+                    ami.req(0x02, (10).to_bytes(2, "big") + b"Echo >NIL: idle", timeout=15)
+                    break
+                except BaseException:
+                    time.sleep(5)
+            for vol in ("DH0:", "DH1:"):
+                try:
+                    ami.req(0x02, (10).to_bytes(2, "big") + b"C:Lock " + vol.encode() + b" ON", timeout=15)
+                except BaseException:
+                    pass
+            time.sleep(8)
         except BaseException:
             pass
-    subprocess.run(["pkill", "-9", "-f", str(CFG)])
+    subprocess.run(["pkill", "-TERM", "-f", str(CFG)])
+    for _ in range(90):   # FS-UAE closes its disks before it exits
+        if not mine():
+            break
+        time.sleep(1)
+    if mine():
+        subprocess.run(["pkill", "-9", "-f", str(CFG)])
     print("stopped" if not mine() else "[ERROR] still running")
 
 def status(quiet=False):
@@ -616,7 +821,15 @@ def status(quiet=False):
             print("down")
         return False
 
+def muforce():
+    import muforce as mf
+    mf.main(sys.argv[2:])
+
+def wasabi():
+    import wasabi as wb
+    wb.main(sys.argv[2:])
+
 if __name__ == "__main__":
-    {"setup": setup, "start": start, "stop": stop, "install": install,
-     "status": status, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
+    {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
+     "status": status, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
      "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()

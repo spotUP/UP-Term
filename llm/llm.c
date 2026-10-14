@@ -269,8 +269,69 @@ void llm_w_usage(jw *w, const llm_usage *u)
     jw_rawz(w, "}");
 }
 
+/* api/pi-messages.ts: the answer is a partial message whose keys are role, content, api, provider, model, usage, stopReason, timestamp;
+ * the terminal event assigns stopReason and usage (in place), then errorMessage (error), responseId, providerThinkingLevel, and
+ * appends diagnostics. A failure made anew (createErrorEvent) has errorMessage between stopReason and timestamp. */
+static void m_pi_messages(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts)
+{
+    jw_rawz(w, "{\"role\":\"assistant\",\"content\":");
+    content(w, c, cn);
+    key(w, "api");
+    jw_strz(w, m->api ? m->api : "");
+    key(w, "provider");
+    jw_strz(w, m->provider ? m->provider : "");
+    key(w, "model");
+    jw_strz(w, m->model ? m->model : "");
+    key(w, "usage");
+    if (m->usage_json && m->usage_json_n > 0)
+        jw_raw(w, m->usage_json, m->usage_json_n);
+    else
+        llm_w_usage(w, &m->usage);
+    key(w, "stopReason");
+    jw_strz(w, m->stop ? llm_stop_name(m->stop) : "stop");
+    if (m->error && m->pi_order == 1) {
+        key(w, "errorMessage");
+        jw_strz(w, m->error);
+    }
+    key(w, "timestamp");
+    llm_w_ts(w, ts);
+    if (m->error && m->pi_order == 2) {
+        key(w, "errorMessage");
+        jw_strz(w, m->error);
+    }
+    if (m->response_id && *m->response_id) {
+        key(w, "responseId");
+        jw_strz(w, m->response_id);
+    }
+    if (m->level && *m->level) {
+        key(w, "providerThinkingLevel");
+        jw_strz(w, m->level);
+    }
+    if (m->rewrite && m->rewrite_n > 0) {
+        key(w, "diagnostics");
+        jw_rawz(w, "[{\"type\":\"pi_messages_rewrite\",\"timestamp\":");
+        llm_w_ts(w, m->rewrite_ts);
+        jw_rawz(w, ",\"details\":");
+        jw_raw(w, m->rewrite, m->rewrite_n);
+        jw_rawz(w, "}]");
+    }
+    if (m->has_duration) {
+        key(w, "durationMs");
+        jw_long(w, m->duration_ms);
+    }
+    if (m->thinking_level && *m->thinking_level) {
+        key(w, "thinkingLevel");
+        jw_strz(w, m->thinking_level);
+    }
+    jw_raw(w, "}", 1);
+}
+
 void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts)
 {
+    if (m->pi_order) {
+        m_pi_messages(w, c, cn, m, ts);
+        return;
+    }
     jw_rawz(w, "{\"role\":\"assistant\",\"content\":");
     content(w, c, cn);
     key(w, "api");
@@ -289,6 +350,12 @@ void llm_m_assistant(jw *w, const char *c, long cn, const llm_meta *m, llm_ts ts
     jw_strz(w, m->stop ? llm_stop_name(m->stop) : "stop");
     key(w, "timestamp");
     llm_w_ts(w, ts);
+    if (m->diag && m->diag_n > 0) {     /* appendAssistantMessageDiagnostic: before the stream's own keys (the request was refused first) */
+        key(w, "diagnostics");
+        jw_rawz(w, "[");
+        jw_raw(w, m->diag, m->diag_n);
+        jw_rawz(w, "]");
+    }
     /* the keys in the order pi-ai assigns them: the id and the server's model at the start of the answer, the provider's
      * stop reason at its end, an error in the stream's catch, the session's level last (the agent loop) */
     if (m->response_id && *m->response_id) {

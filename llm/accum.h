@@ -38,6 +38,14 @@ typedef struct llm_acc {
     int has_duration;
     long price[4];              /* its price per million tokens in micro-dollars: input, output, cacheRead, cacheWrite */
     char id[96];
+    char level_srv[16];         /* providerThinkingLevel the server sent (LE_META), "" none */
+    jw usage_raw;               /* the usage object as the server sent it (LE_META), empty none */
+    jw rewrite;                 /* the rewrite impact object (LE_META), empty none */
+    llm_ts rewrite_ts;          /* when it arrived (llm_wall): the diagnostic's timestamp */
+    jw diag;                    /* the diagnostics LE_META events carried, JSON objects joined by commas */
+    int have_cost;              /* usage.cost is the server's (LE_USAGE has_cost) */
+    int anew;                   /* the failure is a message made anew (llm_acc_anew): the agent loop's own, not the stream's */
+    int meta_seen;              /* LE_META came: the server's own terminal event follows (pi-messages) */
     int stop;                   /* LS_* */
     char stop_raw[32];
     char *err;                  /* the error text (LLM_ERR_MAX), allocated by the first failure, "" before */
@@ -65,6 +73,8 @@ void llm_acc_level(llm_acc *a, const char *level);
 /* the session's thinking level the request was made at ("off" included), kept on the finished message as pi-agent-core's
  * thinkingLevel (agent-loop.js adds it to the stream's result); not set: the message has none */
 void llm_acc_thinking(llm_acc *a, const char *level);
+/* the answer is a failure the agent made before any request went out (an abort at agent_start): content and usage empty, errorMessage before timestamp */
+void llm_acc_anew(llm_acc *a);
 /* the request's duration, kept on the finished message as pi-ai 1.1.0's durationMs (ms from the request's start to the
  * final message); not set: the message has none. A streaming message carries none either: the caller clears it. */
 void llm_acc_duration(llm_acc *a, long ms);

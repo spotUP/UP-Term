@@ -143,13 +143,40 @@ static int x_canon(void *u, const char *path, char *out, long cap)
     return 0;
 }
 
+static long now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long)ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
+}
+
+/* SIGKILL to a command's process group (its leader `pid`, the caller's child) until no member is left; the leader reaped
+ * into *st. One kill(-pid) is not enough: the kernel signals the members the group has at that moment, and a child that one
+ * of them is forking right then is not among them yet, so it lives on in the group (on macOS `while :; do (sleep 5); done`
+ * kept a live member after a single group SIGKILL 153 times in 200). Each round kills those there, and a killed process
+ * forks no more. Bounded at 2 s for a member that will not go (a zombie its new parent has not reaped yet). */
+static void kill_group(pid_t pid, int *st)
+{
+    struct timespec ts;
+    int k;
+    kill(-pid, SIGKILL);
+    waitpid(pid, st, 0);
+    ts.tv_sec = 0;
+    ts.tv_nsec = 5000000L;
+    for (k = 0; k < 400 && kill(-pid, SIGKILL) == 0; k++)
+        nanosleep(&ts, 0);
+}
+
+/* a command to its end or to its timeout (whole seconds, measured in milliseconds: a 1 s timeout is 1000 ms, not "until
+ * the clock's next second"), its output read meanwhile. The timeout holds after the command closes its output too: the
+ * wait for its exit is part of it. At the timeout its whole group is killed (kill_group). */
 static int x_run(void *u, const char *cmd, int timeout_s, char *out, long cap, long *outn, long *rc)
 {
     sys_posix *p = (sys_posix *)u;
-    int fd[2], st = 0, timed_out = 0, sent = 0;
+    int fd[2], st = 0, timed_out = 0, eof = 0;
     pid_t pid;
     long n = 0;
-    time_t end = timeout_s > 0 ? time(0) + timeout_s : 0;
+    long end = timeout_s > 0 ? now_ms() + (long)timeout_s * 1000L : 0;
     if (pipe(fd)) {
         set_err(p, "pipe");
         return -1;
@@ -170,38 +197,51 @@ static int x_run(void *u, const char *cmd, int timeout_s, char *out, long cap, l
         execl("/bin/sh", "sh", "-c", cmd, (char *)0);
         _exit(127);
     }
+    setpgid(pid, pid);                  /* in the parent too: the group exists before any kill, however late the child runs */
     close(fd[1]);
     for (;;) {
         struct pollfd pf;
         char buf[1024];
         ssize_t r;
-        int wait_ms = 200;
-        if (end && time(0) >= end) {
-            timed_out = 1;
-            break;
+        long wait_ms = 200;
+        if (end) {
+            long left = end - now_ms();
+            if (left <= 0) {
+                timed_out = 1;
+                break;
+            }
+            if (left < wait_ms)
+                wait_ms = left;
+        }
+        if (eof) {                      /* output closed: wait for its exit, still within the timeout */
+            struct timespec ts;
+            if (waitpid(pid, &st, end ? WNOHANG : 0) == pid)
+                break;
+            ts.tv_sec = 0;
+            ts.tv_nsec = (wait_ms < 10 ? wait_ms : 10) * 1000000L;
+            nanosleep(&ts, 0);
+            continue;
         }
         pf.fd = fd[0];
         pf.events = POLLIN;
         pf.revents = 0;
-        if (poll(&pf, 1, wait_ms) <= 0)
+        if (poll(&pf, 1, (int)wait_ms) <= 0)
             continue;
         r = read(fd[0], buf, sizeof(buf));
-        if (r <= 0)
-            break;
+        if (r <= 0) {
+            eof = 1;
+            continue;
+        }
         if (n < cap) {
             long take = (long)r < cap - n ? (long)r : cap - n;
             memcpy(out + n, buf, (size_t)take);
             n += take;
         }
     }
-    if (timed_out) {
-        kill(-pid, SIGKILL);
-        sent = 1;
-    }
     close(fd[0]);
-    waitpid(pid, &st, 0);
     *outn = n;
-    if (sent) {
+    if (timed_out) {
+        kill_group(pid, &st);
         *rc = -1;
         return SYS_TIMEOUT;
     }
@@ -328,8 +368,7 @@ static int x_bg_kill(void *u, long job)
     }
     if (!j->ended) {
         int st;
-        kill(-(pid_t)j->pid, SIGKILL);
-        waitpid((pid_t)j->pid, &st, 0);
+        kill_group((pid_t)j->pid, &st);
         j->ended = 1;
         j->rc = 137;
     }
@@ -609,8 +648,10 @@ static long x_spawn2_close(void *u, void *h, long ms)
     for (sig = 0; sig < 3; sig++) {
         if (sig == 1)
             kill(-c->pid, SIGTERM);
-        else if (sig == 2)
-            kill(-c->pid, SIGKILL);
+        else if (sig == 2) {
+            kill_group(c->pid, &st);
+            break;
+        }
         for (t = 0; t <= (sig ? 2000 : ms); t += 10) {
             if (waitpid(c->pid, &st, WNOHANG) == c->pid) {
                 rc = WIFEXITED(st) ? WEXITSTATUS(st) : -1;

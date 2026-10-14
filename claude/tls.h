@@ -14,6 +14,7 @@
 #define TLS_ERROR      (-1)
 #define TLS_WANT_READ  (-4)
 #define TLS_WANT_WRITE (-5)
+#define TLS_BREAK      (-6)     /* the idle hook asked to stop */
 
 typedef struct cl_tls cl_tls;
 
@@ -26,8 +27,11 @@ void tls_exit(void);
  * memory or without TLS (err says which). */
 cl_tls *tls_new(long sock, const char *host, char *err, int cap);
 /* One step of the handshake: 0 done, TLS_WANT_*, or TLS_ERROR (err says
- * why: the certificate, the name, the protocol). */
-int tls_handshake(cl_tls *t, char *err, int cap);
+ * why: the certificate, the name, the protocol). idle (0 none) is called
+ * between the steps the library computes in one go -- the key exchange,
+ * each certificate of the chain, the server's signature: over a second
+ * each on a 68020 -- nonzero from it ends the handshake with TLS_BREAK. */
+int tls_handshake(cl_tls *t, int (*idle)(void *iu), void *iu, char *err, int cap);
 /* > 0 bytes, 0 closed, TLS_WANT_*, TLS_ERROR */
 long tls_send(cl_tls *t, const char *b, long n);
 long tls_recv(cl_tls *t, char *b, long cap);

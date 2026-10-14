@@ -4,7 +4,8 @@
  * (llm/event.h). llm/be_anthropic.c (anthropic-messages, shared with
  * C:Claude) and llm/be_openai_chat.c (openai-completions) and llm/be_openai_responses.c
  * (openai-responses), llm/be_azure.c (azure-openai-responses) and llm/be_google.c
- * (google-generative-ai) and llm/be_bedrock.c (bedrock-converse-stream) implement it;
+ * (google-generative-ai) and llm/be_bedrock.c (bedrock-converse-stream) and llm/be_pi_messages.c (pi-messages, the Radius
+ * gateway's wire) implement it;
  * llm/request.c drives any of them.
  * Portable C89. */
 #ifndef LLM_BACKEND_H
@@ -89,6 +90,8 @@ typedef struct llm_model {
     const char *api_version, *deployment;
     /* bedrock-converse-stream (llm_cfg_endpoint): the credentials and region; 0: none */
     const llm_aws *aws;
+    /* pi-messages (llm_cfg_endpoint): PI_CACHE_RETENTION=long, the cacheRetention a request carries when none is given */
+    int cache_long;
 } llm_model;
 
 /* a model with nothing set: the compat flags LC_UNSET (detect), the rest 0 */
@@ -126,6 +129,10 @@ typedef struct llm_ctx {
     unsigned think_budget_set;  /* bit LT_x: a custom thinking budget for that level (settings.json thinkingBudgets) */
     const char *cache_retention;    /* "none" | "short" | "long", 0: PI_CACHE_RETENTION, else short (bedrock: cachePoint ttl) */
     long think_budget[8];       /* tokens, by LT_* (google: thinkingConfig.thinkingBudget; anthropic, bedrock: the budget before adjustMaxTokensForThinking) */
+    /* anthropic-messages strict-tool fallback (pi 1.2.0 disablePreferredStrictTools): in: send the tools whose constrainedSampling
+     * is strict "prefer" as non-strict; out (when not 0): the body just built carried such a tool as strict (hasPreferredStrictTools) */
+    int no_prefer_strict;
+    int *prefer_strict_out;
 } llm_ctx;
 
 /* the custom thinking budget of a level (xhigh and max count as high, simple-options.ts clampReasoning), -1 none */
@@ -171,6 +178,9 @@ typedef struct llm_backend {
      * itself (google: processStreamResponse looks at every network chunk): it replaces the SSE parser, and calls feed for
      * each event it finds. 0 pointer: the SSE parser. Returns -1 when the stream is malformed. */
     int (*raw)(void *dec, const char *p, long n, const llm_sink *k);
+    /* a 400 invalid_request_error whose text names a limit of strict tools (anthropic-messages): 1 when the request may go
+     * again with its preferred strict tools non-strict (llm_ctx.no_prefer_strict). 0 pointer: never */
+    int (*strict_limit)(const char *errtext);
 } llm_backend;
 
 extern const llm_backend llm_be_anthropic;
@@ -180,6 +190,7 @@ extern const llm_backend llm_be_azure;
 extern const llm_backend llm_be_google;
 extern const llm_backend llm_be_openai_codex;
 extern const llm_backend llm_be_bedrock;
+extern const llm_backend llm_be_pi_messages;
 
 /* the thinking level an anthropic-messages request records on its answer (pi: providerThinkingLevel, set when the
  * model's supportsMidConvoEffort is on): "low".."max", 0 when the model does not manage the effort */
@@ -202,7 +213,7 @@ int llm_google_call_ids(const char *model_id);
 /* the backend of an api name, 0 none */
 const llm_backend *llm_backend_of(const char *api);
 /* calls of each backend's feed since the start (the reachability tests' sentinel) */
-extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses, llm_feeds_azure, llm_feeds_google, llm_feeds_bedrock, llm_feeds_codex;
+extern long llm_feeds_anthropic, llm_feeds_openai, llm_feeds_responses, llm_feeds_azure, llm_feeds_google, llm_feeds_bedrock, llm_feeds_codex, llm_feeds_pi_messages;
 
 /* the wall clock the generated tool-call ids read (google: pi's `${name}_${Date.now()}_${++counter}`); the host sets it
  * before a request (now: seconds and ms since 1970); unset, the ids read time() */

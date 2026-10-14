@@ -2368,7 +2368,7 @@ void repl_run(cl_repl *r)
         free(line);
         return;
     }
-    cl_copy(m, "Claude in UP-Term. Model ", sizeof(m));
+    cl_copy(m, r->io->upterm && r->io->upterm(r->io->u) ? "Claude in UP-Term. Model " : "Claude. Model ", sizeof(m));
     cl_cat(m, r->model, sizeof(m));
     cl_cat(m, ", effort ", sizeof(m));
     cl_cat(m, r->effort, sizeof(m));

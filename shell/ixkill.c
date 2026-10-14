@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../tty/qmark.h"
 #include <signal.h>
 #include <strings.h>
 
@@ -26,6 +27,10 @@ static const struct { const char *name; int sig; } names[] = {
 int main(int argc, char **argv)
 {
     int sig = SIGTERM, i = 1, k, rc = 0;
+    if (qmark_argv(argc, argv)) { /* `ixkill ?` shows the usage and ends (a bare ixkill is a usage error, 2) */
+        printf("usage: ixkill [-SIG | -n] pid ...\n");
+        return 0;
+    }
     if (i < argc && argv[i][0] == '-') {
         const char *s = argv[i] + 1;
         if (!strncasecmp(s, "SIG", 3))

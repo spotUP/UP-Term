@@ -3,10 +3,15 @@
  * is the Mac end). No ixemul: bsdsocket.library (Roadshow, AmiTCP, Miami)
  * and plain AmigaDOS, so it starts at once and fits the kit.
  *
- *   uptelnet HOST [PORT] [TERM name]
+ *   uptelnet HOST [PORT] [TERM name] [KEY file]
  *
  * PORT defaults to 23, TERM to xterm-256color (what an UP-Term window is
- * to a Unix machine). Ctrl-] ends the session; so does a Break (Ctrl-C
+ * to a Unix machine). KEY names the key file ("ID hexkey", C:Claude passes
+ * ENVARC:Claude/nas-key): the login then goes by challenge-response and the
+ * password is not typed (net/tn.h holds the protocol). A missing or empty
+ * file asks the server to pair this Amiga: type the password once, the key
+ * the server hands over is written to the file (and, for ENVARC:..., to its
+ * ENV: copy), and the next start needs no password. Ctrl-] ends the session; so does a Break (Ctrl-C
  * from Status/Break, or the window's own Ctrl-C on a console without
  * termios). The protocol is net/tn.c's (host-tested); this file is the
  * socket, the console and the loop.
@@ -35,14 +40,21 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <proto/bsdsocket.h>
+#include <devices/timer.h>
+#include <proto/timer.h>
 #include "tn.h"
+#include "../llm/sha256.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
+#include "../tty/qmark.h"
 
 static const char vers[] = "$VER: uptelnet 1.0 (4.10.2026) UP-Term";
 
 struct Library *SocketBase;
+struct Device *TimerBase;
+
+static const char *keypath;        /* KEY: the key file */
 
 #define WAIT_US 500000L            /* the console's WAIT_CHAR timeout: also the size poll */
 #define ESCAPE_KEY 0x1D            /* Ctrl-] */
@@ -55,6 +67,7 @@ typedef struct sess {
     int pkt_busy;
     int termios;                   /* the window took ACTION_VTCON_TCSETA */
     int dead;                      /* the socket closed or failed */
+    int bad_server;                /* the server failed the key check: close the line */
     tn t;
 } sess;
 
@@ -70,6 +83,97 @@ static void sock_out(void *u, const unsigned char *b, int n)
         b += k;
         n -= (int)k;
     }
+}
+
+/* the key file written, and for ENVARC:x its ENV: copy (Install and C:Claude read either) */
+static void write_key_file(const char *path, const char *text, LONG n)
+{
+    BPTR f = Open((STRPTR)path, MODE_NEWFILE);
+    if (f) {
+        Write(f, (APTR)text, n);
+        Close(f);
+    }
+    if (!strncmp(path, "ENVARC:", 7)) {
+        char env[200];
+        char *slash;
+        strcpy(env, "ENV:");
+        strncat(env, path + 7, sizeof(env) - 5);
+        slash = strrchr(env, '/');
+        if (slash) {
+            BPTR l;
+            *slash = 0;
+            l = CreateDir((STRPTR)env);
+            if (l)
+                UnLock(l);
+            *slash = '/';
+        }
+        f = Open((STRPTR)env, MODE_NEWFILE);
+        if (f) {
+            Write(f, (APTR)text, n);
+            Close(f);
+        }
+    }
+}
+
+/* the key login moves on (net/tn.h): what to tell the user, before the bytes after it are shown */
+static void auth_event(void *u, int state, const char *id, const unsigned char *key)
+{
+    sess *s = (sess *)u;
+    if (state == TN_AUTH_PAIRED) {
+        char line[TN_ID_MAX + TN_KEY_LEN * 2 + 3];
+        LONG len = (LONG)tn_key_format(id, key, line);
+        write_key_file(keypath, line, len);
+        Printf("uptelnet: paired with this NAS as %s; the next start needs no password.\r\n", (LONG)id);
+    } else if (state == TN_AUTH_REJECTED) {
+        PutStr((STRPTR)"uptelnet: the NAS does not know this Amiga's key any more: type the password.\r\n");
+    } else if (state == TN_AUTH_BAD_SERVER) {
+        PutStr((STRPTR)"uptelnet: this is not the NAS this Amiga paired with (it failed the key check): line closed.\r\n");
+        s->bad_server = 1;
+    }
+}
+
+/* 16 bytes that differ at every start (not secret: the server's nonce is the other half) */
+static void make_nonce(unsigned char cn[16])
+{
+    struct DateStamp ds;
+    struct EClockVal ev;
+    ULONG parts[6];
+    llm_sha256 c;
+    unsigned char h[32];
+    int i;
+    DateStamp(&ds);
+    ev.ev_hi = ev.ev_lo = 0;
+    if (TimerBase)
+        ReadEClock(&ev);
+    parts[0] = ev.ev_hi;
+    parts[1] = ev.ev_lo;
+    parts[2] = (ULONG)ds.ds_Days;
+    parts[3] = (ULONG)ds.ds_Minute;
+    parts[4] = (ULONG)ds.ds_Tick;
+    parts[5] = (ULONG)FindTask(0);
+    llm_sha256_init(&c);
+    llm_sha256_add(&c, parts, sizeof(parts));
+    llm_sha256_end(&c, h);
+    for (i = 0; i < 16; i++)
+        cn[i] = h[i];
+}
+
+/* KEY: set up the key login; the file read here ("ID hexkey"), else a pairing request */
+static void setup_key(tn *t)
+{
+    char text[256], id[TN_ID_MAX + 1];
+    unsigned char key[TN_KEY_LEN], cn[16];
+    LONG n = 0;
+    int have = 0;
+    BPTR f = Open((STRPTR)keypath, MODE_OLDFILE);
+    if (f) {
+        n = Read(f, text, sizeof(text) - 1);
+        Close(f);
+        text[n > 0 ? n : 0] = 0;
+        have = n > 0 && tn_key_parse(text, id, key);
+    }
+    make_nonce(cn);
+    tn_set_key(t, have ? id : 0, key, cn, auth_event);
 }
 
 static void con_show(void *u, const unsigned char *b, int n)
@@ -186,6 +290,8 @@ static void session(sess *s)
             if (n <= 0)
                 break; /* the far end closed */
             tn_recv(&s->t, buf, (int)n);
+            if (s->bad_server)
+                break;
         }
         if (s->pkt_busy && GetMsg(s->port)) {
             s->pkt_busy = 0;
@@ -211,12 +317,20 @@ static void session(sess *s)
 
 int main(void)
 {
-    static const char tmpl[] = "HOST/A,PORT/N,TERM/K";
-    LONG args[3] = { 0, 0, 0 };
-    struct RDArgs *rd = ReadArgs((STRPTR)tmpl, args, 0);
+    static const char tmpl[] = "HOST/A,PORT/N,TERM/K,KEY/K";
+    LONG args[4] = { 0, 0, 0, 0 };
+    struct timerequest treq;
+    int timer_open = 0;
+    struct RDArgs *rd;
     static sess s;
     LONG port;
     int cols = 80, rows = 24, rc = RETURN_OK;
+    if (qmark_line((const char *)GetArgStr())) {
+        PutStr((STRPTR)tmpl);
+        PutStr((STRPTR)"\n");
+        return RETURN_OK;
+    }
+    rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"uptelnet");
         return RETURN_FAIL;
@@ -231,6 +345,15 @@ int main(void)
         return RETURN_FAIL;
     }
     memset(&s, 0, sizeof(s));
+    if (args[3]) {
+        /* only the key login needs the clock (ReadEClock) */
+        memset(&treq, 0, sizeof(treq));
+        if (!OpenDevice((STRPTR)"timer.device", UNIT_MICROHZ, (struct IORequest *)&treq, 0)) {
+            TimerBase = treq.tr_node.io_Device;
+            timer_open = 1;
+        }
+        keypath = (const char *)args[3];
+    }
     s.in = Input();
     s.out = Output();
     s.port = CreateMsgPort();
@@ -243,6 +366,8 @@ int main(void)
     Printf("uptelnet: connected to %s port %ld, %ld x %ld. Ctrl-] ends it.\n", args[0], port, (LONG)cols,
            (LONG)rows);
     tn_init(&s.t, args[2] ? (const char *)args[2] : "xterm-256color", cols, rows, sock_out, con_show, &s);
+    if (keypath)
+        setup_key(&s.t);
     con_raw(&s);
     tn_start(&s.t);
     session(&s);
@@ -260,7 +385,11 @@ int main(void)
     SetMode(s.in, 0); /* cooked again; on an UP-Term window it also ends termios mode */
     PutStr((STRPTR)"\nuptelnet: connection closed\n");
     CloseSocket(s.sock);
+    if (s.bad_server)
+        rc = RETURN_ERROR;
 out:
+    if (timer_open)
+        CloseDevice((struct IORequest *)&treq);
     if (s.port)
         DeleteMsgPort(s.port);
     CloseLibrary(SocketBase);

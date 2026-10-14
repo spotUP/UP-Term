@@ -107,6 +107,8 @@ typedef struct {
     char madedir[UD_MAXPARTS][256];
     char oldfrom[UD_MAXPARTS][UD_DRAWER], olddrawer[UD_MAXPARTS][UD_DRAWER], oldname[UD_MAXPARTS][UD_NAME];
     char line[600], dir[256];       /* emit_copy, emit_delete */
+    char hpath[UD_MAXHANDED][UD_DRAWER];   /* the new manifest's handed# paths */
+    int nh;
 } ud_out;
 
 /* buf = a b c ... joined (0 for the ones not used); 0 when they do not fit */
@@ -177,6 +179,26 @@ static void emit_delete(ud_out *o, ud_part *p, const char *rest)
     say(o, p, "EndIf");
 }
 
+/* the handed path (index) that path is or is below, -1 for none */
+static int handed_of(const ud_out *o, const char *path)
+{
+    int k;
+    for (k = 0; k < o->nh; k++) {
+        size_t n = strlen(o->hpath[k]);
+        if (!strncmp(path, o->hpath[k], n) && (path[n] == 0 || path[n] == '/')) return k;
+    }
+    return -1;
+}
+
+/* a gone line under a handed path is left alone; its path is named once in the result */
+static void saw_handed(const ud_out *o, ud_result *r, int k)
+{
+    int i;
+    for (i = 0; i < r->nhanded; i++)
+        if (!strcmp(r->handed[i], o->hpath[k])) return;
+    if (r->nhanded < UD_MAXHANDED) strcpy(r->handed[r->nhanded++], o->hpath[k]);
+}
+
 static int is_section(const char *path, const char **name)
 {
     if (strncmp(path, "install.dos#", 12)) return 0;
@@ -209,6 +231,11 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
         strcpy(p->from, from);
         strcpy(p->drawer, drawer);
     }
+    for (i = 0; i < b.n; i++)
+        if (!strncmp(b.l[i].path, "handed#", 7)) {
+            if (o->nh >= UD_MAXHANDED || strlen(b.l[i].path + 7) >= UD_DRAWER) goto out;
+            strcpy(o->hpath[o->nh++], b.l[i].path + 7);
+        }
     for (i = 0; i < a.n && nold < UD_MAXPARTS; i++) {
         if (copy_line(a.l[i].path, o->oldfrom[nold], o->olddrawer[nold]) == 1 && strlen(a.l[i].part) < UD_NAME)
             strcpy(o->oldname[nold++], a.l[i].part);
@@ -216,7 +243,9 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
     i = j = 0;
     while (i < a.n || j < b.n) {
         int c = (i >= a.n) ? 1 : (j >= b.n) ? -1 : strcmp(a.l[i].path, b.l[j].path);
-        if (c == 0 && !strcmp(a.l[i].part, b.l[j].part) && a.l[i].size == b.l[j].size && a.l[i].crc == b.l[j].crc) {
+        /* the same file, size and CRC: unchanged, whichever part installed it (a part renamed by
+         * the kit split, tools to claude, does not copy the file again) */
+        if (c == 0 && a.l[i].size == b.l[j].size && a.l[i].crc == b.l[j].crc) {
             ud_part *p = part_of(r, b.l[j].part);
             int moved = 0, k;
             /* a copy part whose drawers moved copies every file again */
@@ -237,7 +266,7 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
             ud_part *p;
             if (c == 0) i++;
             j++;
-            if (!strcmp(l->part, "-") || !strncmp(l->path, "copy#", 5)) continue;
+            if (!strcmp(l->part, "-") || !strncmp(l->path, "copy#", 5) || !strncmp(l->path, "handed#", 7)) continue;
             if (is_section(l->path, &sec)) {
                 if (!strcmp(sec, "all")) all = 1;
                 else if (strncmp(sec, "copy-", 5)) {   /* the Installer copies those itself */
@@ -259,7 +288,12 @@ int ud_compare(char *oldtext, char *newtext, const char *kit, ud_result *r, ud_e
             ud_line *l = &a.l[i++];
             ud_part *p;
             int k;
-            if (!strcmp(l->part, "-") || !strncmp(l->path, "copy#", 5) || is_section(l->path, &sec)) continue;
+            if (!strcmp(l->part, "-") || !strncmp(l->path, "copy#", 5) || !strncmp(l->path, "handed#", 7) ||
+                is_section(l->path, &sec)) continue;
+            if ((k = handed_of(o, l->path)) >= 0) {   /* an add-on archive's file now: stays as it is */
+                saw_handed(o, r, k);
+                continue;
+            }
             r->gone++;
             if (!(p = part_of(r, l->part))) goto out;
             for (k = 0; k < nold && strcmp(o->oldname[k], l->part); k++)
@@ -287,6 +321,63 @@ out:
     free(b.l);
     free(o);
     return rc;
+}
+
+/* the line's path: after the third space (a path may hold spaces) */
+static const char *line_path(const char *l)
+{
+    int k;
+    for (k = 0; k < 3 && l; k++) {
+        l = strchr(l, ' ');
+        if (l) l++;
+    }
+    return l;
+}
+
+/* is path (or a copy# line's kit drawer) the paths-entry or below it; entries are
+ * comma separated, each [e, e + n) */
+static int under_paths(const char *path, size_t plen, const char *paths)
+{
+    const char *e = paths;
+    while (*e) {
+        const char *c = strchr(e, ',');
+        size_t n = c ? (size_t)(c - e) : strlen(e);
+        if (n && plen >= n && !strncmp(path, e, n) && (plen == n || path[n] == '/')) return 1;
+        e += n;
+        if (*e == ',') e++;
+    }
+    return 0;
+}
+
+int ud_only(char *text, const char *paths)
+{
+    char *in = text, *out = text;
+    int kept = 0;
+    while (*in) {
+        char *e = strchr(in, '\n');
+        size_t len = e ? (size_t)(e - in) + 1 : strlen(in);
+        const char *path = line_path(in);
+        size_t plen = 0;
+        int keep = 0;
+        if (path && (size_t)(path - in) < len) {
+            const char *end = in + len - (e ? 1 : 0);
+            if (!strncmp(path, "copy#", 5)) {
+                const char *h = memchr(path + 5, '#', (size_t)(end - path) - 5);
+                path += 5;
+                plen = h ? (size_t)(h - path) : 0;
+            } else if (strncmp(path, "install.dos#", 12) && strncmp(path, "handed#", 7))
+                plen = (size_t)(end - path);
+            keep = plen && under_paths(path, plen, paths);
+        }
+        if (keep) {
+            if (out != in) memmove(out, in, len);
+            out += len;
+            kept++;
+        }
+        in += len;
+    }
+    *out = 0;
+    return kept;
 }
 
 unsigned long ud_kb(const ud_part *p)

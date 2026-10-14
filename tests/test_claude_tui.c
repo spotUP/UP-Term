@@ -14,6 +14,7 @@
 #include "../claude/keys.h"
 #include "../claude/edit.h"
 #include "../claude/tui.h"
+#include "../claude/launch.h"
 #include "../claude/show.h"
 #include "../claude/tools.h"
 #include "../claude/util.h"
@@ -1709,6 +1710,61 @@ static void notifications(void)
     cs_close();
 }
 
+/* amiga-pi's /settings rows that reach the screen (pi 1.2.0 settings-selector.ts): editorPaddingX is the editor's side padding, showHardwareCursor
+ * leaves the window's cursor on the editor's cursor cell, doubleEscapeAction opens /tree or /fork on Esc Esc over an empty editor (or nothing).
+ * amiga-pi's tests compare these against pi's own captures (pad_editor, pad_menu, menu_max3); here the screen's own behaviour */
+static void pi_look_settings_reach_the_screen(void)
+{
+    static const char *typed[] = { "abc", 0 };
+    static const char *esc2[] = { "\033", "\033", 0 };
+    static cl_pitheme th;
+    char line[64];
+    int i, at = -1, x, y;
+    pitheme_system(&th);
+    /* editorPaddingX 2 and showHardwareCursor: the text starts in column 3 of its row, the cursor sits after it */
+    screen(40, 12, typed);
+    tui.pith = &th;
+    tui.look = TUI_LOOK_PI;
+    tui.pi_edpad = 2;
+    tui.pi_hwcursor = 1;
+    CHECK_INT(tui_start(&tui), 0);
+    tui_read(&tui, line, sizeof(line));
+    for (i = 0; i < 12; i++)
+        if (strstr(cs_row(i), "abc"))
+            at = i;
+    CHECK(at >= 0 && !strncmp(cs_row(at), "  abc", 5));
+    vt_cursor(cs.vt, &x, &y);
+    CHECK(y == at && x == 5 && (vt_modes(cs.vt) & VT_MODE_CURSOR_VISIBLE));
+    unscreen();
+    cs_close();
+    /* no padding, no hardware cursor: the text at the edge and the cursor away */
+    screen(40, 12, typed);
+    tui.pith = &th;
+    tui.look = TUI_LOOK_PI;
+    CHECK_INT(tui_start(&tui), 0);
+    tui_read(&tui, line, sizeof(line));
+    for (at = -1, i = 0; i < 12; i++)
+        if (strstr(cs_row(i), "abc"))
+            at = i;
+    CHECK(at >= 0 && !strncmp(cs_row(at), "abc", 3));
+    CHECK(!(vt_modes(cs.vt) & VT_MODE_CURSOR_VISIBLE));
+    unscreen();
+    cs_close();
+    /* Esc twice on the empty editor: /tree (default), /fork, or nothing */
+    for (i = 0; i < 3; i++) {
+        screen(40, 12, esc2);
+        tui.pith = &th;
+        tui.look = TUI_LOOK_PI;
+        tui.pi_dbl_esc = i;
+        CHECK_INT(tui_start(&tui), 0);
+        line[0] = 0;
+        tui_read(&tui, line, sizeof(line));
+        CHECK_STR(line, i == 0 ? "/tree" : i == 1 ? "/fork" : "");
+        unscreen();
+        cs_close();
+    }
+}
+
 /* 1.12: Ctrl+L redraws, Ctrl+G edits in the editor; Ctrl+T the todo list */
 static char ed_saw[64];
 static int ed_raw;
@@ -2190,8 +2246,125 @@ static void modes_restored_at_exit(void)
     }
 }
 
+/* ---- CL1: the question a plain Claude asks when it could run in two places ---- */
+
+static const char *lq_lines[6];
+static int lq_n, lq_i;
+static char lq_out[1024];
+
+static long lq_read_line(void *u, char *buf, long cap)
+{
+    (void)u;
+    if (lq_i >= lq_n)
+        return -1;
+    strncpy(buf, lq_lines[lq_i++], (size_t)cap - 1);
+    buf[cap - 1] = 0;
+    return (long)strlen(buf);
+}
+
+static void lq_write(void *u, const char *s, long n)
+{
+    long l = (long)strlen(lq_out);
+    (void)u;
+    if (l + n < (long)sizeof(lq_out)) {
+        memcpy(lq_out + l, s, (size_t)n);
+        lq_out[l + n] = 0;
+    }
+}
+
+static int lq_ask(int last, int n, const char *a, const char *b, const char *c)
+{
+    cl_io lio;
+    memset(&lio, 0, sizeof(lio));
+    lio.read_line = lq_read_line;
+    lio.write = lq_write;
+    lq_lines[0] = a;
+    lq_lines[1] = b;
+    lq_lines[2] = c;
+    lq_n = n;
+    lq_i = 0;
+    lq_out[0] = 0;
+    return launch_ask(&lio, last);
+}
+
+static void launch_question(void)
+{
+    static const char *down_enter[] = { "\033[B", "\r", 0 };
+    static const char *enter[] = { "\r", 0 };
+    static const char *esc[] = { "\033", 0 };
+    static const char *up_enter[] = { "\033[A", "\r", 0 };
+    static const char *probe[] = { "x", 0 };
+    static const char *const two[] = { "Claude on the Amiga (API key)", "Claude Code on the NAS (subscription)" };
+
+    /* the last choice is remembered as text and read back; garbage is local */
+    CHECK_INT(launch_last_parse("remote\n"), LAUNCH_REMOTE);
+    CHECK_INT(launch_last_parse("local\n"), LAUNCH_LOCAL);
+    CHECK_INT(launch_last_parse(""), LAUNCH_LOCAL);
+    CHECK_INT(launch_last_parse("nonsense"), LAUNCH_LOCAL);
+    CHECK_INT(launch_last_parse(launch_last_text(LAUNCH_REMOTE)), LAUNCH_REMOTE);
+    CHECK_INT(launch_last_parse(launch_last_text(LAUNCH_LOCAL)), LAUNCH_LOCAL);
+
+    /* the golden screen: both choices named, the first highlighted when there is no history; the session
+     * ended on Esc so the dialog is on screen when the script runs out */
+    screen(70, 14, probe);
+    CHECK_INT(launch_ask(&io, LAUNCH_LOCAL), -1);       /* the script ran out: the end of input */
+    unscreen();
+    cs_close();
+    screen(70, 14, probe);
+    tui_start(&tui);
+    tui.modal = 1;
+    tui_ext_menu_sel(&tui, "Where should Claude run?", two, 2, 1, 0);
+    tui.modal = 1;                  /* as it was while asking */
+    tui_frame(&tui);
+    dump("launch question");
+    CHECK(cs_find("Where should Claude run?") >= 0);
+    CHECK(cs_find("Claude on the Amiga (API key)") >= 0);
+    CHECK(cs_find("Claude Code on the NAS (subscription)") >= 0);
+    tui.modal = 0;
+    unscreen();
+    cs_close();
+
+    /* keys: Enter takes the highlighted one, Down moves, Esc cancels */
+    cs_open(70, 14, enter);
+    cs_io(&io);
+    CHECK_INT(launch_ask(&io, LAUNCH_LOCAL), LAUNCH_LOCAL);
+    cs_close();
+    cs_open(70, 14, enter);
+    cs_io(&io);
+    CHECK_INT(launch_ask(&io, LAUNCH_REMOTE), LAUNCH_REMOTE);   /* the last choice is the one highlighted */
+    cs_close();
+    cs_open(70, 14, down_enter);
+    cs_io(&io);
+    CHECK_INT(launch_ask(&io, LAUNCH_LOCAL), LAUNCH_REMOTE);
+    cs_close();
+    cs_open(70, 14, up_enter);
+    cs_io(&io);
+    CHECK_INT(launch_ask(&io, LAUNCH_REMOTE), LAUNCH_LOCAL);
+    cs_close();
+    cs_open(70, 14, esc);
+    cs_io(&io);
+    CHECK_INT(launch_ask(&io, LAUNCH_LOCAL), -1);
+    cs_close();
+    CHECK_INT(cs.raw_on, 0);                            /* raw mode is back off after every answer */
+
+    /* a plain console: the numbered line question */
+    CHECK_INT(lq_ask(LAUNCH_LOCAL, 1, "2", 0, 0), LAUNCH_REMOTE);
+    CHECK(strstr(lq_out, "1. Claude on the Amiga (API key)") != 0);
+    CHECK(strstr(lq_out, "2. Claude Code on the NAS (subscription)") != 0);
+    CHECK_INT(lq_ask(LAUNCH_REMOTE, 1, "1", 0, 0), LAUNCH_LOCAL);
+    CHECK_INT(lq_ask(LAUNCH_REMOTE, 1, "", 0, 0), LAUNCH_REMOTE);       /* Enter: the last choice */
+    CHECK(strstr(lq_out, "[2]") != 0);
+    CHECK_INT(lq_ask(LAUNCH_LOCAL, 1, "", 0, 0), LAUNCH_LOCAL);
+    CHECK(strstr(lq_out, "[1]") != 0);
+    CHECK_INT(lq_ask(LAUNCH_LOCAL, 2, "x", "2", 0), LAUNCH_REMOTE);     /* asked again */
+    CHECK(strstr(lq_out, "Type 1 or 2.") != 0);
+    CHECK_INT(lq_ask(LAUNCH_LOCAL, 3, "x", "y", "zz"), -1);             /* three unusable answers */
+    CHECK_INT(lq_ask(LAUNCH_LOCAL, 0, 0, 0, 0), -1);                    /* end of input */
+}
+
 void suite_claude_tui(void)
 {
+    launch_question();
     modes_restored_at_exit();
     pi_theme_depth_follows_pi_not_a_fixed_16();
     pi_theme_256_is_pi_tuis_conversion();
@@ -2223,6 +2396,7 @@ void suite_claude_tui(void)
     thinking_shown();
     themes();
     notifications();
+    pi_look_settings_reach_the_screen();
     fullscreen_external_editor_returns_to_the_alternate_screen();
     redraw_editor_todos();
     gaps3_think();

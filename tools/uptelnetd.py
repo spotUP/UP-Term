@@ -40,15 +40,54 @@ Safety, all enforced here:
   * The session's environment is built from a short list (HOME, USER,
     PATH, LANG...): the password variable never reaches the shell.
 
+Key login (plan 2026-10-14-nas-claude-local.md, NL6/NL8; the client is net/tn.c, whose
+header net/tn.h holds the same text). The password crossed the LAN at every start;
+with a key per Amiga the reusable secret never does. Challenge-response over the
+telnet link, HMAC-SHA256, RFC 2941 framing (option AUTHENTICATION 37, IS 0, SEND 1,
+REPLY 2) with one private auth-type 0x75 ("UPT1"); binary fields are plain bytes in
+the subnegotiation, a 255 in them doubled like any SB data. K = 32-byte key,
+ID = 1 to 16 characters of [A-Za-z0-9._-], sn = 16 server nonce bytes (os.urandom),
+cn = 16 client nonce bytes, HMAC(K, m) = HMAC-SHA256.
+
+  1 server  IAC DO AUTH beside its other offers. A client without a key answers
+            WONT and gets "Password:" exactly as before (so does a client that
+            never answers: after AUTH_WAIT seconds).
+  2 client  IAC WILL AUTH.
+  3 server  SB AUTH SEND 0x75 sn[16]
+  4 client  SB AUTH IS 0x75 ID 0x00 cn[16] mac[32],
+            mac = HMAC(K, "upt1-client" | sn | cn | ID).
+            A client asking to be paired sends ID empty and no mac.
+  5 server  mac good: SB AUTH REPLY 0x75 ACCEPT smac[32],
+            smac = HMAC(K, "upt1-server" | sn | cn); no Password prompt; the log
+            says "key login ID". The client checks smac and closes the line on a
+            bad one (a fake NAS cannot make it). mac bad or ID unknown or revoked:
+            SB AUTH REPLY 0x75 REJECT, the failure counts in the rate limiter,
+            then "Password:" as before.
+  6 server  pairing: after a good password from a client that asked (empty ID) the
+            server makes ID and K, appends them to the clients file and sends
+            SB AUTH REPLY 0x75 PAIR ID 0x00 K[32]. The client keeps them; its next
+            start is step 5.
+
+The clients file (--clients-file, default ~/.config/uptelnetd/clients; 0600, yours, a
+regular file, like the password file) has one line per Amiga: "ID hexkey date
+first-peer". It is read at every connection, so `pairs add` and `pairs revoke`
+(tools/nas/pairs) act at once. The server starts with a password, a clients file or
+both; with no password only keys log in. The wire shows one-time values (sn, cn,
+mac, smac) and, once at the pairing, ID and K, which is as exposed as the one
+password typed to authorise it. It protects the login, not the session: the session
+is plain TCP as before.
+
 Python 3.9+ standard library only (macOS's /usr/bin/python3 will do).
 """
 import argparse
 import asyncio
 import fcntl
+import hashlib
 import hmac
 import ipaddress
 import os
 import pwd
+import re
 import selectors
 import shlex
 import stat
@@ -70,6 +109,8 @@ LOCK_WINDOW = 600.0       # ... within this many seconds ...
 LOCK_TIME = 600.0         # ... lock it out this long
 MAX_PENDING = 4           # connections not logged in yet
 LOGIN_TIMEOUT = 60.0
+AUTH_WAIT = 3.0           # a client that answers neither WILL nor WONT to DO AUTH gets the password prompt
+DEFAULT_CLIENTS_FILE = "~/.config/uptelnetd/clients"
 WRITE_HIGH = 256 * 1024   # stop reading the pty while this much waits for the Amiga
 
 # The networks a LAN address can be on. Loopback is allowed too (it is
@@ -81,6 +122,10 @@ PRIVATE_NETS = [ipaddress.ip_network(n) for n in (
 
 class ConfigError(Exception):
     pass
+
+
+class NoPassword(ConfigError):
+    """There is no password (not: a bad one). A clients file can stand in for it."""
 
 
 def is_lan(addr):
@@ -160,7 +205,7 @@ def load_password(env=None, path=None, uid=None):
         try:
             st = os.lstat(p)
         except FileNotFoundError:
-            raise ConfigError("no password: set %s, or write one to %s (mode 0600)" % (PASSWORD_ENV, p))
+            raise NoPassword("no password: set %s, or write one to %s (mode 0600)" % (PASSWORD_ENV, p))
         if not stat.S_ISREG(st.st_mode):
             raise ConfigError("%s is not a regular file" % p)
         if st.st_uid != uid:
@@ -210,10 +255,112 @@ class RateLimiter:
         self.fails.pop(peer, None)
 
 
+# ---- the clients file (key login) ---------------------------------------------
+
+AUTH_TYPE = 0x75
+ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,16}$")
+KEY_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def hmac_sha256(key, *parts):
+    return hmac.new(key, b"".join(parts), hashlib.sha256).digest()
+
+
+class ClientStore:
+    """The clients file: one line per paired Amiga, "ID hexkey date first-peer". Read whole
+    at every use, so a `pairs add` or `pairs revoke` (another process) acts at the next
+    login. The file must be a regular file of yours that others cannot read or write, the
+    checks load_password makes; a file that fails them gives no keys."""
+
+    def __init__(self, path=None, uid=None):
+        self.path = os.path.expanduser(path or DEFAULT_CLIENTS_FILE)
+        self.uid = os.getuid() if uid is None else uid
+
+    def check(self):
+        """None when the file is fine or absent; else the reason it is refused."""
+        try:
+            st = os.lstat(self.path)
+        except FileNotFoundError:
+            return None
+        if not stat.S_ISREG(st.st_mode):
+            return "%s is not a regular file" % self.path
+        if st.st_uid != self.uid:
+            return "%s belongs to someone else" % self.path
+        if st.st_mode & 0o077:
+            return "%s can be read by others (mode %o): chmod 600 it" % (self.path, st.st_mode & 0o777)
+        return None
+
+    def exists(self):
+        return os.path.lexists(self.path)
+
+    def rows(self):
+        """[(id, key bytes, date, peer)] of the good lines; [] when the file is absent or refused."""
+        if self.check() or not os.path.exists(self.path):
+            return []
+        out = []
+        with open(self.path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                w = line.split()
+                if len(w) >= 2 and ID_RE.match(w[0]) and KEY_RE.match(w[1].lower()):
+                    out.append((w[0], bytes.fromhex(w[1]), w[2] if len(w) > 2 else "-", w[3] if len(w) > 3 else "-"))
+        return out
+
+    def keys(self):
+        return {r[0]: r[1] for r in self.rows()}
+
+    def new_id(self):
+        have = {r[0] for r in self.rows()}
+        while True:
+            cid = "amiga-" + os.urandom(3).hex()
+            if cid not in have:
+                return cid
+
+    def add(self, peer="-", cid=None, key=None):
+        """A new pairing appended (the file made 0600): (id, key). Refuses a file that fails check()."""
+        why = self.check()
+        if why:
+            raise ConfigError(why)
+        cid = cid or self.new_id()
+        if not ID_RE.match(cid):
+            raise ConfigError("an ID is 1 to 16 characters of letters, digits . _ -")
+        if cid in {r[0] for r in self.rows()}:
+            raise ConfigError("%s is paired already" % cid)
+        key = key or os.urandom(32)
+        d = os.path.dirname(self.path)
+        if d:
+            os.makedirs(d, mode=0o700, exist_ok=True)
+        fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
+            f.write("%s %s %s %s\n" % (cid, key.hex(), time.strftime("%Y-%m-%d"), peer))
+        return cid, key
+
+    def revoke(self, cid):
+        """The line of cid removed: True when there was one."""
+        why = self.check()
+        if why:
+            raise ConfigError(why)
+        if not os.path.exists(self.path):
+            return False
+        with open(self.path, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        keep = [l for l in lines if l.split()[:1] != [cid]]
+        if len(keep) == len(lines):
+            return False
+        tmp = self.path + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.writelines(keep)
+        os.replace(tmp, self.path)
+        return True
+
+
 # ---- telnet (server side) -----------------------------------------------------
 
 IAC, DONT, DO, WONT, WILL, SB, SE = 255, 254, 253, 252, 251, 250, 240
-BINARY, ECHO, SGA, TTYPE, NAWS = 0, 1, 3, 24, 31
+BINARY, ECHO, SGA, TTYPE, NAWS, AUTH = 0, 1, 3, 24, 31, 37
+AUTH_IS, AUTH_SEND, AUTH_REPLY = 0, 1, 2
+AUTH_REJECT, AUTH_ACCEPT, AUTH_PAIR = 0, 1, 2
+SB_MAX = 128
 TTYPE_IS, TTYPE_SEND = 0, 1
 NO, YES, WANTNO, WANTYES = 0, 1, 2, 3
 US_OK = {ECHO, SGA, BINARY}           # we will do these
@@ -225,7 +372,11 @@ class Telnet:
     and returns the data in them; answers go to self.out (bytes for the
     client). The window size and terminal type arrive as attributes."""
 
-    def __init__(self):
+    def __init__(self, auth=False):
+        self.auth = auth      # offer the key login (DO AUTH)
+        self.sn = os.urandom(16)
+        self.pair_wanted = False
+        self.auth_msg = None  # (id bytes, cn, mac or None) of the client's IS
         self.us = {}
         self.him = {}
         self.out = bytearray()
@@ -241,16 +392,22 @@ class Telnet:
         for o in (ECHO, SGA, BINARY):
             self.us[o] = WANTYES
             self.out += bytes([IAC, WILL, o])
-        for o in (BINARY, NAWS, TTYPE):
+        for o in (BINARY, NAWS, TTYPE) + ((AUTH,) if self.auth else ()):
             self.him[o] = WANTYES
             self.out += bytes([IAC, DO, o])
 
     def _cmd(self, verb, opt):
         self.out += bytes([IAC, verb, opt])
 
+    def sb_out(self, *parts):
+        """IAC SB <parts> IAC SE with every 255 inside doubled."""
+        self.out += bytes([IAC, SB]) + b"".join(parts).replace(b"\xff", b"\xff\xff") + bytes([IAC, SE])
+
     def _him_on(self, opt):
         if opt == TTYPE:
             self.out += bytes([IAC, SB, TTYPE, TTYPE_SEND, IAC, SE])
+        elif opt == AUTH:
+            self.sb_out(bytes([AUTH, AUTH_SEND, AUTH_TYPE]), self.sn)
 
     def _got(self, verb, opt):
         if verb in (WILL, WONT):
@@ -294,9 +451,23 @@ class Telnet:
             elif q in (WANTNO, WANTYES):
                 self.us[opt] = NO
 
+    def _auth_is(self, sb):
+        """SB AUTH IS 0x75 ID 0x00 cn[16] [mac[32]]; a malformed one becomes an ID nobody has."""
+        rest = sb[3:]
+        i = rest.find(b"\0")
+        tail = rest[i + 1:] if i >= 0 else b""
+        if i < 0 or len(tail) not in (16, 48) or self.auth_msg is not None:
+            if self.auth_msg is None:
+                self.auth_msg = (b"\0malformed", b"", None)
+            return
+        self.auth_msg = (rest[:i], tail[:16], tail[16:] or None)
+
     def _subneg(self):
         sb = bytes(self.sb)
-        if len(sb) >= 5 and sb[0] == NAWS:
+        if (self.auth and len(sb) >= 3 and sb[0] == AUTH and sb[1] == AUTH_IS and sb[2] == AUTH_TYPE
+                and self.him.get(AUTH) == YES):
+            self._auth_is(sb)
+        elif len(sb) >= 5 and sb[0] == NAWS:
             cols, rows = struct.unpack(">HH", sb[1:5])
             if cols and rows:
                 self.size = (cols, rows)
@@ -341,14 +512,14 @@ class Telnet:
             elif st == 3:
                 if c == IAC:
                     self.st = 4
-                elif len(self.sb) < 64:
+                elif len(self.sb) < SB_MAX:
                     self.sb.append(c)
             else:
                 if c == SE:
                     self.st = 0
                     self._subneg()
                 else:
-                    if c == IAC and len(self.sb) < 64:
+                    if c == IAC and len(self.sb) < SB_MAX:
                         self.sb.append(c)
                     self.st = 3
         return bytes(o)
@@ -397,8 +568,9 @@ def log(msg):
 
 
 class Server:
-    def __init__(self, password, nets, shell, command, limiter=None):
-        self.password = password
+    def __init__(self, password, nets, shell, command, limiter=None, clients=None):
+        self.password = password        # None: only keys log in
+        self.clients = clients          # a ClientStore, or None: no key login
         self.nets = nets
         self.shell = shell
         self.command = command
@@ -420,7 +592,7 @@ class Server:
             writer.close()
             return
         self.pending += 1
-        tn = Telnet()
+        tn = Telnet(auth=self.clients is not None)
         try:
             try:
                 ok = await asyncio.wait_for(self.login(reader, writer, tn, peer), LOGIN_TIMEOUT)
@@ -435,11 +607,95 @@ class Server:
         log("%s: logged in" % peer)
         await self.run(reader, writer, tn, peer)
 
+    async def settle(self, reader, tn):
+        """A client that agreed to TTYPE answers within a moment: wait for it."""
+        for _ in range(10):
+            if tn.term or tn.him.get(TTYPE) != YES:
+                break
+            try:
+                chunk = await asyncio.wait_for(reader.read(256), 0.1)
+            except asyncio.TimeoutError:
+                continue
+            if not chunk:
+                return False
+            tn.feed(chunk)
+        return True
+
+    async def key_phase(self, reader, writer, tn, peer, pending):
+        """Steps 2-5 of the key login. "ok": the key was good and the client has the proof;
+        "password": go on to Password: (tn.pair_wanted says the client asked to be paired);
+        "closed": hang up."""
+        deadline = asyncio.get_running_loop().time() + AUTH_WAIT
+        while tn.auth_msg is None and tn.him.get(AUTH) != NO:
+            left = deadline - asyncio.get_running_loop().time()
+            if left <= 0:
+                return "password"
+            try:
+                chunk = await asyncio.wait_for(reader.read(256), left)
+            except asyncio.TimeoutError:
+                return "password"
+            if not chunk:
+                return "closed"
+            pending += tn.feed(chunk)
+            if tn.out:
+                writer.write(bytes(tn.out))
+                tn.out.clear()
+        if tn.auth_msg is None:
+            return "password"                  # WONT: an Amiga without a key
+        cid, cn, mac = tn.auth_msg
+        if not cid:
+            tn.pair_wanted = True              # empty ID: "pair me after the password"
+            return "password"
+        key = self.clients.keys().get(cid.decode("ascii", "replace"))
+        want = hmac_sha256(key, b"upt1-client", tn.sn, cn, cid) if key else None
+        if key and mac and hmac.compare_digest(mac, want):
+            tn.sb_out(bytes([AUTH, AUTH_REPLY, AUTH_TYPE, AUTH_ACCEPT]), hmac_sha256(key, b"upt1-server", tn.sn, cn))
+            writer.write(bytes(tn.out))
+            tn.out.clear()
+            await writer.drain()
+            self.limiter.success(peer)
+            log("%s: key login %s" % (peer, cid.decode("ascii", "replace")))
+            return "ok"
+        tn.sb_out(bytes([AUTH, AUTH_REPLY, AUTH_TYPE, AUTH_REJECT]))
+        writer.write(bytes(tn.out))
+        tn.out.clear()
+        locked = self.limiter.failure(peer)
+        log("%s: key rejected (%s)%s" % (peer, "unknown or revoked ID" if not key else "wrong mac",
+                                         ", locked out" if locked else ""))
+        if locked:
+            await writer.drain()
+            return "closed"
+        return "password"
+
+    def pair(self, writer, tn, peer):
+        """Step 6: a key for the client that asked, after its good password."""
+        try:
+            cid, key = self.clients.add(peer)
+        except (ConfigError, OSError) as e:
+            log("%s: pairing failed: %s" % (peer, e))
+            return
+        tn.sb_out(bytes([AUTH, AUTH_REPLY, AUTH_TYPE, AUTH_PAIR]) + cid.encode("ascii") + b"\0" + key)
+        writer.write(bytes(tn.out))
+        tn.out.clear()
+        log("%s: paired as %s" % (peer, cid))
+
     async def login(self, reader, writer, tn, peer):
         tn.start()
+        tn.pair_wanted = False
         writer.write(bytes(tn.out) + b"uptelnetd (unencrypted telnet, LAN only)\r\n")
         tn.out.clear()
         pending = bytearray()
+        if tn.auth:
+            verdict = await self.key_phase(reader, writer, tn, peer, pending)
+            if verdict == "ok":
+                return await self.settle(reader, tn)
+            if verdict == "closed":
+                await writer.drain()
+                return False
+        if self.password is None:
+            writer.write(b"This server logs in with a key only; this Amiga has none it knows. Ask for a pairing.\r\n")
+            await writer.drain()
+            return False
         for _ in range(TRIES_PER_CONNECTION):
             writer.write(b"Password: ")
             await writer.drain()
@@ -463,18 +719,9 @@ class Server:
             writer.write(b"\r\n")
             if password_ok(line.decode("utf-8", "replace"), self.password):
                 self.limiter.success(peer)
-                # a client that agreed to TTYPE answers within a moment
-                for _ in range(10):
-                    if tn.term or tn.him.get(TTYPE) != YES:
-                        break
-                    try:
-                        chunk = await asyncio.wait_for(reader.read(256), 0.1)
-                    except asyncio.TimeoutError:
-                        continue
-                    if not chunk:
-                        return False
-                    tn.feed(chunk)
-                return True
+                if tn.pair_wanted:
+                    self.pair(writer, tn, peer)
+                return await self.settle(reader, tn)
             locked = self.limiter.failure(peer)
             log("%s: wrong password%s" % (peer, ", locked out" if locked else ""))
             await asyncio.sleep(FAIL_DELAY)
@@ -580,6 +827,8 @@ def parse_args(argv):
                     help="a private network allowed to connect (repeatable; default: the bind address's subnet)")
     ap.add_argument("--password-file", default=None,
                     help="0600 file holding the password (default %s; %s wins)" % (DEFAULT_PASSWORD_FILE, PASSWORD_ENV))
+    ap.add_argument("--clients-file", default=None,
+                    help="0600 file of paired Amigas (key login; default %s; tools/nas/pairs edits it)" % DEFAULT_CLIENTS_FILE)
     ap.add_argument("--command", default=None,
                     help="run this instead of a login shell, e.g. 'tmux new -A -s claude claude'")
     ap.add_argument("--shell", default=None, help="the shell (default $SHELL)")
@@ -587,7 +836,8 @@ def parse_args(argv):
 
 
 def configure(a, env=None):
-    """(binds, nets, password, shell) from the arguments, or ConfigError."""
+    """(binds, nets, password, shell) from the arguments, or ConfigError. The password is None
+    when only a clients file stands in for it."""
     env = os.environ if env is None else env
     mask = None
     if not a.bind or a.bind == ["auto"]:
@@ -610,13 +860,26 @@ def configure(a, env=None):
             for n in default_allow(b, mask if b == binds[0] else None):
                 if n not in nets:
                     nets.append(n)
-    password = load_password(env, a.password_file)
+    try:
+        password = load_password(env, a.password_file)
+    except NoPassword:
+        # keys alone can log in: a clients file (made by `pairs add`) stands in for the password
+        clients = ClientStore(getattr(a, "clients_file", None))
+        why = clients.check()
+        if why:
+            raise ConfigError(why)
+        if not clients.exists():
+            raise
+        password = None
+    why = ClientStore(getattr(a, "clients_file", None)).check()
+    if why:
+        raise ConfigError(why)       # a clients file others can read is refused, as the password file is
     shell = a.shell or env.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell or "/bin/sh"
     return binds, nets, password, shell
 
 
 async def serve(a, binds, nets, password, shell):
-    srv = Server(password, nets, shell, a.command)
+    srv = Server(password, nets, shell, a.command, clients=ClientStore(a.clients_file))
     server = await asyncio.start_server(srv.handle, host=binds, port=a.port, reuse_address=True)
     port = server.sockets[0].getsockname()[1]
     print("uptelnetd: listening on %s port %d (UNENCRYPTED telnet), allowing %s" %

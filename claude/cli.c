@@ -82,7 +82,7 @@ enum {
     O_SYSP, O_SYSPF, O_APPEND, O_APPENDF, O_SETTINGS, O_MAXTURNS, O_BUDGET, O_VERBOSE, O_AGENT, O_VERSION,
     O_HELP, O_SESSID, O_SCHEMA, O_REPLAY, O_BARE, O_SAFE, O_AGENTS, O_SUBAPP, O_SUBAPPF, O_NOSLASH, O_SOURCES,
     O_BETAS, O_AUTOCOMPACT, O_FWDSUB, O_DEBUGFILE, O_PERMPROMPTS, O_INIT, O_INITONLY, O_MAINT, O_HOOKEV,
-    O_SUGGEST, O_NODYN, O_ADVISOR, O_SNAPSHOT, O_ALLOWSKIP, O_REMOTEADDR
+    O_SUGGEST, O_NODYN, O_ADVISOR, O_SNAPSHOT, O_ALLOWSKIP, O_REMOTEADDR, O_LOCAL, O_REMOTE
 };
 
 /* takes: 0 a switch, 1 a value, 2 an optional value, 3 values (Claude Code's variadic flags) */
@@ -118,6 +118,8 @@ static const opt opts[] = {
     { O_PERM, "permission-mode", 0, 0, "PERMISSION-MODE", 0, 1 },
     { O_SKIP, "dangerously-skip-permissions", 0, 0, "DANGEROUSLY-SKIP-PERMISSIONS", 0, 0 },
     { O_REMOTEADDR, "remote-address", 0, 0, "REMOTE-ADDRESS", 0, 0 },
+    { O_LOCAL, "local", 0, 0, "LOCAL", 0, 0 },
+    { O_REMOTE, "remote", 0, 0, "REMOTE", 0, 0 },
     { O_ALLOWSKIP, "allow-dangerously-skip-permissions", 0, 0, "ALLOW-DANGEROUSLY-SKIP-PERMISSIONS", 0, 0 },
     { O_ALLOW, "allowedTools", 0, "allowed-tools", "ALLOWED-TOOLS", 0, 3 },
     { O_DENY, "disallowedTools", 0, "disallowed-tools", "DISALLOWED-TOOLS", 0, 3 },
@@ -417,6 +419,12 @@ static int set(cl_cli *c, const opt *o, const char *v, int amiga)
         break;
     case O_REMOTEADDR:
         c->remote_addr = 1;
+        break;
+    case O_LOCAL:
+        c->local = 1;
+        break;
+    case O_REMOTE:
+        c->remote = 1;
         break;
     case O_ALLOWSKIP:
         c->allow_skip = 1;
@@ -807,7 +815,29 @@ int cli_parse(cl_cli *c, int argc, char **argv, const char *quoted)
                        "anywhere)", 0, 0);
     if (c->suggestions && (!c->print || c->out != CLI_STREAM))
         return fail(c, "Error: --prompt-suggestions requires --print and --output-format=stream-json", 0, 0);
+    if (c->local && c->remote)
+        return fail(c, "Claude: LOCAL and REMOTE exclude each other (LOCAL: Claude on this Amiga with an API key; "
+                       "REMOTE: Claude Code on the computer ENVARC:Claude/remote names)", 0, 0);
+    if (c->remote && (c->print || c->ping || c->url[0] || c->prompt))
+        return fail(c, "Claude: REMOTE starts Claude Code on the other computer and takes no PRINT, PING, URL or "
+                       "prompt (those run on this Amiga)", 0, 0);
     return 0;
+}
+
+int cli_launch_mode(const cl_cli *c, int have_key, int have_remote)
+{
+    if (c->setup)
+        return LAUNCH_SETUP;
+    if (c->local)
+        return LAUNCH_LOCAL;
+    if (c->remote)
+        return LAUNCH_REMOTE;
+    /* what only the API here can do never asks */
+    if (c->print || c->ping || c->url[0] || c->prompt)
+        return LAUNCH_LOCAL;
+    if (have_remote)
+        return have_key ? LAUNCH_ASK : LAUNCH_REMOTE;
+    return LAUNCH_LOCAL;
 }
 
 int cli_parse_line(cl_cli *c, const char *line)
@@ -920,7 +950,9 @@ static const char *const usage[] = {
     "Every flag is also a keyword: MODEL=haiku, OUTPUT-FORMAT=json, PRINT, CONTINUE ...\n",
     "C:Claude's own: URL=url (another endpoint), ROOT=dir (the start directory), PING (one\n",
     "request of one token, timed), SETUP (the setup wizard: Claude Code on another computer,\n",
-    "or an API key here; also /setup).\n",
+    "or an API key here; also /setup), LOCAL (Claude on this Amiga with the API key) and REMOTE\n",
+    "(Claude Code on the computer ENVARC:Claude/remote names). With both an API key and that file,\n",
+    "plain Claude asks which; LOCAL or REMOTE answers in advance.\n",
     0
 };
 

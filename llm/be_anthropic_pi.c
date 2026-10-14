@@ -115,6 +115,8 @@ const char *llm_ant_effort(const llm_model *m, int thinking)
 
 int llm_mid_system(const llm_model *m)
 {
+    if (m && m->api && !strcmp(m->api, "pi-messages"))
+        return 1;                   /* the gateway takes pi's transcript with every system message in place */
     return m && m->api && (!strcmp(m->api, "anthropic-messages") || !strcmp(m->api, "openai-responses") ||
                           !strcmp(m->api, "azure-openai-responses") || !strcmp(m->api, "openai-codex-responses")) &&
            m->compat.mid_system == 1;
@@ -135,16 +137,30 @@ static const char *effort_name(jv v)
 /* one tool as the API takes it (pi's convertTools): a tool with constrainedSampling goes out strict when the model
  * supports it (resolveJsonSchemaStrictSampling), its input_schema then the strict one; otherwise the schema is
  * rebuilt from properties and required. 0, -1 */
-static int w_tool(jw *w, jv t, int eager, int cache, int strict)
+static int tool_prefers(jv t)
+{
+    jv cs, v;
+    return json_get(t, "constrainedSampling", &cs) && json_type(cs) == J_OBJ && json_get(cs, "strict", &v) &&
+           json_streq(v, "prefer");
+}
+
+static int w_tool(jw *w, jv t, int eager, int cache, const ap *a)
 {
     jv v, pr;
     jw sch;
     int st;
     jw_init(&sch);
-    st = llm_tool_strict(t, strict, LCS_ANTHROPIC, &sch, 0, 0);
+    st = llm_tool_strict(t, a->strict, LCS_ANTHROPIC, &sch, 0, 0);
     if (st < 0) {
         jw_free(&sch);
         return -1;
+    }
+    if (st == 1 && tool_prefers(t)) {
+        /* pi 1.2.0 disablePreferredStrictTools: after the API refused the strict limits, a "prefer" tool goes out as a plain one */
+        if (a->c->no_prefer_strict)
+            st = 0;
+        else if (a->c->prefer_strict_out)
+            *a->c->prefer_strict_out = 1;
     }
     jw_rawz(w, "{\"name\":");
     if (!json_get(t, "name", &v)) {
@@ -189,12 +205,12 @@ static int w_tool(jw *w, jv t, int eager, int cache, int strict)
     return 0;
 }
 
-static int w_tools(jw *w, const jv *tl, int n, int eager, int cache, int strict)
+static int w_tools(jw *w, const jv *tl, int n, int eager, int cache, const ap *a)
 {
     int i;
     for (i = 0; i < n; i++) {
         jw_rawz(w, i ? "," : "");
-        if (w_tool(w, tl[i], eager, cache && i == n - 1, strict))
+        if (w_tool(w, tl[i], eager, cache && i == n - 1, a))
             return -1;
     }
     return 0;
@@ -525,7 +541,7 @@ static int sys_message(const ap *a, jv m, jw *b)
             while (json_next(&it, 0, &v)) {
                 jw_rawz(b, k ? "," : "");
                 jw_rawz(b, "{\"type\":\"tool_addition\",\"tool\":{\"type\":\"tool_definition\",\"definition\":");
-                if (w_tool(b, v, a->eager, 0, a->strict))
+                if (w_tool(b, v, a->eager, 0, a))
                     return -1;
                 jw_rawz(b, "}}");
                 k++;
@@ -725,14 +741,14 @@ static int a_body(const llm_ctx *c, jw *w)
     }
     if (a.native_tools) {
         jw_rawz(w, ",\"tools\":[");
-        if (w_tools(w, a.tx.itl, a.tx.nitl, a.eager, a.cache_tools, a.strict))
+        if (w_tools(w, a.tx.itl, a.tx.nitl, a.eager, a.cache_tools, &a))
             goto out;
         jw_rawz(w, ",{\"name\":\"__pi_deferred_placeholder__\",\"description\":\"Reserved placeholder. Never available. "
                    "Never call this.\",\"input_schema\":{\"type\":\"object\",\"properties\":{},\"required\":[]},"
                    "\"defer_loading\":true}]");
     } else if (a.tx.ntl > 0) {
         jw_rawz(w, ",\"tools\":[");
-        if (w_tools(w, a.tx.tl, a.tx.ntl, a.eager, a.cache_tools, a.strict))
+        if (w_tools(w, a.tx.tl, a.tx.ntl, a.eager, a.cache_tools, &a))
             goto out;
         jw_raw(w, "]", 1);
     }
@@ -841,7 +857,14 @@ static void a_http_err(const llm_http_fail *f, char *out, long cap)
     llm_httperr_anthropic(f, out, cap);
 }
 
+/* anthropic-messages.ts:672-678: a 400 invalid_request_error whose text names a strict-tools limit */
+static int a_strict_limit(const char *t)
+{
+    return strstr(t, "The compiled grammar is too large") || strstr(t, "Too many strict tools (") ||
+           strstr(t, "Schemas contains too many parameters with union types (");
+}
+
 const llm_backend llm_be_anthropic = {
     "anthropic-messages", "x-api-key", "/v1/messages", a_head, a_body, a_xhead, a_new, a_feed, a_free,
-    "Anthropic stream ended before message_stop", 0, 0, 0, a_http_err, 0
+    "Anthropic stream ended before message_stop", 0, 0, 0, a_http_err, 0, a_strict_limit
 };

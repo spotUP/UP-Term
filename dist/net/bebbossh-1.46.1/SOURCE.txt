@@ -2,6 +2,9 @@ BebboSSH 1.46.1: SSH2 client, server, scp and key generator for the Amiga
 (68020 and up), as published on Aminet:
 
   https://aminet.net/comm/net/bebbossh_1.46.1.lha   ($VER: 1.46.1)
+    sha256 a2c588a59a44f81fed3e2890b43cf5ff437e116cdcbfa26b0441382f95bc0bb1
+    (393853 bytes, fetched 2026-10-14; SHA256SUMS here lists the files taken
+    from it and the 1.45 source tarball)
     An UNOFFICIAL modified build by Matthias Muench of Stefan "Bebbo"
     Franke's BebboSSH 1.45, with the upstream 1.46 key-exchange fix merged
     and security fixes (see bebbossh.readme, CHANGES 0001-0019).

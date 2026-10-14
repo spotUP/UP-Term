@@ -1,5 +1,6 @@
 /* uptelnet's telnet protocol: see tn.h. */
 #include "tn.h"
+#include "../llm/sha256.h"
 
 enum { S_DATA, S_IAC, S_VERB, S_SB, S_SB_IAC };
 
@@ -65,9 +66,9 @@ static void cmd(tn *t, int verb, int opt)
 }
 
 /* the options we will do, and the ones we want the server to do */
-static int us_ok(int opt)
+static int us_ok(int opt, const tn *t)
 {
-    return opt == TN_BINARY || opt == TN_SGA || opt == TN_TTYPE || opt == TN_NAWS;
+    return opt == TN_BINARY || opt == TN_SGA || opt == TN_TTYPE || opt == TN_NAWS || (opt == TN_AUTH && t->want_key);
 }
 
 static int him_ok(int opt)
@@ -117,6 +118,8 @@ static void us_on(tn *t, int opt)
 {
     if (opt == TN_NAWS)
         naws(t);
+    else if (opt == TN_AUTH && t->auth == TN_AUTH_OFF)
+        t->auth = TN_AUTH_ASKED;
 }
 
 static void got(tn *t, int verb, int opt)
@@ -158,7 +161,7 @@ static void got(tn *t, int verb, int opt)
     q = &t->us[opt];
     if (verb == TN_DO) {
         if (*q == TN_NO) {
-            if (us_ok(opt)) {
+            if (us_ok(opt, t)) {
                 *q = TN_YES;
                 cmd(t, TN_WILL, opt);
                 us_on(t, opt);
@@ -181,10 +184,121 @@ static void got(tn *t, int verb, int opt)
     }
 }
 
+int tn_ct_eq(const unsigned char *a, const unsigned char *b, int n)
+{
+    unsigned char d = 0;
+    int i;
+    for (i = 0; i < n; i++)
+        d = (unsigned char)(d | (a[i] ^ b[i]));
+    return d == 0;
+}
+
+/* HMAC(key, label | a | b | c) with the pieces that are not empty */
+static void mac(const unsigned char *key, const char *label, const unsigned char *a, int an,
+                const unsigned char *b, int bn, const unsigned char *c, int cn, unsigned char out[32])
+{
+    unsigned char m[96];
+    int n = 0, i;
+    for (i = 0; label[i]; i++)
+        m[n++] = (unsigned char)label[i];
+    for (i = 0; i < an; i++)
+        m[n++] = a[i];
+    for (i = 0; i < bn; i++)
+        m[n++] = b[i];
+    for (i = 0; i < cn; i++)
+        m[n++] = c[i];
+    llm_hmac_sha256(key, TN_KEY_LEN, m, n, out);
+}
+
+/* SB AUTH IS 0x75 ID 0 cn [mac], every byte of 255 doubled */
+static void auth_is(tn *t)
+{
+    unsigned char m[32], b[2 * (TN_ID_MAX + 1 + 16 + 32) + 8], body[TN_ID_MAX + 1 + 16 + 32];
+    int n = 0, k = 0, i, idn = 0;
+    if (!t->pairing) {
+        while (t->id[idn])
+            idn++;
+        mac(t->key, "upt1-client", t->sn, 16, t->cn, 16, (const unsigned char *)t->id, idn, m);
+    }
+    for (i = 0; i < idn; i++)
+        body[k++] = (unsigned char)t->id[i];
+    body[k++] = 0;
+    for (i = 0; i < 16; i++)
+        body[k++] = t->cn[i];
+    if (!t->pairing)
+        for (i = 0; i < 32; i++)
+            body[k++] = m[i];
+    b[n++] = TN_IAC;
+    b[n++] = TN_SB;
+    b[n++] = TN_AUTH;
+    b[n++] = TN_AUTH_IS;
+    b[n++] = TN_AUTH_TYPE;
+    for (i = 0; i < k; i++) {
+        b[n++] = body[i];
+        if (body[i] == TN_IAC)
+            b[n++] = TN_IAC;
+    }
+    b[n++] = TN_IAC;
+    b[n++] = TN_SE;
+    t->out(t->user, b, n);
+    t->auth = TN_AUTH_SENT;
+}
+
+static void auth_to(tn *t, int state)
+{
+    t->auth = state;
+    if (t->event)
+        t->event(t->user, state, state == TN_AUTH_PAIRED ? t->id : 0, state == TN_AUTH_PAIRED ? t->key : 0);
+}
+
+/* what the server said about the login: sb = AUTH REPLY 0x75 code ... */
+static void auth_reply(tn *t)
+{
+    int code = t->sb[3], i;
+    if (code == TN_AUTH_ACCEPT && t->auth == TN_AUTH_SENT && !t->pairing && t->sblen == 4 + 32) {
+        unsigned char want[32];
+        mac(t->key, "upt1-server", t->sn, 16, t->cn, 16, 0, 0, want);
+        auth_to(t, tn_ct_eq(want, t->sb + 4, 32) ? TN_AUTH_OK : TN_AUTH_BAD_SERVER);
+    } else if (code == TN_AUTH_ACCEPT && t->auth == TN_AUTH_SENT) {
+        auth_to(t, TN_AUTH_BAD_SERVER);     /* accepting a mac that was never sent, or a short proof */
+    } else if (code == TN_AUTH_REJECT && t->auth == TN_AUTH_SENT) {
+        auth_to(t, TN_AUTH_REJECTED);
+    } else if (code == TN_AUTH_PAIR && t->pairing && t->auth == TN_AUTH_SENT) {
+        /* ID 0 K[32]: only a client that asked takes a key */
+        int idn = 0;
+        while (4 + idn < t->sblen && t->sb[4 + idn])
+            idn++;
+        if (idn >= 1 && idn <= TN_ID_MAX && t->sblen == 4 + idn + 1 + TN_KEY_LEN) {
+            for (i = 0; i < idn; i++)
+                t->id[i] = (char)t->sb[4 + i];
+            t->id[idn] = 0;
+            for (i = 0; i < TN_KEY_LEN; i++)
+                t->key[i] = t->sb[4 + idn + 1 + i];
+            t->pairing = 0;
+            auth_to(t, TN_AUTH_PAIRED);
+        }
+    }
+}
+
 static void subneg(tn *t)
 {
+    if (t->sbover) {
+        t->sbover = 0;
+        return;
+    }
     if (t->sblen >= 2 && t->sb[0] == TN_TTYPE && t->sb[1] == TN_TTYPE_SEND && t->us[TN_TTYPE] == TN_YES)
         ttype_is(t);
+    else if (t->sblen >= 3 && t->sb[0] == TN_AUTH && t->us[TN_AUTH] == TN_YES && t->sb[2] == TN_AUTH_TYPE) {
+        if (t->sb[1] == TN_AUTH_SEND && t->sblen == 3 + 16 && t->auth == TN_AUTH_ASKED) {
+            int i;
+            for (i = 0; i < 16; i++)
+                t->sn[i] = t->sb[3 + i];
+            auth_is(t);
+        } else if (t->sb[1] == TN_AUTH_REPLY && t->sblen >= 4) {
+            /* the reply's fields start after "AUTH REPLY 0x75 code": index 4 */
+            auth_reply(t);
+        }
+    }
 }
 
 void tn_init(tn *t, const char *term, int cols, int rows,
@@ -204,11 +318,92 @@ void tn_init(tn *t, const char *term, int cols, int rows,
     t->user = user;
     t->st = S_DATA;
     t->verb = 0;
-    t->sblen = 0;
+    t->sblen = t->sbover = 0;
     t->cr = 0;
     t->blen = 0;
     t->esc = t->nparm = t->alt = 0;
     t->parm[0] = 0;
+    t->auth = TN_AUTH_OFF;
+    t->want_key = t->pairing = 0;
+    t->id[0] = 0;
+    t->event = 0;
+}
+
+void tn_set_key(tn *t, const char *id, const unsigned char *key, const unsigned char *cn,
+                void (*event)(void *user, int state, const char *id, const unsigned char *key))
+{
+    int i;
+    t->want_key = 1;
+    t->pairing = !id || !id[0];
+    for (i = 0; id && id[i] && i < TN_ID_MAX; i++)
+        t->id[i] = id[i];
+    t->id[i] = 0;
+    for (i = 0; i < TN_KEY_LEN; i++)
+        t->key[i] = t->pairing || !key ? 0 : key[i];
+    for (i = 0; i < 16; i++)
+        t->cn[i] = cn[i];
+    t->event = event;
+}
+
+static int hexval(char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+int tn_key_parse(const char *text, char *id, unsigned char *key)
+{
+    int n = 0, i;
+    while (*text == ' ' || *text == '\t' || *text == '\r' || *text == '\n')
+        text++;
+    while (text[n] && text[n] != ' ' && text[n] != '\t' && text[n] != '\r' && text[n] != '\n') {
+        char c = text[n];
+        if (n >= TN_ID_MAX || !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                                c == '.' || c == '_' || c == '-'))
+            return 0;
+        id[n] = c;
+        n++;
+    }
+    if (n == 0 || text[n] != ' ')
+        return 0;
+    id[n] = 0;
+    text += n;
+    while (*text == ' ' || *text == '\t')
+        text++;
+    for (i = 0; i < TN_KEY_LEN; i++) {
+        int hi = hexval(text[2 * i]), lo = hi < 0 ? -1 : hexval(text[2 * i + 1]);
+        if (hi < 0 || lo < 0)
+            return 0;
+        key[i] = (unsigned char)(hi * 16 + lo);
+    }
+    return text[2 * TN_KEY_LEN] == 0 || text[2 * TN_KEY_LEN] == '\r' || text[2 * TN_KEY_LEN] == '\n' ||
+           text[2 * TN_KEY_LEN] == ' ';
+}
+
+int tn_key_format(const char *id, const unsigned char *key, char *out)
+{
+    static const char hex[] = "0123456789abcdef";
+    int n = 0, i;
+    for (i = 0; id[i]; i++)
+        out[n++] = id[i];
+    out[n++] = ' ';
+    for (i = 0; i < TN_KEY_LEN; i++) {
+        out[n++] = hex[key[i] >> 4];
+        out[n++] = hex[key[i] & 15];
+    }
+    out[n++] = '\n';
+    out[n] = 0;
+    return n;
+}
+
+int tn_auth(const tn *t)
+{
+    return t->auth;
 }
 
 void tn_start(tn *t)
@@ -231,6 +426,8 @@ void tn_recv(tn *t, const unsigned char *b, int n)
     int i;
     for (i = 0; i < n; i++) {
         unsigned char c = b[i];
+        if (t->auth == TN_AUTH_BAD_SERVER)
+            break;              /* a server that failed its proof is not listened to again */
         switch (t->st) {
         case S_DATA:
             if (c == TN_IAC) {
@@ -254,6 +451,7 @@ void tn_recv(tn *t, const unsigned char *b, int n)
                 t->st = S_VERB;
             } else if (c == TN_SB) {
                 t->sblen = 0;
+                t->sbover = 0;
                 t->st = S_SB;
             }
             /* NOP, GA, DM, AYT...: nothing to do */
@@ -268,6 +466,8 @@ void tn_recv(tn *t, const unsigned char *b, int n)
                 t->st = S_SB_IAC;
             else if (t->sblen < (int)sizeof(t->sb))
                 t->sb[t->sblen++] = c;
+            else
+                t->sbover = 1;
             break;
         case S_SB_IAC:
             if (c == TN_SE) {
@@ -276,6 +476,8 @@ void tn_recv(tn *t, const unsigned char *b, int n)
             } else {
                 if (c == TN_IAC && t->sblen < (int)sizeof(t->sb))
                     t->sb[t->sblen++] = c;
+                else if (c == TN_IAC)
+                    t->sbover = 1;
                 t->st = S_SB; /* IAC IAC is a 255; anything else is not ours to judge */
             }
             break;

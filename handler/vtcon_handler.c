@@ -49,6 +49,7 @@
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
 #include "../render/vtwin.h"
+#include "../render/vtinput.h"
 #include "../device/upc_public.h"
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
@@ -1079,6 +1080,12 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "amiga-keys", 0);
     if (v)
         c->w.amiga_keys = !str_ieq(v, "off"); /* Shift+Left / Right as Home / End (on by default) */
+    v = upconf_str(c->conf, p, "dither", 0);
+    if (v)
+        c->w.dither = !str_ieq(v, "off"); /* few-pen screens dither (W-T9; on by default) */
+    v = upconf_str(c->conf, p, "padding-color", 0);
+    if (v)
+        c->w.pad_extend = str_ieq(v, "extend"); /* the strips beside the grid (W-T14; background by default) */
     v = upconf_str(c->conf, p, "scrollbar", 0);
     if (v)
         c->sbar_on = !str_ieq(v, "hide");
@@ -1337,7 +1344,7 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
 };
 
 /* Help, the strip's last menu: the tour of what the terminal does
- * (UPDemo TOUR, in a new tab; /demo too) */
+ * (UPDemo, in a new tab; /demo too) */
 #define MENU_HELP_ITEMS 2
 static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
     { NM_TITLE, (STRPTR)"Help", 0, 0, 0, 0 },
@@ -1349,7 +1356,7 @@ static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 50
+#define MENU_SET_ITEMS 54
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1387,6 +1394,10 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Delete", 0, CHECKIT, 2, (APTR)MENU_SET_BS_DEL },
     { NM_SUB, (STRPTR)"Backspace", 0, CHECKIT, 1, (APTR)MENU_SET_BS_BS },
     { NM_ITEM, (STRPTR)"AmigaShell keys", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_AMIGA_KEYS },
+    { NM_ITEM, (STRPTR)"Dither on few colours", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_DITHER },
+    { NM_ITEM, (STRPTR)"Padding colour", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Background", 0, CHECKIT, 2, (APTR)MENU_SET_PAD_BG },
+    { NM_SUB, (STRPTR)"Extend the edge cells", 0, CHECKIT, 1, (APTR)MENU_SET_PAD_EXTEND },
     { NM_ITEM, (STRPTR)"Programs may", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Set the clipboard", 0, CHECKIT, 6, (APTR)MENU_SET_CLIP_WRITE },
     { NM_SUB, (STRPTR)"Set and read the clipboard", 0, CHECKIT, 5, (APTR)MENU_SET_CLIP_READ_WRITE },
@@ -1434,6 +1445,9 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_BS_DEL: return !c->w.backspace_bs;
     case MENU_SET_BS_BS: return c->w.backspace_bs;
     case MENU_SET_AMIGA_KEYS: return c->w.amiga_keys;
+    case MENU_SET_DITHER: return c->w.dither;
+    case MENU_SET_PAD_BG: return !c->w.pad_extend;
+    case MENU_SET_PAD_EXTEND: return c->w.pad_extend;
     case MENU_SET_CLIP_WRITE: return c->w.clip_access == VT_CLIP_WRITE;
     case MENU_SET_CLIP_READ_WRITE: return c->w.clip_access == (VT_CLIP_WRITE | VT_CLIP_READ);
     case MENU_SET_CLIP_OFF: return c->w.clip_access == 0;
@@ -1631,6 +1645,8 @@ static void window_fields(con *c, prefs_fields *f)
     f->completion = c->kingcon ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
     f->backspace_bs = c->w.backspace_bs != 0;
     f->amiga_keys = c->w.amiga_keys != 0;
+    f->dither = c->w.dither != 0;
+    f->pad_extend = c->w.pad_extend != 0;
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
                  : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
     copy_str(f->linkopen, c->link_open, sizeof(f->linkopen));
@@ -2047,6 +2063,9 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_BS_DEL: c->w.backspace_bs = 0; restyle = 1; break;
     case MENU_SET_BS_BS: c->w.backspace_bs = 1; restyle = 1; break;
     case MENU_SET_AMIGA_KEYS: c->w.amiga_keys = on; restyle = 1; break;
+    case MENU_SET_DITHER: c->w.dither = on; restyle = 1; break;
+    case MENU_SET_PAD_BG: c->w.pad_extend = 0; restyle = 1; break;
+    case MENU_SET_PAD_EXTEND: c->w.pad_extend = 1; restyle = 1; break;
     case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
     case MENU_SET_CLIP_READ_WRITE: c->w.clip_access = VT_CLIP_WRITE | VT_CLIP_READ; restyle = 1; break;
     case MENU_SET_CLIP_OFF: c->w.clip_access = 0; restyle = 1; break;
@@ -2203,6 +2222,18 @@ static struct Window *tab_register(con *c);
 static void tab_unregister(con *c);
 
 /* ---- a screen of its own (P1) ------------------------------------------------ */
+
+/* The screen's pen count for XTGETTCAP colors (UPDemo picks its 16-colour
+ * version from it): 2 to the depth, 256 for a deeper (chunky) screen. */
+static void pens_tell(con *c)
+{
+    struct Screen *scr = c->w.win ? c->w.win->WScreen : 0;
+    ULONG depth;
+    if (!scr || !c->w.t)
+        return;
+    depth = GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH);
+    vt_set_screen_colors(c->w.t, depth >= 8 ? 256 : 1 << depth);
+}
 
 /* Intuition's pens for a screen of our own, from the Workbench's: each of
  * its DrawInfo pens with the colour it has there. cols holds the 16 ANSI
@@ -2501,6 +2532,7 @@ have_window:
         return 0;
     }
     DBG("vt_new", c->w.t, 0);
+    pens_tell(c);
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */
     le_free(&c->le); /* an AUTO window opening again: the last one's history (reloaded below) */
@@ -2625,6 +2657,7 @@ static int screen_switch(con *c, int mode)
     c->own_win = win;
     vtwin_set_screen(&c->w, scr);
     vtwin_rebind(&c->w, win);
+    pens_tell(c);
     vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
     menu_add(c, win);
     sbar_apply(c); /* none on the borderless full-screen window: it has no border */
@@ -3711,7 +3744,7 @@ static void setup_text(con *c, char *ans, int cap)
 {
     const char *p = c->conf && profile_exists(c->conf, c->profile) ? c->profile : 0;
     const char *base = p ? p : (c->conf && profile_exists(c->conf, "default") ? "default" : 0);
-    slash_row rows[6];
+    slash_row rows[8];
     const char *pv;
     char font[UC_MAX_VALUE];
     int n = 0;
@@ -3744,6 +3777,16 @@ static void setup_text(con *c, char *ans, int cap)
     rows[n].value = c->link_open;
     pv = base ? upconf_str(c->conf, base, "link-open", 0) : 0;
     rows[n].source = slash_source(c->link_open, pv, "");
+    n++;
+    rows[n].name = "dither";
+    rows[n].value = c->w.dither ? "on" : "off";
+    pv = base ? upconf_str(c->conf, base, "dither", 0) : 0;
+    rows[n].source = slash_source(rows[n].value, pv, "on");
+    n++;
+    rows[n].name = "padding-color";
+    rows[n].value = c->w.pad_extend ? "extend" : "background";
+    pv = base ? upconf_str(c->conf, base, "padding-color", 0) : 0;
+    rows[n].source = slash_source(rows[n].value, pv, "background");
     n++;
     slash_setup_text(rows, n, ans, cap);
 }
@@ -4922,6 +4965,15 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
 {
     switch (cls) {
     case IDCMP_RAWKEY:
+        {
+            /* the wheel of a machine without IDCMP_EXTENDEDMOUSE (Kickstart 3.1, FS-UAE):
+             * NewMouse's raw keys 0x7A / 0x7B, not typing */
+            int up;
+            if (vti_newmouse_wheel(code, &up)) {
+                vtwin_wheel(&c->w, up, qual, mx, my);
+                break;
+            }
+        }
         /* Right Amiga F: the find prompt, opened here rather than in vtwin
          * because the prompt is a window of ours */
         if ((qual & IEQUALIFIER_RCOMMAND) && code == 0x46) {
@@ -5321,10 +5373,10 @@ struct tab_spawn_msg {
     struct Message msg;
     char cmd[200];
     char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
-    int demo;                    /* Help > Demo tour: UPDemo's tour in the tab, not a shell */
+    int demo;                    /* Help > Demo tour: UPDemo in the tab, not a shell */
 };
 
-/* Help > Demo tour: the tab runs UPDemo's tour and closes when it ends.
+/* Help > Demo tour: the tab runs UPDemo and closes when it ends.
  * 1 when the tab is on its way; 0 when C:UPDemo is not there (said in a
  * requester, as Preferences... says it of the editor). */
 static int tab_demo_script(struct tab_spawn_msg *m)
@@ -5343,7 +5395,7 @@ static int tab_demo_script(struct tab_spawn_msg *m)
     UnLock(lock);
     if (!(f = Open((STRPTR)"T:UP-Term-demo", MODE_NEWFILE)))
         return 0;
-    FPuts(f, (STRPTR)"FailAt 2147483647\nC:UPDemo TOUR\nEndCLI >NIL:\n");
+    FPuts(f, (STRPTR)"FailAt 2147483647\nC:UPDemo\nEndCLI >NIL:\n");
     Close(f);
     strcat(m->cmd, " FROM T:UP-Term-demo");
     return 1;
@@ -5422,7 +5474,7 @@ static void h_open_link(void *u, const char *uri)
     start_worker(link_opener, "UP-Term link", &m->msg);
 }
 
-/* 1 when the new tab is on its way; demo: the tab plays the tour */
+/* 1 when the new tab is on its way; demo: the tab plays the demo */
 static int tab_spawn(con *c, const char *profile, con *from, int demo)
 {
     struct tab_spawn_msg *m;
@@ -5959,12 +6011,16 @@ static void packet(con *c, struct DosPacket *p)
             DBG("PROF render/frames", c->w.prof_render, c->w.prof_frames);
             DBG("PROF rows/scroll", c->w.prof_part[0], c->w.prof_part[1]);
             {
-                extern ULONG vr_prof[4];
+                extern ULONG vr_prof[9];
                 DBG("PROF cursor/paint", c->w.prof_part[2], vr_prof[0]);
                 DBG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
                 DBG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
                 c->w.prof_part[3] = 0;
-                vr_prof[0] = vr_prof[1] = vr_prof[2] = 0;
+                DBG("PROF fill/fills", vr_prof[3], vr_prof[4]);
+                DBG("PROF blit/blits", vr_prof[5], vr_prof[6]);
+                DBG("PROF beam/waits", vr_prof[7], vr_prof[8]);
+                vr_prof[0] = vr_prof[1] = vr_prof[2] = vr_prof[3] = vr_prof[4] = vr_prof[5] = vr_prof[6] = 0;
+                vr_prof[7] = vr_prof[8] = 0;
                 c->w.r.n_text = 0;
             }
             DBG("PROF pkwrite/n", c->prof_pk[0], c->prof_npk[0]);
@@ -6185,7 +6241,7 @@ static void packet(con *c, struct DosPacket *p)
         {
             char *buf = (char *)p->dp_Arg2;
             buf[0] = buf[1] = 0;
-            slash_env_list(c->term, c->colors, buf, p->dp_Arg3);
+            slash_env_list(c->term, c->colors, c->w.pers == VT_AMIGA ? "vtcon-amiga" : "", buf, p->dp_Arg3);
         }
         reply(p, DOSTRUE, 0);
         return;

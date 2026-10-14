@@ -1,0 +1,5 @@
+; this archive's record drawer: its manifest and options (below), its VERSIONS (for an
+; Update's two version lines) and a copy of its Uninstall, which the base's Uninstall runs
+MakeDir >NIL: @PKGDIR@ @RECORD@
+Copy VERSIONS @RECORDP@VERSIONS CLONE QUIET
+Copy /Uninstall @RECORDP@Uninstall CLONE QUIET

@@ -9,7 +9,7 @@ built (make test builds them first); a binary that is out of date already is rep
 import os, re, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TARGETS = ['build/vttest_host', 'build/vsh_host', 'build/vsh_host_leak', 'build/tn_host', 'build/hl', 'build/mdv']
+TARGETS = ['build/vttest_host', 'build/vsh_host', 'build/vsh_host_leak', 'build/render_host', 'build/tn_host', 'build/hl', 'build/mdv']
 
 
 def make(*args):

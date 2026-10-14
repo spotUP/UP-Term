@@ -9,6 +9,9 @@ void llm_acc_init(llm_acc *a, const char *api, const char *provider)
     memset(a, 0, sizeof(*a));
     a->api = api;
     a->provider = provider;
+    jw_init(&a->usage_raw);
+    jw_init(&a->rewrite);
+    jw_init(&a->diag);
 }
 
 void llm_acc_model(llm_acc *a, const char *id, const long price[4])
@@ -61,10 +64,26 @@ void llm_acc_meta(const llm_acc *a, llm_meta *m)
     m->duration_ms = a->duration_ms;
     m->has_duration = a->has_duration;
     m->response_id = a->id[0] ? a->id : 0;
+    if (a->level_srv[0] && !m->level)
+        m->level = a->level_srv;
+    if (a->usage_raw.n) {
+        m->usage_json = a->usage_raw.p;
+        m->usage_json_n = a->usage_raw.n;
+    }
+    if (a->rewrite.n) {
+        m->rewrite = a->rewrite.p;
+        m->rewrite_n = a->rewrite.n;
+        m->rewrite_ts = a->rewrite_ts;
+    }
+    if (a->diag.n) {
+        m->diag = a->diag.p;
+        m->diag_n = a->diag.n;
+    }
+    m->pi_order = !strcmp(a->api ? a->api : "", "pi-messages") ? (a->meta_seen ? 2 : 1) : a->anew ? 1 : 0;
     m->raw_stop = a->stop_raw[0] ? a->stop_raw : 0;
     m->response_model = a->cfg_model[0] && a->model[0] && strcmp(a->cfg_model, a->model) ? a->model : 0;
     m->usage = a->usage;
-    if (a->cfg_model[0]) {
+    if (a->cfg_model[0] && !a->have_cost) {
         const long *price = a->price;
         int i;
         if (m->response_model)          /* the server's model, when the list allows it: its own price */
@@ -84,6 +103,9 @@ void llm_acc_meta(const llm_acc *a, llm_meta *m)
 void llm_acc_free(llm_acc *a)
 {
     int i;
+    jw_free(&a->usage_raw);
+    jw_free(&a->rewrite);
+    jw_free(&a->diag);
     for (i = 0; i < a->nb; i++) {
         jw_free(&a->b[i].a);
         jw_free(&a->b[i].sig);
@@ -536,6 +558,8 @@ void llm_acc_event(void *u, const llm_event *e)
         }
         if (e->type == LE_SIG_DELTA && e->replace)
             jw_reset(&b->sig);
+        if (e->type == LE_DELTA && e->replace)
+            jw_reset(&b->a);        /* pi-messages: the *_end event's content is the block's text (or arguments) whatever the deltas said */
         if (e->type == LE_SIG_DELTA && e->redacted)
             b->redacted = 1;        /* bedrock: the first encrypted reasoning chunk makes the block redacted */
         jw_raw(e->type == LE_DELTA ? &b->a : &b->sig, e->p, e->n);
@@ -547,6 +571,10 @@ void llm_acc_event(void *u, const llm_event *e)
             break;
         }
         b->done = 1;
+        if (e->id)
+            copyn(b->id, sizeof(b->id), e->id);         /* pi-messages' toolcall_end: the call as the gateway finished it */
+        if (e->name)
+            copyn(b->name, sizeof(b->name), e->name);
         if (b->kind == LB_TOOLCALL && !args_ok(b))
             b->bad = 1;         /* settled once the stop reason is known */
         break;
@@ -570,6 +598,36 @@ void llm_acc_event(void *u, const llm_event *e)
         if (e->has_reasoning) {
             a->usage.reasoning = e->reasoning;
             a->usage.has_reasoning = 1;
+        }
+        if (e->has_cost) {
+            int k;
+            for (k = 0; k < 4; k++)
+                a->usage.cost[k] = e->cost[k];
+            a->have_cost = 1;
+        }
+        break;
+    case LE_META:
+        a->meta_seen = 1;
+        if (e->p && e->n > 0) {
+            long k = e->n < (long)sizeof(a->id) - 1 ? e->n : (long)sizeof(a->id) - 1;
+            memcpy(a->id, e->p, (size_t)k);
+            a->id[k] = 0;
+        }
+        if (e->level)
+            copyn(a->level_srv, sizeof(a->level_srv), e->level);
+        if (e->raw && e->rn > 0) {
+            jw_reset(&a->usage_raw);
+            jw_raw(&a->usage_raw, e->raw, e->rn);
+        }
+        if (e->rewrite && e->rewrite_n > 0) {
+            jw_reset(&a->rewrite);
+            jw_raw(&a->rewrite, e->rewrite, e->rewrite_n);
+            a->rewrite_ts = llm_wall();
+        }
+        if (e->diag && e->diag_n > 0) {
+            if (a->diag.n)
+                jw_rawz(&a->diag, ",");
+            jw_raw(&a->diag, e->diag, e->diag_n);
         }
         break;
     case LE_STOP:
@@ -639,7 +697,7 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
 {
     jw c;
     llm_meta m;
-    int i, first = 1, *ord, cut = (a->failed && !a->args_failed) || !a->done;
+    int i, first = 1, *ord, cut = (a->failed && !a->args_failed) || !a->done, fresh;
     /* an answer that ended in an error or was cut off keeps the tool calls it had begun, with the arguments so far
      * (pi: every provider's catch block deletes only its scratch fields); a call of a finished answer must be whole */
     settle(a);
@@ -659,7 +717,10 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     }
     jw_init(&c);
     jw_raw(&c, "[", 1);
-    for (i = 0; i < a->nb; i++) {
+    /* pi-messages: a failure that is not the server's own error event is a message made anew (api/pi-messages.ts createErrorEvent):
+     * no content, no usage, no ids */
+    fresh = (a->anew || !strcmp(a->api ? a->api : "", "pi-messages")) && !a->meta_seen && (a->failed || !a->done);
+    for (i = 0; i < a->nb && !fresh; i++) {
         const llm_ablock *b = &a->b[ord[i]];
         jw part;
         int partial = b->kind == LB_TOOLCALL && (!b->done || !args_ok(b));
@@ -702,6 +763,17 @@ int llm_acc_message(llm_acc *a, llm_ts ts, jw *out)
     jw_raw(&c, "]", 1);
     free(ord);
     llm_acc_meta(a, &m);
+    if (fresh) {
+        memset(&m.usage, 0, sizeof(m.usage));
+        m.usage_json = 0;
+        m.usage_json_n = 0;
+        m.response_id = 0;
+        m.level = 0;
+        m.rewrite = 0;
+        m.rewrite_n = 0;
+        m.raw_stop = 0;
+        m.response_model = 0;
+    }
     m.stop = a->failed ? a->stop : !a->done ? LS_ABORTED : a->stop ? a->stop : LS_STOP;
     m.error = a->failed ? (a->err ? a->err : "error") : 0;
     llm_m_assistant(out, c.p, c.n, &m, ts);
@@ -738,4 +810,9 @@ const llm_ablock *llm_acc_tool(const llm_acc *a, int k)
             return &a->b[best];
         last = a->b[best].index;
     }
+}
+
+void llm_acc_anew(llm_acc *a)
+{
+    a->anew = 1;
 }

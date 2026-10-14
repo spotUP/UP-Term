@@ -397,6 +397,37 @@ static void amiga_keys_and_highlight_cat_round_trip(void)
     CHECK_STR(prefs_hlcat_text(0), "off\n");
 }
 
+/* W-T9 dither (on by default) and W-T14 padding-color (background by default): no key gives the defaults, the
+ * editor writes both, and what it wrote reads back -- the words the handler reads (apply_profile) */
+static void dither_and_padding_color_round_trip(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    prefs_fields f, g;
+    long len;
+    CHECK_INT(prefs_load(&conf, "[default]\nfont = x\n", 20, UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.dither, 1);
+    CHECK_INT(f.pad_extend, 0);
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "dither", "?"), "on");
+    CHECK_STR(upconf_str(&conf, "default", "padding-color", "?"), "background");
+    f.dither = 0;
+    f.pad_extend = 1;
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "dither", "?"), "off");
+    CHECK_STR(upconf_str(&conf, "default", "padding-color", "?"), "extend");
+    prefs_from_conf(&g, &conf, "default");
+    CHECK_INT(g.dither, 0);
+    CHECK_INT(g.pad_extend, 1);
+    CHECK_INT(prefs_load(&conf, "[default]\ndither = junk\npadding-color = junk\n", 45, UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&g, &conf, "default"); /* anything but off / extend is the default */
+    CHECK_INT(g.dither, 1);
+    CHECK_INT(g.pad_extend, 0);
+}
+
 static void keep_cases(void)
 {
     static char buf[UC_MAX_FILE + 1];
@@ -624,4 +655,5 @@ void suite_prefs(void)
     stage_cases();
     keep_cases();
     amiga_keys_and_highlight_cat_round_trip();
+    dither_and_padding_color_round_trip();
 }

@@ -4,7 +4,8 @@ Lab record
 ; tools/mkmanifest.py) and the options of this install, the Installer's
 ; ENV:UPTOPT<keyword> files as P_OPTIONS wrote them. An install from a Shell
 ; has no such files and leaves no options: the next Install asks again.
-Copy MANIFEST @RECORD@MANIFEST CLONE
+; @include dist/common/@RECORDPRE@
+Copy MANIFEST @RECORDP@MANIFEST CLONE
 If EXISTS ENV:UPTOPTDEST
   Delete >NIL: @OPTS@ ALL QUIET
   MakeDir >NIL: @OPTS@

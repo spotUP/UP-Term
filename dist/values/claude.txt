@@ -1,0 +1,4 @@
+ADDONVAR=uninstall-addon-var.dos
+VARDIR=UP-Term:var/Claude
+VARWHAT=UP-Term:var/Claude (sessions and history)
+DESTTEXT=C:

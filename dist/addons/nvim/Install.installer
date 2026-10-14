@@ -1,0 +1,55 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 7, lead 3
+(message
+    "\n\n\nN E O V I M\n\n"
+    "Neovim 0.12 and its runtime, for an UP-Term window.\n"
+    "It goes into UP-Term:nvim (about 2100 files, 32 MB).\n"
+    "Needs UP-Term.lha installed first.\n"
+    (all))
+(set #kb-nvim @KBCOPYNVIM@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "Neovim needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install Neovim into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-nvim 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #from (tackon #files "nvim") #to (tackon #dest "nvim") #part "copy-nvim" #kb #kb-nvim #n 1
+     #why "Copying Neovim 0.12 and its runtime to UP-Term:nvim.")
+(P_COPY)
+
+(set #step "launch" #kb @KBLAUNCH@ #n 3
+     #why (cat "Putting the quick-launch icon (Neovim)\n"
+               "in UP-Term:, beside the UP-Term icon."))
+(P_STEP)
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "Neovim is installed. In an UP-Term window, in vsh:\n"
+         "  nvim file.txt\n\n"
+         "The biggest part was copying 2100 files; Uninstall\n"
+         "(beside Install) takes Neovim out again."))
+; @include dist/common/addon-tail.installer

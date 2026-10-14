@@ -6,8 +6,10 @@ UPTERM_OS32_TREE, UPTERM_OS32_ROM).
 UPTERM_ROOT is the workspace directory that holds vtcon, ixemul-vtcon,
 tmux-amiga, ... side by side (the meta-repo `upterm` creates it). Default:
 the parent of this vtcon checkout. The Makefile's default is the same
-(`UPTERM_ROOT ?= $(abspath ..)`).
+(`UPTERM_ROOT ?= $(abspath $(CURDIR)/..)`).
 """
+import contextlib
+import fcntl
 import os
 import pathlib
 import subprocess
@@ -15,6 +17,29 @@ import sys
 
 VTCON = pathlib.Path(__file__).resolve().parents[2]
 UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
+# the rig's own UP-Term: drawer in the host drawer VTC: (the Workbench labels a drawer icon with the file name,
+# so the owner sees Apps); rig.py, the rig scripts and their tests all take it from here
+UPTERM_DRAWER = "Apps"
+OLD_UPTERM_DRAWER = "upterm"   # its name until 2026-10-14; rig.py install renames it
+
+
+def code_root(upterm_root=None):
+    """The directory that holds the projects which are not UP-Term repos
+    (DCTelnet/, AmiExpress/, UpRough/). CODE_ROOT if set, else the nearest
+    ancestor of UPTERM_ROOT (itself included) that contains DCTelnet/, else
+    UPTERM_ROOT. Right in both layouts: UPTERM_ROOT = ~/Code (flat) and
+    UPTERM_ROOT = ~/Code/UP-Term (umbrella). The Makefile asks this function
+    (`python3 -I tools/rig/paths.py code-root`), so the rule lives here once."""
+    if os.environ.get("CODE_ROOT"):
+        return pathlib.Path(os.environ["CODE_ROOT"])
+    root = pathlib.Path(upterm_root or UPTERM_ROOT).resolve()
+    for d in (root, *root.parents):
+        if (d / "DCTelnet").is_dir():
+            return d
+    return root
+
+
+CODE_ROOT = code_root()
 
 
 def _main_checkout(checkout):
@@ -51,8 +76,9 @@ def repo(name):
 
 
 # The default Kickstart 3.1 (40.068) ROM; UPTERM_ROM names another file.
+UPROUGH_ROOT = pathlib.Path(os.environ.get("UPROUGH_ROOT") or CODE_ROOT / "UpRough")
 KICKSTART = pathlib.Path(os.environ.get("UPTERM_ROM") or
-    UPTERM_ROOT / "Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
+    UPROUGH_ROOT / "Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
 
 
 # The rest of the rig's inputs, each an environment variable with the owner's
@@ -66,6 +92,16 @@ OS32_TREE = pathlib.Path(os.environ.get("UPTERM_OS32_TREE") or
     pathlib.Path.home() / "Downloads/AmigaOS-3.2-full (1)")
 OS32_ROM = pathlib.Path(os.environ.get("UPTERM_OS32_ROM") or
     pathlib.Path.home() / "Desktop/KICK_323.rom")
+
+
+# UPTERM_MUTOOLS    the NDK 3.2R4 MuTools drawer (MuForce, disassembler.library), for `rig.py muforce`
+# UPTERM_MMULIB     Thomas Richter's mmu.library (not in the NDK: its Developer Distribution only documents it)
+# Licence (THOR-Software Licence v3, MuForce.guide): free to distribute, not for payment, no modified
+# redistribution. So the rig installs them from these paths and no repository or kit archive holds them.
+MUTOOLS = pathlib.Path(os.environ.get("UPTERM_MUTOOLS") or
+    pathlib.Path.home() / "Downloads/NDK3.2R4/MuTools")
+MMULIB = pathlib.Path(os.environ.get("UPTERM_MMULIB") or
+    pathlib.Path.home() / "Library/CloudStorage/Dropbox/WB/Libs/mmu.library")
 
 
 # --os <name>: a clean installed Workbench image per OS (the owner's, read
@@ -107,3 +143,40 @@ def require_rom(path):
     if not pathlib.Path(path).is_file():
         sys.exit("rig: Kickstart ROM not found: %s (set UPTERM_ROM=<file> or "
                  "pass --kick <file>)" % path)
+
+
+@contextlib.contextmanager
+def rig_lock(rig_dir=None):
+    """Hold the rig for this run: an exclusive flock on <rig dir>/rig.lock, released when
+    the block ends or the process dies (the kernel drops it). A rig is one FS-UAE with one
+    amiagent port, so two scripts on it corrupt each other's state; the second stops with
+    the holder's pid instead (one agent per rig). `rig_dir` defaults to this instance's."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    if os.environ.get("UPTERM_RIG_LOCK_HELD") == str(d):
+        yield   # a script run by the holder (assign_rig runs install_rig): the holder has it
+        return
+    d.mkdir(parents=True, exist_ok=True)
+    f = open(d / "rig.lock", "a+")
+    try:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            f.seek(0)
+            holder = f.read().strip()
+            raise SystemExit("rig: %s is in use by pid %s (%s); one script per rig. "
+                             "Wait for it, or use the other rig (UPTERM_RIG=2)."
+                             % (d.name, holder.split(None, 1)[0] if holder else "unknown", holder[:120] or "no details"))
+        f.seek(0)
+        f.truncate()
+        f.write("%d %s\n" % (os.getpid(), " ".join(sys.argv)[:200]))
+        f.flush()
+        os.environ["UPTERM_RIG_LOCK_HELD"] = str(d)
+        yield
+    finally:
+        if os.environ.get("UPTERM_RIG_LOCK_HELD") == str(d):
+            del os.environ["UPTERM_RIG_LOCK_HELD"]
+        f.close()
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["code-root"]:
+    print(CODE_ROOT)

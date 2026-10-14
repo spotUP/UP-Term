@@ -59,6 +59,13 @@ int llm_reg_builtin(llm_reg *r)
     return llm_reg_overlay(r, llm_models_builtin, (long)strlen(llm_models_builtin));
 }
 
+const char *llm_reg_builtin_text(long *n)
+{
+    if (n)
+        *n = (long)strlen(llm_models_builtin);
+    return llm_models_builtin;
+}
+
 const llm_model *llm_reg_find(const llm_reg *r, const char *provider, const char *id)
 {
     int i;
@@ -398,4 +405,13 @@ int llm_reg_resolve(llm_reg *r, const char *cli_provider, const char *pattern, l
     strncat(err, "\" not found. Use --list-models to see available models.", (size_t)errcap - strlen(err) - 1);
     free(cand);
     return -1;
+}
+
+void llm_reg_drop_provider(llm_reg *r, const char *provider)
+{
+    int i, k = 0;
+    for (i = 0; i < r->n; i++)
+        if (strcmp(r->m[i].provider, provider))
+            r->m[k++] = r->m[i];
+    r->n = k;
 }

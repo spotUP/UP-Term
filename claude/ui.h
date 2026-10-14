@@ -42,6 +42,10 @@ typedef struct cl_io {
     /* A4: a file in the user's editor (Ctrl+G; raw mode is off
      * meanwhile): 0 when the editor ran, -1 not; 0: no editor */
     int (*edit)(void *u, const char *path);
+    /* is the console UP-Term's (it answered the line discipline's packet)? 1
+     * yes, 0 not; 0 pointer: not known, taken as no. The start banner names
+     * UP-Term only when this says yes. */
+    int (*upterm)(void *u);
 } cl_io;
 
 /* A4 (WP1) -- what the screen needs from the rest of the program. Each

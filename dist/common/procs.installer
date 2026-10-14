@@ -19,25 +19,12 @@
     (if (<> #val "")
         (textfile (dest (cat "ENV:UPTOPT" #name)) (append #val))))
 
+; P_OPTIONS: the options of this install (the package's own P_OPTIONS_LIST
+; writes them with P_OPT) and the assign UPTKIT: for the Files drawer
 (procedure P_OPTIONS
     (run "Delete >NIL: ENV:UPTOPT#? QUIET")
     (makeassign "UPTKIT" #files)
-    (set #name "DEST" #val #dest) (P_OPT)
-    (set #name "REMOTE" #val #remote) (P_OPT)
-    (set #name #con #val #con) (P_OPT)
-    (set #name #dev #val #dev) (P_OPT)
-    (set #name "SHELLICON" #val #shellicon) (P_OPT)
-    (set #name "SERIAL" #val #serial) (P_OPT)
-    (set #name "SSH" #val #ssh) (P_OPT)
-    (set #name "BEBBOGET" #val #bget) (P_OPT)
-    (set #name "CURL" #val #curl) (P_OPT)
-    (set #name "WASABI" #val #wasabi) (P_OPT)
-    (set #name "PYTHON" #val #python) (P_OPT)
-    (set #name "NVIM" #val #nvim) (P_OPT)
-    (set #name "CPU040" #val #cpu040) (P_OPT)
-    (set #name "CPU060" #val #cpu060) (P_OPT)
-    (set #name "UNIFONT" #val #unifont) (P_OPT)
-    (set #name "EMOJI" #val #emoji) (P_OPT))
+    (P_OPTIONS_LIST))
 
 (procedure P_OPTIONS_END
     (run "Delete >NIL: ENV:UPTOPT#? QUIET")

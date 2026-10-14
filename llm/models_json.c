@@ -5,13 +5,15 @@
  * stripJsonComments), the text must be {"providers": {...}}. A provider's
  * baseUrl / apiKey / headers / authHeader / compat are written into all its
  * models, `models` adds a model or replaces the one with that id,
- * `modelOverrides` merges into an existing one (unknown ids are ignored).
+ * `modelOverrides` merges into an existing one (unknown ids are ignored). `oauth: "radius"` (with its baseUrl, the gateway) keeps
+ * each model's own baseUrl; the catalog itself is llm/radius.h's.
  * Not carried over (accepted and ignored): inputLimits, promptCache,
- * samplingParams*, oauth, the compat flags this client has no use for.
+ * samplingParams*, the compat flags this client has no use for.
  * Portable C89. */
 #include <stdlib.h>
 #include <string.h>
 #include "registry.h"
+#include "radius.h"
 #include "../claude/util.h"
 
 typedef struct ctx {
@@ -309,9 +311,15 @@ static int provider(ctx *c, const char *pid, jv cfg)
     jv v, defs, ovr, e;
     jit it;
     const char *base = 0, *api = 0, *key = 0, *hdr = 0;
-    int i, has_auth = 0, auth = 0, any = 0;
+    int i, has_auth = 0, auth = 0, any = 0, oauth = 0;
     if (json_type(cfg) != J_OBJ)
         return fail(c, "a provider must be an object");
+    if (json_get(cfg, "oauth", &v)) {
+        if (!json_streq(v, "radius"))
+            return fail(c, "oauth must be \"radius\"");
+        oauth = 1;
+        any = 1;
+    }
     if (json_get(cfg, "baseUrl", &v)) {
         if (json_type(v) != J_STR)
             return fail(c, "baseUrl must be a string");
@@ -344,6 +352,13 @@ static int provider(ctx *c, const char *pid, jv cfg)
         any = 1;
     if (json_get(cfg, "models", &v) && json_type(v) == J_ARR && json_count(v) > 0)
         any = 1;
+    if (oauth && !base) {
+        /* applyModelsJson: the gateway is the provider's baseUrl */
+        cl_copy(r->err, "Provider ", sizeof(r->err));
+        cl_cat(r->err, pid, sizeof(r->err));
+        cl_cat(r->err, ": \"baseUrl\" is required when \"oauth\" is set.", sizeof(r->err));
+        return -1;
+    }
     if (!any) {
         cl_copy(r->err, "Provider ", sizeof(r->err));
         cl_cat(r->err, pid, sizeof(r->err));
@@ -355,7 +370,7 @@ static int provider(ctx *c, const char *pid, jv cfg)
         llm_model *m = &r->m[i];
         if (strcmp(m->provider, pid))
             continue;
-        if (base)
+        if (base && !oauth)             /* a Radius provider keeps the catalog's baseUrl of each model (provider-composer.ts:326) */
             m->base_url = base;
         if (key)
             m->key = key;
@@ -526,4 +541,53 @@ int llm_reg_overlay(llm_reg *r, const char *text, long n)
     free(save);
     free(b);
     return rc;
+}
+
+/* the Radius gateways of a models.json (model-runtime.ts configureRadiusProviders: `oauth: "radius"` and a baseUrl) */
+static int rad_set(llm_reg *r, const char *id, const char *gateway)
+{
+    int i;
+    for (i = 0; i < r->nrad; i++)
+        if (!strcmp(r->rad[i].id, id))
+            break;
+    if (i == r->nrad) {
+        if (r->nrad == LLM_RADIUS_MAX)
+            return -1;
+        r->nrad++;
+    }
+    cl_copy(r->rad[i].id, id, sizeof(r->rad[i].id));
+    cl_copy(r->rad[i].gateway, gateway, sizeof(r->rad[i].gateway));
+    return 0;
+}
+
+int llm_reg_radius_scan(llm_reg *r, const char *text, long n)
+{
+    char *b;
+    long bn;
+    jv root, provs, key, cfg, v;
+    jit it;
+    r->nrad = 0;
+    rad_set(r, "radius", LLM_RADIUS_GATEWAY);
+    if (!text)
+        return 0;
+    b = clean(text, n, &bn);
+    if (!b)
+        return -1;
+    if (json_parse(b, bn, &root) || json_type(root) != J_OBJ || !json_get(root, "providers", &provs) ||
+        json_type(provs) != J_OBJ) {
+        free(b);
+        return -1;
+    }
+    json_iter(provs, &it);
+    while (json_next(&it, &key, &cfg)) {
+        char pid[64], url[200];
+        if (json_type(cfg) != J_OBJ || !json_get(cfg, "oauth", &v) || !json_streq(v, "radius") ||
+            !json_get(cfg, "baseUrl", &v) || json_type(v) != J_STR || json_str(key, pid, sizeof(pid)) < 0 ||
+            json_str(v, url, sizeof(url)) < 0)
+            continue;
+        llm_radius_gateway(url, 1, url, sizeof(url));
+        rad_set(r, pid, url);
+    }
+    free(b);
+    return 0;
 }

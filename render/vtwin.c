@@ -298,6 +298,8 @@ void vtwin_profile_defaults(vtwin *w)
     w->meta_alt = 0;
     w->copy_on_select = 0;
     w->amiga_keys = 1;   /* on by default */
+    w->dither = 1;       /* few-pen screens dither (W-T9) */
+    w->pad_extend = 0;   /* padding-color = background */
     w->backspace_bs = 0; /* DEL, ^?: a profile without the key must not keep the last one's bs */
     w->clip_access = VT_CLIP_WRITE; /* OSC 52 sets the clipboard, never reads it */
     for (i = 0; i < 16; i++)
@@ -541,7 +543,14 @@ void vtwin_render(vtwin *w)
             vr_cursor_off(&w->r);
             PROF_OUT(w, 2);
         }
-        vt_flush(w->t);
+        {
+            /* a ?2026 frame ended since the last pass: drawn off screen,
+             * shown at once (vr_compose_begin; W-T3) */
+            int composed = vr_compose_begin(&w->r);
+            vt_flush(w->t);
+            if (composed)
+                vr_compose_end(&w->r);
+        }
         {
             PROF_IN(w);
             vr_cursor_on(&w->r);
@@ -587,7 +596,7 @@ ULONG vtwin_tick(vtwin *w)
             settle(w); /* the output has stopped: the jump scroll ends */
         w->wrote = 0;
         note_tick(w, w->frame_wait); /* a notice in the title counts down */
-        if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r)))
+        if (w->t && (vr_flash_tick(&w->r) || vr_blink_tick(&w->r, w->frame_wait)))
             frame_start(w); /* that frame ended a flash or a blink phase */
     }
     if (!w->frame_open) {
@@ -826,6 +835,8 @@ struct TextFont *vtwin_open_font(vtwin *w)
 static void settings(vtwin *w)
 {
     int i;
+    vr_set_dither(&w->r, w->dither); /* before the defaults: a change gives the pens back */
+    vr_set_pad_extend(&w->r, w->pad_extend);
     vr_set_defaults(&w->r, w->fg_rgb, w->bg_rgb);
     report_defaults(w);
     /* after report_defaults(): the default colours must be in place so a

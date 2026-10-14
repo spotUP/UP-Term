@@ -221,3 +221,13 @@ Gate reading (login and refresh with no browser on the Amiga): technically met b
 - https://www.kimi.com/en/help/kimi-code/third-party-agents
 - https://hermes-agent.nousresearch.com/docs/ko/guides/xai-grok-oauth (secondary)
 - https://developer.meta.com/ai/products/muse-code/ (surfaced by search, not fetched)
+
+## Anthropic login, revisited (2026-10-13, after eriQue's reply)
+eriQue: pi's Claude login bills "usage tokens" (usage credits), not the plan; it is not against the terms.
+Official pages read via search 2026-10-13:
+- support.claude.com 13189465 "Log in to your Claude account": paid subscribers with usage credits enabled may use certain third-party tools; that usage can be charged to credits instead of plan limits. Tools that misrepresent their identity to Anthropic's servers, or route third-party traffic against plan limits, are prohibited.
+- support.claude.com 14246112 "Buy usage bundles": bundles apply to third-party products that use a Claude account.
+- code.claude.com/docs/en/legal-and-compliance: developers building products use API keys (Console or a cloud provider); third-party developers may not offer Claude.ai login in their own apps or route requests through Free/Pro/Max credentials on users' behalf.
+- support.claude.com 15036540 (Agent SDK, updated 2026-10-07): the June 2026 change was paused; claude -p, Agent SDK and third-party apps still draw from plan limits.
+Verdict: eriQue is right that the billing goes to usage credits and that a user may sign in to a supported third-party tool. The bar on amiga-pi is the developer side: we would be offering Claude.ai login in our own app, and pi's flow presents Claude Code's client and the user:sessions:claude_code scope (identity). Decision unchanged: no Anthropic subscription login in amiga-pi; API key only. Not checked: whether Anthropic lists pi as a "certain third-party tool".
+- Anthropic Support chat, 2026-10-13 (owner asked "is pi.dev a violation of terms?"): "Third-party developers must use API key authentication through the Claude Console or a supported cloud provider. They cannot offer Claude.ai login into their own applications or route requests through Free, Pro, or Max plan credentials." Also lists "routing requests through consumer subscriptions" under prohibited reselling/proxying. No verdict on pi itself without details. Confirms: no Claude login in amiga-pi.

@@ -41,6 +41,12 @@ int vti_cell_at(const vti_geom *g, int px, int py, int *x, int *y);
 /* Lines a wheel notch moves (the view, or cursor keys with ?1007). */
 #define VTI_WHEEL_LINES 3
 
+/* The wheel as a NewMouse driver (and FS-UAE, WinUAE, Amiberry: the emulator's own wheel) sends it on
+ * a machine with no IDCMP_EXTENDEDMOUSE (Kickstart 3.1): the raw keys 0x7A (up) and 0x7B (down), key down
+ * only. Returns 1 and sets *up when code is a wheel notch; a key release (0xFA, 0xFB) and every other
+ * code is 0 (the key path takes them). */
+int vti_newmouse_wheel(unsigned code, int *up);
+
 /* A wheel notch (up 1, down 0) at window pixel px, py. A program that asked
  * for the mouse gets a report (buttons 64/65, the cell under the pointer,
  * clamped to the grid); on the alternate screen with ?1007 and no mouse mode
@@ -120,6 +126,14 @@ int vti_paste_keeps(const vt_term *t, unsigned long ch);
  * 1 and *y0 .. *y1 (inclusive) when any row differs, 0 when none does. */
 int vti_sel_dirty(int on_old, long ax, long ay, long bx, long by,
                   int on_new, long cx, long cy, long dx, long dy, long *y0, long *y1);
+
+/* A scrollback view that moves from old_view to new_view lines back, of a window of `rows` text rows:
+ * 1 when the picture can be carried by one blit and only the exposed rows drawn, 0 when all of it must be
+ * drawn again. Then *n is the scroll (rows, positive = the text moves up, as vr_scroll's n: scrolling back
+ * moves the text down, so n < 0) and *y0 .. *y1 (exclusive) the screen rows to draw. 0 when either end is
+ * the live grid (its double-size rows and cursor are not the scrollback's), when the screen is stale (live
+ * output reached the grid while the view was back), and when the move is a screenful or more. */
+int vti_view_scroll(int old_view, int new_view, int rows, int stale, int *n, int *y0, int *y1);
 
 /* 1 when a change to the cells x0 <= x < x1, y0 <= y < y1 of the visible grid touches a selected cell:
  * the selection (on, from ax, ay to bx, by in absolute rows, any order of ends) must go, as xterm drops

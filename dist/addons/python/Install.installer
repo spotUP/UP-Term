@@ -1,0 +1,67 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 7, lead 3
+(message
+    "\n\n\nP Y T H O N  3\n\n"
+    "Python 3.14 for AmigaOS 3.0 or newer, 68020 or better.\n"
+    "It goes into SYS:Python3 (15 MB) and brings the\n"
+    "ixemul.library it needs, only if yours is older.\n"
+    (all))
+(set #kb-python @KBCOPYPYTHON@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "Python needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install Python into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-python 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "ixemul" #kb @KBIXEMUL@ #n 3
+     #why (cat "Looking for ixemul.library 47 or newer; the one\n"
+               "in this archive goes in only if there is none."))
+(P_STEP)
+
+(set #step "copy-python" #kb #kb-python #n 2
+     #why "Copying Python 3.14 to SYS:Python3.")
+(P_STEP)
+
+(set #step "python" #kb 20 #n 2
+     #why (cat "Assigning Python3: now and at every boot\n"
+               "(a block in S:User-Startup)."))
+(P_STEP)
+
+(set #step "launch" #kb @KBLAUNCH@ #n 3
+     #why (cat "Putting the quick-launch icon (Python 3) in\n"
+               "UP-Term: when it is there; else nothing."))
+(P_STEP)
+
+(set #n 8)
+(P_LEAD)
+(set #done
+    (cat #lead "Python is installed. In a Shell:\n"
+         "  Python3:bin/python3\n"
+         "(in an UP-Term window: python3)\n\n"
+         "Python3: is assigned at every boot (a block in\n"
+         "S:User-Startup). Uninstall (beside Install) takes\n"
+         "Python out again."))
+; @include dist/common/addon-tail.installer

@@ -685,7 +685,7 @@ static void o_http_err(const llm_http_fail *f, char *out, long cap)
 }
 
 const llm_backend llm_be_openai_chat = {
-    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, "Stream ended without finish_reason", 0, 0, 0, o_http_err, 0
+    "openai-completions", "Authorization", "/chat/completions", o_head, o_body, 0, o_new, o_feed, o_free, "Stream ended without finish_reason", 0, 0, 0, o_http_err, 0, 0
 };
 
 const llm_backend *llm_backend_of(const char *api)
@@ -704,5 +704,7 @@ const llm_backend *llm_backend_of(const char *api)
         return &llm_be_openai_codex;
     if (api && !strcmp(api, llm_be_bedrock.api))
         return &llm_be_bedrock;
+    if (api && !strcmp(api, llm_be_pi_messages.api))
+        return &llm_be_pi_messages;
     return 0;
 }

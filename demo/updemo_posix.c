@@ -1,6 +1,6 @@
 /* updemo in a Unix terminal (the Mac's Terminal, iTerm2, xterm): the same
  * scenes UP-Term shows, for comparing. make demo-host;
- * build/updemo [scene | tour [scene]] */
+ * build/updemo [scene] */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -51,6 +51,7 @@ int main(int argc, char **argv)
     struct termios was, raw;
     struct winsize ws;
     int rc;
+    updemo_args args;
     if (tcgetattr(0, &was) || ioctl(1, TIOCGWINSZ, &ws)) {
         fprintf(stderr, "updemo: not a terminal\n");
         return 20;
@@ -64,10 +65,9 @@ int main(int argc, char **argv)
     io.key = key;
     io.ticks = ticks;
     io.user = 0;
-    if (argc > 1 && argv[1][0] == 't')
-        rc = updemo_tour(&io, ws.ws_col, ws.ws_row, argc > 2 ? atoi(argv[2]) - 1 : 0, 0);
-    else
-        rc = updemo_run(&io, ws.ws_col, ws.ws_row, argc > 1 ? atoi(argv[1]) - 1 : 0, 0);
+    updemo_parse_args(argc, argv, &args);
+    updemo_colours(args.colours);
+    rc = updemo_run(&io, ws.ws_col, ws.ws_row, args.scene ? args.scene - 1 : 0, 0);
     tcsetattr(0, TCSANOW, &was);
     if (rc)
         fprintf(stderr, "updemo: the window is %dx%d, it needs %dx%d\n", ws.ws_col, ws.ws_row, UPDEMO_MIN_COLS,

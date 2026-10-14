@@ -231,8 +231,144 @@ static void alternate_screen_waits_while_history_reflows(void)
     vt_free(t);
 }
 
+
+/* W-T1: a prompt near the top of the screen stays there when the window is
+ * resized, as in xterm (resizeGravity north-west) and kitty (screen_resize
+ * reflows the screen on its own). The scrollback above a cleared screen is
+ * not laid out under the prompt: it used to jump to the bottom. */
+static void check_top(vt_term *t, int w, int h, int cy, int sbl)
+{
+    int x, y;
+    vt_resize(t, w, h);
+    vt_cursor(t, &x, &y);
+    CHECK_STR(h_row(t, 0), "$ ls");
+    CHECK_INT(y, cy);
+    CHECK_INT(x, 2);
+    CHECK_INT(vt_scrollback_lines(t), sbl);
+}
+
+static void prompt_near_the_top_stays_there_on_resize(void)
+{
+    enum vt_personality ps[2];
+    int k, i;
+    ps[0] = VT_XTERM;
+    ps[1] = VT_PCANSI;
+    for (k = 0; k < 2; k++) {
+        vt_term *t = h_new(40, 10, ps[k]);
+        vt_set_reflow(t, 1);
+        for (i = 0; i < 30; i++)
+            h_put(t, "old line\r\n");
+        h_put(t, "\033[H\033[2J$ ls\r\nfile\r\n$ ");
+        i = vt_scrollback_lines(t);
+        CHECK(i > 0);
+        check_top(t, 50, 10, 2, i);
+        check_top(t, 50, 14, 2, i);
+        check_top(t, 30, 14, 2, i);
+        check_top(t, 30, 5, 2, i);
+        check_top(t, 20, 12, 2, i);
+        vt_free(t);
+    }
+    /* the Amiga Shell clears with an explicit background pen (ESC[0;31;40m):
+     * the blank rows under the prompt are painted, not plain, and still not
+     * text */
+    {
+        vt_term *t = h_new(40, 10, VT_XTERM);
+        vt_set_reflow(t, 1);
+        for (i = 0; i < 30; i++)
+            h_put(t, "old line\r\n");
+        h_put(t, "\033[0;31;40m\033[H\033[2J\033[0m$ ls\r\nfile\r\n$ ");
+        i = vt_scrollback_lines(t);
+        check_top(t, 50, 10, 2, i);
+        check_top(t, 50, 14, 2, i);
+        check_top(t, 50, 5, 2, i);
+        vt_free(t);
+    }
+    /* the same on a short buffer with an empty scrollback, rows 2 of 24 */
+    {
+        vt_term *t = reflowing(40, 24);
+        h_put(t, "\r\n$ ls\r\nfile\r\n$ ");
+        vt_resize(t, 50, 24);
+        CHECK_STR(h_row(t, 1), "$ ls");
+        vt_resize(t, 50, 30);
+        CHECK_STR(h_row(t, 1), "$ ls");
+        vt_resize(t, 30, 10);
+        CHECK_STR(h_row(t, 1), "$ ls");
+        CHECK_INT(vt_scrollback_lines(t), 0);
+        vt_free(t);
+    }
+}
+
+/* ... and a screen that is full keeps its bottom: a taller window brings
+ * the scrollback down under it, a shorter one pushes the top off. */
+static void full_screen_keeps_its_bottom_on_resize(void)
+{
+    vt_term *t = reflowing(20, 6);
+    int i, x, y, sb;
+    for (i = 0; i < 12; i++)
+        h_put(t, "line\r\n");
+    h_put(t, "$ ");
+    sb = vt_scrollback_lines(t);
+    CHECK(sb > 3);
+    vt_resize(t, 20, 9);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 8);
+    CHECK_INT(vt_scrollback_lines(t), sb - 3);
+    CHECK_STR(h_row(t, 8), "$");
+    vt_resize(t, 20, 4);
+    vt_cursor(t, &x, &y);
+    CHECK_INT(y, 3);
+    CHECK_INT(vt_scrollback_lines(t), sb + 2);
+    vt_free(t);
+}
+
+/* W-T5: a line exactly as wide as the screen that went on to the next row, scrolled up so
+ * its first row is in the scrollback, then a clear: the scrollback row still says "the text
+ * continues on the next line", and the next line is now the cleared screen's first row.
+ * A resize joined them ("0123456789new"). The flag belongs to the line below it (kitty keeps
+ * it there, as line_attrs.continued of the next line, which erasing the line resets). */
+static void a_clear_cuts_the_line_above_the_screen(void)
+{
+    static const char *const clears[] = {"\033[2J\033[H", "\033[H\033[J", "\033[2J"};
+    size_t i;
+    vt_term *t;
+    for (i = 0; i < sizeof(clears) / sizeof(clears[0]); i++) {
+        t = reflowing(10, 3);
+        h_put(t, "0123456789abc\r\nx\r\ny");
+        CHECK_STR(history(t), "0123456789|abc|x|y");
+        CHECK(vt_row_wrapped(t, -1));
+        h_put(t, clears[i]);
+        h_put(t, "\033[Hnew");
+        CHECK(!vt_row_wrapped(t, -1));
+        vt_resize(t, 20, 3);
+        CHECK_STR(history(t), "0123456789|new");
+        vt_free(t);
+    }
+    /* erasing the first row alone cuts it too (the rows below stay) */
+    t = reflowing(10, 3);
+    h_put(t, "0123456789abc\r\nx\r\ny\033[H\033[2Knew");
+    CHECK(!vt_row_wrapped(t, -1));
+    vt_resize(t, 20, 3);
+    CHECK(strncmp(history(t), "0123456789|new", 14) == 0);
+    vt_free(t);
+    /* the join survives a clear that leaves the first row's text: erase only below row 0 */
+    t = reflowing(10, 3);
+    h_put(t, "0123456789abc\r\nx\r\ny\033[2;1H\033[J");
+    CHECK(vt_row_wrapped(t, -1));
+    vt_resize(t, 20, 3);
+    CHECK_STR(history(t), "0123456789abc");
+    vt_free(t);
+    /* a full-screen program's clear (alternate screen) leaves the primary screen's join alone */
+    t = reflowing(10, 3);
+    h_put(t, "0123456789abc\r\nx\r\ny\033[?1049h\033[2J\033[H\033[?1049l");
+    CHECK(vt_row_wrapped(t, -1));
+    vt_free(t);
+}
+
 void suite_reflow(void)
 {
+    a_clear_cuts_the_line_above_the_screen();
+    prompt_near_the_top_stays_there_on_resize();
+    full_screen_keeps_its_bottom_on_resize();
     scrollback_lines_rewrap_with_the_screen();
     line_split_between_scrollback_and_screen_joins();
     taller_window_brings_rows_back();

@@ -411,12 +411,61 @@ static int mk_head(llm_req *q, const http_url *u, const char *path, const char *
     return 0;
 }
 
+/* the request body: the backend's, then the extensions' tap (pi's onPayload runs for every build, also the strict fallback's):
+ * 0, or -1 with the stream's error sent */
+static int build_body(llm_req *q, const llm_ctx *cx, jw *body)
+{
+    jw_reset(body);
+    if (q->be->body(cx, body) || body->oom) {
+        final_error(q->sink, LS_ERROR, "body", "the request could not be built");
+        return -1;
+    }
+    if (q->tap && q->tap->payload) {
+        /* pi's onPayload (the extensions' before_provider_request): before the head is made; a 401's second attempt sends the same body */
+        if (q->tap->payload(q->tap->u, q->model, body) || body->oom) {
+            final_error(q->sink, LS_ERROR, "body", "the request could not be built");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/* the 400 body's error.type is "invalid_request_error" (the SDK's error.type) */
+static int invalid_request(const jw *body)
+{
+    jv v, e, t;
+    return body->p && json_parse(body->p, body->n, &v) == 0 && json_get(v, "error", &e) && json_type(e) == J_OBJ &&
+           json_get(e, "type", &t) && json_streq(t, "invalid_request_error");
+}
+
+/* pi 1.2.0 (anthropic-messages.ts:672-690): the refused request's strict-tool limit is told on the message as a diagnostic */
+static void strict_diag(llm_req *q, const char *msg)
+{
+    jw d;
+    llm_event e;
+    jw_init(&d);
+    jw_rawz(&d, "{\"type\":\"anthropic_strict_tools_fallback\",\"timestamp\":");
+    llm_w_ts(&d, llm_wall());
+    jw_rawz(&d, ",\"error\":{\"message\":");
+    jw_strz(&d, msg);
+    jw_rawz(&d, "},\"details\":{\"reason\":\"strict_tool_limits_exceeded\"}}");
+    if (!d.oom && q->sink && q->sink->ev) {
+        llm_event_init(&e, LE_META);
+        e.diag = d.p;
+        e.diag_n = d.n;
+        q->sink->ev(q->sink->u, &e);
+    }
+    jw_free(&d);
+}
+
 static int request_run(llm_req *q)
 {
     http_url u;
     char path[300], buf[2048], rerr[300];
     static char err[LLM_ERR_MAX];
     jw body, errbody;
+    llm_ctx cx;
+    int pref = 0, fallback;
     http_resp resp;
     sse ss;
     llm_evs es;
@@ -467,18 +516,11 @@ static int request_run(llm_req *q)
     jw_init(&body);
     jw_init(&errbody);
     sse_init(&ss, 0, 0);            /* freed after every attempt, also one that never reached llm_post's sse_init */
-    if (q->be->body(q->ctx, &body) || body.oom) {
+    cx = *q->ctx;                   /* the build's own copy: it learns whether a preferred strict tool went out (strict fallback) */
+    cx.prefer_strict_out = &pref;
+    if (build_body(q, &cx, &body)) {
         jw_free(&body);
-        final_error(q->sink, LS_ERROR, "body", "the request could not be built");
         return -1;
-    }
-    if (q->tap && q->tap->payload) {
-        /* pi's onPayload (the extensions' before_provider_request): once, before the head is made; a 401's second attempt sends the same body */
-        if (q->tap->payload(q->tap->u, q->model, &body) || body.oom) {
-            jw_free(&body);
-            final_error(q->sink, LS_ERROR, "body", "the request could not be built");
-            return -1;
-        }
     }
     if (mk_head(q, &u, path, q->key, &body)) {
         jw_free(&body);
@@ -510,6 +552,7 @@ static int request_run(llm_req *q)
         c.h.event = q->h.log || (q->tap && (q->tap->stream || q->tap->response)) ? rq_event : 0;
         r.resp = &resp;
         r.told = 0;
+        fallback = 0;
         jw_reset(&r.hdrs);
         c.be = q->be;
         c.dec = dec;
@@ -557,6 +600,8 @@ static int request_run(llm_req *q)
             }
         } else if (rc == LP_OK) {
             http_error(q, &r, &resp, &errbody, err, sizeof(err));
+            fallback = q->be->strict_limit && pref && !cx.no_prefer_strict && resp.status == 400 && invalid_request(&errbody) &&
+                       q->be->strict_limit(err);
             retry = resp.status == 429 || resp.status == 408 || (resp.status >= 500 && resp.status <= 599);
             if (resp.retry_after > 0)
                 wait = resp.retry_after * 1000L;
@@ -570,6 +615,13 @@ static int request_run(llm_req *q)
             if (rc != LP_CONNECT && rc != LP_SEND && c.err && *c.err) {
                 cl_cat(err, ": ", sizeof(err));
                 cl_cat(err, c.err, sizeof(err));
+            } else if (c.err && *c.err && q->h.log) {
+                /* the reason pi's text leaves out (no route, no AmiSSL, the certificate) goes to the debug log */
+                q->h.log(q->h.u, "llm: ", 5);
+                q->h.log(q->h.u, err, (long)strlen(err));
+                q->h.log(q->h.u, ": ", 2);
+                q->h.log(q->h.u, c.err, (long)strlen(c.err));
+                q->h.log(q->h.u, "\n", 1);
             }
             retry = rc != LP_BADHTTP && !g.content;
         }
@@ -579,6 +631,15 @@ static int request_run(llm_req *q)
         q->be->dec_free(dec);
         if (rc == LP_BREAK)
             break;
+        if (fallback) {
+            /* the API refused the strict tools' limits: once more, at once, with the preferred ones plain (never after the stream started) */
+            strict_diag(q, err);
+            cx.no_prefer_strict = 1;
+            if (build_body(q, &cx, &body) || mk_head(q, &u, path, q->key, &body))
+                break;
+            attempt--;
+            continue;
+        }
         if (rc == LP_OK && resp.status == 401 && q->reauth && !q->reauthed) {
             /* the credential was refused: renewed once, the request goes again at once with the new one */
             q->reauthed = 1;

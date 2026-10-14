@@ -1,0 +1,7 @@
+Lab check
+; A stand-alone archive (needs-base "-") needs nothing of UP-Term: nothing to check, and no
+; look at an UP-Term: assign (EXISTS UP-Term:... asks for the volume when it is not there).
+Delete >NIL: ENV:UPTCHECK QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf

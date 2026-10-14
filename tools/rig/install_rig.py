@@ -1,23 +1,49 @@
 #!/usr/bin/env python3
-"""install_rig.py -- the install kit on the rig, the owner's way: unpack
-build/dist/UP-Term into VTC:distkit, run its Files/install.dos (what the kit's Installer script runs), check what
-it did (PTY: mounted and working, the patched ixemul in LIBS: with the
-original kept), then Uninstall and check the rig is as before. The rig's
-own image is left with its original ixemul. The rig must be up; `make
-dist` first.
+"""install_rig.py -- the install kits on the rig, the owner's way: unpack build/dist/<archive> into
+VTC:, run its Files/install.dos (what the kit's Installer script runs), check what it did, then
+Uninstall and check the rig is as before. The rig's own image is left with its original ixemul.
+The rig must be up; `make dist` first.
 
-Two passes: the default drawer (SYS:UP-Term) and a non-default one
-(DEST=VTC:Apps/UP-Term); both reach the files through the assign UP-Term:.
-  install_rig.py              all three passes
-  install_rig.py --default    the default drawer only
-  install_rig.py --dest       the non-default drawer only
-  install_rig.py --show-check the watched window (UPTERM_RIG_SHOW=<title>) alone
-  install_rig.py --move       a third pass: Install into the default drawer, then
-                              again with DEST=VTC:Apps/UP-Term (the assign moves)"""
+One case per package on the base, and the combinations (K2-10, plan 2026-10-13-kit-split.md):
+  base        the default drawer (SYS:UP-Term): PTY:, the patched ixemul with the original kept, the console, ...
+  base-dest   a non-default drawer (DEST=VTC:KitTest/UP-Term); both reach the files through the assign UP-Term:
+  base-move   Install into the default drawer, then again with DEST=VTC:KitTest/UP-Term (the assign moves)
+  base-libs   LIBS: a multi-assign (the rig's normal boot)
+  base-var    Uninstall and UP-Term:var (No keeps it, Yes removes it)
+  claude pi nvim python
+              (one per add-on of dist/packages.txt) the base, then the add-on's install.dos, its checks, its
+              Uninstall, the base still whole, the base's Uninstall (the stand-alone ones, Claude amiga-pi
+              Python3, work over UP-Term too)
+  claude-bare pi-bare python-bare
+              (one per stand-alone archive: needs-base "-") on a Workbench with no UP-Term: assign: its
+              install.dos, its record in ENVARC:uppkg, its program answering, its Uninstall, S:User-Startup and
+              ENVARC:uppkg as before
+  python-ixemul
+              Python3 with an ixemul.library of 47 or newer in LIBS: (the rig's patched one): left as it is,
+              nothing recorded as installed by Python3, its need recorded and taken away again (the branch with
+              no library there is K2-12's, see the plan)
+  all         the base and every add-on; Python3 uninstalled with the base there; the base's Uninstall takes
+              nvim out and leaves Claude and amiga-pi (stand-alone); then their own Uninstall, bare
+  legacy      LEGACY_KIT (the single kit of 0cd6f0b) installed, the new base over it, the nvim add-on, base Uninstall
+  net         Install SSH BEBBOGET: BebboSSH and bebboget at the kit's versions, ssh/scp run them, a closed port, the Mac's sshd (if one
+              runs) reaches the host key check, Uninstall takes it all away (K6)
+  nobase      an add-on that needs the base (nvim): install.dos with no UP-Term: returns 20, ENV:UPTCHECK names UP-Term.lha
+
+Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/install/<case>.json when the case
+ends, with a fingerprint of the archives it installs; a case that passed with the same kit is skipped.
+  install_rig.py                  every case not yet passed with this kit
+  install_rig.py --only nvim      one case, even when it passed (--case is the same; repeat it for more)
+  install_rig.py --failed         only the cases that failed last time
+  install_rig.py --force          every case, from zero
+  install_rig.py --list           the recorded verdicts
+  install_rig.py --show-check     the watched window (UPTERM_RIG_SHOW=<title>) alone
+  --default --dest --move --var --libs   the old pass flags: --only base, base-dest, base-move, base-var, base-libs
+One script per rig: a second one on the same rig stops with the first one's pid (paths.rig_lock)."""
 import os, pathlib, re, shutil, signal, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # before ami: it sets the agent port of UPTERM_RIG
 import ami
+import verdicts
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
@@ -28,12 +54,65 @@ KIT = pathlib.Path(os.environ.get('UPTERM_KIT') or ROOT / "build/dist/UP-Term")
 
 def assembled_scripts(pkg='base'):
     """The bytes of the package's Install, install.dos and Uninstall as tools/mkinstaller.py
-    assembles them from dist/ and dist/common/: what a kit build writes, so a rig verdict's
-    fingerprint moves with every part the scripts are made of (K5), built kit or not."""
+    assembles them from dist/ and dist/common/ (the templates are tools/mkkit.py's): what a kit
+    build writes, so a rig verdict's fingerprint moves with every part the scripts are made of
+    (K5), built kit or not."""
     sys.path.insert(0, str(ROOT / 'tools'))
-    import mkinstaller
-    return [mkinstaller.build(ROOT / 'dist' / name, pkg).encode('latin-1')
-            for name in ('Install.installer', 'install.dos', 'Uninstall')]
+    import mkinstaller, mkkit
+    return [mkinstaller.build(t, pkg).encode('latin-1') for t in mkkit.templates(pkg)[:3]]
+
+
+def package_ids():
+    """The ids of dist/packages.txt, the base first."""
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import pkgs
+    return [r['id'] for r in pkgs.rows()]
+
+
+def addon_ids():
+    return [i for i in package_ids() if i != 'base']
+
+
+def standalone_ids():
+    """The add-ons that need no base (needs-base "-"): Claude, amiga-pi, Python3."""
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import pkgs
+    return [i for i in addon_ids() if pkgs.get(i, 'needs-base') == '-']
+
+
+def based_ids():
+    """The add-ons that need the base (UP-Term-nvim)."""
+    return [i for i in addon_ids() if i not in standalone_ids()]
+
+
+def archive(pkg):
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import pkgs
+    return pkgs.get(pkg, 'archive')
+
+
+def kit_dir(pkg):
+    """The built drawer of the package: the base is KIT, an add-on build/dist/<archive>
+    (UPTERM_KITS=<drawer> names another place for the add-ons, as UPTERM_KIT does the base)."""
+    if pkg == 'base':
+        return KIT
+    return pathlib.Path(os.environ.get('UPTERM_KITS') or ROOT / 'build/dist') / archive(pkg)
+
+
+# The single kit of 0cd6f0b (before the split) the legacy and migrate cases install first: one
+# copy in the main checkout's build/legacy (build/ is gitignored), UPTERM_LEGACY_KIT=<drawer> for another.
+LEGACY_KIT = pathlib.Path(os.environ.get('UPTERM_LEGACY_KIT') or paths.RIG_HOME / 'legacy/UP-Term-0cd6f0b')
+
+
+def kit_fingerprint(*pkgs_):
+    """What a case installs: for each package its assembled scripts and the kit's MANIFEST (a line per
+    file with its CRC: the payload), so a changed binary or script runs the case again."""
+    chunks = []
+    for pkg in pkgs_:
+        chunks += assembled_scripts(pkg) + [kit_dir(pkg) / 'Files/MANIFEST']
+    return verdicts.fingerprint(*chunks)
+
+
 # a clean image (rig.py --os) has no DH0:: its system volume is SYS:
 CLEAN = '--os' in os.environ.get('UPTERM_RIG_FLAGS', '')
 SYSVOL = 'SYS:' if CLEAN else 'DH0:'
@@ -235,8 +314,11 @@ def run_long(script, timeout=1500):
     The script runs inside a wrapper that writes its return code to
     VTC:longdone, and this waits for that file."""
     (VTC / "longdone").unlink(missing_ok=True)
-    (VTC / "longwrap").write_text("Execute VTC:%s\nEcho >VTC:longdone \"$RC\"\n" % script)
+    # FailAt 1000 covers a script that fails with 10 or 20; a `Quit 20` in it ends the wrapper anyway (the
+    # agent's own return code is used below)
+    (VTC / "longwrap").write_text("FailAt 1000\nExecute VTC:%s\nEcho >VTC:longdone \"$RC\"\n" % script)
     out = ''
+    agent_rc = 0
     end = time.time() + timeout
     if SHOW:
         # An Execute in the watched window prints into the window and nowhere
@@ -248,7 +330,9 @@ def run_long(script, timeout=1500):
         show('Echo "run_long: Execute VTC:%s"' % script, 60)
     while True:
         try:
-            out = ami.req(0x02, struct.pack('>H', 120) + b'Execute VTC:longwrap', 150)[4:].decode('latin-1')
+            b = ami.req(0x02, struct.pack('>H', 120) + b'Execute VTC:longwrap', 150)
+            out = b[4:].decode('latin-1')
+            agent_rc = struct.unpack('>I', b[:4])[0]
         except SystemExit as e:
             # "a command is still running ... runs one at a time": the agent
             # is busy with an earlier command and did NOT start this one
@@ -260,6 +344,11 @@ def run_long(script, timeout=1500):
             if 'still running' not in str(e):
                 raise
         break
+    if agent_rc != 0 and not (VTC / "longdone").exists():
+        # the command ended inside the agent's window and the wrapper never reached its Echo: a `Quit 20` in
+        # the Execute'd script ends the wrapper too, whatever FailAt says (rig 2, 2026-10-13: FailAt 1000
+        # did not help). The agent's own return code is the script's.
+        return agent_rc, out
     while not (VTC / "longdone").exists():
         if time.time() > end:
             return 1, 'run_long: %s did not finish in %d s' % (script, timeout)
@@ -291,27 +380,41 @@ def run_slow(name, cmd, timeout=600):
     return rc, (f.read_text(errors='replace') if f.exists() else out)
 
 passed = total = 0
+failures = []   # the reasons of the failed checks of the pass that ran last (a case's verdict detail)
 def check(ok, what, seen=''):
     global passed, total
     total += 1
     passed += bool(ok)
+    if not ok:
+        failures.append('%s: %s' % (what, str(seen).strip()[-200:]))
     print('%s %d %s%s' % ('ok' if ok else 'FAIL', total, what, (': ' + seen.strip()) if seen and not ok else ''))
 
 def lib_state():
     rc, out = run('List LIBS:(ixemul|ixnet).library#? LFORMAT "%N %L"')
     return dict(l.split() for l in out.splitlines() if l.strip())
 
-def prepare(dest):
-    """The kit unpacked into VTC:distkit, the helper programs and the run scripts beside it, LIBS: as the rig boots it."""
+def stage_addon(pkg):
+    """The add-on's archive unpacked into VTC:kit-<id>, with its runinstall-<id> and rununinstall-<id> scripts."""
+    shutil.rmtree(VTC / ("kit-" + pkg), ignore_errors=True)
+    shutil.copytree(kit_dir(pkg), VTC / ("kit-" + pkg))
+    (VTC / ("runinstall-" + pkg)).write_text(addon_install_line(pkg) + "\n")
+    (VTC / ("rununinstall-" + pkg)).write_text("Set upvardelete YES\nCD VTC:kit-%s\nExecute Uninstall\n" % pkg)
+
+
+def prepare(dest, addons=()):
+    """The kit unpacked into VTC:distkit, the helper programs and the run scripts beside it, LIBS: as the rig boots it.
+    Each add-on in `addons` is unpacked too, into VTC:kit-<id>, with runinstall-<id> and rununinstall-<id>."""
     destarg = (" DEST=%s" % dest) if dest else ""
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
     shutil.copytree(KIT, VTC / "distkit")
+    for pkg in addons:
+        stage_addon(pkg)
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     if dest:
         (VTC / "Apps").mkdir(exist_ok=True)   # the drawer's parent must exist
     (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s NOCONSOLE NODEVICE\n" % destarg)
-    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s CONSOLE DEVICE SHELLICON PYTHON NVIM REMOTE=\"127.0.0.1 2399\"\n" % destarg)
+    (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s CONSOLE DEVICE SHELLICON\n" % destarg)
     # the rig's Uninstall answers YES to the var question: UP-Term:var holds only
     # what earlier rig steps (amiga-pi, Claude sessions) wrote, and a kept var
     # leaves the drawer behind for the next pass (K3). var_check() covers the
@@ -328,14 +431,14 @@ def prepare(dest):
 FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:amiga-pi/settings.json', 'ENVARC:UP-Term.prefs', 'S:User-Startup')   # the move pass appends a user line to the last (ten were left by 2026-10-10)
 FIXTURE_ASSIGNS = ('GG', 'UP-Term')
 
-def strip_upterm_blocks(data):
-    """data without the ;BEGIN UP-Term ... ;END UP-Term blocks (every flavour:
+def strip_upterm_blocks(data, name='UP-Term'):
+    """data without the ;BEGIN <name> ... ;END <name> blocks (UP-Term: every flavour:
     assign, python, tmp, console, device ...) that Install writes."""
     out, skip = [], False
     for line in data.decode('latin-1').splitlines(True):
-        if line.startswith(';BEGIN UP-Term'): skip = True
+        if line.startswith(';BEGIN ' + name): skip = True
         if not skip: out.append(line)
-        if skip and line.startswith(';END UP-Term'): skip = False
+        if skip and line.startswith(';END ' + name): skip = False
     return ''.join(out).encode('latin-1')
 
 class Fixtures:
@@ -410,10 +513,6 @@ def _main(dest=None):
     startup_before = run('Type S:User-Startup')[1]
     sseq_before = run('Type S:Startup-Sequence')[1]  # no part of UP-Term edits it (UPTERM-VOLUME-REQUESTER)
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
-    run('Delete >NIL: ENVARC:Claude/remote QUIET')  # an earlier run's remote (Install keeps one)
-    # a user's amiga-pi settings, planted before Install: neither Install nor Uninstall may touch it
-    run('MakeDir >NIL: ENVARC:amiga-pi')
-    run('Echo >ENVARC:amiga-pi/settings.json "userfile-keepme"')
     ls_before = run('List >NIL: C:ls')[0] == 0  # Install puts no Unix command in C:
     shell_before = run('VTC:iconprobe SYS:System/Shell')[1]  # SHELLICON must give it back
     tmp_before = run('Assign >NIL: TMP: EXISTS')[0] == 0
@@ -479,15 +578,8 @@ def _main(dest=None):
     kit_ixnet = (VTC / "distkit/Files/libs/ixnet.library").stat().st_size
     check(st.get('ixnet.library.orig') == ixnet_before and st.get('ixnet.library') == str(kit_ixnet),
           'the kit\'s ixnet in LIBS:, the original kept as .orig', str(st))
-    rc, out = run('Search LIBS:ixemul.library UP-Term')
-    check('UP-Term' in out, 'the patched ixemul is in LIBS:', out)
-    rc, out = run('List C:ClaudeCode LFORMAT "%A"')
-    check(rc == 0 and out.strip()[1:2].lower() == 's',   # protection bits hsparwed, s second
-          'C:ClaudeCode installed as a script command (s bit)', out)
-    rc, out = run('C:amiga-pi --version')
-    check(rc == 0 and '1.1.0' in out, 'C:amiga-pi installed and prints --version 1.1.0', out)
-    check(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
-          'Install kept the user\'s ENVARC:amiga-pi/settings.json', '')
+    rc, out = run('Search LIBS:ixemul.library vtcon-2')
+    check('vtcon-2' in out, 'the patched ixemul is in LIBS:', out)
     rc, out = run('C:UPConsole STATUS')
     check('CON: ROM' in out, 'Install NOCONSOLE leaves CON: the ROM\'s', out)
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term console"')[0] != 0,
@@ -498,45 +590,6 @@ def _main(dest=None):
     # a second Install must not take ours for theirs; this one says yes to CON:
     rc, out = run_long('runinstallcon')
     check(rc == 0 and 'Unknown command' not in out, 'Install CONSOLE again over it runs', out)
-    # PYTHON, NVIM: both run from where Install put them; Python3: is assigned
-    # now and at boot (W49)
-    rc, out = run('Stack 1000000\nUP-Term:Python3/bin/python3 -c "print(6*7)"', 120)
-    check(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'PYTHON: python3 runs from UP-Term:Python3', out[-300:])
-    # through vsh a quoted ** reaches python as typed (vsh hands its argv over
-    # out of band, ixemul 39f6760/2cda2f6); the AmigaDOS Shell's "**" is its
-    # escape for one *, so this one runs from a vsh script, not a Shell line
-    (VTC / "py8.sh").write_text("python3 -c 'print(2**3)'\n")
-    rc, out = run('Stack 1000000\nC:vsh VTC:py8.sh', 120)
-    check(rc == 0 and out.strip().splitlines()[-1:] == ['8'], 'PYTHON: vsh runs python3 -c \'print(2**3)\' as typed (8)', out[-300:])
-    check(run('Assign >NIL: Python3: EXISTS')[0] == 0 and
-          run('Search >NIL: S:User-Startup "Assign Python3: UP-Term:Python3"')[0] == 0,
-          'PYTHON: Python3: assigned, and at every boot', '')
-    # a cold nvim start can pass the agent's 120 s limit: run it through run_long
-    rc, out = run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
-    check(rc == 0 and 'NVIM v0.12' in out, 'NVIM: nvim runs from UP-Term:nvim', out[-300:])
-    # REMOTE: plain Claude, no API key, goes to Claude Code where
-    # ENVARC:Claude/remote points (W49) -- here a banner on this Mac
-    rc, out = run('Type ENVARC:Claude/remote')
-    check(rc == 0 and '127.0.0.1 2399' in out, 'REMOTE: Install wrote ENVARC:Claude/remote', out)
-    import socket, threading
-    srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(('127.0.0.1', 2399)); srv.listen(1); srv.settimeout(60)
-    seen = []
-    def banner():
-        try:
-            c, _ = srv.accept(); seen.append(1); c.sendall(b'UPTEST-BANNER\r\n'); time.sleep(2); c.close()
-        except OSError:
-            pass
-    th = threading.Thread(target=banner); th.start()
-    # in a window, as a user types it (uptelnet needs a console)
-    ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/12/700/300/remote/CLOSE"')
-    time.sleep(4)
-    for line in ('Stack 32768', 'C:Claude'):
-        ami.req(0x08, bytes([4]) + line.encode()); time.sleep(0.4); ami.key(0x44); time.sleep(2)
-    th.join(30); srv.close()
-    check(seen == [1], 'REMOTE: plain Claude connects to the computer in ENVARC:Claude/remote', '')
-    ami.req(0x08, bytes([4]) + b'endcli'); time.sleep(0.4); ami.key(0x44); time.sleep(2)
-    run('Delete >NIL: ENVARC:Claude/remote QUIET')
     # SHELLICON: the Shell icon's window on XCON:, nothing else changed
     rc, out = run('VTC:iconprobe SYS:System/Shell')
     want = [l if not l.startswith('tooltype WINDOW=') else
@@ -670,7 +723,7 @@ def _main(dest=None):
           'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
-    left = [f for f in ('C:ClaudeCode', 'C:amiga-pi', 'DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
+    left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
                         'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO', 'ENVARC:vsh', 'ENV:vsh',
                         'SYS:System/UP-Term', 'SYS:System/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
                         '"C:UP-Term Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
@@ -681,8 +734,6 @@ def _main(dest=None):
     inside = run('List "%s" ALL' % drawer)[1][:600] if left else ''
     check(not left, 'Uninstall removed the files', ' '.join(left) + ' | ' + inside)
     check(run('List >NIL: ENVARC:UP-Term.prefs')[0] == 0, 'Uninstall kept the user\'s preferences', '')
-    check(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
-          'Uninstall kept the user\'s ENVARC:amiga-pi/settings.json', '')
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')
     if rig_gg:
         run('Assign GG: VTC:gg')
@@ -769,7 +820,9 @@ def var_check():
         check(run('Type %s/var/Claude/history' % D)[1].strip() == 'old prompt', 'var: Uninstall answered No keeps var/Claude/history', out)
         check(run('List >NIL: %s/VERSIONS' % D)[0] != 0 and run('List >NIL: %s/bin' % D)[0] != 0,
               'var: ... and removes the rest of the drawer', '')
-        check(('stayed in %s/var' % D) in out, 'var: ... and says where the data stayed', out)
+        # the script prints the drawer under its volume name (System:UP-Term/var), D is spelt SYS:...
+        check(re.search(r'stayed in \S+:%s/var' % re.escape(D.split(':', 1)[1]), out) is not None,
+              'var: ... and says where the data stayed', out)
         check(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'var: ... and removes the UP-Term: assign', '')
         rc, out = run_long('runinstall')
         check(rc == 0 and run('Type %s/var/Claude/history' % D)[1].strip() == 'old prompt',
@@ -783,7 +836,7 @@ def var_check():
     return 0 if passed == total else 1
 
 OLD = "SYS:UP-Term"
-NEW = "VTC:Apps/UP-Term"
+NEW = "VTC:KitTest/UP-Term"
 
 def move():
     fx = Fixtures()
@@ -888,30 +941,616 @@ def _move():
     print('install_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1
 
-if __name__ == '__main__':
-    args = sys.argv[1:]
-    rc = 0
-    if not args or '--default' in args:
-        print('install_rig: pass 1, the default drawer (SYS:UP-Term)')
-        rc |= main()
-    if not args or '--dest' in args:
-        print('install_rig: pass 2, a non-default drawer (VTC:Apps/UP-Term)')
-        rc |= main('VTC:Apps/UP-Term')
-    if not args or '--move' in args:
-        print('install_rig: pass 3, Install over an Install with another DEST (%s then %s)' % (OLD, NEW))
-        rc |= move()
-    if '--var' in args:
-        print('install_rig: Uninstall and UP-Term:var')
-        rc |= var_check()
-    if '--show-check' in args:
+# ---------------------------------------------------------------------------
+# The cases (kit-split K2-10): one per package on the base, all of them together, the single
+# kit migrated, an add-on refused without the base. Each is a function of a verdicts.Checks;
+# the verdict of each is written when it ends (build/<rig>/install/<case>.json) and a case that
+# passed with the same kit is skipped (RULES section 6a).
+
+# the Install lines' keywords beyond DIR: Claude's server page, as the base's runinstallcon had it
+ADDON_OPTIONS = {'claude': 'REMOTE="127.0.0.1 2399"'}
+# what each add-on's Install puts down: the files its Uninstall must take away again
+ADDON_FILES = {'claude': ('C:Claude',), 'pi': ('C:amiga-pi',), 'nvim': ('UP-Term:nvim/bin/nvim',),
+               'python': ('SYS:Python3/bin/python3',)}
+
+
+def addon_install_line(pkg, options=True):
+    """The Shell line that installs the add-on from its unpacked archive VTC:kit-<id> (what its Installer runs part by part).
+    options=False leaves ADDON_OPTIONS out (the put-back of an owner's add-on writes no test REMOTE)."""
+    opts = ADDON_OPTIONS.get(pkg) if options else None
+    return 'Execute VTC:kit-%s/Files/install.dos VTC:kit-%s/Files%s' % (pkg, pkg, (' ' + opts) if opts else '')
+
+
+def legacy_install_line():
+    """The single kit's install.dos with the extras that moved out of the base (its .KEY still has them)."""
+    return ('Execute VTC:legacykit/Files/install.dos VTC:legacykit/Files NOCONSOLE NODEVICE PYTHON NVIM '
+            'REMOTE="127.0.0.1 2399"')
+
+
+def prepare_legacy():
+    """The single kit unpacked into VTC:legacykit with its run script."""
+    if not (LEGACY_KIT / 'Files/install.dos').exists():
+        raise SystemExit('install_rig: no legacy kit at %s (UPTERM_LEGACY_KIT=<drawer>; the single kit of 0cd6f0b)' % LEGACY_KIT)
+    shutil.rmtree(VTC / "legacykit", ignore_errors=True)
+    shutil.copytree(LEGACY_KIT, VTC / "legacykit")
+    (VTC / "runinstall-legacy").write_text(legacy_install_line() + "\n")
+
+
+PREINSTALLED = paths.RIG / 'preinstalled.json'   # survives a run that dies between the Uninstall and the put-back
+
+
+def installed_addons():
+    """The add-ons the rig holds now, in dist/packages.txt order: those whose record (packages.txt `record`, where
+    their install.dos leaves MANIFEST, VERSIONS and options) has a MANIFEST. A record under UP-Term: counts only
+    while that assign exists (asking for it otherwise puts up a requester). The leftover of a run that died
+    (PREINSTALLED) is counted too: those add-ons were the owner's."""
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import json, pkgs
+    found = []
+    for pkg in addon_ids():
+        rec = pkgs.get(pkg, 'record')
+        if rec.upper().startswith('UP-TERM:') and run('Assign >NIL: UP-Term: EXISTS')[0] != 0:
+            continue
+        if run('List >NIL: %s/MANIFEST' % rec)[0] == 0:
+            found.append(pkg)
+    if PREINSTALLED.exists():
+        found = [p for p in addon_ids() if p in found or p in json.loads(PREINSTALLED.read_text())]
+    return found
+
+
+class OwnersAddons:
+    """The rig as its owner keeps it: Claude, amiga-pi, Python3 installed on purpose. A case checks that an add-on
+    is not there before its Install, so take them out first with each archive's own Uninstall (stand-alone ones
+    first, then those that need the base) and put them back from the same archive through its install.dos."""
+    def __init__(self):
+        self.pkgs = []
+
+    def remove(self):
+        import json
+        self.pkgs = installed_addons()
+        if not self.pkgs:
+            return
+        PREINSTALLED.write_text(json.dumps(self.pkgs))
+        print('install_rig: the rig holds %s; their own Uninstall first, put back after the run' % ' '.join(self.pkgs))
+        for pkg in reversed(self.pkgs):
+            stage_addon(pkg)
+            rc, out = run_long('rununinstall-' + pkg)
+            if rc != 0:
+                raise SystemExit('install_rig: Uninstall of %s failed (rc %d): %s' % (pkg, rc, out[-200:]))
+        self.strip_blocks()
+
+    def strip_blocks(self):
+        """Python3's Uninstall leaves its ;BEGIN Python3 block when S:User-Startup is not what its Install kept
+        (a block from an older install is in the file and no User-Startup.before was kept): "delete them by
+        hand". That block is the rig's leftover, not the kit's under test; it goes the way Fixtures.take
+        takes UP-Term's blocks, and the put-back writes a fresh one with its record."""
+        data = ami.read_file('S:User-Startup')
+        clean = data
+        for pkg in self.pkgs:
+            clean = strip_upterm_blocks(clean, archive(pkg))
+        if clean != data:
+            print('install_rig: S:User-Startup held a block of an uninstalled add-on; removed')
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False) as t: t.write(clean)
+            try: ami.put(t.name, 'S:User-Startup')
+            finally: os.unlink(t.name)
+
+    def restore(self):
+        if self.pkgs:
+            # the rig with no kit has UP-Term: assigned to VTC:Apps by its boot script; the cases' base Uninstall
+            # removed it, and an add-on's Install puts its launchers there only through that assign
+            import rig
+            (VTC / 'restoreassign').write_text(rig.UPTERM_ASSIGN + '\n')
+            run_long('restoreassign')
+        for pkg in self.pkgs:
+            stage_addon(pkg)
+            (VTC / ('runinstall-' + pkg)).write_text(addon_install_line(pkg, options=False) + '\n')
+            rc, out = run_long('runinstall-' + pkg, 3600)
+            if rc != 0 or 'Unknown command' in out:
+                print('[WARN] %s not put back (rc %d): %s' % (pkg, rc, out[-200:]))
+        if self.pkgs:
+            PREINSTALLED.unlink(missing_ok=True)
+            print('install_rig: put back %s' % ' '.join(self.pkgs))
+
+
+class Before:
+    """What the rig looked like before a case: the facts the end of the case compares against."""
+    def __init__(self):
+        run_long('rununinstall')   # a run that stopped half-way left things behind (Uninstall also runs every add-on's)
+        self.startup = run('Type S:User-Startup')[1]
+        self.sseq = run('Type S:Startup-Sequence')[1]
+        self.libs = lib_state()
+        run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')
+        if run('Assign >NIL: GG: EXISTS')[0] == 0:
+            run('Assign GG:')   # Install's own GG: set-up is what gets tested; Fixtures puts the rig's back
+
+
+def base_install(ck, line='runinstall'):
+    rc, out = run_long(line)
+    ck(rc == 0 and 'Unknown command' not in out, 'base Install runs', out)
+    ck(run('List >NIL: UP-Term:UP-Term.version')[0] == 0 and '$VER: UP-Term' in run('Type UP-Term:UP-Term.version')[1],
+       'the base wrote UP-Term:UP-Term.version (the add-ons\' base check reads it)')
+
+
+def base_whole(ck, what):
+    """The base still answers: vsh's ls is coreutils, and its VERSIONS is there."""
+    rc, out = run('C:vsh -c "ls --version"')
+    ck(rc == 0 and 'coreutils' in out, 'the base is whole %s: vsh runs GNU ls' % what, out)
+    ck(run('List >NIL: UP-Term:VERSIONS')[0] == 0, 'the base is whole %s: UP-Term:VERSIONS' % what)
+
+
+def base_uninstall(ck, before, expect_user_startup_clean=True):
+    """Uninstall of the base (which runs the Uninstall of the add-ons that need it) gives the rig back byte for byte
+    (not when a stand-alone archive's block is still there: it is not the base's to take out)."""
+    rc, out = run_long('rununinstall')
+    ck(rc == 0, 'base Uninstall runs', out)
+    if expect_user_startup_clean:
+        ck(run('Type S:User-Startup')[1] == before.startup, 'after base Uninstall: S:User-Startup as it was, byte for byte',
+           'differs: %r vs %r' % (run('Type S:User-Startup')[1][-80:], before.startup[-80:]))
+    ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'after base Uninstall: S:Startup-Sequence as it was')
+    ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after base Uninstall: no UP-Term: assign')
+    ck(run('List >NIL: SYS:UP-Term')[0] != 0, 'after base Uninstall: SYS:UP-Term is gone', run('List SYS:UP-Term ALL')[1][:400])
+    st = lib_state()
+    ck(st.get('ixemul.library') == before.libs.get('ixemul.library') and 'ixemul.library.orig' not in st,
+       'after base Uninstall: the original ixemul back, no .orig', 'now %s, before %s' % (st, before.libs))
+
+
+def addon_absent(ck, pkg, what):
+    for f in ADDON_FILES[pkg]:
+        ck(run('List >NIL: %s' % f)[0] != 0, '%s: %s is not there %s' % (pkg, f, what))
+
+
+def remote_banner(ck):
+    """Plain Claude, no API key, connects to the computer in ENVARC:Claude/remote (W49): a banner on this Mac."""
+    import socket, threading
+    srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(('127.0.0.1', 2399)); srv.listen(1); srv.settimeout(60)
+    seen = []
+    def banner():
+        try:
+            c, _ = srv.accept(); seen.append(1); c.sendall(b'UPTEST-BANNER\r\n'); time.sleep(2); c.close()
+        except OSError:
+            pass
+    th = threading.Thread(target=banner); th.start()
+    # in a window, as a user types it (uptelnet needs a console)
+    ami.req(0x02, struct.pack('>H', 10) + b'run >NIL: newshell "XCON:0/12/700/300/remote/CLOSE"')
+    time.sleep(4)
+    for line in ('Stack 32768', 'C:Claude'):
+        ami.req(0x08, bytes([4]) + line.encode()); time.sleep(0.4); ami.key(0x44); time.sleep(2)
+    th.join(30); srv.close()
+    ck(seen == [1], 'claude: plain Claude connects to the computer in ENVARC:Claude/remote')
+    ami.req(0x08, bytes([4]) + b'endcli'); time.sleep(0.4); ami.key(0x44); time.sleep(2)
+
+
+def plant(pkg):
+    """A user's file the add-on's Install and Uninstall must not touch (D5)."""
+    if pkg == 'pi':
+        run('MakeDir >NIL: ENVARC:amiga-pi')
+        run('Echo >ENVARC:amiga-pi/settings.json "userfile-keepme"')
+
+
+OLD_CLAUDECODE = ('C:ClaudeCode', 'UP-Term:ClaudeCode', 'UP-Term:ClaudeCode.info')   # what Claude.lha 1.0 left (CL1/NL4)
+
+
+def plant_old_claude(with_base=True):
+    """A 1.0 install of Claude.lha: C:ClaudeCode (a script with the s bit) and, over UP-Term, the launcher ClaudeCode
+    with its icon. The new install.dos must delete them (NL4). Without the base there is no UP-Term: to put them in."""
+    for f in OLD_CLAUDECODE:
+        if f.startswith('UP-Term:') and not with_base:
+            continue
+        run('Echo >%s "old ClaudeCode of 1.0"' % f)
+    run('Protect C:ClaudeCode +s')
+
+
+def addon_verify(ck, pkg, remote=True, with_base=True):
+    """After the add-on's Install: its record, and its program answering from where Install put it (the sentinel).
+    `remote`: Claude's Install was given REMOTE (the Shell line has it; the Installer's page is left empty).
+    `with_base`: UP-Term is installed (vsh answers); the bare cases of the stand-alone archives have none."""
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import pkgs
+    row = {r['id']: r for r in pkgs.rows()}[pkg]
+    rec = row['record']
+    for f in ('MANIFEST', 'VERSIONS', 'Uninstall'):
+        ck(run('List >NIL: %s/%s' % (rec, f))[0] == 0, '%s: its record has %s' % (pkg, f))
+    first = run('Type %s/VERSIONS' % rec)[1].splitlines()[:1]
+    ck(first and first[0].startswith('%s %s ' % (row['archive'], row['version'])),
+       '%s: its VERSIONS names the archive and version' % pkg, ' '.join(first))
+    if pkg == 'claude':
+        for f in OLD_CLAUDECODE:
+            if f.startswith('UP-Term:') and not with_base:
+                continue
+            ck(run('List >NIL: %s' % f)[0] != 0, 'claude: no %s (one app since CL1; the 1.0 copy is deleted by Install)' % f)
+        rc, out = run('Stack 32768\nC:Claude --version')
+        ck(rc == 0 and out.strip(), 'claude: C:Claude answers --version', out)
+        if remote:
+            rc, out = run('Type ENVARC:Claude/remote')
+            ck(rc == 0 and '127.0.0.1 2399' in out, 'claude: Install wrote ENVARC:Claude/remote', out)
+            remote_banner(ck)
+    elif pkg == 'pi':
+        rc, out = run('C:amiga-pi --version')
+        ck(rc == 0 and '1.1.0' in out, 'pi: C:amiga-pi prints --version 1.1.0', out)
+        ck(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
+           'pi: Install kept the user\'s ENVARC:amiga-pi/settings.json')
+    elif pkg == 'nvim':
+        # a cold nvim start can pass the agent's 120 s limit: run it through run_long
+        rc, out = run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
+        ck(rc == 0 and 'NVIM v0.12' in out, 'nvim: nvim runs from UP-Term:nvim', out[-300:])
+    elif pkg == 'python':
+        rc, out = run('Stack 1000000\nSYS:Python3/bin/python3 -c "print(6*7)"', 120)
+        ck(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'python: python3 runs from SYS:Python3', out[-300:])
+        if with_base:
+            # through vsh a quoted ** reaches python as typed (vsh hands its argv over out of band,
+            # ixemul 39f6760/2cda2f6); the Shell's "**" is its escape for one *, so a vsh script
+            (VTC / "py8.sh").write_text("python3 -c 'print(2**3)'\n")
+            rc, out = run('Stack 1000000\nC:vsh VTC:py8.sh', 120)
+            ck(rc == 0 and out.strip().splitlines()[-1:] == ['8'],
+               'python: vsh runs python3 -c \'print(2**3)\' as typed (8; vsh\'s path names /SYS/Python3/bin)', out[-300:])
+        ck(run('Assign >NIL: Python3: EXISTS')[0] == 0 and
+           run('Search >NIL: S:User-Startup "Assign Python3: SYS:Python3"')[0] == 0,
+           'python: Python3: assigned, and at every boot')
+        ck(run('List >NIL: ENVARC:uppkg/ixemul/needs/Python3')[0] == 0, 'python: its need of ixemul.library is recorded')
+
+
+def addon_absent_not(ck, pkg, what):
+    """The add-on's files are still there (a stand-alone archive after the base's Uninstall)."""
+    for f in ADDON_FILES[pkg]:
+        ck(run('List >NIL: %s' % f)[0] == 0, '%s: %s is still there %s' % (pkg, f, what))
+
+
+def addon_gone(ck, pkg, base_stays=True, remote=True, with_base=True):
+    """After the add-on's Uninstall (or the base's): its files, its record and its block are gone, what is yours stays."""
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import pkgs
+    rec = pkgs.get(pkg, 'record')
+    addon_absent(ck, pkg, 'after its Uninstall')
+    if base_stays:
+        ck(run('List >NIL: %s' % rec)[0] != 0, '%s: its record %s is gone' % (pkg, rec))
+    if pkg == 'python':
+        ck(run('Assign >NIL: Python3: EXISTS')[0] != 0, 'python: no Python3: assign')
+        ck(run('Search >NIL: S:User-Startup ";BEGIN Python3"')[0] != 0, 'python: its block is out of S:User-Startup')
+        ck(run('List >NIL: ENVARC:uppkg/ixemul/needs/Python3')[0] != 0, 'python: its need of ixemul.library is taken away')
+        if base_stays and with_base:
+            ck(run('Search >NIL: S:User-Startup ";BEGIN UP-Term assign"')[0] == 0,
+               'python: the base\'s UP-Term: block is still in S:User-Startup (only its own block went)')
+    if pkg == 'pi':
+        ck(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
+           'pi: Uninstall kept the user\'s ENVARC:amiga-pi/settings.json')
+    if pkg == 'claude' and remote:
+        ck(run('List >NIL: ENVARC:Claude/remote')[0] == 0, 'claude: Uninstall kept ENVARC:Claude (the user\'s settings)')
+        run('Delete >NIL: ENVARC:Claude/remote ENV:Claude/remote QUIET')
+
+
+def addon_install(ck, pkg, with_base=True):
+    rc, out = run_long('runinstall-' + pkg, 3600)
+    ck(rc == 0 and 'Unknown command' not in out, '%s: its Install runs' % pkg, out)
+    ck('insert volume' not in out.lower(), '%s: no requester for a volume' % pkg, out)
+    ck(run('GetEnv UPTCHECK')[0] != 0 or not run('GetEnv UPTCHECK')[1].strip(), '%s: its check part left no reason' % pkg)
+    addon_verify(ck, pkg, with_base=with_base)
+
+
+def case_addon(ck, pkg):
+    """The base on its own, then the add-on: its Install, the base still whole, its Uninstall, the base still whole, base Uninstall."""
+    prepare(None, [pkg])
+    before = Before()
+    plant(pkg)
+    base_install(ck)
+    addon_absent(ck, pkg, 'before its Install')
+    if pkg == 'claude':
+        plant_old_claude()
+    addon_install(ck, pkg)
+    base_whole(ck, 'with %s installed' % pkg)
+    rc, out = run_long('rununinstall-' + pkg)
+    ck(rc == 0, '%s: its Uninstall runs' % pkg, out)
+    addon_gone(ck, pkg)
+    base_whole(ck, 'after %s\'s Uninstall' % pkg)
+    base_uninstall(ck, before)
+
+
+def case_bare(ck, pkg):
+    """A stand-alone archive on a Workbench with no UP-Term: assign and no base: its install.dos, its record in
+    ENVARC:uppkg, its program answering, its Uninstall, and the rig as before (S:User-Startup byte for byte, no
+    record left). No `UP-Term:` object is touched by the scripts (that would put up a requester: the run_long
+    wrapper's output has none)."""
+    prepare(None, [pkg])
+    before = Before()
+    plant(pkg)
+    run('Assign UP-Term:')
+    ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, '%s-bare: there is no UP-Term: assign' % pkg)
+    addon_absent(ck, pkg, 'before its Install')
+    if pkg == 'claude':
+        plant_old_claude(with_base=False)
+    addon_install(ck, pkg, with_base=False)
+    rc, out = run_long('rununinstall-' + pkg)
+    ck(rc == 0, '%s: its Uninstall runs' % pkg, out)
+    addon_gone(ck, pkg, with_base=False)
+    ck(run('Type S:User-Startup')[1] == before.startup, '%s-bare: S:User-Startup as it was, byte for byte' % pkg)
+    ck(run('List >NIL: ENVARC:uppkg/%s' % archive(pkg))[0] != 0, '%s-bare: its record is gone' % pkg)
+    ck(run('List >NIL: ENVARC:uppkg')[0] != 0, '%s-bare: ENVARC:uppkg is gone with its last record' % pkg)
+
+
+def case_python_ixemul(ck):
+    """THE IXEMUL.LIBRARY RULE, the branch the rig's LIBS: can show: a library of 47 or newer is there (the rig boots
+    with the patched 80): Python3's Install leaves it as it is (same size and date), records only its need, and its
+    Uninstall leaves the library alone. The branch with none or an older library there (Python3 installs its own,
+    keeps the older as .before-Python3, removes it again unless UP-Term or another package needs it) needs a LIBS:
+    without ixemul and is a hand step of the plan (K2-12)."""
+    prepare(None, ['python'])
+    before = Before()
+    run('Assign UP-Term:')
+    sig = run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip()
+    ck(bool(sig), 'python-ixemul: the rig has an ixemul.library in LIBS:')
+    addon_install(ck, 'python', with_base=False)
+    ck(run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip() == sig, 'python-ixemul: Install left the ixemul.library as it was')
+    ck(run('List >NIL: ENVARC:uppkg/ixemul/installed-by-Python3')[0] != 0, 'python-ixemul: nothing recorded as installed by Python3')
+    ck(run('List >NIL: LIBS:ixemul.library.before-Python3')[0] != 0, 'python-ixemul: no .before-Python3 made')
+    rc, out = run_long('rununinstall-python')
+    ck(rc == 0, 'python: its Uninstall runs', out)
+    ck(run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip() == sig, 'python-ixemul: Uninstall left the ixemul.library alone')
+    ck(run('List >NIL: ENVARC:uppkg/ixemul')[0] != 0, 'python-ixemul: ENVARC:uppkg/ixemul is gone')
+    ck(run('Type S:User-Startup')[1] == before.startup, 'python-ixemul: S:User-Startup as it was, byte for byte')
+
+
+def case_all(ck):
+    """The base and every add-on. Python3 is uninstalled while the base is there (UP-Term's unstartup.sh takes its
+    block out); the base's Uninstall then removes UP-Term-nvim by its own Uninstall and leaves Claude and amiga-pi
+    (stand-alone: record in ENVARC:uppkg); their own Uninstall, with no base, ends it. The archives' own scripts
+    run; the sentinel is each add-on's program answering before the base is removed."""
+    ids = addon_ids()
+    prepare(None, ids)
+    before = Before()
+    for pkg in ids:
+        plant(pkg)
+    base_install(ck)
+    for pkg in ids:
+        addon_install(ck, pkg)
+    base_whole(ck, 'with every add-on installed')
+    rc, out = run_long('rununinstall-python')
+    ck(rc == 0, 'python: its Uninstall runs with the base there', out)
+    addon_gone(ck, 'python', remote=False)
+    base_uninstall(ck, before, expect_user_startup_clean=False)
+    for pkg in based_ids():
+        addon_gone(ck, pkg, base_stays=False)
+    for pkg in ('claude', 'pi'):
+        addon_absent_not(ck, pkg, 'after the base Uninstall (stand-alone: the base leaves it)')
+        ck(run('List >NIL: ENVARC:uppkg/%s/MANIFEST' % archive(pkg))[0] == 0, '%s: its record survives the base Uninstall' % pkg)
+    ck(run('List >NIL: C:uptelnet')[0] == 0, 'all: C:uptelnet stays while Claude\'s record is there')
+    ck(run('List >NIL: UP-Term:pkg')[0] != 0, 'all: no UP-Term:pkg left')
+    for pkg in ('claude', 'pi'):
+        rc, out = run_long('rununinstall-' + pkg)
+        ck(rc == 0, '%s: its Uninstall runs with no base' % pkg, out)
+        addon_gone(ck, pkg, base_stays=False, with_base=False)
+    ck(run('List >NIL: C:uptelnet')[0] != 0, 'all: C:uptelnet goes with the last of Claude and the base')
+    ck(run('Type S:User-Startup')[1] == before.startup, 'all: S:User-Startup as it was, byte for byte')
+    ck(run('List >NIL: ENVARC:uppkg')[0] != 0, 'all: ENVARC:uppkg is gone with the last record')
+
+
+def case_legacy(ck):
+    """The single kit (LEGACY_KIT) installed, then the new base over it, then the nvim add-on: the handed files stay
+    and are recorded (UP-Term:pkg/legacy), nvim still answers, and the base Uninstall takes Claude and amiga-pi
+    away by the legacy block."""
+    prepare(None, ['nvim'])
+    prepare_legacy()
+    try:
+        before = Before()
+        rc, out = run_long('runinstall-legacy', 3600)
+        ck(rc == 0, 'legacy: the single kit\'s install.dos runs', out)
+        ck(run('List >NIL: UP-Term:pkg')[0] != 0, 'legacy: the single kit leaves no UP-Term:pkg')
+        for f in ('UP-Term:nvim/bin/nvim', 'UP-Term:Python3/bin/python3', 'C:Claude', 'C:amiga-pi'):
+            ck(run('List >NIL: %s' % f)[0] == 0, 'legacy: the single kit installed %s' % f)
+        nvim_date = run('List UP-Term:nvim/bin/nvim LFORMAT "%D %T"')[1].strip()
+        base_install(ck)   # the new base over it
+        rc, out = run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
+        ck(rc == 0 and 'NVIM v0.12' in out, 'legacy: after the new base nvim still answers', out[-300:])
+        ck(run('List UP-Term:nvim/bin/nvim LFORMAT "%D %T"')[1].strip() == nvim_date,
+           'legacy: the base left the single kit\'s nvim alone (its date is unchanged)', nvim_date)
+        for f in ('MANIFEST', 'VERSIONS'):
+            ck(run('List >NIL: UP-Term:pkg/legacy/%s' % f)[0] == 0, 'legacy: UP-Term:pkg/legacy/%s was kept' % f)
+        ck(ami.read_file('UP-Term:MANIFEST') == (kit_dir('base') / 'Files/MANIFEST').read_bytes(),
+           'legacy: UP-Term:MANIFEST is the new base\'s')
+        ck(run('List >NIL: C:Claude')[0] == 0 and run('List >NIL: C:amiga-pi')[0] == 0,
+           'legacy: Claude and amiga-pi are still installed (handed over, not deleted)')
+        rc, out = run_long('runinstall-nvim', 3600)
+        ck(rc == 0 and 'Unknown command' not in out, 'legacy: the nvim add-on\'s Install runs over the single kit\'s files', out)
+        ck(run('List >NIL: UP-Term:pkg/UP-Term-nvim/MANIFEST')[0] == 0, 'legacy: the nvim add-on made its record')
+        rc, out = run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
+        ck(rc == 0 and 'NVIM v0.12' in out, 'legacy: nvim answers after its add-on', out[-300:])
+        base_uninstall(ck, before)
+        for f in ('C:Claude', 'C:ClaudeCode', 'C:amiga-pi', 'UP-Term:nvim'):
+            ck(run('List >NIL: %s' % f)[0] != 0, 'legacy: after the base Uninstall %s is gone (the legacy block)' % f)
+        ck(run('Assign >NIL: Python3: EXISTS')[0] != 0, 'legacy: after the base Uninstall no Python3: assign')
+    finally:
+        run_slow('deletelegacy', 'Delete VTC:legacykit ALL QUIET')
+
+
+def case_nobase(ck):
+    """An add-on that needs the base: its install.dos with no UP-Term: assign stops with 20, names UP-Term.lha in ENV:UPTCHECK, and writes nothing."""
+    ids = based_ids()
+    prepare(None, ids)
+    before = Before()
+    run('Assign UP-Term:')
+    for pkg in ids:
+        run('Delete >NIL: ENV:UPTCHECK QUIET')
+        rc, out = run_long('runinstall-' + pkg)
+        ck(rc == 20, '%s: install.dos without the base returns 20' % pkg, 'rc %d: %s' % (rc, out))
+        ck('UP-Term.lha' in run('Type ENV:UPTCHECK')[1], '%s: ENV:UPTCHECK names UP-Term.lha' % pkg, run('Type ENV:UPTCHECK')[1])
+        addon_absent(ck, pkg, 'after the refused Install')
+    ck(run('Type S:User-Startup')[1] == before.startup, 'nobase: S:User-Startup as it was, byte for byte')
+    ck(run('List >NIL: UP-Term:pkg')[0] != 0, 'nobase: no UP-Term:pkg')
+    run('Delete >NIL: ENV:UPTCHECK QUIET')
+
+
+def case_net(ck):
+    """The network tools (Install SSH BEBBOGET, K6): the kit's BebboSSH version is the one in UP-Term:bin and
+    answers, ssh and scp are vsh functions of it, a closed port gives its connect error, and (sshd on the Mac
+    only, never started here) the key exchange with the Mac's sshd reaches the host key check with the Mac's
+    own ed25519 key. Uninstall takes the programs and the library it put there away again."""
+    import socket, subprocess
+    prepare(None)
+    before = Before()
+    bv = sorted((KIT / 'Files/net').glob('bebbossh-*'))[0].name.split('-', 1)[1]
+    gv = sorted((KIT / 'Files/net').glob('bebboget-*'))[0].name.split('-', 1)[1]
+    (VTC / 'runinstallnet').write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE SSH BEBBOGET\n")
+    base_install(ck, 'runinstallnet')
+    for prog in ('bebbossh', 'bebboscp', 'bebbosshd', 'bebbosshkeygen'):
+        rc, out = run('Search UP-Term:bin/%s "VER: %s"' % (prog, bv))
+        ck(rc == 0, 'net: UP-Term:bin/%s is BebboSSH %s ($VER)' % (prog, bv), out)
+    rc, out = run('Search UP-Term:bin/bebboget "VER: amigaget %s"' % gv)
+    ck(rc == 0, 'net: UP-Term:bin/bebboget is %s ($VER)' % gv, out)
+    ck(run('List >NIL: LIBS:libcryptossh.library')[0] == 0, 'net: LIBS:libcryptossh.library is there')
+    rc, out = run('UP-Term:bin/bebbossh')
+    ck('$VER: %s' % bv in out and 'USAGE: bebbossh' in out, 'net: bebbossh prints $VER %s and its usage' % bv, out[:200])
+    rc, out = run('C:vsh -c "scp"')
+    ck('$VER: %s' % bv in out and 'USAGE: amigascp' in out, 'net: scp (vsh function) runs bebboscp %s' % bv, out[:200])
+    rc, out = run('C:vsh -c "ssh nobody@127.0.0.1:2"')
+    ck(rc == 14 and "can't connect to given host" in out, 'net: ssh to a closed port: error 14, cannot connect', out)
+    if socket.socket().connect_ex(('127.0.0.1', 22)) == 0:
+        scan = subprocess.run('ssh-keyscan -t ed25519 127.0.0.1 2>/dev/null | ssh-keygen -lf -', shell=True,
+                              capture_output=True, text=True).stdout.split()
+        fp = scan[1].split(':', 1)[1] if len(scan) > 1 else '?'
+        rc, out = run('C:vsh -c "ssh nobody@127.0.0.1 </dev/null"', 40)
+        ck(rc == 21 and ('ssh-ed25519 key %s' % fp) in out,
+           "net: ssh to the Mac's sshd: key exchange done, the host key shown is the Mac's (%s)" % fp, out)
+    else:
+        print('install_rig net: no sshd on 127.0.0.1:22 here; the Mac connection is not checked')
+    base_uninstall(ck, before)
+    ck(run('List >NIL: LIBS:libcryptossh.library')[0] != 0, 'net: after Uninstall LIBS:libcryptossh.library is gone')
+    ck(run('List >NIL: UP-Term:bin/bebbossh')[0] != 0, 'net: after Uninstall bebbossh is gone')
+
+
+def _global_pass(fn, *args):
+    """A pass written with the module's own check(): its failures become the case's."""
+    def run_(ck):
+        del failures[:]
+        fn(*args)
+        ck.total, ck.failed = total, list(failures)
+    run_.own_fixtures = True
+    return run_
+
+
+def _libs_case(ck):
+    _global_pass(libs)(ck)
+    out = run('Assign LIBS: EXISTS')[1]
+    ck('ixp6' in out and 'ncurses' in out, 'base-libs: the rig\'s LIBS: is assigned again after the case', out)
+
+
+def case_table():
+    """{case: (packages it installs, extra files its fingerprint reads, function(ck))}, in the order they run.
+    The add-on cases come from dist/packages.txt: a new row gets a case."""
+    t = {'base': (['base'], [], _global_pass(main)),
+         'base-dest': (['base'], [], _global_pass(main, 'VTC:KitTest/UP-Term')),
+         'base-move': (['base'], [], _global_pass(move)),
+         'base-libs': (['base'], [], _libs_case),
+         'base-var': (['base'], [], _global_pass(var_check))}
+    for pkg in addon_ids():
+        t[pkg] = (['base', pkg], [], (lambda ck, pkg=pkg: case_addon(ck, pkg)))
+    for pkg in standalone_ids():
+        t[pkg + '-bare'] = ([pkg], [], (lambda ck, pkg=pkg: case_bare(ck, pkg)))
+    t['python-ixemul'] = (['python'], [], case_python_ixemul)
+    t['all'] = (package_ids(), [], case_all)
+    t['legacy'] = (['base', 'nvim'], [LEGACY_KIT / 'Files/MANIFEST', LEGACY_KIT / 'Files/install.dos'], case_legacy)
+    t['nobase'] = (based_ids(), [], case_nobase)
+    t['net'] = (['base'], [], case_net)
+    return t
+
+
+def case_fingerprint(entry):
+    pkgs_, extra, _ = entry
+    return verdicts.fingerprint(kit_fingerprint(*pkgs_).encode(), *extra)
+
+
+def parse_args(argv, names):
+    """(only, failed, force, show_check, list): --only/--case <case> (repeatable), the old pass flags as cases."""
+    old = {'--default': 'base', '--dest': 'base-dest', '--move': 'base-move', '--var': 'base-var', '--libs': 'base-libs'}
+    only, failed, force, show, lst = [], False, False, False, False
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ('--only', '--case'):
+            i += 1
+            if i >= len(argv):
+                raise SystemExit('%s needs a case: %s' % (a, ' '.join(names)))
+            only.append(argv[i])
+        elif a in old:
+            only.append(old[a])
+        elif a == '--failed':
+            failed = True
+        elif a == '--force':
+            force = True
+        elif a == '--show-check':
+            show = True
+        elif a == '--list':
+            lst = True
+        else:
+            raise SystemExit('install_rig: unknown argument %s (see the top of the file)' % a)
+        i += 1
+    return only, failed, force, show, lst
+
+
+def run_case(name, fn):
+    """(ok, detail) of one case, its fixtures put back whatever happens."""
+    ck = verdicts.Checks()
+    fx = None if getattr(fn, 'own_fixtures', False) else Fixtures()
+    try:
+        if fx:
+            fx.take()
+        fn(ck)
+    finally:
+        if fx:
+            fx.restore()
+    print('install_rig %s: passed %d of %d' % (name, ck.total - len(ck.failed), ck.total))
+    return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
+
+
+def cli(argv):
+    table = case_table()
+    only, failed, force, show, lst = parse_args(argv, list(table))
+    if show:
         print('install_rig: the watched window (UPTERM_RIG_SHOW) itself')
-        rc |= show_check()
-    if '--libs' in args:
-        print('install_rig: pass 4, LIBS: a multi-assign (the rig\'s normal boot)')
-        rc |= libs()
-        out = run('Assign LIBS: EXISTS')[1]
-        ok = 'ixp6' in out and 'ncurses' in out
-        print('%s the rig\'s LIBS: is assigned again after the case' % ('ok' if ok else 'FAIL'), '' if ok else out)
-        rc |= not ok
-    show_close()
-    sys.exit(rc)
+        with paths.rig_lock():
+            try:
+                return show_check()
+            finally:
+                show_close()
+    store = verdicts.Store(paths.RIG / "install")
+    todo, skip = verdicts.select(store, list(table), lambda c: case_fingerprint(table[c]), only, failed, force)
+    if lst:
+        for c in table:
+            v = store.verdict(c)
+            print('%-10s %s' % (c, v['verdict'] if v else 'not run'))
+        return 0
+    for c, why in skip:
+        print('[SKIP] %s: %s' % (c, why))
+    for c, _ in todo:
+        for pkg in table[c][0]:
+            if not (kit_dir(pkg) / 'Install').exists():
+                raise SystemExit('install_rig: no kit %s: make dist first' % kit_dir(pkg))
+    with paths.rig_lock():
+        owners = OwnersAddons()
+        try:
+            if todo:
+                try:
+                    owners.remove()
+                except SystemExit as e:
+                    print('[ABORT] %s (no verdict written)' % e)
+                    return 2
+            for c, why in todo:
+                print('install_rig: case %s (%s)' % (c, why))
+                try:
+                    ok, detail = run_case(c, table[c][2])
+                except SystemExit as e:   # the agent or the rig is gone: not a verdict on the kit
+                    print('[ABORT] %s: %s (no verdict written)' % (c, e))
+                    return 2
+                store.record(c, ok, detail, case_fingerprint(table[c]))
+        finally:
+            try:
+                owners.restore()
+            except BaseException as e:
+                print('[WARN] the owner\'s add-ons are not put back: %s (%s lists them)' % (e, PREINSTALLED))
+            show_close()
+    bad = store.failed([c for c, _ in todo])
+    print('install_rig: %d of %d cases failed: %s' % (len(bad), len(todo), ' '.join(bad)))
+    return 1 if bad else 0
+
+
+if __name__ == '__main__':
+    sys.exit(cli(sys.argv[1:]))

@@ -1375,5 +1375,5 @@ joined:
 
 const llm_backend llm_be_bedrock = {
     "bedrock-converse-stream", "Authorization", "/model", b_head, b_body, 0, b_new, b_feed, b_free,
-    "Bedrock stream ended without a stop reason", b_route, b_fin, b_sign, b_http_err, 0
+    "Bedrock stream ended without a stop reason", b_route, b_fin, b_sign, b_http_err, 0, 0
 };

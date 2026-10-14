@@ -398,6 +398,7 @@ static void setup_in(cl_repl *r, const char **script, const char *root)
     io.sleep = c_sleep;
     io.ms = c_ms;
     io.log = 0;
+    io.upterm = 0;
     net.u = 0;
     net.open = s_open;
     net.send = s_send;
@@ -433,6 +434,42 @@ static const char text_content[] =
     "[{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"EqQBCkgIBhABGAIiQL+sig/part1==+part2\"},"
     "{\"type\":\"text\",\"text\":\"Hello from the Amiga!\\n\\n```c\\nint x = \\\"q\\\";\\n```\\n"
     "Gr\xc3\xbc\xc3\x9f" "e \xe2\x80\x94 ok \xf0\x9f\x98\x80\"}]";
+
+static int banner_upterm_answer;
+static int banner_upterm(void *u)
+{
+    (void)u;
+    return banner_upterm_answer;
+}
+
+/* Y2: the line-mode banner says "in UP-Term" only on a console that answered UP-Term's packet */
+static void test_banner_upterm(void)
+{
+    static const char *script[] = { "/exit", 0 };
+    static cl_repl r;
+    const char *s;
+    setup(&r, script);
+    repl_run(&r);
+    s = cn.screen.p ? cn.screen.p : "";
+    CHECK(strstr(s, "Claude. Model ") != 0);
+    CHECK(strstr(s, "in UP-Term") == 0);
+    repl_free(&r);
+    setup(&r, script);
+    io.upterm = banner_upterm;
+    banner_upterm_answer = 0;
+    repl_run(&r);
+    s = cn.screen.p ? cn.screen.p : "";
+    CHECK(strstr(s, "in UP-Term") == 0);
+    repl_free(&r);
+    setup(&r, script);
+    io.upterm = banner_upterm;
+    banner_upterm_answer = 1;
+    repl_run(&r);
+    s = cn.screen.p ? cn.screen.p : "";
+    CHECK(strstr(s, "Claude in UP-Term. Model ") != 0);
+    repl_free(&r);
+    io.upterm = 0;
+}
 
 static void test_reach(void)
 {
@@ -6226,6 +6263,7 @@ void suite_claude_repl(void)
 {
     mk_tree();
     test_reach();
+    test_banner_upterm();
     test_unfinished();
     test_req_golden();
     test_datadir_move();

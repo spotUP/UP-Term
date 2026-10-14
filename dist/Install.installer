@@ -9,6 +9,9 @@
 ; tests/test_dist_installer.py holds this script and install.dos to the same
 ; parts in the same order, and to the Installer 43.3 language.
 ; Remove UP-Term again with Uninstall.
+; Neovim, Python, Claude and amiga-pi are archives of their own (UP-Term-nvim,
+; Python3, Claude, amiga-pi), each with an Install of its own; the last three
+; stand alone and install with no UP-Term.
 ;
 ; TEXT LAYOUT, measured 2026-10-08 (installer_rig's text check reads the
 ; page's pixels):
@@ -44,9 +47,9 @@
 (
 ; ---- welcome ---------------------------------------------------------------
 
-; welcome: n = 12, lead 1
+; welcome: n = 13, lead 0
 (message
-    "\nU P - T E R M\n\n"
+    "U P - T E R M\n\n"
     "a modern terminal for AmigaOS\n\n"
     "XCON:, a console window with an xterm-class terminal;\n"
     "vsh, a Unix shell with tmux, screen and GNU commands;\n"
@@ -54,31 +57,37 @@
     "colour themes; a patched ixemul.library.\n\n"
     "The next pages ask where UP-Term's own drawer goes\n"
     "and which parts you want. Every page has a Help button.\n"
-    "Uninstall takes it all out again."
+    "Neovim, Python, Claude and amiga-pi are archives of\n"
+    "their own: Neovim wants this one first."
     (all))
 
 ; ---- where UP-Term's own drawer goes ---------------------------------------
-; Its commands, Unifont, emoji, Python and Neovim live in one drawer that is
-; assigned as UP-Term: now and at every boot; every program reaches the files
-; through that name. An earlier install's drawer is the default.
+; Its commands, Unifont and emoji live in one drawer (the add-on archives'
+; files go there too) that is assigned as UP-Term: now and at every boot; every
+; program reaches the files through that name. An earlier install's drawer is
+; the default.
 
 (set #old (getassign "UP-Term" "a"))
-(set #dest
-    (askdir
-        (prompt "Where should UP-Term's own drawer go? It is assigned as\n"
-                "UP-Term: and holds the Unix commands, Unifont, emoji,\n"
-                "Python and Neovim.")
-        (help "The drawer is made if it is not there (its parent must "
-              "exist). Programs find it through the assign UP-Term:, which "
-              "Install makes now and at every boot (a block in "
-              "S:User-Startup that Uninstall takes out again).\n\n"
-              "An earlier UP-Term's drawer is offered first: installing into "
-              "it again replaces the files and keeps your settings.")
-        (default (if #old #old "SYS:UP-Term"))
-        (newpath)))
-(if (= (substr #dest (- (strlen #dest) 1) 1) ":")
-    (set #dest (tackon #dest "UP-Term")))
-(set @default-dest #dest)
+(set #dest (if #old #old "SYS:UP-Term"))
+; asked again, with the last answer as its default, when the disk of the drawer is too small (room on the disk)
+(procedure P_ASKDEST
+    (set #dest
+        (askdir
+            (prompt "Where should UP-Term's own drawer go? It is assigned as\n"
+                    "UP-Term: and holds the Unix commands, Unifont, emoji\n"
+                    "and the files of the add-on archives.")
+            (help "The drawer is made if it is not there (its parent must "
+                  "exist). Programs find it through the assign UP-Term:, which "
+                  "Install makes now and at every boot (a block in "
+                  "S:User-Startup that Uninstall takes out again).\n\n"
+                  "An earlier UP-Term's drawer is offered first: installing into "
+                  "it again replaces the files and keeps your settings.")
+            (default #dest)
+            (newpath)))
+    (if (= (substr #dest (- (strlen #dest) 1) 1) ":")
+        (set #dest (tackon #dest "UP-Term")))
+    (set @default-dest #dest))
+(P_ASKDEST)
 
 ; ---- what to install: three pages of choices -------------------------------
 
@@ -90,11 +99,10 @@
 (set #bget "")
 (set #curl "")
 (set #wasabi "")
-(set #remote "")
-(set #python "")
-(set #nvim "")
 (set #unifont "")
 (set #emoji "")
+(set #agent "")
+(set #cpu000 (if (or (= (database "cpu") "68000") (= (database "cpu") "68010")) "CPU000" ""))
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 ; @include dist/common/amissl.installer
@@ -131,23 +139,16 @@
               "Colour emoji: Twemoji (CC-BY 4.0), 0.5 MB in UP-Term:emoji, "
               "drawn in colour on an RTG screen of 15 bits or more "
               "(Picasso96, CyberGraphX); other screens use Unifont's glyph.\n\n"
-              "Python 3.14 (15 MB, UP-Term:Python3, assigned as Python3:) and "
-              "Neovim 0.12 (32 MB, UP-Term:nvim): python3 and nvim then run "
-              "from an UP-Term window.\n\n"
               "Shell icon: SYS:System/Shell's WINDOW tooltype is changed to "
               "XCON:, so the Shell opens an UP-Term window. A copy of the icon "
               "is kept in ENVARC:up-term-orig and Uninstall puts it back.")
         (choices "Unifont: glyphs for every character and emoji (1.8 MB)"
                  "Colour emoji for RTG screens (Twemoji, 0.5 MB)"
-                 "Python 3.14 (15 MB)"
-                 "Neovim 0.12 (32 MB)"
                  "Shell icon opens an UP-Term window")
-        (default (+ 1 2 4 8))))
+        (default (+ 1 2))))
 (if (in #extra 0) (set #unifont "UNIFONT"))
 (if (in #extra 1) (set #emoji "EMOJI"))
-(if (in #extra 2) (set #python "PYTHON"))
-(if (in #extra 3) (set #nvim "NVIM"))
-(if (and (in #extra 4) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+(if (and (in #extra 2) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
 
 (set #boot
     (askoptions
@@ -170,43 +171,26 @@
 (if (in #boot 0) (set #serial "SERIAL"))
 (if (in #boot 1) (set #wasabi "WASABI"))
 
-; the page's default is the host and port of an existing
-; ENVARC:Claude/remote: the kit's own Claude prints them (Claude REMOTE-ADDRESS,
-; the parser C:Claude itself uses: comments skipped, port 2323 when left out)
-; into ENV:UPTermRemote (a two-line script: Claude needs a 16000 byte stack),
-; whose first line getenv returns. No file, or no
-; host in it: the address below.
-(set #oldremote "")
-(if (exists "ENVARC:Claude/remote")
-    (
-        (textfile (dest "T:UPTermRemote.sh")
-                  (append "Stack 32768\n\"" #files "/Claude\" REMOTE-ADDRESS >ENV:UPTermRemote\n"))
-        (run "Execute T:UPTermRemote.sh" (safe))
-        (run "Delete >NIL: T:UPTermRemote.sh QUIET" (safe))
-        (set #oldremote (getenv "UPTermRemote"))
-        ; getenv gives the file whole: the line Claude printed ends in a
-        ; newline, which the string gadget shows as a square after the port
-        (while (and (> (strlen #oldremote) 0)
-                    (= (substr #oldremote (- (strlen #oldremote) 1) 1) "\n"))
-            (set #oldremote (substr #oldremote 0 (- (strlen #oldremote) 1))))
-        (run "Delete >NIL: ENV:UPTermRemote QUIET" (safe))
-    ))
-
-(set #remote
-    (askstring
-        (prompt "Claude Code on your server (the NAS): address and port,\n"
-                "like nas.local 2323. Then Claude in a Shell goes\n"
-                "straight there. Empty: none.")
-        (help "C:Claude and C:ClaudeCode are always installed (README.txt, "
-              "CLAUDE FROM THE AMIGA). C:Claude without an API key connects to "
-              "Claude Code on this computer with uptelnet (your Claude "
-              "subscription, through the server). Kept in ENVARC:Claude/remote; "
-              "edit or delete it later. The answer replaces an existing file; its "
-              "address is what this page starts with. With no file the page starts empty "
-              "and nothing is written: type your server's address and port (the port is "
-              "2323 for the server in tools/nas).")
-        (default #oldremote)))
-(set #remotetext #remote)
+(set #agentpage
+    (askoptions
+        (prompt "Let Claude Code on another computer drive this\n"
+                "Amiga? Off unless you tick it.")
+        (help "amiagent 0.13.2 (Apache 2.0), the Amiga half of amimcp by "
+              "Thomas Luebker: Claude Code on another computer (the NAS, "
+              "a Mac) reads files, runs commands and uses the screen of "
+              "this Amiga through it.\n\n"
+              "amiagent runs ANY command a client that knows its TOKEN "
+              "sends, and the link is not encrypted. Always start it with "
+              "a TOKEN, only on a network you trust, and never forward its "
+              "port to the internet.\n\n"
+              "Install only copies it to UP-Term:bin/amiagent (the 68020 "
+              "build; the 68000 build on a 68000 or 68010) and never "
+              "starts it. Start it yourself:\n"
+              "  Run >NIL: UP-Term:bin/amiagent TOKEN=pick-a-secret QUIET\n"
+              "Uninstall stops and removes it. See tools/nas/README.md.")
+        (choices "Install amiagent (always run it with a TOKEN)")
+        (default 0)))
+(if (in #agentpage 0) (set #agent "AMIAGENT"))
 
 ; ---- taking over the system's console: a page of its own -----------------
 
@@ -231,37 +215,48 @@
 (if (in #sys 1) (set #dev "DEVICE"))
 
 ; ---- the size of each part, in KB ------------------------------------------
-; Only the pace of the percent bar: each part moves it by its share of the
-; total (measured on the kit of 2026-10-07; a part's few seconds of start-up
-; count as 20 KB).
+; What each part takes on the disk, counted by `make dist` from the files of
+; this kit (tools/kitsize.py: blocks, not bytes; the options' files only when
+; they are ticked). They pace the percent bar and they are what the room on
+; the disk is checked against. A part of few files counts its minimum.
 
-(set #kb-drawer 20)
-(set #kb-system 2200)
-(set #kb-coreutils 2200)
-; the Unix tool ports' programs (measured on the staged ports of 2026-10-08);
-; their pages, nano's files and licences are the userland part's 1780
-(set #kb-userland 8800)
-(set #kb-unifont (if #unifont 1800 0))
-(set #kb-emoji (if #emoji 500 0))
-(set #kb-tools (+ 900 (if #ssh 300 0) (if #bget 210 0) (if #curl 1200 0)))
-(set #kb-python (if #python 15040 0))
-(set #kb-nvim (if #nvim 27500 0))
-; fonts, unix, desktop, boot, libs, mount, console, record: their #kb below
-(set #kb-rest (+ 20 60 100 (if #wasabi 160 20) 420 50 200 20))
-(set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-userland 1780 #kb-unifont #kb-emoji
-                 #kb-tools #kb-python 20 #kb-nvim #kb-rest))
+(set #kb-drawer @KBDRAWER@)
+(set #kb-system @KBSYSTEM@)
+(set #kb-coreutils @KBCOPYCOREUTILS@)
+(set #kb-userland @KBCOPYUSERLAND@)
+(set #kb-manpages @KBUSERLAND@)
+(set #kb-unifont (if #unifont @KBCOPYUNIFONT@ 0))
+(set #kb-emoji (if #emoji @KBCOPYEMOJI@ 0))
+(set #kb-tools (+ @KBTOOLS@ (if #ssh @KBSSH@ 0) (if #bget @KBBEBBOGET@ 0) (if #curl @KBCURL@ 0)
+                  (if #agent @KBAMIAGENT@ 0)))
+; fonts, unix, desktop, boot (with wasabi), libs, mount, console, record: their #kb below
+(set #kb-rest (+ @KBFONTS@ 60 @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ 20))
+(set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-userland #kb-manpages #kb-unifont #kb-emoji
+                 #kb-tools #kb-rest))
 (set #donekb 0)
 
 ; ---- room on the disk --------------------------------------------------------
 ; getdiskspace answers -1 when it cannot tell (and Installer 43.3 can
 ; overflow on a volume past 2 GB): only a positive answer that is too small
-; asks.
+; asks. The drawer's disk too small: say how much there is and how much the
+; chosen parts need, and ask for another drawer (Abort Install ends it).
 
-(set #free (getdiskspace (pathonly #dest)))
-(if (and (> #free 0) (< (/ #free 1024) #totalkb))
-    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
-           "UP-Term needs about " #totalkb " KB. Run Install again\n"
-           "and choose a drawer on another drive."))
+(set #roomok 0)
+(while (not #roomok)
+    (
+        (set #free (getdiskspace (pathonly #dest)))
+        (if (and (> #free 0) (< (/ #free 1024) #totalkb))
+            (
+                (message
+                    (cat "\n\n\n" #dest " has " (/ #free 1024) " KB free;\n"
+                         "the parts you chose need about " #totalkb " KB.\n\n"
+                         "Nothing has been copied. Proceed asks for\n"
+                         "another drawer, on a drive with room;\n"
+                         "Abort Install leaves everything as it was."))
+                (P_ASKDEST)
+            )
+            (set #roomok 1))
+    ))
 ; what goes on SYS: whatever the drawer's volume is (C:, L:, LIBS:, DEVS:, fonts,
 ; the S:User-Startup block)
 (set #sysfree (getdiskspace "SYS:"))
@@ -291,21 +286,38 @@
         (set #bget (getenv "UPTOPTBEBBOGET"))
         (set #curl (getenv "UPTOPTCURL"))
         (set #wasabi (getenv "UPTOPTWASABI"))
-        (set #remote (getenv "UPTOPTREMOTE"))
-        (set #remotetext #remote)
-        (set #python (getenv "UPTOPTPYTHON"))
-        (set #nvim (getenv "UPTOPTNVIM"))
         (set #unifont (getenv "UPTOPTUNIFONT"))
         (set #emoji (getenv "UPTOPTEMOJI"))
+        (set #agent (getenv "UPTOPTAMIAGENT"))
+        (set #cpu000 (getenv "UPTOPTCPU000"))
         (set #cpu040 (getenv "UPTOPTCPU040"))
         (set #cpu060 (getenv "UPTOPTCPU060"))
-        (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-userland 0 #kb-unifont 0 #kb-emoji 0
-             #kb-tools 0 #kb-python 0 #kb-nvim 0)
+        (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-userland 0 #kb-manpages 0 #kb-unifont 0 #kb-emoji 0
+             #kb-tools 0)
         ; the parts upupdate named, and the record part's 1
         (set #totalkb (+ 1 (getenv "UPTUPDKB")))
         (set #donekb 0)))
 
 ; @include dist/common/procs.installer
+
+; the options of this install: each becomes the file ENV:UPTOPT<name> that
+; install.dos reads (P_OPTIONS, in the shared procedures, calls this)
+(procedure P_OPTIONS_LIST
+    (set #name "DEST" #val #dest) (P_OPT)
+    (set #name #con #val #con) (P_OPT)
+    (set #name #dev #val #dev) (P_OPT)
+    (set #name "SHELLICON" #val #shellicon) (P_OPT)
+    (set #name "SERIAL" #val #serial) (P_OPT)
+    (set #name "SSH" #val #ssh) (P_OPT)
+    (set #name "BEBBOGET" #val #bget) (P_OPT)
+    (set #name "CURL" #val #curl) (P_OPT)
+    (set #name "WASABI" #val #wasabi) (P_OPT)
+    (set #name "CPU040" #val #cpu040) (P_OPT)
+    (set #name "CPU060" #val #cpu060) (P_OPT)
+    (set #name "UNIFONT" #val #unifont) (P_OPT)
+    (set #name "EMOJI" #val #emoji) (P_OPT)
+    (set #name "AMIAGENT" #val #agent) (P_OPT)
+    (set #name "CPU000" #val #cpu000) (P_OPT))
 
 (complete 0)
 
@@ -335,7 +347,7 @@
                "xz, zip and the terminal commands (tput, reset...)."))
 (P_COPY)
 
-(set #step "userland" #kb 1780 #n 3
+(set #step "userland" #kb #kb-manpages #n 3
      #why (cat "Installing the manual pages (UP-Term:share/man),\n"
                "nano's syntax colours, and each Unix tool's licence\n"
                "(UP-Term:licenses)."))
@@ -359,44 +371,11 @@
 
 (set #step "tools" #kb #kb-tools #n 3
      #why (cat "Installing UP-Term's own commands (UPTerm, UPDemo,\n"
-               "upgetty, uptelnet, Claude, amiga-pi, ClaudeCode),\n"
-               "the network tools you chose, and Claude's settings."))
+               "upgetty, uptelnet, hl, mdv, ps, top, sz, rz) and\n"
+               "the network tools you chose."))
 (P_STEP)
 
-; the Python / Neovim page: n = 5 lines, one more for each of the two
-(if (and (not #update) (or #python #nvim))
-    (
-        (set #n (+ 5 (if #python 1 0) (if #nvim 1 0)))
-        (P_LEAD)
-        (message
-            (cat #lead "Next:\n"
-                 (if #python "Python 3.14 (15 MB)\n" "")
-                 (if #nvim "Neovim 0.12 (32 MB, about 2100 files)\n" "")
-                 "\nThe biggest part of the install: on a 68020 with a hard\n"
-                 "disk it takes several minutes. The Installer shows\n"
-                 "every file as it is copied."))
-    ))
-
-(if #python
-    (
-        (set #from (tackon #files "python3") #to (tackon #dest "Python3") #part "copy-python" #kb #kb-python #n 1
-             #why "Copying Python 3.14 to UP-Term:Python3.")
-        (P_COPY)
-    ))
-
-(set #step "python" #kb 20 #n 2
-     #why (cat "Assigning Python3: now and at every boot\n"
-               "(a block in S:User-Startup)."))
-(P_STEP)
-
-(if #nvim
-    (
-        (set #from (tackon #files "nvim") #to (tackon #dest "nvim") #part "copy-nvim" #kb #kb-nvim #n 1
-             #why "Copying Neovim 0.12 and its runtime to UP-Term:nvim.")
-        (P_COPY)
-    ))
-
-(set #step "fonts" #kb 20 #n 2
+(set #step "fonts" #kb @KBFONTS@ #n 2
      #why (cat "Adding the TopazPro and IBM fonts (only the sizes you do\n"
                "not have yet) and running FixFonts."))
 (P_STEP)
@@ -406,30 +385,30 @@
                "GG: and TMP: are assigned only when you have none."))
 (P_STEP)
 
-(set #step "desktop" #kb 100 #n (if #shellicon 3 2)
+(set #step "desktop" #kb @KBDESKTOP@ #n (if #shellicon 3 2)
      #why (cat "Putting the UP-Term icon in SYS:System and UP-Term Prefs\n"
                "in SYS:Prefs"
                (if #shellicon ",\nand pointing the Shell icon at XCON:" "") "."))
 (P_STEP)
 
-(set #step "boot" #kb (if #wasabi 160 20) #n (+ 1 (if #serial 1 0) (if #wasabi 1 0))
+(set #step "boot" #kb (+ @KBBOOT@ (if #wasabi @KBWASABI@ 0)) #n (+ 1 (if #serial 1 0) (if #wasabi 1 0))
      #why (cat "Writing vsh's settings"
                (if #serial ",\nthe serial login" "")
                (if #wasabi ",\nwasabid and its key" "") "."))
 (P_STEP)
 
-(set #step "libs" #kb 420 #n 3
+(set #step "libs" #kb @KBLIBS@ #n 3
      #why (cat "Installing the patched ixemul.library and its\n"
                "ixnet.library (the ones there are kept as\n"
                "LIBS:<name>.orig)."))
 (P_STEP)
 
-(set #step "mount" #kb 50 #n 2
+(set #step "mount" #kb @KBMOUNT@ #n 2
      #why (cat "Mounting XCON:, PTY: and IXPIPE:, so they work now,\n"
                "without a reboot."))
 (P_STEP)
 
-(set #step "console" #kb 200 #n (+ 1 (if (= #con "CONSOLE") 1 0) (if (= #dev "DEVICE") 1 0))
+(set #step "console" #kb @KBCONSOLE@ #n (+ 1 (if (= #con "CONSOLE") 1 0) (if (= #dev "DEVICE") 1 0))
      #why (cat "Installing C:UPConsole"
                (if (= #con "CONSOLE") ",\nserving CON: and RAW:" "")
                (if (= #dev "DEVICE") ",\nserving console.device" "") "."))
@@ -448,36 +427,48 @@
         (P_OPTIONS_END)
         (run "Delete >NIL: T:UPTUPD-#? ENV:UPTUPD#? QUIET")
         (set #n 5)
+        ; an Update over the single kit (before the split): the files of the
+        ; add-on archives upupdate left alone (ENV:UPTHANDED, the kit paths)
+        (set #handed (getenv "UPTHANDED"))
+        (set #stays "")
+        (if (patmatch "#?Files/nvim#?" #handed) (set #stays (cat #stays ", Neovim")))
+        (if (patmatch "#?Files/python3#?" #handed) (set #stays (cat #stays ", Python")))
+        (if (patmatch "#?Files/Claude#?" #handed) (set #stays (cat #stays ", Claude")))
+        (if (patmatch "#?Files/amiga-pi#?" #handed) (set #stays (cat #stays ", amiga-pi")))
+        (if (<> #stays "") (set #n 9))
         (P_LEAD)
         (set #updated (cat #lead "UP-Term is updated:\n" (getenv "UPTVEROLD") "\nto\n"
-                        (getenv "UPTVERNEW") "\n\nNothing else changed."))
+                        (getenv "UPTVERNEW") "\n\n"
+                        (if (<> #stays "")
+                            (cat "Stays installed: " (substr #stays 2 (strlen #stays)) ".\n"
+                                 "They are archives of their own now: install\n"
+                                 "UP-Term-nvim, Python3, Claude or amiga-pi to update.")
+                            "Nothing else changed.")))
+        (run "Delete >NIL: ENV:UPTHANDED QUIET")
         (run "Delete >NIL: ENV:UPTVER#? QUIET")
         (exit #updated)))
 
 ; ---- what went where ------------------------------------------------------------
 
 (set #assigns (cat "UP-Term: = " #dest))
-(if #python (set #assigns (cat #assigns ", Python3:")))
 ; Install writes these markers only when it made the assign (Uninstall reads them)
 (if (exists "ENVARC:up-term/gg") (set #assigns (cat #assigns ", GG:")))
 (if (exists "ENVARC:up-term/tmp") (set #assigns (cat #assigns ", TMP:")))
 (set #blocks "UP-Term assign")
 (if (exists "ENVARC:up-term/gg") (set #blocks (cat #blocks ", GG:")))
 (if (exists "ENVARC:up-term/tmp") (set #blocks (cat #blocks ", TMP:")))
-(if #python (set #blocks (cat #blocks ", Python3:")))
 (if #serial (set #blocks (cat #blocks ", serial login")))
 (if #wasabi (set #blocks (cat #blocks ", wasabid")))
 (if (= #con "CONSOLE") (set #blocks (cat #blocks ", CON:")))
 (if (= #dev "DEVICE") (set #blocks (cat #blocks ", console.device")))
 
-; what went where: 10 lines, one more for the extras, the Claude Code
-; server, and each of the Assigns and Startup blocks lines that does not fit
-; one line (> 56 characters, TEXT LAYOUT): at most 14
-(set #xl (cat (if #unifont ", Unifont" "") (if #emoji ", emoji" "")
-              (if #python ", Python3" "") (if #nvim ", nvim" "")))
+; what went where: 10 lines, one more for the extras, and each of the
+; Assigns and Startup blocks lines that does not fit one line (> 56
+; characters, TEXT LAYOUT): at most 13
+(set #xl (cat (if #unifont ", Unifont" "") (if #emoji ", emoji" "")))
 (set #assignline (cat "Assigns: " #assigns))
 (set #blockline (cat "Startup blocks: " #blocks))
-(set #n (+ 10 (if (<> #xl "") 1 0) (if (<> #remotetext "") 1 0)
+(set #n (+ 10 (if (<> #xl "") 1 0)
            (if (> (strlen #assignline) 56) 1 0) (if (> (strlen #blockline) 56) 1 0)))
 (P_LEAD)
 
@@ -486,14 +477,13 @@
          "UP-Term: Unix commands, man pages, network tools, sz, rz"
          (if (<> #xl "") (cat ",\n" (substr #xl 2 (strlen #xl))) "") "\n"
          "C: vsh, tmux, screen, UPConsole, UPTerm, UPDemo,\n"
-         "   Claude, amiga-pi, ClaudeCode\n"
+         "   uptelnet\n"
          "L: and DEVS:DOSDrivers: XCON:, PTY:, IXPIPE:\n"
          "LIBS: ixemul.library, ixnet.library (old ones: .orig)\n"
          "SYS:System/UP-Term, SYS:Prefs/UP-Term-Prefs\n"
          "ENVARC:up-term: settings, terminal entries, themes\n"
          #assignline "\n"
-         #blockline
-         (if (<> #remotetext "") (cat "\nClaude Code server: " #remotetext) ""))
+         #blockline)
     (all))
 
 ; the parts are done: the options and the UPTKIT: assign go

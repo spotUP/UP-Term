@@ -1,0 +1,96 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 7, lead 3
+(message
+    "\n\n\nC L A U D E\n\n"
+    "Claude for the Amiga: C:Claude, here with your\n"
+    "API key or Claude Code on a server. It needs no\n"
+    "UP-Term; in an UP-Term window it fills the screen.\n"
+    (all))
+
+; the page's default is the host and port of an existing
+; ENVARC:Claude/remote: the kit's own Claude prints them (Claude REMOTE-ADDRESS,
+; the parser C:Claude itself uses: comments skipped, port 2323 when left out)
+; into ENV:UPTermRemote (a two-line script: Claude needs a 16000 byte stack),
+; whose first line getenv returns. No file, or no
+; host in it: the address below.
+(set #oldremote "")
+(if (exists "ENVARC:Claude/remote")
+    (
+        (textfile (dest "T:UPTermRemote.sh")
+                  (append "Stack 32768\n\"" #files "/Claude\" REMOTE-ADDRESS >ENV:UPTermRemote\n"))
+        (run "Execute T:UPTermRemote.sh" (safe))
+        (run "Delete >NIL: T:UPTermRemote.sh QUIET" (safe))
+        (set #oldremote (getenv "UPTermRemote"))
+        ; getenv gives the file whole: the line Claude printed ends in a
+        ; newline, which the string gadget shows as a square after the port
+        (while (and (> (strlen #oldremote) 0)
+                    (= (substr #oldremote (- (strlen #oldremote) 1) 1) "\n"))
+            (set #oldremote (substr #oldremote 0 (- (strlen #oldremote) 1))))
+        (run "Delete >NIL: ENV:UPTermRemote QUIET" (safe))
+    ))
+
+(set #remote
+    (askstring
+        (prompt "Claude Code on your server (the NAS): address and port,\n"
+                "like nas.local 2323. With an API key too, Claude\n"
+                "asks which at every start. Empty: none.")
+        (help "C:Claude is always installed (README.txt, "
+              "CLAUDE FROM THE AMIGA). C:Claude without an API key connects to "
+              "Claude Code on this computer with uptelnet (your Claude "
+              "subscription, through the server); with a key and this address "
+              "it asks which. Kept in ENVARC:Claude/remote; "
+              "edit or delete it later. The answer replaces an existing file; its "
+              "address is what this page starts with. With no file the page starts empty "
+              "and nothing is written: type your server's address and port (the port is "
+              "2323 for the server in tools/nas).")
+        (default #oldremote)))
+
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "Claude needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install Claude into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #remote (getenv "UPTOPTREMOTE"))
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "claude" #kb @KBCLAUDE@ #n 3
+     #why (cat "Installing C:Claude and C:uptelnet\n"            "(an old C:ClaudeCode is removed), and\n"
+               "its settings drawer ENVARC:Claude (no key written)."))
+(P_STEP)
+
+(set #step "launch" #kb @KBLAUNCH@ #n 3
+     #why (cat "Putting the Claude quick-launch icon\n"               "(the old ClaudeCode icon goes) in\n"
+               "UP-Term: when it is there; else nothing."))
+(P_STEP)
+
+(set #n 9)
+(P_LEAD)
+(set #done
+    (cat #lead "Claude is installed. In a Shell or an UP-Term window:\n"
+         "  Claude\n\n"
+         "With an API key: SetEnv SAVE ANTHROPIC_API_KEY <key>."
+         (if (<> #remote "") (cat "\nClaude Code server: " #remote) "")
+         "\nUninstall (beside Install) takes the programs out;\n"
+         "your settings in ENVARC:Claude stay."))
+; @include dist/common/addon-tail.installer

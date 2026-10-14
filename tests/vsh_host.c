@@ -506,6 +506,13 @@ static int h_stat(void *os, const char *path, sh_stat *o, int nofollow)
     o->size = (long)st.st_size;
     o->mtime = (long)st.st_mtime;
     o->atime = (long)st.st_atime;
+#ifdef __APPLE__
+    o->mtime_ns = (long)st.st_mtimespec.tv_nsec;
+    o->atime_ns = (long)st.st_atimespec.tv_nsec;
+#else
+    o->mtime_ns = (long)st.st_mtim.tv_nsec;
+    o->atime_ns = (long)st.st_atim.tv_nsec;
+#endif
     o->mode = (unsigned)(st.st_mode & 07777);
     o->access = (access(p, R_OK) == 0 ? 4u : 0u) | (access(p, W_OK) == 0 ? 2u : 0u) | (access(p, X_OK) == 0 ? 1u : 0u);
     o->owned = st.st_uid == geteuid();

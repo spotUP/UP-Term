@@ -12,7 +12,7 @@ given that must stay home:
   1c. the probe said "key for fixture not sent: plain http"
 The run is in a visible window titled "amiga-pi step 1".
 
-Step 2 (C10, C12, C15): amiga-pi itself (~/Code/amiga-pi build/amiga/amiga-pi)
+Step 2 (C10, C12, C15): amiga-pi itself ($UPTERM_ROOT/amiga-pi build/amiga/amiga-pi)
 in print mode against the same fixture, with ENV:PI_MEM set:
   2a. "amiga-pi -p hello" printed the recorded text and returned 0
   2b. one more /chat/completions request, no Authorization header
@@ -154,14 +154,14 @@ fixture, settings.json enables both. The fixture answers slowly (--delay 0.4: ab
   13c /tree: the selector shows ("Session Tree", "Type to search:")
 Step 14 (H8): `amiga-pi --mode rpc` fed from a file through `<`, its stdout in a file. The fixture answers the model
 fake-model with tests/claude/pirpc_text.sse (the golden's answer); the output file is compared line by line with
-~/Code/amiga-pi tests/pi/rpc/prompt.out, masked as that suite's tests/test_pi_modes.c masks (mask_rpc below), then
+$UPTERM_ROOT/amiga-pi tests/pi/rpc/prompt.out, masked as that suite's tests/test_pi_modes.c masks (mask_rpc below), then
 get_messages and get_session_stats must answer. 14e (HF1): `--mode json` with a broken models.json in its own agent dir, run through vsh with 2> to a file:
 the "[WARN] ..." diagnostic is ONE line in the error file and not in the stdout JSONL. Verdicts in build/<rig>/amigapi14.verdicts.json, output kept as
 amigapi14-out.jsonl.
 Verdicts are recorded in build/rig3/amigapi13.verdicts.json (build/<rig>/ of the rig used): a check that passed is
 not run again; a phase with every check recorded is skipped. --force runs everything again.
 
-  make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C ~/Code/amiga-pi amiga
+  make build/amiga/pi-llmprobe build/amiga/Claude build/amiga/snipprobe; make -C $UPTERM_ROOT/amiga-pi amiga
   UPTERM_RIG=2 python3 -I tools/rig/rig.py start --max
   UPTERM_RIG=2 python3 -I tools/rig/amigapi_rig.py [--port 8092] [--step 1|2|3|4|5|6|7|8|9|10|11|13|14] [--force]
 """
@@ -255,7 +255,7 @@ def run_window(name, title, lines, done):
 
 def step2(port):
     claude = ROOT / 'build' / 'amiga' / 'Claude'
-    for b, hint in ((AMIGA_PI, 'make -C ~/Code/amiga-pi amiga'), (claude, 'make build/amiga/Claude')):
+    for b, hint in ((AMIGA_PI, 'make -C $UPTERM_ROOT/amiga-pi amiga'), (claude, 'make build/amiga/Claude')):
         if not b.exists():
             sys.exit('[ERROR] %s missing: %s' % (b, hint))
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
@@ -306,7 +306,7 @@ def step2(port):
 
 def step3(port):
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture3.log'
     fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
@@ -358,7 +358,7 @@ RIG_ASSIGN = False   # drop_rig_assign took the rig's own UP-Term: (VTC:) away; 
 
 def drop_rig_assign(had):
     """Steps 4-6 start from a rig with no UP-Term: and no Dir file. rig.py's boot script assigns UP-Term:
-    to VTC:upterm for the glyph pages (UT1) when no kit is installed; take that one away for the step."""
+    to VTC:Apps for the glyph pages (UT1) when no kit is installed; take that one away for the step."""
     global RIG_ASSIGN
     if 'UP-TERM' in had and ami.read_file('ENVARC:up-term/Dir') is None:
         c.run('Assign UP-Term: REMOVE')
@@ -371,7 +371,7 @@ def restore_rig_assign():
     global RIG_ASSIGN
     if RIG_ASSIGN:
         c.run('Assign UP-Term: REMOVE')
-        c.run('Assign UP-Term: VTC:upterm')
+        c.run('Assign UP-Term: VTC:' + paths.UPTERM_DRAWER)
         RIG_ASSIGN = False
 
 
@@ -459,7 +459,7 @@ def amigados_quote(cmd):
 
 def step4(port):
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     if not (VTC / 'vsh').exists():
         sys.exit('[ERROR] VTC:vsh missing')
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
@@ -582,7 +582,7 @@ def step5(port):
     import json
     import re
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     had = assigns()
     had = drop_rig_assign(had)
@@ -701,7 +701,7 @@ def step5(port):
 def step6(port):
     import json
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     had = assigns()
     had = drop_rig_assign(had)
@@ -880,7 +880,7 @@ def user_text(body):
 
 def step9(port):
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture9.log'
     dump = paths.RIG / 'amigapi_dump9'
@@ -941,7 +941,7 @@ def system_text(body):
 def step7(port):
     import re
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture7.log'
     dump = paths.RIG / 'amigapi_dump7'
@@ -1022,7 +1022,7 @@ def user_text(body):
 
 def step8(port):
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture8.log'
     dump = paths.RIG / 'amigapi_dump8'
@@ -1098,7 +1098,7 @@ LUA_BAD_11 = """pi.on("agent_start", function(event, ctx) error("rig boom", 0) e
 def step11(port):
     import re
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture11.log'
     dump = paths.RIG / 'amigapi_dump11'
@@ -1178,7 +1178,7 @@ def step12(port):
     run each, against tools/claude_fixture.py's routes."""
     import json
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture12.log'
     dump = paths.RIG / 'amigapi_dump12'
@@ -1299,7 +1299,7 @@ def step14(port):
     the amiga-pi tree), line by line, masked as tests/test_pi_modes.c masks. The commands are the golden's prompt.in and a
     get_state, a get_messages and a get_session_stats read after the run (the Amiga reads the lines one after the other)."""
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     gold = AMIGA_PI.parents[2] / 'tests' / 'pi' / 'rpc'
     shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
     log = paths.RIG / 'amigapi_fixture14.log'
@@ -1441,7 +1441,7 @@ def user_texts(entries):
 def step13(port):
     global force13
     if not AMIGA_PI.exists():
-        sys.exit('[ERROR] %s missing: make -C ~/Code/amiga-pi amiga' % AMIGA_PI)
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
     if not (ROOT / 'build' / 'amiga' / 'snipprobe').exists():
         sys.exit('[ERROR] build/amiga/snipprobe missing: make build/amiga/snipprobe')
     if not any(phase_due(p) for p in STEP13):
@@ -1453,7 +1453,7 @@ def step13(port):
     saved_dir = ami.read_file('ENVARC:up-term/Dir')
     log = paths.RIG / 'amigapi_fixture13.log'
     dump = paths.RIG / 'amigapi_dump13'
-    kit = VTC / 'upterm'    # UP-Term: is the rig's own (rig.py, UT1): VTC:upterm holds unifont/ and emoji/, the sessions go to VTC:upterm/var/amiga-pi (UT2)
+    kit = VTC / paths.UPTERM_DRAWER    # UP-Term: is the rig's own (rig.py, UT1): VTC:Apps holds unifont/ and emoji/, the sessions go to VTC:Apps/var/amiga-pi (UT2)
     sess = kit / 'var' / 'amiga-pi' / 'sessions'
     agent = VTC / 'pi13agent'
     base = 'http://127.0.0.1:%d' % port
@@ -1512,11 +1512,11 @@ def step13(port):
             'fixo': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
                      'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
         (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixa/m1', 'fixo/m2']}))
-        # UP-Term: stays the rig's (VTC:upterm, UT1): the pages the windows read are there. A drawer of its own
+        # UP-Term: stays the rig's (VTC:Apps, UT1): the pages the windows read are there. A drawer of its own
         # for the kit lacked unifont/ and emoji/; an assign with the kit first and VTC: added moved the
         # sessions out of amiga-pi's reach (measured 2026-10-12), so the run uses the rig's drawer itself.
-        assert 'UP-TERM' in had, 'rig.py setup (UT1) assigns UP-Term: to VTC:upterm; reboot the rig'
-        c.run('Delete VTC:upterm/var/amiga-pi ALL QUIET')    # from the Amiga's side: the emulator caches a drawer removed behind its back
+        assert 'UP-TERM' in had, 'rig.py setup (UT1) assigns UP-Term: to VTC:Apps; reboot the rig'
+        c.run('Delete VTC:%s/var/amiga-pi ALL QUIET' % paths.UPTERM_DRAWER)    # from the Amiga's side: the emulator caches a drawer removed behind its back
         if phase_due('a'):
             fixture()
             launch('amiga-pi step 13a', '')
@@ -1585,7 +1585,7 @@ def step13(port):
     finally:
         if fx:
             fx.terminate()
-        c.run('Delete VTC:upterm/var/amiga-pi ALL QUIET')
+        c.run('Delete VTC:%s/var/amiga-pi ALL QUIET' % paths.UPTERM_DRAWER)
         c.run('Delete VTC:pi13agent ALL QUIET')
         shutil.rmtree(agent, ignore_errors=True)
         if saved_dir is not None:

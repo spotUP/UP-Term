@@ -1,0 +1,26 @@
+#!/bin/sh
+# seed-claude-files: puts the image's Claude Code skill and MCP config into the
+# claude user's home (entrypoint.sh runs it at every start).
+# Rule per file: missing -> copied. Present -> replaced ONLY when it is still
+# the copy we seeded last (its sha256 equals the one recorded in
+# ~/.config/amimcp/seeded/NAME) and the image has a newer one. A file you edited
+# (or one with no record that differs from the image's) is never touched.
+# SEED_SRC (default /opt/amimcp/seed) and SEED_HOME (default /home/claude) move both ends (tests).
+SRC=${SEED_SRC:-/opt/amimcp/seed}
+H=${SEED_HOME:-/home/claude}
+REC=$H/.config/amimcp/seeded
+sum() { sha256sum "$1" | cut -d' ' -f1; }
+seed() { # NAME SRCFILE DSTFILE
+    mkdir -p "$(dirname "$3")" "$REC"
+    new=$(sum "$2")
+    if [ ! -e "$3" ]; then cp "$2" "$3"
+    else
+        cur=$(sum "$3"); old=$(cat "$REC/$1" 2>/dev/null)
+        [ "$cur" = "$new" ] && { echo "$new" > "$REC/$1"; return; }   # already ours, current
+        [ "$cur" = "$old" ] || { echo "claude-amiga: $3 differs from the image's and was edited: kept"; return; }
+        cp "$2" "$3"
+    fi
+    echo "$new" > "$REC/$1"
+}
+seed SKILL.md "$SRC/skills/amiga-upterm/SKILL.md" "$H/.claude/skills/amiga-upterm/SKILL.md"
+seed mcp.json "$SRC/mcp.json" "$H/work/.mcp.json"

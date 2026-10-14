@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""pairs: the Amigas that may log in to uptelnetd with a key instead of the password.
+
+    pairs list                  the paired Amigas: ID, date, first address (never the keys)
+    pairs add                   a key for an Amiga you pair by hand (plan D2 b): prints the one
+                                line to put in ENVARC:Claude/nas-key on that Amiga. Normally you do
+                                not need it: an Amiga with an empty key file pairs itself, over its
+                                first password login
+    pairs revoke ID             that Amiga's key is gone; it is asked for the password again
+
+Run in the container's terminal (as root: it acts as the claude user, so the file is the server's
+own, mode 0600). The file is ~/.config/uptelnetd/clients; the server reads it at every login, so a
+change acts at once. The protocol and the file format are in tools/uptelnetd.py's docstring."""
+import argparse
+import os
+import pwd
+import sys
+
+here = os.path.dirname(os.path.abspath(__file__))
+for p in ("/usr/local/bin", os.path.join(here, "..")):
+    if os.path.exists(os.path.join(p, "uptelnetd.py")):
+        sys.path.insert(0, p)
+        break
+import uptelnetd as d  # noqa: E402
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="pairs", description="the Amigas that log in to uptelnetd with a key")
+    ap.add_argument("--file", default=None, help="the clients file (default ~/.config/uptelnetd/clients)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("list")
+    sub.add_parser("add")
+    r = sub.add_parser("revoke")
+    r.add_argument("id")
+    a = ap.parse_args(argv)
+    if os.geteuid() == 0 and not a.file:
+        # as the claude user: the file is the server's, not root's
+        try:
+            u = pwd.getpwnam("claude")
+        except KeyError:
+            u = None
+        if u:
+            os.initgroups("claude", u.pw_gid)
+            os.setgid(u.pw_gid)
+            os.setuid(u.pw_uid)
+            os.environ["HOME"] = u.pw_dir
+    store = d.ClientStore(a.file)
+    try:
+        if a.cmd == "list":
+            rows = store.rows()
+            if not rows:
+                print("no Amiga is paired (an Amiga pairs itself with the password once; or: pairs add)")
+            for cid, _key, date, peer in rows:
+                print("%-16s %s  %s" % (cid, date, peer))
+        elif a.cmd == "add":
+            cid, key = store.add("added by hand")
+            print("Paired %s. On that Amiga, put this one line in ENVARC:Claude/nas-key (and ENV:Claude/nas-key):\n" % cid)
+            print("%s %s\n" % (cid, key.hex()))
+            print("Anyone who reads this line can log in as that Amiga: keep it off screens and logs.")
+        else:
+            if not store.revoke(a.id):
+                print("no such Amiga: %s" % a.id, file=sys.stderr)
+                return 1
+            print("revoked %s; that Amiga is asked for the password again" % a.id)
+    except d.ConfigError as e:
+        print("pairs: %s" % e, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

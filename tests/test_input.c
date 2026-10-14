@@ -208,6 +208,29 @@ static void middle_button_and_modifiers_reach_the_program(void)
     vt_free(t);
 }
 
+/* mouse wheel does not scroll on Kickstart 3.1 / FS-UAE: the wheel arrives as RAWKEY 0x7A / 0x7B
+ * (NewMouse), which the handler took for typing and dropped; vti_newmouse_wheel names the notch and
+ * vti_wheel then moves the scrollback */
+static void newmouse_wheel_raw_keys_scroll_the_scrollback(void)
+{
+    vt_term *t = h_new(20, 4, VT_XTERM);
+    int up = -1, lines = 0;
+    CHECK_INT(vti_newmouse_wheel(0x7A, &up), 1);
+    CHECK_INT(up, 1);
+    CHECK_STR(wheel(t, 0, up, 0, 0, &lines), "");
+    CHECK_INT(lines, VTI_WHEEL_LINES);
+    CHECK_INT(vti_newmouse_wheel(0x7B, &up), 1);
+    CHECK_INT(up, 0);
+    wheel(t, 0, up, 0, 0, &lines);
+    CHECK_INT(lines, -VTI_WHEEL_LINES);
+    /* a release, a letter, the arrow keys: not a notch */
+    CHECK_INT(vti_newmouse_wheel(0xFA, &up), 0);
+    CHECK_INT(vti_newmouse_wheel(0x7C, &up), 0);
+    CHECK_INT(vti_newmouse_wheel(0x20, &up), 0);
+    CHECK_INT(vti_newmouse_wheel(0x4C, &up), 0);
+    vt_free(t);
+}
+
 /* gap #14: double-click selects a word, triple-click the line */
 static void double_click_word_triple_click_line(void)
 {
@@ -458,8 +481,59 @@ static void a_selection_goes_when_a_region_scrolls_under_it(void)
     vt_free(t);
 }
 
+/* A view move of 1 or 3 lines inside the scrollback is one blit and the exposed rows, not a redraw
+ * of the window; the result is the picture a full redraw gives (screen row y shows line y - view). */
+static void a_scrollback_view_move_blits_and_draws_only_the_exposed_rows(void)
+{
+    enum { ROWS = 12 };
+    int old_view, new_view, n, y0, y1, y, bad = 0, full = 0;
+    int scr[ROWS], tmp[ROWS];
+    for (old_view = 0; old_view <= 40; old_view++)
+        for (new_view = 0; new_view <= 40; new_view++) {
+            int blit, d = new_view - old_view, a = d < 0 ? -d : d;
+            if (!d)
+                continue;
+            for (y = 0; y < ROWS; y++)
+                scr[y] = y - old_view;
+            blit = vti_view_scroll(old_view, new_view, ROWS, 0, &n, &y0, &y1);
+            if (blit) {
+                for (y = 0; y < ROWS; y++)
+                    tmp[y] = -9999; /* vacated */
+                for (y = 0; y < ROWS; y++)
+                    if (y - n >= 0 && y - n < ROWS)
+                        tmp[y - n] = scr[y]; /* the text moves up by n rows */
+                for (y = y0; y < y1; y++)
+                    tmp[y] = y - new_view; /* the rows drawn */
+                for (y = 0; y < ROWS; y++)
+                    scr[y] = tmp[y];
+                if (y1 - y0 != a)
+                    bad++;
+            } else {
+                full++;
+                for (y = 0; y < ROWS; y++)
+                    scr[y] = y - new_view;
+            }
+            for (y = 0; y < ROWS; y++)
+                if (scr[y] != y - new_view)
+                    bad++;
+            if (blit != (old_view > 0 && new_view > 0 && a < ROWS))
+                bad++;
+        }
+    CHECK_INT(bad, 0);
+    CHECK_INT(full > 0, 1);
+    CHECK_INT(vti_view_scroll(5, 6, ROWS, 0, &n, &y0, &y1), 1);   /* one line back: one row drawn */
+    CHECK_INT(n, -1); CHECK_INT(y0, 0); CHECK_INT(y1, 1);
+    CHECK_INT(vti_view_scroll(9, 6, ROWS, 0, &n, &y0, &y1), 1);   /* three lines forward: the bottom three */
+    CHECK_INT(n, 3); CHECK_INT(y0, ROWS - 3); CHECK_INT(y1, ROWS);
+    CHECK_INT(vti_view_scroll(5, 5 + ROWS, ROWS, 0, &n, &y0, &y1), 0); /* a screenful: all of it */
+    CHECK_INT(vti_view_scroll(5, 6, ROWS, 1, &n, &y0, &y1), 0);   /* live output arrived meanwhile */
+    CHECK_INT(vti_view_scroll(1, 0, ROWS, 0, &n, &y0, &y1), 0);   /* back to the live grid */
+    CHECK_INT(vti_view_scroll(0, 1, ROWS, 0, &n, &y0, &y1), 0);   /* into the scrollback */
+}
+
 void suite_input(void)
 {
+    a_scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     a_drag_step_repaints_the_rows_whose_span_changed();
     a_selection_goes_when_output_overwrites_or_erases_it();
     a_selection_survives_lines_that_scroll_into_the_scrollback();
@@ -467,6 +541,7 @@ void suite_input(void)
     bracketed_paste_drops_escape_and_controls();
     shift_page_keys_reach_full_screen_programs();
     middle_click_pastes_when_nobody_asked();
+    newmouse_wheel_raw_keys_scroll_the_scrollback();
     double_click_word_triple_click_line();
     middle_button_and_modifiers_reach_the_program();
     motion_reaches_the_program_in_the_motion_modes();

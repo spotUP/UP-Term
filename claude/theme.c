@@ -199,11 +199,69 @@ static const int pi_optional[][2] = {   /* role, the role it takes when omitted 
     { PR_SEARCH_MATCH_BG, PR_SELECTED_BG }, { PR_SEARCH_MATCH_TEXT, PR_TEXT }
 };
 
+/* theme-schema.ts (pi 1.2.0): the root, "colors" and "export" objects reject keys the schema does not name (additionalProperties false)
+ * and "appearance" is "dark" or "light"; the messages are typebox's, in its order (the root's keys, then appearance, colors, export),
+ * its error list cut at 8 entries. A line is added to oth; *nerr counts the entries. */
+#define PT_MAX_ERRORS 8
+
+static void pt_err(char *oth, int cap, int *nerr, const char *path, const char *key, const char *msg)
+{
+    if (*nerr >= PT_MAX_ERRORS)
+        return;
+    cl_cat(oth, "\n  - ", cap);
+    cl_cat(oth, path, cap);
+    if (key) {
+        if (path[1])
+            cl_cat(oth, "/", cap);
+        cl_cat(oth, key, cap);
+    }
+    cl_cat(oth, ": ", cap);
+    cl_cat(oth, msg, cap);
+    (*nerr)++;
+}
+
+static int pt_known(const char *k, const char *const *names, int n)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (!strcmp(k, names[i]))
+            return 1;
+    return 0;
+}
+
+/* the keys of obj that are not in names (n of them, or the roles when names is 0), each "<path>/<key>: schema is false", then
+ * "<path>: must not have additional properties" */
+static void pt_extra(jv obj, const char *path, const char *const *names, int n, char *oth, int cap, int *nerr)
+{
+    jit it;
+    jv k, v;
+    int any = 0;
+    if (json_type(obj) != J_OBJ)
+        return;
+    json_iter(obj, &it);
+    while (json_next(&it, &k, &v)) {
+        char key[96];
+        int ok;
+        json_str(k, key, sizeof(key));
+        if (names)
+            ok = pt_known(key, names, n);
+        else
+            ok = pitheme_role(key) >= 0;
+        if (!ok) {
+            pt_err(oth, cap, nerr, path, key, "schema is false");
+            any = 1;
+        }
+    }
+    if (any)
+        pt_err(oth, cap, nerr, path, 0, "must not have additional properties");
+}
+
 int pitheme_load(cl_pitheme *t, const char *json, long n, pitheme_ext ext, char *err, int errlen)
 {
     jv root, name, vars, colors, v;
     int i, k, missing = 0;
-    char bad[160], lab[64];
+    char bad[160], lab[64], oth[1024];
+    int nerr = 0;
     unsigned char have[PR_COUNT];
     if (n >= 3 && (unsigned char)json[0] == 0xEF && (unsigned char)json[1] == 0xBB && (unsigned char)json[2] == 0xBF) {
         json += 3;
@@ -231,6 +289,27 @@ int pitheme_load(cl_pitheme *t, const char *json, long n, pitheme_ext ext, char 
         cl_cat(err, lab, errlen);
         cl_cat(err, "\": theme names cannot contain \"/\" because it is reserved for automatic light/dark theme settings.", errlen);
         return -1;
+    }
+    {
+        static const char *const root_keys[] = { "$schema", "name", "appearance", "vars", "colors", "export" };
+        static const char *const export_keys[] = { "pageBg", "cardBg", "infoBg" };
+        jv ap, ex;
+        oth[0] = 0;
+        pt_extra(root, "/", root_keys, 6, oth, sizeof(oth), &nerr);
+        if (json_get(root, "appearance", &ap)) {
+            char a[16];
+            a[0] = 0;
+            if (json_type(ap) == J_STR)
+                json_str(ap, a, sizeof(a));
+            if (json_type(ap) != J_STR || (strcmp(a, "dark") && strcmp(a, "light"))) {
+                pt_err(oth, sizeof(oth), &nerr, "/appearance", 0, "must be equal to constant");
+                pt_err(oth, sizeof(oth), &nerr, "/appearance", 0, "must be equal to constant");
+                pt_err(oth, sizeof(oth), &nerr, "/appearance", 0, "must match a schema in anyOf");
+            }
+        }
+        pt_extra(colors, "/colors", 0, 0, oth, sizeof(oth), &nerr);
+        if (json_get(root, "export", &ex))
+            pt_extra(ex, "/export", export_keys, 3, oth, sizeof(oth), &nerr);
     }
     if (!json_get(root, "vars", &vars)) {
         vars.p = 0;
@@ -267,20 +346,26 @@ int pitheme_load(cl_pitheme *t, const char *json, long n, pitheme_ext ext, char 
                 order[j] = i;
                 missing++;
             }
-        if (missing) {
+        if (missing || nerr) {
             cl_copy(err, "Invalid theme \"", errlen);
             cl_cat(err, lab, errlen);
-            cl_cat(err, "\":\n\nMissing required color tokens:", errlen);
+            cl_cat(err, "\":\n", errlen);
+        }
+        if (missing) {
+            cl_cat(err, "\nMissing required color tokens:", errlen);
             for (j = 0; j < missing; j++) {
                 cl_cat(err, "\n  - ", errlen);
                 cl_cat(err, pi_role_names[order[j]], errlen);
             }
+            cl_cat(err, "\n\nPlease add these colors to your theme's \"colors\" object.\nSee the built-in themes (dark.json, light.json) for reference values.", errlen);
+        }
+        if (nerr) {
+            cl_cat(err, "\n\nOther errors:", errlen);
+            cl_cat(err, oth, errlen);
         }
     }
-    if (missing) {
-        cl_cat(err, "\n\nPlease add these colors to your theme's \"colors\" object.\nSee the built-in themes (dark.json, light.json) for reference values.", errlen);
+    if (missing || nerr)
         return -1;
-    }
     return 0;
 }
 

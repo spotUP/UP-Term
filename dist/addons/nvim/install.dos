@@ -1,0 +1,34 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; UP-Term-nvim install: Neovim 0.12 in UP-Term:nvim
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. The Installer
+; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
+; the same list); the first part, check, stops the install when UP-Term.lha is
+; missing or too old (the reason is in ENV:UPTCHECK).
+FailAt 21
+; the archive's Files drawer: every name below is relative to it
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab copy-nvim
+; Neovim 0.12 (README): UP-Term:nvim (its runtime beside the binary); nvim from
+; vsh (vshrc's path). Run by the Installer's copyfiles; a Shell install copies here.
+MakeDir >NIL: UP-Term:nvim
+Copy nvim UP-Term:nvim ALL CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+Lab launch
+; Quick-launch icons: double-click one in UP-Term: to open an UP-Term window running the app
+; (IconX opens the XCON: window; it closes when the app ends).
+Copy "launch/Neovim" "launch/Neovim.info" UP-Term: CLONE QUIET
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "Neovim installed: type  nvim  in an UP-Term window (vsh)."

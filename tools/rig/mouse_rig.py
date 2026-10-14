@@ -7,8 +7,9 @@ written by rawprobe, which then prints every byte it reads as hex):
      then the release ... m, with col/row the clicked cell (1-based).
   2. ?1002+?1006: a drag across cells adds motion reports (button 32+0).
   3. Without any mode: a click sends nothing to the program.
-Wheel reports (buttons 64/65) need a wheel event the agent cannot send yet:
-not covered.
+Wheel: FS-UAE sends the host wheel as RAWKEY 0x7A / 0x7B (render/vtinput.c
+vti_newmouse_wheel; ami.key injects the same); the host-side test is
+`make test ONLY=input`. Wheel reports (buttons 64/65) are not covered here.
 
 Run with the rig up and the handler installed:
   python3 tools/rig/mouse_rig.py
