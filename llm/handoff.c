@@ -519,6 +519,16 @@ int llm_prepare(const llm_model *to, const char *const *msgs, const long *n, int
 {
     llm_view a, b;
     int i;
+    if (to->api && !strcmp(to->api, "pi-messages")) {
+        /* api/pi-messages.ts sends the transcript as it is: no transformMessages, the gateway does what its upstream wants */
+        memset(out, 0, sizeof(*out));
+        for (i = 0; i < count; i++)
+            if (llm_view_put(out, msgs[i], n[i])) {
+                llm_view_free(out);
+                return -1;
+            }
+        return 0;
+    }
     if (first_pass(to, msgs, n, count, &a))
         return -1;
     if (llm_transform(a.m, a.n, a.count, ts, &b)) {

@@ -704,5 +704,7 @@ const llm_backend *llm_backend_of(const char *api)
         return &llm_be_openai_codex;
     if (api && !strcmp(api, llm_be_bedrock.api))
         return &llm_be_bedrock;
+    if (api && !strcmp(api, llm_be_pi_messages.api))
+        return &llm_be_pi_messages;
     return 0;
 }

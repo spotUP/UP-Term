@@ -18,6 +18,7 @@
 #include "../llm/evstream.h"
 #include "../llm/sha256.h"
 #include "../llm/sigv4.h"
+#include "../llm/radius.h"
 #include "../claude/util.h"
 #include "claude_load.h"
 #include "pi_stub.h"
@@ -4352,10 +4353,53 @@ static void test_bedrock_cred(void)
     llm_reg_free(&r);
 }
 
+/* Radius (L3): the gateway URL as radiusProvider normalizes it, a gateway config turned into the provider's models (an invalid model
+ * dropped), a catalog that replaces the shipped models, pi-messages' accumulated message: the server's usage and cost kept as sent */
+static void test_radius(void)
+{
+    char g[200], err[200];
+    jw models;
+    llm_reg r;
+    const llm_model *m;
+    static const char *const cfg = "{\"baseUrl\":\"https://gw.example/v1\",\"models\":[{\"id\":\"a\",\"name\":\"A\",\"reasoning\":true,"
+        "\"input\":[\"text\",\"image\"],\"cost\":{\"input\":1,\"output\":2,\"cacheRead\":0.5,\"cacheWrite\":0},\"contextWindow\":5000,\"maxTokens\":900,"
+        "\"lab\":\"x\"},{\"id\":\"bad\",\"name\":1}]}";
+    llm_radius_gateway("radius.example//", 0, g, sizeof(g));
+    CHECK_STR(g, "https://radius.example");
+    llm_radius_gateway("http://localhost:8788/v1/", 1, g, sizeof(g));
+    CHECK_STR(g, "http://localhost:8788");
+    llm_radius_gateway("https://radius.pi.dev", 1, g, sizeof(g));
+    CHECK_STR(g, "https://radius.pi.dev");
+    jw_init(&models);
+    CHECK_INT(llm_radius_models("mine", "{\"models\":[]}", 14, &models), -1);      /* no baseUrl: not a config */
+    jw_free(&models);
+    jw_init(&models);
+    CHECK_INT(llm_radius_models("mine", cfg, (long)strlen(cfg), &models), 0);
+    CHECK(models.p && strstr(models.p, "\"id\":\"a\"") && !strstr(models.p, "\"bad\"") &&
+          strstr(models.p, ",\"api\":\"pi-messages\",\"provider\":\"mine\",\"baseUrl\":\"https://gw.example/v1\"}"));
+    llm_reg_init(&r);
+    CHECK_INT(llm_reg_builtin(&r), 0);
+    CHECK(llm_reg_find(&r, "radius", "balanced") != 0);
+    /* the shipped Radius catalog: pi-messages on the public gateway */
+    m = llm_reg_find(&r, "radius", "balanced");
+    CHECK(m && !strcmp(m->api, "pi-messages") && !strcmp(m->base_url, "https://radius.pi.dev/v1") && m->reasoning);
+    CHECK_INT(llm_radius_apply(&r, "radius", models.p, models.n, err, sizeof(err)), 0);   /* provider "mine" models: ignored for "radius" */
+    CHECK(llm_reg_find(&r, "radius", "balanced") == 0 && !llm_reg_has_provider(&r, "radius"));
+    CHECK_INT(llm_radius_apply(&r, "mine", models.p, models.n, err, sizeof(err)), 0);
+    m = llm_reg_find(&r, "mine", "a");
+    CHECK(m && !strcmp(m->api, "pi-messages") && !strcmp(m->base_url, "https://gw.example/v1") && m->image && m->context_window == 5000 &&
+          m->max_tokens == 900 && m->cost[2] == 500000L);
+    CHECK(llm_backend_of("pi-messages") == &llm_be_pi_messages);
+    CHECK(llm_oauth_provider("radius"));
+    llm_reg_free(&r);
+    jw_free(&models);
+}
+
 void suite_pi_llm(void)
 {
     claude_load_errors = 0;
     test_messages();
+    test_radius();
     test_accum();
     test_reach();
     test_anthropic_baseurl();
