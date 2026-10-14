@@ -417,6 +417,17 @@ class PiInstall(unittest.TestCase):
     def test_the_binary_and_the_settings_drawer(self):
         self.assertIn('Copy amiga-pi C:amiga-pi CLONE QUIET\nIf NOT EXISTS ENVARC:amiga-pi\n  MakeDir ENVARC:amiga-pi\nEndIf', self.S['dos'])
 
+    def test_the_changelog_goes_to_the_record_drawer_not_the_settings_drawer(self):
+        """P12-B2: amiga-pi shows its CHANGELOG.md as What's New and for /changelog, read from
+        ENVARC:uppkg/amiga-pi/CHANGELOG.md (amiga-pi's pi_platform.changelog); Install copies it into the record drawer
+        (Uninstall removes that drawer whole) and writes nothing into ENVARC:amiga-pi; the kit stages it from amiga-pi."""
+        dos = self.S['dos']
+        self.assertIn('Copy CHANGELOG.md ENVARC:uppkg/amiga-pi/CHANGELOG.md CLONE QUIET', dos)
+        self.assertLess(dos.index('MakeDir >NIL: ENVARC:uppkg ENVARC:uppkg/amiga-pi'), dos.index('Copy CHANGELOG.md'))
+        self.assertIn('pi              Files/CHANGELOG.md', (ROOT / 'dist/addons/pi/parts.txt').read_text())
+        self.assertIn('cp $(AMIGA_PI)/CHANGELOG.md $(KIT_pi)/Files/CHANGELOG.md', (ROOT / 'Makefile').read_text())
+        self.assertIn('Delete >NIL: "ENVARC:uppkg/amiga-pi" ALL QUIET', self.S['uninstall'])
+
     def test_uninstall_removes_the_binary_not_the_settings_drawer(self):
         un = self.S['uninstall']
         self.assertIn('Delete >NIL: C:amiga-pi QUIET', un)

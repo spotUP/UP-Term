@@ -993,6 +993,7 @@ dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupda
 dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,pi)
 	cp $(AMIGA_PI_BIN) $(KIT_pi)/Files/amiga-pi
+	cp $(AMIGA_PI)/CHANGELOG.md $(KIT_pi)/Files/CHANGELOG.md
 	$(call LAUNCHER,$(KIT_pi),dist/addons/pi/launch/amiga-pi,amiga-pi,800/560)
 	python3 tools/mkkit.py pi
 dist-nvim: $(BUILD)/amiga/upupdate

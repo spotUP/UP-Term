@@ -274,8 +274,17 @@ static int marker_width(md *m, const cont *c)
 {
     if (c->type == C_QUOTE)
         return 2;
-    if (m->o->look == MD_LOOK_PI && c->type == C_ITEM && !c->task)
-        return 4;               /* pi indents a nested list four columns, whatever its parent's marker */
+    if (m->o->look == MD_LOOK_PI && c->type == C_ITEM && !c->task) {
+        /* pi indents a nested list four columns, whatever its parent's marker (an item with a list inside it); the item that
+         * holds the text has its own marker's width: the lines of "- text" continue two columns in, of "1. text" three
+         * (pi 1.2.0 Markdown, checked on a three-level list) */
+        int k, inner = 1;
+        for (k = 0; k < m->nc; k++)
+            if (&m->c[k] > c && m->c[k].type == C_ITEM)
+                inner = 0;
+        if (!inner)
+            return 4;
+    }
     return (c->ordered ? num_width(c->num) + 2 : 2) + (c->task ? 4 : 0);
 }
 

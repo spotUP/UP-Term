@@ -109,8 +109,19 @@ typedef struct tui_pick {
      * a rule. status and help are not shown; `empty` is the row for no match (0: "No matching providers") */
     int layout;
     const char *empty;
+    /* TUI_PICK_FRAME: the frame of pi's model, thinking and message selectors (model-selector.ts, thinking-selector.ts,
+     * user-message-selector.ts): a rule, the rows of `top` (the program's text, SGR kept, '\n' between, an empty row is a
+     * blank one), when `search` the search input ("> " and the query, a cursor) and a blank row, the list (row(); at most
+     * maxrows around the selection, no scroll indicator: the program writes it into `tail`), the rows `tail` composes
+     * (SGR kept, '\n' between; an empty text is one blank row; 0: none), a rule. A row of `top` that is \001 is a rule; a `top` that
+     * begins with \002 has no opening rule (user-message-selector.ts has its own after the header). A list row may hold '\n' (a
+     * message and its position line). The program's key function sees every key first. */
+    const char *top;
+    int search;
+    void (*tail)(void *u, char *out, long cap);
+    int done;                   /* the program's key function sets it: the picker ends with the selection as it is */
 } tui_pick;
-enum { TUI_PICK_TREE, TUI_PICK_AUTH, TUI_PICK_SESSION };
+enum { TUI_PICK_TREE, TUI_PICK_AUTH, TUI_PICK_SESSION, TUI_PICK_FRAME };
 typedef struct cl_tui {
     cl_io *io;
     int cols, rows;
