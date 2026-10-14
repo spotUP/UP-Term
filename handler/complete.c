@@ -21,8 +21,6 @@
 #include <dos/dosextens.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
-#include <proto/asl.h>
-#include <libraries/asl.h>
 #include <string.h>
 #include "complete.h"
 #include "complete_core.h"
@@ -36,6 +34,7 @@
 #error "CC_CMD_INTERNAL of complete_core.h disagrees with dos/dosextens.h"
 #endif
 #include "../prefs/prefs_dos.h"
+#include "../prefs/prefs_asl.h"
 
 static int lower(int c)
 {
@@ -843,56 +842,32 @@ static void scan_extra(struct complete_req *q, const char *prefix)
  * current directory; the chosen path in add, a space after a file. */
 static void asl_pick(struct complete_req *q)
 {
-    struct Library *AslBase = OpenLibrary((STRPTR)"asl.library", 37);
-    struct FileRequester *fr;
     char drawer[COMPLETE_MAX];
     BPTR cd = CurrentDir(0);
+    int n;
     CurrentDir(cd);
     drawer[0] = 0;
     if (cd)
         NameFromLock(cd, (STRPTR)drawer, sizeof(drawer));
-    if (!AslBase)
-        return;
-    fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
-            ASLFR_Screen, (ULONG)q->screen, ASLFR_TitleText, (ULONG)"Select filename",
-            ASLFR_InitialDrawer, (ULONG)drawer, ASLFR_RejectIcons, (ULONG)!q->show_info,
-            TAG_DONE);
-    if (fr && AslRequest(fr, 0)) {
-        int n;
-        strncpy(q->add, (const char *)fr->fr_Drawer, COMPLETE_MAX - 2);
-        q->add[COMPLETE_MAX - 2] = 0;
-        AddPart((STRPTR)q->add, fr->fr_File, COMPLETE_MAX - 2);
+    if (asl_pick_file(q->screen, 0, "Select filename", drawer, 0, !q->show_info,
+                      q->add, COMPLETE_MAX - 2, 0)) {
         n = (int)strlen(q->add);
         if (n && q->add[n - 1] != '/' && q->add[n - 1] != ':')
             strcpy(q->add + n, " ");
         q->matches = q->add[0] != 0;
     }
-    if (fr)
-        FreeAslRequest(fr);
-    CloseLibrary(AslBase);
 }
 
 /* COMPLETE_FONT: the Settings menu's Font... -- fixed-width fonts only, the
  * current one (q->word, q->font_size) preselected. */
 static void font_pick(struct complete_req *q)
 {
-    struct Library *AslBase = OpenLibrary((STRPTR)"asl.library", 37);
-    struct FontRequester *fr;
-    if (!AslBase)
-        return;
-    fr = (struct FontRequester *)AllocAslRequestTags(ASL_FontRequest,
-            ASLFO_Screen, (ULONG)q->screen, ASLFO_TitleText, (ULONG)"UP-Term font",
-            ASLFO_FixedWidthOnly, TRUE, ASLFO_InitialName, (ULONG)q->word,
-            ASLFO_InitialSize, (ULONG)(q->font_size ? q->font_size : 8), TAG_DONE);
-    if (fr && AslRequest(fr, 0)) {
-        strncpy(q->add, (const char *)fr->fo_Attr.ta_Name, COMPLETE_MAX - 1);
-        q->add[COMPLETE_MAX - 1] = 0;
-        q->font_size = fr->fo_Attr.ta_YSize;
+    long size;
+    if (asl_pick_font(q->screen, 0, "UP-Term font", q->word, q->font_size, 1,
+                      q->add, COMPLETE_MAX, &size)) {
+        q->font_size = size;
         q->matches = 1;
     }
-    if (fr)
-        FreeAslRequest(fr);
-    CloseLibrary(AslBase);
 }
 
 /* theme file -> q->data, its path in q->add; 0 when it cannot be read */
@@ -937,9 +912,8 @@ static void theme_dir(struct complete_req *q, char *dir, int cap)
  * or an entry of /theme's list) that theme, no requester. */
 static void theme_pick(struct complete_req *q)
 {
-    struct Library *AslBase;
-    struct FileRequester *fr;
     char dir[COMPLETE_MAX], path[COMPLETE_MAX];
+    int named;
     q->data_len = 0;
     theme_dir(q, dir, sizeof(dir));
     if (q->word[0]) {
@@ -947,22 +921,9 @@ static void theme_pick(struct complete_req *q)
         theme_read(q, path);
         return;
     }
-    AslBase = OpenLibrary((STRPTR)"asl.library", 37);
-    if (!AslBase)
-        return;
-    fr = (struct FileRequester *)AllocAslRequestTags(ASL_FileRequest,
-            ASLFR_Screen, (ULONG)q->screen, ASLFR_TitleText, (ULONG)"UP-Term theme",
-            ASLFR_InitialDrawer, (ULONG)dir, ASLFR_InitialPattern,
-            (ULONG)"#?.conf", ASLFR_DoPatterns, TRUE, ASLFR_RejectIcons, TRUE, TAG_DONE);
-    if (fr && AslRequest(fr, 0) && fr->fr_File[0]) {
-        strncpy(path, (const char *)fr->fr_Drawer, sizeof(path) - 2);
-        path[sizeof(path) - 2] = 0;
-        AddPart((STRPTR)path, fr->fr_File, sizeof(path) - 2);
+    if (asl_pick_file(q->screen, 0, "UP-Term theme", dir, "#?.conf", 1, path, sizeof(path), &named)
+        && named)
         theme_read(q, path);
-    }
-    if (fr)
-        FreeAslRequest(fr);
-    CloseLibrary(AslBase);
 }
 
 /* COMPLETE_THEMES: /theme's list -- the theme names in the themes drawer

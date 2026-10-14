@@ -3,8 +3,11 @@
  * without a moment where the user's profiles are gone. No OS calls: the
  * install runs against a file table in memory. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "../prefs/prefs_core.h"
+#include "../handler/kcmode.h"
+#include "../prefs/prefs_ui.h"
 #include "harness.h"
 
 /* ---- a file system in memory, with one operation made to fail ---------------- */
@@ -644,8 +647,574 @@ static void theme_list_from_a_drawer(void)
     CHECK_INT(prefs_theme_index(names, 4, 0), -1);
 }
 
+
+/* ---- PX1: KingCON's letters <-> the window's choices ---------------------- */
+
+static void kingcon_style_letters_round_trip_through_the_handlers_function(void)
+{
+    static const char names[] = "WLBCS";
+    char letters[8], enc[8];
+    int set, i, n, match, common, silent, mode;
+    prefs_kc k, k2;
+    /* every subset of the five letters, in both cases: the letters the window writes
+     * give the handler the same mode bits as the letters it read */
+    for (set = 0; set < 32; set++) {
+        for (i = n = 0; i < 5; i++)
+            if (set & (1 << i))
+                letters[n++] = names[i];
+        letters[n] = 0;
+        mode = le_kc_fncmode(letters);
+        prefs_kc_decode(letters, &k);
+        prefs_kc_encode(&k, enc, sizeof(enc));
+        CHECK_INT(le_kc_fncmode(enc), mode);
+        for (i = 0; letters[i]; i++)
+            letters[i] = (char)(letters[i] | 0x20);
+        CHECK_INT(le_kc_fncmode(letters), mode);
+        prefs_kc_decode(letters, &k2);
+        CHECK_INT(k2.match, k.match);
+        CHECK_INT(k2.common, k.common);
+        CHECK_INT(k2.silent, k.silent);
+    }
+    /* every choice of the window encodes to letters that decode to the choice */
+    for (match = 0; match <= PREFS_KC_COMMON_ONLY; match++)
+        for (common = 0; common < 2; common++)
+            for (silent = 0; silent < 2; silent++) {
+                k.match = match;
+                k.common = common;
+                k.silent = silent;
+                prefs_kc_encode(&k, enc, sizeof(enc));
+                prefs_kc_decode(enc, &k2);
+                CHECK_INT(k2.match, match);
+                CHECK_INT(k2.common, match == PREFS_KC_COMMON_ONLY ? 1 : common);
+                CHECK_INT(k2.silent, silent);
+            }
+    /* the written form is the normalised one */
+    k.match = PREFS_KC_LISTCYCLE; k.common = 0; k.silent = 1;
+    prefs_kc_encode(&k, enc, sizeof(enc));
+    CHECK_STR(enc, "LBS");
+    k.match = PREFS_KC_LIST; k.common = 1; k.silent = 0;
+    prefs_kc_encode(&k, enc, sizeof(enc));
+    CHECK_STR(enc, "LC");
+    k.match = PREFS_KC_WINDOW; k.common = 0; k.silent = 0;
+    prefs_kc_encode(&k, enc, sizeof(enc));
+    CHECK_STR(enc, "");
+    prefs_kc_decode("wlb", &k);          /* W clears L and B, as KingCON */
+    CHECK_INT(k.match, PREFS_KC_WINDOW);
+    prefs_kc_decode("lbs", &k);
+    CHECK_INT(k.match, PREFS_KC_LISTCYCLE);
+    CHECK_INT(k.silent, 1);
+    prefs_kc_decode("C", &k);
+    CHECK_INT(k.match, PREFS_KC_COMMON_ONLY);
+    prefs_kc_decode("zz9", &k);          /* no letter: the handler's W */
+    CHECK_INT(k.match, PREFS_KC_WINDOW);
+    /* the profile round trip: LB + S through a save */
+    {
+        prefs_fields f;
+        upconf c, w;
+        char buf[2048];
+        long len;
+        prefs_defaults(&f);
+        k.match = PREFS_KC_LISTCYCLE; k.common = 0; k.silent = 1;
+        prefs_kc_encode(&k, f.kcmode, sizeof(f.kcmode));
+        upconf_clear(&c);
+        len = prefs_stage(&w, &c, "default", &f, buf, sizeof(buf));
+        CHECK(len > 0);
+        CHECK(strstr(buf, "kingcon-mode = LBS") != 0);
+    }
+}
+
+/* ---- PX2: colours ---------------------------------------------------------- */
+
+static void colour_fields_are_validated_strictly_and_named(void)
+{
+    prefs_fields f;
+    uc_u32 rgb = 7;
+    char lab[48], hex[8];
+    int i;
+    CHECK_INT(prefs_hex_parse("FF8000", &rgb), 1);
+    CHECK_INT(rgb, 0xFF8000);
+    CHECK_INT(prefs_hex_parse("#00ff7f", &rgb), 1);
+    CHECK_INT(rgb, 0x00FF7F);
+    CHECK_INT(prefs_hex_parse("0X123abc", &rgb), 1);
+    CHECK_INT(rgb, 0x123ABC);
+    rgb = 7;
+    CHECK_INT(prefs_hex_parse("FF80", &rgb), 0);       /* too short */
+    CHECK_INT(prefs_hex_parse("FF80000", &rgb), 0);    /* too long */
+    CHECK_INT(prefs_hex_parse("FF800G", &rgb), 0);
+    CHECK_INT(prefs_hex_parse(" FF8000", &rgb), 0);    /* no blanks */
+    CHECK_INT(prefs_hex_parse("FF8000 ", &rgb), 0);
+    CHECK_INT(prefs_hex_parse("#0xFF8000", &rgb), 0);
+    CHECK_INT(prefs_hex_parse("", &rgb), 0);
+    CHECK_INT(rgb, 7);
+    prefs_hex_format(0x0A0B0C, hex);
+    CHECK_STR(hex, "0A0B0C");
+    CHECK_STR(prefs_pal_name(0), "Black");
+    CHECK_STR(prefs_pal_name(1), "Red");
+    CHECK_STR(prefs_pal_name(15), "Bright White");
+    /* each of the 21 colour fields with bad input names itself */
+    for (i = 0; i < 16; i++) {
+        prefs_defaults(&f);
+        strcpy(f.pal[i], "12345");
+        CHECK_INT(prefs_validate(&f), PREFS_BAD_PAL + i);
+        prefs_bad_label(prefs_validate(&f), lab, sizeof(lab));
+        CHECK(strstr(lab, prefs_pal_name(i)) != 0);
+        CHECK(strstr(lab, "Palette") != 0);
+    }
+    prefs_defaults(&f);
+    strcpy(f.fg, "red");
+    CHECK_INT(prefs_validate(&f), PREFS_BAD_FG);
+    prefs_bad_label(PREFS_BAD_FG, lab, sizeof(lab));
+    CHECK_STR(lab, "Text colour");
+    prefs_defaults(&f);
+    strcpy(f.bg, "12 456");
+    CHECK_INT(prefs_validate(&f), PREFS_BAD_BG);
+    prefs_bad_label(PREFS_BAD_BG, lab, sizeof(lab));
+    CHECK_STR(lab, "Background");
+    prefs_defaults(&f);
+    strcpy(f.selfg, "x");
+    CHECK_INT(prefs_validate(&f), PREFS_BAD_SELFG);
+    prefs_defaults(&f);
+    strcpy(f.selbg, "x");
+    CHECK_INT(prefs_validate(&f), PREFS_BAD_SELBG);
+    prefs_bad_label(PREFS_BAD_SELBG, lab, sizeof(lab));
+    CHECK_STR(lab, "Selection");
+    prefs_defaults(&f);
+    strcpy(f.curcol, "bluish");
+    CHECK_INT(prefs_validate(&f), PREFS_BAD_CURCOL);
+    prefs_bad_label(PREFS_BAD_CURCOL, lab, sizeof(lab));
+    CHECK_STR(lab, "Cursor colour");
+    /* good input, blanks and "inverse" pass */
+    prefs_defaults(&f);
+    strcpy(f.fg, "#102030");
+    strcpy(f.bg, "0x405060");
+    strcpy(f.pal[3], "AABBCC");
+    strcpy(f.curcol, "Inverse");
+    CHECK_INT(prefs_validate(&f), 0);
+    strcpy(f.curcol, "00FF00");
+    CHECK_INT(prefs_validate(&f), 0);
+}
+
+/* ---- PX3: font strings ------------------------------------------------------ */
+
+static void font_requester_results_become_profile_values(void)
+{
+    char out[40], name[40], drawer[40];
+    long size = 9;
+    CHECK_INT(prefs_font_compose("topaz.font", 8, out, sizeof(out)), 1);
+    CHECK_STR(out, "topaz:8");
+    CHECK_INT(prefs_font_compose("Topaz.FONT", 11, out, sizeof(out)), 1);
+    CHECK_STR(out, "Topaz:11");
+    CHECK_INT(prefs_font_compose("mono", 12, out, sizeof(out)), 1);   /* no .font to cut */
+    CHECK_STR(out, "mono:12");
+    CHECK_INT(prefs_font_compose("topaz.font", 0, out, sizeof(out)), 1);
+    CHECK_STR(out, "topaz");
+    CHECK_INT(prefs_font_compose(".font", 8, out, sizeof(out)), 0);   /* nothing left */
+    CHECK_STR(out, "");
+    CHECK_INT(prefs_font_compose("", 8, out, sizeof(out)), 0);
+    CHECK_INT(prefs_font_compose("My Font.font", 8, out, sizeof(out)), 0); /* the handler splits at blanks */
+    CHECK_STR(out, "");
+    CHECK_INT(prefs_font_compose("a:b.font", 8, out, sizeof(out)), 0);
+    CHECK_INT(prefs_font_compose("topaz.font", 8, out, 7), 0);        /* "topaz:8" needs 8 */
+    CHECK_INT(prefs_font_compose("topaz.font", 8, out, 8), 1);
+    /* and back: the requester starts from name with .font and the size */
+    CHECK_INT(prefs_font_parse("topaz:8", name, sizeof(name), &size), 1);
+    CHECK_STR(name, "topaz.font");
+    CHECK_INT(size, 8);
+    CHECK_INT(prefs_font_parse("topaz.font:11", name, sizeof(name), &size), 1);
+    CHECK_STR(name, "topaz.font");
+    CHECK_INT(size, 11);
+    CHECK_INT(prefs_font_parse("mono", name, sizeof(name), &size), 1);
+    CHECK_STR(name, "mono.font");
+    CHECK_INT(size, 0);
+    CHECK_INT(prefs_font_parse("", name, sizeof(name), &size), 0);
+    CHECK_INT(prefs_font_parse(":8", name, sizeof(name), &size), 0);
+    CHECK_INT(prefs_font_parse("topaz:8", name, 6, &size), 0);        /* "topaz.font" needs 11 */
+    /* the outline fallback: the .otag file's name */
+    CHECK_INT(prefs_otag_basename("FONTS:DejaVuSansMono.otag", out, sizeof(out)), 1);
+    CHECK_STR(out, "DejaVuSansMono");
+    CHECK_INT(prefs_otag_basename("Work:Fonts/Noto Sans.OTAG", out, sizeof(out)), 1);
+    CHECK_STR(out, "Noto Sans");
+    CHECK_INT(prefs_otag_basename("Hack.otag", out, sizeof(out)), 1);
+    CHECK_STR(out, "Hack");
+    CHECK_INT(prefs_otag_basename("FONTS:Hack.font", out, sizeof(out)), 0);
+    CHECK_STR(out, "");
+    CHECK_INT(prefs_otag_basename("FONTS:.otag", out, sizeof(out)), 0);
+    CHECK_INT(prefs_otag_basename("FONTS:", out, sizeof(out)), 0);
+    CHECK_INT(prefs_otag_basename("FONTS:LongName.otag", out, 5), 0);
+    (void)drawer;
+}
+
+/* ---- PX4: scrollback, screen mode and depth ---------------------------------- */
+
+static void scrollback_and_screen_values_read_back_sanely(void)
+{
+    long lines;
+    int none;
+    unsigned long id = 5;
+    char out[16];
+    prefs_sb_parse("", &lines, &none);
+    CHECK_INT(lines, PREFS_SB_DEFAULT);
+    CHECK_INT(none, 0);
+    prefs_sb_parse("2000", &lines, &none);
+    CHECK_INT(lines, 2000);
+    CHECK_INT(none, 0);
+    prefs_sb_parse("0", &lines, &none);
+    CHECK_INT(none, 1);                         /* the handler: <= 0 is none */
+    prefs_sb_parse("-5", &lines, &none);
+    CHECK_INT(none, 1);
+    prefs_sb_parse("lots", &lines, &none);      /* garbage: the built-in, as a blank */
+    CHECK_INT(lines, PREFS_SB_DEFAULT);
+    CHECK_INT(none, 0);
+    prefs_sb_parse("9999999999", &lines, &none);
+    CHECK_INT(lines, PREFS_SB_MAX);
+    prefs_sb_format(2000, 0, out);
+    CHECK_STR(out, "2000");
+    prefs_sb_format(2000, 1, out);
+    CHECK_STR(out, "0");
+    prefs_sb_format(PREFS_SB_DEFAULT, 0, out);
+    CHECK_STR(out, "");
+    prefs_sb_format(123456789L, 0, out);
+    CHECK_STR(out, "99999");
+    prefs_sb_format(-3, 0, out);
+    CHECK_STR(out, "");
+    /* screen mode: 0x%08lx */
+    CHECK_INT(prefs_mode_parse("0x00029000", &id), 1);
+    CHECK_INT(id, 0x29000);
+    CHECK_INT(prefs_mode_parse("29000", &id), 1);
+    CHECK_INT(id, 0x29000);
+    CHECK_INT(prefs_mode_parse("0XDEADBEEF", &id), 1);
+    CHECK_INT(id == 0xDEADBEEFUL, 1);
+    id = 5;
+    CHECK_INT(prefs_mode_parse("", &id), 0);
+    CHECK_INT(prefs_mode_parse("0x", &id), 0);
+    CHECK_INT(prefs_mode_parse("0xzz", &id), 0);
+    CHECK_INT(prefs_mode_parse("0x123456789", &id), 0);   /* nine digits */
+    CHECK_INT(id, 5);
+    prefs_mode_format(0x29000UL, out);
+    CHECK_STR(out, "0x00029000");
+    prefs_mode_format(0xDEADBEEFUL, out);
+    CHECK_STR(out, "0xdeadbeef");
+    prefs_mode_format(0, out);
+    CHECK_STR(out, "");
+    /* depth: 4..8, the handler's clamp; garbage is none */
+    CHECK_INT(prefs_depth_parse("8"), 8);
+    CHECK_INT(prefs_depth_parse("5"), 5);
+    CHECK_INT(prefs_depth_parse("2"), 4);
+    CHECK_INT(prefs_depth_parse("24"), 8);
+    CHECK_INT(prefs_depth_parse(""), 0);
+    CHECK_INT(prefs_depth_parse("deep"), 0);
+    CHECK_INT(prefs_depth_parse("0"), 0);
+    prefs_depth_format(0, out);
+    CHECK_STR(out, "");
+    prefs_depth_format(6, out);
+    CHECK_STR(out, "6");
+    prefs_depth_format(24, out);
+    CHECK_STR(out, "8");
+    prefs_depth_format(2, out);
+    CHECK_STR(out, "4");
+}
+
+/* ---- PX5: unsaved changes -------------------------------------------------------- */
+
+static void an_edit_of_any_field_makes_the_profile_differ(void)
+{
+    prefs_fields a, b;
+    int i;
+    prefs_defaults(&a);
+    prefs_defaults(&b);
+    CHECK_INT(prefs_equal(&a, &b), 1);
+    /* bytes after the NUL are not part of a string */
+    strcpy(a.font, "topaz:8");
+    strcpy(b.font, "topaz:8XX");
+    b.font[7] = 0;
+    CHECK_INT(prefs_equal(&a, &b), 1);
+    prefs_defaults(&a);
+    {
+#define MUT_STR(fld) prefs_defaults(&b); strcpy(b.fld, "x"); CHECK_INT(prefs_equal(&a, &b), 0);
+#define MUT_INT(fld) prefs_defaults(&b); b.fld = !b.fld; CHECK_INT(prefs_equal(&a, &b), 0);
+        MUT_STR(font) MUT_STR(fallback) MUT_STR(screenmode) MUT_STR(screendepth) MUT_STR(sb)
+        MUT_STR(curcol) MUT_STR(fg) MUT_STR(bg) MUT_STR(selfg) MUT_STR(selbg) MUT_STR(term)
+        MUT_STR(colors) MUT_STR(linkopen) MUT_STR(kcmode)
+        MUT_INT(cursor) MUT_INT(bell) MUT_INT(blink) MUT_INT(bold) MUT_INT(meta_alt)
+        MUT_INT(copy_sel) MUT_INT(wheel) MUT_INT(reflow) MUT_INT(scrollbar) MUT_INT(completion)
+        MUT_INT(screen) MUT_INT(aspect) MUT_INT(backspace_bs) MUT_INT(clipboard) MUT_INT(kcinfo)
+        MUT_INT(kccache) MUT_INT(amiga_keys) MUT_INT(dither) MUT_INT(pad_extend) MUT_INT(hlcat)
+    }
+    for (i = 0; i < 16; i++) {
+        prefs_defaults(&b);
+        strcpy(b.pal[i], "000000");
+        CHECK_INT(prefs_equal(&a, &b), 0);
+    }
+    /* a field edited and edited back is no change */
+    prefs_defaults(&b);
+    strcpy(b.fg, "FFFFFF");
+    strcpy(b.fg, "");
+    CHECK_INT(prefs_equal(&a, &b), 1);
+}
+
+/* ---- PX7: the layout ---------------------------------------------------------- */
+
+static int tw_prop7(void *ctx, const char *s)   /* a proportional font, 7 pixels a letter */
+{
+    (void)ctx;
+    return 7 * (int)strlen(s);
+}
+
+static int tw_fixed(void *ctx, const char *s)   /* topaz 8 */
+{
+    (void)ctx;
+    return 8 * (int)strlen(s);
+}
+
+static int boxes_meet(const pl_box *a, const pl_box *b)
+{
+    return a->x < b->x + b->w && b->x < a->x + a->w && a->y < b->y + b->h && b->y < a->y + a->h;
+}
+
+/* every gadget of the page and the common ones, with the label strip left of it */
+static void check_layout(const pl_result *r, int page, const pl_font *f)
+{
+    int i, j;
+    for (i = 0; i < pg_nitems; i++) {
+        const pg_item *a = &pg_items[i];
+        pl_box ba, la;
+        if (a->page != page && a->page != PG_COMMON)
+            continue;
+        ba = r->box[a->id];
+        la.x = ba.x - r->label_w[a->id];
+        la.y = ba.y;
+        la.w = r->label_w[a->id];
+        la.h = ba.h;
+        /* inside the window */
+        CHECK(la.x >= 0);
+        CHECK(ba.x + ba.w <= r->inner_w);
+        CHECK(ba.y >= 0 && ba.y + ba.h <= r->inner_h);
+        /* a check box's label to its right fits too */
+        if (a->kind == PGK_CHECK) {
+            char plain[80];
+            pg_plain_label(a->label, plain, sizeof(plain));
+            CHECK(ba.x + ba.w + 6 + (r->fallback ? tw_fixed(0, plain) : f->text_w(f->ctx, plain)) <= r->inner_w);
+        }
+        for (j = i + 1; j < pg_nitems; j++) {
+            const pg_item *b = &pg_items[j];
+            pl_box bb, lb;
+            if (b->page != page && b->page != PG_COMMON)
+                continue;
+            bb = r->box[b->id];
+            lb.x = bb.x - r->label_w[b->id];
+            lb.y = bb.y;
+            lb.w = r->label_w[b->id];
+            lb.h = bb.h;
+            if (boxes_meet(&ba, &bb) || (la.w && boxes_meet(&la, &bb)) ||
+                (lb.w && boxes_meet(&lb, &ba)) || (la.w && lb.w && boxes_meet(&la, &lb))) {
+                h_checks++;
+                h_failures++;
+                printf("  FAIL layout: gadget %d overlaps %d on page %d\n", a->id, b->id, page);
+            }
+        }
+    }
+}
+
+static void the_window_fits_an_ntsc_and_a_pal_workbench(void)
+{
+    pl_font topaz, big;
+    pl_result *r = (pl_result *)malloc(sizeof(*r));
+    int page, id;
+    topaz.w = 8; topaz.h = 8; topaz.text_w = tw_fixed; topaz.ctx = 0;
+    big.w = 8; big.h = 11; big.text_w = tw_prop7; big.ctx = 0;
+    /* 640x200 NTSC: 11 px screen bar + 11 px title + 2 border; width less the 4 + 18 px borders */
+    pl_layout(&topaz, 618, 176, r);
+    CHECK_INT(r->fits, 1);
+    CHECK_INT(r->fallback, 0);
+    for (page = 0; page < PG_NPAGES; page++)
+        check_layout(r, page, &topaz);
+    /* every gadget id of the table has a box */
+    for (id = 0; id < pg_nitems; id++)
+        CHECK(r->box[pg_items[id].id].w > 0 && r->box[pg_items[id].id].h > 0);
+    /* a gadget lies where pl_hit finds it */
+    for (page = 0; page < PG_NPAGES; page++)
+        for (id = 0; id < pg_nitems; id++) {
+            const pg_item *it = &pg_items[id];
+            pl_box b = r->box[it->id];
+            if (it->page == page || it->page == PG_COMMON)
+                CHECK_INT(pl_hit(r, page, b.x + b.w / 2, b.y + b.h / 2), it->id);
+        }
+    CHECK_INT(pl_hit(r, 0, r->inner_w + 5, 0), 0);
+    /* 640x256 PAL */
+    pl_layout(&topaz, 618, 232, r);
+    CHECK_INT(r->fits, 1);
+    CHECK_INT(r->fallback, 0);
+    /* an 11 pixel font on a PAL Workbench (14 px bars): fits or falls back, and fits */
+    pl_layout(&big, 618, 256 - 14 - 14 - 2, r);
+    CHECK_INT(r->fits, 1);
+    for (page = 0; page < PG_NPAGES; page++)
+        check_layout(r, page, &big);
+    /* the same font on an NTSC one does not: topaz 8 takes over, and fits */
+    pl_layout(&big, 618, 200 - 14 - 14 - 2, r);
+    CHECK_INT(r->fallback, 1);
+    CHECK_INT(r->fits, 1);
+    CHECK_INT(r->font_h, 8);
+    for (page = 0; page < PG_NPAGES; page++)
+        check_layout(r, page, &big);
+    /* a screen too small even for topaz 8 is reported, not hidden */
+    pl_layout(&topaz, 400, 100, r);
+    CHECK_INT(r->fits, 0);
+    CHECK_INT(r->fallback, 1);
+    free(r);
+}
+
+/* ---- PX13, PX14: help lines and shortcuts ------------------------------------------ */
+
+static void every_gadget_has_help_and_a_unique_shortcut(void)
+{
+    int i, j, page;
+    for (i = 0; i < pg_nitems; i++) {
+        const pg_item *it = &pg_items[i];
+        CHECK(it->help != 0 && it->help[0] != 0);
+        /* the status row is 618 pixels of topaz 8: 77 letters */
+        CHECK(it->help == 0 || strlen(it->help) <= 76);
+        for (j = i + 1; j < pg_nitems; j++)
+            CHECK(pg_items[j].id != it->id);
+        CHECK(pg_find(it->id) == it);
+        CHECK(it->kind != PGK_CHECK || it->label != 0);
+    }
+    CHECK(pg_find(9999) == 0);
+    /* a key reaches one gadget per page, the page's or a common one */
+    for (page = 0; page < PG_NPAGES; page++)
+        for (i = 0; i < pg_nitems; i++) {
+            const pg_item *a = &pg_items[i];
+            int ka = pg_shortcut(pg_label(a));
+            if ((a->page != page && a->page != PG_COMMON) || !ka)
+                continue;
+            for (j = i + 1; j < pg_nitems; j++) {
+                const pg_item *b = &pg_items[j];
+                if (b->page != page && b->page != PG_COMMON)
+                    continue;
+                if (pg_shortcut(pg_label(b)) == ka) {
+                    h_checks++;
+                    h_failures++;
+                    printf("  FAIL shortcut '%c' on page %d: gadgets %d and %d\n", ka, page, a->id, b->id);
+                }
+            }
+            CHECK(pg_for_key(page, ka) == a);
+            CHECK(pg_for_key(page, ka - 'a' + 'A') == a || ka < 'a' || ka > 'z');
+        }
+    CHECK_INT(pg_shortcut("_Font"), 'f');
+    CHECK_INT(pg_shortcut("Scrollbac_k"), 'k');
+    CHECK_INT(pg_shortcut("Choose..."), 0);
+    CHECK_INT(pg_shortcut(0), 0);
+    CHECK_INT(pg_shortcut("trailing_"), 0);
+    CHECK(pg_for_key(0, 'S') == pg_find(PG_SAVE));
+    CHECK(pg_for_key(2, 'f') == 0);   /* the palette page has no Font */
+    {
+        char out[20];
+        pg_plain_label("Fon_t", out, sizeof(out));
+        CHECK_STR(out, "Font");
+    }
+    /* the save, use and cancel keys work on every page */
+    for (page = 0; page < PG_NPAGES; page++) {
+        CHECK(pg_for_key(page, 's') == pg_find(PG_SAVE));
+        CHECK(pg_for_key(page, 'u') == pg_find(PG_USE));
+        CHECK(pg_for_key(page, 'c') == pg_find(PG_CANCEL));
+    }
+    /* a palette entry is labelled with its ANSI name */
+    CHECK_STR(pg_label(pg_find(PG_PAL + 9)), "Bright Red");
+    CHECK(pg_find(PG_PAL_HEX + 15) != 0);
+    CHECK_INT(pg_find(PG_PAL_HEX + 15)->kind, PGK_STRING);
+}
+
+/* ---- PX12: the colour wheel's conversions ---------------------------------------- */
+
+static int chan_off(unsigned long a, unsigned long b)
+{
+    int d = 0, k;
+    for (k = 0; k < 24; k += 8) {
+        int x = (int)((a >> k) & 0xFF), y = (int)((b >> k) & 0xFF);
+        int e = x > y ? x - y : y - x;
+        if (e > d)
+            d = e;
+    }
+    return d;
+}
+
+static void wheel_colours_round_trip_within_one_step(void)
+{
+    prefs_hsb h;
+    int i, r, g, b, worst = 0, e;
+    unsigned long rgb;
+    for (i = 0; i < 256; i++) {            /* all 256 greys */
+        rgb = ((unsigned long)i << 16) | ((unsigned long)i << 8) | (unsigned long)i;
+        prefs_rgb_to_hsb(rgb, &h);
+        CHECK_INT(h.sat, 0);
+        e = chan_off(rgb, prefs_hsb_to_rgb(&h));
+        if (e > worst)
+            worst = e;
+    }
+    for (r = 0; r < 6; r++)                /* the 6 x 6 x 6 cube */
+        for (g = 0; g < 6; g++)
+            for (b = 0; b < 6; b++) {
+                rgb = ((unsigned long)(r * 51) << 16) | ((unsigned long)(g * 51) << 8) | (unsigned long)(b * 51);
+                prefs_rgb_to_hsb(rgb, &h);
+                e = chan_off(rgb, prefs_hsb_to_rgb(&h));
+                if (e > worst)
+                    worst = e;
+            }
+    CHECK(worst <= 1);
+    /* the primaries sit at the wheel's sixths */
+    prefs_rgb_to_hsb(0xFF0000UL, &h);
+    CHECK_INT(h.hue, 0);
+    CHECK_INT(h.sat == 0xFFFFFFFFUL && h.bri == 0xFFFFFFFFUL, 1);
+    prefs_rgb_to_hsb(0x00FF00UL, &h);
+    CHECK(h.hue > 0x54000000UL && h.hue < 0x56000000UL);   /* a third round */
+    prefs_rgb_to_hsb(0x0000FFUL, &h);
+    CHECK(h.hue > 0xA9000000UL && h.hue < 0xAB000000UL);   /* two thirds */
+    /* a colour set by the wheel reaches the hex field as itself */
+    h.hue = 0; h.sat = 0xFFFFFFFFUL; h.bri = 0x80000000UL;
+    CHECK(chan_off(prefs_hsb_to_rgb(&h), 0x800000UL) <= 1);
+    h.hue = 0x2AAAAAAAUL; h.sat = 0; h.bri = 0xFFFFFFFFUL;
+    CHECK_INT(prefs_hsb_to_rgb(&h), 0xFFFFFF);
+}
+
+/* ---- PX11: renaming a profile ------------------------------------------------------ */
+
+static void a_renamed_profile_keeps_its_keys_and_comments(void)
+{
+    static upconf c, w;
+    static char buf[1024];
+    const char *text = "; mine\n[profile alpha]\nfont = topaz:8\n; why\nbell = none\n\n[profile beta]\nfont = mono:9\n";
+    long len;
+    upconf_parse(&c, text, (long)strlen(text));
+    CHECK_INT(prefs_rename_profile(&c, "ALPHA", "  [gamma] "), PREFS_RENAME_OK);
+    CHECK_STR(upconf_str(&c, "gamma", "font", ""), "topaz:8");
+    CHECK_STR(upconf_str(&c, "gamma", "bell", ""), "none");
+    CHECK_INT(prefs_profile_exists(&c, "alpha"), 0);
+    CHECK_INT(c.nprof, 2);
+    len = upconf_save(&c, buf, sizeof(buf) - 1);
+    buf[len] = 0;
+    CHECK(strstr(buf, "[profile gamma]\nfont = topaz:8\n; why\nbell = none") != 0);
+    CHECK(strstr(buf, "; mine") != 0);
+    CHECK(strstr(buf, "alpha") == 0);
+    /* the refusals leave the table as it was */
+    CHECK_INT(prefs_rename_profile(&c, "nosuch", "x"), PREFS_RENAME_MISSING);
+    CHECK_INT(prefs_rename_profile(&c, "gamma", "  [] "), PREFS_RENAME_EMPTY);
+    CHECK_INT(prefs_rename_profile(&c, "gamma", "BETA"), PREFS_RENAME_EXISTS);
+    CHECK_INT(prefs_rename_profile(&c, "gamma", "Gamma"), PREFS_RENAME_OK);   /* its own name, other case */
+    CHECK_STR(c.prof[0], "Gamma");
+    CHECK_STR(upconf_str(&c, "gamma", "font", ""), "topaz:8");
+    (void)w;
+}
+
 void suite_prefs(void)
 {
+    a_renamed_profile_keeps_its_keys_and_comments();
+    wheel_colours_round_trip_within_one_step();
+    the_window_fits_an_ntsc_and_a_pal_workbench();
+    every_gadget_has_help_and_a_unique_shortcut();
+    kingcon_style_letters_round_trip_through_the_handlers_function();
+    colour_fields_are_validated_strictly_and_named();
+    font_requester_results_become_profile_values();
+    scrollback_and_screen_values_read_back_sanely();
+    an_edit_of_any_field_makes_the_profile_differ();
     theme_requester_opens_the_themes_drawer();
     theme_list_from_a_drawer();
     theme_cases();
