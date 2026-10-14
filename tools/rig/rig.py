@@ -130,7 +130,8 @@ BARE_SHELL_PATH = "Path >NIL: VTC:gg/bin ADD"
 # shell's path to VTC:. A `rig.py install` that writes only VTC: left a rig with
 # a kit running the OLD handler (W-R1, 2026-10-13: three rig checks tested it).
 # So the boot, before any of them is first used, puts the VTC: build over every
-# copy the system already holds (never where no kit put one), after keeping the
+# copy the system already holds, and the C: commands the kit installs even where no kit put
+# one (W-R4: plain `UPDemo` must run the build on every rig), after keeping the
 # kit's own once in VTC:kit-orig. `kit-restore` makes the boot put those back.
 # (VTC: name, SYS: place, backup name)
 KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
@@ -173,8 +174,15 @@ def kit_shadow_lines(upterm):
         out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
     out.append("Else")
     for src, dest, bak in shadows:
-        out += kit_guard(dest, ["If EXISTS VTC:%s" % src,
-                                "  If NOT EXISTS VTC:kit-orig/%s" % bak,
+        copy = ["If EXISTS VTC:%s" % src]
+        if dest.startswith("C:"):
+            # a C: command the kit installs: on a rig with no kit it is put there too (W-R4)
+            copy += ["  If EXISTS %s" % q(dest), "    If NOT EXISTS VTC:kit-orig/%s" % bak,
+                     "      C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak), "    EndIf", "  EndIf"]
+            copy += ["  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"]
+            out += copy
+            continue
+        out += kit_guard(dest, copy[:1] + ["  If NOT EXISTS VTC:kit-orig/%s" % bak,
                                 "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
                                 "  EndIf",
                                 "  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
@@ -187,14 +195,6 @@ Echo >BOOTX:boot.log "go started"
 %(shadows)s
 C:Wait 15
 %(shadows_up)s
-; the Prefs editor on a rig with no kit (W-R3): C:"UP-Term Prefs", where the handler's
-; menu runs it. A kit's own file is already there and is shadowed above; once this copy
-; exists the shadow keeps it current.
-If EXISTS VTC:upprefs
-  If NOT EXISTS "C:UP-Term Prefs"
-    C:Copy >NIL: VTC:upprefs "C:UP-Term Prefs" CLONE
-  EndIf
-EndIf
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
@@ -552,10 +552,13 @@ def install():
         if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
             shutil.copyfile(f, dst)
             print("refreshed", f.name, dst.stat().st_size, "bytes")
-    # the Prefs editor (W-R3): GO puts VTC:upprefs at C:"UP-Term Prefs" (no kit) or over the
-    # kit's copy (KIT_SHADOWS), so it is there even when the drawer never held it
-    if (ROOT / "build/amiga/upprefs").is_file():
-        shutil.copyfile(ROOT / "build/amiga/upprefs", RIG / "vtc/upprefs")
+    # every program the boot puts at a kit name (KIT_SHADOWS) is in VTC: even when the drawer
+    # never held it (W-R3 Prefs editor, W-R4 UPDemo and the other C: commands)
+    for name in sorted({x[0] for x in KIT_SHADOWS}):
+        src, dst = ROOT / "build/amiga" / name, RIG / "vtc" / name
+        if src.is_file() and not dst.is_file():
+            shutil.copyfile(src, dst)
+            print("added", name, dst.stat().st_size, "bytes")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)

@@ -118,10 +118,25 @@ fp3, reqp3 = boot({**BUILD, "VTC:upprefs": "new-prefs"})
 check(fp3.get("c:up-term prefs") == "new-prefs", "no kit: C:UP-Term Prefs is installed from VTC:upprefs")
 check(not reqp3, "no kit, Prefs: the boot asks for no volume (asked for %s)" % reqp3)
 
-# no kit: nothing is put in SYS: and no volume is asked for (UP-Term: is not assigned)
-f4, req4 = boot({**BUILD})
-check("l:vtcon-handler" not in f4 and "c:vsh" not in f4, "no kit: SYS: gets no copy")
+# W-R4: every C: command the kit installs is the build on a rig with no kit too (plain `UPDemo`
+# ran an old C:UPDemo while the build sat in VTC:). The list is KIT_SHADOWS' C: rows.
+CNAMES = [(src, dest) for src, dest, _ in rig.KIT_SHADOWS if dest.startswith("C:")]
+check({d for _, d in CNAMES} >= {"C:UPDemo", "C:UPConsole", "C:vsh", "C:upgetty", "C:ixkill", "C:UP-Term Prefs"},
+      "KIT_SHADOWS names the kit's C: commands (%s)" % [d for _, d in CNAMES])
+nk = {"VTC:" + src: "new-" + src for src, _ in CNAMES} | {"VTC:vtcon-handler": "new-handler"}
+f4, req4 = boot(nk)
+for src, dest in CNAMES:
+    check(f4.get(dest.lower()) == "new-" + src, "no kit: %s is the VTC: build" % dest)
+check("vtc:kit-orig/c-updemo" not in f4, "no kit: nothing to keep in VTC:kit-orig")
 check(not req4, "no kit: the boot asks for no volume (asked for %s)" % req4)
+# an old C:UPDemo that no kit put there (rig 1) is the build after the boot, the old one kept
+f5, _ = boot({**nk, "C:UPDemo": "old-updemo"})
+check(f5["c:updemo"] == "new-UPDemo" and f5["vtc:kit-orig/c-updemo"] == "old-updemo", "no kit, old C:UPDemo: the build replaces it, the old one is kept")
+# what no kit holds beyond C: stays: no handler or device copy in SYS:
+check("l:vtcon-handler" not in f4 and "devs:up-console.device" not in f4 and "l:pty-handler" not in f4, "no kit: L: and DEVS: get no copy")
+# install puts every KIT_SHADOWS source in VTC:, also the ones the drawer never held
+import inspect  # noqa: E402
+check("KIT_SHADOWS" in inspect.getsource(rig.install), "install stages every KIT_SHADOWS source in VTC:")
 
 # install and kit-restore (the host side)
 with tempfile.TemporaryDirectory() as tmp:
