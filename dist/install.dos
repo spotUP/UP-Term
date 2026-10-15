@@ -11,7 +11,7 @@
 ;     [SHELLICON]   (the Shell icon opens an UP-Term window: no unless asked)
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
-;     [WASABI]  (wasabid 0.9b2, remote development and Claude Code on another computer, with a
+;     [WASABI]  (wasabid 0.9, remote development and Claude Code on another computer, with a
 ;               key: no unless asked; replaces an older wasabid and amiagent of ours)
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
 ;  UP-Term-nvim, Claude and amiga-pi, each with its own Install.)
@@ -607,7 +607,7 @@ If "$optserial" EQ "SERIAL"
     Echo >>S:User-Startup ";END UP-Term serial"
   EndIf
 EndIf
-; WASABI: wasabid 0.9b2 in C: (wasabi/SOURCE.txt), for working on this Amiga
+; WASABI: wasabid 0.9 in C: (wasabi/SOURCE.txt), for working on this Amiga
 ; from another machine over the network, and for Claude Code on another
 ; computer (wasabi_mcp.py). It runs any command a client with the key
 ; sends -- and with no key set, any client's: wasabikey makes one
@@ -642,7 +642,7 @@ Delete >NIL: ENV:upw QUIET
 If NOT "$optwasabi" EQ "WASABI"
   If "$oldwasabid" EQ "1"
     Delete >NIL: C:wasabid ENVARC:up-term/wasabid QUIET
-    Echo "Note: the older wasabid of an earlier kit was removed; tick wasabi to install wasabid 0.9b2."
+    Echo "Note: the older wasabid of an earlier kit was removed; tick wasabi to install wasabid 0.9."
   EndIf
 EndIf
 UnSet >NIL: oldwasabid
