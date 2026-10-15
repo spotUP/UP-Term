@@ -376,7 +376,6 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->mask = 0xFF;
     r->mask_on = 0;
     r->blank = r->was_blank = 0;
-    r->cursor_flip = 0;
     r->full_pass = 0;
     r->in_pass = r->bs_valid = r->bs_ok = 0;
     r->seen = 0;
@@ -1700,6 +1699,18 @@ static int direct_row(vr_render *r, int y, const dcell *d, int n)
     return ok;
 }
 
+/* The cell's colours swapped: the one reverse-video path of the selection,
+ * the visual bell and the cursor (cursor_draw). */
+static void style_swap(vr_style *st)
+{
+    ULONG tmp = st->fg;
+    st->fg = st->bg;
+    st->bg = tmp;
+    tmp = st->fgf;
+    st->fgf = st->bgf;
+    st->bgf = tmp;
+}
+
 /* The style cell c draws with (selection and blink phase applied). */
 static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
 {
@@ -1725,24 +1736,13 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
             st->fg = st->fgf = r->sel_ink[0];
         if (r->sel_ink[1] != VR_KEEP)
             st->bg = st->bgf = r->sel_ink[1];
-        if (r->sel_ink[0] == VR_KEEP && r->sel_ink[1] == VR_KEEP) {
-            ULONG tmp = st->fg;
-            st->fg = st->bg;
-            st->bg = tmp;
-            tmp = st->fgf;
-            st->fgf = st->bgf;
-            st->bgf = tmp;
-        }
+        if (r->sel_ink[0] == VR_KEEP && r->sel_ink[1] == VR_KEEP)
+            style_swap(st);
     }
     if (r->bell_flash) {
         /* the visual bell's frame: the whole window reversed, the terminal's
          * own reverse-video mode untouched */
-        ULONG tmp = st->fg;
-        st->fg = st->bg;
-        st->bg = tmp;
-        tmp = st->fgf;
-        st->fgf = st->bgf;
-        st->bgf = tmp;
+        style_swap(st);
     }
     u = vt_cell_underline_color(r->t, c);
     st->ul = u == VT_COLOR_DEFAULT ? st->fg : pen_for(r, u, 0);
@@ -3470,32 +3470,25 @@ static void raw_scroll_now(vr_render *r, int top, int bottom, int n)
 }
 
 /* Draw (on) or erase (off) the cursor: the cell (a block), or its two
- * bottom rows or left columns, filled with the cursor colour -- the
- * profile's, else the default foreground -- and a block's glyph redrawn in
- * the default background; off repaints the cell. Only a double-size row's
- * block is inverted (COMPLEMENT): that flips pen NUMBERS, not colours, so
- * on a screen whose pens are not paired by colour it drew anything (rig
- * 2026-10-03, 32 pens on UP-Term's screen: black in pen 17 inverted to 14,
- * a cyan cursor). */
-/* The rectangle inverted in the planes of m (COMPLEMENT under a write mask). */
-static void cursor_flip(vr_render *r, WORD x0, WORD y0, WORD x1, WORD y1, UBYTE m)
-{
-    r->mask |= m; /* planes not in use held zeros; they do no longer */
-    SetDrMd(r->rp, COMPLEMENT);
-    SetWriteMask(r->rp, m);
-    RectFill(r->rp, x0, y0, x1, y1);
-    SetDrMd(r->rp, JAM2);
-    SetWriteMask(r->rp, r->mask_on ? r->mask : 0xFF);
-}
-
+ * bottom rows or left columns. The profile's cursor-color, when it has one,
+ * fills it and a block's glyph is redrawn in the default background; else
+ * ("inverse") the cell's own colours swapped, as the selection and reverse
+ * video are (style_swap): the strip of an underline or bar in the text
+ * colour. COMPLEMENT flips pen NUMBERS, not colours, so it drew a pen that
+ * depended on the palette (a blue block on a 16-colour Workbench; rig
+ * 2026-10-03, 32 pens: black in pen 17 inverted to 14, a cyan cursor);
+ * only a double-size row's block is still inverted. Off repaints the cell. */
 static void cursor_draw(vr_render *r, int on)
 {
-    ULONG ink = r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg;
     int wide = !r->view && vt_row_size(r->t, r->cursor_y + r->jump) ? 2 : 1; /* a double-size row (the grid row, not the screen's: jump) */
     WORD px = (WORD)(r->ox + r->cursor_x * r->cw * wide), py = r->oy + r->cursor_y * r->ch;
     int span = wide == 2 && dbl_cols(r, r->cursor_x) == 1 ? 1 : wide; /* a double-size row's half cell: its half */
     WORD x1 = (WORD)(px + r->cw * span - 1), y1 = (WORD)(py + r->ch - 1);
     int style = vt_cursor_style(r->t);   /* DECSCUSR */
+    int ncells;
+    const vt_cell *c;
+    int have;
+    ULONG fillink, textink; /* the cursor's fill and the block's glyph */
     if (style == 3 || style == 4)
         py = (WORD)(y1 - 1);              /* underline: the two bottom rows */
     else if (style == 5 || style == 6)
@@ -3505,9 +3498,6 @@ static void cursor_draw(vr_render *r, int on)
             /* the cell was filled: repaint it normally */
             r->cursor_colorful = 0;
             draw_rows(r, r->cursor_x, r->cursor_y, r->cursor_x + 1, r->cursor_y + 1);
-        } else if (r->cursor_flip) {
-            cursor_flip(r, px, py, x1, y1, r->cursor_flip);
-            r->cursor_flip = 0;
         } else {
             SetDrMd(r->rp, COMPLEMENT);
             all_planes(r);
@@ -3516,34 +3506,30 @@ static void cursor_draw(vr_render *r, int on)
         }
         return;
     }
-    if (r->planar && r->cursor_ink == VR_KEEP) {
-        /* A planar screen, no cursor colour of its own: the cell (or the
-         * strip of an underline or bar) flipped in the planes in use, as
-         * the ROM console draws its cursor -- one fill on, one off, and no
-         * pen that would bring another plane into use (the cursor's pen
-         * made every scroll move its planes too; S1). A blank screen has
-         * none yet: the default pens' planes then. */
-        UBYTE m = r->mask;
-        if (!m)
-            m = (UBYTE)(r->pen_default_fg ^ r->pen_default_bg);
-        if (!m)
-            m = 1;
-        r->cursor_flip = m;
-        r->cursor_colorful = 0;
-        cursor_flip(r, px, py, x1, y1, m);
-        return;
+    c = vt_row(r->t, r->cursor_y + r->jump, &ncells); /* grid row = screen row + jump */
+    have = c && r->cursor_x < ncells;
+    fillink = r->cursor_ink != VR_KEEP ? r->cursor_ink : r->pen_default_fg;
+    textink = r->pen_default_bg;
+    if (r->cursor_ink == VR_KEEP && have) {
+        /* inverse: the cell's colours swapped. A screen of few pens dithers
+         * the fill as the cell's own area is (bgf after the swap) */
+        vr_style st;
+        ULONG text;
+        cell_style(r, &c[r->cursor_x], 0, &st);
+        text = st.fg; /* the pen its glyph shows in: not the foreground's when that is the background's pen too */
+        style_swap(&st);
+        fillink = st.bgf;
+        textink = st.fg;
+        if (ink_solid(fillink) == ink_solid(textink))
+            fillink = text;
     }
     if (style > 2) {
         /* underline, bar: the strip in the cursor colour */
-        ink_a(r, ink);
-        RectFill(r->rp, px, py, x1, y1);
+        fill(r, px, py, x1, y1, fillink);
         r->cursor_colorful = 1;
         return;
     }
     if (wide == 1) {
-        int ncells;
-        const vt_cell *c = vt_row(r->t, r->cursor_y + r->jump, &ncells); /* grid row = screen row + jump */
-        int have = c && r->cursor_x < ncells;
         vt_glyph g = { VT_GLYPH_FONT, 0 };
         struct TextFont *font = r->font;
         if (have) {
@@ -3552,24 +3538,23 @@ static void cursor_draw(vr_render *r, int on)
                 g.code = 1;
         }
         if (have && g.kind != VT_GLYPH_FONT) {
-            /* box / block / line on the cursor colour, drawn in the default
-             * background -- draw_special fills the cell with `bg` itself */
+            /* box / block / line on the cursor colour, drawn in the text
+             * colour -- draw_special fills the cell with `bg` itself */
             r->cursor_colorful = 1;
-            draw_special(r, px, py, g, r->pen_default_bg, ink, 1);
+            draw_special(r, px, py, g, textink, fillink, 1);
             return;
         }
-        ink_ab(r, r->pen_default_bg, ink);
-        RectFill(r->rp, px, py, x1, y1);
+        fill(r, px, py, x1, y1, fillink);
+        ink_a(r, textink);
+        SetDrMd(r->rp, JAM1);
+        r->cursor_colorful = 1;
         if (have && c[r->cursor_x].width == 1) {
             int obpr = 0;
             const UBYTE *om = vt_fallback_glyph(&r->fb, cell_char(r, &c[r->cursor_x]), 1, &obpr);
             if (om) {
-                /* an outline or Unifont glyph under the cursor, in the background colour */
-                ink_a(r, r->pen_default_bg);
-                SetDrMd(r->rp, JAM1);
+                /* an outline or Unifont glyph under the cursor, in the text colour */
                 BltTemplate((PLANEPTR)om, 0, (WORD)obpr, r->rp, px, py, r->cw, r->ch);
                 SetDrMd(r->rp, JAM2);
-                r->cursor_colorful = 1;
                 return;
             }
         }
@@ -3583,7 +3568,7 @@ static void cursor_draw(vr_render *r, int on)
             if (font != r->font)
                 SetFont(r->rp, r->font);
         }
-        r->cursor_colorful = 1;
+        SetDrMd(r->rp, JAM2);
         return;
     }
     r->cursor_colorful = 0;
@@ -3608,10 +3593,13 @@ void vr_cursor_off(vr_render *r)
          * the pass takes the cursor off): then the screen is not blank in
          * it, and the pass must draw every blank cell (W-T12: they kept
          * the old background) */
-        UBYTE was = r->blank;
+        UBYTE was = r->blank, known = r->bs_valid;
         ULONG ink = r->bg_ink;
         struct RastPort *f = to_front(r);
         cursor_draw(r, 0);
+        /* the cell's repaint (cursor_draw) looked at the default blank before the
+         * pass's output (reverse video, a flash) was read: not known for the pass */
+        r->bs_valid = known;
         to_back(r, f);
         r->cursor_drawn = 0;
         r->blank = (UBYTE)(was && r->bg_ink == ink);

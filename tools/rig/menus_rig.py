@@ -82,9 +82,9 @@ def find_cursor():
     """the middle of the block cursor: a run of 8 pixels of one colour that
     is not the background, on a text row (glyph strokes are at most 6 wide;
     the title bar above and the scroll bar and borders are left out). Its
-    colour is the palette's, not the default foreground: the planar cursor
-    flips the planes in use, a blue pen on the rig's Workbench (2026-10-15).
-    None when not found"""
+    colour is the text colour (the cell's colours swapped; it was a blue pen
+    on the rig's Workbench while the cursor complemented pen numbers,
+    2026-10-15). None when not found"""
     b = ami.req(0x07)
     w, h = struct.unpack('>HH', b[2:6])
     x0, y0, ww, hh = box()

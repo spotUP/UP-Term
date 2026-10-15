@@ -1261,10 +1261,88 @@ static void padding_extend_gives_the_strips_the_colour_of_the_edge_cells(void)
             }
 }
 
+/* Q3-27: the default cursor (cursor-color = inverse) is the cell with its colours swapped, not its pen numbers
+ * complemented: on a 4-plane screen the pen of (pen ^ 15) is whatever the palette holds there (a blue block on the
+ * 16-colour Workbench). The cursor's fill is the cell's text pen, its glyph the cell's background pen; and the
+ * blink's off phase gives the cell back. */
+static void the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented(void)
+{
+    int x, y, k, differs = 0;
+    int snap[CW * CH];
+    planar_depth = 4;
+    planar_left = 0;
+    test_pal = wb16;
+    test_npal = 16;
+    open_term_in(0, VT_XTERM);
+    for (k = 0; k < 8; k++) {
+        char buf[64];
+        int fg, bg, ok = 1, glyph = 0, fills = 0;
+        snprintf(buf, sizeof(buf), "\x1b[?25l\x1b[2J\x1b[1;1H\x1b[%dmW\x1b[m\x1b[1;1H", 40 + k);
+        pass(buf);
+        bg = gf_pixel(0, 0);
+        fg = text_pen(0, 0, bg);
+        CHECK(fg != bg);
+        for (y = 0; y < CH; y++)
+            for (x = 0; x < CW; x++) {
+                snap[y * CW + x] = gf_pixel(x, y);
+                ok &= snap[y * CW + x] == fg || snap[y * CW + x] == bg;
+            }
+        if (!ok)
+            continue; /* a dithered background (W-T9): two pens, no one swap to compare */
+        differs += (bg ^ 15) != fg; /* COMPLEMENT would draw another pen than the text's */
+        pass("\x1b[?25h");
+        CHECK_INT(rn.cursor_drawn, 1);
+        for (y = 0; y < CH; y++)
+            for (x = 0; x < CW; x++) {
+                int pen = gf_pixel(x, y), was_glyph = snap[y * CW + x] == fg;
+                glyph += was_glyph;
+                fills += !was_glyph;
+                ok &= pen == (was_glyph ? bg : fg);
+            }
+        CHECK(glyph > 0 && fills > 0);
+        CHECK(ok);
+        vr_cursor_off(&rn);
+        for (y = 0; y < CH; y++)
+            for (x = 0; x < CW; x++)
+                ok &= gf_pixel(x, y) == snap[y * CW + x];
+        CHECK(ok);
+    }
+    CHECK(differs >= 3);
+    /* the blink repaints the cursor's cell and no other pixel of the window */
+    {
+        static int all[COLS * CW * ROWS * CH];
+        int changed = 0, cell_changed = 0;
+        pass("\x1b[?25l\x1b[2J\x1b[1;1H\x1b[42mWW\x1b[m\x1b[2;3Hxy\x1b[2;4H");
+        for (y = 0; y < ROWS * CH; y++)
+            for (x = 0; x < COLS * CW; x++)
+                all[y * COLS * CW + x] = gf_pixel(x, y);
+        pass("\x1b[?25h");
+        for (y = 0; y < ROWS * CH; y++)
+            for (x = 0; x < COLS * CW; x++)
+                if (all[y * COLS * CW + x] != gf_pixel(x, y)) {
+                    if (x / CW == 3 && y / CH == 1)
+                        cell_changed++;
+                    else
+                        changed++;
+                }
+        CHECK(cell_changed > 0);
+        CHECK_INT(changed, 0);
+        vr_cursor_off(&rn);
+        for (y = 0; y < ROWS * CH; y++)
+            for (x = 0; x < COLS * CW; x++)
+                changed += all[y * COLS * CW + x] != gf_pixel(x, y);
+        CHECK_INT(changed, 0);
+    }
+    close_term();
+    planar_depth = 0;
+    test_npal = 0;
+}
+
 int main(void)
 {
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
+    the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
     neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels();
