@@ -55,13 +55,13 @@ Decisions:
   option; Install, Installer, Uninstall, MANIFEST, README, LICENSES; upgrade removes our old
   amiagent and old wasabid; dist tests; rig install case.
   Evidence (dist/install.dos, Install.installer, Uninstall, README, LICENSES, SOURCE.txt, kitsize, Makefile dist (daemon and client from build/wasabi, no binary in git); dist/net/amiagent-0.13.2 moved to tools/rig/amiagent-0.13.2 for the rig until WM2/3 drop it; tests/test_dist_installer.py WasabiDaemonOption (7 tests); make dist-check green on a kit re-staged from the main build + mkkit.py base (a from-scratch make dist needs vendor/ NDK, not in a worktree); tools/rig/install_rig.py --only wasabi on rig 3: 29 of 29 (old amiagent removed, wasabid 0.2 replaced by 0.9b2, key, startup block, started, Mac client pings it, Uninstall clean))
-- [ ] **WM7** Docs and skills: RULES.md, tools/rig/README.md (Debugging recipe, MCP), NAS
+- [x] **WM7** Docs and skills: RULES.md, tools/rig/README.md (Debugging recipe, MCP), NAS
   README, amiga-pi skills, memory notes that name amiagent.
 - [x] **WM8** (done in that repo by another session: 4e44b0865, 98806b0c8, 280d855fe, merge 6578dd989; vendored client tools/wasabi pinned ee23c09; owner M1 on the Replay open) Up Rough Demo System: `a1200.py`'s own AMI0 client + its 5 tests move to
   wasabi's client (that repo's rules; its own branch, no push).
 - [x] **WM9** Other repos: neovim-amiga (2 scripts import vtcon's ami.py: verify they work
   through the adapter), DCTelnet vendored copies (replace or delete), list any others found.
-- [ ] **WM10** Gaps list for creep kept current in the research doc (owner relays).
+- [x] **WM10** Gaps list for creep kept current in the research doc (owner relays).
 
 ## Verification
 
