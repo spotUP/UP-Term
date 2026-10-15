@@ -117,6 +117,7 @@ struct app {
     prefs_kc kc;              /* KingCON's style, decoded from f.kcmode */
     long sb_lines;            /* the scrollback gadget's number */
     int sb_none;              /* "No scrollback" */
+    int colors;               /* the Colour mode cycle, prefs_colors_index of f.colors */
     char status[2][STATUS_MAX]; /* GadTools keeps the pointer: alternate */
     char action[STATUS_MAX];  /* the last action's line, shown when no gadget has help */
     int st;
@@ -140,6 +141,9 @@ static STRPTR screen_labels[] = { (STRPTR)"Workbench", (STRPTR)"Own screen", (ST
 static STRPTR backspace_labels[] = { (STRPTR)"Delete", (STRPTR)"Backspace", 0 };
 static STRPTR clip_labels[] = { (STRPTR)"Set the clipboard", (STRPTR)"Set and read the clipboard",
                                 (STRPTR)"Not use the clipboard", 0 };
+/* in prefs_colors_index order; the Settings menu's Colour mode words */
+static STRPTR colors_labels[] = { (STRPTR)"Not told", (STRPTR)"Full colour (RGB)", (STRPTR)"256 colours",
+                                  (STRPTR)"16 colours", 0 };
 
 /* A taglist from (tag, data) pairs, ended by TAG_DONE: t has room for them.
  * (A compound literal: vbcc warns about va_start, and the values are not
@@ -241,6 +245,9 @@ static char *text_field(struct app *a, int id, int *cap)
     case PG_SELFG_HEX: return a->f.selfg;
     case PG_SELBG_HEX: return a->f.selbg;
     case PG_LINK: return a->f.linkopen;
+    case PG_TERM:
+        *cap = (int)sizeof(a->f.term);
+        return a->f.term;
     default:
         break;
     }
@@ -305,6 +312,7 @@ static int *int_of(struct app *a, int id)
     case PG_CLIPBOARD: return &a->f.clipboard;
     case PG_HLCAT: return &a->f.hlcat;
     case PG_SCROLLBACK_NONE: return &a->sb_none;
+    case PG_COLORS: return &a->colors;
     default:
         return 0;
     }
@@ -322,6 +330,7 @@ static STRPTR *labels_of(int id)
     case PG_SCREEN: return screen_labels;
     case PG_BACKSPACE: return backspace_labels;
     case PG_CLIPBOARD: return clip_labels;
+    case PG_COLORS: return colors_labels;
     default: return 0;
     }
 }
@@ -729,6 +738,7 @@ static void load_profile(struct app *a, const char *name)
     }
     a->orig = a->f;
     sb_load(a);
+    a->colors = prefs_colors_index(a->f.colors);
     prefs_kc_decode(a->f.kcmode, &a->kc);
     show_fields(a);
 }
@@ -775,6 +785,7 @@ static int bad_gadget(int bad)
     case PREFS_BAD_SELBG: return PG_SELBG_HEX;
     case PREFS_BAD_FG: return PG_FG_HEX;
     case PREFS_BAD_BG: return PG_BG_HEX;
+    case PREFS_BAD_TERM: return PG_TERM;
     default: return PG_CURSOR_COLOUR_HEX;
     }
 }
@@ -874,13 +885,13 @@ static struct Gadget *make_gadget(struct app *a, struct Gadget *prev, const pg_i
     const char *label = pg_label(it);
     struct Gadget *g;
     int *p;
-    int disabled = it->disabled && is_disabled(a, it);
+    int disabled = it->disabled && is_disabled(a, it), cap;
     switch (it->kind) {
     case PGK_STRING:
+        text_field(a, it->id, &cap);
         return gad(a, prev, STRING_KIND, b, label, (UWORD)it->id,
                    label ? PLACETEXT_LEFT : 0,
-                   tl(t, GTST_MaxChars, (ULONG)(it->id >= PG_PAL_HEX && it->id < PG_PAL_HEX + 16
-                                                ? sizeof(a->f.pal[0]) - 1 : UC_MAX_VALUE - 1),
+                   tl(t, GTST_MaxChars, (ULONG)(cap - 1),
                       GT_Underscore, (ULONG)'_', GA_Disabled, (ULONG)disabled, TAG_DONE));
     case PGK_INTEGER:
         return gad(a, prev, INTEGER_KIND, b, label, (UWORD)it->id, PLACETEXT_LEFT,
@@ -1618,6 +1629,8 @@ static void put_state(struct app *a, int id, int v)
         *p = v;
     if (id == PG_SCROLLBACK_NONE)
         sb_store(a);
+    if (id == PG_COLORS)
+        strcpy(a->f.colors, prefs_colors_value(a->colors));
     if (id == PG_KC_MATCH || id == PG_KC_COMMON || id == PG_KC_SILENT) {
         kc_store(a);
         set_attr(a, PG_KC_COMMON, GTCB_Checked, (ULONG)(a->kc.match == PREFS_KC_COMMON_ONLY || a->kc.common));
@@ -1869,6 +1882,7 @@ int main(void)
     a->prof_new = 0; /* the first profile is the file's own, or "default" as built in: nothing to lose */
     a->orig = a->f;
     sb_load(a);
+    a->colors = prefs_colors_index(a->f.colors);
     prefs_kc_decode(a->f.kcmode, &a->kc);
     prof_labels(a);
     if (!build_gadgets(a))

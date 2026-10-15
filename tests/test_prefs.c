@@ -804,6 +804,22 @@ static void colour_fields_are_validated_strictly_and_named(void)
     CHECK_INT(prefs_validate(&f), 0);
     strcpy(f.curcol, "00FF00");
     CHECK_INT(prefs_validate(&f), 0);
+    /* W46 (b): the Terminal type field takes what /term takes */
+    strcpy(f.term, "xterm-256color");
+    CHECK_INT(prefs_validate(&f), 0);
+    strcpy(f.term, "xterm 256");
+    CHECK_INT(prefs_validate(&f), PREFS_BAD_TERM);
+    prefs_bad_label(PREFS_BAD_TERM, lab, sizeof(lab));
+    CHECK_STR(lab, "Terminal type");
+    /* the Colour mode cycle and the colors key, both ways */
+    CHECK_INT(prefs_colors_index(""), 0);
+    CHECK_INT(prefs_colors_index("rgb"), 1);
+    CHECK_INT(prefs_colors_index("256"), 2);
+    CHECK_INT(prefs_colors_index("16"), 3);
+    CHECK_INT(prefs_colors_index("8"), 0);
+    CHECK_STR(prefs_colors_value(3), "16");
+    CHECK_STR(prefs_colors_value(0), "");
+    CHECK_STR(prefs_colors_value(PREFS_COLORS_N), "");
 }
 
 /* ---- PX3: font strings ------------------------------------------------------ */

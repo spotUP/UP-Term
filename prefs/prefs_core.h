@@ -34,7 +34,7 @@ typedef struct prefs_fields {
     char selfg[UC_MAX_VALUE];
     char selbg[UC_MAX_VALUE];
     char term[32];                  /* term: TERM for programs vsh starts in the window ("": vtcon) */
-    char colors[8];                 /* colors: rgb | 256 ("": not told) -- COLORTERM for those programs */
+    char colors[8];                 /* colors: rgb | 256 | 16 ("": not told) -- COLORTERM, TERM for 16 */
     char linkopen[UC_MAX_VALUE];    /* link-open: the command for an OSC 8 link, %s the URL */
     char pal[16][16];
     int cursor;     /* PREFS_CURSOR_* */
@@ -82,7 +82,13 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *profile);
 #define PREFS_BAD_FG     19
 #define PREFS_BAD_BG     20
 #define PREFS_BAD_CURCOL 21
+#define PREFS_BAD_TERM   22 /* term is not a name slash_term_ok takes */
 int prefs_validate(const prefs_fields *f);
+/* W46: the colour mode (profile key colors) as the Prefs cycle's index:
+ * 0 "" (not told), 1 rgb, 2 256, 3 16; a value /colors does not take is 0. */
+#define PREFS_COLORS_N 4
+int prefs_colors_index(const char *colors);
+const char *prefs_colors_value(int index);
 /* The label of the field a prefs_validate result names, as the window
  * shows it ("Text colour", "Palette entry Bright Red"); out: cap bytes. */
 void prefs_bad_label(int bad, char *out, int cap);

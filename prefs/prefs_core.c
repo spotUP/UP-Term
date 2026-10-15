@@ -3,6 +3,7 @@
 
 #include "prefs_core.h"
 #include "../handler/kcmode.h"
+#include "../handler/slash.h"
 
 static int pc_ieq(const char *a, const char *b)
 {
@@ -219,7 +220,25 @@ int prefs_validate(const prefs_fields *f)
         return PREFS_BAD_BG;
     if (!pc_colour_ok(f->curcol) && !pc_ieq(f->curcol, "inverse"))
         return PREFS_BAD_CURCOL;
+    if (f->term[0] && !slash_term_ok(f->term))
+        return PREFS_BAD_TERM;
     return 0;
+}
+
+static const char *const pc_colors[PREFS_COLORS_N] = { "", "rgb", "256", "16" };
+
+int prefs_colors_index(const char *colors)
+{
+    int i;
+    for (i = 1; i < PREFS_COLORS_N; i++)
+        if (!strcmp(colors, pc_colors[i]))
+            return i;
+    return 0;
+}
+
+const char *prefs_colors_value(int index)
+{
+    return index > 0 && index < PREFS_COLORS_N ? pc_colors[index] : "";
 }
 
 static void pc_cat(char *out, int cap, const char *s)
@@ -248,6 +267,8 @@ void prefs_bad_label(int bad, char *out, int cap)
         pc_cat(out, cap, "Background");
     else if (bad == PREFS_BAD_CURCOL)
         pc_cat(out, cap, "Cursor colour");
+    else if (bad == PREFS_BAD_TERM)
+        pc_cat(out, cap, "Terminal type");
 }
 
 
