@@ -370,8 +370,9 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
 
 ### Phase E: real hardware (manual, owner)
 
-- [ ] **NL21** NAS deploy: copy `tools/nas/*` and `tools/uptelnetd.py`, Build the image,
+- [x] **NL21** NAS deploy: copy `tools/nas/*` and `tools/uptelnetd.py`, Build the image,
   start; `pairs list` empty; container log shows the relay listening on 127.0.0.1:1234.
+  Evidence (2026-10-15, done by agent over QuickConnect with the owner's permission): image claude-amiga:9 built; log: uptelnetd listening on 192.168.0.198 port 2323 allowing 192.168.0.0/24, 10.8.0.0/24; relaying wasabi clients on 127.0.0.1:1234; pairs list: no Amiga is paired. Pre-record seeds from image :4 renamed to *.pre-wasabi-2026-10-15 so the image's .mcp.json and SKILL.md were seeded.
 - [ ] **NL22** Real Amiga: Claude icon -> question -> NAS; first time the password once,
   then "paired"; quit, start again: no password; ask Claude Code "what volumes does my
   Amiga have?": it answers from that Amiga; Ctrl-]: `Status` shows no session agent;
