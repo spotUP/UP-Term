@@ -66,9 +66,9 @@ Verification: quoted rig lines and commit hashes. Gate: none (docs plus rig runs
 - [x] FP1.3 P2 (done 2026-10-15: host test custom_headers_reach_the_request 24/24, revert-check FAILED without the fixture header line; rig: amigapi_rig step 15 13 of 13 with amiga-pi 7d46d16, run by the Opus agent on rig 2; the P2 crash was the 32 KB stack, not the header path): `SetEnv SAVE ANTHROPIC_CUSTOM_HEADERS` path: test through the top-level entry point against
   `tools/claude_fixture.py` extended to record request headers; criterion: header present, no 400, workspace id
   header absent unless set. Regression test name: `custom_headers_reach_the_request`.
-- [ ] FP1.4 a3 T13: Claude TUI on the rig against `tools/claude_fixture.py` (conversation, Ctrl+C). The "then with
+- [x] FP1.4 (fixture half done 2026-10-15, rig 2, main 19f977fb, no code change so no new commit: tools/rig/claude_rig.py 6 of 6 PASS incl. 'Esc drops the unfinished turn' and 'Ctrl+C twice: the Shell runs commands again'; the real-key half stays OWNER's, not ticked) a3 T13: Claude TUI on the rig against `tools/claude_fixture.py` (conversation, Ctrl+C). The "then with
   a real key" half is the owner's (real key): note it, do not tick the real-key half.
-- [ ] FP1.5 a2 3.8 and 4.8: conversation on the rig at 77x20 + Ctrl+C; tool checks on the rig (fixture).
+- [x] FP1.5 (done 2026-10-15, rig 2, main 19f977fb, no code change: claude_rig.py 6 of 6 PASS plus a 77x20 (640x180) run of the same fixture: 20 rows, widest line 77 cells, hello/edit/startup Read+Glob/Bash tool/Ctrl+C mid-answer 'Stopped. The unfinished answer is not kept.', Ctrl+C x2 back at the Shell; Version has no fixture stream, Bash List SYS: ALL stands for run_command; full-screen half and pixel look of Markdown not read) a2 3.8 and 4.8: conversation on the rig at 77x20 + Ctrl+C; tool checks on the rig (fixture).
 - [ ] FP1.6 highlight-markdown R1: the manual rig checks listed in its plan, by criterion.
 - [ ] FP1.7 D1: demo menu to tab to tour to tab closes (rig 3), text/pixel criterion.
 - [ ] FP1.8 5.2 telnet: `C:uptelnet` + vshrc `telnet()` rig run against `tools/uptelnetd.py` locally (rig half of A1.4).
