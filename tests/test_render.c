@@ -355,6 +355,42 @@ static void direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray(
     close_term();
 }
 
+/* W-T13 (and W-T11, the colours of rig 2's split-screen scene): a 24-bit Workbench whose colour map is used up
+ * (Directory Opus and the Workbench's icons hold every entry: ObtainPen finds no scratch pen, ObtainBestPen
+ * exact finds none) drew every window in the nearest of the 32 pens that are left (colour 240 and 48;2;88;88;88
+ * purple). An RTG screen shows a colour without a pen: the cells' colours are FillPixelArray's, exact; only the
+ * glyphs take the nearest pen, over a background filled first (not JAM2, which would put the nearest pen round
+ * every glyph). */
+static void direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up(void)
+{
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(2);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vr_redraw(&rn);
+    CHECK(rn.truecolor != 0); /* the RTG path ran: no scratch pen, FillPixelArray's colour */
+    CHECK(rn.cgx != 0);
+    CHECK(rn.scratch[0] < 0 && rn.scratch[1] < 0);
+    gf_clear_log();
+    pass("\x1b[48;2;200;100;50m   \x1b[48;5;240m  \x1b[48;2;88;88;88m ");
+    CHECK_INT(gf_count(GF_CGXFILL), 2); /* colour 240 is #585858: it and the direct 88;88;88 are one fill */
+    CHECK_INT(gf_count(GF_SETRGB), 0);
+    CHECK_INT(gf_pixel(0, 0), GF_CGX | 0xC86432);
+    CHECK_INT(gf_pixel(3 * CW - 1, CH - 1), GF_CGX | 0xC86432);
+    CHECK_INT(gf_pixel(3 * CW, 0), GF_CGX | 0x585858); /* colour 240 */
+    CHECK_INT(gf_pixel(5 * CW, 0), GF_CGX | 0x585858);
+    CHECK_INT(gf_pixel(6 * CW - 1, CH - 1), GF_CGX | 0x585858);
+    CHECK_INT(gf_pixel(7 * CW, 0) & GF_CGX, 0);
+    /* text: the cells' background is filled first, as the colour itself (JAM2 would paint the glyph cells in the
+     * nearest pen, pen 7 in the fake), then the glyphs are drawn over it */
+    gf_clear_log();
+    pass("\x1b[2;1H\x1b[38;2;255;175;255;48;2;70;80;90mAB\x1b[m");
+    CHECK_INT(gf_count(GF_CGXFILL), 1);
+    CHECK(gf_count(GF_TEXT) >= 1);
+    CHECK_INT(gf_count(GF_SETRGB), 0);
+    close_term();
+}
+
 /* W-T3: a frame of UPDemo's effects (half blocks in 256 colours, every row) */
 static const char *effect_frame(int phase)
 {
@@ -1345,6 +1381,7 @@ int main(void)
     the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
+    direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up();
     neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels();
     the_same_joining_on_a_true_colour_screen();
     slow_and_rapid_blink_keep_their_rates_whatever_the_frame_interval();

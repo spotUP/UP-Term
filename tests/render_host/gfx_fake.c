@@ -568,11 +568,21 @@ VOID WriteChunkyPixels(struct RastPort *rp, ULONG a, ULONG b, ULONG c, ULONG d, 
 ULONG ObtainPen(struct ColorMap *cm, ULONG n, ULONG r, ULONG g, ULONG b, LONG f)
 {
     (void)cm; (void)r; (void)g; (void)b; (void)f;
+    if (truecolor == 2 && n == (ULONG)-1)
+        return (ULONG)-1; /* a used-up colour map: no pen of one's own */
     return n == (ULONG)-1 ? 9 : n;
 }
 LONG ObtainBestPenA(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, CONST struct TagItem *t)
 {
     (void)cm;
+    if (truecolor == 2) {
+        /* a used-up map still has entries: exact finds none, not exact the nearest (pen 7) */
+        for (; t && t->ti_Tag != TAG_DONE; t++)
+            if (t->ti_Tag == OBP_FailIfBad && t->ti_Data)
+                return -1;
+        gf_pens_held++;
+        return 7;
+    }
     if (truecolor)
         return -1; /* every pen taken */
     if (npal) {

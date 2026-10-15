@@ -105,6 +105,32 @@ static ULONG ink_solid(ULONG ink)
     return DITH_LEV(ink) < PM_LEVELS / 2 ? DITH_A(ink) : DITH_B(ink);
 }
 
+/* A direct colour on a true-colour screen whose colour map is used up (no scratch pen to load, no pen to
+ * obtain exact), where a pen is wanted all the same -- a glyph, a shade pattern: the pen the screen finds
+ * nearest, held until vr_free (the exact_key table, key 0x02RRGGBB). The areas of the colour are not
+ * drawn with it: fill() gives them the colour itself through FillPixelArray. */
+static UBYTE nearest_pen(vr_render *r, ULONG rgb)
+{
+    ULONG key = rgb | 0x02000000UL;
+    int h = (int)(((rgb * 2654435761UL) >> 24) & (VR_EXACT_SLOTS - 1)), i;
+    LONG p;
+    for (i = 0; i < VR_EXACT_SLOTS; i++, h = (h + 1) & (VR_EXACT_SLOTS - 1)) {
+        if (r->exact_key[h] == key)
+            return r->exact_pen[h];
+        if (!r->exact_key[h])
+            break;
+    }
+    if (i == VR_EXACT_SLOTS || !r->cm)
+        return r->pen_default_fg;
+    p = ObtainBestPenA(r->cm, ((rgb >> 16) & 0xFF) * 0x01010101UL, ((rgb >> 8) & 0xFF) * 0x01010101UL,
+                       (rgb & 0xFF) * 0x01010101UL, 0);
+    if (p < 0)
+        return r->pen_default_fg;
+    r->exact_key[h] = key;
+    r->exact_pen[h] = (UBYTE)p;
+    return (UBYTE)p;
+}
+
 /* The pen that draws ink as pen A (slot 0) or pen B (slot 1). On a screen
  * of more than 8 bits a pen is only the colour of the next drawing, not a
  * palette entry: pixels drawn earlier keep their colour when it changes
@@ -125,6 +151,8 @@ static UBYTE ink_pen(vr_render *r, ULONG ink, int slot)
         r->seen |= (UBYTE)ink;
         return (UBYTE)ink;
     }
+    if (r->scratch[slot] < 0)
+        return nearest_pen(r, ink & 0xFFFFFFUL); /* no pen to load: the nearest the screen has */
     if (r->scratch_ink[slot] != ink) {
         rgb = ink & 0xFFFFFFUL;
         SetRGB32(&r->win->WScreen->ViewPort, (ULONG)r->scratch[slot],
@@ -403,6 +431,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
      * palette screen (AGA, 8-bit RTG) would recolour everything drawn in a
      * pen it redefines, so there they get the nearest pen instead. */
     r->truecolor = 0;
+    r->cgx = 0;
     r->scratch[0] = r->scratch[1] = -1;
     r->scratch_ink[0] = r->scratch_ink[1] = 0;
     r->n_exact = 0;
@@ -418,7 +447,18 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
         GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) > 8) {
         r->scratch[0] = ObtainPen(r->cm, (ULONG)-1, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
         r->scratch[1] = ObtainPen(r->cm, (ULONG)-1, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
-        r->truecolor = r->scratch[0] >= 0 && r->scratch[1] >= 0;
+        if (r->scratch[0] < 0 || r->scratch[1] < 0) {
+            /* a colour map used up (a 24-bit Workbench has 256 entries or 32 and Directory Opus, the
+             * Workbench's own icons and every other window hold them): no pen to load, but an RTG
+             * screen shows a direct colour without any -- fills through FillPixelArray (W-T13) */
+            if (r->scratch[0] >= 0)
+                ReleasePen(r->cm, (ULONG)r->scratch[0]);
+            if (r->scratch[1] >= 0)
+                ReleasePen(r->cm, (ULONG)r->scratch[1]);
+            r->scratch[0] = r->scratch[1] = -1;
+        }
+        r->cgx = (struct Library *)OpenLibrary((STRPTR)"cybergraphics.library", 41);
+        r->truecolor = r->scratch[0] >= 0 || r->cgx != 0;
     }
     r->cursor_drawn = 0;
     r->cursor_colorful = 0;
@@ -447,7 +487,11 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->sync_seen = vt_sync_frames(t); /* frames before this window are not its to compose */
     /* true colour: images straight from their indices (P96 and CGX both
      * offer cybergraphics.library); else the pens path below */
-    r->cgx = r->truecolor ? OpenLibrary((STRPTR)"cybergraphics.library", 41) : 0;
+    if (!r->truecolor) {
+        if (r->cgx)
+            CloseLibrary(r->cgx);
+        r->cgx = 0;
+    }
     /* colour emoji (U4) through the same call; ce_has asks for RTG of 15
      * bits or more and the call, so AGA and 8-bit RTG keep Unifont's glyph */
     r->emoji.tg.rtg = !r->planar;
@@ -1301,6 +1345,14 @@ static int draw_script(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const 
     return 1;
 }
 
+/* A run whose background is filled first and its glyphs then drawn over it in JAM1: a dither (W-T7), or a
+ * direct colour on a true-colour screen with no scratch pen (JAM2 would paint the glyph cells in the
+ * nearest pen, not the colour the fill gives the cells around them). */
+static int bg_apart(const vr_render *r, const vr_style *st)
+{
+    return IS_DITH(st->bgf) || ((st->bgf & VR_INK_RGB) && r->scratch[1] < 0);
+}
+
 static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
 {
     int i;
@@ -1320,7 +1372,7 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
             return;
         }
     }
-    if (IS_DITH(st->bgf)) {
+    if (bg_apart(r, st)) {
         /* text on a dithered background (W-T7): the background's pattern,
          * then the glyphs over it in JAM1 -- through graphics.library, so a
          * composed planar pass is drawn in place */
@@ -1337,7 +1389,7 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
     if (!(st->attr & (VT_ATTR_SUPER | VT_ATTR_SUB)) || !draw_script(r, run, n, px, py, st, font)) {
         if (font != r->font)
             SetFont(r->rp, font);
-        if (IS_DITH(st->bgf)) {
+        if (bg_apart(r, st)) {
             ink_a(r, st->fg);
             SetDrMd(r->rp, JAM1);
         } else {
