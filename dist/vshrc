@@ -44,6 +44,61 @@ telnet() {
     uptelnet "$@" TERM "$(remote_term)"
 }
 
+# wget: not ported; a function over curl (UP-Term:net). It fetches each URL
+# to a file of the URL's last name (curl -O) and follows redirects, fails on
+# an HTTP error status (curl -f). -O FILE names the file (-O - writes to the
+# standard output), -c continues a partial file, -q is quiet. Other wget
+# options are refused, not guessed.
+wget() {
+    _wg_out= _wg_cont= _wg_quiet=
+    while [ $# -gt 0 ]; do
+        case $1 in
+        -O) _wg_out=$2; shift 2 ;;
+        -O?*) _wg_out=${1#-O}; shift ;;
+        -c|--continue) _wg_cont=1; shift ;;
+        -q|--quiet) _wg_quiet=1; shift ;;
+        --) shift; break ;;
+        -?*) echo "wget: option $1 is not supported (curl does the work)" >&2; return 2 ;;
+        *) break ;;
+        esac
+    done
+    if [ $# -eq 0 ]; then
+        echo "usage: wget [-c] [-q] [-O file] URL..." >&2
+        return 2
+    fi
+    _wg_rc=0
+    for _wg_url in "$@"; do
+        if [ "$_wg_out" = - ]; then
+            curl -fsSL "$_wg_url" || _wg_rc=$?
+        elif [ -n "$_wg_out" ]; then
+            curl -fL ${_wg_quiet:+-s} ${_wg_cont:+-C -} -o "$_wg_out" "$_wg_url" || _wg_rc=$?
+        else
+            curl -fLO ${_wg_quiet:+-s} ${_wg_cont:+-C -} "$_wg_url" || _wg_rc=$?
+        fi
+    done
+    return $_wg_rc
+}
+
+# tldr: the community pages of tldr-pages (https://tldr.sh), fetched with curl
+# and drawn by mdv. "tldr tar", "tldr git commit". Looked up in the platform
+# drawers named by TLDR_PLATFORMS (default: common, linux, osx); TLDR_URL
+# names another mirror of the pages drawer.
+tldr() {
+    if [ $# -eq 0 ]; then
+        echo "usage: tldr command [subcommand]" >&2
+        return 2
+    fi
+    _tl_name=$(echo "$*" | tr ' ' '-')
+    for _tl_dir in ${TLDR_PLATFORMS:-common linux osx}; do
+        if _tl_page=$(curl -fsL "${TLDR_URL:-https://raw.githubusercontent.com/tldr-pages/tldr/main/pages}/$_tl_dir/$_tl_name.md"); then
+            echo "$_tl_page" | mdv
+            return 0
+        fi
+    done
+    echo "tldr: no page for $*" >&2
+    return 1
+}
+
 # The Unix commands are GNU coreutils 5.2.1 and the Unix tool ports
 # (grep, sed, awk, less, nano, find, diff, man, tar...) in UP-Term:bin (see
 # Install): ls, cp, mv, rm, mkdir, cat, sort, head, tail, wc and the rest,
