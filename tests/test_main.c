@@ -47,6 +47,7 @@ void suite_sbar(void);
 void suite_unifont(void);
 void suite_emoji(void);
 void suite_telnet(void);
+void suite_upagent(void);
 void suite_complete(void);
 void suite_winmem(void);
 void suite_sbpack(void);
@@ -108,6 +109,7 @@ static const h_suite suites[] = {
     { "unifont", suite_unifont },
     { "emoji", suite_emoji },
     { "telnet", suite_telnet },
+    { "upagent", suite_upagent },
     { "complete", suite_complete },
     { "winmem", suite_winmem },
     { "sbpack", suite_sbpack },

@@ -31,7 +31,7 @@ TERMURL := config/termurl.c
 PREFS_CORE := prefs/prefs_core.c prefs/prefs_ui.c
 ICONSPEC := install/iconspec.c install/updiff.c
 ZMODEM  := zm/zmodem.c
-TELNET  := net/tn.c
+TELNET  := net/tn.c net/upagent.c
 # hl and mdv (view/): the lexer, themes, the Markdown renderer
 include sources.mk
 VIEW_HL   := $(VIEW_LEX) view/hl_view.c view/md.c # md.c: hl -p shows Markdown as mdv does
@@ -44,7 +44,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
-           tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
+           tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_upassign.c
 
 .PHONY: wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
@@ -785,10 +785,10 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h $(BUILD)/amiga/o
 # Roadshow SDK's network headers ("Freely Distributable"): vendor/ (gitignored)
 # when unpacked there, else DCTelnet's copy, or VTCON_NETINC=<netinclude>.
 VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(DCTELNET_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
-$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h net/upagent.c net/upagent.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 	@test -d $(VTCON_NETINC) || { echo "[ERROR] C:uptelnet needs the Roadshow netinclude headers, not found at $(VTCON_NETINC): unpack them to vendor/roadshow-netinclude, or pass VTCON_NETINC=<dir> (DCTelnet's copy: dctelnet-v2, optional in upterm's repos.lock)"; exit 1; }
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+	$(VC) -Dmain=up_main -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c net/upagent.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
 $(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
