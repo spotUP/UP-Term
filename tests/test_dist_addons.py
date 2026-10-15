@@ -431,7 +431,7 @@ class ClaudeInstall(unittest.TestCase):
         self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid$')
         self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid\.LICENSE$')
         lic = (ROOT / 'dist/addons/claude/LICENSES.txt').read_text()
-        self.assertIn('wasabid 0.9', lic)
+        self.assertIn('wasabid 0.10b4', lic)
         self.assertIn('MIT (Files/wasabid.LICENSE)', lic)
         mk = (ROOT / 'Makefile').read_text()
         blk = kit_block(mk, 'claude')

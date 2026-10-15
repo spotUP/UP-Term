@@ -1,8 +1,8 @@
 wasabi -- drive an Amiga from a Linux / macOS / BSD machine over the network
 (Tobias Karlsson, MIT licence: LICENSE). Source: https://github.com/creep-ltx/wasabi
 
-  wasabid        the daemon, for the Amiga: wasabid 0.9 (15.10.2026), commit
-                 f378c510776734edff553b62e417ebd41990869e, built by UP-Term from that
+  wasabid        the daemon, for the Amiga: wasabid 0.10b4 (15.10.2026), commit
+                 c698b99c4864a52f74ac597bdfc6e96f9d705fdb, built by UP-Term from that
                  source (make wasabi, Bebbo's m68k-amigaos-gcc, the 68000 build; the
                  pin is tools/nas/wasabi.rev). Install puts it in C: when asked,
                  with a key of its own, started at every boot. It replaces the
@@ -13,6 +13,8 @@ wasabi -- drive an Amiga from a Linux / macOS / BSD machine over the network
                  showed (ENVARC:wasabi.key).
   wasabi_mcp.py  the MCP server for Claude Code and other MCP clients, beside the
                  client (it runs it): claude mcp add wasabi -- python3 wasabi_mcp.py
+  wasabi_client.py  the Python API (API 1.0) for your own scripts and test rigs, beside the
+                 client: import wasabi_client; with wasabi_client.connect() as amiga: ...
 
 wasabid runs any command the client sends, as you. It answers only clients
 with the key, and only from private addresses (10/8, 172.16/12, 192.168/16

@@ -910,8 +910,8 @@ def load_wasabi(path=None, env=None):
     if not path or not os.path.isfile(path):
         raise ConfigError("--agent-relay needs wasabi's client script (--wasabi-client PATH, $WASABI_CLIENT, "
                           "or /opt/wasabi/wasabi)")
-    loader = importlib.machinery.SourceFileLoader("wasabi_client", path)
-    spec = importlib.util.spec_from_loader("wasabi_client", loader)
+    loader = importlib.machinery.SourceFileLoader("_wasabi_cli", path)
+    spec = importlib.util.spec_from_loader("_wasabi_cli", loader)
     mod = importlib.util.module_from_spec(spec)
     loader.exec_module(mod)
     return mod

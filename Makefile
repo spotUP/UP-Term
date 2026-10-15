@@ -277,7 +277,7 @@ golden: $(BUILD)/vtdump
 	.venv/bin/python tools/refdiff.py --write-golden $(ONLY)
 
 # wasabi (MIT, https://github.com/creep-ltx/wasabi) pinned, for `rig.py wasabi`: wasabid (Amiga daemon, Bebbo gcc)
-# and its stdlib Python client in build/wasabi. Pinned at f378c51 (0.9, 2026-10-15: builds without the CyberGraphX developer headers). wasabid's TLS (optional at run
+# and its stdlib Python client in build/wasabi. Pinned at c698b99 (0.10b4, 2026-10-15: builds without the CyberGraphX developer headers). wasabid's TLS (optional at run
 # time since 0.8: an emulator on loopback and an Amiga without AmiSSL or keys run plain) is compiled against the
 # AmiSSL 5.27 SDK: AMISSL_SDK (the one `make amiga` uses, vendor/amissl-5.27/AmiSSL/Developer). The CyberGraphX
 # headers are upstream's own since 0.9 (include/wasabi_cgx.h); no shim. The upstream Makefile's own flags (-fbbb=-: Bebbo's
@@ -1023,7 +1023,7 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (make wasabi, the pin tools/nas/wasabi.rev)
 	@test -f $(BUILD)/wasabi/wasabid -a -f $(BUILD)/wasabi/wasabi -a -f $(BUILD)/wasabi/wasabi_mcp.py || { echo "dist: no $(BUILD)/wasabi/{wasabid,wasabi,wasabi_mcp.py}: make wasabi first"; exit 1; }
 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
-	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
+	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
 	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
 	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)
