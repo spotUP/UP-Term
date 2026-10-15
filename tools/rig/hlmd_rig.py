@@ -8,7 +8,7 @@
   4 mdv       `mdv RAM:README.md` (a short fixture, so the window shows all of it) in a vsh window: a heading, link addresses, the table lines all one length and
               after dragging the size gadget the table is re-fitted (wider window,
               wider table)
-  5 pager     `hlp` / `mdp` need a less on the path (not in the kit): reported as SKIP when there is none
+  5 pager     `hlp` / `mdp` page through the kit's less (VTC:userland/bin/less, staged by userland_rig.py --only less): colours inside less, q returns
   6 romcon    a ROM CON: window (NewShell CON:): `hl -p x.c` shows 4 or more colours; `mdv` output drawn with
               + - | only (no byte above 0x7F in the table lines, TERM unset)
 
@@ -145,13 +145,29 @@ def case_mdv():
 
 
 def case_pager():
-    rc, out = c.run('Which less')
-    if rc != 0 and c.run('Exists GG:bin/less')[0] != 0:
-        global skipped
-        skipped += 1
-        print('SKIP 5 pager: no less on the rig path (the plan: less is not in the kit)')
-        return
-    check(False, '5 pager: a less exists, drive hlp and mdp by hand', out)
+    """5: hlp and mdp (vshrc functions) page through the kit's less: colours inside less, q returns to the prompt.
+    The less is the ports' (userland_rig.py --only less stages it in VTC:userland/bin)."""
+    pager = 'VTC:userland/bin/less'
+    if c.run('List >NIL: ' + pager)[0] != 0:
+        return check(False, '5 pager: %s exists (python3 tools/rig/userland_rig.py --only less stages it)' % pager)
+    t = 'hlmd-pager'
+    vsh_window(t, '0/20/780/500')
+    ami.put(str(ROOT / 'dist/vshrc'), 'RAM:vshrc')
+    line('. RAM:vshrc', 3)
+    line('export PATH="VTC:$PATH"', 2)
+    line('export PAGER="%s -R"' % pager, 2)
+    for fn, arg, want in (('hlp', 'RAM:x.c', 4), ('mdp', 'RAM:README.md', 2)):
+        line('%s %s' % (fn, arg), 8)
+        text = typewin.screen_text()
+        col = colours(t, want)
+        check(len(col) >= want, '5 pager: %s shows %d or more colours inside less' % (fn, want), ' '.join(col))
+        # screen_text copies the window, which pages less to its end: its last line is the proof less ran
+        check(re.search(r'\(END\)', text) is not None, '5 pager: %s output is in less (its (END) line)' % fn, text[-200:])
+        typewin.typ('q')
+        time.sleep(3)
+        line('echo pager-done-%s' % fn, 2)
+        check('pager-done-' + fn in typewin.screen_text(), '5 pager: q leaves less, the prompt is back (%s)' % fn)
+    close_vsh(t)
 
 
 def case_romcon():
