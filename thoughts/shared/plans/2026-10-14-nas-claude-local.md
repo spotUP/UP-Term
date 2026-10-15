@@ -304,7 +304,7 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
   the login's nonces. Files: `net/tn.c`, `tools/uptelnetd.py`, both test files. Test: host
   `ONLY=telnet` and `ONLY=uptelnetd` assert the same hex for the same K, sn, cn. S.
   Evidence: NL13 commit on feature/nas-relay; vector K=00..1f, sn/cn as the key-login vector -> d83a7b587a7c53f235d33e5804971f7ee49132f59cac9cc9fefcc717528da353; ONLY=telnet 91 checks, ONLY=uptelnetd 58 tests; label mutated -> both fail
-- [ ] **NL14** uptelnet starts the session wasabid after a key login: `AGENT/K` (default
+- [x] **NL14** uptelnet starts the session wasabid after a key login: `AGENT/K` (default
   `UP-Term:bin/wasabid`, then `C:wasabid`), `AGENTPORT/N` (1240), `NOAGENT/S`; a shell of
   its own (SystemTags, asynchronous) runs `Set wasabi.key <T>` (local) then
   `<AGENT> <port> name session`; announces the port to the NAS (AGENT message, 0 when
@@ -314,6 +314,7 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
   `Status` lists the session wasabid; `ami.py` with WASABI_PORT=1240 WASABI_KEY=<T from
   the test's key> pings it; the boot wasabid on 1234 still answers with the rig key; after
   Ctrl-] the session one is gone. M.
+  Evidence: rig 2 2026-10-15, uptelnetd on 127.0.0.1:2399 (clients file with a paired key), key login from the rig, `Status` lists `VTC:wasabid-sess` beside the boot `BOOTX:wasabid`; Mac `AMI_PORT=1240 AMI_TOKEN=<T from the server's session_key>` ping `wasabid 0.9b2`, exec ran `Echo`; rig key on 1240 and T on 1235 both `auth failed: bad key`; boot ping on 1235 answered; after Ctrl-] the session wasabid is gone from Status, 1240 refuses, boot still answers, script in T: deleted. The shell is found by its CLI command (a SystemTags process has no name of ours), the boot wasabid is never signalled. Host: `ONLY=upagent` (script is a local `Set wasabi.key`, `plain`; pick order). AGENT message is tn_announce_agent (relay agent). Not run: stop after a Break or a dropped line (same stop_agent path).
 - [x] **NL15** The relay in uptelnetd: `--agent-relay 127.0.0.1:1234` and
   `--relay-key-file`; wasabi's framing (PROTOCOL.md 0.9b2): a client must authenticate with
   the relay key (constant time) else close; no live key session with an agent -> wasabi's
@@ -339,7 +340,7 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
   Amiga you are typing from; "no Amiga is connected" means no session daemon. Also the copy
   in vtcon-demo-perf. Test: none (text). S.
   Evidence: feature/nas-relay SKILL.md section 'Which Amiga the tools reach'; copy on branch feature/demo-perf-nas-skill in vtcon-demo-perf. Text only.
-- [ ] **NL18** Claude.lha carries wasabid (D5 a, MIT): `dist/addons/claude/parts.txt`,
+- [x] **NL18** Claude.lha carries wasabid (D5 a, MIT): `dist/addons/claude/parts.txt`,
   install.dos (C:wasabid, only when no wasabid of the base kit is there), LICENSES.txt,
   Uninstall removes C:wasabid with the last of Claude (ours only); base Installer help text
   mentions the session daemon. Test: dist tests, `make dist-check`; rig `install_rig.py
@@ -347,6 +348,7 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
 
 ### Phase D: one-key start (D6)
 
+  Evidence: Claude.lha has Files/wasabid + wasabid.LICENSE, installed only when no C:wasabid is there (marker ENVARC:uppkg/Claude/wasabid in the record drawer, the settings drawer stays remote-only), Uninstall removes ours unless the base kit's boot block starts it; `tests/test_dist_addons.py` 3 new tests fail on main and pass; `make dist-claude` builds build/Claude.lha with both files; dist-check: installer, addons, launch, userdata, rig_fixtures pass, kitsize add-on cases pass (base/pi kits symlinked from main's build). Not run: the install_rig Claude cases on a rig.
 - [ ] **NL19** UP-Term menu "Claude" (Right Amiga L) and `/claude`: a new tab running
   C:Claude, by generalising `tab_demo_script` into one tab-script helper used by both;
   a requester when C:Claude is missing. Files: `handler/vtcon_handler.c`,

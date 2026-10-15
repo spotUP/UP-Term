@@ -85,7 +85,9 @@ typedef struct sess {
     const char *agent;             /* AGENT: the wasabid to run, else the defaults */
     LONG agentport;                /* AGENTPORT */
     int agent_up;                  /* the daemon's shell was started (and is to be stopped) */
-    char agent_name[40];           /* its process name, and the script's name in T: */
+    char agent_name[40];           /* the script's name in T: */
+    char agent_path[200];          /* the wasabid it runs */
+    struct Process *agent_proc;    /* the shell that runs it */
     tn t;
 } sess;
 
@@ -151,17 +153,54 @@ static int exists(const char *path)
     return l != 0;
 }
 
-/* Signal the daemon's shell (wasabid runs in it, so a Break reaches wasabid, which leaves by its
- * own way: Uninstall does the same); 1 when the process exists */
+/* The CLI processes running `path` as their command (what Status lists): at most max of them in out.
+ * The shell that runs the daemon is found this way, not by name: a process made by SystemTags has
+ * no name of ours, and Status itself finds it by its command. */
+static int same_name(const UBYTE *b, const char *path)
+{
+    int i, n = b[0];
+    for (i = 0; i < n; i++) {
+        char x = (char)b[1 + i], y = path[i];
+        if (!y || (x >= 'A' && x <= 'Z' ? x + 32 : x) != (y >= 'A' && y <= 'Z' ? y + 32 : y))
+            return 0;
+    }
+    return path[n] == 0;
+}
+
+static int cli_with(const char *path, struct Process **out, int max)
+{
+    int n = 0;
+    ULONG c, top = MaxCli();
+    Forbid();
+    for (c = 1; c <= top && n < max; c++) {
+        struct Process *p = FindCliProc(c);
+        struct CommandLineInterface *cli = p ? (struct CommandLineInterface *)BADDR(p->pr_CLI) : 0;
+        UBYTE *b = cli && cli->cli_CommandName ? (UBYTE *)BADDR(cli->cli_CommandName) : 0;
+        if (b && same_name(b, path))
+            out[n++] = p;
+    }
+    Permit();
+    return n;
+}
+
+#define CLI_MAX 16
+
+/* 1 when the daemon's process is still one of the CLIs running the daemon; with sigs, signal it then (no
+ * other process of that command is touched: the boot wasabid may be the same file) */
 static int agent_signal(sess *s, ULONG sigs)
 {
-    struct Task *t;
-    int alive;
+    struct Process *l[CLI_MAX];
+    int i, n, alive = 0;
+    if (!s->agent_proc)
+        return 0;
     Forbid();
-    t = FindTask((STRPTR)s->agent_name);
-    alive = t != 0;
-    if (t && sigs)
-        Signal(t, sigs);
+    n = cli_with(s->agent_path, l, CLI_MAX);
+    for (i = 0; i < n; i++)
+        if (l[i] == s->agent_proc) {
+            alive = 1;
+            if (sigs)
+                Signal(&l[i]->pr_Task, sigs);
+        }
     Permit();
     return alive;
 }
@@ -182,12 +221,14 @@ static void send_agent(sess *s, LONG port)
  * runs the daemon; the NAS is told the port, or 0 when there is no daemon or it left at once */
 static void start_agent(sess *s)
 {
-    char path[200], hex[65], script[360], file[48];
+    char *path = s->agent_path, hex[65], script[360], file[48];
+    struct Process *before[CLI_MAX], *after[CLI_MAX];
+    int nb, na, k, m;
     BPTR f, in, out;
     int n, i;
     LONG port = 0;
     s->want_agent = 0;
-    agent_path(s, path, sizeof(path));
+    agent_path(s, path, sizeof(s->agent_path));
     if (!exists(path)) {
         Printf("uptelnet: no session daemon (%s is not there): Claude Code on the NAS cannot drive this Amiga.\r\n",
                (LONG)path);
@@ -206,15 +247,26 @@ static void start_agent(sess *s)
         Close(f);
         in = Open((STRPTR)"NIL:", MODE_OLDFILE);
         out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+        nb = cli_with(path, before, CLI_MAX);
         strcpy(script, "Execute ");
         strcat(script, file);
         if (in && out &&
-            SystemTags((STRPTR)script, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE, NP_Name, (ULONG)s->agent_name,
-                       TAG_END) != -1) {
+            SystemTags((STRPTR)script, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE, TAG_END) != -1) {
             s->agent_up = 1;
             /* gone within a second or so: it did not start (no room, the port taken, a bad file) */
-            for (i = 0; i < 4; i++)
+            for (i = 0; i < 4; i++) {
                 Delay(15);
+                if (!s->agent_proc) {
+                    /* the CLI that was not there before */
+                    na = cli_with(path, after, CLI_MAX);
+                    for (k = 0; k < na; k++) {
+                        for (m = 0; m < nb && before[m] != after[k]; m++)
+                            ;
+                        if (m == nb)
+                            s->agent_proc = after[k];
+                    }
+                }
+            }
             if (agent_signal(s, 0))
                 port = s->agentport;
         } else {
@@ -239,6 +291,8 @@ static void stop_agent(sess *s)
     if (!s->agent_up)
         return;
     s->agent_up = 0;
+    if (!s->agent_proc)
+        PutStr((STRPTR)"uptelnet: the session daemon's shell was not found: use Status and Break to end it.\r\n");
     agent_signal(s, SIGBREAKF_CTRL_C);
     for (i = 0; i < 25 && agent_signal(s, 0); i++)
         Delay(10);
