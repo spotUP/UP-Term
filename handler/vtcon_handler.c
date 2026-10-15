@@ -1301,6 +1301,7 @@ static const struct NewMenu menu_def[] = {
     { NM_ITEM, (STRPTR)"Next tab", (STRPTR)".", 0, 0, (APTR)MENU_TAB_NEXT },
     { NM_ITEM, (STRPTR)"Previous tab", (STRPTR)",", 0, 0, (APTR)MENU_TAB_PREV },
     { NM_ITEM, (STRPTR)"Close tab", 0, 0, 0, (APTR)MENU_TAB_CLOSE },
+    { NM_ITEM, (STRPTR)"Claude", (STRPTR)"L", 0, 0, (APTR)MENU_CLAUDE },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
     { NM_ITEM, (STRPTR)"About UP-Term...", 0, 0, 0, (APTR)MENU_ABOUT },
@@ -2156,7 +2157,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_FIND: find_open(c); return 1;
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
-    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO:
+    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -5373,31 +5374,51 @@ struct tab_spawn_msg {
     struct Message msg;
     char cmd[200];
     char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
-    int demo;                    /* Help > Demo tour: UPDemo in the tab, not a shell */
+    int prog;                    /* TAB_SHELL, or the program the tab runs (tab_progs) */
 };
 
-/* Help > Demo tour: the tab runs UPDemo and closes when it ends.
- * 1 when the tab is on its way; 0 when C:UPDemo is not there (said in a
- * requester, as Preferences... says it of the editor). */
-static int tab_demo_script(struct tab_spawn_msg *m)
+/* A tab that runs one program instead of a shell: Help > Demo tour (UPDemo)
+ * and UP-Term > Claude (C:Claude). The tab closes when the program ends.
+ * `file` is looked up first: a program that is not there is said in a
+ * requester, as Preferences... says it of the editor. */
+enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE };
+struct tab_prog {
+    const char *file;    /* C:... the program */
+    const char *script;  /* T:... the FROM script that runs it */
+    const char *pre;     /* a script line before it ("" none): Claude refuses a stack under 16000 */
+    const char *missing; /* the requester's text when file is not there */
+};
+static const struct tab_prog tab_progs[] = {
+    { 0, 0, "", 0 },
+    { "C:UPDemo", "T:UP-Term-demo", "",
+      "The demo is not installed:\nC:UPDemo was not found.\n\nInstall UP-Term from its archive to get it." },
+    { "C:Claude", "T:UP-Term-claude", "Stack 32768\n",
+      "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it." }
+};
+
+/* 1 when the tab is on its way; 0 when the program is not there */
+static int tab_prog_script(struct tab_spawn_msg *m)
 {
-    static struct EasyStruct missing = {
-        sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term",
-        (UBYTE *)"The demo is not installed:\nC:UPDemo was not found.\n\n"
-                 "Install UP-Term from its archive to get it.",
-        (UBYTE *)"OK"
+    const struct tab_prog *p = &tab_progs[m->prog];
+    struct EasyStruct missing = {
+        sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term", 0, (UBYTE *)"OK"
     };
     BPTR f, lock;
-    if (!(lock = Lock((STRPTR)"C:UPDemo", SHARED_LOCK))) {
+    missing.es_TextFormat = (UBYTE *)p->missing;
+    if (!(lock = Lock((STRPTR)p->file, SHARED_LOCK))) {
         EasyRequestArgs(0, &missing, 0, 0);
         return 0;
     }
     UnLock(lock);
-    if (!(f = Open((STRPTR)"T:UP-Term-demo", MODE_NEWFILE)))
+    if (!(f = Open((STRPTR)p->script, MODE_NEWFILE)))
         return 0;
-    FPuts(f, (STRPTR)"FailAt 2147483647\nC:UPDemo\nEndCLI >NIL:\n");
+    FPuts(f, (STRPTR)"FailAt 2147483647\n");
+    FPuts(f, (STRPTR)p->pre);
+    FPuts(f, (STRPTR)p->file);
+    FPuts(f, (STRPTR)"\nEndCLI >NIL:\n");
     Close(f);
-    strcat(m->cmd, " FROM T:UP-Term-demo");
+    strcat(m->cmd, " FROM ");
+    strcat(m->cmd, p->script);
     return 1;
 }
 
@@ -5408,8 +5429,8 @@ static void tab_spawner(void)
     char host[64], dir[256];
     const char *vsh;
     int cd;
-    if (m->demo) {
-        if (tab_demo_script(m))
+    if (m->prog) {
+        if (tab_prog_script(m))
             run_async(m->cmd);
         Forbid();
         FreeVec(m);
@@ -5474,8 +5495,8 @@ static void h_open_link(void *u, const char *uri)
     start_worker(link_opener, "UP-Term link", &m->msg);
 }
 
-/* 1 when the new tab is on its way; demo: the tab plays the demo */
-static int tab_spawn(con *c, const char *profile, con *from, int demo)
+/* 1 when the new tab is on its way; prog: TAB_SHELL or the program it runs */
+static int tab_spawn(con *c, const char *profile, con *from, int prog)
 {
     struct tab_spawn_msg *m;
     if (c->ntabs >= TAB_MAX || !c->own_win || c->foreign)
@@ -5499,13 +5520,13 @@ static int tab_spawn(con *c, const char *profile, con *from, int demo)
     m = (struct tab_spawn_msg *)AllocVec(sizeof(*m), MEMF_PUBLIC | MEMF_CLEAR);
     if (!m)
         return 0;
-    m->demo = demo;
+    m->prog = prog;
     copy_str(m->cmd, "NewShell \"XCON:0/0/320/100/UP-Term/TAB ", sizeof(m->cmd));
     strcat(m->cmd, c->tab_name);
     strcat(m->cmd, "/PROFILE ");
     strcat(m->cmd, profile);
     strcat(m->cmd, "\"");
-    if (from && from->w.t && !demo)
+    if (from && from->w.t && !prog)
         copy_str(m->cwd, vt_cwd(from->w.t), sizeof(m->cwd));
     start_worker(tab_spawner, "UP-Term new tab", &m->msg);
     return 1;
@@ -5516,13 +5537,17 @@ static void host_command(con *c, int what, con *from)
 {
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile, from, 0);
+        tab_spawn(c, from->profile, from, TAB_SHELL);
         break;
     case MENU_DEMO:
         /* the tour in a tab of its own: what it does to its screen (the
          * main screen, a resize) leaves the user's session alone */
-        if (!tab_spawn(c, from->profile, from, 1))
+        if (!tab_spawn(c, from->profile, from, TAB_DEMO))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
+        break;
+    case MENU_CLAUDE:
+        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_TAB_NEXT:
         if (c->ntabs >= 2)
