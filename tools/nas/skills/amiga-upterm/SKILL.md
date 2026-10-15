@@ -14,6 +14,28 @@ Amiga, through UP-Term (a terminal) and uptelnet. The `amiga` MCP tools
 `amiga_ui_menu`, `amiga_mouse`, `amiga_key_type` / `amiga_key_press`,
 `amiga_health` and `amiga_info`.
 
+## Which Amiga the tools reach
+
+The `amiga` tools act on the Amiga you are typing from, not on a fixed machine. When that
+Amiga logged in to this NAS with its key (uptelnet started from C:Claude), it also started
+a session wasabid of its own and told the NAS its port; uptelnetd on the NAS passes your
+tool calls to that daemon while the session lasts. The calls go to the most recent such
+session. When the session ends (Ctrl-], the line drops), so does the daemon.
+
+- "no Amiga is connected to Claude Code" means no session daemon exists: this session was a
+  password login (no key, so no daemon), the daemon was switched off (`NOAGENT`), the Amiga
+  has no wasabid installed (C:wasabid), or it exited. Say so to the user and ask them to
+  pair the Amiga (log in once with the password, then start Claude again) or check Claude.lha
+  installed wasabid. Do not try to guess an address or key and do not edit
+  `~/.config/wasabi/config`: that file holds the NAS-side key for the relay, and an
+  `amiga-target` setting points the tools at a different Amiga directly.
+- Without a session the tools never reach any other Amiga by themselves.
+- Reading is free: `amiga_info`, `amiga_ls`, `amiga_read_file`, `amiga_screenshot`,
+  `amiga_windows`, `amiga_ui_list`, `amiga_arexx_ports`, `amiga_ps`, `amiga_health`.
+  Everything that changes something asks the user first: `amiga_run`, `amiga_write_file`,
+  `amiga_key_type`, `amiga_key_press`, `amiga_ui_click`, `amiga_ui_set`, `amiga_ui_menu`,
+  `amiga_mouse`, `amiga_arexx`, `amiga_kill`. Say what you will do before each of them.
+
 ## Safety rules (read first)
 
 - wasabid runs whatever you send, as the user, with no undo. (It protects the system places such as

@@ -43,6 +43,7 @@
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
 #include "../tty/qmark.h"
+#include "../net/upagent.h"
 #include "repl.h"
 #include "cli.h"
 #include "launch.h"
@@ -138,6 +139,14 @@ static void save_last_mode(int mode)
     }
 }
 
+static int path_exists(const char *path)
+{
+    BPTR l = Lock((STRPTR)path, SHARED_LOCK);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
 /* ENVARC:Claude/remote names Claude Code on another computer: uptelnet
  * there in this window, its return code; -1 when the file names none */
 static int remote(void)
@@ -169,6 +178,14 @@ static int remote(void)
     cl_cat(cmd, num + i, sizeof(cmd));
     /* the key login (net/tn.h): the Amiga's key for this NAS; a missing file asks the NAS to pair */
     cl_cat(cmd, " KEY " NAS_KEY_FILE, sizeof(cmd));
+    /* the session daemon (net/upagent.h): the wasabid that is there, else uptelnet says it has none */
+    {
+        const char *agent = upagent_pick(path_exists);
+        if (agent) {
+            cl_cat(cmd, " AGENT ", sizeof(cmd));
+            cl_cat(cmd, agent, sizeof(cmd));
+        }
+    }
     rc = SystemTags((STRPTR)cmd, SYS_Input, Input(), SYS_Output, Output(), SYS_UserShell, TRUE, TAG_END);
     return rc == -1 ? 20 : (int)rc;
 }

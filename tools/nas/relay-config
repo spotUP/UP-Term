@@ -1,0 +1,22 @@
+#!/bin/sh
+# relay-config: makes sure ~/.config/wasabi/config (0600, the file wasabi itself reads) says
+# where the amiga MCP server finds its Amiga: the relay uptelnetd runs on this NAS, 127.0.0.1
+# port 1234 (the default), with a key only this NAS knows. The entrypoint runs it at every start.
+# A file that already has a key line is left alone: amiga-target set one (an Amiga on the LAN
+# reached directly) or this script did, earlier. Other lines in the file are kept.
+# WASABI_DIR moves the directory (tests).
+[ "$(id -u)" != 0 ] || exec as-claude "$0" "$@"   # never write into the claude user's home as root
+D=${WASABI_DIR:-/home/claude/.config/wasabi}
+C=$D/config
+if sed -n 's/^[[:space:]]*key[[:space:]]*=[[:space:]]*//p' "$C" 2>/dev/null | grep -q .; then
+    chmod 600 "$C"
+    exit 0
+fi
+K=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
+umask 077
+mkdir -p "$D"
+chmod 700 "$D"
+{ [ ! -f "$C" ] || grep -v -E '^[[:space:]]*(host|port|key)[[:space:]]*=' "$C"; printf 'host = 127.0.0.1\nkey = %s\n' "$K"; } > "$C.new"
+mv "$C.new" "$C"
+chmod 600 "$C"
+echo "claude-amiga: wasabi relay key made in $C"

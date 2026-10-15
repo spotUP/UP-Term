@@ -1,0 +1,16 @@
+{
+  "enabledMcpjsonServers": ["amiga"],
+  "permissions": {
+    "allow": [
+      "mcp__amiga__amiga_info",
+      "mcp__amiga__amiga_ls",
+      "mcp__amiga__amiga_read_file",
+      "mcp__amiga__amiga_screenshot",
+      "mcp__amiga__amiga_windows",
+      "mcp__amiga__amiga_ui_list",
+      "mcp__amiga__amiga_arexx_ports",
+      "mcp__amiga__amiga_ps",
+      "mcp__amiga__amiga_health"
+    ]
+  }
+}

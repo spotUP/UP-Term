@@ -760,6 +760,11 @@ WASABI (REMOTE DEVELOPMENT, CLAUDE CODE ON ANOTHER COMPUTER)
   wasabid answers only private network addresses; the link is encrypted
   only when the Amiga has AmiSSL 5 and keys (wasabi's README). Uninstall
   stops and removes it.
+  Claude.lha also carries this wasabid (as C:wasabid, only when none is
+  there): uptelnet starts a session daemon from it for each login to the
+  NAS, with a key of its own, and ends it with the login. A wasabid put
+  in by this kit is used as it is; the one Claude.lha put in is not
+  started at boot.
 
 CON: AND RAW:
   UP-Term can serve the system's CON: and RAW: too, so every new Shell

@@ -16,9 +16,18 @@ through uptelnetd's main() logs in with no Password: on the line, the server log
 login" (the sentinel); with an empty key file it pairs after the password and the next run
 needs none; a revoked ID is sent back to the password; a server that fails the proof is
 dropped by the client.
+
+The relay (plan NL15) has units here (the AGENT message, the relay key file) and ONE
+reachability test of NAS control: wasabi's own upstream mock daemon on 127.0.0.1 with the
+session key as its key; build/tn_host (net/tn.c) key-logs in to uptelnetd's main() and
+announces the mock's port; wasabi's own client, through the relay with the relay key, runs
+`ping` (the mock counts it: once); after tn_host leaves the same call gets "no Amiga is
+connected to Claude Code" and the mock's count stays 1; a wrong relay key gets a closed socket.
 """
 import hashlib
 import hmac
+import importlib.machinery
+import importlib.util
 import json
 import os
 import pathlib
@@ -30,6 +39,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -246,10 +256,16 @@ MAC_VEC = bytes.fromhex("7dd70132a3e24c22590aba7ee40ac9efae39edb5100d73abaaf37d5
 SMAC_VEC = bytes.fromhex("aecac79e686576e2c254b18fb0d1b1865b89ef395872e5e169bc278bf529dbd8")
 
 
+SESSION_VEC = "d83a7b587a7c53f235d33e5804971f7ee49132f59cac9cc9fefcc717528da353"
+
+
 class KeyLogin(unittest.TestCase):
     def test_the_hmacs_are_the_vector_the_c_client_pins(self):
         self.assertEqual(d.hmac_sha256(K_VEC, b"upt1-client", SN_VEC, CN_VEC, b"amiga-1"), MAC_VEC)
         self.assertEqual(d.hmac_sha256(K_VEC, b"upt1-server", SN_VEC, CN_VEC), SMAC_VEC)
+
+    def test_the_session_key_is_the_vector_the_c_client_pins(self):
+        self.assertEqual(d.session_key(K_VEC, SN_VEC, CN_VEC), SESSION_VEC)
 
     def test_the_server_asks_for_auth_only_when_it_can_check_one(self):
         t = d.Telnet(auth=True)
@@ -419,7 +435,7 @@ class PairsTool(unittest.TestCase):
     def test_the_container_files_carry_it(self):
         nas = ROOT / "tools/nas"
         self.assertIn("COPY pairs /usr/local/bin/pairs", (nas / "Dockerfile").read_text())
-        self.assertIn("image: claude-amiga:7", (nas / "compose.yaml").read_text())
+        self.assertIn("image: claude-amiga:8", (nas / "compose.yaml").read_text())
         ep = (nas / "entrypoint.sh").read_text()
         self.assertIn('[ ! -s "$CLIENTS" ]', ep)                 # it starts with a password OR a clients file
         self.assertIn('/home/claude/.config/uptelnetd/clients', ep)
@@ -778,6 +794,264 @@ class Reach(unittest.TestCase):
             self.assertEqual(rc, 3)
             self.assertIn(b"auth bad-server", err)
             self.assertNotIn(b"Password", out)             # nothing from that server is shown
+
+
+# ---- the relay (NL15) -----------------------------------------------------------
+
+def sb_agent(port):
+    """What the client sends after the proof: SB AUTH IS 0x75 0x01 port[2], a 255 doubled."""
+    return bytes([255, 250, 37, 0, 0x75, 1]) + bytes([port >> 8, port & 255]).replace(b"\xff", b"\xff\xff") + bytes([255, 240])
+
+
+class RelayUnits(unittest.TestCase):
+    def telnet(self, accepted):
+        t = d.Telnet(auth=True)
+        t.start()
+        t.feed(bytes([255, 251, 37]))
+        t.accepted = accepted
+        return t
+
+    def test_the_agent_message_after_the_proof_sets_the_port(self):
+        t = self.telnet(True)
+        t.feed(sb_agent(7847))
+        self.assertEqual(t.agent_port, 7847)
+        t = self.telnet(True)
+        t.feed(sb_agent(0x00ff))
+        self.assertEqual(t.agent_port, 255)             # a 255 in the port is doubled on the wire
+
+    def test_the_agent_message_before_the_proof_is_ignored_and_is_not_a_login(self):
+        t = self.telnet(False)
+        t.feed(sb_agent(7847))
+        self.assertEqual(t.agent_port, 0)
+        self.assertEqual(t.auth_msg[0], b"\0malformed")   # before the proof it is just a bad login answer
+
+    def test_the_most_recent_session_with_a_port_is_the_relay_target_and_loopback_needs_the_flag(self):
+        srv = d.Server("x" * 8, [], "/bin/sh", None)
+        a, b, c = self.telnet(True), self.telnet(True), self.telnet(True)
+        for t, port, key in ((a, 1240, "aa"), (b, 0, "bb"), (c, 1241, "cc")):
+            t.agent_port, t.skey = port, key
+        srv.sessions = [("192.168.1.5", a), ("192.168.1.6", b), ("127.0.0.1", c)]
+        self.assertEqual(srv.agent(), ("192.168.1.5", 1240, "aa"))      # b has no daemon, c is the NAS itself
+        self.assertEqual(srv.agent(loopback=True), ("127.0.0.1", 1241, "cc"))
+        srv.sessions = []
+        self.assertIsNone(srv.agent())
+
+    def test_the_relay_key_is_the_key_line_of_a_private_wasabi_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "config")
+            with open(p, "w") as f:
+                f.write("host = 127.0.0.1\nkey = relaykey-123\n")
+            os.chmod(p, 0o600)
+            self.assertEqual(d.load_relay_key(p), "relaykey-123")
+            os.chmod(p, 0o644)
+            with self.assertRaises(d.ConfigError):
+                d.load_relay_key(p)                      # readable by others
+            os.chmod(p, 0o600)
+            with open(p, "w") as f:
+                f.write("host = 127.0.0.1\n")
+            with self.assertRaises(d.ConfigError):
+                d.load_relay_key(p)                      # no key line
+            with self.assertRaises(d.ConfigError):
+                d.load_relay_key(os.path.join(tmp, "absent"))
+
+
+def wasabi_src():
+    sys.path.insert(0, str(ROOT / "tools" / "rig"))
+    import wasabi as rigwasabi
+    return rigwasabi.build_dir() / "src"
+
+
+class RelayReach(unittest.TestCase):
+    def test_the_nas_wasabi_client_reaches_the_amiga_that_key_logged_in_through_main(self):
+        src = wasabi_src()
+        mock_path, client = str(src / "tests" / "mock-wasabid.py"), str(src / "wasabi")
+        tn_host = ROOT / "build/tn_host"
+        self.assertTrue(tn_host.exists(), "build/tn_host missing: make build/tn_host (make test builds it)")
+        # wasabi's upstream mock daemon, in this process, counting the PINGs it serves
+        loader = importlib.machinery.SourceFileLoader("mock_wasabid", mock_path)
+        mock = importlib.util.module_from_spec(importlib.util.spec_from_loader("mock_wasabid", loader))
+        loader.exec_module(mock)
+        pings = []
+        dispatch = mock.Handler.dispatch
+
+        def counting(self, tag, payload):
+            if tag == mock.PING:
+                pings.append(1)
+            return dispatch(self, tag, payload)
+        mock.Handler.dispatch = counting
+        tmp = tempfile.TemporaryDirectory()
+        mock.ROOT, mock.KEY = tmp.name, "not-the-session-key-yet"
+        mock_srv = mock.Server(("127.0.0.1", 0), mock.Handler)
+        mock_port = mock_srv.server_address[1]
+        threading.Thread(target=mock_srv.serve_forever, daemon=True).start()
+        # the NAS: a paired Amiga, the relay key in a wasabi config
+        store = d.ClientStore(os.path.join(tmp.name, "clients"))
+        cid, key = store.add(cid="studio")
+        keyfile = os.path.join(tmp.name, "nas-key")
+        with open(keyfile, "w") as f:
+            f.write("%s %s\n" % (cid, key.hex()))
+        cfgdir = os.path.join(tmp.name, "cfg", "wasabi")
+        os.makedirs(cfgdir)
+        relay_port = free_port()
+        relay_key = "relay-" + os.urandom(8).hex()
+        cfg = os.path.join(cfgdir, "config")
+        with open(cfg, "w") as f:
+            f.write("host = 127.0.0.1\nport = %d\nkey = %s\n" % (relay_port, relay_key))
+        os.chmod(cfg, 0o600)
+        env = dict(os.environ, XDG_CONFIG_HOME=os.path.join(tmp.name, "cfg"), XDG_CACHE_HOME=os.path.join(tmp.name, "cache"))
+        for k in ("WASABI_HOST", "WASABI_PORT", "WASABI_KEY"):
+            env.pop(k, None)
+        srv = Server("--agent-relay", "127.0.0.1:%d" % relay_port, "--relay-key-file", cfg, "--wasabi-client", client,
+                     "--relay-loopback", command="sleep 30", clients=store.path)
+        host = None
+
+        def ping():
+            return subprocess.run([sys.executable, client, "ping"], env=env, capture_output=True, text=True, timeout=30)
+        try:
+            # 1: nobody logged in: wasabi's error frame, and the mock saw nothing
+            for _ in range(50):
+                try:
+                    socket.create_connection(("127.0.0.1", relay_port), 0.2).close()
+                    break
+                except OSError:
+                    time.sleep(0.1)
+            r = ping()
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("no Amiga is connected to Claude Code", r.stderr + r.stdout)
+            self.assertEqual(len(pings), 0)
+            # 2: the Amiga key-logs in (the real net/tn.c) and announces the mock's port
+            host = subprocess.Popen([str(tn_host), "127.0.0.1", str(srv.port), "80", "24", "KEY=" + keyfile,
+                                     "AGENT=%d" % mock_port], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
+            line = b""
+            end = time.time() + 15
+            while time.time() < end and b"session key" not in line:
+                line += os.read(host.stderr.fileno(), 4096)
+            m = re.search(rb"session key ([0-9a-f]{64})", line)
+            self.assertIsNotNone(m, line)
+            mock.KEY = m.group(1).decode()               # what the C twin made: the relay must derive the same
+            # 3: wasabi's client through the relay runs ping; the mock served it once, with that key
+            r = None
+            for _ in range(80):
+                r = ping()
+                if r.returncode == 0:
+                    break
+                time.sleep(0.25)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("ms", r.stdout)
+            self.assertEqual(len(pings), 1)              # the sentinel: the call reached the Amiga's daemon
+            # 4: a wrong relay key gets a closed socket
+            s = socket.create_connection(("127.0.0.1", relay_port))
+            key_bad = b"wrong-key-xxxx"
+            s.sendall(struct.pack(">BIH", 1, 2 + 2 + len(key_bad), 1) + struct.pack(">H", len(key_bad)) + key_bad)
+            self.assertEqual(s.recv(64), b"")
+            s.close()
+            self.assertEqual(len(pings), 1)
+            # 5: the Amiga leaves: the same call gets the error again, the mock is not asked
+            host.stdin.close()
+            host.terminate()
+            host.wait(10)
+            for _ in range(80):
+                r = ping()
+                if r.returncode != 0:
+                    break
+                time.sleep(0.25)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("no Amiga is connected to Claude Code", r.stderr + r.stdout)
+            self.assertEqual(len(pings), 1)
+        finally:
+            if host and host.poll() is None:
+                host.kill()
+                host.wait()
+            if host:
+                host.stdout.close()
+                host.stderr.close()
+            srv.stop()
+            mock_srv.shutdown()
+            mock_srv.server_close()
+            mock.Handler.dispatch = dispatch
+            tmp.cleanup()
+        self.assertIn("key login studio", srv.log)
+        self.assertIn("relay: Claude Code to the Amiga at 127.0.0.1:%d" % mock_port, srv.log)
+
+
+class NasRelayWiring(unittest.TestCase):
+    """NL16: the container's wiring of the relay: relay-config, the entrypoint's arguments, the seeded settings.json."""
+    NAS = ROOT / "tools/nas"
+    # the amiga_* tools that only look (D4: free); every other tool asks
+    READ_ONLY = {"amiga_info", "amiga_ls", "amiga_read_file", "amiga_screenshot", "amiga_windows", "amiga_ui_list",
+                 "amiga_arexx_ports", "amiga_ps", "amiga_health"}
+
+    def relay_config(self, wdir):
+        return subprocess.run(["sh", str(self.NAS / "relay-config")], capture_output=True, text=True,
+                              env=dict(os.environ, WASABI_DIR=wdir))
+
+    def test_relay_config_makes_a_private_key_once_and_keeps_an_amiga_target_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w = os.path.join(tmp, "wasabi")
+            cfg = os.path.join(w, "config")
+            self.assertEqual(self.relay_config(w).returncode, 0)
+            text = open(cfg).read()
+            self.assertRegex(text, r"^host = 127\.0\.0\.1\nkey = [0-9a-f]{48}\n$")
+            self.assertEqual(stat.S_IMODE(os.stat(cfg).st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(os.stat(w).st_mode), 0o700)
+            self.assertEqual(d.load_relay_key(cfg), text.split("key = ")[1].strip())     # the relay reads what it wrote
+            r = self.relay_config(w)                                                    # a second start: unchanged
+            self.assertEqual((r.returncode, open(cfg).read()), (0, text))
+            open(cfg, "w").write("host = 192.168.1.77\nkey = lan-amiga-key\nprotect = AmigaOS\n")   # amiga-target set
+            os.chmod(cfg, 0o644)
+            self.assertEqual(self.relay_config(w).returncode, 0)
+            self.assertEqual(open(cfg).read(), "host = 192.168.1.77\nkey = lan-amiga-key\nprotect = AmigaOS\n")
+            self.assertEqual(stat.S_IMODE(os.stat(cfg).st_mode), 0o600)
+            open(cfg, "w").write("protect = AmigaOS\nhost = old\n")                    # settings only: kept, relay added
+            self.assertEqual(self.relay_config(w).returncode, 0)
+            self.assertRegex(open(cfg).read(), r"^protect = AmigaOS\nhost = 127\.0\.0\.1\nkey = [0-9a-f]{48}\n$")
+
+    def test_the_entrypoint_starts_uptelnetd_with_the_relay_arguments_it_accepts(self):
+        ep = (self.NAS / "entrypoint.sh").read_text()
+        self.assertIn("(as_claude relay-config)", ep)
+        self.assertLess(ep.index("(as_claude relay-config)"), ep.index("uptelnetd.py"))
+        import shlex
+        call = ep[ep.index("uptelnetd.py") + len("uptelnetd.py"):].replace("\\\n", " ")
+        argv = shlex.split(call)
+        argv = [w for w in argv[:argv.index("--command")] if w not in ('$@', "--port") and not w.startswith("${")]
+        a = d.parse_args(argv)                                           # the flags the entrypoint passes exist
+        self.assertEqual(a.agent_relay, "127.0.0.1:1234")
+        self.assertEqual(a.relay_key_file, "/home/claude/.config/wasabi/config")
+        self.assertEqual(a.wasabi_client, "/opt/wasabi/wasabi")
+        df = (self.NAS / "Dockerfile").read_text()
+        for line in ("COPY relay-config /usr/local/bin/relay-config", "COPY settings.json /opt/wasabi/seed/settings.json"):
+            self.assertIn(line, df)
+
+    @unittest.skipUnless((ROOT / "build/wasabi/src/wasabi_mcp.py").exists() or
+                         (ROOT.parent.parent / "build/wasabi/src/wasabi_mcp.py").exists(), "wasabi is not built (make wasabi)")
+    def test_settings_allow_only_the_read_only_tools_and_every_name_is_a_real_wasabi_mcp_tool(self):
+        spec = importlib.util.spec_from_file_location("wasabi_mcp", str(wasabi_src() / "wasabi_mcp.py"))
+        mcp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mcp)
+        tools = {t[0] for t in mcp.TOOLS}
+        settings = json.loads((self.NAS / "settings.json").read_text())
+        self.assertEqual(settings["enabledMcpjsonServers"], ["amiga"])
+        server = list(json.loads((self.NAS / "mcp.json").read_text())["mcpServers"])
+        self.assertEqual(server, ["amiga"])                          # the name in the allow entries below
+        allow = settings["permissions"]["allow"]
+        self.assertEqual(sorted(allow), sorted("mcp__amiga__" + t for t in self.READ_ONLY))
+        self.assertTrue(self.READ_ONLY <= tools, self.READ_ONLY - tools)      # real names, not guesses
+        asking = tools - self.READ_ONLY                               # run, write, input, click, rexx, kill: not allowed
+        self.assertTrue({"amiga_run", "amiga_write_file", "amiga_key_type", "amiga_ui_click", "amiga_arexx",
+                         "amiga_kill", "amiga_mouse"} <= asking)
+
+    def test_seeding_puts_settings_json_into_the_work_drawer_and_keeps_an_edited_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = os.path.join(tmp, "home")
+            run = lambda: subprocess.run(["sh", str(self.NAS / "seed-claude-files")], capture_output=True, text=True,
+                                         env=dict(os.environ, SEED_HOME=home, SEED_SRC=str(self.NAS)))
+            self.assertEqual(run().returncode, 0)
+            dst = os.path.join(home, "work/.claude/settings.json")
+            self.assertEqual(open(dst).read(), (self.NAS / "settings.json").read_text())
+            open(dst, "w").write("{}\n")
+            self.assertIn("kept", run().stdout)
+            self.assertEqual(open(dst).read(), "{}\n")
 
 
 class AmigaTargetTool(unittest.TestCase):

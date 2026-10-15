@@ -67,6 +67,17 @@ cn = 16 client nonce bytes, HMAC(K, m) = HMAC-SHA256.
             server makes ID and K, appends them to the clients file and sends
             SB AUTH REPLY 0x75 PAIR ID 0x00 K[32]. The client keeps them; its next
             start is step 5.
+  7 client  the session daemon: T = hex HMAC(K, "wasabi-session" | sn | cn) (session_key,
+            tn_session_key on the Amiga) is the key of the wasabid the client started;
+            SB AUTH IS 0x75 0x01 port[2] announces its TCP port (0: none). The server
+            keeps (peer, port, T) while the session runs.
+
+The relay (--agent-relay HOST:PORT, with --relay-key-file, a wasabi config whose key = line
+the NAS's own wasabi client presents): that client (wasabi_mcp.py's tools) talks wasabi's
+protocol to this listener; with no key-logged-in session that announced a daemon it gets
+wasabi's ERR frame "no Amiga is connected to Claude Code"; else the relay connects to the
+most recent such session's peer:port as a wasabi client with T and pipes both ways. A
+loopback peer is never a relay target (--relay-loopback for tests).
 
 The clients file (--clients-file, default ~/.config/uptelnetd/clients; 0600, yours, a
 regular file, like the password file) has one line per Amiga: "ID hexkey date
@@ -84,6 +95,8 @@ import asyncio
 import fcntl
 import hashlib
 import hmac
+import importlib.machinery
+import importlib.util
 import ipaddress
 import os
 import pwd
@@ -110,6 +123,10 @@ LOCK_TIME = 600.0         # ... lock it out this long
 MAX_PENDING = 4           # connections not logged in yet
 LOGIN_TIMEOUT = 60.0
 AUTH_WAIT = 3.0           # a client that answers neither WILL nor WONT to DO AUTH gets the password prompt
+RELAY_FIRST_FRAME = 10.0  # a relay client has this long to send its HELLO
+RELAY_UPSTREAM = 8.0      # connecting to the Amiga's session daemon and its WELCOME
+RELAY_NO_AGENT = "no Amiga is connected to Claude Code"
+AGENT_MSG = 1             # SB AUTH IS 0x75 AGENT port[2]: the session daemon's port (0: none)
 DEFAULT_CLIENTS_FILE = "~/.config/uptelnetd/clients"
 WRITE_HIGH = 256 * 1024   # stop reading the pty while this much waits for the Amiga
 
@@ -193,6 +210,23 @@ def lan_address():
     return None, None
 
 
+def private_line(p, uid, missing):
+    """The first line of file p, which must be a regular file of yours that nobody else can
+    read or write; `missing` is the exception class for a file that is not there."""
+    try:
+        st = os.lstat(p)
+    except FileNotFoundError:
+        raise missing(p)
+    if not stat.S_ISREG(st.st_mode):
+        raise ConfigError("%s is not a regular file" % p)
+    if st.st_uid != uid:
+        raise ConfigError("%s belongs to someone else" % p)
+    if st.st_mode & 0o077:
+        raise ConfigError("%s can be read by others (mode %o): chmod 600 it" % (p, st.st_mode & 0o777))
+    with open(p, "r", encoding="utf-8") as f:
+        return f.readline().rstrip("\r\n")
+
+
 def load_password(env=None, path=None, uid=None):
     """The password: $UPTELNETD_PASSWORD, else the file, which must be a
     regular file of yours that nobody else can read or write."""
@@ -202,21 +236,30 @@ def load_password(env=None, path=None, uid=None):
         pw = env[PASSWORD_ENV]
     else:
         p = os.path.expanduser(path or DEFAULT_PASSWORD_FILE)
-        try:
-            st = os.lstat(p)
-        except FileNotFoundError:
-            raise NoPassword("no password: set %s, or write one to %s (mode 0600)" % (PASSWORD_ENV, p))
-        if not stat.S_ISREG(st.st_mode):
-            raise ConfigError("%s is not a regular file" % p)
-        if st.st_uid != uid:
-            raise ConfigError("%s belongs to someone else" % p)
-        if st.st_mode & 0o077:
-            raise ConfigError("%s can be read by others (mode %o): chmod 600 it" % (p, st.st_mode & 0o777))
-        with open(p, "r", encoding="utf-8") as f:
-            pw = f.readline().rstrip("\r\n")
+
+        def missing(q):
+            return NoPassword("no password: set %s, or write one to %s (mode 0600)" % (PASSWORD_ENV, q))
+        pw = private_line(p, uid, missing)
     if len(pw) < MIN_PASSWORD:
         raise ConfigError("the password is shorter than %d characters" % MIN_PASSWORD)
     return pw
+
+
+def load_relay_key(path, uid=None):
+    """The key the NAS-side wasabi client presents to the relay: the `key = ...` line of a wasabi
+    config file (~/.config/wasabi/config, the file wasabi itself reads), under the password
+    file's rules (a regular file of yours, mode 0600)."""
+    uid = os.getuid() if uid is None else uid
+    p = os.path.expanduser(path)
+    private_line(p, uid, lambda q: ConfigError("--relay-key-file %s does not exist" % q))   # the checks
+    with open(p, "r", encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r"^\s*key\s*=\s*(.*?)\s*$", line)
+            if m and m.group(1):
+                if len(m.group(1)) < MIN_PASSWORD:
+                    raise ConfigError("the relay key in %s is shorter than %d characters" % (p, MIN_PASSWORD))
+                return m.group(1)
+    raise ConfigError("%s has no key = line" % p)
 
 
 def password_ok(given, want):
@@ -264,6 +307,12 @@ KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 
 def hmac_sha256(key, *parts):
     return hmac.new(key, b"".join(parts), hashlib.sha256).digest()
+
+
+def session_key(key, sn, cn):
+    """The session daemon's key (wasabid): hex HMAC-SHA256(K, "wasabi-session" | sn | cn), the
+    string net/tn.c's tn_session_key makes on the Amiga; the relay authenticates with it."""
+    return hmac_sha256(key, b"wasabi-session", sn, cn).hex()
 
 
 class ClientStore:
@@ -377,6 +426,9 @@ class Telnet:
         self.sn = os.urandom(16)
         self.pair_wanted = False
         self.auth_msg = None  # (id bytes, cn, mac or None) of the client's IS
+        self.accepted = False  # the Server verified the key (the AGENT message is only taken after that)
+        self.agent_port = 0   # the session daemon's port the client announced (0: none)
+        self.skey = None      # the session daemon's key (session_key), set at ACCEPT
         self.us = {}
         self.him = {}
         self.out = bytearray()
@@ -466,7 +518,11 @@ class Telnet:
         sb = bytes(self.sb)
         if (self.auth and len(sb) >= 3 and sb[0] == AUTH and sb[1] == AUTH_IS and sb[2] == AUTH_TYPE
                 and self.him.get(AUTH) == YES):
-            self._auth_is(sb)
+            if self.accepted:
+                if len(sb) == 6 and sb[3] == AGENT_MSG:
+                    self.agent_port = struct.unpack(">H", sb[4:6])[0]
+            else:
+                self._auth_is(sb)
         elif len(sb) >= 5 and sb[0] == NAWS:
             cols, rows = struct.unpack(">HH", sb[1:5])
             if cols and rows:
@@ -576,6 +632,7 @@ class Server:
         self.command = command
         self.limiter = limiter or RateLimiter()
         self.pending = 0
+        self.sessions = []              # (peer, Telnet) of the key-logged-in sessions that are running, oldest first
 
     async def handle(self, reader, writer):
         peer = (writer.get_extra_info("peername") or ("?",))[0]
@@ -605,7 +662,21 @@ class Server:
             writer.close()
             return
         log("%s: logged in" % peer)
-        await self.run(reader, writer, tn, peer)
+        if tn.accepted:
+            self.sessions.append((peer, tn))
+        try:
+            await self.run(reader, writer, tn, peer)
+        finally:
+            self.sessions = [x for x in self.sessions if x[1] is not tn]
+
+    def agent(self, loopback=False):
+        """(peer, port, key) of the most recent key-logged-in session that announced a session
+        daemon, or None. A loopback peer is the NAS itself (or Tailscale's hand-over to it): its
+        port is not an Amiga's, so it counts only when `loopback` (tests, rig)."""
+        for peer, tn in reversed(self.sessions):
+            if tn.agent_port > 0 and tn.skey and (loopback or not ipaddress.ip_address(peer).is_loopback):
+                return peer, tn.agent_port, tn.skey
+        return None
 
     async def settle(self, reader, tn):
         """A client that agreed to TTYPE answers within a moment: wait for it."""
@@ -654,6 +725,8 @@ class Server:
             tn.out.clear()
             await writer.drain()
             self.limiter.success(peer)
+            tn.accepted = True
+            tn.skey = session_key(key, tn.sn, cn)
             log("%s: key login %s" % (peer, cid.decode("ascii", "replace")))
             return "ok"
         tn.sb_out(bytes([AUTH, AUTH_REPLY, AUTH_TYPE, AUTH_REJECT]))
@@ -818,6 +891,136 @@ class Server:
             log("%s: session ended" % peer)
 
 
+# ---- the relay: Claude Code on the NAS reaches the Amiga that logged in ----------
+
+WASABI_CLIENT_CANDIDATES = ("/opt/wasabi/wasabi",)
+
+
+def load_wasabi(path=None, env=None):
+    """wasabi's own client module (the one `wasabi` script, MIT): the relay's upstream side is its
+    Conn, so the framing, the HELLO and the error texts are wasabi's, not a copy of them."""
+    env = os.environ if env is None else env
+    path = path or env.get("WASABI_CLIENT")
+    if not path:
+        here = os.path.dirname(os.path.abspath(__file__))
+        for c in WASABI_CLIENT_CANDIDATES + (os.path.join(here, "..", "build", "wasabi", "src", "wasabi"),):
+            if os.path.isfile(c):
+                path = c
+                break
+    if not path or not os.path.isfile(path):
+        raise ConfigError("--agent-relay needs wasabi's client script (--wasabi-client PATH, $WASABI_CLIENT, "
+                          "or /opt/wasabi/wasabi)")
+    loader = importlib.machinery.SourceFileLoader("wasabi_client", path)
+    spec = importlib.util.spec_from_loader("wasabi_client", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+class Relay:
+    """A wasabi client on the NAS (wasabi_mcp.py's `wasabi` commands) talks to this listener as it
+    would to a wasabid. It must present the relay key in its HELLO (constant-time compare, else
+    the socket is closed with no answer); with no key-logged-in session that announced a session
+    daemon it gets wasabi's ERR frame RELAY_NO_AGENT; otherwise the relay connects to the Amiga
+    that logged in (the peer's address, the announced port), authenticates there with that
+    login's session key, passes the WELCOME (or ERR) back and pipes the rest both ways."""
+
+    def __init__(self, server, key, wasabi, loopback=False):
+        self.server = server
+        self.key = key
+        self.w = wasabi
+        self.loopback = loopback
+
+    def frame(self, tag, payload=b""):
+        return struct.pack(">BI", tag, len(payload)) + payload
+
+    def err(self, message):
+        return self.frame(self.w.ERR, struct.pack(">I", 0) + self.w.pack_str(message))
+
+    async def read_frame(self, reader):
+        head = await reader.readexactly(5)
+        tag, n = struct.unpack(">BI", head)
+        if n > self.w.MAX_PAYLOAD:
+            raise ValueError("oversized frame")
+        return tag, await reader.readexactly(n)
+
+    def connect(self, host, port, key):
+        """wasabi's Conn (HELLO with `key`, plain TCP: the session daemon is not on loopback of
+        the Amiga, so it needs wasabid's `plain`); also returns the frames it read."""
+        w = self.w
+        seen = []
+
+        class Tap(w.Conn):
+            def recv(self):
+                tag, payload = super().recv()
+                seen.append((tag, payload))
+                return tag, payload
+
+        try:
+            return Tap(host, port, key, timeout=RELAY_UPSTREAM, tls=False), seen
+        except (w.WasabiError, OSError) as e:
+            if seen and seen[-1][0] == w.ERR:
+                return None, seen
+            return None, [(w.ERR, struct.pack(">I", 0) + w.pack_str("the Amiga's session daemon: %s" % e))]
+
+    async def handle(self, reader, writer):
+        w = self.w
+        try:
+            try:
+                tag, payload = await asyncio.wait_for(self.read_frame(reader), RELAY_FIRST_FRAME)
+                if tag != w.HELLO or len(payload) < 4:
+                    return
+                (ver,) = struct.unpack_from(">H", payload, 0)
+                key, _ = w.unpack_str(payload, 2)
+            except (asyncio.TimeoutError, asyncio.IncompleteReadError, ValueError, struct.error, ConnectionError):
+                return
+            if not password_ok(key, self.key):
+                log("relay: a client with a wrong relay key, closed")
+                return
+            if ver != w.VERSION:
+                writer.write(self.err("protocol v%d not supported" % ver))
+                await writer.drain()
+                return
+            found = self.server.agent(self.loopback)
+            if not found:
+                writer.write(self.err(RELAY_NO_AGENT))
+                await writer.drain()
+                return
+            peer, port, skey = found
+            loop = asyncio.get_running_loop()
+            conn, seen = await loop.run_in_executor(None, self.connect, peer, port, skey)
+            if conn is None:
+                log("relay: %s:%d did not take the session key" % (peer, port))
+                tag, payload = seen[-1]
+                writer.write(self.frame(tag, payload))
+                await writer.drain()
+                return
+            welcome = self.frame(*seen[-1])
+            leftover = conn.buf
+            conn.buf = b""
+            up_r, up_w = await asyncio.open_connection(sock=conn.sock)
+            writer.write(welcome + leftover)
+            await writer.drain()
+            log("relay: Claude Code to the Amiga at %s:%d" % (peer, port))
+
+            async def pipe(src, dst):
+                try:
+                    while True:
+                        data = await src.read(65536)
+                        if not data:
+                            break
+                        dst.write(data)
+                        await dst.drain()
+                except (ConnectionError, OSError):
+                    pass
+                finally:
+                    dst.close()
+
+            await asyncio.gather(pipe(reader, up_w), pipe(up_r, writer))
+        finally:
+            writer.close()
+
+
 def parse_args(argv):
     ap = argparse.ArgumentParser(description="LAN-only telnet server for UP-Term's uptelnet (UNENCRYPTED).")
     ap.add_argument("--bind", action="append", default=[],
@@ -829,6 +1032,15 @@ def parse_args(argv):
                     help="0600 file holding the password (default %s; %s wins)" % (DEFAULT_PASSWORD_FILE, PASSWORD_ENV))
     ap.add_argument("--clients-file", default=None,
                     help="0600 file of paired Amigas (key login; default %s; tools/nas/pairs edits it)" % DEFAULT_CLIENTS_FILE)
+    ap.add_argument("--agent-relay", default=None, metavar="HOST:PORT",
+                    help="listen here (a private address, usually 127.0.0.1:1234) for the NAS's wasabi client and "
+                         "pass it to the Amiga that key-logged-in (needs --relay-key-file)")
+    ap.add_argument("--relay-key-file", default=None,
+                    help="0600 wasabi config file whose key = line the relay's client must present "
+                         "(~/.config/wasabi/config)")
+    ap.add_argument("--wasabi-client", default=None, help="wasabi's client script (default $WASABI_CLIENT, /opt/wasabi/wasabi)")
+    ap.add_argument("--relay-loopback", action="store_true",
+                    help="relay to a session whose peer is loopback too (tests, the rig)")
     ap.add_argument("--command", default=None,
                     help="run this instead of a login shell, e.g. 'tmux new -A -s claude claude'")
     ap.add_argument("--shell", default=None, help="the shell (default $SHELL)")
@@ -874,6 +1086,14 @@ def configure(a, env=None):
     why = ClientStore(getattr(a, "clients_file", None)).check()
     if why:
         raise ConfigError(why)       # a clients file others can read is refused, as the password file is
+    if getattr(a, "agent_relay", None):
+        if not a.relay_key_file:
+            raise ConfigError("--agent-relay needs --relay-key-file")
+        host, _, port = a.agent_relay.rpartition(":")
+        if not host or not port.isdigit() or not 0 < int(port) < 65536:
+            raise ConfigError("--agent-relay wants HOST:PORT")
+        check_bind(host)
+        load_relay_key(a.relay_key_file)
     shell = a.shell or env.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell or "/bin/sh"
     return binds, nets, password, shell
 
@@ -885,7 +1105,15 @@ async def serve(a, binds, nets, password, shell):
     print("uptelnetd: listening on %s port %d (UNENCRYPTED telnet), allowing %s" %
           (", ".join(binds), port, ", ".join(str(n) for n in nets)), flush=True)
     print("uptelnetd: on the Amiga, in an UP-Term window: uptelnet %s %d" % (binds[0], port), flush=True)
+    relay_server = None
+    if a.agent_relay:
+        host, _, rport = a.agent_relay.rpartition(":")
+        relay = Relay(srv, load_relay_key(a.relay_key_file), load_wasabi(a.wasabi_client), a.relay_loopback)
+        relay_server = await asyncio.start_server(relay.handle, host=check_bind(host), port=int(rport), reuse_address=True)
+        print("uptelnetd: relaying wasabi clients on %s to the Amiga that logged in by key" % a.agent_relay, flush=True)
     async with server:
+        if relay_server:
+            asyncio.get_running_loop().create_task(relay_server.serve_forever())
         await server.serve_forever()
 
 

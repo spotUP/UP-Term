@@ -557,3 +557,52 @@ int tn_him(const tn *t, int opt)
 {
     return opt >= 0 && opt < TN_NOPTS && t->him[opt] == TN_YES;
 }
+
+void tn_session_key(const unsigned char *k, int klen, const unsigned char *sn, int snlen, const unsigned char *cn,
+                    int cnlen, char hex[65])
+{
+    static const char label[] = "wasabi-session";
+    static const char digits[] = "0123456789abcdef";
+    unsigned char m[14 + 64], out[32];
+    int n = 0, i;
+    hex[0] = 0;
+    if (snlen < 0 || cnlen < 0 || snlen + cnlen > 64)
+        return;
+    for (i = 0; label[i]; i++)
+        m[n++] = (unsigned char)label[i];
+    for (i = 0; i < snlen; i++)
+        m[n++] = sn[i];
+    for (i = 0; i < cnlen; i++)
+        m[n++] = cn[i];
+    llm_hmac_sha256(k, klen, m, n, out);
+    for (i = 0; i < 32; i++) {
+        hex[i * 2] = digits[out[i] >> 4];
+        hex[i * 2 + 1] = digits[out[i] & 15];
+    }
+    hex[64] = 0;
+}
+
+void tn_announce_agent(tn *t, int port)
+{
+    unsigned char b[12];
+    int n = 0, i;
+    unsigned char v[2];
+    if (t->auth != TN_AUTH_OK)
+        return;
+    v[0] = (unsigned char)((port >> 8) & 255);
+    v[1] = (unsigned char)(port & 255);
+    b[n++] = TN_IAC;
+    b[n++] = TN_SB;
+    b[n++] = TN_AUTH;
+    b[n++] = TN_AUTH_IS;
+    b[n++] = TN_AUTH_TYPE;
+    b[n++] = TN_AUTH_AGENT;
+    for (i = 0; i < 2; i++) {
+        b[n++] = v[i];
+        if (v[i] == TN_IAC)
+            b[n++] = TN_IAC;
+    }
+    b[n++] = TN_IAC;
+    b[n++] = TN_SE;
+    t->out(t->user, b, n);
+}

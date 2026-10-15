@@ -75,7 +75,9 @@
 (P_OPTIONS)
 
 (set #step "claude" #kb @KBCLAUDE@ #n 3
-     #why (cat "Installing C:Claude and C:uptelnet\n"            "(an old C:ClaudeCode is removed), and\n"
+     #why (cat "Installing C:Claude, C:uptelnet and\n"
+               "C:wasabid (when none is there)\n"
+               "(an old C:ClaudeCode is removed), and\n"
                "its settings drawer ENVARC:Claude (no key written)."))
 (P_STEP)
 

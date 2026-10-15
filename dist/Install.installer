@@ -165,7 +165,11 @@
               "sends: Install makes a key (or keeps yours, ENVARC:wasabi.key) "
               "and shows it at the end. The link is encrypted only when "
               "AmiSSL and keys are set up (see wasabi's README). Leave it off "
-              "unless you work on this Amiga from another machine.\n\n"
+              "unless you work on this Amiga from another machine.\n"
+              "Without it, Claude.lha brings its own wasabid for the session "
+              "daemon: uptelnet starts one with a key of its own for each "
+              "login to the NAS and ends it with the login, and the daemon "
+              "left in C: here is not started at boot.\n\n"
               "Uninstall takes both blocks out again.")
         (choices "Serial login on the serial port"
                  "wasabi: remote development from another computer")
