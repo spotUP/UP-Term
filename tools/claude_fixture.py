@@ -332,6 +332,11 @@ class Handler(BaseHTTPRequestHandler):
             print("[INFO] %s model=%s messages=%d tool_results=%d key_header=%s -> %s.sse" % (
                 self.path, body.get("model"), len(msgs), results,
                 "PRESENT (wrong!)" if key else "none", name), flush=True)
+        # the headers a client added of its own (ANTHROPIC_CUSTOM_HEADERS, models.json headers: P2): one line, names in lower
+        # case; the credential headers are never echoed, the ones every request has are not interesting
+        extra = sorted((k.lower(), v) for k, v in self.headers.items() if k.lower() not in LOG_QUIET)
+        if extra:
+            print("[INFO]   headers %s" % "; ".join("%s: %s" % kv for kv in extra), flush=True)
         if codex:
             # amiga-pi's Codex request carries pi's originator header whatever the key rule does (the token and the account
             # id are withheld on plain http)
@@ -363,6 +368,11 @@ class Handler(BaseHTTPRequestHandler):
 # ---- the subscription providers' OAuth servers (amiga-pi phase O; see the docstring) ----
 
 OAUTH_SKIP = ("host", "content-length", "connection", "accept-encoding")
+# request headers the [INFO] line of a model request leaves out: the ones every client sends and the credentials
+LOG_QUIET = OAUTH_SKIP + ("accept", "content-type", "user-agent", "x-api-key", "authorization", "api-key", "x-goog-api-key",
+                          "anthropic-version", "anthropic-beta", "originator", "x-stainless-lang", "x-stainless-package-version",
+                          "x-stainless-os", "x-stainless-arch", "x-stainless-runtime", "x-stainless-runtime-version",
+                          "x-amz-date", "x-amz-content-sha256")
 
 
 class OAuthScript:
