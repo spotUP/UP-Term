@@ -65,6 +65,17 @@ class TerminfoAmiga(unittest.TestCase):
         amiga = run("infocmp", "-x", "-d", "xterm-16color", "vtcon-amiga-16color")
         self.assertEqual({l.strip().split(":")[0] for l in amiga.splitlines() if l.startswith("\t")}, {"bce", "xenl"})
 
+    def test_kit_has_xterm_256color_entry(self):
+        # Owner decision 2026-10-15: TERM=xterm-256color must resolve on the Amiga
+        # (programs that ask for it); the entry ships in the kit like screen's.
+        subprocess.run(["make", "-s", "build/kit-terminfo/stamp"], cwd=ROOT, check=True)
+        kit = ROOT / "build" / "kit-terminfo"
+        self.assertTrue((kit / "x" / "xterm-256color").is_file())
+        self.assertTrue((kit / "78" / "xterm-256color").is_file())
+        out = subprocess.run(["infocmp", "-x", "-1", "xterm-256color"], check=True, capture_output=True,
+                             text=True, env=dict(os.environ, TERMINFO=str(kit))).stdout
+        self.assertIn("colors#0x100,", out.split())
+
 
 if __name__ == "__main__":
     unittest.main()

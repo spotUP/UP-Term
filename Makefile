@@ -349,7 +349,7 @@ $(BUILD)/terminfo/76/vtcon: terminfo/vtcon.terminfo
 # vtcon-amiga says use=vtcon: after it, and TERMINFO points tic at the entries made so far.
 # W46 /colors 16: xterm-16color and vtcon-amiga-16color are made from the compiled vtcon
 # (tools/gen_16color_terminfo.py says why they are generated, not written).
-KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/vtcon-amiga.terminfo terminfo/screen.terminfo
+KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/vtcon-amiga.terminfo terminfo/screen.terminfo terminfo/xterm-256color.terminfo
 $(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO) tools/gen_16color_terminfo.py
 	rm -rf $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
 	mkdir -p $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
