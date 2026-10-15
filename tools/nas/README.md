@@ -161,3 +161,21 @@ normal terminal (it asks for the password, so not from a tool without a TTY):
 
 Synology refuses keys unless the home is not group-writable:
 `chmod 755 ~; chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys`.
+
+## From outside the LAN: a VPN, not Tailscale
+
+To reach the NAS (and through it Claude Code and the Amiga) from a computer away from home,
+use DSM's own VPN Server package (Package Center > VPN Server > OpenVPN; export its
+configuration and open it in the OpenVPN client on that computer). Tailscale is not
+needed and not covered here: its connections reach the container from 127.0.0.1, so the
+relay cannot tell which Amiga they come from.
+
+- A VPN client gets an address from the VPN Server's own range (shown on its OpenVPN page;
+  10.8.0.0/24 is the usual default, check yours). Add that range to `ALLOW` in
+  `compose.yaml`, space-separated after the LAN: `ALLOW: "192.168.1.0/24 10.8.0.0/24"`,
+  then start the project again.
+- The Amiga and the NAS normally stay on the home LAN: the Amiga logs in from its LAN
+  address and the relay reaches it there; nothing changes for them.
+- An Amiga that logs in through the VPN works too, as long as the NAS routes to the VPN
+  range (DSM's VPN Server does by default) and that range is in `ALLOW`.
+- Not tried on the owner's NAS yet: the VPN Server range and the route back to its clients.
