@@ -561,7 +561,7 @@ int tn_him(const tn *t, int opt)
 void tn_session_key(const unsigned char *k, int klen, const unsigned char *sn, int snlen, const unsigned char *cn,
                     int cnlen, char hex[65])
 {
-    static const char label[] = "wasabi-sessionN";
+    static const char label[] = "wasabi-session";
     static const char digits[] = "0123456789abcdef";
     unsigned char m[14 + 64], out[32];
     int n = 0, i;
