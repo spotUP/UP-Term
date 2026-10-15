@@ -55,6 +55,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
 # ONLY=rig_wasabi rig.py wasabi: arguments, the port per rig, the log paths, the process list parser (tools/test_rig_wasabi.py)
 # ONLY=rig_muforce rig.py muforce: the MuForce report parser and argument handling (tools/test_rig_muforce.py)
+# ONLY=rig_claude_import importing tools/rig/claude_rig.py runs nothing (tools/test_rig_claude_import.py)
 # ONLY=rig_stdin amiga-pi in a rig window script gets <NIL: (tools/test_rig_stdin.py)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
 # ONLY=rig_kit a rig with a kit boots the builds of VTC: over the kit's copies in SYS: (tools/test_rig_kit.py)
@@ -65,7 +66,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=uptelnetd runs the Mac end's tests alone (tools/test_uptelnetd.py); ONLY=ixemul the patched
 # ixemul's host tests (IXEMUL_SRC/tests/host: its argument line parser)
 test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != render ] && [ "$(ONLY)" != terminfo_amiga ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_wasabimcp ] && [ "$(ONLY)" != rig_muforce ] && [ "$(ONLY)" != rig_wasabi ] && [ "$(ONLY)" != rig_ami ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != rig_upterm ] && [ "$(ONLY)" != rig_kit ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != docs_setenv ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != render ] && [ "$(ONLY)" != terminfo_amiga ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_claude_import ] && [ "$(ONLY)" != rig_wasabimcp ] && [ "$(ONLY)" != rig_muforce ] && [ "$(ONLY)" != rig_wasabi ] && [ "$(ONLY)" != rig_ami ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != rig_upterm ] && [ "$(ONLY)" != rig_kit ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != docs_setenv ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
@@ -73,6 +74,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_muforce ]; then python3 -I tools/test_rig_muforce.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_ami ]; then if [ -f "$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -f "$(CURDIR)/../../$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -n "$(ONLY)" ]; then python3 -I tools/test_rig_ami.py; else echo "[SKIP] rig_ami: wasabi is not built (make wasabi)"; fi; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_upterm ]; then python3 -I tools/test_rig_upterm.py; fi
