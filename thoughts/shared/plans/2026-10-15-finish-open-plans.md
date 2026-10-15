@@ -63,7 +63,7 @@ Verification: quoted rig lines and commit hashes. Gate: none (docs plus rig runs
 - [x] FP1.1 (done: 5e24ecc1 amigapi_rig step 13e PASS, last footer cell pixel-equal to the first 'm' of medium, flush right at 63 columns, 2026-10-15) G2: footer right edge `claude-opus-5-5 . medium` not clipped: rig 3, pixel read of the last 8 columns
   of the footer row; criterion: the last glyph column inside the window width (golden `start_w64` family).
 - [x] FP1.2 (done: 5e24ecc1 amigapi_rig step 13f PASS, header whole in a 63-column window with outputPad 0, 2026-10-15) G3: `outputPad 0` header fully inside the window: rig 3 run, text read by the haiku reader.
-- [ ] FP1.3 P2: `SetEnv SAVE ANTHROPIC_CUSTOM_HEADERS` path: test through the top-level entry point against
+- [x] FP1.3 P2 (done 2026-10-15: host test custom_headers_reach_the_request 24/24, revert-check FAILED without the fixture header line; rig: amigapi_rig step 15 13 of 13 with amiga-pi 7d46d16, run by the Opus agent on rig 2; the P2 crash was the 32 KB stack, not the header path): `SetEnv SAVE ANTHROPIC_CUSTOM_HEADERS` path: test through the top-level entry point against
   `tools/claude_fixture.py` extended to record request headers; criterion: header present, no 400, workspace id
   header absent unless set. Regression test name: `custom_headers_reach_the_request`.
 - [ ] FP1.4 a3 T13: Claude TUI on the rig against `tools/claude_fixture.py` (conversation, Ctrl+C). The "then with
