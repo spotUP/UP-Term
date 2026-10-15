@@ -490,6 +490,17 @@ static void the_key_file_line_round_trips(void)
     CHECK_INT(tn_ct_eq(K_, key, 32), 0);
 }
 
+/* the session daemon's key: the same hex tools/test_uptelnetd.py pins (SESSION_VEC) for K_, the SEND_MSG nonce, CN_ */
+static void the_session_key_is_the_vector_the_nas_derives(void)
+{
+    static const unsigned char sn[16] = { 0xff, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0xfe };
+    char hex[65];
+    tn_session_key(K_, 32, sn, 16, CN_, 16, hex);
+    CHECK(!strcmp(hex, "d83a7b587a7c53f235d33e5804971f7ee49132f59cac9cc9fefcc717528da353"));
+    tn_session_key(K_, 32, sn, 16, CN_, 49, hex);
+    CHECK_INT(hex[0], 0);
+}
+
 void suite_telnet(void)
 {
     opening_offers_naws_ttype_binary_and_asks_sga();
@@ -514,4 +525,5 @@ void suite_telnet(void)
     a_client_without_a_key_says_wont_and_nothing_else_changes();
     an_oversize_subnegotiation_is_dropped_not_cut();
     the_key_file_line_round_trips();
+    the_session_key_is_the_vector_the_nas_derives();
 }

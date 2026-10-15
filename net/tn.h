@@ -177,4 +177,12 @@ int tn_ct_eq(const unsigned char *a, const unsigned char *b, int n);
 int tn_us(const tn *t, int opt);
 int tn_him(const tn *t, int opt);
 
+/* The session key of the login's session daemon (wasabid): hex (64 digits and a NUL) of
+ * HMAC-SHA256(K, "wasabi-session" | sn | cn), K the pairing key (klen bytes), sn the server's
+ * nonce, cn the client's. uptelnetd derives the same string (tn_session_key twin), so the NAS
+ * relay can authenticate to the daemon the Amiga started. hex[0] = 0 when sn and cn together
+ * exceed 64 bytes. */
+void tn_session_key(const unsigned char *k, int klen, const unsigned char *sn, int snlen, const unsigned char *cn,
+                    int cnlen, char hex[65]);
+
 #endif
