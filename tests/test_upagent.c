@@ -45,8 +45,6 @@ static void the_wasabid_is_the_up_term_one_else_the_one_in_c_else_none(void)
     CHECK_STR(upagent_pick(only_default), "UP-Term:bin/wasabid");
     CHECK_STR(upagent_pick(only_fallback), "C:wasabid");
     CHECK(upagent_pick(none) == 0);
-    (void)seen_default;
-    (void)seen_fallback;
 }
 
 void suite_upagent(void)
