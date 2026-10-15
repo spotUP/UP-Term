@@ -424,9 +424,9 @@ class ClaudeInstall(unittest.TestCase):
         """NL18: C:wasabid for the session daemon; a wasabid already there (the base kit's) is left alone"""
         dos = self.S['dos']
         self.assertIn('If NOT EXISTS C:wasabid\n  Copy wasabid C:wasabid CLONE QUIET', dos)
-        self.assertIn('Echo >ENVARC:Claude/wasabid "installed by Claude.lha"', dos)
+        self.assertIn('Echo >ENVARC:uppkg/Claude/wasabid "installed by Claude.lha"', dos)
         # a later install updates only our own copy (the marker), never another one
-        self.assertIn('Else\n  If EXISTS ENVARC:Claude/wasabid\n    Copy wasabid C:wasabid CLONE QUIET', dos)
+        self.assertIn('Else\n  If EXISTS ENVARC:uppkg/Claude/wasabid\n    Copy wasabid C:wasabid CLONE QUIET', dos)
         parts = (ROOT / 'dist/addons/claude/parts.txt').read_text()
         self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid$')
         self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid\.LICENSE$')
@@ -440,9 +440,9 @@ class ClaudeInstall(unittest.TestCase):
 
     def test_uninstall_removes_only_the_wasabid_this_archive_put_in_and_not_one_the_boot_block_starts(self):
         un = self.S['uninstall']
-        self.assertIn('If EXISTS ENVARC:Claude/wasabid\n  Search >NIL: S:User-Startup "C:wasabid"\n  If WARN\n'
-                      '    Delete >NIL: C:wasabid QUIET\n  EndIf\n  Delete >NIL: ENVARC:Claude/wasabid QUIET', un)
-        self.assertLess(un.index('ENVARC:Claude/wasabid'), un.index('Delete >NIL: "ENVARC:uppkg/Claude" ALL QUIET'))
+        self.assertIn('If EXISTS ENVARC:uppkg/Claude/wasabid\n  Search >NIL: S:User-Startup "C:wasabid"\n  If WARN\n'
+                      '    Delete >NIL: C:wasabid QUIET\n  EndIf\n  Delete >NIL: ENVARC:uppkg/Claude/wasabid QUIET', un)
+        self.assertLess(un.index('ENVARC:uppkg/Claude/wasabid'), un.index('Delete >NIL: "ENVARC:uppkg/Claude" ALL QUIET'))
 
     def test_the_base_installer_help_mentions_the_session_daemon(self):
         base = (ROOT / 'dist/Install.installer').read_text()
