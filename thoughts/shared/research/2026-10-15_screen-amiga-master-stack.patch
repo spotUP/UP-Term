@@ -1,0 +1,23 @@
+--- a/src/screen.c
++++ b/src/screen.c
+@@ -363,6 +363,20 @@
+ }
+ 
+ #ifdef VFORK_ONLY
++/*
++ * The stack every screen process starts with, the backend included. The
++ * backend is a vfork child run again with execv: ixemul gives it the
++ * stack of the shell's CLI (or IXSTACK), 16 KB under vsh, and ixemul's
++ * startup grows it to __stack. The backend's tgetent of the name screen
++ * tries first ("screen-256color.vtcon", not in the terminfo tree) overran
++ * 16 KB: the backend died after "SetTTY", without exit or a signal, and the
++ * attacher printed "Cannot find master process to attach to!" (vtcon
++ * ledger 2026-10-15). 262144 is what the rig measured working. The
++ * cookie is the same number for AmigaOS shells that read it.
++ */
++unsigned long __stack = 262144;
++static const char amiga_stack_cookie[] __attribute__((used)) = "$STACK: 262144";
++
+ /*
+  * AmigaOS has no fork(). The backend is this program run again with the
+  * same arguments (vfork + exec) and SCREEN_AMIGA_MASTER in its

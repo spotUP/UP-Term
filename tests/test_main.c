@@ -25,6 +25,7 @@ void suite_proc(void);
 void suite_pty_name(void);
 void suite_bmsg(void);
 void suite_qmark(void);
+void suite_ttyown(void);
 void suite_upassign(void);
 void suite_pi_llm(void);
 void suite_upcon(void);
@@ -88,6 +89,7 @@ static const h_suite suites[] = {
     { "pty_name", suite_pty_name },
     { "bmsg", suite_bmsg },
     { "qmark", suite_qmark },
+    { "ttyown", suite_ttyown },
     { "upassign", suite_upassign },
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
