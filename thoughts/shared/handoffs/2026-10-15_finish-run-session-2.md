@@ -50,19 +50,23 @@ Count at write time (grep of the plan file, `- [x] FP` / `- [ ] FP` / `- [~] FP`
 
 Branches: vtcon `fix/finish-fp2` (worktree `build/wt-fp2`, unmerged), upterm-ports `fix/finish-fp4` (worktree `../upterm-ports-fp4`). Untracked or modified at write time: progress ledger has an uncommitted modification (an agent appending); check `git status` first.
 
-## Next steps (ordered)
+## Next steps (ordered; owner decisions below are final, do not re-ask)
 
 1. Collect the two agent reports (or read their branches and ledger lines). Review, then merge `fix/finish-fp2` and `fix/finish-fp4` (non-ff merges create ledger conflicts: keep both sides).
-2. `make dist` and `make dist-check` once (kit content changed: bc, ed, iconv, ctags, screen patch, stack cookies, prompt). Then on a rig: "show me the startup" against the fixture should read S:Startup-Sequence.
-3. FP1.6 rest: stock A1200 timing (`rig.py start --a1200`), hlp/mdp needs `less` in the kit. FP1.9 needs the owner's word "quiet". FP1.10 P7 table.
-4. FP3.2, 3.3, 3.4, 3.6, 3.7 (rig-bound). FP3.5 (b) Prefs gadgets and (d) rig check. FP4.3 to FP4.6.
-5. ixemul-vtcon changes for column and jq (`reallocarray`, `strtonum`, `strptime`, `isnormal`, pthread subset), if the owner allows; then jq's `execute.c:986` assertion (suspect m68k struct alignment, unverified).
-6. Phase 5: recommended first, the gcc 16 hunt (Opus, the stack fixes may have changed it).
-7. Push vtcon main (14 commits ahead) as `spotUP` after review.
+2. FP5.7 / W39, the gcc 16 hunt (owner: "yes, should be fixed"). Opus agent, host-only. Background: Bebbo's gcc 16 is installed (`~/opt/amiga16`) and builds ixemul-vtcon (`40852da`, `e8bcc9d`); two gcc 16 bugs are fixed on a local compiler branch; one hang in gcc 16's string objects is left (plan `2026-09-28-vtcon.md:1402`, ixstackext state `35bee4a2`). Step 1 is one re-test: does the hang still happen (the "stack fixes may have changed it" idea is a guess). If yes: root-cause, stop and report after 10 tool calls without a foothold. If fixed: close W39's hang and queue the CPython and Neovim rebuild with gcc 16 plus the size and speed comparison.
+3. W46 (c) 16-colour mode (owner: build): `/colors 16` = TERM `xterm-16color` plus a shipped terminfo entry; then (b) Prefs gadgets (rig) and (d) rig check; tick FP3.5 only when all four are done (1 of 4 now).
+4. ixemul-vtcon edits (owner: yes, feature branch, no push) for column and jq: `reallocarray`, `strtonum`, `strptime`, `isnormal`, pthread subset; then unpark column (`thoughts/shared/research/2026-10-15_column-port-blocked/`) and jq (fce93a0), then jq's `execute.c:986` assertion (suspect m68k struct alignment, unverified).
+5. `make dist` and `make dist-check` once (kit content changed: bc, ed, iconv, ctags, screen patch, stack cookies, prompt). Then on a rig: "show me the startup" against the fixture should read S:Startup-Sequence.
+6. FP4.3 to FP4.5 (gawk, make, Lua; vim, rsync, git, perl; BebboSSH row), FP4.6 coreutils (owner: the agent commits `recipe.mk` on the upterm-ports feature branch).
+7. FP1.6 rest: stock A1200 timing (`rig.py start --a1200`), hlp/mdp needs `less` in the kit. FP1.10 P7 table. FP3.2, 3.3, 3.4, 3.6, 3.7 (rig-bound).
+8. Fix the stale plan D1 text (the demo tour ends on Esc, Q, Ctrl-C; a key skips to the next scene: owner's W-D2 of 2026-10-14). Code stays.
+9. Phase 5 products after the hunt: each starts with research plus plan documents (Opus), code only after the owner approves each plan.
+10. Push vtcon main (about 17 commits ahead) as `spotUP` after review.
 
 ## Other notes
 
-- Owner decisions open: W46 (c) 16-colour mode (recommended: do not build); plan D1 text vs code for tour keys (code ends the tour on Esc, Q, Ctrl-C only); FP0.3 (AmigaOS 3.2 tree path); FP0.6 (who commits coreutils `recipe.mk`); FP3.8/FP3.9 branches `feature/r1-rom`, `feature/cc1-cc2` belong to another session; ixemul-vtcon edit permission; which Phase 5 product first; real-key half of T13.
+- Owner decisions made 2026-10-15 (also in the ledger, `4130a421`): W46 (c) build; D1 plan text fixed, code stays; ixemul-vtcon edits yes; gcc 16 hunt first; FP3.8 and FP3.9 skipped (branches `feature/r1-rom`, `feature/cc1-cc2` belong to another session); FP0.6 agent commits; FP1.9 skipped.
+- Still open for the owner: FP0.3 (the S1 race number): `tools/rig/paths.py` expects the AmigaOS 3.2 tree at `~/Downloads/AmigaOS-3.2-full (1)`, which does not exist (found: `~/Downloads/Workbench_3.2.2.hdf`, `~/Desktop/KICK_323.rom`, `~/Downloads/amiga-replayer-workbench`); ask whether the race needs `--os32` at all or can run on the default boot. Also: `make dist`, the rig check of the prompt fix, the real-key half of T13, which Phase 5 product after gcc 16.
 - Owner eyeball list: colours of `hl` and `mdv` output, the demo tour's look. Input box showed stale text after the "time limit" prompt (unconfirmed, unplanned).
 - Not ours: three old `claude_fixture.py` processes (pids 27697, 72299, 78876); other sessions' worktrees `feature/dctelnet-root`, `feature/demo-perf`; large scratch dirs under /private/tmp/claude-501 from other sessions.
 - Rig 1 is the owner's; never use it.
