@@ -314,7 +314,7 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
   `Status` lists the session wasabid; `ami.py` with WASABI_PORT=1240 WASABI_KEY=<T from
   the test's key> pings it; the boot wasabid on 1234 still answers with the rig key; after
   Ctrl-] the session one is gone. M.
-- [ ] **NL15** The relay in uptelnetd: `--agent-relay 127.0.0.1:1234` and
+- [x] **NL15** The relay in uptelnetd: `--agent-relay 127.0.0.1:1234` and
   `--relay-key-file`; wasabi's framing (PROTOCOL.md 0.9b2): a client must authenticate with
   the relay key (constant time) else close; no live key session with an agent -> wasabi's
   error frame "no Amiga is connected to Claude Code"; else connect to (peer, port),
@@ -325,7 +325,8 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
   with key T; tn_host key-logs in and announces x; wasabi's client through the relay with
   the relay key runs `ping` (mock saw T, call count 1); after tn_host leaves the same call
   gets the error; a wrong relay key gets a closed socket. L.
-- [ ] **NL16** NAS wiring: `mcp.json` -> wasabi_mcp.py at 127.0.0.1:1234 with the relay key
+  Evidence: feature/nas-relay; ONLY=uptelnetd RelayReach (one test, through main(), build/tn_host AGENT=port, wasabi's upstream mock-wasabid.py with the C-derived session key as its key): ping through the relay rc 0, mock PING count 1; before login and after tn_host leaves: 'no Amiga is connected to Claude Code', count stays 1; wrong relay key -> closed socket. Fails with relay-key check removed, with a wrong session-key label, and with the registry never cleaned. AGENT wire: SB AUTH IS 0x75 0x01 port[2] (tn_announce_agent in net/tn.c, tn.h step 7). Loopback peers are no relay target without --relay-loopback.
+- [x] **NL16** NAS wiring: `mcp.json` -> wasabi_mcp.py at 127.0.0.1:1234 with the relay key
   (`~/.config/wasabi/config`, written 0600 by the entrypoint when missing; `amiga-target`
   stays for a direct-LAN setup); entrypoint passes `--agent-relay`/`--relay-key-file`;
   `~/work/.claude/settings.json` with `enabledMcpjsonServers: ["amiga"]` and D4's allow list
@@ -333,9 +334,11 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
   screens, ps, health; run, write_file, key/type, click, arexx, kill ask); deferred tool
   schemas if the installed Claude Code supports it (U4, owner). Files: `tools/nas/*`. Test:
   host `ONLY=uptelnetd` checks the entrypoint's argument building and the settings file. S-M.
-- [ ] **NL17** Skill `tools/nas/skills/amiga-upterm/SKILL.md`: the amiga tools reach the
+  Evidence: feature/nas-relay; ONLY=uptelnetd NasRelayWiring (4 tests): relay-config (0600 key once, amiga-target key kept), entrypoint flags parsed by uptelnetd's own parse_args, settings.json allow list == the 9 read-only wasabi_mcp.py tools (amiga_info, ls, read_file, screenshot, windows, ui_list, arexx_ports, ps, health) and no writer, seeding. mcp.json unchanged: host/port/key come from ~/.config/wasabi/config. compose tag 8. Deferred tool schemas (U4) not done: owner.
+- [x] **NL17** Skill `tools/nas/skills/amiga-upterm/SKILL.md`: the amiga tools reach the
   Amiga you are typing from; "no Amiga is connected" means no session daemon. Also the copy
   in vtcon-demo-perf. Test: none (text). S.
+  Evidence: feature/nas-relay SKILL.md section 'Which Amiga the tools reach'; copy on branch feature/demo-perf-nas-skill in vtcon-demo-perf. Text only.
 - [ ] **NL18** Claude.lha carries wasabid (D5 a, MIT): `dist/addons/claude/parts.txt`,
   install.dos (C:wasabid, only when no wasabid of the base kit is there), LICENSES.txt,
   Uninstall removes C:wasabid with the last of Claude (ours only); base Installer help text

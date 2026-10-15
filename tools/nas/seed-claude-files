@@ -26,3 +26,4 @@ seed() { # NAME SRCFILE DSTFILE
 }
 seed SKILL.md "$SRC/skills/amiga-upterm/SKILL.md" "$H/.claude/skills/amiga-upterm/SKILL.md"
 seed mcp.json "$SRC/mcp.json" "$H/work/.mcp.json"
+seed settings.json "$SRC/settings.json" "$H/work/.claude/settings.json"

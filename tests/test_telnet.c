@@ -335,6 +335,23 @@ static void key_login_answers_the_challenge_with_the_exact_bytes(void)
     SHOWN_IS("hello");                             /* the session goes on */
 }
 
+static void the_session_daemon_port_is_announced_only_after_the_proof(void)
+{
+    tn t;
+    keyed(&t);
+    tn_announce_agent(&t, 7847);
+    CHECK_INT(nsent, 0);                           /* not logged in by key: nothing goes out */
+    tn_recv(&t, (const unsigned char *)"\377\375\045", 3);
+    tn_recv(&t, (const unsigned char *)SEND_MSG, (int)sizeof(SEND_MSG) - 1);
+    tn_recv(&t, (const unsigned char *)ACCEPT_MSG, (int)sizeof(ACCEPT_MSG) - 1);
+    clear();
+    tn_announce_agent(&t, 7847);                   /* 0x1ea7 */
+    SENT_IS("\377\372\045\000\165\001\036\247\377\360");
+    clear();
+    tn_announce_agent(&t, 255);                    /* the 255 in the port is doubled */
+    SENT_IS("\377\372\045\000\165\001\000\377\377\377\360");
+}
+
 static void key_login_split_at_every_byte_is_the_same(void)
 {
     tn t;
@@ -518,6 +535,7 @@ void suite_telnet(void)
     session_end_gives_the_shell_its_screen_back();
     session_end_on_the_main_screen_keeps_the_cursor();
     key_login_answers_the_challenge_with_the_exact_bytes();
+    the_session_daemon_port_is_announced_only_after_the_proof();
     key_login_split_at_every_byte_is_the_same();
     a_bad_server_proof_closes_the_line();
     a_rejected_key_falls_back_to_the_password();

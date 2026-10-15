@@ -581,3 +581,28 @@ void tn_session_key(const unsigned char *k, int klen, const unsigned char *sn, i
     }
     hex[64] = 0;
 }
+
+void tn_announce_agent(tn *t, int port)
+{
+    unsigned char b[12];
+    int n = 0, i;
+    unsigned char v[2];
+    if (t->auth != TN_AUTH_OK)
+        return;
+    v[0] = (unsigned char)((port >> 8) & 255);
+    v[1] = (unsigned char)(port & 255);
+    b[n++] = TN_IAC;
+    b[n++] = TN_SB;
+    b[n++] = TN_AUTH;
+    b[n++] = TN_AUTH_IS;
+    b[n++] = TN_AUTH_TYPE;
+    b[n++] = TN_AUTH_AGENT;
+    for (i = 0; i < 2; i++) {
+        b[n++] = v[i];
+        if (v[i] == TN_IAC)
+            b[n++] = TN_IAC;
+    }
+    b[n++] = TN_IAC;
+    b[n++] = TN_SE;
+    t->out(t->user, b, n);
+}
