@@ -175,10 +175,7 @@ static void agent_path(sess *s, char *dest, int n)
 
 static void send_agent(sess *s, LONG port)
 {
-    unsigned char m[32];
-    int n = upagent_message(m, sizeof(m), port);
-    if (n)
-        sock_out(s, m, n);
+    tn_announce_agent(&s->t, (int)port);
 }
 
 /* After the key login: the shell (asynchronous, its own input and output) that sets the key and

@@ -46,24 +46,6 @@ int upagent_script(char *out, int n, const char *agent, long port, const char *k
     at = put(out, n, at, agent);
     at = put(out, n, at, "\" ");
     at = put(out, n, at, num);
-    at = put(out, n, at, " name session\n");
+    at = put(out, n, at, " name session plain\n");
     return at < 0 ? 0 : at;
-}
-
-int upagent_message(unsigned char *out, int n, long port)
-{
-    static const unsigned char head[] = { 255, 250, TN_AUTH, TN_AUTH_IS, TN_AUTH_TYPE, 'A', 'G', 'E', 'N', 'T', 0 };
-    char num[12];
-    int l, i = 0;
-    decimal(port, num);
-    l = (int)strlen(num);
-    if (n < (int)sizeof(head) + l + 2)
-        return 0;
-    memcpy(out, head, sizeof(head));
-    i = (int)sizeof(head);
-    memcpy(out + i, num, (size_t)l);
-    i += l;
-    out[i++] = 255;
-    out[i++] = 240;
-    return i;
 }

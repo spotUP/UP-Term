@@ -1,6 +1,6 @@
 /* The session daemon of a key login (plan nas-claude-local, NL14), the parts of it that are
  * plain text and bytes, so the host tests can pin them: what the asynchronous shell runs and
- * the AGENT message to the NAS. uptelnet.c does the Amiga half (the shell, the signal). */
+ * which wasabid to run (the AGENT message is tn_announce_agent, net/tn.c). uptelnet.c does the Amiga half (the shell, the signal). */
 #ifndef UPAGENT_H
 #define UPAGENT_H
 
@@ -18,9 +18,5 @@ int upagent_script(char *out, int n, const char *agent, long port, const char *k
 /* The wasabid to run: UPAGENT_DEFAULT when exists() says it is there, else UPAGENT_FALLBACK when
  * that is; 0 when neither (uptelnet then starts no daemon and says 0 to the NAS). */
 const char *upagent_pick(int (*exists)(const char *path));
-
-/* The AGENT message to the NAS: IAC SB AUTH IS 0x75 "AGENT" 0x00 <port in decimal> IAC SE.
- * port 0 says there is no daemon. Length, 0 when it does not fit in n bytes (24 is enough). */
-int upagent_message(unsigned char *out, int n, long port);
 
 #endif
