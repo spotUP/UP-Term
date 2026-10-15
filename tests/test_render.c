@@ -355,6 +355,72 @@ static void direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray(
     close_term();
 }
 
+/* W-T13 (and W-T11, the colours of rig 2's split-screen scene): a 24-bit Workbench whose colour map is used up
+ * (Directory Opus and the Workbench's icons hold every entry: ObtainPen finds no scratch pen, ObtainBestPen
+ * exact finds none) drew every window in the nearest of the 32 pens that are left (colour 240 and 48;2;88;88;88
+ * purple). An RTG screen shows a colour without a pen: the cells' colours are FillPixelArray's, exact; only the
+ * glyphs take the nearest pen, over a background filled first (not JAM2, which would put the nearest pen round
+ * every glyph). */
+static void direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up(void)
+{
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(2);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vr_redraw(&rn);
+    CHECK(rn.truecolor != 0); /* the RTG path ran: no scratch pen, FillPixelArray's colour */
+    CHECK(rn.cgx != 0);
+    CHECK(rn.scratch[0] < 0 && rn.scratch[1] < 0);
+    gf_clear_log();
+    pass("\x1b[48;2;200;100;50m   \x1b[48;5;240m  \x1b[48;2;88;88;88m ");
+    CHECK_INT(gf_count(GF_CGXFILL), 2); /* colour 240 is #585858: it and the direct 88;88;88 are one fill */
+    CHECK_INT(gf_count(GF_SETRGB), 0);
+    CHECK_INT(gf_pixel(0, 0), GF_CGX | 0xC86432);
+    CHECK_INT(gf_pixel(3 * CW - 1, CH - 1), GF_CGX | 0xC86432);
+    CHECK_INT(gf_pixel(3 * CW, 0), GF_CGX | 0x585858); /* colour 240 */
+    CHECK_INT(gf_pixel(5 * CW, 0), GF_CGX | 0x585858);
+    CHECK_INT(gf_pixel(6 * CW - 1, CH - 1), GF_CGX | 0x585858);
+    CHECK_INT(gf_pixel(7 * CW, 0) & GF_CGX, 0);
+    /* text in a direct colour: no pen holds it, so the run is drawn in a bitmap of its own and written through a
+     * two-colour table (WriteLUTPixelArray) -- the glyph cells the text colour, the others the cell's background.
+     * The fake draws a character as a solid cell. */
+    gf_clear_log();
+    pass("\x1b[2;1H\x1b[38;2;255;175;255;48;2;70;80;90mA B\x1b[m");
+    CHECK_INT(gf_count(GF_CGXLUT), 1);
+    CHECK_INT(gf_count(GF_CGXFILL), 0);
+    CHECK_INT(gf_count(GF_SETRGB), 0);
+    if (gf_find(GF_CGXLUT, 0)) {
+        CHECK_INT(gf_find(GF_CGXLUT, 0)->c, 3 * CW);
+        CHECK_INT(gf_find(GF_CGXLUT, 0)->d, CH);
+    }
+    CHECK_INT(gf_pixel(0, CH), GF_CGX | 0xFFAFFF);
+    CHECK_INT(gf_pixel(CW - 1, CH + CH - 1), GF_CGX | 0xFFAFFF);
+    CHECK_INT(gf_pixel(CW, CH), GF_CGX | 0x46505A);
+    CHECK_INT(gf_pixel(2 * CW, CH + CH - 1), GF_CGX | 0xFFAFFF);
+    /* a palette colour on the window's own background: the pen's colour from the colour map is the other entry */
+    gf_clear_log();
+    pass("\x1b[3;1H\x1b[38;5;240mx\x1b[m");
+    CHECK_INT(gf_count(GF_CGXLUT), 1);
+    CHECK_INT(gf_pixel(0, 2 * CH), GF_CGX | 0x585858);
+    /* a box-drawing cell (a rule line, the tmux status line's pane border) in a direct colour: the same */
+    gf_clear_log();
+    pass("\x1b[5;1H\x1b[38;5;34m\xe2\x94\x80\x1b[m");
+    CHECK_INT(gf_count(GF_CGXLUT), 1);
+    CHECK_INT(gf_pixel(CW / 2, 4 * CH + CH / 2), GF_CGX | 0x00AF00); /* the arm's middle row, colour 34 */
+    CHECK_INT(gf_pixel(CW / 2, 4 * CH) & GF_CGX, GF_CGX);          /* the cell's other pixels: the background */
+    /* the 16 ANSI colours are direct colours here too: no pen of the colour map to take */
+    gf_clear_log();
+    pass("\x1b[6;1H\x1b[42m  \x1b[m");
+    CHECK_INT(gf_count(GF_CGXFILL), 1);
+    CHECK_INT(gf_pixel(0, 5 * CH), GF_CGX | (int)vt_palette_rgb(term, 2));
+    /* a glyph in a pen colour (the default colours) is still drawn through the pens */
+    gf_clear_log();
+    pass("\x1b[4;1H\x1b[48;2;1;2;3mx\x1b[m");
+    CHECK_INT(gf_count(GF_CGXLUT), 0);
+    CHECK_INT(gf_count(GF_CGXFILL), 1); /* the background, filled first; the glyph in the pen */
+    close_term();
+}
+
 /* W-T3: a frame of UPDemo's effects (half blocks in 256 colours, every row) */
 static const char *effect_frame(int phase)
 {
@@ -1345,6 +1411,7 @@ int main(void)
     the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
+    direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up();
     neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels();
     the_same_joining_on_a_true_colour_screen();
     slow_and_rapid_blink_keep_their_rates_whatever_the_frame_interval();

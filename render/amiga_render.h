@@ -201,6 +201,15 @@ typedef struct vr_render {
     UBYTE *img_buf;
     ULONG img_buf_size;
     struct Library *cgx;
+    /* Glyphs in a colour no pen holds (flush_run_exact, W-T13): a one-plane bitmap the run is drawn in
+     * (mbm, mbm_w by mbm_h), its pixels as bytes 0/1 (mbuf), the two colours of the blit (mctab[0], [1]) and
+     * the RastPort that draws into mbm. Made when first wanted, freed by vr_free. */
+    struct BitMap *mbm;
+    LONG mbm_w, mbm_h;
+    UBYTE *mbuf;
+    ULONG mbuf_size;
+    ULONG mctab[256];
+    struct RastPort mrp;
     LONG img_serial;
     ULONG img_bgrgb;
     UBYTE img_planes;     /* the planes the last image's pens use */

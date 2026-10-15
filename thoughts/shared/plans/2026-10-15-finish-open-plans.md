@@ -82,11 +82,11 @@ Owner visual sign-off list (output of the phase): G2, G3, D1, P7, R1 screenshots
 
 ## Phase 2: RTG true colour without owning pens (1 agent, sonnet; medium)
 
-- [ ] FP2.1 W-T13: draw true colour on RTG with `FillPixelArray` for fills (cause found: 24-bit WB has a 32-entry
+- [x] FP2.1 W-T13: draw true colour on RTG with `FillPixelArray` for fills (cause found: 24-bit WB has a 32-entry
   map and 0 free pens, ledger 1293). Files: `render/amiga_render.c` and its host test `tests/test_render.c`
-  (pen allocation path vs RTG path, sentinel proves the RTG path ran).
-- [ ] FP2.2 W-T11: the split-screen scene whose text scroll wrong colours: rig 2 full demo run after FP2.1;
-  criterion: pixel reads of the text rows equal the palette colours (haiku reader, text answer).
+  (pen allocation path vs RTG path, sentinel proves the RTG path ran). (done: b408a22c + 27b3a14c, direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up, make test ONLY=render 420 checks, revert-checked, 2026-10-15)
+- [x] FP2.2 W-T11: the split-screen scene whose text scroll wrong colours: rig 2 full demo run after FP2.1;
+  criterion: pixel reads of the text rows equal the palette colours (haiku reader, text answer). (done: b408a22c, tools/rig/demo_colours_rig.py --hog rig 2: scenes 6 and 7 PASS 9 of 9 and 3 of 3 exact, main's handler 0 of 9 and 0 of 3, 2026-10-15)
 
 ## Phase 3: vtcon.md not-started and in-progress items (1 agent at a time; each its own branch, 1 PR-sized commit set)
 

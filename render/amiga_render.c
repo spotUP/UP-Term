@@ -105,6 +105,32 @@ static ULONG ink_solid(ULONG ink)
     return DITH_LEV(ink) < PM_LEVELS / 2 ? DITH_A(ink) : DITH_B(ink);
 }
 
+/* A direct colour on a true-colour screen whose colour map is used up (no scratch pen to load, no pen to
+ * obtain exact), where a pen is wanted all the same -- a glyph, a shade pattern: the pen the screen finds
+ * nearest, held until vr_free (the exact_key table, key 0x02RRGGBB). The areas of the colour are not
+ * drawn with it: fill() gives them the colour itself through FillPixelArray. */
+static UBYTE nearest_pen(vr_render *r, ULONG rgb)
+{
+    ULONG key = rgb | 0x02000000UL;
+    int h = (int)(((rgb * 2654435761UL) >> 24) & (VR_EXACT_SLOTS - 1)), i;
+    LONG p;
+    for (i = 0; i < VR_EXACT_SLOTS; i++, h = (h + 1) & (VR_EXACT_SLOTS - 1)) {
+        if (r->exact_key[h] == key)
+            return r->exact_pen[h];
+        if (!r->exact_key[h])
+            break;
+    }
+    if (i == VR_EXACT_SLOTS || !r->cm)
+        return r->pen_default_fg;
+    p = ObtainBestPenA(r->cm, ((rgb >> 16) & 0xFF) * 0x01010101UL, ((rgb >> 8) & 0xFF) * 0x01010101UL,
+                       (rgb & 0xFF) * 0x01010101UL, 0);
+    if (p < 0)
+        return r->pen_default_fg;
+    r->exact_key[h] = key;
+    r->exact_pen[h] = (UBYTE)p;
+    return (UBYTE)p;
+}
+
 /* The pen that draws ink as pen A (slot 0) or pen B (slot 1). On a screen
  * of more than 8 bits a pen is only the colour of the next drawing, not a
  * palette entry: pixels drawn earlier keep their colour when it changes
@@ -125,6 +151,8 @@ static UBYTE ink_pen(vr_render *r, ULONG ink, int slot)
         r->seen |= (UBYTE)ink;
         return (UBYTE)ink;
     }
+    if (r->scratch[slot] < 0)
+        return nearest_pen(r, ink & 0xFFFFFFUL); /* no pen to load: the nearest the screen has */
     if (r->scratch_ink[slot] != ink) {
         rgb = ink & 0xFFFFFFUL;
         SetRGB32(&r->win->WScreen->ViewPort, (ULONG)r->scratch[slot],
@@ -293,8 +321,8 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
      * colour -- a pen each from the screen's colour map ran out after
      * about 150, and "best pen" then gave Workbench colours (a 256-colour
      * cube on the rig: 52 of 240 cells wrong, (238,153,0) for (215,135,0)) */
-    if (r->truecolor && c >= 16)
-        return truecolor_ink(r, vt_palette_rgb(r->t, c));
+    if (r->truecolor && (c >= 16 || r->scratch[0] < 0))
+        return truecolor_ink(r, vt_palette_rgb(r->t, c)); /* the 16 ANSI colours too when no pen of one's own can be had */
     if (!r->have[c]) {
         ULONG rgb = vt_palette_rgb(r->t, c);
         /* exact first (pen_rule.h); on a screen of few pens a full map then
@@ -403,6 +431,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
      * palette screen (AGA, 8-bit RTG) would recolour everything drawn in a
      * pen it redefines, so there they get the nearest pen instead. */
     r->truecolor = 0;
+    r->cgx = 0;
     r->scratch[0] = r->scratch[1] = -1;
     r->scratch_ink[0] = r->scratch_ink[1] = 0;
     r->n_exact = 0;
@@ -418,7 +447,18 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
         GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) > 8) {
         r->scratch[0] = ObtainPen(r->cm, (ULONG)-1, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
         r->scratch[1] = ObtainPen(r->cm, (ULONG)-1, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
-        r->truecolor = r->scratch[0] >= 0 && r->scratch[1] >= 0;
+        if (r->scratch[0] < 0 || r->scratch[1] < 0) {
+            /* a colour map used up (a 24-bit Workbench has 256 entries or 32 and Directory Opus, the
+             * Workbench's own icons and every other window hold them): no pen to load, but an RTG
+             * screen shows a direct colour without any -- fills through FillPixelArray (W-T13) */
+            if (r->scratch[0] >= 0)
+                ReleasePen(r->cm, (ULONG)r->scratch[0]);
+            if (r->scratch[1] >= 0)
+                ReleasePen(r->cm, (ULONG)r->scratch[1]);
+            r->scratch[0] = r->scratch[1] = -1;
+        }
+        r->cgx = (struct Library *)OpenLibrary((STRPTR)"cybergraphics.library", 41);
+        r->truecolor = r->scratch[0] >= 0 || r->cgx != 0;
     }
     r->cursor_drawn = 0;
     r->cursor_colorful = 0;
@@ -440,6 +480,10 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->n_img_pens = 0;
     r->img_buf = 0;
     r->img_buf_size = 0;
+    r->mbm = 0;
+    r->mbm_w = r->mbm_h = 0;
+    r->mbuf = 0;
+    r->mbuf_size = 0;
     r->img_serial = 0;
     r->n_img_runs = 0;
     r->back = 0;
@@ -447,7 +491,11 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->sync_seen = vt_sync_frames(t); /* frames before this window are not its to compose */
     /* true colour: images straight from their indices (P96 and CGX both
      * offer cybergraphics.library); else the pens path below */
-    r->cgx = r->truecolor ? OpenLibrary((STRPTR)"cybergraphics.library", 41) : 0;
+    if (!r->truecolor) {
+        if (r->cgx)
+            CloseLibrary(r->cgx);
+        r->cgx = 0;
+    }
     /* colour emoji (U4) through the same call; ce_has asks for RTG of 15
      * bits or more and the call, so AGA and 8-bit RTG keep Unifont's glyph */
     r->emoji.tg.rtg = !r->planar;
@@ -639,6 +687,14 @@ void vr_free(vr_render *r)
         FreeVec(r->img);
         r->img = 0;
     }
+    if (r->mbm) {
+        WaitBlit();
+        FreeBitMap(r->mbm);
+        r->mbm = 0;
+    }
+    if (r->mbuf)
+        FreeVec(r->mbuf);
+    r->mbuf = 0;
     if (r->img_buf)
         FreeVec(r->img_buf);
     if (r->cgx)
@@ -1053,11 +1109,16 @@ static int block_joins(vt_glyph g)
     return g.kind == VT_GLYPH_BLOCK && !(g.code & 0xC0) && ((g.code >> 4) & 3) < 2;
 }
 
+static int exact_ink(const vr_render *r, ULONG ink);
+static int draw_special_exact(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg, int cells);
+
 static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg, int cells)
 {
     WORD x1 = px + r->cw * (g.kind == VT_GLYPH_MISSING && g.code == 2 ? 2 : cells) - 1, y1 = py + r->ch - 1;
     if ((g.kind != VT_GLYPH_BLOCK || (g.code & 0x80)) && cpu_refuses(r))
         return; /* lines and shade patterns: not the CPU fills' */
+    if (g.kind != VT_GLYPH_BLOCK && exact_ink(r, fg) && draw_special_exact(r, px, py, g, fg, bg, cells))
+        return;
     r->blank = 0;
     fill(r, px, py, x1, y1, bg);
     switch (g.kind) {
@@ -1301,6 +1362,128 @@ static int draw_script(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const 
     return 1;
 }
 
+static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st);
+
+/* The colour of pen p, as the screen's colour map has it: 0xRRGGBB. */
+static ULONG pen_rgb(vr_render *r, ULONG p)
+{
+    ULONG tab[3];
+    if (!r->cm)
+        return 0;
+    GetRGB32(r->cm, p, 1, tab);
+    return ((tab[0] >> 24) << 16) | ((tab[1] >> 24) << 8) | (tab[2] >> 24);
+}
+
+/* Things drawn in a colour no pen holds (W-T13): a direct colour on a true-colour screen with no pen to load, so
+ * a glyph or a line drawn through a pen is the nearest colour the screen has, never the colour. The drawing is
+ * done by the caller's own code in a one-plane bitmap (pen 1 the ink, pen 0 the rest: every soft style, the lines
+ * and the bold smear as for anything else), its bits made bytes, and written to the window through a two-entry
+ * table of the exact colours -- WriteLUTPixelArray, as images are: no pen, the layer clips. exact_ink: is this
+ * ink such a colour. */
+static int exact_ink(const vr_render *r, ULONG ink)
+{
+    return (ink & VR_INK_RGB) && r->scratch[0] < 0 && r->cgx && !r->cpu;
+}
+
+/* The scratch bitmap for w by h pixels, cleared, and r->mrp drawing into it with the cell font; 0: no memory. */
+static int exact_begin(vr_render *r, LONG w, LONG h)
+{
+    LONG need = (w + 15) & ~15L;
+    if (!r->mbm || r->mbm_w < need || r->mbm_h < h) {
+        if (r->mbm) {
+            WaitBlit();
+            FreeBitMap(r->mbm);
+        }
+        r->mbm = AllocBitMap((ULONG)need, (ULONG)h, 1, BMF_CLEAR, 0);
+        r->mbm_w = r->mbm ? need : 0;
+        r->mbm_h = r->mbm ? h : 0;
+        if (!r->mbm)
+            return 0;
+    }
+    if (r->mbuf_size < (ULONG)(need * h)) {
+        if (r->mbuf)
+            FreeVec(r->mbuf);
+        r->mbuf_size = (ULONG)(need * h);
+        r->mbuf = (UBYTE *)AllocVec(r->mbuf_size, MEMF_ANY);
+        if (!r->mbuf) {
+            r->mbuf_size = 0;
+            return 0;
+        }
+    }
+    WaitBlit();
+    memset(r->mbm->Planes[0], 0, (size_t)r->mbm->BytesPerRow * (size_t)r->mbm_h);
+    InitRastPort(&r->mrp);
+    r->mrp.BitMap = r->mbm;
+    SetFont(&r->mrp, r->font);
+    return 1;
+}
+
+/* What was drawn in the scratch bitmap (w by h) written to `win` at px, py: ink 1 as fg, ink 0 as bg (an ink of
+ * the window's, a pen or a direct colour). */
+static void exact_end(vr_render *r, struct RastPort *win, WORD px, WORD py, LONG w, LONG h, ULONG fg, ULONG bg)
+{
+    LONG need = (w + 15) & ~15L, x, y;
+    const UBYTE *pl;
+    WaitBlit();
+    pl = (const UBYTE *)r->mbm->Planes[0];
+    for (y = 0; y < h; y++) {
+        const UBYTE *s = pl + y * r->mbm->BytesPerRow;
+        UBYTE *d = r->mbuf + y * need;
+        for (x = 0; x < w; x++)
+            d[x] = (UBYTE)((s[x >> 3] >> (7 - (x & 7))) & 1);
+    }
+    r->mctab[0] = bg & VR_INK_RGB ? bg & 0xFFFFFFUL : pen_rgb(r, bg);
+    r->mctab[1] = fg & 0xFFFFFFUL;
+    vr_cgx_write_lut(r->cgx, (APTR)r->mbuf, 0, 0, (UWORD)need, win, (APTR)r->mctab, (UWORD)px, (UWORD)py, (UWORD)w,
+                     (UWORD)h, VR_CTABFMT_XRGB8);
+}
+
+/* A run of text in a direct colour: drawn by flush_run itself into the scratch bitmap. Returns 0 when it cannot
+ * (no memory; an underline of another colour than the text's): the caller draws the run through pens. */
+static int flush_run_exact(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
+{
+    LONG w = (LONG)n * r->cw, h = r->ch;
+    struct RastPort *win = r->rp;
+    vr_style ms;
+    if (st->ul != st->fg && (st->attr & VT_ATTR_UNDERLINE))
+        return 0;
+    if (!exact_begin(r, w, h))
+        return 0;
+    ms = *st;
+    ms.fg = ms.fgf = ms.ul = 1;
+    ms.bg = ms.bgf = 0;
+    r->rp = &r->mrp;
+    flush_run(r, run, n, 0, 0, &ms);
+    r->rp = win;
+    exact_end(r, win, px, py, w, h, st->fg, st->bg);
+    return 1;
+}
+
+static void draw_special(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg, int cells);
+
+/* A box-drawing, diagonal or missing-glyph cell in a direct colour, the same way */
+static int draw_special_exact(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG fg, ULONG bg, int cells)
+{
+    LONG w = (LONG)r->cw * (g.kind == VT_GLYPH_MISSING && g.code == 2 ? 2 : cells), h = r->ch;
+    struct RastPort *win = r->rp;
+    if (!exact_begin(r, w, h))
+        return 0;
+    r->rp = &r->mrp;
+    draw_special(r, 0, 0, g, 1, 0, cells);
+    r->rp = win;
+    exact_end(r, win, px, py, w, h, fg, bg);
+    r->blank = 0;
+    return 1;
+}
+
+/* A run whose background is filled first and its glyphs then drawn over it in JAM1: a dither (W-T7), or a
+ * direct colour on a true-colour screen with no scratch pen (JAM2 would paint the glyph cells in the
+ * nearest pen, not the colour the fill gives the cells around them). */
+static int bg_apart(const vr_render *r, const vr_style *st)
+{
+    return IS_DITH(st->bgf) || ((st->bgf & VR_INK_RGB) && r->scratch[1] < 0);
+}
+
 static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
 {
     int i;
@@ -1320,7 +1503,12 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
             return;
         }
     }
-    if (IS_DITH(st->bgf)) {
+    if (exact_ink(r, st->fg) && flush_run_exact(r, run, n, px, py, st)) {
+        r->n_text++;
+        r->blank = 0;
+        return;
+    }
+    if (bg_apart(r, st)) {
         /* text on a dithered background (W-T7): the background's pattern,
          * then the glyphs over it in JAM1 -- through graphics.library, so a
          * composed planar pass is drawn in place */
@@ -1337,7 +1525,7 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
     if (!(st->attr & (VT_ATTR_SUPER | VT_ATTR_SUB)) || !draw_script(r, run, n, px, py, st, font)) {
         if (font != r->font)
             SetFont(r->rp, font);
-        if (IS_DITH(st->bgf)) {
+        if (bg_apart(r, st)) {
             ink_a(r, st->fg);
             SetDrMd(r->rp, JAM1);
         } else {

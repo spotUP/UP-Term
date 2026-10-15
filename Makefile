@@ -729,6 +729,11 @@ $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dripens.c
 
+# Picasso96's 24-bit pens (RPTAG_PenMode/FgColor/BgColor) on the Workbench screen (W-T13)
+$(BUILD)/amiga/rgbprobe: tests/amiga/rgbprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/rgbprobe.c
+
 # What a window on a public screen can get for direct colours (UT4: depth, entries, exclusive pens)
 $(BUILD)/amiga/penprobe: tests/amiga/penprobe.c
 	@mkdir -p $(BUILD)/amiga
