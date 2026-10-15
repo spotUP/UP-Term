@@ -70,6 +70,7 @@ static const slash_def table[] = {
     { "bell", SL_CHOICE, 0, 0, v_bell, "none | beep | visual", "the bell" },
     { "bg", SL_ARG, SLASH_BG, 1, 0, "RRGGBB | none", "the background colour" },
     { "bold-bright", SL_CHOICE, 0, 0, v_bold, "on | off", "bold text takes the bright colours (xterm)" },
+    { "claude", SL_ACTION, MENU_CLAUDE, 0, 0, "", "Claude, in a new tab" },
     { "clear", SL_CHOICE, 0, 0, v_clear, "screen | scrollback", "clear the screen or the scrollback" },
     { "colors", SL_ARG, SLASH_COLORS, 1, 0, "rgb | 256 | none",
       "the colour depth programs are told (rgb: COLORTERM=truecolor)" },
