@@ -2,7 +2,7 @@
 date: 2026-10-13
 topic: Group the UP-Term source repos under ~/Code/UP-Term
 tags: [layout, repos, build]
-status: draft
+status: implemented
 ---
 
 # Source umbrella: ~/Code/UP-Term

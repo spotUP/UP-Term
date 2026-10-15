@@ -2,7 +2,7 @@
 date: 2026-10-14
 topic: wasabi 0.8 replaces amiagent and amimcp (phase 2)
 tags: [wasabi, amiagent, amimcp, rig, mcp, kit]
-status: draft
+status: implemented
 ---
 
 # wasabi 0.9 replaces amiagent and amimcp
