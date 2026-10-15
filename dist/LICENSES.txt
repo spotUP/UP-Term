@@ -36,8 +36,8 @@ BebboSSH 1.46.1 (bebbossh,    GPL v3 or later (COPYING); some  Files/net/bebboss
 bebbosshd, bebboscp, ...)     files public domain per header
 curl 8.22.0 (AmigaOS port)    curl licence (COPYING)           https://github.com/boingball/curl branch
                                                                amigaos, commit 8347cfe (BUILD-INFO.txt)
-wasabi 0.10b4 (optional:    MIT (Files/wasabi/LICENSE)       https://github.com/creep-ltx/wasabi, commit
-wasabid, the client wasabi,                                    c698b99 (built by UP-Term); see
+wasabi 0.10 (optional:      MIT (Files/wasabi/LICENSE)       https://github.com/creep-ltx/wasabi, commit
+wasabid, the client wasabi,                                    9e18cd0 (built by UP-Term); see
 wasabi_mcp.py; by Tobias                                       Files/wasabi/SOURCE.txt
 Karlsson)
 GNU Unifont 17.0.05 pages     SIL OFL 1.1 (Files/unifont/      https://unifoundry.com; Files/unifont/SOURCE.txt

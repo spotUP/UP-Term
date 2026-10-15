@@ -18,7 +18,7 @@ pointer_scale() is (1, row_scale) and every script that scales a uitree box by i
 BREAK (0x09) is Ctrl-C to every command running in a run slot (SLOTS, then FREE with the Ctrl-C-only flag: reaches
 exactly that command, not a same-named task).
 POINTER (0x0B) is the front screen's MouseX and MouseY in screen pixels (u16 each, rows not doubled, as the
-amiagent answered): wasabid 0.10b4 appends them to the WINDOWS reply's S line (two more tab fields; PROTOCOL.md does not
+amiagent answered): wasabid 0.10 appends them to the WINDOWS reply's S line (two more tab fields; PROTOCOL.md does not
 say so), wasabi's list_windows() reads them as the screen's 'pointer' in grab space.
 Gaps (raise Gap, named, SystemExit): POINTER from a wasabid older than 0.9 (its S line has no pointer fields), and
 any INPUT sub-operation or UIACT verb that has no wasabi command.

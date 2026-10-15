@@ -57,7 +57,7 @@ CLAUDE FROM THE AMIGA
   tmux), see tools/nas/README.md in the vtcon source tree; to let Claude
   there run commands on this Amiga, wasabi (wasabid on the Amiga) is described
   in the same file (never share its key).
-  Install puts wasabid 0.10b4 (MIT, by Tobias Karlsson, Files/wasabid.LICENSE) in
+  Install puts wasabid 0.10 (MIT, by Tobias Karlsson, Files/wasabid.LICENSE) in
   C: only when no C:wasabid is there; a wasabid of UP-Term.lha or of yours stays.
   It is not started at boot: after a key login uptelnet starts a copy for that
   login, with a key of its own, and ends it when the login ends.

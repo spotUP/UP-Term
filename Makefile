@@ -277,7 +277,7 @@ golden: $(BUILD)/vtdump
 	.venv/bin/python tools/refdiff.py --write-golden $(ONLY)
 
 # wasabi (MIT, https://github.com/creep-ltx/wasabi) pinned, for `rig.py wasabi`: wasabid (Amiga daemon, Bebbo gcc)
-# and its stdlib Python client in build/wasabi. Pinned at c698b99 (0.10b4, 2026-10-15: builds without the CyberGraphX developer headers). wasabid's TLS (optional at run
+# and its stdlib Python client in build/wasabi. Pinned at 9e18cd0 (0.10, 2026-10-15: builds without the CyberGraphX developer headers). wasabid's TLS (optional at run
 # time since 0.8: an emulator on loopback and an Amiga without AmiSSL or keys run plain) is compiled against the
 # AmiSSL 5.27 SDK: AMISSL_SDK (the one `make amiga` uses, vendor/amissl-5.27/AmiSSL/Developer). The CyberGraphX
 # headers are upstream's own since 0.9 (include/wasabi_cgx.h); no shim. The upstream Makefile's own flags (-fbbb=-: Bebbo's
