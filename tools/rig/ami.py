@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ami.py -- the rig's Amiga client, a client of wasabid (https://github.com/creep-ltx/wasabi, `make wasabi`).
-   ami.py ping | info | exec "cmd" [secs] | menus [win] | uitree | ui verb win gadget [text]
+   ami.py ping | info | exec "cmd" [secs] | menus [win] | uitree | requesters | ui verb win gadget [text]
           | shot out.png [x y w h] | rexx "program" | get path out | put local path
           | key code [qual] | type text | screens
           | gclick win gadget   (clicks a uitree gadget by its id, matched exactly: '90' is not '290')
@@ -25,8 +25,16 @@ any INPUT sub-operation or UIACT verb that has no wasabi command.
 Mapped to the nearest command: raw key codes -> KEY frame with raw (code, qualifier) events; region grab -> crop
 of the full grab (raw, rows not doubled); gadget by id -> id from the gadget list, then a mouse click; tick-timed
 input script -> mouse move/down/up frames with the waits timed on the host (50 ticks per second): a held button
-crosses TCP round trips, so a very short wait can stretch."""
-import contextlib, os, struct, sys, time
+crosses TCP round trips, so a very short wait can stretch.
+
+Requesters: a command that opens a requester (DOS "insert volume", ixemul's panic "free: start of block corrupt!")
+blocks until someone answers it, and the daemon keeps answering pings, so an EXEC would wait forever. While an EXEC
+runs, a second connection looks at every screen's windows every REQUESTER_POLL (10) seconds; a requester that was not
+there when the command started and is still there on the next look ends the EXEC with an ERR naming its title,
+owning task and buttons (also appended to build/rig<N>/requesters.log). It is never answered for the caller: the
+requester is the finding. The EXEC ends within wasabi's RUN_CHECK (10 s) of that. A timeout ERR names any requester open at that moment. UPTERM_REQUESTER_WATCH=0 turns the
+watch off for a run that opens requesters on purpose. `ami.py requesters` lists the open ones."""
+import contextlib, os, socket, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths   # the one reader of UPTERM_RIG: rig 2's wasabid is on 1235
 import wasabi as rigwasabi
@@ -85,11 +93,117 @@ def _type(c, data):
         c.expect_ok()
 
 
+# Window titles that are always a requester: AmigaDOS's (insert volume, disk full, write protected) and ixemul's
+# show_msg default (ix_panic, panic, ix_warning: library/hwck.c).
+REQUESTER_TITLES = ('system request', 'ixemul.library message')
+# The answers a requester's buttons carry; a window whose every button is one of these is a requester.
+REQUESTER_ANSWERS = {'ok', 'cancel', 'retry', 'abort', 'continue', 'yes', 'no', 'quit', 'suspend', 'reboot',
+                     'ignore', 'resume', 'proceed'}
+REQUESTER_POLL = float(os.environ.get('UPTERM_REQUESTER_POLL') or 10)
+REQUESTER_LOG = paths.RIG / 'requesters.log'
+
+
+def requesters_in(screens):
+    """The requesters in read_ui(every_screen=True)'s answer: [{'addr', 'title', 'task', 'screen', 'buttons'}]."""
+    m = _m()
+    found = []
+    for sc in screens:
+        for w in sc['windows']:
+            gads = [g for g in w['gadgets'] if g['kind'] not in ('row', 'label') and g['kind'] not in m.SYSTEM_KINDS]
+            buttons = [g['label'] for g in gads if g['label']]
+            typed = any(g['kind'] in ('string', 'integer') for g in gads)
+            if (w['title'].strip().lower() in REQUESTER_TITLES or
+                    (buttons and not typed and all(b.strip().lower() in REQUESTER_ANSWERS for b in buttons))):
+                found.append({'addr': w['addr'], 'title': w['title'], 'task': w['task'], 'screen': sc['title'],
+                              'buttons': buttons})
+    return found
+
+
+def requesters():
+    """The requesters open on any screen now, on a connection of their own (an EXEC may hold the other)."""
+    with _conn(30) as c:
+        return requesters_in(_m().read_ui(c, every_screen=True))
+
+
+def describe_requester(r):
+    return '"%s" (task %s, screen "%s", buttons %s)' % (r['title'], r['task'] or '-', r['screen'],
+                                                        '|'.join(r['buttons']) or '-')
+
+
+def _log_requester(cmd, r):
+    try:
+        with open(REQUESTER_LOG, 'a') as f:
+            f.write('%s %s blocked by %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), cmd, describe_requester(r)))
+    except OSError:
+        pass
+
+
+class _RequesterWatch:
+    """Looks for a requester the command opened; on a second sighting closes the EXEC's connection so do_run ends."""
+
+    def __init__(self, c, cmd):
+        import threading
+        self.c, self.cmd, self.hit = c, cmd, None
+        self.done = threading.Event()
+        self.on = os.environ.get('UPTERM_REQUESTER_WATCH', '1') != '0'
+        if self.on:
+            self.thread = threading.Thread(target=self._watch, daemon=True)
+            self.thread.start()
+
+    def _look(self):
+        try:
+            return {r['addr']: r for r in requesters()}
+        except SystemExit:   # the daemon is busy or gone: the EXEC itself will say so
+            return None
+
+    def _watch(self):
+        before = self._look() or {}
+        seen = set()
+        while not self.done.wait(REQUESTER_POLL):
+            now = self._look()
+            if now is None:
+                continue
+            new = {a for a in now if a not in before}
+            hit = [now[a] for a in sorted(new & seen)]
+            if hit:
+                self.hit = hit[0]
+                _log_requester(self.cmd, self.hit)
+                try:   # shutdown, not only close: a recv blocked in the EXEC's thread wakes on it
+                    self.c.sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                self.c.close()
+                return
+            seen = new
+
+    def stop(self):
+        self.done.set()
+
+
 def _exec(c, payload):
     m = _m()
     secs = struct.unpack('>H', payload[:2])[0]
+    cmd = payload[2:].decode('latin-1')
     out = []
-    rc = m.do_run(c, payload[2:].decode('latin-1'), merge=True, sink=out.append, max_time=secs or None)
+    watch = _RequesterWatch(c, cmd)
+    try:
+        rc = m.do_run(c, cmd, merge=True, sink=out.append, max_time=secs or None)
+        if watch.hit:
+            raise OSError('connection closed by the requester watch')
+    except (m.WasabiError, OSError) as e:
+        if watch.hit:
+            raise SystemExit('ERR: %s is blocked by the requester %s; output so far: %r'
+                             % (cmd, describe_requester(watch.hit), ''.join(out)[-400:]))
+        open_now = []
+        try:
+            open_now = requesters()
+        except SystemExit:
+            pass
+        if open_now:
+            raise SystemExit('ERR: %s (open requesters: %s)' % (e, '; '.join(map(describe_requester, open_now))))
+        raise
+    finally:
+        watch.stop()
     return struct.pack('>I', rc) + ''.join(out).encode('latin-1')
 
 
@@ -407,6 +521,8 @@ def main(a):
         print('rc', struct.unpack('>I', b[:4])[0]); sys.stdout.write(b[4:].decode('latin-1'))
     elif cmd == 'menus': print(req(0x0F, (a[1] if len(a) > 1 else '').encode('latin-1')).decode('latin-1'))
     elif cmd == 'uitree': print(req(0x0D).decode('latin-1'))
+    elif cmd == 'requesters':
+        for r in requesters(): print(describe_requester(r))
     elif cmd == 'ui': print(req(0x0E, '\t'.join(a[1:]).encode('latin-1')).decode('latin-1'))
     elif cmd == 'rexx':
         b = req(0x12, a[1].encode('latin-1')); print('rc', struct.unpack('>I', b[:4])[0], b[4:].decode('latin-1'))

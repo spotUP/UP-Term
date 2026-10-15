@@ -162,6 +162,55 @@ try:
     th.join(10)
     check(not th.is_alive() and time.time() - t0 < 10, "BREAK: the running exec ended well before its 30 s")
     check(ami.req(0x09) == b"", "BREAK with nothing running is a no-op")
+    # requesters: which windows count (the fake read_ui answers are the shapes wasabid sends)
+    def win(title, task, *gads):
+        return {"addr": title, "title": title, "task": task,
+                "gadgets": [{"kind": k, "label": l} for k, l in gads]}
+    screens = [{"title": "Workbench Screen", "windows": [
+        win("System Request", "vsh", ("button", "Retry"), ("button", "Cancel")),
+        win("ixemul.library message", "tmux", ("button", "Abort")),
+        win("Program message", "jq", ("label", "free: start of block corrupt!"), ("button", "Continue"), ("button", "Abort")),
+        win("UP-Term Prefs", "UPTermPrefs", ("button", "Save"), ("button", "Use"), ("button", "Cancel")),
+        win("Find", "ed", ("string", "Text"), ("button", "OK"), ("close", ""), ("depth", "")),
+        win("Workbench", "Workbench")]}]
+    got = [r["title"] for r in ami.requesters_in(screens)]
+    check(got == ["System Request", "ixemul.library message", "Program message"],
+          "requesters_in: DOS, ixemul panic and an Abort/Continue window are requesters; Prefs, a find box, a "
+          "backdrop are not: %r" % got)
+    check(ami.describe_requester(ami.requesters_in(screens)[0]) ==
+          '"System Request" (task vsh, screen "Workbench Screen", buttons Retry|Cancel)', "describe_requester")
+    check(isinstance(ami.requesters(), list), "requesters(): reads every screen of the mock")
+    # an EXEC blocked by a requester it opened ends with an ERR naming it, and the log gets a line. The watch shuts the
+    # EXEC's socket down; a recv already waiting does not always wake on that (macOS), so the bound is wasabi's
+    # RUN_CHECK (10 s, the run loop's own wake-up) plus slack, not the 0.2 s poll
+    blocker = {"addr": "r1", "title": "System Request", "task": "vsh", "screen": "Workbench Screen",
+               "buttons": ["Retry", "Cancel"]}
+    real, poll, rlog = ami.requesters, ami.REQUESTER_POLL, ami.REQUESTER_LOG
+    looks = []
+    ami.requesters = lambda: looks.append(1) or ([] if len(looks) == 1 else [blocker])
+    ami.REQUESTER_POLL = 0.2
+    ami.REQUESTER_LOG = pathlib.Path(ROOT) / "requesters.log"
+    t0 = time.time()
+    try:
+        ami.req(0x02, struct.pack(">H", 0) + b"sleep 30")
+        err = ""
+    except SystemExit as e:
+        err = str(e)
+    check(err.startswith("ERR: sleep 30 is blocked by the requester \"System Request\" (task vsh") and
+          time.time() - t0 < 15, "a requester opened by the command ends the EXEC with an ERR: %r after %.1f s" % (err, time.time() - t0))
+    check(any("sleep 30 blocked by \"System Request\"" in l for l in log("requesters.log")),
+          "requesters.log names the command and the requester: %r" % log("requesters.log"))
+    # a requester already open before the command is not the command's; a timeout still names it
+    ami.requesters = lambda: [blocker]
+    try:
+        ami.req(0x02, struct.pack(">H", 2) + b"sleep 30")
+        err = ""
+    except SystemExit as e:
+        err = str(e)
+    check(err.startswith("ERR: ") and "open requesters: \"System Request\"" in err and "blocked by" not in err,
+          "a timeout names the open requester, one there before the command does not end it early: %r" % err)
+    ami.requesters, ami.REQUESTER_POLL, ami.REQUESTER_LOG = real, poll, rlog
+    ami.req(0x09)
     # a bad key is an ERR exit like amiagent's, a dead port is not ERR
     try:
         ami.req(0x03, b"RAM:no/such")
