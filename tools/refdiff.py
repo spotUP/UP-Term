@@ -23,6 +23,7 @@ DISAGREE = {
     "quirk-bce-erase-colour.10x3.bin": PYTE_GAP_BCE,
     "quirk-bce-il-colour.10x4.bin": PYTE_GAP_BCE,
     "quirk-bce-scroll-colour.10x3.bin": PYTE_GAP_BCE,
+    "nvim-truecolor.80x24.bin": PYTE_GAP_BCE,
     "quirk-can-in-osc.10x3.bin": "pyte does not abort an OSC string on CAN",
     "quirk-cha-hpa-vpa.10x4.bin": "pyte has no HPA (CSI `)",
     "quirk-cht-cbt.30x3.bin": "pyte has no CHT (CSI I)",

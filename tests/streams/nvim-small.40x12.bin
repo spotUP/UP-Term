@@ -1,0 +1,25 @@
+[?1049h[22;0;0t[?1h=[H[2J]11;?[?2004h[?25h[?25l(B[m[H[2J/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible[K
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[K
+ * it are per personality, because the Amiga console and xterm give the same[K
+ * CSI finals different meanings (the conformance matrix in[K
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[K
+(B[0;1;7mengine/vtengine.c     1,1            Top]112[2 q]112[2 q[H[?25h[?25l[?1004h[?25h[?25l(B[m[11B[J:vsplit]112[2 q[12;1H[?25h[?25l[10Atengine.h. The parse
+r is Paul Williams' 
+DEC-compatible[6X[5;4Hstate machine (vt
+100.net/emu/dec_ansi
+_parser); the dispat
+ch tables below    [9;4Hit are per person
+ality, because the A[94m@@@[9A(B[0;7m│[2;21H│[3;21H│[4;21H│[5;21H│[6;21H│[7;21H│[8;21H│[9;21H│[10;21H│
+(B[0;1;7m<engine.c 1,1    Top[1;22H(B[m/* vtengine -- see [2;22Hvtengine.h. The par[3;22Hser is Paul William[4;22Hs' DEC-compatible[5;22H * state machine (v[6;22Ht100.net/emu/dec_an[7;22Hsi_parser); the dis[8;22Hpatch tables below[9;22H * it are per perso[10;22Hnality, because the[10;38H[94m@@@[11;22H(B[0;7m<engine.c 1,1   Top]112[2 q[H[?25h[?25l[12;30H(B[m^F[H[?25h[?25l[12;30H  [6;18He A
+miga console and xte
+rm give the same    
+ * CSI finals differ
+ent meanings (the co[94m@@@[11;11H(B[0;1;7m2,2     0%[H(B[m * state machine (vt
+100.net/emu/dec_ansi
+_parser); the dispat
+ch tables below[5X
+ * it are per person
+ality, because the A[1;2H[?25h[?25l[11B[7X:q!]112[2 q[12;1H[?25h[?25l[H/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible[K
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below   [5;21Hality, because the Amiga console and xterm give the same[K
+ * CSI finals different meanings (the conformance matrix in[20X[9;4Hthoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[K
+(B[0;1;7mengine/vtengine.c[C    1,1            Top]112[2 q[H[?25h

@@ -1242,11 +1242,115 @@ static void claude_code_session_needs_only_what_we_have(void)
     vt_free(t);
 }
 
+/* Q2: Neovim's TUI (test/functional/terminal/tui_spec.lua covers these areas:
+ * splits, true colour, undercurl, mouse, focus events, bracketed paste,
+ * :terminal), replayed through the engine's top-level entry, vt_write. The
+ * streams are what the host build of neovim-amiga (0.4.4, TERM=xterm-256color)
+ * sent a pty (make capture / tools/capture.py nvim); the expected grid is what
+ * Neovim's own terminal, libvterm, makes of them (make test-ref ONLY=nvim:
+ * cell for cell, with pyte). The sentinel is a mode only the stream can have
+ * set (alt screen, focus, bracketed paste, mouse) next to a state that
+ * differs from a fresh terminal's; every sequence Neovim sent is acted on. */
+static vt_term *replay_nvim(const char *path, int cols, int rows)
+{
+    static vt_u8 buf[65536];
+    FILE *f;
+    vt_term *t = h_new(cols, rows, VT_XTERM);
+    const char *kinds[16];
+    long counts[16], n;
+    int i;
+    f = fopen(path, "rb");
+    CHECK(f != 0);
+    if (!f)
+        return t;
+    n = (long)fread(buf, 1, sizeof(buf), f);
+    fclose(f);
+    CHECK(n > 1000 && n < (long)sizeof(buf));
+    CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN));   /* a fresh terminal: the sentinel's before */
+    vt_write(t, buf, n);
+    CHECK(vt_modes(t) & VT_MODE_ALT_SCREEN);      /* ?1049h ran */
+    CHECK(vt_modes(t) & VT_MODE_FOCUS);           /* ?1004h */
+    CHECK(vt_modes(t) & VT_MODE_BRACKET_PASTE);   /* ?2004h */
+    for (i = 0; i < 16; i++)
+        kinds[i] = 0;
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0);
+    return t;
+}
+
+static void neovim_tui_streams_land_where_libvterm_puts_them(void)
+{
+    vt_term *t;
+    int y, n, rgb_bg_back = 0, green = 0, under = 0;
+    long mode;
+
+    /* splits: :vsplit then :split in the left window: the separator column. */
+    t = replay_nvim("tests/streams/nvim-splits.80x24.bin", 80, 24);
+    for (y = 0, n = 0; y < 22; y++)
+        n += h_cell(t, 40, y)->ch == 0x2502;
+    CHECK_INT(n, 22);                              /* rows 0..21 */
+    CHECK(h_cell(t, 40, 22)->ch != 0x2502);        /* the status lines run across the bottom */
+    CHECK(strstr(h_row(t, 11), "vtengine.c") != 0);   /* left window's status line, mid-screen */
+    CHECK(strstr(h_row(t, 22), "vtengine.c") != 0);
+    vt_free(t);
+
+    /* true colour: :set termguicolors, Normal #102030, Search #00ff00. */
+    t = replay_nvim("tests/streams/nvim-truecolor.80x24.bin", 80, 24);
+    for (y = 0; y < 24; y++) {
+        int x;
+        for (x = 0; x < 80; x++) {
+            const vt_cell *c = h_cell(t, x, y);
+            rgb_bg_back += c->bg == VT_RGB(0x10, 0x20, 0x30);
+            green += c->bg == VT_RGB(0x00, 0xFF, 0x00);
+        }
+    }
+    CHECK_INT(green, 5);                           /* "state" on row 1 */
+    CHECK(rgb_bg_back > 1800);                     /* the whole screen but the matches */
+    CHECK(h_cell(t, 3, 1)->bg == VT_RGB(0x00, 0xFF, 0x00));
+    CHECK(h_cell(t, 7, 1)->bg == VT_RGB(0x00, 0xFF, 0x00));
+    CHECK(h_cell(t, 8, 1)->bg == VT_RGB(0x10, 0x20, 0x30));
+    CHECK(h_cell(t, 0, 0)->fg == VT_RGB(0xC0, 0xFF, 0xEE));
+    vt_free(t);
+
+    /* undercurl: Neovim 0.4.4 with this terminfo sends a plain underline. */
+    t = replay_nvim("tests/streams/nvim-undercurl.80x24.bin", 80, 24);
+    for (y = 0, n = 0; y < 24; y++) {
+        int x;
+        for (x = 0; x < 80; x++)
+            under += (h_cell(t, x, y)->attr & VT_ATTR_UNDERLINE) != 0;
+    }
+    CHECK_INT(under, 5);
+    CHECK(h_cell(t, 3, 1)->attr & VT_ATTR_UNDERLINE);
+    CHECK(!(h_cell(t, 8, 1)->attr & VT_ATTR_UNDERLINE));
+    vt_free(t);
+
+    /* mouse (?1002 + ?1006 on, then off by :set mouse=), bracketed paste, focus. */
+    t = replay_nvim("tests/streams/nvim-mouse-paste-focus.80x24.bin", 80, 24);
+    mode = vt_modes(t);
+    CHECK(!(mode & (VT_MODE_MOUSE_BUTTON | VT_MODE_MOUSE_SGR)));
+    CHECK(strstr(h_row(t, 0), "pasted") != 0);
+    CHECK(strstr(h_row(t, 1), "text") != 0);
+    vt_free(t);
+
+    /* :terminal: the child's red "red" and "line two", Neovim's own status line. */
+    t = replay_nvim("tests/streams/nvim-terminal.80x24.bin", 80, 24);
+    CHECK_STR(h_row(t, 0), "red");
+    CHECK_STR(h_row(t, 1), "line two");
+    CHECK(strstr(h_row(t, 3), "[Process exited 0]") != 0);
+    CHECK(h_cell(t, 0, 0)->fg != VT_COLOR_DEFAULT);
+    vt_free(t);
+
+    /* 40x12: the same screens at a small size. */
+    t = replay_nvim("tests/streams/nvim-small.40x12.bin", 40, 12);
+    CHECK(strstr(h_row(t, 10), "vtengine.c") != 0);
+    vt_free(t);
+}
+
 void suite_xterm(void)
 {
     a_run_of_line_feeds_equals_single_ones();
     long_scrolling_keeps_rows_in_order();
     claude_code_session_needs_only_what_we_have();
+    neovim_tui_streams_land_where_libvterm_puts_them();
     synchronized_output_is_a_mode();
     a_sequence_cut_by_a_write_means_the_same();
     text_after_an_sgr_in_one_write_takes_its_pen();

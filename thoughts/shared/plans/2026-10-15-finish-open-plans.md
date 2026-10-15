@@ -91,7 +91,7 @@ Owner visual sign-off list (output of the phase): G2, G3, D1, P7, R1 screenshots
 ## Phase 3: vtcon.md not-started and in-progress items (1 agent at a time; each its own branch, 1 PR-sized commit set)
 
 Order (cheapest evidence first):
-- [ ] FP3.1 Q2: Neovim `tui_spec` replay (host test under `tests/`, `git log --grep tui_spec` is empty).
+- [x] FP3.1 Q2: Neovim `tui_spec` replay (host test under `tests/`, `git log --grep tui_spec` is empty). (done: 50887859, make test ONLY=xterm neovim_tui_streams_land_where_libvterm_puts_them, make test-ref ONLY=nvim 6 streams 0 failed, 2026-10-15; Q2 rig session part stays open)
 - [ ] FP3.2 RT1/W8: phase profile of retro32-term against ibmcon (the plan's own measurement; rig, one table).
 - [ ] FP3.3 W7: A500 (68000) rig config and the speed measurement the plan lists (emulator config, not a board).
 - [ ] FP3.4 S1: the asm hot-path part (S2 perf is merged at 0912d65); measure before and after on rig 2.

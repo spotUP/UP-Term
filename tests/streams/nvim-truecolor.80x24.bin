@@ -1,0 +1,75 @@
+[?1049h[22;0;0t[?1h=[H[2J]11;?[?2004h[?25h[?25l(B[m[H[2J/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible[K
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[K
+ * it are per personality, because the Amiga console and xterm give the same[K
+ * CSI finals different meanings (the conformance matrix in[K
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[K
+#include "vtengine.h"[K
+#include "vtwidth.h"[K
+#include <stddef.h>[K
+#include <string.h>[K
+[K
+#ifdef __VBCC__[K
+/* vbcc's -O2 is -O=1023. With it, a loop over vt_term fields got every[K
+ * field's address (t + offset) hoisted out of the loop and, short of[K
+ * registers, spilled to the stack: each t->x became a load of the address[K
+ * and then the access, and vt_feed set up fifteen such slots on every[K
+ * call -- though (d16,An) addressing is free on a 68k. -O=991 (bit 32 off)[K
+ * keeps the accesses in place: engbench plain lines with 79-byte writes[K
+ * 19.4 -> 16.5 instructions a byte under vamos (ASM1; -O=895, bit 128[K
+ * off, does the same but warns 172 in feed()). It sets the whole mask:[K
+ * this file builds at this level whatever -O the command line gives. */[K
+#pragma opt 991[K
+#endif[K
+(B[0;1;7mengine/vtengine.c                                             1,1            Top]112[2 q]112[2 q[H[?25h[?25l[?1004h[?25h[?25l(B[m[23B[J:set[Ctermguicolors]112[2 q[24;1H[?25h[?25l]112[2 q[H/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible[K
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[K
+ * it are per personality, because the Amiga console and xterm give the same[K
+ * CSI finals different meanings (the conformance matrix in[K
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[K
+#include "vtengine.h"[K
+#include "vtwidth.h"[K
+#include <stddef.h>[K
+#include <string.h>[K
+[K
+#ifdef __VBCC__[K
+/* vbcc's -O2 is -O=1023. With it, a loop over vt_term fields got every[K
+ * field's address (t + offset) hoisted out of the loop and, short of[K
+ * registers, spilled to the stack: each t->x became a load of the address[K
+ * and then the access, and vt_feed set up fifteen such slots on every[K
+ * call -- though (d16,An) addressing is free on a 68k. -O=991 (bit 32 off)[K
+ * keeps the accesses in place: engbench plain lines with 79-byte writes[K
+ * 19.4 -> 16.5 instructions a byte under vamos (ASM1; -O=895, bit 128[K
+ * off, does the same but warns 172 in feed()). It sets the whole mask:[K
+ * this file builds at this level whatever -O the command line gives. */[K
+#pragma opt 991[K
+#endif[K
+(B[0;1;7mengine/vtengine.c                                             1,1            Top
+(B[m:set termguicolors[K[H[?25h[?25l[23B[18X:hi[CNormal[Cguifg=#c0ffee[Cguibg=#102030]112[2 q[24;1H[?25h[?25l]112[2 q[H[38;2;192;255;238m[48;2;16;32;48m/* vtengine -- see vtengine.h. The parser is Paul Williams' DEC-compatible[K
+ * state machine (vt100.net/emu/dec_ansi_parser); the dispatch tables below[K
+ * it are per personality, because the Amiga console and xterm give the same[K
+ * CSI finals different meanings (the conformance matrix in[K
+ * thoughts/shared/research/2026-09-28_console-conformance-matrix.md). */[K
+#include "vtengine.h"[K
+#include "vtwidth.h"[K
+#include <stddef.h>[K
+#include <string.h>[K
+[K
+#ifdef __VBCC__[K
+/* vbcc's -O2 is -O=1023. With it, a loop over vt_term fields got every[K
+ * field's address (t + offset) hoisted out of the loop and, short of[K
+ * registers, spilled to the stack: each t->x became a load of the address[K
+ * and then the access, and vt_feed set up fifteen such slots on every[K
+ * call -- though (d16,An) addressing is free on a 68k. -O=991 (bit 32 off)[K
+ * keeps the accesses in place: engbench plain lines with 79-byte writes[K
+ * 19.4 -> 16.5 instructions a byte under vamos (ASM1; -O=895, bit 128[K
+ * off, does the same but warns 172 in feed()). It sets the whole mask:[K
+ * this file builds at this level whatever -O the command line gives. */[K
+#pragma opt 991[K
+#endif[K
+(B[0;1;7m[38;2;192;255;238m[48;2;16;32;48mengine/vtengine.c                                             1,1            Top
+(B[m[38;2;192;255;238m[48;2;16;32;48m:hi Normal guifg=#c0ffee guibg=#102030[K[H[?25h[?25l[23B[38X:hi[CComment[Cguifg=#ff8000[Cgui=italic,bold]112[2 q[24;1H[?25h[?25l]112[2 q[H[?25h[?25l[23B[41X:syntax[Con]112[2 q[24;1H[?25h[?25l(B[m[38;2;255;255;255m[48;2;255;0;0mE484: Can't open file /Users/spot/Code/UP-Term/neovim-amiga/build/host/nvim/run[23;24r[23;1H[M[r[22;1H(B[0;1;7m[38;2;192;255;238m[48;2;16;32;48m                                                                                (B[m[38;2;192;255;238m[48;2;16;32;48m
+
+[J[23;80H(B[m[38;2;255;255;255m[48;2;255;0;0mt[21;24r[21;1H[M[r[23;1Hime/syntax/syntax.vim(B[m[38;2;192;255;238m[48;2;16;32;48m[K
+(B[0;1m[38;2;0;128;0m[48;2;16;32;48mPress ENTER or type command to continue(B[m[38;2;192;255;238m[48;2;16;32;48m[K]112[2 q[?25h[?25l[24;1H[39X:hi[CSearch[Cguibg=#00ff00[Cguifg=#000000]112[2 q[24;1H[?25h[?25l[3A#pragma opt 991[K
+#endif[K
+(B[0;1;7m[38;2;192;255;238m[48;2;16;32;48mengine/vtengine.c                                             1,1            Top(B[m[38;2;192;255;238m[48;2;16;32;48m
+[J]112[2 q[H[?25h[?25l[23B/state]112[2 q[24;1H[?25h[?25l]112[2 q[?25h[?25l[61C[1/57][2;4H(B[m[38;2;0;0;0m[48;2;0;255;0mstate[23;63H(B[0;1;7m[38;2;192;255;238m[48;2;16;32;48m2,4[2;4H[?25h
