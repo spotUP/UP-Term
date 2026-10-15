@@ -90,9 +90,41 @@ def vttest_screens():
             capture("vttest-m%d-s%02d" % (menu, k), [str(exe)],
                     [("%d\r" % menu).encode()] + [b"\r"] * k, settle=0.3)
 
+NVIM = pathlib.Path(os.environ.get("NVIM", pathlib.Path.home() / "Code/UP-Term/neovim-amiga/build/host/nvim/bin/nvim"))
+
+def nvim_screens():
+    """Neovim's TUI (test/functional/terminal/tui_spec.lua's areas: splits,
+    true colour, undercurl, mouse, focus events, bracketed paste, :terminal),
+    one capture per area, from the host build of neovim-amiga (0.4.4,
+    NVIM=<binary>; its runtime sits next to the binary's build tree). The
+    captures are the bytes Neovim sends an xterm-256color terminal; the test
+    is tests/test_xterm.c, the cell-for-cell diff against libvterm is make test-ref."""
+    if not NVIM.exists():
+        print("nvim not built at %s; skipped" % NVIM)
+        return
+    rt = NVIM.parents[1] / "runtime"
+    base = [str(NVIM), "-u", "NONE", "-i", "NONE", "-n"]
+    env = {"VIMRUNTIME": str(rt)}
+    f = str(SAMPLE)
+    def nv(name, args, keys, cols=80, rows=24):
+        capture(name, base + args, keys, cols, rows, settle=0.5, env_extra=env)
+    nv("nvim-splits", [f], [b":vsplit\r", b":split\r", b"\x17l", b"G", b"\x17h", b"10Gix\x1b"])
+    nv("nvim-truecolor", [f], [b":set termguicolors\r",
+       b":hi Normal guifg=#c0ffee guibg=#102030\r", b":hi Comment guifg=#ff8000 gui=italic,bold\r",
+       b":syntax on\r", b":hi Search guibg=#00ff00 guifg=#000000\r", b"/state\r"])
+    nv("nvim-undercurl", [f], [b":set termguicolors\r",
+       b":hi Foo gui=undercurl guisp=#ff0000\r", b":call matchadd('Foo', 'state')\r"])
+    nv("nvim-mouse-paste-focus", [f], [b":set mouse=a\r", b"\x1b[200~pasted\ntext\x1b[201~", b"\x1b[I", b"\x1b[O",
+       b"\x1b[<0;10;5M\x1b[<0;10;5m", b":set mouse=\r"])
+    nv("nvim-terminal", [], [b":terminal printf '\\033[31mred\\033[0m\\nline two\\n'\r", b"i", b"\x1c\x0e"])
+    nv("nvim-small", [f], [b":vsplit\r", b"\x06", b":q!\r"], cols=40, rows=12)
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     global TERM
+    if sys.argv[1:] == ["nvim"]:
+        nvim_screens()
+        return
     if sys.argv[1:] == ["vttest"]:
         vttest_screens()
         return

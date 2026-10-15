@@ -1,0 +1,49 @@
+[?1049h[22;0;0t[?1h=[H[2J]11;?[?2004h[?25h[?25l(B[m[H[2J[K
+[94m~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+~[K
+(B[0;1;7m[No Name]                                                     0,0-1          All[7;35H(B[mNVIM v0.4.4[9;19HNvim is open source and freely distributable[10;29Hhttps://neovim.io/#chat[12;18Htype  :help nvim[38;5;81m<Enter>(B[m       if you are new! [13;18Htype  :checkhealth[38;5;81m<Enter>(B[m     to optimize Nvim[14;18Htype  :q[38;5;81m<Enter>(B[m               to exit         [15;18Htype  :help[38;5;81m<Enter>(B[m            for help        [17;26HBecome a registered Vim user![18;18Htype  :help register[38;5;81m<Enter>(B[m   for information ]112[2 q]112[2 q[H[?25h[?25l[?1004h[?25h[?25l[23B[J:terminal[Cprintf[C'\033[31mred\033[0m\nline[Ctwo\n']112[2 q[24;1H[?25h[?25l[H 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+(B[0;1;7mterm://.//28831:printf '\033[31mred\033[0m\nline two\n'[7C1]112[2 q[H[?25h[?25l(B[m[31mred
+(B[mline two[23;65H(B[0;1;7m1  [H[?25h[?25l
+
+
+(B[m[Process exited 0] [H[?25h[?25l[24;70Hi[H[?25h[?25l[23B(B[0;1m-- TERMINAL --(B[m[56X[23;63H(B[0;1;7m4,19[4;19H(B[0;7m (B[m[20B[14X[23;66H(B[0;1;7m8[4;18H[?25h[?25l[C(B[m [?25h
