@@ -4,8 +4,8 @@ Claude: parts, licences and where the source is
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
 Claude, uptelnet              MIT, Copyright (c) 2026 spotUP   vtcon repo LICENSE: claude/, llm/, net/
-wasabid 0.10b4 (C:wasabid,  MIT (Files/wasabid.LICENSE)      https://github.com/creep-ltx/wasabi, commit
-only when none is there;                                       c698b99 (built by UP-Term); the base kit's
+wasabid 0.10 (C:wasabid,    MIT (Files/wasabid.LICENSE)      https://github.com/creep-ltx/wasabi, commit
+only when none is there;                                       9e18cd0 (built by UP-Term); the base kit's
 by Tobias Karlsson)                                            Files/wasabi/SOURCE.txt
 
 Notes
