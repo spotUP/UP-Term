@@ -266,6 +266,12 @@ def hmac_sha256(key, *parts):
     return hmac.new(key, b"".join(parts), hashlib.sha256).digest()
 
 
+def session_key(key, sn, cn):
+    """The session daemon's key (wasabid): hex HMAC-SHA256(K, "wasabi-session" | sn | cn), the
+    string net/tn.c's tn_session_key makes on the Amiga; the relay authenticates with it."""
+    return hmac_sha256(key, b"wasabi-session", sn, cn).hex()
+
+
 class ClientStore:
     """The clients file: one line per paired Amiga, "ID hexkey date first-peer". Read whole
     at every use, so a `pairs add` or `pairs revoke` (another process) acts at the next

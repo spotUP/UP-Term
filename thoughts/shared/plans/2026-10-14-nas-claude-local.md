@@ -299,10 +299,11 @@ the daemon is wasabid, the MCP server wasabi_mcp.py. wasabid reads its key with
 session daemon gets its own key with no upstream change and the boot wasabid (global key) is
 untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
 
-- [ ] **NL13** Session key derivation shared by both ends, one vector pinned in C and
+- [x] **NL13** Session key derivation shared by both ends, one vector pinned in C and
   Python: T = hex(HMAC-SHA256(K, "wasabi-session" || sn || cn)), K = the pairing key, sn/cn
   the login's nonces. Files: `net/tn.c`, `tools/uptelnetd.py`, both test files. Test: host
   `ONLY=telnet` and `ONLY=uptelnetd` assert the same hex for the same K, sn, cn. S.
+  Evidence: NL13 commit on feature/nas-relay; vector K=00..1f, sn/cn as the key-login vector -> d83a7b587a7c53f235d33e5804971f7ee49132f59cac9cc9fefcc717528da353; ONLY=telnet 91 checks, ONLY=uptelnetd 58 tests; label mutated -> both fail
 - [ ] **NL14** uptelnet starts the session wasabid after a key login: `AGENT/K` (default
   `UP-Term:bin/wasabid`, then `C:wasabid`), `AGENTPORT/N` (1240), `NOAGENT/S`; a shell of
   its own (SystemTags, asynchronous) runs `Set wasabi.key <T>` (local) then

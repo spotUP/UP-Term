@@ -246,10 +246,16 @@ MAC_VEC = bytes.fromhex("7dd70132a3e24c22590aba7ee40ac9efae39edb5100d73abaaf37d5
 SMAC_VEC = bytes.fromhex("aecac79e686576e2c254b18fb0d1b1865b89ef395872e5e169bc278bf529dbd8")
 
 
+SESSION_VEC = "d83a7b587a7c53f235d33e5804971f7ee49132f59cac9cc9fefcc717528da353"
+
+
 class KeyLogin(unittest.TestCase):
     def test_the_hmacs_are_the_vector_the_c_client_pins(self):
         self.assertEqual(d.hmac_sha256(K_VEC, b"upt1-client", SN_VEC, CN_VEC, b"amiga-1"), MAC_VEC)
         self.assertEqual(d.hmac_sha256(K_VEC, b"upt1-server", SN_VEC, CN_VEC), SMAC_VEC)
+
+    def test_the_session_key_is_the_vector_the_c_client_pins(self):
+        self.assertEqual(d.session_key(K_VEC, SN_VEC, CN_VEC), SESSION_VEC)
 
     def test_the_server_asks_for_auth_only_when_it_can_check_one(self):
         t = d.Telnet(auth=True)
