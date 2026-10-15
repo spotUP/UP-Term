@@ -48,4 +48,5 @@ def main():
     sys.exit(1 if r2.fails else 0)
 
 
-main()
+if __name__ == "__main__":
+    main()
