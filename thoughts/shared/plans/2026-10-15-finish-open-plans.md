@@ -43,15 +43,15 @@ branches current. Rig 1 is the owner's machine: never used.
 
 ## Phase 0: evidence and housekeeping (1 agent, sonnet; small)
 
-- [ ] FP0.1 X1: find the stray `PI_DEBUG_LOG`/`debug_log` hunk in `~/Code/UP-Term/amiga-pi` worktree `build/wt-u2`
+- [x] FP0.1 X1: find the stray `PI_DEBUG_LOG`/`debug_log` hunk in `~/Code/UP-Term/amiga-pi` worktree `build/wt-u2`
   (`git -C ... status`, `git diff`); if it is not committed work: report it, remove only after the owner says
   (worktree of another session). Ledger line 1137.
 - [ ] FP0.2 W47: re-run `tools/rig/resize_rig.py` on rig 2 and quote the PASS line
   (tmux 47x10 to 72x19, nvim 47x11 to 72x20). The PASS exists only in commit 54de76b3's message today.
 - [ ] FP0.3 W6: read the S1 race number for main (`tools/rig` race script; CCON 1.2.8b9 was 30.68 s at 5f2dc765),
   run it on rig 2 once, record main's number in the vtcon plan row.
-- [ ] FP0.4 P12 close step: "cut_cases oracle reproducible" (rides with U3 part 2): run the oracle twice, compare.
-- [ ] FP0.5 Ledger headings: "Queue run (after P11) 12 of 14" has 19 ticked: recount by box range and fix.
+- [x] FP0.4 P12 close step: "cut_cases oracle reproducible" (rides with U3 part 2): run the oracle twice, compare.
+- [x] FP0.5 Ledger headings: "Queue run (after P11) 12 of 14" has 19 ticked: recount by box range and fix.
 - [ ] FP0.6 Coreutils 3.7: `../upterm-ports/pkgs/coreutils/recipe.mk` (9.12, GPG-verified) is untracked work of
   another session: do not touch; ask the owner once who commits it (collected under Blocked on me).
 
