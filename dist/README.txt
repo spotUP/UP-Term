@@ -743,7 +743,7 @@ WASABI (REMOTE DEVELOPMENT, CLAUDE CODE ON ANOTHER COMPUTER)
   For working on this Amiga from a Mac or Linux machine on the same
   network: copy files to it, run commands with their output on the other
   machine, grab its screen, read its debug output and a SnoopDOS-style
-  trace. wasabi 0.9b2 by Tobias Karlsson, MIT licence (Files/wasabi).
+  trace. wasabi 0.9 by Tobias Karlsson, MIT licence (Files/wasabi).
   It replaces the wasabid 0.2 and the amiagent of earlier kits: Install
   stops and replaces our older wasabid, and removes our amiagent.
   Install puts wasabid in C: when you tick it, starts it, and starts it at

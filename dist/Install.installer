@@ -156,7 +156,7 @@
               "S:User-Startup, and a terminal program on a null-modem cable at "
               "19200 baud gets vsh. While it runs no other program can use the "
               "serial port.\n\n"
-              "wasabi 0.9b2 (remote development, MIT, by Tobias Karlsson): "
+              "wasabi 0.9 (remote development, MIT, by Tobias Karlsson): "
               "wasabid in C:, so a Mac or Linux machine on your network can "
               "copy files to this Amiga, run commands on it, grab its screen "
               "and read its debug output, and Claude Code there can drive it "
