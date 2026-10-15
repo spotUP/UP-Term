@@ -62,6 +62,7 @@
 #include "menu_ids.h"
 #include "slash.h"
 #include "brk.h"
+#include "ttyown.h"
 #include "waitset.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
@@ -144,8 +145,7 @@ typedef struct con {
     brk brk;                     /* who gets Ctrl-C/D/E/F (brk.h) */
     /* termios mode (ACTION_VTCON_TCSETA): a Unix program's line discipline */
     ldisc ld;
-    int tty;                     /* in termios mode */
-    struct Task *tty_owner;      /* the task that set it; its end ends the mode */
+    ttyown own;                  /* in termios mode, and whose (ttyown.h) */
     int tty_ocol;                /* output column, for OXTABS */
     struct timerequest *rtimer;  /* VTIME for the first waiting read */
     int rtimer_busy, rtimer_fired;
@@ -2787,7 +2787,7 @@ static void tty_echo(void *u, const unsigned char *s, int n)
 static void tty_signal(void *u, int sig)
 {
     con *c = (con *)u;
-    DBG("tty signal", sig, (long)c->tty_owner);
+    DBG("tty signal", sig, (long)c->own.owner);
     /* the break signals a patched ixemul turns into Unix signals for the
      * foreground process group (vtcon_packets.h) */
     if (sig == LD_SIGINT)
@@ -2820,67 +2820,79 @@ static void rtimer_start(con *c, ULONG tenths)
     c->rtimer_busy = 1;
 }
 
-/* Leave termios mode: what the line discipline holds becomes plain input. */
-static void tty_leave(con *c)
+/* Leaving termios mode, while it is still on: what the line discipline
+ * holds becomes plain input, LF returns again. */
+static void tty_drop(void *u)
 {
+    con *c = (con *)u;
     unsigned char b[256];
     long n;
     int eof;
-    if (!c->tty)
-        return;
-    DBG("tty leave owner/alive", (long)c->tty_owner, task_alive(c->tty_owner));
+    DBG("tty leave owner/alive", (long)c->own.owner, task_alive((struct Task *)c->own.owner));
     c->ld.t.c_lflag &= ~(ld_flag)LD_ICANON; /* whole lines and a partial one, as bytes */
     ld_set(&c->ld, &c->ld.t, LD_TCSANOW);
     while ((n = ld_read(&c->ld, b, sizeof(b), &eof)) > 0)
         in_append(c, b, (int)n);
     rtimer_stop(c);
-    c->tty = 0;
-    c->tty_owner = 0;
     if (c->w.t)
         vt_set_onlcr(c->w.t, c->w.pers == VT_XTERM);
+}
+
+/* Leave termios mode now (ACTION_SCREEN_MODE: the Amiga way to set a mode). */
+static void tty_leave(con *c)
+{
+    if (!c->own.on)
+        return;
+    tty_drop(c);
+    c->own.on = 0;
+    c->own.owner = 0;
+}
+
+static int tty_owner_alive(void *t)
+{
+    int alive;
+    Forbid();
+    alive = task_alive((struct Task *)t);
+    Permit();
+    return alive;
 }
 
 /* In termios mode, while the program that set it runs. */
 static int tty_active(con *c)
 {
-    int alive;
-    if (!c->tty)
-        return 0;
-    Forbid();
-    alive = task_alive(c->tty_owner);
-    Permit();
-    if (!alive)
-        tty_leave(c);
-    return c->tty;
+    return ttyown_active(&c->own, tty_owner_alive, tty_drop, c);
+}
+
+/* Entering termios mode (it was off; the owner is set, ttyown.h). */
+static void tty_first(void *u)
+{
+    con *c = (con *)u;
+    /* typed ahead: input as it stands, not echoed again */
+    void (*e)(void *, const unsigned char *, int) = c->ld.echo;
+    ld_init(&c->ld);
+    c->ld.echo = 0;
+    c->ld.t.c_lflag &= ~(ld_flag)LD_ISIG;
+    ld_input(&c->ld, c->in, c->in_len);
+    c->in_len = 0;
+    ld_defaults(&c->ld.t);
+    c->ld.echo = e;
+    {
+        /* keys that waited for a reader (le_ahead_key): the line discipline's now, echoed as it echoes */
+        vt_u8 b[64];
+        int n, mods;
+        long key;
+        while (le_ahead_next(&c->ahead, 0, b, &n, &key, &mods))
+            to_tty(c, b, n);
+    }
+    c->tty_ocol = 0;
+    if (c->w.t)
+        vt_set_onlcr(c->w.t, 0); /* OPOST decides now (vttest m1 s04: raw LF is LF) */
 }
 
 static void tty_enter(con *c, struct Task *owner)
 {
-    DBG("tty enter owner/was", (long)owner, c->tty);
-    if (!c->tty) {
-        /* typed ahead: input as it stands, not echoed again */
-        void (*e)(void *, const unsigned char *, int) = c->ld.echo;
-        ld_init(&c->ld);
-        c->ld.echo = 0;
-        c->ld.t.c_lflag &= ~(ld_flag)LD_ISIG;
-        ld_input(&c->ld, c->in, c->in_len);
-        c->in_len = 0;
-        ld_defaults(&c->ld.t);
-        c->ld.echo = e;
-        c->tty = 1;
-        {
-            /* keys that waited for a reader (le_ahead_key): the line discipline's now, echoed as it echoes */
-            vt_u8 b[64];
-            int n, mods;
-            long key;
-            while (le_ahead_next(&c->ahead, 0, b, &n, &key, &mods))
-                to_tty(c, b, n);
-        }
-        c->tty_ocol = 0;
-        if (c->w.t)
-            vt_set_onlcr(c->w.t, 0); /* OPOST decides now (vttest m1 s04: raw LF is LF) */
-    }
-    c->tty_owner = owner;
+    DBG("tty enter owner/was", (long)owner, c->own.on);
+    ttyown_enter(&c->own, owner, tty_first, c);
 }
 
 /* Reads in termios mode: ICANON a line or an EOF; otherwise VMIN bytes,
@@ -6191,7 +6203,7 @@ static void packet(con *c, struct DosPacket *p)
 #ifdef VTCON_DEBUG
         dbg("WAIT task/timeout", (LONG)p->dp_Port->mp_SigTask, p->dp_Arg1);
         dbg("WAIT in/eof", c->in_len, c->eof);
-        dbg("WAIT tty/pending", c->tty, c->tty ? ld_input_pending(&c->ld) : -1);
+        dbg("WAIT tty/pending", c->own.on, c->own.on ? ld_input_pending(&c->ld) : -1);
 #endif
         ahead_feed(c); /* it looks for input: what was typed ahead is its */
         if (c->in_len || c->eof || (tty_active(c) && ld_input_pending(&c->ld))) {
