@@ -5385,13 +5385,14 @@ enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE };
 struct tab_prog {
     const char *file;    /* C:... the program */
     const char *script;  /* T:... the FROM script that runs it */
+    const char *pre;     /* a script line before it ("" none): Claude refuses a stack under 16000 */
     const char *missing; /* the requester's text when file is not there */
 };
 static const struct tab_prog tab_progs[] = {
-    { 0, 0, 0 },
-    { "C:UPDemo", "T:UP-Term-demo",
+    { 0, 0, "", 0 },
+    { "C:UPDemo", "T:UP-Term-demo", "",
       "The demo is not installed:\nC:UPDemo was not found.\n\nInstall UP-Term from its archive to get it." },
-    { "C:Claude", "T:UP-Term-claude",
+    { "C:Claude", "T:UP-Term-claude", "Stack 32768\n",
       "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it." }
 };
 
@@ -5412,6 +5413,7 @@ static int tab_prog_script(struct tab_spawn_msg *m)
     if (!(f = Open((STRPTR)p->script, MODE_NEWFILE)))
         return 0;
     FPuts(f, (STRPTR)"FailAt 2147483647\n");
+    FPuts(f, (STRPTR)p->pre);
     FPuts(f, (STRPTR)p->file);
     FPuts(f, (STRPTR)"\nEndCLI >NIL:\n");
     Close(f);

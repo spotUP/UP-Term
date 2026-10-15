@@ -343,15 +343,24 @@ untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
 
 ### Phase D: one-key start (D6)
 
-- [ ] **NL19** UP-Term menu "Claude" (Right Amiga L) and `/claude`: a new tab running
+- [x] **NL19** UP-Term menu "Claude" (Right Amiga L) and `/claude`: a new tab running
   C:Claude, by generalising `tab_demo_script` into one tab-script helper used by both;
   a requester when C:Claude is missing. Files: `handler/vtcon_handler.c`,
   `handler/slash.c`. Test: host `ONLY=slash` (or the suite that pins the slash table)
   for `/claude`; rig: menu pick through `ami.py menus`/`ui` opens a tab whose screen
   shows Claude's question or prompt. M.
-- [ ] **NL20** Workbench: the Claude icon in the app drawer stays the one icon; with NL3 it
+  Done 2026-10-15 on feature/claude-menu: `tab_demo_script` became `tab_prog_script` (table
+  `tab_progs`: demo, Claude); MENU_CLAUDE + `/claude`; Right Amiga L was free (T . , C V A F G
+  K + - counted from menu_def). Host `ONLY=slash` 253 checks; with the slash entry removed 3
+  fail. Rig 3: `ami.py ui menushort UP-Term l` opened a tab, screen text read back "Where should
+  Claude run? 1. Claude on the Amiga (API key) / 2. Claude Code on the NAS". Found on the rig:
+  the tab script needs `Stack 32768` (Claude refuses less; first run exited at once).
+- [x] **NL20** Workbench: the Claude icon in the app drawer stays the one icon; with NL3 it
   asks the question. Files: none beyond NL4 (icon list). Test: rig install case
   double-clicks it (`wbrun`) and reads the question. S.
+  Done 2026-10-15 rig 3: `VTC:wbrun C:IconX UP-Term:Claude` (icon from the LAUNCHER recipe,
+  dummy key + remote file, removed after) opened the 800x560 "Claude" window showing the same
+  question.
 
 ### Phase E: real hardware (manual, owner)
 
