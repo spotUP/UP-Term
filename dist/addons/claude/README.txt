@@ -28,7 +28,7 @@ USE
 
 UNINSTALL
   Double-click Uninstall (or Execute Uninstall). It removes C:Claude (and an old C:ClaudeCode,
-  which Claude.lha 1.0 had), and C:uptelnet unless UP-Term is installed; your settings in ENVARC:Claude stay. With UP-Term
+  which Claude.lha 1.0 had), the C:wasabid this archive put in (not one that was there before), and C:uptelnet unless UP-Term is installed; your settings in ENVARC:Claude stay. With UP-Term
   installed it asks whether to delete your data in UP-Term:var/Claude (default No).
   Uninstall of UP-Term.lha leaves this program alone.
 
@@ -57,6 +57,10 @@ CLAUDE FROM THE AMIGA
   tmux), see tools/nas/README.md in the vtcon source tree; to let Claude
   there run commands on this Amiga, wasabi (wasabid on the Amiga) is described
   in the same file (never share its key).
+  Install puts wasabid 0.9b2 (MIT, by Tobias Karlsson, Files/wasabid.LICENSE) in
+  C: only when no C:wasabid is there; a wasabid of UP-Term.lha or of yours stays.
+  It is not started at boot: after a key login uptelnet starts a copy for that
+  login, with a key of its own, and ends it when the login ends.
 
 CLAUDE
   C:Claude talks to Claude, Anthropic's AI model, from an UP-Term window,

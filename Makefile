@@ -1047,6 +1047,9 @@ LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
+	@test -f $(BUILD)/wasabi/wasabid || { echo "dist-claude: no $(BUILD)/wasabi/wasabid: make wasabi first"; exit 1; }
+	cp $(BUILD)/wasabi/wasabid $(KIT_claude)/Files/wasabid
+	cp dist/wasabi/LICENSE $(KIT_claude)/Files/wasabid.LICENSE
 	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
 	python3 tools/mkkit.py claude
 dist-pi: amiga-pi-bin $(BUILD)/amiga/upupdate

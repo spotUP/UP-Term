@@ -35,6 +35,21 @@ Lab claude
 Copy Claude C:Claude CLONE QUIET
 Delete >NIL: C:ClaudeCode QUIET
 Copy uptelnet C:uptelnet CLONE QUIET
+; C:wasabid (wasabid 0.9b2, MIT, wasabid.LICENSE): uptelnet starts it for the length of one login to the
+; NAS, with a key of its own, so Claude Code there can work on this Amiga. It is put in only when no wasabid
+; is there (the base kit's, or one of yours): that one stays and is not ours. ENVARC:Claude/wasabid is the
+; marker for Uninstall, and a later install updates our own copy.
+If NOT EXISTS C:wasabid
+  Copy wasabid C:wasabid CLONE QUIET
+  If NOT EXISTS ENVARC:Claude
+    MakeDir ENVARC:Claude
+  EndIf
+  Echo >ENVARC:Claude/wasabid "installed by Claude.lha"
+Else
+  If EXISTS ENVARC:Claude/wasabid
+    Copy wasabid C:wasabid CLONE QUIET
+  EndIf
+EndIf
 If NOT EXISTS ENVARC:Claude
   MakeDir ENVARC:Claude
 EndIf

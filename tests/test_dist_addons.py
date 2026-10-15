@@ -420,6 +420,35 @@ class ClaudeInstall(unittest.TestCase):
         self.assertIn('Assign >NIL: UP-Term: EXISTS\nIf WARN\n  Delete >NIL: C:uptelnet QUIET', un)
 
 
+    def test_claude_lha_carries_wasabid_and_installs_it_only_when_no_wasabid_is_there(self):
+        """NL18: C:wasabid for the session daemon; a wasabid already there (the base kit's) is left alone"""
+        dos = self.S['dos']
+        self.assertIn('If NOT EXISTS C:wasabid\n  Copy wasabid C:wasabid CLONE QUIET', dos)
+        self.assertIn('Echo >ENVARC:Claude/wasabid "installed by Claude.lha"', dos)
+        # a later install updates only our own copy (the marker), never another one
+        self.assertIn('Else\n  If EXISTS ENVARC:Claude/wasabid\n    Copy wasabid C:wasabid CLONE QUIET', dos)
+        parts = (ROOT / 'dist/addons/claude/parts.txt').read_text()
+        self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid$')
+        self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid\.LICENSE$')
+        lic = (ROOT / 'dist/addons/claude/LICENSES.txt').read_text()
+        self.assertIn('wasabid 0.9b2', lic)
+        self.assertIn('MIT (Files/wasabid.LICENSE)', lic)
+        mk = (ROOT / 'Makefile').read_text()
+        blk = kit_block(mk, 'claude')
+        self.assertIn('$(BUILD)/wasabi/wasabid $(KIT_claude)/Files/wasabid', blk)
+        self.assertIn('dist/wasabi/LICENSE $(KIT_claude)/Files/wasabid.LICENSE', blk)
+
+    def test_uninstall_removes_only_the_wasabid_this_archive_put_in_and_not_one_the_boot_block_starts(self):
+        un = self.S['uninstall']
+        self.assertIn('If EXISTS ENVARC:Claude/wasabid\n  Search >NIL: S:User-Startup "C:wasabid"\n  If WARN\n'
+                      '    Delete >NIL: C:wasabid QUIET\n  EndIf\n  Delete >NIL: ENVARC:Claude/wasabid QUIET', un)
+        self.assertLess(un.index('ENVARC:Claude/wasabid'), un.index('Delete >NIL: "ENVARC:uppkg/Claude" ALL QUIET'))
+
+    def test_the_base_installer_help_mentions_the_session_daemon(self):
+        base = (ROOT / 'dist/Install.installer').read_text()
+        self.assertIn('Claude.lha brings its own wasabid for the session', base)
+
+
 SKILLS = ['amigados', 'arexx', 'amiga-c-build', 'amiga-autodocs']
 
 

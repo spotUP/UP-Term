@@ -4,6 +4,9 @@ Claude: parts, licences and where the source is
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
 Claude, uptelnet              MIT, Copyright (c) 2026 spotUP   vtcon repo LICENSE: claude/, llm/, net/
+wasabid 0.9b2 (C:wasabid,     MIT (Files/wasabid.LICENSE)      https://github.com/creep-ltx/wasabi, commit
+only when none is there;                                       ee23c09 (built by UP-Term); the base kit's
+by Tobias Karlsson)                                            Files/wasabi/SOURCE.txt
 
 Notes
 - The Claude program talks to Anthropic's API; AmiSSL 5 (used at
