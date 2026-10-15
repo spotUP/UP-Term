@@ -289,50 +289,57 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
   contents and modes); NAS check in NL21. S.
   Evidence: b5365d7; ONLY=uptelnetd PairsTool; NAS check is NL21
 
-### Phase C: Claude Code on the NAS works on that Amiga (D3 a, D4, D5)
+### Phase C: Claude Code on the NAS works on that Amiga (D3 a, D4, D5; daemon = wasabid)
 
-- [ ] **NL13** Token derivation shared by both ends, one vector pinned in C and Python.
-  Files: `net/tn.c`, `tools/uptelnetd.py`, both test files. Test: host `ONLY=telnet` and
-  `ONLY=uptelnetd` assert the same hex for the same K, sn, cn. S.
-- [ ] **NL14** uptelnet starts the session agent: `AGENT/K` (path; default
-  `UP-Term:bin/amiagent`, then `C:amiagent`), `AGENTPORT/N` (7847), after ACCEPT:
-  LoadSeg + CreateNewProc `TOKEN=T PORT=7847` (process kept, NP_FreeSeglist), sends
-  AGENT port (0 when the agent is missing or exits at once), Ctrl-C to it when the
-  session ends by any path (Ctrl-], Break, line dropped). `NOAGENT/S` to opt out.
-  C:Claude passes AGENT when an agent file exists. Files: `net/uptelnet.c`,
-  `claude/main_amiga.c`. Test: rig, after a key login `Status` lists the agent and
-  `ami.py --port 7847 --token <T from the test's key> ping` answers; after Ctrl-] it is
-  gone and the boot agent on 7846 still answers. M.
-- [ ] **NL15** The relay in uptelnetd: `--agent-relay 127.0.0.1:7846` and
-  `--relay-token-file`; per connection: first frame must be AUTH with the relay token
-  (constant time) else close; no live key session with an agent -> ST_ERR "no Amiga is
-  connected to Claude Code"; else connect to (peer, port), send AUTH(T), read its status,
-  then pipe the client's request and the answer. Registry: the most recent key-logged-in
-  session with port > 0, removed when it ends; a loopback peer is never a target unless
-  `--relay-loopback` (rig/tests only). Files: `tools/uptelnetd.py`,
-  `tools/test_uptelnetd.py`. Test: the ONE reachability test of NAS control: a fake
-  amiagent (Python, frame parser, counts requests) on 127.0.0.1:x; tn_host key-logs in
-  and announces port x; a relay client sends AUTH(relay token) + PING; the fake agent saw
-  AUTH(T derived) then PING (call count 1); after tn_host leaves, the same request gets
-  ST_ERR; a wrong relay token gets a closed socket. L.
-- [ ] **NL16** NAS wiring: `mcp.json` -> `AMIGA_HOST=127.0.0.1`, token from
-  `~/.config/amimcp/token` (the relay token; entrypoint creates it 0600 when missing);
-  entrypoint passes `--agent-relay`/`--relay-token-file`; `~/work/.claude/settings.json`
-  with `enabledMcpjsonServers: ["amiga"]` (no approval prompt) and D4's allow list;
-  deferred tool schemas so the amiga tools cost no context until used (Claude Code's
-  tool search; env name to confirm against the installed version, U4). Files:
-  `tools/nas/mcp.json`, `tools/nas/entrypoint.sh`, `tools/nas/settings.json` (new),
-  `tools/nas/compose.yaml`, `tools/nas/README.md`. Test: host `ONLY=uptelnetd` checks the
-  entrypoint's argument building (shell run with a fake python); NAS check in NL21. S-M.
-  Depends on U2 (amimcp's env names and whether it sends AUTH on every connection).
+Revision 2026-10-15: the owner replaced amiagent/amimcp with wasabi 0.9b2 everywhere
+(thoughts/shared/plans/2026-10-14-wasabi-migration.md). D3/D5's structure stays (a session
+daemon per key login, a key both ends derive, the NAS relays to the Amiga that logged in);
+the daemon is wasabid, the MCP server wasabi_mcp.py. wasabid reads its key with
+`GetVar("wasabi.key", ..., 0)` (wasabid.c:6116): a LOCAL shell variable wins over ENV:, so the
+session daemon gets its own key with no upstream change and the boot wasabid (global key) is
+untouched. U2 is obsolete (wasabi_mcp.py's env names and tools are known).
+
+- [ ] **NL13** Session key derivation shared by both ends, one vector pinned in C and
+  Python: T = hex(HMAC-SHA256(K, "wasabi-session" || sn || cn)), K = the pairing key, sn/cn
+  the login's nonces. Files: `net/tn.c`, `tools/uptelnetd.py`, both test files. Test: host
+  `ONLY=telnet` and `ONLY=uptelnetd` assert the same hex for the same K, sn, cn. S.
+- [ ] **NL14** uptelnet starts the session wasabid after a key login: `AGENT/K` (default
+  `UP-Term:bin/wasabid`, then `C:wasabid`), `AGENTPORT/N` (1240), `NOAGENT/S`; a shell of
+  its own (SystemTags, asynchronous) runs `Set wasabi.key <T>` (local) then
+  `<AGENT> <port> name session`; announces the port to the NAS (AGENT message, 0 when
+  missing or it exits at once); on session end by any path (Ctrl-], Break, line dropped)
+  stops it (Ctrl-C to its task / wasabi `quit` with T). C:Claude passes AGENT when the file
+  exists. Files: `net/uptelnet.c`, `claude/main_amiga.c`. Test: rig, after a key login
+  `Status` lists the session wasabid; `ami.py` with WASABI_PORT=1240 WASABI_KEY=<T from
+  the test's key> pings it; the boot wasabid on 1234 still answers with the rig key; after
+  Ctrl-] the session one is gone. M.
+- [ ] **NL15** The relay in uptelnetd: `--agent-relay 127.0.0.1:1234` and
+  `--relay-key-file`; wasabi's framing (PROTOCOL.md 0.9b2): a client must authenticate with
+  the relay key (constant time) else close; no live key session with an agent -> wasabi's
+  error frame "no Amiga is connected to Claude Code"; else connect to (peer, port),
+  authenticate with T, then pipe both ways. Registry: the most recent key-logged-in session
+  with port > 0, removed when it ends; loopback peers only with `--relay-loopback`
+  (rig/tests). Files: `tools/uptelnetd.py`, `tools/test_uptelnetd.py`. Test: the ONE
+  reachability test of NAS control: wasabi's upstream mock daemon (tests/) on 127.0.0.1:x
+  with key T; tn_host key-logs in and announces x; wasabi's client through the relay with
+  the relay key runs `ping` (mock saw T, call count 1); after tn_host leaves the same call
+  gets the error; a wrong relay key gets a closed socket. L.
+- [ ] **NL16** NAS wiring: `mcp.json` -> wasabi_mcp.py at 127.0.0.1:1234 with the relay key
+  (`~/.config/wasabi/config`, written 0600 by the entrypoint when missing; `amiga-target`
+  stays for a direct-LAN setup); entrypoint passes `--agent-relay`/`--relay-key-file`;
+  `~/work/.claude/settings.json` with `enabledMcpjsonServers: ["amiga"]` and D4's allow list
+  by wasabi_mcp.py tool names (read-only free: ls, read_file, screenshot, ui_list, windows,
+  screens, ps, health; run, write_file, key/type, click, arexx, kill ask); deferred tool
+  schemas if the installed Claude Code supports it (U4, owner). Files: `tools/nas/*`. Test:
+  host `ONLY=uptelnetd` checks the entrypoint's argument building and the settings file. S-M.
 - [ ] **NL17** Skill `tools/nas/skills/amiga-upterm/SKILL.md`: the amiga tools reach the
-  Amiga you are typing from; "no Amiga is connected" means the session has no agent. Also
-  the copy in vtcon-demo-perf (cross-repo rule). Test: none (text). S.
-- [ ] **NL18** Claude.lha carries amiagent (D5 a): `dist/addons/claude/parts.txt`,
-  `install.dos` (C:amiagent), `LICENSES.txt` (Apache 2.0, SOURCE.txt hashes), Uninstall
-  removes C:amiagent with the last of Claude; base kit Installer help text
-  (`dist/Install.installer:178-191`) mentions the session agent. Test: host
-  `ONLY=packages`, `make dist-check`; rig `install_rig.py --only` the Claude cases. M.
+  Amiga you are typing from; "no Amiga is connected" means no session daemon. Also the copy
+  in vtcon-demo-perf. Test: none (text). S.
+- [ ] **NL18** Claude.lha carries wasabid (D5 a, MIT): `dist/addons/claude/parts.txt`,
+  install.dos (C:wasabid, only when no wasabid of the base kit is there), LICENSES.txt,
+  Uninstall removes C:wasabid with the last of Claude (ours only); base Installer help text
+  mentions the session daemon. Test: dist tests, `make dist-check`; rig `install_rig.py
+  --only` the Claude cases. M.
 
 ### Phase D: one-key start (D6)
 
@@ -348,8 +355,8 @@ Size: S under 2 hours, M half a day, L a day or more. "Host" tests run in `make 
 
 ### Phase E: real hardware (manual, owner)
 
-- [ ] **NL21** NAS deploy: copy `tools/nas/*` and `tools/uptelnetd.py`, Build image 5,
-  start; `pairs list` empty; container log shows the relay listening on 127.0.0.1:7846.
+- [ ] **NL21** NAS deploy: copy `tools/nas/*` and `tools/uptelnetd.py`, Build the image,
+  start; `pairs list` empty; container log shows the relay listening on 127.0.0.1:1234.
 - [ ] **NL22** Real Amiga: Claude icon -> question -> NAS; first time the password once,
   then "paired"; quit, start again: no password; ask Claude Code "what volumes does my
   Amiga have?": it answers from that Amiga; Ctrl-]: `Status` shows no session agent;
@@ -373,7 +380,7 @@ Manual (owner only, never ticked by an agent): NL21, NL22.
   `docker exec -u claude claude-amiga sh -c 'cat ~/.config/amimcp/host; ls -l ~/.config/amimcp ~/work/.mcp.json'`
   (do not print the token file). On the Amiga: `Type DEVS:NetInterfaces/#?` (ADDRESS=dhcp
   or a fixed address) and `Search S:User-Startup amiagent`.
-- **U2** amimcp: version, environment names (host, token, port), whether it sends AUTH
+- **U2** (obsolete 2026-10-15: wasabi_mcp.py replaces amimcp) amimcp: version, environment names (host, token, port), whether it sends AUTH
   on every connection, its tool names (for D4):
   `docker exec -u claude claude-amiga sh -c 'cd ~/amimcp && (git log -1 --format="%H %cd" || true); ls server; grep -n -i "version\|environ\|AMIGA_\|AUTH\|def tool\|\"name\"" server/amimcp.py | head -80'`
 - **U3** The NAS runs the repo's uptelnetd: `docker exec claude-amiga sha256sum /usr/local/bin/uptelnetd.py`
