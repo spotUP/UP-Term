@@ -210,7 +210,8 @@ static void term_colors_and_setup_are_wired_and_pure(void)
     CHECK_INT(slash_term_ok("0123456789012345678901234567890123"), 0);
     CHECK_INT(slash_colors_ok("rgb"), 1);
     CHECK_INT(slash_colors_ok("256"), 1);
-    CHECK_INT(slash_colors_ok("16"), 0);
+    CHECK_INT(slash_colors_ok("16"), 1);
+    CHECK_INT(slash_colors_ok("8"), 0);
     n = slash_env_list("xterm-256color", "rgb", "", buf, sizeof(buf));
     CHECK_INT(n, 20 + 20 + 1);
     CHECK_STR(buf, "TERM=xterm-256color");
@@ -226,6 +227,13 @@ static void term_colors_and_setup_are_wired_and_pure(void)
     CHECK_INT(slash_env_list("", "", "", buf, sizeof(buf)), 0); /* XTERM: vsh's own vtcon stays */
     slash_env_list("screen", "", "vtcon-amiga", buf, sizeof(buf));
     CHECK_STR(buf, "TERM=screen");
+    /* W46 (c): 16 colours is a TERM (the kit's xterm-16color), over a /term too */
+    n = slash_env_list("xterm-256color", "16", "", buf, sizeof(buf));
+    CHECK_INT(n, 19 + 11 + 1);
+    CHECK_STR(buf, "TERM=xterm-16color");
+    CHECK_STR(buf + 19, "COLORTERM=");
+    slash_env_list("", "16", "vtcon-amiga", buf, sizeof(buf));
+    CHECK_STR(buf, "TERM=vtcon-amiga-16color"); /* no bce in an AMIGA window */
     CHECK_STR(slash_source("xterm", "vtcon", ""), "this window");
     CHECK_STR(slash_source("vtcon", "vtcon", ""), "profile");
     CHECK_STR(slash_source("", 0, ""), "default");
@@ -262,6 +270,8 @@ static void settings_menu_items_run_the_typed_commands(void)
     CHECK_STR(buf, "COLORTERM=truecolor");
     CHECK_INT(slash_menu_line(MENU_SET_COLORS_256, line, sizeof(line)), 1);
     CHECK_STR(line, "/colors 256");
+    CHECK_INT(slash_menu_line(MENU_SET_COLORS_16, line, sizeof(line)), 1);
+    CHECK_STR(line, "/colors 16");
     CHECK_INT(slash_menu_line(MENU_SET_COLORS_NONE, line, sizeof(line)), 1);
     CHECK_INT(slash_menu_line(MENU_SET_BOLD, line, sizeof(line)), 0); /* not one of them */
     CHECK_INT(slash_menu_line(MENU_SET_TERM_VTCON, line, 8), 0);      /* no room */
@@ -272,6 +282,8 @@ static void settings_menu_items_run_the_typed_commands(void)
     CHECK_INT(slash_menu_checked(MENU_SET_TERM_NONE, "vtcon", ""), 0);
     CHECK_INT(slash_menu_checked(MENU_SET_COLORS_256, "", "256"), 1);
     CHECK_INT(slash_menu_checked(MENU_SET_COLORS_NONE, "x", ""), 1);
+    CHECK_INT(slash_menu_checked(MENU_SET_COLORS_16, "", "16"), 1);
+    CHECK_INT(slash_menu_checked(MENU_SET_COLORS_256, "", "16"), 0);
     CHECK_INT(slash_menu_checked(MENU_SET_COLORS_RGB, "rgb", ""), 0); /* term does not leak into colors */
     CHECK_INT(slash_menu_checked(MENU_SET_BOLD, "", ""), -1);
 }

@@ -30,7 +30,7 @@ enum {
     SLASH_SIZE,              /* arg: COLSxROWS */
     SLASH_LINK_OPEN,         /* arg: the command for a link (%s the address), or "none" */
     SLASH_TERM,              /* arg: TERM for programs vsh starts here, or "none" */
-    SLASH_COLORS,            /* arg: rgb | 256 (COLORTERM for those programs), or "none" */
+    SLASH_COLORS,            /* arg: rgb | 256 | 16 (COLORTERM, TERM for 16), or "none" */
     SLASH_SETUP              /* the window's settings and where each came from */
 };
 
@@ -84,12 +84,14 @@ const slash_def *slash_table(int *n);
 
 /* W46: what the window tells the programs vsh starts in it, and the
  * /setup listing. slash_term_ok: a terminal type's name (1 to 31 letters,
- * digits and . _ + -). slash_colors_ok: "rgb" or "256". slash_env_list
+ * digits and . _ + -). slash_colors_ok: "rgb", "256" or "16". slash_env_list
  * writes the ACTION_VTCON_ENV list for the window's term and colors ("" =
  * not set): TERM=<term>; COLORTERM=truecolor for rgb, COLORTERM= (unset) for
- * 256. dflt_term ("" = none) is the TERM told when the window has no /term:
+ * 256 and 16. dflt_term ("" = none) is the TERM told when the window has no /term:
  * vtcon-amiga for an AMIGA personality window, whose terminal does not
- * erase to the program's background (no bce). Returns its bytes (the closing NUL included), 0 when nothing is told. */
+ * erase to the program's background (no bce). 16 tells TERM=<dflt_term>-16color
+ * (xterm-16color when dflt_term is ""), over a /term too: a 256-colour TERM
+ * would leave /colors 16 without effect. Returns its bytes (the closing NUL included), 0 when nothing is told. */
 int  slash_term_ok(const char *name);
 int  slash_colors_ok(const char *name);
 long slash_env_list(const char *term, const char *colors, const char *dflt_term, char *out, long max);

@@ -346,12 +346,16 @@ $(BUILD)/terminfo/76/vtcon: terminfo/vtcon.terminfo
 # directories (v/vtcon), which the Amiga's ncurses 5.5 reads, and in the hex
 # ones tic on macOS writes (76/vtcon), which ncurses 6 reads (upterm-ports'
 # less, nano, tput: built with cf_cv_mixedcase=no, Amiga names ignore case).
-# vtcon-amiga says use=vtcon: after it, and TERMINFO points tic at the entries made so far
+# vtcon-amiga says use=vtcon: after it, and TERMINFO points tic at the entries made so far.
+# W46 /colors 16: xterm-16color and vtcon-amiga-16color are made from the compiled vtcon
+# (tools/gen_16color_terminfo.py says why they are generated, not written).
 KIT_TERMINFO := terminfo/vtcon.terminfo terminfo/vtcon-amiga.terminfo terminfo/screen.terminfo
-$(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO)
+$(BUILD)/kit-terminfo/stamp: $(KIT_TERMINFO) tools/gen_16color_terminfo.py
 	rm -rf $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
 	mkdir -p $(BUILD)/kit-terminfo $(BUILD)/kit-terminfo.tmp
 	for f in $(KIT_TERMINFO); do TERMINFO=$(CURDIR)/$(BUILD)/kit-terminfo.tmp tic -x -o $(BUILD)/kit-terminfo.tmp $$f || exit 1; done
+	python3 -I tools/gen_16color_terminfo.py $(BUILD)/kit-terminfo.tmp $(BUILD)/kit-16color.terminfo
+	TERMINFO=$(CURDIR)/$(BUILD)/kit-terminfo.tmp tic -x -o $(BUILD)/kit-terminfo.tmp $(BUILD)/kit-16color.terminfo
 	cd $(BUILD)/kit-terminfo.tmp && for p in */*; do n=$${p#*/}; c=$$(printf %s "$$n" | cut -c1); \
 	  mkdir -p ../kit-terminfo/$$c && cp "$$p" ../kit-terminfo/$$c/; done
 	cp -R $(BUILD)/kit-terminfo.tmp/. $(BUILD)/kit-terminfo/

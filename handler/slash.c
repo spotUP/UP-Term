@@ -72,8 +72,8 @@ static const slash_def table[] = {
     { "bold-bright", SL_CHOICE, 0, 0, v_bold, "on | off", "bold text takes the bright colours (xterm)" },
     { "claude", SL_ACTION, MENU_CLAUDE, 0, 0, "", "Claude, in a new tab" },
     { "clear", SL_CHOICE, 0, 0, v_clear, "screen | scrollback", "clear the screen or the scrollback" },
-    { "colors", SL_ARG, SLASH_COLORS, 1, 0, "rgb | 256 | none",
-      "the colour depth programs are told (rgb: COLORTERM=truecolor)" },
+    { "colors", SL_ARG, SLASH_COLORS, 1, 0, "rgb | 256 | 16 | none",
+      "the colour depth programs are told (rgb: COLORTERM=truecolor, 16: TERM=xterm-16color)" },
     { "completion", SL_CHOICE, 0, 0, v_completion, "unix | kingcon", "the Tab key's completion style" },
     { "copy", SL_ACTION, MENU_COPY, 0, 0, "", "copy the selection to the clipboard" },
     { "copy-on-select", SL_CHOICE, 0, 0, v_copy, "on | off", "a drag ends with the text on the clipboard" },
@@ -343,25 +343,29 @@ int slash_term_ok(const char *name)
 
 int slash_colors_ok(const char *name)
 {
-    return !strcmp(name, "rgb") || !strcmp(name, "256");
+    return !strcmp(name, "rgb") || !strcmp(name, "256") || !strcmp(name, "16");
 }
 
 long slash_env_list(const char *term, const char *colors, const char *dflt_term, char *out, long max)
 {
     long k = 0;
     const char *e[2];
-    char t[40];
-    int i, ne = 0;
-    if (!term[0])
+    char t[48];
+    int i, ne = 0, c16 = !strcmp(colors, "16");
+    if (!term[0] || c16)
         term = dflt_term;
+    if (c16 && !term[0])
+        term = "xterm";
     if (term[0] && strlen(term) < 32) {
         strcpy(t, "TERM=");
         strcat(t, term);
+        if (c16)
+            strcat(t, "-16color"); /* the kit's entries: tools/gen_16color_terminfo.py */
         e[ne++] = t;
     }
     if (!strcmp(colors, "rgb"))
         e[ne++] = "COLORTERM=truecolor";
-    else if (!strcmp(colors, "256"))
+    else if (!strcmp(colors, "256") || c16)
         e[ne++] = "COLORTERM=";
     for (i = 0; i < ne; i++) {
         long n = (long)strlen(e[i]) + 1;
@@ -387,6 +391,7 @@ static const struct {
     { MENU_SET_TERM_NONE, 1, "none" },
     { MENU_SET_COLORS_RGB, 0, "rgb" },
     { MENU_SET_COLORS_256, 0, "256" },
+    { MENU_SET_COLORS_16, 0, "16" },
     { MENU_SET_COLORS_NONE, 0, "none" }
 };
 

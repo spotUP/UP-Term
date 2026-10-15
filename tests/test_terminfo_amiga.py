@@ -45,6 +45,26 @@ class TerminfoAmiga(unittest.TestCase):
         mk = (ROOT / "Makefile").read_text()
         self.assertIn("terminfo/vtcon-amiga.terminfo", mk.split("KIT_TERMINFO :=")[1].splitlines()[0])
 
+    def test_kit_has_16color_entries_made_from_vtcon(self):
+        # W46 /colors 16 tells TERM=xterm-16color (vtcon-amiga-16color in an AMIGA
+        # window). The kit's entries are vtcon's capabilities with 16 colours and
+        # no direct colour; built by the kit rule that make dist runs.
+        subprocess.run(["make", "-s", "build/kit-terminfo/stamp"], cwd=ROOT, check=True)
+        kit = str(ROOT / "build" / "kit-terminfo")
+        for name in ("xterm-16color", "vtcon-amiga-16color"):
+            self.assertTrue((ROOT / "build" / "kit-terminfo" / name[0] / name).is_file(), name)
+        env = dict(os.environ, TERMINFO=kit)
+        def run(*a):
+            return subprocess.run(list(a), check=True, env=env, capture_output=True, text=True).stdout
+        diff = {l.strip().split(":")[0] for l in run("infocmp", "-x", "-d", "vtcon", "xterm-16color").splitlines()
+                if l.startswith("\t")}
+        self.assertEqual(diff, {"RGB", "Tc", "colors", "pairs", "setaf", "setab", "Setulc", "setrgbf", "setrgbb"})
+        self.assertIn("colors#16,", run("infocmp", "-x", "-1", "xterm-16color").split())
+        self.assertEqual(run("tput", "-T", "xterm-16color", "setaf", "12"), "\x1b[94m")
+        self.assertEqual(run("tput", "-T", "xterm-16color", "setab", "3"), "\x1b[43m")
+        amiga = run("infocmp", "-x", "-d", "xterm-16color", "vtcon-amiga-16color")
+        self.assertEqual({l.strip().split(":")[0] for l in amiga.splitlines() if l.startswith("\t")}, {"bce", "xenl"})
+
 
 if __name__ == "__main__":
     unittest.main()

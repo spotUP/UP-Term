@@ -1358,7 +1358,7 @@ static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 63
+#define MENU_SET_ITEMS 64
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1394,9 +1394,10 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"screen-256color", 0, CHECKIT, 11, (APTR)MENU_SET_TERM_SCREEN },
     { NM_SUB, (STRPTR)"Not set", 0, CHECKIT, 7, (APTR)MENU_SET_TERM_NONE },
     { NM_ITEM, (STRPTR)"Colour mode", 0, 0, 0, 0 },
-    { NM_SUB, (STRPTR)"Full colour (RGB)", 0, CHECKIT, 6, (APTR)MENU_SET_COLORS_RGB },
-    { NM_SUB, (STRPTR)"256 colours", 0, CHECKIT, 5, (APTR)MENU_SET_COLORS_256 },
-    { NM_SUB, (STRPTR)"Not told", 0, CHECKIT, 3, (APTR)MENU_SET_COLORS_NONE },
+    { NM_SUB, (STRPTR)"Full colour (RGB)", 0, CHECKIT, 14, (APTR)MENU_SET_COLORS_RGB },
+    { NM_SUB, (STRPTR)"256 colours", 0, CHECKIT, 13, (APTR)MENU_SET_COLORS_256 },
+    { NM_SUB, (STRPTR)"16 colours", 0, CHECKIT, 11, (APTR)MENU_SET_COLORS_16 },
+    { NM_SUB, (STRPTR)"Not told", 0, CHECKIT, 7, (APTR)MENU_SET_COLORS_NONE },
     { NM_ITEM, (STRPTR)"Copy on select", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_COPY },
     { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
     { NM_ITEM, (STRPTR)"Reflow on resize", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
@@ -3932,7 +3933,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         else if (slash_colors_ok(cmd.arg))
             copy_str(c->colors, cmd.arg, sizeof(c->colors));
         else {
-            cat3(ans, cap, name, ": rgb | 256 | none", "\n");
+            cat3(ans, cap, name, ": rgb | 256 | 16 | none", "\n");
             return 2;
         }
         cat3(ans, cap, name, ": the next command vsh starts sees it", "\n");
