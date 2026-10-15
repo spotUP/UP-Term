@@ -724,7 +724,8 @@ def step6(port):
         agent.mkdir(exist_ok=True)
         (agent / 'models.json').write_text(json.dumps({'providers': {
             'fixa': {'baseUrl': base, 'api': 'anthropic-messages',
-                     'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
+                     'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000},
+                                   {'id': 'claude-opus-5-5', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
             'fixo': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
                      'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
         (VTC / 'pi6.in').write_text('hello\n/model fixo/m2\nagain\n')
@@ -1241,6 +1242,77 @@ def step12(port):
         shutil.rmtree(agent, ignore_errors=True)
 
 
+def step15(port):
+    """P2 (custom_headers_reach_the_request): ANTHROPIC_CUSTOM_HEADERS on the Amiga reaches an anthropic-messages request.
+    amiga-pi -p against tools/claude_fixture.py, whose [INFO] line of a request lists the headers a client added. Three runs:
+      15a ANTHROPIC_CUSTOM_HEADERS = two lines "anthropic-workspace-id: wrkspc_rig" and "x-rig-extra: yes": both headers are on
+          the fixture's request line, exit code 0 (no 400), the answer text printed
+      15b only ANTHROPIC_WORKSPACE_ID set (pi reads it for workload identity federation only): no anthropic-workspace-id
+      15c neither set: no added header at all
+    Needs rig 2 or 3, never 1."""
+    if not AMIGA_PI.exists():
+        sys.exit('[ERROR] %s missing: make -C $UPTERM_ROOT/amiga-pi amiga' % AMIGA_PI)
+    shutil.copy(AMIGA_PI, VTC / 'amiga-pi')
+    log = paths.RIG / 'amigapi_fixture15.log'
+    dump = paths.RIG / 'amigapi_dump15'
+    shutil.rmtree(dump, ignore_errors=True)
+    dump.mkdir()
+    fx = subprocess.Popen([sys.executable, '-I', str(ROOT / 'tools' / 'claude_fixture.py'), '--port', str(port),
+                           '--delay', '0.01', '--dump', str(dump)], stdout=open(log, 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1)
+    agent = VTC / 'pi15agent'
+    base = 'http://127.0.0.1:%d' % port
+    runs = (('a', ['SetEnv ANTHROPIC_CUSTOM_HEADERS "anthropic-workspace-id: wrkspc_rig"']),
+            ('b', ['SetEnv ANTHROPIC_WORKSPACE_ID wrkspc_env']),
+            ('c', []))
+    try:
+        agent.mkdir(exist_ok=True)
+        (agent / 'models.json').write_text(json.dumps({'providers': {'fxa': {
+            'baseUrl': base, 'api': 'anthropic-messages', 'apiKey': 'sk-rig-15-must-not-be-sent',
+            'models': [{'id': 'm1', 'contextWindow': 200000, 'maxTokens': 20000}]}}}))
+        lines = ['Echo "amiga-pi step 15: ANTHROPIC_CUSTOM_HEADERS against the fixture"',
+                 'SetEnv PI_CODING_AGENT_DIR VTC:pi15agent', 'CD RAM:']
+        for tag, env in runs:
+            for f in ('pi15-%s.out' % tag, 'pi15-%s.rc' % tag):
+                if (VTC / f).exists():
+                    (VTC / f).unlink()
+            lines += env + ['VTC:amiga-pi --model fxa/m1 --no-session --no-tools -p "hello" <NIL: >VTC:pi15-%s.out' % tag,
+                            'Echo "rc=$RC" >VTC:pi15-%s.rc' % tag,
+                            'Delete ENV:ANTHROPIC_CUSTOM_HEADERS ENV:ANTHROPIC_WORKSPACE_ID QUIET']
+        ended, req = run_watched('pi15', 'amiga-pi step 15', lines, 'pi15-done')
+        check('15 the window ended', ended)
+        time.sleep(3)
+        rd = lambda f: (VTC / f).read_bytes().decode('utf-8', 'replace') if (VTC / f).exists() else ''
+        text = open(log).read()
+        # the fixture's lines per request, in order: the summary and the headers line that follows it
+        reqs, cur = [], None
+        for l in text.splitlines():
+            if l.startswith('[INFO] /v1/messages'):
+                cur = {'line': l, 'headers': ''}
+                reqs.append(cur)
+            elif l.startswith('[INFO]   headers ') and cur is not None:
+                cur['headers'] = l
+        check('15 three requests reached the fixture', len(reqs) == 3, repr(text[-600:]))
+        if len(reqs) == 3:
+            for (tag, _), r_ in zip(runs, reqs):
+                out, rc = rd('pi15-%s.out' % tag), rd('pi15-%s.rc' % tag).strip()
+                check('15%s exit code 0 (no 400)' % tag, rc == 'rc=0', repr((rc, out[:200])))
+                check('15%s the key stayed home (plain http)' % tag, 'key_header=none' in r_['line'], repr(r_['line']))
+            h = [r_['headers'] for r_ in reqs]
+            check('15a custom_headers_reach_the_request: anthropic-workspace-id: wrkspc_rig on the request',
+                  'anthropic-workspace-id: wrkspc_rig' in h[0], repr(h[0]))
+            check('15b ANTHROPIC_WORKSPACE_ID alone: no anthropic-workspace-id', 'anthropic-workspace-id' not in h[1]
+                  and 'wrkspc_env' not in text, repr(h[1]))
+            check('15c nothing set: no added header', h[2] == '', repr(h[2]))
+            check('15a the answer text printed', 'Hello from the Amiga' in rd('pi15-a.out'), repr(rd('pi15-a.out')[:200]))
+        check('15 no requester', not req, repr(req))
+    finally:
+        fx.terminate()
+        c.run('Delete ENV:ANTHROPIC_CUSTOM_HEADERS ENV:ANTHROPIC_WORKSPACE_ID QUIET')
+        c.run('Delete RAM:pi15-done VTC:pi15.dos VTC:pi15agent ALL QUIET')
+        shutil.rmtree(agent, ignore_errors=True)
+
+
 def mask_rpc(o, spec):
     """A record of pi's RPC/JSON stream after the masks of amiga-pi's tests/pi/rpc/masks.json (spec: that file, parsed),
     the one list of this rig and of amiga-pi's tests/test_pi_modes.c, with each mask's reason. The rules are those of
@@ -1397,7 +1469,9 @@ STEP13 = {'a': ['13a Steering row', '13a Follow-up row', '13a steering text in r
           'b': ['13b Shift+Tab: Thinking level on screen', '13b Shift+Tab: thinking_level_change in session',
                 '13b Ctrl+P: Switched to on screen', '13b Ctrl+P: model_change m2 in session'],
           'c': ['13c /tree: the selector shows'],
-          'd': ['13d start header: logo, version and key hints']}
+          'd': ['13d start header: logo, version and key hints'],
+          'e': ['13e G2 footer: model and level flush right inside the window', '13e G2 footer: last glyph column inside the window (pixels)'],
+          'f': ['13f G3 outputPad 0: the header is on the screen, every text cell inside the window']}
 force13 = False
 
 
@@ -1436,6 +1510,36 @@ def user_texts(entries):
             c_ = m.get('content')
             out.append(c_ if isinstance(c_, str) else ' '.join(b.get('text', '') for b in c_ if isinstance(b, dict)))
     return out
+
+
+G2_BOX = '0/12/530/440'    # about 64 columns of the rig's font
+
+
+def footer_pixels(title, row, cols, word='medium', x0=4, y0=14, cw=8, ch=16):
+    """(ok, detail) from the grab of the window: the text area starts at (x0, y0) of the window, a cell is cw x ch
+    pixels. The footer row ends in `word` in the last column: the pixels of its last cell equal the pixels of the
+    same letter in the word's first cell (the glyph is drawn whole, not cut), carry ink, and the pixels right of
+    the last column (up to the scroll bar) are the background"""
+    w = ami.window(title)
+    if not w or row < 0:
+        return False, 'no window %r or no footer row (%d)' % (title, row)
+    x, y, ww, hh = w['box']
+    gw, gh, grid = ami.grab((x, y, ww, hh))
+    top = y0 + row * ch
+
+    def cell(col):
+        return [grid[py][(x0 + col * cw) * 3:(x0 + (col + 1) * cw) * 3] for py in range(top, top + ch)]
+    last, first = cell(cols - 1), cell(cols - len(word))
+    blank = cell(0)[0][:3]
+    ink = sum(1 for r_ in last for i in range(0, len(r_), 3) if r_[i:i + 3] != blank)
+    sbar = w.get('custom', (gw - 14, 0, 10, 0))[0]
+    rest = [grid[py][(x0 + cols * cw) * 3:(sbar - 6) * 3] for py in range(top, top + ch)]
+    above = [grid[py][(x0 + cols * cw) * 3:(sbar - 6) * 3] for py in range(top - ch, top)]    # the row above (its text is short): the window's own padding
+    tail_bg = rest == above
+    cols_of = lambda rr: sorted({r_[i:i + 3].hex() for r_ in rr for i in range(0, len(r_), 3)})
+    ok = last == first and ink >= 8 and tail_bg and word[0] == word[-1]
+    return ok, 'last cell == first %r cell: %s, ink pixels in it %d, pixels right of column %d (x %d..%d) equal the padding of the row above: %s (colours %s against %s), window %dx%d' % (
+        word[0], last == first, ink, cols, x0 + cols * cw, sbar - 6, tail_bg, cols_of(rest), cols_of(above), ww, hh)
 
 
 def step13(port):
@@ -1480,15 +1584,15 @@ def step13(port):
             time.sleep(0.5)
         return False
 
-    def launch(title, args):
-        tw.open_xcon(title)
+    def launch(title, args, box='0/12/760/440', model='fixa/m1'):
+        tw.open_xcon(title, box)
         tw.typ('Stack 32768')
         tw.key(tw.RET, wait=1)
         tw.typ('SetEnv PI_CODING_AGENT_DIR VTC:pi13agent')
         tw.key(tw.RET, wait=1)
         tw.typ('CD RAM:')
         tw.key(tw.RET, wait=1)
-        tw.typ('VTC:amiga-pi --model fixa/m1 --no-tools ' + args)
+        tw.typ('VTC:amiga-pi --model %s --no-tools %s' % (model, args))
         tw.key(tw.RET, wait=10)
 
     def leave():
@@ -1508,7 +1612,8 @@ def step13(port):
         agent.mkdir(exist_ok=True)
         (agent / 'models.json').write_text(json.dumps({'providers': {
             'fixa': {'baseUrl': base, 'api': 'anthropic-messages',
-                     'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
+                     'models': [{'id': 'm1', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000},
+                                   {'id': 'claude-opus-5-5', 'reasoning': True, 'contextWindow': 200000, 'maxTokens': 20000}]},
             'fixo': {'baseUrl': base + '/v1', 'api': 'openai-completions', 'apiKey': '!Echo rig-test-key',
                      'models': [{'id': 'm2', 'contextWindow': 32000}]}}}))
         (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixa/m1', 'fixo/m2']}))
@@ -1582,6 +1687,48 @@ def step13(port):
             record('13d start header: logo, version and key hints', all(w in u for w in
                    ('\u2580\u2580\u2588', '\u2588\u2580 \u2588', 'pi 1.1.0', 'escape interrupt', 'ctrl+o more')), repr(u[:500]))
             leave()
+        if phase_due('e'):
+            # G2: pi's footer puts the model and the thinking level flush right. A window of about 64 columns (pi's width
+            # in the start_w64 goldens): the footer row ends at the last column of the window, text AND pixels
+            fixture()
+            launch('amiga-pi step 13e', '', G2_BOX, 'fixa/claude-opus-5-5')
+            tw._last_title = 'pi - Ram Disk'     # amiga-pi retitles its window: the click that drops the selection looks for this one
+            tw.typ('hello')
+            tw.key(tw.RET, wait=2)
+            wait_requests(1)
+            time.sleep(25)
+            t = text('13e')
+            u = t.encode('latin-1', 'replace').decode('utf-8', 'replace')
+            rows = u.split('\n')
+            width = max(len(r) for r in rows if r.strip() and set(r.strip()) == {'\u2500'})    # a box rule: the window's columns
+            foot = [i for i, r in enumerate(rows) if 'claude-opus-5-5' in r and 'medium' in r]
+            row = rows[foot[0]] if foot else ''
+            record('13e G2 footer: model and level flush right inside the window',
+                   bool(foot) and row.rstrip().endswith('medium') and len(row.rstrip()) == width,
+                   'width %d, footer %r' % (width, row))
+            ok, detail = footer_pixels('pi - Ram Disk', foot[0] if foot else -1, width)
+            record('13e G2 footer: last glyph column inside the window (pixels)', ok, detail)
+            leave()
+        if phase_due('f'):
+            # G3: outputPad 0 and a window of about 64 columns: the header (logo, version, hints) is whole on the screen
+            (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixa/m1', 'fixo/m2'], 'outputPad': 0}))
+            fixture()
+            launch('amiga-pi step 13f', '', G2_BOX, 'fixa/claude-opus-5-5')
+            tw._last_title = 'pi - Ram Disk'
+            t = text('13f')
+            u = t.encode('latin-1', 'replace').decode('utf-8', 'replace')
+            rows = u.split('\n')
+            width = max(len(r) for r in rows if r.strip() and set(r.strip()) == {'\u2500'})
+            hdr = [r for r in rows if r.strip()]
+            top = next((i for i, r in enumerate(rows) if '\u2580' in r), -1)
+            more = [r for r in rows if 'ctrl+o more' in r]
+            record('13f G3 outputPad 0: the header is on the screen, every text cell inside the window',
+                   0 <= top <= 1 and 'pi 1.' in rows[top] and 'Press ctrl+o to show full startup help' in u
+                   and 'how to use or extend Pi.' in u and bool(more) and more[0][:1] == ' ' and more[0][1:2] != ' '
+                   and all(len(r.rstrip()) <= width for r in rows),
+                   'width %d, logo row %d, rows %r' % (width, top, rows[:8]))
+            leave()
+            (agent / 'settings.json').write_text(json.dumps({'enabledModels': ['fixa/m1', 'fixo/m2']}))
     finally:
         if fx:
             fx.terminate()
@@ -1599,7 +1746,7 @@ def pathlib_home():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8092, help="the fixture's port (8080 may be another rig's)")
-    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14), help='one step only (default: all but 13 and 14)')
+    ap.add_argument('--step', type=int, choices=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15), help='one step only (default: all but 13, 14 and 15)')
     ap.add_argument('--force', action='store_true', help='step 13: run every check again')
     a = ap.parse_args()
     global force13
@@ -1632,6 +1779,8 @@ def main():
         step13(a.port + 12)
     if a.step == 14:
         step14(a.port + 13)
+    if a.step == 15:
+        step15(a.port + 14)
     print('amigapi_rig: %s' % ('PASS' if not fails else 'FAIL: ' + ', '.join(fails)))
     return 1 if fails else 0
 

@@ -294,6 +294,23 @@ class OverHttp(unittest.TestCase):
         self.assertEqual(log.getvalue().count("[INFO]   codex originator=pi"), len(RESPONSES))
         self.assertIn("[INFO] /codex/responses ", log.getvalue())
 
+    def test_custom_headers_reach_the_request(self):
+        """P2: a header a client added (ANTHROPIC_CUSTOM_HEADERS) is on the fixture's request line, the credential is not,
+        and a request without it has no such line -- the rig step custom_headers_reach_the_request reads it"""
+        import io
+        log = io.StringIO()
+        sys.stdout = log
+        try:
+            r, _ = self.post(body(user("hello")), headers={"anthropic-workspace-id": "wrkspc_rig", "x-api-key": "sk-secret"})
+            self.assertEqual(r.status, 200)
+            r, _ = self.post(body(user("hello")))
+            self.assertEqual(r.status, 200)
+        finally:
+            sys.stdout = open(os.devnull, "w")
+        lines = [l for l in log.getvalue().splitlines() if "headers " in l]
+        self.assertEqual(lines, ["[INFO]   headers anthropic-workspace-id: wrkspc_rig"])
+        self.assertNotIn("sk-secret", log.getvalue())
+
     def test_azure_responses_with_an_api_version_query_gets_the_responses_recording(self):
         for what, b, want in RESPONSES:
             with self.subTest(what):
