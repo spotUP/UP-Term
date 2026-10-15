@@ -99,6 +99,15 @@ long slash_env_list(const char *term, const char *colors, const char *dflt_term,
  * dflt: the built-in value), else "profile" or "default". */
 const char *slash_source(const char *value, const char *profile, const char *dflt);
 
+/* W46: the Settings menu's Terminal type and Colour mode items are the
+ * commands they stand for. slash_menu_line writes the command line a menu
+ * item (a MENU_SET_TERM_* or MENU_SET_COLORS_* id) runs ("/term
+ * xterm-256color"); 0 when the id is not one of them. slash_menu_checked:
+ * 1 when the item is the window's current setting (term, colors: the
+ * window's values, "" = not set), 0 when not, -1 when the id is not one. */
+int slash_menu_line(long id, char *out, int cap);
+int slash_menu_checked(long id, const char *term, const char *colors);
+
 typedef struct slash_row {
     const char *name, *value, *source;
 } slash_row;

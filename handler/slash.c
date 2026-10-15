@@ -376,6 +376,48 @@ long slash_env_list(const char *term, const char *colors, const char *dflt_term,
     return k;
 }
 
+static const struct {
+    long id;
+    int is_term;
+    const char *value; /* the command's argument; "none" clears */
+} menu_settings[] = {
+    { MENU_SET_TERM_VTCON, 1, "vtcon" },
+    { MENU_SET_TERM_XTERM, 1, "xterm-256color" },
+    { MENU_SET_TERM_SCREEN, 1, "screen-256color" },
+    { MENU_SET_TERM_NONE, 1, "none" },
+    { MENU_SET_COLORS_RGB, 0, "rgb" },
+    { MENU_SET_COLORS_256, 0, "256" },
+    { MENU_SET_COLORS_NONE, 0, "none" }
+};
+
+int slash_menu_line(long id, char *out, int cap)
+{
+    unsigned i;
+    for (i = 0; i < sizeof(menu_settings) / sizeof(menu_settings[0]); i++)
+        if (menu_settings[i].id == id) {
+            const char *cmd = menu_settings[i].is_term ? "/term " : "/colors ";
+            if ((int)(strlen(cmd) + strlen(menu_settings[i].value)) >= cap)
+                return 0;
+            strcpy(out, cmd);
+            strcat(out, menu_settings[i].value);
+            return 1;
+        }
+    return 0;
+}
+
+int slash_menu_checked(long id, const char *term, const char *colors)
+{
+    unsigned i;
+    for (i = 0; i < sizeof(menu_settings) / sizeof(menu_settings[0]); i++)
+        if (menu_settings[i].id == id) {
+            const char *cur = menu_settings[i].is_term ? term : colors;
+            if (!strcmp(menu_settings[i].value, "none"))
+                return cur[0] == 0;
+            return !strcmp(cur, menu_settings[i].value);
+        }
+    return -1;
+}
+
 const char *slash_source(const char *value, const char *profile, const char *dflt)
 {
     const char *base = profile ? profile : dflt;

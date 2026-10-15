@@ -1286,6 +1286,7 @@ static void tab_command(con *c, int what);
 static void sbar_apply(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
+static int slash_run(con *c, const char *line, int len, char *ans, int cap, int typed);
 static int find_open(con *c);
 static void close_gadget(con *c);
 
@@ -1357,7 +1358,7 @@ static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 54
+#define MENU_SET_ITEMS 63
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1387,6 +1388,15 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_ITEM, (STRPTR)"Meta key", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Left Amiga", 0, CHECKIT, 2, (APTR)MENU_SET_META_AMIGA },
     { NM_SUB, (STRPTR)"Alt", 0, CHECKIT, 1, (APTR)MENU_SET_META_ALT },
+    { NM_ITEM, (STRPTR)"Terminal type", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"vtcon", 0, CHECKIT, 14, (APTR)MENU_SET_TERM_VTCON },
+    { NM_SUB, (STRPTR)"xterm-256color", 0, CHECKIT, 13, (APTR)MENU_SET_TERM_XTERM },
+    { NM_SUB, (STRPTR)"screen-256color", 0, CHECKIT, 11, (APTR)MENU_SET_TERM_SCREEN },
+    { NM_SUB, (STRPTR)"Not set", 0, CHECKIT, 7, (APTR)MENU_SET_TERM_NONE },
+    { NM_ITEM, (STRPTR)"Colour mode", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Full colour (RGB)", 0, CHECKIT, 6, (APTR)MENU_SET_COLORS_RGB },
+    { NM_SUB, (STRPTR)"256 colours", 0, CHECKIT, 5, (APTR)MENU_SET_COLORS_256 },
+    { NM_SUB, (STRPTR)"Not told", 0, CHECKIT, 3, (APTR)MENU_SET_COLORS_NONE },
     { NM_ITEM, (STRPTR)"Copy on select", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_COPY },
     { NM_ITEM, (STRPTR)"Wheel scrolls", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_WHEEL },
     { NM_ITEM, (STRPTR)"Reflow on resize", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_REFLOW },
@@ -1425,6 +1435,9 @@ static int sb_size(const con *c)
 static int menu_checked(const con *c, LONG id)
 {
     int cs = c->w.cursor_style;
+    int tc = slash_menu_checked(id, c->term, c->colors);
+    if (tc >= 0)
+        return tc;
     switch (id) {
     case MENU_SCREEN_WB: return c->own_screen == 0;
     case MENU_SCREEN_OWN: return c->own_screen == 1;
@@ -2195,6 +2208,14 @@ static int menu_run(con *c, LONG id, int on)
     if (id >= MENU_SET_PROFILE0 && id < MENU_SET_PROFILE0 + UC_MAX_PROFILES) {
         profile_switch(c, (int)(id - MENU_SET_PROFILE0));
         return 2;
+    }
+    {
+        /* Terminal type and Colour mode: the command each stands for */
+        char line[40], ans[160];
+        if (slash_menu_line(id, line, sizeof(line))) {
+            slash_run(c, line, (int)strlen(line), ans, sizeof(ans), 0);
+            return 2;
+        }
     }
     return menu_setting(c, id, on) ? 2 : 0;
 }

@@ -237,10 +237,50 @@ static void term_colors_and_setup_are_wired_and_pure(void)
     CHECK_INT(slash_setup_text(rows, 2, buf, 10), 0); /* no room: no half line */
 }
 
+/* W46: the Settings menu's Terminal type and Colour mode items run the
+ * typed commands: item -> line -> slash_parse -> the env vsh is told */
+static void settings_menu_items_run_the_typed_commands(void)
+{
+    char line[40], buf[128];
+    CHECK_INT(slash_menu_line(MENU_SET_TERM_XTERM, line, sizeof(line)), 1);
+    CHECK_STR(line, "/term xterm-256color");
+    CHECK_INT(parse(line), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_TERM);
+    CHECK_STR(cmd.arg, "xterm-256color");
+    CHECK_INT(slash_term_ok(cmd.arg), 1);
+    CHECK_INT(slash_env_list(cmd.arg, "", "", buf, sizeof(buf)) > 0, 1);
+    CHECK_STR(buf, "TERM=xterm-256color");
+    CHECK_INT(slash_menu_line(MENU_SET_TERM_NONE, line, sizeof(line)), 1);
+    CHECK_INT(parse(line), SLASH_OK);
+    CHECK_STR(cmd.arg, "none");
+    CHECK_INT(slash_menu_line(MENU_SET_COLORS_RGB, line, sizeof(line)), 1);
+    CHECK_STR(line, "/colors rgb");
+    CHECK_INT(parse(line), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_COLORS);
+    CHECK_INT(slash_colors_ok(cmd.arg), 1);
+    slash_env_list("", cmd.arg, "", buf, sizeof(buf));
+    CHECK_STR(buf, "COLORTERM=truecolor");
+    CHECK_INT(slash_menu_line(MENU_SET_COLORS_256, line, sizeof(line)), 1);
+    CHECK_STR(line, "/colors 256");
+    CHECK_INT(slash_menu_line(MENU_SET_COLORS_NONE, line, sizeof(line)), 1);
+    CHECK_INT(slash_menu_line(MENU_SET_BOLD, line, sizeof(line)), 0); /* not one of them */
+    CHECK_INT(slash_menu_line(MENU_SET_TERM_VTCON, line, 8), 0);      /* no room */
+    /* the checkmark follows the window's value; empty is the "none" item */
+    CHECK_INT(slash_menu_checked(MENU_SET_TERM_XTERM, "xterm-256color", ""), 1);
+    CHECK_INT(slash_menu_checked(MENU_SET_TERM_VTCON, "xterm-256color", ""), 0);
+    CHECK_INT(slash_menu_checked(MENU_SET_TERM_NONE, "", ""), 1);
+    CHECK_INT(slash_menu_checked(MENU_SET_TERM_NONE, "vtcon", ""), 0);
+    CHECK_INT(slash_menu_checked(MENU_SET_COLORS_256, "", "256"), 1);
+    CHECK_INT(slash_menu_checked(MENU_SET_COLORS_NONE, "x", ""), 1);
+    CHECK_INT(slash_menu_checked(MENU_SET_COLORS_RGB, "rgb", ""), 0); /* term does not leak into colors */
+    CHECK_INT(slash_menu_checked(MENU_SET_BOLD, "", ""), -1);
+}
+
 void suite_slash(void)
 {
     term_colors_and_setup_are_wired_and_pure();
     paths_stay_the_shells();
+    settings_menu_items_run_the_typed_commands();
     settings_name_their_menu_items();
     arguments_are_handed_on_trimmed();
     a_wrong_value_says_what_fits();
