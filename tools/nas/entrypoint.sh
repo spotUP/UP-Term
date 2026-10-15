@@ -10,6 +10,8 @@ as_claude() { exec as-claude "$@"; }
 # the image's skill and MCP config into the home, as the claude user: root would
 # follow symlinks the user can plant in it (~/work/.mcp.json, the seeded records)
 (as_claude seed-claude-files)
+# where the amiga MCP server finds its Amiga: the relay below, with a key made once
+(as_claude relay-config)
 # Claude Code on the volume (its auto-updater writes there): installed once
 if [ ! -x "$NPM_CONFIG_PREFIX/bin/claude" ]; then
     echo "claude-amiga: installing Claude Code into $NPM_CONFIG_PREFIX"
@@ -33,5 +35,9 @@ esac
 set --
 for b in $NAS_IP; do set -- "$@" --bind "$b"; done
 for n in $ALLOW; do set -- "$@" --allow "$n"; done
+# the relay: wasabi_mcp.py (Claude Code's amiga tools) talks to 127.0.0.1:1234, uptelnetd passes it
+# to the Amiga that logged in by key (its session wasabid); the key is the config's key line
 as_claude python3 /usr/local/bin/uptelnetd.py "$@" --port "${PORT:-2323}" \
+    --agent-relay 127.0.0.1:1234 --relay-key-file /home/claude/.config/wasabi/config \
+    --wasabi-client /opt/wasabi/wasabi \
     --command 'cd ~/work && tmux new -A -s claude claude'

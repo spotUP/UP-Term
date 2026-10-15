@@ -69,13 +69,19 @@
  *            sends SB AUTH REPLY 0x75 PAIR ID 0x00 K[32]. The client writes
  *            its key file (the paired callback) and goes on; the next start
  *            is step 5. A client that has a key ignores PAIR.
- *  (7 the session agent, plan phase C, is not in this version.)
+ *  7 client  the session daemon (plan phase C; wasabid started by uptelnet): after ACCEPT
+ *            the client derives T = tn_session_key(K, sn, cn), gives it to the daemon, and
+ *            announces the daemon's TCP port: SB AUTH IS 0x75 0x01 port[2, big endian]
+ *            (tn_announce_agent; 0x01 cannot start an ID, which is ASCII; port 0: no
+ *            daemon). The server records (peer, port, T) for the NAS relay (uptelnetd
+ *            --agent-relay), which connects to the peer's port as a wasabi client with T.
  *
  * Key files: Amiga ENVARC:Claude/nas-key, one line "ID hexkey" (copied to
  * ENV:); NAS ~/.config/uptelnetd/clients, 0600, lines "ID hexkey date peer".
  * The wire shows sn, cn, mac, smac (one-time values) and, once, ID and K at
  * the pairing, which is as exposed as the one password that authorised it. */
 #define TN_AUTH_IS 0
+#define TN_AUTH_AGENT 1                 /* the first byte of the session daemon announcement, after the type */
 #define TN_AUTH_SEND 1
 #define TN_AUTH_REPLY 2
 #define TN_AUTH_TYPE 0x75
@@ -184,5 +190,9 @@ int tn_him(const tn *t, int opt);
  * exceed 64 bytes. */
 void tn_session_key(const unsigned char *k, int klen, const unsigned char *sn, int snlen, const unsigned char *cn,
                     int cnlen, char hex[65]);
+
+/* Step 7: tell the server the session daemon's port (after TN_AUTH_OK; else nothing is sent).
+ * Port 0 says there is none. */
+void tn_announce_agent(tn *t, int port);
 
 #endif

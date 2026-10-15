@@ -1,4 +1,4 @@
-/* tn_host HOST PORT COLS ROWS [TERM] [KEY=file]: uptelnet's protocol (net/tn.c) on
+/* tn_host HOST PORT COLS ROWS [TERM] [KEY=file] [AGENT=port]: uptelnet's protocol (net/tn.c) on
  * a POSIX socket, stdin and stdout for the console. The interop test drives
  * it against tools/uptelnetd.py (tools/test_uptelnetd.py), so the C client
  * and the Mac end are proved to agree before either meets the Amiga.
@@ -19,6 +19,7 @@
 
 static int sock = -1;
 static const char *keyfile;
+static int agent_port = -1;             /* AGENT=port: announce a session daemon after the key login */
 
 /* the server handed a key over (pairing): the key file now holds it */
 static void event(void *u, int state, const char *id, const unsigned char *key)
@@ -84,12 +85,14 @@ int main(int argc, char **argv)
     int in_open = 1, ia = 0;
     const char *term = "xterm-256color";
     if (argc < 5) {
-        fprintf(stderr, "usage: tn_host HOST PORT COLS ROWS [TERM] [KEY=file]\n");
+        fprintf(stderr, "usage: tn_host HOST PORT COLS ROWS [TERM] [KEY=file] [AGENT=port]\n");
         return 2;
     }
     for (ia = 5; ia < argc; ia++) {
         if (!strncmp(argv[ia], "KEY=", 4))
             keyfile = argv[ia] + 4;
+        else if (!strncmp(argv[ia], "AGENT=", 6))
+            agent_port = atoi(argv[ia] + 6);
         else
             term = argv[ia];
     }
@@ -131,6 +134,13 @@ int main(int argc, char **argv)
                 return 0;
             }
             tn_recv(&t, buf, (int)k);
+            if (agent_port >= 0 && tn_auth(&t) == TN_AUTH_OK) {
+                char hex[65];
+                tn_session_key(t.key, TN_KEY_LEN, t.sn, 16, t.cn, 16, hex);
+                fprintf(stderr, "tn_host: session key %s\n", hex);
+                tn_announce_agent(&t, agent_port);
+                agent_port = -1;
+            }
             if (tn_auth(&t) == TN_AUTH_BAD_SERVER) {
                 report(&t);
                 return 3;

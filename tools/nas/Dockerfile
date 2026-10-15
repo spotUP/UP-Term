@@ -26,8 +26,9 @@ COPY setpw /usr/local/bin/setpw
 COPY pairs /usr/local/bin/pairs
 COPY amiga-target /usr/local/bin/amiga-target
 COPY seed-claude-files /usr/local/bin/seed-claude-files
+COPY relay-config /usr/local/bin/relay-config
 RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/as-claude /usr/local/bin/setpw /usr/local/bin/pairs \
-    /usr/local/bin/amiga-target /usr/local/bin/seed-claude-files
+    /usr/local/bin/amiga-target /usr/local/bin/seed-claude-files /usr/local/bin/relay-config
 
 # wasabi (MIT, Python standard library only), at the one commit in wasabi.rev (the Makefile's
 # wasabi target reads the same file). Its client `wasabi`, the MCP server wasabi_mcp.py and the
@@ -41,6 +42,7 @@ RUN git clone -q https://github.com/creep-ltx/wasabi /tmp/wasabi \
  && rm -rf /tmp/wasabi
 COPY skills /opt/wasabi/seed/skills
 COPY mcp.json /opt/wasabi/seed/mcp.json
+COPY settings.json /opt/wasabi/seed/settings.json
 
 WORKDIR /home/claude/work
 ENV LANG=C.UTF-8 SHELL=/bin/bash
