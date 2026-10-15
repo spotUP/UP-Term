@@ -37,7 +37,7 @@ bebbosshd, bebboscp, ...)     files public domain per header
 curl 8.22.0 (AmigaOS port)    curl licence (COPYING)           https://github.com/boingball/curl branch
                                                                amigaos, commit 8347cfe (BUILD-INFO.txt)
 wasabi 0.9 (optional:       MIT (Files/wasabi/LICENSE)       https://github.com/creep-ltx/wasabi, commit
-wasabid, the client wasabi,                                    d5a57f4 (built by UP-Term); see
+wasabid, the client wasabi,                                    f378c51 (built by UP-Term); see
 wasabi_mcp.py; by Tobias                                       Files/wasabi/SOURCE.txt
 Karlsson)
 GNU Unifont 17.0.05 pages     SIL OFL 1.1 (Files/unifont/      https://unifoundry.com; Files/unifont/SOURCE.txt

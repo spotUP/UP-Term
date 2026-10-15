@@ -5,7 +5,7 @@ Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
 Claude, uptelnet              MIT, Copyright (c) 2026 spotUP   vtcon repo LICENSE: claude/, llm/, net/
 wasabid 0.9 (C:wasabid,     MIT (Files/wasabid.LICENSE)      https://github.com/creep-ltx/wasabi, commit
-only when none is there;                                       d5a57f4 (built by UP-Term); the base kit's
+only when none is there;                                       f378c51 (built by UP-Term); the base kit's
 by Tobias Karlsson)                                            Files/wasabi/SOURCE.txt
 
 Notes
