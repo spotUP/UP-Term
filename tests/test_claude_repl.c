@@ -1808,6 +1808,26 @@ static void test_datadir_move(void)
     setenv("CLAUDE_CONFIG_DIR", cfgdir, 1);
 }
 
+/* system prompt names S:Startup-Sequence: asked "show me the startup", the model
+ * read the relative s/... (RAM:s/ from a RAM: start directory) because the
+ * prompt named no standard assign. The request the REPL really sends must name
+ * them (claude/amiga_text.h CL_AMIGA_PATHS). */
+static void test_system_prompt_names_standard_assigns(void)
+{
+    static const char *script[] = { "show me the startup", 0 };
+    static cl_repl r;
+    setup(&r, script);
+    add_stream("text.sse");
+    while (cn.lines[cn.next])
+        repl_line(&r, cn.lines[cn.next++]);
+    CHECK_INT(sb.nreq, 1);
+    if (sb.nreq == 1) {
+        CHECK(strstr(sb.body[0], "S: (Startup-Sequence and User-Startup)") != 0);
+        CHECK(strstr(sb.body[0], "ENVARC: and ENV:") != 0);
+        CHECK(strstr(sb.body[0], "instead of guessing a path under the start directory") != 0);
+    }
+}
+
 static void test_req_golden(void)
 {
     static const char *script[] = { "hello", "show me S/Startup-Sequence", "two", "three", "four", 0 };
@@ -6268,6 +6288,7 @@ void suite_claude_repl(void)
     test_banner_upterm();
     test_unfinished();
     test_req_golden();
+    test_system_prompt_names_standard_assigns();
     test_datadir_move();
     test_commands();
     test_screen();

@@ -7,6 +7,8 @@
 #define CL_AMIGA_MACHINE "an Amiga computer (AmigaOS 3.x, a 68020 or faster processor) in the UP-Term terminal"
 #define CL_AMIGA_PATHS                                                                                         \
     "Paths are AmigaOS paths: a volume or an assign ends with a colon (SYS:, RAM:, Work:), "                   \
-    "directories are separated by /, and a leading / or an empty part means the parent directory. "
+    "directories are separated by /, and a leading / or an empty part means the parent directory. " \
+    "The standard assigns are S: (Startup-Sequence and User-Startup), C: (commands), LIBS:, DEVS:, "            \
+    "ENVARC: and ENV: (settings), and T: (temporary files); use these instead of guessing a path under the start directory. "
 
 #endif
