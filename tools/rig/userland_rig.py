@@ -94,7 +94,10 @@ def packages():
 def cases(pkg):
     """(name, command) lines of pkgs/<pkg>/check/cases, as tools/run-cases.sh reads them."""
     out = []
-    for line in (PORTS / "pkgs" / pkg / "check/cases").read_text(encoding="latin-1").splitlines():
+    f = PORTS / "pkgs" / pkg / "check/cases"
+    if not f.exists():   # a package with terminal cases only (joe: even -help needs a terminfo entry)
+        return out
+    for line in f.read_text(encoding="latin-1").splitlines():
         name, _, cmd = line.partition("\t")
         if name and not name.startswith("#"):
             out.append((name, cmd))
