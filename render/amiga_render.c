@@ -480,10 +480,7 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->n_img_pens = 0;
     r->img_buf = 0;
     r->img_buf_size = 0;
-    r->mbm = 0;
-    r->mbm_w = r->mbm_h = 0;
-    r->mbuf = 0;
-    r->mbuf_size = 0;
+    r->ex = 0;
     r->img_serial = 0;
     r->n_img_runs = 0;
     r->back = 0;
@@ -687,14 +684,16 @@ void vr_free(vr_render *r)
         FreeVec(r->img);
         r->img = 0;
     }
-    if (r->mbm) {
-        WaitBlit();
-        FreeBitMap(r->mbm);
-        r->mbm = 0;
+    if (r->ex) {
+        if (r->ex->bm) {
+            WaitBlit();
+            FreeBitMap(r->ex->bm);
+        }
+        if (r->ex->buf)
+            FreeVec(r->ex->buf);
+        FreeVec(r->ex);
+        r->ex = 0;
     }
-    if (r->mbuf)
-        FreeVec(r->mbuf);
-    r->mbuf = 0;
     if (r->img_buf)
         FreeVec(r->img_buf);
     if (r->cgx)
@@ -1385,36 +1384,38 @@ static int exact_ink(const vr_render *r, ULONG ink)
     return (ink & VR_INK_RGB) && r->scratch[0] < 0 && r->cgx && !r->cpu;
 }
 
-/* The scratch bitmap for w by h pixels, cleared, and r->mrp drawing into it with the cell font; 0: no memory. */
+/* The scratch bitmap for w by h pixels, cleared, and r->ex->rp drawing into it with the cell font; 0: no memory. */
 static int exact_begin(vr_render *r, LONG w, LONG h)
 {
     LONG need = (w + 15) & ~15L;
-    if (!r->mbm || r->mbm_w < need || r->mbm_h < h) {
-        if (r->mbm) {
+    if (!r->ex && !(r->ex = (struct vr_exact *)AllocVec(sizeof(struct vr_exact), MEMF_ANY | MEMF_CLEAR)))
+        return 0;
+    if (!r->ex->bm || r->ex->bm_w < need || r->ex->bm_h < h) {
+        if (r->ex->bm) {
             WaitBlit();
-            FreeBitMap(r->mbm);
+            FreeBitMap(r->ex->bm);
         }
-        r->mbm = AllocBitMap((ULONG)need, (ULONG)h, 1, BMF_CLEAR, 0);
-        r->mbm_w = r->mbm ? need : 0;
-        r->mbm_h = r->mbm ? h : 0;
-        if (!r->mbm)
+        r->ex->bm = AllocBitMap((ULONG)need, (ULONG)h, 1, BMF_CLEAR, 0);
+        r->ex->bm_w = r->ex->bm ? need : 0;
+        r->ex->bm_h = r->ex->bm ? h : 0;
+        if (!r->ex->bm)
             return 0;
     }
-    if (r->mbuf_size < (ULONG)(need * h)) {
-        if (r->mbuf)
-            FreeVec(r->mbuf);
-        r->mbuf_size = (ULONG)(need * h);
-        r->mbuf = (UBYTE *)AllocVec(r->mbuf_size, MEMF_ANY);
-        if (!r->mbuf) {
-            r->mbuf_size = 0;
+    if (r->ex->buf_size < (ULONG)(need * h)) {
+        if (r->ex->buf)
+            FreeVec(r->ex->buf);
+        r->ex->buf_size = (ULONG)(need * h);
+        r->ex->buf = (UBYTE *)AllocVec(r->ex->buf_size, MEMF_ANY);
+        if (!r->ex->buf) {
+            r->ex->buf_size = 0;
             return 0;
         }
     }
     WaitBlit();
-    memset(r->mbm->Planes[0], 0, (size_t)r->mbm->BytesPerRow * (size_t)r->mbm_h);
-    InitRastPort(&r->mrp);
-    r->mrp.BitMap = r->mbm;
-    SetFont(&r->mrp, r->font);
+    memset(r->ex->bm->Planes[0], 0, (size_t)r->ex->bm->BytesPerRow * (size_t)r->ex->bm_h);
+    InitRastPort(&r->ex->rp);
+    r->ex->rp.BitMap = r->ex->bm;
+    SetFont(&r->ex->rp, r->font);
     return 1;
 }
 
@@ -1425,16 +1426,16 @@ static void exact_end(vr_render *r, struct RastPort *win, WORD px, WORD py, LONG
     LONG need = (w + 15) & ~15L, x, y;
     const UBYTE *pl;
     WaitBlit();
-    pl = (const UBYTE *)r->mbm->Planes[0];
+    pl = (const UBYTE *)r->ex->bm->Planes[0];
     for (y = 0; y < h; y++) {
-        const UBYTE *s = pl + y * r->mbm->BytesPerRow;
-        UBYTE *d = r->mbuf + y * need;
+        const UBYTE *s = pl + y * r->ex->bm->BytesPerRow;
+        UBYTE *d = r->ex->buf + y * need;
         for (x = 0; x < w; x++)
             d[x] = (UBYTE)((s[x >> 3] >> (7 - (x & 7))) & 1);
     }
-    r->mctab[0] = bg & VR_INK_RGB ? bg & 0xFFFFFFUL : pen_rgb(r, bg);
-    r->mctab[1] = fg & 0xFFFFFFUL;
-    vr_cgx_write_lut(r->cgx, (APTR)r->mbuf, 0, 0, (UWORD)need, win, (APTR)r->mctab, (UWORD)px, (UWORD)py, (UWORD)w,
+    r->ex->ctab[0] = bg & VR_INK_RGB ? bg & 0xFFFFFFUL : pen_rgb(r, bg);
+    r->ex->ctab[1] = fg & 0xFFFFFFUL;
+    vr_cgx_write_lut(r->cgx, (APTR)r->ex->buf, 0, 0, (UWORD)need, win, (APTR)r->ex->ctab, (UWORD)px, (UWORD)py, (UWORD)w,
                      (UWORD)h, VR_CTABFMT_XRGB8);
 }
 
@@ -1452,7 +1453,7 @@ static int flush_run_exact(vr_render *r, UBYTE *run, int n, WORD px, WORD py, co
     ms = *st;
     ms.fg = ms.fgf = ms.ul = 1;
     ms.bg = ms.bgf = 0;
-    r->rp = &r->mrp;
+    r->rp = &r->ex->rp;
     flush_run(r, run, n, 0, 0, &ms);
     r->rp = win;
     exact_end(r, win, px, py, w, h, st->fg, st->bg);
@@ -1468,7 +1469,7 @@ static int draw_special_exact(vr_render *r, WORD px, WORD py, vt_glyph g, ULONG 
     struct RastPort *win = r->rp;
     if (!exact_begin(r, w, h))
         return 0;
-    r->rp = &r->mrp;
+    r->rp = &r->ex->rp;
     draw_special(r, 0, 0, g, 1, 0, cells);
     r->rp = win;
     exact_end(r, win, px, py, w, h, fg, bg);

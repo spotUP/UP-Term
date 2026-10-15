@@ -39,6 +39,19 @@ struct vr_images {
     ULONG ctab[256];
 };
 
+/* The scratch of a run of glyphs in a direct colour no pen holds (W-T13):
+ * a one-plane bitmap the run is drawn in (bm, bm_w by bm_h) through rp,
+ * its pixels as bytes 0/1 (buf), and the two colours WriteLUTPixelArray
+ * writes them in (ctab[0], [1]). Allocated at a window's first such run. */
+struct vr_exact {
+    struct BitMap *bm;
+    LONG bm_w, bm_h;
+    UBYTE *buf;
+    ULONG buf_size;
+    ULONG ctab[256];
+    struct RastPort rp;
+};
+
 #define VR_BACK_RECTS 32
 #define VR_STRIP 128   /* the cells block_run writes at a time */
 
@@ -201,15 +214,9 @@ typedef struct vr_render {
     UBYTE *img_buf;
     ULONG img_buf_size;
     struct Library *cgx;
-    /* Glyphs in a colour no pen holds (flush_run_exact, W-T13): a one-plane bitmap the run is drawn in
-     * (mbm, mbm_w by mbm_h), its pixels as bytes 0/1 (mbuf), the two colours of the blit (mctab[0], [1]) and
-     * the RastPort that draws into mbm. Made when first wanted, freed by vr_free. */
-    struct BitMap *mbm;
-    LONG mbm_w, mbm_h;
-    UBYTE *mbuf;
-    ULONG mbuf_size;
-    ULONG mctab[256];
-    struct RastPort mrp;
+    /* Glyphs in a colour no pen holds (flush_run_exact, W-T13): their scratch, allocated at the first such
+     * run (it does not fit the unit block's DV4 bound, device/upcon_device.c), freed by vr_free. */
+    struct vr_exact *ex;
     LONG img_serial;
     ULONG img_bgrgb;
     UBYTE img_planes;     /* the planes the last image's pens use */
