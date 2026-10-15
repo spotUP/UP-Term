@@ -3,7 +3,7 @@
 services:
   claude-amiga:
     build: .
-    image: claude-amiga:8
+    image: claude-amiga:9
     container_name: claude-amiga
     restart: unless-stopped
     network_mode: host          # uptelnetd listens on the NAS's own LAN address

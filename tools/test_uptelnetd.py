@@ -435,7 +435,7 @@ class PairsTool(unittest.TestCase):
     def test_the_container_files_carry_it(self):
         nas = ROOT / "tools/nas"
         self.assertIn("COPY pairs /usr/local/bin/pairs", (nas / "Dockerfile").read_text())
-        self.assertIn("image: claude-amiga:8", (nas / "compose.yaml").read_text())
+        self.assertIn("image: claude-amiga:9", (nas / "compose.yaml").read_text())
         ep = (nas / "entrypoint.sh").read_text()
         self.assertIn('[ ! -s "$CLIENTS" ]', ep)                 # it starts with a password OR a clients file
         self.assertIn('/home/claude/.config/uptelnetd/clients', ep)
