@@ -7,6 +7,7 @@ status: draft
 
 # Finish all open plan items except the hardware tests
 
+<!-- statusline: no-rollup (this plan re-lists the open items of other plans; the footer counts them there) -->
 Evidence base: `thoughts/shared/research/2026-10-15_plan-audit.md` (item by item, with commits). Counts
 used here come from the plan files' structure, not a single grep: 80 open boxes in 11 plans on 2026-10-15
 (vtcon 28, unix-tool-ports 20, replay-hardware-tests 12, ledger 9, a2-progress 4, amiga-pi 2, five singles).
