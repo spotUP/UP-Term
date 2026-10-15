@@ -17,8 +17,11 @@ pointer_scale() is (1, row_scale) and every script that scales a uitree box by i
 
 BREAK (0x09) is Ctrl-C to every command running in a run slot (SLOTS, then FREE with the Ctrl-C-only flag: reaches
 exactly that command, not a same-named task).
-Gaps (raise Gap, named, SystemExit): POINTER (wasabi has no pointer query: MOUSE only moves, WINDOWS/INFO carry no
-pointer position), and any INPUT sub-operation or UIACT verb that has no wasabi command.
+POINTER (0x0B) is the front screen's MouseX and MouseY in screen pixels (u16 each, rows not doubled, as the
+amiagent answered): wasabid 0.9 appends them to the WINDOWS reply's S line (two more tab fields; PROTOCOL.md does not
+say so), wasabi's list_windows() reads them as the screen's 'pointer' in grab space.
+Gaps (raise Gap, named, SystemExit): POINTER from a wasabid older than 0.9 (its S line has no pointer fields), and
+any INPUT sub-operation or UIACT verb that has no wasabi command.
 Mapped to the nearest command: raw key codes -> KEY frame with raw (code, qualifier) events; region grab -> crop
 of the full grab (raw, rows not doubled); gadget by id -> id from the gadget list, then a mouse click; tick-timed
 input script -> mouse move/down/up frames with the waits timed on the host (50 ticks per second): a held button
@@ -275,11 +278,18 @@ def _rexx(c, prog):
     return struct.pack('>I', rc & 0xFFFFFFFF) + res.encode('latin-1')
 
 
+def _pointer(c):
+    """The front screen's pointer in screen pixels: list_windows gives it in grab space (y times row_scale)."""
+    scr = _m().list_windows(c)[0]
+    if not scr or 'pointer' not in scr[0]:
+        raise Gap('POINTER position: this wasabid (%s) sends no pointer fields in WINDOWS (0.9 does)' % c.banner)
+    x, y = scr[0]['pointer']
+    return struct.pack('>HH', x & 0xFFFF, (y // scr[0]['row_scale']) & 0xFFFF)
+
+
 def req(code, payload=b'', timeout=150):
     """One legacy operation, answered in the legacy shape. timeout: the connection's silence limit."""
     m = _m()
-    if code == 0x0B:
-        raise Gap('POINTER position: wasabi has no pointer query (pointer_scale() is (1, row_scale))')
     with _conn(timeout) as c:
         try:
             if code == 0x01: return c.banner.encode('latin-1')
@@ -293,6 +303,7 @@ def req(code, payload=b'', timeout=150):
             if code == 0x07: return _shot(c, payload)
             if code == 0x08: _input(c, payload); return b''
             if code == 0x0A: return _screens(c)
+            if code == 0x0B: return _pointer(c)
             if code == 0x0D: return _uitree(c)
             if code == 0x0E: return _uiact(c, payload)
             if code == 0x0F: return _menus(c, payload.decode('latin-1'))
