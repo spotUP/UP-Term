@@ -241,10 +241,29 @@ static int ppen(long x, long y)
     return v;
 }
 
+/* a one-plane scratch bitmap of the renderer's (a run or a cell drawn for WriteLUTPixelArray, W-T13) */
+static int scratch_plane(const struct RastPort *rp)
+{
+    return rp && rp->BitMap && rp->BitMap != &bm && !(back_on && rp->BitMap == &back) && rp->BitMap->Depth == 1;
+}
+
 static void pset(struct RastPort *rp, long x, long y, int pen, int flip)
 {
     long sx = pleft + x, sy = ptop + y;
     int p;
+    if (scratch_plane(rp)) {
+        UBYTE *b;
+        if (x < 0 || y < 0 || x >= rp->BitMap->BytesPerRow * 8 || y >= rp->BitMap->Rows)
+            return;
+        b = (UBYTE *)rp->BitMap->Planes[0] + y * rp->BitMap->BytesPerRow + (x >> 3);
+        if (flip)
+            *b ^= (UBYTE)(0x80 >> (x & 7));
+        else if (pen & 1)
+            *b |= (UBYTE)(0x80 >> (x & 7));
+        else
+            *b &= (UBYTE)~(0x80 >> (x & 7));
+        return;
+    }
     if (!pdepth || rp->BitMap != &bm || x < 0 || y < 0 || x >= W || y >= H)
         return;
     for (p = 0; p < pdepth; p++) {
@@ -356,6 +375,28 @@ LONG Text(struct RastPort *rp, CONST_STRPTR s, ULONG n)
     gf_call *g = rec(GF_TEXT, x, y, (long)n, 0);
     for (i = 0; i < n && i < sizeof(g->str) - 1; i++)
         g->str[i] = s[i];
+    if (rp->BitMap && rp->BitMap != &bm && !(back_on && rp->BitMap == &back) && rp->BitMap->Depth == 1) {
+        /* a one-plane scratch bitmap of the renderer's (a run drawn for WriteLUTPixelArray, W-T13): every
+         * non-blank character a solid cell of pen 1 -- no glyph data here -- and, in JAM2, a blank a cell of
+         * pen 0 */
+        for (i = 0; i < n; i++, x += rp->Font->tf_XSize) {
+            long gx, gy;
+            if (s[i] == ' ' && rp->DrawMode == JAM1)
+                continue;
+            for (gy = 0; gy < rp->Font->tf_YSize; gy++)
+                for (gx = 0; gx < rp->Font->tf_XSize; gx++) {
+                    UBYTE *pl = (UBYTE *)rp->BitMap->Planes[0] + (y + gy) * rp->BitMap->BytesPerRow +
+                                ((x + gx) >> 3);
+                    UBYTE bit = (UBYTE)(0x80 >> ((x + gx) & 7));
+                    if (s[i] != ' ' && (rp->FgPen & 1))
+                        *pl |= bit;
+                    else if (rp->DrawMode != JAM1)
+                        *pl &= (UBYTE)~bit;
+                }
+        }
+        rp->cp_x = (WORD)x;
+        return 0;
+    }
     for (i = 0; i < n; i++, x += rp->Font->tf_XSize)
     {
         long gx, gy;
@@ -405,7 +446,7 @@ VOID RectFill(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
 {
     long x, y;
     rec(GF_RECT, x0, y0, x1, y1);
-    for (y = y0; pdepth && y <= y1; y++)
+    for (y = y0; (pdepth || scratch_plane(rp)) && y <= y1; y++)
         for (x = x0; x <= x1; x++)
             pset(rp, x, y, rp->FgPen, rp->DrawMode & COMPLEMENT);
     paint(rp, x0, y0, x1, y1, GF_FILL | rp->FgPen, rp->DrawMode & COMPLEMENT);
@@ -487,7 +528,7 @@ VOID Draw(struct RastPort *rp, LONG x, LONG y)
     long n, i, dx = x - rp->cp_x, dy = y - rp->cp_y;
     rec(GF_OTHER, x, y, 0, 0);
     n = (dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy) ? (dx < 0 ? -dx : dx) : (dy < 0 ? -dy : dy);
-    for (i = 0; pdepth && i <= n; i++)
+    for (i = 0; (pdepth || scratch_plane(rp)) && i <= n; i++)
         pset(rp, rp->cp_x + (n ? dx * i / n : 0), rp->cp_y + (n ? dy * i / n : 0), rp->FgPen, 0);
     rp->cp_x = (WORD)x;
     rp->cp_y = (WORD)y;
@@ -554,7 +595,13 @@ VOID SetRast(struct RastPort *rp, ULONG pen)
     paint(rp, 0, 0, W - 1, H - 1, GF_FILL | (int)pen, 0);
     paint_bg(rp, 0, 0, W - 1, H - 1, (int)pen);
 }
-VOID InitRastPort(struct RastPort *rp) { memset(rp, 0, sizeof(*rp)); }
+VOID InitRastPort(struct RastPort *rp)
+{
+    memset(rp, 0, sizeof(*rp));
+    rp->Mask = 0xFF;
+    rp->FgPen = 0xFF;
+    rp->DrawMode = JAM2;
+}
 VOID BitMapScale(struct BitScaleArgs *a) { (void)a; }
 LONG WritePixelArray8(struct RastPort *rp, ULONG a, ULONG b, ULONG c, ULONG d, UBYTE *p, struct RastPort *t)
 {
@@ -663,8 +710,14 @@ ULONG ReadEClock(struct EClockVal *e) { (void)e; return 0; }
 LONG vr_cgx_write_lut(struct Library *l, APTR src, UWORD sx, UWORD sy, UWORD smod, struct RastPort *rp, APTR ctab,
                       UWORD dx, UWORD dy, UWORD w, UWORD h, UBYTE fmt)
 {
-    (void)l; (void)src; (void)sx; (void)sy; (void)smod; (void)rp; (void)ctab; (void)dx; (void)dy; (void)w;
-    (void)h; (void)fmt;
+    const UBYTE *p = (const UBYTE *)src;
+    const ULONG *ct = (const ULONG *)ctab;
+    long x, y;
+    (void)l; (void)fmt;
+    rec(GF_CGXLUT, dx, dy, w, h);
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++)
+            paint(rp, dx + x, dy + y, dx + x, dy + y, GF_CGX | (int)(ct[p[(sy + y) * smod + sx + x]] & 0xFFFFFF), 0);
     return 0;
 }
 ULONG vr_cgx_fill(struct Library *l, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb)

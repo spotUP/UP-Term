@@ -381,13 +381,43 @@ static void direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is
     CHECK_INT(gf_pixel(5 * CW, 0), GF_CGX | 0x585858);
     CHECK_INT(gf_pixel(6 * CW - 1, CH - 1), GF_CGX | 0x585858);
     CHECK_INT(gf_pixel(7 * CW, 0) & GF_CGX, 0);
-    /* text: the cells' background is filled first, as the colour itself (JAM2 would paint the glyph cells in the
-     * nearest pen, pen 7 in the fake), then the glyphs are drawn over it */
+    /* text in a direct colour: no pen holds it, so the run is drawn in a bitmap of its own and written through a
+     * two-colour table (WriteLUTPixelArray) -- the glyph cells the text colour, the others the cell's background.
+     * The fake draws a character as a solid cell. */
     gf_clear_log();
-    pass("\x1b[2;1H\x1b[38;2;255;175;255;48;2;70;80;90mAB\x1b[m");
-    CHECK_INT(gf_count(GF_CGXFILL), 1);
-    CHECK(gf_count(GF_TEXT) >= 1);
+    pass("\x1b[2;1H\x1b[38;2;255;175;255;48;2;70;80;90mA B\x1b[m");
+    CHECK_INT(gf_count(GF_CGXLUT), 1);
+    CHECK_INT(gf_count(GF_CGXFILL), 0);
     CHECK_INT(gf_count(GF_SETRGB), 0);
+    if (gf_find(GF_CGXLUT, 0)) {
+        CHECK_INT(gf_find(GF_CGXLUT, 0)->c, 3 * CW);
+        CHECK_INT(gf_find(GF_CGXLUT, 0)->d, CH);
+    }
+    CHECK_INT(gf_pixel(0, CH), GF_CGX | 0xFFAFFF);
+    CHECK_INT(gf_pixel(CW - 1, CH + CH - 1), GF_CGX | 0xFFAFFF);
+    CHECK_INT(gf_pixel(CW, CH), GF_CGX | 0x46505A);
+    CHECK_INT(gf_pixel(2 * CW, CH + CH - 1), GF_CGX | 0xFFAFFF);
+    /* a palette colour on the window's own background: the pen's colour from the colour map is the other entry */
+    gf_clear_log();
+    pass("\x1b[3;1H\x1b[38;5;240mx\x1b[m");
+    CHECK_INT(gf_count(GF_CGXLUT), 1);
+    CHECK_INT(gf_pixel(0, 2 * CH), GF_CGX | 0x585858);
+    /* a box-drawing cell (a rule line, the tmux status line's pane border) in a direct colour: the same */
+    gf_clear_log();
+    pass("\x1b[5;1H\x1b[38;5;34m\xe2\x94\x80\x1b[m");
+    CHECK_INT(gf_count(GF_CGXLUT), 1);
+    CHECK_INT(gf_pixel(CW / 2, 4 * CH + CH / 2), GF_CGX | 0x00AF00); /* the arm's middle row, colour 34 */
+    CHECK_INT(gf_pixel(CW / 2, 4 * CH) & GF_CGX, GF_CGX);          /* the cell's other pixels: the background */
+    /* the 16 ANSI colours are direct colours here too: no pen of the colour map to take */
+    gf_clear_log();
+    pass("\x1b[6;1H\x1b[42m  \x1b[m");
+    CHECK_INT(gf_count(GF_CGXFILL), 1);
+    CHECK_INT(gf_pixel(0, 5 * CH), GF_CGX | (int)vt_palette_rgb(term, 2));
+    /* a glyph in a pen colour (the default colours) is still drawn through the pens */
+    gf_clear_log();
+    pass("\x1b[4;1H\x1b[48;2;1;2;3mx\x1b[m");
+    CHECK_INT(gf_count(GF_CGXLUT), 0);
+    CHECK_INT(gf_count(GF_CGXFILL), 1); /* the background, filled first; the glyph in the pen */
     close_term();
 }
 

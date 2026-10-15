@@ -12,7 +12,7 @@
 #include <graphics/gfxbase.h>
 #include <graphics/rastport.h>
 
-enum gf_kind { GF_TEXT, GF_RECT, GF_SCROLL, GF_BLT, GF_MOVE, GF_CGXFILL, GF_SETRGB, GF_ALLOC, GF_TOF, GF_OTHER };
+enum gf_kind { GF_TEXT, GF_RECT, GF_SCROLL, GF_BLT, GF_MOVE, GF_CGXFILL, GF_CGXLUT, GF_SETRGB, GF_ALLOC, GF_TOF, GF_OTHER };
 
 typedef struct gf_call {
     enum gf_kind kind;
