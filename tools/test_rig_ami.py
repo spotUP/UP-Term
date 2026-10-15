@@ -144,7 +144,7 @@ try:
     b = ami.req(0x12, b"return 1")
     check(len(b) >= 4 and struct.unpack(">I", b[:4])[0] == 10, "rexx: rc u32 + result (the mock answers rc 10 to a program)")
     check(ami.req(0x0A)[0] == 2, "screens: two screens in the legacy binary shape")
-    # POINTER: the mock's WINDOWS S line carries wasabid 0.9's two extra fields (MouseX 320, MouseY 100)
+    # POINTER: the mock's WINDOWS S line carries wasabid 0.10b4's two extra fields (MouseX 320, MouseY 100)
     check(ami.req(0x0B) == struct.pack(">HH", 320, 100), "POINTER: the screen's MouseX, MouseY in screen pixels: %r" % (ami.req(0x0B),))
     check(ami.pointer_scale() == (1.0, 2.0), "pointer_scale() still (1, row_scale) beside POINTER")
     # gaps are named, not silent

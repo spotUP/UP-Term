@@ -256,7 +256,7 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
 
 
 class WasabiDaemonOption(unittest.TestCase):
-    """wasabid 0.9 is the ONE daemon option of the kit's Install (off by default): it replaces the
+    """wasabid 0.10b4 is the ONE daemon option of the kit's Install (off by default): it replaces the
     amiagent option and the wasabid 0.2 one. Install removes our old amiagent, stops and replaces our
     old wasabid, and Uninstall still takes both out. The binaries come from the build, not the repository."""
     PIN = (ROOT / "tools/nas/wasabi.rev").read_text().strip()
@@ -271,11 +271,11 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertFalse((ROOT / "dist/net/amiagent-0.13.2").exists())
         self.assertNotIn("AMIAGENT", (ROOT / "dist/README.txt").read_text(encoding="latin-1"))
 
-    def test_the_boot_page_offers_wasabi_0_9b2_off_by_default_and_names_the_key(self):
+    def test_the_boot_page_offers_wasabi_0_10b4_off_by_default_and_names_the_key(self):
         a = INSTALLER.index('(set #boot')
         page = INSTALLER[a:INSTALLER.index('(if (in #boot 0)', a)]
         self.assertIn('(default 0)', page)
-        self.assertIn('wasabi 0.9', page)
+        self.assertIn('wasabi 0.10b4', page)
         self.assertIn('wasabi_mcp.py', page)
         self.assertIn('ENVARC:wasabi.key', page)
         self.assertIn('(if (in #boot 1) (set #wasabi "WASABI"))', INSTALLER)
@@ -289,7 +289,7 @@ class WasabiDaemonOption(unittest.TestCase):
 
     def test_install_replaces_an_old_wasabid_of_ours_but_keeps_a_0_9_when_unticked(self):
         blk = DOS[DOS.index('Set oldwasabid ""'):DOS.index('MakeDir >NIL: ENVARC:vsh')]
-        self.assertIn('Search >NIL: C:wasabid "wasabid 0.9"', blk)        # the version marks the old one
+        self.assertIn('Search >NIL: C:wasabid "wasabid 0.10b4"', blk)        # the version marks the old one
         self.assertLess(blk.index('Break $upw C'), blk.index('Copy wasabi/wasabid C:wasabid CLONE'))
         rm = blk[blk.index('If NOT "$optwasabi" EQ "WASABI"'):blk.index('UnSet >NIL: oldwasabid')]
         self.assertIn('If "$oldwasabid" EQ "1"', rm)                       # unticked removes only the old one
@@ -301,14 +301,14 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in d.iterdir()), ["LICENSE", "SOURCE.txt"])
         self.assertIn("MIT License", (d / "LICENSE").read_text())
         self.assertIn(self.PIN, (d / "SOURCE.txt").read_text())            # the pin of the build is the one named
-        self.assertIn("wasabid 0.9", (d / "SOURCE.txt").read_text())
+        self.assertIn("wasabid 0.10b4", (d / "SOURCE.txt").read_text())
         lic = (ROOT / "dist/LICENSES.txt").read_text(encoding="latin-1")
-        self.assertIn("wasabi 0.9", lic)
-        self.assertIn("MIT", lic[lic.index("wasabi 0.9"):][:200])
+        self.assertIn("wasabi 0.10b4", lic)
+        self.assertIn("MIT", lic[lic.index("wasabi 0.10b4"):][:200])
         self.assertNotIn("amiagent", lic)
         self.assertIn("wasabi_mcp.py", (ROOT / "dist/README.txt").read_text(encoding="latin-1"))
         mk = (ROOT / "Makefile").read_text()
-        self.assertIn("cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py", mk)
+        self.assertIn("cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py", mk)
         self.assertNotIn("dist/net/amiagent", mk)
         self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^boot\s+Files/wasabi$")
 

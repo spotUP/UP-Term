@@ -38,7 +38,7 @@ RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/as-claude /usr/local/b
 COPY wasabi.rev /opt/wasabi/wasabi.rev
 RUN git clone -q https://github.com/creep-ltx/wasabi /tmp/wasabi \
  && git -C /tmp/wasabi checkout -q "$(cat /opt/wasabi/wasabi.rev)" \
- && cp /tmp/wasabi/wasabi /tmp/wasabi/wasabi_mcp.py /tmp/wasabi/LICENSE /opt/wasabi/ \
+ && cp /tmp/wasabi/wasabi /tmp/wasabi/wasabi_mcp.py /tmp/wasabi/wasabi_client.py /tmp/wasabi/LICENSE /opt/wasabi/ \
  && rm -rf /tmp/wasabi
 COPY skills /opt/wasabi/seed/skills
 COPY mcp.json /opt/wasabi/seed/mcp.json

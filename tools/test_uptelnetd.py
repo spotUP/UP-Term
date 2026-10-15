@@ -435,7 +435,7 @@ class PairsTool(unittest.TestCase):
     def test_the_container_files_carry_it(self):
         nas = ROOT / "tools/nas"
         self.assertIn("COPY pairs /usr/local/bin/pairs", (nas / "Dockerfile").read_text())
-        self.assertIn("image: claude-amiga:9", (nas / "compose.yaml").read_text())
+        self.assertIn("image: claude-amiga:10", (nas / "compose.yaml").read_text())
         ep = (nas / "entrypoint.sh").read_text()
         self.assertIn('[ ! -s "$CLIENTS" ]', ep)                 # it starts with a password OR a clients file
         self.assertIn('/home/claude/.config/uptelnetd/clients', ep)
@@ -1158,7 +1158,7 @@ class AmigaTargetTool(unittest.TestCase):
         self.assertIn('checkout -q "$(cat /opt/wasabi/wasabi.rev)"', df)
         self.assertNotIn(rev, df)
         self.assertNotIn("amimcp", df)
-        for line in ("COPY amiga-target /usr/local/bin/amiga-target", "/tmp/wasabi/wasabi_mcp.py /tmp/wasabi/LICENSE /opt/wasabi/",
+        for line in ("COPY amiga-target /usr/local/bin/amiga-target", "/tmp/wasabi/wasabi_mcp.py /tmp/wasabi/wasabi_client.py /tmp/wasabi/LICENSE /opt/wasabi/",
                      "COPY skills /opt/wasabi/seed/skills", "COPY mcp.json /opt/wasabi/seed/mcp.json"):
             self.assertIn(line, df)
         ep = (self.NAS / "entrypoint.sh").read_text()
