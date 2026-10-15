@@ -320,15 +320,15 @@ Phase 2:
 - [x] 2.5 zip (2026-10-08: Zip 3.0, rig 3 6/6, staged; done 2026-10-11: in the kit (vtcon 85a76db), install_rig PORTS check through vsh's $PATH passed 16 of 16 in pass 2 (99 of 99) and pass 3 (38 of 38), 2026-10-10)
 
 Phase 3:
-- [ ] 3.1 file (2026-10-10: file 5.48 with a trimmed 3.4 MB magic (full is 7-8 MB; filesystems, windows, msdos, games ... out), built-in zlib/bzip2/xz, rig 3 34 of 34, kit-staged; ports c17843e, 6179535; ixemul 8ff7a77 INFINITY, 47b6874 inttypes.h, a0cb0bd isless; vtcon de859fd RIG_DATA; open: 1.10)
-- [ ] 3.2 tree (2026-10-10: tree 2.2.1, rig 3 20 of 20, kit-staged; ports dfa8b7a; open: 1.10)
-- [ ] 3.3 ps/top (2026-10-11: own native code in vtcon proc/ (ps, top; top's CPU from a 50 Hz VBlank interrupt sampler, owner's decision, no exec patch), host suite proc 26 checks, tools/rig/proc_rig.py 7 of 7 on rig 2 sys.hdf and on a fresh --os 322 (busy loop 100.0 %, idle 0.0-0.6 %, server removed after -n, Ctrl-C and q); kit part tools, install.dos copies to UP-Term:bin, README TASKS; make dist not run here; open: 1.10)
-- [ ] 3.4 watch (2026-10-10: our own watch 1.0 (procps-ng's needs its library, curses and fork), command via posix_spawn, rig 3 9 of 9 incl. 3 terminal cases, kit-staged; ports c8087aa; the header's clock/host line is not compared (time), only a title cut at the width; open: 1.10)
-- [ ] 3.5 script (2026-10-10: our own script 1.0 over a new posix_openpt/ptsname in libixcompat, rig 3 9 of 9 incl. 1 terminal case, kit-staged; ports 81c318a, 268bfd0; ixemul 69feef4; open: 1.10)
-- [ ] 3.6 ncdu (2026-10-10: ncdu 1.22, rig 3 12 of 12 incl. 3 terminal cases, kit-staged; ports 1d9a77d; open: 1.10)
+- [x] 3.1 file (2026-10-10: file 5.48 with a trimmed 3.4 MB magic (full is 7-8 MB; filesystems, windows, msdos, games ... out), built-in zlib/bzip2/xz, rig 3 34 of 34, kit-staged; ports c17843e, 6179535; ixemul 8ff7a77 INFINITY, 47b6874 inttypes.h, a0cb0bd isless; vtcon de859fd RIG_DATA; open: 1.10) (done: ports commit above, in UP-Term.lha Files/userland/bin, 1.10 [x] vtcon 85a76dba, 2026-10-15)
+- [x] 3.2 tree (2026-10-10: tree 2.2.1, rig 3 20 of 20, kit-staged; ports dfa8b7a; open: 1.10) (done: ports commit above, in UP-Term.lha Files/userland/bin, 1.10 [x] vtcon 85a76dba, 2026-10-15)
+- [x] 3.3 ps/top (2026-10-11: own native code in vtcon proc/ (ps, top; top's CPU from a 50 Hz VBlank interrupt sampler, owner's decision, no exec patch), host suite proc 26 checks, tools/rig/proc_rig.py 7 of 7 on rig 2 sys.hdf and on a fresh --os 322 (busy loop 100.0 %, idle 0.0-0.6 %, server removed after -n, Ctrl-C and q); kit part tools, install.dos copies to UP-Term:bin, README TASKS; make dist not run here; open: 1.10) (done: ports commit above, in UP-Term.lha (Files/userland/bin, ps and top in Files), 1.10 [x] vtcon 85a76dba, 2026-10-15)
+- [x] 3.4 watch (2026-10-10: our own watch 1.0 (procps-ng's needs its library, curses and fork), command via posix_spawn, rig 3 9 of 9 incl. 3 terminal cases, kit-staged; ports c8087aa; the header's clock/host line is not compared (time), only a title cut at the width; open: 1.10) (done: ports commit above, in UP-Term.lha Files/userland/bin, 1.10 [x] vtcon 85a76dba, 2026-10-15)
+- [x] 3.5 script (2026-10-10: our own script 1.0 over a new posix_openpt/ptsname in libixcompat, rig 3 9 of 9 incl. 1 terminal case, kit-staged; ports 81c318a, 268bfd0; ixemul 69feef4; open: 1.10) (done: ports commit above, in UP-Term.lha Files/userland/bin, 1.10 [x] vtcon 85a76dba, 2026-10-15)
+- [x] 3.6 ncdu (2026-10-10: ncdu 1.22, rig 3 12 of 12 incl. 3 terminal cases, kit-staged; ports 1d9a77d; open: 1.10) (done: ports commit above, in UP-Term.lha Files/userland/bin, 1.10 [x] vtcon 85a76dba, 2026-10-15)
 - [ ] 3.7 coreutils 9 (OPEN: kit ships GG coreutils 5.2.1, dist/gg/coreutils-5.2.1)
 - [x] 3.8 hl/mdv in the kit
-- [ ] 3.9 fzy (2026-10-10: fzy 1.0 single-threaded (patch 0001), rig 3 12 of 12 incl. 2 terminal cases, kit-staged; ports 946cbe2; ixemul a105524 getopt_long, getopt_long_only, pselect; open: 1.10)
+- [x] 3.9 fzy (2026-10-10: fzy 1.0 single-threaded (patch 0001), rig 3 12 of 12 incl. 2 terminal cases, kit-staged; ports 946cbe2; ixemul a105524 getopt_long, getopt_long_only, pselect; open: 1.10) (done: ports commit above, in UP-Term.lha Files/userland/bin, 1.10 [x] vtcon 85a76dba, 2026-10-15)
 
 Phase 4:
 - [ ] 4.1 vim
@@ -355,6 +355,6 @@ Phase 5:
 - [ ] 5.9 tldr
 - [x] 5.10 python (PY1)
 
-Total: 53 items (8 + 10 + 5 + 9 + 11 + 10), 10 done, 43 open (counted 2026-10-06 from the checklist rows: 10 [x] + 43 [ ] = 53).
+Total: 53 items (8 + 10 + 5 + 9 + 11 + 10), 33 done, 20 open (recounted 2026-10-15 with grep -c on '^ *- \[x\]' and '^ *- \[ \]': 33 + 20 = 53; was 10 done on 2026-10-06).
 
 Status note 2026-10-06: ticked the rows with evidence (0.1-0.4, 0.7, 0.8, 1.1, 3.8, 4.3, 5.10). Still open and verified: 3.7 (coreutils 5.2.1 shipped, not 9). 4.4 Lua unconfirmed; the rest not checked.
