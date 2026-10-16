@@ -1,0 +1,40 @@
+--- bebbossh-1.45.orig/src/bebbossh.cpp
++++ bebbossh-1.45/src/bebbossh.cpp
+@@ -606,6 +606,29 @@
+ #include <stdbool.h>
+ 
+ static bool stdinEof;
++
++#ifdef __AMIGA__
++bool getConsoleWinsize(uint32_t *cols, uint32_t *rows);
++
++// vtcon sends no resize event (CSI 12;), so the size is asked at every turn of the event loop and a change
++// goes to the server as window-change. A console that does not answer GWINSZ is left to its own events.
++static void followWindowSize() {
++	static uint32_t lastCols, lastRows;
++	uint32_t cols, rows;
++	if (!consoleOut || !getConsoleWinsize(&cols, &rows))
++		return;
++	if (!lastCols) {
++		lastCols = numCols;
++		lastRows = numRows;
++	}
++	if (cols == lastCols && rows == lastRows)
++		return;
++	lastCols = numCols = cols;
++	lastRows = numRows = rows;
++	if (!sendWindowResize())
++		stopped = true;
++}
++#endif
+ 
+ void handleKeyboard() {
+ 	uint8_t *b5 = buffer + 5;
+@@ -613,6 +636,7 @@
+ 
+ 	uint8_t *p = c;
+ #ifdef __AMIGA__
++	followWindowSize();
+ 	if (!stdoutBptr) {
+ 		// non-interactive: forward stdin in chunks that fit the buffer, the
+ 		// max packet size and the server's window; send EOF at the end.

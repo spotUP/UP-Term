@@ -1,5 +1,5 @@
 #!/bin/sh
-# build_bebbossh.sh -- BebboSSH 1.46.1 built from source: the 1.45 tarball + the 19 patches of dist/net/bebbossh-1.46.1.
+# build_bebbossh.sh -- BebboSSH 1.46.1 built from source: the 1.45 tarball + the 22 patches of dist/net/bebbossh-1.46.1.
 # usage: build_bebbossh.sh <drawer> <build dir> [amiga gcc bin dir]
 #   <drawer>     dist/net/bebbossh-1.46.1 (the tarball, patches/, SOURCE.txt)
 #   <build dir>  build/bebbossh: src/ (unpacked + patched), out/ (the binaries), codesets/ (headers, kept)
@@ -29,8 +29,8 @@ for p in "$drawer"/patches/0*.patch; do
   patch -p1 --binary -F0 --no-backup-if-mismatch -s < "$p" || { echo "[ERROR] patch does not apply: $p" >&2; exit 1; }
   n=$((n+1))
 done
-[ "$n" = 19 ] || { echo "[ERROR] $n patches in $drawer/patches, expected 19" >&2; exit 1; }
-echo "[OK] bebbossh: $n of 19 patches applied"
+[ "$n" = 22 ] || { echo "[ERROR] $n patches in $drawer/patches, expected 22" >&2; exit 1; }
+echo "[OK] bebbossh: $n of 22 patches applied"
 
 maj=$(sed -n 's/^#define __VERSION_MAJOR "\(.*\)"/\1/p' include/revision.h)
 min=$(sed -n 's/^#define __VERSION_MINOR "\(.*\)"/\1/p' include/revision.h)

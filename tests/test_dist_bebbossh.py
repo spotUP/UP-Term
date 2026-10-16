@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""K6: BebboSSH 1.46.1 ships BUILT BY UP-TERM from the 1.45 source + the 19 patches, not as the fork's binaries.
+"""K6: BebboSSH 1.46.1 ships BUILT BY UP-TERM from the 1.45 source + the 21 patches, not as the fork's binaries.
 
-- dist/net/bebbossh-1.46.1 holds the source tarball (GPL), the 19 patches in a gap-free order, SOURCE.txt, the licence and
+- dist/net/bebbossh-1.46.1 holds the source tarball (GPL), the 21 patches in a gap-free order, SOURCE.txt, the licence and
   no binary; the tarball is the one SHA256SUMS names;
 - `make dist` stages build/bebbossh/out over that drawer (the Makefile line and the build script's patch count);
 - the staged kit (build/dist/UP-Term/Files/net/bebbossh-1.46.1, when `make dist` ran): our six binaries, each with the
@@ -26,9 +26,21 @@ class RepoDrawer(unittest.TestCase):
         for b in BINARIES:
             self.assertFalse((DRAWER / b).exists(), b)
 
-    def test_patches_are_numbered_one_to_nineteen_without_a_gap(self):
+    def test_patches_are_numbered_one_to_twentytwo_without_a_gap(self):
         names = sorted(p.name for p in (DRAWER / 'patches').glob('*.patch'))
-        self.assertEqual([int(n[:4]) for n in names], list(range(1, 20)))
+        self.assertEqual([int(n[:4]) for n in names], list(range(1, 23)))
+
+    def test_the_window_size_patches_ask_vtcon_and_follow_it(self):
+        pd = DRAWER / 'patches'
+        g = (pd / '0020-gwinsz-console-size.patch').read_text()
+        self.assertIn('0x7657', g)
+        self.assertIn('getConsoleWinsize', g)
+        f = (pd / '0021-follow-window-size.patch').read_text()
+        self.assertIn('followWindowSize', f)
+        self.assertIn('sendWindowResize', f)
+        u = (pd / '0022-utf8-in-vtcon-window.patch').read_text()
+        self.assertIn('getConsoleWinsize(&winCols, &winRows)', u)
+        self.assertIn('charsetConv = false', u)
 
     def test_the_source_tarball_is_the_one_the_sums_name(self):
         sums = dict((l.split()[1], l.split()[0]) for l in (DRAWER / 'SHA256SUMS').read_text().splitlines())
@@ -40,7 +52,7 @@ class RepoDrawer(unittest.TestCase):
         mk = (ROOT / 'Makefile').read_text()
         self.assertRegex(mk, r'(?m)^dist-base: amiga bebbossh ')
         self.assertIn('cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/', mk)
-        self.assertIn('[ "$n" = 19 ]', (ROOT / 'tools/build_bebbossh.sh').read_text())
+        self.assertIn('[ "$n" = 22 ]', (ROOT / 'tools/build_bebbossh.sh').read_text())
         self.assertIn('6.5.0b', (DRAWER / 'SOURCE.txt').read_text())
 
 

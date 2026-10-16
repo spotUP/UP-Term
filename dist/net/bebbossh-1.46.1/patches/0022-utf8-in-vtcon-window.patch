@@ -1,0 +1,32 @@
+--- bebbossh-1.45.orig/src/bebbossh.cpp
++++ bebbossh-1.45/src/bebbossh.cpp
+@@ -185,6 +185,7 @@
+ // The server side talks UTF-8, the Amiga console ISO-8859-1. Interactive
+ // sessions (stdoutBptr set) convert in both directions; redirected data
+ // (scripts, file transfer) is passed through untouched.
++bool getConsoleWinsize(uint32_t *cols, uint32_t *rows);
+ static bool charsetConv; // set in ConsoleChannel::start(): console in AND out
+ static bool consoleOut;  // stdout is a console: filter and inject escape sequences
+ static uint8_t u8pend[4];
+@@ -484,12 +485,18 @@
+ #ifdef __AMIGA__
+ 	// convert only if both ends are a console - never touch redirected data
+ 	charsetConv = stdoutBptr && IsInteractive(stdoutBptr) == DOSTRUE;
++	bool interactive = charsetConv;
++	// UP-Term's console (it answers ACTION_VTCON_GWINSZ) shows UTF-8 itself: converting to ISO-8859-1 there leaves
++	// a lone byte that the console shows as a replacement character
++	uint32_t winCols, winRows;
++	if (charsetConv && getConsoleWinsize(&winCols, &winRows))
++		charsetConv = false;
+ 	if (charsetConv)
+ 		openCodesets();
+ #endif
+-	// interactive sessions convert UTF-8 <-> ISO-8859-1 (see consoleWrite),
+-	// so keep the server's own (UTF-8) locale; scripts get LANG=C as before
+-	if (!charsetConv && !sendEncrypted(ENV_LANG_C, sizeof(ENV_LANG_C)))
++	// interactive sessions keep the server's own (UTF-8) locale (converted to ISO-8859-1 here, see consoleWrite,
++	// unless the console takes UTF-8); scripts get LANG=C as before
++	if (!interactive && !sendEncrypted(ENV_LANG_C, sizeof(ENV_LANG_C)))
+ 		return false;
+ #endif
+ 

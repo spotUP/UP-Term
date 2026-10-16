@@ -24,8 +24,8 @@ BebboSSH 1.46.1: SSH2 client, server, scp and key generator for the Amiga
     bebbossh-1.45-src.tar.bz2: the author's repository
     https://franke.ms/git/bebbo/bebbossh at commit 057c7f3 ("cleanup and
     release 1.45"), the base of this build.
-    patches/0001..0019: the changes, applied in order on top of it
-    (patch -p1 in the unpacked bebbossh-1.45 directory; tested: all 19
+    patches/0001..0022: the changes, applied in order on top of it
+    (patch -p1 in the unpacked bebbossh-1.45 directory; tested: all 22
     apply). Build steps are in bebbossh.readme (BUILD).
 
 Build: Bebbo's m68k-amigaos-gcc, "m68k-amigaos-gcc (GCC) 6.5.0b 20260819091705"

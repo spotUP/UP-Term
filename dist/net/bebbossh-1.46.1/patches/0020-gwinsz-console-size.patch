@@ -1,0 +1,40 @@
+--- bebbossh-1.45.orig/src/console.cpp
++++ bebbossh-1.45/src/console.cpp
+@@ -37,6 +37,7 @@
+ 
+ #ifdef __AMIGA__
+ #include <proto/dos.h>
++#include <dos/dosextens.h>
+ #else
+ #include "amiemul.h"
+ #endif
+@@ -48,8 +49,29 @@
+ uint32_t numRows;
+ 
+ 
++#ifdef __AMIGA__
++// UP-Term's console (vtcon) answers ACTION_VTCON_GWINSZ (0x7657) with the window's size in cells: struct winsize
++// {ws_row, ws_col, ws_xpixel, ws_ypixel}, the packet net/uptelnet.c and the ixemul TIOCGWINSZ use. A console that
++// does not know it answers DOSFALSE, and nothing is written to it. Returns false then (no query is sent).
++bool getConsoleWinsize(uint32_t *cols, uint32_t *rows) {
++    static unsigned short ws[4];
++    if (!stdoutBptr)
++        return false;
++    struct FileHandle *fh = (struct FileHandle *) BADDR(stdoutBptr);
++    if (!fh || !fh->fh_Type)
++        return false;
++    if (!DoPkt(fh->fh_Type, 0x7657, fh->fh_Arg1, (LONG) ws, 0, 0, 0) || !ws[0] || !ws[1])
++        return false;
++    *rows = ws[0];
++    *cols = ws[1];
++    return true;
++}
++#endif
++
+ bool getConsoleSize() {
+ #ifdef __AMIGA__
++    if (getConsoleWinsize(&numCols, &numRows))
++        return true;
+     // --- Amiga code as you already have ---
+     uint8_t tmp[16];
+     if (!stdoutBptr)
