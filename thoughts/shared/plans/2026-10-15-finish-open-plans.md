@@ -133,7 +133,7 @@ Order (cheapest evidence first):
   with a PROF=1 build (phase_rig.py), then decide ASM1 target and FP3.6 rows 7, 12.
   Re-measured (research/2026-10-16_fp34-rest-clean.md, rig 3 --exact, 0 trace lines): rest 288-1220 ms, ~0.2 ms a
   write net of ReadEClock. ASM1 target #1 now = painter on colour shapes (paint ~1 s), #2 row composition. Cursor
-  pass 2.7 ms a frame on sync-line = algorithm question, open. Row 12: no gain left in rest (owner: drop?).
+  pass 2.7 ms a frame on sync-line = algorithm question, open. Row 12: no gain left in rest; DROPPED (owner 2026-10-16). Owner 2026-10-16: cursor pass = investigate as algorithm (what it redraws) before ASM1; ASM1 profile = extend prof68k to the painter (not paintbench).
 - [x] FP3.5 (done 2026-10-15: (a) 84b339f8, (c) 87aac22e test_slash 292 + test_terminfo_amiga 4, (b) c13c27d7 test_prefs 6808, (d) 604ef8be tools/rig/slashenv_rig.py 4 of 4 PASS rig 2) W46: remaining commands of "setup as / commands" (468f1b03 lists what stays open).
 - [ ] FP3.6 W27: CCON techniques rows 5, 7, 10, 12 (research doc exists).
   2026-10-16 session 5: row 5 DONE in code (b1a181a9: write mask = planes the pass drew, `r->mask`; painter.c
