@@ -332,10 +332,10 @@ Phase 3:
 
 Phase 4:
 - [ ] 4.1 vim
-- [ ] 4.2 mg
+- [x] 4.2 mg (2026-10-17, rig 2, research/2026-10-16_fp42-batch-b.md)
 - [x] 4.3 Neovim option
 - [ ] 4.4 Lua (OPEN: Neovim embeds Lua 5.1 (nvim -l), but no standalone Lua 5.4 ixemul build exists: nothing in upterm-ports/pkgs, kit bin has only nvim)
-- [ ] 4.5 joe
+- [x] 4.5 joe (2026-10-17, rig 2, research/2026-10-16_fp42-batch-b.md)
 - [x] 4.6 bc (2026-10-16, rig 2, research/2026-10-16_fp41-batch-a.md)
 - [x] 4.7 jq (2026-10-16, rig 2, research/2026-10-16_fp41-batch-a.md)
 - [ ] 4.8 gawk
@@ -344,15 +344,15 @@ Phase 4:
 - [x] 4.11 ctags (2026-10-16, rig 2, research/2026-10-16_fp41-batch-a.md)
 
 Phase 5:
-- [ ] 5.1 nc
+- [x] 5.1 nc (2026-10-17, rig 2, research/2026-10-16_fp42-batch-b.md)
 - [ ] 5.2 telnet (OPEN: C:uptelnet + vshrc telnet() exist, ffa32a4, host-tested; not ixnet-based and its rig run is OWNER A1.4)
-- [ ] 5.3 wget function (OPEN: curl 8.22.0 is in dist/net but dist/vshrc has no wget function)
+- [x] 5.3 wget function (2026-10-17, rig 2, research/2026-10-16_fp42-batch-b.md)
 - [ ] 5.4 bebbossh patches
 - [ ] 5.5 make
 - [ ] 5.6 git
 - [ ] 5.7 rsync
 - [ ] 5.8 perl
-- [ ] 5.9 tldr
+- [x] 5.9 tldr (2026-10-17, rig 2, research/2026-10-16_fp42-batch-b.md)
 - [x] 5.10 python (PY1)
 
 Total: 53 items (8 + 10 + 5 + 9 + 11 + 10), 33 done, 20 open (recounted 2026-10-15 with grep -c on '^ *- \[x\]' and '^ *- \[ \]': 33 + 20 = 53; was 10 done on 2026-10-06).
