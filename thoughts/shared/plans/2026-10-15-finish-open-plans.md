@@ -89,7 +89,7 @@ Verification: quoted rig lines and commit hashes. Gate: none (docs plus rig runs
 - [ ] FP1.9 W-T8: re-measure the W-T4 numbers on a quiet Mac (`uptime` load < 5, no other sessions' builds;
   schedule when the machine is idle; ask the owner to say "quiet" when ready: this one only needs that word).
 - [ ] FP1.10 P7: write the objective part of the iTerm2 cell-level comparison (what differs cell by cell, one
-  table); the verdict "good enough" stays the owner's.
+  table); the verdict "good enough" stays the owner's. UNBLOCKED 2026-10-16: owner turned on the iTerm2 Python API; module in git-ignored venv build/iterm2-venv (`python3 -m venv build/iterm2-venv && build/iterm2-venv/bin/pip install iterm2`; Homebrew python has none), API probe reads the current session. Method: research/2026-10-15_fp45-fp110.md:84-105. Next: one sonnet agent, after a slot frees.
 
 Owner visual sign-off list (output of the phase): G2, G3, D1, P7, R1 screenshots saved under
 `thoughts/shared/research/` as text descriptions; no image reaches the main session.
