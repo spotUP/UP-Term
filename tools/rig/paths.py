@@ -103,6 +103,11 @@ OS32_TREE = pathlib.Path(os.environ.get("UPTERM_OS32_TREE") or
 OS32_ROM = pathlib.Path(os.environ.get("UPTERM_OS32_ROM") or
     pathlib.Path.home() / "Desktop/KICK_323.rom")
 
+# UPTERM_FSUAE  the emulator the rig boots: an FS-UAE.app bundle (opened with
+# `open -a`) or a bare fs-uae binary (run directly), e.g. a local build that
+# fixes the arm64 FPU Inf bugs (fmove.x Inf, fcmp Inf,Inf)
+FSUAE = pathlib.Path(os.environ.get("UPTERM_FSUAE") or "/Applications/FS-UAE.app")
+
 
 # UPTERM_MUTOOLS    the NDK 3.2R4 MuTools drawer (MuForce, disassembler.library), for `rig.py muforce`
 # UPTERM_MMULIB     Thomas Richter's mmu.library (not in the NDK: its Developer Distribution only documents it)

@@ -16,7 +16,7 @@ Nothing below is in any repository (all of it is licensed material or large);
 
 | Piece | Where `rig.py` looks | Where it comes from |
 |---|---|---|
-| FS-UAE | `/Applications/FS-UAE.app` (started with `open -a`) | fs-uae.net, macOS build. Not checked by `upterm-doctor`. |
+| FS-UAE | `/Applications/FS-UAE.app` (started with `open -a`) | fs-uae.net, macOS build. Not checked by `upterm-doctor`. Set `UPTERM_FSUAE=<path>` to boot another one: an `.app` bundle (opened with `open -a`) or a bare `fs-uae` binary (run directly), such as a local build with the arm64 FPU Inf fix. |
 | Kickstart 3.1 ROM (40.068, A1200) | `$UPTERM_ROM`, else `$UPTERM_ROOT/Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200` (another repo of the owner's, not in `repos.lock`); `--kick <file>` for one boot | Your own legal copy (Amiga Forever, or dumped from your A1200). Set `UPTERM_ROM=<file>`. |
 | System disk | `~/Downloads/nyhd2.hdf`, copied once to `build/rig/sys.hdf` (1.5 GB) | A hard-disk image of a working Workbench 3.x install (the owner's own; there is no public source). Set `UPTERM_SYSTEM_HDF=<image>` (default `~/Downloads/nyhd2.hdf`). What it must hold, not verified for a smaller image: C:Assign, S:Startup-Sequence, Libs/Devs/Fonts, the Classes and MUI drawers the rig adds to `LIBS:`. |
 | AmigaOS 3.2 tree (only for `--os32`) | `~/Downloads/AmigaOS-3.2-full (1)` (a host drawer, copied to `build/rig/os32`), ROM `~/Desktop/KICK_323.rom` (3.2.3) | An installed AmigaOS 3.2 tree and its Kickstart 3.2.3 ROM, from Hyperion (licensed). Set `UPTERM_OS32_TREE=<drawer>` and `UPTERM_OS32_ROM=<rom>` (defaults as shown). Also needs `media/AmigaOS3.2CD/ADF/Extras3.2.adf` inside the tree and `xdftool` (`pip install amitools`) to make SYS:L once. |
@@ -239,7 +239,7 @@ Other groups (one line each; docstrings say more):
 | Serial login | `getty_rig` (a host pty is the terminal on the cable) |
 | C:Claude against recorded answers (no key, no Anthropic; start `tools/claude_fixture.py` first) | `claude_rig`, `claude_rig2`, `claude_rig3`, `claude_rig4` |
 | Speed | `conbench_rig`, `phase_rig`, `race_rig`, `tablat` |
-| Support | `paths.py` (the one reader of `UPTERM_ROOT`, `UPTERM_ROM`, `UPTERM_SYSTEM_HDF`, `UPTERM_OS32_TREE`, `UPTERM_OS32_ROM`), `ami.py`, `fakeircd.py` (a scripted IRC server), `dvmatrix.sh` |
+| Support | `paths.py` (the one reader of `UPTERM_ROOT`, `UPTERM_ROM`, `UPTERM_SYSTEM_HDF`, `UPTERM_OS32_TREE`, `UPTERM_OS32_ROM`, `UPTERM_FSUAE`), `ami.py`, `fakeircd.py` (a scripted IRC server), `dvmatrix.sh` |
 
 The exact command and prerequisites for each (which `make` target builds its
 probe, whether it needs a fresh boot) are in the table in `RULES.md`,

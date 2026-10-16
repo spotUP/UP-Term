@@ -669,7 +669,11 @@ def start(retries=2):
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()
-    subprocess.run(["open", "-g", "-n", "-a", "/Applications/FS-UAE.app", "--args", str(CFG)], check=True)
+    if paths.FSUAE.suffix == ".app":
+        subprocess.run(["open", "-g", "-n", "-a", str(paths.FSUAE), "--args", str(CFG)], check=True)
+    else:  # a bare binary: detached, so the rig outlives this command
+        subprocess.Popen([str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for i in range(90):
         time.sleep(2)
         if status(quiet=True):
