@@ -43,6 +43,7 @@ Machine flags (on `start`, and `setup` when the config alone changes):
 | none | the owner's machine: `--max` (below). Every test rig runs as this, so no script falls back to the 020 |
 | `--a1200` | A1200, 68020 + 68882, 8 MB fast + 64 MB Zorro III, RTG card, JIT, real CPU speed (timing runs only) |
 | `--fast` | the `--a1200` machine at the host's speed |
+| `--a500` | A500, 68000 at 7 MHz cycle-exact, OCS, 512 KB chip + 512 KB slow + 8 MB Zorro II fast, no FPU, no RTG card, KS 40.63 (68000 speed runs, plan W7) |
 | `--060` | 68060 (no MMU) + FPU at the host's speed, 128 MB Zorro III |
 | `--max` | `--060` with 1 GB Zorro III. The default machine, so the flag is optional. |
 | `--exact` | cycle-exact, no JIT (slow) |

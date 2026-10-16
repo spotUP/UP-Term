@@ -8,6 +8,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   with 1 GB Zorro III RAM (what --max was); --a1200: the stock 68020 at real speed
                   (timing runs only; --stock, --exact and --fast also keep the 020);
                   --060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
+                  --a500: a 68000 A500 at 7 MHz, cycle-exact, 8 MB Zorro II fast (68000 speed, W7);
                   --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
@@ -313,7 +314,11 @@ STOCK = "--stock" in sys.argv
 # real speed made an install take ages). --a1200 asks for the stock 68020 at real speed (timing runs);
 # --stock, --exact and --fast are their own machines and keep the 020.
 A1200 = any(f in sys.argv for f in ("--a1200", "--stock", "--exact", "--fast"))
-MAX = "--max" in sys.argv or not A1200
+# --a500: a 68000 at 7 MHz, cycle-exact, for the 68000 speed (vtcon plan W7, T1 pre-check 2): amiga_model A500
+# (OCS, the model's 512 KB chip + 512 KB slow RAM) with 8 MB Zorro II fast RAM as an A590 or a sidecar gives it,
+# no FPU, no graphics card. The default ROM is 40.63, the A500/A600/A2000 3.1, so it boots as is.
+A500 = "--a500" in sys.argv
+MAX = "--max" in sys.argv or not (A1200 or A500)
 M060 = "--060" in sys.argv or MAX
 # --mmu: the 68060 with its MMU emulated (FS-UAE "68060", no JIT, slower): what MuForce needs
 # (`rig.py muforce`). Only on the 060 machines; the next start without it is back on 68060-NOMMU.
@@ -462,6 +467,10 @@ def setup():
         "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
         "bsdsocket_library = 1",
     ] if STOCK else [
+        "[fs-uae]", "amiga_model = A500", "accuracy = 1", "fast_memory = 8192",
+        "bsdsocket_library = 1", "jit_compiler = 0",
+        "uae_cpu_speed = real", "uae_cpu_cycle_exact = true", "uae_cpu_compatible = true",
+    ] if A500 else [
         "[fs-uae]", "amiga_model = A1200",
         "cpu = %s" % (("68060" if MMU else "68060-NOMMU") if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
         "fast_memory = 8192",
