@@ -540,7 +540,8 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h pr
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_core.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c handler/kcmode.c handler/slash.c config/upconf.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
-# Aminet's ixemul SDK (no -m68020: the SDK has no libm020 multilib)
+# Aminet's ixemul SDK (-m68020 is safe since the driver names ixemul/lib/crt0.o by path,
+# tests/test_ixemul_startfile.py; these rules keep the 68000 baseline)
 AGCC ?= $(HOME)/opt/amiga/bin/m68k-amigaos-gcc
 $(BUILD)/amiga/ptyprobe: tests/amiga/ptyprobe.c
 	@mkdir -p $(BUILD)/amiga
