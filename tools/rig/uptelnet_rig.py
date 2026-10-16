@@ -80,7 +80,6 @@ def session(kind):
     else:
         vshwin.open_vsh(title, '0/12/700/400', wait=7)
         typewin._last_title = title
-        typewin._last_clip = typewin._clip('RAM:clip-pre.txt')
         typewin.click_in(title)
         time.sleep(1)
         launch = 'telnet 127.0.0.1 %d NOAGENT KEY RAM:upt-v.key' % PORT

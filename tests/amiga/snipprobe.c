@@ -1,4 +1,4 @@
-/* snipprobe [CHARMAP | CLIP] -- D1.3/DD10 of the console.device plan: a unit's text
+/* snipprobe [CHARMAP | CLIP | CLEAR] -- D1.3/DD10 of the console.device plan: a unit's text
  * selected with the mouse and copied with Right Amiga C lands on the
  * clipboard (unit 0, FTXT), on a SNIPMAP unit only.
  *
@@ -7,6 +7,7 @@
  * READY to RAM:snipprobe.log and waits 12 s while the rig drags over the
  * text and presses Right Amiga C; then logs "CLIP <text>" (or "CLIP -").
  * CLIP: only logs the clipboard's text (XCON:'s own copy, snip_rig.py).
+ * CLEAR: writes the sentinel "-" as the clipboard's text, so a Copy that finds nothing reads "-" (typewin.screen_text).
  * CLIP <file>: writes the whole text to <file> (a full screen, amigapi_rig.py step 13). */
 #include <stdio.h>
 #include <string.h>
@@ -34,6 +35,10 @@ static void say(const char *s)
 
 int main(int argc, char **argv)
 {
+    if (argc > 1 && !strcmp(argv[1], "CLEAR")) {
+        clip_write("-", 1);
+        return 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "CLIP")) {
         /* just the clipboard's text, for a window someone else drew */
         static char l[300];

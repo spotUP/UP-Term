@@ -76,7 +76,6 @@ def colours(title, need=4):
 def vsh_window(title, box):
     vshwin.open_vsh(title, box, wait=7)
     typewin._last_title = title
-    typewin._last_clip = typewin._clip('RAM:clip-pre.txt')
     typewin.click_in(title)
     time.sleep(1)
 

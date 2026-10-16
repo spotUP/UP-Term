@@ -4,7 +4,7 @@ the window's text read back through the clipboard: the helpers claude_rig.py and
   open_xcon(title)   a titled XCON: window, focused by a click, its Shell at the prompt
   typ(s), key(code, qual)  characters / one key (down, up) into the active window
   screen_text(out)   the window's whole text: Right Amiga A (Select all), Right Amiga C (Copy), then
-                     VTC:snipprobe CLIP <file> writes the clipboard's text (make build/amiga/snipprobe),
+                     VTC:snipprobe CLIP <file> writes the clipboard's text, CLEAR sets it to "-" (make build/amiga/snipprobe),
                      then one click in the window drops the selection (render/vtwin.c VTI_SELECT_END: a
                      click clears it), so the window is left as it was
 """
@@ -76,12 +76,7 @@ def open_xcon(title, box='0/12/760/440'):
         raise SystemExit('window %s never appeared' % title)
     click_in(title)
     time.sleep(1)
-    global _last_clip
-    _last_clip = _clip('RAM:clip-pre.txt')    # what the clipboard holds before this window: a Copy that finds nothing returns it
     return w
-
-
-_last_clip = None   # the clipboard text the last screen_text read: a Copy that found nothing leaves it unchanged
 
 
 def _clip(out):
@@ -94,19 +89,19 @@ def screen_text(out='RAM:screen.txt'):
     """The active window's text (the screen as the program drew it), rows joined by newlines.
 
     A selection ends where output overwrites it (UT5, as in xterm), so on a screen that keeps changing (a
-    spinner) the Copy right after Select all can find nothing. The pair is sent back to back and repeated
-    until the clipboard holds something other than what the last call read (the first read is taken right
-    after the keys: the screen is what it is at that moment); the same text twice is accepted after the last try."""
-    global _last_clip
+    spinner) the Copy right after Select all can find nothing. The call first writes the sentinel "-" to the
+    clipboard (VTC:snipprobe CLEAR), then sends Select all + Copy back to back: a read that is empty (a Copy of an
+    empty selection) or "-" (no Copy happened) means the Copy found nothing, so the clipboard cannot hold an older
+    text, and the pair is repeated, up to 8 tries."""
     require_active(True)
     new = ''
+    c.run('VTC:snipprobe CLEAR')
     for _ in range(8):
         key(0x20, RAMIGA, wait=0.0)     # Select all, Copy at once: a spinner's next frame ends the selection (UT5)
         key(0x33, RAMIGA, wait=1.0)     # Copy
         new = _clip(out)
-        if new != _last_clip:
+        if new.strip() not in ('', '-'):
             break
-    _last_clip = new
     if _last_title:
         click_in(_last_title)   # a click clears the selection (UT3): the next frame shows no highlight
         time.sleep(1)

@@ -87,7 +87,6 @@ def main(which):
     typewin._last_title = TITLE
     typewin.click_in(TITLE)
     time.sleep(1)
-    typewin._last_clip = typewin._clip('RAM:clip-pre.txt')
     typewin.typ('Echo marker-' + TITLE)
     typewin.key(typewin.RET, wait=2)
     for how in ('key', 'end'):
