@@ -54,6 +54,10 @@ branches current. Rig 1 is the owner's machine: never used.
   right (47x11 -> 72x20) but `truth None` (ixwinch printed nothing in 4 s). Split test running: current vtcon with
   an ixemul-vtcon build from before 2026-10-12 vs the current ixemul (43 vtcon handler/tty/shell commits and many
   ixemul libc merges since). Logs: session-5 scratchpad fp02b_*, fp02c/.
+  2026-10-16 session 5: CAUSE FOUND. Not ixemul (old 0d09e12 build fails the same). Rig copied a stale
+  tmux-amiga/build/tmux-bin (2026-10-07) without the $STACK: 262144 cookie fix (tmux-amiga 0d30fa7, 2026-10-15):
+  tmux overflowed vsh's 16000-byte stack into malloc headers. Rebuilt with owner's OK (`make -f Makefile.amiga
+  check`, stack_cookie 0 failed). Re-run of resize_rig.py on rig 2 pending; nvim "truth None" still open.
 - [ ] FP0.3 W6: read the S1 race number for main (`tools/rig` race script; CCON 1.2.8b9 was 30.68 s at 5f2dc765),
   run it on rig 2 once, record main's number in the vtcon plan row.
 - [x] FP0.4 P12 close step: "cut_cases oracle reproducible" (rides with U3 part 2): run the oracle twice, compare.
@@ -110,6 +114,14 @@ Order (cheapest evidence first):
   0.65 s. Then draw on colour shapes (sgr-colour 2.2 s, sgr-perchar 1.4 s), then feed (sgr-colour 1.12 s,
   plain-lines 0.64 s). So ASM1 target #1 = the per-packet path, not the painter. Next: split "rest" into its
   parts (packet receive, reply, loop, signal wait) with PROF counters before choosing what goes to asm.
+  Step 3 rest split DONE (research/2026-10-16_fp34-rest-split.md; PROF sub-counter diff 187+/16- in
+  handler/vtcon_handler.c left UNCOMMITTED for review). Findings: (1) PROF=1 SERIAL=1 builds trace every packet
+  (DBG "packet" :6065, "reply" :486, ~5.4 ms each): 2174 of sync-line's 2931 ms "rest" is the trace itself, so
+  every PROF phase split so far overstates rest. Fix the instrument first: phase output to serial must not turn on
+  the per-packet trace. (2) ReadEClock = 41 us a call on --exact 020, so sub-counters under ~0.1 ms are timer
+  noise; measure with one timer pair around 100 packets or the emulator cycle counter. (3) Real rest ~1.3 ms a
+  WRITE (bytewise/sgr-colour/scroll-nl); only concrete candidate: service_reads runs after the reply (:6233) AND
+  again in the loop tail for the same packet. Next: fix instrument, re-measure, then pick ASM1 / FP3.6 row 12.
 - [x] FP3.5 (done 2026-10-15: (a) 84b339f8, (c) 87aac22e test_slash 292 + test_terminfo_amiga 4, (b) c13c27d7 test_prefs 6808, (d) 604ef8be tools/rig/slashenv_rig.py 4 of 4 PASS rig 2) W46: remaining commands of "setup as / commands" (468f1b03 lists what stays open).
 - [ ] FP3.6 W27: CCON techniques rows 5, 7, 10, 12 (research doc exists).
   2026-10-16 session 5: row 5 DONE in code (b1a181a9: write mask = planes the pass drew, `r->mask`; painter.c
