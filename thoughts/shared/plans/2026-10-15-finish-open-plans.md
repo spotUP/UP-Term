@@ -159,7 +159,7 @@ Order (cheapest evidence first):
 
 Per tool the acceptance is the plan's own row plus: package in `../upterm-ports/pkgs/<tool>/`, `make dist` lists
 it, `install_rig.py --only <case>` installs and runs it. Batches by size (decision: smallest first):
-- [ ] FP4.1 batch A: 4.6 bc, 4.10 ed, 4.9 column/iconv, 4.11 ctags, 4.7 jq.
+- [x] FP4.1 (done 2026-10-16, rig 2 060, userland_rig --only, research/2026-10-16_fp41-batch-a.md: bc+dc 6/6, ed 11/11, column 11/11, iconv 9/9, ctags 9/9, jq 19/19 x5; man pages + kit-stage entries present; `make dist` is `make kit-stage` in upterm-ports; fresh checkout needs `make host-<pkg>` first, the rig tool says so) batch A: 4.6 bc, 4.10 ed, 4.9 column/iconv, 4.11 ctags, 4.7 jq.
 - [ ] FP4.2 batch B: 4.5 joe, 4.2 mg, 5.1 nc, 5.9 tldr, 5.3 wget as a vshrc function (curl is in `dist/net`).
 - [x] FP4.3 (done 2026-10-15, upterm-ports fix/finish-fp4c 2c5b497 make 12/12, e81d105 gawk 21/21, 034aee6 lua 10/10, userland_rig --only on rig 3) batch C: 4.8 gawk, 5.5 make, 4.4 Lua (pi has its own: reuse before building a second one).
 - [ ] FP4.4 batch D: 4.1 vim, 5.7 rsync, 5.6 git, 5.8 perl.

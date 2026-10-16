@@ -2,7 +2,7 @@
 date: 2026-10-15
 topic: jq on rig 2 raises ixemul "free: start of block corrupt!" (library/malloc.c:277)
 tags: [jq, ixemul, amiga, parked]
-status: draft
+status: not reproduced
 ---
 # jq heap-corrupt requester (parked)
 
@@ -211,3 +211,7 @@ Install and rebuild (owner, after the other agent stops using /Users/spot/opt/am
 1. The installed cc1 is from /Users/spot/Code/UP-Term/cpython-amiga/build/gcc/src branch amiga-cpython (amiga6 + btst, bbb opt_strcpy, fibonacci_heap clang fix). Cherry-pick 82f7243a5 onto that branch (or rebase those onto fix/sret-autoinc-cse), `make -C .../cpython-amiga/build/gcc/obj all-gcc`, back up the old cc1 as cc1.pre-sret-2026-10-16, copy the new cc1 to /Users/spot/opt/amiga/libexec/gcc/m68k-amigaos/6.5.0b/cc1. Installing the plain amiga6 build instead would drop those 3 patches.
 2. Rebuild libgcc/libnix only if a whole-toolchain rebuild is done anyway (not proven affected; scan them with the same asm check first).
 3. Rebuild every upterm-ports package (gcc 6 + ixemul; jq first, then the userland rig), and vtcon's AGCC-built programs (`make amiga`). ixemul-vtcon needs no rebuild: it is built with gcc 2.95.3 in docker. Drop the interim per-file flag plan (fix item 2 above).
+
+## 2026-10-16: not reproduced after bf2f974
+
+FP4.1 run on rig 2 (060): jq rebuilt after upterm-ports bf2f974 (dropped the single-threaded pthread patch; the ixemul SDK headers carry pthread) passed 19/19 cases in 5 of 5 runs, no requester. Candidate mechanism, unverified: the dropped patch declared its own `typedef int pthread_mutex_t` / `pthread_once_t`, sizes that may differ from what other objects saw, so a write through one layout could land on a neighbouring jq_state field. Reopen with the --wrap probe if the requester returns.

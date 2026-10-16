@@ -336,12 +336,12 @@ Phase 4:
 - [x] 4.3 Neovim option
 - [ ] 4.4 Lua (OPEN: Neovim embeds Lua 5.1 (nvim -l), but no standalone Lua 5.4 ixemul build exists: nothing in upterm-ports/pkgs, kit bin has only nvim)
 - [ ] 4.5 joe
-- [ ] 4.6 bc
-- [ ] 4.7 jq
+- [x] 4.6 bc (2026-10-16, rig 2, research/2026-10-16_fp41-batch-a.md)
+- [x] 4.7 jq (2026-10-16, rig 2, research/2026-10-16_fp41-batch-a.md)
 - [ ] 4.8 gawk
-- [ ] 4.9 column/iconv
-- [ ] 4.10 ed
-- [ ] 4.11 ctags
+- [x] 4.9 column/iconv (2026-10-16, rig 2, research/2026-10-16_fp41-batch-a.md)
+- [x] 4.10 ed (2026-10-16, rig 2, research/2026-10-16_fp41-batch-a.md)
+- [x] 4.11 ctags (2026-10-16, rig 2, research/2026-10-16_fp41-batch-a.md)
 
 Phase 5:
 - [ ] 5.1 nc
