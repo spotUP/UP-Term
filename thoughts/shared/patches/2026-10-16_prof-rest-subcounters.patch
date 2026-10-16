@@ -1,0 +1,342 @@
+diff --git a/handler/vtcon_handler.c b/handler/vtcon_handler.c
+index da7ca2b4..a761d6de 100644
+--- a/handler/vtcon_handler.c
++++ b/handler/vtcon_handler.c
+@@ -132,6 +132,30 @@ struct theme_menu {
+     char shown_path[COMPLETE_MAX]; /* the file `shown` was read from */
+ };
+ 
++#ifdef VTCON_PROF
++/* The sub-counters of the "rest" phase (everything that is not waiting,
++ * vt_feed or drawing): EClock ticks and counts per part of the main loop
++ * and the packets. TAIL contains TICK, TIMEREXP and TAIL_SVC; REPLY and
++ * WC_* happen inside packet(). Each ReadEClock pair costs a little itself. */
++enum {
++    PS_GETMSG,     /* GetMsg() on the packet port (the last call, finding none, too) */
++    PS_LOOPPRE,    /* loop top to Wait(): the signal mask and the checks before it */
++    PS_REPLY,      /* ReplyPkt, every reply */
++    PS_WR_PRE,     /* ACTION_WRITE: packet entry to the output call */
++    PS_WR_SVC,     /* ACTION_WRITE: service_reads after the reply */
++    PS_WC_RENDER,  /* ACTION_WAIT_CHAR: the vtwin_render before looking for input */
++    PS_WC_AHEAD,   /* ACTION_WAIT_CHAR: ahead_feed */
++    PS_WC_TIMER,   /* ACTION_WAIT_CHAR: ws_add + rearm_timer (the timer request) */
++    PS_TAIL,       /* after the packets, to the end of the iteration */
++    PS_TAIL_TICK,  /* ... of it vtwin_tick */
++    PS_TAIL_TMR,   /* ... of it the timer-expiry block */
++    PS_TAIL_SVC,   /* ... of it service_reads */
++    PS_PKDBG,      /* the serial trace line at the top of packet() (SERIAL=1 builds only cost this) */
++    PS_RPDBG,      /* the serial trace line in reply() */
++    PS_N
++};
++#endif
++
+ typedef struct con {
+     struct MsgPort *port;
+     vtwin w;                     /* the window: engine, renderer, fonts, frame clock (render/vtwin.h) */
+@@ -318,9 +342,21 @@ typedef struct con {
+      * Printed to the serial port when a stream closes, then reset. */
+     ULONG prof_idle, prof_t0;
+     ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
++    ULONG prof_sub[PS_N], prof_nsub[PS_N]; /* the "rest" phase split, see PS_* */
+ #endif
+ } con;
+ 
++#ifdef VTCON_PROF
++#define PROF_T(e) ReadEClock(&(e))
++#define PROF_ADD(c, k, e0)                                   \
++    do {                                                     \
++        struct EClockVal e1_;                                \
++        ReadEClock(&e1_);                                    \
++        (c)->prof_sub[k] += e1_.ev_lo - (e0).ev_lo;          \
++        (c)->prof_nsub[k]++;                                 \
++    } while (0)
++#endif
++
+ /* What one window costs (research/2026-10-04_window-memory.md), held at
+  * compile time in the 68k build itself: the build fails when one of
+  * these climbs back past its bound. Measured 2026-10-04: con 66126 ->
+@@ -450,6 +486,23 @@ static void reply(struct DosPacket *p, LONG r1, LONG r2)
+         DBG("reply", p->dp_Type, r1);
+     ReplyPkt(p, r1, r2);
+ }
++#ifdef VTCON_PROF
++/* reply() with its cost counted (PS_REPLY), for the write and WAIT_CHAR paths */
++#define REPLY_T(c, p, r1, r2)           \
++    do {                                \
++        struct EClockVal rt_;           \
++        PROF_T(rt_);                    \
++        if (p->dp_Type != ACTION_WRITE && p->dp_Type != ACTION_READ) { \
++            DBG("reply", p->dp_Type, r1);                              \
++            PROF_ADD(c, PS_RPDBG, rt_);                                \
++            PROF_T(rt_);                                               \
++        }                                                              \
++        ReplyPkt(p, r1, r2);            \
++        PROF_ADD(c, PS_REPLY, rt_);     \
++    } while (0)
++#else
++#define REPLY_T(c, p, r1, r2) reply(p, r1, r2)
++#endif
+ 
+ /* ---- engine callbacks ------------------------------------------------------ */
+ 
+@@ -6004,8 +6057,15 @@ static void rearm_timer(con *c, ws_time now)
+ 
+ static void packet(con *c, struct DosPacket *p)
+ {
++#ifdef VTCON_PROF
++    struct EClockVal pd0;
++    PROF_T(pd0);
++#endif
+     if (p->dp_Type != ACTION_WRITE && p->dp_Type != ACTION_READ)
+         DBG("packet", p->dp_Type, p->dp_Arg1);
++#ifdef VTCON_PROF
++    PROF_ADD(c, PS_PKDBG, pd0);
++#endif
+     switch (p->dp_Type) {
+     case ACTION_FINDINPUT:
+     case ACTION_FINDOUTPUT:
+@@ -6088,6 +6148,20 @@ static void packet(con *c, struct DosPacket *p)
+             c->prof_pk[0] = c->prof_pk[1] = c->prof_pk[2] = 0;
+             c->prof_npk[0] = c->prof_npk[1] = c->prof_npk[2] = 0;
+             DBG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
++            {
++                static const char *const sn[PS_N] = {"s-getmsg", "s-looppre", "s-reply", "s-wrpre", "s-wrsvc", "s-wcrender",
++                                                     "s-wcahead", "s-wctimer", "s-tail", "s-tick", "s-timerexp", "s-tailsvc", "s-pkdbg", "s-rpdbg"};
++                int si;
++                struct EClockVal k0, k1;
++                ReadEClock(&k0);
++                for (si = 0; si < 200; si++)
++                    ReadEClock(&k1);
++                DBG("s-cal200", k1.ev_lo - k0.ev_lo, 200); /* what 200 ReadEClock calls cost */
++                for (si = 0; si < PS_N; si++) {
++                    DBG(sn[si], c->prof_sub[si], c->prof_nsub[si]);
++                    c->prof_sub[si] = c->prof_nsub[si] = 0;
++                }
++            }
+             c->w.prof_part[0] = c->w.prof_part[1] = c->w.prof_part[2] = 0;
+             c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;
+             c->w.prof_render = c->w.prof_frames = 0;
+@@ -6115,6 +6189,11 @@ static void packet(con *c, struct DosPacket *p)
+         }
+         return;
+     case ACTION_WRITE:
++#ifdef VTCON_PROF
++    {
++        struct EClockVal wr0;
++        PROF_T(wr0);
++#endif
+ #if defined(VTCON_SERIAL)
+         if (c->medium && p->dp_Arg2 && p->dp_Arg3 > 0) {
+             /* T3 probe: what a V47 Shell writes in medium mode, 4 bytes a line */
+@@ -6131,6 +6210,9 @@ static void packet(con *c, struct DosPacket *p)
+             reply(p, -1, ERROR_NO_FREE_STORE);
+             return;
+         }
++#ifdef VTCON_PROF
++        PROF_ADD(c, PS_WR_PRE, wr0);
++#endif
+         if (tty_active(c) && (c->ld.t.c_oflag & LD_OPOST)) {
+             /* OPOST in chunks: a byte may become 8 (a tab under OXTABS) */
+             const unsigned char *b = (const unsigned char *)p->dp_Arg2;
+@@ -6144,9 +6226,18 @@ static void packet(con *c, struct DosPacket *p)
+         } else {
+             output(c, (const vt_u8 *)p->dp_Arg2, p->dp_Arg3);
+         }
+-        reply(p, p->dp_Arg3, 0);
++        REPLY_T(c, p, p->dp_Arg3, 0);
++#ifdef VTCON_PROF
++        PROF_T(wr0);
++#endif
+         service_reads(c); /* the output may have queued a report */
++#ifdef VTCON_PROF
++        PROF_ADD(c, PS_WR_SVC, wr0);
+         return;
++    }
++#else
++        return;
++#endif
+     case ACTION_FORCE: {
+         /* The V47 Shell's answer to a medium-mode report (T3, measured on
+          * 3.2): the command line it made -- a TAB completion, a history
+@@ -6221,24 +6312,53 @@ static void packet(con *c, struct DosPacket *p)
+          * not at the next frame (More and Ed feel it; CCON does the same;
+          * and conbench's SYNC barrier is this packet: without the draw
+          * our barrier numbers left a frame's work out) */
++#ifdef VTCON_PROF
++        {
++            struct EClockVal wc0;
++            PROF_T(wc0);
++            vtwin_render(&c->w);
++            PROF_ADD(c, PS_WC_RENDER, wc0);
++        }
++#else
+         vtwin_render(&c->w);
++#endif
+ #ifdef VTCON_DEBUG
+         dbg("WAIT task/timeout", (LONG)p->dp_Port->mp_SigTask, p->dp_Arg1);
+         dbg("WAIT in/eof", c->in_len, c->eof);
+         dbg("WAIT tty/pending", c->own.on, c->own.on ? ld_input_pending(&c->ld) : -1);
+ #endif
++#ifdef VTCON_PROF
++        {
++            struct EClockVal wa0;
++            PROF_T(wa0);
++            ahead_feed(c); /* it looks for input: what was typed ahead is its */
++            PROF_ADD(c, PS_WC_AHEAD, wa0);
++        }
++#else
+         ahead_feed(c); /* it looks for input: what was typed ahead is its */
++#endif
+         if (c->in_len || c->eof || (tty_active(c) && ld_input_pending(&c->ld))) {
+-            reply(p, DOSTRUE, 0);
++            REPLY_T(c, p, DOSTRUE, 0);
+         } else if (p->dp_Arg1 <= 0) {
+-            reply(p, DOSFALSE, 0); /* a poll */
++            REPLY_T(c, p, DOSFALSE, 0); /* a poll */
+         } else {
+-            ws_time now = now_time(c);
+-            struct DosPacket *old = (struct DosPacket *)ws_add(&c->waitchar, p, p->dp_Port->mp_SigTask,
+-                                                               now, (ULONG)p->dp_Arg1);
++#ifdef VTCON_PROF
++            struct EClockVal wt0;
++#endif
++            ws_time now;
++            struct DosPacket *old;
++#ifdef VTCON_PROF
++            PROF_T(wt0);
++#endif
++            now = now_time(c);
++            old = (struct DosPacket *)ws_add(&c->waitchar, p, p->dp_Port->mp_SigTask,
++                                             now, (ULONG)p->dp_Arg1);
+             if (old)
+                 reply(old, DOSFALSE, 0);   /* the set was full: the oldest goes */
+             rearm_timer(c, now);
++#ifdef VTCON_PROF
++            PROF_ADD(c, PS_WC_TIMER, wt0);
++#endif
+         }
+         return;
+     case ACTION_STACK:
+@@ -6593,6 +6713,10 @@ static LONG handler_main(void)
+     for (;;) {
+         ULONG wait = 1UL << c->port->mp_SigBit, waited;
+         struct Message *m;
++#ifdef VTCON_PROF
++        struct EClockVal lt0, tl0;
++        PROF_T(lt0);
++#endif
+         if (c->own_win)
+             wait |= 1UL << c->own_win->UserPort->mp_SigBit;
+         if (c->tab_port)
+@@ -6619,6 +6743,8 @@ static LONG handler_main(void)
+         {
+             struct EClockVal e0, e1;
+             ReadEClock(&e0);
++            c->prof_sub[PS_LOOPPRE] += e0.ev_lo - lt0.ev_lo;
++            c->prof_nsub[PS_LOOPPRE]++;
+             wait = Wait(wait);
+             ReadEClock(&e1);
+             c->prof_idle += e1.ev_lo - e0.ev_lo;
+@@ -6626,19 +6752,28 @@ static LONG handler_main(void)
+ #else
+         wait = Wait(wait);
+ #endif
+-        while ((m = GetMsg(c->port)))
+ #ifdef VTCON_PROF
+-        {
+-            struct DosPacket *pk = (struct DosPacket *)m->mn_Node.ln_Name;
+-            struct EClockVal p0, p1;
+-            int k = pk->dp_Type == ACTION_WRITE ? 0 : pk->dp_Type == ACTION_WAIT_CHAR ? 1 : 2;
+-            ReadEClock(&p0);
+-            packet(c, pk);
+-            ReadEClock(&p1);
+-            c->prof_pk[k] += p1.ev_lo - p0.ev_lo;
+-            c->prof_npk[k]++;
++        for (;;) {
++            struct EClockVal g0;
++            PROF_T(g0);
++            m = GetMsg(c->port);
++            PROF_ADD(c, PS_GETMSG, g0);
++            if (!m)
++                break;
++            {
++                struct DosPacket *pk = (struct DosPacket *)m->mn_Node.ln_Name;
++                struct EClockVal p0, p1;
++                int k = pk->dp_Type == ACTION_WRITE ? 0 : pk->dp_Type == ACTION_WAIT_CHAR ? 1 : 2;
++                ReadEClock(&p0);
++                packet(c, pk);
++                ReadEClock(&p1);
++                c->prof_pk[k] += p1.ev_lo - p0.ev_lo;
++                c->prof_npk[k]++;
++            }
+         }
++        PROF_T(tl0);
+ #else
++        while ((m = GetMsg(c->port)))
+             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
+ #endif
+         if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
+@@ -6647,11 +6782,31 @@ static LONG handler_main(void)
+              * the mask above). A flood of small writes paid for a dozen
+              * empty checks each (conbench bytewise: 0.53 ms a write
+              * against CCON's 0.37; S1) */
++#ifdef VTCON_PROF
++            {
++                struct EClockVal sv0;
++                PROF_T(sv0);
++                service_reads(c);
++                PROF_ADD(c, PS_TAIL_SVC, sv0);
++            }
++            if (c->opens > 0 || !c->ever_opened) {
++                PROF_ADD(c, PS_TAIL, tl0);
++                continue;
++            }
++#else
+             service_reads(c);
+             if (c->opens > 0 || !c->ever_opened)
+                 continue;
++#endif
+         } else {
++#ifdef VTCON_PROF
++        struct EClockVal tk0;
++        PROF_T(tk0);
++#endif
+         waited = vtwin_tick(&c->w); /* the frame clock: draw what is due, blink */
++#ifdef VTCON_PROF
++        PROF_ADD(c, PS_TAIL_TICK, tk0);
++#endif
+         if (waited && c->tm)
+             theme_menu_wait(c, waited); /* /theme's list: has the bar rested? */
+         if (waited && c->le.cmd_rest_us > 0)
+@@ -6675,15 +6830,31 @@ static LONG handler_main(void)
+              * for the next */
+             struct DosPacket *d;
+             ws_time now;
++#ifdef VTCON_PROF
++            struct EClockVal tm0;
++            PROF_T(tm0);
++#endif
+             WaitIO((struct IORequest *)c->timer);
+             c->timer_busy = 0;
+             now = now_time(c);
+             while ((d = (struct DosPacket *)ws_expired(&c->waitchar, now)) != 0)
+                 reply(d, DOSFALSE, 0);
+             rearm_timer(c, now);
++#ifdef VTCON_PROF
++            PROF_ADD(c, PS_TAIL_TMR, tm0);
++#endif
+         }
++#ifdef VTCON_PROF
++        PROF_T(tk0);
++#endif
+         service_reads(c);
++#ifdef VTCON_PROF
++        PROF_ADD(c, PS_TAIL_SVC, tk0);
++#endif
+         }
++#ifdef VTCON_PROF
++        PROF_ADD(c, PS_TAIL, tl0);
++#endif
+         /* Done when every handle is closed -- but only after the first Open:
+          * before it, opens is 0 too (a wake-up between the startup packet and
+          * that Open used to end the handler, leaving dn_Task at a dead port). */

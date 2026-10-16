@@ -14,7 +14,7 @@ VTC:tmux from tmux-amiga in the workspace (make -f Makefile.amiga).
 
   tmux_rig.py            run it
   tmux_rig.py --keep     leave tmux running"""
-import os, pathlib, shutil, struct, sys, time
+import os, pathlib, shutil, struct, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ami, cube_rig, ixpty_rig, paths, ptytest_rig, screen_rig, vshwin
@@ -44,7 +44,23 @@ def lines(cmd):
     return [l for l in run('VTC:vsh -c "%s"' % cmd, 30)[1].splitlines() if l.strip()]
 
 
+def check_tmux_current(tmux=TMUX):
+    """Run tmux-amiga's tests/test_stack_cookie.py (a plain script that reads
+    <repo>/build/tmux-bin and exits 1 without its $STACK cookie) before the
+    binary goes to the rig. A stale build without the cookie ran vsh's 16000-byte
+    stack and failed FP0.2 (2026-10-15). Exits nonzero with a rebuild message."""
+    tmux = pathlib.Path(tmux)
+    test = tmux.parent.parent / "tests/test_stack_cookie.py"
+    if not tmux.is_file() or not test.is_file():
+        sys.exit("tmux_rig: [ERROR] %s or %s is missing: rebuild tmux-amiga: make -f Makefile.amiga" % (tmux, test))
+    r = subprocess.run([sys.executable, str(test)], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        sys.exit("tmux_rig: [ERROR] STALE tmux build %s fails %s:\n%s\n"
+                 "rebuild tmux-amiga: make -f Makefile.amiga" % (tmux, test.name, (r.stdout + r.stderr).strip()))
+
+
 def main():
+    check_tmux_current()
     shutil.copyfile(TMUX, VTC / "tmux")
     shutil.copyfile(ROOT / "tests/amiga/colors.sh", VTC / "colors.sh")
     for name in ("pty-handler", "forkprobe"):

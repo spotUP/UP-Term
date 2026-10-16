@@ -59,6 +59,10 @@ branches current. Rig 1 is the owner's machine: never used.
   tmux overflowed vsh's 16000-byte stack into malloc headers. Rebuilt with owner's OK (`make -f Makefile.amiga
   check`, stack_cookie 0 failed). Re-run: tmux (72,19) truth (72,20) PASS, nvim (72,20) PASS. Guard open: tmux_rig copies a stale tmux-bin
   silently; it should run tmux-amiga tests/test_stack_cookie.py (or refuse a binary older than its sources).
+  2026-10-16 session 6: guard DONE. tmux_rig.check_tmux_current runs test_stack_cookie.py before the copy and
+  exits with a rebuild message; tools/test_rig_tmux_guard.py (3 cases, 2 fail with the guard removed). Real
+  tmux-bin passes. PROF rest sub-counter diff dropped (ReadEClock 41 us noise); kept as
+  thoughts/shared/patches/2026-10-16_prof-rest-subcounters.patch.
 - [ ] FP0.3 W6: read the S1 race number for main (`tools/rig` race script; CCON 1.2.8b9 was 30.68 s at 5f2dc765),
   run it on rig 2 once, record main's number in the vtcon plan row.
 - [x] FP0.4 P12 close step: "cut_cases oracle reproducible" (rides with U3 part 2): run the oracle twice, compare.
