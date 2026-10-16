@@ -586,6 +586,12 @@ $(BUILD)/amiga/ixfionread: tests/amiga/ixfionread.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixfionread.c
 
+# FPU Inf and NaN under the emulator: fmove.x Inf bytes, fcmp Inf,Inf sets Z, NaN is unordered
+$(BUILD)/amiga/fpuinf: tests/amiga/fpuinf.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -m68020 -m68881 -O2 -Wall -c -o $(BUILD)/amiga/fpuinf.o tests/amiga/fpuinf.c
+	$(AGCC) -mcrt=ixemul -o $@ $(BUILD)/amiga/fpuinf.o
+
 # a pipe into a vfork + exec child, ixemul and native (screen's printcmd)
 $(BUILD)/amiga/ixpipeprobe: tests/amiga/ixpipeprobe.c
 	@mkdir -p $(BUILD)/amiga
