@@ -106,7 +106,11 @@ OS32_ROM = pathlib.Path(os.environ.get("UPTERM_OS32_ROM") or
 # UPTERM_FSUAE  the emulator the rig boots: an FS-UAE.app bundle (opened with
 # `open -a`) or a bare fs-uae binary (run directly), e.g. a local build that
 # fixes the arm64 FPU Inf bugs (fmove.x Inf, fcmp Inf,Inf)
-FSUAE = pathlib.Path(os.environ.get("UPTERM_FSUAE") or "/Applications/FS-UAE.app")
+# Default: that local build when present (CODE_ROOT/Emulators/fs-uae, branch
+# fix/arm64-fpu-inf; tools/rig/fpu_inf_rig.py proves it), else the stock app.
+_FSUAE_LOCAL = CODE_ROOT / "Emulators/fs-uae/fs-uae"
+FSUAE = pathlib.Path(os.environ.get("UPTERM_FSUAE") or
+    (_FSUAE_LOCAL if _FSUAE_LOCAL.exists() else "/Applications/FS-UAE.app"))
 
 
 # UPTERM_MUTOOLS    the NDK 3.2R4 MuTools drawer (MuForce, disassembler.library), for `rig.py muforce`
