@@ -93,7 +93,7 @@ Owner visual sign-off list (output of the phase): G2, G3, D1, P7, R1 screenshots
 Order (cheapest evidence first):
 - [x] FP3.1 Q2: Neovim `tui_spec` replay (host test under `tests/`, `git log --grep tui_spec` is empty). (done: 50887859, make test ONLY=xterm neovim_tui_streams_land_where_libvterm_puts_them, make test-ref ONLY=nvim 6 streams 0 failed, 2026-10-15; Q2 rig session part stays open)
 - [ ] FP3.2 RT1/W8: phase profile of retro32-term against ibmcon (the plan's own measurement; rig, one table). PARTIAL 2026-10-16 (46cb7c3a, research/2026-10-16_rt1-phase-profile.md): whole-run only, DCTelnet --test-speed 3.7 MB on rig 3 060: Built-in mean 9.05 s vs ibmcon 8.15 s (1.11x slower). Phase split needs timers inside DCTelnet (~/Code/DCTelnet, outside repo: owner call). Unverified: Built-in ran planar path or Text() path.
-- [ ] FP3.3 W7: A500 (68000) rig config and the speed measurement the plan lists (emulator config, not a board).
+- [x] FP3.3 (done 2026-10-16: `rig.py start --a500` boots, 68000 confirmed; engbench ONLY 0-6: plain text 33-45 KB/s, newlines 2.4 KB/s, 6.4-8.1x slower than the A1200; thoughts/shared/research/2026-10-16_w7-68000-engbench.md) W7: A500 (68000) rig config and the speed measurement the plan lists (emulator config, not a board).
 - [ ] FP3.4 S1: the asm hot-path part (S2 perf is merged at 0912d65); measure before and after on rig 2.
 - [x] FP3.5 (done 2026-10-15: (a) 84b339f8, (c) 87aac22e test_slash 292 + test_terminfo_amiga 4, (b) c13c27d7 test_prefs 6808, (d) 604ef8be tools/rig/slashenv_rig.py 4 of 4 PASS rig 2) W46: remaining commands of "setup as / commands" (468f1b03 lists what stays open).
 - [ ] FP3.6 W27: CCON techniques rows 5, 7, 10, 12 (research doc exists).
