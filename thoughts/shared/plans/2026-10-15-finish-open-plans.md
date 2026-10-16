@@ -49,6 +49,11 @@ branches current. Rig 1 is the owner's machine: never used.
   (worktree of another session). Ledger line 1137.
 - [ ] FP0.2 W47: re-run `tools/rig/resize_rig.py` on rig 2 and quote the PASS line
   (tmux 47x10 to 72x19, nvim 47x11 to 72x20). The PASS exists only in commit 54de76b3's message today.
+  2026-10-16 session 5: FAILS (3 runs). tmux: ixemul "free: start of block corrupt!" then `ERR: vsh is still running
+  after 30 s` (same as build/rig2/fp0.2-notes.txt, amiga-pi progress 1460-1463; last PASS 2026-10-12). nvim: sizes
+  right (47x11 -> 72x20) but `truth None` (ixwinch printed nothing in 4 s). Split test running: current vtcon with
+  an ixemul-vtcon build from before 2026-10-12 vs the current ixemul (43 vtcon handler/tty/shell commits and many
+  ixemul libc merges since). Logs: session-5 scratchpad fp02b_*, fp02c/.
 - [ ] FP0.3 W6: read the S1 race number for main (`tools/rig` race script; CCON 1.2.8b9 was 30.68 s at 5f2dc765),
   run it on rig 2 once, record main's number in the vtcon plan row.
 - [x] FP0.4 P12 close step: "cut_cases oracle reproducible" (rides with U3 part 2): run the oracle twice, compare.
@@ -95,9 +100,32 @@ Order (cheapest evidence first):
 - [ ] FP3.2 RT1/W8: phase profile of retro32-term against ibmcon (the plan's own measurement; rig, one table). PARTIAL 2026-10-16 (46cb7c3a, research/2026-10-16_rt1-phase-profile.md): whole-run only, DCTelnet --test-speed 3.7 MB on rig 3 060: Built-in mean 9.05 s vs ibmcon 8.15 s (1.11x slower). Phase split needs timers inside DCTelnet (~/Code/DCTelnet, outside repo: owner call). Unverified: Built-in ran planar path or Text() path.
 - [x] FP3.3 (done 2026-10-16: `rig.py start --a500` boots, 68000 confirmed; engbench ONLY 0-6: plain text 33-45 KB/s, newlines 2.4 KB/s, 6.4-8.1x slower than the A1200; thoughts/shared/research/2026-10-16_w7-68000-engbench.md) W7: A500 (68000) rig config and the speed measurement the plan lists (emulator config, not a board).
 - [ ] FP3.4 S1: the asm hot-path part (S2 perf is merged at 0912d65); measure before and after on rig 2.
+  2026-10-16 session 5: S1's asm part = ASM1 (vtcon plan line 697/1618): renderer and handler hot C paths in asm,
+  chosen by tools/prof68k.py instruction counts. Engine part merged 99241c9; painter_68k.s exists (8a48cd1b).
+  Step 1: phase split per conbench shape. 060 --max run done (research/2026-10-16_fp34-phase-split.md): handler
+  cost tiny except sync-line (rest 91% of non-wait, ~2.56 s); a ~0.2 s "rest" floor on every shape. 060 JIT under
+  Mac load 44-116 is not the target: re-run on --exact 020 together with FP3.7 (research/2026-10-16_fp37-exact-direct.md).
+  Step 2 --exact 020 DONE (research/2026-10-16_fp37-exact-direct.md): biggest non-wait cost = "rest" (packet/loop
+  path): sync-line 2.3 s, sgr-colour 1.3 s, bytewise 1.2 s (2400 one-byte writes = ~0.5 ms a packet), scroll-nl
+  0.65 s. Then draw on colour shapes (sgr-colour 2.2 s, sgr-perchar 1.4 s), then feed (sgr-colour 1.12 s,
+  plain-lines 0.64 s). So ASM1 target #1 = the per-packet path, not the painter. Next: split "rest" into its
+  parts (packet receive, reply, loop, signal wait) with PROF counters before choosing what goes to asm.
 - [x] FP3.5 (done 2026-10-15: (a) 84b339f8, (c) 87aac22e test_slash 292 + test_terminfo_amiga 4, (b) c13c27d7 test_prefs 6808, (d) 604ef8be tools/rig/slashenv_rig.py 4 of 4 PASS rig 2) W46: remaining commands of "setup as / commands" (468f1b03 lists what stays open).
 - [ ] FP3.6 W27: CCON techniques rows 5, 7, 10, 12 (research doc exists).
-- [ ] FP3.7 P3: planar fast path cycle-exact comparison (`7ecdb88`); emulator cycle counter as oracle.
+  2026-10-16 session 5: row 5 DONE in code (b1a181a9: write mask = planes the pass drew, `r->mask`; painter.c
+  vp_span/vp_span_fast skip planes outside it). Row 10 DONE (b1a181a9, handler/vtcon_handler.c:6645 skips the
+  port walk when only a DOS packet woke the loop). Open: row 7 (one-plane pen-1-on-0 path: vp_asm_plane still
+  runs its pattern XOR) and row 12 (ACTION_WRITE replied via dos ReplyPkt, vtcon_handler.c:451). Both are hot
+  paths of FP3.4/ASM1: decide from one prof68k profile of renderer + handler, not separately.
+- [x] FP3.7 (done 2026-10-16: DIRECT stays opt-in, no gain on --exact 020; research/2026-10-16_fp37-exact-direct.md) P3: planar fast path cycle-exact comparison (`7ecdb88`); emulator cycle counter as oracle.
+  2026-10-16 session 5: question = handler DIRECT=0 (RastPort) vs DIRECT=1 (planar, now with painter_68k.s
+  8a48cd1b) on `rig.py start --exact` (020 cycle-exact; emulated time counts cycles, so Mac load does not
+  matter). R1 (vtcon plan line 93) measured planar SLOWER (6.6 vs 3.4 s drawing) before the asm painter, which is
+  why DIRECT is opt-in. The result decides whether DIRECT becomes the default.
+  Result 2026-10-16: draw ms rastport vs direct within 5% on all 8 shapes (sync-line 1824/1749, sgr-colour
+  2322/2223, plain-lines 837/826); single run each. The default build already draws every run through
+  painter_68k.s ("0 Text runs"), so DIRECT=1 only swaps ScrollRaster for BltBitMap: scroll part drops,
+  rows part rises the same. No reason to flip the default.
 - [ ] FP3.8 R1/W34: UP-Term in ROM: fix `InternalLoadSeg failed (ABI)` (b3e8aea9); boot proof in fs-uae with the
   ROM image; branch `feature/r1-rom` belongs to another session: coordinate first (list under Blocked on me).
 - [ ] FP3.9 W10: CC1 blitter overlap and CC2 sprite cursor proof with `tools/rig/cc_rig.py` (exists only on branch `feature/cc1-cc2`, not on main; emulator); branch
