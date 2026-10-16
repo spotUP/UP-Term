@@ -92,10 +92,10 @@ Owner visual sign-off list (output of the phase): G2, G3, D1, P7, R1 screenshots
 
 Order (cheapest evidence first):
 - [x] FP3.1 Q2: Neovim `tui_spec` replay (host test under `tests/`, `git log --grep tui_spec` is empty). (done: 50887859, make test ONLY=xterm neovim_tui_streams_land_where_libvterm_puts_them, make test-ref ONLY=nvim 6 streams 0 failed, 2026-10-15; Q2 rig session part stays open)
-- [ ] FP3.2 RT1/W8: phase profile of retro32-term against ibmcon (the plan's own measurement; rig, one table).
+- [ ] FP3.2 RT1/W8: phase profile of retro32-term against ibmcon (the plan's own measurement; rig, one table). PARTIAL 2026-10-16 (46cb7c3a, research/2026-10-16_rt1-phase-profile.md): whole-run only, DCTelnet --test-speed 3.7 MB on rig 3 060: Built-in mean 9.05 s vs ibmcon 8.15 s (1.11x slower). Phase split needs timers inside DCTelnet (~/Code/DCTelnet, outside repo: owner call). Unverified: Built-in ran planar path or Text() path.
 - [ ] FP3.3 W7: A500 (68000) rig config and the speed measurement the plan lists (emulator config, not a board).
 - [ ] FP3.4 S1: the asm hot-path part (S2 perf is merged at 0912d65); measure before and after on rig 2.
-- [ ] FP3.5 W46: remaining commands of "setup as / commands" (468f1b03 lists what stays open).
+- [x] FP3.5 (done 2026-10-15: (a) 84b339f8, (c) 87aac22e test_slash 292 + test_terminfo_amiga 4, (b) c13c27d7 test_prefs 6808, (d) 604ef8be tools/rig/slashenv_rig.py 4 of 4 PASS rig 2) W46: remaining commands of "setup as / commands" (468f1b03 lists what stays open).
 - [ ] FP3.6 W27: CCON techniques rows 5, 7, 10, 12 (research doc exists).
 - [ ] FP3.7 P3: planar fast path cycle-exact comparison (`7ecdb88`); emulator cycle counter as oracle.
 - [ ] FP3.8 R1/W34: UP-Term in ROM: fix `InternalLoadSeg failed (ABI)` (b3e8aea9); boot proof in fs-uae with the
@@ -109,7 +109,7 @@ Per tool the acceptance is the plan's own row plus: package in `../upterm-ports/
 it, `install_rig.py --only <case>` installs and runs it. Batches by size (decision: smallest first):
 - [ ] FP4.1 batch A: 4.6 bc, 4.10 ed, 4.9 column/iconv, 4.11 ctags, 4.7 jq.
 - [ ] FP4.2 batch B: 4.5 joe, 4.2 mg, 5.1 nc, 5.9 tldr, 5.3 wget as a vshrc function (curl is in `dist/net`).
-- [ ] FP4.3 batch C: 4.8 gawk, 5.5 make, 4.4 Lua (pi has its own: reuse before building a second one).
+- [x] FP4.3 (done 2026-10-15, upterm-ports fix/finish-fp4c 2c5b497 make 12/12, e81d105 gawk 21/21, 034aee6 lua 10/10, userland_rig --only on rig 3) batch C: 4.8 gawk, 5.5 make, 4.4 Lua (pi has its own: reuse before building a second one).
 - [ ] FP4.4 batch D: 4.1 vim, 5.7 rsync, 5.6 git, 5.8 perl.
 - [ ] FP4.5 5.4 BebboSSH patches: K6 (BebboSSH 1.46.1, VT 4ae821c) is related; decide from the plan row whether 5.4 is
   already covered, tick with that evidence or do the remaining patches.
@@ -123,7 +123,8 @@ each gets Phase 1-2 documents first (`thoughts/shared/research/` and `plans/`), 
 plan before any code. This is the one place this plan stops for the owner.
 - [ ] FP5.1 W16 MicroPython port. [ ] FP5.2 W19 TUI prefs app (prefs/ has GUI files only). [ ] FP5.3 W38 tiny LLM (marked LAST).
 - [ ] FP5.4 W40 CPython asm (marked future). [ ] FP5.5 W55 native multiplexer. [ ] FP5.6 W56 browser thin client (marked LATER).
-- [ ] FP5.7 W39 gcc 16 hang hunt (ixstackext 35bee4a2 is the state).
+- [x] FP5.7 (done 2026-10-15: hang already fixed in ixemul-vtcon 45f8bd3 + e8bcc9d, re-tested, note thoughts/shared/research/2026-10-15_w39-gcc16-hang.md; open W39 rest = CPython/neovim rebuild, owner queue) W39 gcc 16 hang hunt (ixstackext 35bee4a2 is the state).
+- [ ] FP5.8 (added 2026-10-16, owner request) Real debugger for C:Claude / amiga-pi on the Amiga: registers, memory, breakpoints, step, so the agent can build, run and debug an executable (today it has files + shell only, no register/memory/breakpoint tool). Phase 1 first: research existing Amiga debuggers/monitors and remote-debug stubs we could reuse or wrap (gdb remote stub for AmigaOS, bebbo toolchain gdb, FS-UAE/WinUAE debugger + GDB server, wasabi's own probes, classic monitors) before any design. Also survey the owner's demo system project (/Users/spot/Code/UpRough/Up_Rough_Demo_System, confirmed by owner 2026-10-16; check urds-prof and urds-tmcrash beside it too): it has much debugging tooling built for an emulated environment; owner does not know what or if any of it is reusable on a real Amiga, so the research must sort each piece into reusable / emulator-only / adaptable with evidence; document in thoughts/shared/research/, owner approves the plan before code.
 
 ## Order, size, cost checkpoint
 
