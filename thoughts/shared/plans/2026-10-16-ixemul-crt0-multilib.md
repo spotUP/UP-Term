@@ -1,7 +1,7 @@
 ---
 date: 2026-10-16
 topic: ixemul link with -m68020 picks newlib's crt0.o
-status: fixed in the gcc driver spec (see Fix)
+status: fixed in the gcc driver spec (see Fix), submitted 2026-10-16 as https://codeberg.org/bebbo/gcc/pulls/14
 ---
 
 # ixemul + -m68020 links newlib's crt0.o

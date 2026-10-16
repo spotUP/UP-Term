@@ -1,7 +1,7 @@
 ---
 date: 2026-10-16
 topic: PR draft for bebbo/gcc (amiga6) - REG_INC marker lost in instantiate_virtual_regs
-status: draft, not submitted (owner submits)
+status: submitted 2026-10-16 as https://codeberg.org/bebbo/gcc/pulls/13
 branch: fix/sret-autoinc-cse in /Users/spot/Code/UP-Term/amiga-gcc/projects/gcc, commit 82f7243a5 on amiga6 8c1fd39db
 ---
 
