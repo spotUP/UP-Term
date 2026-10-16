@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dos/dos.h>
+#include <exec/execbase.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "../../engine/vtengine.h"
@@ -466,8 +467,14 @@ int main(int argc, char **argv)
         Printf((STRPTR)"asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
         if (w)
             return 20;
-        w = render_check();
-        Printf((STRPTR)"render asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
+        /* the renderer's assembler is 68020 code (BFINS): on a 68000 it
+         * traps, so the check says skipped there */
+        if (!(SysBase->AttnFlags & AFF_68020)) {
+            Printf((STRPTR)"render asm: skipped (68000)\n");
+        } else {
+            w = render_check();
+            Printf((STRPTR)"render asm: %s (%ld)\n", (LONG)(w ? "WRONG" : "ok"), (LONG)w);
+        }
     }
     for (pers = 0; pers < 2; pers++) {
         if (onlypers >= 0 && pers != onlypers)

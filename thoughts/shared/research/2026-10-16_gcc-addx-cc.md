@@ -1,7 +1,7 @@
 ---
 date: 2026-10-16
 topic: gcc m68k drops the tst of a DImode high word after add.l/addx.l (__builtin_mul_overflow)
-status: fixed and installed; PR not opened
+status: fixed and installed; submitted 2026-10-16 as https://codeberg.org/bebbo/gcc/pulls/15
 branch: fix/m68k-addx-cc in /Users/spot/Code/UP-Term/amiga-gcc/projects/gcc, commit d4d9db8f6 on amiga6 8c1fd39db
 installed: dc36f9750 on fix/ixemul-startfile-sret in /Users/spot/Code/UP-Term/cpython-amiga/build/gcc/src
 ---
@@ -86,3 +86,13 @@ drops the tst.
 ## Test
 
 gcc.c-torture/execute/mul-overflow-addx-1.c aborts without the fix and passes with it.
+
+# Affected binaries (scan 2026-10-16, old cc1 builds)
+
+Scanner: objdump -d, flag any `addx` whose next instruction is a Z branch (beq/bne/jeq/jne).
+This finds only the add.l/addx.l shape; other `tst` deletions from the same REG_BIT_MASK
+fault (sub-word sets) are not covered. 104 of 3666 files hit; vtcon's own handler and tools
+are not in the list. upterm-ports kit/userland/bin (33): bsdcat bsdunzip chgrp chmod chown chroot cp cpio diff dir du env find grep iconv install ln ls lua luac mv numfmt patch readlink realpath rm shred shuf sort stat tar vdir xargs 
+The rig2 userland copy and upterm-ports build/obj (coreutils lib hash.o, mbsstr.o) hit the same.
+Rebuild these with the new cc1, then drop the tools/m68k-cc link-flag workaround in upterm-ports
+and re-run cp/du/ls on a rig.

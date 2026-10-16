@@ -113,6 +113,10 @@ it, `install_rig.py --only <case>` installs and runs it. Batches by size (decisi
 - [ ] FP4.4 batch D: 4.1 vim, 5.7 rsync, 5.6 git, 5.8 perl.
 - [ ] FP4.5 5.4 BebboSSH patches: K6 (BebboSSH 1.46.1, VT 4ae821c) is related; decide from the plan row whether 5.4 is
   already covered, tick with that evidence or do the remaining patches.
+- [ ] FP4.7 gcc addx fix: cc1 fixed and installed (e5657808 test, gcc d4d9db8f6), PR
+  https://codeberg.org/bebbo/gcc/pulls/15. Open: rebuild the 33 upterm-ports userland binaries
+  listed in research/2026-10-16_gcc-addx-cc.md, drop upterm-ports tools/m68k-cc workaround,
+  re-run cp/du/ls on a rig. upterm-ports is another repo: owner says go.
 - [ ] FP4.6 3.7 coreutils 9.12: only after FP0.6 (owner says who commits `recipe.mk`).
 
 ## Phase 5: large projects (each starts with its own research + plan, per the workflow; code only after approval)
