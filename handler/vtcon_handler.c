@@ -312,7 +312,7 @@ typedef struct con {
     ULONG prof_out, prof_writes, prof_bytes;
 #endif
 #ifdef VTCON_PROF
-    /* the phase profile (PROF=1 SERIAL=1; ledger S1): EClock ticks spent
+    /* the phase profile (PROF=1; ledger S1): EClock ticks spent
      * waiting for work and in all, since the last stream closed; the
      * output and render phases are prof_out and the vtwin's prof_render.
      * Printed to the serial port when a stream closes, then reset. */
@@ -334,6 +334,32 @@ typedef char complete_req_size_bound[sizeof(struct complete_req) <= 1024 ? 1 : -
  * this one loaded segment, so static state would be shared between them
  * (a second window zeroed the first one's state, 2026-09-29). Each process
  * allocates its con in handler_main. */
+
+#if defined(VTCON_SERIAL) || defined(VTCON_PROF)
+/* The serial port writer of the trace (SERIAL=1) and of the phase profile
+ * (PROF=1), each on its own, through exec's RawPutChar
+ * (LVO -516): no DOS call, so it cannot race the packets as the RAM: log's
+ * Write can; safe anywhere. The rig writes the port to build/rig/serial.log. */
+static void ser_putc(__reg("d0") char ch) =
+    "\tmove.l\ta6,-(sp)\n\tmove.l\t4.w,a6\n\tjsr\t-516(a6)\n\tmove.l\t(sp)+,a6";
+static void ser_dbg(const char *what, LONG a, LONG b)
+{
+    int i, k;
+    LONG v[2];
+    v[0] = a;
+    v[1] = b;
+    ser_putc('v');
+    ser_putc(' ');
+    for (i = 0; what[i] && i < 40; i++)
+        ser_putc(what[i]);
+    for (i = 0; i < 2; i++) {
+        ser_putc(' ');
+        for (k = 28; k >= 0; k -= 4)
+            ser_putc("0123456789abcdef"[((ULONG)v[i] >> k) & 15]);
+    }
+    ser_putc('\n');
+}
+#endif
 
 #ifdef VTCON_DEBUG
 /* Debug trace (build with DEBUG=1) to RAM:vtcon.log. Lines collect in
@@ -396,33 +422,19 @@ static void dbg_flush(void)
 #define DBG(w, a, b) dbg(w, (LONG)(a), (LONG)(b))
 #define DBG_FLUSH() dbg_flush()
 #elif defined(VTCON_SERIAL)
-/* Trace (build with SERIAL=1) to the serial port through exec's RawPutChar
- * (LVO -516): no DOS call, so it cannot race the packets as the RAM: log's
- * Write can; safe anywhere. The rig writes the port to build/rig/serial.log. */
-static void ser_putc(__reg("d0") char ch) =
-    "\tmove.l\ta6,-(sp)\n\tmove.l\t4.w,a6\n\tjsr\t-516(a6)\n\tmove.l\t(sp)+,a6";
-static void ser_dbg(const char *what, LONG a, LONG b)
-{
-    int i, k;
-    LONG v[2];
-    v[0] = a;
-    v[1] = b;
-    ser_putc('v');
-    ser_putc(' ');
-    for (i = 0; what[i] && i < 40; i++)
-        ser_putc(what[i]);
-    for (i = 0; i < 2; i++) {
-        ser_putc(' ');
-        for (k = 28; k >= 0; k -= 4)
-            ser_putc("0123456789abcdef"[((ULONG)v[i] >> k) & 15]);
-    }
-    ser_putc('\n');
-}
 #define DBG(w, a, b) ser_dbg(w, (LONG)(a), (LONG)(b))
 #define DBG_FLUSH()
 #else
 #define DBG(w, a, b)
 #define DBG_FLUSH()
+#endif
+
+#ifdef VTCON_PROF
+/* The phase profile's lines: always to the serial port and never through DBG,
+ * so a PROF=1 build measures without the per-packet trace (SERIAL=1 adds
+ * that trace, about 5.4 ms a line on the 020, and it inflated the rest
+ * phase; FP3.4, 2026-10-16). */
+#define PROF_LOG(w, a, b) ser_dbg(w, (LONG)(a), (LONG)(b))
 #endif
 
 #if defined(VTCON_DEBUG) || defined(VTCON_SERIAL)
@@ -6065,29 +6077,29 @@ static void packet(con *c, struct DosPacket *p)
              * packets and the loop */
             struct EClockVal e;
             ULONG freq = ReadEClock(&e);
-            DBG("PROF eclock/total", freq, e.ev_lo - c->prof_t0);
-            DBG("PROF idle/out", c->prof_idle, c->prof_out);
-            DBG("PROF render/frames", c->w.prof_render, c->w.prof_frames);
-            DBG("PROF rows/scroll", c->w.prof_part[0], c->w.prof_part[1]);
+            PROF_LOG("PROF eclock/total", freq, e.ev_lo - c->prof_t0);
+            PROF_LOG("PROF idle/out", c->prof_idle, c->prof_out);
+            PROF_LOG("PROF render/frames", c->w.prof_render, c->w.prof_frames);
+            PROF_LOG("PROF rows/scroll", c->w.prof_part[0], c->w.prof_part[1]);
             {
                 extern ULONG vr_prof[9];
-                DBG("PROF cursor/paint", c->w.prof_part[2], vr_prof[0]);
-                DBG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
-                DBG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
+                PROF_LOG("PROF cursor/paint", c->w.prof_part[2], vr_prof[0]);
+                PROF_LOG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
+                PROF_LOG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
                 c->w.prof_part[3] = 0;
-                DBG("PROF fill/fills", vr_prof[3], vr_prof[4]);
-                DBG("PROF blit/blits", vr_prof[5], vr_prof[6]);
-                DBG("PROF beam/waits", vr_prof[7], vr_prof[8]);
+                PROF_LOG("PROF fill/fills", vr_prof[3], vr_prof[4]);
+                PROF_LOG("PROF blit/blits", vr_prof[5], vr_prof[6]);
+                PROF_LOG("PROF beam/waits", vr_prof[7], vr_prof[8]);
                 vr_prof[0] = vr_prof[1] = vr_prof[2] = vr_prof[3] = vr_prof[4] = vr_prof[5] = vr_prof[6] = 0;
                 vr_prof[7] = vr_prof[8] = 0;
                 c->w.r.n_text = 0;
             }
-            DBG("PROF pkwrite/n", c->prof_pk[0], c->prof_npk[0]);
-            DBG("PROF pkwait/n", c->prof_pk[1], c->prof_npk[1]);
-            DBG("PROF pkother/n", c->prof_pk[2], c->prof_npk[2]);
+            PROF_LOG("PROF pkwrite/n", c->prof_pk[0], c->prof_npk[0]);
+            PROF_LOG("PROF pkwait/n", c->prof_pk[1], c->prof_npk[1]);
+            PROF_LOG("PROF pkother/n", c->prof_pk[2], c->prof_npk[2]);
             c->prof_pk[0] = c->prof_pk[1] = c->prof_pk[2] = 0;
             c->prof_npk[0] = c->prof_npk[1] = c->prof_npk[2] = 0;
-            DBG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
+            PROF_LOG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
             c->w.prof_part[0] = c->w.prof_part[1] = c->w.prof_part[2] = 0;
             c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;
             c->w.prof_render = c->w.prof_frames = 0;

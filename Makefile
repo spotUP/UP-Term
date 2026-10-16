@@ -895,10 +895,10 @@ $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/vtengine.h engine/vtwidth.h
 # The handler: no C startup (handler_entry is the first code), exec memory.
 # Gotcha: with -O2, vbcc can loop forever on a source that has a compile
 # error instead of reporting it; build with -O0 to see the error.
-# Rebuild when the flags change (DEBUG=1, DIRECT=1 on or off): the last
+# Rebuild when the flags change (DEBUG=1, PROF=1, DIRECT=1 on or off): the last
 # flags are read while make parses, and a difference forces the link (a
 # stamp file's mtime could equal the binary's to the second and be ignored).
-HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) CPU=$(CPU) DIRECT=$(DIRECT)
+HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) PROF=$(PROF) CPU=$(CPU) DIRECT=$(DIRECT)
 HANDLER_FLAGS_OLD := $(shell cat $(BUILD)/amiga/handler.flags 2>/dev/null)
 ifneq ($(HANDLER_FLAGS),$(HANDLER_FLAGS_OLD))
 HANDLER_FORCE := FORCE

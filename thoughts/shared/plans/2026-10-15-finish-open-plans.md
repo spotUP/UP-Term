@@ -127,6 +127,10 @@ Order (cheapest evidence first):
   noise; measure with one timer pair around 100 packets or the emulator cycle counter. (3) Real rest ~1.3 ms a
   WRITE (bytewise/sgr-colour/scroll-nl); only concrete candidate: service_reads runs after the reply (:6233) AND
   again in the loop tail for the same packet. Next: fix instrument, re-measure, then pick ASM1 / FP3.6 row 12.
+  2026-10-16 session 6: instrument FIXED. PROF lines print via PROF_LOG (serial writer of their own), not DBG:
+  build with `PROF=1` alone, no SERIAL=1, no trace. PROF now in HANDLER_FLAGS (toggling it relinks).
+  Test tools/test_handler_prof.py (fails before). Sub-counter diff dropped. NEXT: re-measure rest on rig 2
+  with a PROF=1 build (phase_rig.py), then decide ASM1 target and FP3.6 rows 7, 12.
 - [x] FP3.5 (done 2026-10-15: (a) 84b339f8, (c) 87aac22e test_slash 292 + test_terminfo_amiga 4, (b) c13c27d7 test_prefs 6808, (d) 604ef8be tools/rig/slashenv_rig.py 4 of 4 PASS rig 2) W46: remaining commands of "setup as / commands" (468f1b03 lists what stays open).
 - [ ] FP3.6 W27: CCON techniques rows 5, 7, 10, 12 (research doc exists).
   2026-10-16 session 5: row 5 DONE in code (b1a181a9: write mask = planes the pass drew, `r->mask`; painter.c

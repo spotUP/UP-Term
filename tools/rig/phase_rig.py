@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """phase_rig.py -- where UP-Term's time goes, per conbench shape (ledger S1).
 
-Needs a handler built with `make build/amiga/vtcon-handler PROF=1 SERIAL=1`
+Needs a handler built with `make build/amiga/vtcon-handler PROF=1` (SERIAL=1 would add the per-packet trace to the timings)
 installed in build/rig/vtc, and the stock rig (rig.py start --stock --os32).
 Boots fresh, opens the conbench window (XCON:0/0/640/180, Amiga dialect),
 runs VTC:phaseprobe in it and prints, per shape, the handler's phases from

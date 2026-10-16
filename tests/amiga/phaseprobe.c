@@ -1,6 +1,6 @@
 /* phaseprobe: conbench's shapes one at a time, each in a stream of its own
  * (ledger S1). Run in an UP-Term window whose handler was built with
- * PROF=1 SERIAL=1: closing each stream makes the handler print where the
+ * PROF=1: closing each stream makes the handler print where the
  * time went -- waiting, vt_feed, drawing, the rest (packets, the loop) --
  * to the serial port (the rig: build/rig/serial.log), headed by the
  * shape's name written just before. Ticks of 1/50 s to stdout.
