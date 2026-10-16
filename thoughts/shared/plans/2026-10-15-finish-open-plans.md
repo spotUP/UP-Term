@@ -47,7 +47,7 @@ branches current. Rig 1 is the owner's machine: never used.
 - [x] FP0.1 X1: find the stray `PI_DEBUG_LOG`/`debug_log` hunk in `~/Code/UP-Term/amiga-pi` worktree `build/wt-u2`
   (`git -C ... status`, `git diff`); if it is not committed work: report it, remove only after the owner says
   (worktree of another session). Ledger line 1137.
-- [ ] FP0.2 W47: re-run `tools/rig/resize_rig.py` on rig 2 and quote the PASS line
+- [x] FP0.2 (done 2026-10-16: resize_rig.py 2 of 2 PASS rig 2 --max after tmux rebuild with $STACK cookie) W47: re-run `tools/rig/resize_rig.py` on rig 2 and quote the PASS line
   (tmux 47x10 to 72x19, nvim 47x11 to 72x20). The PASS exists only in commit 54de76b3's message today.
   2026-10-16 session 5: FAILS (3 runs). tmux: ixemul "free: start of block corrupt!" then `ERR: vsh is still running
   after 30 s` (same as build/rig2/fp0.2-notes.txt, amiga-pi progress 1460-1463; last PASS 2026-10-12). nvim: sizes
@@ -57,7 +57,8 @@ branches current. Rig 1 is the owner's machine: never used.
   2026-10-16 session 5: CAUSE FOUND. Not ixemul (old 0d09e12 build fails the same). Rig copied a stale
   tmux-amiga/build/tmux-bin (2026-10-07) without the $STACK: 262144 cookie fix (tmux-amiga 0d30fa7, 2026-10-15):
   tmux overflowed vsh's 16000-byte stack into malloc headers. Rebuilt with owner's OK (`make -f Makefile.amiga
-  check`, stack_cookie 0 failed). Re-run of resize_rig.py on rig 2 pending; nvim "truth None" still open.
+  check`, stack_cookie 0 failed). Re-run: tmux (72,19) truth (72,20) PASS, nvim (72,20) PASS. Guard open: tmux_rig copies a stale tmux-bin
+  silently; it should run tmux-amiga tests/test_stack_cookie.py (or refuse a binary older than its sources).
 - [ ] FP0.3 W6: read the S1 race number for main (`tools/rig` race script; CCON 1.2.8b9 was 30.68 s at 5f2dc765),
   run it on rig 2 once, record main's number in the vtcon plan row.
 - [x] FP0.4 P12 close step: "cut_cases oracle reproducible" (rides with U3 part 2): run the oracle twice, compare.
