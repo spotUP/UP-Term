@@ -123,7 +123,7 @@ typedef struct vtwin {
     ULONG frame_us;              /* the frame clock's next interval (pace.h); 0: the shortest */
     ULONG frame_wait;            /* the interval of the request in flight (us) */
     ULONG prof_render, prof_frames; /* EClock ticks drawing, and render passes (the handler's PROF=1) */
-    ULONG prof_part[4];
+    ULONG prof_part[8]; /* 0 rows, 1 scroll, 2 cursor pass whole, 3 vt_feed, 4 mask, 5 cursor off, 6 cursor on */
     int wrote;                   /* vtwin_write since the last frame tick */
     ULONG quiet_us;              /* frame time with no output since the last write (jump scroll settles) */
     int dither;                  /* profile dither (W-T9): few-pen screens dither colours no pen shows closely (1, default) */

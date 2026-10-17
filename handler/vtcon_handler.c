@@ -6083,7 +6083,22 @@ static void packet(con *c, struct DosPacket *p)
             PROF_LOG("PROF rows/scroll", c->w.prof_part[0], c->w.prof_part[1]);
             {
                 extern ULONG vr_prof[9];
+                extern ULONG vr_cp[12];
                 PROF_LOG("PROF cursor/paint", c->w.prof_part[2], vr_prof[0]);
+                PROF_LOG("PROF curmask/draws", c->w.prof_part[4], vr_cp[8]);
+                PROF_LOG("PROF curoff/curon", c->w.prof_part[5], c->w.prof_part[6]);
+                PROF_LOG("PROF curoff-text/rect", vr_cp[0], vr_cp[1]);
+                PROF_LOG("PROF curoff-pen/rows", vr_cp[2], vr_cp[3]);
+                PROF_LOG("PROF curon-text/rect", vr_cp[4], vr_cp[5]);
+                PROF_LOG("PROF curon-pen/rows", vr_cp[6], vr_cp[7]);
+                PROF_LOG("PROF curflush-off/on", vr_cp[10], vr_cp[11]);
+                PROF_LOG("PROF cursame/draws", vr_cp[9], vr_cp[8]);
+                {
+                    int k;
+                    for (k = 0; k < 12; k++)
+                        vr_cp[k] = 0;
+                    c->w.prof_part[4] = c->w.prof_part[5] = c->w.prof_part[6] = 0;
+                }
                 PROF_LOG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
                 PROF_LOG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
                 c->w.prof_part[3] = 0;

@@ -1404,8 +1404,58 @@ static void the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens
     test_npal = 0;
 }
 
+/* PROF counters of the cursor pass (ledger "cursor pass"): the Text and RectFill of the cursor's draw are counted
+ * as the fake sees them, and a cursor cell drawn again unchanged is counted. */
+extern ULONG vr_cp[12], vr_cp_pass;
+/* pass(): the counters run in the two cursor blocks only, as vtwin_render sets them */
+static void pass_counted(const char *s)
+{
+    vr_mask_begin(&rn);
+    vr_cp_pass = 1;
+    vr_cursor_off(&rn);
+    vr_cp_pass = 0;
+    vt_feed(term, (const vt_u8 *)s, (long)strlen(s));
+    vt_flush(term);
+    vr_cp_pass = 1;
+    vr_cursor_on(&rn);
+    vr_cp_pass = 0;
+    vr_mask_end(&rn);
+}
+static void the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells(void)
+{
+    int k;
+    open_term(12);
+    pass("AB"); /* the cursor is on the cell after B */
+    for (k = 0; k < 12; k++)
+        vr_cp[k] = 0;
+    pass_counted("");
+    CHECK_INT((int)vr_cp[8], 1);
+    pass_counted("");  /* nothing changed: the same cell again */
+    CHECK_INT((int)vr_cp[8], 2);
+    CHECK_INT((int)vr_cp[9], 1);
+    CHECK((int)vr_cp[3] >= 1);                /* off: the cell repainted by draw_rows */
+    CHECK((int)vr_cp[5] >= 1);                /* on: the cell filled */
+    pass_counted("C"); /* the cursor moved */
+    CHECK_INT((int)vr_cp[8], 3);
+    CHECK_INT((int)vr_cp[9], 1);
+    /* the on block's Text and RectFill as the fake logs them */
+    vr_mask_begin(&rn);
+    vr_cursor_off(&rn);
+    gf_clear_log();
+    for (k = 0; k < 12; k++)
+        vr_cp[k] = 0;
+    vr_cp_pass = 1;
+    vr_cursor_on(&rn);
+    vr_cp_pass = 0;
+    vr_mask_end(&rn);
+    CHECK_INT((int)vr_cp[4], gf_count(GF_TEXT));
+    CHECK_INT((int)vr_cp[5], gf_count(GF_RECT));
+    close_term();
+}
+
 int main(void)
 {
+    the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
     the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented();
