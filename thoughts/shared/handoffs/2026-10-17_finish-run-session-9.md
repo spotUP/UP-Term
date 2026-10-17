@@ -46,7 +46,8 @@ sub-bullet before acting.
 ## Shared A1200
 The UpRough session (up-rough-demo-system-32) also drives the A1200 (wasabi M1 test, a1200.py
 durable-copy fix; it owns that work). Agreed 2026-10-17: each side warns the other before a reboot,
-reset or long job on the A1200.
+reset or long job on the A1200. Their M1 notes were their own. A running Up Rough demo holds the whole
+machine until left-mouse quit: if wasabid stops answering, ask that session before anything else.
 
 ## Owner decisions open
 - Symptoms of the "UP-Term: assign bug".
