@@ -43,6 +43,11 @@ sub-bullet before acting.
 5. Queued: perl module case, rsync FK3/FK4, owner items (FP1.10, colorsim, xxd stpcpy, FP0.6, locate),
    FP1.9 when load < 5.
 
+## Shared A1200
+The UpRough session (up-rough-demo-system-32) also drives the A1200 (wasabi M1 test, a1200.py
+durable-copy fix; it owns that work). Agreed 2026-10-17: each side warns the other before a reboot,
+reset or long job on the A1200.
+
 ## Owner decisions open
 - Symptoms of the "UP-Term: assign bug".
 - The two dirty AmiExpress worktrees (1.3G).
