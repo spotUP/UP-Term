@@ -224,7 +224,8 @@ plan before any code. This is the one place this plan stops for the owner.
 - [ ] ixemul get_component: component over 256 chars into str[257], possible overflow (unchecked, found 2026-10-17).
 - [ ] vsh: `cd ..` and `../x` in a script do not reach the parent (`vsh: cd: r8`), A1200 2026-10-17 (49016bda).
 - [ ] SHELLICON A1200 repro (owner 2026-10-17): first read S:User-Startup + assigns (assign bug evidence, 9d71d9a0) BEFORE reinstall; then Install with SHELLICON, double-click Shell, reboot, again, Uninstall, again.
-- [ ] Icon launch root cause (owner 2026-10-17): tests/amiga/wbrun.c runs a tool but opens no window (WINDOW tool type ignored); C:WBRun "not enough memory" on the A1200. Fix the launcher to behave as a Workbench double-click, regression test on a rig, verify on the A1200. Research: 2026-10-17_wb-icon-launch.md.
+- [x] Icon launch root cause (owner 2026-10-17): tests/amiga/wbrun.c runs a tool but opens no window (WINDOW tool type ignored); C:WBRun "not enough memory" on the A1200. Fix the launcher to behave as a Workbench double-click, regression test on a rig, verify on the A1200. Research: 2026-10-17_wb-icon-launch.md.
+  - ddb502d5: wbrun NAME launches like a double-click (default tool, stack, TOOLPRI, TOOLWINDOW, PROGDIR:); tools/rig/wbrun_rig.py passes on rig 3 and the A1200. C:WBRun "not enough memory" = DOpus replaces Workbench, OpenWorkbenchObjectA IoErr 103. A1200 Shell windows open full-screen, ignoring WINDOW (suspect KingCON, unverified). SHELLICON test can now run automated.
   - 4a438325: install with SHELLICON done (WINDOW now XCON:...), icon launch NOT reached: rig wbrun and C:WBRun fail on the A1200, DOpus opens Information. Shell.info restored from SYS:System/Shell.info.pre-shellicon. Needs owner double-click on Workbench. Leftovers: SYS:System/Shell.info.pre-shellicon, Rushhours:git-safe. Also: CONSOLE not switched, CON: served by KingCON-handler.
 
 ## Order, size, cost checkpoint
