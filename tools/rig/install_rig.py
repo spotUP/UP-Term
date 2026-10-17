@@ -27,7 +27,7 @@ One case per package on the base, and the combinations (K2-10, plan 2026-10-13-k
   legacy      LEGACY_KIT (the single kit of 0cd6f0b) installed, the new base over it, the nvim add-on, base Uninstall
   net         Install SSH BEBBOGET: BebboSSH and bebboget at the kit's versions, ssh/scp run them, a closed port, the Mac's sshd (if one
               runs) reaches the host key check, Uninstall takes it all away (K6)
-  wasabi      Install WASABI (wasabid 0.10): C:wasabid, key, startup block, started, the Mac's client pings it (rig 3); our old
+  wasabi      Install WASABI (wasabid 0.11b2): C:wasabid, key, startup block, started, the Mac's client pings it (rig 3); our old
               amiagent is removed and our wasabid 0.2 replaced; Uninstall takes it away (WM6)
   net-upgrade Install SSH over a 1.45 libcryptossh.library: with our marker it is replaced by 1.46, without it (the user's own) it is kept
               with a note and the replace command; Uninstall removes only ours (K6 fix)
@@ -54,6 +54,7 @@ VTC = paths.RIG / "vtc"
 # the kit under test: build/dist/UP-Term, or UPTERM_KIT=<drawer> (build/dist is
 # shared with every agent's `make dist`, so a rig run takes a private copy)
 WASABI_PORT = 1233 + paths.RIG_N     # the rig's own wasabid port (tools/rig/wasabi.py: 1234 + N - 1)
+KIT_WASABI_PORT = 1283 + paths.RIG_N  # case_wasabi's restart of the kit's wasabid: WASABI_PORT is the rig's own daemon
 KIT = pathlib.Path(os.environ.get('UPTERM_KIT') or ROOT / "build/dist/UP-Term")
 
 
@@ -1478,9 +1479,10 @@ def case_net_upgrade(ck):
 
 
 def case_wasabi(ck):
-    """The kit's one daemon option (Install WASABI, WM6): wasabid 0.10 lands in C: with our marker, a key
+    """The kit's one daemon option (Install WASABI, WM6): wasabid 0.11b2 lands in C: with our marker, a key
     (ENVARC:wasabi.key), a marked block in S:User-Startup, and is started; it answers a ping from the Mac's
-    client (restarted on the rig's own port 1236 so the Mac's 1234, rig 1's, is not held; this case is for rig 3).
+    client (restarted on a port of its own, KIT_WASABI_PORT: the rig's wasabid, which run() talks through,
+    holds WASABI_PORT and the Mac's 1234 is rig 1's; this case is for rig 3).
     Earlier kits' daemons go: our amiagent (UP-Term:bin/amiagent + marker) is deleted, our wasabid 0.2 is
     replaced. Uninstall takes the daemon, its key and the block away again."""
     import subprocess
@@ -1510,8 +1512,8 @@ def case_wasabi(ck):
     run('Echo >ENVARC:up-term/wasabid "installed by UP-Term"')
     rc, out = run_long('runinstallwasabi')
     ck(rc == 0, 'wasabi: Install WASABI runs', out)
-    ck(run('Search >NIL: C:wasabid "wasabid 0.10"')[0] == 0 and run('Search >NIL: C:wasabid "wasabid 0.2"')[0] != 0,
-       'wasabi: C:wasabid is 0.10 (the 0.2 replaced)')
+    ck(run('Search >NIL: C:wasabid "wasabid 0.11b2"')[0] == 0 and run('Search >NIL: C:wasabid "wasabid 0.2"')[0] != 0,
+       'wasabi: C:wasabid is 0.11b2 (the 0.2 replaced)')
     ck(run('List >NIL: ENVARC:up-term/wasabid')[0] == 0, 'wasabi: our marker is there')
     rc, key = run('Type ENVARC:wasabi.key')
     key = key.strip()
@@ -1521,19 +1523,20 @@ def case_wasabi(ck):
     ck(key != rigkey, 'wasabi: the kit made a key of its own')
     ck(';BEGIN UP-Term wasabi' in run('Type S:User-Startup')[1], 'wasabi: the S:User-Startup block is there')
     ck(run('Status >NIL: COM C:wasabid')[0] == 0, 'wasabi: Install started wasabid')
-    # restart on the rig's port: the Mac's end of 1234 is rig 1's
+    # restart on a port of its own: WASABI_PORT is held by the rig's wasabid (a second bind there fails and the
+    # ping reaches the rig's daemon, which answers 'bad key'), the Mac's end of 1234 is rig 1's
     run('Status COM C:wasabid >T:wpid')
     rc, pid = run('Type T:wpid')
     pid = pid.split()[0] if pid.split() else ''
     ck(pid.isdigit(), 'wasabi: found the running wasabid', pid)
     run('Break %s C' % pid)
     time.sleep(3)
-    run('Run >NIL: <NIL: C:wasabid %d name rig%d' % (WASABI_PORT, paths.RIG_N))
+    run('Run >NIL: <NIL: C:wasabid %d name rig%d' % (KIT_WASABI_PORT, paths.RIG_N))
     time.sleep(3)
     client = ROOT / 'build/wasabi/wasabi'
-    r = subprocess.run([sys.executable, '-I', str(client), '--host', '127.0.0.1', '--port', str(WASABI_PORT),
+    r = subprocess.run([sys.executable, '-I', str(client), '--host', '127.0.0.1', '--port', str(KIT_WASABI_PORT),
                         '--key', key, '--plain', 'ping'], capture_output=True, text=True, timeout=60)
-    ck(r.returncode == 0 and 'wasabid 0.10' in (r.stdout + r.stderr), 'wasabi: the Mac client pings the kit-installed wasabid',
+    ck(r.returncode == 0 and 'wasabid 0.11b2' in (r.stdout + r.stderr), 'wasabi: the Mac client pings the kit-installed wasabid',
        (r.stdout + r.stderr)[:300])
     run('Status COM C:wasabid >T:wpid')
     pid = (run('Type T:wpid')[1].split() or [''])[0]

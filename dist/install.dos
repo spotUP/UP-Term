@@ -11,7 +11,7 @@
 ;     [SHELLICON]   (the Shell icon opens an UP-Term window: no unless asked)
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
-;     [WASABI]  (wasabid 0.10, remote development and Claude Code on another computer, with a
+;     [WASABI]  (wasabid 0.11b2, remote development and Claude Code on another computer, with a
 ;               key: no unless asked; replaces an older wasabid and amiagent of ours)
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
 ;  UP-Term-nvim, Claude and amiga-pi, each with its own Install.)
@@ -607,20 +607,20 @@ If "$optserial" EQ "SERIAL"
     Echo >>S:User-Startup ";END UP-Term serial"
   EndIf
 EndIf
-; WASABI: wasabid 0.10 in C: (wasabi/SOURCE.txt), for working on this Amiga
+; WASABI: wasabid 0.11b2 in C: (wasabi/SOURCE.txt), for working on this Amiga
 ; from another machine over the network, and for Claude Code on another
 ; computer (wasabi_mcp.py). It runs any command a client with the key
 ; sends -- and with no key set, any client's: wasabikey makes one
 ; (a key already set stays), saved in ENVARC:wasabi.key (a marker when it
 ; is ours, for Uninstall). Started now and at every boot from a marked
 ; block in S:User-Startup. An older wasabid of ours (the 0.2 of earlier
-; kits: marker ENVARC:up-term/wasabid and no "wasabid 0.10" in the file) is
+; kits: marker ENVARC:up-term/wasabid and no "wasabid 0.11b2" in the file) is
 ; stopped first, so the new file replaces it; with wasabi unticked it is
 ; stopped and removed (the block in S:User-Startup then starts nothing).
 ; A 0.9 of ours stays when unticked.
 Set oldwasabid ""
 If EXISTS ENVARC:up-term/wasabid
-  Search >NIL: C:wasabid "wasabid 0.10"
+  Search >NIL: C:wasabid "wasabid 0.11b2"
   If WARN
     Set oldwasabid 1
   EndIf
@@ -642,7 +642,7 @@ Delete >NIL: ENV:upw QUIET
 If NOT "$optwasabi" EQ "WASABI"
   If "$oldwasabid" EQ "1"
     Delete >NIL: C:wasabid ENVARC:up-term/wasabid QUIET
-    Echo "Note: the older wasabid of an earlier kit was removed; tick wasabi to install wasabid 0.10."
+    Echo "Note: the older wasabid of an earlier kit was removed; tick wasabi to install wasabid 0.11b2."
   EndIf
 EndIf
 UnSet >NIL: oldwasabid
