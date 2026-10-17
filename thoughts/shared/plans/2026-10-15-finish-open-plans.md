@@ -74,8 +74,8 @@ branches current. Rig 1 is the owner's machine: never used.
   run it on rig 2 once, record main's number in the vtcon plan row.
 - [x] FP0.4 P12 close step: "cut_cases oracle reproducible" (rides with U3 part 2): run the oracle twice, compare.
 - [x] FP0.5 Ledger headings: "Queue run (after P11) 12 of 14" has 19 ticked: recount by box range and fix.
-- [ ] FP0.6 Coreutils 3.7: `../upterm-ports/pkgs/coreutils/recipe.mk` (9.12, GPG-verified) is untracked work of
-  another session: do not touch; ask the owner once who commits it (collected under Blocked on me).
+- [x] FP0.6 Coreutils 3.7: `../upterm-ports/pkgs/coreutils/recipe.mk` (9.12) is already committed and on origin/main
+  (aa0e7af, 4f242e5, latest 6eb18ad; checked 2026-10-17, tree clean). Nothing left to commit.
 
 Verification: quoted rig lines and commit hashes. Gate: none (docs plus rig runs).
 
@@ -189,7 +189,7 @@ it, `install_rig.py --only <case>` installs and runs it. Batches by size (decisi
   https://codeberg.org/bebbo/gcc/pulls/15. Open: rebuild the 33 upterm-ports userland binaries
   listed in research/2026-10-16_gcc-addx-cc.md, drop upterm-ports tools/m68k-cc workaround,
   re-run cp/du/ls on a rig. upterm-ports is another repo: owner says go.
-- [ ] FP4.6 3.7 coreutils 9.12: only after FP0.6 (owner says who commits `recipe.mk`).
+- [ ] FP4.6 3.7 coreutils 9.12: unblocked (FP0.6 done, recipe on origin/main 6eb18ad).
 
 ## Phase 5: large projects (each starts with its own research + plan, per the workflow; code only after approval)
 
@@ -205,7 +205,7 @@ plan before any code. This is the one place this plan stops for the owner.
 ## Owner answers 2026-10-17 (session 9)
 
 - [ ] rsync FK3/FK4: start after git lands (git agent reported, evidence checked, A1200 clone/fetch/push/fsck pass). One port at a time.
-- [ ] FP0.6: owner says WE commit `upterm-ports/pkgs/coreutils/recipe.mk`: check it builds, commit by name. Unblocks FP4.6.
+- [x] FP0.6: owner says WE commit `upterm-ports/pkgs/coreutils/recipe.mk`. Found already committed (6eb18ad on origin/main).
 - AmiExpress dirty worktrees (61ba7259, a90b37d9 feature/w-settings-door, ~1.3G): KEEP, leave alone. Closed.
 - [ ] FP1.10 verdict: owner reads research/2026-10-17_fp110-iterm-cells.md (published as a page) before deciding.
 - [ ] UP-Term: assign bug: symptom = UP-Term: assign MISSING (after install or reboot), programs cannot find their files. Root-cause in the installer / startup lines; test on a rig through reboot.
