@@ -35,6 +35,8 @@ for n, name in ((1, "rig"), (2, "rig2"), (3, "rig3")):
 src = (HERE / "rig/rig.py").read_text()
 check('"logs_dir = %s" % paths.FSUAE_LOG_DIR' in src, "rig.py writes logs_dir = the rig's log dir into the .fs-uae config")
 check("log_bsdsocket" not in src and "log_flush" not in src and "log_input" not in src, "no verbose FS-UAE log option in rig.py")
+check('"uaem_write_flags = nhsparwed"' in src and "uaem_write_flags = 1" not in src,
+      "rig.py switches off the default-bit .uaem writes, whose 3 unconditional log lines per file op flooded the log")
 check("cap_fsuae_log" in src and "cap_fsuae_log" in (HERE / "rig/ami.py").read_text(),
       "the cap runs at rig start and in ami.req")
 

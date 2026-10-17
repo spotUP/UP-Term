@@ -496,6 +496,11 @@ def setup():
         # FS-UAE's log in this rig's dir, capped by paths.cap_fsuae_log; not the shared ~/Documents/FS-UAE log
         # that grew to 7.9 GB (2026-10-17). No log_* option is set: the rig needs none of them.
         "logs_dir = %s" % paths.FSUAE_LOG_DIR,
+        # the flood source (2026-10-17): with the default flag value 1 every set-protection / filenote /
+        # set-date on a host drawer logs "need_metadata_file", "writing mode ----rwed" and "writing comment" (3 lines
+        # each, unconditional write_log in fsdb_host.cpp) and writes a .uaem for DEFAULT bits. nhsparwed keeps
+        # every note, time and non-default bit in .uaem (all anything reads) and drops only the default-bit writes.
+        "uaem_write_flags = nhsparwed",
         "hard_drive_0 = %s" % (RIG / ("os-%s" % OS if OS else "os32" if OS32 else "sys.hdf")),
         ] + (["hard_drive_0_label = %s" % (RIG / ("os-%s.label" % OS)).read_text()] if OS else []) + [
         # Writable: read-only (--ro) put up "Volume System is write
