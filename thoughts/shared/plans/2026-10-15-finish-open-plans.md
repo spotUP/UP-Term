@@ -24,7 +24,10 @@ NL22 (real Amiga), a1 A1.4 hardware part (A1200), a2 1.8 and 5.5 (A1200/030/060 
 Owner's A1200 (Replay) network, 2026-10-17: FIXED. Cause was a loose cable at the server-room end
 (owner replugged it); the session 8 handoff's "fault is on the Amiga side" was wrong, as moving the
 Pi's cable only tested the Amiga end. wasabid answers on 192.168.0.66:1234 but refuses our client
-("bad key"); waiting on the owner for `Type ENVARC:wasabi.key` and `Version C:wasabid`.
+("bad key") until the owner stored the key in `~/.config/upterm/a1200-wasabi.conf` (mode 600, `key = ...`).
+Access CONFIRMED 2026-10-17: `AMI_HOST=192.168.0.66 AMI_PORT=1234 AMI_TOKEN="$(sed -n 's/^key = //p' <conf>)"
+tools/rig/ami.py ping` -> wasabid 0.11b2. A1200 is 68060 + 68882, 172M RAM; no UP-Term assign (kit not
+installed); SMB share `spotUP:` mounted. Next: install the rebuilt kit, then real-Amiga tests.
 Third parties: X2 (ixemul upstream, waits for the maintainer's reply, branch `feature/x2-vtcon-1`),
 W54 (tmux over eriQue's auxcon, not released). These stay open in their plans; this plan only keeps the
 branches current. Rig 1 is the owner's machine: never used.
