@@ -45,5 +45,37 @@ class IttermColumns(unittest.TestCase):
         self.assertEqual(cells, [])
 
 
+class ReplayCommand(unittest.TestCase):
+    def test_bare_lf_reaches_the_terminal_unchanged(self):
+        # The replay pty must not turn LF into CR LF (ONLCR): tmux pane repaints
+        # rely on bare LF keeping the column.
+        import os, pty, select, shlex, subprocess, tempfile
+        import iterm_compare
+        with tempfile.NamedTemporaryFile(suffix=".bin") as f:
+            f.write(b"A\x1b[5GB\nC")
+            f.flush()
+            cmd = iterm_compare.replay_command(pathlib.Path(f.name)).replace("sleep 600", "true")
+            master, slave = pty.openpty()
+            proc = subprocess.Popen(shlex.split(cmd), stdin=slave, stdout=slave, stderr=slave, close_fds=True)
+            os.close(slave)
+            os.write(master, b"\n")
+            out = b""
+            while True:
+                r, _, _ = select.select([master], [], [], 5)
+                if not r:
+                    break
+                try:
+                    chunk = os.read(master, 4096)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                out += chunk
+            proc.wait(timeout=5)
+            os.close(master)
+        self.assertIn(b"B\nC", out)
+        self.assertNotIn(b"\r\nC", out)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -18,6 +18,8 @@ theme is not compared. Only the visible 80x24 screen at the end of each stream i
 | tmux, 2 panes, scrollback | 1920 | 303 | 52 | 250 | 0 | text (12,0) ' ' / '➜'; (12,1) '#' / ' '; (12,3) 'm' / 'v'; attr (12,0) bold no / yes; colour (12,0) (none,4) / (2,256); (12,1) (7,4) / (none,256) |
 | chat-style log | 1920 | 3 | 0 | 86 | 0 | text (22,0) ' ' / '9'; (22,1) '[' / ']'; colour (0,27..32) bg 4 / bg default (53 cells on row 0) |
 
+**Correction 2026-10-17:** the tmux and chat-log rows above came from a replay with ONLCR on (see "tmux left pane cause"). The harness now runs `stty -echo -opost` (tools/iterm_compare.py `replay_command`, regression test in tools/test_iterm_columns.py). Rerun with -opost: tmux text 0, attribute 0, cursor 0, colour 77 (blank-cell fg none vs default); chat-log text 0, attribute 0, cursor 0. Chat-log row 0 colour cells are EL-erased cells that the iTerm2 API cannot report (style_at None), not an engine difference.
+
 ## Where they sit
 - tmux: all text differences are rows 12-22 of the left pane (cols 0-39). vtcon shows the chat log
   ("#amiga: vtcon test channel", "12:33 <lars> ok"); iTerm2 shows the shell prompt `➜  vtcon git:(main) ✗`

@@ -79,12 +79,22 @@ def T(coro):
     return asyncio.wait_for(coro, 20)
 
 
+def replay_command(stream):
+    """Shell command that waits for one line (our resize first), then plays the bytes.
+
+    -opost turns off output processing (ONLCR): the stream must reach iTerm2
+    byte for byte. With ONLCR on, every bare LF becomes CR LF; tmux relies on
+    bare LF keeping the column, so its pane repaints erased the other pane.
+    """
+    return "/bin/sh -c %s" % shlex.quote(
+        "stty -echo -opost; read x; cat %s; sleep 600" % shlex.quote(str(stream)))
+
+
 async def replay(connection):
     import iterm2
     for name in SCENARIOS:
         stream = OUT / ("%s.%dx%d.bin" % (name, COLS, ROWS))
-        # the shell waits for one line (our resize first), then plays the bytes
-        cmd = "/bin/sh -c %s" % shlex.quote("stty -echo; read x; cat %s; sleep 600" % shlex.quote(str(stream)))
+        cmd = replay_command(stream)
         window = await T(iterm2.Window.async_create(connection, command=cmd))
         try:
             app = await T(iterm2.async_get_app(connection))
