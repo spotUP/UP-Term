@@ -121,17 +121,50 @@ def dump(tool, data, cols, rows):
         if tool == "vtdump":
             raise
         return None
+    return parse_dump(out, rows)
+
+def parse_dump(out, rows):
+    """A vtdump-format grid (rows of text, rows of "fg,bg,attr,codepoint"
+    cells, "@x,y" cursor, "unhandled ..." line): (text, cursor, attr,
+    unhandled, chars). The iTerm2 capture (tools/iterm_compare.py) writes the
+    same format, so one parser serves both."""
     lines = out.split("\n")
     text = lines[:rows]
     attr = []
+    chars = []
     for y in range(rows):
         row = []
+        crow = []
         for cell in lines[rows + y].split(" "):
             fg, bg, a, ch = (int(v) for v in cell.split(","))
             row.append(visible(fg, bg, bool(a & 1), bool(a & 0x20), bool(a & 8), ch))
+            crow.append(ch or 32)
         attr.append(row)
+        chars.append(crow)
     unhandled = lines[2 * rows + 1] if len(lines) > 2 * rows + 1 else ""
-    return text, lines[2 * rows], attr, unhandled
+    return text, lines[2 * rows], attr, unhandled, chars
+
+def iterm_columns(ours, ref, cols, rows):
+    """Cell-by-cell comparison against an iTerm2 dump, in separate columns
+    (a cell can count in several): text (codepoint), attributes (bold,
+    inverse, underline), colour (fg, bg as palette index / default / rgb).
+    Returns (counts, cells) with cells = [(y, x, kind, ours, iterm)]."""
+    counts = {"cells": cols * rows, "text": 0, "attr": 0, "colour": 0, "cursor": int(ours[1] != ref[1])}
+    cells = []
+    for y in range(rows):
+        for x in range(cols):
+            c1, c2 = ours[4][y][x], ref[4][y][x]
+            a, b = ours[2][y][x], ref[2][y][x]
+            if c1 != c2:
+                counts["text"] += 1
+                cells.append((y, x, "text", chr(c1), chr(c2)))
+            if a[2:] != b[2:]:
+                counts["attr"] += 1
+                cells.append((y, x, "attr", a[2:], b[2:]))
+            if a[:2] != b[:2]:
+                counts["colour"] += 1
+                cells.append((y, x, "colour", a[:2], b[:2]))
+    return counts, cells
 
 def visible(fg, bg, bold, inverse, underline, ch):
     """What a cell shows. A blank with no underline paints only its
@@ -212,12 +245,31 @@ def entry(table, name):
         return table[name[3:]]
     return None
 
+def iterm_main(args):
+    """refdiff.py --iterm <stream.bin> <iterm dump>: the engine's grid for
+    the stream against an iTerm2 dump; prints the counts and the first
+    differing cells per column. Not a pass/fail gate: what is good enough is
+    the owner's call."""
+    stream, dumpf = pathlib.Path(args[0]), pathlib.Path(args[1])
+    m = re.search(r"\.(\d+)x(\d+)\.bin$", stream.name)
+    cols, rows = (int(m.group(1)), int(m.group(2))) if m else (80, 24)
+    ours = dump("vtdump", stream.read_bytes(), cols, rows)
+    ref = parse_dump(dumpf.read_text(), rows)
+    counts, cells = iterm_columns(ours, ref, cols, rows)
+    print(counts)
+    for kind in ("text", "attr", "colour"):
+        for y, x, k, a, b in [c for c in cells if c[2] == kind][:8]:
+            print("  %s row %d col %d ours %r iterm %r" % (kind, y, x, a, b))
+    return 0
+
 def main():
     global WRITE_GOLDEN
     args = sys.argv[1:]
     if args and args[0] == "--write-golden":
         WRITE_GOLDEN = True
         args = args[1:]
+    if args and args[0] == "--iterm":
+        return iterm_main(args[1:])
     only = args[0] if args else None
     fails = ran = 0
     for p in sorted((ROOT / "tests/streams").glob("*.bin")):
