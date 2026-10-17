@@ -76,11 +76,11 @@ FSUAE_LOG_MAX = 50 * 1024 * 1024    # bytes on disk a log may hold before it is 
 FSUAE_LOG_TAIL = 1024 * 1024        # the end of a cut log kept, as <name>.tail, for diagnosis
 
 
-def cap_fsuae_log(log_dir=None, limit=None, tail=None):
+def cap_fsuae_log(log_dir=None, limit=None, tail=None, extra=()):
     """Cut every file in the rig's FS-UAE log dir that holds more than `limit` bytes on disk: its last `tail`
     bytes go to <name>.tail, the file is truncated in place (FS-UAE keeps it open). Sized by allocated blocks:
     if FS-UAE does not append, a truncated file keeps writing at its old offset and stays large but sparse.
-    Returns the names cut."""
+    `extra` names more files to cap the same way (the rig's serial.log). Returns the names cut."""
     d = pathlib.Path(log_dir or FSUAE_LOG_DIR)
     limit = FSUAE_LOG_MAX if limit is None else limit
     tail = FSUAE_LOG_TAIL if tail is None else tail
@@ -88,7 +88,8 @@ def cap_fsuae_log(log_dir=None, limit=None, tail=None):
     try:
         files = [f for f in d.iterdir() if f.is_file() and f.suffix != ".tail"]
     except OSError:
-        return cut
+        files = []
+    files += [pathlib.Path(f) for f in extra if pathlib.Path(f).is_file()]
     for f in files:
         try:
             st = f.stat()

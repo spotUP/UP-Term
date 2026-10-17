@@ -24,3 +24,9 @@ Problem: all rig FS-UAE processes wrote ~/Documents/FS-UAE/Cache/Logs/fs-uae.log
 tools/test_rig_fsuae_log.py (`make test ONLY=rig_fsuae_log`): log dir per rig 1-3 inside the rig dir, rig.py source carries logs_dir
 and no log_* option, cap on fake logs (cut, tail kept, under-limit untouched, sparse file by allocated size). No FS-UAE run.
 The config generation itself is checked on the source text, not by running setup().
+
+## Follow-up: watcher while the rig runs
+The ami.req cap misses a rig nobody talks to. `rig.py start` now spawns `rig.py logwatch` (detached, one per
+rig via flock on logs/.logwatch.lock). It caps the FS-UAE logs and serial.log every 30 s until the rig's
+FS-UAE process is gone. Test: tools/test_rig_fsuae_log.py drives `rig.start()` (stubbed emulator) and asserts
+exactly one logwatch spawn; fails when the spawn is removed (measured).

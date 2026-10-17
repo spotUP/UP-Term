@@ -35,7 +35,7 @@ Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import os, pathlib, re, shutil, subprocess, sys, time
+import fcntl, os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import wasabi as rigwasabi
@@ -668,6 +668,23 @@ def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
     return [l for l in out.splitlines() if str(CFG) in l and "fs-uae" in l.lower()]
 
+LOGWATCH_EVERY = 30   # seconds between two log caps while a rig runs
+
+def logwatch():
+    """Runs beside FS-UAE (start spawns it) and caps the FS-UAE logs and serial.log every LOGWATCH_EVERY s
+    until the rig stops. ami.req caps too, but a rig nobody talks to gets no ami.req, and one run's log
+    filled the Mac's disk (7.9 GB, 2026-10-17). One watcher per rig: a second one exits on the lock."""
+    paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(paths.FSUAE_LOG_DIR / ".logwatch.lock", "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return
+        time.sleep(LOGWATCH_EVERY)   # the emulator process shows up during this first wait
+        while mine():
+            paths.cap_fsuae_log(extra=[SERIAL])
+            time.sleep(LOGWATCH_EVERY)
+
 def start(retries=2):
     """Boot; a boot that stops right after "go started" (the emulator froze
     before anything under test loaded: seen 3 times on 2026-09-29, cause not
@@ -688,6 +705,8 @@ def start(retries=2):
     else:  # a bare binary: detached, so the rig outlives this command
         subprocess.Popen([str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for i in range(90):
         time.sleep(2)
         if status(quiet=True):
@@ -846,5 +865,5 @@ def wasabi():
 
 if __name__ == "__main__":
     {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
-     "status": status, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
+     "status": status, "logwatch": logwatch, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
      "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()

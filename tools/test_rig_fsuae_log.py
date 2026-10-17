@@ -61,5 +61,35 @@ with tempfile.TemporaryDirectory() as d:
     check(len((d / "fs-uae.log.txt.tail").read_bytes()) == paths.FSUAE_LOG_TAIL, "the kept tail is FSUAE_LOG_TAIL long")
     check(paths.cap_fsuae_log(d / "missing") == [], "a missing log dir is not an error")
 
+# the watcher: rig start spawns "rig.py logwatch", which caps the logs and serial.log while the rig runs
+sys.path.insert(0, str(HERE / "rig"))
+import rig  # noqa: E402
+with tempfile.TemporaryDirectory() as d:
+    d = pathlib.Path(d)
+    saved = (paths.FSUAE_LOG_DIR, paths.FSUAE_LOG_MAX, paths.FSUAE, rig.SERIAL, rig.LOGWATCH_EVERY, rig.mine,
+             rig.setup_config_only, rig.status, rig.boot_assigns_missing, rig.guard_shell_startup, rig.M060,
+             rig.subprocess.Popen, rig.RIG, rig.time.sleep)
+    paths.FSUAE_LOG_DIR, paths.FSUAE_LOG_MAX = d / "logs", 1000
+    rig.SERIAL, rig.LOGWATCH_EVERY, rig.RIG = d / "serial.log", 0, d
+    (d / "logs").mkdir()
+    (d / "logs" / "fs-uae.log.txt").write_bytes(b"L" * 100000)
+    rig.SERIAL.write_bytes(b"S" * 100000)
+    ticks = iter([["fs-uae running"], ["fs-uae running"], []])
+    rig.mine = lambda: next(ticks)
+    rig.logwatch()
+    check((d / "logs" / "fs-uae.log.txt").stat().st_size == 0, "logwatch caps the FS-UAE log while the rig runs")
+    check(rig.SERIAL.stat().st_size == 0 and (d / "serial.log.tail").exists(), "logwatch caps serial.log too")
+    spawned = []
+    rig.subprocess.Popen = lambda cmd, **kw: spawned.append(cmd)
+    rig.mine, rig.setup_config_only, rig.status = (lambda: []), (lambda: None), (lambda quiet=False: True)
+    rig.boot_assigns_missing, rig.guard_shell_startup, rig.M060 = (lambda: []), (lambda: None), False
+    rig.time.sleep = lambda s: None
+    paths.FSUAE = pathlib.Path("/usr/bin/true")
+    rig.start()
+    check(sum(1 for c in spawned if c[-1] == "logwatch") == 1, "rig start spawns exactly one logwatch (spawned: %r)" % spawned)
+    (paths.FSUAE_LOG_DIR, paths.FSUAE_LOG_MAX, paths.FSUAE, rig.SERIAL, rig.LOGWATCH_EVERY, rig.mine,
+     rig.setup_config_only, rig.status, rig.boot_assigns_missing, rig.guard_shell_startup, rig.M060,
+     rig.subprocess.Popen, rig.RIG, rig.time.sleep) = saved
+
 print("rig_fsuae_log:", "FAIL (%d)" % fails if fails else "ok")
 sys.exit(1 if fails else 0)
