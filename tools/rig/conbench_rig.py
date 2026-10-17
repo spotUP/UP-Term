@@ -18,14 +18,14 @@ RESUMABLE: each finished run is written to build/rig/conbench/<label>-<rows>.txt
 and skipped next time; --force runs it again. The rows at the end compare
 every recorded run.
 """
-import pathlib, re, subprocess, sys, time
+import os, pathlib, re, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = paths.RIG / 'conbench'
-FLAGS = ['--stock', '--os32']
+FLAGS = os.environ['UPTERM_RIG_FLAGS'].split() if os.environ.get('UPTERM_RIG_FLAGS') else ['--stock', '--os32']  # UPTERM_RIG_FLAGS='--max': the owner's rig 2 start
 
 CONSOLES = {
     # label: (mount file or None, window spec with %d for the height)

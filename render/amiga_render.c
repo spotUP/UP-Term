@@ -28,6 +28,18 @@ ULONG vr_prof[9]; /* PROF=1: EClock ticks in painter_run, WaitBlit; painter call
 
 extern struct GfxBase *GfxBase;
 
+#if defined(VTCON_PROF) || defined(VR_HOST_TEST)
+#define VR_CPROF 1
+/* The cursor pass's graphics.library calls (PROF=1 and the host test; ledger "cursor pass"). vr_gc counts every
+ * Text, RectFill and pen set the renderer makes (the macros wrap the library calls below this line);
+ * cursor_draw adds the change over one draw to vr_cp, while the pass runs (vr_cp_pass, set by vtwin_render
+ * around its two cursor blocks). */
+ULONG vr_gc[4]; /* Text, RectFill, pen sets (SetAPen, SetBPen, SetABPenDrMd), draw_rows calls by the cursor */
+ULONG vr_cp[12]; /* off: Text, RectFill, pen, draw_rows; on: the same (4-7); cursor draws; draws of an unchanged cell;
+                  * cursor off and on draws made outside the pass blocks (inside the flush: scroll, blink, colour change) */
+ULONG vr_cp_pass;
+#endif
+
 /* cybergraphics.library V41 WriteLUTPixelArray (LVO -198; AROS
  * cybergraphics.conf, the CGX/P96 SDK's fd): 8-bit indices through a
  * table of 0x00RRGGBB, on true-colour screens. No SDK header here, so
@@ -50,6 +62,31 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
 #endif
 
 #include "pen_rule.h"
+
+#ifdef VR_CPROF
+#ifdef VR_HOST_TEST /* the fake's functions */
+#define VR_GFX(name) name
+#else /* the inline pragmas' macros: #undef, then the same call under the count */
+#undef Text
+#undef RectFill
+#undef SetAPen
+#undef SetBPen
+#undef SetABPenDrMd
+#define VR_GFX(name) __##name
+#endif
+#ifdef VR_HOST_TEST
+#define VR_GB
+#else
+#define VR_GB GfxBase,
+#endif
+#define Text(rp, s, n) (vr_gc[0]++, VR_GFX(Text)(VR_GB(rp), (s), (n)))
+#define RectFill(rp, a, b, c, d) (vr_gc[1]++, VR_GFX(RectFill)(VR_GB(rp), (a), (b), (c), (d)))
+#define SetAPen(rp, p) (vr_gc[2]++, VR_GFX(SetAPen)(VR_GB(rp), (p)))
+#define SetBPen(rp, p) (vr_gc[2]++, VR_GFX(SetBPen)(VR_GB(rp), (p)))
+#define SetABPenDrMd(rp, a, b, m) (vr_gc[2]++, VR_GFX(SetABPenDrMd)(VR_GB(rp), (a), (b), (m)))
+/* a true-colour screen fills with FillPixelArray: a RectFill for the count */
+#define vr_cgx_fill(lb, rp, x, y, w, h, c) (vr_gc[1]++, vr_cgx_fill(lb, rp, x, y, w, h, c))
+#endif
 #include "pen_match.h"
 
 #define RUN_MAX 256
@@ -3667,7 +3704,7 @@ static void raw_scroll_now(vr_render *r, int top, int bottom, int n)
  * depended on the palette (a blue block on a 16-colour Workbench; rig
  * 2026-10-03, 32 pens: black in pen 17 inverted to 14, a cyan cursor);
  * only a double-size row's block is still inverted. Off repaints the cell. */
-static void cursor_draw(vr_render *r, int on)
+static void cursor_draw_run(vr_render *r, int on)
 {
     int wide = !r->view && vt_row_size(r->t, r->cursor_y + r->jump) ? 2 : 1; /* a double-size row (the grid row, not the screen's: jump) */
     WORD px = (WORD)(r->ox + r->cursor_x * r->cw * wide), py = r->oy + r->cursor_y * r->ch;
@@ -3686,6 +3723,9 @@ static void cursor_draw(vr_render *r, int on)
         if (r->cursor_colorful) {
             /* the cell was filled: repaint it normally */
             r->cursor_colorful = 0;
+#ifdef VR_CPROF
+            vr_gc[3]++;
+#endif
             draw_rows(r, r->cursor_x, r->cursor_y, r->cursor_x + 1, r->cursor_y + 1);
         } else {
             SetDrMd(r->rp, COMPLEMENT);
@@ -3767,6 +3807,24 @@ static void cursor_draw(vr_render *r, int on)
     SetDrMd(r->rp, JAM2);
 }
 
+static void cursor_draw(vr_render *r, int on)
+{
+#ifdef VR_CPROF
+    ULONG g0[4];
+    int k;
+    for (k = 0; k < 4; k++)
+        g0[k] = vr_gc[k];
+    cursor_draw_run(r, on);
+    if (vr_cp_pass)
+        for (k = 0; k < 4; k++)
+            vr_cp[(on ? 4 : 0) + k] += vr_gc[k] - g0[k];
+    else
+        vr_cp[on ? 11 : 10]++;
+#else
+    cursor_draw_run(r, on);
+#endif
+}
+
 void vr_cursor_off(vr_render *r)
 {
     if (!r->win)
@@ -3822,6 +3880,26 @@ static void cursor_on_now(vr_render *r)
         ULONG ink = r->bg_ink;
         r->cursor_x = (WORD)x;
         r->cursor_y = (WORD)y;
+#ifdef VR_CPROF
+        if (vr_cp_pass) {
+            /* the cell as the last pass drew it: same place, style, jump and cell bytes? */
+            static struct { int ok, x, y, style, jump; vt_cell c; } last;
+            int ncells;
+            const vt_cell *c = vt_row(r->t, y + r->jump, &ncells);
+            int have = c && x < ncells;
+            int same = last.ok && last.x == x && last.y == y && last.style == vt_cursor_style(r->t) &&
+                       last.jump == r->jump && have && !memcmp(&last.c, &c[x], sizeof(vt_cell));
+            vr_cp[8]++;
+            vr_cp[9] += same;
+            last.ok = have;
+            last.x = x;
+            last.y = y;
+            last.style = vt_cursor_style(r->t);
+            last.jump = r->jump;
+            if (have)
+                last.c = c[x];
+        }
+#endif
         cursor_draw(r, 1);
         r->cursor_drawn = 1;
         /* vr_scroll takes the cursor off before it looks; blank in the

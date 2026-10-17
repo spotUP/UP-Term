@@ -48,10 +48,16 @@ static void set_view(vtwin *w, int lines);
 #ifdef VTCON_PROF
 /* the render pass split up (PROF=1): EClock ticks in each part */
 #define PROF_IN(w) struct EClockVal pe0, pe1; if (vtwin_timer) ReadEClock(&pe0)
+extern ULONG vr_cp_pass;
+/* the cursor pass split (slot 2 stays the whole of it; 4 mask, 5 off, 6 on): four more clock reads a frame */
+#define PROF_SPLIT_IN(t) if (vtwin_timer) ReadEClock(&(t))
+#define PROF_SPLIT_ADD(w, k, a, b) if (vtwin_timer) (w)->prof_part[k] += (b).ev_lo - (a).ev_lo
 #define PROF_OUT(w, k) if (vtwin_timer) { ReadEClock(&pe1); (w)->prof_part[k] += pe1.ev_lo - pe0.ev_lo; }
 #else
 #define PROF_IN(w)
 #define PROF_OUT(w, k)
+#define PROF_SPLIT_IN(t)
+#define PROF_SPLIT_ADD(w, k, a, b)
 #endif
 
 /* A write or an erase over a selected cell drops the selection, as xterm does (UT5; the rule is
@@ -537,11 +543,23 @@ void vtwin_render(vtwin *w)
     {
         struct EClockVal e0, e1;
         ULONG freq = vtwin_timer ? ReadEClock(&e0) : 0;
+#ifdef VTCON_PROF
+        struct EClockVal s0, s1, s2, s3, s4, s5;
+#endif
         {
             PROF_IN(w);
+#ifdef VTCON_PROF
+            vr_cp_pass = 1;
+#endif
+            PROF_SPLIT_IN(s0);
             vr_mask_begin(&w->r); /* planar screens: only the planes in use (S1) */
+            PROF_SPLIT_IN(s1);
             vr_cursor_off(&w->r);
+            PROF_SPLIT_IN(s2);
             PROF_OUT(w, 2);
+#ifdef VTCON_PROF
+            vr_cp_pass = 0;
+#endif
         }
         {
             /* a ?2026 frame ended since the last pass: drawn off screen,
@@ -553,9 +571,22 @@ void vtwin_render(vtwin *w)
         }
         {
             PROF_IN(w);
+#ifdef VTCON_PROF
+            vr_cp_pass = 1;
+#endif
+            PROF_SPLIT_IN(s3);
             vr_cursor_on(&w->r);
+            PROF_SPLIT_IN(s4);
             vr_mask_end(&w->r);
+            PROF_SPLIT_IN(s5);
             PROF_OUT(w, 2);
+            PROF_SPLIT_ADD(w, 4, s0, s1);
+            PROF_SPLIT_ADD(w, 4, s4, s5);
+            PROF_SPLIT_ADD(w, 5, s1, s2);
+            PROF_SPLIT_ADD(w, 6, s3, s4);
+#ifdef VTCON_PROF
+            vr_cp_pass = 0;
+#endif
         }
         if (freq) {
             /* the next frame waits 1.5 times what this one cost (S1) */
