@@ -6,6 +6,10 @@ before timing anything"). On a stock A1200 every instruction outside the
 function's code footprint are what the speed work is steered by.
 
   tools/prof68k.py build                 engbench with line debug info -> build/prof/engbench
+  tools/prof68k.py build-paint           the painter on the conbench colour shapes -> build/prof/paintprof
+  tools/prof68k.py run-paint SHAPE PLANES [ROWS]  count it (ROWS default 2000) (SHAPE 0 sgr-colour, 1 sgr-perchar, 2 pen1on0; PLANES 1-4).
+                                         Row composition (render/amiga_render.c painter_run) needs graphics.library
+                                         (LockLayer, planes_ok), so the painter gets the runs of each shape directly.
   tools/prof68k.py run ONLY w PERS p     count one engbench workload (w 0-6, p 0 xterm / 1 amiga)
         [--bytes N]                      divide by N input bytes as well (instructions a byte)
 
@@ -23,20 +27,26 @@ OUT = ROOT / 'build/prof'
 BIN = OUT / 'engbench'
 
 
-def build():
+SOURCES = {
+    'engbench': ['tests/amiga/engbench.c', 'engine/vtengine.c', 'engine/vtengine_68k.s',
+                 'render/amiga_render_68k.s', 'render/painter.c', 'render/painter_68k.s'],
+    'paintprof': ['tests/amiga/paintprof.c', 'render/painter.c', 'render/painter_68k.s'],
+}
+
+
+def build(name='engbench'):
     OUT.mkdir(parents=True, exist_ok=True)
     # build/vbcc-aos68k.cfg is generated from tools/vbcc-aos68k.cfg.in by make
     subprocess.run(['make', '-s', 'build/vbcc-aos68k.cfg'], cwd=ROOT, check=True)
     cfg = (ROOT / 'build/vbcc-aos68k.cfg').read_text()
     cfg = cfg.replace(' -x ', ' ')  # keep the symbols
-    cfg = cfg.replace('-ld=vlink ', '-ld=vlink -M%s ' % (OUT / 'link.map'), 1)
+    cfg = cfg.replace('-ld=vlink ', '-ld=vlink -M%s ' % (OUT / (name + '.map' if name != 'engbench' else 'link.map')), 1)
     (OUT / 'vbcc-prof.cfg').write_text(cfg)
     cmd = ['vc', '+%s' % (OUT / 'vbcc-prof.cfg'), '-g', '-I%s' % (ROOT / 'vendor/ndk-3.2r4-Include_H'),
            '-cpu=68020', '-O2', '-warn=-1', '-dontwarn=163,166,167,168,170,306,307,81,153,65', '-DVT_ASM', '-DVP_ASM',
-           '-o', str(BIN), 'tests/amiga/engbench.c', 'engine/vtengine.c', 'engine/vtengine_68k.s',
-           'render/amiga_render_68k.s', 'render/painter.c', 'render/painter_68k.s']
+           '-o', str(OUT / name)] + SOURCES[name]
     subprocess.run(cmd, cwd=ROOT, check=True)
-    print('built', BIN)
+    print('built', OUT / name)
 
 
 def line_table(path):
@@ -125,12 +135,12 @@ def functions_of(src):
     return names
 
 
-def asm_ranges():
+def asm_ranges(map_name='link.map'):
     """(start, end, name) of the asm routines (no LINE info): global code
     symbols from the link map whose name says asm."""
     syms = []
     sec = None
-    for l in (OUT / 'link.map').read_text(errors='replace').splitlines():
+    for l in (OUT / map_name).read_text(errors='replace').splitlines():
         if l.startswith('Symbols of '):
             sec = l[len('Symbols of '):].rstrip(':')
         m = re.match(r'\s+0x([0-9a-f]+) (\S+): global', l)
@@ -144,9 +154,10 @@ def asm_ranges():
     return out
 
 
-def run(args, nbytes):
+def run(args, nbytes, name='engbench', top=30):
+    BIN = OUT / name
     table = line_table(BIN)
-    asms = asm_ranges()
+    asms = asm_ranges('link.map' if name == 'engbench' else name + '.map')
     offs = [t[0] for t in table]
     import bisect
     funcs = {}
@@ -161,7 +172,7 @@ def run(args, nbytes):
     proc = subprocess.Popen(['vamos', '-C', '68020', '-I', '-B', str(BIN)] + args, cwd=OUT,
                             env=dict(os.environ, HOME=str(home)),
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1 << 20)
-    pat = re.compile(r'\+([0-9a-f]{6}) engbench_0:code')
+    pat = re.compile(r'\+([0-9a-f]{6}) %s_0:code' % name)
     total = 0
     other = 0
     for line in proc.stdout:
@@ -194,7 +205,7 @@ def run(args, nbytes):
     if nbytes:
         print('%.1f instructions an input byte' % (total / nbytes))
     print('\n%-40s %10s %6s %8s' % ('function', 'instr', '%', 'footprt'))
-    for fn, c in count.most_common(30):
+    for fn, c in count.most_common(top):
         print('%-40s %10d %5.1f%% %7dB' % (fn, c, 100.0 * c / total, len(bytes_hit[fn]) * 2))
     print('\nhottest lines:')
     for (f, ln), c in linecount.most_common(25):
@@ -210,6 +221,10 @@ if __name__ == '__main__':
     a = sys.argv[1:]
     if not a or a[0] == 'build':
         build()
+    elif a[0] == 'build-paint':
+        build('paintprof')
+    elif a[0] == 'run-paint':
+        run(a[1:3] + [a[3] if len(a) > 3 else '2000'], 0, 'paintprof', 15)
     else:
         nb = 0
         if '--bytes' in a:
