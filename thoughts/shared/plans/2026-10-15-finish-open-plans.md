@@ -202,6 +202,16 @@ plan before any code. This is the one place this plan stops for the owner.
 - [x] FP5.7 (done 2026-10-15: hang already fixed in ixemul-vtcon 45f8bd3 + e8bcc9d, re-tested, note thoughts/shared/research/2026-10-15_w39-gcc16-hang.md; open W39 rest = CPython/neovim rebuild, owner queue) W39 gcc 16 hang hunt (ixstackext 35bee4a2 is the state).
 - [ ] FP5.8 (added 2026-10-16, owner request) Real debugger for C:Claude / amiga-pi on the Amiga: registers, memory, breakpoints, step, so the agent can build, run and debug an executable (today it has files + shell only, no register/memory/breakpoint tool). Phase 1 first: research existing Amiga debuggers/monitors and remote-debug stubs we could reuse or wrap (gdb remote stub for AmigaOS, bebbo toolchain gdb, FS-UAE/WinUAE debugger + GDB server, wasabi's own probes, classic monitors) before any design. Also survey the owner's demo system project (/Users/spot/Code/UpRough/Up_Rough_Demo_System, confirmed by owner 2026-10-16; check urds-prof and urds-tmcrash beside it too): it has much debugging tooling built for an emulated environment; owner does not know what or if any of it is reusable on a real Amiga, so the research must sort each piece into reusable / emulator-only / adaptable with evidence; document in thoughts/shared/research/, owner approves the plan before code.
 
+## Owner answers 2026-10-17 (session 9)
+
+- [ ] rsync FK3/FK4: start after git lands (git agent reported, evidence checked, A1200 clone/fetch/push/fsck pass). One port at a time.
+- [ ] FP0.6: owner says WE commit `upterm-ports/pkgs/coreutils/recipe.mk`: check it builds, commit by name. Unblocks FP4.6.
+- AmiExpress dirty worktrees (61ba7259, a90b37d9 feature/w-settings-door, ~1.3G): KEEP, leave alone. Closed.
+- [ ] FP1.10 verdict: owner reads research/2026-10-17_fp110-iterm-cells.md (published as a page) before deciding.
+- [ ] UP-Term: assign bug: symptom = UP-Term: assign MISSING (after install or reboot), programs cannot find their files. Root-cause in the installer / startup lines; test on a rig through reboot.
+- [ ] SHELLICON root cause (265bcefb): owner has NO old kit; work from git history and the current kit only.
+- A1200 git retest: approved; warn the UpRough session first (shared A1200), no reboot needed.
+
 ## Order, size, cost checkpoint
 
 Phase 0 and 1: one sonnet agent each, a few hours of wall clock, light (the rig is the load). Phase 2: medium.
