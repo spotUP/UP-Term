@@ -596,6 +596,11 @@ $(BUILD)/amiga/ixfionread: tests/amiga/ixfionread.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixfionread.c
 
+# A create whose name the handler shortens (RAM: keeps 30) fails ENAMETOOLONG (ixemul)
+$(BUILD)/amiga/ixnamelen: tests/amiga/ixnamelen.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixnamelen.c
+
 # FPU Inf and NaN under the emulator: fmove.x Inf bytes, fcmp Inf,Inf sets Z, NaN is unordered
 $(BUILD)/amiga/fpuinf: tests/amiga/fpuinf.c
 	@mkdir -p $(BUILD)/amiga
