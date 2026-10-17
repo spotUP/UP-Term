@@ -220,6 +220,8 @@ plan before any code. This is the one place this plan stops for the owner.
 
 - [ ] git on RAM: fails `fatal: mmap failed: Permission denied` (A1200 2026-10-17, 49016bda). Root cause in ixemul mmap vs git, fix where it lives.
   - Cause (6ce907d3): RAM: on this OS truncates names to 30 chars; git loose objects are 38. EACCES not reproduced. Owner decision 2026-10-17: fix in ixemul, return ENAMETOOLONG instead of silent truncation (../ixemul-vtcon). Verify 30-char truncation on the A1200 first. Regression test required.
+  - 5305181e: test ixnamelen + rig runner pushed (FAIL (9) on old ixemul). ixemul fix in ../ixemul-vtcon __plock callbacks, uncommitted until build + rig pass. Follow-ups: lookups still match on 30 chars; O_CREAT|O_EXCL gives EEXIST not ENAMETOOLONG; symlink ENOENT on RAM:.
+- [ ] ixemul get_component: component over 256 chars into str[257], possible overflow (unchecked, found 2026-10-17).
 - [ ] vsh: `cd ..` and `../x` in a script do not reach the parent (`vsh: cd: r8`), A1200 2026-10-17 (49016bda).
 - [ ] SHELLICON A1200 repro (owner 2026-10-17): first read S:User-Startup + assigns (assign bug evidence, 9d71d9a0) BEFORE reinstall; then Install with SHELLICON, double-click Shell, reboot, again, Uninstall, again.
 - [ ] Icon launch root cause (owner 2026-10-17): tests/amiga/wbrun.c runs a tool but opens no window (WINDOW tool type ignored); C:WBRun "not enough memory" on the A1200. Fix the launcher to behave as a Workbench double-click, regression test on a rig, verify on the A1200. Research: 2026-10-17_wb-icon-launch.md.
