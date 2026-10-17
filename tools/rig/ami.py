@@ -4,6 +4,7 @@
           | shot out.png [x y w h] | rexx "program" | get path out | put local path
           | key code [qual] | type text | screens
           | gclick win gadget   (clicks a uitree gadget by its id, matched exactly: '90' is not '290')
+          | long script [secs] [title]   (Executes an Amiga script in a window on the Amiga's screen, waits for its rc)
 
 The importers (72 files) keep the API they were written against: req(opcode, payload) with the legacy opcode
 numbers and answer shapes (UITREE and MENUS text, SHOT bytes, EXEC rc + output), key, script, window, grab, put,
@@ -534,6 +535,37 @@ def reboot(wait=240, every=5):
             pass   # down or still booting
     raise SystemExit('reboot: the Amiga did not come back within %d s (or RAM: kept %s)' % (wait, REBOOT_MARKER))
 
+LONG_WRAP, LONG_RC = 'RAM:ami-long.wrap', 'RAM:ami-long.rc'
+
+def long_wrapper(script):
+    """The wrapper `long` runs: the script's return code goes to LONG_RC, then the window says it is done.
+    FailAt 1000 covers a script that fails with 10 or 20; a `Quit 20` in the script ends the wrapper anyway
+    (no LONG_RC then: `long` runs to its timeout and the window shows why)."""
+    return ('FailAt 1000\nExecute %s\nEcho >%s "$RC"\nEcho "[DONE] %s rc $RC: close this window"\n'
+            % (script, LONG_RC, script)).encode('latin-1')
+
+def long(script, wait=3600, title='ami long', every=5):
+    """Execute an Amiga script however long it takes, in a window on the Amiga's own screen, and return its rc.
+    exec gives a command 120 s and loses its output; a redirected Run loses it too (Run hands the new CLI the
+    window, not the redirection: only "[CLI n]" reaches the file, the A1200 2026-10-17). So the script's
+    words go to a NewShell window the person at the Amiga watches (it stays open after the [DONE] line), and
+    the rc comes back through LONG_RC, polled every `every` seconds. None when it did not finish in `wait`."""
+    def run(cmd, secs=10):
+        b = req(0x02, struct.pack('>H', secs) + cmd.encode('latin-1'), timeout=secs + 5)
+        return struct.unpack('>I', b[:4])[0]
+    run('Delete >NIL: %s QUIET' % LONG_RC)
+    data, name = long_wrapper(script), LONG_WRAP.encode('latin-1')
+    req(0x04, struct.pack('>H', len(name)) + name + data)
+    if run('Run >NIL: NewShell "CON:0/20/640/200/%s/CLOSE/WAIT" FROM %s' % (title, LONG_WRAP)) != 0:
+        raise SystemExit('long: cannot open the window for %s' % script)
+    t0 = time.time()
+    while time.time() - t0 < wait:
+        time.sleep(every)
+        b = read_file(LONG_RC)
+        if b is not None and b.strip():
+            return int(b.split()[0])
+    return None
+
 def png(path, w, h, rows):
     _m().write_png(path, w, h, b''.join(rows))
 
@@ -582,6 +614,10 @@ def main(a):
                 click_px(cx, cy)
                 print('click at %d,%d' % (cx, cy)); return
         raise SystemExit('no matching gadget')
+    elif cmd == 'long':
+        rc = long(a[1], int(a[2]) if len(a) > 2 else 3600, a[3] if len(a) > 3 else 'ami long')
+        if rc is None: raise SystemExit('long: %s did not finish (its window on the Amiga shows why)' % a[1])
+        print('rc', rc)
     else: raise SystemExit(__doc__)
 
 if __name__ == '__main__': main(sys.argv[1:])

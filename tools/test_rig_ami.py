@@ -242,6 +242,32 @@ try:
             check(False, "reboot: a marker that never goes away is an error")
         except SystemExit as e:
             check("did not come back" in str(e), "reboot: no restart is an error: %r" % str(e))
+        # long(): old rc deleted, wrapper put, NewShell window opened FROM it, rc read back from LONG_RC
+        sent, files = [], {}
+        def long_req(code, payload=b"", timeout=150):
+            if code == 0x04:
+                n = struct.unpack(">H", payload[:2])[0]
+                files[payload[2:2 + n].decode("latin-1")] = payload[2 + n:]
+                return b""
+            if code == 0x03:
+                path = payload.decode("latin-1")
+                if path in files: return files[path]
+                raise SystemExit("ERR: object not found")
+            cmd = payload[2:].decode("latin-1")
+            sent.append(cmd)
+            if cmd.startswith("Run >NIL: NewShell"):
+                files[ami.LONG_RC] = b"5\n"   # the script ran in the window and failed with 5
+            return struct.pack(">I", 0)
+        ami.req = long_req
+        check(ami.long("Rushhours:runinstall", wait=1, every=0) == 5, "long: the rc the wrapper wrote")
+        wrap = files[ami.LONG_WRAP].decode("latin-1")
+        check(sent[0] == "Delete >NIL: %s QUIET" % ami.LONG_RC and "FROM " + ami.LONG_WRAP in sent[1]
+              and '"CON:0/20/640/200/ami long/CLOSE/WAIT"' in sent[1], "long: delete, then a window FROM the wrapper: %r" % sent)
+        check(wrap.index("FailAt 1000") < wrap.index("Execute Rushhours:runinstall") < wrap.index('Echo >%s "$RC"' % ami.LONG_RC),
+              "long: the wrapper writes the script's rc after it: %r" % wrap)
+        files.clear(); sent.clear()
+        ami.req = lambda code, payload=b"", timeout=150: (_ for _ in ()).throw(SystemExit("ERR: object not found")) if code == 0x03 else struct.pack(">I", 0)
+        check(ami.long("x", wait=0.05, every=0.01) is None, "long: no rc in time is None")
     finally:
         ami.req = real_req
 finally:
