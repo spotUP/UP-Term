@@ -20,7 +20,8 @@ COLS, ROWS = 80, 24
 DEFAULT, RGB = 0x100, 0x1000000
 CHAT = "%s %s" % (sys.executable, ROOT / "tools/chatsim.py")
 # name -> recorder call; the keys are tmux's / screen's prefix commands
-SCENARIOS = ["p7-screen-split", "p7-tmux-split", "p7-chat-log"]
+SCENARIOS = ["p7-screen-split", "p7-tmux-split", "p7-chat-log",
+             "p7-vim-c-scroll", "p7-man-ls", "p7-colour256"]
 
 
 def record():
@@ -38,6 +39,12 @@ def record():
                  [b"\x02\"", ("%s 40\r" % CHAT).encode(), b"\x02%", b"ls -la /\r", b"\x02o",
                   b"\x02[", b"\x1b[A" * 8, b"q"])
     capture.capture("p7-chat-log", [sys.executable, str(ROOT / "tools/chatsim.py"), "120"], [], settle=1.0)
+    # FP1.10b: alt screen + scroll region (vim), bold/underline through less, 256 + true colour
+    sample = str(ROOT / "engine/vtengine.c")
+    capture.capture("p7-vim-c-scroll", ["vim", "-n", "-u", "NONE", "-N", "+syntax on", sample],
+                    [b"\x06", b"\x06", b"\x06", b"\x04", b"\x06", b"\x15", b"/scroll_up\r", b"\x06"])
+    capture.capture("p7-man-ls", ["man", "ls"], [b" ", b" ", b"b"], env_extra={"MANPAGER": "less", "MANWIDTH": "80"})
+    capture.capture("p7-colour256", [sys.executable, str(ROOT / "tools/colorsim.py")], [], settle=1.0)
 
 
 def colour(c):

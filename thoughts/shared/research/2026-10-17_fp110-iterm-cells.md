@@ -61,3 +61,22 @@ iTerm2 Python API not exposing erased-cell colour past the written length (harne
 evidence that iTerm2 renders them default; whether iTerm2 paints them blue was not checked visually (unverified).
 The engine behaviour matches xterm BCE and the existing quirk-bce-erase-colour stream. The 53 cells on row 0 are this
 API limit, not an engine difference.
+
+## FP1.10b: three more scenarios (vim, man through less, 256 colour / truecolor)
+
+Added to `SCENARIOS` in tools/iterm_compare.py (same record / replay / table path, replay with `-opost`):
+`p7-vim-c-scroll` (vim, `+syntax on`, engine/vtengine.c, three page-downs, half-page down/up, `/scroll_up`, one more page;
+alt screen + scroll region), `p7-man-ls` (`man ls` through less, MANWIDTH 80, two pages down, one back; bold and
+underline via overstrike turned into SGR by less), `p7-colour256` (tools/colorsim.py: htop is not installed; 16 standard,
+6x6x6 cube as bg and fg, grey ramp, three truecolor gradients, 38;5 / 38;2 / colon-form SGR, bold, underline, inverse,
+dim, italic, strike). Visible 80x24 grid at the end of each stream, same columns as above.
+
+| scenario | cells | text differs | attr differs | colour differs | cursor differs | what the nonzero cells are |
+|---|---|---|---|---|---|---|
+| vim on a C file, syntax colour, scrolled | 1920 | 0 | 0 | 60 | 1 | colour: all 60 are blank cells (rows 0,1,2,4,5,11,12), engine fg none vs iTerm fg default (256). Same class as the 2 cells in screen-split and the 77 in tmux: engine does not keep a foreground on a blank, iTerm reports default. Not visible (a blank draws only its bg). Harness/dump convention, not an engine bug. Cursor: x same (4); y 0 vs 117, iTerm API reports a scrollback-absolute row. Consistent with iTerm keeping lines scrolled off the alt screen in its history (default setting); unverified, scrollback length not read |
+| `man ls` through less | 1920 | 0 | 0 | 0 | 1 | cursor: x same (1); y 23 vs 69, same absolute-row reading artifact (offset 46 = lines that left the screen). Bold and underline (attr 0 of 1920) and colours agree on every cell |
+| 256 colour + truecolor screen | 1920 | 0 | 0 | 6 | 0 | colour: all 6 on row 11 cols 37-42, the `SGR 7;38;5;27` run ("inv 27"). Engine keeps fg 27 + inverse flag; iTerm reports the resolved colours (fg default, bg 27) with the inverse flag also set. API convention (refdiff.visible handles the same swap for blanks); the cells paint identically. Col 40 is the space inside the run: engine bg 27 (swapped), iTerm bg default. Unverified whether that is the API dropping the style of the blank or iTerm drawing it unswapped; needs a screenshot. Every 256-palette, truecolor, colon-form, bold, underline, dim, italic, strike cell elsewhere matches |
+
+No engine bug found in these three scenarios (text 0 and attribute 0 on all 5760 cells). The only open item is the
+inverse-blank cell (row 11 col 40), unverified. Run: `build/iterm2-venv/bin/python tools/iterm_compare.py record|replay|table`
+(`pip install pyte` into that venv for `table`).
