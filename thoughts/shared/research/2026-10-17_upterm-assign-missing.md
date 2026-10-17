@@ -23,3 +23,10 @@ The kit's installer does not lose the UP-Term: assign on rig 2 (68060, --max), n
 3. Same session lost LIBS: through a bare `Assign LIBS:` (a1200 note, run 2); a bare `Assign UP-Term:` from a test command would look identical. Not proven either way.
 
 Need from owner: `Type S:User-Startup` and `Assign LIST` from the A1200 (read only). Commit: none.
+
+## A1200 state, read 2026-10-17 (after the git install, before any reinstall)
+
+- `Assign UP-Term: EXISTS` prints `UP-Term        Rushhours:UP-Term-inst` (rc 0).
+- S:User-Startup (124 lines) holds, near the end and in this order: `;BEGIN UP-Term wasabi`, `;BEGIN UP-Term assign` with `Assign UP-Term: "Rushhours:UP-Term-inst"`, `;BEGIN UP-Term` (GG:), `;BEGIN UP-Term tmp`. No line before them ends the script (no EndCLI/Quit), so candidate 2 is ruled out for this file.
+- So the block exists now. The file alone cannot tell whether an Install wrote it or the earlier manual repair did; the original missing-assign state was not captured before it was repaired.
+- Also in the file: `SYS:C/UnixDirs3 WILDSTAR UNIXROOT QUIET`. UnixDirs3 rewrites `..` and `/` path handling in dos.library; it is a candidate for the vsh `cd ..` failure seen in the A1200 git test (49016bda), unverified.
