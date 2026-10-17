@@ -219,8 +219,10 @@ plan before any code. This is the one place this plan stops for the owner.
   config generator; owner approved rig restarts.
 
 - [ ] git on RAM: fails `fatal: mmap failed: Permission denied` (A1200 2026-10-17, 49016bda). Root cause in ixemul mmap vs git, fix where it lives.
+  - Cause (6ce907d3): RAM: on this OS truncates names to 30 chars; git loose objects are 38. EACCES not reproduced. Owner decision 2026-10-17: fix in ixemul, return ENAMETOOLONG instead of silent truncation (../ixemul-vtcon). Verify 30-char truncation on the A1200 first. Regression test required.
 - [ ] vsh: `cd ..` and `../x` in a script do not reach the parent (`vsh: cd: r8`), A1200 2026-10-17 (49016bda).
 - [ ] SHELLICON A1200 repro (owner 2026-10-17): first read S:User-Startup + assigns (assign bug evidence, 9d71d9a0) BEFORE reinstall; then Install with SHELLICON, double-click Shell, reboot, again, Uninstall, again.
+  - 4a438325: install with SHELLICON done (WINDOW now XCON:...), icon launch NOT reached: rig wbrun and C:WBRun fail on the A1200, DOpus opens Information. Shell.info restored from SYS:System/Shell.info.pre-shellicon. Needs owner double-click on Workbench. Leftovers: SYS:System/Shell.info.pre-shellicon, Rushhours:git-safe. Also: CONSOLE not switched, CON: served by KingCON-handler.
 
 ## Order, size, cost checkpoint
 
