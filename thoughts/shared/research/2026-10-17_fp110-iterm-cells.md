@@ -80,3 +80,29 @@ dim, italic, strike). Visible 80x24 grid at the end of each stream, same columns
 No engine bug found in these three scenarios (text 0 and attribute 0 on all 5760 cells). The only open item is the
 inverse-blank cell (row 11 col 40), unverified. Run: `build/iterm2-venv/bin/python tools/iterm_compare.py record|replay|table`
 (`pip install pyte` into that venv for `table`).
+
+## 2026-10-17 later: colour and cursor cells fixed in the harness (no engine change)
+
+All four classes were reading differences; the engine (C) is right in each, nothing in engine/ changed.
+
+- A, blank fg none vs default: iTerm2 reports a never-written cell as NUL (codepoint 0, fg/bg default); `refdiff.visible` only
+  treated 0x20 as blank. Now 0 and 0x20 are both blank. Engine "none" is the dump's "a blank has no foreground", default is 0x100.
+- B, cursor row: `cursor_coord.y` is scrollback-absolute. `iterm_compare.screen_row` subtracts `async_get_line_info().first_visible_line_number`.
+- C, inverse run: screenshot of the p7-colour256 replay, row 11: cols 37-42 including the blank col 40 all paint (0,95,255) = palette 27 as bg,
+  same as the engine. The API reports inverse cells with colours already swapped AND the inverse flag set; `paint_colours` swaps them back to the
+  engine's meaning (fg 27 + inverse).
+- D, chat-log row 0: screenshot of the replay: row 0 is painted blue across all 80 columns (cols 27+ included), so iTerm2 does honour BCE; only the
+  API cannot read those cells (`style_at` None). The capture now writes fg/bg -1 for them; `iterm_columns` counts them in a new "unreadable" column
+  when the engine paints something there, never as a colour or attribute difference (a plain default blank vs an unstyled cell is equal).
+
+| scenario | cells | text | attr | colour | unreadable from API | cursor |
+|---|---|---|---|---|---|---|
+| p7-screen-split | 1920 | 0 | 0 | 0 | 0 | 0 |
+| p7-tmux-split | 1920 | 0 | 0 | 0 | 0 | 0 |
+| p7-chat-log | 1920 | 0 | 0 | 0 | 83 | 0 |
+| p7-vim-c-scroll | 1920 | 0 | 0 | 0 | 0 | 0 |
+| p7-man-ls | 1920 | 0 | 0 | 0 | 0 | 0 |
+| p7-colour256 | 1920 | 0 | 0 | 0 | 0 | 0 |
+
+Regression tests: tools/test_iterm_columns.py `Normalisations` (the NUL-cell test fails with the old `visible`). The p7-screen-split/vim/man cursor
+cells in the older tables are superseded by this one.

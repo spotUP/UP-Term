@@ -18,6 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "build/p7"
 COLS, ROWS = 80, 24
 DEFAULT, RGB = 0x100, 0x1000000
+UNREADABLE = -1  # = refdiff.UNREADABLE
 CHAT = "%s %s" % (sys.executable, ROOT / "tools/chatsim.py")
 # name -> recorder call; the keys are tmux's / screen's prefix commands
 SCENARIOS = ["p7-screen-split", "p7-tmux-split", "p7-chat-log",
@@ -58,7 +59,21 @@ def colour(c):
     return DEFAULT
 
 
-def format_grid(contents):
+def paint_colours(fg, bg, inverse):
+    """The API reports an inverse cell's colours already swapped (what is
+    painted) and also sets the inverse flag; the engine keeps the SGR colours
+    and the flag. Swap back to the engine's meaning (checked against a
+    screenshot: SGR 7;38;5;27 cells, blank ones too, paint bg 27)."""
+    return (bg, fg) if inverse else (fg, bg)
+
+
+def screen_row(cursor_y, first_visible_line):
+    """cursor_coord.y counts from the top of the scrollback; the engine's
+    row counts from the top of the screen."""
+    return cursor_y - first_visible_line
+
+
+def format_grid(contents, first_visible_line):
     text, attr = [], []
     for y in range(ROWS):
         line = contents.line(y)
@@ -68,17 +83,20 @@ def format_grid(contents):
                 s = line.string_at(x) or " "
             except IndexError:  # past the last written cell of the line
                 s = " "
+            if s[0] == "\0":  # an empty cell
+                s = " "
             st = line.style_at(x)
             chars.append(s)
             if st is None:
-                cells.append("%d,%d,0,%d" % (DEFAULT, DEFAULT, ord(s[0])))
+                cells.append("%d,%d,0,%d" % (UNREADABLE, UNREADABLE, ord(s[0])))
                 continue
             a = (1 if st.bold else 0) | (8 if st.underline else 0) | (0x20 if st.inverse else 0)
-            cells.append("%d,%d,%d,%d" % (colour(st.fg_color), colour(st.bg_color), a, ord(s[0])))
+            fg, bg = paint_colours(colour(st.fg_color), colour(st.bg_color), st.inverse)
+            cells.append("%d,%d,%d,%d" % (fg, bg, a, ord(s[0])))
         text.append("".join(chars))
         attr.append(" ".join(cells))
     cur = contents.cursor_coord
-    return "\n".join(text + attr + ["@%d,%d" % (cur.x, cur.y), "unhandled 0", ""])
+    return "\n".join(text + attr + ["@%d,%d" % (cur.x, screen_row(cur.y, first_visible_line)), "unhandled 0", ""])
 
 
 def T(coro):
@@ -113,7 +131,8 @@ async def replay(connection):
             size = session.grid_size
             assert (size.width, size.height) == (COLS, ROWS), "grid is %s, not 80x24" % (size,)
             contents = await T(session.async_get_screen_contents())
-            (OUT / (name + ".iterm.txt")).write_text(format_grid(contents))
+            info = await T(session.async_get_line_info())
+            (OUT / (name + ".iterm.txt")).write_text(format_grid(contents, info.first_visible_line_number))
             print("[OK] %s" % name)
         finally:
             await T(window.async_close(force=True))
@@ -128,8 +147,8 @@ def table():
         ours = refdiff.dump("vtdump", stream.read_bytes(), COLS, ROWS)
         ref = refdiff.parse_dump((OUT / (name + ".iterm.txt")).read_text(), ROWS)
         counts, cells = refdiff.iterm_columns(ours, ref, COLS, ROWS)
-        print("| %s | %d | %d | %d | %d | %d |" % (name, counts["cells"], counts["text"], counts["attr"],
-                                                  counts["colour"], counts["cursor"]))
+        print("| %s | %d | %d | %d | %d | %d | %d |" % (name, counts["cells"], counts["text"], counts["attr"],
+                                                       counts["colour"], counts["unreadable"], counts["cursor"]))
         for kind in ("text", "attr", "colour"):
             for y, x, k, a, b in [c for c in cells if c[2] == kind][:6]:
                 print("    %s row %d col %d vtcon %r iterm %r" % (kind, y, x, a, b))

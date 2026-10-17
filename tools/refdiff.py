@@ -144,12 +144,18 @@ def parse_dump(out, rows):
     unhandled = lines[2 * rows + 1] if len(lines) > 2 * rows + 1 else ""
     return text, lines[2 * rows], attr, unhandled, chars
 
+UNREADABLE = -1  # fg and bg of a cell whose style the iTerm2 API does not return
+
 def iterm_columns(ours, ref, cols, rows):
     """Cell-by-cell comparison against an iTerm2 dump, in separate columns
     (a cell can count in several): text (codepoint), attributes (bold,
     inverse, underline), colour (fg, bg as palette index / default / rgb).
-    Returns (counts, cells) with cells = [(y, x, kind, ours, iterm)]."""
-    counts = {"cells": cols * rows, "text": 0, "attr": 0, "colour": 0, "cursor": int(ours[1] != ref[1])}
+    A cell the capture marked UNREADABLE (style_at None, e.g. an EL-erased
+    cell) counts only in "unreadable", never as a colour or attribute
+    difference, and only when the engine paints something there (a plain
+    default blank is the same as an unstyled cell). Returns (counts, cells) with cells = [(y, x, kind, ours, iterm)]."""
+    counts = {"cells": cols * rows, "text": 0, "attr": 0, "colour": 0, "unreadable": 0,
+              "cursor": int(ours[1] != ref[1])}
     cells = []
     for y in range(rows):
         for x in range(cols):
@@ -158,6 +164,10 @@ def iterm_columns(ours, ref, cols, rows):
             if c1 != c2:
                 counts["text"] += 1
                 cells.append((y, x, "text", chr(c1), chr(c2)))
+            if b[:2] == (UNREADABLE, UNREADABLE):  # the capture could not read this cell's style
+                if a != (None, DEFAULT, False, False, False):  # engine paints something: not checkable
+                    counts["unreadable"] += 1
+                continue
             if a[2:] != b[2:]:
                 counts["attr"] += 1
                 cells.append((y, x, "attr", a[2:], b[2:]))
@@ -171,7 +181,9 @@ def visible(fg, bg, bold, inverse, underline, ch):
     background (swapped under inverse): its foreground and bold are
     invisible, and the references disagree about what an erase leaves
     there, so they are not compared."""
-    if ch == 32 and not underline:
+    if fg == UNREADABLE:
+        return (UNREADABLE, UNREADABLE, False, False, False)
+    if ch in (0, 32) and not underline:  # 0: iTerm2's empty (never written) cell
         return (None, fg if inverse else bg, False, False, False)
     return (fg, bg, bold, inverse, underline)
 
