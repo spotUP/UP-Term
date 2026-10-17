@@ -404,6 +404,7 @@ def _pointer(c):
 def req(code, payload=b'', timeout=150):
     """One legacy operation, answered in the legacy shape. timeout: the connection's silence limit."""
     m = _m()
+    paths.cap_fsuae_log()   # every rig script passes here: the FS-UAE log never outgrows paths.FSUAE_LOG_MAX
     with _conn(timeout) as c:
         try:
             if code == 0x01: return c.banner.encode('latin-1')

@@ -491,7 +491,11 @@ def setup():
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
     ] + (["uae_cpu_no_unimplemented = false", "uae_fpu_no_unimplemented = false"] if M060 else [])
     paths.require_rom(KICK)
+    paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
     CFG.write_text("\n".join(machine + [
+        # FS-UAE's log in this rig's dir, capped by paths.cap_fsuae_log; not the shared ~/Documents/FS-UAE log
+        # that grew to 7.9 GB (2026-10-17). No log_* option is set: the rig needs none of them.
+        "logs_dir = %s" % paths.FSUAE_LOG_DIR,
         "hard_drive_0 = %s" % (RIG / ("os-%s" % OS if OS else "os32" if OS32 else "sys.hdf")),
         ] + (["hard_drive_0_label = %s" % (RIG / ("os-%s.label" % OS)).read_text()] if OS else []) + [
         # Writable: read-only (--ro) put up "Volume System is write
@@ -675,6 +679,7 @@ def start(retries=2):
         print("already running")
         return
     setup_config_only()
+    paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
     log = RIG / "boot/boot.log"
     if log.exists():
         log.unlink()

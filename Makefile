@@ -53,6 +53,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
+# ONLY=rig_fsuae_log FS-UAE log in the rig dir, capped (tools/test_rig_fsuae_log.py)
 # ONLY=rig_wasabi rig.py wasabi: arguments, the port per rig, the log paths, the process list parser (tools/test_rig_wasabi.py)
 # ONLY=rig_muforce rig.py muforce: the MuForce report parser and argument handling (tools/test_rig_muforce.py)
 # ONLY=rig_claude_import importing tools/rig/claude_rig.py runs nothing (tools/test_rig_claude_import.py)
@@ -70,13 +71,14 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=gcc_mul_overflow_cc __builtin_mul_overflow keeps the tst of the high word after addx.l
 # (tests/test_gcc_mul_overflow_cc.py, the installed $(AGCC); runs the result under vamos if present)
 test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != render ] && [ "$(ONLY)" != terminfo_amiga ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_claude_import ] && [ "$(ONLY)" != rig_wasabimcp ] && [ "$(ONLY)" != rig_muforce ] && [ "$(ONLY)" != rig_wasabi ] && [ "$(ONLY)" != rig_ami ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != rig_upterm ] && [ "$(ONLY)" != rig_kit ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != docs_setenv ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ] && [ "$(ONLY)" != ixemul_startfile ] && [ "$(ONLY)" != gcc_mul_overflow_cc ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != render ] && [ "$(ONLY)" != terminfo_amiga ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_claude_import ] && [ "$(ONLY)" != rig_wasabimcp ] && [ "$(ONLY)" != rig_muforce ] && [ "$(ONLY)" != rig_wasabi ] && [ "$(ONLY)" != rig_fsuae_log ] && [ "$(ONLY)" != rig_ami ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != rig_upterm ] && [ "$(ONLY)" != rig_kit ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != docs_setenv ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ] && [ "$(ONLY)" != ixemul_startfile ] && [ "$(ONLY)" != gcc_mul_overflow_cc ]; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabimcp ]; then python3 -I tools/test_rig_wasabimcp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_muforce ]; then python3 -I tools/test_rig_muforce.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_fsuae_log ]; then python3 -I tools/test_rig_fsuae_log.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_ami ]; then if [ -f "$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -f "$(CURDIR)/../../$(BUILD)/wasabi/src/tests/mock-wasabid.py" ] || [ -n "$(ONLY)" ]; then python3 -I tools/test_rig_ami.py; else echo "[SKIP] rig_ami: wasabi is not built (make wasabi)"; fi; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi

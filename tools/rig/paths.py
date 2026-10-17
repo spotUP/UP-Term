@@ -67,6 +67,43 @@ RIG_N = int(os.environ.get("UPTERM_RIG") or 1)
 RIG_NAME = "rig" if RIG_N == 1 else "rig%d" % RIG_N
 RIG = RIG_HOME / RIG_NAME
 
+# FS-UAE's own log (option logs_dir) goes inside the rig's dir, never into the shared
+# ~/Documents/FS-UAE/Cache/Logs/fs-uae.log.txt: all rigs wrote that one file and it reached 7.9 GB and
+# filled the Mac's disk (2026-10-17). The size cap is enforced by cap_fsuae_log(), called at rig start and
+# from every ami.req().
+FSUAE_LOG_DIR = RIG / "logs"
+FSUAE_LOG_MAX = 50 * 1024 * 1024    # bytes on disk a log may hold before it is cut
+FSUAE_LOG_TAIL = 1024 * 1024        # the end of a cut log kept, as <name>.tail, for diagnosis
+
+
+def cap_fsuae_log(log_dir=None, limit=None, tail=None):
+    """Cut every file in the rig's FS-UAE log dir that holds more than `limit` bytes on disk: its last `tail`
+    bytes go to <name>.tail, the file is truncated in place (FS-UAE keeps it open). Sized by allocated blocks:
+    if FS-UAE does not append, a truncated file keeps writing at its old offset and stays large but sparse.
+    Returns the names cut."""
+    d = pathlib.Path(log_dir or FSUAE_LOG_DIR)
+    limit = FSUAE_LOG_MAX if limit is None else limit
+    tail = FSUAE_LOG_TAIL if tail is None else tail
+    cut = []
+    try:
+        files = [f for f in d.iterdir() if f.is_file() and f.suffix != ".tail"]
+    except OSError:
+        return cut
+    for f in files:
+        try:
+            st = f.stat()
+            if st.st_blocks * 512 <= limit:
+                continue
+            with open(f, "rb") as r:
+                r.seek(max(0, st.st_size - tail))
+                data = r.read().lstrip(b"\0")
+            f.with_name(f.name + ".tail").write_bytes(data)
+            os.truncate(f, 0)
+            cut.append(f.name)
+        except OSError:
+            pass
+    return cut
+
 
 def wasabi_port(rig_n=None):
     """The TCP/UDP port wasabid listens on in rig `rig_n` (this one by default): wasabid's own default 1234 for
