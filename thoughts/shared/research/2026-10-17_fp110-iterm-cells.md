@@ -29,3 +29,33 @@ theme is not compared. Only the visible 80x24 screen at the end of each stream i
 - Cursor row for screen: iTerm2's `cursor_coord.y` was 94 (scrollback-absolute), engine 22; treat as a reading
   artefact of the capture, unverified. Column matches.
 - Not compared: font, theme colours, cursor shape, bold-as-bright; the capture reads the cell styles only.
+
+## tmux left pane cause
+
+Verdict: capture artifact in the replay harness. The engine is right; iTerm2 is not wrong either. Not an engine bug, no
+code changed.
+
+- Cause: `tools/iterm_compare.py replay` plays the stream with `cat` into a pty whose line discipline still has OPOST/ONLCR
+  on, so every bare LF (0x0A) is delivered to iTerm2 as CR LF. tmux writes to a raw tty and relies on bare LF keeping the
+  column. The left pane's last repaint is a column-42 run `ESC[13;42H ESC[K LF ESC[K LF ...` (stream offset 17003,
+  right pane, 10 rows); with LF turned into CR LF each `ESC[K` ran from column 0 and erased the left pane's row.
+  The earlier shell prompt on row 12 (drawn at offset 8587 when the pane was still full width) was what stayed.
+- Evidence 1, bisect on iTerm2 with stream prefixes (scratchpad `bis.py`): left rows 12-22 are correct up to offset
+  17020 (cut after the first `ESC[K LF`), row 13 goes blank at 17023, rows 13-22 blank by 17063.
+- Evidence 2, same bytes in pyte: left pane shows the chat log, cols 0-39 rows 12-22, same as vtdump.
+- Evidence 3, replay with `stty -echo -opost` (patched copy of the harness, results in scratchpad, tools/ not changed):
+  tmux scenario text differs 303 -> 0, attributes 52 -> 0, cursor 0; chat-log text differs 3 -> 0 (the row 22 diff was
+  the same LF issue); screen scenario unchanged. Remaining tmux colour cells (77) are the known blank-cell fg none vs
+  default (256) reading difference.
+- Fix for the harness (not applied, owner decides): `stty -echo -opost` in the replay command in
+  `tools/iterm_compare.py` (line ~87). The numbers in the table above for tmux and chat-log are invalid until then.
+- pyte raises on `CSI ? 996 n` unless its `report_device_status` is overridden; tmux live re-run was not needed.
+
+### Chat-log row 0 colour (engine bg 4 vs iTerm2 default, cols 27+)
+The title bar is `ESC[37m ESC[44m text ESC[K`: cols 0-26 are text, cols 27-79 are cleared by EL with background 4 (BCE).
+Probe in iTerm2 (scratchpad `bce.py`): after `ESC[44m ab ESC[K` the API returns `style_at(x) = None` and `string_at`
+raises IndexError for the EL-cleared cells, while explicitly written spaces report bg 4. So the difference is the
+iTerm2 Python API not exposing erased-cell colour past the written length (harness maps None to default). It is not
+evidence that iTerm2 renders them default; whether iTerm2 paints them blue was not checked visually (unverified).
+The engine behaviour matches xterm BCE and the existing quirk-bce-erase-colour stream. The 53 cells on row 0 are this
+API limit, not an engine difference.
