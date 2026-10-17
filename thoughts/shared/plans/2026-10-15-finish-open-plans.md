@@ -212,7 +212,7 @@ plan before any code. This is the one place this plan stops for the owner.
 - [ ] SHELLICON root cause (265bcefb): owner has NO old kit; work from git history and the current kit only.
 - A1200 git retest: approved; warn the UpRough session first (shared A1200), no reboot needed.
 
-- [ ] FP1.10c owner 2026-10-17: fix colour + cursor diffs and the open inverse-blank cell (row 11 col 40) in the
+- [x] FP1.10c (b57c01f2: all four were harness reading differences; 0 colour, 0 cursor; col 40 confirmed by screenshot) owner 2026-10-17: fix colour + cursor diffs and the open inverse-blank cell (row 11 col 40) in the
   iTerm compare. Agent running (sonnet); harness normalisation + screenshot check; engine fix only if a cell is really wrong.
 - [ ] Git kit helpers: upterm-ports cf1e644 pushed (rig 1 git 9/9). Next: install on A1200 (UpRough warned), clone/fetch/push/fsck.
 - [ ] FS-UAE log flood (owner via UpRough): find the message that filled the 7.9 GB log, switch its source off in the rig
