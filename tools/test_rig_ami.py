@@ -216,6 +216,34 @@ try:
         ami.req(0x03, b"RAM:no/such")
     except SystemExit as e:
         check(str(e).startswith("ERR"), "a missing file is an ERR exit: %r" % str(e))
+    # reboot(): marker in RAM:, C:Reboot, down while it boots, back when the marker is gone
+    real_req, sent, state = ami.req, [], {"marker": False, "down": 0}
+    def fake_req(code, payload=b"", timeout=150):
+        cmd = payload[2:].decode("latin-1")
+        sent.append(cmd)
+        if state["down"]:
+            state["down"] -= 1
+            raise SystemExit("wasabid: connection refused")
+        if cmd.startswith("Echo >"):
+            state["marker"] = True
+        elif cmd == "Run >NIL: C:Reboot":
+            state["marker"], state["down"] = False, 2
+        rc = 0 if not cmd.startswith("List ") or state["marker"] else 20
+        return struct.pack(">I", rc)
+    ami.req = fake_req
+    try:
+        ami.reboot(wait=5, every=0)
+        check(sent[0].startswith("Echo >" + ami.REBOOT_MARKER) and sent[1] == "Run >NIL: C:Reboot" and len(sent) == 5,
+              "reboot: marker, C:Reboot, two refused polls, marker gone: %r" % sent)
+        state.update(marker=False, down=0); sent.clear()
+        ami.req = lambda code, payload=b"", timeout=150: (sent.append(1), struct.pack(">I", 0))[1]
+        try:
+            ami.reboot(wait=0.05, every=0.01)
+            check(False, "reboot: a marker that never goes away is an error")
+        except SystemExit as e:
+            check("did not come back" in str(e), "reboot: no restart is an error: %r" % str(e))
+    finally:
+        ami.req = real_req
 finally:
     srv.terminate()
     srv.wait()

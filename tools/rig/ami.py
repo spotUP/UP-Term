@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ami.py -- the rig's Amiga client, a client of wasabid (https://github.com/creep-ltx/wasabi, `make wasabi`).
-   ami.py ping | info | exec "cmd" [secs] | menus [win] | uitree | requesters | ui verb win gadget [text]
+   ami.py ping | info | reboot | exec "cmd" [secs] | menus [win] | uitree | requesters | ui verb win gadget [text]
           | shot out.png [x y w h] | rexx "program" | get path out | put local path
           | key code [qual] | type text | screens
           | gclick win gadget   (clicks a uitree gadget by its id, matched exactly: '90' is not '290')
@@ -509,6 +509,31 @@ def put(local, remote):
         try: _m().do_put(c, local, remote, quiet=True)
         except _m().WasabiError as e: raise _err(e)
 
+REBOOT_MARKER = 'RAM:ami-reboot.marker'
+
+def reboot(wait=240, every=5):
+    """Reboot the Amiga with C:Reboot and wait until wasabid answers again. A marker file in RAM: (RAM: does not
+    survive a reboot) proves the machine really restarted, not that a ping slipped in before the reset.
+    For the real A1200; an FS-UAE rig restarts with rig.py stop/start. Returns the seconds it took."""
+    def run(cmd, secs=10):
+        b = req(0x02, struct.pack('>H', secs) + cmd.encode('latin-1'), timeout=secs + 5)
+        return struct.unpack('>I', b[:4])[0]
+    if run('Echo >%s x' % REBOOT_MARKER) != 0:
+        raise SystemExit('reboot: cannot write %s' % REBOOT_MARKER)
+    t0 = time.time()
+    try:
+        run('Run >NIL: C:Reboot', 5)
+    except (OSError, SystemExit):
+        pass   # the reset may cut the answer
+    while time.time() - t0 < wait:
+        time.sleep(every)
+        try:
+            if run('List %s QUICK' % REBOOT_MARKER) != 0:
+                return time.time() - t0
+        except (OSError, SystemExit):
+            pass   # down or still booting
+    raise SystemExit('reboot: the Amiga did not come back within %d s (or RAM: kept %s)' % (wait, REBOOT_MARKER))
+
 def png(path, w, h, rows):
     _m().write_png(path, w, h, b''.join(rows))
 
@@ -517,6 +542,7 @@ def main(a):
     if cmd == 'ping': print(req(0x01).decode('latin-1'))
     elif cmd == 'break': print(req(0x09).decode('latin-1'))
     elif cmd == 'info': print(req(0x06).decode('latin-1'))
+    elif cmd == 'reboot': print('back after %d s' % reboot())
     elif cmd == 'exec':
         b = req(0x02, struct.pack('>H', int(a[2]) if len(a) > 2 else 60) + a[1].encode('latin-1'))
         print('rc', struct.unpack('>I', b[:4])[0]); sys.stdout.write(b[4:].decode('latin-1'))
