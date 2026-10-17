@@ -189,7 +189,7 @@ it, `install_rig.py --only <case>` installs and runs it. Batches by size (decisi
   https://codeberg.org/bebbo/gcc/pulls/15. Open: rebuild the 33 upterm-ports userland binaries
   listed in research/2026-10-16_gcc-addx-cc.md, drop upterm-ports tools/m68k-cc workaround,
   re-run cp/du/ls on a rig. upterm-ports is another repo: owner says go.
-- [ ] FP4.6 3.7 coreutils 9.12: unblocked (FP0.6 done, recipe on origin/main 6eb18ad).
+- [ ] FP4.6 3.7 coreutils 9.12: unblocked (FP0.6 done, recipe on origin/main 6eb18ad). Build + rig 3 43/43 PASS (0a91be84). Open: `make kit-stage` not run (drawer still GG coreutils 5.2.1); stack 262144 unmeasured for sort/du/ls/cp on big input.
 
 ## Phase 5: large projects (each starts with its own research + plan, per the workflow; code only after approval)
 
@@ -214,9 +214,13 @@ plan before any code. This is the one place this plan stops for the owner.
 
 - [x] FP1.10c (b57c01f2: all four were harness reading differences; 0 colour, 0 cursor; col 40 confirmed by screenshot) owner 2026-10-17: fix colour + cursor diffs and the open inverse-blank cell (row 11 col 40) in the
   iTerm compare. Agent running (sonnet); harness normalisation + screenshot check; engine fix only if a cell is really wrong.
-- [ ] Git kit helpers: upterm-ports cf1e644 pushed (rig 1 git 9/9). Next: install on A1200 (UpRough warned), clone/fetch/push/fsck.
+- [x] (49016bda: A1200 install + init/commit/clone/fetch/push/fsck all rc 0, no flags) Git kit helpers: upterm-ports cf1e644 pushed (rig 1 git 9/9). Next: install on A1200 (UpRough warned), clone/fetch/push/fsck.
 - [x] (20399395: uaem_write_flags = nhsparwed; Filenote and non-default bits still log, FS-UAE source patch needed to silence) FS-UAE log flood (owner via UpRough): find the message that filled the 7.9 GB log, switch its source off in the rig
   config generator; owner approved rig restarts.
+
+- [ ] git on RAM: fails `fatal: mmap failed: Permission denied` (A1200 2026-10-17, 49016bda). Root cause in ixemul mmap vs git, fix where it lives.
+- [ ] vsh: `cd ..` and `../x` in a script do not reach the parent (`vsh: cd: r8`), A1200 2026-10-17 (49016bda).
+- [ ] SHELLICON A1200 repro (owner 2026-10-17): first read S:User-Startup + assigns (assign bug evidence, 9d71d9a0) BEFORE reinstall; then Install with SHELLICON, double-click Shell, reboot, again, Uninstall, again.
 
 ## Order, size, cost checkpoint
 
