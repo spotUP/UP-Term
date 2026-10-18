@@ -418,7 +418,8 @@ def prepare(dest, addons=()):
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     if dest:
-        (VTC / "Apps").mkdir(exist_ok=True)   # the drawer's parent must exist
+        # the drawer's parent must exist (VTC:KitTest/UP-Term: VTC:KitTest)
+        (VTC / dest.split(':', 1)[1].rpartition('/')[0]).mkdir(parents=True, exist_ok=True)
     (VTC / "runinstall").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s NOCONSOLE NODEVICE\n" % destarg)
     (VTC / "runinstallcon").write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files%s CONSOLE DEVICE SHELLICON\n" % destarg)
     # the rig's Uninstall answers YES to the var question: UP-Term:var holds only
@@ -673,7 +674,7 @@ def _main(dest=None):
     rc, out = run('C:vsh -c "echo $PATH"')
     check(rc == 0 and out.strip().startswith('/UP-Term/bin:'), 'vsh\'s default $PATH names the assign (/UP-Term/bin)', out)
     rc, out = run('C:vsh -c "ls --version"')
-    check(rc == 0 and 'coreutils' in out and '5.2.1' in out, 'vsh\'s ls is GNU coreutils 5.2.1 (through $PATH)', out)
+    check(rc == 0 and 'coreutils' in out and '9.12' in out, 'vsh\'s ls is GNU coreutils 9.12 (through $PATH)', out)
     check((run('List >NIL: C:ls')[0] == 0) == ls_before, 'Install put no ls in C:', '')
     # the reachability test of the Unix tool ports (unix-tool-ports plan 1.10):
     # Install put upterm-ports' grep in UP-Term:bin and vsh's $PATH reaches it
@@ -1180,7 +1181,7 @@ def addon_verify(ck, pkg, remote=True, with_base=True):
             remote_banner(ck)
     elif pkg == 'pi':
         rc, out = run('C:amiga-pi --version')
-        ck(rc == 0 and '1.1.0' in out, 'pi: C:amiga-pi prints --version 1.1.0', out)
+        ck(rc == 0 and '1.2.0' in out, 'pi: C:amiga-pi prints --version 1.2.0', out)
         ck(run('Type ENVARC:amiga-pi/settings.json')[1].strip() == 'userfile-keepme',
            'pi: Install kept the user\'s ENVARC:amiga-pi/settings.json')
     elif pkg == 'nvim':
