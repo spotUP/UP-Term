@@ -439,8 +439,11 @@
 (if (exists "ENVARC:up-term/tmp") (set #blocks (cat #blocks ", TMP:")))
 (if #serial (set #blocks (cat #blocks ", serial login")))
 (if #wasabi (set #blocks (cat #blocks ", wasabid")))
-(if (= #con "CONSOLE") (set #blocks (cat #blocks ", CON:")))
-(if (= #dev "DEVICE") (set #blocks (cat #blocks ", console.device")))
+; a switch UPConsole refused wrote no block (install.dos: ENV:UPTREFUSED<CON|DEV>)
+(set #refcon (exists "ENV:UPTREFUSEDCON"))
+(set #refdev (exists "ENV:UPTREFUSEDDEV"))
+(if (and (= #con "CONSOLE") (not #refcon)) (set #blocks (cat #blocks ", CON:")))
+(if (and (= #dev "DEVICE") (not #refdev)) (set #blocks (cat #blocks ", console.device")))
 
 ; what went where: 10 lines, one more for the extras, and each of the
 ; Assigns and Startup blocks lines that does not fit one line (> 56
@@ -465,6 +468,28 @@
          #assignline "\n"
          #blockline)
     (all))
+
+;  refused: n = 7 (CON:), 6 (console.device) or 11 (both)
+(if (or #refcon #refdev)
+    (
+        (set #n (if (and #refcon #refdev) 11 (if #refcon 7 6)))
+        (P_LEAD)
+        (message
+            (cat #lead
+                 (if #refcon
+                     (cat "UP-Term did NOT take over CON: and RAW:.\n"
+                          "Another console replacement (KingCON, ViNCEd...)\n"
+                          "serves them, and UP-Term does not stack on one.\n"
+                          "New Shell windows stay as they were, and no\n"
+                          "boot block was written.\n") "")
+                 (if (and #refcon #refdev) "\n" "")
+                 (if #refdev
+                     (cat "UP-Term did NOT take over console.device:\n"
+                          "another program has patched it, and UP-Term\n"
+                          "does not stack on a patch. No boot block was\n"
+                          "written.\n") "")
+                 "\nC:UPConsole STATUS says who serves them now."))
+        (run "Delete >NIL: ENV:UPTREFUSED#? QUIET")))
 
 ; the parts are done: the options and the UPTKIT: assign go
 (P_OPTIONS_END)

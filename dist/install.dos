@@ -785,20 +785,34 @@ Else
     EndIf
   EndIf
 EndIf
+; The switch comes first: UPConsole refuses (RETURN_WARN, DD21) when another
+; console replacement (KingCON, ViNCEd...) serves CON:, and it would refuse
+; at every boot too, with its output to NIL:. So a refusal writes no boot
+; block: it is printed here, and ENV:UPTREFUSEDCON (its text) tells the
+; Installer's last page.
+Delete >NIL: ENV:UPTREFUSEDCON QUIET
 If "$upcon" EQ "CONSOLE"
-  If NOT EXISTS S:User-Startup
-    Echo >S:User-Startup ""
-  EndIf
-  Search >NIL: S:User-Startup ";BEGIN UP-Term console"
+  C:UPConsole >T:UPTCON CON ON
   If WARN
-    If NOT EXISTS S:User-Startup.before-UP-Term
-      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    Type T:UPTCON
+    Echo "CON: and RAW: stay as they were: no boot block was written."
+    Copy T:UPTCON ENV:UPTREFUSEDCON QUIET
+  Else
+    Type T:UPTCON
+    If NOT EXISTS S:User-Startup
+      Echo >S:User-Startup ""
     EndIf
-    Echo >>S:User-Startup ";BEGIN UP-Term console"
-    Echo >>S:User-Startup "C:UPConsole >NIL: CON ON"
-    Echo >>S:User-Startup ";END UP-Term console"
+    Search >NIL: S:User-Startup ";BEGIN UP-Term console"
+    If WARN
+      If NOT EXISTS S:User-Startup.before-UP-Term
+        Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+      EndIf
+      Echo >>S:User-Startup ";BEGIN UP-Term console"
+      Echo >>S:User-Startup "C:UPConsole >NIL: CON ON"
+      Echo >>S:User-Startup ";END UP-Term console"
+    EndIf
   EndIf
-  C:UPConsole CON ON
+  Delete >NIL: T:UPTCON QUIET
 EndIf
 UnSet upcon
 ; console.device served by UP-Term (opt-in): UPConsole DEVICE ON at every
@@ -815,20 +829,31 @@ Else
     EndIf
   EndIf
 EndIf
+; the same for console.device: a refusal (console.device patched by another
+; program) writes no boot block; ENV:UPTREFUSEDDEV tells the Installer
+Delete >NIL: ENV:UPTREFUSEDDEV QUIET
 If "$updev" EQ "DEVICE"
-  If NOT EXISTS S:User-Startup
-    Echo >S:User-Startup ""
-  EndIf
-  Search >NIL: S:User-Startup ";BEGIN UP-Term device"
+  C:UPConsole >T:UPTDEV DEVICE ON
   If WARN
-    If NOT EXISTS S:User-Startup.before-UP-Term
-      Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+    Type T:UPTDEV
+    Echo "console.device stays as it was: no boot block was written."
+    Copy T:UPTDEV ENV:UPTREFUSEDDEV QUIET
+  Else
+    Type T:UPTDEV
+    If NOT EXISTS S:User-Startup
+      Echo >S:User-Startup ""
     EndIf
-    Echo >>S:User-Startup ";BEGIN UP-Term device"
-    Echo >>S:User-Startup "C:UPConsole >NIL: DEVICE ON"
-    Echo >>S:User-Startup ";END UP-Term device"
+    Search >NIL: S:User-Startup ";BEGIN UP-Term device"
+    If WARN
+      If NOT EXISTS S:User-Startup.before-UP-Term
+        Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+      EndIf
+      Echo >>S:User-Startup ";BEGIN UP-Term device"
+      Echo >>S:User-Startup "C:UPConsole >NIL: DEVICE ON"
+      Echo >>S:User-Startup ";END UP-Term device"
+    EndIf
   EndIf
-  C:UPConsole DEVICE ON
+  Delete >NIL: T:UPTDEV QUIET
 EndIf
 UnSet updev
 If NOT "{STEP}" EQ ""
