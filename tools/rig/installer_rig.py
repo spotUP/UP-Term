@@ -674,8 +674,8 @@ FOREIGN = 'AHI-Handler'   # L:AHI-Handler: the audio handler, only started when 
 def run_kingcon():
     """c51c7fd6: a CON: that another handler serves (KingCON's way: Assign CON: RAW: DISMOUNT, then a Mount of
     CON: with a Handler) makes `C:UPConsole CON ON` refuse. The Installer's CONSOLE option must then say
-    so on its last page, write no console boot block and leave no ENV:UPTREFUSED*. The rig is rebooted at the
-    end: CON: is the ROM's again."""
+    so on its last page, write no console boot block, take out an older Install's one, and leave no
+    ENV:UPTREFUSED*. The rig is rebooted at the end: CON: is the ROM's again."""
     ck = Checks()
     ir.prepare(None)
     old = os.environ.get('UPTERM_INSTALL_DOS')   # fail-before proof: the install.dos of c51c7fd6^ in the kit copy
@@ -686,6 +686,10 @@ def run_kingcon():
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote ENV:UPTREFUSED#? QUIET')
     ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
     startup_before = ir.run('Type S:User-Startup')[1]
+    # an older Install's console block (the A1200 has one): the refused switch must take it out too (Uninstall
+    # at the end takes every UP-Term block, so startup_before still holds after it)
+    for l in (';BEGIN UP-Term console', 'C:UPConsole >NIL: CON ON', ';END UP-Term console'):
+        ir.run('Echo >>S:User-Startup "%s"' % l)
     inst = find_installer()
     if not inst:
         return False, 'no Installer on the rig (Which Installer, SYS:System, SYS:Utilities, C:)'
