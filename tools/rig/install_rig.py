@@ -631,6 +631,12 @@ def _main(dest=None):
     tree = ami.req(0x0D).decode('latin-1')
     check(rc == 0 and any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
           'a Workbench start of the icon opens the UP-Term window', out)
+    # its text too: the A1200's icon opened the window with "wrong number of arguments" (118) in it
+    import typewin, wbtext
+    shutil.copyfile(ROOT / "build/amiga/snipprobe", VTC / "snipprobe")
+    typewin._last_title = 'UP-Term'
+    bad = wbtext.error_lines(typewin.screen_text('RAM:icon.txt'))
+    check(not bad, 'the icon\'s UP-Term window shows no error line', '; '.join(bad))
     ami.req(0x08, bytes([4]) + b'exit'); time.sleep(0.4); ami.key(0x44); time.sleep(2)
     tree = ami.req(0x0D).decode('latin-1')
     check(not any(l.startswith('W ') and 'UP-Term' in l for l in tree.splitlines()),
