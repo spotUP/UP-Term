@@ -179,7 +179,9 @@ class EveryAddOn(unittest.TestCase):
             self.assertIn('ONLY=%s' % row['handed'], s['installer'])
             self.assertIn('%s/MANIFEST' % row['record'], s['installer'])
             # Python3 takes nothing over from the single kit (its copy is in UP-Term:Python3)
-            adopts = '(= "YES" "YES")' in s['installer'].split('"UP-Term:pkg/legacy/MANIFEST"')[0][-400:]
+            legacy = re.search(r'\(<> "[^"]*" "-"\) \(= "(\w+)" "YES"\)\s*\(exists "UP-Term:pkg/legacy/MANIFEST"',
+                               s['installer'])
+            adopts = legacy.group(1) == 'YES'
             self.assertEqual(adopts, pid != 'python', pid)
 
     def test_every_file_parts_txt_names_has_a_part_of_install_dos(self):
