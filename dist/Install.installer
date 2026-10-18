@@ -56,8 +56,12 @@
 
 ; P_AMISSL: run AmiSSL's own Install-AmiSSL (an Installer script) from the kit's AmiSSL drawer.
 ; It reads Libs/, Certs/ and the rest by relative names, so it starts with that drawer as the current one
-; (a script in T: does the CD); then #amissl is read again, for what comes after
+; (a script in T: does the CD); then the same version check runs again (P_AMISSLCHECK, dist/common/amissl.installer):
+; still missing or older means it did not install (cancelled or failed), else LIBS: needs a reboot.
+; #sslnote is the last page's line(s) for it and #sslrows how many (n + rows)
 (procedure P_AMISSL
+    (set #sslnote "")
+    (set #sslrows 0)
     (if #amisslins
         (
             (textfile (dest "T:UPTAMISSL")
@@ -66,7 +70,15 @@
                                    "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n")))
             (run "Execute T:UPTAMISSL")
             (run "Delete >NIL: T:UPTAMISSL QUIET")
-            (set #amissl (exists "LIBS:amisslmaster.library" (noreq))))))
+            (P_AMISSLCHECK)
+            (if #amissl-need
+                (
+                    (set #sslnote (cat "\nAmiSSL was not installed, curl cannot run.\n"
+                                       "Run " (tackon #files "AmiSSL/Install-AmiSSL") " again."))
+                    (set #sslrows 2))
+                (
+                    (set #sslnote "\nReboot once: then LIBS: has AmiSSL.")
+                    (set #sslrows 1))))))
 
 ; P_ADFIND: #adarc -> #adkind ("drawer", "lha" or "") and #adsrc (its Install, or the lha)
 (procedure P_ADFIND
@@ -639,8 +651,10 @@
 
 ; the add-ons found beside this kit (their pages and records are their own)
 (P_ADDONS)
+(set #adrows (+ #sslrows (if (<> #adnote "") 2 0)))
+(set #adnote (cat #sslnote #adnote))
 
-; the last page: 9 lines, 14 with the wasabi key; the add-on note adds 2
+; the last page: 9 lines, 14 with the wasabi key; the AmiSSL note adds 1 or 2, the add-on note 2
 ; (the wasabi page is full: the note then has a page of its own before it)
 (if (and (= #wasabi "WASABI") (<> #adnote ""))
     (
@@ -648,7 +662,7 @@
         (P_LEAD)
         (message (cat #lead (substr #adnote 1 (strlen #adnote))) (all))
         (set #adnote "")))
-(set #n (+ (if (= #wasabi "WASABI") 14 9) (if (<> #adnote "") 2 0)))
+(set #n (+ (if (= #wasabi "WASABI") 14 9) #adrows))
 (P_LEAD)
 (set #done
     (cat #lead "Open UP-Term: double-click SYS:System/UP-Term, or type\n"

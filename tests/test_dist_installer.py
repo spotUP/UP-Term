@@ -348,6 +348,38 @@ class AmiSSLPart(unittest.TestCase):
         self.assertRegex(inc, r'\(set #amissl-need\s+\(<')
         self.assertIn('(default (if #amissl-need 1 0))', self.PAGE)
 
+    def test_after_the_run_the_same_version_check_decides_installed_or_not(self):
+        inc = (ROOT / "dist/common/amissl.installer").read_text(encoding="latin-1")
+        self.assertIn('(procedure P_AMISSLCHECK', inc)
+        self.assertEqual(inc.count('(getversion "LIBS:amisslmaster.library"'), 1)
+        self.assertNotIn('getversion', (ROOT / "dist/Install.installer").read_text(encoding="latin-1"))
+        self.assertEqual(INSTALLER.count('(P_AMISSLCHECK)'), 2)  # the include's call for the page's default, and the one after the run
+        self.assertLess(self.RUN.index('(run "Execute T:UPTAMISSL")'), self.RUN.index('(P_AMISSLCHECK)'))
+
+    def test_the_last_page_says_when_ticked_amissl_did_not_get_installed(self):
+        run = self.RUN
+        self.assertRegex(run, r'\(if #amissl-need\s+\(\s*\(set #sslnote \(cat "\\nAmiSSL was not installed')
+        self.assertIn('Install-AmiSSL', run[run.index('AmiSSL was not installed'):][:200])
+        self.assertIn('(set #sslrows 2)', run)
+
+    def test_the_last_page_asks_for_a_reboot_when_amissl_was_installed(self):
+        run = self.RUN
+        self.assertRegex(run, r'\(set #sslnote "\\nReboot once: then LIBS: has AmiSSL\."\)')
+        self.assertIn('(set #sslrows 1)', run)
+        self.assertLess(run.index('AmiSSL was not installed'), run.index('Reboot once'))
+
+    def test_the_notes_reach_the_last_page_and_its_line_count(self):
+        s = INSTALLER
+        tail = s[s.index('(P_ADDONS)\n'):]
+        rows = '(set #adrows (+ #sslrows (if (<> #adnote "") 2 0)))'
+        merge = '(set #adnote (cat #sslnote #adnote))'
+        self.assertIn(rows, tail)
+        self.assertLess(tail.index(rows), tail.index(merge))
+        self.assertLess(tail.index(merge), tail.index('(set #n (+ (if (= #wasabi'))
+        self.assertIn('(if (= #wasabi "WASABI") 14 9) #adrows)', tail)
+        self.assertIn('(set #sslnote "")', s[s.index('(procedure P_AMISSL\n'):][:300])
+        self.assertIn('(set #sslrows 0)', s[s.index('(procedure P_AMISSL\n'):][:300])
+
     def test_curl_follows_the_new_amissl(self):
         self.assertRegex(INSTALLER, r'\(default \(\+ 1 2 \(if \(or #amissl #amisslins\) 4 0\)\)\)')
 
