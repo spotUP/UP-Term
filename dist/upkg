@@ -125,10 +125,17 @@ case "$1" in
 list)
     [ $# = 1 ] || usage
     get_index
+    # an installed package older than the release ends its row with "update available"; the base
+    # is updated from its own archive, not by upkg update
     printf '%-14s %-10s %-10s %s\n' package installed available bytes
     awk '!/^#/ { print $2, $3, $5, $6 }' $index | while read -r archive version record size; do
         have=$(installed "$record")
-        printf '%-14s %-10s %-10s %s\n' "$archive" "${have:--}" "$version" "$size"
+        note=
+        if [ -n "$have" ] && older "$have" "$version"; then
+            note=' update available'
+            [ "$record" = UP-Term: ] && note=' update available (install the new UP-Term.lha)'
+        fi
+        printf '%-14s %-10s %-10s %s%s\n' "$archive" "${have:--}" "$version" "$size" "$note"
     done
     rm -rf $work
     ;;

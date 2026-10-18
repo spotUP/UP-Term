@@ -97,6 +97,20 @@ class Upkg(unittest.TestCase):
         rows = {l.split()[0]: l.split()[1:3] for l in out.splitlines()[1:]}
         self.assertEqual(rows, {'UP-Term-nvim': ['1.0', '1.1'], 'Python3': ['-', '1.0']})
 
+    def test_list_marks_an_installed_package_older_than_the_release(self):
+        self.package('base', 'UP-Term', '1.1', '-', 'UP-Term:')
+        self.package('nvim', 'UP-Term-nvim', '1.1', '1.0', 'UP-Term:pkg/UP-Term-nvim')
+        self.package('claude', 'Claude', '1.10', '-', 'ENVARC:upkg/Claude')
+        self.package('python', 'Python3', '1.0', '-', 'ENVARC:upkg/Python3')
+        for rec, line in (('UP-Term:pkg/UP-Term-nvim', 'UP-Term-nvim 1.0'), ('ENVARC:upkg/Claude', 'Claude 1.10')):
+            (self.root / rec).mkdir(parents=True)
+            (self.root / rec / 'VERSIONS').write_text(line + ' x y\n')
+        rc, out = self.upkg('list')
+        self.assertEqual(rc, 0, out)
+        notes = {l.split()[0]: ' '.join(l.split()[4:]) for l in out.splitlines()[1:]}
+        self.assertEqual(notes, {'UP-Term': 'update available (install the new UP-Term.lha)',
+                                 'UP-Term-nvim': 'update available', 'Claude': '', 'Python3': ''})
+
     def test_a_package_needing_a_newer_base_is_refused_before_any_download(self):
         self.package('nvim', 'UP-Term-nvim', '2.0', '1.10', 'UP-Term:pkg/UP-Term-nvim')
         self.base('1.9')
