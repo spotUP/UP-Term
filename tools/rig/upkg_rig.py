@@ -231,6 +231,8 @@ def case_remove(ck, rel):
     ck(rc == 0 and 'UP-Term-nvim removed' in out, 'remove: upkg says removed', out[-300:])
     ck(ir.run('List >NIL: %s' % NVIM)[0] != 0, 'remove: %s is gone' % NVIM)
     ck(not nvim_files_there(), 'remove: UP-Term:nvim/bin/nvim is gone')
+    # a vsh before e8baac4e left Execute's script open: T:upkg/Uninstall stayed "in use"
+    ck(ir.run('List >NIL: T:upkg')[0] != 0, 'remove: T:upkg is gone (Execute closed its script)')
 
 
 def case_needsbase(ck, rel):
