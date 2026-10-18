@@ -309,6 +309,17 @@ def installer_page(tree):
     return None, {}
 
 
+def own_ask_answer(gads):
+    """The gadget to click on a page of the Installer's own ask/confirm kind, or None. Install-AmiSSL's
+    pages (the AmiSSL: assign upgrade question, the CPU choice, 2026-10-18) have no Proceed 90: 1 and 2 are
+    the two buttons (2 left, the affirmative: Yes / Proceed; 1 right: No / Skip), 91 Abort Install, 100 Help.
+    The choice stays at its default, so the click is the left button (the rig rule: only destination and
+    mode stay default; these pages have no boxes to tick)."""
+    if 90 not in gads and {1, 2, 91, 100} <= set(gads) and gads[2][0][0] < gads[1][0][0]:
+        return 2
+    return None
+
+
 def text_faults(tree):
     """Text of the Installer's page that the user cannot read whole, from the screen's pixels (UITREE has
     no text): ([fault], [text band]). Text is the black pen with the rules taken out (a run of more than 30
@@ -489,6 +500,14 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             log.append('room message seen: the drawer page came a second time (page %d); Abort Install (id 91)' % shots)
             click(gads[91][0])
             time.sleep(5)
+            continue
+        ask = own_ask_answer(gads)
+        if ask is not None:
+            if not clicked_at or time.time() - clicked_at > 15:   # a click made while the page redraws is lost
+                click(gads[ask][0])
+                clicked_at = time.time()
+                log.append('answered [%s] with id %d' % (title, ask))
+            time.sleep(3)
             continue
         if 90 not in gads:
             # copying or waiting for the next page: only Abort (or nothing) on it
