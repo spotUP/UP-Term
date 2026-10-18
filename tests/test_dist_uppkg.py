@@ -147,5 +147,24 @@ class Uppkg(unittest.TestCase):
         self.assertIn('cannot download', out)
 
 
+    def curl_exits(self, rc):
+        # the kit curl's two failures seen on the rig: 22 for an HTTP error (a 404 with AmiSSL working),
+        # 20 when it cannot start (amisslmaster.library missing: curl 8.22 opens it for http too)
+        (self.bin / 'curl').write_text('#!/bin/sh\nexit %d\n' % rc)
+        (self.bin / 'curl').chmod(0o755)
+
+    def test_a_file_missing_from_the_release_is_not_blamed_on_amissl(self):
+        self.curl_exits(22)
+        rc, out = self.uppkg('list')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('not in the release', out)
+        self.assertNotIn('AmiSSL', out)
+
+    def test_a_curl_that_cannot_start_points_at_the_amissl_part(self):
+        self.curl_exits(20)
+        rc, out = self.uppkg('list')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('AmiSSL part', out)
+
 if __name__ == '__main__':
     unittest.main()

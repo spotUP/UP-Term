@@ -47,8 +47,17 @@ older() {
         exit 1 }'
 }
 
+# curl exits 22 for an HTTP error (the server answered: the file is not in the release) and 20 when it
+# cannot start (curl 8.22 opens amisslmaster.library even for http); anything else is the network
 fetch() {
-    curl -fsSL -o "$2" "$1" || die "cannot download $1 (curl $?). https needs AmiSSL: run the UP-Term Installer again with its AmiSSL part ticked"
+    curl -fsSL -o "$2" "$1"
+    rc=$?
+    case $rc in
+    0) return 0 ;;
+    22) die "cannot download $1: not in the release (HTTP error)" ;;
+    20) die "cannot download $1: curl cannot start without AmiSSL: run the UP-Term Installer again with its AmiSSL part ticked" ;;
+    *) die "cannot download $1 (curl $rc): check the network connection" ;;
+    esac
 }
 
 get_index() {
