@@ -75,10 +75,12 @@ KIT = ir.KIT
 CLEAN = "--os" in os.environ.get("UPTERM_RIG_FLAGS", "")
 WORKDEST = "Work:Apps/UP-Term"
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:KitTest/UP-Term"),
-         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None)}
+         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None),
+         "kingcon": ("AVERAGE", None)}
 for _pkg in ir.addon_ids():
     CASES["addon-" + _pkg] = ("AVERAGE", None)
 CASES["migrate"] = ("AVERAGE", None)
+ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page: Rushhours, about 1 GB free
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs
 RAMIGA = 0x0080
@@ -221,6 +223,79 @@ def gadgets(tree):
     return out
 
 
+def window_box(tree):
+    """(x, y, w, h) of the kit's Installer window in a UITREE, or None."""
+    for line in tree.splitlines():
+        if line.startswith('W '):
+            f = shlex.split(line)
+            if KITWINDOW.match(f[-1]):
+                w, h = map(int, f[4].split('x'))
+                return int(f[2]), int(f[3]), w, h
+    return None
+
+
+def window_ocr(tree, name, y_to=None, scales=(4,), resamplers=None, thresholds=(100,)):
+    """The text of the Installer window (UITREE has none), read from the screen's pixels with tesseract:
+    the window's rows down to screen row `y_to`, scaled up, black on white. The last image is kept as
+    OUT/<name>.png. Returns one text for the first scale, or with several `scales` x `resamplers` the list of
+    every pass's text (Topaz digits read differently at each: a leading 8 comes back as $ or 3 now and then)."""
+    import subprocess
+    from PIL import Image
+    box = window_box(tree)
+    if not box:
+        return '' if len(scales) == 1 and not resamplers else []
+    x0, y0, w, h = box
+    W, H, rows = ami.grab()
+    y1 = min(H, y_to or y0 + h)
+    im = Image.frombytes('RGB', (W, H), b''.join(bytes(r) for r in rows)).crop((x0 + 5, y0 + 14, min(W, x0 + w - 5), y1)).convert('L')
+    outs = []
+    for sc in scales:
+        for rs in (resamplers or (Image.LANCZOS,)):
+            for th in thresholds:
+                big = im.resize((im.width * sc, im.height * sc), rs).point(lambda v: 255 if v > th else 0)
+                png = OUT / (name + '.png')
+                big.save(png)
+                out = subprocess.run(['tesseract', str(png), 'stdout', '--psm', '6'], capture_output=True, text=True, timeout=60).stdout
+                outs.append(' '.join(out.split()))
+    return outs if (len(scales) > 1 or resamplers) else outs[0]
+
+
+def prompt_digest(tree, gads):
+    """A digest of the page's prompt rows (above the first checkbox): two option pages with the same gadget
+    ids (the serial/wasabi page and the console page) are told apart by it."""
+    import hashlib
+    box = window_box(tree)
+    if not box:
+        return None
+    x0, y0, w, h = box
+    y1 = min(g[0][1] for k, g in gads.items() if 2 <= k < 90) - 2 if any(2 <= k < 90 for k in gads) else y0 + h
+    W, H, rows = ami.grab()
+    return hashlib.md5(b''.join(bytes(rows[y][(x0 + 5) * 3:(x0 + w - 5) * 3]) for y in range(y0 + 14, min(H, y1)))).hexdigest()
+
+
+def read_room(tree, case):
+    """(KB free, KB needed, text) of the Installer's room page ("<dest> has N KB free; the parts you chose
+    need about M KB"), read from the screen; None when the page is no room page. The digits are voted: the
+    number each of N and M most of the OCR passes (5 scales x 2 resamplings x 2 thresholds) read; a digit the font gets wrong ($ or 3 for 8) loses the vote. Up to 3 reads, a second apart."""
+    from collections import Counter
+    from PIL import Image
+    for i in range(3):
+        time.sleep(1)
+        txts = window_ocr(tree, case + '-room', scales=(3, 4, 5, 6, 8), resamplers=(Image.LANCZOS, Image.BICUBIC), thresholds=(100, 140))
+        free, need = Counter(), Counter()
+        for t in txts:
+            m = re.search(r'has\s+(\S+)\s*KB\s+\w+.*?need\s+about\s+(\S+)\s*KB', t)
+            if m and m.group(1).isdigit() and m.group(2).isdigit():   # a misread digit ($) is no vote
+                free[m.group(1)] += 1
+                need[m.group(2)] += 1
+        (OUT / (case + '-room.votes.txt')).write_text('free %s\nneed %s\n' % (dict(free), dict(need)))
+        n, mm = [c.most_common(1)[0][0] if c else '' for c in (free, need)]
+        if n.isdigit() and mm.isdigit():
+            return int(n), int(mm), '%s [free %s, need %s of %d passes]' % (txts[-1], free[n], need[mm], len(txts))
+        tree = ami.req(0x0D).decode('latin-1')
+    return None
+
+
 def installer_page(tree):
     """(title, {id: (box, label)}) of the Installer's window: the one with Proceed (90) or Abort Install (91)."""
     for title, gads in gadgets(tree).items():
@@ -313,9 +388,13 @@ def text_faults(tree):
     return faults, ['y%d-%d x%d-%d' % (a - y0, b - y0, c - x0, d - x0) for a, b, c, d in bands]
 
 
-def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20, expect_abort=False):
+def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20, expect_abort=False,
+          room_dest=None, console=False):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
+    room_dest: the drawer to ask for when the room page ("<dest> has N KB free; the parts you chose need about
+    M KB") comes after the drawer page (read from the screen, logged as `room page: N KB free, M KB needed`);
+    console: tick "UP-Term serves CON: and RAW:" on the console page.
     A page unchanged `stall` s after a click is a FAIL; a page without Proceed is the copy: waited out
     (percent logged) up to work_limit s. Returns (finished, log)."""
     log = []
@@ -326,6 +405,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     askdirs, shots = 0, 0
     last_page_at = time.time()
     work_since, last_pct, dumped_pct = None, None, set()
+    room, after_ask, asks, ticked = None, False, 0, False
 
     seen_faults = set()
 
@@ -352,12 +432,26 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             dump(tree, 'requester')
             return False, log
         title, gads = installer_page(tree)
-        sig = (title, tuple(sorted(gads)), tuple(l for _, l in gads.values()))
+        sig = (title, tuple(sorted(gads)), tuple(l for _, l in gads.values()), prompt_digest(tree, gads) if console and 90 in gads else None)   # message pages with the same ids (installed, refused, open) differ by their text
         if sig != last_sig:
             dump(tree, 'page')
             log.append('page [%s] ids %s' % (title, ' '.join(map(str, sorted(gads)))))
             last_sig, clicked_at, retried = sig, None, None
             last_page_at = time.time()
+            if 89 in gads and 92 in gads:
+                asks += 1
+            if room_dest and asks >= 1 and not room and set(gads) <= {0, 90, 91}:   # a message page after the drawer page
+                room = read_room(tree, case)
+                if room:
+                    log.append('room page: %d KB free, %d KB needed' % room[:2])
+                    log.append('room page text: %s' % room[2])
+            after_ask = False
+            if console and ticked and 90 in gads:
+                time.sleep(1)
+                log.append('page text: %s' % window_ocr(tree, case + '-page'))
+            if room_dest and asks >= 2 and not room:
+                log.append('the drawer page came a second time but the room page was not read (%s-room.png)' % case)
+                return False, log
             if expect_abort:
                 # K7: every page as an image (to read the room message), and the drawer page counted: a second
                 # one is the room message's Proceed (ask for another drawer)
@@ -399,7 +493,8 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                 log.append('Proceed (id 90) again: page unchanged 15 s')
             time.sleep(3)
             continue
-        if dest and not typed and 89 in gads and 92 in gads:   # askdir page
+        target = dest or (room_dest if room else None)
+        if target and not typed and 89 in gads and 92 in gads:   # askdir page
             # The string gadget only keeps a path that exists; a new drawer is made through Make New Drawer
             # (89), whose dialog takes the whole path in its string gadget 1 (OK 90, Cancel 91).
             typed = True
@@ -416,16 +511,16 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                 dump(t2, 'no dialog')
                 return False, log
             dump(t2, 'dialog')
-            if not type_into(dlg[1][0], 1, dest):
-                log.append('could not type %s into the Make New Drawer dialog' % dest)
+            if not type_into(dlg[1][0], 1, target):
+                log.append('could not type %s into the Make New Drawer dialog' % target)
                 return False, log
             click(dlg[90][0])
             time.sleep(3)
             t2 = ami.req(0x0D).decode('latin-1')
             got = gadget_text(92)
-            log.append('made %s through Make New Drawer, askdir string shows [%s]' % (dest, got))
+            log.append('made %s through Make New Drawer, askdir string shows [%s]' % (target, got))
             dump(t2, 'after Make New Drawer')
-            if got != dest:
+            if got != target:
                 return False, log
             last_sig = None   # the page is redrawn: log it and go on to Proceed
             continue
@@ -434,6 +529,17 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             chose.add(title)
             log.append('chose Install for Real (id 1)')
             time.sleep(1)
+        if console and not ticked and 2 in gads and 3 in gads and 4 not in gads and 89 not in gads:
+            txt = window_ocr(tree, case + '-options', min(g[0][1] for k, g in gads.items() if 2 <= k < 90) - 2)
+            if 'console' in txt.lower():
+                click(gads[2][0])
+                ticked = True
+                time.sleep(2)
+                state = [l for l in ami.req(0x0D).decode('latin-1').splitlines() if l.startswith('G 2 ')]
+                log.append('console page [%s]: ticked id 2, now [%s]' % (txt, state[0] if state else '?'))
+                if not state or 'selected' not in state[0]:
+                    return False, log
+        after_ask = 89 in gads and 92 in gads
         click(gads[90][0])
         clicked_at = time.time()
         log.append('Proceed (id 90)')
@@ -524,7 +630,72 @@ def run_case(case):
         return run_addon_case(case[len("addon-"):])
     if case == "migrate":
         return run_migrate()
+    if case == "kingcon":
+        return run_kingcon()
     return run_base_case(case)
+
+
+FOREIGN = 'AHI-Handler'   # L:AHI-Handler: the audio handler, only started when someone opens CON:, which nothing here does
+
+
+def run_kingcon():
+    """c51c7fd6: a CON: that another handler serves (KingCON's way: Assign CON: RAW: DISMOUNT, then a Mount of
+    CON: with a Handler) makes `C:UPConsole CON ON` refuse. The Installer's CONSOLE option must then say
+    so on its last page, write no console boot block and leave no ENV:UPTREFUSED*. The rig is rebooted at the
+    end: CON: is the ROM's again."""
+    ck = Checks()
+    ir.prepare(None)
+    old = os.environ.get('UPTERM_INSTALL_DOS')   # fail-before proof: the install.dos of c51c7fd6^ in the kit copy
+    if old:
+        import shutil
+        shutil.copyfile(old, VTC / 'distkit/Files/install.dos')
+    ir.run_long('rununinstall')
+    ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote ENV:UPTREFUSED#? QUIET')
+    ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
+    startup_before = ir.run('Type S:User-Startup')[1]
+    inst = find_installer()
+    if not inst:
+        return False, 'no Installer on the rig (Which Installer, SYS:System, SYS:Utilities, C:)'
+    (VTC / 'foreigncon.ml').write_text('CON:\n  Handler = L:%s\n  StackSize = 4000\n  Priority = 5\n  GlobVec = -1\n#\n' % FOREIGN)
+    (VTC / 'foreigncon').write_text('Assign CON: RAW: DISMOUNT\nMount CON: FROM VTC:foreigncon.ml\n')
+    try:
+        rc, out = ir.run('Execute VTC:foreigncon')
+        rc, out = ir.run('VTC:UPConsole STATUS')
+        log = ['CON: after the mount: %s' % ' '.join(out.split())[:200]]
+        ck('served by' in out or 'AHI' in out.upper(), 'CON: is served by a foreign handler (%s)' % FOREIGN, out)
+        base = {t for t, _ in windows(ami.req(0x0D).decode('latin-1'))}
+        ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER AVERAGE DEFUSER AVERAGE NOLOG' % inst, 30)
+        time.sleep(5)
+        finished, dlog = drive('kingcon', inst, None, base, console=True, room_dest=ROOMDEST)   # SYS: is too small for the default drawer: the room page sends it to ROOMDEST
+        log += dlog
+        (OUT / 'kingcon.log.txt').write_text('\n'.join(log) + '\n')
+        ck(finished, 'the Installer ran to its end', log[-1])
+        if not finished and installer_running(inst):
+            ir.run('Break >NIL: `Status COM "%s"` C' % inst)
+        # the last pages: the text is drawn, so it is read from the screen at the end of the run
+        texts = [l[len('page text: '):] for l in dlog if l.startswith('page text: ')]
+        rc, out = ir.run('Type S:User-Startup')
+        ck(';BEGIN UP-Term console' not in out, '(a) S:User-Startup has no ;BEGIN UP-Term console block', out[-200:])
+        ck(ir.run('List >NIL: ENV:UPTREFUSEDCON')[0] != 0 and ir.run('List >NIL: ENV:UPTREFUSEDDEV')[0] != 0,
+           '(c) ENV:UPTREFUSED#? is gone at the end')
+        ck(any(re.search(r'did\s+NOT\s+take\s+over\s+CON', t) for t in texts), '(b) the Installer\'s last pages say "did NOT take over CON:"',
+           ' | '.join(texts[-2:])[-300:])
+        blocks = [t.split('Startup blocks:', 1)[1] for t in texts if 'Startup blocks:' in t]
+        ck(blocks and 'CON:' not in blocks[-1], '(d) "CON:" is not in the "Startup blocks:" line (and the line was read: %s)' % (blocks[-1][:80] if blocks else '-'),
+           ' | '.join(blocks[-1:]))
+    finally:
+        ir.run('Delete >NIL: VTC:foreigncon VTC:foreigncon.ml QUIET')
+    rc, out = ir.run_long('rununinstall')
+    ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
+    ck(ir.run('Type S:User-Startup')[1] == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte')
+    # CON: is the foreign handler's until the next boot: every write is done (Uninstall returned), 5 s of quiet, then reboot
+    time.sleep(5)
+    rig("stop")
+    rig("start")
+    ir._shown = None
+    ck(ir.run('VTC:UPConsole STATUS')[0] in (0, 5), 'the rig was rebooted: CON: is the ROM\'s again')
+    print('installer_rig kingcon: passed %d of %d' % (ck.total - len(ck.failed), ck.total))
+    return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 
 
 def run_base_case(case):
@@ -538,6 +709,9 @@ def run_base_case(case):
     if dest:
         parent_existed = make_dest_parent(dest)   # the new drawer's parent must exist
         ir.run_slow('deletedest', drawer_delete(dest))
+    if case == 'default':
+        ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
+    sys_kb = sys_free_bytes() // 1024   # what the room page must say SYS: has
     startup_before = ir.run('Type S:User-Startup')[1]
     before = ir.lib_state()
     rig_gg = ir.run('Assign >NIL: GG: EXISTS')[0] == 0
@@ -551,10 +725,18 @@ def run_base_case(case):
     t_install = time.time()
     ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER %s DEFUSER %s NOLOG' % (inst, level, level), 30)
     time.sleep(5)
-    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'))
+    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'), room_dest=ROOMDEST if case == 'default' else None)
     t_install = time.time() - t_install
     (OUT / (case + ".log.txt")).write_text('\n'.join(log) + '\n')
     ck(finished, 'the Installer ran to its end (%s)' % level, log[-1] if log else '')
+    room = [l for l in log if l.startswith('room page: ')]
+    if room:
+        # SYS: has too little room for the default parts: the user takes another drive (ROOMDEST) and the install goes there
+        n_kb, m_kb = map(int, re.findall(r'\d+', room[0]))
+        ck(n_kb == sys_kb, 'the room page says SYS: has %d KB free (Info: %d KB)' % (n_kb, sys_kb))
+        ck(n_kb < m_kb and 60000 <= m_kb <= 110000, 'the room page\'s need (%d KB) is plausible for the default parts (60000 to 110000 KB, above the free room)' % m_kb)
+        drawer = ROOMDEST
+        ck(any(l.startswith('made %s through Make New Drawer' % ROOMDEST) for l in log), 'the drawer on the other drive was asked for')
     lay = [l for l in log if l.startswith('LAYOUT')]
     # the room message is the Installer's own abort dialog drawn over the page, not one of our pages
     ck(not lay or case == 'space', 'every page\'s text readable: no line cut by the border, under the buttons or beside the copy panel',
@@ -591,7 +773,7 @@ def run_base_case(case):
     ck(('Assign UP-Term: "%s"' % drawer).lower() in out.lower(), 'S:User-Startup assigns UP-Term: to %s' % drawer, out[-300:])
     ck(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
        'the UP-Term: block comes before the blocks that use it', out[-300:])
-    if dest:
+    if dest or room:
         ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'a chosen drawer leaves SYS:UP-Term unmade')
     for f in ('"%s/VERSIONS"' % drawer, 'UP-Term:bin/sh', 'UP-Term:bin/ls', 'UP-Term:unifont/00', 'UP-Term:emoji/1F6',
               'C:vsh', 'C:tmux', 'C:UPConsole', 'L:vtcon-handler', 'L:pty-handler', 'DEVS:DOSDrivers/XCON',
@@ -644,6 +826,8 @@ def run_base_case(case):
     ir.run('Avail >NIL: FLUSH')
     for line in ir.rig_libs():
         ir.run(line)
+    if room:
+        ir.run_slow('deleteroom', drawer_delete(ROOMDEST))   # Uninstall took the drawer; its icon in the volume's root goes too
     if dest:
         for cmd in dest_cleanup(dest, parent_existed)[1:]:   # the drawer went with Uninstall; the parent we made goes too
             ir.run_slow('deletedest', cmd)
