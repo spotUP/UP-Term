@@ -6,7 +6,10 @@
  * under 30 and the object store broke. ixemul must refuse every create of
  * such a name (open with O_CREAT, mkdir, rename, link, symlink), leave no
  * shortened entry behind, and never touch another file whose name is the
- * shortened one. Prints one line per case and [OK] or FAIL at the end.
+ * shortened one. A component longer than a BSTR holds (255) fails with
+ * ENAMETOOLONG before any copy (__plock get_component wrote it into a
+ * 257-byte buffer unchecked); one of 255 still reaches the handler.
+ * Prints one line per case and [OK] or FAIL at the end.
  * Usage: ixnamelen [dir]   (default RAM:ixnamelen, made and emptied) */
 #include <errno.h>
 #include <fcntl.h>
@@ -135,6 +138,34 @@ int main(int argc, char **argv)
     if (!has_text(SHORT30, "other") || !has_text("keep", "keep")) {
         printf("the 30-char file or keep changed: FAIL\n");
         fails++;
+    }
+
+    /* components past a BSTR: refused, nothing overrun; 255 still looked up */
+    {
+        char big[301];
+        struct stat st;
+        memset(big, 'x', 300);
+        big[300] = 0;
+        errno = 0;
+        rc = stat(p(big), &st);
+        printf("%-34s rc %d errno %d (%s): %s\n", "stat 300-char component", rc, errno,
+               strerror(errno), rc < 0 && errno == ENAMETOOLONG ? "PASS" : "FAIL");
+        if (!(rc < 0 && errno == ENAMETOOLONG))
+            fails++;
+        fd = open(p(big), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        rc = fd < 0 ? -1 : 0;
+        printf("%-34s rc %d errno %d (%s): %s\n", "open O_CREAT 300-char component", rc,
+               errno, strerror(errno), rc < 0 && errno == ENAMETOOLONG ? "PASS" : "FAIL");
+        if (fd >= 0) { close(fd); unlink(p(big)); }
+        if (!(rc < 0 && errno == ENAMETOOLONG))
+            fails++;
+        big[255] = 0;
+        errno = 0;
+        rc = stat(p(big), &st);
+        printf("%-34s rc %d errno %d (%s): %s\n", "stat 255-char component", rc, errno,
+               strerror(errno), rc < 0 && errno == ENOENT ? "PASS" : "FAIL");
+        if (!(rc < 0 && errno == ENOENT))
+            fails++;
     }
 
     /* names that fit still work */
