@@ -250,3 +250,4 @@ on the owner's word.
 Automated: per item the named test; landing gate `make dist` + `make dist-check` when kit content changes;
 `make test ONLY=<suite>` for the touched suites. Manual (owner): the visual sign-off list of Phase 1, the
 real-key halves (FP1.4), approvals of Phase 5 plans, answers on FP0.6, FP3.8, FP3.9 (other sessions' branches).
+- [ ] A refused CONSOLE install leaves an older install's console block in S:User-Startup (A1200 has one): the KingCON machine still gets UP-Term CON ON at boot from the old block. Found 2026-10-18.
