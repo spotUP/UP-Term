@@ -387,7 +387,7 @@ class ScriptedAmiga:
         if c == 'C:vsh -c "ls --version"': return 0, 'ls (GNU coreutils) 5.2.1'
         if c.endswith('C:Claude --version'): return 0, 'Claude 1.0'
         if c == 'Type ENVARC:Claude/remote': return 0, '127.0.0.1 2399'
-        if c == 'C:amiga-pi --version': return 0, 'amiga-pi 1.1.0'
+        if c == 'C:amiga-pi --version': return 0, 'amiga-pi 1.2.0'
         if c == 'Type ENVARC:amiga-pi/settings.json': return 0, 'userfile-keepme'
         if c.startswith('Echo >ENVARC:amiga-pi'): return 0, ''
         if c.startswith('Echo >') and c.split()[1][1:].startswith(('C:ClaudeCode', 'UP-Term:ClaudeCode')):
