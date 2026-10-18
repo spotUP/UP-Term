@@ -96,7 +96,7 @@ def _scripts(r):
            'Execute %s%sUninstall\n' % (rec, sep))
     need = None
     if r['needs-base'] != '-':
-        # the refusal dist/upkg install_one makes (same VERSIONS line, same older()): opkg aborts the
+        # the refusal the retired vsh-script upkg made (same VERSIONS line, same older()): opkg aborts the
         # install when preinst exits non-zero, so the staged tree is never even unpacked
         need = ('#!/bin/sh\n# written by tools/pkgs.py ipk: refuse when the installed UP-Term is older than needs-base %(n)s\n'
                 'older() {\n    awk -v a="$1" -v b="$2" \'BEGIN {\n'
