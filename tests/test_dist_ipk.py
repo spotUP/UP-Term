@@ -47,7 +47,7 @@ def check_feed(build, table):
     """Raise AssertionError unless <build>/ipk/Packages.gz says what the table and the files say."""
     out = pathlib.Path(build) / 'ipk'
     feed = stanzas(gzip.decompress((out / 'Packages.gz').read_bytes()).decode())
-    rows = pkgs.rows(table)
+    rows = pkgs.addons(table)
     assert [s['Package'] for s in feed] == [r['archive'] for r in rows], 'packages differ'
     for s, r in zip(feed, rows):
         assert s['Version'] == r['version'], '%s: feed %s, packages.txt %s: rebuild with make dist-ipk' % (
@@ -64,7 +64,7 @@ class IpkTest(unittest.TestCase):
         self.build = self.tmp / 'build'
         self.table = self.tmp / 'packages.txt'
         self.table.write_text(TABLE)
-        for a in ('UP-Term', 'UP-Term-nvim', 'Claude'):
+        for a in ('UP-Term-nvim', 'Claude'):
             stage(self.build, a)
         pkgs.ipk(self.build, self.table)
         pkgs.write_feed(self.build, self.table)
@@ -78,21 +78,35 @@ class IpkTest(unittest.TestCase):
         m = dict(split_ar(f.read_bytes()))
         self.assertEqual(m['debian-binary'], b'2.0\n')
         ctl = tarfile.open(fileobj=io.BytesIO(m['control.tar.gz']))
-        self.assertEqual(sorted(ctl.getnames()), ['.', './control', './postinst', './prerm'])
+        self.assertEqual(sorted(ctl.getnames()), ['.', './control', './postinst', './preinst', './prerm'])
         text = ctl.extractfile('./control').read().decode()
         for line in ('Package: UP-Term-nvim', 'Version: 2.1', 'Architecture: m68k-amigaos',
-                     'Depends: UP-Term (>= 1.0)', 'Installed-Size: 3'):
+                     'Installed-Size: 3'):
             self.assertIn(line + '\n', text)
+        self.assertNotIn('Depends', text)
         post = ctl.extractfile('./postinst').read().decode()
-        self.assertIn('Execute UP-Term:pkg/stage/UP-Term-nvim/Files/install.dos UP-Term:pkg/stage/UP-Term-nvim/Files\n', post)
+        self.assertIn('Execute T:upkg-stage/UP-Term-nvim/Files/install.dos T:upkg-stage/UP-Term-nvim/Files\n', post)
+        self.assertIn('rm -rf T:upkg-stage/UP-Term-nvim\n', post)
+        pre = ctl.extractfile('./preinst').read().decode()
+        self.assertIn('head -n 1 UP-Term:VERSIONS', pre)
+        self.assertIn('if older "$base" 1.0; then', pre)
+        self.assertIn('exit 1', pre)
         self.assertIn('Execute UP-Term:pkg/UP-Term-nvim/Uninstall\n', ctl.extractfile('./prerm').read().decode())
         data = tarfile.open(fileobj=io.BytesIO(m['data.tar.gz']))
-        top = './pkg/stage/UP-Term-nvim'
+        top = './T/upkg-stage/UP-Term-nvim'
         for n in (top + '/Uninstall', top + '/Files/install.dos', top + '/Files/sub/prog'):
             self.assertIn(n, data.getnames())
         self.assertEqual(data.getmember(top + '/Files/sub/prog').mode, 0o755)
         self.assertEqual(data.getmember(top + '/Uninstall').mode, 0o644)
-        self.assertNotIn('Depends', gzip_control(self.out / 'Claude_1.1_m68k-amigaos.ipk'))
+        self.assertTrue(all(n in ('.', './T', './T/upkg-stage') or n.startswith('./T/upkg-stage/') for n in data.getnames()))
+        no_need = tarfile.open(fileobj=io.BytesIO(dict(split_ar((self.out / 'Claude_1.1_m68k-amigaos.ipk').read_bytes()))['control.tar.gz']))
+        self.assertNotIn('./preinst', no_need.getnames())
+
+    def test_the_base_is_not_a_package(self):
+        self.assertFalse(list(self.out.glob('UP-Term_*')))
+        self.assertEqual([s['Package'] for s in stanzas(gzip.decompress((self.out / 'Packages.gz').read_bytes()).decode())],
+                         ['UP-Term-nvim', 'Claude'])
+        self.assertNotIn('Depends', (self.out / 'Packages').read_text())
 
     def test_rebuild_is_byte_equal(self):
         before = {p.name: p.read_bytes() for p in self.out.iterdir()}
@@ -119,11 +133,6 @@ class IpkTest(unittest.TestCase):
         (self.out / 'Claude_1.1_m68k-amigaos.ipk').unlink()
         with self.assertRaises(SystemExit):
             pkgs.feed(self.build, self.table)
-
-
-def gzip_control(f):
-    m = dict(split_ar(f.read_bytes()))
-    return tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./control').read().decode()
 
 
 class RealFeed(unittest.TestCase):

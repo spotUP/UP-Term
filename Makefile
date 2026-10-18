@@ -1125,7 +1125,7 @@ dist-python: $(BUILD)/amiga/upupdate
 dist-index: dist-base dist-claude dist-pi dist-nvim dist-python
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
 # the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees
-dist-ipk: dist-base dist-claude dist-pi dist-nvim dist-python
+dist-ipk: dist-claude dist-pi dist-nvim dist-python
 	python3 tools/pkgs.py ipk $(BUILD)
 	python3 tools/pkgs.py feed $(BUILD)
 dist-src:

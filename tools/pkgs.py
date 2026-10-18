@@ -63,10 +63,13 @@ def index(build, path=TABLE):
 # `arch m68k-amigaos 10`). One string, because the binaries are 68020+ ixemul and nothing else runs them.
 ARCH = 'm68k-amigaos'
 MAINTAINER = 'UP-Term <https://github.com/spotUP/UP-Term>'
-STAGE = 'pkg/stage'      # under the dest root /UP-Term: where data.tar puts the archive's staged tree
+# Where an add-on's files wait: T:upkg-stage/<archive> (RAM, owner 2026-10-19). data.tar paths are
+# relative to the dest root, and dist/upkg.conf has `dest root /`: ixemul reads /T/x as T:x, so
+# ./T/upkg-stage/<archive>/... lands in T: with no second dest and no patch of the upkg binary.
+STAGE = 'T/upkg-stage'
+STAGE_DOS = 'T:upkg-stage'
 SUMMARY = {
-    'base': 'UP-Term, the terminal, vsh and the Unix userland',
-    'claude': 'Claude Code for the Amiga (C:Claude)',
+        'claude': 'Claude Code for the Amiga (C:Claude)',
     'pi': 'amiga-pi, the pi coding agent',
     'nvim': 'Neovim 0.12 in UP-Term:nvim',
     'python': 'Python 3.14 in SYS:Python3',
@@ -74,18 +77,38 @@ SUMMARY = {
 EPOCH = 0
 
 
+def addons(path=TABLE):
+    """The rows that become packages: every row but the base. The base is not a package (owner
+    2026-10-19): it installs and updates from its own Installer, and upkg runs inside it."""
+    return [r for r in rows(path) if r['record'] != 'UP-Term:']
+
+
 def _scripts(r):
-    """(postinst, prerm) vsh text. The package's own install logic is the only one (owner 2026-10-18):
+    """(preinst, postinst, prerm) vsh text; preinst is None for an add-on with no needs-base. The package's own install logic is the only one (owner 2026-10-18):
     postinst Executes the archive's Files/install.dos, which `make dist` wrote and the Installer also
     runs; prerm Executes the Uninstall copy that install.dos left in the record drawer."""
-    st = 'UP-Term:%s/%s' % (STAGE, r['archive'])
+    st = '%s/%s' % (STAGE_DOS, r['archive'])
     rec = r['record'].rstrip('/')
     post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
             'Execute %s/Files/install.dos %s/Files\nrc=$?\nrm -rf %s\nexit $rc\n' % (st, st, st))
     sep = '' if rec.endswith(':') else '/'
     pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: the Uninstall copy the install left in its record\n'
            'Execute %s%sUninstall\n' % (rec, sep))
-    return post, pre
+    need = None
+    if r['needs-base'] != '-':
+        # the refusal dist/upkg install_one makes (same VERSIONS line, same older()): opkg aborts the
+        # install when preinst exits non-zero, so the staged tree is never even unpacked
+        need = ('#!/bin/sh\n# written by tools/pkgs.py ipk: refuse when the installed UP-Term is older than needs-base %(n)s\n'
+                'older() {\n    awk -v a="$1" -v b="$2" \'BEGIN {\n'
+                '        na = split(a, x, "."); nb = split(b, y, "."); n = na > nb ? na : nb\n'
+                '        for (i = 1; i <= n; i++) { if (x[i] + 0 < y[i] + 0) exit 0; if (x[i] + 0 > y[i] + 0) exit 1 }\n'
+                '        exit 1 }\'\n}\n'
+                'base=\nif [ -f UP-Term:VERSIONS ]; then\n    base=$(head -n 1 UP-Term:VERSIONS | awk \'{ print $2 }\')\nfi\n'
+                '[ -n "$base" ] || { echo "%(a)s needs UP-Term %(n)s, and UP-Term: has no install record" >&2; exit 1; }\n'
+                'if older "$base" %(n)s; then\n'
+                '    echo "%(a)s %(v)s needs UP-Term %(n)s; this is UP-Term $base: install the new UP-Term first" >&2\n    exit 1\nfi\n'
+                % {'n': r['needs-base'], 'a': r['archive'], 'v': r['version']})
+    return need, post, pre
 
 
 def _tinfo(name, size=0, mode=0o644, kind=tarfile.REGTYPE, link=''):
@@ -114,7 +137,7 @@ def _targz(entries):
 
 
 def _data_entries(kit, archive):
-    """Every entry of the staged tree build/dist/<archive>, sorted, under ./pkg/stage/<archive>/."""
+    """Every entry of the staged tree build/dist/<archive>, sorted, under ./T/upkg-stage/<archive>/."""
     top = '%s/%s' % (STAGE, archive)
     ents, size = [], 0
     parts = top.split('/')
@@ -146,11 +169,6 @@ def _ar(members):
     return out
 
 
-def depends(r):
-    """Depends from the needs-base column ("-" has none); ixemul is the base's, so it adds none."""
-    return [] if r['needs-base'] == '-' else ['UP-Term (>= %s)' % r['needs-base']]
-
-
 def ipk_name(r):
     return '%s_%s_%s.ipk' % (r['archive'], r['version'], ARCH)
 
@@ -161,17 +179,16 @@ def build_ipk(r, build):
     if not (kit / 'Files/install.dos').is_file():
         raise SystemExit('pkgs ipk: %s is not staged: make dist' % kit)
     data_ents, size = _data_entries(kit, r['archive'])
-    post, pre = _scripts(r)
+    need, post, pre = _scripts(r)
     lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + ARCH,
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
              'Description: ' + SUMMARY.get(r['id'], r['archive'])]
-    if depends(r):
-        lines.insert(3, 'Depends: ' + ', '.join(depends(r)))
     ctl = ('\n'.join(lines) + '\n').encode()
-    control = _targz([(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None),
-                      (_tinfo('./control', len(ctl)), ctl),
-                      (_tinfo('./postinst', len(post), 0o755), post.encode()),
-                      (_tinfo('./prerm', len(pre), 0o755), pre.encode())])
+    ents = [(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None), (_tinfo('./control', len(ctl)), ctl)]
+    if need:
+        ents.append((_tinfo('./preinst', len(need), 0o755), need.encode()))
+    ents += [(_tinfo('./postinst', len(post), 0o755), post.encode()), (_tinfo('./prerm', len(pre), 0o755), pre.encode())]
+    control = _targz(ents)
     data = _targz([(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None)] + data_ents)
     return _ar([('debian-binary', b'2.0\n'), ('control.tar.gz', control), ('data.tar.gz', data)])
 
@@ -183,7 +200,7 @@ def ipk(build, path=TABLE):
     for old in out.glob('*.ipk'):
         old.unlink()
     names = []
-    for r in rows(path):
+    for r in addons(path):
         (out / ipk_name(r)).write_bytes(build_ipk(r, build))
         names.append(ipk_name(r))
     return names
@@ -192,14 +209,12 @@ def ipk(build, path=TABLE):
 def feed(build, path=TABLE):
     """Packages text (opkg format) of the .ipk files in <build>/ipk; one stanza a row."""
     out, blocks = pathlib.Path(build) / 'ipk', []
-    for r in rows(path):
+    for r in addons(path):
         f = out / ipk_name(r)
         if not f.is_file():
             raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
         data = f.read_bytes()
         b = ['Package: ' + r['archive'], 'Version: ' + r['version']]
-        if depends(r):
-            b.append('Depends: ' + ', '.join(depends(r)))
         b += ['Architecture: ' + ARCH, 'Filename: ' + f.name, 'Size: %d' % len(data),
               'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
               'Description: ' + SUMMARY.get(r['id'], r['archive'])]
