@@ -480,7 +480,7 @@ class Fixtures:
         self.assigns = {}
         for l in out.splitlines():
             f = l.split(None, 1)
-            if len(f) == 2 and f[0].rstrip(':').upper() in FIXTURE_ASSIGNS:
+            if len(f) == 2 and f[0].rstrip(':').upper() in [n.upper() for n in FIXTURE_ASSIGNS]:
                 self.assigns[f[0].rstrip(':').upper()] = f[1].strip()
 
     def restore(self):
@@ -490,7 +490,7 @@ class Fixtures:
             except BaseException as e: print('[WARN] fixture %s not restored: %s' % (p, e))
         for name in FIXTURE_ASSIGNS:
             try:
-                if name in self.assigns: run('Assign %s: "%s"' % (name, self.assigns[name]))
+                if name.upper() in self.assigns: run('Assign %s: "%s"' % (name, self.assigns[name.upper()]))
                 else: run('Assign >NIL: %s:' % name)
             except BaseException as e: print('[WARN] assign %s: not restored: %s' % (name, e))
         # LIBS: is the rig's normal boot order again, whatever a case assigned
