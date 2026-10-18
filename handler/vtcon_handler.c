@@ -61,6 +61,8 @@
 #include "complete_core.h"
 #include "menu_ids.h"
 #include "slash.h"
+#include "tabprog.h"
+#include "../demo/updemo.h"
 #include "brk.h"
 #include "ttyown.h"
 #include "waitset.h"
@@ -5246,9 +5248,15 @@ static void sbar_route(con *c, ULONG id, ULONG top)
     PutMsg(to->tab_port, &t->msg);
 }
 
+/* the tab bar's height when it is up, in pixels */
+static WORD bar_pixels(con *c)
+{
+    return (WORD)(c->own_win->WScreen->RastPort.Font->tf_YSize + 4);
+}
+
 static WORD bar_height(con *c)
 {
-    return c->own_win && c->ntabs >= 2 ? (WORD)(c->own_win->WScreen->RastPort.Font->tf_YSize + 4) : 0;
+    return c->own_win && c->ntabs >= 2 ? bar_pixels(c) : 0;
 }
 
 /* the bar: one cell per tab, its number and title, the active one in the
@@ -5433,13 +5441,15 @@ struct tab_prog {
     const char *script;  /* T:... the FROM script that runs it */
     const char *pre;     /* a script line before it ("" none): Claude refuses a stack under 16000 */
     const char *missing; /* the requester's text when file is not there */
+    int cols, rows;      /* the grid it needs (0 0: any); the window grows to it first */
 };
 static const struct tab_prog tab_progs[] = {
-    { 0, 0, "", 0 },
+    { 0, 0, "", 0, 0, 0 },
     { "C:UPDemo", "T:UP-Term-demo", "",
-      "The demo is not installed:\nC:UPDemo was not found.\n\nInstall UP-Term from its archive to get it." },
+      "The demo is not installed:\nC:UPDemo was not found.\n\nInstall UP-Term from its archive to get it.",
+      UPDEMO_MIN_COLS, UPDEMO_MIN_ROWS },
     { "C:Claude", "T:UP-Term-claude", "Stack 32768\n",
-      "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it." }
+      "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it.", 0, 0 }
 };
 
 /* 1 when the tab is on its way; 0 when the program is not there */
@@ -5450,18 +5460,17 @@ static int tab_prog_script(struct tab_spawn_msg *m)
         sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term", 0, (UBYTE *)"OK"
     };
     BPTR f, lock;
+    char script[160];
     missing.es_TextFormat = (UBYTE *)p->missing;
     if (!(lock = Lock((STRPTR)p->file, SHARED_LOCK))) {
         EasyRequestArgs(0, &missing, 0, 0);
         return 0;
     }
     UnLock(lock);
-    if (!(f = Open((STRPTR)p->script, MODE_NEWFILE)))
+    if (!tabprog_script(script, sizeof(script), p->pre, p->file) ||
+        !(f = Open((STRPTR)p->script, MODE_NEWFILE)))
         return 0;
-    FPuts(f, (STRPTR)"FailAt 2147483647\n");
-    FPuts(f, (STRPTR)p->pre);
-    FPuts(f, (STRPTR)p->file);
-    FPuts(f, (STRPTR)"\nEndCLI >NIL:\n");
+    FPuts(f, (STRPTR)script);
     Close(f);
     strcat(m->cmd, " FROM ");
     strcat(m->cmd, p->script);
@@ -5545,8 +5554,17 @@ static void h_open_link(void *u, const char *uri)
 static int tab_spawn(con *c, const char *profile, con *from, int prog)
 {
     struct tab_spawn_msg *m;
+    const struct tab_prog *p = &tab_progs[prog];
+    int want_cols, want_rows, bar_rows = 0;
     if (c->ntabs >= TAB_MAX || !c->own_win || c->foreign)
         return 0;
+    /* the program's tab gets the grid it needs: the window grows first (the
+     * tab bar this tab brings up included). A screen too small for it leaves
+     * the window as it is, and the program's own message says so. */
+    if (c->ntabs < 2 && c->w.r.ch > 0)
+        bar_rows = (bar_pixels(c) + c->w.r.ch - 1) / c->w.r.ch;
+    if (tabprog_grow(c->w.r.cols, c->w.r.rows, p->cols, p->rows, bar_rows, &want_cols, &want_rows))
+        vtwin_set_size(&c->w, want_cols, want_rows);
     if (!c->tab_port) {
         /* the public port tabs find us by */
         char hex[9];

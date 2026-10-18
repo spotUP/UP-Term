@@ -38,6 +38,7 @@ void suite_otag(void);
 void suite_slash(void);
 void suite_fontpair(void);
 void suite_updemo(void);
+void suite_tabprog(void);
 void suite_pace(void);
 void suite_painter(void);
 void suite_text(void);
@@ -101,6 +102,7 @@ static const h_suite suites[] = {
     { "slash", suite_slash },
     { "fontpair", suite_fontpair },
     { "updemo", suite_updemo },
+    { "tabprog", suite_tabprog },
     { "pace", suite_pace },
     { "painter", suite_painter },
     { "text", suite_text },
