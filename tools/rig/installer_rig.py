@@ -58,7 +58,7 @@ Confirmed on the rig (2026-10-07, Installer 47.19): the Installer's custom gadge
 are driven by gadget id (90 Proceed, 91 Abort, 89 Make New Drawer, 92 the askdir string); the string gadget keeps
 only a path that exists, so the dest drawer is made through Make New Drawer (dialog: string 1, OK 90, Cancel 91).
 A page unchanged 60 s after a click is a FAIL (never a hang)."""
-import os, pathlib, re, shlex, sys, time
+import os, pathlib, re, shlex, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ami
@@ -80,6 +80,9 @@ CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN els
 for _pkg in ir.addon_ids():
     CASES["addon-" + _pkg] = ("AVERAGE", None)
 CASES["migrate"] = ("AVERAGE", None)
+FULLDEST = "DH1:KitTest-full"   # the fullsuite case's drawer for UP-Term: never SYS: (it is small and the owner's)
+FULL_DRAWER = "nvim"            # the add-on staged as an unpacked drawer; the rest are .lha files
+CASES["fullsuite"] = ("AVERAGE", None)
 ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page: Rushhours, about 1 GB free
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs
@@ -91,6 +94,8 @@ def case_packages(case):
     """([packages the case installs], [more files its fingerprint reads])."""
     if case and case.startswith("addon-"):
         return ["base", case[len("addon-"):]], []
+    if case == "fullsuite":
+        return ["base"] + ir.addon_ids(), []
     if case == "migrate":
         return ["base", "nvim"], [ir.LEGACY_KIT / "Files/MANIFEST", ir.LEGACY_KIT / "Install"]
     return ["base"], []
@@ -389,12 +394,15 @@ def text_faults(tree):
 
 
 def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20, expect_abort=False,
-          room_dest=None, console=False):
+          room_dest=None, console=False, tick_all=False):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
     room_dest: the drawer to ask for when the room page ("<dest> has N KB free; the parts you chose need about
     M KB") comes after the drawer page (read from the screen, logged as `room page: N KB free, M KB needed`);
     console: tick "UP-Term serves CON: and RAW:" on the console page.
+    tick_all: on every options page tick every box not ticked (and not disabled) before Proceed; a page with the
+    install-mode gadget 1 is a choice, not a list of boxes. Each Installer (the nested ones too: their window
+    title is their script) asks its own drawer and room pages.
     A page unchanged `stall` s after a click is a FAIL; a page without Proceed is the copy: waited out
     (percent logged) up to work_limit s. Returns (finished, log)."""
     log = []
@@ -406,14 +414,21 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     last_page_at = time.time()
     work_since, last_pct, dumped_pct = None, None, set()
     room, after_ask, asks, ticked = None, False, 0, False
+    cur_title, ticked_sigs = None, set()
 
     seen_faults = set()
+
+    def geom(tree):
+        # where the checkboxes sit tells two option pages with the same gadget ids apart
+        return tuple(re.findall(r'^G [2-9]\d? (\d+ \d+) \d+x\d+ (?:button|toggle)', tree, re.M))
 
     def dump(tree, why):
         # the Make New Drawer dialog is the Installer's own, drawn over the askdir page (its frames read as a
         # panel, the drawer list under it as stray text: 3.1 dest, 2026-10-08): only our pages' text is judged
         own = why in ('dialog', 'no dialog', 'after Make New Drawer')
-        faults, bands = ([], []) if own else text_faults(tree)
+        # two Installer windows (a nested add-on Install over the base) overlap while one closes: not a layout fault
+        nested = sum(1 for t in gadgets(tree) if 'Install' in t) > 1
+        faults, bands = ([], []) if own or nested else text_faults(tree)
         with pages.open('a') as f:
             f.write('---- %.0f s %s\n%s\ntext: %s\n' % (time.time() - t0, why, tree, ' '.join(bands)))
             for x in faults:
@@ -432,6 +447,11 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             dump(tree, 'requester')
             return False, log
         title, gads = installer_page(tree)
+        if title and title != cur_title:
+            if cur_title:   # another Installer (a nested add-on Install) with its own drawer and room pages
+                typed, room, asks = False, None, 0
+                log.append('Installer window [%s]' % title)
+            cur_title = title
         sig = (title, tuple(sorted(gads)), tuple(l for _, l in gads.values()), prompt_digest(tree, gads) if console and 90 in gads else None)   # message pages with the same ids (installed, refused, open) differ by their text
         if sig != last_sig:
             dump(tree, 'page')
@@ -524,6 +544,17 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                 return False, log
             last_sig = None   # the page is redrawn: log it and go on to Proceed
             continue
+        if tick_all and 90 in gads and (sig, geom(tree), tree.count('selected')) not in ticked_sigs and 89 not in gads and not re.search(r'^G 1 \d+ \d+ \d+x\d+ button', tree, re.M):
+            ticked_sigs.add((sig, geom(tree), tree.count('selected')))
+            boxes = [(int(m.group(1)), m.group(2)) for m in re.finditer(r'^G (\d+) (\d+ \d+ \d+x\d+) (?:button|toggle)( \w+)?', tree, re.M)
+                     if 2 <= int(m.group(1)) < 89 and 'disabled' not in (m.group(3) or '') and 'selected' not in (m.group(3) or '')]
+            for gid, _ in boxes:
+                click(gads[gid][0])
+                time.sleep(1)
+            if boxes:
+                log.append('ticked ids %s on [%s]' % (' '.join(str(g) for g, _ in boxes), title))
+                time.sleep(2)
+                continue   # the page is read again: a box this one enabled is ticked too
         if 1 in gads and 5 in gads and title not in chose:   # install-mode page: Install for Real
             click(gads[1][0])
             chose.add(title)
@@ -630,6 +661,8 @@ def run_case(case):
         return run_addon_case(case[len("addon-"):])
     if case == "migrate":
         return run_migrate()
+    if case == "fullsuite":
+        return run_fullsuite()
     if case == "kingcon":
         return run_kingcon()
     return run_base_case(case)
@@ -869,7 +902,7 @@ def installer_run(tag, inst, kitdir, appname, level, base, dest=None):
     t = time.time()
     ir.run('Run >NIL: "%s" VTC:%s/Install APPNAME %s MINUSER %s DEFUSER %s NOLOG' % (inst, kitdir, appname, level, level), 30)
     time.sleep(5)
-    finished, log = drive(tag, inst, dest, base)
+    finished, log = drive(tag, inst, dest, base, tick_all=(tag == "fullsuite"))
     (OUT / (tag + ".log.txt")).write_text("\n".join(log) + "\n")
     return finished, log, time.time() - t
 
@@ -918,6 +951,62 @@ def run_addon_case(pkg):
         ir.run_long("rununinstall")
     else:
         ir.base_uninstall(ck, before)
+    print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
+    return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
+
+
+def run_fullsuite():
+    """The FULL package (L6): the base kit drawer with all the add-ons beside it (FULL_DRAWER as an unpacked
+    drawer, the others as .lha files, so both ways of finding them run). Every box on every page of the base and of
+    each nested Install is ticked and every question answered yes (drive tick_all); the drawer for UP-Term: is
+    FULLDEST on DH1:, never SYS:. PASS: each add-on's record, the base record, CON: served by UP-Term with its
+    startup block, the lha files unpacked beside themselves, no "Add-on not installed" on the last page."""
+    import subprocess
+    case, ck = "fullsuite", Checks()
+    ids = ir.addon_ids()
+    ir.prepare(None, [])
+    for pkg in ids:   # no stale drawer or lha beside the kit: what is found is what this run staged
+        shutil.rmtree(ir.VTC / ir.archive(pkg), ignore_errors=True)
+        (ir.VTC / (ir.archive(pkg) + ".lha")).unlink(missing_ok=True)
+        if pkg == FULL_DRAWER:
+            shutil.copytree(ir.kit_dir(pkg), ir.VTC / ir.archive(pkg))
+        else:
+            lha = ir.VTC / (ir.archive(pkg) + ".lha")
+            subprocess.run(["lha", "-aq", str(lha), ir.archive(pkg)], cwd=ir.kit_dir(pkg).parent, check=True)
+    ir.run_slow("freeroom", "Delete >NIL: SYS:space-filler QUIET")
+    ir.run_slow("deleteroom", drawer_delete(FULLDEST))
+    before = ir.Before()
+    inst, base = read_installer()
+    for pkg in ids:
+        ir.addon_absent(ck, pkg, "before the base Install")   # a record left over would pass the checks below untested
+    finished, log, _ = installer_run(case, inst, "distkit", "UP-Term", "AVERAGE", base, dest=FULLDEST)
+    ok = installer_done(ck, inst, case, finished, log)
+    pages = (OUT / (case + ".pages.txt")).read_text(errors="replace")
+    ck(any(("made %s through Make New Drawer" % FULLDEST) in l for l in log), "the drawer typed was %s (DH1:, not SYS:)" % FULLDEST, "; ".join(log[:14]))
+    ck(not any("SYS:" in l and "Make New Drawer" in l for l in log), "no drawer was made on SYS:")
+    if ok:
+        ck(ir.run("List >NIL: UP-Term:MANIFEST")[0] == 0, "the base record UP-Term:MANIFEST exists")
+        ck(ir.run("Assign UP-Term: EXISTS")[0] == 0 and ir.run("List >NIL: %s/UP-Term.version" % FULLDEST)[0] == 0, "UP-Term: is on %s" % FULLDEST)
+        for pkg in ids:
+            arc = ir.archive(pkg)
+            ck(ir.run("List >NIL: VTC:%s/Install" % arc)[0] == 0, "%s: its Install is beside the kit (%s)" % (pkg, "drawer" if pkg == FULL_DRAWER else "lha unpacked"))
+            ck(any("VTC:%s/Install" % arc in l for l in log), "%s: a nested Installer window ran its script" % pkg, "; ".join(l for l in log if "Installer window" in l))
+            ir.addon_verify(ck, pkg, remote=False)
+        ck(ir.run("C:UPConsole STATUS")[1].find("CON: UP-Term") >= 0, "CON: is served by UP-Term (the console handler replaced)", ir.run("C:UPConsole STATUS")[1] + " | refused: " + ir.run("Type ENV:UPTREFUSEDCON")[1] + " | startup: " + ir.run("Type S:User-Startup")[1][-600:])
+        ck(";BEGIN UP-Term console" in ir.run("Type S:User-Startup")[1], "S:User-Startup has the UP-Term console block")
+        ck("Add-on not installed" not in pages, "the last page has no Add-on not installed note")
+        ir.base_whole(ck, "with every add-on installed")
+        for pkg in reversed(ids):
+            (ir.VTC / ("rununinstall-" + pkg)).write_text("Set upvardelete YES\nCD VTC:%s\nExecute Uninstall\n" % ir.archive(pkg))
+            rc, out = ir.run_long("rununinstall-" + pkg)
+            ck(rc == 0, "%s: its Uninstall runs" % pkg, out)
+        ir.base_uninstall(ck, before)
+    else:
+        ir.run_long("rununinstall")
+    for pkg in ids:
+        ir.run_slow("deleteunpacked", "Delete VTC:%s ALL QUIET" % ir.archive(pkg))
+        ir.run_slow("deletelha", "Delete VTC:%s.lha QUIET" % ir.archive(pkg))
+    ir.run_slow("deleteroom", drawer_delete(FULLDEST))
     print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
 
