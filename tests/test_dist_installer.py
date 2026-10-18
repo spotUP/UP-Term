@@ -197,6 +197,18 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
         self.assertIn('Neovim, Python, Claude and amiga-pi are archives of', INSTALLER)
         self.assertIn('the files of the add-on archives', INSTALLER)
 
+    def test_the_base_ships_upkg_conf_and_makes_the_opkg_drawers(self):
+        """P10.5: etc/upkg.conf from dist/, the empty lists, info and cache drawers made by the Installer
+        (not by lha), the vsh script upkg gone (UP-Term:bin/upkg is the opkg binary from the userland)"""
+        mk = (ROOT / 'Makefile').read_text()
+        self.assertIn('dist/upkg.conf', mk)
+        self.assertNotIn('dist/upkg ', mk)
+        self.assertNotIn('dist/upkg\n', mk)
+        self.assertFalse((ROOT / 'dist/upkg').exists())
+        self.assertIn('MakeDir >NIL: UP-Term:pkg UP-Term:pkg/upkg UP-Term:pkg/upkg/lists UP-Term:pkg/upkg/info UP-Term:pkg/upkg/cache', DOS)
+        self.assertIn('Copy upkg.conf UP-Term:etc/upkg.conf CLONE', DOS)
+        self.assertNotIn('Copy upkg UP-Term:bin/upkg', DOS)
+
     def test_uninstall_leaves_the_add_ons_binaries_to_their_own_uninstall(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
         delete = [l for l in un.splitlines() if l.startswith('Delete >NIL: L:vtcon-handler')][0]

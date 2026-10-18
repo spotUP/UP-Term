@@ -118,6 +118,12 @@ class BuiltKit(unittest.TestCase):
 
 
 class PartsTable(unittest.TestCase):
+    def test_the_kit_list_holds_upkg_conf_and_not_the_retired_script(self):
+        """P10.5: upkg is the opkg binary from the userland drawer; the kit ships its configuration"""
+        kit_paths = {k for _, k, _ in PARTS}
+        self.assertIn('Files/upkg.conf', kit_paths)
+        self.assertNotIn('Files/upkg', kit_paths)
+
     def test_every_part_named_is_a_part_of_install_dos(self):
         labs = set(re.findall(r'(?m)^Lab (\S+)', DOS))
         self.assertEqual({p for p, _, _ in PARTS} - labs - {'-'}, set())
