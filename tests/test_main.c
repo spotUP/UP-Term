@@ -135,6 +135,13 @@ static const h_suite suites[] = {
 int main(int argc, char **argv)
 {
     int i, ran = 0;
+    /* --has NAME: exit 0 when NAME is a suite here, 1 when not (make test ONLY= asks first) */
+    if (argc > 2 && !strcmp(argv[1], "--has")) {
+        for (i = 0; suites[i].name; i++)
+            if (!strcmp(argv[2], suites[i].name))
+                return 0;
+        return 1;
+    }
     for (i = 0; suites[i].name; i++) {
         int f0 = h_failures, c0 = h_checks;
         if (argc > 1 && argv[1][0] && strcmp(argv[1], suites[i].name))

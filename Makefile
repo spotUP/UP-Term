@@ -70,8 +70,11 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # multilib crt0.o (tests/test_ixemul_startfile.py, the installed $(AGCC))
 # ONLY=gcc_mul_overflow_cc __builtin_mul_overflow keeps the tst of the high word after addx.l
 # (tests/test_gcc_mul_overflow_cc.py, the installed $(AGCC); runs the result under vamos if present)
+# The ONLY= names of the recipe lines below; the C suites are tests/test_main.c's (vttest_host --has)
+TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host
-	@if [ "$(ONLY)" != uptelnetd ] && [ "$(ONLY)" != render ] && [ "$(ONLY)" != terminfo_amiga ] && [ "$(ONLY)" != claude_fixture ] && [ "$(ONLY)" != rig_paths ] && [ "$(ONLY)" != rig_stdin ] && [ "$(ONLY)" != rig_claude_import ] && [ "$(ONLY)" != rig_wasabimcp ] && [ "$(ONLY)" != rig_muforce ] && [ "$(ONLY)" != rig_wasabi ] && [ "$(ONLY)" != rig_fsuae_log ] && [ "$(ONLY)" != rig_ami ] && [ "$(ONLY)" != wbtext ] && [ "$(ONLY)" != rig_libs ] && [ "$(ONLY)" != rig_upterm ] && [ "$(ONLY)" != rig_kit ] && [ "$(ONLY)" != layers ] && [ "$(ONLY)" != pi_recordings ] && [ "$(ONLY)" != fonts ] && [ "$(ONLY)" != bashdiff ] && [ "$(ONLY)" != installer ] && [ "$(ONLY)" != docs_setenv ] && [ "$(ONLY)" != hl ] && [ "$(ONLY)" != entry ] && [ "$(ONLY)" != deps ] && [ "$(ONLY)" != ixemul ] && [ "$(ONLY)" != man ] && [ "$(ONLY)" != unorm ] && [ "$(ONLY)" != pi_search ] && [ "$(ONLY)" != make_hygiene ] && [ "$(ONLY)" != ixemul_startfile ] && [ "$(ONLY)" != ixemul_sincos ] && [ "$(ONLY)" != gcc_mul_overflow_cc ]; then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
+	@if [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
@@ -111,6 +114,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_net ]; then python3 tests/test_vshrc_net.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wbtext ]; then python3 -I tests/test_wbtext.py; fi
