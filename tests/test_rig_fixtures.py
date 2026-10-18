@@ -108,6 +108,18 @@ class Rig(unittest.TestCase):
         self.assertEqual(self.fake.files['ENVARC:Claude/remote'], b'; c\n192.168.0.198 2323\n')
         self.assertNotIn('ENV:Claude/remote', self.fake.files, 'absent before: absent after')
 
+    def test_restore_keeps_a_mixed_case_assign_that_was_there_before(self):
+        # FIXTURE_ASSIGNS spells UP-Term in mixed case, take() keys the saved assigns in upper case:
+        # the lookup missed and restore() removed the rig's own UP-Term: (2026-10-19)
+        listing = 'GG   VTC:gg\nUP-Term   Rushhours:UpkgRig/UP-Term\n'
+        def run(cmd, timeout=60):
+            rc = struct.unpack('>I', self.fake.req(0x02, struct.pack('>H', 1) + cmd.encode('latin-1'))[:4])[0]
+            return rc, listing if cmd == 'Assign LIST' else ''
+        ir.run = run
+        fx = ir.Fixtures(); fx.take(); fx.restore()
+        self.assertIn('Assign UP-Term: "Rushhours:UpkgRig/UP-Term"', self.fake.cmds)
+        self.assertNotIn('Assign >NIL: UP-Term:', self.fake.cmds)
+
     def test_main_restores_when_the_body_raises(self):
         orig = ir._main
         def boom(dest=None):
