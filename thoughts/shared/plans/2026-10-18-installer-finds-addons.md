@@ -53,7 +53,7 @@ the noreq/guard rule and the packages.txt-driven list.
 - [x] L3 (2a67fa6e) search + page in dist/Install.installer (list built from packages.txt by tools/mkinstaller.py, no hardcoded names)
 - [x] L4 (2a67fa6e) unpack + run each
 - [x] L5 (2a67fa6e) static tests
-- [ ] L6 rig reachability case
+- [x] L6 rig reachability case (733fe571: fullsuite 60 of 60; @icon gives the add-on drawer under Installer SCRIPT, #files resolved)
 - [x] L7 (2a67fa6e) README.txt install section names it
 
 Notes (L3-L7): @icon under `Installer SCRIPT <abs path>` is not in any source in this repo (Installer is closed); every add-on and the base already take #files from (pathonly @icon), so the nested run passes an absolute script path and relies on the same derivation. UNVERIFIED on a rig: L6 must show the add-on's #files resolves (its install.dos runs). If @icon is empty there, add a common fragment falling back to the script path. If the wasabi final page (14 lines) has an add-on failure, the note gets a page of its own before it. test_dist_addons legacy-manifest test (python) already failed at HEAD before this work.
