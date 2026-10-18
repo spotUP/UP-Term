@@ -80,5 +80,75 @@ class Assemble(unittest.TestCase):
             mi.read_values('nope')
 
 
+def tree(src):
+    """The Installer script as nested lists of words and ('str', text); comments gone."""
+    stack, i = [[]], 0
+    while i < len(src):
+        c = src[i]
+        if c == ';':
+            j = src.find('\n', i)
+            i = len(src) if j < 0 else j
+        elif c == '(':
+            stack.append([]); i += 1
+        elif c == ')':
+            done = stack.pop(); stack[-1].append(done); i += 1
+        elif c == '"':
+            j = i + 1
+            while src[j] != '"':
+                j += 2 if src[j] == '\\' else 1
+            stack[-1].append(('str', src[i + 1:j])); i = j + 1
+        elif c.isspace():
+            i += 1
+        else:
+            j = i
+            while j < len(src) and not src[j].isspace() and src[j] not in '()";':
+                j += 1
+            stack[-1].append(src[i:j]); i = j
+    return stack[0]
+
+
+class FirstInstall(unittest.TestCase):
+    """With no UP-Term: assign (a first install), any (exists "UP-Term:...") makes AmigaOS put
+    up "Please insert volume UP-Term" before the welcome page. Every probe of a UP-Term: path
+    (or of #oldman, the record's MANIFEST in UP-Term:) must sit inside an if that asks
+    getassign "UP-Term" first."""
+
+    PROBES = ('exists', 'getsize', 'getversion', 'getsum')
+
+
+    class Welcome(Exception):
+        pass
+
+    def _unguarded(self, node, guarded, out):
+        """Probes in node with no getassign guard, in script order up to the first page."""
+        if not isinstance(node, list) or not node:
+            return
+        head = node[0]
+        if head == 'message':
+            raise self.Welcome
+        if head in self.PROBES and len(node) > 1:
+            arg = node[1]
+            hits = arg == '#oldman' or (isinstance(arg, tuple) and arg[1].startswith('UP-Term:'))
+            if hits and not guarded:
+                out.append(repr(node)[:120])
+        if head == 'if' and len(node) > 2:
+            asks = 'getassign' in repr(node[1]) and "'UP-Term'" in repr(node[1])
+            self._unguarded(node[1], guarded, out)
+            for branch in node[2:]:
+                self._unguarded(branch, guarded or asks, out)
+            return
+        for child in node:
+            self._unguarded(child, guarded, out)
+
+    def test_a_first_install_asks_for_no_up_term_volume_before_the_welcome(self):
+        for template, pkg in (('Install.installer', 'base'), ('addons/nvim/Install.installer', 'nvim'),
+                              ('addons/claude/Install.installer', 'claude'),
+                              ('addons/pi/Install.installer', 'pi'),
+                              ('addons/python/Install.installer', 'python')):
+            out = []
+            with self.assertRaises(self.Welcome, msg=pkg):
+                self._unguarded(tree(mi.build(ROOT / 'dist' / template, pkg)), False, out)
+            self.assertEqual(out, [], pkg)
+
 if __name__ == '__main__':
     unittest.main()

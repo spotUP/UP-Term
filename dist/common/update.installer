@@ -15,11 +15,14 @@
 ; Install in UP-Term:pkg/legacy, cut to its own paths (upupdate ... ONLY=)
 (set #oldman "@RECORDP@MANIFEST")
 (set #legacy 0)
-(if (and (not (exists #oldman)) (<> "@HANDED@" "-") (= "@LEGACY@" "YES")
-         (exists "UP-Term:pkg/legacy/MANIFEST"))
-    (set #oldman "UP-Term:pkg/legacy/MANIFEST" #legacy 1))
-; a stand-alone archive keeps its record in ENVARC: and needs no UP-Term: assign
+; a stand-alone archive keeps its record in ENVARC: and needs no UP-Term: assign. Every
+; other probe of a UP-Term: path waits for the assign: with none (a first install), an
+; (exists "UP-Term:...") makes AmigaOS ask to insert a volume UP-Term before the welcome
 (if (or (= "@STANDALONE@" "YES") (<> (getassign "UP-Term" "a") ""))
+  (
+    (if (and (not (exists #oldman)) (<> "@HANDED@" "-") (= "@LEGACY@" "YES")
+             (exists "UP-Term:pkg/legacy/MANIFEST"))
+        (set #oldman "UP-Term:pkg/legacy/MANIFEST" #legacy 1))
     (if (and (exists #oldman) (or #legacy (exists "@OPTS@/UPTOPTDEST"))
              (exists (tackon #files "upupdate")))
         (
@@ -49,4 +52,4 @@
                               "Full install asks every question again and copies "
                               "everything.")
                         (choices "Update" "Full install")
-                        (default 0))))))))
+                        (default 0)))))))))
