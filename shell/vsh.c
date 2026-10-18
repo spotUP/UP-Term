@@ -930,6 +930,17 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             return st;
         }
     }
+    if (seg && same_name((const char *)FilePart((STRPTR)argv[0]), "execute")) {
+        /* AmigaDOS Execute only queues its script as the Shell's next input: run here by
+         * RunCommand, no Shell read it, so the script never ran and stayed open (upkg remove ran
+         * no Uninstall). A Shell of its own runs it, as for a Resident command */
+        UnLoadSeg(seg);
+        seg = 0;
+        if (home) {
+            UnLock(home);
+            home = 0;
+        }
+    }
     if (found[0]) {
         /* found through $PATH: the command line names that file */
         char *a0 = argv[0], *full;
