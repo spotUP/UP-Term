@@ -43,6 +43,11 @@ INSTALL
       [SERIAL] [SHELLICON] [SSH] [BEBBOGET] [CURL] [WASABI] [CPU040|CPU060]
   (each optional part only when named).
   Remove everything again: double-click Uninstall (or Execute Uninstall).
+  When it has finished, Install looks in the drawer that holds the UP-Term
+  drawer for the add-on archives (see ADD-ONS): a drawer with its own
+  Install in it, or an .lha file (unpacked there with C:lha first). It
+  lists what it found, all ticked, and runs the ticked ones' own Install
+  one after the other, each with its own pages and record.
 
 UPDATE
   Install a newer kit over one installed with Install: its first page

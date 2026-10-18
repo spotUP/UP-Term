@@ -43,6 +43,75 @@
 
 ; @include dist/common/update.installer
 
+; ---- add-ons found beside this kit ---------------------------------------------
+; The add-on archives (the non-base rows of dist/packages.txt, put in here by
+; tools/mkinstaller.py) are looked for in the drawer that holds this kit's
+; drawer: a drawer <archive> with an Install in it, else <archive>.lha or
+; <archive>-*.lha (a release name carries a commit hash). Each is run through
+; the Installer again (its own pages and record); an lha is unpacked first with
+; lha (C:). Every probe has (noreq): no "insert volume" requester.
+(set #adhome (pathonly (pathonly @icon)))
+(set #adfail "")
+(set #adpick 0)
+
+; P_ADFIND: #adarc -> #adkind ("drawer", "lha" or "") and #adsrc (its Install, or the lha)
+(procedure P_ADFIND
+    (set #adkind "")
+    (set #adsrc (tackon (tackon #adhome #adarc) "Install"))
+    (if (exists #adsrc (noreq))
+        (set #adkind "drawer")
+        (
+            (run "Delete >NIL: ENV:UPTADDLHA T:UPTADDLST QUIET")
+            (run (cat "List >T:UPTADDLST \"" #adhome "\" PAT \"" #adarc "(|-#?).lha\" FILES LFORMAT \"SetEnv UPTADDLHA %p%n*N\""))
+            (run "Execute T:UPTADDLST")
+            (set #adsrc (getenv "UPTADDLHA"))
+            (if (<> #adsrc "") (set #adkind "lha"))
+            (run "Delete >NIL: ENV:UPTADDLHA T:UPTADDLST QUIET"))))
+
+; P_ADRUN: #adarc, #adkind, #adsrc -> unpack an lha beside itself, then run the
+; add-on's Install through the Installer; a failure is named on the last page
+(procedure P_ADRUN
+    (set #adscript #adsrc)
+    (set #adok 1)
+    (if (= #adkind "lha")
+        (
+            (set #adhomep (if (patmatch "#?:" #adhome) #adhome (cat #adhome "/")))
+            (if (= 0 (run (cat "lha -q x \"" #adsrc "\" \"" #adhomep "\"")))
+                (set #adscript (tackon (tackon #adhome #adarc) "Install"))
+                (set #adok 0))
+            (if (not (exists #adscript (noreq))) (set #adok 0))))
+    (if #adok
+        (set #adok (= 0 (run (cat "Installer SCRIPT \"" #adscript "\" APPNAME \"" #adarc
+                                  "\" MINUSER AVERAGE DEFUSER AVERAGE NOLOG")))))
+    (if (not #adok) (set #adfail (cat #adfail ", " #adarc))))
+
+; P_ADDONS: look, ask, run; #adfail then names the ones that did not install
+; and #adnote is the two lines for the last page (n + 2)
+(procedure P_ADDONS
+    (set #adany 0)
+    (set #adnote "")
+@ADDONFIND@
+    (if #adany
+        (
+            (set #adpick
+                (askoptions
+                    (prompt "Add-ons found beside this kit.\n"
+                            "Each runs its own Install, with its own pages:")
+                    (help "UP-Term's own Install is finished. These archives sit "
+                          "in the same drawer as this kit, as a drawer or an lha "
+                          "file (an lha is unpacked there first).\n\n"
+                          "Each ticked add-on runs its own Install with its own "
+                          "pages and its own record, one after the other. UP-Term "
+                          "stays installed whatever they do; one that fails is "
+                          "named on the last page.")
+                    (choices
+@ADDONCHOICES@)
+                    (default @ADDONDEFAULT@)))
+@ADDONRUN@))
+    (if (<> #adfail "")
+        (set #adnote (cat "\nAdd-on not installed (run its Install again):\n"
+                          (substr #adfail 2 (strlen #adfail))))))
+
 (if (not #update)
 (
 ; ---- welcome ---------------------------------------------------------------
@@ -406,6 +475,7 @@
     (
         (P_OPTIONS_END)
         (run "Delete >NIL: T:UPTUPD-#? ENV:UPTUPD#? QUIET")
+        (P_ADDONS)
         (set #n 5)
         ; an Update over the single kit (before the split): the files of the
         ; add-on archives upupdate left alone (ENV:UPTHANDED, the kit paths)
@@ -416,6 +486,7 @@
         (if (patmatch "#?Files/Claude#?" #handed) (set #stays (cat #stays ", Claude")))
         (if (patmatch "#?Files/amiga-pi#?" #handed) (set #stays (cat #stays ", amiga-pi")))
         (if (<> #stays "") (set #n 9))
+        (if (<> #adnote "") (set #n (+ #n 2)))
         (P_LEAD)
         (set #updated (cat #lead "UP-Term is updated:\n" (getenv "UPTVEROLD") "\nto\n"
                         (getenv "UPTVERNEW") "\n\n"
@@ -423,7 +494,8 @@
                             (cat "Stays installed: " (substr #stays 2 (strlen #stays)) ".\n"
                                  "They are archives of their own now: install\n"
                                  "UP-Term-nvim, Python3, Claude or amiga-pi to update.")
-                            "Nothing else changed.")))
+                            "Nothing else changed.")
+                        #adnote))
         (run "Delete >NIL: ENV:UPTHANDED QUIET")
         (run "Delete >NIL: ENV:UPTVER#? QUIET")
         (exit #updated)))
@@ -494,8 +566,18 @@
 ; the parts are done: the options and the UPTKIT: assign go
 (P_OPTIONS_END)
 
-; the last page: 9 lines, 14 with the wasabi key
-(set #n (if (= #wasabi "WASABI") 14 9))
+; the add-ons found beside this kit (their pages and records are their own)
+(P_ADDONS)
+
+; the last page: 9 lines, 14 with the wasabi key; the add-on note adds 2
+; (the wasabi page is full: the note then has a page of its own before it)
+(if (and (= #wasabi "WASABI") (<> #adnote ""))
+    (
+        (set #n 3)
+        (P_LEAD)
+        (message (cat #lead (substr #adnote 1 (strlen #adnote))) (all))
+        (set #adnote "")))
+(set #n (+ (if (= #wasabi "WASABI") 14 9) (if (<> #adnote "") 2 0)))
 (P_LEAD)
 (set #done
     (cat #lead "Open UP-Term: double-click SYS:System/UP-Term, or type\n"
@@ -504,7 +586,8 @@
          "Preferences and themes: SYS:Prefs/UP-Term-Prefs, or the\n"
          "UP-Term menu of any UP-Term window.\n\n"
          "A reboot mounts XCON:, PTY: and IXPIPE: at every start.\n"
-         "Uninstall (beside Install) takes UP-Term out again."))
+         "Uninstall (beside Install) takes UP-Term out again."
+         #adnote))
 (if (= #wasabi "WASABI")
     (set #done
         (cat #done "\n"

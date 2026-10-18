@@ -62,6 +62,40 @@ def addon_uninstall(rows):
     return '\n'.join(out)
 
 
+def _addons(rows):
+    return [r for r in rows if r['id'] != 'base']
+
+
+def addon_find(rows):
+    """The base Install's search: for every non-base row of packages.txt, set #ad<id>kind ("drawer",
+    "lha" or "") and #ad<id>src (the Install script, or the lha) through P_ADFIND, and #adany."""
+    out = []
+    for r in _addons(rows):
+        i = r['id']
+        out += ['(set #adarc "%s")' % r['archive'], '(P_ADFIND)',
+                '(set #ad%skind #adkind #ad%ssrc #adsrc)' % (i, i),
+                '(if (<> #adkind "") (set #adany 1))']
+    return '\n'.join(out)
+
+
+def addon_choices(rows):
+    """The choices of the add-on page: one per non-base row, saying where the archive was found."""
+    return '\n'.join(
+        '(cat "%s" (if (= #ad%skind "drawer") " (drawer found)" (if (= #ad%skind "lha") " (lha file found)" " (not found)")))'
+        % (r['archive'], r['id'], r['id']) for r in _addons(rows))
+
+
+def addon_run(rows):
+    """The base Install's lines that run each ticked, found add-on (index = its place among the non-base rows)."""
+    out = []
+    for n, r in enumerate(_addons(rows)):
+        i = r['id']
+        out += ['(if (and (in #adpick %d) (<> #ad%skind ""))' % (n, i),
+                '    (' , '        (set #adarc "%s" #adkind #ad%skind #adsrc #ad%ssrc)' % (r['archive'], i, i),
+                '        (P_ADRUN)))']
+    return '\n'.join(out)
+
+
 def read_values(pkg_id, extra=()):
     """The @NAME@ values of one package."""
     row = {r['id']: r for r in pkgs.rows()}.get(pkg_id)
@@ -88,6 +122,10 @@ def read_values(pkg_id, extra=()):
         'CHECKFRAG': 'check-standalone.dos' if row['id'] != 'base' and row['needs-base'] == '-' else 'check.dos',
         'HANDEDSEARCH': handed_search(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONUNINSTALL': addon_uninstall(pkgs.rows()) if row['id'] == 'base' else '',
+        'ADDONFIND': addon_find(pkgs.rows()) if row['id'] == 'base' else '',
+        'ADDONCHOICES': addon_choices(pkgs.rows()) if row['id'] == 'base' else '',
+        'ADDONRUN': addon_run(pkgs.rows()) if row['id'] == 'base' else '',
+        'ADDONDEFAULT': str(2 ** len(_addons(pkgs.rows())) - 1) if row['id'] == 'base' else '',
     }
     if row['needs-base'] != '-':
         values['BASEMAJOR'], values['BASEMINOR'] = row['needs-base'].split('.')

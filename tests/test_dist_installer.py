@@ -255,6 +255,61 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
         self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^tools\s+Files/UP-Term.version$")
 
 
+class FindsTheAddOns(unittest.TestCase):
+    """The base Install finds the add-on archives beside its kit (plan 2026-10-18-installer-finds-addons):
+    the list is dist/packages.txt's non-base rows, a drawer wins over an lha, every probe is (noreq)
+    and each ticked add-on runs through a nested Installer."""
+    import pkgs
+    ADDONS = [r for r in pkgs.rows() if r['id'] != 'base']
+
+    def test_every_non_base_row_is_searched_offered_and_run_and_nothing_else(self):
+        self.assertTrue(self.ADDONS)
+        for n, r in enumerate(self.ADDONS):
+            self.assertIn('(set #adarc "%s")\n(P_ADFIND)' % r['archive'], INSTALLER, r['id'])
+            self.assertIn('(cat "%s" (if (= #ad%skind "drawer")' % (r['archive'], r['id']), INSTALLER, r['id'])
+            self.assertIn('(if (and (in #adpick %d) (<> #ad%skind ""))' % (n, r['id']), INSTALLER, r['id'])
+        self.assertEqual(INSTALLER.count('(P_ADFIND)'), len(self.ADDONS))
+        self.assertIn('(default %d)' % (2 ** len(self.ADDONS) - 1), INSTALLER)
+        self.assertNotIn('@ADDON', INSTALLER)
+        # no archive name of a row is typed into the search/page/run code of the template
+        template = (ROOT / "dist/Install.installer").read_text(encoding="latin-1")
+        code = template[template.index('; ---- add-ons found beside'):template.index('(if (not #update)')]
+        for r in self.ADDONS:
+            self.assertNotIn(r['archive'], re.sub(r'(?m);.*$', '', code), r['id'])
+
+    def test_a_drawer_is_tried_before_an_lha(self):
+        body = INSTALLER[INSTALLER.index('(procedure P_ADFIND'):INSTALLER.index('(procedure P_ADRUN')]
+        self.assertLess(body.index('(exists #adsrc (noreq))'), body.index('List >T:UPTADDLST'))
+        self.assertIn('(if (exists #adsrc (noreq))\n        (set #adkind "drawer")', body)
+        self.assertIn('PAT \\"" #adarc "(|-#?).lha\\"', body)
+
+    def test_every_probe_of_the_add_on_search_has_noreq(self):
+        start = INSTALLER.index('; ---- add-ons found beside')
+        part = INSTALLER[start:INSTALLER.index('(if (not #update)', start)]
+        probes = re.findall(r'\((?:exists|getsize|getversion)\b[^\n]*', part)
+        self.assertTrue(probes)
+        for p in probes:
+            self.assertIn('(noreq)', p)
+
+    def test_an_lha_is_unpacked_with_lha_before_its_install_runs_nested(self):
+        body = INSTALLER[INSTALLER.index('(procedure P_ADRUN'):INSTALLER.index('(procedure P_ADDONS')]
+        self.assertIn('lha -q x \\"" #adsrc "\\" \\"" #adhomep "\\""', body)
+        self.assertLess(body.index('lha -q x'), body.index('Installer SCRIPT'))
+        self.assertIn('Installer SCRIPT \\"" #adscript "\\" APPNAME \\"" #adarc\n'
+                      '                                  "\\" MINUSER AVERAGE DEFUSER AVERAGE NOLOG"', body)
+        self.assertIn('(if (not #adok) (set #adfail (cat #adfail ", " #adarc)))', body)
+
+    def test_the_add_ons_run_after_the_install_and_before_the_last_page_of_a_full_install_and_an_update(self):
+        self.assertEqual(INSTALLER.count('(P_ADDONS)'), 2)
+        update = INSTALLER[INSTALLER.index('; ---- an Update ends here'):INSTALLER.index('; ---- what went where')]
+        self.assertIn('(P_ADDONS)', update)
+        self.assertIn('#adnote', update)
+        full = INSTALLER[INSTALLER.index('; ---- what went where'):]
+        self.assertLess(full.index('(P_OPTIONS_END)'), full.index('(P_ADDONS)'))
+        self.assertLess(full.index('(P_ADDONS)'), full.index('(exit #done)'))
+        self.assertIn('#adnote))\n(if (= #wasabi "WASABI")', full)
+
+
 class WasabiDaemonOption(unittest.TestCase):
     """wasabid 0.11b2 is the ONE daemon option of the kit's Install (off by default): it replaces the
     amiagent option and the wasabid 0.2 one. Install removes our old amiagent, stops and replaces our
