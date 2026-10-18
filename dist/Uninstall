@@ -1,6 +1,7 @@
 ; UP-Term uninstall: removes what Install put in and gives back the
 ; ixemul.library and ixnet.library it replaced. XCON:, PTY: and IXPIPE: stay mounted until a reboot.
 ; Your history (ENVARC:vtcon.history), UP-Term:var (asked, default No) and $HOME/.vshrc are kept.
+; AmiSSL (LIBS:amisslmaster.library, the AmiSSL: assign and its drawer) stays: other programs use it, and Install-AmiSSL put it there.
 ; The add-on archive UP-Term-nvim is removed first, by its own Uninstall; Claude, amiga-pi and Python3 stand alone and stay.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21

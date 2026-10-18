@@ -108,6 +108,14 @@ class BuiltKit(unittest.TestCase):
         self.assertFalse((kit / "ClaudeCode").exists())
         self.assertTrue((kit / "Files/UP-Term.version").read_text().startswith("$VER: UP-Term 1.0 ("))
 
+    def test_the_base_manifest_lists_the_amissl_drawer_without_the_sdk(self):
+        if KITDIR.name != "UP-Term":
+            self.skipTest("an add-on")
+        text = (KITDIR / "Files/MANIFEST").read_text(encoding="latin-1")
+        for f in ("Install-AmiSSL", "Libs/AmigaOS3/amisslmaster.library", "Doc/AmiSSL.doc"):
+            self.assertIn(" Files/AmiSSL/" + f, text)
+        self.assertNotIn("Files/AmiSSL/Developer", text)
+
 
 class PartsTable(unittest.TestCase):
     def test_every_part_named_is_a_part_of_install_dos(self):

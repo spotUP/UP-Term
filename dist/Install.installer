@@ -54,6 +54,20 @@
 (set #adfail "")
 (set #adpick 0)
 
+; P_AMISSL: run AmiSSL's own Install-AmiSSL (an Installer script) from the kit's AmiSSL drawer.
+; It reads Libs/, Certs/ and the rest by relative names, so it starts with that drawer as the current one
+; (a script in T: does the CD); then #amissl is read again, for what comes after
+(procedure P_AMISSL
+    (if #amisslins
+        (
+            (textfile (dest "T:UPTAMISSL")
+                      (append (cat "CD \"" (tackon #files "AmiSSL") "\"\n"
+                                   "Installer SCRIPT Install-AmiSSL APPNAME AmiSSL "
+                                   "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n")))
+            (run "Execute T:UPTAMISSL")
+            (run "Delete >NIL: T:UPTAMISSL QUIET")
+            (set #amissl (exists "LIBS:amisslmaster.library" (noreq))))))
+
 ; P_ADFIND: #adarc -> #adkind ("drawer", "lha" or "") and #adsrc (its Install, or the lha)
 (procedure P_ADFIND
     (set #adkind "")
@@ -174,6 +188,25 @@
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 ; @include dist/common/amissl.installer
 
+; AmiSSL 5.27 (Apache 2.0): the kit's own drawer, Files/AmiSSL. Ticked when LIBS: has no
+; amisslmaster.library or an older one; AmiSSL's own Install-AmiSSL does the work (P_AMISSL, after the parts)
+(set #amisslins
+    (askoptions
+        (prompt "AmiSSL 5.27 (the TLS library curl needs):")
+        (help "AmiSSL 5.27 (Apache License 2.0, the AmiSSL Open Source Team, with OpenSSL) "
+              "is in the kit's Files/AmiSSL drawer. It is ticked when LIBS: has no "
+              "amisslmaster.library, or an older one than the kit's.\n\n"
+              "Its own installer, Install-AmiSSL, runs after UP-Term's parts, "
+              "with its own pages: where AmiSSL: goes, your CPU, the "
+              "certificates. UP-Term does nothing to AmiSSL itself, and "
+              "Uninstall leaves it, since other programs use it.\n\n"
+              "It takes about 8 MB, not counted in the room check below.")
+        (choices (if #amissl-need
+                     (if #amissl "AmiSSL 5.27 (yours is older)" "AmiSSL 5.27 (none found)")
+                     "AmiSSL 5.27 (yours is the same or newer)"))
+        (default (if #amissl-need 1 0))))
+(set #amisslins (in #amisslins 0))
+
 (set #net
     (askoptions
         (prompt "Network tools, in UP-Term:bin (they need a TCP/IP stack\n"
@@ -186,12 +219,12 @@
               "bebboget: https downloads (GPL v3+), by the same author.\n\n"
               "curl 8.22.0: downloads and transfers (the curl licence). It needs "
               "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha), so it is ticked "
-              "only when AmiSSL is found.\n\n"
+              "only when AmiSSL is found or ticked on the page before.\n\n"
               "Their licences and sources are in the kit's Files/net drawer.")
         (choices "ssh and scp (BebboSSH)"
                  "bebboget (https downloads)"
-                 (if #amissl "curl (AmiSSL 5 found)" "curl (needs AmiSSL 5, not found)"))
-        (default (+ 1 2 (if #amissl 4 0)))))
+                 (if #amissl "curl (AmiSSL 5 found)" (if #amisslins "curl (AmiSSL 5 is installed first)" "curl (needs AmiSSL 5, not found)")))
+        (default (+ 1 2 (if (or #amissl #amisslins) 4 0)))))
 (if (in #net 0) (set #ssh "SSH"))
 (if (in #net 1) (set #bget "BEBBOGET"))
 (if (in #net 2) (set #curl "CURL"))
@@ -565,6 +598,9 @@
 
 ; the parts are done: the options and the UPTKIT: assign go
 (P_OPTIONS_END)
+
+; AmiSSL 5.27, by its own installer (its pages and record are its own)
+(P_AMISSL)
 
 ; the add-ons found beside this kit (their pages and records are their own)
 (P_ADDONS)

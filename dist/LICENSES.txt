@@ -20,6 +20,9 @@ every Amiga program)          their notices in their files)
 GNU coreutils 5.2.1 (Files/   GPL v2 (Files/coreutils/COPYING) UP-Term-src.lha (published next to
 coreutils)                                                     UP-Term.lha): coreutils-5.2.1-src.tar.bz2;
                                                                vtcon dist/gg/coreutils-5.2.1/SOURCE.txt
+AmiSSL 5.27 (Files/AmiSSL,    Apache License 2.0 (AmiSSL       AmiSSL Open Source Team (Doc/AmiSSL.doc
+installed by its own          and OpenSSL; the notice is in    in the drawer); github.com/jens-maus/amissl.
+Install-AmiSSL)               Doc/AmiSSL.doc)                  The Developer SDK is not in the kit
 Unix tool ports (Files/       per package, the licence files   UP-Term-src.lha (published next to
 userland, UP-Term:bin): GNU   in UP-Term:licenses/<package>;   UP-Term.lha): each upstream archive with
 grep, sed, findutils,         GPL v3 or later: grep, sed,      UP-Term's patches, recipes and build

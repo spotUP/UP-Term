@@ -13,6 +13,7 @@
 -               LICENSES.txt
 -               Files/install.dos
 -               Files/upupdate
+-               Files/AmiSSL
 drawer          Files/reassign.sh
 system          Files/PTY
 system          Files/XCON

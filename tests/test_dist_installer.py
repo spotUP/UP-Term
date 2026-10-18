@@ -310,6 +310,43 @@ class FindsTheAddOns(unittest.TestCase):
         self.assertIn('#adnote))\n(if (= #wasabi "WASABI")', full)
 
 
+class AmiSSLPart(unittest.TestCase):
+    """P7: the base kit ships AmiSSL 5.27 and the Install has a part that runs AmiSSL's OWN Install-AmiSSL
+    (never a copy of its logic) when LIBS:amisslmaster.library is missing or older than the kit's."""
+    PAGE = INSTALLER[INSTALLER.index('(set #amisslins'):INSTALLER.index('(set #net')] if '(set #amisslins' in INSTALLER else ''
+    RUN = INSTALLER[INSTALLER.index('(procedure P_AMISSL'):INSTALLER.index('(procedure P_ADFIND')] if '(procedure P_AMISSL' in INSTALLER else ''
+
+    def test_the_part_exists_and_starts_install_amissl_from_the_kit_drawer(self):
+        self.assertIn('AmiSSL 5.27', self.PAGE)
+        self.assertIn('Install-AmiSSL', self.RUN)
+        self.assertIn('Installer SCRIPT', self.RUN)
+        self.assertIn('(tackon #files "AmiSSL")', self.RUN)
+        self.assertIn('Installer SCRIPT Install-AmiSSL APPNAME AmiSSL', self.RUN)
+        self.assertIn('(P_AMISSL)', INSTALLER)
+        self.assertLess(INSTALLER.index('(P_OPTIONS_END)'), INSTALLER.index('(P_AMISSL)'))
+
+    def test_its_default_follows_the_version_check_against_the_shipped_library(self):
+        inc = (ROOT / "dist/common/amissl.installer").read_text(encoding="latin-1")
+        self.assertIn('(getversion "LIBS:amisslmaster.library"', inc)
+        self.assertIn('Libs/AmigaOS3/amisslmaster.library', inc)
+        self.assertRegex(inc, r'\(set #amissl-need\s+\(<')
+        self.assertIn('(default (if #amissl-need 1 0))', self.PAGE)
+
+    def test_curl_follows_the_new_amissl(self):
+        self.assertRegex(INSTALLER, r'\(default \(\+ 1 2 \(if \(or #amissl #amisslins\) 4 0\)\)\)')
+
+    def test_uninstall_says_it_leaves_amissl_in_place(self):
+        self.assertRegex((ROOT / "dist/Uninstall").read_text(encoding="latin-1"), r'(?i);[^\n]*AmiSSL[^\n]*(stays|left|shared)')
+
+    def test_licences_carry_the_amissl_notice_and_the_drawer_is_a_kit_row(self):
+        lic = (ROOT / "dist/LICENSES.txt").read_text(encoding="latin-1")
+        self.assertIn("AmiSSL 5.27", lic)
+        self.assertIn("Apache", lic[lic.index("AmiSSL 5.27"):][:400])
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^-\s+Files/AmiSSL$")
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("vendor/amissl-5.27/AmiSSL", mk)
+
+
 class WasabiDaemonOption(unittest.TestCase):
     """wasabid 0.11b2 is the ONE daemon option of the kit's Install (off by default): it replaces the
     amiagent option and the wasabid 0.2 one. Install removes our old amiagent, stops and replaces our
