@@ -22,6 +22,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 |------|---------|
 | Host tests (CI) | `make test` |
 | One suite | `make test ONLY=<name>` (e.g. `ONLY=xterm`) |
+| The .ipk feed for the opkg-based upkg (P10.4): one .ipk per row of dist/packages.txt plus Packages and Packages.gz in build/ipk (postinst runs the archive's own Files/install.dos; `IPK_REQUIRE=1 python3 tests/test_dist_ipk.py` holds the feed to packages.txt and the files, also run by `make dist-check`) | `make dist-ipk` |
 | The renderer's draw wiring without a rig: render/amiga_render.c itself against a fake RastPort (tests/render_host/gfx_fake.c logs every graphics.library call and draws Text/RectFill/ScrollRaster into a pixel canvas; NDK structs from `VTCON_NDK`; tests/test_render.c: the scrollback blit draws only the exposed rows, the cursor glyph under jump scroll) | `make test ONLY=render` (own binary `build/render_host`; a new renderer behaviour with a draw-call effect gets its test here, not a rig step) |
 | Reference diff vs libvterm + pyte | `make test-ref` (needs `make venv` once; clones libvterm into `build/`) |
 | Re-record streams from real programs | `make capture` |

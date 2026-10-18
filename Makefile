@@ -108,6 +108,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_assemble.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_upkg.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_ipk.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = docs_setenv ]; then python3 -I tests/test_doc_setenv_save.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
@@ -1119,10 +1120,14 @@ dist-python: $(BUILD)/amiga/upupdate
 
 # build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
-.PHONY: dist-base dist-src dist-index
+.PHONY: dist-base dist-src dist-index dist-ipk
 # upkg's index (upkg plan D1): released next to the archives it names
 dist-index: dist-base dist-claude dist-pi dist-nvim dist-python
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
+# the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees
+dist-ipk: dist-base dist-claude dist-pi dist-nvim dist-python
+	python3 tools/pkgs.py ipk $(BUILD)
+	python3 tools/pkgs.py feed $(BUILD)
 dist-src:
 	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-src: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
 	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
@@ -1155,6 +1160,7 @@ dist-check:
 	done
 	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " amiga-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/amiga-pi.lst || { echo "dist-check: amiga-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
 	@python3 tools/pkgs.py index $(BUILD) | cmp -s - $(BUILD)/upkg-index.txt || { echo "dist-check: $(BUILD)/upkg-index.txt does not match the archives: make dist-index"; exit 1; }
+	IPK_REQUIRE=1 python3 tests/test_dist_ipk.py
 	@test -s $(BUILD)/UP-Term-src.lha || { echo "dist-check: $(BUILD)/UP-Term-src.lha missing: make dist"; exit 1; }
 	@lha l $(BUILD)/UP-Term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: UP-Term-src.lha lacks the coreutils source"; exit 1; }
 

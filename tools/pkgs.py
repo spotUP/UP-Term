@@ -5,8 +5,10 @@
   python3 tools/pkgs.py archives           archive names, one a line
   python3 tools/pkgs.py get <id> <column>  one value ("-" is printed as it is)
   python3 tools/pkgs.py index <dir>        upkg's index of the archives in <dir>
+  python3 tools/pkgs.py ipk <build>        one .ipk per package into <build>/ipk (from build/dist/<archive>)
+  python3 tools/pkgs.py feed <build>       <build>/ipk/Packages and Packages.gz of those .ipk files
 """
-import hashlib, pathlib, re, sys
+import gzip, hashlib, io, os, pathlib, re, sys, tarfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TABLE = ROOT / 'dist/packages.txt'
@@ -55,6 +57,165 @@ def index(build, path=TABLE):
     return '\n'.join(out) + '\n'
 
 
+# ---- the .ipk feed (upkg plan P10.4) ----
+# Architecture of every package: the one opkg arch the Amiga build has. opkg installs a package only
+# when its Architecture is "all", "noarch" or an `arch` line of the conf (the kit's upkg.conf must carry
+# `arch m68k-amigaos 10`). One string, because the binaries are 68020+ ixemul and nothing else runs them.
+ARCH = 'm68k-amigaos'
+MAINTAINER = 'UP-Term <https://github.com/spotUP/UP-Term>'
+STAGE = 'pkg/stage'      # under the dest root /UP-Term: where data.tar puts the archive's staged tree
+SUMMARY = {
+    'base': 'UP-Term, the terminal, vsh and the Unix userland',
+    'claude': 'Claude Code for the Amiga (C:Claude)',
+    'pi': 'amiga-pi, the pi coding agent',
+    'nvim': 'Neovim 0.12 in UP-Term:nvim',
+    'python': 'Python 3.14 in SYS:Python3',
+}
+EPOCH = 0
+
+
+def _scripts(r):
+    """(postinst, prerm) vsh text. The package's own install logic is the only one (owner 2026-10-18):
+    postinst Executes the archive's Files/install.dos, which `make dist` wrote and the Installer also
+    runs; prerm Executes the Uninstall copy that install.dos left in the record drawer."""
+    st = 'UP-Term:%s/%s' % (STAGE, r['archive'])
+    rec = r['record'].rstrip('/')
+    post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
+            'Execute %s/Files/install.dos %s/Files\nrc=$?\nrm -rf %s\nexit $rc\n' % (st, st, st))
+    sep = '' if rec.endswith(':') else '/'
+    pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: the Uninstall copy the install left in its record\n'
+           'Execute %s%sUninstall\n' % (rec, sep))
+    return post, pre
+
+
+def _tinfo(name, size=0, mode=0o644, kind=tarfile.REGTYPE, link=''):
+    t = tarfile.TarInfo(name)
+    t.size, t.mode, t.type, t.linkname = size, mode, kind, link
+    t.mtime, t.uid, t.gid, t.uname, t.gname = EPOCH, 0, 0, 'root', 'root'
+    return t
+
+
+def _targz(entries):
+    """Deterministic .tar.gz bytes of [(TarInfo, bytes|path|None)] in the order given."""
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode='w', format=tarfile.GNU_FORMAT) as tf:
+        for ti, src in entries:
+            if isinstance(src, bytes):
+                tf.addfile(ti, io.BytesIO(src))
+            elif src is None:
+                tf.addfile(ti)
+            else:
+                with open(src, 'rb') as f:
+                    tf.addfile(ti, f)
+    out = io.BytesIO()
+    with gzip.GzipFile(filename='', mode='wb', fileobj=out, compresslevel=9, mtime=0) as gz:
+        gz.write(raw.getvalue())
+    return out.getvalue()
+
+
+def _data_entries(kit, archive):
+    """Every entry of the staged tree build/dist/<archive>, sorted, under ./pkg/stage/<archive>/."""
+    top = '%s/%s' % (STAGE, archive)
+    ents, size = [], 0
+    parts = top.split('/')
+    for i in range(1, len(parts) + 1):
+        ents.append((_tinfo('./' + '/'.join(parts[:i]), mode=0o755, kind=tarfile.DIRTYPE), None))
+    for dirpath, dirs, files in os.walk(kit):
+        dirs.sort()
+        rel = os.path.relpath(dirpath, kit)
+        base = top if rel == '.' else top + '/' + rel
+        if rel != '.':
+            ents.append((_tinfo('./' + base, mode=0o755, kind=tarfile.DIRTYPE), None))
+        for fn in sorted(files):
+            fp = os.path.join(dirpath, fn)
+            name = './%s/%s' % (base, fn)
+            if os.path.islink(fp):
+                ents.append((_tinfo(name, mode=0o777, kind=tarfile.SYMTYPE, link=os.readlink(fp)), None))
+                continue
+            st = os.stat(fp)
+            size += st.st_size
+            ents.append((_tinfo(name, st.st_size, 0o755 if st.st_mode & 0o111 else 0o644), fp))
+    return ents, size
+
+
+def _ar(members):
+    out = b'!<arch>\n'
+    for name, data in members:
+        out += b'%-16s%-12d%-6d%-6d%-8s%-10d`\n' % ((name + '/').encode(), EPOCH, 0, 0, b'100644', len(data))
+        out += data + (b'\n' if len(data) % 2 else b'')
+    return out
+
+
+def depends(r):
+    """Depends from the needs-base column ("-" has none); ixemul is the base's, so it adds none."""
+    return [] if r['needs-base'] == '-' else ['UP-Term (>= %s)' % r['needs-base']]
+
+
+def ipk_name(r):
+    return '%s_%s_%s.ipk' % (r['archive'], r['version'], ARCH)
+
+
+def build_ipk(r, build):
+    """The .ipk bytes of one row from the staged tree <build>/dist/<archive>."""
+    kit = pathlib.Path(build) / 'dist' / r['archive']
+    if not (kit / 'Files/install.dos').is_file():
+        raise SystemExit('pkgs ipk: %s is not staged: make dist' % kit)
+    data_ents, size = _data_entries(kit, r['archive'])
+    post, pre = _scripts(r)
+    lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + ARCH,
+             'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
+             'Description: ' + SUMMARY.get(r['id'], r['archive'])]
+    if depends(r):
+        lines.insert(3, 'Depends: ' + ', '.join(depends(r)))
+    ctl = ('\n'.join(lines) + '\n').encode()
+    control = _targz([(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None),
+                      (_tinfo('./control', len(ctl)), ctl),
+                      (_tinfo('./postinst', len(post), 0o755), post.encode()),
+                      (_tinfo('./prerm', len(pre), 0o755), pre.encode())])
+    data = _targz([(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None)] + data_ents)
+    return _ar([('debian-binary', b'2.0\n'), ('control.tar.gz', control), ('data.tar.gz', data)])
+
+
+def ipk(build, path=TABLE):
+    """Write one .ipk per row into <build>/ipk; byte-equal on a rebuild of the same staged tree."""
+    out = pathlib.Path(build) / 'ipk'
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob('*.ipk'):
+        old.unlink()
+    names = []
+    for r in rows(path):
+        (out / ipk_name(r)).write_bytes(build_ipk(r, build))
+        names.append(ipk_name(r))
+    return names
+
+
+def feed(build, path=TABLE):
+    """Packages text (opkg format) of the .ipk files in <build>/ipk; one stanza a row."""
+    out, blocks = pathlib.Path(build) / 'ipk', []
+    for r in rows(path):
+        f = out / ipk_name(r)
+        if not f.is_file():
+            raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
+        data = f.read_bytes()
+        b = ['Package: ' + r['archive'], 'Version: ' + r['version']]
+        if depends(r):
+            b.append('Depends: ' + ', '.join(depends(r)))
+        b += ['Architecture: ' + ARCH, 'Filename: ' + f.name, 'Size: %d' % len(data),
+              'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
+              'Description: ' + SUMMARY.get(r['id'], r['archive'])]
+        blocks.append('\n'.join(b) + '\n')
+    return '\n'.join(blocks)
+
+
+def write_feed(build, path=TABLE):
+    text = feed(build, path).encode()
+    out = pathlib.Path(build) / 'ipk'
+    (out / 'Packages').write_bytes(text)
+    with open(out / 'Packages.gz', 'wb') as f:
+        with gzip.GzipFile(filename='', mode='wb', fileobj=f, compresslevel=9, mtime=0) as gz:
+            gz.write(text)
+
+
 def main(argv):
     if argv[:1] == ['names'] and len(argv) == 1:
         print('\n'.join(r['id'] for r in rows()))
@@ -64,6 +225,11 @@ def main(argv):
         print(get(argv[1], argv[2]))
     elif argv[:1] == ['index'] and len(argv) == 2:
         sys.stdout.write(index(argv[1]))
+    elif argv[:1] == ['ipk'] and len(argv) == 2:
+        for n in ipk(argv[1]):
+            print(n)
+    elif argv[:1] == ['feed'] and len(argv) == 2:
+        write_feed(argv[1])
     else:
         sys.exit(__doc__)
 
