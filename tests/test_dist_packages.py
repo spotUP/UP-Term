@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """dist/packages.txt, the one table of the kit's archives (tools/pkgs.py), on the host."""
-import pathlib, re, sys, unittest
+import hashlib, pathlib, re, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -158,6 +158,32 @@ class Readme(unittest.TestCase):
     def test_every_value_is_filled(self):
         for i in self.IDS:
             self.assertNotRegex(mr.build(i)[1], r'@[A-Z]+@')
+
+
+class Index(unittest.TestCase):
+    """uppkg's index (tools/pkgs.py index): what uppkg on the Amiga downloads and checks"""
+
+    def test_a_line_per_archive_with_its_version_record_size_and_sha256(self):
+        with tempfile.TemporaryDirectory() as d:
+            for i, r in enumerate(ROWS):
+                (pathlib.Path(d) / (r['archive'] + '.lha')).write_bytes(b'x' * (i + 1))
+            lines = pkgs.index(d).splitlines()
+        self.assertTrue(lines[0].startswith('# uppkg index 1'))
+        self.assertEqual(len(lines), len(ROWS) + 1)
+        for i, (r, line) in enumerate(zip(ROWS, lines[1:])):
+            data = b'x' * (i + 1)
+            self.assertEqual(line.split(' '), [r['id'], r['archive'], r['version'], r['needs-base'],
+                                               r['record'], str(len(data)),
+                                               hashlib.sha256(data).hexdigest()])
+
+    def test_a_missing_archive_is_refused(self):
+        with tempfile.TemporaryDirectory() as d, self.assertRaises(SystemExit):
+            pkgs.index(d)
+
+    def test_no_field_has_a_space(self):
+        for r in ROWS:
+            for c in ('id', 'archive', 'version', 'needs-base', 'record'):
+                self.assertNotIn(' ', r[c], (r['id'], c))
 
 
 if __name__ == '__main__':

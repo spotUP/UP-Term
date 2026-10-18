@@ -4,8 +4,9 @@
   python3 tools/pkgs.py names              ids, one a line
   python3 tools/pkgs.py archives           archive names, one a line
   python3 tools/pkgs.py get <id> <column>  one value ("-" is printed as it is)
+  python3 tools/pkgs.py index <dir>        uppkg's index of the archives in <dir>
 """
-import pathlib, re, sys
+import hashlib, pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TABLE = ROOT / 'dist/packages.txt'
@@ -39,6 +40,21 @@ def get(pkg_id, column, path=TABLE):
     raise SystemExit('pkgs: no package %r' % pkg_id)
 
 
+def index(build, path=TABLE):
+    """uppkg's index (uppkg plan D1): a line per archive, fields one space apart:
+    id archive version needs-base record size sha256 of <build>/<archive>.lha.
+    Released next to the archives; an archive missing from <build> is refused."""
+    out = ['# uppkg index 1: id archive version needs-base record size sha256']
+    for r in rows(path):
+        lha = pathlib.Path(build) / (r['archive'] + '.lha')
+        if not lha.is_file():
+            raise SystemExit('pkgs index: %s missing: make dist' % lha)
+        data = lha.read_bytes()
+        out.append(' '.join((r['id'], r['archive'], r['version'], r['needs-base'], r['record'],
+                             str(len(data)), hashlib.sha256(data).hexdigest())))
+    return '\n'.join(out) + '\n'
+
+
 def main(argv):
     if argv[:1] == ['names'] and len(argv) == 1:
         print('\n'.join(r['id'] for r in rows()))
@@ -46,6 +62,8 @@ def main(argv):
         print('\n'.join(r['archive'] for r in rows()))
     elif argv[:1] == ['get'] and len(argv) == 3:
         print(get(argv[1], argv[2]))
+    elif argv[:1] == ['index'] and len(argv) == 2:
+        sys.stdout.write(index(argv[1]))
     else:
         sys.exit(__doc__)
 

@@ -1011,7 +1011,7 @@ AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-src
+dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-src dist-index
 
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/UP-Term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
@@ -1109,7 +1109,10 @@ dist-python: $(BUILD)/amiga/upupdate
 
 # build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
-.PHONY: dist-base dist-src
+.PHONY: dist-base dist-src dist-index
+# uppkg's index (uppkg plan D1): released next to the archives it names
+dist-index: dist-base dist-claude dist-pi dist-nvim dist-python
+	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/uppkg-index.txt
 dist-src:
 	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-src: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
 	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
@@ -1141,6 +1144,7 @@ dist-check:
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_modes.py; \
 	done
 	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " amiga-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/amiga-pi.lst || { echo "dist-check: amiga-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
+	@python3 tools/pkgs.py index $(BUILD) | cmp -s - $(BUILD)/uppkg-index.txt || { echo "dist-check: $(BUILD)/uppkg-index.txt does not match the archives: make dist-index"; exit 1; }
 	@test -s $(BUILD)/UP-Term-src.lha || { echo "dist-check: $(BUILD)/UP-Term-src.lha missing: make dist"; exit 1; }
 	@lha l $(BUILD)/UP-Term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: UP-Term-src.lha lacks the coreutils source"; exit 1; }
 
