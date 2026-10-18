@@ -615,9 +615,12 @@ EndIf
 ; is ours, for Uninstall). Started now and at every boot from a marked
 ; block in S:User-Startup. An older wasabid of ours (the 0.2 of earlier
 ; kits: marker ENVARC:up-term/wasabid and no "wasabid 0.11b2" in the file) is
-; stopped first, so the new file replaces it; with wasabi unticked it is
-; stopped and removed (the block in S:User-Startup then starts nothing).
-; A 0.9 of ours stays when unticked.
+; replaced by the new file; with wasabi unticked it is stopped and removed
+; (the block in S:User-Startup then starts nothing). A 0.9 of ours stays
+; when unticked. With wasabi ticked a running wasabid is never stopped: it
+; may be the machine's only control channel, and an Install run over wasabi
+; died with it part way (the A1200, 2026-10-17). The new file is copied over
+; the loaded one and runs from the next boot.
 Set oldwasabid ""
 If EXISTS ENVARC:up-term/wasabid
   Search >NIL: C:wasabid "wasabid 0.11b2"
@@ -625,13 +628,10 @@ If EXISTS ENVARC:up-term/wasabid
     Set oldwasabid 1
   EndIf
 EndIf
-Status >ENV:upw COM C:wasabid
-If NOT WARN
-  If "$optwasabi" EQ "WASABI"
-    Break $upw C
-    Wait 2 SEC
-  Else
-    If "$oldwasabid" EQ "1"
+If NOT "$optwasabi" EQ "WASABI"
+  If "$oldwasabid" EQ "1"
+    Status >ENV:upw COM C:wasabid
+    If NOT WARN
       Break $upw C
       Wait 2 SEC
     EndIf

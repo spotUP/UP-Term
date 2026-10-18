@@ -290,7 +290,11 @@ class WasabiDaemonOption(unittest.TestCase):
     def test_install_replaces_an_old_wasabid_of_ours_but_keeps_a_0_9_when_unticked(self):
         blk = DOS[DOS.index('Set oldwasabid ""'):DOS.index('MakeDir >NIL: ENVARC:vsh')]
         self.assertIn('Search >NIL: C:wasabid "wasabid 0.11b2"', blk)        # the version marks the old one
-        self.assertLess(blk.index('Break $upw C'), blk.index('Copy wasabi/wasabid C:wasabid CLONE'))
+        # a ticked install never stops a running wasabid: an Install run over wasabi died with it (the A1200, 2026-10-17)
+        brk = blk[blk.index('If NOT "$optwasabi" EQ "WASABI"'):]
+        self.assertEqual(blk.count('Break $upw C'), 1)
+        self.assertLess(blk.index('If NOT "$optwasabi" EQ "WASABI"'), blk.index('Break $upw C'))
+        self.assertLess(brk.index('Break $upw C'), brk.index('If "$optwasabi" EQ "WASABI"'))
         rm = blk[blk.index('If NOT "$optwasabi" EQ "WASABI"'):blk.index('UnSet >NIL: oldwasabid')]
         self.assertIn('If "$oldwasabid" EQ "1"', rm)                       # unticked removes only the old one
         self.assertIn('Delete >NIL: C:wasabid ENVARC:up-term/wasabid QUIET', rm)
@@ -312,13 +316,21 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertNotIn("dist/net/amiagent", mk)
         self.assertRegex((ROOT / "dist/parts.txt").read_text(), r"(?m)^boot\s+Files/wasabi$")
 
+    def test_uninstall_never_stops_a_running_wasabid(self):
+        # an Uninstall run over wasabi died with the wasabid it stopped (the A1200, 2026-10-17)
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        self.assertNotIn("COM C:wasabid", un)
+        mark = un.index("If EXISTS ENVARC:up-term/wasabid")
+        self.assertLess(mark, un.index("Delete >NIL: C:wasabid QUIET"))
+        self.assertLess(un.index("Delete >NIL: C:wasabid QUIET"), un.index("EndIf", mark))
+
     def test_uninstall_stops_and_removes_both_daemons_before_the_drawer_goes(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
         stop = un.index("If EXISTS ENVARC:up-term/amiagent")
         self.assertIn("Break $upw C", un[stop:stop + 400])
         self.assertLess(stop, un.index('Delete >NIL: "$updest" ALL QUIET'))
         self.assertLess(stop, un.index("Delete >NIL: ENV:up-term ENVARC:up-term ALL QUIET"))
-        self.assertIn("Delete >NIL: C:wasabid QUIET", un[un.index("If EXISTS ENVARC:up-term/wasabid"):][:100])
+        self.assertIn("Delete >NIL: C:wasabid QUIET", un[un.index("If EXISTS ENVARC:up-term/wasabid"):][:300])
 
 
 class AmigaDosVariableNames(unittest.TestCase):

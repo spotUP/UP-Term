@@ -187,14 +187,11 @@ If NOT EXISTS ENVARC:uppkg/Claude
   Delete >NIL: C:uptelnet QUIET
 EndIf
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET
-; wasabid: stopped (Ctrl-C, its own way out), and the daemon and its key
-; only when Install put them there (their markers)
-Status >ENV:upw COM C:wasabid
-If NOT WARN
-  Break $upw C
-EndIf
-UnSet >NIL: upw
-Delete >NIL: ENV:upw QUIET
+; wasabid and its key: deleted only when Install put them there (their
+; markers). A running wasabid is never stopped, ours or the owner's: it may
+; be the machine's only control channel, and an Uninstall run over wasabi
+; would die with it part way (the A1200, 2026-10-17). With its file and its
+; S:User-Startup line gone, it ends at the next reboot.
 If EXISTS ENVARC:up-term/wasabid
   Delete >NIL: C:wasabid QUIET
 EndIf
@@ -308,4 +305,4 @@ UnSet upixnet
 Delete >NIL: ENVARC:up-term-orig ALL QUIET
 ; ENV: first, as ENV:up-term above
 Delete >NIL: ENV:vsh ENVARC:vsh ALL QUIET
-Echo "UP-Term removed. Reboot to unmount XCON:, PTY: and IXPIPE:."
+Echo "UP-Term removed. Reboot to unmount XCON:, PTY: and IXPIPE:, and to stop wasabid."

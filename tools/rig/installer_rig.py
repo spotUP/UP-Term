@@ -606,9 +606,28 @@ def run_base_case(case):
     ck('kit:' in out, 'UPConsole STATUS prints the kit line (UP-Term:VERSIONS)', out)
     if case == 'update':
         update_phase(ck, inst, level, base, t_install)
+    # a running C:wasabid keeps running through Uninstall, the kit's or the
+    # owner's: it may be the machine's only control channel, and an Uninstall
+    # run over wasabi died with it (the A1200, 2026-10-17). The rig's own
+    # wasabid runs as boot/wasabid, so a C:Wait copy stands in when no
+    # C:wasabid runs. The kit's C:wasabid file (its marker) goes all the same.
+    kit_wasabid = ir.run('List >NIL: ENVARC:up-term/wasabid')[0] == 0
+    stand_in = ir.run('Status >NIL: COM C:wasabid')[0] != 0
+    if stand_in:
+        if ir.run('List >NIL: C:wasabid')[0] != 0:
+            ir.run('Copy >NIL: C:Wait C:wasabid')
+        ir.run('Run >NIL: C:wasabid 600')
     # Uninstall gives it all back
     rc, out = ir.run_long('rununinstall')
     ck(rc == 0, 'Uninstall runs', out)
+    ck(ir.run('Status >NIL: COM C:wasabid')[0] == 0, 'after Uninstall: the running C:wasabid still runs')
+    if kit_wasabid:
+        ck(ir.run('List >NIL: C:wasabid')[0] != 0, "after Uninstall: the kit's C:wasabid file is gone")
+    ir.run('Status >ENV:upw COM C:wasabid')
+    ir.run('Break $upw C')
+    if stand_in and not kit_wasabid:
+        ir.run('Delete >NIL: C:wasabid QUIET')
+    ir.run('Delete >NIL: ENV:upw QUIET')
     rc, out = ir.run('Type S:User-Startup')
     ck(out == startup_before, 'after Uninstall: S:User-Startup as it was, byte for byte',
        'differs: %r vs %r' % (out[-80:], startup_before[-80:]))
