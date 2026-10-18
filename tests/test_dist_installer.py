@@ -316,6 +316,22 @@ class AmiSSLPart(unittest.TestCase):
     PAGE = INSTALLER[INSTALLER.index('(set #amisslins'):INSTALLER.index('(set #net')] if '(set #amisslins' in INSTALLER else ''
     RUN = INSTALLER[INSTALLER.index('(procedure P_AMISSL'):INSTALLER.index('(procedure P_ADFIND')] if '(procedure P_AMISSL' in INSTALLER else ''
 
+    def test_the_room_check_counts_amissl_on_the_disk_install_amissl_picks(self):
+        s = INSTALLER
+        # the assembled script: mkinstaller filled @KBAMISSL@ with kitsize's figure
+        self.assertRegex(s, r'\(set #kb-amissl \(if #amisslins [1-9][0-9]+ 0\)\)')
+        # Install-AmiSSL's own default: the AmiSSL: assign, else Work:, else SYS:
+        self.assertIn('(getassign "AmiSSL")', s)
+        self.assertIn('(getdiskspace #amissldisk)', s)
+        self.assertLess(s.index('(getdiskspace #amissldisk)'), s.index('(P_AMISSL)\n'))
+        self.assertNotIn('not counted in the room check', s)
+
+    def test_amissl_on_the_drawers_volume_or_on_sys_is_added_to_that_volumes_need(self):
+        # Work: holds both the drawer and AmiSSL by default: two checks that pass alone could overfill it
+        s = INSTALLER
+        self.assertIn('(set #needkb (+ #totalkb (if (= #vol #amisslvol) #kb-amissl 0)))', s)
+        self.assertIn('(+ #kb-system #kb-rest (if (= #amisslvol "SYS:") #kb-amissl 0))', s)
+
     def test_the_part_exists_and_starts_install_amissl_from_the_kit_drawer(self):
         self.assertIn('AmiSSL 5.27', self.PAGE)
         self.assertIn('Install-AmiSSL', self.RUN)

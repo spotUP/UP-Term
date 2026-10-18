@@ -112,12 +112,20 @@ class KitsizeArithmetic(unittest.TestCase):
         self.assertEqual(v['KBSSH'], -(-kitsize.file_bytes(40000) // 1024))           # the program, not the source
         self.assertLess(v['KBTOOLS'], 100)                                            # nothing of net/ in the tools part
 
+    def test_amissl_counts_its_common_files_and_one_cpus_library(self):
+        a = 'AmiSSL/Libs/AmigaOS3/'
+        kit = self.kit({a + 'amisslmaster.library': 30000, a + 'AmiSSL/68020-40/amissl_v362.library': 3500000,
+                        a + 'AmiSSL/68060/amissl_v362.library': 3600000, 'AmiSSL/Certs/0.0': 2000,
+                        'AmiSSL/C/AmigaOS3/OpenSSL': 700000, 'AmiSSL/Doc/AmiSSL.doc': 60000, 'UPTerm': 10})
+        want = sum(kitsize.file_bytes(n) for n in (30000, 3600000, 2000, 700000, 60000))
+        self.assertEqual(kitsize.sizes(kit, 'base')['KBAMISSL'], -(-want // 1024))
+
     def test_every_option_file_is_a_file_install_dos_copies(self):
         dos = (ROOT / 'dist/install.dos').read_text(encoding='latin-1')
         copies = ' '.join(l for l in dos.splitlines() if l.lstrip().startswith('Copy '))
         for name, groups in kitsize.OPTIONS.items():
-            if name == 'KBWASABI':
-                continue
+            if name in ('KBWASABI', 'KBAMISSL'):
+                continue        # wasabi is a drawer copy; AmiSSL's own Install-AmiSSL copies its files
             for _, pats in groups:
                 for pat in pats:
                     rx = re.escape(pat.split('/')[-1]).replace(r'\?', '.')

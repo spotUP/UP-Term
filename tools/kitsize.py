@@ -38,6 +38,10 @@ OPTIONS = {
     'KBBEBBOGET': [('all', ['net/bebboget-*/bebboget', 'net/bebboget-*/installcerts'])],
     'KBCURL': [('one', ['net/curl-*/curl.0?0'])],
     'KBWASABI': [('all', ['wasabi'])],
+    # AmiSSL: Install-AmiSSL (not install.dos) copies the master library, the certificates, the tools and
+    # the docs, and one CPU's amissl_v*.library (68020-40 or 68060), onto its own disk (P_AMISSL)
+    'KBAMISSL': [('all', ['AmiSSL/Libs/AmigaOS3/amisslmaster.library', 'AmiSSL/Certs', 'AmiSSL/C', 'AmiSSL/Doc']),
+                 ('one', ['AmiSSL/Libs/AmigaOS3/AmiSSL/*/amissl_v*.library'])],
 }
 # kit files no Install copies, whatever the options: the network tools' licences and sources
 NOT_COPIED = ['net/*/*-src.tar.bz2', 'net/*/COPYING', 'net/*/SOURCE.txt']
