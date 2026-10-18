@@ -1,72 +1,90 @@
 #!/usr/bin/env python3
-"""upkg_rig.py -- dist/upkg on the rig: list, install, update and remove from a vsh script against a release
-this Mac serves over plain http (upkg plan P4.2; the host version of the same decisions is
-tests/test_dist_upkg.py).
+"""upkg_rig.py -- the real `upkg` (the opkg 0.9.0 binary, UP-Term:bin/upkg) on the rig, against the .ipk feed
+build/ipk/ (`make dist-ipk`) that this Mac serves over plain http (upkg plan P10.5-5; the host decisions are
+tests/test_dist_ipk.py).
 
-The release is a temp drawer of symlinks to build/*.lha and a copy of build/upkg-index.txt (`make dist`),
-changed per case. FS-UAE's bsdsocket emulation connects from the Mac itself, so 127.0.0.1 on the Amiga is this
-Mac (wget_rig.py): the rig gets `SetEnv UPKGURL http://127.0.0.1:<port>`, which dist/upkg reads.
-Rig up with the base installed (UP-Term:bin/upkg, curl with its https part, Installer on the rig).
+FS-UAE's bsdsocket emulation connects from the Mac itself, so 127.0.0.1 on the Amiga is this Mac (wget_rig.py).
+The config is UP-Term:etc/upkg.conf, asserted byte for byte equal to dist/upkg.conf, then copied to
+T:upkg-rig.conf with only its `src/gz` line changed to the Mac's http feed (https is P10.7); every command runs
+`upkg -f T:upkg-rig.conf ...`. Rig up (`rig.py start --max`) with the base installed from the kit of `make dist`.
+The package is named as the feed names it (UP-Term-nvim, Claude), the way `upkg list` prints it.
 
-  list        upkg list shows every archive of the index; UP-Term-nvim is installed '-'
-  install     upkg install nvim: the nvim Installer's pages answered with every box ticked (installer_rig.drive),
-              UP-Term:pkg/UP-Term-nvim/VERSIONS names the index version, nvim --version runs   (reachability case)
-  update      the record's version lowered by hand, upkg update reinstalls to the index version, a second
-              update finds nothing to do. (A bumped index cannot be installed: the archive's Install writes the
-              archive's own version, and upkg then reports "not installed".)
-  remove      upkg remove UP-Term-nvim: the record and the nvim files are gone
-  needsbase   the index says nvim needs UP-Term 99.0: refused, no Installer window opened
-  badsum      the index holds a wrong sha256 for Python3: refused, nothing under ENVARC:upkg/Python3
+  version     `upkg --version` prints "based on opkg 0.9.0": the opkg binary ran, not the vsh script   (sentinel)
+  updatelist  `upkg update`, then `upkg list` names the 4 add-ons
+  install     `upkg install UP-Term-nvim`: files land (Files/install.dos ran under ixemul /bin/sh), the status
+              record is in UP-Term:pkg/upkg/status, T:upkg-stage holds nothing for nvim (`dest root /` reached T:)
+  upgrade     a feed with nvim 1.1 (ipk rebuilt in a temp drawer; the real version is untouched): `upkg upgrade`
+  remove      `upkg remove UP-Term-nvim`: files, status record and record drawer gone, no T:upkg-stage left
+  needsbase   UP-Term:VERSIONS faked older than nvim's needs-base: install refused, nothing written (restored)
+  badsum      Packages holds a wrong SHA256sum for Claude: install refused, nothing written
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/upkg/<case>.json with a
-fingerprint of dist/upkg, the index and this script.
+fingerprint of dist/upkg.conf, build/ipk/Packages and this script.
   upkg_rig.py                  every case not yet passed with this kit
-  upkg_rig.py --only nvim ...  named cases (--only install; repeat it), even when they passed
+  upkg_rig.py --only install   named cases (repeat it), even when they passed
   upkg_rig.py --failed         only the cases that failed last time
   upkg_rig.py --force          every case, from zero
   upkg_rig.py --list           the recorded verdicts
 One script per rig: a second one on the same rig stops with the first one's pid (paths.rig_lock)."""
-import http.server, os, pathlib, re, shutil, sys, tempfile, threading, time
+import gzip, http.server, os, pathlib, re, shutil, sys, tempfile, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import paths  # before ami: it sets the agent port of UPTERM_RIG
 import ami
 import verdicts
 import install_rig as ir
-import installer_rig as irg
+import pkgs
 
 ROOT = ir.ROOT
 VTC = ir.VTC
 BUILD = ROOT / 'build'
 OUT = paths.RIG / 'upkg'
-NVIM = 'UP-Term:pkg/UP-Term-nvim'
-CASES = ['list', 'install', 'update', 'remove', 'needsbase', 'badsum']
+NVIM = 'UP-Term-nvim'
+CONF = 'T:upkg-rig.conf'
+STATUS = 'UP-Term:pkg/upkg/status'
+STAGE = 'T:upkg-stage'
+ADDONS = ['Claude', 'amiga-pi', 'UP-Term-nvim', 'Python3']
+CASES = ['version', 'updatelist', 'install', 'upgrade', 'remove', 'needsbase', 'badsum']
 
 
 # --- pure parts (tests/test_rig_fixtures.py) ---------------------------------------------------------------
 
-FIELDS = ('id', 'archive', 'version', 'needs', 'record', 'size', 'sha256')
+def parse_packages(text):
+    """[{field: value}] of the stanzas of an opkg Packages text."""
+    return [dict(l.split(': ', 1) for l in b.splitlines() if ': ' in l) for b in text.split('\n\n') if b.strip()]
 
 
-def parse_index(text):
-    """[{field: value}] of the package lines of an index (the '#' header is skipped)."""
-    return [dict(zip(FIELDS, l.split())) for l in text.splitlines() if l.strip() and not l.startswith('#')]
-
-
-def edit_index(text, pkg, **fields):
-    """The index text with the named fields of package `pkg` (its id or archive name) replaced."""
-    if not set(fields) <= set(FIELDS):
-        raise ValueError('index fields: ' + ' '.join(FIELDS))
+def edit_packages(text, pkg, **fields):
+    """The Packages text with the named fields of package `pkg` replaced (Version=, SHA256sum=, ...)."""
     out, hit = [], False
-    for l in text.splitlines():
-        f = l.split()
-        if f and not l.startswith('#') and pkg in f[:2]:
-            row = dict(zip(FIELDS, f))
-            row.update(fields)
-            l, hit = ' '.join(row[k] for k in FIELDS), True
-        out.append(l)
+    for b in text.split('\n\n'):
+        ls = b.splitlines()
+        if ls and ls[0] == 'Package: ' + pkg:
+            hit = True
+            ls = [('%s: %s' % (l.split(': ', 1)[0], fields[l.split(': ', 1)[0]])) if ': ' in l and l.split(': ', 1)[0] in fields else l
+                  for l in ls]
+        out.append('\n'.join(ls))
     if not hit:
-        raise KeyError('no package %s in the index' % pkg)
-    return '\n'.join(out) + '\n'
+        raise KeyError('no package %s in Packages' % pkg)
+    return '\n\n'.join(out)
+
+
+def conf_for(conf, url):
+    """dist/upkg.conf with its one `src/gz` line pointing at `url`; nothing else changes."""
+    lines = conf.split('\n')
+    hit = [i for i, l in enumerate(lines) if l.startswith('src/gz ')]
+    if len(hit) != 1:
+        raise ValueError('upkg.conf needs exactly one src/gz line, has %d' % len(hit))
+    lines[hit[0]] = 'src/gz upterm ' + url
+    return '\n'.join(lines)
+
+
+def bump_table(text, pkg, version):
+    """dist/packages.txt text with the version of row `pkg` (its id) set to `version`."""
+    out, n = re.subn(r'^(%s\s+\S+\s+)\S+' % re.escape(pkg), r'\g<1>' + version, text, flags=re.M)
+    if n != 1:
+        raise KeyError('no row %s in the table' % pkg)
+    return out
 
 
 def lower_record(text, version):
@@ -77,11 +95,20 @@ def lower_record(text, version):
     return '\n'.join([' '.join(f)] + lines[1:]) + '\n'
 
 
+def status_version(status, pkg):
+    """The Version of `pkg` in an opkg status file, None when it has no stanza."""
+    for st in parse_packages(status):
+        if st.get('Package') == pkg:
+            return st.get('Version')
+    return None
+
+
 class Release:
-    """A directory http.server serves: symlinks to build/*.lha and an index, replaced per case."""
+    """A directory http.server serves: symlinks to the .ipk files of a feed drawer and its Packages(.gz)."""
 
     def __init__(self):
         self.dir = pathlib.Path(tempfile.mkdtemp(prefix='upkgrig'))
+        self.bumped = None
         owner = self
 
         class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -95,174 +122,178 @@ class Release:
         self.url = 'http://127.0.0.1:%d' % self.srv.server_address[1]
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
 
-    def set(self, index_text):
-        for f in BUILD.glob('*.lha'):
-            link = self.dir / f.name
-            if not link.exists():
-                link.symlink_to(f)
-        (self.dir / 'upkg-index.txt').write_text(index_text)
+    def set(self, feed_dir=None, packages=None):
+        """Serve the .ipk files of `feed_dir` (default build/ipk) and `packages` (default that drawer's Packages)."""
+        feed_dir = pathlib.Path(feed_dir or BUILD / 'ipk')
+        for old in self.dir.iterdir():
+            old.unlink()
+        for f in feed_dir.glob('*.ipk'):
+            (self.dir / f.name).symlink_to(f.resolve())
+        text = packages if packages is not None else (feed_dir / 'Packages').read_text()
+        (self.dir / 'Packages').write_text(text)
+        (self.dir / 'Packages.gz').write_bytes(gzip.compress(text.encode(), mtime=0))
+
+    def bumped_feed(self, pkg, version):
+        """A temp feed drawer whose package `pkg` is `version`: its ipk rebuilt from the staged tree
+        (tools/pkgs.py with a copy of the table; the real table and build/ipk are not touched)."""
+        if self.bumped is None:
+            tmp = pathlib.Path(tempfile.mkdtemp(prefix='upkgbump'))
+            (tmp / 'dist').symlink_to(BUILD / 'dist')
+            table = tmp / 'packages.txt'
+            table.write_text(bump_table(pkgs.TABLE.read_text(), pkg, version))
+            pkgs.ipk(tmp, table)
+            pkgs.write_feed(tmp, table)
+            self.bumped = tmp
+        return self.bumped / 'ipk'
 
     def close(self):
         self.srv.shutdown()
         shutil.rmtree(self.dir, ignore_errors=True)
+        if self.bumped:
+            shutil.rmtree(self.bumped, ignore_errors=True)
 
 
 # --- the rig side ------------------------------------------------------------------------------------------
 
-def index_text():
-    return (BUILD / 'upkg-index.txt').read_text()
-
-
-def pkg_row(pkg):
-    return next(r for r in parse_index(index_text()) if pkg in (r['id'], r['archive']))
-
-
-def upkg(name, args, timeout=600):
-    """`upkg <args>` from a vsh script, to completion: (rc, output). Not for a command that opens an Installer."""
-    (VTC / (name + '.sh')).write_text('UP-Term:bin/upkg %s 2>&1\necho "[exit $?]"\n' % args)
+def upkg(name, args, timeout=900, conf=True):
+    """`upkg [-f CONF] <args>` from a vsh script, to completion: (rc, output)."""
+    (VTC / (name + '.sh')).write_text('UP-Term:bin/upkg %s%s 2>&1\necho "[exit $?]"\n' % ('-f %s ' % CONF if conf else '', args))
     rc, out = ir.run_slow(name, 'VTC:vsh VTC:%s.sh' % name, timeout)
     m = re.search(r'\[exit (\d+)\]', out)
     return (int(m.group(1)) if m else 1000 + rc), out
 
 
-def upkg_gui(ck, name, args, what):
-    """`upkg <args>` where the package's Installer opens: started detached, its pages answered with every box
-    ticked (installer_rig.drive; nested pages, drawer and room pages included), then waited out. Returns
-    (rc, output). The Installer is named as upkg finds it (installer_rig.find_installer)."""
-    inst, base = irg.read_installer()
-    for f in (name + '.out',):
-        (VTC / f).unlink(missing_ok=True)
-    (VTC / (name + '.sh')).write_text('UP-Term:bin/upkg %s\necho "[exit $?]"\n' % args)
-    (VTC / (name + '.run')).write_text('VTC:vsh VTC:%s.sh >VTC:%s.out\n' % (name, name))
-    ir.run('Run >NIL: Execute VTC:%s.run' % name, 30)
-    t0 = time.time()
-    while time.time() - t0 < 900 and not irg.installer_running(inst) and not done(name):
-        time.sleep(3)   # the download (curl) comes first
-    finished, log = (True, ['no Installer came up']) if done(name) else irg.drive(name, inst, None, base, tick_all=True)
-    (OUT / (name + '.log.txt')).write_text('\n'.join(log) + '\n')
-    ck(finished, '%s: the Installer ran to its end' % what, log[-1] if log else '')
-    if not finished and irg.installer_running(inst):
-        ir.run('Break >NIL: `Status COM "%s"` C' % inst)
-    while not done(name) and time.time() - t0 < 1800:
-        time.sleep(3)
-    out = read_out(name)
-    m = re.search(r'\[exit (\d+)\]', out)
-    return (int(m.group(1)) if m else 1000), out
+def exists(path):
+    return ir.run('List >NIL: %s' % path)[0] == 0
 
 
-def read_out(name):
-    f = VTC / (name + '.out')
-    return f.read_text(errors='replace') if f.exists() else ''
+def status_text():
+    return ami.read_file(STATUS).decode('latin-1') if exists(STATUS) else ''
 
 
-def done(name):
-    return '[exit ' in read_out(name)
-
-
-def installed_version(record=NVIM):
-    rc, out = ir.run('Type %s/VERSIONS' % record)
-    f = out.split()
-    return f[1] if rc == 0 and len(f) > 1 else None
+def installed_version(pkg=NVIM):
+    return status_version(status_text(), pkg)
 
 
 def nvim_files_there():
-    return ir.run('List >NIL: UP-Term:nvim/bin/nvim')[0] == 0
+    return exists('UP-Term:nvim/bin/nvim')
 
 
-def remove_nvim():
-    """The cleanup between cases: upkg remove, the way a user does, nothing judged."""
+def nvim_pristine(ck, what):
+    ck(not nvim_files_there(), '%s: UP-Term:nvim/bin/nvim is not there' % what)
+    ck(not exists('UP-Term:pkg/%s' % NVIM), '%s: no record drawer UP-Term:pkg/%s' % (what, NVIM))
+    ck(installed_version() is None, '%s: no status record for %s' % (what, NVIM), installed_version())
+    ck(not exists('%s/%s' % (STAGE, NVIM)), '%s: nothing of nvim under %s' % (what, STAGE))
+
+
+def cleanup():
+    """Between cases: nvim removed through upkg the way a user does, nothing judged; the stage tree dropped."""
     if installed_version():
-        upkg('upkgrm', 'remove UP-Term-nvim', 900)
+        upkg('upkgrm', 'remove %s' % NVIM)
+    ir.run_slow('stagerm', 'Delete >NIL: %s ALL QUIET' % STAGE)
 
 
-def ensure_nvim(ck):
-    """nvim installed through upkg (a case that starts from an installed package)."""
-    if installed_version() == pkg_row('nvim')['version']:
+def ensure_nvim(ck, rel):
+    rel.set()
+    upkg('upkgupd', 'update')
+    if installed_version() == '1.0':
         return True
-    rc, out = upkg_gui(ck, 'upkginst', 'install nvim', 'nvim (setup)')
-    return ck(rc == 0 and installed_version() == pkg_row('nvim')['version'], 'setup: upkg install nvim', out[-300:])
+    rc, out = upkg('upkginst', 'install %s' % NVIM)
+    return ck(rc == 0 and installed_version() == '1.0', 'setup: upkg install %s' % NVIM, out[-300:])
 
 
-def case_list(ck, rel):
-    remove_nvim()
-    rel.set(index_text())
+def case_version(ck, rel):
+    rc, out = upkg('upkgver', '--version', conf=False)
+    ck('based on opkg 0.9.0' in out, 'version: "based on opkg 0.9.0" (the opkg binary ran, not the vsh script)', out)
+    want = (ROOT / 'dist/upkg.conf').read_bytes()
+    ck(ami.read_file('UP-Term:etc/upkg.conf') == want, 'version: UP-Term:etc/upkg.conf equals dist/upkg.conf byte for byte')
+
+
+def case_updatelist(ck, rel):
+    rel.set()
+    rc, out = upkg('upkgupd', 'update')
+    ck(rc == 0, 'update: exit 0', out[-300:])
     rc, out = upkg('upkglist', 'list')
-    ck(rc == 0, 'list: exit 0', out)
-    for r in parse_index(index_text()):
-        ck(re.search(r'^%s\s+\S+\s+%s\s+%s$' % (re.escape(r['archive']), re.escape(r['version']), r['size']), out, re.M),
-           'list: %s %s %s bytes' % (r['archive'], r['version'], r['size']), out)
-    ck(re.search(r'^UP-Term-nvim\s+-\s', out, re.M), 'list: UP-Term-nvim is installed "-"', out)
+    ck(rc == 0, 'list: exit 0', out[-300:])
+    for a in ADDONS:
+        ck(re.search(r'^%s - ' % re.escape(a), out, re.M), 'list: names %s' % a, out[-400:])
 
 
 def case_install(ck, rel):
-    remove_nvim()
-    rel.set(index_text())
-    want = pkg_row('nvim')['version']
-    rc, out = upkg_gui(ck, 'upkginst', 'install nvim', 'install nvim')
-    ck(rc == 0 and ('upkg: UP-Term-nvim %s installed' % want) in out, 'install: upkg says installed %s' % want, out[-300:])
-    ck(installed_version() == want, 'install: %s/VERSIONS names the index version %s' % (NVIM, want), installed_version())
+    cleanup()
+    rel.set()
+    upkg('upkgupd', 'update')
+    rc, out = upkg('upkginst', 'install %s' % NVIM)
+    ck(rc == 0, 'install: exit 0', out[-400:])
+    ck(nvim_files_there(), 'install: UP-Term:nvim/bin/nvim landed (Files/install.dos ran)')
+    ck(exists('UP-Term:pkg/%s/VERSIONS' % NVIM), 'install: the record UP-Term:pkg/%s/VERSIONS is there' % NVIM)
+    ck(installed_version() == '1.0', 'install: %s names %s 1.0' % (STATUS, NVIM), installed_version())
+    ck(not exists('%s/%s' % (STAGE, NVIM)), 'install: %s/%s left behind (dest root / reached T:, postinst dropped it)' % (STAGE, NVIM))
     rc, out = ir.run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
     ck(rc == 0 and 'NVIM v0.12' in out, 'install: nvim runs from UP-Term:nvim', out[-300:])
-    ck(ir.run('List >NIL: T:upkg')[0] != 0, 'install: T:upkg left behind')
 
 
-def case_update(ck, rel):
-    rel.set(index_text())
-    if not ensure_nvim(ck):
+def case_upgrade(ck, rel):
+    if not ensure_nvim(ck, rel):
         return
-    want = pkg_row('nvim')['version']
-    old = '0.0.1'
-    f = VTC / 'upkg-versions'
-    f.write_text(lower_record(ami.read_file(NVIM + '/VERSIONS').decode('latin-1'), old))
-    ir.run('Copy VTC:upkg-versions %s/VERSIONS' % NVIM)
-    ck(installed_version() == old, 'update: the record lowered to %s' % old, installed_version())
-    rc, out = upkg_gui(ck, 'upkgupd', 'update', 'update')
-    ck(rc == 0 and 'UP-Term-nvim' in out, 'update: upkg update reinstalls UP-Term-nvim', out[-300:])
-    ck(installed_version() == want, 'update: the record is the index version %s again' % want, installed_version())
-    rc, out = upkg('upkgupd2', 'update')
-    ck(rc == 0 and 'up to date' in out, 'update: a second update finds nothing to do', out)
+    rel.set(rel.bumped_feed('nvim', '1.1'))
+    rc, out = upkg('upkgupd', 'update')
+    ck(rc == 0, 'upgrade: update against the feed with nvim 1.1', out[-300:])
+    rc, out = upkg('upkgupg', 'upgrade')
+    ck(rc == 0, 'upgrade: upkg upgrade exit 0', out[-400:])
+    ck(installed_version() == '1.1', 'upgrade: the status record moved to 1.1', installed_version())
+    ck(nvim_files_there(), 'upgrade: nvim files are there')
+    ck(not exists('%s/%s' % (STAGE, NVIM)), 'upgrade: nothing of nvim left under %s' % STAGE)
 
 
 def case_remove(ck, rel):
-    rel.set(index_text())
-    if not ensure_nvim(ck):
+    if not ensure_nvim(ck, rel):
         return
-    rc, out = upkg('upkgrm', 'remove UP-Term-nvim', 900)
-    ck(rc == 0 and 'UP-Term-nvim removed' in out, 'remove: upkg says removed', out[-300:])
-    ck(ir.run('List >NIL: %s' % NVIM)[0] != 0, 'remove: %s is gone' % NVIM)
-    ck(not nvim_files_there(), 'remove: UP-Term:nvim/bin/nvim is gone')
-    # a vsh before e8baac4e left Execute's script open: T:upkg/Uninstall stayed "in use"
-    ck(ir.run('List >NIL: T:upkg')[0] != 0, 'remove: T:upkg is gone (Execute closed its script)')
+    ir.run_slow('stagerm', 'Delete >NIL: %s ALL QUIET' % STAGE)   # judge only what remove leaves
+    rc, out = upkg('upkgrm', 'remove %s' % NVIM)
+    ck(rc == 0, 'remove: exit 0', out[-400:])
+    nvim_pristine(ck, 'remove')
+    ck(not exists(STAGE), 'remove: %s is gone, empty dir too' % STAGE)
 
 
 def case_needsbase(ck, rel):
-    remove_nvim()
-    rel.set(edit_index(index_text(), 'nvim', needs='99.0'))
-    base = {t for t, _ in irg.windows(ami.req(0x0D).decode('latin-1'))}
-    rc, out = upkg('upkgneeds', 'install nvim')
-    ck(rc != 0 and 'needs UP-Term 99.0' in out, 'needsbase: refused with "needs UP-Term 99.0"', out)
-    now = {t for t, _ in irg.windows(ami.req(0x0D).decode('latin-1'))}
-    ck(now <= base, 'needsbase: no Installer window opened', sorted(now - base))
-    ck(installed_version() is None, 'needsbase: nothing installed', installed_version())
+    cleanup()
+    rel.set()
+    upkg('upkgupd', 'update')
+    real = ami.read_file('UP-Term:VERSIONS').decode('latin-1')
+    (VTC / 'upkg-versions').write_text(lower_record(real, '0.5'))
+    try:
+        ir.run('Copy VTC:upkg-versions UP-Term:VERSIONS')
+        rc, out = upkg('upkgneeds', 'install %s' % NVIM)
+        ck(rc != 0 and 'needs UP-Term 1.0' in out, 'needsbase: refused with "needs UP-Term 1.0"', out[-400:])
+        nvim_pristine(ck, 'needsbase')
+    finally:
+        (VTC / 'upkg-versions').write_text(real)
+        ir.run('Copy VTC:upkg-versions UP-Term:VERSIONS')
+    ck(ami.read_file('UP-Term:VERSIONS').decode('latin-1') == real, 'needsbase: UP-Term:VERSIONS restored')
 
 
 def case_badsum(ck, rel):
-    if ir.run('List >NIL: ENVARC:upkg/Python3')[0] == 0:
-        ck(False, 'badsum: precondition, Python3 is installed (ENVARC:upkg/Python3): remove it first')
+    if installed_version('Claude') or exists('ENVARC:upkg/Claude'):
+        ck(False, 'badsum: precondition, Claude is installed (ENVARC:upkg/Claude): remove it first')
         return
-    row = pkg_row('python')
-    rel.set(edit_index(index_text(), 'python', sha256=('0' if row['sha256'][0] != '0' else '1') + row['sha256'][1:]))
-    rc, out = upkg('upkgsum', 'install python', 900)
-    ck(rc != 0 and 'sha256' in out, 'badsum: refused with "sha256"', out[-300:])
-    ck(ir.run('List >NIL: ENVARC:upkg/Python3')[0] != 0, 'badsum: no ENVARC:upkg/Python3')
+    text = (BUILD / 'ipk/Packages').read_text()
+    good = next(p for p in parse_packages(text) if p['Package'] == 'Claude')['SHA256sum']
+    rel.set(packages=edit_packages(text, 'Claude', SHA256sum=('0' if good[0] != '0' else '1') + good[1:]))
+    upkg('upkgupd', 'update')
+    rc, out = upkg('upkgsum', 'install Claude')
+    ck(rc != 0 and re.search(r'sha256|checksum', out, re.I), 'badsum: refused over the checksum', out[-400:])
+    ck(installed_version('Claude') is None, 'badsum: no status record for Claude', installed_version('Claude'))
+    ck(not exists('ENVARC:upkg/Claude'), 'badsum: no ENVARC:upkg/Claude')
+    ck(not exists('%s/Claude' % STAGE), 'badsum: nothing of Claude under %s' % STAGE)
 
 
-TABLE = {'list': case_list, 'install': case_install, 'update': case_update, 'remove': case_remove,
-         'needsbase': case_needsbase, 'badsum': case_badsum}
+TABLE = {'version': case_version, 'updatelist': case_updatelist, 'install': case_install, 'upgrade': case_upgrade,
+         'remove': case_remove, 'needsbase': case_needsbase, 'badsum': case_badsum}
 
 
 def fingerprint(case=None):
-    return verdicts.fingerprint(ROOT / 'dist/upkg', BUILD / 'upkg-index.txt', pathlib.Path(__file__))
+    return verdicts.fingerprint(ROOT / 'dist/upkg.conf', BUILD / 'ipk/Packages', pathlib.Path(__file__))
 
 
 def parse_args(argv):
@@ -292,13 +323,14 @@ def run_case(name, rel):
     fx = ir.Fixtures()
     try:
         fx.take()
-        ir.run('SetEnv UPKGURL %s' % rel.url)
+        (VTC / 'upkg-rig.conf').write_text(conf_for((ROOT / 'dist/upkg.conf').read_text(), rel.url))
+        ir.run('Copy VTC:upkg-rig.conf %s' % CONF)
         TABLE[name](ck, rel)
     finally:
         try:
-            remove_nvim()   # a case that installed nvim leaves the rig without it
+            cleanup()   # a case that installed nvim leaves the rig without it
         finally:
-            ir.run('Delete >NIL: ENV:UPKGURL')
+            ir.run('Delete >NIL: %s QUIET' % CONF)
             fx.restore()
     print('upkg_rig %s: passed %d of %d' % (name, ck.passed, ck.total))
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
@@ -317,9 +349,9 @@ def cli(argv):
     for c, why in skip:
         print('[SKIP] %s: %s' % (c, why))
     if todo:
-        for need in [BUILD / 'upkg-index.txt', BUILD / 'UP-Term-nvim.lha', BUILD / 'Python3.lha']:
+        for need in [BUILD / 'ipk/Packages', BUILD / 'dist/UP-Term-nvim/Files/install.dos']:
             if not need.exists():
-                raise SystemExit('upkg_rig: no %s: make dist first' % need)
+                raise SystemExit('upkg_rig: no %s: make dist dist-ipk first' % need)
     with paths.rig_lock():
         rel = Release()
         try:

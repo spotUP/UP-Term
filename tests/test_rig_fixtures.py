@@ -768,21 +768,50 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
         self.assertEqual(self.log, [])
 
 
-class UpkgRigIndex(unittest.TestCase):
-    """upkg_rig's index edits (the per-case releases) and the lowered record."""
-    INDEX = "# upkg index 1: id archive version needs-base record size sha256\nnvim UP-Term-nvim 1.0 1.0 UP-Term:pkg/UP-Term-nvim 10 aa\npython Python3 1.0 - ENVARC:upkg/Python3 20 bb\n"
+class UpkgRigPure(unittest.TestCase):
+    """upkg_rig's pure parts: the Packages edits (the per-case feeds), the config, the bumped table, the records."""
+    PACKAGES = "Package: Claude\nVersion: 1.1\nSHA256sum: aa\n\nPackage: UP-Term-nvim\nVersion: 1.0\nSHA256sum: bb\n"
 
-    def test_edit_index_changes_only_the_named_package(self):
+    def test_edit_packages_changes_only_the_named_package(self):
         import upkg_rig as u
-        out = u.edit_index(self.INDEX, 'nvim', needs='99.0')
-        self.assertIn("nvim UP-Term-nvim 1.0 99.0 UP-Term:pkg/UP-Term-nvim 10 aa", out)
-        self.assertIn("python Python3 1.0 - ENVARC:upkg/Python3 20 bb", out)
-        self.assertEqual(u.edit_index(self.INDEX, 'Python3', sha256='cc').splitlines()[2].split()[-1], 'cc')
+        out = u.edit_packages(self.PACKAGES, 'UP-Term-nvim', SHA256sum='cc', Version='1.1')
+        self.assertEqual([(p['Package'], p['Version'], p['SHA256sum']) for p in u.parse_packages(out)],
+                         [('Claude', '1.1', 'aa'), ('UP-Term-nvim', '1.1', 'cc')])
         with self.assertRaises(KeyError):
-            u.edit_index(self.INDEX, 'nosuch', needs='1')
+            u.edit_packages(self.PACKAGES, 'nosuch', Version='1')
 
-    def test_lower_record_changes_the_first_line_version_only(self):
+    def test_conf_for_changes_only_the_src_line(self):
         import upkg_rig as u
+        conf = (u.ROOT / 'dist/upkg.conf').read_text()
+        out = u.conf_for(conf, 'http://127.0.0.1:5')
+        a, b = conf.split('\n'), out.split('\n')
+        self.assertEqual([x for x, y in zip(a, b) if x != y], [l for l in a if l.startswith('src/gz ')])
+        self.assertIn('src/gz upterm http://127.0.0.1:5', b)
+        self.assertEqual(len(a), len(b))
+        with self.assertRaises(ValueError):
+            u.conf_for('arch x 1\n', 'http://h')
+
+    def test_bump_table_changes_the_version_of_one_row(self):
+        import upkg_rig as u, pkgs
+        out = u.bump_table(pkgs.TABLE.read_text(), 'nvim', '1.1')
+        rows = {r['id']: r['version'] for r in pkgs.rows(__import__('pathlib').Path(self._write(out)))}
+        self.assertEqual(rows['nvim'], '1.1')
+        self.assertEqual(rows['python'], {r['id']: r['version'] for r in pkgs.rows()}['python'])
+        with self.assertRaises(KeyError):
+            u.bump_table(pkgs.TABLE.read_text(), 'nosuch', '1')
+
+    def _write(self, text):
+        import tempfile
+        f = tempfile.NamedTemporaryFile('w', suffix='.txt', delete=False)
+        self.addCleanup(os.unlink, f.name)
+        f.write(text)
+        f.close()
+        return f.name
+
+    def test_status_version_and_lowered_record(self):
+        import upkg_rig as u
+        self.assertEqual(u.status_version(self.PACKAGES, 'UP-Term-nvim'), '1.0')
+        self.assertIsNone(u.status_version(self.PACKAGES, 'Python3'))
         self.assertEqual(u.lower_record("UP-Term-nvim 1.0 abc d\nrest\n", '0.0.1'), "UP-Term-nvim 0.0.1 abc d\nrest\n")
 
 if __name__ == '__main__':
