@@ -70,6 +70,8 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # multilib crt0.o (tests/test_ixemul_startfile.py, the installed $(AGCC))
 # ONLY=gcc_mul_overflow_cc __builtin_mul_overflow keeps the tst of the high word after addx.l
 # (tests/test_gcc_mul_overflow_cc.py, the installed $(AGCC); runs the result under vamos if present)
+# ONLY=gcc_move2_overlap the 68080 move2.l load pair skips a load whose base the first load overwrites,
+# and volatile loads (tests/test_gcc_move2_overlap.py, the installed $(AGCC), -m68080 -mexperimental)
 # The ONLY= names of the recipe lines below; the C suites are tests/test_main.c's (vttest_host --has)
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host
@@ -124,6 +126,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul_startfile ]; then python3 -I tests/test_ixemul_startfile.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul_sincos ]; then python3 -I tests/test_ixemul_sincos.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gcc_mul_overflow_cc ]; then python3 -I tests/test_gcc_mul_overflow_cc.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gcc_move2_overlap ]; then python3 -I tests/test_gcc_move2_overlap.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul ]; then $(MAKE) -s -C $(IXEMUL_SRC)/tests/host test; fi
 	@# UP-Term's own manual pages (man/*.1, mdoc): no mandoc warning (macOS has mandoc)
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = man ]; then for f in man/*.1; do mandoc -T lint -W warning $$f || exit 1; done; echo "[OK] man/*.1 lint clean"; fi
