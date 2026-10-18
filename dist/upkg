@@ -10,7 +10,11 @@
 # base Installer's AmiSSL part makes curl reach GitHub.
 # What is installed is read from each package's install record (<record>/VERSIONS), never from a
 # file of upkg's own. The base updates from its own archive, not here: upkg runs inside it.
-url=${UPKGURL:-https://github.com/spotUP/vtcon/releases/latest/download}
+# vsh takes only HOME, USER, HOST and HOSTNAME from ENV: into the shell: a SetEnv UPKGURL is read
+# from ENV: itself (a Shell's Set UPKGURL, or the host test, arrives as $UPKGURL)
+url=$UPKGURL
+[ -z "$url" ] && [ -f ENV:UPKGURL ] && url=$(cat ENV:UPKGURL)
+url=${url:-https://github.com/spotUP/vtcon/releases/latest/download}
 work=T:upkg
 index=$work/upkg-index.txt
 

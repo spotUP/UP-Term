@@ -58,9 +58,10 @@ class Upkg(unittest.TestCase):
                                     hashlib.sha256(data).hexdigest())))
         (self.release / 'upkg-index.txt').write_text(HEADER + '\n'.join(self.lines) + '\n')
 
-    def upkg(self, *args):
-        env = dict(os.environ, PATH='%s:%s' % (self.bin, os.environ['PATH']), UPLOG=str(self.log),
-                   UPKGURL=self.release.as_uri())
+    def upkg(self, *args, url_in_shell=True):
+        env = dict(os.environ, PATH='%s:%s' % (self.bin, os.environ['PATH']), UPLOG=str(self.log))
+        if url_in_shell:
+            env['UPKGURL'] = self.release.as_uri()
         p = subprocess.run(['sh', str(UPKG)] + list(args), cwd=self.root, env=env, text=True,
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         return p.returncode, p.stdout
@@ -76,6 +77,15 @@ class Upkg(unittest.TestCase):
         self.assertEqual(self.recorded('UP-Term:pkg/UP-Term-nvim'), '1.0')
         self.assertIn('Installer Install APPNAME UP-Term-nvim', self.log.read_text())
         self.assertFalse((self.root / 'T:upkg').exists(), 'T:upkg left behind')
+
+    def test_the_url_override_set_with_setenv_is_read_from_env(self):
+        # vsh takes only HOME, USER, HOST and HOSTNAME from ENV: into the shell, so after
+        # `SetEnv UPKGURL <url>` the script sees no $UPKGURL: it must read ENV:UPKGURL itself
+        self.package('nvim', 'UP-Term-nvim', '1.1', '1.0', 'UP-Term:pkg/UP-Term-nvim')
+        (self.root / 'ENV:UPKGURL').write_text(self.release.as_uri() + '\n')
+        rc, out = self.upkg('list', url_in_shell=False)
+        self.assertEqual(rc, 0, out)
+        self.assertIn('UP-Term-nvim', out)
 
     def test_list_shows_installed_and_available(self):
         self.package('nvim', 'UP-Term-nvim', '1.1', '1.0', 'UP-Term:pkg/UP-Term-nvim')
