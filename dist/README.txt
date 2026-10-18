@@ -62,6 +62,17 @@ UPDATE
   only what Update copies. An install from a Shell keeps no choices and
   a kit older than Update no list: Install then installs in full.
 
+PACKAGES (upkg)
+  UP-Term:bin/upkg is opkg, the package manager, set up by
+  UP-Term:etc/upkg.conf (the feed is the latest release on GitHub; its lists
+  and records live in UP-Term:pkg/upkg). From an UP-Term window:
+    upkg update              fetch the feed's package list
+    upkg list                the packages the feed offers
+    upkg install <package>   install an add-on (needs the base installed)
+    upkg upgrade             bring the installed add-ons up to the feed
+    upkg remove <package>    remove an add-on
+  Uninstall removes UP-Term:pkg/upkg and UP-Term:etc/upkg.conf with the drawer.
+
 WHERE IT IS INSTALLED
   UP-Term's own files (bin with the Unix commands and sh, unifont, emoji,
   VERSIONS, and the add-on archives' files: Python3, nvim, pkg) live in one drawer: SYS:UP-Term unless you
