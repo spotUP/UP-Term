@@ -817,7 +817,7 @@ ADD-ONS
                        Anthropic's AI model). Stands alone.
     amiga-pi.lha       C:amiga-pi (pi, the coding agent). Stands alone.
   The stand-alone ones install on a Workbench with no UP-Term and record
-  themselves in ENVARC:uppkg; in an UP-Term window they use its screen, keys
+  themselves in ENVARC:upkg; in an UP-Term window they use its screen, keys
   and vsh. Uninstall of UP-Term takes UP-Term-nvim out first, by its own
   Uninstall (and asks once about UP-Term:var); the stand-alone ones stay.
   An UP-Term installed from the single kit (before the split) that had Neovim,

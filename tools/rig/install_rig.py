@@ -16,8 +16,8 @@ One case per package on the base, and the combinations (K2-10, plan 2026-10-13-k
               Python3, work over UP-Term too)
   claude-bare pi-bare python-bare
               (one per stand-alone archive: needs-base "-") on a Workbench with no UP-Term: assign: its
-              install.dos, its record in ENVARC:uppkg, its program answering, its Uninstall, S:User-Startup and
-              ENVARC:uppkg as before
+              install.dos, its record in ENVARC:upkg, its program answering, its Uninstall, S:User-Startup and
+              ENVARC:upkg as before
   python-ixemul
               Python3 with an ixemul.library of 47 or newer in LIBS: (the rig's patched one): left as it is,
               nothing recorded as installed by Python3, its need recorded and taken away again (the branch with
@@ -1200,7 +1200,7 @@ def addon_verify(ck, pkg, remote=True, with_base=True):
         ck(run('Assign >NIL: Python3: EXISTS')[0] == 0 and
            run('Search >NIL: S:User-Startup "Assign Python3: SYS:Python3"')[0] == 0,
            'python: Python3: assigned, and at every boot')
-        ck(run('List >NIL: ENVARC:uppkg/ixemul/needs/Python3')[0] == 0, 'python: its need of ixemul.library is recorded')
+        ck(run('List >NIL: ENVARC:upkg/ixemul/needs/Python3')[0] == 0, 'python: its need of ixemul.library is recorded')
 
 
 def addon_absent_not(ck, pkg, what):
@@ -1220,7 +1220,7 @@ def addon_gone(ck, pkg, base_stays=True, remote=True, with_base=True):
     if pkg == 'python':
         ck(run('Assign >NIL: Python3: EXISTS')[0] != 0, 'python: no Python3: assign')
         ck(run('Search >NIL: S:User-Startup ";BEGIN Python3"')[0] != 0, 'python: its block is out of S:User-Startup')
-        ck(run('List >NIL: ENVARC:uppkg/ixemul/needs/Python3')[0] != 0, 'python: its need of ixemul.library is taken away')
+        ck(run('List >NIL: ENVARC:upkg/ixemul/needs/Python3')[0] != 0, 'python: its need of ixemul.library is taken away')
         if base_stays and with_base:
             ck(run('Search >NIL: S:User-Startup ";BEGIN UP-Term assign"')[0] == 0,
                'python: the base\'s UP-Term: block is still in S:User-Startup (only its own block went)')
@@ -1260,7 +1260,7 @@ def case_addon(ck, pkg):
 
 def case_bare(ck, pkg):
     """A stand-alone archive on a Workbench with no UP-Term: assign and no base: its install.dos, its record in
-    ENVARC:uppkg, its program answering, its Uninstall, and the rig as before (S:User-Startup byte for byte, no
+    ENVARC:upkg, its program answering, its Uninstall, and the rig as before (S:User-Startup byte for byte, no
     record left). No `UP-Term:` object is touched by the scripts (that would put up a requester: the run_long
     wrapper's output has none)."""
     prepare(None, [pkg])
@@ -1276,8 +1276,8 @@ def case_bare(ck, pkg):
     ck(rc == 0, '%s: its Uninstall runs' % pkg, out)
     addon_gone(ck, pkg, with_base=False)
     ck(run('Type S:User-Startup')[1] == before.startup, '%s-bare: S:User-Startup as it was, byte for byte' % pkg)
-    ck(run('List >NIL: ENVARC:uppkg/%s' % archive(pkg))[0] != 0, '%s-bare: its record is gone' % pkg)
-    ck(run('List >NIL: ENVARC:uppkg')[0] != 0, '%s-bare: ENVARC:uppkg is gone with its last record' % pkg)
+    ck(run('List >NIL: ENVARC:upkg/%s' % archive(pkg))[0] != 0, '%s-bare: its record is gone' % pkg)
+    ck(run('List >NIL: ENVARC:upkg')[0] != 0, '%s-bare: ENVARC:upkg is gone with its last record' % pkg)
 
 
 def case_python_ixemul(ck):
@@ -1293,19 +1293,19 @@ def case_python_ixemul(ck):
     ck(bool(sig), 'python-ixemul: the rig has an ixemul.library in LIBS:')
     addon_install(ck, 'python', with_base=False)
     ck(run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip() == sig, 'python-ixemul: Install left the ixemul.library as it was')
-    ck(run('List >NIL: ENVARC:uppkg/ixemul/installed-by-Python3')[0] != 0, 'python-ixemul: nothing recorded as installed by Python3')
+    ck(run('List >NIL: ENVARC:upkg/ixemul/installed-by-Python3')[0] != 0, 'python-ixemul: nothing recorded as installed by Python3')
     ck(run('List >NIL: LIBS:ixemul.library.before-Python3')[0] != 0, 'python-ixemul: no .before-Python3 made')
     rc, out = run_long('rununinstall-python')
     ck(rc == 0, 'python: its Uninstall runs', out)
     ck(run('List LIBS:ixemul.library LFORMAT "%L %D %T"')[1].strip() == sig, 'python-ixemul: Uninstall left the ixemul.library alone')
-    ck(run('List >NIL: ENVARC:uppkg/ixemul')[0] != 0, 'python-ixemul: ENVARC:uppkg/ixemul is gone')
+    ck(run('List >NIL: ENVARC:upkg/ixemul')[0] != 0, 'python-ixemul: ENVARC:upkg/ixemul is gone')
     ck(run('Type S:User-Startup')[1] == before.startup, 'python-ixemul: S:User-Startup as it was, byte for byte')
 
 
 def case_all(ck):
     """The base and every add-on. Python3 is uninstalled while the base is there (UP-Term's unstartup.sh takes its
     block out); the base's Uninstall then removes UP-Term-nvim by its own Uninstall and leaves Claude and amiga-pi
-    (stand-alone: record in ENVARC:uppkg); their own Uninstall, with no base, ends it. The archives' own scripts
+    (stand-alone: record in ENVARC:upkg); their own Uninstall, with no base, ends it. The archives' own scripts
     run; the sentinel is each add-on's program answering before the base is removed."""
     ids = addon_ids()
     prepare(None, ids)
@@ -1324,7 +1324,7 @@ def case_all(ck):
         addon_gone(ck, pkg, base_stays=False)
     for pkg in ('claude', 'pi'):
         addon_absent_not(ck, pkg, 'after the base Uninstall (stand-alone: the base leaves it)')
-        ck(run('List >NIL: ENVARC:uppkg/%s/MANIFEST' % archive(pkg))[0] == 0, '%s: its record survives the base Uninstall' % pkg)
+        ck(run('List >NIL: ENVARC:upkg/%s/MANIFEST' % archive(pkg))[0] == 0, '%s: its record survives the base Uninstall' % pkg)
     ck(run('List >NIL: C:uptelnet')[0] == 0, 'all: C:uptelnet stays while Claude\'s record is there')
     ck(run('List >NIL: UP-Term:pkg')[0] != 0, 'all: no UP-Term:pkg left')
     for pkg in ('claude', 'pi'):
@@ -1333,7 +1333,7 @@ def case_all(ck):
         addon_gone(ck, pkg, base_stays=False, with_base=False)
     ck(run('List >NIL: C:uptelnet')[0] != 0, 'all: C:uptelnet goes with the last of Claude and the base')
     ck(run('Type S:User-Startup')[1] == before.startup, 'all: S:User-Startup as it was, byte for byte')
-    ck(run('List >NIL: ENVARC:uppkg')[0] != 0, 'all: ENVARC:uppkg is gone with the last record')
+    ck(run('List >NIL: ENVARC:upkg')[0] != 0, 'all: ENVARC:upkg is gone with the last record')
 
 
 def case_legacy(ck):

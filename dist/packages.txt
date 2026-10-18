@@ -12,7 +12,7 @@
 #               installs it only when no library of that version or newer is there
 #               (Python3: 47, never a downgrade, never over UP-Term's patched one)
 #   record      where an install leaves its MANIFEST, VERSIONS and options:
-#               UP-Term:pkg/<archive> when it needs the base, ENVARC:uppkg/<archive>
+#               UP-Term:pkg/<archive> when it needs the base, ENVARC:upkg/<archive>
 #               when it stands alone
 #   handed      kit paths (comma separated) the base hands over to this
 #               archive: the base's Update leaves them alone (kit-split D7)
@@ -20,7 +20,7 @@
 #               built from: the lines of its Files/VERSIONS (tools/mkversions.sh)
 # id      archive          version  needs-base  ixemul  record                       handed                         consumes
 base      UP-Term          1.0      -           -       UP-Term:                     -                              vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src
-claude    Claude           1.1      -           -       ENVARC:uppkg/Claude          Files/Claude                   vtcon
-pi        amiga-pi         1.0      -           -       ENVARC:uppkg/amiga-pi        Files/amiga-pi                 amiga-pi,vtcon
+claude    Claude           1.1      -           -       ENVARC:upkg/Claude          Files/Claude                   vtcon
+pi        amiga-pi         1.0      -           -       ENVARC:upkg/amiga-pi        Files/amiga-pi                 amiga-pi,vtcon
 nvim      UP-Term-nvim     1.0      1.0         80      UP-Term:pkg/UP-Term-nvim     Files/nvim                     neovim-amiga,ixemul-vtcon
-python    Python3          1.0      -           47      ENVARC:uppkg/Python3         Files/python3                  cpython-amiga,ixemul-vtcon
+python    Python3          1.0      -           47      ENVARC:upkg/Python3         Files/python3                  cpython-amiga,ixemul-vtcon

@@ -24,7 +24,7 @@ If NOT EXISTS ENVARC:amiga-pi
   MakeDir ENVARC:amiga-pi
 EndIf
 ; CHANGELOG.md: what amiga-pi shows as What's New after an update and for /changelog. pi reads its own from its package directory; this
-; archive's record drawer (ENVARC:uppkg/amiga-pi, made by Install, removed whole by Uninstall) is where the program's own files
+; archive's record drawer (ENVARC:upkg/amiga-pi, made by Install, removed whole by Uninstall) is where the program's own files
 ; are kept apart from the user's settings. A later Install replaces it. Nothing is written into ENVARC:amiga-pi.
 MakeDir >NIL: @PKGDIR@ @RECORD@
 Copy CHANGELOG.md @RECORDP@CHANGELOG.md CLONE QUIET

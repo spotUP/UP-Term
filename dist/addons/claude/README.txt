@@ -18,7 +18,7 @@ INSTALL
   SYS:Utilities/Installer). From a Shell, without Installer, cd into the drawer, then:
     Execute Files/install.dos Files
   It needs no UP-Term and looks for none. Its record (the list of files, for Update and
-  Uninstall) is ENVARC:uppkg/Claude. Install the archive over an earlier one and its first
+  Uninstall) is ENVARC:upkg/Claude. Install the archive over an earlier one and its first
   page offers Update, which copies only what changed. An UP-Term installed from the single
   kit (before the kit split) that already has this program keeps it: Install recognises it
   and offers Update from "installed by the single UP-Term kit".

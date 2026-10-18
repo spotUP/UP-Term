@@ -25,8 +25,8 @@ If NOT WARN
 EndIf
 Search >NIL: S:User-Startup ";BEGIN Python3"
 If NOT WARN
-  If EXISTS ENVARC:uppkg/Python3/User-Startup.before
-    Copy ENVARC:uppkg/Python3/User-Startup.before T:User-Startup.python CLONE QUIET
+  If EXISTS ENVARC:upkg/Python3/User-Startup.before
+    Copy ENVARC:upkg/Python3/User-Startup.before T:User-Startup.python CLONE QUIET
     Echo >>T:User-Startup.python ";BEGIN Python3"
     Echo >>T:User-Startup.python "If EXISTS SYS:Python3"
     Echo >>T:User-Startup.python "  Assign Python3: SYS:Python3"
@@ -38,7 +38,7 @@ If NOT WARN
     Execute T:User-Startup.size1
     Execute T:User-Startup.size2
     If "$uspsize" EQ "$usnsize"
-      Copy ENVARC:uppkg/Python3/User-Startup.before S:User-Startup CLONE QUIET
+      Copy ENVARC:upkg/Python3/User-Startup.before S:User-Startup CLONE QUIET
     EndIf
     UnSet uspsize
     UnSet usnsize
@@ -50,15 +50,15 @@ If NOT WARN
   Echo "S:User-Startup changed since Python3 was installed: its lines from ;BEGIN Python3 to ;END Python3 stay (harmless; delete them by hand)."
 EndIf
 Delete >NIL: SYS:Python3 ALL QUIET
-; the ixemul.library this archive installed (ENVARC:uppkg/ixemul, see install.dos part ixemul): it goes
+; the ixemul.library this archive installed (ENVARC:upkg/ixemul, see install.dos part ixemul): it goes
 ; only when UP-Term is not installed (UP-Term uses that library) and no other package recorded a need for
 ; it; the library it replaced is put back. Delete without ALL removes a drawer only when it is empty.
-Delete >NIL: ENVARC:uppkg/ixemul/needs/Python3 QUIET
-If EXISTS ENVARC:uppkg/ixemul/installed-by-Python3
+Delete >NIL: ENVARC:upkg/ixemul/needs/Python3 QUIET
+If EXISTS ENVARC:upkg/ixemul/installed-by-Python3
   Assign >NIL: UP-Term: EXISTS
   If WARN
-    Delete >NIL: ENVARC:uppkg/ixemul/needs QUIET
-    If NOT EXISTS ENVARC:uppkg/ixemul/needs
+    Delete >NIL: ENVARC:upkg/ixemul/needs QUIET
+    If NOT EXISTS ENVARC:upkg/ixemul/needs
       Delete >NIL: LIBS:ixemul.library LIBS:ixnet.library QUIET
       If EXISTS LIBS:ixemul.library.before-Python3
         Rename LIBS:ixemul.library.before-Python3 LIBS:ixemul.library
@@ -66,11 +66,11 @@ If EXISTS ENVARC:uppkg/ixemul/installed-by-Python3
       If EXISTS LIBS:ixnet.library.before-Python3
         Rename LIBS:ixnet.library.before-Python3 LIBS:ixnet.library
       EndIf
-      Delete >NIL: ENVARC:uppkg/ixemul ALL QUIET
+      Delete >NIL: ENVARC:upkg/ixemul ALL QUIET
     EndIf
   EndIf
 Else
-  Delete >NIL: ENVARC:uppkg/ixemul/needs ENVARC:uppkg/ixemul QUIET
+  Delete >NIL: ENVARC:upkg/ixemul/needs ENVARC:upkg/ixemul QUIET
 EndIf
 ; the quick-launch icon in UP-Term: (only when there is an UP-Term: to look in)
 Assign >NIL: UP-Term: EXISTS

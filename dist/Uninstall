@@ -57,17 +57,17 @@ If "$upvardelete" EQ ""
 EndIf
 ; The add-on archives that need UP-Term go first, each by the Uninstall its
 ; Install kept, while UP-Term: is still assigned. The stand-alone ones (Claude, amiga-pi,
-; Python3: their record is in ENVARC:uppkg) are left alone.
+; Python3: their record is in ENVARC:upkg) are left alone.
 @ADDONUNINSTALL@
 ; The files of add-ons that the single kit (before the kit split) installed and
 ; that no archive has taken over (UP-Term:pkg/legacy, kit-split D7): Claude.lha and amiga-pi.lha
-; took over theirs when their record is in ENVARC:uppkg (tests/test_dist_addons.py holds
+; took over theirs when their record is in ENVARC:upkg (tests/test_dist_addons.py holds
 ; these names to dist/packages.txt)
 If EXISTS UP-Term:pkg/legacy
-  If NOT EXISTS ENVARC:uppkg/Claude
+  If NOT EXISTS ENVARC:upkg/Claude
     Delete >NIL: C:Claude C:ClaudeCode QUIET
   EndIf
-  If NOT EXISTS ENVARC:uppkg/amiga-pi
+  If NOT EXISTS ENVARC:upkg/amiga-pi
     Delete >NIL: C:amiga-pi QUIET
   EndIf
 EndIf
@@ -111,7 +111,7 @@ If EXISTS "$updest/unstartup.sh"
 EndIf
 ; Python3: is the stand-alone Python3 archive's assign when its record is there; an older
 ; single kit's block (removed by unstartup.sh) made it otherwise
-If NOT EXISTS ENVARC:uppkg/Python3
+If NOT EXISTS ENVARC:upkg/Python3
   Assign >NIL: Python3: EXISTS
   If NOT WARN
     Assign Python3:
@@ -184,7 +184,7 @@ If EXISTS SYS:System/FixFonts
 EndIf
 Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:UPDemo C:ixkill C:screen C:tmux C:UPConsole "C:UP-Term Prefs" DEVS:up-console.device QUIET
 ; C:uptelnet is Claude.lha's program too: it stays while Claude's record is there
-If NOT EXISTS ENVARC:uppkg/Claude
+If NOT EXISTS ENVARC:upkg/Claude
   Delete >NIL: C:uptelnet QUIET
 EndIf
 Delete >NIL: ENVARC:screenrc ENV:screenrc ENVARC:tmux.conf ENV:tmux.conf QUIET

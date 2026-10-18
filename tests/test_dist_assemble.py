@@ -52,7 +52,7 @@ class Assemble(unittest.TestCase):
 
     def test_the_base_gets_the_add_ons_uninstall_blocks_and_search_lines_from_the_table(self):
         v = mi.read_values('base')
-        # only the archive that needs the base is run from UP-Term:pkg; the stand-alone ones (ENVARC:uppkg) are left alone
+        # only the archive that needs the base is run from UP-Term:pkg; the stand-alone ones (ENVARC:upkg) are left alone
         self.assertEqual(v['ADDONUNINSTALL'],
                          'If EXISTS UP-Term:pkg/UP-Term-nvim/Uninstall\n  Execute UP-Term:pkg/UP-Term-nvim/Uninstall\nEndIf')
         # Files/Claude finds an old Files/ClaudeCode by substring too: one search covers both
@@ -65,9 +65,9 @@ class Assemble(unittest.TestCase):
             v = mi.read_values(pid)
             self.assertEqual(v['STANDALONE'], 'YES', pid)
             self.assertEqual(v['CHECKFRAG'], 'check-standalone.dos', pid)
-            self.assertTrue(v['RECORD'].startswith('ENVARC:uppkg/'), pid)
+            self.assertTrue(v['RECORD'].startswith('ENVARC:upkg/'), pid)
             self.assertEqual(v['OPTS'], v['RECORD'] + '/opts')
-            self.assertEqual(v['PKGDIR'], 'ENVARC:uppkg')
+            self.assertEqual(v['PKGDIR'], 'ENVARC:upkg')
             self.assertNotEqual(v['DESTTEXT'], '', pid)
         self.assertEqual(mi.read_values('nvim')['STANDALONE'], 'NO')
         self.assertEqual(mi.read_values('nvim')['CHECKFRAG'], 'check.dos')

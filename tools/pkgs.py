@@ -4,7 +4,7 @@
   python3 tools/pkgs.py names              ids, one a line
   python3 tools/pkgs.py archives           archive names, one a line
   python3 tools/pkgs.py get <id> <column>  one value ("-" is printed as it is)
-  python3 tools/pkgs.py index <dir>        uppkg's index of the archives in <dir>
+  python3 tools/pkgs.py index <dir>        upkg's index of the archives in <dir>
 """
 import hashlib, pathlib, re, sys
 
@@ -41,10 +41,10 @@ def get(pkg_id, column, path=TABLE):
 
 
 def index(build, path=TABLE):
-    """uppkg's index (uppkg plan D1): a line per archive, fields one space apart:
+    """upkg's index (upkg plan D1): a line per archive, fields one space apart:
     id archive version needs-base record size sha256 of <build>/<archive>.lha.
     Released next to the archives; an archive missing from <build> is refused."""
-    out = ['# uppkg index 1: id archive version needs-base record size sha256']
+    out = ['# upkg index 1: id archive version needs-base record size sha256']
     for r in rows(path):
         lha = pathlib.Path(build) / (r['archive'] + '.lha')
         if not lha.is_file():

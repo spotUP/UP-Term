@@ -22,10 +22,10 @@ Lab ixemul
 ; ixemul.library (version 80), which Python then uses. Only when there is none that new
 ; this archive's ixemul.library 80.1 goes in, with the ixnet.library of the same build
 ; (ixnet refuses an ixemul of another revision); an older one is kept as
-; <name>.before-Python3 and put back by Uninstall. ENVARC:uppkg/ixemul records it: the
+; <name>.before-Python3 and put back by Uninstall. ENVARC:upkg/ixemul records it: the
 ; marker installed-by-Python3 says this archive put the library there, and needs/<archive>
 ; says who needs it (Uninstall removes the library only when nobody else does).
-MakeDir >NIL: ENVARC:uppkg ENVARC:uppkg/ixemul ENVARC:uppkg/ixemul/needs
+MakeDir >NIL: ENVARC:upkg ENVARC:upkg/ixemul ENVARC:upkg/ixemul/needs
 Version >NIL: LIBS:ixemul.library 47
 If WARN
   If EXISTS LIBS:ixemul.library
@@ -36,9 +36,9 @@ If WARN
   EndIf
   Copy libs/ixemul.library LIBS:ixemul.library CLONE QUIET
   Copy libs/ixnet.library LIBS:ixnet.library CLONE QUIET
-  Echo >ENVARC:uppkg/ixemul/installed-by-Python3 "Python3.lha put ixemul.library and ixnet.library in LIBS:"
+  Echo >ENVARC:upkg/ixemul/installed-by-Python3 "Python3.lha put ixemul.library and ixnet.library in LIBS:"
 EndIf
-Echo >ENVARC:uppkg/ixemul/needs/Python3 "Python3"
+Echo >ENVARC:upkg/ixemul/needs/Python3 "Python3"
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
@@ -57,8 +57,8 @@ Lab python
 Assign Python3: SYS:Python3
 Search >NIL: S:User-Startup ";BEGIN Python3"
 If WARN
-  MakeDir >NIL: ENVARC:uppkg ENVARC:uppkg/Python3
-  Copy S:User-Startup ENVARC:uppkg/Python3/User-Startup.before CLONE QUIET
+  MakeDir >NIL: ENVARC:upkg ENVARC:upkg/Python3
+  Copy S:User-Startup ENVARC:upkg/Python3/User-Startup.before CLONE QUIET
   Echo >>S:User-Startup ";BEGIN Python3"
   Echo >>S:User-Startup "If EXISTS SYS:Python3"
   Echo >>S:User-Startup "  Assign Python3: SYS:Python3"

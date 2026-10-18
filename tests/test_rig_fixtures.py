@@ -353,7 +353,7 @@ class ScriptedAmiga:
             if 'oldclaude' not in self.skip:   # install.dos deletes the 1.0 leftovers (NL4)
                 self.files -= set(ir.OLD_CLAUDECODE)
         if pkg == 'python':
-            self.files.add('ENVARC:uppkg/ixemul/needs/Python3')
+            self.files.add('ENVARC:upkg/ixemul/needs/Python3')
             self.startup += ';BEGIN Python3\nIf EXISTS SYS:Python3\n  Assign Python3: SYS:Python3\nEndIf\n;END Python3\n'
 
     def _remove(self, pkg):
@@ -365,7 +365,7 @@ class ScriptedAmiga:
         if pkg == 'claude' and not self.base:
             self.files.discard('C:uptelnet')
         if pkg == 'python':
-            self.files.discard('ENVARC:uppkg/ixemul/needs/Python3')
+            self.files.discard('ENVARC:upkg/ixemul/needs/Python3')
             self.startup = self.startup.replace(';BEGIN Python3\nIf EXISTS SYS:Python3\n  Assign Python3: SYS:Python3\nEndIf\n;END Python3\n', '')
 
     def python_block(self):
@@ -417,7 +417,7 @@ class ScriptedAmiga:
         elif script == 'rununinstall':
             for pkg in ir.based_ids(): self._remove(pkg)
             self.files = {f for f in self.files if not f.startswith(('UP-Term', 'SYS:UP-Term'))}
-            if 'ENVARC:uppkg/Claude/MANIFEST' not in self.files: self.files.discard('C:uptelnet')
+            if 'ENVARC:upkg/Claude/MANIFEST' not in self.files: self.files.discard('C:uptelnet')
             self.base = False
             self.startup = self.startup.replace(';BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n', '')
         return 0, ''
@@ -480,7 +480,7 @@ class AddonCases(unittest.TestCase):
     def test_python_ixemul_case_leaves_a_library_that_is_new_enough(self):
         ck, sim = self.play(ir.case_python_ixemul)
         self.assertEqual(ck.failed, [])
-        self.assertNotIn('ENVARC:uppkg/ixemul/installed-by-Python3', sim.files)
+        self.assertNotIn('ENVARC:upkg/ixemul/installed-by-Python3', sim.files)
 
     def test_an_add_on_without_its_record_fails_its_case(self):
         ck, _ = self.play(lambda ck: ir.case_addon(ck, 'nvim'), skip=('record',))
@@ -672,7 +672,7 @@ class Step12(unittest.TestCase):
 
 class OwnersAddonsOnTheRig(unittest.TestCase):
     """The owner keeps Claude, amiga-pi and Python3 on the rigs; the 'X is not there before its Install' checks need
-    them out. A fake rig state (records in ENVARC:uppkg, the scripts the cases run): cli() takes the installed
+    them out. A fake rig state (records in ENVARC:upkg, the scripts the cases run): cli() takes the installed
     add-ons out with each one's own Uninstall before the first case and installs them again after the last."""
     def setUp(self):
         import contextlib, tempfile
@@ -768,21 +768,21 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
         self.assertEqual(self.log, [])
 
 
-class UppkgRigIndex(unittest.TestCase):
-    """uppkg_rig's index edits (the per-case releases) and the lowered record."""
-    INDEX = "# uppkg index 1: id archive version needs-base record size sha256\nnvim UP-Term-nvim 1.0 1.0 UP-Term:pkg/UP-Term-nvim 10 aa\npython Python3 1.0 - ENVARC:uppkg/Python3 20 bb\n"
+class UpkgRigIndex(unittest.TestCase):
+    """upkg_rig's index edits (the per-case releases) and the lowered record."""
+    INDEX = "# upkg index 1: id archive version needs-base record size sha256\nnvim UP-Term-nvim 1.0 1.0 UP-Term:pkg/UP-Term-nvim 10 aa\npython Python3 1.0 - ENVARC:upkg/Python3 20 bb\n"
 
     def test_edit_index_changes_only_the_named_package(self):
-        import uppkg_rig as u
+        import upkg_rig as u
         out = u.edit_index(self.INDEX, 'nvim', needs='99.0')
         self.assertIn("nvim UP-Term-nvim 1.0 99.0 UP-Term:pkg/UP-Term-nvim 10 aa", out)
-        self.assertIn("python Python3 1.0 - ENVARC:uppkg/Python3 20 bb", out)
+        self.assertIn("python Python3 1.0 - ENVARC:upkg/Python3 20 bb", out)
         self.assertEqual(u.edit_index(self.INDEX, 'Python3', sha256='cc').splitlines()[2].split()[-1], 'cc')
         with self.assertRaises(KeyError):
             u.edit_index(self.INDEX, 'nosuch', needs='1')
 
     def test_lower_record_changes_the_first_line_version_only(self):
-        import uppkg_rig as u
+        import upkg_rig as u
         self.assertEqual(u.lower_record("UP-Term-nvim 1.0 abc d\nrest\n", '0.0.1'), "UP-Term-nvim 0.0.1 abc d\nrest\n")
 
 if __name__ == '__main__':

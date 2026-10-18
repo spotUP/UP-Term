@@ -1,27 +1,27 @@
 #!/bin/sh
-# uppkg: UP-Term's package manager (uppkg plan, thoughts/shared/plans/2026-10-18-uppkg.md).
-#   uppkg list            every package of the release: installed and available version, size
-#   uppkg install <pkg>   download, check, unpack and run the package's own Installer
-#   uppkg update          install every add-on whose release version is newer than the installed one
-#   uppkg remove <pkg>    run the installed package's Uninstall (Execute, as its icon does)
+# upkg: UP-Term's package manager (upkg plan, thoughts/shared/plans/2026-10-18-upkg.md).
+#   upkg list            every package of the release: installed and available version, size
+#   upkg install <pkg>   download, check, unpack and run the package's own Installer
+#   upkg update          install every add-on whose release version is newer than the installed one
+#   upkg remove <pkg>    run the installed package's Uninstall (Execute, as its icon does)
 # <pkg> is the archive name (UP-Term-nvim) or the short id (nvim) of the index.
 # The index (tools/pkgs.py index, built by make dist) and the archives come from the latest GitHub
-# release; ENV:UPPKGURL replaces that URL (the rig fixture, tools/rig/uppkg_rig.py). https only: the
+# release; ENV:UPKGURL replaces that URL (the rig fixture, tools/rig/upkg_rig.py). https only: the
 # base Installer's AmiSSL part makes curl reach GitHub.
 # What is installed is read from each package's install record (<record>/VERSIONS), never from a
-# file of uppkg's own. The base updates from its own archive, not here: uppkg runs inside it.
-url=${UPPKGURL:-https://github.com/spotUP/vtcon/releases/latest/download}
-work=T:uppkg
-index=$work/uppkg-index.txt
+# file of upkg's own. The base updates from its own archive, not here: upkg runs inside it.
+url=${UPKGURL:-https://github.com/spotUP/vtcon/releases/latest/download}
+work=T:upkg
+index=$work/upkg-index.txt
 
 die() {
-    printf 'uppkg: %s\n' "$1" >&2
+    printf 'upkg: %s\n' "$1" >&2
     rm -rf $work
     exit 1
 }
 
 usage() {
-    printf 'usage: uppkg list | install <package> | update | remove <package>\n' >&2
+    printf 'usage: upkg list | install <package> | update | remove <package>\n' >&2
     exit 2
 }
 
@@ -63,14 +63,14 @@ fetch() {
 get_index() {
     rm -rf $work
     mkdir -p $work || die "cannot make $work"
-    fetch "$url/uppkg-index.txt" $index
-    head -n 1 $index | grep -q '^# uppkg index 1' || die "$url/uppkg-index.txt is not a uppkg index"
+    fetch "$url/upkg-index.txt" $index
+    head -n 1 $index | grep -q '^# upkg index 1' || die "$url/upkg-index.txt is not a upkg index"
 }
 
 # the index line of package $1 (id or archive name) into $id $archive $version $needs $record $size $sum
 find_pkg() {
     line=$(awk -v p="$1" '!/^#/ && ($1 == p || $2 == p) { print; exit }' $index)
-    [ -n "$line" ] || die "no package $1 in the release: uppkg list shows them"
+    [ -n "$line" ] || die "no package $1 in the release: upkg list shows them"
     set -- $line
     id=$1 archive=$2 version=$3 needs=$4 record=$5 size=$6 sum=$7
 }
@@ -97,7 +97,7 @@ install_one() {
     fi
     inst=$(find_installer) || die "no Installer found (C:, SYS:Utilities, SYS:System)"
     lha=$work/$archive.lha
-    printf 'uppkg: downloading %s %s (%s bytes)\n' "$archive" "$version" "$size"
+    printf 'upkg: downloading %s %s (%s bytes)\n' "$archive" "$version" "$size"
     fetch "$url/$archive.lha" $lha
     got=$(wc -c <$lha | awk '{ print $1 }')
     [ "$got" = "$size" ] || die "$archive.lha is $got bytes, the index says $size: not installed"
@@ -105,14 +105,14 @@ install_one() {
     [ "$got" = "$sum" ] || die "$archive.lha sha256 $got is not the index's $sum: not installed"
     (cd $work && tar -xf $archive.lha) || die "cannot unpack $archive.lha"
     [ -f $work/$archive/Install ] || die "$archive.lha has no $archive/Install"
-    printf 'uppkg: running the %s Installer\n' "$archive"
+    printf 'upkg: running the %s Installer\n' "$archive"
     (cd $work/$archive && $inst Install APPNAME $archive MINUSER AVERAGE DEFUSER AVERAGE)
     rm -rf $work/$archive $lha
     now=$(installed "$record")
     if [ "$now" = "$version" ]; then
-        printf 'uppkg: %s %s installed\n' "$archive" "$version"
+        printf 'upkg: %s %s installed\n' "$archive" "$version"
     else
-        printf 'uppkg: %s not installed (the Installer was left before the end)\n' "$archive"
+        printf 'upkg: %s not installed (the Installer was left before the end)\n' "$archive"
         return 1
     fi
 }
@@ -143,7 +143,7 @@ update)
         have=$(installed "$record")
         if [ -n "$have" ] && older "$have" "$version"; then printf '%s ' "$archive"; fi
     done)
-    [ -n "$todo" ] || { printf 'uppkg: every installed add-on is up to date\n'; rm -rf $work; exit 0; }
+    [ -n "$todo" ] || { printf 'upkg: every installed add-on is up to date\n'; rm -rf $work; exit 0; }
     rc=0
     for a in $todo; do
         install_one $a || rc=1
@@ -155,7 +155,7 @@ remove)
     # offline when the archive name is given: the records are where packages.txt puts them
     [ $# = 2 ] || usage
     record=
-    for r in UP-Term:pkg/$2 ENVARC:uppkg/$2; do
+    for r in UP-Term:pkg/$2 ENVARC:upkg/$2; do
         [ -f $r/Uninstall ] && { record=$r archive=$2; break; }
     done
     if [ -z "$record" ]; then
@@ -171,10 +171,10 @@ remove)
     Execute $work/Uninstall
     rm -rf $work
     if [ -f "$(versions_of "$record")" ]; then
-        printf 'uppkg: %s not removed: %s is still there\n' "$archive" "$record"
+        printf 'upkg: %s not removed: %s is still there\n' "$archive" "$record"
         exit 1
     fi
-    printf 'uppkg: %s removed\n' "$archive"
+    printf 'upkg: %s removed\n' "$archive"
     ;;
 *) usage ;;
 esac

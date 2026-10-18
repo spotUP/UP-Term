@@ -57,13 +57,13 @@ class EveryAddOn(unittest.TestCase):
             self.assertNotIn('UP-Term.version', s['dos'], r['id'])
             self.assertNotIn('UP-Term:pkg/', s['dos'], r['id'])
 
-    def test_a_stand_alone_archive_records_itself_in_envarc_uppkg(self):
+    def test_a_stand_alone_archive_records_itself_in_envarc_upkg(self):
         for r in ADDONS:
             if r['needs-base'] == '-':
-                self.assertEqual(r['record'], 'ENVARC:uppkg/' + r['archive'])
+                self.assertEqual(r['record'], 'ENVARC:upkg/' + r['archive'])
                 inst = scripts(r['id'])['installer']
                 self.assertIn('(set #dest (if (= "YES" "YES")', inst)
-                self.assertIn('ENVARC:uppkg/%s/MANIFEST' % r['archive'], inst)
+                self.assertIn('ENVARC:upkg/%s/MANIFEST' % r['archive'], inst)
 
     def test_no_name_is_left_without_a_value(self):
         for _, s in self.each():
@@ -210,15 +210,15 @@ class EveryAddOn(unittest.TestCase):
         base = mi.build(ROOT / 'dist/Uninstall', 'base')
         for r in ADDONS:
             if r['needs-base'] == '-':
-                self.assertNotIn(r['record'], base.replace('ENVARC:uppkg/Claude\n', '').replace('ENVARC:uppkg/amiga-pi\n', '')
-                                 .replace('ENVARC:uppkg/Python3\n', ''), r['id'])
+                self.assertNotIn(r['record'], base.replace('ENVARC:upkg/Claude\n', '').replace('ENVARC:upkg/amiga-pi\n', '')
+                                 .replace('ENVARC:upkg/Python3\n', ''), r['id'])
             else:
                 self.assertIn('Execute %s/Uninstall' % r['record'], base)
 
     def test_the_base_uninstall_names_the_stand_alone_records_packages_txt_names(self):
-        """The base Uninstall asks three questions of ENVARC:uppkg: the names in it are packages.txt's"""
+        """The base Uninstall asks three questions of ENVARC:upkg: the names in it are packages.txt's"""
         base = mi.build(ROOT / 'dist/Uninstall', 'base')
-        names = set(re.findall(r'EXISTS ENVARC:uppkg/(\S+)', base))
+        names = set(re.findall(r'EXISTS ENVARC:upkg/(\S+)', base))
         want = {r['record'].split('/')[-1] for r in ADDONS if r['needs-base'] == '-'}
         self.assertEqual(names, want)
 
@@ -322,7 +322,7 @@ class PythonUninstall(unittest.TestCase):
         # ... else by restoring the S:User-Startup Install kept, only when it is still that plus the block
         self.assertNotIn('Compare ', un.replace('no C:Compare', ''), 'a stock Workbench has no C:Compare (rig 2, 2026-10-13)')
         self.assertIn('If "$uspsize" EQ "$usnsize"', un)
-        self.assertIn('Copy ENVARC:uppkg/Python3/User-Startup.before S:User-Startup CLONE QUIET', un)
+        self.assertIn('Copy ENVARC:upkg/Python3/User-Startup.before S:User-Startup CLONE QUIET', un)
         self.assertLess(v, un.index('If "$uspsize" EQ "$usnsize"'))
         # ... else it stays, and says so
         self.assertIn('S:User-Startup changed since Python3 was installed', un)
@@ -335,7 +335,7 @@ class PythonUninstall(unittest.TestCase):
             self.assertIn('Echo >>T:User-Startup.python "%s"' % line, self.S['uninstall'])
         # a name the base's unstartup.sh (every ";BEGIN UP-Term...") does not take with it
         self.assertNotIn('BEGIN UP-Term', dos)
-        self.assertIn('Copy S:User-Startup ENVARC:uppkg/Python3/User-Startup.before CLONE QUIET', dos)
+        self.assertIn('Copy S:User-Startup ENVARC:upkg/Python3/User-Startup.before CLONE QUIET', dos)
 
     def test_the_ixemul_part_installs_only_when_none_that_new_is_there_and_never_downgrades(self):
         """THE IXEMUL.LIBRARY RULE: a library of 47 or newer stays (UP-Term's 80 included)."""
@@ -346,27 +346,27 @@ class PythonUninstall(unittest.TestCase):
         self.assertLess(a, copy)
         self.assertEqual(ix.count('Copy libs/ixemul.library'), 1)        # one copy, inside the If WARN
         self.assertNotIn('\nEndIf', ix[a:copy])                          # nothing closes the If before the copy
-        self.assertIn('Echo >ENVARC:uppkg/ixemul/installed-by-Python3', ix[copy:end])
+        self.assertIn('Echo >ENVARC:upkg/ixemul/installed-by-Python3', ix[copy:end])
         self.assertIn('Copy libs/ixnet.library LIBS:ixnet.library CLONE QUIET', ix[copy:end])
         # an older library is kept before it is replaced, and the need is recorded either way
         self.assertLess(ix.index('Copy LIBS:ixemul.library LIBS:ixemul.library.before-Python3 CLONE QUIET'), copy)
-        self.assertIn('Echo >ENVARC:uppkg/ixemul/needs/Python3', ix[end:])
+        self.assertIn('Echo >ENVARC:upkg/ixemul/needs/Python3', ix[end:])
         self.assertEqual(self.S['dos'].count('LIBS:ixemul.library 47'), 1)
 
     def test_uninstall_removes_the_library_only_when_it_installed_it_and_nobody_needs_it(self):
         un = self.S['uninstall']
-        a = un.index('Delete >NIL: ENVARC:uppkg/ixemul/needs/Python3 QUIET')
+        a = un.index('Delete >NIL: ENVARC:upkg/ixemul/needs/Python3 QUIET')
         rule = un[a:]
-        for need in ('If EXISTS ENVARC:uppkg/ixemul/installed-by-Python3',        # this archive put it there
+        for need in ('If EXISTS ENVARC:upkg/ixemul/installed-by-Python3',        # this archive put it there
                      'Assign >NIL: UP-Term: EXISTS\n  If WARN',                    # UP-Term not installed
-                     'Delete >NIL: ENVARC:uppkg/ixemul/needs QUIET',                # an empty drawer only goes
-                     'If NOT EXISTS ENVARC:uppkg/ixemul/needs'):                    # ...so this says nobody else needs it
+                     'Delete >NIL: ENVARC:upkg/ixemul/needs QUIET',                # an empty drawer only goes
+                     'If NOT EXISTS ENVARC:upkg/ixemul/needs'):                    # ...so this says nobody else needs it
             self.assertIn(need, rule)
         order = [rule.index(x) for x in ('installed-by-Python3', 'UP-Term: EXISTS', 'ixemul/needs QUIET',
-                                         'If NOT EXISTS ENVARC:uppkg/ixemul/needs', 'Delete >NIL: LIBS:ixemul.library LIBS:ixnet.library QUIET')]
+                                         'If NOT EXISTS ENVARC:upkg/ixemul/needs', 'Delete >NIL: LIBS:ixemul.library LIBS:ixnet.library QUIET')]
         self.assertEqual(order, sorted(order))
         self.assertIn('Rename LIBS:ixemul.library.before-Python3 LIBS:ixemul.library', rule)
-        self.assertNotIn('ALL', rule.split('Delete >NIL: ENVARC:uppkg/ixemul/needs QUIET')[1].split('\n')[0])
+        self.assertNotIn('ALL', rule.split('Delete >NIL: ENVARC:upkg/ixemul/needs QUIET')[1].split('\n')[0])
 
     def test_the_installer_runs_ixemul_before_the_copy_and_the_block(self):
         inst = self.S['installer']
@@ -426,9 +426,9 @@ class ClaudeInstall(unittest.TestCase):
         """NL18: C:wasabid for the session daemon; a wasabid already there (the base kit's) is left alone"""
         dos = self.S['dos']
         self.assertIn('If NOT EXISTS C:wasabid\n  Copy wasabid C:wasabid CLONE QUIET', dos)
-        self.assertIn('Echo >ENVARC:uppkg/Claude/wasabid "installed by Claude.lha"', dos)
+        self.assertIn('Echo >ENVARC:upkg/Claude/wasabid "installed by Claude.lha"', dos)
         # a later install updates only our own copy (the marker), never another one
-        self.assertIn('Else\n  If EXISTS ENVARC:uppkg/Claude/wasabid\n    Copy wasabid C:wasabid CLONE QUIET', dos)
+        self.assertIn('Else\n  If EXISTS ENVARC:upkg/Claude/wasabid\n    Copy wasabid C:wasabid CLONE QUIET', dos)
         parts = (ROOT / 'dist/addons/claude/parts.txt').read_text()
         self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid$')
         self.assertRegex(parts, r'(?m)^claude\s+Files/wasabid\.LICENSE$')
@@ -442,9 +442,9 @@ class ClaudeInstall(unittest.TestCase):
 
     def test_uninstall_removes_only_the_wasabid_this_archive_put_in_and_not_one_the_boot_block_starts(self):
         un = self.S['uninstall']
-        self.assertIn('If EXISTS ENVARC:uppkg/Claude/wasabid\n  Search >NIL: S:User-Startup "C:wasabid"\n  If WARN\n'
-                      '    Delete >NIL: C:wasabid QUIET\n  EndIf\n  Delete >NIL: ENVARC:uppkg/Claude/wasabid QUIET', un)
-        self.assertLess(un.index('ENVARC:uppkg/Claude/wasabid'), un.index('Delete >NIL: "ENVARC:uppkg/Claude" ALL QUIET'))
+        self.assertIn('If EXISTS ENVARC:upkg/Claude/wasabid\n  Search >NIL: S:User-Startup "C:wasabid"\n  If WARN\n'
+                      '    Delete >NIL: C:wasabid QUIET\n  EndIf\n  Delete >NIL: ENVARC:upkg/Claude/wasabid QUIET', un)
+        self.assertLess(un.index('ENVARC:upkg/Claude/wasabid'), un.index('Delete >NIL: "ENVARC:upkg/Claude" ALL QUIET'))
 
     def test_the_base_installer_help_mentions_the_session_daemon(self):
         base = (ROOT / 'dist/Install.installer').read_text()
@@ -464,14 +464,14 @@ class PiInstall(unittest.TestCase):
 
     def test_the_changelog_goes_to_the_record_drawer_not_the_settings_drawer(self):
         """P12-B2: amiga-pi shows its CHANGELOG.md as What's New and for /changelog, read from
-        ENVARC:uppkg/amiga-pi/CHANGELOG.md (amiga-pi's pi_platform.changelog); Install copies it into the record drawer
+        ENVARC:upkg/amiga-pi/CHANGELOG.md (amiga-pi's pi_platform.changelog); Install copies it into the record drawer
         (Uninstall removes that drawer whole) and writes nothing into ENVARC:amiga-pi; the kit stages it from amiga-pi."""
         dos = self.S['dos']
-        self.assertIn('Copy CHANGELOG.md ENVARC:uppkg/amiga-pi/CHANGELOG.md CLONE QUIET', dos)
-        self.assertLess(dos.index('MakeDir >NIL: ENVARC:uppkg ENVARC:uppkg/amiga-pi'), dos.index('Copy CHANGELOG.md'))
+        self.assertIn('Copy CHANGELOG.md ENVARC:upkg/amiga-pi/CHANGELOG.md CLONE QUIET', dos)
+        self.assertLess(dos.index('MakeDir >NIL: ENVARC:upkg ENVARC:upkg/amiga-pi'), dos.index('Copy CHANGELOG.md'))
         self.assertIn('pi              Files/CHANGELOG.md', (ROOT / 'dist/addons/pi/parts.txt').read_text())
         self.assertIn('cp $(AMIGA_PI)/CHANGELOG.md $(KIT_pi)/Files/CHANGELOG.md', (ROOT / 'Makefile').read_text())
-        self.assertIn('Delete >NIL: "ENVARC:uppkg/amiga-pi" ALL QUIET', self.S['uninstall'])
+        self.assertIn('Delete >NIL: "ENVARC:upkg/amiga-pi" ALL QUIET', self.S['uninstall'])
 
     def test_uninstall_removes_the_binary_not_the_settings_drawer(self):
         un = self.S['uninstall']

@@ -50,7 +50,7 @@ class Packages(unittest.TestCase):
 
     def test_the_record_drawer_follows_needs_base(self):
         for r in ROWS[1:]:
-            want = ('UP-Term:pkg/%s' if r['needs-base'] != '-' else 'ENVARC:uppkg/%s') % r['archive']
+            want = ('UP-Term:pkg/%s' if r['needs-base'] != '-' else 'ENVARC:upkg/%s') % r['archive']
             self.assertEqual(r['record'], want, r['id'])
         self.assertEqual(ROWS[0]['record'], 'UP-Term:')
 
@@ -161,14 +161,14 @@ class Readme(unittest.TestCase):
 
 
 class Index(unittest.TestCase):
-    """uppkg's index (tools/pkgs.py index): what uppkg on the Amiga downloads and checks"""
+    """upkg's index (tools/pkgs.py index): what upkg on the Amiga downloads and checks"""
 
     def test_a_line_per_archive_with_its_version_record_size_and_sha256(self):
         with tempfile.TemporaryDirectory() as d:
             for i, r in enumerate(ROWS):
                 (pathlib.Path(d) / (r['archive'] + '.lha')).write_bytes(b'x' * (i + 1))
             lines = pkgs.index(d).splitlines()
-        self.assertTrue(lines[0].startswith('# uppkg index 1'))
+        self.assertTrue(lines[0].startswith('# upkg index 1'))
         self.assertEqual(len(lines), len(ROWS) + 1)
         for i, (r, line) in enumerate(zip(ROWS, lines[1:])):
             data = b'x' * (i + 1)

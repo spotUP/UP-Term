@@ -17,10 +17,10 @@ THE IXEMUL.LIBRARY RULE
     - none, or an older one: this archive's ixemul.library 80.1 and its ixnet.library (the
       same build; ixnet refuses another ixemul revision) go into LIBS:, and an older pair is
       kept there as <name>.before-Python3.
-  Either way ENVARC:uppkg/ixemul/needs/Python3 says that Python needs the library; the file
+  Either way ENVARC:upkg/ixemul/needs/Python3 says that Python needs the library; the file
   installed-by-Python3 beside it says that this archive put it there. Uninstall removes the
   library only if this archive installed it, UP-Term is not installed and no other package
-  recorded a need in ENVARC:uppkg/ixemul/needs; it then puts the older pair back.
+  recorded a need in ENVARC:upkg/ixemul/needs; it then puts the older pair back.
 
 INSTALL
   Unpack the archive and double-click Install in its drawer (needs C:Installer or
@@ -29,7 +29,7 @@ INSTALL
   It needs no UP-Term and looks for none. Python goes into SYS:Python3 and Python3: is
   assigned to it now and at every boot (a block in S:User-Startup, ;BEGIN Python3 to
   ;END Python3, that assigns only while SYS:Python3 exists). Its record (the list of files,
-  for Update and Uninstall) is ENVARC:uppkg/Python3. Install the archive over an earlier one
+  for Update and Uninstall) is ENVARC:upkg/Python3. Install the archive over an earlier one
   and its first page offers Update, which copies only what changed.
   An UP-Term installed from the single kit (before the kit split) keeps its own copy in
   UP-Term:Python3 (it goes with the UP-Term drawer); this archive installs a second one.
