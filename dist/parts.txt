@@ -28,6 +28,7 @@ system          Files/tmux
 system          Files/tmux.conf
 system          Files/unstartup.sh
 system          Files/up-term.conf
+system          Files/uppkg
 system          Files/vsh
 system          Files/vtcon-handler
 copy-coreutils  Files/coreutils/bin     bin

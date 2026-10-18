@@ -277,6 +277,8 @@ Copy ENV:TERMINFO ENVARC:TERMINFO CLONE
 ; for scripts that name it and for UP-Term programs of an older install.
 MakeDir >NIL: UP-Term:bin
 Copy vsh UP-Term:bin/vsh CLONE
+; uppkg: the package manager (dist/uppkg, a #!/bin/sh script vsh runs)
+Copy uppkg UP-Term:bin/uppkg CLONE
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
 ; the preferences editor: C:UP-Term Prefs (its file keeps the space) and a

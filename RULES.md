@@ -76,6 +76,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | The emulator's FPU keeps Inf: `fmove.x` of +/-Inf stores exponent 7fff with a zero mantissa, `fcmp` Inf,Inf sets Z, NaN compares unordered (stock FS-UAE 3.1.66 on arm64 fails; the patched build at fix/arm64-fpu-inf passes) | `make build/amiga/fpuinf`, then `UPTERM_RIG=<n> python3 -I tools/rig/fpu_inf_rig.py` |
 | Launch an icon as a Workbench double-click does (Directory Opus replaces Workbench on the rigs and the A1200, so OpenWorkbenchObjectA and C:WBRun fail): `wbrun NAME` resolves a project's default tool, uses the icon's stack and TOOLPRI; the test opens SYS:Utilities/Clock and SYS:System/Shell and checks each new window in wasabi's window list | `make build/amiga/wbrun`, then `UPTERM_RIG=<n> python3 -I tools/rig/wbrun_rig.py` (the A1200: AMI_HOST/AMI_PORT/AMI_TOKEN as for ami.py) |
 | C:uptelnet and vshrc's telnet() against tools/uptelnetd.py on this Mac (password not echoed, stty size = window, resize follows, Ctrl-] ends) | `UPTERM_RIG=<n> python3 -I tools/rig/uptelnet_rig.py [amigados|vsh]` (rig up; `make amiga build/amiga/ixwinch build/amiga/uptelnet`; it copies the build to C:uptelnet) |
+| uppkg on the rig: list, install, update, remove from a vsh prompt against a release this Mac serves (ENV:UPPKGURL; host logic: `python3 tests/test_dist_uppkg.py`) | `UPTERM_RIG=<n> python3 -I tools/rig/uppkg_rig.py [--only <case>] [--failed] [--force]` (rig up with the base installed; `make dist`) |
 | Aminet readme of one archive (Short at most 40 characters, Version and Requires from `dist/packages.txt`; `--release` refuses while a placeholder is left) | `python3 tools/mkreadme.py <id> [--release]` writes `build/<archive>.readme`; `make test ONLY=packages` |
 | Width tables (engine/vtwidth.h) from the Unicode database, glibc's wcwidth rules | `make widths` (`UNICODE=16.0.0`; fetches the UCD into build/ucd once) |
 | Mac end for uptelnet (A1, LAN only, unencrypted; password in ~/.config/uptelnetd/password, 0600) | `python3 tools/uptelnetd.py [--command 'tmux new -A -s claude claude']` |
@@ -119,3 +120,9 @@ from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
    `build/<archive>.readme`. Directories (owner 2026-10-13): base and source `comm/term`,
    UP-Term-nvim `text/edit`, Python3 `dev/lang`, Claude and amiga-pi
    `comm/misc`. The upload is the owner's.
+7. GitHub release for uppkg (`dist/uppkg`, an UP-Term:bin command): one release per base
+   version, holding every archive of `dist/packages.txt` and `build/uppkg-index.txt` (written
+   by `make dist`, checked by `dist-check`) from the same `make dist`, so uppkg's
+   `releases/latest/download/` URL finds them together: `gh release create v<base version>
+   build/uppkg-index.txt build/<archive>.lha ...`. Never an index without its archives: uppkg
+   refuses a download whose size or sha256 differ from the index.
