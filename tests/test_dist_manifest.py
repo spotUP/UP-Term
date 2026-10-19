@@ -8,6 +8,7 @@ import mkmanifest as mm
 import mkinstaller as mi
 import pkgs
 
+PARTS_TEXT = (ROOT / "dist/parts.txt").read_text()
 PARTS = mm.read_parts((ROOT / "dist/parts.txt").read_text())
 DOS = mi.build(ROOT / "dist/install.dos", "base")
 INSTALLER = mi.build(ROOT / "dist/Install.installer", "base")
@@ -52,6 +53,15 @@ class Manifest(unittest.TestCase):
         self.assertLess(mk.index("python3 tools/slim.py remove $(KIT)/Files/userland"),
                         mk.index("cp dist/tutorial $(KIT)/Files/userland/bin/tutorial"))
         self.assertIn("cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/", mk)
+
+    def test_every_name_the_kit_installs_fits_amigados_30_characters(self):
+        """OFS/FFS keep 30 characters: a longer name is cut (05-pipes-and-redirection.lesson lost its
+        .lesson and the tutorial could not see it). The lessons, dist's own files and parts.txt's paths."""
+        names = [p.name for p in (ROOT / "dist/tutorial-lessons").iterdir()]
+        names += [p.name for p in (ROOT / "dist").iterdir() if p.is_file()]
+        names += [part.split()[1].rsplit("/", 1)[-1] for part in PARTS_TEXT.splitlines() if part.strip() and not part.startswith("#")]
+        self.assertTrue(names)
+        self.assertEqual([n for n in names if len(n) > 30], [])
 
     def test_a_file_no_part_claims_stops_the_build(self):
         k = kit({"Files/vsh": b"v", "Files/newtool": b"n"})
