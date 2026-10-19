@@ -1010,6 +1010,29 @@ static void a_row_counts_the_cells_in_use(void)
     vt_free(t);
 }
 
+/* vt_feed takes "ESC ( B" with G0 already B without the parser (ncurses
+ * sends it before every style run: 12.5 % of a frame's engine time). The
+ * counter proves the path ran; the screen must equal the byte-by-byte
+ * parse, and a real change (G0 to DEC graphics and back) must not be taken */
+static void a_designation_that_changes_nothing_skips_the_parser(void)
+{
+    static const char frame[] = "\033(Bab\033(B\033[31mcd\033)B\033*Bef\033(0q\033(Bq";
+    char want[400];
+    int i, len = (int)strlen(frame);
+    long before;
+    vt_term *t = h_new(20, 3, VT_XTERM);
+    for (i = 0; i < len; i++)
+        vt_write(t, (const vt_u8 *)frame + i, 1); /* byte by byte: the parser's own path */
+    strcpy(want, h_screen(t));
+    vt_free(t);
+    t = h_new(20, 3, VT_XTERM);
+    before = vt_count_fast_esc;
+    vt_write(t, (const vt_u8 *)frame, len);
+    CHECK_INT((int)(vt_count_fast_esc - before), 4); /* (B (B )B *B; the (0 and the (B after it go the long way */
+    CHECK_STR(h_screen(t), want);
+    vt_free(t);
+}
+
 /* csi_fast takes a whole "ESC [ ... final" from one write; cut anywhere,
  * the same bytes go through the parser byte by byte: the same screen */
 static void a_sequence_cut_by_a_write_means_the_same(void)
@@ -1352,6 +1375,7 @@ void suite_xterm(void)
     claude_code_session_needs_only_what_we_have();
     neovim_tui_streams_land_where_libvterm_puts_them();
     synchronized_output_is_a_mode();
+    a_designation_that_changes_nothing_skips_the_parser();
     a_sequence_cut_by_a_write_means_the_same();
     text_after_an_sgr_in_one_write_takes_its_pen();
     a_row_counts_the_cells_in_use();

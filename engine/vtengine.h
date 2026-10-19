@@ -190,6 +190,7 @@ extern long vt_count_peak;   /* the most vt_count_live has been (a test may rese
 /* The bytes of packed lines (text and style runs, the format in
  * vtengine.c) the scrollback holds, without their headers and blocks. */
 long vt_count_sb_payload(const vt_term *t);
+extern long vt_count_fast_esc; /* ESC ( B (G already B) taken by vt_feed's fast path */
 #endif
 
 vt_term *vt_new(int cols, int rows, int scrollback, const vt_callbacks *cb, void *user);

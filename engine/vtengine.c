@@ -1999,6 +1999,7 @@ static void sb_walk(vt_term *t, const vt_style_sweep *ss, vt_u8 *live)
 }
 
 #ifdef VT_COUNT_ALLOC
+long vt_count_fast_esc;
 long vt_count_sb_payload(const vt_term *t)
 {
     long n = 0;
@@ -6337,6 +6338,33 @@ static long csi_scan(const vt_u8 *p, long n, long *params, vt_u8 *sub)
 }
 #endif
 
+/* "ESC ( B" (also ) * +) when that set is B already: ncurses sends it in
+ * front of every style run (a frame's 1,200 of them cost 12.5 % of the
+ * engine through feed -> decode -> feed -> esc_dispatch, 620 instructions
+ * each). Nothing changes but what the parser's own three bytes leave
+ * behind, which is set here the same (clear_params' work, the intermediate).
+ * 3 bytes consumed, or 0 when the sequence is anything else. */
+static long esc_g_fast(vt_term *t, const vt_u8 *b, long len)
+{
+    vt_u8 g;
+    if (len < 3)
+        return 0;
+    g = b[1];
+    if (g < '(' || g > '+' || b[2] != 'B' || t->charset[g - '('] != 'B')
+        return 0;
+    t->np = 0;
+    t->have = 0;
+    t->params[0] = 0;
+    t->sub[0] = 0;
+    t->priv = 0;
+    t->inter = g;
+    t->ninter = 1;
+#ifdef VT_COUNT_ALLOC
+    vt_count_fast_esc++;
+#endif
+    return 3;
+}
+
 static long csi_fast(vt_term *t, const vt_u8 *b, long len)
 {
     long r;
@@ -6479,6 +6507,11 @@ void vt_feed(vt_term *t, const vt_u8 *buf, long len)
                 i += newlines(t, buf + i, len - i); /* CR LF in one turn */
                 continue;
             } else if (b == 0x1B) {
+                k = esc_g_fast(t, buf + i, len - i);
+                if (k) {
+                    i += k; /* a designation that changes nothing: the text mode stays */
+                    continue;
+                }
                 k = csi_fast(t, buf + i, len - i);
                 if (k) {
                     if (buf[i + k - 1] != 'm')
