@@ -445,6 +445,9 @@ $(BUILD)/amiga/top: proc/top_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h proc/
 $(BUILD)/amiga/busyloop: tests/amiga/busyloop.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/busyloop.c
+$(BUILD)/amiga/rcneg: tests/amiga/rcneg.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/rcneg.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c

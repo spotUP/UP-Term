@@ -604,6 +604,11 @@ static void runner(void)
                            SYS_UserShell, TRUE, NP_Name, (ULONG)j->child,
                            j->err ? NP_Error : TAG_IGNORE, j->err, TAG_END);
     }
+    /* the program ran: its return code is an exit status, which a POSIX shell reads as 0-255
+     * (exit(-1) is 255). A negative status is sh_os.run's "not found": upkg (opkg's main returns
+     * -1 on an error) printed "vsh: upkg: not found" after its own message. */
+    if (j->rc < 0)
+        j->rc &= 255;
     input_restore(j->in, mark);
     if (j->close_in)
         close_stream(j->in);

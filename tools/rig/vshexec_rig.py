@@ -11,6 +11,9 @@ copy ("object is in use"). 2026-10-18, rig 2.
   2. Afterwards the script deletes (Execute did not leave it open).
   3. A .KEY script takes its argument: Execute RAM:vx/k.dos hello.
   4. The script's return code comes back: Quit 7 gives $? = 7.
+  5. A program whose main returns -1 (opkg/upkg does on error) is not "not found": sh_os.run uses a negative
+     status for that, so vsh masks the runner's negative rc to 0..255. VTC:rcneg gives $? = 255, no
+     "not found" (needs `make build/amiga/rcneg`).
 
 Run with the rig up: python3 tools/rig/vshexec_rig.py
 """
@@ -43,6 +46,7 @@ def script(name, text):
 
 def main():
     shutil.copyfile(ROOT / 'build/amiga/vsh', paths.RIG / 'vtc/vsh')
+    shutil.copyfile(ROOT / 'build/amiga/rcneg', paths.RIG / 'vtc/rcneg')
     c.run('Delete RAM:vx ALL QUIET')
     c.run('MakeDir RAM:vx')
     try:
@@ -59,6 +63,8 @@ def main():
         script('vxq.dos', 'Quit 7\n')
         rc, out = vsh('Execute RAM:vx/vxq.dos; echo rc=$?')
         check('rc=7' in out, "the script's return code comes back (Quit 7)", out)
+        rc, out = vsh('VTC:rcneg; echo rc=$?')
+        check('not found' not in out and 'rc=255' in out, 'main returning -1 gives $? = 255, not "not found"', out)
     finally:
         c.run('Delete RAM:vx ALL QUIET')
         for n in ('vxa.dos', 'vxk.dos', 'vxq.dos'):
