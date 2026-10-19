@@ -21,7 +21,7 @@ DCTELNET_ROOT ?= $(CODE_ROOT)/DCTelnet
 AMIEXPRESS_ROOT ?= $(CODE_ROOT)/AmiExpress
 
 ENGINE  := engine/vtengine.c
-RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/otag.c render/painter.c handler/lineedit.c handler/kcmode.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
+RENDER  := render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/sbar.c render/layout.c render/otag.c render/painter.c handler/lineedit.c handler/kcmode.c handler/slash.c handler/clipfmt.c handler/complete_core.c render/vtinput.c handler/waitset.c handler/histfile.c
 SHELL_CORE := shell/sh_parse.c shell/sh_expand.c shell/sh_exec.c shell/sh_float.c
 TTY     := tty/ldisc.c tty/bmsg.c
 DEVICE_CORE := device/upc_core.c
@@ -44,7 +44,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_kitty.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_prefs.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_slash.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
-           tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
+           tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_layout.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_upassign.c
 
 .PHONY: wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean

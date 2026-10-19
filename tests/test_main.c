@@ -47,6 +47,7 @@ void suite_clip(void);
 void suite_input(void);
 void suite_protocol(void);
 void suite_sbar(void);
+void suite_layout(void);
 void suite_unifont(void);
 void suite_emoji(void);
 void suite_telnet(void);
@@ -112,6 +113,7 @@ static const h_suite suites[] = {
     { "input", suite_input },
     { "protocol", suite_protocol },
     { "sbar", suite_sbar },
+    { "layout", suite_layout },
     { "unifont", suite_unifont },
     { "emoji", suite_emoji },
     { "telnet", suite_telnet },
