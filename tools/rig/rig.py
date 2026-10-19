@@ -534,6 +534,9 @@ def setup():
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,
         "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
+    if "--serial" not in sys.argv:
+        # FS-UAE opens serial_port for writing but does not create it: with no file there it writes no trace
+        pathlib.Path(SERIAL).touch()
     if "start" not in sys.argv:
         print("rig ready:", CFG)
 
