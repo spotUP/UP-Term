@@ -58,6 +58,7 @@ void prefs_defaults(prefs_fields *f)
     f->amiga_keys = 1;
     f->dither = 1;
     f->hlcat = 1;
+    f->split_restore = PREFS_SPLIT_OFF;
 }
 
 void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
@@ -102,6 +103,9 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     f->dither = !pc_ieq(upconf_str(c, p, "dither", "on"), "off");
     f->pad_extend = pc_ieq(upconf_str(c, p, "padding-color", "background"), "extend");
     f->hlcat = !pc_ieq(upconf_str(c, p, "highlight-cat", "on"), "off");
+    v = upconf_str(c, p, "split-restore", "off");
+    f->split_restore = pc_ieq(v, "programs") ? PREFS_SPLIT_PROGRAMS
+                     : pc_ieq(v, "layout") ? PREFS_SPLIT_LAYOUT : PREFS_SPLIT_OFF;
     v = upconf_str(c, p, "program-clipboard", "write");
     f->clipboard = pc_ieq(v, "off") ? PREFS_CLIP_OFF
                  : pc_ieq(v, "read-write") ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
@@ -601,7 +605,8 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
            a->completion == b->completion && a->screen == b->screen && a->aspect == b->aspect &&
            a->backspace_bs == b->backspace_bs && a->clipboard == b->clipboard &&
            a->kcinfo == b->kcinfo && a->kccache == b->kccache && a->amiga_keys == b->amiga_keys &&
-           a->dither == b->dither && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat;
+           a->dither == b->dither && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat &&
+           a->split_restore == b->split_restore;
 }
 
 int prefs_profile_exists(const upconf *c, const char *profile)
@@ -715,6 +720,8 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     upconf_set(w, p, "dither", f->dither ? "on" : "off");
     upconf_set(w, p, "padding-color", f->pad_extend ? "extend" : "background");
     upconf_set(w, p, "highlight-cat", f->hlcat ? "on" : "off");
+    upconf_set(w, p, "split-restore", f->split_restore == PREFS_SPLIT_PROGRAMS ? "programs"
+                                    : f->split_restore == PREFS_SPLIT_LAYOUT ? "layout" : "off");
     upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"
                                           : f->clipboard == PREFS_CLIP_READ_WRITE ? "read-write"
                                           : "write");

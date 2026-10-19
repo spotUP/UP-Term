@@ -53,11 +53,13 @@ typedef struct prefs_fields {
     int dither;     /* dither: few-pen screens dither colours no pen shows closely (W-T9; on by default) */
     int pad_extend; /* padding-color: extend (W-T14) -- the strips beside the grid take the edge cells' colour; background is the default */
     int hlcat;      /* highlight-cat: vsh's cat is hl -p (on by default; see prefs_hlcat_text) */
+    int split_restore; /* split-restore: PREFS_SPLIT_*, what a split tab keeps over a restart (off by default) */
 } prefs_fields;
 
 /* the choices, in the order the window's cycle gadgets list them */
 enum { PREFS_CURSOR_BLOCK, PREFS_CURSOR_UNDERLINE, PREFS_CURSOR_BAR };
 enum { PREFS_BELL_NONE, PREFS_BELL_BEEP, PREFS_BELL_VISUAL };
+enum { PREFS_SPLIT_OFF, PREFS_SPLIT_LAYOUT, PREFS_SPLIT_PROGRAMS };
 /* Tab completion: unix (common prefix, a list under the line, cycling) or
  * kingcon (KingCON's keys and its selection window;
  * thoughts/shared/research/2026-10-02_kingcon-completion.md) */

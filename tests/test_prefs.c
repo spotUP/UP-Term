@@ -279,8 +279,10 @@ static void stage_cases(void)
     f.backspace_bs = 1;
     CHECK_INT(f.amiga_keys, 1);     /* no key: AmigaShell keys on */
     CHECK_INT(f.hlcat, 1);          /* no key: cat highlights */
+    CHECK_INT(f.split_restore, PREFS_SPLIT_OFF); /* no key: a split is not kept */
     f.amiga_keys = 0;
     f.hlcat = 0;
+    f.split_restore = PREFS_SPLIT_PROGRAMS;
     strcpy(f.pal[3], "#FFAA00");
     strcpy(f.selbg, "203040");
     CHECK_INT(prefs_validate(&f), 0);
@@ -319,6 +321,8 @@ static void stage_cases(void)
     CHECK_INT(g.hlcat, 0);
     CHECK_STR(upconf_str(&conf, "default", "amiga-keys", "?"), "off");
     CHECK_STR(upconf_str(&conf, "default", "highlight-cat", "?"), "off");
+    CHECK_INT(g.split_restore, PREFS_SPLIT_PROGRAMS); /* and what a split tab keeps */
+    CHECK_STR(upconf_str(&conf, "default", "split-restore", "?"), "programs");
     CHECK_STR(upconf_str(&conf, "default", "reflow", "?"), "off");
     CHECK_INT(g.scrollbar, 0);
     CHECK_STR(upconf_str(&conf, "default", "scrollbar", "?"), "hide");
@@ -967,6 +971,7 @@ static void an_edit_of_any_field_makes_the_profile_differ(void)
         MUT_INT(copy_sel) MUT_INT(wheel) MUT_INT(reflow) MUT_INT(scrollbar) MUT_INT(completion)
         MUT_INT(screen) MUT_INT(aspect) MUT_INT(backspace_bs) MUT_INT(clipboard) MUT_INT(kcinfo)
         MUT_INT(kccache) MUT_INT(amiga_keys) MUT_INT(dither) MUT_INT(pad_extend) MUT_INT(hlcat)
+        MUT_INT(split_restore)
     }
     for (i = 0; i < 16; i++) {
         prefs_defaults(&b);

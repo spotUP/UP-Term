@@ -132,6 +132,8 @@ static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", (STRPTR)"Pa
                                 (STRPTR)"Keyboard", (STRPTR)"Advanced", 0 };
 static STRPTR cursor_labels[] = { (STRPTR)"Block", (STRPTR)"Underline", (STRPTR)"Bar", 0 };
 static STRPTR bell_labels[] = { (STRPTR)"None", (STRPTR)"Beep", (STRPTR)"Visual", 0 };
+/* in the order of PREFS_SPLIT_* */
+static STRPTR split_labels[] = { (STRPTR)"Off", (STRPTR)"Layout", (STRPTR)"Layout and programs", 0 };
 static STRPTR meta_labels[] = { (STRPTR)"Left Amiga", (STRPTR)"Alt", 0 };
 static STRPTR complete_labels[] = { (STRPTR)"Unix", (STRPTR)"KingCON", 0 };
 /* in the order of PREFS_KC_*, PREFS_SCREEN_*, PREFS_CLIP_* */
@@ -311,6 +313,7 @@ static int *int_of(struct app *a, int id)
     case PG_ASPECT: return &a->f.aspect;
     case PG_CLIPBOARD: return &a->f.clipboard;
     case PG_HLCAT: return &a->f.hlcat;
+    case PG_SPLIT_RESTORE: return &a->f.split_restore;
     case PG_SCROLLBACK_NONE: return &a->sb_none;
     case PG_COLORS: return &a->colors;
     default:
@@ -331,6 +334,7 @@ static STRPTR *labels_of(int id)
     case PG_BACKSPACE: return backspace_labels;
     case PG_CLIPBOARD: return clip_labels;
     case PG_COLORS: return colors_labels;
+    case PG_SPLIT_RESTORE: return split_labels;
     default: return 0;
     }
 }
