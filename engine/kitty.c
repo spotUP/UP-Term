@@ -461,6 +461,7 @@ static const char *kit_show(vt_term *t, const vt_kitty *k, const kit_src *s, vt_
     im->knum = KV(k, 'I');
     im->pid = KV(k, 'p');
     image_place(t, slot, KV(k, 'C') == 1 ? 2 : 3);
+    t->kit_placed++;
     return 0;
 }
 
@@ -624,4 +625,9 @@ static void kitty_end(vt_term *t)
         return;
     kitty_run(t, k);
     kitty_abort(t);
+}
+
+unsigned long vt_kitty_placed(const vt_term *t)
+{
+    return t->kit_placed;
 }

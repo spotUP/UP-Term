@@ -1453,8 +1453,35 @@ static void the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells(void)
     close_term();
 }
 
+/* K11: a kitty image (a=T, f=24 raw RGB, 4x2 pixels) fed through the engine reaches the window as its pixels:
+ * the renderer's image run on a true-colour screen (WriteLUTPixelArray, here a GF_CGXLUT call) paints each
+ * pixel's colour -- the palette cube holds the 0 and 255 levels exactly. The engine's kitty_images_placed
+ * counter (vt_kitty_placed) shows the command ran. */
+static void a_kitty_image_draws_its_pixels_on_the_canvas(void)
+{
+    static const int want[8] = { 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFFFF, 0x000000, 0xFFFF00, 0x00FFFF, 0xFF00FF };
+    int i;
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(1);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vt_set_cell_pixels(term, CW, CH);
+    vr_redraw(&rn);
+    CHECK(rn.cgx != 0);
+    CHECK_INT((int)vt_kitty_placed(term), 0);
+    gf_clear_log();
+    /* red green blue white / black yellow cyan magenta */
+    pass("\x1b_Ga=T,f=24,s=4,v=2;/wAAAP8AAAD/////AAAA//8AAP///wD/\x1b\\");
+    CHECK_INT((int)vt_kitty_placed(term), 1);
+    CHECK(gf_count(GF_CGXLUT) >= 1);
+    for (i = 0; i < 8; i++)
+        CHECK_INT(gf_pixel(i % 4, i / 4), GF_CGX | want[i]);
+    close_term();
+}
+
 int main(void)
 {
+    a_kitty_image_draws_its_pixels_on_the_canvas();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();

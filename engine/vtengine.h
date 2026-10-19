@@ -485,6 +485,8 @@ int      vt_modify_other_keys(const vt_term *t);
 #define VT_KITTY_ALL_KEYS     8
 #define VT_KITTY_TEXT         16
 int      vt_kitty_flags(const vt_term *t);
+/* How many kitty graphics images were placed on the screen (a test sentinel). */
+unsigned long vt_kitty_placed(const vt_term *t);
 #define VT_KEY_EV_PRESS   1
 #define VT_KEY_EV_REPEAT  2
 #define VT_KEY_EV_RELEASE 3

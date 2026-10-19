@@ -280,6 +280,7 @@ struct vt_term {
     struct vt_sixel *six;
     struct vt_kitty *kit;      /* the kitty graphics command being received */
     vt_u32 kit_next;           /* counter for the ids kitty gives by number (I=) */
+    vt_u32 kit_placed;         /* kitty images placed on the screen (vt_kitty_placed) */
     vt_image_decoder decode;   /* vt_set_image_decoder: PNG and the like (f=100) */
     vt_image_release decode_free;
     vt_u32 *six_regs;

@@ -44,6 +44,9 @@
 #include <proto/gadtools.h>
 #include <libraries/gadtools.h>
 #include <proto/timer.h>
+#include <proto/datatypes.h>
+#include <datatypes/datatypes.h>
+#include <datatypes/pictureclass.h>
 
 #include <string.h>
 #include "../engine/vtengine.h"
@@ -89,6 +92,7 @@ struct GfxBase *GfxBase;
 struct Device *ConsoleDevice;
 struct Library *DiskfontBase;
 struct Library *GadToolsBase; /* the window's menu (may be 0: no menu) */
+struct Library *DataTypesBase; /* picture.datatype, opened by the picture worker per decode */
 struct Library *LayersBase; /* LockLayer, for the renderer's planar path */
 struct Device *TimerBase; /* for ReadEClock in the debug profile */
 
@@ -464,6 +468,154 @@ static void reply(struct DosPacket *p, LONG r1, LONG r2)
     if (p->dp_Type != ACTION_WRITE && p->dp_Type != ACTION_READ)
         DBG("reply", p->dp_Type, r1);
     ReplyPkt(p, r1, r2);
+}
+
+/* ---- kitty graphics f=100 (PNG and the like): picture.datatype V43 ----------
+ * Ported from CTerm's pics.c (MIT, Copyright (c) Tobias Karlsson): the file's
+ * bytes go to a file in T: (datatypes read files; a memory source is not one
+ * every class takes), NewDTObject lays it out, PDTM_READPIXELARRAY reads it as
+ * ARGB. The classes want a deep stack and the handler's is small, so the work
+ * runs in its own process (as the config and completion workers do) and the
+ * caller waits for its signal. datatypes.library is opened for each decode
+ * and closed after it: every window is a process on one segment, so no one
+ * process can own a shared base to close at exit, and the library stays
+ * resident anyway. DataTypesBase is one global for all windows, so png_sem
+ * holds it from the open to the close: two windows decoding at once take
+ * turns. kitty_decodes counts the decodes that ran: the rig's sentinel (the
+ * PROF line "kitty decodes/placed"). */
+ULONG kitty_decodes;
+static struct SignalSemaphore png_sem;
+static int png_ready;
+
+struct png_job {
+    const vt_u8 *data;
+    long n;
+    vt_u32 *out;
+    int w, h;
+    struct Task *parent;
+    ULONG sigmask;
+};
+
+static void png_worker(void)
+{
+    struct png_job *j;
+    char name[32];
+    ULONG id = (ULONG)FindTask(0);
+    struct Task *parent;
+    ULONG sigmask;
+    BPTR fh;
+    Object *o;
+    struct BitMapHeader *bmh = 0;
+    LONG y, i;
+    int k;
+    struct Process *me = (struct Process *)FindTask(0);
+    WaitPort(&me->pr_MsgPort);
+    j = (struct png_job *)GetMsg(&me->pr_MsgPort)->mn_Node.ln_Name;
+    parent = j->parent;
+    sigmask = j->sigmask;
+    j->out = 0;
+    ObtainSemaphore(&png_sem);
+    DataTypesBase = OpenLibrary((STRPTR)"datatypes.library", 39);
+    if (DataTypesBase) {
+        strcpy(name, "T:vtcon-pic.");
+        for (k = 0; k < 8; k++)
+            name[12 + k] = "0123456789abcdef"[(id >> (28 - 4 * k)) & 15];
+        name[20] = 0;
+        fh = Open((STRPTR)name, MODE_NEWFILE);
+        if (fh) {
+            i = Write(fh, (APTR)j->data, j->n);
+            Close(fh);
+            if (i == j->n) {
+                o = NewDTObject((APTR)name, DTA_SourceType, DTST_FILE, DTA_GroupID, GID_PICTURE,
+                                PDTA_DestMode, PMODE_V43, PDTA_Remap, FALSE, TAG_DONE);
+                if (o) {
+                    ULONG alpha = 0;
+                    { struct gpLayout gl; gl.MethodID = DTM_PROCLAYOUT; gl.gpl_GInfo = 0; gl.gpl_Initial = 1; DoDTMethodA(o, 0, 0, (Msg)&gl); }
+                    GetDTAttrs(o, PDTA_BitMapHeader, (ULONG)&bmh, TAG_DONE);
+                    GetDTAttrs(o, PDTA_AlphaChannel, (ULONG)&alpha, TAG_DONE);
+                    if (bmh && bmh->bmh_Width > 0 && bmh->bmh_Height > 0 && bmh->bmh_Width <= 8192 &&
+                        bmh->bmh_Height <= 8192) {
+                        j->w = bmh->bmh_Width;
+                        j->h = bmh->bmh_Height;
+                        if (bmh->bmh_Masking == mskHasAlpha)
+                            alpha = 1;
+                        j->out = (vt_u32 *)AllocVec((ULONG)j->w * j->h * 4, MEMF_ANY);
+                        for (y = 0; j->out && y < j->h; y++) {
+                            struct pdtBlitPixelArray pb;
+                            pb.MethodID = PDTM_READPIXELARRAY;
+                            pb.pbpa_PixelData = j->out + (long)y * j->w;
+                            pb.pbpa_PixelFormat = PBPAFMT_ARGB;
+                            pb.pbpa_PixelArrayMod = j->w * 4;
+                            pb.pbpa_Left = 0;
+                            pb.pbpa_Top = y;
+                            pb.pbpa_Width = j->w;
+                            pb.pbpa_Height = 1;
+                            if (!DoDTMethodA(o, 0, 0, (Msg)&pb)) {
+                                FreeVec(j->out);
+                                j->out = 0;
+                            }
+                        }
+                        /* a picture without an alpha channel is opaque; the engine blends the rest */
+                        for (i = 0; j->out && !alpha && i < (LONG)j->w * j->h; i++)
+                            j->out[i] |= 0xFF000000UL;
+                    }
+                    DisposeDTObject(o);
+                }
+            }
+            DeleteFile((STRPTR)name);
+        }
+        CloseLibrary(DataTypesBase);
+        DataTypesBase = 0;
+    }
+    kitty_decodes++;
+    ReleaseSemaphore(&png_sem);
+    Forbid();
+    Signal(parent, sigmask); /* j is the parent's: not touched after this */
+}
+
+static int png_decode(const vt_u8 *data, long n, vt_u32 **argb, int *w, int *h)
+{
+    struct png_job j;
+    struct Process *p;
+    struct Message m;
+    LONG sig;
+    /* the semaphore, at first use */
+    Forbid();
+    if (!png_ready) {
+        InitSemaphore(&png_sem);
+        png_ready = 1;
+    }
+    Permit();
+    sig = AllocSignal(-1);
+    if (sig < 0)
+        return 0;
+    j.data = data;
+    j.n = n;
+    j.out = 0;
+    j.parent = FindTask(0);
+    j.sigmask = 1UL << sig;
+    p = CreateNewProcTags(NP_Entry, (ULONG)png_worker, NP_Name, (ULONG)"vtcon picture", NP_StackSize, 32000,
+                          NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE, NP_CloseOutput, FALSE, TAG_DONE);
+    if (p) {
+        m.mn_Node.ln_Name = (char *)&j;
+        m.mn_ReplyPort = 0;
+        m.mn_Length = sizeof(m);
+        PutMsg(&p->pr_MsgPort, &m);
+        Wait(j.sigmask);
+    }
+    FreeSignal(sig);
+    if (!p || !j.out)
+        return 0;
+    *argb = j.out;
+    *w = j.w;
+    *h = j.h;
+    return 1;
+}
+
+static void png_release(vt_u32 *argb)
+{
+    if (argb)
+        FreeVec(argb);
 }
 
 /* ---- engine callbacks ------------------------------------------------------ */
@@ -2570,6 +2722,7 @@ have_window:
         return 0;
     }
     DBG("vt_new", c->w.t, 0);
+    vt_set_image_decoder(c->w.t, png_decode, png_release);
     pens_tell(c);
     menu_add(c, win);
     sbar_apply(c); /* our own sizable window: the scroll bar in its border */
@@ -6084,6 +6237,7 @@ static void packet(con *c, struct DosPacket *p)
         DBG("render mask/planar", c->w.r.mask, c->w.r.planar);
         DBG("render pens fg/bg", c->w.r.pen_default_fg, c->w.r.pen_default_bg);
         DBG("render bg ink/seen", c->w.r.bg_ink, c->w.r.seen);
+        DBG("kitty decodes/placed", kitty_decodes, vt_kitty_placed(c->w.t));
 #ifdef VTCON_DEBUG
         DBG("prof writes/bytes", c->prof_writes, c->prof_bytes);
         DBG("prof out", c->prof_out, 0);
@@ -6135,6 +6289,7 @@ static void packet(con *c, struct DosPacket *p)
             c->prof_pk[0] = c->prof_pk[1] = c->prof_pk[2] = 0;
             c->prof_npk[0] = c->prof_npk[1] = c->prof_npk[2] = 0;
             PROF_LOG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
+            PROF_LOG("PROF kitty decodes/placed", kitty_decodes, vt_kitty_placed(c->w.t));
             c->w.prof_part[0] = c->w.prof_part[1] = c->w.prof_part[2] = 0;
             c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;
             c->w.prof_render = c->w.prof_frames = 0;
