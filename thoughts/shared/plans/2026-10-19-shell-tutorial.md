@@ -142,7 +142,7 @@ none.
 - [x] L-4 Progress file $HOME/.tutorial, resume with `tutorial next`.
 - [x] L-5 Lessons 01-11 written (share/tutorial/*.lesson).
 - [ ] L-C1 Each lesson's facts checked on vsh (host and rig).
-- [ ] L-6 Kit and dist: learn to UP-Term:bin, lessons to UP-Term:share/tutorial,
+- [x] L-6 Kit and dist: learn to UP-Term:bin, lessons to UP-Term:share/tutorial,
       in parts.txt and the base (not slim.txt-removed), uninstall removes them.
 - [ ] L-7 Help menu "Shell tutorial" item and /tutorial slash command, a tab
       running `vsh UP-Term:bin/tutorial` (UPDemo row pattern), after the

@@ -40,6 +40,19 @@ class Manifest(unittest.TestCase):
         paths = [l.split(' ', 3)[3].encode() for l in lines]
         self.assertEqual(paths, sorted(paths))
 
+    def test_the_tutorial_is_in_the_base_kit_and_installs_with_the_userland(self):
+        """plan L-6: bin/tutorial is a copy-userland file, its lessons are userland, slim.txt moves neither"""
+        k = kit({"Files/userland/bin/tutorial": b"t", "Files/userland/share/tutorial/01-where-am-i.lesson": b"l"})
+        lines = mm.manifest(k, PARTS, "").splitlines()
+        self.assertIn("copy-userland 1 %08x Files/userland/bin/tutorial" % zlib.crc32(b"t"), lines)
+        self.assertIn("userland 1 %08x Files/userland/share/tutorial/01-where-am-i.lesson" % zlib.crc32(b"l"), lines)
+        self.assertNotIn("tutorial", (ROOT / "dist/slim.txt").read_text())
+        self.assertNotIn("tutorial", " ".join(mm.handed_paths('base')))
+        mk = (ROOT / "Makefile").read_text()
+        self.assertLess(mk.index("python3 tools/slim.py remove $(KIT)/Files/userland"),
+                        mk.index("cp dist/tutorial $(KIT)/Files/userland/bin/tutorial"))
+        self.assertIn("cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/", mk)
+
     def test_a_file_no_part_claims_stops_the_build(self):
         k = kit({"Files/vsh": b"v", "Files/newtool": b"n"})
         with self.assertRaises(SystemExit) as e:

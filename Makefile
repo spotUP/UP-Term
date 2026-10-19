@@ -128,6 +128,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_editor ]; then python3 tests/test_vshrc_editor.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial_lessons.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial_wiring.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wbtext ]; then python3 -I tests/test_wbtext.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = entry ]; then python3 tests/test_entry_stub.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = qmark ]; then python3 -I tests/test_qmark_commands.py; fi
@@ -1064,6 +1065,10 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	python3 tools/slim.py remove $(KIT)/Files/userland
 	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
+	@# the shell tutorial (plan 2026-10-19-shell-tutorial L-6): the script in bin (copy-userland), the lessons in
+	@# share/tutorial (userland); after slim.py, which removes only what dist/slim.txt names
+	cp dist/tutorial $(KIT)/Files/userland/bin/tutorial
+	mkdir -p $(KIT)/Files/userland/share/tutorial && cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/
 	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
 	cp man/sz.1 $(KIT)/Files/userland/share/man/man1/rz.1
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
