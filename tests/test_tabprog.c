@@ -24,7 +24,7 @@ static void tutorial_tab_runs_the_tutorial_under_vsh(void)
     char s[256];
     /* Help > Shell tutorial and /tutorial (MENU_TUTORIAL) spawn this tab */
     CHECK(tabprog_script(s, sizeof(s), "", TABPROG_TUTORIAL_CMD));
-    CHECK_STR(s, "FailAt 2147483647\nUP-Term:bin/vsh UP-Term:bin/tutorial\n"
+    CHECK_STR(s, "FailAt 2147483647\nUP-Term:bin/vsh UP-Term:bin/tutorial next\n"
                  "If WARN\nAsk \"Press Return to close this tab.\"\nEndIf\nEndCLI >NIL:\n");
     CHECK_STR(TABPROG_TUTORIAL_FILE, "UP-Term:bin/tutorial");
 }

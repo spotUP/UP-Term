@@ -30,6 +30,8 @@ class TutorialWiring(unittest.TestCase):
         rows = H.split("static const struct tab_prog tab_progs[] = {")[1].split("};")[0]
         self.assertEqual(len(re.findall(r"^\s*\{ ", rows, re.M)), 4)  # shell, demo, claude, tutorial: the enum's order
         self.assertRegex(rows, r'\{ TABPROG_TUTORIAL_FILE, TABPROG_TUTORIAL_CMD, "T:UP-Term-tutorial"')
+        # the tab must start the next lesson: with no argument the tutorial lists and exits, and the tab closes
+        self.assertIn('#define TABPROG_TUTORIAL_CMD "UP-Term:bin/vsh UP-Term:bin/tutorial next"', (ROOT / "handler/tabprog.h").read_text())
         self.assertIn("tabprog_script(script, sizeof(script), p->pre, p->cmd)", H)
 
 

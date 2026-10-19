@@ -139,6 +139,49 @@ class Tutorial(unittest.TestCase):
             self.assertIn('All lessons are finished', out)
         self.each_shell(case)
 
+    def test_next_with_all_finished_lists_and_asks_on_a_terminal_only(self):
+        """the tab runs `tutorial next`: on a terminal, all finished shows the list and asks; Return closes,
+        a number repeats that lesson. Not a terminal: today's one-line message, no prompt."""
+        import pty, select, time
+        def on_terminal(shell, d, typed):
+            m, sl = pty.openpty()
+            env = {'PATH': '/usr/bin:/bin', 'HOME': self.tmp, 'TUTORIAL_LESSONS': d,
+                   'TUTORIAL_PROGRESS': self.progress, 'TUTORIAL_SANDBOX': self.sandbox}
+            pr = subprocess.Popen(shell + [TUTORIAL, 'next'], stdin=sl, stdout=sl, stderr=sl, cwd=self.work, env=env)
+            os.close(sl)
+            os.write(m, typed.encode())
+            out = b''
+            end = time.time() + 30
+            while time.time() < end:
+                if select.select([m], [], [], 0.2)[0]:
+                    try:
+                        c = os.read(m, 4096)
+                    except OSError:
+                        break
+                    if not c:
+                        break
+                    out += c
+                elif pr.poll() is not None:
+                    break
+            if pr.poll() is None:
+                pr.kill()
+            pr.wait(timeout=60)
+            os.close(m)
+            return out.decode(errors='replace')
+        def case(shell):
+            d = self.lesson_dir(SENTINEL)
+            with open(self.progress, 'w') as fh:
+                fh.write('1\n')
+            rc, out = self.run_tutorial(shell, ['next'], lessons=d)
+            self.assertIn('All lessons are finished', out)
+            self.assertNotIn('Return to close', out)
+            out = on_terminal(shell, d, '\n')
+            self.assertIn('SENTINEL-LESSON-7731', out)
+            self.assertIn('Lesson number, or Return to close: ', out)
+            out = on_terminal(shell, d, '1\ntouch sentinel.txt\n')
+            self.assertIn('Lesson finished', out)
+        self.each_shell(case)
+
     def test_reset_forgets_progress(self):
         def case(shell):
             with open(self.progress, 'w') as fh:

@@ -19,7 +19,7 @@
  * what the handler looks for first; the command is the script's one line.
  * 80x24: mdv sets the lessons for the window's width. */
 #define TABPROG_TUTORIAL_FILE "UP-Term:bin/tutorial"
-#define TABPROG_TUTORIAL_CMD "UP-Term:bin/vsh UP-Term:bin/tutorial"
+#define TABPROG_TUTORIAL_CMD "UP-Term:bin/vsh UP-Term:bin/tutorial next"
 #define TABPROG_TUTORIAL_COLS 80
 #define TABPROG_TUTORIAL_ROWS 24
 

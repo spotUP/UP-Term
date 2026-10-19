@@ -267,6 +267,18 @@ reset)
 next)
     if f=$(next_lesson); then
         start_lesson "$f"
+    elif [ -t 0 ]; then
+        # the Help > Shell tutorial tab runs "tutorial next": with everything finished, show the
+        # list and ask, so the tab stays open for a lesson to repeat instead of closing at once
+        list_lessons
+        echo "All lessons are finished.  tutorial reset  forgets the progress."
+        printf 'Lesson number, or Return to close: '
+        if read -r _n && [ -n "$_n" ]; then
+            case $_n in
+            *[!0-9]*) echo "tutorial: no lesson $_n" ;;
+            *) if f=$(lesson_file "$_n"); then start_lesson "$f"; else echo "tutorial: no lesson $_n"; fi ;;
+            esac
+        fi
     else
         echo "All lessons are finished. Type  tutorial reset  to start again."
     fi ;;
