@@ -18,8 +18,8 @@ the gcc16 callee-saved-register fix and a `__stack` definition.
 Performance: go on a 68060, no-go on a 68020 + 68882, open on an 040 (needs a real-hardware measurement). The first slow numbers (2.8 s per key on a 68060) came from a
 soft-float build: gcc16 `-m68040` emits double arithmetic as ixemul.library calls, and Scintilla lays out in
 double. Built with `-m68020 -m68881`, a key costs 23 ms on the 68060, under the 100 ms bar, and 645 ms on a
-68020 + 68882 at real speed, over it; two Scinterm patches brought the 020 key to 76 ms (pass), but open
-(9.5 s) and scroll (1.6 s) still fail there. Without an FPU
+68020 + 68882 at real speed, over it; two Scinterm patches brought the 020 key to 76 ms (pass). On
+2026-10-19 the 020 open fell from 9.5 s to 2.9 s and scroll from 1.6 s to 1.26 s; both still miss their bars. Without an FPU
 (stock A1200) the IDE stays at soft-float speed and is not usable.
 
 ## Build result (S1-S3): builds
@@ -188,11 +188,21 @@ Built with `-m68020 -m68881` (FPU required):
 | Machine | Open (<= 2 s) | Key (<= 100 ms) | Scroll | RAM drop (<= 4 MB) | Verdict |
 |---|---|---|---|---|---|
 | 68060 + JIT (rig 4 `--max`) | 280 ms | 23 ms | 60 ms | pass | go |
-| 68020 + 68882, real speed (rig 2 `--a1200`, 2026-10-19) | 9523 ms | 76 ms | 1568 ms | 762 KB | no-go (open, scroll) |
+| 68020 + 68882, real speed (rig 3 `--a1200`, 2026-10-19 13:00) | 2924 ms | 71 ms | 1257 ms | 923 KB | no-go (open, scroll) |
 | 68040 | not measured | not measured | not measured | - | needs real hardware |
 | no FPU (soft-float build) | 3.0-3.3 s on a 060 | 2.8-4.5 s on a 060 | - | - | no-go |
 
-020 split (11:43 FPU-archive rebench; `ide-spike/results/scidemo-lite-a1200.txt` was overwritten at 12:05 by a rig 3 probed run, see the ledger): key paint 52 ms + terminal 24 ms;
+020 after the redraw and open fixes (rig 3, 2026-10-19 13:00, `ide-spike/results/scidemo-lite-a1200.txt`):
+open paint 1861 ms + terminal 1063 ms; key paint 45 + terminal 26 ms; scroll paint 490 + terminal 767 ms.
+What moved it: ncurses doupdate now writes once per frame instead of once per line (upterm-ports 64ddc7e;
+this was the visible line-by-line drawing), tparm memoises formatted results (7a0aba5), and open no longer
+lexes the whole document with `SCI_COLOURISE 0,-1` (6.7 s of the 9.5 s): Editor::Paint styles the visible
+page on demand. The sentinel `BENCH open_styled_lines=N of M rows=R` (N <= R + 2, checked by
+`bench_rig.py`, a missing line fails too) proves open styles only the first screen; measured 25 of 3301.
+Remaining 020 costs per 20 scrolls: ncurses tparm_setup tfind strcmp 3.3 s, tputs 5.0 s (13414 calls),
+mvcur 1.9 s (580 calls); open_tty 1.06 s; Scintilla paint about 490 ms per scroll.
+
+Earlier 020 split (11:43 FPU-archive rebench; `ide-spike/results/scidemo-lite-a1200.txt` was overwritten at 12:05 by a rig 3 probed run, see the ledger): key paint 52 ms + terminal 24 ms;
 open paint 7848 ms + terminal 1675 ms; scroll paint 438 ms + terminal 1130 ms. The key passes. Scroll is now
 dominated by the terminal (the screen visibly draws line by line); open is dominated by Scintilla paint.
 Before the input-lag patches: key paint 612 + terminal 33 ms (`scidemo-lite-a1200.fixABC-roundinline.txt`).
