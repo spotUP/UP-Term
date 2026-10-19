@@ -32,7 +32,7 @@ ULONG ec_lo(void)
 }
 void ec_close(void)
 {
-    ec_close();
+    CloseDevice((struct IORequest *)&tr);
 }
 #else
 #include <exec/types.h>
