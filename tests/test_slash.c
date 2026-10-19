@@ -97,6 +97,15 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(cmd.id, MENU_SET_PAD_BG);
     CHECK_INT(parse("/padding-color"), SLASH_ERROR);
     CHECK_INT(parse("/padding-color edge"), SLASH_ERROR);
+    /* NS5.5 */
+    CHECK_INT(parse("/split-restore off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_SPLIT_OFF);
+    CHECK_INT(parse("/split-restore layout"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_SPLIT_LAYOUT);
+    CHECK_INT(parse("/split-restore programs"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_SPLIT_PROGRAMS);
+    CHECK_INT(parse("/split-restore"), SLASH_ERROR);
+    CHECK_INT(parse("/split-restore always"), SLASH_ERROR);
     CHECK_INT(parse("/program-clipboard read-write"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_CLIP_READ_WRITE);
     CHECK_INT(parse("/program-clipboard off"), SLASH_OK);

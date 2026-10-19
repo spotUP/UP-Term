@@ -269,6 +269,8 @@ typedef struct con {
     int marker_out;              /* V93: the marker went to it; its ACTION_VTCON_COMPLETE is awaited */
     int reader_shell;            /* the last ACTION_READ came from a shell (W31: colour its first word) */
     int tabs;                    /* Tabs in a row */
+    int split_restore;           /* profile split-restore: PREFS_SPLIT_OFF / _LAYOUT / _PROGRAMS,
+                                  * what a split tab keeps when the window opens again */
     int kingcon;                 /* profile completion = kingcon: KingCON's keys and
                                   * selection window (research/2026-10-02_kingcon-completion.md) */
     unsigned long edits;         /* keys that changed the line so far */
@@ -1285,6 +1287,9 @@ static void apply_profile(con *c)
         c->sbar_on = !str_ieq(v, "hide");
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
+    v = upconf_str(c->conf, p, "split-restore", 0);
+    c->split_restore = !v ? PREFS_SPLIT_OFF : str_ieq(v, "programs") ? PREFS_SPLIT_PROGRAMS
+                     : str_ieq(v, "layout") ? PREFS_SPLIT_LAYOUT : PREFS_SPLIT_OFF;
     c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));
     v = upconf_str(c->conf, p, "kingcon-info", 0);
     c->kc_info = v && str_ieq(v, "show");
@@ -1537,7 +1542,7 @@ static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 64
+#define MENU_SET_ITEMS 68
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1593,6 +1598,10 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Set the clipboard", 0, CHECKIT, 6, (APTR)MENU_SET_CLIP_WRITE },
     { NM_SUB, (STRPTR)"Set and read the clipboard", 0, CHECKIT, 5, (APTR)MENU_SET_CLIP_READ_WRITE },
     { NM_SUB, (STRPTR)"Not use the clipboard", 0, CHECKIT, 3, (APTR)MENU_SET_CLIP_OFF },
+    { NM_ITEM, (STRPTR)"Keep splits", 0, 0, 0, 0 },
+    { NM_SUB, (STRPTR)"Off", 0, CHECKIT, 6, (APTR)MENU_SET_SPLIT_OFF },
+    { NM_SUB, (STRPTR)"Layout", 0, CHECKIT, 5, (APTR)MENU_SET_SPLIT_LAYOUT },
+    { NM_SUB, (STRPTR)"Layout and programs", 0, CHECKIT, 3, (APTR)MENU_SET_SPLIT_PROGRAMS },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Tab completion", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Unix", 0, CHECKIT, 2, (APTR)MENU_SET_UNIX },
@@ -1645,6 +1654,9 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_CLIP_WRITE: return c->w.clip_access == VT_CLIP_WRITE;
     case MENU_SET_CLIP_READ_WRITE: return c->w.clip_access == (VT_CLIP_WRITE | VT_CLIP_READ);
     case MENU_SET_CLIP_OFF: return c->w.clip_access == 0;
+    case MENU_SET_SPLIT_OFF: return c->split_restore == PREFS_SPLIT_OFF;
+    case MENU_SET_SPLIT_LAYOUT: return c->split_restore == PREFS_SPLIT_LAYOUT;
+    case MENU_SET_SPLIT_PROGRAMS: return c->split_restore == PREFS_SPLIT_PROGRAMS;
     case MENU_SET_UNIX: return !c->kingcon;
     case MENU_SET_KINGCON: return c->kingcon;
     case MENU_SET_KC_W: return (c->kc_style & LE_KC_WINDOW) != 0;
@@ -1841,6 +1853,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->amiga_keys = c->w.amiga_keys != 0;
     f->dither = c->w.dither != 0;
     f->pad_extend = c->w.pad_extend != 0;
+    f->split_restore = c->split_restore;
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
                  : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
     copy_str(f->linkopen, c->link_open, sizeof(f->linkopen));
@@ -2265,6 +2278,9 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
     case MENU_SET_CLIP_READ_WRITE: c->w.clip_access = VT_CLIP_WRITE | VT_CLIP_READ; restyle = 1; break;
     case MENU_SET_CLIP_OFF: c->w.clip_access = 0; restyle = 1; break;
+    case MENU_SET_SPLIT_OFF: c->split_restore = PREFS_SPLIT_OFF; break;
+    case MENU_SET_SPLIT_LAYOUT: c->split_restore = PREFS_SPLIT_LAYOUT; break;
+    case MENU_SET_SPLIT_PROGRAMS: c->split_restore = PREFS_SPLIT_PROGRAMS; break;
     case MENU_SET_UNIX:
     case MENU_SET_KINGCON:
         sel_close(c);

@@ -197,6 +197,10 @@ CONFIGURATION (profiles)
                                grid (the part of the window that is not a whole cell)
                                are the background, or take the colour of the cell next
                                to them
+     split-restore = off       off | layout | programs: what a tab split into
+                               panes keeps when the window opens again -- nothing,
+                               its panes and their directories, or also the
+                               command each pane was running
      highlight-cat = on        on | off: vsh's cat shows files through hl -p
                                (see VIEWING FILES). The save also writes it
                                to ENV:up-term/highlight-cat (and ENVARC:'s),
@@ -281,7 +285,7 @@ COMMANDS (/cursor bar)
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
      /backspace bs      /program-clipboard read-write
      /amiga-keys off    /dither off
-     /padding-color extend
+     /padding-color extend   /split-restore layout
      /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.
    "/" alone, "//", "/Work" and every other path are the shell's as

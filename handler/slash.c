@@ -12,6 +12,10 @@ static const slash_value v_bell[] = {
     { "none", MENU_SET_BELL_NONE, 1 }, { "beep", MENU_SET_BELL_BEEP, 1 },
     { "visual", MENU_SET_BELL_VISUAL, 1 }, { 0, 0, 0 }
 };
+static const slash_value v_split[] = {
+    { "off", MENU_SET_SPLIT_OFF, 1 }, { "layout", MENU_SET_SPLIT_LAYOUT, 1 },
+    { "programs", MENU_SET_SPLIT_PROGRAMS, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_bold[] = ONOFF(MENU_SET_BOLD);
 static const slash_value v_meta[] = {
     { "amiga", MENU_SET_META_AMIGA, 1 }, { "alt", MENU_SET_META_ALT, 1 }, { 0, 0, 0 }
@@ -115,6 +119,8 @@ static const slash_def table[] = {
     { "selection-fg", SL_ARG, SLASH_SEL_FG, 1, 0, "RRGGBB | none", "the selected text's colour" },
     { "setup", SL_ACTION, SLASH_SETUP, 0, 0, "", "what this window has set, and where each came from" },
     { "size", SL_ARG, SLASH_SIZE, 1, 0, "COLSxROWS", "the window sized to the grid (80x24)" },
+    { "split-restore", SL_CHOICE, 0, 0, v_split, "off | layout | programs",
+      "what a split tab keeps when the window opens again (programs: each pane's command too)" },
     { "state", SL_ARG, SLASH_STATE, 0, 0, "[KEY]", "what the user did in this window (counters; UPTerm state)" },
     { "tab", SL_CHOICE, 0, 0, v_tab, "new | next | previous | close", "tabs" },
     { "term", SL_ARG, SLASH_TERM, 1, 0, "NAME | none",
