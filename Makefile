@@ -1048,7 +1048,7 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
-	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' dialog
+	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
 	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
 	cp man/sz.1 $(KIT)/Files/userland/share/man/man1/rz.1
