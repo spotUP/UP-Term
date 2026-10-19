@@ -78,3 +78,22 @@ No single function dominates: a CSI costs ~480 instructions across scan + csi_fa
    read-modify-write on chip RAM, which instruction counts cannot show. Next candidates: byte-aligned
    plain stores when the bit phase is 0, and merging the per-plane fb/bb decode into one pass; both need
    a rig measurement of bus time, not vamos.
+
+## Rig 2 measurements after fixes 1 and 2, and the painter premise (2026-10-19, later)
+
+Same commands as above (`VTC:engbench ONLY 7 PERS 0 REPS 3`, `VTC:phaseprobe ONLY 8`, XCON: window, PROF=1 SERIAL=1 handler, `--a1200`), at 77c97cdb.
+
+RTG Workbench (800x600x24; what the first measurements ran on):
+
+| what | before | after fixes 1+2 |
+|---|---|---|
+| phaseprobe wall per 4,268-byte write | 122 ms | 107 ms |
+| vt_feed per write | 49.4 ms | 38.9 ms (779 ms / 20) |
+| engbench workload 7 | 24 ticks | 20 ticks (106,590 bytes/s) |
+| render per write | 61 ms | 56 ms (1.118 s / 20; 5 renders, 224 ms each) |
+
+Correction to "Where the painter's 106 us a cell go": on the RTG screen the painter did not run at all. `paints/texts` reads 0 / 301 (and 0 for every shape of the earlier runs): screen_planes_ok refuses a bitmap that is not planar chip RAM, so every run went through Text() into the card. The 106 us a cell (now 119 us) is the Text() path, and the "BFINS read-modify-write on chip RAM" explanation never applied to those numbers. The painter only runs on a native planar screen (`rig.py aga`, 640x256x4 here; the stock A1200 case).
+
+AGA screen (`rig.py aga`, then `start --a1200`), after fixes 1+2: 598 ms per write (597 / 598 over two runs), vt_feed 38.9 ms, render 546 ms per write (1.8 s per render, 6 renders), 415 painter runs and 318 Text runs, WaitBlit 8 ms. So on the native screen the painter is the whole cost, 5x the RTG figure.
+
+Share of painter spans at bit phase 0 in workload 8 (a temporary counter on `vp_span_fast`'s caller, reverted): 0 of 415. Every span of the XCON: window is at a non-zero phase (the window's text origin is not a multiple of 8 pixels), so the plain-store path for phase 0 would never run in this window. Not built; the idea needs the text origin aligned to a byte (a window or border change) or a shifting store that avoids BFINS' read-modify-write at phase s, and is open.
