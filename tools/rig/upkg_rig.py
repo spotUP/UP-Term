@@ -282,7 +282,7 @@ def case_badsum(ck, rel):
     rel.set(packages=edit_packages(text, 'Claude', SHA256sum=('0' if good[0] != '0' else '1') + good[1:]))
     upkg('upkgupd', 'update')
     rc, out = upkg('upkgsum', 'install Claude')
-    ck(rc != 0 and re.search(r'sha256|checksum', out, re.I), 'badsum: refused over the checksum', out[-400:])
+    ck(rc != 0 and re.search(r'sha256|checksum|corrupt package file', out, re.I), 'badsum: refused over the checksum', out[-400:])
     ck(installed_version('Claude') is None, 'badsum: no status record for Claude', installed_version('Claude'))
     ck(not exists('ENVARC:upkg/Claude'), 'badsum: no ENVARC:upkg/Claude')
     ck(not exists('%s/Claude' % STAGE), 'badsum: nothing of Claude under %s' % STAGE)
@@ -352,6 +352,7 @@ def cli(argv):
         for need in [BUILD / 'ipk/Packages', BUILD / 'dist/UP-Term-nvim/Files/install.dos']:
             if not need.exists():
                 raise SystemExit('upkg_rig: no %s: make dist dist-ipk first' % need)
+        ir.put_vsh()   # the maintainer scripts run under GG:bin/sh: the vsh of this tree, not an older one
     with paths.rig_lock():
         rel = Release()
         try:

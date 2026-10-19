@@ -17,6 +17,7 @@ says which handler a native program's input is. build/amiga/vsh is copied to VTC
 import os, pathlib, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami, ixpty_rig, paths, screen_rig, vshwin
+import install_rig as ir
 
 # the kit's sed and the userland's cat (ixemul programs), first on vsh's PATH
 SED = paths.repo("upterm-ports") / "build/kit/userland/bin/sed"
@@ -64,9 +65,7 @@ def install():
     BIN.mkdir(exist_ok=True)
     shutil.copyfile(SED, BIN / "sed")
     shutil.copyfile(ROOT / "build/amiga/inwho", BIN / "inwho")
-    shutil.copyfile(ROOT / "build/amiga/vsh", paths.RIG / "vtc/vsh")
-    if (paths.RIG / "vtc/gg/bin/sh").exists():
-        shutil.copyfile(ROOT / "build/amiga/vsh", paths.RIG / "vtc/gg/bin/sh")
+    ir.put_vsh()
 
 
 def pty_cases(names):
