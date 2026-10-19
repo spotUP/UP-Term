@@ -31,7 +31,8 @@ enum {
     SLASH_LINK_OPEN,         /* arg: the command for a link (%s the address), or "none" */
     SLASH_TERM,              /* arg: TERM for programs vsh starts here, or "none" */
     SLASH_COLORS,            /* arg: rgb | 256 | 16 (COLORTERM, TERM for 16), or "none" */
-    SLASH_SETUP              /* the window's settings and where each came from */
+    SLASH_SETUP,             /* the window's settings and where each came from */
+    SLASH_STATE              /* arg: a key, or empty for all: the window's action counters */
 };
 
 typedef struct slash_value {
@@ -128,5 +129,30 @@ typedef struct slash_row {
 /* The /setup answer: one line per row, names and values in columns, the
  * source in brackets. Returns the bytes written (NUL-terminated). */
 int slash_setup_text(const slash_row *rows, int n, char *out, int cap);
+
+/* W47: the window's action counters, for scripts that ask "did the user do it"
+ * (the tutorial's window lesson, plan 2026-10-19-tutorial-window-lesson.md). Counters only
+ * go up, so a check compares them with a value saved before the step. The HOST window
+ * owns the block and is its only writer; it pushes the block to every tab on a change, and
+ * a tab answers /state from that copy. tabs and active (the shown tab's number, 1 = first, as
+ * Right Amiga 1-9) are the host's, copied in by the push.
+ * Keys (the /state names): tabs-opened tab-switches menu-picks last-menu slash-count
+ * last-slash copies pastes tabs active. */
+enum { STATE_TAB_OPENED = 1, STATE_SWITCH, STATE_MENU, STATE_SLASH, STATE_COPY, STATE_PASTE };
+
+typedef struct slash_state {
+    long tabs_opened, tab_switches, menu_picks, last_menu, slash_count, copies, pastes, tabs, active;
+    char last_slash[24];       /* the last typed command's name, "" before the first */
+} slash_state;
+
+/* One action: ev is a STATE_*; arg the menu item's id (STATE_MENU); name the command's (STATE_SLASH). */
+void slash_state_bump(slash_state *s, int ev, long arg, const char *name);
+
+/* The /state answer: key empty = every key, "key value" per line; a key = its bare value and "\n".
+ * Returns the bytes written (NUL-terminated), or -1 for an unknown key (out: the message). */
+int slash_state_text(const slash_state *s, const char *key, char *out, int cap);
+
+/* The name in a typed command line ("/help x" -> "help"; len bytes): its length, 0 when line is not one. */
+int slash_line_name(const char *line, int len, char *out, int cap);
 
 #endif

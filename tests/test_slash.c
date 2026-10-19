@@ -315,6 +315,54 @@ static void settings_menu_items_run_the_typed_commands(void)
     CHECK_INT(slash_menu_checked(MENU_SET_BOLD, "", ""), -1);
 }
 
+/* W47: /state answers from the counters: all keys, one key bare, an unknown key refused */
+static void state_formats_the_counters(void)
+{
+    static char out[512];
+    char name[32];
+    slash_state s;
+    memset(&s, 0, sizeof(s));
+    s.tabs = 2;
+    slash_state_bump(&s, STATE_TAB_OPENED, 0, 0);
+    slash_state_bump(&s, STATE_TAB_OPENED, 0, 0);
+    slash_state_bump(&s, STATE_SWITCH, 0, 0);
+    slash_state_bump(&s, STATE_MENU, 7, 0);
+    slash_state_bump(&s, STATE_MENU, 49, 0);
+    slash_state_bump(&s, STATE_SLASH, 0, "help");
+    slash_state_bump(&s, STATE_COPY, 0, 0);
+    slash_state_bump(&s, STATE_PASTE, 0, 0);
+    slash_state_bump(&s, STATE_PASTE, 0, 0);
+    s.active = 1;
+    /* the command is in the table and takes no argument or a key */
+    CHECK_INT(parse("/state"), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_STATE);
+    CHECK_INT(parse("/state copies"), SLASH_OK);
+    CHECK_STR(cmd.arg, "copies");
+    /* every key, "key value" per line */
+    CHECK_INT(slash_state_text(&s, "", out, sizeof(out)) > 0, 1);
+    CHECK_STR(out, "tabs-opened 2\ntab-switches 1\nmenu-picks 2\nlast-menu 49\nslash-count 1\n"
+                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\n");
+    /* one key: the bare value */
+    CHECK_INT(slash_state_text(&s, "pastes", out, sizeof(out)), 2);
+    CHECK_STR(out, "2\n");
+    CHECK_INT(slash_state_text(&s, "last-slash", out, sizeof(out)) > 0, 1);
+    CHECK_STR(out, "help\n");
+    memset(&s, 0, sizeof(s));
+    slash_state_text(&s, "last-slash", out, sizeof(out));
+    CHECK_STR(out, "-\n"); /* nothing typed yet */
+    /* an unknown key: -1 and a message that names the keys */
+    CHECK_INT(slash_state_text(&s, "nope", out, sizeof(out)), -1);
+    CHECK(strstr(out, "no key nope") != 0);
+    CHECK(strstr(out, "tab-switches") != 0);
+    /* no room: no half line */
+    CHECK(slash_state_text(&s, "", out, 30) < 30);
+    /* the typed line's name, for last-slash */
+    CHECK_INT(slash_line_name("/help cursor", 12, name, sizeof(name)), 4);
+    CHECK_STR(name, "help");
+    CHECK_INT(slash_line_name("/cursor-blink", 13, name, sizeof(name)), 12);
+    CHECK_INT(slash_line_name("/", 1, name, sizeof(name)), 0);
+}
+
 void suite_slash(void)
 {
     term_colors_and_setup_are_wired_and_pure();
@@ -325,4 +373,5 @@ void suite_slash(void)
     a_wrong_value_says_what_fits();
     the_help_lists_every_command();
     tab_completes_names_then_values();
+    state_formats_the_counters();
 }

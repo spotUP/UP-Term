@@ -115,6 +115,7 @@ static const slash_def table[] = {
     { "selection-fg", SL_ARG, SLASH_SEL_FG, 1, 0, "RRGGBB | none", "the selected text's colour" },
     { "setup", SL_ACTION, SLASH_SETUP, 0, 0, "", "what this window has set, and where each came from" },
     { "size", SL_ARG, SLASH_SIZE, 1, 0, "COLSxROWS", "the window sized to the grid (80x24)" },
+    { "state", SL_ARG, SLASH_STATE, 0, 0, "[KEY]", "what the user did in this window (counters; UPTerm state)" },
     { "tab", SL_CHOICE, 0, 0, v_tab, "new | next | previous | close", "tabs" },
     { "term", SL_ARG, SLASH_TERM, 1, 0, "NAME | none",
       "TERM for programs vsh starts here (vtcon, xterm-256color, screen-256color)" },
@@ -473,4 +474,118 @@ int slash_setup_text(const slash_row *rows, int n, char *out, int cap)
         out[k] = 0;
     }
     return k;
+}
+
+/* ---- W47: the action counters ---- */
+
+void slash_state_bump(slash_state *s, int ev, long arg, const char *name)
+{
+    switch (ev) {
+    case STATE_TAB_OPENED: s->tabs_opened++; break;
+    case STATE_SWITCH: s->tab_switches++; break;
+    case STATE_MENU: s->menu_picks++; s->last_menu = arg; break;
+    case STATE_SLASH:
+        s->slash_count++;
+        strncpy(s->last_slash, name ? name : "", sizeof(s->last_slash) - 1);
+        s->last_slash[sizeof(s->last_slash) - 1] = 0;
+        break;
+    case STATE_COPY: s->copies++; break;
+    case STATE_PASTE: s->pastes++; break;
+    }
+}
+
+int slash_line_name(const char *line, int len, char *out, int cap)
+{
+    int i = 0;
+    if (len < 2 || line[0] != '/' || cap < 2)
+        return 0;
+    while (i + 1 < len && i + 1 < cap && name_char(line[i + 1])) {
+        out[i] = line[i + 1];
+        i++;
+    }
+    out[i] = 0;
+    return i;
+}
+
+static const char *const state_keys[] = { "tabs-opened", "tab-switches", "menu-picks", "last-menu", "slash-count",
+                                           "last-slash", "copies", "pastes", "tabs", "active" };
+
+static void put_long(char *v, long n)
+{
+    char tmp[16];
+    int k = 0, j = 0;
+    unsigned long u = n < 0 ? (unsigned long)-n : (unsigned long)n;
+    do
+        tmp[k++] = (char)('0' + u % 10);
+    while ((u /= 10) != 0);
+    if (n < 0)
+        v[j++] = '-';
+    while (k)
+        v[j++] = tmp[--k];
+    v[j] = 0;
+}
+
+static void state_value(const slash_state *s, int k, char *v)
+{
+    long n = 0;
+    switch (k) {
+    case 0: n = s->tabs_opened; break;
+    case 1: n = s->tab_switches; break;
+    case 2: n = s->menu_picks; break;
+    case 3: n = s->last_menu; break;
+    case 4: n = s->slash_count; break;
+    case 5: strcpy(v, s->last_slash[0] ? s->last_slash : "-"); return;
+    case 6: n = s->copies; break;
+    case 7: n = s->pastes; break;
+    case 8: n = s->tabs; break;
+    case 9: n = s->active; break;
+    }
+    put_long(v, n);
+}
+
+/* append str to out at *k (cap bytes): 0 when it does not fit with a closing NUL */
+static int put_str(char *out, int cap, int *k, const char *str)
+{
+    int l = (int)strlen(str);
+    if (*k + l >= cap)
+        return 0;
+    strcpy(out + *k, str);
+    *k += l;
+    return 1;
+}
+
+int slash_state_text(const slash_state *s, const char *key, char *out, int cap)
+{
+    int i, k = 0, n = (int)(sizeof(state_keys) / sizeof(state_keys[0]));
+    char v[32];
+    out[0] = 0;
+    if (!key[0]) {
+        for (i = 0; i < n; i++) {
+            state_value(s, i, v);
+            if (k + (int)strlen(state_keys[i]) + (int)strlen(v) + 2 >= cap)
+                break; /* no half line */
+            put_str(out, cap, &k, state_keys[i]);
+            put_str(out, cap, &k, " ");
+            put_str(out, cap, &k, v);
+            put_str(out, cap, &k, "\n");
+        }
+        return k;
+    }
+    for (i = 0; i < n && strcmp(key, state_keys[i]); i++)
+        ;
+    if (i < n) {
+        state_value(s, i, v);
+        put_str(out, cap, &k, v);
+        put_str(out, cap, &k, "\n");
+        return k;
+    }
+    put_str(out, cap, &k, "state: no key ");
+    put_str(out, cap, &k, key);
+    put_str(out, cap, &k, "; keys:");
+    for (i = 0; i < n; i++) {
+        put_str(out, cap, &k, " ");
+        put_str(out, cap, &k, state_keys[i]);
+    }
+    put_str(out, cap, &k, "\n");
+    return -1;
 }
