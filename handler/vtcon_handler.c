@@ -6345,7 +6345,7 @@ static void packet(con *c, struct DosPacket *p)
         {
             char *buf = (char *)p->dp_Arg2;
             buf[0] = buf[1] = 0;
-            slash_env_list(c->term, c->colors, c->w.pers == VT_AMIGA ? "vtcon-amiga" : "", buf, p->dp_Arg3);
+            slash_env_list(c->term, c->colors, c->w.pers == VT_AMIGA ? "vtcon-amiga" : "", c->le.utf8, buf, p->dp_Arg3);
         }
         reply(p, DOSTRUE, 0);
         return;

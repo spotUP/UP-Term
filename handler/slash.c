@@ -346,10 +346,10 @@ int slash_colors_ok(const char *name)
     return !strcmp(name, "rgb") || !strcmp(name, "256") || !strcmp(name, "16");
 }
 
-long slash_env_list(const char *term, const char *colors, const char *dflt_term, char *out, long max)
+long slash_env_list(const char *term, const char *colors, const char *dflt_term, int utf8, char *out, long max)
 {
     long k = 0;
-    const char *e[2];
+    const char *e[3];
     char t[48];
     int i, ne = 0, c16 = !strcmp(colors, "16");
     if (!term[0] || c16)
@@ -367,6 +367,8 @@ long slash_env_list(const char *term, const char *colors, const char *dflt_term,
         e[ne++] = "COLORTERM=truecolor";
     else if (!strcmp(colors, "256") || c16)
         e[ne++] = "COLORTERM=";
+    if (utf8)
+        e[ne++] = "LC_CTYPE=C.UTF-8";
     for (i = 0; i < ne; i++) {
         long n = (long)strlen(e[i]) + 1;
         if (k + n + 1 > max)

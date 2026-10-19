@@ -102,6 +102,10 @@ USE
   XTERM AMIGA PCANSI (dialect)  LATIN1 or CP437 (xterm byte set; default
   UTF-8)
 
+  Encoding: in a UTF-8 window vsh sets LC_CTYPE=C.UTF-8, so the programs
+  it runs (upkg-ui, nano, less) write UTF-8. LATIN1 and CP437 windows do
+  not set it, and those programs keep to ISO 8859-1.
+
   Terminal type: vsh sets TERM=vtcon and TERMCAP for the programs it runs
   when it is in an XCON: window. From the AmigaDOS Shell in XCON:, or in
   tcsh, set them for that shell:

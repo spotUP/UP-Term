@@ -212,28 +212,36 @@ static void term_colors_and_setup_are_wired_and_pure(void)
     CHECK_INT(slash_colors_ok("256"), 1);
     CHECK_INT(slash_colors_ok("16"), 1);
     CHECK_INT(slash_colors_ok("8"), 0);
-    n = slash_env_list("xterm-256color", "rgb", "", buf, sizeof(buf));
+    n = slash_env_list("xterm-256color", "rgb", "", 0, buf, sizeof(buf));
     CHECK_INT(n, 20 + 20 + 1);
     CHECK_STR(buf, "TERM=xterm-256color");
     CHECK_STR(buf + 20, "COLORTERM=truecolor");
     CHECK_INT(buf[n - 1], 0);
-    n = slash_env_list("", "256", "", buf, sizeof(buf));
+    n = slash_env_list("", "256", "", 0, buf, sizeof(buf));
     CHECK_STR(buf, "COLORTERM="); /* unset */
-    CHECK_INT(slash_env_list("", "", "", buf, sizeof(buf)), 0);
-    CHECK_INT(slash_env_list("vtcon", "rgb", "", buf, 10), 0); /* does not fit */
+    CHECK_INT(slash_env_list("", "", "", 0, buf, sizeof(buf)), 0);
+    CHECK_INT(slash_env_list("vtcon", "rgb", "", 0, buf, 10), 0); /* does not fit */
     /* B4: an AMIGA window has no back colour erase; its TERM says so, and a /term beats it */
-    n = slash_env_list("", "", "vtcon-amiga", buf, sizeof(buf));
+    n = slash_env_list("", "", "vtcon-amiga", 0, buf, sizeof(buf));
     CHECK_STR(buf, "TERM=vtcon-amiga");
-    CHECK_INT(slash_env_list("", "", "", buf, sizeof(buf)), 0); /* XTERM: vsh's own vtcon stays */
-    slash_env_list("screen", "", "vtcon-amiga", buf, sizeof(buf));
+    CHECK_INT(slash_env_list("", "", "", 0, buf, sizeof(buf)), 0); /* XTERM: vsh's own vtcon stays */
+    slash_env_list("screen", "", "vtcon-amiga", 0, buf, sizeof(buf));
     CHECK_STR(buf, "TERM=screen");
     /* W46 (c): 16 colours is a TERM (the kit's xterm-16color), over a /term too */
-    n = slash_env_list("xterm-256color", "16", "", buf, sizeof(buf));
+    n = slash_env_list("xterm-256color", "16", "", 0, buf, sizeof(buf));
     CHECK_INT(n, 19 + 11 + 1);
     CHECK_STR(buf, "TERM=xterm-16color");
     CHECK_STR(buf + 19, "COLORTERM=");
-    slash_env_list("", "16", "vtcon-amiga", buf, sizeof(buf));
+    slash_env_list("", "16", "vtcon-amiga", 0, buf, sizeof(buf));
     CHECK_STR(buf, "TERM=vtcon-amiga-16color"); /* no bce in an AMIGA window */
+    /* a UTF-8 window tells its programs to write UTF-8 (upkg-ui's chrome, nano, less); a
+     * Latin-1 or CP437 window leaves them in the C locale */
+    n = slash_env_list("", "", "", 1, buf, sizeof(buf));
+    CHECK_INT(n, 17 + 1);
+    CHECK_STR(buf, "LC_CTYPE=C.UTF-8");
+    n = slash_env_list("xterm-256color", "rgb", "", 1, buf, sizeof(buf));
+    CHECK_STR(buf + 20 + 20, "LC_CTYPE=C.UTF-8");
+    CHECK_INT(slash_env_list("", "", "", 0, buf, sizeof(buf)), 0);
     CHECK_STR(slash_source("xterm", "vtcon", ""), "this window");
     CHECK_STR(slash_source("vtcon", "vtcon", ""), "profile");
     CHECK_STR(slash_source("", 0, ""), "default");
@@ -256,7 +264,7 @@ static void settings_menu_items_run_the_typed_commands(void)
     CHECK_INT(cmd.id, SLASH_TERM);
     CHECK_STR(cmd.arg, "xterm-256color");
     CHECK_INT(slash_term_ok(cmd.arg), 1);
-    CHECK_INT(slash_env_list(cmd.arg, "", "", buf, sizeof(buf)) > 0, 1);
+    CHECK_INT(slash_env_list(cmd.arg, "", "", 0, buf, sizeof(buf)) > 0, 1);
     CHECK_STR(buf, "TERM=xterm-256color");
     CHECK_INT(slash_menu_line(MENU_SET_TERM_NONE, line, sizeof(line)), 1);
     CHECK_INT(parse(line), SLASH_OK);
@@ -266,7 +274,7 @@ static void settings_menu_items_run_the_typed_commands(void)
     CHECK_INT(parse(line), SLASH_OK);
     CHECK_INT(cmd.id, SLASH_COLORS);
     CHECK_INT(slash_colors_ok(cmd.arg), 1);
-    slash_env_list("", cmd.arg, "", buf, sizeof(buf));
+    slash_env_list("", cmd.arg, "", 0, buf, sizeof(buf));
     CHECK_STR(buf, "COLORTERM=truecolor");
     CHECK_INT(slash_menu_line(MENU_SET_COLORS_256, line, sizeof(line)), 1);
     CHECK_STR(line, "/colors 256");

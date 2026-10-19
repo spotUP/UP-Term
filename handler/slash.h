@@ -91,10 +91,14 @@ const slash_def *slash_table(int *n);
  * vtcon-amiga for an AMIGA personality window, whose terminal does not
  * erase to the program's background (no bce). 16 tells TERM=<dflt_term>-16color
  * (xterm-16color when dflt_term is ""), over a /term too: a 256-colour TERM
- * would leave /colors 16 without effect. Returns its bytes (the closing NUL included), 0 when nothing is told. */
+ * would leave /colors 16 without effect. utf8: the window decodes UTF-8 (an XTERM window
+ * with neither LATIN1 nor CP437), told as LC_CTYPE=C.UTF-8 so its programs write UTF-8
+ * (libixcompat's setlocale; without it they write Latin-1, the C locale's); LC_CTYPE, not
+ * LANG: the encoding is the window's, the language the user's. Returns its bytes (the
+ * closing NUL included), 0 when nothing is told. */
 int  slash_term_ok(const char *name);
 int  slash_colors_ok(const char *name);
-long slash_env_list(const char *term, const char *colors, const char *dflt_term, char *out, long max);
+long slash_env_list(const char *term, const char *colors, const char *dflt_term, int utf8, char *out, long max);
 
 /* Where a setting's value came from: "this window" when it differs from
  * the profile's (profile: its value, 0 when the profile has no such key;
