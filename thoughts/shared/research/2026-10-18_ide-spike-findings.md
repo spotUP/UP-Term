@@ -1,7 +1,7 @@
 ---
 date: 2026-10-18
 topic: Amiga IDE spike findings - Scintilla 5 + Lexilla + Scinterm on 68k
-status: draft (go/no-go pending perf root cause)
+status: final (go on 060; 020 + 68882 fails; 040 needs real hardware)
 source: thoughts/shared/research/2026-10-12_amiga-ide-brainstorm.md (section "Spike")
 ledger: thoughts/shared/plans/2026-10-18-ide-spike.progress.md
 ---
@@ -13,11 +13,13 @@ run well enough on an 040?
 
 ## Answer
 
-Provisional (2026-10-19). Builds: yes, with shims, no Scintilla source patched. Runs correctly: yes, after
-the C++ start-up runtime, the gcc16 callee-saved-register fix and a `__stack` definition.
-Performance: no-go as built. On a 68060 (rig 4) a keystroke takes 2.8 s against a 100 ms bar (about 30-45x over),
-so an 040 or 020 is worse. The final go/no-go depends on whether the perf hunt finds a fixable per-repaint
-pathology (see the placeholder under Numbers).
+Builds: yes, with shims, no Scintilla source patched. Runs correctly: yes, after the C++ start-up runtime,
+the gcc16 callee-saved-register fix and a `__stack` definition.
+Performance: go on a 68060, no-go on a 68020 + 68882, open on an 040 (needs a real-hardware measurement). The first slow numbers (2.8 s per key on a 68060) came from a
+soft-float build: gcc16 `-m68040` emits double arithmetic as ixemul.library calls, and Scintilla lays out in
+double. Built with `-m68020 -m68881`, a key costs 23 ms on the 68060, under the 100 ms bar, and 645 ms on a
+68020 + 68882 at real speed, over it. Without an FPU
+(stock A1200) the IDE stays at soft-float speed and is not usable.
 
 ## Build result (S1-S3): builds
 
@@ -110,7 +112,42 @@ buffer). "Terminal" is `doupdate`.
 The cost is inside Scintilla, not the terminal. Open, key and scroll cost about the same, which suggests a
 per-repaint constant rather than work that scales with the operation.
 
-PENDING: performance root cause (agent perf hunt, scratchpad spike/perf.md).
+### Root cause: soft-float through ixemul.library (2026-10-19)
+
+The spike was built with `-m68040`. gcc16 m68k-amigaos treats `-m68040` (and `-m68060`) as soft-float: every
+double operation becomes a libcall (`___adddf3`, `___muldf3`, ...), and in our link those resolve to stubs
+that jump through ixemul.library vectors. Scintilla's layout type `XYPOSITION` is `double`, so every
+position, width and wrap calculation of every repaint went through a library call.
+
+Evidence:
+
+- The paint cost is real CPU work, not a wait: with the JIT off it rises from 2.9 s to 7.7 s per key.
+- The same source built natively on macOS paints a key in under 1 ms, with a flat profile, so the
+  pathology is in the Amiga build, not in Scintilla.
+- `nm` on the Scintilla objects shows `U ___adddf3` / `___muldf3` / `___divdf3`; `-m68040 -mhard-float` or
+  `-m68020 -m68881` emits FPU instructions instead.
+- Rebuilt with `-m68020 -m68881`, no other change, same rig, back to back (rig 4, `--max`, 68060 + JIT):
+
+| Build | Open | Key | Scroll | Key paint |
+|---|---|---|---|---|
+| soft-float (`-m68040`) | 3279 ms | 3223 ms | 3241 ms | 3223 ms |
+| FPU (`-m68020 -m68881`) | 280 ms | 23 ms | 60 ms | 23 ms |
+
+Key cost drops 140x, under the 100 ms bar on the 060. Results: `ide-spike/results/scidemo-lite-060.txt`
+(FPU) and `scidemo-lite-sf-060.txt` (soft-float).
+
+Two toolchain issues the FPU build exposed:
+
+- gcc16 installs its own `math-68881.h` in its include dir, older than ixemul's (no `log10f` and the other
+  2026 additions). It comes first on the include path, so `<cmath>` fails under `-m68881`. ixemul's
+  `math.h` includes it with `<>`; including `"math-68881.h"` would make ixemul's copy win. The spike
+  worked around it with an include dir ahead of gcc16's that links to ixemul's header.
+- `round` in libixcompat.a is soft-float compiled and returns its double in d0/d1; an FPU caller reads fp0
+  and gets garbage, silently. The spike's `compat/ixcompat_cxx.h` defines `round` inline (fintrz) under
+  `__HAVE_68881__`. Any libixcompat function returning double has the same problem for FPU callers.
+
+Consequence: an IDE built this way needs an FPU (68881/68882, 040, 060). A stock A1200 (68020, no FPU)
+would need the soft-float build, at the speed above.
 
 ## Lexer coverage (S6)
 
@@ -131,8 +168,22 @@ PENDING: performance root cause (agent perf hunt, scratchpad spike/perf.md).
 
 ## Go / no-go
 
-Provisional: no-go as built. It builds and runs correctly, but a keystroke costs 2.8-4.5 s on a 68060 against a
-100 ms bar (about 30-45x over), so an 040 or 020 is worse. The final go/no-go depends on whether the perf hunt
-finds a fixable per-repaint pathology.
+Built with `-m68020 -m68881` (FPU required):
 
-PENDING: performance root cause (agent perf hunt, scratchpad spike/perf.md).
+| Machine | Open (<= 2 s) | Key (<= 100 ms) | Scroll | RAM drop (<= 4 MB) | Verdict |
+|---|---|---|---|---|---|
+| 68060 + JIT (rig 4 `--max`) | 280 ms | 23 ms | 60 ms | pass | go |
+| 68020 + 68882, real speed (rig 4 `--a1200`) | 9446 ms | 645 ms | 1731 ms | 667 KB | no-go |
+| 68040 | not measured | not measured | not measured | - | needs real hardware |
+| no FPU (soft-float build) | 3.0-3.3 s on a 060 | 2.8-4.5 s on a 060 | - | - | no-go |
+
+020 split (`ide-spike/results/scidemo-lite-a1200.txt`): key paint 612 ms + terminal 33 ms; open paint 7959 ms +
+terminal 1487 ms; scroll paint 634 ms + terminal 1097 ms. Scintilla paint still dominates the key, so the
+next performance work is inside `Editor::Paint`, not in the terminal.
+
+The floor (020) fails, so by the rule under "Numbers" the 040 verdict needs a measurement on a real 040, not a
+scaling guess.
+
+Before the IDE is built for real, fix the two toolchain issues under "Root cause" in the toolchain itself,
+not with the spike's workarounds: the stale gcc16 `math-68881.h`, and libixcompat functions that return
+double in d0/d1 to FPU callers.
