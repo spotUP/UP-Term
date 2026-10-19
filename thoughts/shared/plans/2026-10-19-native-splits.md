@@ -83,6 +83,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 
 ### Phase 3 - host hosts several simultaneously drawn panes
 - [ ] NS3.1 `TM_RECT` message and pane-aware REGISTER answer; hide/show handshake skipped for panes in the same tab; host runs `lay_solve` on NEWSIZE. Rig test: open XCON:, menu Split Right via the real menu (rig injects menu pick), assert two panes each report `stty size`/TIOCGWINSZ = pane cols x rows from `lay_solve`, typed lines land in the focused pane only, output in both visible (clipboard text read).
+  Design note (2026-10-19, from the NS0.2 rig leak): the pane rect lives in the tab's vtwin state and bind reapplies it after vr_init, the same way inset_top is reapplied. A rect set only on the renderer is lost on any re-init or reset.
 - [ ] NS3.2 Per-pane winsize/SIGWINCH correct after a window resize (extend winch_rig.py, resize_rig.py): both panes' `stty size` follow within 1 s.
 - [ ] NS3.3 Pane close: shell `exit` in one pane returns its space; last pane exit closes the window; host's own shell ending keeps window while panes live (tabs rule). Test: rig script.
 - [ ] NS3.4 Focus: click in other pane and Right Amiga focus keys move keys and the hollow/solid cursor. Test: rig injects mouse click via input.device, types, reads each pane's text.
