@@ -481,7 +481,8 @@ static void reply(struct DosPacket *p, LONG r1, LONG r2)
  * process can own a shared base to close at exit, and the library stays
  * resident anyway. DataTypesBase is one global for all windows, so png_sem
  * holds it from the open to the close: two windows decoding at once take
- * turns. kitty_decodes counts the decodes that ran: the rig's sentinel (the
+ * turns. kitty_decodes counts the decodes that gave a picture (a missing
+ * picture.datatype gives none): the rig's sentinel (the
  * PROF line "kitty decodes/placed"). */
 ULONG kitty_decodes;
 static struct SignalSemaphore png_sem;
@@ -567,7 +568,8 @@ static void png_worker(void)
         CloseLibrary(DataTypesBase);
         DataTypesBase = 0;
     }
-    kitty_decodes++;
+    if (j->out)
+        kitty_decodes++;
     ReleaseSemaphore(&png_sem);
     Forbid();
     Signal(parent, sigmask); /* j is the parent's: not touched after this */
