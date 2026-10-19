@@ -6,6 +6,12 @@
 #define TimerBase vtwin_timer
 extern struct Device *vtwin_timer;
 #include <proto/timer.h>
+ULONG vr_tx[16]; /* PROF=1: Text-path runs by reason (0 attr,1 deco,2 font,3 rgb ink,4 not planar,5 no glyphs,6 dithered bg,7 planes not ok/covered,8 other), 9..: attr bit counts in runs (bold,under,rev,...) via vr_txa */
+ULONG vr_txk[9]; /* PROF=1: EClock ticks in the Text block by reason */
+ULONG vr_txa[8]; /* PROF=1: Text-path runs with attr bit k set */
+ULONG vr_txn[2]; /* PROF=1: Text-path runs, cells in them */
+ULONG vr_fr_ticks, vr_cs_ticks; /* PROF=1: ticks in flush_run (all of it) and cell_style */
+ULONG vr_tx_ticks, vr_dr_ticks, vr_dr_calls; /* PROF=1: ticks in the Text block; ticks and calls of direct_row from the rows pass */
 ULONG vr_span_ticks; /* PROF=1: EClock ticks inside vp_span_fast calls of painter_run */
 ULONG vr_prof[9]; /* PROF=1: EClock ticks in painter_run, WaitBlit; painter calls; ticks in fill(), fills;
                    * ticks in the composed frames' blits (planar: copies), blits; ticks waiting for the
@@ -1523,7 +1529,23 @@ static int bg_apart(const vr_render *r, const vr_style *st)
     return IS_DITH(st->bgf) || ((st->bgf & VR_INK_RGB) && r->scratch[1] < 0);
 }
 
+#ifdef VTCON_PROF
+static void flush_run_in(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st);
 static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
+{
+    struct EClockVal a0, a1;
+    if (vtwin_timer)
+        ReadEClock(&a0);
+    flush_run_in(r, run, n, px, py, st);
+    if (vtwin_timer) {
+        ReadEClock(&a1);
+        vr_fr_ticks += a1.ev_lo - a0.ev_lo;
+    }
+}
+static void flush_run_in(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
+#else
+static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const vr_style *st)
+#endif
 {
     int i;
     struct TextFont *font = r->font;
@@ -1559,6 +1581,37 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
     }
     r->n_text++;
     r->blank = 0;
+#ifdef VTCON_PROF
+    struct EClockVal tx0, tx1;
+    int txr = 8;
+    {
+        int b;
+        if (!r->planar)
+            txr = 4;
+        else if (!r->glyphs)
+            txr = 5;
+        else if (st->attr)
+            txr = 0;
+        else if (st->deco)
+            txr = 1;
+        else if (st->font)
+            txr = 2;
+        else if (((st->fg | st->bg) & VR_INK_RGB) || st->fg > 255 || st->bg > 255)
+            txr = 3;
+        else if (bg_apart(r, st))
+            txr = 6;
+        else
+            txr = 7;
+        vr_tx[txr]++;
+        vr_txn[0]++;
+        vr_txn[1] += (ULONG)n;
+        for (b = 0; b < 8; b++)
+            if (st->attr & (1u << b))
+                vr_txa[b]++;
+        if (vtwin_timer)
+            ReadEClock(&tx0);
+    }
+#endif
     if (st->font && st->font <= 10 && r->alt_font[st->font])
         font = r->alt_font[st->font];
     if (!(st->attr & (VT_ATTR_SUPER | VT_ATTR_SUB)) || !draw_script(r, run, n, px, py, st, font)) {
@@ -1589,6 +1642,13 @@ static void flush_run(vr_render *r, UBYTE *run, int n, WORD px, WORD py, const v
     if ((st->attr & LINE_ATTRS & ~VT_ATTR_UNDERLINE) || (st->attr & VT_ATTR_UNDERLINE) ||
         (st->deco & VT_DECO_IDEO_MASK))
         decorate(r, n, px, py, st);
+#ifdef VTCON_PROF
+    if (vtwin_timer) {
+        ReadEClock(&tx1);
+        vr_tx_ticks += tx1.ev_lo - tx0.ev_lo;
+        vr_txk[txr] += tx1.ev_lo - tx0.ev_lo;
+    }
+#endif
 }
 
 /* The font's glyphs as bytes, for the planar path: only a font exactly 8
@@ -1951,7 +2011,23 @@ static void style_swap(vr_style *st)
 }
 
 /* The style cell c draws with (selection and blink phase applied). */
+#ifdef VTCON_PROF
+static void cell_style_in(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st);
 static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
+{
+    struct EClockVal a0, a1;
+    if (vtwin_timer)
+        ReadEClock(&a0);
+    cell_style_in(r, c, selected_cell, st);
+    if (vtwin_timer) {
+        ReadEClock(&a1);
+        vr_cs_ticks += a1.ev_lo - a0.ev_lo;
+    }
+}
+static void cell_style_in(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
+#else
+static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
+#endif
 {
     vt_color f, b, u;
     vt_resolve_colors(r->t, c, &f, &b);
@@ -3319,7 +3395,23 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
             run[n++] = g.code;
         }
         flush_run(r, run, n, run_x, py, &run_st);
+#ifdef VTCON_PROF
+        struct EClockVal dr0, dr1;
+        int drok = 0;
+        if (nd && direct_wins(dc, nd)) {
+            if (vtwin_timer)
+                ReadEClock(&dr0);
+            drok = direct_row(r, y, dc, nd);
+            if (vtwin_timer) {
+                ReadEClock(&dr1);
+                vr_dr_ticks += dr1.ev_lo - dr0.ev_lo;
+            }
+            vr_dr_calls++;
+        }
+        if (nd && !drok) {
+#else
         if (nd && !(direct_wins(dc, nd) && direct_row(r, y, dc, nd))) {
+#endif
             /* covered or not planar: the same cells through the RastPort,
              * one Text() per run of equal colours */
             int i = 0;

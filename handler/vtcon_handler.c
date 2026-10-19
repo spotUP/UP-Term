@@ -6280,6 +6280,34 @@ static void packet(con *c, struct DosPacket *p)
                     extern ULONG vr_span_ticks;
                     PROF_LOG("PROF span/painter", vr_span_ticks, vr_prof[0]);
                     vr_span_ticks = 0;
+                    {
+                        extern ULONG vr_tx[16], vr_txk[9], vr_txa[8], vr_txn[2], vr_tx_ticks, vr_dr_ticks, vr_dr_calls;
+                        int k;
+                        PROF_LOG("PROF text runs/cells", vr_txn[0], vr_txn[1]);
+                        PROF_LOG("PROF text ticks/directrow ticks", vr_tx_ticks, vr_dr_ticks);
+                        extern ULONG vr_fr_ticks, vr_cs_ticks;
+                        PROF_LOG("PROF flushrun/cellstyle", vr_fr_ticks, vr_cs_ticks);
+                        vr_fr_ticks = vr_cs_ticks = 0;
+                        PROF_LOG("PROF directrow calls", vr_dr_calls, 0);
+                        PROF_LOG("PROF txr attr/deco", vr_tx[0], vr_tx[1]);
+                        PROF_LOG("PROF txr font/rgb", vr_tx[2], vr_tx[3]);
+                        PROF_LOG("PROF txr noplanar/noglyph", vr_tx[4], vr_tx[5]);
+                        PROF_LOG("PROF txr dither/covered", vr_tx[6], vr_tx[7]);
+                        PROF_LOG("PROF txk attr/deco", vr_txk[0], vr_txk[1]);
+                        PROF_LOG("PROF txk font/rgb", vr_txk[2], vr_txk[3]);
+                        PROF_LOG("PROF txk dither/covered", vr_txk[6], vr_txk[7]);
+                        PROF_LOG("PROF txa bit0/1", vr_txa[0], vr_txa[1]);
+                        PROF_LOG("PROF txa bit2/3", vr_txa[2], vr_txa[3]);
+                        PROF_LOG("PROF txa bit4/5", vr_txa[4], vr_txa[5]);
+                        PROF_LOG("PROF txa bit6/7", vr_txa[6], vr_txa[7]);
+                        for (k = 0; k < 16; k++)
+                            vr_tx[k] = 0;
+                        for (k = 0; k < 9; k++)
+                            vr_txk[k] = 0;
+                        for (k = 0; k < 8; k++)
+                            vr_txa[k] = 0;
+                        vr_txn[0] = vr_txn[1] = vr_tx_ticks = vr_dr_ticks = vr_dr_calls = 0;
+                    }
                 }
                 PROF_LOG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
                 c->w.prof_part[3] = 0;

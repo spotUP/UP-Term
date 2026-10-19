@@ -30,3 +30,28 @@ Discarded first run: window `XCON:0/0/640/180/UP-Term/AMIGA` (Amiga dialect, pha
 Text runs: spans 413,281 of painter_run 475,811 ticks (87%), render 792 ms for 5 renders. That is not the workload of the earlier measurements; do not compare.
 
 Patch: render/amiga_render.c (vr_span_ticks around vp_span_fast, VTCON_PROF only) and handler/vtcon_handler.c (`PROF span/painter` line). No drawing change.
+
+## Follow-up: the Text runs and the rest of the rows pass (same day, same setup, rig 2 --a1200, 640x256x4 planar per wasabi screens)
+
+PROF-only counters added (render/amiga_render.c flush_run, draw_rows_now, cell_style; `PROF text ...`, `PROF txr ...`, `PROF flushrun/cellstyle` lines). One run, `phaseprobe ONLY 8`, xterm-dialect XCON window, 20 writes.
+
+Why a run goes to Text(): flush_run (render/amiga_render.c, `if (bg_apart(r, st)) {...} else if (painter_run(...) || cpu_refuses(r))`) falls through to Text() when painter_run refuses
+(`!r->planar || !r->glyphs || st->attr || st->deco || st->font || RGB ink`, or planes_ok false) or when bg_apart() is true (dithered or unmatched RGB background: fill + Text in JAM1).
+
+Text runs by reason (counted in the same order as the gate): 265 runs, 2,915 cells; dithered/unmatched background (bg_apart) 265; attr 0; deco 0; font 0; RGB ink 0; not planar 0; no glyphs 0; planes not ok/covered 0.
+(The earlier note's 318 was a different run; this one gave 265 with 415 painter runs.)
+
+| part (20 writes) | ticks | ms total | ms per write |
+|---|---|---|---|
+| rows pass (rows/scroll) | 7,829,322 | 11,037 | 552 |
+| cell_style (all calls, rows pass and others) | 6,488,780 | 9,147 | 457 |
+| flush_run, all of it | 933,744 | 1,316 | 66 |
+|   of which fill() | 506,797 | 714 | 36 |
+|   of which painter_run | 338,942 | 478 | 24 |
+|   of which Text path (265 runs) | 124,582 | 176 | 8.8 |
+| direct_row (24 calls) | 2,706 | 4 | 0.2 |
+| row loop, asm scan, rest | | | about 29 |
+
+Finding: the Text path is not the cost (8.8 ms of 552 per write). cell_style is: 457 ms per write, 83% of the rows pass (vt_resolve_colors, pen_for twice-plus, area_ink twice, vt_cell_underline_color, vt_cell_font per call).
+Caveat: ReadEClock wraps every cell_style call, so the figure includes timer overhead; the number of calls is not counted yet. Next step: count the calls and split cell_style into pen_for / area_ink / vt_resolve_colors
+(pen_for on a 16-pen AGA screen with 256-colour ncurses cells is the suspect: nearest-pen or dither lookup per call).
