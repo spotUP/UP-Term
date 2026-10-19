@@ -6,13 +6,18 @@ Files/install.dos through `upkg install Claude` on the rig, both ways (upkg plan
      "rigA.lan 2323", Return. ENVARC:Claude/remote must end with that line.
   B  UP-Term:bin/upkg-ui renamed to upkg-ui.off: the plain prompt "... [rigA.lan 2323]: " (the default is the
      value pass A kept); the script types "rigB.lan 2424", Return. ENVARC:Claude/remote must end with that line.
+  C  all three question kinds, from a rig-only questions file (no add-on ships one with all three): vsh UP-Term:bin/upkg-ask, as postinst runs it:
+     RAM:ask-three.q RAM:ask-three.ans Rig, with upkg-ui. The script clears the string and types "beta", toggles
+     the yes/no to No with Tab, moves the menu from "red" two down to "blue" with cursor-down. The answers file
+     must be exactly THREE_WANT. The window must tell LC_CTYPE=C.UTF-8 (a UTF-8 window, so upkg-ui draws the
+     U+00B7 leader); passC-*.png show it.
 
 Needs the Claude .ipk built with the question: build/dist/Claude/Files/questions in place, then
 `python3 tools/pkgs.py ipk build && python3 tools/pkgs.py feed build` (or make dist-ipk). The rig is up
 (`rig.py start --max`, UPTERM_RIG=3 for rig 3). dist/upkg-ask and the upkg-ui binary (upterm-ports pkgs/upkg-ui) are copied
 into UP-Term:bin and left there; upkg-ui is renamed back at the end. A leftover UP-Term:bin/dialog is deleted. The feed is served over http from build/ipk.
 
-  upkg_ask_rig.py [--out DIR]     the report (report.md) and the screenshots go to DIR (default build/<rig>/upkg-ask)
+  upkg_ask_rig.py [--out DIR] [--only C]     --only C runs pass C alone (no feed, no Claude .ipk); the report (report.md) and the screenshots go to DIR (default build/<rig>/upkg-ask)
 """
 import argparse, os, pathlib, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -29,6 +34,13 @@ REMOTE = 'ENVARC:Claude/remote'
 CONF = upkg_rig.CONF
 TITLE = 'upkg-ask'
 LOG = []
+THREE_Q = """# rig-only: one question of each kind
+host|string|Host name|alpha|
+fast|yesno|Fast mode|yes|
+mode|choice|Colour|red|red,green,blue
+"""
+THREE_WANT = "host='beta'\nfast='no'\nmode='blue'\n"
+DOWN = 0x4D
 
 
 def note(s):
@@ -50,9 +62,36 @@ def install_claude(rel_wait=60):
     time.sleep(rel_wait)
 
 
+def pass_c(out):
+    """Pass C: the three question kinds through upkg-ui; returns the answers file's text."""
+    (ir.VTC / 'ask-three.q').write_text(THREE_Q)
+    ir.run('Copy VTC:ask-three.q RAM:ask-three.q')
+    ir.run('Delete >NIL: RAM:ask-three.ans QUIET')
+    typewin.typ('echo "LC_CTYPE=$LC_CTYPE"; vsh UP-Term:bin/upkg-ask RAM:ask-three.q RAM:ask-three.ans Rig; echo ASK-THREE-DONE\r')
+    time.sleep(6)
+    shot(out, 'passC-string.png')
+    for _ in range(10):
+        typewin.key(typewin.BS, wait=0.15)
+    typewin.typ('beta')
+    typewin.key(typewin.RET, wait=3)
+    shot(out, 'passC-yesno.png')
+    typewin.key(typewin.TAB)
+    typewin.key(typewin.RET, wait=3)
+    shot(out, 'passC-menu.png')
+    typewin.key(DOWN)
+    typewin.key(DOWN)
+    shot(out, 'passC-menu-blue.png')
+    typewin.key(typewin.RET, wait=4)
+    note('window text, pass C:\n' + typewin.screen_text('RAM:ask-screen.txt')[-800:])
+    t = ami.read_file('RAM:ask-three.ans').decode('latin-1') if ir.run('List >NIL: RAM:ask-three.ans')[0] == 0 else None
+    note('C RAM:ask-three.ans = %r' % t)
+    return t
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', default=str(paths.RIG / 'upkg-ask'))
+    ap.add_argument('--only', choices=['C'])
     a = ap.parse_args()
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -66,6 +105,16 @@ def main():
               'Protect UP-Term:bin/upkg-ask +rwed'):
         ir.run(c)
     note('TERM/TERMINFO: ' + ' | '.join(ir.run(c)[1].strip() for c in ('GetEnv TERMINFO', 'GetEnv TERM')))
+
+    if a.only == 'C':
+        vshwin.open_vsh(TITLE, box='0/20/640/300')
+        typewin._last_title = TITLE
+        verdict['C'] = pass_c(out)
+        pc = verdict['C'] == THREE_WANT
+        head = 'Verdict: C %s' % ('PASS' if pc else 'FAIL')
+        (out / 'report.md').write_text(head + '\n\n' + '\n'.join(LOG) + '\n')
+        print(head)
+        return 0 if pc else 1
 
     rel = upkg_rig.Release()
     rel.set()
@@ -83,6 +132,9 @@ def main():
             typewin.typ('upkg -f %s remove Claude\r' % CONF)
             time.sleep(20)
         ir.run('Delete >NIL: ENVARC:Claude/remote QUIET')
+
+        # --- pass C: the three question kinds
+        verdict['C'] = pass_c(out)
 
         # --- pass A: upkg-ui
         typewin.typ('upkg -f %s install Claude\r' % CONF)
@@ -129,10 +181,11 @@ def main():
     def ok(v, want):
         return v is not None and v.rstrip('\n').split('\n')[-1].strip() == want
     pa, pb = ok(verdict.get('A'), 'rigA.lan 2323'), ok(verdict.get('B'), 'rigB.lan 2424')
-    head = 'Verdict: A %s, B %s' % ('PASS' if pa else 'FAIL', 'PASS' if pb else 'FAIL')
+    pc = verdict.get('C') == THREE_WANT
+    head = 'Verdict: A %s, B %s, C %s' % tuple('PASS' if v else 'FAIL' for v in (pa, pb, pc))
     (out / 'report.md').write_text(head + '\n\n' + '\n'.join(LOG) + '\n')
     print(head)
-    return 0 if pa and pb else 1
+    return 0 if pa and pb and pc else 1
 
 
 if __name__ == '__main__':
