@@ -41,6 +41,22 @@ static int tabslot_shows(const tab_slot *t, int k)
     return t->pane[k] && (!t->zoom || k == t->focus);
 }
 
+/* The shown pane whose place (layout pixels, the layout solved) holds x y,
+ * or -1: one pane, a divider, outside. A zoomed pane is not looked up: it
+ * is the only one shown and has the keys anyway. */
+static int tabslot_at(const tab_slot *t, int x, int y)
+{
+    int k;
+    lay_rect r;
+    if (lay_pane_count(&t->l) < 2 || t->zoom)
+        return -1;
+    for (k = 0; k < LAY_MAX_PANES; k++)
+        if (t->pane[k] && lay_pane_rect(&t->l, k, &r) &&
+            x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+            return k;
+    return -1;
+}
+
 /* A new slot at the end with one pane: its index, or -1 when all max are in use. */
 static int tabslot_add(tab_slot *t, int *n, int max, void *pane)
 {

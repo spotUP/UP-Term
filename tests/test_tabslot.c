@@ -179,6 +179,19 @@ static void the_focus_moves_to_the_pane_on_that_side(void)
     CHECK(tabslot_focused(&T[0]) == &E);
 }
 
+static void the_pane_under_a_point_is_found_by_its_place(void)
+{
+    fresh();
+    tabslot_add(T, &N, 4, &A);
+    CHECK_INT(tabslot_at(&T[0], 10, 10), -1); /* one pane: no lookup */
+    tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200); /* A | B */
+    CHECK(T[0].pane[tabslot_at(&T[0], 10, 10)] == &A);
+    CHECK(T[0].pane[tabslot_at(&T[0], 630, 190)] == &B);
+    CHECK_INT(tabslot_at(&T[0], 10, 250), -1); /* below the area */
+    tabslot_zoom(T, N, &B);
+    CHECK_INT(tabslot_at(&T[0], 10, 10), -1); /* zoomed: A is hidden */
+}
+
 static void a_zoom_shows_only_the_focused_pane_until_the_layout_changes(void)
 {
     int gone, active = 1;
@@ -216,4 +229,5 @@ void suite_tabslot(void)
     the_shown_slot_stays_shown_when_another_goes();
     the_focus_moves_to_the_pane_on_that_side();
     a_zoom_shows_only_the_focused_pane_until_the_layout_changes();
+    the_pane_under_a_point_is_found_by_its_place();
 }

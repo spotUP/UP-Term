@@ -5800,20 +5800,9 @@ static void slot_refocus(con *c, int relayout)
 static int pane_under(con *c, WORD mx, WORD my)
 {
     struct Window *win = c->own_win;
-    tab_slot *s;
-    int k;
-    if (!win || c->active < 0 || c->active >= c->ntabs || tabslot_panes(&c->slots[c->active]) < 2)
+    if (!win || c->active < 0 || c->active >= c->ntabs)
         return -1;
-    s = &c->slots[c->active];
-    mx = (WORD)(mx - win->BorderLeft);
-    my = (WORD)(my - win->BorderTop);
-    for (k = 0; k < LAY_MAX_PANES; k++) {
-        lay_rect r;
-        if (tabslot_shows(s, k) && lay_pane_rect(&s->l, k, &r) &&
-            mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h)
-            return k;
-    }
-    return -1;
+    return tabslot_at(&c->slots[c->active], mx - win->BorderLeft, my - win->BorderTop);
 }
 
 static void tab_activate(con *c, int i)
@@ -6344,6 +6333,20 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
             i != c->slots[c->active].focus) {
             c->slots[c->active].focus = i;
             slot_refocus(c, 0);
+            return 1;
+        }
+        break;
+    case IDCMP_RAWKEY:
+        if (!vti_newmouse_wheel(im->Code, &i))
+            break;
+        /* fall through: NewMouse's wheel */
+    case IDCMP_EXTENDEDMOUSE:
+        /* the wheel scrolls the pane under the pointer, keys or not */
+        if ((i = pane_under(c, im->MouseX, im->MouseY)) >= 0 &&
+            (con *)c->slots[c->active].pane[i] != tab_at(c, c->active)) {
+            if (c->slots[c->active].pane[i] == c)
+                return 0;
+            tab_post(c, (con *)c->slots[c->active].pane[i], TM_EVENT, 0, im, wheel);
             return 1;
         }
         break;
