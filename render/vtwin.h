@@ -82,6 +82,10 @@ typedef struct vtwin {
     struct RastPort *own_rp;     /* draw through this RastPort, not the window's: a tab sharing
                                   * its window with other processes (own pens and font) */
     WORD inset_top;              /* pixels above the text kept free (the tab bar) */
+    /* a split pane (NS3.1): the rect it owns in the window's inner area, as
+     * vr_set_rect; rect_on 0 = the whole area below inset_top */
+    WORD rect_x, rect_y, rect_w, rect_h;
+    UBYTE rect_on;
     /* profile (config/upconf): the window's defaults the program's
      * sequences still override; 0 / VR_KEEP keep the historical look */
     int bold_bright;             /* xterm SGR 1 takes the bright 8-15 (1, default) */
@@ -178,6 +182,9 @@ int vtwin_set_scrollback(vtwin *w, int lines);
 void vtwin_show(vtwin *w, int on);
 /* The tab bar's height changed: the text area moves, the grid follows. */
 void vtwin_set_inset(vtwin *w, WORD top);
+/* A split pane's rect in the window's inner area (pixels); a w of 0 goes
+ * back to the whole area below the inset. The grid follows. */
+void vtwin_set_rect(vtwin *w, WORD x, WORD y, WORD rw, WORD rh);
 void vtwin_cleanup(vtwin *w);
 /* the title (w->title) to the window's title bar, or the screen's */
 void vtwin_show_title(vtwin *w);

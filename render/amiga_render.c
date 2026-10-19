@@ -945,13 +945,11 @@ void vr_set_rect(vr_render *r, WORD x, WORD y, WORD w, WORD h)
     r->rect_y = y;
     r->rect_w = w;
     r->rect_h = h;
-    r->rect_own = 1;
 }
 
 void vr_reset_rect(vr_render *r)
 {
     r->rect_x = r->rect_w = r->rect_h = 0;
-    r->rect_own = 0;
 }
 
 void vr_set_inset(vr_render *r, WORD top)

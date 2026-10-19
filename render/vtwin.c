@@ -947,6 +947,8 @@ static void bind(vtwin *w, struct Window *win)
     }
     if (w->inset_top)
         vr_set_inset(&w->r, w->inset_top);
+    if (w->rect_on)
+        vr_set_rect(&w->r, w->rect_x, w->rect_y, w->rect_w, w->rect_h);
     for (k = 1; k <= 10; k++) {
         if (!w->alt[k] && w->altname[k][0])
             w->alt[k] = open_named(w->altname[k], w->altsize[k] ? w->altsize[k] : w->font->tf_YSize);
@@ -1066,9 +1068,27 @@ void vtwin_show(vtwin *w, int on)
 void vtwin_set_inset(vtwin *w, WORD top)
 {
     w->inset_top = top;
+    if (!w->t || !w->win || w->rect_on)
+        return; /* a split pane's rect already sits below the bar (the host moves it) */
+    vr_set_inset(&w->r, top);
+    vtwin_resize(w);
+}
+
+void vtwin_set_rect(vtwin *w, WORD x, WORD y, WORD rw, WORD rh)
+{
+    w->rect_on = rw > 0;
+    w->rect_x = x;
+    w->rect_y = y;
+    w->rect_w = rw;
+    w->rect_h = rh;
     if (!w->t || !w->win)
         return;
-    vr_set_inset(&w->r, top);
+    if (w->rect_on) {
+        vr_set_rect(&w->r, x, y, rw, rh);
+    } else {
+        vr_reset_rect(&w->r);
+        vr_set_inset(&w->r, w->inset_top);
+    }
     vtwin_resize(w);
 }
 
@@ -1871,8 +1891,8 @@ int vtwin_set_size(vtwin *w, int cols, int rows)
 {
     struct Window *win = w->win;
     WORD ww, wh;
-    if (!w->t || !win || cols < 1 || rows < 1)
-        return 0;
+    if (!w->t || !win || cols < 1 || rows < 1 || w->rect_on)
+        return 0; /* a split pane: the window is all its panes' (DECCOLM ignored) */
     if ((win->Flags & WFLG_BACKDROP) && (win->Flags & WFLG_BORDERLESS) && win->LeftEdge == 0 && win->TopEdge == 0 &&
         win->Width == win->WScreen->Width && win->Height == win->WScreen->Height)
         return fullscreen_size(w, cols, rows);

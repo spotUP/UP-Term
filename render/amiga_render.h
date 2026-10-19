@@ -172,9 +172,10 @@ typedef struct vr_render {
     /* The viewport rectangle the renderer owns inside the window's inner area (NS1.1):
      * offsets from the inner area's top left, a size of 0 = out to the inner area's
      * right / bottom edge (the default: follows the window, byte-identical to before
-     * rects). rect_y is the top inset the tab bar keeps free (vr_set_inset). */
+     * rects). rect_y is the top inset the tab bar keeps free (vr_set_inset). No clip
+     * region: every draw stays inside the rect on its own (a layer has one region, and
+     * the panes of a window share its layer). */
     WORD rect_x, rect_y, rect_w, rect_h;
-    UBYTE rect_own;          /* vr_set_rect was called: the layer is clipped to the rect */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
     UBYTE view_stale;      /* live output reached the grid while the view was back: the screen is not the scrollback's */
@@ -316,10 +317,9 @@ void vr_set_off(vr_render *r, int off);
  * redraws. */
 void vr_set_inset(vr_render *r, WORD top);
 /* The viewport rectangle: offsets from the window's inner area (inside the borders) and a size;
- * w and h of 0 = out to the inner area's edge. A rect of its own also installs a layer clip region
- * of exactly that rectangle (NS1.2). vr_layout must follow. */
+ * w and h of 0 = out to the inner area's edge. vr_layout must follow. */
 void vr_set_rect(vr_render *r, WORD x, WORD y, WORD w, WORD h);
-/* Back to the default rectangle (the inner area below the inset) and no clip region. */
+/* Back to the default rectangle (the inner area below the inset). */
 void vr_reset_rect(vr_render *r);
 /* The rectangle in window pixels, x1 / y1 inclusive (empty when x1 < x0 or y1 < y0). */
 void vr_rect(const vr_render *r, WORD *x0, WORD *y0, WORD *x1, WORD *y1);
