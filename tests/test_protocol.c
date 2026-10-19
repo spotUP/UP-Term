@@ -790,6 +790,56 @@ static void osc133_prompt_marks_and_jumps(void)
     vt_free(t);
 }
 
+/* OSC 133;C;cmdline_url= (kitty) tells the window what the shell runs, so
+ * it can start it again: vt_command. A and D clear it; this is also the
+ * one test that drives vsh's sender (termurl_osc133c) into the engine. */
+static void osc133_command_line(void)
+{
+    vt_term *t = p_new(80, 4);
+    char b[700], big[600];
+    int i;
+    CHECK_STR(vt_command(t), "");
+    h_put(t, "\033]133;C;cmdline_url=ls%20-l\007");
+    CHECK_STR(vt_command(t), "ls -l");
+    h_put(t, "\033]133;D;0\007");
+    CHECK_STR(vt_command(t), "");
+    h_put(t, "\033]133;C;cmdline_url=ls\007\033]133;A\007");
+    CHECK_STR(vt_command(t), "");
+    h_put(t, "\033]133;C;cmdline_url=ls\007\033]133;C\007");
+    CHECK_STR(vt_command(t), "");                 /* a plain C */
+    h_put(t, "\033]133;C;cmdline=echo a b\007");
+    CHECK_STR(vt_command(t), "echo a b");
+    h_put(t, "\033]133;C;aid=1;cmdline_url=a%3Bb%07%1B%C3%A9%zz%4\007");
+    CHECK_STR(vt_command(t), "a;b\007\033\303\251%zz%4");
+    memset(b, 'x', 400);
+    b[400] = 0;
+    h_put(t, "\033]133;C;cmdline=");
+    h_put(t, b);
+    h_put(t, "\007");
+    CHECK_STR(vt_command(t), "");                 /* overlong: dropped, not cut */
+    /* vsh's sender: encoded, trimmed, plain when too long */
+    CHECK(termurl_osc133c("echo \"a;b\" caf\303\251  \n", b, sizeof(b)) > 0);
+    CHECK_STR(b, "\033]133;C;cmdline_url=echo%20%22a%3Bb%22%20caf%C3%A9\007");
+    h_put(t, b);
+    CHECK_STR(vt_command(t), "echo \"a;b\" caf\303\251");
+    CHECK(termurl_osc133c("a/b-c.d_e~f", b, sizeof(b)) > 0);
+    CHECK_STR(b, "\033]133;C;cmdline_url=a/b-c.d_e~f\007");
+    CHECK(termurl_osc133c("", b, sizeof(b)) > 0);
+    CHECK_STR(b, "\033]133;C\007");
+    for (i = 0; i < 599; i++)
+        big[i] = 'a';
+    big[599] = 0;
+    CHECK(termurl_osc133c(big, b, sizeof(b)) > 0);
+    CHECK_STR(b, "\033]133;C\007");                /* over 512 bytes */
+    big[100] = 0;
+    for (i = 0; i < 100; i++)
+        big[i] = ' ' + 1; /* '!' encodes to 3 bytes: 300 > the engine's string */
+    CHECK(termurl_osc133c(big, b, sizeof(b)) > 0);
+    CHECK_STR(b, "\033]133;C\007");
+    CHECK_INT(termurl_osc133c("ls", b, 5), 0);    /* no room: nothing */
+    vt_free(t);
+}
+
 /* OSC 9 (iTerm2) and OSC 777 ; notify (urxvt, foot) reach the host as a
  * notification; OSC 9 ; 4 ; ... (a progress report) is not one. */
 static void osc9_and_777_notify(void)
@@ -983,6 +1033,7 @@ void suite_protocol(void)
     osc8_hyperlinks_stay_with_their_cells();
     osc8_old_links_make_room();
     osc133_prompt_marks_and_jumps();
+    osc133_command_line();
     osc9_and_777_notify();
     osc_colours_take_x11_names();
     osc52_sets_the_clipboard_in_any_size();

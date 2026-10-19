@@ -19,6 +19,17 @@
  * The length written (NUL-terminated), 0 when it does not fit in max. */
 long termurl_osc7(const char *dir, const char *host, char *out, long max);
 
+/* Text longer than this, or whose percent-encoding is longer than
+ * TERMURL_CMD_ENC (the engine's OSC string holds 255 bytes), is not sent. */
+#define TERMURL_CMD_TEXT 512
+#define TERMURL_CMD_ENC 200
+
+/* OSC 133;C with kitty's cmdline_url=<text percent-encoded> (everything but
+ * [A-Za-z0-9-._~/] encoded), BEL-terminated; trailing newline/space of text
+ * trimmed. A plain 133;C when text is empty or too long. The length written,
+ * 0 when max is too small. */
+long termurl_osc133c(const char *text, char *out, long max);
+
 /* The AmigaDOS directory an OSC 7 URL names, when it is on this machine:
  * the host part empty, "localhost", or myhost (no case). 1 and out filled
  * ("Vol:path"), 0 when it is remote, not a file: URL, does not fit, or holds

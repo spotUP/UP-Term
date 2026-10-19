@@ -428,6 +428,11 @@ void     vt_set_clipboard_access(vt_term *t, int bits);
 /* OSC 7: the last working directory a program reported (a file: URL), ""
  * when none since vt_new or RIS. */
 const char *vt_cwd(const vt_term *t);
+
+/* The command line of the last OSC 133;C that carried cmdline_url= (percent-
+ * decoded) or cmdline= (raw), "" when none; cleared by 133;A and 133;D. At
+ * most 255 bytes: a longer one is dropped whole. */
+const char *vt_command(const vt_term *t);
 /* OSC 8: the URI of the hyperlink the cell is part of, NULL when none. The
  * pointer stays valid while a cell shows the link. Cells keep links through
  * their rare-style index (vt_cell.ext), so a cell is no bigger for it. */

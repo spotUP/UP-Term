@@ -72,6 +72,60 @@ long termurl_osc7(const char *dir, const char *host, char *out, long max)
     return k;
 }
 
+long termurl_osc133c(const char *text, char *out, long max)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    long k = 0, n = (long)strlen(text), e = 0;
+    const char *p;
+    while (n > 0 && (text[n - 1] == '\n' || text[n - 1] == '\r' || text[n - 1] == ' ' || text[n - 1] == '\t'))
+        n--;
+    if (max < 8)
+        return 0;
+    out[k++] = 0x1B;
+    out[k++] = ']';
+    out[k++] = '1';
+    out[k++] = '3';
+    out[k++] = '3';
+    out[k++] = ';';
+    out[k++] = 'C';
+    if (n > 0 && n <= TERMURL_CMD_TEXT) {
+        static const char key[] = ";cmdline_url=";
+        long start = k, j;
+        int ok = 1;
+        if (k + (long)sizeof(key) + 1 < max) {
+            memcpy(out + k, key, sizeof(key) - 1);
+            k += (long)sizeof(key) - 1;
+            for (j = 0, p = text; j < n && ok; j++, p++) {
+                unsigned char c = (unsigned char)*p;
+                if (unreserved(c)) {
+                    e += 1;
+                    if (e > TERMURL_CMD_ENC || k + 2 >= max)
+                        ok = 0;
+                    else
+                        out[k++] = (char)c;
+                } else {
+                    e += 3;
+                    if (e > TERMURL_CMD_ENC || k + 4 >= max)
+                        ok = 0;
+                    else {
+                        out[k++] = '%';
+                        out[k++] = hex[c >> 4];
+                        out[k++] = hex[c & 15];
+                    }
+                }
+            }
+        } else
+            ok = 0;
+        if (!ok)
+            k = start; /* too long for the engine's string: a plain C */
+    }
+    if (k + 2 >= max)
+        return 0;
+    out[k++] = 7;
+    out[k] = 0;
+    return k;
+}
+
 int termurl_cwd_dir(const char *uri, const char *myhost, char *out, int cap)
 {
     const char *h, *p;

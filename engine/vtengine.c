@@ -161,6 +161,7 @@ struct vt_term {
     int n_links;
     vt_u8 link;
     char *cwd;
+    char cmd[VT_STR_MAX]; /* OSC 133;C cmdline_url= / cmdline=, decoded; "" none */
     int n_styles;
     /* the cluster table (VT_CLUSTER_FIRST): made on the first character
      * that needs it, grown to VT_CLUSTERS entries, swept when full */
@@ -4362,6 +4363,11 @@ const char *vt_cwd(const vt_term *t)
     return t->cwd ? t->cwd : "";
 }
 
+const char *vt_command(const vt_term *t)
+{
+    return t->cmd;
+}
+
 /* Room in a full link table: the style entries no cell uses go
  * (sweep_styles), then the links no style entry names, the rest moved down
  * and the style entries renumbered. 0 when every link is still shown. */
@@ -4472,6 +4478,39 @@ void vt_set_clipboard_access(vt_term *t, int bits)
         t->clip_access = bits & (VT_CLIP_WRITE | VT_CLIP_READ);
 }
 
+/* 133;C;key=value;...: kitty's cmdline_url (percent-encoded) or cmdline
+ * (raw). A string that filled str may be cut: no command then. */
+static void osc133_cmdline(vt_term *t, int i)
+{
+    if (t->str_len >= VT_STR_MAX - 4)
+        return;
+    while (i < t->str_len) {
+        int raw = 0, o = 0;
+        if (!strncmp(t->str + i, "cmdline_url=", 12))
+            i += 12;
+        else if (!strncmp(t->str + i, "cmdline=", 8)) {
+            i += 8;
+            raw = 1;
+        } else {
+            while (i < t->str_len && t->str[i] != ';')
+                i++;
+            i += i < t->str_len;
+            continue;
+        }
+        while (i < t->str_len && t->str[i] != ';') {
+            int h1, h2;
+            if (!raw && t->str[i] == '%' && (h1 = hexval(t->str[i + 1])) >= 0 &&
+                (h2 = i + 2 < t->str_len ? hexval(t->str[i + 2]) : -1) >= 0) {
+                t->cmd[o++] = (char)(h1 * 16 + h2);
+                i += 3;
+            } else
+                t->cmd[o++] = t->str[i++];
+        }
+        t->cmd[o] = 0;
+        return;
+    }
+}
+
 static void osc_dispatch(vt_term *t)
 {
     int i = 0, changed = 0;
@@ -4566,9 +4605,15 @@ static void osc_dispatch(vt_term *t)
         char k = i < t->str_len ? t->str[i] : 0;
         int m = k == 'A' ? VT_MARK_PROMPT : k == 'B' ? VT_MARK_COMMAND : k == 'C' ? VT_MARK_OUTPUT
               : k == 'D' ? VT_MARK_DONE : 0;
-        if (m)
+        if (m) {
             t->scr[t->cy]->mark |= (vt_u8)m;
-        else
+            if (k == 'A' || k == 'D')
+                t->cmd[0] = 0; /* the command is over / a new prompt */
+            else if (k == 'C') {
+                t->cmd[0] = 0;
+                osc133_cmdline(t, i + 1);
+            }
+        } else
             note_value(t, 'O', cmd);
         return;
     }
@@ -5940,6 +5985,7 @@ void vt_free(vt_term *t)
 void vt_reset(vt_term *t)
 {
     t->link = 0; /* no hyperlink open (the cells keep theirs) */
+    t->cmd[0] = 0;
     if (t->cwd) {
         VT_FREE(t->cwd); /* the shell will say again */
         t->cwd = 0;

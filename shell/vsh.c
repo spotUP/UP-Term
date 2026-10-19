@@ -2363,7 +2363,11 @@ static int vsh_main(int argc, char **argv)
         }
         SetSignal(0, SIGBREAKF_CTRL_C); /* a Ctrl-C at the prompt is not for this line */
         if (term_marks && !command_ran && text[strspn(text, " \t\n")]) {
-            put_str("\033]133;C\007"); /* a command's output starts here */
+            char cb[TERMURL_CMD_ENC + 40]; /* a command's output starts here, with its line */
+            if (termurl_osc133c(text, cb, sizeof(cb)))
+                put_str(cb);
+            else
+                put_str("\033]133;C\007");
             command_ran = 1;
         }
         sh.ps0_on = (sh.opts & SO_INTERACTIVE) != 0;
