@@ -30,7 +30,9 @@
 # stdin) and prints "ok N" or "FAIL N" per step; tests/test_tutorial_lessons.py uses it.
 
 lessons=${TUTORIAL_LESSONS:-UP-Term:share/tutorial}
-progress=${TUTORIAL_PROGRESS:-$HOME/.tutorial}
+# $HOME on the Amiga is a volume ("System:"): a slash after it names the volume'"'"'s parent, which grep cannot open
+case $HOME in *: | */) _home=$HOME ;; *) _home=$HOME/ ;; esac
+progress=${TUTORIAL_PROGRESS:-${_home}.tutorial}
 sandbox=${TUTORIAL_SANDBOX:-T:tutorial}
 selftest=0
 

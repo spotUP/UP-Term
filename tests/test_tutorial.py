@@ -74,6 +74,25 @@ class Tutorial(unittest.TestCase):
             self.assertEqual(self.done(), ['1'])
         self.each_shell(case)
 
+    def test_home_that_is_a_volume_keeps_the_progress_file_in_it(self):
+        """HOME is "System:" on the Amiga: "$HOME/.tutorial" would be "System:/.tutorial", the volume's parent,
+        which grep cannot open, so `tutorial next` never saw a finished lesson (rig 4, 2026-10-19)."""
+        vol = os.path.join(self.tmp, 'vol:')
+        os.mkdir(vol)
+        env = {'PATH': '/usr/bin:/bin', 'HOME': vol, 'TUTORIAL_LESSONS': LESSONS, 'TUTORIAL_SANDBOX': self.sandbox}
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                for f in (vol + '.tutorial', os.path.join(vol, '.tutorial')):
+                    if os.path.exists(f):
+                        os.remove(f)
+                subprocess.run(shell + [TUTORIAL, '1'], input=b'ls\npwd\ncd docs\ncd ..\n', cwd=self.work,
+                               capture_output=True, env=env, timeout=60)
+                self.assertTrue(os.path.exists(vol + '.tutorial'))
+                self.assertFalse(os.path.exists(os.path.join(vol, '.tutorial')))
+                r = subprocess.run(shell + [TUTORIAL, 'next'], input=b'', cwd=self.work, capture_output=True, env=env,
+                                   timeout=60)
+                self.assertIn('=== Looking at files ===', r.stdout.decode(errors='replace'))   # lesson 1 is done: next is lesson 2
+
     def test_wrong_answer_shows_the_hint_then_the_right_one_passes(self):
         def case(shell):
             rc, out = self.run_tutorial(shell, ['1'], 'echo a\nls\n')
