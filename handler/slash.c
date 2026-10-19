@@ -400,6 +400,12 @@ static const struct {
 int slash_menu_line(long id, char *out, int cap)
 {
     unsigned i;
+    if (id == MENU_HELP_SLASH) { /* Help > Slash commands: the typed /help */
+        if (cap < 6)
+            return 0;
+        strcpy(out, "/help");
+        return 1;
+    }
     for (i = 0; i < sizeof(menu_settings) / sizeof(menu_settings[0]); i++)
         if (menu_settings[i].id == id) {
             const char *cmd = menu_settings[i].is_term ? "/term " : "/colors ";
@@ -410,6 +416,11 @@ int slash_menu_line(long id, char *out, int cap)
             return 1;
         }
     return 0;
+}
+
+int slash_menu_help_where(int raw, int tty)
+{
+    return raw || tty ? SLASH_HELP_REQUESTER : SLASH_HELP_PRINT;
 }
 
 int slash_menu_checked(long id, const char *term, const char *colors)

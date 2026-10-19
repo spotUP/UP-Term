@@ -305,7 +305,8 @@ MENU
               clipboard), Tab completion, KingCON style, Profile, Save
               settings to profile
     Help      Demo tour (a tour of what the terminal does, in a new tab:
-              see DEMO; /demo does the same)
+              see DEMO; /demo does the same), Slash commands (the list of
+              commands, as /help prints it)
   Settings are the same as UP-Term Prefs, for this window and at once
   (Prefs keeps them for the profile). With KingCON completion a Complete
   menu follows. Every item is also a command (see COMMANDS). The right

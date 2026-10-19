@@ -121,6 +121,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_netinclude_in_tree.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_net ]; then python3 tests/test_vshrc_net.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_editor ]; then python3 tests/test_vshrc_editor.py; fi
@@ -464,12 +465,13 @@ $(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $
 
 # C:Claude, the native Claude client (ledger A2): the portable core
 # (claude/*.c, host-tested) with bsdsocket and AmigaDOS. bsdsocket's headers
-# are Roadshow's netinclude from NDK3.2R4 (SANA+RoadshowTCP-IP/netinclude;
-# unpack it to vendor/ndk-3.2r4-netinclude, or pass VTCON_NETINCLUDE=); only
+# are Roadshow's netinclude from NDK3.2R4 (SANA+RoadshowTCP-IP/netinclude),
+# in the tree at third_party/roadshow-netinclude (freely distributable; also
+# C:uptelnet's), or VTCON_NETINCLUDE=; only
 # net_amiga.c sees them (they carry an errno.h of their own). TLS: AmiSSL 5
 # with AMISSL_SDK=<the SDK's top directory> (its include/ inside), else a
 # build without TLS that refuses https (http URLs, the fixture, still work).
-VTCON_NETINCLUDE ?= $(CURDIR)/vendor/ndk-3.2r4-netinclude
+VTCON_NETINCLUDE ?= $(CURDIR)/third_party/roadshow-netinclude
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
 AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK
@@ -831,13 +833,10 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h $(BUILD)/amiga/o
 	$(VC) -Dmain=up_main -o $@ handler/upterm.c $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 
 # C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
-# Roadshow SDK's network headers ("Freely Distributable"): vendor/ (gitignored)
-# when unpacked there, else DCTelnet's copy, or VTCON_NETINC=<netinclude>.
-VTCON_NETINC ?= $(firstword $(wildcard $(CURDIR)/vendor/roadshow-netinclude $(DCTELNET_ROOT)/dctelnet-v2/src/third_party/netinclude) $(CURDIR)/vendor/roadshow-netinclude)
+# Roadshow network headers: VTCON_NETINCLUDE, as C:Claude's.
 $(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h net/upagent.c net/upagent.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
-	@test -d $(VTCON_NETINC) || { echo "[ERROR] C:uptelnet needs the Roadshow netinclude headers, not found at $(VTCON_NETINC): unpack them to vendor/roadshow-netinclude, or pass VTCON_NETINC=<dir> (DCTelnet's copy: dctelnet-v2, optional in upterm's repos.lock)"; exit 1; }
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -I$(VTCON_NETINC) -o $@ net/uptelnet.c net/tn.c net/upagent.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+	$(VC) -Dmain=up_main -I$(VTCON_NETINCLUDE) -o $@ net/uptelnet.c net/tn.c net/upagent.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
 $(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o

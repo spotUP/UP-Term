@@ -1457,6 +1457,8 @@ static void sbar_apply(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
 static int slash_run(con *c, const char *line, int len, char *ans, int cap, int typed);
+static void answer_print(con *c, const char *ans);
+static void output(con *c, const vt_u8 *b, long n);
 static int find_open(con *c);
 static void close_gadget(con *c);
 
@@ -1516,11 +1518,12 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
 };
 
 /* Help, the strip's last menu: the tour of what the terminal does
- * (UPDemo, in a new tab; /demo too) */
-#define MENU_HELP_ITEMS 2
+ * (UPDemo, in a new tab; /demo too) and the slash commands (/help too) */
+#define MENU_HELP_ITEMS 3
 static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
     { NM_TITLE, (STRPTR)"Help", 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Demo tour", 0, 0, 0, (APTR)MENU_DEMO }
+    { NM_ITEM, (STRPTR)"Demo tour", 0, 0, 0, (APTR)MENU_DEMO },
+    { NM_ITEM, (STRPTR)"Slash commands", 0, 0, 0, (APTR)MENU_HELP_SLASH }
 };
 
 /* Settings: what UP-Term Prefs sets for a profile, for this window, live
@@ -2329,6 +2332,22 @@ static void about(con *c)
         EasyRequest(c->w.win, &es, 0, (ULONG)STR(VTCON_BUILD));
 }
 
+/* Help > Slash commands while a program has the screen: no text into it,
+ * a requester instead (about()'s pattern) */
+static void help_slash_ask(con *c)
+{
+    struct EasyStruct es;
+    es.es_StructSize = sizeof(es);
+    es.es_Flags = 0;
+    es.es_Title = (UBYTE *)"Slash commands";
+    es.es_TextFormat = (UBYTE *)"Slash commands work at a shell prompt.\n"
+                                "Leave the program, then type /help\n"
+                                "or pick this item again.";
+    es.es_GadgetFormat = (UBYTE *)"OK";
+    if (c->w.win)
+        EasyRequest(c->w.win, &es, 0);
+}
+
 /* One menu item's action by its id, from a pick or a typed /command
  * (handler/slash.c names the same ids). 0: not an item; 1: done; 2: done,
  * a checkmark may have moved (the caller builds the strip again); 3: done,
@@ -2383,6 +2402,30 @@ static int menu_run(con *c, LONG id, int on)
     {
         /* Terminal type and Colour mode: the command each stands for */
         char line[40], ans[160];
+        if (id == MENU_HELP_SLASH) {
+            char *text;
+            if (slash_menu_help_where(c->raw, tty_active(c)) == SLASH_HELP_REQUESTER) {
+                help_slash_ask(c);
+                return 1;
+            }
+            /* the typed /help, through slash_run, its answer on the window:
+             * off the prompt's line, a partly typed line dropped (as Ctrl-C
+             * would), and an empty line for the reader's fresh prompt */
+            text = (char *)AllocVec(4096, MEMF_ANY);
+            if (text && slash_menu_line(id, line, sizeof(line)) &&
+                slash_run(c, line, (int)strlen(line), text, 4096, 1)) {
+                output(c, (const vt_u8 *)"\r\n", 2);
+                le_reset(&c->le);
+                answer_print(c, text);
+                if (!c->line_held)
+                    in_append(c, (const vt_u8 *)"\n", 1);
+                c->checked[0] = 0;
+                c->gdir_ok = 0;
+            }
+            if (text)
+                FreeVec(text);
+            return 1;
+        }
         if (slash_menu_line(id, line, sizeof(line))) {
             slash_run(c, line, (int)strlen(line), ans, sizeof(ans), 0);
             return 2;
@@ -3997,6 +4040,22 @@ static void setup_text(con *c, char *ans, int cap)
     slash_setup_text(rows, n, ans, cap);
 }
 
+/* A slash command's answer on the window, a line at a time (typed /help,
+ * and Help > Slash commands, which runs the same /help) */
+static void answer_print(con *c, const char *ans)
+{
+    int i, k = 0;
+    char crlf[2];
+    crlf[0] = '\r';
+    crlf[1] = '\n';
+    for (i = 0; ans[i]; i++)
+        if (ans[i] == '\n') {
+            output(c, (const vt_u8 *)ans + k, i - k);
+            output(c, (const vt_u8 *)crlf, 2);
+            k = i + 1;
+        }
+}
+
 static int slash_run(con *c, const char *line, int len, char *ans, int cap, int typed)
 {
     slash_cmd cmd;
@@ -4327,18 +4386,7 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
             /* UP-Term's: its answer on screen, and an empty line for the
              * reader -- a shell shows a fresh prompt */
             le_reset(&c->le);
-            if (ans[0]) {
-                int i, k = 0;
-                char crlf[2];
-                crlf[0] = '\r';
-                crlf[1] = '\n';
-                for (i = 0; ans[i]; i++)
-                    if (ans[i] == '\n') {
-                        output(c, (const vt_u8 *)ans + k, i - k);
-                        output(c, (const vt_u8 *)crlf, 2);
-                        k = i + 1;
-                    }
-            }
+            answer_print(c, ans);
             FreeVec(ans);
             if (!c->line_held)
                 in_append(c, (const vt_u8 *)"\n", 1); /* else when /theme's list closes */
