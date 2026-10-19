@@ -43,7 +43,7 @@ Measured on rig 3 020 (valid, avail_start 68445 kB), clean HEAD vs memo, same se
 1. Bench the rowcmp-free build on rig 3:
    `cd ~/Code/UP-Term/ide-spike && UPTERM_RIG=3 python3 bench_rig.py --machine a1200 --variants scidemo-lite --runs 2 --force`
    (log to a file; takes several minutes). Expect no [FAIL] lines; vidmemo hits ~34%, scroll ~1250.
-2. Write patches/ncurses-vidputs-memo.patch: diff (src.orig + patches/ncurses-tparm-pointer-cache.patch)
+2. DONE (uncommitted): patches/ncurses-vidputs-memo.patch written and round-trip checked (src.orig + tparm + memo == build/ncurses/src). Was: diff (src.orig + patches/ncurses-tparm-pointer-cache.patch)
    against build/ncurses/src, a/ b/ paths like the tparm patch. Verify: fresh copy of src.orig + both
    patches == build/ncurses/src.
 3. Commit in ide-spike by file name (bench_rig.py, scidemo.cxx, patches/ncurses-vidputs-memo.patch,
@@ -52,8 +52,14 @@ Measured on rig 3 020 (valid, avail_start 68445 kB), clean HEAD vs memo, same se
 5. Kitty: K9 handler datatypes PNG decoder behind vt_set_image_decoder, K11 render host test,
    K12 rig reachability (sentinels: kitty placed counter + datatypes decode count), K13 docs +
    THIRD-PARTY notice (CTerm MIT, Tobias Karlsson). Read the plan checklist first.
-6. Painter: read a43a5f78 + the agent's ledger notes; then re-run the ide-spike bench on AGA
-   (`rig.py aga` now keeps --a1200).
+6. Painter (agent reported 2026-10-19, rig 2 stopped): vp_span_long (691a9c26, a43a5f78) ran for all
+   414 painter runs on rig 2 --a1200 AGA 640x256x4 but gave NO speedup: render ~387 ms/write before,
+   ~394 after (0-2% slower). The 546 ms in the research doc was a 060 figure. Chip RMW count is not the
+   dominant cost. Next: time vp_span_fast against the rest of painter_run (one sonnet agent, one timing
+   question, stop at ~30 tool calls) BEFORE porting more (pre-shifted glyph store, single-plane path,
+   ClipRect check). `make test ONLY=render` was not run: host build was broken by the kitty agent's
+   engine edits at that time; run it first. Then re-run the ide-spike bench on AGA
+   (`rig.py aga` keeps --a1200 since 2f9b8b03).
 7. IDE targets still far: open ~2.7 s vs 2 s, scroll ~1.25 s vs 300 ms. Biggest costs: vidputs
    probe ~7.2 s total, mvcur 716 calls / 2.3 s. Next speed hunt goes there (subagent, sonnet).
 
