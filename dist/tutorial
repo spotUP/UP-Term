@@ -96,6 +96,17 @@ next_lesson() {
     return 1
 }
 
+# status 0 when every = line of the step passes
+checks_pass() {
+    while IFS= read -r _c; do
+        [ -n "$_c" ] || continue
+        eval "$_c" > /dev/null 2>&1 || return 1
+    done << EOT
+$chk
+EOT
+    return 0
+}
+
 # one step: md, setup, task, chk (every = line, one per line), hint, ans are set
 step() {
     [ -n "$task" ] || return 0
@@ -107,6 +118,11 @@ step() {
         echo "Task: $task"
     fi
     fails=0
+    # a check that passes before anything is typed teaches nothing: --selftest says so
+    if [ "$selftest" = 1 ] && LEARN_LINE= LEARN_OUT=/dev/null checks_pass; then
+        echo "FAIL $steps passes before the answer"
+        return 0
+    fi
     while :; do
         if [ "$selftest" = 1 ]; then
             LEARN_LINE=$ans
@@ -153,14 +169,7 @@ step() {
                 eval "$LEARN_LINE"
             fi ;;
         esac
-        pass=1
-        while IFS= read -r _c; do
-            [ -n "$_c" ] || continue
-            eval "$_c" > /dev/null 2>&1 || { pass=0; break; }
-        done << EOT
-$chk
-EOT
-        if [ "$pass" = 1 ]; then
+        if checks_pass; then
             if [ "$selftest" = 1 ]; then echo "ok $steps"; else echo "Right."; fi
             return 0
         fi

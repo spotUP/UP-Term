@@ -2,7 +2,9 @@
 """The shipped lessons of dist/tutorial (shell tutorial plan L-T2): every dist/tutorial-lessons/
 NN-name.lesson parses, every step (a ? line) has a check (=), a hint (~) and an answer (!),
 and each answer passes its own check in a practice drawer: dist/tutorial --selftest FILE
-runs the lesson with its answers and prints "ok N" or "FAIL N" per step. The host has no
+runs the lesson with its answers and prints "ok N" or "FAIL N" per step. A check that
+already passes before its answer runs (all earlier steps done) is vacuous, since any line
+would pass it, and is a FAIL too. The host has no
 nano, man, upkg or Version that the lessons can count on, so stubs that do nothing stand in
 for them (a check reads the typed line there, never their output)."""
 import os, re, shutil, subprocess, tempfile, unittest
@@ -76,6 +78,21 @@ class Lessons(unittest.TestCase):
                     steps = sum(1 for l in self.lines(f) if l.startswith('?'))
                     self.assertEqual(re.findall(r'^(ok \d+|FAIL \d+)$', out, re.M),
                                      ['ok %d' % i for i in range(1, steps + 1)], out)
+
+    def test_a_check_that_passes_before_the_answer_fails(self):
+        lesson = os.path.join(self.tmp, '99-vacuous.lesson')
+        with open(lesson, 'w') as fh:
+            fh.write('# Vacuous\n? Make a file.\n= true\n~ Try touch a.\n! touch a\n'
+                     '? Make another.\n= [ -e b ]\n~ Try touch b.\n! touch b\n')
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                env = {'PATH': '/usr/bin:/bin', 'HOME': self.tmp,
+                       'TUTORIAL_SANDBOX': os.path.join(self.tmp, 'sandbox')}
+                r = subprocess.run(shell + [TUTORIAL, '--selftest', lesson],
+                                   stdin=subprocess.DEVNULL, capture_output=True, env=env,
+                                   cwd=self.tmp, timeout=60)
+                out = r.stdout.decode() + r.stderr.decode()
+                self.assertEqual(re.findall(r'^(ok \d+|FAIL \d+)', out, re.M), ['FAIL 1', 'ok 2'], out)
 
 
 if __name__ == '__main__':
