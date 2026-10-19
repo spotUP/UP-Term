@@ -85,6 +85,12 @@ static int pm_srgb(long lin)
     return lo;
 }
 
+/* pm_srgb's answer for every linear value, filled once by pm_palette_set: a mix's three channels went through the
+ * binary search above, over a hundred mixes a match, the dearest part of a match on a 68020 */
+#define PM_LIN_MAX 4181
+static unsigned char pm_srgb_of[PM_LIN_MAX + 1];
+static int pm_srgb_ready;
+
 /* a colour's chroma as a vector on two opponent axes, red-green and yellow-blue */
 static void pm_opp(unsigned long c, long *u, long *v)
 {
@@ -146,7 +152,7 @@ static unsigned long pm_mix(unsigned long a, unsigned long b, int lev)
     int s;
     for (s = 16; s >= 0; s -= 8) {
         long la = pm_lin[(a >> s) & 255], lb = pm_lin[(b >> s) & 255];
-        out |= (unsigned long)pm_srgb(la + ((lb - la) * lev + PM_LEVELS / 2) / PM_LEVELS) << s;
+        out |= (unsigned long)pm_srgb_of[la + ((lb - la) * lev + PM_LEVELS / 2) / PM_LEVELS] << s;
     }
     return out;
 }
@@ -167,6 +173,12 @@ static int pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
     int i, j, c;
     if (n > PM_MAXPENS)
         n = PM_MAXPENS;
+    if (!pm_srgb_ready) {
+        long l;
+        for (l = 0; l <= PM_LIN_MAX; l++)
+            pm_srgb_of[l] = (unsigned char)pm_srgb(l);
+        pm_srgb_ready = 1;
+    }
     for (i = 0; i < n && p->n == n && p->pal[i] == pal[i]; i++)
         ;
     if (i == n && p->n == n)
