@@ -501,15 +501,23 @@ def case_font(ck):
         ra(K_LEFT)
         left = stty_size('font-l0')
         fonts = state_key('slot-fonts') or 0
-        line('UPTerm font-size bigger', wait=3)
-        ck(state_key('slot-fonts') == fonts + 1, 'font bigger in a split pane: `UPTerm state` slot-fonts +1',
+        # the face's next designed size: a rig with tall pixels has topaz
+        # 8 -> 9 up and nothing down, square pixels topaz 11 down (as the
+        # menus rig); topaz 9 keeps the width, so the whole size is compared
+        way = None
+        for w in ('bigger', 'smaller'):
+            line('UPTerm font-size ' + w, wait=3)
+            if (state_key('slot-fonts') or 0) == fonts + 1:
+                way = w
+                break
+        ck(way is not None, 'font size step in a split pane: `UPTerm state` slot-fonts +1',
            state_key('slot-fonts'))
-        ck(pane_count() == 2, 'font bigger: the panes stay (2)', pane_count())
+        ck(pane_count() == 2, 'font step: the panes stay (2)', pane_count())
         l2 = stty_size('font-l1')
-        ck(bool(left and l2) and l2[1] < left[1], 'font bigger: the focused pane has fewer columns', (left, l2))
+        ck(bool(left and l2) and l2 != left, 'font %s: the focused pane has a new size' % way, (left, l2))
         ra(K_RIGHT)
         r2 = stty_size('font-r1')
-        ck(bool(right and r2) and r2[1] < right[1], 'font bigger: the other pane took the font too', (right, r2))
+        ck(bool(right and r2) and r2 != right, 'font %s: the other pane took the font too' % way, (right, r2))
     finally:
         teardown()
 
