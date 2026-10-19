@@ -283,14 +283,17 @@ static LONG few_obtain(vr_render *r, int c, ULONG rgb)
             for (k = 0; k < 8; k++)
                 d->pat[i][k] = pm_pattern(i, k);
     }
+    if (!d->pp && !(d->pp = (pm_palette *)AllocVec(sizeof(pm_palette), MEMF_ANY | MEMF_CLEAR)))
+        return -1;
     if (n > 16)
         n = 16;
     GetRGB32(r->cm, 0, (ULONG)n, tab);
     for (i = 0; i < n; i++)
         pal[i] = ((tab[i * 3] >> 24) << 16) | ((tab[i * 3 + 1] >> 24) << 8) | (tab[i * 3 + 2] >> 24);
+    pm_palette_set(d->pp, pal, n);
     usable = (1UL << n) - 1;
     for (tries = 0; tries < n; tries++) {
-        pm_match(pal, n, usable, rgb, r->dither_on, &pk);
+        pm_match(d->pp, usable, rgb, r->dither_on, &pk);
         if (pk.solid < 0)
             return -1;
         solid = hold_pen(r, pal[pk.solid]);
@@ -702,6 +705,8 @@ void vr_free(vr_render *r)
             WaitBlit(); /* a template blit may still read it */
             FreeVec(r->dith->tmpl);
         }
+        if (r->dith->pp)
+            FreeVec(r->dith->pp);
         FreeVec(r->dith);
         r->dith = 0;
     }

@@ -9,6 +9,7 @@
 #include "render_host/gfx_fake.h"
 #include "../render/amiga_render.h"
 #include "harness.h"
+#include "../render/pen_match.h"
 
 #define COLS 20
 #define ROWS 8
@@ -803,6 +804,43 @@ static int text_pen(int col, int row, int bg)
  * backgrounds they are now mixes of two pens, at most a quarter of their pixels grey (before: every one); drawn
  * as text, a saturated one (chroma 120 or more) takes a pen of its hue, never the grey; and the window gives back
  * every pen it held. */
+/* pm_match on a palette made ready once (pm_palette: linear light and each pair's distance worked out ahead) picks
+ * what the match before it picked from the bare palette, for all 240 xterm colours past the first 16: the hashes
+ * are the old code's (render/pen_match.h at 182b22ed). The palette switched on every call is rebuilt each time,
+ * never matched on the one before. */
+static void pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks(void)
+{
+    static pm_palette pp;
+    static const int lv[6] = { 0, 95, 135, 175, 215, 255 };
+    unsigned long alt[16], h = 5381, h2 = 5381, t;
+    pm_pick p;
+    int i;
+    for (i = 0; i < 16; i++)
+        alt[i] = wb16[i];
+    alt[6] = 0xc02020;
+    alt[9] = 0x2020c0;
+    for (i = 16; i < 256; i++) {
+        t = i >= 232 ? (unsigned long)(8 + 10 * (i - 232)) * 0x010101
+                     : ((unsigned long)lv[(i - 16) / 36] << 16) | ((unsigned long)lv[(i - 16) / 6 % 6] << 8) |
+                           (unsigned long)lv[(i - 16) % 6];
+        pm_palette_set(&pp, wb16, 16);
+        pm_match(&pp, 0xFFFF, t, 1, &p);
+        h = (h * 33 ^ (unsigned long)(p.solid * 1000000 + p.a * 10000 + p.b * 100 + p.lev)) & 0xffffffffUL;
+        pm_palette_set(&pp, alt, 16);
+        pm_match(&pp, 0xFFFF, t, 1, &p);
+        h2 = (h2 * 33 ^ (unsigned long)(p.solid * 1000000 + p.a * 10000 + p.b * 100 + p.lev)) & 0xffffffffUL;
+    }
+    CHECK(h == 0x04827ca3UL);
+    CHECK(h2 == 0x6d3453c1UL);
+    /* and the level a pick names is that many pixels of the 8 x 8 tile in pen b */
+    for (i = 0, t = 0; i < 8; i++) {
+        unsigned char v = pm_pattern(p.lev, i);
+        for (; v; v &= (unsigned char)(v - 1))
+            t++;
+    }
+    CHECK_INT((int)t, p.lev);
+}
+
 static void light_cube_colours_on_a_16_colour_workbench_are_not_drawn_in_its_grey_pen(void)
 {
     int cols[64], n = grey_colours(cols), i, grey = 0, sat = 0;
@@ -1481,6 +1519,7 @@ static void a_kitty_image_draws_its_pixels_on_the_canvas(void)
 
 int main(void)
 {
+    pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks();
     a_kitty_image_draws_its_pixels_on_the_canvas();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();

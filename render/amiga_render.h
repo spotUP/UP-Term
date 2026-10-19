@@ -101,6 +101,7 @@ struct vr_dither {
     UBYTE pat[64][8];
     UBYTE *tmpl;
     ULONG tmpl_size;
+    struct pm_palette *pp; /* the screen's palette made ready for pm_match (pen_match.h), kept while it holds */
 };
 
 typedef struct vr_render {
