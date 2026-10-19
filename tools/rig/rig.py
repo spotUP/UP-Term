@@ -35,7 +35,7 @@ Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import fcntl, os, pathlib, re, shutil, subprocess, sys, time
+import fcntl, json, os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import wasabi as rigwasabi
@@ -43,6 +43,11 @@ import wasabi as rigwasabi
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
 CFG = RIG / "vtcon-rig.fs-uae"
+# the last start's arguments (the machine: --a1200, --060, --kick ...). A reboot from another command
+# (`rig.py aga`/`aga256`/`rtg`) boots with them, so the rig comes back as the same machine: the config is
+# rewritten from the arguments on every start, and `rig.py aga` alone once turned an --a1200 rig into the
+# default 060 + 1 GB machine, so a 68020 timing run measured the 060 (2026-10-19).
+START_ARGS = RIG / "start.args"
 # the owner's system disk (2026-10-03: the rig's copy was taken from it;
 # the old source sat in a session scratchpad that is gone). Only read: the
 # rig works on its own copy, build/rig/sys.hdf.
@@ -666,8 +671,19 @@ def screenmode(name):
     else:
         cmd = b"Copy VTC:screenmode.rtg.prefs ENVARC:Sys/screenmode.prefs"
     print(ami.req(0x02, (20).to_bytes(2, "big") + cmd)[4:].decode("latin-1"))
+    args = reboot_args(sys.argv[2:])
     stop()
-    start()
+    # a new process: the machine flags are read from sys.argv when rig.py is loaded
+    subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start"] + args, check=True)
+
+def reboot_args(given):
+    """The arguments a reboot starts with: the ones given to this command, else the last start's."""
+    if given:
+        return list(given)
+    try:
+        return json.loads(START_ARGS.read_text())
+    except (OSError, ValueError):
+        return []
 
 def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
@@ -700,6 +716,7 @@ def start(retries=2):
     if mine():
         print("already running")
         return
+    START_ARGS.write_text(json.dumps(sys.argv[2:]))
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
     log = RIG / "boot/boot.log"
