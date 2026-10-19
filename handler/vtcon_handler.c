@@ -67,6 +67,7 @@
 #include "menu_ids.h"
 #include "slash.h"
 #include "tabprog.h"
+#include "tabslot.h"
 #include "../demo/updemo.h"
 #include "brk.h"
 #include "ttyown.h"
@@ -211,14 +212,21 @@ typedef struct con {
     struct Window *own_win;      /* the window this process opened and owns (0: a tab's) */
     char tab_host[48];           /* TAB name: become a tab of that host */
     int is_tab;                  /* a tab: the window is its host's */
-    struct Message *hiding;      /* host: the HIDE the old tab has not answered yet */
-    int shown;                   /* a tab: the active one (draws, its menus on the window) */
+    int hides;                   /* host: the HIDEs the old slot's panes have not answered yet */
+    int shown;                   /* a tab: in the active slot (draws) */
+    int focused;                 /* a tab: shown and has the keys (its menus on the window) */
+    int pane_serial;             /* a tab: PANE n, the split its host spawned it for (0: a tab) */
     struct MsgPort *tab_port;    /* host: its public port (tabs register); tab: from its host */
     struct MsgPort *tab_reply;   /* replies to the messages this process sent */
     struct MsgPort *host_pub;    /* a tab: its host's public port */
     struct RastPort tab_rp;      /* a tab: its own RastPort on the shared window */
-    struct con *tab_list[TAB_MAX]; /* host: its tabs in bar order, itself among them */
+    tab_slot slots[TAB_MAX];     /* host: its tabs in bar order, each its split panes, itself among them */
     int ntabs, active;
+    struct {
+        int serial, dir;         /* the spawn's serial (0: entry free), LAY_RIGHT / LAY_DOWN */
+        struct con *from;        /* the pane split */
+    } split_wait[LAY_MAX_PANES]; /* host: splits spawned, their pane not registered yet */
+    int spawn_serial;            /* host: the last spawn's serial (the PANE number, the script's name) */
     slash_state st;              /* the action counters (slash.h): the host's own, a tab's copy of it */
     int host_only;               /* host: its own shell ended, it keeps the window for the tabs */
     char tab_name[32];           /* host: its public port's name */
@@ -1428,6 +1436,11 @@ static void parse_spec(con *c, const char *s)
         } else if (str_ipre(field, "TAB", &rest)) {
             /* TAB port: a tab in that host's window (UP-Term > New tab) */
             copy_str(c->tab_host, rest, sizeof(c->tab_host));
+        } else if (str_ipre(field, "PANE", &rest)) {
+            /* PANE n: the split the host spawned this tab for (UP-Term > Split right) */
+            c->pane_serial = 0;
+            for (; *rest >= '0' && *rest <= '9'; rest++)
+                c->pane_serial = c->pane_serial * 10 + (*rest - '0');
         } else if (str_ipre(field, "PROFILE", &rest)) {
             /* PROFILE name: the config profile (the file's, else "default") */
             while (*rest == ' ')
@@ -1487,6 +1500,8 @@ static const struct NewMenu menu_def[] = {
     { NM_ITEM, (STRPTR)"Next tab", (STRPTR)".", 0, 0, (APTR)MENU_TAB_NEXT },
     { NM_ITEM, (STRPTR)"Previous tab", (STRPTR)",", 0, 0, (APTR)MENU_TAB_PREV },
     { NM_ITEM, (STRPTR)"Close tab", 0, 0, 0, (APTR)MENU_TAB_CLOSE },
+    { NM_ITEM, (STRPTR)"Split right", (STRPTR)"D", 0, 0, (APTR)MENU_SPLIT_RIGHT },
+    { NM_ITEM, (STRPTR)"Split down", 0, 0, 0, (APTR)MENU_SPLIT_DOWN },
     { NM_ITEM, (STRPTR)"Claude", (STRPTR)"L", 0, 0, (APTR)MENU_CLAUDE },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
@@ -1735,7 +1750,7 @@ static void menu_add(con *c, struct Window *win)
     }
     vi = c->menustrip ? GetVisualInfoA(win->WScreen, 0) : 0;
     if (!vi || !LayoutMenus(c->menustrip, vi, GTMN_NewLookMenus, TRUE, TAG_DONE) ||
-        ((!c->is_tab || c->shown) && !SetMenuStrip(win, c->menustrip))) {
+        ((!c->is_tab || c->focused) && !SetMenuStrip(win, c->menustrip))) {
         FreeMenus(c->menustrip);
         c->menustrip = 0;
     }
@@ -1747,8 +1762,8 @@ static void menu_remove(con *c, struct Window *win)
 {
     if (!c->menustrip)
         return;
-    if (win && (!c->is_tab || c->shown))
-        ClearMenuStrip(win); /* a hidden tab's strip is not on the window */
+    if (win && (!c->is_tab || c->focused))
+        ClearMenuStrip(win); /* a hidden or unfocused tab's strip is not on the window */
     FreeMenus(c->menustrip);
     c->menustrip = 0;
 }
@@ -2376,6 +2391,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
     case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:
+    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -5355,7 +5371,7 @@ static void idcmp(con *c)
  * events to the active tab. Messages go both ways; whoever sends one frees
  * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
  * for. */
-enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_INSET,
+enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_RECT,
        TM_KNOB, TM_STAT, TM_STATE };
 
 struct tab_msg {
@@ -5363,8 +5379,10 @@ struct tab_msg {
     int type;
     con *from;
     struct Window *win;      /* REGISTER's answer: the window */
-    WORD inset;              /* REGISTER's answer, INSET: the bar's height */
-    int ok, what;            /* REGISTER's answer; COMMAND: MENU_TAB_* */
+    WORD inset;              /* REGISTER's answer, RECT: the bar's height */
+    WORD rx, ry, rw, rh;     /* REGISTER's answer, RECT: the pane's place (rw 0: all below the bar) */
+    int ok, what;            /* REGISTER's answer; REGISTER: the PANE serial; COMMAND: MENU_TAB_*;
+                              * SHOW: 1 when the pane has the keys */
     ULONG cls;               /* EVENT: the IDCMP class and its fields */
     UWORD code, qual;
     ULONG prev, secs, mics;
@@ -5397,10 +5415,8 @@ static void tab_replies(con *c)
 {
     struct Message *m;
     while (c->tab_reply && (m = GetMsg(c->tab_reply)) != 0) {
-        if (m == c->hiding) {
-            c->hiding = 0; /* the old tab has stopped drawing: the window is free */
-            tab_show_active(c);
-        }
+        if (((struct tab_msg *)m)->type == TM_HIDE && c->hides && !--c->hides)
+            tab_show_active(c); /* the old slot has stopped drawing: the window is free */
         FreeVec(m);
     }
 }
@@ -5430,6 +5446,12 @@ static void tab_post(con *c, con *to, int type, WORD inset, struct IntuiMessage 
 
 /* The host's block to every tab, when a counter or the tabs changed. A copy to read, never written
  * there; the tab answers /state from it, so nothing waits on another process. */
+/* the pane with the keys in slot i (the bar's tab i) */
+static con *tab_at(con *c, int i)
+{
+    return i >= 0 && i < c->ntabs ? (con *)tabslot_focused(&c->slots[i]) : 0;
+}
+
 static void stat_fill(con *c)
 {
     c->st.tabs = c->ntabs ? c->ntabs : 1;
@@ -5440,12 +5462,13 @@ static void stat_push(con *c)
 {
     int i;
     stat_fill(c);
-    for (i = 0; i < c->ntabs; i++) {
+    for (i = 0; i < c->ntabs * LAY_MAX_PANES; i++) {
+        con *p = (con *)c->slots[i / LAY_MAX_PANES].pane[i % LAY_MAX_PANES];
         struct tab_msg *t;
-        if (c->tab_list[i] == c || !c->tab_list[i]->tab_port || !(t = tab_msg(c, TM_STATE)))
+        if (!p || p == c || !p->tab_port || !(t = tab_msg(c, TM_STATE)))
             continue;
         t->st = c->st;
-        PutMsg(c->tab_list[i]->tab_port, &t->msg);
+        PutMsg(p->tab_port, &t->msg);
     }
 }
 
@@ -5499,7 +5522,7 @@ static void h_knob(void *u, const sbar_knob *k)
 {
     con *c = (con *)u;
     if (c->is_tab) {
-        struct tab_msg *t = c->host_pub && c->shown ? tab_msg(c, TM_KNOB) : 0;
+        struct tab_msg *t = c->host_pub && c->focused ? tab_msg(c, TM_KNOB) : 0;
         if (t) {
             t->knob = *k;
             PutMsg(c->host_pub, &t->msg);
@@ -5514,9 +5537,9 @@ static void h_knob(void *u, const sbar_knob *k)
 /* The scroll bar moved: to the terminal shown (ours, or the active tab's). */
 static void sbar_route(con *c, ULONG id, ULONG top)
 {
-    con *to = c->ntabs && c->active >= 0 && c->active < c->ntabs ? c->tab_list[c->active] : c;
+    con *to = tab_at(c, c->active);
     struct tab_msg *t;
-    if (to == c) {
+    if (!to || to == c) {
         dispatch(c, IDCMP_IDCMPUPDATE, (UWORD)id, 0, top, 0, 0, 0, 0, 0);
         return;
     }
@@ -5566,7 +5589,7 @@ static void bar_draw(con *c)
     h = bar_height(c);
     SetDrMd(&rp, JAM1);
     for (i = 0; i < c->ntabs; i++) {
-        con *t = c->tab_list[i];
+        con *t = tab_at(c, i);
         WORD a = x0 + (WORD)((LONG)w * i / c->ntabs), b = x0 + (WORD)((LONG)w * (i + 1) / c->ntabs) - 1;
         char label[96];
         int k = 0, n;
@@ -5590,60 +5613,192 @@ static void bar_draw(con *c)
     FreeScreenDrawInfo(win->WScreen, di);
 }
 
-/* the bar came or went: every tab's text area moves */
-static void tab_insets(con *c)
+/* the window's area inside its borders: what the panes and the bar share */
+static WORD inner_w(struct Window *win)
 {
-    WORD h = bar_height(c);
-    int i;
-    for (i = 0; i < c->ntabs; i++) {
-        if (c->tab_list[i] == c) {
-            if (c->w.t)
-                vtwin_set_inset(&c->w, h);
-        } else
-            tab_post(c, c->tab_list[i], TM_INSET, h, 0, 0);
-    }
-    if (!h && c->own_win && c->w.t && !c->host_only)
-        vtwin_show(&c->w, 1); /* the bar's pixels are text area again */
+    return (WORD)(win->Width - win->BorderLeft - win->BorderRight);
 }
 
-/* The window's text area has one owner at a time: the active tab draws, no
- * other. Handing it over is a handshake: the old tab hides (takes its
- * cursor away, stops drawing) and answers, and only then is the new one
- * shown. Shown at once, the old tab's last cursor flip or output -- a
- * complement, a row -- landed on the new tab's pixels (owner, 2026-10-03:
- * "the cursor from the other tab leaks into the second tab"). */
+static WORD inner_h(struct Window *win)
+{
+    return (WORD)(win->Height - win->BorderTop - win->BorderBottom);
+}
+
+/* The host's own session as the first slot, before the first tab or split joins it. */
+static void tab_self(con *c)
+{
+    if (!c->ntabs && tabslot_add(c->slots, &c->ntabs, TAB_MAX, c) == 0)
+        c->active = 0;
+}
+
+/* One pane's place: inset the bar's height, rect r inside the window's
+ * borders (r->w 0: the whole area below the bar). */
+static void pane_place(con *c, con *p, WORD inset, const lay_rect *r)
+{
+    struct tab_msg *t;
+    if (p == c) {
+        c->w.inset_top = inset;
+        if (c->w.t)
+            vtwin_set_rect(&c->w, (WORD)r->x, (WORD)r->y, (WORD)r->w, (WORD)r->h);
+        return;
+    }
+    if (!p->tab_port || !(t = tab_msg(c, TM_RECT)))
+        return;
+    t->inset = inset;
+    t->rx = (WORD)r->x;
+    t->ry = (WORD)r->y;
+    t->rw = (WORD)r->w;
+    t->rh = (WORD)r->h;
+    PutMsg(p->tab_port, &t->msg);
+}
+
+/* The lines between the shown slot's panes: one pixel, in the screen's
+ * shadow pen (drawn after its panes, which never draw there). */
+static void tab_dividers(con *c)
+{
+    struct Window *win = c->own_win;
+    struct DrawInfo *di;
+    lay_rect r;
+    int i, d;
+    if (!win || c->hides || c->active < 0 || c->active >= c->ntabs ||
+        tabslot_panes(&c->slots[c->active]) < 2 || !(di = GetScreenDrawInfo(win->WScreen)))
+        return;
+    SetAPen(win->RPort, di->dri_Pens[SHADOWPEN]);
+    for (i = 0; (d = lay_divider_at(&c->slots[c->active].l, i)) >= 0; i++)
+        if (lay_divider_rect(&c->slots[c->active].l, d, &r) && r.w > 0 && r.h > 0)
+            RectFill(win->RPort, (WORD)(win->BorderLeft + r.x), (WORD)(win->BorderTop + r.y),
+                     (WORD)(win->BorderLeft + r.x + r.w - 1), (WORD)(win->BorderTop + r.y + r.h - 1));
+    FreeScreenDrawInfo(win->WScreen, di);
+}
+
+/* Every pane's place, when the bar came or went, the window changed size
+ * or a slot's panes changed: a slot with one pane has all below the bar
+ * (as a tab before splits), a split one its layout solved over that area. */
+static void tab_layout(con *c)
+{
+    struct Window *win = c->own_win;
+    WORD h = bar_height(c);
+    int i, k;
+    if (!win)
+        return;
+    for (i = 0; i < c->ntabs; i++) {
+        tab_slot *s = &c->slots[i];
+        int split = tabslot_panes(s) > 1;
+        if (split)
+            lay_solve(&s->l, 0, h, inner_w(win), inner_h(win) - h);
+        for (k = 0; k < LAY_MAX_PANES; k++) {
+            lay_rect r;
+            r.x = r.y = r.w = r.h = 0;
+            if (!s->pane[k])
+                continue;
+            if (split)
+                lay_pane_rect(&s->l, k, &r);
+            pane_place(c, (con *)s->pane[k], h, &r);
+        }
+    }
+    if (!h && c->w.t && !c->host_only)
+        vtwin_show(&c->w, 1); /* the bar's pixels are text area again */
+    tab_dividers(c);
+}
+
+/* The window's text area has one owner at a time: the active slot's panes
+ * draw, no other. Handing it over is a handshake: the old slot's panes
+ * hide (take their cursors away, stop drawing) and answer, and only when
+ * all have is the new slot shown. Shown at once, the old tab's last cursor
+ * flip or output -- a complement, a row -- landed on the new tab's pixels
+ * (owner, 2026-10-03: "the cursor from the other tab leaks into the second
+ * tab"). The focused pane's menu strip goes on the window. */
 static void tab_show_active(con *c)
 {
-    con *t;
-    if (c->hiding || c->active < 0 || c->active >= c->ntabs || !c->own_win)
+    tab_slot *s;
+    int k;
+    if (c->hides || c->active < 0 || c->active >= c->ntabs || !c->own_win)
         return;
-    t = c->tab_list[c->active];
-    if (t == c) {
-        vtwin_show(&c->w, 1);
-        if (c->menustrip)
-            SetMenuStrip(c->own_win, c->menustrip);
-    } else
-        tab_post(c, t, TM_SHOW, 0, 0, 0);
+    s = &c->slots[c->active];
+    for (k = 0; k < LAY_MAX_PANES; k++) {
+        con *p = (con *)s->pane[k];
+        struct tab_msg *t;
+        if (!p)
+            continue;
+        if (p == c) {
+            vtwin_show(&c->w, 1);
+            if (k == s->focus && c->menustrip)
+                SetMenuStrip(c->own_win, c->menustrip);
+        } else if (p->tab_port && (t = tab_msg(c, TM_SHOW)) != 0) {
+            t->what = k == s->focus;
+            PutMsg(p->tab_port, &t->msg);
+        }
+    }
+    tab_dividers(c);
+}
+
+/* every pane of slot i stops drawing; the tabs among them answer (tab_replies counts) */
+static void slot_hide(con *c, int i)
+{
+    int k;
+    for (k = 0; k < LAY_MAX_PANES; k++) {
+        con *p = (con *)c->slots[i].pane[k];
+        struct tab_msg *t;
+        if (!p)
+            continue;
+        if (p == c)
+            vtwin_show(&c->w, 0);
+        else if (p->tab_port && (t = tab_msg(c, TM_HIDE)) != 0) {
+            c->hides++;
+            PutMsg(p->tab_port, &t->msg);
+        }
+    }
+}
+
+/* The shown slot's focus moved (a split, a click): its panes hand over
+ * as at a tab switch -- each answers its hide, so none still draws in the
+ * old place -- and come back with the keys and the strip on the new one. */
+static void slot_refocus(con *c)
+{
+    if (!c->own_win || c->active < 0 || c->active >= c->ntabs)
+        return;
+    ClearMenuStrip(c->own_win);
+    if (!c->hides)
+        slot_hide(c, c->active);
+    tab_show_active(c); /* now, or when the last hide is answered */
+    bar_draw(c);
+    stat_push(c);
+}
+
+/* The shown slot's pane under window pixel mx my, or -1 (one pane, the bar, a divider). */
+static int pane_under(con *c, WORD mx, WORD my)
+{
+    struct Window *win = c->own_win;
+    tab_slot *s;
+    int k;
+    if (!win || c->active < 0 || c->active >= c->ntabs || tabslot_panes(&c->slots[c->active]) < 2)
+        return -1;
+    s = &c->slots[c->active];
+    mx = (WORD)(mx - win->BorderLeft);
+    my = (WORD)(my - win->BorderTop);
+    for (k = 0; k < LAY_MAX_PANES; k++) {
+        lay_rect r;
+        if (s->pane[k] && lay_pane_rect(&s->l, k, &r) &&
+            mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h)
+            return k;
+    }
+    return -1;
 }
 
 static void tab_activate(con *c, int i)
 {
-    con *old;
     if (i < 0 || i >= c->ntabs || !c->own_win)
         return;
-    /* while a hand-over is under way the one being left still draws until
-     * it answers, and the one it was going to is not shown yet: no new hide */
-    old = !c->hiding && c->active < c->ntabs ? c->tab_list[c->active] : 0;
-    ClearMenuStrip(c->own_win); /* whoever's strip it was */
-    c->active = i;
-    if (old && old != c->tab_list[i]) {
-        if (old == c)
-            vtwin_show(&c->w, 0);
-        else if (old->tab_port && (c->hiding = (struct Message *)tab_msg(c, TM_HIDE)) != 0)
-            PutMsg(old->tab_port, c->hiding); /* answered: tab_replies shows the new one */
+    if (i != c->active) {
+        ClearMenuStrip(c->own_win); /* whoever's strip it was */
+        /* while a hand-over is under way the one being left still draws
+         * until it answers, and the one it was going to is not shown yet:
+         * no new hide */
+        if (!c->hides && c->active >= 0 && c->active < c->ntabs)
+            slot_hide(c, c->active);
+        c->active = i;
+        tab_show_active(c); /* now, or when the last hide is answered */
     }
-    if (!old || old != c->tab_list[i])
-        tab_show_active(c);
     bar_draw(c);
     stat_push(c);
 }
@@ -5656,26 +5811,22 @@ static void tab_switch(con *c, int i)
     tab_activate(c, i);
 }
 
+/* A pane left (its tab ended, or the host's own shell): its space goes to
+ * its sibling, the last of a slot takes the slot and its bar entry. */
 static void tab_remove(con *c, con *t)
 {
-    int i, was;
-    for (i = 0; i < c->ntabs && c->tab_list[i] != t; i++)
-        ;
-    if (i == c->ntabs)
+    int i, k, was, gone;
+    for (k = 0; k < LAY_MAX_PANES; k++)
+        if (c->split_wait[k].from == t)
+            c->split_wait[k].serial = 0; /* its pane comes as a tab of its own */
+    was = c->active;
+    if ((i = tabslot_remove(c->slots, &c->ntabs, &c->active, t, &gone)) < 0 || !c->ntabs)
         return;
-    was = i == c->active;
-    for (; i < c->ntabs - 1; i++)
-        c->tab_list[i] = c->tab_list[i + 1];
-    c->ntabs--;
-    if (c->active >= c->ntabs)
-        c->active = c->ntabs - 1;
-    if (!c->ntabs)
-        return;
-    tab_insets(c);
+    tab_layout(c);
     stat_push(c); /* tabs and active changed */
-    if (was) {
-        c->active = c->active < 0 ? 0 : c->active;
-        /* the one that went drew last: the new active one draws all */
+    if (i == was) {
+        /* the one that went drew last: the shown slot draws all, its
+         * focused pane's strip on the window */
         ClearMenuStrip(c->own_win);
         tab_show_active(c); /* the one that left is not drawing: it waits on us */
     }
@@ -5719,6 +5870,7 @@ struct tab_spawn_msg {
     char cmd[200];
     char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
     int prog;                    /* TAB_SHELL, or the program the tab runs (tab_progs) */
+    int serial;                  /* the spawn's number: picks the shell's script */
 };
 
 /* A tab that runs one program instead of a shell: Help > Demo tour (UPDemo)
@@ -5774,10 +5926,10 @@ static int tab_prog_script(struct tab_spawn_msg *m)
 static void tab_spawner(void)
 {
     struct tab_spawn_msg *m = (struct tab_spawn_msg *)worker_msg();
-    BPTR f;
-    char host[64], dir[256];
+    BPTR f = 0;
+    char host[64], dir[256], script[24];
     const char *vsh;
-    int cd;
+    int cd, i;
     if (m->prog) {
         if (tab_prog_script(m))
             run_async(m->cmd);
@@ -5793,7 +5945,19 @@ static void tab_spawner(void)
     if (GetVar((STRPTR)"HOSTNAME", (STRPTR)host, sizeof(host), 0) <= 0)
         host[0] = 0;
     cd = m->cwd[0] && termurl_cwd_dir(m->cwd, host, dir, sizeof(dir));
-    if ((vsh || cd) && (f = Open((STRPTR)"T:UP-Term-tab", MODE_NEWFILE)) != 0) {
+    /* a script of its own: two spawns close together (a split as the tab
+     * before it starts) shared one name, and the second's rewrite failed on
+     * the file the first shell still read -- or replaced it under it. A
+     * name its shell still holds refuses MODE_NEWFILE: the next one. */
+    for (i = 0; (vsh || cd) && !f && i < TAB_MAX * LAY_MAX_PANES; i++) {
+        unsigned n = (unsigned)(m->serial + i) % (TAB_MAX * LAY_MAX_PANES);
+        copy_str(script, "T:UP-Term-tab.", sizeof(script));
+        script[14] = (char)('0' + n / 10);
+        script[15] = (char)('0' + n % 10);
+        script[16] = 0;
+        f = Open((STRPTR)script, MODE_NEWFILE);
+    }
+    if (f) {
         FPuts(f, (STRPTR)"FailAt 2147483647\n");
         if (cd) { /* termurl_cwd_dir refused anything a quote cannot hold */
             FPuts(f, (STRPTR)"CD \"");
@@ -5806,7 +5970,8 @@ static void tab_spawner(void)
             FPuts(f, (STRPTR)"\nEndCLI >NIL:\n");
         }
         Close(f);
-        strcat(m->cmd, " FROM T:UP-Term-tab");
+        strcat(m->cmd, " FROM ");
+        strcat(m->cmd, script);
     }
     run_async(m->cmd);
     Forbid();
@@ -5844,13 +6009,15 @@ static void h_open_link(void *u, const char *uri)
     start_worker(link_opener, "UP-Term link", &m->msg);
 }
 
-/* 1 when the new tab is on its way; prog: TAB_SHELL or the program it runs */
-static int tab_spawn(con *c, const char *profile, con *from, int prog)
+/* The new tab's spawn number (never 0) when it is on its way, else 0;
+ * prog: TAB_SHELL or the program it runs. pane: a split's pane, not a tab
+ * of its own (PANE <number>: its registration finds the split it is for). */
+static int tab_spawn(con *c, const char *profile, con *from, int prog, int pane)
 {
     struct tab_spawn_msg *m;
     const struct tab_prog *p = &tab_progs[prog];
     int want_cols, want_rows, bar_rows = 0;
-    if (c->ntabs >= TAB_MAX || !c->own_win || c->foreign)
+    if ((!pane && c->ntabs >= TAB_MAX) || !c->own_win || c->foreign)
         return 0;
     /* the program's tab gets the grid it needs: the window grows first (the
      * tab bar this tab brings up included). A screen too small for it leaves
@@ -5879,14 +6046,58 @@ static int tab_spawn(con *c, const char *profile, con *from, int prog)
     if (!m)
         return 0;
     m->prog = prog;
+    if (!++c->spawn_serial)
+        c->spawn_serial = 1;
+    m->serial = c->spawn_serial;
     copy_str(m->cmd, "NewShell \"XCON:0/0/320/100/UP-Term/TAB ", sizeof(m->cmd));
     strcat(m->cmd, c->tab_name);
+    if (pane) {
+        char num[12];
+        int i = (int)sizeof(num) - 1, v = m->serial;
+        num[i] = 0;
+        do
+            num[--i] = (char)('0' + v % 10);
+        while ((v /= 10) != 0);
+        strcat(m->cmd, "/PANE ");
+        strcat(m->cmd, num + i);
+    }
     strcat(m->cmd, "/PROFILE ");
     strcat(m->cmd, profile);
     strcat(m->cmd, "\"");
     if (from && from->w.t && !prog)
         copy_str(m->cwd, vt_cwd(from->w.t), sizeof(m->cwd));
-    start_worker(tab_spawner, "UP-Term new tab", &m->msg);
+    start_worker(tab_spawner, "UP-Term new tab", &m->msg); /* m is the worker's now */
+    return c->spawn_serial;
+}
+
+/* Split from's pane in dir (LAY_RIGHT / LAY_DOWN): a shell in from's
+ * directory is spawned, and lands next to from when it registers. 0 when
+ * the split cannot be: the slot has the most panes, a pane would fall
+ * below the minimum, or splits are already on their way for all panes. */
+static int pane_split(con *c, con *from, int dir)
+{
+    struct Window *win = c->own_win;
+    tab_slot try;
+    int s, k, wait = -1, serial;
+    WORD h;
+    if (!win || c->foreign || !from)
+        return 0;
+    tab_self(c);
+    if ((s = tabslot_find(c->slots, c->ntabs, from, 0)) < 0)
+        return 0;
+    h = bar_height(c);
+    try = c->slots[s]; /* the split tried on a copy: refused now, not when the shell is up */
+    if (tabslot_split(&try, 1, from, &try, dir, from->w.r.cw, from->w.r.ch, 0, h,
+                      inner_w(win), inner_h(win) - h) < 0)
+        return 0;
+    for (k = 0; k < LAY_MAX_PANES; k++)
+        if (!c->split_wait[k].serial)
+            wait = k;
+    if (wait < 0 || !(serial = tab_spawn(c, from->profile, from, TAB_SHELL, 1)))
+        return 0;
+    c->split_wait[wait].serial = serial;
+    c->split_wait[wait].dir = dir;
+    c->split_wait[wait].from = from;
     return 1;
 }
 
@@ -5895,20 +6106,20 @@ static void host_command(con *c, int what, con *from)
 {
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile, from, TAB_SHELL);
+        tab_spawn(c, from->profile, from, TAB_SHELL, 0);
         break;
     case MENU_DEMO:
         /* the tour in a tab of its own: what it does to its screen (the
          * main screen, a resize) leaves the user's session alone */
-        if (!tab_spawn(c, from->profile, from, TAB_DEMO))
+        if (!tab_spawn(c, from->profile, from, TAB_DEMO, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
         break;
     case MENU_CLAUDE:
-        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE))
+        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_TUTORIAL:
-        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL))
+        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_TAB_NEXT:
@@ -5925,13 +6136,18 @@ static void host_command(con *c, int what, con *from)
         sbar_apply(c);
         break;
     case MENU_TAB_CLOSE:
-        if (c->ntabs >= 2 && c->tab_list[c->active] != c) {
+        if (tab_at(c, c->active) && tab_at(c, c->active) != c) {
             struct IntuiMessage im;
             memset(&im, 0, sizeof(im));
             im.Class = IDCMP_CLOSEWINDOW;
-            tab_post(c, c->tab_list[c->active], TM_EVENT, 0, &im, 0);
+            tab_post(c, tab_at(c, c->active), TM_EVENT, 0, &im, 0);
         } else
             close_gadget(c); /* as the close gadget: the active tab is ours */
+        break;
+    case MENU_SPLIT_RIGHT:
+    case MENU_SPLIT_DOWN:
+        if (!pane_split(c, from, what == MENU_SPLIT_RIGHT ? LAY_RIGHT : LAY_DOWN))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     }
 }
@@ -5955,7 +6171,7 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
 {
     int i;
     struct Window *win = c->own_win;
-    if (c->ntabs < 2 && !c->host_only)
+    if (c->ntabs < 2 && !c->host_only && !(c->ntabs && tabslot_panes(&c->slots[0]) > 1))
         return 0;
     /* Right Amiga 1-9: that tab (the digits' raw codes are the same on
      * every keymap, unlike [ and ], which a Swedish map makes letters) */
@@ -5967,22 +6183,22 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
     }
     switch (im->Class) {
     case IDCMP_NEWSIZE:
-        for (i = 0; i < c->ntabs; i++) {
-            if (c->tab_list[i] == c)
-                vtwin_resize(&c->w);
-            else
-                tab_post(c, c->tab_list[i], TM_EVENT, 0, im, wheel);
-        }
+        tab_layout(c); /* every pane's new place: a RECT each, the host's own here */
         bar_draw(c);
         return 1;
     case IDCMP_REFRESHWINDOW:
         BeginRefresh(win);
         EndRefresh(win, TRUE);
         bar_draw(c);
-        if (c->tab_list[c->active] == c)
-            vtwin_show(&c->w, 1);
-        else
-            tab_post(c, c->tab_list[c->active], TM_EVENT, 0, im, wheel);
+        if (c->active >= 0 && c->active < c->ntabs)
+            for (i = 0; i < LAY_MAX_PANES; i++) {
+                con *p = (con *)c->slots[c->active].pane[i];
+                if (p == c)
+                    vtwin_show(&c->w, 1);
+                else if (p)
+                    tab_post(c, p, TM_EVENT, 0, im, wheel);
+            }
+        tab_dividers(c);
         return 1;
     case IDCMP_MOUSEBUTTONS:
         if (im->Code == SELECTDOWN && im->MouseY >= win->BorderTop &&
@@ -5991,12 +6207,76 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
             tab_switch(c, (int)((LONG)(im->MouseX - win->BorderLeft) * c->ntabs / (w > 0 ? w : 1)));
             return 1;
         }
+        /* a click in a pane without the keys gives it them; the click
+         * itself is not the pane's (it is hidden until the hand-over ends) */
+        if (im->Code == SELECTDOWN && (i = pane_under(c, im->MouseX, im->MouseY)) >= 0 &&
+            i != c->slots[c->active].focus) {
+            c->slots[c->active].focus = i;
+            slot_refocus(c);
+            return 1;
+        }
         break;
     }
-    if (c->ntabs && c->tab_list[c->active] == c)
+    if (tab_at(c, c->active) == c)
         return 0;
-    if (c->ntabs)
-        tab_post(c, c->tab_list[c->active], TM_EVENT, 0, im, wheel);
+    if (tab_at(c, c->active))
+        tab_post(c, tab_at(c, c->active), TM_EVENT, 0, im, wheel);
+    return 1;
+}
+
+/* A tab registering: a split's pane (its PANE number one of split_wait's)
+ * goes next to the pane it split, anything else is a slot of its own --
+ * a split whose pane left meanwhile, or that no longer fits, too. The
+ * answer carries the window, the bar's height and the pane's place.
+ * 1 when answered, 0 when refused (the caller answers, ok 0). */
+static int tab_join(con *c, struct tab_msg *t)
+{
+    con *from = 0, *p = t->from;
+    int k, s = -1, id, split = 0, dir = LAY_RIGHT;
+    struct Window *win = c->own_win;
+    lay_rect r;
+    if (!win || (!c->ntabs && c->host_only))
+        return 0;
+    tab_self(c);
+    for (k = 0; t->what && k < LAY_MAX_PANES; k++)
+        if (c->split_wait[k].serial == t->what) {
+            from = c->split_wait[k].from;
+            dir = c->split_wait[k].dir;
+            c->split_wait[k].serial = 0;
+        }
+    /* from's cell read only when from is still one of ours */
+    if (from && tabslot_find(c->slots, c->ntabs, from, 0) >= 0) {
+        WORD h = bar_height(c);
+        if (tabslot_split(c->slots, c->ntabs, from, p, dir, from->w.r.cw, from->w.r.ch, 0, h,
+                          inner_w(win), inner_h(win) - h) >= 0) {
+            s = tabslot_find(c->slots, c->ntabs, p, 0);
+            split = 1;
+        }
+    }
+    if (s < 0 && (s = tabslot_add(c->slots, &c->ntabs, TAB_MAX, p)) < 0)
+        return 0;
+    tab_layout(c); /* a second slot brings the bar: every pane moves */
+    r.x = r.y = r.w = r.h = 0;
+    if (split && tabslot_find(c->slots, c->ntabs, p, &id) == s)
+        lay_pane_rect(&c->slots[s].l, id, &r);
+    t->ok = 1;
+    t->win = win;
+    t->inset = bar_height(c);
+    t->rx = (WORD)r.x;
+    t->ry = (WORD)r.y;
+    t->rw = (WORD)r.w;
+    t->rh = (WORD)r.h;
+    ReplyMsg(&t->msg);
+    if (split) {
+        slash_state_bump(&c->st, STATE_SPLIT, 0, 0);
+        if (s == c->active)
+            slot_refocus(c); /* the focus went to the new pane */
+        else
+            tab_activate(c, s);
+    } else {
+        slash_state_bump(&c->st, STATE_TAB_OPENED, 0, 0);
+        tab_activate(c, s); /* and pushes the counters */
+    }
     return 1;
 }
 
@@ -6007,22 +6287,8 @@ static void host_msgs(con *c)
     while (c->tab_port && !c->is_tab && (t = (struct tab_msg *)GetMsg(c->tab_port)) != 0) {
         switch (t->type) {
         case TM_REGISTER:
-            if (c->own_win && c->ntabs < TAB_MAX && (c->ntabs || !c->host_only)) {
-                if (!c->ntabs) {
-                    c->tab_list[0] = c;  /* the host's own session: the first tab */
-                    c->ntabs = 1;
-                    c->active = 0;
-                }
-                c->tab_list[c->ntabs++] = t->from;
-                t->ok = 1;
-                t->win = c->own_win;
-                t->inset = bar_height(c);
-                ReplyMsg(&t->msg);
-                tab_insets(c); /* a second tab: the bar comes */
-                slash_state_bump(&c->st, STATE_TAB_OPENED, 0, 0);
-                tab_activate(c, c->ntabs - 1); /* and pushes the counters */
-                continue;
-            }
+            if (tab_join(c, t))
+                continue; /* answered there */
             break;
         case TM_UNREGISTER:
             tab_remove(c, t->from);
@@ -6037,7 +6303,7 @@ static void host_msgs(con *c)
             stat_note(c, t->what, t->stat_arg, t->stat_name);
             break;
         case TM_KNOB:
-            if (c->ntabs && c->active >= 0 && c->active < c->ntabs && c->tab_list[c->active] == t->from) {
+            if (t->from && tab_at(c, c->active) == t->from) {
                 c->knob_last = t->knob;
                 c->knob_last_valid = 1;
                 sbar_gad_set(&c->sbar, &t->knob);
@@ -6059,16 +6325,19 @@ static void tab_msgs(con *c)
             break;
         case TM_SHOW:
             c->shown = 1;
+            c->focused = t->what;
             vtwin_show(&c->w, 1);
-            if (c->menustrip && c->w.win)
+            if (c->focused && c->menustrip && c->w.win)
                 SetMenuStrip(c->w.win, c->menustrip);
             break;
         case TM_HIDE:
             c->shown = 0; /* the host took our strip off the window */
+            c->focused = 0;
             vtwin_show(&c->w, 0);
             break;
-        case TM_INSET:
-            vtwin_set_inset(&c->w, t->inset);
+        case TM_RECT:
+            c->w.inset_top = t->inset;
+            vtwin_set_rect(&c->w, t->rx, t->ry, t->rw, t->rh);
             break;
         case TM_STATE:
             c->st = t->st;
@@ -6090,6 +6359,7 @@ static struct Window *tab_register(con *c)
     t = tab_msg(c, TM_REGISTER);
     if (!t)
         goto none;
+    t->what = c->pane_serial;
     Forbid();
     pub = FindPort((STRPTR)c->tab_host);
     if (pub)
@@ -6108,6 +6378,7 @@ static struct Window *tab_register(con *c)
         c->tab_rp = *win->RPort;      /* the window's layer, our own pens and font */
         c->w.own_rp = &c->tab_rp;
         c->w.inset_top = t->inset;
+        vtwin_set_rect(&c->w, t->rx, t->ry, t->rw, t->rh); /* kept until the window opens on it */
         c->w.foreign_window = 1;      /* never its flags: the host's window */
         c->w.r.off = 1;               /* nothing drawn until the host shows us */
     }
@@ -6150,6 +6421,7 @@ static void tab_unregister(con *c)
     c->tab_port = 0;
     c->host_pub = 0;
     c->shown = 0;
+    c->focused = 0;
     c->w.own_rp = 0;
 }
 
