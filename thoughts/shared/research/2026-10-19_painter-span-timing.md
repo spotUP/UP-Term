@@ -82,11 +82,11 @@ PROF-only counters added: ticks and calls of the three first-use stages of pen_f
 | figure (20 writes, 6 renders) | batch 1 (cold) | batch 2 (warm) | batch 3 (warm) |
 |---|---|---|---|
 | pen_for first-use entries | 126 | 0 | 0 |
-| cs split pens (pen_for fg+bg), ticks | 6,455,529 (9.1 s) | 33,290 (47 ms) | 33,030 (47 ms) |
-| cell_style total, ticks | 6,568,901 (9.3 s; 463 ms/write) | 154,359 (218 ms; 10.9 ms/write) | 154,000 (217 ms) |
-| render/frames ticks | 8,006,045 (11.3 s; 563 ms/write) | 1,746,539 (2.46 s; 123 ms/write) | 1,747,000 (123 ms/write) |
+| cs split pens (pen_for fg+bg), ticks | 6,456,169 (9.1 s) | 33,290 (47 ms) | 33,030 (47 ms) |
+| cell_style total, ticks | 6,565,829 (9.3 s; 463 ms/write) | 154,359 (218 ms; 10.9 ms/write) | 155,013 (218 ms) |
+| render/frames ticks | 8,007,069 (11.3 s; 563 ms/write) | 1,746,539 (2.46 s; 123 ms/write) | 1,747,108 (123 ms/write) |
 
-The burst is one-time: 4.6x on the whole render, cell_style 30x. The older "PROF rows 552 ms per write" is a cold-start average; the warm figure is about 123 ms per write (cell_style about 11 ms of it, still the largest single cell_style part is not pens any more: resolve 29k + area_ink 40k + rest).
+The burst is one-time: 4.6x on the whole render, cell_style 30x. The older "PROF rows 552 ms per write" is a cold-start average; the warm figure is about 123 ms per write (cell_style about 11 ms of it; warm, pens are 21 percent of cell_style).
 Where the 126 land (draw_rows_now call index since the print): call 1: 2, call 2: 102, calls 4/6/8/10: 8/5/4/5. So 81% are in the second paint pass (the first full frame), the rest trickle in over the first 10 passes as new colours appear; none after.
 
 One obtain, split (batch 1):
@@ -95,7 +95,7 @@ One obtain, split (batch 1):
 |---|---|---|---|
 | exact `best_pen` (ObtainBestPen, PRECISION_EXACT, FailIfBad) | 126 | 73,238 | 581 ticks (0.8 ms) |
 | `few_obtain` | 125 | 6,348,405 | 50,787 ticks (71.6 ms) |
-| of which `pm_match` | 125 (passes counter is not calls) | 6,190,240 | 49,522 ticks (69.8 ms), 97.5% of few_obtain |
+| of which `pm_match` | 125 (passes counter is not calls) | 6,198,432 | 49,522 ticks (69.8 ms), 97.5% of few_obtain |
 | `obtain` (full-map fallback) | 0 | 0 | not reached |
 
 So the 72 ms is not an OS call. The exact ObtainBestPen fails fast (0.8 ms): the 16-pen map has no free entry and no equal colour. Then pen_for takes the `r->few` branch (depth <= 4 -> 16 pens) into few_obtain -> pen_match.h `pm_match`, which, because no single pen is within PM_SOLID_OK, searches the dither: all 120 pen pairs of the 16, per pair the nearest level plus 4 neighbours, each candidate costing pm_mix (3 table lookups plus 3 pm_srgb) and pm_dist (redmean plus pm_opp x2 plus an integer square root). About 600 candidate scores a call, roughly 0.5-1 M cycles on the 14 MHz 68020 (the per-candidate cost is my estimate; I did not time inside pm_match). The GetRGB32 and the three hold_pen calls after the match are the remaining 1.6 %.
