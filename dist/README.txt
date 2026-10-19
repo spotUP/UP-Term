@@ -293,7 +293,8 @@ COMMANDS (/cursor bar)
 MENU
   An XCON: window has a menu (right mouse button, on the screen's title
   bar):
-    UP-Term   New tab, Next tab, Previous tab, Close tab, Preferences...
+    UP-Term   New tab, Next tab, Previous tab, Close tab, Split right,
+              Split down, Close pane, Zoom pane, Preferences...
               (opens UP-Term Prefs), About UP-Term..., Close window
     Edit      Copy, Paste, Select all, Find..., Find next, Clear screen,
               Clear scrollback, Reset terminal
@@ -333,6 +334,24 @@ KEYS
   Right Amiga 1-9       that tab; Right Amiga . and , the next / previous
                         (or click the tab bar); the close gadget closes
                         the tab you see
+  Right Amiga D         split the pane to the right; Right Amiga Shift D
+                        split it down. Splits are per tab, at most 4 panes
+                        per tab; a new pane runs vsh in the focused pane's
+                        current directory
+  Right Amiga Left/Right  move the focus to the pane beside; a click in a
+                        pane focuses it
+  Right Amiga Shift W   close the focused pane (Close tab closes every pane
+                        of the tab)
+  Right Amiga Shift Enter  zoom the focused pane, again to unzoom; a zoom
+                        ends when the layout changes (split, focus move,
+                        pane closes)
+  Drag a divider        resize the panes (snaps to whole cells). The divider
+                        is a 1-pixel line; panes have no titles. Window
+                        commands (resize and so on) act on the whole window;
+                        the 80/132 column switch (DECCOLM) is ignored while
+                        a tab is split
+  /state panes, /state zoom   the number of panes and the zoom of the tab
+                        you see (UPTerm state panes, UPTerm state zoom)
   Left Amiga + key      Meta (ESC prefix) for Unix programs; Alt stays
                         with your keymap
   In the Shell line:

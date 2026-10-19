@@ -16,6 +16,9 @@ $ sw0=$(${UPTERM_STATE:-UPTerm} state tab-switches)
 = [ "$(${UPTERM_STATE:-UPTerm} state tab-switches)" -gt "$sw0" ]
 ~ Click the other tab in the tab bar, or press Right Amiga 1 and Right Amiga 2, and end in this tab.
 ! echo "Switch tabs, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act tab-switches}
+> A tab can also be split into panes, up to 4: Right Amiga D splits right, Right Amiga Shift D
+> splits down, Right Amiga Left and Right move between panes, Right Amiga Shift W closes one,
+> and Right Amiga Shift Enter zooms one.
 > The menus hold the same actions, and the Help menu explains the terminal.
 $ menu0=$(${UPTERM_STATE:-UPTerm} state menu-picks)
 ? Open the Help menu and pick Slash commands, then press Return.
