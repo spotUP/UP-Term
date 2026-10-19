@@ -6,6 +6,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import mkmanifest as mm
 import mkinstaller as mi
+import pkgs
 
 PARTS = mm.read_parts((ROOT / "dist/parts.txt").read_text())
 DOS = mi.build(ROOT / "dist/install.dos", "base")
@@ -108,7 +109,8 @@ class BuiltKit(unittest.TestCase):
             self.assertFalse((kit / h).exists(), h)
             self.assertIn("handed 0 00000000 handed#" + h, lines)
         self.assertFalse((kit / "ClaudeCode").exists())
-        self.assertTrue((kit / "Files/UP-Term.version").read_text().startswith("$VER: UP-Term 1.0 ("))
+        self.assertTrue((kit / "Files/UP-Term.version").read_text().startswith(
+            "$VER: UP-Term %s (" % pkgs.get('base', 'version')))
 
     def test_the_base_manifest_lists_the_amissl_drawer_without_the_sdk(self):
         if KITDIR.name != "UP-Term":
