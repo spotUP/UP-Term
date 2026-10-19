@@ -152,6 +152,12 @@ includes its own math-68881.h, and FPU archives (installed in the libm020/libm88
 double-returning ixemul call and libixcompat/libm function an fp0 result. The spike now links them (env.mk
 IXLIB/IXCOMPAT) and the inline `round` is gone.
 
+Rig 4 `--a1200` check of the FPU-archive build (2026-10-19 ~11:40): compat `test/fpret_test` 13 of 14 OK; the one
+failure, `log2(8) = 2.9999999999999996`, was a rounding error in log2 itself (log(x)/ln 2), not a wrong return
+register, and is fixed by ixemul-vtcon 44264b3 (rig rerun open). scidemo-lite BENCH, 3 runs: open
+9453/9338/9662, key 77/78/76, scroll 1537/1537/1533 ms, the same as before the archives (9610/74/1536), so the
+archives fix correctness, not speed (`ide-spike/results/scidemo-lite-a1200.rig4.txt`).
+
 Input lag on 020 + 68882 (rig 4 `--a1200`): key 645 ms down to 74 ms with two Scinterm patches (partial
 repaint; fast fill and ASCII width in PlatCurses), see `ide-spike/results/input-lag.md`.
 
@@ -186,7 +192,7 @@ Built with `-m68020 -m68881` (FPU required):
 | 68040 | not measured | not measured | not measured | - | needs real hardware |
 | no FPU (soft-float build) | 3.0-3.3 s on a 060 | 2.8-4.5 s on a 060 | - | - | no-go |
 
-020 split (`ide-spike/results/scidemo-lite-a1200.txt`, FPU-archive build): key paint 52 ms + terminal 24 ms;
+020 split (11:43 FPU-archive rebench; `ide-spike/results/scidemo-lite-a1200.txt` was overwritten at 12:05 by a rig 3 probed run, see the ledger): key paint 52 ms + terminal 24 ms;
 open paint 7848 ms + terminal 1675 ms; scroll paint 438 ms + terminal 1130 ms. The key passes. Scroll is now
 dominated by the terminal (the screen visibly draws line by line); open is dominated by Scintilla paint.
 Before the input-lag patches: key paint 612 + terminal 33 ms (`scidemo-lite-a1200.fixABC-roundinline.txt`).
