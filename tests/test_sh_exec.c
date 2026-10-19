@@ -927,6 +927,15 @@ static void control_flow(void)
     CHECK_STR(run("for x in 1 2 3 4; do if [ $x = 3 ]; then break; fi; echo $x; done"), "1\n2\n");
     CHECK_STR(run("for x in 1 2 3; do if [ $x = 2 ]; then continue; fi; echo $x; done"), "1\n3\n");
     CHECK_STR(run("case foo.c in *.h) echo h;; *.c) echo c;; esac"), "c\n");
+    /* a quoted or escaped glob character in a case pattern or a ${x#pat} pattern matches itself; an unquoted one is a wildcard */
+    CHECK_STR(run("case abc in \"?\"*) echo y;; *) echo n;; esac"), "n\n");
+    CHECK_STR(run("case abc in \\?*) echo y;; *) echo n;; esac"), "n\n");
+    CHECK_STR(run("case abc in '?'*) echo y;; *) echo n;; esac"), "n\n");
+    CHECK_STR(run("case abc in \"*\") echo y;; *) echo n;; esac"), "n\n");
+    CHECK_STR(run("case '[' in \"[\") echo y;; *) echo n;; esac"), "y\n");
+    CHECK_STR(run("p='?'; case abc in \"$p\"*) echo y;; *) echo n;; esac"), "n\n");
+    CHECK_STR(run("case abc in ?*) echo y;; *) echo n;; esac"), "y\n");
+    CHECK_STR(run("x=aab; echo \"${x#\"?\"}\" \"${x#?}\""), "aab ab\n");
     CHECK_STR(run("f() { echo arg:$1; return 3; }; f one; echo $?"), "arg:one\n3\n");
     CHECK_STR(run("set -- x y; for a; do echo $a; done"), "x\ny\n");
     CHECK_STR(run("exit 4; echo never"), "");

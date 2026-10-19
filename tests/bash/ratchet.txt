@@ -609,6 +609,7 @@ grammar/bang
 grammar/bgcmd
 grammar/break2
 grammar/case2
+grammar/case_quoted_glob
 grammar/case3
 grammar/case4
 grammar/casepipe

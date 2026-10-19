@@ -1547,6 +1547,30 @@ static char *expand_string(ex *e, const char *w, long len, int dquote)
     return r;
 }
 
+/* expand_string for a pattern word (${x#pat}, ${x/pat/..}): quoted or escaped glob characters keep a
+ * backslash, so sh_match takes them literally, as SH_PATTERN does for case and [[ ]] */
+static char *expand_pattern(ex *e, const char *w, long len, int dquote)
+{
+    cbuf b;
+    char *r;
+    long i, m = 0;
+    memset(&b, 0, sizeof(b));
+    expand_into(e, w, len, &b, dquote);
+    r = (char *)malloc(2 * (size_t)b.n + 1);
+    if (r) {
+        for (i = 0; i < b.n; i++) {
+            if (b.f[i] & F_EMPTY)
+                continue;
+            if ((b.f[i] & F_QUOTED) && strchr("*?[]\\", b.s[i]))
+                r[m++] = '\\';
+            r[m++] = b.s[i];
+        }
+        r[m] = 0;
+    }
+    cfree(&b);
+    return r;
+}
+
 static int is_name_char(char ch, int first)
 {
     return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' ||
@@ -2265,7 +2289,7 @@ static long brace(ex *e, const char *w, long len, cbuf *b, int dquote)
                     j += w[j] == '\\' && j + 1 < end ? 2 : 1;
                 pend = j;
             }
-            pat = expand_string(e, w + i, pend - i, dquote);
+            pat = expand_pattern(e, w + i, pend - i, 0); /* the enclosing "..." does not quote a pattern's glob characters */
             if (kind == '/') {
                 if (pend < end) {
                     long rl = end - pend - 1, z;

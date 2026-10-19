@@ -8858,7 +8858,7 @@ static long exec_case(sh_shell *sh, const sh_node *n, const sh_io *io)
     for (c = n->cases; c; c = c->next) {
         int hit = fall;
         for (p = c->patterns; !hit && p; p = p->next) {
-            char *pat = expand_one(sh, p->text, io);
+            char *pat = expand_val(sh, p->text, io, SH_PATTERN);
             hit = pat && sh_match(pat, subject, SH_MATCH_OF(&sh->ctx, sh->ctx.nocasematch));
             free(pat);
         }
