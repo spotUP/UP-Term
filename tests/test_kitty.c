@@ -1,8 +1,17 @@
 /* Kitty graphics (APC G): the keys and the base64 data become the same
  * indexed images sixel makes, replies go back to the program, and the
  * pictures obey the shared image memory. Cells are 2 x 6 pixels. The
- * PNG decoder here is a stand-in that hands back fixed pixels. */
+ * host PNG decoder here is a stand-in that hands back fixed pixels. */
 #include "harness.h"
+#include <stdlib.h>
+/* The engine's own PNG decoder, compiled in here to assert its words
+ * exactly; the engine has its own copy behind vt_term. */
+#define VT_MALLOC(n) malloc(n)
+#define VT_FREE(p) free(p)
+#define KIT_RAW_MAX (4L * 1024L * 1024L)
+#include "../engine/inflate.c"
+#include "../engine/png.c"
+#include "kitty_png_vectors.h"
 
 static vt_term *kitty_term(int cols, int rows)
 {
@@ -161,6 +170,94 @@ static void zlib_data_is_inflated(void)
     vt_free(t);
 }
 
+/* png_decode on a vector: 1 and exactly the expected words. */
+static void png_gives(const unsigned char *d, long n, int w, int h, const unsigned long *px)
+{
+    vt_u32 *out = 0;
+    int ow = 0, oh = 0, i;
+    CHECK_INT(png_decode(d, n, &out, &ow, &oh), 1);
+    CHECK_INT(ow, w);
+    CHECK_INT(oh, h);
+    if (out && ow == w && oh == h)
+        for (i = 0; i < w * h; i++)
+            if ((unsigned long)out[i] != px[i]) {
+                CHECK_INT((long)out[i], (long)px[i]); /* names the pixel's value */
+                break;
+            }
+    free(out);
+}
+
+#define PNG_GIVES(name, w, h) png_gives(png_##name, sizeof(png_##name), w, h, png_##name##_px)
+
+static void own_decoder_reads_every_colour_type_depth_and_filter(void)
+{
+    PNG_GIVES(grey8, 3, 5);        /* type 0, depth 8, filters 0-4 */
+    PNG_GIVES(grey1, 10, 2);       /* depth 1, a row over two bytes, filters 2 3 */
+    PNG_GIVES(grey16, 2, 1);       /* depth 16 keeps the high byte; tRNS key clear */
+    PNG_GIVES(rgb8, 3, 5);         /* type 2, filters 0-4, tRNS colour key */
+    PNG_GIVES(rgb16, 2, 2);        /* type 2, depth 16, Paeth */
+    PNG_GIVES(pal2, 5, 2);         /* type 3, depth 2, PLTE + tRNS, IDAT in two chunks */
+    PNG_GIVES(grey_alpha8, 3, 2);  /* type 4 */
+    PNG_GIVES(rgba8, 3, 5);        /* type 6, filters 0-4, IDAT in two chunks */
+}
+
+static void own_decoder_answers_0_broken_and_minus_1_unsupported(void)
+{
+    vt_u32 *out = 0;
+    int w, h;
+    unsigned char cut[sizeof(png_rgba8)];
+    CHECK_INT(png_decode(png_interlaced, sizeof(png_interlaced), &out, &w, &h), -1);
+    CHECK_INT(png_decode((const vt_u8 *)"GIF89a......", 12, &out, &w, &h), -1); /* not a PNG */
+    CHECK_INT(png_decode(png_broken, sizeof(png_broken), &out, &w, &h), 0);
+    memcpy(cut, png_rgba8, sizeof(cut));
+    CHECK_INT(png_decode(cut, 40, &out, &w, &h), 0);                          /* cut inside a chunk */
+    cut[16] = 0xFF;                                                           /* a width of 2^24 */
+    CHECK_INT(png_decode(cut, sizeof(cut), &out, &w, &h), -1);                /* over the limit */
+    CHECK(!out);
+}
+
+/* The whole path: APC G, the engine's decoder, an image on the screen; the
+ * host's decoder is not asked for a PNG it can read or one it cannot. */
+static void png_is_decoded_by_the_engine_and_never_reaches_the_host(void)
+{
+    vt_term *t = kitty_term(10, 5);
+    vt_image_view v;
+    char buf[2048];
+    decode_calls = 0;
+    vt_set_image_decoder(t, stand_in_decode, stand_in_free);
+    h_reply_clear();
+    snprintf(buf, sizeof(buf), "\033_Ga=T,f=100,i=21;%s\033\\", png_rgb_cube_b64);
+    h_put(t, buf);
+    CHECK_STR(h_reply, "\033_Gi=21;OK\033\\");
+    CHECK_INT(vt_kitty_png_own(t), 1);
+    CHECK_INT(decode_calls, 0);
+    CHECK(vt_row_image(t, 0, 0, &v));
+    CHECK_INT(v.w, 2);
+    CHECK_INT(v.h, 2);
+    CHECK_INT(pixel(&v, 0, 0), 0xFF0000);
+    CHECK_INT(pixel(&v, 1, 0), 0x00FF00);
+    CHECK_INT(pixel(&v, 0, 1), 0x0000FF);
+    CHECK_INT(pixel(&v, 1, 1), 0xFFFFFF);
+    /* broken: EBADPNG, and the host decoder is not called */
+    h_reply_clear();
+    snprintf(buf, sizeof(buf), "\033_Ga=T,f=100,i=22;%s\033\\", png_broken_b64);
+    h_put(t, buf);
+    CHECK_STR(h_reply, "\033_Gi=22;EBADPNG:not a picture\033\\");
+    CHECK_INT(decode_calls, 0);
+    CHECK_INT(vt_kitty_png_own(t), 1);
+    /* interlaced: the engine passes, the host decoder is called once */
+    h_reply_clear();
+    snprintf(buf, sizeof(buf), "\033_Ga=T,f=100,i=23;%s\033\\", png_interlaced_b64);
+    h_put(t, buf);
+    CHECK_INT(decode_calls, 1);
+    CHECK_STR(h_reply, "\033_Gi=23;OK\033\\");
+    CHECK_INT(vt_kitty_png_own(t), 1);
+    vt_free(t);
+}
+
+/* "iVBORw0K" is 89 50 4E 47 0D 0A: no whole PNG signature, so the engine
+ * answers -1 (not mine) and the picture goes to the host decoder; a file
+ * of another format the datatypes know takes the same way. */
 static void png_goes_through_the_host_decoder(void)
 {
     vt_term *t = kitty_term(10, 5);
@@ -328,6 +425,9 @@ void suite_kitty(void)
     chunks_join_into_one_picture();
     zlib_data_is_inflated();
     png_goes_through_the_host_decoder();
+    own_decoder_reads_every_colour_type_depth_and_filter();
+    own_decoder_answers_0_broken_and_minus_1_unsupported();
+    png_is_decoded_by_the_engine_and_never_reaches_the_host();
     query_answers_without_showing();
     quiet_keys_hide_the_replies();
     delete_by_id_removes_the_image();

@@ -482,7 +482,8 @@ static void reply(struct DosPacket *p, LONG r1, LONG r2)
  * resident anyway. DataTypesBase is one global for all windows, so png_sem
  * holds it from the open to the close: two windows decoding at once take
  * turns. kitty_decodes counts the decodes that gave a picture (a missing
- * picture.datatype gives none): the rig's sentinel (the
+ * picture.datatype gives none; the engine's own PNG decodes are counted by
+ * vt_kitty_png_own): the rig's sentinel (the
  * PROF line "kitty decodes/placed"). */
 ULONG kitty_decodes;
 static struct SignalSemaphore png_sem;
@@ -6240,6 +6241,7 @@ static void packet(con *c, struct DosPacket *p)
         DBG("render pens fg/bg", c->w.r.pen_default_fg, c->w.r.pen_default_bg);
         DBG("render bg ink/seen", c->w.r.bg_ink, c->w.r.seen);
         DBG("kitty decodes/placed", kitty_decodes, vt_kitty_placed(c->w.t));
+        DBG("kitty own png decodes", vt_kitty_png_own(c->w.t), 0);
 #ifdef VTCON_DEBUG
         DBG("prof writes/bytes", c->prof_writes, c->prof_bytes);
         DBG("prof out", c->prof_out, 0);
@@ -6325,6 +6327,7 @@ static void packet(con *c, struct DosPacket *p)
             c->prof_npk[0] = c->prof_npk[1] = c->prof_npk[2] = 0;
             PROF_LOG("PROF writes/bytes", c->prof_writes, c->prof_bytes);
             PROF_LOG("PROF kitty decodes/placed", kitty_decodes, vt_kitty_placed(c->w.t));
+            PROF_LOG("PROF kitty own png decodes", vt_kitty_png_own(c->w.t), 0);
             c->w.prof_part[0] = c->w.prof_part[1] = c->w.prof_part[2] = 0;
             c->prof_idle = c->prof_out = c->prof_writes = c->prof_bytes = 0;
             c->w.prof_render = c->w.prof_frames = 0;

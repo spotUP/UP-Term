@@ -38,7 +38,7 @@ VIEW_HL   := $(VIEW_LEX) view/hl_view.c view/md.c # md.c: hl -p shows Markdown a
 VIEW_CLI  := view/vw_cli.c
 # the view, LLM and Claude source lists live in sources.mk (amiga-pi builds from them too)
 # every header a host binary can include: a header-only change rebuilds the host tests (tests/test_host_deps.py)
-HOST_HDR := engine/kitty.c engine/inflate.c $(wildcard engine/*.h engine/*.inc render/*.h render/*.inc handler/*.h shell/*.h tty/*.h device/*.h config/*.h \
+HOST_HDR := engine/kitty.c engine/inflate.c engine/png.c $(wildcard engine/*.h engine/*.inc render/*.h render/*.inc handler/*.h shell/*.h tty/*.h device/*.h config/*.h \
               prefs/*.h install/*.h zm/*.h net/*.h view/*.h demo/*.h demo/*.inc claude/*.h llm/*.h tests/*.h tests/exec_host/*.h)
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_kitty.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
@@ -911,7 +911,7 @@ $(CONPROBES:%=$(BUILD)/amiga/%): $(BUILD)/amiga/%: tests/amiga/%.c tests/amiga/p
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/$*.c
 
-$(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/kitty.c engine/inflate.c engine/vtengine.h engine/vtwidth.h
+$(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/kitty.c engine/inflate.c engine/png.c engine/vtengine.h engine/vtwidth.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -c -o $@ $(ENGINE)
 

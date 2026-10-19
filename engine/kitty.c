@@ -32,6 +32,7 @@
 #include "inflate.c"
 
 #define KIT_RAW_MAX (4L * 1024L * 1024L) /* the bytes of one picture, base64 decoded */
+#include "png.c"
 #define KIT_KEYS 192                     /* the longest key list */
 #define KV(k, c) ((k)->kv[(c) >= 'a' ? (c) - 'a' + 26 : (c) - 'A'])
 
@@ -357,12 +358,20 @@ static const char *kit_load(vt_term *t, const vt_kitty *k, kit_src *s)
         return "ENODATA:no data";
     if (fmt == 100) {
         vt_u32 *argb = 0;
-        if (!t->decode)
-            return "EINVAL:no PNG decoder";
-        if (!t->decode(k->raw, k->len, &argb, &w, &h) || !argb)
-            return "EBADPNG:not a picture";
-        s->dec = argb;
-        s->dfree = t->decode_free;
+        int own = png_decode(k->raw, k->len, &argb, &w, &h);
+        if (own == 0)
+            return "EBADPNG:not a picture"; /* a PNG that is broken: the datatypes cannot do better */
+        if (own == 1) {
+            s->own = (vt_u8 *)argb; /* freed with the source */
+            t->kit_png_own++;
+        } else {
+            if (!t->decode)
+                return "EINVAL:no PNG decoder";
+            if (!t->decode(k->raw, k->len, &argb, &w, &h) || !argb)
+                return "EBADPNG:not a picture";
+            s->dec = argb;
+            s->dfree = t->decode_free;
+        }
         s->argb = argb;
         s->bpp = 0;
         if (w <= 0 || h <= 0 || (long)w * h > KIT_RAW_MAX / 4) {
@@ -630,4 +639,9 @@ static void kitty_end(vt_term *t)
 unsigned long vt_kitty_placed(const vt_term *t)
 {
     return t->kit_placed;
+}
+
+unsigned long vt_kitty_png_own(const vt_term *t)
+{
+    return t->kit_png_own;
 }

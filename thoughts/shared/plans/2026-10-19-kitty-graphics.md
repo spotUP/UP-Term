@@ -86,7 +86,7 @@ new for placement at the cursor.
       by a haiku subagent.
 - [x] K13 docs: README / man page feature list; THIRD-PARTY notice.
 - [x] K14 vt_unhandled no longer reports APC G.
-- [ ] K15 engine/png.c (owner decision 2026-10-19: "both"): own PNG decoder
+- [x] K15 engine/png.c (owner decision 2026-10-19: "both"): own PNG decoder
       in the engine, #included by kitty.c like inflate.c, built on
       vt_zinflate. Reason: the owner's system disk has no active
       picture.datatype, so the datatypes path (K9) fails there. Supports
@@ -95,10 +95,10 @@ new for placement at the cursor.
       several IDAT chunks joined. CRC not checked. Output: VT_MALLOC'd
       0xAARRGGBB words.
       Return codes: 1 decoded, 0 broken, -1 not supported (interlaced).
-- [ ] K16 kit_load f=100: own decoder first; on -1 (not supported) only,
+- [x] K16 kit_load f=100: own decoder first; on -1 (not supported) only,
       fall back to t->decode (the datatypes hook). On 0 (broken), reply
       EBADPNG without trying datatypes. Own buffer freed through s->own.
-- [ ] K17 host tests (tests/test_kitty.c): real PNG bytes for colour types
+- [x] K17 host tests (tests/test_kitty.c): real PNG bytes for colour types
       0/2/3/4/6, depths 1/8/16, all filters, split IDAT, tRNS; interlaced
       falls back to the test decoder (call count proves it); a broken
       stream does not reach the decoder.

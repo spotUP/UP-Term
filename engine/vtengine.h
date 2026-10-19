@@ -487,6 +487,8 @@ int      vt_modify_other_keys(const vt_term *t);
 int      vt_kitty_flags(const vt_term *t);
 /* How many kitty graphics images were placed on the screen (a test sentinel). */
 unsigned long vt_kitty_placed(const vt_term *t);
+/* How many of the f=100 pictures the engine's own PNG decoder made (the rest went to the host's). */
+unsigned long vt_kitty_png_own(const vt_term *t);
 #define VT_KEY_EV_PRESS   1
 #define VT_KEY_EV_REPEAT  2
 #define VT_KEY_EV_RELEASE 3
