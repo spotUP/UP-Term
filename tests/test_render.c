@@ -39,14 +39,12 @@ static void cb_scroll(void *u, int top, int bot, int n)
  * ?2026 frame ended), cursor on, mask end */
 static void pass(const char *s)
 {
-    int composed;
     vr_mask_begin(&rn);
     vr_cursor_off(&rn);
     vt_feed(term, (const vt_u8 *)s, (long)strlen(s));
-    composed = vr_compose_begin(&rn);
+    vr_compose_begin(&rn);
     vt_flush(term);
-    if (composed)
-        vr_compose_end(&rn);
+    vr_compose_end(&rn);
     vr_cursor_on(&rn);
     vr_mask_end(&rn);
 }
@@ -522,6 +520,33 @@ static void a_synchronized_frame_that_scrolls_shows_what_in_place_drawing_shows(
         CHECK(same_as_snapshot());
         close_term();
     }
+}
+
+/* C1 (scidemo-lite on the A1200: a page-down came in two steps, the second a quarter second later): each
+ * ?2026 frame the program ends is shown as the grid has it. Page-downs one after another scrolled ahead of the
+ * grid (jump scroll, its step doubling while passes keep scrolling) and left blank rows at the bottom for vtwin's
+ * settle to blit down later; a jump left by output before the frame is settled in it too. */
+static void a_synchronized_frame_that_scrolls_is_not_left_for_settle(void)
+{
+    int k;
+    open_term(12);
+    pass("\x1b[?25l");         /* no cursor: a pass draws it, vr_redraw does not */
+    for (k = 0; k < 4; k++) {   /* a page-down: the screen scrolls by three rows, then the new rows */
+        pass(synced("\x1b[10;1H\r\n\r\n\r\nPgDn"));
+        CHECK_INT(rn.jump, 0);
+        snapshot();
+        vr_redraw(&rn);          /* the grid, drawn in full */
+        CHECK(same_as_snapshot());
+    }
+    pass("\r\n");               /* plain output that scrolls, pass after pass: jump scroll */
+    pass("\r\n");
+    CHECK(rn.jump > 0);
+    pass(synced("\r\nEnd"));
+    CHECK_INT(rn.jump, 0);
+    snapshot();
+    vr_redraw(&rn);
+    CHECK(same_as_snapshot());
+    close_term();
 }
 
 static int texts_of(char ch)
@@ -1590,6 +1615,7 @@ int main(void)
     a_synchronized_frame_reaches_the_window_in_one_blit_after_it_is_drawn();
     output_without_a_synchronized_frame_is_drawn_in_place();
     a_synchronized_frame_that_scrolls_shows_what_in_place_drawing_shows();
+    a_synchronized_frame_that_scrolls_is_not_left_for_settle();
     a_planar_synchronized_frame_reaches_the_window_in_one_copy_with_the_in_place_pixels();
     a_planar_frame_is_copied_once_the_beam_has_left_its_rows();
     a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place();

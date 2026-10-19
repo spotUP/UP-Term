@@ -175,6 +175,7 @@ typedef struct vr_render {
     UBYTE view_stale;      /* live output reached the grid while the view was back: the screen is not the scrollback's */
     WORD jump;             /* jump scroll: screen row s shows grid row s + jump (vr_scroll) */
     WORD jump_step;        /* the spare rows the next jump leaves; doubles while scrolls keep coming */
+    UBYTE whole_frame;     /* this pass draws a ?2026 frame the program ended: settled at vr_compose_end */
     UBYTE scrolled_pass;   /* this render pass scrolled the whole screen */
     /* Amiga layout requests (CSI t / u / x / y), -1 = automatic:
      * text rows, text columns, left and top offset in pixels */

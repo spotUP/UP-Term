@@ -564,10 +564,9 @@ void vtwin_render(vtwin *w)
         {
             /* a ?2026 frame ended since the last pass: drawn off screen,
              * shown at once (vr_compose_begin; W-T3) */
-            int composed = vr_compose_begin(&w->r);
+            vr_compose_begin(&w->r);
             vt_flush(w->t);
-            if (composed)
-                vr_compose_end(&w->r);
+            vr_compose_end(&w->r); /* also when drawn in place: the frame settles (C1) */
         }
         {
             PROF_IN(w);

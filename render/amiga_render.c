@@ -1133,6 +1133,7 @@ static void all_planes(vr_render *r)
 void vr_mask_begin(vr_render *r)
 {
     r->in_pass = 1;   /* one flush: what a default blank looks like is worked out once (draw_rows) */
+    r->whole_frame = 0;
     r->bs_valid = 0;
     /* jump scroll: a pass right after one that scrolled moves twice as far
      * (up to a screenful); a pass that did not scroll resets the step */
@@ -2964,6 +2965,7 @@ int vr_compose_begin(vr_render *r)
     if (f == r->sync_seen)
         return 0; /* no frame ended: output as it comes, drawn in place */
     r->sync_seen = f;
+    r->whole_frame = 1; /* settled when drawn (vr_compose_end) */
     if (r->hidden || r->off || r->view)
         return 0;
     if (!r->back) {
@@ -2996,10 +2998,19 @@ int vr_compose_begin(vr_render *r)
     return 1;
 }
 
+/* After the flush of every pass, composed or not. A ?2026 frame the program ended is shown as the
+ * grid has it, with no jump scroll ahead of it for vtwin to settle a quarter second later (C1:
+ * scidemo-lite's page-down came in two steps, the second the settle's blit). Settled here, not in
+ * vr_compose_begin: the frame's scrolls reach vr_scroll in vt_flush, after vt_feed moved the grid,
+ * so only now do the grid and r->jump agree. */
 void vr_compose_end(vr_render *r)
 {
     to_front(r);
     pad_flush(r);
+    if (r->whole_frame) {
+        r->whole_frame = 0;
+        vr_settle(r);
+    }
 }
 
 /* Draw screen rows [y0, y1), columns [x0, x1): in a planar composed pass
@@ -3832,8 +3843,9 @@ void vr_redraw(vr_render *r)
  * move no pixels until the text reaches the bottom again. Each pass that
  * scrolls again doubles the step (vr_mask_begin), up to a screenful. When
  * the output stops, vr_settle moves the text back down: the window looks
- * exactly as without the jump. Only the whole screen of the live grid;
- * anything else settles first. */
+ * exactly as without the jump; a ?2026 frame the program ended settles at
+ * once (vr_compose_end). Only the whole screen of the live grid; anything
+ * else settles first. */
 void vr_settle(vr_render *r)
 {
     int e = r->jump, rows = vis_rows(r);
