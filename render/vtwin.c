@@ -993,6 +993,14 @@ int vtwin_rebind(vtwin *w, struct Window *win)
     return 1;
 }
 
+/* the old cells' pixels go: the viewport rectangle, not the window's edges */
+static void erase_rect(vtwin *w)
+{
+    WORD x0, y0, x1, y1;
+    vr_rect(&w->r, &x0, &y0, &x1, &y1);
+    EraseRect(w->r.rp, x0, y0, x1, y1);
+}
+
 int vtwin_set_font(vtwin *w, const char *name, WORD size)
 {
     struct TextFont *f, *old = w->font;
@@ -1017,8 +1025,7 @@ int vtwin_set_font(vtwin *w, const char *name, WORD size)
     vt_resize(w->t, w->r.cols, w->r.rows);
     w->host->resized(w->user);
     /* the old cells' pixels go: the new grid may not cover them */
-    EraseRect(w->r.rp, w->win->BorderLeft, w->win->BorderTop + w->inset_top,
-              w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
+    erase_rect(w);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
     return 1;
@@ -1050,8 +1057,7 @@ void vtwin_show(vtwin *w, int on)
         w->host->resized(w->user);
     }
     vtwin_show_title(w);
-    EraseRect(w->r.rp, w->win->BorderLeft, w->win->BorderTop + w->inset_top,
-              w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
+    erase_rect(w);
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
     vtwin_knob_resend(w); /* a tab shown: the window's scroll bar is its now */

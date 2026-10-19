@@ -791,6 +791,11 @@ void vr_set_pad_extend(vr_render *r, int on)
 void vr_free(vr_render *r)
 {
     int i;
+    if (r->clip_rgn) {
+        InstallClipRegion(r->win->WLayer, r->clip_old);
+        DisposeRegion(r->clip_rgn);
+        r->clip_rgn = 0;
+    }
     if (r->cm)
         for (i = 0; i < 256; i++)
             if (r->obtained[i] >= 0)
@@ -926,9 +931,63 @@ void vr_set_off(vr_render *r, int off)
     r->hidden = r->off || r->cols < 1 || r->rows < 1;
 }
 
+void vr_rect(const vr_render *r, WORD *x0, WORD *y0, WORD *x1, WORD *y1)
+{
+    struct Window *w = r->win;
+    WORD ax1 = (WORD)(w->Width - w->BorderRight - 1), ay1 = (WORD)(w->Height - w->BorderBottom - 1);
+    *x0 = (WORD)(w->BorderLeft + r->rect_x);
+    *y0 = (WORD)(w->BorderTop + r->rect_y);
+    *x1 = r->rect_w > 0 && *x0 + r->rect_w - 1 < ax1 ? (WORD)(*x0 + r->rect_w - 1) : ax1;
+    *y1 = r->rect_h > 0 && *y0 + r->rect_h - 1 < ay1 ? (WORD)(*y0 + r->rect_h - 1) : ay1;
+}
+
+/* NS1.2: the layer clips to the rectangle, a safety net under the fills that already use it. */
+static void clip_sync(vr_render *r)
+{
+    struct Layer *layer = r->win ? r->win->WLayer : 0;
+    if (!layer)
+        return;
+    if (r->clip_rgn) {
+        InstallClipRegion(layer, r->clip_old);
+        DisposeRegion(r->clip_rgn);
+        r->clip_rgn = 0;
+        r->clip_old = 0;
+    }
+    if (r->rect_own) {
+        struct Rectangle rc;
+        struct Region *rg = NewRegion();
+        vr_rect(r, &rc.MinX, &rc.MinY, &rc.MaxX, &rc.MaxY);
+        if (rg && OrRectRegion(rg, &rc)) {
+            r->clip_old = InstallClipRegion(layer, rg);
+            r->clip_rgn = rg;
+        } else if (rg) {
+            DisposeRegion(rg);
+        }
+    }
+}
+
+void vr_set_rect(vr_render *r, WORD x, WORD y, WORD w, WORD h)
+{
+    r->rect_x = x;
+    r->rect_y = y;
+    r->rect_w = w;
+    r->rect_h = h;
+    r->rect_own = 1;
+    clip_sync(r);
+}
+
+void vr_reset_rect(vr_render *r)
+{
+    r->rect_x = r->rect_w = r->rect_h = 0;
+    r->rect_own = 0;
+    clip_sync(r);
+}
+
 void vr_set_inset(vr_render *r, WORD top)
 {
-    r->inset_top = top;
+    r->rect_y = top;
+    if (r->rect_own)
+        clip_sync(r);
 }
 
 /* The columns and rows the window can show right now. The grid follows a
@@ -941,7 +1000,9 @@ static WORD vis_cols(const vr_render *r)
     WORD c;
     if (!r->win || !r->cw)
         return 0; /* not set up yet (vr_init): nothing to draw into */
-    c = (WORD)((r->win->Width - r->win->BorderRight - r->ox) / r->cw);
+    WORD x0, y0, x1, y1;
+    vr_rect(r, &x0, &y0, &x1, &y1);
+    c = (WORD)((x1 + 1 - r->ox) / r->cw);
     return c < r->cols ? (c < 0 ? 0 : c) : r->cols;
 }
 
@@ -958,19 +1019,21 @@ static int dbl_cols(const vr_render *r, int x)
 
 static WORD vis_rows(const vr_render *r)
 {
-    WORD n;
+    WORD n, x0, y0, x1, y1;
     if (!r->win || !r->ch)
         return 0;
-    n = (WORD)((r->win->Height - r->win->BorderBottom - r->oy) / r->ch);
+    vr_rect(r, &x0, &y0, &x1, &y1);
+    n = (WORD)((y1 + 1 - r->oy) / r->ch);
     return n < r->rows ? (n < 0 ? 0 : n) : r->rows;
 }
 
 int vr_layout(vr_render *r)
 {
-    struct Window *w = r->win;
-    WORD lx = r->lay_x > 0 ? r->lay_x : 0, ly = (r->lay_y > 0 ? r->lay_y : 0) + r->inset_top;
-    WORD iw = w->Width - w->BorderLeft - w->BorderRight - lx;
-    WORD ih = w->Height - w->BorderTop - w->BorderBottom - ly;
+    WORD lx = r->lay_x > 0 ? r->lay_x : 0, ly = r->lay_y > 0 ? r->lay_y : 0;
+    WORD rx0, ry0, rx1, ry1, iw, ih;
+    vr_rect(r, &rx0, &ry0, &rx1, &ry1);
+    iw = (WORD)(rx1 + 1 - rx0 - lx);
+    ih = (WORD)(ry1 + 1 - ry0 - ly);
     WORD cols = iw / r->cw, rows = ih / r->ch;
     int changed;
     /* the Amiga console's page and line length cap what fits */
@@ -978,8 +1041,8 @@ int vr_layout(vr_render *r)
         cols = r->lay_cols;
     if (r->lay_rows > 0 && r->lay_rows < rows)
         rows = r->lay_rows;
-    r->ox = w->BorderLeft + lx;
-    r->oy = w->BorderTop + ly;
+    r->ox = rx0 + lx;
+    r->oy = ry0 + ly;
 #ifdef VTCON_DIRECT
     if (r->glyphs) {
         /* the planar path needs cells on a byte boundary of the screen:
@@ -3186,12 +3249,11 @@ static void blank_look(vr_render *r)
  * (W-T12). In place: a composed pass copies only the grid's cells. */
 static void pad_fill(vr_render *r)
 {
-    struct Window *w = r->win;
     struct RastPort *f = to_front(r);
-    WORD top = (WORD)(w->BorderTop + r->inset_top), left = w->BorderLeft;
+    WORD top, left, ax1, ay1;
     WORD gx1 = (WORD)(r->ox + vis_cols(r) * r->cw), gy1 = (WORD)(r->oy + vis_rows(r) * r->ch);
-    WORD ax1 = (WORD)(w->Width - w->BorderRight - 1), ay1 = (WORD)(w->Height - w->BorderBottom - 1);
     UBYTE keep = r->was_blank;
+    vr_rect(r, &left, &top, &ax1, &ay1);
     fill(r, left, top, ax1, (WORD)(r->oy - 1), r->bg_ink);
     fill(r, left, r->oy, (WORD)(r->ox - 1), ay1, r->bg_ink);
     fill(r, gx1, r->oy, ax1, ay1, r->bg_ink);
@@ -3240,8 +3302,7 @@ static ULONG edge_ink(vr_render *r, int x, int y)
  * grid's narrowed write mask may leave out. */
 static void pad_extend_now(vr_render *r)
 {
-    struct Window *w = r->win;
-    WORD top = (WORD)(w->BorderTop + r->inset_top), left = w->BorderLeft;
+    WORD top, left;
     int cols = vis_cols(r), rows = vis_rows(r), side, i, start;
     WORD gx1, gy1, ax1, ay1;
     UBYTE keep = r->was_blank, blank = r->blank, mask_on = r->mask_on;
@@ -3250,8 +3311,7 @@ static void pad_extend_now(vr_render *r)
         return;
     gx1 = (WORD)(r->ox + cols * r->cw);
     gy1 = (WORD)(r->oy + rows * r->ch);
-    ax1 = (WORD)(w->Width - w->BorderRight - 1);
-    ay1 = (WORD)(w->Height - w->BorderBottom - 1);
+    vr_rect(r, &left, &top, &ax1, &ay1);
     if (mask_on) {
         r->mask_on = 0; /* ink_pen widens the mask, but must not narrow the write mask now */
         SetWriteMask(r->rp, 0xFF);
@@ -3794,7 +3854,7 @@ void vr_select(vr_render *r, int on, int ax, int ay, int bx, int by)
 void vr_redraw(vr_render *r)
 {
     struct Window *w = r->win;
-    WORD top;
+    WORD left, top, ax1, ay1;
     if (!w)
         return; /* no window (before vr_init, after vr_free) */
     if (r->off)
@@ -3802,8 +3862,8 @@ void vr_redraw(vr_render *r)
     r->jump = 0; /* every row drawn again where the grid has it */
     r->jump_step = 0;
     r->view_stale = 0;
-    top = w->BorderTop + r->inset_top; /* the tab bar above stays the host's */
-    if (w->Width - w->BorderRight - 1 >= w->BorderLeft && w->Height - w->BorderBottom - 1 >= top) {
+    vr_rect(r, &left, &top, &ax1, &ay1); /* the tab bar above stays the host's */
+    if (ax1 >= left && ay1 >= top) {
         /* every plane written: from here the planes in use are the
          * background's and what the rows below draw */
         vr_mask_end(r);
@@ -3813,8 +3873,7 @@ void vr_redraw(vr_render *r)
          * them are given -- not the screen's pen (W-T12) */
         r->bs_valid = 0;
         blank_look(r);
-        fill(r, w->BorderLeft, top, w->Width - w->BorderRight - 1,
-             w->Height - w->BorderBottom - 1, r->bg_ink);
+        fill(r, left, top, ax1, ay1, r->bg_ink);
         r->mask = (UBYTE)(r->bg_ink & VR_INK_RGB ? 0xFF : r->bg_ink);
         r->pad_ink = r->bg_ink;
         r->blank = (UBYTE)!r->view; /* blank until the rows below draw something */

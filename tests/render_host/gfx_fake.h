@@ -76,6 +76,10 @@ int gf_bgpen(int col, int row);
 int gf_bg(int x, int y); /* the background pen under window pixel (x, y): a planar screen's pen there */
 /* The window's rows as text, each cols long, joined with '|'. */
 const char *gf_screen(void);
+/* The clip region installed on the window's layer (NS1.2): 1 and its rectangle, 0 none. gf_regions: regions
+ * created and not disposed (a leak check). */
+int gf_clip(int *x0, int *y0, int *x1, int *y1);
+int gf_regions(void);
 void gf_clear_log(void);
 int gf_count(enum gf_kind k);
 /* Calls of that kind since the last gf_clear_log. */

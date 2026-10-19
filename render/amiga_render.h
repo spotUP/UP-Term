@@ -169,7 +169,14 @@ typedef struct vr_render {
     LONG sel_pen[2];
     BYTE hidden;          /* nothing is drawn: the window is too small, or off */
     BYTE off;             /* a tab that is not the active one: the grid goes on, nothing drawn */
-    WORD inset_top;       /* pixels above the text kept free (the tab bar) */
+    /* The viewport rectangle the renderer owns inside the window's inner area (NS1.1):
+     * offsets from the inner area's top left, a size of 0 = out to the inner area's
+     * right / bottom edge (the default: follows the window, byte-identical to before
+     * rects). rect_y is the top inset the tab bar keeps free (vr_set_inset). */
+    WORD rect_x, rect_y, rect_w, rect_h;
+    UBYTE rect_own;          /* vr_set_rect was called: the layer is clipped to the rect */
+    struct Region *clip_rgn; /* NS1.2: the region installed on the layer for an explicit rect */
+    struct Region *clip_old; /* what the layer had before */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
     UBYTE view_stale;      /* live output reached the grid while the view was back: the screen is not the scrollback's */
@@ -310,6 +317,14 @@ void vr_set_off(vr_render *r, int off);
 /* Pixels above the text kept free (the tab bar); the caller lays out and
  * redraws. */
 void vr_set_inset(vr_render *r, WORD top);
+/* The viewport rectangle: offsets from the window's inner area (inside the borders) and a size;
+ * w and h of 0 = out to the inner area's edge. A rect of its own also installs a layer clip region
+ * of exactly that rectangle (NS1.2). vr_layout must follow. */
+void vr_set_rect(vr_render *r, WORD x, WORD y, WORD w, WORD h);
+/* Back to the default rectangle (the inner area below the inset) and no clip region. */
+void vr_reset_rect(vr_render *r);
+/* The rectangle in window pixels, x1 / y1 inclusive (empty when x1 < x0 or y1 < y0). */
+void vr_rect(const vr_render *r, WORD *x0, WORD *y0, WORD *x1, WORD *y1);
 
 void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t,
              enum vt_font_enc enc);

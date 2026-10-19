@@ -1572,8 +1572,160 @@ static void a_kitty_image_draws_its_pixels_on_the_canvas(void)
     close_term();
 }
 
+/* ---- NS1.1 / NS1.2: the viewport rectangle ---- */
+
+/* a hash of every graphics call since gf_clear_log: what the renderer did, not what the canvas shows */
+static unsigned long log_hash(void)
+{
+    unsigned long h = 5381;
+    int i;
+    for (i = 0; i < gf_n; i++) {
+        const gf_call *g = &gf_log[i];
+        h = h * 33 + (unsigned long)g->kind;
+        h = h * 33 + (unsigned long)g->a;
+        h = h * 33 + (unsigned long)g->b;
+        h = h * 33 + (unsigned long)g->c;
+        h = h * 33 + (unsigned long)g->d;
+        h = h * 33 + g->drmd;
+    }
+    return h & 0xFFFFFFFFUL;
+}
+
+#define RW 200
+#define RH 120
+/* a window of RW x RH pixels with borders 4, 11, 18, 2 (inside 178 x 107), the grid in a rect: x y w h
+ * (-1 x: no rect call at all, the default). The scenario: a full repaint, 12 lines scrolling the grid,
+ * a reverse-video line, the cursor moved. Returns the hash of the calls it made. */
+static unsigned long rect_scenario(int x, int y, int w, int h, int first_call_only_layout)
+{
+    vt_callbacks cb;
+    unsigned long hash;
+    int i;
+    memset(&cb, 0, sizeof(cb));
+    cb.damage = cb_damage;
+    cb.scroll = cb_scroll;
+    cb.colors = cb_colors;
+    gf_open(RW, RH, CW, CH, 6);
+    gf_borders(4, 11, 18, 2);
+    term = vt_new(COLS, ROWS, 100, &cb, &rn);
+    vt_set_personality(term, VT_XTERM);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+#ifndef RECT_ABSENT
+    if (x >= 0)
+        vr_set_rect(&rn, (WORD)x, (WORD)y, (WORD)w, (WORD)h);
+#endif
+    vr_layout(&rn);
+    vt_resize(term, rn.cols, rn.rows);
+    gf_clear_log();
+    vr_redraw(&rn);
+    for (i = 0; i < 12; i++) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "line %02d\r\n", i);
+        pass(buf);
+    }
+    pass("\x1b[7mreverse\x1b[0m\x1b[3;5H");
+    (void)first_call_only_layout;
+    hash = log_hash();
+    return hash;
+}
+
+/* The default rectangle is the whole inner window and the renderer's calls are what they were before
+ * rects existed (the hash is of the pre-NS1.1 renderer's log for the same scenario); a rect that is
+ * exactly the inner area makes the same calls. */
+static void the_default_rect_makes_the_calls_the_renderer_always_made(void)
+{
+    unsigned long def, full;
+    int x0, y0, x1, y1;
+    def = rect_scenario(-1, 0, 0, 0, 0);
+    CHECK_INT(gf_clip(&x0, &y0, &x1, &y1), 0);
+    CHECK_INT(def, 1292548310UL); /* recorded from the renderer before NS1.1 (git 8774b8d7) */
+    close_term();
+#ifndef RECT_ABSENT
+    full = rect_scenario(0, 11 - 11, 178, 107, 0);
+    CHECK_INT(full, def);
+    close_term();
+#else
+    (void)full;
+#endif
+    CHECK_INT(gf_regions(), 0);
+}
+
+#ifndef RECT_ABSENT
+/* Every pixel outside [x0..x1] x [y0..y1] is untouched (0, or the border's mark); the strip inside beside the grid is painted. */
+static int pixels_outside(int x0, int y0, int x1, int y1)
+{
+    int x, y, n = 0;
+    for (x = 0; x < RW; x++)
+        for (y = 0; y < RH; y++)
+            if ((x < x0 || x > x1 || y < y0 || y > y1) && gf_pixel(x, y) != 0 && gf_pixel(x, y) != GF_BORDER)
+                n++;
+    return n;
+}
+
+/* A rect offset inside a larger window: nothing is drawn outside it -- text, fills, scrolls, the padding
+ * strips -- and the layer's clip region is that rectangle. The inner area starts at (4, 11): the rect at
+ * (20, 9) of it is the window's (24, 20), 100 x 52 pixels: 12 x 6 cells and strips of 4 pixels. */
+static void a_rect_inside_a_larger_window_keeps_every_draw_inside_it(void)
+{
+    int cx0, cy0, cx1, cy1, i, ok = 1;
+    const int rx0 = 24, ry0 = 20, rx1 = 24 + 100 - 1, ry1 = 20 + 52 - 1;
+    rect_scenario(20, 9, 100, 52, 0);
+    CHECK_INT(rn.cols, 12);
+    CHECK_INT(rn.rows, 6);
+    CHECK_INT(rn.ox, rx0);
+    CHECK_INT(rn.oy, ry0);
+    CHECK_INT(pixels_outside(rx0, ry0, rx1, ry1), 0);
+    CHECK_INT(gf_border_hits(), 0);
+    /* the text is there: the last line of text sits on the grid's top rows, and the padding is painted */
+    CHECK(gf_count(GF_TEXT) > 0);
+    CHECK(gf_pixel(rx1, ry0) != 0);
+    CHECK(gf_pixel(rx0, ry1) != 0);
+    CHECK_INT(gf_cell(0, 0) != ' ', 0); /* cell (0, 0) is of the window, not of the rect: nothing there */
+    /* every call lands inside the rect */
+    for (i = 0; i < gf_n; i++) {
+        const gf_call *g = &gf_log[i];
+        if (g->kind == GF_TEXT)
+            ok &= g->a >= rx0 && g->b >= ry0 && g->a < rx1 + 1 && g->b < ry1 + 1;
+        if (g->kind == GF_RECT)
+            ok &= g->a >= rx0 && g->b >= ry0 && g->c <= rx1 && g->d <= ry1;
+        if (g->kind == GF_SCROLL)
+            ok &= g->c >= ry0 && g->d <= ry1;
+    }
+    CHECK(ok);
+    CHECK(gf_count(GF_SCROLL) > 0);
+    /* a new default background repaints the strips (pad_fill); coloured cells at the edges are extended
+     * into them (pad_extend_now); a full repaint (vr_redraw) fills the rectangle: none leaves it */
+    vr_set_pad_extend(&rn, 1);
+    pass("\x1b]11;rgb:20/40/60\x07\x1b[41mabc\x1b[2;1H\x1b[42mxyz\x1b[6;12H\x1b[44mq");
+    pass("");
+    CHECK_INT(pixels_outside(rx0, ry0, rx1, ry1), 0);
+    vr_redraw(&rn);
+    CHECK_INT(pixels_outside(rx0, ry0, rx1, ry1), 0);
+    CHECK_INT(gf_border_hits(), 0);
+    /* NS1.2: the clip region is the rect */
+    CHECK_INT(gf_clip(&cx0, &cy0, &cx1, &cy1), 1);
+    CHECK_INT(cx0, rx0);
+    CHECK_INT(cy0, ry0);
+    CHECK_INT(cx1, rx1);
+    CHECK_INT(cy1, ry1);
+    /* the inset moves the rect's top and its clip with it */
+    vr_set_inset(&rn, 12);
+    CHECK_INT(gf_clip(&cx0, &cy0, &cx1, &cy1), 1);
+    CHECK_INT(cy0, 11 + 12);
+    CHECK_INT(cy1, 11 + 12 + 52 - 1);
+    vr_reset_rect(&rn);
+    CHECK_INT(gf_clip(&cx0, &cy0, &cx1, &cy1), 0);
+    CHECK_INT(gf_regions(), 0);
+    close_term();
+}
+#endif
+
 int main(void)
 {
+    the_default_rect_makes_the_calls_the_renderer_always_made();
+#ifndef RECT_ABSENT
+    a_rect_inside_a_larger_window_keeps_every_draw_inside_it();
+#endif
     pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks();
     a_second_window_on_the_same_palette_matches_no_colour_again();
     a_kitty_image_draws_its_pixels_on_the_canvas();

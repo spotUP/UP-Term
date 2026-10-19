@@ -12,6 +12,7 @@ void abort(void);
 #include <graphics/view.h>
 #include <graphics/scale.h>
 #include <graphics/clip.h>
+#include <graphics/regions.h>
 #include <graphics/layers.h>
 #include <devices/timer.h>
 #include <utility/tagitem.h>
@@ -54,6 +55,8 @@ long gf_beam;
 
 /* the window's border widths (gf_borders) */
 static int bleft, btop, bright, bbottom;
+static struct Region *installed_rgn;
+static int n_regions;
 
 /* the canvas a RastPort draws into: the back bitmap's, the window's, or none (a scratch bitmap of the
  * renderer's, a double-size row's glyph: its pixels are its own planes, not the window) */
@@ -93,6 +96,8 @@ void gf_open(int w, int h, int cw, int ch, int base)
     canvas = (int *)calloc((size_t)(w * h), sizeof(int));
     bgc = (int *)calloc((size_t)(w * h), sizeof(int));
     memset(&win, 0, sizeof(win));
+    memset(&layer, 0, sizeof(layer));
+    win.WLayer = &layer; /* a layer with no ClipRects: only InstallClipRegion looks at it until gf_planar */
     memset(&scr, 0, sizeof(scr));
     memset(&rport, 0, sizeof(rport));
     memset(&bm, 0, sizeof(bm));
@@ -142,6 +147,7 @@ VOID FreeBitMap(struct BitMap *b);
 
 void gf_close(void)
 {
+    installed_rgn = 0;
     if (back_on)
         FreeBitMap(&back);
     free(pmem);
@@ -691,6 +697,41 @@ WORD TextLength(struct RastPort *rp, CONST_STRPTR s, ULONG n)
 struct DrawInfo *GetScreenDrawInfo(struct Screen *s) { (void)s; return &dinfo; }
 VOID FreeScreenDrawInfo(struct Screen *s, struct DrawInfo *d) { (void)s; (void)d; }
 VOID LockLayer(LONG dummy, struct Layer *l) { (void)dummy; (void)l; }
+/* Clip regions (NS1.2): a Region here is one rectangle (its Bounds); InstallClipRegion records the
+ * installed one for gf_clip and returns the previous. */
+struct Region *NewRegion(void)
+{
+    n_regions++;
+    return calloc(1, sizeof(struct Region));
+}
+BOOL OrRectRegion(struct Region *rg, CONST struct Rectangle *rc)
+{
+    rg->bounds = *rc;
+    return TRUE;
+}
+VOID DisposeRegion(struct Region *rg)
+{
+    n_regions--;
+    free(rg);
+}
+struct Region *InstallClipRegion(struct Layer *l, CONST struct Region *rg)
+{
+    struct Region *old = installed_rgn;
+    (void)l;
+    installed_rgn = (struct Region *)rg;
+    return old;
+}
+int gf_clip(int *x0, int *y0, int *x1, int *y1)
+{
+    if (!installed_rgn)
+        return 0;
+    *x0 = installed_rgn->bounds.MinX;
+    *y0 = installed_rgn->bounds.MinY;
+    *x1 = installed_rgn->bounds.MaxX;
+    *y1 = installed_rgn->bounds.MaxY;
+    return 1;
+}
+int gf_regions(void) { return n_regions; }
 VOID UnlockLayer(struct Layer *l) { (void)l; }
 struct Library *OpenLibrary(CONST_STRPTR n, ULONG v)
 {
