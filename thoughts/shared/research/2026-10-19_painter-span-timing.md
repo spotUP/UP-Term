@@ -55,3 +55,22 @@ Text runs by reason (counted in the same order as the gate): 265 runs, 2,915 cel
 Finding: the Text path is not the cost (8.8 ms of 552 per write). cell_style is: 457 ms per write, 83% of the rows pass (vt_resolve_colors, pen_for twice-plus, area_ink twice, vt_cell_underline_color, vt_cell_font per call).
 Caveat: ReadEClock wraps every cell_style call, so the figure includes timer overhead; the number of calls is not counted yet. Next step: count the calls and split cell_style into pen_for / area_ink / vt_resolve_colors
 (pen_for on a 16-pen AGA screen with 256-colour ncurses cells is the suspect: nearest-pen or dither lookup per call).
+
+## Follow-up: is cell_style real? (same day, same setup, rig 2 --a1200, AGA 640x256x4, `phaseprobe ONLY 8`, 20 writes; host load very high, so ratios and counts count, not absolute ms)
+
+PROF-only counters: cell_style calls, calls by call-site line (macro records __LINE__), 1000 empty ReadEClock pairs timed once at the first print, cell_style_in split (vt_resolve_colors / pen_for fg+bg / area_ink x2), and pen_for first-use entries (`!r->have[c]`) with failed obtains. Two runs, the second with the pen_for counters.
+
+| figure | value |
+|---|---|
+| cell_style calls, 20 writes | 854 (43 per write) |
+| empty ReadEClock pair | 18 ticks (25 us); 854 pairs = 15,400 ticks = 0.2% of cell_style's 6,558,041 |
+| cell_style real | 6.54 M ticks = 9.2 s total = 460 ms per write (the 457 ms was real, not timer overhead) |
+| split: vt_resolve_colors | 26,000 ticks (0.4%) |
+| split: pen_for fg+bg | 6,444,000 ticks (98%) |
+| split: area_ink x2 | 37,000 ticks (0.6%) |
+| pen_for first-use path (obtain) | 126 entries, 0 failed; 6.44 M ticks / 126 = about 51,000 ticks (72 ms) each |
+| call sites (lines in this commit) | 3336 (C loop, `st`): 559; 3299 (asm row-scan loop, `fs`): 280; 3065: 10; 3888 (cursor): 5 (2172, 2953, 3125, 3327: 0) |
+
+Finding: cell_style is real, but it is not per-call work. 98% of it is pen_for, and that is the 126 first uses of a colour (obtain on the AGA screen: about 72 ms each). r->have[] is cleared when the render attaches to a window (amiga_render.c ~478, ~672), so these 126 obtains are the window's first paint of the ncurses 256-colour frame, paid inside the first writes of the 20, not a steady-state cost per call. The other 728 calls cost about 120 ticks each (cheap, as expected from reading the code). So the 552 ms per write average is dominated by a one-time pen-obtain burst; a steady-state write (second pass over the same colours) should not show it.
+Next measurement: print per-write cell_style ticks (or run the 20 writes twice in one window) to confirm writes 2..20 are cheap, and time obtain()/few_obtain apart (ObtainBestPen on a 16-pen screen vs the dither path). If confirmed, the "PROF rows 552 ms per write" figures in the earlier sections are a cold-start average and must be re-taken warm.
+Unverified: that the 126 first uses sit in the first writes (counted in total only, not per write).
