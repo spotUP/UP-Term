@@ -1660,6 +1660,20 @@ static void a_doubled_leading_slash_is_the_same_unix_name(void)
     CHECK_STR(out, "RAM:");
 }
 
+/* HOME is a volume root ("System:"); POSIX code writes "$HOME/.tutorial", "System:/.tutorial", which
+ * AmigaDOS reads as the parent of the root and refuses ("vsh: System:/.tutest: cannot create"). */
+static void a_slash_after_the_volume_colon_is_counted(void)
+{
+    CHECK(sh_vol_slashes("System:/x") == 1);
+    CHECK(sh_vol_slashes("System://x") == 2);
+    CHECK(sh_vol_slashes("System:/") == 1);
+    CHECK(sh_vol_slashes("System:x") == 0);
+    CHECK(sh_vol_slashes("System:") == 0);
+    CHECK(sh_vol_slashes("dir/a:/b") == 0); /* the colon is past a slash: no volume */
+    CHECK(sh_vol_slashes("/x") == 0);
+    CHECK(sh_vol_slashes(":/x") == 0);
+}
+
 /* Uninstall runs dist/unstartup.sh with vsh to take Install's blocks out of
  * S:User-Startup. The Replay kept ";BEGIN UP-Term python" after an
  * Uninstall: the script it ran (an older copy in ENVARC:up-term) listed the
@@ -2027,6 +2041,7 @@ void suite_sh_exec(void)
     umask_builtin();
     a_unix_absolute_name_maps_to_its_volume();
     a_doubled_leading_slash_is_the_same_unix_name();
+    a_slash_after_the_volume_colon_is_counted();
     a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is();
     printf_builtin();
     prompts();

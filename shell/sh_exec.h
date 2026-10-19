@@ -382,6 +382,11 @@ int sh_path_next(const char **p, char *dir, long max);
  * parent directory, so vsh tries a name that way first and this one only
  * when there is nothing by the Amiga meaning (vsh.c lock_name). */
 int sh_unix_root(const char *in, char *out, long max);
+/* How many slashes follow the volume's colon in "Vol:/x" (0 when the name has no volume before its
+ * first slash). To AmigaDOS that slash is the parent of the volume's root, always an error; POSIX
+ * code writes "$HOME/x" with HOME a volume ("System:"), so vsh drops them: "Vol:/x" is Vol:x, a run
+ * of slashes too, as in POSIX (vsh.c amiga_name). */
+int sh_vol_slashes(const char *in);
 /* The OS layer, for a command file it found and could not load: the argv that runs it in this shell
  * when its #! (or ;!) line names /bin/sh or /bin/bash (ixemul's rule; sh_exec.c), else 0. Malloc'ed;
  * out[1] is malloc'ed too when it is not argv[0] (the interpreter's argument). */

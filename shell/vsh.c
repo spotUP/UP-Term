@@ -1462,7 +1462,7 @@ static long os_read_line(void *os, sh_fh fh, char *buf, long max)
  * a / (the parent), ./ goes, and . and .. alone are "" and "/". */
 static void amiga_name(const char *in, char *out, int max)
 {
-    int n = 0;
+    int n = 0, slashes;
     /* the Unix devices a script names: /dev/null is NIL:, /dev/tty the console (". /dev/null",
      * test -c /dev/null) */
     if (!strcmp(in, "/dev/null") || !strcmp(in, "/dev/tty")) {
@@ -1483,7 +1483,13 @@ static void amiga_name(const char *in, char *out, int max)
             break;
     }
     out[n] = 0;
-    strncat(out, in, max - n - 1);
+    if ((slashes = sh_vol_slashes(in)) != 0) {
+        /* "Vol:/x" is Vol:x: HOME is a volume root and POSIX code writes $HOME/x */
+        size_t vl = (size_t)(strchr(in, ':') - in) + 1;
+        strncat(out, in, vl < (size_t)(max - n - 1) ? vl : (size_t)(max - n - 1));
+        in += vl + slashes;
+    }
+    strncat(out, in, max - strlen(out) - 1);
 }
 
 /* path as AmigaDOS names it, into used: the Amiga meaning first ("/x" is
