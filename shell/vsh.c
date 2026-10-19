@@ -307,12 +307,16 @@ static sh_fh os_open(void *os, const char *path, int mode)
 {
     BPTR fh;
     char p[256], an[256];
+    const char *vol;
     (void)os;
     /* "./x" and "../x" as AmigaDOS names them (AmigaDOS has no "." entry: ". ./e.sh" and
      * ENV=./e.sh could not open a file that was there) */
     amiga_name(path, an, sizeof(an));
     path = an;
-    if (path[0] == '/' && path[1] && path[1] != '/') {
+    vol = path;
+    while (*vol == '/')
+        vol++; /* "//vol/x" is "/vol/x" to ixemul (sh_unix_root) */
+    if (path[0] == '/' && *vol) {
         /* "/vol/x" as Unix means it when the Amiga meaning (the parent's
          * x) has nothing there: the file itself, or for a new file its
          * directory */
@@ -322,7 +326,7 @@ static sh_fh os_open(void *os, const char *path, int mode)
         if ((l = lock_name(path, p, sizeof(p))) != 0) {
             UnLock(l);
             path = p;
-        } else if (mode != SH_OPEN_READ && slash && slash != path && slash - path < (long)sizeof(dir)) {
+        } else if (mode != SH_OPEN_READ && slash && slash > vol && slash - path < (long)sizeof(dir)) {
             memcpy(dir, path, (size_t)(slash - path));
             dir[slash - path] = 0;
             if ((l = lock_name(dir, p, sizeof(p))) != 0) {

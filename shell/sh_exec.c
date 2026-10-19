@@ -26,7 +26,13 @@ static const char *dev_name(const char *path)
 int sh_unix_root(const char *in, char *out, long max)
 {
     long i = 1, o = 0, n = (long)strlen(in);
-    if (n < 2 || in[0] != '/' || in[1] == '/' || n + 2 > max)
+    if (n < 2 || in[0] != '/' || n + 2 > max)
+        return 0;
+    /* a run of leading slashes is one, as ixemul has it (__plock.c unslashify): upkg runs
+     * "//UP-Term/pkg/upkg/info/x.postinst" (dest root "/" joined to an absolute info_dir) */
+    while (i < n && in[i] == '/')
+        i++;
+    if (i == n)
         return 0;
     while (i < n && in[i] != '/')
         out[o++] = in[i++];

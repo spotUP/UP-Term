@@ -376,8 +376,9 @@ void sh_apply_env(sh_shell *sh, const char *list, long len);
 int sh_path_next(const char **p, char *dir, long max);
 
 /* A Unix absolute name as AmigaDOS has it: "/vol/rest" is "vol:rest" and
- * "/vol" is "vol:", into out (max bytes). 0 for anything else ("/" alone,
- * "//x", a relative name, too long). On AmigaDOS a leading "/" is the
+ * "/vol" is "vol:", into out (max bytes); a run of leading slashes counts as
+ * one, as ixemul has it ("//vol/rest" is "vol:rest" too). 0 for anything else
+ * (slashes alone, a relative name, too long). On AmigaDOS a leading "/" is the
  * parent directory, so vsh tries a name that way first and this one only
  * when there is nothing by the Amiga meaning (vsh.c lock_name). */
 int sh_unix_root(const char *in, char *out, long max);

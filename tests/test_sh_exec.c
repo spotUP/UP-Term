@@ -1621,9 +1621,24 @@ static void a_unix_absolute_name_maps_to_its_volume(void)
     CHECK(sh_unix_root("/RAM/", out, sizeof(out)));
     CHECK_STR(out, "RAM:");
     CHECK(!sh_unix_root("/", out, sizeof(out)));      /* the parent, as AmigaDOS has it */
-    CHECK(!sh_unix_root("//x", out, sizeof(out)));    /* the grandparent's x */
+    CHECK(!sh_unix_root("//", out, sizeof(out)));     /* slashes only: the grandparent */
     CHECK(!sh_unix_root("c/dir", out, sizeof(out)));  /* relative */
     CHECK(!sh_unix_root("/a/very/long/name/here", out, 8)); /* does not fit */
+}
+
+/* upkg ran its postinst as "//UP-Term/pkg/upkg/info/UP-Term-nvim.postinst" (dest root "/" joined
+ * to info_dir "/UP-Term/...") and vsh said "not found" (status 127) although ixemul's ls found the
+ * file: ixemul collapses a leading run of slashes (__plock.c unslashify), so the Unix reading does too.
+ * The Amiga reading (the grandparent's x) is still tried first, in vsh.c lock_name. */
+static void a_doubled_leading_slash_is_the_same_unix_name(void)
+{
+    char out[64];
+    CHECK(sh_unix_root("//UP-Term/pkg/upkg/info/x.postinst", out, sizeof(out)));
+    CHECK_STR(out, "UP-Term:pkg/upkg/info/x.postinst");
+    CHECK(sh_unix_root("///RAM/x", out, sizeof(out)));
+    CHECK_STR(out, "RAM:x");
+    CHECK(sh_unix_root("//RAM", out, sizeof(out)));
+    CHECK_STR(out, "RAM:");
 }
 
 /* Uninstall runs dist/unstartup.sh with vsh to take Install's blocks out of
@@ -1992,6 +2007,7 @@ void suite_sh_exec(void)
     which_type();
     umask_builtin();
     a_unix_absolute_name_maps_to_its_volume();
+    a_doubled_leading_slash_is_the_same_unix_name();
     a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is();
     printf_builtin();
     prompts();
