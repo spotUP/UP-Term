@@ -85,8 +85,16 @@ def close_vsh():
 
 
 def case_selftest(n):
+    """the lesson's own answers on Amiga vsh. The answers of the window lesson act on the window
+    (UPTERM_STATE act ...), which --selftest cannot do: the host test's fake state stands in, as
+    in tests/test_tutorial_lessons.py"""
     name = AMIGA_NAME(next(l for l in LESSONS if l.startswith(n)))
-    rc, out = c.run("%s --selftest UP-Term:share/tutorial/%s" % (TUT, name), 180)
+    ami.put(os.path.join(ROOT, "tests", "fake-upterm-state"), "RAM:fake-upterm-state")
+    c.run("Delete RAM:fakestate ALL QUIET >NIL:", 30)
+    c.run("MakeDir RAM:fakestate", 30)
+    rc, out = c.run("UP-Term:bin/vsh -c \"UPTERM_STATE='UP-Term:bin/vsh RAM:fake-upterm-state' "
+                    "UPTERM_FAKE_DIR=RAM:fakestate %s --selftest UP-Term:share/tutorial/%s\""
+                    % (TUT, name), 180)
     steps = [l for l in out.splitlines() if l.startswith(("ok ", "FAIL"))]
     ok = rc == 0 and steps and all(l.startswith("ok ") for l in steps)
     return ok, "rc %s: %s" % (rc, out)

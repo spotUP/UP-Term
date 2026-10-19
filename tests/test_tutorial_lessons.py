@@ -20,21 +20,7 @@ STUBS = ('nano', 'man', 'upkg', 'Version')
 # call it when UPTERM_STATE is set); "act slash NAME" is a typed slash command. UPTERM_FAKE_FROZEN
 # makes every action do nothing, as a user who only pressed Return. Each state call adds the
 # drawer it ran in to $UPTERM_FAKE_DIR/cwd.
-FAKE_STATE = '''#!/bin/sh
-d=${UPTERM_FAKE_DIR:?}
-get() { if [ -f "$d/$1" ]; then cat "$d/$1"; else echo 0; fi; }
-case $1 in
-state) pwd >> "$d/cwd"; get "$2" ;;
-act)
-    [ -n "${UPTERM_FAKE_FROZEN:-}" ] && exit 0
-    if [ "$2" = slash ]; then
-        echo $(( $(get slash-count) + 1 )) > "$d/slash-count"
-        echo "$3" > "$d/last-slash"
-    else
-        echo $(( $(get "$2") + 1 )) > "$d/$2"
-    fi ;;
-esac
-'''
+FAKE_STATE = os.path.join(ROOT, 'tests', 'fake-upterm-state')  # tools/rig/tutorial_rig.py puts it on the rig too
 HAVE_TMUX = shutil.which('tmux') is not None
 NEEDS_TMUX = ('13-',)
 
@@ -47,10 +33,7 @@ class Lessons(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix='tutlessons')
         cls.bin = os.path.join(cls.tmp, 'bin')
         os.mkdir(cls.bin)
-        cls.fake = os.path.join(cls.tmp, 'fake-upterm-state')
-        with open(cls.fake, 'w') as fh:
-            fh.write(FAKE_STATE)
-        os.chmod(cls.fake, 0o755)
+        cls.fake = FAKE_STATE
         for name in STUBS:
             p = os.path.join(cls.bin, name)
             with open(p, 'w') as fh:

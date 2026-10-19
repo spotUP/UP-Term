@@ -1,0 +1,14 @@
+#!/bin/sh
+d=${UPTERM_FAKE_DIR:?}
+get() { if [ -f "$d/$1" ]; then cat "$d/$1"; else echo 0; fi; }
+case $1 in
+state) pwd >> "$d/cwd"; get "$2" ;;
+act)
+    [ -n "${UPTERM_FAKE_FROZEN:-}" ] && exit 0
+    if [ "$2" = slash ]; then
+        echo $(( $(get slash-count) + 1 )) > "$d/slash-count"
+        echo "$3" > "$d/last-slash"
+    else
+        echo $(( $(get "$2") + 1 )) > "$d/$2"
+    fi ;;
+esac
