@@ -1606,6 +1606,8 @@ static unsigned long rect_scenario(int x, int y, int w, int h, int first_call_on
     cb.scroll = cb_scroll;
     cb.colors = cb_colors;
     gf_open(RW, RH, CW, CH, 6);
+    if (planar_depth)
+        gf_planar(planar_depth, planar_left, 10);
     gf_borders(4, 11, 18, 2);
     term = vt_new(COLS, ROWS, 100, &cb, &rn);
     vt_set_personality(term, VT_XTERM);
@@ -1657,8 +1659,12 @@ static int pixels_outside(int x0, int y0, int x1, int y1)
     int x, y, n = 0;
     for (x = 0; x < RW; x++)
         for (y = 0; y < RH; y++)
-            if ((x < x0 || x > x1 || y < y0 || y > y1) && gf_pixel(x, y) != 0 && gf_pixel(x, y) != GF_BORDER)
+            if ((x < x0 || x > x1 || y < y0 || y > y1) && gf_pixel(x, y) != 0 && gf_pixel(x, y) != GF_BORDER) {
+                /* a planar screen marks the borders with the last pen, not GF_BORDER (gf_border_hits counts those) */
+                if (planar_depth && (x < 4 || x >= RW - 18 || y < 11 || y >= RH - 2))
+                    continue;
                 n++;
+            }
     return n;
 }
 
@@ -1715,6 +1721,40 @@ static void a_rect_inside_a_larger_window_keeps_every_draw_inside_it(void)
     CHECK_INT(gf_regions(), 0);
     close_term();
 }
+
+/* The same rect with the planar/direct paths on (gf_planar: raw scrolls, planar text and fills, pad strips,
+ * the direct cursor) at a non-zero screen left, and the rect's own left not 0 (the second pane of a split):
+ * a wrapping long line, 40 scrolling lines, cursor moves, colours at the edges, a full redraw. Nothing
+ * leaves the rect. */
+static void a_planar_rect_keeps_every_draw_inside_it(int depth, int left, int rect_x)
+{
+    int i;
+    const int rx0 = 4 + rect_x, ry0 = 20, rx1 = rx0 + 100 - 1, ry1 = 20 + 52 - 1;
+    planar_depth = depth;
+    planar_left = left;
+    rect_scenario(rect_x, 9, 100, 52, 0);
+    CHECK(rn.ox >= rx0 && rn.ox <= rx0 + 7); /* a VTCON_DIRECT build starts the text on a byte boundary: up to 7 pixels in */
+    CHECK_INT(pixels_outside(rx0, ry0, rx1, ry1), 0);
+    vr_set_pad_extend(&rn, 1);
+    pass("\x1b]11;rgb:20/40/60\x07\x1b[41mabc\x1b[2;1H\x1b[42mxyz\x1b[6;12H\x1b[44mq");
+    pass("\x1b[H\x1b[0mThis is a long line that must wrap around the pane edge several times over and over again\r\n");
+    for (i = 0; i < 40; i++) {
+        char buf[48];
+        snprintf(buf, sizeof(buf), "\x1b[3%dmscroll %02d\r\n", i % 8, i);
+        pass(buf);
+    }
+    pass("\x1b[1;1H\x1b[2;7H\x1b[6;12Hz\x1b[3;3H\x1b[7mrev\x1b[0m\x1b[2J\x1b[H\x1b[41mred line\r\n");
+    pass("\x1b[6;1H\r\n\r\nend");
+    CHECK_INT(pixels_outside(rx0, ry0, rx1, ry1), 0);
+    vr_redraw(&rn);
+    CHECK_INT(pixels_outside(rx0, ry0, rx1, ry1), 0);
+    CHECK_INT(gf_border_hits(), 0);
+    CHECK(gf_count(GF_SCROLL) + gf_count(GF_BLT) > 0); /* ScrollRaster, or the direct build's BltBitMap */
+    CHECK_INT(gf_regions(), 0);
+    close_term();
+    planar_depth = 0;
+    planar_left = 0;
+}
 #endif
 
 int main(void)
@@ -1722,6 +1762,9 @@ int main(void)
     the_default_rect_makes_the_calls_the_renderer_always_made();
 #ifndef RECT_ABSENT
     a_rect_inside_a_larger_window_keeps_every_draw_inside_it();
+    a_planar_rect_keeps_every_draw_inside_it(4, 16, 20);
+    a_planar_rect_keeps_every_draw_inside_it(4, 0, 40);
+    a_planar_rect_keeps_every_draw_inside_it(2, 24, 0);
 #endif
     pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks();
     a_second_window_on_the_same_palette_matches_no_colour_again();

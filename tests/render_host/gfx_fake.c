@@ -496,11 +496,42 @@ VOID ScrollRaster(struct RastPort *rp, LONG dx, LONG dy, LONG x0, LONG y0, LONG 
     }
 }
 
+static UBYTE blt_buf[640 * 400];
+/* On the planar screen (screen coordinates): minterm 0xC0 copies source to destination, 0x00 clears and
+ * 0xFF sets, in the planes of `mask`; the log keeps the destination rectangle (a, b, c, d = x0, y0, x1, y1)
+ * so a test sees where a direct blit landed. Any other bitmap: only logged. */
 LONG BltBitMap(CONST struct BitMap *s, LONG sx, LONG sy, struct BitMap *d, LONG dx, LONG dy, LONG w, LONG h,
                ULONG mt, ULONG mask, PLANEPTR tmp)
 {
-    (void)s; (void)sx; (void)sy; (void)d; (void)dx; (void)dy; (void)w; (void)h; (void)mt; (void)mask; (void)tmp;
-    rec(GF_BLT, 0, 0, 0, 0);
+    long i, j;
+    int p;
+    (void)tmp;
+    rec(GF_BLT, dx, dy, dx + w - 1, dy + h - 1);
+    if (!pdepth || s != &bm || d != &bm || (mt != 0xC0 && mt != 0x00 && mt != 0xFF))
+        return 0;
+    for (p = 0; p < pdepth; p++) {
+        UBYTE *buf = blt_buf;
+        if (!((mask >> p) & 1) || w * h > (long)sizeof(blt_buf))
+            continue;
+        for (j = 0; j < h; j++)
+            for (i = 0; i < w; i++) {
+                long x = sx + i, y = sy + j;
+                buf[j * w + i] = (UBYTE)(mt == 0xC0 ? (x >= 0 && y >= 0 && x < pbpr * 8 && y < prows
+                                                           ? (bm.Planes[p][y * pbpr + (x >> 3)] >> (7 - (x & 7))) & 1
+                                                           : 0)
+                                                    : mt == 0xFF);
+            }
+        for (j = 0; j < h; j++)
+            for (i = 0; i < w; i++) {
+                long x = dx + i, y = dy + j;
+                if (x < 0 || y < 0 || x >= pbpr * 8 || y >= prows)
+                    continue;
+                if (buf[j * w + i])
+                    bm.Planes[p][y * pbpr + (x >> 3)] |= (UBYTE)(0x80 >> (x & 7));
+                else
+                    bm.Planes[p][y * pbpr + (x >> 3)] &= (UBYTE)~(0x80 >> (x & 7));
+            }
+    }
     return 0;
 }
 

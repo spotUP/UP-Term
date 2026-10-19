@@ -1019,7 +1019,7 @@ int vr_layout(vr_render *r)
          * Only in a DIRECT=1 build: by default the path is used where the
          * text is on a byte boundary anyway (a borderless window, a lucky
          * place) and nobody loses a column to it. */
-        WORD pad = (WORD)((8 - ((w->LeftEdge + r->ox) & 7)) & 7);
+        WORD pad = (WORD)((8 - ((r->win->LeftEdge + r->ox) & 7)) & 7);
         if (cols * r->cw + pad > iw)
             cols = (iw - pad) / r->cw;
         r->ox += pad;
