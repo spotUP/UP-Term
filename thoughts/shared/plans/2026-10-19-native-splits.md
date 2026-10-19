@@ -135,7 +135,7 @@ Plan count: 17 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1
 - New pane runs vsh in the same directory (tab_spawn as for tabs).
 - Keys: split right RA+D, split down RA+Shift+D, focus RA+arrows, close pane RA+Shift+W, zoom RA+Shift+Enter; mouse click also focuses.
 - Window-level commands (font size, 80x24 / 132x43, fullscreen) act on the whole window, panes keep proportions; DECCOLM from a program is ignored while split.
-- Persistence (NS5.5): a user setting in the profile. Values off / layout / layout+programs, default off. Open: whether layout+programs is wanted in the first release.
+- Persistence (NS5.5): a user setting in the profile. Values off / layout / layout+programs, default off. All three ship in the first release (owner 2026-10-19), so NS5.5 includes restarting the program each pane ran.
 - Dividers: 1-pixel line, no pane titles; focus shown by solid vs hollow cursor.
 - Still open: pane scrollback default, tmux positioning in docs, release target.
 
