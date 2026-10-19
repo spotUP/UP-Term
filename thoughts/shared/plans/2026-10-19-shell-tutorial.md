@@ -144,7 +144,7 @@ none.
 - [ ] L-C1 Each lesson's facts checked on vsh (host and rig).
 - [x] L-6 Kit and dist: learn to UP-Term:bin, lessons to UP-Term:share/tutorial,
       in parts.txt and the base (not slim.txt-removed), uninstall removes them.
-- [ ] L-7 Help menu "Shell tutorial" item and /tutorial slash command, a tab
+- [x] L-7 Help menu "Shell tutorial" item and /tutorial slash command, a tab
       running `vsh UP-Term:bin/tutorial` (UPDemo row pattern), after the
       "Slash commands" item.
 - [ ] L-8 First-run hint in dist/vshrc (D3: yes), off by
@@ -158,7 +158,7 @@ none.
 - [x] L-T2 Lesson lint: every .lesson parses, every step has a check and an
       answer, and each answer passes its own check in a sandbox (run in
       `make test`).
-- [ ] L-T3 Menu and slash wiring test next to the existing menu tests: the
+- [x] L-T3 Menu and slash wiring test next to the existing menu tests: the
       Shell tutorial item and /tutorial reach the tab spawn with the tutorial
       command line.
 - [ ] L-R Rig check (owner or rig 4): tutorial from the Help menu on the

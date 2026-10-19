@@ -63,6 +63,9 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(parse("/claude"), SLASH_OK); /* UP-Term > Claude */
     CHECK_INT(cmd.id, MENU_CLAUDE);
     CHECK_INT(parse("/claude now"), SLASH_ERROR);
+    CHECK_INT(parse("/tutorial"), SLASH_OK); /* Help > Shell tutorial */
+    CHECK_INT(cmd.id, MENU_TUTORIAL);
+    CHECK_INT(parse("/tutorial now"), SLASH_ERROR);
     CHECK_INT(parse("/font-size bigger"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_FONT_BIGGER);
     CHECK_INT(parse("/size 132x43"), SLASH_OK);

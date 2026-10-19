@@ -119,6 +119,7 @@ static const slash_def table[] = {
     { "term", SL_ARG, SLASH_TERM, 1, 0, "NAME | none",
       "TERM for programs vsh starts here (vtcon, xterm-256color, screen-256color)" },
     { "theme", SL_ARG, SLASH_THEME, 0, 0, "[NAME]", "a colour theme (no name: a list, Up/Down and Enter)" },
+    { "tutorial", SL_ACTION, MENU_TUTORIAL, 0, 0, "", "the shell tutorial, in a new tab" },
     { "wheel", SL_CHOICE, 0, 0, v_wheel, "scroll | ignore", "the mouse wheel moves the scrollback" }
 };
 

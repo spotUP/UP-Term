@@ -14,19 +14,28 @@
 
 #include <string.h>
 
-/* The script: no FailAt stop, pre ("" none), the program; when it fails
+/* Help > Shell tutorial and /tutorial: a tab running the tutorial script
+ * under vsh (the kit puts both in UP-Term:bin, as upkg-ask). The file is
+ * what the handler looks for first; the command is the script's one line.
+ * 80x24: mdv sets the lessons for the window's width. */
+#define TABPROG_TUTORIAL_FILE "UP-Term:bin/tutorial"
+#define TABPROG_TUTORIAL_CMD "UP-Term:bin/vsh UP-Term:bin/tutorial"
+#define TABPROG_TUTORIAL_COLS 80
+#define TABPROG_TUTORIAL_ROWS 24
+
+/* The script: no FailAt stop, pre ("" none), the command line; when it fails
  * (rc 5 or more: WARN) its message stays up until Return; then EndCLI
  * closes the tab. 1 when it fits in out[size], 0 when not. */
-static int tabprog_script(char *out, unsigned long size, const char *pre, const char *file)
+static int tabprog_script(char *out, unsigned long size, const char *pre, const char *cmd)
 {
     static const char head[] = "FailAt 2147483647\n";
     static const char tail[] = "\nIf WARN\nAsk \"Press Return to close this tab.\"\nEndIf\nEndCLI >NIL:\n";
-    unsigned long n = sizeof(head) - 1 + strlen(pre) + strlen(file) + sizeof(tail);
+    unsigned long n = sizeof(head) - 1 + strlen(pre) + strlen(cmd) + sizeof(tail);
     if (n > size)
         return 0;
     strcpy(out, head);
     strcat(out, pre);
-    strcat(out, file);
+    strcat(out, cmd);
     strcat(out, tail);
     return 1;
 }

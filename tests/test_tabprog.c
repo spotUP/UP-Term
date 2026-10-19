@@ -19,6 +19,16 @@ static void claude_tab_keeps_its_stack_line(void)
     CHECK(strstr(s, "FailAt 2147483647\nStack 32768\nC:Claude\nIf WARN\n") == s);
 }
 
+static void tutorial_tab_runs_the_tutorial_under_vsh(void)
+{
+    char s[256];
+    /* Help > Shell tutorial and /tutorial (MENU_TUTORIAL) spawn this tab */
+    CHECK(tabprog_script(s, sizeof(s), "", TABPROG_TUTORIAL_CMD));
+    CHECK_STR(s, "FailAt 2147483647\nUP-Term:bin/vsh UP-Term:bin/tutorial\n"
+                 "If WARN\nAsk \"Press Return to close this tab.\"\nEndIf\nEndCLI >NIL:\n");
+    CHECK_STR(TABPROG_TUTORIAL_FILE, "UP-Term:bin/tutorial");
+}
+
 static void a_script_too_long_for_the_buffer_is_refused(void)
 {
     char s[40];
@@ -52,6 +62,7 @@ void suite_tabprog(void)
 {
     a_failed_demo_keeps_its_tab_open_until_return();
     claude_tab_keeps_its_stack_line();
+    tutorial_tab_runs_the_tutorial_under_vsh();
     a_script_too_long_for_the_buffer_is_refused();
     a_small_window_grows_to_the_demo_and_the_tab_bar();
     a_big_window_is_left_alone();

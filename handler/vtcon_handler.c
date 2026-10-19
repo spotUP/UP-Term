@@ -1521,12 +1521,14 @@ static const struct NewMenu menu_kc[MENU_KC_ITEMS] = {
 };
 
 /* Help, the strip's last menu: the tour of what the terminal does
- * (UPDemo, in a new tab; /demo too) and the slash commands (/help too) */
-#define MENU_HELP_ITEMS 3
+ * (UPDemo, in a new tab; /demo too), the slash commands (/help too) and the
+ * shell tutorial (a tab; /tutorial too) */
+#define MENU_HELP_ITEMS 4
 static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
     { NM_TITLE, (STRPTR)"Help", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Demo tour", 0, 0, 0, (APTR)MENU_DEMO },
-    { NM_ITEM, (STRPTR)"Slash commands", 0, 0, 0, (APTR)MENU_HELP_SLASH }
+    { NM_ITEM, (STRPTR)"Slash commands", 0, 0, 0, (APTR)MENU_HELP_SLASH },
+    { NM_ITEM, (STRPTR)"Shell tutorial", 0, 0, 0, (APTR)MENU_TUTORIAL }
 };
 
 /* Settings: what UP-Term Prefs sets for a profile, for this window, live
@@ -2363,7 +2365,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_FIND: find_open(c); return 1;
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
-    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE:
+    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -5643,21 +5645,25 @@ struct tab_spawn_msg {
  * and UP-Term > Claude (C:Claude). The tab closes when the program ends.
  * `file` is looked up first: a program that is not there is said in a
  * requester, as Preferences... says it of the editor. */
-enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE };
+enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL };
 struct tab_prog {
     const char *file;    /* C:... the program */
+    const char *cmd;     /* the script's command line (the program, or vsh and its script) */
     const char *script;  /* T:... the FROM script that runs it */
     const char *pre;     /* a script line before it ("" none): Claude refuses a stack under 16000 */
     const char *missing; /* the requester's text when file is not there */
     int cols, rows;      /* the grid it needs (0 0: any); the window grows to it first */
 };
 static const struct tab_prog tab_progs[] = {
-    { 0, 0, "", 0, 0, 0 },
-    { "C:UPDemo", "T:UP-Term-demo", "",
+    { 0, 0, 0, "", 0, 0, 0 },
+    { "C:UPDemo", "C:UPDemo", "T:UP-Term-demo", "",
       "The demo is not installed:\nC:UPDemo was not found.\n\nInstall UP-Term from its archive to get it.",
       UPDEMO_MIN_COLS, UPDEMO_MIN_ROWS },
-    { "C:Claude", "T:UP-Term-claude", "Stack 32768\n",
-      "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it.", 0, 0 }
+    { "C:Claude", "C:Claude", "T:UP-Term-claude", "Stack 32768\n",
+      "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it.", 0, 0 },
+    { TABPROG_TUTORIAL_FILE, TABPROG_TUTORIAL_CMD, "T:UP-Term-tutorial", "",
+      "The tutorial is not installed:\nUP-Term:bin/tutorial was not found.\n\nInstall UP-Term from its archive to get it.",
+      TABPROG_TUTORIAL_COLS, TABPROG_TUTORIAL_ROWS }
 };
 
 /* 1 when the tab is on its way; 0 when the program is not there */
@@ -5675,7 +5681,7 @@ static int tab_prog_script(struct tab_spawn_msg *m)
         return 0;
     }
     UnLock(lock);
-    if (!tabprog_script(script, sizeof(script), p->pre, p->file) ||
+    if (!tabprog_script(script, sizeof(script), p->pre, p->cmd) ||
         !(f = Open((STRPTR)p->script, MODE_NEWFILE)))
         return 0;
     FPuts(f, (STRPTR)script);
@@ -5819,6 +5825,10 @@ static void host_command(con *c, int what, con *from)
         break;
     case MENU_CLAUDE:
         if (!tab_spawn(c, from->profile, from, TAB_CLAUDE))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        break;
+    case MENU_TUTORIAL:
+        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_TAB_NEXT:
