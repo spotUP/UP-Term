@@ -71,7 +71,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 ## 3. Phases (checklist). Every item ends with a reachability test through the real entry point: the rig `XCON:` window, driven by a script in tools/rig/ (new `splits_rig.py`, modelled on tools/rig/resize_rig.py and the tab rigs), with a sentinel proving the new code ran (PROF/`VTCON_DEBUG` serial counter e.g. `splits/rects_applied`) and the numbers asserted. Pure-C layout logic: one host-suite test (`make test ONLY=layout`) where it lives. Per-item: ONE rig test per feature, not per assertion.
 
 ### Phase 0 - measure and spike (no product code)
-- [ ] NS0.1 Baseline: tmux 4-pane (`tmux split-window` x3, tmux_rig.py) vs single window, on the rig: frames/s of engbench 7, tmux idle CPU, tmux startup s. Test: rig script records numbers to build/rig/splits/baseline.txt; asserts file has the 4 figures.
+- [x] NS0.1 Baseline (f50c9571, thoughts/shared/research/2026-10-19-splits-baseline.md, 3 runs each, rig 4): tmux startup to pane prompt 9.7 s; tmux idle with 2 panes 7.1 % CPU vs plain vsh 0.4 %; `Type` of 138 KB in a tmux pane 3.04 s vs 1.72 s without tmux (1.77x). Changed 2026-10-19: engbench is engine-only and has no tmux path, so the throughput figure is the timed `Type`, and the file holds 3 figures, not 4.
 - [ ] NS0.2 Spike: two tab processes draw into disjoint rects of one window at the same time (hack: both `r.off=0`, `inset`/rect hardcoded). Test: rig screenshot-as-text (clipboard read as step 13 of amiga-pi rig does) shows both panes' sentinel strings; no corruption over 60 s of output in both.
 
 ### Phase 1 - viewport rect in the renderer
