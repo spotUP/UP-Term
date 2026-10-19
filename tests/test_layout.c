@@ -221,6 +221,27 @@ static void the_pointer_finds_the_divider_it_is_on(void)
     CHECK_INT(lay_hit_divider(&L, 320, 256, 3), -1);  /* below the window */
 }
 
+static void a_new_cell_keeps_the_ratio_and_snaps_to_it(void)
+{
+    lay_rect a, b, c;
+    lay_init(&L, 8, 16, LAY_DIV_PIXEL, 10, 3, 0, 0, 640, 256);
+    lay_split(&L, 0, LAY_RIGHT);
+    lay_split(&L, 1, LAY_DOWN);           /* 0 | 1 over 2 */
+    lay_set_cell(&L, 12, 20);             /* a bigger font */
+    lay_pane_rect(&L, 0, &a);
+    lay_pane_rect(&L, 1, &b);
+    lay_pane_rect(&L, 2, &c);
+    CHECK_INT(a.w, 324);                  /* 639 / 2 = 319, to 27 cells of 12 */
+    CHECK_INT(b.x, 325); CHECK_INT(b.w, 315);
+    CHECK_INT(b.h, 120);                  /* 255 / 2 = 127, to 6 rows of 20 */
+    CHECK_INT(c.y, 121); CHECK_INT(c.h, 135);
+    CHECK_INT(covered(&L), 640L * 256);
+    lay_set_cell(&L, 8, 16);              /* and back: the same places as before */
+    lay_pane_rect(&L, 0, &a);
+    lay_pane_rect(&L, 2, &c);
+    CHECK_INT(a.w, 320); CHECK_INT(c.y, 129);
+}
+
 void suite_layout(void)
 {
     a_lone_pane_fills_the_window();
@@ -237,4 +258,5 @@ void suite_layout(void)
     focus_moves_to_the_right_pane_in_a_2x2_grid();
     focus_picks_the_pane_beside_not_a_diagonal();
     the_pointer_finds_the_divider_it_is_on();
+    a_new_cell_keeps_the_ratio_and_snaps_to_it();
 }

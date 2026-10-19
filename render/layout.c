@@ -81,6 +81,13 @@ void lay_solve(lay *l, int x, int y, int w, int h)
     resolve(l);
 }
 
+void lay_set_cell(lay *l, int cell_w, int cell_h)
+{
+    l->cw = cell_w > 0 ? cell_w : 1;
+    l->ch = cell_h > 0 ? cell_h : 1;
+    resolve(l);
+}
+
 void lay_init(lay *l, int cell_w, int cell_h, int div_mode,
               int min_cols, int min_rows, int x, int y, int w, int h)
 {

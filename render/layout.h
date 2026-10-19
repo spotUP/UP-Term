@@ -61,6 +61,9 @@ void lay_init(lay *l, int cell_w, int cell_h, int div_mode,
 /* Solve for a new window area (also what the other calls do for the
  * stored area). */
 void lay_solve(lay *l, int x, int y, int w, int h);
+/* A new cell (a new font): the splits keep their ratios, the stored area
+ * is solved again, the panes snapping to the new cell. */
+void lay_set_cell(lay *l, int cell_w, int cell_h);
 /* The solved rect of a pane / divider; 0 when there is no such pane or divider. */
 int lay_pane_rect(const lay *l, int pane, lay_rect *r);
 int lay_divider_rect(const lay *l, int divider, lay_rect *r);
