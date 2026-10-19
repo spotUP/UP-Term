@@ -46,3 +46,32 @@ Rig 4 could not be driven further (jammed, see above). Build of this branch not 
 No numbers. tools/rig/tmux_rig.py needs the patched ixemul, PTY:, the kit NOT
 installed and VTC:tmux from tmux-amiga; presence of that build is unverified.
 engbench is built via tools/prof68k.py (run ONLY w PERS p) or the Makefile.
+
+## Attempt 2 (2026-10-19, rig 4, HEAD fdba16a7 + ns0-spike.diff, SERIAL=1 build)
+
+Verdict: two handler processes DO draw into one XCON window at the same time; no guru and no
+hang seen. Pane isolation is NOT proven clean (see Corruption). Diff with the serial logs:
+scratchpad ns0-spike2.diff (worktree and branch spike/ns0.2b removed).
+
+Why the tab did not draw in attempt 1: not reproduced. With a fresh handler (install + full
+stop/start of the rig) the serial trace reads: tab_spawn -> tab_spawn_go -> tab_register ->
+tab_reg_ok (ok=1, inset=15) -> TM_SHOW with off=1 -> vtwin_show -> off=0, rect_x=312 (bind put the
+tab on the right half). The tab draws (vsh banner, prompt) and `echo alive >RAM:tabproof` made
+the file. Status shows the tab's vsh (the host runs the AmigaDOS Shell, so "one vsh" was the tab's
+own, not a missing one). Most likely attempt 1 ran a stale handler (rig.py install needs a
+reboot) or the pre-fdba16a7 clip variant. Product path from spawn to show has no bug at HEAD.
+
+Rig gotcha: FS-UAE cannot open serial_port when the file does not exist (fs-uae.log:
+"SERIAL: Could not open device"), so no serial.log is written. `touch build/rig4/serial.log`
+before start. rig.py does not do it for rig 2+ (not checked for rig 1).
+
+Concurrent draw: host `List SYS: ALL` (left, 39 columns) and tab `List SYS: ALL` (right,
+38 columns) streamed together and finished; wasabid still answered; cursors both at their
+pane's prompt row (host `6.BOOTX:>` left, tab `SYS: %` right).
+
+Corruption (screenshot, unverified by pixel diff): row 1 of the scrolled output shows host text
+running to x=490, i.e. past its 312 px pane into the tab's; `emppty` / `emptyy` double letters
+where the two panes' wrapped lines meet. Not isolated: could be a host-grid width of 39 versus
+the tab's 38 plus a scroll that blits full-width rows. Needs a pixel-level test (clean run with
+only one pane streaming, then check columns >= 312 for host-only output) before NS1.
+Run length was well under 2 minutes, so the 2-minute no-hang bar is NOT shown.
