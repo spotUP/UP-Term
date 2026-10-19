@@ -5476,6 +5476,8 @@ static void stat_fill(con *c)
 {
     c->st.tabs = c->ntabs ? c->ntabs : 1;
     c->st.active = c->active + 1; /* the tab's number, as Right Amiga 1-9 */
+    c->st.panes = c->active >= 0 && c->active < c->ntabs ? tabslot_panes(&c->slots[c->active]) : 1;
+    c->st.zoom = c->active >= 0 && c->active < c->ntabs ? c->slots[c->active].zoom : 0;
 }
 
 static void stat_push(con *c)

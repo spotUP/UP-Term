@@ -337,6 +337,8 @@ static void state_formats_the_counters(void)
     slash_state_bump(&s, STATE_SPLIT, 0, 0);
     slash_state_bump(&s, STATE_SPLIT, 0, 0);
     CHECK_INT(s.splits, 3);
+    s.panes = 2; /* the host's, as tabs and active */
+    s.zoom = 1;
     /* the command is in the table and takes no argument or a key */
     CHECK_INT(parse("/state"), SLASH_OK);
     CHECK_INT(cmd.id, SLASH_STATE);
@@ -345,9 +347,11 @@ static void state_formats_the_counters(void)
     /* every key, "key value" per line */
     CHECK_INT(slash_state_text(&s, "", out, sizeof(out)) > 0, 1);
     CHECK_STR(out, "tabs-opened 2\ntab-switches 1\nmenu-picks 2\nlast-menu 49\nslash-count 1\n"
-                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nsplits 3\n");
+                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nsplits 3\npanes 2\nzoom 1\n");
     CHECK_INT(slash_state_text(&s, "splits", out, sizeof(out)), 2); /* bytes written */
     CHECK_STR(out, "3\n");
+    CHECK_INT(slash_state_text(&s, "panes", out, sizeof(out)), 2);
+    CHECK_STR(out, "2\n");
     /* one key: the bare value */
     CHECK_INT(slash_state_text(&s, "pastes", out, sizeof(out)), 2);
     CHECK_STR(out, "2\n");

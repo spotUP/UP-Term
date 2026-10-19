@@ -509,7 +509,8 @@ int slash_line_name(const char *line, int len, char *out, int cap)
 }
 
 static const char *const state_keys[] = { "tabs-opened", "tab-switches", "menu-picks", "last-menu", "slash-count",
-                                           "last-slash", "copies", "pastes", "tabs", "active", "splits" };
+                                           "last-slash", "copies", "pastes", "tabs", "active", "splits",
+                                           "panes", "zoom" };
 
 static void put_long(char *v, long n)
 {
@@ -541,6 +542,8 @@ static void state_value(const slash_state *s, int k, char *v)
     case 8: n = s->tabs; break;
     case 9: n = s->active; break;
     case 10: n = s->splits; break;
+    case 11: n = s->panes; break;
+    case 12: n = s->zoom; break;
     }
     put_long(v, n);
 }

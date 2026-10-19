@@ -135,13 +135,14 @@ int slash_setup_text(const slash_row *rows, int n, char *out, int cap);
  * go up, so a check compares them with a value saved before the step. The HOST window
  * owns the block and is its only writer; it pushes the block to every tab on a change, and
  * a tab answers /state from that copy. tabs and active (the shown tab's number, 1 = first, as
- * Right Amiga 1-9) are the host's, copied in by the push.
+ * Right Amiga 1-9), panes (the shown tab's) and zoom (1: its focused pane is zoomed) are
+ * the host's, copied in by the push.
  * Keys (the /state names): tabs-opened tab-switches menu-picks last-menu slash-count
- * last-slash copies pastes tabs active splits. */
+ * last-slash copies pastes tabs active splits panes zoom. */
 enum { STATE_TAB_OPENED = 1, STATE_SWITCH, STATE_MENU, STATE_SLASH, STATE_COPY, STATE_PASTE, STATE_SPLIT };
 
 typedef struct slash_state {
-    long tabs_opened, tab_switches, menu_picks, last_menu, slash_count, copies, pastes, tabs, active, splits;
+    long tabs_opened, tab_switches, menu_picks, last_menu, slash_count, copies, pastes, tabs, active, splits, panes, zoom;
     char last_slash[24];       /* the last typed command's name, "" before the first */
 } slash_state;
 
