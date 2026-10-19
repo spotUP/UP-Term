@@ -146,6 +146,14 @@ Two toolchain issues the FPU build exposed:
   and gets garbage, silently. The spike's `compat/ixcompat_cxx.h` defines `round` inline (fintrz) under
   `__HAVE_68881__`. Any libixcompat function returning double has the same problem for FPU callers.
 
+Both fixed in the toolchain on 2026-10-19 (ixemul-vtcon f4e9aa4 and 9b2be03, not pushed): ixemul's math.h now
+includes its own math-68881.h, and FPU archives (installed in the libm020/libm881 multilib dirs) give every
+double-returning ixemul call and libixcompat/libm function an fp0 result. The spike now links them (env.mk
+IXLIB/IXCOMPAT) and the inline `round` is gone.
+
+Input lag on 020 + 68882 (rig 4 `--a1200`): key 645 ms down to 74 ms with two Scinterm patches (partial
+repaint; fast fill and ASCII width in PlatCurses), see `ide-spike/results/input-lag.md`.
+
 Consequence: an IDE built this way needs an FPU (68881/68882, 040, 060). A stock A1200 (68020, no FPU)
 would need the soft-float build, at the speed above.
 
