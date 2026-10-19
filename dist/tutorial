@@ -138,7 +138,18 @@ step() {
         # the tutorial's own words start with a colon, so help, hint and the like stay
         # real commands for the lessons
         case $LEARN_LINE in
-        "") [ "$selftest" = 0 ] && continue ;;
+        "")
+            # the handler takes a slash command line and sends read an empty one, and a
+            # menu pick or a tab switch types nothing: so an empty line runs the checks.
+            # An action in the window passes; anything else asks again, no miss counted
+            # (--selftest proves every check fails with an empty LEARN_LINE)
+            if [ "$selftest" = 0 ]; then
+                if LEARN_LINE= LEARN_OUT=/dev/null checks_pass; then
+                    echo "Right."
+                    return 0
+                fi
+                continue
+            fi ;;
         :skip) echo "Skipped."; return 0 ;;
         :quit) echo "Progress kept. Type  tutorial next  to continue."; quit=1; return 0 ;;
         :hint)

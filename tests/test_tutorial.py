@@ -92,6 +92,30 @@ class Tutorial(unittest.TestCase):
             self.assertIn('Right.', out)  # the next step (pwd) went on
         self.each_shell(case)
 
+    def test_empty_line_runs_the_checks_for_an_action_in_the_window(self):
+        # a slash command reaches read as an empty line; the step's check sees what it did
+        window = ('# WINDOW-LESSON-5519\n? Do it in the window, then press Return.\n'
+                  '= [ -f "$HOME/window-flag" ]\n! true\n')
+        d = self.lesson_dir(window, SENTINEL)
+        def case(shell):
+            flag = os.path.join(self.tmp, 'window-flag')
+            if os.path.exists(flag):
+                os.remove(flag)
+            # nothing done in the window yet: empty lines ask again and count no miss
+            rc, out = self.run_tutorial(shell, ['1'], '\n\n\n', lessons=d)
+            self.assertNotIn('Right.', out)
+            self.assertNotIn('Not quite', out)
+            self.assertNotIn('The answer is', out)
+            open(flag, 'w').close()
+            rc, out = self.run_tutorial(shell, ['1'], '\n', lessons=d)
+            self.assertEqual(out.count('Right.'), 1, out)
+            self.assertIn('Lesson finished.', out)
+            # a plain step is not passed by an empty line
+            rc, out = self.run_tutorial(shell, ['2'], '\n\n\n', lessons=d)
+            self.assertNotIn('Right.', out)
+            self.assertNotIn('Not quite', out)
+        self.each_shell(case)
+
     def test_colon_words_hint_skip_quit(self):
         def case(shell):
             rc, out = self.run_tutorial(shell, ['1'], ':hint\n:skip\n:quit\n')
