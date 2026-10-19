@@ -35,5 +35,55 @@ class TutorialWiring(unittest.TestCase):
         self.assertIn("tabprog_script(script, sizeof(script), p->pre, p->cmd)", H)
 
 
+class WindowStateWiring(unittest.TestCase):
+    """The /state counters (plan 2026-10-19-tutorial-window-lesson P1-P4). The formatter and the bump
+    rules are host-tested in tests/test_slash.c; this pins that each hook point in the Amiga-only
+    handler calls them. That the hooks RUN (a real Right Amiga T, menu pick, /help, mouse copy, paste)
+    only the rig can show."""
+
+    def test_p1_each_action_has_its_bump_point(self):
+        self.assertIn("slash_state_bump(&c->st, STATE_TAB_OPENED, 0, 0);\n                tab_activate(c, c->ntabs - 1);", H)
+        self.assertRegex(H, r"static void tab_switch\(con \*c, int i\)\n\{\n[^}]*slash_state_bump\(&c->st, STATE_SWITCH")
+        for call in ("tab_switch(c, (c->active + 1) % c->ntabs)", "tab_switch(c, (c->active + c->ntabs - 1) % c->ntabs)",
+                     "tab_switch(c, im->Code - 1)", "tab_switch(c, (int)((LONG)(im->MouseX"):
+            self.assertIn(call, H)
+        self.assertRegex(H, r"stat_note\(c, STATE_MENU, \(LONG\)GTMENUITEM_USERDATA\(it\), 0\);\n\s*r = menu_run\(")
+        self.assertRegex(H, r"slash_run\(c, line, l, ans, 4096, 1\)\) \{\n\s*slash_typed_note\(c, line, l\);")
+        self.assertIn('strcmp(name, "state")', H)  # /state does not count itself
+        self.assertRegex(H, r"h_clipped\(void \*u, int what\)\n\{\n\s*stat_note\(\(con \*\)u, what == VTWIN_CLIP_COPY \? STATE_COPY : STATE_PASTE")
+        self.assertRegex(H, r"h_knob, h_clipped \};")
+        w = (ROOT / "render/vtwin.c").read_text(encoding="latin-1")
+        copy = w.split("static void copy_selection(vtwin *w)")[1].split("\n}\n")[0]
+        paste = w.split("static void paste(vtwin *w)")[1].split("\n}\n")[0]
+        self.assertEqual(copy.count("VTWIN_CLIP_COPY"), 1)   # once per copy, after the clipboard write
+        self.assertLess(copy.index("clip_write"), copy.index("VTWIN_CLIP_COPY"))
+        self.assertEqual(paste.count("VTWIN_CLIP_PASTE"), 1)  # once per paste, outside the character loop
+        self.assertGreater(paste.index("VTWIN_CLIP_PASTE"), paste.index("FreeVec(text)"))
+
+    def test_p2_host_pushes_and_tab_keeps_a_copy(self):
+        self.assertIn("TM_KNOB, TM_STAT, TM_STATE };", H)
+        push = H.split("static void stat_push(con *c)")[1].split("\n}\n")[0]
+        self.assertIn("tab_msg(c, TM_STATE)", push)
+        self.assertIn("PutMsg(c->tab_list[i]->tab_port", push)  # no wait: a PutMsg, freed by tab_replies
+        self.assertRegex(H, r"case TM_STATE:\n\s*c->st = t->st;")                  # the tab's read-only copy
+        self.assertRegex(H, r"case TM_STAT:\n\s*stat_note\(c, t->what, t->stat_arg, t->stat_name\);")  # a tab's action reaches the host
+        note = H.split("static void stat_note(con *c, int ev, long arg, const char *name)\n{")[1].split("\n}\n")[0]
+        self.assertIn("if (c->is_tab)", note)
+        self.assertIn("PutMsg(c->host_pub", note)
+        # every change of the tabs or the active one pushes
+        act = H.split("static void tab_activate(con *c, int i)")[1].split("\n}\n")[0]
+        self.assertIn("stat_push(c)", act)
+        self.assertRegex(H, r"tab_insets\(c\);\n\s*stat_push\(c\); /\* tabs and active changed \*/")
+
+    def test_p3_p4_state_is_answered_from_the_window_block(self):
+        self.assertRegex(H, r"case SLASH_STATE:[^\n]*\n[^\n]*\n\s*if \(!c->is_tab\)\n\s*stat_fill\(c\);\n\s*return slash_state_text\(&c->st, cmd.arg, ans, cap\) < 0 \? 2 : 1;")
+        # C:UPTerm sends its arguments as "/<args>", so `UPTerm state KEY` is the typed /state KEY
+        # (test_slash.c parses it); an answer of 2 comes back as RETURN_ERROR (5)
+        u = (ROOT / "handler/upterm.c").read_text()
+        self.assertIn("line[0] = '/';", u)
+        self.assertIn("return r == 1 ? RETURN_OK : RETURN_ERROR;", u)
+        self.assertIn("UPTerm state [KEY]", u)
+
+
 if __name__ == "__main__":
     unittest.main()

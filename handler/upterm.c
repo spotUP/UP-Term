@@ -4,6 +4,8 @@
  *
  *   UPTerm COMMAND/F
  *   UPTerm help          the list
+ *   UPTerm state [KEY]   what the user did in the window (counters; a KEY prints its bare value,
+ *                        an unknown one returns 5 with a message): the tutorial's checks
  *
  * The command goes to the window of the output, or, when the output is
  * redirected (">NIL:", a file), to the window of the input.
