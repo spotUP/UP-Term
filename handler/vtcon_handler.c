@@ -1502,6 +1502,7 @@ static const struct NewMenu menu_def[] = {
     { NM_ITEM, (STRPTR)"Close tab", 0, 0, 0, (APTR)MENU_TAB_CLOSE },
     { NM_ITEM, (STRPTR)"Split right", (STRPTR)"D", 0, 0, (APTR)MENU_SPLIT_RIGHT },
     { NM_ITEM, (STRPTR)"Split down", 0, 0, 0, (APTR)MENU_SPLIT_DOWN },
+    { NM_ITEM, (STRPTR)"Close pane", 0, 0, 0, (APTR)MENU_PANE_CLOSE },
     { NM_ITEM, (STRPTR)"Claude", (STRPTR)"L", 0, 0, (APTR)MENU_CLAUDE },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
@@ -2391,7 +2392,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
     case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:
-    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN:
+    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -2465,15 +2466,20 @@ static int menu_run(con *c, LONG id, int on)
     return menu_setting(c, id, on) ? 2 : 0;
 }
 
-static void menu_pick(con *c, UWORD code)
+static void menu_pick(con *c, UWORD code, UWORD qual)
 {
     while (code != MENUNULL && c->menustrip && c->w.win) {
         struct MenuItem *it = ItemAddress(c->menustrip, code);
+        LONG id;
         int r;
         if (!it)
             break;
-        stat_note(c, STATE_MENU, (LONG)GTMENUITEM_USERDATA(it), 0);
-        r = menu_run(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0);
+        id = (LONG)GTMENUITEM_USERDATA(it);
+        /* Right Amiga Shift D: Intuition picks the D item for it too */
+        if (id == MENU_SPLIT_RIGHT && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)))
+            id = MENU_SPLIT_DOWN;
+        stat_note(c, STATE_MENU, id, 0);
+        r = menu_run(c, id, (it->Flags & CHECKED) != 0);
         if (r == 2 && c->w.win) {
             /* the strip again: every checkmark from the settings (one pick
              * can move others: KingCON's W clears L and B) */
@@ -5266,6 +5272,18 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
                 break;
             }
         }
+        /* Right Amiga Shift W closes this pane, Right Amiga Left / Right
+         * give the keys to the pane beside it (the host decides) */
+        if ((qual & IEQUALIFIER_RCOMMAND) && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
+            code == 0x11) {
+            tab_command(c, MENU_PANE_CLOSE);
+            break;
+        }
+        if ((qual & IEQUALIFIER_RCOMMAND) && !(qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
+            (code == 0x4E || code == 0x4F)) {
+            tab_command(c, code == 0x4E ? MENU_PANE_RIGHT : MENU_PANE_LEFT);
+            break;
+        }
         /* Right Amiga F: the find prompt, opened here rather than in vtwin
          * because the prompt is a window of ours */
         if ((qual & IEQUALIFIER_RCOMMAND) && code == 0x46) {
@@ -5287,7 +5305,7 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         close_gadget(c);
         break;
     case IDCMP_MENUPICK:
-        menu_pick(c, code);
+        menu_pick(c, code, qual);
         break;
     case IDCMP_MOUSEBUTTONS:
     case IDCMP_MOUSEMOVE:
@@ -6101,6 +6119,18 @@ static int pane_split(con *c, con *from, int dir)
     return 1;
 }
 
+/* Close pane p as its close gadget would: the host's own (or no pane) here. */
+static void pane_close(con *c, con *p)
+{
+    if (p && p != c) {
+        struct IntuiMessage im;
+        memset(&im, 0, sizeof(im));
+        im.Class = IDCMP_CLOSEWINDOW;
+        tab_post(c, p, TM_EVENT, 0, &im, 0);
+    } else
+        close_gadget(c);
+}
+
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
 static void host_command(con *c, int what, con *from)
 {
@@ -6136,13 +6166,21 @@ static void host_command(con *c, int what, con *from)
         sbar_apply(c);
         break;
     case MENU_TAB_CLOSE:
-        if (tab_at(c, c->active) && tab_at(c, c->active) != c) {
-            struct IntuiMessage im;
-            memset(&im, 0, sizeof(im));
-            im.Class = IDCMP_CLOSEWINDOW;
-            tab_post(c, tab_at(c, c->active), TM_EVENT, 0, &im, 0);
-        } else
-            close_gadget(c); /* as the close gadget: the active tab is ours */
+        pane_close(c, tab_at(c, c->active));
+        break;
+    case MENU_PANE_CLOSE:
+        pane_close(c, from);
+        break;
+    case MENU_PANE_LEFT:
+    case MENU_PANE_RIGHT:
+    case MENU_PANE_UP:
+    case MENU_PANE_DOWN:
+        /* only in the shown slot: a key from a hidden pane moves nothing */
+        if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active &&
+            tabslot_move(c->slots, c->ntabs, from,
+                         what == MENU_PANE_LEFT ? LAY_LEFT : what == MENU_PANE_RIGHT ? LAY_RIGHT :
+                         what == MENU_PANE_UP ? LAY_UP : LAY_DOWN) >= 0)
+            slot_refocus(c);
         break;
     case MENU_SPLIT_RIGHT:
     case MENU_SPLIT_DOWN:

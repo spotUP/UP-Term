@@ -156,6 +156,29 @@ static void the_shown_slot_stays_shown_when_another_goes(void)
     CHECK_INT(ACT, -1);
 }
 
+/* Right Amiga arrows: the focus goes to the pane on that side, and stays
+ * put at an edge or for a pane in no slot. */
+static void the_focus_moves_to_the_pane_on_that_side(void)
+{
+    fresh();
+    tabslot_add(T, &N, 4, &E);
+    tabslot_add(T, &N, 4, &A);
+    tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200); /* A | B */
+    tabslot_split(T, N, &B, &C, LAY_DOWN, 8, 8, 0, 0, 640, 200);  /* A | B over C */
+    CHECK(tabslot_focused(&T[1]) == &C);
+    CHECK_INT(tabslot_move(T, N, &C, LAY_UP), 1);
+    CHECK(tabslot_focused(&T[1]) == &B);
+    CHECK_INT(tabslot_move(T, N, &B, LAY_LEFT), 1);
+    CHECK(tabslot_focused(&T[1]) == &A);
+    CHECK_INT(tabslot_move(T, N, &A, LAY_LEFT), -1);
+    CHECK(tabslot_focused(&T[1]) == &A);
+    CHECK_INT(tabslot_move(T, N, &A, LAY_RIGHT), 1);
+    CHECK(tabslot_focused(&T[1]) != &A);
+    CHECK_INT(tabslot_move(T, N, &D, LAY_RIGHT), -1);
+    CHECK_INT(tabslot_move(T, N, &E, LAY_RIGHT), -1); /* one pane: nowhere to go */
+    CHECK(tabslot_focused(&T[0]) == &E);
+}
+
 void suite_tabslot(void)
 {
     a_new_tab_is_a_slot_with_one_focused_pane();
@@ -165,4 +188,5 @@ void suite_tabslot(void)
     a_pane_leaving_gives_its_space_and_the_focus_back();
     the_last_pane_takes_its_slot_and_the_rest_move_down();
     the_shown_slot_stays_shown_when_another_goes();
+    the_focus_moves_to_the_pane_on_that_side();
 }
