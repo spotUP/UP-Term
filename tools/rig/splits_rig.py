@@ -48,7 +48,7 @@ TITLE = 'splitswin'
 BOX = '0/20/600/240'
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_arrows', 'zoom']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_arrows', 'zoom', 'drag', 'tab_close_split']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
 K_W, K_D, K_ENTER, K_RIGHT, K_LEFT = 0x11, 0x22, 0x44, 0x4E, 0x4F    # raw keycodes (RA+key = pane commands)
@@ -324,8 +324,13 @@ def ra(k, shift=False):
 
 
 def pane_count():
-    """panes of the active tab: `UPTerm state` key "panes" if the handler reports it (UNVERIFIED key name), else None"""
+    """panes of the shown tab: `UPTerm state` key "panes" (host-owned, handler/slash.c state_keys), or None"""
     return tr.counters()[0].get('panes')
+
+
+def state_key(key):
+    """one `UPTerm state` key of the shown tab (panes, zoom, tabs, ...), or None"""
+    return tr.counters()[0].get(key)
 
 
 def case_winch(ck):
@@ -371,8 +376,7 @@ def case_pane_close(ck):
             ck(sz is not None, '%s: the remaining pane takes input' % how, sz)
             ck(bool(sz) and sz[1] == full, '%s: one pane again (full width %d)' % (how, full), (sz, full))
             n = pane_count()
-            if n is not None:
-                ck(n == 1, '%s: `UPTerm state` panes == 1' % how, n)
+            ck(n == 1, '%s: `UPTerm state` panes == 1' % how, n)
     finally:
         teardown()
 
@@ -407,11 +411,74 @@ def case_zoom(ck):
         half = stty_size('half')
         ck(bool(half) and half[1] == want_r, 'split: focused pane is half width', half)
         ra(K_ENTER, shift=True)
+        ck(state_key('zoom') == 1, 'RA+Shift+Enter: `UPTerm state` zoom == 1', state_key('zoom'))
         z = stty_size('zoom')
         ck(bool(z) and z[1] == full, 'RA+Shift+Enter: zoomed pane reports the unsplit width %d' % full, z)
         ra(K_ENTER, shift=True)
+        ck(state_key('zoom') == 0, 'RA+Shift+Enter again: `UPTerm state` zoom == 0', state_key('zoom'))
         back = stty_size('back')
         ck(bool(back) and back[1] == want_r, 'RA+Shift+Enter again: half width %d restored' % want_r, back)
+    finally:
+        teardown()
+
+
+def drag_divider(x, y, dx):
+    """press on the divider at screen (x, y), move by dx px in 8 steps, release (same event style as click / drag_size_gadget)"""
+    kx, ky = ami.pointer_scale()
+    p = lambda a: ('move', int(a * kx), int(y * ky))
+    ev = [p(x), ('wait', 2), ('button', 0, 1), ('wait', 3)]
+    for i in range(1, 9):
+        ev += [p(x + dx * i // 8), ('wait', 2)]
+    ev += [('wait', 3), ('button', 0, 0), ('wait', 10)]
+    ami.script(*ev)
+    time.sleep(3)
+
+
+def case_drag(ck):
+    """divider drag (divider_under / divider_move / divider_drop): 10 cells left, left pane loses, right gains"""
+    rows, full = fresh()
+    try:
+        split_right_and_count(ck)
+        want_l, _ = expected_cols(full)
+        r0 = stty_size('right0')                    # the new (right) pane has the keys
+        click(*pane_point('L', want_l))
+        l0 = stty_size('left0')
+        ck(bool(l0 and r0), 'both panes answer `stty size` before the drag', (l0, r0))
+        if not (l0 and r0):
+            return
+        # divider pixel: window x + inner left border + left pane cols * cell width (the 1 px divider starts there)
+        x0, _, _, _ = window_box()
+        div_x = x0 + BORDER_L + l0[1] * CELL_W
+        drag_divider(div_x, pane_point('L', l0[1])[1], -10 * CELL_W)
+        l1 = stty_size('left1')                     # focus is still the left pane
+        click(*pane_point('R', l0[1] - 10))
+        r1 = stty_size('right1')
+        print('measured: before L %s R %s, after L %s R %s' % (l0, r0, l1, r1))
+        if l1 and r1:
+            ck(l1[1] < l0[1] - 5, 'left pane lost columns', (l0, l1))
+            ck(r1[1] > r0[1] + 5, 'right pane gained columns', (r0, r1))
+            ck(abs((l1[1] + r1[1]) - (l0[1] + r0[1])) <= 2, 'column sum stays equal', (l0, r0, l1, r1))
+        else:
+            ck(False, 'both panes answer `stty size` after the drag', (l1, r1))
+    finally:
+        teardown()
+
+
+def case_tab_close_split(ck):
+    """regression a926073c: Close tab on a split tab closes every pane, no orphan pane is left"""
+    rows, full = fresh()
+    try:
+        tabs0, panes0 = state_key('tabs'), pane_count()
+        ck(tabs0 is not None and panes0 == 1, 'one tab, one pane to start', (tabs0, panes0))
+        pick('New tab')
+        time.sleep(5)
+        ck(state_key('tabs') == (tabs0 or 0) + 1, '`UPTerm state` tabs +1 after New tab', state_key('tabs'))
+        split_right_and_count(ck)
+        ck(pane_count() == 2, 'the new tab has two panes', pane_count())
+        pick('Close tab')
+        time.sleep(5)
+        ck(state_key('tabs') == tabs0, '`UPTerm state` tabs back to %s after Close tab' % tabs0, state_key('tabs'))
+        ck(pane_count() == panes0, 'shown tab has its original %s pane(s): no orphan pane' % panes0, pane_count())
     finally:
         teardown()
 
