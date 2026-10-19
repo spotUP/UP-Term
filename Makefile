@@ -122,6 +122,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_netinclude_in_tree.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_dist_builds_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_net ]; then python3 tests/test_vshrc_net.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = vshrc_editor ]; then python3 tests/test_vshrc_editor.py; fi
@@ -1034,7 +1035,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dis
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/UP-Term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp
+dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -1075,8 +1076,7 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
-	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (make wasabi, the pin tools/nas/wasabi.rev)
-	@test -f $(BUILD)/wasabi/wasabid -a -f $(BUILD)/wasabi/wasabi -a -f $(BUILD)/wasabi/wasabi_mcp.py || { echo "dist: no $(BUILD)/wasabi/{wasabid,wasabi,wasabi_mcp.py}: make wasabi first"; exit 1; }
+	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (the wasabi stamp, the pin tools/nas/wasabi.rev)
 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
 	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	@# AmiSSL 5.27 (Apache 2.0) as its own release drawer: the Install runs its Install-AmiSSL (the Developer SDK is for building only, so it stays out)
@@ -1101,10 +1101,9 @@ LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
 .PHONY: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
-dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate
+dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
-	@test -f $(BUILD)/wasabi/wasabid || { echo "dist-claude: no $(BUILD)/wasabi/wasabid: make wasabi first"; exit 1; }
 	cp $(BUILD)/wasabi/wasabid $(KIT_claude)/Files/wasabid
 	cp dist/addons/claude/questions $(KIT_claude)/Files/questions
 	cp dist/wasabi/LICENSE $(KIT_claude)/Files/wasabid.LICENSE
