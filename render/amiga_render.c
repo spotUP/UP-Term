@@ -6,6 +6,7 @@
 #define TimerBase vtwin_timer
 extern struct Device *vtwin_timer;
 #include <proto/timer.h>
+ULONG vr_span_ticks; /* PROF=1: EClock ticks inside vp_span_fast calls of painter_run */
 ULONG vr_prof[9]; /* PROF=1: EClock ticks in painter_run, WaitBlit; painter calls; ticks in fill(), fills;
                    * ticks in the composed frames' blits (planar: copies), blits; ticks waiting for the
                    * beam to leave the rows a planar copy writes (WaitTOF), waits */
@@ -1763,9 +1764,21 @@ static int painter_run(vr_render *r, const UBYTE *run, int n, WORD px, WORD py, 
         WaitBlit(); /* the scroll and fills before it are in the planes first */
 #endif
     }
-    if (ok)
+    if (ok) {
+#ifdef VTCON_PROF
+        struct EClockVal s0, s1;
+        if (vtwin_timer)
+            ReadEClock(&s0);
+#endif
         vp_span_fast((vp_u8 **)t.planes, t.depth, t.bpr, (long)(t.x0 + px), (long)(t.y0 + py), r->glyphs,
                      r->font->tf_YSize, run, n, (int)st->fg, (int)st->bg, t.mask);
+#ifdef VTCON_PROF
+        if (vtwin_timer) {
+            ReadEClock(&s1);
+            vr_span_ticks += s1.ev_lo - s0.ev_lo;
+        }
+#endif
+    }
     if (!r->cpu)
         UnlockLayer(layer);
 #ifdef VTCON_PROF

@@ -6274,6 +6274,11 @@ static void packet(con *c, struct DosPacket *p)
                 }
                 PROF_LOG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
                 PROF_LOG("PROF long/spans", vp_long_spans, 0);
+                {
+                    extern ULONG vr_span_ticks;
+                    PROF_LOG("PROF span/painter", vr_span_ticks, vr_prof[0]);
+                    vr_span_ticks = 0;
+                }
                 PROF_LOG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
                 c->w.prof_part[3] = 0;
                 PROF_LOG("PROF fill/fills", vr_prof[3], vr_prof[4]);
