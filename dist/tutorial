@@ -10,7 +10,9 @@
 #   # Title of the lesson
 #   > Markdown text shown first (consecutive > lines join)
 #   $ a setup command, run silently in the practice drawer before the next task
-#     (if it sets $LEARN_WORD, @WORD@ in the text and task shows that word)
+#     (if it sets $LEARN_WORD, @WORD@ in the text and task shows that word;
+#     $ cd "$start" leaves the drawer for the drawer the tutorial started in: a lesson that opens
+#     a tab needs it, since a new tab opens in the current drawer and keeps it in use)
 #   ? the task the user sees
 #   = a check: a sh test run after the typed line; status 0 passes (every = must pass).
 #     It can read $LEARN_LINE (the typed line) and $LEARN_OUT (the file holding its output).
@@ -256,6 +258,11 @@ enter_sandbox() {
 leave_sandbox() {
     cd "$start"
     rm -rf "$sandbox" "$sandbox.out"
+    # a tab opened in the drawer keeps it as its current drawer, and the drawer cannot go then
+    if [ -e "$sandbox" ]; then
+        echo "tutorial: $sandbox is still in use (a tab or a program has it as its current drawer)."
+        echo "Close that tab, or cd out of the drawer there, then type  rm -rf $sandbox"
+    fi
 }
 
 start_lesson() {

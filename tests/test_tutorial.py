@@ -74,6 +74,24 @@ class Tutorial(unittest.TestCase):
             self.assertEqual(self.done(), ['1'])
         self.each_shell(case)
 
+    def test_a_drawer_still_in_use_is_named_at_the_end(self):
+        """a tab opened in the practice drawer keeps it as its current drawer; rm -rf then left
+        T:tutorial behind without a word (rig 4, 2026-10-19). A drawer that cannot go is named.
+        Here a write-protected sub drawer stands in for the drawer in use."""
+        held = SENTINEL.replace('? Make', '$ mkdir keep; touch keep/f; chmod 555 keep\n? Make')
+        lessons = self.lesson_dir(held)
+        def case(shell):
+            try:
+                rc, out = self.run_tutorial(shell, ['1'], 'touch sentinel.txt\n', lessons)
+                self.assertIn('Lesson finished.', out)
+                self.assertTrue(os.path.exists(self.sandbox), out)
+                self.assertIn('is still in use', out)
+            finally:
+                if os.path.exists(os.path.join(self.sandbox, 'keep')):
+                    os.chmod(os.path.join(self.sandbox, 'keep'), 0o755)
+                shutil.rmtree(self.sandbox, True)
+        self.each_shell(case)
+
     def test_home_that_is_a_volume_keeps_the_progress_file_in_it(self):
         """HOME is "System:" on the Amiga: "$HOME/.tutorial" would be "System:/.tutorial", the volume's parent,
         which grep cannot open, so `tutorial next` never saw a finished lesson (rig 4, 2026-10-19)."""

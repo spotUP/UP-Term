@@ -3,6 +3,7 @@
 > commands, and the mouse. The window counts them, and this lesson reads the counts with
 > `UPTerm state`, so it can tell that you really did each one. For these steps you do the
 > action, then press Return at the tutorial prompt with nothing typed.
+$ cd "$start"
 $ tabs0=$(${UPTERM_STATE:-UPTerm} state tabs-opened)
 ? Open a new tab with Right Amiga T, then press Return here (in this tab).
 = [ "$(${UPTERM_STATE:-UPTerm} state tabs-opened)" -gt "$tabs0" ]

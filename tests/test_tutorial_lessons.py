@@ -18,12 +18,13 @@ STUBS = ('nano', 'man', 'upkg', 'Version')
 # UPTerm state on the host: the window's counters in one file per key (D8: the lessons call
 # ${UPTERM_STATE:-UPTerm} state KEY). "act KEY" is the user's action (the lessons' answers
 # call it when UPTERM_STATE is set); "act slash NAME" is a typed slash command. UPTERM_FAKE_FROZEN
-# makes every action do nothing, as a user who only pressed Return.
+# makes every action do nothing, as a user who only pressed Return. Each state call adds the
+# drawer it ran in to $UPTERM_FAKE_DIR/cwd.
 FAKE_STATE = '''#!/bin/sh
 d=${UPTERM_FAKE_DIR:?}
 get() { if [ -f "$d/$1" ]; then cat "$d/$1"; else echo 0; fi; }
 case $1 in
-state) get "$2" ;;
+state) pwd >> "$d/cwd"; get "$2" ;;
 act)
     [ -n "${UPTERM_FAKE_FROZEN:-}" ] && exit 0
     if [ "$2" = slash ]; then
@@ -75,6 +76,7 @@ class Lessons(unittest.TestCase):
                            cwd=self.tmp, timeout=120)
         if HAVE_TMUX:
             subprocess.run(['tmux', 'kill-server'], env=env, capture_output=True)
+        self.state_dir = d
         return r.stdout.decode() + r.stderr.decode()
 
     def lines(self, f):
@@ -127,6 +129,20 @@ class Lessons(unittest.TestCase):
                 out = self.selftest(shell, f, frozen=True)
                 self.assertEqual(re.findall(r'^(ok \d+|FAIL \d+)$', out, re.M),
                                  ['FAIL 1', 'FAIL 2', 'FAIL 3', 'FAIL 4', 'FAIL 5', 'ok 6', 'FAIL 7'], out)
+
+    def test_the_window_lesson_runs_outside_the_practice_drawer(self):
+        """lesson 12 opens a tab, and a new tab opens in the current drawer: in T:tutorial it kept
+        the drawer in use and the tutorial could not remove it (rig 4, 2026-10-19). Every state
+        check of the lesson runs in the drawer the tutorial started in."""
+        f = '12-the-up-term-window.lesson'
+        sandbox = os.path.realpath(os.path.join(self.tmp, 'sandbox'))
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                out = self.selftest(shell, f)
+                with open(os.path.join(self.state_dir, 'cwd')) as fh:
+                    dirs = [os.path.realpath(l) for l in fh.read().split()]
+                self.assertTrue(dirs, out)
+                self.assertEqual([x for x in dirs if x.startswith(sandbox)], [], out)
 
     def test_the_shipped_lessons_are_thirteen(self):
         self.assertEqual(len(FILES), 13)
