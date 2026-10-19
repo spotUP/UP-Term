@@ -56,9 +56,9 @@ wrong ones, and progress is written and resumed (L-T1, L-T2).
 `UP-Term:bin/tutorial`, a vsh script (POSIX sh plus nothing vsh-only, so the
 host vsh and a real bash both run it for tests).
 
-    learn              the menu of lessons, with a mark on finished ones
-    learn N            start lesson N
-    learn next         the first unfinished lesson
+    tutorial           the menu of lessons, with a mark on finished ones
+    tutorial N         start lesson N
+    tutorial next      the first unfinished lesson
     tutorial reset     forget progress
 
 Each lesson runs in a sandbox directory, `T:tutorial/` (made fresh per lesson,
