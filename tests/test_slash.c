@@ -282,6 +282,16 @@ static void settings_menu_items_run_the_typed_commands(void)
     CHECK_STR(line, "/colors 16");
     CHECK_INT(slash_menu_line(MENU_SET_COLORS_NONE, line, sizeof(line)), 1);
     CHECK_INT(slash_menu_line(MENU_SET_BOLD, line, sizeof(line)), 0); /* not one of them */
+    /* Help > Slash commands is the typed /help: same line, same list */
+    CHECK_INT(slash_menu_line(MENU_HELP_SLASH, line, sizeof(line)), 1);
+    CHECK_STR(line, "/help");
+    CHECK_INT(parse(line), SLASH_OK);
+    CHECK_INT(cmd.id, SLASH_HELP);
+    {
+        static char help[4096];
+        CHECK_INT(slash_help(cmd.arg, help, sizeof(help)) > 0, 1);
+        CHECK_INT(strstr(help, "about") != 0, 1);
+    }
     CHECK_INT(slash_menu_line(MENU_SET_TERM_VTCON, line, 8), 0);      /* no room */
     /* the checkmark follows the window's value; empty is the "none" item */
     CHECK_INT(slash_menu_checked(MENU_SET_TERM_XTERM, "xterm-256color", ""), 1);
