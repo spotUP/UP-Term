@@ -18,7 +18,7 @@ Standing goal (owner): "keep goin until the ide is finished". IDE spike = ~/Code
   painter port (a64d804fd565b71db, rig 2). Their final reports go to the old session only. Check git log
   and rig 2 (`UPTERM_RIG=2 python3 tools/rig/rig.py status`) for what they left; stop rig 2 if idle
   (never rig 1).
-- Rig 3 is UP, booted --a1200 (020, ~68 MB free). Stop it when the bench below is done.
+- Rig 3 stopped at handoff. Start it with `make wasabi` then `UPTERM_RIG=3 python3 tools/rig/rig.py start --a1200`; stop it after the bench.
 
 ## ide-spike: uncommitted WIP (do not lose)
 
@@ -48,7 +48,7 @@ Measured on rig 3 020 (valid, avail_start 68445 kB), clean HEAD vs memo, same se
    patches == build/ncurses/src.
 3. Commit in ide-spike by file name (bench_rig.py, scidemo.cxx, patches/ncurses-vidputs-memo.patch,
    results/scidemo-lite-a1200.txt) with the HEAD-vs-memo numbers above; push (spotUP, no attribution).
-4. Stop rig 3.
+4. Stop rig 3 (start it before step 1).
 5. Kitty: K9 handler datatypes PNG decoder behind vt_set_image_decoder, K11 render host test,
    K12 rig reachability (sentinels: kitty placed counter + datatypes decode count), K13 docs +
    THIRD-PARTY notice (CTerm MIT, Tobias Karlsson). Read the plan checklist first.
