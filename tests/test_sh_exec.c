@@ -419,6 +419,8 @@ static int f_stat(void *os, const char *path, sh_stat *st, int nofollow)
             st->type = SH_ST_FILE;
             st->size = 1;
             st->ino = i + 1;
+            if (!strcmp(path, "RAM:s7"))
+                st->access = 7; /* the S bit: an AmigaDOS script, runnable as it is */
             /* test -N: the times of four files, set by the name */
             if (!strcmp(path, "nmod")) {        /* modified after the read */
                 st->mtime = 100; st->atime = 50;
@@ -1579,6 +1581,9 @@ static const char *started(const char *text)
     put_file("RAM:s4", ".KEY a/m\n#!/bin/sh\necho ok\n", 27);
     put_file("RAM:s5", ";! /bin/bash -x  more\r\necho ok\n", 31);
     put_file("RAM:s6", "echo ok\n", 8);
+    put_file("RAM:s7", "echo ok\n", 8);
+    put_file("RAM:s8", ".key a/m\necho ok\n", 17);
+    put_file("RAM:s9", "ab\0cd\n", 6);
     put_file("RAM:prog", "\0\0\3\363#!/bin/sh\n", 14);
     watched_io = 0;
     {
@@ -1605,7 +1610,12 @@ static void a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is(void)
     CHECK_STR(started("RAM:s3 x"), "RAM:s3|x"); /* another interpreter: not ours */
     CHECK_STR(started("RAM:s4 x"), "VTC:vsh|RAM:s4|x");   /* a .key line first: the second line counts */
     CHECK_STR(started("RAM:s5 x"), "VTC:vsh|-x|RAM:s5|x"); /* ;! as ixemul has it; one argument word */
-    CHECK_STR(started("RAM:s6 x"), "RAM:s6|x");           /* no #! line: the OS layer's script */
+    /* no #! line and no S bit: POSIX ENOEXEC, a script of this shell with its arguments (the tutorial
+     * and upkg-ask in PATH were "file is not executable") */
+    CHECK_STR(started("RAM:s6 x y"), "VTC:vsh|RAM:s6|x|y");
+    CHECK_STR(started("RAM:s7 x"), "RAM:s7|x");           /* the S bit: an AmigaDOS script, the OS layer's */
+    CHECK_STR(started("RAM:s8 x"), "RAM:s8|x");           /* a .key line: an AmigaDOS script too */
+    CHECK_STR(started("RAM:s9 x"), "RAM:s9|x");           /* a NUL byte: binary, not a script */
     /* an ordinary executable starts with no open or read of its file by the shell */
     strcpy(watched, "RAM:prog");
     CHECK_STR(started("RAM:prog x"), "RAM:prog|x");

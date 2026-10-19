@@ -7737,7 +7737,8 @@ static const char *shell_path_alias(sh_shell *sh, const char *name)
  * other interpreter is not ours to start. The OS layer calls this only for a file it found and could
  * not load, after trying to load it (vsh.c os_run: LoadSeg first), so an ordinary command costs no
  * open or read here. Returns a malloc'ed argv (the strings borrowed, out[1] a copy of the
- * interpreter's argument when there is one; free that and the array), or 0. */
+ * interpreter's argument when there is one; free that and the array), or 0. A file with no #! line
+ * and no S bit runs as a script of this shell (below). */
 char **sh_script_argv(sh_shell *sh, char **argv)
 {
     char file[512], line[256], *p, *interp, *arg = 0;
@@ -7745,12 +7746,13 @@ char **sh_script_argv(sh_shell *sh, char **argv)
     sh_stat st;
     sh_fh fh;
     long n;
-    int na = 0, i;
+    int na = 0, i, keyed = 0, plain;
     char **out;
     if (!argv[0][0] || !sh->os.read || !find_command_file(sh, argv[0], file, sizeof(file)))
         return 0;
     if (sh->os.stat(sh->os.data, file, &st, 0) || st.type != SH_ST_FILE)
         return 0;
+    plain = !(st.access & 1);
     fh = sh->os.open(sh->os.data, file, SH_OPEN_READ);
     if (fh == SH_NOFH)
         return 0;
@@ -7766,9 +7768,19 @@ char **sh_script_argv(sh_shell *sh, char **argv)
         if (!p)
             return 0;
         p++;
+        keyed = 1;
     }
-    if ((p[0] != '#' && p[0] != ';') || p[1] != '!')
-        return 0;
+    if ((p[0] != '#' && p[0] != ';') || p[1] != '!') {
+        /* POSIX execve's ENOEXEC: a file that does not load, has no #! line and no S bit runs as a
+         * script of this shell, $0 the path (an AmigaDOS script has the S bit or a .key line, a binary
+         * file a NUL byte, as bash refuses it: those stay the OS layer's) */
+        if (!plain || keyed || memchr(line, 0, (size_t)n))
+            return 0;
+        self = shell_path_alias(sh, "/bin/sh");
+        if (!self)
+            return 0;
+        goto build;
+    }
     for (p += 2; *p == ' ' || *p == '\t'; p++)
         ;
     interp = p;
@@ -7788,6 +7800,7 @@ char **sh_script_argv(sh_shell *sh, char **argv)
     self = shell_path_alias(sh, interp);
     if (!self)
         return 0;
+build:
     while (argv[na])
         na++;
     out = (char **)malloc(sizeof(char *) * (na + 3));
