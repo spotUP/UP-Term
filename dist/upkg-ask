@@ -1,4 +1,4 @@
-# upkg-ask QUESTIONS ANSWERS -- ask an add-on's install questions (upkg plan P10.6).
+# upkg-ask QUESTIONS ANSWERS [NAME] -- ask an add-on's install questions (upkg plan P10.6).
 #
 # QUESTIONS has one question per line, fields split by "|":
 #   key|type|prompt|default|choices
@@ -9,28 +9,45 @@
 #
 # ANSWERS is written as shell assignments, KEY='value', for postinst to source.
 #
-# dialog asks when it is on the PATH and stdin is a terminal; with no dialog the
-# questions are plain prompts read from stdin; with no terminal every question
-# takes its default. UPKG_ASK_PLAIN=1 forces the plain prompts.
+# NAME is the add-on's name: the full-screen masthead shows it as "NAME i/n" (question
+# index and count; empty lines and "#" lines are not counted).
+#
+# upkg-ui (our own curses program, upterm-ports pkgs/upkg-ui, dialog-compatible subset)
+# asks when it is on the PATH and stdin is a terminal; with no upkg-ui the questions are
+# plain prompts read from stdin; with no terminal every question takes its default.
+# UPKG_ASK_PLAIN=1 forces the plain prompts.
 
-if [ $# -ne 2 ]; then
-    echo "usage: upkg-ask QUESTIONS ANSWERS" >&2
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "usage: upkg-ask QUESTIONS ANSWERS [NAME]" >&2
     exit 2
 fi
 questions=$1
 answers=$2
+name=$3
 if [ ! -r "$questions" ]; then
     echo "upkg-ask: cannot read $questions" >&2
     exit 2
 fi
 
+# the screen's masthead: title fixed, value = NAME i/n (set per question)
+ask_ui() {
+    upkg-ui --title "UP-TERM ADD-ON" --backtitle "${name:+$name }$index/$total" "$@"
+}
+
 mode=plain
 if [ ! -t 0 ]; then
     mode=defaults
-elif [ -z "$UPKG_ASK_PLAIN" ] && command -v dialog >/dev/null 2>&1; then
-    mode=dialog
+elif [ -z "$UPKG_ASK_PLAIN" ] && command -v upkg-ui >/dev/null 2>&1; then
+    mode=ui
 fi
 tmp="$answers.tmp"
+
+# the questions to ask, for the "i/n" of the masthead
+total=0
+while IFS='|' read -r key rest; do
+    case $key in "" | "#"*) ;; *) total=$((total + 1)) ;; esac
+done < "$questions"
+index=0
 
 # the value of a default field: a literal, or "<PATH" for PATH's last line that is
 # not empty and not a ";" comment (ENVARC:Claude/remote starts with two comments)
@@ -60,28 +77,29 @@ quote() {
 exec 3<&0
 while IFS='|' read -r key type prompt def choices; do
     case $key in "" | "#"*) continue ;; esac
+    index=$((index + 1))
     def=$(default_of "$def")
     ans=$def
     case $mode.$type in
-    dialog.string)
-        if dialog --inputbox "$prompt" 0 0 "$def" 2> "$tmp" <&3; then
+    ui.string)
+        if ask_ui --inputbox "$prompt" 0 0 "$def" 2> "$tmp" <&3; then
             ans=$(cat "$tmp")
         fi ;;
-    dialog.yesno)
+    ui.yesno)
         if [ "$def" = no ]; then
             set -- --defaultno
         else
             set --
         fi
-        dialog "$@" --yesno "$prompt" 0 0 <&3
+        ask_ui "$@" --yesno "$prompt" 0 0 <&3
         case $? in 0) ans=yes ;; 1) ans=no ;; esac ;;
-    dialog.choice)
+    ui.choice)
         set --
         oldifs=$IFS
         IFS=,
         for c in $choices; do set -- "$@" "$c" ""; done
         IFS=$oldifs
-        if dialog --no-items --default-item "$def" --menu "$prompt" 0 0 0 "$@" 2> "$tmp" <&3; then
+        if ask_ui --no-items --default-item "$def" --menu "$prompt" 0 0 0 "$@" 2> "$tmp" <&3; then
             ans=$(cat "$tmp")
         fi ;;
     plain.string)

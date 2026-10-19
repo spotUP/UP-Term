@@ -115,7 +115,7 @@ class IpkTest(unittest.TestCase):
         ctl, data = self.ctl_of('Claude_1.1_m68k-amigaos.ipk')
         post = ctl.extractfile('./postinst').read().decode()
         st = 'T:upkg-stage/Claude'
-        self.assertIn('if [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers; then\n'
+        self.assertIn('if [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers Claude; then\n'
                       '    . %s/answers\n    set -- REMOTE "$REMOTE"\nfi\n' % (st, st, st), post)
         self.assertIn('Execute %s/Files/install.dos %s/Files "$@"\n' % (st, st), post)
         self.assertIn('./T/upkg-stage/Claude/Files/questions', data.getnames())

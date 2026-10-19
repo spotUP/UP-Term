@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """dist/upkg-ask (upkg plan P10.6): an add-on's install questions asked through
-dialog, through plain prompts, or answered by their defaults with no terminal.
+upkg-ui, through plain prompts, or answered by their defaults with no terminal.
 Each case runs under the host's /bin/sh and under build/vsh_host (vsh is /bin/sh
-on the Amiga). A fake dialog on the PATH reads "RC VALUE" lines from its stdin,
-writes VALUE to stderr and exits RC, and logs its argv. The rig half (real dialog,
-keys sent to an UP-Term window) is tools/rig/upkg_ask_rig.py."""
-import os, pty, shutil, subprocess, tempfile, unittest
+on the Amiga). A fake upkg-ui on the PATH reads "RC VALUE" lines from its stdin,
+writes VALUE to stderr and exits RC, and logs its argv. One case runs the REAL
+host-built upkg-ui (upterm-ports build/host/upkg-ui) on a pty with keys sent.
+The rig half (keys sent to an UP-Term window) is tools/rig/upkg_ask_rig.py."""
+import os, pty, select, shutil, struct, fcntl, termios, subprocess, tempfile, time, unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 ASK = os.path.join(ROOT, 'dist', 'upkg-ask')
+REAL_UI = os.path.join(ROOT, '..', 'upterm-ports', 'build', 'host', 'upkg-ui', 'upkg-ui')
+TITLE = '--title UP-TERM ADD-ON --backtitle '  # upkg-ask puts these before every call
 VSH = os.path.join(ROOT, 'build', 'vsh_host')
 
-FAKE_DIALOG = '''#!/bin/sh
-printf '%s\\n' "$*" >> "$DIALOG_LOG"
+FAKE_UI = '''#!/bin/sh
+printf '%s\\n' "$*" >> "$UI_LOG"
 IFS=' ' read -r rc value
 printf '%s' "$value" >&2
 exit "$rc"
@@ -27,7 +30,7 @@ class Ask(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         self.bin = os.path.join(self.tmp, 'bin')
         os.mkdir(self.bin)
-        self.log = os.path.join(self.tmp, 'dialog.log')
+        self.log = os.path.join(self.tmp, 'ui.log')
         self.remote = os.path.join(self.tmp, 'remote')
         with open(self.remote, 'w') as f:
             f.write('; Claude Code on another computer\n; a comment\n\n10.0.0.5 7777\n')
@@ -40,14 +43,14 @@ class Ask(unittest.TestCase):
                     'MODEL|choice|Model|sonnet|haiku,sonnet,opus\n' % self.remote)
         self.out = os.path.join(self.tmp, 'answers')
 
-    def fake_dialog(self):
-        p = os.path.join(self.bin, 'dialog')
+    def fake_ui(self):
+        p = os.path.join(self.bin, 'upkg-ui')
         with open(p, 'w') as f:
-            f.write(FAKE_DIALOG)
+            f.write(FAKE_UI)
         os.chmod(p, 0o755)
 
     def run_ask(self, shell, typed=None, plain=False):
-        env = {'PATH': self.bin + ':/usr/bin:/bin', 'DIALOG_LOG': self.log, 'HOME': self.tmp}
+        env = {'PATH': self.bin + ':/usr/bin:/bin', 'UI_LOG': self.log, 'HOME': self.tmp}
         if plain:
             env['UPKG_ASK_PLAIN'] = '1'
         if typed is None:
@@ -70,12 +73,12 @@ class Ask(unittest.TestCase):
                               timeout=20).stdout.decode()
 
     def test_no_terminal_takes_defaults(self):
-        self.fake_dialog()
+        self.fake_ui()
         for sh in self.shells:
             with self.subTest(sh=sh[0]):
                 self.run_ask(sh)
                 self.assertEqual(self.answers(sh), '10.0.0.5 7777|no|sonnet')
-                self.assertFalse(os.path.exists(self.log), 'dialog ran with no terminal')
+                self.assertFalse(os.path.exists(self.log), 'upkg-ui ran with no terminal')
 
     def test_missing_default_file_is_empty(self):
         os.remove(self.remote)
@@ -84,8 +87,8 @@ class Ask(unittest.TestCase):
                 self.run_ask(sh)
                 self.assertEqual(self.answers(sh), '|no|sonnet')
 
-    def test_dialog_answers(self):
-        self.fake_dialog()
+    def test_ui_answers(self):
+        self.fake_ui()
         for sh in self.shells:
             with self.subTest(sh=sh[0]):
                 if os.path.exists(self.log):
@@ -94,20 +97,20 @@ class Ask(unittest.TestCase):
                 self.assertEqual(self.answers(sh), 'host.lan 2323|yes|opus')
                 with open(self.log) as f:
                     calls = f.read().splitlines()
-                self.assertEqual(calls[0], '--inputbox Server host and port 0 0 10.0.0.5 7777')
-                self.assertEqual(calls[1], '--defaultno --yesno Start at boot? 0 0')
-                self.assertEqual(calls[2], '--no-items --default-item sonnet --menu Model 0 0 0 '
+                self.assertEqual(calls[0], TITLE + '1/3 --inputbox Server host and port 0 0 10.0.0.5 7777')
+                self.assertEqual(calls[1], TITLE + '2/3 --defaultno --yesno Start at boot? 0 0')
+                self.assertEqual(calls[2], TITLE + '3/3 --no-items --default-item sonnet --menu Model 0 0 0 '
                                            'haiku  sonnet  opus ')
 
-    def test_dialog_cancel_and_escape_keep_defaults(self):
-        self.fake_dialog()
+    def test_ui_cancel_and_escape_keep_defaults(self):
+        self.fake_ui()
         for sh in self.shells:
             with self.subTest(sh=sh[0]):
                 self.run_ask(sh, "1 ignored\n255\n255 haiku\n")
                 self.assertEqual(self.answers(sh), '10.0.0.5 7777|no|sonnet')
 
-    def test_dialog_no_is_no(self):
-        self.fake_dialog()
+    def test_ui_no_is_no(self):
+        self.fake_ui()
         with open(self.q, 'w') as f:
             f.write('START|yesno|Start at boot?|yes|\n')
         for sh in self.shells:
@@ -117,7 +120,7 @@ class Ask(unittest.TestCase):
                     self.assertEqual(f.read(), "START='no'\n")
 
     def test_plain_prompts(self):
-        """no dialog on the PATH: plain prompts on the terminal"""
+        """no upkg-ui on the PATH: plain prompts on the terminal"""
         for sh in self.shells:
             with self.subTest(sh=sh[0]):
                 r = self.run_ask(sh, "host.lan 2323\ny\nopus\n")
@@ -126,18 +129,73 @@ class Ask(unittest.TestCase):
                 self.assertIn(b'Model (haiku,sonnet,opus) [sonnet]: ', r.stdout)
 
     def test_plain_empty_and_bad_choice_keep_defaults(self):
-        self.fake_dialog()
+        self.fake_ui()
         for sh in self.shells:
             with self.subTest(sh=sh[0]):
                 self.run_ask(sh, "\nmaybe\ngpt\n", plain=True)
                 self.assertEqual(self.answers(sh), '10.0.0.5 7777|no|sonnet')
-                self.assertFalse(os.path.exists(self.log), 'UPKG_ASK_PLAIN=1 still ran dialog')
+                self.assertFalse(os.path.exists(self.log), 'UPKG_ASK_PLAIN=1 still ran upkg-ui')
 
     def test_quotes_survive_sourcing(self):
         for sh in self.shells:
             with self.subTest(sh=sh[0]):
                 self.run_ask(sh, "it's a \"host\" $HOME `x`\n\n\n")
                 self.assertEqual(self.answers(sh), 'it\'s a "host" $HOME `x`|no|sonnet')
+
+    def test_name_is_in_the_backtitle(self):
+        self.fake_ui()
+        env = {'PATH': self.bin + ':/usr/bin:/bin', 'UI_LOG': self.log, 'HOME': self.tmp}
+        master, slave = pty.openpty()
+        os.write(master, b"0 a\n0\n0 opus\n")
+        r = subprocess.run(['/bin/sh', ASK, self.q, self.out, 'Claude'], stdin=slave,
+                           capture_output=True, env=env, timeout=20)
+        os.close(slave)
+        os.close(master)
+        self.assertEqual(r.returncode, 0, r.stderr.decode())
+        with open(self.log) as f:
+            self.assertTrue(f.readline().startswith(TITLE + 'Claude 1/3 --inputbox'))
+
+    @unittest.skipUnless(os.path.exists(REAL_UI), 'host upkg-ui missing: run "make host-upkg-ui" in upterm-ports')
+    def test_real_upkg_ui_on_a_pty(self):
+        """reachability: upkg-ask drives the real ncurses upkg-ui, keys in, answers file out"""
+        os.symlink(os.path.abspath(REAL_UI), os.path.join(self.bin, 'upkg-ui'))
+        env = {'PATH': self.bin + ':/usr/bin:/bin', 'HOME': self.tmp, 'TERM': 'xterm-256color',
+               'LANG': 'en_US.UTF-8'}
+        keys = [(b'9', 0.8), (b'\r', 0.3),          # input: append 9 to the default, accept
+                (b'\x1bOD', 0.8), (b'\r', 0.3),    # yesno (default no): Left = Yes, accept
+                (b'\x1bOB', 0.8), (b'\r', 0.3)]    # menu (default sonnet): Down = opus, accept
+        for sh in self.shells:
+            with self.subTest(sh=sh[0]):
+                master, slave = pty.openpty()
+                fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 25, 80, 0, 0))
+                p = subprocess.Popen(sh + [ASK, self.q, self.out, 'Claude'], stdin=slave, stdout=slave,
+                                     stderr=subprocess.PIPE, env=env, start_new_session=True)
+                os.close(slave)
+                screen = b''
+                for key, wait in keys:
+                    end = time.time() + wait
+                    while time.time() < end:
+                        if select.select([master], [], [], 0.05)[0]:
+                            try:
+                                screen += os.read(master, 65536)
+                            except OSError:
+                                break
+                    os.write(master, key)
+                end = time.time() + 10
+                while p.poll() is None and time.time() < end:
+                    if select.select([master], [], [], 0.05)[0]:
+                        try:
+                            screen += os.read(master, 65536)
+                        except OSError:
+                            break
+                err = p.stderr.read().decode()
+                p.stderr.close()
+                os.close(master)
+                self.assertEqual(p.returncode, 0, err)
+                self.assertEqual(self.answers(sh), '10.0.0.5 77779|yes|opus')
+                # the screen really was upkg-ui's: the masthead carries the title and "NAME i/n"
+                self.assertIn(b'UP-TERM ADD-ON', screen)
+                self.assertIn(b'Claude 3/3', screen)
 
     def test_usage(self):
         r = subprocess.run(['/bin/sh', ASK, self.q], capture_output=True)

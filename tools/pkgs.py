@@ -88,6 +88,7 @@ def _scripts(r, keys=()):
     postinst Executes the archive's Files/install.dos, which `make dist` wrote and the Installer also
     runs; prerm Executes the Uninstall copy that install.dos left in the record drawer. keys: the
     archive's install questions (Files/questions, P10.6); postinst asks them with UP-Term:bin/upkg-ask
+    (the package name is its third argument: the masthead's "NAME i/n")
     and hands each answer to install.dos as its keyword (KEY "value"), where the Installer's askstring
     answer goes too. A base without upkg-ask passes none, so install.dos keeps its own defaults."""
     st = '%s/%s' % (STAGE_DOS, r['archive'])
@@ -95,10 +96,10 @@ def _scripts(r, keys=()):
     if keys:
         post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: asks the archive\'s install questions, runs its own install script\n'
                 '# with the answers, then drops the staged tree\n'
-                'set --\nif [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers; then\n'
+                'set --\nif [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers %s; then\n'
                 '    . %s/answers\n    set -- %s\nfi\n'
                 'Execute %s/Files/install.dos %s/Files "$@"\nrc=$?\nrm -rf %s\nexit $rc\n'
-                % (st, st, st, ' '.join('%s "$%s"' % (k, k) for k in keys), st, st, st))
+                % (st, st, r['archive'], st, ' '.join('%s "$%s"' % (k, k) for k in keys), st, st, st))
     else:
         post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
                 'Execute %s/Files/install.dos %s/Files\nrc=$?\nrm -rf %s\nexit $rc\n' % (st, st, st))
