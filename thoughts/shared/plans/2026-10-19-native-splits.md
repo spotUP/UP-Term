@@ -127,3 +127,19 @@ Plan count: 17 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1
 8. Window-level commands while split (font size, 80x24/132x43, fullscreen, DECCOLM): act on focused pane, on the whole window, or disabled?
 9. Is tmux kept as the documented way for detach/attach, with native splits positioned as "layout only"?
 10. Ship as part of 1.x or a later release; start only after TUTORIAL-WINDOW W4 merged (todos.md).
+
+## 6. Owner answers (2026-10-19)
+
+- Go: full plan.
+- Splits per tab (each tab owns its layout). Max 4 panes per tab.
+- New pane runs vsh in the same directory (tab_spawn as for tabs).
+- Keys: split right RA+D, split down RA+Shift+D, focus RA+arrows, close pane RA+Shift+W, zoom RA+Shift+Enter; mouse click also focuses.
+- Window-level commands (font size, 80x24 / 132x43, fullscreen) act on the whole window, panes keep proportions; DECCOLM from a program is ignored while split.
+- Persistence (NS5.5): a user setting in the profile. Values off / layout / layout+programs, default off. Open: whether layout+programs is wanted in the first release.
+- Dividers: 1-pixel line, no pane titles; focus shown by solid vs hollow cursor.
+- Still open: pane scrollback default, tmux positioning in docs, release target.
+
+## 7. Added findings (peer session, verified on origin/main 2026-10-19)
+
+- Spawn race: tab_spawner writes one shared script name `T:UP-Term-tab` (handler/vtcon_handler.c:5796, used as `FROM T:UP-Term-tab` at :5809). Two panes spawned close together can overwrite each other's script. Fold into NS3.1: unique script name per spawn (host + sequence), deleted by the script itself; rig test spawns two panes back to back and asserts each starts in its own directory.
+- ACTION_DISK_INFO hands back the whole window (`id->id_VolumeNode = (BPTR)c->w.win`, vtcon_handler.c ~6909). A program in a pane that draws straight into that Window draws over other panes. Same as tmux has no answer for. Decision for NS5.3: keep returning the window (V47 compatibility), document that raw-window programs see the whole window, and make the pane clip region (NS1.2) not apply to them. Rig check: a raw-window program in a pane still works.
