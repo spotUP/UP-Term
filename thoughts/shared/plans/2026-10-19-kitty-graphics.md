@@ -71,20 +71,20 @@ new for placement at the cursor.
 - [x] K6 a=t store by id, a=p place by id, a=d delete variants, a=q query.
 - [x] K7 replies and q=1/2 suppression (D3).
 - [x] K8 memory budget + gc (D7).
-- [ ] K9 handler: datatypes PNG decoder behind vt_decode (handler side,
+- [x] K9 handler: datatypes PNG decoder behind vt_decode (handler side,
       opened lazily, closed at exit).
 - [x] K10 host tests (tests/test_kitty.c, wired into `make test`, ONLY=kitty):
       raw RGB, RGBA alpha->unset, chunked, zlib, PNG via test decoder,
       query reply, delete by id, ENOENT, ENOMEM on budget, unsupported t=f
       error, image visible through vt_row_image().
-- [ ] K11 render host test (make test ONLY=render): a kitty image draws its
+- [x] K11 render host test (make test ONLY=render): a kitty image draws its
       pixels on the fake canvas (proves renderer wiring).
 - [ ] K12 reachability on rig: handler fed a real kitty PNG stream (small
       file, e.g. `kitty +kitten icat` capture or a python generator) in an
       XCON window; sentinel: engine counter kitty_images_placed > 0 and
       datatypes decode count > 0 in the PROF/debug output; screenshot checked
       by a haiku subagent.
-- [ ] K13 docs: README / man page feature list; THIRD-PARTY notice.
+- [x] K13 docs: README / man page feature list; THIRD-PARTY notice.
 - [x] K14 vt_unhandled no longer reports APC G.
 
 Not in scope: z<0 below-text layer, unicode placeholders (U=1), animation
