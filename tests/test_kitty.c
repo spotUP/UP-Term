@@ -201,7 +201,7 @@ static void own_decoder_reads_every_colour_type_depth_and_filter(void)
     PNG_GIVES(rgba8, 3, 5);        /* type 6, filters 0-4, IDAT in two chunks */
 }
 
-static void own_decoder_answers_0_broken_and_minus_1_unsupported(void)
+static void own_decoder_answers_0_broken_minus_1_unsupported_minus_2_too_big(void)
 {
     vt_u32 *out = 0;
     int w, h;
@@ -212,7 +212,7 @@ static void own_decoder_answers_0_broken_and_minus_1_unsupported(void)
     memcpy(cut, png_rgba8, sizeof(cut));
     CHECK_INT(png_decode(cut, 40, &out, &w, &h), 0);                          /* cut inside a chunk */
     cut[16] = 0xFF;                                                           /* a width of 2^24 */
-    CHECK_INT(png_decode(cut, sizeof(cut), &out, &w, &h), -1);                /* over the limit */
+    CHECK_INT(png_decode(cut, sizeof(cut), &out, &w, &h), -2);                /* over the limit */
     CHECK(!out);
 }
 
@@ -252,6 +252,18 @@ static void png_is_decoded_by_the_engine_and_never_reaches_the_host(void)
     CHECK_INT(decode_calls, 1);
     CHECK_STR(h_reply, "\033_Gi=23;OK\033\\");
     CHECK_INT(vt_kitty_png_own(t), 1);
+    /* too big: ENOMEM at once, the host decoder is not called (it would
+     * unpack the whole picture only to be refused) */
+    {
+        char big[sizeof(png_rgb_cube_b64)];
+        memcpy(big, png_rgb_cube_b64, sizeof(big));
+        memcpy(big + 20, "Uv8A", 4); /* byte 16, the width's top byte, 0xFF */
+        h_reply_clear();
+        snprintf(buf, sizeof(buf), "\033_Ga=T,f=100,i=24;%s\033\\", big);
+        h_put(t, buf);
+        CHECK_STR(h_reply, "\033_Gi=24;ENOMEM:too big\033\\");
+        CHECK_INT(decode_calls, 1);
+    }
     vt_free(t);
 }
 
@@ -426,7 +438,7 @@ void suite_kitty(void)
     zlib_data_is_inflated();
     png_goes_through_the_host_decoder();
     own_decoder_reads_every_colour_type_depth_and_filter();
-    own_decoder_answers_0_broken_and_minus_1_unsupported();
+    own_decoder_answers_0_broken_minus_1_unsupported_minus_2_too_big();
     png_is_decoded_by_the_engine_and_never_reaches_the_host();
     query_answers_without_showing();
     quiet_keys_hide_the_replies();

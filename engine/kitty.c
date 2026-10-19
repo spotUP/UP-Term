@@ -361,6 +361,8 @@ static const char *kit_load(vt_term *t, const vt_kitty *k, kit_src *s)
         int own = png_decode(k->raw, k->len, &argb, &w, &h);
         if (own == 0)
             return "EBADPNG:not a picture"; /* a PNG that is broken: the datatypes cannot do better */
+        if (own == -2)
+            return "ENOMEM:too big";
         if (own == 1) {
             s->own = (vt_u8 *)argb; /* freed with the source */
             t->kit_png_own++;
