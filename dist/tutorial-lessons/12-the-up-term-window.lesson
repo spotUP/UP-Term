@@ -36,10 +36,10 @@ $ copies0=$(${UPTERM_STATE:-UPTerm} state copies)
 = [ "$(${UPTERM_STATE:-UPTerm} state copies)" -gt "$copies0" ]
 ~ Press the left mouse button at the start of the word, drag to its end, release.
 ! echo "Drag over the word, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act copies}
-? Paste the word at the prompt (Right Amiga V) and press Return. The shell will not know it as a command; that is fine.
-= case "$LEARN_LINE" in "$LEARN_WORD"|'$LEARN_WORD') true ;; *) false ;; esac
-~ Press Right Amiga V, then Return. The line must be the word you copied.
-! $LEARN_WORD
+? Type  echo  and a space, paste the word (Right Amiga V), and press Return.
+= grep -qx "$LEARN_WORD" "$LEARN_OUT"
+~ Type echo and a space, press Right Amiga V, then Return. echo prints the word you copied.
+! echo $LEARN_WORD
 > Right Amiga with a menu item's letter picks the item without the menu. Clear screen is K.
 $ key0=$(${UPTERM_STATE:-UPTerm} state menu-picks)
 ? Press Right Amiga K to clear the screen, then press Return.
