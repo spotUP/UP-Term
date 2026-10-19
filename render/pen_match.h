@@ -1,5 +1,5 @@
 /* pen_match -- a colour on a screen of few pens (W-T7): the pen that looks nearest, or two pens mixed by an
- * ordered dither when no single pen comes close. Apart from AmigaOS so the host tests it (tests/test_pens.c);
+ * ordered dither when no single pen comes close. Apart from AmigaOS so the host tests it (tests/test_render.c);
  * render/amiga_render.c (few_pick) is its one user.
  *
  * Distance: "redmean", the weighted RGB distance of T. Riemersma (CompuPhase, "Colour metric",
@@ -110,20 +110,32 @@ static long pm_isqrt(long n)
     return x;
 }
 
+/* the wanted colour with what every distance to it needs worked out once: its channels, its chroma and the
+ * chroma's length (a square root: on a 68020 the dearest part of a distance) */
+typedef struct pm_target {
+    long r, g, b, u, v, n;
+} pm_target;
+
+static void pm_aim(unsigned long t, pm_target *a)
+{
+    a->r = (long)((t >> 16) & 255);
+    a->g = (long)((t >> 8) & 255);
+    a->b = (long)(t & 255);
+    pm_opp(t, &a->u, &a->v);
+    a->n = pm_isqrt(a->u * a->u + a->v * a->v);
+}
+
 /* how far c looks from the wanted colour t: redmean, plus the chroma of t that c lacks in t's own hue (c's
  * chroma projected on t's: a grey has none, a pen of another hue little) */
-static long pm_dist(unsigned long t, unsigned long c)
+static long pm_dist(const pm_target *t, unsigned long c)
 {
-    long r1 = (long)((t >> 16) & 255), g1 = (long)((t >> 8) & 255), b1 = (long)(t & 255);
-    long dr = r1 - (long)((c >> 16) & 255), dg = g1 - (long)((c >> 8) & 255), db = b1 - (long)(c & 255);
-    long rm = (r1 + (long)((c >> 16) & 255)) / 2, tu, tv, cu, cv, tn, lost;
+    long dr = t->r - (long)((c >> 16) & 255), dg = t->g - (long)((c >> 8) & 255), db = t->b - (long)(c & 255);
+    long rm = (t->r + (long)((c >> 16) & 255)) / 2, cu, cv, lost;
     long d = (((512 + rm) * dr * dr) >> 8) + 4 * dg * dg + (((767 - rm) * db * db) >> 8);
-    pm_opp(t, &tu, &tv);
-    tn = pm_isqrt(tu * tu + tv * tv);
-    if (!tn)
+    if (!t->n)
         return d;
     pm_opp(c, &cu, &cv);
-    lost = tn - (tu * cu + tv * cv) / tn;
+    lost = t->n - (t->u * cu + t->v * cv) / t->n;
     return lost > 0 ? d + PM_CHROMA_K * lost * lost : d;
 }
 
@@ -139,21 +151,55 @@ static unsigned long pm_mix(unsigned long a, unsigned long b, int lev)
     return out;
 }
 
-/* Choose for colour t among pal[0..n) (0xRRGGBB), only the pens whose bit is set in `usable`. pick->solid -1:
- * no pen usable. dither 0: the single pen only (lev 0). */
-static void pm_match(const unsigned long *pal, int n, unsigned long usable, unsigned long t, int dither,
-                     pm_pick *pick)
+/* What every match on one palette needs from the palette alone, worked out once (pm_palette_set): its colours in
+ * linear light and each pair's own distance. A screen's palette changes seldom; the matches on it are many (an
+ * ncurses frame of 256 colours: over a hundred, each of them once over every pair). */
+typedef struct pm_palette {
+    int n;
+    unsigned long pal[PM_MAXPENS];
+    long lin[PM_MAXPENS][3];
+    long ab_d[PM_MAXPENS][PM_MAXPENS]; /* [i][j], i < j: pm_dist from pen i to pen j */
+} pm_palette;
+
+/* p made for pal[0..n) (0xRRGGBB); nothing done when it already is */
+static void pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
 {
-    long best = -1, bestd = -1, d;
-    int i, j;
-    pick->solid = pick->a = pick->b = -1;
-    pick->lev = 0;
+    int i, j, c;
     if (n > PM_MAXPENS)
         n = PM_MAXPENS;
+    for (i = 0; i < n && p->n == n && p->pal[i] == pal[i]; i++)
+        ;
+    if (i == n && p->n == n)
+        return;
+    p->n = n;
+    for (i = 0; i < n; i++) {
+        p->pal[i] = pal[i];
+        for (c = 0; c < 3; c++)
+            p->lin[i][c] = pm_lin[(pal[i] >> (16 - 8 * c)) & 255];
+    }
+    for (i = 0; i < n; i++) {
+        pm_target ti;
+        pm_aim(pal[i], &ti);
+        for (j = i + 1; j < n; j++)
+            p->ab_d[i][j] = pm_dist(&ti, pal[j]);
+    }
+}
+
+/* Choose for colour t among the palette's pens, only those whose bit is set in `usable`. pick->solid -1: no pen
+ * usable. dither 0: the single pen only (lev 0). */
+static void pm_match(const pm_palette *p, unsigned long usable, unsigned long t, int dither, pm_pick *pick)
+{
+    const unsigned long *pal = p->pal;
+    long best = -1, bestd = -1, d, tl[3];
+    int i, j, c, n = p->n;
+    pm_target tt;
+    pm_aim(t, &tt);
+    pick->solid = pick->a = pick->b = -1;
+    pick->lev = 0;
     for (i = 0; i < n; i++) {
         if (!((usable >> i) & 1))
             continue;
-        d = pm_dist(t, pal[i]);
+        d = pm_dist(&tt, pal[i]);
         if (best < 0 || d < best) {
             best = d;
             pick->solid = i;
@@ -163,33 +209,41 @@ static void pm_match(const unsigned long *pal, int n, unsigned long usable, unsi
     if (!dither || best <= PM_SOLID_OK)
         return;
     bestd = best;
+    for (c = 0; c < 3; c++)
+        tl[c] = pm_lin[(t >> (16 - 8 * c)) & 255];
     for (i = 0; i < n; i++) {
-        long ta[3], ab[3], num = 0, den = 0, ab_d;
-        int c, lev, l;
+        long ta[3], ab[3], num, den, ab_d;
+        int lev, l;
         if (!((usable >> i) & 1))
             continue;
+        for (c = 0; c < 3; c++)
+            ta[c] = tl[c] - p->lin[i][c];
         for (j = i + 1; j < n; j++) {
             if (!((usable >> j) & 1) || pal[i] == pal[j])
+                continue;
+            /* the pair's own price alone, at its smallest (an even mix), already loses: no level of it can win */
+            ab_d = p->ab_d[i][j];
+            if (ab_d * (PM_LEVELS / 2) / (10 * PM_LEVELS) >= bestd)
                 continue;
             /* the level nearest t along a..b in linear light, then its neighbours by the full score */
             num = den = 0;
             for (c = 0; c < 3; c++) {
-                long la = pm_lin[(pal[i] >> (16 - 8 * c)) & 255];
-                ta[c] = pm_lin[(t >> (16 - 8 * c)) & 255] - la;
-                ab[c] = pm_lin[(pal[j] >> (16 - 8 * c)) & 255] - la;
+                ab[c] = p->lin[j][c] - p->lin[i][c];
                 num += ta[c] * ab[c] / 16;
                 den += ab[c] * ab[c] / 16;
             }
             lev = den ? (int)((num * PM_LEVELS + den / 2) / den) : 0;
             if (lev < 1 - 2 || lev > PM_LEVELS - 1 + 2)
                 continue; /* t lies past one end: that end alone is nearer */
-            ab_d = pm_dist(pal[i], pal[j]);
             for (l = lev - 2; l <= lev + 2; l++) {
                 long off;
                 if (l < 1 || l > PM_LEVELS - 1)
                     continue;
                 off = l > PM_LEVELS / 2 ? l - PM_LEVELS / 2 : PM_LEVELS / 2 - l;
-                d = pm_dist(t, pm_mix(pal[i], pal[j], l)) + ab_d * (off + PM_LEVELS / 2) / (10 * PM_LEVELS);
+                d = ab_d * (off + PM_LEVELS / 2) / (10 * PM_LEVELS);
+                if (d >= bestd)
+                    continue; /* the price alone loses: the mix is not worth working out */
+                d += pm_dist(&tt, pm_mix(pal[i], pal[j], l));
                 if (d < bestd) {
                     bestd = d;
                     pick->a = i;

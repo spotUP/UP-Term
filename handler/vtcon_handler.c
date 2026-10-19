@@ -6337,6 +6337,45 @@ static void packet(con *c, struct DosPacket *p)
                         PROF_LOG("PROF text ticks/directrow ticks", vr_tx_ticks, vr_dr_ticks);
                         extern ULONG vr_fr_ticks, vr_cs_ticks;
                         PROF_LOG("PROF flushrun/cellstyle", vr_fr_ticks, vr_cs_ticks);
+                        {
+                            extern ULONG vr_cs_calls, vr_cs_pair, vr_cs_split[4], vr_cs_sites[16][2];
+                            int k;
+                            if (!vr_cs_pair) {
+                                /* 1000 empty ReadEClock pairs, once */
+                                struct EClockVal p0, p1;
+                                ULONG sum = 0;
+                                for (k = 0; k < 1000; k++) {
+                                    ReadEClock(&p0);
+                                    ReadEClock(&p1);
+                                    sum += p1.ev_lo - p0.ev_lo;
+                                }
+                                vr_cs_pair = sum ? sum : 1; /* ticks per 1000 pairs */
+                            }
+                            PROF_LOG("PROF cs calls/pair x1000", vr_cs_calls, vr_cs_pair);
+                            {
+                                extern ULONG vr_pf_slow, vr_pf_fail;
+                                PROF_LOG("PROF pen_for first-use/failed", vr_pf_slow, vr_pf_fail);
+                                extern ULONG vr_pf_t[3], vr_pf_n[3], vr_pf_pm, vr_pass, vr_pf_by[16];
+                                PROF_LOG("PROF pf exact ticks/calls", vr_pf_t[0], vr_pf_n[0]);
+                                PROF_LOG("PROF pf few_obtain ticks/calls", vr_pf_t[1], vr_pf_n[1]);
+                                PROF_LOG("PROF pf obtain ticks/calls", vr_pf_t[2], vr_pf_n[2]);
+                                PROF_LOG("PROF pf pm_match ticks/passes", vr_pf_pm, vr_pass);
+                                for (k = 0; k < 16; k++) {
+                                    if (vr_pf_by[k])
+                                        PROF_LOG("PROF pf pass/first-uses", k, vr_pf_by[k]);
+                                    vr_pf_by[k] = 0;
+                                }
+                                vr_pf_t[0] = vr_pf_t[1] = vr_pf_t[2] = vr_pf_n[0] = vr_pf_n[1] = vr_pf_n[2] = vr_pf_pm = vr_pass = 0;
+                                vr_pf_slow = vr_pf_fail = 0;
+                            }
+                            PROF_LOG("PROF cs split resolve/pens", vr_cs_split[0], vr_cs_split[1]);
+                            PROF_LOG("PROF cs split area_ink/total", vr_cs_split[2], vr_cs_ticks);
+                            for (k = 0; k < 16 && vr_cs_sites[k][0]; k++) {
+                                PROF_LOG("PROF cs site line/calls", vr_cs_sites[k][0], vr_cs_sites[k][1]);
+                                vr_cs_sites[k][0] = vr_cs_sites[k][1] = 0;
+                            }
+                            vr_cs_calls = vr_cs_split[0] = vr_cs_split[1] = vr_cs_split[2] = 0;
+                        }
                         vr_fr_ticks = vr_cs_ticks = 0;
                         PROF_LOG("PROF directrow calls", vr_dr_calls, 0);
                         PROF_LOG("PROF txr attr/deco", vr_tx[0], vr_tx[1]);

@@ -89,8 +89,8 @@ static int png_unfilter(vt_u8 *raw, long h, long stride, int bpp)
 
 /* d[0..n) a PNG file into *argb (VT_MALLOC'd 0xAARRGGBB words, *w x *h).
  * 1 decoded; 0 broken (a PNG that cannot be a picture); -1 not for this
- * decoder: no PNG signature (another format, the datatypes may know it),
- * interlaced, or a picture over the size limit's reach. */
+ * decoder: no PNG signature (another format, the datatypes may know it) or
+ * interlaced; -2 a picture over the size limit, refused by every decoder. */
 static int png_decode(const vt_u8 *d, long n, vt_u32 **argb, int *w, int *h)
 {
     static const vt_u8 sig[8] = { 137, 80, 78, 71, 13, 10, 26, 10 };
@@ -121,9 +121,11 @@ static int png_decode(const vt_u8 *d, long n, vt_u32 **argb, int *w, int *h)
     if ((depth != 1 && depth != 2 && depth != 4 && depth != 8 && depth != 16) ||
         (ctype == 3 && depth == 16) || (ctype != 0 && ctype != 3 && depth < 8))
         return 0;
-    if (!pw || !ph || pw > (vt_u32)PNG_MAX_PIXELS || ph > (vt_u32)PNG_MAX_PIXELS ||
+    if (!pw || !ph)
+        return 0;
+    if (pw > (vt_u32)PNG_MAX_PIXELS || ph > (vt_u32)PNG_MAX_PIXELS ||
         (long)pw * (long)ph > PNG_MAX_PIXELS)
-        return -1;
+        return -2;                      /* too big for anyone: never handed to the datatypes */
     bits = chan * depth;
     bpp = bits >= 8 ? bits / 8 : 1;
     stride = ((long)pw * bits + 7) / 8 + 1;

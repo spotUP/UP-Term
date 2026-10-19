@@ -10,6 +10,9 @@ ULONG vr_tx[16]; /* PROF=1: Text-path runs by reason (0 attr,1 deco,2 font,3 rgb
 ULONG vr_txk[9]; /* PROF=1: EClock ticks in the Text block by reason */
 ULONG vr_txa[8]; /* PROF=1: Text-path runs with attr bit k set */
 ULONG vr_txn[2]; /* PROF=1: Text-path runs, cells in them */
+ULONG vr_pf_slow, vr_pf_fail;
+ULONG vr_pf_t[3], vr_pf_n[3], vr_pf_pm; /* PROF=1: first-use stages: [0] exact best_pen, [1] few_obtain, [2] obtain: ticks and calls; pm_match ticks */
+ULONG vr_pass, vr_pf_by[16]; /* PROF=1: draw_rows_now calls since the last print; first-use entries in each (the 16th takes the rest) */ /* PROF=1: pen_for's first-use path entered, and obtains that failed */
 ULONG vr_fr_ticks, vr_cs_ticks; /* PROF=1: ticks in flush_run (all of it) and cell_style */
 ULONG vr_tx_ticks, vr_dr_ticks, vr_dr_calls; /* PROF=1: ticks in the Text block; ticks and calls of direct_row from the rows pass */
 ULONG vr_span_ticks; /* PROF=1: EClock ticks inside vp_span_fast calls of painter_run */
@@ -282,14 +285,25 @@ static LONG few_obtain(vr_render *r, int c, ULONG rgb)
             for (k = 0; k < 8; k++)
                 d->pat[i][k] = pm_pattern(i, k);
     }
+    if (!d->pp && !(d->pp = (pm_palette *)AllocVec(sizeof(pm_palette), MEMF_ANY | MEMF_CLEAR)))
+        return -1;
     if (n > 16)
         n = 16;
     GetRGB32(r->cm, 0, (ULONG)n, tab);
     for (i = 0; i < n; i++)
         pal[i] = ((tab[i * 3] >> 24) << 16) | ((tab[i * 3 + 1] >> 24) << 8) | (tab[i * 3 + 2] >> 24);
+    pm_palette_set(d->pp, pal, n);
     usable = (1UL << n) - 1;
     for (tries = 0; tries < n; tries++) {
-        pm_match(pal, n, usable, rgb, r->dither_on, &pk);
+#ifdef VTCON_PROF
+        struct EClockVal m0, m1;
+        ReadEClock(&m0);
+#endif
+        pm_match(d->pp, usable, rgb, r->dither_on, &pk);
+#ifdef VTCON_PROF
+        ReadEClock(&m1);
+        vr_pf_pm += m1.ev_lo - m0.ev_lo;
+#endif
         if (pk.solid < 0)
             return -1;
         solid = hold_pen(r, pal[pk.solid]);
@@ -369,13 +383,46 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
         return truecolor_ink(r, vt_palette_rgb(r->t, c)); /* the 16 ANSI colours too when no pen of one's own can be had */
     if (!r->have[c]) {
         ULONG rgb = vt_palette_rgb(r->t, c);
+#ifdef VTCON_PROF
+        vr_pf_slow++;
+#endif
         /* exact first (pen_rule.h); on a screen of few pens a full map then
          * gets few_obtain's choice, not graphics' nearest */
+#ifdef VTCON_PROF
+        struct EClockVal q0, q1, q2, q3;
+        LONG p;
+        vr_pf_by[vr_pass < 15 ? vr_pass : 15]++;
+        ReadEClock(&q0);
+        p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
+        ReadEClock(&q1);
+        if (r->few && r->cm) {
+            vr_pf_t[0] += q1.ev_lo - q0.ev_lo;
+            vr_pf_n[0]++;
+        }
+        if (p < 0 && r->few && r->cm) {
+            p = few_obtain(r, (int)c, rgb);
+            ReadEClock(&q2);
+            vr_pf_t[1] += q2.ev_lo - q1.ev_lo;
+            vr_pf_n[1]++;
+        } else
+            q2 = q1;
+        if (p < 0) {
+            p = obtain(r, rgb);
+            ReadEClock(&q3);
+            vr_pf_t[2] += q3.ev_lo - q2.ev_lo;
+            vr_pf_n[2]++;
+        }
+#else
         LONG p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
         if (p < 0 && r->few && r->cm)
             p = few_obtain(r, (int)c, rgb);
         if (p < 0)
             p = obtain(r, rgb);
+#endif
+#ifdef VTCON_PROF
+        if (p < 0)
+            vr_pf_fail++;
+#endif
         if (p >= 0) {
             r->pens[c] = (UBYTE)p;
             r->obtained[c] = p;
@@ -694,6 +741,8 @@ void vr_free(vr_render *r)
             WaitBlit(); /* a template blit may still read it */
             FreeVec(r->dith->tmpl);
         }
+        if (r->dith->pp)
+            FreeVec(r->dith->pp);
         FreeVec(r->dith);
         r->dith = 0;
     }
@@ -2012,29 +2061,65 @@ static void style_swap(vr_style *st)
 
 /* The style cell c draws with (selection and blink phase applied). */
 #ifdef VTCON_PROF
+/* PROF: calls, calls by call site (line), an empty ReadEClock pair's ticks,
+ * and cell_style_in split: resolve, pen_for fg+bg, area_ink x2. */
+ULONG vr_cs_calls, vr_cs_pair, vr_cs_split[4], vr_cs_sites[16][2];
+static ULONG vr_cs_line;
 static void cell_style_in(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st);
-static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
+static void cell_style_fn(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
 {
     struct EClockVal a0, a1;
+    int k;
     if (vtwin_timer)
         ReadEClock(&a0);
     cell_style_in(r, c, selected_cell, st);
     if (vtwin_timer) {
         ReadEClock(&a1);
         vr_cs_ticks += a1.ev_lo - a0.ev_lo;
+        vr_cs_calls++;
+        for (k = 0; k < 16; k++)
+            if (vr_cs_sites[k][0] == vr_cs_line || !vr_cs_sites[k][0]) {
+                vr_cs_sites[k][0] = vr_cs_line;
+                vr_cs_sites[k][1]++;
+                break;
+            }
     }
 }
+#ifdef VTCON_PROF
+#define cell_style(r, c, sel, st) (vr_cs_line = __LINE__, cell_style_fn((r), (c), (sel), (st)))
+#endif
 static void cell_style_in(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
 #else
 static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_style *st)
 #endif
 {
     vt_color f, b, u;
+#ifdef VTCON_PROF
+    struct EClockVal t0, t1, t2, t3;
+    if (vtwin_timer)
+        ReadEClock(&t0);
+#endif
     vt_resolve_colors(r->t, c, &f, &b);
+#ifdef VTCON_PROF
+    if (vtwin_timer)
+        ReadEClock(&t1);
+#endif
     st->fg = pen_for(r, f, 0);
     st->bg = pen_for(r, b, 1);
+#ifdef VTCON_PROF
+    if (vtwin_timer)
+        ReadEClock(&t2);
+#endif
     st->fgf = area_ink(r, f, st->fg);
     st->bgf = area_ink(r, b, st->bg);
+#ifdef VTCON_PROF
+    if (vtwin_timer) {
+        ReadEClock(&t3);
+        vr_cs_split[0] += t1.ev_lo - t0.ev_lo;
+        vr_cs_split[1] += t2.ev_lo - t1.ev_lo;
+        vr_cs_split[2] += t3.ev_lo - t2.ev_lo;
+    }
+#endif
     if (st->fg == st->bg && f != b)
         /* a screen with few pens (a 4-colour Workbench) gave the text the
          * background's pen: the text went invisible (rig 3.2, the line
@@ -3171,6 +3256,9 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
     dcell dc[DCELL_MAX];
     int y, x, xe, n, nd, want_direct, tail_ok;
     ULONG tail_bg;
+#ifdef VTCON_PROF
+    vr_pass++;
+#endif
     if (r->hidden)
         return;
     want_direct = r->glyphs != 0;
