@@ -616,6 +616,12 @@ $(BUILD)/amiga/ixfionread: tests/amiga/ixfionread.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixfionread.c
 
+# A zero-timeout input poll on the console: WaitForChar(fh, 0) and select() (ncurses' typeahead check)
+$(BUILD)/amiga/pollbench: tests/amiga/pollbench.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -DPOLLBENCH_ECLOCK -c -o $@-eclock.o tests/amiga/pollbench.c
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/pollbench.c $@-eclock.o
+
 # A create whose name the handler shortens (RAM: keeps 30) fails ENAMETOOLONG (ixemul)
 $(BUILD)/amiga/ixnamelen: tests/amiga/ixnamelen.c
 	@mkdir -p $(BUILD)/amiga
