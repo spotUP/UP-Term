@@ -90,4 +90,18 @@ int lay_hit_divider(const lay *l, int x, int y, int slop);
  * layout changed. */
 int lay_drag(lay *l, int divider, int px);
 
+/* The tree as text, to keep a tab's split over a restart: a pane is "p",
+ * a split "r" (side by side) or "d" (one above the other), its ratio and
+ * its two children in brackets, as in "r32768(p,d40000(p,p))". The panes
+ * are written in order, left to right and top to bottom; order[i] (when
+ * order is not 0) gets the id of the i-th. Returns the text's length, or
+ * -1 when it does not fit size bytes with its terminator. */
+int lay_save(const lay *l, char *buf, int size, int *order);
+/* Replace the tree with one lay_save wrote, the panes numbered 0..n-1 in
+ * the order written, solved for the stored area; the cell, the divider
+ * mode and the minimum stay. Returns the pane count, or -1 (l unchanged)
+ * when the text is not such a tree: a bad letter or bracket, a ratio
+ * outside 1..65535, more than LAY_MAX_PANES panes, text left over. */
+int lay_load(lay *l, const char *s);
+
 #endif

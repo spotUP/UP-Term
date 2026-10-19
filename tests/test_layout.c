@@ -242,6 +242,52 @@ static void a_new_cell_keeps_the_ratio_and_snaps_to_it(void)
     CHECK_INT(a.w, 320); CHECK_INT(c.y, 129);
 }
 
+static void a_saved_tree_loads_back_to_the_same_places(void)
+{
+    char buf[64];
+    int order[LAY_MAX_PANES], p;
+    lay_rect before[LAY_MAX_PANES], r;
+    static lay M;
+    lay_init(&L, 8, 16, LAY_DIV_PIXEL, 10, 3, 0, 0, 640, 256);
+    lay_split(&L, 0, LAY_RIGHT);
+    lay_split(&L, 0, LAY_DOWN);           /* 0 over 2 | 1 */
+    lay_drag(&L, lay_divider_at(&L, 0), 400);
+    CHECK_INT(lay_save(&L, buf, sizeof(buf), order), 21);
+    CHECK_STR(buf, "r41024(d32768(p,p),p)");
+    CHECK_INT(order[0], 0); CHECK_INT(order[1], 2); CHECK_INT(order[2], 1);
+    for (p = 0; p < 3; p++)
+        lay_pane_rect(&L, order[p], &before[p]);
+    lay_init(&M, 8, 16, LAY_DIV_PIXEL, 10, 3, 0, 0, 640, 256);
+    CHECK_INT(lay_load(&M, buf), 3);      /* panes renumbered in the order written */
+    for (p = 0; p < 3; p++) {
+        CHECK_INT(lay_pane_rect(&M, p, &r), 1);
+        CHECK_INT(r.x, before[p].x); CHECK_INT(r.y, before[p].y);
+        CHECK_INT(r.w, before[p].w); CHECK_INT(r.h, before[p].h);
+    }
+    CHECK_INT(covered(&M), 640L * 256);
+    CHECK_INT(lay_split(&M, 1, LAY_DOWN), 3); /* a loaded tree splits on */
+    CHECK_INT(lay_save(&M, buf, 8, 0), -1);   /* too small a buffer */
+    lay_init(&M, 8, 16, LAY_DIV_PIXEL, 10, 3, 0, 0, 640, 256);
+    CHECK_INT(lay_save(&M, buf, sizeof(buf), 0), 1);
+    CHECK_STR(buf, "p");
+}
+
+static void a_bad_saved_tree_is_refused_and_leaves_the_layout(void)
+{
+    static const char *const bad[] = {
+        "", "x", "r(p,p)", "r0(p,p)", "r65536(p,p)", "r999999999(p,p)", "r100(p,p",
+        "r100(p p)", "r100(p,p))", "pp", "r1(r1(p,p),r1(p,r1(p,p)))", "d5(p,q)", 0
+    };
+    int i;
+    lay_init(&L, 8, 16, LAY_DIV_PIXEL, 10, 3, 0, 0, 640, 256);
+    lay_split(&L, 0, LAY_RIGHT);
+    for (i = 0; bad[i]; i++)
+        CHECK_INT(lay_load(&L, bad[i]), -1);
+    CHECK_INT(lay_load(&L, 0), -1);
+    CHECK_INT(lay_pane_count(&L), 2);
+    CHECK_INT(lay_load(&L, "r1(r1(p,p),r65535(p,p))"), 4); /* four is the most */
+}
+
 void suite_layout(void)
 {
     a_lone_pane_fills_the_window();
@@ -259,4 +305,6 @@ void suite_layout(void)
     focus_picks_the_pane_beside_not_a_diagonal();
     the_pointer_finds_the_divider_it_is_on();
     a_new_cell_keeps_the_ratio_and_snaps_to_it();
+    a_saved_tree_loads_back_to_the_same_places();
+    a_bad_saved_tree_is_refused_and_leaves_the_layout();
 }

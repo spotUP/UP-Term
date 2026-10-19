@@ -323,3 +323,109 @@ int lay_drag(lay *l, int divider, int px)
     resolve(l);
     return a != old;
 }
+
+typedef struct lay_out {
+    char *buf;
+    int size, len;
+    int *order;
+    int panes;
+} lay_out;
+
+static void out_ch(lay_out *o, char ch)
+{
+    if (o->len < o->size)
+        o->buf[o->len] = ch;
+    o->len++;
+}
+
+static void save_node(const lay *l, int i, lay_out *o)
+{
+    const lay_node *n = &l->n[i];
+    char num[8];
+    int k = 0;
+    long v;
+    if (n->pane >= 0) {
+        if (o->order)
+            o->order[o->panes] = n->pane;
+        o->panes++;
+        out_ch(o, 'p');
+        return;
+    }
+    out_ch(o, n->dir == LAY_RIGHT ? 'r' : 'd');
+    v = n->ratio;
+    do {
+        num[k++] = (char)('0' + v % 10);
+        v /= 10;
+    } while (v && k < (int)sizeof(num));
+    while (k)
+        out_ch(o, num[--k]);
+    out_ch(o, '(');
+    save_node(l, n->a, o);
+    out_ch(o, ',');
+    save_node(l, n->b, o);
+    out_ch(o, ')');
+}
+
+int lay_save(const lay *l, char *buf, int size, int *order)
+{
+    lay_out o;
+    o.buf = buf; o.size = size; o.len = 0; o.order = order; o.panes = 0;
+    save_node(l, l->root, &o);
+    if (o.len >= size)
+        return -1;
+    buf[o.len] = 0;
+    return o.len;
+}
+
+/* Parse one node of s at *at into t, depth bounded by the node count.
+ * Returns its node index, or -1. */
+static int load_node(lay *t, const char **at, int depth)
+{
+    const char *s = *at;
+    int i, ia, ib;
+    long v = 0;
+    char kind = *s;
+    if (depth > LAY_MAX_NODES || (i = free_node(t)) < 0)
+        return -1;
+    t->n[i].used = 1;
+    if (kind == 'p') {
+        if (t->npanes >= LAY_MAX_PANES)
+            return -1;
+        t->n[i].pane = (signed char)t->npanes++;
+        *at = s + 1;
+        return i;
+    }
+    if (kind != 'r' && kind != 'd')
+        return -1;
+    for (s++; *s >= '0' && *s <= '9' && v < RATIO_ONE; s++)
+        v = v * 10 + (*s - '0');
+    if (v < 1 || v >= RATIO_ONE || *s++ != '(')
+        return -1;
+    if ((ia = load_node(t, &s, depth + 1)) < 0 || *s++ != ',' ||
+        (ib = load_node(t, &s, depth + 1)) < 0 || *s++ != ')')
+        return -1;
+    t->n[i].pane = -1;
+    t->n[i].dir = (signed char)(kind == 'r' ? LAY_RIGHT : LAY_DOWN);
+    t->n[i].a = (signed char)ia;
+    t->n[i].b = (signed char)ib;
+    t->n[i].ratio = v;
+    *at = s;
+    return i;
+}
+
+int lay_load(lay *l, const char *s)
+{
+    lay t;
+    int i;
+    t = *l;
+    for (i = 0; i < LAY_MAX_NODES; i++) {
+        t.n[i].used = 0;
+        t.n[i].pane = -1;
+    }
+    t.npanes = 0;
+    if (!s || (t.root = load_node(&t, &s, 0)) < 0 || *s)
+        return -1;
+    *l = t;
+    resolve(l);
+    return l->npanes;
+}
