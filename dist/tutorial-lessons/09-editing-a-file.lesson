@@ -1,0 +1,16 @@
+# Editing a file
+> `nano` is a small editor: type to insert, Ctrl-O saves, Ctrl-X leaves. UP-Term's startup
+> file for your own aliases and settings is $HOME/.vshrc (HOME is SYS: unless you
+> changed it); vsh reads it every time it starts.
+? Make the file mynotes.txt with one line in it, using echo and >.
+= [ -s mynotes.txt ]
+~ echo hello > mynotes.txt
+! echo hello > mynotes.txt
+? Open mynotes.txt in nano, change the text, save with Ctrl-O and leave with Ctrl-X.
+= [ -f mynotes.txt ] && case "$LEARN_LINE" in "nano mynotes.txt") true ;; *) false ;; esac
+~ nano mynotes.txt
+! nano mynotes.txt
+? Show the file again to see your change.
+= grep -q . "$LEARN_OUT"
+~ cat mynotes.txt
+! cat mynotes.txt

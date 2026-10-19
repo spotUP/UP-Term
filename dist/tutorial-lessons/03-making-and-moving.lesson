@@ -1,0 +1,29 @@
+# Making and moving
+> AmigaDOS has MakeDir, Copy, Rename and Delete. vsh has `mkdir`, `cp`, `mv` and `rm`.
+> Careful: `rm` deletes at once, and `rm -r` deletes a drawer with everything in it. Read the
+> name twice before you press Return. Here you are in a practice drawer, so nothing of yours is at risk,
+> but the same line would delete real files anywhere else.
+? Make a drawer called projects (AmigaDOS: MakeDir).
+= [ -d projects ]
+~ Type mkdir projects.
+! mkdir projects
+? Make an empty file called orig.txt.
+= [ -f orig.txt ]
+~ touch makes an empty file: touch orig.txt.
+! touch orig.txt
+? Copy orig.txt to copy.txt (AmigaDOS: Copy).
+= [ -f orig.txt ] && [ -f copy.txt ]
+~ cp FROM TO: cp orig.txt copy.txt.
+! cp orig.txt copy.txt
+? Rename copy.txt to new.txt (AmigaDOS: Rename). mv moves and renames.
+= [ -f new.txt ] && [ ! -e copy.txt ]
+~ mv copy.txt new.txt.
+! mv copy.txt new.txt
+? Delete new.txt (AmigaDOS: Delete).
+= [ ! -e new.txt ]
+~ rm new.txt.
+! rm new.txt
+? Delete the drawer projects (AmigaDOS: Delete ALL).
+= [ ! -d projects ]
+~ A drawer needs -r: rm -r projects.
+! rm -r projects

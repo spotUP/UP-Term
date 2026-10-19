@@ -1,0 +1,23 @@
+# Looking at files
+> AmigaDOS **Type** shows a file and **More** pages it. In vsh `cat` shows a whole file,
+> `head` its first lines, `tail` its last lines, and `less` pages it (Q leaves it).
+$ printf 'one\ntwo\nthree\nfour\n' > notes.txt
+? Show the whole file notes.txt (AmigaDOS: Type).
+= grep -q three "$LEARN_OUT"
+~ Type cat notes.txt.
+! cat notes.txt
+? Show only the first two lines of notes.txt.
+= [ "$(wc -l < "$LEARN_OUT" | tr -d ' ')" = 2 ]
+= grep -q one "$LEARN_OUT"
+~ head takes -n and a number: head -n 2 notes.txt.
+! head -n 2 notes.txt
+? Show only the last line of notes.txt.
+= [ "$(cat "$LEARN_OUT")" = four ]
+~ tail -n 1 notes.txt.
+! tail -n 1 notes.txt
+> In vsh, `type` is not the AmigaDOS command. It is a builtin that tells you what a name is
+> (as in bash), and `C:Type` stays the AmigaDOS command.
+? Ask what cd is, with type.
+= case "$LEARN_LINE" in "type cd") true ;; *) false ;; esac
+~ Type type cd.
+! type cd

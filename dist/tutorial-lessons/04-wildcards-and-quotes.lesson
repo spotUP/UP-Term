@@ -1,0 +1,17 @@
+# Wildcards and quotes
+> AmigaDOS patterns use `#?` for any text. In vsh the shell expands `*` (any text) and
+> `?` (one character) before the command runs.
+$ touch a.txt b.txt c.log
+? List only the files that end in .txt.
+= grep -q a.txt "$LEARN_OUT" && grep -q b.txt "$LEARN_OUT" && ! grep -q c.log "$LEARN_OUT"
+~ ls *.txt
+! ls *.txt
+? List the files whose name is one character plus .log.
+= [ "$(cat "$LEARN_OUT")" = c.log ]
+~ ls ?.log
+! ls ?.log
+> A name with a space must be in quotes, or the shell sees two words.
+? Make a file called my notes.txt (with the space).
+= [ -f "my notes.txt" ]
+~ touch "my notes.txt"
+! touch "my notes.txt"

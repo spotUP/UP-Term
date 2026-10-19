@@ -1,0 +1,18 @@
+# Getting help
+> AmigaDOS commands answer a question mark: Dir ?. In vsh, the builtin `help` lists the
+> shell's builtins, `man NAME` shows the manual page of a program (paged through less;
+> Q leaves it), and many programs print a short summary with `--help`.
+> The `tldr NAME` command shows a short page of examples (it fetches the page, so it needs a network),
+> and the line `/help` at the vsh prompt lists UP-Term's own settings commands.
+? List the shell's builtins with help.
+= case "$LEARN_LINE" in help) true ;; *) false ;; esac
+~ Type help.
+! help
+? Read the manual page of ls.
+= case "$LEARN_LINE" in "man ls") true ;; *) false ;; esac
+~ Type man ls. Press Q to leave the page.
+! man ls
+? Ask the program cat for its own summary with --help.
+= case "$LEARN_LINE" in "cat --help") true ;; *) false ;; esac
+~ Type cat --help (two dashes).
+! cat --help

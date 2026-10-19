@@ -1,0 +1,23 @@
+# Pipes and redirection
+> `>` sends a command's output to a file instead of the window, as in AmigaDOS.
+> `>>` adds to the end of the file. `<` reads a file as input. `|` (a pipe) hands the
+> output of one command to the next, so small tools combine.
+$ printf 'pear\napple\nfig\napple\n' > fruit.txt
+? Write the sorted list of fruit.txt into sorted.txt.
+= [ "$(head -n 1 sorted.txt)" = apple ] && [ "$(wc -l < sorted.txt | tr -d ' ')" = 4 ]
+~ sort fruit.txt > sorted.txt
+! sort fruit.txt > sorted.txt
+? Add the line plum to the end of fruit.txt.
+= [ "$(tail -n 1 fruit.txt)" = plum ]
+~ echo plum >> fruit.txt (two > signs add, one > replaces).
+! echo plum >> fruit.txt
+? Count the lines of fruit.txt with wc, reading the file with <.
+= case "$LEARN_LINE" in *wc*"<"*) true ;; *) false ;; esac
+= [ "$(tr -d ' ' < "$LEARN_OUT")" = 5 ]
+~ wc -l < fruit.txt
+! wc -l < fruit.txt
+? Count how many lines of fruit.txt hold apple, with grep and a pipe into wc.
+= case "$LEARN_LINE" in *grep*"|"*wc*) true ;; *) false ;; esac
+= [ "$(tr -d ' ' < "$LEARN_OUT")" = 2 ]
+~ grep apple fruit.txt | wc -l
+! grep apple fruit.txt | wc -l

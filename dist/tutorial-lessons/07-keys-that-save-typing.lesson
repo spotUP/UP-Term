@@ -1,0 +1,14 @@
+# Keys that save typing
+> At the vsh prompt (not at the tutorial prompt) the line editor helps you type:
+> Up and Down walk through earlier lines, Ctrl-R searches them as you type, Tab completes
+> a command or a file name (Tab again lists the choices), the grey text after the cursor is
+> a suggestion from your history (Right or End takes it), Ctrl-L clears the window, and
+> Ctrl-C stops a running command. Try them after this lesson, at the vsh prompt.
+? Print the word history with echo, then try Up at the vsh prompt later.
+= case "$LEARN_LINE" in "echo history") true ;; *) false ;; esac
+~ Type echo history.
+! echo history
+? Print the word complete with echo.
+= case "$LEARN_LINE" in "echo complete") true ;; *) false ;; esac
+~ Type echo complete.
+! echo complete

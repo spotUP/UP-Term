@@ -1,0 +1,23 @@
+# Variables and PATH
+> A variable holds text. Set it with NAME=value (no spaces around the equals sign) and read
+> it with $NAME. `export` also hands it to the programs you start. AmigaDOS has the same
+> idea in local and global variables (SetEnv, GetEnv).
+? Set the variable GREETING to hello.
+= [ "$GREETING" = hello ]
+~ GREETING=hello
+! GREETING=hello
+? Print it.
+= grep -q hello "$LEARN_OUT"
+~ echo $GREETING
+! echo $GREETING
+? Export the variable TOOL with the value tutorial.
+= [ "$TOOL" = tutorial ]
+~ export TOOL=tutorial
+! export TOOL=tutorial
+> `$PATH` is the list of drawers where vsh looks for commands, written in Unix form with
+> colons between the drawers (/UP-Term/bin:/gg/bin:/c by default). After it, vsh also
+> looks in the Shell's own path (the AmigaDOS Path command).
+? Print the PATH.
+= grep -q / "$LEARN_OUT"
+~ echo $PATH
+! echo $PATH

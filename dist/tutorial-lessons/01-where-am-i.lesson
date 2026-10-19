@@ -1,0 +1,26 @@
+# Where am I
+> In the AmigaDOS Shell you type **Dir** to list a drawer and **CD** to move into one.
+> In vsh the same jobs are done by `ls`, `cd` and `pwd`.
+> Type each command at the `tutorial>` prompt, as you would at the vsh prompt.
+$ mkdir docs
+$ touch docs/a.txt
+? Print the list of files here (AmigaDOS: Dir). The command is ls.
+= grep -q docs "$LEARN_OUT"
+~ Type ls and press Return.
+! ls
+> `pwd` prints the drawer you are in (AmigaDOS: CD with no argument).
+? Print where you are.
+= case "$LEARN_LINE" in *pwd*) true ;; *) false ;; esac
+~ Type pwd.
+! pwd
+> `cd NAME` moves into a drawer, as AmigaDOS CD does.
+? Go into the drawer docs.
+= [ "${PWD##*/}" = docs ]
+~ Type cd docs.
+! cd docs
+> `..` is the parent drawer (AmigaDOS: a lone slash). A lone `/` lists the volumes, and
+> `~` is your home drawer, $HOME (SYS: unless you changed it).
+? Go back to the parent drawer.
+= [ "${PWD##*/}" != docs ]
+~ Type cd .. (a space between cd and the two dots).
+! cd ..

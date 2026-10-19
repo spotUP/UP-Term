@@ -1,0 +1,275 @@
+# tutorial [N | next | reset] -- an interactive shell tutorial for vsh.
+#
+#   tutorial           the lessons, a mark on the finished ones
+#   tutorial N         start lesson N
+#   tutorial next      the first lesson not finished yet
+#   tutorial reset     forget the progress
+#
+# A lesson is a plain text file, NN-name.lesson, one record per line, told apart by
+# its first character (the dist/upkg-ask way of reading a file with read -r):
+#   # Title of the lesson
+#   > Markdown text shown first (consecutive > lines join)
+#   $ a setup command, run silently in the practice drawer before the next task
+#   ? the task the user sees
+#   = a check: a sh test run after the typed line; status 0 passes (every = must pass).
+#     It can read $LEARN_LINE (the typed line) and $LEARN_OUT (the file holding its output).
+#   ~ the hint, shown after a wrong try
+#   ! the answer, shown and run after the third wrong try
+# A step is one ? with its = ~ ! lines. Adding a lesson is adding a file.
+#
+# Each lesson runs in a fresh practice drawer ($TUTORIAL_SANDBOX, default T:tutorial),
+# so the lesson's own rm touches nothing of the user's.
+# The lesson drawer is $TUTORIAL_LESSONS (default UP-Term:share/tutorial) and the
+# progress file $TUTORIAL_PROGRESS (default $HOME/.tutorial, one finished number per line).
+# The text goes through mdv when stdout is a terminal and mdv is on the PATH, else
+# through cat. With no terminal on stdin every typed line comes from stdin as it is, and
+# the end of input ends the lesson (progress kept).
+#
+# tutorial --selftest FILE runs one lesson file with its own answers (no reading from
+# stdin) and prints "ok N" or "FAIL N" per step; tests/test_tutorial_lessons.py uses it.
+
+lessons=${TUTORIAL_LESSONS:-UP-Term:share/tutorial}
+progress=${TUTORIAL_PROGRESS:-$HOME/.tutorial}
+sandbox=${TUTORIAL_SANDBOX:-T:tutorial}
+selftest=0
+
+# a lesson file by number: NN-name.lesson ("1" and "01" both find 01-...)
+lesson_file() {
+    _lf_n=$(printf '%02d' "$1" 2> /dev/null) || return 1
+    for _lf in "$lessons/$_lf_n"-*.lesson; do
+        if [ -r "$_lf" ]; then
+            printf '%s\n' "$_lf"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# the number of a lesson file: "03-making.lesson" is 3
+lesson_number() {
+    _ln=${1##*/}
+    _ln=${_ln%%-*}
+    printf '%s\n' "${_ln#0}"
+}
+
+# the title: the first "# " line of the file
+lesson_title() {
+    while IFS= read -r _lt; do
+        case $_lt in "# "*) printf '%s\n' "${_lt#??}"; return 0 ;; esac
+    done < "$1"
+    printf '%s\n' "(no title)"
+}
+
+is_done() {
+    [ -r "$progress" ] && grep -qx "$1" "$progress"
+}
+
+mark_done() {
+    is_done "$1" || printf '%s\n' "$1" >> "$progress"
+}
+
+# the text for the window: Markdown through mdv, plain through cat
+show_text() {
+    if [ "$selftest" = 0 ] && [ -t 1 ] && command -v mdv > /dev/null 2>&1; then
+        printf '%s\n' "$1" | mdv
+    else
+        printf '%s\n' "$1"
+    fi
+}
+
+list_lessons() {
+    echo "Shell tutorial. Lessons ([x] finished):"
+    for _ll in "$lessons"/*.lesson; do
+        [ -r "$_ll" ] || continue
+        _ll_n=$(lesson_number "$_ll")
+        if is_done "$_ll_n"; then _ll_m=x; else _ll_m=' '; fi
+        printf '  [%s] %s  %s\n' "$_ll_m" "$_ll_n" "$(lesson_title "$_ll")"
+    done
+    echo "Start one with  tutorial N,  continue with  tutorial next."
+}
+
+next_lesson() {
+    for _nl in "$lessons"/*.lesson; do
+        [ -r "$_nl" ] || continue
+        is_done "$(lesson_number "$_nl")" || { printf '%s\n' "$_nl"; return 0; }
+    done
+    return 1
+}
+
+# one step: md, setup, task, chk (every = line, one per line), hint, ans are set
+step() {
+    [ -n "$task" ] || return 0
+    steps=$((steps + 1))
+    if [ -n "$setup" ]; then eval "$setup" > /dev/null 2>&1; fi
+    if [ "$selftest" = 0 ]; then
+        [ -n "$md" ] && show_text "$md"
+        echo
+        echo "Task: $task"
+    fi
+    fails=0
+    while :; do
+        if [ "$selftest" = 1 ]; then
+            LEARN_LINE=$ans
+        else
+            printf 'tutorial> '
+            if ! IFS= read -r LEARN_LINE <&3; then
+                echo
+                echo "End of input. Your progress is kept."
+                quit=1
+                return 0
+            fi
+        fi
+        # the tutorial's own words start with a colon, so help, hint and the like stay
+        # real commands for the lessons
+        case $LEARN_LINE in
+        "") [ "$selftest" = 0 ] && continue ;;
+        :skip) echo "Skipped."; return 0 ;;
+        :quit) echo "Progress kept. Type  tutorial next  to continue."; quit=1; return 0 ;;
+        :hint)
+            echo "Hint: ${hint:-none for this step}"
+            continue ;;
+        :help)
+            echo "Type a command and press Return. Words of the tutorial:"
+            echo "  :hint   show the hint      :skip   leave this step"
+            echo "  :quit   stop, keep progress"
+            continue ;;
+        esac
+        LEARN_OUT="$sandbox.out"
+        export LEARN_LINE LEARN_OUT
+        # output is kept in $LEARN_OUT only when a check reads it; otherwise the command
+        # has the window itself (nano, man and less need it)
+        case $chk in
+        *LEARN_OUT*)
+            if [ "$selftest" = 1 ]; then
+                eval "$LEARN_LINE" > "$LEARN_OUT" 2>&1 < /dev/null
+            else
+                eval "$LEARN_LINE" > "$LEARN_OUT" 2>&1
+                cat "$LEARN_OUT"
+            fi ;;
+        *)
+            if [ "$selftest" = 1 ]; then
+                eval "$LEARN_LINE" > /dev/null 2>&1 < /dev/null
+            else
+                eval "$LEARN_LINE"
+            fi ;;
+        esac
+        pass=1
+        while IFS= read -r _c; do
+            [ -n "$_c" ] || continue
+            eval "$_c" > /dev/null 2>&1 || { pass=0; break; }
+        done << EOT
+$chk
+EOT
+        if [ "$pass" = 1 ]; then
+            if [ "$selftest" = 1 ]; then echo "ok $steps"; else echo "Right."; fi
+            return 0
+        fi
+        if [ "$selftest" = 1 ]; then
+            echo "FAIL $steps"
+            return 0
+        fi
+        fails=$((fails + 1))
+        if [ "$fails" -ge 3 ]; then
+            echo "Not quite. The answer is:  $ans"
+            if [ -n "$ans" ]; then eval "$ans"; fi
+            return 0
+        fi
+        echo "Not quite.${hint:+ Hint: $hint}"
+    done
+}
+
+# a lesson file, record by record
+run_lesson() {
+    md=
+    setup=
+    task=
+    chk=
+    hint=
+    ans=
+    steps=0
+    quit=0
+    while IFS= read -r rec; do
+        [ "$quit" = 1 ] && break
+        case $rec in
+        "# "*) [ "$selftest" = 0 ] && { echo; echo "=== ${rec#??} ==="; } ;;
+        ">"*)
+            if [ -n "$task" ]; then step; md=; setup=; task=; chk=; hint=; ans=; fi
+            _t=${rec#>}
+            md="$md${_t# }
+" ;;
+        '$'*)
+            if [ -n "$task" ]; then step; md=; setup=; task=; chk=; hint=; ans=; fi
+            setup="$setup
+${rec#??}" ;;
+        [?]*) # [?]: vsh takes a quoted "?" in a case pattern as a wildcard
+            if [ -n "$task" ]; then step; md=; setup=; task=; chk=; hint=; ans=; fi
+            task=${rec#??} ;;
+        "="*) chk="$chk
+${rec#??}" ;;
+        "~"*) hint=${rec#??} ;;
+        "!"*) ans=${rec#??} ;;
+        esac
+    done < "$1"
+    [ "$quit" = 1 ] || step
+    [ "$quit" = 1 ] || { [ "$selftest" = 1 ] || echo "Lesson finished."; return 0; }
+    return 1
+}
+
+# the practice drawer, fresh
+enter_sandbox() {
+    case $sandbox in "" | / | .) echo "tutorial: bad TUTORIAL_SANDBOX" >&2; exit 2 ;; esac
+    start=$PWD
+    rm -rf "$sandbox"
+    mkdir -p "$sandbox" || exit 1
+    cd "$sandbox" || exit 1
+    [ "$selftest" = 0 ] && echo "You are now in a practice drawer ($sandbox). Files you make here are removed at the end."
+}
+
+leave_sandbox() {
+    cd "$start"
+    rm -rf "$sandbox" "$sandbox.out"
+}
+
+start_lesson() {
+    file=$1
+    if [ ! -r "$file" ]; then
+        echo "tutorial: no lesson file $file" >&2
+        exit 1
+    fi
+    # the practice drawer is entered next, so a relative path is made absolute first
+    case $file in /* | *:*) ;; *) file=$PWD/$file ;; esac
+    # the loop reads the lesson on fd 0, so the keyboard is kept on fd 3
+    exec 3<&0
+    enter_sandbox
+    if run_lesson "$file"; then
+        [ "$selftest" = 1 ] || mark_done "$(lesson_number "$file")"
+    fi
+    leave_sandbox
+}
+
+case $1 in
+"") list_lessons ;;
+--selftest)
+    selftest=1
+    start_lesson "$2" ;;
+reset)
+    rm -f "$progress"
+    echo "Progress forgotten." ;;
+next)
+    if f=$(next_lesson); then
+        start_lesson "$f"
+    else
+        echo "All lessons are finished. Type  tutorial reset  to start again."
+    fi ;;
+*[!0-9]*)
+    echo "usage: tutorial [N | next | reset]" >&2
+    exit 2 ;;
+*)
+    if f=$(lesson_file "$1"); then
+        start_lesson "$f"
+    else
+        echo "tutorial: no lesson $1" >&2
+        exit 1
+    fi ;;
+esac
+exit 0

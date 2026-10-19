@@ -1,0 +1,13 @@
+# Both worlds
+> vsh runs the Unix commands in UP-Term:bin first, then the AmigaDOS commands of the
+> Shell's path, so Dir, Assign and Version still work from vsh. Two names are special:
+> vsh's `type` and `which` builtins shadow the AmigaDOS C:Type command, which you reach as `C:Type`.
+> From the AmigaDOS Shell you start vsh by typing `vsh` in an XCON: window.
+? Ask where the command ls comes from, with which.
+= case "$LEARN_LINE" in "which ls") true ;; *) false ;; esac
+~ Type which ls.
+! which ls
+? Run the AmigaDOS command Version.
+= case "$LEARN_LINE" in [Vv]ersion) true ;; *) false ;; esac
+~ Type Version (upper or lower case).
+! Version

@@ -1,0 +1,16 @@
+# Packages
+> `upkg` installs add-ons from the UP-Term feed on GitHub. It needs a network and
+> the base UP-Term installed. This lesson only types the lines; nothing is installed.
+>   upkg update              fetch the feed's package list
+>   upkg list                the packages the feed offers
+>   upkg install NAME        install an add-on
+>   upkg upgrade             bring the installed add-ons up to the feed
+>   upkg remove NAME         remove an add-on
+? Fetch the package list with upkg update.
+= case "$LEARN_LINE" in "upkg update") true ;; *) false ;; esac
+~ Type upkg update.
+! upkg update
+? List the packages the feed offers.
+= case "$LEARN_LINE" in "upkg list") true ;; *) false ;; esac
+~ Type upkg list.
+! upkg list
