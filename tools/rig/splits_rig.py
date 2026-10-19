@@ -48,7 +48,7 @@ TITLE = 'splitswin'
 BOX = '0/20/600/240'
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_arrows', 'zoom', 'drag', 'tab_close_split']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_arrows', 'zoom', 'drag', 'tab_close_split', 'font']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
 K_W, K_D, K_ENTER, K_RIGHT, K_LEFT = 0x11, 0x22, 0x44, 0x4E, 0x4F    # raw keycodes (RA+key = pane commands)
@@ -96,11 +96,17 @@ def pick(label):
 
 
 def expected_cols(full_cols, cell=CELL_W):
-    """layout.c: avail = W - 1 (pixel divider); first = round(avail/2 / cell) cells; the rest is the second"""
-    W = full_cols * cell
-    avail = W - 1
-    first = ((avail // 2 + cell // 2) // cell) * cell     # ratio 1/2, snapped to whole cells (first_ext)
-    return first // cell, (avail - first) // cell
+    """layout.c: avail = W - 1 (pixel divider); first = round(avail/2 / cell) cells; the rest is the second.
+    W, the window's inner width, is not known to the pixel: full_cols cells plus 0..cell-1 spare pixels
+    (rig 4, 2026-10-20: 72 columns, both halves 36, so W > 576). Returns (lefts, rights): the pane widths
+    that range allows, smallest first; a click or a fill uses lefts[0], a check takes any of them."""
+    lefts, rights = set(), set()
+    for W in range(full_cols * cell, full_cols * cell + cell):
+        avail = W - 1
+        first = ((avail // 2 + cell // 2) // cell) * cell     # ratio 1/2, snapped to whole cells (first_ext)
+        lefts.add(first // cell)
+        rights.add((avail - first) // cell)
+    return tuple(sorted(lefts)), tuple(sorted(rights))
 
 
 def pane_point(which, cols_left, nrows=1, row=0):
@@ -175,14 +181,14 @@ def case_size(ck):
         want_l, want_r = expected_cols(full)
         right = stty_size('right')                  # the new pane has the keys
         ck(right is not None, 'right pane answers `stty size`', right)
-        click(*pane_point('L', want_l))
+        click(*pane_point('L', want_l[0]))
         left = stty_size('left')
         ck(left is not None, 'left pane answers `stty size` (click focus, NS3.4)', left)
-        print('measured: full %dx%d, left %s, right %s, expected cols L=%d R=%d (cell %d)'
+        print('measured: full %dx%d, left %s, right %s, expected cols L=%s R=%s (cell %d)'
               % (rows, full, left, right, want_l, want_r, CELL_W))
         if left and right:
-            ck(left[1] == want_l and right[1] == want_r,
-               'cols match the layout: left %d right %d' % (want_l, want_r), (left[1], right[1]))
+            ck(left[1] in want_l and right[1] in want_r and left[1] + right[1] <= full,
+               'cols match the layout: left %s right %s' % (want_l, want_r), (left[1], right[1]))
             ck(left[1] + right[1] in (full - 1, full) and min(left[1], right[1]) >= 10,
                'cols sum to full-1 or full (1 px divider), both >= 10', (left[1], right[1], full))
             ck(left[0] == right[0] == rows, 'rows unchanged by a vertical divider', (left[0], right[0], rows))
@@ -199,13 +205,13 @@ def case_focus(ck):
         c.run('Delete RAM:ns31-who.out QUIET')
         line('echo %s; stty size >RAM:ns31-who.out' % marker)
         who = read('RAM:ns31-who.out').split()
-        ck(len(who) == 2 and int(who[1]) == expected_cols(full)[1],
+        ck(len(who) == 2 and int(who[1]) in expected_cols(full)[1],
            'the line typed after the split ran in the new (right) pane: its width', who)
         text = typewin.screen_text()
         ck(marker in text, 'marker is in the focused pane\'s text', text[-200:])
         # the host's AmigaDOS-or-vsh left pane got nothing: a line goes to one pane only, so the proof is the
         # right-pane width in `who`; reading the left pane's text needs its focus (click), then the marker is absent
-        click(*pane_point('L', want_l))
+        click(*pane_point('L', want_l[0]))
         ltext = typewin.screen_text()
         ck(marker not in ltext, 'marker is not in the left pane\'s text', ltext[-200:])
     finally:
@@ -253,11 +259,11 @@ def case_paint(ck):
     want_l, want_r = expected_cols(full)
     try:
         split_right_and_count(ck)
-        line(stream_cmd(44, 'RIGHT', want_r - 1), wait=0.5)     # the new (right) pane has the keys: blue
-        click(*pane_point('L', want_l))
-        line(stream_cmd(41, 'LEFT', want_l - 1), wait=0.5)
+        line(stream_cmd(44, 'RIGHT', min(want_r) - 1), wait=0.5)     # the new (right) pane has the keys: blue
+        click(*pane_point('L', want_l[0]))
+        line(stream_cmd(41, 'LEFT', want_l[0] - 1), wait=0.5)
         box = window_box()
-        bound = box[0] + BORDER_L + want_l * CELL_W              # the divider column; the right pane starts one past
+        bound = box[0] + BORDER_L + want_l[0] * CELL_W              # the divider column; the right pane starts one past
         t0 = time.time()
         for at, name in ((10, 't10'), (STREAM_SECS, 't20')):
             time.sleep(max(0, t0 + at - time.time()))
@@ -284,16 +290,16 @@ def case_race(ck):
         split_right_and_count(ck)                    # P1 right, focused, started where P0 was
         line('cd %s' % dirs['B'])
         # back to back: Split down from P0 (left), then at once from P1 (right)
-        click(*pane_point('L', want_l))
+        click(*pane_point('L', want_l[0]))
         pick('Split down')
-        click(*pane_point('R', want_l))
+        click(*pane_point('R', want_l[0]))
         pick('Split down')
         time.sleep(8)
         ck(tr.counters()[0].get('splits', 0) >= 3, 'three splits counted', tr.counters()[0].get('splits'))
         # P0 top-left, P2 bottom-left (split from P0), P1 top-right, P3 bottom-right (split from P1)
         probes = [('P0', 'L', 0, 'A'), ('P2', 'L', 1, 'A'), ('P1', 'R', 0, 'B'), ('P3', 'R', 1, 'B')]
         for name, side, row, src in probes:
-            click(*pane_point(side, want_l, nrows=2, row=row))
+            click(*pane_point(side, want_l[0], nrows=2, row=row))
             got = pwd_of(name)
             ck(got.lower().endswith(dirs[src][4:].lower()),
                '%s (split from the pane in %s) starts in %s' % (name, src, dirs[src]), got)
@@ -340,7 +346,7 @@ def case_winch(ck):
         w0 = window_box()
         r0 = stty_size('right0')
         want_l, _ = expected_cols(full)
-        click(*pane_point('L', want_l))
+        click(*pane_point('L', want_l[0]))
         l0 = stty_size('left0')
         ck(bool(l0 and r0), 'both panes answer `stty size` before the resize', (l0, r0))
         # resize mechanism: size-gadget drag (as winch_rig); shrink by 160 px = 20 cells
@@ -350,12 +356,12 @@ def case_winch(ck):
         new_full = full + (w1[2] - w0[2]) // CELL_W if w0 and w1 else full
         want_l1, want_r1 = expected_cols(new_full)
         r1 = stty_size('right1')
-        click(*pane_point('L', want_l1))
+        click(*pane_point('L', want_l1[0]))
         l1 = stty_size('left1')
-        print('measured: before L %s R %s, after L %s R %s, expected after L=%d R=%d' % (l0, r0, l1, r1, want_l1, want_r1))
+        print('measured: before L %s R %s, after L %s R %s, expected after L=%s R=%s' % (l0, r0, l1, r1, want_l1, want_r1))
         if l0 and r0 and l1 and r1:
             ck(l1[1] != l0[1] and r1[1] != r0[1], 'cols of both panes changed', (l0, r0, l1, r1))
-            ck(l1[1] == want_l1 and r1[1] == want_r1, 'cols are the halves of the new width: L %d R %d' % (want_l1, want_r1),
+            ck(l1[1] in want_l1 and r1[1] in want_r1, 'cols are the halves of the new width: L %s R %s' % (want_l1, want_r1),
                (l1[1], r1[1]))
     finally:
         teardown()
@@ -387,14 +393,14 @@ def case_pane_arrows(ck):
     try:
         split_right_and_count(ck)                  # right pane focused
         r = stty_size('right')
-        ck(bool(r) and r[1] == want_r, 'new (right) pane has focus', r)
+        ck(bool(r) and r[1] in want_r, 'new (right) pane has focus', r)
         ra(K_LEFT)
         l = stty_size('left')
-        ck(bool(l) and l[1] == want_l, 'RA+Left: typed text runs in the left pane', l)
+        ck(bool(l) and l[1] in want_l, 'RA+Left: typed text runs in the left pane', l)
         ra(K_RIGHT)
         r2 = stty_size('right2')
-        ck(bool(r2) and r2[1] == want_r, 'RA+Right: typed text runs in the right pane again', r2)
-        if want_l == want_r:                       # widths cannot tell the panes apart: use the typed marker too
+        ck(bool(r2) and r2[1] in want_r, 'RA+Right: typed text runs in the right pane again', r2)
+        if set(want_l) & set(want_r):                       # widths cannot tell the panes apart: use the typed marker too
             marker = 'NSARW%d' % int(time.time() % 100000)
             ra(K_LEFT)
             line('echo %s' % marker)
@@ -409,7 +415,7 @@ def case_zoom(ck):
     try:
         split_right_and_count(ck)
         half = stty_size('half')
-        ck(bool(half) and half[1] == want_r, 'split: focused pane is half width', half)
+        ck(bool(half) and half[1] in want_r, 'split: focused pane is half width', half)
         ra(K_ENTER, shift=True)
         ck(state_key('zoom') == 1, 'RA+Shift+Enter: `UPTerm state` zoom == 1', state_key('zoom'))
         z = stty_size('zoom')
@@ -417,7 +423,7 @@ def case_zoom(ck):
         ra(K_ENTER, shift=True)
         ck(state_key('zoom') == 0, 'RA+Shift+Enter again: `UPTerm state` zoom == 0', state_key('zoom'))
         back = stty_size('back')
-        ck(bool(back) and back[1] == want_r, 'RA+Shift+Enter again: half width %d restored' % want_r, back)
+        ck(bool(back) and half and back[1] == half[1], 'RA+Shift+Enter again: half width %d restored' % (half or (0, 0))[1], back)
     finally:
         teardown()
 
@@ -441,7 +447,7 @@ def case_drag(ck):
         split_right_and_count(ck)
         want_l, _ = expected_cols(full)
         r0 = stty_size('right0')                    # the new (right) pane has the keys
-        click(*pane_point('L', want_l))
+        click(*pane_point('L', want_l[0]))
         l0 = stty_size('left0')
         ck(bool(l0 and r0), 'both panes answer `stty size` before the drag', (l0, r0))
         if not (l0 and r0):
@@ -484,6 +490,29 @@ def case_tab_close_split(ck):
 
 
 # ---- driver -----------------------------------------------------------------------------------
+
+def case_font(ck):
+    """NS5.3: the font is the whole window's. A font change in one pane of a
+    split reaches every pane (/state slot-fonts counts it), the panes stay."""
+    rows, full = fresh()
+    try:
+        split_right_and_count(ck)
+        right = stty_size('font-r0')
+        ra(K_LEFT)
+        left = stty_size('font-l0')
+        fonts = state_key('slot-fonts') or 0
+        line('UPTerm font-size bigger', wait=3)
+        ck(state_key('slot-fonts') == fonts + 1, 'font bigger in a split pane: `UPTerm state` slot-fonts +1',
+           state_key('slot-fonts'))
+        ck(pane_count() == 2, 'font bigger: the panes stay (2)', pane_count())
+        l2 = stty_size('font-l1')
+        ck(bool(left and l2) and l2[1] < left[1], 'font bigger: the focused pane has fewer columns', (left, l2))
+        ra(K_RIGHT)
+        r2 = stty_size('font-r1')
+        ck(bool(right and r2) and r2[1] < right[1], 'font bigger: the other pane took the font too', (right, r2))
+    finally:
+        teardown()
+
 
 def run_case(name, store, fp):
     ck = verdicts.Checks()
