@@ -6307,6 +6307,17 @@ static void packet(con *c, struct DosPacket *p)
                             {
                                 extern ULONG vr_pf_slow, vr_pf_fail;
                                 PROF_LOG("PROF pen_for first-use/failed", vr_pf_slow, vr_pf_fail);
+                                extern ULONG vr_pf_t[3], vr_pf_n[3], vr_pf_pm, vr_pass, vr_pf_by[16];
+                                PROF_LOG("PROF pf exact ticks/calls", vr_pf_t[0], vr_pf_n[0]);
+                                PROF_LOG("PROF pf few_obtain ticks/calls", vr_pf_t[1], vr_pf_n[1]);
+                                PROF_LOG("PROF pf obtain ticks/calls", vr_pf_t[2], vr_pf_n[2]);
+                                PROF_LOG("PROF pf pm_match ticks/passes", vr_pf_pm, vr_pass);
+                                for (k = 0; k < 16; k++) {
+                                    if (vr_pf_by[k])
+                                        PROF_LOG("PROF pf pass/first-uses", k, vr_pf_by[k]);
+                                    vr_pf_by[k] = 0;
+                                }
+                                vr_pf_t[0] = vr_pf_t[1] = vr_pf_t[2] = vr_pf_n[0] = vr_pf_n[1] = vr_pf_n[2] = vr_pf_pm = vr_pass = 0;
                                 vr_pf_slow = vr_pf_fail = 0;
                             }
                             PROF_LOG("PROF cs split resolve/pens", vr_cs_split[0], vr_cs_split[1]);

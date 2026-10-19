@@ -10,7 +10,9 @@ ULONG vr_tx[16]; /* PROF=1: Text-path runs by reason (0 attr,1 deco,2 font,3 rgb
 ULONG vr_txk[9]; /* PROF=1: EClock ticks in the Text block by reason */
 ULONG vr_txa[8]; /* PROF=1: Text-path runs with attr bit k set */
 ULONG vr_txn[2]; /* PROF=1: Text-path runs, cells in them */
-ULONG vr_pf_slow, vr_pf_fail; /* PROF=1: pen_for's first-use path entered, and obtains that failed */
+ULONG vr_pf_slow, vr_pf_fail;
+ULONG vr_pf_t[3], vr_pf_n[3], vr_pf_pm; /* PROF=1: first-use stages: [0] exact best_pen, [1] few_obtain, [2] obtain: ticks and calls; pm_match ticks */
+ULONG vr_pass, vr_pf_by[16]; /* PROF=1: draw_rows_now calls since the last print; first-use entries in each (the 16th takes the rest) */ /* PROF=1: pen_for's first-use path entered, and obtains that failed */
 ULONG vr_fr_ticks, vr_cs_ticks; /* PROF=1: ticks in flush_run (all of it) and cell_style */
 ULONG vr_tx_ticks, vr_dr_ticks, vr_dr_calls; /* PROF=1: ticks in the Text block; ticks and calls of direct_row from the rows pass */
 ULONG vr_span_ticks; /* PROF=1: EClock ticks inside vp_span_fast calls of painter_run */
@@ -293,7 +295,15 @@ static LONG few_obtain(vr_render *r, int c, ULONG rgb)
     pm_palette_set(d->pp, pal, n);
     usable = (1UL << n) - 1;
     for (tries = 0; tries < n; tries++) {
+#ifdef VTCON_PROF
+        struct EClockVal m0, m1;
+        ReadEClock(&m0);
+#endif
         pm_match(d->pp, usable, rgb, r->dither_on, &pk);
+#ifdef VTCON_PROF
+        ReadEClock(&m1);
+        vr_pf_pm += m1.ev_lo - m0.ev_lo;
+#endif
         if (pk.solid < 0)
             return -1;
         solid = hold_pen(r, pal[pk.solid]);
@@ -378,11 +388,37 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
 #endif
         /* exact first (pen_rule.h); on a screen of few pens a full map then
          * gets few_obtain's choice, not graphics' nearest */
+#ifdef VTCON_PROF
+        struct EClockVal q0, q1, q2, q3;
+        LONG p;
+        vr_pf_by[vr_pass < 15 ? vr_pass : 15]++;
+        ReadEClock(&q0);
+        p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
+        ReadEClock(&q1);
+        if (r->few && r->cm) {
+            vr_pf_t[0] += q1.ev_lo - q0.ev_lo;
+            vr_pf_n[0]++;
+        }
+        if (p < 0 && r->few && r->cm) {
+            p = few_obtain(r, (int)c, rgb);
+            ReadEClock(&q2);
+            vr_pf_t[1] += q2.ev_lo - q1.ev_lo;
+            vr_pf_n[1]++;
+        } else
+            q2 = q1;
+        if (p < 0) {
+            p = obtain(r, rgb);
+            ReadEClock(&q3);
+            vr_pf_t[2] += q3.ev_lo - q2.ev_lo;
+            vr_pf_n[2]++;
+        }
+#else
         LONG p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
         if (p < 0 && r->few && r->cm)
             p = few_obtain(r, (int)c, rgb);
         if (p < 0)
             p = obtain(r, rgb);
+#endif
 #ifdef VTCON_PROF
         if (p < 0)
             vr_pf_fail++;
@@ -3220,6 +3256,9 @@ static void draw_rows_now(vr_render *r, int x0, int y0, int x1, int y1)
     dcell dc[DCELL_MAX];
     int y, x, xe, n, nd, want_direct, tail_ok;
     ULONG tail_bg;
+#ifdef VTCON_PROF
+    vr_pass++;
+#endif
     if (r->hidden)
         return;
     want_direct = r->glyphs != 0;
