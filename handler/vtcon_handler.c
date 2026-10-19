@@ -1482,6 +1482,7 @@ static void kc_cyc_end(con *c);
 static int sb_size(const con *c);
 static void watch_take(con *c);
 static void tab_command(con *c, int what);
+static void slot_font_share(con *c);
 static void sbar_apply(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
@@ -2193,6 +2194,8 @@ static void profile_switch(con *c, int k)
         c->w.fontsize = oldsize;
         if (!vtwin_set_font(&c->w, want, wsize))
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* the profile's font is not there */
+        else
+            slot_font_share(c);
     } else {
         copy_str(c->w.fontname, oldname, sizeof(c->w.fontname));
         c->w.fontsize = oldsize;
@@ -2393,6 +2396,8 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_FONT_BIGGER: case MENU_FONT_SMALLER:
         if (!vtwin_font_step(&c->w, id == MENU_FONT_BIGGER ? 1 : -1))
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* no designed size that way */
+        else
+            slot_font_share(c);
         return 1;
     case MENU_SIZE_80X24: case MENU_SIZE_132X43:
         if (vtwin_set_size(&c->w, id == MENU_SIZE_80X24 ? 80 : 132, id == MENU_SIZE_80X24 ? 24 : 43) <= 0)
@@ -3853,8 +3858,12 @@ static void finish_completion(con *c)
         }
         if (q->mode == COMPLETE_FONT) {
             /* Settings > Font...: the window in the chosen font, live */
-            if (q->matches && c->w.t && !vtwin_set_font(&c->w, q->add, (WORD)q->font_size))
-                DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not fixed width, or gone */
+            if (q->matches && c->w.t) {
+                if (!vtwin_set_font(&c->w, q->add, (WORD)q->font_size))
+                    DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not fixed width, or gone */
+                else
+                    slot_font_share(c);
+            }
             continue;
         }
         c->menu_n = 0;
@@ -4123,6 +4132,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
                 cat3(ans, cap, name, ": no fixed-width font ", "by that name and size\n");
                 return 2;
             }
+            slot_font_share(c);
         }
         return 1;
     case SLASH_FALLBACK:
@@ -5365,7 +5375,7 @@ static void idcmp(con *c)
  * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
  * for. */
 enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_RECT,
-       TM_KNOB, TM_STAT, TM_STATE };
+       TM_KNOB, TM_STAT, TM_STATE, TM_FONT };
 
 struct tab_msg {
     struct Message msg;
@@ -5385,6 +5395,8 @@ struct tab_msg {
     slash_state st;          /* STATE: the host's counters, to a tab */
     long stat_arg;           /* STAT: a tab's action (what = STATE_*), its menu id */
     char stat_name[24];      /* STAT: the typed command's name */
+    char font[40];           /* FONT: the font's name ("" the default) and size, */
+    WORD font_size, cw, ch;  /* its cell (pixels) */
 };
 
 static struct tab_msg *tab_msg(con *c, int type)
@@ -6385,6 +6397,54 @@ static int tab_join(con *c, struct tab_msg *t)
     return 1;
 }
 
+/* A split slot has one font, like the window before splits (owner,
+ * 2026-10-19: font size is a whole-window command): the pane from had
+ * name size, with a cell of cw x ch. The slot's layout takes the cell,
+ * keeping its ratios, every other pane of the slot the font, then every
+ * pane its new place. A pane in a font of its own beside the others
+ * snapped to the wrong cell and left gaps at the dividers. */
+static void host_font(con *c, con *from, const char *name, WORD size, WORD cw, WORD ch)
+{
+    int i, k;
+    if ((i = tabslot_find(c->slots, c->ntabs, from, 0)) < 0 || tabslot_panes(&c->slots[i]) < 2)
+        return;
+    lay_set_cell(&c->slots[i].l, cw, ch);
+    for (k = 0; k < LAY_MAX_PANES; k++) {
+        con *p = (con *)c->slots[i].pane[k];
+        struct tab_msg *t;
+        if (!p || p == from)
+            continue;
+        if (p == c)
+            vtwin_set_font(&c->w, name, size);
+        else if (p->tab_port && (t = tab_msg(c, TM_FONT)) != 0) {
+            copy_str(t->font, name, sizeof(t->font));
+            t->font_size = size;
+            PutMsg(p->tab_port, &t->msg);
+        }
+    }
+    slash_state_bump(&c->st, STATE_SLOT_FONT, 0, 0);
+    tab_layout(c);
+    stat_push(c);
+}
+
+/* This pane's font changed (a menu, /font, a profile): in a split slot
+ * the host gives it to the slot's other panes. */
+static void slot_font_share(con *c)
+{
+    struct tab_msg *t;
+    if (!c->w.rect_on || !c->w.t)
+        return; /* one pane: the window's font is its own */
+    if (!c->is_tab)
+        host_font(c, c, c->w.fontname, c->w.fontsize, c->w.r.cw, c->w.r.ch);
+    else if (c->host_pub && (t = tab_msg(c, TM_FONT)) != 0) {
+        copy_str(t->font, c->w.fontname, sizeof(t->font));
+        t->font_size = c->w.fontsize;
+        t->cw = c->w.r.cw;
+        t->ch = c->w.r.ch;
+        PutMsg(c->host_pub, &t->msg);
+    }
+}
+
 /* the host's port: tabs registering, leaving, renamed, asking */
 static void host_msgs(con *c)
 {
@@ -6403,6 +6463,9 @@ static void host_msgs(con *c)
             break;
         case TM_COMMAND:
             host_command(c, t->what, t->from);
+            break;
+        case TM_FONT:
+            host_font(c, t->from, t->font, t->font_size, t->cw, t->ch);
             break;
         case TM_STAT:
             stat_note(c, t->what, t->stat_arg, t->stat_name);
@@ -6443,6 +6506,9 @@ static void tab_msgs(con *c)
         case TM_RECT:
             c->w.inset_top = t->inset;
             vtwin_set_rect(&c->w, t->rx, t->ry, t->rw, t->rh);
+            break;
+        case TM_FONT:
+            vtwin_set_font(&c->w, t->font, t->font_size); /* the slot's font: not passed on again */
             break;
         case TM_STATE:
             c->st = t->st;
