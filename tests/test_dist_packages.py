@@ -8,7 +8,7 @@ import mkmanifest as mm
 import mkreadme as mr
 import pkgs
 
-ROWS = pkgs.rows()
+ROWS = pkgs.lha_rows()     # the archives; git, perl and vim are upkg-only (tests/test_dist_slim.py)
 PARTS = mm.read_parts((ROOT / 'dist/parts.txt').read_text())
 
 

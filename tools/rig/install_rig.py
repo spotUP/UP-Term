@@ -69,10 +69,10 @@ def assembled_scripts(pkg='base'):
 
 
 def package_ids():
-    """The ids of dist/packages.txt, the base first."""
+    """The ids of dist/packages.txt published as an .lha, the base first (git, perl, vim are upkg-only: no Installer case)."""
     sys.path.insert(0, str(ROOT / 'tools'))
     import pkgs
-    return [r['id'] for r in pkgs.rows()]
+    return [r['id'] for r in pkgs.lha_rows()]
 
 
 def addon_ids():

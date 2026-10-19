@@ -254,7 +254,7 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
         readme = (ROOT / "dist/README.txt").read_text(encoding="latin-1")
         section = readme[readme.index("\nADD-ONS\n"):readme.index("\nSTATUS\n")]
         import pkgs
-        for r in pkgs.rows():
+        for r in pkgs.lha_rows():
             if r['id'] != 'base':
                 self.assertIn(r['archive'] + '.lha', section, r['id'])
         for heading in ("CLAUDE", "CLAUDE FROM THE AMIGA", "AMIGA-PI"):
@@ -272,7 +272,7 @@ class FindsTheAddOns(unittest.TestCase):
     the list is dist/packages.txt's non-base rows, a drawer wins over an lha, every probe is (noreq)
     and each ticked add-on runs through a nested Installer."""
     import pkgs
-    ADDONS = [r for r in pkgs.rows() if r['id'] != 'base']
+    ADDONS = [r for r in pkgs.lha_rows() if r['id'] != 'base']
 
     def test_every_non_base_row_is_searched_offered_and_run_and_nothing_else(self):
         self.assertTrue(self.ADDONS)

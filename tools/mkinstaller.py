@@ -15,7 +15,7 @@ import pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-import kitsize, pkgs
+import kitsize, pkgs, slim
 
 INC = re.compile(r'(?m)^; @include (\S+)[ \t]*\n')
 
@@ -63,7 +63,8 @@ def addon_uninstall(rows):
 
 
 def _addons(rows):
-    return [r for r in rows if r['id'] != 'base']
+    upkg_only = slim.ids()      # git, perl, vim: upkg install, never a checkbox of the base Install
+    return [r for r in rows if r['id'] != 'base' and r['id'] not in upkg_only]
 
 
 def addon_find(rows):
@@ -127,6 +128,9 @@ def read_values(pkg_id, extra=()):
         'ADDONRUN': addon_run(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONDEFAULT': str(2 ** len(_addons(pkgs.rows())) - 1) if row['id'] == 'base' else '',
     }
+    if pkg_id in slim.ids():
+        # the slim base (P9): the Delete lines of the paths dist/slim.txt gives the package
+        values['SLIMDELETE'] = slim.uninstall(pkg_id)
     if row['needs-base'] != '-':
         values['BASEMAJOR'], values['BASEMINOR'] = row['needs-base'].split('.')
     # the sizes of the staged kit (tools/kitsize.py): what the free-space check and the progress bar use. With no

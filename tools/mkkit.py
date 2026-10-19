@@ -18,7 +18,7 @@ import datetime, os, pathlib, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-import mkinstaller, pkgs
+import mkinstaller, pkgs, slim
 
 BUILD = ROOT / 'build'
 
@@ -71,6 +71,10 @@ def main(argv):
     run('python3', 'tools/kitmodes.py', kit)
     # last: every file of the archive, its part and CRC, for the Installer's update
     run('python3', 'tools/mkmanifest.py', kit, parts, kit / 'Files/install.dos', '--package', pkg_id)
+    if pkg_id in slim.ids():
+        # upkg-only: the staged tree is the .ipk's payload (tools/pkgs.py ipk); no lha, no Aminet readme
+        print('%s: staged for the .ipk only' % kit)
+        return
     lha = BUILD / (archive + '.lha')
     lha.unlink(missing_ok=True)
     subprocess.run(['lha', '-aq', str(lha), archive], check=True, cwd=BUILD / 'dist')

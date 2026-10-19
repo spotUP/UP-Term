@@ -1,0 +1,50 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 8, lead 3
+(message
+    "\n\n\nG I T\n\n"
+    "git 2.56.0, for an UP-Term window.\n"
+    "It goes into UP-Term:bin and UP-Term:share,\n"
+    "where the base had it.\n"
+    "Needs UP-Term.lha installed first.\n"
+    (all))
+(set #kb-git @KBCOPYGIT@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "git needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install git into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-git 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "copy-git" #kb #kb-git #n 1
+     #why "Copying git to UP-Term:bin and UP-Term:share.")
+(P_STEP)
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "git is installed. In an UP-Term window, in vsh:\n"
+         "  git --version\n\n"
+         "Uninstall (beside Install) takes git out again."))
+; @include dist/common/addon-tail.installer

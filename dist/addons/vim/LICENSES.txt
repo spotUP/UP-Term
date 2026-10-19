@@ -1,0 +1,11 @@
+UP-Term-vim: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+Vim 9.2.1202 and runtime (bin/vim, share/vim, vim.1) Vim licence (licenses/vim/LICENSE) upterm-ports (pkgs/vim; vim v9.2.1202)
+
+Notes
+- These files were part of UP-Term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/vim/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is UP-Term-src.lha, published next to
+  UP-Term.lha.

@@ -24,3 +24,6 @@ claude    Claude           1.1      -           -       ENVARC:upkg/Claude      
 pi        amiga-pi         1.0      -           -       ENVARC:upkg/amiga-pi        Files/amiga-pi                 amiga-pi,vtcon
 nvim      UP-Term-nvim     1.0      1.0         80      UP-Term:pkg/UP-Term-nvim     Files/nvim                     neovim-amiga,ixemul-vtcon
 python    Python3          1.0      -           47      ENVARC:upkg/Python3         Files/python3                  cpython-amiga,ixemul-vtcon
+git       UP-Term-git      1.0      1.0         80      UP-Term:pkg/UP-Term-git      Files/userland/bin/git,Files/userland/share/git-core                              upterm-ports,ixemul-vtcon
+perl      UP-Term-perl     1.0      1.0         80      UP-Term:pkg/UP-Term-perl     Files/userland/bin/perl                              upterm-ports,ixemul-vtcon
+vim       UP-Term-vim      1.0      1.0         80      UP-Term:pkg/UP-Term-vim      Files/userland/bin/vim,Files/userland/share/vim                              upterm-ports,ixemul-vtcon
