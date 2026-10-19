@@ -58,7 +58,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 
 ### Rendering
 - All panes draw at once (drop the single-shown-tab handshake for splits; keep it between tabs). Each pane process draws only into its rect through its `tab_rp`; no ScrollRaster/BltBitMap crosses the rect (vr_scroll already limits to `ox..ox+vis_cols*cw`; `VTCON_DIRECT` path uses `win->LeftEdge+r->ox` which stays valid). Needs: LockLayer discipline already in :3912; confirm two processes drawing the same layer concurrently is safe (phase 0 spike on the rig) -- else host serialises with a token message.
-- Clip: `InstallClipRegion` per pane RastPort (own layer clip rect) as a safety net so a bug in padding fills (:3191-3198, :3244-3290 use window edges) cannot paint outside; those fills must use the rect anyway.
+- Clip: NO clip region. Corrected 2026-10-19 after the phase 0 spike: `InstallClipRegion` sets the region of the window's one Layer, not of a RastPort, so two pane processes would install and restore over each other. Every draw (text, fills, scrolls, padding strips at :3191-3198, :3244-3290) stays inside the rect on its own; the fake-gfx tests prove it.
 - Dividers + pane titles drawn by the host in `bar_draw`-style code (tab bar precedent) with theme tokens (config/upconf theme colours), full-pixel lines, no emoji.
 - Gadget: the scroll bar (sbar_gad) is a window-border gadget showing the active tab's knob via TM_KNOB (:5372): becomes the focused pane's knob; per-pane scroll bars are out of scope.
 
@@ -76,7 +76,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 
 ### Phase 1 - viewport rect in the renderer
 - [ ] NS1.1 `vr_render` rect (`vr_set_rect`), `vr_layout` honours it, all fills/borders/padding use the rect not window edges (amiga_render.c:3191-3290, vtwin.c:1020,1053). Host test: render_host fake RastPort (tests/render_host/gfx_fake.c) logs every call; assert no call outside the rect for a full repaint, scroll, selection, cursor, sixel. Reachability: `make test ONLY=render_host` plus rig XCON: full-window default rect unchanged (existing rig suites still pass).
-- [ ] NS1.2 `InstallClipRegion` per pane RastPort. Test: fake-gfx logs the region; rig sentinel draws past the rect and nothing lands outside.
+- [ ] NS1.2 No layer clip region; rect-confined drawing only (corrected 2026-10-19). Host test: no region is ever installed, nothing is drawn outside the rect, also after an inset move. Rig: two panes draw at the same time and neither paints into the other.
 
 ### Phase 2 - pure layout tree
 - [ ] NS2.1 `render/layout.[ch]` C89: solve/split/close/neighbour/hit-divider/drag, cell snapping, min size, max panes. Test: host suite `layout` covers numbers (rect sums = area minus dividers; ratios stable across resize). Reachability for this module is the Phase 3 rig test (not duplicated).
@@ -106,7 +106,7 @@ Plan count: 17 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1
 ## 4. Risks
 
 1. **Concurrent drawing into one layer by several processes** (graphics.library). Mitigation: NS0.2 spike first; fall back to host-serialised drawing token.
-2. **Hardcoded window-edge assumptions** in render and vtwin (listed in section 1) - missing one makes pane A paint over B. Mitigation: fake-gfx rect assertion (NS1.1) plus clip region (NS1.2).
+2. **Hardcoded window-edge assumptions** in render and vtwin (listed in section 1) - missing one makes pane A paint over B. Mitigation: fake-gfx rect assertion (NS1.1) plus the no-region rect test (NS1.2). No layer clip exists to catch a miss, so the fake-gfx test is the guard.
 3. **Memory/CPU on stock 68k**: N full cons (each with line editor, KingCON state, 2 KB obuf, scrollback). Mitigation: measure in NS0/NS5.4; cap panes.
 4. **Cursor/frame-clock timers per pane** (frame_port, blink) multiply timer traffic.
 5. **Menus per pane**: each tab builds its own GadTools strip; swapping on focus change flickers and is slow on 68k.
@@ -142,4 +142,4 @@ Plan count: 17 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1
 ## 7. Added findings (peer session, verified on origin/main 2026-10-19)
 
 - Spawn race: tab_spawner writes one shared script name `T:UP-Term-tab` (handler/vtcon_handler.c:5796, used as `FROM T:UP-Term-tab` at :5809). Two panes spawned close together can overwrite each other's script. Fold into NS3.1: unique script name per spawn (host + sequence), deleted by the script itself; rig test spawns two panes back to back and asserts each starts in its own directory.
-- ACTION_DISK_INFO hands back the whole window (`id->id_VolumeNode = (BPTR)c->w.win`, vtcon_handler.c ~6909). A program in a pane that draws straight into that Window draws over other panes. Same as tmux has no answer for. Decision for NS5.3: keep returning the window (V47 compatibility), document that raw-window programs see the whole window, and make the pane clip region (NS1.2) not apply to them. Rig check: a raw-window program in a pane still works.
+- ACTION_DISK_INFO hands back the whole window (`id->id_VolumeNode = (BPTR)c->w.win`, vtcon_handler.c ~6909). A program in a pane that draws straight into that Window draws over other panes. Same as tmux has no answer for. Decision for NS5.3: keep returning the window (V47 compatibility), document that raw-window programs see the whole window, (no pane clip region exists, NS1.2, so nothing to exempt). Rig check: a raw-window program in a pane still works.

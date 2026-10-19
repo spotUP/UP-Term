@@ -175,8 +175,6 @@ typedef struct vr_render {
      * rects). rect_y is the top inset the tab bar keeps free (vr_set_inset). */
     WORD rect_x, rect_y, rect_w, rect_h;
     UBYTE rect_own;          /* vr_set_rect was called: the layer is clipped to the rect */
-    struct Region *clip_rgn; /* NS1.2: the region installed on the layer for an explicit rect */
-    struct Region *clip_old; /* what the layer had before */
     /* scrollback view: screen row y shows grid row y - view (0 = live) */
     WORD view;
     UBYTE view_stale;      /* live output reached the grid while the view was back: the screen is not the scrollback's */

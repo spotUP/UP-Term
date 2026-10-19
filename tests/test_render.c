@@ -1663,7 +1663,7 @@ static int pixels_outside(int x0, int y0, int x1, int y1)
 }
 
 /* A rect offset inside a larger window: nothing is drawn outside it -- text, fills, scrolls, the padding
- * strips -- and the layer's clip region is that rectangle. The inner area starts at (4, 11): the rect at
+ * strips -- with no clip region keeping it there. The inner area starts at (4, 11): the rect at
  * (20, 9) of it is the window's (24, 20), 100 x 52 pixels: 12 x 6 cells and strips of 4 pixels. */
 static void a_rect_inside_a_larger_window_keeps_every_draw_inside_it(void)
 {
@@ -1702,19 +1702,16 @@ static void a_rect_inside_a_larger_window_keeps_every_draw_inside_it(void)
     vr_redraw(&rn);
     CHECK_INT(pixels_outside(rx0, ry0, rx1, ry1), 0);
     CHECK_INT(gf_border_hits(), 0);
-    /* NS1.2: the clip region is the rect */
-    CHECK_INT(gf_clip(&cx0, &cy0, &cx1, &cy1), 1);
-    CHECK_INT(cx0, rx0);
-    CHECK_INT(cy0, ry0);
-    CHECK_INT(cx1, rx1);
-    CHECK_INT(cy1, ry1);
-    /* the inset moves the rect's top and its clip with it */
-    vr_set_inset(&rn, 12);
-    CHECK_INT(gf_clip(&cx0, &cy0, &cx1, &cy1), 1);
-    CHECK_INT(cy0, 11 + 12);
-    CHECK_INT(cy1, 11 + 12 + 52 - 1);
-    vr_reset_rect(&rn);
+    /* NS1.2: no clip region on the layer. It belongs to the window, so a pane installing one would
+     * clip the other panes of the window (the phase 0 spike, 2026-10-19) */
     CHECK_INT(gf_clip(&cx0, &cy0, &cx1, &cy1), 0);
+    CHECK_INT(gf_regions(), 0);
+    /* the inset moves the rect down 3 pixels: nothing beside it or below it */
+    vr_set_inset(&rn, 12);
+    vr_redraw(&rn);
+    CHECK_INT(pixels_outside(rx0, ry0, rx1, 11 + 12 + 52 - 1), 0); /* the old rows keep what was drawn there */
+    CHECK_INT(gf_clip(&cx0, &cy0, &cx1, &cy1), 0);
+    vr_reset_rect(&rn);
     CHECK_INT(gf_regions(), 0);
     close_term();
 }

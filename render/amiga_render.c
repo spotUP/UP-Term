@@ -791,11 +791,6 @@ void vr_set_pad_extend(vr_render *r, int on)
 void vr_free(vr_render *r)
 {
     int i;
-    if (r->clip_rgn) {
-        InstallClipRegion(r->win->WLayer, r->clip_old);
-        DisposeRegion(r->clip_rgn);
-        r->clip_rgn = 0;
-    }
     if (r->cm)
         for (i = 0; i < 256; i++)
             if (r->obtained[i] >= 0)
@@ -941,31 +936,9 @@ void vr_rect(const vr_render *r, WORD *x0, WORD *y0, WORD *x1, WORD *y1)
     *y1 = r->rect_h > 0 && *y0 + r->rect_h - 1 < ay1 ? (WORD)(*y0 + r->rect_h - 1) : ay1;
 }
 
-/* NS1.2: the layer clips to the rectangle, a safety net under the fills that already use it. */
-static void clip_sync(vr_render *r)
-{
-    struct Layer *layer = r->win ? r->win->WLayer : 0;
-    if (!layer)
-        return;
-    if (r->clip_rgn) {
-        InstallClipRegion(layer, r->clip_old);
-        DisposeRegion(r->clip_rgn);
-        r->clip_rgn = 0;
-        r->clip_old = 0;
-    }
-    if (r->rect_own) {
-        struct Rectangle rc;
-        struct Region *rg = NewRegion();
-        vr_rect(r, &rc.MinX, &rc.MinY, &rc.MaxX, &rc.MaxY);
-        if (rg && OrRectRegion(rg, &rc)) {
-            r->clip_old = InstallClipRegion(layer, rg);
-            r->clip_rgn = rg;
-        } else if (rg) {
-            DisposeRegion(rg);
-        }
-    }
-}
-
+/* NS1.2: no clip region. A layer's clip region belongs to the window, not to one pane: two panes of
+ * one window (two handler processes) would install over each other's and restore each other's old one.
+ * Every draw stays inside the rect on its own (vr_rect, the fills, the scrolls, the padding strips). */
 void vr_set_rect(vr_render *r, WORD x, WORD y, WORD w, WORD h)
 {
     r->rect_x = x;
@@ -973,21 +946,17 @@ void vr_set_rect(vr_render *r, WORD x, WORD y, WORD w, WORD h)
     r->rect_w = w;
     r->rect_h = h;
     r->rect_own = 1;
-    clip_sync(r);
 }
 
 void vr_reset_rect(vr_render *r)
 {
     r->rect_x = r->rect_w = r->rect_h = 0;
     r->rect_own = 0;
-    clip_sync(r);
 }
 
 void vr_set_inset(vr_render *r, WORD top)
 {
     r->rect_y = top;
-    if (r->rect_own)
-        clip_sync(r);
 }
 
 /* The columns and rows the window can show right now. The grid follows a
