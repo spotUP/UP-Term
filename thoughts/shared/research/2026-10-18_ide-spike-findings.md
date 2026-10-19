@@ -18,7 +18,8 @@ the gcc16 callee-saved-register fix and a `__stack` definition.
 Performance: go on a 68060, no-go on a 68020 + 68882, open on an 040 (needs a real-hardware measurement). The first slow numbers (2.8 s per key on a 68060) came from a
 soft-float build: gcc16 `-m68040` emits double arithmetic as ixemul.library calls, and Scintilla lays out in
 double. Built with `-m68020 -m68881`, a key costs 23 ms on the 68060, under the 100 ms bar, and 645 ms on a
-68020 + 68882 at real speed, over it. Without an FPU
+68020 + 68882 at real speed, over it; two Scinterm patches brought the 020 key to 76 ms (pass), but open
+(9.5 s) and scroll (1.6 s) still fail there. Without an FPU
 (stock A1200) the IDE stays at soft-float speed and is not usable.
 
 ## Build result (S1-S3): builds
@@ -181,13 +182,14 @@ Built with `-m68020 -m68881` (FPU required):
 | Machine | Open (<= 2 s) | Key (<= 100 ms) | Scroll | RAM drop (<= 4 MB) | Verdict |
 |---|---|---|---|---|---|
 | 68060 + JIT (rig 4 `--max`) | 280 ms | 23 ms | 60 ms | pass | go |
-| 68020 + 68882, real speed (rig 4 `--a1200`) | 9446 ms | 645 ms | 1731 ms | 667 KB | no-go |
+| 68020 + 68882, real speed (rig 2 `--a1200`, 2026-10-19) | 9523 ms | 76 ms | 1568 ms | 762 KB | no-go (open, scroll) |
 | 68040 | not measured | not measured | not measured | - | needs real hardware |
 | no FPU (soft-float build) | 3.0-3.3 s on a 060 | 2.8-4.5 s on a 060 | - | - | no-go |
 
-020 split (`ide-spike/results/scidemo-lite-a1200.txt`): key paint 612 ms + terminal 33 ms; open paint 7959 ms +
-terminal 1487 ms; scroll paint 634 ms + terminal 1097 ms. Scintilla paint still dominates the key, so the
-next performance work is inside `Editor::Paint`, not in the terminal.
+020 split (`ide-spike/results/scidemo-lite-a1200.txt`, FPU-archive build): key paint 52 ms + terminal 24 ms;
+open paint 7848 ms + terminal 1675 ms; scroll paint 438 ms + terminal 1130 ms. The key passes. Scroll is now
+dominated by the terminal (the screen visibly draws line by line); open is dominated by Scintilla paint.
+Before the input-lag patches: key paint 612 + terminal 33 ms (`scidemo-lite-a1200.fixABC-roundinline.txt`).
 
 The floor (020) fails, so by the rule under "Numbers" the 040 verdict needs a measurement on a real 040, not a
 scaling guess.
