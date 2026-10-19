@@ -90,9 +90,10 @@ static int tabslot_split(tab_slot *t, int n, void *from, void *pane, int dir,
 /* Take pane out. A slot with other panes keeps its index: the space goes
  * to the pane's sibling, which gets the focus when the pane had it. The
  * last pane of a slot takes the slot with it: the slots after it move
- * down one and *gone is 1. Returns the slot the pane was in, or -1 when
- * it was in none. */
-static int tabslot_remove(tab_slot *t, int *n, const void *pane, int *gone)
+ * down one and *gone is 1. *active (the shown slot) stays on the same
+ * slot when one before it went, and on the last when it was the last
+ * that went. Returns the slot the pane was in, or -1 when it was in none. */
+static int tabslot_remove(tab_slot *t, int *n, int *active, const void *pane, int *gone)
 {
     int i, at, k, next;
     *gone = 0;
@@ -108,6 +109,10 @@ static int tabslot_remove(tab_slot *t, int *n, const void *pane, int *gone)
         t[i] = t[i + 1];
     (*n)--;
     *gone = 1;
+    if (at < *active || *active >= *n)
+        (*active)--;
+    if (*active < 0 && *n)
+        *active = 0;
     return at;
 }
 

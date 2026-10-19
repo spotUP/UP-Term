@@ -6,13 +6,14 @@
 #include "../handler/tabslot.h"
 
 static tab_slot T[4];
-static int N;
+static int N, ACT;
 static int A, B, C, D, E; /* stand-ins for the panes' cons */
 
 static void fresh(void)
 {
     memset(T, 0, sizeof(T));
     N = 0;
+    ACT = 0;
 }
 
 static void a_new_tab_is_a_slot_with_one_focused_pane(void)
@@ -85,7 +86,7 @@ static void a_pane_leaving_gives_its_space_and_the_focus_back(void)
     fresh();
     tabslot_add(T, &N, 4, &A);
     tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
-    CHECK_INT(tabslot_remove(T, &N, &B, &gone), 0);
+    CHECK_INT(tabslot_remove(T, &N, &ACT, &B, &gone), 0);
     CHECK_INT(gone, 0);
     CHECK_INT(N, 1);
     CHECK_INT(tabslot_panes(&T[0]), 1);
@@ -96,7 +97,7 @@ static void a_pane_leaving_gives_its_space_and_the_focus_back(void)
     /* a pane without the focus leaving keeps the focus where it was */
     tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
     tabslot_split(T, N, &B, &C, LAY_DOWN, 8, 8, 0, 0, 640, 200);
-    CHECK_INT(tabslot_remove(T, &N, &A, &gone), 0);
+    CHECK_INT(tabslot_remove(T, &N, &ACT, &A, &gone), 0);
     CHECK(tabslot_focused(&T[0]) == &C);
     CHECK_INT(tabslot_panes(&T[0]), 2);
 }
@@ -109,15 +110,50 @@ static void the_last_pane_takes_its_slot_and_the_rest_move_down(void)
     tabslot_add(T, &N, 4, &B);
     tabslot_add(T, &N, 4, &C);
     tabslot_split(T, N, &C, &D, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
-    CHECK_INT(tabslot_remove(T, &N, &B, &gone), 1);
+    CHECK_INT(tabslot_remove(T, &N, &ACT, &B, &gone), 1);
     CHECK_INT(gone, 1);
     CHECK_INT(N, 2);
     CHECK_INT(tabslot_find(T, N, &C, 0), 1);
     CHECK_INT(tabslot_find(T, N, &D, 0), 1);
     CHECK(tabslot_focused(&T[1]) == &D);
     CHECK_INT(tabslot_panes(&T[1]), 2); /* the moved slot's layout came with it */
-    CHECK_INT(tabslot_remove(T, &N, &E, &gone), -1);
+    CHECK_INT(tabslot_remove(T, &N, &ACT, &E, &gone), -1);
     CHECK_INT(gone, 0);
+}
+
+/* The shown slot stays the shown slot when a slot before it goes (the old
+ * host list left the index where it was: the next tab became "active"
+ * without being shown, and the one drawing lost the keys). */
+static void the_shown_slot_stays_shown_when_another_goes(void)
+{
+    int gone;
+    fresh();
+    tabslot_add(T, &N, 4, &A);
+    tabslot_add(T, &N, 4, &B);
+    tabslot_add(T, &N, 4, &C);
+    ACT = 2;
+    tabslot_remove(T, &N, &ACT, &A, &gone);
+    CHECK_INT(ACT, 1);
+    CHECK(tabslot_focused(&T[ACT]) == &C);
+    /* one after it going leaves it alone */
+    tabslot_add(T, &N, 4, &D);
+    ACT = 1;
+    tabslot_remove(T, &N, &ACT, &D, &gone);
+    CHECK_INT(ACT, 1);
+    /* the shown one going, the last: the one before it */
+    tabslot_remove(T, &N, &ACT, &C, &gone);
+    CHECK_INT(ACT, 0);
+    CHECK(tabslot_focused(&T[ACT]) == &B);
+    /* the shown one going, not the last: the one that moves into its place */
+    tabslot_add(T, &N, 4, &C);
+    ACT = 0;
+    tabslot_remove(T, &N, &ACT, &B, &gone);
+    CHECK_INT(ACT, 0);
+    CHECK(tabslot_focused(&T[ACT]) == &C);
+    /* the very last going */
+    tabslot_remove(T, &N, &ACT, &C, &gone);
+    CHECK_INT(N, 0);
+    CHECK_INT(ACT, -1);
 }
 
 void suite_tabslot(void)
@@ -128,4 +164,5 @@ void suite_tabslot(void)
     the_fifth_pane_and_a_pane_too_small_are_refused();
     a_pane_leaving_gives_its_space_and_the_focus_back();
     the_last_pane_takes_its_slot_and_the_rest_move_down();
+    the_shown_slot_stays_shown_when_another_goes();
 }
