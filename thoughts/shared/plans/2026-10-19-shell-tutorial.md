@@ -59,7 +59,7 @@ host vsh and a real bash both run it for tests).
     learn              the menu of lessons, with a mark on finished ones
     learn N            start lesson N
     learn next         the first unfinished lesson
-    learn reset        forget progress
+    tutorial reset     forget progress
 
 Each lesson runs in a sandbox directory, `T:tutorial/` (made fresh per lesson,
 removed at the end), so `rm` in a lesson never touches the user's files. The
@@ -161,7 +161,7 @@ none.
 - [ ] L-T3 Menu and slash wiring test next to the existing menu tests: the
       Shell tutorial item and /tutorial reach the tab spawn with the tutorial
       command line.
-- [ ] L-R Rig check (owner or rig 4): learn from the Help menu on the
+- [ ] L-R Rig check (owner or rig 4): tutorial from the Help menu on the
       Amiga, lesson 1 to the end, quit and resume.
 
 ## Risks
