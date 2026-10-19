@@ -1033,6 +1033,36 @@ static void a_designation_that_changes_nothing_skips_the_parser(void)
     vt_free(t);
 }
 
+/* csi_fast's short forms "ESC [ m" and "ESC [ 3n m" / "ESC [ 4n m" skip the
+ * scan and sgr(): the counter proves they ran (six here; "0m", "38m", "1m"
+ * and "31;1m" are not short forms), and every cell equals the byte-by-byte
+ * parse in all three personalities */
+static void the_short_sgr_forms_skip_the_scan_and_set_the_same_pen(void)
+{
+    static const char seq[] = "\033[31mA\033[44mB\033[mC\033[0mD\033[37mE\033[47mF\033[1mG\033[31;1mH\033[mI";
+    static const enum vt_personality pers[] = { VT_XTERM, VT_AMIGA, VT_PCANSI };
+    int p, x, len = (int)strlen(seq);
+    for (p = 0; p < 3; p++) {
+        vt_term *a = h_new(20, 2, pers[p]), *b = h_new(20, 2, pers[p]);
+        long before = vt_count_fast_sgr;
+        vt_write(a, (const vt_u8 *)seq, len);
+        CHECK_INT((int)(vt_count_fast_sgr - before), 6);
+        for (x = 0; x < len; x++)
+            vt_write(b, (const vt_u8 *)seq + x, 1);
+        for (x = 0; x < 20; x++) {
+            const vt_cell *c = h_cell(a, x, 0), *d = h_cell(b, x, 0);
+            if (c->ch != d->ch || c->fg != d->fg || c->bg != d->bg || c->attr != d->attr || c->ext != d->ext)
+                CHECK_INT(p * 100 + x, -1); /* names the cell */
+        }
+        CHECK_INT(h_cell(a, 0, 0)->fg, 1);
+        CHECK_INT(h_cell(a, 1, 0)->bg, 4);
+        CHECK_INT(h_cell(a, 4, 0)->fg, 7);
+        CHECK_INT(h_cell(a, 5, 0)->bg, 7);
+        vt_free(a);
+        vt_free(b);
+    }
+}
+
 /* csi_fast takes a whole "ESC [ ... final" from one write; cut anywhere,
  * the same bytes go through the parser byte by byte: the same screen */
 static void a_sequence_cut_by_a_write_means_the_same(void)
@@ -1376,6 +1406,7 @@ void suite_xterm(void)
     neovim_tui_streams_land_where_libvterm_puts_them();
     synchronized_output_is_a_mode();
     a_designation_that_changes_nothing_skips_the_parser();
+    the_short_sgr_forms_skip_the_scan_and_set_the_same_pen();
     a_sequence_cut_by_a_write_means_the_same();
     text_after_an_sgr_in_one_write_takes_its_pen();
     a_row_counts_the_cells_in_use();

@@ -2000,6 +2000,7 @@ static void sb_walk(vt_term *t, const vt_style_sweep *ss, vt_u8 *live)
 
 #ifdef VT_COUNT_ALLOC
 long vt_count_fast_esc;
+long vt_count_fast_sgr;
 long vt_count_sb_payload(const vt_term *t)
 {
     long n = 0;
@@ -6372,6 +6373,36 @@ static long csi_fast(vt_term *t, const vt_u8 *b, long len)
     vt_u8 c;
     if (len < 3 || b[1] != '[')
         return 0;
+    /* "ESC [ m" and "ESC [ 3n m" / "ESC [ 4n m" (n 0-7), what ncurses sends
+     * before every style run: the pen set from the bytes, with no scan, no
+     * clear-up of all the parser's fields and no sgr() chain (the three
+     * cost ~480 instructions a sequence; W-S2). The parser fields are left
+     * as the scan and csi_fast's own tail would leave them. */
+    if (b[2] == 'm' || (len >= 5 && (b[2] == '3' || b[2] == '4') && (vt_u8)(b[3] - '0') <= 7 && b[4] == 'm')) {
+        t->have = 0;
+        t->priv = 0;
+        t->inter = 0;
+        t->ninter = 0;
+        t->csi8 = 0;
+        t->sub[0] = 0;
+#ifdef VT_COUNT_ALLOC
+        vt_count_fast_sgr++;
+#endif
+        if (b[2] == 'm') {
+            t->np = 0;
+            t->params[0] = 0;
+            sgr_reset(t);
+            return 3;
+        }
+        t->np = 1;
+        t->params[0] = (long)(b[2] - '0') * 10 + (b[3] - '0');
+        if (b[2] == '3')
+            t->fg = (vt_color)(b[3] - '0');
+        else
+            t->bg = (vt_color)(b[3] - '0');
+        t->ext = pen_ext(t);
+        return 5;
+    }
     r = csi_scan(b + 2, len - 2, t->params, t->sub);
     if (r < 0)
         return 0;
