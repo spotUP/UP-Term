@@ -18,8 +18,9 @@ both machines; OpenWorkbenchObjectA is not (below). Regression test: `tools/rig/
   project icon.
 - Otherwise NAME is the tool; further NAMEs are the shift-selected icons (the old `wbrun TOOL PROJECT` form,
   still used by tools/rig/install_rig.py, keeps working).
-- The process: NP_Input/Output 0, no console task, no window pointer, NP_CurrentDir and NP_HomeDir = the tool's
-  drawer, NP_Cli FALSE; sm_ToolWindow from TOOLWINDOW. The program reads its own tool types (WINDOW, FROM)
+- The process: NP_Input/Output 0, no console task, no window pointer, NP_HomeDir = the tool's drawer, no
+  NP_CurrentDir (2026-10-19: dos never unlocks it at exit, the DupLock of UP-Term:bin leaked and Uninstall
+  left the drawer; the real icon start leaks nothing), NP_Cli FALSE; sm_ToolWindow from TOOLWINDOW. The program reads its own tool types (WINDOW, FROM)
   from the WBArgs, as under Workbench.
 - wbrun waits for the message to come back (it holds the tool's seglist): use `Run >NIL: wbrun ...` for a
   tool that stays open.

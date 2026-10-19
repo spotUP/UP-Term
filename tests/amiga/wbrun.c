@@ -164,11 +164,16 @@ int main(int argc, char **argv)
         Printf("wbrun: no memory\n");
         goto out;
     }
+    /* No NP_CurrentDir: dos does not unlock it when the process ends, so a
+     * DupLock of the tool's drawer stayed locked (UP-Term:bin "object is in
+     * use" for Uninstall after the icon check).  Workbench gives none either;
+     * the program's startup code goes to wa_Lock.  NP_HomeDir (PROGDIR:) is
+     * unlocked at exit. */
     p = CreateNewProcTags(NP_Seglist, seg, NP_FreeSeglist, FALSE, NP_Name, (ULONG)names[0],
                           NP_StackSize, stack, NP_Priority, pri,
                           NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE, NP_CloseOutput, FALSE,
                           NP_ConsoleTask, 0, NP_WindowPtr, 0,
-                          NP_CurrentDir, DupLock(args[0].wa_Lock), NP_HomeDir, DupLock(args[0].wa_Lock),
+                          NP_CurrentDir, 0, NP_HomeDir, DupLock(args[0].wa_Lock),
                           NP_Cli, FALSE, TAG_END);
     if (!p) {
         Printf("wbrun: no process\n");
