@@ -56,3 +56,25 @@ No single function dominates: a CSI costs ~480 instructions across scan + csi_fa
 
 1. Add the `ESC ( B` no-op fast path in vt_feed (next to csi_fast), then trim the CSI scan + csi_fast + sgr chain; regression test = an operation counter on that path in the engine suite (`make test ONLY=xterm`), failing if the per-sequence work returns.
 2. Profile the rows path with the same PROF handler on phaseprobe shape 8 after `make build/amiga/vtcon-handler PROF=1 SERIAL=1`; compare to UPDemo BENCH's frames a second for a full-page scene.
+
+## Results of the first three fixes (2026-10-19)
+
+1. `ESC ( B` with G0 already B: commit 5e174eab, `esc_g_fast` in vt_feed before csi_fast. Test
+   `a_designation_that_changes_nothing_skips_the_parser` (tests/test_xterm.c) fails with the call disabled
+   ("= 0, want 4"). Host instructions after: not measured (the 40 minute vamos run of workload 7 had not
+   finished when this was written). Rig 2 ms per frame: not measured.
+2. `ESC [ m` and `ESC [ 3n m` / `4n m` short forms in csi_fast: commit 41d67baa. Test
+   `the_short_sgr_forms_skip_the_scan_and_set_the_same_pen` fails with the path disabled ("= 0, want 6").
+   Host and rig numbers: not measured, same reason.
+3. Painter rows path: hypothesis tested and REFUTED, no commit. Hoisting the plane-independent glyph
+   gather out of vp_asm_plane (one `vp_asm_gather` per span into a row-major buffer, planes read longs)
+   was built and run under `prof68k.py run-paint SHAPE 4 30` (vamos instructions, program total):
+   - shape 0 (8-cell runs): 294,373 before, 311,113 after (worse)
+   - shape 1 (1-cell runs): 891,943 before, 1,074,943 after (worse)
+   The per-run and per-cell gather set-up costs more than the per-plane byte gathers it saves at 4 planes.
+   The original profile (shape 1, 4 planes, 200 rows): vp_asm_plane 71.7% (about 16 instructions per
+   plane per row for a 1-cell run), vp_span_fast 24.5% (gp[] setup 144k, per-plane fb/bb decode 256k,
+   call set-up 332k+232k). Instruction count is not bus time: the 106 us per cell is mostly BFINS
+   read-modify-write on chip RAM, which instruction counts cannot show. Next candidates: byte-aligned
+   plain stores when the bit phase is 0, and merging the per-plane fb/bb decode into one pass; both need
+   a rig measurement of bus time, not vamos.
