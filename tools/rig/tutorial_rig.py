@@ -34,7 +34,7 @@ HINT = "New to a Unix shell?"
 LESSONS = sorted(os.path.basename(f) for f in glob.glob(ROOT + "/dist/tutorial-lessons/*.lesson"))
 # the Amiga's file names are 30 characters: the kit's copy of a longer name is cut
 AMIGA_NAME = lambda n: n[:30]
-CASES = ["selftest-%s" % n[:2] for n in LESSONS] + ["hint-before", "typed", "menu", "slash", "lesson1", "progress", "resume", "hint-after"]
+CASES = ["selftest-%s" % n[:2] for n in LESSONS] + ["hint-before", "typed", "menu", "slash", "lesson1", "progress", "resume", "hint-after", "check-a", "check-b", "check-c", "check-d"]
 ANSWERS1 = ["ls", "pwd", "cd docs", "cd .."]     # lesson 1's four steps
 
 
@@ -100,9 +100,17 @@ def case_hint(expect):
     return (HINT in text) == expect, text[-300:]
 
 
+def vsh_pids():
+    """The tutorial tab's process is a vsh loaded from UP-Term:bin/vsh (the host's window runs VTC:vsh).
+    screen_text() reads the host's session whatever tab is active (a plain UP-Term > New tab reads the same),
+    so the tab is judged by its process: alive after the script ran means the tutorial did not end at once."""
+    return [l.split(":")[0].split()[-1] for l in c.run("Status FULL")[1].splitlines() if "Loaded as command: UP-Term:bin/vsh" in l]
+
+
 def case_tab(how):
     c.run("Delete T:UP-Term-tutorial QUIET")
     fresh_vsh("tabwin")
+    before = vsh_pids()
     if how == "menu":
         with ami._conn(60) as conn:
             ami._m().ui_menu(conn, "Help/Shell tutorial", "tabwin")
@@ -110,11 +118,13 @@ def case_tab(how):
         typewin.typ("/tutorial")
         typewin.key(typewin.RET, wait=1)
     wrote = until(lambda: c.run("List >NIL: T:UP-Term-tutorial")[0] == 0, 15)
-    time.sleep(4)
-    alive = tut_running()
-    text = typewin.screen_text() if ami.window("tabwin") else ""
-    ok = bool(wrote) and (alive or "tutorial>" in text)
-    detail = "script written %s; tutorial process running %s; screen tail %r" % (bool(wrote), alive, text[-160:])
+    time.sleep(6)
+    new = [p for p in vsh_pids() if p not in before]
+    script = c.run("Type T:UP-Term-tutorial")[1]
+    ok = bool(wrote) and bool(new) and "tutorial next" in script
+    detail = "script written %s (%r); tab process alive after 6 s: %s" % (bool(wrote), script[-70:], new)
+    for p in new:
+        c.run("Break %s C" % p)
     if ami.window("tabwin"):
         typewin.click_in("tabwin")
         close_vsh()
@@ -163,8 +173,49 @@ def case_resume():
     typewin.typ(":quit")
     typewin.key(typewin.RET, wait=2)
     close_vsh()
+    if "No such file" in first and ".tutorial" in first.split("tutorial next")[-1]:
+        return False, "blocked-ixemul: grep cannot open System:.tutorial (Vol:/x), so next_lesson sees no progress"
     ok = "Looking at files" in first and "Looking at files" in second.split("tutorial next")[-1]
     return ok, "after :quit and tutorial next: %r" % second[-300:]
+
+
+def case_check_a():
+    """tutorial and upkg-ask run at the vsh prompt: arguments and exit status pass through, no S bit."""
+    flags = [c.run("List UP-Term:bin/%s" % n)[1].split("\n")[1].split()[2] for n in ("tutorial", "upkg-ask")]
+    rc, out = c.run("UP-Term:bin/vsh UP-Term:bin/tutorial foo")
+    rc2, out2 = c.run("UP-Term:bin/vsh UP-Term:bin/upkg-ask")
+    ok = all("s" not in f for f in flags) and rc == 2 and "usage" in out and "not executable" not in out + out2
+    return ok, "flags %s; tutorial foo rc %s %r; upkg-ask rc %s %r" % (flags, rc, out[:60], rc2, out2[:80])
+
+
+def case_check_b():
+    rc, out = c.run("%s" % TUT)
+    names = [open(os.path.join(ROOT, "dist", "tutorial-lessons", n)).readline()[2:].strip() for n in LESSONS]
+    lines = [l for l in out.splitlines() if l.strip().startswith("[")]
+    miss = [n for n in names if n.lower() not in out.lower()]
+    return len(lines) == len(LESSONS) == 11 and not miss, "%d lessons listed; missing %s" % (len(lines), miss)
+
+
+def case_check_c():
+    """Every lesson finished: Help > Shell tutorial opens a tab that stays open on the lesson prompt."""
+    saved = c.run("Type %s" % PROGRESS)[1]
+    c.run("Echo >%s \"1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\"" % PROGRESS)
+    try:
+        ok, detail = case_tab("menu")
+    finally:
+        c.run("Delete %s QUIET" % PROGRESS)
+        if saved.strip():
+            c.run("Echo >%s \"%s\"" % (PROGRESS, saved.strip()))
+    return ok, detail
+
+
+def case_check_d():
+    """A 2-line AmigaDOS script with the S bit still runs."""
+    c.run("Echo >T:chk-d.script \"Echo chk-d-ran\"")
+    c.run("Protect T:chk-d.script +s")
+    rc, out = c.run("T:chk-d.script")
+    c.run("Delete T:chk-d.script QUIET")
+    return rc == 0 and "chk-d-ran" in out, "rc %s: %r" % (rc, out)
 
 
 def run_case(name):
@@ -172,7 +223,8 @@ def run_case(name):
         return case_selftest(name[-2:])
     return {"hint-before": lambda: case_hint(True), "typed": case_typed, "menu": lambda: case_tab("menu"), "slash": lambda: case_tab("slash"),
             "lesson1": case_lesson1, "progress": case_progress, "resume": case_resume,
-            "hint-after": lambda: case_hint(False)}[name]()
+            "hint-after": lambda: case_hint(False),
+            "check-a": case_check_a, "check-b": case_check_b, "check-c": case_check_c, "check-d": case_check_d}[name]()
 
 
 def main(argv):
