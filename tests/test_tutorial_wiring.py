@@ -84,6 +84,18 @@ class WindowStateWiring(unittest.TestCase):
         self.assertIn("return r == 1 ? RETURN_OK : RETURN_ERROR;", u)
         self.assertIn("UPTerm state [KEY]", u)
 
+    def test_the_copy_step_asks_for_right_amiga_c_while_copy_on_select_is_off(self):
+        # a drag only selects: copy_on_select is off by default and Right Amiga C copies. Lesson 12
+        # said "drag over a word and it is copied at once", the copies counter never moved and the
+        # step could not pass (rig 4, 2026-10-19)
+        w = (ROOT / "render/vtwin.c").read_text(encoding="latin-1")
+        self.assertIn("w->copy_on_select = 0;", w)
+        self.assertIn("else if (w->copy_on_select && !w->no_clipboard)", w)
+        lesson = (ROOT / "dist/tutorial-lessons/12-the-up-term-window.lesson").read_text()
+        step = lesson.split("copies0=")[1].split("\n? ", 1)[1].split("\n?", 1)[0]
+        self.assertIn("Right Amiga C", step.split("\n")[0])  # the task line
+        self.assertNotIn("copied at once", lesson)
+
     def test_upterm_reaches_its_window_from_a_command_substitution(self):
         # the lessons check `$(UPTerm state KEY)`: vsh runs it with Input() NIL: and Output() the
         # capture pipe (shell/vsh.c, the job streams), so neither reaches the window and a tab

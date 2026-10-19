@@ -30,13 +30,14 @@ $ slash0=$(${UPTERM_STATE:-UPTerm} state slash-count)
 = [ "$(${UPTERM_STATE:-UPTerm} state last-slash)" = help ]
 ~ Type a slash and the word help, then Return.
 ! echo "Type /help."; ${UPTERM_STATE:+$UPTERM_STATE act slash help}
-> Copy takes text with the mouse: drag over a word and it is copied at once.
+> Copy takes two moves: drag over text with the mouse to select it, then Right Amiga C
+> puts the selection on the clipboard.
 $ LEARN_WORD=up$$
 $ copies0=$(${UPTERM_STATE:-UPTerm} state copies)
-? Drag the mouse over this word to copy it, then press Return: @WORD@
+? Drag the mouse over this word, press Right Amiga C, then press Return: @WORD@
 = [ "$(${UPTERM_STATE:-UPTerm} state copies)" -gt "$copies0" ]
-~ Press the left mouse button at the start of the word, drag to its end, release.
-! echo "Drag over the word, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act copies}
+~ Press the left mouse button at the start of the word, drag to its end, release, then Right Amiga C.
+! echo "Drag over the word, Right Amiga C, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act copies}
 ? Type  echo  and a space, paste the word (Right Amiga V), and press Return.
 = grep -qx "$LEARN_WORD" "$LEARN_OUT"
 ~ Type echo and a space, press Right Amiga V, then Return. echo prints the word you copied.
