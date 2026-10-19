@@ -24,8 +24,8 @@ class TutorialWiring(unittest.TestCase):
         self.assertIn("#define MENU_HELP_ITEMS 4", H)  # the strip copies this many rows
 
     def test_menu_id_reaches_tab_spawn_with_the_tutorial_row(self):
-        self.assertRegex(H, r"case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:\n\s*tab_command")
-        self.assertRegex(H, r"case MENU_TUTORIAL:\n\s*if \(!tab_spawn\(c, from->profile, from, TAB_TUTORIAL\)\)")
+        self.assertRegex(H, r"case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:\n[^\n]*MENU_PANE_ZOOM:\n\s*tab_command")
+        self.assertRegex(H, r"case MENU_TUTORIAL:\n\s*if \(!tab_spawn\(c, from->profile, from, TAB_TUTORIAL, 0\)\)")
         self.assertIn("enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL };", H)
         rows = H.split("static const struct tab_prog tab_progs[] = {")[1].split("};")[0]
         self.assertEqual(len(re.findall(r"^\s*\{ ", rows, re.M)), 4)  # shell, demo, claude, tutorial: the enum's order
@@ -42,12 +42,12 @@ class WindowStateWiring(unittest.TestCase):
     only the rig can show."""
 
     def test_p1_each_action_has_its_bump_point(self):
-        self.assertIn("slash_state_bump(&c->st, STATE_TAB_OPENED, 0, 0);\n                tab_activate(c, c->ntabs - 1);", H)
+        self.assertIn("slash_state_bump(&c->st, STATE_TAB_OPENED, 0, 0);\n        tab_activate(c, s);", H)
         self.assertRegex(H, r"static void tab_switch\(con \*c, int i\)\n\{\n[^}]*slash_state_bump\(&c->st, STATE_SWITCH")
         for call in ("tab_switch(c, (c->active + 1) % c->ntabs)", "tab_switch(c, (c->active + c->ntabs - 1) % c->ntabs)",
                      "tab_switch(c, im->Code - 1)", "tab_switch(c, (int)((LONG)(im->MouseX"):
             self.assertIn(call, H)
-        self.assertRegex(H, r"stat_note\(c, STATE_MENU, \(LONG\)GTMENUITEM_USERDATA\(it\), 0\);\n\s*r = menu_run\(")
+        self.assertRegex(H, r"stat_note\(c, STATE_MENU, id, 0\);\n\s*r = menu_run\(")
         self.assertRegex(H, r"slash_run\(c, line, l, ans, 4096, 1\)\) \{\n\s*slash_typed_note\(c, line, l\);")
         self.assertIn('strcmp(name, "state")', H)  # /state does not count itself
         self.assertRegex(H, r"h_clipped\(void \*u, int what\)\n\{\n\s*stat_note\(\(con \*\)u, what == VTWIN_CLIP_COPY \? STATE_COPY : STATE_PASTE")
@@ -61,10 +61,11 @@ class WindowStateWiring(unittest.TestCase):
         self.assertGreater(paste.index("VTWIN_CLIP_PASTE"), paste.index("FreeVec(text)"))
 
     def test_p2_host_pushes_and_tab_keeps_a_copy(self):
-        self.assertIn("TM_KNOB, TM_STAT, TM_STATE };", H)
+        self.assertIn("TM_KNOB, TM_STAT, TM_STATE, TM_FONT };", H)
         push = H.split("static void stat_push(con *c)")[1].split("\n}\n")[0]
         self.assertIn("tab_msg(c, TM_STATE)", push)
-        self.assertIn("PutMsg(c->tab_list[i]->tab_port", push)  # no wait: a PutMsg, freed by tab_replies
+        self.assertIn("PutMsg(p->tab_port", push)  # no wait: a PutMsg, freed by tab_replies
+        self.assertIn("c->slots[i / LAY_MAX_PANES].pane[i % LAY_MAX_PANES]", push)  # every pane of every tab
         self.assertRegex(H, r"case TM_STATE:\n\s*c->st = t->st;")                  # the tab's read-only copy
         self.assertRegex(H, r"case TM_STAT:\n\s*stat_note\(c, t->what, t->stat_arg, t->stat_name\);")  # a tab's action reaches the host
         note = H.split("static void stat_note(con *c, int ev, long arg, const char *name)\n{")[1].split("\n}\n")[0]
@@ -73,7 +74,7 @@ class WindowStateWiring(unittest.TestCase):
         # every change of the tabs or the active one pushes
         act = H.split("static void tab_activate(con *c, int i)")[1].split("\n}\n")[0]
         self.assertIn("stat_push(c)", act)
-        self.assertRegex(H, r"tab_insets\(c\);\n\s*stat_push\(c\); /\* tabs and active changed \*/")
+        self.assertRegex(H, r"tab_layout\(c\);\n\s*stat_push\(c\); /\* tabs and active changed \*/")
 
     def test_p3_p4_state_is_answered_from_the_window_block(self):
         self.assertRegex(H, r"case SLASH_STATE:[^\n]*\n[^\n]*\n\s*if \(!c->is_tab\)\n\s*stat_fill\(c\);\n\s*return slash_state_text\(&c->st, cmd.arg, ans, cap\) < 0 \? 2 : 1;")
