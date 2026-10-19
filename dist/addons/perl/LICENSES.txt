@@ -1,0 +1,11 @@
+UP-Term-perl: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+Perl 5.42.3 (bin/perl)        Artistic 1.0 (Perl) or GPL v1 or later (licenses/perl) upterm-ports (pkgs/perl; perl-5.42.3.tar.gz)
+
+Notes
+- These files were part of UP-Term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/perl/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is UP-Term-src.lha, published next to
+  UP-Term.lha.

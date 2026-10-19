@@ -831,6 +831,11 @@ ADD-ONS
     Claude.lha         C:Claude and C:uptelnet (Claude,
                        Anthropic's AI model). Stands alone.
     amiga-pi.lha       C:amiga-pi (pi, the coding agent). Stands alone.
+  Git, Perl and Vim are packages for upkg, not archives: they were in this
+  archive before the slim base, and they install at the same places
+  (UP-Term:bin, UP-Term:share). Type  upkg install git  (or perl, vim) in an
+  UP-Term window; upkg remove takes them out. Uninstall of UP-Term takes
+  them out too, before it takes UP-Term out.
   The stand-alone ones install on a Workbench with no UP-Term and record
   themselves in ENVARC:upkg; in an UP-Term window they use its screen, keys
   and vsh. Uninstall of UP-Term takes UP-Term-nvim out first, by its own

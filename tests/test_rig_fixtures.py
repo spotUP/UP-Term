@@ -161,7 +161,7 @@ class InstallCases(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tools'))
         import pkgs, verdicts
         self.pkgs, self.verdicts = pkgs, verdicts
-        self.addons = [r['id'] for r in pkgs.rows() if r['id'] != 'base']
+        self.addons = [r['id'] for r in pkgs.lha_rows() if r['id'] != 'base']
         import tempfile
         self.tmp = pathlib.Path(tempfile.mkdtemp())
         self.env = {k: os.environ.get(k) for k in ('UPTERM_KITS', 'UPTERM_KIT')}
@@ -545,7 +545,7 @@ class InstallerCases(unittest.TestCase):
         os.environ['UPTERM_KITS'] = str(self.tmp)
 
     def test_there_is_an_installer_case_for_every_add_on_and_one_for_the_migration(self):
-        for r in self.pkgs.rows():
+        for r in self.pkgs.lha_rows():
             if r['id'] != 'base':
                 self.assertIn('addon-' + r['id'], self.ir2.CASES)
         self.assertIn('migrate', self.ir2.CASES)
@@ -691,7 +691,7 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tools'))
         import pkgs
         self.tmp = pathlib.Path(tempfile.mkdtemp())
-        self.rec = {r['id']: r['record'] for r in pkgs.rows() if r['id'] != 'base'}
+        self.rec = {r['id']: r['record'] for r in pkgs.lha_rows() if r['id'] != 'base'}
         self.installed = {'claude', 'pi', 'python'}
         self.log = []
         self.saved = {k: getattr(ir, k) for k in ('run', 'run_long', 'stage_addon', 'PREINSTALLED', 'VTC', 'case_table', 'kit_dir', 'show_close')}

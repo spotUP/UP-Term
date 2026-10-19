@@ -10,6 +10,8 @@
 """
 import gzip, hashlib, io, os, pathlib, re, sys, tarfile
 
+import slim
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TABLE = ROOT / 'dist/packages.txt'
 COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed', 'consumes')
@@ -33,6 +35,14 @@ def rows(path=TABLE):
     return parse(pathlib.Path(path).read_text(encoding='utf-8'))
 
 
+def lha_rows(path=TABLE):
+    """The rows published as an .lha next to UP-Term.lha. The packages of dist/slim.txt (git, perl, vim)
+    are upkg-only (owner 2026-10-19): the .ipk feed ships them, so no .lha, no index line, no Installer
+    checkbox and no Aminet readme."""
+    upkg_only = slim.ids()
+    return [r for r in rows(path) if r['id'] not in upkg_only]
+
+
 def get(pkg_id, column, path=TABLE):
     if column not in COLUMNS:
         raise SystemExit('pkgs: no column %r (have %s)' % (column, ' '.join(COLUMNS)))
@@ -47,7 +57,7 @@ def index(build, path=TABLE):
     id archive version needs-base record size sha256 of <build>/<archive>.lha.
     Released next to the archives; an archive missing from <build> is refused."""
     out = ['# upkg index 1: id archive version needs-base record size sha256']
-    for r in rows(path):
+    for r in lha_rows(path):
         lha = pathlib.Path(build) / (r['archive'] + '.lha')
         if not lha.is_file():
             raise SystemExit('pkgs index: %s missing: make dist' % lha)
@@ -73,6 +83,9 @@ SUMMARY = {
     'pi': 'amiga-pi, the pi coding agent',
     'nvim': 'Neovim 0.12 in UP-Term:nvim',
     'python': 'Python 3.14 in SYS:Python3',
+    'git': 'git 2.56.0 in UP-Term:bin and UP-Term:share/git-core',
+    'perl': 'Perl 5.42.3 in UP-Term:bin',
+    'vim': 'Vim 9.2.1202 in UP-Term:bin and UP-Term:share/vim',
 }
 EPOCH = 0
 
@@ -266,7 +279,7 @@ def main(argv):
     if argv[:1] == ['names'] and len(argv) == 1:
         print('\n'.join(r['id'] for r in rows()))
     elif argv[:1] == ['archives'] and len(argv) == 1:
-        print('\n'.join(r['archive'] for r in rows()))
+        print('\n'.join(r['archive'] for r in lha_rows()))
     elif argv[:1] == ['get'] and len(argv) == 3:
         print(get(argv[1], argv[2]))
     elif argv[:1] == ['index'] and len(argv) == 2:

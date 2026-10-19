@@ -108,6 +108,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_assemble.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_ipk.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_slim.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_upkg_ask.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = docs_setenv ]; then python3 -I tests/test_doc_setenv_save.py; fi
@@ -1002,6 +1003,9 @@ KIT_claude := $(BUILD)/dist/Claude
 KIT_pi := $(BUILD)/dist/amiga-pi
 KIT_nvim := $(BUILD)/dist/UP-Term-nvim
 KIT_python := $(BUILD)/dist/Python3
+KIT_git := $(BUILD)/dist/UP-Term-git
+KIT_perl := $(BUILD)/dist/UP-Term-perl
+KIT_vim := $(BUILD)/dist/UP-Term-vim
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
@@ -1023,7 +1027,7 @@ AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-src dist-index
+dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-src dist-index
 
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/UP-Term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
@@ -1051,6 +1055,8 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
+	@# the slim base (P9): git, perl and vim are packages (dist/slim.txt), staged by dist-git, dist-perl, dist-vim
+	python3 tools/slim.py remove $(KIT)/Files/userland
 	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
 	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
@@ -1092,7 +1098,7 @@ pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
 LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
-.PHONY: dist-claude dist-pi dist-nvim dist-python
+.PHONY: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
@@ -1123,15 +1129,29 @@ dist-python: $(BUILD)/amiga/upupdate
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
+# git, perl and vim (P9, dist/slim.txt): the ports' own files at the paths the base used to carry, taken from the
+# same PORTS_KIT as dist-base, which removes them
+define SLIM_STAGE
+	$(call ADDON_STAGE,$(1))
+	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-$(1): no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	python3 tools/slim.py stage $(1) $(PORTS_KIT) $(KIT_$(1))/Files/userland
+	python3 tools/mkkit.py $(1)
+endef
+dist-git: $(BUILD)/amiga/upupdate
+	$(call SLIM_STAGE,git)
+dist-perl: $(BUILD)/amiga/upupdate
+	$(call SLIM_STAGE,perl)
+dist-vim: $(BUILD)/amiga/upupdate
+	$(call SLIM_STAGE,vim)
 
 # build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
 # upkg's index (upkg plan D1): released next to the archives it names
-dist-index: dist-base dist-claude dist-pi dist-nvim dist-python
+dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
 # the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees
-dist-ipk: dist-claude dist-pi dist-nvim dist-python
+dist-ipk: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
 	python3 tools/pkgs.py ipk $(BUILD)
 	python3 tools/pkgs.py feed $(BUILD)
 dist-src:
@@ -1167,6 +1187,7 @@ dist-check:
 	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " amiga-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/amiga-pi.lst || { echo "dist-check: amiga-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
 	@python3 tools/pkgs.py index $(BUILD) | cmp -s - $(BUILD)/upkg-index.txt || { echo "dist-check: $(BUILD)/upkg-index.txt does not match the archives: make dist-index"; exit 1; }
 	IPK_REQUIRE=1 python3 tests/test_dist_ipk.py
+	SLIM_REQUIRE=1 python3 tests/test_dist_slim.py
 	@test -s $(BUILD)/UP-Term-src.lha || { echo "dist-check: $(BUILD)/UP-Term-src.lha missing: make dist"; exit 1; }
 	@lha l $(BUILD)/UP-Term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: UP-Term-src.lha lacks the coreutils source"; exit 1; }
 

@@ -33,8 +33,8 @@ class EveryAddOn(unittest.TestCase):
     def each(self):
         return [(r['id'], scripts(r['id'])) for r in ADDONS]
 
-    def test_there_are_four_add_ons(self):
-        self.assertEqual(sorted(r['id'] for r in ADDONS), ['claude', 'nvim', 'pi', 'python'])
+    def test_there_are_seven_add_ons(self):
+        self.assertEqual(sorted(r['id'] for r in ADDONS), ['claude', 'git', 'nvim', 'perl', 'pi', 'python', 'vim'])
 
     def test_a_stand_alone_archive_never_names_an_up_term_object_outside_comments(self):
         """K2-1, owner 2026-10-13: Claude, amiga-pi and Python3 install on a Workbench with no UP-Term. An
@@ -90,7 +90,7 @@ class EveryAddOn(unittest.TestCase):
                 elif kind == 'close':
                     stack.pop()
                 elif kind == 'str' and 'help' not in stack and 'abort' not in stack:
-                    long += [p for p in text.split('\\n') if len(p) > 56]
+                    long += [p for p in text.split('\\n') if len(p) > 56 and not p.startswith(' ONLY=')]   # ONLY= is upupdate's argument, not page text
             self.assertEqual(long, [])
 
     def test_only_installer_43_language(self):
@@ -111,7 +111,7 @@ class EveryAddOn(unittest.TestCase):
             for name, body in parts_of(s['dos']):
                 if name == 'check':
                     continue            # check.installer runs it, before any page
-                if name.startswith('copy-') and 'UP-Term:' in body:
+                if name.startswith('copy-') and re.search(r'(?m)^\s*Copy \S+ UP-Term:\S', body):
                     m = re.findall(r'(?m)^\s*Copy (\S+) UP-Term:(\S+) ALL CLONE QUIET$', body)
                     self.assertEqual(len(m), 1, name)
                     want.append(('copy', m[0][0], m[0][1]))
@@ -190,11 +190,13 @@ class EveryAddOn(unittest.TestCase):
             labs = {n for n, _ in parts_of(s['dos'])}
             self.assertEqual({p for p, _, _ in parts} - labs - {'-'}, set(), pid)
             for p, k, d in parts:
-                if p.startswith('copy-') and 'UP-Term:' in dict(parts_of(s['dos']))[p]:
+                if p.startswith('copy-') and re.search(r'(?m)^\s*Copy \S+ UP-Term:\S', dict(parts_of(s['dos']))[p]):
                     self.assertIsNotNone(d)        # a copy part of the Installer's copyfiles/Update names its drawer
             handed = {h for h in {r['id']: r for r in ADDONS}[pid]['handed'].split(',')}
             kit = {k for _, k, _ in parts}
-            self.assertEqual(handed - kit, set(), '%s: handed paths the archive does not list' % pid)
+            # a handed path is the archive's own, or lies under a drawer it lists (userland of git, perl, vim)
+            lone = {h for h in handed if not any(h == k or h.startswith(k + '/') for k in kit)}
+            self.assertEqual(lone, set(), '%s: handed paths the archive does not list' % pid)
 
     def test_uninstall_removes_the_record_last_and_runs_its_body_first(self):
         for pid, s in self.each():
