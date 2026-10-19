@@ -1,0 +1,21 @@
+# Split panes with tmux
+> tmux splits one window into panes, each with its own shell, and keeps them running
+> when you leave. It ships with UP-Term as UP-Term:tmux; if `which tmux` finds nothing, run
+> the UP-Term installer again to update. tmux is slow to start on a 68k Amiga: wait for the prompt.
+> This lesson works with a detached session called tutorial, so it never touches your own.
+? Make a detached session called tutorial and split it into two panes.
+= [ "$(tmux list-panes -t tutorial 2> /dev/null | grep -c .)" -eq 2 ]
+~ Type tmux new-session -d -s tutorial && tmux split-window -t tutorial
+! tmux new-session -d -s tutorial && tmux split-window -t tutorial
+> The same split from the keyboard, inside tmux: Ctrl-B then % (side by side) or Ctrl-B
+> then a double quote (stacked). Ctrl-B then d detaches and leaves everything running;
+> `tmux attach` brings it back. Try them after this lesson.
+? List the panes of the session with tmux list-panes -t tutorial.
+= case "$LEARN_LINE" in "tmux list-panes -t tutorial") true ;; *) false ;; esac
+= [ "$(grep -c . "$LEARN_OUT")" -eq 2 ]
+~ Type tmux list-panes -t tutorial; there is one line per pane.
+! tmux list-panes -t tutorial
+? End the practice session with tmux kill-session -t tutorial.
+= ! tmux has-session -t tutorial 2> /dev/null
+~ Type tmux kill-session -t tutorial.
+! tmux kill-session -t tutorial

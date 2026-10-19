@@ -92,6 +92,26 @@ class Tutorial(unittest.TestCase):
             self.assertIn('Right.', out)  # the next step (pwd) went on
         self.each_shell(case)
 
+    def test_the_tutorial_lists_the_window_and_tmux_lessons(self):
+        def case(shell):
+            rc, out = self.run_tutorial(shell, [])
+            self.assertIn('  [ ] 12  The UP-Term window', out)
+            self.assertIn('  [ ] 13  Split panes with tmux', out)
+            self.assertEqual(out.count('  [ ] '), 13, out)
+        self.each_shell(case)
+
+    def test_learn_word_shows_in_the_task_and_the_text(self):
+        # a setup line sets $LEARN_WORD; @WORD@ in the text and the task is that word (copy and paste step)
+        lesson = ('# WORD-LESSON-4417\n> Text with @WORD@ inside.\n$ LEARN_WORD=zq7wx\n'
+                  '? Copy @WORD@ and paste it.\n= [ "$LEARN_LINE" = "$LEARN_WORD" ]\n~ Paste it.\n! echo zq7wx\n')
+        d = self.lesson_dir(lesson)
+        def case(shell):
+            rc, out = self.run_tutorial(shell, ['1'], 'zq7wx\n', lessons=d)
+            self.assertIn('Text with zq7wx inside.', out)
+            self.assertIn('Task: Copy zq7wx and paste it.', out)
+            self.assertNotIn('@WORD@', out)
+        self.each_shell(case)
+
     def test_empty_line_runs_the_checks_for_an_action_in_the_window(self):
         # a slash command reaches read as an empty line; the step's check sees what it did
         window = ('# WINDOW-LESSON-5519\n? Do it in the window, then press Return.\n'

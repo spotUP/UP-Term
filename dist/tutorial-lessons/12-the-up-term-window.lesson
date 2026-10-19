@@ -1,0 +1,48 @@
+# The UP-Term window
+> Some things you do in the UP-Term window itself, not at the shell: tabs, menus, slash
+> commands, and the mouse. The window counts them, and this lesson reads the counts with
+> `UPTerm state`, so it can tell that you really did each one. For these steps you do the
+> action, then press Return at the tutorial prompt with nothing typed.
+$ tabs0=$(${UPTERM_STATE:-UPTerm} state tabs-opened)
+? Open a new tab with Right Amiga T, then press Return here (in this tab).
+= [ "$(${UPTERM_STATE:-UPTerm} state tabs-opened)" -gt "$tabs0" ]
+~ Hold Right Amiga and press T; the new tab opens. Come back to this tab and press Return.
+! echo "Press Right Amiga T, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act tabs-opened}
+> Tabs are shells side by side. The tab bar shows them; click one, or press Right Amiga
+> with its number (1 is the first tab), to switch.
+$ sw0=$(${UPTERM_STATE:-UPTerm} state tab-switches)
+? Switch to the other tab and back to this one, then press Return.
+= [ "$(${UPTERM_STATE:-UPTerm} state tab-switches)" -gt "$sw0" ]
+~ Click the other tab in the tab bar, or press Right Amiga 1 and Right Amiga 2, and end in this tab.
+! echo "Switch tabs, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act tab-switches}
+> The menus hold the same actions, and the Help menu explains the terminal.
+$ menu0=$(${UPTERM_STATE:-UPTerm} state menu-picks)
+? Open the Help menu and pick Slash commands, then press Return.
+= [ "$(${UPTERM_STATE:-UPTerm} state menu-picks)" -gt "$menu0" ]
+~ Hold the right mouse button on the title bar, move to Help, release on Slash commands.
+! echo "Pick Help, Slash commands, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act menu-picks}
+> A line that starts with a slash is a command for the window, not for the shell. The
+> window answers it and the shell sees an empty line, so just press Return after it.
+$ slash0=$(${UPTERM_STATE:-UPTerm} state slash-count)
+? Type /help and press Return.
+= [ "$(${UPTERM_STATE:-UPTerm} state slash-count)" -gt "$slash0" ]
+= [ "$(${UPTERM_STATE:-UPTerm} state last-slash)" = help ]
+~ Type a slash and the word help, then Return.
+! echo "Type /help."; ${UPTERM_STATE:+$UPTERM_STATE act slash help}
+> Copy takes text with the mouse: drag over a word and it is copied at once.
+$ LEARN_WORD=up$$
+$ copies0=$(${UPTERM_STATE:-UPTerm} state copies)
+? Drag the mouse over this word to copy it, then press Return: @WORD@
+= [ "$(${UPTERM_STATE:-UPTerm} state copies)" -gt "$copies0" ]
+~ Press the left mouse button at the start of the word, drag to its end, release.
+! echo "Drag over the word, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act copies}
+? Paste the word at the prompt (Right Amiga V) and press Return. The shell will not know it as a command; that is fine.
+= case "$LEARN_LINE" in "$LEARN_WORD"|'$LEARN_WORD') true ;; *) false ;; esac
+~ Press Right Amiga V, then Return. The line must be the word you copied.
+! $LEARN_WORD
+> Right Amiga with a menu item's letter picks the item without the menu. Clear screen is K.
+$ key0=$(${UPTERM_STATE:-UPTerm} state menu-picks)
+? Press Right Amiga K to clear the screen, then press Return.
+= [ "$(${UPTERM_STATE:-UPTerm} state menu-picks)" -gt "$key0" ]
+~ Hold Right Amiga and press K, then Return.
+! echo "Press Right Amiga K, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act menu-picks}

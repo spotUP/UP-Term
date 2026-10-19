@@ -10,6 +10,7 @@
 #   # Title of the lesson
 #   > Markdown text shown first (consecutive > lines join)
 #   $ a setup command, run silently in the practice drawer before the next task
+#     (if it sets $LEARN_WORD, @WORD@ in the text and task shows that word)
 #   ? the task the user sees
 #   = a check: a sh test run after the typed line; status 0 passes (every = must pass).
 #     It can read $LEARN_LINE (the typed line) and $LEARN_OUT (the file holding its output).
@@ -113,6 +114,11 @@ step() {
     steps=$((steps + 1))
     if [ -n "$setup" ]; then eval "$setup" > /dev/null 2>&1; fi
     if [ "$selftest" = 0 ]; then
+        # @WORD@ in the text is the word a setup line put in $LEARN_WORD (a word to copy)
+        if [ -n "${LEARN_WORD:-}" ]; then
+            md=$(printf '%s\n' "$md" | sed "s/@WORD@/$LEARN_WORD/g")
+            task=$(printf '%s\n' "$task" | sed "s/@WORD@/$LEARN_WORD/g")
+        fi
         [ -n "$md" ] && show_text "$md"
         echo
         echo "Task: $task"

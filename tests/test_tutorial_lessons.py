@@ -15,6 +15,27 @@ LESSONS = os.path.join(ROOT, 'dist', 'tutorial-lessons')
 VSH = os.path.join(ROOT, 'build', 'vsh_host')
 FILES = sorted(f for f in os.listdir(LESSONS) if f.endswith('.lesson'))
 STUBS = ('nano', 'man', 'upkg', 'Version')
+# UPTerm state on the host: the window's counters in one file per key (D8: the lessons call
+# ${UPTERM_STATE:-UPTerm} state KEY). "act KEY" is the user's action (the lessons' answers
+# call it when UPTERM_STATE is set); "act slash NAME" is a typed slash command. UPTERM_FAKE_FROZEN
+# makes every action do nothing, as a user who only pressed Return.
+FAKE_STATE = '''#!/bin/sh
+d=${UPTERM_FAKE_DIR:?}
+get() { if [ -f "$d/$1" ]; then cat "$d/$1"; else echo 0; fi; }
+case $1 in
+state) get "$2" ;;
+act)
+    [ -n "${UPTERM_FAKE_FROZEN:-}" ] && exit 0
+    if [ "$2" = slash ]; then
+        echo $(( $(get slash-count) + 1 )) > "$d/slash-count"
+        echo "$3" > "$d/last-slash"
+    else
+        echo $(( $(get "$2") + 1 )) > "$d/$2"
+    fi ;;
+esac
+'''
+HAVE_TMUX = shutil.which('tmux') is not None
+NEEDS_TMUX = ('13-',)
 
 
 class Lessons(unittest.TestCase):
@@ -25,6 +46,10 @@ class Lessons(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix='tutlessons')
         cls.bin = os.path.join(cls.tmp, 'bin')
         os.mkdir(cls.bin)
+        cls.fake = os.path.join(cls.tmp, 'fake-upterm-state')
+        with open(cls.fake, 'w') as fh:
+            fh.write(FAKE_STATE)
+        os.chmod(cls.fake, 0o755)
         for name in STUBS:
             p = os.path.join(cls.bin, name)
             with open(p, 'w') as fh:
@@ -34,6 +59,23 @@ class Lessons(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp)
+
+    def selftest(self, shell, f, frozen=False):
+        """dist/tutorial --selftest on a shipped lesson: the fake window state, a private tmux socket"""
+        d = tempfile.mkdtemp(dir=self.tmp)
+        sock = tempfile.mkdtemp(prefix='tm')  # short: a tmux socket path is limited to ~100 characters
+        self.addCleanup(shutil.rmtree, sock, True)
+        env = {'PATH': self.bin + ':/usr/bin:/bin:/opt/homebrew/bin', 'HOME': self.tmp,
+               'TUTORIAL_SANDBOX': os.path.join(self.tmp, 'sandbox'),
+               'UPTERM_STATE': self.fake, 'UPTERM_FAKE_DIR': d, 'TMUX_TMPDIR': sock}
+        if frozen:
+            env['UPTERM_FAKE_FROZEN'] = '1'
+        r = subprocess.run(shell + [TUTORIAL, '--selftest', os.path.join(LESSONS, f)],
+                           stdin=subprocess.DEVNULL, capture_output=True, env=env,
+                           cwd=self.tmp, timeout=120)
+        if HAVE_TMUX:
+            subprocess.run(['tmux', 'kill-server'], env=env, capture_output=True)
+        return r.stdout.decode() + r.stderr.decode()
 
     def lines(self, f):
         with open(os.path.join(LESSONS, f), encoding='utf-8') as fh:
@@ -69,15 +111,27 @@ class Lessons(unittest.TestCase):
         for shell in self.shells:
             for f in FILES:
                 with self.subTest(shell=shell[0], lesson=f):
-                    env = {'PATH': self.bin + ':/usr/bin:/bin', 'HOME': self.tmp,
-                           'TUTORIAL_SANDBOX': os.path.join(self.tmp, 'sandbox')}
-                    r = subprocess.run(shell + [TUTORIAL, '--selftest', os.path.join(LESSONS, f)],
-                                       stdin=subprocess.DEVNULL, capture_output=True, env=env,
-                                       cwd=self.tmp, timeout=60)
-                    out = r.stdout.decode() + r.stderr.decode()
+                    if f.startswith(NEEDS_TMUX) and not HAVE_TMUX:
+                        self.skipTest('%s drives tmux and this host has none' % f)
+                    out = self.selftest(shell, f)
                     steps = sum(1 for l in self.lines(f) if l.startswith('?'))
                     self.assertEqual(re.findall(r'^(ok \d+|FAIL \d+)$', out, re.M),
                                      ['ok %d' % i for i in range(1, steps + 1)], out)
+
+    def test_the_window_lesson_needs_the_actions_not_just_a_return(self):
+        """lesson 12 with the actions not done (counters unchanged): every counter step fails;
+        the paste step still passes on the word alone"""
+        f = '12-the-up-term-window.lesson'
+        for shell in self.shells:
+            with self.subTest(shell=shell[0]):
+                out = self.selftest(shell, f, frozen=True)
+                self.assertEqual(re.findall(r'^(ok \d+|FAIL \d+)$', out, re.M),
+                                 ['FAIL 1', 'FAIL 2', 'FAIL 3', 'FAIL 4', 'FAIL 5', 'ok 6', 'FAIL 7'], out)
+
+    def test_the_shipped_lessons_are_thirteen(self):
+        self.assertEqual(len(FILES), 13)
+        self.assertIn('12-the-up-term-window.lesson', FILES)
+        self.assertIn('13-split-panes-tmux.lesson', FILES)
 
     def test_a_check_that_passes_before_the_answer_fails(self):
         lesson = os.path.join(self.tmp, '99-vacuous.lesson')
