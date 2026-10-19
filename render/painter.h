@@ -14,6 +14,15 @@
 #define VT_PAINTER_H
 
 typedef unsigned char vp_u8;
+typedef unsigned int vp_u32; /* 32 bits on the host and with vbcc */
+
+/* The long-writing painter (render/painter.c, CTerm's design): same result
+ * as vp_span, whole longs per plane. 0 and nothing drawn when bpr or a
+ * plane is not long aligned (vp_span_fast then uses the byte routines).
+ * vp_long_spans counts the spans it drew (the sentinel tests read). */
+int vp_span_long(vp_u8 **planes, int depth, long bpr, long x, long y, const vp_u8 *glyphs, int h,
+                 const vp_u8 *chars, int n, int fg, int bg, int mask);
+extern unsigned long vp_long_spans;
 
 void vp_span(vp_u8 **planes, int depth, long bpr, long x, long y, const vp_u8 *glyphs, int h,
              const vp_u8 *chars, int n, int fg, int bg, int mask);
