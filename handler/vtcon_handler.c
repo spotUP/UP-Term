@@ -65,6 +65,7 @@
 #include "histfile.h"
 #include "complete_core.h"
 #include "menu_ids.h"
+#include "menu_def.h"
 #include "slash.h"
 #include "tabprog.h"
 #include "tabslot.h"
@@ -1496,41 +1497,11 @@ static void close_gadget(con *c);
 
 /* Right Amiga C, V and F stay what they were: Intuition now hands them in
  * as MENUPICK, which picks the same actions. */
+#define MD_ROW(type, label, key, id) { type, (STRPTR)(label), (STRPTR)(key), 0, 0, (APTR)(id) },
 static const struct NewMenu menu_def[] = {
-    { NM_TITLE, (STRPTR)"UP-Term", 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"New tab", (STRPTR)"T", 0, 0, (APTR)MENU_TAB_NEW },
-    { NM_ITEM, (STRPTR)"Next tab", (STRPTR)".", 0, 0, (APTR)MENU_TAB_NEXT },
-    { NM_ITEM, (STRPTR)"Previous tab", (STRPTR)",", 0, 0, (APTR)MENU_TAB_PREV },
-    { NM_ITEM, (STRPTR)"Close tab", 0, 0, 0, (APTR)MENU_TAB_CLOSE },
-    { NM_ITEM, (STRPTR)"Split right", (STRPTR)"D", 0, 0, (APTR)MENU_SPLIT_RIGHT },
-    { NM_ITEM, (STRPTR)"Split down", 0, 0, 0, (APTR)MENU_SPLIT_DOWN },
-    { NM_ITEM, (STRPTR)"Close pane", 0, 0, 0, (APTR)MENU_PANE_CLOSE },
-    { NM_ITEM, (STRPTR)"Zoom pane", 0, 0, 0, (APTR)MENU_PANE_ZOOM },
-    { NM_ITEM, (STRPTR)"Claude", (STRPTR)"L", 0, 0, (APTR)MENU_CLAUDE },
-    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
-    { NM_ITEM, (STRPTR)"About UP-Term...", 0, 0, 0, (APTR)MENU_ABOUT },
-    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Close window", 0, 0, 0, (APTR)MENU_CLOSE },
-    { NM_TITLE, (STRPTR)"Edit", 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Copy", (STRPTR)"C", 0, 0, (APTR)MENU_COPY },
-    { NM_ITEM, (STRPTR)"Paste", (STRPTR)"V", 0, 0, (APTR)MENU_PASTE },
-    { NM_ITEM, (STRPTR)"Select all", (STRPTR)"A", 0, 0, (APTR)MENU_SELECT_ALL },
-    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Find...", (STRPTR)"F", 0, 0, (APTR)MENU_FIND },
-    { NM_ITEM, (STRPTR)"Find next", (STRPTR)"G", 0, 0, (APTR)MENU_FIND_NEXT },
-    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Clear screen", (STRPTR)"K", 0, 0, (APTR)MENU_CLEAR_SCREEN },
-    { NM_ITEM, (STRPTR)"Clear scrollback", 0, 0, 0, (APTR)MENU_CLEAR_SB },
-    { NM_ITEM, (STRPTR)"Reset terminal", 0, 0, 0, (APTR)MENU_RESET },
-    { NM_TITLE, (STRPTR)"View", 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Bigger font", (STRPTR)"+", 0, 0, (APTR)MENU_FONT_BIGGER },
-    { NM_ITEM, (STRPTR)"Smaller font", (STRPTR)"-", 0, 0, (APTR)MENU_FONT_SMALLER },
-    { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"80 x 24", 0, 0, 0, (APTR)MENU_SIZE_80X24 },
-    { NM_ITEM, (STRPTR)"132 x 43", 0, 0, 0, (APTR)MENU_SIZE_132X43 },
-    { NM_END, 0, 0, 0, 0, 0 }
+    MENU_DEF_ROWS
 };
+#undef MD_ROW
 
 /* With completion = kingcon, KingCON's Complete menu follows (its items
  * are the keys', and the window's switches; a switch here is this window's
