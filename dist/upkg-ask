@@ -1,0 +1,102 @@
+# upkg-ask QUESTIONS ANSWERS -- ask an add-on's install questions (upkg plan P10.6).
+#
+# QUESTIONS has one question per line, fields split by "|":
+#   key|type|prompt|default|choices
+# type is string (a line of text), yesno (default "yes" or "no") or choice (one of
+# the comma-separated choices). A default of "<PATH" is the last line of PATH that
+# is not empty and not a ";" comment, else empty (the answer an earlier install kept). Empty lines and
+# lines starting with "#" are skipped.
+#
+# ANSWERS is written as shell assignments, KEY='value', for postinst to source.
+#
+# dialog asks when it is on the PATH and stdin is a terminal; with no dialog the
+# questions are plain prompts read from stdin; with no terminal every question
+# takes its default. UPKG_ASK_PLAIN=1 forces the plain prompts.
+
+if [ $# -ne 2 ]; then
+    echo "usage: upkg-ask QUESTIONS ANSWERS" >&2
+    exit 2
+fi
+questions=$1
+answers=$2
+if [ ! -r "$questions" ]; then
+    echo "upkg-ask: cannot read $questions" >&2
+    exit 2
+fi
+
+mode=plain
+if [ ! -t 0 ]; then
+    mode=defaults
+elif [ -z "$UPKG_ASK_PLAIN" ] && command -v dialog >/dev/null 2>&1; then
+    mode=dialog
+fi
+tmp="$answers.tmp"
+
+# the value of a default field: a literal, or "<PATH" for PATH's last line that is
+# not empty and not a ";" comment (ENVARC:Claude/remote starts with two comments)
+default_of() {
+    case $1 in
+    "<"*)
+        last=
+        if [ -r "${1#<}" ]; then
+            while IFS= read -r line; do
+                case $line in "" | ";"*) ;; *) last=$line ;; esac
+            done < "${1#<}"
+        fi
+        printf '%s' "$last" ;;
+    *) printf '%s' "$1" ;;
+    esac
+}
+
+# KEY='value' with each ' written as '\''
+quote() {
+    printf "%s='" "$1"
+    printf '%s' "$2" | sed "s/'/'\\\\''/g"
+    printf "'\n"
+}
+
+: > "$answers" || exit 1
+# the loop reads QUESTIONS on fd 0, so the keyboard is kept on fd 3
+exec 3<&0
+while IFS='|' read -r key type prompt def choices; do
+    case $key in "" | "#"*) continue ;; esac
+    def=$(default_of "$def")
+    ans=$def
+    case $mode.$type in
+    dialog.string)
+        if dialog --inputbox "$prompt" 0 0 "$def" 2> "$tmp" <&3; then
+            ans=$(cat "$tmp")
+        fi ;;
+    dialog.yesno)
+        if [ "$def" = no ]; then
+            set -- --defaultno
+        else
+            set --
+        fi
+        dialog "$@" --yesno "$prompt" 0 0 <&3
+        case $? in 0) ans=yes ;; 1) ans=no ;; esac ;;
+    dialog.choice)
+        set --
+        oldifs=$IFS
+        IFS=,
+        for c in $choices; do set -- "$@" "$c" ""; done
+        IFS=$oldifs
+        if dialog --no-items --default-item "$def" --menu "$prompt" 0 0 0 "$@" 2> "$tmp" <&3; then
+            ans=$(cat "$tmp")
+        fi ;;
+    plain.string)
+        printf '%s [%s]: ' "$prompt" "$def"
+        IFS= read -r line <&3 && [ -n "$line" ] && ans=$line ;;
+    plain.yesno)
+        printf '%s (yes/no) [%s]: ' "$prompt" "$def"
+        IFS= read -r line <&3
+        case $line in [yY]*) ans=yes ;; [nN]*) ans=no ;; esac ;;
+    plain.choice)
+        printf '%s (%s) [%s]: ' "$prompt" "$choices" "$def"
+        IFS= read -r line <&3
+        case ,$choices, in *,"$line",*) [ -n "$line" ] && ans=$line ;; esac ;;
+    esac
+    quote "$key" "$ans" >> "$answers"
+done < "$questions"
+rm -f "$tmp"
+exit 0

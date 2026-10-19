@@ -83,14 +83,25 @@ def addons(path=TABLE):
     return [r for r in rows(path) if r['record'] != 'UP-Term:']
 
 
-def _scripts(r):
+def _scripts(r, keys=()):
     """(preinst, postinst, prerm) vsh text; preinst is None for an add-on with no needs-base. The package's own install logic is the only one (owner 2026-10-18):
     postinst Executes the archive's Files/install.dos, which `make dist` wrote and the Installer also
-    runs; prerm Executes the Uninstall copy that install.dos left in the record drawer."""
+    runs; prerm Executes the Uninstall copy that install.dos left in the record drawer. keys: the
+    archive's install questions (Files/questions, P10.6); postinst asks them with UP-Term:bin/upkg-ask
+    and hands each answer to install.dos as its keyword (KEY "value"), where the Installer's askstring
+    answer goes too. A base without upkg-ask passes none, so install.dos keeps its own defaults."""
     st = '%s/%s' % (STAGE_DOS, r['archive'])
     rec = r['record'].rstrip('/')
-    post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
-            'Execute %s/Files/install.dos %s/Files\nrc=$?\nrm -rf %s\nexit $rc\n' % (st, st, st))
+    if keys:
+        post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: asks the archive\'s install questions, runs its own install script\n'
+                '# with the answers, then drops the staged tree\n'
+                'set --\nif [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers; then\n'
+                '    . %s/answers\n    set -- %s\nfi\n'
+                'Execute %s/Files/install.dos %s/Files "$@"\nrc=$?\nrm -rf %s\nexit $rc\n'
+                % (st, st, st, ' '.join('%s "$%s"' % (k, k) for k in keys), st, st, st))
+    else:
+        post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
+                'Execute %s/Files/install.dos %s/Files\nrc=$?\nrm -rf %s\nexit $rc\n' % (st, st, st))
     sep = '' if rec.endswith(':') else '/'
     pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: the Uninstall copy the install left in its record\n'
            'Execute %s%sUninstall\n' % (rec, sep))
@@ -173,13 +184,32 @@ def ipk_name(r):
     return '%s_%s_%s.ipk' % (r['archive'], r['version'], ARCH)
 
 
+def question_keys(kit):
+    """The keys of <kit>/Files/questions (dist/upkg-ask's key|type|prompt|default|choices lines), in
+    order; each must be a keyword of Files/install.dos's .KEY line, which postinst passes it as."""
+    q = pathlib.Path(kit) / 'Files/questions'
+    if not q.is_file():
+        return []
+    head = (pathlib.Path(kit) / 'Files/install.dos').read_text(encoding='latin-1').split('\n', 1)[0]
+    words = {w.split('/')[0].upper() for w in head[len('.KEY'):].strip().split(',')} if head.upper().startswith('.KEY') else set()
+    keys = []
+    for line in q.read_text(encoding='latin-1').splitlines():
+        if not line or line.startswith('#'):
+            continue
+        k = line.split('|', 1)[0]
+        if not re.fullmatch(r'[A-Z][A-Z0-9_]*', k) or k not in words:
+            raise SystemExit('pkgs ipk: %s: question %s is not a keyword of install.dos .KEY %s' % (q, k, sorted(words)))
+        keys.append(k)
+    return keys
+
+
 def build_ipk(r, build):
     """The .ipk bytes of one row from the staged tree <build>/dist/<archive>."""
     kit = pathlib.Path(build) / 'dist' / r['archive']
     if not (kit / 'Files/install.dos').is_file():
         raise SystemExit('pkgs ipk: %s is not staged: make dist' % kit)
     data_ents, size = _data_entries(kit, r['archive'])
-    need, post, pre = _scripts(r)
+    need, post, pre = _scripts(r, question_keys(kit))
     lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + ARCH,
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
              'Description: ' + SUMMARY.get(r['id'], r['archive'])]

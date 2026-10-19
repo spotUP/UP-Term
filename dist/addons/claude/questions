@@ -1,0 +1,4 @@
+# Claude's install questions for upkg (dist/upkg-ask key|type|prompt|default|choices;
+# tools/pkgs.py passes each answer to install.dos as its keyword). The same question
+# as Install.installer's askstring; the default is the address the last install kept.
+REMOTE|string|Claude Code on your server (the NAS): address and port, like nas.local 2323. Empty: none.|<ENVARC:Claude/remote|

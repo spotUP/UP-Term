@@ -7,6 +7,7 @@
 -               LICENSES.txt
 -               Files/install.dos
 -               Files/upupdate
+-               Files/questions
 record          Files/VERSIONS
 claude          Files/Claude
 claude          Files/uptelnet

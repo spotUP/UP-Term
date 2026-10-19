@@ -108,6 +108,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_assemble.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_ipk.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_upkg_ask.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = docs_setenv ]; then python3 -I tests/test_doc_setenv_save.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
@@ -1047,6 +1048,8 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
+	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' dialog
+	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
 	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
 	cp man/sz.1 $(KIT)/Files/userland/share/man/man1/rz.1
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
@@ -1092,6 +1095,7 @@ dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupda
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
 	@test -f $(BUILD)/wasabi/wasabid || { echo "dist-claude: no $(BUILD)/wasabi/wasabid: make wasabi first"; exit 1; }
 	cp $(BUILD)/wasabi/wasabid $(KIT_claude)/Files/wasabid
+	cp dist/addons/claude/questions $(KIT_claude)/Files/questions
 	cp dist/wasabi/LICENSE $(KIT_claude)/Files/wasabid.LICENSE
 	$(call LAUNCHER,$(KIT_claude),dist/addons/claude/launch/Claude,Claude,800/560)
 	python3 tools/mkkit.py claude

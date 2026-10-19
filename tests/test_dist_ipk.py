@@ -102,6 +102,33 @@ class IpkTest(unittest.TestCase):
         no_need = tarfile.open(fileobj=io.BytesIO(dict(split_ar((self.out / 'Claude_1.1_m68k-amigaos.ipk').read_bytes()))['control.tar.gz']))
         self.assertNotIn('./preinst', no_need.getnames())
 
+    def ctl_of(self, ipk):
+        m = dict(split_ar((self.out / ipk).read_bytes()))
+        return tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])), tarfile.open(fileobj=io.BytesIO(m['data.tar.gz']))
+
+    def test_questions_are_asked_and_passed_to_install_dos(self):
+        """P10.6: Files/questions makes postinst run upkg-ask and pass each answer as install.dos's keyword"""
+        kit = self.build / 'dist/Claude/Files'
+        (kit / 'install.dos').write_bytes(b'.KEY DIR/A,STEP/K,REMOTE/K\n; install\n')
+        (kit / 'questions').write_bytes(b'# asked by upkg-ask\nREMOTE|string|Host and port|<ENVARC:Claude/remote|\n')
+        pkgs.ipk(self.build, self.table)
+        ctl, data = self.ctl_of('Claude_1.1_m68k-amigaos.ipk')
+        post = ctl.extractfile('./postinst').read().decode()
+        st = 'T:upkg-stage/Claude'
+        self.assertIn('if [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers; then\n'
+                      '    . %s/answers\n    set -- REMOTE "$REMOTE"\nfi\n' % (st, st, st), post)
+        self.assertIn('Execute %s/Files/install.dos %s/Files "$@"\n' % (st, st), post)
+        self.assertIn('./T/upkg-stage/Claude/Files/questions', data.getnames())
+        # an add-on with no questions keeps the plain Execute line
+        post = self.ctl_of('UP-Term-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./postinst').read().decode()
+        self.assertNotIn('upkg-ask', post)
+
+    def test_a_question_that_is_no_install_dos_keyword_is_refused(self):
+        (self.build / 'dist/Claude/Files/questions').write_bytes(b'HOST|string|Host|x|\n')
+        with self.assertRaises(SystemExit) as e:
+            pkgs.ipk(self.build, self.table)
+        self.assertIn('HOST is not a keyword', str(e.exception))
+
     def test_the_base_is_not_a_package(self):
         self.assertFalse(list(self.out.glob('UP-Term_*')))
         self.assertEqual([s['Package'] for s in stanzas(gzip.decompress((self.out / 'Packages.gz').read_bytes()).decode())],
