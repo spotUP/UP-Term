@@ -210,7 +210,7 @@ run_lesson() {
             if [ -n "$task" ]; then step; md=; setup=; task=; chk=; hint=; ans=; fi
             setup="$setup
 ${rec#??}" ;;
-        [?]*) # [?]: vsh takes a quoted "?" in a case pattern as a wildcard
+        '?'*)
             if [ -n "$task" ]; then step; md=; setup=; task=; chk=; hint=; ans=; fi
             task=${rec#??} ;;
         "="*) chk="$chk
