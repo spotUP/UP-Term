@@ -10,7 +10,7 @@ function's code footprint are what the speed work is steered by.
   tools/prof68k.py run-paint SHAPE PLANES [ROWS]  count it (ROWS default 2000) (SHAPE 0 sgr-colour, 1 sgr-perchar, 2 pen1on0; PLANES 1-4).
                                          Row composition (render/amiga_render.c painter_run) needs graphics.library
                                          (LockLayer, planes_ok), so the painter gets the runs of each shape directly.
-  tools/prof68k.py run ONLY w PERS p     count one engbench workload (w 0-6, p 0 xterm / 1 amiga)
+  tools/prof68k.py run ONLY w PERS p     count one engbench workload (w 0-7, p 0 xterm / 1 amiga)
         [--bytes N]                      divide by N input bytes as well (instructions a byte)
 
 The program runs once under `vamos -C 68020 -I` (an instruction trace);

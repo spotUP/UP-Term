@@ -2,7 +2,7 @@
  * the parser and the cell model (ledger S1). Each workload goes through
  * vt_feed + vt_flush into an 80 x 32 terminal with callbacks that draw
  * nothing; the time is in 1/50 s, the rate in bytes a second.
- *   engbench [REPS n]      (default 3: the best of them) */
+ *   engbench [REPS n]      (default 3: the best of them); workloads 0-7 */
 #include <stdlib.h>
 #include <string.h>
 #include <dos/dos.h>
@@ -51,6 +51,23 @@ static void build(int w)
         break;
     case 5: /* insert and delete lines */
         for (i = 0; i < 300; i++) s("\033[5;1H\033[L\033[M");
+        break;
+    case 7: /* an ncurses 6.6 frame as Scinterm paints one (ide-spike, 2026-10-19):
+             * 24 rows of cup, then five style runs each of sgr0 (ESC ( B ESC [ m),
+             * setaf + setab (the 8-colour form and the 38;5 form in turn) and
+             * eleven characters; about 4.2 KB a frame, ten frames */
+        for (i = 0; i < 10; i++)
+            for (y = 1; y <= 24; y++) {
+                int r;
+                s("\033["); num(y); s(";1H");
+                for (r = 0; r < 5; r++) {
+                    s("\033(B\033[m");
+                    if (r & 1) { s("\033[3"); num(1 + (r + y + i) % 7); s("m\033[4"); num((r + y) % 7); s("m"); }
+                    else { s("\033[38;5;"); num(17 + (r * 13 + y + i) % 200); s("m\033[48;5;"); num(232 + (y + r) % 24); s("m"); }
+                    for (x = 0; x < 11; x++) buf[n++] = (char)('a' + (x + y + r + i) % 26);
+                }
+                s("\033[K");
+            }
         break;
     default: /* LINES lines of ls -l --color: a coloured name after plain text (W23: what
               * a styled line costs the scrollback) */
@@ -435,9 +452,9 @@ static int render_check(void)
 
 int main(int argc, char **argv)
 {
-    static const char *const name[] = { "plain lines", "newlines", "colour a char", "256 pair a cell", "frame repaint", "ins/del line", "ls -l colour" };
+    static const char *const name[] = { "plain lines", "newlines", "colour a char", "256 pair a cell", "frame repaint", "ins/del line", "ls -l colour", "ncurses frame" };
     static vt_callbacks cb;
-    /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-6) and
+    /* engbench [REPS n] [ONLY w] [PERS 0|1]: ONLY one workload (0-7) and
      * PERS one dialect (0 xterm, 1 amiga) -- for tools/prof68k.py, which
      * counts the instructions of one workload under vamos. LINES n and SB n
      * (W23): workload 0's and 6's line count and the scrollback's size (500), so
@@ -456,11 +473,11 @@ int main(int argc, char **argv)
     }
     cb.damage = damage;
     cb.scroll = scroll;
-    /* the checks run unless one workload is asked for (ONLY 0-6: a profile
+    /* the checks run unless one workload is asked for (ONLY 0-7: a profile
      * counts the workload, not the checks; ONLY 9 runs the checks alone).
      * The engine's assembler must be right or nothing is timed; the
      * renderer's is reported apart (its own work, its own fault). */
-    if (only < 0 || only > 6) {
+    if (only < 0 || only > 7) {
         w = asm_check();
         if (!w)
             w = sb_check();
@@ -480,7 +497,7 @@ int main(int argc, char **argv)
         if (onlypers >= 0 && pers != onlypers)
             continue;
         Printf((STRPTR)"%s\n", (LONG)(pers ? "amiga dialect" : "xterm dialect"));
-        for (w = 0; w < 7; w++) {
+        for (w = 0; w < 8; w++) {
             long best = 0x7FFFFFFF, i;
             if (only >= 0 && w != only)
                 continue;

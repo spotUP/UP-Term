@@ -51,6 +51,32 @@ static void shape(BPTR o, int id)
             Write(o, (APTR)"\n", 1);
         }
         break;
+    case 8: { /* ncurses-frame: a Scinterm page as ncurses 6.6 writes it after the
+               * one-write-per-frame patch (ide-spike 2026-10-19): 24 rows of cup, five
+               * style runs each of sgr0, setaf + setab, eleven characters, then EL;
+               * about 4.2 KB, one write a frame, twenty frames */
+        static char frame[8192];
+        int f, y, r, x;
+        for (f = 0; f < 20; f++) {
+            int n = 0;
+#define S(str) do { const char *q_ = (str); while (*q_) frame[n++] = *q_++; } while (0)
+#define NUM(v) do { int v_ = (v); if (v_ >= 100) frame[n++] = (char)('0' + v_ / 100); if (v_ >= 10) frame[n++] = (char)('0' + v_ / 10 % 10); frame[n++] = (char)('0' + v_ % 10); } while (0)
+            for (y = 1; y <= 24; y++) {
+                S("\033["); NUM(y); S(";1H");
+                for (r = 0; r < 5; r++) {
+                    S("\033(B\033[m");
+                    if (r & 1) { S("\033[3"); NUM(1 + (r + y + f) % 7); S("m\033[4"); NUM((r + y) % 7); S("m"); }
+                    else { S("\033[38;5;"); NUM(17 + (r * 13 + y + f) % 200); S("m\033[48;5;"); NUM(232 + (y + r) % 24); S("m"); }
+                    for (x = 0; x < 11; x++) frame[n++] = (char)('a' + (x + y + r + f) % 26);
+                }
+                S("\033[K");
+            }
+#undef S
+#undef NUM
+            Write(o, frame, n);
+        }
+        break;
+    }
     default: /* sgr-perchar: a colour before every character, 40 a line, a write a line */
         for (i = 0; i < 60; i++) {
             int n = 0;
@@ -67,13 +93,13 @@ static void shape(BPTR o, int id)
 
 int main(int argc, char **argv)
 {
-    static const char *const name[] = { "plain-lines", "scroll-nl", "clear-page", "sync-line", "wrap-long", "bytewise", "sgr-colour", "sgr-perchar" };
+    static const char *const name[] = { "plain-lines", "scroll-nl", "clear-page", "sync-line", "wrap-long", "bytewise", "sgr-colour", "sgr-perchar", "ncurses-frame" };
     int id, i, only = argc > 2 && !strcmp(argv[1], "ONLY") ? atoi(argv[2]) : -1;
     for (i = 0; i < 4096; i++)
         blk[i] = (char)((i % 79) == 78 ? '\n' : 'a' + (i % 79) % 26);
     for (i = 0; i < 300; i++)
         longl[i] = (char)('A' + i % 26);
-    for (id = 0; id < 8; id++) {
+    for (id = 0; id < 9; id++) {
         BPTR o;
         long t0;
         if (only >= 0 && id != only)
