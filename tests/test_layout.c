@@ -288,6 +288,46 @@ static void a_bad_saved_tree_is_refused_and_leaves_the_layout(void)
     CHECK_INT(lay_load(&L, "r1(r1(p,p),r65535(p,p))"), 4); /* four is the most */
 }
 
+/* The shape of a saved tree: letters and brackets, the ratios dropped. */
+static void shape_of(const char *s, char *out)
+{
+    for (; *s; s++)
+        if (*s < '0' || *s > '9')
+            *out++ = *s;
+    *out = 0;
+}
+
+static void a_saved_tree_replays_as_splits_to_the_same_shape(void)
+{
+    static const char *const trees[] = {
+        "p", "r32768(p,p)", "d20000(p,p)", "r41024(d32768(p,p),p)",
+        "r30000(p,d40000(p,p))", "d32768(r32768(p,p),r32768(p,p))",
+        "r10000(r20000(p,p),r30000(p,p))", 0
+    };
+    static const char *const bad[] = { "", "x", "r0(p,p)", "r1(r1(p,p),r1(p,r1(p,p)))", 0 };
+    int from[LAY_MAX_PANES], dir[LAY_MAX_PANES], leaf[LAY_MAX_PANES];
+    int order[LAY_MAX_PANES], t, j, n;
+    char saved[64], a[64], b[64];
+    static lay M;
+    for (t = 0; trees[t]; t++) {
+        n = lay_steps(trees[t], from, dir, leaf);
+        CHECK(n >= 1);
+        lay_init(&M, 8, 8, LAY_DIV_PIXEL, 10, 3, 0, 0, 800, 600);
+        for (j = 0; j < n - 1; j++)
+            CHECK_INT(lay_split(&M, from[j], dir[j]), j + 1);
+        CHECK_INT(lay_pane_count(&M), n);
+        CHECK(lay_save(&M, saved, sizeof(saved), order) > 0);
+        shape_of(trees[t], a);
+        shape_of(saved, b);
+        CHECK_STR(b, a);
+        for (j = 0; j < n; j++)
+            CHECK_INT(leaf[order[j]], j);
+    }
+    for (t = 0; bad[t]; t++)
+        CHECK_INT(lay_steps(bad[t], from, dir, leaf), -1);
+    CHECK_INT(lay_steps(0, from, dir, leaf), -1);
+}
+
 void suite_layout(void)
 {
     a_lone_pane_fills_the_window();
@@ -307,4 +347,5 @@ void suite_layout(void)
     a_new_cell_keeps_the_ratio_and_snaps_to_it();
     a_saved_tree_loads_back_to_the_same_places();
     a_bad_saved_tree_is_refused_and_leaves_the_layout();
+    a_saved_tree_replays_as_splits_to_the_same_shape();
 }

@@ -103,5 +103,12 @@ int lay_save(const lay *l, char *buf, int size, int *order);
  * when the text is not such a tree: a bad letter or bracket, a ratio
  * outside 1..65535, more than LAY_MAX_PANES panes, text left over. */
 int lay_load(lay *l, const char *s);
+/* How to build the tree lay_save wrote by splitting, one pane at a time,
+ * starting from one pane: step j splits pane from[j] in dir[j] (LAY_RIGHT /
+ * LAY_DOWN), the new pane being pane j+1 (pane 0 is the one there at the
+ * start). leaf[k] gets the written place (0..n-1, lay_save's order) of pane k.
+ * Returns the pane count n (n-1 steps), or -1 when s is not such a tree.
+ * The arrays are LAY_MAX_PANES long. */
+int lay_steps(const char *s, int *from, int *dir, int *leaf);
 
 #endif

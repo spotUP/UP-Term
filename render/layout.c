@@ -429,3 +429,33 @@ int lay_load(lay *l, const char *s)
     resolve(l);
     return l->npanes;
 }
+
+/* Walk the loaded tree: node is the subtree, r the pane that stands for it
+ * at this point of the build. A split's child a keeps r, its child b is the
+ * pane the step makes. */
+static void steps_node(const lay *t, int node, int r, int *next,
+                       int *from, int *dir, int *leaf)
+{
+    const lay_node *p = &t->n[node];
+    int m;
+    if (p->pane >= 0) {
+        leaf[r] = p->pane;
+        return;
+    }
+    m = (*next)++;
+    from[m - 1] = r;
+    dir[m - 1] = p->dir;
+    steps_node(t, p->a, r, next, from, dir, leaf);
+    steps_node(t, p->b, m, next, from, dir, leaf);
+}
+
+int lay_steps(const char *s, int *from, int *dir, int *leaf)
+{
+    static lay t;
+    int n, next = 1;
+    lay_init(&t, 1, 1, LAY_DIV_PIXEL, 1, 1, 0, 0, 1, 1);
+    if ((n = lay_load(&t, s)) < 0)
+        return -1;
+    steps_node(&t, t.root, 0, &next, from, dir, leaf);
+    return n;
+}
