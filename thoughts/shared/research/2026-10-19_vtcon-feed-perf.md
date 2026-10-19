@@ -96,4 +96,14 @@ Correction to "Where the painter's 106 us a cell go": on the RTG screen the pain
 
 AGA screen (`rig.py aga`, then `start --a1200`), after fixes 1+2: 598 ms per write (597 / 598 over two runs), vt_feed 38.9 ms, render 546 ms per write (1.8 s per render, 6 renders), 415 painter runs and 318 Text runs, WaitBlit 8 ms. So on the native screen the painter is the whole cost, 5x the RTG figure.
 
+Long-store painter (vp_span_long, CTerm's planar painter design, MIT; screen-aligned longs per plane instead of BFINS per plane per span), same workload 8 on rig 2, all numbers on 68020 (`--a1200`, avail about 64 MB fast), AGA 640x256x4, serial-log PROF build, 20 writes of 4,268 bytes:
+
+| 68020, AGA 640x256x4 | BFINS painter (691a9c26) | long painter |
+| --- | --- | --- |
+| phaseprobe wall (ncurses-frame) | 593 ticks | 605 ticks (607 and 605 on two more runs) |
+| render/frames total | 0x752cee (6 renders) | 0x77f8e7, 0x77f988, 0x77fbb3 (6 renders) |
+| painter runs / Text runs | 414 / 319 | 414 / 319 |
+
+Result: no gain. The sentinel `long/spans` (PROF line, vp_long_spans) counts every painter run, so the long path ran for all of them; the time did not move (0 to 2% slower). So chip-RAM read-modify-write count per span is not what the 020 AGA render time is made of, or the C row loop (vbcc, glyph shift and gather per cell per row) costs as much as the stores it saves. Next step is a measurement inside painter_run (ticks around vp_span_fast against the rest of the render), before the asm version of the row loops, the single-plane path or the clip-rect check are written. Not ported yet: the per-phase pre-shifted glyph store, the single-plane path, the ClipRect safety check for the up to 31 pixels written back beyond a span.
+
 Share of painter spans at bit phase 0 in workload 8 (a temporary counter on `vp_span_fast`'s caller, reverted): 0 of 415. Every span of the XCON: window is at a non-zero phase (the window's text origin is not a multiple of 8 pixels), so the plain-store path for phase 0 would never run in this window. Not built; the idea needs the text origin aligned to a byte (a window or border change) or a shifting store that avoids BFINS' read-modify-write at phase s, and is open.

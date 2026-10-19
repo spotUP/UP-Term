@@ -49,6 +49,7 @@
 #include "../engine/vtengine.h"
 #include "../render/amiga_render.h"
 #include "../render/vtwin.h"
+#include "../render/painter.h"
 #include "../render/vtinput.h"
 #include "../device/upc_public.h"
 #define UPASSIGN_DOS
@@ -6118,6 +6119,7 @@ static void packet(con *c, struct DosPacket *p)
                     c->w.prof_part[4] = c->w.prof_part[5] = c->w.prof_part[6] = 0;
                 }
                 PROF_LOG("PROF paints/texts", vr_prof[2], c->w.r.n_text);
+                PROF_LOG("PROF long/spans", vp_long_spans, 0);
                 PROF_LOG("PROF waitblit/vtfeed", vr_prof[1], c->w.prof_part[3]);
                 c->w.prof_part[3] = 0;
                 PROF_LOG("PROF fill/fills", vr_prof[3], vr_prof[4]);
