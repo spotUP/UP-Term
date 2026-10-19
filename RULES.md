@@ -112,7 +112,8 @@ from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
    behaviour, then that add-on's `needs-base`.
 2. Pins: `bin/upterm-doctor`, then `bin/upterm-bootstrap --update` in `$UPTERM_ROOT/upterm`, commit
    `repos.lock` (see Cross-repo changes). `amiga-pi` is pinned there too.
-3. `make dist dist-check` (and `make test`).
+3. `make dist dist-ipk dist-check` (and `make test`): `dist-check` needs the ipk feed
+   (`build/ipk/`), which `make dist` does not build.
 4. Rig: the cases of the changed archives only (`install_rig.py --only <case>`, never the
    whole set by reflex); the owner's real-Amiga check stays manual.
 5. Fill what the readmes still leave open: `python3 tools/mkreadme.py <id> --release` fails
@@ -125,6 +126,9 @@ from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
 7. GitHub release for upkg (the opkg binary, an UP-Term:bin command): one release per base
    version, holding every archive of `dist/packages.txt` and `build/upkg-index.txt` (written
    by `make dist`, checked by `dist-check`) from the same `make dist`, so upkg's
-   `releases/latest/download/` URL finds them together: `gh release create v<base version>
-   build/upkg-index.txt build/<archive>.lha ...`. Never an index without its archives: upkg
-   refuses a download whose size or sha256 differ from the index.
+   `releases/latest/download/` URL finds them together. The release goes to the release-only
+   repo spotUP/vtcon (the feed URL in `dist/upkg.conf`; v1.0 kits read it), not spotUP/UP-Term,
+   and carries the opkg feed too: `gh release create v<base version> -R spotUP/vtcon --latest
+   build/upkg-index.txt build/*.lha build/ipk/*.ipk build/ipk/Packages build/ipk/Packages.gz`.
+   Tag the built commit `v<base version>` in spotUP/UP-Term. Never an index without its
+   archives: upkg refuses a download whose size or sha256 differ from the index.
