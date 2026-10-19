@@ -112,6 +112,14 @@ if [ -z "$PATH" ]; then
 fi
 export PATH
 
+# The editor for fc and git commit. Both fall back to vi, which the base
+# does not ship (vim comes from upkg), so joe is the default here. An
+# EDITOR you set is left alone.
+if [ -z "$EDITOR" ]; then
+    EDITOR=joe
+fi
+export EDITOR
+
 # ls in colour on a terminal: --color=auto keeps it off when the output is
 # a pipe or a file. The ANSI colour numbers are whatever the window's
 # profile defines.
