@@ -47,6 +47,7 @@
 #include <proto/datatypes.h>
 #include <datatypes/datatypes.h>
 #include <datatypes/pictureclass.h>
+#include <clib/alib_protos.h>
 
 #include <string.h>
 #include "../engine/vtengine.h"
@@ -552,7 +553,9 @@ static void png_worker(void)
                             pb.pbpa_Top = y;
                             pb.pbpa_Width = j->w;
                             pb.pbpa_Height = 1;
-                            if (!DoDTMethodA(o, 0, 0, (Msg)&pb)) {
+                            /* straight to the class (amiga.lib DoMethodA), as the picture.datatype autodoc does:
+                             * through DoDTMethodA it never returned on OS 3.2.2 (rig 3, 2026-10-19) */
+                            if (!DoMethodA(o, (Msg)&pb)) {
                                 FreeVec(j->out);
                                 j->out = 0;
                             }

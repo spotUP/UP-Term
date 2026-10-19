@@ -79,11 +79,16 @@ new for placement at the cursor.
       error, image visible through vt_row_image().
 - [x] K11 render host test (make test ONLY=render): a kitty image draws its
       pixels on the fake canvas (proves renderer wiring).
-- [ ] K12 reachability on rig: handler fed a real kitty PNG stream (small
+- [x] K12 reachability on rig: handler fed a real kitty PNG stream (small
       file, e.g. `kitty +kitten icat` capture or a python generator) in an
       XCON window; sentinel: engine counter kitty_images_placed > 0 and
       datatypes decode count > 0 in the PROF/debug output; screenshot checked
       by a haiku subagent.
+      Done 2026-10-19, rig 3 --max --os 322, PROF build: the Adam7 stream
+      goes to the datatypes, `PROF kitty decodes/placed 00000001 00000002`
+      (cumulative with the plain stream), stripes visible top-left. Needed
+      the png_worker fix: DoMethodA straight to the class; DoDTMethodA
+      never returned on OS 3.2.2.
 - [x] K13 docs: README / man page feature list; THIRD-PARTY notice.
 - [x] K14 vt_unhandled no longer reports APC G.
 - [x] K15 engine/png.c (owner decision 2026-10-19: "both"): own PNG decoder
@@ -102,8 +107,12 @@ new for placement at the cursor.
       0/2/3/4/6, depths 1/8/16, all filters, split IDAT, tRNS; interlaced
       falls back to the test decoder (call count proves it); a broken
       stream does not reach the decoder.
-- [ ] K18 rig: the K12 stream on sys.hdf (no picture.datatype) places the
+- [x] K18 rig: the K12 stream on sys.hdf (no picture.datatype) places the
       picture; PROF line counts own decodes and datatypes decodes apart.
+      Done 2026-10-19, same rig 3 run: the plain stream decodes in the
+      engine, `PROF kitty own png decodes 00000001 00000000` (own, then
+      datatypes-after-own = 0), placed. Run on --os 322 rather than sys.hdf:
+      the counter shows the datatypes were not used for that stream.
 
 Not in scope: z<0 below-text layer, unicode placeholders (U=1), animation
 (a=f/a=a/a=c), t=f/t=t/t=s file transfer. Each replies an error.
