@@ -700,6 +700,11 @@ struct Library *OpenLibrary(CONST_STRPTR n, ULONG v)
 VOID CloseLibrary(struct Library *l) { (void)l; }
 APTR AllocVec(ULONG n, ULONG req) { (void)req; return calloc(1, n ? n : 1); }
 VOID FreeVec(APTR p) { free(p); }
+VOID Forbid(VOID) {}
+VOID Permit(VOID) {}
+VOID InitSemaphore(struct SignalSemaphore *s) { (void)s; }
+VOID ObtainSemaphore(struct SignalSemaphore *s) { (void)s; }
+VOID ReleaseSemaphore(struct SignalSemaphore *s) { (void)s; }
 ULONG TypeOfMem(CONST_APTR a)
 {
     return pmem && (const UBYTE *)a >= pmem && (const UBYTE *)a < pmem + pbpr * prows * pdepth ? MEMF_CHIP : 0;

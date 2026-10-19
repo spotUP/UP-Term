@@ -264,6 +264,78 @@ static LONG hold_pen(vr_render *r, ULONG rgb)
     return best_pen(r->cm, rgb, 1);
 }
 
+/* pm_match's picks, shared by every window of this program: a pick is a pure
+ * function of the screen's palette and the colour, and costs about 24 ms on a
+ * 68020 (rig 2, 2026-10-19), so a second window, or a re-attach, on the same
+ * palette must not pay the burst of a first paint again (about 120 picks).
+ * Holds the palette last matched on; a different one empties the table. Only
+ * the first choice (every pen usable) is kept: a retry after a pen could not
+ * be held is rare and depends on the other programs' pens. */
+#define VR_PICKS 256
+static struct {
+    struct SignalSemaphore sem; /* the device's units may paint from several tasks */
+    int ready;
+    pm_palette pp;
+    ULONG key[VR_PICKS];        /* 0 free; else 1 << 31 | dither << 24 | rgb */
+    UBYTE pick[VR_PICKS][4];    /* solid, a, b, lev */
+} vr_picks;
+ULONG vr_pick_matches;          /* pm_match runs (not answered from the table): host tests read it */
+
+static void vr_pick(const unsigned long *pal, int n, unsigned long usable, ULONG rgb, int dither, pm_pick *pk)
+{
+    ULONG key = 1UL << 31 | (ULONG)(dither != 0) << 24 | (rgb & 0xffffff), h;
+    int i, full = usable == (1UL << n) - 1;
+    if (!vr_picks.ready) {
+        Forbid();
+        if (!vr_picks.ready) {
+            InitSemaphore(&vr_picks.sem);
+            vr_picks.ready = 1;
+        }
+        Permit();
+    }
+    ObtainSemaphore(&vr_picks.sem);
+    if (pm_palette_set(&vr_picks.pp, pal, n))
+        memset(vr_picks.key, 0, sizeof(vr_picks.key));
+    h = ((rgb & 0xffffff) * 2654435761UL & 0xffffffffUL) >> 24; /* Fibonacci hashing: the cube's few levels spread over the table */
+    if (full)
+        for (i = 0; i < 8; i++) {
+            ULONG s = (h + (ULONG)i) & (VR_PICKS - 1);
+            if (vr_picks.key[s] == key) {
+                pk->solid = vr_picks.pick[s][0];
+                pk->a = vr_picks.pick[s][1];
+                pk->b = vr_picks.pick[s][2];
+                pk->lev = vr_picks.pick[s][3];
+                ReleaseSemaphore(&vr_picks.sem);
+                return;
+            }
+            if (!vr_picks.key[s]) {
+                h = s;
+                break;
+            }
+        }
+    {
+#ifdef VTCON_PROF
+        struct EClockVal m0, m1;
+        ReadEClock(&m0);
+#endif
+        pm_match(&vr_picks.pp, usable, rgb, dither, pk);
+#ifdef VTCON_PROF
+        ReadEClock(&m1);
+        vr_pf_pm += m1.ev_lo - m0.ev_lo;
+#endif
+    }
+    vr_pick_matches++;
+    if (full && pk->solid >= 0) {
+        /* the free slot found, or (all 8 taken) the colour's own: overwritten */
+        vr_picks.key[h] = key;
+        vr_picks.pick[h][0] = (UBYTE)pk->solid;
+        vr_picks.pick[h][1] = (UBYTE)pk->a;
+        vr_picks.pick[h][2] = (UBYTE)pk->b;
+        vr_picks.pick[h][3] = (UBYTE)pk->lev;
+    }
+    ReleaseSemaphore(&vr_picks.sem);
+}
+
 /* Palette index c on a screen of few pens whose map has no entry left for
  * its colour (W-T7): the pen that looks nearest for text, and for areas the
  * two-pen mix when no pen comes close (pen_match.h), every pen used held.
@@ -285,25 +357,14 @@ static LONG few_obtain(vr_render *r, int c, ULONG rgb)
             for (k = 0; k < 8; k++)
                 d->pat[i][k] = pm_pattern(i, k);
     }
-    if (!d->pp && !(d->pp = (pm_palette *)AllocVec(sizeof(pm_palette), MEMF_ANY | MEMF_CLEAR)))
-        return -1;
     if (n > 16)
         n = 16;
     GetRGB32(r->cm, 0, (ULONG)n, tab);
     for (i = 0; i < n; i++)
         pal[i] = ((tab[i * 3] >> 24) << 16) | ((tab[i * 3 + 1] >> 24) << 8) | (tab[i * 3 + 2] >> 24);
-    pm_palette_set(d->pp, pal, n);
     usable = (1UL << n) - 1;
     for (tries = 0; tries < n; tries++) {
-#ifdef VTCON_PROF
-        struct EClockVal m0, m1;
-        ReadEClock(&m0);
-#endif
-        pm_match(d->pp, usable, rgb, r->dither_on, &pk);
-#ifdef VTCON_PROF
-        ReadEClock(&m1);
-        vr_pf_pm += m1.ev_lo - m0.ev_lo;
-#endif
+        vr_pick(pal, n, usable, rgb, r->dither_on, &pk);
         if (pk.solid < 0)
             return -1;
         solid = hold_pen(r, pal[pk.solid]);
@@ -741,8 +802,6 @@ void vr_free(vr_render *r)
             WaitBlit(); /* a template blit may still read it */
             FreeVec(r->dith->tmpl);
         }
-        if (r->dith->pp)
-            FreeVec(r->dith->pp);
         FreeVec(r->dith);
         r->dith = 0;
     }

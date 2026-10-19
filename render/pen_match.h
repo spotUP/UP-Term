@@ -161,8 +161,8 @@ typedef struct pm_palette {
     long ab_d[PM_MAXPENS][PM_MAXPENS]; /* [i][j], i < j: pm_dist from pen i to pen j */
 } pm_palette;
 
-/* p made for pal[0..n) (0xRRGGBB); nothing done when it already is */
-static void pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
+/* p made for pal[0..n) (0xRRGGBB): 1; 0 when it already was (nothing done) */
+static int pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
 {
     int i, j, c;
     if (n > PM_MAXPENS)
@@ -170,7 +170,7 @@ static void pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
     for (i = 0; i < n && p->n == n && p->pal[i] == pal[i]; i++)
         ;
     if (i == n && p->n == n)
-        return;
+        return 0;
     p->n = n;
     for (i = 0; i < n; i++) {
         p->pal[i] = pal[i];
@@ -183,6 +183,7 @@ static void pm_palette_set(pm_palette *p, const unsigned long *pal, int n)
         for (j = i + 1; j < n; j++)
             p->ab_d[i][j] = pm_dist(&ti, pal[j]);
     }
+    return 1;
 }
 
 /* Choose for colour t among the palette's pens, only those whose bit is set in `usable`. pick->solid -1: no pen

@@ -881,6 +881,61 @@ static void light_cube_colours_on_a_16_colour_workbench_are_not_drawn_in_its_gre
     test_npal = 0;
 }
 
+/* the cube colours 16.. as backgrounds with a W in the next colour, cell by cell, on a 16-colour screen of
+ * palette pal; a hash of the pixels they came out as */
+extern ULONG vr_pick_matches; /* amiga_render.c */
+
+static unsigned long paint_cube_cells(const unsigned long *pal, int n)
+{
+    char buf[64];
+    unsigned long h = 2166136261UL;
+    int i, x, y;
+    planar_depth = 4;
+    planar_left = 0;
+    test_pal = pal;
+    test_npal = 16;
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l\x1b[2J");
+    for (i = 0; i < n; i++) {
+        snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[48;5;%dm\x1b[38;5;%dmW\x1b[m", 1 + i / COLS, 1 + i % COLS, 16 + i,
+                 16 + (i + 1) % 216);
+        pass(buf);
+    }
+    for (i = 0; i < n; i++)
+        for (y = 0; y < CH; y++)
+            for (x = 0; x < CW; x++)
+                h = (h ^ (unsigned long)gf_pixel((i % COLS) * CW + x, (i / COLS) * CH + y)) * 16777619UL & 0xffffffffUL;
+    close_term();
+    CHECK_INT(gf_pens_held, 0);
+    planar_depth = 0;
+    test_npal = 0;
+    return h;
+}
+
+/* The match of a colour to the pens of a 16-colour screen (about 24 ms on a 68020) is made once per palette for
+ * the whole program: a second window on the same palette draws the same pixels without matching anything again;
+ * another palette matches anew. */
+static void a_second_window_on_the_same_palette_matches_no_colour_again(void)
+{
+    static unsigned long pal_a[16], pal_b[16];
+    unsigned long h1, h2, m0, m1;
+    int i;
+    for (i = 0; i < 16; i++)
+        pal_a[i] = pal_b[i] = wb16[i];
+    pal_a[6] = 0x305070; /* a palette no other test paints on: the first window starts with nothing matched */
+    pal_b[6] = 0x703050;
+    m0 = vr_pick_matches;
+    h1 = paint_cube_cells(pal_a, 60);
+    m1 = vr_pick_matches;
+    CHECK(m1 - m0 >= 20);
+    h2 = paint_cube_cells(pal_a, 60);
+    CHECK_INT((int)(vr_pick_matches - m1), 0);
+    CHECK(h1 == h2);
+    m1 = vr_pick_matches;
+    paint_cube_cells(pal_b, 60);
+    CHECK(vr_pick_matches - m1 >= 20);
+}
+
 /* The same cells: each one's pixels, averaged as light, closer to its colour than the single grey pen they were
  * drawn in before -- by OKLab, a perceptual distance the renderer does not use itself: on the whole at most
  * half the old error, and nearly every cell closer on its own. */
@@ -1520,6 +1575,7 @@ static void a_kitty_image_draws_its_pixels_on_the_canvas(void)
 int main(void)
 {
     pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks();
+    a_second_window_on_the_same_palette_matches_no_colour_again();
     a_kitty_image_draws_its_pixels_on_the_canvas();
     the_cursor_pass_counts_its_gfx_calls_and_unchanged_cells();
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
