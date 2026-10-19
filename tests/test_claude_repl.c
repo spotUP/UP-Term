@@ -309,11 +309,41 @@ static void sn_end(void *u)
 static char dir[512];
 static char top[512];           /* the temporary directory dir lies in (rm_tree removes it) */
 
+/* repl_env reads dozens of CLAUDE_* / DISABLE_* knobs from the process
+ * environment: one inherited from the shell running the suite (a Claude Code
+ * session exports CLAUDE_CODE_DISABLE_1M_CONTEXT and
+ * CLAUDE_AUTOCOMPACT_PCT_OVERRIDE) moved the context window and the compact
+ * point and failed 7 checks. The suite starts from none of them. */
+static void clear_claude_env(void)
+{
+    extern char **environ;
+    char name[256];
+    int again = 1;
+    while (again) {
+        char **e;
+        again = 0;
+        for (e = environ; *e; e++) {
+            const char *eq = strchr(*e, '=');
+            size_t n = eq ? (size_t)(eq - *e) : strlen(*e);
+            if (n >= sizeof(name))
+                continue;
+            if (strncmp(*e, "CLAUDE", 6) && strncmp(*e, "ANTHROPIC_", 10) && strncmp(*e, "DISABLE_", 8))
+                continue;
+            memcpy(name, *e, n);
+            name[n] = 0;
+            unsetenv(name);     /* environ changed: rescan */
+            again = 1;
+            break;
+        }
+    }
+}
+
 static void mk_tree(void)
 {
     const char *base = getenv("TMPDIR");
     char p[600];
     FILE *f;
+    clear_claude_env();
     strcpy(top, base && *base ? base : "/tmp");
     if (top[strlen(top) - 1] == '/')
         top[strlen(top) - 1] = 0;
