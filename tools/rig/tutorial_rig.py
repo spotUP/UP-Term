@@ -208,6 +208,9 @@ def counters():
     return d, out
 
 
+LINE = 16                                # pixel rows per text line: the tab is drawn at twice topaz 8's height
+
+
 class Screen:
     """The tab's text, found by pixels (no screen reader): the cells are topaz 8, 8x8 (mouse_rig.cell_xy), the
     text area starts 4 px in. ink = a pixel unlike the background in the window's last column."""
@@ -221,8 +224,9 @@ class Screen:
         b = ami.req(0x07)
         self.b, self.sw = b, struct.unpack(">H", b[2:4])[0]
         self.x0 = self.x + 4
+        self.cols = (self.w - 24) // 8          # text columns; the last one is always background
         self.y0 = self.y + 22
-        self.bg = self.px(self.x0 + 79 * 8 + 3, self.y + self.h // 2)
+        self.bg = self.px(self.x0 + (self.cols - 1) * 8 + 3, self.y + self.h // 2)
 
     def px(self, x, y):
         o = 8 + (y * self.sw + x) * 3
@@ -236,18 +240,81 @@ class Screen:
     def rows(self, c0, c1):
         return [y for y in range(self.y0, self.y + self.h - 12) if self.ink(y, c0, c1)]
 
-    def task_row(self):
-        """(y_center, last_col) of the text row right above the prompt row, or None when that row is only a
-        prompt (ink in the far columns marks a task line; "tutorial> " is 10 columns)."""
-        last = self.rows(1, 79)
+    def line_sig(self, bottom, k, c0, c1):
+        """The pixels of text line k above the bottom (prompt) line, columns c0..c1: the 12 pixel rows (6 glyph rows, each drawn
+        twice) above the baseline (descenders of the line above never leak in). bottom = the prompt's last ink row."""
+        out = b""
+        for y in range(bottom - LINE * k - 11, bottom - LINE * k + 1):
+            o = 8 + (y * self.sw + self.x0 + (c0 - 1) * 8) * 3
+            out += bytes(self.b[o:o + (c1 - c0 + 1) * 8 * 3])
+        return out
+
+    def task_rows(self):
+        """[(y_center, last_col)] of the text lines above the last prompt group, nearest first: lines whose
+        first 9 columns equal the bottom prompt ("tutorial> ", also with a typed command after it) and blank
+        lines are skipped; every other line is a candidate for the task line's end."""
+        last = self.rows(1, self.cols)
         if not last:
-            return None
+            return []
         bottom = last[-1]
-        far = [y for y in self.rows(30, 79) if bottom - 17 <= y <= bottom - 8]
-        if not far:
+        prompt = self.line_sig(bottom, 0, 1, 9)
+        out = []
+        for k in range(1, (bottom - self.y0) // LINE):
+            if self.line_sig(bottom, k, 1, 9) == prompt:
+                continue
+            sig = self.line_sig(bottom, k, 1, self.cols)
+            if sig == self.bg * (len(sig) // 3):
+                continue
+            cols = [cc for cc in range(self.cols, 0, -1)
+                    if self.line_sig(bottom, k, cc, cc) != self.bg * (12 * 8)]
+            out.append((bottom - LINE * k - 6, cols[0]))
+        return out
+
+    def task_row(self, skip=0):
+        """(y_center, last_col) of the skip-th candidate task line (see task_rows), or None."""
+        rows = self.task_rows()
+        return rows[skip] if skip < len(rows) else None
+
+
+    def reprompted(self):
+        """True when the bottom row (the "tutorial> " prompt) is pixel-identical, over the prompt's 9 columns, to
+        the row above it: an empty line only re-prompted and the step did not advance. After a pass the row above
+        the prompt is the next task (or its wrapped tail), never a prompt."""
+        last = self.rows(1, self.cols)
+        if not last:
+            return True
+        y = last[-1]
+        # the prompt's glyph rows: compare the 8 pixel rows ending at the bottom ink row with the 8 above
+        return all(self.b[8 + ((y - d) * self.sw + self.x0) * 3:8 + ((y - d) * self.sw + self.x0 + 72) * 3] ==
+                   self.b[8 + ((y - d - LINE) * self.sw + self.x0) * 3:8 + ((y - d - LINE) * self.sw + self.x0 + 72) * 3]
+                   for d in range(12))
+
+    def word_span(self, skip=0):
+        """(y_center, first_px, last_px) of the word at the end of the task row right above the prompt: the last
+        ink column of that row and the contiguous ink columns before it (a space ends the word)."""
+        t = self.task_row(skip)
+        if not t:
             return None
-        cols = [cc for cc in range(79, 29, -1) if any(self.ink(y, cc, cc) for y in far)]
-        return (far[0] + far[-1]) // 2, cols[0]
+        y, last = t
+        rows = [yy for yy in range(y - 4, y + 5)]
+        first = last
+        while first > 1 and any(self.ink(yy, first - 1, first - 1) for yy in rows):
+            first -= 1
+        return y, self.x0 + (first - 1) * 8, self.x0 + last * 8
+
+
+def settled(secs=20):
+    """The Screen once two snapshots 1.5 s apart find the same text rows: the mirror is still drawing the last
+    Return's prompt and scroll before that (a snapshot taken then put the task line 2 rows too high and the drag
+    selected nothing: rig M, 2026-10-19, 3 of 4 runs)."""
+    prev, end = None, time.time() + secs
+    while True:
+        sc = Screen()
+        rows = sc.task_rows()
+        if rows and rows == prev or time.time() > end:
+            return sc
+        prev = rows
+        time.sleep(1.5)
 
 
 def drag(x0, x1, y):
@@ -269,10 +336,9 @@ def case_lesson12():
     are listed in the detail."""
     saved = c.run("Type %s" % PROGRESS)[1]
     set_progress(range(1, 12))
-    log, retries, ok = [], [], False
+    log, retries, ok, host_title = [], [], False, "tabwin"
     try:
         open_tab("menu")
-        host_title = "tabwin"
         # the baseline is read from the host before the tab exists: open it first, read from tab 1 after
         if not until(sandbox_there, 20):
             return False, "tutorial tab did not start (no %s)" % SANDBOX
@@ -286,11 +352,12 @@ def case_lesson12():
         time.sleep(2)
 
         def ret(name):
-            """Return in the tutorial tab; repeated while the prompt shows no new task."""
-            for n in range(4):
+            """Return in the tutorial tab; repeated only while the prompt row is still the same prompt (the step
+            did not advance: the mirror lagging). Never pressed again once the next task shows."""
+            for n in range(3):
                 ami.key(typewin.RET)
                 time.sleep(3)
-                if Screen().task_row():
+                if not Screen().reprompted():
                     if n:
                         retries.append("%s x%d" % (name, n))
                     return True
@@ -310,17 +377,24 @@ def case_lesson12():
         time.sleep(2)
         log.append(("menu-picks", ret("step3")))
         tab_type("/help", 2)                     # 4. a slash command; the shell sees an empty line
-        for n in range(3):
-            if Screen().task_row():
+        ret("step4")                             # Return even when /help output sits above the prompt
+        log.append(("slash", True))
+        sc = settled()                           # 5. drag over the word at the end of the task line
+        clip = None
+        for skip in range(4):                    # a try again on a settled screen when the clipboard is not "up<pid>"
+            w = sc.word_span(0)
+            if not w:
                 break
-            ami.key(typewin.RET); time.sleep(3)
-        log.append(("slash", bool(Screen().task_row())))
-        sc = Screen()                            # 5. drag over the word on the task line
-        t = sc.task_row()
-        prefix = len("Task: Drag the mouse over this word to copy it, then press Return: ")
-        if t:
-            y, last = t
-            drag(sc.x0 + (prefix) * 8 + 4, sc.x0 + (last - 1) * 8 + 4, y)
+            y, px0, px1 = w
+            drag(px0 + 1, px1 - 1, y)
+            ami.key(0x33, RCMD)                  # copy-on-select is off by default: Right Amiga C copies the selection
+            time.sleep(1)
+            clip = typewin._clip("RAM:rig.clip").strip()
+            if re.fullmatch(r"up\d+", clip):
+                break
+            kx, ky = ami.pointer_scale()         # one click clears the selection
+            ami.script(("move", int(px0 * kx), int(y * ky)), ("wait", 2), ("button", 0, 1), ("wait", 2), ("button", 0, 0), ("wait", 3))
+            sc = settled()
         log.append(("copies", ret("step5")))
         ami.req(0x08, bytes([4]) + b"echo ")     # 6. echo + paste
         time.sleep(0.5)
@@ -341,16 +415,20 @@ def case_lesson12():
         after, out1 = counters()
         moved = {k: (base.get(k), after.get(k)) for k in ("tabs-opened", "tab-switches", "menu-picks", "slash-count", "copies")}
         grew = all((v[1] or 0) > (v[0] or 0) for v in moved.values())
-        ok = done and grew and all(v for _, v in log)
+        # per-step proof is the progress file: "12" is written only after all seven checks passed (dist/tutorial),
+        # and every counter grew. The pixel test of ret() can miss an advance, so it is detail, not a verdict.
+        ok = done and grew and dict(log)["paste"]
         detail = "progress %s; steps %s; counters %s; retries %s; echo said %r" % (prog, log, moved, retries or "none", said)
         if not (base or after):
             detail += "; state output %r" % out1[:80]
     finally:
-        for _ in range(5):
-            if active_title() in (None, ""):
-                break
-            tab_type(":quit", 1)
-            tab_type("exit", 2)
+        if sandbox_there():                      # the lesson still waits: end it in the tutorial tab only
+            ami.key(0x02, RCMD)
+            if until(lambda: active_title() not in (None, "", host_title), 8):
+                tab_type(":quit", 1)
+                until(lambda: active_title() == host_title, 10)
+        if active_title() == host_title:
+            close_host()
         set_progress([int(n) for n in saved.split() if n.isdigit()])
     return ok, detail
 
