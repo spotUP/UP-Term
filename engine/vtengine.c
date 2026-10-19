@@ -6459,7 +6459,9 @@ static long csi_fast(vt_term *t, const vt_u8 *b, long len)
      * clear-up of all the parser's fields and no sgr() chain (the three
      * cost ~480 instructions a sequence; W-S2). The parser fields are left
      * as the scan and csi_fast's own tail would leave them. */
-    if (b[2] == 'm' || (len >= 5 && (b[2] == '3' || b[2] == '4') && (vt_u8)(b[3] - '0') <= 7 && b[4] == 'm')) {
+    if (b[2] == 'm' || (len >= 4 && b[2] == '0' && b[3] == 'm') ||
+        (len >= 5 && (b[2] == '3' || b[2] == '4' || (b[2] == '9' && t->pers != VT_AMIGA && t->pers != VT_PCANSI)) &&
+         (vt_u8)(b[3] - '0') <= 7 && b[4] == 'm')) {
         t->have = 0;
         t->priv = 0;
         t->inter = 0;
@@ -6475,10 +6477,18 @@ static long csi_fast(vt_term *t, const vt_u8 *b, long len)
             sgr_reset(t);
             return 3;
         }
+        if (b[2] == '0' && b[3] == 'm') { /* "ESC [ 0 m": the reset, with its one parameter */
+            t->np = 1;
+            t->params[0] = 0;
+            sgr_reset(t);
+            return 4;
+        }
         t->np = 1;
         t->params[0] = (long)(b[2] - '0') * 10 + (b[3] - '0');
         if (b[2] == '3')
             t->fg = (vt_color)(b[3] - '0');
+        else if (b[2] == '9')
+            t->fg = (vt_color)(b[3] - '0' + 8); /* the bright foreground (not the amiga or pcansi personality) */
         else
             t->bg = (vt_color)(b[3] - '0');
         t->ext = pen_ext(t);
