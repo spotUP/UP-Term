@@ -84,6 +84,17 @@ class WindowStateWiring(unittest.TestCase):
         self.assertIn("return r == 1 ? RETURN_OK : RETURN_ERROR;", u)
         self.assertIn("UPTerm state [KEY]", u)
 
+    def test_upterm_reaches_its_window_from_a_command_substitution(self):
+        # the lessons check `$(UPTerm state KEY)`: vsh runs it with Input() NIL: and Output() the
+        # capture pipe (shell/vsh.c, the job streams), so neither reaches the window and a tab
+        # answered "not an UP-Term window" (rig 4, lesson 12, 2026-10-19). The third try is the
+        # process's console, "*" at pr_ConsoleTask, which the runner inherits from vsh.
+        u = (ROOT / "handler/upterm.c").read_text()
+        loop = u.split("    r = 0;\n    for (i = 0;")[1].split("\n    }\n")[0]
+        self.assertIn("i < 3", loop)
+        self.assertIn('Open((STRPTR)"*", MODE_OLDFILE)', loop)
+        self.assertIn("Close(h);", loop)
+
 
 if __name__ == "__main__":
     unittest.main()

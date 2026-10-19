@@ -8,7 +8,8 @@
  *                        an unknown one returns 5 with a message): the tutorial's checks
  *
  * The command goes to the window of the output, or, when the output is
- * redirected (">NIL:", a file), to the window of the input.
+ * redirected (">NIL:", a file), to the window of the input, and with
+ * neither on a window (a command substitution), to the process's console.
  *
  * Return code 0 done, 10 refused (the answer says why), 20 not an UP-Term
  * window or not a command. No ixemul, no C library beyond vbcc's startup. */
@@ -53,14 +54,22 @@ int main(void)
     line[sizeof(line) - 1] = 0;
     FreeArgs(rd);
     /* the window of the output; redirected ("UPTerm find x >NIL:"), the
-     * window of the input -- the answer still goes to the output */
+     * window of the input; neither ("x=$(UPTerm state tabs-opened)": vsh
+     * gives a command substitution NIL: and a pipe), the console of the
+     * process, "*" at pr_ConsoleTask -- the answer still goes to the output */
     r = 0;
-    for (i = 0; i < 2 && !r; i++) {
-        BPTR h = i ? Input() : out;
+    for (i = 0; i < 3 && !r; i++) {
+        BPTR h = i == 0 ? out : i == 1 ? Input() : Open((STRPTR)"*", MODE_OLDFILE);
         fh = h ? (struct FileHandle *)BADDR(h) : 0;
-        if (!fh || !fh->fh_Type)
-            continue;
-        r = DoPkt(fh->fh_Type, ACTION_VTCON_COMMAND, fh->fh_Arg1, (LONG)line, (LONG)ans, sizeof(ans), 0);
+        if (fh && fh->fh_Type)
+            r = DoPkt(fh->fh_Type, ACTION_VTCON_COMMAND, fh->fh_Arg1, (LONG)line, (LONG)ans, sizeof(ans), 0);
+        else
+            SetIoErr(ERROR_ACTION_NOT_KNOWN);
+        if (i == 2 && h) {
+            LONG e = IoErr();
+            Close(h);
+            SetIoErr(e);
+        }
         if (!r && IoErr() != ERROR_ACTION_NOT_KNOWN && IoErr() != ERROR_REQUIRED_ARG_MISSING)
             break; /* an UP-Term window that said no: not a command */
     }
