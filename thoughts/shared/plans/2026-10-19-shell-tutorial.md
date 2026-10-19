@@ -149,7 +149,7 @@ none.
       "Slash commands" item.
 - [x] L-8 First-run hint in dist/vshrc (D3: yes), off by
       $HOME/.tutorial-hint-off or after lesson 1.
-- [ ] L-9 README.txt section: "New to a Unix shell" pointing at tutorial.
+- [x] L-9 README.txt section: "New to a Unix shell" pointing at tutorial.
 - [x] L-T1 Reachability test: tests/test_tutorial.py drives dist/tutorial through
       build/vsh_host with scripted stdin. Lesson 1: right answers pass, a
       wrong answer shows the hint, three wrong answers show the answer;

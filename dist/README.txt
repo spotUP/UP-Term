@@ -306,7 +306,8 @@ MENU
               settings to profile
     Help      Demo tour (a tour of what the terminal does, in a new tab:
               see DEMO; /demo does the same), Slash commands (the list of
-              commands, as /help prints it)
+              commands, as /help prints it), Shell tutorial (see NEW TO A
+              UNIX SHELL; /tutorial does the same)
   Settings are the same as UP-Term Prefs, for this window and at once
   (Prefs keeps them for the profile). With KingCON completion a Complete
   menu follows. Every item is also a command (see COMMANDS). The right
@@ -722,6 +723,22 @@ UPTELNET
   The encrypted alternative is ssh (BebboSSH, NETWORK above) to the Mac's
   Remote Login (System Settings > General > Sharing); not yet tried
   against macOS's sshd.
+
+NEW TO A UNIX SHELL
+  tutorial teaches the shell by doing: eleven short lessons (where am I,
+  looking at files, making and moving, wildcards and quotes, pipes and
+  redirection, getting help, keys that save typing, variables and PATH,
+  editing a file, packages). Each step gives a task; type the command
+  and the tutorial checks the result, shows a hint after a wrong try and
+  the answer after the third. Type tutorial at a vsh prompt, or pick
+  Help > Shell tutorial (or /tutorial) to run it in a tab of its own,
+  which closes when you quit. tutorial N starts lesson N, tutorial next
+  continues where you stopped (the finished lessons are listed in
+  $HOME/.tutorial), tutorial reset forgets the progress. The lessons
+  practise in a drawer of their own (T:tutorial), but a command you type
+  runs for real: rm -r on one of your drawers deletes it. Until you have
+  finished lesson 1, a new vsh window prints one line pointing here;
+  creating $HOME/.tutorial-hint-off hides it.
 
 DEMO
   UPDemo, typed in an UP-Term window (76 x 20 characters or more), plays
