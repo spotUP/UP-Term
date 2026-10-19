@@ -134,13 +134,13 @@ none.
 ## Checklist
 
 - [x] L-0 Owner decisions D1, D2, D3 answered (2026-10-19).
-- [ ] L-1 dist/tutorial: menu, `tutorial N`, `next`, `reset`, sandbox in T:tutorial,
+- [x] L-1 dist/tutorial: menu, `tutorial N`, `next`, `reset`, sandbox in T:tutorial,
       plain fallback without a terminal (upkg-ask pattern).
-- [ ] L-2 Lesson file parser (#, >, $, ?, =, ~, !), mdv with a cat fallback.
-- [ ] L-3 Step loop: eval in the sandbox, check, hint, answer after three
+- [x] L-2 Lesson file parser (#, >, $, ?, =, ~, !), mdv with a cat fallback.
+- [x] L-3 Step loop: eval in the sandbox, check, hint, answer after three
       fails, skip / hint / quit / help.
-- [ ] L-4 Progress file $HOME/.tutorial, resume with `tutorial next`.
-- [ ] L-5 Lessons 01-11 written (share/tutorial/*.lesson).
+- [x] L-4 Progress file $HOME/.tutorial, resume with `tutorial next`.
+- [x] L-5 Lessons 01-11 written (share/tutorial/*.lesson).
 - [ ] L-C1 Each lesson's facts checked on vsh (host and rig).
 - [ ] L-6 Kit and dist: learn to UP-Term:bin, lessons to UP-Term:share/tutorial,
       in parts.txt and the base (not slim.txt-removed), uninstall removes them.
@@ -150,12 +150,12 @@ none.
 - [ ] L-8 First-run hint in dist/vshrc (D3: yes), off by
       $HOME/.tutorial-hint-off or after lesson 1.
 - [ ] L-9 README.txt section: "New to a Unix shell" pointing at tutorial.
-- [ ] L-T1 Reachability test: tests/test_tutorial.py drives dist/tutorial through
+- [x] L-T1 Reachability test: tests/test_tutorial.py drives dist/tutorial through
       build/vsh_host with scripted stdin. Lesson 1: right answers pass, a
       wrong answer shows the hint, three wrong answers show the answer;
       $HOME/.tutorial gets "1"; a sentinel lesson proves the lesson files are
       the ones read.
-- [ ] L-T2 Lesson lint: every .lesson parses, every step has a check and an
+- [x] L-T2 Lesson lint: every .lesson parses, every step has a check and an
       answer, and each answer passes its own check in a sandbox (run in
       `make test`).
 - [ ] L-T3 Menu and slash wiring test next to the existing menu tests: the
