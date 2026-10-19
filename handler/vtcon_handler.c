@@ -213,6 +213,8 @@ typedef struct con {
     char tab_host[48];           /* TAB name: become a tab of that host */
     int is_tab;                  /* a tab: the window is its host's */
     int hides;                   /* host: the HIDEs the old slot's panes have not answered yet */
+    int drag;                    /* host: 1 + the divider (layout node) the pointer drags, 0 none */
+    int drag_slot;               /* host: the slot that divider is in */
     int shown;                   /* a tab: in the active slot (draws) */
     int focused;                 /* a tab: shown and has the keys (its menus on the window) */
     int pane_serial;             /* a tab: PANE n, the split its host spawned it for (0: a tab) */
@@ -6238,6 +6240,45 @@ static void tab_command(con *c, int what)
 /* The host's IDCMP with tabs: the bar and the window's own events here,
  * the rest to the active tab. 0: not handled (one tab, or the host's
  * own tab is the active one -- dispatch() takes it). */
+/* The divider of the shown slot under window pixel mx, my, with 2 pixels
+ * of slop either side (it is one pixel wide), or -1. None while zoomed. */
+static int divider_under(con *c, WORD mx, WORD my)
+{
+    struct Window *win = c->own_win;
+    if (!win || c->active < 0 || c->active >= c->ntabs ||
+        tabslot_panes(&c->slots[c->active]) < 2 || c->slots[c->active].zoom)
+        return -1;
+    return lay_hit_divider(&c->slots[c->active].l, mx - win->BorderLeft, my - win->BorderTop, 2);
+}
+
+/* The drag ends: the window's pointer moves go back to what the pane
+ * with the keys asked for (a selection, a program's ?1003). */
+static void divider_drop(con *c)
+{
+    con *f = 0;
+    c->drag = 0;
+    if (c->active >= 0 && c->active < c->ntabs)
+        f = (con *)tabslot_focused(&c->slots[c->active]);
+    if (c->own_win)
+        ReportMouse((BOOL)(f ? f->w.pointer_on : 0), c->own_win);
+}
+
+/* The pointer at window pixel mx, my moves the dragged divider: the panes
+ * take their new places each time it passes a cell. */
+static void divider_move(con *c, WORD mx, WORD my)
+{
+    struct Window *win = c->own_win;
+    lay *l;
+    int d = c->drag - 1;
+    if (!win || c->active != c->drag_slot || c->active >= c->ntabs || c->slots[c->active].zoom) {
+        divider_drop(c); /* the slot changed under the drag */
+        return;
+    }
+    l = &c->slots[c->active].l;
+    if (lay_drag(l, d, l->n[d].dir == LAY_RIGHT ? mx - win->BorderLeft : my - win->BorderTop))
+        tab_layout(c);
+}
+
 static int tab_route(con *c, struct IntuiMessage *im, int wheel)
 {
     int i;
@@ -6273,11 +6314,28 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
             }
         tab_dividers(c);
         return 1;
+    case IDCMP_MOUSEMOVE:
+        if (c->drag) {
+            divider_move(c, im->MouseX, im->MouseY);
+            return 1;
+        }
+        break;
     case IDCMP_MOUSEBUTTONS:
         if (im->Code == SELECTDOWN && im->MouseY >= win->BorderTop &&
             im->MouseY < win->BorderTop + bar_height(c) && im->MouseX >= win->BorderLeft) {
             LONG w = win->Width - win->BorderLeft - win->BorderRight;
             tab_switch(c, (int)((LONG)(im->MouseX - win->BorderLeft) * c->ntabs / (w > 0 ? w : 1)));
+            return 1;
+        }
+        /* a press on a divider drags it until the button comes up */
+        if (im->Code == SELECTDOWN && (i = divider_under(c, im->MouseX, im->MouseY)) >= 0) {
+            c->drag = i + 1;
+            c->drag_slot = c->active;
+            ReportMouse(TRUE, win);
+            return 1;
+        }
+        if (im->Code == SELECTUP && c->drag) {
+            divider_drop(c);
             return 1;
         }
         /* a click in a pane without the keys gives it them; the click
