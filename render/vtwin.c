@@ -1288,6 +1288,8 @@ static void copy_selection(vtwin *w)
     n = vt_copy_text(w->t, ax, ay, bx, by, utf, n + 1);
     clip_write(utf, n);
     FreeVec(utf);
+    if (w->host->clipped)
+        w->host->clipped(w->user, VTWIN_CLIP_COPY);
 }
 
 /* A key's bytes: the plain legacy ones while the console's own line editor
@@ -1330,6 +1332,8 @@ static void paste(vtwin *w)
         w->host->input(w->user, out, k);
     }
     FreeVec(text);
+    if (w->host->clipped)
+        w->host->clipped(w->user, VTWIN_CLIP_PASTE);
 }
 
 void vtwin_focus(vtwin *w, int in)

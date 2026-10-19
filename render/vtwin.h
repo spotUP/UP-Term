@@ -35,6 +35,8 @@
 #define VTWIN_MOD_ALTKEY 8
 
 /* What the window needs from its owner. `user` is vtwin.user. */
+enum { VTWIN_CLIP_COPY = 1, VTWIN_CLIP_PASTE };
+
 typedef struct vtwin_host {
     /* the engine's reports (DSR, DA, window status...): the read stream */
     void (*reply)(void *user, const vt_u8 *b, long n);
@@ -59,6 +61,9 @@ typedef struct vtwin_host {
      * alternate screen): at most once a frame, never per write. May be 0:
      * a window with no scroll bar (console.device units) */
     void (*knob)(void *user, const sbar_knob *k);
+    /* a copy put text on the clipboard, or a paste typed some in (what: VTWIN_CLIP_*): once per
+     * action, not per character. May be 0. */
+    void (*clipped)(void *user, int what);
 } vtwin_host;
 
 typedef struct vtwin {

@@ -219,6 +219,7 @@ typedef struct con {
     struct RastPort tab_rp;      /* a tab: its own RastPort on the shared window */
     struct con *tab_list[TAB_MAX]; /* host: its tabs in bar order, itself among them */
     int ntabs, active;
+    slash_state st;              /* the action counters (slash.h): the host's own, a tab's copy of it */
     int host_only;               /* host: its own shell ended, it keeps the window for the tabs */
     char tab_name[32];           /* host: its public port's name */
     struct MsgPort *watch_port;  /* the live-update watcher's replies (watch_worker) */
@@ -723,8 +724,17 @@ static void h_resized(void *u)
 static void h_titled(void *u);
 static void h_open_link(void *u, const char *uri);
 static void h_knob(void *u, const sbar_knob *k);
+static void stat_note(con *c, int ev, long arg, const char *name);
+static void slash_typed_note(con *c, const char *line, int len);
+static void stat_fill(con *c);
+/* a copy or a paste that did something (vtwin.c): one count per action, never per character */
+static void h_clipped(void *u, int what)
+{
+    stat_note((con *)u, what == VTWIN_CLIP_COPY ? STATE_COPY : STATE_PASTE, 0, 0);
+}
+
 static const vtwin_host host = { h_reply, h_input, h_key, h_pasted, h_raw, h_resized, h_titled, h_open_link,
-                                 h_knob };
+                                 h_knob, h_clipped };
 
 /* ---- the window -------------------------------------------------------------- */
 
@@ -2446,6 +2456,7 @@ static void menu_pick(con *c, UWORD code)
         int r;
         if (!it)
             break;
+        stat_note(c, STATE_MENU, (LONG)GTMENUITEM_USERDATA(it), 0);
         r = menu_run(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0);
         if (r == 2 && c->w.win) {
             /* the strip again: every checkmark from the settings (one pick
@@ -4176,6 +4187,11 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
     case SLASH_SETUP:
         setup_text(c, ans, cap);
         return 1;
+    case SLASH_STATE:
+        /* this process's block: the host's own, or the tab's copy the host pushed (stat_push) */
+        if (!c->is_tab)
+            stat_fill(c);
+        return slash_state_text(&c->st, cmd.arg, ans, cap) < 0 ? 2 : 1;
     case SLASH_THEME:
         if (!cmd.arg[0] && typed) {
             /* the themes under the line, chosen with the keys (W30); the
@@ -4388,6 +4404,7 @@ static void cooked_key(con *c, const vt_u8 *b, int n, long key, int mods)
          * a static would be every window's (one code, many processes) */
         if (l > 1 && line[0] == '/' && line[1] >= 'a' && line[1] <= 'z' &&
             (ans = (char *)AllocVec(4096, MEMF_ANY)) != 0 && slash_run(c, line, l, ans, 4096, 1)) {
+            slash_typed_note(c, line, l);
             /* UP-Term's: its answer on screen, and an empty line for the
              * reader -- a shell shows a fresh prompt */
             le_reset(&c->le);
@@ -5339,7 +5356,7 @@ static void idcmp(con *c)
  * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
  * for. */
 enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_INSET,
-       TM_KNOB };
+       TM_KNOB, TM_STAT, TM_STATE };
 
 struct tab_msg {
     struct Message msg;
@@ -5354,6 +5371,9 @@ struct tab_msg {
     WORD mx, my;
     int wheel;
     sbar_knob knob;          /* KNOB: the shown tab's scroll bar knob */
+    slash_state st;          /* STATE: the host's counters, to a tab */
+    long stat_arg;           /* STAT: a tab's action (what = STATE_*), its menu id */
+    char stat_name[24];      /* STAT: the typed command's name */
 };
 
 static struct tab_msg *tab_msg(con *c, int type)
@@ -5404,6 +5424,56 @@ static void tab_post(con *c, con *to, int type, WORD inset, struct IntuiMessage 
         t->wheel = wheel;
     }
     PutMsg(to->tab_port, &t->msg);
+}
+
+/* ---- W47: the action counters (slash.h slash_state) ---- */
+
+/* The host's block to every tab, when a counter or the tabs changed. A copy to read, never written
+ * there; the tab answers /state from it, so nothing waits on another process. */
+static void stat_fill(con *c)
+{
+    c->st.tabs = c->ntabs ? c->ntabs : 1;
+    c->st.active = c->active + 1; /* the tab's number, as Right Amiga 1-9 */
+}
+
+static void stat_push(con *c)
+{
+    int i;
+    stat_fill(c);
+    for (i = 0; i < c->ntabs; i++) {
+        struct tab_msg *t;
+        if (c->tab_list[i] == c || !c->tab_list[i]->tab_port || !(t = tab_msg(c, TM_STATE)))
+            continue;
+        t->st = c->st;
+        PutMsg(c->tab_list[i]->tab_port, &t->msg);
+    }
+}
+
+/* One user action. The host counts it itself; a tab tells its host (TM_STAT), which counts it and
+ * pushes the block to all. */
+static void stat_note(con *c, int ev, long arg, const char *name)
+{
+    if (c->is_tab) {
+        struct tab_msg *t = c->host_pub ? tab_msg(c, TM_STAT) : 0;
+        if (t) {
+            t->what = ev;
+            t->stat_arg = arg;
+            copy_str(t->stat_name, name ? name : "", sizeof(t->stat_name));
+            PutMsg(c->host_pub, &t->msg);
+        }
+        return;
+    }
+    slash_state_bump(&c->st, ev, arg, name);
+    stat_push(c);
+}
+
+/* A typed /command that was ours counts, except /state itself (a script asks through it, and
+ * must not move what it reads). Menu picks count as menu picks, not here. */
+static void slash_typed_note(con *c, const char *line, int len)
+{
+    char name[24];
+    if (slash_line_name(line, len, name, sizeof(name)) && strcmp(name, "state"))
+        stat_note(c, STATE_SLASH, 0, name);
 }
 
 /* ---- the scroll bar (SB1) ---- */
@@ -5575,6 +5645,15 @@ static void tab_activate(con *c, int i)
     if (!old || old != c->tab_list[i])
         tab_show_active(c);
     bar_draw(c);
+    stat_push(c);
+}
+
+/* a switch the user made (Next, Previous, Right Amiga 1-9, the bar): counted, then the same as tab_activate */
+static void tab_switch(con *c, int i)
+{
+    if (i >= 0 && i < c->ntabs && i != c->active)
+        slash_state_bump(&c->st, STATE_SWITCH, 0, 0);
+    tab_activate(c, i);
 }
 
 static void tab_remove(con *c, con *t)
@@ -5593,6 +5672,7 @@ static void tab_remove(con *c, con *t)
     if (!c->ntabs)
         return;
     tab_insets(c);
+    stat_push(c); /* tabs and active changed */
     if (was) {
         c->active = c->active < 0 ? 0 : c->active;
         /* the one that went drew last: the new active one draws all */
@@ -5833,11 +5913,11 @@ static void host_command(con *c, int what, con *from)
         break;
     case MENU_TAB_NEXT:
         if (c->ntabs >= 2)
-            tab_activate(c, (c->active + 1) % c->ntabs);
+            tab_switch(c, (c->active + 1) % c->ntabs);
         break;
     case MENU_TAB_PREV:
         if (c->ntabs >= 2)
-            tab_activate(c, (c->active + c->ntabs - 1) % c->ntabs);
+            tab_switch(c, (c->active + c->ntabs - 1) % c->ntabs);
         break;
     case MENU_SET_SCROLLBAR:
         /* the window's scroll bar, from its own menu or a tab's */
@@ -5882,7 +5962,7 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
     if (im->Class == IDCMP_RAWKEY && (im->Qualifier & IEQUALIFIER_RCOMMAND) &&
         im->Code >= 0x01 && im->Code <= 0x09) {
         if (im->Code - 1 < c->ntabs)
-            tab_activate(c, im->Code - 1);
+            tab_switch(c, im->Code - 1);
         return 1;
     }
     switch (im->Class) {
@@ -5908,7 +5988,7 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
         if (im->Code == SELECTDOWN && im->MouseY >= win->BorderTop &&
             im->MouseY < win->BorderTop + bar_height(c) && im->MouseX >= win->BorderLeft) {
             LONG w = win->Width - win->BorderLeft - win->BorderRight;
-            tab_activate(c, (int)((LONG)(im->MouseX - win->BorderLeft) * c->ntabs / (w > 0 ? w : 1)));
+            tab_switch(c, (int)((LONG)(im->MouseX - win->BorderLeft) * c->ntabs / (w > 0 ? w : 1)));
             return 1;
         }
         break;
@@ -5939,7 +6019,8 @@ static void host_msgs(con *c)
                 t->inset = bar_height(c);
                 ReplyMsg(&t->msg);
                 tab_insets(c); /* a second tab: the bar comes */
-                tab_activate(c, c->ntabs - 1);
+                slash_state_bump(&c->st, STATE_TAB_OPENED, 0, 0);
+                tab_activate(c, c->ntabs - 1); /* and pushes the counters */
                 continue;
             }
             break;
@@ -5951,6 +6032,9 @@ static void host_msgs(con *c)
             break;
         case TM_COMMAND:
             host_command(c, t->what, t->from);
+            break;
+        case TM_STAT:
+            stat_note(c, t->what, t->stat_arg, t->stat_name);
             break;
         case TM_KNOB:
             if (c->ntabs && c->active >= 0 && c->active < c->ntabs && c->tab_list[c->active] == t->from) {
@@ -5985,6 +6069,9 @@ static void tab_msgs(con *c)
             break;
         case TM_INSET:
             vtwin_set_inset(&c->w, t->inset);
+            break;
+        case TM_STATE:
+            c->st = t->st;
             break;
         }
         ReplyMsg(&t->msg);
