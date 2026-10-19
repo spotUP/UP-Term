@@ -3,16 +3,16 @@
 Shell tutorial, /tutorial, lesson 1 typed to its end, :quit then `tutorial next`, the progress file, the
 vshrc first-run hint).
 
-Cases, in this order (a later one may need an earlier one's state, so --only runs just the named case):
+Cases, in this order (each sets the progress file it needs, so --only runs any case alone):
   selftest-01 .. selftest-13   UP-Term:bin/vsh UP-Term:bin/tutorial --selftest <lesson>: "ok N" for every step
   hint-before   a fresh vsh window with no progress prints the vshrc hint
   typed         `tutorial` typed at the vsh prompt lists all 13 lessons (the hint's advice)
   menu          Help > Shell tutorial opens a tab that stays up at a tutorial prompt
   slash         /tutorial does the same
   lesson1       (run as `vsh UP-Term:bin/tutorial`, not the typed command: see typed) lesson 1 typed to its end: "Lesson finished."
-  progress      $HOME/.tutorial (System:.tutorial) holds the line 1
-  resume        :quit in lesson 2, then `tutorial next` starts lesson 2 again
-  hint-after    a fresh vsh window after lesson 1 prints no hint
+  progress      lesson 1 again from no progress, then $HOME/.tutorial (System:.tutorial) holds the line 1
+  resume        progress 1: :quit in lesson 2, then `tutorial next` starts lesson 2 again
+  hint-after    progress 1: a fresh vsh window prints no hint
 
 Verdicts go to build/<rig>/tutorial.verdicts.json when a case ends; a passed case with the same files is skipped.
   tutorial_rig.py                 every case not yet passed
@@ -101,7 +101,7 @@ def case_selftest(n):
 
 
 def case_hint(expect):
-    c.run("Delete %s QUIET" % PROGRESS) if expect else None
+    set_progress([] if expect else [1])
     fresh_vsh("hintwin")
     text = typewin.screen_text()
     close_vsh()
@@ -144,6 +144,13 @@ def set_progress(nums):
     c.run("Delete %s QUIET" % PROGRESS)
     if nums:
         c.run("Copy VTC:tut-progress %s QUIET" % PROGRESS)
+
+
+def saved_progress():
+    """The progress file's numbers, to put back with set_progress; none when there is no file (Type's error text
+    carries a fault number, which is not progress)."""
+    rc, out = c.run("Type %s" % PROGRESS)
+    return [int(n) for n in out.split() if n.isdigit()] if rc == 0 else []
 
 
 def sandbox_there():
@@ -334,7 +341,7 @@ def case_lesson12():
     line only re-prompts), so "12" in the progress file proves each action step was seen by the handler's counters.
     The Return is repeated up to 3 times when the tab still shows the same prompt (the mirror lagging); retries
     are listed in the detail."""
-    saved = c.run("Type %s" % PROGRESS)[1]
+    saved = saved_progress()
     set_progress(range(1, 12))
     log, retries, ok, host_title = [], [], False, "tabwin"
     try:
@@ -429,7 +436,7 @@ def case_lesson12():
                 until(lambda: active_title() == host_title, 10)
         if active_title() == host_title:
             close_host()
-        set_progress([int(n) for n in saved.split() if n.isdigit()])
+        set_progress(saved)
     return ok, detail
 
 
@@ -458,11 +465,13 @@ def case_typed():
 
 
 def case_progress():
+    case_lesson1()
     rc, out = c.run("Type %s" % PROGRESS)
     return rc == 0 and out.split() == ["1"], "rc %s: %r" % (rc, out)
 
 
 def case_resume():
+    set_progress([1])
     fresh_vsh("reswin")
     typewin.typ(TUT + " next")
     typewin.key(typewin.RET, wait=4)
@@ -501,7 +510,7 @@ def case_check_b():
 def case_check_c():
     """Every lesson finished: Help > Shell tutorial opens a tab that stays open on the lesson prompt. Judged by
     the title and the sentinel: no sandbox at the prompt (dist/tutorial:289-295), then `1` makes T:tutorial."""
-    saved = c.run("Type %s" % PROGRESS)[1]
+    saved = saved_progress()
     set_progress(range(1, len(LESSONS) + 1))
     try:
         open_tab("menu")
@@ -520,7 +529,7 @@ def case_check_c():
             tab_type("", 1)
             tab_type("exit", 2)
         close_host()
-        set_progress([int(n) for n in saved.split() if n.isdigit()])
+        set_progress(saved)
     return ok, detail
 
 
