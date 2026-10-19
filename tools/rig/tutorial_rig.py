@@ -27,7 +27,7 @@ import paths, ami, typewin, vshwin
 import condev_rig as c
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-VERDICTS = paths.RIG / "tutorial.verdicts.json"
+VERDICTS = paths.RESULTS / "tutorial.verdicts.json"
 TUT = "UP-Term:bin/vsh UP-Term:bin/tutorial"
 PROGRESS = "System:.tutorial"
 HINT = "New to a Unix shell?"
@@ -53,6 +53,7 @@ def load():
 def record(name, ok, detail):
     d = load()
     d[name] = {"verdict": "pass" if ok else "fail", "fp": FP, "detail": detail[-600:], "time": time.time()}
+    VERDICTS.parent.mkdir(parents=True, exist_ok=True)
     VERDICTS.write_text(json.dumps(d, indent=1))
     print("[%s] %s %s" % ("PASS" if ok else "FAIL", name, "" if ok else detail[-300:].replace("\n", " | ")), flush=True)
 

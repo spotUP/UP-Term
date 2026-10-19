@@ -139,5 +139,14 @@ class Lock(unittest.TestCase):
             self.assertEqual(r.stdout.strip(), "ran", r.stderr)
 
 
+class ResultsLiveInThisCheckout(unittest.TestCase):
+    def test_tutorial_verdicts_are_written_under_the_checkout_the_script_runs_from(self):
+        # a worktree's RIG_HOME is the MAIN checkout's build/ (the rig is a machine resource); the verdicts are
+        # results of this checkout's files and must not be written into another checkout
+        import tutorial_rig
+        self.assertEqual(paths.RESULTS, ROOT / "build" / paths.RIG_NAME)
+        self.assertEqual(pathlib.Path(tutorial_rig.VERDICTS).parent, ROOT / "build" / paths.RIG_NAME)
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

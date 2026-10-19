@@ -67,6 +67,11 @@ RIG_N = int(os.environ.get("UPTERM_RIG") or 1)
 RIG_NAME = "rig" if RIG_N == 1 else "rig%d" % RIG_N
 RIG = RIG_HOME / RIG_NAME
 
+# Verdicts are results of THIS checkout's files (their fingerprints name its sources), not a machine
+# resource: they live in the build/ of the checkout the script runs from, so a worktree's run never writes
+# into the main checkout (2026-10-19: tutorial_rig wrote into a peer's build/rig4).
+RESULTS = VTCON / "build" / RIG_NAME
+
 # FS-UAE's own log (option logs_dir) goes inside the rig's dir, never into the shared
 # ~/Documents/FS-UAE/Cache/Logs/fs-uae.log.txt: all rigs wrote that one file and it reached 7.9 GB and
 # filled the Mac's disk (2026-10-17). The size cap is enforced by cap_fsuae_log(), called at rig start and
