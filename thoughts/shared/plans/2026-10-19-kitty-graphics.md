@@ -62,18 +62,18 @@ new for placement at the cursor.
 
 ## Checklist
 
-- [ ] K1 engine/kitty.c: APC G dispatch from S_STRING '_' end; key parser.
-- [ ] K2 chunk assembly (m=1), base64 decode, size caps.
-- [ ] K3 f=24/f=32 to indexed image (D4), placed at cursor with c/r/x/y/w/h,
+- [x] K1 engine/kitty.c: APC G dispatch from S_STRING '_' end; key parser.
+- [x] K2 chunk assembly (m=1), base64 decode, size caps.
+- [x] K3 f=24/f=32 to indexed image (D4), placed at cursor with c/r/x/y/w/h,
       cursor move rules (C=1).
-- [ ] K4 engine/inflate.c port (D6) + o=z.
-- [ ] K5 vt_decode hook (D5) + f=100 path; error when NULL.
-- [ ] K6 a=t store by id, a=p place by id, a=d delete variants, a=q query.
-- [ ] K7 replies and q=1/2 suppression (D3).
-- [ ] K8 memory budget + gc (D7).
+- [x] K4 engine/inflate.c port (D6) + o=z.
+- [x] K5 vt_decode hook (D5) + f=100 path; error when NULL. (engine hook is vt_set_image_decoder; host test stand-in only, the Amiga decoder is K9)
+- [x] K6 a=t store by id, a=p place by id, a=d delete variants, a=q query.
+- [x] K7 replies and q=1/2 suppression (D3).
+- [x] K8 memory budget + gc (D7).
 - [ ] K9 handler: datatypes PNG decoder behind vt_decode (handler side,
       opened lazily, closed at exit).
-- [ ] K10 host tests (tests/test_kitty.c, wired into `make test`, ONLY=kitty):
+- [x] K10 host tests (tests/test_kitty.c, wired into `make test`, ONLY=kitty):
       raw RGB, RGBA alpha->unset, chunked, zlib, PNG via test decoder,
       query reply, delete by id, ENOENT, ENOMEM on budget, unsupported t=f
       error, image visible through vt_row_image().
@@ -85,7 +85,7 @@ new for placement at the cursor.
       datatypes decode count > 0 in the PROF/debug output; screenshot checked
       by a haiku subagent.
 - [ ] K13 docs: README / man page feature list; THIRD-PARTY notice.
-- [ ] K14 vt_unhandled no longer reports APC G.
+- [x] K14 vt_unhandled no longer reports APC G.
 
 Not in scope: z<0 below-text layer, unicode placeholders (U=1), animation
 (a=f/a=a/a=c), t=f/t=t/t=s file transfer. Each replies an error.

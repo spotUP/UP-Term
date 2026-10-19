@@ -49,6 +49,7 @@
 enum {
     S_GROUND, S_ESC, S_ESC_INT, S_CSI_ENTRY, S_CSI_PARAM, S_CSI_INT,
     S_CSI_IGNORE, S_OSC, S_STRING, /* DCS, SOS, PM, APC: consumed, ignored */
+    S_KITTY, /* APC G: the bytes go to the kitty graphics decoder */
     S_SIXEL, /* DCS P1;P2;P3 q: the bytes go to the sixel decoder (after S_STRING:
               * feed tests state >= S_OSC once for all three) */
     S_PRINT /* printer controller mode (CSI 5 i): the bytes go to no printer
@@ -98,6 +99,8 @@ typedef struct vt_image {
     vt_u32 pal[256];    /* 0xRRGGBB; 0 the unset pixels */
     int w, h, cw, ch, npal, refs;
     vt_u16 gen;
+    vt_u8 kind;         /* 0 sixel, 1 kitty on the screen, 2 kitty stored (not placed) */
+    vt_u32 kid, knum, pid; /* kitty's i=, I= and p= */
 } vt_image;
 
 #define VT_IMG_SLOTS 64 /* images alive at once (the oldest gives way) */
@@ -275,6 +278,10 @@ struct vt_term {
     long pl_cap;
     vt_u16 pl_free;
     struct vt_sixel *six;
+    struct vt_kitty *kit;      /* the kitty graphics command being received */
+    vt_u32 kit_next;           /* counter for the ids kitty gives by number (I=) */
+    vt_image_decoder decode;   /* vt_set_image_decoder: PNG and the like (f=100) */
+    vt_image_release decode_free;
     vt_u32 *six_regs;
     vt_u8 sixel_dm;            /* ?80 DECSDM: images at the top left, no scrolling */
     vt_u8 six_private;         /* ?1070: each image its own colour registers (default) */
@@ -5175,6 +5182,94 @@ static void sixel_place_row(vt_term *t, int slot, int y, int x0, int k)
     place_add(t, l, slot, x0, k);
 }
 
+/* A decoded image (rows of w pixels, indices into pal[0..npal-1]) into a
+ * free slot, which takes the pixels over (`bytes` counted against the
+ * shared memory). The oldest image gives way when the slots are full.
+ * -1 and the pixels freed when there is no slot. */
+static int image_install(vt_term *t, vt_u8 *pix, long bytes, long w, long h, int npal, const vt_u32 *pal)
+{
+    vt_image *im;
+    int slot, i;
+    for (slot = 0; slot < VT_IMG_SLOTS && t->imgs[slot] && t->imgs[slot]->pix; slot++)
+        ;
+    if (slot == VT_IMG_SLOTS) {
+        image_evict(t);
+        for (slot = 0; slot < VT_IMG_SLOTS && t->imgs[slot] && t->imgs[slot]->pix; slot++)
+            ;
+    }
+    if (slot < VT_IMG_SLOTS && !t->imgs[slot]) {
+        t->imgs[slot] = (vt_image *)VT_MALLOC(sizeof(vt_image));
+        if (t->imgs[slot])
+            memset(t->imgs[slot], 0, sizeof(vt_image));
+    }
+    if (slot == VT_IMG_SLOTS || !t->imgs[slot]) {
+        VT_FREE(pix);
+        return -1;
+    }
+    im = t->imgs[slot];
+    im->pix = pix;
+    im->bytes = bytes;
+    im->w = (int)w;
+    im->h = (int)h;
+    im->cw = t->cell_w > 0 ? t->cell_w : 8;
+    im->ch = t->cell_h > 0 ? t->cell_h : 16;
+    im->npal = npal;
+    im->refs = 0;
+    im->kind = 0;
+    im->kid = im->knum = im->pid = 0;
+    im->serial = ++t->img_serial;
+    for (i = 0; i < npal; i++)
+        im->pal[i] = pal[i];
+    t->img_mem += bytes;
+    t->n_img++;
+    return slot;
+}
+
+/* Image `slot` onto the screen's cells. mode 0: at the cursor like text,
+ * scrolling the region up when it runs past the bottom margin, the
+ * cursor left on its last row in the column it started (xterm, with
+ * sixel scrolling on, the default); 1: at the top left, cut at the
+ * bottom, the cursor where it was (?80, DECSDM); 2: as 0 but the cursor
+ * ends where it began (kitty C=1); 3: as 0 but the cursor ends after the
+ * image's last column (kitty). */
+static void image_place(vt_term *t, int slot, int mode)
+{
+    vt_image *im = t->imgs[slot];
+    int rows, k, cy, ocx = t->cx, scrolled = 0, ocy = t->cy;
+    rows = (im->h + im->ch - 1) / im->ch;
+    if (mode == 1) {
+        for (k = 0; k < rows && k < t->rows; k++)
+            sixel_place_row(t, slot, k, 0, k);
+    } else {
+        cy = t->cy;
+        for (k = 0; k < rows; k++) {
+            if (k) {
+                if (cy == t->bot - 1) {
+                    scroll_up(t, t->top, t->bot, 1);
+                    scrolled++;
+                } else if (cy < t->rows - 1) {
+                    cy++;
+                } else {
+                    break; /* below the margins at the screen's bottom: cut */
+                }
+            }
+            sixel_place_row(t, slot, cy, t->cx, k);
+        }
+        t->cy = cy;
+        t->wrap_pending = 0;
+        if (mode == 2) {
+            t->cx = ocx;
+            t->cy = ocy - scrolled < 0 ? 0 : ocy - scrolled;
+        } else if (mode == 3) {
+            t->cx = ocx + image_cols(im);
+            if (t->cx >= t->cols)
+                t->cx = t->cols - 1;
+        }
+    }
+    if (!im->refs)
+        image_free(t, slot); /* nowhere on the screen */
+}
+
 /* ST: the image is complete. It goes on the screen like text: at the
  * cursor, scrolling the region up when it runs past the bottom margin,
  * the cursor left on its last row in the column it started (xterm, with
@@ -5183,9 +5278,8 @@ static void sixel_place_row(vt_term *t, int slot, int y, int x0, int k)
 static void sixel_end(vt_term *t)
 {
     vt_sixel *s = t->six;
-    vt_image *im;
     long w, h, y;
-    int slot, i, rows, k, cy, cw, ch;
+    int slot;
     if (!s)
         return;
     t->six = 0;
@@ -5206,64 +5300,12 @@ static void sixel_end(vt_term *t)
     }
     for (y = 1; y < h; y++) /* rows of w pixels, one after the other */
         memmove(s->pix + y * w, s->pix + y * s->aw, w);
-    for (slot = 0; slot < VT_IMG_SLOTS && t->imgs[slot] && t->imgs[slot]->pix; slot++)
-        ;
-    if (slot == VT_IMG_SLOTS) {
-        image_evict(t);
-        for (slot = 0; slot < VT_IMG_SLOTS && t->imgs[slot] && t->imgs[slot]->pix; slot++)
-            ;
-    }
-    if (slot < VT_IMG_SLOTS && !t->imgs[slot]) {
-        t->imgs[slot] = (vt_image *)VT_MALLOC(sizeof(vt_image));
-        if (t->imgs[slot])
-            memset(t->imgs[slot], 0, sizeof(vt_image));
-    }
-    if (slot == VT_IMG_SLOTS || !t->imgs[slot]) {
-        VT_FREE(s->pix);
-        VT_FREE(s);
-        return;
-    }
-    im = t->imgs[slot];
-    im->pix = s->pix;
-    im->bytes = s->aw * s->ah;
-    im->w = (int)w;
-    im->h = (int)h;
-    cw = t->cell_w > 0 ? t->cell_w : 8;
-    ch = t->cell_h > 0 ? t->cell_h : 16;
-    im->cw = cw;
-    im->ch = ch;
-    im->npal = s->npal;
-    im->refs = 0;
-    im->serial = ++t->img_serial;
-    for (i = 0; i < s->npal; i++)
-        im->pal[i] = s->pal[i];
-    im->pal[0] = vt_default_color(t, 1); /* unset: the background (the renderer's own) */
-    t->img_mem += im->bytes;
-    t->n_img++;
+    slot = image_install(t, s->pix, s->aw * s->ah, w, h, s->npal, s->pal);
     VT_FREE(s);
-
-    rows = (int)((h + ch - 1) / ch);
-    if (t->sixel_dm) {
-        for (k = 0; k < rows && k < t->rows; k++)
-            sixel_place_row(t, slot, k, 0, k);
-    } else {
-        cy = t->cy;
-        for (k = 0; k < rows; k++) {
-            if (k) {
-                if (cy == t->bot - 1)
-                    scroll_up(t, t->top, t->bot, 1);
-                else if (cy < t->rows - 1)
-                    cy++;
-                else
-                    break; /* below the margins at the screen's bottom: cut */
-            }
-            sixel_place_row(t, slot, cy, t->cx, k);
-        }
-        t->cy = cy;
-        t->wrap_pending = 0;
-    }
-    if (!im->refs)
-        image_free(t, slot); /* nowhere on the screen */
+    if (slot < 0)
+        return;
+    t->imgs[slot]->pal[0] = vt_default_color(t, 1); /* unset: the background (the renderer's own) */
+    image_place(t, slot, t->sixel_dm ? 1 : 0);
 }
 
 /* XTSMGRAPHICS, CSI ? Pi ; Pa ; Pv S: the number of colour registers
@@ -5362,6 +5404,8 @@ static void clear_params(vt_term *t)
     t->ninter = 0;
 }
 
+#include "kitty.c"
+
 static void enter_string(vt_term *t, vt_u8 kind)
 {
     t->state = kind == ']' ? S_OSC : S_STRING;
@@ -5403,10 +5447,33 @@ static void feed(vt_term *t, vt_u32 c)
     if (c == 0x18 || c == 0x1A) { /* CAN, SUB */
         if (t->state == S_SIXEL)
             sixel_abort(t); /* cancelled: no image */
+        if (t->state == S_KITTY)
+            kitty_abort(t);
         t->state = S_GROUND;
         return;
     }
-    if (t->state == S_SIXEL) {
+    if (t->state == S_KITTY) {
+        if (t->str_esc) {
+            t->str_esc = 0;
+            kitty_end(t);
+            t->state = S_GROUND;
+            if (c == '\\')
+                return;
+            t->state = S_ESC; /* ESC ends the command and starts a new ESC */
+            clear_params(t);
+        } else if (c == 0x1B) {
+            t->str_esc = 1;
+            return;
+        } else if (c == 0x9C) {
+            kitty_end(t);
+            t->state = S_GROUND;
+            return;
+        } else {
+            if (c >= 0x20 && c < 0x7F)
+                kitty_byte(t, (vt_u8)c);
+            return;
+        }
+    } else if (t->state == S_SIXEL) {
         if (t->str_esc) {
             t->str_esc = 0;
             sixel_end(t);
@@ -5461,6 +5528,10 @@ static void feed(vt_term *t, vt_u32 c)
                 osc52_begin(t); /* OSC 7 and 8: URLs, longer than str can hold */
                 t->osc52 = 3;
                 t->long_cmd = (vt_u8)(t->str[0] - '0');
+                return;
+            }
+            if (t->str_kind == '_' && c == 'G' && t->state == S_STRING && t->str_len == 0) {
+                kitty_begin(t); /* APC G: a kitty graphics command */
                 return;
             }
             if (t->str_kind == 'P' && c == 'q' && t->state == S_STRING && dcs_is_params(t)) {
@@ -5839,6 +5910,7 @@ void vt_free(vt_term *t)
     if (t->sb)
         VT_FREE(t->sb);
     sixel_abort(t);
+    kitty_abort(t);
     for (i = 0; i < VT_IMG_SLOTS; i++)
         if (t->imgs[i]) {
             image_free(t, i);
@@ -5886,6 +5958,7 @@ void vt_reset(vt_term *t)
     t->amiga_bg = 0;
     t->scroll_enabled = 1;
     sixel_abort(t);
+    kitty_abort(t);
     t->state = S_GROUND;
     t->u_need = 0;
     t->last_ch = 0;
@@ -6082,6 +6155,12 @@ void vt_set_backspace_bs(vt_term *t, int bs)
 void vt_set_amiga_keys(vt_term *t, int on)
 {
     t->amiga_keys = on != 0;
+}
+
+void vt_set_image_decoder(vt_term *t, vt_image_decoder decode, vt_image_release release)
+{
+    t->decode = decode;
+    t->decode_free = release;
 }
 
 void vt_set_reflow(vt_term *t, int on)

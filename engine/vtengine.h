@@ -346,6 +346,14 @@ typedef struct vt_image_view {
  * drawing them in order puts the newest on top. Draw a tile only in the
  * row's cells with VT_CELL_IMAGE set. 0 when there is no i-th. */
 int      vt_row_image(const vt_term *t, int row, int i, vt_image_view *v);
+/* Kitty graphics (APC G ... ST): raw RGB / RGBA (f=24, 32), o=z, chunks,
+ * a=t T p d q, replies, become the same images. A PNG (f=100) needs the
+ * host: it sets a decoder that turns the file's bytes into w x h pixels
+ * 0xAARRGGBB in a buffer it owns (return 0 on a bad file), and the
+ * function that frees that buffer. Without one, f=100 answers an error. */
+typedef int (*vt_image_decoder)(const vt_u8 *data, long n, vt_u32 **argb, int *w, int *h);
+typedef void (*vt_image_release)(vt_u32 *argb);
+void     vt_set_image_decoder(vt_term *t, vt_image_decoder decode, vt_image_release release);
 /* The largest sixel image, in pixels, and the memory all images share. */
 #define VT_SIXEL_MAX_W 1024
 #define VT_SIXEL_MAX_H 1024

@@ -1276,9 +1276,8 @@ static void claude_code_session_needs_only_what_we_have(void)
     CHECK(n > 4000 && n < (long)sizeof(buf));
     h_reply_clear();
     vt_write(t, buf, n);
-    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 1);
-    for (i = 0; i < 16 && kinds[i]; i++)
-        CHECK(!strcmp(kinds[i], "X 0"));
+    CHECK_INT(vt_unhandled(t, kinds, counts, 16), 0); /* its APC G query is answered now */
+    CHECK(strstr(h_reply, "\033_Gi=31;OK\033\\") != 0);
     for (i = 0; i < 24; i++) {
         const char *r = h_row(t, i);
         if (!strcmp(r, "\xe2\x8f\xba hello amiga"))
