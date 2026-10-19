@@ -175,5 +175,32 @@ with tempfile.TemporaryDirectory() as tmp:
     else:
         check(False, "rig.stage_terminfo exists")
 
+# rig 3, 2026-10-19: a stale VTC:vsh (09:54 build) went over the kit's fresh C:vsh at every boot
+# after install_rig's install, so a kit check after the reboot ran the old vsh. The shadow sources
+# are the current build: the stale one replaced, a missing one added, and prepare refreshes them.
+with tempfile.TemporaryDirectory() as tmp:
+    tmp = pathlib.Path(tmp)
+    (tmp / "build/amiga").mkdir(parents=True)
+    (tmp / "vtc").mkdir()
+    (tmp / "build/amiga/vsh").write_bytes(b"vsh 237268")
+    (tmp / "build/amiga/UPDemo").write_bytes(b"updemo new")
+    (tmp / "vtc/vsh").write_bytes(b"vsh 236784")
+    old = rig.ROOT
+    rig.ROOT = tmp
+    try:
+        if hasattr(rig, "refresh_kit_shadows"):
+            rig.refresh_kit_shadows(tmp / "vtc")
+            check((tmp / "vtc/vsh").read_bytes() == b"vsh 237268", "a stale VTC:vsh is replaced by the build")
+            check((tmp / "vtc/UPDemo").read_bytes() == b"updemo new", "a missing VTC:UPDemo is added")
+        else:
+            check(False, "rig.refresh_kit_shadows exists")
+    finally:
+        rig.ROOT = old
+import ast  # noqa: E402
+prep = next(f for f in ast.walk(ast.parse((HERE / "rig/install_rig.py").read_text()))
+            if isinstance(f, ast.FunctionDef) and f.name == "prepare")
+check(any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "refresh_kit_shadows"
+          for c in ast.walk(prep)), "install_rig.prepare refreshes the kit shadows in VTC:")
+
 print("[%s] rig_kit: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)

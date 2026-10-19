@@ -613,6 +613,18 @@ def kit_restore():
     (RIG / "vtc/kit-restore").write_text("")
     print("kit-restore: reboot the rig (stop, start); the kit's files come back from VTC:kit-orig")
 
+def refresh_kit_shadows(vtc):
+    """Every program the boot puts at a kit name (KIT_SHADOWS) is the current build in VTC:, even
+    when the drawer never held it (W-R3 Prefs editor, W-R4 UPDemo and the other C: commands).
+    A stale VTC: copy is worse than none: each boot puts it over what the kit's install wrote, and
+    a kit check after a reboot runs the old program (rig 3, 2026-10-19: Execute install.dos wrote
+    the 237268-byte C:vsh, the next boot put VTC:'s 236784-byte one of 09:54 back)."""
+    for name in sorted({x[0] for x in KIT_SHADOWS}):
+        src, dst = ROOT / "build/amiga" / name, vtc / name
+        if src.is_file() and not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+            shutil.copyfile(src, dst)
+            print("refreshed", name, dst.stat().st_size, "bytes")
+
 def install():
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)
     shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
@@ -625,13 +637,7 @@ def install():
         if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
             shutil.copyfile(f, dst)
             print("refreshed", f.name, dst.stat().st_size, "bytes")
-    # every program the boot puts at a kit name (KIT_SHADOWS) is in VTC: even when the drawer
-    # never held it (W-R3 Prefs editor, W-R4 UPDemo and the other C: commands)
-    for name in sorted({x[0] for x in KIT_SHADOWS}):
-        src, dst = ROOT / "build/amiga" / name, RIG / "vtc" / name
-        if src.is_file() and not dst.is_file():
-            shutil.copyfile(src, dst)
-            print("added", name, dst.stat().st_size, "bytes")
+    refresh_kit_shadows(RIG / "vtc")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)

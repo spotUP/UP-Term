@@ -426,6 +426,9 @@ def prepare(dest, addons=()):
         stage_addon(pkg)
     for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
+    # the boot after the install puts VTC:'s copies over the kit's (rig.KIT_SHADOWS): they must be this build
+    import rig
+    rig.refresh_kit_shadows(VTC)
     if dest:
         # the drawer's parent must exist (VTC:KitTest/UP-Term: VTC:KitTest)
         (VTC / dest.split(':', 1)[1].rpartition('/')[0]).mkdir(parents=True, exist_ok=True)
