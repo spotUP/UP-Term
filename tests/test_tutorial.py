@@ -5,7 +5,7 @@ scripted stdin. Each case runs under the host's /bin/sh and under build/vsh_host
 ones show the answer; $TUTORIAL_PROGRESS gets the lesson number; a sentinel lesson
 directory proves $TUTORIAL_LESSONS is the one read (dist/tutorial-lessons is the shipped
 one, UP-Term:share/tutorial on the Amiga). The rig half is the plan's L-R."""
-import os, shutil, subprocess, tempfile, unittest
+import os, pty, shutil, subprocess, tempfile, unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 TUTORIAL = os.path.join(ROOT, 'dist', 'tutorial')
@@ -163,6 +163,61 @@ class Tutorial(unittest.TestCase):
             self.assertEqual(rc, 2)
             self.assertIn('usage: tutorial', out)
         self.each_shell(case)
+
+
+
+
+VSHRC = os.path.join(ROOT, 'dist', 'vshrc')
+HINT = 'New to a Unix shell? Type  tutorial'
+
+
+class FirstRunHint(unittest.TestCase):
+    """plan L-8: an interactive shell on a terminal that sources dist/vshrc prints the one-line hint
+    until $HOME/.tutorial-hint-off exists or lesson 1 is in the progress file. The shell runs on a
+    pty (the hint needs [ -t 1 ]) as `sh -i`, the way vsh sources the file at an interactive start."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix='hint')
+        self.addCleanup(shutil.rmtree, self.home)
+
+    def startup(self, interactive=True, tty=True):
+        env = {'PATH': '/usr/bin:/bin', 'HOME': self.home, 'TERM': 'vt100'}
+        cmd = ['/bin/sh'] + (['-i'] if interactive else []) + ['-c', '. ' + VSHRC]
+        if not tty:
+            r = subprocess.run(cmd, capture_output=True, env=env, timeout=30, stdin=subprocess.DEVNULL)
+            return r.stdout.decode(errors='replace')
+        out = []
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.execve(cmd[0], cmd, env)
+        while True:
+            try:
+                data = os.read(fd, 4096)
+            except OSError:
+                break
+            if not data:
+                break
+            out.append(data)
+        os.waitpid(pid, 0)
+        return b''.join(out).decode(errors='replace')
+
+    def test_hint_shows_then_goes_with_the_off_file_and_with_lesson_one(self):
+        self.assertIn(HINT, self.startup())
+        self.assertIn('.tutorial-hint-off', self.startup())  # it says how to hide itself
+        with open(os.path.join(self.home, '.tutorial'), 'w') as fh:
+            fh.write('2\n')
+        self.assertIn(HINT, self.startup())  # lesson 2 done, lesson 1 is not
+        with open(os.path.join(self.home, '.tutorial'), 'a') as fh:
+            fh.write('1\n')
+        self.assertNotIn(HINT, self.startup())
+        os.remove(os.path.join(self.home, '.tutorial'))
+        self.assertIn(HINT, self.startup())
+        open(os.path.join(self.home, '.tutorial-hint-off'), 'w').close()
+        self.assertNotIn(HINT, self.startup())
+
+    def test_no_hint_for_a_script_or_a_pipe(self):
+        self.assertNotIn(HINT, self.startup(interactive=False))
+        self.assertNotIn(HINT, self.startup(tty=False))
 
 
 if __name__ == '__main__':

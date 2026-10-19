@@ -154,6 +154,15 @@ off) ;;
 esac
 unset hlcat
 
+# One line for a newcomer: type tutorial (dist/tutorial, Help > Shell tutorial).
+# Shown until lesson 1 is finished (its number is a line of the progress file
+# the tutorial writes) or $HOME/.tutorial-hint-off exists.
+tutorial_hint() {
+    [ -f "$HOME/.tutorial-hint-off" ] && return 0
+    [ -r "${TUTORIAL_PROGRESS:-$HOME/.tutorial}" ] && grep -qx 1 "${TUTORIAL_PROGRESS:-$HOME/.tutorial}" && return 0
+    echo "New to a Unix shell? Type  tutorial  for a short hands-on course. Hide this line: echo > \$HOME/.tutorial-hint-off"
+}
+
 # The Up Rough banner when an interactive vsh starts on a terminal (not
 # for vsh -c or a script, and not when its output goes elsewhere). Remove
 # these lines, or the file, to start quietly.
@@ -161,6 +170,9 @@ case $- in
 *i*)
     if [ -t 1 ] && [ -f ENV:vsh/banner ]; then
         Type ENV:vsh/banner
+    fi
+    if [ -t 1 ]; then
+        tutorial_hint
     fi
     ;;
 esac

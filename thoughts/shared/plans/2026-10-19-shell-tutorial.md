@@ -147,7 +147,7 @@ none.
 - [x] L-7 Help menu "Shell tutorial" item and /tutorial slash command, a tab
       running `vsh UP-Term:bin/tutorial` (UPDemo row pattern), after the
       "Slash commands" item.
-- [ ] L-8 First-run hint in dist/vshrc (D3: yes), off by
+- [x] L-8 First-run hint in dist/vshrc (D3: yes), off by
       $HOME/.tutorial-hint-off or after lesson 1.
 - [ ] L-9 README.txt section: "New to a Unix shell" pointing at tutorial.
 - [x] L-T1 Reachability test: tests/test_tutorial.py drives dist/tutorial through
