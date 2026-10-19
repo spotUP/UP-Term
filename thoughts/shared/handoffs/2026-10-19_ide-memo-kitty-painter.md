@@ -14,7 +14,7 @@ Standing goal (owner): "keep goin until the ide is finished". IDE spike = ~/Code
 
 - vtcon is clean. Pushed/committed today: 2f9b8b03 (rig.py screenmode keeps start args, test
   ONLY=rig_screenmode), e040fa08 (kitty engine, by agent), a43a5f78 (painter measurement, by agent).
-- Two agents of the OLD session were still running at handoff: kitty engine (afcdac37a8249ea8a) and
+- Both old-session agents have reported (summaries in steps 5 and 6). Earlier note: two agents were running at handoff: kitty engine (afcdac37a8249ea8a) and
   painter port (a64d804fd565b71db, rig 2). Their final reports go to the old session only. Check git log
   and rig 2 (`UPTERM_RIG=2 python3 tools/rig/rig.py status`) for what they left; stop rig 2 if idle
   (never rig 1).
@@ -49,7 +49,12 @@ Measured on rig 3 020 (valid, avail_start 68445 kB), clean HEAD vs memo, same se
 3. Commit in ide-spike by file name (bench_rig.py, scidemo.cxx, patches/ncurses-vidputs-memo.patch,
    results/scidemo-lite-a1200.txt) with the HEAD-vs-memo numbers above; push (spotUP, no attribution).
 4. Stop rig 3 (start it before step 1).
-5. Kitty: K9 handler datatypes PNG decoder behind vt_set_image_decoder, K11 render host test,
+5. Kitty engine agent reported: e040fa08 = K1-K8, K10, K14 (K5 = host hook vt_set_image_decoder only).
+   ONLY=kitty/sixel/xterm pass, make amiga builds; full `make test` sweep unverified (killed after 70 [OK]).
+   Licence entry for engine/kitty.c + inflate.c added to dist/LICENSES.txt (this handoff's commit).
+   Notes: 39 greys not 40 (index 0 = unset); vt_images() counts stored pictures too, use vt_row_image()
+   to ask "on screen"; claude-session.80x24.bin APC G query now answered (test_xterm expects 0 unhandled).
+   Then: K9 handler datatypes PNG decoder behind vt_set_image_decoder, K11 render host test,
    K12 rig reachability (sentinels: kitty placed counter + datatypes decode count), K13 docs +
    THIRD-PARTY notice (CTerm MIT, Tobias Karlsson). Read the plan checklist first.
 6. Painter (agent reported 2026-10-19, rig 2 stopped): vp_span_long (691a9c26, a43a5f78) ran for all

@@ -77,6 +77,9 @@ into screen and tmux)         looked at; ncurses is MIT (X11)  looked in screen-
 CTerm planar painter design   MIT, Copyright (c) 2026       creep-cterm repo (src/ppaint.s, src/draw.c); ported
 (render/painter.c, vp_span_   Tobias Karlsson (creep-cterm/    into render/painter.c: pre-shifted glyph longs,
 long; in the handler)         LICENSE)                         whole-long plane writes, edge masks
+CTerm kitty graphics and      MIT, Copyright (c) 2026       creep-cterm repo (src/vt.c kitty parts,
+inflate (engine/kitty.c,      Tobias Karlsson (creep-cterm/    src/inflate.c, src/pics.c); notice at the
+engine/inflate.c)             LICENSE)                         top of both files
 
 Notes
 - GNU Unifont is also offered under GPL v2 or later; the kit uses the OFL.
