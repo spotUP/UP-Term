@@ -2177,6 +2177,22 @@ static void about(con *c)
         EasyRequest(c->w.win, &es, 0, (ULONG)STR(VTCON_BUILD));
 }
 
+/* Help > Slash commands while a program has the screen: no text into it,
+ * a requester instead (about()'s pattern) */
+static void help_slash_ask(con *c)
+{
+    struct EasyStruct es;
+    es.es_StructSize = sizeof(es);
+    es.es_Flags = 0;
+    es.es_Title = (UBYTE *)"Slash commands";
+    es.es_TextFormat = (UBYTE *)"Slash commands work at a shell prompt.\n"
+                                "Leave the program, then type /help\n"
+                                "or pick this item again.";
+    es.es_GadgetFormat = (UBYTE *)"OK";
+    if (c->w.win)
+        EasyRequest(c->w.win, &es, 0);
+}
+
 /* One menu item's action by its id, from a pick or a typed /command
  * (handler/slash.c names the same ids). 0: not an item; 1: done; 2: done,
  * a checkmark may have moved (the caller builds the strip again); 3: done,
@@ -2232,12 +2248,24 @@ static int menu_run(con *c, LONG id, int on)
         /* Terminal type and Colour mode: the command each stands for */
         char line[40], ans[160];
         if (id == MENU_HELP_SLASH) {
-            /* the typed /help, through slash_run, its answer on the window */
-            char *text = (char *)AllocVec(4096, MEMF_ANY);
+            char *text;
+            if (slash_menu_help_where(c->raw, tty_active(c)) == SLASH_HELP_REQUESTER) {
+                help_slash_ask(c);
+                return 1;
+            }
+            /* the typed /help, through slash_run, its answer on the window:
+             * off the prompt's line, a partly typed line dropped (as Ctrl-C
+             * would), and an empty line for the reader's fresh prompt */
+            text = (char *)AllocVec(4096, MEMF_ANY);
             if (text && slash_menu_line(id, line, sizeof(line)) &&
                 slash_run(c, line, (int)strlen(line), text, 4096, 1)) {
+                output(c, (const vt_u8 *)"\r\n", 2);
+                le_reset(&c->le);
                 answer_print(c, text);
-                in_append(c, (const vt_u8 *)"\n", 1); /* the reader's fresh prompt */
+                if (!c->line_held)
+                    in_append(c, (const vt_u8 *)"\n", 1);
+                c->checked[0] = 0;
+                c->gdir_ok = 0;
             }
             if (text)
                 FreeVec(text);

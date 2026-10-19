@@ -284,6 +284,12 @@ static void settings_menu_items_run_the_typed_commands(void)
     CHECK_INT(slash_menu_line(MENU_SET_BOLD, line, sizeof(line)), 0); /* not one of them */
     /* Help > Slash commands is the typed /help: same line, same list */
     CHECK_INT(slash_menu_line(MENU_HELP_SLASH, line, sizeof(line)), 1);
+    /* ... but only at a prompt: in vim or less the list and its newline
+     * went into the program's screen and input */
+    CHECK_INT(slash_menu_help_where(0, 0), SLASH_HELP_PRINT);
+    CHECK_INT(slash_menu_help_where(1, 0), SLASH_HELP_REQUESTER);
+    CHECK_INT(slash_menu_help_where(0, 1), SLASH_HELP_REQUESTER);
+    CHECK_INT(slash_menu_help_where(1, 1), SLASH_HELP_REQUESTER);
     CHECK_STR(line, "/help");
     CHECK_INT(parse(line), SLASH_OK);
     CHECK_INT(cmd.id, SLASH_HELP);

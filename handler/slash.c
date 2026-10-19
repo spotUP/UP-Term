@@ -418,6 +418,11 @@ int slash_menu_line(long id, char *out, int cap)
     return 0;
 }
 
+int slash_menu_help_where(int raw, int tty)
+{
+    return raw || tty ? SLASH_HELP_REQUESTER : SLASH_HELP_PRINT;
+}
+
 int slash_menu_checked(long id, const char *term, const char *colors)
 {
     unsigned i;

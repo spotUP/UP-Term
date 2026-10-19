@@ -114,6 +114,14 @@ const char *slash_source(const char *value, const char *profile, const char *dfl
 int slash_menu_line(long id, char *out, int cap);
 int slash_menu_checked(long id, const char *term, const char *colors);
 
+/* Help > Slash commands: where the /help list goes. raw: the window reads
+ * raw keys; tty: a program holds a termios mode (vim, less). Either way a
+ * program has the screen, so it gets no text and no keystroke: a requester
+ * says to type /help at a shell prompt (SLASH_HELP_REQUESTER). Otherwise
+ * the list is printed at the prompt (SLASH_HELP_PRINT). */
+enum { SLASH_HELP_PRINT, SLASH_HELP_REQUESTER };
+int slash_menu_help_where(int raw, int tty);
+
 typedef struct slash_row {
     const char *name, *value, *source;
 } slash_row;
