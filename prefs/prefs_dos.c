@@ -82,6 +82,20 @@ int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat)
     return PREFS_INSTALL_OK;
 }
 
+int prefs_dos_splits(const char *buf, long len)
+{
+    static const char *const path[2] = { "ENV:up-term/splits", "ENVARC:up-term/splits" };
+    int t, ok = 1;
+    for (t = PREFS_T_ENV; t <= PREFS_T_ENVARC; t++) {
+        if (len == 0) {
+            if (!dos_remove(0, path[t]))
+                ok = 0;
+        } else if (!prefs_dos_dir(t) || !dos_write(0, path[t], buf, len))
+            ok = 0;
+    }
+    return ok;
+}
+
 void prefs_dos_theme_drawer(const char *given, const char *home, char *out, int cap)
 {
     prefs_theme_drawer(&prefs_dos_fs, given, home, out, cap);

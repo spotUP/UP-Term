@@ -996,6 +996,8 @@ static void worker(void)
         int failed;
         q->font_size = prefs_dos_save(q->data, q->data_len, 1, &failed, q->hlcat);
         q->matches = q->font_size == PREFS_INSTALL_OK;
+    } else if (q->mode == CONFIG_SPLITS) {
+        q->matches = prefs_dos_splits(q->data, q->data_len);
     } else if (q->mode == CHECK_COMMAND) {
         q->matches = command_exists(q);
     } else if (q->mode == HISTORY_LOAD) {

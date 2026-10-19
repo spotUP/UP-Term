@@ -200,7 +200,13 @@ CONFIGURATION (profiles)
      split-restore = off       off | layout | programs: what a tab split into
                                panes keeps when the window opens again -- nothing,
                                its panes and their directories, or also the
-                               command each pane was running
+                               command each pane was running. Close tab on
+                               the window's first tab saves it (ENV:up-term/
+                               splits and ENVARC:'s); the next window that
+                               opens on a shell takes it and splits itself
+                               again, each pane in its directory (a pane's
+                               program is typed into its shell). Set off:
+                               the saved split is deleted
      highlight-cat = on        on | off: vsh's cat shows files through hl -p
                                (see VIEWING FILES). The save also writes it
                                to ENV:up-term/highlight-cat (and ENVARC:'s),

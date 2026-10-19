@@ -48,6 +48,7 @@ void suite_input(void);
 void suite_protocol(void);
 void suite_sbar(void);
 void suite_layout(void);
+void suite_splits_state(void);
 void suite_tabslot(void);
 void suite_menudef(void);
 void suite_unifont(void);
@@ -116,6 +117,7 @@ static const h_suite suites[] = {
     { "protocol", suite_protocol },
     { "sbar", suite_sbar },
     { "layout", suite_layout },
+    { "splits_state", suite_splits_state },
     { "tabslot", suite_tabslot },
     { "menudef", suite_menudef },
     { "unifont", suite_unifont },

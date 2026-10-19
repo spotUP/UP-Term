@@ -31,8 +31,11 @@ enum complete_mode {
     CONFIG_SAVE = 10,         /* data (data_len bytes) written as the profile file, ENV: and
                                * ENVARC: (prefs_dos_save); matches 1 when both are in place,
                                * font_size the result code */
-    COMPLETE_THEMES = 11      /* /theme's list: the themes in the themes drawer, sorted, in
+    COMPLETE_THEMES = 11,     /* /theme's list: the themes in the themes drawer, sorted, in
                                * names (matches of them); the drawer in add ("" none) */
+    CONFIG_SPLITS = 12        /* data (data_len bytes) written as ENV: and ENVARC:
+                               * up-term/splits (prefs_dos_splits); data_len 0 removes them;
+                               * matches 1 on success */
 };
 
 /* the history file: handler/histfile.h (UP-Term:var/vtcon/history, or the shell's HISTFILE) */

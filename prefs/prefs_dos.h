@@ -20,6 +20,10 @@ int prefs_dos_dir(int t);
  * another prefs_install result; *failed is the target that failed. */
 #define PREFS_DOS_NODIR (-100)
 int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat);
+/* The split-restore file: buf (len bytes) as up-term/splits in ENV: and ENVARC:
+ * (the drawers made when missing, each file written in place); len 0 removes
+ * both (already absent is fine). 1 when every write / remove succeeded. */
+int prefs_dos_splits(const char *buf, long len);
 /* The variable dist/vshrc reads: PREFS_HLCAT_VAR in the same drawers, the
  * text prefs_hlcat_text gives (on / off). */
 

@@ -75,6 +75,7 @@
 #include "waitset.h"
 #include "vtcon_packets.h"
 #include "../tty/ldisc.h"
+#include "../config/splits_state.h"
 #include "../config/termurl.h"
 #include "../config/upconf.h"
 #include "../prefs/prefs_core.h"
@@ -140,6 +141,18 @@ struct theme_menu {
     int shown;                   /* the entry whose colours the window has (-1: its own) */
     int end;                     /* LE_MENU_TAKE / _CANCEL once the list is closed */
     char shown_path[COMPLETE_MAX]; /* the file `shown` was read from */
+};
+
+/* A split tab built again at open from ENV:up-term/splits (split-restore
+ * layout / programs): the file as read, the split steps lay_steps found
+ * for it, and how far the build is. The host's pane is build pane 0 and
+ * types dir0, the first pane's directory, itself; each split after it
+ * spawns its shell in its own pane's directory. */
+struct splits_rest {
+    splits_state s;
+    char dir0[SPLITS_CWD_MAX];      /* pane 0's AmigaDOS directory, "" none */
+    int n, step, wait, started;     /* panes; the next step; its spawn serial (0 none) */
+    int from[LAY_MAX_PANES], dir[LAY_MAX_PANES], leaf[LAY_MAX_PANES]; /* lay_steps' */
 };
 
 typedef struct con {
@@ -271,6 +284,9 @@ typedef struct con {
     int tabs;                    /* Tabs in a row */
     int split_restore;           /* profile split-restore: PREFS_SPLIT_OFF / _LAYOUT / _PROGRAMS,
                                   * what a split tab keeps when the window opens again */
+    struct splits_rest *rest;    /* the saved split being built again, 0 none */
+    struct complete_req *splits; /* the worker's ENV:up-term/splits write */
+    int splits_busy;
     int kingcon;                 /* profile completion = kingcon: KingCON's keys and
                                   * selection window (research/2026-10-02_kingcon-completion.md) */
     unsigned long edits;         /* keys that changed the line so far */
@@ -891,7 +907,10 @@ static int node_named(con *c, const char *want)
 struct config_msg {
     struct Message msg;
     upconf *conf;
+    struct splits_rest *rest;    /* 0: no split file wanted */
 };
+
+#define SPLITS_FILE_MAX 2304 /* the split file: four panes' URLs and commands */
 
 /* The profile file into conf, in a process that may make DOS calls (a
  * worker). ENV: first, as Amiga prefs do (the editor's Use writes there;
@@ -923,6 +942,34 @@ static void read_conf(upconf *conf)
     Close(f);
 }
 
+/* The saved split (ENV:, else ENVARC:) into r, in a worker as read_conf:
+ * r->n stays 0 when there is none or it cannot be built. pane 0's URL is
+ * turned into a directory here, where GetVar may run. */
+static void read_splits(struct splits_rest *r)
+{
+    BPTR f = Open((STRPTR)"ENV:up-term/splits", MODE_OLDFILE);
+    char *buf, host[64];
+    if (!f)
+        f = Open((STRPTR)"ENVARC:up-term/splits", MODE_OLDFILE);
+    if (!f)
+        return;
+    buf = (char *)AllocVec(SPLITS_FILE_MAX + 1, MEMF_ANY);
+    if (buf) {
+        LONG got = Read(f, buf, SPLITS_FILE_MAX + 1); /* a longer file is not ours: left alone */
+        if (got > 0 && got <= SPLITS_FILE_MAX && splits_state_parse(&r->s, buf, got) >= 2 &&
+            lay_steps(r->s.layout, r->from, r->dir, r->leaf) == r->s.n)
+            r->n = r->s.n;
+        FreeVec(buf);
+    }
+    Close(f);
+    if (r->n && r->s.cwd[r->leaf[0]][0]) {
+        if (GetVar((STRPTR)"HOSTNAME", (STRPTR)host, sizeof(host), 0) <= 0)
+            host[0] = 0;
+        if (!termurl_cwd_dir(r->s.cwd[r->leaf[0]], host, r->dir0, sizeof(r->dir0)))
+            r->dir0[0] = 0;
+    }
+}
+
 static void config_worker(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
@@ -932,6 +979,8 @@ static void config_worker(void)
     m = (struct config_msg *)GetMsg(&me->pr_MsgPort);
     me->pr_WindowPtr = (APTR)-1; /* no requesters from a file that may be absent */
     read_conf(m->conf);
+    if (m->rest)
+        read_splits(m->rest);
     Forbid(); /* the opener frees m: end before it can run on */
     ReplyMsg((struct Message *)m);
 }
@@ -1025,6 +1074,9 @@ static void config_load(con *c)
     }
     m->msg.mn_ReplyPort = port;
     m->conf = c->conf;
+    /* every window reads the split file: whether it is a tab, or the window
+     * of a program rather than a shell, is known only later (rest_poll) */
+    m->rest = c->rest = (struct splits_rest *)AllocVec(sizeof(struct splits_rest), MEMF_CLEAR);
     w = CreateNewProcTags(NP_Entry, (ULONG)config_worker,
                           NP_Name, (ULONG)"vtcon config", NP_StackSize, 8192,
                           NP_Input, 0, NP_Output, 0,
@@ -1033,6 +1085,10 @@ static void config_load(con *c)
     if (!w) {
         FreeVec(m);
         DeleteMsgPort(port);
+        if (c->rest) {
+            FreeVec(c->rest);
+            c->rest = 0;
+        }
         return; /* no worker: the built-in defaults stand */
     }
     /* CreateMsgPort binds the port to us: the worker's reply sets its
@@ -1047,6 +1103,10 @@ static void config_load(con *c)
     GetMsg(port);
     FreeVec(m);
     DeleteMsgPort(port);
+    if (c->rest && c->rest->n < 2) {
+        FreeVec(c->rest); /* no saved split */
+        c->rest = 0;
+    }
 }
 
 static void watch_start(con *c)
@@ -1799,8 +1859,10 @@ static void prefs_launch(void)
 #define WORK_CHECK 2 /* is the first word a command */
 #define WORK_HIST 4  /* the history file */
 #define WORK_GHOST 8 /* ghost text from a completion candidate (11 KB, made at the first look-up) */
+#define WORK_SPLITS 16 /* the split file's write (splits_write) */
 static int ensure_worker(con *c, int want);
 static struct Process *opener(con *c);
+static void splits_write(con *c, char *buf, int len);
 
 /* Settings > Font...: the ASL font requester, in the completion worker (it
  * reads FONTS:, DOS calls the handler must not make); the answer arrives
@@ -2278,7 +2340,10 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
     case MENU_SET_CLIP_READ_WRITE: c->w.clip_access = VT_CLIP_WRITE | VT_CLIP_READ; restyle = 1; break;
     case MENU_SET_CLIP_OFF: c->w.clip_access = 0; restyle = 1; break;
-    case MENU_SET_SPLIT_OFF: c->split_restore = PREFS_SPLIT_OFF; break;
+    case MENU_SET_SPLIT_OFF:
+        c->split_restore = PREFS_SPLIT_OFF;
+        splits_write(c, 0, 0); /* off: no saved split waits for the next window */
+        break;
     case MENU_SET_SPLIT_LAYOUT: c->split_restore = PREFS_SPLIT_LAYOUT; break;
     case MENU_SET_SPLIT_PROGRAMS: c->split_restore = PREFS_SPLIT_PROGRAMS; break;
     case MENU_SET_UNIX:
@@ -3286,8 +3351,11 @@ static int ensure_worker(con *c, int want)
         c->hist = complete_req_new(0);
     if ((want & WORK_GHOST) && !c->ghost)
         c->ghost = complete_req_new(1);
+    if ((want & WORK_SPLITS) && !c->splits)
+        c->splits = complete_req_new(0);
     return c->comp_port && (!(want & WORK_COMP) || c->comp) && (!(want & WORK_CHECK) || c->check) &&
-           (!(want & WORK_HIST) || c->hist) && (!(want & WORK_GHOST) || c->ghost);
+           (!(want & WORK_HIST) || c->hist) && (!(want & WORK_GHOST) || c->ghost) &&
+           (!(want & WORK_SPLITS) || c->splits);
 }
 
 /* The completion menu's names (COMPLETE_NAMES), made at the first menu. */
@@ -3808,6 +3876,13 @@ static void finish_completion(con *c)
         }
         if (q == c->ghost) {
             ghost_answer(c, q);
+            continue;
+        }
+        if (q == c->splits) {
+            c->splits_busy = 0; /* written or not: the next close tries again */
+            if (q->data)
+                FreeVec(q->data);
+            q->data = 0;
             continue;
         }
         if (q == c->check) {
@@ -5391,7 +5466,7 @@ static void idcmp(con *c)
  * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
  * for. */
 enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_RECT,
-       TM_KNOB, TM_STAT, TM_STATE, TM_FONT };
+       TM_KNOB, TM_STAT, TM_STATE, TM_FONT, TM_TYPE };
 
 struct tab_msg {
     struct Message msg;
@@ -5413,6 +5488,7 @@ struct tab_msg {
     char stat_name[24];      /* STAT: the typed command's name */
     char font[40];           /* FONT: the font's name ("" the default) and size, */
     WORD font_size, cw, ch;  /* its cell (pixels) */
+    char text[SPLITS_CMD_MAX + 2]; /* TYPE: a restored pane's command and its newline, typed */
 };
 
 static struct tab_msg *tab_msg(con *c, int type)
@@ -6030,8 +6106,9 @@ static void h_open_link(void *u, const char *uri)
 
 /* The new tab's spawn number (never 0) when it is on its way, else 0;
  * prog: TAB_SHELL or the program it runs. pane: a split's pane, not a tab
- * of its own (PANE <number>: its registration finds the split it is for). */
-static int tab_spawn(con *c, const char *profile, con *from, int prog, int pane)
+ * of its own (PANE <number>: its registration finds the split it is for).
+ * cwd: the OSC 7 URL its shell starts in, 0 from's. */
+static int tab_spawn(con *c, const char *profile, con *from, int prog, int pane, const char *cwd)
 {
     struct tab_spawn_msg *m;
     const struct tab_prog *p = &tab_progs[prog];
@@ -6083,17 +6160,20 @@ static int tab_spawn(con *c, const char *profile, con *from, int prog, int pane)
     strcat(m->cmd, "/PROFILE ");
     strcat(m->cmd, profile);
     strcat(m->cmd, "\"");
-    if (from && from->w.t && !prog)
+    if (cwd && !prog)
+        copy_str(m->cwd, cwd, sizeof(m->cwd));
+    else if (from && from->w.t && !prog)
         copy_str(m->cwd, vt_cwd(from->w.t), sizeof(m->cwd));
     start_worker(tab_spawner, "UP-Term new tab", &m->msg); /* m is the worker's now */
     return c->spawn_serial;
 }
 
 /* Split from's pane in dir (LAY_RIGHT / LAY_DOWN): a shell in from's
- * directory is spawned, and lands next to from when it registers. 0 when
+ * directory (cwd's, an OSC 7 URL, when not 0) is spawned, and lands next
+ * to from when it registers. The spawn's serial when on its way, 0 when
  * the split cannot be: the slot has the most panes, a pane would fall
  * below the minimum, or splits are already on their way for all panes. */
-static int pane_split(con *c, con *from, int dir)
+static int pane_split(con *c, con *from, int dir, const char *cwd)
 {
     struct Window *win = c->own_win;
     tab_slot try;
@@ -6112,12 +6192,186 @@ static int pane_split(con *c, con *from, int dir)
     for (k = 0; k < LAY_MAX_PANES; k++)
         if (!c->split_wait[k].serial)
             wait = k;
-    if (wait < 0 || !(serial = tab_spawn(c, from->profile, from, TAB_SHELL, 1)))
+    if (wait < 0 || !(serial = tab_spawn(c, from->profile, from, TAB_SHELL, 1, cwd)))
         return 0;
     c->split_wait[wait].serial = serial;
     c->split_wait[wait].dir = dir;
     c->split_wait[wait].from = from;
-    return 1;
+    return serial;
+}
+
+/* The saved split, built again (split-restore): rest_poll starts it once
+ * the window's own shell reads, rest_next splits one pane at a time (each
+ * waits for its shell to join), rest_apply puts the saved ratios and pane
+ * places on the slot. Anything off the expected path drops it whole. */
+static void rest_end(con *c)
+{
+    FreeVec(c->rest);
+    c->rest = 0;
+}
+
+/* Every pane up: the saved tree replaces the one the splits made (its
+ * ratios), the panes renumbered to the places they were written in. */
+static void rest_apply(con *c)
+{
+    struct splits_rest *r = c->rest;
+    tab_slot *t = &c->slots[0];
+    void *np[LAY_MAX_PANES];
+    int k;
+    if (c->ntabs && tabslot_panes(t) == r->n && lay_load(&t->l, r->s.layout) == r->n) {
+        memset(np, 0, sizeof(np));
+        for (k = 0; k < r->n; k++)
+            np[r->leaf[k]] = t->pane[k];
+        memcpy(t->pane, np, sizeof(np));
+        if (t->focus >= 0 && t->focus < r->n)
+            t->focus = r->leaf[t->focus];
+        t->zoom = 0;
+        slash_state_bump(&c->st, STATE_SPLIT_RESTORE, 0, 0);
+        if (c->active == 0)
+            slot_refocus(c, 1);
+        else
+            tab_layout(c);
+    }
+    rest_end(c);
+}
+
+/* The next split step, or the end. */
+static void rest_next(con *c)
+{
+    struct splits_rest *r = c->rest;
+    int j = r->step;
+    if (j >= r->n - 1) {
+        rest_apply(c);
+        return;
+    }
+    tab_self(c);
+    if (!(r->wait = pane_split(c, (con *)c->slots[0].pane[r->from[j]], r->dir[j], r->s.cwd[r->leaf[j + 1]])))
+        rest_end(c);
+}
+
+/* The pane step's split spawned joined slot s (-1: not as a split): in
+ * programs mode it is handed its command, and the next step goes. */
+static void rest_joined(con *c, int s, con *p)
+{
+    struct splits_rest *r = c->rest;
+    struct tab_msg *t;
+    const char *cmd;
+    int id;
+    if (s != 0 || tabslot_find(c->slots, c->ntabs, p, &id) != 0 || id != r->step + 1) {
+        rest_end(c);
+        return;
+    }
+    cmd = r->s.cmd[r->leaf[id]];
+    if (c->split_restore == PREFS_SPLIT_PROGRAMS && cmd[0] && p->tab_port && (t = tab_msg(c, TM_TYPE))) {
+        copy_str(t->text, cmd, SPLITS_CMD_MAX);
+        strcat(t->text, "\n");
+        PutMsg(p->tab_port, &t->msg);
+    }
+    r->wait = 0;
+    r->step++;
+    rest_next(c);
+}
+
+/* Start the saved split once this window's shell reads (a program's
+ * window, a tab, a foreign window or one already split drop it): the file
+ * is taken (deleted, so a second window does not build it too), the shell
+ * goes to pane 0's directory and, in programs mode, runs its command. */
+static void rest_poll(con *c)
+{
+    struct splits_rest *r = c->rest;
+    char line[SPLITS_CWD_MAX + SPLITS_CMD_MAX + 8];
+    const char *cmd;
+    if (!r || r->started)
+        return;
+    if (c->is_tab || c->foreign || c->split_restore == PREFS_SPLIT_OFF) {
+        rest_end(c);
+        return;
+    }
+    if (!c->own_win || !c->nreads || !c->reader_shell)
+        return; /* not at the shell's prompt yet */
+    if (c->ntabs > 1 || (c->ntabs && tabslot_panes(&c->slots[0]) > 1)) {
+        rest_end(c);
+        return;
+    }
+    r->started = 1;
+    splits_write(c, 0, 0);
+    line[0] = 0;
+    if (r->dir0[0]) {
+        strcpy(line, "cd \"");
+        strcat(line, r->dir0);
+        strcat(line, "\"\n");
+    }
+    cmd = r->s.cmd[r->leaf[0]];
+    if (c->split_restore == PREFS_SPLIT_PROGRAMS && cmd[0]) {
+        strcat(line, cmd);
+        strcat(line, "\n");
+    }
+    if (line[0])
+        h_pasted(c, (const vt_u8 *)line, (int)strlen(line), 0);
+    rest_next(c);
+}
+
+/* Keep the host's first slot for the next window (split-restore): its
+ * tree, each pane's last OSC 7 directory and, in programs mode, the
+ * command it runs, written by the worker. One pane: nothing is kept. */
+static void splits_save(con *c)
+{
+    tab_slot *t = &c->slots[0];
+    splits_state *st;
+    char *buf;
+    int order[LAY_MAX_PANES], i, n, len = -1;
+    if (c->split_restore == PREFS_SPLIT_OFF || !c->ntabs || (n = tabslot_panes(t)) < 2)
+        return;
+    st = (splits_state *)AllocVec(sizeof(splits_state), MEMF_CLEAR);
+    buf = (char *)AllocVec(SPLITS_FILE_MAX, MEMF_ANY);
+    if (st && buf && lay_save(&t->l, st->layout, sizeof(st->layout), order) >= 0) {
+        st->n = n;
+        Forbid(); /* the panes' terminals are their processes' */
+        for (i = 0; i < n; i++) {
+            con *p = (con *)t->pane[order[i]];
+            if (!p || !p->w.t)
+                continue;
+            if (strlen(vt_cwd(p->w.t)) < SPLITS_CWD_MAX)
+                strcpy(st->cwd[i], vt_cwd(p->w.t));
+            if (c->split_restore == PREFS_SPLIT_PROGRAMS && strlen(vt_command(p->w.t)) < SPLITS_CMD_MAX)
+                strcpy(st->cmd[i], vt_command(p->w.t));
+        }
+        Permit();
+        len = splits_state_text(st, buf, SPLITS_FILE_MAX);
+    }
+    if (st)
+        FreeVec(st);
+    if (len < 0) {
+        if (buf)
+            FreeVec(buf);
+        return;
+    }
+    splits_write(c, buf, len);
+}
+
+/* The split file to the worker: len bytes of buf (taken: freed when the
+ * write is done), or with buf 0 the file deleted. Dropped when a write is
+ * already on its way. */
+static void splits_write(con *c, char *buf, int len)
+{
+    struct complete_req *q;
+    if (c->splits_busy || !ensure_worker(c, WORK_SPLITS)) {
+        if (buf)
+            FreeVec(buf);
+        return;
+    }
+    q = c->splits;
+    q->mode = CONFIG_SPLITS;
+    q->data = buf;
+    q->data_len = buf ? len : 0;
+    q->data_max = buf ? len + 1 : 0;
+    if (complete_start(q, c->comp_port, opener(c)))
+        c->splits_busy = 1;
+    else {
+        if (buf)
+            FreeVec(buf);
+        q->data = 0;
+    }
 }
 
 /* Close pane p as its close gadget would: the host's own (or no pane) here. */
@@ -6137,20 +6391,20 @@ static void host_command(con *c, int what, con *from)
 {
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile, from, TAB_SHELL, 0);
+        tab_spawn(c, from->profile, from, TAB_SHELL, 0, 0);
         break;
     case MENU_DEMO:
         /* the tour in a tab of its own: what it does to its screen (the
          * main screen, a resize) leaves the user's session alone */
-        if (!tab_spawn(c, from->profile, from, TAB_DEMO, 0))
+        if (!tab_spawn(c, from->profile, from, TAB_DEMO, 0, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
         break;
     case MENU_CLAUDE:
-        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE, 0))
+        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE, 0, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_TUTORIAL:
-        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL, 0))
+        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL, 0, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_TAB_NEXT:
@@ -6172,6 +6426,8 @@ static void host_command(con *c, int what, con *from)
         if (c->active >= 0 && c->active < c->ntabs) {
             void *all[LAY_MAX_PANES];
             int k, own = 0;
+            if (c->active == 0)
+                splits_save(c); /* the host's first slot opens like this next time */
             memcpy(all, c->slots[c->active].pane, sizeof(all));
             for (k = 0; k < LAY_MAX_PANES; k++)
                 if (all[k] == (void *)c)
@@ -6207,7 +6463,7 @@ static void host_command(con *c, int what, con *from)
         break;
     case MENU_SPLIT_RIGHT:
     case MENU_SPLIT_DOWN:
-        if (!pane_split(c, from, what == MENU_SPLIT_RIGHT ? LAY_RIGHT : LAY_DOWN))
+        if (!pane_split(c, from, what == MENU_SPLIT_RIGHT ? LAY_RIGHT : LAY_DOWN, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     }
@@ -6365,7 +6621,7 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
 static int tab_join(con *c, struct tab_msg *t)
 {
     con *from = 0, *p = t->from;
-    int k, s = -1, id, split = 0, dir = LAY_RIGHT;
+    int k, s = -1, id, split = 0, dir = LAY_RIGHT, what = t->what;
     struct Window *win = c->own_win;
     lay_rect r;
     if (!win || (!c->ntabs && c->host_only))
@@ -6410,6 +6666,8 @@ static int tab_join(con *c, struct tab_msg *t)
         slash_state_bump(&c->st, STATE_TAB_OPENED, 0, 0);
         tab_activate(c, s); /* and pushes the counters */
     }
+    if (c->rest && c->rest->wait && what == c->rest->wait)
+        rest_joined(c, split ? s : -1, p);
     return 1;
 }
 
@@ -6525,6 +6783,9 @@ static void tab_msgs(con *c)
             break;
         case TM_FONT:
             vtwin_set_font(&c->w, t->font, t->font_size); /* the slot's font: not passed on again */
+            break;
+        case TM_TYPE:
+            h_pasted(c, (const vt_u8 *)t->text, (int)strlen(t->text), 0); /* as if pasted */
             break;
         case TM_STATE:
             c->st = t->st;
@@ -7548,6 +7809,7 @@ static LONG handler_main(void)
         host_msgs(c);  /* tabs: registering, leaving, asking (the host) */
         tab_msgs(c);   /* tabs: events and show/hide from the host (a tab) */
         tab_replies(c);
+        rest_poll(c);  /* a saved split: built again once the shell reads */
         idcmp(c);
         if (c->comp_port)
             finish_completion(c);
@@ -7574,7 +7836,8 @@ static LONG handler_main(void)
          * before it, opens is 0 too (a wake-up between the startup packet and
          * that Open used to end the handler, leaving dn_Task at a dead port). */
         if (c->ever_opened && c->opens <= 0 && (!c->wait_close || c->closing) && !c->nreads &&
-            !c->comp_busy && !c->check_busy && !c->ghost_busy && !c->hist_busy && !c->host_only) { /* a worker holds our request */
+            !c->comp_busy && !c->check_busy && !c->ghost_busy && !c->hist_busy && !c->splits_busy &&
+            !c->host_only) { /* a worker holds our request */
             if (c->own_win && c->ntabs >= 2) {
                 /* our own shell ended, other tabs live: their window stays
                  * ours until the last one goes; our session goes now */
@@ -7583,8 +7846,8 @@ static LONG handler_main(void)
             }
             break;
         }
-        if (c->host_only && !c->ntabs)
-            break; /* the last tab went */
+        if (c->host_only && !c->ntabs && !c->splits_busy)
+            break; /* the last tab went (and the split file is written) */
     }
     if (c->host_only) {
         CloseWindow(c->own_win);
@@ -7637,6 +7900,13 @@ static LONG handler_main(void)
         FreeVec(c->check);
     if (c->ghost)
         FreeVec(c->ghost);
+    if (c->splits) {
+        if (c->splits->data)
+            FreeVec(c->splits->data);
+        FreeVec(c->splits);
+    }
+    if (c->rest)
+        FreeVec(c->rest);
     if (c->menu)
         FreeVec(c->menu);
     if (c->tm)

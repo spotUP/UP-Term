@@ -18,6 +18,9 @@ Cases (each opens its own vsh window, so `--only` runs one alone):
   zoom      RA+Shift+Enter zooms the focused pane to full width, again restores the half width
   race      Split down from both panes back to back after a `cd` to two different dirs; every pane's `pwd`
             is the dir of the pane it was split from (the shared T:UP-Term-tab script race)
+  restore   NS5.5: with split-restore = programs, Close tab on a 3-pane window writes ENV:up-term/splits; the next
+            window takes it (file gone, `UPTerm state` split-restores 1), has 3 panes, each in its saved directory
+            left to right, and the middle pane's running command started again (its script logs a second run)
 
 Verdicts are written as each case ends (verdicts.Store, build/rig<N>/splits_rig/<case>.json), keyed by the
 handler + vsh build, so a rerun skips passed cases.
@@ -48,7 +51,7 @@ TITLE = 'splitswin'
 BOX = '0/20/600/240'
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_arrows', 'zoom', 'drag', 'tab_close_split', 'font']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_arrows', 'zoom', 'drag', 'tab_close_split', 'font', 'restore']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
 K_W, K_D, K_ENTER, K_RIGHT, K_LEFT = 0x11, 0x22, 0x44, 0x4E, 0x4F    # raw keycodes (RA+key = pane commands)
@@ -520,6 +523,71 @@ def case_font(ck):
         ck(bool(right and r2) and r2 != right, 'font %s: the other pane took the font too' % way, (right, r2))
     finally:
         teardown()
+
+
+RESTORE_DIRS = ['RAM:nsr-a', 'RAM:nsr-b', 'RAM:nsr-c']
+RESTORE_JOB, RESTORE_LOG = 'RAM:nsr-job', 'RAM:nsr-log'
+PROFILE = 'ENV:up-term/up-term'
+
+
+def log_runs():
+    return len([l for l in (ami.read_file(RESTORE_LOG) or b'').decode('latin-1').splitlines() if l.strip()])
+
+
+def case_restore(ck):
+    """NS5.5: split-restore programs, end to end through Close tab and a new window"""
+    had = ami.read_file(PROFILE)
+    c.run('Copy %s %s.nsr QUIET' % (PROFILE, PROFILE) if had is not None else 'Delete %s.nsr QUIET' % PROFILE)
+    c.run('Echo >>%s "[profile default]"' % PROFILE)
+    c.run('Echo >>%s "split-restore = programs"' % PROFILE)
+    c.run('Delete ENV:up-term/splits ENVARC:up-term/splits %s QUIET' % RESTORE_LOG)
+    for d in RESTORE_DIRS:
+        c.run('MakeDir %s QUIET' % d)
+    c.run('Echo >%s "Echo >>%s run"' % (RESTORE_JOB, RESTORE_LOG))
+    c.run('Echo >>%s "Wait 600"' % RESTORE_JOB)
+    try:
+        fresh()
+        line('cd %s' % RESTORE_DIRS[0])
+        split_right_and_count(ck)
+        line('cd %s' % RESTORE_DIRS[1])
+        split_right_and_count(ck)
+        line('cd %s' % RESTORE_DIRS[2])
+        ra(K_LEFT)
+        line('Execute %s' % RESTORE_JOB, wait=3)
+        ck(log_runs() == 1, 'the middle pane runs the job once before the close', log_runs())
+        ck(pane_count() == 3, 'three panes before Close tab', pane_count())
+        pick('Close tab')
+        time.sleep(6)
+        saved = (ami.read_file('ENV:up-term/splits') or b'').decode('latin-1')
+        ck('nsr-b' in saved and 'Execute %s' % RESTORE_JOB in saved,
+           'Close tab wrote ENV:up-term/splits with the cwds and the running command', saved)
+        ck(not ami.window(TITLE), 'the window closed with its tab', None)
+        shutil.copyfile(ROOT / 'build/amiga/UPTerm', VTC / 'UPTerm')
+        vshwin.open_vsh(TITLE, box=BOX, wait=25)          # three shells spawn one after another
+        typewin._last_title = TITLE
+        typewin.click_in(TITLE)
+        time.sleep(2)
+        ck(state_key('split-restores') == 1, '`UPTerm state` split-restores 1 (the restore ran)',
+           state_key('split-restores'))
+        ck(pane_count() == 3, 'the new window has the three panes', pane_count())
+        ck(ami.read_file('ENV:up-term/splits') is None, 'the split file was taken (deleted)', None)
+        ck(log_runs() == 2, 'the middle pane started its command again', log_runs())
+        got = []
+        for i in range(3):                                # the focus is on the last pane built: the right one
+            typewin.key(0x33, CTRL, wait=1)               # Ctrl-C: the restarted Wait ends
+            got.insert(0, pwd_of('restore%d' % i))
+            if i < 2:
+                ra(K_LEFT)
+        for want, g in zip(RESTORE_DIRS, got):
+            ck(g.lower().endswith(want[4:]), 'pane in %s restored there' % want, got)
+    finally:
+        teardown()
+        c.run('Delete ENV:up-term/splits ENVARC:up-term/splits %s %s QUIET' % (RESTORE_JOB, RESTORE_LOG))
+        if had is not None:
+            c.run('Copy %s.nsr %s QUIET' % (PROFILE, PROFILE))
+            c.run('Delete %s.nsr QUIET' % PROFILE)
+        else:
+            c.run('Delete %s QUIET' % PROFILE)
 
 
 def run_case(name, store, fp):

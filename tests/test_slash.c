@@ -350,6 +350,8 @@ static void state_formats_the_counters(void)
     s.zoom = 1;
     slash_state_bump(&s, STATE_SLOT_FONT, 0, 0); /* a split slot's font changed */
     CHECK_INT(s.slot_fonts, 1);
+    slash_state_bump(&s, STATE_SPLIT_RESTORE, 0, 0); /* a saved split built again */
+    CHECK_INT(s.split_restores, 1);
     /* the command is in the table and takes no argument or a key */
     CHECK_INT(parse("/state"), SLASH_OK);
     CHECK_INT(cmd.id, SLASH_STATE);
@@ -358,7 +360,8 @@ static void state_formats_the_counters(void)
     /* every key, "key value" per line */
     CHECK_INT(slash_state_text(&s, "", out, sizeof(out)) > 0, 1);
     CHECK_STR(out, "tabs-opened 2\ntab-switches 1\nmenu-picks 2\nlast-menu 49\nslash-count 1\n"
-                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nsplits 3\npanes 2\nzoom 1\nslot-fonts 1\n");
+                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nsplits 3\npanes 2\nzoom 1\nslot-fonts 1\n"
+                   "split-restores 1\n");
     CHECK_INT(slash_state_text(&s, "splits", out, sizeof(out)), 2); /* bytes written */
     CHECK_STR(out, "3\n");
     CHECK_INT(slash_state_text(&s, "panes", out, sizeof(out)), 2);
