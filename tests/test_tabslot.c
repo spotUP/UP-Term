@@ -179,6 +179,32 @@ static void the_focus_moves_to_the_pane_on_that_side(void)
     CHECK(tabslot_focused(&T[0]) == &E);
 }
 
+static void a_zoom_shows_only_the_focused_pane_until_the_layout_changes(void)
+{
+    int gone, active = 1;
+    fresh();
+    tabslot_add(T, &N, 4, &E);
+    CHECK_INT(tabslot_zoom(T, N, &E), -1); /* one pane: nothing to zoom */
+    CHECK_INT(T[0].zoom, 0);
+    tabslot_add(T, &N, 4, &A);
+    tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200); /* A | B, B focused */
+    CHECK_INT(tabslot_zoom(T, N, &B), 1);
+    CHECK(tabslot_shows(&T[1], 1) && !tabslot_shows(&T[1], 0));
+    CHECK_INT(tabslot_zoom(T, N, &B), 1); /* again: back */
+    CHECK(tabslot_shows(&T[1], 0) && tabslot_shows(&T[1], 1));
+    tabslot_zoom(T, N, &B);
+    CHECK_INT(tabslot_move(T, N, &B, LAY_LEFT), 1); /* a move ends it */
+    CHECK_INT(T[1].zoom, 0);
+    tabslot_zoom(T, N, &A);
+    tabslot_split(T, N, &A, &C, LAY_DOWN, 8, 8, 0, 0, 640, 200); /* so does a split */
+    CHECK_INT(T[1].zoom, 0);
+    tabslot_zoom(T, N, &C);
+    tabslot_remove(T, &N, &active, &B, &gone); /* and a pane leaving */
+    CHECK_INT(T[1].zoom, 0);
+    CHECK(tabslot_shows(&T[1], 0) && !tabslot_shows(&T[1], 1));
+    CHECK_INT(tabslot_zoom(T, N, &D), -1);
+}
+
 void suite_tabslot(void)
 {
     a_new_tab_is_a_slot_with_one_focused_pane();
@@ -189,4 +215,5 @@ void suite_tabslot(void)
     the_last_pane_takes_its_slot_and_the_rest_move_down();
     the_shown_slot_stays_shown_when_another_goes();
     the_focus_moves_to_the_pane_on_that_side();
+    a_zoom_shows_only_the_focused_pane_until_the_layout_changes();
 }

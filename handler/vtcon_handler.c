@@ -1503,6 +1503,7 @@ static const struct NewMenu menu_def[] = {
     { NM_ITEM, (STRPTR)"Split right", (STRPTR)"D", 0, 0, (APTR)MENU_SPLIT_RIGHT },
     { NM_ITEM, (STRPTR)"Split down", 0, 0, 0, (APTR)MENU_SPLIT_DOWN },
     { NM_ITEM, (STRPTR)"Close pane", 0, 0, 0, (APTR)MENU_PANE_CLOSE },
+    { NM_ITEM, (STRPTR)"Zoom pane", 0, 0, 0, (APTR)MENU_PANE_ZOOM },
     { NM_ITEM, (STRPTR)"Claude", (STRPTR)"L", 0, 0, (APTR)MENU_CLAUDE },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
@@ -2392,7 +2393,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
     case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:
-    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE:
+    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE: case MENU_PANE_ZOOM:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -5272,11 +5273,12 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
                 break;
             }
         }
-        /* Right Amiga Shift W closes this pane, Right Amiga Left / Right
-         * give the keys to the pane beside it (the host decides) */
+        /* Right Amiga Shift W closes this pane, Right Amiga Shift Enter
+         * zooms it, Right Amiga Left / Right give the keys to the pane
+         * beside it (the host decides) */
         if ((qual & IEQUALIFIER_RCOMMAND) && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
-            code == 0x11) {
-            tab_command(c, MENU_PANE_CLOSE);
+            (code == 0x11 || code == 0x44 || code == 0x43)) {
+            tab_command(c, code == 0x11 ? MENU_PANE_CLOSE : MENU_PANE_ZOOM);
             break;
         }
         if ((qual & IEQUALIFIER_RCOMMAND) && !(qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
@@ -5679,7 +5681,8 @@ static void tab_dividers(con *c)
     lay_rect r;
     int i, d;
     if (!win || c->hides || c->active < 0 || c->active >= c->ntabs ||
-        tabslot_panes(&c->slots[c->active]) < 2 || !(di = GetScreenDrawInfo(win->WScreen)))
+        tabslot_panes(&c->slots[c->active]) < 2 || c->slots[c->active].zoom ||
+        !(di = GetScreenDrawInfo(win->WScreen)))
         return;
     SetAPen(win->RPort, di->dri_Pens[SHADOWPEN]);
     for (i = 0; (d = lay_divider_at(&c->slots[c->active].l, i)) >= 0; i++)
@@ -5707,9 +5710,13 @@ static void tab_layout(con *c)
         for (k = 0; k < LAY_MAX_PANES; k++) {
             lay_rect r;
             r.x = r.y = r.w = r.h = 0;
-            if (!s->pane[k])
-                continue;
-            if (split)
+            if (!tabslot_shows(s, k))
+                continue; /* hidden behind a zoom: placed again when it ends */
+            if (split && s->zoom) {
+                r.y = h; /* the zoomed pane: the whole area below the bar */
+                r.w = inner_w(win);
+                r.h = inner_h(win) - h;
+            } else if (split)
                 lay_pane_rect(&s->l, k, &r);
             pane_place(c, (con *)s->pane[k], h, &r);
         }
@@ -5736,7 +5743,7 @@ static void tab_show_active(con *c)
     for (k = 0; k < LAY_MAX_PANES; k++) {
         con *p = (con *)s->pane[k];
         struct tab_msg *t;
-        if (!p)
+        if (!tabslot_shows(s, k))
             continue;
         if (p == c) {
             vtwin_show(&c->w, 1);
@@ -5771,13 +5778,15 @@ static void slot_hide(con *c, int i)
 /* The shown slot's focus moved (a split, a click): its panes hand over
  * as at a tab switch -- each answers its hide, so none still draws in the
  * old place -- and come back with the keys and the strip on the new one. */
-static void slot_refocus(con *c)
+static void slot_refocus(con *c, int relayout)
 {
     if (!c->own_win || c->active < 0 || c->active >= c->ntabs)
         return;
     ClearMenuStrip(c->own_win);
     if (!c->hides)
         slot_hide(c, c->active);
+    if (relayout)
+        tab_layout(c); /* a zoom began or ended: the panes' places changed */
     tab_show_active(c); /* now, or when the last hide is answered */
     bar_draw(c);
     stat_push(c);
@@ -5796,7 +5805,7 @@ static int pane_under(con *c, WORD mx, WORD my)
     my = (WORD)(my - win->BorderTop);
     for (k = 0; k < LAY_MAX_PANES; k++) {
         lay_rect r;
-        if (s->pane[k] && lay_pane_rect(&s->l, k, &r) &&
+        if (tabslot_shows(s, k) && lay_pane_rect(&s->l, k, &r) &&
             mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h)
             return k;
     }
@@ -6176,11 +6185,20 @@ static void host_command(con *c, int what, con *from)
     case MENU_PANE_UP:
     case MENU_PANE_DOWN:
         /* only in the shown slot: a key from a hidden pane moves nothing */
+        if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active) {
+            int zoomed = c->slots[c->active].zoom; /* a move ends a zoom */
+            if (tabslot_move(c->slots, c->ntabs, from,
+                             what == MENU_PANE_LEFT ? LAY_LEFT : what == MENU_PANE_RIGHT ? LAY_RIGHT :
+                             what == MENU_PANE_UP ? LAY_UP : LAY_DOWN) >= 0)
+                slot_refocus(c, zoomed);
+        }
+        break;
+    case MENU_PANE_ZOOM:
         if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active &&
-            tabslot_move(c->slots, c->ntabs, from,
-                         what == MENU_PANE_LEFT ? LAY_LEFT : what == MENU_PANE_RIGHT ? LAY_RIGHT :
-                         what == MENU_PANE_UP ? LAY_UP : LAY_DOWN) >= 0)
-            slot_refocus(c);
+            tabslot_zoom(c->slots, c->ntabs, from) >= 0)
+            slot_refocus(c, 1);
+        else
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* one pane: nothing to zoom */
         break;
     case MENU_SPLIT_RIGHT:
     case MENU_SPLIT_DOWN:
@@ -6231,9 +6249,11 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
         if (c->active >= 0 && c->active < c->ntabs)
             for (i = 0; i < LAY_MAX_PANES; i++) {
                 con *p = (con *)c->slots[c->active].pane[i];
+                if (!tabslot_shows(&c->slots[c->active], i))
+                    continue;
                 if (p == c)
                     vtwin_show(&c->w, 1);
-                else if (p)
+                else
                     tab_post(c, p, TM_EVENT, 0, im, wheel);
             }
         tab_dividers(c);
@@ -6250,7 +6270,7 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
         if (im->Code == SELECTDOWN && (i = pane_under(c, im->MouseX, im->MouseY)) >= 0 &&
             i != c->slots[c->active].focus) {
             c->slots[c->active].focus = i;
-            slot_refocus(c);
+            slot_refocus(c, 0);
             return 1;
         }
         break;
@@ -6308,7 +6328,7 @@ static int tab_join(con *c, struct tab_msg *t)
     if (split) {
         slash_state_bump(&c->st, STATE_SPLIT, 0, 0);
         if (s == c->active)
-            slot_refocus(c); /* the focus went to the new pane */
+            slot_refocus(c, 0); /* the focus went to the new pane */
         else
             tab_activate(c, s);
     } else {

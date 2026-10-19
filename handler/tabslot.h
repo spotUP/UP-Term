@@ -22,6 +22,7 @@ typedef struct tab_slot {
     lay l;                       /* the panes' layout; one pane until the first split */
     void *pane[LAY_MAX_PANES];   /* by pane id; 0 = no such pane */
     int focus;                   /* the pane id with the keys */
+    int zoom;                    /* 1: the focused pane has the whole slot, the others hidden */
 } tab_slot;
 
 static void *tabslot_focused(const tab_slot *t)
@@ -32,6 +33,12 @@ static void *tabslot_focused(const tab_slot *t)
 static int tabslot_panes(const tab_slot *t)
 {
     return lay_pane_count(&t->l);
+}
+
+/* Pane id k is drawn when its slot is shown: it exists, and no other pane is zoomed. */
+static int tabslot_shows(const tab_slot *t, int k)
+{
+    return t->pane[k] && (!t->zoom || k == t->focus);
 }
 
 /* A new slot at the end with one pane: its index, or -1 when all max are in use. */
@@ -84,6 +91,7 @@ static int tabslot_split(tab_slot *t, int n, void *from, void *pane, int dir,
         return -1;
     t[i].pane[id] = pane;
     t[i].focus = id;
+    t[i].zoom = 0;
     return id;
 }
 
@@ -96,6 +104,18 @@ static int tabslot_move(tab_slot *t, int n, const void *pane, int dir)
     if ((i = tabslot_find(t, n, pane, &k)) < 0 || (to = lay_neighbour(&t[i].l, k, dir)) < 0)
         return -1;
     t[i].focus = to;
+    t[i].zoom = 0;
+    return i;
+}
+
+/* Zoom pane's slot to pane (it has the keys), or back. Returns the slot,
+ * or -1: pane is in no slot, or its slot has one pane. */
+static int tabslot_zoom(tab_slot *t, int n, const void *pane)
+{
+    int i;
+    if ((i = tabslot_find(t, n, pane, 0)) < 0 || tabslot_panes(&t[i]) < 2)
+        return -1;
+    t[i].zoom = !t[i].zoom;
     return i;
 }
 
@@ -115,6 +135,7 @@ static int tabslot_remove(tab_slot *t, int *n, int *active, const void *pane, in
         t[i].pane[k] = 0;
         if (t[i].focus == k)
             t[i].focus = next;
+        t[i].zoom = 0;
         return i;
     }
     for (at = i; i < *n - 1; i++)
