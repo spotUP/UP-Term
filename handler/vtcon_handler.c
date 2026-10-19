@@ -6175,7 +6175,20 @@ static void host_command(con *c, int what, con *from)
         sbar_apply(c);
         break;
     case MENU_TAB_CLOSE:
-        pane_close(c, tab_at(c, c->active));
+        /* every pane of the tab; each leaves the slot when its process
+         * ends, so the list is taken first and the host's own goes last */
+        if (c->active >= 0 && c->active < c->ntabs) {
+            void *all[LAY_MAX_PANES];
+            int k, own = 0;
+            memcpy(all, c->slots[c->active].pane, sizeof(all));
+            for (k = 0; k < LAY_MAX_PANES; k++)
+                if (all[k] == (void *)c)
+                    own = 1;
+                else if (all[k])
+                    pane_close(c, (con *)all[k]);
+            if (own)
+                pane_close(c, c);
+        }
         break;
     case MENU_PANE_CLOSE:
         pane_close(c, from);
