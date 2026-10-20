@@ -105,7 +105,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 - [x] NS5.1 (rig 4, 2026-10-20: splits_rig zoom PASS) Zoom pane (toggle one pane to full rect and back). Test: rig.
 - [x] NS5.2 (2026-10-20, rig 4 case tab_layout PASS 35 checks: 2-pane and 3-pane tabs switched by menu and RA+1/RA+2, layout, sizes and focus kept; mutation proof g1-tab_layout-mut.log) Interaction with tabs: each tab owns its own layout (or splits only in the first tab: per owner answer). Test: rig, switch tabs and see layout preserved.
 - [ ] NS5.3 DECCOLM, View > 80x24 / 132x43 menu items, fullscreen, font bigger/smaller act on the focused pane or are disabled while split (decided by owner). Test: rig per item.
-- [ ] NS5.4 Perf: measure against Phase 0 budgets (rig, 4 panes): record to build/rig/splits/perf.txt; all budgets asserted. Includes `top`/ps idle check.
+- [ ] NS5.4 Perf: measure against Phase 0 budgets (rig, 4 panes): record to build/rig/splits/perf.txt; all budgets asserted. Includes `top`/ps idle check. Exemption (owner 2026-10-20): the split latency, focus switch and drag rate budgets are judged by the owner by eye on a real machine; the rig records its round-trip numbers only. Idle CPU (4 panes within 10% of 4 tabs) and Avail stay rig-asserted.
 - [x] NS5.5 (rig 4, 2026-10-20: splits_rig restore PASS) Persistence if chosen: layout saved in profile (upconf), restored on window open. Test: rig reopen.
 - [x] NS5.6 (8528997f README + window lesson, d4706f6a slash help, d4af863a matrix note; man/UPTerm.1 exempt: it names no setting one by one and points at /help) Docs: tutorial lesson, slash help, conformance matrix note (panes are not a sequence; matrix unaffected), man page, README feature list; remove "splits missing" rows in research notes? (research notes are history: leave).
 - [x] NS5.7 (a3e078a5: updemo `splits` scene; owner 2026-10-20: tmux scene stays) Remove superseded demo claim? No: the updemo tmux-split scene stays; add a native-split scene only if owner wants (demo/updemo.c).
@@ -147,6 +147,7 @@ Plan count: 19 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1
 - Persistence (NS5.5): a user setting in the profile. Values off / layout / layout+programs, default off. All three ship in the first release (owner 2026-10-19), so NS5.5 includes restarting the program each pane ran.
 - Dividers: 1-pixel line, no pane titles; focus shown by solid vs hollow cursor.
 - Owner answers (2026-10-20): pane scrollback inherits sb_lines (500) for 1-2 panes, 200 per pane when a tab has more than 2 panes (NS4.3). Docs position tmux for detach/attach only; native splits are the layout feature. Release target: next 1.x minor, once all 19 items are ticked (NS3.3 rare leak fixed first). NS5.4 idle CPU budget: 4 panes within 10% of 4 tabs.
+- Owner answer (2026-10-20, scrollback keys): Right Amiga+Up/Down stay scrollback keys. Pane focus moves with RA+Left/Right, RA+[ / RA+], a click or the menu; there is no direct key to the pane above or below.
 - Still open: none.
 
 ## 7. Added findings (peer session, verified on origin/main 2026-10-19)
