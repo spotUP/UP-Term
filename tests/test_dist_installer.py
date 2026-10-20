@@ -358,7 +358,7 @@ class AmiSSLPart(unittest.TestCase):
         self.assertIn('(getversion "LIBS:amisslmaster.library"', inc)
         self.assertIn('Libs/AmigaOS3/amisslmaster.library', inc)
         self.assertRegex(inc, r'\(set #amissl-need\s+\(<')
-        self.assertIn('(if #amissl-need', self.PAGE)
+        self.assertIn('(default (if #amissl-need 1 0))', self.PAGE)
 
     def test_after_the_run_the_same_version_check_decides_installed_or_not(self):
         inc = (ROOT / "dist/common/amissl.installer").read_text(encoding="latin-1")
@@ -572,8 +572,10 @@ class StepCommandLine(unittest.TestCase):
 
 class EveryOptionTicked(unittest.TestCase):
     """ALL-TICKED (user, 2026-10-20): every checkbox of the Installer is ticked by default; the
-    user unticks what they do not want. Each askoptions page's default is all its choices."""
-    PAGES = {'#amisslins': 1, '#net': 3, '#extra': 3, '#boot': 2, '#sys': 2}
+    user unticks what they do not want. Each askoptions page's default is all its choices, except
+    AmiSSL: the same version or a newer one is already installed, so it is ticked only when needed
+    (AmiSSLPart checks that default)."""
+    PAGES = {'#net': 3, '#extra': 3, '#boot': 2, '#sys': 2}
 
     def test_each_page_defaults_to_all_its_choices(self):
         for var, n in self.PAGES.items():
@@ -582,8 +584,8 @@ class EveryOptionTicked(unittest.TestCase):
             d = page[page.index('(default') + 9:].split(')')[0]
             value = int(d) if d.isdigit() else sum(int(x) for x in d.lstrip('(+ ').split())
             self.assertEqual(value, 2 ** n - 1, var)
-        # the add-on page (its default is FindsTheAddOns' all-add-ons check) is the one more
-        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 1, 'a page this test misses')
+        # AmiSSL's and the add-on page (FindsTheAddOns: all add-ons) are the two more
+        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 2, 'a page this test misses')
 
 
 class ConsoleTakeover(unittest.TestCase):

@@ -218,9 +218,9 @@
     (askoptions
         (prompt "AmiSSL 5.27 (the TLS library curl needs):")
         (help "AmiSSL 5.27 (Apache License 2.0, the AmiSSL Open Source Team, with OpenSSL) "
-              "is in the kit's Files/AmiSSL drawer. It is ticked; the line says "
-              "whether LIBS: has no amisslmaster.library, an older one than "
-              "the kit's, or the same or newer.\n\n"
+              "is in the kit's Files/AmiSSL drawer. It is ticked when LIBS: has no "
+              "amisslmaster.library, or an older one than the kit's; the same "
+              "version or a newer one is already installed and stays.\n\n"
               "Its own installer, Install-AmiSSL, runs after UP-Term's parts, "
               "with its own pages: where AmiSSL: goes, your CPU, the "
               "certificates. UP-Term does nothing to AmiSSL itself, and "
@@ -230,7 +230,7 @@
         (choices (if #amissl-need
                      (if #amissl "AmiSSL 5.27 (yours is older)" "AmiSSL 5.27 (none found)")
                      "AmiSSL 5.27 (yours is the same or newer)"))
-        (default 1)))
+        (default (if #amissl-need 1 0))))
 (set #amisslins (in #amisslins 0))
 
 (set #net
