@@ -605,6 +605,11 @@ $(BUILD)/amiga/ixwinch: tests/amiga/ixwinch.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwinch.c
 
+# Mouse reports (?1000/?1006) reaching a program in a split pane (tools/rig/splits_rig.py case mouse_report).
+$(BUILD)/amiga/ixmouse: tests/amiga/ixmouse.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixmouse.c
+
 # The characters typed after a Ctrl-C that ended a read (tools/rig/intr_rig.py).
 $(BUILD)/amiga/ixintr: tests/amiga/ixintr.c
 	@mkdir -p $(BUILD)/amiga

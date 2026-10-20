@@ -98,7 +98,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 
 ### Phase 4 - menus, keys, mouse dividers
 - [x] NS4.1 (2026-10-20, rig 4 case menu_keys PASS 23 checks: all six split menu ids from MENU_DEF_ROWS picked plus RA+D/RA+Shift+D/RA+Shift+W; mutation proof g1-menu_keys-mut.log) Menu items and Right Amiga bindings (`menu_ids.h`, `tab_command`, :5962 dispatch). Test: each menu id picked on the rig changes the pane count/focus as asserted; a count of menu ids vs items built from the menu builder (not grep).
-- [ ] NS4.2 Mouse divider drag with `lay_hit_divider`/`lay_drag`. Test: rig sends press/move/release on the divider; both panes' `stty size` change by the dragged cells; a click not on a divider still reaches the pane (mouse reporting test with `?1000` program).
+- [x] NS4.2 (2026-10-20, rig 4 cases drag PASS: left 36->26, right 36->46 cols for a 10-cell drag, sum unchanged; mouse_report PASS: ?1000 reports (5,3) and (12,7) equal the clicked pane-relative cells; mutation proofs in thoughts/spot/crash/nsgaps2.md) Mouse divider drag with `lay_hit_divider`/`lay_drag`. Test: rig sends press/move/release on the divider; both panes' `stty size` change by the dragged cells; a click not on a divider still reaches the pane (mouse reporting test with `?1000` program).
 - [ ] NS4.3 Mouse wheel and selection per pane; selection never crosses a divider. Test: rig scrollback in pane B while A keeps output.
 
 ### Phase 5 - polish and scope decisions
@@ -110,7 +110,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 - [x] NS5.6 (8528997f README + window lesson, d4706f6a slash help, d4af863a matrix note; man/UPTerm.1 exempt: it names no setting one by one and points at /help) Docs: tutorial lesson, slash help, conformance matrix note (panes are not a sequence; matrix unaffected), man page, README feature list; remove "splits missing" rows in research notes? (research notes are history: leave).
 - [x] NS5.7 (a3e078a5: updemo `splits` scene; owner 2026-10-20: tmux scene stays) Remove superseded demo claim? No: the updemo tmux-split scene stays; add a native-split scene only if owner wants (demo/updemo.c).
 
-Plan count: 17 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1-5.7). Execution rule: tick in the open with running count; partial = failed plan.
+Plan count: 19 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1-5.7); 14 of 19 ticked 2026-10-20. Execution rule: tick in the open with running count; partial = failed plan.
 
 ## 4. Risks
 
@@ -146,7 +146,7 @@ Plan count: 17 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1
 - Window-level commands (font size, 80x24 / 132x43, fullscreen) act on the whole window, panes keep proportions; DECCOLM from a program is ignored while split.
 - Persistence (NS5.5): a user setting in the profile. Values off / layout / layout+programs, default off. All three ship in the first release (owner 2026-10-19), so NS5.5 includes restarting the program each pane ran.
 - Dividers: 1-pixel line, no pane titles; focus shown by solid vs hollow cursor.
-- Owner answers (2026-10-20): pane scrollback inherits sb_lines (500) for 1-2 panes, 200 per pane when a tab has more than 2 panes (NS4.3). Docs position tmux for detach/attach only; native splits are the layout feature. Release target: next 1.x minor, once all 17 items are ticked (NS3.3 rare leak fixed first). NS5.4 idle CPU budget: 4 panes within 10% of 4 tabs.
+- Owner answers (2026-10-20): pane scrollback inherits sb_lines (500) for 1-2 panes, 200 per pane when a tab has more than 2 panes (NS4.3). Docs position tmux for detach/attach only; native splits are the layout feature. Release target: next 1.x minor, once all 19 items are ticked (NS3.3 rare leak fixed first). NS5.4 idle CPU budget: 4 panes within 10% of 4 tabs.
 - Still open: none.
 
 ## 7. Added findings (peer session, verified on origin/main 2026-10-19)

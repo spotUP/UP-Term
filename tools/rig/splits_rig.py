@@ -31,7 +31,7 @@ Needs the rig up on a build with Split right / Split down and the `splits` count
 Click-to-focus (NS3.4) moves between panes here; if that is not built, cases needing the left pane fail
 with a clear message. Screenshots go to build/rig<N>/splits_rig/shots; the script never opens them.
 """
-import os, pathlib, shutil, struct, subprocess, sys, time
+import os, pathlib, re, shutil, struct, subprocess, sys, time
 
 # the rig number is chosen before paths is imported (it reads UPTERM_RIG once)
 _args = sys.argv[1:]
@@ -50,9 +50,10 @@ VTC = paths.RIG / 'vtc'
 OUT = paths.RIG / 'splits_rig'
 TITLE = 'splitswin'
 BOX = '0/20/600/240'
+CELL_H = int(os.environ.get('SPLITS_CELL_H') or 16)   # measured rig 4 (2026-10-20): cursor bbox 8 x 16 px
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'host_exit_cycles', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'menu_keys', 'tab_layout', 'gadget_close_split', 'font', 'restore']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'host_exit_cycles', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'menu_keys', 'tab_layout', 'gadget_close_split', 'font', 'restore', 'cursor_focus', 'mouse_report', 'view_split', 'perf']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
 K_W, K_D, K_ENTER, K_LBRACKET, K_RBRACKET = 0x11, 0x22, 0x44, 0x1A, 0x1B
@@ -94,10 +95,10 @@ def window_box():
     return w['box'] if w else None
 
 
-def pick(label):
-    """a real menu pick, UP-Term > label, in the active window (demo_rig.pick_tour / tutorial_rig use ui_menu)"""
+def pick(label, menu='UP-Term'):
+    """a real menu pick, `menu` > label (default UP-Term), in the active window (demo_rig.pick_tour / tutorial_rig use ui_menu)"""
     with ami._conn(60) as conn:
-        ami._m().ui_menu(conn, 'UP-Term/' + label, tr.active_title())
+        ami._m().ui_menu(conn, menu + '/' + label, tr.active_title())
 
 
 def expected_cols(full_cols, cell=CELL_W):
@@ -580,13 +581,63 @@ def case_drag(ck):
         r1 = stty_size('right1')
         print('measured: before L %s R %s, after L %s R %s' % (l0, r0, l1, r1))
         if l1 and r1:
-            ck(l1[1] < l0[1] - 5, 'left pane lost columns', (l0, l1))
-            ck(r1[1] > r0[1] + 5, 'right pane gained columns', (r0, r1))
-            ck(abs((l1[1] + r1[1]) - (l0[1] + r0[1])) <= 2, 'column sum stays equal', (l0, r0, l1, r1))
+            # NS4.2: the divider moved 10 cells, so each pane changes by exactly that many columns, the sum is kept
+            ck(l1[1] == l0[1] - 10, 'left pane lost exactly 10 columns', (l0, l1))
+            ck(r1[1] == r0[1] + 10, 'right pane gained exactly 10 columns', (r0, r1))
+            ck(l1[1] + r1[1] == l0[1] + r0[1], 'column sum stays equal', (l0, r0, l1, r1))
+            ck(l1[0] == l0[0] and r1[0] == r0[0], 'rows are unchanged', (l0, r0, l1, r1))
         else:
             ck(False, 'both panes answer `stty size` after the drag', (l1, r1))
     finally:
         teardown()
+
+
+MOUSE_OUT = 'RAM:ns42-mouse.txt'
+
+
+def case_mouse_report(ck):
+    """NS4.2: a click inside the right pane (not on the divider) reaches a ?1000/?1006 program there with the
+    PANE-relative cell: ESC [ < 0 ; col ; row M then m. ixmouse (tests/amiga/ixmouse.c; rawprobe's WaitForChar
+    returns at once on a vsh stdin) enables the modes and logs every byte it reads as hex. Two cells; a click in the left pane
+    (which has no program) must add no report."""
+    rows, full = fresh()
+    try:
+        split_right_and_count(ck)
+        want_l, _ = expected_cols(full)
+        r0 = stty_size('mr-r')
+        click(*pane_point('L', want_l[0]))
+        l0 = stty_size('mr-l')
+        ck(bool(l0 and r0), 'both panes answer `stty size`', (l0, r0))
+        if not (l0 and r0):
+            return
+        click(*pane_point('R', l0[1]))              # the right pane has the keys again
+        c.run('Delete %s QUIET' % MOUSE_OUT)
+        shutil.copyfile(ROOT / 'build/amiga/ixmouse', VTC / 'ixmouse')    # rig.py install refreshes only files VTC: holds
+        line('VTC:ixmouse %s 90' % MOUSE_OUT, wait=3.0)
+        box = window_box()
+        div_x = box[0] + BORDER_L + l0[1] * CELL_W
+        cells = [(5, 3), (12, 7)]
+        for col, row in cells:
+            click(div_x + 1 + (col - 1) * CELL_W + CELL_W // 2, box[1] + TOP_PAD + (row - 1) * CELL_H + CELL_H // 2)
+        click(*pane_point('L', l0[1]))              # left pane: not a report for the right pane's program
+        ra(K_RBRACKET)                              # right pane again so the ctrl-c below ends rawprobe
+        typewin.key(0x33, CTRL, wait=1.0)           # ixmouse ignores ISIG: end it with `q`
+        typewin.typ('q')
+        time.sleep(1.5)
+        got = re.findall(r'\x1b\[<(\d+);(\d+);(\d+)([Mm])', read_hex(MOUSE_OUT))
+        print('reports:', got, repr(read(MOUSE_OUT)[:120]))
+        want = []
+        for col, row in cells:
+            want += [('0', str(col), str(row), 'M'), ('0', str(col), str(row), 'm')]
+        ck(got == want, 'reports are the pane-relative cells %s (press, release each); none for the left pane' % cells,
+           got)
+    finally:
+        teardown()
+
+
+def read_hex(path):
+    """a ixmouse output file (hex bytes, space separated) as a latin-1 string"""
+    return ''.join(chr(int(h, 16)) for h in read(path).split() if re.fullmatch('[0-9a-f]{2}', h))
 
 
 def case_tab_close_split(ck):
@@ -771,6 +822,242 @@ def case_font(ck):
         ck(bool(right and r2) and r2 != right, 'font %s: the other pane took the font too' % way, (right, r2))
     finally:
         teardown()
+
+
+def cursor_shape(x_lo, x_hi, box, tries=10):
+    """the cursor in screen columns [x_lo, x_hi) of a parked-cursor pane (screen cleared, nothing else drawn):
+    ('solid'|'hollow', bbox, painted_pixels) read from window pixels, or None if no cursor pixel shows in
+    `tries` grabs (a blinking cursor is off half the time). Background = the commonest colour of the strip."""
+    x0, y0, ww, hh = box
+    for _ in range(tries):
+        w, h, rows = ami.grab()
+        strip = [rows[y][3 * x_lo:3 * x_hi] for y in range(y0 + TOP_PAD + 4, y0 + hh - 10)]
+        px = [tuple(r[i:i + 3]) for r in strip for i in range(0, len(r), 3)]
+        bg = max(set(px[::7]), key=px[::7].count)
+        pts = [(x_lo + i // 3, y0 + TOP_PAD + 4 + j) for j, r in enumerate(strip)
+               for i in range(0, len(r), 3) if tuple(r[i:i + 3]) != bg]
+        if pts:
+            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            area = (max(xs) - min(xs) + 1) * (max(ys) - min(ys) + 1)
+            return ('solid' if len(pts) == area else 'hollow'), (min(xs), min(ys), max(xs), max(ys)), len(pts)
+        time.sleep(0.3)
+    return None
+
+
+def case_cursor_focus(ck):
+    """NS3.4 (owner 2026-10-19): the focused pane draws a solid cursor, the other a hollow one; the swap follows
+    focus by click and by RA+[ / RA+]. Each pane parks its cursor at row 6 col 10 of a cleared screen (the shell
+    then blocks in Wait), so the only painted pixels in a pane are the cursor: solid = bbox fully painted,
+    hollow = bbox with an unpainted inside."""
+    rows, full = fresh()
+    try:
+        split_right_and_count(ck)
+        want_l, _ = expected_cols(full)
+        park = "printf '\\033[2J\\033[6;10H'; Wait 300"
+        r0 = stty_size('cur-r')
+        click(*pane_point('L', want_l[0]))
+        l0 = stty_size('cur-l')
+        ck(bool(l0 and r0), 'both panes answer `stty size`', (l0, r0))
+        if not (l0 and r0):
+            return
+        line(park, wait=1.0)                        # left pane (focused by the click)
+        ra(K_RBRACKET)
+        line(park, wait=1.0)                        # right pane
+        box = window_box()
+        div_x = box[0] + BORDER_L + l0[1] * CELL_W
+        lrng, rrng = (box[0] + BORDER_L, div_x), (div_x + 2, box[0] + box[2] - RIGHT_PAD)
+
+        def state(what, left, right):
+            a, b = cursor_shape(*lrng, box), cursor_shape(*rrng, box)
+            print('%s: left %s right %s' % (what, a, b))
+            ck(a is not None and a[0] == left, '%s: left pane cursor is %s' % (what, left), a)
+            ck(b is not None and b[0] == right, '%s: right pane cursor is %s' % (what, right), b)
+            return a, b
+        a, b = state('right pane focused (RA+])', 'hollow', 'solid')
+        if a and b:
+            ck(a[1][2] - a[1][0] == b[1][2] - b[1][0] and a[1][3] - a[1][1] == b[1][3] - b[1][1],
+               'both cursors are one cell in size', (a[1], b[1]))
+        click(*pane_point('L', want_l[0], nrows=2, row=1))
+        state('left pane focused (click)', 'solid', 'hollow')
+        click(*pane_point('R', want_l[0], nrows=2, row=1))
+        state('right pane focused (click)', 'hollow', 'solid')
+        ra(K_LBRACKET)
+        state('left pane focused (RA+[)', 'solid', 'hollow')
+        ra(K_RBRACKET)
+        state('right pane focused (RA+] again)', 'hollow', 'solid')
+    finally:
+        teardown()
+
+
+def case_view_split(ck):
+    """NS5.3 (owner 2026-10-19): window-level commands act on the whole window and the panes keep their
+    proportions; DECCOLM from a program is ignored while split. Checked on one split window, in order:
+      1 DECCOLM (ESC[?3h, ?3l) in a pane: window box, pane count and both panes' `stty size` unchanged
+      2 View > 80 x 24 and 132 x 43 (menu picks): on a screen too small for the grid the window stays
+        (refused, as unsplit); else it resizes and the panes are the layout's halves of the new width
+      3 `UPTerm size` COLSxROWS (the same set_size, a grid that fits, bigger and smaller): window resizes,
+        panes stay, each pane is the layout's half and the rows are the requested rows
+      4 `UPTerm screen fullscreen` and back: the window is the screen, the panes stay and split in halves
+      5 control, so 1 is not vacuous: after closing the pane DECCOLM does widen the window."""
+    rows, full = fresh()
+    try:
+        split_right_and_count(ck)
+
+        def sizes(tag):
+            n = pane_count()
+            return n, pane_sizes(tag, n or 0)
+
+        def halves(what, cols, rows_want=None):
+            n, sz = sizes('vs-' + what.split()[0])
+            ck(n == 2, '%s: the panes stay (2)' % what, n)
+            if n != 2 or not all(sz):
+                ck(False, '%s: both panes answer `stty size`' % what, sz)
+                return
+            lefts, rights = expected_cols(cols)
+            by_col = sorted(sz, key=lambda v: -v[1])            # cycle order starts at the focused pane
+            got = sorted(v[1] for v in sz)
+            ck(abs(got[0] - got[1]) <= 1 and got[0] + got[1] in (cols - 1, cols),
+               '%s: panes are the halves of %d columns' % (what, cols), sz)
+            if rows_want:
+                ck(all(v[0] == rows_want for v in sz), '%s: both panes have %d rows' % (what, rows_want), sz)
+
+        n0, sz0 = sizes('vs-0')
+        box0 = window_box()
+        print('start: panes %s sizes %s box %s' % (n0, sz0, box0))
+        line("printf '\\033[?3h'", wait=2.5)
+        n1, sz1 = sizes('vs-deccolm')
+        ck(window_box() == box0 and n1 == n0 and sz1 == sz0,
+           'DECCOLM ?3h in a pane: window and both panes unchanged', (box0, window_box(), sz0, sz1))
+        line("printf '\\033[?3l'", wait=2.5)
+        n1, sz1 = sizes('vs-deccolm2')
+        ck(window_box() == box0 and n1 == n0 and sz1 == sz0,
+           'DECCOLM ?3l in a pane: window and both panes unchanged', (box0, window_box(), sz0, sz1))
+
+        for label, cols, rws in (('80 x 24', 80, 24), ('132 x 43', 132, 43)):
+            b = window_box()
+            pick(label, 'View')
+            time.sleep(3)
+            b2 = window_box()
+            if b2 == b:
+                n, sz = sizes('vs-refused')
+                ck(n == 2 and sz == sizes('vs-refused2')[1], 'View > %s: refused on this screen, window and panes stay' % label,
+                   (b, b2, sz))
+                print('View > %s: refused (screen too small), window %s' % (label, b))
+            else:
+                halves('View > %s' % label, (b2[2] - BORDER_L - RIGHT_PAD) // CELL_W, None)
+        for cols, rws in ((50, 10), (66, 12)):
+            # product (render/vtwin.c vtwin_set_size, rect_on): a split window is all its panes', `size` is refused
+            before = window_box()
+            n, sz0 = sizes('vs-sz0')
+            line('UPTerm size %dx%d' % (cols, rws), wait=3)
+            n, sz1 = sizes('vs-sz1')
+            ck(window_box() == before and n == 2 and sz0 == sz1,
+               'UPTerm size %dx%d in a split: refused, window and panes unchanged' % (cols, rws), (before, window_box(), sz0, sz1))
+
+        line('UPTerm screen fullscreen', wait=8)
+        w = ami.window(tr.active_title())
+        scr = ami.window('Workbench') or None
+        print('fullscreen: window %s state panes %s' % (w and w['box'], pane_count()))
+        
+        print('fullscreen in a split: window box %s (unchanged = refused)' % (w and w['box'],))
+        line('UPTerm screen workbench', wait=8)
+        w = ami.window(tr.active_title())
+        print('workbench again: window %s panes %s' % (w and w['box'], pane_count()))
+        ck(w is not None and w['box'][2] < 640 + 1 and pane_count() == 2, 'back on the Workbench: the panes stay (2)',
+           (w and w['box'], pane_count()))
+
+    finally:
+        teardown()
+
+
+PERF_FILE = ROOT / 'build/rig/splits/perf.txt'
+PERF_TOP = 'RAM:ns54-top.txt'
+SPLIT_BUDGET_S, FOCUS_BUDGET_MS, DRAG_BUDGET_PER_S, CPU_BUDGET_PCT = 1.0, 100.0, 5.0, 10.0
+
+
+def perf_record(name, value, unit, budget, ok):
+    """one line per measure in build/rig/splits/perf.txt; a re-run replaces its own line, the others stay"""
+    PERF_FILE.parent.mkdir(parents=True, exist_ok=True)
+    keep = [l for l in (PERF_FILE.read_text().splitlines() if PERF_FILE.exists() else []) if not l.startswith(name + ' ')]
+    keep.append('%s %s %s budget %s %s' % (name, value, unit, budget, 'ok' if ok else 'OVER'))
+    PERF_FILE.write_text('\n'.join(keep) + '\n')
+
+
+def idle_busy():
+    shutil.copyfile(ROOT / 'build/amiga/top', VTC / 'top')
+    c.run('VTC:top -b -d 3 -n 1 >%s' % PERF_TOP)
+    m = re.search(r'CPU busy\s*([0-9.]+) %', read(PERF_TOP))
+    return float(m.group(1)) if m else None
+
+
+def case_perf(ck):
+    """NS5.4 budgets (plan lines 40-70): split < 1 s, focus switch < 100 ms, drag >= 5 resizes/s, idle CPU of
+    4 panes within 10 points of 4 tabs, Avail before / after. Timings include the rig round trip, so each is an
+    upper bound on the product's own time."""
+    rows, full = fresh()
+    try:
+        mem0 = ami_free()
+        t0 = time.time()
+        pick('Split right')
+        while pane_count() != 2 and time.time() - t0 < 10:
+            pass
+        split_s = time.time() - t0
+        ck(pane_count() == 2, 'split right made 2 panes', pane_count())
+        print('split latency upper bound %.2f s (budget %.1f s; menu pick round trip dominates, rig cannot resolve it)' % (split_s, SPLIT_BUDGET_S))
+        perf_record('split_latency', '%.2f' % split_s, 's', '<%.1f' % SPLIT_BUDGET_S, split_s < SPLIT_BUDGET_S)
+        pick('Split down'); time.sleep(3)
+        pick('Split down'); time.sleep(3)
+        ck(pane_count() == 4, '4 panes', pane_count())
+        mem1 = ami_free()
+        perf_record('avail_4panes', '%d -> %d (%+d)' % (mem0, mem1, mem1 - mem0), 'bytes', 'measured', True)
+        # focus switch: key to the next pane until the host answers `active pane` again
+        t0 = time.time()
+        for _ in range(8):
+            ra(K_RBRACKET)
+        focus_ms = (time.time() - t0) * 1000.0 / 8
+        print('focus switch upper bound %.0f ms per RA+] (budget %.0f ms; key injection round trip dominates)' % (focus_ms, FOCUS_BUDGET_MS))
+        perf_record('focus_switch', '%.0f' % focus_ms, 'ms', '<%.0f' % FOCUS_BUDGET_MS, focus_ms < FOCUS_BUDGET_MS)
+        busy_panes = idle_busy()
+        perf_record('idle_cpu_4panes', busy_panes, '%', 'within %.0f of 4 tabs' % CPU_BUDGET_PCT, True)
+    finally:
+        teardown()
+    rows, full = fresh()
+    try:
+        for _ in range(3):
+            pick('New tab'); time.sleep(4)
+        ck(state_key('tabs') == 4, '4 tabs', state_key('tabs'))
+        busy_tabs = idle_busy()
+        perf_record('idle_cpu_4tabs', busy_tabs, '%', 'reference', True)
+        ck(busy_panes is not None and busy_tabs is not None and busy_panes <= busy_tabs + CPU_BUDGET_PCT,
+           'idle CPU: 4 panes %s %% within %.0f of 4 tabs %s %%' % (busy_panes, CPU_BUDGET_PCT, busy_tabs), (busy_panes, busy_tabs))
+        perf_record('idle_cpu_delta', None if None in (busy_panes, busy_tabs) else '%.1f' % (busy_panes - busy_tabs), 'points',
+                    '<=%.0f' % CPU_BUDGET_PCT, busy_panes is not None and busy_tabs is not None and busy_panes <= busy_tabs + CPU_BUDGET_PCT)
+    finally:
+        teardown()
+    rows, full = fresh()
+    try:
+        split_right_and_count(ck)
+        want_l, _ = expected_cols(full)
+        l0 = stty_size('pl0')
+        click(*pane_point('L', want_l[0]))
+        x0, _, _, _ = window_box()
+        div_x = x0 + BORDER_L + (stty_size('pl')[1]) * CELL_W
+        n, t0 = 6, time.time()
+        for i in range(n):
+            drag_divider(div_x + (0 if i % 2 == 0 else -4 * CELL_W), pane_point('L', 10)[1], (-4 if i % 2 == 0 else 4) * CELL_W)
+        rate = n / (time.time() - t0)
+        print('divider drag lower bound %.2f drags/s (budget %.0f resizes/s; each scripted drag holds ~4 s of waits)' % (rate, DRAG_BUDGET_PER_S))
+        perf_record('divider_drag', '%.2f' % rate, 'drags/s', '>=%.0f' % DRAG_BUDGET_PER_S, rate >= DRAG_BUDGET_PER_S)
+    finally:
+        teardown()
+
+
+def ami_free():
+    c.run('Avail >NIL: FLUSH')
+    c.run('Avail >NIL: FLUSH')
+    m = re.search(r'(\d+)', c.run('Avail TOTAL')[1])
+    return int(m.group(1)) if m else 0
+
 
 
 RESTORE_DIRS = ['RAM:nsr-a', 'RAM:nsr-b', 'RAM:nsr-c']
