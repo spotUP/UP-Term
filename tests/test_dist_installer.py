@@ -209,6 +209,32 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
         self.assertIn('Copy upkg.conf UP-Term:etc/upkg.conf CLONE', DOS)
         self.assertNotIn('Copy upkg UP-Term:bin/upkg', DOS)
 
+    def test_a_package_install_prints_no_cant_set_uid_warning(self):
+        """The A1200 2026-10-20: every entry of an add-on printed "Can't set UID=0" (opkg extracts with
+        ARCHIVE_EXTRACT_OWNER; AmigaDOS has no owners). The host build of the same opkg, which cannot
+        chown either, installs a one-file package with the shipped conf and must print no such line."""
+        import subprocess, tempfile, tarfile, pkgs
+        upkg = ROOT.parent / 'upterm-ports/build/host/opkg/inst/bin/upkg'
+        if not upkg.is_file():
+            self.skipTest('no host upkg: make -C ../upterm-ports host-opkg')
+        ctl = b'Package: uidtest\nVersion: 1\nArchitecture: m68k-amigaos\nDescription: x\n'
+        d = pkgs._tinfo('./', mode=0o755, kind=tarfile.DIRTYPE)
+        ipk = pkgs._ar([('debian-binary', b'2.0\n'),
+                        ('control.tar.gz', pkgs._targz([(d, None), (pkgs._tinfo('./control', len(ctl)), ctl)])),
+                        ('data.tar.gz', pkgs._targz([(d, None), (pkgs._tinfo('./f', 2), b'x\n')]))])
+        with tempfile.TemporaryDirectory() as t:
+            t = pathlib.Path(t)
+            for sub in ('lists', 'info', 'cache'):
+                (t / 'root/pkg/upkg' / sub).mkdir(parents=True)
+            conf = re.sub(r'(?m)^src/gz .*$', '', (ROOT / 'dist/upkg.conf').read_text())
+            (t / 'c.conf').write_text(conf.replace('/UP-Term/pkg', str(t / 'root/pkg')))
+            (t / 'u.ipk').write_bytes(ipk)
+            p = subprocess.run([str(upkg), '-f', str(t / 'c.conf'), '-o', str(t / 'root'), 'install', str(t / 'u.ipk')],
+                               capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertTrue((t / 'root/f').is_file())
+            self.assertNotIn('UID', p.stdout + p.stderr)
+
     def test_uninstall_leaves_the_add_ons_binaries_to_their_own_uninstall(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
         delete = [l for l in un.splitlines() if l.startswith('Delete >NIL: L:vtcon-handler')][0]
