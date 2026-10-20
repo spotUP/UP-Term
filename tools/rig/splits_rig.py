@@ -52,10 +52,11 @@ TITLE = 'splitswin'
 BOX = '0/20/600/240'
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'host_exit_cycles', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'gadget_close_split', 'font', 'restore']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'host_exit_cycles', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'menu_keys', 'tab_layout', 'gadget_close_split', 'font', 'restore']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
-K_W, K_D, K_ENTER, K_LBRACKET, K_RBRACKET = 0x11, 0x22, 0x44, 0x1A, 0x1B    # raw keycodes (RA+key = pane commands; [ ] = previous / next pane)
+K_W, K_D, K_ENTER, K_LBRACKET, K_RBRACKET = 0x11, 0x22, 0x44, 0x1A, 0x1B
+K_1, K_2 = 0x01, 0x02                                   # RA+digit shows that tab (handler tab_key)    # raw keycodes (RA+key = pane commands; [ ] = previous / next pane)
 STREAM_SECS = 20
 
 
@@ -605,6 +606,138 @@ def case_tab_close_split(ck):
         ck(pane_count() == panes0, 'shown tab has its original %s pane(s): no orphan pane' % panes0, pane_count())
     finally:
         teardown()
+
+
+# every pane/split id in handler/menu_def.h MENU_DEF_ROWS (the table tests/test_menudef.c counts from), in table order:
+MENU_PANE_IDS = ('Split right', 'Split down', 'Close pane', 'Zoom pane', 'Previous pane', 'Next pane')
+
+
+def at_pane(ck, tag, want, what):
+    """the focused pane is the one that sits in RAM:<want> (each pane is told apart by its directory)"""
+    got = pwd_of(tag)
+    ck(got.lower().endswith(want), '%s: focus is on the pane in %s' % (what, want), got)
+
+
+def case_menu_keys(ck):
+    """NS4.1: every pane/split menu id is picked through the real menu and asserts pane count / focus / zoom;
+    the Right Amiga keys RA+D (Split right), RA+Shift+D (Split down), RA+Shift+W (Close pane) are driven too"""
+    base = input_handlers('il-base')
+    rows, full = fresh()
+    try:
+        line('makedir RAM:nsm-a RAM:nsm-b RAM:nsm-c RAM:nsm-d', wait=2)
+        line('cd RAM:nsm-a', wait=2)
+        # menu: Split right -> 2 panes, the new pane has the focus
+        n0 = state_key('splits')
+        pick('Split right'); time.sleep(6)
+        ck(state_key('splits') == n0 + 1 and pane_count() == 2, 'menu Split right: splits +1, 2 panes', (state_key('splits'), pane_count()))
+        line('cd RAM:nsm-b', wait=2)
+        at_pane(ck, 'm1', 'nsm-b', 'menu Split right')
+        pick('Previous pane'); time.sleep(2.5)
+        at_pane(ck, 'm2', 'nsm-a', 'menu Previous pane')
+        pick('Next pane'); time.sleep(2.5)
+        at_pane(ck, 'm3', 'nsm-b', 'menu Next pane')
+        pick('Zoom pane'); time.sleep(2.5)
+        z = stty_size('mz')
+        ck(state_key('zoom') == 1 and bool(z) and z[1] == full, 'menu Zoom pane: zoom 1, full width %d' % full, (state_key('zoom'), z))
+        pick('Zoom pane'); time.sleep(2.5)
+        z = stty_size('mz2')
+        ck(state_key('zoom') == 0 and bool(z) and z[1] < full, 'menu Zoom pane again: zoom 0, half width', (state_key('zoom'), z))
+        pick('Close pane'); time.sleep(3)
+        ck(pane_count() == 1, 'menu Close pane: 1 pane', pane_count())
+        at_pane(ck, 'm4', 'nsm-a', 'menu Close pane (focus moved to the survivor)')
+        pick('Split down'); time.sleep(6)
+        sz = stty_size('mdn')
+        ck(pane_count() == 2 and bool(sz) and sz[0] < rows and sz[1] == full, 'menu Split down: 2 panes, focused pane is a full-width lower half', (pane_count(), sz, rows))
+        pick('Close pane'); time.sleep(3)
+        ck(pane_count() == 1, 'menu Close pane after Split down: 1 pane', pane_count())
+        # keys: RA+D -> 2 panes (Split right)
+        typewin.key(K_D, RAMIGA, wait=6)
+        ck(pane_count() == 2, 'RA+D: 2 panes', pane_count())
+        sz = stty_size('kd')
+        ck(bool(sz) and sz[1] < full and sz[0] == rows, 'RA+D split right: focused pane is a half-width, full-height column', (sz, rows, full))
+        line('cd RAM:nsm-c', wait=2)
+        at_pane(ck, 'k1', 'nsm-c', 'RA+D')
+        # RA+Shift+D -> 3 panes, the new one is the lower half of the focused pane (rows halve)
+        typewin.key(K_D, RAMIGA | SHIFT, wait=6)
+        ck(pane_count() == 3, 'RA+Shift+D: 3 panes', pane_count())
+        sz = stty_size('kdd')
+        ck(bool(sz) and sz[0] < rows and sz[1] < full, 'RA+Shift+D split down: focused pane has fewer rows than the window', (sz, rows))
+        line('cd RAM:nsm-d', wait=2)
+        at_pane(ck, 'k2', 'nsm-d', 'RA+Shift+D')
+        # RA+Shift+W twice -> 2, then 1
+        ra(K_W, shift=True); time.sleep(3)
+        ck(pane_count() == 2, 'RA+Shift+W: 2 panes', pane_count())
+        ra(K_W, shift=True); time.sleep(3)
+        ck(pane_count() == 1, 'RA+Shift+W again: 1 pane', pane_count())
+        sz = stty_size('kend')
+        ck(bool(sz) and sz[1] == full, 'one pane again at full width %d' % full, sz)
+    finally:
+        teardown()
+    check_handlers(ck, base[0] if base else -1, 'menu_keys')
+
+
+def pane_sizes(tag, n):
+    """(rows, cols) of each of the shown tab's n panes in cycle order, starting at the focused one; n RA+] steps
+    bring the focus back where it was"""
+    out = []
+    for i in range(n):
+        out.append(stty_size('%s%d' % (tag, i)))
+        ra(K_RBRACKET)
+    return out
+
+
+def typed_in(ck, tag, want, what):
+    """a line typed now runs in the focused pane: it writes a file in that pane's directory"""
+    f = 'mk-%s' % tag
+    for d in ('nst-a1', 'nst-a2', 'nst-b1', 'nst-b2', 'nst-b3'):
+        c.run('Delete RAM:%s/%s QUIET' % (d, f))
+    line('echo x >%s' % f)
+    where = [d for d in ('nst-a1', 'nst-a2', 'nst-b1', 'nst-b2', 'nst-b3') if read('RAM:%s/%s' % (d, f))]
+    ck(where == [want], '%s: typing landed in the focused pane (%s)' % (what, want), where)
+
+
+def case_tab_layout(ck):
+    """NS5.2: each tab owns its layout. Tab 1 has two panes, tab 2 three; switching by menu (Next / Previous tab)
+    and by key (RA+1 / RA+2) shows the tab with the pane count and per-pane `stty size` it had, the focus where
+    it was, and typing lands in that tab's focused pane"""
+    base = input_handlers('il-base')
+    rows, full = fresh()
+    try:
+        line('makedir RAM:nst-a1 RAM:nst-a2 RAM:nst-b1 RAM:nst-b2 RAM:nst-b3', wait=2)
+        line('cd RAM:nst-a1', wait=2)
+        split_right_and_count(ck)
+        line('cd RAM:nst-a2', wait=2)
+        size_a = pane_sizes('a', 2)
+        ck(pane_count() == 2 and all(size_a), 'tab 1: 2 panes, each answers stty size', size_a)
+        pick('New tab'); time.sleep(5)
+        ck(state_key('tabs') == 2 and state_key('active') == 2 and pane_count() == 1, 'New tab: 2 tabs, tab 2 (`active` is 1-based) shown with 1 pane',
+           (state_key('tabs'), state_key('active'), pane_count()))
+        line('cd RAM:nst-b1', wait=2)
+        split_right_and_count(ck)
+        line('cd RAM:nst-b2', wait=2)
+        split_right_and_count(ck)
+        line('cd RAM:nst-b3', wait=2)
+        size_b = pane_sizes('b', 3)
+        ck(pane_count() == 3 and all(size_b), 'tab 2: 3 panes, each answers stty size', size_b)
+        # the second tab makes the tab bar appear: it takes one text row from every tab, columns do not change
+        size_a = [(r - 1, cl) for r, cl in size_a]
+        ck(size_a != size_b and len(size_a) != len(size_b), 'the two tabs really differ (2 vs 3 panes)', (size_a, size_b))
+        steps = (('Previous tab', lambda: pick('Previous tab'), 1, size_a, 'nst-a2'),
+                 ('RA+2', lambda: typewin.key(K_2, RAMIGA, wait=3), 2, size_b, 'nst-b3'),
+                 ('RA+1', lambda: typewin.key(K_1, RAMIGA, wait=3), 1, size_a, 'nst-a2'),
+                 ('Next tab', lambda: pick('Next tab'), 2, size_b, 'nst-b3'))
+        for i, (name, go, active, want, focus) in enumerate(steps):
+            go(); time.sleep(3)
+            ck(state_key('active') == active, '%s: tab %d is shown' % (name, active), state_key('active'))
+            ck(pane_count() == len(want), '%s: the shown tab has its %d panes' % (name, len(want)), pane_count())
+            at_pane(ck, 'tl%d' % i, focus, name)
+            typed_in(ck, 'tl%d' % i, focus, name)
+            got = pane_sizes('ts%d-' % i, len(want))
+            ck(got == want, '%s: every pane has the stty size it had before the switch' % name, (got, want))
+            at_pane(ck, 'tf%d' % i, focus, name + ' after a full pane cycle')
+    finally:
+        teardown()
+    check_handlers(ck, base[0] if base else -1, 'tab_layout')
 
 
 # ---- driver -----------------------------------------------------------------------------------
