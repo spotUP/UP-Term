@@ -5312,11 +5312,12 @@ static void idcmp(con *c)
         int wheel = 0;
         if (cls == IDCMP_EXTENDEDMOUSE && im->Code == IMSGCODE_INTUIWHEELDATA && im->IAddress) {
             /* the mouse wheel (OS 3.9+): the IntuiWheelData behind IAddress.
-             * WheelX is the main wheel; forward (up) is the negative delta.
-             * Anything else extended-mouse reports is not ours. */
+             * WheelY is the main wheel (forward, up, is the negative delta),
+             * WheelX the tilt. Anything else extended-mouse reports is not ours. */
             struct IntuiWheelData *wd = (struct IntuiWheelData *)im->IAddress;
-            if (wd->Version == INTUIWHEELDATA_VERSION)
-                wheel = wd->WheelX < 0 ? 1 : -1;
+            int up;
+            if (wd->Version == INTUIWHEELDATA_VERSION && vti_wheeldata(wd->WheelY, &up))
+                wheel = up ? 1 : -1;
         }
         if (cls == IDCMP_IDCMPUPDATE) {
             /* the scroll bar: read now, the tag list goes with the reply */

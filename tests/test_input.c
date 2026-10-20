@@ -231,6 +231,21 @@ static void newmouse_wheel_raw_keys_scroll_the_scrollback(void)
     vt_free(t);
 }
 
+/* the A1200's TankMouse scrolled back, then snapped to live: its wheel reports WheelY (X stays 0),
+ * the handler read WheelX, and X=0 counted as a notch down. Measured with SYS:wheellog: a roll is
+ * ver=2 X=0 Y=+-1, a tilt X=-1 Y=0 */
+static void a_vertical_wheel_reports_wheely_and_a_tilt_does_not_scroll(void)
+{
+    int up = -1;
+    CHECK_INT(vti_wheeldata(-1, &up), 1);
+    CHECK_INT(up, 1);
+    CHECK_INT(vti_wheeldata(1, &up), 1);
+    CHECK_INT(up, 0);
+    up = -1;
+    CHECK_INT(vti_wheeldata(0, &up), 0); /* the tilt, X=-1 Y=0 */
+    CHECK_INT(up, -1);
+}
+
 /* gap #14: double-click selects a word, triple-click the line */
 static void double_click_word_triple_click_line(void)
 {
@@ -542,6 +557,7 @@ void suite_input(void)
     shift_page_keys_reach_full_screen_programs();
     middle_click_pastes_when_nobody_asked();
     newmouse_wheel_raw_keys_scroll_the_scrollback();
+    a_vertical_wheel_reports_wheely_and_a_tilt_does_not_scroll();
     double_click_word_triple_click_line();
     middle_button_and_modifiers_reach_the_program();
     motion_reaches_the_program_in_the_motion_modes();

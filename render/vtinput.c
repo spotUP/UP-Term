@@ -204,6 +204,14 @@ int vti_newmouse_wheel(unsigned code, int *up)
     return 1;
 }
 
+int vti_wheeldata(int wheel_y, int *up)
+{
+    if (!wheel_y)
+        return 0;
+    *up = wheel_y < 0;
+    return 1;
+}
+
 int vti_wheel(const vti_geom *g, const vt_term *t, int view, int up, int mods,
               int px, int py, vt_u8 *out, int *lines)
 {

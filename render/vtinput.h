@@ -46,6 +46,9 @@ int vti_cell_at(const vti_geom *g, int px, int py, int *x, int *y);
  * only. Returns 1 and sets *up when code is a wheel notch; a key release (0xFA, 0xFB) and every other
  * code is 0 (the key path takes them). */
 int vti_newmouse_wheel(unsigned code, int *up);
+/* IntuiWheelData (IDCMP_EXTENDEDMOUSE): 1 and *up for a vertical notch
+ * (WheelY, negative = up), 0 when WheelY is 0 (a tilt moves only WheelX) */
+int vti_wheeldata(int wheel_y, int *up);
 
 /* A wheel notch (up 1, down 0) at window pixel px, py. A program that asked
  * for the mouse gets a report (buttons 64/65, the cell under the pointer,
