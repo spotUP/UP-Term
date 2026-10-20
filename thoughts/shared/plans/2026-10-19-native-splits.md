@@ -92,7 +92,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
   - Dividers: host draws 1-pixel lines from `lay_divider_rect` with a theme pen after each layout and on REFRESHWINDOW; no titles.
   - Pane exit (needed already here, NS3.3 tests it): `lay_close`, focus = returned id, `tab_layout`; the last pane of a slot removes the slot as today.
   - Menu: Split Right / Split Down items added now (the NS3.1 rig test picks them); keys and the rest are NS4.1.
-- [ ] NS3.2 Per-pane winsize/SIGWINCH correct after a window resize (extend winch_rig.py, resize_rig.py): both panes' `stty size` follow within 1 s.
+- [x] NS3.2 (rig 4, 2026-10-20: case winch runs ixwinch in both panes; each catches SIGWINCH within 1 s of the window box changing (measured 0.0 s, below the rig's box-poll step), reports 36x14 -> 26x14, `stty size` halves of the new width; log thoughts/spot/crash/ns32-winch2.log) Per-pane winsize/SIGWINCH correct after a window resize (extend winch_rig.py, resize_rig.py): both panes' `stty size` follow within 1 s.
 - [ ] NS3.3 Pane close: shell `exit` in one pane returns its space; last pane exit closes the window; host's own shell ending keeps window while panes live (tabs rule). Test: rig script.
 - [ ] NS3.4 Focus: click in other pane and Right Amiga focus keys move keys and the hollow/solid cursor. Test: rig injects mouse click via input.device, types, reads each pane's text.
 

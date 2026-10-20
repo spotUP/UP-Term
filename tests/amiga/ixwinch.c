@@ -8,7 +8,9 @@
  * of the chain (signal delivered / size reported) are told apart.
  * With "read" as the second argument it waits in read(0) instead of
  * sleep(): a caught SIGWINCH must end that read with EINTR, as on Unix
- * (less 321 redraws only then). */
+ * (less 321 redraws only then). A third argument names the report file
+ * instead of VTC:winch.out, so two split panes can report apart
+ * (splits_rig.py case winch). */
 #include <errno.h>
 #include <string.h>
 #include <signal.h>
@@ -27,10 +29,11 @@ static void on_winch(int sig)
 }
 
 static int rd = 1, rderr; /* the last read's result and errno (read mode) */
+static const char *out = "VTC:winch.out";
 
 static void report(const struct winsize *a, const struct winsize *b, int n, int done)
 {
-    FILE *f = fopen("VTC:winch.out", "w");
+    FILE *f = fopen(out, "w");
     if (!f)
         return;
     fprintf(f, "start %dx%d winch %d now %dx%d read %d %d%s\n", a->ws_col, a->ws_row, n, b->ws_col,
@@ -45,6 +48,8 @@ int main(int argc, char **argv)
     int i, seen = -1, rmode = argc > 2 && !strcmp(argv[2], "read");
     struct sigaction sa;
 
+    if (argc > 3)
+        out = argv[3];
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = on_winch; /* no SA_RESTART: the read must end */
     sigaction(SIGWINCH, &sa, 0);

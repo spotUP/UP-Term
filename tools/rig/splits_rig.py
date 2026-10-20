@@ -42,6 +42,7 @@ os.environ['UPTERM_RIG'] = _rig
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths, ami, typewin, vshwin, verdicts
 import condev_rig as c
+import ixpty_rig, winch_rig
 import tutorial_rig as tr          # counters(), active_title()
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -352,7 +353,7 @@ def case_race(ck):
 
 # ---- NS3.2 / NS3.3 / arrows / zoom ---------------------------------------------------------------
 
-def drag_size_gadget(dx, dy):
+def drag_size_gadget(dx, dy, settle=4):
     """drag the active window's size gadget by (dx, dy) screen px (same method as winch_rig.drag)"""
     w = ami.window(tr.active_title())
     x, y, ww, hh = w['sys:size']
@@ -364,7 +365,7 @@ def drag_size_gadget(dx, dy):
         ev += [p(fx + dx * i // 8, fy + dy * i // 8), ('wait', 2)]
     ev += [('wait', 3), ('button', 0, 0), ('wait', 10)]
     ami.script(*ev)
-    time.sleep(4)
+    time.sleep(settle)
 
 
 def ra(k, shift=False):
@@ -382,6 +383,14 @@ def state_key(key):
     return tr.counters()[0].get(key)
 
 
+def winch_report(path):
+    """ixwinch's report (winch_rig.parse): ((cols, rows) at start, SIGWINCHs, (cols, rows) now, read, errno)"""
+    try:
+        return winch_rig.parse(path.read_text().strip())
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def case_winch(ck):
     rows, full = fresh()
     try:
@@ -392,12 +401,40 @@ def case_winch(ck):
         click(*pane_point('L', want_l[0]))
         l0 = stty_size('left0')
         ck(bool(l0 and r0), 'both panes answer `stty size` before the resize', (l0, r0))
+        # each pane runs ixwinch (winch_rig's SIGWINCH catcher) in read mode: a caught signal ends the read and
+        # rewrites its report at once, so the time from the resize to both reports is the delivery time
+        shutil.copyfile(ROOT / 'build/amiga/ixwinch', VTC / 'ixwinch')
+        ixpty_rig.use_ixemul()
+        outs = {k: VTC / ('winch-%s.out' % k) for k in 'LR'}
+        for k in 'LR':
+            if outs[k].exists():
+                outs[k].unlink()
+            click(*pane_point(k, want_l[0]))
+            line('VTC:ixwinch 60 read VTC:winch-%s.out' % k, wait=3)
+        ck(all(winch_report(outs[k]) and winch_report(outs[k])[1] == 0 for k in 'LR'),
+           'ixwinch runs in both panes, no SIGWINCH yet', [winch_report(outs[k]) for k in 'LR'])
         # resize mechanism: size-gadget drag (as winch_rig); shrink by 160 px = 20 cells
-        drag_size_gadget(-160, 0)
+        drag_size_gadget(-160, 0, settle=0)
+        t0 = None
+        lat = {}
+        end = time.time() + 15
+        while time.time() < end and len(lat) < 2:
+            if t0 is None and (window_box() or w0)[2] != (w0 or (0, 0, 0))[2]:
+                t0 = time.time()                    # Intuition resized the window: the clock starts
+            for k in 'LR':
+                if t0 is not None and k not in lat and winch_report(outs[k]) and winch_report(outs[k])[1] >= 1:
+                    lat[k] = time.time() - t0
+            time.sleep(0.05)
+        print('SIGWINCH latency after the resize: %s' % {k: round(v, 2) for k, v in lat.items()})
+        ck(len(lat) == 2 and max(lat.values()) < 1.0, 'both panes caught SIGWINCH within 1 s of the resize', lat)
+        time.sleep(2)
         w1 = window_box()
         ck(bool(w0 and w1 and w1[2] < w0[2]), 'window got narrower', (w0, w1))
         new_full = full + (w1[2] - w0[2]) // CELL_W if w0 and w1 else full
         want_l1, want_r1 = expected_cols(new_full)
+        for k in 'LR':
+            click(*pane_point(k, want_l1[0]))
+            typewin.key(0x33, CTRL, wait=1)            # Ctrl-C: ixwinch ends
         r1 = stty_size('right1')
         click(*pane_point('L', want_l1[0]))
         l1 = stty_size('left1')
