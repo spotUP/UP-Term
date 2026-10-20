@@ -218,8 +218,9 @@
     (askoptions
         (prompt "AmiSSL 5.27 (the TLS library curl needs):")
         (help "AmiSSL 5.27 (Apache License 2.0, the AmiSSL Open Source Team, with OpenSSL) "
-              "is in the kit's Files/AmiSSL drawer. It is ticked when LIBS: has no "
-              "amisslmaster.library, or an older one than the kit's.\n\n"
+              "is in the kit's Files/AmiSSL drawer. It is ticked; the line says "
+              "whether LIBS: has no amisslmaster.library, an older one than "
+              "the kit's, or the same or newer.\n\n"
               "Its own installer, Install-AmiSSL, runs after UP-Term's parts, "
               "with its own pages: where AmiSSL: goes, your CPU, the "
               "certificates. UP-Term does nothing to AmiSSL itself, and "
@@ -229,7 +230,7 @@
         (choices (if #amissl-need
                      (if #amissl "AmiSSL 5.27 (yours is older)" "AmiSSL 5.27 (none found)")
                      "AmiSSL 5.27 (yours is the same or newer)"))
-        (default (if #amissl-need 1 0))))
+        (default 1)))
 (set #amisslins (in #amisslins 0))
 
 (set #net
@@ -243,13 +244,13 @@
               "with a note if it is older).\n\n"
               "bebboget: https downloads (GPL v3+), by the same author.\n\n"
               "curl 8.22.0: downloads and transfers (the curl licence). It needs "
-              "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha), so it is ticked "
-              "only when AmiSSL is found or ticked on the page before.\n\n"
+              "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha): keep AmiSSL ticked "
+              "on the page before unless AmiSSL 5 is already installed.\n\n"
               "Their licences and sources are in the kit's Files/net drawer.")
         (choices "ssh and scp (BebboSSH)"
                  "bebboget (https downloads)"
                  (if #amissl "curl (AmiSSL 5 found)" (if #amisslins "curl (AmiSSL 5 is installed first)" "curl (needs AmiSSL 5, not found)")))
-        (default (+ 1 2 (if (or #amissl #amisslins) 4 0)))))
+        (default (+ 1 2 4))))
 (if (in #net 0) (set #ssh "SSH"))
 (if (in #net 1) (set #bget "BEBBOGET"))
 (if (in #net 2) (set #curl "CURL"))
@@ -271,14 +272,14 @@
         (choices "Unifont: glyphs for every character and emoji (1.8 MB)"
                  "Colour emoji for RTG screens (Twemoji, 0.5 MB)"
                  "Shell icon opens an UP-Term window")
-        (default (+ 1 2))))
+        (default (+ 1 2 4))))
 (if (in #extra 0) (set #unifont "UNIFONT"))
 (if (in #extra 1) (set #emoji "EMOJI"))
 (if (and (in #extra 2) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
 
 (set #boot
     (askoptions
-        (prompt "Started at every boot (both off unless you tick them):")
+        (prompt "Started at every boot (untick what you do not want):")
         (help "Serial login: C:upgetty LOOP runs at every boot from a block in "
               "S:User-Startup, and a terminal program on a null-modem cable at "
               "19200 baud gets vsh. While it runs no other program can use the "
@@ -291,7 +292,7 @@
               "of earlier kits. It runs ANY command a client with its key "
               "sends: Install makes a key (or keeps yours, ENVARC:wasabi.key) "
               "and shows it at the end. The link is encrypted only when "
-              "AmiSSL and keys are set up (see wasabi's README). Leave it off "
+              "AmiSSL and keys are set up (see wasabi's README). Untick it "
               "unless you work on this Amiga from another machine.\n"
               "Without it, up-claude.lha brings its own wasabid for the session "
               "daemon: uptelnet starts one with a key of its own for each "
@@ -300,7 +301,7 @@
               "Uninstall takes both blocks out again.")
         (choices "Serial login on the serial port"
                  "wasabi: remote development from another computer")
-        (default 0)))
+        (default (+ 1 2))))
 (if (in #boot 0) (set #serial "SERIAL"))
 (if (in #boot 1) (set #wasabi "WASABI"))
 
@@ -309,7 +310,7 @@
 (set #sys
     (askoptions
         (prompt "UP-Term can also take over the system's console.\n"
-                "Leave both off to keep the system's own.")
+                "Untick both to keep the system's own.")
         (help "CON: and RAW:: every new Shell window is an UP-Term window "
               "(the Amiga look, with UP-Term's line editing, history and Tab "
               "completion); C:UPConsole CON OFF switches back. When another "
@@ -324,7 +325,7 @@
               "which Uninstall takes out.")
         (choices "UP-Term serves CON: and RAW:"
                  "console.device is UP-Term's")
-        (default 0)))
+        (default (+ 1 2))))
 (if (in #sys 0) (set #con "CONSOLE"))
 (if (in #sys 1) (set #dev "DEVICE"))
 

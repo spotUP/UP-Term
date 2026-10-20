@@ -358,7 +358,7 @@ class AmiSSLPart(unittest.TestCase):
         self.assertIn('(getversion "LIBS:amisslmaster.library"', inc)
         self.assertIn('Libs/AmigaOS3/amisslmaster.library', inc)
         self.assertRegex(inc, r'\(set #amissl-need\s+\(<')
-        self.assertIn('(default (if #amissl-need 1 0))', self.PAGE)
+        self.assertIn('(if #amissl-need', self.PAGE)
 
     def test_after_the_run_the_same_version_check_decides_installed_or_not(self):
         inc = (ROOT / "dist/common/amissl.installer").read_text(encoding="latin-1")
@@ -392,8 +392,8 @@ class AmiSSLPart(unittest.TestCase):
         self.assertIn('(set #sslnote "")', s[s.index('(procedure P_AMISSL\n'):][:300])
         self.assertIn('(set #sslrows 0)', s[s.index('(procedure P_AMISSL\n'):][:300])
 
-    def test_curl_follows_the_new_amissl(self):
-        self.assertRegex(INSTALLER, r'\(default \(\+ 1 2 \(if \(or #amissl #amisslins\) 4 0\)\)\)')
+    def test_curl_names_the_amissl_it_uses(self):
+        self.assertIn('"curl (AmiSSL 5 is installed first)"', INSTALLER)
 
     def test_uninstall_says_it_leaves_amissl_in_place(self):
         self.assertRegex((ROOT / "dist/Uninstall").read_text(encoding="latin-1"), r'(?i);[^\n]*AmiSSL[^\n]*(stays|left|shared)')
@@ -408,7 +408,7 @@ class AmiSSLPart(unittest.TestCase):
 
 
 class WasabiDaemonOption(unittest.TestCase):
-    """wasabid 0.11b2 is the ONE daemon option of the kit's Install (off by default): it replaces the
+    """wasabid 0.11b2 is the ONE daemon option of the kit's Install (ticked like every option): it replaces the
     amiagent option and the wasabid 0.2 one. Install removes our old amiagent, stops and replaces our
     old wasabid, and Uninstall still takes both out. The binaries come from the build, not the repository."""
     PIN = (ROOT / "tools/nas/wasabi.rev").read_text().strip()
@@ -423,10 +423,9 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertFalse((ROOT / "dist/net/amiagent-0.13.2").exists())
         self.assertNotIn("AMIAGENT", (ROOT / "dist/README.txt").read_text(encoding="latin-1"))
 
-    def test_the_boot_page_offers_wasabi_0_10b4_off_by_default_and_names_the_key(self):
+    def test_the_boot_page_offers_wasabi_0_10b4_and_names_the_key(self):
         a = INSTALLER.index('(set #boot')
         page = INSTALLER[a:INSTALLER.index('(if (in #boot 0)', a)]
-        self.assertIn('(default 0)', page)
         self.assertIn('wasabi 0.11b2', page)
         self.assertIn('wasabi_mcp.py', page)
         self.assertIn('ENVARC:wasabi.key', page)
@@ -569,6 +568,22 @@ class StepCommandLine(unittest.TestCase):
         self.assertEqual(len(files), 60)
         line = step_command_line(files, 'D' * 40)
         self.assertLess(len(line), 255, '%d characters: %s' % (len(line), line))
+
+
+class EveryOptionTicked(unittest.TestCase):
+    """ALL-TICKED (user, 2026-10-20): every checkbox of the Installer is ticked by default; the
+    user unticks what they do not want. Each askoptions page's default is all its choices."""
+    PAGES = {'#amisslins': 1, '#net': 3, '#extra': 3, '#boot': 2, '#sys': 2}
+
+    def test_each_page_defaults_to_all_its_choices(self):
+        for var, n in self.PAGES.items():
+            a = INSTALLER.index('(set %s\n    (askoptions' % var)
+            page = INSTALLER[a:INSTALLER.index('(default', a) + 40]
+            d = page[page.index('(default') + 9:].split(')')[0]
+            value = int(d) if d.isdigit() else sum(int(x) for x in d.lstrip('(+ ').split())
+            self.assertEqual(value, 2 ** n - 1, var)
+        # the add-on page (its default is FindsTheAddOns' all-add-ons check) is the one more
+        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 1, 'a page this test misses')
 
 
 class ConsoleTakeover(unittest.TestCase):
