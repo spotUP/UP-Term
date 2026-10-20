@@ -1760,6 +1760,11 @@ static void unstartup_takes_a_stand_alone_block_by_its_name_only(void)
 static void takecon_turns_another_console_off_and_unstartup_back_on(void)
 {
     const char *names[2] = { "dist/takecon.sh", "dist/unstartup.sh" };
+    const char *input =
+        "printf '%s\\n' 'Mount CON: from DEVS:KingCON-mountlist' 'Mount RAW: from DEVS:KingCON-mountlist'"
+        " 'mount >NIL: con: from x' 'Mount VNC: from y' '; Mount CON: noted' 'C:Mount CON: from z'"
+        " '  spaced \\\\ line  ' 'Assign CON: DISMOUNT' 'c:assign raw: dismount' 'Assign CON: SYS:x'"
+        " 'Assign FOO: DISMOUNT' >S:User-Startup\n";
     char script[2][4096];
     char text[12288];
     int i;
@@ -1773,17 +1778,17 @@ static void takecon_turns_another_console_off_and_unstartup_back_on(void)
         fclose(f);
         script[i][n] = 0;
     }
-    snprintf(text, sizeof(text),
-             "printf '%%s\\n' 'Mount CON: from DEVS:KingCON-mountlist' 'Mount RAW: from DEVS:KingCON-mountlist'"
-             " 'mount >NIL: con: from x' 'Mount VNC: from y' '; Mount CON: noted' 'C:Mount CON: from z'"
-             " '  spaced \\\\ line  ' >S:User-Startup\n"
-             "%s\ncat <T:User-Startup.up-term\necho ==\ncat <T:UPTCONOFF\n", script[0]);
+    snprintf(text, sizeof(text), "%s%s\ncat <T:User-Startup.up-term\n", input, script[0]);
     CHECK_STR(run(text), ";UP-Term off: Mount CON: from DEVS:KingCON-mountlist\n"
                          ";UP-Term off: Mount RAW: from DEVS:KingCON-mountlist\n"
                          ";UP-Term off: mount >NIL: con: from x\nMount VNC: from y\n; Mount CON: noted\n"
-                         ";UP-Term off: C:Mount CON: from z\n  spaced \\\\ line  \n==\n"
-                         "Mount CON: from DEVS:KingCON-mountlist\nMount RAW: from DEVS:KingCON-mountlist\n"
-                         "mount >NIL: con: from x\nC:Mount CON: from z\n");
+                         ";UP-Term off: C:Mount CON: from z\n  spaced \\\\ line  \n"
+                         ";UP-Term off: Assign CON: DISMOUNT\n;UP-Term off: c:assign raw: dismount\n"
+                         "Assign CON: SYS:x\nAssign FOO: DISMOUNT\n");
+    snprintf(text, sizeof(text), "%s%s\ncat <T:UPTCONOFF\n", input, script[0]);
+    CHECK_STR(run(text), "Mount CON: from DEVS:KingCON-mountlist\nMount RAW: from DEVS:KingCON-mountlist\n"
+                         "mount >NIL: con: from x\nC:Mount CON: from z\nAssign CON: DISMOUNT\n"
+                         "c:assign raw: dismount\n");
     snprintf(text, sizeof(text),
              "printf '%%s\\n' ';UP-Term off: Mount CON: from k' 'user line' ';BEGIN UP-Term console'"
              " 'C:UPConsole >NIL: CON ON' ';END UP-Term console' >S:User-Startup\n"
