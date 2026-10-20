@@ -36,6 +36,25 @@ class EveryAddOn(unittest.TestCase):
     def test_there_are_eight_add_ons(self):
         self.assertEqual(sorted(r['id'] for r in ADDONS), ['bitchx', 'claude', 'git', 'nvim', 'perl', 'pi', 'python', 'vim'])
 
+    def test_a_failed_write_ends_the_install_with_rc_20_before_the_success_line(self):
+        """Disk full (rig, up-nvim through upkg): Copy and Echo-to-file failed with rc 20, but `FailAt 21`
+        lets rc 20 pass, so the script ran on and printed "Neovim installed" with exit 0. Every Copy and
+        every Echo to a file is followed by `If WARN` / `Quit 20`, so the Installer and upkg's postinst
+        (rc=$? of Execute) see the failure. Host-side check of the assembled script text."""
+        for pid, s in self.each():
+            lines = s['dos'].splitlines()
+            writes = 0
+            for i, line in enumerate(lines):
+                code = line.strip()
+                if not re.match(r'(Copy\s|Echo\s*>)', code) or 'ENV:UPTCHECK' in code:
+                    continue
+                writes += 1
+                ind = line[:len(line) - len(line.lstrip())]
+                # a failed Copy may first drop the assigns it was handed (Assign >NIL: NAME:), then quits
+                after = [l for l in lines[i + 1:i + 6] if not re.match(re.escape(ind) + r'  Assign >NIL: \w+:$', l)]
+                self.assertEqual(after[:3], [ind + 'If WARN', ind + '  Quit 20', ind + 'EndIf'], '%s: %s' % (pid, line))
+            self.assertGreater(writes, 0, pid)
+
     def test_a_stand_alone_archive_never_names_an_up_term_object_outside_comments(self):
         """K2-1, owner 2026-10-13: Claude, amiga-pi and Python3 install on a Workbench with no UP-Term. An
         AmigaDOS object named UP-Term:... with no such assign would put up a "Please insert volume" requester,
@@ -403,7 +422,7 @@ class PythonUninstall(unittest.TestCase):
         ix = dict(parts_of(self.S['dos']))['ixemul']
         a = ix.index('Version >NIL: LIBS:ixemul.library 47\nIf WARN\n')
         copy = ix.index('Copy $ixlib LIBS:ixemul.library CLONE QUIET')
-        end = ix.index('EndIf', copy)
+        end = ix.index('\nEndIf', copy)       # the If WARN's own, not a write check's (those are indented)
         self.assertLess(a, copy)
         self.assertEqual(ix.count('Copy $ixlib '), 1)        # one copy, inside the If WARN
         self.assertNotIn('\nEndIf', ix[a:copy])                          # nothing closes the If before the copy
@@ -521,7 +540,7 @@ class PiInstall(unittest.TestCase):
     S = scripts('pi')
 
     def test_the_binary_and_the_settings_drawer(self):
-        self.assertIn('Copy amiga-pi C:amiga-pi CLONE QUIET\nIf NOT EXISTS ENVARC:amiga-pi\n  MakeDir ENVARC:amiga-pi\nEndIf', self.S['dos'])
+        self.assertIn('Copy amiga-pi C:amiga-pi CLONE QUIET\nIf WARN\n  Quit 20\nEndIf\nIf NOT EXISTS ENVARC:amiga-pi\n  MakeDir ENVARC:amiga-pi\nEndIf', self.S['dos'])
 
     def test_the_changelog_goes_to_the_record_drawer_not_the_settings_drawer(self):
         """P12-B2: amiga-pi shows its CHANGELOG.md as What's New and for /changelog, read from

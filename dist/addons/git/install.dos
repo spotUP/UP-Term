@@ -23,6 +23,9 @@ MakeDir >NIL: UP-Term:bin
 MakeDir >NIL: UP-Term:share
 MakeDir >NIL: UP-Term:licenses
 Copy userland UP-Term: ALL CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf

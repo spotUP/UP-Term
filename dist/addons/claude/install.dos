@@ -33,19 +33,34 @@ Lab claude
 ; Its talking to Anthropic needs AmiSSL 5; ENVARC:Claude is where its settings go
 ; (Install never writes a key).
 Copy Claude C:Claude CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 Delete >NIL: C:ClaudeCode QUIET
 Copy uptelnet C:uptelnet CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 ; C:wasabid (wasabid 0.11b2, MIT, wasabid.LICENSE): uptelnet starts it for the length of one login to the
 ; NAS, with a key of its own, so Claude Code there can work on this Amiga. It is put in only when no wasabid
 ; is there (the base kit's, or one of yours): that one stays and is not ours. ENVARC:upkg/up-claude/wasabid (in the record drawer) is the
 ; marker for Uninstall, and a later install updates our own copy.
 If NOT EXISTS C:wasabid
   Copy wasabid C:wasabid CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   MakeDir >NIL: ENVARC:upkg ENVARC:upkg/up-claude
   Echo >ENVARC:upkg/up-claude/wasabid "installed by up-claude.lha"
+  If WARN
+    Quit 20
+  EndIf
 Else
   If EXISTS ENVARC:upkg/up-claude/wasabid
     Copy wasabid C:wasabid CLONE QUIET
+    If WARN
+      Quit 20
+    EndIf
   EndIf
 EndIf
 If NOT EXISTS ENVARC:Claude
@@ -58,9 +73,21 @@ If NOT "$optremote" EQ ""
     MakeDir ENV:Claude
   EndIf
   Echo >ENVARC:Claude/remote "; Claude Code on another computer: host and port. With no API key,"
+  If WARN
+    Quit 20
+  EndIf
   Echo >>ENVARC:Claude/remote "; plain Claude connects there (uptelnet). Delete this file to stop."
+  If WARN
+    Quit 20
+  EndIf
   Echo >>ENVARC:Claude/remote "$optremote"
+  If WARN
+    Quit 20
+  EndIf
   Copy ENVARC:Claude/remote ENV:Claude/remote CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
@@ -73,6 +100,9 @@ Lab launch
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   Copy "launch/Claude" "launch/Claude.info" UP-Term: CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   ; the old second icon of Claude.lha 1.0
   Delete >NIL: UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET
 EndIf

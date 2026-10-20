@@ -20,6 +20,9 @@ Lab pi
 ; ENVARC:amiga-pi is where its settings go (Install never writes settings.json,
 ; models.json or auth.json); its data goes to UP-Term:var/amiga-pi
 Copy amiga-pi C:amiga-pi CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 If NOT EXISTS ENVARC:amiga-pi
   MakeDir ENVARC:amiga-pi
 EndIf
@@ -28,6 +31,9 @@ EndIf
 ; are kept apart from the user's settings. A later Install replaces it. Nothing is written into ENVARC:amiga-pi.
 MakeDir >NIL: @PKGDIR@ @RECORD@
 Copy CHANGELOG.md @RECORDP@CHANGELOG.md CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
@@ -42,22 +48,46 @@ If NOT WARN
   MakeDir >NIL: UP-Term:var UP-Term:var/amiga-pi UP-Term:var/amiga-pi/skills
   Delete >NIL: UP-Term:var/amiga-pi/skills/amigados ALL QUIET
   Copy skills/amigados UP-Term:var/amiga-pi/skills/amigados ALL CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Delete >NIL: UP-Term:var/amiga-pi/skills/arexx ALL QUIET
   Copy skills/arexx UP-Term:var/amiga-pi/skills/arexx ALL CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Delete >NIL: UP-Term:var/amiga-pi/skills/amiga-c-build ALL QUIET
   Copy skills/amiga-c-build UP-Term:var/amiga-pi/skills/amiga-c-build ALL CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Delete >NIL: UP-Term:var/amiga-pi/skills/amiga-autodocs ALL QUIET
   Copy skills/amiga-autodocs UP-Term:var/amiga-pi/skills/amiga-autodocs ALL CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
 Else
   MakeDir >NIL: ENVARC:amiga-pi ENVARC:amiga-pi/skills
   Delete >NIL: ENVARC:amiga-pi/skills/amigados ALL QUIET
   Copy skills/amigados ENVARC:amiga-pi/skills/amigados ALL CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Delete >NIL: ENVARC:amiga-pi/skills/arexx ALL QUIET
   Copy skills/arexx ENVARC:amiga-pi/skills/arexx ALL CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Delete >NIL: ENVARC:amiga-pi/skills/amiga-c-build ALL QUIET
   Copy skills/amiga-c-build ENVARC:amiga-pi/skills/amiga-c-build ALL CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Delete >NIL: ENVARC:amiga-pi/skills/amiga-autodocs ALL QUIET
   Copy skills/amiga-autodocs ENVARC:amiga-pi/skills/amiga-autodocs ALL CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
@@ -70,6 +100,9 @@ Lab launch
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   Copy "launch/amiga-pi" "launch/amiga-pi.info" UP-Term: CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0

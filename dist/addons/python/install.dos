@@ -30,9 +30,15 @@ Version >NIL: LIBS:ixemul.library 47
 If WARN
   If EXISTS LIBS:ixemul.library
     Copy LIBS:ixemul.library LIBS:ixemul.library.before-Python3 CLONE QUIET
+    If WARN
+      Quit 20
+    EndIf
   EndIf
   If EXISTS LIBS:ixnet.library
     Copy LIBS:ixnet.library LIBS:ixnet.library.before-Python3 CLONE QUIET
+    If WARN
+      Quit 20
+    EndIf
   EndIf
   ; no FPU (the installer's (database "fpu") is NOFPU, handed as ENV:UPTOPTNOFPU): the soft-float build
   Set ixlib libs/ixemul.library
@@ -40,10 +46,22 @@ If WARN
     Set ixlib libs/ixemul.library.nofpu
   EndIf
   Copy $ixlib LIBS:ixemul.library CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Copy libs/ixnet.library LIBS:ixnet.library CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Echo >ENVARC:upkg/ixemul/installed-by-Python3 "up-python.lha put ixemul.library and ixnet.library in LIBS:"
+  If WARN
+    Quit 20
+  EndIf
 EndIf
 Echo >ENVARC:upkg/ixemul/needs/Python3 "Python3"
+If WARN
+  Quit 20
+EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
@@ -52,6 +70,9 @@ Lab copy-python
 ; the next part) or SYS:Python3/bin/python3; vsh's path names /SYS/Python3/bin.
 MakeDir >NIL: SYS:Python3
 Copy python3 SYS:Python3 ALL CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
@@ -64,11 +85,29 @@ Search >NIL: S:User-Startup ";BEGIN Python3"
 If WARN
   MakeDir >NIL: ENVARC:upkg ENVARC:upkg/up-python
   Copy S:User-Startup ENVARC:upkg/up-python/User-Startup.before CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
   Echo >>S:User-Startup ";BEGIN Python3"
+  If WARN
+    Quit 20
+  EndIf
   Echo >>S:User-Startup "If EXISTS SYS:Python3"
+  If WARN
+    Quit 20
+  EndIf
   Echo >>S:User-Startup "  Assign Python3: SYS:Python3"
+  If WARN
+    Quit 20
+  EndIf
   Echo >>S:User-Startup "EndIf"
+  If WARN
+    Quit 20
+  EndIf
   Echo >>S:User-Startup ";END Python3"
+  If WARN
+    Quit 20
+  EndIf
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
@@ -81,6 +120,9 @@ Lab launch
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   Copy "launch/Python 3" "launch/Python 3.info" UP-Term: CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0

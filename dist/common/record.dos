@@ -6,10 +6,16 @@ Lab record
 ; has no such files and leaves no options: the next Install asks again.
 ; @include dist/common/@RECORDPRE@
 Copy MANIFEST @RECORDP@MANIFEST CLONE
+If WARN
+  Quit 20
+EndIf
 If EXISTS ENV:UPTOPTDEST
   Delete >NIL: @OPTS@ ALL QUIET
   MakeDir >NIL: @OPTS@
   Copy ENV:UPTOPT#? @OPTS@ CLONE QUIET
+  If WARN
+    Quit 20
+  EndIf
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0

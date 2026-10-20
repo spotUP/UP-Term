@@ -2,6 +2,9 @@
 ; Update's two version lines) and a copy of its Uninstall, which the base's Uninstall runs
 MakeDir >NIL: @PKGDIR@ @RECORD@
 Copy VERSIONS @RECORDP@VERSIONS CLONE QUIET
+If WARN
+  Quit 20
+EndIf
 ; the Uninstall sits beside this Files drawer. Never as /Uninstall: UnixDirs3 UNIXROOT
 ; reads a leading / as the root, /Uninstall as the volume Uninstall: (a "Please insert
 ; volume" requester). Nor as UPTFILES:/Uninstall: C:Copy 47.7 splits that into a lock on
@@ -13,5 +16,10 @@ Copy VERSIONS @RECORDP@VERSIONS CLONE QUIET
 Assign >NIL: UPTFILES: ""
 Assign >NIL: UPTPARENT: UPTFILES:/
 Copy UPTPARENT:Uninstall @RECORDP@Uninstall CLONE QUIET
+If WARN
+  Assign >NIL: UPTPARENT:
+  Assign >NIL: UPTFILES:
+  Quit 20
+EndIf
 Assign >NIL: UPTPARENT:
 Assign >NIL: UPTFILES:
