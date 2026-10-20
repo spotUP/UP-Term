@@ -2,4 +2,10 @@
 ; Update's two version lines) and a copy of its Uninstall, which the base's Uninstall runs
 MakeDir >NIL: @PKGDIR@ @RECORD@
 Copy VERSIONS @RECORDP@VERSIONS CLONE QUIET
-Copy /Uninstall @RECORDP@Uninstall CLONE QUIET
+; the Uninstall sits beside this Files drawer. Never as /Uninstall: UnixDirs3 UNIXROOT
+; reads a leading / as the root, /Uninstall as the volume Uninstall: (a "Please insert
+; volume" requester). An assign on the current drawer keeps the parent form X:/ that
+; it leaves alone, whatever form DIR has (Files, UPTKIT:, a path with a trailing /).
+Assign >NIL: UPTFILES: ""
+Copy UPTFILES:/Uninstall @RECORDP@Uninstall CLONE QUIET
+Assign >NIL: UPTFILES:

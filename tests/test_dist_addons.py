@@ -168,9 +168,24 @@ class EveryAddOn(unittest.TestCase):
             rec = dict(parts_of(s['dos']))['record']
             self.assertIn('MakeDir >NIL: %s %s\n' % (row['record'].rsplit('/', 1)[0], row['record']), rec)
             self.assertIn('Copy MANIFEST %s/MANIFEST CLONE' % row['record'], rec)
-            self.assertIn('Copy /Uninstall %s/Uninstall CLONE QUIET' % row['record'], rec)
+            self.assertIn('Copy UPTFILES:/Uninstall %s/Uninstall CLONE QUIET' % row['record'], rec)
             self.assertIn('Copy VERSIONS %s/VERSIONS CLONE QUIET' % row['record'], rec)
             self.assertIn('Delete >NIL: %s/opts ALL QUIET' % row['record'], rec)
+
+    def test_no_amigados_line_names_a_path_with_a_leading_slash(self):
+        """A1200 2026-10-20: upkg's configure of up-nvim hung on "Please insert volume Uninstall". That
+        Workbench runs UnixDirs3 WILDSTAR UNIXROOT, which reads a leading / as the root and /name as the
+        volume name:, so AmigaDOS's parent form /name breaks there. No command line of an add-on's or the
+        base's install.dos or Uninstall may give a path that starts with /."""
+        cmds = r'(?:Copy|CD|List|Delete|MakeDir|Execute|Rename|Protect|Assign|Type|Join|Lha|Version|IconX)'
+        texts = [(pid, kind, s[kind]) for pid, s in self.each() for kind in ('dos', 'uninstall')]
+        texts += [('base', 'dos', mi.build(ROOT / 'dist/install.dos', 'base')),
+                  ('base', 'uninstall', mi.build(ROOT / 'dist/Uninstall', 'base'))]
+        for pid, kind, text in texts:
+            for line in text.splitlines():
+                code = line.split(';', 1)[0]
+                if re.match(r'\s*%s\b' % cmds, code, re.I) and re.search(r'(?:^|\s)"?/', code):
+                    self.fail('%s %s: %s' % (pid, kind, line))
 
     def test_the_installer_reads_the_legacy_manifest_through_only(self):
         for pid, s in self.each():
