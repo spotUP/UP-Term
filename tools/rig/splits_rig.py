@@ -51,7 +51,7 @@ TITLE = 'splitswin'
 BOX = '0/20/600/240'
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'gadget_close_split', 'font', 'restore']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'host_exit_cycles', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'gadget_close_split', 'font', 'restore']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
 K_W, K_D, K_ENTER, K_LBRACKET, K_RBRACKET = 0x11, 0x22, 0x44, 0x1A, 0x1B    # raw keycodes (RA+key = pane commands; [ ] = previous / next pane)
@@ -147,6 +147,31 @@ def fresh():
     if not sz:
         raise SystemExit('splits_rig: no `stty size` in a fresh vsh window')
     return sz
+
+
+def input_handlers(tag):
+    """input.device's handler list (VTC:inputlist): (count, intuition, console, [names]) or None"""
+    shutil.copyfile(ROOT / 'build/amiga/inputlist', VTC / 'inputlist')    # rig.py install refreshes only files VTC: holds
+    f = 'RAM:ns31-%s.out' % tag
+    c.run('Delete %s QUIET' % f)
+    c.run('VTC:inputlist >%s' % f)
+    rows = [l.split() for l in read(f).splitlines() if l.strip()]
+    if not rows or rows[-1][0] != 'handlers' or len(rows[-1]) != 4:
+        return None
+    names = [' '.join(r[:-3]) for r in rows[:-1]]
+    return int(rows[-1][1]), rows[-1][2] == 'intuition=1', rows[-1][3] == 'console=1', names
+
+
+def check_handlers(ck, base, what):
+    """after a case's windows are gone: the list holds intuition and console, no SIGWINCH handler of a freed
+    window, and as many handlers as at case start (a window's handler left behind hung input.device,
+    thoughts/spot/crash/accum2.md)"""
+    h = input_handlers('il-' + what)
+    ck(h is not None, '%s: VTC:inputlist answers' % what, h)
+    if h:
+        ck(h[1] and h[2], '%s: intuition and console are on the input handler list' % what, h[3])
+        ck(h[0] == base, '%s: %d input handlers, %d at case start' % (what, h[0], base), h[3])
+        ck('vtcon SIGWINCH' not in h[3], '%s: no vtcon SIGWINCH handler survives the windows' % what, h[3])
 
 
 def teardown():
@@ -386,6 +411,7 @@ def case_winch(ck):
 
 
 def case_pane_close(ck):
+    base = input_handlers('il-base')
     rows, full = fresh()
     try:
         # 'left-exit': the host's own shell (the left pane) ends while the right pane lives -- the window stays
@@ -409,6 +435,32 @@ def case_pane_close(ck):
             ck(n == 1, '%s: `UPTerm state` panes == 1' % how, n)
     finally:
         teardown()
+    check_handlers(ck, base[0] if base else -1, 'pane_close')
+
+
+def case_host_exit_cycles(ck):
+    """the host's own shell ends first, the window closes later, ROUNDS times on one boot; then a fresh window
+    still takes input. Before the fix each round left its SIGWINCH input handler on input.device pointing at a
+    freed con; the machine hung on input within 2-4 rounds (thoughts/spot/crash/accum.md, 2026-10-20)."""
+    base = input_handlers('il-base')
+    for r in range(ROUNDS):
+        rows, full = fresh()
+        try:
+            split_right_and_count(ck)
+            click(*col_point(2))
+            line('exit', wait=4)
+            ck(bool(ami.window('UP-Term') or ami.window(TITLE)), 'round %d: the window stays for the right pane' % r, None)
+        finally:
+            teardown()
+    try:
+        sz = fresh()
+        ck(sz is not None, 'after %d rounds a fresh window takes input' % ROUNDS, sz)
+    finally:
+        teardown()
+    check_handlers(ck, base[0] if base else -1, 'host_exit_cycles')
+
+
+ROUNDS = 5
 
 
 def case_pane_cycle(ck):

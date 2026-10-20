@@ -7859,6 +7859,14 @@ static LONG handler_main(void)
             break; /* the last tab went (and the split file is written) */
     }
     if (c->host_only) {
+        /* host_retire took the session, not the window's parts: the
+         * SIGWINCH input handler (is_Data = c, freed below), the ROM
+         * console unit and the scroll bar go before the window does.
+         * Leaving the handler on input.device's list let it read the
+         * freed con on every later input event: a hang a few split
+         * cycles later (thoughts/spot/crash/accum.md). */
+        c->winch_closing = 1;
+        window_parts_close(c);
         CloseWindow(c->own_win);
         c->own_win = 0;
         if (c->locked) {
