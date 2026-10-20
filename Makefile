@@ -1045,7 +1045,7 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
 	cp dist/screenrc $(KIT)/Files/screenrc
 	cp $(TMUX_BIN) $(KIT)/Files/tmux
-	cp dist/tmux.conf dist/unstartup.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
+	cp dist/tmux.conf dist/unstartup.sh dist/takecon.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
 	cp $(IXEMUL_LIB) $(KIT)/Files/libs/ixemul.library
 	cp $(IXNET_LIB) $(KIT)/Files/libs/ixnet.library
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(KIT)/Files/banner

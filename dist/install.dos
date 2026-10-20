@@ -791,18 +791,39 @@ Else
 EndIf
 ; The switch comes first: UPConsole refuses (RETURN_WARN, DD21) when another
 ; console replacement (KingCON, ViNCEd...) serves CON:, and it would refuse
-; at every boot too, with its output to NIL:. So a refusal writes no boot
-; block: it is printed here, and ENV:UPTREFUSEDCON (its text) tells the
-; Installer's last page.
-Delete >NIL: ENV:UPTREFUSEDCON QUIET
+; at every boot too. Then that replacement's Mount lines in S:User-Startup go
+; off (takecon.sh; Uninstall turns them back on), and the boot block serves
+; CON: from the next boot, never stacked; ENV:UPTCONREBOOT (the lines) tells
+; the Installer's last page. With no such line the refusal writes no block: it
+; is printed here, and ENV:UPTREFUSEDCON (its text) tells the last page.
+Delete >NIL: ENV:UPTREFUSEDCON ENV:UPTCONREBOOT QUIET
 If "$upcon" EQ "CONSOLE"
   C:UPConsole >T:UPTCON CON ON
   If WARN
-    Type T:UPTCON
-    Echo "CON: and RAW: stay as they were: no boot block was written."
-    Copy T:UPTCON ENV:UPTREFUSEDCON QUIET
+    Set upcon ""
+    Delete >NIL: T:UPTCONOFF T:User-Startup.up-term QUIET
+    If EXISTS S:User-Startup
+      vsh takecon.sh
+    EndIf
+    If EXISTS T:UPTCONOFF
+      If NOT EXISTS S:User-Startup.before-UP-Term
+        Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+      EndIf
+      Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+      Echo "Turned off in S:User-Startup; UP-Term serves CON: and RAW: after a reboot:"
+      Type T:UPTCONOFF
+      Copy T:UPTCONOFF ENV:UPTCONREBOOT QUIET
+      Set upcon "CONSOLE"
+    Else
+      Type T:UPTCON
+      Echo "CON: and RAW: stay as they were: no boot block was written."
+      Copy T:UPTCON ENV:UPTREFUSEDCON QUIET
+    EndIf
+    Delete >NIL: T:UPTCONOFF T:User-Startup.up-term QUIET
   Else
     Type T:UPTCON
+  EndIf
+  If "$upcon" EQ "CONSOLE"
     If NOT EXISTS S:User-Startup
       Echo >S:User-Startup ""
     EndIf

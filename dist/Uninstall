@@ -15,7 +15,9 @@ Delete >NIL: DEVS:DOSDrivers/PTY DEVS:DOSDrivers/PTY.info QUIET
 ; GG: and the block in S:User-Startup, if Install made them (UP-Term:
 ; is ours only then): vsh takes the block out, before vsh itself goes
 ; The blocks Install wrote into S:User-Startup (GG:, the CON: and device
-; switches) go;
+; switches) go, and the Mount lines of another console replacement
+; (KingCON...) that Install turned off (";UP-Term off: ", takecon.sh) are
+; on again;
 ; vsh does it, before vsh itself goes. The script is in ENVARC:up-term
 ; (older kits kept it in UP-Term: only).
 ; UP-Term's own drawer: found through the assign UP-Term: (CD prints where

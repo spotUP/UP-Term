@@ -22,6 +22,7 @@ system          Files/ixkill
 system          Files/pty-handler
 system          Files/screen
 system          Files/screenrc
+system          Files/takecon.sh
 system          Files/termcap.vtcon
 system          Files/terminfo
 system          Files/themes

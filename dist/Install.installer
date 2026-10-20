@@ -312,8 +312,10 @@
                 "Leave both off to keep the system's own.")
         (help "CON: and RAW:: every new Shell window is an UP-Term window "
               "(the Amiga look, with UP-Term's line editing, history and Tab "
-              "completion); C:UPConsole CON OFF switches back. Refused when "
-              "another console replacement (KingCON, ViNCEd...) serves CON:.\n\n"
+              "completion); C:UPConsole CON OFF switches back. When another "
+              "console replacement (KingCON, ViNCEd...) serves CON:, its Mount "
+              "lines in S:User-Startup are turned off and UP-Term serves CON: "
+              "after a reboot; Uninstall turns them back on.\n\n"
               "console.device: every program's console window (Ed, More, the "
               "system's Shell windows) draws with UP-Term's engine; C:UPConsole "
               "DEVICE OFF switches back. Refused when console.device was patched "
@@ -642,6 +644,21 @@
                           "written.\n") "")
                  "\nC:UPConsole STATUS says who serves them now."))
         (run "Delete >NIL: ENV:UPTREFUSED#? QUIET")))
+
+; another console replacement's Mount lines were turned off (install.dos:
+; ENV:UPTCONREBOOT, dist/takecon.sh): n = 6
+(if (exists "ENV:UPTCONREBOOT")
+    (
+        (set #n 6)
+        (P_LEAD)
+        (message
+            (cat #lead
+                 "UP-Term serves CON: and RAW: after a reboot.\n"
+                 "The Mount lines of the other console replacement\n"
+                 "(KingCON, ViNCEd...) in S:User-Startup are turned\n"
+                 "off; Uninstall turns them back on.\n"
+                 "\nC:UPConsole STATUS says who serves them now."))
+        (run "Delete >NIL: ENV:UPTCONREBOOT QUIET")))
 
 ; the parts are done: the options and the UPTKIT: assign go
 (P_OPTIONS_END)

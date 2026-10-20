@@ -571,6 +571,42 @@ class StepCommandLine(unittest.TestCase):
         self.assertLess(len(line), 255, '%d characters: %s' % (len(line), line))
 
 
+class ConsoleTakeover(unittest.TestCase):
+    """CON-TAKEOVER: UPConsole refuses CON ON while another console replacement serves CON:
+    (DD21, never stack; the A1200's KingCON, 2026-10-20), and the Installer used to stop there.
+    Now the refusal turns that replacement's Mount lines in S:User-Startup off (takecon.sh,
+    tested in tests/test_sh_exec.c) and writes the boot block, so UP-Term serves CON: from the
+    next boot; ENV:UPTCONREBOOT tells the last page, and the kit ships takecon.sh."""
+
+    @staticmethod
+    def con_branch():
+        lines = [l.strip() for l in DOS.splitlines()]
+        start = lines.index('C:UPConsole >T:UPTCON CON ON')
+        return lines[start:lines.index('Delete >NIL: T:UPTCON QUIET', start)]
+
+    def test_refusal_turns_the_other_console_off_and_writes_the_block(self):
+        b = self.con_branch()
+        warn = b.index('If WARN')
+        run = b.index('vsh takecon.sh')
+        found = b.index('If EXISTS T:UPTCONOFF')
+        copy = b.index('Copy T:User-Startup.up-term S:User-Startup CLONE QUIET')
+        flag = b.index('Copy T:UPTCONOFF ENV:UPTCONREBOOT QUIET')
+        again = b.index('Set upcon "CONSOLE"')
+        refuse = b.index('Copy T:UPTCON ENV:UPTREFUSEDCON QUIET')
+        block = b.index('Echo >>S:User-Startup "C:UPConsole >NIL: CON ON"')
+        self.assertTrue(warn < run < found < copy < flag < again < refuse < block, b)
+        self.assertIn('ENV:UPTCONREBOOT', [w for l in DOS.splitlines() if l.startswith('Delete ')
+                                            for w in l.split()])
+
+    def test_last_page_reads_and_clears_the_reboot_note(self):
+        self.assertIn('(exists "ENV:UPTCONREBOOT")', INSTALLER)
+        self.assertIn('(run "Delete >NIL: ENV:UPTCONREBOOT QUIET")', INSTALLER)
+
+    def test_kit_ships_takecon(self):
+        self.assertIn('Files/takecon.sh', (ROOT / "dist/parts.txt").read_text().split())
+        self.assertRegex((ROOT / "Makefile").read_text(), r'cp [^\n]*dist/takecon\.sh[^\n]*\$\(KIT\)/Files/')
+
+
 class LinkedEnvOn32(unittest.TestCase):
     """UNINSTALL-HANGS-ON-32 / ENV-DRAWER-RESET: AmigaOS 3.2 links RAM:ENV to ENVARC:, so a
     drawer made in ENVARC: shows in ENV: at once. Deleting a drawer in that ENV: resets the

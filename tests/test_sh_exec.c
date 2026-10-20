@@ -1752,6 +1752,47 @@ static void unstartup_takes_a_stand_alone_block_by_its_name_only(void)
     CHECK_STR(run(text), ";BEGIN Python3\nAssign Python3: SYS:Python3\n;END Python3\nuser line\n");
 }
 
+/* UPConsole refuses CON ON while another console replacement serves CON: (DD21), so Install turns
+ * that replacement's Mount lines in S:User-Startup off (dist/takecon.sh: ";UP-Term off: <line>",
+ * listed in T:UPTCONOFF) and its boot block serves CON: from the next boot (the A1200: KingCON,
+ * 2026-10-20). A second run keeps them off and lists them again; Uninstall (unstartup.sh, no
+ * name) turns them back on byte for byte, a named run leaves them off. */
+static void takecon_turns_another_console_off_and_unstartup_back_on(void)
+{
+    const char *names[2] = { "dist/takecon.sh", "dist/unstartup.sh" };
+    char script[2][4096];
+    char text[12288];
+    int i;
+    for (i = 0; i < 2; i++) {
+        FILE *f = fopen(names[i], "rb");
+        size_t n;
+        CHECK(f != NULL);
+        if (!f)
+            return;
+        n = fread(script[i], 1, sizeof(script[i]) - 1, f);
+        fclose(f);
+        script[i][n] = 0;
+    }
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' 'Mount CON: from DEVS:KingCON-mountlist' 'Mount RAW: from DEVS:KingCON-mountlist'"
+             " 'mount >NIL: con: from x' 'Mount VNC: from y' '; Mount CON: noted' 'C:Mount CON: from z'"
+             " '  spaced \\\\ line  ' >S:User-Startup\n"
+             "%s\ncat <T:User-Startup.up-term\necho ==\ncat <T:UPTCONOFF\n", script[0]);
+    CHECK_STR(run(text), ";UP-Term off: Mount CON: from DEVS:KingCON-mountlist\n"
+                         ";UP-Term off: Mount RAW: from DEVS:KingCON-mountlist\n"
+                         ";UP-Term off: mount >NIL: con: from x\nMount VNC: from y\n; Mount CON: noted\n"
+                         ";UP-Term off: C:Mount CON: from z\n  spaced \\\\ line  \n==\n"
+                         "Mount CON: from DEVS:KingCON-mountlist\nMount RAW: from DEVS:KingCON-mountlist\n"
+                         "mount >NIL: con: from x\nC:Mount CON: from z\n");
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' ';UP-Term off: Mount CON: from k' 'user line' ';BEGIN UP-Term console'"
+             " 'C:UPConsole >NIL: CON ON' ';END UP-Term console' >S:User-Startup\n"
+             ": >T:UPTCONOFF\n%s\ncat <T:UPTCONOFF\necho ==\n%s\ncat <T:User-Startup.up-term\necho ==\n"
+             "set -- console\n%s\ncat <T:User-Startup.up-term\n", script[0], script[1], script[1]);
+    CHECK_STR(run(text), "Mount CON: from k\n==\nMount CON: from k\nuser line\n==\n"
+                         ";UP-Term off: Mount CON: from k\nuser line\n");
+}
+
 /* eval, exec, trap, local, getopts, umask (plan unix-tool-ports row 0.6) */
 static const char *errs(void)
 {
@@ -2072,5 +2113,6 @@ void suite_sh_exec(void)
     uninstall_removes_every_up_term_block();
     unstartup_with_a_name_removes_only_that_block();
     unstartup_takes_a_stand_alone_block_by_its_name_only();
+    takecon_turns_another_console_off_and_unstartup_back_on();
     sh_shell_free(&sh);
 }
