@@ -14,6 +14,11 @@ The package is named as the feed names it (up-nvim, up-claude), the way `upkg li
   install     `upkg install up-nvim`: files land (Files/install.dos ran under ixemul /bin/sh), the status
               record is in UP-Term:pkg/upkg/status, T:upkg-stage holds nothing for nvim (`dest root /` reached T:)
   upgrade     a feed with nvim 1.1 (ipk rebuilt in a temp drawer; the real version is untouched): `upkg upgrade`
+  migrate     the OLD name (UP-Term-nvim 1.0, no Replaces, its record in UP-Term:pkg/UP-Term-nvim) is installed from a temp
+              feed; the real feed then names up-nvim with Replaces/Conflicts/Provides: UP-Term-nvim. `upkg upgrade`
+              alone is run and recorded; `upkg install up-nvim` must remove UP-Term-nvim (its prerm runs the old
+              Uninstall, no requester) and leave only up-nvim, files and the up-nvim record drawer   (sentinel: the
+              opkg line that removes/replaces UP-Term-nvim)
   remove      `upkg remove up-nvim`: files, status record and record drawer gone, no T:upkg-stage left
   needsbase   UP-Term:VERSIONS faked older than nvim's needs-base: install refused, nothing written (restored)
   badsum      Packages holds a wrong SHA256sum for up-claude: install refused, nothing written
@@ -26,7 +31,7 @@ fingerprint of dist/upkg.conf, build/ipk/Packages and this script.
   upkg_rig.py --force          every case, from zero
   upkg_rig.py --list           the recorded verdicts
 One script per rig: a second one on the same rig stops with the first one's pid (paths.rig_lock)."""
-import gzip, http.server, os, pathlib, re, shutil, sys, tempfile, threading
+import gzip, http.server, os, pathlib, re, shutil, subprocess, sys, tempfile, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import paths  # before ami: it sets the agent port of UPTERM_RIG
@@ -44,7 +49,8 @@ CONF = 'T:upkg-rig.conf'
 STATUS = 'UP-Term:pkg/upkg/status'
 STAGE = 'T:upkg-stage'
 ADDONS = ['up-claude', 'up-pi', 'up-nvim', 'up-python']
-CASES = ['version', 'updatelist', 'install', 'upgrade', 'remove', 'needsbase', 'badsum']
+CASES = ['version', 'updatelist', 'install', 'upgrade', 'migrate', 'remove', 'needsbase', 'badsum']
+OLD_NVIM = 'UP-Term-nvim'
 
 
 # --- pure parts (tests/test_rig_fixtures.py) ---------------------------------------------------------------
@@ -87,6 +93,15 @@ def bump_table(text, pkg, version):
     return out
 
 
+def old_name_table(text, pkg, old):
+    """A packages table text holding only row `pkg`, its archive and record drawer spelled `old`."""
+    keep = [l for l in text.splitlines() if re.match(r'^%s\s' % re.escape(pkg), l)]
+    if len(keep) != 1:
+        raise KeyError('no row %s in the table' % pkg)
+    new = re.split(r'\s{2,}', keep[0].strip())[1]
+    return keep[0].replace('pkg/' + new, 'pkg/' + old).replace('  ' + new + ' ', '  ' + old + ' ', 1) + '\n'
+
+
 def lower_record(text, version):
     """A VERSIONS record whose first line names `version` (line: <archive> <version> ...)."""
     lines = text.splitlines()
@@ -109,6 +124,7 @@ class Release:
     def __init__(self):
         self.dir = pathlib.Path(tempfile.mkdtemp(prefix='upkgrig'))
         self.bumped = None
+        self.old = None
         owner = self
 
         class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -146,8 +162,29 @@ class Release:
             self.bumped = tmp
         return self.bumped / 'ipk'
 
+    def old_name_feed(self, pkg, old):
+        """A temp feed drawer holding the package of row `pkg` as it was before its rename: named `old`, the
+        record drawer UP-Term:pkg/<old> (the staged tree copied with its new name spelled as the old one in
+        install.dos and Uninstall), no Replaces fields (old_names(old) is empty)."""
+        if self.old is None:
+            new = pkgs.get(pkg, 'archive')
+            tmp = pathlib.Path(tempfile.mkdtemp(prefix='upkgold'))
+            (tmp / 'dist').mkdir()
+            subprocess.run(['cp', '-Rc', str(BUILD / 'dist' / new), str(tmp / 'dist' / old)], check=True)
+            for rel in ('Files/install.dos', 'Uninstall'):
+                f = tmp / 'dist' / old / rel
+                f.write_bytes(f.read_bytes().replace(new.encode(), old.encode()))
+            table = tmp / 'packages.txt'
+            table.write_text(old_name_table(pkgs.TABLE.read_text(), pkg, old))
+            pkgs.ipk(tmp, table)
+            pkgs.write_feed(tmp, table)
+            self.old = tmp
+        return self.old / 'ipk'
+
     def close(self):
         self.srv.shutdown()
+        if self.old:
+            shutil.rmtree(self.old, ignore_errors=True)
         shutil.rmtree(self.dir, ignore_errors=True)
         if self.bumped:
             shutil.rmtree(self.bumped, ignore_errors=True)
@@ -188,6 +225,8 @@ def nvim_pristine(ck, what):
 
 def cleanup():
     """Between cases: nvim removed through upkg the way a user does, nothing judged; the stage tree dropped."""
+    if installed_version(OLD_NVIM):
+        upkg('upkgrmold', 'remove %s' % OLD_NVIM)
     if installed_version():
         upkg('upkgrm', 'remove %s' % NVIM)
     ir.run_slow('stagerm', 'Delete >NIL: %s ALL QUIET' % STAGE)
@@ -246,6 +285,30 @@ def case_upgrade(ck, rel):
     ck(not exists('%s/%s' % (STAGE, NVIM)), 'upgrade: nothing of nvim left under %s' % STAGE)
 
 
+def case_migrate(ck, rel):
+    cleanup()
+    ir.run_slow('olddrawerrm', 'Delete >NIL: UP-Term:pkg/%s ALL QUIET' % OLD_NVIM)
+    rel.set(rel.old_name_feed('nvim', OLD_NVIM))
+    upkg('upkgupd', 'update')
+    rc, out = upkg('upkginstold', 'install %s' % OLD_NVIM)
+    ck(rc == 0 and installed_version(OLD_NVIM) == '1.0', 'migrate: setup: upkg install %s' % OLD_NVIM, out[-400:])
+    ck(exists('UP-Term:pkg/%s' % OLD_NVIM), 'migrate: setup: the old record drawer UP-Term:pkg/%s is there' % OLD_NVIM)
+    rel.set()
+    rc, out = upkg('upkgupd', 'update')
+    ck(rc == 0, 'migrate: update against the real feed', out[-300:])
+    rc, out = upkg('upkgupg', 'upgrade')                       # recorded, not judged: what upgrade alone does
+    print('migrate: `upkg upgrade` alone: exit %d, status %s=%s %s=%s\n%s' % (rc, OLD_NVIM, installed_version(OLD_NVIM), NVIM, installed_version(), out[-600:]))
+    rc, out = upkg('upkginst', 'install %s' % NVIM)
+    print('migrate: `upkg install %s` output:\n%s' % (NVIM, out[-1500:]))
+    ck(rc == 0, 'migrate: upkg install %s exit 0' % NVIM, out[-600:])
+    ck(re.search(r'(Removing|Replacing|Replaces|removing).*%s' % OLD_NVIM, out), 'migrate: opkg removes/replaces %s (sentinel)' % OLD_NVIM, out[-800:])
+    ck(installed_version() == '1.0', 'migrate: status holds %s' % NVIM, installed_version())
+    ck(installed_version(OLD_NVIM) is None, 'migrate: status does not hold %s' % OLD_NVIM, installed_version(OLD_NVIM))
+    ck(nvim_files_there(), 'migrate: nvim files are there')
+    ck(not exists('UP-Term:pkg/%s' % OLD_NVIM), 'migrate: old record drawer UP-Term:pkg/%s is gone' % OLD_NVIM)
+    ck(exists('UP-Term:pkg/%s' % NVIM), 'migrate: record drawer UP-Term:pkg/%s is there' % NVIM)
+
+
 def case_remove(ck, rel):
     if not ensure_nvim(ck, rel):
         return
@@ -288,7 +351,7 @@ def case_badsum(ck, rel):
     ck(not exists('%s/up-claude' % STAGE), 'badsum: nothing of up-claude under %s' % STAGE)
 
 
-TABLE = {'version': case_version, 'updatelist': case_updatelist, 'install': case_install, 'upgrade': case_upgrade,
+TABLE = {'version': case_version, 'updatelist': case_updatelist, 'install': case_install, 'upgrade': case_upgrade, 'migrate': case_migrate,
          'remove': case_remove, 'needsbase': case_needsbase, 'badsum': case_badsum}
 
 
