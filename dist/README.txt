@@ -36,7 +36,8 @@ INSTALL
   ixemul.library and mounts XCON: and PTY:. A page of check boxes picks
   the optional parts: ssh and scp, bebboget, curl (see NETWORK), wasabi
   (see WASABI), the serial login (SERIAL LOGIN), the UP-Term icon in SYS:System and the
-  Shell icon. On 3.0/3.1 a second page asks whether UP-Term should also
+  Shell icon (it then starts vsh in an UP-Term window; scripts and NewShell
+  keep the AmigaDOS Shell). On 3.0/3.1 a second page asks whether UP-Term should also
   serve CON: and RAW: (see CON: AND RAW: below) and console.device (see
   CONSOLE.DEVICE below). Install first asks where UP-Term's own drawer
   goes (see WHERE IT IS INSTALLED).

@@ -1,11 +1,14 @@
 /* upicon -- the kit's icon tool (Installer): a Shell icon's WINDOW tooltype
- * pointed at another console device, the window itself unchanged.
+ * pointed at another console device, the window itself unchanged, and
+ * with TOOL its default tool another shell.
  *
- *   upicon NAME WINDOWDEV=XCON
+ *   upicon NAME WINDOWDEV=XCON [TOOL=UP-Term:bin/vsh]
  *
  * NAME is the icon without .info (SYS:System/Shell). The WINDOW tooltype's
  * device is swapped (iconspec.c); an icon with none gets the Shell's
- * default window on that device. Every other tooltype stays. Return code
+ * default window on that device. Every other tooltype stays. TOOL makes
+ * the icon a project whose default tool is that program (vsh opens the
+ * WINDOW tooltype's window itself when Workbench starts it). Return code
  * 0 changed, 5 already so, 10 no such icon, 20 failed. */
 #include <exec/types.h>
 #include <exec/memory.h>
@@ -32,11 +35,12 @@ static int is_window(const char *t)
 
 int main(void)
 {
-    static const char tmpl[] = "NAME/A,WINDOWDEV/K/A";
-    LONG args[2] = { 0, 0 };
+    static const char tmpl[] = "NAME/A,WINDOWDEV/K/A,TOOL/K";
+    LONG args[3] = { 0, 0, 0 };
     struct RDArgs *rd;
     struct DiskObject *d;
-    STRPTR *old, *tt = 0;
+    STRPTR *old, *tt = 0, oldtool;
+    UBYTE oldtype;
     char value[256 + 8];
     const char *was = 0;
     int n = 0, i, at = -1, r, rc = 20;
@@ -72,8 +76,13 @@ int main(void)
         Printf("upicon: the WINDOW tooltype is too long\n");
         goto free;
     }
-    if (r == 0) {
-        rc = 5; /* already that device */
+    oldtool = d->do_DefaultTool;
+    oldtype = d->do_Type;
+    if (args[2] && (d->do_Type != WBPROJECT || !oldtool || strcmp((const char *)oldtool, (const char *)args[2]))) {
+        d->do_DefaultTool = (STRPTR)args[2];
+        d->do_Type = WBPROJECT;
+    } else if (r == 0) {
+        rc = 5; /* already that device and that tool */
         goto free;
     }
     tt = (STRPTR *)AllocVec((n + 2) * sizeof(STRPTR), MEMF_CLEAR);
@@ -81,12 +90,15 @@ int main(void)
         goto free;
     for (i = 0; i < n; i++)
         tt[i] = old[i];
-    tt[at >= 0 ? at : n] = (STRPTR)value;
+    if (r)
+        tt[at >= 0 ? at : n] = (STRPTR)value;
     d->do_ToolTypes = tt;
     rc = PutDiskObject((STRPTR)args[0], d) ? 0 : 20;
     if (rc)
         PrintFault(IoErr(), (STRPTR)"upicon");
     d->do_ToolTypes = old; /* FreeDiskObject frees what GetDiskObject gave */
+    d->do_DefaultTool = oldtool;
+    d->do_Type = oldtype;
     FreeVec(tt);
 free:
     FreeDiskObject(d);

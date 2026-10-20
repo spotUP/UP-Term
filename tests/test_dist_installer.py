@@ -588,6 +588,34 @@ class EveryOptionTicked(unittest.TestCase):
         self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 2, 'a page this test misses')
 
 
+class ShellIconStartsVsh(unittest.TestCase):
+    """SHELL-ICON-VSH (user, 2026-10-20): the Shell icon option makes SYS:System/Shell start vsh
+    in an UP-Term (XCON:) window; scripts and NewShell keep the AmigaDOS Shell. The icon as it was
+    is saved first and Uninstall puts it back."""
+    UPICON = (ROOT / "install/upicon.c").read_text()
+    UNINSTALL = (ROOT / "dist/Uninstall").read_text()
+
+    def test_the_option_saves_the_icon_then_points_it_at_vsh_in_xcon(self):
+        a = DOS.index('If "$optshellicon" EQ "SHELLICON"')
+        block = DOS[a:DOS.index('EndIf\nEndIf', a)]
+        save = block.index('Copy SYS:System/Shell.info ENVARC:up-term-orig/Shell.info CLONE')
+        run = block.index('upicon SYS:System/Shell WINDOWDEV=XCON TOOL=UP-Term:bin/vsh')
+        self.assertLess(save, run)
+
+    def test_upicon_takes_tool_and_sets_the_default_tool_of_a_project(self):
+        self.assertIn('"NAME/A,WINDOWDEV/K/A,TOOL/K"', self.UPICON)
+        self.assertIn('d->do_DefaultTool = (STRPTR)args[2];', self.UPICON)
+        self.assertIn('d->do_Type = WBPROJECT;', self.UPICON)
+
+    def test_nothing_else_points_the_amigados_shell_at_vsh(self):
+        self.assertEqual(DOS.count('TOOL=UP-Term:bin/vsh'), 1)
+        self.assertEqual([l.split()[1] for l in DOS.splitlines() if l.lstrip().startswith('upicon ')],
+                         ['SYS:System/Shell'])
+
+    def test_uninstall_puts_the_saved_icon_back(self):
+        self.assertIn('Copy ENVARC:up-term-orig/Shell.info SYS:System/Shell.info CLONE', self.UNINSTALL)
+
+
 class ConsoleTakeover(unittest.TestCase):
     """CON-TAKEOVER: UPConsole refuses CON ON while another console replacement serves CON:
     (DD21, never stack; the A1200's KingCON, 2026-10-20), and the Installer used to stop there.

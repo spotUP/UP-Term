@@ -396,6 +396,11 @@ def run_slow(name, cmd, timeout=600):
 
 passed = total = 0
 failures = []   # the reasons of the failed checks of the pass that ran last (a case's verdict detail)
+def kit_ixemul_tag():
+    """The patch tag (vtcon-N) of the kit's ixemul.library, as its version string carries it."""
+    return re.search(rb'\[(vtcon-\d+)', (VTC / "distkit/Files/libs/ixemul.library").read_bytes()).group(1).decode()
+
+
 def check(ok, what, seen=''):
     global passed, total
     total += 1
@@ -601,8 +606,9 @@ def _main(dest=None):
     kit_ixnet = (VTC / "distkit/Files/libs/ixnet.library").stat().st_size
     check(st.get('ixnet.library.orig') == ixnet_before and st.get('ixnet.library') == str(kit_ixnet),
           'the kit\'s ixnet in LIBS:, the original kept as .orig', str(st))
-    rc, out = run('Search LIBS:ixemul.library vtcon-2')
-    check('vtcon-2' in out, 'the patched ixemul is in LIBS:', out)
+    tag = kit_ixemul_tag()
+    rc, out = run('Search LIBS:ixemul.library %s' % tag)
+    check(tag in out, 'the patched ixemul (%s) is in LIBS:' % tag, out)
     rc, out = run('C:UPConsole STATUS')
     check('CON: ROM' in out, 'Install NOCONSOLE leaves CON: the ROM\'s', out)
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term console"')[0] != 0,
@@ -613,12 +619,14 @@ def _main(dest=None):
     # a second Install must not take ours for theirs; this one says yes to CON:
     rc, out = run_long('runinstallcon')
     check(rc == 0 and 'Unknown command' not in out, 'Install CONSOLE again over it runs', out)
-    # SHELLICON: the Shell icon's window on XCON:, nothing else changed
+    # SHELLICON: the Shell icon starts vsh (a project's default tool) in a window on XCON:,
+    # nothing else changed
     rc, out = run('VTC:iconprobe SYS:System/Shell')
-    want = [l if not l.startswith('tooltype WINDOW=') else
-            'tooltype WINDOW=XCON:' + l.split(':', 1)[1] for l in shell_before.splitlines()]
-    check(out.splitlines() == want and 'WINDOW=XCON:' in out,
-          'SHELLICON: the Shell icon opens on XCON:, its window and other tooltypes kept',
+    want = [re.sub(r'^type \d+', 'type 4', re.sub(r' tool \S+', ' tool UP-Term:bin/vsh', l)) if i == 0 else
+            'tooltype WINDOW=XCON:' + l.split(':', 1)[1] if l.startswith('tooltype WINDOW=') else l
+            for i, l in enumerate(shell_before.splitlines())]
+    check(out.splitlines() == want and 'WINDOW=XCON:' in out and 'tool UP-Term:bin/vsh' in out,
+          'SHELLICON: the Shell icon starts UP-Term:bin/vsh on XCON:, its window and other tooltypes kept',
           '%r vs %r' % (out, want))
     check(run('List >NIL: SYS:System/UP-Term.info')[0] == 0, 'the UP-Term icon is in SYS:System, beside Shell', '')
     rc, out = run('C:UPConsole STATUS')
@@ -668,14 +676,18 @@ def _main(dest=None):
         rc, out = run('Search S:User-Startup "C:UPConsole >NIL: CON ON"')
         check('CON ON' in out, 'S:User-Startup switches CON: at boot', out)
         run('C:UPConsole CON OFF')
-        # the Shell icon from Workbench, CON: the ROM's again: its window is UP-Term's
-        run('Delete RAM:who-shell.txt QUIET')
-        run('VTC:wbrun SYS:System/CLI SYS:System/Shell', 30)
+        # the Shell icon from Workbench, CON: the ROM's again: vsh in an UP-Term window
+        # ($((1+1)) is 2 only in vsh; the AmigaDOS Echo prints it as it is)
+        run('Delete RAM:who-shell.txt RAM:sh-shell.txt QUIET')
+        run('VTC:wbrun UP-Term:bin/vsh SYS:System/Shell', 30)
         time.sleep(4)
         concon_rig.typeline('VTC:conwho >RAM:who-shell.txt', 3)
-        concon_rig.typeline('endcli', 2)
+        concon_rig.typeline('echo $((1+1)) >RAM:sh-shell.txt', 2)
+        concon_rig.typeline('exit', 2)
         who = run('Type RAM:who-shell.txt')[1].strip()
         check(who.startswith('UP-Term '), 'the Shell icon opens an UP-Term window (%s)' % who, who)
+        sh = run('Type RAM:sh-shell.txt')[1].strip()
+        check(sh == '2', 'the Shell icon\'s window runs vsh', sh)
     run('C:UPConsole >NIL: CON ON')  # the block's own line, as a boot runs it
     rc, out = run('C:UPConsole STATUS')
     check('CON: UP-Term' in out, 'the block\'s line switches CON: again', out)
@@ -753,7 +765,7 @@ def _main(dest=None):
     if not gg_before:
         check(run('Assign >NIL: GG: EXISTS')[0] != 0, 'after Uninstall: no GG: (Install made it)')
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
-                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO', 'ENVARC:vsh', 'ENV:vsh',
+                        'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO', 'ENVARC:vsh',
                         'SYS:System/UP-Term', 'SYS:System/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
                         '"C:UP-Term Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
             if run('List >NIL: %s' % f)[0] == 0]
@@ -762,6 +774,9 @@ def _main(dest=None):
     # the rig's rununinstall answers YES to the var question, so the drawer goes whole
     inside = run('List "%s" ALL' % drawer)[1][:600] if left else ''
     check(not left, 'Uninstall removed the files', ' '.join(left) + ' | ' + inside)
+    # ENV:vsh is emptied, not deleted (c1e66aff: 3.2's linked ENV: keeps the drawer)
+    rc, out = run('List ENV:vsh')
+    check(rc != 0 or 'is empty' in out, 'after Uninstall: ENV:vsh holds no files', out)
     check(run('List >NIL: ENVARC:UP-Term.prefs')[0] == 0, 'Uninstall kept the user\'s preferences', '')
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')
     if rig_gg:

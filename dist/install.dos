@@ -8,7 +8,7 @@
 ;     [DEST <drawer>]   (UP-Term's own drawer, SYS:UP-Term unless named; its
 ;               parent must exist. Assigned as UP-Term: now and at every boot,
 ;               and every program finds the files through UP-Term:)
-;     [SHELLICON]   (the Shell icon opens an UP-Term window: no unless asked)
+;     [SHELLICON]   (the Shell icon starts vsh in an UP-Term window: no unless asked)
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid 0.11b2, remote development and Claude Code on another computer, with a
@@ -576,16 +576,18 @@ If NOT EXISTS SYS:Prefs
 EndIf
 Copy UP-Term-Prefs UP-Term-Prefs.info SYS:Prefs CLONE
 Delete >NIL: SYS:Utilities/UP-Term SYS:Utilities/UP-Term.info SYS:Utilities/UP-Term-Prefs SYS:Utilities/UP-Term-Prefs.info QUIET
-; SHELLICON: the Shell icon (SYS:System/Shell) opens its window on XCON:,
-; its place, size, title and options as they were (upicon swaps only the
-; WINDOW tooltype's device). The icon as it was is kept in
-; ENVARC:up-term-orig for Uninstall (a second Install keeps the first copy).
+; SHELLICON: the Shell icon (SYS:System/Shell) starts vsh (its default tool
+; UP-Term:bin/vsh) in a window on XCON:, the window's place, size, title and
+; options as they were (upicon swaps only the WINDOW tooltype's device).
+; Scripts, NewShell and Execute still get the AmigaDOS Shell. The icon as it
+; was is kept in ENVARC:up-term-orig for Uninstall (a second Install keeps
+; the first copy).
 If "$optshellicon" EQ "SHELLICON"
   If EXISTS SYS:System/Shell.info
     If NOT EXISTS ENVARC:up-term-orig/Shell.info
       Copy SYS:System/Shell.info ENVARC:up-term-orig/Shell.info CLONE
     EndIf
-    upicon SYS:System/Shell WINDOWDEV=XCON
+    upicon SYS:System/Shell WINDOWDEV=XCON TOOL=UP-Term:bin/vsh
   EndIf
 EndIf
 If NOT "{STEP}" EQ ""
