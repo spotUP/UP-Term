@@ -20,6 +20,7 @@ import argparse, os, pathlib, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import userland_rig as U
+import capture
 
 ROOT = U.ROOT
 VTC = U.VTC
@@ -100,15 +101,7 @@ def main():
         how = one_pass(label, a.limit)
         got = VTC / "out/repeat" / (label + ".txt")
         if how != "ended":
-            try:
-                dump = U.run("VTC:taskdump", 30)[1]
-            except OSError:
-                dump = "wasabid does not answer (%s)\n" % how
-            for code in (0x0D,):   # UITREE: the windows open now (a DOS requester a process waits in)
-                try:
-                    dump += "\n" + U.ami.req(code, timeout=30).decode("latin-1")
-                except OSError:
-                    pass
+            dump = capture.dump(U.run, U.ami.req, how)
             (LEDGER / ("%s-hang-%d.txt" % (label, i))).write_text(dump)
             verdict = "HANG" if how == "hang" else "HANG-AGENT"
         else:

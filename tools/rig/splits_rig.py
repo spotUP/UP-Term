@@ -30,6 +30,7 @@ Verdicts are written as each case ends (verdicts.Store, build/rig<N>/splits_rig/
 handler + vsh build, so a rerun skips passed cases.
 
   python3 tools/rig/splits_rig.py [rig=4] [--only CASE ...] [--failed] [--force] [--list]
+            [--repeat N [--fresh-boot]]   N rounds of one case, build/rig4/splits/repeat-<case>.log, stops at FAIL/hang
 
 Needs the rig up on a build with Split right / Split down and the `splits` counter. Rig 2 is refused.
 Click-to-focus (NS3.4) moves between panes here; if that is not built, cases needing the left pane fail
@@ -39,12 +40,17 @@ import os, pathlib, re, shutil, struct, subprocess, sys, time
 
 # the rig number is chosen before paths is imported (it reads UPTERM_RIG once)
 _args = sys.argv[1:]
+_repeat = 0                       # --repeat N: taken out first, its number is not the rig's
+if '--repeat' in _args:
+    _i = _args.index('--repeat')
+    _repeat = int(_args[_i + 1])
+    del _args[_i:_i + 2]
 _rig = next((a for a in _args if a.isdigit()), os.environ.get('UPTERM_RIG') or '4')
 if _rig == '2':
     raise SystemExit('splits_rig: rig 2 is not for this test (use 4)')
 os.environ['UPTERM_RIG'] = _rig
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths, ami, typewin, vshwin, verdicts
+import paths, ami, typewin, vshwin, verdicts, capture
 import condev_rig as c
 import ixpty_rig, winch_rig
 import tutorial_rig as tr          # counters(), active_title()
@@ -52,6 +58,8 @@ import tutorial_rig as tr          # counters(), active_title()
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / 'vtc'
 OUT = paths.RIG / 'splits_rig'
+FAILS = paths.RIG / 'splits'          # fail-<case>-<n>.txt, hang-<case>-<n>.txt, repeat-<case>.log
+CUR = {'case': '?', 'n': 1, 'raw': ''}   # the case running now, its round, the last VTC:inputlist output
 TITLE = 'splitswin'
 BOX = '0/20/600/240'
 CELL_H = int(os.environ.get('SPLITS_CELL_H') or 16)   # measured rig 4 (2026-10-20): cursor bbox 8 x 16 px
@@ -162,7 +170,8 @@ def input_handlers(tag):
     f = 'RAM:ns31-%s.out' % tag
     c.run('Delete %s QUIET' % f)
     c.run('VTC:inputlist >%s' % f)
-    rows = [l.split() for l in read(f).splitlines() if l.strip()]
+    CUR['raw'] = read(f)
+    rows = [l.split() for l in CUR['raw'].splitlines() if l.strip()]
     if not rows or rows[-1][0] != 'handlers' or len(rows[-1]) != 4:
         return None
     names = [' '.join(r[:-3]) for r in rows[:-1]]
@@ -178,7 +187,29 @@ def check_handlers(ck, base, what):
     if h:
         ck(h[1] and h[2], '%s: intuition and console are on the input handler list' % what, h[3])
         ck(h[0] == base, '%s: %d input handlers, %d at case start' % (what, h[0], base), h[3])
-        ck('vtcon SIGWINCH' not in h[3], '%s: no vtcon SIGWINCH handler survives the windows' % what, h[3])
+        gone = ck('vtcon SIGWINCH' not in h[3], '%s: no vtcon SIGWINCH handler survives the windows' % what, h[3])
+        if not gone:
+            capture_fail(what)
+
+
+def capture_fail(what):
+    """a SIGWINCH node survived: keep the evidence now, before the next case moves it (NS3.3 leak, ~1 in 31):
+    the full VTC:inputlist output (each node's is_Data), VTC:taskdump, the UITREE window list, `UPTerm state`"""
+    FAILS.mkdir(parents=True, exist_ok=True)
+    f = FAILS / ('fail-%s-%d.txt' % (CUR['case'], CUR['n']))
+    try:
+        state = tr.counters()[1]
+    except Exception as e:                       # no active tab left to type into, or no answer
+        state = 'no answer (%s: %s)' % (type(e).__name__, e)
+    f.write_text('[%s] %s\n\n[VTC:inputlist]\n%s\n\n[VTC:taskdump + UITREE]\n%s\n\n[UPTerm state]\n%s\n'
+                 % (time.strftime('%F %T'), what, CUR['raw'], capture.dump(c.run, ami.req, what), state))
+    print('[FAIL] evidence in %s' % f, flush=True)
+
+
+def reboot():
+    rig = [sys.executable, str(ROOT / 'tools/rig/rig.py')]
+    subprocess.run(rig + ['stop'], capture_output=True, timeout=120)
+    subprocess.run(rig + ['start'], capture_output=True, timeout=400)
 
 
 def teardown():
@@ -197,9 +228,7 @@ def teardown():
         click(x + 20 + 60 * (i % 4), y + 40 + 40 * (i % 3))
     print('[ERROR] teardown: the window survived 6 exits (UPTerm state %r): rig.py stop + start'
           % (tr.counters()[0],), flush=True)
-    rig = [sys.executable, str(ROOT / 'tools/rig/rig.py')]
-    subprocess.run(rig + ['stop'], capture_output=True, timeout=120)
-    subprocess.run(rig + ['start'], capture_output=True, timeout=400)
+    reboot()
 
 
 def split_right_and_count(ck, before=None):
@@ -1303,16 +1332,62 @@ def case_restore(ck):
         undo()
 
 
+def capture_hang(name, why):
+    """a rig call got no answer: what is still reachable (taskdump if wasabid answers, UITREE, the serial log
+    tail) goes to hang-<case>-<n>.txt; the caller restarts the rig"""
+    FAILS.mkdir(parents=True, exist_ok=True)
+    f = FAILS / ('hang-%s-%d.txt' % (name, CUR['n']))
+    serial = paths.RIG / 'serial.log'
+    tail = ''
+    if serial.exists():
+        tail = '\n'.join(serial.read_text(errors='replace').splitlines()[-60:])
+    f.write_text('[%s] %s: %s\n\n[VTC:taskdump + UITREE]\n%s\n\n[serial.log tail]\n%s\n'
+                 % (time.strftime('%F %T'), name, why, capture.dump(c.run, ami.req, why), tail))
+    print('[FAIL] hang evidence in %s' % f, flush=True)
+
+
 def run_case(name, store, fp):
+    """'PASS', 'FAIL' or 'HANG' (a rig call without an answer: evidence captured, rig restarted)"""
+    CUR['case'] = name
     ck = verdicts.Checks()
+    hang = None
     try:
         globals()['case_' + name](ck)
     except SystemExit as e:
         ck(False, 'case aborted', e)
+    except OSError as e:                             # wasabid / the agent no longer answers
+        hang = '%s: %s' % (type(e).__name__, e)
+        ck(False, 'rig call without an answer', hang)
     except Exception as e:                           # a rig fault is a failed case, with the reason recorded
         ck(False, 'case raised %s' % type(e).__name__, e)
     store.record(name, not ck.failed, '; '.join(ck.failed) or 'ok (%d checks)' % ck.total, fp)
-    return not ck.failed
+    if hang:
+        capture_hang(name, hang)
+        reboot()
+        return 'HANG'
+    return 'FAIL' if ck.failed else 'PASS'
+
+
+def repeat_case(cs, store, fp, rounds, fresh_boot):
+    """--repeat N: the case N times, one verdict line per round in repeat-<case>.log (resumes: recorded rounds
+    are skipped); stops at the first FAIL or HANG"""
+    FAILS.mkdir(parents=True, exist_ok=True)
+    log = FAILS / ('repeat-%s.log' % cs)
+    done = log.read_text().splitlines() if log.exists() else []
+    if any(not l.endswith(' PASS') for l in done):
+        print('[INFO] %s: an earlier round failed (%s); delete %s to start again' % (cs, done[-1], log))
+        return False
+    for n in range(len(done) + 1, rounds + 1):
+        if fresh_boot:
+            reboot()
+        CUR['n'] = n
+        v = run_case(cs, store, fp)
+        with log.open('a') as f:
+            f.write('round %d %s\n' % (n, v))
+        print('round %d/%d %s' % (n, rounds, v), flush=True)
+        if v != 'PASS':
+            return False
+    return True
 
 
 def main(argv):
@@ -1339,7 +1414,11 @@ def main(argv):
     with paths.rig_lock():
         for cs, why in run:
             print('== %s (%s) ==' % (cs, why))
-            ok = run_case(cs, store, fp) and ok
+            if _repeat:
+                ok = repeat_case(cs, store, fp, _repeat, '--fresh-boot' in args) and ok
+            else:
+                CUR['n'] = 1
+                ok = run_case(cs, store, fp) == 'PASS' and ok
     return 0 if ok else 1
 
 
