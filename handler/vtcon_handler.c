@@ -5826,6 +5826,7 @@ static void tab_show_active(con *c)
         if (!tabslot_shows(s, k))
             continue;
         if (p == c) {
+            vr_set_cursor_hollow(&c->w.r, k != s->focus); /* NS3.4: solid where the keys are */
             vtwin_show(&c->w, 1);
             if (k == s->focus && c->menustrip)
                 SetMenuStrip(c->own_win, c->menustrip);
@@ -6121,7 +6122,7 @@ static int tab_spawn(con *c, const char *profile, con *from, int prog, int pane,
      * the window as it is, and the program's own message says so. */
     if (c->ntabs < 2 && c->w.r.ch > 0)
         bar_rows = (bar_pixels(c) + c->w.r.ch - 1) / c->w.r.ch;
-    if (tabprog_grow(c->w.r.cols, c->w.r.rows, p->cols, p->rows, bar_rows, &want_cols, &want_rows))
+    if (!c->w.rect_on && tabprog_grow(c->w.r.cols, c->w.r.rows, p->cols, p->rows, bar_rows, &want_cols, &want_rows))
         vtwin_set_size(&c->w, want_cols, want_rows);
     if (!c->tab_port) {
         /* the public port tabs find us by */
@@ -6774,6 +6775,7 @@ static void tab_msgs(con *c)
         case TM_SHOW:
             c->shown = 1;
             c->focused = t->what;
+            vr_set_cursor_hollow(&c->w.r, !c->focused); /* NS3.4: solid where the keys are */
             vtwin_show(&c->w, 1);
             if (c->focused && c->menustrip && c->w.win)
                 SetMenuStrip(c->w.win, c->menustrip);

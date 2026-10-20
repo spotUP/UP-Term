@@ -1175,6 +1175,8 @@ void vtwin_write(vtwin *w, const vt_u8 *b, long n)
     if (w->layout_dirty) {
         w->layout_dirty = 0;
         vtwin_render(w);
+        if (w->want_cols && w->rect_on)
+            w->want_cols = 0; /* NS5.3: DECCOLM from a program is ignored while split (the window is all its panes') */
         if (w->want_cols && w->win) {
             /* DECCOLM: the window as wide as that many columns (as far
              * as the screen allows); its new size resizes the grid */
@@ -1906,11 +1908,14 @@ int vtwin_set_size(vtwin *w, int cols, int rows)
 {
     struct Window *win = w->win;
     WORD ww, wh;
-    if (!w->t || !win || cols < 1 || rows < 1 || w->rect_on)
-        return 0; /* a split pane: the window is all its panes' (DECCOLM ignored) */
+    if (!w->t || !win || cols < 1 || rows < 1)
+        return 0;
     if ((win->Flags & WFLG_BACKDROP) && (win->Flags & WFLG_BORDERLESS) && win->LeftEdge == 0 && win->TopEdge == 0 &&
         win->Width == win->WScreen->Width && win->Height == win->WScreen->Height)
-        return fullscreen_size(w, cols, rows);
+        return w->rect_on ? 0 : fullscreen_size(w, cols, rows); /* a split's font is the slot's (slot_font_share), not one pane's */
+    /* NS5.3 (owner 2026-10-19): in a split the size is the whole window's
+     * grid -- the same borders and bar (a pane's inset_top is the bar's) --
+     * and the host re-lays the panes on IDCMP_NEWSIZE, as after a drag */
     ww = (WORD)(win->BorderLeft + win->BorderRight + cols * w->r.cw);
     wh = (WORD)(win->BorderTop + win->BorderBottom + w->inset_top + rows * w->r.ch);
     if (ww > win->WScreen->Width || wh > win->WScreen->Height)

@@ -901,6 +901,19 @@ def case_view_split(ck):
       5 control, so 1 is not vacuous: after closing the pane DECCOLM does widen the window."""
     rows, full = fresh()
     try:
+        # measure first, UNSPLIT: the window box each command gives one pane (the reference the split must match:
+        # "the window size changed as asked"), and whether View > 80 x 24 / 132 x 43 fit this screen at all
+        ref = {}
+        for label in ('50x10', '66x12', '80 x 24', '132 x 43'):
+            b = window_box()
+            if 'x' in label and ' ' not in label:
+                line('UPTerm size %s' % label, wait=3)
+            else:
+                pick(label, 'View')
+                time.sleep(3)
+            ref[label] = window_box() if window_box() != b else None
+            print('UNSPLIT %s: %s (box %s -> %s)' % (label, 'resized' if ref[label] else 'refused', b, window_box()))
+        line('UPTerm size 50x10', wait=3)   # a start the View sizes differ from
         split_right_and_count(ck)
 
         def sizes(tag):
@@ -924,6 +937,7 @@ def case_view_split(ck):
         n0, sz0 = sizes('vs-0')
         box0 = window_box()
         print('start: panes %s sizes %s box %s' % (n0, sz0, box0))
+        line("printf '\\033[?40h'", wait=1.5)   # DECCOLM is ignored without ?40 (xterm): allow it, so 1 is not vacuous
         line("printf '\\033[?3h'", wait=2.5)
         n1, sz1 = sizes('vs-deccolm')
         ck(window_box() == box0 and n1 == n0 and sz1 == sz0,
@@ -933,27 +947,28 @@ def case_view_split(ck):
         ck(window_box() == box0 and n1 == n0 and sz1 == sz0,
            'DECCOLM ?3l in a pane: window and both panes unchanged', (box0, window_box(), sz0, sz1))
 
-        for label, cols, rws in (('80 x 24', 80, 24), ('132 x 43', 132, 43)):
-            b = window_box()
-            pick(label, 'View')
-            time.sleep(3)
-            b2 = window_box()
-            if b2 == b:
-                n, sz = sizes('vs-refused')
-                ck(n == 2 and sz == sizes('vs-refused2')[1], 'View > %s: refused on this screen, window and panes stay' % label,
-                   (b, b2, sz))
-                print('View > %s: refused (screen too small), window %s' % (label, b))
-            else:
-                halves('View > %s' % label, (b2[2] - BORDER_L - RIGHT_PAD) // CELL_W, None)
-        for cols, rws in ((50, 10), (66, 12)):
-            # product (render/vtwin.c vtwin_set_size, rect_on): a split window is all its panes', `size` is refused
+        # NS5.3: each command is the window's: the window gets the box the unsplit window got, both panes stay,
+        # each the layout's half of the columns, all the rows
+        for label, cols, rws, how in (('66x12', 66, 12, 'size'), ('50x10', 50, 10, 'size'),
+                                      ('80 x 24', 80, 24, 'View'), ('132 x 43', 132, 43, 'View')):
             before = window_box()
-            n, sz0 = sizes('vs-sz0')
-            line('UPTerm size %dx%d' % (cols, rws), wait=3)
-            n, sz1 = sizes('vs-sz1')
-            ck(window_box() == before and n == 2 and sz0 == sz1,
-               'UPTerm size %dx%d in a split: refused, window and panes unchanged' % (cols, rws), (before, window_box(), sz0, sz1))
+            if how == 'size':
+                line('UPTerm size %s' % label, wait=3)
+            else:
+                pick(label, 'View')
+                time.sleep(3)
+            after = window_box()
+            what = ('UPTerm size %s' if how == 'size' else 'View > %s') % label
+            if ref[label] is None:
+                n, sz = sizes('vs-refused')
+                ck(after == before and n == 2, '%s: does not fit this screen unsplit either: window and panes stay' % what,
+                   (before, after, sz))
+                continue
+            ck(after[2:] == ref[label][2:], '%s in a split: the window is the unsplit window\'s size' % what,
+               (before, after, ref[label]))
+            halves(what, cols, rws)
 
+        box_wb = window_box()
         line('UPTerm screen fullscreen', wait=8)
         w = ami.window(tr.active_title())
         scr = ami.window('Workbench') or None
@@ -963,8 +978,8 @@ def case_view_split(ck):
         line('UPTerm screen workbench', wait=8)
         w = ami.window(tr.active_title())
         print('workbench again: window %s panes %s' % (w and w['box'], pane_count()))
-        ck(w is not None and w['box'][2] < 640 + 1 and pane_count() == 2, 'back on the Workbench: the panes stay (2)',
-           (w and w['box'], pane_count()))
+        ck(w is not None and w['box'][2:] == box_wb[2:] and pane_count() == 2, 'back on the Workbench: the window as it was, the panes stay (2)',
+           (w and w['box'], box_wb, pane_count()))
 
     finally:
         teardown()

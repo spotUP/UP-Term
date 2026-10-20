@@ -1497,6 +1497,59 @@ static void the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens
     test_npal = 0;
 }
 
+/* NS3.4 (owner 2026-10-19): a pane without the keys draws its block cursor hollow -- the cell's edge in the
+ * cursor's fill, its inside the cell as it was -- and the pane with them a solid block. The swap redraws the
+ * cursor at once, a hidden cursor (?25l) stays hidden through it, and the off phase gives the cell back. */
+static void an_unfocused_pane_draws_a_hollow_cursor_and_the_focused_one_a_solid_block(void)
+{
+    int x, y, edge_ok = 1, inside_bg = 1, solid = 1, back = 1, untouched = 1;
+    int snap[CW * CH];
+    open_term(0);
+    pass("\x1b[?25l\x1b[2J\x1b[1;1H");
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            snap[y * CW + x] = gf_pixel(x, y);
+    pass("\x1b[?25h");
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            solid &= gf_pixel(x, y) != snap[y * CW + x]; /* an empty cell's block: every pixel the fill */
+    CHECK(solid);
+    vr_set_cursor_hollow(&rn, 1);
+    CHECK_INT(rn.cursor_drawn, 1);
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++) {
+            int edge = x == 0 || y == 0 || x == CW - 1 || y == CH - 1;
+            if (edge)
+                edge_ok &= gf_pixel(x, y) != snap[y * CW + x];
+            else
+                inside_bg &= gf_pixel(x, y) == snap[y * CW + x];
+        }
+    CHECK(edge_ok);
+    CHECK(inside_bg);
+    vr_cursor_off(&rn);
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            back &= gf_pixel(x, y) == snap[y * CW + x];
+    CHECK(back);
+    vr_cursor_on(&rn);
+    vr_set_cursor_hollow(&rn, 0); /* the keys came back: solid again */
+    solid = 1;
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            solid &= gf_pixel(x, y) != snap[y * CW + x];
+    CHECK(solid);
+    /* a hidden cursor: losing and getting the focus draws nothing */
+    pass("\x1b[?25l");
+    vr_set_cursor_hollow(&rn, 1);
+    vr_set_cursor_hollow(&rn, 0);
+    CHECK_INT(rn.cursor_drawn, 0);
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            untouched &= gf_pixel(x, y) == snap[y * CW + x];
+    CHECK(untouched);
+    close_term();
+}
+
 /* PROF counters of the cursor pass (ledger "cursor pass"): the Text and RectFill of the cursor's draw are counted
  * as the fake sees them, and a cursor cell drawn again unchanged is counted. */
 extern ULONG vr_cp[12], vr_cp_pass;
@@ -1789,6 +1842,7 @@ int main(void)
     scrollback_view_move_blits_and_draws_only_the_exposed_rows();
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
     the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented();
+    an_unfocused_pane_draws_a_hollow_cursor_and_the_focused_one_a_solid_block();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
     direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up();

@@ -156,6 +156,7 @@ typedef struct vr_render {
     WORD cursor_x, cursor_y;
     BYTE cursor_drawn;
     BYTE cursor_colorful;  /* the cursor cell was filled with the profile colour */
+    BYTE cursor_hollow;    /* NS3.4: another pane of the window has the keys: a block cursor is its outline */
     ULONG cursor_ink;      /* the profile's cursor colour (a pen, or VR_INK_RGB on
                               * true colour), or VR_KEEP: the inverted cell */
     ULONG sel_ink[2];      /* the profile's selection foreground and background: a
@@ -313,6 +314,9 @@ int vr_can_colour(const vr_render *r);
 /* A tab's renderer: off (another tab is shown) draws nothing at all; the
  * caller redraws when it is on again. */
 void vr_set_off(vr_render *r, int off);
+/* NS3.4: hollow = 1 when another pane of the window has the keys (the handler's focus, at a show): the block
+ * cursor is drawn as its outline, 0 a solid block. A drawn cursor is redrawn in the new shape; a hidden one stays hidden. */
+void vr_set_cursor_hollow(vr_render *r, int hollow);
 /* Pixels above the text kept free (the tab bar); the caller lays out and
  * redraws. */
 void vr_set_inset(vr_render *r, WORD top);

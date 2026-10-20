@@ -926,6 +926,18 @@ void vr_set_off(vr_render *r, int off)
     r->hidden = r->off || r->cols < 1 || r->rows < 1;
 }
 
+void vr_set_cursor_hollow(vr_render *r, int hollow)
+{
+    int drawn = r->cursor_drawn;
+    if ((hollow != 0) == r->cursor_hollow)
+        return;
+    if (drawn)
+        vr_cursor_off(r); /* erased in the shape it was drawn in */
+    r->cursor_hollow = (BYTE)(hollow != 0);
+    if (drawn)
+        vr_cursor_on(r);
+}
+
 void vr_rect(const vr_render *r, WORD *x0, WORD *y0, WORD *x1, WORD *y1)
 {
     struct Window *w = r->win;
@@ -4034,6 +4046,16 @@ static void cursor_draw_run(vr_render *r, int on)
     if (style > 2) {
         /* underline, bar: the strip in the cursor colour */
         fill(r, px, py, x1, y1, fillink);
+        r->cursor_colorful = 1;
+        return;
+    }
+    if (r->cursor_hollow) {
+        /* NS3.4: a pane without the keys: the block's outline, one pixel, in
+         * the fill; the cell inside stays as drawn (off repaints the cell) */
+        fill(r, px, py, x1, py, fillink);
+        fill(r, px, y1, x1, y1, fillink);
+        fill(r, px, py, px, y1, fillink);
+        fill(r, x1, py, x1, y1, fillink);
         r->cursor_colorful = 1;
         return;
     }
