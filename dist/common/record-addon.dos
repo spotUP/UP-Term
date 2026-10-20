@@ -4,8 +4,15 @@ MakeDir >NIL: @PKGDIR@ @RECORD@
 Copy VERSIONS @RECORDP@VERSIONS CLONE QUIET
 ; the Uninstall sits beside this Files drawer. Never as /Uninstall: UnixDirs3 UNIXROOT
 ; reads a leading / as the root, /Uninstall as the volume Uninstall: (a "Please insert
-; volume" requester). An assign on the current drawer keeps the parent form X:/ that
-; it leaves alone, whatever form DIR has (Files, UPTKIT:, a path with a trailing /).
+; volume" requester). Nor as UPTFILES:/Uninstall: C:Copy 47.7 splits that into a lock on
+; UPTFILES: plus the relative name /Uninstall, again the root (rc 20, IoErr 218 "device
+; (or volume) is not mounted"). No name handed to Copy, Delete, Rename etc may be NAME:/...;
+; only Assign locks the whole X:/ name. So an assign on the current drawer (whatever form
+; DIR has: Files, UPTKIT:, a path with a trailing /) gets a second assign on its parent,
+; and Copy names UPTPARENT:Uninstall.
 Assign >NIL: UPTFILES: ""
-Copy UPTFILES:/Uninstall @RECORDP@Uninstall CLONE QUIET
+Assign >NIL: UPTPARENT: UPTFILES:/
+Copy UPTPARENT:Uninstall @RECORDP@Uninstall CLONE QUIET
+Assign >NIL: UPTPARENT:
+Assign >NIL: UPTFILES:
 Assign >NIL: UPTFILES:

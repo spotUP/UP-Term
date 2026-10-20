@@ -168,7 +168,7 @@ class EveryAddOn(unittest.TestCase):
             rec = dict(parts_of(s['dos']))['record']
             self.assertIn('MakeDir >NIL: %s %s\n' % (row['record'].rsplit('/', 1)[0], row['record']), rec)
             self.assertIn('Copy MANIFEST %s/MANIFEST CLONE' % row['record'], rec)
-            self.assertIn('Copy UPTFILES:/Uninstall %s/Uninstall CLONE QUIET' % row['record'], rec)
+            self.assertIn('Copy UPTPARENT:Uninstall %s/Uninstall CLONE QUIET' % row['record'], rec)
             self.assertIn('Copy VERSIONS %s/VERSIONS CLONE QUIET' % row['record'], rec)
             self.assertIn('Delete >NIL: %s/opts ALL QUIET' % row['record'], rec)
 
@@ -176,7 +176,12 @@ class EveryAddOn(unittest.TestCase):
         """A1200 2026-10-20: upkg's configure of up-nvim hung on "Please insert volume Uninstall". That
         Workbench runs UnixDirs3 WILDSTAR UNIXROOT, which reads a leading / as the root and /name as the
         volume name:, so AmigaDOS's parent form /name breaks there. No command line of an add-on's or the
-        base's install.dos or Uninstall may give a path that starts with /."""
+        base's install.dos or Uninstall may give a path that starts with /.
+        A1200 2026-10-21: C:Copy 47.7 splits UPTFILES:/Uninstall into a lock on UPTFILES: plus the relative
+        name /Uninstall, which UNIXROOT reads as the root: rc 20, IoErr 218 "device (or volume) is not
+        mounted". So no name handed to Copy, Delete, Rename, List, Type, Execute, CD ... may be NAME:/...
+        either. Only Assign locks the whole X:/ name; hang a second assign on it (UPTPARENT: UPTFILES:/)
+        and name UPTPARENT:file."""
         cmds = r'(?:Copy|CD|List|Delete|MakeDir|Execute|Rename|Protect|Assign|Type|Join|Lha|Version|IconX)'
         texts = [(pid, kind, s[kind]) for pid, s in self.each() for kind in ('dos', 'uninstall')]
         texts += [('base', 'dos', mi.build(ROOT / 'dist/install.dos', 'base')),
@@ -186,6 +191,9 @@ class EveryAddOn(unittest.TestCase):
                 code = line.split(';', 1)[0]
                 if re.match(r'\s*%s\b' % cmds, code, re.I) and re.search(r'(?:^|\s)"?/', code):
                     self.fail('%s %s: %s' % (pid, kind, line))
+                if (re.match(r'\s*%s\b' % cmds, code, re.I) and not re.match(r'\s*Assign\b', code, re.I)
+                        and re.search(r'(?:^|[\s">])[A-Za-z][\w.-]*:/', code)):
+                    self.fail('%s %s: NAME:/ given to a command other than Assign: %s' % (pid, kind, line))
 
     def test_the_installer_reads_the_legacy_manifest_through_only(self):
         for pid, s in self.each():
