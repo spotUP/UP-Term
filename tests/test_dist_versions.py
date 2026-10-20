@@ -104,7 +104,7 @@ class BuiltKit(unittest.TestCase):
         self.assertIn(ARCHIVE + '/Files/VERSIONS', out)
         row = [r for r in pkgs.rows() if r['archive'] == ARCHIVE][0]
         txt = open(os.path.join(KIT, 'Files/VERSIONS')).read().splitlines()
-        self.assertEqual(txt[0].split()[:2], [ARCHIVE, row['version']])
+        self.assertEqual(txt[0].split()[:2], [row['id'] == 'base' and 'UP-Term' or ARCHIVE, row['version']])   # the base's VERSIONS names the product, not up-term
         self.assertEqual([l.split()[0] for l in txt[1:]], row['consumes'].split(','))
 
 
