@@ -105,6 +105,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_kitsize.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_bebbossh.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_fresh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_addons.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_userdata.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
@@ -1028,6 +1029,17 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # into build/UP-Term-src.lha, published next to the kit (plan D2)
 UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
+# a package's build/state/<p>.checked newer than the staged SOURCES.txt means the ports were rebuilt after the last
+# kit-stage: the kit would ship the old programs (v1.2 feed build of 2026-10-20 carried the old upkg)
+PORTS_STATE ?= $(UPTERM_PORTS)/build/state
+define PORTS_KIT_FRESH
+	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "$(1): no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	@stale=$$(find $(PORTS_STATE) -name '*.checked' -newer $(PORTS_KIT)/SOURCES.txt 2>/dev/null); \
+	  test -z "$$stale" || { echo "$(1): $(PORTS_KIT) is older than these checked builds: make kit-stage in upterm-ports first"; echo "$$stale"; exit 1; }
+endef
+.PHONY: ports-kit-check
+ports-kit-check:
+	$(call PORTS_KIT_FRESH,ports-kit-check)
 # amiga-pi, the pi coding agent port (its own repo): built by its Makefile, which reads
 # vtcon's core in place; the kit gets the binary as C:Claude's sits beside it
 AMIGA_PI ?= $(UPTERM_ROOT)/amiga-pi
@@ -1063,7 +1075,7 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
 	@# the ports (copy-userland: bin; userland: share, etc, licenses) and
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
-	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
 	@# the slim base (P9): git, perl and vim are packages (dist/slim.txt), staged by dist-git, dist-perl, dist-vim
 	python3 tools/slim.py remove $(KIT)/Files/userland
@@ -1145,7 +1157,7 @@ dist-python: $(BUILD)/amiga/upupdate
 # same PORTS_KIT as dist-base, which removes them
 define SLIM_STAGE
 	$(call ADDON_STAGE,$(1))
-	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-$(1): no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	$(call PORTS_KIT_FRESH,dist-$(1))
 	python3 tools/slim.py stage $(1) $(PORTS_KIT) $(KIT_$(1))/Files/userland
 	python3 tools/mkkit.py $(1)
 endef
@@ -1167,7 +1179,7 @@ dist-ipk: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
 	python3 tools/pkgs.py ipk $(BUILD)
 	python3 tools/pkgs.py feed $(BUILD)
 dist-src:
-	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "dist-src: no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	$(call PORTS_KIT_FRESH,dist-src)
 	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
 	cp dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/COPYING $(BUILD)/dist-src/coreutils-5.2.1/
 	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/UP-Term-src.lha && lha -aq $(CURDIR)/$(BUILD)/UP-Term-src.lha userland-src
