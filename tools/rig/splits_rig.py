@@ -31,7 +31,7 @@ Needs the rig up on a build with Split right / Split down and the `splits` count
 Click-to-focus (NS3.4) moves between panes here; if that is not built, cases needing the left pane fail
 with a clear message. Screenshots go to build/rig<N>/splits_rig/shots; the script never opens them.
 """
-import os, pathlib, shutil, struct, sys, time
+import os, pathlib, shutil, struct, subprocess, sys, time
 
 # the rig number is chosen before paths is imported (it reads UPTERM_RIG once)
 _args = sys.argv[1:]
@@ -51,7 +51,7 @@ TITLE = 'splitswin'
 BOX = '0/20/600/240'
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'font', 'restore']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'gadget_close_split', 'font', 'restore']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
 K_W, K_D, K_ENTER, K_LBRACKET, K_RBRACKET = 0x11, 0x22, 0x44, 0x1A, 0x1B    # raw keycodes (RA+key = pane commands; [ ] = previous / next pane)
@@ -150,16 +150,24 @@ def fresh():
 
 
 def teardown():
-    """end every pane's shell: exit, click elsewhere, repeat until the window is gone"""
-    for i in range(10):
-        if not ami.window(tr.active_title() or TITLE) or not (ami.window(TITLE) or ami.window('UP-Term')):
-            break
+    """end every pane's shell: exit, click elsewhere, repeat until the window is gone. A window that outlives
+    the exits is reported with its counters and the rig restarted, so the next case never types into it
+    (2026-10-20: a hung pane_cycle left a split window that took 10 blind exits per later case)."""
+    for i in range(6):
+        w = ami.window(TITLE) or ami.window('UP-Term')
+        if not w:
+            return
         typewin.key(0x33, CTRL, wait=0.5)           # Ctrl-C: a stream loop ends
         line('exit', wait=1.5)
-        w = ami.window(TITLE)
-        if w:
-            x, y, ww, hh = w['box']
-            click(x + 20 + 60 * (i % 4), y + 40 + 40 * (i % 3))
+        if not (ami.window(TITLE) or ami.window('UP-Term')):
+            return
+        x, y, ww, hh = w['box']
+        click(x + 20 + 60 * (i % 4), y + 40 + 40 * (i % 3))
+    print('[ERROR] teardown: the window survived 6 exits (UPTerm state %r): rig.py stop + start'
+          % (tr.counters()[0],), flush=True)
+    rig = [sys.executable, str(ROOT / 'tools/rig/rig.py')]
+    subprocess.run(rig + ['stop'], capture_output=True, timeout=120)
+    subprocess.run(rig + ['start'], capture_output=True, timeout=400)
 
 
 def split_right_and_count(ck, before=None):
@@ -380,10 +388,16 @@ def case_winch(ck):
 def case_pane_close(ck):
     rows, full = fresh()
     try:
-        for how in ('RA+Shift+W', 'exit'):
+        # 'left-exit': the host's own shell (the left pane) ends while the right pane lives -- the window stays
+        for how in ('RA+Shift+W', 'exit', 'left-exit'):
             split_right_and_count(ck)
             ck(stty_size('two-' + how) is not None and stty_size('two-' + how)[1] < full, '%s: two panes before closing' % how)
-            if how == 'exit':
+            if how == 'left-exit':
+                click(*col_point(2))
+                line('exit', wait=4)
+                ck(bool(ami.window('UP-Term') or ami.window(TITLE)),     # not active_title(): a requester is active then
+                   'left-exit: the window stays for the right pane', None)
+            elif how == 'exit':
                 line('exit', wait=4)
             else:
                 ra(K_W, shift=True)
@@ -562,6 +576,28 @@ def restore_profile(mode):
         else:
             c.run('Delete %s QUIET' % PROFILE)
     return undo
+
+
+def case_gadget_close_split(ck):
+    """owner 2026-10-20: the close gadget on a split closes the whole tab and keeps the split, as Close tab"""
+    undo = restore_profile('layout')
+    try:
+        fresh()
+        split_right_and_count(ck)
+        ck(pane_count() == 2, 'two panes before the gadget', pane_count())
+        title = tr.active_title()                   # a split retitles the window after its focused pane
+        w = ami.window(title)
+        x, y, ww, hh = w['sys:close']
+        kx, ky = ami.pointer_scale()
+        ami.script(('move', int((x + ww // 2) * kx), int((y + hh // 2) * ky)), ('wait', 2), ('button', 0, 1),
+                   ('wait', 2), ('button', 0, 0), ('wait', 5))
+        time.sleep(6)
+        ck(not ami.window(title), 'one click on the close gadget closed the window, every pane', title)
+        saved = (ami.read_file('ENV:up-term/splits') or b'').decode('latin-1')
+        ck('r' in saved and 'p,p' in saved, 'the gadget wrote ENV:up-term/splits with the two-pane tree', saved)
+    finally:
+        teardown()
+        undo()
 
 
 def case_restore(ck):
