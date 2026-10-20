@@ -25,8 +25,8 @@ If NOT WARN
 EndIf
 Search >NIL: S:User-Startup ";BEGIN Python3"
 If NOT WARN
-  If EXISTS ENVARC:upkg/Python3/User-Startup.before
-    Copy ENVARC:upkg/Python3/User-Startup.before T:User-Startup.python CLONE QUIET
+  If EXISTS ENVARC:upkg/up-python/User-Startup.before
+    Copy ENVARC:upkg/up-python/User-Startup.before T:User-Startup.python CLONE QUIET
     Echo >>T:User-Startup.python ";BEGIN Python3"
     Echo >>T:User-Startup.python "If EXISTS SYS:Python3"
     Echo >>T:User-Startup.python "  Assign Python3: SYS:Python3"
@@ -38,7 +38,7 @@ If NOT WARN
     Execute T:User-Startup.size1
     Execute T:User-Startup.size2
     If "$uspsize" EQ "$usnsize"
-      Copy ENVARC:upkg/Python3/User-Startup.before S:User-Startup CLONE QUIET
+      Copy ENVARC:upkg/up-python/User-Startup.before S:User-Startup CLONE QUIET
     EndIf
     UnSet uspsize
     UnSet usnsize

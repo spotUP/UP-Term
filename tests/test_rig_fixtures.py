@@ -429,7 +429,7 @@ class ScriptedAmiga:
         elif script == 'rununinstall':
             for pkg in ir.based_ids(): self._remove(pkg)
             self.files = {f for f in self.files if not f.startswith(('UP-Term', 'SYS:UP-Term'))}
-            if 'ENVARC:upkg/Claude/MANIFEST' not in self.files: self.files.discard('C:uptelnet')
+            if 'ENVARC:upkg/up-claude/MANIFEST' not in self.files: self.files.discard('C:uptelnet')
             self.base = False
             self.startup = self.startup.replace(';BEGIN UP-Term assign\nAssign UP-Term: SYS:UP-Term\n;END UP-Term assign\n', '')
         return 0, ''
@@ -627,7 +627,7 @@ class NoBaseCase(unittest.TestCase):
         ran, files = [], {'S:User-Startup': 'u'}
         def run(cmd, timeout=60):
             if cmd.startswith('Type S:User-Startup'): return 0, files['S:User-Startup']
-            if cmd.startswith('Type ENV:UPTCHECK'): return 0, 'UP-Term-nvim needs UP-Term 1.0 or newer. Install UP-Term.lha first.'
+            if cmd.startswith('Type ENV:UPTCHECK'): return 0, 'up-nvim needs UP-Term 1.0 or newer. Install UP-Term.lha first.'
             if cmd.startswith('List >NIL: C:') or cmd.startswith('List >NIL: UP-Term:'): return (0 if ran and not refuses else 5), ''
             return 0, ''
         def run_long(script, timeout=1500):
@@ -782,13 +782,13 @@ class OwnersAddonsOnTheRig(unittest.TestCase):
 
 class UpkgRigPure(unittest.TestCase):
     """upkg_rig's pure parts: the Packages edits (the per-case feeds), the config, the bumped table, the records."""
-    PACKAGES = "Package: Claude\nVersion: 1.1\nSHA256sum: aa\n\nPackage: UP-Term-nvim\nVersion: 1.0\nSHA256sum: bb\n"
+    PACKAGES = "Package: Claude\nVersion: 1.1\nSHA256sum: aa\n\nPackage: up-nvim\nVersion: 1.0\nSHA256sum: bb\n"
 
     def test_edit_packages_changes_only_the_named_package(self):
         import upkg_rig as u
-        out = u.edit_packages(self.PACKAGES, 'UP-Term-nvim', SHA256sum='cc', Version='1.1')
+        out = u.edit_packages(self.PACKAGES, 'up-nvim', SHA256sum='cc', Version='1.1')
         self.assertEqual([(p['Package'], p['Version'], p['SHA256sum']) for p in u.parse_packages(out)],
-                         [('Claude', '1.1', 'aa'), ('UP-Term-nvim', '1.1', 'cc')])
+                         [('Claude', '1.1', 'aa'), ('up-nvim', '1.1', 'cc')])
         with self.assertRaises(KeyError):
             u.edit_packages(self.PACKAGES, 'nosuch', Version='1')
 
@@ -822,9 +822,9 @@ class UpkgRigPure(unittest.TestCase):
 
     def test_status_version_and_lowered_record(self):
         import upkg_rig as u
-        self.assertEqual(u.status_version(self.PACKAGES, 'UP-Term-nvim'), '1.0')
+        self.assertEqual(u.status_version(self.PACKAGES, 'up-nvim'), '1.0')
         self.assertIsNone(u.status_version(self.PACKAGES, 'Python3'))
-        self.assertEqual(u.lower_record("UP-Term-nvim 1.0 abc d\nrest\n", '0.0.1'), "UP-Term-nvim 0.0.1 abc d\nrest\n")
+        self.assertEqual(u.lower_record("up-nvim 1.0 abc d\nrest\n", '0.0.1'), "up-nvim 0.0.1 abc d\nrest\n")
 
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)

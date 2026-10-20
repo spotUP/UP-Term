@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """upkg_ask_rig.py -- the install question of the Claude add-on (dist/addons/claude/questions) reaches
-Files/install.dos through `upkg install Claude` on the rig, both ways (upkg plan P10.6):
+Files/install.dos through `upkg install up-claude` on the rig, both ways (upkg plan P10.6):
 
   A  upkg-ui on the PATH: upkg-ask shows an inputbox (the only kind this add-on's questions file has: one string); the script clears the default with backspaces, types
      "rigA.lan 2323", Return. ENVARC:Claude/remote must end with that line.
@@ -12,12 +12,12 @@ Files/install.dos through `upkg install Claude` on the rig, both ways (upkg plan
      must be exactly THREE_WANT. The window must tell LC_CTYPE=C.UTF-8 (a UTF-8 window, so upkg-ui draws the
      U+00B7 leader); passC-*.png show it.
 
-Needs the Claude .ipk built with the question: build/dist/Claude/Files/questions in place, then
+Needs the up-claude .ipk built with the question: build/dist/up-claude/Files/questions in place, then
 `python3 tools/pkgs.py ipk build && python3 tools/pkgs.py feed build` (or make dist-ipk). The rig is up
 (`rig.py start --max`, UPTERM_RIG=3 for rig 3). dist/upkg-ask and the upkg-ui binary (upterm-ports pkgs/upkg-ui) are copied
 into UP-Term:bin and left there; upkg-ui is renamed back at the end. A leftover UP-Term:bin/dialog is deleted. The feed is served over http from build/ipk.
 
-  upkg_ask_rig.py [--out DIR] [--only C]     --only C runs pass C alone (no feed, no Claude .ipk); the report (report.md) and the screenshots go to DIR (default build/<rig>/upkg-ask)
+  upkg_ask_rig.py [--out DIR] [--only C]     --only C runs pass C alone (no feed, no up-claude .ipk); the report (report.md) and the screenshots go to DIR (default build/<rig>/upkg-ask)
 """
 import argparse, os, pathlib, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -58,7 +58,7 @@ def shot(out, name):
 
 
 def install_claude(rel_wait=60):
-    typewin.typ('upkg -f %s --force-reinstall install Claude\r' % CONF)
+    typewin.typ('upkg -f %s --force-reinstall install up-claude\r' % CONF)
     time.sleep(rel_wait)
 
 
@@ -128,8 +128,8 @@ def main():
         time.sleep(2)
         typewin.typ('upkg -f %s update\r' % CONF)
         time.sleep(15)
-        if upkg_rig.installed_version('Claude'):
-            typewin.typ('upkg -f %s remove Claude\r' % CONF)
+        if upkg_rig.installed_version('up-claude'):
+            typewin.typ('upkg -f %s remove up-claude\r' % CONF)
             time.sleep(20)
         ir.run('Delete >NIL: ENVARC:Claude/remote QUIET')
 
@@ -137,7 +137,7 @@ def main():
         verdict['C'] = pass_c(out)
 
         # --- pass A: upkg-ui
-        typewin.typ('upkg -f %s install Claude\r' % CONF)
+        typewin.typ('upkg -f %s install up-claude\r' % CONF)
         time.sleep(30)
         shot(out, 'passA-ui.png')
         for _ in range(20):
@@ -155,10 +155,10 @@ def main():
 
         # --- pass B: no upkg-ui on the PATH
         ir.run('Rename UP-Term:bin/upkg-ui UP-Term:bin/upkg-ui.off')
-        typewin.typ('upkg -f %s remove Claude\r' % CONF)    # --force-reinstall fails in opkg ("Failed to make temp file ... File name too long")
+        typewin.typ('upkg -f %s remove up-claude\r' % CONF)    # --force-reinstall fails in opkg ("Failed to make temp file ... File name too long")
         time.sleep(20)
         note('after remove, %s = %r' % (REMOTE, last_line(REMOTE)))
-        typewin.typ('upkg -f %s install Claude\r' % CONF)
+        typewin.typ('upkg -f %s install up-claude\r' % CONF)
         time.sleep(30)
         shot(out, 'passB-prompt.png')
         note('pass B screen at the prompt:\n' + typewin.screen_text('RAM:ask-screen.txt')[-1200:])

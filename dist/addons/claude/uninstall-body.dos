@@ -15,10 +15,10 @@ EndIf
 ; C:wasabid: ours only (the marker Claude's install wrote), and not while the base kit's block in
 ; S:User-Startup starts it at boot (that kit's Install took it over). The session daemon of a
 ; running uptelnet ends with that login; one still running keeps the file busy, so it is left.
-If EXISTS ENVARC:upkg/Claude/wasabid
+If EXISTS ENVARC:upkg/up-claude/wasabid
   Search >NIL: S:User-Startup "C:wasabid"
   If WARN
     Delete >NIL: C:wasabid QUIET
   EndIf
-  Delete >NIL: ENVARC:upkg/Claude/wasabid QUIET
+  Delete >NIL: ENVARC:upkg/up-claude/wasabid QUIET
 EndIf

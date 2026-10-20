@@ -13,6 +13,12 @@
 ; the manifest of the last install: this package's record; an add-on archive
 ; (handed paths) with none of its own takes the single kit's, kept by the base's
 ; Install in UP-Term:pkg/legacy, cut to its own paths (upupdate ... ONLY=)
+; a record under the package's former name (dist/package-renames.txt) is renamed before it is read
+(if (or (= "@STANDALONE@" "YES") (<> (getassign "UP-Term" "a") ""))
+  (
+@RENAMERECORDI@
+    (set #migrated 0)
+  ))
 (set #oldman "@RECORDP@MANIFEST")
 (set #legacy 0)
 ; a stand-alone archive keeps its record in ENVARC: and needs no UP-Term: assign. Every

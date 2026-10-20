@@ -41,7 +41,7 @@ class Table(unittest.TestCase):
         self.assertEqual(slim.ids(), ['git', 'perl', 'vim'])
         for i in slim.ids():
             self.assertIn(i, ARCHIVE)
-            self.assertTrue(ARCHIVE[i].startswith('UP-Term-'), i)      # they need the base: UP-Term:bin
+            self.assertTrue(ARCHIVE[i].startswith('up-'), i)      # they need the base: UP-Term:bin
 
     def test_git_is_selected_by_pattern_so_the_dashed_binaries_may_change(self):
         self.assertIn('bin/git-*', slim.patterns('git'))

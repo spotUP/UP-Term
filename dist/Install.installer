@@ -9,7 +9,7 @@
 ; tests/test_dist_installer.py holds this script and install.dos to the same
 ; parts in the same order, and to the Installer 43.3 language.
 ; Remove UP-Term again with Uninstall.
-; Neovim, Python, Claude and amiga-pi are archives of their own (UP-Term-nvim,
+; Neovim, Python, Claude and amiga-pi are archives of their own (up-nvim,
 ; Python3, Claude, amiga-pi), each with an Install of its own; the last three
 ; stand alone and install with no UP-Term.
 ;
@@ -293,7 +293,7 @@
               "and shows it at the end. The link is encrypted only when "
               "AmiSSL and keys are set up (see wasabi's README). Leave it off "
               "unless you work on this Amiga from another machine.\n"
-              "Without it, Claude.lha brings its own wasabid for the session "
+              "Without it, up-claude.lha brings its own wasabid for the session "
               "daemon: uptelnet starts one with a key of its own for each "
               "login to the NAS and ends it with the login, and the daemon "
               "left in C: here is not started at boot.\n\n"
@@ -573,7 +573,7 @@
                         (if (<> #stays "")
                             (cat "Stays installed: " (substr #stays 2 (strlen #stays)) ".\n"
                                  "They are archives of their own now: install\n"
-                                 "UP-Term-nvim, Python3, Claude or amiga-pi to update.")
+                                 "up-nvim, Python3, Claude or amiga-pi to update.")
                             "Nothing else changed.")
                         #adnote))
         (run "Delete >NIL: ENV:UPTHANDED QUIET")

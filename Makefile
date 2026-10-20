@@ -1005,14 +1005,14 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c handler/pty_name.h handler/han
 # The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
 # Installer script and its icon), Uninstall, README.txt, LICENSES.txt and Files/ (the rest).
 KIT := $(BUILD)/dist/UP-Term
-# the archive names are dist/packages.txt's (Claude, amiga-pi and Python3 stand alone)
-KIT_claude := $(BUILD)/dist/Claude
-KIT_pi := $(BUILD)/dist/amiga-pi
-KIT_nvim := $(BUILD)/dist/UP-Term-nvim
-KIT_python := $(BUILD)/dist/Python3
-KIT_git := $(BUILD)/dist/UP-Term-git
-KIT_perl := $(BUILD)/dist/UP-Term-perl
-KIT_vim := $(BUILD)/dist/UP-Term-vim
+# the archive names are dist/packages.txt's (up-claude, up-pi and up-python stand alone)
+KIT_claude := $(BUILD)/dist/up-claude
+KIT_pi := $(BUILD)/dist/up-pi
+KIT_nvim := $(BUILD)/dist/up-nvim
+KIT_python := $(BUILD)/dist/up-python
+KIT_git := $(BUILD)/dist/up-git
+KIT_perl := $(BUILD)/dist/up-perl
+KIT_vim := $(BUILD)/dist/up-vim
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
@@ -1096,7 +1096,7 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	@ls -la $(BUILD)/UP-Term.lha
 
 # The add-on archives (dist/packages.txt): each stages its payload into build/dist/<archive>/Files and
-# tools/mkkit.py does the rest. UP-Term-nvim needs the base (UP-Term.lha) installed first on the
+# tools/mkkit.py does the rest. up-nvim needs the base (UP-Term.lha) installed first on the
 # Amiga; Claude, amiga-pi and Python3 stand alone.
 ADDON_STAGE = rm -rf $(BUILD)/dist/$(call pkg,$(1),archive) && mkdir -p $(BUILD)/dist/$(call pkg,$(1),archive)/Files \
 	&& cp $(BUILD)/amiga/upupdate $(BUILD)/dist/$(call pkg,$(1),archive)/Files/
@@ -1193,7 +1193,7 @@ dist-check:
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_manifest.py; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_modes.py; \
 	done
-	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " amiga-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/amiga-pi.lst || { echo "dist-check: amiga-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
+	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " up-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/up-pi.lst || { echo "dist-check: up-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done
 	@python3 tools/pkgs.py index $(BUILD) | cmp -s - $(BUILD)/upkg-index.txt || { echo "dist-check: $(BUILD)/upkg-index.txt does not match the archives: make dist-index"; exit 1; }
 	IPK_REQUIRE=1 python3 tests/test_dist_ipk.py
 	SLIM_REQUIRE=1 python3 tests/test_dist_slim.py

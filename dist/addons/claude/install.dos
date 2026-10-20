@@ -29,7 +29,7 @@ Lab claude
 ; C:Claude, the native Claude client (README): with an API key it is Claude here, with
 ; ENVARC:Claude/remote it is Claude Code on the NAS through C:uptelnet (this archive's
 ; copy: the same program as UP-Term.lha's; no ixemul), and with both it asks (CL1).
-; An earlier Claude.lha also had C:ClaudeCode (a script) and its icon: they are one app now.
+; An earlier up-claude.lha also had C:ClaudeCode (a script) and its icon: they are one app now.
 ; Its talking to Anthropic needs AmiSSL 5; ENVARC:Claude is where its settings go
 ; (Install never writes a key).
 Copy Claude C:Claude CLONE QUIET
@@ -37,14 +37,14 @@ Delete >NIL: C:ClaudeCode QUIET
 Copy uptelnet C:uptelnet CLONE QUIET
 ; C:wasabid (wasabid 0.11b2, MIT, wasabid.LICENSE): uptelnet starts it for the length of one login to the
 ; NAS, with a key of its own, so Claude Code there can work on this Amiga. It is put in only when no wasabid
-; is there (the base kit's, or one of yours): that one stays and is not ours. ENVARC:upkg/Claude/wasabid (in the record drawer) is the
+; is there (the base kit's, or one of yours): that one stays and is not ours. ENVARC:upkg/up-claude/wasabid (in the record drawer) is the
 ; marker for Uninstall, and a later install updates our own copy.
 If NOT EXISTS C:wasabid
   Copy wasabid C:wasabid CLONE QUIET
-  MakeDir >NIL: ENVARC:upkg ENVARC:upkg/Claude
-  Echo >ENVARC:upkg/Claude/wasabid "installed by Claude.lha"
+  MakeDir >NIL: ENVARC:upkg ENVARC:upkg/up-claude
+  Echo >ENVARC:upkg/up-claude/wasabid "installed by up-claude.lha"
 Else
-  If EXISTS ENVARC:upkg/Claude/wasabid
+  If EXISTS ENVARC:upkg/up-claude/wasabid
     Copy wasabid C:wasabid CLONE QUIET
   EndIf
 EndIf

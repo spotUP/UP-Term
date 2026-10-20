@@ -1104,8 +1104,8 @@ def _migrate(case, ck):
                 sizes = [ir.run('List "%s" LFORMAT "%%L"' % at(p))[1].strip() for p in changed]
                 want = [str(newnvim[p][0]) for p in changed]
                 ck(sizes == want, "the files that differ are the add-on kit\'s now (%d)" % len(changed), "%s vs %s" % (sizes, want))
-            ck(ir.run("List >NIL: UP-Term:pkg/UP-Term-nvim/MANIFEST")[0] == 0 and
-               ami.read_file("UP-Term:pkg/UP-Term-nvim/MANIFEST") == (ir.kit_dir("nvim") / "Files/MANIFEST").read_bytes(),
+            ck(ir.run("List >NIL: UP-Term:pkg/up-nvim/MANIFEST")[0] == 0 and
+               ami.read_file("UP-Term:pkg/up-nvim/MANIFEST") == (ir.kit_dir("nvim") / "Files/MANIFEST").read_bytes(),
                "the nvim add-on made its record (its MANIFEST)")
             rc, out = ir.run_slow("nvimverrun", "UP-Term:nvim/bin/nvim --version", 400)
             ck(rc == 0 and "NVIM v0.12" in out, "nvim answers after its add-on", out[-200:])

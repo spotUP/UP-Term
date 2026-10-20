@@ -51,6 +51,12 @@ def handed_search(rows):
     return '\n'.join(out)
 
 
+def installer_rename(pairs):
+    """The Installer-language form of pkgs.rename_lines, for the update probe that reads the old MANIFEST."""
+    return '\n'.join('(if (and (exists "%s") (not (exists "%s"))) (run (cat "Rename >NIL: " "%s" " " "%s")))' % (o, n, o, n)
+                     for o, n in pairs)
+
+
 def addon_uninstall(rows):
     """The base Uninstall's lines that run each add-on's own Uninstall (the copy its Install kept in its
     record drawer under UP-Term:pkg); a standalone add-on (record in ENVARC:) is not run."""
@@ -108,7 +114,7 @@ def read_values(pkg_id, extra=()):
         'NEEDSBASE': row['needs-base'], 'IXEMUL': row['ixemul'], 'RECORD': record,
         'HANDED': row['handed'],
         'OPTS': 'ENVARC:up-term/opts' if row['id'] == 'base' else record.rstrip(':/') + '/opts',
-        # the record drawer with its separator (UP-Term: or UP-Term:pkg/UP-Term-nvim/)
+        # the record drawer with its separator (UP-Term: or UP-Term:pkg/up-nvim/)
         'RECORDP': record if record.endswith((':', '/')) else record + '/',
         # first lines of a package's record part and its Uninstall's data question: dist/common/ fragments
         'RECORDPRE': 'none.dos' if record.endswith(':') else 'record-addon.dos',
@@ -123,6 +129,13 @@ def read_values(pkg_id, extra=()):
         'CHECKFRAG': 'check-standalone.dos' if row['id'] != 'base' and row['needs-base'] == '-' else 'check.dos',
         'HANDEDSEARCH': handed_search(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONUNINSTALL': addon_uninstall(pkgs.rows()) if row['id'] == 'base' else '',
+        # a package that was renamed (dist/package-renames.txt): its record drawer of the old name is renamed
+        # first, by the check part (a Shell or upkg install), by the Installer's update probe, and by the base's
+        # Uninstall for every add-on, so a record the old Installer wrote is found under the new name
+        'RENAMERECORD': pkgs.rename_lines(pkgs.old_record(row)),
+        'RENAMERECORDI': installer_rename(pkgs.old_record(row)),
+        'RECORDRENAMES': pkgs.rename_lines([p for r in pkgs.rows() if r['id'] != 'base' for p in pkgs.old_record(r)])
+                         if row['id'] == 'base' else '',
         'ADDONFIND': addon_find(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONCHOICES': addon_choices(pkgs.rows()) if row['id'] == 'base' else '',
         'ADDONRUN': addon_run(pkgs.rows()) if row['id'] == 'base' else '',

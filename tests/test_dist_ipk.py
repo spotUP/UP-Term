@@ -13,8 +13,8 @@ import pkgs
 
 TABLE = """\
 base      UP-Term       1.0  -    -   UP-Term:                  -  vtcon
-nvim      UP-Term-nvim  2.1  1.0  80  UP-Term:pkg/UP-Term-nvim  -  vtcon
-claude    Claude        1.1  -    -   ENVARC:upkg/Claude        -  vtcon
+nvim      up-nvim  2.1  1.0  80  UP-Term:pkg/up-nvim  -  vtcon
+claude    Claude        1.1  -    -   ENVARC:upkg/up-claude        -  vtcon
 """
 
 
@@ -64,14 +64,14 @@ class IpkTest(unittest.TestCase):
         self.build = self.tmp / 'build'
         self.table = self.tmp / 'packages.txt'
         self.table.write_text(TABLE)
-        for a in ('UP-Term-nvim', 'Claude'):
+        for a in ('up-nvim', 'Claude'):
             stage(self.build, a)
         pkgs.ipk(self.build, self.table)
         pkgs.write_feed(self.build, self.table)
         self.out = self.build / 'ipk'
 
     def test_ipk_is_an_ar_archive_with_control_and_data_at_the_right_paths(self):
-        f = self.out / 'UP-Term-nvim_2.1_m68k-amigaos.ipk'
+        f = self.out / 'up-nvim_2.1_m68k-amigaos.ipk'
         names = subprocess.run(['ar', 't', str(f)], capture_output=True, text=True, check=True).stdout.split()
         names = [n.rstrip('/') for n in names]
         self.assertEqual(names, ['debian-binary', 'control.tar.gz', 'data.tar.gz'])
@@ -80,20 +80,20 @@ class IpkTest(unittest.TestCase):
         ctl = tarfile.open(fileobj=io.BytesIO(m['control.tar.gz']))
         self.assertEqual(sorted(ctl.getnames()), ['.', './control', './postinst', './preinst', './prerm'])
         text = ctl.extractfile('./control').read().decode()
-        for line in ('Package: UP-Term-nvim', 'Version: 2.1', 'Architecture: m68k-amigaos',
+        for line in ('Package: up-nvim', 'Version: 2.1', 'Architecture: m68k-amigaos',
                      'Installed-Size: 3'):
             self.assertIn(line + '\n', text)
         self.assertNotIn('Depends', text)
         post = ctl.extractfile('./postinst').read().decode()
-        self.assertIn('Execute T:upkg-stage/UP-Term-nvim/Files/install.dos T:upkg-stage/UP-Term-nvim/Files\n', post)
-        self.assertIn('rm -rf T:upkg-stage/UP-Term-nvim\n', post)
+        self.assertIn('Execute T:upkg-stage/up-nvim/Files/install.dos T:upkg-stage/up-nvim/Files\n', post)
+        self.assertIn('rm -rf T:upkg-stage/up-nvim\n', post)
         pre = ctl.extractfile('./preinst').read().decode()
         self.assertIn('head -n 1 UP-Term:VERSIONS', pre)
         self.assertIn('if older "$base" 1.0; then', pre)
         self.assertIn('exit 1', pre)
-        self.assertIn('Execute UP-Term:pkg/UP-Term-nvim/Uninstall\n', ctl.extractfile('./prerm').read().decode())
+        self.assertIn('Execute UP-Term:pkg/up-nvim/Uninstall\n', ctl.extractfile('./prerm').read().decode())
         data = tarfile.open(fileobj=io.BytesIO(m['data.tar.gz']))
-        top = './T/upkg-stage/UP-Term-nvim'
+        top = './T/upkg-stage/up-nvim'
         for n in (top + '/Uninstall', top + '/Files/install.dos', top + '/Files/sub/prog'):
             self.assertIn(n, data.getnames())
         self.assertEqual(data.getmember(top + '/Files/sub/prog').mode, 0o755)
@@ -120,7 +120,7 @@ class IpkTest(unittest.TestCase):
         self.assertIn('Execute %s/Files/install.dos %s/Files "$@"\n' % (st, st), post)
         self.assertIn('./T/upkg-stage/Claude/Files/questions', data.getnames())
         # an add-on with no questions keeps the plain Execute line
-        post = self.ctl_of('UP-Term-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./postinst').read().decode()
+        post = self.ctl_of('up-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./postinst').read().decode()
         self.assertNotIn('upkg-ask', post)
 
     def test_a_question_that_is_no_install_dos_keyword_is_refused(self):
@@ -132,7 +132,7 @@ class IpkTest(unittest.TestCase):
     def test_the_base_is_not_a_package(self):
         self.assertFalse(list(self.out.glob('UP-Term_*')))
         self.assertEqual([s['Package'] for s in stanzas(gzip.decompress((self.out / 'Packages.gz').read_bytes()).decode())],
-                         ['UP-Term-nvim', 'Claude'])
+                         ['up-nvim', 'Claude'])
         self.assertNotIn('Depends', (self.out / 'Packages').read_text())
 
     def test_rebuild_is_byte_equal(self):
@@ -160,6 +160,53 @@ class IpkTest(unittest.TestCase):
         (self.out / 'Claude_1.1_m68k-amigaos.ipk').unlink()
         with self.assertRaises(SystemExit):
             pkgs.feed(self.build, self.table)
+
+
+class RenamedPackages(unittest.TestCase):
+    """The up-* rename: the real table, every add-on staged, the control and the Packages entry of each renamed
+    package say it replaces, conflicts with and provides its old name (opkg then removes the old package
+    first); the base UP-Term was never renamed and says nothing."""
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = pathlib.Path(tempfile.mkdtemp())
+        cls.build = cls.tmp / 'build'
+        for r in pkgs.addons(pkgs.TABLE):
+            stage(cls.build, r['archive'])
+        pkgs.ipk(cls.build, pkgs.TABLE)
+        cls.packages = pkgs.feed(cls.build, pkgs.TABLE)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def control(self, r):
+        m = dict(split_ar((self.build / 'ipk' / pkgs.ipk_name(r)).read_bytes()))
+        return tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./control').read().decode()
+
+    def test_the_seven_renames_are_in_every_control_and_in_the_packages_index(self):
+        want = {'Claude': 'up-claude', 'amiga-pi': 'up-pi', 'UP-Term-nvim': 'up-nvim', 'Python3': 'up-python',
+                'UP-Term-git': 'up-git', 'UP-Term-perl': 'up-perl', 'UP-Term-vim': 'up-vim'}
+        self.assertEqual(dict(pkgs.renames()), want)
+        by_name = {s['Package']: s for s in stanzas(self.packages)}
+        for old, new in want.items():
+            r = next(r for r in pkgs.addons(pkgs.TABLE) if r['archive'] == new)
+            for text in (self.control(r), self.packages_entry(by_name[new])):
+                for field in ('Replaces', 'Conflicts', 'Provides'):
+                    self.assertIn('%s: %s\n' % (field, old), text, '%s: %s' % (new, field))
+            for s in (dict(l.split(': ', 1) for l in self.control(r).splitlines()), by_name[new]):
+                self.assertEqual((s['Replaces'], s['Conflicts'], s['Provides']), (old, old, old))
+
+    def packages_entry(self, stanza):
+        return ''.join('%s: %s\n' % kv for kv in stanza.items())
+
+    def test_the_base_and_an_unrenamed_package_carry_none(self):
+        base = pkgs.rows()[0]
+        self.assertEqual(base['archive'], 'UP-Term')
+        self.assertEqual(pkgs.old_names('UP-Term'), [])
+        self.assertEqual(pkgs.old_record(base), [])
+        self.assertEqual(pkgs._rename_fields(base), [])
+        # a package of the scratch table that was never renamed
+        self.assertEqual(pkgs._rename_fields({'archive': 'Neverrenamed'}), [])
 
 
 class RealFeed(unittest.TestCase):

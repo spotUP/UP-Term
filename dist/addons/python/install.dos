@@ -36,7 +36,7 @@ If WARN
   EndIf
   Copy libs/ixemul.library LIBS:ixemul.library CLONE QUIET
   Copy libs/ixnet.library LIBS:ixnet.library CLONE QUIET
-  Echo >ENVARC:upkg/ixemul/installed-by-Python3 "Python3.lha put ixemul.library and ixnet.library in LIBS:"
+  Echo >ENVARC:upkg/ixemul/installed-by-Python3 "up-python.lha put ixemul.library and ixnet.library in LIBS:"
 EndIf
 Echo >ENVARC:upkg/ixemul/needs/Python3 "Python3"
 If NOT "{STEP}" EQ ""
@@ -57,8 +57,8 @@ Lab python
 Assign Python3: SYS:Python3
 Search >NIL: S:User-Startup ";BEGIN Python3"
 If WARN
-  MakeDir >NIL: ENVARC:upkg ENVARC:upkg/Python3
-  Copy S:User-Startup ENVARC:upkg/Python3/User-Startup.before CLONE QUIET
+  MakeDir >NIL: ENVARC:upkg ENVARC:upkg/up-python
+  Copy S:User-Startup ENVARC:upkg/up-python/User-Startup.before CLONE QUIET
   Echo >>S:User-Startup ";BEGIN Python3"
   Echo >>S:User-Startup "If EXISTS SYS:Python3"
   Echo >>S:User-Startup "  Assign Python3: SYS:Python3"

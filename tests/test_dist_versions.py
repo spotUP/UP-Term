@@ -69,11 +69,11 @@ class Versions(unittest.TestCase):
         """K2-7.4: mkversions.sh --package <archive> <version> [root [part ...]] for an add-on's repositories."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace(tmp)
-            r = subprocess.run(['sh', SCRIPT, '--package', 'UP-Term-nvim', '1.2', tmp, 'neovim-amiga', 'ixemul-vtcon'],
+            r = subprocess.run(['sh', SCRIPT, '--package', 'up-nvim', '1.2', tmp, 'neovim-amiga', 'ixemul-vtcon'],
                                capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
             lines = r.stdout.splitlines()
-            self.assertRegex(lines[0], r'^UP-Term-nvim 1\.2 \S+ \d{4}-\d\d-\d\d \(upterm [0-9a-f]+\)$')
+            self.assertRegex(lines[0], r'^up-nvim 1\.2 \S+ \d{4}-\d\d-\d\d \(upterm [0-9a-f]+\)$')
             self.assertEqual([l.split()[0] for l in lines[1:]], ['neovim-amiga', 'ixemul-vtcon'])
 
     def test_no_arguments_prints_todays_lines(self):

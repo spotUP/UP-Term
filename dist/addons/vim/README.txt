@@ -1,4 +1,4 @@
-UP-Term-vim: Vim 9.2.1202 and its runtime for UP-Term
+up-vim: Vim 9.2.1202 and its runtime for UP-Term
 
 Contents: bin/vim, the runtime in share/vim and its manual page.
 Licence: Vim licence; see LICENSES.txt.
@@ -8,5 +8,5 @@ slim base. It installs them at the same paths in UP-Term: (bin, share, licenses)
 change of the path. In an UP-Term window, in vsh:
   vim file.txt
 
-Install: run Install (Installer) or, with upkg, install UP-Term-vim. Uninstall takes the package out
+Install: run Install (Installer) or, with upkg, install up-vim. Uninstall takes the package out
 again; the UP-Term Uninstall runs it first.

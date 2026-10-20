@@ -67,9 +67,9 @@ class Packages(unittest.TestCase):
             if r['needs-base'] == '-':
                 self.assertFalse(r['archive'].startswith('UP-Term'), r['id'])
             else:
-                self.assertTrue(r['archive'].startswith('UP-Term-'), r['id'])
+                self.assertTrue(r['archive'].startswith('up-'), r['id'])
         self.assertEqual({r['id'] for r in ROWS[1:] if r['needs-base'] == '-'}, {'claude', 'pi', 'python'})
-        self.assertEqual([r['archive'] for r in ROWS], ['UP-Term', 'Claude', 'amiga-pi', 'UP-Term-nvim', 'Python3'])
+        self.assertEqual([r['archive'] for r in ROWS], ['UP-Term', 'up-claude', 'up-pi', 'up-nvim', 'up-python'])
 
     def test_a_stand_alone_archive_with_an_ixemul_version_carries_the_library(self):
         for r in ROWS[1:]:
@@ -92,13 +92,49 @@ class Packages(unittest.TestCase):
                 seen.add(p)
 
     def test_the_cli_answers_what_the_makefile_asks(self):
-        self.assertEqual(pkgs.get('nvim', 'archive'), 'UP-Term-nvim')
-        self.assertEqual(pkgs.get('python', 'archive'), 'Python3')
+        self.assertEqual(pkgs.get('nvim', 'archive'), 'up-nvim')
+        self.assertEqual(pkgs.get('python', 'archive'), 'up-python')
         self.assertEqual(pkgs.get('claude', 'handed'), 'Files/Claude')
         with self.assertRaises(SystemExit):
             pkgs.get('nope', 'archive')
         with self.assertRaises(SystemExit):
             pkgs.get('base', 'nope')
+
+
+class Renames(unittest.TestCase):
+    """dist/package-renames.txt (old new) and packages.txt are the same story: every new name is a package
+    of the table, no old name is any row's archive or record, and the base never appears."""
+    def test_every_new_name_is_a_package_and_no_old_name_is(self):
+        archives = {r['archive'] for r in pkgs.rows()}
+        pairs = pkgs.renames()
+        self.assertEqual(len(pairs), 7)
+        for old, new in pairs:
+            self.assertIn(new, archives)
+            self.assertNotIn(old, archives)
+            self.assertNotIn(old, {r['record'].rstrip('/').split('/')[-1] for r in pkgs.rows()})
+            self.assertNotEqual(old, new)
+        self.assertEqual(len({o for o, _ in pairs}), len(pairs), 'an old name twice')
+        self.assertEqual(len({n for _, n in pairs}), len(pairs), 'a new name twice')
+        self.assertNotIn('UP-Term', [n for _, n in pairs] + [o for o, _ in pairs])
+
+    def test_every_add_on_of_the_table_was_renamed_and_its_record_ends_in_its_new_name(self):
+        renamed = {n for _, n in pkgs.renames()}
+        for r in pkgs.rows():
+            if r['id'] == 'base':
+                self.assertEqual(pkgs.old_record(r), [])
+                continue
+            self.assertIn(r['archive'], renamed, r['id'])
+            self.assertTrue(r['record'].rstrip('/').endswith('/' + r['archive']), r['id'])
+            (old, new), = pkgs.old_record(r)
+            self.assertEqual(new, r['record'].rstrip('/'))
+            self.assertNotEqual(old, new)
+
+    def test_a_malformed_line_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / 'r.txt'
+            f.write_text('only-one-word\n')
+            with self.assertRaises(SystemExit):
+                pkgs.renames(f)
 
 
 class Readme(unittest.TestCase):

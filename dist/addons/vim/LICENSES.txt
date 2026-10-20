@@ -1,4 +1,4 @@
-UP-Term-vim: parts, licences and where the source is
+up-vim: parts, licences and where the source is
 
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------

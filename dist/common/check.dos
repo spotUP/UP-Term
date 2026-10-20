@@ -12,6 +12,8 @@ If WARN
   Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term @NEEDSBASE@ or newer. Update UP-Term first."
   Quit 20
 EndIf
+; a record the old Installer left under the former name (dist/package-renames.txt)
+@RENAMERECORD@
 If NOT "@IXEMUL@" EQ "-"
   Version >NIL: LIBS:ixemul.library @IXEMUL@
   If WARN

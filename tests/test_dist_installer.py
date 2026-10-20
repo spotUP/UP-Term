@@ -215,22 +215,22 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
         for name in ('C:Claude', 'C:ClaudeCode', 'C:amiga-pi'):
             self.assertNotIn(name + ' ', delete + ' ')
         # the add-ons' own Uninstall runs first, from their records, then the single kit's leftovers
-        self.assertLess(un.index('Execute UP-Term:pkg/UP-Term-nvim/Uninstall'), un.index('Delete >NIL: L:vtcon-handler'))
+        self.assertLess(un.index('Execute UP-Term:pkg/up-nvim/Uninstall'), un.index('Delete >NIL: L:vtcon-handler'))
         self.assertLess(un.index('If EXISTS UP-Term:pkg/legacy'), un.index('Delete >NIL: L:vtcon-handler'))
         # only what needs the base is run from its record; the stand-alone ones (Claude, amiga-pi, Python3,
         # record in ENVARC:upkg) are left alone, and the single kit's leftovers go unless they took over
         self.assertNotIn('Execute ENVARC:upkg', un)
         self.assertNotIn('Execute UP-Term:pkg/UP-Term-Claude', un)
         legacy = un[un.index('If EXISTS UP-Term:pkg/legacy'):]
-        self.assertIn('If NOT EXISTS ENVARC:upkg/Claude', legacy.split('Set unst')[0])
-        self.assertIn('If NOT EXISTS ENVARC:upkg/amiga-pi', legacy.split('Set unst')[0])
+        self.assertIn('If NOT EXISTS ENVARC:upkg/up-claude', legacy.split('Set unst')[0])
+        self.assertIn('If NOT EXISTS ENVARC:upkg/up-pi', legacy.split('Set unst')[0])
 
     def test_the_bases_uninstall_keeps_what_the_stand_alone_archives_share_with_it(self):
-        """C:uptelnet is the base's and Claude.lha's; Python3: is the base's old block's or Python3.lha's"""
+        """C:uptelnet is the base's and up-claude.lha's; Python3: is the base's old block's or up-python.lha's"""
         un = mi.build(ROOT / "dist/Uninstall", "base")
         self.assertNotRegex(un, r'Delete >NIL: [^\n]*C:uptelnet [^\n]*L:vtcon|Delete >NIL: L:vtcon-handler[^\n]*C:uptelnet')
-        self.assertIn('If NOT EXISTS ENVARC:upkg/Claude\n  Delete >NIL: C:uptelnet QUIET', un)
-        self.assertIn('If NOT EXISTS ENVARC:upkg/Python3\n  Assign >NIL: Python3: EXISTS', un)
+        self.assertIn('If NOT EXISTS ENVARC:upkg/up-claude\n  Delete >NIL: C:uptelnet QUIET', un)
+        self.assertIn('If NOT EXISTS ENVARC:upkg/up-python\n  Assign >NIL: Python3: EXISTS', un)
 
     def test_uninstall_asks_about_the_var_drawer_once_before_the_add_ons_run(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")

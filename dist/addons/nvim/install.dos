@@ -1,7 +1,7 @@
 .KEY DIR/A,STEP/K
 .BRA {
 .KET }
-; UP-Term-nvim install: Neovim 0.12 in UP-Term:nvim
+; up-nvim install: Neovim 0.12 in UP-Term:nvim
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer

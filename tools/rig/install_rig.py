@@ -87,7 +87,7 @@ def standalone_ids():
 
 
 def based_ids():
-    """The add-ons that need the base (UP-Term-nvim)."""
+    """The add-ons that need the base (up-nvim)."""
     return [i for i in addon_ids() if i not in standalone_ids()]
 
 
@@ -449,6 +449,10 @@ def prepare(dest, addons=()):
 # killed one that left 127.0.0.1 2399 in ENVARC:Claude/remote) leaves nothing.
 FIXTURE_FILES = ('ENVARC:Claude/remote', 'ENV:Claude/remote', 'ENVARC:amiga-pi/settings.json', 'ENVARC:UP-Term.prefs', 'S:User-Startup')   # the move pass appends a user line to the last (ten were left by 2026-10-10)
 FIXTURE_ASSIGNS = ('GG', 'UP-Term')
+
+# the add-ons that write a ;BEGIN block to S:User-Startup, and the block's name
+STARTUP_BLOCK = {'python': 'Python3'}
+
 
 def strip_upterm_blocks(data, name='UP-Term'):
     """data without the ;BEGIN <name> ... ;END <name> blocks (UP-Term: every flavour:
@@ -1052,7 +1056,9 @@ class OwnersAddons:
         data = ami.read_file('S:User-Startup')
         clean = data
         for pkg in self.pkgs:
-            clean = strip_upterm_blocks(clean, archive(pkg))
+            # the ;BEGIN marker is the product's name (kept across the up-* package rename), not the archive's
+            if pkg in STARTUP_BLOCK:
+                clean = strip_upterm_blocks(clean, STARTUP_BLOCK[pkg])
         if clean != data:
             print('install_rig: S:User-Startup held a block of an uninstalled add-on; removed')
             import tempfile
@@ -1317,7 +1323,7 @@ def case_python_ixemul(ck):
 
 def case_all(ck):
     """The base and every add-on. Python3 is uninstalled while the base is there (UP-Term's unstartup.sh takes its
-    block out); the base's Uninstall then removes UP-Term-nvim by its own Uninstall and leaves Claude and amiga-pi
+    block out); the base's Uninstall then removes up-nvim by its own Uninstall and leaves Claude and amiga-pi
     (stand-alone: record in ENVARC:upkg); their own Uninstall, with no base, ends it. The archives' own scripts
     run; the sentinel is each add-on's program answering before the base is removed."""
     ids = addon_ids()
@@ -1376,7 +1382,7 @@ def case_legacy(ck):
            'legacy: Claude and amiga-pi are still installed (handed over, not deleted)')
         rc, out = run_long('runinstall-nvim', 3600)
         ck(rc == 0 and 'Unknown command' not in out, 'legacy: the nvim add-on\'s Install runs over the single kit\'s files', out)
-        ck(run('List >NIL: UP-Term:pkg/UP-Term-nvim/MANIFEST')[0] == 0, 'legacy: the nvim add-on made its record')
+        ck(run('List >NIL: UP-Term:pkg/up-nvim/MANIFEST')[0] == 0, 'legacy: the nvim add-on made its record')
         rc, out = run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
         ck(rc == 0 and 'NVIM v0.12' in out, 'legacy: nvim answers after its add-on', out[-300:])
         base_uninstall(ck, before)

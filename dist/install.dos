@@ -14,7 +14,7 @@
 ;     [WASABI]  (wasabid 0.11b2, remote development and Claude Code on another computer, with a
 ;               key: no unless asked; replaces an older wasabid and amiagent of ours)
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
-;  UP-Term-nvim, Claude and amiga-pi, each with its own Install.)
+;  up-nvim, Claude and amiga-pi, each with its own Install.)
 ;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
 ;     [STEP <part>]  (only that part: see "The parts" below)
 ; From a Shell without Installer, the same line installs (and asks itself).

@@ -39,7 +39,7 @@ shots/. Resumable: a recorded verdict with the same fingerprint is skipped.
 Rig: UPTERM_RIG=<n> python3 -I tools/rig/rig.py setup --os 32 --max, then start --os 32 --max (a clean
 installed 3.2: no UP-Term:, no ixemul in SYS:Libs). Build first: `make build/amiga/Claude` here,
 `make -C $UPTERM_ROOT/amiga-pi amiga`; nvim, python3 and its ixemul come from the staged archives
-(build/dist/UP-Term-nvim, Python3, terminfo from UP-Term; STANDALONE_DIST= one Files drawer with all). Needs xdftool only once, to read the owner's KingCON handler out of
+(build/dist/up-nvim, Python3, terminfo from UP-Term; STANDALONE_DIST= one Files drawer with all). Needs xdftool only once, to read the owner's KingCON handler out of
 UPTERM_SYSTEM_HDF (read only); stock ixemul from UPTERM_IXSTOCK (default GG-Lite's Libs drawer).
 Not run by `make test`: it needs the emulator."""
 import argparse
@@ -74,7 +74,7 @@ PORT = 8110 + paths.RIG_N
 
 CLAUDE_BIN = pathlib.Path(os.environ.get('CLAUDE_BIN') or ROOT / 'build/amiga/Claude')
 PI_BIN = pathlib.Path(os.environ.get('AMIGA_PI_BIN') or paths.repo('amiga-pi') / 'build/amiga/amiga-pi')
-DIST_ARCHIVE = {'nvim': 'UP-Term-nvim', 'python3': 'Python3', 'libs': 'Python3'}   # since the K2 split
+DIST_ARCHIVE = {'nvim': 'up-nvim', 'python3': 'up-python', 'libs': 'up-python'}   # since the K2 split
 
 
 def dist(rel):

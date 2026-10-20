@@ -38,23 +38,23 @@ class Assemble(unittest.TestCase):
         self.assertIn('includes itself', str(e.exception))
 
     def test_values_fill_names_in_the_text(self):
-        self.assertEqual(mi.sub('@ID@/@ARCHIVE@', {'ID': 'nvim', 'ARCHIVE': 'UP-Term-nvim'}), 'nvim/UP-Term-nvim')
+        self.assertEqual(mi.sub('@ID@/@ARCHIVE@', {'ID': 'nvim', 'ARCHIVE': 'up-nvim'}), 'nvim/up-nvim')
 
     def test_an_add_on_gets_its_record_and_options_drawers_from_the_table(self):
         v = mi.read_values('nvim')
-        self.assertEqual(v['RECORD'], 'UP-Term:pkg/UP-Term-nvim')
-        self.assertEqual(v['OPTS'], 'UP-Term:pkg/UP-Term-nvim/opts')
+        self.assertEqual(v['RECORD'], 'UP-Term:pkg/up-nvim')
+        self.assertEqual(v['OPTS'], 'UP-Term:pkg/up-nvim/opts')
         self.assertEqual((v['BASEMAJOR'], v['BASEMINOR']), ('1', '0'))
         self.assertEqual(mi.read_values('base')['OPTS'], 'ENVARC:up-term/opts')
         self.assertEqual(mi.read_values('nvim')['RECORDPRE'], 'record-addon.dos')
         self.assertEqual(mi.read_values('base')['RECORDPRE'], 'record-legacy.dos')
-        self.assertEqual(mi.read_values('nvim')['RECORDP'], 'UP-Term:pkg/UP-Term-nvim/')
+        self.assertEqual(mi.read_values('nvim')['RECORDP'], 'UP-Term:pkg/up-nvim/')
 
     def test_the_base_gets_the_add_ons_uninstall_blocks_and_search_lines_from_the_table(self):
         v = mi.read_values('base')
         # only the archive that needs the base is run from UP-Term:pkg; the stand-alone ones (ENVARC:upkg) are left alone
         self.assertEqual(v['ADDONUNINSTALL'],
-                         '\n'.join('If EXISTS UP-Term:pkg/UP-Term-%s/Uninstall\n  Execute UP-Term:pkg/UP-Term-%s/Uninstall\nEndIf' % (i, i)
+                         '\n'.join('If EXISTS UP-Term:pkg/up-%s/Uninstall\n  Execute UP-Term:pkg/up-%s/Uninstall\nEndIf' % (i, i)
                                    for i in ('nvim', 'git', 'perl', 'vim')))
         # Files/Claude finds an old Files/ClaudeCode by substring too: one search covers both
         self.assertEqual(v['HANDEDSEARCH'].count('Search >NIL: UP-Term:MANIFEST'), 9)

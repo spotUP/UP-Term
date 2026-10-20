@@ -1,7 +1,7 @@
 .KEY DIR/A,STEP/K
 .BRA {
 .KET }
-; UP-Term-perl install: Perl 5.42.3, at the paths the base UP-Term.lha used to carry
+; up-perl install: Perl 5.42.3, at the paths the base UP-Term.lha used to carry
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer

@@ -7,16 +7,16 @@ FS-UAE's bsdsocket emulation connects from the Mac itself, so 127.0.0.1 on the A
 The config is UP-Term:etc/upkg.conf, asserted byte for byte equal to dist/upkg.conf, then copied to
 T:upkg-rig.conf with only its `src/gz` line changed to the Mac's http feed (https is P10.7); every command runs
 `upkg -f T:upkg-rig.conf ...`. Rig up (`rig.py start --max`) with the base installed from the kit of `make dist`.
-The package is named as the feed names it (UP-Term-nvim, Claude), the way `upkg list` prints it.
+The package is named as the feed names it (up-nvim, up-claude), the way `upkg list` prints it.
 
   version     `upkg --version` prints "based on opkg 0.9.0": the opkg binary ran, not the vsh script   (sentinel)
   updatelist  `upkg update`, then `upkg list` names the 4 add-ons
-  install     `upkg install UP-Term-nvim`: files land (Files/install.dos ran under ixemul /bin/sh), the status
+  install     `upkg install up-nvim`: files land (Files/install.dos ran under ixemul /bin/sh), the status
               record is in UP-Term:pkg/upkg/status, T:upkg-stage holds nothing for nvim (`dest root /` reached T:)
   upgrade     a feed with nvim 1.1 (ipk rebuilt in a temp drawer; the real version is untouched): `upkg upgrade`
-  remove      `upkg remove UP-Term-nvim`: files, status record and record drawer gone, no T:upkg-stage left
+  remove      `upkg remove up-nvim`: files, status record and record drawer gone, no T:upkg-stage left
   needsbase   UP-Term:VERSIONS faked older than nvim's needs-base: install refused, nothing written (restored)
-  badsum      Packages holds a wrong SHA256sum for Claude: install refused, nothing written
+  badsum      Packages holds a wrong SHA256sum for up-claude: install refused, nothing written
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/upkg/<case>.json with a
 fingerprint of dist/upkg.conf, build/ipk/Packages and this script.
@@ -39,11 +39,11 @@ ROOT = ir.ROOT
 VTC = ir.VTC
 BUILD = ROOT / 'build'
 OUT = paths.RIG / 'upkg'
-NVIM = 'UP-Term-nvim'
+NVIM = 'up-nvim'
 CONF = 'T:upkg-rig.conf'
 STATUS = 'UP-Term:pkg/upkg/status'
 STAGE = 'T:upkg-stage'
-ADDONS = ['Claude', 'amiga-pi', 'UP-Term-nvim', 'Python3']
+ADDONS = ['up-claude', 'up-pi', 'up-nvim', 'up-python']
 CASES = ['version', 'updatelist', 'install', 'upgrade', 'remove', 'needsbase', 'badsum']
 
 
@@ -274,18 +274,18 @@ def case_needsbase(ck, rel):
 
 
 def case_badsum(ck, rel):
-    if installed_version('Claude') or exists('ENVARC:upkg/Claude'):
-        ck(False, 'badsum: precondition, Claude is installed (ENVARC:upkg/Claude): remove it first')
+    if installed_version('up-claude') or exists('ENVARC:upkg/up-claude'):
+        ck(False, 'badsum: precondition, up-claude is installed (ENVARC:upkg/up-claude): remove it first')
         return
     text = (BUILD / 'ipk/Packages').read_text()
-    good = next(p for p in parse_packages(text) if p['Package'] == 'Claude')['SHA256sum']
-    rel.set(packages=edit_packages(text, 'Claude', SHA256sum=('0' if good[0] != '0' else '1') + good[1:]))
+    good = next(p for p in parse_packages(text) if p['Package'] == 'up-claude')['SHA256sum']
+    rel.set(packages=edit_packages(text, 'up-claude', SHA256sum=('0' if good[0] != '0' else '1') + good[1:]))
     upkg('upkgupd', 'update')
-    rc, out = upkg('upkgsum', 'install Claude')
+    rc, out = upkg('upkgsum', 'install up-claude')
     ck(rc != 0 and re.search(r'sha256|checksum|corrupt package file', out, re.I), 'badsum: refused over the checksum', out[-400:])
-    ck(installed_version('Claude') is None, 'badsum: no status record for Claude', installed_version('Claude'))
-    ck(not exists('ENVARC:upkg/Claude'), 'badsum: no ENVARC:upkg/Claude')
-    ck(not exists('%s/Claude' % STAGE), 'badsum: nothing of Claude under %s' % STAGE)
+    ck(installed_version('up-claude') is None, 'badsum: no status record for up-claude', installed_version('up-claude'))
+    ck(not exists('ENVARC:upkg/up-claude'), 'badsum: no ENVARC:upkg/up-claude')
+    ck(not exists('%s/up-claude' % STAGE), 'badsum: nothing of up-claude under %s' % STAGE)
 
 
 TABLE = {'version': case_version, 'updatelist': case_updatelist, 'install': case_install, 'upgrade': case_upgrade,
@@ -349,7 +349,7 @@ def cli(argv):
     for c, why in skip:
         print('[SKIP] %s: %s' % (c, why))
     if todo:
-        for need in [BUILD / 'ipk/Packages', BUILD / 'dist/UP-Term-nvim/Files/install.dos']:
+        for need in [BUILD / 'ipk/Packages', BUILD / 'dist/up-nvim/Files/install.dos']:
             if not need.exists():
                 raise SystemExit('upkg_rig: no %s: make dist dist-ipk first' % need)
         ir.put_vsh()   # the maintainer scripts run under GG:bin/sh: the vsh of this tree, not an older one

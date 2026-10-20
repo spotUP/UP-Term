@@ -66,7 +66,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Cross build (vbcc, 68020) | `make amiga`. Needs the AmigaOS 3.2 SDK headers once: unpack `NDK3.2R4` to `vendor/ndk-3.2r4-Include_H` (gitignored), or pass `make amiga VTCON_NDK=<path-to-Include_H>` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | hl and mdv for the host terminal (build/hl, build/mdv; suites `ONLY=hl`, `ONLY=md`) | `make view-host` |
-| Install kit, every archive (kit split K2, `dist/packages.txt`: base `UP-Term.lha` + `UP-Term-nvim` (needs the base) and the stand-alone `Claude`, `amiga-pi`, `Python3`, and `UP-Term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (one archive per `dist/packages.txt` row, in `build/`) |
+| Install kit, every archive (kit split K2, `dist/packages.txt`: base `UP-Term.lha` + `up-nvim` (needs the base) and the stand-alone `Claude`, `amiga-pi`, `Python3`, and `UP-Term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (one archive per `dist/packages.txt` row, in `build/`) |
 | One archive | `make dist-<id>` (id = `python3 tools/pkgs.py names`: base, claude, pi, nvim, python) |
 | Archives checked: each lists Install, Uninstall, Files/VERSIONS; per-archive manifest, versions, modes | `make dist-check` (every archive; runs tests/test_dist_versions.py too) |
 | Install kit on the rig: Install, check, Uninstall (cases listed at the top of tools/rig/install_rig.py; verdicts recorded, passed cases skipped) | `UPTERM_RIG=<n> python3 -I tools/rig/install_rig.py [--only <case>] [--failed] [--force]` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first); add-ons and migration from an old kit through the Installer: `python3 -I tools/rig/installer_rig.py ONLY addon-<id>` / `ONLY migrate` |
@@ -122,7 +122,7 @@ from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
    address).
 6. Upload `UP-Term.lha` and `UP-Term-src.lha` together, then the add-ons, each with its
    `build/<archive>.readme`. Directories (owner 2026-10-13): base and source `comm/term`,
-   UP-Term-nvim `text/edit`, Python3 `dev/lang`, Claude and amiga-pi
+   up-nvim `text/edit`, Python3 `dev/lang`, Claude and amiga-pi
    `comm/misc`. The upload is the owner's.
 7. GitHub release for upkg (the opkg binary, an UP-Term:bin command): one release per base
    version, holding every archive of `dist/packages.txt` and `build/upkg-index.txt` (written

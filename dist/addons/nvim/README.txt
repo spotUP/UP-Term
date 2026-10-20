@@ -1,4 +1,4 @@
-UP-Term-nvim - Neovim for an UP-Term window
+up-nvim - Neovim for an UP-Term window
 ===========================================
 
 Neovim 0.12 with its runtime (about 2100 files, 32 MB), built for AmigaOS 3.x (68020+).

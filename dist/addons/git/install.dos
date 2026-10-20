@@ -1,7 +1,7 @@
 .KEY DIR/A,STEP/K
 .BRA {
 .KET }
-; UP-Term-git install: git 2.56.0, the version control system, at the paths the base UP-Term.lha used to carry
+; up-git install: git 2.56.0, the version control system, at the paths the base UP-Term.lha used to carry
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer

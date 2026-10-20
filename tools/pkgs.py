@@ -14,6 +14,7 @@ import slim
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TABLE = ROOT / 'dist/packages.txt'
+RENAMES = ROOT / 'dist/package-renames.txt'
 COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed', 'consumes')
 
 
@@ -33,6 +34,42 @@ def parse(text):
 
 def rows(path=TABLE):
     return parse(pathlib.Path(path).read_text(encoding='utf-8'))
+
+
+def renames(path=RENAMES):
+    """[(old, new)] of dist/package-renames.txt ("old new" a line, # comments)."""
+    out = []
+    for line in pathlib.Path(path).read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if line and not line.startswith('#'):
+            f = line.split()
+            if len(f) != 2:
+                raise SystemExit('package-renames.txt: %r: want "old new"' % line)
+            out.append((f[0], f[1]))
+    return out
+
+
+def old_names(archive, path=RENAMES):
+    """The names the package <archive> had before (empty for a package that was never renamed)."""
+    return [o for o, n in renames(path) if n == archive]
+
+
+def old_record(r, path=RENAMES):
+    """[(old record, new record)] of a row: its record drawer spelled with each old name; a record that
+    does not end in the archive name (the base's UP-Term:) has none."""
+    rec = r['record'].rstrip('/')
+    if not rec.endswith(r['archive']):
+        return []
+    return [(rec[:-len(r['archive'])] + o, rec) for o in old_names(r['archive'], path)]
+
+
+def rename_lines(pairs):
+    """AmigaDOS lines that move a record drawer left by the old Installer to its new name; nothing is
+    done when the new one is already there."""
+    out = []
+    for old, new in pairs:
+        out += ['If EXISTS ' + old, '  If NOT EXISTS ' + new, '    Rename >NIL: %s %s' % (old, new), '  EndIf', 'EndIf']
+    return '\n'.join(out)
 
 
 def lha_rows(path=TABLE):
@@ -217,6 +254,16 @@ def question_keys(kit):
     return keys
 
 
+def _rename_fields(r):
+    """Replaces, Conflicts and Provides of a renamed package: opkg removes the old package, running
+    its prerm, before it installs this one, and anything that depends on the old name is still met."""
+    olds = old_names(r['archive'])
+    if not olds:
+        return []
+    j = ', '.join(olds)
+    return ['Replaces: ' + j, 'Conflicts: ' + j, 'Provides: ' + j]
+
+
 def build_ipk(r, build):
     """The .ipk bytes of one row from the staged tree <build>/dist/<archive>."""
     kit = pathlib.Path(build) / 'dist' / r['archive']
@@ -227,6 +274,7 @@ def build_ipk(r, build):
     lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + ARCH,
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
              'Description: ' + SUMMARY.get(r['id'], r['archive'])]
+    lines[2:2] = _rename_fields(r)
     ctl = ('\n'.join(lines) + '\n').encode()
     ents = [(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None), (_tinfo('./control', len(ctl)), ctl)]
     if need:
@@ -258,7 +306,7 @@ def feed(build, path=TABLE):
         if not f.is_file():
             raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
         data = f.read_bytes()
-        b = ['Package: ' + r['archive'], 'Version: ' + r['version']]
+        b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r)
         b += ['Architecture: ' + ARCH, 'Filename: ' + f.name, 'Size: %d' % len(data),
               'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
               'Description: ' + SUMMARY.get(r['id'], r['archive'])]

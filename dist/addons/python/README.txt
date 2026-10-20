@@ -29,7 +29,7 @@ INSTALL
   It needs no UP-Term and looks for none. Python goes into SYS:Python3 and Python3: is
   assigned to it now and at every boot (a block in S:User-Startup, ;BEGIN Python3 to
   ;END Python3, that assigns only while SYS:Python3 exists). Its record (the list of files,
-  for Update and Uninstall) is ENVARC:upkg/Python3. Install the archive over an earlier one
+  for Update and Uninstall) is ENVARC:upkg/up-python. Install the archive over an earlier one
   and its first page offers Update, which copies only what changed.
   An UP-Term installed from the single kit (before the kit split) keeps its own copy in
   UP-Term:Python3 (it goes with the UP-Term drawer); this archive installs a second one.
