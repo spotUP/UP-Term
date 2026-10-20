@@ -222,7 +222,9 @@ def _data_entries(kit, archive):
     top = '%s/%s' % (STAGE, archive)
     ents, size = [], 0
     parts = top.split('/')
-    for i in range(1, len(parts) + 1):
+    # From ./T/upkg-stage down, never ./T itself: /T is the T: assign, which always exists, and an
+    # entry for it makes opkg try to create /T and warn "Can't create '/T' (errno=5)" on every install.
+    for i in range(2, len(parts) + 1):
         ents.append((_tinfo('./' + '/'.join(parts[:i]), mode=0o755, kind=tarfile.DIRTYPE), None))
     for dirpath, dirs, files in os.walk(kit):
         dirs.sort()

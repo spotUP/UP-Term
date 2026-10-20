@@ -98,7 +98,9 @@ class IpkTest(unittest.TestCase):
             self.assertIn(n, data.getnames())
         self.assertEqual(data.getmember(top + '/Files/sub/prog').mode, 0o755)
         self.assertEqual(data.getmember(top + '/Uninstall').mode, 0o644)
-        self.assertTrue(all(n in ('.', './T', './T/upkg-stage') or n.startswith('./T/upkg-stage/') for n in data.getnames()))
+        self.assertTrue(all(n in ('.', './T/upkg-stage') or n.startswith('./T/upkg-stage/') for n in data.getnames()))
+        # ./T is the T: assign, which always exists: an entry for it makes opkg mkdir /T and warn errno 5.
+        self.assertNotIn('./T', data.getnames())
         no_need = tarfile.open(fileobj=io.BytesIO(dict(split_ar((self.out / 'Claude_1.1_m68k-amigaos.ipk').read_bytes()))['control.tar.gz']))
         self.assertNotIn('./preinst', no_need.getnames())
 
