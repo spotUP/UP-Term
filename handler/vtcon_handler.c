@@ -6523,7 +6523,7 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
 {
     int i;
     struct Window *win = c->own_win;
-    if (c->ntabs < 2 && !c->host_only && !(c->ntabs && tabslot_panes(&c->slots[0]) > 1))
+    if (tabslot_all(c->slots, c->ntabs) < 2 && !c->host_only)
         return 0;
     /* Right Amiga 1-9: that tab (the digits' raw codes are the same on
      * every keymap, unlike [ and ], which a Swedish map makes letters) */
@@ -6534,6 +6534,15 @@ static int tab_route(con *c, struct IntuiMessage *im, int wheel)
         return 1;
     }
     switch (im->Class) {
+    case IDCMP_CLOSEWINDOW:
+        /* the gadget on a split closes the whole tab, as Close tab does
+         * (which keeps the host's first slot for the next window); one
+         * pane: that pane's own close, below */
+        if (c->active >= 0 && c->active < c->ntabs && tabslot_panes(&c->slots[c->active]) > 1) {
+            host_command(c, MENU_TAB_CLOSE, c);
+            return 1;
+        }
+        break;
     case IDCMP_NEWSIZE:
         tab_layout(c); /* every pane's new place: a RECT each, the host's own here */
         bar_draw(c);
@@ -7834,9 +7843,11 @@ static LONG handler_main(void)
         if (c->ever_opened && c->opens <= 0 && (!c->wait_close || c->closing) && !c->nreads &&
             !c->comp_busy && !c->check_busy && !c->ghost_busy && !c->hist_busy && !c->splits_busy &&
             !c->host_only) { /* a worker holds our request */
-            if (c->own_win && c->ntabs >= 2) {
-                /* our own shell ended, other tabs live: their window stays
-                 * ours until the last one goes; our session goes now */
+            if (c->own_win && tabslot_all(c->slots, c->ntabs) >= 2) {
+                /* our own shell ended, other tabs or panes live: their
+                 * window stays ours until the last one goes; our session
+                 * goes now (a slot count alone closed the window under a
+                 * split's other pane) */
                 host_retire(c);
                 continue;
             }

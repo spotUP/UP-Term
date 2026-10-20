@@ -35,6 +35,15 @@ static int tabslot_panes(const tab_slot *t)
     return lay_pane_count(&t->l);
 }
 
+/* Every pane of every slot: the window's handler processes */
+static int tabslot_all(const tab_slot *t, int n)
+{
+    int i, all = 0;
+    for (i = 0; i < n; i++)
+        all += tabslot_panes(&t[i]);
+    return all;
+}
+
 /* Pane id k is drawn when its slot is shown: it exists, and no other pane is zoomed. */
 static int tabslot_shows(const tab_slot *t, int k)
 {

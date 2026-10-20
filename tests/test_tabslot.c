@@ -229,8 +229,52 @@ static void a_zoom_shows_only_the_focused_pane_until_the_layout_changes(void)
     CHECK_INT(tabslot_zoom(T, N, &D), -1);
 }
 
+/* the host's own shell ending keeps the window while any other pane lives,
+ * also the other pane of its own slot: the count is panes, not slots */
+static void every_pane_of_every_slot_is_counted(void)
+{
+    fresh();
+    tabslot_add(T, &N, 4, &A);
+    CHECK_INT(tabslot_all(T, N), 1);
+    tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
+    CHECK_INT(N, 1);
+    CHECK_INT(tabslot_all(T, N), 2);
+    tabslot_add(T, &N, 4, &C);
+    tabslot_split(T, N, &C, &D, LAY_DOWN, 8, 8, 0, 0, 640, 200);
+    tabslot_split(T, N, &D, &E, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
+    CHECK_INT(tabslot_all(T, N), 5);
+    CHECK_INT(tabslot_all(T, 0), 0);
+}
+
+/* rig 2026-10-20: split and close the new pane twice, split a third
+ * time, then the first pane leaves: the third pane is the one left, it
+ * has the focus and is drawn */
+static void first_pane_leaves_after_split_cycles(void)
+{
+    int gone, k, id;
+    fresh();
+    tabslot_add(T, &N, 4, &A);
+    tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
+    tabslot_remove(T, &N, &ACT, &B, &gone);
+    tabslot_split(T, N, &A, &C, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
+    tabslot_remove(T, &N, &ACT, &C, &gone);
+    id = tabslot_split(T, N, &A, &D, LAY_RIGHT, 8, 8, 0, 0, 640, 200);
+    CHECK(id >= 0);
+    CHECK_INT(tabslot_all(T, N), 2);
+    tabslot_remove(T, &N, &ACT, &A, &gone);
+    CHECK_INT(gone, 0);
+    CHECK_INT(N, 1);
+    CHECK_INT(tabslot_all(T, N), 1);
+    CHECK(tabslot_focused(&T[0]) == &D);
+    CHECK_INT(tabslot_find(T, N, &D, &k), 0);
+    CHECK(tabslot_shows(&T[0], k));
+    CHECK_INT(tabslot_find(T, N, &A, 0), -1);
+}
+
 void suite_tabslot(void)
 {
+    first_pane_leaves_after_split_cycles();
+    every_pane_of_every_slot_is_counted();
     a_new_tab_is_a_slot_with_one_focused_pane();
     a_full_bar_refuses_a_slot();
     a_split_lands_in_the_splitting_panes_slot_and_takes_the_focus();
