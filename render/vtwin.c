@@ -26,6 +26,7 @@ struct Device *vtwin_timer; /* also read by amiga_render.c's PROF=1 counters */
 #include "../handler/clip.h"
 #include "../handler/clipfmt.h"
 #include "fontpair.h"
+#include "layout.h" /* lay_sb_lines: the pane cap (NS4.3) */
 #include "synchold.h" /* the frame clock and the ?2026 hold */
 #include <graphics/displayinfo.h>
 
@@ -42,6 +43,7 @@ extern struct Device *ConsoleDevice;
 
 static void frame_start(vtwin *w);
 static void set_view(vtwin *w, int lines);
+static int sb_want(int sb, int panes);
 
 /* ---- engine callbacks ------------------------------------------------------- */
 
@@ -915,8 +917,7 @@ int vtwin_attach(vtwin *w, struct Window *win)
         /* size from the window before the engine exists */
         int cols = (win->Width - win->BorderLeft - win->BorderRight) / w->font->tf_XSize;
         int rows = (win->Height - win->BorderTop - win->BorderBottom) / w->font->tf_YSize;
-        w->t = vt_new(cols > 0 ? cols : 1, rows > 0 ? rows : 1,
-                      w->sb_lines < 0 ? 0 : w->sb_lines ? w->sb_lines : 500, &cb, w);
+        w->t = vt_new(cols > 0 ? cols : 1, rows > 0 ? rows : 1, sb_want(w->sb_lines, w->panes), &cb, w);
     }
     if (!w->t)
         return 0;
@@ -1033,17 +1034,49 @@ int vtwin_set_font(vtwin *w, const char *name, WORD size)
     return 1;
 }
 
-int vtwin_set_scrollback(vtwin *w, int lines)
+/* the engine's scrollback for setting sb (the spec's: -1 none, 0 the
+ * built-in 500, else lines) in a tab of panes panes: the one place a
+ * window's scrollback is sized */
+static int sb_want(int sb, int panes)
 {
+    return lay_sb_lines(sb < 0 ? 0 : sb ? sb : 500, panes);
+}
+
+static int sb_apply(vtwin *w, int sb, int panes)
+{
+    int lines = sb_want(sb, panes);
     if (!w->t)
         return 0;
+    if (lines == vt_scrollback_size(w->t))
+        return 1;
     if (w->r.view)
         set_view(w, 0); /* the old view may be past the new size */
     if (!vt_set_scrollback(w->t, lines))
         return 0;
-    w->sb_lines = lines ? lines : -1; /* the spec's encoding: 0 is the built-in 500 */
     vtwin_knob_sync(w);
     return 1;
+}
+
+int vtwin_set_scrollback(vtwin *w, int lines)
+{
+    int sb = lines ? lines : -1; /* the spec's encoding: 0 is the built-in 500 */
+    if (!sb_apply(w, sb, w->panes))
+        return 0;
+    w->sb_lines = sb;
+    return 1;
+}
+
+void vtwin_set_panes(vtwin *w, int panes)
+{
+    if (panes == w->panes)
+        return;
+    w->panes = panes;
+    sb_apply(w, w->sb_lines, panes);
+}
+
+int vtwin_scrollback_size(const vtwin *w)
+{
+    return w->t ? vt_scrollback_size(w->t) : 0;
 }
 
 void vtwin_show(vtwin *w, int on)

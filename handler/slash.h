@@ -139,13 +139,14 @@ int slash_setup_text(const slash_row *rows, int n, char *out, int cap);
  * the host's, copied in by the push.
  * Keys (the /state names): tabs-opened tab-switches menu-picks last-menu slash-count
  * last-slash copies pastes tabs active splits panes zoom slot-fonts
- * split-restores. */
+ * split-restores scrollback (the answering pane's own scrollback size in lines, filled
+ * when it answers, NS4.3). */
 enum { STATE_TAB_OPENED = 1, STATE_SWITCH, STATE_MENU, STATE_SLASH, STATE_COPY, STATE_PASTE, STATE_SPLIT, STATE_SLOT_FONT,
        STATE_SPLIT_RESTORE };
 
 typedef struct slash_state {
     long tabs_opened, tab_switches, menu_picks, last_menu, slash_count, copies, pastes, tabs, active, splits, panes, zoom, slot_fonts,
-         split_restores;
+         split_restores, scrollback;
     char last_slash[24];       /* the last typed command's name, "" before the first */
 } slash_state;
 

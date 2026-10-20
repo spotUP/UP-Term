@@ -78,6 +78,7 @@ typedef struct vtwin {
     WORD altsize[11];
     struct TextFont *given_font; /* draw with this font (the window's), not opened or closed here */
     int sb_lines;                /* scrollback lines: 0 = 500 (XCON:), -1 = none */
+    int panes;                   /* panes in this window's tab (0, 1: alone); past 2 the scrollback is capped (lay_sb_lines) */
     struct KeyMap *keymap;       /* keys convert with this map; 0 = the system default */
     struct RastPort *own_rp;     /* draw through this RastPort, not the window's: a tab sharing
                                   * its window with other processes (own pens and font) */
@@ -177,6 +178,12 @@ int vtwin_set_font(vtwin *w, const char *name, WORD size);
 /* A new scrollback size for an attached window, live (0: none); the view
  * returns to the live output. 0 when there was no memory (unchanged). */
 int vtwin_set_scrollback(vtwin *w, int lines);
+/* The tab's pane count changed: the scrollback goes to the size
+ * lay_sb_lines gives (shrunk: the oldest lines go; grown back past two
+ * panes: room again, up to the window's setting). */
+void vtwin_set_panes(vtwin *w, int panes);
+/* The scrollback the engine holds now, in lines (the setting after the cap). */
+int vtwin_scrollback_size(const vtwin *w);
 /* A tab: shown (redrawn whole, its title on the window) or not (draws
  * nothing, its engine goes on). */
 void vtwin_show(vtwin *w, int on);

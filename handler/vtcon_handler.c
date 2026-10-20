@@ -4289,6 +4289,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         /* this process's block: the host's own, or the tab's copy the host pushed (stat_push) */
         if (!c->is_tab)
             stat_fill(c);
+        c->st.scrollback = vtwin_scrollback_size(&c->w); /* this pane's own, after the NS4.3 cap */
         return slash_state_text(&c->st, cmd.arg, ans, cap) < 0 ? 2 : 1;
     case SLASH_THEME:
         if (!cmd.arg[0] && typed) {
@@ -5476,6 +5477,7 @@ struct tab_msg {
     struct Window *win;      /* REGISTER's answer: the window */
     WORD inset;              /* REGISTER's answer, RECT: the bar's height */
     WORD rx, ry, rw, rh;     /* REGISTER's answer, RECT: the pane's place (rw 0: all below the bar) */
+    int panes;               /* RECT: the panes in its slot (vtwin_set_panes) */
     int ok, what;            /* REGISTER's answer; REGISTER: the PANE serial; COMMAND: MENU_TAB_*;
                               * SHOW: 1 when the pane has the keys */
     ULONG cls;               /* EVENT: the IDCMP class and its fields */
@@ -5732,14 +5734,16 @@ static void tab_self(con *c)
 }
 
 /* One pane's place: inset the bar's height, rect r inside the window's
- * borders (r->w 0: the whole area below the bar). */
-static void pane_place(con *c, con *p, WORD inset, const lay_rect *r)
+ * borders (r->w 0: the whole area below the bar), and its slot's pane
+ * count (the scrollback cap past two, NS4.3). */
+static void pane_place(con *c, con *p, WORD inset, const lay_rect *r, int panes)
 {
     struct tab_msg *t;
     if (p == c) {
         c->w.inset_top = inset;
         if (c->w.t)
             vtwin_set_rect(&c->w, (WORD)r->x, (WORD)r->y, (WORD)r->w, (WORD)r->h);
+        vtwin_set_panes(&c->w, panes);
         return;
     }
     if (!p->tab_port || !(t = tab_msg(c, TM_RECT)))
@@ -5749,6 +5753,7 @@ static void pane_place(con *c, con *p, WORD inset, const lay_rect *r)
     t->ry = (WORD)r->y;
     t->rw = (WORD)r->w;
     t->rh = (WORD)r->h;
+    t->panes = panes;
     PutMsg(p->tab_port, &t->msg);
 }
 
@@ -5798,7 +5803,7 @@ static void tab_layout(con *c)
                 r.h = inner_h(win) - h;
             } else if (split)
                 lay_pane_rect(&s->l, k, &r);
-            pane_place(c, (con *)s->pane[k], h, &r);
+            pane_place(c, (con *)s->pane[k], h, &r, tabslot_panes(s));
         }
     }
     if (!h && c->w.t && !c->host_only)
@@ -6788,6 +6793,7 @@ static void tab_msgs(con *c)
         case TM_RECT:
             c->w.inset_top = t->inset;
             vtwin_set_rect(&c->w, t->rx, t->ry, t->rw, t->rh);
+            vtwin_set_panes(&c->w, t->panes);
             break;
         case TM_FONT:
             vtwin_set_font(&c->w, t->font, t->font_size); /* the slot's font: not passed on again */

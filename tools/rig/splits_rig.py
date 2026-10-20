@@ -18,6 +18,10 @@ Cases (each opens its own vsh window, so `--only` runs one alone):
   zoom      RA+Shift+Enter zooms the focused pane to full width, again restores the half width
   race      Split down from both panes back to back after a `cd` to two different dirs; every pane's `pwd`
             is the dir of the pane it was split from (the shared T:UP-Term-tab script race)
+  pane_scroll NS4.3: (a) the wheel over the right pane scrolls it back (its pixels change, back again on wheel-down)
+            while the left pane keeps streaming (its pixels keep moving); (b) a drag from the right pane over the
+            divider into the left pane copies right-pane text only; (c) `UPTerm state` scrollback is 500 in each of
+            2 panes and 200 in each of 3 (owner 2026-10-20, render/layout.h lay_sb_lines)
   restore   NS5.5: with split-restore = programs, Close tab on a 3-pane window writes ENV:up-term/splits; the next
             window takes it (file gone, `UPTerm state` split-restores 1), has 3 panes, each in its saved directory
             left to right, and the middle pane's running command started again (its script logs a second run)
@@ -53,7 +57,7 @@ BOX = '0/20/600/240'
 CELL_H = int(os.environ.get('SPLITS_CELL_H') or 16)   # measured rig 4 (2026-10-20): cursor bbox 8 x 16 px
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'host_exit_cycles', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'menu_keys', 'tab_layout', 'gadget_close_split', 'font', 'restore', 'cursor_focus', 'mouse_report', 'view_split', 'perf']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'host_exit_cycles', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'menu_keys', 'tab_layout', 'gadget_close_split', 'font', 'restore', 'cursor_focus', 'mouse_report', 'view_split', 'pane_scroll', 'perf']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
 K_W, K_D, K_ENTER, K_LBRACKET, K_RBRACKET = 0x11, 0x22, 0x44, 0x1A, 0x1B
@@ -981,6 +985,124 @@ def case_view_split(ck):
         ck(w is not None and w['box'][2:] == box_wb[2:] and pane_count() == 2, 'back on the Workbench: the window as it was, the panes stay (2)',
            (w and w['box'], box_wb, pane_count()))
 
+    finally:
+        teardown()
+
+
+def region(rect, rows=None):
+    """the bytes of a screen rect (x, y, w, h) from one grab: equal bytes = the same pixels"""
+    if rows is None:
+        rows = ami.grab()[2]
+    x, y, w, h = rect
+    return b''.join(rows[yy][3 * x:3 * (x + w)] for yy in range(y, y + h))
+
+
+def pane_rect(which, cols_left):
+    """a pane's text area on screen (x, y, w, h), a cell in from each edge"""
+    x0, y0, ww, hh = window_box()
+    top, bot = y0 + TOP_PAD + 16 + CELL_H, y0 + hh - 6 - CELL_H
+    left_px = cols_left * CELL_W
+    if which == 'L':
+        return x0 + BORDER_L + CELL_W, top, left_px - 2 * CELL_W, bot - top
+    xr = x0 + BORDER_L + left_px + 1 + CELL_W
+    return xr, top, x0 + ww - RIGHT_PAD - CELL_W - xr, bot - top
+
+
+def wheel(x, y, up, n=4):
+    """n wheel notches with the pointer at (x, y): RAWKEY 0x7A up / 0x7B down (render/vtinput.c)"""
+    kx, ky = ami.pointer_scale()
+    ami.script(('move', int(x * kx), int(y * ky)), ('wait', 3))
+    for _ in range(n):
+        ami.key(0x7A if up else 0x7B)
+        time.sleep(0.4)
+    time.sleep(1.5)
+
+
+def drag_select(x0, x1, y):
+    """button down at (x0, y), moved in steps to (x1, y), released (snip_rig.drag_copy's path)"""
+    kx, ky = ami.pointer_scale()
+    ev = [('move', int(x0 * kx), int(y * ky)), ('wait', 2), ('button', 0, 1), ('wait', 3)]
+    for i in range(1, 9):
+        ev += [('move', int((x0 + (x1 - x0) * i // 8) * kx), int(y * ky)), ('wait', 2)]
+    ev += [('wait', 3), ('button', 0, 0), ('wait', 10)]
+    ami.script(*ev)
+    time.sleep(1)
+
+
+def sb_of_each(ck, n, want, what):
+    """`UPTerm state` scrollback in each of n panes (RA+] cycles the keys): all want"""
+    got = []
+    for i in range(n):
+        got.append(state_key('scrollback'))
+        ra(K_RBRACKET)
+    print('%s: scrollback per pane %s' % (what, got))
+    ck(got == [want] * n, '%s: `UPTerm state` scrollback is %d in each pane' % (what, want), got)
+    return got
+
+
+def case_pane_scroll(ck):
+    """NS4.3: the wheel and a selection act on one pane; the pane scrollback cap past two panes."""
+    rows, full = fresh()
+    try:
+        split_right_and_count(ck)
+        want_l, _ = expected_cols(full)
+        r0 = stty_size('ps-right')
+        click(*pane_point('L', want_l[0]))
+        l0 = stty_size('ps-left')
+        if not (l0 and r0):
+            ck(False, 'both panes answer `stty size`', (l0, r0))
+            return
+        cl = l0[1]
+        # (c) first, both panes quiet: 2 panes keep the built-in 500
+        sb_of_each(ck, 2, 500, '2 panes')
+        # (b) a known line in the right pane, then a drag from it across the divider into the left pane
+        click(*pane_point('R', cl))
+        line('Clear', wait=1.5)
+        line('Echo RIGHTSIDETEXT', wait=2)
+        x0, y0, ww, hh = window_box()
+        ty = y0 + TOP_PAD + 16 + CELL_H + CELL_H // 2          # the second text row: the echoed word
+        xr = x0 + BORDER_L + cl * CELL_W + 1 + CELL_W // 2     # the right pane's first column
+        c.run('VTC:snipprobe CLEAR')
+        drag_select(xr + 15 * CELL_W, x0 + BORDER_L + 4 * CELL_W, ty)
+        ami.key(0x33, RAMIGA)                                  # Copy: the pane the drag started in
+        time.sleep(2)
+        clip = typewin._clip('RAM:ns43-clip.txt').strip()
+        print('drag across the divider copied %r' % clip)
+        ck('RIGHTSIDE' in clip, 'drag from the right pane: the clipboard holds right-pane text', clip)
+        ck('LEFT' not in clip and len(clip) <= r0[1] + 2, 'drag past the divider: no left-pane text copied', clip)
+        # (a) the left pane streams, the right one prints numbered lines past a screen, the wheel scrolls it back
+        click(*pane_point('L', cl))
+        line("Clear", wait=1)
+        line(stream_cmd(41, 'LEFT', 4), wait=2)
+        click(*pane_point('R', cl))
+        line("for i in %s; do echo numbered line $i; done" % ' '.join(str(k) for k in range(1, r0[0] * 2 + 11)), wait=8)
+        lr, rr = pane_rect('L', cl), pane_rect('R', cl)
+        g = ami.grab()[2]
+        right_live, left_a = region(rr, g), region(lr, g)
+        rx, ry = pane_point('R', cl)
+        wheel(rx, ry, True)
+        g = ami.grab()[2]
+        right_back, left_b = region(rr, g), region(lr, g)
+        shot('pane_scroll_wheel')
+        ck(right_back != right_live, 'wheel up over the right pane: its text moved (older lines shown)', None)
+        ck(left_b != left_a, 'left pane kept receiving output while the right pane scrolled back', None)
+        time.sleep(3)
+        left_c = region(lr)
+        ck(left_c != left_b, 'left pane still moving after the wheel: it was not scrolled', None)
+        wheel(rx, ry, False, n=8)
+        ck(region(rr) == right_live, 'wheel down over the right pane: back at the live screen', None)
+        # stop the stream (Ctrl+C in the left pane) before the counters
+        click(*pane_point('L', cl))
+        typewin.key(0x33, CTRL, wait=1)
+        typewin.key(0x33, CTRL, wait=2)
+        line('Clear', wait=1)
+        # (c) a third pane: each pane is capped to 200
+        pick('Split down')
+        time.sleep(6)
+        n = pane_count()
+        ck(n == 3, 'Split down: 3 panes', n)
+        if n == 3:
+            sb_of_each(ck, 3, 200, '3 panes')
     finally:
         teardown()
 

@@ -328,6 +328,22 @@ static void a_saved_tree_replays_as_splits_to_the_same_shape(void)
     CHECK_INT(lay_steps(0, from, dir, leaf), -1);
 }
 
+/* NS4.3 (owner, 2026-10-20): one or two panes keep the window's scrollback,
+ * a tab of more than two panes gives each 200 lines (a smaller setting, or
+ * none, stays as it is). */
+static void a_third_pane_caps_each_panes_scrollback_at_200(void)
+{
+    CHECK_INT(lay_sb_lines(500, 1), 500);
+    CHECK_INT(lay_sb_lines(500, 2), 500);
+    CHECK_INT(lay_sb_lines(500, 3), LAY_SB_MANY);
+    CHECK_INT(lay_sb_lines(500, 4), 200);
+    CHECK_INT(lay_sb_lines(2000, 2), 2000);
+    CHECK_INT(lay_sb_lines(2000, 3), 200);
+    CHECK_INT(lay_sb_lines(100, 3), 100);
+    CHECK_INT(lay_sb_lines(0, 4), 0);
+    CHECK_INT(lay_sb_lines(500, 0), 500); /* no slot yet: a window of its own */
+}
+
 void suite_layout(void)
 {
     a_lone_pane_fills_the_window();
@@ -348,4 +364,5 @@ void suite_layout(void)
     a_saved_tree_loads_back_to_the_same_places();
     a_bad_saved_tree_is_refused_and_leaves_the_layout();
     a_saved_tree_replays_as_splits_to_the_same_shape();
+    a_third_pane_caps_each_panes_scrollback_at_200();
 }

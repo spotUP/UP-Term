@@ -5909,6 +5909,11 @@ void vt_clear_scrollback(vt_term *t)
     sb_release(t);
 }
 
+int vt_scrollback_size(const vt_term *t)
+{
+    return t ? t->sb_cap : 0;
+}
+
 int vt_set_scrollback(vt_term *t, int lines)
 {
     vt_sbl **ring = 0;

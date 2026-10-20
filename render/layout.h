@@ -111,4 +111,11 @@ int lay_load(lay *l, const char *s);
  * The arrays are LAY_MAX_PANES long. */
 int lay_steps(const char *s, int *from, int *dir, int *leaf);
 
+/* A pane's scrollback in lines (NS4.3, owner 2026-10-20): lines (the
+ * window's setting, 0 none) in a tab of one or two panes; past two panes
+ * each pane holds at most LAY_SB_MANY. The one rule vtwin sizes by; a
+ * macro, so up-console.device (vtwin without the layout) links it too. */
+#define LAY_SB_MANY 200
+#define lay_sb_lines(lines, panes) ((panes) > 2 && (lines) > LAY_SB_MANY ? LAY_SB_MANY : (lines))
+
 #endif
