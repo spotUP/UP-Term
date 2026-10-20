@@ -1423,6 +1423,35 @@ static void sc_tmux(long t, int first)
     ps("\033[r");
 }
 
+/* native split panes: no escape sequence or command splits a window, so this shows the keys and the menu */
+static void sc_splits(long t, int first)
+{
+    static const char *const rows[][2] = {
+        { "Split right", "Right Amiga D" },
+        { "Split down", "Right Amiga Shift D" },
+        { "Previous pane", "Right Amiga [" },
+        { "Next pane", "Right Amiga ]" },
+        { "Zoom pane", "Window menu" },
+        { "Close pane", "Window menu" }
+    };
+    int i, shown = (int)(t / 12) + 1;
+    if (first) {
+        heading("Split panes", "UP-Term splits a tab into panes, each with its own shell");
+        grey_line(4, "A tab holds up to 4 panes. Choose from the Window menu:");
+    }
+    for (i = 0; i < 6 && i < shown; i++) {
+        if (t / 12 != i && !first)
+            continue;
+        at(6 + i, 4);
+        fg(75);
+        padded(rows[i][0], 16);
+        sgr0();
+        ps(rows[i][1]);
+    }
+    if (first)
+        grey_line(13, "Unlike tmux, the panes belong to UP-Term: a program cannot split the window itself.");
+}
+
 /* a shell session, typed */
 struct shot {
     int at;          /* the tick its prompt shows */
@@ -1920,6 +1949,7 @@ static const scene_def scenes[] = {
     { "unicode", sc_unicode, 0, 450, "Unicode: scripts, wide characters, accents", 0, 0, 0 },
     { "scroll regions", sc_region, 0, 350, "Scroll regions: the header stays put", 0, 1, 0 },
     { "tmux", sc_tmux, 0, 450, "tmux and screen: each pane a scroll region", 0, 0, 0 },
+    { "splits", sc_splits, 0, 300, "Split panes: Window menu and keys", 0, 0, 0 },
     { "vsh", sc_vsh, 0, 500, "vsh, the shell of UP-Term windows", 0, 0, 0 },
     { "completion", sc_complete, 0, 450, "Tab completion, Unix style and KingCON style", 0, 0, 0 },
     { "themes", sc_themes, 0, 480, "Themes switched live (OSC 4, 10, 11)", 0, 0, "Themes: the 16 colours a theme sets" },

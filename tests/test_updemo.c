@@ -155,17 +155,17 @@ static int scene_index(const char *name)
  * second player, so no second list can hold scenes the first lacks. */
 static void there_is_one_scene_list_with_the_effects_at_its_end(void)
 {
-    CHECK_INT(updemo_scenes(), 24);
+    CHECK_INT(updemo_scenes(), 25);
     CHECK_INT(scene_index("styles"), 1);        /* the tour's scene, in the list a bare UPDemo plays */
-    CHECK_INT(scene_index("copper bars"), 16);  /* the show's scenes follow the tour's */
-    CHECK_INT(scene_index("the end"), 23);
+    CHECK_INT(scene_index("copper bars"), 17);  /* the show's scenes follow the tour's */
+    CHECK_INT(scene_index("the end"), 24);
 }
 
 /* a bare UPDemo plays the whole list from its first scene: the status line shows the caption and "1/24" */
 static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 {
     start(80, 24);
-    needle = "Demo 1/24  Text styles, double-size lines, box drawing";
+    needle = "Demo 1/25  Text styles, double-size lines, box drawing";
     CHECK_INT(updemo_run(&io, 80, 24, 0, 6), 0);
     CHECK(saw_text);
     needle = 0;
@@ -176,14 +176,14 @@ static void a_bare_run_starts_at_the_first_scene_with_its_caption(void)
 static void a_start_number_picks_a_scene_of_the_one_list(void)
 {
     start(80, 24);
-    needle = "Demo 2/24  Every text style a program can ask for";
+    needle = "Demo 2/25  Every text style a program can ask for";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(saw_text);
-    needle = "Demo 1/24";
+    needle = "Demo 1/25";
     saw_text = 0;
     vt_free(t);
     start(80, 24);
-    needle = "Demo 1/24";
+    needle = "Demo 1/25";
     CHECK_INT(updemo_run(&io, 80, 24, 1, 6), 0);
     CHECK(!saw_text);   /* scene 1 was skipped */
     needle = 0;
