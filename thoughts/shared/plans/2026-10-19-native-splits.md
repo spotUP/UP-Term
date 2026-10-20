@@ -104,13 +104,13 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 ### Phase 5 - polish and scope decisions
 - [x] NS5.1 (rig 4, 2026-10-20: splits_rig zoom PASS) Zoom pane (toggle one pane to full rect and back). Test: rig.
 - [x] NS5.2 (2026-10-20, rig 4 case tab_layout PASS 35 checks: 2-pane and 3-pane tabs switched by menu and RA+1/RA+2, layout, sizes and focus kept; mutation proof g1-tab_layout-mut.log) Interaction with tabs: each tab owns its own layout (or splits only in the first tab: per owner answer). Test: rig, switch tabs and see layout preserved.
-- [ ] NS5.3 DECCOLM, View > 80x24 / 132x43 menu items, fullscreen, font bigger/smaller act on the focused pane or are disabled while split (decided by owner). Test: rig per item. Exemption (owner 2026-10-20): fullscreen while split stays refused for 1.x, like tabs (screen_switch would have to rebind every pane's process); planned for the next version, see section 8.
+- [x] NS5.3 DECCOLM, View > 80x24 / 132x43 menu items, fullscreen, font bigger/smaller act on the focused pane or are disabled while split (decided by owner). Test: rig per item. Exemption (owner 2026-10-20): fullscreen while split stays refused for 1.x, like tabs (screen_switch would have to rebind every pane's process); planned for the next version, see section 8. Done 934b1d86: view_split PASS on rig 4; DECCOLM guard alone reverted FAILS view_split (g4-mut.log).
 - [x] NS5.4 Perf: measure against Phase 0 budgets (rig, 4 panes): record to build/rig/splits/perf.txt; all budgets asserted (done: case perf PASS, g2-perf.log). Includes `top`/ps idle check. Exemption (owner 2026-10-20): the split latency, focus switch and drag rate budgets are judged by the owner by eye on a real machine; the rig records its round-trip numbers only. Idle CPU (4 panes within 10% of 4 tabs) and Avail stay rig-asserted.
 - [x] NS5.5 (rig 4, 2026-10-20: splits_rig restore PASS) Persistence if chosen: layout saved in profile (upconf), restored on window open. Test: rig reopen.
 - [x] NS5.6 (8528997f README + window lesson, d4706f6a slash help, d4af863a matrix note; man/UPTerm.1 exempt: it names no setting one by one and points at /help) Docs: tutorial lesson, slash help, conformance matrix note (panes are not a sequence; matrix unaffected), man page, README feature list; remove "splits missing" rows in research notes? (research notes are history: leave).
 - [x] NS5.7 (a3e078a5: updemo `splits` scene; owner 2026-10-20: tmux scene stays) Remove superseded demo claim? No: the updemo tmux-split scene stays; add a native-split scene only if owner wants (demo/updemo.c).
 
-Plan count: 19 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1-5.7); 16 of 19 ticked 2026-10-20 (NS3.4 934b1d86, NS5.4 perf case). Execution rule: tick in the open with running count; partial = failed plan.
+Plan count: 19 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1-5.7); 17 of 19 ticked 2026-10-20 (NS3.4 and NS5.3 934b1d86, NS5.4 perf case). Execution rule: tick in the open with running count; partial = failed plan.
 
 ## 4. Risks
 
