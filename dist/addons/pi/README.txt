@@ -1,11 +1,11 @@
 amiga-pi - the pi coding agent
 ==============================
 
-pi, the coding agent, for the Amiga: C:amiga-pi. It stands alone; UP-Term.lha is optional.
+pi, the coding agent, for the Amiga: C:amiga-pi. It stands alone; up-term.lha is optional.
 
 WHAT YOU NEED
   AmigaOS 3.0 or newer, a 68020 or better, a TCP/IP stack (Roadshow, Miami, AmiTCP) and,
-  for https, AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha). UP-Term.lha is not needed.
+  for https, AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha). up-term.lha is not needed.
 
 ON A PLAIN WORKBENCH
   Without UP-Term the program runs in the Shell window in its line mode (the console's own
@@ -29,7 +29,7 @@ USE
 UNINSTALL
   Double-click Uninstall (or Execute Uninstall). It removes C:amiga-pi; your settings in
   ENVARC:amiga-pi stay. With UP-Term installed it asks whether to delete your data in
-  UP-Term:var/amiga-pi (default No). Uninstall of UP-Term.lha leaves this program alone.
+  UP-Term:var/amiga-pi (default No). Uninstall of up-term.lha leaves this program alone.
 
 AMIGA-PI
   C:amiga-pi is pi, the coding agent (pi.dev), for the Amiga: it

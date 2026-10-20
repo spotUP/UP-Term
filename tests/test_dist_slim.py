@@ -1,7 +1,7 @@
-"""The slim base (P9): git, perl and vim are upkg packages, not part of UP-Term.lha.
+"""The slim base (P9): git, perl and vim are upkg packages, not part of up-term.lha.
 
 dist/slim.txt names the paths each package owns (the one list: tools/slim.py). Checked here:
-the base kit and UP-Term.lha hold none of them (the fat base v1.0 did: 37 MB of 70), each
+the base kit and up-term.lha hold none of them (the fat base v1.0 did: 37 MB of 70), each
 package's staged tree and .ipk hold exactly its paths and its SOURCES.txt row, and the rows of
 the base's SOURCES.txt name no moved port. The kit of the real build is read (make dist dist-ipk);
 skipped when it was not built, required with SLIM_REQUIRE=1 (make dist-check).
@@ -65,8 +65,8 @@ class SlimBase(unittest.TestCase):
         self.assertEqual(ports & set(slim.ids()), set())
 
     def test_the_base_archive_lists_none_of_them(self):
-        need(self, BUILD / 'UP-Term.lha')
-        out = subprocess.run(['lha', 'l', str(BUILD / 'UP-Term.lha')], capture_output=True, text=True, check=True).stdout
+        need(self, BUILD / 'up-term.lha')
+        out = subprocess.run(['lha', 'l', str(BUILD / 'up-term.lha')], capture_output=True, text=True, check=True).stdout
         for m in ('Files/userland/bin/git', 'Files/userland/bin/perl', 'Files/userland/bin/vim',
                   'Files/userland/share/vim/', 'Files/userland/share/git-core/'):
             self.assertNotIn(' UP-Term/' + m, out, m)

@@ -24,7 +24,7 @@ WHAT YOU NEED
     a TCP/IP stack running: Roadshow (part of AmigaOS 3.2), Miami or AmiTCP
     AmiSSL 5: Aminet util/libs/AmiSSL-v5-OS3.lha; run its own installer
       (Install ticks curl only when LIBS:amisslmaster.library is found)
-  Get UP-Term.lha onto the Amiga any way you like (a memory card, a shared
+  Get up-term.lha onto the Amiga any way you like (a memory card, a shared
   drive, ftp over the stack) and unpack it with lha. Reboot after Install:
   XCON: and PTY: are mounted from then on.
 
@@ -444,7 +444,7 @@ VSH (the shell)
   UP-Term:share/nano (UP-Term:etc/nanorc includes them). Each package's
   licence is in UP-Term:licenses, with SOURCES.txt (version, upstream
   archive, sha256); the complete source with UP-Term's patches and build
-  recipes is UP-Term-src.lha, published next to UP-Term.lha.
+  recipes is up-term-src.lha, published next to up-term.lha.
   Differences from bash
     vsh is being brought to bash 5 behaviour. A difference that stays on
     purpose (AmigaOS cannot do it, or it was decided) gets one line here,
@@ -841,7 +841,7 @@ CONSOLE.DEVICE
 
 ADD-ONS
   Neovim, Python, Claude and amiga-pi are archives of their own, next to
-  UP-Term.lha. Each has its own Install, Uninstall and README.txt:
+  up-term.lha. Each has its own Install, Uninstall and README.txt:
     up-nvim.lha     Neovim 0.12 and its runtime (UP-Term:nvim). Needs this
                     one installed first: it runs on its patched
                     ixemul.library; its Install says so and stops when this
@@ -862,9 +862,9 @@ ADD-ONS
   and vsh. Uninstall of UP-Term takes up-nvim out first, by its own
   Uninstall (and asks once about UP-Term:var); the stand-alone ones stay.
   An UP-Term installed from the single kit (before the split) that had Neovim,
-  Python, Claude or amiga-pi keeps them when UP-Term.lha is installed over it
+  Python, Claude or amiga-pi keeps them when up-term.lha is installed over it
   (Update says so); install the archive of each to keep it updated. The source
-  of the GNU commands is UP-Term-src.lha, next to UP-Term.lha, with the Unix
+  of the GNU commands is up-term-src.lha, next to up-term.lha, with the Unix
   tools' source.
 
 STATUS

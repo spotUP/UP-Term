@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """dist/packages.txt, the one table of the kit's archives (tools/pkgs.py), on the host."""
-import hashlib, pathlib, re, sys, tempfile, unittest
+import hashlib, pathlib, re, subprocess, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -65,11 +65,11 @@ class Packages(unittest.TestCase):
         UP-Term, under their own names; only what needs the base (Neovim) is named UP-Term-*."""
         for r in ROWS[1:]:
             if r['needs-base'] == '-':
-                self.assertFalse(r['archive'].startswith('UP-Term'), r['id'])
+                self.assertFalse(r['archive'].lower().startswith('up-term'), r['id'])
             else:
                 self.assertTrue(r['archive'].startswith('up-'), r['id'])
         self.assertEqual({r['id'] for r in ROWS[1:] if r['needs-base'] == '-'}, {'claude', 'pi', 'python'})
-        self.assertEqual([r['archive'] for r in ROWS], ['UP-Term', 'up-claude', 'up-pi', 'up-nvim', 'up-python'])
+        self.assertEqual([r['archive'] for r in ROWS], ['up-term', 'up-claude', 'up-pi', 'up-nvim', 'up-python'])
 
     def test_a_stand_alone_archive_with_an_ixemul_version_carries_the_library(self):
         for r in ROWS[1:]:
@@ -163,11 +163,11 @@ class Readme(unittest.TestCase):
         for r in ROWS[1:]:
             req = mr.fields(mr.build(r['id'])[1])['Requires']
             if r['needs-base'] == '-':
-                self.assertNotIn('UP-Term.lha', req, r['id'] + ': stand-alone')
+                self.assertNotIn('up-term.lha', req, r['id'] + ': stand-alone')
             else:
-                self.assertIn('comm/term/UP-Term.lha >= ' + r['needs-base'], req, r['id'])
+                self.assertIn('comm/term/up-term.lha >= ' + r['needs-base'], req, r['id'])
         bumped = [dict(r, **{'needs-base': '1.3'}) if r['id'] == 'nvim' else dict(r) for r in ROWS]
-        self.assertIn('UP-Term.lha >= 1.3', mr.fields(mr.build('nvim', table=bumped)[1])['Requires'])
+        self.assertIn('up-term.lha >= 1.3', mr.fields(mr.build('nvim', table=bumped)[1])['Requires'])
 
     def test_the_directories_are_the_owners_choice(self):
         want = {'base': 'comm/term', 'src': 'comm/term', 'claude': 'comm/misc', 'pi': 'comm/misc',
@@ -194,6 +194,67 @@ class Readme(unittest.TestCase):
     def test_every_value_is_filled(self):
         for i in self.IDS:
             self.assertNotRegex(mr.build(i)[1], r'@[A-Z]+@')
+
+
+class BaseArchiveName(unittest.TestCase):
+    """Owner 2026-10-20: every published file is up-*, the base too (up-term.lha, up-term-src.lha). The product, the
+    UP-Term: assign and its record stay UP-Term."""
+
+    def test_the_base_archive_is_up_term_and_its_record_is_still_the_assign(self):
+        base = ROWS[0]
+        self.assertEqual((base['archive'], base['record']), ('up-term', 'UP-Term:'))
+
+    def test_no_file_of_the_repository_names_the_old_archives(self):
+        old = re.compile(r'UP-Term(-src)?\.lha')
+        bad = []
+        for sub in ('Makefile', 'RULES.md', 'tools', 'dist', 'tests'):
+            top = ROOT / sub
+            for f in ([top] if top.is_file() else sorted(top.rglob('*'))):
+                if not f.is_file() or f.suffix in ('.pyc', '.lha', '.png', '.info') or f.name == pathlib.Path(__file__).name:
+                    continue
+                try:
+                    text = f.read_text(encoding='latin-1')
+                except OSError:
+                    continue
+                if old.search(text):
+                    bad.append(str(f.relative_to(ROOT)))
+        self.assertEqual(bad, [])
+
+    def test_the_source_archive_is_up_term_src(self):
+        self.assertEqual(mr.row('src')['archive'], 'up-term-src')
+        self.assertEqual(pkgs.SOURCE_ARCHIVE, 'up-term-src')
+        self.assertIn('build/up-term-src.lha', (ROOT / 'Makefile').read_text())
+
+
+class Prune(unittest.TestCase):
+    """make dist deletes every build/*.lha that dist/packages.txt does not list (the leftovers of renamed packages)"""
+
+    def test_stale_archives_are_deleted_and_listed_ones_and_the_source_archive_stay(self):
+        keep = [r['archive'] + '.lha' for r in ROWS] + ['up-term-src.lha']
+        stale = ['Claude.lha', 'Python3.lha', 'amiga-pi.lha', 'UP-Term-nvim.lha', 'vtcon.lha']
+        with tempfile.TemporaryDirectory() as d:
+            for n in keep + stale + ['upkg-index.txt']:
+                (pathlib.Path(d) / n).write_bytes(b'x')
+            gone = pkgs.prune(d)
+            left = sorted(p.name for p in pathlib.Path(d).iterdir())
+        self.assertEqual(sorted(gone), sorted(stale))
+        self.assertEqual(left, sorted(keep + ['upkg-index.txt']))
+
+    def test_the_old_spelling_of_the_base_archives_is_stale(self):
+        """On a case-insensitive disk up-term.lha and UP-Term.lha are one file, so the old spelling is tried alone"""
+        with tempfile.TemporaryDirectory() as d:
+            for n in ('UP-Term.lha', 'UP-Term-src.lha'):
+                (pathlib.Path(d) / n).write_bytes(b'x')
+            self.assertEqual(pkgs.prune(d), ['UP-Term-src.lha', 'UP-Term.lha'])
+            self.assertEqual(list(pathlib.Path(d).iterdir()), [])
+
+    def test_make_dist_index_runs_it_and_prints_each_name(self):
+        mk = (ROOT / 'Makefile').read_text()
+        self.assertRegex(mk, r'(?m)^dist-index:.*\n\tpython3 tools/pkgs\.py prune \$\(BUILD\)\n')
+        with tempfile.TemporaryDirectory() as d:
+            (pathlib.Path(d) / 'vtcon.lha').write_bytes(b'x')
+            out = subprocess.run([sys.executable, str(ROOT / 'tools/pkgs.py'), 'prune', d], capture_output=True, text=True, check=True).stdout
+        self.assertIn('vtcon.lha', out)
 
 
 class Index(unittest.TestCase):

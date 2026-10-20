@@ -8,7 +8,7 @@
     "Vim 9.2.1202, for an UP-Term window.\n"
     "It goes into UP-Term:bin and UP-Term:share,\n"
     "where the base had it.\n"
-    "Needs UP-Term.lha installed first.\n"
+    "Needs up-term.lha installed first.\n"
     (all))
 (set #kb-vim @KBCOPYVIM@)
 (set #totalkb @KBTOTAL@)

@@ -101,7 +101,7 @@ class HandedLines(unittest.TestCase):
 
 
 # KIT=build/dist/<archive>: make dist-check runs this once for each archive
-KITDIR = pathlib.Path(os.environ.get("KIT", ROOT / "build/dist/UP-Term"))
+KITDIR = pathlib.Path(os.environ.get("KIT", ROOT / "build/dist/up-term"))
 if not KITDIR.is_absolute():
     KITDIR = ROOT / KITDIR
 
@@ -123,7 +123,7 @@ class BuiltKit(unittest.TestCase):
             self.assertIn(" install.dos#%s\n" % name, text)
 
     def test_only_the_base_hands_paths_over_and_holds_none_of_them(self):
-        if KITDIR.name != "UP-Term":
+        if KITDIR.name != "up-term":
             self.assertNotIn("handed#", (KITDIR / "Files/MANIFEST").read_text(encoding="latin-1"))
             self.skipTest("an add-on")
         kit = KITDIR
@@ -136,7 +136,7 @@ class BuiltKit(unittest.TestCase):
             "$VER: UP-Term %s (" % pkgs.get('base', 'version')))
 
     def test_the_base_manifest_lists_the_amissl_drawer_without_the_sdk(self):
-        if KITDIR.name != "UP-Term":
+        if KITDIR.name != "up-term":
             self.skipTest("an add-on")
         text = (KITDIR / "Files/MANIFEST").read_text(encoding="latin-1")
         for f in ("Install-AmiSSL", "Libs/AmigaOS3/amisslmaster.library", "Doc/AmiSSL.doc"):

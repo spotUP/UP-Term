@@ -4,6 +4,7 @@
   python3 tools/pkgs.py names              ids, one a line
   python3 tools/pkgs.py archives           archive names, one a line
   python3 tools/pkgs.py get <id> <column>  one value ("-" is printed as it is)
+  python3 tools/pkgs.py prune <dir>        delete every <dir>/*.lha that dist/packages.txt does not list
   python3 tools/pkgs.py index <dir>        upkg's index of the archives in <dir>
   python3 tools/pkgs.py ipk <build>        one .ipk per package into <build>/ipk (from build/dist/<archive>)
   python3 tools/pkgs.py feed <build>       <build>/ipk/Packages and Packages.gz of those .ipk files
@@ -73,7 +74,7 @@ def rename_lines(pairs):
 
 
 def lha_rows(path=TABLE):
-    """The rows published as an .lha next to UP-Term.lha. The packages of dist/slim.txt (git, perl, vim)
+    """The rows published as an .lha next to up-term.lha. The packages of dist/slim.txt (git, perl, vim)
     are upkg-only (owner 2026-10-19): the .ipk feed ships them, so no .lha, no index line, no Installer
     checkbox and no Aminet readme."""
     upkg_only = slim.ids()
@@ -87,6 +88,20 @@ def get(pkg_id, column, path=TABLE):
         if r['id'] == pkg_id:
             return r[column]
     raise SystemExit('pkgs: no package %r' % pkg_id)
+
+
+SOURCE_ARCHIVE = 'up-term-src'   # the source archive (Makefile dist-src): published next to the base, not a package row
+
+
+def prune(build, path=TABLE):
+    """Delete every <build>/*.lha that is not an archive of the table (lha_rows) or the source archive: what a
+    renamed or dropped package left behind. The name is compared as spelled (a case-insensitive disk keeps the
+    spelling the archive was written with, so a capitalised base archive is stale). Returns the names deleted."""
+    keep = {r['archive'] + '.lha' for r in lha_rows(path)} | {SOURCE_ARCHIVE + '.lha'}
+    gone = sorted(n for n in os.listdir(build) if n.endswith('.lha') and n not in keep)
+    for n in gone:
+        os.unlink(os.path.join(build, n))
+    return gone
 
 
 def index(build, path=TABLE):
@@ -330,6 +345,9 @@ def main(argv):
         print('\n'.join(r['archive'] for r in lha_rows()))
     elif argv[:1] == ['get'] and len(argv) == 3:
         print(get(argv[1], argv[2]))
+    elif argv[:1] == ['prune'] and len(argv) == 2:
+        for n in prune(argv[1]):
+            print('dist: deleted stale %s/%s' % (argv[1], n))
     elif argv[:1] == ['index'] and len(argv) == 2:
         sys.stdout.write(index(argv[1]))
     elif argv[:1] == ['ipk'] and len(argv) == 2:

@@ -8,9 +8,9 @@ Architecture: m68k-amigaos >= 3.0.0; m68k-020
 Requires:     none (source archive)
 Distribution: Aminet
 
-The source that goes with UP-Term.lha: each Unix tool port as its upstream archive with
+The source that goes with up-term.lha: each Unix tool port as its upstream archive with
 UP-Term's patches, recipes and build scripts, and the GNU coreutils 5.2.1 source tarball.
-It is published next to UP-Term.lha (comm/term), as the GPL's section 3 allows equivalent
+It is published next to up-term.lha (comm/term), as the GPL's section 3 allows equivalent
 access to the source from the same place.
 
 Licence: per package, see the licence files and SOURCES.txt inside; coreutils GPL v2.

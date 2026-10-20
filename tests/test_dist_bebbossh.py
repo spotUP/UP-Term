@@ -4,14 +4,14 @@
 - dist/net/bebbossh-1.46.1 holds the source tarball (GPL), the 21 patches in a gap-free order, SOURCE.txt, the licence and
   no binary; the tarball is the one SHA256SUMS names;
 - `make dist` stages build/bebbossh/out over that drawer (the Makefile line and the build script's patch count);
-- the staged kit (build/dist/UP-Term/Files/net/bebbossh-1.46.1, when `make dist` ran): our six binaries, each with the
+- the staged kit (build/dist/up-term/Files/net/bebbossh-1.46.1, when `make dist` ran): our six binaries, each with the
   checksum its SHA256SUMS lists, the programs and libraries with a $VER of 1.46.1. Skipped when no kit is staged,
   unless BEBBOSSH_REQUIRE=1 (make dist-check)."""
 import hashlib, os, pathlib, re, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DRAWER = ROOT / 'dist/net/bebbossh-1.46.1'
-KIT = ROOT / 'build/dist/UP-Term/Files/net/bebbossh-1.46.1'
+KIT = ROOT / 'build/dist/up-term/Files/net/bebbossh-1.46.1'
 BINARIES = ['bebbossh', 'bebboscp', 'bebbosshd', 'bebbosshkeygen',
             'libcryptossh.library020', 'libcryptossh.library060']
 PLAIN = 'libcryptossh.library'  # the 68000 build: the kit needs a 68020, nothing installs it, so it is not built or shipped

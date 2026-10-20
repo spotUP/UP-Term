@@ -12,7 +12,7 @@ C:Claude: a Claude Code client. It reads, searches and edits files and runs
 commands with your own Anthropic API key (billed to that key), or connects to Claude Code on
 another computer (C:uptelnet comes with it; with both, it asks which). It stands alone: it installs on a plain
 Workbench (AmigaOS 3.0 or newer) and runs in the Shell window, in a line mode; in an UP-Term
-window (comm/term/UP-Term.lha, optional) it gets the full-screen mode and keeps its data in
+window (comm/term/up-term.lha, optional) it gets the full-screen mode and keeps its data in
 UP-Term:var.
 
 Install: unpack, double-click Install. Uninstall removes C:Claude (and an old C:ClaudeCode) and keeps

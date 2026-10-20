@@ -6,7 +6,9 @@
 #     (dist/common/check.dos and check-standalone.dos), and dist/Uninstall does the same, so an install made by
 #     the old Installer is still found, updated and uninstalled
 # The new name is column 2 of dist/packages.txt (tests/test_dist_packages.py holds the two to each
-# other). Product names (C:Claude, C:amiga-pi, SYS:Python3) and the base UP-Term do not change.
+# other). Product names (C:Claude, C:amiga-pi, SYS:Python3) do not change. The base archive became up-term (2026-10-20) and
+# is not listed: it is no opkg package, and its record (the UP-Term: assign) kept its name, so an install made
+# by v1.2 is found, updated and uninstalled as before.
 Claude        up-claude
 amiga-pi      up-pi
 UP-Term-nvim  up-nvim

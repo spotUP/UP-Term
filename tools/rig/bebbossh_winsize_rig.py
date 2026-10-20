@@ -14,7 +14,7 @@ from install_rig import run  # noqa: E402
 
 PORT = 2223
 VTC = paths.RIG / 'vtc'
-NET = ROOT / 'build/dist/UP-Term/Files/net/bebbossh-1.46.1'
+NET = ROOT / 'build/dist/up-term/Files/net/bebbossh-1.46.1'
 BIN = os.environ.get('BB', str(ROOT / 'build/bebbossh/out/bebbossh'))
 fails = []
 

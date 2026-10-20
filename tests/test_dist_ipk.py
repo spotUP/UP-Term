@@ -201,8 +201,8 @@ class RenamedPackages(unittest.TestCase):
 
     def test_the_base_and_an_unrenamed_package_carry_none(self):
         base = pkgs.rows()[0]
-        self.assertEqual(base['archive'], 'UP-Term')
-        self.assertEqual(pkgs.old_names('UP-Term'), [])
+        self.assertEqual(base['archive'], 'up-term')
+        self.assertEqual(pkgs.old_names('up-term'), [])
         self.assertEqual(pkgs.old_record(base), [])
         self.assertEqual(pkgs._rename_fields(base), [])
         # a package of the scratch table that was never renamed

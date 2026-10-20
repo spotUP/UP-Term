@@ -627,7 +627,7 @@ class NoBaseCase(unittest.TestCase):
         ran, files = [], {'S:User-Startup': 'u'}
         def run(cmd, timeout=60):
             if cmd.startswith('Type S:User-Startup'): return 0, files['S:User-Startup']
-            if cmd.startswith('Type ENV:UPTCHECK'): return 0, 'up-nvim needs UP-Term 1.0 or newer. Install UP-Term.lha first.'
+            if cmd.startswith('Type ENV:UPTCHECK'): return 0, 'up-nvim needs UP-Term 1.0 or newer. Install up-term.lha first.'
             if cmd.startswith('List >NIL: C:') or cmd.startswith('List >NIL: UP-Term:'): return (0 if ran and not refuses else 5), ''
             return 0, ''
         def run_long(script, timeout=1500):

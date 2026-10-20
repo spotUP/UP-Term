@@ -66,7 +66,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Cross build (vbcc, 68020) | `make amiga`. Needs the AmigaOS 3.2 SDK headers once: unpack `NDK3.2R4` to `vendor/ndk-3.2r4-Include_H` (gitignored), or pass `make amiga VTCON_NDK=<path-to-Include_H>` |
 | Cross build for 68000 (engine only, DCTelnet's case) | `make amiga CPU=68000` |
 | hl and mdv for the host terminal (build/hl, build/mdv; suites `ONLY=hl`, `ONLY=md`) | `make view-host` |
-| Install kit, every archive (kit split K2, `dist/packages.txt`: base `UP-Term.lha` + `up-nvim` (needs the base) and the stand-alone `Claude`, `amiga-pi`, `Python3`, and `UP-Term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (one archive per `dist/packages.txt` row, in `build/`) |
+| Install kit, every archive (kit split K2, `dist/packages.txt`: base `up-term.lha` + `up-nvim` (needs the base) and the stand-alone `Claude`, `amiga-pi`, `Python3`, and `up-term-src.lha`; each with Install with Installer, or Files/install.dos) | `make dist` (one archive per `dist/packages.txt` row, in `build/`) |
 | One archive | `make dist-<id>` (id = `python3 tools/pkgs.py names`: base, claude, pi, nvim, python) |
 | Archives checked: each lists Install, Uninstall, Files/VERSIONS; per-archive manifest, versions, modes | `make dist-check` (every archive; runs tests/test_dist_versions.py too) |
 | Install kit on the rig: Install, check, Uninstall (cases listed at the top of tools/rig/install_rig.py; verdicts recorded, passed cases skipped) | `UPTERM_RIG=<n> python3 -I tools/rig/install_rig.py [--only <case>] [--failed] [--force]` (rig up; `make dist build/amiga/iconprobe build/amiga/wbrun` first); add-ons and migration from an old kit through the Installer: `python3 -I tools/rig/installer_rig.py ONLY addon-<id>` / `ONLY migrate` |
@@ -120,7 +120,7 @@ from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
 5. Fill what the readmes still leave open: `python3 tools/mkreadme.py <id> --release` fails
    while any `PLACEHOLDER` is left (today: the UP-Term licence line, ledger K4; the uploader
    address).
-6. Upload `UP-Term.lha` and `UP-Term-src.lha` together, then the add-ons, each with its
+6. Upload `up-term.lha` and `up-term-src.lha` together, then the add-ons, each with its
    `build/<archive>.readme`. Directories (owner 2026-10-13): base and source `comm/term`,
    up-nvim `text/edit`, Python3 `dev/lang`, Claude and amiga-pi
    `comm/misc`. The upload is the owner's.
@@ -131,5 +131,7 @@ from `dist/aminet/<id>.readme.in` by `tools/mkreadme.py`.
    repo spotUP/vtcon (the feed URL in `dist/upkg.conf`; v1.0 kits read it), not spotUP/UP-Term,
    and carries the opkg feed too: `gh release create v<base version> -R spotUP/vtcon --latest
    build/upkg-index.txt build/*.lha build/ipk/*.ipk build/ipk/Packages build/ipk/Packages.gz`.
+   `make dist` deletes every `build/*.lha` that `dist/packages.txt` and the source archive do not list
+   (`tools/pkgs.py prune`, printed), so the glob above holds the current archives only.
    Tag the built commit `v<base version>` in spotUP/UP-Term. Never an index without its
    archives: upkg refuses a download whose size or sha256 differ from the index.

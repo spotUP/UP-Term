@@ -13,7 +13,7 @@ and runs commands with the model of your choice (Anthropic, OpenAI and compatibl
 Google, Azure, Bedrock) and your own key. Lua extensions, prompt templates, skills and MCP
 servers work as in pi. It stands alone: it installs on a plain Workbench (AmigaOS 3.0 or
 newer) and runs in the Shell window, in a line mode; in an UP-Term window
-(comm/term/UP-Term.lha, optional) it gets the full-screen mode and keeps its data in
+(comm/term/up-term.lha, optional) it gets the full-screen mode and keeps its data in
 UP-Term:var.
 
 Install: unpack, double-click Install. It makes ENVARC:amiga-pi if it is missing and never

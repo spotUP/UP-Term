@@ -1,11 +1,11 @@
 Claude - Claude for the Amiga
 =============================
 
-Claude, Anthropic's AI model: C:Claude (with C:uptelnet, for Claude Code on a server). It stands alone; UP-Term.lha is optional.
+Claude, Anthropic's AI model: C:Claude (with C:uptelnet, for Claude Code on a server). It stands alone; up-term.lha is optional.
 
 WHAT YOU NEED
   AmigaOS 3.0 or newer, a 68020 or better, a TCP/IP stack (Roadshow, Miami, AmiTCP) and,
-  for https, AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha). UP-Term.lha is not needed.
+  for https, AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha). up-term.lha is not needed.
 
 ON A PLAIN WORKBENCH
   Without UP-Term the program runs in the Shell window in its line mode (the console's own
@@ -30,7 +30,7 @@ UNINSTALL
   Double-click Uninstall (or Execute Uninstall). It removes C:Claude (and an old C:ClaudeCode,
   which Claude.lha 1.0 had), the C:wasabid this archive put in (not one that was there before), and C:uptelnet unless UP-Term is installed; your settings in ENVARC:Claude stay. With UP-Term
   installed it asks whether to delete your data in UP-Term:var/Claude (default No).
-  Uninstall of UP-Term.lha leaves this program alone.
+  Uninstall of up-term.lha leaves this program alone.
 
 CLAUDE FROM THE AMIGA
   One app, one icon. Install asked where Claude Code runs (the NAS) and
@@ -58,7 +58,7 @@ CLAUDE FROM THE AMIGA
   there run commands on this Amiga, wasabi (wasabid on the Amiga) is described
   in the same file (never share its key).
   Install puts wasabid 0.11b2 (MIT, by Tobias Karlsson, Files/wasabid.LICENSE) in
-  C: only when no C:wasabid is there; a wasabid of UP-Term.lha or of yours stays.
+  C: only when no C:wasabid is there; a wasabid of up-term.lha or of yours stays.
   It is not started at boot: after a key login uptelnet starts a copy for that
   login, with a key of its own, and ends it when the login ends.
 

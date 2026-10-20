@@ -299,7 +299,7 @@ EndIf
 Lab copy-coreutils
 ; The Unix userland: GNU coreutils 5.2.1 (ls, cp, mv, rm, sort, head,
 ; wc... GPL v2: COPYING is in the kit's coreutils drawer, the complete
-; source in UP-Term-src.lha) in UP-Term's own drawer UP-Term:bin, not C::
+; source in up-term-src.lha) in UP-Term's own drawer UP-Term:bin, not C::
 ; AmigaDOS names ignore case, so GNU sort, date, join and install would be
 ; C:Sort, C:Date, C:Join and C:Install, which the system's scripts need.
 ; vsh finds them through $PATH (vshrc puts /UP-Term/bin first), and so
@@ -326,7 +326,7 @@ Lab userland
 ; syntax files and its system nanorc (UP-Term:etc/nanorc), and every
 ; package's licence in UP-Term:licenses. SOURCES.txt there names each one's
 ; version and upstream archive; the complete source with UP-Term's patches
-; and build recipes is UP-Term-src.lha, published next to UP-Term.lha.
+; and build recipes is up-term-src.lha, published next to up-term.lha.
 ; one MakeDir each: an Install over an Install finds them there
 MakeDir >NIL: UP-Term:share
 MakeDir >NIL: UP-Term:etc

@@ -92,7 +92,7 @@ class Versions(unittest.TestCase):
 
 
 # KIT=build/dist/<archive> (make dist-check runs this once for each archive of dist/packages.txt)
-KIT = os.environ.get('KIT', os.path.join(ROOT, 'build/dist/UP-Term'))
+KIT = os.environ.get('KIT', os.path.join(ROOT, 'build/dist/up-term'))
 ARCHIVE = os.path.basename(KIT.rstrip('/'))
 LHA = os.path.join(ROOT, 'build', ARCHIVE + '.lha')
 

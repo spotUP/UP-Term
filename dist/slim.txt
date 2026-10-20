@@ -1,4 +1,4 @@
-# The slim base (P9): the Unix tool ports that are upkg packages instead of part of UP-Term.lha.
+# The slim base (P9): the Unix tool ports that are upkg packages instead of part of up-term.lha.
 # One line per path a package owns: <package id> <path in the ports' userland tree>. A path may
 # use * (a file name pattern). This is the one list: tools/slim.py reads it to take the paths out of
 # the base kit (make dist-base), to stage them into the package (make dist-<id>) and to write the

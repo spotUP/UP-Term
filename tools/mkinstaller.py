@@ -109,8 +109,9 @@ def read_values(pkg_id, extra=()):
     if row is None:
         raise SystemExit('mkinstaller: no package %r in dist/packages.txt' % pkg_id)
     record = row['record']
+    # @ARCHIVE@ is the name the script's texts show: the base's is the product UP-Term (its archive is up-term)
     values = {
-        'ID': row['id'], 'ARCHIVE': row['archive'], 'VERSION': row['version'],
+        'ID': row['id'], 'ARCHIVE': 'UP-Term' if row['id'] == 'base' else row['archive'], 'VERSION': row['version'],
         'NEEDSBASE': row['needs-base'], 'IXEMUL': row['ixemul'], 'RECORD': record,
         'HANDED': row['handed'],
         'OPTS': 'ENVARC:up-term/opts' if row['id'] == 'base' else record.rstrip(':/') + '/opts',

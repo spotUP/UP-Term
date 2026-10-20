@@ -28,7 +28,7 @@ EndIf
 Lab claude
 ; C:Claude, the native Claude client (README): with an API key it is Claude here, with
 ; ENVARC:Claude/remote it is Claude Code on the NAS through C:uptelnet (this archive's
-; copy: the same program as UP-Term.lha's; no ixemul), and with both it asks (CL1).
+; copy: the same program as up-term.lha's; no ixemul), and with both it asks (CL1).
 ; An earlier up-claude.lha also had C:ClaudeCode (a script) and its icon: they are one app now.
 ; Its talking to Anthropic needs AmiSSL 5; ENVARC:Claude is where its settings go
 ; (Install never writes a key).

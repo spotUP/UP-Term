@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """installer_rig.py -- REAL-INSTALLER-TEST: the kit's Install icon the way a
-user starts it. The real Installer runs build/dist/UP-Term/Install (the
+user starts it. The real Installer runs build/dist/up-term/Install (the
 Installer script, dist/Install.installer) with the icon's tooltypes, visible
 on the rig's screen; this script reads its pages through wasabi's UITREE
 and clicks them, then checks what landed and runs Uninstall.

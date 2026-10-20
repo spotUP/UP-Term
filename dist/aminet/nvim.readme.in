@@ -5,13 +5,13 @@ Type:         text/edit
 Version:      @VERSION@
 Replaces:     none
 Architecture: m68k-amigaos >= 3.0.0; m68k-020
-Requires:     comm/term/UP-Term.lha >= @NEEDSBASE@ (it brings the patched ixemul.library)
+Requires:     comm/term/up-term.lha >= @NEEDSBASE@ (it brings the patched ixemul.library)
 Distribution: Aminet
 
 Neovim 0.12 with its runtime for an UP-Term window (TERM=vtcon, the patched ixemul.library of
 the base archive).
 
-Needs the base archive UP-Term.lha (version @NEEDSBASE@ or newer) installed first. About
+Needs the base archive up-term.lha (version @NEEDSBASE@ or newer) installed first. About
 32 MB installed.
 
 Install: unpack, double-click Install. Uninstall removes UP-Term:nvim.

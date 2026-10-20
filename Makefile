@@ -1006,9 +1006,9 @@ $(BUILD)/amiga/pty-handler: handler/pty_handler.c handler/pty_name.h handler/han
 	  $(BUILD)/amiga/obj/pty/brk.o $(BUILD)/amiga/obj/pty/waitset.o $(BUILD)/amiga/obj/pty/ldisc.o \
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
-# The install kit: build/UP-Term.lha -- a drawer UP-Term with Install (an
+# The install kit: build/up-term.lha -- a drawer UP-Term with Install (an
 # Installer script and its icon), Uninstall, README.txt, LICENSES.txt and Files/ (the rest).
-KIT := $(BUILD)/dist/UP-Term
+KIT := $(BUILD)/dist/up-term
 # the archive names are dist/packages.txt's (up-claude, up-pi and up-python stand alone)
 KIT_claude := $(BUILD)/dist/up-claude
 KIT_pi := $(BUILD)/dist/up-pi
@@ -1026,7 +1026,7 @@ NVIM_DIST ?= $(UPTERM_ROOT)/neovim-amiga/build/v012/dist/nvim
 IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # the Unix tool ports: staged by `make kit-stage` in upterm-ports (programs,
 # pages, licences, SOURCES.txt) with their source beside it; the source goes
-# into build/UP-Term-src.lha, published next to the kit (plan D2)
+# into build/up-term-src.lha, published next to the kit (plan D2)
 UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
 # a package's build/state/<p>.checked newer than the staged SOURCES.txt means the ports were rebuilt after the last
@@ -1052,7 +1052,7 @@ amiga-pi-bin:
 dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-src dist-index
 
 # every archive of dist/packages.txt, and the source archive
-# the base archive build/UP-Term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
+# the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
 dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
@@ -1108,10 +1108,10 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
 	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)
 	python3 tools/mkkit.py base
-	@ls -la $(BUILD)/UP-Term.lha
+	@ls -la $(BUILD)/up-term.lha
 
 # The add-on archives (dist/packages.txt): each stages its payload into build/dist/<archive>/Files and
-# tools/mkkit.py does the rest. up-nvim needs the base (UP-Term.lha) installed first on the
+# tools/mkkit.py does the rest. up-nvim needs the base (up-term.lha) installed first on the
 # Amiga; Claude, amiga-pi and Python3 stand alone.
 ADDON_STAGE = rm -rf $(BUILD)/dist/$(call pkg,$(1),archive) && mkdir -p $(BUILD)/dist/$(call pkg,$(1),archive)/Files \
 	&& cp $(BUILD)/amiga/upupdate $(BUILD)/dist/$(call pkg,$(1),archive)/Files/
@@ -1168,11 +1168,12 @@ dist-perl: $(BUILD)/amiga/upupdate
 dist-vim: $(BUILD)/amiga/upupdate
 	$(call SLIM_STAGE,vim)
 
-# build/UP-Term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
+# build/up-term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
 # upkg's index (upkg plan D1): released next to the archives it names
 dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
+	python3 tools/pkgs.py prune $(BUILD)
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
 # the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees
 dist-ipk: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
@@ -1182,10 +1183,10 @@ dist-src:
 	$(call PORTS_KIT_FRESH,dist-src)
 	rm -rf $(BUILD)/dist-src && mkdir -p $(BUILD)/dist-src/coreutils-5.2.1
 	cp dist/gg/coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2 dist/gg/coreutils-5.2.1/SOURCE.txt dist/gg/coreutils-5.2.1/COPYING $(BUILD)/dist-src/coreutils-5.2.1/
-	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/UP-Term-src.lha && lha -aq $(CURDIR)/$(BUILD)/UP-Term-src.lha userland-src
-	cd $(BUILD)/dist-src && lha -aq ../UP-Term-src.lha coreutils-5.2.1
+	cd $(PORTS_KIT)/.. && rm -f $(CURDIR)/$(BUILD)/up-term-src.lha && lha -aq $(CURDIR)/$(BUILD)/up-term-src.lha userland-src
+	cd $(BUILD)/dist-src && lha -aq ../up-term-src.lha coreutils-5.2.1
 	python3 tools/mkreadme.py src
-	@ls -la $(BUILD)/UP-Term-src.lha
+	@ls -la $(BUILD)/up-term-src.lha
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
@@ -1212,8 +1213,8 @@ dist-check:
 	@python3 tools/pkgs.py index $(BUILD) | cmp -s - $(BUILD)/upkg-index.txt || { echo "dist-check: $(BUILD)/upkg-index.txt does not match the archives: make dist-index"; exit 1; }
 	IPK_REQUIRE=1 python3 tests/test_dist_ipk.py
 	SLIM_REQUIRE=1 python3 tests/test_dist_slim.py
-	@test -s $(BUILD)/UP-Term-src.lha || { echo "dist-check: $(BUILD)/UP-Term-src.lha missing: make dist"; exit 1; }
-	@lha l $(BUILD)/UP-Term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: UP-Term-src.lha lacks the coreutils source"; exit 1; }
+	@test -s $(BUILD)/up-term-src.lha || { echo "dist-check: $(BUILD)/up-term-src.lha missing: make dist"; exit 1; }
+	@lha l $(BUILD)/up-term-src.lha | grep -q "coreutils-5.2.1/coreutils-5.2.1-src.tar.bz2" || { echo "dist-check: up-term-src.lha lacks the coreutils source"; exit 1; }
 
 # The one reachability test: XCON: through DOS on the running rig.
 test-rig: amiga

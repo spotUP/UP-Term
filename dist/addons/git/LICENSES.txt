@@ -5,7 +5,7 @@ Part                          Licence                          Source
 git 2.56.0 and its templates (bin/git, bin/git-*, share/git-core) GPL v2 only (COPYING, LGPL-2.1 for its libraries) upterm-ports (pkgs/git; git-2.56.0.tar.xz)
 
 Notes
-- These files were part of UP-Term.lha until the slim base (P9); the package installs them at the
+- These files were part of up-term.lha until the slim base (P9); the package installs them at the
   same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/git/SOURCES.txt.
-- The complete source with UP-Term's patches and build recipes is UP-Term-src.lha, published next to
-  UP-Term.lha.
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha.

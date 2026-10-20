@@ -222,7 +222,7 @@ The reachability tests (the product's top-level entry, with a sentinel):
 | `make test-rig` (`reach.py`) | `XCON:` is served by the freshly built handler: installs it, reboots the rig if it differs, runs the probe through DOS, requires PASS |
 | `concon_rig.py` | the system's CON:/RAW: served by UP-Term through `C:UPConsole` |
 | `condev_rig.py` | UP-Term's console.device under the ROM con-handler |
-| `install_rig.py` | the kit: unpack `build/dist/UP-Term`, run `Files/install.dos`, check what it did, Uninstall (needs `make dist` first) |
+| `install_rig.py` | the kit: unpack `build/dist/up-term`, run `Files/install.dos`, check what it did, Uninstall (needs `make dist` first) |
 | `standalone_rig.py` | what each add-on (Claude, amiga-pi, Neovim, Python 3) does on a stock Workbench 3.2 with no UP-Term file, in a ROM CON: and a KingCON window (K2-1; the screen text is read from the pixels, not OCR) |
 | `installer_rig.py` | the real Installer on the kit's Install icon, as a user starts it |
 | `ptytest_rig.py`, `ixpty_rig.py` | `PTY:` and BSD ptys through the patched ixemul |

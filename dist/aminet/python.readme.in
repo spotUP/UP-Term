@@ -11,7 +11,7 @@ Distribution: Aminet
 Python 3.14 (the python3 program and its library, about 15 MB installed in SYS:Python3). It
 stands alone: it needs ixemul.library 47 or newer and brings one (a build of ixemul 80 with
 ixnet.library) only when the system has none that new; an ixemul.library of 47 or newer that
-is there stays as it is, UP-Term's patched one (comm/term/UP-Term.lha) included. Python3: is
+is there stays as it is, UP-Term's patched one (comm/term/up-term.lha) included. Python3: is
 assigned to the drawer at every boot.
 
 Install: unpack, double-click Install. Uninstall removes the drawer, the assign and the

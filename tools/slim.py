@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The slim base (P9): which paths of the ports' userland tree belong to a package, not to UP-Term.lha.
+"""The slim base (P9): which paths of the ports' userland tree belong to a package, not to up-term.lha.
 
   python3 tools/slim.py ids                          package ids, one a line
   python3 tools/slim.py remove <userland>            take every package's paths (and SOURCES.txt rows) out of <userland>

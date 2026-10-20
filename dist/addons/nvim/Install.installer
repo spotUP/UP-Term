@@ -7,7 +7,7 @@
     "\n\n\nN E O V I M\n\n"
     "Neovim 0.12 and its runtime, for an UP-Term window.\n"
     "It goes into UP-Term:nvim (about 2100 files, 32 MB).\n"
-    "Needs UP-Term.lha installed first.\n"
+    "Needs up-term.lha installed first.\n"
     (all))
 (set #kb-nvim @KBCOPYNVIM@)
 (set #totalkb @KBTOTAL@)

@@ -4,7 +4,7 @@ Lab check
 Delete >NIL: ENV:UPTCHECK QUIET
 Assign >NIL: UP-Term: EXISTS
 If WARN
-  Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term @NEEDSBASE@ or newer. Install UP-Term.lha first."
+  Echo >ENV:UPTCHECK "@ARCHIVE@ needs UP-Term @NEEDSBASE@ or newer. Install up-term.lha first."
   Quit 20
 EndIf
 Version >NIL: FILE UP-Term:UP-Term.version @BASEMAJOR@ @BASEMINOR@

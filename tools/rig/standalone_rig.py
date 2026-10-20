@@ -83,7 +83,7 @@ def dist(rel):
     Python3's own ixemul, terminfo: the base's), else in the single kit of before the split."""
     if os.environ.get('STANDALONE_DIST'):
         return pathlib.Path(os.environ['STANDALONE_DIST']) / rel
-    archive = DIST_ARCHIVE.get(rel.split('/')[0], 'UP-Term')
+    archive = DIST_ARCHIVE.get(rel.split('/')[0], 'up-term')
     for top in (ROOT / 'build/dist', paths.RIG_HOME / 'dist'):
         for a in (archive, 'UP-Term'):
             if (top / a / 'Files' / rel).exists():

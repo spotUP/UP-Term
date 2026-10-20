@@ -31,7 +31,7 @@ One case per package on the base, and the combinations (K2-10, plan 2026-10-13-k
               amiagent is removed and our wasabid 0.2 replaced; Uninstall takes it away (WM6)
   net-upgrade Install SSH over a 1.45 libcryptossh.library: with our marker it is replaced by 1.46, without it (the user's own) it is kept
               with a note and the replace command; Uninstall removes only ours (K6 fix)
-  nobase      an add-on that needs the base (nvim): install.dos with no UP-Term: returns 20, ENV:UPTCHECK names UP-Term.lha
+  nobase      an add-on that needs the base (nvim): install.dos with no UP-Term: returns 20, ENV:UPTCHECK names up-term.lha
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/install/<case>.json when the case
 ends, with a fingerprint of the archives it installs; a case that passed with the same kit is skipped.
@@ -51,11 +51,11 @@ import verdicts
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-# the kit under test: build/dist/UP-Term, or UPTERM_KIT=<drawer> (build/dist is
+# the kit under test: build/dist/up-term, or UPTERM_KIT=<drawer> (build/dist is
 # shared with every agent's `make dist`, so a rig run takes a private copy)
 WASABI_PORT = 1233 + paths.RIG_N     # the rig's own wasabid port (tools/rig/wasabi.py: 1234 + N - 1)
 KIT_WASABI_PORT = 1283 + paths.RIG_N  # case_wasabi's restart of the kit's wasabid: WASABI_PORT is the rig's own daemon
-KIT = pathlib.Path(os.environ.get('UPTERM_KIT') or ROOT / "build/dist/UP-Term")
+KIT = pathlib.Path(os.environ.get('UPTERM_KIT') or ROOT / "build/dist/up-term")
 
 
 def assembled_scripts(pkg='base'):
@@ -1409,7 +1409,7 @@ def case_legacy(ck):
 
 
 def case_nobase(ck):
-    """An add-on that needs the base: its install.dos with no UP-Term: assign stops with 20, names UP-Term.lha in ENV:UPTCHECK, and writes nothing."""
+    """An add-on that needs the base: its install.dos with no UP-Term: assign stops with 20, names up-term.lha in ENV:UPTCHECK, and writes nothing."""
     ids = based_ids()
     prepare(None, ids)
     before = Before()
@@ -1418,7 +1418,7 @@ def case_nobase(ck):
         run('Delete >NIL: ENV:UPTCHECK QUIET')
         rc, out = run_long('runinstall-' + pkg)
         ck(rc == 20, '%s: install.dos without the base returns 20' % pkg, 'rc %d: %s' % (rc, out))
-        ck('UP-Term.lha' in run('Type ENV:UPTCHECK')[1], '%s: ENV:UPTCHECK names UP-Term.lha' % pkg, run('Type ENV:UPTCHECK')[1])
+        ck('up-term.lha' in run('Type ENV:UPTCHECK')[1], '%s: ENV:UPTCHECK names up-term.lha' % pkg, run('Type ENV:UPTCHECK')[1])
         addon_absent(ck, pkg, 'after the refused Install')
     ck(run('Type S:User-Startup')[1] == before.startup, 'nobase: S:User-Startup as it was, byte for byte')
     ck(run('List >NIL: UP-Term:pkg')[0] != 0, 'nobase: no UP-Term:pkg')
