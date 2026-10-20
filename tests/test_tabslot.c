@@ -156,6 +156,40 @@ static void the_shown_slot_stays_shown_when_another_goes(void)
     CHECK_INT(ACT, -1);
 }
 
+/* Right Amiga [ / ]: previous / next pane in reading order, wrapping. */
+static void the_focus_cycles_through_the_panes_in_reading_order(void)
+{
+    fresh();
+    tabslot_add(T, &N, 4, &E);
+    tabslot_add(T, &N, 4, &A);
+    CHECK_INT(tabslot_cycle(T, N, &A, 1), -1);  /* one pane: stays */
+    CHECK(tabslot_focused(&T[1]) == &A);
+    tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200); /* A | B */
+    tabslot_split(T, N, &B, &C, LAY_RIGHT, 8, 8, 0, 0, 640, 200); /* A | B | C */
+    CHECK_INT(tabslot_cycle(T, N, &A, 1), 1);
+    CHECK(tabslot_focused(&T[1]) == &B);
+    CHECK_INT(tabslot_cycle(T, N, &B, 1), 1);
+    CHECK(tabslot_focused(&T[1]) == &C);
+    CHECK_INT(tabslot_cycle(T, N, &C, 1), 1);
+    CHECK(tabslot_focused(&T[1]) == &A);        /* wraps */
+    CHECK_INT(tabslot_cycle(T, N, &A, -1), 1);
+    CHECK(tabslot_focused(&T[1]) == &C);        /* wraps back */
+    CHECK_INT(tabslot_cycle(T, N, &C, -1), 1);
+    CHECK(tabslot_focused(&T[1]) == &B);
+    CHECK_INT(tabslot_cycle(T, N, &D, 1), -1);  /* in no slot */
+    /* A | (B over C): the pane ids are not the reading order */
+    fresh();
+    tabslot_add(T, &N, 4, &A);
+    tabslot_split(T, N, &A, &B, LAY_DOWN, 8, 8, 0, 0, 640, 200);  /* A over B */
+    tabslot_split(T, N, &A, &C, LAY_RIGHT, 8, 8, 0, 0, 640, 200); /* (A | C) over B */
+    CHECK_INT(tabslot_cycle(T, N, &A, 1), 0);
+    CHECK(tabslot_focused(&T[0]) == &C);
+    CHECK_INT(tabslot_cycle(T, N, &C, 1), 0);
+    CHECK(tabslot_focused(&T[0]) == &B);        /* top row first, then the bottom */
+    CHECK_INT(tabslot_cycle(T, N, &B, 1), 0);
+    CHECK(tabslot_focused(&T[0]) == &A);
+}
+
 /* Right Amiga arrows: the focus goes to the pane on that side, and stays
  * put at an edge or for a pane in no slot. */
 static void the_focus_moves_to_the_pane_on_that_side(void)
@@ -228,6 +262,7 @@ void suite_tabslot(void)
     the_last_pane_takes_its_slot_and_the_rest_move_down();
     the_shown_slot_stays_shown_when_another_goes();
     the_focus_moves_to_the_pane_on_that_side();
+    the_focus_cycles_through_the_panes_in_reading_order();
     a_zoom_shows_only_the_focused_pane_until_the_layout_changes();
     the_pane_under_a_point_is_found_by_its_place();
 }

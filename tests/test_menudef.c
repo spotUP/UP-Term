@@ -49,7 +49,8 @@ static void the_split_items_sit_in_the_first_menu(void)
         if (ROWS[i].type == NM_TITLE) { first_end = i; break; }
     for (i = 0; i < first_end; i++)
         if (ROWS[i].id == MENU_SPLIT_RIGHT) CHECK_STR(ROWS[i].key, "D");
-    CHECK(items_with(MENU_PANE_LEFT) == 0); /* the pane moves are keys, not items */
+    CHECK_INT(items_with(MENU_PANE_PREV), 1);
+    CHECK_INT(items_with(MENU_PANE_NEXT), 1);
 }
 
 void suite_menudef(void)

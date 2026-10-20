@@ -2450,7 +2450,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
     case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:
-    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE: case MENU_PANE_ZOOM:
+    case MENU_SPLIT_RIGHT: case MENU_SPLIT_DOWN: case MENU_PANE_CLOSE: case MENU_PANE_PREV: case MENU_PANE_NEXT: case MENU_PANE_ZOOM:
         tab_command(c, (int)id);
         return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
@@ -5348,16 +5348,16 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
             }
         }
         /* Right Amiga Shift W closes this pane, Right Amiga Shift Enter
-         * zooms it, Right Amiga Left / Right give the keys to the pane
-         * beside it (the host decides) */
+         * zooms it, Right Amiga [ / ] give the keys to the previous /
+         * next pane in reading order (the host decides) */
         if ((qual & IEQUALIFIER_RCOMMAND) && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
             (code == 0x11 || code == 0x44 || code == 0x43)) {
             tab_command(c, code == 0x11 ? MENU_PANE_CLOSE : MENU_PANE_ZOOM);
             break;
         }
         if ((qual & IEQUALIFIER_RCOMMAND) && !(qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
-            (code == 0x4E || code == 0x4F)) {
-            tab_command(c, code == 0x4E ? MENU_PANE_RIGHT : MENU_PANE_LEFT);
+            (code == 0x1A || code == 0x1B)) { /* raw keys [ and ], on any keymap */
+            tab_command(c, code == 0x1B ? MENU_PANE_NEXT : MENU_PANE_PREV);
             break;
         }
         /* Right Amiga F: the find prompt, opened here rather than in vtwin
@@ -6307,7 +6307,7 @@ static void rest_poll(con *c)
         strcat(line, "\n");
     }
     if (line[0])
-        h_pasted(c, (const vt_u8 *)line, (int)strlen(line), 0);
+        vtwin_type(&c->w, line, (long)strlen(line)); /* key by key: each newline a Return that ends the line */
     rest_next(c);
 }
 
@@ -6441,15 +6441,21 @@ static void host_command(con *c, int what, con *from)
     case MENU_PANE_CLOSE:
         pane_close(c, from);
         break;
-    case MENU_PANE_LEFT:
-    case MENU_PANE_RIGHT:
+    case MENU_PANE_PREV:
+    case MENU_PANE_NEXT:
+        /* only in the shown slot: a key from a hidden pane moves nothing */
+        if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active) {
+            int zoomed = c->slots[c->active].zoom; /* a cycle ends a zoom */
+            if (tabslot_cycle(c->slots, c->ntabs, from, what == MENU_PANE_NEXT ? 1 : -1) >= 0)
+                slot_refocus(c, zoomed);
+        }
+        break;
     case MENU_PANE_UP:
     case MENU_PANE_DOWN:
         /* only in the shown slot: a key from a hidden pane moves nothing */
         if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active) {
             int zoomed = c->slots[c->active].zoom; /* a move ends a zoom */
             if (tabslot_move(c->slots, c->ntabs, from,
-                             what == MENU_PANE_LEFT ? LAY_LEFT : what == MENU_PANE_RIGHT ? LAY_RIGHT :
                              what == MENU_PANE_UP ? LAY_UP : LAY_DOWN) >= 0)
                 slot_refocus(c, zoomed);
         }
@@ -6785,7 +6791,7 @@ static void tab_msgs(con *c)
             vtwin_set_font(&c->w, t->font, t->font_size); /* the slot's font: not passed on again */
             break;
         case TM_TYPE:
-            h_pasted(c, (const vt_u8 *)t->text, (int)strlen(t->text), 0); /* as if pasted */
+            vtwin_type(&c->w, t->text, (long)strlen(t->text)); /* as typed: its newline is Return */
             break;
         case TM_STATE:
             c->st = t->st;

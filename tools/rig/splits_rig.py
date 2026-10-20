@@ -14,7 +14,7 @@ Cases (each opens its own vsh window, so `--only` runs one alone):
   winch     NS3.2: after a split, resizing the window (size-gadget drag) changes both panes' `stty size` cols to the
             layout's halves of the new width
   pane_close NS3.3: RA+Shift+W closes the focused pane (one pane again, input still works); `exit` in a pane does too
-  pane_arrows RA+Left / RA+Right move focus between the panes (typed text lands in the focused pane)
+  pane_cycle RA+[ / RA+] cycle the focus to the previous / next pane (checked by each pane's own `pwd`)
   zoom      RA+Shift+Enter zooms the focused pane to full width, again restores the half width
   race      Split down from both panes back to back after a `cd` to two different dirs; every pane's `pwd`
             is the dir of the pane it was split from (the shared T:UP-Term-tab script race)
@@ -51,10 +51,10 @@ TITLE = 'splitswin'
 BOX = '0/20/600/240'
 CELL_W = int(os.environ.get('SPLITS_CELL_W') or 8)    # topaz 8 (tutorial_rig / mouse_rig.cell_xy)
 BORDER_L, RIGHT_PAD, TOP_PAD = 4, 24, 14               # window inner left; scroll bar + border; title bar (drive.py)
-CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_arrows', 'zoom', 'drag', 'tab_close_split', 'font', 'restore']
+CASES = ['sentinel', 'size', 'focus', 'paint', 'race', 'winch', 'pane_close', 'pane_cycle', 'zoom', 'drag', 'tab_close_split', 'font', 'restore']
 RET, CTRL = typewin.RET, typewin.CTRL
 SHIFT, RAMIGA = typewin.SHIFT, typewin.RAMIGA
-K_W, K_D, K_ENTER, K_RIGHT, K_LEFT = 0x11, 0x22, 0x44, 0x4E, 0x4F    # raw keycodes (RA+key = pane commands)
+K_W, K_D, K_ENTER, K_LBRACKET, K_RBRACKET = 0x11, 0x22, 0x44, 0x1A, 0x1B    # raw keycodes (RA+key = pane commands; [ ] = previous / next pane)
 STREAM_SECS = 20
 
 
@@ -120,6 +120,13 @@ def pane_point(which, cols_left, nrows=1, row=0):
     x = x0 + BORDER_L + (left_px // 2 if which == 'L' else left_px + 1 + (ww - BORDER_L - RIGHT_PAD - left_px - 1) // 2)
     y = inner_top + inner_h * (2 * row + 1) // (2 * nrows)
     return x, y
+
+
+def col_point(col):
+    """screen pixel at a window text column, half way down: a click there focuses the pane holding it"""
+    x0, y0, ww, hh = window_box()
+    inner_top, inner_h = y0 + TOP_PAD + 16, hh - TOP_PAD - 16 - 6
+    return x0 + BORDER_L + col * CELL_W + CELL_W // 2, inner_top + inner_h // 2
 
 
 def click(x, y):
@@ -390,24 +397,29 @@ def case_pane_close(ck):
         teardown()
 
 
-def case_pane_arrows(ck):
+def case_pane_cycle(ck):
+    """RA+[ / RA+] cycle the focus through the panes in reading order, wrapping. The panes are told apart by
+    their directory (the left pane sits in RAM:nsc-l, the right in RAM:nsc-r), not by width."""
     rows, full = fresh()
-    want_l, want_r = expected_cols(full)
     try:
-        split_right_and_count(ck)                  # right pane focused
-        r = stty_size('right')
-        ck(bool(r) and r[1] in want_r, 'new (right) pane has focus', r)
-        ra(K_LEFT)
-        l = stty_size('left')
-        ck(bool(l) and l[1] in want_l, 'RA+Left: typed text runs in the left pane', l)
-        ra(K_RIGHT)
-        r2 = stty_size('right2')
-        ck(bool(r2) and r2[1] in want_r, 'RA+Right: typed text runs in the right pane again', r2)
-        if set(want_l) & set(want_r):                       # widths cannot tell the panes apart: use the typed marker too
-            marker = 'NSARW%d' % int(time.time() % 100000)
-            ra(K_LEFT)
-            line('echo %s' % marker)
-            ck(marker in typewin.screen_text(), 'marker is on the left pane\'s text')
+        line('makedir RAM:nsc-l RAM:nsc-r', wait=2)
+        line('cd RAM:nsc-l', wait=2)
+        split_right_and_count(ck)                  # the right pane is new and focused, started in RAM:nsc-l
+        line('cd RAM:nsc-r', wait=2)
+        got = pwd_of('cyc0')
+        ck(got.lower().endswith('nsc-r'), 'new (right) pane has the keys: pwd is nsc-r', got)
+        ra(K_LBRACKET)
+        got = pwd_of('cyc1')
+        ck(got.lower().endswith('nsc-l'), 'RA+[ : previous pane is the left one (pwd nsc-l)', got)
+        ra(K_RBRACKET)
+        got = pwd_of('cyc2')
+        ck(got.lower().endswith('nsc-r'), 'RA+] : next pane is the right one (pwd nsc-r)', got)
+        ra(K_RBRACKET)
+        got = pwd_of('cyc3')
+        ck(got.lower().endswith('nsc-l'), 'RA+] from the right pane wraps to the left one (pwd nsc-l)', got)
+        ra(K_LBRACKET)
+        got = pwd_of('cyc4')
+        ck(got.lower().endswith('nsc-r'), 'RA+[ from the left pane wraps to the right one (pwd nsc-r)', got)
     finally:
         teardown()
 
@@ -501,7 +513,7 @@ def case_font(ck):
     try:
         split_right_and_count(ck)
         right = stty_size('font-r0')
-        ra(K_LEFT)
+        ra(K_LBRACKET)
         left = stty_size('font-l0')
         fonts = state_key('slot-fonts') or 0
         # the face's next designed size: a rig with tall pixels has topaz
@@ -518,7 +530,7 @@ def case_font(ck):
         ck(pane_count() == 2, 'font step: the panes stay (2)', pane_count())
         l2 = stty_size('font-l1')
         ck(bool(left and l2) and l2 != left, 'font %s: the focused pane has a new size' % way, (left, l2))
-        ra(K_RIGHT)
+        ra(K_RBRACKET)
         r2 = stty_size('font-r1')
         ck(bool(right and r2) and r2 != right, 'font %s: the other pane took the font too' % way, (right, r2))
     finally:
@@ -534,13 +546,28 @@ def log_runs():
     return len([l for l in (ami.read_file(RESTORE_LOG) or b'').decode('latin-1').splitlines() if l.strip()])
 
 
-def case_restore(ck):
-    """NS5.5: split-restore programs, end to end through Close tab and a new window"""
+def restore_profile(mode):
+    """set split-restore = mode in the profile, the saved split gone; returns the undo for finally"""
     had = ami.read_file(PROFILE)
     c.run('Copy %s %s.nsr QUIET' % (PROFILE, PROFILE) if had is not None else 'Delete %s.nsr QUIET' % PROFILE)
     c.run('Echo >>%s "[profile default]"' % PROFILE)
-    c.run('Echo >>%s "split-restore = programs"' % PROFILE)
-    c.run('Delete ENV:up-term/splits ENVARC:up-term/splits %s QUIET' % RESTORE_LOG)
+    c.run('Echo >>%s "split-restore = %s"' % (PROFILE, mode))
+    c.run('Delete ENV:up-term/splits ENVARC:up-term/splits QUIET')
+
+    def undo():
+        c.run('Delete ENV:up-term/splits ENVARC:up-term/splits QUIET')
+        if had is not None:
+            c.run('Copy %s.nsr %s QUIET' % (PROFILE, PROFILE))
+            c.run('Delete %s.nsr QUIET' % PROFILE)
+        else:
+            c.run('Delete %s QUIET' % PROFILE)
+    return undo
+
+
+def case_restore(ck):
+    """NS5.5: split-restore programs, end to end through Close tab and a new window"""
+    undo = restore_profile('programs')
+    c.run('Delete %s QUIET' % RESTORE_LOG)
     for d in RESTORE_DIRS:
         c.run('MakeDir %s QUIET' % d)
     c.run('Echo >%s "Echo >>%s run"' % (RESTORE_JOB, RESTORE_LOG))
@@ -552,10 +579,13 @@ def case_restore(ck):
         line('cd %s' % RESTORE_DIRS[1])
         split_right_and_count(ck)
         line('cd %s' % RESTORE_DIRS[2])
-        ra(K_LEFT)
-        line('Execute %s' % RESTORE_JOB, wait=3)
-        ck(log_runs() == 1, 'the middle pane runs the job once before the close', log_runs())
         ck(pane_count() == 3, 'three panes before Close tab', pane_count())
+        # r(a, r(b, c)) at 72 columns: a 36, b and c 18 each; a click focuses a pane (RA+Left does
+        # not reach the window: Intuition's Amiga + cursor key pointer control takes it)
+        cols = (18, 45, 63)
+        click(*col_point(cols[1]))
+        line('Execute %s' % RESTORE_JOB, wait=3)          # from here `UPTerm state` cannot run in this pane
+        ck(log_runs() == 1, 'the middle pane runs the job once before the close', log_runs())
         pick('Close tab')
         time.sleep(6)
         saved = (ami.read_file('ENV:up-term/splits') or b'').decode('latin-1')
@@ -567,27 +597,23 @@ def case_restore(ck):
         typewin._last_title = TITLE
         typewin.click_in(TITLE)
         time.sleep(2)
-        ck(state_key('split-restores') == 1, '`UPTerm state` split-restores 1 (the restore ran)',
-           state_key('split-restores'))
-        ck(pane_count() == 3, 'the new window has the three panes', pane_count())
         ck(ami.read_file('ENV:up-term/splits') is None, 'the split file was taken (deleted)', None)
         ck(log_runs() == 2, 'the middle pane started its command again', log_runs())
         got = []
-        for i in range(3):                                # the focus is on the last pane built: the right one
+        for i in range(3):
+            click(*col_point(cols[i]))
             typewin.key(0x33, CTRL, wait=1)               # Ctrl-C: the restarted Wait ends
-            got.insert(0, pwd_of('restore%d' % i))
-            if i < 2:
-                ra(K_LEFT)
+            got.append(pwd_of('restore%d' % i))
+        # `UPTerm state` types into the focused pane: only now, after every pane's Ctrl-C, is it at a prompt
+        ck(state_key('split-restores') == 1, '`UPTerm state` split-restores 1 (the restore ran)',
+           state_key('split-restores'))
+        ck(pane_count() == 3, 'the new window has the three panes', pane_count())
         for want, g in zip(RESTORE_DIRS, got):
             ck(g.lower().endswith(want[4:]), 'pane in %s restored there' % want, got)
     finally:
         teardown()
-        c.run('Delete ENV:up-term/splits ENVARC:up-term/splits %s %s QUIET' % (RESTORE_JOB, RESTORE_LOG))
-        if had is not None:
-            c.run('Copy %s.nsr %s QUIET' % (PROFILE, PROFILE))
-            c.run('Delete %s.nsr QUIET' % PROFILE)
-        else:
-            c.run('Delete %s QUIET' % PROFILE)
+        c.run('Delete %s %s QUIET' % (RESTORE_JOB, RESTORE_LOG))
+        undo()
 
 
 def run_case(name, store, fp):

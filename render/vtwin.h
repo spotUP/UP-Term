@@ -267,6 +267,9 @@ void vtwin_knob_lines(vtwin *w, int n);
  * C and V, also for an owner's menu (no-ops without a clipboard) */
 void vtwin_copy(vtwin *w);
 void vtwin_paste(vtwin *w);
+/* text typed in as keys, line breaks as Return (no paste brackets): a
+ * restored pane's cd and command */
+void vtwin_type(vtwin *w, const char *text, long n);
 /* the window became active (in = 1) or stopped being: a focus report for
  * a program that asked (?1004) and reads raw; nothing otherwise */
 void vtwin_focus(vtwin *w, int in);

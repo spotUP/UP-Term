@@ -304,7 +304,7 @@ MENU
   An XCON: window has a menu (right mouse button, on the screen's title
   bar):
     UP-Term   New tab, Next tab, Previous tab, Close tab, Split right,
-              Split down, Close pane, Zoom pane, Preferences...
+              Split down, Close pane, Zoom pane, Previous pane, Next pane, Preferences...
               (opens UP-Term Prefs), About UP-Term..., Close window
     Edit      Copy, Paste, Select all, Find..., Find next, Clear screen,
               Clear scrollback, Reset terminal
@@ -348,8 +348,10 @@ KEYS
                         split it down. Splits are per tab, at most 4 panes
                         per tab; a new pane runs vsh in the focused pane's
                         current directory
-  Right Amiga Left/Right  move the focus to the pane beside; a click in a
-                        pane focuses it
+  Right Amiga [ and ]   move the focus to the previous / next pane (left to
+                        right, top to bottom, wrapping round); a click in
+                        a pane focuses it. Amiga with the cursor keys moves
+                        the mouse pointer, so they are not used
   Right Amiga Shift W   close the focused pane (Close tab closes every pane
                         of the tab)
   Right Amiga Shift Enter  zoom the focused pane, again to unzoom; a zoom
@@ -774,7 +776,7 @@ DEMO
   a tour of what UP-Term does, about three minutes, a caption on each
   scene: text styles, double-size lines, box drawing, 256 and 24-bit
   colours, line graphics, Latin-1 and UTF-8, wide characters and accents,
-  scroll regions, a tmux split, vsh, Tab completion (Unix and KingCON),
+  scroll regions, a tmux split, native split panes, vsh, Tab completion (Unix and KingCON),
   themes switched live, mouse reports (click in the window), links, a
   sixel image, synchronized output, a program resizing the window (from
   80 columns), reflow (drag the size gadget when it asks), then the

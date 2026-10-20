@@ -124,6 +124,27 @@ static int tabslot_move(tab_slot *t, int n, const void *pane, int dir)
     return i;
 }
 
+/* The keys to the previous (step -1) or next (step +1) pane of pane's
+ * slot in reading order (left to right, top to bottom: lay_save's order),
+ * wrapping round at either end. Returns the slot, or -1: pane is in no
+ * slot or its slot has one pane. A cycle ends a zoom. */
+static int tabslot_cycle(tab_slot *t, int n, const void *pane, int step)
+{
+    int i, k, at, cnt, order[LAY_MAX_PANES];
+    char buf[96];
+    if ((i = tabslot_find(t, n, pane, &k)) < 0)
+        return -1;
+    if ((cnt = tabslot_panes(&t[i])) < 2 || lay_save(&t[i].l, buf, sizeof(buf), order) < 0)
+        return -1;
+    for (at = 0; at < cnt && order[at] != k; at++)
+        ;
+    if (at == cnt)
+        return -1;
+    t[i].focus = order[(at + (step < 0 ? cnt - 1 : 1)) % cnt];
+    t[i].zoom = 0;
+    return i;
+}
+
 /* Zoom pane's slot to pane (it has the keys), or back. Returns the slot,
  * or -1: pane is in no slot, or its slot has one pane. */
 static int tabslot_zoom(tab_slot *t, int n, const void *pane)

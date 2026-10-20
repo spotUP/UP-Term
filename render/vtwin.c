@@ -1325,12 +1325,29 @@ static int encode_key(const vtwin *w, int cooked, long key, int mods, vt_u8 *out
     return cooked ? vt_encode_key_plain(w->t, key, mods, out) : vt_encode_key(w->t, key, mods, out);
 }
 
+/* Text typed into the program the way the keyboard would: each character
+ * in the terminal's encoding, Return for each line break (so a cooked
+ * line ends there), controls other than TAB dropped (clipfmt.h). */
+static void type_text(vtwin *w, const char *text, long n, int raw)
+{
+    long i;
+    vt_u8 out[40];
+    int k;
+    for (i = 0; i < n;) {
+        unsigned long ch = cf_next(text, n, &i);
+        long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
+        if (ch == '\r' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
+            continue; /* controls never; inside ?2004 nothing that ends the brackets early */
+        k = encode_key(w, !raw, key, 0, out);
+        w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);
+    }
+}
+
 /* The clipboard, typed into the program: each character in the terminal's
- * encoding, Return for each line break, controls other than TAB dropped
- * (clipfmt.h), and bracketed when the program asked for it (?2004). */
+ * encoding (type_text), bracketed when the program asked for it (?2004). */
 static void paste(vtwin *w)
 {
-    long n, i;
+    long n;
     char *text = clip_read(&n);
     vt_u8 out[40];
     int k, raw = w->host->raw(w->user);
@@ -1344,15 +1361,7 @@ static void paste(vtwin *w)
         k = vt_encode_paste(w->t, 0, out);
         w->host->input(w->user, out, k);
     }
-    for (i = 0; i < n;) {
-        unsigned long ch = cf_next(text, n, &i);
-        long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '
-' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
-            continue; /* controls never; inside ?2004 nothing that ends the brackets early */
-        k = encode_key(w, !raw, key, 0, out);
-        w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);
-    }
+    type_text(w, text, n, raw);
     if (raw) {
         k = vt_encode_paste(w->t, 1, out);
         w->host->input(w->user, out, k);
@@ -1384,6 +1393,12 @@ void vtwin_paste(vtwin *w)
 {
     if (w->t && !w->no_clipboard)
         paste(w);
+}
+
+void vtwin_type(vtwin *w, const char *text, long n)
+{
+    if (w->t && text && n > 0)
+        type_text(w, text, n, w->host->raw(w->user));
 }
 
 /* The modifiers a key or a mouse event carries (vti_mods: Meta is Left

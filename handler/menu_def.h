@@ -12,6 +12,8 @@
     MD_ROW(NM_ITEM, "Split down", 0, MENU_SPLIT_DOWN) \
     MD_ROW(NM_ITEM, "Close pane", 0, MENU_PANE_CLOSE) \
     MD_ROW(NM_ITEM, "Zoom pane", 0, MENU_PANE_ZOOM) \
+    MD_ROW(NM_ITEM, "Previous pane", 0, MENU_PANE_PREV) \
+    MD_ROW(NM_ITEM, "Next pane", 0, MENU_PANE_NEXT) \
     MD_ROW(NM_ITEM, "Claude", "L", MENU_CLAUDE) \
     MD_ROW(NM_ITEM, NM_BARLABEL, 0, 0) \
     MD_ROW(NM_ITEM, "Preferences...", 0, MENU_PREFS) \

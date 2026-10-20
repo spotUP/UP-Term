@@ -25,7 +25,7 @@ class TutorialWiring(unittest.TestCase):
 
     def test_menu_id_reaches_tab_spawn_with_the_tutorial_row(self):
         self.assertRegex(H, r"case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:\n[^\n]*MENU_PANE_ZOOM:\n\s*tab_command")
-        self.assertRegex(H, r"case MENU_TUTORIAL:\n\s*if \(!tab_spawn\(c, from->profile, from, TAB_TUTORIAL, 0\)\)")
+        self.assertRegex(H, r"case MENU_TUTORIAL:\n\s*if \(!tab_spawn\(c, from->profile, from, TAB_TUTORIAL, 0, 0\)\)")
         self.assertIn("enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL };", H)
         rows = H.split("static const struct tab_prog tab_progs[] = {")[1].split("};")[0]
         self.assertEqual(len(re.findall(r"^\s*\{ ", rows, re.M)), 4)  # shell, demo, claude, tutorial: the enum's order
@@ -61,7 +61,7 @@ class WindowStateWiring(unittest.TestCase):
         self.assertGreater(paste.index("VTWIN_CLIP_PASTE"), paste.index("FreeVec(text)"))
 
     def test_p2_host_pushes_and_tab_keeps_a_copy(self):
-        self.assertIn("TM_KNOB, TM_STAT, TM_STATE, TM_FONT };", H)
+        self.assertIn("TM_KNOB, TM_STAT, TM_STATE, TM_FONT, TM_TYPE };", H)
         push = H.split("static void stat_push(con *c)")[1].split("\n}\n")[0]
         self.assertIn("tab_msg(c, TM_STATE)", push)
         self.assertIn("PutMsg(p->tab_port", push)  # no wait: a PutMsg, freed by tab_replies
