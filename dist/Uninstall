@@ -233,9 +233,14 @@ EndIf
 If EXISTS ENVARC:up-term/touch
   Delete >NIL: C:touch QUIET
 EndIf
-; ENV: first: on AmigaOS 3.2 a directory copied from ENVARC: into ENV: keeps
-; its source locked ("object is in use") until the copy in ENV: is gone
-Delete >NIL: ENV:up-term ENVARC:up-term ALL QUIET
+; Files only in ENV:, as deleting a drawer in 3.2's linked ENV: resets the
+; machine (common/env-empty.dos). ENVARC: then goes whole; on 3.2 its drawers
+; stay "in use" while ENV: has them, until a reboot.
+Set upempty ENV:up-term
+; @include dist/common/env-empty.dos
+Set upempty ENVARC:up-term
+; @include dist/common/env-empty.dos
+Delete >NIL: ENVARC:up-term ALL QUIET
 ; TERMINFO: ours goes, the user's from before Install comes back
 If EXISTS ENV:TERMINFO
   Search >NIL: ENV:TERMINFO /ENV/up-term/terminfo
@@ -306,6 +311,10 @@ Delete >NIL: ENV:upixemul ENV:upixnet QUIET
 UnSet upixemul
 UnSet upixnet
 Delete >NIL: ENVARC:up-term-orig ALL QUIET
-; ENV: first, as ENV:up-term above
-Delete >NIL: ENV:vsh ENVARC:vsh ALL QUIET
+; Files only in ENV:, as ENV:up-term above
+Set upempty ENV:vsh
+; @include dist/common/env-empty.dos
+Set upempty ENVARC:vsh
+; @include dist/common/env-empty.dos
+Delete >NIL: ENVARC:vsh ALL QUIET
 Echo "UP-Term removed. Reboot to unmount XCON:, PTY: and IXPIPE:, and to stop wasabid."

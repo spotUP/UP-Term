@@ -481,7 +481,7 @@ class WasabiDaemonOption(unittest.TestCase):
         stop = un.index("If EXISTS ENVARC:up-term/amiagent")
         self.assertIn("Break $upw C", un[stop:stop + 400])
         self.assertLess(stop, un.index('Delete >NIL: "$updest" ALL QUIET'))
-        self.assertLess(stop, un.index("Delete >NIL: ENV:up-term ENVARC:up-term ALL QUIET"))
+        self.assertLess(stop, un.index("Delete >NIL: ENVARC:up-term ALL QUIET"))
         self.assertIn("Delete >NIL: C:wasabid QUIET", un[un.index("If EXISTS ENVARC:up-term/wasabid"):][:300])
 
 
@@ -572,36 +572,56 @@ class StepCommandLine(unittest.TestCase):
 
 
 class LinkedEnvOn32(unittest.TestCase):
-    """UNINSTALL-HANGS-ON-32: AmigaOS 3.2 links RAM:ENV to ENVARC:, so a drawer made in
-    ENVARC: shows in ENV: at once; a Copy or MakeDir into that linked drawer leaves one whose
-    Delete ALL never returns and stops the RAM disk (Uninstall in the boot of the Install hung,
-    2026-10-08). Every ENV: drawer the kit fills is deleted first in the same script, and
-    Uninstall deletes the ENV: drawer before the ENVARC: one (whose source is in use)."""
+    """UNINSTALL-HANGS-ON-32 / ENV-DRAWER-RESET: AmigaOS 3.2 links RAM:ENV to ENVARC:, so a
+    drawer made in ENVARC: shows in ENV: at once. Deleting a drawer in that ENV: resets the
+    machine (ram-handler 47.57, the A1200 Installer, 2026-10-20: Delete ENV:vsh once empty, and
+    Delete ENV:up-term/#? ALL after a Copy ALL into it); deleting its files is safe. So no script
+    deletes an ENV: drawer of the kit: each ENV: drawer Install fills is first emptied of its
+    files (common/env-empty.dos), and Uninstall empties ENV: of files, then removes ENVARC:."""
 
-    def test_every_env_drawer_install_fills_is_deleted_first(self):
+    @staticmethod
+    def env_drawer_deletes(script):
+        out = []
+        for l in script.splitlines():
+            l = l.strip()
+            if l.startswith(';') or not re.match(r'(?i)delete\b', l):
+                continue
+            for name in ('up-term', 'vsh'):
+                # ENV:x itself, or anything under it with ALL (which takes its subdrawers)
+                if re.search(r'(?i)(?<![\w])env:%s(?=[\s"]|$)' % name, l) or \
+                   (re.search(r'(?i)(?<![\w])env:%s/' % name, l) and re.search(r'(?i)\ball\b', l)):
+                    out.append(l)
+        return out
+
+    def test_no_script_deletes_an_env_drawer(self):
+        for what, script in (('install.dos', DOS), ('Uninstall', mi.build(ROOT / "dist/Uninstall", "base"))):
+            self.assertEqual(self.env_drawer_deletes(script), [], what)
+
+    def test_every_env_drawer_install_fills_is_emptied_first(self):
         lines = [l.strip() for l in DOS.splitlines() if not l.strip().startswith(';')]
         filled = set()
         for i, l in enumerate(lines):
             m = (re.match(r'(?i)copy\s+\S+\s+env:([\w.-]+)\s.*\ball\b', l) or
                  re.match(r'(?i)makedir\s+(?:>nil:\s+)?env:([\w.-]+)\s*$', l))
-            # the drawers Uninstall deletes (ENV:Claude is the user's and stays)
+            # the drawers Uninstall empties (ENV:Claude is the user's and stays)
             if not m or m.group(1).lower() in filled or m.group(1).lower() not in ('up-term', 'vsh'):
                 continue
             name = m.group(1).lower()
-            before = [p.lower() for p in lines[:i]]
-            self.assertTrue(any(re.match(r'delete\s+(?:>nil:\s+)?env:%s\s+all\b' % re.escape(name), p)
-                                for p in before),
-                            'install.dos fills ENV:%s without deleting it first: %s' % (name, l))
+            before = '\n'.join(lines[:i])
+            set_at = before.lower().rfind('set upempty env:%s' % name)
+            self.assertGreaterEqual(set_at, 0, 'install.dos fills ENV:%s without emptying it first: %s' % (name, l))
+            self.assertIn('List >T:upempty "$upempty" ALL FILES', before[set_at:])
             filled.add(name)
         self.assertEqual(filled, {'up-term', 'vsh'})
 
-    def test_uninstall_deletes_env_before_envarc(self):
-        un = mi.build(ROOT / "dist/Uninstall", "base")
+    def test_uninstall_empties_env_then_removes_envarc(self):
+        un = mi.build(ROOT / "dist/Uninstall", "base").lower()
         for name in ('up-term', 'vsh'):
-            both = [l.lower() for l in un.splitlines() if l.lower().startswith('delete')
-                    and re.search(r'\benv:%s\s' % name, l.lower()) and re.search(r'\benvarc:%s\s' % name, l.lower())]
-            self.assertEqual(len(both), 1, name)
-            self.assertLess(both[0].index(' env:%s' % name), both[0].index(' envarc:%s' % name), both[0])
+            env = un.index('set upempty env:%s\n' % name)
+            arc = un.index('set upempty envarc:%s\n' % name)
+            gone = un.index('delete >nil: envarc:%s all quiet' % name)
+            self.assertLess(env, arc, name)
+            self.assertLess(arc, gone, name)
 
 
 class TermOnlyInUpTermWindows(unittest.TestCase):
