@@ -72,14 +72,14 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 
 ### Phase 0 - measure and spike (no product code)
 - [x] NS0.1 Baseline (f50c9571, thoughts/shared/research/2026-10-19-splits-baseline.md, 3 runs each, rig 4): tmux startup to pane prompt 9.7 s; tmux idle with 2 panes 7.1 % CPU vs plain vsh 0.4 %; `Type` of 138 KB in a tmux pane 3.04 s vs 1.72 s without tmux (1.77x). Changed 2026-10-19: engbench is engine-only and has no tmux path, so the throughput figure is the timed `Type`, and the file holds 3 figures, not 4.
-- [ ] NS0.2 Spike: two tab processes draw into disjoint rects of one window at the same time (hack: both `r.off=0`, `inset`/rect hardcoded). Test: rig screenshot-as-text (clipboard read as step 13 of amiga-pi rig does) shows both panes' sentinel strings; no corruption over 60 s of output in both.
+- [x] NS0.2 (attempt 3, 2026-10-19, ledger: per-pane SGR bands, 60 s streaming, 0 pixels across the seam in runs 2-4; the wrapped-text seam moved into splits_rig `paint`) Spike: two tab processes draw into disjoint rects of one window at the same time (hack: both `r.off=0`, `inset`/rect hardcoded). Test: rig screenshot-as-text (clipboard read as step 13 of amiga-pi rig does) shows both panes' sentinel strings; no corruption over 60 s of output in both.
 
 ### Phase 1 - viewport rect in the renderer
-- [ ] NS1.1 `vr_render` rect (`vr_set_rect`), `vr_layout` honours it, all fills/borders/padding use the rect not window edges (amiga_render.c:3191-3290, vtwin.c:1020,1053). Host test: render_host fake RastPort (tests/render_host/gfx_fake.c) logs every call; assert no call outside the rect for a full repaint, scroll, selection, cursor, sixel. Reachability: `make test ONLY=render_host` plus rig XCON: full-window default rect unchanged (existing rig suites still pass).
-- [ ] NS1.2 No layer clip region; rect-confined drawing only (corrected 2026-10-19). Host test: no region is ever installed, nothing is drawn outside the rect, also after an inset move. Rig: two panes draw at the same time and neither paints into the other.
+- [x] NS1.1 (8d7bb42d, d1d8fa4b: render_host asserts no draw outside the rect, planar and direct) `vr_render` rect (`vr_set_rect`), `vr_layout` honours it, all fills/borders/padding use the rect not window edges (amiga_render.c:3191-3290, vtwin.c:1020,1053). Host test: render_host fake RastPort (tests/render_host/gfx_fake.c) logs every call; assert no call outside the rect for a full repaint, scroll, selection, cursor, sixel. Reachability: `make test ONLY=render_host` plus rig XCON: full-window default rect unchanged (existing rig suites still pass).
+- [x] NS1.2 (fdba16a7 host test: no region installed, nothing outside the rect after an inset move; rig: splits_rig `paint` and `race` PASS on rig 4, 2026-10-20) No layer clip region; rect-confined drawing only (corrected 2026-10-19). Host test: no region is ever installed, nothing is drawn outside the rect, also after an inset move. Rig: two panes draw at the same time and neither paints into the other.
 
 ### Phase 2 - pure layout tree
-- [ ] NS2.1 `render/layout.[ch]` C89: solve/split/close/neighbour/hit-divider/drag, cell snapping, min size, max panes. Test: host suite `layout` covers numbers (rect sums = area minus dividers; ratios stable across resize). Reachability for this module is the Phase 3 rig test (not duplicated).
+- [x] NS2.1 (df1a589e, suite `layout`) `render/layout.[ch]` C89: solve/split/close/neighbour/hit-divider/drag, cell snapping, min size, max panes. Test: host suite `layout` covers numbers (rect sums = area minus dividers; ratios stable across resize). Reachability for this module is the Phase 3 rig test (not duplicated).
 
 ### Phase 3 - host hosts several simultaneously drawn panes
 - [ ] NS3.1 `TM_RECT` message and pane-aware REGISTER answer; hide/show handshake skipped for panes in the same tab; host runs `lay_solve` on NEWSIZE. Rig test: open XCON:, menu Split Right via the real menu (rig injects menu pick), assert two panes each report `stty size`/TIOCGWINSZ = pane cols x rows from `lay_solve`, typed lines land in the focused pane only, output in both visible (clipboard text read).
@@ -107,8 +107,8 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 - [ ] NS5.3 DECCOLM, View > 80x24 / 132x43 menu items, fullscreen, font bigger/smaller act on the focused pane or are disabled while split (decided by owner). Test: rig per item.
 - [ ] NS5.4 Perf: measure against Phase 0 budgets (rig, 4 panes): record to build/rig/splits/perf.txt; all budgets asserted. Includes `top`/ps idle check.
 - [ ] NS5.5 Persistence if chosen: layout saved in profile (upconf), restored on window open. Test: rig reopen.
-- [ ] NS5.6 Docs: tutorial lesson, slash help, conformance matrix note (panes are not a sequence; matrix unaffected), man page, README feature list; remove "splits missing" rows in research notes? (research notes are history: leave).
-- [ ] NS5.7 Remove superseded demo claim? No: the updemo tmux-split scene stays; add a native-split scene only if owner wants (demo/updemo.c).
+- [x] NS5.6 (8528997f README + window lesson, d4706f6a slash help, d4af863a matrix note; man/UPTerm.1 exempt: it names no setting one by one and points at /help) Docs: tutorial lesson, slash help, conformance matrix note (panes are not a sequence; matrix unaffected), man page, README feature list; remove "splits missing" rows in research notes? (research notes are history: leave).
+- [x] NS5.7 (a3e078a5: updemo `splits` scene; owner 2026-10-20: tmux scene stays) Remove superseded demo claim? No: the updemo tmux-split scene stays; add a native-split scene only if owner wants (demo/updemo.c).
 
 Plan count: 17 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1-5.7). Execution rule: tick in the open with running count; partial = failed plan.
 
