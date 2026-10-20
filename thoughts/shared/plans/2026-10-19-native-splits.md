@@ -82,7 +82,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 - [x] NS2.1 (df1a589e, suite `layout`) `render/layout.[ch]` C89: solve/split/close/neighbour/hit-divider/drag, cell snapping, min size, max panes. Test: host suite `layout` covers numbers (rect sums = area minus dividers; ratios stable across resize). Reachability for this module is the Phase 3 rig test (not duplicated).
 
 ### Phase 3 - host hosts several simultaneously drawn panes
-- [ ] NS3.1 `TM_RECT` message and pane-aware REGISTER answer; hide/show handshake skipped for panes in the same tab; host runs `lay_solve` on NEWSIZE. Rig test: open XCON:, menu Split Right via the real menu (rig injects menu pick), assert two panes each report `stty size`/TIOCGWINSZ = pane cols x rows from `lay_solve`, typed lines land in the focused pane only, output in both visible (clipboard text read).
+- [x] NS3.1 (rig 4, 2026-10-20: splits_rig sentinel, size, focus, paint, race PASS) `TM_RECT` message and pane-aware REGISTER answer; hide/show handshake skipped for panes in the same tab; host runs `lay_solve` on NEWSIZE. Rig test: open XCON:, menu Split Right via the real menu (rig injects menu pick), assert two panes each report `stty size`/TIOCGWINSZ = pane cols x rows from `lay_solve`, typed lines land in the focused pane only, output in both visible (clipboard text read).
   Design note (2026-10-19, from the NS0.2 rig leak): the pane rect lives in the tab's vtwin state and bind reapplies it after vr_init, the same way inset_top is reapplied. A rect set only on the renderer is lost on any re-init or reset.
   NS3.1 design (2026-10-19, decided, do not re-litigate):
   - Host data: `c->tab_list[]` becomes `c->tabs[TAB_MAX]`, one `tab_slot { lay l; con *pane[LAY_MAX_PANES]; int focus; }` per bar entry. `tab_at(c, i)` = that slot's focused pane; every old `tab_list[i]` use goes through it, so keys, the bar title, TM_KNOB and the menu strip follow the focused pane with no other change. Broadcasts (STATE, insets, NEWSIZE, quit) loop over every pane of every slot.
@@ -102,11 +102,11 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 - [ ] NS4.3 Mouse wheel and selection per pane; selection never crosses a divider. Test: rig scrollback in pane B while A keeps output.
 
 ### Phase 5 - polish and scope decisions
-- [ ] NS5.1 Zoom pane (toggle one pane to full rect and back). Test: rig.
+- [x] NS5.1 (rig 4, 2026-10-20: splits_rig zoom PASS) Zoom pane (toggle one pane to full rect and back). Test: rig.
 - [ ] NS5.2 Interaction with tabs: each tab owns its own layout (or splits only in the first tab: per owner answer). Test: rig, switch tabs and see layout preserved.
 - [ ] NS5.3 DECCOLM, View > 80x24 / 132x43 menu items, fullscreen, font bigger/smaller act on the focused pane or are disabled while split (decided by owner). Test: rig per item.
 - [ ] NS5.4 Perf: measure against Phase 0 budgets (rig, 4 panes): record to build/rig/splits/perf.txt; all budgets asserted. Includes `top`/ps idle check.
-- [ ] NS5.5 Persistence if chosen: layout saved in profile (upconf), restored on window open. Test: rig reopen.
+- [x] NS5.5 (rig 4, 2026-10-20: splits_rig restore PASS) Persistence if chosen: layout saved in profile (upconf), restored on window open. Test: rig reopen.
 - [x] NS5.6 (8528997f README + window lesson, d4706f6a slash help, d4af863a matrix note; man/UPTerm.1 exempt: it names no setting one by one and points at /help) Docs: tutorial lesson, slash help, conformance matrix note (panes are not a sequence; matrix unaffected), man page, README feature list; remove "splits missing" rows in research notes? (research notes are history: leave).
 - [x] NS5.7 (a3e078a5: updemo `splits` scene; owner 2026-10-20: tmux scene stays) Remove superseded demo claim? No: the updemo tmux-split scene stays; add a native-split scene only if owner wants (demo/updemo.c).
 
