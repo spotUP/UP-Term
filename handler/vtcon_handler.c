@@ -2931,6 +2931,7 @@ static void close_window(con *c)
     if (c->is_tab)
         tab_unregister(c); /* the host stops sending before the grid goes */
     vtwin_detach(&c->w); /* engine, renderer, fonts; the frame clock stops */
+    le_unbind(&c->le); /* its engine is gone: the next window's attach must not reach it */
     if (win && !c->is_tab) {
         if (win == c->foreign)
             ModifyIDCMP(win, c->foreign_idcmp); /* hand it back as we found it */
@@ -7671,6 +7672,7 @@ static void host_retire(con *c)
         c->menustrip = 0;
     }
     vtwin_detach(&c->w);
+    le_unbind(&c->le); /* the line editor's engine went with it */
 }
 
 /* ---- main ---------------------------------------------------------------------------- */

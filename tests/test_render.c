@@ -1757,8 +1757,24 @@ static void a_planar_rect_keeps_every_draw_inside_it(int depth, int left, int re
 }
 #endif
 
+/* A renderer after vr_free is inert: asked for its selection it has none,
+ * and it does not ask the term it no longer holds (rig, split panes: a
+ * NULL read in vr_selection as a new pane's engine came up, 2026-10-20). */
+static void an_inert_renderer_has_no_selection(void)
+{
+    int ax, ay, bx, by;
+    open_term(0);
+    vr_select(&rn, 1, 0, 0, 3, 0);
+    CHECK(vr_selection(&rn, &ax, &ay, &bx, &by));
+    vr_free(&rn);
+    CHECK(!vr_selection(&rn, &ax, &ay, &bx, &by));
+    vt_free(term);
+    gf_close();
+}
+
 int main(void)
 {
+    an_inert_renderer_has_no_selection();
     the_default_rect_makes_the_calls_the_renderer_always_made();
 #ifndef RECT_ABSENT
     a_rect_inside_a_larger_window_keeps_every_draw_inside_it();
