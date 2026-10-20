@@ -190,29 +190,6 @@ static void the_focus_cycles_through_the_panes_in_reading_order(void)
     CHECK(tabslot_focused(&T[0]) == &A);
 }
 
-/* Right Amiga arrows: the focus goes to the pane on that side, and stays
- * put at an edge or for a pane in no slot. */
-static void the_focus_moves_to_the_pane_on_that_side(void)
-{
-    fresh();
-    tabslot_add(T, &N, 4, &E);
-    tabslot_add(T, &N, 4, &A);
-    tabslot_split(T, N, &A, &B, LAY_RIGHT, 8, 8, 0, 0, 640, 200); /* A | B */
-    tabslot_split(T, N, &B, &C, LAY_DOWN, 8, 8, 0, 0, 640, 200);  /* A | B over C */
-    CHECK(tabslot_focused(&T[1]) == &C);
-    CHECK_INT(tabslot_move(T, N, &C, LAY_UP), 1);
-    CHECK(tabslot_focused(&T[1]) == &B);
-    CHECK_INT(tabslot_move(T, N, &B, LAY_LEFT), 1);
-    CHECK(tabslot_focused(&T[1]) == &A);
-    CHECK_INT(tabslot_move(T, N, &A, LAY_LEFT), -1);
-    CHECK(tabslot_focused(&T[1]) == &A);
-    CHECK_INT(tabslot_move(T, N, &A, LAY_RIGHT), 1);
-    CHECK(tabslot_focused(&T[1]) != &A);
-    CHECK_INT(tabslot_move(T, N, &D, LAY_RIGHT), -1);
-    CHECK_INT(tabslot_move(T, N, &E, LAY_RIGHT), -1); /* one pane: nowhere to go */
-    CHECK(tabslot_focused(&T[0]) == &E);
-}
-
 static void the_pane_under_a_point_is_found_by_its_place(void)
 {
     fresh();
@@ -240,7 +217,7 @@ static void a_zoom_shows_only_the_focused_pane_until_the_layout_changes(void)
     CHECK_INT(tabslot_zoom(T, N, &B), 1); /* again: back */
     CHECK(tabslot_shows(&T[1], 0) && tabslot_shows(&T[1], 1));
     tabslot_zoom(T, N, &B);
-    CHECK_INT(tabslot_move(T, N, &B, LAY_LEFT), 1); /* a move ends it */
+    CHECK_INT(tabslot_cycle(T, N, &B, -1), 1); /* a cycle ends it */
     CHECK_INT(T[1].zoom, 0);
     tabslot_zoom(T, N, &A);
     tabslot_split(T, N, &A, &C, LAY_DOWN, 8, 8, 0, 0, 640, 200); /* so does a split */
@@ -261,7 +238,6 @@ void suite_tabslot(void)
     a_pane_leaving_gives_its_space_and_the_focus_back();
     the_last_pane_takes_its_slot_and_the_rest_move_down();
     the_shown_slot_stays_shown_when_another_goes();
-    the_focus_moves_to_the_pane_on_that_side();
     the_focus_cycles_through_the_panes_in_reading_order();
     a_zoom_shows_only_the_focused_pane_until_the_layout_changes();
     the_pane_under_a_point_is_found_by_its_place();

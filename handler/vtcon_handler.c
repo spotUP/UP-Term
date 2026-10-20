@@ -6450,16 +6450,6 @@ static void host_command(con *c, int what, con *from)
                 slot_refocus(c, zoomed);
         }
         break;
-    case MENU_PANE_UP:
-    case MENU_PANE_DOWN:
-        /* only in the shown slot: a key from a hidden pane moves nothing */
-        if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active) {
-            int zoomed = c->slots[c->active].zoom; /* a move ends a zoom */
-            if (tabslot_move(c->slots, c->ntabs, from,
-                             what == MENU_PANE_UP ? LAY_UP : LAY_DOWN) >= 0)
-                slot_refocus(c, zoomed);
-        }
-        break;
     case MENU_PANE_ZOOM:
         if (c->active >= 0 && tabslot_find(c->slots, c->ntabs, from, 0) == c->active &&
             tabslot_zoom(c->slots, c->ntabs, from) >= 0)

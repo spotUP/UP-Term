@@ -111,19 +111,6 @@ static int tabslot_split(tab_slot *t, int n, void *from, void *pane, int dir,
     return id;
 }
 
-/* The keys to the pane next to pane in direction dir (LAY_RIGHT / DOWN /
- * LEFT / UP), in a slot whose layout is solved. Returns the slot, or -1:
- * pane is in no slot or has no neighbour that way (the focus stays). */
-static int tabslot_move(tab_slot *t, int n, const void *pane, int dir)
-{
-    int i, k, to;
-    if ((i = tabslot_find(t, n, pane, &k)) < 0 || (to = lay_neighbour(&t[i].l, k, dir)) < 0)
-        return -1;
-    t[i].focus = to;
-    t[i].zoom = 0;
-    return i;
-}
-
 /* The keys to the previous (step -1) or next (step +1) pane of pane's
  * slot in reading order (left to right, top to bottom: lay_save's order),
  * wrapping round at either end. Returns the slot, or -1: pane is in no
