@@ -85,6 +85,7 @@ typedef struct job {
     BPTR home;              /* its directory, its PROGDIR: (a lock, or 0) */
     ULONG stack;            /* its stack for RunCommand */
     BPTR in, out, err;
+    BPTR term_in, term_out; /* the shell's own input and output: its terminal, the runner's CLI streams */
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
     char child[24];         /* the name of the Shell process SystemTags makes */
@@ -578,6 +579,17 @@ static void runner(void)
     /* the runner has the shell's current directory (CreateNewProc copies it) */
     if (j->seg) {
         BPTR oin = SelectInput(j->in), oout = SelectOutput(j->out);
+        /* the CLI's standard streams are the shell's terminal, as the Shell keeps them: a command
+         * whose Input() is not cli_StandardInput takes its input as redirected. C:Type 47.4 (OS 3.2)
+         * then takes its template without FROM, and `Type file` failed with "wrong number of
+         * arguments" under the NIL: CreateNewProc put there (A1200, 2026-10-20). Put back before
+         * the runner ends: the process's own end closes what it opened. */
+        struct CommandLineInterface *cli = Cli();
+        BPTR ostdin = cli ? cli->cli_StandardInput : 0, ostdout = cli ? cli->cli_StandardOutput : 0;
+        if (cli && j->term_in)
+            cli->cli_StandardInput = j->term_in;
+        if (cli && j->term_out)
+            cli->cli_StandardOutput = j->term_out;
         BPTR oerr = me->pr_CES;
         BPTR ohome = j->home ? SetProgramDir(j->home) : 0;
         if (j->err)
@@ -594,6 +606,10 @@ static void runner(void)
         if (j->err && j->err != j->out)
             Flush(j->err);
         TR("runcommand back", j, j->rc);
+        if (cli) {
+            cli->cli_StandardInput = ostdin;
+            cli->cli_StandardOutput = ostdout;
+        }
         me->pr_CES = oerr;
         SelectInput(oin);
         SelectOutput(oout);
@@ -1055,6 +1071,8 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         j->in = (BPTR)io->in;
         j->out = (BPTR)io->out;
         j->err = (BPTR)io->err;
+        j->term_in = Input();
+        j->term_out = Output();
         j->close_in = (io->owned & SH_OWN_IN) != 0;
         j->close_out = (io->owned & SH_OWN_OUT) != 0;
         j->close_err = (io->owned & SH_OWN_ERR) != 0;
@@ -1086,6 +1104,10 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
          * nowhere. */
         j->in = (io->owned & SH_OWN_IN) ? (BPTR)io->in : Open((STRPTR)"NIL:", MODE_OLDFILE);
         j->close_in = 1;
+        /* in the background the terminal is not its input: its standard input is the input it
+         * has, as Run's Shell gives NIL: for both (`Type file &`) */
+        j->term_in = j->in;
+        j->term_out = Output();
         if (io->owned & SH_OWN_OUT) {
             j->out = (BPTR)io->out;
             j->close_out = 1;

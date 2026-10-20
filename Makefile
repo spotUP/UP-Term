@@ -458,6 +458,9 @@ $(BUILD)/amiga/busyloop: tests/amiga/busyloop.c
 $(BUILD)/amiga/rcneg: tests/amiga/rcneg.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/rcneg.c
+$(BUILD)/amiga/clistdin: tests/amiga/clistdin.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/clistdin.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c
