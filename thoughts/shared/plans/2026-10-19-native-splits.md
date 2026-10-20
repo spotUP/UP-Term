@@ -99,7 +99,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 ### Phase 4 - menus, keys, mouse dividers
 - [x] NS4.1 (2026-10-20, rig 4 case menu_keys PASS 23 checks: all six split menu ids from MENU_DEF_ROWS picked plus RA+D/RA+Shift+D/RA+Shift+W; mutation proof g1-menu_keys-mut.log) Menu items and Right Amiga bindings (`menu_ids.h`, `tab_command`, :5962 dispatch). Test: each menu id picked on the rig changes the pane count/focus as asserted; a count of menu ids vs items built from the menu builder (not grep).
 - [x] NS4.2 (2026-10-20, rig 4 cases drag PASS: left 36->26, right 36->46 cols for a 10-cell drag, sum unchanged; mouse_report PASS: ?1000 reports (5,3) and (12,7) equal the clicked pane-relative cells; mutation proofs in thoughts/spot/crash/nsgaps2.md) Mouse divider drag with `lay_hit_divider`/`lay_drag`. Test: rig sends press/move/release on the divider; both panes' `stty size` change by the dragged cells; a click not on a divider still reaches the pane (mouse reporting test with `?1000` program).
-- [ ] NS4.3 Mouse wheel and selection per pane; selection never crosses a divider. Test: rig scrollback in pane B while A keeps output.
+- [x] NS4.3 Mouse wheel and selection per pane; selection never crosses a divider. Test: rig scrollback in pane B while A keeps output. Done: 6b0a772d + rig fix; pane_scroll 10/10 PASS on rig 4 (g5-fix.log), mutant FAIL 10 [500, 500, 500] (g5-mut.log).
 
 ### Phase 5 - polish and scope decisions
 - [x] NS5.1 (rig 4, 2026-10-20: splits_rig zoom PASS) Zoom pane (toggle one pane to full rect and back). Test: rig.

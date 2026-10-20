@@ -1018,12 +1018,12 @@ def wheel(x, y, up, n=4):
     time.sleep(1.5)
 
 
-def drag_select(x0, x1, y):
+def drag_select(x0, x1, y, steps=8):
     """button down at (x0, y), moved in steps to (x1, y), released (snip_rig.drag_copy's path)"""
     kx, ky = ami.pointer_scale()
     ev = [('move', int(x0 * kx), int(y * ky)), ('wait', 2), ('button', 0, 1), ('wait', 3)]
-    for i in range(1, 9):
-        ev += [('move', int((x0 + (x1 - x0) * i // 8) * kx), int(y * ky)), ('wait', 2)]
+    for i in range(1, steps + 1):
+        ev += [('move', int((x0 + (x1 - x0) * i // steps) * kx), int(y * ky)), ('wait', 2)]
     ev += [('wait', 3), ('button', 0, 0), ('wait', 10)]
     ami.script(*ev)
     time.sleep(1)
@@ -1038,6 +1038,10 @@ def sb_of_each(ck, n, want, what):
     print('%s: scrollback per pane %s' % (what, got))
     ck(got == [want] * n, '%s: `UPTerm state` scrollback is %d in each pane' % (what, want), got)
     return got
+
+
+# `Clear` is no command on the Amiga shell ("EMT trap"): the screen is cleared with the escape sequence
+CLS = "printf '\\033[2J\\033[H'"
 
 
 def case_pane_scroll(ck):
@@ -1057,13 +1061,14 @@ def case_pane_scroll(ck):
         sb_of_each(ck, 2, 500, '2 panes')
         # (b) a known line in the right pane, then a drag from it across the divider into the left pane
         click(*pane_point('R', cl))
-        line('Clear', wait=1.5)
+        line(CLS, wait=1.5)
         line('Echo RIGHTSIDETEXT', wait=2)
         x0, y0, ww, hh = window_box()
-        ty = y0 + TOP_PAD + 16 + CELL_H + CELL_H // 2          # the second text row: the echoed word
+        ty = y0 + TOP_PAD + CELL_H + CELL_H // 2               # text row 1 (rows start at the title bar's bottom): the echoed word
         xr = x0 + BORDER_L + cl * CELL_W + 1 + CELL_W // 2     # the right pane's first column
         c.run('VTC:snipprobe CLEAR')
-        drag_select(xr + 15 * CELL_W, x0 + BORDER_L + 4 * CELL_W, ty)
+        # fine steps: the selection follows the last pointer cell inside the pane, so the last step inside must be column 0
+        drag_select(xr + 13 * CELL_W, xr - 2 * CELL_W, ty, steps=40)
         ami.key(0x33, RAMIGA)                                  # Copy: the pane the drag started in
         time.sleep(2)
         clip = typewin._clip('RAM:ns43-clip.txt').strip()
@@ -1072,8 +1077,8 @@ def case_pane_scroll(ck):
         ck('LEFT' not in clip and len(clip) <= r0[1] + 2, 'drag past the divider: no left-pane text copied', clip)
         # (a) the left pane streams, the right one prints numbered lines past a screen, the wheel scrolls it back
         click(*pane_point('L', cl))
-        line("Clear", wait=1)
-        line(stream_cmd(41, 'LEFT', 4), wait=2)
+        line(CLS, wait=1)
+        line('while :; do Date; Wait 1; done', wait=2)     # a distinct line every second (identical lines give the pixel compare nothing)
         click(*pane_point('R', cl))
         line("for i in %s; do echo numbered line $i; done" % ' '.join(str(k) for k in range(1, r0[0] * 2 + 11)), wait=8)
         lr, rr = pane_rect('L', cl), pane_rect('R', cl)
@@ -1095,7 +1100,7 @@ def case_pane_scroll(ck):
         click(*pane_point('L', cl))
         typewin.key(0x33, CTRL, wait=1)
         typewin.key(0x33, CTRL, wait=2)
-        line('Clear', wait=1)
+        line(CLS, wait=1)
         # (c) a third pane: each pane is capped to 200
         pick('Split down')
         time.sleep(6)
