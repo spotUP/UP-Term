@@ -462,6 +462,9 @@ $(BUILD)/amiga/rcneg: tests/amiga/rcneg.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c
+$(BUILD)/amiga/inputlist: tests/amiga/inputlist.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=65 -o $@ tests/amiga/inputlist.c
 $(BUILD)/amiga/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-hl.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-hl.o
