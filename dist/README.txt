@@ -841,15 +841,15 @@ CONSOLE.DEVICE
 ADD-ONS
   Neovim, Python, Claude and amiga-pi are archives of their own, next to
   UP-Term.lha. Each has its own Install, Uninstall and README.txt:
-    up-nvim.lha   Neovim 0.12 and its runtime (UP-Term:nvim). Needs this
-                       one installed first: it runs on its patched
-                       ixemul.library; its Install says so and stops when this
-                       one is missing or too old.
-    up-python.lha        Python 3.14 (SYS:Python3, Python3: assigned at boot).
-                       Stands alone: brings an ixemul.library when LIBS: has
-                       none of version 47 or newer, and uses this kit's.
-    up-claude.lha         C:Claude and C:uptelnet (Claude,
-                       Anthropic's AI model). Stands alone.
+    up-nvim.lha     Neovim 0.12 and its runtime (UP-Term:nvim). Needs this
+                    one installed first: it runs on its patched
+                    ixemul.library; its Install says so and stops when this
+                    one is missing or too old.
+    up-python.lha   Python 3.14 (SYS:Python3, Python3: assigned at boot).
+                    Stands alone: brings an ixemul.library when LIBS: has
+                    none of version 47 or newer, and uses this kit's.
+    up-claude.lha   C:Claude and C:uptelnet (Claude, Anthropic's AI model).
+                    Stands alone.
     up-pi.lha       C:amiga-pi (pi, the coding agent). Stands alone.
   Git, Perl and Vim are packages for upkg, not archives: they were in this
   archive before the slim base, and they install at the same places
