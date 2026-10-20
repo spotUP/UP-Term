@@ -820,3 +820,14 @@ pinned by `tests/test_protocol.c` (`make test ONLY=protocol`). Plan and ledger:
 | OSC 9 / OSC 777 | `OSC 9 ; text` (iTerm2) and `OSC 777 ; notify ; title ; body` (urxvt, foot) reach the host (`notify`); `OSC 9 ; n ; ...` (ConEmu progress) does not. Host: the notice holds the title bar 5 s, then the title (or one set meanwhile) returns | `osc9_and_777_notify` |
 | terminfo `vtcon` (2026-10-04) | Adds Sync, rep, Cs/Cr, Ms, Tc, fe/fd, cvvis, smm/rmm (km honest: ?1034), ka1/ka3/kb2/kc1/kc3, kUP/kDN, kUP3-kNXT7 (Alt, Shift+Alt, Ctrl, Shift+Ctrl, Ctrl+Alt), kf25-kf63; rs1 also resets the palette. `tic -cx` clean; termcap regenerated (`infocmp -CrT`). Proven by `make test-terminfo` (tmux now wraps its redraws in Sync, bash sets smm; 14 captures match libvterm, nothing unhandled). Host: Shift+PgUp/PgDn reach programs on the alternate screen (kPRV/kNXT) | `make test-terminfo` |
 | XTGETTCAP `DCS + q hexname ; ... ST` | Every capability of `terminfo/vtcon.terminfo` (booleans without a value, numbers and strings as the entry has them), from `engine/vtcaps.inc` that `tools/gen_vtcaps.py` generates from the entry (make); plus xterm's TN / name (vtcon), Co, RGB (8/8/8). `colors` and `Co` answer the screen's pen count once the host tells it (`vt_set_screen_colors`; the handler does, 16 on a 4-plane AGA screen, 256 from 8 planes), else the entry's 256: UPDemo picks its 16-colour version from it. Unknown: `DCS 0 + r hexname ST` | `xtgettcap_answers_every_terminfo_capability` (parses the entry itself and asks for each), `xtgettcap_colors_is_the_screens_pen_count` |
+
+## 10. Native split panes (2026-10-20)
+
+Split panes (`thoughts/shared/plans/2026-10-19-native-splits.md`) add no
+sequence and change no row of this matrix. Each pane is its own console unit
+with its own engine, so every table above holds per pane. What a program sees
+of a split is only its size: the pane's rows and columns, as `stty size`
+reads them through the PTY (rig case size). A divider drag or a
+zoom changes them (rig cases drag and zoom); a window resize also sends
+SIGWINCH (rig case winch). The dividers, the focus and the
+saved layout belong to the window, not to any pane's byte stream.
