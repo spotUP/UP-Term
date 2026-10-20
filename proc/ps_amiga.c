@@ -13,7 +13,7 @@ int main(int argc, char **argv)
     static pc_task t[MAX_TASKS];
     char line[160];
     int n, i;
-    if (argc > 1 && (!strcmp(argv[1], "-h") || !strcmp(argv[1], "--help") || qmark_argv(argc, argv))) {
+    if (qmark_argv(argc, argv)) { /* `ps ?`, `ps -h` and `ps --help` show the usage and end */
         printf("usage: ps\nLists the tasks and processes: CLI number, priority, state, type, name\n"
                "(a CLI process shows the command it runs). top shows their CPU use.\n");
         return 0;

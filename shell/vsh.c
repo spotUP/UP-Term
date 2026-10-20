@@ -2567,8 +2567,8 @@ int main(int argc, char **argv)
     APTR stack;
     if (argc == 0)
         return wb_start((struct WBStartup *)argv);
-    if (qmark_argv(argc, argv))
-        argv[1] = (char *)"--help"; /* `vsh ?` shows the usage and ends, as --help does (sh_invoke) */
+    if (qmark_argv(argc, argv) && strcmp(argv[1], "-h"))
+        argv[1] = (char *)"--help"; /* `vsh ?` shows the usage and ends, as --help does (sh_invoke); -h stays bash's hashall */
     g_argc = argc;
     g_argv = argv;
     if ((ULONG)me->tc_SPUpper - (ULONG)me->tc_SPLower >= VSH_STACK)
