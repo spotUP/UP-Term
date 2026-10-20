@@ -94,7 +94,7 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
   - Menu: Split Right / Split Down items added now (the NS3.1 rig test picks them); keys and the rest are NS4.1.
 - [x] NS3.2 (rig 4, 2026-10-20: case winch runs ixwinch in both panes; each catches SIGWINCH within 1 s of the window box changing (measured 0.0 s, below the rig's box-poll step), reports 36x14 -> 26x14, `stty size` halves of the new width; log thoughts/spot/crash/ns32-winch2.log) Per-pane winsize/SIGWINCH correct after a window resize (extend winch_rig.py, resize_rig.py): both panes' `stty size` follow within 1 s.
 - [ ] NS3.3 Pane close: shell `exit` in one pane returns its space; last pane exit closes the window; host's own shell ending keeps window while panes live (tabs rule). Test: rig script.
-- [ ] NS3.4 Focus: click in other pane and Right Amiga focus keys move keys and the hollow/solid cursor. Test: rig injects mouse click via input.device, types, reads each pane's text.
+- [x] NS3.4 Focus: click in other pane and Right Amiga focus keys move keys and the hollow/solid cursor. Test: rig injects mouse click via input.device, types, reads each pane's text.
 
 ### Phase 4 - menus, keys, mouse dividers
 - [x] NS4.1 (2026-10-20, rig 4 case menu_keys PASS 23 checks: all six split menu ids from MENU_DEF_ROWS picked plus RA+D/RA+Shift+D/RA+Shift+W; mutation proof g1-menu_keys-mut.log) Menu items and Right Amiga bindings (`menu_ids.h`, `tab_command`, :5962 dispatch). Test: each menu id picked on the rig changes the pane count/focus as asserted; a count of menu ids vs items built from the menu builder (not grep).
@@ -104,13 +104,13 @@ Recommendation: **panes are tabs shown simultaneously.** Reuse the tab host/chil
 ### Phase 5 - polish and scope decisions
 - [x] NS5.1 (rig 4, 2026-10-20: splits_rig zoom PASS) Zoom pane (toggle one pane to full rect and back). Test: rig.
 - [x] NS5.2 (2026-10-20, rig 4 case tab_layout PASS 35 checks: 2-pane and 3-pane tabs switched by menu and RA+1/RA+2, layout, sizes and focus kept; mutation proof g1-tab_layout-mut.log) Interaction with tabs: each tab owns its own layout (or splits only in the first tab: per owner answer). Test: rig, switch tabs and see layout preserved.
-- [ ] NS5.3 DECCOLM, View > 80x24 / 132x43 menu items, fullscreen, font bigger/smaller act on the focused pane or are disabled while split (decided by owner). Test: rig per item.
-- [ ] NS5.4 Perf: measure against Phase 0 budgets (rig, 4 panes): record to build/rig/splits/perf.txt; all budgets asserted. Includes `top`/ps idle check. Exemption (owner 2026-10-20): the split latency, focus switch and drag rate budgets are judged by the owner by eye on a real machine; the rig records its round-trip numbers only. Idle CPU (4 panes within 10% of 4 tabs) and Avail stay rig-asserted.
+- [ ] NS5.3 DECCOLM, View > 80x24 / 132x43 menu items, fullscreen, font bigger/smaller act on the focused pane or are disabled while split (decided by owner). Test: rig per item. Exemption (owner 2026-10-20): fullscreen while split stays refused for 1.x, like tabs (screen_switch would have to rebind every pane's process); planned for the next version, see section 8.
+- [x] NS5.4 Perf: measure against Phase 0 budgets (rig, 4 panes): record to build/rig/splits/perf.txt; all budgets asserted (done: case perf PASS, g2-perf.log). Includes `top`/ps idle check. Exemption (owner 2026-10-20): the split latency, focus switch and drag rate budgets are judged by the owner by eye on a real machine; the rig records its round-trip numbers only. Idle CPU (4 panes within 10% of 4 tabs) and Avail stay rig-asserted.
 - [x] NS5.5 (rig 4, 2026-10-20: splits_rig restore PASS) Persistence if chosen: layout saved in profile (upconf), restored on window open. Test: rig reopen.
 - [x] NS5.6 (8528997f README + window lesson, d4706f6a slash help, d4af863a matrix note; man/UPTerm.1 exempt: it names no setting one by one and points at /help) Docs: tutorial lesson, slash help, conformance matrix note (panes are not a sequence; matrix unaffected), man page, README feature list; remove "splits missing" rows in research notes? (research notes are history: leave).
 - [x] NS5.7 (a3e078a5: updemo `splits` scene; owner 2026-10-20: tmux scene stays) Remove superseded demo claim? No: the updemo tmux-split scene stays; add a native-split scene only if owner wants (demo/updemo.c).
 
-Plan count: 19 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1-5.7); 14 of 19 ticked 2026-10-20. Execution rule: tick in the open with running count; partial = failed plan.
+Plan count: 19 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1-5.7); 16 of 19 ticked 2026-10-20 (NS3.4 934b1d86, NS5.4 perf case). Execution rule: tick in the open with running count; partial = failed plan.
 
 ## 4. Risks
 
@@ -154,3 +154,7 @@ Plan count: 19 items (NS0.1-NS0.2, NS1.1-1.2, NS2.1, NS3.1-3.4, NS4.1-4.3, NS5.1
 
 - Spawn race: tab_spawner writes one shared script name `T:UP-Term-tab` (handler/vtcon_handler.c:5796, used as `FROM T:UP-Term-tab` at :5809). Two panes spawned close together can overwrite each other's script. Fold into NS3.1: unique script name per spawn (host + sequence), deleted by the script itself; rig test spawns two panes back to back and asserts each starts in its own directory.
 - ACTION_DISK_INFO hands back the whole window (`id->id_VolumeNode = (BPTR)c->w.win`, vtcon_handler.c ~6909). A program in a pane that draws straight into that Window draws over other panes. Same as tmux has no answer for. Decision for NS5.3: keep returning the window (V47 compatibility), document that raw-window programs see the whole window, (no pane clip region exists, NS1.2, so nothing to exempt). Rig check: a raw-window program in a pane still works.
+
+## 8. Next version (after the 1.x release)
+
+- Fullscreen while split (and with tabs): move the whole window, all panes, to the fullscreen screen and back; needs screen_switch (handler/vtcon_handler.c ~2956) to rebind every pane's process. Owner 2026-10-20: refuse for 1.x, do it for the next version.
