@@ -169,8 +169,12 @@ def _scripts(r, keys=()):
         post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
                 'Execute %s/Files/install.dos %s/Files\nrc=$?\nrm -rf %s\nexit $rc\n' % (st, st, st))
     sep = '' if rec.endswith(':') else '/'
+    # a record without its Uninstall (an install from before the copy was fixed) must not block an upgrade
+    # or a removal: warn and go on, so opkg still replaces the package
     pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: the Uninstall copy the install left in its record\n'
-           'Execute %s%sUninstall\n' % (rec, sep))
+           'if [ -f %(u)s ]; then\n    Execute %(u)s\nelse\n'
+           '    echo "warning: %(u)s does not exist, nothing to uninstall; continuing" >&2\nfi\nexit 0\n'
+           % {'u': '%s%sUninstall' % (rec, sep)})
     need = None
     if r['needs-base'] != '-':
         # the refusal the retired vsh-script upkg made (same VERSIONS line, same older()): opkg aborts the

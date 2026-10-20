@@ -129,6 +129,19 @@ class IpkTest(unittest.TestCase):
             pkgs.ipk(self.build, self.table)
         self.assertIn('HOST is not a keyword', str(e.exception))
 
+    def test_prerm_warns_and_continues_when_the_uninstall_record_is_missing(self):
+        # an add-on installed before the Uninstall copy was fixed has no record: the prerm must not fail the upgrade
+        for ipk, rec in (('up-nvim_2.1_m68k-amigaos.ipk', 'UP-Term:pkg/up-nvim/Uninstall'),
+                         ('Claude_1.1_m68k-amigaos.ipk', None)):
+            m = dict(split_ar((self.out / ipk).read_bytes()))
+            prerm = tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./prerm').read().decode()
+            lines = prerm.splitlines()
+            rec = rec or next(w for w in prerm.split() if w.endswith('/Uninstall'))
+            self.assertIn('if [ -f %s ]; then' % rec, lines)
+            self.assertLess(lines.index('if [ -f %s ]; then' % rec), lines.index('    Execute ' + rec))
+            self.assertTrue(any(l.lstrip().startswith('echo "warning: ' + rec) for l in lines))
+            self.assertEqual(lines[-1], 'exit 0')
+
     def test_the_base_is_not_a_package(self):
         self.assertFalse(list(self.out.glob('UP-Term_*')))
         self.assertEqual([s['Package'] for s in stanzas(gzip.decompress((self.out / 'Packages.gz').read_bytes()).decode())],
