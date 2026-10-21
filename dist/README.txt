@@ -104,6 +104,11 @@ WHERE IT IS INSTALLED
 USE
   NewShell "XCON:0/20/640/300/My Shell/CLOSE"
 
+  The spec is left/top/width/height/title. A width of 0 is the screen's
+  width and a height of 0 its height, counted from the left or top edge
+  (the UP-Term icon uses XCON:0/20/0/400/UP-Term/CLOSE); an empty field
+  keeps the default.
+
   Options after the title, one per /: CLOSE WAIT BACKDROP NODRAG NOBORDER
   NOSIZE NODEPTH INACTIVE  SCREEN name  FONT name size
   DARK (light grey on black: the default except with AMIGA)  LIGHT (the screen's

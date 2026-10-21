@@ -40,6 +40,8 @@ with tempfile.TemporaryDirectory() as tmp:
         check((tmp / "Apps/bin/vsh").read_bytes() == b"vsh-binary", "UP-Term:bin/vsh is vsh")
         check(b"UP-Term:bin/vsh" in (tmp / "Apps/UP-Term.info").read_bytes(), "the icon's tool is UP-Term:bin/vsh")
         check((tmp / "Apps/UP-Term").is_file(), "the icon has its file")
+        check(b"XCON:0/20/0/400/UP-Term/CLOSE" in (tmp / "Apps/UP-Term.info").read_bytes(),
+              "the icon window is XCON:0/20/0/400/UP-Term/CLOSE (width 0: as wide as the screen)")
         drawer = (tmp / "Apps.info").read_bytes() if (tmp / "Apps.info").is_file() else b""
         check(len(drawer) > 78 + 62, "the app drawer gets a drawer icon, VTC:Apps.info (Workbench could not open it)")
         check(drawer[:4].hex() == "e3100001" and drawer[48:49] == b"\x02",

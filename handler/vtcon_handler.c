@@ -66,6 +66,7 @@
 #include "complete_core.h"
 #include "menu_ids.h"
 #include "slash.h"
+#include "winspec.h"
 #include "tabprog.h"
 #include "../demo/updemo.h"
 #include "brk.h"
@@ -1281,7 +1282,8 @@ static void apply_profile(con *c)
     c->kc_cache = !(v && str_ieq(v, "off"));
 }
 
-/* "x/y/w/h/title/OPT/OPT..." after the colon. */
+/* "x/y/w/h/title/OPT/OPT..." after the colon. A w or h of 0 is the screen's
+ * width or height (winspec.h), resolved when the window opens. */
 static void parse_spec(con *c, const char *s)
 {
     char field[128];
@@ -2722,8 +2724,8 @@ static struct Window *create_window(con *c, struct Screen *scr)
         c->w.title_on_screen = 0;
         tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = c->wx;
         tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = c->wy;
-        tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = c->ww;
-        tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = c->wh;
+        tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = winspec_size(c->ww, c->wx, scr->Width);
+        tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = winspec_size(c->wh, c->wy, scr->Height);
         tags[n].ti_Tag = WA_Flags;   tags[n++].ti_Data = c->wflags;
         tags[n].ti_Tag = WA_Title;   tags[n++].ti_Data = (ULONG)c->w.title;
     }

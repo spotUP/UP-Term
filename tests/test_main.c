@@ -37,6 +37,7 @@ void suite_updiff(void);
 void suite_zmodem(void);
 void suite_otag(void);
 void suite_slash(void);
+void suite_winspec(void);
 void suite_fontpair(void);
 void suite_updemo(void);
 void suite_tabprog(void);
@@ -102,6 +103,7 @@ static const h_suite suites[] = {
     { "zmodem", suite_zmodem },
     { "otag", suite_otag },
     { "slash", suite_slash },
+    { "winspec", suite_winspec },
     { "fontpair", suite_fontpair },
     { "updemo", suite_updemo },
     { "tabprog", suite_tabprog },

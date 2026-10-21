@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """mkicon.py OUT.info [--x X --y Y] [--tool NAME] [--plain] [--tooltype T ...] -- the UP-Term
 Workbench project icon (P8): default tool UP-Term:bin/vsh, tooltype WINDOW= the XCON
-window vsh opens, a 64 KB stack. Written in the Workbench DiskObject format
+window vsh opens (XCON:0/20/0/400/UP-Term/CLOSE: a width of 0 is the screen's width,
+a height of 0 its height), a 64 KB stack. Written in the Workbench DiskObject format
 (workbench/workbench.h, intuition/intuition.h): DiskObject, the Image and
 its planar data, then the default tool and the tooltypes as length-prefixed
 strings. The image is a small terminal window in the Workbench's four pens
@@ -13,7 +14,7 @@ workbench.h DRAWERDATAFILESIZE: the NewWindow, origin, dd_Flags, dd_ViewModes), 
 same four pens, for a drawer Workbench has no icon for (VTC:Apps.info on the rig)."""
 import argparse, struct
 
-WINDOW = "XCON:0/20/640/400/UP-Term/CLOSE"
+WINDOW = "XCON:0/20/0/400/UP-Term/CLOSE"  # width 0: as wide as the screen (handler/winspec.h)
 NO_ICON_POSITION = 0x80000000
 
 # 44 x 22, one character per pixel: . grey  # black  o white  b blue
