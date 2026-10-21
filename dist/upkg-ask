@@ -117,4 +117,7 @@ while IFS='|' read -r key type prompt def choices; do
     quote "$key" "$ans" >> "$answers"
 done < "$questions"
 rm -f "$tmp"
+# upkg-ui keeps its last screen on the normal screen (no Shell between two questions): clear the last
+# question before the install goes on
+[ $mode = ui ] && clear
 exit 0

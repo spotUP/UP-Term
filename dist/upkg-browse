@@ -98,6 +98,13 @@ interactive() {
     return 1
 }
 
+# leave with 0: upkg-ui keeps its last screen on the normal screen (no Shell between two screens),
+# so the list it drew is cleared here, as a dialog script does
+quit() {
+    clear
+    exit 0
+}
+
 # a message in the frame, never in the Shell window
 msg() {
     upkg-ui --title "$ui_title" --msgbox "$1" 0 0 2> /dev/null
@@ -119,6 +126,7 @@ runout() {
 run() {
     stale=1
     if interactive "$2"; then
+        clear
         "$upkg" "$1" "$2"
         rc=$?
         if [ $rc -eq 0 ]; then
@@ -218,7 +226,7 @@ EOF
     rc=$?
     case $rc in
     0) ;;
-    1|255) exit 0 ;;
+    1|255) quit ;;
     *) cat "$tmp" >&2
        echo "upkg browse: upkg-ui failed (exit $rc)." >&2
        exit 2 ;;
@@ -226,8 +234,8 @@ EOF
     key=
     tag=
     IFS=' ' read -r key tag < "$tmp"
-    [ "$key" = q ] && exit 0
-    [ -n "$tag" ] || exit 0
+    [ "$key" = q ] && quit
+    [ -n "$tag" ] || quit
     last=$tag
 
     isinst=0

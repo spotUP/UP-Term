@@ -30,6 +30,11 @@ printf '%s' "$value" >&2
 exit "$rc"
 '''
 
+# ncurses clear: logged, never drawn
+FAKE_CLEAR = '''#!/bin/sh
+echo clear >> "${CLEAR_LOG:-/dev/null}"
+'''
+
 FAKE_UPKG = '''#!/bin/sh
 case $1 in list|list-installed|list-upgradable|list-browse) echo "$1" >> "$LIST_LOG" ;; esac
 case $1 in
@@ -78,6 +83,10 @@ class Browse(unittest.TestCase):
         self.cmd_log = os.path.join(self.tmp, 'cmd.log')
         self.list_log = os.path.join(self.tmp, 'list.log')
         self.pb_log = os.path.join(self.tmp, 'pb.log')
+        self.clear_log = os.path.join(self.tmp, 'clear.log')
+        with open(os.path.join(self.bin, 'clear'), 'w') as f:
+            f.write(FAKE_CLEAR)
+        os.chmod(os.path.join(self.bin, 'clear'), 0o755)
         self.lists_dir = os.path.join(self.tmp, 'lists')
         os.mkdir(self.lists_dir)
         self.upkg = os.path.join(self.bin, 'upkg')
@@ -103,13 +112,13 @@ class Browse(unittest.TestCase):
 
     def env(self, **extra):
         env = {'PATH': self.bin + ':/usr/bin:/bin', 'UPKG': self.upkg, 'STATE': self.state,
-               'UI_LOG': self.ui_log, 'CMD_LOG': self.cmd_log, 'LIST_LOG': self.list_log, 'PB_LOG': self.pb_log, 'UPKG_LISTS_DIR': self.lists_dir, 'HOME': self.tmp, 'TMPDIR': self.tmp}
+               'UI_LOG': self.ui_log, 'CMD_LOG': self.cmd_log, 'LIST_LOG': self.list_log, 'PB_LOG': self.pb_log, 'CLEAR_LOG': self.clear_log, 'UPKG_LISTS_DIR': self.lists_dir, 'HOME': self.tmp, 'TMPDIR': self.tmp}
         env.update(extra)
         return env
 
     def run_browse(self, shell, typed=None, args=(), rc=0, **extra):
         """run on a pty with TYPED waiting on the keyboard (None: stdin is /dev/null)"""
-        for f in (self.ui_log, self.cmd_log, self.list_log, self.pb_log, self.ui_log + '.text'):
+        for f in (self.ui_log, self.cmd_log, self.list_log, self.pb_log, self.clear_log, self.ui_log + '.text'):
             if os.path.exists(f):
                 os.remove(f)
         if typed is None:
@@ -142,6 +151,9 @@ class Browse(unittest.TestCase):
 
     def list_reads(self):
         return self.read(self.list_log)
+
+    def clears(self):
+        return len(self.read(self.clear_log))
 
     def test_rows_and_markers_split_at_the_first_and_second_separator(self):
         self.fake_ui()
@@ -188,6 +200,8 @@ class Browse(unittest.TestCase):
                 self.assertEqual(self.commands(), ['install up-git'])
                 self.assertEqual(self.programbox(), [])
                 self.assertEqual(len(self.calls()), 2)
+                # the plain window starts clean, not under the list upkg-ui left; quit clears again
+                self.assertEqual(self.clears(), 2)
                 self.assertIn(b'installing up-git', r.stdout)
                 self.assertIn(b'[OK] upkg install up-git', r.stdout)
         # the field belongs to up-git only: another package still gets the box
@@ -325,6 +339,16 @@ class Browse(unittest.TestCase):
                     self.run_browse(sh, typed)
                     self.assertEqual(len(self.calls()), 1)
                     self.assertEqual(self.commands(), [])
+
+    def test_leaving_clears_the_last_screen(self):
+        """regression (owner, 2026-10-21): upkg-ui stays on the normal screen between screens (no Shell
+        flash), so the list it drew last is cleared on the way out, and an upkg-ui failure is not"""
+        self.fake_ui()
+        for sh in self.shells:
+            for typed, rc, n in (("0 q up-vim\n", 0, 1), ("255\n", 0, 1), ("1\n", 0, 1), ("2 usage\n", 2, 0)):
+                with self.subTest(sh=sh[0], typed=typed):
+                    self.run_browse(sh, typed, rc=rc)
+                    self.assertEqual(self.clears(), n)
 
     def test_an_upkg_ui_failure_is_reported(self):
         """regression (rig 2, 2026-10-21): an upkg-ui built before --hotkeys exits 2 with its usage on

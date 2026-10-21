@@ -21,6 +21,11 @@ printf '%s' "$value" >&2
 exit "$rc"
 '''
 
+# ncurses clear: logged, never drawn
+FAKE_CLEAR = '''#!/bin/sh
+echo clear >> "${CLEAR_LOG:-/dev/null}"
+'''
+
 
 class Ask(unittest.TestCase):
     shells = [['/bin/sh']] + ([[VSH]] if os.path.exists(VSH) else [])
@@ -31,6 +36,10 @@ class Ask(unittest.TestCase):
         self.bin = os.path.join(self.tmp, 'bin')
         os.mkdir(self.bin)
         self.log = os.path.join(self.tmp, 'ui.log')
+        self.clear_log = os.path.join(self.tmp, 'clear.log')
+        with open(os.path.join(self.bin, 'clear'), 'w') as f:
+            f.write(FAKE_CLEAR)
+        os.chmod(os.path.join(self.bin, 'clear'), 0o755)
         self.remote = os.path.join(self.tmp, 'remote')
         with open(self.remote, 'w') as f:
             f.write('; Claude Code on another computer\n; a comment\n\n10.0.0.5 7777\n')
@@ -50,7 +59,7 @@ class Ask(unittest.TestCase):
         os.chmod(p, 0o755)
 
     def run_ask(self, shell, typed=None, plain=False):
-        env = {'PATH': self.bin + ':/usr/bin:/bin', 'UI_LOG': self.log, 'HOME': self.tmp}
+        env = {'PATH': self.bin + ':/usr/bin:/bin', 'UI_LOG': self.log, 'CLEAR_LOG': self.clear_log, 'HOME': self.tmp}
         if plain:
             env['UPKG_ASK_PLAIN'] = '1'
         if typed is None:
@@ -101,6 +110,19 @@ class Ask(unittest.TestCase):
                 self.assertEqual(calls[1], TITLE + '2/3 --defaultno --yesno Start at boot? 0 0')
                 self.assertEqual(calls[2], TITLE + '3/3 --no-items --default-item sonnet --menu Model 0 0 0 '
                                            'haiku  sonnet  opus ')
+
+    def test_the_last_question_is_cleared_after_upkg_ui(self):
+        """regression (owner, 2026-10-21): upkg-ui stays on the normal screen (no Shell flash between
+        questions), so the last question is cleared before the install goes on; plain prompts are not"""
+        self.fake_ui()
+        for sh in self.shells:
+            for plain, typed, n in ((False, "0 host.lan 2323\n0\n0 opus\n", 1), (True, "\n\n\n", 0)):
+                with self.subTest(sh=sh[0], plain=plain):
+                    if os.path.exists(self.clear_log):
+                        os.remove(self.clear_log)
+                    self.run_ask(sh, typed, plain=plain)
+                    n_got = len(open(self.clear_log).read().splitlines()) if os.path.exists(self.clear_log) else 0
+                    self.assertEqual(n_got, n)
 
     def test_ui_cancel_and_escape_keep_defaults(self):
         self.fake_ui()
