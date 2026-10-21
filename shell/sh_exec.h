@@ -447,6 +447,11 @@ void sh_startup_login(sh_shell *sh);   /* a login shell: login_shell on, then EN
  * $HOME in the directory shows as ~. malloc'ed. */
 char *sh_prompt(sh_shell *sh, const char *ps);
 
+/* The prompt when PS1 is unset: the full Amiga path of the current
+ * directory (SYS:Work, not ~/Work: HOME is SYS: when nothing names it, and
+ * a lone ~ hid the volume) and %, in cyan. */
+#define SH_PS1_DEFAULT "%F{cyan}%/%f %# "
+
 /* Report background jobs that have ended ("[1] Done  cmd") on the
  * shell's error stream and forget them; the shell calls it before each
  * prompt. */

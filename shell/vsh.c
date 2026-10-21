@@ -2071,7 +2071,7 @@ static void prompt(sh_shell *sh, int more)
     if (!more)
         sh_prompt_command(sh);
     ps = sh_get(&sh->ctx, more ? "PS2" : "PS1");
-    text = sh_prompt(sh, ps ? ps : more ? "> " : "%F{cyan}%~%f %# ");
+    text = sh_prompt(sh, ps ? ps : more ? "> " : SH_PS1_DEFAULT);
     if (term_marks && !more) {
         char b[600];
         char *dir = os_cwd(0);

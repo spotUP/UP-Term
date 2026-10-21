@@ -1463,6 +1463,8 @@ static void prompts(void)
     /* only at a name boundary */
     CHECK_STR(prompt_after("HOME=Work:x; cd Work:xy", "%~"), "Work:xy");
     CHECK_STR(prompt_after("HOME=Work:x; cd Work:x/y", "%~ %c"), "~/y y");
+    /* the default prompt names the volume even inside HOME */
+    CHECK_STR(prompt_after("HOME=Work:; cd Work:src", SH_PS1_DEFAULT), "\033[36mWork:src\033[39m % ");
     CHECK_STR(prompt_after("", "%F{red}a%f%K{blue}b%k"), "\033[31ma\033[39m\033[44mb\033[49m");
     CHECK_STR(prompt_after("", "%F{#ff8000}x%F{208}y%B%bz"),
               "\033[38;2;255;128;0mx\033[38;5;208my\033[1m\033[22mz");

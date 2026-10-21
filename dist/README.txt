@@ -436,7 +436,8 @@ VSH (the shell)
   get the stack the builtin  stack [bytes]  sets (at least 16000), or more
   when their file asks for it with a $STACK: cookie (as on AmigaOS 3.2).
   Prompt: PS1 takes bash (\w \u \h) and zsh (%~ %n %m %? %F{red}...%f)
-  escapes; default %F{cyan}%~%f %#.
+  escapes; default %F{cyan}%/%f %#, the full path (SYS:Work %);
+  %~ shows HOME as ~.
   Unix commands: GNU coreutils 5.2.1 (ls cp mv rm mkdir cat sort head tail
   wc tr cut uniq seq du stat dd tee date and the rest, 86 in all) in
   UP-Term:bin, first in vsh's $PATH. They are not in C: (AmigaDOS
