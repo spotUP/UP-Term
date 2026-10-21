@@ -881,6 +881,8 @@ def var_check():
 
 OLD = "SYS:UP-Term"
 NEW = "VTC:KitTest/UP-Term"
+# Assign LIST prints the volume (VTCX:), not the VTC: assign: compare the path after the colon
+NEW_TAIL = NEW.split(':', 1)[1].lower()
 
 def move():
     fx = Fixtures()
@@ -929,7 +931,7 @@ def _move():
           'move: the message names the old drawer and what to do', out)
     rc, aout = run('Assign LIST')
     al = [l for l in aout.splitlines() if l.lower().startswith('up-term')]
-    check(len(al) == 1 and al[0].split(None, 1)[-1].strip().lower().endswith('apps/up-term'),
+    check(len(al) == 1 and al[0].split(None, 1)[-1].strip().lower().endswith(NEW_TAIL),
           'move: UP-Term: points to %s now' % NEW, aout)
     check(run('List >NIL: UP-Term:VERSIONS')[0] == 0 and run('List >NIL: "%s/VERSIONS"' % NEW)[0] == 0 and
           run('List >NIL: UP-Term:bin/sh')[0] == 0, 'move: the files are in %s, reached as UP-Term:' % NEW, '')
@@ -939,7 +941,7 @@ def _move():
     rc, out2 = run('Search S:User-Startup "Assign UP-Term:"')
     lines = [l for l in out2.splitlines() if 'Assign UP-Term:' in l]
     check(n_begin == 1 and len(lines) == 1, 'move: exactly one UP-Term: block and one Assign UP-Term: line', out + out2)
-    check(len(lines) == 1 and 'Apps/UP-Term' in lines[0].replace('apps/up-term', 'Apps/UP-Term') and OLD not in lines[0].upper().replace('UP-TERM', 'UP-Term'),
+    check(len(lines) == 1 and NEW.lower() in lines[0].lower() and OLD.lower() not in lines[0].lower(),
           'move: that line names %s, not %s' % (NEW, OLD), out2)
     rc, startup_moved = run('Type S:User-Startup')
     i_as, i_gg = startup_moved.find('Assign UP-Term:'), startup_moved.find('Assign GG:')
@@ -949,7 +951,7 @@ def _move():
           'move: the backup .before-UP-Term is still the file as it was (not made from our block)', '')
     rc, aout = run('Assign LIST')
     gg = [l for l in aout.splitlines() if l.lower().startswith('gg ')]
-    check(gg and gg[0].lower().rstrip().endswith('apps/up-term'),
+    check(gg and gg[0].lower().rstrip().endswith(NEW_TAIL),
           'move: GG: (ours) follows UP-Term: to %s' % NEW, aout)
     # the block's own line, as a boot runs it
     run('Assign UP-Term:')
@@ -958,7 +960,7 @@ def _move():
     run('Execute VTC:upline', 30)   # ... run as a boot runs it
     rc, aout = run('Assign LIST')
     al = [l for l in aout.splitlines() if l.lower().startswith('up-term')]
-    check(al and al[0].lower().rstrip().endswith('apps/up-term') and run('List >NIL: UP-Term:bin/sh')[0] == 0,
+    check(al and al[0].lower().rstrip().endswith(NEW_TAIL) and run('List >NIL: UP-Term:bin/sh')[0] == 0,
           'move: the Assign line of the block, run as a boot runs it, assigns UP-Term: to %s' % NEW, aout)
     # the same DEST again: nothing changes, nothing is said
     rc, out = run_long('runinstall_new')
