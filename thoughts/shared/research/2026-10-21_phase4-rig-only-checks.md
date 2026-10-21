@@ -26,3 +26,11 @@ Static pointer: the Mac-side `make host-upkg-ui` expectations exist in upterm-po
   Likely rig 4's persistent disk or run state gave vsh a PATH containing gg/bin (unverified, not run on rig 4).
 - Fix: tools/rig/userland_rig.py tty_stage scripts use PATH=/VTC/userland/bin:/gg/bin:$PATH; host test UserlandTtyStage in tests/test_rig_fixtures.py (fails without the fix).
 - Rig 2 then stopped answering wasabid (connection refused right after a successful ping; status "down" while fs-uae pid lives), so the rerun and Q2-Q5 were NOT run.
+
+## Q1-Q5 on fresh rig 4 (2026-10-22)
+- Rig 4 started with `rig.py start --max`. Q2-Q5 are not defined in the plan or this file; only the "unverified, still open" list above exists (--buttons on stderr, lists-dir/list-new, up-claude plain window, pipe timing under 0024). Q2-Q5 NOT RUN.
+- Q1 `UPTERM_RIG=4 userland_rig.py --only upkg-ui`: FAIL, 7 of 17 pass, then the run aborted. Same 7 non-tty cases OK (usage, nowidget, badmenu, badhotkeys, badbuttons, notextfile, noprogramargs).
+  At the first tty case (input) the wasabid connection was refused: ConnectionRefusedError in ami.py requesters() (ami.py:125 -> wasabi _open). `rig.py status` = "down" while fs-uae pid 52257 still lives; `ami.py ping` also refused afterwards.
+  Same symptom as rig 2 (wasabid gone at the first tty/ptyrun case), so it is not rig-2-specific. serial.log and fs-uae.log.txt show no crash text; build/rig4/wasabi/debug.err is stale (20 Oct).
+  Evidence: stdout log /private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/87a17433-32bd-494e-bac5-37c13673dc52/scratchpad/q1.log, build/rig4/serial.log, build/rig4/logs/fs-uae.log.txt.
+- Stopped per instructions on the failing check; no code changed. Open: why wasabid dies on the first ptyrun case (suspect ptyrun/ixemul pty path or a wasabid crash on that command); needs a wasabid log, not found under build/rig4.
