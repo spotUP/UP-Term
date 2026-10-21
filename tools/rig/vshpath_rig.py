@@ -17,6 +17,9 @@ parent directory) names nothing, and keeps the AmigaDOS meaning where it does.
   9. V84, an assign: cd V2A: (Assign V2A: RAM:v2/sub) gives "Ram Disk:v2/sub"
      with -L and -P alike; the work directory has no logical name on the
      Amiga (dist/README.txt, Differences from bash).
+ 10. A glob by Unix name: from SYS:, /RAM/v2/s* lists RAM:v2/sub (the glob's directory was locked by
+     its Amiga name only, so the pattern stayed literal: upkg browse missed UP-Term-Interactive).
+ 11. A glob below "./": in RAM:v2, ./s* lists ./sub.
 
 Run with the rig up: python3 tools/rig/vshpath_rig.py
 """
@@ -40,7 +43,8 @@ def check(ok, what, seen=''):
 
 
 def vsh(cmd):
-    return c.run('VTC:vsh -c "%s"' % cmd.replace('"', '*"'))
+    # AmigaDOS quoting: * escapes, so a glob's * is ** (else s*" ate the closing quote)
+    return c.run('VTC:vsh -c "%s"' % cmd.replace('*', '**').replace('"', '*"'))
 
 
 def main():
@@ -75,6 +79,10 @@ def main():
         lines = out.strip().lower().splitlines()
         check(len(lines) == 3 and all(l == 'ram disk:v2/sub' for l in lines),
               'an assign: cd -L and cd -P both give the volume\'s name', out)
+        rc, out = vsh('cd SYS: ; echo /RAM/v2/s*')
+        check(out.strip() == '/RAM/v2/sub', 'a glob by Unix name (/RAM/v2/s* from SYS:)', out)
+        rc, out = vsh('cd RAM:v2 ; echo ./s*')
+        check(out.strip() == './sub', 'a glob below ./ (./s* in RAM:v2)', out)
     finally:
         c.run('Assign V2A: REMOVE')
         c.run('Delete RAM:v2 RAM:v2.out ALL QUIET')

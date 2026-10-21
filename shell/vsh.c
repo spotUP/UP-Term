@@ -1692,10 +1692,14 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
     return r;
 }
 
-/* For globs: the names in a directory. */
+/* For globs: the names in a directory. The directory is named as the other callbacks take it (lock_name):
+ * "./x" and the Unix "/vol/x" too -- a raw Lock read "/UP-Term/pkg/upkg/lists" as the parent's
+ * UP-Term/..., so "$listsdir"/* stayed literal outside "/" and upkg browse ran an add-on with install
+ * questions in the programbox. */
 static int list_dir(sh_ctx *c, const char *dir, sh_list *out)
 {
-    BPTR lock = Lock((STRPTR)dir, SHARED_LOCK);
+    char an[256];
+    BPTR lock = lock_name(dir, an, sizeof(an));
     struct FileInfoBlock *fib;
     (void)c;
     if (!lock)
