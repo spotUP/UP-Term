@@ -23,7 +23,14 @@
     (
         (run "Delete >NIL: T:UPTOLDOPTS ALL QUIET")
         (makedir "T:UPTOLDOPTS")
-        (textfile (dest "T:UPTOLDOPTS/UPTOPTDEST") (append #olddrawer))
+        ; the drawer as the install named it (install.dos: ENVARC:up-term/Dir, in ENV: from boot);
+        ; the assign gives the volume's name (System:UP-Term for SYS:UP-Term)
+        (set #olddir (getenv "up-term/Dir"))
+        (if (> (strlen #olddir) 0)
+            (if (= (substr #olddir (- (strlen #olddir) 1) 1) "\n")
+                (set #olddir (substr #olddir 0 (- (strlen #olddir) 1)))))
+        (if (= #olddir "") (set #olddir #olddrawer))
+        (textfile (dest "T:UPTOLDOPTS/UPTOPTDEST") (append #olddir))
         (set #block "console") (P_OLDBLOCK)
         (set #name (if #on "CONSOLE" "NOCONSOLE") #on 1) (P_OLDOPT)
         (set #block "device") (P_OLDBLOCK)

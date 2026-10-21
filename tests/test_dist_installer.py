@@ -660,6 +660,16 @@ class UpdateWithNoRecordedOptions(unittest.TestCase):
         frag = INSTALLER[INSTALLER.index('(procedure P_OLDOPT'):INSTALLER.index('(set #oldopts 1)')]
         self.assertIn('(not (exists "ENVARC:up-term/opts/UPTOPTDEST"))', frag)
 
+    def test_the_drawer_read_back_is_the_one_the_install_named(self):
+        # getassign gives the volume's name (System:UP-Term for SYS:UP-Term): a rig run read back
+        # a DEST that differed from the full install's. install.dos keeps the drawer as named in
+        # ENVARC:up-term/Dir, which ENV: holds from boot.
+        frag = INSTALLER[INSTALLER.index('(procedure P_OLDOPT'):INSTALLER.index('(set #oldopts 1)')]
+        self.assertIn('(set #olddir (getenv "up-term/Dir"))', frag)
+        self.assertIn('(textfile (dest "T:UPTOLDOPTS/UPTOPTDEST") (append #olddir))', frag)
+        self.assertNotIn('(append #olddrawer)', frag)
+        self.assertIn('Echo >ENVARC:up-term/Dir "$updest"', (ROOT / 'dist/install.dos').read_text())
+
     def test_add_ons_do_not_read_the_base_options(self):
         import pkgs
         for row in pkgs.rows():

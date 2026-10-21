@@ -469,6 +469,9 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
         if sig != last_sig:
             dump(tree, 'page')
             log.append('page [%s] ids %s' % (title, ' '.join(map(str, sorted(gads)))))
+            if case == 'update-2':   # the pages file holds geometry only: the Update page's text is read from the pixels
+                time.sleep(1)
+                log.append('page text: %s' % window_ocr(tree, case + '-page'))
             last_sig, clicked_at, retried = sig, None, None
             last_page_at = time.time()
             if 89 in gads and 92 in gads:
@@ -649,7 +652,7 @@ def update_phase(ck, inst, level, base, t_install, noopts=False):
     if noopts:
         got = opts_now()
         ck(got == optvals, 'the options read back are the full install\'s', '%r != %r' % (got, optvals))
-        shown = (OUT / 'update-2.pages.txt').read_text(errors='replace')
+        shown = ' '.join(' '.join(l.split()) for l in log if l.startswith('page text:'))
         ck('read from this Amiga' in shown, 'the Update page says the choices were read back')
     lay = [l for l in log if l.startswith('LAYOUT')]
     ck(not lay, 'the Update\'s pages readable', '; '.join(lay[:4]))
