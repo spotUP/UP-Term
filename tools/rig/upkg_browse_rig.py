@@ -7,7 +7,7 @@ Flow (the product's top-level entry point is the typed command; the sentinel is 
   1  `upkg browse`; Down to the row up-vim (the row index comes from `upkg list`), `i` installs it. After the
      install the script waits for the sentinel UP-Term:pkg/up-vim/Uninstall, then Return goes back to the list.
   2  `r` on the same row (the cursor stays on it), the yes/no question "Remove up-vim?" is answered Yes
-     (Left, Return: --defaultno starts on No), then Return at "Press Return to go back to the list."
+     (the y key: --defaultno starts on No), then Return at "Press Return to go back to the list."
      The sentinel must be gone.
   3  `q` leaves the browser.
 `upkg list-installed` is asserted before the run, after the install and after the remove (up-vim absent,
@@ -40,7 +40,7 @@ SENTINEL = 'UP-Term:pkg/%s/Uninstall' % PKG
 DEFCONF = 'UP-Term:etc/upkg.conf'
 SAVED = 'T:upkg.conf.browse-save'
 TITLE = 'upkg-browse'
-DOWN, LEFT = 0x4D, 0x4F
+DOWN = 0x4D
 LOG = []
 
 
@@ -140,8 +140,8 @@ def main(argv):
             typewin.typ('r')
             time.sleep(3)
             shot(out, 'step2-question.png')
-            typewin.key(LEFT, wait=0.5)            # --defaultno: the box starts on No
-            typewin.key(typewin.RET, wait=3)
+            typewin.typ('y')                       # y answers Yes at once (--defaultno starts on No)
+            time.sleep(3)
             check('remove: sentinel gone', wait_for(SENTINEL, False, 240))
             time.sleep(3)
             shot(out, 'step2-removed.png')
