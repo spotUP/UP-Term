@@ -15,7 +15,7 @@
 # (a description may contain " - " itself).
 #
 # usage: upkg-browse            (also: --help, -h, help, ? print the usage and exit 0)
-# exit:  0 quit or help; 1 no package lists; 2 bad argument, no terminal, or no upkg-ui.
+# exit:  0 quit or help; 1 no package lists; 2 bad argument, no terminal, no upkg-ui, or upkg-ui failed.
 # env:   UPKG is the upkg command (default upkg; the host tests set it). Global upkg options given
 #        before "browse" are not forwarded to the child commands.
 
@@ -122,8 +122,16 @@ EOF
         upkg-ui --title "$ui_title" --backtitle "$count add-ons" --hotkeys iruq \
             --menu "$prompt" 0 0 0 "$@" 2> "$tmp"
     fi
-    # Escape (255), Cancel or an upkg-ui failure leave
-    [ $? -eq 0 ] || exit 0
+    # Escape (255) and Cancel (1) leave; any other failure (2, a usage error: an upkg-ui without
+    # --hotkeys) says so, its message is in the answer file
+    rc=$?
+    case $rc in
+    0) ;;
+    1|255) exit 0 ;;
+    *) cat "$tmp" >&2
+       echo "upkg browse: upkg-ui failed (exit $rc)." >&2
+       exit 2 ;;
+    esac
     key=
     tag=
     IFS=' ' read -r key tag < "$tmp"

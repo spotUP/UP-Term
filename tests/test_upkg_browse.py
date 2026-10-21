@@ -215,6 +215,18 @@ class Browse(unittest.TestCase):
                     self.assertEqual(len(self.calls()), 1)
                     self.assertEqual(self.commands(), [])
 
+    def test_an_upkg_ui_failure_is_reported(self):
+        """regression (rig 2, 2026-10-21): an upkg-ui built before --hotkeys exits 2 with its usage on
+        stderr, which the browse script sends to its answer file; the script then left with 0 and no word"""
+        self.fake_ui()
+        for sh in self.shells:
+            with self.subTest(sh=sh[0]):
+                r = self.run_browse(sh, "2 usage: upkg-ui\n", rc=2)
+                self.assertTrue(r.stderr.startswith(b'usage: upkg-ui'), r.stderr)
+                self.assertTrue(r.stderr.endswith(b'upkg browse: upkg-ui failed (exit 2).\n'), r.stderr)
+                self.assertEqual(r.returncode, 2)
+                self.assertEqual(self.commands(), [])
+
     def test_no_terminal_is_refused(self):
         self.fake_ui()
         for sh in self.shells:
