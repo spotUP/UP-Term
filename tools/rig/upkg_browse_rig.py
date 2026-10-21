@@ -86,6 +86,9 @@ def main(argv):
     for need in (UPKG, UPKG_UI, ir.ROOT / 'dist/upkg-browse', ir.ROOT / 'build/ipk/Packages', ir.ROOT / ('build/ipk/%s_1.0_m68k-amigaos.ipk' % PKG)):
         if not need.exists():
             raise SystemExit('upkg_browse_rig: no %s (kit-stage build of upterm-ports / make dist-ipk first)' % need)
+    # upkg-browse drives upkg-ui with --hotkeys; an older build exits 2 and the run tests nothing
+    if b'hotkeys' not in UPKG_UI.read_bytes():
+        raise SystemExit('upkg_browse_rig: %s has no --hotkeys (make upkg-ui in upterm-ports)' % UPKG_UI)
     ck = {}
 
     def check(name, ok, detail=''):
