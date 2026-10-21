@@ -826,6 +826,29 @@ class UpkgRigPure(unittest.TestCase):
         self.assertIsNone(u.status_version(self.PACKAGES, 'Python3'))
         self.assertEqual(u.lower_record("up-nvim 1.0 abc d\nrest\n", '0.0.1'), "up-nvim 0.0.1 abc d\nrest\n")
 
+class UserlandTtyStage(unittest.TestCase):
+    def test_tty_script_has_sh_on_its_path(self):
+        # ptyrun runs `sh -c ...` through execvp, which searches only PATH; a rig's vsh starts with an empty
+        # PATH, and sh lives in /gg/bin (GG:bin), not in userland/bin: without it every tty case exits 127
+        import tempfile, userland_rig as ur
+        saved = ur.VTC, ur.PORTS
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                d = pathlib.Path(d)
+                (d / "vtc/userland/bin").mkdir(parents=True)
+                (d / "ports/pkgs/p/check/keys").mkdir(parents=True)
+                (d / "ports/pkgs/p/check/keys/c").write_bytes(b"")
+                ur.VTC, ur.PORTS = d / "vtc", d / "ports"
+                ur.PTYRUN, ur.TERMINFO = d / "ptyrun", d / "ti"
+                (d / "ptyrun").write_bytes(b""); (d / "ti").mkdir()
+                ur.tty_stage("p", [("c", 'sh -c "x"')])
+                text = (d / "vtc/userland/p/tty-c.sh").read_text(encoding="latin-1")
+                path = [l for l in text.splitlines() if l.startswith("export PATH=")][0]
+                self.assertIn("/gg/bin", path.split("=", 1)[1].split(":"))
+        finally:
+            ur.VTC, ur.PORTS = saved
+
+
 class RigStart(unittest.TestCase):
     def test_start_refuses_a_rig_with_no_system_disk(self):
         # rig 3 had no sys.hdf and booted to "Please insert volume dh0:" under an agent's run

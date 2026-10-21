@@ -311,7 +311,7 @@ def tty_stage(pkg, wanted):
         shutil.copyfile(PORTS / "pkgs" / pkg / "check/keys" / name, keys / name)
         (VTC / "userland" / pkg / ("tty-" + name + ".sh")).write_text(
             "cd VTC:userland/work/" + pkg + "\n"
-            "export PATH=/VTC/userland/bin:$PATH\n"
+            "export PATH=/VTC/userland/bin:/gg/bin:$PATH\n"   # sh: ptyrun's execvp finds it only on PATH; a rig's vsh starts with none
             "unset LC_ALL LC_CTYPE SHLVL\n"
             "export LANG=C TERM=vtcon TERMINFO=/VTC/userland/terminfo\n"
             "ptyrun -t 30 VTC:userland/%s/keys/%s VTC:out/%s/%s.stream %s >VTC:out/%s/%s.txt 2>VTC:out/%s/%s.err\n"
