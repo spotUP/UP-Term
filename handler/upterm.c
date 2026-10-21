@@ -22,8 +22,10 @@
 #include <proto/dos.h>
 #include "vtcon_packets.h"
 #include "../tty/qmark.h"
+#include "upterm_version.h"
 
-static const char vers[] = "$VER: UPTerm 1.0 (3.10.2026) UP-Term";
+/* the base version and build day (upterm_version.h, written by the Makefile) */
+static const char vers[] = "$VER: UPTerm " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 
 int main(void)
 {

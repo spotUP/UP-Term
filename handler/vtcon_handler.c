@@ -77,6 +77,7 @@
 #include "../config/termurl.h"
 #include "../config/upconf.h"
 #include "../prefs/prefs_core.h"
+#include "upterm_version.h"
 
 /* rexx/rexxio.h: ARexx PUSH and QUEUE */
 #ifndef ACTION_FORCE
@@ -107,7 +108,8 @@ LONG handler_entry(void)
     return handler_main();
 }
 
-/* Build fingerprint, readable with `version L:vtcon-handler`. VTCON_BUILD
+/* Build fingerprint, readable with `version L:vtcon-handler`: the base
+ * version and build day (upterm_version.h, written by the Makefile). VTCON_BUILD
  * is the git revision, passed bare (vc drops quotes on its way to the
  * compiler) and turned into a string here. */
 #ifndef VTCON_BUILD
@@ -115,7 +117,7 @@ LONG handler_entry(void)
 #endif
 #define STR2(x) #x
 #define STR(x) STR2(x)
-static const char vers[] = "$VER: vtcon-handler 0.1 (29.9.26) " STR(VTCON_BUILD);
+static const char vers[] = "$VER: vtcon-handler " UPTERM_VERSION " (" UPTERM_DATE ") " STR(VTCON_BUILD);
 
 /* ---- the console ----------------------------------------------------------- */
 

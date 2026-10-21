@@ -438,6 +438,15 @@ $(BUILD)/amiga/obj/cpuchk-%.o: tty/cpucheck.c tty/bmsg.h tty/bmsg.c
 
 
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
+# The base's version and the build day in the $VER of C:UPTerm, vtcon-handler, pty-handler and vsh, so
+# "Version UPTerm" says the base it came with: the version from dist/packages.txt (the one tools/mkkit.py
+# writes into UP-Term.version), the day as mkkit.py writes it. The header is rewritten only when it
+# changes, so the four rebuild when the version or the day moves, not on every make.
+UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
+$(UPTERM_VERSION_H): FORCE
+	@mkdir -p $(@D)
+	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" > $@.new
+	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
 # the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over its DOS calls alone
@@ -527,14 +536,14 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # strcmp/strlen/strcpy at every call (another 3.5 KB). Measured 2026-10-07.
 VSH_OPT := -O=1 -size -D__NOINLINE__
 VSH_SRC := shell/vsh.c shell/vsh_mem.c shell/sh_exec.c shell/sh_path.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
-$(BUILD)/amiga/vsh: $(VSH_SRC) config/termurl.h shell/sh_exec.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
+$(BUILD)/amiga/vsh: $(VSH_SRC) $(UPTERM_VERSION_H) config/termurl.h shell/sh_exec.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
-	$(subst -O2,$(VSH_OPT),$(VC)) -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
+	$(subst -O2,$(VSH_OPT),$(VC)) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 
 # vsh that logs how deep its stacks went (RAM:vsh_hw.log, shell/vsh.c VSH_STACKHW): the $$STACK measurement
-$(BUILD)/amiga/vsh_hw: $(VSH_SRC) $(HOST_HDR) $(BUILD)/amiga/obj/cpuchk-vsh.o
+$(BUILD)/amiga/vsh_hw: $(VSH_SRC) $(UPTERM_VERSION_H) $(HOST_HDR) $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
-	$(subst -O2,$(VSH_OPT),$(VC)) -Dmain=up_main -dontwarn=153,65,79 -DVSH_STACKHW -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
+	$(subst -O2,$(VSH_OPT),$(VC)) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65,79 -DVSH_STACKHW -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 
 $(BUILD)/amiga/vtshow: tests/amiga/vtshow.c
 	@mkdir -p $(BUILD)/amiga
@@ -843,9 +852,9 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
 # C:UPTerm: the slash commands from scripts (ledger C1)
-$(BUILD)/amiga/UPTerm: handler/upterm.c handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
+$(BUILD)/amiga/UPTerm: handler/upterm.c $(UPTERM_VERSION_H) handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -o $@ handler/upterm.c $(BUILD)/amiga/obj/cpuchk-UPTerm.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ handler/upterm.c $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 
 # C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
 # Roadshow network headers: VTCON_NETINCLUDE, as C:Claude's.
@@ -944,10 +953,10 @@ HANDLER_FORCE := FORCE
 endif
 FORCE:
 
-$(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(HANDLER_FORCE)
+$(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) $(HANDLER_FORCE)
 	@mkdir -p $(BUILD)/amiga/obj
 	@echo '$(HANDLER_FLAGS)' > $(BUILD)/amiga/handler.flags
-	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
+	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -I$(BUILD)/amiga -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -DVT_ASM -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vtengine_68k.o $(ENGINE_68K)
 	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) $(if $(PROF),-DVTCON_PROF) -DVR_ASM -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
@@ -1002,10 +1011,10 @@ PTY_FLAGS := DEBUG=$(DEBUG)
 ifneq ($(PTY_FLAGS),$(shell cat $(BUILD)/amiga/pty.flags 2>/dev/null))
 PTY_FORCE := FORCE
 endif
-$(BUILD)/amiga/pty-handler: handler/pty_handler.c handler/pty_name.h handler/handler_start.s $(PTY_FORCE) handler/brk.c handler/brk.h handler/vtcon_packets.h tty/ldisc.c tty/ldisc.h handler/waitset.c handler/waitset.h
+$(BUILD)/amiga/pty-handler: handler/pty_handler.c $(UPTERM_VERSION_H) handler/pty_name.h handler/handler_start.s $(PTY_FORCE) handler/brk.c handler/brk.h handler/vtcon_packets.h tty/ldisc.c tty/ldisc.h handler/waitset.c handler/waitset.h
 	@mkdir -p $(BUILD)/amiga/obj/pty
 	@echo '$(PTY_FLAGS)' > $(BUILD)/amiga/pty.flags
-	$(VC) $(if $(DEBUG),-DPTY_DEBUG) -DVTCON_BUILD=$(subst -,_,$(GITREV)) -c -o $(BUILD)/amiga/obj/pty/pty_handler.o handler/pty_handler.c
+	$(VC) $(if $(DEBUG),-DPTY_DEBUG) -DVTCON_BUILD=$(subst -,_,$(GITREV)) -I$(BUILD)/amiga -c -o $(BUILD)/amiga/obj/pty/pty_handler.o handler/pty_handler.c
 	$(VC) -c -o $(BUILD)/amiga/obj/pty/brk.o handler/brk.c
 	$(VC) -c -o $(BUILD)/amiga/obj/pty/waitset.o handler/waitset.c
 	$(VC) -c -o $(BUILD)/amiga/obj/pty/ldisc.o tty/ldisc.c

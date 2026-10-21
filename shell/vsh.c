@@ -36,6 +36,7 @@
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 #include "../config/termurl.h"
+#include "upterm_version.h"
 
 #ifdef VSH_DEBUG
 /* A trace on the serial port (the rig captures it in build/rig/serial.log). */
@@ -64,7 +65,7 @@ static void tr(const char *s, long a, long b)
 #define TR(s, a, b)
 #endif
 
-static const char version[] = "$VER: vsh 0.1 (29.9.2026)";
+static const char version[] = "$VER: vsh " UPTERM_VERSION " (" UPTERM_DATE ")";
 /* the stack vsh wants: AmigaOS 3.2 and 4 start it with that, and so does
  * a vsh it runs; otherwise it swaps to 64 KB itself (main) */
 static const char stack_cookie[] = "$STACK: 262144";
