@@ -87,6 +87,10 @@ D13. upkg's own usage text (patch 0008 layout, 76 columns) gets one line under I
 `  browse                      Pick add-ons from a list (install, remove, upgrade)`.
 `check/help_width.sh` must still pass.
 
+D15. 2026-10-21 implementation: the D13 text is 81 columns, over the 76-column help_width check. The usage row reads `Pick add-ons from a list to install or remove` (upterm-ports 2e9bdef).
+
+D14. Owner 2026-10-21: keep D1 (script + upkg-ui + patch row), not a C browser inside upkg. Reasons: no ncursesw in the static upkg, no copy of the upkg-ui menu, opkg 0.9 runs one command per process. Every action is a child `upkg install/remove/upgrade/info NAME`.
+
 ## Checklist
 
 Phase A: upkg-ui `--hotkeys` (upterm-ports)
