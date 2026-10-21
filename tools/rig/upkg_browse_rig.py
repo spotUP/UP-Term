@@ -106,6 +106,10 @@ def main(argv):
                 (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files '
                                                          'NOCONSOLE NODEVICE SSH BEBBOGET CURL WASABI CPU060 UNIFONT EMOJI\n')
                 ir.base_install(must, 'runinstallbrowse')
+                # prepare() assigned LIBS: as Install sees it, without the rig's AmiSSL drawer: curl needs
+                # amisslmaster.library even for the http feed
+                for line in ir.rig_libs():
+                    ir.run(line)
                 note('the base installed from %s' % ir.KIT)
             for n, src in (('upkg-browse', ir.ROOT / 'dist/upkg-browse'), ('upkg', UPKG), ('upkg-ui', UPKG_UI)):
                 shutil.copy(src, ir.VTC / n)
