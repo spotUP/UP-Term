@@ -130,6 +130,7 @@ def main(argv):
 
             # step 0 (D2): upkg update must work on this rig
             rc, o = upkg_rig.upkg('browse-update', 'update', conf=False)
+            check('step 0: upkg update returns 0', rc == 0, 'rc %d' % rc)
             if rc != 0:
                 raise SystemExit('[ERROR] step 0: `upkg update` returned %d on this rig (no working AmiSSL or feed?); '
                                  'run this check on the A1200 instead (keys with ami.py key, Return = 44).\n%s' % (rc, o[-500:]))
