@@ -14,8 +14,9 @@ REAL_UI = os.path.join(ROOT, '..', 'upterm-ports', 'build', 'host', 'upkg-ui', '
 VSH = os.path.join(ROOT, 'build', 'vsh_host')
 HEAD = '--title UP-TERM ADD-ONS --backtitle 3 add-ons --colors --hotkeys iruq '
 PROMPT = 'Enter info   i install   r remove   u upgrade   q quit'
-ROWS = ('up-vim \\Z2installed 1.3   Vim, the text editor '
-        'up-git available 2.0   Git - the stupid content tracker '
+# each status is padded to the widest (upgrade 5.38 to 5.40), so the descriptions line up
+ROWS = ('up-vim \\Z2installed 1.3          Vim, the text editor '
+        'up-git available 2.0          Git - the stupid content tracker '
         'up-perl \\Z3upgrade 5.38 to 5.40   Perl language')
 
 FAKE_UI = '''#!/bin/sh
@@ -260,7 +261,7 @@ class Browse(unittest.TestCase):
             with self.subTest(sh=sh[0]):
                 self.run_browse(sh, "0 q up-git\n")
                 self.assertEqual(self.calls(), [HEAD + '--menu ' + PROMPT + ' 0 0 0 '
-                                                + ROWS.replace('up-git available 2.0', 'up-git \\Z6new 2.0')])
+                                                + ROWS.replace('up-git available 2.0', 'up-git \\Z6new 2.0      ')])
 
     def test_remove_asks_first_and_yes_removes(self):
         self.fake_ui()
@@ -464,6 +465,37 @@ class Browse(unittest.TestCase):
                 # list again never switch back to the Shell's screen in between
                 self.assertGreaterEqual(screen.count(b'\x1b[?1049h'), 3)
                 self.assertFalse(back_to_the_shell_after_drawing(screen))
+
+    def test_real_upkg_ui_draws_its_top_border_below_shell_text(self):
+        """regression (owner, A1200, 2026-10-22): the list's top border was missing and the masthead sat on
+        the window's top row. rmcup (upkg-ui stays on the normal screen) puts the cursor back at the Shell
+        prompt while ncurses believes it is home, so the first row went out at the prompt. The real
+        upkg-ui on a pty with TERM=vtcon; its output after Shell text is fed to the engine (build/vtdump)."""
+        if not self.real_ui_has_hotkeys():
+            self.skipTest('host upkg-ui missing or without --hotkeys: run "make host-upkg-ui" in upterm-ports')
+        subprocess.run(['make', '-s', 'build/vtdump', 'build/terminfo/76/vtcon'], cwd=ROOT, check=True)
+        env = dict(PATH='/usr/bin:/bin', HOME=self.tmp, TERM='vtcon', TERMINFO=os.path.join(ROOT, 'build', 'terminfo'),
+                   LANG='en_US.UTF-8', LC_ALL='en_US.UTF-8')
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+        p = subprocess.Popen([REAL_UI, '--title', 'UP-TERM ADD-ONS', '--backtitle', '3 add-ons', '--menu', 'P',
+                              '0', '0', '0', 'a', 'x', 'b', 'y'], stdin=slave, stdout=slave,
+                             stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+        os.close(slave)
+        screen = pump(master, 1.5, b'')
+        os.write(master, b'\r')
+        end = time.time() + 10
+        while p.poll() is None and time.time() < end:
+            screen = pump(master, 0.1, screen)
+        if p.poll() is None:
+            os.killpg(p.pid, signal.SIGKILL)
+        os.close(master)
+        # the Shell's lines and the cursor after its prompt, then all of upkg-ui's output
+        grid = subprocess.run([os.path.join(ROOT, 'build', 'vtdump'), '100', '30'],
+                              input=b'line1\r\nline2\r\nsh> ' + screen,
+                              check=True, capture_output=True).stdout.decode().splitlines()
+        self.assertTrue(grid[0].startswith('\u2554'), grid[:2])
+        self.assertIn('UP-TERM ADD-ONS', grid[1])
 
 
 if __name__ == '__main__':
