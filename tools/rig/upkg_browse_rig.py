@@ -15,7 +15,7 @@ present, absent). A screenshot follows every step into the out dir (the script n
 
 Needs: build/ipk with up-vim (make dist-ipk), dist/upkg-browse, and the kit-stage build of upterm-ports with
 the `browse` row: build/sysroot/UP-Term/bin/upkg and upkg-ui. The rig is up (`rig.py start --max`; UPTERM_RIG=3
-for rig 3). A rig with no UP-Term: gets the base from the kit of `make dist` (install_rig's runinstall) and loses
+for rig 3). A rig with no UP-Term: gets the base from the kit of `make dist` (every option, CURL among them) and loses
 it again at the end (rununinstall). The files are copied into UP-Term:bin and left there. The feed is served over http from build/ipk.
 The rig's UP-Term:etc/upkg.conf is replaced by the feed conf for the run (browse's child commands use the
 default config) and put back at the end. The script stops the rig at the end.
@@ -102,7 +102,10 @@ def main(argv):
                     raise SystemExit('upkg_browse_rig: the rig has no UP-Term: and there is no kit at %s (make dist first)' % ir.KIT)
                 ir.prepare(None)
                 based = True
-                ir.base_install(must)
+                # upkg's download backend runs curl by name: only Install's CURL option puts it in UP-Term:bin
+                (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files '
+                                                         'NOCONSOLE NODEVICE SSH BEBBOGET CURL WASABI CPU060 UNIFONT EMOJI\n')
+                ir.base_install(must, 'runinstallbrowse')
                 note('the base installed from %s' % ir.KIT)
             for n, src in (('upkg-browse', ir.ROOT / 'dist/upkg-browse'), ('upkg', UPKG), ('upkg-ui', UPKG_UI)):
                 shutil.copy(src, ir.VTC / n)
