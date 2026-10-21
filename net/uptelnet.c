@@ -61,7 +61,9 @@
 #include "../tty/bmsg.h"
 #include "../tty/qmark.h"
 
-static const char vers[] = "$VER: uptelnet 1.0 (4.10.2026) UP-Term";
+/* the base version and build day (upterm_version.h, written by the Makefile) */
+#include "upterm_version.h"
+static const char vers[] = "$VER: uptelnet " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 
 struct Library *SocketBase;
 struct Device *TimerBase;

@@ -41,7 +41,9 @@ extern struct DosLibrary *DOSBase;
 #include "../config/upassign.h"
 #include "../tty/qmark.h"
 
-static const char vers[] = "$VER: upgetty 0.1 (30.9.2026)";
+/* the base version and build day (upterm_version.h, written by the Makefile) */
+#include "upterm_version.h"
+static const char vers[] = "$VER: upgetty " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 
 struct ws { UWORD ws_row, ws_col, ws_xpixel, ws_ypixel; }; /* ixemul 48.2's winsize */
 

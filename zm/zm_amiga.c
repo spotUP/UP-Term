@@ -21,10 +21,12 @@
 #include "../tty/ldisc.h"
 #include "../tty/qmark.h"
 
+/* the base version and build day (upterm_version.h, written by the Makefile) */
+#include "upterm_version.h"
 #ifdef ZM_SZ
-static const char vers[] = "$VER: sz 1.0 (2.10.2026) UP-Term";
+static const char vers[] = "$VER: sz " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 #else
-static const char vers[] = "$VER: rz 1.0 (2.10.2026) UP-Term";
+static const char vers[] = "$VER: rz " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 #endif
 
 /* ---- the line: the shell's stream ---------------------------------------- */

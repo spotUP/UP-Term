@@ -119,19 +119,29 @@ class BuiltKit(unittest.TestCase):
         self.assertEqual(txt[0].split()[:2], [row['id'] == 'base' and 'UP-Term' or ARCHIVE, row['version']])   # the base's VERSIONS names the product, not up-term
         self.assertEqual([l.split()[0] for l in txt[1:]], row['consumes'].split(','))
 
-    def test_base_programs_say_the_base_version(self):
-        # "Version UPTerm" or "Version L:vtcon-handler" on the Amiga prints the base's version, the
-        # one UP-Term.version holds; they were hand-written and stale (UPTerm 1.0, vtcon-handler 0.1)
-        if ARCHIVE != 'up-term':
-            self.skipTest('the base only')
-        stamp = open(os.path.join(KIT, 'Files/UP-Term.version'), 'rb').read().split()
-        version = stamp[2]
-        for name in ('UPTerm', 'vtcon-handler', 'pty-handler', 'vsh'):
+    def assert_ver(self, names, version):
+        for name in names:
             data = open(os.path.join(KIT, 'Files', name), 'rb').read()
             i = data.find(b'$VER: ')
             self.assertNotEqual(i, -1, name)
             ver = data[i:data.index(b'\0', i)].split()
             self.assertEqual(ver[1:3], [name.encode(), version], b' '.join(ver))
+
+    def test_base_programs_say_the_base_version(self):
+        # "Version UPTerm" or "Version L:vtcon-handler" on the Amiga prints the base's version, the
+        # one UP-Term.version holds; they were hand-written and stale (UPTerm 1.0, vtcon-handler 0.1,
+        # sz 1.0, UPConsole 0.1)
+        if ARCHIVE != 'up-term':
+            self.skipTest('the base only')
+        stamp = open(os.path.join(KIT, 'Files/UP-Term.version'), 'rb').read().split()
+        self.assert_ver(('UPTerm', 'vtcon-handler', 'pty-handler', 'vsh', 'hl', 'mdv', 'sz', 'rz',
+                         'uptelnet', 'upgetty', 'UPConsole'), stamp[2])
+
+    def test_claude_says_the_add_on_version(self):
+        # "Version C:Claude" prints the up-claude row's version (it said 1.0 while the add-on was 1.1)
+        if ARCHIVE != 'up-claude':
+            self.skipTest('up-claude only')
+        self.assert_ver(('Claude',), pkgs.get('claude', 'version').encode())
 
 
 if __name__ == '__main__':

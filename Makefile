@@ -209,12 +209,12 @@ engine/vtcaps.inc: tools/gen_vtcaps.py terminfo/vtcon.terminfo
 
 # hl and mdv for the host terminal (and the timings): build/hl, build/mdv
 view-host: $(BUILD)/hl $(BUILD)/mdv
-$(BUILD)/hl: $(HOST_HDR) view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
+$(BUILD)/hl: $(HOST_HDR) $(UPTERM_VERSION_H) view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c
-$(BUILD)/mdv: $(HOST_HDR) view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I$(BUILD)/amiga -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_posix.c
+$(BUILD)/mdv: $(HOST_HDR) $(UPTERM_VERSION_H) view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I$(BUILD)/amiga -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_posix.c
 
 render/glyph_tables.inc: tools/gen_glyph_tables.py engine/vtengine.c
 	python3 tools/gen_glyph_tables.py
@@ -438,14 +438,16 @@ $(BUILD)/amiga/obj/cpuchk-%.o: tty/cpucheck.c tty/bmsg.h tty/bmsg.c
 
 
 GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --quiet 2>/dev/null || echo -dirty)
-# The base's version and the build day in the $VER of C:UPTerm, vtcon-handler, pty-handler and vsh, so
-# "Version UPTerm" says the base it came with: the version from dist/packages.txt (the one tools/mkkit.py
-# writes into UP-Term.version), the day as mkkit.py writes it. The header is rewritten only when it
-# changes, so the four rebuild when the version or the day moves, not on every make.
+# The base's version and the build day in the $VER of every base program (C:UPTerm, vtcon-handler,
+# pty-handler, vsh, hl, mdv, sz, rz, uptelnet, upgetty, UPConsole), so "Version UPTerm" says the base it
+# came with: the version from dist/packages.txt (the one tools/mkkit.py writes into UP-Term.version), the
+# day as mkkit.py writes it. C:Claude ships in the up-claude add-on and says that row's version
+# (UPCLAUDE_VERSION). The header is rewritten only when it changes, so the programs rebuild when a
+# version or the day moves, not on every make.
 UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
 $(UPTERM_VERSION_H): FORCE
 	@mkdir -p $(@D)
-	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" > $@.new
+	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" "$$(python3 tools/pkgs.py get claude version)" > $@.new
 	@if cmp -s $@.new $@; then rm $@.new; else mv $@.new $@; fi
 # the engine's hot loops in assembler, for the builds that define VT_ASM (S1)
 ENGINE_68K := engine/vtengine_68k.s
@@ -480,12 +482,12 @@ $(BUILD)/amiga/clistdin: tests/amiga/clistdin.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c
-$(BUILD)/amiga/hl: view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-hl.o
+$(BUILD)/amiga/hl: view/hl_main.c $(UPTERM_VERSION_H) $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-hl.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-hl.o
-$(BUILD)/amiga/mdv: view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-mdv.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-hl.o
+$(BUILD)/amiga/mdv: view/md_main.c $(UPTERM_VERSION_H) $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-mdv.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-mdv.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ view/md_main.c $(VIEW_MD) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-mdv.o
 
 # C:Claude, the native Claude client (ledger A2): the portable core
 # (claude/*.c, host-tested) with bsdsocket and AmigaDOS. bsdsocket's headers
@@ -516,12 +518,12 @@ $(BUILD)/amiga/pi-llmprobe: $(PI_PROBE_SRC) claude/net_amiga.c $(CLAUDE_HDR) tty
 	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/pi/net_amiga.o claude/net_amiga.c
 	$(VC) -dontwarn=153,65 -o $@ $(PI_PROBE_SRC) $(BUILD)/amiga/obj/pi/net_amiga.o
 
-$(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(VIEW_HDR) tty/ldisc.h tty/bmsg.h handler/vtcon_packets.h $(CLAUDE_FORCE) $(BUILD)/amiga/obj/cpuchk-Claude.o
+$(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) $(UPTERM_VERSION_H) claude/net_amiga.c $(CLAUDE_TLS) $(CLAUDE_HDR) $(VIEW_HDR) tty/ldisc.h tty/bmsg.h handler/vtcon_packets.h $(CLAUDE_FORCE) $(BUILD)/amiga/obj/cpuchk-Claude.o
 	@mkdir -p $(BUILD)/amiga/obj/claude
 	@echo '$(CLAUDE_FLAGS)' > $(BUILD)/amiga/claude.flags
 	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -c -o $(BUILD)/amiga/obj/claude/net_amiga.o claude/net_amiga.c
 	$(VC) -dontwarn=153,65 $(CLAUDE_TLS_INC) -c -o $(BUILD)/amiga/obj/claude/tls.o $(CLAUDE_TLS)
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ $(CLAUDE_PORTABLE) $(BUILD)/amiga/obj/claude/net_amiga.o $(BUILD)/amiga/obj/claude/tls.o $(BUILD)/amiga/obj/cpuchk-Claude.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ $(CLAUDE_PORTABLE) $(BUILD)/amiga/obj/claude/net_amiga.o $(BUILD)/amiga/obj/claude/tls.o $(BUILD)/amiga/obj/cpuchk-Claude.o
 
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
@@ -692,13 +694,13 @@ $(BUILD)/amiga/stackprobe: tests/amiga/stackprobe.c
 	$(VC) -DSTACK_COOKIE -o $(BUILD)/amiga/stackprobe50k tests/amiga/stackprobe.c
 
 # sz / rz: ZMODEM over the shell's stream, no ixemul (ledger T4 G3)
-$(BUILD)/amiga/sz: zm/zm_amiga.c zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-sz.o
+$(BUILD)/amiga/sz: zm/zm_amiga.c $(UPTERM_VERSION_H) zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-sz.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -DZM_SZ -o $@ zm/zm_amiga.c zm/zmodem.c $(BUILD)/amiga/obj/cpuchk-sz.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -DZM_SZ -o $@ zm/zm_amiga.c zm/zmodem.c $(BUILD)/amiga/obj/cpuchk-sz.o
 
-$(BUILD)/amiga/rz: zm/zm_amiga.c zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-rz.o
+$(BUILD)/amiga/rz: zm/zm_amiga.c $(UPTERM_VERSION_H) zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-rz.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -DZM_RZ -o $@ zm/zm_amiga.c zm/zmodem.c $(BUILD)/amiga/obj/cpuchk-rz.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -DZM_RZ -o $@ zm/zm_amiga.c zm/zmodem.c $(BUILD)/amiga/obj/cpuchk-rz.o
 
 # the kit's icon tool (Install: the Shell icon opens UP-Term)
 $(BUILD)/amiga/upicon: install/upicon.c install/iconspec.c install/iconspec.h $(BUILD)/amiga/obj/cpuchk-upicon.o
@@ -858,19 +860,19 @@ $(BUILD)/amiga/UPTerm: handler/upterm.c $(UPTERM_VERSION_H) handler/vtcon_packet
 
 # C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
 # Roadshow network headers: VTCON_NETINCLUDE, as C:Claude's.
-$(BUILD)/amiga/uptelnet: net/uptelnet.c net/tn.c net/tn.h net/upagent.c net/upagent.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+$(BUILD)/amiga/uptelnet: net/uptelnet.c $(UPTERM_VERSION_H) net/tn.c net/tn.h net/upagent.c net/upagent.h llm/sha256.c llm/sha256.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -I$(VTCON_NETINCLUDE) -o $@ net/uptelnet.c net/tn.c net/upagent.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -I$(VTCON_NETINCLUDE) -o $@ net/uptelnet.c net/tn.c net/upagent.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
-$(BUILD)/amiga/upgetty: device/upgetty.c handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
+$(BUILD)/amiga/upgetty: device/upgetty.c $(UPTERM_VERSION_H) handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153 -o $@ device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153 -o $@ device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
 
 # C:UPConsole: CON:/RAW: to UP-Term and back (console plan H5.4)
-$(BUILD)/amiga/UPConsole: device/upconsole.c device/upc_public.h $(BUILD)/amiga/obj/cpuchk-UPConsole.o
+$(BUILD)/amiga/UPConsole: device/upconsole.c $(UPTERM_VERSION_H) device/upc_public.h $(BUILD)/amiga/obj/cpuchk-UPConsole.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -o $@ device/upconsole.c $(BUILD)/amiga/obj/cpuchk-UPConsole.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ device/upconsole.c $(BUILD)/amiga/obj/cpuchk-UPConsole.o
 
 # DV6's signal-bit probe (tools/rig/soak_rig.py)
 $(BUILD)/amiga/sigprobe: tests/amiga/sigprobe.c

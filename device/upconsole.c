@@ -53,7 +53,9 @@ extern struct DosLibrary *DOSBase;
 #include "../config/upassign.h"
 #include "../tty/qmark.h"
 
-static const char vers[] = "$VER: UPConsole 0.1 (30.9.2026)";
+/* the base version and build day (upterm_version.h, written by the Makefile) */
+#include "upterm_version.h"
+static const char vers[] = "$VER: UPConsole " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 
 #define SEM_NAME "UP-Term console"
 
