@@ -15,7 +15,8 @@ present, absent). A screenshot follows every step into the out dir (the script n
 
 Needs: build/ipk with up-vim (make dist-ipk), dist/upkg-browse, and the kit-stage build of upterm-ports with
 the `browse` row: build/sysroot/UP-Term/bin/upkg and upkg-ui. The rig is up (`rig.py start --max`; UPTERM_RIG=3
-for rig 3). The files are copied into UP-Term:bin and left there. The feed is served over http from build/ipk.
+for rig 3). A rig with no UP-Term: gets the base from the kit of `make dist` (install_rig's runinstall) and loses
+it again at the end (rununinstall). The files are copied into UP-Term:bin and left there. The feed is served over http from build/ipk.
 The rig's UP-Term:etc/upkg.conf is replaced by the feed conf for the run (browse's child commands use the
 default config) and put back at the end. The script stops the rig at the end.
 
@@ -62,6 +63,12 @@ def wait_for(path, present, secs):
     return upkg_rig.exists(path) == present
 
 
+def must(ok, what, seen=''):
+    """install_rig's check() shape for a step the run cannot go on without."""
+    if not ok:
+        raise SystemExit('[ERROR] %s failed:\n%s' % (what, seen[-500:]))
+
+
 def listed(cmd):
     """Names printed by `upkg <cmd>` (default config), in order."""
     rc, out = upkg_rig.upkg('browse-' + cmd.replace(' ', '-'), cmd, conf=False)
@@ -87,12 +94,21 @@ def main(argv):
 
     with paths.rig_lock():
         rel = upkg_rig.Release()
-        saved = False
+        saved = based = False
         try:
             ir.put_vsh()
+            if ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0:
+                if not (ir.KIT / 'Files/install.dos').exists():
+                    raise SystemExit('upkg_browse_rig: the rig has no UP-Term: and there is no kit at %s (make dist first)' % ir.KIT)
+                ir.prepare(None)
+                based = True
+                ir.base_install(must)
+                note('the base installed from %s' % ir.KIT)
             for n, src in (('upkg-browse', ir.ROOT / 'dist/upkg-browse'), ('upkg', UPKG), ('upkg-ui', UPKG_UI)):
                 shutil.copy(src, ir.VTC / n)
-                ir.run('Copy VTC:%s UP-Term:bin/%s CLONE' % (n, n))
+                rc, o = ir.run('Copy VTC:%s UP-Term:bin/%s CLONE' % (n, n))
+                if rc != 0:
+                    raise SystemExit('[ERROR] Copy of %s into UP-Term:bin returned %d: %s' % (n, rc, o.strip()))
                 ir.run('Protect UP-Term:bin/%s +rwed' % n)
             rel.set()
             (ir.VTC / 'browse-rig.conf').write_text(upkg_rig.conf_for((ir.ROOT / 'dist/upkg.conf').read_text(), rel.url))
@@ -160,6 +176,8 @@ def main(argv):
             if saved:
                 ir.run('Copy %s %s CLONE' % (SAVED, DEFCONF))
                 ir.run('Delete >NIL: %s QUIET' % SAVED)
+            if based:
+                ir.run_long('rununinstall')
             rel.close()
             ir.show_close()
             time.sleep(6)   # 5 s quiet before stop: a reset mid-write kills the disk
