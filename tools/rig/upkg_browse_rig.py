@@ -13,10 +13,11 @@ Flow (the product's top-level entry point is the typed command; the sentinel is 
 `upkg list-installed` is asserted before the run, after the install and after the remove (up-vim absent,
 present, absent). A screenshot follows every step into the out dir (the script never looks at them).
 
-Needs: build/ipk with up-vim (make dist-ipk), dist/upkg-browse, and the kit-stage build of upterm-ports with
+Needs: build/ipk with up-vim (make dist-ipk), the kit of `make dist`, dist/upkg-browse, and the kit-stage build of upterm-ports with
 the `browse` row: build/sysroot/UP-Term/bin/upkg and upkg-ui. The rig is up (`rig.py start --max`; UPTERM_RIG=3
 for rig 3). A rig with no UP-Term: gets the base from the kit of `make dist` (every option, CURL among them) and loses
-it again at the end (rununinstall). The files are copied into UP-Term:bin and left there. The feed is served over http from build/ipk.
+it again at the end (rununinstall). A rig whose UP-Term:VERSIONS first line differs from the kit's gets the kit
+installed over it and keeps it. The files are copied into UP-Term:bin and left there. The feed is served over http from build/ipk.
 The rig's UP-Term:etc/upkg.conf is replaced by the feed conf for the run (browse's child commands use the
 default config) and put back at the end. The script stops the rig at the end.
 
@@ -63,6 +64,13 @@ def wait_for(path, present, secs):
     return upkg_rig.exists(path) == present
 
 
+def base_stale(installed, kit):
+    """True when the rig's base is not the kit's: no UP-Term:VERSIONS (None or empty) or another first line.
+    The first line names the release, the vtcon commit and the build date, so any rebuilt kit differs."""
+    first = lambda t: (t or '').strip().splitlines()[:1]
+    return not first(installed) or first(installed) != first(kit)
+
+
 def must(ok, what, seen=''):
     """install_rig's check() shape for a step the run cannot go on without."""
     if not ok:
@@ -100,11 +108,18 @@ def main(argv):
         saved = based = False
         try:
             ir.put_vsh()
-            if ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0:
-                if not (ir.KIT / 'Files/install.dos').exists():
-                    raise SystemExit('upkg_browse_rig: the rig has no UP-Term: and there is no kit at %s (make dist first)' % ir.KIT)
+            had_base = ir.run('Assign >NIL: UP-Term: EXISTS')[0] == 0
+            kit_versions = ir.KIT / 'Files/VERSIONS'
+            if not kit_versions.exists():
+                raise SystemExit('upkg_browse_rig: there is no kit at %s (make dist first)' % ir.KIT)
+            installed = None
+            if had_base:
+                rc, installed = ir.run('Type UP-Term:VERSIONS')
+                installed = installed if rc == 0 else None
+            # an older base on the rig would test the old handler and vtcon, not the kit's
+            if base_stale(installed, kit_versions.read_text()):
                 ir.prepare(None)
-                based = True
+                based = not had_base
                 # upkg's download backend runs curl by name: only Install's CURL option puts it in UP-Term:bin
                 (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files '
                                                          'NOCONSOLE NODEVICE SSH BEBBOGET CURL WASABI CPU060 UNIFONT EMOJI\n')
@@ -113,7 +128,7 @@ def main(argv):
                 # amisslmaster.library even for the http feed
                 for line in ir.rig_libs():
                     ir.run(line)
-                note('the base installed from %s' % ir.KIT)
+                note('the base installed from %s (%s)' % (ir.KIT, 'over an older base' if had_base else 'no base before'))
             for n, src in (('upkg-browse', ir.ROOT / 'dist/upkg-browse'), ('upkg', UPKG), ('upkg-ui', UPKG_UI)):
                 shutil.copy(src, ir.VTC / n)
                 rc, o = ir.run('Copy VTC:%s UP-Term:bin/%s CLONE' % (n, n))
