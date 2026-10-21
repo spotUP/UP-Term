@@ -12,10 +12,16 @@
 # a stand-alone archive's block is not touched by it). With none it also
 # turns back on the lines takecon.sh turned off (";UP-Term off: <line>", the
 # Mount lines of another console replacement).
+# A second argument names another file to strip instead of S:User-Startup (Install's
+# upkg Alias lives in S:Shell-Startup: "unstartup.sh '' S:Shell-Startup"), the result
+# in T:<file without S:>.up-term (T:Shell-Startup.up-term); the first argument is
+# then "" for every UP-Term block or a block name.
 # Uninstall runs it with vsh and copies the result back; every other line
 # stays byte for byte (no field splitting, no backslash processing).
 IFS=''
 name=$1
+file=$2
+if [ -z "$file" ]; then file=S:User-Startup; fi
 skip=0
 while read -r l; do
     if [ -n "$name" ]; then
@@ -32,4 +38,4 @@ while read -r l; do
         *) if [ "$skip" = 0 ]; then printf '%s\n' "$l"; fi ;;
         esac
     fi
-done <S:User-Startup >T:User-Startup.up-term
+done <"$file" >"T:${file#S:}.up-term"

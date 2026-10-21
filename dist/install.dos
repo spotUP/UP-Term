@@ -536,6 +536,21 @@ If WARN
     Echo >>S:User-Startup ";END UP-Term"
   EndIf
 EndIf
+;
+; upkg in every AmigaDOS Shell: an Alias in S:Shell-Startup, a marked block (Uninstall
+; takes it out with unstartup.sh). UP-Term:bin is not on the AmigaDOS Path: it holds
+; bzip2 date dd dir ed gzip install join md5sum sort zip, and the Path is searched
+; before C:, so they would shadow the C: commands. Written once (an Update or a second
+; Install finds the block and leaves it).
+If NOT EXISTS S:Shell-Startup
+  Echo >S:Shell-Startup ""
+EndIf
+Search >NIL: S:Shell-Startup ";BEGIN UP-Term upkg"
+If WARN
+  Echo >>S:Shell-Startup ";BEGIN UP-Term upkg"
+  Echo >>S:Shell-Startup "Alias upkg UP-Term:bin/upkg []"
+  Echo >>S:Shell-Startup ";END UP-Term upkg"
+EndIf
 ; /tmp: ixemul programs put their temporary files there (sort, mktemp,
 ; vim's swap), and to ixemul /tmp is the volume TMP:, which AmigaOS does
 ; not assign. Without one UP-Term assigns it to T:, at every boot by a

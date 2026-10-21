@@ -441,7 +441,9 @@ VSH (the shell)
   wc tr cut uniq seq du stat dd tee date and the rest, 86 in all) in
   UP-Term:bin, first in vsh's $PATH. They are not in C: (AmigaDOS
   names ignore case: GNU sort would be C:Sort), so the AmigaDOS Shell keeps
-  its own commands. .. is the parent directory, / the list of volumes.
+  its own commands; it gets only upkg, through an Alias in S:Shell-Startup
+  (Install writes it, Uninstall removes it), so its C: commands stay unshadowed.
+  .. is the parent directory, / the list of volumes.
   /tmp is TMP:; without one Install assigns it to T: at every boot.
   coreutils is GPL v2: COPYING and the complete source are in the kit's
   Files/coreutils drawer.

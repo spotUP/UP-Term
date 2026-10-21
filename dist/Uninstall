@@ -97,6 +97,16 @@ If NOT "$unst" EQ ""
       Delete >NIL: T:User-Startup.up-term QUIET
     EndIf
   EndIf
+  ; the upkg Alias block of S:Shell-Startup (its own output file, so an older
+  ; unstartup.sh that ignores the second argument cannot overwrite it)
+  If EXISTS S:Shell-Startup
+    Delete >NIL: T:Shell-Startup.up-term QUIET
+    $unvsh "$unst" "" S:Shell-Startup
+    If EXISTS T:Shell-Startup.up-term
+      Copy T:Shell-Startup.up-term S:Shell-Startup CLONE QUIET
+      Delete >NIL: T:Shell-Startup.up-term QUIET
+    EndIf
+  EndIf
 EndIf
 UnSet unst
 UnSet unvsh

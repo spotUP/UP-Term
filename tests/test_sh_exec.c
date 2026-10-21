@@ -1723,6 +1723,33 @@ static void unstartup_with_a_name_removes_only_that_block(void)
                          ";BEGIN UP-Term pythonic\nC:Other\n;END UP-Term pythonic\nuser line\n");
 }
 
+/* Install's upkg Alias: a ";BEGIN UP-Term upkg" block in S:Shell-Startup (dist/install.dos, the unix
+ * part, which a base Install and an Update both run). The block is written once (a second run finds it),
+ * and Uninstall's unstartup.sh with a second argument strips it from S:Shell-Startup into its own output
+ * file, user lines byte for byte. The install.dos lines are run here as sh with Search/Echo shimmed. */
+static void the_upkg_alias_block_in_shell_startup_is_written_once_and_removed(void)
+{
+    FILE *f = fopen("dist/unstartup.sh", "rb");
+    char script[4096];
+    char text[8192];
+    size_t n;
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    n = fread(script, 1, sizeof(script) - 1, f);
+    fclose(f);
+    script[n] = 0;
+    /* install: the same three Echo lines as install.dos, guarded by the same Search; run twice */
+    snprintf(text, sizeof(text),
+             "printf '%%s\\n' 'Alias ll list' >S:Shell-Startup\n"
+             "w() { f=0; while read -r l; do case \"$l\" in ';BEGIN UP-Term upkg') f=1 ;; esac; done <S:Shell-Startup;"
+             " if [ $f = 0 ]; then"
+             " printf '%%s\\n' ';BEGIN UP-Term upkg' 'Alias upkg UP-Term:bin/upkg []' ';END UP-Term upkg' >>S:Shell-Startup; fi; }\n"
+             "w; w; n=0; while read -r l; do case \"$l\" in ';BEGIN UP-Term upkg') n=$((n+1)) ;; esac; done <S:Shell-Startup; echo blocks=$n\n"
+             "set -- '' S:Shell-Startup\n%s\ncat <T:Shell-Startup.up-term\n", script);
+    CHECK_STR(run(text), "blocks=1\nAlias ll list\n");
+}
+
 /* A stand-alone archive (Python3.lha) writes ";BEGIN Python3" without UP-Term in the name: with its name
  * unstartup.sh takes out that block only (an older base copy without this rule leaves it, and the
  * archive's Uninstall notices); with no name the base's Uninstall leaves it alone. */
@@ -2118,6 +2145,7 @@ void suite_sh_exec(void)
     uninstall_removes_every_up_term_block();
     unstartup_with_a_name_removes_only_that_block();
     unstartup_takes_a_stand_alone_block_by_its_name_only();
+    the_upkg_alias_block_in_shell_startup_is_written_once_and_removed();
     takecon_turns_another_console_off_and_unstartup_back_on();
     sh_shell_free(&sh);
 }

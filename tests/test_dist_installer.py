@@ -235,6 +235,19 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
             self.assertTrue((t / 'root/f').is_file())
             self.assertNotIn('UID', p.stdout + p.stderr)
 
+    def test_install_writes_the_upkg_alias_block_once_and_uninstall_strips_it(self):
+        # the unix part runs in a base Install and in an Update (Install.installer: the part list)
+        part = DOS[DOS.index('Lab unix'):DOS.index('Lab desktop')]
+        self.assertIn('Search >NIL: S:Shell-Startup ";BEGIN UP-Term upkg"', part)
+        self.assertIn('Echo >>S:Shell-Startup "Alias upkg UP-Term:bin/upkg []"', part)
+        self.assertIn('Echo >>S:Shell-Startup ";END UP-Term upkg"', part)
+        self.assertIn('If NOT EXISTS S:Shell-Startup', part)
+        # the Search guard comes before the append, so a second run adds nothing
+        self.assertLess(part.index('Search >NIL: S:Shell-Startup'), part.index('Echo >>S:Shell-Startup ";BEGIN'))
+        self.assertIn('"unix"', mi.build(ROOT / "dist/Install.installer", "base"))
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        self.assertIn('"" S:Shell-Startup', un)
+
     def test_uninstall_leaves_the_add_ons_binaries_to_their_own_uninstall(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
         delete = [l for l in un.splitlines() if l.startswith('Delete >NIL: L:vtcon-handler')][0]
