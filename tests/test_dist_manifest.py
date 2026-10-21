@@ -54,6 +54,16 @@ class Manifest(unittest.TestCase):
                         mk.index("cp dist/tutorial $(KIT)/Files/userland/bin/tutorial"))
         self.assertIn("cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/", mk)
 
+    def test_upkg_browse_is_in_the_base_kit_beside_upkg_ask(self):
+        """plan 2026-10-21-upkg-browse B7: bin/upkg-browse is a copy-userland file of up-term.lha, copied after slim.py"""
+        k = kit({"Files/userland/bin/upkg-browse": b"b"})
+        lines = mm.manifest(k, PARTS, "").splitlines()
+        self.assertIn("copy-userland 1 %08x Files/userland/bin/upkg-browse" % zlib.crc32(b"b"), lines)
+        mk = (ROOT / "Makefile").read_text()
+        self.assertLess(mk.index("python3 tools/slim.py remove $(KIT)/Files/userland"),
+                        mk.index("cp dist/upkg-browse $(KIT)/Files/userland/bin/upkg-browse"))
+        self.assertIn("python3 tests/test_upkg_browse.py", mk)
+
     def test_every_name_the_kit_installs_fits_amigados_30_characters(self):
         """OFS/FFS keep 30 characters: a longer name is cut (05-pipes-and-redirection.lesson lost its
         .lesson and the tutorial could not see it). The lessons, dist's own files and parts.txt's paths."""

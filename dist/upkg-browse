@@ -1,0 +1,163 @@
+# upkg-browse -- pick add-ons from a full-screen list (upkg plan 2026-10-21-upkg-browse, run as "upkg browse").
+#
+# Shows every add-on of the feed in one upkg-ui list. Each row names the add-on and says whether it is
+# installed, has an upgrade, or is available:
+#   installed 1.3   Vim, the text editor
+#   upgrade 1.2 to 1.3   Vim, the text editor
+#   available 1.3   Vim, the text editor
+# Keys: Up Down Home End PgUp PgDn move, Enter shows "upkg info", i installs, r removes (after a
+# yes/no question), u upgrades, q or Escape quits. After each action the list comes back with the cursor
+# on the same add-on and the markers refreshed.
+#
+# upkg-ui draws the list and exits (curses is never nested) before the chosen upkg command runs, so a
+# package's own postinst screens work. The rows come from "upkg list", "upkg list-installed" and
+# "upkg list-upgradable": each line is "NAME - VERSION - DESCRIPTION" split at the first and second " - "
+# (a description may contain " - " itself).
+#
+# usage: upkg-browse            (also: --help, -h, help, ? print the usage and exit 0)
+# exit:  0 quit or help; 1 no package lists; 2 bad argument, no terminal, or no upkg-ui.
+# env:   UPKG is the upkg command (default upkg; the host tests set it). Global upkg options given
+#        before "browse" are not forwarded to the child commands.
+
+upkg=${UPKG:-upkg}
+usage="usage: upkg browse
+keys: Up Down move, Enter info, i install, r remove, u upgrade, q quit"
+
+case $# in
+0) ;;
+1)
+    case $1 in
+    --help | -h | help | "?")
+        echo "$usage"
+        exit 0 ;;
+    esac
+    echo "$usage" >&2
+    exit 2 ;;
+*)
+    echo "$usage" >&2
+    exit 2 ;;
+esac
+
+if [ ! -t 0 ]; then
+    echo "upkg browse needs a terminal. Use upkg list." >&2
+    exit 2
+fi
+if ! command -v upkg-ui >/dev/null 2>&1; then
+    echo "upkg browse needs UP-Term:bin/upkg-ui." >&2
+    exit 2
+fi
+
+# the answer file of upkg-ui (stderr): T: on the Amiga, else TMPDIR or /tmp
+tmpdir=${TMPDIR:-/tmp}
+if [ -z "$TMPDIR" ] && [ -d T: ]; then tmpdir=T:; fi
+case $tmpdir in *:) tmp=${tmpdir}upkg-browse.$$ ;; *) tmp=$tmpdir/upkg-browse.$$ ;; esac
+trap 'rm -f "$tmp"' 0
+
+NL='
+'
+ui_title="UP-TERM ADD-ONS"
+prompt="Enter info   i install   r remove   u upgrade   q quit"
+
+pause() {
+    echo "Press Return to go back to the list."
+    IFS= read -r junk
+}
+
+# run a upkg command and report it: [OK] upkg install up-vim, or [ERROR] ... returned N
+run() {
+    "$upkg" "$@"
+    rc=$?
+    if [ $rc -eq 0 ]; then
+        echo "[OK] upkg $*"
+    else
+        echo "[ERROR] upkg $* returned $rc"
+    fi
+    pause
+}
+
+last=
+while :; do
+    all=$("$upkg" list)
+    if [ -z "$all" ]; then
+        echo "No package lists. Run upkg update first." >&2
+        exit 1
+    fi
+    inst=$NL$("$upkg" list-installed)
+    upg=$NL$("$upkg" list-upgradable)
+
+    set --
+    count=0
+    while IFS= read -r line; do
+        case $line in *" - "*) ;; *) continue ;; esac
+        name=${line%% - *}
+        rest=${line#* - }
+        ver=$rest
+        desc=
+        case $rest in *" - "*)
+            ver=${rest%% - *}
+            desc=${rest#* - } ;;
+        esac
+        item="available $ver"
+        t=${inst#*"$NL$name - "}
+        if [ "$t" != "$inst" ]; then
+            t=${t%%"$NL"*}
+            item="installed ${t%% - *}"
+            u=${upg#*"$NL$name - "}
+            if [ "$u" != "$upg" ]; then
+                u=${u%%"$NL"*}
+                item="upgrade ${u%% - *} to ${u##* - }"
+            fi
+        fi
+        if [ -n "$desc" ]; then item="$item   $desc"; fi
+        set -- "$@" "$name" "$item"
+        count=$((count + 1))
+    done <<EOF
+$all
+EOF
+
+    if [ -n "$last" ]; then
+        upkg-ui --title "$ui_title" --backtitle "$count add-ons" --hotkeys iruq --default-item "$last" \
+            --menu "$prompt" 0 0 0 "$@" 2> "$tmp"
+    else
+        upkg-ui --title "$ui_title" --backtitle "$count add-ons" --hotkeys iruq \
+            --menu "$prompt" 0 0 0 "$@" 2> "$tmp"
+    fi
+    # Escape (255), Cancel or an upkg-ui failure leave
+    [ $? -eq 0 ] || exit 0
+    key=
+    tag=
+    IFS=' ' read -r key tag < "$tmp"
+    [ "$key" = q ] && exit 0
+    [ -n "$tag" ] || exit 0
+    last=$tag
+
+    isinst=0
+    case $inst in *"$NL$tag - "*) isinst=1 ;; esac
+    isupg=0
+    case $upg in *"$NL$tag - "*) isupg=1 ;; esac
+
+    case $key in
+    enter) run info "$tag" ;;
+    i)
+        if [ $isinst -eq 1 ]; then
+            echo "$tag is already installed."
+            pause
+        else
+            run install "$tag"
+        fi ;;
+    r)
+        if [ $isinst -eq 0 ]; then
+            echo "$tag is not installed."
+            pause
+        elif upkg-ui --title "$ui_title" --defaultno --yesno "Remove $tag?" 0 0; then
+            run remove "$tag"
+        fi ;;
+    u)
+        if [ $isupg -eq 0 ]; then
+            echo "$tag has no newer version."
+            pause
+        else
+            run upgrade "$tag"
+        fi ;;
+    esac
+done

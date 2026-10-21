@@ -113,6 +113,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_ipk.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_slim.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_upkg_ask.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_upkg_browse.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_modes.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = docs_setenv ]; then python3 -I tests/test_doc_setenv_save.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_fixtures.py; fi
@@ -1081,6 +1082,8 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	python3 tools/slim.py remove $(KIT)/Files/userland
 	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
+	@# upkg-browse (plan 2026-10-21-upkg-browse): "upkg browse", the add-on list loop around upkg-ui
+	cp dist/upkg-browse $(KIT)/Files/userland/bin/upkg-browse
 	@# the shell tutorial (plan 2026-10-19-shell-tutorial L-6): the script in bin (copy-userland), the lessons in
 	@# share/tutorial (userland); after slim.py, which removes only what dist/slim.txt names
 	cp dist/tutorial $(KIT)/Files/userland/bin/tutorial
