@@ -7505,11 +7505,22 @@ void vt_resolve_colors(const vt_term *t, const vt_cell *c, vt_color *fg, vt_colo
     vt_color f = c->fg, b = c->bg, tmp;
     switch (t->pers) {
     case VT_AMIGA:
-        /* Pens are screen pens; bold is a font style, not a colour. */
-        if (f == VT_COLOR_DEFAULT)
-            f = 1;
+        /* Pens are screen pens; bold is a font style, not a colour. Pen 0
+         * is the window's background and pen 1 its text (the console's
+         * BACKGROUNDPEN and TEXTPEN): they draw with the host's ground, so a
+         * CON: window with the UP-Term ground stays black when a Shell
+         * prompt sends CSI >0m. A host without its own ground keeps the
+         * screen's pens 0 and 1 as its defaults. */
         if (b == VT_COLOR_DEFAULT)
             b = t->amiga_bg;
+        if (f == 0)
+            f = VT_COLOR_DEFAULT_BG;
+        else if (f == 1)
+            f = VT_COLOR_DEFAULT;
+        if (b == 0)
+            b = VT_COLOR_DEFAULT_BG;
+        else if (b == 1)
+            b = VT_COLOR_DEFAULT;
         break;
     case VT_PCANSI:
         if (f == VT_COLOR_DEFAULT)

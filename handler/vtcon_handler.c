@@ -1445,8 +1445,9 @@ static void parse_spec(con *c, const char *s)
     /* Black background unless the options chose colours (owner, 2026-09-29:
      * program colours sat on the Workbench's grey). Every personality: a CON:
      * window speaks the amiga escape dialect but looks like an XCON: one
-     * (owner, 2026-10-21); explicit pens 0-7 stay screen pens in the renderer.
-     * LIGHT asks for the screen's pens anywhere. */
+     * (owner, 2026-10-21); pens 0 and 1 draw with this ground, pens 2-7
+     * stay screen pens (vt_resolve_colors). LIGHT asks for the screen's pens
+     * anywhere. */
     {
         unsigned long gfg, gbg;
         if (winspec_ground(colours, &gfg, &gbg)) {

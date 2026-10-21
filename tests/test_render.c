@@ -225,6 +225,30 @@ static void direct_colour_background_in_the_amiga_personality_is_drawn_in_its_co
     CHECK_INT(bg_pen_after(VT_AMIGA, "\x1b[48;5;9mhi"), 9);
 }
 
+/* NewShell in a CON: window on Workbench (owner, 1.6 on a Replay): "still grey". The window ground is
+ * light grey on black, but the Amiga personality drew its default background, and the global background a
+ * Shell prompt sets with CSI >0m, as screen pen 0: the Workbench grey. Pen 0 is the window's background and
+ * pen 1 its text, so both draw with the window's ground; pens 2-7 stay screen pens. */
+static void con_window_draws_pen_zero_with_its_own_ground(void)
+{
+    int pen;
+    open_term_in(0, VT_AMIGA);
+    vr_set_defaults(&rn, 0xC0C0C0UL, 0x000000UL);
+    CHECK(rn.pen_default_bg != 0); /* the ground is a pen of its own, not the Workbench grey */
+    pass("hi");
+    CHECK_INT(gf_bgpen(0, 0), (int)rn.pen_default_bg);
+    pass("\r\n\x9b>00m\x9b" "01;00m1.SYS:> ");
+    CHECK_INT(gf_bgpen(0, 1), (int)rn.pen_default_bg);
+    CHECK_INT(gf_bgpen(COLS - 1, 1), (int)rn.pen_default_bg);
+    pass("\r\n\x9b" "40mA\x9b" "41mB\x9b" "42mC");
+    CHECK_INT(gf_bgpen(0, 2), (int)rn.pen_default_bg);
+    CHECK_INT(gf_bgpen(1, 2), (int)rn.pen_default_fg);
+    CHECK_INT(gf_bgpen(2, 2), 2);
+    pen = gf_bgpen(0, 2);
+    CHECK(pen != 0);
+    close_term();
+}
+
 /* ---- S3: the fill paths (S2's FillPixelArray, and the cells joined into one fill) ---- */
 
 #define UPPER "\xe2\x96\x80"
@@ -1641,6 +1665,7 @@ int main(void)
     cursor_glyph_is_drawn_at_the_cursor_cell_from_the_grid_row();
     the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
+    con_window_draws_pen_zero_with_its_own_ground();
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
     direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up();
     neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels();
