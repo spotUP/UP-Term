@@ -4,18 +4,25 @@
 Flow (the product's top-level entry point is the typed command; the sentinel is a file the install makes):
   0  `upkg update` against the served feed must return 0 (D2). A rig without working AmiSSL fails here, with
      a clear message: the run then moves to the A1200 (keys typed into the window with ami.py key).
-  1  `upkg browse`; Down to the row up-vim (the row index comes from `upkg list`), `i` installs it. After the
-     install the script waits for the sentinel UP-Term:pkg/up-vim/Uninstall, then Return goes back to the list.
-  2  `r` on the same row (the cursor stays on it), the yes/no question "Remove up-vim?" is answered Yes
-     (the y key: --defaultno starts on No), then Return at "Press Return to go back to the list."
-     The sentinel must be gone.
+  1  `upkg browse`; Down to the row up-vim (the row index comes from `upkg list`), Return opens the info box
+     (Install, Back), Return on Install runs the install: its output scrolls in the programbox until the
+     sentinel UP-Term:pkg/up-vim/Uninstall appears, then Return (OK) goes back to the list.
+  2  Return on the same row (the cursor stays on it): the info box now offers Remove, Back; Return on Remove asks
+     "Remove up-vim?" (--defaultno starts on No), y answers Yes; the programbox shows the output, Return (OK) goes
+     back to the list. The sentinel must be gone.
   3  `q` leaves the browser.
+Colour: the row up-vim is green when installed (Z2 in the item text). No live dump of the window's cell attributes exists in the
+rig (vtdump replays a byte stream; snipprobe copies text only), so the colour is read from a screenshot of the
+list: the number of green pixels in the window area (reusing colour_check.pixels) must rise
+after the install and fall back after the remove.
+No Shell text: the window text (Select all + Copy) of each screen between the browser's screens must hold no shell
+prompt line and none of the old "Press Return to go back to the list." text.
 `upkg list-installed` is asserted before the run, after the install and after the remove (up-vim absent,
 present, absent). A screenshot follows every step into the out dir (the script never looks at them).
 
 Needs: build/ipk with up-vim (make dist-ipk), the kit of `make dist`, dist/upkg-browse, and the kit-stage build of upterm-ports with
-the `browse` row: build/sysroot/UP-Term/bin/upkg and upkg-ui. The rig is up (`rig.py start --max`; UPTERM_RIG=3
-for rig 3). A rig with no UP-Term: gets the base from the kit of `make dist` (every option, CURL among them) and loses
+the `browse` row: build/sysroot/UP-Term/bin/upkg and upkg-ui. The rig is up (`rig.py start --max`; UPTERM_RIG=4
+for rig 4). A rig with no UP-Term: gets the base from the kit of `make dist` (every option, CURL among them) and loses
 it again at the end (rununinstall). A rig whose UP-Term:VERSIONS first line differs from the kit's gets the kit
 installed over it and keeps it. The files are copied into UP-Term:bin and left there. The feed is served over http from build/ipk.
 The rig's UP-Term:etc/upkg.conf is replaced by the feed conf for the run (browse's child commands use the
@@ -24,7 +31,7 @@ default config) and put back at the end. The script stops the rig at the end.
   upkg_browse_rig.py [--out DIR]      report.md and the screenshots go to DIR (default build/<rig>/upkg-browse)
   upkg_browse_rig.py --help | -h | help | ?
 """
-import argparse, os, pathlib, shutil, subprocess, sys, time
+import argparse, os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import paths  # before ami: it sets the agent port of UPTERM_RIG
@@ -33,6 +40,7 @@ import install_rig as ir
 import typewin
 import vshwin
 import upkg_rig
+import colour_check
 
 SYSROOT_BIN = paths.repo("upterm-ports") / "build/sysroot/UP-Term/bin"
 UPKG = SYSROOT_BIN / "upkg"
@@ -43,7 +51,28 @@ DEFCONF = 'UP-Term:etc/upkg.conf'
 SAVED = 'T:upkg.conf.browse-save'
 TITLE = 'upkg-browse'
 DOWN = 0x4D
+UP = 0x4C
 LOG = []
+texts = {}
+GREEN_MIN = 20          # pixels
+# what the old browser left in the window between its screens, and a vsh prompt line
+SHELL_TEXT = re.compile(r'Press Return to go back|^\s*\S*[>#$%] ?\s*(upkg|echo)\b|^\d+\.[^ ]*> ')
+
+
+def green_off_row(out, name):
+    """upkg-ui draws the selected row in the base attribute (no colour), so the cursor goes one row up for the
+    screenshot and back down onto up-vim."""
+    typewin.key(UP, wait=0.8)
+    shot(out, name)
+    typewin.key(DOWN, wait=0.8)
+    return green(out / name)
+
+
+def green(png):
+    """Pixels of the window area whose green clearly beats red and blue (the \\Z2 rows; colour_check's PNG reader)."""
+    w, h, px = colour_check.pixels(str(png))
+    return sum(1 for y in range(14, min(h, 320)) for x in range(0, min(w, 640))
+               if px(x, y)[1] > px(x, y)[0] + 40 and px(x, y)[1] > px(x, y)[2] + 40)
 
 
 def note(s):
@@ -165,31 +194,46 @@ def main(argv):
             time.sleep(8)
             shot(out, 'step1-list.png')
 
-            # step 1: Down to the row, i installs
+            # step 1: Down to the row, Return opens the info box, Return on Install
             for _ in range(row):
                 typewin.key(DOWN, wait=0.3)
             shot(out, 'step1-cursor.png')
-            typewin.typ('i')
+            g0 = green_off_row(out, 'step1-off-row0.png')
+            texts['list before'] = typewin.screen_text('RAM:browse-screen.txt')
+            typewin.key(typewin.RET, wait=4)       # the info box: Install, Back (Install is the first button)
+            shot(out, 'step1-info.png')
+            typewin.key(typewin.RET, wait=1)       # Install
             shot(out, 'step1-installing.png')
-            check('install: sentinel %s appears' % SENTINEL, wait_for(SENTINEL, True, 240))
-            time.sleep(3)
+            check('install: sentinel %s appears' % SENTINEL, wait_for(SENTINEL, True, 420))
+            time.sleep(5)
             shot(out, 'step1-installed.png')
-            typewin.key(typewin.RET, wait=6)       # "Press Return to go back to the list."
+            typewin.key(typewin.RET, wait=6)       # OK in the programbox
             shot(out, 'step1-back.png')
+            g1 = green_off_row(out, 'step1-off-row.png')
+            texts['list after install'] = typewin.screen_text('RAM:browse-screen.txt')
             check('after install: %s in list-installed' % PKG, PKG in listed('list-installed'))
+            check('colour: green pixels rise after install', g1 > g0 + GREEN_MIN, '%d -> %d' % (g0, g1))
 
-            # step 2: r, Yes, Return
-            typewin.typ('r')
-            time.sleep(3)
+            # step 2: Return opens the info box (Remove, Back), Return on Remove, y, OK
+            typewin.key(typewin.RET, wait=4)
+            shot(out, 'step2-info.png')
+            typewin.key(typewin.RET, wait=3)       # Remove
             shot(out, 'step2-question.png')
             typewin.typ('y')                       # y answers Yes at once (--defaultno starts on No)
             time.sleep(3)
             check('remove: sentinel gone', wait_for(SENTINEL, False, 240))
-            time.sleep(3)
+            time.sleep(5)
             shot(out, 'step2-removed.png')
-            typewin.key(typewin.RET, wait=6)
+            typewin.key(typewin.RET, wait=6)       # OK in the programbox
             shot(out, 'step2-back.png')
+            g2 = green_off_row(out, 'step2-off-row.png')
+            texts['list after remove'] = typewin.screen_text('RAM:browse-screen.txt')
             check('after remove: %s not in list-installed' % PKG, PKG not in listed('list-installed'))
+            check('colour: green pixels fall after remove', g1 > g2 + GREEN_MIN and g2 <= g0 + GREEN_MIN, '%d -> %d (start %d)' % (g1, g2, g0))
+            for k, t in texts.items():
+                note('window text "%s":\n%s' % (k, t.rstrip()[-700:]))
+                bad_lines = [l for l in t.split('\n') if SHELL_TEXT.search(l)]
+                check('no Shell text on the screen "%s"' % k, not bad_lines, repr(bad_lines[:3]))
 
             # step 3: q
             typewin.typ('q')
@@ -209,10 +253,10 @@ def main(argv):
             time.sleep(6)   # 5 s quiet before stop: a reset mid-write kills the disk
             subprocess.call([sys.executable, str(pathlib.Path(__file__).with_name('rig.py')), 'stop'])
     bad = [k for k, v in ck.items() if not v]
-    head = 'Verdict: %s (%d of %d checks)' % ('FAIL' if bad or len(ck) < 7 else 'PASS', len(ck) - len(bad), len(ck))
+    head = 'Verdict: %s (%d of %d checks)' % ('FAIL' if bad or len(ck) < 12 else 'PASS', len(ck) - len(bad), len(ck))
     (out / 'report.md').write_text(head + '\n\n' + '\n'.join(LOG) + '\n')
     print(head)
-    return 1 if bad or len(ck) < 7 else 0
+    return 1 if bad or len(ck) < 12 else 0
 
 
 if __name__ == '__main__':
