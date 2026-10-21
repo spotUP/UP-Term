@@ -13,8 +13,9 @@
 # index and count; empty lines and "#" lines are not counted).
 #
 # upkg-ui (our own curses program, upterm-ports pkgs/upkg-ui, dialog-compatible subset)
-# asks when it is on the PATH and stdin is a terminal; with no upkg-ui the questions are
-# plain prompts read from stdin; with no terminal every question takes its default.
+# asks when it is on the PATH and stdin and stdout are a terminal; with no upkg-ui the questions are
+# plain prompts read from stdin; with no terminal (or output into a pipe) every question takes
+# its default.
 # UPKG_ASK_PLAIN=1 forces the plain prompts.
 
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then
@@ -35,7 +36,9 @@ ask_ui() {
 }
 
 mode=plain
-if [ ! -t 0 ]; then
+# upkg-ui and plain prompts both need the terminal on stdout too: run inside "upkg browse"'s
+# programbox, stdout is its pipe and a question would only show as escape-code text there
+if [ ! -t 0 ] || [ ! -t 1 ]; then
     mode=defaults
 elif [ -z "$UPKG_ASK_PLAIN" ] && command -v upkg-ui >/dev/null 2>&1; then
     mode=ui

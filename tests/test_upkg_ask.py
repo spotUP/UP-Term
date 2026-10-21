@@ -66,10 +66,21 @@ class Ask(unittest.TestCase):
             r = subprocess.run(shell + [ASK, self.q, self.out], stdin=subprocess.DEVNULL,
                                capture_output=True, env=env, timeout=20)
         else:
+            # stdin and stdout on the pty, as in a Shell window (stdout into a pipe takes defaults)
             master, slave = pty.openpty()
             os.write(master, typed.encode())
-            r = subprocess.run(shell + [ASK, self.q, self.out], stdin=slave,
-                               capture_output=True, env=env, timeout=20)
+            r = subprocess.run(shell + [ASK, self.q, self.out], stdin=slave, stdout=slave,
+                               stderr=subprocess.PIPE, env=env, timeout=20)
+            # read before the slave closes: macOS drops what the master has not read by then
+            r.stdout = b''
+            while select.select([master], [], [], 0.1)[0]:
+                try:
+                    data = os.read(master, 65536)
+                except OSError:
+                    break
+                if not data:
+                    break
+                r.stdout += data
             os.close(slave)
             os.close(master)
         self.assertEqual(r.returncode, 0, r.stderr.decode())
@@ -88,6 +99,26 @@ class Ask(unittest.TestCase):
                 self.run_ask(sh)
                 self.assertEqual(self.answers(sh), '10.0.0.5 7777|no|sonnet')
                 self.assertFalse(os.path.exists(self.log), 'upkg-ui ran with no terminal')
+
+    def test_output_into_a_pipe_takes_defaults(self):
+        """regression (owner, 2026-10-22): upkg browse ran "upkg install up-claude" into a programbox
+        pipe; upkg-ask saw a terminal on stdin and drew upkg-ui into the pipe, so the questions showed
+        as escape-code text and the install waited for keys to a question nobody could see"""
+        self.fake_ui()
+        for sh in self.shells:
+            with self.subTest(sh=sh[0]):
+                if os.path.exists(self.log):
+                    os.remove(self.log)
+                master, slave = pty.openpty()
+                os.write(master, b"0 host.lan 2323\n0\n0 opus\n")
+                env = {'PATH': self.bin + ':/usr/bin:/bin', 'UI_LOG': self.log, 'HOME': self.tmp}
+                r = subprocess.run(sh + [ASK, self.q, self.out], stdin=slave, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, env=env, timeout=20)
+                os.close(slave)
+                os.close(master)
+                self.assertEqual(r.returncode, 0, r.stderr.decode())
+                self.assertEqual(self.answers(sh), '10.0.0.5 7777|no|sonnet')
+                self.assertFalse(os.path.exists(self.log), 'upkg-ui ran with its output in a pipe')
 
     def test_missing_default_file_is_empty(self):
         os.remove(self.remote)
@@ -169,8 +200,8 @@ class Ask(unittest.TestCase):
         env = {'PATH': self.bin + ':/usr/bin:/bin', 'UI_LOG': self.log, 'HOME': self.tmp}
         master, slave = pty.openpty()
         os.write(master, b"0 a\n0\n0 opus\n")
-        r = subprocess.run(['/bin/sh', ASK, self.q, self.out, 'Claude'], stdin=slave,
-                           capture_output=True, env=env, timeout=20)
+        r = subprocess.run(['/bin/sh', ASK, self.q, self.out, 'Claude'], stdin=slave, stdout=slave,
+                           stderr=subprocess.PIPE, env=env, timeout=20)
         os.close(slave)
         os.close(master)
         self.assertEqual(r.returncode, 0, r.stderr.decode())
