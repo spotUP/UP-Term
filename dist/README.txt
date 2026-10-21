@@ -74,6 +74,12 @@ PACKAGES (upkg)
     upkg install <package>   install an add-on (needs the base installed)
     upkg upgrade             bring the installed add-ons up to the feed
     upkg remove <package>    remove an add-on
+    upkg browse              pick add-ons from a full-screen list
+  upkg browse shows every add-on of the feed with its state (installed,
+  upgrade, available). Up and Down move, Enter shows the add-on's info,
+  i installs, r removes (after a Yes/No question), u upgrades, q or Escape
+  quits. After each action the list comes back on the same add-on. Run
+  upkg update first so the list is current.
   Uninstall removes UP-Term:pkg/upkg and UP-Term:etc/upkg.conf with the drawer.
 
 WHERE IT IS INSTALLED
