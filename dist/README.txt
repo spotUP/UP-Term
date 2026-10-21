@@ -744,7 +744,7 @@ NEW TO A UNIX SHELL
   $HOME/.tutorial), tutorial reset forgets the progress. The lessons
   practise in a drawer of their own (T:tutorial), but a command you type
   runs for real: rm -r on one of your drawers deletes it. Until you have
-  finished lesson 1, a new vsh window prints one line pointing here;
+  finished lesson 1, a new vsh window prints two lines pointing here;
   creating $HOME/.tutorial-hint-off hides it.
 
 DEMO

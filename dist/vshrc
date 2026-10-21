@@ -161,7 +161,9 @@ tutorial_hint() {
     case $HOME in *: | */) _th_home=$HOME ;; *) _th_home=$HOME/ ;; esac    # HOME is a volume on the Amiga ("System:")
     [ -f "${_th_home}.tutorial-hint-off" ] && return 0
     [ -r "${TUTORIAL_PROGRESS:-${_th_home}.tutorial}" ] && grep -qx 1 "${TUTORIAL_PROGRESS:-${_th_home}.tutorial}" && return 0
-    echo "New to a Unix shell? Type  tutorial  for a short hands-on course. Hide this line: echo > \$HOME/.tutorial-hint-off"
+    # Two lines: one line of 109 characters broke mid-word in an 80-column window.
+    echo "New to a Unix shell? Type  tutorial  for a short hands-on course."
+    echo "Hide this hint: echo > \$HOME/.tutorial-hint-off"
 }
 
 # The Up Rough banner when an interactive vsh starts on a terminal (not

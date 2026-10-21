@@ -328,6 +328,12 @@ class FirstRunHint(unittest.TestCase):
     def test_hint_shows_then_goes_with_the_off_file_and_with_lesson_one(self):
         self.assertIn(HINT, self.startup())
         self.assertIn('.tutorial-hint-off', self.startup())  # it says how to hide itself
+
+    def test_hint_lines_fit_an_80_column_window(self):
+        lines = [l for l in self.startup().splitlines() if 'tutorial' in l]
+        self.assertTrue(lines)
+        for line in lines:
+            self.assertLessEqual(len(line.strip()), 79, line)  # longer wraps mid-word in the default UP-Term window
         with open(os.path.join(self.home, '.tutorial'), 'w') as fh:
             fh.write('2\n')
         self.assertIn(HINT, self.startup())  # lesson 2 done, lesson 1 is not
