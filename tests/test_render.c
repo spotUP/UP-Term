@@ -711,6 +711,40 @@ static void a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place(void
     planar_depth = 0;
 }
 
+/* upkg browse on an AGA window (owner, 1.4): the list came up over the banner it replaced -- the banner's pixels
+ * stayed in every blank cell. The list's frame clears the alternate screen and starts with a box corner: the planar
+ * pass, begun over the whole grid, counted the window blank while its cells went to the planes only, gave up at the
+ * corner (graphics.library draws it) and drew the frame again in place -- skipping the blank cells as if the window
+ * were blank already. In place, the screen shows only the new frame. */
+static void a_planar_frame_drawn_in_place_after_all_clears_the_screen_it_replaced(void)
+{
+    static const char frame[] = "\x1b[?1049h\x1b[?2026h\x1b[H\x1b[2J\x1b[36m\xe2\x95\x94\xe2\x95\x90\x1b[m\x1b[5;3Hlist\x1b[?2026l";
+    char full[ROWS * (COLS + 2) + 1];
+    int y;
+    planar_depth = 4;
+    planar_left = 4;
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l");
+    pass(frame);
+    snapshot();
+    close_term();
+    open_term_in(0, VT_XTERM);
+    pass("\x1b[?25l");
+    full[0] = 0;
+    for (y = 0; y < ROWS; y++) {
+        memset(full + strlen(full), 'B', COLS);
+        full[(y + 1) * COLS + y * 2] = 0;
+        strcat(full, y < ROWS - 1 ? "\r\n" : "");
+    }
+    pass(full); /* the banner: every cell drawn */
+    rn.n_copies = 0;
+    pass(frame);
+    CHECK_INT(rn.n_copies, 0); /* drawn in place: the corner needs graphics.library */
+    CHECK(same_as_snapshot());
+    close_term();
+    planar_depth = 0;
+}
+
 
 /* ---- W-T7: 256 colours on a screen of few pens ---- */
 
@@ -1619,6 +1653,7 @@ int main(void)
     a_planar_synchronized_frame_reaches_the_window_in_one_copy_with_the_in_place_pixels();
     a_planar_frame_is_copied_once_the_beam_has_left_its_rows();
     a_planar_frame_with_lines_or_a_covered_window_is_drawn_in_place();
+    a_planar_frame_drawn_in_place_after_all_clears_the_screen_it_replaced();
     light_cube_colours_on_a_16_colour_workbench_are_not_drawn_in_its_grey_pen();
     a_dithered_cell_shows_its_colour_closer_than_the_old_single_pen();
     a_dithered_frame_composed_and_drawn_in_place_has_the_same_pixels();

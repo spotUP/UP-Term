@@ -2871,6 +2871,12 @@ static void compose_abandon(vr_render *r)
     r->front_rp = 0;
     k->n = 0;
     k->in_rows = 0;
+    /* blank speaks for the window, and the abandoned pass drew only into
+     * the planes: a pass over the whole grid counted the window blank as
+     * it began, while the window still shows what it showed before (the
+     * main screen under a cleared alternate one). The replay must draw
+     * every blank cell. */
+    r->blank = 0;
     replay(r);
     k->nd = 0;
 }
