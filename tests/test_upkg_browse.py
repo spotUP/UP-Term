@@ -6,7 +6,7 @@ VALUE to stderr, exits RC and logs its argv; the keyboard is a pty with those li
 of each pause) typed in. Each case runs under /bin/sh and under build/vsh_host when it is built.
 One case runs the REAL host upkg-ui (upterm-ports build/host/upkg-ui) on a pty with keys sent; it
 is skipped when that binary is missing or has no --hotkeys."""
-import os, pty, select, shutil, struct, fcntl, termios, signal, subprocess, tempfile, time, unittest
+import os, re, pty, select, shutil, struct, fcntl, termios, signal, subprocess, tempfile, time, unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 BROWSE = os.path.join(ROOT, 'dist', 'upkg-browse')
@@ -67,6 +67,16 @@ def pump(master, seconds, screen=b''):
             except OSError:
                 break
     return screen
+
+
+def back_to_the_shell_after_drawing(stream):
+    """True when the terminal leaves the alternate screen (rmcup, \\E[?1049l) after text was drawn on it:
+    the Shell window shows between two upkg-ui screens"""
+    for part in stream.split(b'\x1b[?1049h')[1:]:
+        drawn = part.split(b'\x1b[?1049l')[0] if b'\x1b[?1049l' in part else b''
+        if re.sub(rb'\x1b(\[[0-9;?>=]*[ -/]*[@-~]|[()][0-9A-Za-z]|[@-_])', b'', drawn).strip():
+            return True
+    return False
 
 
 class Browse(unittest.TestCase):
@@ -450,6 +460,10 @@ class Browse(unittest.TestCase):
                 self.assertIn(b'UP-TERM ADD-ONS', screen)
                 self.assertIn(b'[OK] upkg install up-git', screen)
                 self.assertIn(b'installed 2.0', screen)  # the refreshed list
+                # regression (owner, 2026-10-21, "Shell flashes between dialogs"): list, programbox and
+                # list again never switch back to the Shell's screen in between
+                self.assertGreaterEqual(screen.count(b'\x1b[?1049h'), 3)
+                self.assertFalse(back_to_the_shell_after_drawing(screen))
 
 
 if __name__ == '__main__':
