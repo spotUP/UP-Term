@@ -81,6 +81,28 @@ FSUAE_LOG_MAX = 50 * 1024 * 1024    # bytes on disk a log may hold before it is 
 FSUAE_LOG_TAIL = 1024 * 1024        # the end of a cut log kept, as <name>.tail, for diagnosis
 
 
+def fsuae_crash(log_dir=None):
+    """(exception line, reset count) when the rig's FS-UAE log shows a CPU exception followed by emulated
+    CPU resets (a Guru turned into a reset loop: the rig then looks plain "down"), else None. Reads the
+    live log and its .tail. The exception is the first "Illegal instruction" / "Exception N" line of the run before the
+    "CPU reset" lines that follow it."""
+    d = pathlib.Path(log_dir or FSUAE_LOG_DIR)
+    text = ""
+    for n in ("fs-uae.log.txt.tail", "fs-uae.log.txt"):
+        try:
+            text += (d / n).read_text(encoding="latin-1")
+        except OSError:
+            pass
+    exc, resets = None, 0
+    for line in text.splitlines():
+        if line.startswith(("Illegal instruction", "Exception ")):
+            if exc is None or resets:
+                exc, resets = line.strip(), 0
+        elif exc and line.startswith("CPU reset"):
+            resets += 1
+    return (exc, resets) if exc and resets else None
+
+
 def cap_fsuae_log(log_dir=None, limit=None, tail=None, extra=()):
     """Cut every file in the rig's FS-UAE log dir that holds more than `limit` bytes on disk: its last `tail`
     bytes go to <name>.tail, the file is truncated in place (FS-UAE keeps it open). Sized by allocated blocks:

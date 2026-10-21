@@ -908,7 +908,11 @@ def status(quiet=False):
         return True
     except BaseException:
         if not quiet:
-            print("down")
+            crash = paths.fsuae_crash() if mine() else None
+            if crash:
+                print("crashed: %s, %d CPU reset(s) since (fs-uae log %s)" % (crash[0], crash[1], paths.FSUAE_LOG_DIR))
+            else:
+                print("down")
         return False
 
 def muforce():

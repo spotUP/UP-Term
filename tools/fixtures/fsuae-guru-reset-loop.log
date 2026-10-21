@@ -1,0 +1,112 @@
+Illegal instruction: 0fff at 000108D2 -> 00F80AD2
+Exception 3 (10997fea) at 10997fea -> f80b0e!
+SERIAL: period=372, baud=9600, hsyncs=14, bits=8, PC=f8361c
+serial: setbaud: 9600
+serial: TCGETATTR failed
+CPU reset PC=f80dc8 (Kickstart ROM)..
+ -- stub -- target_reset 
+hdf_close_target
+closing file handle 0x20833eba0
+hdf_close_target
+hdf_close_target
+hdf_close_target
+hdf_close_target
+hdf_close_target
+hdf_close_target
+hdf_close_target
+ -- stub -- my_resolvesoftlink 
+hdf_close_target
+hfd open: '/Users/spot/Code/UP-Term/vtcon/build/rig4/sys.hdf'
+HDF '/Users/spot/Code/UP-Term/vtcon/build/rig4/sys.hdf' opened, size=1536000K mode=3 empty=0
+ -- stub -- my_resolvesoftlink 
+my_getvolumeinfo /Users/spot/Code/UP-Term/vtcon/build/rig4/vtc
+ -- stub -- my_resolvesoftlink 
+my_getvolumeinfo /Users/spot/Code/UP-Term/vtcon/build/rig4/boot
+ -- stub -- filesys_addexternals 
+Initializing mainboard IDE
+init_shm
+cpuboard_map currprefs.cpuboard_type = 0
+uae_shmat shmid 5 shmaddr 0x300f80000, shmflg 0 natmem_offset = 0x300000000
+uae_shmat shmid 6 shmaddr 0x300000000, shmflg 0 natmem_offset = 0x300000000
+uae_shmat shmid 0 shmaddr 0x300f00000, shmflg 0 natmem_offset = 0x300000000
+MAPROM: cs_ksmirror_e0 set - mirroring kickstart at 0x00e00000
+uae_shmat shmid 5 shmaddr 0x300e00000, shmflg 0 natmem_offset = 0x300000000
+uae_shmat shmid 5 shmaddr 0x300b00000, shmflg 0 natmem_offset = 0x300000000
+uae_shmat shmid 5 shmaddr 0x300a80000, shmflg 0 natmem_offset = 0x300000000
+memory init end
+BSDSOCK: cleanup start..
+BSDSOCK: cleanup start socket 0x1249058c0
+BSDSOCK: cleanup start socket 0x124b2baa0
+BSDSOCK: cleanup start socket 0x124b2b990
+BSDSOCK: cleanup start socket 0x124b240b0
+BSDSOCK: cleanup start socket 0x123f08230
+BSDSOCK: cleanup end
+BSDSOCK: cleanup finished
+uae_start_tread "filesys" function at 0x1030fdfbc arg 0x1049daee8
+uae_start_tread "filesys" function at 0x1030fdfbc arg 0x1049de998
+initparallel
+Reset at 00F80DC8. Chipset mask = 00000007
+00000000    2048K/1 =    2048K Chip memory
+00200000    8704K/0 =    8704K <none>
+00A80000    1024K/2 =     512K Kickstart ROM (FC24AE0D)
+=KS ROM v3.1 (A500,A600,A2000) rev 40.63 (512k)
+00B80000     448K/0 =     448K <none>
+00BF0000      64K/0 =      64K CIA
+00C00000    1536K/0 =    1536K <none>
+00D80000     256K/0 =     256K Gayle (low)
+00DC0000      64K/0 =      64K Battery backed up clock (MSM6242B)
+00DD0000     128K/0 =     128K Gayle (high)
+00DF0000      64K/0 =      64K Custom chipset
+00E00000     512K/1 =     512K Kickstart ROM (FC24AE0D)
+=KS ROM v3.1 (A500,A600,A2000) rev 40.63 (512k)
+00E80000      64K/0 =      64K Autoconfig Z2
+00E90000     448K/0 =     448K <none>
+00F00000      64K/1 =      64K UAE Boot ROM
+00F10000     448K/0 =     448K <none>
+00F80000     512K/1 =     512K Kickstart ROM (FC24AE0D)
+=KS ROM v3.1 (A500,A600,A2000) rev 40.63 (512k)
+01000000    4080M/0 =    4080M <none>
+drive_insert drv=0x104935e88 dnum=3 fname= fake=0
+drive_insert drv=0x104935e88 dnum=3 fname= fake=1
+gui_disk_image_change drive 3 <no disk>
+driveclick_insert drive=3 eject=1 click_initialized=0 wave_initialized=0 currprefs.floppyslots[drive].dfxclick=1
+gui_disk_image_change drive 3 <no disk>
+drive_insert drv=0x104913868 dnum=2 fname= fake=0
+drive_insert drv=0x104913868 dnum=2 fname= fake=1
+gui_disk_image_change drive 2 <no disk>
+driveclick_insert drive=2 eject=1 click_initialized=0 wave_initialized=0 currprefs.floppyslots[drive].dfxclick=1
+gui_disk_image_change drive 2 <no disk>
+drive_insert drv=0x1048f1248 dnum=1 fname= fake=0
+drive_insert drv=0x1048f1248 dnum=1 fname= fake=1
+gui_disk_image_change drive 1 <no disk>
+driveclick_insert drive=1 eject=1 click_initialized=0 wave_initialized=0 currprefs.floppyslots[drive].dfxclick=1
+gui_disk_image_change drive 1 <no disk>
+drive_insert drv=0x1048cec28 dnum=0 fname= fake=0
+drive_insert drv=0x1048cec28 dnum=0 fname= fake=1
+gui_disk_image_change drive 0 <no disk>
+driveclick_insert drive=0 eject=1 click_initialized=0 wave_initialized=0 currprefs.floppyslots[drive].dfxclick=1
+gui_disk_image_change drive 0 <no disk>
+uae_shmat shmid 5 shmaddr 0x300000000, shmflg 0 natmem_offset = 0x300000000
+uae_shmat shmid 5 shmaddr 0x300080000, shmflg 0 natmem_offset = 0x300000000
+uae_shmat shmid 5 shmaddr 0x300100000, shmflg 0 natmem_offset = 0x300000000
+uae_shmat shmid 5 shmaddr 0x300180000, shmflg 0 natmem_offset = 0x300000000
+serial: ioctl TIOCMGET failed
+uae_shmat shmid 2 shmaddr 0x310000000, shmflg 0 natmem_offset = 0x300000000
+mousehack_reset
+PAL mode V=50.0804Hz H=15625.0881Hz (227x312+0) IDX=-1 (<?>) D=0 RTG=1/1
+target_graphics_buffer_update - clearing buffer
+RTGFREQ: 312*50.0804 = 15625.0879 / 50.1 = 312
+ -- stub -- updatedisplayarea 
+gfx_set_picasso_state 0
+CPU reset PC=f800d0 (Kickstart ROM)..
+ -- stub -- target_reset 
+hdf_close_target
+closing file handle 0x20833eba0
+hdf_close_target
+hdf_close_target
+hdf_close_target
+hdf_close_target
+hdf_close_target
+hdf_close_target
+hdf_close_target
+ -- stub -- my_resolvesoftlink 
