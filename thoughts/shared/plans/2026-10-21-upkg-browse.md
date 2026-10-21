@@ -94,40 +94,40 @@ D14. Owner 2026-10-21: keep D1 (script + upkg-ui + patch row), not a C browser i
 ## Checklist
 
 Phase A: upkg-ui `--hotkeys` (upterm-ports)
-- [ ] A1 `parse()` (`upkg-ui.c:462`): accept `--hotkeys KEYS`; store it in `opt.hotkeys`. Usage line (`:456`) and header comment (`:5`) name it.
-- [ ] A2 `parse()`: `--hotkeys` without `--menu` returns `usage("hotkeys need a menu")`.
-- [ ] A3 `key_menu()` (`:385`): before the first-letter jump, `c < 128 && strchr(opt.hotkeys, c)` sets `hotkey = c` and returns 0. Enter with hotkeys set leaves `hotkey = 0`.
-- [ ] A4 `main()` (`:571-580`): for K_MENU with `opt.hotkeys`, write `"%c %s"` (hotkey) or `"enter %s"` to stderr. Without hotkeys, keep the bare tag.
-- [ ] A5 check: `check/cases` row `badhotkeys  upkg-ui --hotkeys ir --yesno x 0 0 2>&1 | sed -n 1p`, plus its expected line.
-- [ ] A6 check: `check/tty` row `hotkey`: a menu with `--hotkeys iru`, keys file `check/keys/hotkey` (`600 \eOB`, `300 r`), expected `ans.txt` = `r b`. Also row `hotenter` with Enter only: expected `enter a`.
-- [ ] A7 confirm A5/A6 fail with A3/A4 reverted, then pass (`make host-upkg-ui` check run).
+- [x] A1 `parse()` (`upkg-ui.c:462`): accept `--hotkeys KEYS`; store it in `opt.hotkeys`. Usage line (`:456`) and header comment (`:5`) name it.
+- [x] A2 `parse()`: `--hotkeys` without `--menu` returns `usage("hotkeys need a menu")`.
+- [x] A3 `key_menu()` (`:385`): before the first-letter jump, `c < 128 && strchr(opt.hotkeys, c)` sets `hotkey = c` and returns 0. Enter with hotkeys set leaves `hotkey = 0`.
+- [x] A4 `main()` (`:571-580`): for K_MENU with `opt.hotkeys`, write `"%c %s"` (hotkey) or `"enter %s"` to stderr. Without hotkeys, keep the bare tag.
+- [x] A5 check: `check/cases` row `badhotkeys  upkg-ui --hotkeys ir --yesno x 0 0 2>&1 | sed -n 1p`, plus its expected line.
+- [x] A6 check: `check/tty` row `hotkey`: a menu with `--hotkeys iru`, keys file `check/keys/hotkey` (`600 \eOB`, `300 r`), expected `ans.txt` = `r b`. Also row `hotenter` with Enter only: expected `enter a`.
+- [x] A7 confirm A5/A6 fail with A3/A4 reverted, then pass (`make host-upkg-ui` check run).
 
 Phase B: dist/upkg-browse (vtcon)
-- [ ] B1 `dist/upkg-browse`: header comment in upkg-ask style (contract, keys, exits, env `UPKG`), D10 refusals, D11 help forms.
-- [ ] B2 build rows: `list`, `list-installed`, `list-upgradable` into shell variables; read with here-documents in the current shell (no pipe subshell); `set --` tag/item pairs per D5/D6.
-- [ ] B3 loop: `upkg-ui --title "UP-TERM ADD-ONS" --backtitle "N add-ons" --hotkeys iruq --default-item LAST --menu "<D6 prompt>" 0 0 0 "$@" 2>answer`; dispatch per D7-D9; `q` / exit 255 quits with 0.
-- [ ] B4 `tests/test_upkg_browse.py` (unittest, fake `upkg` and fake `upkg-ui` on the PATH, as `tests/test_upkg_ask.py:46-60` does): rows and markers from fixed list outputs (description containing ` - `); i/r/u/Enter run the right command and the cursor stays (`--default-item`); D8 messages run no command; r + No runs nothing; q and Escape exit 0; D10 three refusals; D11 four help forms exit 0, bad argument exit 2.
-- [ ] B5 `tests/test_upkg_browse.py` real-upkg-ui case on a pty, skipped when the host upkg-ui is missing (as `test_upkg_ask.py:158`).
-- [ ] B6 wire the test into `make test` next to test_upkg_ask (`Makefile:115`).
-- [ ] B7 kit: `Makefile:1082-1083` gains `cp dist/upkg-browse $(KIT)/Files/userland/bin/upkg-browse`; `tests/test_dist_ipk.py` (or the kit-content test that names upkg-ask) asserts it is in up-term.lha.
+- [x] B1 `dist/upkg-browse`: header comment in upkg-ask style (contract, keys, exits, env `UPKG`), D10 refusals, D11 help forms.
+- [x] B2 build rows: `list`, `list-installed`, `list-upgradable` into shell variables; read with here-documents in the current shell (no pipe subshell); `set --` tag/item pairs per D5/D6.
+- [x] B3 loop: `upkg-ui --title "UP-TERM ADD-ONS" --backtitle "N add-ons" --hotkeys iruq --default-item LAST --menu "<D6 prompt>" 0 0 0 "$@" 2>answer`; dispatch per D7-D9; `q` / exit 255 quits with 0.
+- [x] B4 `tests/test_upkg_browse.py` (unittest, fake `upkg` and fake `upkg-ui` on the PATH, as `tests/test_upkg_ask.py:46-60` does): rows and markers from fixed list outputs (description containing ` - `); i/r/u/Enter run the right command and the cursor stays (`--default-item`); D8 messages run no command; r + No runs nothing; q and Escape exit 0; D10 three refusals; D11 four help forms exit 0, bad argument exit 2.
+- [x] B5 `tests/test_upkg_browse.py` real-upkg-ui case on a pty, skipped when the host upkg-ui is missing (as `test_upkg_ask.py:158`).
+- [x] B6 wire the test into `make test` next to test_upkg_ask (`Makefile:115`).
+- [x] B7 kit: `Makefile:1082-1083` gains `cp dist/upkg-browse $(KIT)/Files/userland/bin/upkg-browse`; `tests/test_dist_ipk.py` (or the kit-content test that names upkg-ask) asserts it is in up-term.lha.
 
 Phase C: opkg patch 0016 `browse` (upterm-ports)
-- [ ] C1 `libopkg/opkg_cmd.c`: `opkg_browse_cmd(int argc, char **argv)` builds `"${UPKG_BROWSE:-vsh UP-Term:bin/upkg-browse} 'arg'..."` (single-quote each argument; an argument containing `'` is refused with exit 2), runs `xsystem({"/bin/sh","-c",cmd,NULL})`, returns its exit code. Row `{"browse", 0, opkg_browse_cmd, 0, false}` near `{"list", ...}` (`opkg_cmd.c:1243`).
-- [ ] C2 `src/opkg.c` usage: D13 line.
-- [ ] C3 make sure the exit code of `upkg browse` is the script's code (opkg main returns the cmd result; confirm through check C4, not by reading).
-- [ ] C4 `pkgs/opkg/check/browse_dispatch.sh UPKG`: `UPKG_BROWSE` = a stub that writes its arguments to a file and exits 7. Assert: `upkg browse --help` reaches the stub with `--help`, rc 7. `upkg browse 'a b'` reaches it as one argument. `upkg --help` lists `browse`. It must fail without the patch (`unknown sub-command browse`), and the commit message says so.
-- [ ] C5 `check/help_width.sh` still passes with the new usage line.
-- [ ] C6 `make opkg kit-stage` in upterm-ports; kit upkg size and sha256 into the ledger.
+- [x] C1 `libopkg/opkg_cmd.c`: `opkg_browse_cmd(int argc, char **argv)` builds `"${UPKG_BROWSE:-vsh UP-Term:bin/upkg-browse} 'arg'..."` (single-quote each argument; an argument containing `'` is refused with exit 2), runs `xsystem({"/bin/sh","-c",cmd,NULL})`, returns its exit code. Row `{"browse", 0, opkg_browse_cmd, 0, false}` near `{"list", ...}` (`opkg_cmd.c:1243`).
+- [x] C2 `src/opkg.c` usage: D13 line.
+- [x] C3 make sure the exit code of `upkg browse` is the script's code (opkg main returns the cmd result; confirm through check C4, not by reading).
+- [x] C4 `pkgs/opkg/check/browse_dispatch.sh UPKG`: `UPKG_BROWSE` = a stub that writes its arguments to a file and exits 7. Assert: `upkg browse --help` reaches the stub with `--help`, rc 7. `upkg browse 'a b'` reaches it as one argument. `upkg --help` lists `browse`. It must fail without the patch (`unknown sub-command browse`), and the commit message says so.
+- [x] C5 `check/help_width.sh` still passes with the new usage line.
+- [x] C6 `make opkg kit-stage` in upterm-ports; kit upkg size and sha256 into the ledger.
 
 Phase D: reachability (product top-level entry point = `upkg browse` typed in UP-Term)
-- [ ] D1 `tools/rig/upkg_browse_rig.py` (modelled on `upkg_ask_rig.py`): copies `dist/upkg-browse`, the upkg-ui and upkg binaries into UP-Term:bin, serves build/ipk, runs `upkg update`, types `upkg browse` into the UP-Term window. Sentinel: the rig's `UP-Term:pkg/up-vim/Uninstall` appears after Down-to-up-vim + `i`. Then `r` + Yes removes it (the record is gone). Asserts `list-installed` before and after. Screenshots go to the out dir; a haiku subagent checks them.
-- [ ] D2 step 0 of D1: `upkg update` must return rc 0 on the rig. Rig 2 had no working AmiSSL (ledger, v1.2-test3). If it fails, D1 runs on the A1200 instead. In that run, the keys are typed into the UP-Term window with `ami.py key` (hex codes: Return = 44), never through `ami.py long`. The sentinel is the same.
-- [ ] D3 `rig.py start --max`; stop the rig at the end.
+- [x] D1 `tools/rig/upkg_browse_rig.py` (modelled on `upkg_ask_rig.py`): copies `dist/upkg-browse`, the upkg-ui and upkg binaries into UP-Term:bin, serves build/ipk, runs `upkg update`, types `upkg browse` into the UP-Term window. Sentinel: the rig's `UP-Term:pkg/up-vim/Uninstall` appears after Down-to-up-vim + `i`. Then `r` + Yes removes it (the record is gone). Asserts `list-installed` before and after. Screenshots go to the out dir; a haiku subagent checks them.
+- [x] D2 step 0 of D1: `upkg update` must return rc 0 on the rig. Rig 2 had no working AmiSSL (ledger, v1.2-test3). If it fails, D1 runs on the A1200 instead. In that run, the keys are typed into the UP-Term window with `ami.py key` (hex codes: Return = 44), never through `ami.py long`. The sentinel is the same.
+- [x] D3 `rig.py start --max`; stop the rig at the end.
 
 Phase E: land
-- [ ] E1 vtcon `make test` rc 0; upterm-ports checks rc 0 for upkg-ui and opkg.
-- [ ] E2 commits: upterm-ports (A, C) push; upterm repos.lock re-pin; vtcon (B, D) push. No release in this plan: shipping in a release (1.4) is the owner's call.
-- [ ] E3 ledger entry with commits, kit sha256, rig/A1200 result.
+- [x] E1 vtcon `make test` rc 0; upterm-ports checks rc 0 for upkg-ui and opkg.
+- [x] E2 commits: upterm-ports (A, C) push; upterm repos.lock re-pin; vtcon (B, D) push. No release in this plan: shipping in a release (1.4) is the owner's call.
+- [x] E3 ledger entry with commits, kit sha256, rig/A1200 result.
 
 ## Automated verification
 - upterm-ports: `make host-upkg-ui` checks (A5, A6), opkg host checks incl. `browse_dispatch.sh`, `help_width.sh`.
