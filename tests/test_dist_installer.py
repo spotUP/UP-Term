@@ -627,6 +627,57 @@ class EveryOptionTicked(unittest.TestCase):
         self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 2, 'a page this test misses')
 
 
+class UpdateWithNoRecordedOptions(unittest.TestCase):
+    """UPDATE-DETECT (owner, 2026-10-21): the 1.6 Install over a 1.5 install on a Replay offered no
+    Update and said nothing: that install had left no ENVARC:up-term/opts (record.dos keeps them
+    only when the Installer ran it). The base's Install now reads each option back from the Amiga
+    (dist/common/oldopts.installer) into T:UPTOLDOPTS, the gate takes those, and the Update branch
+    copies them to ENV:; every other reason an installed package gets no Update is said on a page
+    before the full install."""
+
+    def recorded(self):
+        """The options P_OPTIONS_LIST writes: CONSOLE and DEVICE come as #con and #dev."""
+        lst = INSTALLER[INSTALLER.index('(procedure P_OPTIONS_LIST'):]
+        lst = lst[:lst.index('\n\n')]
+        names = set(re.findall(r'\(set #name "([A-Z0-9]+)"', lst))
+        self.assertIn('(set #name #con', lst)
+        self.assertIn('(set #name #dev', lst)
+        return names | {'CONSOLE', 'NOCONSOLE', 'DEVICE', 'NODEVICE'}
+
+    def test_every_recorded_option_is_read_back(self):
+        frag = INSTALLER[INSTALLER.index('(procedure P_OLDOPT'):INSTALLER.index('(set #oldopts 1)')]
+        read = set(re.findall(r'#name (?:\(if #on )?"([A-Z0-9]+)"(?: "([A-Z0-9]+)")?', frag))
+        read = {n for pair in read for n in pair if n}
+        if 'T:UPTOLDOPTS/UPTOPTDEST' in frag:
+            read.add('DEST')
+        self.assertEqual(self.recorded() - read, set(), 'an option the Update would lose')
+
+    def test_gate_and_restore_take_the_read_back_options(self):
+        self.assertIn('(or #legacy #oldopts (exists "ENVARC:up-term/opts/UPTOPTDEST"))', INSTALLER)
+        self.assertIn('(if #oldopts "Copy T:UPTOLDOPTS/#? ENV: QUIET" "Copy ENVARC:up-term/opts/#? ENV: QUIET")',
+                      INSTALLER)
+        # read back only when there is no record: a recorded install keeps its own choices
+        frag = INSTALLER[INSTALLER.index('(procedure P_OLDOPT'):INSTALLER.index('(set #oldopts 1)')]
+        self.assertIn('(not (exists "ENVARC:up-term/opts/UPTOPTDEST"))', frag)
+
+    def test_add_ons_do_not_read_the_base_options(self):
+        import pkgs
+        for row in pkgs.rows():
+            if row['id'] == 'base' or not (ROOT / 'dist/addons' / row['id'] / 'Install.installer').exists():
+                continue
+            script = mi.build(ROOT / 'dist/addons' / row['id'] / 'Install.installer', row['id'])
+            self.assertNotIn('UPTOLDOPTS', script, row['id'])
+            self.assertIn('(set #oldopts 0)', script, row['id'])
+
+    def test_says_why_there_is_no_update(self):
+        self.assertIn('(if (<> #whyno "")\n    (message', INSTALLER)
+        for why in ('kept no record of its choices', 'has no upupdate', 'could not compare',
+                    'kept no list of the files'):
+            self.assertIn(why, INSTALLER)
+        # the page comes before the welcome, which a full install shows first
+        self.assertLess(INSTALLER.index('(if (<> #whyno "")'), INSTALLER.index('(if (not #update)'))
+
+
 class ShellIconStartsVsh(unittest.TestCase):
     """SHELL-ICON-VSH (user, 2026-10-20): the Shell icon option makes SYS:System/Shell start vsh
     in an UP-Term (XCON:) window; scripts and NewShell keep the AmigaDOS Shell. The icon as it was

@@ -121,6 +121,8 @@ def read_values(pkg_id, extra=()):
         'RECORDPRE': 'none.dos' if record.endswith(':') else 'record-addon.dos',
         'PKGDIR': record.rsplit('/', 1)[0] if '/' in record else record,
         'ADDONVAR': 'none.dos',
+        # the base's Update reads the options back from the Amiga when the last install recorded none
+        'OLDOPTS': 'oldopts.installer' if row['id'] == 'base' else 'none.dos',
         # a stand-alone archive (needs no base, packages.txt): its record is in ENVARC:, it is installed and
         # updated with no UP-Term: assign, and DESTTEXT is what its pages call the place it installs to
         'STANDALONE': 'YES' if row['id'] != 'base' and row['needs-base'] == '-' else 'NO',

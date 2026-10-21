@@ -77,6 +77,8 @@ WORKDEST = "Work:Apps/UP-Term"
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:KitTest/UP-Term"),
          "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None),
          "kingcon": ("AVERAGE", None)}
+# UPDATE-DETECT: the update case over an install that left no ENVARC:up-term/opts (a Shell install.dos run)
+CASES["update-noopts"] = CASES["update"]
 for _pkg in ir.addon_ids():
     CASES["addon-" + _pkg] = ("AVERAGE", None)
 CASES["migrate"] = ("AVERAGE", None)
@@ -606,11 +608,23 @@ def dates():
     return dict(l.rsplit('|', 1) for l in out.splitlines() if '|' in l)
 
 
-def update_phase(ck, inst, level, base, t_install):
-    """The update case's second Install: the kit with UPDATED changed, Update chosen (the default)."""
+def opts_now():
+    """ENVARC:up-term/opts as {name: contents}: what record.dos kept of the install's options."""
+    names = ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1].split()
+    return {n: ami.read_file('ENVARC:up-term/opts/' + n) for n in names}
+
+
+def update_phase(ck, inst, level, base, t_install, noopts=False):
+    """The update case's second Install: the kit with UPDATED changed, Update chosen (the default).
+    noopts (UPDATE-DETECT): the recorded options are deleted first, as an install from a Shell leaves
+    none; the Update reads them back from the Amiga and records the same ones again."""
     import subprocess
     before, startup = dates(), ir.run('Type S:User-Startup')[1]
     opts = ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1]
+    optvals = opts_now()
+    if noopts:
+        ir.run('Delete >NIL: ENVARC:up-term/opts ALL QUIET')
+        ck(ir.run('List >NIL: ENVARC:up-term/opts/UPTOPTDEST')[0] != 0, 'no recorded options before the Update')
     f = VTC / "distkit" / UPDATED
     f.write_bytes(f.read_bytes() + b"\n(installer_rig update case)\n")
     subprocess.run([sys.executable, str(ROOT / "tools/mkmanifest.py"), str(VTC / "distkit")], check=True)
@@ -632,6 +646,11 @@ def update_phase(ck, inst, level, base, t_install):
        'UP-Term:MANIFEST is the new kit\'s (the record part ran)')
     ck(ir.run('Type S:User-Startup')[1] == startup, 'S:User-Startup as it was')
     ck(ir.run('List ENVARC:up-term/opts LFORMAT "%N"')[1] == opts, 'the recorded options as they were', opts)
+    if noopts:
+        got = opts_now()
+        ck(got == optvals, 'the options read back are the full install\'s', '%r != %r' % (got, optvals))
+        shown = (OUT / 'update-2.pages.txt').read_text(errors='replace')
+        ck('read from this Amiga' in shown, 'the Update page says the choices were read back')
     lay = [l for l in log if l.startswith('LAYOUT')]
     ck(not lay, 'the Update\'s pages readable', '; '.join(lay[:4]))
     pct = [int(x) for l in log for x in re.findall(r'(\d+)% done', l)]
@@ -842,8 +861,8 @@ def run_base_case(case):
     ck(ir.run('Assign >NIL: PTY: EXISTS DEVICES')[0] == 0, 'PTY: is mounted')
     rc, out = ir.run('C:UPConsole STATUS')
     ck('kit:' in out, 'UPConsole STATUS prints the kit line (UP-Term:VERSIONS)', out)
-    if case == 'update':
-        update_phase(ck, inst, level, base, t_install)
+    if case in ('update', 'update-noopts'):
+        update_phase(ck, inst, level, base, t_install, noopts=case == 'update-noopts')
     # a running C:wasabid keeps running through Uninstall, the kit's or the
     # owner's: it may be the machine's only control channel, and an Uninstall
     # run over wasabi died with it (the A1200, 2026-10-17). The rig's own

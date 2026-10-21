@@ -21,6 +21,10 @@
   ))
 (set #oldman "@RECORDP@MANIFEST")
 (set #legacy 0)
+; the base's options read back from the Amiga when the last install recorded none
+(set #oldopts 0)
+(set #whyno "")
+; @include dist/common/@OLDOPTS@
 ; a stand-alone archive keeps its record in ENVARC: and needs no UP-Term: assign. Every
 ; other probe of a UP-Term: path waits for the assign: with none (a first install), an
 ; (exists "UP-Term:...") makes AmigaOS ask to insert a volume UP-Term before the welcome
@@ -29,14 +33,27 @@
     (if (and (not (exists #oldman)) (<> "@HANDED@" "-") (= "@LEGACY@" "YES")
              (exists "UP-Term:pkg/legacy/MANIFEST"))
         (set #oldman "UP-Term:pkg/legacy/MANIFEST" #legacy 1))
-    (if (and (exists #oldman) (or #legacy (exists "@OPTS@/UPTOPTDEST"))
+    ; #whyno: why an installed @ARCHIVE@ gets no Update (said before the full install)
+    (if (exists #oldman)
+        (if (not (or #legacy #oldopts (exists "@OPTS@/UPTOPTDEST")))
+            (set #whyno "The last install kept no record of its choices.")
+            (if (not (exists (tackon #files "upupdate")))
+                (set #whyno "This kit has no upupdate to compare the two.")))
+        (if (= "@ID@" "base")
+            (set #whyno (cat "That install kept no list of the files\n"
+                             "it wrote (UP-Term:MANIFEST)."))))
+    (if (and (exists #oldman) (or #legacy #oldopts (exists "@OPTS@/UPTOPTDEST"))
              (exists (tackon #files "upupdate")))
         (
             (run "Delete >NIL: ENV:UPTUPD#? ENV:UPTVER#? T:UPTUPD-#? QUIET")
             (run "Delete >NIL: ENV:UPTHANDED QUIET")
-            (if (= 0 (run (cat "\"" (tackon #files "upupdate") "\" \"" #oldman "\" \""
+            (set #rc (run (cat "\"" (tackon #files "upupdate") "\" \"" #oldman "\" \""
                                 (tackon #files "MANIFEST") "\" \"" (pathonly @icon) "\""
                                 (if #legacy " ONLY=@HANDED@" ""))))
+            (if (<> #rc 0)
+                (set #whyno (cat "upupdate could not compare the last install\n"
+                                 "with this kit (return code " #rc ").")))
+            (if (= 0 #rc)
                 (set #update
                     (= 0 (askchoice
                         (prompt (cat "@ARCHIVE@ is installed"
@@ -46,7 +63,11 @@
                                      "Update copies only what changed ("
                                      (getenv "UPTUPDKB") " KB)\n"
                                      "and keeps the drawer and the choices of\n"
-                                     "the last install."))
+                                     "the last install."
+                                     (if #oldopts
+                                         (cat "\n\nThe last install kept no record of its\n"
+                                              "choices: they were read from this Amiga.")
+                                         "")))
                         (help "Update compares the list of files the last install "
                               "wrote (@RECORDP@MANIFEST) with this kit's and copies "
                               "only the files that changed, deletes the ones this "
@@ -59,3 +80,10 @@
                               "everything.")
                         (choices "Update" "Full install")
                         (default 0)))))))))
+; an installed @ARCHIVE@ that Update cannot take: say so, and that a full install follows
+(if (<> #whyno "")
+    (message (cat "\n\n\n@ARCHIVE@ is installed"
+                  (if (= "@ID@" "base") (cat " in\n\n" (getassign "UP-Term" "a") "\n\n") ",\n")
+                  "but this Install cannot update it:\n" #whyno "\n\n"
+                  "A full install follows: it asks every\n"
+                  "question again and copies everything.")))

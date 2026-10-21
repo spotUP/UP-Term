@@ -413,7 +413,7 @@
 )
     ; Update: the options of the last install, from its record
     (
-        (run "Copy @OPTS@/#? ENV: QUIET")
+        (run (if #oldopts "Copy T:UPTOLDOPTS/#? ENV: QUIET" "Copy @OPTS@/#? ENV: QUIET"))
         (set #dest (getenv "UPTOPTDEST"))
         (set @default-dest #dest)
         (set #con (if (exists "ENV:UPTOPTCONSOLE") "CONSOLE" "NOCONSOLE"))
