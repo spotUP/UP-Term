@@ -528,10 +528,10 @@ def main():
     if a.case and not (a.only and len(a.only) == 1):
         ap.error("--case needs exactly one --only package")
     with paths.rig_lock():
-        return run(a, ap)
+        return run_packages(a, ap)
 
 
-def run(a, ap):
+def run_packages(a, ap):
     kit_assigns()
     names = a.only or packages()
     if a.failed:

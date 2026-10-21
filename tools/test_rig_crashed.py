@@ -60,5 +60,11 @@ try:
     check("RAN" not in r.stdout and r.returncode != 0, "userland_rig refused while locked: rc=%s %r %s" % (r.returncode, r.stdout[-100:], r.stderr[-200:]))
 finally:
     holder.kill()
+# the package runner must not shadow run(cmd, timeout), the subprocess helper (ec303ef8 named both run:
+# userland_rig.py run directly died in kit_assigns with a RecursionError)
+sys.path.insert(0, str(HERE / "rig"))
+import userland_rig  # noqa: E402
+check(userland_rig.run.__code__.co_varnames[:2] == ("cmd", "timeout"),
+      "userland_rig.run is the subprocess helper, not the package runner")
 print("FAIL: %d" % fails if fails else "rig crashed-status + userland lock: ok")
 sys.exit(1 if fails else 0)
