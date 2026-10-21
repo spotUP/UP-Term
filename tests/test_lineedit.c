@@ -295,6 +295,41 @@ static void completion_ghost_is_asked_only_for_a_plain_word_without_a_history_hi
     vt_free(t);
 }
 
+/* A1200 2026-10-21: in a drawer holding up-term.lha, "rm -r up" offered
+ * "-Term-backup-2026-10-17/" from an old history line. A file word is looked
+ * up even when history fits, and the current directory's name goes first;
+ * with no file match the history line still shows, and a command word keeps
+ * history first. */
+static void a_file_word_suggests_the_current_directory_before_history(void)
+{
+    vt_term *t = start(50, 6, "> ");
+    int from = -1, kind = 0;
+    unsigned long gk = 0;
+    run("rm -r up-Term-backup-2026-10-17/");
+    type("rm -r up");
+    CHECK_STR(h_row(t, 1), "> rm -r up-Term-backup-2026-10-17/"); /* history, until the look-up */
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    CHECK_INT(from, 6);
+    CHECK_INT(kind, 2);
+    le_ghost_offer(&le, gk, (const unsigned char *)"-term.lha", 9);
+    CHECK_STR(h_row(t, 1), "> rm -r up-term.lha");
+    key(VT_KEY_RIGHT, 0);
+    CHECK_STR(line(), "rm -r up-term.lha");
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    h_put(le.t, "> ");
+    type("rm -r up");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 1);
+    le_ghost_offer(&le, gk, (const unsigned char *)"", 0); /* nothing by that name here */
+    CHECK_STR(h_row(t, 2), "> rm -r up-term.lha");      /* the newest history line */
+    key(VT_KEY_RETURN, 0);
+    le_reset(&le);
+    h_put(le.t, "> ");
+    type("r");
+    CHECK_INT(le_ghost_want(&le, &from, &kind, &gk), 0); /* a command word: history has it */
+    vt_free(t);
+}
+
 static void return_does_not_run_the_suggestion(void)
 {
     vt_term *t = start(40, 6, "> ");
@@ -1366,6 +1401,7 @@ void suite_lineedit(void)
     completion_ghost_shows_when_no_history_fits_and_right_takes_it();
     completion_ghost_for_an_old_line_is_dropped();
     completion_ghost_is_asked_only_for_a_plain_word_without_a_history_hit();
+    a_file_word_suggests_the_current_directory_before_history();
     return_does_not_run_the_suggestion();
     ctrl_r_searches_history();
     ctrl_r_cancel_restores();

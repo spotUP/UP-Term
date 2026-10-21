@@ -25,6 +25,7 @@
 #include "complete.h"
 #include "complete_core.h"
 #include "histfile.h"
+#include "../shell/sh_path.h"
 #include "../claude/datadir_amiga.h"
 
 #if CC_FIBF_EXECUTE != FIBF_EXECUTE || CC_FIBF_SCRIPT != FIBF_SCRIPT
@@ -1016,8 +1017,14 @@ static void worker(void)
         for (i = 0; q->word[i]; i++)
             if (q->word[i] == '/' || q->word[i] == ':')
                 split = i;
-        memcpy(dirpart, q->word, split + 1);
-        dirpart[split + 1] = 0;
+        {
+            /* the word's directory as vsh names it: "./" and "../" are Unix
+             * ("./up" is the current directory's up, A1200 2026-10-21) */
+            char typed[COMPLETE_MAX];
+            memcpy(typed, q->word, split + 1);
+            typed[split + 1] = 0;
+            sh_amiga_name(typed, dirpart, sizeof(dirpart));
+        }
         strcpy(prefix, q->word + split + 1);
         lock = q->mode == COMPLETE_DEVICES || (q->ghost && !ghost_volume_known(dirpart))
                    ? 0

@@ -312,7 +312,8 @@ static unsigned long line_key(const le_line *le)
 }
 
 /* The newest history line that starts with the whole line and is longer:
- * its tail is the grey suggestion; failing that, the completion ghost. */
+ * its tail is the grey suggestion, after a file word's completion ghost
+ * (the current directory first) and before a command word's. */
 static const unsigned char *hist_suggestion(const le_line *le)
 {
     int i;
@@ -329,13 +330,15 @@ static const unsigned char *hist_suggestion(const le_line *le)
 
 static const unsigned char *suggestion(const le_line *le)
 {
-    const unsigned char *s = hist_suggestion(le);
+    const unsigned char *s;
+    int ghost = le->suggest && le->ghost_n && !le->searching && le->len && le->pos == le->len &&
+                le->ghost_key == line_key(le);
+    if (ghost && le->ghost_file)
+        return le->ghost;
+    s = hist_suggestion(le);
     if (s)
         return s;
-    if (le->suggest && le->ghost_n && !le->searching && le->len && le->pos == le->len &&
-        le->ghost_key == line_key(le))
-        return le->ghost;
-    return 0;
+    return ghost ? le->ghost : 0;
 }
 
 static int lower(int c)
@@ -1769,7 +1772,7 @@ int le_ghost_want(le_line *le, int *from, int *kind, unsigned long *key)
 {
     int i, j, start, first = 1;
     unsigned long k;
-    if (!le->suggest || le->searching || !le->len || le->pos != le->len || hist_suggestion(le))
+    if (!le->suggest || le->searching || !le->len || le->pos != le->len)
         return 0;
     k = line_key(le);
     if (le->ghost_asked == k || (le->ghost_n && le->ghost_key == k))
@@ -1795,9 +1798,12 @@ int le_ghost_want(le_line *le, int *from, int *kind, unsigned long *key)
         if (le->buf[i] == '/' || le->buf[i] == ':')
             *kind = 2; /* a path, even as the first word: files */
     }
+    if (*kind == 1 && hist_suggestion(le))
+        return 0; /* a command word: history first, its line says more than a name */
     *from = start;
     *key = k;
     le->ghost_asked = k;
+    le->ghost_asked_file = *kind == 2;
     return 1;
 }
 
@@ -1805,7 +1811,7 @@ void le_ghost_offer(le_line *le, unsigned long key, const unsigned char *tail, i
 {
     int i, k = 0;
     if (!n || !le->suggest || le->searching || le->pos != le->len || line_key(le) != key ||
-        hist_suggestion(le))
+        (!le->ghost_asked_file && hist_suggestion(le)))
         return;
     for (i = 0; i < n && k < (int)sizeof(le->ghost) - 3; i++) {
         unsigned char ch = tail[i];
@@ -1822,6 +1828,7 @@ void le_ghost_offer(le_line *le, unsigned long key, const unsigned char *tail, i
     le->ghost[k] = 0;
     le->ghost_n = k;
     le->ghost_key = key;
+    le->ghost_file = le->ghost_asked_file;
     redraw_from(le, le->pos);
 }
 
@@ -1830,6 +1837,7 @@ void le_ghost_clear(le_line *le)
     le->ghost_n = 0;
     le->ghost_key = 0;
     le->ghost_asked = 0;
+    le->ghost_file = le->ghost_asked_file = 0;
 }
 
 int le_ctrl_d(int shell_armed, int reader_is_program, int line_len)

@@ -302,7 +302,6 @@ static void close_stream(BPTR fh)
 }
 
 static BPTR lock_name(const char *path, char *used, int max);
-static void amiga_name(const char *in, char *out, int max);
 
 static sh_fh os_open(void *os, const char *path, int mode)
 {
@@ -312,7 +311,7 @@ static sh_fh os_open(void *os, const char *path, int mode)
     (void)os;
     /* "./x" and "../x" as AmigaDOS names them (AmigaDOS has no "." entry: ". ./e.sh" and
      * ENV=./e.sh could not open a file that was there) */
-    amiga_name(path, an, sizeof(an));
+    sh_amiga_name(path, an, sizeof(an));
     path = an;
     vol = path;
     while (*vol == '/')
@@ -353,7 +352,7 @@ static int os_remove(void *os, const char *path)
 {
     char an[256];
     (void)os;
-    amiga_name(path, an, sizeof(an));
+    sh_amiga_name(path, an, sizeof(an));
     return DeleteFile((STRPTR)an) ? 0 : -1;
 }
 
@@ -1479,41 +1478,6 @@ static long os_read_line(void *os, sh_fh fh, char *buf, long max)
     return (long)strlen(buf);
 }
 
-/* Unix-style directory names: .. is the parent (/), . and "" stay. */
-/* A Unix-style relative name as AmigaDOS writes it: each leading ../ is
- * a / (the parent), ./ goes, and . and .. alone are "" and "/". */
-static void amiga_name(const char *in, char *out, int max)
-{
-    int n = 0, slashes;
-    /* the Unix devices a script names: /dev/null is NIL:, /dev/tty the console (". /dev/null",
-     * test -c /dev/null) */
-    if (!strcmp(in, "/dev/null") || !strcmp(in, "/dev/tty")) {
-        strncpy(out, in[5] == 'n' ? "NIL:" : "*", (size_t)max - 1);
-        out[max - 1] = 0;
-        return;
-    }
-    for (;;) {
-        if (!strncmp(in, "./", 2))
-            in += 2;
-        else if (!strncmp(in, "../", 3) || !strcmp(in, "..")) {
-            if (n < max - 1)
-                out[n++] = '/';
-            in += in[2] ? 3 : 2;
-        } else if (!strcmp(in, "."))
-            in++;
-        else
-            break;
-    }
-    out[n] = 0;
-    if ((slashes = sh_vol_slashes(in)) != 0) {
-        /* "Vol:/x" is Vol:x: HOME is a volume root and POSIX code writes $HOME/x */
-        size_t vl = (size_t)(strchr(in, ':') - in) + 1;
-        strncat(out, in, vl < (size_t)(max - n - 1) ? vl : (size_t)(max - n - 1));
-        in += vl + slashes;
-    }
-    strncat(out, in, max - strlen(out) - 1);
-}
-
 /* path as AmigaDOS names it, into used: the Amiga meaning first ("/x" is
  * the parent's x), and when nothing is there by it, the Unix one ("/vol/x"
  * is vol:x, as $PATH and ixemul programs name it -- V2: "/VTC/bin/nvim"
@@ -1521,7 +1485,7 @@ static void amiga_name(const char *in, char *out, int max)
 static BPTR lock_name(const char *path, char *used, int max)
 {
     BPTR lock;
-    amiga_name(path, used, max);
+    sh_amiga_name(path, used, max);
     if ((lock = Lock((STRPTR)used, SHARED_LOCK)) != 0)
         return lock;
     if (sh_unix_root(path, used, max)) {
@@ -1536,7 +1500,7 @@ static BPTR lock_name(const char *path, char *used, int max)
         if (lock)
             return lock;
     }
-    amiga_name(path, used, max); /* not there either way: the Amiga name */
+    sh_amiga_name(path, used, max); /* not there either way: the Amiga name */
     return 0;
 }
 
@@ -1670,7 +1634,7 @@ static int os_stat(void *os, const char *path, sh_stat *st, int nofollow)
     char an[256];
     const char *name = path;
     (void)os;
-    amiga_name(path, an, sizeof(an)); /* test -r ./x: AmigaDOS has no "." entry */
+    sh_amiga_name(path, an, sizeof(an)); /* test -r ./x: AmigaDOS has no "." entry */
     path = an;
     if (!strcmp(path, "NIL:") || !strcmp(path, "*")) {
         /* /dev/null and /dev/tty: character devices anybody reads and writes; no lock names them */

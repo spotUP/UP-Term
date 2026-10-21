@@ -1676,6 +1676,29 @@ static void a_slash_after_the_volume_colon_is_counted(void)
     CHECK(sh_vol_slashes(":/x") == 0);
 }
 
+/* The console's completion names a word's directory as vsh does: "./up" on
+ * the A1200 (2026-10-21) completed nothing, AmigaDOS has no "." entry. */
+static void a_unix_relative_name_is_the_amiga_one(void)
+{
+    char out[64];
+    sh_amiga_name("./", out, sizeof(out));
+    CHECK(!strcmp(out, ""));
+    sh_amiga_name("../src/", out, sizeof(out));
+    CHECK(!strcmp(out, "/src/"));
+    sh_amiga_name("./../../", out, sizeof(out));
+    CHECK(!strcmp(out, "//"));
+    sh_amiga_name("..", out, sizeof(out));
+    CHECK(!strcmp(out, "/"));
+    sh_amiga_name("/c/", out, sizeof(out)); /* the Amiga meaning stays: the parent's c */
+    CHECK(!strcmp(out, "/c/"));
+    sh_amiga_name("System:/Prefs/", out, sizeof(out));
+    CHECK(!strcmp(out, "System:Prefs/"));
+    sh_amiga_name("Work:src/", out, sizeof(out));
+    CHECK(!strcmp(out, "Work:src/"));
+    sh_amiga_name("", out, sizeof(out));
+    CHECK(!strcmp(out, ""));
+}
+
 /* Uninstall runs dist/unstartup.sh with vsh to take Install's blocks out of
  * S:User-Startup. The Replay kept ";BEGIN UP-Term python" after an
  * Uninstall: the script it ran (an older copy in ENVARC:up-term) listed the
@@ -2117,6 +2140,7 @@ void suite_sh_exec(void)
     a_unix_absolute_name_maps_to_its_volume();
     a_doubled_leading_slash_is_the_same_unix_name();
     a_slash_after_the_volume_colon_is_counted();
+    a_unix_relative_name_is_the_amiga_one();
     a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is();
     printf_builtin();
     prompts();

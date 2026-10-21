@@ -23,18 +23,6 @@ static const char *dev_name(const char *path)
         return "*";
     return path;
 }
-int sh_vol_slashes(const char *in)
-{
-    const char *c = in;
-    long n = 0;
-    while (*c && *c != ':' && *c != '/')
-        c++;
-    if (*c != ':' || c == in)
-        return 0;
-    while (c[1 + n] == '/')
-        n++;
-    return (int)n;
-}
 
 int sh_unix_root(const char *in, char *out, long max)
 {

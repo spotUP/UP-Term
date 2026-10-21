@@ -59,6 +59,7 @@ typedef struct le_line {
     unsigned char ghost[96];
     int ghost_n;
     unsigned long ghost_key, ghost_asked;
+    int ghost_file, ghost_asked_file; /* the ghost (the look-up) is a file word's: it goes before history */
     unsigned char *hist;    /* the lines, each NUL-terminated, oldest first (LE_MALLOC) */
     long hist_used, hist_cap;
     unsigned long *hist_at; /* where line i starts in hist (LE_MALLOC, hist_at_cap entries) */
@@ -160,8 +161,11 @@ void le_kc_show_list(le_line *le, const char *names, int len);
  * one now: 1 for a command word (the line's first word), 2 for a file
  * word; *from is the word's first byte, *key names the line it is asked
  * for. It answers 0 for an empty or finished word, a quote, a variable, a
- * wildcard, a slash command, a line with a history suggestion, a line
- * already asked about. The look-up must not wait on the disk: it is the
+ * wildcard, a slash command, a command word with a history suggestion, a
+ * line already asked about. A file word is looked up even when a history
+ * line fits: the current directory goes first (owner 2026-10-21, "rm -r up"
+ * offered a history line's up-Term-backup/ over the up-term.lha that is
+ * there), so a file ghost shows before the history suggestion. The look-up must not wait on the disk: it is the
  * caller's worker. le_ghost_offer gives the answer: tail (Latin-1, the
  * text that would follow the cursor; n 0: nothing) shows grey if the line
  * is still the one `key` names and the cursor is at its end; Right or End
