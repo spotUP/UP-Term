@@ -74,6 +74,8 @@ with tempfile.TemporaryDirectory() as d:
     paths.FSUAE_LOG_DIR, paths.FSUAE_LOG_MAX = d / "logs", 1000
     rig.SERIAL, rig.LOGWATCH_EVERY, rig.RIG = d / "serial.log", 0, d
     (d / "logs").mkdir()
+    # rig start refuses a rig dir with no system disk (40b38d5c)
+    (d / "sys.hdf").write_bytes(b"")
     (d / "logs" / "fs-uae.log.txt").write_bytes(b"L" * 100000)
     rig.SERIAL.write_bytes(b"S" * 100000)
     ticks = iter([["fs-uae running"], ["fs-uae running"], []])
