@@ -57,6 +57,18 @@ class Versions(unittest.TestCase):
             clean = [l for l in r.stdout.splitlines() if l.startswith('neovim-amiga ')][0]
             self.assertNotIn('dirty', clean)
 
+    def test_untracked_files_do_not_make_a_part_dirty(self):
+        # same rule as the Makefile GITREV (git diff --quiet): notes left
+        # untracked in a checkout are not part of what the kit is built from
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace(tmp)
+            open(os.path.join(tmp, 'tmux-amiga', 'notes.md'), 'w').write('draft')
+            r = self.run_script(tmp)
+            self.assertEqual(r.returncode, 0)
+            line = [l for l in r.stdout.splitlines() if l.startswith('tmux-amiga ')][0]
+            self.assertNotIn('dirty', line)
+            self.assertNotIn('tmux-amiga', r.stderr)
+
     def test_missing_part_is_named_not_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             workspace(tmp)
