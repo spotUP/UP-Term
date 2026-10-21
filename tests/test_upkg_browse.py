@@ -26,6 +26,7 @@ exit "$rc"
 '''
 
 FAKE_UPKG = '''#!/bin/sh
+case $1 in list|list-installed|list-upgradable) echo "$1" >> "$LIST_LOG" ;; esac
 case $1 in
 list) cat "$STATE/feed"; exit 0 ;;
 list-installed) cat "$STATE/installed"; exit 0 ;;
@@ -67,6 +68,7 @@ class Browse(unittest.TestCase):
         os.mkdir(self.state)
         self.ui_log = os.path.join(self.tmp, 'ui.log')
         self.cmd_log = os.path.join(self.tmp, 'cmd.log')
+        self.list_log = os.path.join(self.tmp, 'list.log')
         self.upkg = os.path.join(self.bin, 'upkg')
         self.fill('feed', 'up-vim - 1.3 - Vim, the text editor\n'
                           'up-git - 2.0 - Git - the stupid content tracker\n'
@@ -89,13 +91,13 @@ class Browse(unittest.TestCase):
 
     def env(self, **extra):
         env = {'PATH': self.bin + ':/usr/bin:/bin', 'UPKG': self.upkg, 'STATE': self.state,
-               'UI_LOG': self.ui_log, 'CMD_LOG': self.cmd_log, 'HOME': self.tmp, 'TMPDIR': self.tmp}
+               'UI_LOG': self.ui_log, 'CMD_LOG': self.cmd_log, 'LIST_LOG': self.list_log, 'HOME': self.tmp, 'TMPDIR': self.tmp}
         env.update(extra)
         return env
 
     def run_browse(self, shell, typed=None, args=(), rc=0, **extra):
         """run on a pty with TYPED waiting on the keyboard (None: stdin is /dev/null)"""
-        for f in (self.ui_log, self.cmd_log):
+        for f in (self.ui_log, self.cmd_log, self.list_log):
             if os.path.exists(f):
                 os.remove(f)
         if typed is None:
@@ -122,6 +124,9 @@ class Browse(unittest.TestCase):
 
     def commands(self):
         return self.read(self.cmd_log)
+
+    def list_reads(self):
+        return self.read(self.list_log)
 
     def test_rows_and_markers_split_at_the_first_and_second_separator(self):
         self.fake_ui()
@@ -192,6 +197,18 @@ class Browse(unittest.TestCase):
                 self.run_browse(sh, "0 u up-perl\n\n0 q up-perl\n")
                 self.assertEqual(self.commands(), ['upgrade up-perl'])
                 self.assertIn('up-perl installed 5.40   Perl language', self.calls()[1])
+
+    def test_the_lists_are_read_again_only_after_a_command_that_changes_the_add_ons(self):
+        # each upkg list run takes seconds on a 68k: info and a refused key go back to the same lists
+        self.fake_ui()
+        once = ['list', 'list-installed', 'list-upgradable']
+        for sh in self.shells:
+            with self.subTest(sh=sh[0]):
+                self.fill('installed', 'up-vim - 1.3\nup-perl - 5.38\n')
+                self.run_browse(sh, "0 enter up-vim\n\n0 i up-vim\n\n0 q up-vim\n")
+                self.assertEqual(self.list_reads(), once)
+                self.run_browse(sh, "0 i up-git\n\n0 q up-git\n")
+                self.assertEqual(self.list_reads(), once * 2)
 
     def test_a_key_that_does_not_fit_the_row_prints_one_line_and_runs_nothing(self):
         self.fake_ui()

@@ -67,6 +67,8 @@ pause() {
 run() {
     "$upkg" "$@"
     rc=$?
+    # only a command that changes the add-ons makes the lists stale: info goes back to the same list
+    case $1 in info) ;; *) stale=1 ;; esac
     if [ $rc -eq 0 ]; then
         echo "[OK] upkg $*"
     else
@@ -76,14 +78,20 @@ run() {
 }
 
 last=
+# the three lists are read again only after a command that changes the add-ons (run sets stale):
+# each upkg run costs seconds on a 68k, so going back after info or a refused key reads nothing
+stale=1
 while :; do
-    all=$("$upkg" list)
-    if [ -z "$all" ]; then
-        echo "No package lists. Run upkg update first." >&2
-        exit 1
+    if [ $stale -eq 1 ]; then
+        all=$("$upkg" list)
+        if [ -z "$all" ]; then
+            echo "No package lists. Run upkg update first." >&2
+            exit 1
+        fi
+        inst=$NL$("$upkg" list-installed)
+        upg=$NL$("$upkg" list-upgradable)
+        stale=0
     fi
-    inst=$NL$("$upkg" list-installed)
-    upg=$NL$("$upkg" list-upgradable)
 
     set --
     count=0
