@@ -26,8 +26,10 @@ exit "$rc"
 '''
 
 FAKE_UPKG = '''#!/bin/sh
-case $1 in list|list-installed|list-upgradable) echo "$1" >> "$LIST_LOG" ;; esac
+case $1 in list|list-installed|list-upgradable|list-browse) echo "$1" >> "$LIST_LOG" ;; esac
 case $1 in
+list-browse) cat "$STATE/feed" > "$2.all"; cat "$STATE/installed" > "$2.inst"
+    cat "$STATE/upgradable" > "$2.upg"; exit 0 ;;
 list) cat "$STATE/feed"; exit 0 ;;
 list-installed) cat "$STATE/installed"; exit 0 ;;
 list-upgradable) cat "$STATE/upgradable"; exit 0 ;;
@@ -201,7 +203,7 @@ class Browse(unittest.TestCase):
     def test_the_lists_are_read_again_only_after_a_command_that_changes_the_add_ons(self):
         # each upkg list run takes seconds on a 68k: info and a refused key go back to the same lists
         self.fake_ui()
-        once = ['list', 'list-installed', 'list-upgradable']
+        once = ['list-browse']
         for sh in self.shells:
             with self.subTest(sh=sh[0]):
                 self.fill('installed', 'up-vim - 1.3\nup-perl - 5.38\n')
@@ -209,6 +211,27 @@ class Browse(unittest.TestCase):
                 self.assertEqual(self.list_reads(), once)
                 self.run_browse(sh, "0 i up-git\n\n0 q up-git\n")
                 self.assertEqual(self.list_reads(), once * 2)
+
+    def test_the_lists_upkg_browse_wrote_start_the_list_without_a_upkg_run(self):
+        # upkg browse hands over the three lists it wrote (UPKG_BROWSE_LISTS); the script runs upkg
+        # again only after a command that changed the add-ons, and leaves the handed files to upkg.
+        # Its .inst rows carry the feed's descriptions (one load holds the feeds), where a plain
+        # list-installed shows none on an Amiga: the version is still read up to the first " - ".
+        self.fake_ui()
+        given = os.path.join(self.tmp, 'upkg-lists.1')
+        for sh in self.shells:
+            with self.subTest(sh=sh[0]):
+                self.fill('installed', 'up-vim - 1.3\nup-perl - 5.38\n')
+                for ext, name in (('all', 'feed'), ('upg', 'upgradable')):
+                    shutil.copy(os.path.join(self.state, name), given + '.' + ext)
+                with open(given + '.inst', 'w') as f:
+                    f.write('up-perl - 5.38 - Perl language\nup-vim - 1.3 - Vim, the text editor\n')
+                self.run_browse(sh, "0 i up-git\n\n0 q up-git\n", UPKG_BROWSE_LISTS=given)
+                self.assertEqual(self.list_reads(), ['list-browse'])
+                self.assertEqual(self.calls()[0], HEAD + '--menu ' + PROMPT + ' 0 0 0 ' + ROWS)
+                self.assertIn('up-git installed 2.0', self.calls()[1])
+                self.assertTrue(os.path.exists(given + '.upg'))
+                self.assertEqual([f for f in os.listdir(self.tmp) if f.startswith('upkg-browse')], [])
 
     def test_a_key_that_does_not_fit_the_row_prints_one_line_and_runs_nothing(self):
         self.fake_ui()

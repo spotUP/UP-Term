@@ -12,12 +12,17 @@
 # upkg-ui draws the list and exits (curses is never nested) before the chosen upkg command runs, so a
 # package's own postinst screens work. The rows come from "upkg list", "upkg list-installed" and
 # "upkg list-upgradable": each line is "NAME - VERSION - DESCRIPTION" split at the first and second " - "
-# (a description may contain " - " itself).
+# (a description may contain " - " itself). Each upkg run costs seconds on a 68k (3 s per load from a
+# PFS3 disk), so the three lists come as files from one run: "upkg browse" writes them before it starts
+# this script and names them in UPKG_BROWSE_LISTS; after a command that changed the add-ons one
+# "upkg list-browse PREFIX" writes them again to PREFIX.all, PREFIX.inst and PREFIX.upg.
 #
 # usage: upkg-browse            (also: --help, -h, help, ? print the usage and exit 0)
 # exit:  0 quit or help; 1 no package lists; 2 bad argument, no terminal, no upkg-ui, or upkg-ui failed.
 # env:   UPKG is the upkg command (default upkg; the host tests set it). Global upkg options given
 #        before "browse" are not forwarded to the child commands.
+#        UPKG_BROWSE_LISTS is the prefix of the lists "upkg browse" wrote (it removes them itself);
+#        unset or missing, the script runs "upkg list-browse" before the first list too.
 
 upkg=${UPKG:-upkg}
 usage="usage: upkg browse
@@ -51,7 +56,10 @@ fi
 tmpdir=${TMPDIR:-/tmp}
 if [ -z "$TMPDIR" ] && [ -d T: ]; then tmpdir=T:; fi
 case $tmpdir in *:) tmp=${tmpdir}upkg-browse.$$ ;; *) tmp=$tmpdir/upkg-browse.$$ ;; esac
-trap 'rm -f "$tmp"' 0
+# the lists this script writes itself with "upkg list-browse"
+lists=$tmp.l
+trap 'rm -f "$tmp" "$lists.all" "$lists.inst" "$lists.upg"' 0
+given=$UPKG_BROWSE_LISTS
 
 NL='
 '
@@ -83,13 +91,21 @@ last=
 stale=1
 while :; do
     if [ $stale -eq 1 ]; then
-        all=$("$upkg" list)
+        if [ -n "$given" ] && [ -f "$given.all" ]; then
+            L=$given
+        else
+            L=$lists
+            # upkg says why when it cannot write them
+            "$upkg" list-browse "$L" || exit 1
+        fi
+        given=
+        all=$(< "$L.all")
         if [ -z "$all" ]; then
             echo "No package lists. Run upkg update first." >&2
             exit 1
         fi
-        inst=$NL$("$upkg" list-installed)
-        upg=$NL$("$upkg" list-upgradable)
+        inst=$NL$(< "$L.inst")
+        upg=$NL$(< "$L.upg")
         stale=0
     fi
 
