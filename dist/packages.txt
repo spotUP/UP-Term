@@ -19,7 +19,7 @@
 #   consumes    the repositories (comma separated; vtcon is this one) the archive is
 #               built from: the lines of its Files/VERSIONS (tools/mkversions.sh)
 # id    archive    version  needs-base  ixemul  record                 handed                                                consumes
-base    up-term    1.4      -           -       UP-Term:               -                                                     vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src
+base    up-term    1.5      -           -       UP-Term:               -                                                     vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src
 claude  up-claude  1.1      -           -       ENVARC:upkg/up-claude  Files/Claude                                          vtcon
 pi      up-pi      1.0      -           -       ENVARC:upkg/up-pi      Files/amiga-pi                                        amiga-pi,vtcon
 nvim    up-nvim    1.0      1.0         80      UP-Term:pkg/up-nvim    Files/nvim                                            neovim-amiga,ixemul-vtcon
