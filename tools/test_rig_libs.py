@@ -38,5 +38,21 @@ check(any(l.endswith(AMISSL) for l in rig.RIG_LIBS), "RIG_LIBS carries AmiSSL's 
 # by its volume, never through the AmiSSL: assign (a rig image without it would ask for a volume and stop the boot)
 check(not any("AmiSSL:" in l for l in rig.RIG_LIBS), "RIG_LIBS does not name the AmiSSL: assign")
 
+# Regression (2026-10-21, upkg_browse_rig step 0): the system disk's AmiSSL/ holds only the kit's
+# per-CPU subdrawers, so amisslmaster.library found no LIBS:AmiSSL/amissl_v362.library ("Couldn't open
+# AmiSSL!", curl rc 20); and curl needs usergroup.library, which only VTC:amitcp/libs has.
+check(any(l.endswith("LIBS: VTC:amissl ADD") for l in rig.RIG_LIBS), "RIG_LIBS carries VTC:amissl (the flat AmiSSL library)")
+check(any(l.endswith("LIBS: VTC:amitcp/libs ADD") for l in rig.RIG_LIBS), "RIG_LIBS carries VTC:amitcp/libs (usergroup.library)")
+check(any(l.endswith("LIBS: VTC:amissl ADD") for l in lines), "GO adds VTC:amissl to LIBS:")
+import tempfile  # noqa: E402
+for m060, cpu in ((True, "68060"), (False, "68020-40")):
+    with tempfile.TemporaryDirectory() as d:
+        vtc = pathlib.Path(d)
+        rig.stage_amissl(vtc, m060)
+        got = vtc / "amissl/AmiSSL/amissl_v362.library"
+        want = rig.ROOT / "vendor/amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / cpu / "amissl_v362.library"
+        check(got.is_file() and got.read_bytes() == want.read_bytes(),
+              "stage_amissl puts the %s library flat in VTC:amissl/AmiSSL" % cpu)
+
 print("[%s] rig_libs: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)

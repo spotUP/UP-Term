@@ -115,12 +115,22 @@ C:Execute DH0:S/Startup-Sequence
 # amisslmaster.library was not found and every https request failed
 # (amiga-pi: "Connection error.", 2026-10-13; tools/test_rig_libs.py). By its
 # volume, not AmiSSL:, which a rig image without AmiSSL would ask for.
+# The system disk's AmiSSL drawer holds amisslmaster.library but its AmiSSL/
+# only as the kit's per-CPU subdrawers (68020-40/, 68060/), so the master found
+# no LIBS:AmiSSL/amissl_v362.library: "Couldn't open AmiSSL!" and curl's rc 20
+# (upkg_browse_rig step 0, 2026-10-21). VTC:amissl/AmiSSL holds the one library
+# for the CPU this boot emulates, flat, as Install-AmiSSL lays it out
+# (stage_amissl). curl also needs usergroup.library, which only VTC:amitcp/libs
+# (AmiTCP:libs) has: without it curl.060 stopped at '"usergroup.library" could
+# not be opened'.
 RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:Libs ADD",
             "Assign >NIL: LIBS: DH0:Classes ADD",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
             "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",
-            "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD"]
+            "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD",
+            "Assign >NIL: LIBS: VTC:amissl ADD",
+            "Assign >NIL: LIBS: VTC:amitcp/libs ADD"]
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
@@ -466,6 +476,7 @@ def setup():
         sysconf.unlink()
     # the pinned wasabid (`make wasabi`), every start; one daemon, no other agent in the boot
     shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
+    stage_amissl(RIG / "vtc", M060)
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     machine = [
@@ -607,6 +618,17 @@ def stage_terminfo(src, dest):
         if f.is_file():
             (dest / f.parent.name).mkdir(parents=True, exist_ok=True)
             shutil.copyfile(f, dest / f.parent.name / f.name)
+
+def stage_amissl(vtc, m060):
+    """VTC:amissl/AmiSSL/amissl_v362.library (RIG_LIBS): the kit's AmiSSL library for the CPU the rig
+    boots as (68060 with --060/--max, else 68020-40), flat, where amisslmaster.library looks for it."""
+    src = ROOT / "vendor/amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / ("68060" if m060 else "68020-40") / "amissl_v362.library"
+    if not src.is_file():
+        sys.exit("rig: the kit's AmiSSL 5.27 library not found: %s (vendor/amissl-5.27, the kit's AmiSSL drawer)" % src)
+    dst = vtc / "amissl/AmiSSL" / src.name
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+        shutil.copyfile(src, dst)
 
 def kit_restore():
     """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
