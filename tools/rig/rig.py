@@ -744,6 +744,12 @@ def start(retries=2):
     if mine():
         print("already running")
         return
+    # a rig with no system disk still has an old config naming sys.hdf as DH0:
+    # (setup_config_only skips it), so the emulator boots to "Please insert
+    # volume dh0:" and every rig script waits on an agent that never comes up
+    if not OS and not OS32 and not (RIG / "sys.hdf").exists():
+        sys.exit("rig: %s has no system disk (%s): the boot would stop at \"Please insert volume dh0:\". "
+                 "Run `rig.py setup` (copies 1.5 GB) or use a rig that has one" % (RIG.name, RIG / "sys.hdf"))
     START_ARGS.write_text(json.dumps(sys.argv[2:]))
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)

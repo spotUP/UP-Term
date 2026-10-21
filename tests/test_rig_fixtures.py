@@ -826,5 +826,25 @@ class UpkgRigPure(unittest.TestCase):
         self.assertIsNone(u.status_version(self.PACKAGES, 'Python3'))
         self.assertEqual(u.lower_record("up-nvim 1.0 abc d\nrest\n", '0.0.1'), "up-nvim 0.0.1 abc d\nrest\n")
 
+class RigStart(unittest.TestCase):
+    def test_start_refuses_a_rig_with_no_system_disk(self):
+        # rig 3 had no sys.hdf and booted to "Please insert volume dh0:" under an agent's run
+        import tempfile, rig
+        saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.subprocess.Popen, rig.subprocess.run)
+        launched = []
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                rig.RIG, rig.OS, rig.OS32, rig.mine = pathlib.Path(d), None, False, lambda: False
+                def launch(*a, **k):
+                    launched.append(a)
+                    raise AssertionError('the emulator was launched')
+                rig.subprocess.Popen = rig.subprocess.run = launch
+                with self.assertRaises(SystemExit) as e:
+                    rig.start()
+                self.assertIn("no system disk", str(e.exception))
+                self.assertEqual(launched, [])
+        finally:
+            rig.RIG, rig.OS, rig.OS32, rig.mine, rig.subprocess.Popen, rig.subprocess.run = saved
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
