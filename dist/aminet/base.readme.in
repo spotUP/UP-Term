@@ -1,9 +1,8 @@
 Short:        UP-Term: XCON: console, vsh, tools
 Author:       spotUP
-Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
+Uploader:     spotup@gmail.com (spotUP)
 Type:         comm/term
 Version:      @VERSION@
-Replaces:     PLACEHOLDER (the Aminet path of an earlier UP-Term upload, if there is one)
 Architecture: m68k-amigaos >= 3.0.0; m68k-020
 Requires:     AmigaOS 3.0 or newer, a 68020 or better
 Distribution: Aminet

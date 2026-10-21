@@ -5,7 +5,7 @@
   <id> is a package of dist/packages.txt, or "src" (up-term-src.lha, versioned with the base)
 
 --release exits 1 while the readme still holds a PLACEHOLDER (an answer the owner owes: the
-UP-Term licence line (ledger K4), the uploader address). Without it the readme is written anyway.
+uploader address). Without it the readme is written anyway.
 Values: @VERSION@ @ARCHIVE@ @BASEREQ@ (the base archive and the lowest version the add-on needs,
 empty for the base) @NEEDSBASE@.
 """
@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import pkgs
 
-FIELDS = ('Short', 'Author', 'Uploader', 'Type', 'Version', 'Replaces', 'Architecture', 'Requires', 'Distribution')
+FIELDS = ('Short', 'Author', 'Uploader', 'Type', 'Version', 'Architecture', 'Requires', 'Distribution')
 
 
 def row(pkg_id, table=None):

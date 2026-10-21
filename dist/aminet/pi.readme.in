@@ -1,9 +1,8 @@
 Short:        pi coding agent for the Amiga
 Author:       spotUP
-Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
+Uploader:     spotup@gmail.com (spotUP)
 Type:         comm/misc
 Version:      @VERSION@
-Replaces:     none
 Architecture: m68k-amigaos >= 3.0.0; m68k-020
 Requires:     TCP/IP stack (Roadshow, Miami, AmiTCP), util/libs/AmiSSL-v5-OS3.lha for https
 Distribution: Aminet

@@ -171,7 +171,7 @@ class Readme(unittest.TestCase):
 
     def test_the_directories_are_the_owners_choice(self):
         want = {'base': 'comm/term', 'src': 'comm/term', 'claude': 'comm/misc', 'pi': 'comm/misc',
-                'nvim': 'text/edit', 'python': 'dev/lang'}
+                'nvim': 'text/edit', 'python': 'dev/lang', 'git': 'dev/misc', 'perl': 'dev/lang', 'vim': 'text/edit'}
         for i, d in want.items():
             self.assertEqual(mr.fields(mr.build(i)[1])['Type'], d, i)
 
@@ -182,14 +182,23 @@ class Readme(unittest.TestCase):
             self.assertNotIn('Licence: PLACEHOLDER', mr.build(i)[1], i)
 
     def test_release_refuses_a_readme_with_a_placeholder(self):
-        import subprocess
-        for i, rc in (('base', 1), ('pi', 1)):    # the uploader address is a placeholder in every readme
-            r = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/mkreadme.py'), i, '--release'],
-                               capture_output=True, text=True)
-            self.assertEqual(r.returncode, rc, i)
+        import subprocess, tempfile, shutil
+        with tempfile.TemporaryDirectory() as d:
+            shutil.copytree(ROOT / 'tools', pathlib.Path(d) / 'tools')
+            shutil.copytree(ROOT / 'dist', pathlib.Path(d) / 'dist')
+            f = pathlib.Path(d) / 'dist/aminet/pi.readme.in'
+            f.write_text(f.read_text().replace('spotup@gmail.com', 'UPLOADER-ADDRESS-PLACEHOLDER'))
+            run = lambda *a: subprocess.run([sys.executable, '-I', str(pathlib.Path(d) / 'tools/mkreadme.py'), 'pi', *a],
+                                            capture_output=True, text=True)
+            r = run('--release')
+            self.assertEqual(r.returncode, 1)
             self.assertIn('PLACEHOLDER', r.stderr)
-        r = subprocess.run([sys.executable, '-I', str(ROOT / 'tools/mkreadme.py'), 'pi'], capture_output=True, text=True)
-        self.assertEqual(r.returncode, 0)
+            self.assertEqual(run().returncode, 0)
+
+    def test_no_readme_has_a_replaces_line_or_a_placeholder(self):
+        for i in self.IDS:
+            self.assertNotIn('Replaces', mr.fields(mr.build(i)[1]), i)
+            self.assertNotIn('PLACEHOLDER', mr.build(i)[1], i)
 
     def test_every_value_is_filled(self):
         for i in self.IDS:

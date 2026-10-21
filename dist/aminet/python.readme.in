@@ -1,9 +1,8 @@
 Short:        Python 3.14 for the Amiga (ixemul)
 Author:       spotUP
-Uploader:     UPLOADER-ADDRESS-PLACEHOLDER (spotUP)
+Uploader:     spotup@gmail.com (spotUP)
 Type:         dev/lang
 Version:      @VERSION@
-Replaces:     none
 Architecture: m68k-amigaos >= 3.0.0; m68k-020
 Requires:     none (it brings ixemul.library when the system has none)
 Distribution: Aminet
