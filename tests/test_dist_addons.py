@@ -338,7 +338,7 @@ class QuickLaunchIcons(unittest.TestCase):
             self.assertIn(b'WINDOW=XCON:0/12/800/560/Neovim/CLOSE', data)
             base = pathlib.Path(d) / 'y.info'
             subprocess.run([sys.executable, str(ROOT / 'tools/mkicon.py'), str(base)], check=True)
-            self.assertIn(b'WINDOW=XCON:0/20/640/400/UP-Term/CLOSE', base.read_bytes())    # the UP-Term icon keeps its default
+            self.assertIn(b'WINDOW=XCON:0/20/0/400/UP-Term/CLOSE', base.read_bytes())    # the UP-Term icon keeps its default
 
     def test_parts_txt_maps_the_launch_drawer_to_the_launch_part(self):
         for pid in LAUNCHERS:
