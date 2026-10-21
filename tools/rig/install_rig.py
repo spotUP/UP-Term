@@ -1518,6 +1518,39 @@ def case_net_upgrade(ck):
         run('Delete >NIL: LIBS:libcryptossh.library ENVARC:up-term/cryptossh QUIET')
 
 
+def case_shellalias(ck):
+    """Install's upkg Alias in S:Shell-Startup: one marked block after the base Install, a new AmigaDOS Shell
+    (Shell FROM, which runs S:Shell-Startup) resolves upkg, a second Install leaves one block, Uninstall takes
+    the block out and the rest of the file stays."""
+    prepare(None)
+    before = Before()
+    shell_before = run('Type S:Shell-Startup')[1]
+    def blocks():
+        rc, out = run('Search S:Shell-Startup ";BEGIN UP-Term upkg"')
+        return out.count(';BEGIN UP-Term upkg')
+    base_install(ck)
+    ck(blocks() == 1, 'shellalias: S:Shell-Startup holds one ";BEGIN UP-Term upkg" block', run('Type S:Shell-Startup')[1])
+    ck('Alias upkg UP-Term:bin/upkg []' in run('Type S:Shell-Startup')[1], 'shellalias: the block holds the upkg Alias')
+    # a NewShell process (FROM replaces its own S:Shell-Startup run, so the script executes the file, as a Shell does)
+    (VTC / 'chkalias').write_text("Execute S:Shell-Startup\nAlias >VTC:aliaslist\nupkg --help >NIL:\nEcho >VTC:aliasrc \"rc=$RC\"\nEndCLI\n")
+    run('Delete >NIL: VTC:aliasrc VTC:aliaslist QUIET')
+    run('NewShell "CON:0/12/400/100/aliaschk/CLOSE" FROM VTC:chkalias', 90)
+    out = ''
+    for _ in range(20):
+        time.sleep(2)
+        rc, out = run('Type VTC:aliasrc')
+        if rc == 0:
+            break
+    ck('rc=0' in out, 'shellalias: a new Shell resolves upkg and upkg --help gives rc 0', out + run('Type VTC:aliaslist')[1][-300:])
+    base_install(ck)
+    ck(blocks() == 1, 'shellalias: after a second Install still one block', run('Type S:Shell-Startup')[1])
+    base_uninstall(ck, before)
+    ck(blocks() == 0, 'shellalias: Uninstall removed the block', run('Type S:Shell-Startup')[1])
+    after = run('Type S:Shell-Startup')[1]
+    ck(after.strip() == shell_before.strip(),
+       'shellalias: the rest of S:Shell-Startup is as it was', 'now %r before %r' % (after[-120:], shell_before[-120:]))
+
+
 def case_wasabi(ck):
     """The kit's one daemon option (Install WASABI, WM6): wasabid 0.11b2 lands in C: with our marker, a key
     (ENVARC:wasabi.key), a marked block in S:User-Startup, and is started; it answers a ping from the Mac's
@@ -1625,6 +1658,7 @@ def case_table():
     t['net'] = (['base'], [], case_net)
     t['net-upgrade'] = (['base'], [], case_net_upgrade)
     t['wasabi'] = (['base'], [], case_wasabi)
+    t['shellalias'] = (['base'], [], case_shellalias)
     return t
 
 
