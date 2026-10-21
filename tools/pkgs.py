@@ -285,17 +285,28 @@ def _rename_fields(r):
     return ['Replaces: ' + j, 'Conflicts: ' + j, 'Provides: ' + j]
 
 
+def _interactive_fields(build, r):
+    """['UP-Term-Interactive: yes'] for an archive with install questions (its Files/questions file), else [].
+    upkg browse reads it from the feed's Packages list and runs such a package in the plain window, not in
+    a programbox. One source: the questions file."""
+    if (pathlib.Path(build) / 'dist' / r['archive'] / 'Files/questions').is_file():
+        return ['UP-Term-Interactive: yes']
+    return []
+
+
 def build_ipk(r, build):
     """The .ipk bytes of one row from the staged tree <build>/dist/<archive>."""
     kit = pathlib.Path(build) / 'dist' / r['archive']
     if not (kit / 'Files/install.dos').is_file():
         raise SystemExit('pkgs ipk: %s is not staged: make dist' % kit)
     data_ents, size = _data_entries(kit, r['archive'])
-    need, post, pre = _scripts(r, question_keys(kit))
+    keys = question_keys(kit)
+    need, post, pre = _scripts(r, keys)
     lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + ARCH,
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
              'Description: ' + SUMMARY.get(r['id'], r['archive'])]
     lines[2:2] = _rename_fields(r)
+    lines += _interactive_fields(build, r)
     ctl = ('\n'.join(lines) + '\n').encode()
     ents = [(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None), (_tinfo('./control', len(ctl)), ctl)]
     if need:
@@ -327,7 +338,7 @@ def feed(build, path=TABLE):
         if not f.is_file():
             raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
         data = f.read_bytes()
-        b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r)
+        b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _interactive_fields(build, r)
         b += ['Architecture: ' + ARCH, 'Filename: ' + f.name, 'Size: %d' % len(data),
               'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
               'Description: ' + SUMMARY.get(r['id'], r['archive'])]

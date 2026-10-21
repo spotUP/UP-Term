@@ -6,8 +6,14 @@
 #   upgrade 1.2 to 1.3   Vim, the text editor
 #   available 1.3   Vim, the text editor
 # Keys: Up Down Home End PgUp PgDn move, Enter shows "upkg info", i installs, r removes (after a
-# yes/no question), u upgrades, q or Escape quits. After each action the list comes back with the cursor
-# on the same add-on and the markers refreshed.
+# yes/no question), u upgrades, q or Escape quits. Enter shows "upkg info" in a scrollable box with only
+# the buttons that apply (Install, Upgrade, Remove, Back). install, upgrade and remove show the
+# command's output in a programbox that ends with an [OK] or [ERROR] line and waits for OK. Nothing is
+# printed to the Shell window between screens (messages are msgboxes). A package whose feed control has
+# "UP-Term-Interactive: yes" runs in the plain window instead. After each action the list comes back with
+# the cursor on the same add-on and the markers and colours refreshed. A row is coloured yellow
+# (upgrade), green (installed) or cyan (new: in the feed now, not before the last upkg update, read
+# from PREFIX.new).
 #
 # upkg-ui draws the list and exits (curses is never nested) before the chosen upkg command runs, so a
 # package's own postinst screens work. The rows come from "upkg list", "upkg list-installed" and
@@ -15,12 +21,13 @@
 # (a description may contain " - " itself). Each upkg run costs seconds on a 68k (3 s per load from a
 # PFS3 disk), so the three lists come as files from one run: "upkg browse" writes them before it starts
 # this script and names them in UPKG_BROWSE_LISTS; after a command that changed the add-ons one
-# "upkg list-browse PREFIX" writes them again to PREFIX.all, PREFIX.inst and PREFIX.upg.
+# "upkg list-browse PREFIX" writes them again to PREFIX.all, PREFIX.inst, PREFIX.upg and PREFIX.new.
 #
 # usage: upkg-browse            (also: --help, -h, help, ? print the usage and exit 0)
 # exit:  0 quit or help; 1 no package lists; 2 bad argument, no terminal, no upkg-ui, or upkg-ui failed.
 # env:   UPKG is the upkg command (default upkg; the host tests set it). Global upkg options given
 #        before "browse" are not forwarded to the child commands.
+#        UPKG_LISTS_DIR is the opkg lists dir (default /UP-Term/pkg/upkg/lists).
 #        UPKG_BROWSE_LISTS is the prefix of the lists "upkg browse" wrote (it removes them itself);
 #        unset or missing, the script runs "upkg list-browse" before the first list too.
 
@@ -58,31 +65,88 @@ if [ -z "$TMPDIR" ] && [ -d T: ]; then tmpdir=T:; fi
 case $tmpdir in *:) tmp=${tmpdir}upkg-browse.$$ ;; *) tmp=$tmpdir/upkg-browse.$$ ;; esac
 # the lists this script writes itself with "upkg list-browse"
 lists=$tmp.l
-trap 'rm -f "$tmp" "$lists.all" "$lists.inst" "$lists.upg"' 0
+trap 'rm -f "$tmp" "$tmp.i" "$lists.all" "$lists.inst" "$lists.upg" "$lists.new"' 0
 given=$UPKG_BROWSE_LISTS
 
 NL='
 '
 ui_title="UP-TERM ADD-ONS"
+# dialog colour codes of upkg-ui --colors: upgrade yellow, installed green, new cyan
+cUpg='\Z3'
+cInst='\Z2'
+cNew='\Z6'
 prompt="Enter info   i install   r remove   u upgrade   q quit"
 
-pause() {
-    echo "Press Return to go back to the list."
-    IFS= read -r junk
+# the feed lists of opkg: "upkg info" prints only the fields opkg knows, so UP-Term-Interactive is read
+# from the Packages text opkg keeps per feed (lists_dir of dist/upkg.conf)
+listsdir=${UPKG_LISTS_DIR:-/UP-Term/pkg/upkg/lists}
+
+# interactive NAME: true when the feed's control for NAME has "UP-Term-Interactive: yes" (the package
+# asks questions of its own, tools/pkgs.py writes the field for an archive with install questions)
+interactive() {
+    for f in "$listsdir"/*; do
+        case $f in *.prev | *.sig) continue ;; esac
+        [ -f "$f" ] || continue
+        cur=
+        while IFS= read -r l; do
+            case $l in
+            "Package: "*) cur=${l#Package: } ;;
+            "UP-Term-Interactive: yes") [ "$cur" = "$1" ] && return 0 ;;
+            esac
+        done < "$f"
+    done
+    return 1
 }
 
-# run a upkg command and report it: [OK] upkg install up-vim, or [ERROR] ... returned N
-run() {
-    "$upkg" "$@"
+# a message in the frame, never in the Shell window
+msg() {
+    upkg-ui --title "$ui_title" --msgbox "$1" 0 0 2> /dev/null
+}
+
+# the command's output and its closing line: [OK] upkg install up-vim or [ERROR] upkg install up-vim (exit 3)
+runout() {
+    "$upkg" "$1" "$2" 2>&1
     rc=$?
-    # only a command that changes the add-ons makes the lists stale: info goes back to the same list
-    case $1 in info) ;; *) stale=1 ;; esac
     if [ $rc -eq 0 ]; then
-        echo "[OK] upkg $*"
+        echo "[OK] upkg $1 $2"
     else
-        echo "[ERROR] upkg $* returned $rc"
+        echo "[ERROR] upkg $1 $2 (exit $rc)"
     fi
-    pause
+}
+
+# run a upkg command that changes the add-ons: its output scrolls in a programbox that waits for OK
+# (a package with install questions of its own runs in the plain window instead)
+run() {
+    stale=1
+    if interactive "$2"; then
+        "$upkg" "$1" "$2"
+        rc=$?
+        if [ $rc -eq 0 ]; then
+            echo "[OK] upkg $1 $2"
+        else
+            echo "[ERROR] upkg $1 $2 (exit $rc)"
+        fi
+        echo "Press Return to go back to the list."
+        IFS= read -r junk
+    else
+        runout "$1" "$2" | upkg-ui --title "$ui_title" --programbox "upkg $1 $2" 0 0 2> "$tmp"
+    fi
+}
+
+# the action on tag, with its checks
+act() {
+    case $1 in
+    i)
+        if [ $isinst -eq 1 ]; then msg "$tag is already installed."; else run install "$tag"; fi ;;
+    r)
+        if [ $isinst -eq 0 ]; then
+            msg "$tag is not installed."
+        elif upkg-ui --title "$ui_title" --defaultno --yesno "Remove $tag?" 0 0; then
+            run remove "$tag"
+        fi ;;
+    u)
+        if [ $isupg -eq 0 ]; then msg "$tag has no newer version."; else run upgrade "$tag"; fi ;;
+    esac
 }
 
 last=
@@ -106,6 +170,8 @@ while :; do
         fi
         inst=$NL$(< "$L.inst")
         upg=$NL$(< "$L.upg")
+        new=$NL
+        if [ -f "$L.new" ]; then new=$NL$(< "$L.new"); fi
         stale=0
     fi
 
@@ -122,14 +188,15 @@ while :; do
             desc=${rest#* - } ;;
         esac
         item="available $ver"
+        case $new in *"$NL$name - "*) item="${cNew}new $ver" ;; esac
         t=${inst#*"$NL$name - "}
         if [ "$t" != "$inst" ]; then
             t=${t%%"$NL"*}
-            item="installed ${t%% - *}"
+            item="${cInst}installed ${t%% - *}"
             u=${upg#*"$NL$name - "}
             if [ "$u" != "$upg" ]; then
                 u=${u%%"$NL"*}
-                item="upgrade ${u%% - *} to ${u##* - }"
+                item="${cUpg}upgrade ${u%% - *} to ${u##* - }"
             fi
         fi
         if [ -n "$desc" ]; then item="$item   $desc"; fi
@@ -140,10 +207,10 @@ $all
 EOF
 
     if [ -n "$last" ]; then
-        upkg-ui --title "$ui_title" --backtitle "$count add-ons" --hotkeys iruq --default-item "$last" \
+        upkg-ui --title "$ui_title" --backtitle "$count add-ons" --colors --hotkeys iruq --default-item "$last" \
             --menu "$prompt" 0 0 0 "$@" 2> "$tmp"
     else
-        upkg-ui --title "$ui_title" --backtitle "$count add-ons" --hotkeys iruq \
+        upkg-ui --title "$ui_title" --backtitle "$count add-ons" --colors --hotkeys iruq \
             --menu "$prompt" 0 0 0 "$@" 2> "$tmp"
     fi
     # Escape (255) and Cancel (1) leave; any other failure (2, a usage error: an upkg-ui without
@@ -169,27 +236,26 @@ EOF
     case $upg in *"$NL$tag - "*) isupg=1 ;; esac
 
     case $key in
-    enter) run info "$tag" ;;
-    i)
-        if [ $isinst -eq 1 ]; then
-            echo "$tag is already installed."
-            pause
+    enter)
+        # the info text in a scrollable box with the buttons that apply
+        "$upkg" info "$tag" > "$tmp.i" 2>&1
+        if [ $isupg -eq 1 ]; then
+            btn="Upgrade,Remove,Back"
+        elif [ $isinst -eq 1 ]; then
+            btn="Remove,Back"
         else
-            run install "$tag"
+            btn="Install,Back"
+        fi
+        upkg-ui --title "$ui_title" --buttons "$btn" --textbox "$tmp.i" 0 0 2> "$tmp"
+        rc=$?
+        if [ $rc -eq 0 ]; then
+            read -r button < "$tmp"
+            case $button in
+            Install) act i ;;
+            Remove) act r ;;
+            Upgrade) act u ;;
+            esac
         fi ;;
-    r)
-        if [ $isinst -eq 0 ]; then
-            echo "$tag is not installed."
-            pause
-        elif upkg-ui --title "$ui_title" --defaultno --yesno "Remove $tag?" 0 0; then
-            run remove "$tag"
-        fi ;;
-    u)
-        if [ $isupg -eq 0 ]; then
-            echo "$tag has no newer version."
-            pause
-        else
-            run upgrade "$tag"
-        fi ;;
+    *) act "$key" ;;
     esac
 done

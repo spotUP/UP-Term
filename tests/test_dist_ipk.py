@@ -124,6 +124,13 @@ class IpkTest(unittest.TestCase):
         # an add-on with no questions keeps the plain Execute line
         post = self.ctl_of('up-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./postinst').read().decode()
         self.assertNotIn('upkg-ask', post)
+        # the control says so, from the questions file alone: upkg browse runs this package in the plain window
+        self.assertIn('UP-Term-Interactive: yes\n', ctl.extractfile('./control').read().decode())
+        self.assertNotIn('UP-Term-Interactive', self.ctl_of('up-nvim_2.1_m68k-amigaos.ipk')[0].extractfile('./control').read().decode())
+        pkgs.write_feed(self.build, self.table)
+        feed = {x['Package']: x for x in stanzas(gzip.decompress((self.out / 'Packages.gz').read_bytes()).decode())}
+        self.assertEqual(feed['Claude'].get('UP-Term-Interactive'), 'yes')
+        self.assertNotIn('UP-Term-Interactive', feed['up-nvim'])
 
     def test_a_question_that_is_no_install_dos_keyword_is_refused(self):
         (self.build / 'dist/Claude/Files/questions').write_bytes(b'HOST|string|Host|x|\n')
