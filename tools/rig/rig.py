@@ -913,7 +913,21 @@ def wasabi():
     import wasabi as wb
     wb.main(sys.argv[2:])
 
+def main(argv):
+    """Run the command argv[1]. --help, -h, help and ? print this file's usage (rc 0); no command or an
+    unknown one prints it to stderr (rc 2)."""
+    cmds = {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
+            "status": status, "logwatch": logwatch, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg")}
+    if len(argv) > 1 and argv[1] in ("--help", "-h", "help", "?"):
+        print(__doc__)
+        return 0
+    if len(argv) < 2 or argv[1] not in cmds:
+        print(__doc__, file=sys.stderr)
+        print("rig.py: %s" % ("no command" if len(argv) < 2 else "unknown command %r" % argv[1]), file=sys.stderr)
+        return 2
+    cmds[argv[1]]()
+    return 0
+
 if __name__ == "__main__":
-    {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
-     "status": status, "logwatch": logwatch, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"), "aga256": lambda: screenmode("aga256"),
-     "rtg": lambda: screenmode("rtg")}[sys.argv[1]]()
+    sys.exit(main(sys.argv))
