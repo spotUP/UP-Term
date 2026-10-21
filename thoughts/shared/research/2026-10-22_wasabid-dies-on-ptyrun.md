@@ -112,3 +112,25 @@ Fixes at the right level:
 - Skipped (not asked): C:Reboot on the rig image (fix 3 above), the crash-hunting loop (fix 4).
 - Seen, not mine: `make test ONLY=rig_fsuae_log` fails on a clean tree because rig.py start now refuses a rig
   dir without sys.hdf (its test uses a temp dir).
+
+## Crash loop 2026-10-22
+
+Loop: `/private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/87a17433-32bd-494e-bac5-37c13673dc52/scratchpad/crashloop/loop.py`
+(resumable, results.txt, one line per run; stops a mode at the first `crashed` status). Rig 4, `rig.py start --max`,
+`userland_rig.py --only upkg-ui --force` (17 cases: 7 plain + 10 tty) per run.
+
+| Mode | Runs | Crashes | Runs 17/17 | Runs with failed cases |
+|------|------|---------|------------|------------------------|
+| A: as today | 30 | 0 | 27 | 3 (A12 programbox; A20 texthot; A29 yesno, menu, hotkey, hotenter) |
+| B: `Stack 262144` before each `VTC:vsh` (via `Execute` script) | 30 | 0 | 28 | 2 (B04 texthot, programbox, colors; B10 input, yesno) |
+
+Result: **not reproduced in 60 runs (30 + 30)**; the crashing program is not identified. Together with the earlier
+~55 + 5 x 17 runs, the Guru has now occurred once in over 200 `upkg-ui` runs. Stack 262144 therefore cannot be
+judged: no crash occurred in either mode. `rig.py status` was never `crashed`; no `Illegal` line in the current fs-uae log.
+Rig 4 was stopped at the end. No crash log was saved because none existed (the preserved one is still
+scratchpad `q1-instance.fs-uae.log`).
+
+Seen: the failing cases (random tty cases, rc 0, mode A and B alike) are a separate flake, not a crash; not analysed.
+Seen: `tools/rig/userland_rig.py` defines `run` twice (line 83 helper, line 534 main body); the second shadows the first, so
+`python3 tools/rig/userland_rig.py ...` dies with RecursionError in `kit_assigns` at HEAD (introduced with the rig-lock
+change). The loop works around it in its scratchpad wrapper `stackrun.py`; no tracked file was edited.
