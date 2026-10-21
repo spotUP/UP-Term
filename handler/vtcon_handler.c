@@ -1443,12 +1443,16 @@ static void parse_spec(con *c, const char *s)
     }
     c->colours_spec = colours;
     /* Black background unless the options chose colours (owner, 2026-09-29:
-     * program colours sat on the Workbench's grey). The amiga personality
-     * keeps the screen's pens: CON: programs draw with pens 0-3 as the
-     * Workbench has them. LIGHT asks for the screen's pens anywhere. */
-    if (!colours && c->w.pers != VT_AMIGA) {
-        c->w.fg_rgb = 0xC0C0C0UL;
-        c->w.bg_rgb = 0x000000UL;
+     * program colours sat on the Workbench's grey). Every personality: a CON:
+     * window speaks the amiga escape dialect but looks like an XCON: one
+     * (owner, 2026-10-21); explicit pens 0-7 stay screen pens in the renderer.
+     * LIGHT asks for the screen's pens anywhere. */
+    {
+        unsigned long gfg, gbg;
+        if (winspec_ground(colours, &gfg, &gbg)) {
+            c->w.fg_rgb = gfg;
+            c->w.bg_rgb = gbg;
+        }
     }
     c->spec_fg = c->w.fg_rgb;
     c->spec_bg = c->w.bg_rgb;

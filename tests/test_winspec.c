@@ -13,7 +13,21 @@ static void sizes(void)
     CHECK_INT(winspec_size(0, 2000, 1280), 1280); /* edge off the screen: the screen */
 }
 
+/* A CON: window (amiga personality) gets the same ground as XCON:; colour
+ * options of the spec keep theirs. */
+static void ground(void)
+{
+    unsigned long fg = 1, bg = 2;
+    CHECK_INT(winspec_ground(0, &fg, &bg), 1);
+    CHECK_INT(fg == 0xC0C0C0UL && bg == 0x000000UL, 1);
+    fg = 1;
+    bg = 2;
+    CHECK_INT(winspec_ground(1, &fg, &bg), 0); /* DARK / LIGHT / FG / BG chose */
+    CHECK_INT(fg == 1 && bg == 2, 1);
+}
+
 void suite_winspec(void)
 {
     sizes();
+    ground();
 }

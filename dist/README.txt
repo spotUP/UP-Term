@@ -820,8 +820,11 @@ WASABI (REMOTE DEVELOPMENT, CLAUDE CODE ON ANOTHER COMPUTER)
 
 CON: AND RAW:
   UP-Term can serve the system's CON: and RAW: too, so every new Shell
-  window is an UP-Term window (the Amiga personality: programs see the
-  console they know). C:UPConsole switches it:
+  window is an UP-Term window. Programs see the console they know (the
+  Amiga escape sequences, the Shell inside), the window looks like any
+  UP-Term window: your default profile's font, colours and scroll bar
+  (a spec's DARK, LIGHT, FG, BG, FONT or PROFILE still win; the colour
+  pens 0 to 7 a program asks for stay the screen's pens). C:UPConsole switches it:
     UPConsole CON ON     new CON:/RAW: windows are UP-Term
     UPConsole CON OFF    new windows are the system's again
     UPConsole STATUS     who serves CON: and RAW: now

@@ -49,6 +49,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 
 .PHONY: wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
+# ONLY=winspec the XCON: spec's size fields and the default ground (a CON:/RAW: window looks like an XCON: one) (tests/test_winspec.c)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
