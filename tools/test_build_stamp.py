@@ -50,7 +50,8 @@ with tempfile.TemporaryDirectory() as d:
     build = os.path.join(d, "build")
     amiga = pathlib.Path(build, "amiga")
     amiga.mkdir(parents=True)
-    for name in ["upterm_version.h"] + [u[0] for u in UNITS]:
+    # generated inputs of the handler (keymap_default.inc, Makefile KEYMAP_DEFAULT_INC) count as built too
+    for name in ["upterm_version.h", "keymap_default.inc"] + [u[0] for u in UNITS]:
         p = amiga / name
         p.write_text("")
         os.utime(p, (FUTURE, FUTURE))
