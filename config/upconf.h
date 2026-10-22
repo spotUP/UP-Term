@@ -100,6 +100,16 @@ int  upconf_parse(upconf *c, const char *buf, long len);
  * and key case aside; a profile absent from both is equal)? A window's
  * live update: only a window whose own profile changed is redrawn. */
 int  upconf_profile_equal(const upconf *a, const upconf *b, const char *profile);
+/* The rows of one section, in file order, duplicate keys included: upconf's
+ * table keeps one value per key, a keymap needs every line. Reads the raw
+ * text through the same line rules as upconf_parse (comments, CRLF, the
+ * "[name]" / "[profile name]" sections, rows before any section belong to
+ * "default"); section is compared case-insensitively. fn gets the 1-based
+ * line number, the key and the value (the rest of the line, ends trimmed;
+ * both are only valid during the call). Lines too long for upconf_parse are
+ * left out and counted in *dropped (may be NULL). Returns the rows passed. */
+typedef int (*upconf_row_fn)(void *ud, int lineno, const char *key, const char *value);
+int  upconf_rows(const char *buf, long len, const char *section, upconf_row_fn fn, void *ud, int *dropped);
 /* The last value of key in profile, 0 when absent. Case-insensitive. */
 const char *upconf_get(const upconf *c, const char *profile, const char *key);
 /* upconf_get, or def when the key is absent or its value is empty. */
