@@ -115,6 +115,8 @@ Measured on rig 4 before the stop (base already on Rushhours:Tools/UP-Term, rig 
 
 ## P3e browse remove: lead (host analysis only, no rig run yet)
 
+SUPERSEDED by "P3e browse remove diagnosis" below: the keys are not lost. The first Return reaches upkg and upkg exits; the stale OK box is left on screen and the later keys go to vsh. The SetMode lead is killed.
+
 Symptom: after an install from browse, the OK programbox takes no keys, so the remove step never runs. A direct `upkg remove up-vim` works (P3d).
 
 Lead (diagnosis agent, host reading; UNVERIFIED on the rig):
@@ -125,3 +127,36 @@ Lead (diagnosis agent, host reading; UNVERIFIED on the rig):
 Discriminating probe (next): rig 4, handler debug build, browse -> up-vim -> Install; read the "screenmode" DBG lines with the sending task's name. A SetMode from vsh/Copy/postinst during the install confirms the lead and names the sender. No SetMode at all kills the lead.
 
 Fix level to decide after the probe: the sender (a process with no console fd should not change the console mode) is the root; a reset_prog_mode in run_action would only cover it.
+
+## P3e browse remove diagnosis
+
+Status: symptom pinned on rig 4; exact exit path NOT pinned (budget ran out before the exit-code probe).
+
+### What actually happens
+"Keys dead on the [OK] programbox" is wrong. The first Return after the install DOES reach upkg. upkg then EXITS instead of going back to the list. It leaves the screen unredrawn, so the stale OK box stays visible. Every later key the rig sends (Return, Return, y) goes to vsh, so remove never runs and the colour rows never show.
+
+Evidence (rig 4, scratchpad p3e_probe.py / p3e_probe.log, up-vim browse install):
+- Before the install and at the OK box: Status shows `upkg(2),VTC:vsh(9)`, window active, screen shows "[OK] upkg install up-vim" plus the OK button and the pdone footer. The OK button is drawn only when pdone (ui.c draw_all 482-490), so run() was entered.
+- After Return, then "zz", then Return: the screen is unchanged (stale OK box), but Status shows only `VTC:vsh(9)`. upkg is gone. No requesters.
+- A following `echo RC=$?` printed over the stale box: "vsh: zz: not found", "BOOTX: % echo RC=$?", "RC=127". So "zz" ran as a vsh command. RC=127 is the status of zz, not of upkg.
+
+### Candidate exit paths (patch 0025, upkg_browse.c)
+1. run_action returns non-zero after the OK box (run() in ui.c 626-681 returns EXIT_NO_TERMINAL: 20 early get_wch ERRs or !isatty(keyfp) after the vfork child shared the key fd). act() then returns 2 (0025 ~line 675: `return run_action(cmd, tag) ? 2 : 1;`). The main loop runs ui_stop() and prints "upkg browse: the terminal went away (no more keys)" (0025 ~lines 795-800). If ui_stop leaves the alternate screen without a repaint, that matches the stale screen. Check: does that stderr line show in the window scrollback?
+2. stale == 1: the next loop runs hash_reload() + lists_load() (0025 ~lines 735-739). A crash or failure there kills upkg with no message.
+3. ui_view(K_MENU) on the rebuilt list returns non-zero or EXIT_NO_TERMINAL (0025 ~lines 750-761): quit_screen() or ui_stop().
+
+### Next probe (one run, about 2 min on rig 4)
+Run the browse, press Return once at the OK box, then type `echo RC=$?` as the FIRST vsh command. Read the window text for the "terminal went away" line.
+- RC 2 plus that line: path 1 or 3 (EXIT_NO_TERMINAL). Then add a stderr trace of run()'s exit reason (ERR count vs isatty).
+- RC 0: path 3 via quit_screen (menu returned non-zero).
+- No RC line / Guru: path 2. First probe the same run under `Stack 262144` (stack first rule).
+
+### Proposed fix (root level, after the probe picks the path)
+- Path 1: run_action must not report "terminal gone" for a key-read error that follows a child process. Fix the key fd handling in ui.c run()/open_keys so the vfork child (fd 0 = /dev/null, fds 1/2 = pipe) cannot leave keyfp in a state where get_wch returns ERR or isatty fails. Reset the ERR counter per view, not per process.
+- Path 2: fix hash_reload() (pkg_hash_deinit / reload) in libopkg itself.
+- Any path: every exit from browse must restore the screen (endwin, leave the alternate screen, clear) so a quit is visible. A stale screen hid this bug through P3b-P3d.
+
+### Regression tests
+- Rig case (fails today): browse install up-vim, Return at the OK box, then assert `upkg` is still in Status and the list screen ("add-ons" backtitle) is drawn. Today upkg is gone.
+- Rig script hardening: tools/rig/upkg_browse_rig.py must assert the upkg process is alive after each key step and fail with "upkg exited" instead of sending keys to vsh.
+- Host check in pkgs/opkg/check if the probe shows path 1 or 2 is host-reproducible (run_action with a child that closes fd 0; hash_reload twice).
