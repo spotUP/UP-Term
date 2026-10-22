@@ -18,8 +18,10 @@
 
 ; the options of this install: DEST is where UP-Term: is (the record keeps the
 ; options only when there is one), REMOTE is Claude's server page
+(set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))
 (procedure P_OPTIONS_LIST
     (set #name "DEST" #val #dest) (P_OPT)
+    (set #name "NOFPU" #val #nofpu) (P_OPT)
     (set #name "REMOTE" #val #remote) (P_OPT))
 
 ; @include dist/common/check.installer

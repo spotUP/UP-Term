@@ -399,10 +399,10 @@ class PythonUninstall(unittest.TestCase):
         """THE IXEMUL.LIBRARY RULE: a library of 47 or newer stays (UP-Term's 80 included)."""
         ix = dict(parts_of(self.S['dos']))['ixemul']
         a = ix.index('Version >NIL: LIBS:ixemul.library 47\nIf WARN\n')
-        copy = ix.index('Copy libs/ixemul.library LIBS:ixemul.library CLONE QUIET')
+        copy = ix.index('Copy $ixlib LIBS:ixemul.library CLONE QUIET')
         end = ix.index('EndIf', copy)
         self.assertLess(a, copy)
-        self.assertEqual(ix.count('Copy libs/ixemul.library'), 1)        # one copy, inside the If WARN
+        self.assertEqual(ix.count('Copy $ixlib '), 1)        # one copy, inside the If WARN
         self.assertNotIn('\nEndIf', ix[a:copy])                          # nothing closes the If before the copy
         self.assertIn('Echo >ENVARC:upkg/ixemul/installed-by-Python3', ix[copy:end])
         self.assertIn('Copy libs/ixnet.library LIBS:ixnet.library CLONE QUIET', ix[copy:end])

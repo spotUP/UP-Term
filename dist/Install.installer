@@ -210,6 +210,7 @@
 (set #emoji "")
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
+(set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))
 ; @include dist/common/amissl.installer
 
 ; AmiSSL 5.27 (Apache 2.0): the kit's own drawer, Files/AmiSSL. Ticked when LIBS: has no
@@ -428,6 +429,7 @@
         (set #emoji (getenv "UPTOPTEMOJI"))
         (set #cpu040 (getenv "UPTOPTCPU040"))
         (set #cpu060 (getenv "UPTOPTCPU060"))
+        (set #nofpu (getenv "UPTOPTNOFPU"))
         (set #kb-drawer 0 #kb-system 0 #kb-coreutils 0 #kb-userland 0 #kb-manpages 0 #kb-unifont 0 #kb-emoji 0
              #kb-tools 0)
         ; the parts upupdate named, and the record part's 1
@@ -450,6 +452,7 @@
     (set #name "WASABI" #val #wasabi) (P_OPT)
     (set #name "CPU040" #val #cpu040) (P_OPT)
     (set #name "CPU060" #val #cpu060) (P_OPT)
+    (set #name "NOFPU" #val #nofpu) (P_OPT)
     (set #name "UNIFONT" #val #unifont) (P_OPT)
     (set #name "EMOJI" #val #emoji) (P_OPT))
 

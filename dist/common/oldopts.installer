@@ -46,4 +46,5 @@
         (set #name "EMOJI" #on (exists "UP-Term:emoji")) (P_OLDOPT)
         (set #name "CPU040" #on (= (database "cpu") "68040")) (P_OLDOPT)
         (set #name "CPU060" #on (= (database "cpu") "68060")) (P_OLDOPT)
+        (set #name "NOFPU" #on (= (database "fpu") "NOFPU")) (P_OLDOPT)
         (set #oldopts 1))))

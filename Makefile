@@ -1049,6 +1049,10 @@ KIT_perl := $(BUILD)/dist/up-perl
 KIT_vim := $(BUILD)/dist/up-vim
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
+# the soft-float build of the same ixemul (no FPU opcodes): the installer puts it in on a machine
+# whose (database "fpu") is NOFPU, from Files/libs/ixemul.library.nofpu. ixnet.library has one
+# build only (68020, no FPU code in the build tree), so it needs no variant.
+IXEMUL_LIB_SOFT ?= $(dir $(IXEMUL_LIB))../../soft-float/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
 PYTHON_DIST ?= $(UPTERM_ROOT)/cpython-amiga/build/m68k/dist/Python3
 NVIM_DIST ?= $(UPTERM_ROOT)/neovim-amiga/build/v012/dist/nvim
@@ -1092,6 +1096,7 @@ dist-base: amiga bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.dev
 	cp $(TMUX_BIN) $(KIT)/Files/tmux
 	cp dist/tmux.conf dist/unstartup.sh dist/takecon.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
 	cp $(IXEMUL_LIB) $(KIT)/Files/libs/ixemul.library
+	cp $(IXEMUL_LIB_SOFT) $(KIT)/Files/libs/ixemul.library.nofpu
 	cp $(IXNET_LIB) $(KIT)/Files/libs/ixnet.library
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(KIT)/Files/banner
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term.info
@@ -1180,6 +1185,7 @@ dist-python: $(BUILD)/amiga/upupdate
 	cp -R $(PYTHON_DIST) $(KIT_python)/Files/python3
 	mkdir -p $(KIT_python)/Files/libs
 	cp $(IXEMUL_LIB) $(KIT_python)/Files/libs/ixemul.library
+	cp $(IXEMUL_LIB_SOFT) $(KIT_python)/Files/libs/ixemul.library.nofpu
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python

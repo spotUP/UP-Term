@@ -34,7 +34,12 @@ If WARN
   If EXISTS LIBS:ixnet.library
     Copy LIBS:ixnet.library LIBS:ixnet.library.before-Python3 CLONE QUIET
   EndIf
-  Copy libs/ixemul.library LIBS:ixemul.library CLONE QUIET
+  ; no FPU (the installer's (database "fpu") is NOFPU, handed as ENV:UPTOPTNOFPU): the soft-float build
+  Set ixlib libs/ixemul.library
+  If EXISTS ENV:UPTOPTNOFPU
+    Set ixlib libs/ixemul.library.nofpu
+  EndIf
+  Copy $ixlib LIBS:ixemul.library CLONE QUIET
   Copy libs/ixnet.library LIBS:ixnet.library CLONE QUIET
   Echo >ENVARC:upkg/ixemul/installed-by-Python3 "up-python.lha put ixemul.library and ixnet.library in LIBS:"
 EndIf

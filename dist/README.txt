@@ -564,6 +564,8 @@ IXEMUL
   (XCON:, PTY:), Ctrl-Z and fg/bg job control work, /dev/ptyXY are PTY:
   pairs, local sockets pass descriptors (tmux, screen). It runs the
   existing ixemul programs (80.x keeps every 48.x vector where it was).
+  A machine without an FPU gets the soft-float build of ixemul.library (no FPU
+  opcodes); ixnet.library has one build for both.
   The libraries that were there are kept as LIBS:ixemul.library.orig and
   LIBS:ixnet.library.orig; to go back:
     Copy LIBS:ixemul.library.orig LIBS:ixemul.library

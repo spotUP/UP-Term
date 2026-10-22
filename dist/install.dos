@@ -1,4 +1,4 @@
-.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -49,6 +49,7 @@ Set optcurl "{CURL}"
 Set optwasabi "{WASABI}"
 Set optcpu040 "{CPU040}"
 Set optcpu060 "{CPU060}"
+Set optnofpu "{NOFPU}"
 Set optunifont "{UNIFONT}"
 Set optemoji "{EMOJI}"
 If NOT "{STEP}" EQ ""
@@ -90,6 +91,9 @@ If NOT "{STEP}" EQ ""
   EndIf
   If EXISTS ENV:UPTOPTCPU060
     Set optcpu060 CPU060
+  EndIf
+  If EXISTS ENV:UPTOPTNOFPU
+    Set optnofpu NOFPU
   EndIf
   If EXISTS ENV:UPTOPTUNIFONT
     Set optunifont UNIFONT
@@ -730,11 +734,16 @@ If NOT EXISTS ENVARC:up-term-orig/ixemul.path
   EndIf
  EndIf
 EndIf
+; a machine without an FPU (the installer's (database "fpu") is NOFPU) gets the soft-float build
+Set upixlib libs/ixemul.library
+If "$optnofpu" EQ "NOFPU"
+  Set upixlib libs/ixemul.library.nofpu
+EndIf
 If EXISTS ENVARC:up-term-orig/ixemul.path
   Copy >NIL: ENVARC:up-term-orig/ixemul.path ENV:upixemul CLONE
-  Copy libs/ixemul.library "$upixemul" CLONE
+  Copy $upixlib "$upixemul" CLONE
 Else
-  Copy libs/ixemul.library LIBS:ixemul.library CLONE
+  Copy $upixlib LIBS:ixemul.library CLONE
   ; no library of the system's was replaced: Uninstall removes ours (a system
   ; without ixemul.library was left with the kit's after Uninstall, 2026-10-11)
   Echo >ENVARC:up-term-orig/ixemul.none ""

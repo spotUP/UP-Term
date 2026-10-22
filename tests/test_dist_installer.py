@@ -836,5 +836,35 @@ class TermOnlyInUpTermWindows(unittest.TestCase):
         self.assertNotRegex(readme, r'(?im)^\s*SetEnv TERM ')
 
 
+class SoftFloatIxemul(unittest.TestCase):
+    """A machine without an FPU gets the soft-float ixemul.library (Files/libs/ixemul.library.nofpu)."""
+    MAKE = (ROOT / 'Makefile').read_text()
+    PY = mi.build(ROOT / 'dist/addons/python/install.dos', 'python')
+
+    def test_the_kits_carry_the_soft_float_build_beside_the_68881_one(self):
+        self.assertRegex(self.MAKE, r'(?m)^IXEMUL_LIB_SOFT \?= .*soft-float/amigaos/ixemul\.library$')
+        for kit in ('$(KIT)', '$(KIT_python)'):
+            self.assertIn('cp $(IXEMUL_LIB_SOFT) %s/Files/libs/ixemul.library.nofpu\n' % kit, self.MAKE)
+
+    def test_the_installer_hands_nofpu_down_and_the_base_script_picks_the_file_by_it(self):
+        self.assertIn('(set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))', INSTALLER)
+        self.assertIn('(set #name "NOFPU" #val #nofpu) (P_OPT)', INSTALLER)
+        self.assertIn('(set #nofpu (getenv "UPTOPTNOFPU"))', INSTALLER)      # an Update keeps the choice
+        libs = DOS[DOS.index('Lab libs'):]
+        libs = libs[:libs.index('Avail >NIL: FLUSH')]
+        pick = libs.index('If "$optnofpu" EQ "NOFPU"')
+        self.assertIn('Set upixlib libs/ixemul.library.nofpu', libs[pick:pick + 120])
+        self.assertNotIn('Copy libs/ixemul.library', libs)                   # every copy goes through $upixlib
+        self.assertEqual(libs.count('Copy $upixlib '), 2)
+        self.assertLess(pick, libs.index('Copy $upixlib '))
+
+    def test_the_python_add_on_picks_the_soft_float_file_on_nofpu(self):
+        ix = self.PY[self.PY.index('Lab ixemul'):self.PY.index('Lab copy-python')]
+        self.assertIn('If EXISTS ENV:UPTOPTNOFPU\n    Set ixlib libs/ixemul.library.nofpu', ix)
+        self.assertLess(ix.index('Set ixlib libs/ixemul.library.nofpu'), ix.index('Copy $ixlib LIBS:ixemul.library'))
+        head = (ROOT / 'dist/common/addon-head.installer').read_text()
+        self.assertIn('(set #name "NOFPU" #val #nofpu) (P_OPT)', head)
+
+
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
