@@ -16,8 +16,14 @@
 #include "../handler/upreq.h"
 #include "keymap_default.inc"
 
-/* ixemul runs main on a stack of this size (ncurses and the UI library are deep) */
-long __stack = 262144;
+/* ixemul runs main on a stack of this size (ncurses and the UI library are deep); the cookie is what
+ * vsh, the Shell and Workbench read from the file to start it on that much (a 4 KB shell stack froze
+ * rig 4). tests/test_amarchy_stack.py reads both from the built binary. */
+#define MENU_STACK 262144
+#define MENU_STR2(x) #x
+#define MENU_STR(x) MENU_STR2(x)
+long __stack = MENU_STACK;
+__attribute__((used)) const char amarchy_stack_cookie[] = "$STACK: " MENU_STR(MENU_STACK);
 
 static keymap km;
 

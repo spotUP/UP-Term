@@ -1265,6 +1265,7 @@ dist-check:
 	python3 tests/test_dist_addons.py
 	python3 tests/test_dist_launch.py
 	python3 tests/test_amarchy_docs.py
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-menu
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py
 	python3 tests/test_rig_verdicts.py
