@@ -160,3 +160,6 @@ Run the browse, press Return once at the OK box, then type `echo RC=$?` as the F
 - Rig case (fails today): browse install up-vim, Return at the OK box, then assert `upkg` is still in Status and the list screen ("add-ons" backtitle) is drawn. Today upkg is gone.
 - Rig script hardening: tools/rig/upkg_browse_rig.py must assert the upkg process is alive after each key step and fail with "upkg exited" instead of sending keys to vsh.
 - Host check in pkgs/opkg/check if the probe shows path 1 or 2 is host-reproducible (run_action with a child that closes fd 0; hash_reload twice).
+
+### Exit path pinned (rig 4, p3e_probe2.log)
+vsh prints "Floating point exception - upkg browse" after the first Return at the OK box. The same happens under Stack 262144. No "terminal went away" line, so it is not EXIT_NO_TERMINAL. Cause, read in the source: hash_reload() (patch 0025) calls pkg_hash_deinit(), and hash_table_deinit sets n_buckets to 0. pkg_hash_init() is never called again, so hash_table.c:41 `djb2_hash(key) % hash->n_buckets` divides by zero. The m68k traps. The arm64 host udiv returns 0 without a trap, which is why check/browse_tty.sh passed on the host. Fix: call pkg_hash_init() after the deinit, as upstream does. Regression: build the host check with UBSan integer-divide-by-zero.
