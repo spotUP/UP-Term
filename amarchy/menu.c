@@ -16,6 +16,9 @@
 #include "../handler/upreq.h"
 #include "keymap_default.inc"
 
+/* ixemul runs main on a stack of this size (ncurses and the UI library are deep) */
+long __stack = 262144;
+
 static keymap km;
 
 /* every printable key plus Backspace and Delete ends the menu as a hotkey */
