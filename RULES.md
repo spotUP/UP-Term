@@ -15,6 +15,9 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
    `vt_resolve_colors`, and nowhere else.
 4. **One reachability test** drives `XCON:` on the rig (see the plan); every other
    behaviour is tested in the engine suites on the host.
+5. **The owner's A1200 runs AmigaOS 3.2** (Kickstart 47.111, Workbench 47.5) with
+   both an RTG card and AGA, Directory Opus in place of Workbench, and `UP-Term:`
+   assigned to `Rushhours:UP-Term`. Drawing code is checked on both screen kinds.
 
 ## Commands
 
