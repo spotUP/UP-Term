@@ -43,4 +43,10 @@ int mn_viewer_line(const km_bind *b, char *out, int n);
  * The line count; the text is cut at a line when buf is full. */
 int mn_viewer_text(const keymap *k, char *buf, long cap);
 
+/* The TERM the helper must use: "vtcon" when the environment has none (TERM is unset system-wide
+ * on an Amiga, and ncurses' newterm fails without it), else NULL (keep what is set). The helper
+ * only ever runs in an XCON: window, which is the vtcon handler, so the default is that terminal's
+ * own name; vsh sets it the same way. */
+const char *mn_term_default(const char *term);
+
 #endif

@@ -429,7 +429,11 @@ static void cx_helper_path(void)
     CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:", "viewer"));
     CHECK_STR(out, "\"UP-Term:amarchy-menu\" viewer");
     CHECK(!cx_helper_cmd(out, 20, "UP-Term:bin", "viewer"));   /* does not fit */
-    CHECK(!cx_helper_cmd(out, sizeof(out), "", "viewer"));      /* no directory resolved */
+    CHECK(!cx_helper_cmd(out, sizeof(out), "", "viewer"));
+    /* TERM unset (as on an Amiga): the helper defaults to vtcon; a TERM that is set is kept */
+    CHECK_STR(mn_term_default(0), "vtcon");
+    CHECK_STR(mn_term_default(""), "vtcon");
+    CHECK(mn_term_default("xterm") == 0);      /* no directory resolved */
 }
 
 static void cx_descriptions_and_qualifier_mask(void)

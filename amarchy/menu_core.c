@@ -173,3 +173,8 @@ int mn_viewer_text(const keymap *k, char *buf, long cap)
     }
     return lines;
 }
+
+const char *mn_term_default(const char *term)
+{
+    return term && *term ? 0 : "vtcon";
+}

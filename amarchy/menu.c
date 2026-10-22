@@ -159,9 +159,18 @@ int main(int argc, char **argv)
         return 2;
     }
     hotkeys_init();
+    {
+        const char *t = mn_term_default(getenv("TERM"));
+        if (t)
+            setenv("TERM", t, 1);
+    }
     rc = ui_start("amarchy-menu");
-    if (rc)
+    if (rc) {
+        /* the window closes when this exits: keep the message readable until Return */
+        fputs("amarchy-menu: no terminal could be started. Press Return.\n", stderr);
+        (void)getchar();
         return rc;
+    }
     if (!strcmp(argv[1], "viewer"))
         rc = viewer();
     else
