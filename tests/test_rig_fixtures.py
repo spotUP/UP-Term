@@ -337,6 +337,21 @@ class RigMachine(unittest.TestCase):
     def test_the_default_machine_is_the_060(self):
         self.assertEqual(self.machine(), ['True', 'True'])
 
+    def config(self, *flags):
+        import subprocess, sys
+        code = ("import sys; sys.argv = ['rig.py'] + %r; sys.path.insert(0, %r); import rig; "
+                "print('\\n'.join(rig.cpu_lines() + rig.unimplemented_lines()))"
+                % (['start'] + list(flags), str(pathlib.Path(ir.__file__).parent)))
+        return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True).stdout.split('\n')[:-1]
+
+    def test_nofpu_drops_the_fpu_on_every_machine(self):
+        self.assertEqual(self.config(), ['cpu = 68060-NOMMU', 'fpu = 68060',
+                                         'uae_cpu_no_unimplemented = false', 'uae_fpu_no_unimplemented = false'])
+        self.assertEqual(self.config('--a1200'), ['cpu = 68020', 'fpu = 68882'])
+        self.assertEqual(self.config('--nofpu'), ['cpu = 68LC060', 'uae_cpu_no_unimplemented = false'])
+        self.assertEqual(self.config('--a1200', '--nofpu'), ['cpu = 68020'])
+        self.assertEqual(self.config('--nofpu', '--mmu'), ['cpu = 68LC060', 'uae_cpu_no_unimplemented = false'])
+
     def test_a1200_asks_for_the_stock_020(self):
         for f in ('--a1200', '--stock', '--exact', '--fast'):
             self.assertEqual(self.machine(f), ['False', 'False'], f)

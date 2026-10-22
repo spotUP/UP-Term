@@ -8,6 +8,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   with 1 GB Zorro III RAM (what --max was); --a1200: the stock 68020 at real speed
                   (timing runs only; --stock, --exact and --fast also keep the 020);
                   --060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
+                  --nofpu: the same machine without an FPU: the default 060 becomes a 68LC060, --a1200 a
+                  68020 with no fpu key (what the soft-float ixemul.library is for; --mmu is ignored);
                   --a500: a 68000 A500 at 7 MHz, cycle-exact, 8 MB Zorro II fast (68000 speed, W7);
                   --fast: the CPU at the host's speed; --os32: AmigaOS 3.2 -- the 3.2.3 ROM
                   and the owner's 3.2 install as DH0:, ledger T3;
@@ -337,7 +339,10 @@ MAX = "--max" in sys.argv or not (A1200 or A500)
 M060 = "--060" in sys.argv or MAX
 # --mmu: the 68060 with its MMU emulated (FS-UAE "68060", no JIT, slower): what MuForce needs
 # (`rig.py muforce`). Only on the 060 machines; the next start without it is back on 68060-NOMMU.
-MMU = "--mmu" in sys.argv and M060
+# --nofpu: a machine with no FPU (the soft-float ixemul.library, (database "fpu") NOFPU). The 060 machines
+# become the 68LC060 (FS-UAE's cpu key; the LC has no FPU and no MMU), the 020 machine drops its fpu key.
+NOFPU = "--nofpu" in sys.argv
+MMU = "--mmu" in sys.argv and M060 and not NOFPU
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -430,6 +435,19 @@ def os_image_copy():
         paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
         shutil.copyfile(paths.LIB68040, dst / "Libs/68040.library")
 
+def cpu_lines():
+    """The A1200 machine's cpu and fpu keys: 68060 + 68060 FPU (default), 68020 + 68882 (--a1200); --nofpu: the
+    68LC060 and no fpu key, or the 68020 and no fpu key (FS-UAE: cpu accepts 68LC060, fpu 68881/68882/68040/68060)."""
+    if M060:
+        cpu = "68LC060" if NOFPU else "68060" if MMU else "68060-NOMMU"
+    else:
+        cpu = "68020"
+    return ["cpu = %s" % cpu] + ([] if NOFPU else ["fpu = %s" % ("68060" if M060 else "68882")])
+
+def unimplemented_lines():
+    """The 060 runs the instructions it lacks in the emulator (no 68060.library needed), the FPU's too when there is one."""
+    return (["uae_cpu_no_unimplemented = false"] + ([] if NOFPU else ["uae_fpu_no_unimplemented = false"])) if M060 else []
+
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
     if paths.RIG_N > 1 and not (RIG / "vtc").exists():
@@ -488,7 +506,7 @@ def setup():
         "uae_cpu_speed = real", "uae_cpu_cycle_exact = true", "uae_cpu_compatible = true",
     ] if A500 else [
         "[fs-uae]", "amiga_model = A1200",
-        "cpu = %s" % (("68060" if MMU else "68060-NOMMU") if M060 else "68020"), "fpu = %s" % ("68060" if M060 else "68882"),
+    ] + cpu_lines() + [
         "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
@@ -505,7 +523,7 @@ def setup():
         "uae_cpu_speed = %s" % ("max" if FAST or M060 else "real"),
         "uae_cpu_cycle_exact = %s" % ("true" if EXACT else "false"),
         "uae_cpu_compatible = %s" % ("true" if EXACT else "false"),
-    ] + (["uae_cpu_no_unimplemented = false", "uae_fpu_no_unimplemented = false"] if M060 else [])
+    ] + unimplemented_lines()
     paths.require_rom(KICK)
     paths.FSUAE_LOG_DIR.mkdir(parents=True, exist_ok=True)
     CFG.write_text("\n".join(machine + [

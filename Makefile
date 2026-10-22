@@ -1051,7 +1051,8 @@ KIT_vim := $(BUILD)/dist/up-vim
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # the soft-float build of the same ixemul (no FPU opcodes): the installer puts it in on a machine
 # whose (database "fpu") is NOFPU, from Files/libs/ixemul.library.nofpu. ixnet.library has one
-# build only (68020, no FPU code in the build tree), so it needs no variant.
+# build only (68020), so it needs no variant: docker/build.sh builds it as ixnet.68020.soft-float.amigaos
+# (-m68020 -msoft-float), and objdump -d -m68020 of the library finds no F-line opcode (0 fmove/fadd/fsave/..., 0 bad).
 IXEMUL_LIB_SOFT ?= $(dir $(IXEMUL_LIB))../../soft-float/amigaos/ixemul.library
 # Python 3.14 and Neovim 0.12, built in their own repos (make dist there)
 PYTHON_DIST ?= $(UPTERM_ROOT)/cpython-amiga/build/m68k/dist/Python3
