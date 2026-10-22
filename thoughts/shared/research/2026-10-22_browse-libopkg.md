@@ -65,3 +65,25 @@ Rig 4 only, `rig.py start --max`. Fresh path: build/rig4/sys.hdf deleted and re-
 End-of-run window text: the programbox still shows "[OK] upkg install up-vim" and the OK button, i.e. the remove never ran (the Remove / "Remove up-vim?" / y step did not take effect). Not diagnosed. Screenshots (unread) in the run's out dir.
 
 Not run: upkg_browse_extra_rig.py (stopped at the first failing case as instructed), so the live-lines check of the vfork/dup2 sink is still UNVERIFIED. The install itself completed through the browser. Rig 4 was stopped by the script at the end.
+
+## P3b diagnosis
+
+Rig 4 only, 4 probe runs (a copy of upkg_browse_rig.py's flow up to the OK box, then text reads via typewin.screen_text; probe script in the session scratchpad, not committed). Diagnosis only, no fix.
+
+Evidence
+- Reproduced: after the install the box shows the pdone footer ("Up/Down: Scroll  Left/Right: Choose  Enter: Accept ...") and Return, Return, Escape (0x45) and q change nothing (probe 1 and probe 4). Output reaches the screen: the "[OK] upkg install up-vim" line and the OK button are drawn after the action, so the parent's fd 1 (newterm(NULL, stdout, keyfp)) is NOT clobbered.
+- Rig 4 after the runs: `Info` shows DH0: System 106M, 217220 blocks used, 2 free, 100% full (and RAM: 502K, 0 free, 100%). UP-Term: is System:UP-Term (`Assign LIST`), i.e. the install target is on the full volume. build/rig4/sys.hdf is 1.5 GB, but its DH0 partition is 106M (copy of SRC_HDF, tools/rig/rig.py:453-456 `shutil.copyfile(SRC_HDF, RIG / "sys.hdf")`); base 1.0 plus the leftovers of earlier runs fill it.
+- Probes 2-4: the sentinel UP-Term:pkg/up-vim/Uninstall never appeared (500 s), the box still ended in the pdone state: the install failed on the full volume. Probe 2 additionally showed "Wait: Command running" with a Copy process alive for minutes.
+- The "volume System is full" requester text itself was NOT captured: rig 4 had to be restarted before the owner's message arrived, and the requester watch (ami.py) only runs inside EXEC calls, not while keys are typed. UNVERIFIED which requester was on screen.
+
+Verdict on the lead hypothesis (vfork/dup2 clobbers the parent's fds): not supported.
+- ixemul/library/vfork.c:265-314: the vfork child gets its own user area `mu` with its own u_ofile table (bcopy of the parent's, f_count++ per file); xsystem.c:70-73 dup2 only replaces entries in the child's table. The parent's fd 0/1/2 are untouched.
+- ui.c:743-760 open_keys: keys come from /dev/tty (or a dup of fd 1 for a programbox), not from fd 0, so /dev/null on the child's fd 0 cannot starve the key loop. Parent fd 1 is intact (drawing works).
+
+Root cause (most likely, rig fixture): System: (DH0:, 106M) is full, so the install (and any write: T:, hash files, status files) hits a DOS "volume full" requester (Retry/Cancel) on the Workbench screen; it takes the keys (the Return/Esc/q presses never reach the vsh window) and blocks the writing task. This fits every failing run; it does not by itself explain why probe 1 had a sentinel and still dead keys (the volume probably filled during the later hash/status writes) - UNVERIFIED until the requester is read as text on a rig with a full System:.
+- Fixture: tools/rig/rig.py:453-456 copies a 106M-partition image; tools/rig/upkg_browse_rig.py:setup (lines ~123-160) installs the full 1.0 base onto System:UP-Term and never checks `Info DH0:` free space first; run-to-run leftovers (Copy-over of an older base, up-vim files) are never freed.
+
+Fix direction
+1. Rig: before the run, assert free blocks on the UP-Term: volume (Info) above the kit size plus the package, fail with a clear message otherwise; use a roomier system partition or put UP-Term: on a big volume (Rushhours has 1 GB free); check requesters (ami.py requesters) at each key step so a blocked run reports the requester text instead of "no effect".
+2. Product (a question for the owner): upkg browse should not hang silently on a full disk. The install goes through DOS requesters; setting pr_WindowPtr = -1 in the upkg process (and child) turns them into error returns, which libopkg reports as an install failure ("[ERROR] upkg install up-vim (exit N)") in the box. Recommended.
+3. To close the UNVERIFIED parts: free ~20 MB on rig 4 System:, rerun upkg_browse_rig.py; if the remove step then works the diagnosis is confirmed and the vfork lead is dead for good.
