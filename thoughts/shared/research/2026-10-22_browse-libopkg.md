@@ -49,3 +49,19 @@ Not verified: dup2 in a vfork child on ixemul; no rig or Amiga run.
 - Landed: upterm-ports main fast-forwarded to 3df6a83 and pushed (origin was fa377be, rebase was a no-op). host-upkg-ui + host-opkg checks pass (24 OK lines).
 - vtcon: dist/upkg-browse, tests/test_upkg_browse.py, Makefile cp + test line removed; test_dist_manifest now asserts no upkg-browse script; rigs drive `upkg browse` only (no upkg-browse/upkg-ui copy, list-browse case removed from upkg_rig listnew). Rig scripts not run (no rigs).
 - Kit rebuilt: kit-stage rc 0, `make dist dist-ipk` ok (first attempt hit a flaky `rm -rf build/dist/up-term` "Directory not empty"; removing the dir by hand and rerunning worked), dist-check OK, test_dist_versions + test_dist_manifest 25 passed 1 skipped. VERSIONS: `UP-Term 1.0 28c8563a+dirty 2026-10-22 (upterm 0b6c1eb)`; kit upkg 888496 bytes. Note: upterm hash 0b6c1eb is the pin recorded by the kit, not 3df6a83 (check pin before release).
+
+## P3b result
+
+Rig 4 only, `rig.py start --max`. Fresh path: build/rig4/sys.hdf deleted and re-copied by `rig.py setup` (the copy of the source system disk, which still carries an older UP-Term: base: the script logged "base installed ... over an older base"), then the 1.0 kit from build/dist/up-term installed by upkg_browse_rig.py (all options ticked). Kit not rebuilt.
+
+`UPTERM_RIG=4 python3 -I tools/rig/upkg_browse_rig.py`: Verdict FAIL (8 of 12 checks), 6m17s.
+- [PASS] step 0 upkg update rc 0; before: up-vim not installed, no sentinel
+- [PASS] install: sentinel UP-Term:pkg/up-vim/Uninstall appears; after install: up-vim in list-installed
+- [PASS] no Shell text on the screen, all three screens
+- [FAIL] colour: green pixels rise after install 0 -> 0
+- [FAIL] remove: sentinel gone
+- [FAIL] after remove: up-vim not in list-installed
+- [FAIL] colour: green pixels fall after remove 0 -> 0 (start 0)
+End-of-run window text: the programbox still shows "[OK] upkg install up-vim" and the OK button, i.e. the remove never ran (the Remove / "Remove up-vim?" / y step did not take effect). Not diagnosed. Screenshots (unread) in the run's out dir.
+
+Not run: upkg_browse_extra_rig.py (stopped at the first failing case as instructed), so the live-lines check of the vfork/dup2 sink is still UNVERIFIED. The install itself completed through the browser. Rig 4 was stopped by the script at the end.
