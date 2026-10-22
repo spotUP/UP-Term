@@ -358,7 +358,7 @@ def without_package(text, pkg):
 
 def case_listnew(ck, rel):
     """patch 0023/0022 on the rig: update keeps <feed>.prev, list-new prints what the last update added,
-    list-browse writes the lists the browse script reads (host: pkgs/opkg/check/list_new.sh, browse_lists.sh)."""
+    (host: pkgs/opkg/check/list_new.sh)."""
     pkg = 'up-pi'
     full = (BUILD / 'ipk/Packages').read_text()
     lists = 'UP-Term:pkg/upkg/lists'
@@ -378,13 +378,6 @@ def case_listnew(ck, rel):
     strip = lambda t: re.sub(r'\[exit \d+\]', '', t).strip()
     ck(rc == 0 and rc2 == 0 and strip(want).startswith(pkg) and strip(got) == strip(want),
        'listnew: list-new prints exactly the row of %s' % pkg, 'want %r got %r' % (want[-200:], got[-200:]))
-    rc, out = upkg('lnlb', 'list-browse T:lb')
-    ck(rc == 0, 'listnew: list-browse exit 0', out[-300:])
-    rc, allo = upkg('lnall', 'list')
-    for ext, text in (('new', got), ('all', allo)):
-        have = exists('T:lb.%s' % ext) and ami.read_file('T:lb.%s' % ext).decode('latin-1').strip()
-        ck(have == strip(text), 'listnew: T:lb.%s equals the plain command output' % ext, 'have %r' % (have if have is False else have[:200]))
-    ir.run('Delete >NIL: T:lb.#? QUIET')
     rel.set()
     upkg('lnupd3', 'update')
 

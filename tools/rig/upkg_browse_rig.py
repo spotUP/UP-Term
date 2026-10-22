@@ -20,8 +20,8 @@ prompt line and none of the old "Press Return to go back to the list." text.
 `upkg list-installed` is asserted before the run, after the install and after the remove (up-vim absent,
 present, absent). A screenshot follows every step into the out dir (the script never looks at them).
 
-Needs: build/ipk with up-vim (make dist-ipk), the kit of `make dist`, dist/upkg-browse, and the kit-stage build of upterm-ports with
-the `browse` row: build/sysroot/UP-Term/bin/upkg and upkg-ui. The rig is up (`rig.py start --max`; UPTERM_RIG=4
+Needs: build/ipk with up-vim (make dist-ipk), the kit of `make dist`, and the kit-stage build of upterm-ports with
+the `upkg browse` build: build/sysroot/UP-Term/bin/upkg. The rig is up (`rig.py start --max`; UPTERM_RIG=4
 for rig 4). A rig with no UP-Term: gets the base from the kit of `make dist` (every option, CURL among them) and loses
 it again at the end (rununinstall). A rig whose UP-Term:VERSIONS first line differs from the kit's gets the kit
 installed over it and keeps it. The files are copied into UP-Term:bin and left there. The feed is served over http from build/ipk.
@@ -44,7 +44,6 @@ import colour_check
 
 SYSROOT_BIN = paths.repo("upterm-ports") / "build/sysroot/UP-Term/bin"
 UPKG = SYSROOT_BIN / "upkg"
-UPKG_UI = SYSROOT_BIN / "upkg-ui"
 PKG = 'up-vim'
 SENTINEL = 'UP-Term:pkg/%s/Uninstall' % PKG
 DEFCONF = 'UP-Term:etc/upkg.conf'
@@ -120,7 +119,7 @@ class State:
 
 
 def setup(rel, st, must=must):
-    """The rig ready for a browse run: the kit's base (installed when stale), upkg, upkg-ui and upkg-browse in
+    """The rig ready for a browse run: the kit's base (installed when stale), upkg in
     UP-Term:bin, the served feed `rel` and its conf as the default config. teardown() undoes it."""
     ir.put_vsh()
     had_base = ir.run('Assign >NIL: UP-Term: EXISTS')[0] == 0
@@ -144,7 +143,7 @@ def setup(rel, st, must=must):
         for line in ir.rig_libs():
             ir.run(line)
         note('the base installed from %s (%s)' % (ir.KIT, 'over an older base' if had_base else 'no base before'))
-    for n, src in (('upkg-browse', ir.ROOT / 'dist/upkg-browse'), ('upkg', UPKG), ('upkg-ui', UPKG_UI)):
+    for n, src in (('upkg', UPKG),):
         shutil.copy(src, ir.VTC / n)
         rc, o = ir.run('Copy VTC:%s UP-Term:bin/%s CLONE' % (n, n))
         if rc != 0:
@@ -178,12 +177,9 @@ def main(argv):
     a = ap.parse_args(argv)
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    for need in (UPKG, UPKG_UI, ir.ROOT / 'dist/upkg-browse', ir.ROOT / 'build/ipk/Packages', ir.ROOT / ('build/ipk/%s_1.0_m68k-amigaos.ipk' % PKG)):
+    for need in (UPKG, ir.ROOT / 'build/ipk/Packages', ir.ROOT / ('build/ipk/%s_1.0_m68k-amigaos.ipk' % PKG)):
         if not need.exists():
             raise SystemExit('upkg_browse_rig: no %s (kit-stage build of upterm-ports / make dist-ipk first)' % need)
-    # upkg-browse drives upkg-ui with --hotkeys; an older build exits 2 and the run tests nothing
-    if b'hotkeys' not in UPKG_UI.read_bytes():
-        raise SystemExit('upkg_browse_rig: %s has no --hotkeys (make upkg-ui in upterm-ports)' % UPKG_UI)
     ck = {}
 
     def check(name, ok, detail=''):

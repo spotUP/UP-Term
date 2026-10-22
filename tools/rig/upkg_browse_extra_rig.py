@@ -8,7 +8,7 @@
       its postinst prints SLOW-FIRST, sleeps 40 s, prints SLOW-LAST) installed from the browser; the window text, read
       every few seconds, must show SLOW-FIRST while SLOW-LAST is not there yet, and SLOW-LAST at least SLOW_GAP s later.
 
-Setup and teardown are upkg_browse_rig's (base from the kit when stale, upkg/upkg-ui/upkg-browse copied, feed over http,
+Setup and teardown are upkg_browse_rig's (base from the kit when stale, upkg copied, feed over http,
 conf swapped, rig stopped at the end). Needs the same files as upkg_browse_rig plus build/ipk/up-claude_*.ipk.
 
   upkg_browse_extra_rig.py [--out DIR]       report.md and screenshots go to DIR (default build/<rig>/upkg-browse-extra)
