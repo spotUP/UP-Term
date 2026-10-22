@@ -9,13 +9,15 @@ verdict is skipped on the next run. One row: --only <row>; the failures again: -
 Sentinel: the user keymap gets the row  super+alt+j = run:C:Echo >T:amarchy.sentinel hit  so the key
 creates T:amarchy.sentinel. The commodity's ARexx STATUS hit counter and `UPTerm state` km-hits are the
 two counters that prove WHICH side ran the action (R3: exactly one of them moves).
-Needs the rig up (rig.py start --max), Amarchy in UP-Term:bin (rig.py install puts it there) and the handler of this branch installed.
+Needs the rig up (rig.py start --max) and the handler of this branch installed. The script builds Amarchy and amarchy-menu and stages them
+into VTC:Apps/bin itself (stage_rig.py), verifying the rig copy's SHA-256 against the host build.
 NOT RUN when written (rig 4 busy, rig 1 never): C6 and C7 stay open until it has run.
 """
 import argparse, pathlib, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
+import stage_rig
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
 LAMIGA, LALT = 0x40, 0x10          # IEQUALIFIER_LCOMMAND, IEQUALIFIER_LALT
@@ -146,8 +148,11 @@ def main():
     ap.add_argument('--only')
     ap.add_argument('--failed', action='store_true')
     ap.add_argument('--fresh', action='store_true')
+    ap.add_argument('--no-build', action='store_true', help='stage what build/amiga holds, do not run make')
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    # the rows start VTC:Apps/bin/Amarchy: that file must be this build (a stale hand-copied one ran before)
+    stage_rig.report(stage_rig.stage_build(build=not a.no_build))
     passed = total = 0
     for name, fn in ROWS:
         f = OUT / (name + '.verdict')
