@@ -439,6 +439,33 @@ static void cx_installs_only_the_commodity_rows(void)
     CHECK(term > 0 && comm > 0);   /* the shipped file has both, so the skip is exercised */
 }
 
+/* UPTERM.active counts a window while it has focus, and only an INACTIVEWINDOW
+ * or ua_set(c, 0) takes it back. A window closed while active gets no
+ * INACTIVEWINDOW, so every CloseWindow of a con's own window must be preceded
+ * (within 300 bytes, same function) by ua_set(c, 0). The handler is not
+ * host-linked, so the invariant is checked on its source. */
+static void ua_count_released_before_own_window_closes(void)
+{
+    static char src[900000];
+    long n = slurp("handler/vtcon_handler.c", src, sizeof(src) - 1);
+    const char *p = src, *hit;
+    int seen = 0;
+    CHECK(n > 0);
+    src[n > 0 ? n : 0] = 0;
+    while ((hit = strstr(p, "CloseWindow(c->own_win)")) != 0) {
+        const char *fn = hit, *u;
+        int ok = 0;
+        while (fn > src && !(fn[-1] == '\n' && fn[0] == '}' ) && !(fn[-1] == '\n' && fn[0] != ' ' && fn[0] != '\t' && fn[0] != '/' && fn[0] != '\n' && fn[0] != '#' && fn[0] != '}'))
+            fn--;
+        for (u = (hit - fn > 300 ? hit - 300 : fn); u < hit; u++)
+            if (!strncmp(u, "ua_set(c, 0)", 12)) { ok = 1; break; }
+        CHECK(ok);
+        seen++;
+        p = hit + 1;
+    }
+    CHECK(seen >= 2);
+}
+
 void suite_keymap(void)
 {
     comments_crlf_and_fields();
@@ -455,4 +482,5 @@ void suite_keymap(void)
     the_shipped_file_resolves_and_derives_menu_keys();
     cx_descriptions_and_qualifier_mask();
     cx_installs_only_the_commodity_rows();
+    ua_count_released_before_own_window_closes();
 }

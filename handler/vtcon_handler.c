@@ -7256,6 +7256,7 @@ static LONG handler_main(void)
             break; /* the last tab went */
     }
     if (c->host_only) {
+        ua_set(c, 0); /* the window may close while it has focus: no INACTIVEWINDOW follows */
         CloseWindow(c->own_win);
         c->own_win = 0;
         if (c->locked) {
