@@ -1,0 +1,104 @@
+; UP-Term key bindings (Amarchy). Read by the XCON: handler and by the Amarchy
+; commodity from ENVARC:up-term/keymap (ENV:up-term/keymap first). Without this
+; file the compiled-in copy of it stands, so the terminal never loses its keys.
+; An upgrade never overwrites a file you edited: the new one is written as
+; keymap.new. Put your own changes in the optional keymap.user beside this
+; file instead: a row there replaces the row for the same key, and
+;   super+t = none
+; unbinds one.
+;
+; Super is the Left Amiga key. Left Amiga + M and Left Amiga + N belong to
+; Intuition, Left Amiga + mouse to Workbench, and Ctrl + both Amigas is the
+; hardware reset: the parser refuses all of them (a row with ctrl is refused).
+;
+; Format (one row a line, ; starts a comment):
+;   super[+shift][+alt][+rshift]+KEY = action ; label | category
+; KEY is a lower-case word: space return tab esc help del backspace up down
+; left right f1..f10 comma period minus plus, or a letter or digit. Letters
+; and digits are the key's place on the board, not its character, so the
+; Swedish keymap does not move them. "1..9" is nine rows; %n is the digit.
+; Actions:
+;   menu:<id>        the quick menu at a node of the [menu] tree
+;   viewer           this key list
+;   tab:new | close | next | prev | goto N
+;   menuid:<NAME>    any menu item by its MENU_ name
+;   slash:/command   a slash command (/theme, /size 132x43 ...)
+;   run:<command>    start a program
+;   open:uterm       a new UP-Term window (commodity only; in a window: tab:new)
+;   rexx:<script>    an ARexx script or string (commodity only)
+
+[keymap]
+version = 1
+super = lamiga
+
+[bind]
+; Menus
+super+space       = menu:root              ; Menu                  | menu
+super+shift+space = menu:apps              ; Apps                  | menu
+super+k           = viewer                 ; Key bindings          | menu
+super+h           = slash:/help            ; Help                  | menu
+super+shift+h     = slash:/tutorial        ; Tutorial              | menu
+
+; Tabs
+super+t           = tab:new                ; New tab               | window
+super+w           = tab:close              ; Close tab             | window
+super+backspace   = tab:close              ; Close tab             | window
+super+q           = menuid:MENU_CLOSE      ; Close window          | window
+super+1..9        = tab:goto %n            ; Switch to tab %n      | workspace
+super+f1          = tab:goto 1             ; Switch to tab 1       | workspace
+super+f2          = tab:goto 2             ; Switch to tab 2       | workspace
+super+f3          = tab:goto 3             ; Switch to tab 3       | workspace
+super+f4          = tab:goto 4             ; Switch to tab 4       | workspace
+super+period      = tab:next               ; Next tab              | workspace
+super+comma       = tab:prev               ; Previous tab          | workspace
+super+right       = tab:next               ; Next tab              | workspace
+super+left        = tab:prev               ; Previous tab          | workspace
+
+; Clipboard and search
+super+c           = menuid:MENU_COPY       ; Copy                  | edit
+super+v           = menuid:MENU_PASTE      ; Paste                 | edit
+super+a           = menuid:MENU_SELECT_ALL ; Select all            | edit
+super+f           = menuid:MENU_FIND       ; Find                  | edit
+super+g           = menuid:MENU_FIND_NEXT  ; Find next             | edit
+
+; Look
+super+plus        = menuid:MENU_FONT_BIGGER  ; Bigger font         | style
+super+minus       = menuid:MENU_FONT_SMALLER ; Smaller font        | style
+super+shift+t     = slash:/theme           ; Theme                 | style
+super+shift+b     = slash:/bg              ; Background            | style
+super+shift+f     = slash:/font            ; Font                  | style
+super+shift+s     = slash:/screen own      ; Own screen            | style
+super+shift+w     = slash:/screen wb       ; Workbench screen      | style
+super+shift+d     = slash:/size 132x43     ; Wide window           | style
+super+shift+r     = slash:/size 80x24      ; Standard window       | style
+super+shift+l     = slash:/demo            ; Demo tour             | style
+super+p           = menuid:MENU_PREFS      ; Preferences           | style
+
+; Apps
+super+return      = run:tmux               ; Tmux                  | apps
+super+l           = menuid:MENU_CLAUDE     ; Claude                | apps
+super+e           = run:nvim               ; Editor                | apps
+super+u           = run:upkg-browse        ; Install and update    | apps
+super+shift+u     = run:upkg upgrade       ; Upgrade all           | apps
+super+i           = run:upkg-browse        ; Install add-ons       | apps
+
+; Not shipped on (low value; remove the ; to try one).
+; super+shift+e   = run:emoji              ; Emoji picker          | apps
+; super+x         = run:SYS:Prefs/Sound    ; Sound preferences     | prefs
+; super+shift+x   = run:SYS:Prefs/Screenmode ; Screen mode preferences | prefs
+; super+y         = run:SYS:Prefs/Palette  ; Palette preferences   | prefs
+; super+z         = run:SYS:Prefs/Internet ; Internet preferences  | prefs
+; super+shift+q   = run:Reboot             ; Reboot                | system
+; Previous and next prompt (super+up, super+down) wait for an action id.
+
+[menu]
+; dotted id        = label                 | action
+apps.upkg          = Install add-ons       | run:upkg-browse
+apps.tmux          = Tmux                  | run:tmux
+apps.editor        = Editor                | run:nvim
+apps.claude        = Claude                | menuid:MENU_CLAUDE
+style.theme        = Theme                 | slash:/theme
+style.font         = Font                  | slash:/font
+style.background   = Background            | slash:/bg
+window.tab         = New tab               | tab:new
+window.preferences = Preferences           | menuid:MENU_PREFS

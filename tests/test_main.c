@@ -31,6 +31,7 @@ void suite_upassign(void);
 void suite_pi_llm(void);
 void suite_upcon(void);
 void suite_upconf(void);
+void suite_keymap(void);
 void suite_prefs(void);
 void suite_iconspec(void);
 void suite_updiff(void);
@@ -97,6 +98,7 @@ static const h_suite suites[] = {
     { "upassign", suite_upassign },
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
+    { "keymap", suite_keymap },
     { "prefs", suite_prefs },
     { "iconspec", suite_iconspec },
     { "updiff", suite_updiff },
