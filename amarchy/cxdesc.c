@@ -10,36 +10,16 @@
 #define IEQ_RCOMMAND 0x0080
 #define IEQ_REPEAT   0x0200
 
-static int put(char *out, int n, int *at, const char *s)
+void cx_ixspec(const km_bind *b, cx_ixspec_t *x)
 {
-    while (*s) {
-        if (*at >= n - 1)
-            return 0;
-        out[(*at)++] = *s++;
-    }
-    return 1;
-}
-
-int cx_describe(const km_bind *b, char *out, int n)
-{
-    static const char hex[] = "0123456789abcdef";
-    char num[5];
-    int at = 0;
-    if (!b || !out || n < 1)
-        return 0;
-    num[0] = '0'; num[1] = 'x'; num[2] = hex[(b->code >> 4) & 15]; num[3] = hex[b->code & 15]; num[4] = 0;
-    if (!put(out, n, &at, "rawkey lcommand "))
-        return 0;
-    if ((b->qual & KM_Q_RSHIFT) && !put(out, n, &at, "rshift "))
-        return 0;
-    if ((b->qual & KM_Q_SHIFT) && !put(out, n, &at, "shift "))
-        return 0;
-    if ((b->qual & KM_Q_ALT) && !put(out, n, &at, "alt "))
-        return 0;
-    if (!put(out, n, &at, num))
-        return 0;
-    out[at] = 0;
-    return 1;
+    /* The raw code is exact, the up-stroke bit included (key down only). Left Amiga is the one
+     * qualifier demanded; every other qualifier bit is "don't care" here, the gate decides with
+     * cx_qual_mask. A description string cannot carry the code: ParseIX takes a key NAME or a
+     * character of the current keymap, and rejects a number (the rig saw rows=0). */
+    x->code = b->code;
+    x->code_mask = 0;
+    x->qual = IEQ_LCOMMAND;
+    x->qual_mask = (unsigned short)~IEQ_LCOMMAND;
 }
 
 unsigned cx_qual_mask(unsigned q)

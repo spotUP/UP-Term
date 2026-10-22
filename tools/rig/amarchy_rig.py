@@ -32,7 +32,13 @@ def amiga_out(cmd):
 
 
 def arexx(cmd):
-    return amiga_out('RX "options results; address AMARCHY; %s; say result"' % cmd).strip()
+    # The rig has no RexxMaster (no RX): send the command to the AMARCHY port through wasabi's ARexx call
+    m = ami._m()
+    try:
+        with ami._conn() as conn:
+            return m.arexx(conn, 'AMARCHY', cmd)[2].strip()
+    except m.WasabiError:
+        return ''             # no such port: the commodity is not running
 
 
 def status():
@@ -72,7 +78,9 @@ def chord():
 
 
 def r_start():
-    c.run('Echo >%s "%s"' % (USERMAP, ROW_LINE))
+    # keymap.user is parsed by section like the keymap: the row needs its [bind] header
+    c.run('Echo >%s "[bind]"' % USERMAP)
+    c.run('Echo >>%s "%s"' % (USERMAP, ROW_LINE))
     start()
     s = status()
     return 'rows' in s and s['rows'] > 0, 'status %r' % s

@@ -7,11 +7,16 @@
 
 #include "../config/keymap.h"
 
-/* "rawkey lcommand [rshift] [shift] [alt] 0x35": the raw key code is numeric so
- * a national keymap does not move a binding. 1 on success, 0 when out does not
- * fit. The description only demands the qualifiers the row names; the exact
- * match (a row without shift must not fire on Shift) is cx_qual_mask below. */
-int cx_describe(const km_bind *b, char *out, int n);
+/* The filter's description string: the class and the one qualifier every row needs. The raw code
+ * and the qualifier masks come from cx_ixspec through SetFilterIX, so a national keymap does not
+ * move a binding. */
+#define CX_FILTER_DESC "rawkey lcommand"
+
+/* The commodities IX fields of a row: ix_Code, ix_CodeMask, ix_Qualifier, ix_QualMask. */
+typedef struct {
+    unsigned short code, code_mask, qual, qual_mask;
+} cx_ixspec_t;
+void cx_ixspec(const km_bind *b, cx_ixspec_t *x);
 
 /* The KM_Q_* mask of an InputEvent qualifier word, built exactly as the
  * handler's keymap_key builds it (so both sides agree on what a press is).

@@ -94,7 +94,8 @@ ULONG cx_sigmask(void) { return g_port ? 1UL << g_port->mp_SigBit : 0; }
 int cx_install(const keymap *km)
 {
     int i, n = 0;
-    char desc[48];
+    cx_ixspec_t xs;
+    IX ix;
     CxObj *f, *c, *s;
     for (i = 0; i < g_nrows; i++)
         if (g_objs[i])
@@ -105,19 +106,26 @@ int cx_install(const keymap *km)
         const km_bind *b = &km->bind[i];
         if (!cx_row_installed(b))
             continue;
-        if (!cx_describe(b, desc, sizeof(desc)))
-            continue;
         g_rows[n].qual = b->qual;
         g_rows[n].code = b->code;
         g_rows[n].kind = b->kind;
         g_idx[n] = (unsigned char)i;
-        f = CxFilter((STRPTR)desc);
+        f = CxFilter((STRPTR)CX_FILTER_DESC);
         c = CxCustom((APTR)gate, 0);
         s = CxSender(g_port, n);
-        if (!f || !c || !s) {
+        if (!f || !c || !s || CxObjError(f)) {
             DeleteCxObj(f); DeleteCxObj(c); DeleteCxObj(s);
             continue;
         }
+        cx_ixspec(b, &xs);
+        ix.ix_Version = IX_VERSION;
+        ix.ix_Class = IECLASS_RAWKEY;
+        ix.ix_Code = xs.code;
+        ix.ix_CodeMask = xs.code_mask;
+        ix.ix_Qualifier = xs.qual;
+        ix.ix_QualMask = xs.qual_mask;
+        ix.ix_QualSame = 0;
+        SetFilterIX(f, &ix);
         AttachCxObj(f, c);
         AttachCxObj(f, s);
         AttachCxObj(f, CxTranslate(0));
