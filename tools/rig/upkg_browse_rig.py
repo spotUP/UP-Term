@@ -191,11 +191,15 @@ def setup(rel, st, must=must):
         # a CLEAN install: opkg does not downgrade, so the image's older base must not be under it, and the
         # delete frees the space; the base goes to DEST (System: is too small for the 61 MB kit)
         ir.prepare(None)
+        # the image's assigns lock the old drawers ("Python3 Not Deleted: object is in use"); the install makes new ones
+        for a in ('Python3:', 'UP-Term:'):
+            ir.run('Assign %s REMOVE' % a)
         for old in (DEST, 'System:UP-Term'):
-            rc, o = ir.run('Delete >NIL: %s ALL QUIET FORCE' % old, 600)
+            # a drawer this size takes over 60 s on the 68020: past the agent's limit, so run_slow
+            rc, o = ir.run_slow('browse-del', 'Delete %s ALL QUIET FORCE' % old, 900)
             if rc >= 20:
                 raise SystemExit('[ERROR] the old base %s could not be deleted (rc %d): %s' % (old, rc, o.strip()[-300:]))
-        free_check(DEST.split('/')[0], tree_bytes(ir.KIT) + 2 * tree_bytes(IPK), 'the base install')
+        free_check(DEST.split(':')[0], tree_bytes(ir.KIT) + 2 * tree_bytes(IPK), 'the base install')
         st.based = not had_base
         # upkg's download backend runs curl by name: only Install's CURL option puts it in UP-Term:bin
         (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files DEST=' + DEST + ' '
@@ -286,7 +290,7 @@ def main(argv):
             typewin.key(typewin.RET, wait=4)       # the info box: Install, Back (Install is the first button)
             requester_stop('the info box')
             shot(out, 'step1-info.png')
-            free_check(DEST.split('/')[0], 2 * tree_bytes(IPK), 'the %s install' % PKG)
+            free_check(DEST.split(':')[0], 2 * tree_bytes(IPK), 'the %s install' % PKG)
             typewin.key(typewin.RET, wait=1)       # Install
             requester_stop('Install')
             shot(out, 'step1-installing.png')
