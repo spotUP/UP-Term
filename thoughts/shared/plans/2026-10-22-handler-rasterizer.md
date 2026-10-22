@@ -162,6 +162,52 @@ no ttf.library. Owner question 1 decides whether phase 5 is in this plan.
 
 ## Checklist (IDs; ticked in the open during implementation)
 
+### Implementation notes (R5, 2026-10-23)
+
+- R4.5 (aa05fd97): rig 2, 060, RTG and AGA 256 both 9 of 9. Intermediate colours per icon
+  cell with antialias on: RTG [18,7,31,47,11,41,35,35,8,36], AGA [3,1,3,3,2,3,3,3,1,3];
+  off: all 0. AGA had free shade pens, so the 1-bit fallback did not run. The outline-own
+  read had always returned None (UPTerm not on the rig path); run_line now copies
+  build/amiga/UPTerm to VTC: and runs VTC:UPTerm.
+- R5.1 (cba97b92): outline.c is own-engine only. engine_open reads FONTS:<name>.otag and
+  uses its OT_Spec1 TrueType file, else opens FONTS:<name>.ttf directly, so a bare .ttf
+  needs no ttfinstall. render/glyphcode.h and its test are gone. Design choice: an .otag
+  for a non-TrueType engine (Intellifont) is no longer drawn.
+- R5.2 (7da0b858): `make symbolsnerd` fetches NerdFontsSymbolsOnly 3.5.1, archive and ttf
+  SHA-256 pinned. The fonts part installs FONTS:SymbolsNerdFontMono.ttf with a marker in
+  ENVARC:up-term, licences to UP-Term:fonts/SymbolsNerdFont. Licence is MIT (archive
+  LICENSE); OFL applies only to some icon sets inside, not to the font as a whole.
+  Full `make dist` / dist-check not run; installer, addons and fonts dist tests pass.
+
+Progress (R5.2, 7da0b858): 29 of 30 ticked. Open: R5.3 (rig pass, A1200 manual check).
+Count correction: the checklist has 30 items (R0 3, R1 7, R2 4, R3 7, R4 6, R5 3),
+counted from the checklist rows; the earlier "of 31" lines were a miscount. R3.3 (bullet
+fallback) was superseded by R5.1.
+- R5.3 rig part DONE (2026-10-23, handler 7da0b858 build 388940 bytes, rig 2, 060): RTG and
+  AGA 256 9 of 9 each; bare .ttf in FONTS: (no .otag) draws, outline-own 10, outline-aa
+  0/10/0, shade counts as R4.5. R5.3 stays open for the A1200 manual check only.
+- R5.3 A1200 PASS (owner, 2026-10-23): ten icons draw from FONTS:SymbolsNerdFontMono, none a box. Progress: 30 of 30. Follow-ups R6.1 (pixel aspect) and R6.2 (two-cell icons) are in thoughts/spot/todos.md.
+
+### Implementation notes (R4, 2026-10-23)
+
+- R4.0/R4.2 deviation: no WritePixelArrayAlpha. The RTG path reuses vr_cgx_write_lut
+  (the emoji and sixel path, proven on the rig): coverage bytes are LUT indices into a
+  256-entry ULONG table of fg blended over bg (ce_mix, sRGB per channel), kept for the
+  last (fg, bg) pair.
+  Same visible result; P96 alpha support no longer matters. R4.0 is ticked as "probe
+  replaced by the proven LUT path" (owner may veto).
+- R4.3: "4 levels" read as 3 shade pens (1/4, 1/2, 3/4 of bg to fg) plus fg: four
+  BltTemplate passes at coverage >= 32, 96, 160, 224. A shade pen is used only when its
+  colour is nearer the wanted shade than fg and bg are; no usable shade: 1-bit path.
+- R4.1: the worker fills a fast-RAM coverage buffer per slot on the own engine's path;
+  the library path has none (1-bit as before).
+- Shade targets and the LUT both come from ce_mix (render/emoji.c), which replaced
+  ce_ramp: ce_ramp filled a vt_u32 table, 8 bytes per entry on the host, while
+  vr_cgx_write_lut reads 32-bit ULONG entries. emoji_lut (amiga_render.c) still passes
+  a vt_u32 table: host-only mismatch, harmless on the Amiga, left as found.
+- Off switch: vr_set_antialias(r, 0) (profile key outline-antialias, R4.4); sentinel
+  n_aa (/state outline-aa) counts glyphs drawn antialiased.
+
 ### Implementation notes (R3, 2026-10-22)
 
 - own_open: an OT_Spec1 path with no ':' is looked up in FONTS:. A file that is not
@@ -175,7 +221,8 @@ no ttf.library. Owner question 1 decides whether phase 5 is in this plan.
 
 ### Implementation notes (R0-R2, 2026-10-22)
 
-Progress (R3, 4d79a51d): 21 of 31 ticked. Open: R4.0-R4.5, R5.1-R5.3.
+Progress (R4, 48d721dc): 26 of 31 ticked. Open: R4.5 (rig check), R5.1-R5.3.
+Earlier (R3, 4d79a51d): 21 of 31.
 Earlier: 12 of 31 ticked. Open: R0.1 (needs a rig; moved to the start of R3),
 R1.7 (render/ttf.c is in RENDER and the test list; HANDLER_SRC and the amiga object
 lists are wired in R3 with the worker), R3.x, R4.x, R5.x.
@@ -257,18 +304,18 @@ Phase R3: worker integration and reachability
       and after recorded here. 378580 -> 387816 bytes (+9236; "before" is the build from cb09a4bd).
 
 Phase R4: antialias draw
-- [ ] R4.0 Probe WritePixelArrayAlpha on the rig's P96 screen (one call, result logged).
-- [ ] R4.1 Cache keeps coverage beside the mask.
-- [ ] R4.2 RTG alpha draw path.
-- [ ] R4.3 AGA shade-pen path (pm_mix, pm_match), 1-bit when no pens.
-- [ ] R4.4 `outline-antialias` profile key, wired through the profile loader.
-- [ ] R4.5 Rig: RTG and AGA screens show intermediate pixel colours on a glyph edge
+- [x] R4.0 Probe WritePixelArrayAlpha on the rig's P96 screen (one call, result logged).
+- [x] R4.1 Cache keeps coverage beside the mask.
+- [x] R4.2 RTG alpha draw path.
+- [x] R4.3 AGA shade-pen path (pm_mix, pm_match), 1-bit when no pens.
+- [x] R4.4 `outline-antialias` profile key, wired through the profile loader.
+- [x] R4.5 Rig: RTG and AGA screens show intermediate pixel colours on a glyph edge
       (pixel read through the rig's shot); off gives only fg and bg.
 
 Phase R5: ttf.library removal (if owner question 1 = yes)
-- [ ] R5.1 Remove the bullet path, vt_gc_probe32 use in outline.c, the ttf.library fetch.
-- [ ] R5.2 Docs and kit: no ttf.library; the Symbols font kit step (ledger open item) ships the font and licences.
-- [ ] R5.3 Full outline rig pass on rig 060 and the A1200 manual check.
+- [x] R5.1 Remove the bullet path, vt_gc_probe32 use in outline.c, the ttf.library fetch.
+- [x] R5.2 Docs and kit: no ttf.library; the Symbols font kit step (ledger open item) ships the font and licences.
+- [x] R5.3 Full outline rig pass on rig 060 and the A1200 manual check.
 
 Total: 31 items.
 
