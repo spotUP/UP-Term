@@ -160,6 +160,43 @@ static void test_goldens(void)
 }
 
 /* with the format 12 records, (0,4) and (3,10), hidden, format 4 answers the BMP alone */
+/* R6.1: the shape kept on tall pixels (plan 2026-10-22-handler-rasterizer.md) */
+static void test_fit(void)
+{
+    ttf_fit_out o;
+    /* square pixels, a 1-em box in an 8 x 8 cell: the cell scale */
+    ttf_fit(2048, 2048, 8, 8, 6, 22, 22, &o);
+    CHECK_INT(o.xscale, (8L << 16) / 2048);
+    CHECK_INT(o.yscale, o.xscale);
+    CHECK_INT(o.bw, 8);
+    CHECK_INT(o.bh, 8);
+    CHECK_INT(o.baseline, 6);
+    /* PAL hires (pixel twice as tall): half the rows, centred */
+    ttf_fit(2048, 2048, 8, 8, 6, 22, 44, &o);
+    CHECK_INT(o.bw, 8);
+    CHECK_INT(o.bh, 4);
+    CHECK_INT(o.xscale, (8L << 16) / 2048);
+    CHECK_INT(o.yscale, o.xscale / 2);
+    CHECK_INT(o.baseline, 2 + 3);
+    /* two cells on PAL hires: the em fills the rows, twice as many pixels across */
+    ttf_fit(2048, 2048, 16, 8, 6, 22, 44, &o);
+    CHECK_INT(o.bh, 8);
+    CHECK_INT(o.bw, 16);
+    CHECK_INT(o.yscale, (8L << 16) / 2048);
+    CHECK_INT(o.xscale, 2 * o.yscale);
+    CHECK_INT(o.baseline, 6);
+    /* a narrow box on square pixels: full height, narrower than the cell */
+    ttf_fit(1229, 2048, 8, 8, 6, 1, 1, &o);
+    CHECK_INT(o.bh, 8);
+    CHECK_INT(o.bw, 5);
+    /* the extremes: no overflow, the box inside the cell */
+    ttf_fit(131070L, 65535, 512, 512, 400, 1, 255, &o);
+    CHECK(o.bw <= 512 && o.bh <= 512 && o.bw > 0 && o.bh > 0);
+    CHECK(o.xscale > 0 && o.yscale > 0);
+    ttf_fit(131070L, 65535, 512, 512, 400, 255, 1, &o);
+    CHECK(o.bw <= 512 && o.bh <= 512 && o.bw > 0 && o.bh > 0);
+}
+
 static void test_format4_fallback(void)
 {
     static unsigned char d[SYMNERD_SUBSET_LEN];
@@ -588,6 +625,7 @@ void suite_ttf(void)
     test_subset_font();
     test_goldens();
     test_format4_fallback();
+    test_fit();
     test_synthetic();
     test_refused();
     test_threshold();

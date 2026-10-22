@@ -329,6 +329,8 @@ static int outline_sync(vtwin *w)
     w->outline = w->fallback[0] && w->font
                      ? vo_open(w->fallback, w->font->tf_XSize, w->font->tf_YSize, w->font->tf_Baseline)
                      : 0;
+    if (w->outline && w->aspect_known)
+        vo_set_aspect(w->outline, w->res_x, w->res_y);
     vr_set_outline(&w->r, w->outline);
     return 1;
 }
@@ -804,6 +806,10 @@ void vtwin_set_screen(vtwin *w, struct Screen *scr)
         !GetDisplayInfoData(0, (UBYTE *)&di, sizeof(di), DTAG_DISP, mode))
         return;
     w->square = di.Resolution.x == di.Resolution.y;
+    w->res_x = di.Resolution.x;
+    w->res_y = di.Resolution.y;
+    if (w->outline) /* outline glyphs keep their shape on this screen's pixels (R6.1) */
+        vo_set_aspect(w->outline, w->res_x, w->res_y);
     /* 25 rows of 16-pixel cells under the screen's title bar and a window's */
     w->square_fits = scr->Height >= 25 * 16 + 2 * (scr->BarHeight + 1) + 4;
     w->aspect_known = 1;

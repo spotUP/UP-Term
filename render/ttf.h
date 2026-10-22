@@ -70,6 +70,20 @@ void ttf_threshold(const unsigned char *cov, int w, int h, unsigned char *mask, 
  * (the antialiased draw's shade passes, plan R4.3) */
 void ttf_threshold_at(const unsigned char *cov, int w, int h, unsigned char *mask, int bpr, int level);
 
+/* A box units_w x upem font units drawn into w x h pixels whose pixels are
+ * rx x ry ticks wide and tall (DisplayInfo Resolution; 1 x 2 a PAL hires
+ * pixel), its shape kept on the screen: the scale is the smaller of the two
+ * that fit (plan 2026-10-22-handler-rasterizer.md R6.1). xscale, yscale as
+ * ttf_render takes them; bw x bh the box in pixels (one of them w or h);
+ * baseline the row for ttf_render: the box centred down the cell, base (the
+ * cell's baseline with the em filling h rows) scaled into it. No float;
+ * w, h at most 512, units_w at most 2 x 65535, any tick count. */
+typedef struct ttf_fit_out {
+    long xscale, yscale;
+    int bw, bh, baseline;
+} ttf_fit_out;
+void ttf_fit(long units_w, int upem, int w, int h, int base, int rx, int ry, ttf_fit_out *out);
+
 /* cov one pixel bolder into out (both w x h bytes): each pixel the larger
  * of itself and its left neighbour, as Text() bold draws the glyph again
  * one pixel right */

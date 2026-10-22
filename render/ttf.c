@@ -769,3 +769,34 @@ void ttf_embolden(const unsigned char *cov, int w, int h, unsigned char *out)
             o[0] = c[0];
     }
 }
+
+void ttf_fit(long units_w, int upem, int w, int h, int base, int rx, int ry, ttf_fit_out *out)
+{
+    unsigned long uw, um, tall, wide;
+    if (rx < 1)
+        rx = 1;
+    if (ry < 1)
+        ry = 1;
+    while (rx > 64 || ry > 64) { /* the ratio, in a range the products below fit */
+        rx = (rx + 1) >> 1;
+        ry = (ry + 1) >> 1;
+    }
+    uw = units_w > 0 ? (unsigned long)units_w : 1;
+    um = upem > 0 ? (unsigned long)upem : 1;
+    /* the box's height filling h rows, against its width filling w pixels,
+     * both in ticks x font units: the smaller scale fits */
+    tall = (unsigned long)h * (unsigned long)ry * uw;
+    wide = (unsigned long)w * (unsigned long)rx * um;
+    if (tall <= wide) {
+        out->yscale = (long)(((unsigned long)h << 16) / um);
+        out->xscale = (long)((((unsigned long)h << 16) * (unsigned long)ry) / ((unsigned long)rx * um));
+        out->bh = h;
+        out->bw = (int)((tall + (unsigned long)rx * um / 2) / ((unsigned long)rx * um));
+    } else {
+        out->xscale = (long)(((unsigned long)w << 16) / uw);
+        out->yscale = (long)((((unsigned long)w << 16) * (unsigned long)rx) / ((unsigned long)ry * uw));
+        out->bw = w;
+        out->bh = (int)((wide + (unsigned long)ry * uw / 2) / ((unsigned long)ry * uw));
+    }
+    out->baseline = h > 0 ? (h - out->bh) / 2 + (base * out->bh + h / 2) / h : base;
+}

@@ -29,6 +29,7 @@ struct vo_msg {
     int op;
     char name[64];       /* OPEN: the font ("": no engine, the worker only); READ: the file */
     WORD cw, ch, base;   /* OPEN, CELL */
+    WORD rx, ry;         /* OPEN, CELL: the screen's pixel in ticks (vo_set_aspect) */
     ULONG cp;            /* GLYPH */
     int cells;
     int mark;            /* GLYPH: a combining mark, placed over the cells */
@@ -74,7 +75,9 @@ struct vo_engine {
     ttf_font *tt;
     BPTR fh;             /* the .ttf, open while tt is */
     ULONG fpos;          /* fh's position: a read there needs no Seek */
-    long xscale, yscale; /* pixels per font unit, 16.16 */
+    long xscale, yscale; /* pixels per font unit, 16.16: the cell's scale */
+    WORD rx, ry;         /* the screen's pixel in ticks */
+    ttf_fit_out fit[2];  /* one and two cells, the glyph's shape kept (R6.1) */
     UBYTE *cov;          /* VO_MAXW x VO_MAXH coverage, fast RAM */
     ULONG own;           /* glyphs ttf_render drew: /state outline-own */
 };
@@ -84,13 +87,24 @@ struct vo_engine {
  * left edge (0, or the cell's width for a mark that draws left of its
  * point) and on the cell's baseline. Every code point; 0 when the font has
  * none (.notdef, glyph 0, is missing) or it is blank. */
-static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox)
+static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox,
+                  const ttf_fit_out *fit)
 {
     unsigned gid = ttf_glyph_index(e->tt, cp);
+    long xs = e->xscale, ys = e->yscale;
+    int baseline = e->base;
     if (!gid)
         return 0;
+    if (fit) {
+        /* the shape kept: centred across by the glyph's own advance */
+        long adv = (long)(((unsigned long)ttf_advance(e->tt, gid) * (unsigned long)fit->xscale) >> 16);
+        xs = fit->xscale;
+        ys = fit->yscale;
+        baseline = fit->baseline;
+        ox = adv < w ? (WORD)((w - adv) / 2) : 0;
+    }
     memset(e->cov, 0, (size_t)w * e->ch);
-    if (ttf_render(e->tt, gid, e->xscale, e->yscale, ox, e->base, e->cov, w, e->ch) != 1)
+    if (ttf_render(e->tt, gid, xs, ys, ox, baseline, e->cov, w, e->ch) != 1)
         return 0;
     ttf_threshold(e->cov, w, e->ch, mask, bpr);
     e->own++;
@@ -113,6 +127,20 @@ static void calibrate(struct vo_engine *e)
     }
     if (adv * 16 > upem) /* more than 1/16 em */
         e->xscale = ((long)e->cw << 16) / adv;
+    else
+        adv = upem;
+    /* a shape-kept glyph: a box of the probe's advance per cell, one em tall */
+    ttf_fit(adv, (int)upem, e->cw, e->ch, e->base, e->rx, e->ry, &e->fit[0]);
+    ttf_fit(2 * adv, (int)upem, 2 * e->cw, e->ch, e->base, e->rx, e->ry, &e->fit[1]);
+}
+
+/* glyphs made to fill the cell, drawn at the cell's scale whatever its
+ * shape on the screen: box drawing, block elements, legacy computing and
+ * the powerline separators (frames and prompts without gaps) */
+static int fills_cell(ULONG cp)
+{
+    return (cp >= 0x2500 && cp <= 0x259F) || (cp >= 0x1FB00 && cp <= 0x1FBFF) ||
+           (cp >= 0xE0B0 && cp <= 0xE0D7);
 }
 
 /* render/ttf's reads and memory: dos.library, so the worker's only */
@@ -251,6 +279,8 @@ static void worker(void)
             e.cw = m->cw;
             e.ch = m->ch;
             e.base = m->base;
+            e.rx = m->rx;
+            e.ry = m->ry;
             m->ok = !m->name[0] || engine_open(&e, m->name); /* "": the worker alone */
             if (!m->ok) {
                 engine_close(&e);
@@ -263,6 +293,8 @@ static void worker(void)
             e.cw = m->cw;
             e.ch = m->ch;
             e.base = m->base;
+            e.rx = m->rx;
+            e.ry = m->ry;
             if (e.tt)
                 calibrate(&e);
             m->ok = 1;
@@ -275,9 +307,10 @@ static void worker(void)
             }
             /* a mark: drawn left of its point over the cell, as fonts make
              * them; one that draws nothing there is a spacing mark */
-            m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w);
+            m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w, 0);
             if (!m->ok)
-                m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0);
+                m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0,
+                               m->mark || fills_cell(m->cp) ? 0 : &e.fit[m->cells == 2]);
             m->cov_ok = m->ok && m->cov; /* render left the glyph's coverage in e.cov */
             if (m->cov_ok)
                 memcpy(m->cov, e.cov, (size_t)w * e.ch);
@@ -367,6 +400,7 @@ vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base)
     f->cw = f->m.cw = cw;
     f->ch = f->m.ch = ch;
     f->base = f->m.base = base;
+    f->m.rx = f->m.ry = 1; /* square until vo_set_aspect */
     ask(f);
     if (!f->m.ok) {
         /* the worker has ended */
@@ -400,6 +434,19 @@ void vo_set_cell(vo_font *f, WORD cw, WORD ch, WORD base)
     f->ch = f->m.ch = ch;
     f->base = f->m.base = base;
     if (ch && f->engine) {
+        f->m.op = VO_CELL;
+        ask(f);
+    }
+}
+
+void vo_set_aspect(vo_font *f, WORD rx, WORD ry)
+{
+    if (!f || rx < 1 || ry < 1 || (rx == f->m.rx && ry == f->m.ry))
+        return;
+    clear_cache(f);
+    f->m.rx = rx;
+    f->m.ry = ry;
+    if (f->ch && f->engine) {
         f->m.op = VO_CELL;
         ask(f);
     }

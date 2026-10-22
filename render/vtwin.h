@@ -98,6 +98,7 @@ typedef struct vtwin {
     ULONG pal16[16];             /* profile palette: 0x01RRGGBB, 0 = the xterm's */
     int aspect_off;              /* font-aspect = off: the font as asked, on any screen */
     int aspect_known, square, square_fits; /* vtwin_set_screen: the screen's pixels */
+    WORD res_x, res_y;           /* vtwin_set_screen: the screen's pixel in ticks (outline glyphs) */
     char fallback[64];           /* outline font for glyphs the bitmap font lacks
                                   * (font-fallback; FONTS:<name>.otag), "" none */
     /* owner switches, 0 for XCON: (a console.device unit sets them) */

@@ -54,6 +54,12 @@ const char *vo_name(const vo_font *f);
 /* 1 when it has a font (not opened with ""). */
 int vo_has_engine(const vo_font *f);
 
+/* The screen's pixel is rx x ry ticks (DisplayInfo Resolution; 1:1 until
+ * told): glyphs keep their designed shape on it, except those made to fill
+ * the cell (box drawing, blocks, powerline separators) and combining marks,
+ * which take the cell's shape (plan 2026-10-22-handler-rasterizer.md R6.1). */
+void vo_set_aspect(vo_font *f, WORD rx, WORD ry);
+
 /* Glyphs UP-Term's own TrueType engine (render/ttf.c) drew for this font so far:
  * the reachability sentinel /state outline-own reads. 0 on the library's path. */
 ULONG vo_own(const vo_font *f);
