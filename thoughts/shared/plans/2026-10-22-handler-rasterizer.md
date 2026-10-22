@@ -344,3 +344,45 @@ Manual (owner):
 - Risk: fixed-point precision on large cells (checked at entry, cell under 128 px);
   speed on 68020 without FPU (measured in R3.6 before R4 starts); P96 alpha support
   (R4.0 probe decides the RTG path).
+
+## Phase 6: glyph shape on any screen (owner 2026-10-23)
+
+Owner report on the A1200 (640x256 PAL hires, pixel about 1:1.9): the icons draw "tiny
+tall". Cause: `calibrate` (render/outline.c) sets `yscale = ch / upem` and
+`xscale = cw / advance` in pixels; the screen's pixel aspect never enters, and the
+cell's own width:height decides the glyph's shape.
+
+Invariant: a glyph keeps its designed shape on the screen, except glyphs made to fill
+the cell (box drawing U+2500-257F, block elements U+2580-259F, legacy computing
+U+1FB00-1FBFF, powerline separators U+E0B0-U+E0D7): those keep filling the cell, or
+prompts and frames get gaps. Combining marks keep the cell scale (placed over it).
+
+Design (R6.1):
+- Pixel aspect from the existing screen read: `vtwin_set_screen` already calls
+  GetDisplayInfoData for `square`; it also keeps `Resolution.x/y`. New
+  `vo_set_aspect(f, rx, ry)` (render/outline.h) stores it and sends VO_CELL again;
+  `outline_sync` and `vtwin_set_screen` call it. Default 1:1.
+- Pure geometry `ttf_fit` (render/ttf.c, host-tested): a box `units_w x upem` font
+  units into `w x h` pixels with pixel ticks `rx x ry`, shape kept: the scale is the
+  smaller of the two fits; the result is xscale, yscale, the glyph's box size in
+  pixels, and the baseline row (the em box centred vertically, the bitmap font's
+  baseline scaled into it). No float, no 32-bit overflow for w, h <= 64, ticks <= 255,
+  units <= 65535.
+- Worker: `calibrate` keeps the cell scale (fill glyphs, marks) and adds one fit per
+  cell count (1 and 2) over a box of `cells x` the probe advance. A shape-kept glyph is
+  centred across by its own advance.
+- R6.2 (after R6.1): Nerd Font icons (PUA U+E000-U+F8FF, U+F0000-U+FFFFD) take two cells,
+  through the handler's existing wide-character path; wcwidth agrees between the
+  handler and vsh/line editor.
+
+Checklist:
+- [x] R6.1a (c6778285) `ttf_fit` in render/ttf.c + tests/test_ttf.c: 1:2 ticks give a glyph box
+  half as tall in rows as 1:1 for the same cell (or as wide); fill glyphs unchanged.
+- [x] R6.1b (c6778285) `vo_set_aspect` + VO_CELL carries rx, ry; worker uses fit for shape-kept
+  glyphs; cache cleared on change.
+- [x] R6.1c (c6778285) vtwin keeps Resolution and calls `vo_set_aspect` (screen change and font open).
+- [ ] R6.1d Rig: hires non-lace (tall pixels) and RTG (square): an icon's ink box
+  width:height in pixels follows the pixel aspect; a powerline separator still fills
+  the cell. A1200 manual check by the owner.
+- [x] R6.2a (a6cc9caa) Icons two cells wide (handler wcwidth path), vsh agrees.
+- [ ] R6.2b Rig + A1200 check: icons two cells, prompt columns line up.
