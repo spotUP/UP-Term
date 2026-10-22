@@ -45,6 +45,7 @@ import colour_check
 SYSROOT_BIN = paths.repo("upterm-ports") / "build/sysroot/UP-Term/bin"
 UPKG = SYSROOT_BIN / "upkg"
 PKG = 'up-vim'
+IPK = ir.ROOT / ('build/ipk/%s_1.0_m68k-amigaos.ipk' % PKG)
 SENTINEL = 'UP-Term:pkg/%s/Uninstall' % PKG
 DEFCONF = 'UP-Term:etc/upkg.conf'
 SAVED = 'T:upkg.conf.browse-save'
@@ -88,6 +89,7 @@ def wait_for(path, present, secs):
     while time.time() < end:
         if upkg_rig.exists(path) == present:
             return True
+        requester_stop('waiting for %s' % path)
         time.sleep(3)
     return upkg_rig.exists(path) == present
 
@@ -97,6 +99,60 @@ def base_stale(installed, kit):
     The first line names the release, the vtcon commit and the build date, so any rebuilt kit differs."""
     first = lambda t: (t or '').strip().splitlines()[:1]
     return not first(installed) or first(installed) != first(kit)
+
+
+BLOCK = 512
+# System: on the rig's image is a 106M partition with about 63 MB free (measured 2026-10-22 on a fresh
+# copy, rig 4: DH0 217222 blocks, 130146 free); the kit alone is 61 MB. Rushhours: has 1 GB: the base
+# goes there, as the image's own old install (a 1.x base in this drawer) already does.
+DEST = 'Rushhours:Tools/UP-Term'
+INFO_ROW = re.compile(r'^(\S+)\s+(\S+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+\d+\s+(\S+)\s+(.+?)\s*$')
+
+
+def info_free_blocks(out, name):
+    """Free 512-byte blocks of the unit (DH1:) or volume (Rushhours:) `name` in AmigaDOS `Info` output, or None.
+    A row reads: Unit Size Used Free Full Errs Status Name ("DH0:  106M  87076  130146  40%  0  Read/Write  System")."""
+    want = name.rstrip(':').lower()
+    for line in out.replace('\r', '').split('\n'):
+        m = INFO_ROW.match(line.strip())
+        if m and want in (m.group(1).rstrip(':').lower(), m.group(7).lower()):
+            return int(m.group(4))
+    return None
+
+
+def tree_bytes(path):
+    """Bytes of the files under `path` (a file: its size)."""
+    path = pathlib.Path(path)
+    if path.is_file():
+        return path.stat().st_size
+    return sum(f.stat().st_size for f in path.rglob('*') if f.is_file() and not f.is_symlink())
+
+
+def free_problem(free_blocks, need_bytes, vol):
+    """None when the volume has `need_bytes` free, else the message the run stops with."""
+    if free_blocks is None:
+        return 'no row for %s in the Info output' % vol
+    have = free_blocks * BLOCK
+    if have < need_bytes:
+        return ('%s has %.1f MB free, the run needs %.1f MB: a full volume opens a DOS requester that eats the '
+                'keys; free space or move DEST' % (vol, have / 1048576.0, need_bytes / 1048576.0))
+    return None
+
+
+def free_check(vol, need_bytes, what):
+    """Stop the run, with a clear message, when `vol` cannot hold `need_bytes` (Info on the rig)."""
+    rc, out = ir.run('Info')
+    prob = free_problem(info_free_blocks(out, vol), need_bytes, vol)
+    note('free space %s before %s: %s blocks free, need %.1f MB' % (vol, what, info_free_blocks(out, vol), need_bytes / 1048576.0))
+    if prob:
+        raise SystemExit('[ERROR] free-space precheck before %s: %s' % (what, prob))
+
+
+def requester_stop(what):
+    """A DOS or ixemul requester on any screen takes the keys and blocks the writer; the run stops naming its text."""
+    rs = ami.requesters()
+    if rs:
+        raise SystemExit('[ERROR] a requester is open after %s: %s' % (what, '; '.join(ami.describe_requester(r) for r in rs)))
 
 
 def must(ok, what, seen=''):
@@ -132,10 +188,17 @@ def setup(rel, st, must=must):
         installed = installed if rc == 0 else None
     # an older base on the rig would test the old handler and vtcon, not the kit's
     if base_stale(installed, kit_versions.read_text()):
+        # a CLEAN install: opkg does not downgrade, so the image's older base must not be under it, and the
+        # delete frees the space; the base goes to DEST (System: is too small for the 61 MB kit)
         ir.prepare(None)
+        for old in (DEST, 'System:UP-Term'):
+            rc, o = ir.run('Delete >NIL: %s ALL QUIET FORCE' % old, 600)
+            if rc >= 20:
+                raise SystemExit('[ERROR] the old base %s could not be deleted (rc %d): %s' % (old, rc, o.strip()[-300:]))
+        free_check(DEST.split('/')[0], tree_bytes(ir.KIT) + 2 * tree_bytes(IPK), 'the base install')
         st.based = not had_base
         # upkg's download backend runs curl by name: only Install's CURL option puts it in UP-Term:bin
-        (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files '
+        (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files DEST=' + DEST + ' '
                                                  'NOCONSOLE NODEVICE SSH BEBBOGET CURL WASABI CPU060 UNIFONT EMOJI\n')
         ir.base_install(must, 'runinstallbrowse')
         # prepare() assigned LIBS: as Install sees it, without the rig's AmiSSL drawer: curl needs
@@ -211,6 +274,7 @@ def main(argv):
             typewin._last_title = TITLE
             typewin.typ('upkg browse\r')
             time.sleep(8)
+            requester_stop('upkg browse')
             shot(out, 'step1-list.png')
 
             # step 1: Down to the row, Return opens the info box, Return on Install
@@ -220,13 +284,17 @@ def main(argv):
             g0 = green_off_row(out, 'step1-off-row0.png')
             texts['list before'] = typewin.screen_text('RAM:browse-screen.txt')
             typewin.key(typewin.RET, wait=4)       # the info box: Install, Back (Install is the first button)
+            requester_stop('the info box')
             shot(out, 'step1-info.png')
+            free_check(DEST.split('/')[0], 2 * tree_bytes(IPK), 'the %s install' % PKG)
             typewin.key(typewin.RET, wait=1)       # Install
+            requester_stop('Install')
             shot(out, 'step1-installing.png')
             check('install: sentinel %s appears' % SENTINEL, wait_for(SENTINEL, True, 420))
             time.sleep(5)
             shot(out, 'step1-installed.png')
             typewin.key(typewin.RET, wait=6)       # OK in the programbox
+            requester_stop('OK in the programbox')
             shot(out, 'step1-back.png')
             g1 = green_off_row(out, 'step1-off-row.png')
             texts['list after install'] = typewin.screen_text('RAM:browse-screen.txt')
@@ -235,8 +303,10 @@ def main(argv):
 
             # step 2: Return opens the info box (Remove, Back), Return on Remove, y, OK
             typewin.key(typewin.RET, wait=4)
+            requester_stop('the Remove info box')
             shot(out, 'step2-info.png')
             typewin.key(typewin.RET, wait=3)       # Remove
+            requester_stop('Remove')
             shot(out, 'step2-question.png')
             typewin.typ('y')                       # y answers Yes at once (--defaultno starts on No)
             time.sleep(3)
@@ -244,6 +314,7 @@ def main(argv):
             time.sleep(5)
             shot(out, 'step2-removed.png')
             typewin.key(typewin.RET, wait=6)       # OK in the programbox
+            requester_stop('OK in the programbox')
             shot(out, 'step2-back.png')
             g2 = green_off_row(out, 'step2-off-row.png')
             texts['list after remove'] = typewin.screen_text('RAM:browse-screen.txt')
