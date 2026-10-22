@@ -162,9 +162,21 @@ no ttf.library. Owner question 1 decides whether phase 5 is in this plan.
 
 ## Checklist (IDs; ticked in the open during implementation)
 
+### Implementation notes (R3, 2026-10-22)
+
+- own_open: an OT_Spec1 path with no ':' is looked up in FONTS:. A file that is not
+  TrueType (first 4 bytes 0x00010000 or 'true') or fails ttf_open keeps the ttf.library
+  path, which is not opened when the own engine is in use.
+- Scale: y = cell height / units-per-em; x = cell width / advance of the first probe
+  glyph whose advance is above upem/16.
+- /state outline-own = vo_own(window's outline font); 0 on the library path.
+- tests/test_tutorial_wiring.py p1 and p3 already failed at cb09a4bd (the p3 regex predates
+  the font_size line in SLASH_STATE); not touched here.
+
 ### Implementation notes (R0-R2, 2026-10-22)
 
-Progress: 12 of 31 ticked. Open: R0.1 (needs a rig; moved to the start of R3),
+Progress (R3, 4d79a51d): 21 of 31 ticked. Open: R4.0-R4.5, R5.1-R5.3.
+Earlier: 12 of 31 ticked. Open: R0.1 (needs a rig; moved to the start of R3),
 R1.7 (render/ttf.c is in RENDER and the test list; HANDLER_SRC and the amiga object
 lists are wired in R3 with the worker), R3.x, R4.x, R5.x.
 
@@ -187,7 +199,9 @@ Deviations from the text below, decided during implementation:
 
 
 Phase R0: facts
-- [ ] R0.1 Dump the .otag that ttfinstall writes on the rig; record the path tag in the research doc.
+- [x] R0.1 Dump the .otag that ttfinstall writes on the rig; record the path tag in the research doc.
+      Done on the host instead: ttfinstall 0.8.5 under vamos (`-C 68020 -m 8000`). OT_Spec1
+      (0x80009101, indirect) holds the .ttf path as given, lower-cased. Test: test_otag.c `real[]`.
 - [x] R0.2 Build tests/data/symnerd-subset.ttf with the fontTools subsetter: 12 glyphs
       (U+E0A0, U+E615, U+EA74, U+EBCF, U+F011, U+F021, U+F003B, U+F09D1, U+F0249,
       U+F14DE, U+F0B4C, U+2588) plus OFL 1.1 licence text beside it. Script in
@@ -206,8 +220,9 @@ Phase R1: parser (render/ttf.c)
 - [x] R1.6 tests/test_ttf.c: synthetic in-memory fonts (square, triangle, one quadratic,
       composite of two squares with offset and scale, format 4 only, format 12 only,
       truncated copies); subset font lookups for all 12 code points.
-- [ ] R1.7 Makefile: render/ttf.c in HANDLER_SRC (line 468), amiga object lists
-      (867-900, 1031-1064), test list (line 46).
+- [x] R1.7 Makefile: render/ttf.c in HANDLER_SRC (line 468), amiga object lists
+      (867-900, 1031-1064), test list (line 46). Done in ae6ab1f1, handler and console.device.
+      outline.c builds with -dontwarn=153,65 (the (void)ctx callbacks), as the proc tools do.
 
 Phase R2: rasterizer
 - [x] R2.1 Transform, flatten, accumulate, prefix-sum to 0..255 coverage.
@@ -222,17 +237,24 @@ Phase R2: rasterizer
       per change of the rasterizer.
 
 Phase R3: worker integration and reachability
-- [ ] R3.1 engine_open: TrueType detection, ttf_io over dos.library in the worker.
-- [ ] R3.2 calibrate with the probe rule; render / draw_current through ttf_render + ttf_threshold.
-- [ ] R3.3 Fallback to the bullet path when the file is not TrueType or ttf_open fails.
-- [ ] R3.4 `outline-own` /state key (slash.c, slash.h, tests/test_slash.c).
-- [ ] R3.5 Rig: tools/rig/outline_rig.py prints U+F003B and U+E615 in a window on rig 060
+- [x] R3.1 engine_open: TrueType detection, ttf_io over dos.library in the worker.
+- [x] R3.2 calibrate with the probe rule; render / draw_current through ttf_render + ttf_threshold.
+- [x] R3.3 Fallback to the bullet path when the file is not TrueType or ttf_open fails.
+- [x] R3.4 `outline-own` /state key (slash.c, slash.h, tests/test_slash.c).
+- [x] R3.5 Rig: tools/rig/outline_rig.py prints U+F003B and U+E615 in a window on rig 060
       (`rig.py start --max`), asserts the cells differ from the replacement box and from
       blank, asserts `/state outline-own` grew, and flips OUTLINE_UNREACHED to expect a glyph.
-- [ ] R3.6 Rig timing: worker time for 100 distinct plane-15 glyphs on rig 060 and on the
+      Done in 4d79a51d (OUTLINE_UNREACHED became OUTLINE_OWN): rig 4, 68060, passed 6 of 6;
+      outline-own 0 without the fallback, 10 with it (8 icons + 2 own codes).
+- [x] R3.6 Rig timing: worker time for 100 distinct plane-15 glyphs on rig 060 and on the
       rig at 68020 speed without FPU, logged by the rig script and recorded here.
-- [ ] R3.7 `make UPTERM_ROOT=/Users/spot/Code/UP-Term amiga` builds; handler size before
-      and after recorded here.
+      U+F0001..U+F0064 as 4 lines of 25 with `Type`, outline-own 100 each run; time from
+      Return to the last screen change. 68060: 0.1 to 0.2 s (3 runs). `rig.py --a1200`
+      (stock 68020, FPU absence not checked separately): 2.8 s (2 runs, +-0.9 s, the
+      screenshot poll is slow there). Deviation: measured by a one-off script, not
+      outline_rig.py; the number is in this file only.
+- [x] R3.7 `make UPTERM_ROOT=/Users/spot/Code/UP-Term amiga` builds; handler size before
+      and after recorded here. 378580 -> 387816 bytes (+9236; "before" is the build from cb09a4bd).
 
 Phase R4: antialias draw
 - [ ] R4.0 Probe WritePixelArrayAlpha on the rig's P96 screen (one call, result logged).
