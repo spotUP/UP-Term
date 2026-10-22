@@ -66,6 +66,8 @@
 #include "complete_core.h"
 #include "menu_ids.h"
 #include "keymap_act.h"
+#include "upactive.h"
+#include "../config/keymap_load.h"
 #include "slash.h"
 #include "winspec.h"
 #include "tabprog.h"
@@ -333,7 +335,9 @@ typedef struct con {
     ULONG prof_idle, prof_t0;
     ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
 #endif
+    int ua_on;                  /* this window counted in UPTERM.active (upactive.h) */
 } con;
+static void ua_set(con *c, int on);
 
 /* What one window costs (research/2026-10-04_window-memory.md), held at
  * compile time in the 68k build itself: the build fails when one of
@@ -892,49 +896,13 @@ struct config_msg {
  * read-only. A window that opens while it is still filling sees no keymap
  * (g_km_ready 0) and its keys go to the terminal as before. */
 #include "keymap_default.inc" /* km_default_text, from dist/keymap (tools/gen_keymap_default.py) */
-#define KM_FILE_MAX 16384
 static keymap *g_km;
 static volatile int g_km_claim, g_km_ready, g_km_users;
 
-/* path into buf (cap bytes, NUL-ended); the bytes read, -1 when the file is not there */
-static LONG km_read_file(const char *path, char *buf, LONG cap)
-{
-    BPTR f = Open((STRPTR)path, MODE_OLDFILE);
-    LONG got;
-    if (!f)
-        return -1;
-    got = Read(f, buf, cap);
-    Close(f);
-    if (got < 1)
-        return -1; /* an empty file is as good as none: the shipped table stands */
-    buf[got] = 0;
-    return got;
-}
-
-/* The shipped file (ENV: first, as up-term; ENVARC: when ENV: has none, then the
- * compiled-in copy), then the user's overrides over it (keymap.user). In a worker. */
+/* The shipped file, then keymap.user over it, then the flag (keymap_load.c, shared with Amarchy). */
 static void read_keymap(keymap *km)
 {
-    char *buf = (char *)AllocVec(KM_FILE_MAX + 2, MEMF_ANY);
-    LONG got = -1;
-    int ok = 0;
-    if (buf) {
-        got = km_read_file("ENV:up-term/keymap", buf, KM_FILE_MAX);
-        if (got < 0)
-            got = km_read_file("ENVARC:up-term/keymap", buf, KM_FILE_MAX);
-        if (got > 0)
-            ok = keymap_parse(km, buf, got);
-    }
-    if (!ok)
-        keymap_parse(km, km_default_text, (long)strlen(km_default_text));
-    if (buf) {
-        got = km_read_file("ENV:up-term/keymap.user", buf, KM_FILE_MAX);
-        if (got < 0)
-            got = km_read_file("ENVARC:up-term/keymap.user", buf, KM_FILE_MAX);
-        if (got > 0)
-            keymap_overlay(km, buf, got);
-        FreeVec(buf);
-    }
+    keymap_load(km, km_default_text);
     g_km_ready = 1;
 }
 
@@ -2947,6 +2915,7 @@ static void close_window(con *c)
     window_parts_close(c);
     if (c->is_tab)
         tab_unregister(c); /* the host stops sending before the grid goes */
+    ua_set(c, 0);
     vtwin_detach(&c->w); /* engine, renderer, fonts; the frame clock stops */
     if (win && !c->is_tab) {
         if (win == c->foreign)
@@ -2978,6 +2947,7 @@ static int screen_switch(con *c, int mode)
     if (mode == c->own_screen)
         return 1;
     window_parts_close(c);
+    ua_set(c, 0);
     vtwin_unbind(&c->w);
     CloseWindow(c->own_win);
     c->own_win = 0;
@@ -5335,6 +5305,15 @@ static void close_gadget(con *c)
 /* One window event for this process's terminal: from its own window's
  * IDCMP, or forwarded by the host when this process is a tab (wheel: 1 up,
  * -1 down, for IDCMP_EXTENDEDMOUSE). */
+/* UPTERM.active (upactive.h): count this window once while it has focus. */
+static void ua_set(con *c, int on)
+{
+    if (c->ua_on == on)
+        return;
+    c->ua_on = on;
+    upactive_note(on);
+}
+
 /* A Left Amiga key the keymap binds (B1). 1: it ran, the key is not the
  * terminal's; 0: the key goes on to the terminal as it did (no keymap, no
  * binding, a binding that is the commodity's, a repeat). One decision, two
@@ -5424,6 +5403,7 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         break;
     case IDCMP_ACTIVEWINDOW:
     case IDCMP_INACTIVEWINDOW:
+        ua_set(c, cls == IDCMP_ACTIVEWINDOW);
         vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
         break;
     case IDCMP_IDCMPUPDATE:
