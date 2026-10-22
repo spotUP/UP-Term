@@ -6,7 +6,7 @@ On the Swedish keymap, Left Alt + b and Left Alt + f reach the vsh line editor a
 reads the redirected output from RAM:.
   1. no meta line in the profile (the default, meta = alt): Alt+b moves one word back
   2. no meta line: Alt+f moves one word forward
-  3. meta = amiga in the profile: Alt+b no longer edits (the line runs unedited)
+  3. meta = amiga in the profile: Alt+b no longer edits (it types the keymap's character, the x lands at the end)
 Run with the rig up and the handler installed: python3 tools/rig/meta_alt_rig.py
 NOT RUN when written (Phase A, no rig allowed in that session); run it before landing Phase B.
 """
@@ -72,7 +72,9 @@ def main():
         (VTC / 'meta.conf').write_text('[profile default]\nmeta = amiga\n')
         c.run('Copy VTC:meta.conf ENV:up-term/up-term QUIET')
         seen = line_edit([RAW_B])
-        check(seen == 'one twox', 'meta = amiga: Alt+b is not Meta, the x lands at the line end', seen)
+        # Alt is the keymap's again: Swedish Alt+b types the ordinal sign (UTF-8 in the vsh window, read
+        # back by Type as its two Latin-1 bytes); no word move, the x lands at the line end
+        check(seen in ('one two\u00bax', 'one two\u00c2\u00bax'), 'meta = amiga: Alt+b is not Meta, it types the keymap\'s character and the x lands at the line end', seen)
     finally:
         if had:
             c.run('Copy RAM:meta.bak ENV:up-term/up-term QUIET')

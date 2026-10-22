@@ -15,6 +15,13 @@ int vti_mods(unsigned qual, int meta_alt)
     return mods;
 }
 
+int vti_char_mods(int xterm, int cooked, int mok_ctrl, int mods)
+{
+    if (!xterm || cooked)
+        return 0;
+    return mok_ctrl ? mods : (mods & VT_MOD_ALT);
+}
+
 int vti_button_code(unsigned code, int *btn, int *down)
 {
     switch (code & ~(unsigned)VTI_CODE_UP) {

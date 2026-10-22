@@ -2,6 +2,7 @@
  * the engine's screen. */
 #include "harness.h"
 #include "../handler/lineedit.h"
+#include "../render/vtinput.h"
 
 static long colour_sgrs; /* the command word's green / red written (W44) */
 
@@ -385,6 +386,34 @@ static void word_motions_and_undo(void)
     ctrl(0x1F); /* undo */
     CHECK_STR(line(), "copy from to");
     CHECK_STR(h_row(t, 0), "> copy from to");
+    vt_free(t);
+}
+
+/* A6: Alt+b / Alt+f in a cooked xterm window, the way a key travels: vtwin_key gives the encoder the mods
+ * vti_char_mods says, vt_encode_key_plain makes the bytes, the handler's cooked_key hands le_key the first
+ * byte as the character (key 0 for a character); before the fix the bytes were ESC b and nothing moved.
+ * Esc, then b is M-b too (readline's ESC prefix). */
+static void alt_word_moves_through_the_window_encoding(void)
+{
+    vt_term *t = start(40, 3, "$ ");
+    unsigned char b[16];
+    int n;
+    type("one two");
+    n = vt_encode_key_plain(t, 'b', vti_char_mods(1, 1, 0, VT_MOD_ALT), b);
+    le_key(&le, n ? b[0] : 0, VT_MOD_ALT, b, n); /* Alt+b */
+    CHECK_INT(le.pos, 4);
+    n = vt_encode_key_plain(t, 'f', vti_char_mods(1, 1, 0, VT_MOD_ALT), b);
+    le_key(&le, n ? b[0] : 0, VT_MOD_ALT, b, n); /* Alt+f */
+    CHECK_INT(le.pos, 7);
+    key(VT_KEY_ESCAPE, 0);
+    type("b"); /* Esc b */
+    CHECK_INT(le.pos, 4);
+    type("x");
+    CHECK_STR(line(), "one xtwo");
+    /* a program that reads bytes keeps Meta's ESC */
+    CHECK_INT(vti_char_mods(1, 0, 0, VT_MOD_ALT | VT_MOD_CTRL), VT_MOD_ALT);
+    CHECK_INT(vti_char_mods(1, 0, 1, VT_MOD_ALT | VT_MOD_CTRL), VT_MOD_ALT | VT_MOD_CTRL);
+    CHECK_INT(vti_char_mods(0, 0, 0, VT_MOD_ALT), 0);
     vt_free(t);
 }
 
@@ -1219,9 +1248,11 @@ static void vi_mode_starts_each_line_in_insert_mode_and_emacs_keys_stay(void)
     CHECK_STR(line(), "two");
     vtype("\033k"); /* k: the history line before */
     CHECK_STR(line(), "one");
-    le_set_vi(&le, 0); /* set -o emacs: Esc and k are plain again */
+    le_set_vi(&le, 0); /* set -o emacs: Esc is readline's Meta prefix again, not vi's command mode */
     le_reset(&le);
     vtype("\033");
+    vtype("k"); /* M-k: unbound, no vi history line */
+    CHECK_STR(line(), "");
     vtype("k");
     CHECK_STR(line(), "k");
     vt_free(t);
@@ -1406,6 +1437,7 @@ void suite_lineedit(void)
     ctrl_r_searches_history();
     ctrl_r_cancel_restores();
     word_motions_and_undo();
+    alt_word_moves_through_the_window_encoding();
     ctrl_l_clears_and_keeps_prompt_and_line();
     ctrl_l_keeps_a_prompt_beyond_the_bmp();
     editing_inside_the_line();

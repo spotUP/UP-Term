@@ -782,6 +782,7 @@ void le_reset(le_line *le)
     le->shown = 0;
     le->hist_pos = le->hist_n;
     le->searching = 0;
+    le->esc = 0;
     le->vi_cmd = le->vi_op = le->vi_pend = le->vi_count = le->vi_count2 = le->vi_replace = 0;
     le->vi_rec_n = le->vi_changed = 0;
     le->undo_n = 0;
@@ -1199,8 +1200,13 @@ void le_set_vi(le_line *le, int on)
 int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
 {
     int shift = (mods & VT_MOD_SHIFT) != 0, ctrl = (mods & VT_MOD_CTRL) != 0;
-    int meta = (mods & VT_MOD_ALT) != 0;
+    int meta;
     start(le);
+    if (le->esc) {
+        le->esc = 0; /* Esc, then the key: the key with Meta, as readline has it */
+        mods |= VT_MOD_ALT;
+    }
+    meta = (mods & VT_MOD_ALT) != 0;
     if (le->searching && !search_key(le, key, b, n))
         return 0;
     if (key == VT_KEY_RETURN || key == VT_KEY_KP_ENTER) {
@@ -1232,6 +1238,10 @@ int le_key(le_line *le, long key, int mods, const unsigned char *b, int n)
     }
     if (le->vi && vi_key(le, key, mods, b, n))
         return 0;
+    if (key == VT_KEY_ESCAPE && !mods) {
+        le->esc = 1; /* emacs: a Meta prefix for the next key (Esc b is M-b) */
+        return 0;
+    }
     switch (key) {
     case VT_KEY_LEFT:
         move_to(le, shift ? 0 : ctrl ? word_back(le, le->pos) : prev_char(le, le->pos));

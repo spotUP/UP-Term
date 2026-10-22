@@ -1562,9 +1562,10 @@ void vtwin_key(vtwin *w, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG m
         ie.ie_EventAddress = (APTR)prev;
         k = RawKeyConvert(&ie, (STRPTR)buf, sizeof(buf), w->keymap);
         for (i = 0; i < k && n < (int)sizeof(out) - 16; i++) {
-            /* Meta (vt_encode_key adds the ESC for xterm), and Ctrl and
-             * Shift when the keymap left Ctrl to the encoder */
-            int km = (w->pers != VT_XTERM) ? 0 : mok_ctrl ? mods : (mods & VT_MOD_ALT);
+            /* Meta (vt_encode_key adds the ESC for an xterm program, the
+             * line editor gets it in mods), and Ctrl and Shift when the
+             * keymap left Ctrl to the encoder */
+            int km = vti_char_mods(w->pers == VT_XTERM, cooked, mok_ctrl, mods);
             n += encode_key(w, cooked, buf[i], km, out + n);
         }
     }

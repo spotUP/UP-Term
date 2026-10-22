@@ -78,6 +78,7 @@ typedef struct le_line {
     int undo_n, typing;     /* typing: the last change was an inserted char */
     /* V91 vi editing mode (set -o vi): vi 0 emacs keys, 1 vi. Each line starts in insert mode. */
     int vi, vi_cmd;         /* vi_cmd: command mode */
+    int esc;                /* emacs: Esc was pressed, the next key is Meta's (readline's ESC prefix) */
     unsigned char binds[LE_BINDS][2]; /* V92: the shell's key bindings: key, function (le_fns.h) */
     int nbinds;
     int vi_count, vi_count2; /* the count typed, the one saved by an operator */

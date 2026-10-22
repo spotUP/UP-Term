@@ -24,6 +24,14 @@
  * layouts type ; @ { [ with it. With meta_alt the Alt keys are Meta. */
 int vti_mods(unsigned qual, int meta_alt);
 
+/* The modifiers the encoder gets for a character the keymap made (mods from
+ * vti_mods). Meta's ESC prefix is the wire form for an xterm program that
+ * reads bytes; while the console's own line editor reads (cooked), Meta
+ * travels in the key's mods and the bytes are the character alone (le_key's
+ * contract), so Alt+b reaches it as M-b, not as ESC. Under modifyOtherKeys
+ * (mok_ctrl, never cooked) the encoder gets every modifier. */
+int vti_char_mods(int xterm, int cooked, int mok_ctrl, int mods);
+
 /* An IDCMP_MOUSEBUTTONS code: *btn 0 left, 1 middle, 2 right, *down 1 for
  * a press. 0 when the code is no button. */
 int vti_button_code(unsigned code, int *btn, int *down);
