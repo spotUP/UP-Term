@@ -39,7 +39,9 @@ def bind_rows():
         if l.startswith('['):
             sect = l
         elif sect == '[bind]' and l and not l.startswith(';') and '=' in l:
-            n += 1
+            # "super+1..9" is one line of the file and nine rows (dist/keymap header, handler keymap parser)
+            m = re.match(r'\S*?(\d)\.\.(\d)\s*=', l)
+            n += int(m.group(2)) - int(m.group(1)) + 1 if m else 1
     return n
 
 
@@ -96,25 +98,49 @@ def r_esc_up():
 
 
 def r_enter_slash():
-    # reopen, filter to Theme, Enter: /theme must reach the handler (km-hits +1), chord unbound or not
+    # reopen, Style, Enter on Theme: the request reaches the handler, which runs /theme through the keymap runner.
+    # /theme opens a file requester ("UP-Term theme") and the handler sits in it until it closes, so the
+    # effect is the requester on screen; the counter is read after its Cancel gadget (id 2) closed it, as keymap_rig.py does.
     before = km_hits()
     ami.key(RAW['space'], LAMIGA)
     time.sleep(1.5)
     into_style()
     ami.key(RAW['return'])             # Theme is the first row
     time.sleep(2)
+    with ami._conn() as conn:
+        shown = '"UP-Term theme"' in ami._uitree(conn).decode('latin-1')
+        if shown:
+            ami._click_gadget(conn, 'UP-Term theme', '2')
+    time.sleep(1)
+    ami.click_px(100, 100)             # the requester had the focus; the vsh host takes it back
+    time.sleep(1)
     after = km_hits()
-    return after == before + 1, 'handler km-hits %+d (exactly 1 expected)' % (after - before)
+    return shown and after == before + 1, 'theme requester shown: %s; handler km-hits %+d (exactly 1 expected)' % (shown, after - before)
+
+
+def viewer_lines(s):
+    return set(l.strip(' |') for l in s.splitlines() if re.match(r'\|\s*(Super|Alt)\+', l))
 
 
 def r_viewer_rows():
+    # the viewer is a text box (amarchy/menu.c viewer, K_TEXTBOX in a 640x300 window): one page of rows at a time.
+    # Scroll with Down, a few lines per step, and collect every distinct row line seen until a step adds none.
     ami.key(RAW['k'], LAMIGA)
     time.sleep(1.5)
-    s = screen_text()
+    rows = viewer_lines(screen_text())
+    for _ in range(40):
+        for _ in range(6):
+            ami.key(RAW['down'])
+            time.sleep(0.15)
+        time.sleep(0.4)
+        new = viewer_lines(screen_text()) - rows
+        if not new:
+            break
+        rows |= new
     ami.key(RAW['esc'])
+    time.sleep(0.8)
     n = bind_rows()
-    seen = len([l for l in s.splitlines() if re.match(r'\s*(Super|Alt)\+', l) or 'Super+' in l])
-    return seen >= min(n, 10) and n > 0, 'dist/keymap has %d [bind] rows; viewer showed %d lines (window shows a page; scroll check by eye)' % (n, seen)
+    return n > 0 and len(rows) == n, 'dist/keymap has %d [bind] rows; viewer printed %d distinct rows while scrolling' % (n, len(rows))
 
 
 ROWS = [
