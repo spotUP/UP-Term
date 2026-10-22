@@ -143,6 +143,73 @@ def r_viewer_rows():
     return n > 0 and len(rows) == n, 'dist/keymap has %d [bind] rows; viewer printed %d distinct rows while scrolling' % (n, len(rows))
 
 
+def menu_rows(s):
+    # the list rows of the menu box, labels only, in screen order (the frame and Filter line left out)
+    return [l.strip(' |') for l in s.splitlines() if re.match(r'\|  \S', l) and 'Filter' not in l]
+
+
+def theme_requester(before):
+    # the /theme requester is the proof the leaf ran; Cancel it (gadget 2) and give the host window the focus back
+    time.sleep(2)
+    with ami._conn() as conn:
+        shown = '"UP-Term theme"' in ami._uitree(conn).decode('latin-1')
+        if shown:
+            ami._click_gadget(conn, 'UP-Term theme', '2')
+    time.sleep(1)
+    ami.click_px(100, 100)
+    time.sleep(1)
+    return shown, km_hits() - before
+
+
+def r_drill_redraw():
+    # Owner bug AM-DRILL-REDRAW (A1200): Style drawn over the root, then "th" left "   me" and a stale Font row.
+    # Cause: ncurses tparm memo keyed by the %i-bumped cup values (upterm-ports 7600cda), so rows landed one
+    # line off. The cells must hold exactly the submenu's rows after the drill and after the filter.
+    ami.key(RAW['space'], LAMIGA)
+    time.sleep(1.5)
+    into_style()
+    style = menu_rows(screen_text())
+    for k in 't', 'h':
+        ami.key(RAW[k])
+        time.sleep(0.5)
+    th = menu_rows(screen_text())
+    for _ in range(3):
+        ami.key(RAW['esc'])
+        time.sleep(0.5)
+    ok = style == ['Theme', 'Font', 'Background'] and th == ['Theme']
+    return ok, 'Style rows %s; after "th" %s' % (style, th)
+
+
+def r_enter_th():
+    # Owner bug AM-ENTER-H: Enter after the filter "th" added another "h" (stale ui_hotkey, upterm-ports ebf5d1c).
+    # Enter must run Theme: the requester opens and km-hits moves by 1.
+    before = km_hits()
+    ami.key(RAW['space'], LAMIGA)
+    time.sleep(1.5)
+    into_style()
+    for k in 't', 'h':
+        ami.key(RAW[k])
+        time.sleep(0.5)
+    ami.key(RAW['return'])
+    shown, d = theme_requester(before)
+    return shown and d == 1, 'filter "th", Enter: theme requester shown: %s; km-hits %+d (1 expected)' % (shown, d)
+
+
+def r_lamiga_minus_sv():
+    # Owner bug AM-MINUS-EXIT: Swedish keymap, Left Amiga + "-" (raw 0x3A there) made Amarchy exit on the A1200.
+    # With the keymap set to "s", the chord must reach the handler (km-hits +1) and the commodity must stay up.
+    import amarchy_rig
+    c.run('SetKeyboard s')
+    try:
+        before = km_hits()
+        ami.key(0x3A, LAMIGA)
+        time.sleep(2)
+        d, up = km_hits() - before, amarchy_rig.port_up()
+    finally:
+        c.run('SetKeyboard usa')
+    return d == 1 and up, 'Swedish Left Amiga+minus: km-hits %+d (1 expected), Amarchy port up: %s' % (d, up)
+
+
 ROWS = [
     ('start',        r_start),
     ('open_timing',  r_open_timing),
@@ -150,6 +217,9 @@ ROWS = [
     ('esc_up',       r_esc_up),
     ('enter_slash',  r_enter_slash),
     ('viewer_rows',  r_viewer_rows),
+    ('drill_redraw', r_drill_redraw),
+    ('enter_th',     r_enter_th),
+    ('lamiga_minus_sv', r_lamiga_minus_sv),
 ]
 
 
