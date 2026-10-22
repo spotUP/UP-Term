@@ -311,7 +311,8 @@ Done: `make dist dist-check` green; install on a fresh rig kit gives the commodi
 
 - [x] A1 keymap.c/h  [x] A2 upconf_rows  [x] A3 dist/keymap  [x] A4 meta=alt default  [x] A5 host tests  [ ] A6 rig meta test (written, not run)
 - [x] B1 handler match  [x] B2 dispatch  [x] B3 generated menu keys  [x] B4 Clear screen move  [ ] B5 rig table (keymap_rig.py written, not run)  [ ] B6 R1 terminal
-- [ ] C1 broker  [ ] C2 hotkeys  [ ] C3 actions  [ ] C4 semaphore  [ ] C5 ARexx  [ ] C6 R1 commodity  [ ] C7 R3
+- [x] C1 broker  [x] C2 hotkeys  [x] C3 actions  [x] C4 semaphore  [x] C5 ARexx  [ ] C6 R1 commodity  [ ] C7 R3
+  (C1-C5 host side built: make amiga and make test ONLY=keymap pass; tools/rig/amarchy_rig.py written, NOT RUN. Unverified on Amiga: CxFilter strings, DivertCxMsg pass-through, CxCustom signatures.)
 - [ ] D1 timing  [ ] D2 filter field  [ ] D3 tree  [ ] D4 viewer  [ ] D5 library swap
 - [ ] E1 clash rig  [ ] F1 docs and packaging
 
