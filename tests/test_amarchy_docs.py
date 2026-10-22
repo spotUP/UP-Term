@@ -19,6 +19,13 @@ def read(p):
 
 
 class AmarchyDocs(unittest.TestCase):
+    def test_uninstall_quits_a_running_amarchy_before_deleting_the_drawer(self):
+        un = read('dist/Uninstall')
+        quit_at = un.index('Status >ENV:upw COM UP-Term:bin/Amarchy')
+        self.assertIn('Break $upw C', un[quit_at:quit_at + 200])
+        self.assertLess(quit_at, un.index('Delete >NIL: "$updest" ALL QUIET'))
+        self.assertIn('Run >NIL: UP-Term:bin/Amarchy', read('dist/install.dos'))  # the startup block unstartup.sh strips
+
     def test_readme_key_list_is_the_generated_one(self):
         m = re.search(r'\n  \[keys\]\n(.*?)  \[end keys\]\n', read('dist/README.txt'), re.S)
         self.assertIsNotNone(m, 'README.txt has no AMARCHY key list')
