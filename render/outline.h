@@ -48,6 +48,10 @@ const char *vo_name(const vo_font *f);
 /* 1 when it has a font (not opened with ""). */
 int vo_has_engine(const vo_font *f);
 
+/* Glyphs UP-Term's own TrueType engine (render/ttf.c) drew for this font so far:
+ * the reachability sentinel /state outline-own reads. 0 on the library's path. */
+ULONG vo_own(const vo_font *f);
+
 /* The file at path (under 64 characters) read by the worker, which may make
  * the DOS calls the caller may not (ledger U2: the Unifont pages): at most
  * max bytes into buf. The bytes read; -1 when there is no such file. */

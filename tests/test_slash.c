@@ -335,6 +335,7 @@ static void state_formats_the_counters(void)
     slash_state_bump(&s, STATE_KEYMAP, 0x127, 0); /* Super+K */
     s.active = 1;
     s.font_size = 8;
+    s.outline_own = 5;
     /* the command is in the table and takes no argument or a key */
     CHECK_INT(parse("/state"), SLASH_OK);
     CHECK_INT(cmd.id, SLASH_STATE);
@@ -343,7 +344,11 @@ static void state_formats_the_counters(void)
     /* every key, "key value" per line */
     CHECK_INT(slash_state_text(&s, "", out, sizeof(out)) > 0, 1);
     CHECK_STR(out, "tabs-opened 2\ntab-switches 1\nmenu-picks 2\nlast-menu 49\nslash-count 1\n"
-                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nkm-hits 1\nlast-key 295\nfont-size 8\n");
+                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nkm-hits 1\nlast-key 295\nfont-size 8\n"
+                   "outline-own 5\n");
+    /* outline-own: the window's own-engine glyphs, the reachability sentinel outline_rig reads */
+    slash_state_text(&s, "outline-own", out, sizeof(out));
+    CHECK_STR(out, "5\n");
     /* font-size: the answering window's font height, the key keymap_rig reads for Left Amiga + and - */
     slash_state_text(&s, "font-size", out, sizeof(out));
     CHECK_STR(out, "8\n");

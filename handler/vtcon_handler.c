@@ -4264,6 +4264,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         if (!c->is_tab)
             stat_fill(c);
         c->st.font_size = c->w.font ? c->w.font->tf_YSize : 0; /* this window's own, never the host's copy */
+        c->st.outline_own = (long)vo_own(c->w.outline);
         return slash_state_text(&c->st, cmd.arg, ans, cap) < 0 ? 2 : 1;
     case SLASH_THEME:
         if (!cmd.arg[0] && typed) {

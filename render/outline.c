@@ -14,6 +14,7 @@
 #include <proto/bullet.h>
 #include "outline.h"
 #include "otag.h"
+#include "ttf.h"
 #include "glyphcode.h"
 
 extern struct ExecBase *SysBase;
@@ -42,6 +43,7 @@ struct vo_msg {
     UBYTE *buf;          /* READ: the caller's buffer, max bytes */
     LONG max, len;       /* READ: len the answer, the bytes read, -1 no such file */
     int ok;              /* the answer: 1 done / the glyph is there */
+    ULONG own;           /* GLYPH's answer: the own engine's glyphs drawn so far */
 };
 
 struct vo_slot {
@@ -57,6 +59,7 @@ struct vo_font {
     WORD cw, ch, base;
     int used;
     int engine;               /* 0: opened with "", the worker only (vo_read) */
+    ULONG own;                /* the worker's count, from its last GLYPH answer */
     char name[64];
     struct vo_slot slot[VO_SLOTS];
 };
@@ -75,6 +78,14 @@ struct vo_engine {
     int have_notdef;
     int codes32;         /* the engine selects glyphs by OT_GlyphCode_32 (measured) */
     UBYTE probe[VO_MAXH * (VO_MAXW / 8)]; /* calibrate's scratch glyph */
+    /* the own engine (render/ttf.c), when OT_Spec1 names a TrueType file:
+     * no bullet library then (plan 2026-10-22-handler-rasterizer.md R3) */
+    ttf_font *tt;
+    BPTR fh;             /* the .ttf, open while tt is */
+    ULONG fpos;          /* fh's position: a read there needs no Seek */
+    long xscale, yscale; /* pixels per font unit, 16.16 */
+    UBYTE *cov;          /* VO_MAXW x VO_MAXH coverage, fast RAM */
+    ULONG own;           /* glyphs ttf_render drew: /state outline-own */
 };
 
 static ULONG set1(struct vo_engine *e, ULONG tag, ULONG data)
@@ -116,6 +127,18 @@ static unsigned long gc_draw(void *engine)
  * ttf.library 0.8.5 ignores OT_GlyphCode_32 and answers success). */
 static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox)
 {
+    if (e->tt) {
+        /* the own engine: every code point, .notdef (glyph 0) is missing */
+        unsigned gid = ttf_glyph_index(e->tt, cp);
+        if (!gid)
+            return 0;
+        memset(e->cov, 0, (size_t)w * e->ch);
+        if (ttf_render(e->tt, gid, e->xscale, e->yscale, ox, e->base, e->cov, w, e->ch) != 1)
+            return 0;
+        ttf_threshold(e->cov, w, e->ch, mask, bpr);
+        e->own++;
+        return 1;
+    }
     if (vt_gc_select(e, gc_set, e->codes32, cp) != 0)
         return 0;
     return draw_current(e, mask, bpr, w, ox);
@@ -154,14 +177,36 @@ static int draw_current(struct vo_engine *e, UBYTE *mask, WORD bpr, WORD w, WORD
 /* the size: point height = the cell's height at 72 dpi down; across, the
  * dpi that makes the font's advance one cell (a monospaced outline font's
  * glyphs all advance alike) */
+static const ULONG probe[] = { 'M', 0xE0A0, 0x2588, '0' };
+
+/* the own engine's size, as calibrate's: ch pixels an em down, and across
+ * the scale that makes the first probe's advance one cell */
+static void calibrate_own(struct vo_engine *e)
+{
+    long upem = ttf_units_per_em(e->tt), adv = 0;
+    int i;
+    e->yscale = e->xscale = ((long)e->ch << 16) / upem;
+    for (i = 0; i < (int)(sizeof(probe) / sizeof(probe[0])) && adv * 16 <= upem; i++) {
+        unsigned gid = ttf_glyph_index(e->tt, probe[i]);
+        adv = gid ? ttf_advance(e->tt, gid) : 0;
+    }
+    if (adv * 16 > upem) /* more than 1/16 em */
+        e->xscale = ((long)e->cw << 16) / adv;
+    e->notdef_bpr = (WORD)(((e->cw + 15) >> 4) << 1);
+    e->have_notdef = 0; /* glyph 0 answers missing before any drawing */
+}
+
 static void calibrate(struct vo_engine *e)
 {
     struct Library *BulletBase = e->BulletBase;
     struct GlyphMap *gm = 0;
     struct TagItem t[3];
-    static const ULONG probe[] = { 'M', 0xE0A0, 0x2588, '0' };
     ULONG xdpi = 72;
     int i;
+    if (e->tt) {
+        calibrate_own(e);
+        return;
+    }
     t[0].ti_Tag = OT_DeviceDPI;
     t[0].ti_Data = (72UL << 16) | 72UL;
     t[1].ti_Tag = OT_PointHeight;
@@ -193,8 +238,71 @@ static void calibrate(struct vo_engine *e)
     e->codes32 = vt_gc_probe32(e, gc_set, gc_draw);
 }
 
-/* the .otag read, checked and made a tag list; the engine its OT_Engine
- * names opened on it */
+/* render/ttf's reads and memory: dos.library, so the worker's only */
+static long tt_read(void *ctx, unsigned long off, void *buf, long len)
+{
+    struct vo_engine *e = (struct vo_engine *)ctx;
+    LONG got;
+    if (off != e->fpos && Seek(e->fh, (LONG)off, OFFSET_BEGINNING) < 0) {
+        e->fpos = (ULONG)-1;
+        return -1;
+    }
+    got = Read(e->fh, buf, len);
+    e->fpos = got > 0 ? off + (ULONG)got : (ULONG)-1;
+    return got;
+}
+
+static void *tt_alloc(void *ctx, unsigned long size)
+{
+    (void)ctx;
+    return AllocVec((ULONG)size, MEMF_ANY | MEMF_CLEAR);
+}
+
+static void tt_free(void *ctx, void *p)
+{
+    (void)ctx;
+    FreeVec(p);
+}
+
+/* the file OT_Spec1 names (a path without a volume is in FONTS:), when it is
+ * TrueType: the own engine on it. 0 leaves e as it was, for the library. */
+static int own_open(struct vo_engine *e, const char *spec)
+{
+    char p[128];
+    UBYTE head[4];
+    ttf_io io;
+    int i, n = 0;
+    if (!strchr(spec, ':'))
+        for (i = 0; "FONTS:"[i]; i++)
+            p[n++] = "FONTS:"[i];
+    for (i = 0; spec[i] && n < (int)sizeof(p) - 1; i++)
+        p[n++] = spec[i];
+    p[n] = 0;
+    if (!(e->fh = Open((STRPTR)p, MODE_OLDFILE)))
+        return 0;
+    e->fpos = 0;
+    /* TrueType: 0x00010000 or 'true' (ttf_open also refuses the rest) */
+    if (tt_read(e, 0, head, 4) == 4 &&
+        ((head[0] == 0 && head[1] == 1 && head[2] == 0 && head[3] == 0) || !memcmp(head, "true", 4)) &&
+        (e->cov = (UBYTE *)AllocVec(VO_MAXW * VO_MAXH, MEMF_ANY)) != 0) {
+        io.read = tt_read;
+        io.alloc = tt_alloc;
+        io.free = tt_free;
+        io.ctx = e;
+        if (ttf_open(&io, &e->tt) == TTF_OK)
+            return 1;
+    }
+    if (e->cov)
+        FreeVec(e->cov);
+    Close(e->fh);
+    e->cov = 0;
+    e->fh = 0;
+    e->tt = 0;
+    return 0;
+}
+
+/* the .otag read, checked and made a tag list; the own engine on the
+ * TrueType file it names, else the engine its OT_Engine names */
 static int engine_open(struct vo_engine *e, const char *name)
 {
     char *path = e->path, lib[48];
@@ -229,6 +337,10 @@ static int engine_open(struct vo_engine *e, const char *name)
     Close(f);
     if (got != len || otag_check(e->otag, len, &in) != OTAG_OK)
         return 0;
+    if (in.spec1_off >= 0 && own_open(e, (const char *)e->otag + in.spec1_off)) {
+        calibrate(e);
+        return 1;
+    }
     /* indirect values are offsets from the file's start: pointers now */
     tags = (ULONG *)e->otag;
     for (i = 0; i < in.ntags; i++)
@@ -262,6 +374,15 @@ static int engine_open(struct vo_engine *e, const char *name)
 
 static void engine_close(struct vo_engine *e)
 {
+    if (e->tt)
+        ttf_close(e->tt);
+    if (e->fh)
+        Close(e->fh);
+    if (e->cov)
+        FreeVec(e->cov);
+    e->tt = 0;
+    e->fh = 0;
+    e->cov = 0;
     if (e->ge) {
         struct Library *BulletBase = e->BulletBase;
         CloseEngine(e->ge);
@@ -316,13 +437,13 @@ static void worker(void)
             e.cw = m->cw;
             e.ch = m->ch;
             e.base = m->base;
-            if (e.ge)
+            if (e.ge || e.tt)
                 calibrate(&e);
             m->ok = 1;
             break;
         case VO_GLYPH: {
             WORD w = (WORD)(m->cells * e.cw);
-            if (!e.ge) {
+            if (!e.ge && !e.tt) {
                 m->ok = 0;
                 break;
             }
@@ -332,6 +453,7 @@ static void worker(void)
             if (!m->ok)
                 m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0) &&
                         !(m->cells == 1 && same_as_notdef(&e, m->mask, m->bpr));
+            m->own = e.own;
             break;
         }
         case VO_READ: {
@@ -490,6 +612,7 @@ static const UBYTE *glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
     f->m.mask = s->mask;
     f->m.bpr = b;
     ask(f);
+    f->own = f->m.own;
     if (!f->m.ok) {
         FreeVec(s->mask);
         s->mask = 0;
@@ -517,6 +640,11 @@ const char *vo_name(const vo_font *f)
 int vo_has_engine(const vo_font *f)
 {
     return f && f->engine;
+}
+
+ULONG vo_own(const vo_font *f)
+{
+    return f ? f->own : 0;
 }
 
 LONG vo_read(vo_font *f, const char *path, UBYTE *buf, LONG max)
