@@ -300,6 +300,8 @@ def main(argv):
             typewin.key(typewin.RET, wait=6)       # OK in the programbox
             requester_stop('OK in the programbox')
             shot(out, 'step1-back.png')
+            st_rc, st_out = ir.run('Status')
+            check('upkg still running after Return at the install OK box', 'upkg' in st_out, repr(st_out[-300:]))
             g1 = green_off_row(out, 'step1-off-row.png')
             texts['list after install'] = typewin.screen_text('RAM:browse-screen.txt')
             check('after install: %s in list-installed' % PKG, PKG in listed('list-installed'))

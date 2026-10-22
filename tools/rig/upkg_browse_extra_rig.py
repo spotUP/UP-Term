@@ -157,7 +157,10 @@ def main(argv):
 
             # B5: upkg 0026 sets pr_WindowPtr to -1. A write to a volume that is not there must END in an error
             # (exit != 0, no requester), not in a DOS "insert volume" requester that holds the process.
-            conf = ami.read_file(upkg_rig.CONF).decode('latin-1').rstrip('\n')
+            # the browse setup put the feed conf at the default config path (T:upkg-rig.conf is upkg_rig.py's, not here)
+            conf = ami.read_file(B.DEFCONF).decode('latin-1').rstrip('\n')
+            # opkg keeps the FIRST lists_dir it sees: drop the conf's own, or the absent volume is never used
+            conf = '\n'.join(l for l in conf.split('\n') if not re.match(r'\s*option\s+lists_dir\b', l))
             (ir.VTC / 'nosuchvol.conf').write_text(conf + '\noption lists_dir NOSUCHVOL:lists\n')
             (ir.VTC / 'extra-novol.sh').write_text('UP-Term:bin/upkg -f VTC:nosuchvol.conf update 2>&1\necho "[exit $?]"\n')
             rc, o = ir.run_slow('extra-novol', 'VTC:vsh VTC:extra-novol.sh', 120)
