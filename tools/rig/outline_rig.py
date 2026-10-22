@@ -2,19 +2,19 @@
 """outline_rig.py -- ledger F1 on the rig: glyphs the bitmap font lacks come
 from an outline font (plan thoughts/shared/plans/2026-10-03-outline-fonts.md).
 
-  1. ttf.library 0.8.5 (Aminet util/libs/ttflib68020) and Symbols Nerd Font
-     Mono (nerd-fonts, MIT) fetched into build/third_party once; on the rig
-     they are used from VTC: (LIBS: and FONTS: assigned with ADD -- the rig's
-     system disk is not touched), the font installed by ttf.library's own
-     ttfinstall into RAM:.
+  1. Symbols Nerd Font Mono, the kit's pinned copy (`make symbolsnerd`),
+     copied as a bare SymbolsNerdFontMono.ttf into RAM:f1fonts, which is
+     assigned to FONTS: with ADD (the rig's system disk is not touched).
+     No font library, no ttfinstall, no .otag: the handler finds
+     FONTS:<name>.ttf itself (plan R5.1).
   2. The same UTF-8 line typed out in an XCON:/XTERM window twice: with a
      profile naming no fallback font, then with font-fallback naming it.
      The two screenshots differ exactly in the icon cells: eight Nerd Font
      icons and two plane-15/private-use codes (OWN) drawn as glyphs where
      the first run drew '?'; a CJK character the font lacks and an em dash
      (Latin-1 stand-in '-') do not change, nor does the ASCII around them.
-     UP-Term's own TrueType engine (render/ttf.c) reads the .ttf named in
-     the .otag, so 32-bit codes draw too. `UPTerm state outline-own` in
+     UP-Term's own TrueType engine (render/ttf.c) reads the .ttf, so
+     32-bit codes draw too. `UPTerm state outline-own` in
      the window counts the glyphs that engine drew: 0 without the
      fallback, at least len(ICONS)+len(OWN) with it.
   3. Antialiasing (plan phase 4, R4.5): with the fallback font and the
@@ -36,19 +36,18 @@ The profile lives in ENV:up-term/up-term only; the file there before is put
 back at the end. Run with the rig up and the handler installed:
   python3 tools/rig/outline_rig.py
 """
-import os, pathlib, shutil, struct, subprocess, sys, time, urllib.request, zipfile, io
+import os, pathlib, shutil, struct, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / 'vtc'
-TP = ROOT / 'build/third_party/f1'
-TTFLIB = 'https://aminet.net/util/libs/ttflib68020.lha'
-NERD = 'https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip'
+TTF = ROOT / 'build/symbolsnerd/SymbolsNerdFontMono-Regular.ttf'
+FACE = 'SymbolsNerdFontMono'
 ICONS = [0xE0A0, 0xF07B, 0xF121, 0xE7A8, 0xF015, 0xE712, 0xF09B, 0xF1D3]
-# codes drawn by UP-Term's own engine (render/ttf.c; ttf.library has no
-# 32-bit glyph codes, plane-15 included): they change like the icons. Both
+# codes above U+FFFF and in private use (render/ttf.c reads 32-bit codes
+# and cmap format 12): they change like the icons. Both
 # lists can be given as hex: OUTLINE_ICONS=EBCF,F011 OUTLINE_OWN=F003B,E615
 OWN = [0xF003B, 0xE615]
 if os.environ.get('OUTLINE_ICONS'):
@@ -69,22 +68,9 @@ def check(ok, what, seen=''):
 
 
 def fetch():
-    """ttf.library, ttfinstall and the font, once"""
-    TP.mkdir(parents=True, exist_ok=True)
-    lib, inst, ttf = TP / 'ttf.library', TP / 'ttfinstall', TP / 'SymNerdMono.ttf'
-    if not lib.exists() or not inst.exists():
-        outer = TP / 'ttflib68020.lha'
-        outer.write_bytes(urllib.request.urlopen(TTFLIB).read())
-        subprocess.run(['lha', 'xqw=' + str(TP), str(outer)], check=True)
-        inner = next(TP.glob('ttflib68020_*.lha'))
-        subprocess.run(['lha', 'xqw=' + str(TP), str(inner)], check=True)
-        shutil.copyfile(TP / 'ttflib68020/ttf.library', lib)
-        shutil.copyfile(TP / 'ttflib68020/ttfinstall', inst)
-    if not ttf.exists():
-        z = zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(NERD).read()))
-        ttf.write_bytes(z.read('SymbolsNerdFontMono-Regular.ttf'))
-    for f in (lib, inst, ttf):
-        shutil.copyfile(f, VTC / f.name)
+    """the kit's pinned font (the Makefile checks both SHA-256s), to VTC:"""
+    subprocess.run(['make', '-s', 'symbolsnerd'], cwd=ROOT, check=True)
+    shutil.copyfile(TTF, VTC / (FACE + '.ttf'))
 
 
 def shot():
@@ -169,16 +155,15 @@ def main():
     had = c.run('Copy ENV:up-term/up-term RAM:outline-rig.bak QUIET')[0] == 0
     c.run('MakeDir ENV:up-term QUIET')
     try:
-        c.run('Assign LIBS: VTC: ADD')
         c.run('MakeDir RAM:f1fonts QUIET')
+        c.run('Delete RAM:f1fonts/#? QUIET')
         c.run('Assign FONTS: RAM:f1fonts ADD')
-        rc, out = c.run('VTC:ttfinstall VTC:SymNerdMono.ttf RAM:f1fonts', 120)
-        names = [l.strip() for l in c.run('List RAM:f1fonts PAT #?.otag LFORMAT "%n"')[1].splitlines() if l.strip()]
-        check(rc == 0 and names, 'ttfinstall made an .otag for the font', (rc, out, names))
-        if not names:
+        rc, out = c.run('Copy VTC:%s.ttf RAM:f1fonts/' % FACE, 120)
+        names = [l.strip() for l in c.run('List RAM:f1fonts LFORMAT "%n"')[1].splitlines() if l.strip()]
+        check(rc == 0 and names == [FACE + '.ttf'], 'FONTS: holds the bare .ttf only (no .otag)', (rc, out, names))
+        if rc:
             return 1
-        face = names[0][:-5]
-        print('  face:', face)
+        face = FACE
         w, h, plain, _, st = run_line('[profile default]\n', ('outline-own', 'outline-aa'))
         own_plain, aa_plain = st['outline-own'], st['outline-aa']
         w, h, fancy, secs, st = run_line('[profile default]\nfont-fallback = %s\n' % face, ('outline-own', 'outline-aa'))
@@ -245,7 +230,6 @@ def main():
             c.run('Delete ENV:up-term/up-term QUIET')
         c.run('Delete RAM:outline-rig.bak QUIET')
         c.run('Assign FONTS: RAM:f1fonts REMOVE')
-        c.run('Assign LIBS: VTC: REMOVE')
         (VTC / 'outline-rig.conf').unlink(missing_ok=True)
     print('outline_rig: passed %d of %d' % (passed, total))
     return 0 if passed == total else 1

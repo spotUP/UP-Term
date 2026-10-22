@@ -1,18 +1,17 @@
-/* outline: glyphs the bitmap font cannot show, from an outline font through
- * the glyph engine API (bullet.library's, which ttf.library 0.8.5 speaks
- * for TrueType fonts). Ledger F1, plan
- * thoughts/shared/plans/2026-10-03-outline-fonts.md.
+/* outline: glyphs the bitmap font cannot show, from a TrueType font drawn
+ * by UP-Term's own engine (render/ttf.c; no font library). Ledger F1, plans
+ * thoughts/shared/plans/2026-10-03-outline-fonts.md and
+ * 2026-10-22-handler-rasterizer.md.
  *
  * The engine runs in a worker process: the handler may not make DOS calls
- * (vtcon_handler.c, the profile reader's note), and an engine reads its
+ * (vtcon_handler.c, the profile reader's note), and the engine reads its
  * font file. The caller asks synchronously and each code point once; the
  * answer is kept (a mask in chip RAM, for BltTemplate) or remembered as
  * missing.
  *
  * Every call comes from the process that called vo_open (its reply port's
- * signal is that process's). AmigaOS 3.0+ (OpenEngine on the library the
- * .otag names, 16-bit glyph codes; 32-bit ones only on an engine measured
- * to take them, render/glyphcode.h), any 68k.
+ * signal is that process's). Every code point (cmap formats 4 and 12),
+ * AmigaOS 3.0+, any 68k.
  */
 #ifndef OUTLINE_H
 #define OUTLINE_H
@@ -21,10 +20,11 @@
 
 typedef struct vo_font vo_font;
 
-/* The installed outline font `name` (FONTS:<name>.otag; a ".otag" or
- * ".font" suffix is taken off), its glyphs sized to cells cw x ch with the
- * bitmap font's baseline `base` rows down. 0 when there is no such font,
- * no engine for it, or no memory: the caller draws as without one.
+/* The TrueType font `name` (FONTS:<name>.otag naming the .ttf, as
+ * ttfinstall writes it, else FONTS:<name>.ttf; a ".otag" or ".font" suffix
+ * is taken off), its glyphs sized to cells cw x ch with the bitmap font's
+ * baseline `base` rows down. 0 when there is no such font, it is not
+ * TrueType, or no memory: the caller draws as without one.
  * name "" opens the worker alone, for vo_read (its glyphs all missing). */
 vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base);
 void vo_close(vo_font *f);

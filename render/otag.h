@@ -12,7 +12,8 @@
  * falls inside the file, the list ends, and the engine's name (OT_Engine,
  * e.g. "ttf" for ttf.library, "bullet" for Intellifont) is a string there.
  * It also finds OT_Spec1, where ttfinstall keeps the .ttf file's path (the
- * path as given to ttfinstall, lower-cased: plan R0.1, measured under vamos).
+ * path as given to ttfinstall, lower-cased: plan R0.1, measured under vamos):
+ * render/outline.c reads that file with its own engine, never the .otag's.
  *
  * Portable C89, as render/glyphmap.c. */
 #ifndef OTAG_H

@@ -4217,7 +4217,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         copy_str(c->w.fallback, str_ieq(cmd.arg, "none") ? "" : cmd.arg, sizeof(c->w.fallback));
         vtwin_apply_settings(&c->w);
         if (c->w.fallback[0] && !c->w.outline) {
-            cat3(ans, cap, name, ": not installed, or no engine for it (FONTS:", "<name>.otag, LIBS:ttf.library)\n");
+            cat3(ans, cap, name, ": no TrueType font by that name (FONTS:", "<name>.ttf or <name>.otag)\n");
             return 2;
         }
         return 1;

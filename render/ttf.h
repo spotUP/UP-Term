@@ -1,6 +1,6 @@
 /* render/ttf: UP-Term's own TrueType reader and rasterizer, for the outline
  * glyph worker (render/outline.c) in place of ttf.library, whose 0.8.5 cannot
- * reach code points past U+FFFF (render/glyphcode.h). Plan
+ * reach code points past U+FFFF (it ignores OT_GlyphCode_32). Plan
  * thoughts/shared/plans/2026-10-22-handler-rasterizer.md.
  *
  * The font is read through callbacks, not loaded whole: the Symbols Nerd Font

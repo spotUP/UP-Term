@@ -735,7 +735,7 @@ ULONG vr_cgx_fill(struct Library *l, struct RastPort *rp, UWORD x, UWORD y, UWOR
     return 0;
 }
 
-/* the outline font (render/outline.c, bullet.library): no outline font is ever open in these tests */
+/* the outline font (render/outline.c): no outline font is ever open in these tests */
 void vo_set_cell(vo_font *f, WORD cw, WORD ch, WORD base) { (void)f; (void)cw; (void)ch; (void)base; }
 static const UBYTE *vo_fake_mask, *vo_fake_cov;
 static WORD vo_fake_bpr;
