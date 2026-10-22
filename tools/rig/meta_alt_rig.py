@@ -14,6 +14,7 @@ import pathlib, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
+import vshwin
 
 VTC = paths.RIG / 'vtc'
 OUT = 'RAM:meta.out'
@@ -39,8 +40,7 @@ def typed(s):
 def line_edit(keys):
     """open a window, type the redirected echo, press the Alt keys, add an x, run, return the output text"""
     c.run('Delete %s QUIET' % OUT)
-    c.run('Run >NIL: NewShell "XCON:0/20/640/200/meta/CLOSE"')
-    time.sleep(6)
+    vshwin.open_vsh('meta', box='0/20/640/200', wait=6)    # the line editor under test is vsh's
     x, y, w, h = ami.window('meta')['box']
     kx, ky = ami.pointer_scale()
     ami.script(('move', int((x + w // 2) * kx), int((y + h // 2) * ky)), ('wait', 2), ('button', 0, 1),
@@ -54,7 +54,7 @@ def line_edit(keys):
     time.sleep(0.5)
     ami.key(RAW_RETURN)
     time.sleep(2)
-    typed('EndCLI')
+    typed('exit')
     ami.key(RAW_RETURN)
     time.sleep(3)
     return c.run('Type %s' % OUT)[1].strip()

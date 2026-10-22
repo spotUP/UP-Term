@@ -564,7 +564,7 @@ class PiInstall(unittest.TestCase):
         self.assertIn('cp -R $(AMIGA_PI_SKILLS) $(KIT_pi)/Files/skills', mk)
         self.assertIn('AMIGA_PI_SKILLS := $(AMIGA_PI)/skills', mk)
         self.assertIn('(set #step "skills" #kb @KBSKILLS@', (ROOT / 'dist/addons/pi/Install.installer').read_text())
-        check = re.search(r'(?ms)^dist-check:\n.*?^\t@test -s \$\(BUILD\)/up-term-src.lha', mk).group(0)
+        check = re.search(r'(?ms)^dist-check:[^\n]*\n.*?^\t@test -s \$\(BUILD\)/up-term-src.lha', mk).group(0)
         for n in SKILLS:     # dist-check lists the four SKILL.md in the lha
             self.assertIn(n, check)
         self.assertIn('up-pi/Files/skills/$$s/SKILL.md', check)
