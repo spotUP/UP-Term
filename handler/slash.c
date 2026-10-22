@@ -491,6 +491,7 @@ void slash_state_bump(slash_state *s, int ev, long arg, const char *name)
         break;
     case STATE_COPY: s->copies++; break;
     case STATE_PASTE: s->pastes++; break;
+    case STATE_KEYMAP: s->km_hits++; s->last_km = arg; break;
     }
 }
 
@@ -508,7 +509,7 @@ int slash_line_name(const char *line, int len, char *out, int cap)
 }
 
 static const char *const state_keys[] = { "tabs-opened", "tab-switches", "menu-picks", "last-menu", "slash-count",
-                                           "last-slash", "copies", "pastes", "tabs", "active" };
+                                           "last-slash", "copies", "pastes", "tabs", "active", "km-hits", "last-key" };
 
 static void put_long(char *v, long n)
 {
@@ -539,6 +540,8 @@ static void state_value(const slash_state *s, int k, char *v)
     case 7: n = s->pastes; break;
     case 8: n = s->tabs; break;
     case 9: n = s->active; break;
+    case 10: n = s->km_hits; break;
+    case 11: n = s->last_km; break;
     }
     put_long(v, n);
 }
