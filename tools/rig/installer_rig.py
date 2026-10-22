@@ -85,6 +85,8 @@ CASES["migrate"] = ("AVERAGE", None)
 FULLDEST = "DH1:KitTest-full"   # the fullsuite case's drawer for UP-Term: never SYS: (it is small and the owner's)
 FULL_DRAWER = "nvim"            # the add-on staged as an unpacked drawer; the rest are .lha files
 CASES["fullsuite"] = ("AVERAGE", None)
+# F1: the fresh kit, every box on every page ticked (only drawer and install mode stay default), a reboot, Amarchy up
+CASES["fresh-all"] = ("AVERAGE", None)
 ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page: Rushhours, about 1 GB free
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs
@@ -776,6 +778,43 @@ def run_kingcon():
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 
 
+ROOM_CASES = ('default', 'fresh-all')   # SYS: is too small for the default parts: the room page sends them to ROOMDEST
+
+
+def amarchy_window():
+    return any(t == 'Amarchy' for t, _ in windows(ami.req(0x0D).decode('latin-1')))
+
+
+def reboot_amarchy_check(ck, log):
+    """F1: after the install the rig is rebooted (once the Installer's writes are quiet); the startup block must
+    have started Amarchy: its ARexx port answers STATUS, and Left Amiga + Space opens its menu (an XCON: window
+    titled Amarchy)."""
+    import tabstate
+    time.sleep(10)   # the Installer's last writes and the volume's flush, never a reset mid-write
+    rig("stop")
+    rig("start")
+    ir._shown = None
+    time.sleep(5)
+    m = ami._m()
+    try:
+        with ami._conn() as conn:
+            st = m.arexx(conn, 'AMARCHY', 'STATUS')[2].strip()
+    except m.WasabiError:
+        st = ''
+    ck(bool(st), 'after the reboot: the AMARCHY ARexx port answers STATUS', st or 'no port')
+    log.append('amarchy STATUS after reboot: %s' % st)
+    tabstate.open_host('f1host')
+    ami.key(0x40, 0x40)   # Left Amiga + Space
+    t0 = time.time()
+    while time.time() - t0 < 20 and not amarchy_window():
+        time.sleep(0.5)
+    up = amarchy_window()
+    ck(up, 'after the reboot: Left Amiga + Space opens the Amarchy menu window', 'no window titled Amarchy in 20 s')
+    log.append('menu window after reboot: %s' % up)
+    ami.key(0x45)         # Esc at the root leaves the menu
+    time.sleep(3)
+
+
 def run_base_case(case):
     level, dest = CASES[case]
     drawer = dest or "SYS:UP-Term"
@@ -787,7 +826,7 @@ def run_base_case(case):
     if dest:
         parent_existed = make_dest_parent(dest)   # the new drawer's parent must exist
         ir.run_slow('deletedest', drawer_delete(dest))
-    if case == 'default':
+    if case in ROOM_CASES:
         ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
     sys_kb = sys_free_bytes() // 1024   # what the room page must say SYS: has
     startup_before = ir.run('Type S:User-Startup')[1]
@@ -803,7 +842,7 @@ def run_base_case(case):
     t_install = time.time()
     ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER %s DEFUSER %s NOLOG' % (inst, level, level), 30)
     time.sleep(5)
-    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'), room_dest=ROOMDEST if case == 'default' else None)
+    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'), room_dest=ROOMDEST if case in ROOM_CASES else None, tick_all=(case == 'fresh-all'))
     t_install = time.time() - t_install
     (OUT / (case + ".log.txt")).write_text('\n'.join(log) + '\n')
     ck(finished, 'the Installer ran to its end (%s)' % level, log[-1] if log else '')
@@ -812,7 +851,7 @@ def run_base_case(case):
         # SYS: has too little room for the default parts: the user takes another drive (ROOMDEST) and the install goes there
         n_kb, m_kb = map(int, re.findall(r'\d+', room[0]))
         ck(n_kb == sys_kb, 'the room page says SYS: has %d KB free (Info: %d KB)' % (n_kb, sys_kb))
-        ck(n_kb < m_kb and 60000 <= m_kb <= 110000, 'the room page\'s need (%d KB) is plausible for the default parts (60000 to 110000 KB, above the free room)' % m_kb)
+        ck(n_kb < m_kb and (case == 'fresh-all' or 60000 <= m_kb <= 110000), 'the room page\'s need (%d KB) is plausible for the default parts (60000 to 110000 KB, above the free room)' % m_kb)
         drawer = ROOMDEST
         ck(any(l.startswith('made %s through Make New Drawer' % ROOMDEST) for l in log), 'the drawer on the other drive was asked for')
     lay = [l for l in log if l.startswith('LAYOUT')]
@@ -864,6 +903,8 @@ def run_base_case(case):
     ck(ir.run('Assign >NIL: PTY: EXISTS DEVICES')[0] == 0, 'PTY: is mounted')
     rc, out = ir.run('C:UPConsole STATUS')
     ck('kit:' in out, 'UPConsole STATUS prints the kit line (UP-Term:VERSIONS)', out)
+    if case == 'fresh-all':
+        reboot_amarchy_check(ck, log)
     if case in ('update', 'update-noopts'):
         update_phase(ck, inst, level, base, t_install, noopts=case == 'update-noopts')
     # a running C:wasabid keeps running through Uninstall, the kit's or the
