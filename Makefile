@@ -84,6 +84,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = build_stamp ]; then python3 -I tools/test_build_stamp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_paths ]; then python3 -I tools/test_rig_paths.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabimcp ]; then python3 -I tools/test_rig_wasabimcp.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_muforce ]; then python3 -I tools/test_rig_muforce.py; fi
@@ -947,10 +948,11 @@ $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/kitty.c engine/inflate.c engi
 # The handler: no C startup (handler_entry is the first code), exec memory.
 # Gotcha: with -O2, vbcc can loop forever on a source that has a compile
 # error instead of reporting it; build with -O0 to see the error.
-# Rebuild when the flags change (DEBUG=1, PROF=1, DIRECT=1 on or off): the last
+# Rebuild when the flags change (DEBUG=1, PROF=1, DIRECT=1 on or off, or a new git revision for the
+# "UP-Term build" in $VER, tools/test_build_stamp.py): the last
 # flags are read while make parses, and a difference forces the link (a
 # stamp file's mtime could equal the binary's to the second and be ignored).
-HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) PROF=$(PROF) CPU=$(CPU) DIRECT=$(DIRECT)
+HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) PROF=$(PROF) CPU=$(CPU) DIRECT=$(DIRECT) BUILD=$(GITREV)
 HANDLER_FLAGS_OLD := $(shell cat $(BUILD)/amiga/handler.flags 2>/dev/null)
 ifneq ($(HANDLER_FLAGS),$(HANDLER_FLAGS_OLD))
 HANDLER_FORCE := FORCE
@@ -1011,7 +1013,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 
 # PTY: (P5): pseudo-terminals on the same line discipline. No C startup:
 # handler/handler_start.s (shared with vtcon-handler) is linked first.
-PTY_FLAGS := DEBUG=$(DEBUG)
+PTY_FLAGS := DEBUG=$(DEBUG) BUILD=$(GITREV)
 ifneq ($(PTY_FLAGS),$(shell cat $(BUILD)/amiga/pty.flags 2>/dev/null))
 PTY_FORCE := FORCE
 endif
