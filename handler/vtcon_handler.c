@@ -7415,8 +7415,10 @@ static LONG handler_main(void)
             g_km_claim = 0;
         }
         Permit();
-        if (gone)
+        if (gone) {
+            keymap_free(gone);
             FreeVec(gone);
+        }
     }
     FreeVec(c);
     return 0;

@@ -604,7 +604,7 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h pr
 AMARCHY_SRC := claude/util.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/cxdesc.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c
 $(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/cx.h amarchy/cxdesc.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -DKM_MAX_MENU=1 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
 # The Amarchy commodity stays under its "under 20 KB resident" target (file + BSS; plan
 # 2026-10-22-amarchy-commodity.md). Needs the Amiga build, so it is not part of `make test`.

@@ -3,6 +3,23 @@
 #include "upconf.h"
 #include "keymap.h"
 
+#if defined(VT_COUNT_ALLOC)
+/* the host tests: every block counted (tests/harness.c), a leak shows as a live byte */
+#include <stdlib.h>
+#include "../engine/vtengine.h"
+#define KM_MALLOC(n) vt_count_malloc((unsigned long)(n))
+#define KM_FREE(p) vt_count_free(p)
+#elif defined(AMIGA) || defined(__amigaos__)
+#include <exec/memory.h>
+#include <proto/exec.h>
+#define KM_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)
+#define KM_FREE(p) FreeVec(p)
+#else
+#include <stdlib.h>
+#define KM_MALLOC(n) malloc(n)
+#define KM_FREE(p) free(p)
+#endif
+
 typedef struct kname {
     const char *name;
     unsigned char code;
@@ -116,14 +133,11 @@ static int km_copy(char *dst, int n, const char *src)
     return 1;
 }
 
-/* Copy and cut to n-1 (a display label may be cut; an action may not). */
-static void km_copy_cut(char *dst, int n, const char *src)
+/* The length of src cut to n-1 (a display label may be cut; an action may not). */
+static int km_cut(const char *src, int n)
 {
     int len = (int)strlen(src);
-    if (len >= n)
-        len = n - 1;
-    memcpy(dst, src, (size_t)len);
-    dst[len] = 0;
+    return len >= n ? n - 1 : len;
 }
 
 /* Replace %n with digit d in src into dst (size n). 0 when too long. */
@@ -217,6 +231,89 @@ static int action_parse(const char *text, action *a)
     return 1;
 }
 
+/* ---- memory: the arrays grow to the parsed counts, the strings sit in chunks ---- */
+
+#define KM_CHUNK 1024
+#define KM_STEP  16
+
+typedef struct km_chunk {
+    struct km_chunk *next;
+    int used, cap;
+    char data[4];
+} km_chunk;
+
+static const char km_empty[] = "";
+
+/* A copy of s (at most len bytes, then NUL) in the pool; 0 when out of memory. */
+static const char *pool_str(keymap *k, const char *s, int len)
+{
+    km_chunk *c = k->pool;
+    char *p;
+    if (len == 0)
+        return km_empty;
+    if (!c || c->cap - c->used < len + 1) {
+        int cap = len + 1 > KM_CHUNK ? len + 1 : KM_CHUNK;
+        c = (km_chunk *)KM_MALLOC(sizeof(km_chunk) + (size_t)cap);
+        if (!c)
+            return 0;
+        c->next = k->pool;
+        c->used = 0;
+        c->cap = cap;
+        k->pool = c;
+    }
+    p = c->data + c->used;
+    memcpy(p, s, (size_t)len);
+    p[len] = 0;
+    c->used += len + 1;
+    return p;
+}
+
+/* Room for one more of an array (elem bytes each, at most max): 1 ok, 0 full or no memory. */
+static int grow(void **arr, int *cap, int n, int max, size_t elem)
+{
+    void *na;
+    int nc;
+    if (n < *cap)
+        return 1;
+    if (n >= max)
+        return 0;
+    nc = *cap + KM_STEP;
+    if (nc > max)
+        nc = max;
+    na = KM_MALLOC(elem * (size_t)nc);
+    if (!na)
+        return 0;
+    if (*arr) {
+        memcpy(na, *arr, elem * (size_t)n);
+        KM_FREE(*arr);
+    }
+    *arr = na;
+    *cap = nc;
+    return 1;
+}
+
+void keymap_free(keymap *k)
+{
+    km_chunk *c = k->pool;
+    while (c) {
+        km_chunk *next = c->next;
+        KM_FREE(c);
+        c = next;
+    }
+    if (k->bind)
+        KM_FREE(k->bind);
+    if (k->menu)
+        KM_FREE(k->menu);
+    memset(k, 0, sizeof(*k));
+}
+
+void keymap_swap(keymap *live, keymap *scratch)
+{
+    keymap_free(live);
+    *live = *scratch;
+    memset(scratch, 0, sizeof(*scratch));
+}
+
 /* ---- tables ---- */
 
 static void bad_row(keymap *k, int lineno, int refused, int overflow)
@@ -238,12 +335,13 @@ static void bind_remove(keymap *k, int i)
     k->nbind--;
 }
 
-/* 1 stored (or removed); 0 table full. */
+/* 1 stored (or removed); 0 table full or out of memory. */
 static int bind_apply(keymap *k, unsigned qual, unsigned code, const action *a,
                       const char *label, const char *cat)
 {
     int i;
     km_bind *b = 0;
+    const char *sa, *sl, *sc;
     for (i = 0; i < k->nbind; i++)
         if (k->bind[i].qual == qual && k->bind[i].code == code) {
             if (a->kind == KA_NONE) {
@@ -255,17 +353,22 @@ static int bind_apply(keymap *k, unsigned qual, unsigned code, const action *a,
         }
     if (a->kind == KA_NONE)
         return 1;
+    sa = pool_str(k, a->arg, (int)strlen(a->arg));
+    sl = pool_str(k, label, km_cut(label, KM_LABEL));
+    sc = pool_str(k, cat, km_cut(cat, KM_CAT));
+    if (!sa || !sl || !sc)
+        return 0;
     if (!b) {
-        if (k->nbind >= KM_MAX_BIND)
+        if (!grow((void **)&k->bind, &k->bcap, k->nbind, KM_MAX_BIND, sizeof(km_bind)))
             return 0;
         b = &k->bind[k->nbind++];
     }
     b->qual = (unsigned short)qual;
     b->code = (unsigned char)code;
     b->kind = (unsigned char)a->kind;
-    km_copy(b->arg, KM_ARG, a->arg);
-    km_copy_cut(b->label, KM_LABEL, label);
-    km_copy_cut(b->cat, KM_CAT, cat);
+    b->arg = sa;
+    b->label = sl;
+    b->cat = sc;
     return 1;
 }
 
@@ -273,6 +376,7 @@ static int menu_apply(keymap *k, const char *id, const action *a, const char *la
 {
     int i;
     km_menu *m = 0;
+    const char *si, *sl, *sa;
     for (i = 0; i < k->nmenu; i++)
         if (!strcmp(k->menu[i].id, id)) {
             if (a->kind == KA_NONE) {
@@ -287,15 +391,20 @@ static int menu_apply(keymap *k, const char *id, const action *a, const char *la
         }
     if (a->kind == KA_NONE)
         return 1;
+    si = pool_str(k, id, (int)strlen(id));
+    sl = pool_str(k, label, km_cut(label, KM_LABEL));
+    sa = pool_str(k, a->arg, (int)strlen(a->arg));
+    if (!si || !sl || !sa)
+        return 0;
     if (!m) {
-        if (k->nmenu >= KM_MAX_MENU)
+        if (!grow((void **)&k->menu, &k->mcap, k->nmenu, KM_MAX_MENU, sizeof(km_menu)))
             return 0;
         m = &k->menu[k->nmenu++];
     }
     m->kind = (unsigned char)a->kind;
-    km_copy(m->id, KM_ID, id);
-    km_copy_cut(m->label, KM_LABEL, label);
-    km_copy(m->arg, KM_ARG, a->arg);
+    m->id = si;
+    m->label = sl;
+    m->arg = sa;
     return 1;
 }
 
@@ -519,7 +628,7 @@ static int load(keymap *k, const char *buf, long len)
 int keymap_parse(keymap *k, const char *buf, long len)
 {
     int v;
-    memset(k, 0, sizeof(*k));
+    keymap_free(k);
     if (!buf)
         return 0;
     v = version_of(buf, len);

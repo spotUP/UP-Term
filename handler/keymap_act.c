@@ -149,9 +149,9 @@ int upreq_resolve(const upreq_body *r, kact *out, km_bind *tmp)
         return UPREQ_NOTMINE;
     else
         return UPREQ_UNKNOWN;
-    if (strlen(colon + 1) >= sizeof tmp->arg)
+    if (strlen(colon + 1) >= KM_ARG)
         return UPREQ_UNKNOWN;
-    strcpy(tmp->arg, colon + 1);
+    tmp->arg = colon + 1;       /* inside the request, which outlives the answer */
     if (kact_resolve(tmp, out) == KACT_NONE)
         return UPREQ_UNKNOWN;
     return UPREQ_OK;

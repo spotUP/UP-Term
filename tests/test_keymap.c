@@ -8,6 +8,7 @@
 #include "../handler/menu_ids.h"
 #include "../amarchy/cxdesc.h"
 #include "../amarchy/menu_core.h"
+#include "../engine/vtengine.h"
 #include "harness.h"
 
 #define RAW_K     0x27
@@ -656,8 +657,46 @@ static void the_menu_builds_the_request_of_a_leaf(void)
     CHECK(!upreq_fill(&r, KA_RUN, "C:Echo"));
 }
 
+/* The table sits on the heap sized to its content, and the commodity's reload
+ * (keymap_reload: parse into a scratch, keymap_swap on success, keymap_free of
+ * what is left) keeps the old map on a bad edit and leaks nothing over many
+ * reloads. Counted by the host build's allocation counter (VT_COUNT_ALLOC). */
+static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothing(void)
+{
+    static const char good[] = "[bind]\nsuper+k = viewer ; Keys | menu\nsuper+t = tab:new ; New tab | tab\n[menu]\napps.x = X | run:x\n";
+    static const char other[] = "[bind]\nsuper+j = run:j ; J | apps\n";
+    static const char newer[] = "[keymap]\nversion = 9\n[bind]\nsuper+q = run:q\n";
+    long base = vt_count_live, one, i;
+    keymap live, scratch;
+    memset(&live, 0, sizeof live);
+    memset(&scratch, 0, sizeof scratch);
+    CHECK(keymap_parse(&live, good, (long)strlen(good)));
+    one = vt_count_live - base;
+    CHECK(one > 0 && one < 4096);               /* sized to 2 binds + 1 menu, not to the caps */
+    for (i = 0; i < 50; i++) {
+        /* a bad edit: refused whole, the live table is untouched, nothing stays held */
+        CHECK(!keymap_parse(&scratch, newer, (long)strlen(newer)));
+        keymap_free(&scratch);
+        CHECK_INT(live.nbind, 2);
+        CHECK(keymap_find(&live, KM_Q_SUPER, RAW_K) != 0);
+        CHECK_INT((int)(vt_count_live - base), (int)one);
+        /* a good edit: swapped in, the old one released */
+        CHECK(keymap_parse(&scratch, good, (long)strlen(good)));
+        keymap_swap(&live, &scratch);
+        CHECK_INT((int)(vt_count_live - base), (int)one);
+        CHECK(scratch.bind == 0 && scratch.pool == 0);
+    }
+    CHECK(keymap_parse(&scratch, other, (long)strlen(other)));
+    keymap_swap(&live, &scratch);
+    CHECK_INT(live.nbind, 1);
+    CHECK(keymap_find(&live, KM_Q_SUPER, RAW_K) == 0);
+    keymap_free(&live);
+    CHECK_INT((int)(vt_count_live - base), 0);
+}
+
 void suite_keymap(void)
 {
+    a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothing();
     comments_crlf_and_fields();
     digits_expand_with_percent_n();
     bad_rows_are_skipped_and_counted();

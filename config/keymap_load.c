@@ -58,15 +58,15 @@ int keymap_load(keymap *km, const char *def_text)
 
 int keymap_reload(keymap *km)
 {
-    keymap *t = (keymap *)AllocVec(sizeof(keymap), MEMF_ANY | MEMF_CLEAR);
+    keymap t;
     char *buf = (char *)AllocVec(KM_FILE_MAX + 2, MEMF_ANY);
     int ok = 0;
-    if (t && buf && load(t, 0, buf)) {
-        CopyMem(t, km, sizeof(keymap));
+    memset(&t, 0, sizeof t);
+    if (buf && load(&t, 0, buf)) {
+        keymap_swap(km, &t);    /* the old table is released only now */
         ok = 1;
     }
-    if (t)
-        FreeVec(t);
+    keymap_free(&t);            /* a refused scratch; empty after a swap */
     if (buf)
         FreeVec(buf);
     return ok;

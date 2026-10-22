@@ -33,16 +33,20 @@
  * replace by id).
  *
  * Unknown sections and unknown [keymap] keys are ignored (forward
- * compatible). Built on upconf_rows (one shared tokeniser). Portable C89,
- * no allocation: keymap is a fixed-size struct the caller provides.
+ * compatible). Built on upconf_rows (one shared tokeniser). Portable C89.
+ *
+ * Memory: the keymap struct is a small header the caller provides (zeroed
+ * once: a static, or MEMF_CLEAR). The bind and menu arrays and the strings
+ * (action argument, label, category, menu id) live on the heap, sized to the
+ * parsed content, in chunks that never move so a const char * into them stays
+ * valid until keymap_free. keymap_parse and keymap_free release what the
+ * struct held; keymap_swap hands a parsed scratch over to the live table.
  */
 #ifndef KEYMAP_H
 #define KEYMAP_H
 
 #define KM_MAX_BIND  192
-#ifndef KM_MAX_MENU
-#define KM_MAX_MENU  128   /* a build that never reads km_menu (Amarchy) sets 1 on the command line */
-#endif
+#define KM_MAX_MENU  128
 #define KM_ARG       80
 #define KM_LABEL     32
 #define KM_CAT       12
@@ -78,17 +82,19 @@ typedef struct km_bind {
     unsigned short qual;        /* KM_Q_* */
     unsigned char  code;        /* Amiga raw key code */
     unsigned char  kind;        /* KA_* */
-    char arg[KM_ARG];           /* the text after the prefix */
-    char label[KM_LABEL];
-    char cat[KM_CAT];
+    const char *arg;            /* the text after the prefix (at most KM_ARG - 1), never NULL */
+    const char *label;          /* cut to KM_LABEL - 1, never NULL */
+    const char *cat;            /* cut to KM_CAT - 1, never NULL */
 } km_bind;
 
 typedef struct km_menu {
     unsigned char kind;
-    char id[KM_ID];             /* dotted tree id, e.g. "apps.upkg" */
-    char label[KM_LABEL];
-    char arg[KM_ARG];
+    const char *id;             /* dotted tree id, e.g. "apps.upkg" */
+    const char *label;
+    const char *arg;
 } km_menu;
+
+struct km_chunk;                /* the string pool: a chain of fixed blocks */
 
 typedef struct keymap {
     int version;                /* [keymap] version, 0 when absent */
@@ -98,15 +104,22 @@ typedef struct keymap {
     int refused;                /* the safety refusals among them */
     int overflow;               /* a table was full or a line too long */
     int first_bad;              /* line number of the first skipped row, 0 when none */
-    km_bind bind[KM_MAX_BIND];
-    km_menu menu[KM_MAX_MENU];
+    km_bind *bind;              /* heap: bcap slots, nbind used */
+    km_menu *menu;              /* heap: mcap slots, nmenu used */
+    int bcap, mcap;
+    struct km_chunk *pool;
 } keymap;
 
-/* Parse a whole file: the table is cleared first. 1 when the table is
+/* Parse a whole file: the table is released and cleared first. 1 when the table is
  * usable (an empty or missing file is: 0 rows), 0 when buf is NULL or the
  * file's version is newer than ours (k->newer; the table stays empty and
  * the caller keeps its compiled-in default). */
 int  keymap_parse(keymap *k, const char *buf, long len);
+/* Release the arrays and strings; the struct is zeroed (safe to parse again). */
+void keymap_free(keymap *k);
+/* Make *live the parsed *scratch: what live held is released, scratch is
+ * zeroed (its memory now belongs to live). */
+void keymap_swap(keymap *live, keymap *scratch);
 /* Read a second file over the table (keymap.user): rows replace by key
  * spec, "none" unbinds, [menu] rows replace by id. Counters add up. Same
  * return as keymap_parse; a newer-version file changes nothing. */
