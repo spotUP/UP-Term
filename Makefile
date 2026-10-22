@@ -64,6 +64,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
 # ONLY=rig_browse_base upkg_browse_rig step 0 installs the kit over an older base (tools/test_rig_browse_base.py)
 # ONLY=rig_help rig.py takes --help, -h, help and ? (tools/test_rig_help.py)
+# ONLY=ans2utf8 the vsh banner's bright letters are not drawn bold (tools/test_ans2utf8.py)
 # ONLY=rig_kit a rig with a kit boots the builds of VTC: over the kit's copies in SYS: (tools/test_rig_kit.py)
 # ONLY=rig_upterm the rig has UP-Term:bin/vsh, the SYS:System icon and no global TERM (tools/test_rig_upterm.py)
 # ONLY=pi_recordings amiga-pi's OpenAI recordings against OpenAI's schema (tools/test_pi_recordings.py)
@@ -98,6 +99,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_base ]; then python3 -I tools/test_rig_browse_base.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_help ]; then python3 -I tools/test_rig_help.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ans2utf8 ]; then python3 -I tools/test_ans2utf8.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_upterm ]; then python3 -I tools/test_rig_upterm.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_kit ]; then python3 -I tools/test_rig_kit.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_recordings ]; then python3 -I tools/test_pi_recordings.py; fi
