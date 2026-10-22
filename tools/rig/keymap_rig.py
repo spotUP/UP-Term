@@ -15,6 +15,7 @@ import argparse, pathlib, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
+from tabstate import counters, open_host
 
 OUT = pathlib.Path(paths.RIG) / 'keymap'
 LAMIGA, LSHIFT = 0x40, 0x01        # IEQUALIFIER_LCOMMAND, IEQUALIFIER_LSHIFT
@@ -37,17 +38,6 @@ ROWS = [
     ('clear_screen', RAW['k'],      0x80 | LSHIFT,    'none'),   # Right Amiga Shift K (B4); 0x80 = IEQUALIFIER_RCOMMAND
     ('tab_close',    RAW['w'],      LAMIGA,           'tabs-1'),
 ]
-
-
-def counters():
-    c.run('Delete RAM:km.out QUIET')
-    c.run('UPTerm state >RAM:km.out')
-    d = {}
-    for l in c.run('Type RAM:km.out')[1].splitlines():
-        f = l.replace('=', ' ').replace(':', ' ').split()
-        if len(f) >= 2 and f[-1].lstrip('-').isdigit():
-            d[f[0]] = int(f[-1])
-    return d
 
 
 def run_row(row):
@@ -78,6 +68,7 @@ def main():
     ap.add_argument('--fresh', action='store_true')
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    open_host()                    # `UPTerm state` answers only inside an UP-Term window
     passed = total = 0
     for row in ROWS:
         name = row[0]

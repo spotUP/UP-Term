@@ -17,7 +17,7 @@ import argparse, pathlib, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
-import stage_rig
+import stage_rig, tabstate
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
 LAMIGA, LALT = 0x40, 0x10          # IEQUALIFIER_LCOMMAND, IEQUALIFIER_LALT
@@ -25,12 +25,6 @@ RAW_J = 0x26
 SENT = 'T:amarchy.sentinel'
 USERMAP = 'ENV:up-term/keymap.user'
 ROW_LINE = 'super+alt+j = run:C:Echo >%s hit' % SENT
-
-
-def amiga_out(cmd):
-    c.run('Delete RAM:am.out QUIET')
-    c.run(cmd + ' >RAM:am.out')
-    return c.run('Type RAM:am.out')[1]
 
 
 def arexx(cmd):
@@ -54,12 +48,7 @@ def status():
 
 
 def km_hits():
-    d = {}
-    for l in amiga_out('UPTerm state').splitlines():
-        f = l.replace('=', ' ').replace(':', ' ').split()
-        if len(f) >= 2 and f[-1].lstrip('-').isdigit():
-            d[f[0]] = int(f[-1])
-    return d.get('km-hits', 0)
+    return tabstate.counters().get('km-hits', 0)
 
 
 def port_up():
@@ -108,10 +97,7 @@ def r_r1_hit():
 
 def r_r3_terminal():
     # R3: UPTerm window active, same chord: exactly one action runs, and it is the handler's
-    c.run('Run >NIL: NewShell "XCON:0/20/640/300/UP-Term/CLOSE"')
-    time.sleep(2)
-    ami.click_px(100, 100)
-    time.sleep(1)
+    tabstate.open_host('amhost')
     h0, k0 = status().get('hits', 0), km_hits()
     ok = chord()
     h1, k1 = status().get('hits', 0), km_hits()
