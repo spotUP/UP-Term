@@ -965,6 +965,11 @@ $(BUILD)/amiga/rkcprobe: tests/amiga/rkcprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/rkcprobe.c
 
+# Amarchy clash rig's third-party window (tools/rig/amarchy_clash_rig.py)
+$(BUILD)/amiga/lcmdprobe: tests/amiga/lcmdprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/lcmdprobe.c
+
 # DV1's probe (tools/rig/condev_rig.py)
 $(BUILD)/amiga/devwho: tests/amiga/devwho.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga

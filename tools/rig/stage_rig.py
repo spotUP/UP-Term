@@ -14,7 +14,8 @@ import paths
 
 BUILD = paths.VTCON / 'build/amiga'
 # program -> make target that builds it (amarchy-menu needs upterm-ports built, see the Makefile)
-TARGETS = {'Amarchy': 'build/amiga/Amarchy', 'amarchy-menu': 'build/amiga/amarchy-menu'}
+TARGETS = {'Amarchy': 'build/amiga/Amarchy', 'amarchy-menu': 'build/amiga/amarchy-menu',
+           'lcmdprobe': 'build/amiga/lcmdprobe'}
 
 
 class StageError(SystemExit):

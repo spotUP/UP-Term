@@ -2,6 +2,7 @@
 """stage_rig on the host (no emulator): a rig copy that differs from the build is restaged and verified, a
 copy that still differs after the put stops the script, and amarchy_rig.main stages before any row runs."""
 import pathlib, sys, tempfile, unittest
+from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import stage_rig
@@ -53,6 +54,27 @@ class Wired(unittest.TestCase):
         amarchy_rig.OUT = pathlib.Path(tempfile.mkdtemp())
         sys.argv = ["amarchy_rig.py", "--fresh", "--no-build"]
         self.assertEqual(amarchy_rig.main(), 0)
+        self.assertEqual(calls, ["stage", "row"])
+
+
+class ClashRig(unittest.TestCase):
+    def test_row_table_loads_and_stage_build_runs_first(self):
+        import amarchy_clash_rig as m
+        self.assertEqual([n for n, _ in m.ROWS],
+                         ["setup", "swedish_table", "screen_m_n", "window_drag", "thirdparty_key", "disable", "cleanup"])
+        rows = m.table()
+        self.assertGreaterEqual(len(rows), 30)
+        self.assertEqual([r[0] for r in rows if r[2] is None], [])     # every shipped chord has a Swedish raw code
+        calls = []
+        keep = list(m.ROWS)
+        with mock.patch.object(m.stage_rig, "stage_build", lambda *a, **kw: calls.append("stage") or {}), \
+                mock.patch.object(m, "OUT", pathlib.Path(tempfile.mkdtemp())), \
+                mock.patch.object(sys, "argv", ["amarchy_clash_rig.py", "--fresh", "--no-build"]):
+            m.ROWS[:] = [("probe", lambda: calls.append("row") or (True, "x"))]
+            try:
+                self.assertEqual(m.main(), 0)
+            finally:
+                m.ROWS[:] = keep
         self.assertEqual(calls, ["stage", "row"])
 
 
