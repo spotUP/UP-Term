@@ -15,6 +15,7 @@ import argparse, pathlib, re, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
+import stage_rig, tabstate
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
 LAMIGA = 0x40                       # IEQUALIFIER_LCOMMAND
@@ -23,18 +24,8 @@ KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
 TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
 
 
-def amiga_out(cmd):
-    c.run('Delete RAM:am.out QUIET')
-    c.run(cmd + ' >RAM:am.out')
-    return c.run('Type RAM:am.out')[1]
-
-
 def km_hits():
-    for l in amiga_out('UPTerm state').splitlines():
-        f = l.replace('=', ' ').replace(':', ' ').split()
-        if len(f) >= 2 and f[0] == 'km-hits' and f[-1].lstrip('-').isdigit():
-            return int(f[-1])
-    return 0
+    return tabstate.counters().get('km-hits', 0)
 
 
 def screen_text():
@@ -53,10 +44,8 @@ def bind_rows():
 
 
 def open_terminal():
-    c.run('Run >NIL: NewShell "XCON:0/20/640/300/UP-Term/CLOSE"')
-    time.sleep(2)
-    ami.click_px(100, 100)
-    time.sleep(1)
+    # a titled UP-Term window the handler owns: `UPTerm state` and the request port need one
+    tabstate.open_host('menuhost')
 
 
 def r_start():
@@ -144,8 +133,11 @@ def main():
     ap.add_argument('--only')
     ap.add_argument('--failed', action='store_true')
     ap.add_argument('--fresh', action='store_true')
+    ap.add_argument('--no-build', action='store_true', help='stage what build/amiga holds, do not run make')
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    # the rows run VTC:Apps/bin/Amarchy and amarchy-menu: those files must be this build
+    stage_rig.report(stage_rig.stage_build(build=not a.no_build))
     passed = total = 0
     for name, fn in ROWS:
         f = OUT / ('menu_' + name + '.verdict')

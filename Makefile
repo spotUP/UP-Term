@@ -627,7 +627,7 @@ UPKGUI_SYS ?= $(UPTERM_ROOT)/upterm-ports/build/sysroot/UP-Term
 AMARCHY_MENU_SRC := amarchy/menu.c amarchy/menu_core.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upreq.c handler/upactive.c
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
-$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/menu_core.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC)
+$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/menu_core.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a
 	@mkdir -p $(BUILD)/amiga
 	$(UPTERM_ROOT)/upterm-ports/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
 
