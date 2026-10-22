@@ -9,7 +9,7 @@ verdict is skipped on the next run. One row: --only <row>; the failures again: -
 Sentinel: the user keymap gets the row  super+alt+j = run:C:Echo >T:amarchy.sentinel hit  so the key
 creates T:amarchy.sentinel. The commodity's ARexx STATUS hit counter and `UPTerm state` km-hits are the
 two counters that prove WHICH side ran the action (R3: exactly one of them moves).
-Needs the rig up (rig.py start --max), Amarchy in C: and the handler of this branch installed.
+Needs the rig up (rig.py start --max), Amarchy in UP-Term:bin (rig.py install puts it there) and the handler of this branch installed.
 NOT RUN when written (rig 4 busy, rig 1 never): C6 and C7 stay open until it has run.
 """
 import argparse, pathlib, sys, time
@@ -65,7 +65,7 @@ def port_up():
 
 
 def start():
-    c.run('Run >NIL: Amarchy')
+    c.run('Run >NIL: UP-Term:bin/Amarchy')
     time.sleep(2)
 
 

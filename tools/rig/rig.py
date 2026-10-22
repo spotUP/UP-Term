@@ -555,9 +555,14 @@ def setup_config_only():
 
 def stage_upterm(dest, vsh):
     """The kit's UP-Term: drawer as far as the icon needs it (R9): bin/vsh, the tool
-    of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them."""
+    of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them. Amarchy and
+    amarchy-menu go to bin beside vsh when they were built, where the kit puts them (dist/install.dos
+    starts UP-Term:bin/Amarchy); before this the rig had no Amarchy and amarchy_rig.py ran none."""
     (dest / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(vsh, dest / "bin/vsh")
+    for name in ("Amarchy", "amarchy-menu"):
+        if (vsh.parent / name).is_file():
+            shutil.copyfile(vsh.parent / name, dest / "bin" / name)
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
     (dest / "UP-Term").write_text("UP-Term: double-click the icon to open a terminal with vsh.\n")
     # the Prefs editor's icon (W-R3), as make dist-base makes it; GO copies it to SYS:Prefs

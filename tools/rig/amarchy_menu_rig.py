@@ -8,7 +8,7 @@ Table driven and resumable, like amarchy_rig.py: a verdict per row in <RIG>/amar
 Sentinel for "the request reached the handler": every request the handler runs bumps STATE_KEYMAP, so
 `UPTerm state` km-hits moves by exactly 1 per delivered leaf (a key binding moves it the same way, one
 code path). The chord for /theme is NOT needed: the request port works with it unbound.
-Needs the rig up (rig.py start --max), Amarchy in C:, amarchy-menu next to it, the handler of this branch
+Needs the rig up (rig.py start --max), Amarchy and amarchy-menu in UP-Term:bin (rig.py install puts them there), the handler of this branch
 installed. NOT RUN when written: the rows stay open until it has run.
 """
 import argparse, pathlib, re, sys, time
@@ -61,7 +61,7 @@ def open_terminal():
 
 
 def r_start():
-    c.run('Run >NIL: Amarchy')
+    c.run('Run >NIL: UP-Term:bin/Amarchy')
     open_terminal()
     return True, 'commodity started, terminal window open and focused'
 
