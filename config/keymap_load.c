@@ -3,6 +3,8 @@
 #include <dos/dos.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <proto/keymap.h>
+#include <devices/keymap.h>
 #include <string.h>
 #include "keymap_load.h"
 
@@ -47,11 +49,41 @@ static int load(keymap *km, const char *def_text, char *buf)
     return ok;
 }
 
+/* The raw code of the key that prints ch on the default keymap, unshifted and
+ * with no alt, else -1 (keymap.library MapANSI). */
+struct Library *KeymapBase;
+static int char_to_raw(char ch)
+{
+    UBYTE buf[2];
+    LONG n = MapANSI((STRPTR)&ch, 1, (STRPTR)buf, 2, NULL);
+    if (n != 1)
+        return -1;
+    if (buf[1] & (KCF_SHIFT | KCF_ALT | KCF_CONTROL))
+        return -1;
+    return buf[0];
+}
+
+/* Symbol key names follow the active keymap; before every parse (a RELOAD too). */
+static void set_layout(void)
+{
+    KeymapBase = OpenLibrary((STRPTR)"keymap.library", 37);
+    if (!KeymapBase) {
+        keymap_set_layout(0);
+        return;
+    }
+    keymap_set_layout(char_to_raw);   /* resolved now, the library is not needed after */
+    CloseLibrary(KeymapBase);
+    KeymapBase = 0;
+}
+
 /* The read buffer (16 KB) is released as soon as the file is parsed, before anything is rebuilt. */
 static int load_buf(keymap *km, const char *def_text, int (*keep)(const km_bind *), int compact)
 {
-    char *buf = (char *)AllocVec(KM_FILE_MAX + 2, MEMF_ANY);
-    int ok = load(km, def_text, buf);
+    char *buf;
+    int ok;
+    set_layout();
+    buf = (char *)AllocVec(KM_FILE_MAX + 2, MEMF_ANY);
+    ok = load(km, def_text, buf);
     if (buf)
         FreeVec(buf);
     if (compact && !keymap_compact(km, keep))

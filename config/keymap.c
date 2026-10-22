@@ -25,27 +25,56 @@
 typedef struct kname {
     const char *name;
     unsigned char code;
+    char ch;            /* a symbol name carries its character; 0 for the rest */
 } kname;
 
 /* Amiga raw key codes. Letters and digits are board positions. */
 static const kname knames[] = {
-    { "1", 0x01 }, { "2", 0x02 }, { "3", 0x03 }, { "4", 0x04 }, { "5", 0x05 },
-    { "6", 0x06 }, { "7", 0x07 }, { "8", 0x08 }, { "9", 0x09 }, { "0", 0x0A },
-    { "minus", 0x0B }, { "plus", 0x0C },
-    { "q", 0x10 }, { "w", 0x11 }, { "e", 0x12 }, { "r", 0x13 }, { "t", 0x14 },
-    { "y", 0x15 }, { "u", 0x16 }, { "i", 0x17 }, { "o", 0x18 }, { "p", 0x19 },
-    { "a", 0x20 }, { "s", 0x21 }, { "d", 0x22 }, { "f", 0x23 }, { "g", 0x24 },
-    { "h", 0x25 }, { "j", 0x26 }, { "k", 0x27 }, { "l", 0x28 },
-    { "z", 0x31 }, { "x", 0x32 }, { "c", 0x33 }, { "v", 0x34 }, { "b", 0x35 },
-    { "n", 0x36 }, { "m", 0x37 }, { "comma", 0x38 }, { "period", 0x39 },
-    { "space", 0x40 }, { "backspace", 0x41 }, { "tab", 0x42 }, { "return", 0x44 },
-    { "esc", 0x45 }, { "del", 0x46 },
-    { "up", 0x4C }, { "down", 0x4D }, { "right", 0x4E }, { "left", 0x4F },
-    { "f1", 0x50 }, { "f2", 0x51 }, { "f3", 0x52 }, { "f4", 0x53 }, { "f5", 0x54 },
-    { "f6", 0x55 }, { "f7", 0x56 }, { "f8", 0x57 }, { "f9", 0x58 }, { "f10", 0x59 },
-    { "help", 0x5F }
+    { "1", 0x01, 0 }, { "2", 0x02, 0 }, { "3", 0x03, 0 }, { "4", 0x04, 0 }, { "5", 0x05, 0 },
+    { "6", 0x06, 0 }, { "7", 0x07, 0 }, { "8", 0x08, 0 }, { "9", 0x09, 0 }, { "0", 0x0A, 0 },
+    { "minus", 0x0B, '-' }, { "plus", 0x0C, '+' },
+    { "q", 0x10, 0 }, { "w", 0x11, 0 }, { "e", 0x12, 0 }, { "r", 0x13, 0 }, { "t", 0x14, 0 },
+    { "y", 0x15, 0 }, { "u", 0x16, 0 }, { "i", 0x17, 0 }, { "o", 0x18, 0 }, { "p", 0x19, 0 },
+    { "a", 0x20, 0 }, { "s", 0x21, 0 }, { "d", 0x22, 0 }, { "f", 0x23, 0 }, { "g", 0x24, 0 },
+    { "h", 0x25, 0 }, { "j", 0x26, 0 }, { "k", 0x27, 0 }, { "l", 0x28, 0 },
+    { "z", 0x31, 0 }, { "x", 0x32, 0 }, { "c", 0x33, 0 }, { "v", 0x34, 0 }, { "b", 0x35, 0 },
+    { "n", 0x36, 0 }, { "m", 0x37, 0 }, { "comma", 0x38, ',' }, { "period", 0x39, '.' },
+    { "space", 0x40, 0 }, { "backspace", 0x41, 0 }, { "tab", 0x42, 0 }, { "return", 0x44, 0 },
+    { "esc", 0x45, 0 }, { "del", 0x46, 0 },
+    { "up", 0x4C, 0 }, { "down", 0x4D, 0 }, { "right", 0x4E, 0 }, { "left", 0x4F, 0 },
+    { "f1", 0x50, 0 }, { "f2", 0x51, 0 }, { "f3", 0x52, 0 }, { "f4", 0x53, 0 }, { "f5", 0x54, 0 },
+    { "f6", 0x55, 0 }, { "f7", 0x56, 0 }, { "f8", 0x57, 0 }, { "f9", 0x58, 0 }, { "f10", 0x59, 0 },
+    { "help", 0x5F, 0 }
 };
 #define NKNAMES ((int)(sizeof(knames) / sizeof(knames[0])))
+
+/* The codes the lookups use: knames[] until keymap_set_layout moves the
+ * symbol names to the keys that print them. */
+static unsigned char km_code[NKNAMES];
+static int km_code_ready;
+
+static void km_code_init(void)
+{
+    int i;
+    for (i = 0; i < NKNAMES; i++)
+        km_code[i] = knames[i].code;
+    km_code_ready = 1;
+}
+
+void keymap_set_layout(int (*char_to_raw)(char ch))
+{
+    int i, r;
+    km_code_init();
+    if (!char_to_raw)
+        return;
+    for (i = 0; i < NKNAMES; i++) {
+        if (!knames[i].ch)
+            continue;
+        r = char_to_raw(knames[i].ch);
+        if (r >= 0 && r < 0x80)
+            km_code[i] = (unsigned char)r;
+    }
+}
 
 static char km_lower(char c)
 {
@@ -68,17 +97,21 @@ int keymap_key_code(const char *name)
     int i;
     if (!name)
         return -1;
+    if (!km_code_ready)
+        km_code_init();
     for (i = 0; i < NKNAMES; i++)
         if (km_ieq(name, knames[i].name))
-            return knames[i].code;
+            return km_code[i];
     return -1;
 }
 
 const char *keymap_key_name(unsigned code)
 {
     int i;
+    if (!km_code_ready)
+        km_code_init();
     for (i = 0; i < NKNAMES; i++)
-        if (knames[i].code == code)
+        if (km_code[i] == code)
             return knames[i].name;
     return 0;
 }

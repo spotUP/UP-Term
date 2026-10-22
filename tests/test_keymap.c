@@ -212,6 +212,39 @@ static void the_tables_have_caps(void)
     CHECK(km.overflow);
 }
 
+static int fake_swedish(char ch)
+{
+    return ch == '+' ? 0x0B : ch == '-' ? 0x3A : -1;
+}
+
+static int fake_none(char ch)
+{
+    (void)ch;
+    return -1;
+}
+
+/* symbol names follow the key that prints them; letters and digits stay put */
+static void symbol_names_follow_the_printed_key(void)
+{
+    keymap_set_layout(fake_swedish);
+    CHECK_INT(keymap_key_code("plus"), 0x0B);
+    CHECK_INT(keymap_key_code("minus"), 0x3A);
+    CHECK_INT(keymap_key_code("comma"), 0x38);      /* no answer: US position */
+    CHECK_INT(keymap_key_code("1"), 0x01);
+    CHECK_INT(keymap_key_code("k"), 0x27);
+    CHECK_STR(keymap_key_name(0x3A), "minus");
+    CHECK_STR(keymap_key_name(0x0B), "plus");
+    parse("[bind]\nsuper+minus = menu:root\n");
+    CHECK_INT(km.nbind, 1);
+    CHECK_INT(km.bind[0].code, 0x3A);
+    keymap_set_layout(fake_none);
+    CHECK_INT(keymap_key_code("minus"), 0x0B);
+    CHECK_INT(keymap_key_code("plus"), 0x0C);
+    keymap_set_layout(0);
+    CHECK_INT(keymap_key_code("minus"), 0x0B);
+    CHECK_INT(keymap_key_code("plus"), 0x0C);
+}
+
 static void key_names_are_raw_codes(void)
 {
     CHECK_INT(keymap_key_code("k"), 0x27);
@@ -808,6 +841,7 @@ void suite_keymap(void)
     the_user_file_overrides_the_shipped_one();
     the_tables_have_caps();
     key_names_are_raw_codes();
+    symbol_names_follow_the_printed_key();
     the_shipped_keymap_loads_whole();
     actions_resolve_to_menu_ids();
     the_shipped_file_resolves_and_derives_menu_keys();

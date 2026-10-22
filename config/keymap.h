@@ -20,6 +20,9 @@
  * Key spec: "super" plus optional shift, ctrl, alt, rshift, joined with +,
  * then one key name. Letters and digits are RAW key codes (the key's place
  * on the board, not its character), so a Swedish keymap does not move them.
+ * The symbol names minus, plus, comma and period follow the active keymap:
+ * the key that PRINTS that character (keymap_set_layout, called at startup;
+ * US positions 0x0B 0x0C 0x38 0x39 until it is).
  * "1..9" (digits) expands to one row per digit with %n replaced in the
  * action and the label. Super is Left Amiga.
  *
@@ -132,6 +135,11 @@ int  keymap_overlay(keymap *k, const char *buf, long len);
 
 /* The binding for a raw code and qualifier mask, 0 when none. */
 const km_bind *keymap_find(const keymap *k, unsigned qual, unsigned code);
+/* Move the symbol names (minus, plus, comma, period) to the keys that print
+ * them. char_to_raw returns the raw code of the key that prints ch unshifted,
+ * -1 when none (that name keeps its US position). NULL restores US. Call
+ * before the first parse. */
+void keymap_set_layout(int (*char_to_raw)(char ch));
 /* The raw code of a key name ("k", "space", "f3"), -1 when unknown. */
 int  keymap_key_code(const char *name);
 /* The key name of a raw code, 0 when it has none (the inverse, for the viewer). */

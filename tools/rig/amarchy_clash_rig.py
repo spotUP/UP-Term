@@ -39,9 +39,10 @@ BIN = paths.UPTERM_BIN
 NAMES = ('Amarchy', 'amarchy-menu', 'lcmdprobe')
 
 # Raw key codes by key NAME on the Swedish keymap (letters and digits sit at the same place as on the USA map;
-# the row names minus and plus are board positions 0x0B and 0x0C (config/keymap.c), whatever the keymap prints there).
+# the row names minus, plus, comma and period are the keys that PRINT them (config/keymap.c keymap_set_layout): on the
+# Swedish map "+" is raw 0x0B (bigger font) and "-" is raw 0x3A (smaller font); 0x0B is no longer minus).
 RAW = {'1': 0x01, '2': 0x02, '3': 0x03, '4': 0x04, '5': 0x05, '6': 0x06, '7': 0x07, '8': 0x08, '9': 0x09,
-       '0': 0x0A, 'minus': 0x0B, 'plus': 0x0C, 'period': 0x39, 'comma': 0x38, 'space': 0x40, 'return': 0x44,
+       '0': 0x0A, 'minus': 0x3A, 'plus': 0x0B, 'period': 0x39, 'comma': 0x38, 'space': 0x40, 'return': 0x44,
        'backspace': 0x41, 'tab': 0x42, 'esc': 0x45, 'up': 0x4C, 'down': 0x4D, 'right': 0x4E, 'left': 0x4F}
 RAW.update({'f%d' % n: 0x4F + n for n in range(1, 11)})
 RAW.update({ch: code for ch, code in zip('qwertyuiop', range(0x10, 0x1A))})
@@ -165,6 +166,8 @@ def r_setup():
 def r_swedish_table():
     rc, out = c.run('SetKeyboard s')
     pre = rc == 0
+    arexx('RELOAD')                          # the commodity read the layout at its start (US); read the Swedish one
+    time.sleep(2)
     rows = table()
     skipped = [r[0] for r in rows if r[2] is None]
     todo = [(i, r) for i, r in enumerate(rows) if r[2] is not None]
