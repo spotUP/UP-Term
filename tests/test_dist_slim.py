@@ -3,7 +3,7 @@
 dist/slim.txt names the paths each package owns (the one list: tools/slim.py). Checked here:
 the base kit and up-term.lha hold none of them (the fat base v1.0 did: 37 MB of 70), each
 package's staged tree and .ipk hold exactly its paths and its SOURCES.txt row, and the rows of
-the base's SOURCES.txt name no moved port. The kit of the real build is read (make dist dist-ipk);
+the base's SOURCES.txt name no moved port. The kit of the real build is read (make dist);
 skipped when it was not built, required with SLIM_REQUIRE=1 (make dist-check).
 """
 import io, os, pathlib, subprocess, sys, tarfile, tempfile, unittest
@@ -32,7 +32,7 @@ def tree(root):
 def need(case, path):
     if not path.exists():
         if REQUIRE:
-            case.fail('%s missing: make dist dist-ipk' % path)
+            case.fail('%s missing: make dist' % path)
         case.skipTest('%s not built' % path)
 
 

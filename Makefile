@@ -1114,7 +1114,7 @@ AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-src dist-index
+dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-src dist-index dist-ipk
 
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
@@ -1242,8 +1242,10 @@ dist-vim: $(BUILD)/amiga/upupdate
 dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
 	python3 tools/pkgs.py prune $(BUILD)
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
-# the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees
-dist-ipk: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
+# the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees.
+# It goes through dist-index: the add-on targets rebuild the archives, so the index is written again with them
+# (a lone `make dist-ipk` left upkg-index.txt naming the old archives and dist-check refused it)
+dist-ipk: dist-index
 	python3 tools/pkgs.py ipk $(BUILD)
 	python3 tools/pkgs.py feed $(BUILD)
 dist-src:
