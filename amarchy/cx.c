@@ -22,7 +22,7 @@ static unsigned char g_idx[KM_MAX_BIND];
 static const keymap *g_km;
 static CxObj *g_objs[KM_MAX_BIND];
 
-/* The gate in front of every hotkey's sender. A key goes on down the network
+/* The gate in front of every hotkey's sender; it tests only its own row (its CxCustom id). A key goes on down the network
  * (to the next hotkey filter, then to the application) when no row matches its
  * exact qualifier mask, or when a window of ours has focus and the row is the
  * terminal's own (scope T): the handler runs those. Anything else falls through
@@ -32,13 +32,10 @@ static CxObj *g_objs[KM_MAX_BIND];
 static void gate(__reg("a0") CxMsg *msg, __reg("a1") CxObj *co)
 {
     struct InputEvent *ie = (struct InputEvent *)CxMsgData(msg);
-    unsigned mask = cx_qual_mask(ie->ie_Qualifier);
-    int i;
+    long i = CxMsgID(msg);   /* this filter's own row: the id given to its CxCustom */
     (void)co;
-    for (i = 0; i < g_nrows; i++)
-        if (g_rows[i].code == ie->ie_Code && g_rows[i].qual == mask)
-            break;
-    if (i == g_nrows || (upactive_count() > 0 && keymap_action_scope(g_rows[i].kind) == KS_TERMINAL))
+    if (i < 0 || i >= g_nrows || !cx_row_takes(g_rows[i].code, g_rows[i].qual, ie->ie_Code, ie->ie_Qualifier) ||
+        (upactive_count() > 0 && keymap_action_scope(g_rows[i].kind) == KS_TERMINAL))
         DivertCxMsg(msg, g_pass, g_pass);
 }
 
@@ -111,7 +108,7 @@ int cx_install(const keymap *km)
         g_rows[n].kind = b->kind;
         g_idx[n] = (unsigned char)i;
         f = CxFilter((STRPTR)CX_FILTER_DESC);
-        c = CxCustom((APTR)gate, 0);
+        c = CxCustom((APTR)gate, n);
         s = CxSender(g_port, n);
         if (!f || !c || !s || CxObjError(f)) {
             DeleteCxObj(f); DeleteCxObj(c); DeleteCxObj(s);

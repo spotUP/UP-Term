@@ -1,3 +1,4 @@
+#include <string.h>
 #include "cxdesc.h"
 
 /* IEQUALIFIER_* values (devices/inputevent.h), kept here so the host builds */
@@ -12,14 +13,40 @@
 
 void cx_ixspec(const km_bind *b, cx_ixspec_t *x)
 {
-    /* The raw code is exact, the up-stroke bit included (key down only). Left Amiga is the one
-     * qualifier demanded; every other qualifier bit is "don't care" here, the gate decides with
+    /* commodities.library masks are CARE masks (match = ((ie ^ ix) & mask) == 0; the NDK header
+     * comment says "don't care", the library does the opposite, as creep-cterm/src/hide.c shows).
+     * The raw code is exact, the up-stroke bit included (key down only). Left Amiga is the one
+     * qualifier tested here; every other qualifier bit is ignored, the gate decides with
      * cx_qual_mask. A description string cannot carry the code: ParseIX takes a key NAME or a
      * character of the current keymap, and rejects a number (the rig saw rows=0). */
     x->code = b->code;
-    x->code_mask = 0;
+    x->code_mask = 0xFFFF;
     x->qual = IEQ_LCOMMAND;
-    x->qual_mask = (unsigned short)~IEQ_LCOMMAND;
+    x->qual_mask = IEQ_LCOMMAND;
+}
+
+int cx_row_takes(unsigned short row_code, unsigned row_qual, unsigned ie_code, unsigned ie_qual)
+{
+    return row_code == ie_code && row_qual == cx_qual_mask(ie_qual);
+}
+
+int cx_helper_cmd(char *out, int cap, const char *dir, const char *args)
+{
+    int n = 0, dl = (int)strlen(dir), al = (int)strlen(args);
+    /* '"' dir ['/'] "amarchy-menu" '"' ' ' args NUL */
+    int need = 1 + dl + 1 + 12 + 1 + 1 + al + 1;
+    if (dl == 0 || need > cap)
+        return 0;
+    out[n++] = '"';
+    memcpy(out + n, dir, dl); n += dl;
+    if (dir[dl - 1] != ':' && dir[dl - 1] != '/')
+        out[n++] = '/';
+    memcpy(out + n, "amarchy-menu", 12); n += 12;
+    out[n++] = '"';
+    out[n++] = ' ';
+    memcpy(out + n, args, al); n += al;
+    out[n] = 0;
+    return 1;
 }
 
 unsigned cx_qual_mask(unsigned q)

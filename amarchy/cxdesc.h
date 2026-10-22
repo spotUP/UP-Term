@@ -23,6 +23,15 @@ void cx_ixspec(const km_bind *b, cx_ixspec_t *x);
  * 0 when Left Amiga is not down or Control / Right Amiga / repeat is. */
 unsigned cx_qual_mask(unsigned ie_qual);
 
+/* 1 when the row (its raw code, its KM_Q_* mask) takes this key event: the exact code, key
+ * down or up, and the row's qualifier mask equal to cx_qual_mask of the event's qualifiers. */
+int cx_row_takes(unsigned short row_code, unsigned row_qual, unsigned ie_code, unsigned ie_qual);
+
+/* The command line that runs the amarchy-menu helper from Amarchy's own directory: a quoted full
+ * path ('"<dir>amarchy-menu" <args>'; a '/' is added unless dir ends in ':' or '/'). 0 when it
+ * does not fit in cap bytes or dir is empty. The bare name is not on every command path. */
+int cx_helper_cmd(char *out, int cap, const char *dir, const char *args);
+
 /* 1 when the commodity installs a hotkey filter for this row. The terminal's own
  * actions (scope T: tab:, menuid:, slash:) are the handler's: the commodity has
  * no runner for them, so a filter would only swallow the key when no window of

@@ -10,6 +10,7 @@
 #include <proto/rexxsyslib.h>
 #include <string.h>
 #include "cx.h"
+#include "cxdesc.h"
 #include "act.h"
 #include "../claude/util.h"
 #include "../config/keymap_load.h"
@@ -40,13 +41,34 @@ static keymap g_km;
 static long g_hits;
 static int g_quit;
 
-/* menu:<node> -> the amarchy-menu helper in its own terminal window */
+/* The directory Amarchy was started from (amarchy-menu ships beside it): UP-Term:bin is not on
+ * every command path, so the helper runs by its full path. Resolved once at startup. */
+static char g_dir[128];
+
+static void dir_resolve(void)
+{
+    BPTR l = GetProgramDir();
+    g_dir[0] = 0;
+    if (l && !NameFromLock(l, (STRPTR)g_dir, sizeof(g_dir)))
+        g_dir[0] = 0;
+}
+
+/* the amarchy-menu helper (full path) with args, in its own terminal window */
+static int run_helper(const char *args)
+{
+    char line[KM_ID + 160];
+    if (!cx_helper_cmd(line, sizeof(line), g_dir, args))
+        return 0;
+    return act_in_window(line);
+}
+
+/* menu:<node> -> the helper in its own terminal window */
 static int act_menu(const char *node)
 {
-    char line[KM_ID + 40];
-    cl_copy(line, "amarchy-menu menu ", sizeof(line));
-    cl_cat(line, node[0] ? node : "root", sizeof(line));
-    return act_in_window(line);
+    char args[KM_ID + 16];
+    cl_copy(args, "menu ", sizeof(args));
+    cl_cat(args, node[0] ? node : "root", sizeof(args));
+    return run_helper(args);
 }
 
 /* A decimal number after optional blanks and sign, 0 when there is none (atoi). */
@@ -94,7 +116,7 @@ static int do_row(int row)
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
     case KA_MENU:  ok = act_menu(b->arg); break;
-    case KA_VIEWER: ok = act_in_window("amarchy-menu viewer"); break;
+    case KA_VIEWER: ok = run_helper("viewer"); break;
     default:       ok = 1; break;
     }
     return ok;
@@ -145,7 +167,7 @@ static void rexx_serve(void)
         else if (starts(cmd, "QUIT"))
             g_quit = 1;
         else if (starts(cmd, "SHOW"))
-            act_in_window("amarchy-menu viewer");
+            run_helper("viewer");
         else
             rc = 10;
         m->rm_Result1 = rc;
@@ -168,6 +190,7 @@ int main(void)
             pri = (int)*(LONG *)args[0];
         FreeArgs(rda);
     }
+    dir_resolve();
     keymap_load(&g_km, km_default_text);
     if (!cx_open(pri)) {
         cx_close();

@@ -381,6 +381,47 @@ static void the_shipped_file_resolves_and_derives_menu_keys(void)
     CHECK(comm_is("-", MENU_CLEAR_SCREEN, 0));
 }
 
+/* commodities.library MatchIX, as a care mask: ((ie ^ ix) & mask) == 0 for code and qualifier */
+static int matchix(const cx_ixspec_t *x, unsigned code, unsigned qual)
+{
+    return !(((code ^ x->code) & x->code_mask) || ((qual ^ x->qual) & x->qual_mask));
+}
+
+static void cx_filter_models_matchix(void)
+{
+    cx_ixspec_t x;
+    const km_bind *b;
+    CHECK(parse("[bind]\nsuper+alt+j = viewer\n"));
+    b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, 0x26);
+    CHECK(b != 0);
+    cx_ixspec(b, &x);
+    CHECK(matchix(&x, 0x26, 0x0040 | 0x0010 | 0x8000));  /* Lamiga+Alt+J, relative-mouse bit set */
+    CHECK(!matchix(&x, 0x26 | 0x80, 0x0040 | 0x0010 | 0x8000)); /* the key-up */
+    CHECK(!matchix(&x, 0x27, 0x0040 | 0x0010));           /* another key */
+    CHECK(!matchix(&x, 0x26, 0x0010));                    /* Left Amiga up */
+}
+
+static void cx_gate_takes_only_its_own_row(void)
+{
+    /* the super+h row: super+h only, not super+shift+h, not the up stroke */
+    CHECK(cx_row_takes(0x25, KM_Q_SUPER, 0x25, 0x0040));
+    CHECK(!cx_row_takes(0x25, KM_Q_SUPER, 0x25, 0x0041));
+    CHECK(!cx_row_takes(0x25, KM_Q_SUPER, 0x25 | 0x80, 0x0040));
+    CHECK(!cx_row_takes(0x25, KM_Q_SUPER, 0x27, 0x0040));
+    CHECK(cx_row_takes(0x25, KM_Q_SUPER | KM_Q_SHIFT, 0x25, 0x0041));
+}
+
+static void cx_helper_path(void)
+{
+    char out[64];
+    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:bin", "menu root"));
+    CHECK_STR(out, "\"UP-Term:bin/amarchy-menu\" menu root");
+    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:", "viewer"));
+    CHECK_STR(out, "\"UP-Term:amarchy-menu\" viewer");
+    CHECK(!cx_helper_cmd(out, 20, "UP-Term:bin", "viewer"));   /* does not fit */
+    CHECK(!cx_helper_cmd(out, sizeof(out), "", "viewer"));      /* no directory resolved */
+}
+
 static void cx_descriptions_and_qualifier_mask(void)
 {
     char buf[16384];
@@ -397,9 +438,12 @@ static void cx_descriptions_and_qualifier_mask(void)
     CHECK(b != 0);
     cx_ixspec(b, &x);
     CHECK_INT(x.code, RAW_K);
-    CHECK_INT(x.code_mask, 0);
+    CHECK_INT(x.code_mask, 0xffff);
     CHECK_INT(x.qual, 0x0040);
-    CHECK_INT(x.qual_mask, 0xffbf);
+    CHECK_INT(x.qual_mask, 0x0040);
+    cx_filter_models_matchix();
+    cx_gate_takes_only_its_own_row();
+    cx_helper_path();
     /* the mask is the handler's: Left Amiga needed; Ctrl, Right Amiga, repeat refuse */
     CHECK_INT((int)cx_qual_mask(0x0040), KM_Q_SUPER);
     CHECK_INT((int)cx_qual_mask(0x0041), KM_Q_SUPER | KM_Q_SHIFT);
