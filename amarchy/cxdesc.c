@@ -55,3 +55,8 @@ unsigned cx_qual_mask(unsigned q)
         m |= KM_Q_SHIFT;
     return m;
 }
+
+int cx_row_installed(const km_bind *b)
+{
+    return keymap_action_scope(b->kind) != KS_TERMINAL;
+}

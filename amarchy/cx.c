@@ -97,7 +97,7 @@ int cx_install(const keymap *km)
     g_nrows = 0;
     for (i = 0; i < km->nbind; i++) {
         const km_bind *b = &km->bind[i];
-        if (keymap_action_scope(b->kind) == KS_TERMINAL && !b->kind)
+        if (!cx_row_installed(b))
             continue;
         if (!cx_describe(b, desc, sizeof(desc)))
             continue;

@@ -18,4 +18,10 @@ int cx_describe(const km_bind *b, char *out, int n);
  * 0 when Left Amiga is not down or Control / Right Amiga / repeat is. */
 unsigned cx_qual_mask(unsigned ie_qual);
 
+/* 1 when the commodity installs a hotkey filter for this row. The terminal's own
+ * actions (scope T: tab:, menuid:, slash:) are the handler's: the commodity has
+ * no runner for them, so a filter would only swallow the key when no window of
+ * ours has focus. Those rows are left to the application. */
+int cx_row_installed(const km_bind *b);
+
 #endif

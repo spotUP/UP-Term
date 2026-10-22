@@ -422,6 +422,23 @@ static void cx_descriptions_and_qualifier_mask(void)
     }
 }
 
+static void cx_installs_only_the_commodity_rows(void)
+{
+    char buf[16384];
+    long n = slurp("dist/keymap", buf, sizeof(buf));
+    int i, term = 0, comm = 0;
+    CHECK(n > 0 && keymap_parse(&km, buf, n));
+    for (i = 0; i < km.nbind; i++) {
+        int sc = keymap_action_scope(km.bind[i].kind);
+        CHECK(cx_row_installed(&km.bind[i]) == (sc != KS_TERMINAL));
+        if (sc == KS_TERMINAL)
+            term++;
+        else
+            comm++;
+    }
+    CHECK(term > 0 && comm > 0);   /* the shipped file has both, so the skip is exercised */
+}
+
 void suite_keymap(void)
 {
     comments_crlf_and_fields();
@@ -437,4 +454,5 @@ void suite_keymap(void)
     actions_resolve_to_menu_ids();
     the_shipped_file_resolves_and_derives_menu_keys();
     cx_descriptions_and_qualifier_mask();
+    cx_installs_only_the_commodity_rows();
 }
