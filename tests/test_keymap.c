@@ -72,6 +72,16 @@ static void digits_expand_with_percent_n(void)
     CHECK_INT(km.skipped, 1);
 }
 
+static void junk_file_keeps_the_old_keymap(void)
+{
+    CHECK(!parse("this is not a keymap\nrandom junk\n"));      /* no section at all */
+    CHECK(!parse("[bind]\nsuper+a = bogus:thing\nnonsense\n")); /* every row bad */
+    CHECK(parse("[bind]\n"));                                  /* an empty [bind] stays legal */
+    CHECK(parse("# only a comment\n\n"));
+    CHECK(parse("[bind]\nsuper+a = bogus:thing\nsuper+d = viewer\n")); /* mixed: junk skipped */
+    CHECK_INT(km.nbind, 1);
+}
+
 static void bad_rows_are_skipped_and_counted(void)
 {
     CHECK(parse("[bind]\n"
@@ -740,6 +750,7 @@ void suite_keymap(void)
     a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothing();
     comments_crlf_and_fields();
     digits_expand_with_percent_n();
+    junk_file_keeps_the_old_keymap();
     bad_rows_are_skipped_and_counted();
     the_safety_refusals();
     a_newer_major_is_rejected_whole();

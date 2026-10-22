@@ -602,6 +602,51 @@ static int version_of(const char *buf, long len)
     return c.version;
 }
 
+/* 1 when the text has a non-blank, non-comment line that is not a section header,
+ * or a [keymap]/[bind]/[menu] header is absent: it carries content we can read.
+ * Used to tell a junk file from an intentionally empty keymap. */
+static int has_known_section(const char *buf, long len)
+{
+    long i = 0;
+    while (i < len) {
+        long e = i;
+        const char *p;
+        while (e < len && buf[e] != '\n')
+            e++;
+        p = buf + i;
+        while (p < buf + e && (*p == ' ' || *p == '\t' || *p == '\r'))
+            p++;
+        if (p < buf + e && *p == '[') {
+            long n = (buf + e) - p;
+            if ((n >= 6 && (p[1] | 32) == 'b' && (p[2] | 32) == 'i' && (p[3] | 32) == 'n'
+                 && (p[4] | 32) == 'd' && p[5] == ']') ||
+                (n >= 6 && (p[1] | 32) == 'm' && (p[2] | 32) == 'e' && (p[3] | 32) == 'n'
+                 && (p[4] | 32) == 'u' && p[5] == ']') ||
+                (n >= 8 && (p[1] | 32) == 'k' && (p[2] | 32) == 'e' && (p[3] | 32) == 'y'
+                 && (p[4] | 32) == 'm' && (p[5] | 32) == 'a' && (p[6] | 32) == 'p' && p[7] == ']'))
+                return 1;
+        }
+        i = e + 1;
+    }
+    return 0;
+}
+
+/* 1 when the text holds a line that is neither blank nor a comment. */
+static int has_content(const char *buf, long len)
+{
+    long i;
+    for (i = 0; i < len; i++) {
+        char c = buf[i];
+        if (c == '#' || c == ';') {
+            while (i < len && buf[i] != '\n')
+                i++;
+        } else if (c != ' ' && c != '\t' && c != '\r' && c != '\n' && c != 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int load(keymap *k, const char *buf, long len)
 {
     kctx c;
@@ -622,6 +667,12 @@ static int load(keymap *k, const char *buf, long len)
         k->skipped += dropped;
         k->overflow = 1;
     }
+    /* A junk file is not a keymap: text with no [keymap]/[bind]/[menu] section, or a
+     * file whose every row was skipped, yields nothing usable. Refuse it so the caller
+     * keeps the old table. An empty file or an empty [bind] section stays legal (0 rows). */
+    if (!k->nbind && !k->nmenu &&
+        ((has_content(buf, len) && !has_known_section(buf, len)) || k->skipped))
+        return 0;
     return 1;
 }
 
