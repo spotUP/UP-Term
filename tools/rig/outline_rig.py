@@ -20,7 +20,7 @@ The profile lives in ENV:up-term/up-term only; the file there before is put
 back at the end. Run with the rig up and the handler installed:
   python3 tools/rig/outline_rig.py
 """
-import pathlib, shutil, struct, subprocess, sys, time, urllib.request, zipfile, io
+import os, pathlib, shutil, struct, subprocess, sys, time, urllib.request, zipfile, io
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
@@ -31,6 +31,13 @@ TP = ROOT / 'build/third_party/f1'
 TTFLIB = 'https://aminet.net/util/libs/ttflib68020.lha'
 NERD = 'https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip'
 ICONS = [0xE0A0, 0xF07B, 0xF121, 0xE7A8, 0xF015, 0xE712, 0xF09B, 0xF1D3]
+# codes the font has but the engine cannot reach: drawn the same with and
+# without the font (ttf.library 0.8.5 has no 32-bit glyph codes, so a
+# plane-15 Nerd Font icon keeps its replacement box). Both lists can be
+# given as hex: OUTLINE_ICONS=EBCF,F011 OUTLINE_UNREACHED=F003B,F0249
+if os.environ.get('OUTLINE_ICONS'):
+    ICONS = [int(x, 16) for x in os.environ['OUTLINE_ICONS'].split(',')]
+UNREACHED = [int(x, 16) for x in os.environ.get('OUTLINE_UNREACHED', '').split(',') if x]
 CJK, EMDASH = 0x4E2D, 0x2014
 WX, WY, WW, WH = 0, 20, 640, 200
 passed = total = 0
@@ -106,7 +113,7 @@ def run_line(profile):
 def main():
     fetch()
     # one line: ASCII, the icons (a blank between each), CJK, em dash, ASCII
-    text = 'A ' + ' '.join(chr(i) for i in ICONS) + ' ' + chr(CJK) + ' ' + chr(EMDASH) + ' Z\n'
+    text = 'A ' + ' '.join(chr(i) for i in ICONS + UNREACHED) + ' ' + chr(CJK) + ' ' + chr(EMDASH) + ' Z\n'
     (VTC / 'outline-line.txt').write_bytes(text.encode('utf-8'))
     had = c.run('Copy ENV:up-term/up-term RAM:outline-rig.bak QUIET')[0] == 0
     c.run('MakeDir ENV:up-term QUIET')
@@ -131,10 +138,13 @@ def main():
         line = max(rows, key=lambda k: len(rows[k])) if rows else None
         cols = rows.get(line, [])
         want = [2 + 2 * i for i in range(len(ICONS))]
-        check(cols == want, 'the eight icons are drawn from the outline font, nothing else on their line moves',
+        for i, u in enumerate(UNREACHED):
+            check(2 + 2 * (len(ICONS) + i) not in cols, 'U+%X keeps its replacement box (no 32-bit codes)' % u, cols)
+        n = len(ICONS) + len(UNREACHED)
+        check(cols == want, 'the icons are drawn from the outline font, nothing else on their line moves',
               'changed columns %s, icons at %s (all rows: %s)' % (cols, want, rows))
-        check(2 + 2 * len(ICONS) not in cols, 'the CJK character the font lacks keeps its \'?\'', cols)
-        check(4 + 2 * len(ICONS) not in cols, 'the em dash keeps its stand-in', cols)
+        check(2 + 2 * n not in cols, 'the CJK character the font lacks keeps its \'?\'', cols)
+        check(4 + 2 * n not in cols, 'the em dash keeps its stand-in', cols)
         print('  line with the font drawn within %.1f s of Return (6 s wait)' % secs)
         ami.png(str(paths.RIG / 'outline_plain.png'), w, h,
                 [plain[r * w * 3:(r + 1) * w * 3] for r in range(h)])
