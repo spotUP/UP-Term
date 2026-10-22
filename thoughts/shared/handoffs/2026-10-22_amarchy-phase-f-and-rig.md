@@ -41,3 +41,24 @@ VTC:Apps/bin (86ba6799). Ledger entries after "2026-10-22 dist chain" hold the d
 
 - thoughts/shared/research/2026-10-22_amarchy-rig-checks.md: Amarchy checks 1-8 on rig 4.
 - thoughts/shared/research/2026-10-22_browse-nofpu-rig4.md: browse and --nofpu run on rig 4.
+
+## Session end 2026-10-22 (evening)
+
+amarchy-a is pushed at 298e4e3a (verified with ls-remote). That includes f48bf569, the vsh banner bold fix, and 298e4e3a, the rig agent's script fixes.
+
+Rig batch results are in thoughts/spot/todos.md under "### 2026-10-22 Amarchy v1 rig batch". Summary:
+- C6/C7 PASS (amarchy_rig.py --fresh 7/7). C1 PASS (0.0 % idle CPU).
+- D1 measured, but the 2.5 s screen-read floor hides the real open time (cold 2.64 s, warm 2.60 s medians). A faster probe is needed to prove the target.
+- A6 FAIL, 0 of 3, and it is a product bug. In vsh, Alt+b and Alt+f do not move by word. With meta = amiga, Alt+b inserts the Swedish º character. Esc then b inserts "b". Suspects: the Alt key path in render/vtwin.c (about lines 1455-1575) and handler/lineedit.c le_key LE_META (about line 1278). Load the fixing-bugs skill and measure first.
+- F1 PARTIAL. make dist and make dist-check pass. The fresh-kit Installer run with every option ticked, plus a check that Amarchy runs after reboot, is not done. installer_rig.py has no tick-all case and no Amarchy check.
+
+Owner tests still open on the A1200:
+- vsh banner in a new vsh window: strokes one pixel wide.
+- Amarchy Style filter.
+- Swedish Left Amiga plus "+".
+
+Next, in order:
+1. A6 root cause and fix, with a regression test.
+2. F1: extend installer_rig.py.
+3. Tick the plan checklist (thoughts/spot/amarchy-checklist.md).
+4. RELEASE-1.0 items from the ledger.
