@@ -22,7 +22,7 @@ State at 4f93e6a1: chords fire on rig 4 and the A1200; the viewer and menu open 
 in amarchy-menu, 256 KB stack); a junk keymap is refused (63ebcad0); rig scripts start Amarchy from
 VTC:Apps/bin (86ba6799). Ledger entries after "2026-10-22 dist chain" hold the detail.
 
-1. Heap: rework in 7921ee12 (file+BSS 25928 B); a one-time 16424 B step on the first commodity row keeps rig 4 at ~42352 against 32768 (ledger "heap step").
+1. Heap: fixed in 859aeea4 (keymap.c used vc.lib malloc on vbcc; 16 KB puddle). Rig 4 drop dist 48376 B, step 336 B. Push it if still local; run vtcon-handler on a rig once (now AllocVec too).
 2. Stack regression test done (d34cf502). screen_text reader for amarchy_menu_rig.py (2 of 6, script defect).
 3. Scripts A6, B6, D1, E1; F1 fresh-kit install; tick the plan checklist (near line 313).
 4. Owner decision still open: no dist/packages.txt row for Amarchy. Recommended: leave it out.
