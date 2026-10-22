@@ -283,7 +283,9 @@ notifies the first, reload on edited keymap (sentinel: a row `run:C:Echo >T:amar
 R1 reachability (commodity half): with NO UPTerm window active (Shell on a plain console focused), send
 Left Amiga+<row key>; the sentinel file appears; the commodity's hit counter (ARexx `STATUS`) increments by 1.
 R3 no double fire: UPTerm active, same key, exactly one action (km_hits +1, commodity counter +0).
-Done: R1 and R3 pass; Exchange operations pass; commodity idle CPU ~0 and under 20 KB resident.
+Done: R1 and R3 pass; Exchange operations pass; commodity idle CPU ~0 and under 32 KB resident
+(file + BSS + keymap heap; raised from 20 KB on 2026-10-22 by owner decision, since the built-in
+default keymap is 6.8 KB; `make amarchy-size` checks file + BSS, a rig measures the heap).
 
 ### Phase D: quick menu and Super+K viewer
 Files: amarchy/menu.c or `amarchy-menu` binary, handler overlay for viewer, upterm-ports patch for `upkg-ui --menu --filter`

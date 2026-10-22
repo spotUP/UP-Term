@@ -3,14 +3,16 @@
 
   python3 tests/test_amarchy_size.py [build/amiga/Amarchy]
 
-Plan 2026-10-22-amarchy-commodity.md: "under 20 KB resident" = file size + BSS. The commodity is a
+Plan 2026-10-22-amarchy-commodity.md: "under 32 KB resident" (raised from 20 KB on 2026-10-22, owner
+decision: the built-in default keymap alone is 6.8 KB). This check covers file size + BSS; the heap
+the keymap table takes is measured on a rig. The commodity is a
 single AmigaDOS hunk executable; its header lists the memory size of every hunk, and what a hunk
 takes in memory beyond its bytes on disk is the BSS (and zeroed tail). Resident = the file's size
 plus the memory sizes that the file does not carry. Exit 1 over the budget (make amarchy-size).
 """
 import pathlib, struct, sys
 
-LIMIT = 20480
+LIMIT = 32768
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 HUNK_HEADER, HUNK_BSS = 0x3F3, 0x3EB
 
@@ -65,7 +67,7 @@ def main():
     size, bss, total = resident(path)
     print('Amarchy: file %d B + BSS %d B = %d B resident (limit %d)' % (size, bss, total, LIMIT))
     if total > LIMIT:
-        print('[ERROR] Amarchy is %d B over its 20 KB resident budget' % (total - LIMIT))
+        print('[ERROR] Amarchy is %d B over its 32 KB resident budget' % (total - LIMIT))
         sys.exit(1)
     print('[OK] under budget')
 

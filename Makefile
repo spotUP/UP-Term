@@ -606,7 +606,7 @@ $(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/cx.h amarchy/cxdesc
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
-# The Amarchy commodity stays under its "under 20 KB resident" target (file + BSS; plan
+# The Amarchy commodity stays under its "under 32 KB resident" target (file + BSS; plan
 # 2026-10-22-amarchy-commodity.md). Needs the Amiga build, so it is not part of `make test`.
 .PHONY: amarchy-size
 amarchy-size: $(BUILD)/amiga/Amarchy
