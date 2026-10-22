@@ -18,7 +18,7 @@ import ami, condev_rig as c
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
 LAMIGA = 0x40                       # IEQUALIFIER_LCOMMAND
-RAW = {'t': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44}
+RAW = {'down': 0x4D, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44}
 KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
 TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
 
@@ -38,8 +38,7 @@ def km_hits():
 
 
 def screen_text():
-    fn = getattr(ami, 'screen_text', None)
-    return fn() if fn else ''
+    return ami.screen_text()
 
 
 def bind_rows():
@@ -79,7 +78,17 @@ def r_open_timing():
     return 'Filter' in screen_text(), 'menu open %.2f s -> %s' % (dt, TIMING)
 
 
+def into_style():
+    # The root lists Apps, Style, Window (submenus); Theme is the first leaf of Style: Down, Enter descends.
+    # Enter is used before any filter key: after a typed filter key ui_hotkey() still holds that key, and the
+    # next Enter appends it to the filter instead of accepting (found 2026-10-22 on rig 2, library in upterm-ports).
+    for k in 'down', 'return':
+        ami.key(RAW[k])
+        time.sleep(0.6)
+
+
 def r_type_th():
+    into_style()
     for k in 't', 'h':
         ami.key(RAW[k])
         time.sleep(0.4)
@@ -90,9 +99,12 @@ def r_type_th():
 def r_esc_up():
     ami.key(RAW['esc'])           # clears the filter
     time.sleep(0.5)
+    ami.key(RAW['esc'])           # in Style: back up to the root
+    time.sleep(0.5)
+    up = 'Style' in screen_text()
     ami.key(RAW['esc'])           # at the root: leaves the menu
     time.sleep(0.8)
-    return 'Filter' not in screen_text(), 'Esc clears the filter, Esc at the root leaves'
+    return up and 'Filter' not in screen_text(), 'Esc clears the filter, Esc goes up to the root (Style listed: %s), Esc at the root leaves' % up
 
 
 def r_enter_slash():
@@ -100,10 +112,8 @@ def r_enter_slash():
     before = km_hits()
     ami.key(RAW['space'], LAMIGA)
     time.sleep(1.5)
-    for k in 't', 'h':
-        ami.key(RAW[k])
-        time.sleep(0.4)
-    ami.key(RAW['return'])
+    into_style()
+    ami.key(RAW['return'])             # Theme is the first row
     time.sleep(2)
     after = km_hits()
     return after == before + 1, 'handler km-hits %+d (exactly 1 expected)' % (after - before)
