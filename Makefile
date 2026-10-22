@@ -695,6 +695,12 @@ $(BUILD)/amiga/stackprobe: tests/amiga/stackprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/stackprobe.c
 	$(VC) -DSTACK_COOKIE -o $(BUILD)/amiga/stackprobe50k tests/amiga/stackprobe.c
+	$(VC) -DSTACK_COOKIE_BIG -o $(BUILD)/amiga/stackprobe256k tests/amiga/stackprobe.c
+
+# vfork + execve of a native program from ixemul (tools/rig/stackext_rig.py)
+$(BUILD)/amiga/ixexecstack: tests/amiga/ixexecstack.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixexecstack.c
 
 # sz / rz: ZMODEM over the shell's stream, no ixemul (ledger T4 G3)
 $(BUILD)/amiga/sz: zm/zm_amiga.c $(UPTERM_VERSION_H) zm/zmodem.c zm/zmodem.h $(BUILD)/amiga/obj/cpuchk-sz.o

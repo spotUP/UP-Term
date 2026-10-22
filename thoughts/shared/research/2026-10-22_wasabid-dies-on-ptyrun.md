@@ -134,3 +134,26 @@ Seen: the failing cases (random tty cases, rc 0, mode A and B alike) are a separ
 Seen: `tools/rig/userland_rig.py` defines `run` twice (line 83 helper, line 534 main body); the second shadows the first, so
 `python3 tools/rig/userland_rig.py ...` dies with RecursionError in `kit_assigns` at HEAD (introduced with the rig-lock
 change). The loop works around it in its scratchpad wrapper `stackrun.py`; no tracked file was edited.
+
+## Stack: which binary (2026-10-22)
+
+Measured on rig 4 (make wasabi, start --max). Two plain runs of `userland_rig.py --only upkg-ui --force`, polling `rig.py wasabi ps` (FREE = stack headroom) continuously: BOTH crashed at the first tty case after 7 plain cases passed (Illegal instruction 0fff at 000108D2, CPU resets, wasabid ConnectionRefused). So the crash reproduces at default stack, 2 of 2 today (the earlier 60-run loop did not).
+
+Stack cookies (strings on the Amiga binaries):
+- vsh: $STACK: 262144 (vtcon/build/rig4/vtc/vsh)
+- sh (gg/bin/sh): $STACK: 262144
+- upkg-ui: $STACK: 65536
+- ptyrun (upterm-ports/build/tools/ptyrun.amiga, 11392 bytes): NO cookie (only the linker symbol ___stack, no $STACK: string).
+
+ps samples just before the crash (stack size / free): vsh CLI 262144 / 256854; "vsh job (ptyrun)" 16384 / 11194 (min seen, 5190 used), later 13898; "vsh job (upkg-ui)" 65536 / 59942; "vsh job (sed)" 262144 / 260738. No sampled task is near its limit. The ptyrun job gets 16384 (not a cookie, vsh's job default). sh never appeared in a sample (ptyrun forks, then the child execs; the fork child is not visible between samples).
+
+Conclusion: NOT determined. No byte count: no binary was observed over its stack. The only binary without a cookie is ptyrun (16384 given by vsh; peak seen 5190). The unobserved candidate is the ixemul fork child of ptyrun (between fork and exec of sh, ptyrun.c:153-174), which ps polling (~1 s) cannot catch. PC 0x108D2 is low chip RAM, i.e. a jump into data/stack, consistent with a smashed return address or a stack running into another structure. Missing tool: a per-task stack watermark that survives the crash (taskdump after a hang does not help, the machine resets); needs wasabi to log the stack bounds of every new task at creation plus a periodic low-water scan, or a MuForce-style stack check. Evidence: scratchpad ps2.log, run2.log, build/rig4/logs/fs-uae.log.txt.
+
+## Fix: native exec honours $STACK: (2026-10-22)
+
+ixemul-vtcon stdlib/execve.c compatible_startup(): stack = max(current default, "$STACK: n" cookie scanned from the loaded seglist `CTOBPTR(code) - 1`; scanner copied from shell/vsh.c seg_stack(), computed before the Forbid/setuser(0) section).
+
+Regression test: tools/rig/stackext_rig.py (second case) runs tests/amiga/ixexecstack (ixemul, vfork + execve) on tests/amiga/stackprobe256k (vbcc, native, "$STACK: 262144") under the rig's default Stack (16384 on rig 4, not 4096).
+- Before (ixemul.library built 2026-10-20, unfixed): `stack 16384`, FAIL.
+- After (rebuilt with docker/build.sh): `stack 262144`, OK.
+- `userland_rig.py --only upkg-ui --force` at the default stack with the new library: 17 of 17 pass.
