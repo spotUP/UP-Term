@@ -9,7 +9,9 @@
 #include "../engine/vtengine.h"
 #define KM_MALLOC(n) vt_count_malloc((unsigned long)(n))
 #define KM_FREE(p) vt_count_free(p)
-#elif defined(AMIGA) || defined(__amigaos__)
+#elif defined(__VBCC__) || defined(AMIGA) || defined(__amigaos__)
+/* vbcc defines neither AMIGA nor __amigaos__: without __VBCC__ here Amarchy and the handler got
+ * vc.lib's malloc, whose 16 KB puddles stay until exit (tests/test_keymap_amiga_alloc.py) */
 #include <exec/memory.h>
 #include <proto/exec.h>
 #define KM_MALLOC(n) AllocVec((ULONG)(n), MEMF_ANY)

@@ -609,8 +609,15 @@ $(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/cx.h amarchy/cxdesc
 # The Amarchy commodity stays under its "under 32 KB resident" target (file + BSS; plan
 # 2026-10-22-amarchy-commodity.md). Needs the Amiga build, so it is not part of `make test`.
 .PHONY: amarchy-size
-amarchy-size: $(BUILD)/amiga/Amarchy
+amarchy-size: $(BUILD)/amiga/Amarchy $(BUILD)/amiga/keymap.o
 	python3 -I tests/test_amarchy_size.py $(BUILD)/amiga/Amarchy
+	python3 -I tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
+
+# keymap.c as Amarchy and the handler compile it: its allocator must be exec's AllocVec, not vc.lib's
+# malloc, whose 16 KB puddles stay until exit (tests/test_keymap_amiga_alloc.py).
+$(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/upconf_lex.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -c -o $@ config/keymap.c
 
 # amarchy-menu: the quick menu and key viewer (Phase D). A gcc/ixemul program linked with
 # libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
@@ -1259,13 +1266,14 @@ dist-src:
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check:
+dist-check: $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
 	python3 tests/test_dist_launch.py
 	python3 tests/test_amarchy_docs.py
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-menu
+	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py
 	python3 tests/test_rig_verdicts.py
