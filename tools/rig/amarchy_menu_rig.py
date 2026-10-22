@@ -69,8 +69,7 @@ def r_open_timing():
 
 def into_style():
     # The root lists Apps, Style, Window (submenus); Theme is the first leaf of Style: Down, Enter descends.
-    # Enter is used before any filter key: after a typed filter key ui_hotkey() still holds that key, and the
-    # next Enter appends it to the filter instead of accepting (found 2026-10-22 on rig 2, library in upterm-ports).
+    # (The old stale-hotkey ordering rule is gone: upterm-ports ebf5d1c makes ui_hotkey() describe the last run only.)
     for k in 'down', 'return':
         ami.key(RAW[k])
         time.sleep(0.6)
