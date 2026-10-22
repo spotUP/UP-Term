@@ -10,12 +10,13 @@ import io, os, pathlib, subprocess, sys, tarfile, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-import pkgs, slim
+sys.path.insert(0, str(ROOT / 'tools/rig'))
+import pkgs, slim, paths
 
 from test_dist_ipk import split_ar
 
 BUILD = ROOT / 'build'
-PORTS = pathlib.Path(os.environ.get('PORTS_KIT', ROOT.parent / 'upterm-ports/build/kit/userland'))
+PORTS = pathlib.Path(os.environ.get('PORTS_KIT') or paths.repo('upterm-ports') / 'build/kit/userland')
 REQUIRE = os.environ.get('SLIM_REQUIRE') == '1'
 ARCHIVE = {r['id']: r['archive'] for r in pkgs.rows()}
 BASE = BUILD / 'dist/UP-Term/Files/userland'
@@ -50,6 +51,16 @@ class Table(unittest.TestCase):
     def test_uninstall_lines_come_from_the_same_list(self):
         self.assertIn('Delete >NIL: "UP-Term:bin/git-#?" ALL QUIET', slim.uninstall('git'))
         self.assertIn('Delete >NIL: "UP-Term:share/vim" ALL QUIET', slim.uninstall('vim'))
+
+    def test_the_ports_kit_is_found_under_upterm_root_from_a_worktree(self):
+        """2026-10-22: make dist-check in a vtcon worktree (UPTERM_ROOT=~/Code/UP-Term) failed with
+        ".claude/worktrees/upterm-ports/... missing": the test took the sibling from the checkout's
+        parent instead of UPTERM_ROOT, which the Makefile and tools/rig/paths.py read."""
+        env = {k: v for k, v in os.environ.items() if k != 'PORTS_KIT'}
+        env['UPTERM_ROOT'] = '/nowhere/ws'
+        got = subprocess.run([sys.executable, '-c', 'import test_dist_slim; print(test_dist_slim.PORTS)'],
+                             cwd=str(ROOT / 'tests'), env=env, capture_output=True, text=True, check=True)
+        self.assertEqual(got.stdout.strip(), '/nowhere/ws/upterm-ports/build/kit/userland')
 
 
 class SlimBase(unittest.TestCase):

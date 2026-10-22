@@ -6,11 +6,13 @@ VALUE to stderr, exits RC and logs its argv; the keyboard is a pty with those li
 of each pause) typed in. Each case runs under /bin/sh and under build/vsh_host when it is built.
 One case runs the REAL host upkg-ui (upterm-ports build/host/upkg-ui) on a pty with keys sent; it
 is skipped when that binary is missing or has no --hotkeys."""
-import os, re, pty, select, shutil, struct, fcntl, termios, signal, subprocess, tempfile, time, unittest
+import os, re, pty, select, shutil, struct, fcntl, termios, signal, subprocess, sys, tempfile, time, unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 BROWSE = os.path.join(ROOT, 'dist', 'upkg-browse')
-REAL_UI = os.path.join(ROOT, '..', 'upterm-ports', 'build', 'host', 'upkg-ui', 'upkg-ui')
+sys.path.insert(0, os.path.join(ROOT, 'tools', 'rig'))
+import paths
+REAL_UI = str(paths.repo('upterm-ports') / 'build/host/upkg-ui/upkg-ui')
 VSH = os.path.join(ROOT, 'build', 'vsh_host')
 HEAD = '--title UP-TERM ADD-ONS --backtitle 3 add-ons --colors --hotkeys iruq '
 PROMPT = 'Enter info   i install   r remove   u upgrade   q quit'

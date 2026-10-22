@@ -6,11 +6,13 @@ on the Amiga). A fake upkg-ui on the PATH reads "RC VALUE" lines from its stdin,
 writes VALUE to stderr and exits RC, and logs its argv. One case runs the REAL
 host-built upkg-ui (upterm-ports build/host/upkg-ui) on a pty with keys sent.
 The rig half (keys sent to an UP-Term window) is tools/rig/upkg_ask_rig.py."""
-import os, pty, select, shutil, struct, fcntl, termios, subprocess, tempfile, time, unittest
+import os, pty, select, shutil, struct, fcntl, termios, subprocess, sys, tempfile, time, unittest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 ASK = os.path.join(ROOT, 'dist', 'upkg-ask')
-REAL_UI = os.path.join(ROOT, '..', 'upterm-ports', 'build', 'host', 'upkg-ui', 'upkg-ui')
+sys.path.insert(0, os.path.join(ROOT, 'tools', 'rig'))
+import paths
+REAL_UI = str(paths.repo('upterm-ports') / 'build/host/upkg-ui/upkg-ui')
 TITLE = '--title UP-TERM ADD-ON --backtitle '  # upkg-ask puts these before every call
 VSH = os.path.join(ROOT, 'build', 'vsh_host')
 

@@ -214,7 +214,9 @@ class TheBaseNamesNoAddOn(unittest.TestCase):
         ARCHIVE_EXTRACT_OWNER; AmigaDOS has no owners). The host build of the same opkg, which cannot
         chown either, installs a one-file package with the shipped conf and must print no such line."""
         import subprocess, tempfile, tarfile, pkgs
-        upkg = ROOT.parent / 'upterm-ports/build/host/opkg/inst/bin/upkg'
+        sys.path.insert(0, str(ROOT / 'tools/rig'))
+        import paths
+        upkg = paths.repo('upterm-ports') / 'build/host/opkg/inst/bin/upkg'
         if not upkg.is_file():
             self.skipTest('no host upkg: make -C ../upterm-ports host-opkg')
         ctl = b'Package: uidtest\nVersion: 1\nArchitecture: m68k-amigaos\nDescription: x\n'
