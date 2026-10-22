@@ -14,6 +14,7 @@
 #include <proto/bullet.h>
 #include "outline.h"
 #include "otag.h"
+#include "glyphcode.h"
 
 extern struct ExecBase *SysBase;
 extern struct DosLibrary *DOSBase;
@@ -72,6 +73,8 @@ struct vo_engine {
     UBYTE notdef[VO_MAXH * (VO_MAXW / 8)]; /* U+0001's glyph: what "missing" looks like */
     WORD notdef_bpr;
     int have_notdef;
+    int codes32;         /* the engine selects glyphs by OT_GlyphCode_32 (measured) */
+    UBYTE probe[VO_MAXH * (VO_MAXW / 8)]; /* calibrate's scratch glyph */
 };
 
 static ULONG set1(struct vo_engine *e, ULONG tag, ULONG data)
@@ -84,20 +87,47 @@ static ULONG set1(struct vo_engine *e, ULONG tag, ULONG data)
     return SetInfoA(e->ge, t);
 }
 
+/* render/glyphcode's way into the engine */
+static int gc_set(void *engine, int wide, unsigned long code)
+{
+    return set1((struct vo_engine *)engine, wide ? OT_GlyphCode_32 : OT_GlyphCode, code) != OTERR_Success;
+}
+
+static int draw_current(struct vo_engine *e, UBYTE *mask, WORD bpr, WORD w, WORD ox);
+
+static unsigned long gc_draw(void *engine)
+{
+    struct vo_engine *e = (struct vo_engine *)engine;
+    unsigned long sig = 0;
+    LONG i, n = (LONG)e->notdef_bpr * e->ch;
+    memset(e->probe, 0, sizeof(e->probe));
+    if (!draw_current(e, e->probe, e->notdef_bpr, e->cw, 0))
+        return 0;
+    for (i = 0; i < n; i++)
+        sig = sig * 31UL + e->probe[i];
+    return sig | 1UL;
+}
+
 /* cp's glyph into mask (cleared, ch rows of bpr bytes, w pixels used): the
  * glyph's current point ox pixels from the left edge (0, or the cell's
  * width for a mark that draws left of its point) and on the cell's
- * baseline. 0 when the engine has none or it is blank. Beyond the BMP the
- * 32-bit tag (diskfonttag.h: engines without it answer an error, and the
- * glyph is missing). */
+ * baseline. 0 when the engine has none or it is blank. Beyond the BMP only
+ * on an engine measured to take 32-bit codes (render/glyphcode.h:
+ * ttf.library 0.8.5 ignores OT_GlyphCode_32 and answers success). */
 static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox)
+{
+    if (vt_gc_select(e, gc_set, e->codes32, cp) != 0)
+        return 0;
+    return draw_current(e, mask, bpr, w, ox);
+}
+
+/* the engine's current glyph into mask, as render */
+static int draw_current(struct vo_engine *e, UBYTE *mask, WORD bpr, WORD w, WORD ox)
 {
     struct Library *BulletBase = e->BulletBase;
     struct GlyphMap *gm = 0;
     struct TagItem t[2];
     WORD x, y, any = 0;
-    if (set1(e, cp > 0xFFFF ? OT_GlyphCode_32 : OT_GlyphCode, cp) != OTERR_Success)
-        return 0;
     t[0].ti_Tag = OT_GlyphMap;
     t[0].ti_Data = (ULONG)&gm;
     t[1].ti_Tag = TAG_DONE;
@@ -160,6 +190,7 @@ static void calibrate(struct vo_engine *e)
     e->notdef_bpr = (WORD)(((e->cw + 15) >> 4) << 1);
     memset(e->notdef, 0, sizeof(e->notdef));
     e->have_notdef = render(e, 0x0001, e->notdef, e->notdef_bpr, e->cw, 0);
+    e->codes32 = vt_gc_probe32(e, gc_set, gc_draw);
 }
 
 /* the .otag read, checked and made a tag list; the engine its OT_Engine
@@ -368,7 +399,7 @@ vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base)
         FreeVec(f);
         return 0;
     }
-    p = CreateNewProcTags(NP_Entry, (ULONG)worker, NP_Name, (ULONG)"UP-Term glyphs", NP_StackSize, 8192,
+    p = CreateNewProcTags(NP_Entry, (ULONG)worker, NP_Name, (ULONG)"UP-Term glyphs", NP_StackSize, 12288, /* the engine's, and calibrate's scratch glyph */
                           TAG_DONE);
     if (!p) {
         DeleteMsgPort(f->reply);

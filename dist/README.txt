@@ -250,7 +250,9 @@ OUTLINE FONTS (icons, other scripts)
    as '?', or as a near Latin-1 stand-in ('-' for a dash). With
    font-fallback naming an installed outline font, UP-Term draws those
    characters from it, at the size of your font; everything else keeps
-   your bitmap font. Characters up to U+FFFF.
+   your bitmap font. Characters up to U+FFFF: ttf.library 0.8.5 cannot
+   reach the ones above (the Nerd Fonts 3 icons at U+F0001 and up, the
+   Material Design set), which keep a replacement box.
    You need a font engine for TrueType fonts: ttf.library 0.8.5 by Richard
    Griffith, Aminet util/libs/ttflib68020 (also 68000, 68030, 68040 and
    68060 builds), freely distributable, AmigaOS 3.0 or newer. Copy

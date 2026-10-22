@@ -11,7 +11,8 @@
  *
  * Every call comes from the process that called vo_open (its reply port's
  * signal is that process's). AmigaOS 3.0+ (OpenEngine on the library the
- * .otag names, 16-bit glyph codes), any 68k.
+ * .otag names, 16-bit glyph codes; 32-bit ones only on an engine measured
+ * to take them, render/glyphcode.h), any 68k.
  */
 #ifndef OUTLINE_H
 #define OUTLINE_H
