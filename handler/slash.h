@@ -137,13 +137,14 @@ int slash_setup_text(const slash_row *rows, int n, char *out, int cap);
  * a tab answers /state from that copy. tabs and active (the shown tab's number, 1 = first, as
  * Right Amiga 1-9) are the host's, copied in by the push.
  * Keys (the /state names): tabs-opened tab-switches menu-picks last-menu slash-count
- * last-slash copies pastes tabs active km-hits last-key. km-hits counts the keymap bindings the
+ * last-slash copies pastes tabs active km-hits last-key font-size. km-hits counts the keymap bindings the
  * handler ran (Left Amiga keys, plan 2026-10-22-amarchy-commodity); last-key is the last one's
  * (KM_Q_* mask << 8) | raw code. */
 enum { STATE_TAB_OPENED = 1, STATE_SWITCH, STATE_MENU, STATE_SLASH, STATE_COPY, STATE_PASTE, STATE_KEYMAP };
 
 typedef struct slash_state {
     long tabs_opened, tab_switches, menu_picks, last_menu, slash_count, copies, pastes, tabs, active, km_hits, last_km;
+    long font_size;            /* the answering window's font height in pixels: its own, filled when /state answers */
     char last_slash[24];       /* the last typed command's name, "" before the first */
 } slash_state;
 

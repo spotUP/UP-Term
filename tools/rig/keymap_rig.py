@@ -18,6 +18,7 @@ import ami, condev_rig as c
 from tabstate import counters, open_host
 
 OUT = pathlib.Path(paths.RIG) / 'keymap'
+ESC = 0x45
 LAMIGA, LSHIFT = 0x40, 0x01        # IEQUALIFIER_LCOMMAND, IEQUALIFIER_LSHIFT
 RAW = {'t': 0x14, 'w': 0x11, 'c': 0x33, 'v': 0x34, 'a': 0x20, 'f': 0x23, 'g': 0x24, 'q': 0x10,
        'p': 0x19, 'period': 0x39, 'comma': 0x38, 'plus': 0x0C, 'minus': 0x0B, 'k': 0x27, 'h': 0x25,
@@ -30,11 +31,11 @@ ROWS = [
     ('tab_goto_2',   RAW['2'],      LAMIGA,           'tab2'),
     ('tab_next',     RAW['period'], LAMIGA,           'tabmove'),
     ('tab_prev',     RAW['comma'],  LAMIGA,           'tabmove'),
-    ('font_bigger',  RAW['plus'],   LAMIGA,           'font+'),
     ('font_smaller', RAW['minus'],  LAMIGA,           'font-'),
+    ('font_bigger',  RAW['plus'],   LAMIGA,           'font+'),
     ('select_all',   RAW['a'],      LAMIGA,           'none'),
     ('find',         RAW['f'],      LAMIGA,           'findprompt'),
-    ('theme_slash',  RAW['t'],      LAMIGA | LSHIFT,  'none'),
+    ('theme_slash',  RAW['t'],      LAMIGA | LSHIFT,  'theme'),
     ('clear_screen', RAW['k'],      0x80 | LSHIFT,    'none'),   # Right Amiga Shift K (B4); 0x80 = IEQUALIFIER_RCOMMAND
     ('tab_close',    RAW['w'],      LAMIGA,           'tabs-1'),
 ]
@@ -45,12 +46,25 @@ def run_row(row):
     before = counters()
     ami.key(raw, qual)
     time.sleep(1.5)
+    shown = True
+    if effect in ('findprompt', 'theme'):      # the effect: the prompt's window is on the screen
+        with ami._conn() as conn:
+            shown = ('"%s"' % ('Find' if effect == 'findprompt' else 'UP-Term theme')) in ami._uitree(conn).decode('latin-1')
+    if effect == 'findprompt':
+        ami.key(ESC)               # the Find prompt closes on Escape; it would eat the `UPTerm state` line
+    elif effect == 'theme':
+        with ami._conn() as conn:  # /theme opens a file requester, which Escape does not close: its Cancel gadget
+            ami._click_gadget(conn, 'UP-Term theme', '2')
+    if effect in ('findprompt', 'theme'):
+        time.sleep(1)
+        ami.click_px(100, 100)     # that window had the focus; the vsh host takes it back
+        time.sleep(1)
     after = counters()
     hits = after.get('km-hits', 0) - before.get('km-hits', 0)
     picks = after.get('menu-picks', 0) - before.get('menu-picks', 0)
     ran = hits == 1 or picks >= 1 or name == 'clear_screen'
     tabs = after.get('tabs', 0) - before.get('tabs', 0)
-    ok = ran
+    ok = ran and shown
     if effect == 'tabs+1':
         ok = ok and tabs == 1
     elif effect == 'tabs-1':
