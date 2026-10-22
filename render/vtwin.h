@@ -31,7 +31,7 @@
 #include "sbar.h"
 
 /* With a key to the owner: the physical Alt key was down (VT_MOD_ALT is
- * Meta, which is Left Amiga unless meta_alt). KingCON's Alt+Tab. */
+ * Meta, which is Alt unless meta = amiga). KingCON's Alt+Tab. */
 #define VTWIN_MOD_ALTKEY 8
 
 /* What the window needs from its owner. `user` is vtwin.user. */

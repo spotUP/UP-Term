@@ -1232,8 +1232,30 @@ static void a_renamed_profile_keeps_its_keys_and_comments(void)
     (void)w;
 }
 
+/* Alt is Meta unless the file says meta = amiga (Left Amiga is Super) */
+static void meta_defaults_to_alt(void)
+{
+    static upconf conf;
+    prefs_fields f;
+    static const char empty[] = "[profile default]\nfont = TOPAZ 8.8.font\n";
+    static const char amiga[] = "[profile default]\nmeta = amiga\n";
+    static const char alt[] = "[profile default]\nmeta = ALT\n";
+    prefs_defaults(&f);
+    CHECK_INT(f.meta_alt, 1);
+    CHECK_INT(prefs_load(&conf, empty, (long)strlen(empty), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.meta_alt, 1);
+    CHECK_INT(prefs_load(&conf, amiga, (long)strlen(amiga), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.meta_alt, 0);
+    CHECK_INT(prefs_load(&conf, alt, (long)strlen(alt), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.meta_alt, 1);
+}
+
 void suite_prefs(void)
 {
+    meta_defaults_to_alt();
     a_renamed_profile_keeps_its_keys_and_comments();
     wheel_colours_round_trip_within_one_step();
     the_window_fits_an_ntsc_and_a_pal_workbench();

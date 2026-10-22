@@ -56,6 +56,7 @@ void prefs_defaults(prefs_fields *f)
     f->kccache = 1;
     f->aspect = 1;
     f->amiga_keys = 1;
+    f->meta_alt = 1;
     f->dither = 1;
     f->hlcat = 1;
 }
@@ -87,7 +88,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     f->bell = pc_ieq(v, "none") ? PREFS_BELL_NONE
             : pc_ieq(v, "visual") ? PREFS_BELL_VISUAL : PREFS_BELL_BEEP;
     f->bold = pc_ieq(upconf_str(c, p, "bold-bright", "on"), "on");
-    f->meta_alt = pc_ieq(upconf_str(c, p, "meta", "amiga"), "alt");
+    f->meta_alt = !pc_ieq(upconf_str(c, p, "meta", "alt"), "amiga");
     f->copy_sel = pc_ieq(upconf_str(c, p, "copy-on-select", "off"), "on");
     f->wheel = !pc_ieq(upconf_str(c, p, "wheel", "scroll"), "ignore");
     f->reflow = !pc_ieq(upconf_str(c, p, "reflow", "on"), "off");

@@ -1245,8 +1245,8 @@ static void apply_profile(con *c)
     if (v)
         c->w.bold_bright = str_ieq(v, "on");
     v = upconf_str(c->conf, p, "meta", 0);
-    if (v)
-        c->w.meta_alt = str_ieq(v, "alt");
+    if (v) /* alt is the default (vtwin reset); only "amiga" moves Meta to Left Amiga */
+        c->w.meta_alt = !str_ieq(v, "amiga");
     v = upconf_str(c->conf, p, "program-clipboard", 0);
     if (v) /* OSC 52: write (default) | read-write | off */
         c->w.clip_access = str_ieq(v, "off") ? 0 : str_ieq(v, "read-write") ? VT_CLIP_WRITE | VT_CLIP_READ

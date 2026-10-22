@@ -301,7 +301,7 @@ void vtwin_profile_defaults(vtwin *w)
      * keep the last one's cursor or palette */
     w->cursor_style = 0;
     w->cursor_blink = 0;
-    w->meta_alt = 0;
+    w->meta_alt = 1; /* Alt is Meta; Left Amiga is Super (the keymap) */
     w->copy_on_select = 0;
     w->amiga_keys = 1;   /* on by default */
     w->dither = 1;       /* few-pen screens dither (W-T9) */
