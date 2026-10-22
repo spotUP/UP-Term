@@ -260,6 +260,25 @@ $(UNIFONT_PAGES)/stamp: $(UNIFONT_HEX) tools/gen_unifont.py
 	touch $@
 unifont: $(UNIFONT_PAGES)/stamp
 
+# Symbols Nerd Font (Nerd Fonts 3.5.1, icons only): the release archive fetched once into
+# build/symbolsnerd/, both SHA-256 checked, the Mono .ttf extracted; the kit's
+# Files/fonts/SymbolsNerdFontMono.ttf (FONTS: after Install). NERDFONTS_VER= another release
+# (with NERDFONTS_SHA256 and SYMBOLS_TTF_SHA256).
+NERDFONTS_VER ?= 3.5.1
+NERDFONTS_SHA256 ?= 01172f37db8543edb102e5cb5c64101c9f4686630804d49b419aa07b23a69996
+SYMBOLS_TTF_SHA256 ?= fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749
+SYMBOLS_ARCHIVE := $(BUILD)/symbolsnerd/NerdFontsSymbolsOnly-$(NERDFONTS_VER).tar.xz
+SYMBOLS_TTF := $(BUILD)/symbolsnerd/SymbolsNerdFontMono-Regular.ttf
+$(SYMBOLS_ARCHIVE):
+	@mkdir -p $(BUILD)/symbolsnerd
+	curl -sSfL -o $@.tmp https://github.com/ryanoasis/nerd-fonts/releases/download/v$(NERDFONTS_VER)/NerdFontsSymbolsOnly.tar.xz
+	echo "$(NERDFONTS_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(SYMBOLS_TTF): $(SYMBOLS_ARCHIVE)
+	tar -xJf $(SYMBOLS_ARCHIVE) -C $(BUILD)/symbolsnerd SymbolsNerdFontMono-Regular.ttf
+	echo "$(SYMBOLS_TTF_SHA256)  $@" | shasum -a 256 -c -
+symbolsnerd: $(SYMBOLS_TTF)
+
 # Twemoji (ledger U4): the release archive fetched once into build/twemoji/
 # and checked against its pinned sha256, then the colour pages of the
 # two-cell emoji into build/emoji/pages/ (tools/gen_emoji.py, ~35 s; the
@@ -1151,7 +1170,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dis
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga $(BUILD)/amiga/amarchy-menu bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga $(BUILD)/amiga/amarchy-menu bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -1195,7 +1214,7 @@ dist-base: amiga $(BUILD)/amiga/amarchy-menu bebbossh $(BUILD)/amiga/UPConsole $
 	cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/
 	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
 	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
-	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts
+	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts && cp $(SYMBOLS_TTF) $(KIT)/Files/fonts/SymbolsNerdFontMono.ttf
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
 	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (the wasabi stamp, the pin tools/nas/wasabi.rev)

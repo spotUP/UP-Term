@@ -520,6 +520,20 @@ EndIf
 If NOT EXISTS FONTS:IBM.font
   Copy fonts/IBM.font FONTS: CLONE QUIET
 EndIf
+; The icons-only Nerd Font (fonts/SymbolsNerdFont/SOURCE.txt): UP-Term reads
+; FONTS:SymbolsNerdFontMono.ttf itself (font-fallback = SymbolsNerdFontMono);
+; a user's own file of that name is kept, ours is replaced by a newer kit's.
+; Its licences go to UP-Term:fonts/SymbolsNerdFont.
+If NOT EXISTS FONTS:SymbolsNerdFontMono.ttf
+  Copy fonts/SymbolsNerdFontMono.ttf FONTS: CLONE QUIET
+  Echo >ENVARC:up-term/font-SymbolsNerdFontMono "installed by UP-Term"
+Else
+  If EXISTS ENVARC:up-term/font-SymbolsNerdFontMono
+    Copy fonts/SymbolsNerdFontMono.ttf FONTS: CLONE QUIET
+  EndIf
+EndIf
+MakeDir >NIL: UP-Term:fonts UP-Term:fonts/SymbolsNerdFont
+Copy fonts/SymbolsNerdFont UP-Term:fonts/SymbolsNerdFont ALL CLONE QUIET
 If EXISTS SYS:System/FixFonts
   SYS:System/FixFonts
 EndIf

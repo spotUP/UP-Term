@@ -251,18 +251,17 @@ OUTLINE FONTS (icons, other scripts)
    as '?', or as a near Latin-1 stand-in ('-' for a dash). With
    font-fallback naming an installed outline font, UP-Term draws those
    characters from it, at the size of your font; everything else keeps
-   your bitmap font. Characters up to U+FFFF: ttf.library 0.8.5 cannot
-   reach the ones above (the Nerd Fonts 3 icons at U+F0001 and up, the
-   Material Design set), which keep a replacement box.
-   You need a font engine for TrueType fonts: ttf.library 0.8.5 by Richard
-   Griffith, Aminet util/libs/ttflib68020 (also 68000, 68030, 68040 and
-   68060 builds), freely distributable, AmigaOS 3.0 or newer. Copy
-   ttf.library to LIBS:, then install a font with its ttfinstall, e.g. the
-   icons-only Nerd Font (github.com/ryanoasis/nerd-fonts, NerdFontsSymbolsOnly,
-   MIT licence):
-     ttfinstall SymbolsNerdFontMono-Regular.ttf FONTS:
-   and put  font-fallback = SymbolsNerdFontMono  (the .otag's name) in a
-   profile, or type it in UP-Term Prefs, General page, Fallback font.
+   your bitmap font. UP-Term reads TrueType fonts with its own engine; it
+   needs no font library. Install puts the icons-only Nerd Font in FONTS:
+   (the "fonts" part, always installed: FONTS:SymbolsNerdFontMono.ttf,
+   Symbols Nerd Font 3.5.1, github.com/ryanoasis/nerd-fonts, licences in
+   UP-Term:fonts/SymbolsNerdFont: MIT.txt, ICON-SETS.md, SOURCE.txt). Any other TrueType font works the same:
+   copy the .ttf to FONTS:, or install it with a tool that writes a .otag
+   for a TrueType file (ttfinstall). Characters above U+FFFF draw too (the
+   Nerd Fonts 3 icons at U+F0001 and up, the Material Design set).
+   Put  font-fallback = SymbolsNerdFontMono  (the name of the .ttf or .otag,
+   without the extension) in a profile, or type it in UP-Term Prefs,
+   General page, Fallback font.
    Open windows take it at once.
    What neither font has comes from GNU Unifont, when Install put it in
    (the "Unifont" part: UP-Term:unifont, 1.8 MB, SIL Open Font License

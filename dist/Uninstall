@@ -199,6 +199,9 @@ EndIf
 If EXISTS ENVARC:up-term/font-IBM-16
   Delete >NIL: FONTS:IBM/16 QUIET
 EndIf
+If EXISTS ENVARC:up-term/font-SymbolsNerdFontMono
+  Delete >NIL: FONTS:SymbolsNerdFontMono.ttf QUIET
+EndIf
 Delete >NIL: FONTS:TopazPro FONTS:IBM QUIET
 If NOT EXISTS FONTS:TopazPro
   Delete >NIL: FONTS:TopazPro.font QUIET
