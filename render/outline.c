@@ -40,6 +40,9 @@ struct vo_msg {
     int mark;            /* GLYPH: a combining mark, placed over the cells */
     UBYTE *mask;         /* GLYPH: the caller's cleared buffer, ch rows of bpr */
     WORD bpr;
+    UBYTE *cov;          /* GLYPH: the caller's buffer for the coverage, cells * cw x ch
+                          * bytes (0: none wanted); its answer: cov_ok */
+    int cov_ok;          /* GLYPH's answer: cov holds the glyph's coverage (the own engine) */
     UBYTE *buf;          /* READ: the caller's buffer, max bytes */
     LONG max, len;       /* READ: len the answer, the bytes read, -1 no such file */
     int ok;              /* the answer: 1 done / the glyph is there */
@@ -50,6 +53,7 @@ struct vo_slot {
     ULONG cp;
     UBYTE cells, state;
     UBYTE *mask;
+    UBYTE *cov;   /* the own engine's coverage, cells * cw x ch bytes in fast RAM; 0 on the library's path */
 };
 
 struct vo_font {
@@ -60,6 +64,8 @@ struct vo_font {
     int used;
     int engine;               /* 0: opened with "", the worker only (vo_read) */
     ULONG own;                /* the worker's count, from its last GLYPH answer */
+    const UBYTE *last_mask;   /* the mask glyph() returned last, and its coverage (vo_coverage) */
+    const UBYTE *last_cov;
     char name[64];
     struct vo_slot slot[VO_SLOTS];
 };
@@ -453,6 +459,9 @@ static void worker(void)
             if (!m->ok)
                 m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0) &&
                         !(m->cells == 1 && same_as_notdef(&e, m->mask, m->bpr));
+            m->cov_ok = m->ok && e.tt && m->cov; /* render left the glyph's coverage in e.cov */
+            if (m->cov_ok)
+                memcpy(m->cov, e.cov, (size_t)w * e.ch);
             m->own = e.own;
             break;
         }
@@ -502,10 +511,14 @@ static void clear_cache(vo_font *f)
     for (i = 0; i < VO_SLOTS; i++) {
         if (f->slot[i].mask)
             FreeVec(f->slot[i].mask);
+        if (f->slot[i].cov)
+            FreeVec(f->slot[i].cov);
         f->slot[i].mask = 0;
+        f->slot[i].cov = 0;
         f->slot[i].state = SLOT_EMPTY;
     }
     f->used = 0;
+    f->last_mask = f->last_cov = 0;
 }
 
 vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base)
@@ -590,8 +603,13 @@ static const UBYTE *glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
         s = &f->slot[h];
         if (s->state == SLOT_EMPTY)
             break;
-        if (s->cp == cp && s->cells == (cells | mark))
-            return s->state == SLOT_HAVE ? s->mask : 0;
+        if (s->cp == cp && s->cells == (cells | mark)) {
+            if (s->state != SLOT_HAVE)
+                return 0;
+            f->last_mask = s->mask;
+            f->last_cov = s->cov;
+            return s->mask;
+        }
         h = (h + 1) & (VO_SLOTS - 1);
     }
     if (f->used >= VO_FILL) {
@@ -605,20 +623,28 @@ static const UBYTE *glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
     s->mask = (UBYTE *)AllocVec((ULONG)b * f->ch, MEMF_CHIP | MEMF_CLEAR);
     if (!s->mask)
         return 0;
+    s->cov = (UBYTE *)AllocVec((ULONG)cells * f->cw * f->ch, MEMF_ANY); /* none: drawn 1-bit */
     f->m.op = VO_GLYPH;
     f->m.cp = cp;
     f->m.cells = cells;
     f->m.mark = mark != 0;
     f->m.mask = s->mask;
     f->m.bpr = b;
+    f->m.cov = s->cov;
     ask(f);
     f->own = f->m.own;
+    if (s->cov && (!f->m.ok || !f->m.cov_ok)) {
+        FreeVec(s->cov);
+        s->cov = 0;
+    }
     if (!f->m.ok) {
         FreeVec(s->mask);
         s->mask = 0;
         return 0;
     }
     s->state = SLOT_HAVE;
+    f->last_mask = s->mask;
+    f->last_cov = s->cov;
     return s->mask;
 }
 
@@ -640,6 +666,11 @@ const char *vo_name(const vo_font *f)
 int vo_has_engine(const vo_font *f)
 {
     return f && f->engine;
+}
+
+const UBYTE *vo_coverage(const vo_font *f, const UBYTE *mask)
+{
+    return f && mask && mask == f->last_mask ? f->last_cov : 0;
 }
 
 ULONG vo_own(const vo_font *f)

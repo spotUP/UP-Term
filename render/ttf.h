@@ -66,4 +66,13 @@ int ttf_render(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int 
  * pixel): a level of 128 or more sets the bit; mask is written whole */
 void ttf_threshold(const unsigned char *cov, int w, int h, unsigned char *mask, int bpr);
 
+/* ttf_threshold at another level: a coverage of level or more sets the bit
+ * (the antialiased draw's shade passes, plan R4.3) */
+void ttf_threshold_at(const unsigned char *cov, int w, int h, unsigned char *mask, int bpr, int level);
+
+/* cov one pixel bolder into out (both w x h bytes): each pixel the larger
+ * of itself and its left neighbour, as Text() bold draws the glyph again
+ * one pixel right */
+void ttf_embolden(const unsigned char *cov, int w, int h, unsigned char *out);
+
 #endif

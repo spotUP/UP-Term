@@ -741,13 +741,31 @@ int ttf_render(ttf_font *f, unsigned gid, long xscale, long yscale, int ox, int 
 
 void ttf_threshold(const unsigned char *cov, int w, int h, unsigned char *mask, int bpr)
 {
+    ttf_threshold_at(cov, w, h, mask, bpr, 128);
+}
+
+void ttf_threshold_at(const unsigned char *cov, int w, int h, unsigned char *mask, int bpr, int level)
+{
     int x, y, b;
     for (y = 0; y < h; y++) {
         unsigned char *m = mask + (long)y * bpr;
         for (b = 0; b < bpr; b++)
             m[b] = 0;
         for (x = 0; x < w && x / 8 < bpr; x++)
-            if (cov[(long)y * w + x] >= 128)
+            if (cov[(long)y * w + x] >= level)
                 m[x / 8] |= (unsigned char)(0x80 >> (x & 7));
+    }
+}
+
+void ttf_embolden(const unsigned char *cov, int w, int h, unsigned char *out)
+{
+    int x, y;
+    for (y = 0; y < h; y++) {
+        const unsigned char *c = cov + (long)y * w;
+        unsigned char *o = out + (long)y * w;
+        for (x = w - 1; x > 0; x--)
+            o[x] = c[x] > c[x - 1] ? c[x] : c[x - 1];
+        if (w > 0)
+            o[0] = c[0];
     }
 }

@@ -1307,6 +1307,9 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "dither", 0);
     if (v)
         c->w.dither = !str_ieq(v, "off"); /* few-pen screens dither (W-T9; on by default) */
+    v = upconf_str(c->conf, p, "outline-antialias", 0);
+    if (v)
+        c->w.outline_aa = !str_ieq(v, "off"); /* outline glyphs drawn smoothed (on by default) */
     v = upconf_str(c->conf, p, "padding-color", 0);
     if (v)
         c->w.pad_extend = str_ieq(v, "extend"); /* the strips beside the grid (W-T14; background by default) */
@@ -1595,7 +1598,7 @@ static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 64
+#define MENU_SET_ITEMS 65
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1644,6 +1647,7 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Backspace", 0, CHECKIT, 1, (APTR)MENU_SET_BS_BS },
     { NM_ITEM, (STRPTR)"AmigaShell keys", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_AMIGA_KEYS },
     { NM_ITEM, (STRPTR)"Dither on few colours", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_DITHER },
+    { NM_ITEM, (STRPTR)"Outline Antialias", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_OUTLINE_AA },
     { NM_ITEM, (STRPTR)"Padding colour", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Background", 0, CHECKIT, 2, (APTR)MENU_SET_PAD_BG },
     { NM_SUB, (STRPTR)"Extend the edge cells", 0, CHECKIT, 1, (APTR)MENU_SET_PAD_EXTEND },
@@ -1698,6 +1702,7 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_BS_BS: return c->w.backspace_bs;
     case MENU_SET_AMIGA_KEYS: return c->w.amiga_keys;
     case MENU_SET_DITHER: return c->w.dither;
+    case MENU_SET_OUTLINE_AA: return c->w.outline_aa;
     case MENU_SET_PAD_BG: return !c->w.pad_extend;
     case MENU_SET_PAD_EXTEND: return c->w.pad_extend;
     case MENU_SET_CLIP_WRITE: return c->w.clip_access == VT_CLIP_WRITE;
@@ -1906,6 +1911,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->backspace_bs = c->w.backspace_bs != 0;
     f->amiga_keys = c->w.amiga_keys != 0;
     f->dither = c->w.dither != 0;
+    f->outline_aa = c->w.outline_aa != 0;
     f->pad_extend = c->w.pad_extend != 0;
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
                  : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
@@ -2324,6 +2330,7 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_BS_BS: c->w.backspace_bs = 1; restyle = 1; break;
     case MENU_SET_AMIGA_KEYS: c->w.amiga_keys = on; restyle = 1; break;
     case MENU_SET_DITHER: c->w.dither = on; restyle = 1; break;
+    case MENU_SET_OUTLINE_AA: c->w.outline_aa = on; restyle = 1; break;
     case MENU_SET_PAD_BG: c->w.pad_extend = 0; restyle = 1; break;
     case MENU_SET_PAD_EXTEND: c->w.pad_extend = 1; restyle = 1; break;
     case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
@@ -4081,7 +4088,7 @@ static void setup_text(con *c, char *ans, int cap)
 {
     const char *p = c->conf && profile_exists(c->conf, c->profile) ? c->profile : 0;
     const char *base = p ? p : (c->conf && profile_exists(c->conf, "default") ? "default" : 0);
-    slash_row rows[8];
+    slash_row rows[9];
     const char *pv;
     char font[UC_MAX_VALUE];
     int n = 0;
@@ -4118,6 +4125,11 @@ static void setup_text(con *c, char *ans, int cap)
     rows[n].name = "dither";
     rows[n].value = c->w.dither ? "on" : "off";
     pv = base ? upconf_str(c->conf, base, "dither", 0) : 0;
+    rows[n].source = slash_source(rows[n].value, pv, "on");
+    n++;
+    rows[n].name = "outline-antialias";
+    rows[n].value = c->w.outline_aa ? "on" : "off";
+    pv = base ? upconf_str(c->conf, base, "outline-antialias", 0) : 0;
     rows[n].source = slash_source(rows[n].value, pv, "on");
     n++;
     rows[n].name = "padding-color";
@@ -4265,6 +4277,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
             stat_fill(c);
         c->st.font_size = c->w.font ? c->w.font->tf_YSize : 0; /* this window's own, never the host's copy */
         c->st.outline_own = (long)vo_own(c->w.outline);
+        c->st.outline_aa = (long)c->w.r.n_aa;
         return slash_state_text(&c->st, cmd.arg, ans, cap) < 0 ? 2 : 1;
     case SLASH_THEME:
         if (!cmd.arg[0] && typed) {

@@ -147,6 +147,7 @@ enum { STATE_TAB_OPENED = 1, STATE_SWITCH, STATE_MENU, STATE_SLASH, STATE_COPY, 
 typedef struct slash_state {
     long tabs_opened, tab_switches, menu_picks, last_menu, slash_count, copies, pastes, tabs, active, km_hits, last_km;
     long font_size;            /* the answering window's font height in pixels: its own, filled when /state answers */
+    long outline_aa;           /* glyphs the answering window drew antialiased (vr_render n_aa), filled as font_size */
     long outline_own;          /* the answering window's own-engine glyph count, filled as font_size */
     char last_slash[24];       /* the last typed command's name, "" before the first */
 } slash_state;

@@ -205,6 +205,7 @@ CONFIGURATION (profiles)
      dither = on               on | off: on a screen of 16 colours or fewer, a colour no
                                pen shows closely is drawn with two pens in a fixed
                                pattern; off draws the nearest single pen
+     outline-antialias = on    on | off: outline-font glyphs are drawn smoothed (off: hard edges)
      padding-color = background  background | extend: the strips beside the character
                                grid (the part of the window that is not a whole cell)
                                are the background, or take the colour of the cell next
@@ -295,6 +296,7 @@ COMMANDS (/cursor bar)
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
      /backspace bs      /program-clipboard read-write
      /amiga-keys off    /dither off
+     /outline-antialias off
      /padding-color extend
      /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.

@@ -423,23 +423,29 @@ static void dither_and_padding_color_round_trip(void)
     CHECK_INT(prefs_load(&conf, "[default]\nfont = x\n", 20, UC_MAX_FILE), PREFS_LOAD_OK);
     prefs_from_conf(&f, &conf, "default");
     CHECK_INT(f.dither, 1);
+    CHECK_INT(f.outline_aa, 1);
     CHECK_INT(f.pad_extend, 0);
     len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
     CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
     CHECK_STR(upconf_str(&conf, "default", "dither", "?"), "on");
+    CHECK_STR(upconf_str(&conf, "default", "outline-antialias", "?"), "on");
     CHECK_STR(upconf_str(&conf, "default", "padding-color", "?"), "background");
     f.dither = 0;
+    f.outline_aa = 0;
     f.pad_extend = 1;
     len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
     CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
     CHECK_STR(upconf_str(&conf, "default", "dither", "?"), "off");
+    CHECK_STR(upconf_str(&conf, "default", "outline-antialias", "?"), "off");
     CHECK_STR(upconf_str(&conf, "default", "padding-color", "?"), "extend");
     prefs_from_conf(&g, &conf, "default");
     CHECK_INT(g.dither, 0);
+    CHECK_INT(g.outline_aa, 0);
     CHECK_INT(g.pad_extend, 1);
-    CHECK_INT(prefs_load(&conf, "[default]\ndither = junk\npadding-color = junk\n", 45, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_INT(prefs_load(&conf, "[default]\ndither = junk\noutline-antialias = junk\npadding-color = junk\n", 70, UC_MAX_FILE), PREFS_LOAD_OK);
     prefs_from_conf(&g, &conf, "default"); /* anything but off / extend is the default */
     CHECK_INT(g.dither, 1);
+    CHECK_INT(g.outline_aa, 1);
     CHECK_INT(g.pad_extend, 0);
 }
 
@@ -966,7 +972,7 @@ static void an_edit_of_any_field_makes_the_profile_differ(void)
         MUT_INT(cursor) MUT_INT(bell) MUT_INT(blink) MUT_INT(bold) MUT_INT(meta_alt)
         MUT_INT(copy_sel) MUT_INT(wheel) MUT_INT(reflow) MUT_INT(scrollbar) MUT_INT(completion)
         MUT_INT(screen) MUT_INT(aspect) MUT_INT(backspace_bs) MUT_INT(clipboard) MUT_INT(kcinfo)
-        MUT_INT(kccache) MUT_INT(amiga_keys) MUT_INT(dither) MUT_INT(pad_extend) MUT_INT(hlcat)
+        MUT_INT(kccache) MUT_INT(amiga_keys) MUT_INT(dither) MUT_INT(outline_aa) MUT_INT(pad_extend) MUT_INT(hlcat)
     }
     for (i = 0; i < 16; i++) {
         prefs_defaults(&b);

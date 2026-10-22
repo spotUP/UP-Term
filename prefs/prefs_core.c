@@ -58,6 +58,7 @@ void prefs_defaults(prefs_fields *f)
     f->amiga_keys = 1;
     f->meta_alt = 1;
     f->dither = 1;
+    f->outline_aa = 1;
     f->hlcat = 1;
 }
 
@@ -101,6 +102,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     f->backspace_bs = pc_ieq(upconf_str(c, p, "backspace", "del"), "bs");
     f->amiga_keys = !pc_ieq(upconf_str(c, p, "amiga-keys", "on"), "off");
     f->dither = !pc_ieq(upconf_str(c, p, "dither", "on"), "off");
+    f->outline_aa = !pc_ieq(upconf_str(c, p, "outline-antialias", "on"), "off");
     f->pad_extend = pc_ieq(upconf_str(c, p, "padding-color", "background"), "extend");
     f->hlcat = !pc_ieq(upconf_str(c, p, "highlight-cat", "on"), "off");
     v = upconf_str(c, p, "program-clipboard", "write");
@@ -602,7 +604,7 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
            a->completion == b->completion && a->screen == b->screen && a->aspect == b->aspect &&
            a->backspace_bs == b->backspace_bs && a->clipboard == b->clipboard &&
            a->kcinfo == b->kcinfo && a->kccache == b->kccache && a->amiga_keys == b->amiga_keys &&
-           a->dither == b->dither && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat;
+           a->dither == b->dither && a->outline_aa == b->outline_aa && a->pad_extend == b->pad_extend && a->hlcat == b->hlcat;
 }
 
 int prefs_profile_exists(const upconf *c, const char *profile)
@@ -714,6 +716,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     upconf_set(w, p, "backspace", f->backspace_bs ? "bs" : "del");
     upconf_set(w, p, "amiga-keys", f->amiga_keys ? "on" : "off");
     upconf_set(w, p, "dither", f->dither ? "on" : "off");
+    upconf_set(w, p, "outline-antialias", f->outline_aa ? "on" : "off");
     upconf_set(w, p, "padding-color", f->pad_extend ? "extend" : "background");
     upconf_set(w, p, "highlight-cat", f->hlcat ? "on" : "off");
     upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"

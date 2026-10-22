@@ -25,7 +25,8 @@
     X(MENU_SET_AMIGA_KEYS) X(MENU_SET_DITHER) X(MENU_SET_PAD_BG) X(MENU_SET_PAD_EXTEND) \
     X(MENU_CLAUDE) X(MENU_SET_TERM_VTCON) X(MENU_SET_TERM_XTERM) X(MENU_SET_TERM_SCREEN) \
     X(MENU_SET_TERM_NONE) X(MENU_SET_COLORS_RGB) X(MENU_SET_COLORS_256) X(MENU_SET_COLORS_NONE) \
-    X(MENU_SET_COLORS_16) X(MENU_HELP_SLASH) X(MENU_TUTORIAL)
+    X(MENU_SET_COLORS_16) X(MENU_HELP_SLASH) X(MENU_TUTORIAL) \
+    X(MENU_SET_OUTLINE_AA)
 
 /* The ids count up from 1 in this order (the order is the value: a profile
  * place or a saved id must not move). handler/keymap_act.c builds its name

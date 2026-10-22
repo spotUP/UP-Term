@@ -304,6 +304,7 @@ void vtwin_profile_defaults(vtwin *w)
     w->meta_alt = 1; /* Alt is Meta; Left Amiga is Super (the keymap) */
     w->copy_on_select = 0;
     w->amiga_keys = 1;   /* on by default */
+    w->outline_aa = 1;   /* outline glyphs antialiased */
     w->dither = 1;       /* few-pen screens dither (W-T9) */
     w->pad_extend = 0;   /* padding-color = background */
     w->backspace_bs = 0; /* DEL, ^?: a profile without the key must not keep the last one's bs */
@@ -865,6 +866,7 @@ struct TextFont *vtwin_open_font(vtwin *w)
 static void settings(vtwin *w)
 {
     int i;
+    vr_set_antialias(&w->r, w->outline_aa);
     vr_set_dither(&w->r, w->dither); /* before the defaults: a change gives the pens back */
     vr_set_pad_extend(&w->r, w->pad_extend);
     vr_set_defaults(&w->r, w->fg_rgb, w->bg_rgb);

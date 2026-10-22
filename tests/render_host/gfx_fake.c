@@ -148,6 +148,7 @@ void gf_close(void)
     pmem = 0;
     pdepth = 0;
     gf_no_back = 0;
+    gf_outline(0, 0, 0);
     free(canvas);
     free(bgc);
     canvas = bgc = 0;
@@ -736,5 +737,23 @@ ULONG vr_cgx_fill(struct Library *l, struct RastPort *rp, UWORD x, UWORD y, UWOR
 
 /* the outline font (render/outline.c, bullet.library): no outline font is ever open in these tests */
 void vo_set_cell(vo_font *f, WORD cw, WORD ch, WORD base) { (void)f; (void)cw; (void)ch; (void)base; }
-const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr) { (void)f; (void)cp; (void)cells; (void)bpr; return 0; }
+static const UBYTE *vo_fake_mask, *vo_fake_cov;
+static WORD vo_fake_bpr;
+void gf_outline(const UBYTE *mask, WORD bpr, const UBYTE *cov)
+{
+    vo_fake_mask = mask;
+    vo_fake_bpr = bpr;
+    vo_fake_cov = cov;
+}
+const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
+{
+    (void)f; (void)cp; (void)cells;
+    *bpr = vo_fake_bpr;
+    return vo_fake_mask;
+}
+const UBYTE *vo_coverage(const vo_font *f, const UBYTE *mask)
+{
+    (void)f;
+    return mask && mask == vo_fake_mask ? vo_fake_cov : 0;
+}
 const UBYTE *vo_mark(vo_font *f, ULONG cp, int cells, WORD *bpr) { (void)f; (void)cp; (void)cells; (void)bpr; return 0; }

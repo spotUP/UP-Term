@@ -42,6 +42,12 @@ const UBYTE *vo_glyph(vo_font *f, ULONG cp, int cells, WORD *bpr);
  * its left edge). 0 when the font has no such glyph. */
 const UBYTE *vo_mark(vo_font *f, ULONG cp, int cells, WORD *bpr);
 
+/* The coverage of the glyph whose mask vo_glyph or vo_mark returned last
+ * (mask that pointer): ch rows of cells * cw bytes, 0..255 per pixel, the
+ * antialiased glyph (plan 2026-10-22-handler-rasterizer.md R4). 0 for any
+ * other mask, and on the library's path (only the mask there). */
+const UBYTE *vo_coverage(const vo_font *f, const UBYTE *mask);
+
 /* The name it was opened with (for a profile change: same font or not). */
 const char *vo_name(const vo_font *f);
 

@@ -81,6 +81,15 @@ void ce_blend(const vt_u8 *rgba, int n, vt_u32 bg, vt_u32 *ctab)
         ctab[i] = bg & 0xFFFFFFUL;
 }
 
+vt_u32 ce_mix(vt_u32 fg, vt_u32 bg, int a)
+{
+    vt_u32 c = 0;
+    int s;
+    for (s = 16; s >= 0; s -= 8)
+        c |= div255(((fg >> s) & 0xFF) * (vt_u32)a + ((bg >> s) & 0xFF) * (vt_u32)(255 - a)) << s;
+    return c;
+}
+
 int ce_image(const vt_u8 *g, int bw, int bh, vt_u8 *idx)
 {
     int bits = g[0], n = g[1] + 1, h, x0, y0, x, y, i;

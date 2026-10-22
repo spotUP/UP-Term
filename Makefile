@@ -133,7 +133,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; python3 -I tests/test_handler_deps.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; python3 -I tests/test_handler_deps.py; python3 -I tests/test_handler_rows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_netinclude_in_tree.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_dist_builds_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = hl ]; then python3 tests/test_hl_plain.py; fi
@@ -163,7 +163,7 @@ $(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDE
 # (tests/render_host/gfx_fake.c) that logs the calls and draws into a pixel canvas. Its own binary: the
 # NDK headers and the engine's strict host build cannot share a translation unit (struct timeval).
 # Needs the NDK of `make amiga` (VTCON_NDK); the sanitizers stay on.
-RENDER_HOST_SRC := tests/test_render.c tests/render_host/gfx_fake.c render/amiga_render.c tests/harness.c $(ENGINE) render/glyphmap.c render/unifont.c render/emoji.c render/painter.c render/vtinput.c
+RENDER_HOST_SRC := tests/test_render.c tests/render_host/gfx_fake.c render/amiga_render.c tests/harness.c $(ENGINE) render/glyphmap.c render/unifont.c render/emoji.c render/painter.c render/vtinput.c render/ttf.c
 $(BUILD)/render_host: $(HOST_HDR) tests/render_host/gfx_fake.h tests/render_host/proto/*.h $(RENDER_HOST_SRC)
 	@mkdir -p $(BUILD)
 	@test -d $(VTCON_NDK) || { echo "[ERROR] the NDK headers are missing: unpack NDK3.2R4 to $(VTCON_NDK) (see make amiga)"; exit 1; }

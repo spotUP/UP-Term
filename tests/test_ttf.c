@@ -558,6 +558,31 @@ static void test_threshold(void)
     CHECK_INT(mask[3], 0x40);
 }
 
+/* plan R4.3: the shade passes threshold at their own levels */
+static void test_threshold_at(void)
+{
+    unsigned char cov[4] = { 31, 32, 160, 255 }, mask[1];
+    ttf_threshold_at(cov, 4, 1, mask, 1, 32);
+    CHECK_INT(mask[0], 0x70);
+    ttf_threshold_at(cov, 4, 1, mask, 1, 224);
+    CHECK_INT(mask[0], 0x10);
+}
+
+/* bold coverage: each pixel the larger of itself and its left neighbour */
+static void test_embolden(void)
+{
+    unsigned char cov[2 * 4] = { 0, 200, 50, 0, 90, 0, 0, 10 }, out[2 * 4];
+    ttf_embolden(cov, 4, 2, out);
+    CHECK_INT(out[0], 0);
+    CHECK_INT(out[1], 200);
+    CHECK_INT(out[2], 200);
+    CHECK_INT(out[3], 50);
+    CHECK_INT(out[4], 90); /* row 2 starts fresh: nothing from row 1's last pixel */
+    CHECK_INT(out[5], 90);
+    CHECK_INT(out[6], 0);
+    CHECK_INT(out[7], 10);
+}
+
 void suite_ttf(void)
 {
     test_subset_font();
@@ -566,4 +591,6 @@ void suite_ttf(void)
     test_synthetic();
     test_refused();
     test_threshold();
+    test_threshold_at();
+    test_embolden();
 }
