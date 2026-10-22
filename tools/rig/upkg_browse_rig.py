@@ -114,6 +114,64 @@ def listed(cmd):
     return [l.split(' - ')[0].strip() for l in out.split('\n') if ' - ' in l]
 
 
+class State:
+    """What setup() changed on the rig, for teardown()."""
+    saved = based = False
+
+
+def setup(rel, st, must=must):
+    """The rig ready for a browse run: the kit's base (installed when stale), upkg, upkg-ui and upkg-browse in
+    UP-Term:bin, the served feed `rel` and its conf as the default config. teardown() undoes it."""
+    ir.put_vsh()
+    had_base = ir.run('Assign >NIL: UP-Term: EXISTS')[0] == 0
+    kit_versions = ir.KIT / 'Files/VERSIONS'
+    if not kit_versions.exists():
+        raise SystemExit('upkg_browse_rig: there is no kit at %s (make dist first)' % ir.KIT)
+    installed = None
+    if had_base:
+        rc, installed = ir.run('Type UP-Term:VERSIONS')
+        installed = installed if rc == 0 else None
+    # an older base on the rig would test the old handler and vtcon, not the kit's
+    if base_stale(installed, kit_versions.read_text()):
+        ir.prepare(None)
+        st.based = not had_base
+        # upkg's download backend runs curl by name: only Install's CURL option puts it in UP-Term:bin
+        (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files '
+                                                 'NOCONSOLE NODEVICE SSH BEBBOGET CURL WASABI CPU060 UNIFONT EMOJI\n')
+        ir.base_install(must, 'runinstallbrowse')
+        # prepare() assigned LIBS: as Install sees it, without the rig's AmiSSL drawer: curl needs
+        # amisslmaster.library even for the http feed
+        for line in ir.rig_libs():
+            ir.run(line)
+        note('the base installed from %s (%s)' % (ir.KIT, 'over an older base' if had_base else 'no base before'))
+    for n, src in (('upkg-browse', ir.ROOT / 'dist/upkg-browse'), ('upkg', UPKG), ('upkg-ui', UPKG_UI)):
+        shutil.copy(src, ir.VTC / n)
+        rc, o = ir.run('Copy VTC:%s UP-Term:bin/%s CLONE' % (n, n))
+        if rc != 0:
+            raise SystemExit('[ERROR] Copy of %s into UP-Term:bin returned %d: %s' % (n, rc, o.strip()))
+        ir.run('Protect UP-Term:bin/%s +rwed' % n)
+    rel.set()
+    (ir.VTC / 'browse-rig.conf').write_text(upkg_rig.conf_for((ir.ROOT / 'dist/upkg.conf').read_text(), rel.url))
+    ir.run('Delete >NIL: %s QUIET' % SAVED)
+    ir.run('Copy %s %s CLONE' % (DEFCONF, SAVED))
+    st.saved = True
+    ir.run('Copy VTC:browse-rig.conf %s' % DEFCONF)
+    ir.run('Delete >NIL: %s ALL QUIET' % upkg_rig.STAGE)
+
+
+
+def teardown(rel, st):
+    if st.saved:
+        ir.run('Copy %s %s CLONE' % (SAVED, DEFCONF))
+        ir.run('Delete >NIL: %s QUIET' % SAVED)
+    if st.based:
+        ir.run_long('rununinstall')
+    rel.close()
+    ir.show_close()
+    time.sleep(6)   # 5 s quiet before stop: a reset mid-write kills the disk
+    subprocess.call([sys.executable, str(pathlib.Path(__file__).with_name('rig.py')), 'stop'])
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--out', default=str(paths.RIG / 'upkg-browse'))
@@ -134,44 +192,9 @@ def main(argv):
 
     with paths.rig_lock():
         rel = upkg_rig.Release()
-        saved = based = False
+        st = State()
         try:
-            ir.put_vsh()
-            had_base = ir.run('Assign >NIL: UP-Term: EXISTS')[0] == 0
-            kit_versions = ir.KIT / 'Files/VERSIONS'
-            if not kit_versions.exists():
-                raise SystemExit('upkg_browse_rig: there is no kit at %s (make dist first)' % ir.KIT)
-            installed = None
-            if had_base:
-                rc, installed = ir.run('Type UP-Term:VERSIONS')
-                installed = installed if rc == 0 else None
-            # an older base on the rig would test the old handler and vtcon, not the kit's
-            if base_stale(installed, kit_versions.read_text()):
-                ir.prepare(None)
-                based = not had_base
-                # upkg's download backend runs curl by name: only Install's CURL option puts it in UP-Term:bin
-                (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files '
-                                                         'NOCONSOLE NODEVICE SSH BEBBOGET CURL WASABI CPU060 UNIFONT EMOJI\n')
-                ir.base_install(must, 'runinstallbrowse')
-                # prepare() assigned LIBS: as Install sees it, without the rig's AmiSSL drawer: curl needs
-                # amisslmaster.library even for the http feed
-                for line in ir.rig_libs():
-                    ir.run(line)
-                note('the base installed from %s (%s)' % (ir.KIT, 'over an older base' if had_base else 'no base before'))
-            for n, src in (('upkg-browse', ir.ROOT / 'dist/upkg-browse'), ('upkg', UPKG), ('upkg-ui', UPKG_UI)):
-                shutil.copy(src, ir.VTC / n)
-                rc, o = ir.run('Copy VTC:%s UP-Term:bin/%s CLONE' % (n, n))
-                if rc != 0:
-                    raise SystemExit('[ERROR] Copy of %s into UP-Term:bin returned %d: %s' % (n, rc, o.strip()))
-                ir.run('Protect UP-Term:bin/%s +rwed' % n)
-            rel.set()
-            (ir.VTC / 'browse-rig.conf').write_text(upkg_rig.conf_for((ir.ROOT / 'dist/upkg.conf').read_text(), rel.url))
-            ir.run('Delete >NIL: %s QUIET' % SAVED)
-            ir.run('Copy %s %s CLONE' % (DEFCONF, SAVED))
-            saved = True
-            ir.run('Copy VTC:browse-rig.conf %s' % DEFCONF)
-            ir.run('Delete >NIL: %s ALL QUIET' % upkg_rig.STAGE)
-
+            setup(rel, st, must)
             # step 0 (D2): upkg update must work on this rig
             rc, o = upkg_rig.upkg('browse-update', 'update', conf=False)
             check('step 0: upkg update returns 0', rc == 0, 'rc %d' % rc)
@@ -243,15 +266,7 @@ def main(argv):
             time.sleep(2)
             note('window text at the end:\n' + typewin.screen_text('RAM:browse-screen.txt')[-1000:])
         finally:
-            if saved:
-                ir.run('Copy %s %s CLONE' % (SAVED, DEFCONF))
-                ir.run('Delete >NIL: %s QUIET' % SAVED)
-            if based:
-                ir.run_long('rununinstall')
-            rel.close()
-            ir.show_close()
-            time.sleep(6)   # 5 s quiet before stop: a reset mid-write kills the disk
-            subprocess.call([sys.executable, str(pathlib.Path(__file__).with_name('rig.py')), 'stop'])
+            teardown(rel, st)
     bad = [k for k, v in ck.items() if not v]
     head = 'Verdict: %s (%d of %d checks)' % ('FAIL' if bad or len(ck) < 12 else 'PASS', len(ck) - len(bad), len(ck))
     (out / 'report.md').write_text(head + '\n\n' + '\n'.join(LOG) + '\n')

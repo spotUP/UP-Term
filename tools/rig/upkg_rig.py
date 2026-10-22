@@ -49,7 +49,7 @@ CONF = 'T:upkg-rig.conf'
 STATUS = 'UP-Term:pkg/upkg/status'
 STAGE = 'T:upkg-stage'
 ADDONS = ['up-claude', 'up-pi', 'up-nvim', 'up-python']
-CASES = ['version', 'updatelist', 'install', 'upgrade', 'migrate', 'remove', 'needsbase', 'badsum']
+CASES = ['version', 'updatelist', 'install', 'upgrade', 'migrate', 'remove', 'needsbase', 'badsum', 'listnew']
 OLD_NVIM = 'UP-Term-nvim'
 
 
@@ -351,8 +351,46 @@ def case_badsum(ck, rel):
     ck(not exists('%s/up-claude' % STAGE), 'badsum: nothing of up-claude under %s' % STAGE)
 
 
+def without_package(text, pkg):
+    """The Packages text without the stanza of `pkg`."""
+    return '\n\n'.join(b for b in text.split('\n\n') if b.strip() and not b.startswith('Package: %s\n' % pkg)) + '\n\n'
+
+
+def case_listnew(ck, rel):
+    """patch 0023/0022 on the rig: update keeps <feed>.prev, list-new prints what the last update added,
+    list-browse writes the lists the browse script reads (host: pkgs/opkg/check/list_new.sh, browse_lists.sh)."""
+    pkg = 'up-pi'
+    full = (BUILD / 'ipk/Packages').read_text()
+    lists = 'UP-Term:pkg/upkg/lists'
+    ir.run('Delete >NIL: %s/#? QUIET' % lists)
+    rel.set(packages=without_package(full, pkg))
+    rc, out = upkg('lnupd1', 'update')
+    ck(rc == 0, 'listnew: first update exit 0', out[-300:])
+    ck(not exists('%s/upterm.prev' % lists), 'listnew: no .prev after the first update')
+    rc, out = upkg('lnnew1', 'list-new')
+    ck(rc == 0 and not out.replace('[exit 0]', '').strip(), 'listnew: list-new prints nothing after the first update', out[-300:])
+    rel.set()
+    rc, out = upkg('lnupd2', 'update')
+    ck(rc == 0, 'listnew: second update exit 0', out[-300:])
+    ck(exists('%s/upterm.prev' % lists), 'listnew: upterm.prev kept by the second update')
+    rc, want = upkg('lnlist', 'list %s' % pkg)
+    rc2, got = upkg('lnnew2', 'list-new')
+    strip = lambda t: re.sub(r'\[exit \d+\]', '', t).strip()
+    ck(rc == 0 and rc2 == 0 and strip(want).startswith(pkg) and strip(got) == strip(want),
+       'listnew: list-new prints exactly the row of %s' % pkg, 'want %r got %r' % (want[-200:], got[-200:]))
+    rc, out = upkg('lnlb', 'list-browse T:lb')
+    ck(rc == 0, 'listnew: list-browse exit 0', out[-300:])
+    rc, allo = upkg('lnall', 'list')
+    for ext, text in (('new', got), ('all', allo)):
+        have = exists('T:lb.%s' % ext) and ami.read_file('T:lb.%s' % ext).decode('latin-1').strip()
+        ck(have == strip(text), 'listnew: T:lb.%s equals the plain command output' % ext, 'have %r' % (have if have is False else have[:200]))
+    ir.run('Delete >NIL: T:lb.#? QUIET')
+    rel.set()
+    upkg('lnupd3', 'update')
+
+
 TABLE = {'version': case_version, 'updatelist': case_updatelist, 'install': case_install, 'upgrade': case_upgrade, 'migrate': case_migrate,
-         'remove': case_remove, 'needsbase': case_needsbase, 'badsum': case_badsum}
+         'remove': case_remove, 'needsbase': case_needsbase, 'badsum': case_badsum, 'listnew': case_listnew}
 
 
 def fingerprint(case=None):
