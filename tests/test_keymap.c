@@ -4,6 +4,8 @@
 #include <string.h>
 #include "../config/upconf.h"
 #include "../config/keymap.h"
+#include "../handler/keymap_act.h"
+#include "../handler/menu_ids.h"
 #include "harness.h"
 
 #define RAW_K     0x27
@@ -289,6 +291,93 @@ static void the_shipped_keymap_loads_whole(void)
     CHECK(keymap_find(&km, KM_Q_SUPER | KM_Q_SHIFT, 0x10) == 0);   /* shift+q: reboot */
 }
 
+/* B2: a binding to the action the handler runs (handler/keymap_act.c) */
+static kact resolve1(const char *text, int row)
+{
+    kact a = {0, 0, 0};
+    CHECK(parse(text));
+    CHECK(row < km.nbind);
+    kact_resolve(&km.bind[row], &a);
+    return a;
+}
+
+static void actions_resolve_to_menu_ids(void)
+{
+    kact a;
+    a = resolve1("[bind]\nsuper+t = tab:new ; T | w\n", 0);
+    CHECK_INT(a.kind, KACT_MENU);
+    CHECK_INT(a.id, MENU_TAB_NEW);
+    a = resolve1("[bind]\nsuper+w = tab:close ; C | w\n", 0);
+    CHECK_INT(a.id, MENU_TAB_CLOSE);
+    a = resolve1("[bind]\nsuper+period = tab:next ; N | w\n", 0);
+    CHECK_INT(a.id, MENU_TAB_NEXT);
+    a = resolve1("[bind]\nsuper+comma = tab:prev ; P | w\n", 0);
+    CHECK_INT(a.id, MENU_TAB_PREV);
+    a = resolve1("[bind]\nsuper+f3 = tab:goto 3 ; G | w\n", 0);
+    CHECK_INT(a.kind, KACT_MENU);
+    CHECK_INT(a.id, MENU_TAB_GOTO0 + 3);
+    a = resolve1("[bind]\nsuper+c = menuid:MENU_COPY ; C | e\n", 0);
+    CHECK_INT(a.id, MENU_COPY);
+    a = resolve1("[bind]\nsuper+c = menuid:MENU_NO_SUCH_ITEM ; C | e\n", 0);
+    CHECK_INT(a.kind, KACT_NONE);
+    a = resolve1("[bind]\nsuper+f3 = tab:goto 10 ; G | w\n", 0);
+    CHECK_INT(a.kind, KACT_NONE);
+    a = resolve1("[bind]\nsuper+f3 = tab:goto 0 ; G | w\n", 0);
+    CHECK_INT(a.kind, KACT_NONE);
+    a = resolve1("[bind]\nsuper+h = slash:/help ; H | m\n", 0);
+    CHECK_INT(a.kind, KACT_MENU);
+    CHECK_INT(a.id, MENU_HELP_SLASH);
+    a = resolve1("[bind]\nsuper+shift+t = slash:/theme ; T | s\n", 0);
+    CHECK_INT(a.kind, KACT_SLASH);
+    CHECK_STR(a.line, "/theme");
+    a = resolve1("[bind]\nsuper+e = run:nvim ; E | a\n", 0);
+    CHECK_INT(a.kind, KACT_DEFER);
+    a = resolve1("[bind]\nsuper+k = viewer ; K | m\n", 0);
+    CHECK_INT(a.kind, KACT_DEFER);
+    /* the ids did not move when the enum became a list */
+    CHECK_INT(MENU_COPY, 1);
+    CHECK_INT(MENU_PASTE, 2);
+    CHECK_STR(kact_menu_name(MENU_FIND), "MENU_FIND");
+    CHECK_INT(kact_menu_id("MENU_FIND"), MENU_FIND);
+    CHECK_INT(kact_menu_id("MENU_NOPE"), 0);
+}
+
+static int comm_is(const char *key, long id, const char *want)
+{
+    char ck[2] = {0, 0};
+    int got = kact_comm_key(&km, id, ck);
+    (void)key;
+    return want ? (got && ck[0] == want[0]) : !got;
+}
+
+static void the_shipped_file_resolves_and_derives_menu_keys(void)
+{
+    char buf[16384];
+    long n = slurp("dist/keymap", buf, sizeof(buf));
+    int i;
+    CHECK(n > 0 && keymap_parse(&km, buf, n));
+    for (i = 0; i < km.nbind; i++) {
+        kact a;
+        CHECK(kact_resolve(&km.bind[i], &a) != KACT_NONE);
+    }
+    /* the keys the menu bar shows are the file's, not a second table */
+    CHECK(comm_is("period", MENU_TAB_NEXT, "."));
+    CHECK(comm_is("comma", MENU_TAB_PREV, ","));
+    CHECK(comm_is("c", MENU_COPY, "C"));
+    CHECK(comm_is("v", MENU_PASTE, "V"));
+    CHECK(comm_is("a", MENU_SELECT_ALL, "A"));
+    CHECK(comm_is("g", MENU_FIND_NEXT, "G"));
+    CHECK(comm_is("plus", MENU_FONT_BIGGER, "+"));
+    CHECK(comm_is("minus", MENU_FONT_SMALLER, "-"));
+    CHECK(comm_is("p", MENU_PREFS, "P"));
+    CHECK(comm_is("q", MENU_CLOSE, "Q"));
+    /* a key with a Shift twin has none: Intuition ignores Shift in a command key */
+    CHECK(comm_is("t", MENU_TAB_NEW, 0));
+    CHECK(comm_is("f", MENU_FIND, 0));
+    CHECK(comm_is("l", MENU_CLAUDE, 0));
+    CHECK(comm_is("-", MENU_CLEAR_SCREEN, 0));
+}
+
 void suite_keymap(void)
 {
     comments_crlf_and_fields();
@@ -301,4 +390,6 @@ void suite_keymap(void)
     the_tables_have_caps();
     key_names_are_raw_codes();
     the_shipped_keymap_loads_whole();
+    actions_resolve_to_menu_ids();
+    the_shipped_file_resolves_and_derives_menu_keys();
 }
