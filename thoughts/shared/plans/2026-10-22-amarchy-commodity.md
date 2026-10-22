@@ -328,9 +328,11 @@ D3. Parser extension. Recommended: add `upconf_rows` to upconf (one shared token
 D4. Quick menu implementation. Recommended: stopgap `upkg-ui --menu --filter` first if timing is under budget, then
     the BROWSE-SNAPPY static widget library (Phase D2). Alternative: only exec upkg-ui, never the library.
     Trade-off: library link is fastest per press but waits on BROWSE-SNAPPY; exec keeps one binary but pays a process start.
+    DECIDED 2026-10-22 (owner): link libupkgui.a directly, no upkg-ui stopgap.
 D5. Final binding table. Recommended: approve section 4 as the first release, dropping the low-value rows
     (emoji, Workbench Prefs launchers, reboot) to keep ~30 solid ones. Alternative: ship all ~40. Trade-off: fewer rows
     means less to test and fewer surprise clashes; more rows matches the "~40" scope.
+    DECIDED 2026-10-22 (owner): ship all ~40 rows of section 4.
 D6. Super+Ctrl forever banned. Recommended: ban (reset chord safety). Alternative: allow with Left Amiga only. Trade-off: banning removes four bindings but removes any chance of a reset hit.
 D7. Commodity vs handler priority rule (handler wins when UPTerm active, via the `UPTERM.active` semaphore).
     Recommended as designed. Alternative: commodity handles everything and sends ARexx to the handler. Trade-off: one place for logic, but needs an ARexx round trip per key and a handler port.
