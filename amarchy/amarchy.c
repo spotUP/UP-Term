@@ -12,6 +12,7 @@
 #include "cx.h"
 #include "cxdesc.h"
 #include "act.h"
+#include "atiming.h"
 #include "../claude/util.h"
 #include "../config/keymap_load.h"
 #include "../handler/upactive.h"
@@ -111,6 +112,8 @@ static int do_row(int row)
     if (!b)
         return 0;
     g_hits++;
+    if (b->kind == KA_MENU || b->kind == KA_VIEWER)
+        at_mark("hotkey");   /* opt-in: AMARCHY_TIMING */
     switch (b->kind) {
     case KA_RUN:   ok = act_run(b->arg); break;
     case KA_REXX:  ok = act_rexx(b->arg); break;

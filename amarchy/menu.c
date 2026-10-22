@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <upkgui/ui.h>
+#include "atiming.h"
 #include "menu_core.h"
 #include "../config/keymap_load.h"
 #include "../handler/upreq.h"
@@ -97,6 +98,7 @@ static int menu_loop(const char *start)
         snprintf(prompt, sizeof prompt, "Filter: %s", filter);
         ui_opt.prompt = prompt;
         ui_prepare();
+        at_mark("ready");
         rc = ui_run();
         if (rc == EXIT_NO_TERMINAL)
             return rc;
@@ -162,6 +164,7 @@ static int viewer(void)
 int main(int argc, char **argv)
 {
     int rc;
+    at_mark("start");
     keymap_load(&km, km_default_text);
     if (argc < 2) {
         fputs("usage: amarchy-menu menu [node] | viewer\n", stderr);
@@ -174,6 +177,7 @@ int main(int argc, char **argv)
             setenv("TERM", t, 1);
     }
     rc = ui_start("amarchy-menu");
+    at_mark("terminal");
     if (rc) {
         /* the window closes when this exits: keep the message readable until Return */
         fputs("amarchy-menu: no terminal could be started. Press Return.\n", stderr);
