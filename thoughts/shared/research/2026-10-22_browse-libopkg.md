@@ -100,3 +100,28 @@ Tests: host check pkgs/opkg/check/no_requesters.sh (slot write plus call order i
 
 Rig verdicts: see the lines appended below.
 
+## P3d hang hunt
+
+Cause (owner, 2026-10-22): host CPU starvation, not the product. Another session ran vitest at about 600% CPU and froze the host for about an hour; the emulator starved, so the "Amiga stopped answering" ERR and the P3c "[FAIL] install: sentinel ... appears" came from the host, not from Amiga, upkg or ixemul. Hunt stopped there; no product change.
+
+Measured on rig 4 before the stop (base already on Rushhours:Tools/UP-Term, rig rebooted):
+- The P3c run did use the new upkg: setup copies upterm-ports build/sysroot/UP-Term/bin/upkg (888580 bytes, 0026) over the kit's 888496-byte one (build/dist is stale on this point); UP-Term:bin/upkg on the rig was 888580.
+- The failing run's screenshots step1-installing/installed/back/off-row (11:08 to 11:15) are byte-identical: the screen froze on "Downloading http://127.0.0.1:49420/up-vim_1.0_m68k-amigaos.ipk." with "Wait: Command running", which fits a starved emulator.
+- `upkg install up-vim` and `upkg remove up-vim` direct (default stack): rc 0, about 19 s and 6 s.
+- `upkg browse` -> up-vim -> Install, 4 runs (remove between): sentinel after about 20 s every time, no requester.
+- Full upkg_browse_rig.py rerun (no base reinstall): install, sentinel and list-installed PASS; FAIL on the remove step and both colour checks (8 of 12), the same as P3b. The remove-step failure is separate from the hang and still not diagnosed.
+- Side note: the probe's `q` did not leave browse after the OK box; upkg and vsh processes from earlier probes stayed in the process list (`Status`). UNVERIFIED whether that is the probe's key timing or the same issue as the remove step.
+
+
+## P3e browse remove: lead (host analysis only, no rig run yet)
+
+Symptom: after an install from browse, the OK programbox takes no keys, so the remove step never runs. A direct `upkg remove up-vim` works (P3d).
+
+Lead (diagnosis agent, host reading; UNVERIFIED on the rig):
+- handler/vtcon_handler.c:6613-6614: ACTION_SCREEN_MODE calls tty_leave(c) first, whatever task sent it. A SetMode from any other task on the same console ends the termios mode that upkg's curses set (cbreak, noecho). curses still thinks it is in cbreak, the console is back to cooked, keys are held until Return or never reach the getch loop.
+- ixemul-vtcon only sends SetMode from tty_set_raw_mode (library/__tioctl.c:127-138), guarded by the struct file's IXTTY_RAW flag; under vtcon termios goes through the __vtcon.c packets. So the suspect sender is a native process started during the install: the postinst through sh (vsh is native) inherits pr_ConsoleTask even though its fds are the pipe and /dev/null (libopkg/xsystem.c, patch 0025).
+- ui.c already has ui_suspend/ui_resume (def_prog_mode / reset_prog_mode) for the interactive path; the boxed path (run_action, patch 0025 around line 615) does not re-assert the mode after opkg_cmd_exec.
+
+Discriminating probe (next): rig 4, handler debug build, browse -> up-vim -> Install; read the "screenmode" DBG lines with the sending task's name. A SetMode from vsh/Copy/postinst during the install confirms the lead and names the sender. No SetMode at all kills the lead.
+
+Fix level to decide after the probe: the sender (a process with no console fd should not change the console mode) is the root; a reset_prog_mode in run_action would only cover it.
