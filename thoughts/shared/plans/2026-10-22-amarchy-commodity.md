@@ -309,7 +309,7 @@ Done: `make dist dist-check` green; install on a fresh rig kit gives the commodi
 
 ## Ledger (tick in the open; N of 6 phases, items below)
 
-- [ ] A1 keymap.c/h  [ ] A2 upconf_rows  [ ] A3 dist/keymap  [ ] A4 meta=alt default  [ ] A5 host tests  [ ] A6 rig meta test
+- [x] A1 keymap.c/h  [x] A2 upconf_rows  [x] A3 dist/keymap  [x] A4 meta=alt default  [x] A5 host tests  [ ] A6 rig meta test (written, not run)
 - [ ] B1 handler match  [ ] B2 dispatch  [ ] B3 generated menu keys  [ ] B4 Clear screen move  [ ] B5 rig table  [ ] B6 R1 terminal
 - [ ] C1 broker  [ ] C2 hotkeys  [ ] C3 actions  [ ] C4 semaphore  [ ] C5 ARexx  [ ] C6 R1 commodity  [ ] C7 R3
 - [ ] D1 timing  [ ] D2 filter field  [ ] D3 tree  [ ] D4 viewer  [ ] D5 library swap
