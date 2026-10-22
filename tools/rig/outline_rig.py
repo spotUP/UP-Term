@@ -10,9 +10,13 @@ from an outline font (plan thoughts/shared/plans/2026-10-03-outline-fonts.md).
   2. The same UTF-8 line typed out in an XCON:/XTERM window twice: with a
      profile naming no fallback font, then with font-fallback naming it.
      The two screenshots differ exactly in the icon cells: eight Nerd Font
-     icons drawn as glyphs where the first run drew '?'; a CJK character
-     the font lacks and an em dash (Latin-1 stand-in '-') do not change, nor
-     does the ASCII around them.
+     icons and two plane-15/private-use codes (OWN) drawn as glyphs where
+     the first run drew '?'; a CJK character the font lacks and an em dash
+     (Latin-1 stand-in '-') do not change, nor does the ASCII around them.
+     UP-Term's own TrueType engine (render/ttf.c) reads the .ttf named in
+     the .otag, so 32-bit codes draw too. `UPTerm state outline-own` in
+     the window counts the glyphs that engine drew: 0 without the
+     fallback, at least len(ICONS)+len(OWN) with it.
   3. The time from the command to the drawn line, with the font (the
      worker's first glyphs: engine open, one rasterisation per icon).
 
@@ -31,13 +35,14 @@ TP = ROOT / 'build/third_party/f1'
 TTFLIB = 'https://aminet.net/util/libs/ttflib68020.lha'
 NERD = 'https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip'
 ICONS = [0xE0A0, 0xF07B, 0xF121, 0xE7A8, 0xF015, 0xE712, 0xF09B, 0xF1D3]
-# codes the font has but the engine cannot reach: drawn the same with and
-# without the font (ttf.library 0.8.5 has no 32-bit glyph codes, so a
-# plane-15 Nerd Font icon keeps its replacement box). Both lists can be
-# given as hex: OUTLINE_ICONS=EBCF,F011 OUTLINE_UNREACHED=F003B,F0249
+# codes drawn by UP-Term's own engine (render/ttf.c; ttf.library has no
+# 32-bit glyph codes, plane-15 included): they change like the icons. Both
+# lists can be given as hex: OUTLINE_ICONS=EBCF,F011 OUTLINE_OWN=F003B,E615
+OWN = [0xF003B, 0xE615]
 if os.environ.get('OUTLINE_ICONS'):
     ICONS = [int(x, 16) for x in os.environ['OUTLINE_ICONS'].split(',')]
-UNREACHED = [int(x, 16) for x in os.environ.get('OUTLINE_UNREACHED', '').split(',') if x]
+if os.environ.get('OUTLINE_OWN'):
+    OWN = [int(x, 16) for x in os.environ['OUTLINE_OWN'].split(',') if x]
 CJK, EMDASH = 0x4E2D, 0x2014
 WX, WY, WW, WH = 0, 20, 640, 200
 passed = total = 0
@@ -88,7 +93,7 @@ def diff_cells(a, b, w, x0, y0, x1, y1, cw=8, ch=8):
     return {k: sorted(v) for k, v in rows.items()}
 
 
-def run_line(profile):
+def run_line(profile, count_own=False):
     (VTC / 'outline-rig.conf').write_text(profile)
     c.run('Copy VTC:outline-rig.conf ENV:up-term/up-term QUIET')
     c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/outline/CLOSE/XTERM"' % (WX, WY, WW, WH))
@@ -104,16 +109,28 @@ def run_line(profile):
     time.sleep(6)
     w, h, px = shot()
     secs = time.time() - t0
+    own = None
+    if count_own:
+        # glyphs the own engine drew in this window, written to the host-shared dir
+        (VTC / 'own.txt').unlink(missing_ok=True)
+        ami.req(0x08, bytes([4]) + b'UPTerm state outline-own >VTC:own.txt')
+        time.sleep(0.5)
+        ami.key(0x44)
+        time.sleep(3)
+        try:
+            own = int((VTC / 'own.txt').read_text().split()[0])
+        except (OSError, ValueError, IndexError):
+            own = None
     ami.req(0x08, bytes([4]) + b'EndCLI')
     ami.key(0x44)
     time.sleep(3)
-    return w, h, px, secs
+    return w, h, px, secs, own
 
 
 def main():
     fetch()
     # one line: ASCII, the icons (a blank between each), CJK, em dash, ASCII
-    text = 'A ' + ' '.join(chr(i) for i in ICONS + UNREACHED) + ' ' + chr(CJK) + ' ' + chr(EMDASH) + ' Z\n'
+    text = 'A ' + ' '.join(chr(i) for i in ICONS + OWN) + ' ' + chr(CJK) + ' ' + chr(EMDASH) + ' Z\n'
     (VTC / 'outline-line.txt').write_bytes(text.encode('utf-8'))
     had = c.run('Copy ENV:up-term/up-term RAM:outline-rig.bak QUIET')[0] == 0
     c.run('MakeDir ENV:up-term QUIET')
@@ -128,8 +145,8 @@ def main():
             return 1
         face = names[0][:-5]
         print('  face:', face)
-        w, h, plain, _ = run_line('[profile default]\n')
-        w, h, fancy, secs = run_line('[profile default]\nfont-fallback = %s\n' % face)
+        w, h, plain, _, own_plain = run_line('[profile default]\n', True)
+        w, h, fancy, secs, own_fancy = run_line('[profile default]\nfont-fallback = %s\n' % face, True)
         # the window's text area: 4 pixels in, under an 11-pixel title bar
         # (topaz 8 Workbench). The shell's number differs between the two
         # windows (its banner and prompt): the typed line is the row that
@@ -137,12 +154,13 @@ def main():
         rows = diff_cells(plain, fancy, w, WX + 4, WY + 11, WX + WW - 18, WY + WH - 2)
         line = max(rows, key=lambda k: len(rows[k])) if rows else None
         cols = rows.get(line, [])
-        want = [2 + 2 * i for i in range(len(ICONS))]
-        for i, u in enumerate(UNREACHED):
-            check(2 + 2 * (len(ICONS) + i) not in cols, 'U+%X keeps its replacement box (no 32-bit codes)' % u, cols)
-        n = len(ICONS) + len(UNREACHED)
-        check(cols == want, 'the icons are drawn from the outline font, nothing else on their line moves',
+        n = len(ICONS) + len(OWN)
+        want = [2 + 2 * i for i in range(n)]
+        check(cols == want, 'the icons and the own-engine codes are drawn from the outline font, nothing else on their line moves',
               'changed columns %s, icons at %s (all rows: %s)' % (cols, want, rows))
+        check(own_plain == 0, 'outline-own is 0 without a fallback font', own_plain)
+        check(own_fancy is not None and own_fancy >= n, 'outline-own counts at least %d glyphs with the font' % n, own_fancy)
+        print('  outline-own: plain %s, fancy %s' % (own_plain, own_fancy))
         check(2 + 2 * n not in cols, 'the CJK character the font lacks keeps its \'?\'', cols)
         check(4 + 2 * n not in cols, 'the em dash keeps its stand-in', cols)
         print('  line with the font drawn within %.1f s of Return (6 s wait)' % secs)
