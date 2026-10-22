@@ -18,18 +18,16 @@ branch: amarchy-a (worktree .claude/worktrees/agent-a7edb2573dbabf68d), main
 
 ## Open, in order
 
-1. Owner A1200 test of the hotkeys (steps in the ledger). Decides whether the hotkey bug is in
-   the rig's wasabi Left Amiga key injection or in the Amarchy filter. On the rig, STATUS and
-   RELOAD pass, but no chord fires (amarchy_rig.py 5 of 7, keymap_rig B5 1 of 12).
-2. Exact heap measure on the rig: estimate is 32.0-32.1 KB of the 32768 budget.
-3. Rig checks not yet run: 4 (bad edit), 6 (amarchy_menu_rig.py), 7 (window close frees the
-   keymap), RUN <n>; scripts still to write: A6, B6, D1 timing, E1 clash.
-4. rig.py install does not install Amarchy or amarchy-menu. dist/keymap header should say that
-   user rows need a `[bind]` header.
-5. F1 fresh-kit install; tick the plan checklist
-   (thoughts/shared/plans/2026-10-22-amarchy-commodity.md, near line 313).
-6. Owner decision still open: no dist/packages.txt row for Amarchy (base kit). Recommended: leave
-   it out.
+State at 4f93e6a1: chords fire on rig 4 and the A1200; the viewer and menu open and stay up (TERM default
+in amarchy-menu, 256 KB stack); a junk keymap is refused (63ebcad0); rig scripts start Amarchy from
+VTC:Apps/bin (86ba6799). Ledger entries after "2026-10-22 dist chain" hold the detail.
+
+1. Heap: 43288 B resident against 32768 on rig 4. Rework planned (ledger "heap breakdown").
+2. Stack regression test for amarchy-menu; screen_text reader for amarchy_menu_rig.py (2 of 6, script defect).
+3. Scripts A6, B6, D1, E1; F1 fresh-kit install; tick the plan checklist (near line 313).
+4. Owner decision still open: no dist/packages.txt row for Amarchy. Recommended: leave it out.
+5. The A1200 rebooted once on a manual `amarchy-menu viewer` run from a 4 KB shell stack; not seen since the
+   256 KB stack. Unproven.
 
 ## RELEASE-1.0 side (main)
 
