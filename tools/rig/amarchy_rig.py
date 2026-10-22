@@ -65,7 +65,7 @@ def port_up():
 
 
 def start():
-    c.run('Run >NIL: UP-Term:bin/Amarchy')
+    c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     time.sleep(2)
 
 

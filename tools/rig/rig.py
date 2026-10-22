@@ -556,8 +556,8 @@ def setup_config_only():
 def stage_upterm(dest, vsh):
     """The kit's UP-Term: drawer as far as the icon needs it (R9): bin/vsh, the tool
     of UP-Term.info, and the icon and its text file, made as `make dist-base` makes them. Amarchy and
-    amarchy-menu go to bin beside vsh when they were built, where the kit puts them (dist/install.dos
-    starts UP-Term:bin/Amarchy); before this the rig had no Amarchy and amarchy_rig.py ran none."""
+    amarchy-menu go to bin beside vsh when they were built, at paths.UPTERM_BIN (the rig drawer; the
+    rig scripts start them from there, as UP-Term: moves with a kit install); before this the rig had no Amarchy."""
     (dest / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(vsh, dest / "bin/vsh")
     for name in ("Amarchy", "amarchy-menu"):

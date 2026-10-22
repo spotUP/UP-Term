@@ -61,7 +61,7 @@ def open_terminal():
 
 
 def r_start():
-    c.run('Run >NIL: UP-Term:bin/Amarchy')
+    c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     open_terminal()
     return True, 'commodity started, terminal window open and focused'
 

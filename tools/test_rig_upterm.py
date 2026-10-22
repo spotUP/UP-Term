@@ -60,6 +60,16 @@ with tempfile.TemporaryDirectory() as tmp:
     else:
         check(False, "rig.stage_upterm exists")
 
+# 2026-10-22 (rig 4): UP-Term: was Rushhours:Tools/UP-Term, the binaries were staged in VTC:Apps/bin, and the
+# rig scripts started UP-Term:bin/Amarchy and found nothing. They start from where stage_upterm writes.
+import paths
+check(rig.paths.UPTERM_BIN == "VTC:%s/bin" % rig.paths.UPTERM_DRAWER, "UPTERM_BIN is the staged drawer's bin")
+for script in ("amarchy_rig.py", "amarchy_menu_rig.py"):
+    src = (HERE / "rig" / script).read_text()
+    check("UP-Term:bin/Amarchy" not in src, "%s does not start Amarchy from UP-Term: (a kit install moves it)" % script)
+    check("Run >NIL: %s/Amarchy" in src and "paths.UPTERM_BIN" in src,
+          "%s starts Amarchy from paths.UPTERM_BIN, where stage_upterm stages it" % script)
+
 # install removes what no committed code makes at the root of the host drawer, and an orphan drawer icon
 import subprocess
 with tempfile.TemporaryDirectory() as tmp:
