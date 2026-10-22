@@ -17,7 +17,19 @@ from an outline font (plan thoughts/shared/plans/2026-10-03-outline-fonts.md).
      the .otag, so 32-bit codes draw too. `UPTerm state outline-own` in
      the window counts the glyphs that engine drew: 0 without the
      fallback, at least len(ICONS)+len(OWN) with it.
-  3. The time from the command to the drawn line, with the font (the
+  3. Antialiasing (plan phase 4, R4.5): with the fallback font and the
+     default `outline-antialias = on`, most icon cells hold at least one
+     colour that is neither the window's foreground nor its background
+     (fg = the 'A' glyph's pixels, bg = the commonest colour of the text
+     area, both read from the plain shot). A third run with
+     `outline-antialias = off` draws icon cells of foreground and
+     background only, still differing from the plain run. `UPTerm state
+     outline-aa` (glyphs drawn antialiased) is at least len(ICONS)+len(OWN)
+     with it on and 0 with it off. On an AGA screen without a free shade
+     pen the 1-bit path draws, and the intermediate-colour check fails:
+     read that as the finding, not as a handler fault. Run it on RTG and
+     on AGA 256 colours (`rig.py rtg` / `rig.py aga256`, each reboots).
+  4. The time from the command to the drawn line, with the font (the
      worker's first glyphs: engine open, one rasterisation per icon).
 
 The profile lives in ENV:up-term/up-term only; the file there before is put
@@ -93,7 +105,10 @@ def diff_cells(a, b, w, x0, y0, x1, y1, cw=8, ch=8):
     return {k: sorted(v) for k, v in rows.items()}
 
 
-def run_line(profile, count_own=False):
+def run_line(profile, keys=()):
+    """types the line in a fresh window; returns the shot, the seconds, and {key: int or None} of the
+    `UPTerm state <key>` values read from that window"""
+    shutil.copyfile(ROOT / 'build/amiga/UPTerm', VTC / 'UPTerm')    # the rig's path has none
     (VTC / 'outline-rig.conf').write_text(profile)
     c.run('Copy VTC:outline-rig.conf ENV:up-term/up-term QUIET')
     c.run('Run >NIL: NewShell "XCON:%d/%d/%d/%d/outline/CLOSE/XTERM"' % (WX, WY, WW, WH))
@@ -109,22 +124,41 @@ def run_line(profile, count_own=False):
     time.sleep(6)
     w, h, px = shot()
     secs = time.time() - t0
-    own = None
-    if count_own:
-        # glyphs the own engine drew in this window, written to the host-shared dir
+    states = {}
+    for key in keys:
+        # a /state counter of this window, written to the host-shared dir
         (VTC / 'own.txt').unlink(missing_ok=True)
-        ami.req(0x08, bytes([4]) + b'UPTerm state outline-own >VTC:own.txt')
+        ami.req(0x08, bytes([4]) + b'VTC:UPTerm state %s >VTC:own.txt' % key.encode())
         time.sleep(0.5)
         ami.key(0x44)
         time.sleep(3)
         try:
-            own = int((VTC / 'own.txt').read_text().split()[0])
+            states[key] = int((VTC / 'own.txt').read_text().split()[0])
         except (OSError, ValueError, IndexError):
-            own = None
+            states[key] = None
     ami.req(0x08, bytes([4]) + b'EndCLI')
     ami.key(0x44)
     time.sleep(3)
-    return w, h, px, secs, own
+    return w, h, px, secs, states
+
+
+def changed_band(a, b, w, x0, y0, x1, y1):
+    """(first, last) pixel row between y0 and y1 whose pixels differ between two shots: the icon line's
+    own rows, whatever the screen's text row height is (the other text rows are the same in both)"""
+    ys = [y for y in range(y0, y1) if any(a[(y * w + x) * 3:(y * w + x) * 3 + 3] != b[(y * w + x) * 3:(y * w + x) * 3 + 3]
+                                          for x in range(x0, x1))]
+    return (ys[0], ys[-1]) if ys else (y0, y0)
+
+
+def cell_colours(px, w, x0, band, col, cw=8):
+    """{RGB: pixel count} of one text cell: columns from the box's left x0, the pixel rows of `band`"""
+    got = {}
+    for y in range(band[0], band[1] + 1):
+        for x in range(x0 + col * cw, x0 + (col + 1) * cw):
+            o = (y * w + x) * 3
+            k = bytes(px[o:o + 3])
+            got[k] = got.get(k, 0) + 1
+    return got
 
 
 def main():
@@ -145,8 +179,13 @@ def main():
             return 1
         face = names[0][:-5]
         print('  face:', face)
-        w, h, plain, _, own_plain = run_line('[profile default]\n', True)
-        w, h, fancy, secs, own_fancy = run_line('[profile default]\nfont-fallback = %s\n' % face, True)
+        w, h, plain, _, st = run_line('[profile default]\n', ('outline-own', 'outline-aa'))
+        own_plain, aa_plain = st['outline-own'], st['outline-aa']
+        w, h, fancy, secs, st = run_line('[profile default]\nfont-fallback = %s\n' % face, ('outline-own', 'outline-aa'))
+        own_fancy, aa_fancy = st['outline-own'], st['outline-aa']
+        w, h, flat, _, st = run_line('[profile default]\nfont-fallback = %s\noutline-antialias = off\n' % face,
+                                     ('outline-aa',))
+        aa_off = st['outline-aa']
         # the window's text area: 4 pixels in, under an 11-pixel title bar
         # (topaz 8 Workbench). The shell's number differs between the two
         # windows (its banner and prompt): the typed line is the row that
@@ -163,11 +202,42 @@ def main():
         print('  outline-own: plain %s, fancy %s' % (own_plain, own_fancy))
         check(2 + 2 * n not in cols, 'the CJK character the font lacks keeps its \'?\'', cols)
         check(4 + 2 * n not in cols, 'the em dash keeps its stand-in', cols)
+        # antialiasing: fg and bg from the plain shot, intermediate colours in the icon cells
+        bx, by = WX + 4, WY + 11
+        area = {}
+        for y in range(by, WY + WH - 2):
+            for x in range(bx, WX + WW - 18):
+                k = bytes(plain[(y * w + x) * 3:(y * w + x) * 3 + 3])
+                area[k] = area.get(k, 0) + 1
+        bg = max(area, key=area.get)
+        icon_cols = want
+        band = changed_band(plain, fancy, w, bx + want[0] * 8, by, bx + (want[-1] + 1) * 8, WY + WH - 2)
+        print('  icon rows %d..%d' % band)
+        fgs = {k: v for k, v in cell_colours(plain, w, bx, band, 0).items() if k != bg}
+        fg = max(fgs, key=fgs.get) if fgs else None
+        print('  bg %s fg %s' % (bg.hex(), fg.hex() if fg else None))
+        mid_aa = [len(set(cell_colours(fancy, w, bx, band, k)) - {fg, bg}) for k in icon_cols]
+        mid_off = [len(set(cell_colours(flat, w, bx, band, k)) - {fg, bg}) for k in icon_cols]
+        print('  intermediate colours per icon cell: on %s, off %s' % (mid_aa, mid_off))
+        print('  off-run colours beyond fg/bg: %s' % sorted({k.hex() for col in icon_cols
+              for k in set(cell_colours(flat, w, bx, band, col)) - {fg, bg}}))
+        check(fg is not None and sum(1 for m in mid_aa if m) * 2 > n,
+              'antialias on: most icon cells hold a colour that is neither foreground nor background', mid_aa)
+        rows_off = diff_cells(plain, flat, w, bx, by, WX + WW - 18, WY + WH - 2)
+        check(not any(mid_off) and rows_off.get(line) == want,
+              'antialias off: icon cells hold only foreground and background, and still differ from the plain run',
+              'intermediate %s, changed columns %s' % (mid_off, rows_off.get(line)))
+        check(aa_plain == 0 and aa_off == 0 and aa_fancy is not None and aa_fancy >= n,
+              'outline-aa is 0 plain and with antialias off, at least %d with it on' % n,
+              (aa_plain, aa_fancy, aa_off))
+        print('  outline-aa: plain %s, on %s, off %s' % (aa_plain, aa_fancy, aa_off))
         print('  line with the font drawn within %.1f s of Return (6 s wait)' % secs)
         ami.png(str(paths.RIG / 'outline_plain.png'), w, h,
                 [plain[r * w * 3:(r + 1) * w * 3] for r in range(h)])
         ami.png(str(paths.RIG / 'outline_fancy.png'), w, h,
                 [fancy[r * w * 3:(r + 1) * w * 3] for r in range(h)])
+        ami.png(str(paths.RIG / 'outline_flat.png'), w, h,
+                [flat[r * w * 3:(r + 1) * w * 3] for r in range(h)])
     finally:
         if had:
             c.run('Copy RAM:outline-rig.bak ENV:up-term/up-term QUIET')
