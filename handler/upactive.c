@@ -4,12 +4,14 @@
 #include <proto/exec.h>
 #include <string.h>
 #include "upactive.h"
+#include "keymap_act.h"
 
 typedef struct upact {
     struct SignalSemaphore ss;   /* ss_Link.ln_Name points at name */
     LONG count;
     char name[16];
-    char cur[24], prev[24];      /* request port names (upreq.h) */
+    unsigned long mru[UPMRU_N];        /* request port ids, most recently focused first (upmru_*);
+                                  * 48 bytes, the size the two names before it took */
 } upact;
 
 static upact *find(void)
@@ -68,7 +70,7 @@ long upactive_count(void)
     return n;
 }
 
-void upactive_focus(const char *self)
+void upactive_focus(unsigned long self)
 {
     upact *u = find();
     if (!u && upactive_publish())
@@ -76,38 +78,30 @@ void upactive_focus(const char *self)
     if (!u)
         return;
     ObtainSemaphore(&u->ss);
-    if (strcmp(u->cur, self)) {
-        strcpy(u->prev, u->cur);
-        strncpy(u->cur, self, sizeof u->cur - 1);
-    }
+    upmru_focus(u->mru, self);
     ReleaseSemaphore(&u->ss);
 }
 
-void upactive_forget(const char *self)
+void upactive_forget(unsigned long self)
 {
     upact *u = find();
     if (!u)
         return;
     ObtainSemaphore(&u->ss);
-    if (!strcmp(u->cur, self))
-        u->cur[0] = 0;
-    if (!strcmp(u->prev, self))
-        u->prev[0] = 0;
+    upmru_forget(u->mru, self);
     ReleaseSemaphore(&u->ss);
 }
 
-int upactive_prev(char *out, int n)
+int upactive_prev(char out[24])
 {
     upact *u = find();
-    int ok;
+    unsigned long id;
     if (!u)
         return 0;
     ObtainSemaphoreShared(&u->ss);
-    ok = u->prev[0] != 0;
-    if (ok) {
-        strncpy(out, u->prev, (size_t)n - 1);
-        out[n - 1] = 0;
-    }
+    id = upmru_prev(u->mru);
     ReleaseSemaphore(&u->ss);
-    return ok;
+    if (id)
+        upreq_portname(id, out);
+    return id != 0;
 }

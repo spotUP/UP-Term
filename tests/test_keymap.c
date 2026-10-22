@@ -728,7 +728,7 @@ static void an_unknown_request_is_an_error_code(void)
         CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_UNKNOWN);
     }
     req_of(&r, "tab:new");
-    r.version = 2;
+    r.version = UPREQ_VERSION + 1;
     CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_BADVERSION);
     req_of(&r, "run:C:Echo hi");
     CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_NOTMINE);
@@ -743,6 +743,63 @@ static void the_menu_builds_the_request_of_a_leaf(void)
     CHECK(upreq_fill(&r, KA_MENUID, "MENU_COPY"));
     CHECK_STR(r.action, "menuid:MENU_COPY");
     CHECK(!upreq_fill(&r, KA_RUN, "C:Echo"));
+}
+
+/* Owner's A1200, 2026-10-22: Preferences from the quick menu did nothing the first time. The
+ * menu window that closed was blanked out of the focus record, and the next menu window then
+ * took the blank as "the terminal before me": the request found no port. The record keeps the
+ * live windows in order, so the terminal stays the menu's target whatever closed in between. */
+static void the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed(void)
+{
+    unsigned long l[UPMRU_N] = {0};
+    char name[24];
+    unsigned long a = 0x1000, b = 0x2000, m1 = 0x3000, m2 = 0x4000;
+    int i;
+    upmru_focus(l, a);
+    CHECK(upmru_prev(l) == 0);                 /* one window: nothing before it */
+    upmru_focus(l, m1);
+    CHECK(upmru_prev(l) == a);
+    upmru_forget(l, m1);                       /* the first menu closes, no window active */
+    upmru_focus(l, m2);                        /* the second menu, straight after */
+    CHECK(upmru_prev(l) == a);
+    upmru_forget(l, m2);
+    upmru_focus(l, b);                         /* another terminal, then back to the first */
+    upmru_focus(l, a);
+    upmru_focus(l, m1);
+    CHECK(upmru_prev(l) == a);
+    upmru_forget(l, a);                        /* the target closes: the one before it */
+    CHECK(upmru_prev(l) == b);
+    upmru_forget(l, b);
+    CHECK(upmru_prev(l) == 0);                 /* only the menu left */
+    for (i = 1; i <= UPMRU_N + 3; i++)         /* more windows than slots: the newest stay */
+        upmru_focus(l, (unsigned long)i * 16);
+    CHECK(l[0] == (unsigned long)(UPMRU_N + 3) * 16 && upmru_prev(l) == (unsigned long)(UPMRU_N + 2) * 16);
+    upreq_portname(0x0812abcdUL, name);
+    CHECK_STR(name, "UPTERM.req.0812abcd");
+}
+
+/* Owner's A1200, 2026-10-22: Style > Background just exited. /bg takes a colour the row does
+ * not carry; the window refused, replied OK and the menu closed with nothing said. A refusal is
+ * never OK: a missing argument asks for it (the usage goes back), any other refusal says why. */
+static void a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for(void)
+{
+    upreq_body r;
+    CHECK(upreq_fill(&r, KA_SLASH, "/bg"));
+    CHECK_INT((int)upreq_slash_answer(&r, 2, "bg: RRGGBB | none\n", 1), UPREQ_NEEDARG);
+    CHECK_STR(r.answer, "bg: RRGGBB | none");
+    CHECK_INT((int)upreq_slash_answer(&r, 2, "bg: RRGGBB | none\n", 0), UPREQ_FAILED);
+    CHECK_INT((int)upreq_slash_answer(&r, 1, "bg: 102030\n", 0), UPREQ_OK);
+    CHECK_STR(r.answer, "");
+    CHECK(upreq_with_arg(&r, "slash:/bg", "102030"));
+    CHECK_STR(r.action, "slash:/bg 102030");
+    CHECK_INT((int)r.version, UPREQ_VERSION);
+    {
+        kact a;
+        km_bind tmp;
+        CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_OK);
+        CHECK(a.kind == KACT_SLASH && !strcmp(a.line, "/bg 102030"));
+    }
+    CHECK(!upreq_with_arg(&r, "slash:/bg", ""));
 }
 
 /* The table sits on the heap sized to its content, and the commodity's reload
@@ -856,4 +913,6 @@ void suite_keymap(void)
     a_request_needs_no_bind_row();
     an_unknown_request_is_an_error_code();
     the_menu_builds_the_request_of_a_leaf();
+    the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
+    a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
 }

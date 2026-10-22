@@ -7,16 +7,10 @@
 
 struct MsgPort *upreq_open(char name[UPREQ_NAMELEN])
 {
-    static const char hex[] = "0123456789abcdef";
     struct MsgPort *mp = CreateMsgPort();
-    ULONG v = (ULONG)mp;
-    int i;
     if (!mp)
         return 0;
-    strcpy(name, "UPTERM.req.");
-    for (i = 0; i < 8; i++)
-        name[11 + i] = hex[(v >> (28 - 4 * i)) & 15];
-    name[19] = 0;
+    upreq_portname((ULONG)mp, name);
     mp->mp_Node.ln_Name = name;
     mp->mp_Node.ln_Pri = 0;
     AddPort(mp);
@@ -51,7 +45,7 @@ long upreq_send(const upreq_body *r)
     char name[UPREQ_NAMELEN];
     struct MsgPort *rp, *tp;
     long rc;
-    if (!upactive_prev(name, sizeof name))
+    if (!upactive_prev(name))
         return UPREQ_NOPORT;
     rp = CreateMsgPort();
     if (!rp)

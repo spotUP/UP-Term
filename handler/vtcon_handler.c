@@ -5320,7 +5320,7 @@ static void ua_set(con *c, int on)
         if (!c->req_port)
             c->req_port = upreq_open(c->req_name);
         if (c->req_port)
-            upactive_focus(c->req_name);
+            upactive_focus((ULONG)c->req_port);
     }
 }
 
@@ -5329,7 +5329,7 @@ static void req_drop(con *c)
 {
     if (!c->req_port)
         return;
-    upactive_forget(c->req_name);
+    upactive_forget((ULONG)c->req_port);
     upreq_close(c->req_port);
     c->req_port = 0;
 }
@@ -5386,8 +5386,14 @@ static void req_service(con *c)
             if (a.kind == KACT_MENU)
                 menu_do(c, a.id, !menu_checked(c, a.id));
             else if (a.kind == KACT_SLASH) {
-                char ans[160];
-                slash_run(c, a.line, (int)strlen(a.line), ans, sizeof(ans), 0);
+                char ans[160], err[80];
+                slash_cmd sc = {0};
+                int ran = slash_run(c, a.line, (int)strlen(a.line), ans, sizeof(ans), 0);
+                /* a refusal goes back to the sender with its reason: the menu says it, or asks
+                 * for the argument the command lacked (/bg from the menu has none) */
+                int missing = ran == 2 && slash_parse(a.line, (int)strlen(a.line), &sc, err, sizeof err) ==
+                              SLASH_ERROR && sc.def && sc.def->need_arg && !sc.arg[0];
+                rc = upreq_slash_answer(&m->b, ran, ans, missing);
             }
         }
         upreq_reply(m, rc);

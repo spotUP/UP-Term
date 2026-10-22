@@ -170,3 +170,67 @@ int upreq_fill(upreq_body *r, int kind, const char *arg)
     strcat(r->action, arg);
     return 1;
 }
+
+long upreq_slash_answer(upreq_body *r, int ran, const char *ans, int missing_arg)
+{
+    size_t n = 0;
+    r->answer[0] = 0;
+    if (ran == 1)
+        return UPREQ_OK;
+    if (ans) {
+        while (ans[n] && ans[n] != '\n' && n < sizeof r->answer - 1)
+            n++;
+        memcpy(r->answer, ans, n);
+        r->answer[n] = 0;
+    }
+    return missing_arg ? UPREQ_NEEDARG : UPREQ_FAILED;
+}
+
+int upreq_with_arg(upreq_body *r, const char *act, const char *value)
+{
+    size_t a = strlen(act), v = value ? strlen(value) : 0;
+    memset(r, 0, sizeof *r);
+    if (!v || a + 1 + v >= sizeof r->action)
+        return 0;
+    r->version = UPREQ_VERSION;
+    memcpy(r->action, act, a);
+    r->action[a] = ' ';
+    memcpy(r->action + a + 1, value, v + 1);
+    return 1;
+}
+
+void upmru_forget(unsigned long l[UPMRU_N], unsigned long id)
+{
+    int i, j;
+    for (i = j = 0; i < UPMRU_N; i++)
+        if (l[i] && l[i] != id)
+            l[j++] = l[i];
+    while (j < UPMRU_N)
+        l[j++] = 0;
+}
+
+void upmru_focus(unsigned long l[UPMRU_N], unsigned long id)
+{
+    int i;
+    if (!id)
+        return;
+    upmru_forget(l, id);
+    for (i = UPMRU_N - 1; i > 0; i--)
+        l[i] = l[i - 1];
+    l[0] = id;
+}
+
+unsigned long upmru_prev(const unsigned long l[UPMRU_N])
+{
+    return l[0] ? l[1] : 0;
+}
+
+void upreq_portname(unsigned long id, char out[24])
+{
+    static const char hex[] = "0123456789abcdef";
+    int i;
+    strcpy(out, "UPTERM.req.");
+    for (i = 0; i < 8; i++)
+        out[11 + i] = hex[(id >> (28 - 4 * i)) & 15];
+    out[19] = 0;
+}

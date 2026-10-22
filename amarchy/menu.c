@@ -42,6 +42,46 @@ static void hotkeys_init(void)
 }
 
 /* leaf actions that need no terminal of ours: the commodity's own set */
+/* A value for an action that needs one; 1 with out set, 0 on Escape or an empty line. */
+static int ask_value(const char *label, const char *usage, char *out, int n)
+{
+    char prompt[UPREQ_ANSWER + 40];
+    FILE *f;
+    int ok = 0;
+    snprintf(prompt, sizeof prompt, "%s (%s):", label, usage);
+    ui_opt.kind = K_INPUT;
+    ui_opt.title = label;
+    ui_opt.prompt = prompt;
+    ui_opt.hotkeys = 0;
+    ui_opt.nentries = 0;
+    ui_opt.init[0] = 0;
+    ui_prepare();
+    if (ui_run() != 0 || !(f = tmpfile()))
+        return 0;
+    ui_answer(f);
+    rewind(f);
+    if (fgets(out, n, f)) {
+        out[strcspn(out, "\r\n")] = 0;
+        ok = out[0] != 0;
+    }
+    fclose(f);
+    return ok;
+}
+
+/* A refused action says why in the menu's window before it closes (it used to exit silently,
+ * the reason lost on stderr of a window that was going). */
+static void say_refused(const char *label, long rc, const char *answer)
+{
+    const char *why = answer && answer[0] ? answer :
+                      rc == UPREQ_NOPORT ? "no UP-Term window to run it in" :
+                      rc == UPREQ_NOWINDOW ? "the terminal has no window" :
+                      rc == UPREQ_BADVERSION ? "the terminal is another UP-Term version: reboot" :
+                      "the terminal does not know it";
+    char text[UPREQ_ANSWER + 80];
+    snprintf(text, sizeof text, "%s: %s", label, why);
+    ui_message("%s", text);
+}
+
 static int run_leaf(const km_menu *m)
 {
     switch (m->kind) {
@@ -64,8 +104,20 @@ static int run_leaf(const km_menu *m)
             return UPREQ_UNKNOWN;
         }
         rc = upreq_send(&r);
+        if (rc == UPREQ_NEEDARG) {
+            /* /bg and the like take a value the row does not carry: ask for it, send again */
+            char value[UPREQ_ACTION], act[UPREQ_ACTION];
+            strcpy(act, r.action);
+            if (!ask_value(m->label, r.answer, value, sizeof value))
+                return 0;                      /* Escape: nothing asked of the terminal */
+            if (!upreq_with_arg(&r, act, value)) {
+                strcpy(r.answer, "the value is too long");
+                rc = UPREQ_FAILED;
+            } else
+                rc = upreq_send(&r);
+        }
         if (rc)
-            fprintf(stderr, "amarchy-menu: %s refused (%ld)\n", r.action, rc);
+            say_refused(m->label, rc, r.answer);
         return (int)rc;
     }
     }

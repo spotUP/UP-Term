@@ -15,13 +15,13 @@ void upactive_note(int on);
 long upactive_count(void);
 
 
-/* The window named `self` (its request port, upreq.h) gained focus: it becomes the current
- * window and the one before it the previous. The quick menu is itself an UP-Term window, so the
- * terminal it acts on is the previous one. */
-void upactive_focus(const char *self);
-/* The window `self` goes: forgotten as current or previous. */
-void upactive_forget(const char *self);
-/* The previous window's port name into out (n bytes); 1 when there is one. */
-int upactive_prev(char *out, int n);
+/* The window whose request port is `self` (its id, upreq.h) gained focus: it goes to the front
+ * of the focus record (upmru_*, keymap_act.h). The quick menu is itself an UP-Term window, so
+ * the terminal it acts on is the one focused before it, however many windows closed since. */
+void upactive_focus(unsigned long self);
+/* The window `self` goes: taken out of the record, the others keep their order. */
+void upactive_forget(unsigned long self);
+/* The previous window's port name into out; 1 when there is one. */
+int upactive_prev(char out[24]);
 
 #endif

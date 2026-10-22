@@ -604,8 +604,8 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h pr
 
 # Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
-AMARCHY_SRC := claude/util.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/cxdesc.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c
-$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/cx.h amarchy/cxdesc.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
+AMARCHY_SRC := claude/util.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/cxdesc.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c handler/keymap_act.c
+$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/cx.h amarchy/cxdesc.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
