@@ -564,6 +564,98 @@ static void the_key_viewer_follows_a_rebinding(void)
     CHECK(strstr(text, "Super+Shift+J") != 0);
 }
 
+/* The handler request port's portable half (handler/keymap_act.c upreq_*): the same action a
+ * bind row resolves to, with no bind row at all, junk refused. */
+static void req_of(upreq_body *r, const char *action)
+{
+    memset(r, 0, sizeof *r);
+    r->version = UPREQ_VERSION;
+    strncpy(r->action, action, sizeof r->action - 1);
+}
+
+static void a_request_resolves_like_its_bind_row(void)
+{
+    static const char *acts[] = { "tab:new", "tab:goto 3", "menuid:MENU_COPY", "slash:/theme" };
+    int i;
+    for (i = 0; i < 4; i++) {
+        char row[160];
+        upreq_body r;
+        km_bind tmp;
+        kact viarow = {0, 0, 0}, viareq = {0, 0, 0};
+        snprintf(row, sizeof row, "[bind]\nsuper+t = %s ; x | y\n", acts[i]);
+        CHECK(parse(row));
+        CHECK(km.nbind == 1 && kact_resolve(&km.bind[0], &viarow) != KACT_NONE);
+        req_of(&r, acts[i]);
+        CHECK_INT(upreq_resolve(&r, &viareq, &tmp), UPREQ_OK);
+        CHECK_INT(viareq.kind, viarow.kind);
+        CHECK_INT((int)viareq.id, (int)viarow.id);
+        if (viarow.line)
+            CHECK_STR(viareq.line, viarow.line);
+    }
+}
+
+static void a_request_needs_no_bind_row(void)
+{
+    upreq_body r;
+    km_bind tmp;
+    kact a = {0, 0, 0};
+    CHECK(parse("[bind]\n"));
+    CHECK_INT(km.nbind, 0);
+    req_of(&r, "slash:/theme");
+    CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_OK);
+    CHECK_INT(a.kind, KACT_SLASH);
+    CHECK_STR(a.line, "/theme");
+    req_of(&r, "tab:next");
+    CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_OK);
+    CHECK_INT((int)a.id, MENU_TAB_NEXT);
+}
+
+static void an_unknown_request_is_an_error_code(void)
+{
+    static const char *bad[] = { "", "tab", ":new", "tab:", "tab:sideways", "tab:goto 10", "menuid:MENU_NOPE",
+                                 "slash:theme", "frob:x", "tab:goto 0" };
+    upreq_body r;
+    km_bind tmp;
+    kact a = {0, 0, 0};
+    int i;
+    for (i = 0; i < 10; i++) {
+        req_of(&r, bad[i]);
+        CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_UNKNOWN);
+        CHECK_INT(a.kind, KACT_NONE);
+    }
+    memset(&r, 'x', sizeof r);                       /* no terminator: refused, no overrun */
+    r.version = UPREQ_VERSION;
+    CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_UNKNOWN);
+    {   /* the longest argument a binding holds fits; one byte more is refused, not copied */
+        char act[KM_ARG + 8];
+        memset(act, 'a', sizeof act);
+        memcpy(act, "slash:/", 7);
+        act[7 + KM_ARG - 2] = 0;
+        req_of(&r, act);
+        CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_OK);
+        act[7 + KM_ARG - 2] = 'a';
+        act[7 + KM_ARG - 1] = 0;
+        req_of(&r, act);
+        CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_UNKNOWN);
+    }
+    req_of(&r, "tab:new");
+    r.version = 2;
+    CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_BADVERSION);
+    req_of(&r, "run:C:Echo hi");
+    CHECK_INT(upreq_resolve(&r, &a, &tmp), UPREQ_NOTMINE);
+}
+
+static void the_menu_builds_the_request_of_a_leaf(void)
+{
+    upreq_body r;
+    CHECK(upreq_fill(&r, KA_SLASH, "/theme"));
+    CHECK_STR(r.action, "slash:/theme");
+    CHECK_INT((int)r.version, UPREQ_VERSION);
+    CHECK(upreq_fill(&r, KA_MENUID, "MENU_COPY"));
+    CHECK_STR(r.action, "menuid:MENU_COPY");
+    CHECK(!upreq_fill(&r, KA_RUN, "C:Echo"));
+}
+
 void suite_keymap(void)
 {
     comments_crlf_and_fields();
@@ -585,4 +677,8 @@ void suite_keymap(void)
     menu_levels_follow_the_ids_and_escape_goes_up();
     the_key_viewer_lists_every_bind_row();
     the_key_viewer_follows_a_rebinding();
+    a_request_resolves_like_its_bind_row();
+    a_request_needs_no_bind_row();
+    an_unknown_request_is_an_error_code();
+    the_menu_builds_the_request_of_a_leaf();
 }

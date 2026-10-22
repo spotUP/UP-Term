@@ -66,6 +66,7 @@
 #include "complete_core.h"
 #include "menu_ids.h"
 #include "keymap_act.h"
+#include "upreq.h"
 #include "upactive.h"
 #include "../config/keymap_load.h"
 #include "slash.h"
@@ -336,6 +337,8 @@ typedef struct con {
     ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
 #endif
     int ua_on;                  /* this window counted in UPTERM.active (upactive.h) */
+    struct MsgPort *req_port;   /* the request port (upreq.h), made when the window first has focus */
+    char req_name[UPREQ_NAMELEN];
 } con;
 static void ua_set(con *c, int on);
 
@@ -5312,6 +5315,22 @@ static void ua_set(con *c, int on)
         return;
     c->ua_on = on;
     upactive_note(on);
+    if (on) {
+        if (!c->req_port)
+            c->req_port = upreq_open(c->req_name);
+        if (c->req_port)
+            upactive_focus(c->req_name);
+    }
+}
+
+/* The request port goes with the process: not findable, queued requests answered. */
+static void req_drop(con *c)
+{
+    if (!c->req_port)
+        return;
+    upactive_forget(c->req_name);
+    upreq_close(c->req_port);
+    c->req_port = 0;
 }
 
 /* A Left Amiga key the keymap binds (B1). 1: it ran, the key is not the
@@ -5344,6 +5363,34 @@ static int keymap_key(con *c, UWORD code, UWORD qual)
         slash_run(c, a.line, (int)strlen(a.line), ans, sizeof(ans), 0);
     }
     return 1;
+}
+
+/* The requests the quick menu (or any sender) put to this window's port (upreq.h): the action
+ * resolves as a keymap binding's would (upreq_resolve -> kact_resolve) and runs by the same two
+ * runners as keymap_key, whether or not any [bind] row exists. Junk answers a code, never more. */
+static void req_service(con *c)
+{
+    upreq_msg *m;
+    if (!c->req_port)
+        return;
+    while ((m = upreq_get(c->req_port))) {
+        kact a;
+        km_bind tmp;
+        long rc = upreq_resolve(&m->b, &a, &tmp);
+        if (rc == UPREQ_OK && !c->w.win)
+            rc = UPREQ_NOWINDOW;
+        if (rc == UPREQ_OK) {
+            stat_note(c, STATE_KEYMAP, 0, 0);
+            DBG("request", a.kind, a.id);
+            if (a.kind == KACT_MENU)
+                menu_do(c, a.id, !menu_checked(c, a.id));
+            else if (a.kind == KACT_SLASH) {
+                char ans[160];
+                slash_run(c, a.line, (int)strlen(a.line), ans, sizeof(ans), 0);
+            }
+        }
+        upreq_reply(m, rc);
+    }
 }
 
 static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG mics,
@@ -7165,6 +7212,8 @@ static LONG handler_main(void)
             wait |= 1UL << c->watch_port->mp_SigBit;
         if (c->sel_port)
             wait |= 1UL << c->sel_port->mp_SigBit;
+        if (c->req_port)
+            wait |= 1UL << c->req_port->mp_SigBit;
         own_screen_retry(c); /* an AUTO window's screen a visitor kept open */
         screen_pending(c);   /* a /screen from C:UPTerm (a packet, not a key) */
         /* No trace lines in the loop itself: each log Write's reply re-arms
@@ -7196,6 +7245,7 @@ static LONG handler_main(void)
 #else
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
 #endif
+        req_service(c);
         if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
             /* only a DOS packet woke us: no other port has a message, no
              * timer is done, the frame is not due (each has its signal in
@@ -7257,6 +7307,7 @@ static LONG handler_main(void)
     }
     if (c->host_only) {
         ua_set(c, 0); /* the window may close while it has focus: no INACTIVEWINDOW follows */
+        req_drop(c);
         CloseWindow(c->own_win);
         c->own_win = 0;
         if (c->locked) {
@@ -7353,6 +7404,7 @@ static LONG handler_main(void)
     CloseLibrary((struct Library *)DOSBase);
     if (c->conf)
         FreeVec(c->conf);
+    req_drop(c);
     if (c->km_user) {
         keymap *gone = 0;
         Forbid();

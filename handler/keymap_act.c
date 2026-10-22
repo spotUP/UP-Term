@@ -121,3 +121,52 @@ int kact_comm_key(const keymap *k, long id, char out[2])
     }
     return 0;
 }
+
+int upreq_resolve(const upreq_body *r, kact *out, km_bind *tmp)
+{
+    const char *colon;
+    size_t n;
+    out->kind = KACT_NONE;
+    out->id = 0;
+    out->line = 0;
+    if (r->version != UPREQ_VERSION)
+        return UPREQ_BADVERSION;
+    if (memchr(r->action, 0, sizeof r->action) == 0)
+        return UPREQ_UNKNOWN;
+    colon = strchr(r->action, ':');
+    if (!colon || colon == r->action)
+        return UPREQ_UNKNOWN;
+    n = (size_t)(colon - r->action);
+    memset(tmp, 0, sizeof *tmp);
+    if (n == 3 && !memcmp(r->action, "tab", 3))
+        tmp->kind = KA_TAB;
+    else if (n == 6 && !memcmp(r->action, "menuid", 6))
+        tmp->kind = KA_MENUID;
+    else if (n == 5 && !memcmp(r->action, "slash", 5))
+        tmp->kind = KA_SLASH;
+    else if ((n == 4 && (!memcmp(r->action, "menu", 4) || !memcmp(r->action, "open", 4))) ||
+             (n == 3 && (!memcmp(r->action, "run", 3))) || (n == 4 && !memcmp(r->action, "rexx", 4)))
+        return UPREQ_NOTMINE;
+    else
+        return UPREQ_UNKNOWN;
+    if (strlen(colon + 1) >= sizeof tmp->arg)
+        return UPREQ_UNKNOWN;
+    strcpy(tmp->arg, colon + 1);
+    if (kact_resolve(tmp, out) == KACT_NONE)
+        return UPREQ_UNKNOWN;
+    return UPREQ_OK;
+}
+
+int upreq_fill(upreq_body *r, int kind, const char *arg)
+{
+    const char *head = kind == KA_TAB ? "tab" : kind == KA_MENUID ? "menuid" :
+                       kind == KA_SLASH ? "slash" : 0;
+    memset(r, 0, sizeof *r);
+    if (!head || strlen(head) + 1 + strlen(arg) >= sizeof r->action)
+        return 0;
+    r->version = UPREQ_VERSION;
+    strcpy(r->action, head);
+    strcat(r->action, ":");
+    strcat(r->action, arg);
+    return 1;
+}

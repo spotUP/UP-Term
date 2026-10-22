@@ -13,6 +13,7 @@
 #include <upkgui/ui.h>
 #include "menu_core.h"
 #include "../config/keymap_load.h"
+#include "../handler/upreq.h"
 #include "keymap_default.inc"
 
 static keymap km;
@@ -43,10 +44,20 @@ static int run_leaf(const km_menu *m)
     }
     case KA_OPEN:
         return system("NewShell \"XCON:0/20/640/300/UP-Term/CLOSE\"");
-    default:
-        /* tab:, menuid: and slash: belong to a terminal window: open item (D3b) */
-        fprintf(stderr, "amarchy-menu: %s needs the terminal handler\n", m->arg);
-        return 5;
+    default: {
+        /* tab:, menuid: and slash: belong to a terminal window: the handler's request port
+         * (handler/upreq.h) takes the action by name and runs it as a key binding would */
+        upreq_body r;
+        long rc;
+        if (!upreq_fill(&r, m->kind, m->arg)) {
+            fprintf(stderr, "amarchy-menu: %s is not a terminal action\n", m->arg);
+            return UPREQ_UNKNOWN;
+        }
+        rc = upreq_send(&r);
+        if (rc)
+            fprintf(stderr, "amarchy-menu: %s refused (%ld)\n", r.action, rc);
+        return (int)rc;
+    }
     }
 }
 

@@ -14,4 +14,14 @@ void upactive_note(int on);
 /* Reader: the focus count, 0 when the semaphore does not exist. */
 long upactive_count(void);
 
+
+/* The window named `self` (its request port, upreq.h) gained focus: it becomes the current
+ * window and the one before it the previous. The quick menu is itself an UP-Term window, so the
+ * terminal it acts on is the previous one. */
+void upactive_focus(const char *self);
+/* The window `self` goes: forgotten as current or previous. */
+void upactive_forget(const char *self);
+/* The previous window's port name into out (n bytes); 1 when there is one. */
+int upactive_prev(char *out, int n);
+
 #endif
