@@ -41,6 +41,14 @@ static keymap g_km;
 static long g_hits;
 static int g_quit;
 
+/* menu:<node> -> the amarchy-menu helper in its own terminal window */
+static int act_menu(const char *node)
+{
+    char line[KM_ID + 40];
+    sprintf(line, "amarchy-menu menu %s", node[0] ? node : "root");
+    return act_in_window(line);
+}
+
 /* Run the action of row `row` (hotkey or ARexx RUN): one place, one counter. */
 static int do_row(int row)
 {
@@ -53,7 +61,9 @@ static int do_row(int row)
     case KA_RUN:   ok = act_run(b->arg); break;
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
-    default:       ok = 1; break;   /* menu: and viewer are Phase D */
+    case KA_MENU:  ok = act_menu(b->arg); break;
+    case KA_VIEWER: ok = act_in_window("amarchy-menu viewer"); break;
+    default:       ok = 1; break;
     }
     return ok;
 }
@@ -106,7 +116,7 @@ static void rexx_serve(void)
         else if (starts(cmd, "QUIT"))
             g_quit = 1;
         else if (starts(cmd, "SHOW"))
-            ;   /* the viewer is Phase D */
+            act_in_window("amarchy-menu viewer");
         else
             rc = 10;
         m->rm_Result1 = rc;

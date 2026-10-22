@@ -7,6 +7,7 @@
 #include "../handler/keymap_act.h"
 #include "../handler/menu_ids.h"
 #include "../amarchy/cxdesc.h"
+#include "../amarchy/menu_core.h"
 #include "harness.h"
 
 #define RAW_K     0x27
@@ -466,6 +467,103 @@ static void ua_count_released_before_own_window_closes(void)
     CHECK(seen >= 2);
 }
 
+/* Phase D: typing "th" at the menu's top level leaves Theme (prefix) before any substring hit */
+static void typing_th_leaves_theme_first(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int idx[MN_MAX_ITEMS], n, c;
+    CHECK(parse("[menu]\nstyle.bg = Bathtub | slash:/bg\nstyle.font = Font | slash:/font\nstyle.theme = Theme | slash:/theme\n"
+                "style.other = Another | slash:/x\n"));
+    n = mn_children(&km, "style", it, MN_MAX_ITEMS);
+    CHECK_INT(n, 4);
+    c = mn_filter(it, n, "th", idx, MN_MAX_ITEMS);
+    CHECK_INT(c, 3);                               /* Theme, then Bathtub and Another (both contain "th") */
+    CHECK_STR(it[idx[0]].label, "Theme");          /* prefix first */
+    CHECK_STR(it[idx[1]].label, "Bathtub");
+    CHECK_INT(mn_match("Theme", "TH"), 2);         /* case is ignored */
+    CHECK_INT(mn_match("Bathtub", "th"), 1);       /* substring */
+    CHECK_INT(mn_match("Font", "th"), 0);
+    CHECK_INT(mn_match("Font", ""), 2);
+}
+
+/* Phase D: the menu tree comes from the [menu] ids; Esc goes up one level and stops at the root */
+static void menu_levels_follow_the_ids_and_escape_goes_up(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    char node[KM_ID], up[KM_ID];
+    int n;
+    CHECK(parse("[menu]\napps.upkg = Install add-ons | run:upkg-browse\napps.tools.tmux = Tmux | run:tmux\n"
+                "apps.tools.nvim = Editor | run:nvim\nstyle.theme = Theme | slash:/theme\ntop = Top | run:x\n"));
+    n = mn_children(&km, "", it, MN_MAX_ITEMS);
+    CHECK_INT(n, 3);                               /* apps (group), style (group), top (leaf) */
+    CHECK_INT(it[0].row, -1);
+    CHECK_STR(it[0].label, "Apps");
+    CHECK_INT(it[2].row, 4);
+    mn_child_node("", &it[0], node, sizeof node);
+    CHECK_STR(node, "apps");
+    n = mn_children(&km, node, it, MN_MAX_ITEMS);
+    CHECK_INT(n, 2);                               /* upkg (leaf), tools (group, once for two rows) */
+    CHECK_STR(it[0].label, "Install add-ons");
+    CHECK_INT(it[1].row, -1);
+    mn_child_node(node, &it[1], node, sizeof node);
+    CHECK_STR(node, "apps.tools");
+    CHECK_INT(mn_children(&km, node, it, MN_MAX_ITEMS), 2);
+    CHECK_INT(mn_parent(node, up, sizeof up), 1);
+    CHECK_STR(up, "apps");
+    CHECK_INT(mn_parent("apps", up, sizeof up), 1);
+    CHECK_STR(up, "");
+    CHECK_INT(mn_parent("", up, sizeof up), 0);    /* Esc at the root leaves the menu */
+}
+
+/* Phase D: the Super+K viewer prints one line per [bind] row of the shipped file; the expected
+ * count is read from the file text (second source), the printed lines are counted from the output */
+static void the_key_viewer_lists_every_bind_row(void)
+{
+    static char file[16384], text[16384];
+    char *p;
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int expect = 0, lines = 0, in_bind = 0, printed;
+    char *line;
+    CHECK(n > 0);
+    for (line = strtok(file, "\n"); line; line = strtok(0, "\n")) {
+        while (*line == ' ')
+            line++;
+        if (*line == '[')
+            in_bind = !strncmp(line, "[bind]", 6);
+        else if (in_bind && !strncmp(line, "super", 5))
+            expect += strstr(line, "1..9") && strstr(line, "=") && strstr(line, "1..9") < strstr(line, "=") ? 9 : 1;
+    }
+    CHECK(expect > 30);
+    n = slurp("dist/keymap", file, sizeof(file));
+    CHECK(keymap_parse(&km, file, n));
+    CHECK_INT(km.nbind, expect);
+    printed = mn_viewer_text(&km, text, sizeof text);
+    for (p = text; *p; p++)
+        if (*p == '\n')
+            lines++;
+    CHECK_INT(printed, expect);
+    CHECK_INT(lines, expect);
+    CHECK(strstr(text, "Super+Space") != 0);
+    CHECK(strstr(text, "Super+Shift+Space") != 0);
+    CHECK(strstr(text, "Super+K  ") != 0);
+    CHECK(strstr(text, "Key bindings") != 0);
+    CHECK(strstr(text, "(menu)") != 0);
+}
+
+/* Phase D: the viewer follows the keymap: a rebinding moves the printed key, none removes the line */
+static void the_key_viewer_follows_a_rebinding(void)
+{
+    static char text[2048];
+    CHECK(parse("[bind]\nsuper+k = viewer ; Key bindings | menu\nsuper+j = slash:/font ; Font | style\n"));
+    {
+        const char *u = "[bind]\nsuper+k = none\nsuper+shift+j = viewer ; Key bindings | menu\n";
+        CHECK(keymap_overlay(&km, u, (long)strlen(u)));
+    }
+    CHECK_INT(mn_viewer_text(&km, text, sizeof text), 2);
+    CHECK(strstr(text, "Super+K ") == 0);
+    CHECK(strstr(text, "Super+Shift+J") != 0);
+}
+
 void suite_keymap(void)
 {
     comments_crlf_and_fields();
@@ -483,4 +581,8 @@ void suite_keymap(void)
     cx_descriptions_and_qualifier_mask();
     cx_installs_only_the_commodity_rows();
     ua_count_released_before_own_window_closes();
+    typing_th_leaves_theme_first();
+    menu_levels_follow_the_ids_and_escape_goes_up();
+    the_key_viewer_lists_every_bind_row();
+    the_key_viewer_follows_a_rebinding();
 }

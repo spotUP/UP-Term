@@ -61,6 +61,29 @@ int act_run(const char *cmd)
     return 1;
 }
 
+/* Like act_run, but the command's input and output are a new XCON: window (the quick menu and
+ * the key viewer draw on a terminal). The window closes when the command ends. */
+int act_in_window(const char *cmd)
+{
+    BPTR w = Open((STRPTR)"XCON:0/20/640/300/Amarchy/CLOSE", MODE_NEWFILE);
+    BPTR path = dup_path();
+    LONG rc;
+    if (!cmd || !*cmd || !w) {
+        if (w)
+            Close(w);
+        free_path(path);
+        return 0;
+    }
+    rc = SystemTags((STRPTR)cmd, SYS_Input, w, SYS_Output, 0, SYS_Asynch, TRUE,
+                    NP_StackSize, 65536, path ? NP_Path : TAG_IGNORE, path, TAG_END);
+    if (rc == -1) {
+        Close(w);
+        free_path(path);
+        return 0;
+    }
+    return 1;
+}
+
 int act_rexx(const char *arg)
 {
     char line[160];
