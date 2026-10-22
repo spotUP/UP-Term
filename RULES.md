@@ -22,6 +22,10 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 |------|---------|
 | Host tests (CI) | `make test` |
 | One suite | `make test ONLY=<name>` (e.g. `ONLY=xterm`) |
+| Amarchy keymap: parser, user overrides, clash refusals (Left Amiga + M/N, ctrl), matcher, menu tree, viewer rows (host) | `make test ONLY=keymap` |
+| Amarchy commodity stays under its 32 KB resident target (needs the Amiga build, not part of `make test`) | `make amarchy-size` |
+| Amarchy on a rig: the commodity's hotkeys, ARexx port (STATUS, RELOAD, RUN, SHOW, QUIT), Exchange Disable; the key table through the handler; the quick menu and key viewer (rig up, `make amiga amarchy-menu`; `UPTERM_RIG=<n>`) | `python3 tools/rig/amarchy_rig.py`, `python3 tools/rig/keymap_rig.py`, `python3 tools/rig/amarchy_menu_rig.py` |
+| Amarchy docs and release wiring (README key list generated from dist/keymap, lesson, man page, kit rows, startup block, RULES rows; run by `make dist-check`) | `python3 tests/test_amarchy_docs.py` (README list: `python3 tools/keymap_doc.py`) |
 | The .ipk feed for the opkg-based upkg (P10.4): one .ipk per add-on row of dist/packages.txt (the base is not a package; data under ./T/upkg-stage/<archive>, preinst holds needs-base) plus Packages and Packages.gz in build/ipk (postinst runs the archive's own Files/install.dos; `IPK_REQUIRE=1 python3 tests/test_dist_ipk.py` holds the feed to packages.txt and the files, also run by `make dist-check`) | `make dist-ipk` |
 | The renderer's draw wiring without a rig: render/amiga_render.c itself against a fake RastPort (tests/render_host/gfx_fake.c logs every graphics.library call and draws Text/RectFill/ScrollRaster into a pixel canvas; NDK structs from `VTCON_NDK`; tests/test_render.c: the scrollback blit draws only the exposed rows, the cursor glyph under jump scroll) | `make test ONLY=render` (own binary `build/render_host`; a new renderer behaviour with a draw-call effect gets its test here, not a rig step) |
 | Reference diff vs libvterm + pyte | `make test-ref` (needs `make venv` once; clones libvterm into `build/`) |

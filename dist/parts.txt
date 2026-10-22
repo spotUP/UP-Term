@@ -43,6 +43,9 @@ tools           Files/UPDemo
 tools           Files/UPTerm
 tools           Files/UP-Term.version
 tools           Files/VERSIONS
+tools           Files/Amarchy
+tools           Files/amarchy-menu
+tools           Files/keymap
 tools           Files/hl
 tools           Files/mdv
 tools           Files/net

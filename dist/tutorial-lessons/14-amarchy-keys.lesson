@@ -1,0 +1,23 @@
+# Amarchy: Super-key shortcuts
+> Amarchy gives the whole machine keyboard shortcuts on the Left Amiga key, which it
+> calls Super. It is started at boot and listed in Exchange as AMARCHY. Left Amiga +
+> Space shows a quick menu you filter by typing; Left Amiga + K lists every key; Left
+> Amiga + T opens a tab (or a window when no UP-Term window is open). The keys live in
+> one text file you can read and edit.
+$ cd "$start"
+? Count the shipped key rows with grep -c '^super' ENVARC:up-term/keymap.
+= case "$LEARN_LINE" in "grep -c '^super' ENVARC:up-term/keymap") true ;; *) false ;; esac
+= [ "$(cat "$LEARN_OUT")" -gt 20 ]
+~ Type grep -c '^super' ENVARC:up-term/keymap; the count is the number of rows.
+! grep -c '^super' ENVARC:up-term/keymap
+> A row reads  super+t = tab:new ; New tab | window : the key, the action, the label the
+> viewer shows, and its category. Put your own rows in ENVARC:up-term/keymap.user (a row
+> there replaces the row for the same key, and  super+t = none  unbinds one), then ask
+> Amarchy to read the files again.
+? Ask Amarchy for its state with rx "address AMARCHY STATUS" (it answers with the row count).
+= case "$LEARN_LINE" in "rx \"address AMARCHY STATUS\"") true ;; *) false ;; esac
+= grep -q 'rows=' "$LEARN_OUT"
+~ Type rx "address AMARCHY STATUS"; the answer holds rows= and enabled=.
+! rx "address AMARCHY STATUS"
+> To switch it off for a while, open Exchange and Disable AMARCHY: every Left Amiga key
+> then behaves as before. man amarchy has the whole file format.

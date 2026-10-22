@@ -634,6 +634,74 @@ VIEWING FILES (hl, mdv)
   when TERM does not (a ROM CON: window: Latin-1, lines and boxes drawn
   with + - |). hl --help and mdv --help list the options; Ctrl-C stops hl.
 
+AMARCHY
+  Amarchy is a small commodity that gives the whole machine Super-key
+  shortcuts, the way a tiling desktop does. Super is the Left Amiga key. It
+  runs from boot (a block in S:User-Startup starts UP-Term:bin/Amarchy), so
+  the keys work with no UP-Term window open: Left Amiga + T opens a window,
+  Left Amiga + Space shows the quick menu, Left Amiga + K lists every key.
+  Inside an UP-Term window the window itself answers first (Left Amiga + T is
+  a new tab there); everywhere else Amarchy does. Only the keys listed below
+  are taken; every other Left Amiga key reaches the program as before, and
+  Left Amiga + M, Left Amiga + N, Left Amiga + the mouse and the two-Amiga
+  reset keys are never touched.
+  The keys it ships (generated from dist/keymap):
+  [keys]
+  Left Amiga + Space          Menu
+  Left Amiga + Shift + Space  Apps
+  Left Amiga + K              Key bindings
+  Left Amiga + H              Help
+  Left Amiga + Shift + H      Tutorial
+  Left Amiga + T              New tab
+  Left Amiga + W              Close tab
+  Left Amiga + Backspace      Close tab
+  Left Amiga + Q              Close window
+  Left Amiga + 1 to 9         Switch to tab N
+  Left Amiga + F1             Switch to tab 1
+  Left Amiga + F2             Switch to tab 2
+  Left Amiga + F3             Switch to tab 3
+  Left Amiga + F4             Switch to tab 4
+  Left Amiga + .              Next tab
+  Left Amiga + ,              Previous tab
+  Left Amiga + Right          Next tab
+  Left Amiga + Left           Previous tab
+  Left Amiga + C              Copy
+  Left Amiga + V              Paste
+  Left Amiga + A              Select all
+  Left Amiga + F              Find
+  Left Amiga + G              Find next
+  Left Amiga + +              Bigger font
+  Left Amiga + -              Smaller font
+  Left Amiga + Shift + T      Theme
+  Left Amiga + Shift + B      Background
+  Left Amiga + Shift + F      Font
+  Left Amiga + Shift + S      Own screen
+  Left Amiga + Shift + W      Workbench screen
+  Left Amiga + Shift + D      Wide window
+  Left Amiga + Shift + R      Standard window
+  Left Amiga + Shift + L      Demo tour
+  Left Amiga + P              Preferences
+  Left Amiga + Return         Tmux
+  Left Amiga + L              Claude
+  Left Amiga + E              Editor
+  Left Amiga + U              Install and update
+  Left Amiga + Shift + U      Upgrade all
+  Left Amiga + I              Install add-ons
+  [end keys]
+  The quick menu (Left Amiga + Space) is a short list you filter by typing;
+  Left Amiga + K is the key viewer. Both are the program amarchy-menu.
+  Change a key: edit ENVARC:up-term/keymap (the shipped file, written by
+  Install; an upgrade never overwrites it, the new one is saved beside it as
+  keymap.new) or put your own rows in ENVARC:up-term/keymap.user: a row there
+  replaces the row for the same key, and  super+t = none  unbinds one. Then
+  tell Amarchy and every window to read the file again:
+    rx "address AMARCHY RELOAD"
+  ARexx port AMARCHY: STATUS (hits, rows, enabled, active), RELOAD, RUN n
+  (do row n of the table), SHOW (the key viewer) and QUIT.
+  Switch it off for a while in Exchange (the commodity AMARCHY, Disable), or
+  stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
+  out. man amarchy has the file format.
+
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a
   USB serial adapter) to another computer, open a terminal program there

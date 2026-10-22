@@ -378,6 +378,32 @@ Copy upgetty C:upgetty CLONE
 ; hl and mdv: a source file in colour, Markdown formatted for the window
 ; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
 Copy hl mdv UP-Term:bin CLONE
+; Amarchy: the Super-key commodity (Left Amiga + a key) and amarchy-menu, the quick menu
+; and key viewer its keys start. The key file: laid down where the user has none; an
+; edited file stays, the new one is written beside it as keymap.new (an Update never
+; clobbers it). A marked block in S:User-Startup starts the commodity at every boot
+; (Uninstall takes it out with unstartup.sh).
+Copy Amarchy amarchy-menu UP-Term:bin CLONE
+If NOT EXISTS ENVARC:up-term/keymap
+  Copy keymap ENVARC:up-term/keymap CLONE QUIET
+Else
+  Copy keymap ENVARC:up-term/keymap.new CLONE QUIET
+EndIf
+If NOT EXISTS ENV:up-term/keymap
+  Copy ENVARC:up-term/keymap ENV:up-term/keymap CLONE QUIET
+EndIf
+If NOT EXISTS S:User-Startup
+  Echo >S:User-Startup ""
+EndIf
+Search >NIL: S:User-Startup ";BEGIN UP-Term Amarchy"
+If WARN
+  If NOT EXISTS S:User-Startup.before-UP-Term
+    Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
+  EndIf
+  Echo >>S:User-Startup ";BEGIN UP-Term Amarchy"
+  Echo >>S:User-Startup "Run >NIL: UP-Term:bin/Amarchy"
+  Echo >>S:User-Startup ";END UP-Term Amarchy"
+EndIf
 ; ps and top: the tasks, and the tasks by CPU use (sampled at the vertical blank)
 Copy ps top UP-Term:bin CLONE
 ; UPDemo: the terminal's show-off and benchmark (README, DEMO)
