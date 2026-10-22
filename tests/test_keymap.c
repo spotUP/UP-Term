@@ -6,6 +6,7 @@
 #include "../config/keymap.h"
 #include "../handler/keymap_act.h"
 #include "../handler/menu_ids.h"
+#include "../amarchy/cxdesc.h"
 #include "harness.h"
 
 #define RAW_K     0x27
@@ -378,6 +379,49 @@ static void the_shipped_file_resolves_and_derives_menu_keys(void)
     CHECK(comm_is("-", MENU_CLEAR_SCREEN, 0));
 }
 
+static void cx_descriptions_and_qualifier_mask(void)
+{
+    char d[48], hex[8], buf[16384];
+    const km_bind *b;
+    long n;
+    int i;
+    CHECK(parse("[bind]\nsuper+k = viewer\nsuper+shift+space = menu:apps\n"
+                "super+alt+t = run:C:Echo hi\n"));
+    b = keymap_find(&km, KM_Q_SUPER, RAW_K);
+    CHECK(b && cx_describe(b, d, sizeof(d)));
+    CHECK_STR(d, "rawkey lcommand 0x27");
+    b = keymap_find(&km, KM_Q_SUPER | KM_Q_SHIFT, RAW_SPACE);
+    CHECK(b && cx_describe(b, d, sizeof(d)));
+    CHECK_STR(d, "rawkey lcommand shift 0x40");
+    b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, RAW_T);
+    CHECK(b && cx_describe(b, d, sizeof(d)));
+    CHECK_STR(d, "rawkey lcommand alt 0x14");
+    CHECK(b && !cx_describe(b, d, 12));          /* too small: refused, never cut */
+    /* the mask is the handler's: Left Amiga needed; Ctrl, Right Amiga, repeat refuse */
+    CHECK_INT((int)cx_qual_mask(0x0040), KM_Q_SUPER);
+    CHECK_INT((int)cx_qual_mask(0x0041), KM_Q_SUPER | KM_Q_SHIFT);
+    CHECK_INT((int)cx_qual_mask(0x0042), KM_Q_SUPER | KM_Q_RSHIFT);
+    CHECK_INT((int)cx_qual_mask(0x0043), KM_Q_SUPER | KM_Q_SHIFT);
+    CHECK_INT((int)cx_qual_mask(0x0050), KM_Q_SUPER | KM_Q_ALT);
+    CHECK_INT((int)cx_qual_mask(0x0060), KM_Q_SUPER | KM_Q_ALT);
+    CHECK_INT((int)cx_qual_mask(0x0001), 0);
+    CHECK_INT((int)cx_qual_mask(0x0048), 0);
+    CHECK_INT((int)cx_qual_mask(0x00c0), 0);
+    CHECK_INT((int)cx_qual_mask(0x0240), 0);
+    /* every row of the shipped file describes, and the text names its raw code */
+    n = slurp("dist/keymap", buf, sizeof(buf));
+    CHECK(n > 0 && keymap_parse(&km, buf, n));
+    for (i = 0; i < km.nbind; i++) {
+        CHECK(cx_describe(&km.bind[i], d, sizeof(d)));
+        hex[0] = '0'; hex[1] = 'x';
+        hex[2] = "0123456789abcdef"[(km.bind[i].code >> 4) & 15];
+        hex[3] = "0123456789abcdef"[km.bind[i].code & 15];
+        hex[4] = 0;
+        CHECK(strstr(d, hex) != 0);
+        CHECK(strncmp(d, "rawkey lcommand ", 16) == 0);
+    }
+}
+
 void suite_keymap(void)
 {
     comments_crlf_and_fields();
@@ -392,4 +436,5 @@ void suite_keymap(void)
     the_shipped_keymap_loads_whole();
     actions_resolve_to_menu_ids();
     the_shipped_file_resolves_and_derives_menu_keys();
+    cx_descriptions_and_qualifier_mask();
 }
