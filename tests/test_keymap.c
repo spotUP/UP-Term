@@ -783,11 +783,19 @@ static void the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_close
  * never OK: a missing argument asks for it (the usage goes back), any other refusal says why. */
 static void a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for(void)
 {
-    upreq_body r;
+    upreq_body r, sent;
     CHECK(upreq_fill(&r, KA_SLASH, "/bg"));
-    CHECK_INT((int)upreq_slash_answer(&r, 2, "bg: RRGGBB | none\n", 1), UPREQ_NEEDARG);
-    CHECK_STR(r.answer, "bg: RRGGBB | none");
-    CHECK_INT((int)upreq_slash_answer(&r, 2, "bg: RRGGBB | none\n", 0), UPREQ_FAILED);
+    /* A1200 retest of de3a4cc6: the value prompt read "Background ():". The window's answer
+     * lives in the message's copy of the body (handler/upreq.c upreq_send); the sender reads
+     * its own request, so the reply must come back into it, and the answer is the table's
+     * usage alone, not slash_run's "bg: ..." line. */
+    sent = r;
+    CHECK_INT((int)upreq_slash_answer(&sent, 2, "bg: RRGGBB | none\n", "RRGGBB | none"), UPREQ_NEEDARG);
+    sent.rc = UPREQ_NEEDARG;
+    CHECK_INT((int)upreq_take_reply(&r, &sent), UPREQ_NEEDARG);
+    CHECK_STR(r.answer, "RRGGBB | none");
+    CHECK_INT((int)upreq_slash_answer(&r, 2, "bg: 12345 is not RRGGBB\n", 0), UPREQ_FAILED);
+    CHECK_STR(r.answer, "bg: 12345 is not RRGGBB");
     CHECK_INT((int)upreq_slash_answer(&r, 1, "bg: 102030\n", 0), UPREQ_OK);
     CHECK_STR(r.answer, "");
     CHECK(upreq_with_arg(&r, "slash:/bg", "102030"));

@@ -5393,7 +5393,7 @@ static void req_service(con *c)
                  * for the argument the command lacked (/bg from the menu has none) */
                 int missing = ran == 2 && slash_parse(a.line, (int)strlen(a.line), &sc, err, sizeof err) ==
                               SLASH_ERROR && sc.def && sc.def->need_arg && !sc.arg[0];
-                rc = upreq_slash_answer(&m->b, ran, ans, missing);
+                rc = upreq_slash_answer(&m->b, ran, ans, missing ? sc.def->args : 0);
             }
         }
         upreq_reply(m, rc);

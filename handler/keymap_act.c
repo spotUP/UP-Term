@@ -171,19 +171,29 @@ int upreq_fill(upreq_body *r, int kind, const char *arg)
     return 1;
 }
 
-long upreq_slash_answer(upreq_body *r, int ran, const char *ans, int missing_arg)
+long upreq_slash_answer(upreq_body *r, int ran, const char *ans, const char *missing_usage)
 {
     size_t n = 0;
     r->answer[0] = 0;
     if (ran == 1)
         return UPREQ_OK;
+    if (missing_usage)
+        ans = missing_usage;
     if (ans) {
         while (ans[n] && ans[n] != '\n' && n < sizeof r->answer - 1)
             n++;
         memcpy(r->answer, ans, n);
         r->answer[n] = 0;
     }
-    return missing_arg ? UPREQ_NEEDARG : UPREQ_FAILED;
+    return missing_usage ? UPREQ_NEEDARG : UPREQ_FAILED;
+}
+
+long upreq_take_reply(upreq_body *r, const upreq_body *replied)
+{
+    memcpy(r->answer, replied->answer, sizeof r->answer);
+    r->answer[sizeof r->answer - 1] = 0;
+    r->rc = replied->rc;
+    return r->rc;
 }
 
 int upreq_with_arg(upreq_body *r, const char *act, const char *value)

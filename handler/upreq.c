@@ -39,7 +39,7 @@ void upreq_close(struct MsgPort *mp)
     DeleteMsgPort(mp);
 }
 
-long upreq_send(const upreq_body *r)
+long upreq_send(upreq_body *r)
 {
     upreq_msg m;
     char name[UPREQ_NAMELEN];
@@ -66,7 +66,7 @@ long upreq_send(const upreq_body *r)
     }
     WaitPort(rp);
     GetMsg(rp);
-    rc = m.b.rc;
+    rc = upreq_take_reply(r, &m.b);
     DeleteMsgPort(rp);
     return rc;
 }

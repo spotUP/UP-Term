@@ -44,7 +44,7 @@ int  kact_comm_key(const keymap *k, long id, char out[2]);
 #define UPREQ_ANSWER  80
 /* FAILED: the action ran and refused (a slash command's error), the reason in answer.
  * NEEDARG: a slash command that takes an argument came without one; answer holds its usage
- * ("bg: RRGGBB | none"), the sender asks for the value and sends the action again with it. */
+ * ("RRGGBB | none"), the sender asks for the value and sends the action again with it. */
 enum { UPREQ_OK = 0, UPREQ_UNKNOWN = 5, UPREQ_BADVERSION = 10, UPREQ_NOTMINE = 15,
        UPREQ_NOWINDOW = 20, UPREQ_NOPORT = 25, UPREQ_FAILED = 30, UPREQ_NEEDARG = 35 };
 typedef struct upreq_body {
@@ -65,9 +65,14 @@ int upreq_resolve(const upreq_body *r, kact *out, km_bind *tmp);
 int upreq_fill(upreq_body *r, int kind, const char *arg);
 
 /* The window's verdict on a slash request it ran: slash_run's result (1 ran, 2 refused), its
- * answer text and whether the line lacked a required argument. Sets r->answer and returns the
- * rc to reply: a refusal is never UPREQ_OK, so the sender can say why instead of exiting. */
-long upreq_slash_answer(upreq_body *r, int ran, const char *ans, int missing_arg);
+ * answer text and, when the line lacked a required argument, the command's usage from the slash
+ * table ("RRGGBB | none"; 0 otherwise). Sets r->answer and returns the rc to reply: a refusal is
+ * never UPREQ_OK, so the sender can say why instead of exiting. */
+long upreq_slash_answer(upreq_body *r, int ran, const char *ans, const char *missing_usage);
+
+/* The sender's half of the reply: the body the window replied (the message's copy) back into
+ * the sender's request, answer included. Returns the window's rc. */
+long upreq_take_reply(upreq_body *r, const upreq_body *replied);
 
 /* The sender's half again: the request that runs action `act` ("slash:/bg") with `value`
  * appended as its argument. 0 when it does not fit or the value is empty. */
