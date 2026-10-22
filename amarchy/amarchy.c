@@ -124,8 +124,9 @@ static int do_row(int row)
 
 static void reload(void)
 {
-    if (keymap_reload(&g_km))   /* parses into a heap scratch, copies only on success */
-        cx_install(&g_km);   /* a bad edit leaves the old set active */
+    cx_detach();   /* the gate must not read the table that is about to be released */
+    keymap_reload_compact(&g_km, cx_row_installed);   /* a bad edit leaves the old table */
+    cx_install(&g_km);
 }
 
 static void notify_start(void)
@@ -191,7 +192,7 @@ int main(void)
         FreeArgs(rda);
     }
     dir_resolve();
-    keymap_load(&g_km, km_default_text);
+    keymap_load_compact(&g_km, km_default_text, cx_row_installed);
     if (!cx_open(pri)) {
         cx_close();
         return 5;   /* already running (it was told), or commodities.library is missing */

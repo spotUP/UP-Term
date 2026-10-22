@@ -15,6 +15,8 @@ ULONG cx_sigmask(void);
 /* Replace the hotkey set by the keymap's commodity-side rows (scope C or B; a
  * terminal-only row is also filtered so a plain console gets it, see cx.c). */
 int  cx_install(const keymap *km);
+/* Stop reading the installed keymap (before it is released by a reload); cx_install resumes. */
+void cx_detach(void);
 /* The next event: CXE_*; *row is the row index for CXE_KEY. CXE_NONE when drained. */
 int  cx_next(int *row);
 /* Exchange Disable / Enable state, 1 = the hotkeys are active. */

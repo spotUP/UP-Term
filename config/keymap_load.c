@@ -47,27 +47,48 @@ static int load(keymap *km, const char *def_text, char *buf)
     return ok;
 }
 
-int keymap_load(keymap *km, const char *def_text)
+/* The read buffer (16 KB) is released as soon as the file is parsed, before anything is rebuilt. */
+static int load_buf(keymap *km, const char *def_text, int (*keep)(const km_bind *), int compact)
 {
     char *buf = (char *)AllocVec(KM_FILE_MAX + 2, MEMF_ANY);
     int ok = load(km, def_text, buf);
     if (buf)
         FreeVec(buf);
+    if (compact && !keymap_compact(km, keep))
+        keymap_free(km);   /* out of memory: no table rather than a half one */
+    return ok;
+}
+
+int keymap_load(keymap *km, const char *def_text)
+{
+    return load_buf(km, def_text, 0, 0);
+}
+
+int keymap_load_compact(keymap *km, const char *def_text, int (*keep)(const km_bind *))
+{
+    return load_buf(km, def_text, keep, 1);
+}
+
+int keymap_reload_compact(keymap *km, int (*keep)(const km_bind *))
+{
+    keymap t;
+    int ok;
+    memset(&t, 0, sizeof t);
+    ok = load_buf(&t, 0, keep, 1);
+    if (ok)
+        keymap_swap(km, &t);    /* the old table is released only now */
+    keymap_free(&t);            /* a refused scratch; empty after a swap */
     return ok;
 }
 
 int keymap_reload(keymap *km)
 {
     keymap t;
-    char *buf = (char *)AllocVec(KM_FILE_MAX + 2, MEMF_ANY);
-    int ok = 0;
+    int ok;
     memset(&t, 0, sizeof t);
-    if (buf && load(&t, 0, buf)) {
-        keymap_swap(km, &t);    /* the old table is released only now */
-        ok = 1;
-    }
-    keymap_free(&t);            /* a refused scratch; empty after a swap */
-    if (buf)
-        FreeVec(buf);
+    ok = load_buf(&t, 0, 0, 0);
+    if (ok)
+        keymap_swap(km, &t);
+    keymap_free(&t);
     return ok;
 }

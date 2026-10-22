@@ -749,8 +749,54 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
     CHECK_INT((int)(vt_count_live - base), 0);
 }
 
+/* The Amarchy commodity holds only its own rows, at exact size: the heap bytes of dist/keymap
+ * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
+ * parsed table, 8288 B on the host; the budget is 32768 B for the whole resident set, plan section 6), carry no
+ * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
+#define AMARCHY_KEYMAP_HEAP_MAX 800   /* 8 rows, 460 B measured; the parsed table is 8288 B */
+static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
+{
+    static char file[16384];
+    long n = slurp("dist/keymap", file, sizeof(file));
+    long base = vt_count_live, parsed, held, want = 0;
+    int i, kept = 0, ref_n;
+    keymap km, ref;
+    memset(&km, 0, sizeof km);
+    memset(&ref, 0, sizeof ref);
+    CHECK(n > 0);
+    CHECK(keymap_parse(&ref, file, n));
+    CHECK(keymap_parse(&km, file, n));
+    parsed = vt_count_live - base;
+    for (i = 0; i < ref.nbind; i++)
+        if (cx_row_installed(&ref.bind[i])) {
+            const km_bind *b = &ref.bind[i];
+            kept++;
+            want += (long)sizeof(km_bind) + (long)strlen(b->arg) + (long)strlen(b->label) + (long)strlen(b->cat) + 3;
+        }
+    CHECK(kept > 0 && kept < ref.nbind);
+    ref_n = ref.nbind;
+    CHECK(keymap_compact(&km, cx_row_installed));
+    keymap_free(&ref);
+    held = vt_count_live - base;
+    CHECK_INT(km.nbind, kept);
+    CHECK_INT(km.nmenu, 0);
+    CHECK(km.menu == 0 && km.mcap == 0 && km.bcap == kept);
+    for (i = 0; i < km.nbind; i++) {
+        const km_bind *b = &km.bind[i];
+        CHECK(cx_row_installed(b));
+        CHECK(keymap_find(&km, b->qual, b->code) == b);
+    }
+    CHECK(kept < ref_n);
+    CHECK(held < parsed);
+    CHECK(held <= want + 64);                   /* exact: only the string block header is slack */
+    CHECK(held <= AMARCHY_KEYMAP_HEAP_MAX);
+    keymap_free(&km);
+    CHECK_INT((int)(vt_count_live - base), 0);
+}
+
 void suite_keymap(void)
 {
+    the_commodity_keymap_of_dist_keymap_is_exact_and_small();
     a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothing();
     comments_crlf_and_fields();
     digits_expand_with_percent_n();

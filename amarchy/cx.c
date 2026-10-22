@@ -14,29 +14,39 @@ struct Library *CxBase;
 static struct MsgPort *g_port;
 static CxObj *g_broker, *g_pass;
 static int g_enabled = 1, g_nrows;
-/* Row index = the CxSender id. The gate (input.device's task) reads only the small
- * match table; the full bind is looked up in the installed keymap by g_idx. */
-typedef struct row_key { unsigned short qual; unsigned char code, kind; } row_key;
-static row_key g_rows[KM_MAX_BIND];
-static unsigned char g_idx[KM_MAX_BIND];
-static const keymap *g_km;
-static CxObj *g_objs[KM_MAX_BIND];
+/* The commodity's whole network is five objects for any number of rows: ONE filter (Left Amiga,
+ * any raw code) with ONE custom gate, ONE sender and ONE swallow behind it. The gate looks the
+ * row up in the installed keymap (row index = bind index) and queues it for the sender, whose
+ * message cx_next pairs with the queue head (one message per queued row, in order). */
+static const keymap *volatile g_km;
+#define CXQ 16
+static unsigned char g_q[CXQ];
+static volatile unsigned char g_qh, g_qt;
 
-/* The gate in front of every hotkey's sender; it tests only its own row (its CxCustom id). A key goes on down the network
- * (to the next hotkey filter, then to the application) when no row matches its
- * exact qualifier mask, or when a window of ours has focus and the row is the
- * terminal's own (scope T): the handler runs those. Anything else falls through
- * to the sender, which reports it, and the CxTranslate(NULL) behind it swallows
- * the key. B rows (run:, menu:, viewer) are the commodity's even inside a
- * terminal, because the handler defers them (keymap_act.c KACT_DEFER). */
+/* The gate behind the one filter. A key goes on down the network (to the application) when no
+ * row matches its exact code and qualifier mask, or when a window of ours has focus and the
+ * row is the terminal's own (scope T): the handler runs those. Anything else is queued and
+ * falls through to the sender, which reports it, and the CxTranslate(NULL) behind it swallows
+ * the key. B rows (run:, menu:, viewer) are the commodity's even inside a terminal, because
+ * the handler defers them (keymap_act.c KACT_DEFER). */
 static void gate(__reg("a0") CxMsg *msg, __reg("a1") CxObj *co)
 {
     struct InputEvent *ie = (struct InputEvent *)CxMsgData(msg);
-    long i = CxMsgID(msg);   /* this filter's own row: the id given to its CxCustom */
+    const keymap *km = g_km;
+    int i, n = km ? km->nbind : 0;
     (void)co;
-    if (i < 0 || i >= g_nrows || !cx_row_takes(g_rows[i].code, g_rows[i].qual, ie->ie_Code, ie->ie_Qualifier) ||
-        (upactive_count() > 0 && keymap_action_scope(g_rows[i].kind) == KS_TERMINAL))
-        DivertCxMsg(msg, g_pass, g_pass);
+    for (i = 0; i < n; i++) {
+        const km_bind *b = &km->bind[i];
+        if (cx_row_installed(b) && cx_row_takes(b->code, b->qual, ie->ie_Code, ie->ie_Qualifier)) {
+            unsigned char nt = (unsigned char)((g_qt + 1) % CXQ);
+            if (nt == g_qh || (upactive_count() > 0 && keymap_action_scope(b->kind) == KS_TERMINAL))
+                break;   /* queue full: the key goes to the application rather than a lost row */
+            g_q[g_qt] = (unsigned char)i;
+            g_qt = nt;
+            return;
+        }
+    }
+    DivertCxMsg(msg, g_pass, g_pass);
 }
 
 static void nop(__reg("a0") CxMsg *msg, __reg("a1") CxObj *co) { (void)msg; (void)co; }
@@ -45,6 +55,8 @@ int cx_open(int priority)
 {
     struct NewBroker nb;
     LONG err = 0;
+    IX ix;
+    CxObj *f, *c, *s;
     if (!(CxBase = OpenLibrary((STRPTR)"commodities.library", 37)))
         return 0;
     if (!(g_port = CreateMsgPort()))
@@ -62,6 +74,26 @@ int cx_open(int priority)
     if (!g_broker)
         return 0;
     g_pass = CxCustom((APTR)nop, 0);
+    f = CxFilter((STRPTR)CX_FILTER_DESC);
+    c = CxCustom((APTR)gate, 0);
+    s = CxSender(g_port, 0);
+    if (!g_pass || !f || !c || !s || CxObjError(f)) {
+        DeleteCxObj(c); DeleteCxObj(s); DeleteCxObj(f);
+        return 0;
+    }
+    /* any raw code with Left Amiga down: the code is the gate's to compare exactly */
+    ix.ix_Version = IX_VERSION;
+    ix.ix_Class = IECLASS_RAWKEY;
+    ix.ix_Code = 0;
+    ix.ix_CodeMask = 0;
+    ix.ix_Qualifier = IEQUALIFIER_LCOMMAND;
+    ix.ix_QualMask = IEQUALIFIER_LCOMMAND;
+    ix.ix_QualSame = 0;
+    SetFilterIX(f, &ix);
+    AttachCxObj(f, c);
+    AttachCxObj(f, s);
+    AttachCxObj(f, CxTranslate(0));
+    AttachCxObj(g_broker, f);
     ActivateCxObj(g_broker, 1);
     return 1;
 }
@@ -88,47 +120,22 @@ void cx_close(void)
 
 ULONG cx_sigmask(void) { return g_port ? 1UL << g_port->mp_SigBit : 0; }
 
+void cx_detach(void)
+{
+    g_nrows = 0;
+    g_km = 0;
+}
+
 int cx_install(const keymap *km)
 {
     int i, n = 0;
-    cx_ixspec_t xs;
-    IX ix;
-    CxObj *f, *c, *s;
-    for (i = 0; i < g_nrows; i++)
-        if (g_objs[i])
-            DeleteCxObjAll(g_objs[i]);
     g_nrows = 0;
+    g_km = 0;
+    g_qh = g_qt = 0;
+    for (i = 0; i < km->nbind; i++)
+        if (cx_row_installed(&km->bind[i]))
+            n++;
     g_km = km;
-    for (i = 0; i < km->nbind; i++) {
-        const km_bind *b = &km->bind[i];
-        if (!cx_row_installed(b))
-            continue;
-        g_rows[n].qual = b->qual;
-        g_rows[n].code = b->code;
-        g_rows[n].kind = b->kind;
-        g_idx[n] = (unsigned char)i;
-        f = CxFilter((STRPTR)CX_FILTER_DESC);
-        c = CxCustom((APTR)gate, n);
-        s = CxSender(g_port, n);
-        if (!f || !c || !s || CxObjError(f)) {
-            DeleteCxObj(f); DeleteCxObj(c); DeleteCxObj(s);
-            continue;
-        }
-        cx_ixspec(b, &xs);
-        ix.ix_Version = IX_VERSION;
-        ix.ix_Class = IECLASS_RAWKEY;
-        ix.ix_Code = xs.code;
-        ix.ix_CodeMask = xs.code_mask;
-        ix.ix_Qualifier = xs.qual;
-        ix.ix_QualMask = xs.qual_mask;
-        ix.ix_QualSame = 0;
-        SetFilterIX(f, &ix);
-        AttachCxObj(f, c);
-        AttachCxObj(f, s);
-        AttachCxObj(f, CxTranslate(0));
-        AttachCxObj(g_broker, f);
-        g_objs[n++] = f;
-    }
     g_nrows = n;
     return n;
 }
@@ -141,7 +148,11 @@ int cx_next(int *row)
         ULONG id = CxMsgID(m);
         ReplyMsg((struct Message *)m);
         if (type == CXM_IEVENT) {
-            *row = (int)id;
+            (void)id;
+            if (g_qh == g_qt)
+                continue;
+            *row = g_q[g_qh];
+            g_qh = (unsigned char)((g_qh + 1) % CXQ);
             return CXE_KEY;
         }
         if (type == CXM_COMMAND) {
@@ -159,5 +170,5 @@ int cx_next(int *row)
 }
 
 int cx_enabled(void) { return g_enabled; }
-const km_bind *cx_row(int row) { return g_km && row >= 0 && row < g_nrows ? &g_km->bind[g_idx[row]] : 0; }
+const km_bind *cx_row(int row) { return g_km && row >= 0 && row < g_km->nbind && cx_row_installed(&g_km->bind[row]) ? &g_km->bind[row] : 0; }
 int cx_nrows(void) { return g_nrows; }

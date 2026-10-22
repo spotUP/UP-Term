@@ -307,6 +307,57 @@ void keymap_free(keymap *k)
     memset(k, 0, sizeof(*k));
 }
 
+int keymap_compact(keymap *k, int (*keep)(const km_bind *))
+{
+    keymap t;
+    km_chunk *c;
+    km_bind *b;
+    size_t chars = 0;
+    int i, n = 0;
+    for (i = 0; i < k->nbind; i++)
+        if (!keep || keep(&k->bind[i])) {
+            const km_bind *r = &k->bind[i];
+            n++;
+            chars += strlen(r->arg) + strlen(r->label) + strlen(r->cat) + 3;
+        }
+    memset(&t, 0, sizeof t);
+    t.version = k->version;
+    t.newer = k->newer;
+    t.skipped = k->skipped;
+    t.refused = k->refused;
+    t.overflow = k->overflow;
+    t.first_bad = k->first_bad;
+    if (n) {
+        t.bind = (km_bind *)KM_MALLOC(sizeof(km_bind) * (size_t)n);
+        c = (km_chunk *)KM_MALLOC(sizeof(km_chunk) + chars);
+        if (!t.bind || !c) {
+            if (t.bind)
+                KM_FREE(t.bind);
+            if (c)
+                KM_FREE(c);
+            return 0;
+        }
+        c->next = 0;
+        c->used = 0;
+        c->cap = (int)chars;
+        t.pool = c;
+        t.bcap = n;
+        b = t.bind;
+        for (i = 0; i < k->nbind; i++)
+            if (!keep || keep(&k->bind[i])) {
+                const km_bind *r = &k->bind[i];
+                *b = *r;
+                b->arg = pool_str(&t, r->arg, (int)strlen(r->arg));
+                b->label = pool_str(&t, r->label, (int)strlen(r->label));
+                b->cat = pool_str(&t, r->cat, (int)strlen(r->cat));
+                b++;
+            }
+        t.nbind = n;
+    }
+    keymap_swap(k, &t);
+    return 1;
+}
+
 void keymap_swap(keymap *live, keymap *scratch)
 {
     keymap_free(live);
@@ -478,6 +529,7 @@ static int spec_parse(const char *spec, unsigned *qual, int *lo, int *hi, int *r
 typedef struct kctx {
     keymap *k;                  /* NULL on the version probe */
     int version;
+    char *line;                 /* 3 * KM_LINE of row_bind's scratch: heap, not the (small) stack */
 } kctx;
 
 static int row_keymap(void *ud, int lineno, const char *key, const char *value)
@@ -497,8 +549,7 @@ static int row_bind(void *ud, int lineno, const char *key, const char *value)
 {
     kctx *c = (kctx *)ud;
     keymap *k = c->k;
-    char text[KM_LINE];
-    char act[KM_LINE], lab[KM_LINE];
+    char *text = c->line, *act = c->line + KM_LINE, *lab = c->line + 2 * KM_LINE;
     char *label, *cat, *p;
     unsigned qual;
     int lo, hi, range, r, d;
@@ -598,6 +649,7 @@ static int version_of(const char *buf, long len)
     kctx c;
     c.k = 0;
     c.version = 0;
+    c.line = 0;
     upconf_rows(buf, len, "keymap", row_keymap, &c, 0);
     return c.version;
 }
@@ -658,11 +710,15 @@ static int load(keymap *k, const char *buf, long len)
         return 0;
     c.k = k;
     c.version = v;
+    c.line = (char *)KM_MALLOC(3 * KM_LINE);
+    if (!c.line)
+        return 0;
     if (v)
         k->version = v;
     upconf_rows(buf, len, "keymap", row_keymap, &c, 0);
     upconf_rows(buf, len, "bind", row_bind, &c, &dropped);
     upconf_rows(buf, len, "menu", row_menu, &c, 0);
+    KM_FREE(c.line);
     if (dropped) {
         k->skipped += dropped;
         k->overflow = 1;

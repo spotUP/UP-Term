@@ -120,6 +120,11 @@ void keymap_free(keymap *k);
 /* Make *live the parsed *scratch: what live held is released, scratch is
  * zeroed (its memory now belongs to live). */
 void keymap_swap(keymap *live, keymap *scratch);
+/* Rebuild the table at its exact size: only the binds `keep` accepts (all when keep is NULL), no
+ * [menu] rows, one array and one string block with no slack; the old memory is released. For a
+ * caller that reads the file once and holds the result (the Amarchy commodity). 1 ok, 0 out of
+ * memory (the table is unchanged). */
+int  keymap_compact(keymap *k, int (*keep)(const km_bind *));
 /* Read a second file over the table (keymap.user): rows replace by key
  * spec, "none" unbinds, [menu] rows replace by id. Counters add up. Same
  * return as keymap_parse; a newer-version file changes nothing. */
