@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""upkg_browse_extra_rig.py -- two `upkg browse` checks the plain upkg_browse_rig.py does not make (upkg browse-dialogs plan):
+"""upkg_browse_extra_rig.py -- `upkg browse` checks the plain upkg_browse_rig.py does not make (upkg browse-dialogs plan):
 
   B3  an interactive package (up-claude: Files/questions, control field UP-Term-Interactive: yes) is installed from the
       browser in the PLAIN window, not the programbox: its question ("Claude Code on your server") is on the window text,
@@ -7,13 +7,15 @@
   B4  pipe timing under opkg patch 0024: a slow package (up-slow, built here into a temp feed drawer, never into build/ipk:
       its postinst prints SLOW-FIRST, sleeps 40 s, prints SLOW-LAST) installed from the browser; the window text, read
       every few seconds, must show SLOW-FIRST while SLOW-LAST is not there yet, and SLOW-LAST at least SLOW_GAP s later.
+  B5  opkg patch 0026 (pr_WindowPtr = -1): `upkg update` with lists_dir on a volume that is not there ends with an
+      error exit and NO DOS requester (without the patch DOS opens "insert volume" and the process waits for a click).
 
 Setup and teardown are upkg_browse_rig's (base from the kit when stale, upkg copied, feed over http,
 conf swapped, rig stopped at the end). Needs the same files as upkg_browse_rig plus build/ipk/up-claude_*.ipk.
 
   upkg_browse_extra_rig.py [--out DIR]       report.md and screenshots go to DIR (default build/<rig>/upkg-browse-extra)
 """
-import argparse, os, pathlib, sys, tempfile, shutil, time
+import argparse, re, os, pathlib, sys, tempfile, shutil, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import paths  # before ami: it sets the agent port of UPTERM_RIG
@@ -152,15 +154,26 @@ def main(argv):
                 if p in B.listed('list-installed'):
                     upkg_rig.upkg('extra-rm', 'remove %s' % p, conf=False)
             ir.run('Delete >NIL: %s QUIET' % REMOTE)
+
+            # B5: upkg 0026 sets pr_WindowPtr to -1. A write to a volume that is not there must END in an error
+            # (exit != 0, no requester), not in a DOS "insert volume" requester that holds the process.
+            conf = ami.read_file(upkg_rig.CONF).decode('latin-1').rstrip('\n')
+            (ir.VTC / 'nosuchvol.conf').write_text(conf + '\noption lists_dir NOSUCHVOL:lists\n')
+            (ir.VTC / 'extra-novol.sh').write_text('UP-Term:bin/upkg -f VTC:nosuchvol.conf update 2>&1\necho "[exit $?]"\n')
+            rc, o = ir.run_slow('extra-novol', 'VTC:vsh VTC:extra-novol.sh', 120)
+            reqs = ami.requesters()
+            B.note('B5 output:\n' + o.rstrip()[-400:] + '\nrequesters: ' + '; '.join(ami.describe_requester(r) for r in reqs))
+            check('B5: no DOS requester opened for the absent volume', not reqs)
+            check('B5: upkg ended with an error exit', re.search(r'\[exit [1-9]\d*\]', o) is not None, o.rstrip()[-120:])
         finally:
             B.teardown(rel, st)
             if tmp:
                 shutil.rmtree(tmp, ignore_errors=True)
     bad = [k for k, v in ck.items() if not v]
-    head = 'Verdict: %s (%d of %d checks)' % ('FAIL' if bad or len(ck) < 8 else 'PASS', len(ck) - len(bad), len(ck))
+    head = 'Verdict: %s (%d of %d checks)' % ('FAIL' if bad or len(ck) < 10 else 'PASS', len(ck) - len(bad), len(ck))
     (out / 'report.md').write_text(head + '\n\n' + '\n'.join(B.LOG) + '\n')
     print(head)
-    return 1 if bad or len(ck) < 8 else 0
+    return 1 if bad or len(ck) < 10 else 0
 
 
 if __name__ == '__main__':

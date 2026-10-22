@@ -87,3 +87,16 @@ Fix direction
 1. Rig: before the run, assert free blocks on the UP-Term: volume (Info) above the kit size plus the package, fail with a clear message otherwise; use a roomier system partition or put UP-Term: on a big volume (Rushhours has 1 GB free); check requesters (ami.py requesters) at each key step so a blocked run reports the requester text instead of "no effect".
 2. Product (a question for the owner): upkg browse should not hang silently on a full disk. The install goes through DOS requesters; setting pr_WindowPtr = -1 in the upkg process (and child) turns them into error returns, which libopkg reports as an install failure ("[ERROR] upkg install up-vim (exit N)") in the box. Recommended.
 3. To close the UNVERIFIED parts: free ~20 MB on rig 4 System:, rerun upkg_browse_rig.py; if the remove step then works the diagnosis is confirmed and the vfork lead is dead for good.
+
+## P3c result
+
+Fixture (vtcon be502dc7, tools/rig/upkg_browse_rig.py, tools/test_rig_browse_free.py in `make test`):
+- Measured on a fresh rig 4 copy (`Info`, 512 byte blocks): DH0 System: 106M, 130146 free blocks = 63.5 MB; DH1 Rushhours: 1393M, 1063066 free blocks = 519 MB. The kit build/dist/up-term is about 60.9 MB, so it nearly fills System:. The fresh image assigns UP-Term: to Rushhours:Tools/UP-Term (an old 11-Oct install); the P3b failure came from the default DEST System:UP-Term.
+- Setup now deletes the old base (Rushhours:Tools/UP-Term and System:UP-Term), checks free blocks with `Info` before the kit install and before the up-vim install (pure helpers info_free_blocks, tree_bytes, free_problem), installs the kit with DEST=Rushhours:Tools/UP-Term, and reads requesters (ami.requesters) after each key step and on every wait poll.
+
+Product fix (upterm-ports 0026, f10a794 and 4e85ce5): upkg sets pr_WindowPtr to -1 at the start of main (Amiga only, no-op elsewhere), so a write to a full or absent volume returns an error. The browse box then shows `[ERROR] upkg install <pkg> (exit N)` (lines already in libopkg/upkg_browse.c). Child processes (postinst scripts run through sh) do not inherit the value; their requesters stay possible.
+
+Tests: host check pkgs/opkg/check/no_requesters.sh (slot write plus call order in main; it failed before the fix with "upkg_wrap.h does not declare upkg_no_requesters" and passes after). The host cannot see pr_WindowPtr, so the requester itself is covered by rig case B5 in tools/rig/upkg_browse_extra_rig.py (`upkg update` with lists_dir on NOSUCHVOL:).
+
+Rig verdicts: see the lines appended below.
+
