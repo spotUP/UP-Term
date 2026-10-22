@@ -14,7 +14,12 @@ struct Library *CxBase;
 static struct MsgPort *g_port;
 static CxObj *g_broker, *g_pass;
 static int g_enabled = 1, g_nrows;
-static km_bind g_rows[KM_MAX_BIND];   /* row index = the CxSender id */
+/* Row index = the CxSender id. The gate (input.device's task) reads only the small
+ * match table; the full bind is looked up in the installed keymap by g_idx. */
+typedef struct row_key { unsigned short qual; unsigned char code, kind; } row_key;
+static row_key g_rows[KM_MAX_BIND];
+static unsigned char g_idx[KM_MAX_BIND];
+static const keymap *g_km;
 static CxObj *g_objs[KM_MAX_BIND];
 
 /* The gate in front of every hotkey's sender. A key goes on down the network
@@ -95,13 +100,17 @@ int cx_install(const keymap *km)
         if (g_objs[i])
             DeleteCxObjAll(g_objs[i]);
     g_nrows = 0;
+    g_km = km;
     for (i = 0; i < km->nbind; i++) {
         const km_bind *b = &km->bind[i];
         if (!cx_row_installed(b))
             continue;
         if (!cx_describe(b, desc, sizeof(desc)))
             continue;
-        g_rows[n] = *b;
+        g_rows[n].qual = b->qual;
+        g_rows[n].code = b->code;
+        g_rows[n].kind = b->kind;
+        g_idx[n] = (unsigned char)i;
         f = CxFilter((STRPTR)desc);
         c = CxCustom((APTR)gate, 0);
         s = CxSender(g_port, n);
@@ -145,5 +154,5 @@ int cx_next(int *row)
 }
 
 int cx_enabled(void) { return g_enabled; }
-const km_bind *cx_row(int row) { return row >= 0 && row < g_nrows ? &g_rows[row] : 0; }
+const km_bind *cx_row(int row) { return g_km && row >= 0 && row < g_nrows ? &g_km->bind[g_idx[row]] : 0; }
 int cx_nrows(void) { return g_nrows; }

@@ -9,10 +9,9 @@
 #include <proto/dos.h>
 #include <proto/rexxsyslib.h>
 #include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include "cx.h"
 #include "act.h"
+#include "../claude/util.h"
 #include "../config/keymap_load.h"
 #include "../handler/upactive.h"
 #include "keymap_default.inc"
@@ -45,8 +44,41 @@ static int g_quit;
 static int act_menu(const char *node)
 {
     char line[KM_ID + 40];
-    sprintf(line, "amarchy-menu menu %s", node[0] ? node : "root");
+    cl_copy(line, "amarchy-menu menu ", sizeof(line));
+    cl_cat(line, node[0] ? node : "root", sizeof(line));
     return act_in_window(line);
+}
+
+/* A decimal number after optional blanks and sign, 0 when there is none (atoi). */
+static int parse_int(const char *s)
+{
+    int v = 0, neg = 0;
+    while (*s == ' ' || *s == '\t')
+        s++;
+    if (*s == '-' || *s == '+')
+        neg = *s++ == '-';
+    while (*s >= '0' && *s <= '9')
+        v = v * 10 + (*s++ - '0');
+    return neg ? -v : v;
+}
+
+/* The STATUS reply: hits=N rows=N enabled=N active=N */
+static void status_text(char *out, long cap)
+{
+    char num[12];
+    static const char *const key[4] = { "hits=", " rows=", " enabled=", " active=" };
+    long val[4];
+    int i;
+    val[0] = g_hits;
+    val[1] = cx_nrows();
+    val[2] = cx_enabled();
+    val[3] = upactive_count();
+    out[0] = 0;
+    for (i = 0; i < 4; i++) {
+        cl_cat(out, key[i], cap);
+        cl_ltoa(val[i], num);
+        cl_cat(out, num, cap);
+    }
 }
 
 /* Run the action of row `row` (hotkey or ARexx RUN): one place, one counter. */
@@ -70,11 +102,8 @@ static int do_row(int row)
 
 static void reload(void)
 {
-    static keymap t;
-    if (keymap_reload(&t)) {
-        g_km = t;
-        cx_install(&g_km);
-    }   /* a bad edit leaves the old set active */
+    if (keymap_reload(&g_km))   /* parses into a heap scratch, copies only on success */
+        cx_install(&g_km);   /* a bad edit leaves the old set active */
 }
 
 static void notify_start(void)
@@ -108,11 +137,11 @@ static void rexx_serve(void)
         long rc = 0;
         out[0] = 0;
         if (starts(cmd, "STATUS"))
-            sprintf(out, "hits=%ld rows=%d enabled=%d active=%ld", g_hits, cx_nrows(), cx_enabled(), upactive_count());
+            status_text(out, sizeof(out));
         else if (starts(cmd, "RELOAD"))
             reload();
         else if (starts(cmd, "RUN"))
-            rc = do_row(atoi(cmd + 3)) ? 0 : 5;
+            rc = do_row(parse_int(cmd + 3)) ? 0 : 5;
         else if (starts(cmd, "QUIT"))
             g_quit = 1;
         else if (starts(cmd, "SHOW"))

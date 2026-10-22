@@ -40,7 +40,9 @@
 #define KEYMAP_H
 
 #define KM_MAX_BIND  192
-#define KM_MAX_MENU  128
+#ifndef KM_MAX_MENU
+#define KM_MAX_MENU  128   /* a build that never reads km_menu (Amarchy) sets 1 on the command line */
+#endif
 #define KM_ARG       80
 #define KM_LABEL     32
 #define KM_CAT       12
