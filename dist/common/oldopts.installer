@@ -17,8 +17,7 @@
 (procedure P_OLDBLOCK
     (set #on (= 0 (run (cat "Search >NIL: S:User-Startup \";BEGIN UP-Term " #block "\"")))))
 ; Each probe of a UP-Term: path waits for the assign (update.installer says why).
-(set #olddrawer (getassign "UP-Term" "a"))
-(if (<> #olddrawer "")
+(if (<> (getassign "UP-Term" "a") "")
   (if (and (exists #oldman) (not (exists "@OPTS@/UPTOPTDEST")))
     (
         (run "Delete >NIL: T:UPTOLDOPTS ALL QUIET")
@@ -29,7 +28,7 @@
         (if (> (strlen #olddir) 0)
             (if (= (substr #olddir (- (strlen #olddir) 1) 1) "\n")
                 (set #olddir (substr #olddir 0 (- (strlen #olddir) 1)))))
-        (if (= #olddir "") (set #olddir #olddrawer))
+        (if (= #olddir "") (set #olddir (getassign "UP-Term" "a")))
         (textfile (dest "T:UPTOLDOPTS/UPTOPTDEST") (append #olddir))
         (set #block "console") (P_OLDBLOCK)
         (set #name (if #on "CONSOLE" "NOCONSOLE") #on 1) (P_OLDOPT)
