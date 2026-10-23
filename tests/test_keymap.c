@@ -11,6 +11,7 @@
 #include "../amarchy/menu_geom.h"
 #include "../amarchy/leaf.h"
 #include "../amarchy/menu_icon.h"
+#include "../amarchy/index_core.h"
 #include "../render/emoji.h"
 #include "../engine/vtengine.h"
 #include "harness.h"
@@ -1294,6 +1295,8 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 
 static void menu_theme_roles_map_the_palette(void);
 
+static void the_app_index_core_behaves(void);
+
 void suite_keymap(void)
 {
     menu_theme_roles_map_the_palette();
@@ -1334,6 +1337,7 @@ void suite_keymap(void)
     a_run_row_starts_its_command_through_the_upterm_shell();
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
+    the_app_index_core_behaves();
 }
 
 /* ---- menu_theme: the drawn menu's colour roles ---- */
@@ -1375,4 +1379,113 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT((long)rgb[MT_ACCENT], 0xFFAA00L);
     CHECK_INT((long)rgb[MT_BG], 0x000000L);
     CHECK_INT((long)rgb[MT_SELBOX], 0x0000EEL);
+}
+
+/* ---- index_core: the app index's cache rows (plan 2026-10-23-amarchy-app-index.md, X1) ---- */
+
+static void an_index_row_has_kind_label_and_path(void)
+{
+    ix_row r;
+    char buf[400];
+    CHECK(ix_parse_row("app\tDirectory Opus\tWork:Apps/DOpus/DirectoryOpus", &r));
+    CHECK_INT(r.kind, IX_KIND_APP);
+    CHECK_STR(r.label, "Directory Opus");
+    CHECK_STR(r.path, "Work:Apps/DOpus/DirectoryOpus");
+    CHECK(ix_parse_row("game\tTurrican II\tGames:T/Turrican2.info\r\n", &r));
+    CHECK_INT(r.kind, IX_KIND_GAME);
+    CHECK_STR(r.path, "Games:T/Turrican2.info");
+    CHECK_INT(ix_format_row(&r, buf, sizeof buf), (long)strlen("game\tTurrican II\tGames:T/Turrican2.info\n"));
+    CHECK_STR(buf, "game\tTurrican II\tGames:T/Turrican2.info\n");
+    CHECK_INT(ix_format_row(&r, buf, 10), -1);
+}
+
+static void a_bad_index_row_is_rejected(void)
+{
+    ix_row r;
+    char longlabel[200], line[400];
+    CHECK(!ix_parse_row("", &r));
+    CHECK(!ix_parse_row("app\tOnly two fields", &r));
+    CHECK(!ix_parse_row("tool\tLabel\tWork:x", &r));
+    CHECK(!ix_parse_row("App\tLabel\tWork:x", &r));
+    CHECK(!ix_parse_row("app\t\tWork:x", &r));
+    CHECK(!ix_parse_row("app\tLabel\t", &r));
+    CHECK(!ix_parse_row("app\tLabel\tWork:x\textra", &r));
+    CHECK(!ix_parse_row("app Label Work:x", &r));
+    memset(longlabel, 'a', sizeof longlabel - 1);
+    longlabel[sizeof longlabel - 1] = 0;
+    strcpy(line, "app\t");
+    strcat(line, longlabel);
+    strcat(line, "\tWork:x");
+    CHECK(!ix_parse_row(line, &r));
+}
+
+static void an_index_label_is_the_icon_file_name_without_info(void)
+{
+    char l[IX_LABEL];
+    ix_label_from_name("Multiview.info", l, sizeof l);
+    CHECK_STR(l, "Multiview");
+    ix_label_from_name("Foo Bar.INFO", l, sizeof l);
+    CHECK_STR(l, "Foo Bar");
+    ix_label_from_name("Tool", l, sizeof l);
+    CHECK_STR(l, "Tool");
+    ix_label_from_name(".info", l, sizeof l);
+    CHECK_STR(l, ".info");
+}
+
+static void the_skip_list_skips_by_whole_path_prefix(void)
+{
+    CHECK(ix_skip_match("Work:Games", "Work:Games/Turrican/Turrican"));
+    CHECK(ix_skip_match("Work:Games", "Work:Games"));
+    CHECK(!ix_skip_match("Work:Games", "Work:Games2/x"));
+    CHECK(!ix_skip_match("Work:Games", "Work:Gam"));
+    CHECK(ix_skip_match("Old:, Work:Games ,Tmp:x", "Old:Anything/y"));
+    CHECK(ix_skip_match("Old:, Work:Games ,Tmp:x", "tmp:X/z"));
+    CHECK(!ix_skip_match("Old:, Work:Games ,Tmp:x", "Work:Tools/y"));
+    CHECK(!ix_skip_match("", "Work:Tools/y"));
+    CHECK(!ix_skip_match(",, ,", "Work:Tools/y"));
+}
+
+static void equal_index_labels_get_their_volume_as_suffix_and_rows_sort_by_label(void)
+{
+    ix_row r[4];
+    memset(r, 0, sizeof r);
+    r[0].kind = IX_KIND_APP; strcpy(r[0].label, "Zip");    strcpy(r[0].path, "Work:Z/Zip");
+    r[1].kind = IX_KIND_APP; strcpy(r[1].label, "editor"); strcpy(r[1].path, "Sys:E/Editor");
+    r[2].kind = IX_KIND_APP; strcpy(r[2].label, "Editor"); strcpy(r[2].path, "Work:E/Editor");
+    r[3].kind = IX_KIND_APP; strcpy(r[3].label, "Clock");  strcpy(r[3].path, "Sys:C/Clock");
+    ix_sort_dedupe(r, 4);
+    CHECK_STR(r[0].label, "Clock");
+    CHECK_STR(r[1].label, "editor");
+    CHECK_STR(r[2].label, "Editor");
+    CHECK_STR(r[3].label, "Zip");
+    CHECK_STR(r[0].suffix, "");
+    CHECK_STR(r[1].suffix, "Sys");
+    CHECK_STR(r[2].suffix, "Work");
+    CHECK_STR(r[3].suffix, "");
+}
+
+static void a_menu_row_wins_over_an_index_row_with_the_same_label(void)
+{
+    ix_row r[3];
+    memset(r, 0, sizeof r);
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\napps.upkg = Add-ons | run:upkg\n"));
+    strcpy(r[0].label, "Add-ons"); strcpy(r[0].path, "Work:A/Addons");
+    strcpy(r[1].label, "Clock");   strcpy(r[1].path, "Sys:C/Clock");
+    strcpy(r[2].label, "tmux");    strcpy(r[2].path, "Work:T/tmux");
+    CHECK_INT(ix_drop_shadowed(&km, "apps", r, 3), 1);
+    CHECK_STR(r[0].label, "Clock");
+    /* another node's rows do not shadow */
+    memset(r, 0, sizeof r);
+    strcpy(r[0].label, "Tmux"); strcpy(r[0].path, "Work:T/tmux");
+    CHECK_INT(ix_drop_shadowed(&km, "window", r, 1), 1);
+}
+
+static void the_app_index_core_behaves(void)
+{
+    an_index_row_has_kind_label_and_path();
+    a_bad_index_row_is_rejected();
+    an_index_label_is_the_icon_file_name_without_info();
+    the_skip_list_skips_by_whole_path_prefix();
+    equal_index_labels_get_their_volume_as_suffix_and_rows_sort_by_label();
+    a_menu_row_wins_over_an_index_row_with_the_same_label();
 }
