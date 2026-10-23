@@ -314,8 +314,16 @@ def tty_stage(pkg, wanted):
             "export PATH=/VTC/userland/bin:/gg/bin:$PATH\n"   # sh: ptyrun's execvp finds it only on PATH; a rig's vsh starts with none
             "unset LC_ALL LC_CTYPE SHLVL\n"
             "export LANG=C TERM=vtcon TERMINFO=/VTC/userland/terminfo\n"
+            + "".join("Protect VTC:userland/work/%s/%s -e\n" % (pkg, r) for r in tty_plain_files(pkg)) +
             "ptyrun -t 30 VTC:userland/%s/keys/%s VTC:out/%s/%s.stream %s >VTC:out/%s/%s.txt 2>VTC:out/%s/%s.err\n"
             % (pkg, name, pkg, name, cmd, pkg, name, pkg, name), encoding="latin-1")
+
+
+def tty_plain_files(pkg):
+    """Files of the package's check data that are not executable on the Mac: the rig stages them
+    with the Amiga E bit, which a listing shows as an executable, so the script clears it."""
+    data = PORTS / "pkgs" / pkg / "check/data"
+    return sorted(str(p.relative_to(data)) for p in data.rglob("*") if p.is_file() and not os.access(p, os.X_OK)) if data.is_dir() else []
 
 
 def render(stream, upto):
@@ -331,6 +339,38 @@ def marks(f):
         if a != "end":
             out.append((a, int(b)))
     return out
+
+
+def tty_mask(pkg, name):
+    """Screen rows (1-based) of terminal case `name` that depend on the machine, from pkgs/<pkg>/check/mask
+    ("name<TAB>rows<TAB>why", rows "5" or "2-4" or a comma list): the working directory path, mtime, mode
+    and size of a listing. Only these rows are left out of the screen comparison; every other row
+    and every colour/attribute must still match."""
+    f = PORTS / "pkgs" / pkg / "check/mask"
+    rows = set()
+    for line in (f.read_text(encoding="utf-8").splitlines() if f.exists() else []):
+        p = line.split("\t")
+        if len(p) >= 2 and p[0] == name and not line.startswith("#"):
+            for part in p[1].split(","):
+                a, _, b = part.partition("-")
+                rows |= set(range(int(a), int(b or a) + 1))
+    return rows
+
+
+def mask_rows(screen, rows):
+    """A rendered screen (24 text rows, 24 attribute rows, then the cursor line "@x,y") with the given
+    1-based rows blanked, the cursor line too when the cursor sits on a masked row."""
+    if not rows:
+        return screen
+    lines = screen.splitlines()
+    for r in rows:
+        if 1 <= r <= 24 and len(lines) >= 48:
+            lines[r - 1] = lines[24 + r - 1] = "<masked>"
+    for i, l in enumerate(lines[48:], 48):
+        m = re.match(r"@(\d+),(\d+)$", l)
+        if m and int(m.group(2)) + 1 in rows:
+            lines[i] = "@<masked>"
+    return "\n".join(lines)
 
 
 def tty_compare(pkg, name):
@@ -355,8 +395,9 @@ def tty_compare(pkg, name):
     em, gm = marks(exp / (name + ".stream.marks")), marks(got / (name + ".stream.marks"))
     if len(em) != len(gm):
         return False, "key steps: expected %d, rig %d" % (len(em), len(gm))
+    masked = tty_mask(pkg, name)
     for (step, eb), (_s, gb) in zip(em, gm):
-        x, y = render(es, eb), render(gs, gb)
+        x, y = mask_rows(render(es, eb), masked), mask_rows(render(gs, gb), masked)
         if x != y:
             d = list(difflib.unified_diff(x.splitlines()[:24], y.splitlines()[:24], "expected", "rig", lineterm=""))
             return False, "screen before key step %s differs%s\n%s" % (
