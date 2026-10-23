@@ -48,6 +48,7 @@ COMMANDS = {
     'Amarchy': 'amarchy/amarchy.c',
     'amarchy-menu': 'amarchy/menu.c',
     'amarchy-gui': 'amarchy/gui.c',
+    'amarchy-index': 'amarchy/index.c',
 }
 # not commands: handlers, devices, objects, and probes / test tools
 EXCLUDED = {

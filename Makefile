@@ -719,6 +719,15 @@ $(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/menu_
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_GUI_SRC)
 
+# amarchy-index: the app index scanner (plan 2026-10-23-amarchy-app-index.md, X2). A plain vbcc DOS program,
+# no ixemul; it writes ENVARC:Amarchy/apps, which Amarchy reads (it never scans itself).
+AMARCHY_INDEX_SRC := amarchy/index.c amarchy/index_core.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c
+.PHONY: amarchy-index
+amarchy-index: $(BUILD)/amiga/amarchy-index
+$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/index_core.h amarchy/menu_core.h config/upconf.h tty/qmark.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_INDEX_SRC)
+
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (-m68020 is safe since the driver names ixemul/lib/crt0.o by path,
 # tests/test_ixemul_startfile.py; these rules keep the 68000 baseline)
@@ -1256,7 +1265,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dis
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -1294,7 +1303,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui b
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
 	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui dist/keymap $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index dist/keymap $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	# BebboSSH: our build (make bebbossh) over the drawer's sources, patches and licence; SHA256SUMS and TOOLCHAIN.txt from the build
 	cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/

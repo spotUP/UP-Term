@@ -387,7 +387,7 @@ Copy hl mdv UP-Term:bin CLONE
 ; edited file stays, the new one is written beside it as keymap.new (an Update never
 ; clobbers it). A marked block in S:User-Startup starts the commodity at every boot
 ; (Uninstall takes it out with unstartup.sh).
-Copy Amarchy amarchy-menu amarchy-gui UP-Term:bin CLONE
+Copy Amarchy amarchy-menu amarchy-gui amarchy-index UP-Term:bin CLONE
 If NOT EXISTS ENVARC:up-term/keymap
   Copy keymap ENVARC:up-term/keymap CLONE QUIET
 Else
