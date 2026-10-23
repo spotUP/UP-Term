@@ -11,7 +11,15 @@
 
 int main(void)
 {
-    ((struct Process *)FindTask(NULL))->pr_WindowPtr = NULL;
+    struct Process *me = (struct Process *)FindTask(NULL);
+    const char *args = (const char *)GetArgStr();
+    if (args[0] == '-' && args[1] == 'p') {
+        /* `winptr0 -p`: print this process's own pr_WindowPtr and exit. Typed in a window started through winptr0
+         * it prints 00000000 (inherited); from the rig's agent commands it prints ffffffff. */
+        Printf((STRPTR)"pr_WindowPtr=%08lx\n", (LONG)me->pr_WindowPtr);
+        return 0;
+    }
+    me->pr_WindowPtr = NULL;
     /* the raw argument string, quotes and all: the command line as typed */
-    return (int)SystemTags((STRPTR)GetArgStr(), TAG_DONE);
+    return (int)SystemTags((STRPTR)args, TAG_DONE);
 }
