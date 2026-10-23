@@ -1,6 +1,6 @@
 /* menu_tree.c -- the node paths of the [menu] table: a node's entries, a child's path and the
- * OSD size. Its own file so the Amarchy commodity links only these (its 32 KB resident budget,
- * tests/test_amarchy_size.py); amarchy-menu links it with menu_core.c. */
+ * OSD size. Its own file so the Amarchy commodity links only these; amarchy-menu links it
+ * with menu_core.c. */
 #include <string.h>
 #include "menu_core.h"
 
