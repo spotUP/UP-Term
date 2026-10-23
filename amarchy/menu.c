@@ -13,6 +13,7 @@
 #include <upkgui/ui.h>
 #include "atiming.h"
 #include "menu_core.h"
+#include "leaf.h"
 #include "../config/keymap_load.h"
 #include "../handler/upreq.h"
 #include "../tty/qmark.h"
@@ -47,13 +48,13 @@ static void hotkeys_init(void)
     hot[n] = 0;
 }
 
-/* leaf actions that need no terminal of ours: the commodity's own set */
 /* A value for an action that needs one; 1 with out set, 0 on Escape or an empty line. */
-static int ask_value(const char *label, const char *usage, char *out, int n)
+static int ask_value(void *ctx, const char *label, const char *usage, char *out, int n)
 {
     char prompt[UPREQ_ANSWER + 40];
     FILE *f;
     int ok = 0;
+    (void)ctx;
     snprintf(prompt, sizeof prompt, "%s (%s):", label, usage);
     ui_opt.kind = K_INPUT;
     ui_opt.title = label;
@@ -76,7 +77,7 @@ static int ask_value(const char *label, const char *usage, char *out, int n)
 
 /* A refused action says why in the menu's window before it closes (it used to exit silently,
  * the reason lost on stderr of a window that was going). */
-static void say_refused(const char *label, long rc, const char *answer)
+static void say_refused(void *ctx, const char *label, long rc, const char *answer)
 {
     const char *why = answer && answer[0] ? answer :
                       rc == UPREQ_NOPORT ? "no UP-Term window to run it in" :
@@ -84,50 +85,12 @@ static void say_refused(const char *label, long rc, const char *answer)
                       rc == UPREQ_BADVERSION ? "the terminal is another UP-Term version: reboot" :
                       "the terminal does not know it";
     char text[UPREQ_ANSWER + 80];
+    (void)ctx;
     snprintf(text, sizeof text, "%s: %s", label, why);
     ui_message("%s", text);
 }
 
-static int run_leaf(const km_menu *m)
-{
-    switch (m->kind) {
-    case KA_RUN:
-        return system(m->arg);
-    case KA_REXX: {
-        char line[160];
-        snprintf(line, sizeof line, "RX \"%s\"", m->arg);
-        return system(line);
-    }
-    case KA_OPEN:
-        return system("NewShell \"XCON:0/20/640/300/UP-Term/CLOSE\"");
-    default: {
-        /* tab:, menuid: and slash: belong to a terminal window: the handler's request port
-         * (handler/upreq.h) takes the action by name and runs it as a key binding would */
-        upreq_body r;
-        long rc;
-        if (!upreq_fill(&r, m->kind, m->arg)) {
-            fprintf(stderr, "amarchy-menu: %s is not a terminal action\n", m->arg);
-            return UPREQ_UNKNOWN;
-        }
-        rc = upreq_send(&r);
-        if (rc == UPREQ_NEEDARG) {
-            /* /bg and the like take a value the row does not carry: ask for it, send again */
-            char value[UPREQ_ACTION], act[UPREQ_ACTION];
-            strcpy(act, r.action);
-            if (!ask_value(m->label, r.answer, value, sizeof value))
-                return 0;                      /* Escape: nothing asked of the terminal */
-            if (!upreq_with_arg(&r, act, value)) {
-                strcpy(r.answer, "the value is too long");
-                rc = UPREQ_FAILED;
-            } else
-                rc = upreq_send(&r);
-        }
-        if (rc)
-            say_refused(m->label, rc, r.answer);
-        return (int)rc;
-    }
-    }
-}
+static const lf_ui leaf_ui = { ask_value, say_refused, 0 };
 
 static int menu_loop(const char *start)
 {
@@ -192,7 +155,7 @@ static int menu_loop(const char *start)
             filter[0] = 0;
             continue;
         }
-        return run_leaf(&km.menu[it[i].row]);
+        return lf_run(&km.menu[it[i].row], &leaf_ui);
     }
 }
 

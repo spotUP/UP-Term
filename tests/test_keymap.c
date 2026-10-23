@@ -9,6 +9,7 @@
 #include "../amarchy/cxdesc.h"
 #include "../amarchy/menu_core.h"
 #include "../amarchy/menu_geom.h"
+#include "../amarchy/leaf.h"
 #include "../engine/vtengine.h"
 #include "harness.h"
 
@@ -897,6 +898,20 @@ static void the_menu_builds_the_request_of_a_leaf(void)
     CHECK(!upreq_fill(&r, KA_RUN, "C:Echo"));
 }
 
+/* AMB1 (owner, 2026-10-23): Apps > Editor with no UP-Term running opened nvim inside the menu's
+ * own OSD window, because a run: leaf went through system() on the menu's console. A run: leaf
+ * is planned as its own UP-Term window; only terminal actions go to a terminal's request port. */
+static void a_run_leaf_gets_its_own_window_not_the_menus_console(void)
+{
+    CHECK_INT((int)lf_plan(KA_RUN), (int)LF_WINDOW);
+    CHECK_INT((int)lf_plan(KA_REXX), (int)LF_REXX);
+    CHECK_INT((int)lf_plan(KA_OPEN), (int)LF_OPEN);
+    CHECK_INT((int)lf_plan(KA_SLASH), (int)LF_REQUEST);
+    CHECK_INT((int)lf_plan(KA_MENUID), (int)LF_REQUEST);
+    CHECK_INT((int)lf_plan(KA_TAB), (int)LF_REQUEST);
+    CHECK(!strncmp(LF_UTERM_SPEC, "XCON:", 5));
+}
+
 /* Owner's A1200, 2026-10-22: Preferences from the quick menu did nothing the first time. The
  * menu window that closed was blanked out of the focus record, and the next menu window then
  * took the blank as "the terminal before me": the request found no port. The record keeps the
@@ -1078,3 +1093,4 @@ void suite_keymap(void)
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
 }
+    a_run_leaf_gets_its_own_window_not_the_menus_console();
