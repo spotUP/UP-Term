@@ -16,9 +16,12 @@ Self-checking. Rig up (rig.py start --max), handler, Amarchy and amarchy-menu in
 then stop and start the rig so the new handler is resident). UPTERM_RIG=<n>."""
 import os, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths, ami, condev_rig as c, tabstate, vshwin, stage_rig
+import re
+import paths, ami, condev_rig as c, tabstate, vshwin, stage_rig, typewin
 
 LAMIGA, SPACE, ESC = 0x40, 0x40, 0x45
+BS = 0x41
+ROOT = ['Apps', 'Style', 'Window']   # the root level's labels: the groups of dist/keymap [menu] (menu_tree.c capitalises the id's first segment)
 COLS, ROWS = 24, 6          # mn_osd_size for the root node (menu_core.c; the host test pins the number)
 TITLE = 'Amarchy'
 bad = 0
@@ -67,6 +70,35 @@ def commodity_running():
     return any(l.rstrip().split('/')[-1].split(':')[-1] == 'Amarchy' for l in c.run('Status')[1].splitlines())
 
 
+def osd_text():
+    # The menu window's text as drawn (Select all + Copy through the clipboard, typewin.screen_text), without the
+    # click that screen_text ends with when a title is set: a click inside the menu would pick an entry.
+    typewin._last_title = None
+    return typewin.screen_text()
+
+
+def osd_state():
+    """(filter text or None, root labels listed, in row order) read from the OSD's own text."""
+    txt = osd_text()
+    flt = None
+    for l in txt.splitlines():
+        m = re.search(r'Filter:[ ]?(.*?)\s*$', l)
+        if m:
+            flt = m.group(1).strip()
+    rows = []
+    for l in txt.splitlines():
+        rows += re.findall(r'\b(%s)\b' % '|'.join(ROOT), l)
+    return flt, rows, txt
+
+
+def expected(filter_):
+    # mn_match / mn_filter in amarchy/menu_core.c: prefix matches first, then matches anywhere (case-insensitive)
+    f = filter_.lower()
+    pre = [l for l in ROOT if l.lower().startswith(f)]
+    inn = [l for l in ROOT if f in l.lower() and l not in pre]
+    return pre + inn
+
+
 def open_menu():
     ami.key(SPACE, LAMIGA)
     return wait_window(True)
@@ -106,6 +138,29 @@ def run():
     g = gadgets()
     check(not g, 'no gadgets, no scroll bar (G lines: %d)' % len(g))
     check(menu_running(), 'amarchy-menu is running while the window is open')
+
+    # type-to-filter: every printable key and Backspace are library hotkeys, the filter line reads "Filter: <text>"
+    flt, rows, txt = osd_state()
+    check(flt == '' and rows == ROOT, 'before typing: "Filter: " empty, all %d entries (filter %r, rows %r)' % (len(ROOT), flt, rows))
+    if flt is None:
+        print('info OSD text:\n' + txt)
+    for ch in 'st':
+        typewin.typ(ch)
+        time.sleep(2)
+        word = 's' if ch == 's' else 'st'
+        flt, rows, txt = osd_state()
+        check(flt == word and rows == expected(word),
+              'typed %r: filter line "Filter: %s", entries %r (want %r)' % (ch, word, rows, expected(word)))
+    check(len(rows) < len(ROOT), 'the entry list shrank from %d to %d' % (len(ROOT), len(rows)))
+    ami.key(BS)
+    time.sleep(2)
+    flt, rows, txt = osd_state()
+    check(flt == 's' and rows == expected('s'), 'Backspace removed one letter: filter %r, entries %r (want %r)' % (flt, rows, expected('s')))
+    ami.key(ESC)
+    time.sleep(2)
+    check(bool(ami.window(TITLE)), 'Esc with a filter left the menu open')
+    flt, rows, txt = osd_state()
+    check(flt == '' and rows == ROOT, 'Esc cleared the filter: filter %r, all entries %r' % (flt, rows))
 
     # Esc at the top level closes it
     ami.key(ESC)
