@@ -1059,8 +1059,11 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
     CHECK_INT((int)(vt_count_live - base), 0);
 }
 
+static void menu_theme_roles_map_the_palette(void);
+
 void suite_keymap(void)
 {
+    menu_theme_roles_map_the_palette();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
     a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothing();
     comments_crlf_and_fields();
@@ -1090,7 +1093,48 @@ void suite_keymap(void)
     a_request_needs_no_bind_row();
     an_unknown_request_is_an_error_code();
     the_menu_builds_the_request_of_a_leaf();
+    a_run_leaf_gets_its_own_window_not_the_menus_console();
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
 }
-    a_run_leaf_gets_its_own_window_not_the_menus_console();
+
+/* ---- menu_theme: the drawn menu's colour roles ---- */
+#include "../amarchy/menu_theme.h"
+
+/* role -> palette index is the table's: the shipped default palette is the renderer's xterm one, and the
+ * table's defaults are those values (hand-written below, then held to the engine) */
+static void menu_theme_roles_map_the_palette(void)
+{
+    static const uc_u32 want_default[MT_ROLES] = { 0x000000UL, 0xE5E5E5UL, 0x7F7F7FUL, 0x00FFFFUL, 0x0000EEUL };
+    uc_u32 pal[16], rgb[MT_ROLES];
+    int i;
+
+    /* nothing remapped (upconf has no palette key): the xterm colours of the role's index */
+    upconf_palette_parse(0, pal);
+    menu_theme_roles(pal, rgb);
+    for (i = 0; i < MT_ROLES; i++) {
+        CHECK_INT((long)rgb[i], (long)want_default[i]);
+        CHECK_INT((long)rgb[i], (long)vt_palette_rgb(0, menu_theme_index(i)));
+    }
+    CHECK_INT(menu_theme_index(MT_BG), 0);
+    CHECK_INT(menu_theme_index(MT_TEXT), 7);
+    CHECK_INT(menu_theme_index(MT_DIM), 8);
+    CHECK_INT(menu_theme_index(MT_ACCENT), 14);
+    CHECK_INT(menu_theme_index(MT_SELBOX), 4);
+
+    /* a Dracula-like palette remaps 0, 7, 8, 14 and 4; index 1 (no role) is ignored */
+    CHECK_INT(upconf_palette_parse("0,282A36,1,FF5555,7,F8F8F2,8,6272A4,14,8BE9FD,4,44475A", pal), 6);
+    menu_theme_roles(pal, rgb);
+    CHECK_INT((long)rgb[MT_BG], 0x282A36L);
+    CHECK_INT((long)rgb[MT_TEXT], 0xF8F8F2L);
+    CHECK_INT((long)rgb[MT_DIM], 0x6272A4L);
+    CHECK_INT((long)rgb[MT_ACCENT], 0x8BE9FDL);
+    CHECK_INT((long)rgb[MT_SELBOX], 0x44475AL);
+
+    /* a palette that remaps only the accent leaves the other roles at their defaults */
+    CHECK_INT(upconf_palette_parse("14,FFAA00", pal), 1);
+    menu_theme_roles(pal, rgb);
+    CHECK_INT((long)rgb[MT_ACCENT], 0xFFAA00L);
+    CHECK_INT((long)rgb[MT_BG], 0x000000L);
+    CHECK_INT((long)rgb[MT_SELBOX], 0x0000EEL);
+}

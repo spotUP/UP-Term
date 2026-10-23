@@ -71,7 +71,6 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
                   __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
 #endif
 
-#include "pen_rule.h"
 
 #ifdef VR_CPROF
 #ifdef VR_HOST_TEST /* the fake's functions */
@@ -98,6 +97,7 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
 #define vr_cgx_fill(lb, rp, x, y, w, h, c) (vr_gc[1]++, vr_cgx_fill(lb, rp, x, y, w, h, c))
 #endif
 #include "pen_match.h"
+#include "pens_amiga.h"
 #include "ttf.h"
 
 #define RUN_MAX 256
@@ -105,30 +105,11 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
 /* ---- palette ------------------------------------------------------------ */
 
 
-/* the screen's ObtainBestPen for pen_rule.h: exact (a free entry gets the colour) or the nearest */
-static long best_pen(void *u, unsigned long rgb, int exact)
-{
-    static const struct TagItem exact_tags[] = {
-        { OBP_Precision, (ULONG)PRECISION_EXACT },
-        { OBP_FailIfBad, TRUE },
-        { TAG_DONE, 0 }
-    };
-    static const struct TagItem near_tags[] = {
-        { OBP_Precision, PRECISION_IMAGE },
-        { TAG_DONE, 0 }
-    };
-    ULONG cr = (rgb >> 16) & 0xFF, cg = (rgb >> 8) & 0xFF, cb = rgb & 0xFF;
-    return ObtainBestPenA((struct ColorMap *)u, cr * 0x01010101UL, cg * 0x01010101UL, cb * 0x01010101UL,
-                          (struct TagItem *)(exact ? exact_tags : near_tags));
-}
-
 /* A palette colour's pen: exact while the map has room, the nearest when it is full (pen_rule.h). One pen to
  * release either way. */
 static LONG obtain(vr_render *r, ULONG rgb)
 {
-    if (!r->cm)
-        return -1;
-    return (LONG)vr_obtain_rule(best_pen, r->cm, rgb);
+    return (LONG)vr_pen_obtain(r->cm, rgb);
 }
 
 /* An ink is what a cell is drawn with: a screen pen, or on a true-colour
@@ -262,7 +243,7 @@ static ULONG truecolor_ink(vr_render *r, ULONG rgb)
  * it is nobody's to share (an exclusive pen, which may change colour). */
 static LONG hold_pen(vr_render *r, ULONG rgb)
 {
-    return best_pen(r->cm, rgb, 1);
+    return vr_pen_best(r->cm, rgb, 1);
 }
 
 /* pm_match's picks, shared by every window of this program: a pick is a pure
@@ -455,7 +436,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
         LONG p;
         vr_pf_by[vr_pass < 15 ? vr_pass : 15]++;
         ReadEClock(&q0);
-        p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
+        p = r->few && r->cm ? vr_pen_best(r->cm, rgb, 1) : -1;
         ReadEClock(&q1);
         if (r->few && r->cm) {
             vr_pf_t[0] += q1.ev_lo - q0.ev_lo;
@@ -475,7 +456,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
             vr_pf_n[2]++;
         }
 #else
-        LONG p = r->few && r->cm ? best_pen(r->cm, rgb, 1) : -1;
+        LONG p = r->few && r->cm ? vr_pen_best(r->cm, rgb, 1) : -1;
         if (p < 0 && r->few && r->cm)
             p = few_obtain(r, (int)c, rgb);
         if (p < 0)
