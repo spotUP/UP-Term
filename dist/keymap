@@ -93,6 +93,7 @@ super+i           = run:upkg-browse        ; Install add-ons       | apps
 
 [menu]
 ; dotted id        = label                 | action
+apps.upterm        = UP-Term               | open:uterm
 apps.upkg          = Install add-ons       | run:upkg-browse
 apps.tmux          = Tmux                  | run:tmux
 apps.editor        = Editor                | run:nvim

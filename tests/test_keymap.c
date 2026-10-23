@@ -623,17 +623,17 @@ static void osd_size_counts_the_reachable_levels(void)
     CHECK_INT(rows, MN_OSD_HEAD_LINES + 1);
     CHECK_INT(cols, MN_OSD_MIN_COLS);              /* "Theme" + pad is shorter than the minimum */
     /* the shipped dist/keymap: the sizes the commodity opens Super+Space and Super+Shift+Space with
-     * (worked out from the file's [menu] rows with a separate script: 4 entries at most, labels short) */
+     * (worked out from the file's [menu] rows with a separate script: 5 entries at most in apps, labels short) */
     {
         static char file[16384];
         long n = slurp("dist/keymap", file, sizeof(file));
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 4);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 5);
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 4);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 5);
     }
 }
 

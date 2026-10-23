@@ -34,6 +34,12 @@ int mn_parent(const char *node, char *out, int n);
 /* The node an item opens (groups only): node + "." + seg. */
 void mn_child_node(const char *node, const mn_item *it, char *out, int n);
 
+/* Every level a menu opened at `node` can show: node itself, then each group below it, each passed
+ * to fn as its entries (mn_children) and their count. The window sizes (mn_osd_size here, the drawn
+ * menu's amarchy/menu_geom.c) take their maxima over this one walk. */
+typedef void (*mn_level_fn)(const mn_item *items, int n, void *ctx);
+void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx);
+
 /* The menu window's size in cells, so the OSD fits its content (plan 2026-10-23-amarchy-osd.md,
  * O5). The head lines and the side padding equal the library's UI_OSD_HEAD_LINES and UI_OSD_PAD
  * (amarchy/menu.c checks that at compile time; the commodity cannot include upkgui/ui.h). */

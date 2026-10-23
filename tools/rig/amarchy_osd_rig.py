@@ -4,13 +4,13 @@
 Entry point: the Amarchy commodity's hotkey (Left Amiga + Space), typed as a user would. The menu
 window it opens must be the OSD the plan states (thoughts/shared/plans/2026-10-23-amarchy-osd.md):
   * titled "Amarchy", no gadgets at all (NOBORDER: no close, depth, drag or size gadget, no scroll bar)
-  * sized to the menu, mn_osd_size: root 24x6 cells (amarchy/menu_core.c, pinned by its host test); the width is
+  * sized to the menu, mn_osd_size: root 24x7 cells (amarchy/menu_core.c, pinned by its host test); the width is
     cols * cell width, the height rows * cell height
   * centred on the front screen (centre within 1 cell)
   * Esc at the top level closes it
   * another window taking the focus closes it (CLOSEINACTIVE) and amarchy-menu exits
 Sentinel that the new code ran: the old spec opened XCON:0/20/640/300/Amarchy/CLOSE with gadgets at
-x 0, y 20; a window of exactly 24 x 6 cells, no gadget and the screen's centre cannot come from it,
+x 0, y 20; a window of exactly 24 x 7 cells, no gadget and the screen's centre cannot come from it,
 and the close-on-focus-loss exists only in the CLOSEINACTIVE branch of the handler.
 Self-checking. Rig up (rig.py start --max), handler, Amarchy and amarchy-menu installed (rig.py install,
 then stop and start the rig so the new handler is resident). UPTERM_RIG=<n>."""
@@ -22,7 +22,7 @@ import paths, ami, condev_rig as c, tabstate, vshwin, stage_rig, typewin
 LAMIGA, SPACE, ESC = 0x40, 0x40, 0x45
 BS = 0x41
 ROOT = ['Apps', 'Style', 'Window']   # the root level's labels: the groups of dist/keymap [menu] (menu_tree.c capitalises the id's first segment)
-COLS, ROWS = 24, 6          # mn_osd_size for the root node (menu_core.c; the host test pins the number)
+COLS, ROWS = 24, 7          # mn_osd_size for the root node (menu_core.c; the host test pins the number)
 TITLE = 'Amarchy'
 bad = 0
 
