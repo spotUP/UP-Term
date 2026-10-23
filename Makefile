@@ -187,6 +187,11 @@ $(BUILD)/updiff_stack_drv: tests/updiff_stack_drv.c install/updiff.c install/upd
 	@mkdir -p $(BUILD)
 	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I. -o $@ tests/updiff_stack_drv.c install/updiff.c
 
+# every kit's own manifest must be one upupdate can read (dist-check runs it per archive)
+$(BUILD)/updiff_kit_drv: tests/updiff_kit_drv.c install/updiff.c install/updiff.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=c89 -pedantic -Wall -Wextra -Werror -O2 -I. -o $@ tests/updiff_kit_drv.c install/updiff.c
+
 # vsh's shell core on the host behind a POSIX sh_os (tests/vsh_host.c), and the
 # differential run of tests/bash/probes against bash 5 (tools/bashdiff.py;
 # ONLY=<area> runs one area, PROBE=<name> one probe, FAILED=1 the failing ones)
@@ -1323,7 +1328,7 @@ dist-src:
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check: $(BUILD)/amiga/keymap.o
+dist-check: $(BUILD)/amiga/keymap.o $(BUILD)/updiff_kit_drv
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
@@ -1343,6 +1348,7 @@ dist-check: $(BUILD)/amiga/keymap.o
 	  echo "dist-check: $$a"; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_versions.py; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_manifest.py; \
+	  ./$(BUILD)/updiff_kit_drv $(BUILD)/dist/$$a/Files/MANIFEST; \
 	  KIT=$(BUILD)/dist/$$a python3 tests/test_dist_modes.py; \
 	done
 	@for s in amigados arexx amiga-c-build amiga-autodocs; do grep -q " up-pi/Files/skills/$$s/SKILL.md$$" $(BUILD)/up-pi.lst || { echo "dist-check: up-pi.lha lacks Files/skills/$$s/SKILL.md"; exit 1; }; done

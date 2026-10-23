@@ -211,6 +211,61 @@ static void base_update_over_the_single_kit_deletes_none_of_nvims_files(void)
     CHECK_STR(r.handed[0], "Files/nvim");
 }
 
+/* The 1.0 kit's manifest with its 9 handed# lines (and n of them in all, sorted):
+ * the owner saw "not a kit manifest" and a full install instead of the Update
+ * page, because the parser took 8 at most. */
+static void base_with_handed(char *dst, int n)
+{
+    static const char *const kit[] = {
+        "Files/Claude", "Files/amiga-pi", "Files/nvim", "Files/python3",
+        "Files/userland/bin/git", "Files/userland/bin/perl", "Files/userland/bin/vim",
+        "Files/userland/share/git-core", "Files/userland/share/vim"
+    };
+    char line[128];
+    int i;
+    *dst = 0;
+    for (i = 0; base_after_split[i]; i++) {
+        if (!strncmp(base_after_split[i], "handed ", 7)) {
+            int k;
+            for (k = 0; k < n; k++) {
+                strcpy(line, "handed 0 00000000 handed#");
+                if (k < 9) strcat(line, kit[k]);
+                else {
+                    char x[] = "Files/x00";
+                    x[7] = (char)('0' + k / 10);
+                    x[8] = (char)('0' + k % 10);
+                    strcat(line, x);
+                }
+                strcat(line, "\n");
+                strcat(dst, line);
+            }
+            continue;
+        }
+        strcat(dst, base_after_split[i]);
+    }
+}
+
+static void an_update_over_the_kit_with_nine_handed_paths_is_offered(void)
+{
+    static char a[8192], b[8192];
+    ud_result r;
+    base_with_handed(a, 9);
+    base_with_handed(b, 9);
+    CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, collect, 0), 0);
+    CHECK_INT(r.files, 0);
+    CHECK_INT(r.gone, 0);
+    /* the old kit had the add-on's files: every handed path is named, none dropped */
+    build(a, old_lines);
+    base_with_handed(b, 9);
+    CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, collect, 0), 0);
+    CHECK_INT(r.nhanded, 1);   /* only Files/nvim was in the old kit */
+    CHECK_STR(r.handed[0], "Files/nvim");
+    /* more handed lines than the parser holds is still no kit manifest, not an overrun */
+    base_with_handed(a, UD_MAXHANDED + 1);
+    base_with_handed(b, UD_MAXHANDED + 1);
+    CHECK_INT(ud_compare(a, b, "VTC:distkit", &r, collect, 0), -1);
+}
+
 /* the handed files are not in the KB to copy; the base's own changed file is */
 static void a_handed_file_is_not_counted_in_the_kb_to_copy(void)
 {
@@ -328,6 +383,7 @@ void suite_updiff(void)
     gone_and_unowned();
     bad_manifests();
     base_update_over_the_single_kit_deletes_none_of_nvims_files();
+    an_update_over_the_kit_with_nine_handed_paths_is_offered();
     a_handed_file_is_not_counted_in_the_kb_to_copy();
     a_file_gone_from_a_copy_part_that_is_not_handed_is_still_deleted();
     only_keeps_the_add_ons_lines_and_drops_the_bases();
