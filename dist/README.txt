@@ -722,6 +722,30 @@ AMARCHY
   stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
   out. man amarchy has the file format.
 
+  App index: the menu lists the programs found on your disks. The scanner
+  amarchy-index looks at the hard-disk volumes (not floppies, RAM: or other
+  virtual volumes) and walks their drawers down to depth 6. An icon of type
+  Tool with a program beside it makes an app; a project icon whose default
+  tool is WHDLoad makes a game, listed under Games. The system
+  drawers Devs, Libs, L, Fonts, Locale, Env, T and Trashcan are skipped, and
+  so is Prefs/Env-Archive. The result is the cache ENVARC:Amarchy/apps,
+  written to a temporary file and renamed, so a scan cut short never leaves
+  a broken cache. Amarchy only reads the cache; it never scans itself.
+  The scan runs in the background at every boot (a line in S:User-Startup,
+  taken out by Uninstall) and on demand with the Rescan apps row, which
+  runs detached in an UP-Term window: the menu stays usable meanwhile.
+  The Apps level of the menu lists the indexed apps after the menu's own
+  rows, a Games level lists the games, and the search at the root finds
+  both. When a menu row has the same label as an indexed app, the menu row
+  wins and the index row is left out. An indexed row starts like a
+  double-click in Workbench (OpenWorkbenchObject); if Workbench cannot
+  start it, Amarchy starts it through WBStartup itself, never through a
+  shell. To keep drawers out of the scan, list path prefixes, comma
+  separated, in ENVARC:up-term/up-term (before the first section):
+    amarchy-index-skip = Work:Old,DH1:Backup
+  A path matches when it begins with an entry, so Work:Old also skips
+  Work:Old/Tools. Press Rescan apps afterwards to rebuild the cache.
+
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a
   USB serial adapter) to another computer, open a terminal program there

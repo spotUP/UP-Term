@@ -408,6 +408,14 @@ If WARN
   Echo >>S:User-Startup "Run >NIL: UP-Term:bin/Amarchy"
   Echo >>S:User-Startup ";END UP-Term Amarchy"
 EndIf
+; the boot scan of the app index: a block of its own, so an Update that finds the Amarchy block
+; from an earlier version still adds it (and unstartup.sh strips it with the other UP-Term blocks)
+Search >NIL: S:User-Startup ";BEGIN UP-Term Amarchy index"
+If WARN
+  Echo >>S:User-Startup ";BEGIN UP-Term Amarchy index"
+  Echo >>S:User-Startup "Run >NIL: UP-Term:bin/amarchy-index"
+  Echo >>S:User-Startup ";END UP-Term Amarchy index"
+EndIf
 ; ps and top: the tasks, and the tasks by CPU use (sampled at the vertical blank)
 Copy ps top UP-Term:bin CLONE
 ; UPDemo: the terminal's show-off and benchmark (README, DEMO)

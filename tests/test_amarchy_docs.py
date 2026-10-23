@@ -49,6 +49,8 @@ class AmarchyDocs(unittest.TestCase):
         self.assertIn('Copy Amarchy amarchy-menu amarchy-gui amarchy-index UP-Term:bin CLONE', d)
         self.assertIn('Run >NIL: UP-Term:bin/Amarchy', d)
         self.assertIn(';BEGIN UP-Term Amarchy', d)
+        self.assertIn(';BEGIN UP-Term Amarchy index', d)  # its own block: an Update adds it once
+        self.assertEqual(d.count('Run >NIL: UP-Term:bin/amarchy-index'), 1)
 
     def test_rules_commands_rows(self):
         r = read('RULES.md')
