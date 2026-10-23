@@ -6,6 +6,7 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "act.h"
+#include "../claude/util.h"
 
 /* Clone the path list of this process's CLI (a chain of {BPTR next; BPTR lock}
  * nodes) for the child, which owns and frees it. 0 when there is no CLI. */
@@ -62,12 +63,21 @@ int act_run(const char *cmd)
 }
 
 /* Like act_run, but the command's input and output are a new XCON: window (the quick menu and
- * the key viewer draw on a terminal). The window closes when the command ends. */
-int act_in_window(const char *cmd)
+ * the key viewer draw on a terminal). The window is borderless, centred, in front, sized
+ * cols x rows cells, and closes when the command ends or when it is deactivated. */
+int act_in_window(const char *cmd, int cols, int rows)
 {
-    BPTR w = Open((STRPTR)"XCON:0/20/640/300/Amarchy/CLOSE", MODE_NEWFILE);
-    BPTR path = dup_path();
+    char spec[96], num[12];
+    BPTR w, path;
     LONG rc;
+    cl_copy(spec, "XCON:0/0/0/0/Amarchy/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS ", sizeof(spec));
+    cl_ltoa(cols, num);
+    cl_cat(spec, num, sizeof(spec));
+    cl_cat(spec, "x", sizeof(spec));
+    cl_ltoa(rows, num);
+    cl_cat(spec, num, sizeof(spec));
+    w = Open((STRPTR)spec, MODE_NEWFILE);
+    path = dup_path();
     if (!cmd || !*cmd || !w) {
         if (w)
             Close(w);

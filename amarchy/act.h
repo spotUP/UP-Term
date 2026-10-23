@@ -8,7 +8,7 @@
 int act_run(const char *cmd);
 int act_rexx(const char *arg);
 /* run cmd with a new XCON: window as its input and output (the quick menu, the key viewer). */
-int act_in_window(const char *cmd);
+int act_in_window(const char *cmd, int cols, int rows);
 /* open:uterm: a new UP-Term window (the README's NewShell XCON: line). */
 int act_open_uterm(void);
 

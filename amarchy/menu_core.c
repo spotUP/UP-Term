@@ -70,6 +70,34 @@ int mn_children(const keymap *k, const char *node, mn_item *out, int max)
     return n;
 }
 
+/* the most entries and the widest text of `node` and below; the node path is bounded by KM_ID * 2 */
+static void osd_walk(const keymap *k, const char *node, int *maxn, int *maxw)
+{
+    mn_item it[MN_MAX_ITEMS];
+    char child[KM_ID * 2];
+    int i, n = mn_children(k, node, it, MN_MAX_ITEMS);
+    if (n > *maxn)
+        *maxn = n;
+    for (i = 0; i < n; i++) {
+        int w = (int)strlen(it[i].label) + 2 + (it[i].row < 0 ? 1 : 0);
+        if (w > *maxw)
+            *maxw = w;
+        if (it[i].row < 0) {
+            mn_child_node(node, &it[i], child, sizeof child);
+            osd_walk(k, child, maxn, maxw);
+        }
+    }
+}
+
+void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows)
+{
+    int maxn = 0, maxw = 0, c;
+    osd_walk(k, node, &maxn, &maxw);
+    c = maxw + 2 * MN_OSD_PAD;
+    *cols = c < MN_OSD_MIN_COLS ? MN_OSD_MIN_COLS : c;
+    *rows = MN_OSD_HEAD_LINES + maxn;
+}
+
 int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max)
 {
     int pass, i, c = 0;

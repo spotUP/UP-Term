@@ -604,6 +604,39 @@ static void menu_levels_follow_the_ids_and_escape_goes_up(void)
     CHECK_INT(mn_parent("", up, sizeof up), 0);    /* Esc at the root leaves the menu */
 }
 
+/* AM-OSD O5: the commodity sizes the menu window from the keymap it holds, walking every level
+ * reachable from the node (the same mn_children walk amarchy-menu uses). The expected numbers are
+ * counted by hand from the shipped file below, not from mn_children. */
+static void osd_size_counts_the_reachable_levels(void)
+{
+    int cols, rows;
+    CHECK(parse("[menu]\napps.upkg = Install add-ons | run:upkg-browse\napps.tools.tmux = Tmux | run:tmux\n"
+                "apps.tools.nvim = Editor | run:nvim\napps.tools.zzz = A much longer label here | run:z\n"
+                "style.theme = Theme | slash:/theme\ntop = Top | run:x\n"));
+    mn_osd_size(&km, "apps", &cols, &rows);
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + 3);        /* apps has 2 entries, apps.tools has 3 */
+    CHECK_INT(cols, 24 + 2 + 2 * MN_OSD_PAD);      /* "A much longer label here" + 2 spaces */
+    mn_osd_size(&km, "", &cols, &rows);
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + 3);        /* root has 3 (apps, style, top) */
+    CHECK_INT(cols, 24 + 2 + 2 * MN_OSD_PAD);      /* reaches the long label two levels down */
+    mn_osd_size(&km, "style", &cols, &rows);
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + 1);
+    CHECK_INT(cols, MN_OSD_MIN_COLS);              /* "Theme" + pad is shorter than the minimum */
+    /* the shipped dist/keymap: the sizes the commodity opens Super+Space and Super+Shift+Space with
+     * (worked out from the file's [menu] rows with a separate script: 4 entries at most, labels short) */
+    {
+        static char file[16384];
+        long n = slurp("dist/keymap", file, sizeof(file));
+        CHECK(n > 0 && keymap_parse(&km, file, n));
+        mn_osd_size(&km, "", &cols, &rows);
+        CHECK_INT(cols, MN_OSD_MIN_COLS);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 4);
+        mn_osd_size(&km, "apps", &cols, &rows);
+        CHECK_INT(cols, MN_OSD_MIN_COLS);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 4);
+    }
+}
+
 /* Phase D: the Super+K viewer prints one line per [bind] row of the shipped file; the expected
  * count is read from the file text (second source), the printed lines are counted from the output */
 static void the_key_viewer_lists_every_bind_row(void)
@@ -915,6 +948,7 @@ void suite_keymap(void)
     ua_count_released_before_own_window_closes();
     typing_th_leaves_theme_first();
     menu_levels_follow_the_ids_and_escape_goes_up();
+    osd_size_counts_the_reachable_levels();
     the_key_viewer_lists_every_bind_row();
     the_key_viewer_follows_a_rebinding();
     a_request_resolves_like_its_bind_row();
