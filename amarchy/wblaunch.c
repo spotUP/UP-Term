@@ -18,6 +18,7 @@
 #include <proto/icon.h>
 #include <proto/wb.h>
 #include "wblaunch.h"
+#include "leaf.h"
 
 #define MAXARGS 8
 #define MINSTACK 4096
@@ -90,20 +91,39 @@ static void fail(char *err, int errsz, const char *what, const char *name)
         snprintf(err, errsz, "%s%s%s", what, name ? " " : "", name ? name : "");
 }
 
-int wbl_start(const char *const *names_in, int count, int wait, char *err, int errsz)
+/* One launch's memory: the WBStartup message (first, so a reply's pointer is the record), the argument
+ * list it points to and the names those point to. Freed by wbl_free once the program replied. */
+struct wbl_rec {
+    struct WBStartup wb;
+    struct WBArg args[MAXARGS];
+    char names[MAXARGS][108];
+    BPTR seg;
+};
+
+void wbl_free(struct WBStartup *msg)
 {
-    static char names[MAXARGS][108];
-    static struct WBArg args[MAXARGS];
+    struct wbl_rec *r = (struct wbl_rec *)msg;
+    int i;
+    if (!r)
+        return;
+    if (r->seg)
+        UnLoadSeg(r->seg);
+    for (i = 0; i < MAXARGS; i++)
+        if (r->args[i].wa_Lock)
+            UnLock(r->args[i].wa_Lock);
+    FreeVec(r);
+}
+
+int wbl_start(const char *const *names_in, int count, struct MsgPort *reply, char *err, int errsz)
+{
     struct DiskObject *first, *icon;
-    struct WBStartup *wb = 0;
+    struct wbl_rec *r = 0;
     struct MsgPort *port = 0;
     struct Process *p;
     STRPTR toolwin;
-    BPTR seg = 0;
     LONG stack, pri;
     int n = 0, i, rc = -1, started = 0;
 
-    memset(args, 0, sizeof args);
     if (count < 1 || count > MAXARGS) {
         fail(err, errsz, "too many icons", 0);
         return -1;
@@ -112,41 +132,48 @@ int wbl_start(const char *const *names_in, int count, int wait, char *err, int e
         fail(err, errsz, "no icon.library", 0);
         return -1;
     }
+    r = AllocVec(sizeof(*r), MEMF_PUBLIC | MEMF_CLEAR);
+    port = reply ? 0 : CreateMsgPort();
+    if (!r || (!reply && !port)) {
+        fail(err, errsz, "out of memory", 0);
+        first = 0;
+        goto out;
+    }
     first = GetDiskObject((STRPTR)names_in[0]);
     if (first && first->do_Type == WBPROJECT) {
         /* args[0] the default tool, args[1] the project */
-        BPTR pdir = parent_and_name(names_in[0], names[1], sizeof(names[1]));
+        BPTR pdir = parent_and_name(names_in[0], r->names[1], sizeof(r->names[1]));
         if (!pdir || !first->do_DefaultTool || !*first->do_DefaultTool) {
             fail(err, errsz, "a project without a default tool:", names_in[0]);
             goto out;
         }
-        args[1].wa_Lock = pdir;
-        args[1].wa_Name = (STRPTR)names[1];
+        r->args[1].wa_Lock = pdir;
+        r->args[1].wa_Name = (STRPTR)r->names[1];
         n = 2;
-        seg = load_default_tool(pdir, (char *)first->do_DefaultTool, &args[0].wa_Lock, names[0],
-                                sizeof(names[0]));
-        if (!seg) {
+        r->seg = load_default_tool(pdir, (char *)first->do_DefaultTool, &r->args[0].wa_Lock, r->names[0],
+                                   sizeof(r->names[0]));
+        if (!r->seg) {
             fail(err, errsz, "the default tool was not found:", (const char *)first->do_DefaultTool);
             goto out;
         }
         icon = first;
     } else {
         /* args[0] the tool, then the shift-selected icons */
-        seg = LoadSeg((STRPTR)names_in[0]);
-        if (!seg || !(args[0].wa_Lock = parent_and_name(names_in[0], names[0], sizeof(names[0])))) {
+        r->seg = LoadSeg((STRPTR)names_in[0]);
+        if (!r->seg || !(r->args[0].wa_Lock = parent_and_name(names_in[0], r->names[0], sizeof(r->names[0])))) {
             fail(err, errsz, "not a program:", names_in[0]);
             goto out;
         }
         n = 1;
         icon = first;
     }
-    args[0].wa_Name = (STRPTR)names[0];
+    r->args[0].wa_Name = (STRPTR)r->names[0];
     for (i = 1; i < count; i++, n++) {
-        if (!(args[n].wa_Lock = parent_and_name(names_in[i], names[n], sizeof(names[n])))) {
+        if (!(r->args[n].wa_Lock = parent_and_name(names_in[i], r->names[n], sizeof(r->names[n])))) {
             fail(err, errsz, "not found:", names_in[i]);
             goto out;
         }
-        args[n].wa_Name = (STRPTR)names[n];
+        r->args[n].wa_Name = (STRPTR)r->names[n];
     }
 
     stack = icon && icon->do_StackSize > MINSTACK ? icon->do_StackSize : MINSTACK;
@@ -155,56 +182,70 @@ int wbl_start(const char *const *names_in, int count, int wait, char *err, int e
     if (pri > 127) pri = 127;
     toolwin = icon ? FindToolType((STRPTR *)icon->do_ToolTypes, (STRPTR) "TOOLWINDOW") : 0;
 
-    wb = AllocVec(sizeof(*wb), MEMF_PUBLIC | MEMF_CLEAR);
-    port = wait ? CreateMsgPort() : 0;
-    if (!wb || (wait && !port)) {
-        fail(err, errsz, "out of memory", 0);
-        goto out;
-    }
     /* No NP_CurrentDir: dos does not unlock it when the process ends. Workbench gives none either;
      * the program's startup code goes to wa_Lock. NP_HomeDir (PROGDIR:) is unlocked at exit. */
-    p = CreateNewProcTags(NP_Seglist, seg, NP_FreeSeglist, FALSE, NP_Name, (ULONG)names[0],
+    p = CreateNewProcTags(NP_Seglist, r->seg, NP_FreeSeglist, FALSE, NP_Name, (ULONG)r->names[0],
                           NP_StackSize, stack, NP_Priority, pri,
                           NP_Input, 0, NP_Output, 0, NP_CloseInput, FALSE, NP_CloseOutput, FALSE,
                           NP_ConsoleTask, 0, NP_WindowPtr, 0,
-                          NP_CurrentDir, 0, NP_HomeDir, DupLock(args[0].wa_Lock),
+                          NP_CurrentDir, 0, NP_HomeDir, DupLock(r->args[0].wa_Lock),
                           NP_Cli, FALSE, TAG_END);
     if (!p) {
-        fail(err, errsz, "no process for", names[0]);
+        fail(err, errsz, "no process for", r->names[0]);
         goto out;
     }
-    wb->sm_Message.mn_ReplyPort = port;
-    wb->sm_Message.mn_Length = sizeof(*wb);
-    wb->sm_Process = &p->pr_MsgPort;
-    wb->sm_Segment = seg;
-    wb->sm_NumArgs = n;
-    wb->sm_ToolWindow = toolwin;
-    wb->sm_ArgList = args;
-    PutMsg(&p->pr_MsgPort, &wb->sm_Message);
+    r->wb.sm_Message.mn_ReplyPort = reply ? reply : port;
+    r->wb.sm_Message.mn_Length = sizeof(r->wb);
+    r->wb.sm_Process = &p->pr_MsgPort;
+    r->wb.sm_Segment = r->seg;
+    r->wb.sm_NumArgs = n;
+    r->wb.sm_ToolWindow = toolwin;
+    r->wb.sm_ArgList = r->args;
+    PutMsg(&p->pr_MsgPort, &r->wb.sm_Message);
     started = 1;
     rc = 0;
-    if (wait) {
+    if (!reply) {
         WaitPort(port);
         GetMsg(port);
+        wbl_free(&r->wb);
     }
 out:
-    /* Without wait the program still owns the message, the segment and the locks after we return:
-     * they are left to it (a small leak in a short-lived launcher, not a crash). */
-    if (!started || wait) {
-        if (wb)
-            FreeVec(wb);
-        if (seg)
-            UnLoadSeg(seg);
-        for (i = 0; i < MAXARGS; i++)
-            if (args[i].wa_Lock)
-                UnLock(args[i].wa_Lock);
-    }
+    /* With a reply port the program owns the record until its reply reaches that port: the caller
+     * gets it there and calls wbl_free. Never a port that is deleted while a launch is out. */
+    if (!started)
+        wbl_free(r ? &r->wb : 0);
     if (port)
         DeleteMsgPort(port);
     if (first)
         FreeDiskObject(first);
     CloseLibrary(IconBase);
     return rc;
+}
+
+/* The request to the running Amarchy (it keeps the reply port of its launches, so the WBStartup
+ * message outlives this process). 1 and *rc/err set when Amarchy answered, 0 when it is not there. */
+static int ask_amarchy(const char *path, char *err, int errsz, int *rc)
+{
+    struct wbl_msg { struct Message msg; lf_launch b; } m;
+    struct MsgPort *rp, *port;
+    if (!lf_launch_fill(&m.b, path) || !(rp = CreateMsgPort()))
+        return 0;
+    memset(&m.msg, 0, sizeof m.msg);
+    m.msg.mn_ReplyPort = rp;
+    m.msg.mn_Length = sizeof m;
+    Forbid();                       /* find and put under one Forbid: the port cannot go between */
+    port = FindPort((STRPTR)LF_LAUNCH_PORT);
+    if (port)
+        PutMsg(port, &m.msg);
+    Permit();
+    if (port) {
+        WaitPort(rp);
+        GetMsg(rp);
+        *rc = (int)m.b.rc;
+        fail(err, errsz, m.b.err, 0);
+    }
+    DeleteMsgPort(rp);
+    return port != 0;
 }
 
 int wbl_open(const char *path, char *err, int errsz)
@@ -216,5 +257,8 @@ int wbl_open(const char *path, char *err, int errsz)
     }
     if (ok)
         return 0;
+    if (ask_amarchy(path, err, errsz, &ok))
+        return ok;
+    /* No Amarchy: stay alive until the program replied, so nothing is freed under it */
     return wbl_start(&path, 1, 0, err, errsz);
 }
