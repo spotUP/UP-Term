@@ -39,6 +39,14 @@ class Lessons(unittest.TestCase):
             with open(p, 'w') as fh:
                 fh.write('#!/bin/sh\nexit 0\n')
             os.chmod(p, 0o755)
+        # lesson 14 asks Amarchy for its state (rx, the STATUS reply amarchy/amarchy.c builds) and counts the
+        # shipped keymap rows at ENVARC:up-term/keymap, a relative path on the host: the tutorial starts in tmp
+        rx = os.path.join(cls.bin, 'rx')
+        with open(rx, 'w') as fh:
+            fh.write('#!/bin/sh\necho "hits=0 rows=41 enabled=1 active=0"\n')
+        os.chmod(rx, 0o755)
+        os.mkdir(os.path.join(cls.tmp, 'ENVARC:up-term'))
+        shutil.copy(os.path.join(ROOT, 'dist', 'keymap'), os.path.join(cls.tmp, 'ENVARC:up-term', 'keymap'))
 
     @classmethod
     def tearDownClass(cls):
@@ -127,10 +135,11 @@ class Lessons(unittest.TestCase):
                 self.assertTrue(dirs, out)
                 self.assertEqual([x for x in dirs if x.startswith(sandbox)], [], out)
 
-    def test_the_shipped_lessons_are_thirteen(self):
-        self.assertEqual(len(FILES), 13)
+    def test_the_shipped_lessons_are_fourteen(self):
+        self.assertEqual(len(FILES), 14)
         self.assertIn('12-the-up-term-window.lesson', FILES)
         self.assertIn('13-split-panes-tmux.lesson', FILES)
+        self.assertIn('14-amarchy-keys.lesson', FILES)
 
     def test_a_check_that_passes_before_the_answer_fails(self):
         lesson = os.path.join(self.tmp, '99-vacuous.lesson')

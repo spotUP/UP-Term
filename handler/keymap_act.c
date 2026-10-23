@@ -1,0 +1,246 @@
+#include <string.h>
+#include "keymap_act.h"
+#include "menu_ids.h"
+
+static const struct { const char *name; long id; } ids[] = {
+#define KACT_ROW(n) { #n, n },
+    MENU_ID_LIST(KACT_ROW)
+#undef KACT_ROW
+};
+#define NIDS ((int)(sizeof(ids) / sizeof(ids[0])))
+
+long kact_menu_id(const char *name)
+{
+    int i;
+    for (i = 0; i < NIDS; i++)
+        if (!strcmp(ids[i].name, name))
+            return ids[i].id;
+    return 0;
+}
+
+const char *kact_menu_name(long id)
+{
+    int i;
+    for (i = 0; i < NIDS; i++)
+        if (ids[i].id == id)
+            return ids[i].name;
+    return 0;
+}
+
+int kact_resolve(const km_bind *b, kact *out)
+{
+    out->kind = KACT_NONE;
+    out->id = 0;
+    out->line = 0;
+    switch (b->kind) {
+    case KA_TAB:
+        if (!strcmp(b->arg, "new"))
+            out->id = MENU_TAB_NEW;
+        else if (!strcmp(b->arg, "close"))
+            out->id = MENU_TAB_CLOSE;
+        else if (!strcmp(b->arg, "next"))
+            out->id = MENU_TAB_NEXT;
+        else if (!strcmp(b->arg, "prev"))
+            out->id = MENU_TAB_PREV;
+        else if (!strncmp(b->arg, "goto ", 5)) {
+            long n = 0;
+            const char *p = b->arg + 5;
+            for (; *p >= '0' && *p <= '9' && n < 100; p++)
+                n = n * 10 + (*p - '0');
+            if (*p || n < 1 || n > 9)
+                return KACT_NONE;
+            out->id = MENU_TAB_GOTO0 + n;
+        } else
+            return KACT_NONE;
+        out->kind = KACT_MENU;
+        return KACT_MENU;
+    case KA_MENUID:
+        out->id = kact_menu_id(b->arg);
+        if (!out->id)
+            return KACT_NONE;
+        out->kind = KACT_MENU;
+        return KACT_MENU;
+    case KA_SLASH:
+        if (b->arg[0] != '/' || !b->arg[1])
+            return KACT_NONE;
+        if (!strcmp(b->arg, "/help")) {
+            /* as the Help menu item: the requester or the printed list by the window's state */
+            out->id = MENU_HELP_SLASH;
+            out->kind = KACT_MENU;
+            return KACT_MENU;
+        }
+        out->line = b->arg;
+        out->kind = KACT_SLASH;
+        return KACT_SLASH;
+    case KA_MENU: case KA_VIEWER: case KA_RUN: case KA_REXX: case KA_OPEN:
+        out->kind = KACT_DEFER;
+        return KACT_DEFER;
+    default:
+        return KACT_NONE;
+    }
+}
+
+static int key_char(unsigned code, char *ch)
+{
+    const char *n = keymap_key_name(code);
+    if (!n)
+        return 0;
+    if (n[0] && !n[1]) {
+        *ch = (n[0] >= 'a' && n[0] <= 'z') ? (char)(n[0] - 32) : n[0];
+        return (*ch >= 'A' && *ch <= 'Z') || (*ch >= '0' && *ch <= '9');
+    }
+    if (!strcmp(n, "period"))
+        *ch = '.';
+    else if (!strcmp(n, "comma"))
+        *ch = ',';
+    else if (!strcmp(n, "plus"))
+        *ch = '+';
+    else if (!strcmp(n, "minus"))
+        *ch = '-';
+    else
+        return 0;
+    return 1;
+}
+
+int kact_comm_key(const keymap *k, long id, char out[2])
+{
+    int i;
+    for (i = 0; i < k->nbind; i++) {
+        const km_bind *b = &k->bind[i];
+        kact a;
+        char ch;
+        if (b->qual != KM_Q_SUPER || kact_resolve(b, &a) != KACT_MENU || a.id != id)
+            continue;
+        if (!key_char(b->code, &ch) || (ch >= '0' && ch <= '9'))
+            continue; /* a digit is a tab's, a command key would shadow Right Amiga 1-9 for nothing */
+        if (keymap_find(k, KM_Q_SUPER | KM_Q_SHIFT, b->code))
+            continue;
+        out[0] = ch;
+        out[1] = 0;
+        return 1;
+    }
+    return 0;
+}
+
+int upreq_resolve(const upreq_body *r, kact *out, km_bind *tmp)
+{
+    const char *colon;
+    size_t n;
+    out->kind = KACT_NONE;
+    out->id = 0;
+    out->line = 0;
+    if (r->version != UPREQ_VERSION)
+        return UPREQ_BADVERSION;
+    if (memchr(r->action, 0, sizeof r->action) == 0)
+        return UPREQ_UNKNOWN;
+    colon = strchr(r->action, ':');
+    if (!colon || colon == r->action)
+        return UPREQ_UNKNOWN;
+    n = (size_t)(colon - r->action);
+    memset(tmp, 0, sizeof *tmp);
+    if (n == 3 && !memcmp(r->action, "tab", 3))
+        tmp->kind = KA_TAB;
+    else if (n == 6 && !memcmp(r->action, "menuid", 6))
+        tmp->kind = KA_MENUID;
+    else if (n == 5 && !memcmp(r->action, "slash", 5))
+        tmp->kind = KA_SLASH;
+    else if ((n == 4 && (!memcmp(r->action, "menu", 4) || !memcmp(r->action, "open", 4))) ||
+             (n == 3 && (!memcmp(r->action, "run", 3))) || (n == 4 && !memcmp(r->action, "rexx", 4)))
+        return UPREQ_NOTMINE;
+    else
+        return UPREQ_UNKNOWN;
+    if (strlen(colon + 1) >= KM_ARG)
+        return UPREQ_UNKNOWN;
+    tmp->arg = colon + 1;       /* inside the request, which outlives the answer */
+    if (kact_resolve(tmp, out) == KACT_NONE)
+        return UPREQ_UNKNOWN;
+    return UPREQ_OK;
+}
+
+int upreq_fill(upreq_body *r, int kind, const char *arg)
+{
+    const char *head = kind == KA_TAB ? "tab" : kind == KA_MENUID ? "menuid" :
+                       kind == KA_SLASH ? "slash" : 0;
+    memset(r, 0, sizeof *r);
+    if (!head || strlen(head) + 1 + strlen(arg) >= sizeof r->action)
+        return 0;
+    r->version = UPREQ_VERSION;
+    strcpy(r->action, head);
+    strcat(r->action, ":");
+    strcat(r->action, arg);
+    return 1;
+}
+
+long upreq_slash_answer(upreq_body *r, int ran, const char *ans, const char *missing_usage)
+{
+    size_t n = 0;
+    r->answer[0] = 0;
+    if (ran == 1)
+        return UPREQ_OK;
+    if (missing_usage)
+        ans = missing_usage;
+    if (ans) {
+        while (ans[n] && ans[n] != '\n' && n < sizeof r->answer - 1)
+            n++;
+        memcpy(r->answer, ans, n);
+        r->answer[n] = 0;
+    }
+    return missing_usage ? UPREQ_NEEDARG : UPREQ_FAILED;
+}
+
+long upreq_take_reply(upreq_body *r, const upreq_body *replied)
+{
+    memcpy(r->answer, replied->answer, sizeof r->answer);
+    r->answer[sizeof r->answer - 1] = 0;
+    r->rc = replied->rc;
+    return r->rc;
+}
+
+int upreq_with_arg(upreq_body *r, const char *act, const char *value)
+{
+    size_t a = strlen(act), v = value ? strlen(value) : 0;
+    memset(r, 0, sizeof *r);
+    if (!v || a + 1 + v >= sizeof r->action)
+        return 0;
+    r->version = UPREQ_VERSION;
+    memcpy(r->action, act, a);
+    r->action[a] = ' ';
+    memcpy(r->action + a + 1, value, v + 1);
+    return 1;
+}
+
+void upmru_forget(unsigned long l[UPMRU_N], unsigned long id)
+{
+    int i, j;
+    for (i = j = 0; i < UPMRU_N; i++)
+        if (l[i] && l[i] != id)
+            l[j++] = l[i];
+    while (j < UPMRU_N)
+        l[j++] = 0;
+}
+
+void upmru_focus(unsigned long l[UPMRU_N], unsigned long id)
+{
+    int i;
+    if (!id)
+        return;
+    upmru_forget(l, id);
+    for (i = UPMRU_N - 1; i > 0; i--)
+        l[i] = l[i - 1];
+    l[0] = id;
+}
+
+unsigned long upmru_prev(const unsigned long l[UPMRU_N])
+{
+    return l[0] ? l[1] : 0;
+}
+
+void upreq_portname(unsigned long id, char out[24])
+{
+    static const char hex[] = "0123456789abcdef";
+    int i;
+    strcpy(out, "UPTERM.req.");
+    for (i = 0; i < 8; i++)
+        out[11 + i] = hex[(id >> (28 - 4 * i)) & 15];
+    out[19] = 0;
+}

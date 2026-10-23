@@ -257,6 +257,18 @@ class Prune(unittest.TestCase):
             self.assertEqual(pkgs.prune(d), ['UP-Term-src.lha', 'UP-Term.lha'])
             self.assertEqual(list(pathlib.Path(d).iterdir()), [])
 
+    def test_one_make_dist_leaves_an_index_and_feed_that_dist_check_accepts(self):
+        """2026-10-22: `make dist` built no feed, and a later `make dist-ipk` rebuilt the archives
+        without the index, so dist-check failed on Packages.gz and then on upkg-index.txt"""
+        mk = (ROOT / 'Makefile').read_text()
+
+        def prereqs(target):
+            m = re.search(r'(?m)^%s:(.*)$' % re.escape(target), mk)
+            self.assertIsNotNone(m, target)
+            return m.group(1).split()
+        self.assertIn('dist-ipk', prereqs('dist'))
+        self.assertIn('dist-index', prereqs('dist-ipk'))
+
     def test_make_dist_index_runs_it_and_prints_each_name(self):
         mk = (ROOT / 'Makefile').read_text()
         self.assertRegex(mk, r'(?m)^dist-index:.*\n\tpython3 tools/pkgs\.py prune \$\(BUILD\)\n')

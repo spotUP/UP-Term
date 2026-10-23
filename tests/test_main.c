@@ -31,11 +31,13 @@ void suite_upassign(void);
 void suite_pi_llm(void);
 void suite_upcon(void);
 void suite_upconf(void);
+void suite_keymap(void);
 void suite_prefs(void);
 void suite_iconspec(void);
 void suite_updiff(void);
 void suite_zmodem(void);
 void suite_otag(void);
+void suite_ttf(void);
 void suite_slash(void);
 void suite_winspec(void);
 void suite_fontpair(void);
@@ -97,11 +99,13 @@ static const h_suite suites[] = {
     { "upassign", suite_upassign },
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
+    { "keymap", suite_keymap },
     { "prefs", suite_prefs },
     { "iconspec", suite_iconspec },
     { "updiff", suite_updiff },
     { "zmodem", suite_zmodem },
     { "otag", suite_otag },
+    { "ttf", suite_ttf },
     { "slash", suite_slash },
     { "winspec", suite_winspec },
     { "fontpair", suite_fontpair },

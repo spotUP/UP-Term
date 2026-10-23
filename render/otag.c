@@ -8,9 +8,10 @@ static unsigned long be32(const unsigned char *p)
 
 int otag_check(const unsigned char *buf, long len, otag_info *out)
 {
-    long at, n = 0, eoff = -1, i;
+    long at, n = 0, eoff = -1, soff = -1, i;
     out->ntags = 0;
     out->engine_off = -1;
+    out->spec1_off = -1;
     if (len < 16)
         return OTAG_SHORT;
     if (be32(buf) != OTAG_FILEIDENT)
@@ -26,6 +27,8 @@ int otag_check(const unsigned char *buf, long len, otag_info *out)
             return OTAG_BAD_OFFSET;
         if (tag == OTAG_ENGINE)
             eoff = (long)data;
+        if (tag == OTAG_SPEC1)
+            soff = (long)data;
     }
     if (at + 8 > len)
         return OTAG_NO_END;
@@ -37,5 +40,9 @@ int otag_check(const unsigned char *buf, long len, otag_info *out)
         return OTAG_NO_ENGINE;
     out->ntags = n;
     out->engine_off = eoff;
+    for (i = soff; soff >= 0 && i < len && buf[i]; i++)
+        ;
+    if (soff >= 0 && i < len && i > soff)
+        out->spec1_off = soff;
     return OTAG_OK;
 }

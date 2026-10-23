@@ -11,6 +11,9 @@
  * otag_check walks the list once: the size matches, every indirect offset
  * falls inside the file, the list ends, and the engine's name (OT_Engine,
  * e.g. "ttf" for ttf.library, "bullet" for Intellifont) is a string there.
+ * It also finds OT_Spec1, where ttfinstall keeps the .ttf file's path (the
+ * path as given to ttfinstall, lower-cased: plan R0.1, measured under vamos):
+ * render/outline.c reads that file with its own engine, never the .otag's.
  *
  * Portable C89, as render/glyphmap.c. */
 #ifndef OTAG_H
@@ -21,11 +24,13 @@
 #define OTAG_INDIRECT   0x8000UL
 #define OTAG_FILEIDENT  (OTAG_TAG_USER | 0x1000UL | 0x01UL)
 #define OTAG_ENGINE     (OTAG_TAG_USER | 0x1000UL | OTAG_INDIRECT | 0x02UL)
+#define OTAG_SPEC1      (OTAG_TAG_USER | 0x1000UL | OTAG_INDIRECT | 0x101UL)
 
 /* What otag_check found. */
 typedef struct otag_info {
     long ntags;        /* tags before TAG_DONE */
     long engine_off;   /* the engine name's offset in the file */
+    long spec1_off;    /* OT_Spec1's string (ttfinstall: the .ttf path), -1: none or not a string */
 } otag_info;
 
 enum {

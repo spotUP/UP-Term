@@ -47,7 +47,7 @@ class WindowStateWiring(unittest.TestCase):
         for call in ("tab_switch(c, (c->active + 1) % c->ntabs)", "tab_switch(c, (c->active + c->ntabs - 1) % c->ntabs)",
                      "tab_switch(c, im->Code - 1)", "tab_switch(c, (int)((LONG)(im->MouseX"):
             self.assertIn(call, H)
-        self.assertRegex(H, r"stat_note\(c, STATE_MENU, \(LONG\)GTMENUITEM_USERDATA\(it\), 0\);\n\s*r = menu_run\(")
+        self.assertRegex(H, r"stat_note\(c, STATE_MENU, \(LONG\)GTMENUITEM_USERDATA\(it\), 0\);\n\s*r = menu_do\(")  # menu_do runs the pick (keymap rows share it)
         self.assertRegex(H, r"slash_run\(c, line, l, ans, 4096, 1\)\) \{\n\s*slash_typed_note\(c, line, l\);")
         self.assertIn('strcmp(name, "state")', H)  # /state does not count itself
         self.assertRegex(H, r"h_clipped\(void \*u, int what\)\n\{\n\s*stat_note\(\(con \*\)u, what == VTWIN_CLIP_COPY \? STATE_COPY : STATE_PASTE")
@@ -76,7 +76,7 @@ class WindowStateWiring(unittest.TestCase):
         self.assertRegex(H, r"tab_insets\(c\);\n\s*stat_push\(c\); /\* tabs and active changed \*/")
 
     def test_p3_p4_state_is_answered_from_the_window_block(self):
-        self.assertRegex(H, r"case SLASH_STATE:[^\n]*\n[^\n]*\n\s*if \(!c->is_tab\)\n\s*stat_fill\(c\);\n\s*return slash_state_text\(&c->st, cmd.arg, ans, cap\) < 0 \? 2 : 1;")
+        self.assertRegex(H, r"case SLASH_STATE:[^\n]*\n[^\n]*\n\s*if \(!c->is_tab\)\n\s*stat_fill\(c\);\n(?:\s*c->st\.[a-z_]+ = [^\n]*\n)*\s*return slash_state_text\(&c->st, cmd.arg, ans, cap\) < 0 \? 2 : 1;")
         # C:UPTerm sends its arguments as "/<args>", so `UPTerm state KEY` is the typed /state KEY
         # (test_slash.c parses it); an answer of 2 comes back as RETURN_ERROR (5)
         u = (ROOT / "handler/upterm.c").read_text()

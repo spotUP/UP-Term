@@ -154,6 +154,19 @@ If EXISTS ENVARC:up-term/amiagent
   UnSet >NIL: upw
   Delete >NIL: ENV:upw QUIET
 EndIf
+; Amarchy (the Super-key commodity), when it runs: stopped first with Ctrl-C (its Wait loop ends on it, the same
+; way as its ARexx QUIT, and it needs no RexxMast), because a running program's file cannot be deleted with the
+; drawer; its S:User-Startup block went with the other UP-Term blocks above
+Status >ENV:upw COM UP-Term:bin/Amarchy
+If NOT WARN
+  Break $upw C
+EndIf
+Status >ENV:upw COM Amarchy
+If NOT WARN
+  Break $upw C
+EndIf
+UnSet >NIL: upw
+Delete >NIL: ENV:upw QUIET
 ; Your data lives in UP-Term:var (asked above): on No everything else goes
 ; and var stays where it is.
 If "$upkeepvar" EQ "YES"
@@ -185,6 +198,9 @@ If EXISTS ENVARC:up-term/font-IBM-11
 EndIf
 If EXISTS ENVARC:up-term/font-IBM-16
   Delete >NIL: FONTS:IBM/16 QUIET
+EndIf
+If EXISTS ENVARC:up-term/font-SymbolsNerdFontMono
+  Delete >NIL: FONTS:SymbolsNerdFontMono.ttf QUIET
 EndIf
 Delete >NIL: FONTS:TopazPro FONTS:IBM QUIET
 If NOT EXISTS FONTS:TopazPro

@@ -65,6 +65,10 @@
 #include "histfile.h"
 #include "complete_core.h"
 #include "menu_ids.h"
+#include "keymap_act.h"
+#include "upreq.h"
+#include "upactive.h"
+#include "../config/keymap_load.h"
 #include "slash.h"
 #include "winspec.h"
 #include "tabprog.h"
@@ -282,6 +286,7 @@ typedef struct con {
     int menu_len, menu_n, menu_i, menu_start;
     struct theme_menu *tm;       /* /theme's list (W30), 0 when none */
     int line_held;               /* a typed /theme's empty line waits for its list to close */
+    int km_user;                 /* this window counted itself in g_km_users (the shared keymap) */
     char *theme_file;            /* the theme file the window has (COMPLETE_MAX; 0: none yet):
                                   * the next theme requester and list start in its drawer */
     /* the find prompt (Right Amiga F): its own small window, open while the
@@ -331,7 +336,11 @@ typedef struct con {
     ULONG prof_idle, prof_t0;
     ULONG prof_pk[3], prof_npk[3]; /* packet() time and count: writes, WAIT_CHAR, the rest */
 #endif
+    int ua_on;                  /* this window counted in UPTERM.active (upactive.h) */
+    struct MsgPort *req_port;   /* the request port (upreq.h), made when the window first has focus */
+    char req_name[UPREQ_NAMELEN];
 } con;
+static void ua_set(con *c, int on);
 
 /* What one window costs (research/2026-10-04_window-memory.md), held at
  * compile time in the 68k build itself: the build fails when one of
@@ -881,7 +890,24 @@ static int node_named(con *c, const char *want)
 struct config_msg {
     struct Message msg;
     upconf *conf;
+    keymap *km; /* the shared keymap to fill, or 0 when it is already loaded */
 };
+
+/* The keymap (Left Amiga keys, plan 2026-10-22-amarchy-commodity): one table
+ * for the whole handler, not one per window. The first window to open
+ * claims it (g_km_claim) and has its config worker fill it; after that it is
+ * read-only. A window that opens while it is still filling sees no keymap
+ * (g_km_ready 0) and its keys go to the terminal as before. */
+#include "keymap_default.inc" /* km_default_text, from dist/keymap (tools/gen_keymap_default.py) */
+static keymap *g_km;
+static volatile int g_km_claim, g_km_ready, g_km_users;
+
+/* The shipped file, then keymap.user over it, then the flag (keymap_load.c, shared with Amarchy). */
+static void read_keymap(keymap *km)
+{
+    keymap_load(km, km_default_text);
+    g_km_ready = 1;
+}
 
 /* The profile file into conf, in a process that may make DOS calls (a
  * worker). ENV: first, as Amiga prefs do (the editor's Use writes there;
@@ -922,6 +948,8 @@ static void config_worker(void)
     m = (struct config_msg *)GetMsg(&me->pr_MsgPort);
     me->pr_WindowPtr = (APTR)-1; /* no requesters from a file that may be absent */
     read_conf(m->conf);
+    if (m->km)
+        read_keymap(m->km);
     Forbid(); /* the opener frees m: end before it can run on */
     ReplyMsg((struct Message *)m);
 }
@@ -1015,6 +1043,16 @@ static void config_load(con *c)
     }
     m->msg.mn_ReplyPort = port;
     m->conf = c->conf;
+    Forbid();
+    c->km_user = 1;
+    g_km_users++;
+    if (!g_km_claim) {
+        g_km_claim = 1;
+        Permit();
+        g_km = (keymap *)AllocVec(sizeof(keymap), MEMF_ANY | MEMF_CLEAR);
+        m->km = g_km; /* 0 (no memory): no keymap, the keys stay the terminal's */
+    } else
+        Permit();
     w = CreateNewProcTags(NP_Entry, (ULONG)config_worker,
                           NP_Name, (ULONG)"vtcon config", NP_StackSize, 8192,
                           NP_Input, 0, NP_Output, 0,
@@ -1245,8 +1283,8 @@ static void apply_profile(con *c)
     if (v)
         c->w.bold_bright = str_ieq(v, "on");
     v = upconf_str(c->conf, p, "meta", 0);
-    if (v)
-        c->w.meta_alt = str_ieq(v, "alt");
+    if (v) /* alt is the default (vtwin reset); only "amiga" moves Meta to Left Amiga */
+        c->w.meta_alt = !str_ieq(v, "amiga");
     v = upconf_str(c->conf, p, "program-clipboard", 0);
     if (v) /* OSC 52: write (default) | read-write | off */
         c->w.clip_access = str_ieq(v, "off") ? 0 : str_ieq(v, "read-write") ? VT_CLIP_WRITE | VT_CLIP_READ
@@ -1269,6 +1307,9 @@ static void apply_profile(con *c)
     v = upconf_str(c->conf, p, "dither", 0);
     if (v)
         c->w.dither = !str_ieq(v, "off"); /* few-pen screens dither (W-T9; on by default) */
+    v = upconf_str(c->conf, p, "outline-antialias", 0);
+    if (v)
+        c->w.outline_aa = !str_ieq(v, "off"); /* outline glyphs drawn smoothed (on by default) */
     v = upconf_str(c->conf, p, "padding-color", 0);
     if (v)
         c->w.pad_extend = str_ieq(v, "extend"); /* the strips beside the grid (W-T14; background by default) */
@@ -1488,34 +1529,36 @@ static void close_gadget(con *c);
 
 /* the items' ids: handler/menu_ids.h (the slash commands name them too) */
 
-/* Right Amiga C, V and F stay what they were: Intuition now hands them in
- * as MENUPICK, which picks the same actions. */
+/* The items' command keys are not here: menu_add sets them from the keymap
+ * (kact_comm_key), so the menu shows the keys the keymap file binds. Intuition
+ * hands such a key in as MENUPICK (either Amiga key), which picks the same
+ * action. */
 static const struct NewMenu menu_def[] = {
     { NM_TITLE, (STRPTR)"UP-Term", 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"New tab", (STRPTR)"T", 0, 0, (APTR)MENU_TAB_NEW },
-    { NM_ITEM, (STRPTR)"Next tab", (STRPTR)".", 0, 0, (APTR)MENU_TAB_NEXT },
-    { NM_ITEM, (STRPTR)"Previous tab", (STRPTR)",", 0, 0, (APTR)MENU_TAB_PREV },
+    { NM_ITEM, (STRPTR)"New tab", 0, 0, 0, (APTR)MENU_TAB_NEW },
+    { NM_ITEM, (STRPTR)"Next tab", 0, 0, 0, (APTR)MENU_TAB_NEXT },
+    { NM_ITEM, (STRPTR)"Previous tab", 0, 0, 0, (APTR)MENU_TAB_PREV },
     { NM_ITEM, (STRPTR)"Close tab", 0, 0, 0, (APTR)MENU_TAB_CLOSE },
-    { NM_ITEM, (STRPTR)"Claude", (STRPTR)"L", 0, 0, (APTR)MENU_CLAUDE },
+    { NM_ITEM, (STRPTR)"Claude", 0, 0, 0, (APTR)MENU_CLAUDE },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
     { NM_ITEM, (STRPTR)"About UP-Term...", 0, 0, 0, (APTR)MENU_ABOUT },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Close window", 0, 0, 0, (APTR)MENU_CLOSE },
     { NM_TITLE, (STRPTR)"Edit", 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Copy", (STRPTR)"C", 0, 0, (APTR)MENU_COPY },
-    { NM_ITEM, (STRPTR)"Paste", (STRPTR)"V", 0, 0, (APTR)MENU_PASTE },
-    { NM_ITEM, (STRPTR)"Select all", (STRPTR)"A", 0, 0, (APTR)MENU_SELECT_ALL },
+    { NM_ITEM, (STRPTR)"Copy", 0, 0, 0, (APTR)MENU_COPY },
+    { NM_ITEM, (STRPTR)"Paste", 0, 0, 0, (APTR)MENU_PASTE },
+    { NM_ITEM, (STRPTR)"Select all", 0, 0, 0, (APTR)MENU_SELECT_ALL },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Find...", (STRPTR)"F", 0, 0, (APTR)MENU_FIND },
-    { NM_ITEM, (STRPTR)"Find next", (STRPTR)"G", 0, 0, (APTR)MENU_FIND_NEXT },
+    { NM_ITEM, (STRPTR)"Find...", 0, 0, 0, (APTR)MENU_FIND },
+    { NM_ITEM, (STRPTR)"Find next", 0, 0, 0, (APTR)MENU_FIND_NEXT },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Clear screen", (STRPTR)"K", 0, 0, (APTR)MENU_CLEAR_SCREEN },
+    { NM_ITEM, (STRPTR)"Clear screen", 0, 0, 0, (APTR)MENU_CLEAR_SCREEN },
     { NM_ITEM, (STRPTR)"Clear scrollback", 0, 0, 0, (APTR)MENU_CLEAR_SB },
     { NM_ITEM, (STRPTR)"Reset terminal", 0, 0, 0, (APTR)MENU_RESET },
     { NM_TITLE, (STRPTR)"View", 0, 0, 0, 0 },
-    { NM_ITEM, (STRPTR)"Bigger font", (STRPTR)"+", 0, 0, (APTR)MENU_FONT_BIGGER },
-    { NM_ITEM, (STRPTR)"Smaller font", (STRPTR)"-", 0, 0, (APTR)MENU_FONT_SMALLER },
+    { NM_ITEM, (STRPTR)"Bigger font", 0, 0, 0, (APTR)MENU_FONT_BIGGER },
+    { NM_ITEM, (STRPTR)"Smaller font", 0, 0, 0, (APTR)MENU_FONT_SMALLER },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"80 x 24", 0, 0, 0, (APTR)MENU_SIZE_80X24 },
     { NM_ITEM, (STRPTR)"132 x 43", 0, 0, 0, (APTR)MENU_SIZE_132X43 },
@@ -1555,7 +1598,7 @@ static const struct NewMenu menu_help[MENU_HELP_ITEMS] = {
  * pick changes the window only -- Prefs keeps the profile. MutualExclude
  * bits are the item's place in its submenu. KingCON's .info and cache
  * switches are in its Complete menu. */
-#define MENU_SET_ITEMS 64
+#define MENU_SET_ITEMS 65
 static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_TITLE, (STRPTR)"Settings", 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Font...", 0, 0, 0, (APTR)MENU_SET_FONT },
@@ -1604,6 +1647,7 @@ static const struct NewMenu menu_set[MENU_SET_ITEMS] = {
     { NM_SUB, (STRPTR)"Backspace", 0, CHECKIT, 1, (APTR)MENU_SET_BS_BS },
     { NM_ITEM, (STRPTR)"AmigaShell keys", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_AMIGA_KEYS },
     { NM_ITEM, (STRPTR)"Dither on few colours", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_DITHER },
+    { NM_ITEM, (STRPTR)"Outline Antialias", 0, CHECKIT | MENUTOGGLE, 0, (APTR)MENU_SET_OUTLINE_AA },
     { NM_ITEM, (STRPTR)"Padding colour", 0, 0, 0, 0 },
     { NM_SUB, (STRPTR)"Background", 0, CHECKIT, 2, (APTR)MENU_SET_PAD_BG },
     { NM_SUB, (STRPTR)"Extend the edge cells", 0, CHECKIT, 1, (APTR)MENU_SET_PAD_EXTEND },
@@ -1658,6 +1702,7 @@ static int menu_checked(const con *c, LONG id)
     case MENU_SET_BS_BS: return c->w.backspace_bs;
     case MENU_SET_AMIGA_KEYS: return c->w.amiga_keys;
     case MENU_SET_DITHER: return c->w.dither;
+    case MENU_SET_OUTLINE_AA: return c->w.outline_aa;
     case MENU_SET_PAD_BG: return !c->w.pad_extend;
     case MENU_SET_PAD_EXTEND: return c->w.pad_extend;
     case MENU_SET_CLIP_WRITE: return c->w.clip_access == VT_CLIP_WRITE;
@@ -1738,6 +1783,14 @@ static void menu_add(con *c, struct Window *win)
         for (i = 0; i < n; i++)
             if ((nm[i].nm_Flags & CHECKIT) && menu_checked(c, (LONG)nm[i].nm_UserData))
                 nm[i].nm_Flags |= CHECKED;
+        if (g_km && g_km_ready) {
+            /* the keymap's one-letter Super keys as the items' command keys */
+            char ck[sizeof(nm) / sizeof(nm[0])][2];
+            for (i = 0; i < n; i++)
+                if (nm[i].nm_Type == NM_ITEM && nm[i].nm_Label != NM_BARLABEL && (LONG)nm[i].nm_UserData > 0 &&
+                    kact_comm_key(g_km, (LONG)nm[i].nm_UserData, ck[i]))
+                    nm[i].nm_CommKey = (STRPTR)ck[i];
+        }
         CopyMem((APTR)&menu_def[sizeof(menu_def) / sizeof(menu_def[0]) - 1], nm + n,
                 sizeof(struct NewMenu));
         c->menustrip = CreateMenusA(nm, 0);
@@ -1858,6 +1911,7 @@ static void window_fields(con *c, prefs_fields *f)
     f->backspace_bs = c->w.backspace_bs != 0;
     f->amiga_keys = c->w.amiga_keys != 0;
     f->dither = c->w.dither != 0;
+    f->outline_aa = c->w.outline_aa != 0;
     f->pad_extend = c->w.pad_extend != 0;
     f->clipboard = c->w.clip_access == 0 ? PREFS_CLIP_OFF
                  : (c->w.clip_access & VT_CLIP_READ) ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
@@ -2276,6 +2330,7 @@ static int menu_setting(con *c, LONG id, int on)
     case MENU_SET_BS_BS: c->w.backspace_bs = 1; restyle = 1; break;
     case MENU_SET_AMIGA_KEYS: c->w.amiga_keys = on; restyle = 1; break;
     case MENU_SET_DITHER: c->w.dither = on; restyle = 1; break;
+    case MENU_SET_OUTLINE_AA: c->w.outline_aa = on; restyle = 1; break;
     case MENU_SET_PAD_BG: c->w.pad_extend = 0; restyle = 1; break;
     case MENU_SET_PAD_EXTEND: c->w.pad_extend = 1; restyle = 1; break;
     case MENU_SET_CLIP_WRITE: c->w.clip_access = VT_CLIP_WRITE; restyle = 1; break;
@@ -2387,6 +2442,11 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:
         tab_command(c, (int)id);
         return 3;
+    case MENU_TAB_GOTO0 + 1: case MENU_TAB_GOTO0 + 2: case MENU_TAB_GOTO0 + 3: case MENU_TAB_GOTO0 + 4:
+    case MENU_TAB_GOTO0 + 5: case MENU_TAB_GOTO0 + 6: case MENU_TAB_GOTO0 + 7: case MENU_TAB_GOTO0 + 8:
+    case MENU_TAB_GOTO0 + 9: /* the keymap's tab:goto N (not a menu item) */
+        tab_command(c, (int)id);
+        return 3;
     case MENU_KC_FILE: kc_menu(c, COMPLETE_FILES); return 1;
     case MENU_KC_COMMAND: kc_menu(c, COMPLETE_COMMANDS); return 1;
     case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); return 1;
@@ -2458,6 +2518,20 @@ static int menu_run(con *c, LONG id, int on)
     return menu_setting(c, id, on) ? 2 : 0;
 }
 
+/* One id, run as a menu pick runs it: menu_run, and the strip built again when a
+ * checkmark may have moved (every checkmark from the settings: one pick can move
+ * others, KingCON's W clears L and B). Returns menu_run's answer; at 2 and over the
+ * old strip is gone. The menu bar and the keymap's keys both come through here. */
+static int menu_do(con *c, LONG id, int on)
+{
+    int r = menu_run(c, id, on);
+    if (r == 2 && c->w.win) {
+        menu_remove(c, c->w.win);
+        menu_add(c, c->w.win);
+    }
+    return r;
+}
+
 static void menu_pick(con *c, UWORD code)
 {
     while (code != MENUNULL && c->menustrip && c->w.win) {
@@ -2466,13 +2540,7 @@ static void menu_pick(con *c, UWORD code)
         if (!it)
             break;
         stat_note(c, STATE_MENU, (LONG)GTMENUITEM_USERDATA(it), 0);
-        r = menu_run(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0);
-        if (r == 2 && c->w.win) {
-            /* the strip again: every checkmark from the settings (one pick
-             * can move others: KingCON's W clears L and B) */
-            menu_remove(c, c->w.win);
-            menu_add(c, c->w.win);
-        }
+        r = menu_do(c, (LONG)GTMENUITEM_USERDATA(it), (it->Flags & CHECKED) != 0);
         if (r >= 2)
             return; /* the old strip, and its NextSelect chain, are gone */
         code = it->NextSelect;
@@ -2857,6 +2925,7 @@ static void close_window(con *c)
     window_parts_close(c);
     if (c->is_tab)
         tab_unregister(c); /* the host stops sending before the grid goes */
+    ua_set(c, 0);
     vtwin_detach(&c->w); /* engine, renderer, fonts; the frame clock stops */
     if (win && !c->is_tab) {
         if (win == c->foreign)
@@ -2888,6 +2957,7 @@ static int screen_switch(con *c, int mode)
     if (mode == c->own_screen)
         return 1;
     window_parts_close(c);
+    ua_set(c, 0);
     vtwin_unbind(&c->w);
     CloseWindow(c->own_win);
     c->own_win = 0;
@@ -4018,7 +4088,7 @@ static void setup_text(con *c, char *ans, int cap)
 {
     const char *p = c->conf && profile_exists(c->conf, c->profile) ? c->profile : 0;
     const char *base = p ? p : (c->conf && profile_exists(c->conf, "default") ? "default" : 0);
-    slash_row rows[8];
+    slash_row rows[9];
     const char *pv;
     char font[UC_MAX_VALUE];
     int n = 0;
@@ -4055,6 +4125,11 @@ static void setup_text(con *c, char *ans, int cap)
     rows[n].name = "dither";
     rows[n].value = c->w.dither ? "on" : "off";
     pv = base ? upconf_str(c->conf, base, "dither", 0) : 0;
+    rows[n].source = slash_source(rows[n].value, pv, "on");
+    n++;
+    rows[n].name = "outline-antialias";
+    rows[n].value = c->w.outline_aa ? "on" : "off";
+    pv = base ? upconf_str(c->conf, base, "outline-antialias", 0) : 0;
     rows[n].source = slash_source(rows[n].value, pv, "on");
     n++;
     rows[n].name = "padding-color";
@@ -4142,7 +4217,7 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         copy_str(c->w.fallback, str_ieq(cmd.arg, "none") ? "" : cmd.arg, sizeof(c->w.fallback));
         vtwin_apply_settings(&c->w);
         if (c->w.fallback[0] && !c->w.outline) {
-            cat3(ans, cap, name, ": not installed, or no engine for it (FONTS:", "<name>.otag, LIBS:ttf.library)\n");
+            cat3(ans, cap, name, ": no TrueType font by that name (FONTS:", "<name>.ttf or <name>.otag)\n");
             return 2;
         }
         return 1;
@@ -4200,6 +4275,9 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         /* this process's block: the host's own, or the tab's copy the host pushed (stat_push) */
         if (!c->is_tab)
             stat_fill(c);
+        c->st.font_size = c->w.font ? c->w.font->tf_YSize : 0; /* this window's own, never the host's copy */
+        c->st.outline_own = (long)vo_own(c->w.outline);
+        c->st.outline_aa = (long)c->w.r.n_aa;
         return slash_state_text(&c->st, cmd.arg, ans, cap) < 0 ? 2 : 1;
     case SLASH_THEME:
         if (!cmd.arg[0] && typed) {
@@ -5245,6 +5323,97 @@ static void close_gadget(con *c)
 /* One window event for this process's terminal: from its own window's
  * IDCMP, or forwarded by the host when this process is a tab (wheel: 1 up,
  * -1 down, for IDCMP_EXTENDEDMOUSE). */
+/* UPTERM.active (upactive.h): count this window once while it has focus. */
+static void ua_set(con *c, int on)
+{
+    if (c->ua_on == on)
+        return;
+    c->ua_on = on;
+    upactive_note(on);
+    if (on) {
+        if (!c->req_port)
+            c->req_port = upreq_open(c->req_name);
+        if (c->req_port)
+            upactive_focus((ULONG)c->req_port);
+    }
+}
+
+/* The request port goes with the process: not findable, queued requests answered. */
+static void req_drop(con *c)
+{
+    if (!c->req_port)
+        return;
+    upactive_forget((ULONG)c->req_port);
+    upreq_close(c->req_port);
+    c->req_port = 0;
+}
+
+/* A Left Amiga key the keymap binds (B1). 1: it ran, the key is not the
+ * terminal's; 0: the key goes on to the terminal as it did (no keymap, no
+ * binding, a binding that is the commodity's, a repeat). One decision, two
+ * runners, both the menu bar's: a menu id through menu_do, a slash command
+ * through slash_run, as the same line typed. The qualifier mask is the file's
+ * (KM_Q_*): "shift" is either Shift, "rshift" the right one alone. */
+static int keymap_key(con *c, UWORD code, UWORD qual)
+{
+    const km_bind *b = 0;
+    unsigned base;
+    kact a;
+    if (!g_km || !g_km_ready || !(qual & IEQUALIFIER_LCOMMAND) || (code & 0x80) ||
+        (qual & (IEQUALIFIER_CONTROL | IEQUALIFIER_RCOMMAND | IEQUALIFIER_REPEAT)))
+        return 0;
+    base = KM_Q_SUPER | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? KM_Q_ALT : 0);
+    if ((qual & IEQUALIFIER_RSHIFT) && !(qual & IEQUALIFIER_LSHIFT))
+        b = keymap_find(g_km, base | KM_Q_RSHIFT, code);
+    if (!b)
+        b = keymap_find(g_km, base | ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) ? KM_Q_SHIFT : 0), code);
+    if (!b || (kact_resolve(b, &a) != KACT_MENU && a.kind != KACT_SLASH))
+        return 0;
+    stat_note(c, STATE_KEYMAP, ((LONG)b->qual << 8) | code, 0);
+    DBG("keymap", ((LONG)b->qual << 8) | code, a.id);
+    if (a.kind == KACT_MENU)
+        menu_do(c, a.id, !menu_checked(c, a.id));
+    else {
+        char ans[160];
+        slash_run(c, a.line, (int)strlen(a.line), ans, sizeof(ans), 0);
+    }
+    return 1;
+}
+
+/* The requests the quick menu (or any sender) put to this window's port (upreq.h): the action
+ * resolves as a keymap binding's would (upreq_resolve -> kact_resolve) and runs by the same two
+ * runners as keymap_key, whether or not any [bind] row exists. Junk answers a code, never more. */
+static void req_service(con *c)
+{
+    upreq_msg *m;
+    if (!c->req_port)
+        return;
+    while ((m = upreq_get(c->req_port))) {
+        kact a;
+        km_bind tmp;
+        long rc = upreq_resolve(&m->b, &a, &tmp);
+        if (rc == UPREQ_OK && !c->w.win)
+            rc = UPREQ_NOWINDOW;
+        if (rc == UPREQ_OK) {
+            stat_note(c, STATE_KEYMAP, 0, 0);
+            DBG("request", a.kind, a.id);
+            if (a.kind == KACT_MENU)
+                menu_do(c, a.id, !menu_checked(c, a.id));
+            else if (a.kind == KACT_SLASH) {
+                char ans[160], err[80];
+                slash_cmd sc = {0};
+                int ran = slash_run(c, a.line, (int)strlen(a.line), ans, sizeof(ans), 0);
+                /* a refusal goes back to the sender with its reason: the menu says it, or asks
+                 * for the argument the command lacked (/bg from the menu has none) */
+                int missing = ran == 2 && slash_parse(a.line, (int)strlen(a.line), &sc, err, sizeof err) ==
+                              SLASH_ERROR && sc.def && sc.def->need_arg && !sc.arg[0];
+                rc = upreq_slash_answer(&m->b, ran, ans, missing ? sc.def->args : 0);
+            }
+        }
+        upreq_reply(m, rc);
+    }
+}
+
 static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG mics,
                      WORD mx, WORD my, int wheel)
 {
@@ -5265,6 +5434,16 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
             find_open(c);
             break;
         }
+        /* Right Amiga Shift K: Clear screen (B4; Super K is the keymap's key viewer, and
+         * Intuition ignores Shift in a menu's command key, so the menu has no K). Raw
+         * code 0x27 is the K key on every keymap. */
+        if ((qual & IEQUALIFIER_RCOMMAND) && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
+            !(qual & IEQUALIFIER_CONTROL) && !(code & 0x80) && code == 0x27) {
+            clear_screen(c);
+            break;
+        }
+        if (keymap_key(c, code, qual))
+            break;
         vtwin_key(&c->w, code, qual, prev, secs, mics);
         break;
     case IDCMP_NEWSIZE:
@@ -5292,6 +5471,7 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         break;
     case IDCMP_ACTIVEWINDOW:
     case IDCMP_INACTIVEWINDOW:
+        ua_set(c, cls == IDCMP_ACTIVEWINDOW);
         vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
         break;
     case IDCMP_IDCMPUPDATE:
@@ -5903,6 +6083,12 @@ static int tab_spawn(con *c, const char *profile, con *from, int prog)
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
 static void host_command(con *c, int what, con *from)
 {
+    if (what > MENU_TAB_GOTO0 && what <= MENU_TAB_GOTO0 + 9) {
+        int n = what - MENU_TAB_GOTO0 - 1; /* the tab's place: 0 is the first */
+        if (n < c->ntabs)
+            tab_switch(c, n);
+        return;
+    }
     switch (what) {
     case MENU_TAB_NEW:
         tab_spawn(c, from->profile, from, TAB_SHELL);
@@ -7047,6 +7233,8 @@ static LONG handler_main(void)
             wait |= 1UL << c->watch_port->mp_SigBit;
         if (c->sel_port)
             wait |= 1UL << c->sel_port->mp_SigBit;
+        if (c->req_port)
+            wait |= 1UL << c->req_port->mp_SigBit;
         own_screen_retry(c); /* an AUTO window's screen a visitor kept open */
         screen_pending(c);   /* a /screen from C:UPTerm (a packet, not a key) */
         /* No trace lines in the loop itself: each log Write's reply re-arms
@@ -7078,6 +7266,7 @@ static LONG handler_main(void)
 #else
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
 #endif
+        req_service(c);
         if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
             /* only a DOS packet woke us: no other port has a message, no
              * timer is done, the frame is not due (each has its signal in
@@ -7138,6 +7327,8 @@ static LONG handler_main(void)
             break; /* the last tab went */
     }
     if (c->host_only) {
+        ua_set(c, 0); /* the window may close while it has focus: no INACTIVEWINDOW follows */
+        req_drop(c);
         CloseWindow(c->own_win);
         c->own_win = 0;
         if (c->locked) {
@@ -7234,6 +7425,22 @@ static LONG handler_main(void)
     CloseLibrary((struct Library *)DOSBase);
     if (c->conf)
         FreeVec(c->conf);
+    req_drop(c);
+    if (c->km_user) {
+        keymap *gone = 0;
+        Forbid();
+        if (--g_km_users == 0) { /* the last window: the table goes, a later open loads it again */
+            gone = g_km;
+            g_km = 0;
+            g_km_ready = 0;
+            g_km_claim = 0;
+        }
+        Permit();
+        if (gone) {
+            keymap_free(gone);
+            FreeVec(gone);
+        }
+    }
     FreeVec(c);
     return 0;
 }

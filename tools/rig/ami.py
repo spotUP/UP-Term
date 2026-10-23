@@ -497,6 +497,20 @@ def window(title):
             found.setdefault(f[5], (int(f[2]), int(f[3]), w, h))
     return found
 
+def screen_text(title=None, out='RAM:screen.txt'):
+    # The active UP-Term window's text as the program drew it (Select all + Copy, read from the clipboard by
+    # VTC:snipprobe): the one reader typewin.screen_text, reached from here so a script that imports only ami has it.
+    # `title` is the window to read (the menu is its own window, titled Amarchy, so no one title fits every
+    # call): by default the front screen's active window, from the uitree.
+    import shlex, typewin
+    if not title:
+        for line in req(0x0D).decode('latin-1').splitlines():
+            if line.startswith('W ') and shlex.split(line)[5] == 'active':
+                title = shlex.split(line)[-1]
+                break
+    typewin._last_title = title
+    return typewin.screen_text(out)
+
 def grab(box=None):
     # The front screen (or box = (x, y, w, h) of it) as (w, h, rows): each row w*3 bytes of RGB.
     b = req(0x07, struct.pack('>4H', *box) if box else b'')

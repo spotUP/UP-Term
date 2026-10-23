@@ -283,7 +283,9 @@ notifies the first, reload on edited keymap (sentinel: a row `run:C:Echo >T:amar
 R1 reachability (commodity half): with NO UPTerm window active (Shell on a plain console focused), send
 Left Amiga+<row key>; the sentinel file appears; the commodity's hit counter (ARexx `STATUS`) increments by 1.
 R3 no double fire: UPTerm active, same key, exactly one action (km_hits +1, commodity counter +0).
-Done: R1 and R3 pass; Exchange operations pass; commodity idle CPU ~0 and under 20 KB resident.
+Done: R1 and R3 pass; Exchange operations pass; commodity idle CPU ~0 and under 32 KB resident
+(file + BSS + keymap heap; raised from 20 KB on 2026-10-22 by owner decision, since the built-in
+default keymap is 6.8 KB; `make amarchy-size` checks file + BSS, a rig measures the heap).
 
 ### Phase D: quick menu and Super+K viewer
 Files: amarchy/menu.c or `amarchy-menu` binary, handler overlay for viewer, upterm-ports patch for `upkg-ui --menu --filter`
@@ -309,9 +311,10 @@ Done: `make dist dist-check` green; install on a fresh rig kit gives the commodi
 
 ## Ledger (tick in the open; N of 6 phases, items below)
 
-- [ ] A1 keymap.c/h  [ ] A2 upconf_rows  [ ] A3 dist/keymap  [ ] A4 meta=alt default  [ ] A5 host tests  [ ] A6 rig meta test
-- [ ] B1 handler match  [ ] B2 dispatch  [ ] B3 generated menu keys  [ ] B4 Clear screen move  [ ] B5 rig table  [ ] B6 R1 terminal
-- [ ] C1 broker  [ ] C2 hotkeys  [ ] C3 actions  [ ] C4 semaphore  [ ] C5 ARexx  [ ] C6 R1 commodity  [ ] C7 R3
+- [x] A1 keymap.c/h  [x] A2 upconf_rows  [x] A3 dist/keymap  [x] A4 meta=alt default  [x] A5 host tests  [ ] A6 rig meta test (written, not run)
+- [x] B1 handler match  [x] B2 dispatch  [x] B3 generated menu keys  [x] B4 Clear screen move  [ ] B5 rig table (keymap_rig.py written, not run)  [ ] B6 R1 terminal
+- [x] C1 broker  [x] C2 hotkeys  [x] C3 actions  [x] C4 semaphore  [x] C5 ARexx  [ ] C6 R1 commodity  [ ] C7 R3
+  (C1-C5 host side built: make amiga and make test ONLY=keymap pass; tools/rig/amarchy_rig.py written, NOT RUN. Unverified on Amiga: CxFilter strings, DivertCxMsg pass-through, CxCustom signatures.)
 - [ ] D1 timing  [ ] D2 filter field  [ ] D3 tree  [ ] D4 viewer  [ ] D5 library swap
 - [ ] E1 clash rig  [ ] F1 docs and packaging
 

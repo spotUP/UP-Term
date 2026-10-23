@@ -20,6 +20,9 @@ UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
 # the rig's own UP-Term: drawer in the host drawer VTC: (the Workbench labels a drawer icon with the file name,
 # so the owner sees Apps); rig.py, the rig scripts and their tests all take it from here
 UPTERM_DRAWER = "Apps"
+# where stage_upterm puts the built binaries and where the rig scripts start them from: the rig drawer, not
+# UP-Term:, which a kit install moves (rig 4: UP-Term: was Rushhours:Tools/UP-Term, the binaries in VTC:Apps/bin)
+UPTERM_BIN = "VTC:%s/bin" % UPTERM_DRAWER
 OLD_UPTERM_DRAWER = "upterm"   # its name until 2026-10-14; rig.py install renames it
 
 

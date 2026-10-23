@@ -1,0 +1,21 @@
+Symbols Nerd Font Mono for UP-Term
+
+FONTS:SymbolsNerdFontMono.ttf is SymbolsNerdFontMono-Regular.ttf of the
+Nerd Fonts 3.5.1 release, unchanged: the icons-only font (Font Awesome,
+Material Design, Codicons, Devicons, Octicons, Powerline, Weather Icons,
+Seti-UI and more). UP-Term draws characters the window's font lacks from
+it when a profile says font-fallback = SymbolsNerdFontMono.
+
+  Project:    Nerd Fonts, https://github.com/ryanoasis/nerd-fonts
+  Taken from: https://github.com/ryanoasis/nerd-fonts/releases/download/v3.5.1/NerdFontsSymbolsOnly.tar.xz
+              sha256 01172f37db8543edb102e5cb5c64101c9f4686630804d49b419aa07b23a69996
+  Font file:  SymbolsNerdFontMono-Regular.ttf in that archive
+              sha256 fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749
+
+Licences: the release archive carries MIT.txt (here; the Nerd Fonts
+project's own licence, MIT) and a readme, here as ICON-SETS.md, whose
+table lists each icon set in the font with its upstream and licence:
+MIT, SIL Open Font License 1.1, Apache 2.0 and CC BY 4.0. The archive
+holds no separate text of the OFL, Apache or CC BY licences; they are
+at the upstream addresses in ICON-SETS.md and in the Nerd Fonts
+repository's license folders.

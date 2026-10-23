@@ -47,6 +47,10 @@ GNU Unifont 17.0.05 pages     SIL OFL 1.1 (Files/unifont/      https://unifoundr
                               OFL-1.1.txt)
 Twemoji 17.0.3 emoji pages    CC-BY 4.0 (Files/emoji/          https://github.com/jdecked/twemoji;
                               CC-BY-4.0.txt)                   Files/emoji/SOURCE.txt
+Symbols Nerd Font Mono        MIT (Nerd Fonts project;         https://github.com/ryanoasis/nerd-fonts v3.5.1;
+3.5.1 (Files/fonts/           Files/fonts/SymbolsNerdFont/     Files/fonts/SymbolsNerdFont/SOURCE.txt. Icon sets
+SymbolsNerdFontMono.ttf)      MIT.txt); icon sets: MIT, OFL    inside: ICON-SETS.md (same drawer)
+                              1.1, Apache 2.0, CC BY 4.0
 TopazPro font                 unconfirmed: no licence in       Files/fonts/SOURCE.txt, TopazPro.diz (by spot /
                               dist/fonts (SOURCE.txt,          Divine Stylers, 2022)
                               TopazPro.diz)

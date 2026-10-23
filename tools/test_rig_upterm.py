@@ -35,8 +35,15 @@ if COPY in lines:
 with tempfile.TemporaryDirectory() as tmp:
     tmp = pathlib.Path(tmp)
     (tmp / "vsh").write_bytes(b"vsh-binary")
+    (tmp / "Amarchy").write_bytes(b"amarchy-binary")
+    (tmp / "amarchy-menu").write_bytes(b"menu-binary")
     if hasattr(rig, "stage_upterm"):
         rig.stage_upterm(tmp / "Apps", tmp / "vsh")
+        # 2026-10-22: the rig had no Amarchy (install refreshed only what VTC: held), so no rig check could start it
+        check((tmp / "Apps/bin/Amarchy").is_file() and (tmp / "Apps/bin/Amarchy").read_bytes() == b"amarchy-binary",
+              "UP-Term:bin/Amarchy is the built Amarchy, where the kit puts it")
+        check((tmp / "Apps/bin/amarchy-menu").is_file() and (tmp / "Apps/bin/amarchy-menu").read_bytes() == b"menu-binary",
+              "UP-Term:bin/amarchy-menu is the built amarchy-menu")
         check((tmp / "Apps/bin/vsh").read_bytes() == b"vsh-binary", "UP-Term:bin/vsh is vsh")
         check(b"UP-Term:bin/vsh" in (tmp / "Apps/UP-Term.info").read_bytes(), "the icon's tool is UP-Term:bin/vsh")
         check((tmp / "Apps/UP-Term").is_file(), "the icon has its file")
@@ -52,6 +59,16 @@ with tempfile.TemporaryDirectory() as tmp:
         check(b"UP-Term Prefs" in (tmp / "Apps/UP-Term-Prefs.info").read_bytes(), "the Prefs icon's tool is C:UP-Term Prefs")
     else:
         check(False, "rig.stage_upterm exists")
+
+# 2026-10-22 (rig 4): UP-Term: was Rushhours:Tools/UP-Term, the binaries were staged in VTC:Apps/bin, and the
+# rig scripts started UP-Term:bin/Amarchy and found nothing. They start from where stage_upterm writes.
+import paths
+check(rig.paths.UPTERM_BIN == "VTC:%s/bin" % rig.paths.UPTERM_DRAWER, "UPTERM_BIN is the staged drawer's bin")
+for script in ("amarchy_rig.py", "amarchy_menu_rig.py"):
+    src = (HERE / "rig" / script).read_text()
+    check("UP-Term:bin/Amarchy" not in src, "%s does not start Amarchy from UP-Term: (a kit install moves it)" % script)
+    check("Run >NIL: %s/Amarchy" in src and "paths.UPTERM_BIN" in src,
+          "%s starts Amarchy from paths.UPTERM_BIN, where stage_upterm stages it" % script)
 
 # install removes what no committed code makes at the root of the host drawer, and an orphan drawer icon
 import subprocess

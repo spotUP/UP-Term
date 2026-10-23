@@ -43,10 +43,13 @@ COMMANDS = {
     'ps': 'proc/ps_amiga.c',
     'top': 'proc/top_amiga.c',
     'Claude': 'claude/main_amiga.c',
+    'Amarchy': 'amarchy/amarchy.c',
+    'amarchy-menu': 'amarchy/menu.c',
 }
 # not commands: handlers, devices, objects, and probes / test tools
 EXCLUDED = {
     'vtengine-$(CPU).o': 'object file, not a program',
+    'keymap.o': 'object file (the amarchy-size and dist-check alloc probe)',
     'vtcon-handler': 'handler (mounted, takes no command line)',
     'pty-handler': 'handler',
     'ixpipe-handler': 'handler',

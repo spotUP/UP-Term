@@ -50,7 +50,8 @@ class RepoDrawer(unittest.TestCase):
 
     def test_the_build_is_wired_into_dist(self):
         mk = (ROOT / 'Makefile').read_text()
-        self.assertRegex(mk, r'(?m)^dist-base: amiga bebbossh ')
+        # a prerequisite of dist-base, wherever it stands among the others
+        self.assertRegex(mk, r'(?m)^dist-base:.* bebbossh ')
         self.assertIn('cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/', mk)
         self.assertIn('[ "$n" = 22 ]', (ROOT / 'tools/build_bebbossh.sh').read_text())
         self.assertIn('6.5.0b', (DRAWER / 'SOURCE.txt').read_text())

@@ -11,6 +11,11 @@ FixFonts lists every size in the .font files).
                      Apache License 2.0), converted to an Amiga strike
                      font (IBM.readme).
 
+  SymbolsNerdFontMono.ttf   the icons-only Nerd Font, Nerd Fonts 3.5.1
+                     (SymbolsNerdFont/SOURCE.txt: URL, SHA-256; MIT.txt and
+                     ICON-SETS.md hold its licences). Fetched by `make`, not
+                     kept in this drawer.
+
 UP-Term draws topaz as TopazPro 16, and IBM 8 as IBM 16, on screens with
 square pixels (graphics cards, AGA hires interlaced), and the 8-pixel
 fonts on the Amiga's tall PAL / NTSC hires pixels -- unless the profile

@@ -1,0 +1,63 @@
+.Dd October 22, 2026
+.Dt AMARCHY 1
+.Os UP-Term
+.Sh NAME
+.Nm Amarchy ,
+.Nm amarchy-menu
+.Nd Super-key shortcuts for the whole Amiga
+.Sh SYNOPSIS
+.Nm Amarchy
+.Op Cm CX_PRIORITY Ar n
+.Nm amarchy-menu
+.Cm menu Ar node
+.Nm amarchy-menu
+.Cm viewer
+.Sh DESCRIPTION
+.Nm
+is a commodity, listed in Exchange as AMARCHY, that binds the Left Amiga key
+(called Super) plus a letter, digit or function key to an action: a menu
+command or slash command of an UP-Term window, a new tab, a program to
+start.
+Install starts it at every boot from a block in S:User-Startup.
+Only the keys of the key file are taken; every other Left Amiga key goes to
+the program as before.
+Left Amiga + M, Left Amiga + N, Left Amiga + the
+mouse and any row with Ctrl are never bound, so the reset keys stay safe.
+While an UP-Term window is active it matches the keys itself and
+.Nm
+leaves them alone.
+.Pp
+.Nm amarchy-menu
+is the program the keys start:
+Left Amiga + Space runs
+.Ql amarchy-menu menu root ,
+a short list filtered by typing,
+and Left Amiga + K runs
+.Ql amarchy-menu viewer ,
+the list of every key.
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa ENVARC:up-term/keymap
+The shipped key file (a copy is in ENV:up-term/keymap, read first).
+Install never overwrites an edited file: the new one is written as keymap.new.
+.It Pa ENVARC:up-term/keymap.user
+Your own rows.
+A row replaces the row for the same key;
+.Ql super+t = none
+unbinds one.
+.El
+.Pp
+Each row reads
+.Dl super[+shift][+alt][+rshift]+KEY = action ; label | category
+Actions are menu:id, viewer, tab:new, tab:close, tab:next, tab:prev,
+tab:goto N, menuid:NAME, slash:/command, run:command, open:uterm and
+rexx:script.
+Lines starting with a semicolon are comments.
+.Sh ARexx
+The port AMARCHY takes STATUS (hits, rows, enabled and active), RELOAD (read
+the key files again), RUN
+.Ar n
+(do row n of the table), SHOW (the key viewer) and QUIT.
+.Dl rx \(dqaddress AMARCHY RELOAD\(dq
+.Sh SEE ALSO
+.Xr UPTerm 1

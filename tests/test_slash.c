@@ -91,6 +91,12 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(parse("/dither on"), SLASH_OK);
     CHECK_INT(cmd.on, 1);
     CHECK_INT(parse("/dither maybe"), SLASH_ERROR);
+    CHECK_INT(parse("/outline-antialias off"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_OUTLINE_AA);
+    CHECK_INT(cmd.on, 0);
+    CHECK_INT(parse("/outline-antialias on"), SLASH_OK);
+    CHECK_INT(cmd.on, 1);
+    CHECK_INT(parse("/outline-antialias maybe"), SLASH_ERROR);
     CHECK_INT(parse("/padding-color extend"), SLASH_OK);
     CHECK_INT(cmd.id, MENU_SET_PAD_EXTEND);
     CHECK_INT(parse("/padding-color background"), SLASH_OK);
@@ -332,7 +338,11 @@ static void state_formats_the_counters(void)
     slash_state_bump(&s, STATE_COPY, 0, 0);
     slash_state_bump(&s, STATE_PASTE, 0, 0);
     slash_state_bump(&s, STATE_PASTE, 0, 0);
+    slash_state_bump(&s, STATE_KEYMAP, 0x127, 0); /* Super+K */
     s.active = 1;
+    s.font_size = 8;
+    s.outline_own = 5;
+    s.outline_aa = 7;
     /* the command is in the table and takes no argument or a key */
     CHECK_INT(parse("/state"), SLASH_OK);
     CHECK_INT(cmd.id, SLASH_STATE);
@@ -341,7 +351,16 @@ static void state_formats_the_counters(void)
     /* every key, "key value" per line */
     CHECK_INT(slash_state_text(&s, "", out, sizeof(out)) > 0, 1);
     CHECK_STR(out, "tabs-opened 2\ntab-switches 1\nmenu-picks 2\nlast-menu 49\nslash-count 1\n"
-                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\n");
+                   "last-slash help\ncopies 1\npastes 2\ntabs 2\nactive 1\nkm-hits 1\nlast-key 295\nfont-size 8\n"
+                   "outline-own 5\noutline-aa 7\n");
+    /* outline-own: the window's own-engine glyphs, the reachability sentinel outline_rig reads */
+    slash_state_text(&s, "outline-own", out, sizeof(out));
+    CHECK_STR(out, "5\n");
+    slash_state_text(&s, "outline-aa", out, sizeof(out));
+    CHECK_STR(out, "7\n");
+    /* font-size: the answering window's font height, the key keymap_rig reads for Left Amiga + and - */
+    slash_state_text(&s, "font-size", out, sizeof(out));
+    CHECK_STR(out, "8\n");
     /* one key: the bare value */
     CHECK_INT(slash_state_text(&s, "pastes", out, sizeof(out)), 2);
     CHECK_STR(out, "2\n");

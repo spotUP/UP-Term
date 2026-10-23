@@ -134,7 +134,8 @@ class Tutorial(unittest.TestCase):
             rc, out = self.run_tutorial(shell, [])
             self.assertIn('  [ ] 12  The UP-Term window', out)
             self.assertIn('  [ ] 13  Split panes with tmux', out)
-            self.assertEqual(out.count('  [ ] '), 13, out)
+            self.assertIn('  [ ] 14  Amarchy: Super-key shortcuts', out)
+            self.assertEqual(out.count('  [ ] '), 14, out)
         self.each_shell(case)
 
     def test_learn_word_shows_in_the_task_and_the_text(self):

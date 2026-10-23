@@ -13,6 +13,15 @@ program's wcwidth() does:
   East_Asian_Width W, F                              2
   everything else                                    1
 
+with one exception of UP-Term's own (owner 2026-10-23, plan
+thoughts/shared/plans/2026-10-22-handler-rasterizer.md R6.2): the Private Use
+Areas U+E000-F8FF and U+F0000-FFFFD, where the Nerd Font icons live, are 2,
+so an icon draws over two cells as Omarchy's terminals show it; the powerline
+separators U+E0B0-E0D7 stay 1 (made to fill one cell, render/outline.c
+fills_cell, so a prompt's segments meet without a gap). A remote
+program's wcwidth counts them 1; the owner accepted that such a program's
+columns drift by one per icon.
+
 The UCD files are fetched once into build/ucd/<version>/.
     python3 tools/gen_width.py [VERSION]      (default 16.0.0)
 """
@@ -71,17 +80,22 @@ def main():
                 width[c] = 0
     width[0x115F] = 2
     width[0x00AD] = 1
+    # the Nerd Font icons: two cells (UP-Term's exception to glibc, R6.2)
+    for c in list(range(0xE000, 0xF900)) + list(range(0xF0000, 0xFFFFE)):
+        width[c] = 1 if 0xE0B0 <= c <= 0xE0D7 else 2  # the separators fill one cell
 
     # Laid out for a lookup without a search (the engine asks for every
     # character outside ASCII): code points below LIMIT in pages of 256,
     # each page all one width or 2 bits a code point; above it only the
-    # tag / variation selector plane-14 block differs from 1.
+    # tag / variation selector plane-14 block (0) and plane 15's private
+    # use (2) differ from 1.
     LIMIT = 0x40000
     w = lambda c: width.get(c, 1)
     assert min(c for c in width if width[c] != 1) >= 0x300, "vt_char_width's fast path"
     high = sorted(c for c in width if c >= LIMIT and width[c] != 1)
-    assert high == list(range(0xE0000, 0xE1000)) and all(width[c] == 0 for c in high), \
-        "beyond U+3FFFF only U+E0000..E0FFF (width 0) is expected"
+    assert high == list(range(0xE0000, 0xE1000)) + list(range(0xF0000, 0xFFFFE)) and \
+        all(width[c] == (0 if c < 0xF0000 else 2) for c in high), \
+        "beyond U+3FFFF only U+E0000..E0FFF (width 0) and U+F0000..FFFFD (2) are expected"
     index, pages = [], []
     for p in range(LIMIT // 256):
         ws = [w(c) for c in range(p * 256, p * 256 + 256)]
@@ -127,10 +141,15 @@ def main():
  * A variation selector 16 does not widen its base: glibc and xterm count
  * U+2764 U+FE0F as one cell (foot and kitty widen it only in grapheme mode,
  * ?2027).
+ * One exception of UP-Term's own (plan 2026-10-22-handler-rasterizer.md
+ * R6.2): the Private Use Areas U+E000-F8FF and U+F0000-FFFFD, the Nerd Font
+ * icons, are 2, so an icon draws over two cells; a remote wcwidth says 1.
+ * The powerline separators U+E0B0-E0D7 stay 1: made to fill one cell.
  *
  * Layout: below U+40000, page c >> 8 is its width (0, 1, 2) when all alike, or
  * 3 + a row of vt_width_bits with 2 bits a code point; above, only
- * U+E0000..E0FFF (tags, variation selectors supplement) is not 1. A lookup
+ * U+E0000..E0FFF (tags, variation selectors supplement: 0) and U+F0000..FFFFD
+ * (private use: 2) are not 1. A lookup
  * is two loads, no search: it runs for every character outside ASCII. */
 #ifndef VTWIDTH_H
 #define VTWIDTH_H
@@ -145,8 +164,11 @@ static int vt_char_width(vt_u32 c)
     int p;
     if (c < 0x300)
         return 1;
-    if (c >= 0x%(limit)XUL)
-        return c >= 0xE0000UL && c <= 0xE0FFFUL ? 0 : 1;
+    if (c >= 0x%(limit)XUL) {
+        if (c >= 0xE0000UL && c <= 0xE0FFFUL)
+            return 0;
+        return c >= 0xF0000UL && c <= 0xFFFFDUL ? 2 : 1;
+    }
     p = vt_width_page[c >> 8];
     if (p < 3)
         return p;

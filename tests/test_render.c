@@ -10,6 +10,8 @@
 #include "../render/amiga_render.h"
 #include "harness.h"
 #include "../render/pen_match.h"
+#include "../render/emoji.h"
+#include "../render/outline.h"
 
 #define COLS 20
 #define ROWS 8
@@ -1401,6 +1403,115 @@ static void dither_off_draws_the_nearest_single_pen_and_on_dithers_again(void)
     test_npal = 0;
 }
 
+/* ---- R4: antialiased outline glyphs ---- */
+
+/* A glyph of UP-Term's own engine (render/ttf.c): coverage rising left to right across the cell, the same on every
+ * row, and the mask the engine makes of it (set where coverage is at least half). */
+static const UBYTE aa_level[CW] = { 0, 40, 64, 100, 128, 170, 192, 255 };
+static UBYTE aa_cov[CW * CH], aa_mask[2 * CH];
+static vo_font *aa_font = (vo_font *)aa_level; /* any pointer: the fake's vo_* never look at it */
+
+static void aa_glyph(void)
+{
+    int x, y;
+    for (y = 0; y < CH; y++) {
+        aa_mask[2 * y] = aa_mask[2 * y + 1] = 0;
+        for (x = 0; x < CW; x++) {
+            aa_cov[y * CW + x] = aa_level[x];
+            if (aa_level[x] >= 128)
+                aa_mask[2 * y] |= (UBYTE)(0x80 >> x);
+        }
+    }
+    gf_outline(aa_mask, 2, aa_cov);
+    vr_set_outline(&rn, aa_font);
+}
+
+/* a snowman (U+2603, not in the Latin-1 font: the outline font's glyph) at the top left, the cursor hidden: in white
+ * on black (direct colours), or in the screen's text pen 1 on its background pen 0 */
+#define AA_SNOWMAN "\x1b[?25l\x1b[H\x1b[38;2;255;255;255;48;2;0;0;0m\xe2\x98\x83\x1b[m"
+#define AA_SNOWMAN_PENS "\x1b[?25l\x1b[H\x1b[m\xe2\x98\x83"
+
+/* the cell's pixels are all one of its first column's and its last column's: 1-bit, no shade */
+static int aa_two_colours(void)
+{
+    int x, y, bad = 0;
+    for (y = 0; y < CH; y++)
+        for (x = 0; x < CW; x++)
+            bad |= gf_pixel(x, y) != gf_pixel(0, 0) && gf_pixel(x, y) != gf_pixel(CW - 1, 0);
+    return !bad && gf_pixel(0, 0) != gf_pixel(CW - 1, 0);
+}
+
+/* R4.2: on a true-colour screen the coverage is written through the text-over-background table (WriteLUTPixelArray):
+ * each pixel its own blend, edge pixels between the two colours; n_aa (the /state sentinel) counts the glyph. With
+ * vr_set_antialias(0), as the profile's outline-antialias = off reaches it, the mask alone. */
+static void an_outline_glyph_is_antialiased_on_a_true_colour_screen_and_not_when_off(void)
+{
+    ULONG aa0, out0;
+    int x;
+    open_term_in(0, VT_XTERM);
+    gf_truecolor(1);
+    vr_free(&rn);
+    vr_init(&rn, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vr_redraw(&rn);
+    CHECK(rn.cgx != 0);
+    CHECK_INT(rn.aa_on, 1); /* the default */
+    aa_glyph();
+    aa0 = rn.n_aa;
+    out0 = rn.n_outline;
+    gf_clear_log();
+    pass(AA_SNOWMAN);
+    CHECK_INT((int)(rn.n_aa - aa0), 1);
+    CHECK_INT((int)(rn.n_outline - out0), 1);
+    CHECK(gf_count(GF_CGXLUT) >= 1);
+    for (x = 0; x < CW; x++)
+        CHECK_INT(gf_pixel(x, CH / 2), GF_CGX | (int)ce_mix(0xFFFFFF, 0, aa_level[x]));
+    CHECK_INT(gf_pixel(4, 0), GF_CGX | 0x808080); /* half coverage: half way */
+    vr_set_antialias(&rn, 0);
+    aa0 = rn.n_aa;
+    out0 = rn.n_outline;
+    gf_clear_log();
+    vr_redraw(&rn);
+    CHECK_INT((int)(rn.n_aa - aa0), 0);
+    CHECK_INT((int)(rn.n_outline - out0), 1);
+    CHECK_INT(gf_count(GF_CGXLUT), 0); /* the mask in the text colour: no table of shades */
+    close_term();
+}
+
+/* R4.3: on a palette screen with greys, each pixel takes the nearest of background, the three shade pens and the
+ * text pen; on one without (no pen nearer a shade than black or white), the 1-bit mask as before. */
+static void an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when_none(void)
+{
+    static const unsigned long greys[8] = { 0x000000, 0xFFFFFF, 0x404040, 0x808080, 0xC0C0C0, 0xFF0000, 0x00FF00, 0x0000FF };
+    static const unsigned long bright[8] = { 0x000000, 0xFFFFFF, 0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x00FFFF, 0xFF00FF };
+    static const int want[CW] = { 0, 2, 2, 3, 3, 4, 4, 1 };
+    ULONG aa0;
+    int x;
+    planar_depth = 3;
+    planar_left = 0;
+    test_pal = greys;
+    test_npal = 8;
+    open_term_in(0, VT_XTERM);
+    aa_glyph();
+    aa0 = rn.n_aa;
+    pass(AA_SNOWMAN_PENS);
+    CHECK_INT((int)(rn.n_aa - aa0), 1);
+    for (x = 0; x < CW; x++)
+        CHECK_INT(gf_pixel(x, CH / 2), want[x]);
+    close_term();
+    test_pal = bright;
+    open_term_in(0, VT_XTERM);
+    aa_glyph();
+    aa0 = rn.n_aa;
+    pass(AA_SNOWMAN_PENS);
+    CHECK_INT((int)(rn.n_aa - aa0), 0);
+    CHECK(aa_two_colours());
+    CHECK_INT(gf_pixel(CW - 1, 0), 1);
+    CHECK_INT(gf_pixel(0, 0), 0);
+    close_term();
+    planar_depth = 0;
+    test_npal = 0;
+}
+
 /* ---- W-T14: padding colour ---- */
 
 /* The window's inside is 173 x 67 pixels under borders 4, 11, 18, 2: 21 x 8 cells of 8 x 8 and strips 5 pixels
@@ -1688,6 +1799,8 @@ int main(void)
     the_strips_beside_the_grid_and_blank_cells_show_the_window_background();
     dither_off_draws_the_nearest_single_pen_and_on_dithers_again();
     padding_extend_gives_the_strips_the_colour_of_the_edge_cells();
+    an_outline_glyph_is_antialiased_on_a_true_colour_screen_and_not_when_off();
+    an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when_none();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }

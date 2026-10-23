@@ -41,6 +41,9 @@ struct Window *gf_window(void);
  * screen that has used them up: a direct colour is then the renderer's VR_INK_RGB case (scratch pens, or
  * FillPixelArray for a fill). Call after gf_open, before vr_init. Off by default. */
 void gf_truecolor(int on);
+/* The outline font's answer for every code point (render/outline): mask (rows of bpr bytes) and, from UP-Term's
+ * own engine, its coverage (cells * CW bytes a row; 0 for the library's path). gf_outline(0, 0, 0): no glyph. */
+void gf_outline(const UBYTE *mask, WORD bpr, const UBYTE *cov);
 /* gf_truecolor(2): the same screen with its colour map used up (rig 2's 24-bit Workbench, W-T13): ObtainPen
  * finds no pen of its own, ObtainBestPen exact finds none and not exact returns the nearest entry (pen 7,
  * counted in gf_pens_held). A direct colour is then FillPixelArray's alone; a glyph's pen is the nearest. */

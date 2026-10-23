@@ -29,7 +29,7 @@ enum {
     /* Colors */
     PG_FG = 40, PG_FG_HEX = 41, PG_BG = 42, PG_BG_HEX = 43,
     PG_SELFG = 44, PG_SELFG_HEX = 45, PG_SELBG = 46, PG_SELBG_HEX = 47,
-    PG_THEME = 48, PG_DITHER = 49, PG_PADDING = 50,
+    PG_THEME = 48, PG_DITHER = 49, PG_PADDING = 50, PG_OUTLINE_AA = 51,
     /* Palette: PG_PAL + i the swatch of entry i, PG_PAL_HEX + i its hex field */
     PG_PAL = 60, PG_PAL_HEX = 80,
     /* Keyboard */

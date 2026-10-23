@@ -205,6 +205,7 @@ CONFIGURATION (profiles)
      dither = on               on | off: on a screen of 16 colours or fewer, a colour no
                                pen shows closely is drawn with two pens in a fixed
                                pattern; off draws the nearest single pen
+     outline-antialias = on    on | off: outline-font glyphs are drawn smoothed (off: hard edges)
      padding-color = background  background | extend: the strips beside the character
                                grid (the part of the window that is not a whole cell)
                                are the background, or take the colour of the cell next
@@ -250,16 +251,17 @@ OUTLINE FONTS (icons, other scripts)
    as '?', or as a near Latin-1 stand-in ('-' for a dash). With
    font-fallback naming an installed outline font, UP-Term draws those
    characters from it, at the size of your font; everything else keeps
-   your bitmap font. Characters up to U+FFFF.
-   You need a font engine for TrueType fonts: ttf.library 0.8.5 by Richard
-   Griffith, Aminet util/libs/ttflib68020 (also 68000, 68030, 68040 and
-   68060 builds), freely distributable, AmigaOS 3.0 or newer. Copy
-   ttf.library to LIBS:, then install a font with its ttfinstall, e.g. the
-   icons-only Nerd Font (github.com/ryanoasis/nerd-fonts, NerdFontsSymbolsOnly,
-   MIT licence):
-     ttfinstall SymbolsNerdFontMono-Regular.ttf FONTS:
-   and put  font-fallback = SymbolsNerdFontMono  (the .otag's name) in a
-   profile, or type it in UP-Term Prefs, General page, Fallback font.
+   your bitmap font. UP-Term reads TrueType fonts with its own engine; it
+   needs no font library. Install puts the icons-only Nerd Font in FONTS:
+   (the "fonts" part, always installed: FONTS:SymbolsNerdFontMono.ttf,
+   Symbols Nerd Font 3.5.1, github.com/ryanoasis/nerd-fonts, licences in
+   UP-Term:fonts/SymbolsNerdFont: MIT.txt, ICON-SETS.md, SOURCE.txt). Any other TrueType font works the same:
+   copy the .ttf to FONTS:, or install it with a tool that writes a .otag
+   for a TrueType file (ttfinstall). Characters above U+FFFF draw too (the
+   Nerd Fonts 3 icons at U+F0001 and up, the Material Design set).
+   Put  font-fallback = SymbolsNerdFontMono  (the name of the .ttf or .otag,
+   without the extension) in a profile, or type it in UP-Term Prefs,
+   General page, Fallback font.
    Open windows take it at once.
    What neither font has comes from GNU Unifont, when Install put it in
    (the "Unifont" part: UP-Term:unifont, 1.8 MB, SIL Open Font License
@@ -293,6 +295,7 @@ COMMANDS (/cursor bar)
      /completion kingcon                  /font-fallback SymbolsNerdFontMono
      /backspace bs      /program-clipboard read-write
      /amiga-keys off    /dither off
+     /outline-antialias off
      /padding-color extend
      /link-open Run >NIL: OpenURL %s
    They change the window you type in; /save writes them to its profile.
@@ -635,6 +638,74 @@ VIEWING FILES (hl, mdv)
   right in a UTF-8 window; --latin1 / --utf8 say what the terminal reads
   when TERM does not (a ROM CON: window: Latin-1, lines and boxes drawn
   with + - |). hl --help and mdv --help list the options; Ctrl-C stops hl.
+
+AMARCHY
+  Amarchy is a small commodity that gives the whole machine Super-key
+  shortcuts, the way a tiling desktop does. Super is the Left Amiga key. It
+  runs from boot (a block in S:User-Startup starts UP-Term:bin/Amarchy), so
+  the keys work with no UP-Term window open: Left Amiga + T opens a window,
+  Left Amiga + Space shows the quick menu, Left Amiga + K lists every key.
+  Inside an UP-Term window the window itself answers first (Left Amiga + T is
+  a new tab there); everywhere else Amarchy does. Only the keys listed below
+  are taken; every other Left Amiga key reaches the program as before, and
+  Left Amiga + M, Left Amiga + N, Left Amiga + the mouse and the two-Amiga
+  reset keys are never touched.
+  The keys it ships (generated from dist/keymap):
+  [keys]
+  Left Amiga + Space          Menu
+  Left Amiga + Shift + Space  Apps
+  Left Amiga + K              Key bindings
+  Left Amiga + H              Help
+  Left Amiga + Shift + H      Tutorial
+  Left Amiga + T              New tab
+  Left Amiga + W              Close tab
+  Left Amiga + Backspace      Close tab
+  Left Amiga + Q              Close window
+  Left Amiga + 1 to 9         Switch to tab N
+  Left Amiga + F1             Switch to tab 1
+  Left Amiga + F2             Switch to tab 2
+  Left Amiga + F3             Switch to tab 3
+  Left Amiga + F4             Switch to tab 4
+  Left Amiga + .              Next tab
+  Left Amiga + ,              Previous tab
+  Left Amiga + Right          Next tab
+  Left Amiga + Left           Previous tab
+  Left Amiga + C              Copy
+  Left Amiga + V              Paste
+  Left Amiga + A              Select all
+  Left Amiga + F              Find
+  Left Amiga + G              Find next
+  Left Amiga + +              Bigger font
+  Left Amiga + -              Smaller font
+  Left Amiga + Shift + T      Theme
+  Left Amiga + Shift + B      Background
+  Left Amiga + Shift + F      Font
+  Left Amiga + Shift + S      Own screen
+  Left Amiga + Shift + W      Workbench screen
+  Left Amiga + Shift + D      Wide window
+  Left Amiga + Shift + R      Standard window
+  Left Amiga + Shift + L      Demo tour
+  Left Amiga + P              Preferences
+  Left Amiga + Return         Tmux
+  Left Amiga + L              Claude
+  Left Amiga + E              Editor
+  Left Amiga + U              Install and update
+  Left Amiga + Shift + U      Upgrade all
+  Left Amiga + I              Install add-ons
+  [end keys]
+  The quick menu (Left Amiga + Space) is a short list you filter by typing;
+  Left Amiga + K is the key viewer. Both are the program amarchy-menu.
+  Change a key: edit ENVARC:up-term/keymap (the shipped file, written by
+  Install; an upgrade never overwrites it, the new one is saved beside it as
+  keymap.new) or put your own rows in ENVARC:up-term/keymap.user: a row there
+  replaces the row for the same key, and  super+t = none  unbinds one. Then
+  tell Amarchy and every window to read the file again:
+    rx "address AMARCHY RELOAD"
+  ARexx port AMARCHY: STATUS (hits, rows, enabled, active), RELOAD, RUN n
+  (do row n of the table), SHOW (the key viewer) and QUIT.
+  Switch it off for a while in Exchange (the commodity AMARCHY, Disable), or
+  stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
+  out. man amarchy has the file format.
 
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a

@@ -19,6 +19,7 @@ static const slash_value v_meta[] = {
 static const slash_value v_copy[] = ONOFF(MENU_SET_COPY);
 static const slash_value v_amigakeys[] = ONOFF(MENU_SET_AMIGA_KEYS);
 static const slash_value v_dither[] = ONOFF(MENU_SET_DITHER);
+static const slash_value v_outline_aa[] = ONOFF(MENU_SET_OUTLINE_AA);
 static const slash_value v_padding[] = {
     { "background", MENU_SET_PAD_BG, 1 }, { "extend", MENU_SET_PAD_EXTEND, 1 }, { 0, 0, 0 }
 };
@@ -96,6 +97,8 @@ static const slash_def table[] = {
     { "link-open", SL_ARG, SLASH_LINK_OPEN, 1, 0, "COMMAND | none",
       "what a Ctrl + click on a link runs (%s: the URL)" },
     { "meta", SL_CHOICE, 0, 0, v_meta, "amiga | alt", "the key that is Meta (ESC prefix)" },
+    { "outline-antialias", SL_CHOICE, 0, 0, v_outline_aa, "on | off",
+      "outline-font glyphs are drawn smoothed on a screen of 16 colours or more (off: hard edges)" },
     { "padding-color", SL_CHOICE, 0, 0, v_padding, "background | extend",
       "the strips beside the character grid: the background, or the colour of the cell next to them" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
@@ -491,6 +494,7 @@ void slash_state_bump(slash_state *s, int ev, long arg, const char *name)
         break;
     case STATE_COPY: s->copies++; break;
     case STATE_PASTE: s->pastes++; break;
+    case STATE_KEYMAP: s->km_hits++; s->last_km = arg; break;
     }
 }
 
@@ -508,7 +512,8 @@ int slash_line_name(const char *line, int len, char *out, int cap)
 }
 
 static const char *const state_keys[] = { "tabs-opened", "tab-switches", "menu-picks", "last-menu", "slash-count",
-                                           "last-slash", "copies", "pastes", "tabs", "active" };
+                                           "last-slash", "copies", "pastes", "tabs", "active", "km-hits", "last-key", "font-size",
+                                           "outline-own", "outline-aa" };
 
 static void put_long(char *v, long n)
 {
@@ -539,6 +544,11 @@ static void state_value(const slash_state *s, int k, char *v)
     case 7: n = s->pastes; break;
     case 8: n = s->tabs; break;
     case 9: n = s->active; break;
+    case 10: n = s->km_hits; break;
+    case 11: n = s->last_km; break;
+    case 12: n = s->font_size; break;
+    case 13: n = s->outline_own; break;
+    case 14: n = s->outline_aa; break;
     }
     put_long(v, n);
 }

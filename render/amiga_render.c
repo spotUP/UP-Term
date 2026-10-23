@@ -98,6 +98,7 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
 #define vr_cgx_fill(lb, rp, x, y, w, h, c) (vr_gc[1]++, vr_cgx_fill(lb, rp, x, y, w, h, c))
 #endif
 #include "pen_match.h"
+#include "ttf.h"
 
 #define RUN_MAX 256
 
@@ -567,6 +568,11 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
     r->few = (UBYTE)(win->WScreen && GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) <= 4);
     r->dith = 0;
     r->dither_on = 1;
+    r->aa_on = 1;
+    r->aa_ok = 0;
+    r->aa_buf = r->aa_mask = 0;
+    r->aa_buf_size = r->aa_mask_size = 0;
+    r->aa_tab = 0;
     r->pad_extend = r->pad_dirty = 0;
     di = win->WScreen ? GetScreenDrawInfo(win->WScreen) : 0;
     if (di) {
@@ -772,6 +778,7 @@ void vr_palette_changed(vr_render *r)
         r->have[i] = 0;
         r->obtained[i] = -1;
     }
+    r->aa_ok = 0; /* the shade pens show other colours now */
 }
 
 void vr_set_dither(vr_render *r, int on)
@@ -780,6 +787,11 @@ void vr_set_dither(vr_render *r, int on)
         return;
     r->dither_on = (UBYTE)(on != 0);
     vr_palette_changed(r);
+}
+
+void vr_set_antialias(vr_render *r, int on)
+{
+    r->aa_on = (UBYTE)(on != 0);
 }
 
 void vr_set_pad_extend(vr_render *r, int on)
@@ -795,6 +807,16 @@ void vr_free(vr_render *r)
         for (i = 0; i < 256; i++)
             if (r->obtained[i] >= 0)
                 ReleasePen(r->cm, (ULONG)r->obtained[i]);
+    if (r->aa_mask) {
+        WaitBlit(); /* a template blit may still read it */
+        FreeVec(r->aa_mask);
+    }
+    FreeVec(r->aa_buf);
+    FreeVec(r->aa_tab);
+    r->aa_tab = 0;
+    r->aa_buf = r->aa_mask = 0;
+    r->aa_buf_size = r->aa_mask_size = 0;
+    r->aa_ok = 0;
     if (r->dith) {
         for (i = 0; i < 256; i++)
             dither_release(r, i);
@@ -2367,21 +2389,138 @@ static void draw_marks(vr_render *r, WORD px, WORD py, const vt_u32 *mk, int n, 
     }
 }
 
+/* The antialiased glyph's colours for text fg over background bg
+ * (0xRRGGBB), made once per pair: the table of every coverage, and the
+ * shade inks for a screen drawn with pens -- a direct colour of its own on
+ * a true-colour screen, else the pen the screen finds nearest, used only
+ * when it shows the shade closer than the text and background pens do. 0
+ * when there is no memory for the table. */
+static int aa_colours(vr_render *r, ULONG fg, ULONG bg, int lut)
+{
+    int i;
+    if (!r->aa_tab) {
+        r->aa_tab = (ULONG *)AllocVec(256 * sizeof(ULONG), MEMF_ANY);
+        if (!r->aa_tab)
+            return 0;
+        r->aa_ok = 0;
+    }
+    if (!r->aa_ok || r->aa_fg != fg || r->aa_bg != bg) {
+        for (i = 0; i < 256; i++)
+            r->aa_tab[i] = ce_mix(fg, bg, i);
+        r->aa_fg = fg;
+        r->aa_bg = bg;
+        r->aa_ok = 1;
+        r->aa_shades_ok = 0;
+    }
+    if (lut || r->aa_shades_ok)
+        return 1;
+    for (i = 0; i < 3; i++) {
+        ULONG want = r->aa_tab[64 * (i + 1)];
+        r->aa_use[i] = 0;
+        if (r->truecolor) {
+            r->aa_shade[i] = truecolor_ink(r, want);
+            r->aa_use[i] = 1;
+        } else {
+            pm_target t;
+            UBYTE p = nearest_pen(r, want);
+            pm_aim(want, &t);
+            r->aa_shade[i] = p;
+            r->aa_use[i] = (UBYTE)(pm_dist(&t, vr_pen_rgb(r, p)) < pm_dist(&t, fg) &&
+                                   pm_dist(&t, vr_pen_rgb(r, p)) < pm_dist(&t, bg));
+        }
+    }
+    r->aa_shades_ok = 1;
+    return 1;
+}
+
+/* *buf at least n bytes (fast RAM, or chip for a template): 0 when there is
+ * no memory */
+static UBYTE *aa_room(UBYTE **buf, ULONG *size, ULONG n, ULONG flags)
+{
+    if (*size >= n)
+        return *buf;
+    if (*buf) {
+        if (flags & MEMF_CHIP)
+            WaitBlit();
+        FreeVec(*buf);
+    }
+    *size = 0;
+    *buf = (UBYTE *)AllocVec(n, flags);
+    if (*buf)
+        *size = n;
+    return *buf;
+}
+
+/* The glyph with coverage cov (w x ch bytes) antialiased, over the whole
+ * box (nothing to fill first). 0 when it could not be (no memory, no shade
+ * the screen shows): the caller draws the mask. */
+static int draw_aa(vr_render *r, WORD px, WORD py, const UBYTE *cov, WORD w, const vr_style *st)
+{
+    ULONG fg = ink_rgb(r, st->fg), bg = ink_rgb(r, st->bg);
+    int lut = r->truecolor && r->cgx, i, lo, bpr;
+    WORD h = r->ch;
+    if (st->attr & VT_ATTR_BOLD) {
+        if (!aa_room(&r->aa_buf, &r->aa_buf_size, (ULONG)w * h, MEMF_ANY))
+            return 0;
+        ttf_embolden(cov, w, h, r->aa_buf);
+        cov = r->aa_buf;
+    }
+    if (!aa_colours(r, fg, bg, lut))
+        return 0;
+    if (lut) {
+        vr_cgx_write_lut(r->cgx, (APTR)cov, 0, 0, (UWORD)w, r->rp, (APTR)r->aa_tab, (UWORD)px, (UWORD)py,
+                         (UWORD)w, (UWORD)h, VR_CTABFMT_XRGB8);
+        return 1;
+    }
+    if (!r->aa_use[0] && !r->aa_use[1] && !r->aa_use[2])
+        return 0;
+    bpr = ((w + 15) >> 4) << 1;
+    if (!aa_room(&r->aa_mask, &r->aa_mask_size, (ULONG)bpr * h, MEMF_CHIP))
+        return 0;
+    /* each pixel the level nearest its coverage among the background, the
+     * shades the screen shows and the text: a pass per level from the
+     * lightest, at the coverage halfway between it and the level below */
+    fill(r, px, py, (WORD)(px + w - 1), (WORD)(py + h - 1), st->bg);
+    SetDrMd(r->rp, JAM1);
+    for (i = 0, lo = 0; i < 4; i++) {
+        int a = 64 * (i + 1) - (i == 3); /* 64, 128, 192, 255 */
+        if (i < 3 && !r->aa_use[i])
+            continue;
+        WaitBlit(); /* the previous pass may still read the template */
+        ttf_threshold_at(cov, w, h, r->aa_mask, bpr, (lo + a + 1) / 2);
+        if (i < 3)
+            SetAPen(r->rp, ink_pen(r, r->aa_shade[i], 0));
+        else
+            ink_a(r, st->fg);
+        BltTemplate((PLANEPTR)r->aa_mask, 0, (WORD)bpr, r->rp, px, py, w, h);
+        lo = a;
+    }
+    SetDrMd(r->rp, JAM2);
+    return 1;
+}
+
 /* An outline glyph over `cells` cells: the background, the mask in the
- * text colour (bold: again one pixel right, as Text() bold), the lines. */
+ * text colour (bold: again one pixel right, as Text() bold), the lines.
+ * With its coverage (UP-Term's own engine) and antialias on, the coverage
+ * instead (draw_aa). */
 static void draw_outline(vr_render *r, WORD px, WORD py, const UBYTE *m, WORD bpr, int cells,
                          const vr_style *st)
 {
     WORD w = (WORD)(cells * r->cw);
+    const UBYTE *cov = r->aa_on && r->outline && st->fg != st->bg ? vo_coverage(r->outline, m) : 0;
     if (cpu_refuses(r))
         return;
-    fill(r, px, py, (WORD)(px + w - 1), (WORD)(py + r->ch - 1), st->bg);
-    ink_a(r, st->fg);
-    SetDrMd(r->rp, JAM1);
-    BltTemplate((PLANEPTR)m, 0, bpr, r->rp, px, py, w, r->ch);
-    if (st->attr & VT_ATTR_BOLD)
-        BltTemplate((PLANEPTR)m, 0, bpr, r->rp, (WORD)(px + 1), py, (WORD)(w - 1), r->ch);
-    SetDrMd(r->rp, JAM2);
+    if (cov && draw_aa(r, px, py, cov, w, st)) {
+        r->n_aa++;
+    } else {
+        fill(r, px, py, (WORD)(px + w - 1), (WORD)(py + r->ch - 1), st->bg);
+        ink_a(r, st->fg);
+        SetDrMd(r->rp, JAM1);
+        BltTemplate((PLANEPTR)m, 0, bpr, r->rp, px, py, w, r->ch);
+        if (st->attr & VT_ATTR_BOLD)
+            BltTemplate((PLANEPTR)m, 0, bpr, r->rp, (WORD)(px + 1), py, (WORD)(w - 1), r->ch);
+        SetDrMd(r->rp, JAM2);
+    }
     if ((st->attr & LINE_ATTRS) || (st->deco & VT_DECO_IDEO_MASK))
         decorate(r, cells, px, py, st);
     r->n_outline++;

@@ -42,6 +42,12 @@ const vt_u8 *ce_page_glyph(const vt_u8 *p, int lo);
  * the background. ctab has 256 entries. */
 void ce_blend(const vt_u8 *rgba, int n, vt_u32 bg, vt_u32 *ctab);
 
+/* fg over bg (both 0xRRGGBB) at coverage a (0..255): the colour a pixel
+ * a / 255 covered by fg shows, rounded to nearest (0 bg, 255 fg). The
+ * antialiased outline glyph's table is made of these (plan
+ * 2026-10-22-handler-rasterizer.md R4). */
+vt_u32 ce_mix(vt_u32 fg, vt_u32 bg, int a);
+
 /* Glyph g's image for a box of bw x bh pixels into idx (bw * bh bytes, row
  * after row): the 16x16 image when bh >= 16, else the 16x8 when bh >= 8,
  * centred, CE_BG around it. 0 when it does not fit (bw < 16, bh < 8, or

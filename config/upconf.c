@@ -1,49 +1,7 @@
 /* upconf: see upconf.h for the file format and the contract. */
 #include <string.h>
 #include "upconf.h"
-
-/* 1 when s starts with "profile", case-insensitively. */
-static int uc_prefix_profile(const char *s)
-{
-    static const char want[] = "profile";
-    int i;
-    for (i = 0; want[i]; i++) {
-        char c = s[i];
-        if (c >= 'A' && c <= 'Z')
-            c = (char)(c - 'A' + 'a');
-        if (c != want[i])
-            return 0;
-    }
-    return 1;
-}
-
-/* Case-insensitive compare of two NUL-terminated strings. */
-static int uc_ieq(const char *a, const char *b)
-{
-    while (*a && *b) {
-        char ca = *a, cb = *b;
-        if (ca >= 'A' && ca <= 'Z')
-            ca = (char)(ca - 'A' + 'a');
-        if (cb >= 'A' && cb <= 'Z')
-            cb = (char)(cb - 'A' + 'a');
-        if (ca != cb)
-            return 0;
-        a++;
-        b++;
-    }
-    return *a == 0 && *b == 0;
-}
-
-/* Copy at most n-1 bytes, always NUL-terminating. 1 when src was longer than
- * n-1 (truncated), 0 otherwise. */
-static int uc_copy(char *dst, const char *src, int n)
-{
-    int i;
-    for (i = 0; i < n - 1 && src[i]; i++)
-        dst[i] = src[i];
-    dst[i] = 0;
-    return src[i] ? 1 : 0;
-}
+#include "upconf_lex.h"
 
 /* Key k of profile p and its value, in the pool. */
 #define KEY(c, p, k) ((c)->pool + (c)->at[p][k])
@@ -312,7 +270,6 @@ int upconf_parse(upconf *c, const char *buf, long len)
             i++; /* the newline */
         {
             char *s = line;
-            char *eq;
             while (*s == ' ' || *s == '\t')
                 s++;
             if (!*s || *s == ';' || *s == '#')
@@ -320,30 +277,17 @@ int upconf_parse(upconf *c, const char *buf, long len)
             while (n > 0 && (line[n - 1] == ' ' || line[n - 1] == '\t' || line[n - 1] == '\r'))
                 line[--n] = 0;
             if (*s == '[') {
-                char *close = strchr(s, ']');
-                if (!close)
+                char *name = uc_section_name(s);
+                if (!name)
                     continue;
-                *close = 0;
-                s++;
-                /* "profile name" or "name" */
-                if (uc_prefix_profile(s))
-                    s += 8;
-                while (*s == ' ')
-                    s++;
-                uc_copy(curprof, *s ? s : "default", UC_NAME);
+                uc_copy(curprof, *name ? name : "default", UC_NAME);
                 insec = 1;
             } else {
                 char *value;
-                eq = strchr(s, '=');
-                if (!eq)
+                char *key = uc_key_value(s, &value);
+                if (!key)
                     continue;
-                value = eq + 1;
-                *eq = 0;
-                while (eq > s && (eq[-1] == ' ' || eq[-1] == '\t'))
-                    *--eq = 0;
-                while (*value == ' ' || *value == '\t')
-                    value++;
-                upconf_set(c, curprof, s, value);
+                upconf_set(c, curprof, key, value);
             }
         }
     }

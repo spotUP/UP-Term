@@ -1,19 +1,15 @@
 /* outline: see outline.h. */
-#define __NOLIBBASE__ /* BulletBase is the worker's own: one engine per window */
+#define __NOLIBBASE__ /* SysBase and DOSBase: the handler's, declared below */
 #include <string.h>
 #include <exec/memory.h>
 #include <exec/ports.h>
 #include <dos/dos.h>
 #include <dos/dostags.h>
-#include <utility/tagitem.h>
-#include <diskfont/diskfonttag.h>
-#include <diskfont/glyph.h>
-#include <diskfont/oterrors.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
-#include <proto/bullet.h>
 #include "outline.h"
 #include "otag.h"
+#include "ttf.h"
 
 extern struct ExecBase *SysBase;
 extern struct DosLibrary *DOSBase;
@@ -33,20 +29,26 @@ struct vo_msg {
     int op;
     char name[64];       /* OPEN: the font ("": no engine, the worker only); READ: the file */
     WORD cw, ch, base;   /* OPEN, CELL */
+    WORD rx, ry;         /* OPEN, CELL: the screen's pixel in ticks (vo_set_aspect) */
     ULONG cp;            /* GLYPH */
     int cells;
     int mark;            /* GLYPH: a combining mark, placed over the cells */
     UBYTE *mask;         /* GLYPH: the caller's cleared buffer, ch rows of bpr */
     WORD bpr;
+    UBYTE *cov;          /* GLYPH: the caller's buffer for the coverage, cells * cw x ch
+                          * bytes (0: none wanted); its answer: cov_ok */
+    int cov_ok;          /* GLYPH's answer: cov holds the glyph's coverage (the own engine) */
     UBYTE *buf;          /* READ: the caller's buffer, max bytes */
     LONG max, len;       /* READ: len the answer, the bytes read, -1 no such file */
     int ok;              /* the answer: 1 done / the glyph is there */
+    ULONG own;           /* GLYPH's answer: the own engine's glyphs drawn so far */
 };
 
 struct vo_slot {
     ULONG cp;
     UBYTE cells, state;
     UBYTE *mask;
+    UBYTE *cov;   /* the glyph's coverage, cells * cw x ch bytes in fast RAM; 0: none kept */
 };
 
 struct vo_font {
@@ -56,6 +58,9 @@ struct vo_font {
     WORD cw, ch, base;
     int used;
     int engine;               /* 0: opened with "", the worker only (vo_read) */
+    ULONG own;                /* the worker's count, from its last GLYPH answer */
+    const UBYTE *last_mask;   /* the mask glyph() returned last, and its coverage (vo_coverage) */
+    const UBYTE *last_cov;
     char name[64];
     struct vo_slot slot[VO_SLOTS];
 };
@@ -64,196 +69,194 @@ struct vo_font {
 
 /* the worker's state, on its stack: one per window, nothing shared */
 struct vo_engine {
-    struct Library *BulletBase;
-    struct GlyphEngine *ge;
-    UBYTE *otag;
-    char path[96];       /* OT_OTagPath: the engine may keep the pointer */
     WORD cw, ch, base;
-    UBYTE notdef[VO_MAXH * (VO_MAXW / 8)]; /* U+0001's glyph: what "missing" looks like */
-    WORD notdef_bpr;
-    int have_notdef;
+    /* UP-Term's own engine (render/ttf.c) on the font's TrueType file
+     * (plan 2026-10-22-handler-rasterizer.md) */
+    ttf_font *tt;
+    BPTR fh;             /* the .ttf, open while tt is */
+    ULONG fpos;          /* fh's position: a read there needs no Seek */
+    long xscale, yscale; /* pixels per font unit, 16.16: the cell's scale */
+    WORD rx, ry;         /* the screen's pixel in ticks */
+    UBYTE *cov;          /* VO_MAXW x VO_MAXH coverage, fast RAM */
+    ULONG own;           /* glyphs ttf_render drew: /state outline-own */
 };
 
-static ULONG set1(struct vo_engine *e, ULONG tag, ULONG data)
-{
-    struct Library *BulletBase = e->BulletBase;
-    struct TagItem t[2];
-    t[0].ti_Tag = tag;
-    t[0].ti_Data = data;
-    t[1].ti_Tag = TAG_DONE;
-    return SetInfoA(e->ge, t);
-}
+/* cp's glyph into mask (cleared, ch rows of bpr bytes, w pixels used) and
+ * its coverage into e->cov. how: TTF_SHAPE or TTF_FILL, placed by
+ * ttf_place; or VO_AT_CELL, at the cell's scale with its current point ox
+ * pixels from the left edge (0, or the cell's width for a mark that draws
+ * left of its point) and on the cell's baseline. Every code point; 0 when
+ * the font has none (.notdef, glyph 0, is missing) or it is blank. */
+#define VO_AT_CELL (-1)
 
-/* cp's glyph into mask (cleared, ch rows of bpr bytes, w pixels used): the
- * glyph's current point ox pixels from the left edge (0, or the cell's
- * width for a mark that draws left of its point) and on the cell's
- * baseline. 0 when the engine has none or it is blank. Beyond the BMP the
- * 32-bit tag (diskfonttag.h: engines without it answer an error, and the
- * glyph is missing). */
-static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox)
+static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox, int how)
 {
-    struct Library *BulletBase = e->BulletBase;
-    struct GlyphMap *gm = 0;
-    struct TagItem t[2];
-    WORD x, y, any = 0;
-    if (set1(e, cp > 0xFFFF ? OT_GlyphCode_32 : OT_GlyphCode, cp) != OTERR_Success)
+    unsigned gid = ttf_glyph_index(e->tt, cp);
+    long xs = e->xscale, ys = e->yscale;
+    int baseline = e->base;
+    if (!gid)
         return 0;
-    t[0].ti_Tag = OT_GlyphMap;
-    t[0].ti_Data = (ULONG)&gm;
-    t[1].ti_Tag = TAG_DONE;
-    if (ObtainInfoA(e->ge, t) != OTERR_Success || !gm)
-        return 0;
-    for (y = 0; y < (WORD)gm->glm_BlackHeight; y++) {
-        WORD sy = (WORD)(gm->glm_BlackTop + y), dy = (WORD)(sy - gm->glm_Y0 + e->base);
-        const UBYTE *src = gm->glm_BitMap + (LONG)sy * gm->glm_BMModulo;
-        if (dy < 0 || dy >= e->ch)
-            continue;
-        for (x = 0; x < (WORD)gm->glm_BlackWidth; x++) {
-            WORD sx = (WORD)(gm->glm_BlackLeft + x), dx = (WORD)(sx - gm->glm_X0 + ox);
-            if (dx < 0 || dx >= w || !(src[sx >> 3] & (0x80 >> (sx & 7))))
-                continue;
-            mask[(LONG)dy * bpr + (dx >> 3)] |= (UBYTE)(0x80 >> (dx & 7));
-            any = 1;
-        }
+    if (how != VO_AT_CELL) {
+        ttf_place_out pl;
+        ttf_place(e->tt, gid, how, w, e->ch, e->base, e->rx, e->ry, &pl);
+        xs = pl.xscale;
+        ys = pl.yscale;
+        baseline = pl.baseline;
+        ox = (WORD)pl.ox;
     }
-    t[0].ti_Data = (ULONG)gm;
-    ReleaseInfoA(e->ge, t);
-    return any;
+    memset(e->cov, 0, (size_t)w * e->ch);
+    if (ttf_render(e->tt, gid, xs, ys, ox, baseline, e->cov, w, e->ch) != 1)
+        return 0;
+    ttf_threshold(e->cov, w, e->ch, mask, bpr);
+    e->own++;
+    return 1;
 }
 
-/* the size: point height = the cell's height at 72 dpi down; across, the
- * dpi that makes the font's advance one cell (a monospaced outline font's
- * glyphs all advance alike) */
+/* the scale combining marks are drawn at (VO_AT_CELL): ch pixels an em
+ * down; across, the scale that makes the first probe's advance one cell (a
+ * monospaced outline font's glyphs all advance alike). Other glyphs are
+ * placed one by one by ttf_place. */
+static const ULONG probe[] = { 'M', 0xE0A0, 0x2588, '0' };
+
 static void calibrate(struct vo_engine *e)
 {
-    struct Library *BulletBase = e->BulletBase;
-    struct GlyphMap *gm = 0;
-    struct TagItem t[3];
-    static const ULONG probe[] = { 'M', 0xE0A0, 0x2588, '0' };
-    ULONG xdpi = 72;
+    long upem = ttf_units_per_em(e->tt), adv = 0;
     int i;
-    t[0].ti_Tag = OT_DeviceDPI;
-    t[0].ti_Data = (72UL << 16) | 72UL;
-    t[1].ti_Tag = OT_PointHeight;
-    t[1].ti_Data = (ULONG)e->ch << 16;
-    t[2].ti_Tag = TAG_DONE;
-    SetInfoA(e->ge, t);
-    for (i = 0; i < (int)(sizeof(probe) / sizeof(probe[0])); i++) {
-        struct TagItem q[2];
-        if (set1(e, OT_GlyphCode, probe[i]) != OTERR_Success)
-            continue;
-        q[0].ti_Tag = OT_GlyphMap;
-        q[0].ti_Data = (ULONG)&gm;
-        q[1].ti_Tag = TAG_DONE;
-        if (ObtainInfoA(e->ge, q) != OTERR_Success || !gm)
-            continue;
-        if (gm->glm_Width > 0x1000) /* more than 1/16 em */
-            xdpi = (72UL * (ULONG)e->cw * 65536UL) / ((ULONG)e->ch * (ULONG)gm->glm_Width);
-        q[0].ti_Data = (ULONG)gm;
-        ReleaseInfoA(e->ge, q);
-        break;
+    e->yscale = e->xscale = ((long)e->ch << 16) / upem;
+    for (i = 0; i < (int)(sizeof(probe) / sizeof(probe[0])) && adv * 16 <= upem; i++) {
+        unsigned gid = ttf_glyph_index(e->tt, probe[i]);
+        adv = gid ? ttf_advance(e->tt, gid) : 0;
     }
-    if (xdpi < 10 || xdpi > 2000)
-        xdpi = 72;
-    t[0].ti_Data = (xdpi << 16) | 72UL;
-    SetInfoA(e->ge, t);
-    e->notdef_bpr = (WORD)(((e->cw + 15) >> 4) << 1);
-    memset(e->notdef, 0, sizeof(e->notdef));
-    e->have_notdef = render(e, 0x0001, e->notdef, e->notdef_bpr, e->cw, 0);
+    if (adv * 16 > upem) /* more than 1/16 em */
+        e->xscale = ((long)e->cw << 16) / adv;
 }
 
-/* the .otag read, checked and made a tag list; the engine its OT_Engine
- * names opened on it */
+/* glyphs made to fill the cell (TTF_FILL), whatever its shape on the
+ * screen: box drawing, block elements, legacy computing and
+ * the powerline separators (frames and prompts without gaps) */
+static int fills_cell(ULONG cp)
+{
+    return (cp >= 0x2500 && cp <= 0x259F) || (cp >= 0x1FB00 && cp <= 0x1FBFF) ||
+           (cp >= 0xE0B0 && cp <= 0xE0D7);
+}
+
+/* render/ttf's reads and memory: dos.library, so the worker's only */
+static long tt_read(void *ctx, unsigned long off, void *buf, long len)
+{
+    struct vo_engine *e = (struct vo_engine *)ctx;
+    LONG got;
+    if (off != e->fpos && Seek(e->fh, (LONG)off, OFFSET_BEGINNING) < 0) {
+        e->fpos = (ULONG)-1;
+        return -1;
+    }
+    got = Read(e->fh, buf, len);
+    e->fpos = got > 0 ? off + (ULONG)got : (ULONG)-1;
+    return got;
+}
+
+static void *tt_alloc(void *ctx, unsigned long size)
+{
+    (void)ctx;
+    return AllocVec((ULONG)size, MEMF_ANY | MEMF_CLEAR);
+}
+
+static void tt_free(void *ctx, void *p)
+{
+    (void)ctx;
+    FreeVec(p);
+}
+
+/* the TrueType file spec (a path without a volume is in FONTS:): the own
+ * engine on it. 0 leaves e as it was. */
+static int own_open(struct vo_engine *e, const char *spec)
+{
+    char p[128];
+    UBYTE head[4];
+    ttf_io io;
+    int i, n = 0;
+    if (!strchr(spec, ':'))
+        for (i = 0; "FONTS:"[i]; i++)
+            p[n++] = "FONTS:"[i];
+    for (i = 0; spec[i] && n < (int)sizeof(p) - 1; i++)
+        p[n++] = spec[i];
+    p[n] = 0;
+    if (!(e->fh = Open((STRPTR)p, MODE_OLDFILE)))
+        return 0;
+    e->fpos = 0;
+    /* TrueType: 0x00010000 or 'true' (ttf_open also refuses the rest) */
+    if (tt_read(e, 0, head, 4) == 4 &&
+        ((head[0] == 0 && head[1] == 1 && head[2] == 0 && head[3] == 0) || !memcmp(head, "true", 4)) &&
+        (e->cov = (UBYTE *)AllocVec(VO_MAXW * VO_MAXH, MEMF_ANY)) != 0) {
+        io.read = tt_read;
+        io.alloc = tt_alloc;
+        io.free = tt_free;
+        io.ctx = e;
+        if (ttf_open(&io, &e->tt) == TTF_OK)
+            return 1;
+    }
+    if (e->cov)
+        FreeVec(e->cov);
+    Close(e->fh);
+    e->cov = 0;
+    e->fh = 0;
+    e->tt = 0;
+    return 0;
+}
+
+/* the font `name`: FONTS:<name>.otag (ttfinstall's, for ttf.library) when
+ * its OT_Spec1 names a TrueType file, else FONTS:<name>.ttf itself. The
+ * .otag's engine is not opened: render/ttf.c draws every TrueType font. */
 static int engine_open(struct vo_engine *e, const char *name)
 {
-    char *path = e->path, lib[48];
+    char path[96];
+    UBYTE *otag;
     struct FileInfoBlock *fib;
     BPTR f;
-    LONG len, got;
+    LONG len = 0, got;
     otag_info in;
-    ULONG *tags;
-    struct TagItem t[3];
-    int i, n;
+    int i, n, ok = 0;
     strcpy(path, "FONTS:");
     n = (int)strlen(path);
-    for (i = 0; name[i] && n < (int)sizeof(e->path) - 6; i++)
+    for (i = 0; name[i] && n < (int)sizeof(path) - 6; i++)
         path[n++] = name[i];
     path[n] = 0;
     if (n > 5 && (!strcmp(path + n - 5, ".font") || !strcmp(path + n - 5, ".otag")))
         path[n - 5] = 0;
+    n = (int)strlen(path);
     strcat(path, ".otag");
-    if (!(f = Open((STRPTR)path, MODE_OLDFILE)))
-        return 0;
-    len = 0;
-    if ((fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0)) != 0) {
-        if (ExamineFH(f, fib))
-            len = fib->fib_Size;
-        FreeDosObject(DOS_FIB, fib);
-    }
-    if (len <= 0 || len > 65536 || !(e->otag = (UBYTE *)AllocVec((ULONG)len, MEMF_ANY))) {
+    if ((f = Open((STRPTR)path, MODE_OLDFILE)) != 0) {
+        if ((fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0)) != 0) {
+            if (ExamineFH(f, fib))
+                len = fib->fib_Size;
+            FreeDosObject(DOS_FIB, fib);
+        }
+        if (len > 0 && len <= 65536 && (otag = (UBYTE *)AllocVec((ULONG)len, MEMF_ANY)) != 0) {
+            got = Read(f, otag, len);
+            ok = got == len && otag_check(otag, len, &in) == OTAG_OK && in.spec1_off >= 0 &&
+                 own_open(e, (const char *)otag + in.spec1_off);
+            FreeVec(otag);
+        }
         Close(f);
-        return 0;
     }
-    got = Read(f, e->otag, len);
-    Close(f);
-    if (got != len || otag_check(e->otag, len, &in) != OTAG_OK)
+    path[n] = 0;
+    strcat(path, ".ttf");
+    if (!ok && !own_open(e, path))
         return 0;
-    /* indirect values are offsets from the file's start: pointers now */
-    tags = (ULONG *)e->otag;
-    for (i = 0; i < in.ntags; i++)
-        if ((tags[i * 2] & TAG_USER) && (tags[i * 2] & OT_Indirect))
-            tags[i * 2 + 1] += (ULONG)e->otag;
-    n = 0;
-    for (i = 0; ((const char *)e->otag)[in.engine_off + i] && n < (int)sizeof(lib) - 9; i++)
-        lib[n++] = ((const char *)e->otag)[in.engine_off + i];
-    lib[n] = 0;
-    strcat(lib, ".library");
-    if (!(e->BulletBase = OpenLibrary((STRPTR)lib, 0)))
-        return 0;
-    {
-        struct Library *BulletBase = e->BulletBase;
-        if (!(e->ge = OpenEngine()))
-            return 0;
-    }
-    t[0].ti_Tag = OT_OTagPath;
-    t[0].ti_Data = (ULONG)path;
-    t[1].ti_Tag = OT_OTagList;
-    t[1].ti_Data = (ULONG)e->otag;
-    t[2].ti_Tag = TAG_DONE;
-    {
-        struct Library *BulletBase = e->BulletBase;
-        if (SetInfoA(e->ge, t) != OTERR_Success)
-            return 0;
-    }
     calibrate(e);
     return 1;
 }
 
 static void engine_close(struct vo_engine *e)
 {
-    if (e->ge) {
-        struct Library *BulletBase = e->BulletBase;
-        CloseEngine(e->ge);
-    }
-    if (e->BulletBase)
-        CloseLibrary(e->BulletBase);
-    if (e->otag)
-        FreeVec(e->otag);
-    e->ge = 0;
-    e->BulletBase = 0;
-    e->otag = 0;
-}
-
-static int same_as_notdef(struct vo_engine *e, const UBYTE *mask, WORD bpr)
-{
-    WORD y, x;
-    if (!e->have_notdef || bpr != e->notdef_bpr)
-        return 0;
-    for (y = 0; y < e->ch; y++)
-        for (x = 0; x < bpr; x++)
-            if (mask[(LONG)y * bpr + x] != e->notdef[(LONG)y * bpr + x])
-                return 0;
-    return 1;
+    if (e->tt)
+        ttf_close(e->tt);
+    if (e->fh)
+        Close(e->fh);
+    if (e->cov)
+        FreeVec(e->cov);
+    e->tt = 0;
+    e->fh = 0;
+    e->cov = 0;
 }
 
 static void worker(void)
@@ -273,6 +276,8 @@ static void worker(void)
             e.cw = m->cw;
             e.ch = m->ch;
             e.base = m->base;
+            e.rx = m->rx;
+            e.ry = m->ry;
             m->ok = !m->name[0] || engine_open(&e, m->name); /* "": the worker alone */
             if (!m->ok) {
                 engine_close(&e);
@@ -285,22 +290,28 @@ static void worker(void)
             e.cw = m->cw;
             e.ch = m->ch;
             e.base = m->base;
-            if (e.ge)
+            e.rx = m->rx;
+            e.ry = m->ry;
+            if (e.tt)
                 calibrate(&e);
             m->ok = 1;
             break;
         case VO_GLYPH: {
             WORD w = (WORD)(m->cells * e.cw);
-            if (!e.ge) {
+            if (!e.tt) {
                 m->ok = 0;
                 break;
             }
             /* a mark: drawn left of its point over the cell, as fonts make
              * them; one that draws nothing there is a spacing mark */
-            m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w);
+            m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w, VO_AT_CELL);
             if (!m->ok)
-                m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0) &&
-                        !(m->cells == 1 && same_as_notdef(&e, m->mask, m->bpr));
+                m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0,
+                               m->mark ? VO_AT_CELL : fills_cell(m->cp) ? TTF_FILL : TTF_SHAPE);
+            m->cov_ok = m->ok && m->cov; /* render left the glyph's coverage in e.cov */
+            if (m->cov_ok)
+                memcpy(m->cov, e.cov, (size_t)w * e.ch);
+            m->own = e.own;
             break;
         }
         case VO_READ: {
@@ -349,10 +360,14 @@ static void clear_cache(vo_font *f)
     for (i = 0; i < VO_SLOTS; i++) {
         if (f->slot[i].mask)
             FreeVec(f->slot[i].mask);
+        if (f->slot[i].cov)
+            FreeVec(f->slot[i].cov);
         f->slot[i].mask = 0;
+        f->slot[i].cov = 0;
         f->slot[i].state = SLOT_EMPTY;
     }
     f->used = 0;
+    f->last_mask = f->last_cov = 0;
 }
 
 vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base)
@@ -368,7 +383,7 @@ vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base)
         FreeVec(f);
         return 0;
     }
-    p = CreateNewProcTags(NP_Entry, (ULONG)worker, NP_Name, (ULONG)"UP-Term glyphs", NP_StackSize, 8192,
+    p = CreateNewProcTags(NP_Entry, (ULONG)worker, NP_Name, (ULONG)"UP-Term glyphs", NP_StackSize, 12288, /* render/ttf.c's rasterizer */
                           TAG_DONE);
     if (!p) {
         DeleteMsgPort(f->reply);
@@ -382,6 +397,7 @@ vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base)
     f->cw = f->m.cw = cw;
     f->ch = f->m.ch = ch;
     f->base = f->m.base = base;
+    f->m.rx = f->m.ry = 1; /* square until vo_set_aspect */
     ask(f);
     if (!f->m.ok) {
         /* the worker has ended */
@@ -420,6 +436,19 @@ void vo_set_cell(vo_font *f, WORD cw, WORD ch, WORD base)
     }
 }
 
+void vo_set_aspect(vo_font *f, WORD rx, WORD ry)
+{
+    if (!f || rx < 1 || ry < 1 || (rx == f->m.rx && ry == f->m.ry))
+        return;
+    clear_cache(f);
+    f->m.rx = rx;
+    f->m.ry = ry;
+    if (f->ch && f->engine) {
+        f->m.op = VO_CELL;
+        ask(f);
+    }
+}
+
 /* cells: 1 or 2, plus 4 for a mark (a slot of its own) */
 static const UBYTE *glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
 {
@@ -437,8 +466,13 @@ static const UBYTE *glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
         s = &f->slot[h];
         if (s->state == SLOT_EMPTY)
             break;
-        if (s->cp == cp && s->cells == (cells | mark))
-            return s->state == SLOT_HAVE ? s->mask : 0;
+        if (s->cp == cp && s->cells == (cells | mark)) {
+            if (s->state != SLOT_HAVE)
+                return 0;
+            f->last_mask = s->mask;
+            f->last_cov = s->cov;
+            return s->mask;
+        }
         h = (h + 1) & (VO_SLOTS - 1);
     }
     if (f->used >= VO_FILL) {
@@ -452,19 +486,28 @@ static const UBYTE *glyph(vo_font *f, ULONG cp, int cells, WORD *bpr)
     s->mask = (UBYTE *)AllocVec((ULONG)b * f->ch, MEMF_CHIP | MEMF_CLEAR);
     if (!s->mask)
         return 0;
+    s->cov = (UBYTE *)AllocVec((ULONG)cells * f->cw * f->ch, MEMF_ANY); /* none: drawn 1-bit */
     f->m.op = VO_GLYPH;
     f->m.cp = cp;
     f->m.cells = cells;
     f->m.mark = mark != 0;
     f->m.mask = s->mask;
     f->m.bpr = b;
+    f->m.cov = s->cov;
     ask(f);
+    f->own = f->m.own;
+    if (s->cov && (!f->m.ok || !f->m.cov_ok)) {
+        FreeVec(s->cov);
+        s->cov = 0;
+    }
     if (!f->m.ok) {
         FreeVec(s->mask);
         s->mask = 0;
         return 0;
     }
     s->state = SLOT_HAVE;
+    f->last_mask = s->mask;
+    f->last_cov = s->cov;
     return s->mask;
 }
 
@@ -486,6 +529,16 @@ const char *vo_name(const vo_font *f)
 int vo_has_engine(const vo_font *f)
 {
     return f && f->engine;
+}
+
+const UBYTE *vo_coverage(const vo_font *f, const UBYTE *mask)
+{
+    return f && mask && mask == f->last_mask ? f->last_cov : 0;
+}
+
+ULONG vo_own(const vo_font *f)
+{
+    return f ? f->own : 0;
 }
 
 LONG vo_read(vo_font *f, const char *path, UBYTE *buf, LONG max)
