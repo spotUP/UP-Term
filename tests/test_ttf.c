@@ -681,6 +681,11 @@ static void test_place(void)
     /* PAL hires, cell 8 x 8 on pixels twice as tall: two cells, all 8 rows */
     CHECK_INT(place_render(f, g, TTF_SHAPE, 16, 8, 6, 1, 2, cov, &cols, &rows), 1);
     CHECK(rows >= 7);
+    /* R6.1d/R6.2b (rig 2026-10-23): an old TopazPro 16 declares baseline 6
+     * (topaz 8's). The icon stands on the TrueType font's own line, so the
+     * em box still covers the cell's 16 rows instead of losing its top 7 */
+    CHECK_INT(place_render(f, g, TTF_SHAPE, 16, 16, 6, 1, 1, cov, &cols, &rows), 1);
+    CHECK(rows >= 15);
     ttf_close(f);
     CHECK_INT(m.live, 0);
 }

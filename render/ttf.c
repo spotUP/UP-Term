@@ -831,7 +831,15 @@ void ttf_place(const ttf_font *f, unsigned gid, int how, int w, int h, int base,
         ttf_fit(adv, f->upem, w, h, base, rx, ry, &fit);
         out->xscale = fit.xscale;
         out->yscale = fit.yscale;
-        out->baseline = fit.baseline;
+        /* the font's line (hhea ascender to descender) centred down the
+         * span, the baseline where its ascender ends: a bitmap font's
+         * tf_Baseline is not trusted (an old TopazPro 16 says 6 of 16 and
+         * cut the top of every icon off, rig 2026-10-23) */
+        if (line > 0 && f->asc > 0 && f->asc <= line) {
+            long um = f->upem;
+            out->baseline = (int)(((long)h * um - line * fit.bh + 2L * f->asc * fit.bh + um) / (2 * um));
+        } else
+            out->baseline = fit.baseline;
         iw = (long)(((unsigned long)adv * (unsigned long)fit.xscale) >> 16);
         out->ox = iw < w ? (int)((w - iw) / 2) : 0;
     }

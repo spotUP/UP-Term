@@ -88,7 +88,8 @@ void ttf_fit(long units_w, int upem, int w, int h, int base, int rx, int ry, ttf
  * bitmap font's baseline on row base, pixels rx x ry ticks (plan
  * 2026-10-22-handler-rasterizer.md R6.1, R6.3). TTF_SHAPE: the glyph's own
  * advance x one em fitted into the span with its shape kept (ttf_fit) and
- * centred across. TTF_FILL (box drawing, blocks, powerline separators): the
+ * centred across, the font's line centred down it (base only when the font
+ * has no usable line). TTF_FILL (box drawing, blocks, powerline separators): the
  * advance stretched across the span and the font's line (hhea ascender to
  * descender) down the h rows, its baseline from the font, not from base;
  * base only when the font has no usable line. xscale, yscale, baseline as
