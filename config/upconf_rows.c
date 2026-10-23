@@ -138,14 +138,15 @@ int upconf_rows(const char *buf, long len, const char *section, upconf_row_fn fn
 
 static int menu_style_row(void *ud, int lineno, const char *key, const char *value)
 {
-    (void)lineno;
     if (uc_ieq(key, "menu-style")) {
         if (uc_ieq(value, "text"))
             *(int *)ud = UC_MENU_TEXT;
         else
             *(int *)ud = UC_MENU_GRAPHICAL;
     }
-    return 0;
+    /* never stops the walk (line numbers start at 1); reads lineno because vbcc (-warnings-as-errors) refuses a
+     * (void) cast of it and the host build (-Wextra -Werror) refuses an unused parameter */
+    return lineno < 0;
 }
 
 int upconf_menu_style(const char *buf, long len)

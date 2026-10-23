@@ -909,6 +909,11 @@ $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dripens.c
 
+# A public or a private screen to hold in front, and the font numbers of a public screen (amarchy_gui_rig, G7)
+$(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/scrprobe.c
+
 # Picasso96's 24-bit pens (RPTAG_PenMode/FgColor/BgColor) on the Workbench screen (W-T13)
 $(BUILD)/amiga/rgbprobe: tests/amiga/rgbprobe.c
 	@mkdir -p $(BUILD)/amiga

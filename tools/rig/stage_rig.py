@@ -15,6 +15,7 @@ import paths
 BUILD = paths.VTCON / 'build/amiga'
 # program -> make target that builds it (amarchy-menu needs upterm-ports built, see the Makefile)
 TARGETS = {'Amarchy': 'build/amiga/Amarchy', 'amarchy-menu': 'build/amiga/amarchy-menu',
+           'amarchy-gui': 'build/amiga/amarchy-gui', 'scrprobe': 'build/amiga/scrprobe',
            'lcmdprobe': 'build/amiga/lcmdprobe'}
 
 

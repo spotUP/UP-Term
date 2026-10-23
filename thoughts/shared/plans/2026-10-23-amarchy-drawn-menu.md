@@ -154,12 +154,12 @@ click runs.
   640x256 screen.
 - [x] G2 (7637eb45) theme roles from upconf's palette, pens through the existing
   render code; host test of the role table.
-- [x] G3 (f95c1616; drawing unverified until G7) icon images: build-time conversion, a test that every [menu] row
+- [x] G3 (f95c1616; drawing verified by G7's rig pixel grab) icon images: build-time conversion, a test that every [menu] row
   naming an icon has an image, licence file entry.
 - [x] G4 (c6ae01a8) amarchy/leaf.c: run_leaf and the request-port code out of
   amarchy/menu.c, linked by both programs; the text menu unchanged in
   behaviour (its host and rig tests still pass).
-- [x] G5 (fc419f5d; draw unproven until G7) amarchy-gui, a vbcc Intuition program: window, draw, input,
+- [x] G5 (fc419f5d; draw proven by G7: sentinel and geometry on the rig) amarchy-gui, a vbcc Intuition program: window, draw, input,
   filter, scroll; input, message and viewer modes. Stack cookie test for
   it next to amarchy-menu's. Built, in parts.txt and the kit, installed
   next to amarchy-menu.
@@ -170,7 +170,7 @@ click runs.
   the command it builds for all four actions under each value.
 - [x] G6b docs: RULES.md:59, dist/README.txt, the setting in the user docs,
   the two earlier plans pointed at this one.
-- [ ] G7 reachability rig test (one, a new tools/rig/amarchy_gui_rig.py;
+- [x] G7 (rig 4: PASS, 37 checks incl. AMB3 public and non-public screen) reachability rig test (one, a new tools/rig/amarchy_gui_rig.py;
   amarchy_osd_rig.py keeps covering the text menu with the setting = text): Super+Space through the commodity opens a window that is
   not a console (Wasabi window list: title, size, borderless, centred
   within 2 px), its size equals menu_geom's numbers for the rig's font;
