@@ -5,7 +5,7 @@
  *   scrprobe font NAME|- [text...] the public screen NAME (the default public screen for "-"): prints
  *                                  "screen W H ysize xsize proportional rx ry" and "len N text" for each text, in
  *                                  the font the menu opens on that screen (amarchy/menu_font.c), rx ry the
- *                                  pixel shape of the screen's display mode. */
+ *                                  pixel shape of the screen's display mode; then "fontname NAME ysize" for that font. */
 #include <exec/types.h>
 #include <dos/dos.h>
 #include <graphics/text.h>
@@ -77,6 +77,7 @@ static int do_font(const char *name, int argc, char **argv)
     SetFont(&rp, f);
     Printf((STRPTR)"screen %ld %ld %ld %ld %ld %ld %ld\n", (LONG)s->Width, (LONG)s->Height, (LONG)f->tf_YSize,
            (LONG)f->tf_XSize, (LONG)((f->tf_Flags & FPF_PROPORTIONAL) != 0), (LONG)rx, (LONG)ry);
+    Printf((STRPTR)"fontname %s %ld\n", (LONG)(f->tf_Message.mn_Node.ln_Name ? f->tf_Message.mn_Node.ln_Name : "?"), (LONG)f->tf_YSize);
     for (i = 0; i < argc; i++)
         Printf((STRPTR)"len %ld %s\n", (LONG)TextLength(&rp, (STRPTR)argv[i], (ULONG)strlen(argv[i])), argv[i]);
     if (opened)

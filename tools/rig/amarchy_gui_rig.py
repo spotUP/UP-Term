@@ -10,6 +10,8 @@ Proves, on the rig:
     this screen and font: tools/rig/amarchy_geom.c is built for the host from the same sources and fed the rig's
     screen size, font and TextLength values (tests/amiga/scrprobe); root level and "apps" level, no numbers
     hardcoded here
+  * the menu's font: JetBrainsMono 16 on a square-pixel screen, topaz 8 on tall pixels (640x256 PAL hires);
+    JetBrainsMono.font and its 16 drawer are staged from build/jbmono/out into a drawer added to FONTS:
   * icons are drawn (G3): the pixels of the first row's icon cell, grabbed from the screen, differ from the
     row's background, in both the selected and the unselected row
   * Esc steps one level back, then closes the window and amarchy-gui exits
@@ -17,7 +19,7 @@ Proves, on the rig:
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
 are assumed (no ENV:up-term/keymap override). Run: python3 tools/rig/amarchy_gui_rig.py [--no-build]"""
-import os, re, shlex, subprocess, sys, tempfile, time
+import os, re, shlex, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths, ami, condev_rig as c, stage_rig
 
@@ -28,6 +30,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 NAMES = ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'scrprobe')
 bad = 0
+FONTS_OPENED = {}            # screen name -> (font name, ysize) the menu's font code opened (scrprobe)
+FONT_DRAWER = 'amarchy-fonts'
+JBMONO = os.path.join(REPO, 'build/jbmono/out')
 
 
 def check(ok, what):
@@ -56,7 +61,33 @@ def probe(name):
     m = re.search(r'screen (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)', out)
     if rc or not m:
         raise SystemExit('scrprobe font %s: rc %d %r' % (name, rc, out))
+    FONTS_OPENED[name] = re.search(r'fontname (\S+) (\d+)', out).groups()
     return tuple(int(v) for v in m.groups())
+
+
+def check_font(name, e, what):
+    """Square pixels: JetBrainsMono 16 (render/fontpair.c fontpair_menu_choices); tall pixels: topaz 8."""
+    got = FONTS_OPENED[name]
+    sw, sh, ys, xs, prop, rx, ry = e['screen']
+    if rx == ry:
+        ok = got[0].lower().startswith('jetbrainsmono') and int(got[1]) == 16
+        want = 'JetBrainsMono 16'
+    else:
+        ok = got[0].lower().startswith('topaz') and int(got[1]) == 8
+        want = 'topaz 8'
+    check(ok, '%s: pixels %d:%d, the menu opens font %s %s (want %s)' % (what, rx, ry, got[0], got[1], want))
+
+
+def stage_fonts():
+    """JetBrainsMono.font + JetBrainsMono/16 into <rig>/vtc/amarchy-fonts, added to FONTS: for the run."""
+    if not os.path.isfile(os.path.join(JBMONO, 'JetBrainsMono.font')):
+        subprocess.run(['make', 'jbmono'], cwd=REPO, check=True)
+    dst = os.path.join(str(paths.RIG), 'vtc', FONT_DRAWER)
+    shutil.rmtree(dst, ignore_errors=True)
+    os.makedirs(os.path.join(dst, 'JetBrainsMono'))
+    shutil.copy(os.path.join(JBMONO, 'JetBrainsMono.font'), dst)
+    shutil.copy(os.path.join(JBMONO, 'JetBrainsMono/16'), os.path.join(dst, 'JetBrainsMono/16'))
+    c.run('Assign FONTS: VTC:%s ADD' % FONT_DRAWER)
 
 
 def expected(geom, name):
@@ -209,6 +240,7 @@ def case_default(geom):
     ui = ami.window(TITLE)
     gad = [k for k in ui if k.startswith('sys:') or k == 'custom']
     check(ui and not gad, 'no gadgets: no close, depth, drag, zoom, size or scroll bar (uitree gadgets %s)' % gad)
+    check_font('-', e, 'Workbench')
     check(e['icon'][0] > 0 and e['icon'][1] > 0, 'an icon column exists (%dx%d)' % e['icon'])
     iw, ih = e['icon']
     check(ry <= rx or iw > ih, 'tall pixels (%d:%d): the icon is wider than high (%dx%d), so it looks square' % (rx, ry, iw, ih))
@@ -274,6 +306,7 @@ def case_screen(geom, public):
         on_probe = s['title'] == PROBE_TITLE
         if public:
             check(on_probe, 'the menu is on the public screen in front ("%s" is on "%s")' % (TITLE, s['title']))
+            check_font(name, e, 'public screen')
             check_geometry('root', s, w, e, 'public screen')
         else:
             check(not on_probe, 'the menu fell back to Workbench: it is on "%s", not on the non-public "%s"' % (s['title'], PROBE_TITLE))
@@ -307,11 +340,15 @@ def case_screen(geom, public):
 def main():
     stage_rig.report(stage_rig.stage_build(NAMES, build='--no-build' not in sys.argv))
     geom = build_geom()
+    stage_fonts()
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     time.sleep(3)
-    case_default(geom)
-    case_screen(geom, True)
-    case_screen(geom, False)
+    try:
+        case_default(geom)
+        case_screen(geom, True)
+        case_screen(geom, False)
+    finally:
+        c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')
     print('FAIL' if bad else 'PASS')
     return 1 if bad else 0
