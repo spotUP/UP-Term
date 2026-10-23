@@ -491,8 +491,8 @@ $(UPTERM_VERSION_H): FORCE
 ENGINE_68K := engine/vtengine_68k.s
 # the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over its DOS calls alone
 HANDLER_DATADIR := claude/datadir.c claude/path.c claude/util.c claude/datadir_amiga.c
-HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c handler/upmru.c config/keymap.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/winspec.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/pens_amiga.c render/pens_amiga.h render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c handler/histfile.c shell/sh_path.c $(HANDLER_DATADIR)
-HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config/keymap_load.h handler/upactive.h handler/upreq.h engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h render/ttf.h \
+HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c handler/upmru.c config/keymap.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/frontscr.c handler/winspec.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/pens_amiga.c render/pens_amiga.h render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c handler/histfile.c shell/sh_path.c $(HANDLER_DATADIR)
+HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config/keymap_load.h handler/upactive.h handler/upreq.h handler/frontscr.h engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h render/ttf.h \
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
                handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h
 
@@ -673,6 +673,15 @@ amarchy-menu: $(BUILD)/amiga/amarchy-menu
 $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/menu_core.h amarchy/leaf.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a
 	@mkdir -p $(BUILD)/amiga
 	$(UPTERM_ROOT)/upterm-ports/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
+
+# amarchy-gui: the drawn menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A plain vbcc
+# Intuition program, no ixemul, same command line as amarchy-menu.
+AMARCHY_GUI_SRC := amarchy/gui.c amarchy/leaf.c amarchy/leaf_core.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_theme.c render/pens_amiga.c handler/frontscr.c config/keymap.c config/keymap_load.c config/upconf.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
+.PHONY: amarchy-gui
+amarchy-gui: $(BUILD)/amiga/amarchy-gui
+$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/menu_geom.h amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC)
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_GUI_SRC)
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (-m68020 is safe since the driver names ixemul/lib/crt0.o by path,
@@ -1107,6 +1116,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap_load.o config/keymap_load.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upactive.o handler/upactive.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upreq.o handler/upreq.c
+	$(VC) -c -o $(BUILD)/amiga/obj/frontscr.o handler/frontscr.c
 	$(VC) -c -o $(BUILD)/amiga/obj/winspec.o handler/winspec.c
 	$(VC) -c -o $(BUILD)/amiga/obj/ldisc.o tty/ldisc.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upconf.o config/upconf.c
@@ -1119,7 +1129,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/painter.o $(BUILD)/amiga/obj/pens_amiga.o $(BUILD)/amiga/obj/painter_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/vtinput.o $(BUILD)/amiga/obj/sbar.o $(BUILD)/amiga/obj/sbar_gad.o $(BUILD)/amiga/obj/glyphmap.o $(BUILD)/amiga/obj/unifont.o $(BUILD)/amiga/obj/emoji.o \
 	  $(BUILD)/amiga/obj/outline.o $(BUILD)/amiga/obj/otag.o $(BUILD)/amiga/obj/ttf.o $(BUILD)/amiga/obj/fontpair.o \
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/kcmode.o $(BUILD)/amiga/obj/complete.o $(BUILD)/amiga/obj/complete_core.o $(BUILD)/amiga/obj/sh_path.o \
-	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/waitset.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/keymap_act.o $(BUILD)/amiga/obj/upmru.o $(BUILD)/amiga/obj/keymap.o $(BUILD)/amiga/obj/keymap_load.o $(BUILD)/amiga/obj/upactive.o $(BUILD)/amiga/obj/upreq.o $(BUILD)/amiga/obj/winspec.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/upconf_rows.o $(BUILD)/amiga/obj/termurl.o \
+	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/waitset.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/keymap_act.o $(BUILD)/amiga/obj/upmru.o $(BUILD)/amiga/obj/keymap.o $(BUILD)/amiga/obj/keymap_load.o $(BUILD)/amiga/obj/upactive.o $(BUILD)/amiga/obj/upreq.o $(BUILD)/amiga/obj/frontscr.o $(BUILD)/amiga/obj/winspec.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/upconf_rows.o $(BUILD)/amiga/obj/termurl.o \
 	  $(BUILD)/amiga/obj/prefs_core.o $(BUILD)/amiga/obj/prefs_dos.o $(BUILD)/amiga/obj/prefs_asl.o \
 	  $(BUILD)/amiga/obj/histfile.o $(BUILD)/amiga/obj/hd_datadir.o $(BUILD)/amiga/obj/hd_path.o $(BUILD)/amiga/obj/hd_util.o $(BUILD)/amiga/obj/hd_datadir_amiga.o \
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
@@ -1195,7 +1205,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dis
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga $(BUILD)/amiga/amarchy-menu bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -1232,7 +1242,7 @@ dist-base: amiga $(BUILD)/amiga/amarchy-menu bebbossh $(BUILD)/amiga/UPConsole $
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu dist/keymap $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui dist/keymap $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	# BebboSSH: our build (make bebbossh) over the drawer's sources, patches and licence; SHA256SUMS and TOOLCHAIN.txt from the build
 	cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/
@@ -1342,6 +1352,7 @@ dist-check: $(BUILD)/amiga/keymap.o $(BUILD)/updiff_kit_drv
 	python3 tests/test_dist_launch.py
 	python3 tests/test_amarchy_docs.py
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-menu
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-gui
 	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py

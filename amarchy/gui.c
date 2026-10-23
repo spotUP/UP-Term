@@ -1,0 +1,811 @@
+/* amarchy-gui: the drawn Amarchy menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A vbcc
+ * Intuition program, no ixemul. Same command line as amarchy-menu, so the commodity switches only the name:
+ *     amarchy-gui menu [node]      amarchy-gui viewer
+ * Rows and walking come from the one keymap (keymap_load, menu_core), the rectangles from menu_geom.c, the
+ * colours from menu_theme.c (the user's upconf palette through render/pens_amiga.c), a leaf is run by leaf.c.
+ * Modes in the one window: list, input (a leaf's value), message (a refusal), viewer (the [bind] lines).
+ * Every full draw bumps the global variable AMARCHY_DRAWS: the sentinel tools/rig/amarchy_gui_rig.py (G7)
+ * reads. */
+#include <exec/types.h>
+#include <exec/memory.h>
+#include <dos/dos.h>
+#include <dos/var.h>
+#include <graphics/gfx.h>
+#include <graphics/rastport.h>
+#include <graphics/text.h>
+#include <graphics/layers.h>
+#include <intuition/intuition.h>
+#include <intuition/intuitionbase.h>
+#include <intuition/screens.h>
+#include <devices/inputevent.h>
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include <proto/graphics.h>
+#include <proto/intuition.h>
+#include <string.h>
+#include "menu_core.h"
+#include "menu_geom.h"
+#include "menu_theme.h"
+#include "leaf.h"
+#include "../config/keymap_load.h"
+#include "../config/upconf.h"
+#include "../handler/frontscr.h"
+#include "../handler/upreq.h"
+#include "../render/pens_amiga.h"
+#include "../tty/qmark.h"
+#include "keymap_default.inc"
+
+/* vbcc's startup runs main on this much, and the cookie is what vsh, the Shell and Workbench read from the
+ * file to start it on that much. tests/test_amarchy_stack.py reads both from the built binary. */
+#define GUI_STACK 65536
+#define GUI_STR2(x) #x
+#define GUI_STR(x) GUI_STR2(x)
+long __stack = GUI_STACK;
+const char amarchy_gui_stack_cookie[] = "$STACK: " GUI_STR(GUI_STACK);
+
+#define USAGE "usage: amarchy-gui menu [node] | viewer\n"
+#define MAX_LINES 200
+#define EDIT_MAX 80
+
+struct IntuitionBase *IntuitionBase;
+struct GfxBase *GfxBase;
+
+enum { M_LIST, M_INPUT, M_MSG, M_VIEW };
+enum { K_NONE, K_CHAR, K_ESC, K_ENTER, K_BS, K_UP, K_DOWN, K_LEFT, K_RIGHT, K_PGUP, K_PGDN };
+
+typedef struct gui {
+    struct Screen *scr;
+    struct Window *win;
+    struct RastPort *rp;
+    struct TextFont *font;
+    struct ColorMap *cm;
+    mg_font mf;
+    mg_geom g;
+    int w;                       /* the window's width, every level */
+    int sw, sh;                  /* the screen */
+    int chev_w;
+    long pen[MT_ROLES];
+    char pen_got[MT_ROLES];
+    int mode;
+    int await;                   /* ChangeWindowBox sent, IDCMP_CHANGEWINDOW not yet seen */
+    int active_seen;
+    int stop;                    /* the running event loop ends */
+    int quit;                    /* the window is going: every loop ends */
+    long draws;
+    /* list */
+    char node[KM_ID * 2], filter[KM_LABEL];
+    mn_item it[MN_MAX_ITEMS];
+    int idx[MN_MAX_ITEMS], count;
+    int sel, top;
+    int chosen;                  /* index into keymap.menu of the leaf to run, else -1 */
+    /* viewer and message: lines of text */
+    const char *ln[MAX_LINES];
+    int ll[MAX_LINES], nlines;
+    const char *head;            /* viewer/message/input header text */
+    /* input */
+    char edit[EDIT_MAX];
+    int elen, edone;
+} gui;
+
+static keymap km;
+static gui G;
+static upconf conf;
+static char conf_buf[UC_MAX_FILE + 2];
+static char view_text[KM_MAX_BIND * 100];
+static char msg_text[UPREQ_ANSWER + 140];
+static char prompt_text[UPREQ_ANSWER + 80];
+
+/* ---- sentinel ----------------------------------------------------------------------------------------- */
+
+static void draws_publish(long n)
+{
+    char b[16];
+    int i = 15;
+    b[i] = 0;
+    do {
+        b[--i] = (char)('0' + n % 10);
+        n /= 10;
+    } while (n && i > 0);
+    SetVar((STRPTR) "AMARCHY_DRAWS", (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
+}
+
+/* ---- text and fills ----------------------------------------------------------------------------------- */
+
+static int text_len(const char *s, void *ctx)
+{
+    return (int)TextLength((struct RastPort *)ctx, (STRPTR)s, (ULONG)strlen(s));
+}
+
+static void fill(gui *g, int role, int x0, int y0, int x1, int y1)
+{
+    if (x1 < x0 || y1 < y0)
+        return;
+    SetAPen(g->rp, (ULONG)g->pen[role]);
+    RectFill(g->rp, x0, y0, x1, y1);
+}
+
+/* A text in a box of height boxh whose top is y, cut to maxw pixels. */
+static void put(gui *g, int role, int x, int y, int boxh, const char *s, int len, int maxw)
+{
+    struct TextExtent te;
+    ULONG n;
+    if (len <= 0 || maxw <= 0)
+        return;
+    n = TextFit(g->rp, (STRPTR)s, (ULONG)len, &te, 0, 1, (UWORD)maxw, 32767);
+    if (!n)
+        return;
+    SetAPen(g->rp, (ULONG)g->pen[role]);
+    Move(g->rp, x, y + (boxh - g->mf.ysize) / 2 + g->font->tf_Baseline);
+    Text(g->rp, (STRPTR)s, n);
+}
+
+/* ---- drawing ------------------------------------------------------------------------------------------ */
+
+static int shown_rows(const gui *g)
+{
+    return g->g.visible + (mg_more(&g->g, g->top) ? 1 : 0);
+}
+
+static void draw_border(gui *g)
+{
+    const mg_metrics *m = &g->g.m;
+    fill(g, MT_ACCENT, 0, 0, g->g.w - 1, m->by - 1);
+    fill(g, MT_ACCENT, 0, g->g.h - m->by, g->g.w - 1, g->g.h - 1);
+    fill(g, MT_ACCENT, 0, m->by, m->bx - 1, g->g.h - m->by - 1);
+    fill(g, MT_ACCENT, g->g.w - m->bx, m->by, g->g.w - 1, g->g.h - m->by - 1);
+}
+
+static void draw_header(gui *g)
+{
+    char h[KM_ID + KM_LABEL + 4];
+    const char *s = g->head;
+    const mg_geom *q = &g->g;
+    fill(g, MT_BG, q->head_x, q->head_y, q->head_x + q->head_w - 1, q->head_y + q->m.head_h - 1);
+    if (g->mode == M_LIST) {
+        mg_header(g->node, h, sizeof h);
+        if (g->filter[0]) {
+            strcat(h, ": ");
+            strcat(h, g->filter);
+        }
+        s = h;
+    }
+    put(g, MT_DIM, q->head_x + q->m.row_pad, q->head_y, q->m.head_h, s, (int)strlen(s),
+        q->head_w - 2 * q->m.row_pad);
+}
+
+/* One row of the current mode, entry e (0-based among all entries), when it is shown. */
+static void draw_row(gui *g, int e)
+{
+    const mg_geom *q = &g->g;
+    int i = e - g->top, y, bottom, sel, tx, tw;
+    if (g->await || e < 0 || e >= q->n || i < 0 || i >= shown_rows(g))
+        return;
+    y = mg_row_y(q, i);
+    bottom = y + q->m.row_h - 1;
+    if (bottom > q->list_y + q->list_h - 1)
+        bottom = q->list_y + q->list_h - 1;
+    sel = (g->mode == M_LIST && e == g->sel) || g->mode == M_INPUT;
+    fill(g, sel ? MT_SELBOX : MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
+    tx = q->list_x + q->m.row_pad;
+    tw = q->list_w - 2 * q->m.row_pad;
+    if (g->mode == M_LIST) {
+        const mn_item *it = &g->it[g->idx[e]];
+        int role = sel ? MT_ACCENT : MT_TEXT;
+        put(g, role, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
+        if (it->row < 0)
+            put(g, role, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
+    } else if (g->mode == M_INPUT) {
+        char t[EDIT_MAX + 2];
+        memcpy(t, g->edit, (size_t)g->elen);
+        t[g->elen] = '_';
+        put(g, MT_ACCENT, tx, y, q->m.row_h, t, g->elen + 1, tw);
+    } else
+        put(g, MT_TEXT, tx, y, q->m.row_h, g->ln[e], g->ll[e], tw);
+}
+
+/* The rows area (not a full draw: the sentinel counts those). */
+static void draw_list(gui *g)
+{
+    const mg_geom *q = &g->g;
+    int e;
+    if (g->await)
+        return;
+    fill(g, MT_BG, q->list_x, q->list_y, q->list_x + q->list_w - 1, q->list_y + q->list_h - 1);
+    for (e = g->top; e < g->top + shown_rows(g); e++)
+        draw_row(g, e);
+    /* the peek row's text runs past the list: put the padding and the border back */
+    fill(g, MT_BG, q->m.bx, q->list_y + q->list_h, q->w - q->m.bx - 1, q->h - q->m.by - 1);
+    draw_border(g);
+}
+
+static void draw_full(gui *g)
+{
+    if (g->await)
+        return;
+    fill(g, MT_BG, 0, 0, g->g.w - 1, g->g.h - 1);
+    draw_border(g);
+    draw_header(g);
+    draw_list(g);
+    g->draws++;
+    draws_publish(g->draws);
+}
+
+/* ---- geometry ----------------------------------------------------------------------------------------- */
+
+/* The window takes the layout of n entries: a changed box is sent to Intuition and drawn after its
+ * IDCMP_CHANGEWINDOW; an unchanged one is drawn at once. */
+static void relayout(gui *g, int n)
+{
+    struct Window *w = g->win;
+    mg_layout(&g->g, &g->mf, g->w, n, g->sw, g->sh);
+    if (w->LeftEdge != g->g.x || w->TopEdge != g->g.y || w->Width != g->g.w || w->Height != g->g.h) {
+        g->await = 1;
+        ChangeWindowBox(w, g->g.x, g->g.y, g->g.w, g->g.h);
+    } else
+        draw_full(g);
+}
+
+static void list_rebuild(gui *g)
+{
+    int n = mn_children(&km, g->node, g->it, MN_MAX_ITEMS);
+    g->count = mn_filter(g->it, n, g->filter, g->idx, MN_MAX_ITEMS);
+    g->sel = g->top = 0;
+    relayout(g, g->count);
+}
+
+static void set_sel(gui *g, int s)
+{
+    int old = g->sel, top = g->top;
+    if (g->count <= 0)
+        return;
+    if (s < 0)
+        s = 0;
+    if (s >= g->count)
+        s = g->count - 1;
+    g->sel = s;
+    g->top = mg_scroll(&g->g, s, top);
+    if (g->top != top) {
+        draw_list(g);
+    } else if (s != old) {
+        draw_row(g, old);
+        draw_row(g, s);
+    }
+}
+
+/* viewer and message: the first shown line moves, there is no selection */
+static void scroll_lines(gui *g, int d)
+{
+    int top = g->top + d, max = g->g.n - g->g.visible;
+    if (top > max)
+        top = max;
+    if (top < 0)
+        top = 0;
+    if (top != g->top) {
+        g->top = top;
+        draw_list(g);
+    }
+}
+
+/* ---- events ------------------------------------------------------------------------------------------- */
+
+static void go_up(gui *g)
+{
+    char up[KM_ID * 2];
+    if (mn_parent(g->node, up, sizeof up)) {
+        strcpy(g->node, up);
+        g->filter[0] = 0;
+        list_rebuild(g);
+    } else
+        g->quit = g->stop = 1;
+}
+
+static void activate(gui *g)
+{
+    const mn_item *it;
+    if (g->sel < 0 || g->sel >= g->count)
+        return;
+    it = &g->it[g->idx[g->sel]];
+    if (it->row < 0) {
+        mn_child_node(g->node, it, g->node, sizeof g->node);
+        g->filter[0] = 0;
+        list_rebuild(g);
+    } else {
+        g->chosen = it->row;
+        g->stop = 1;
+    }
+}
+
+static void key_list(gui *g, int k, int ch)
+{
+    int l = (int)strlen(g->filter);
+    switch (k) {
+    case K_ESC:
+        if (l) {
+            g->filter[0] = 0;
+            list_rebuild(g);
+        } else
+            go_up(g);
+        break;
+    case K_LEFT:
+        go_up(g);
+        break;
+    case K_ENTER:
+    case K_RIGHT:
+        activate(g);
+        break;
+    case K_UP:
+        set_sel(g, g->sel - 1);
+        break;
+    case K_DOWN:
+        set_sel(g, g->sel + 1);
+        break;
+    case K_PGUP:
+        set_sel(g, g->sel - g->g.visible);
+        break;
+    case K_PGDN:
+        set_sel(g, g->sel + g->g.visible);
+        break;
+    case K_BS:
+        if (l) {
+            g->filter[l - 1] = 0;
+            list_rebuild(g);
+        }
+        break;
+    case K_CHAR:
+        if (l < (int)sizeof g->filter - 1) {
+            g->filter[l] = (char)ch;
+            g->filter[l + 1] = 0;
+            list_rebuild(g);
+        }
+        break;
+    }
+}
+
+static void key_input(gui *g, int k, int ch)
+{
+    switch (k) {
+    case K_ESC:
+        g->elen = 0;
+        g->stop = 1;
+        break;
+    case K_ENTER:
+        g->edone = 1;
+        g->stop = 1;
+        break;
+    case K_BS:
+        if (g->elen) {
+            g->elen--;
+            draw_row(g, 0);
+        }
+        break;
+    case K_CHAR:
+        if (g->elen < EDIT_MAX - 1) {
+            g->edit[g->elen++] = (char)ch;
+            draw_row(g, 0);
+        }
+        break;
+    }
+}
+
+static void key_view(gui *g, int k)
+{
+    switch (k) {
+    case K_ESC:
+        g->quit = g->stop = 1;
+        break;
+    case K_UP:
+        scroll_lines(g, -1);
+        break;
+    case K_DOWN:
+        scroll_lines(g, 1);
+        break;
+    case K_PGUP:
+        scroll_lines(g, -g->g.visible);
+        break;
+    case K_PGDN:
+        scroll_lines(g, g->g.visible);
+        break;
+    }
+}
+
+static void key(gui *g, int k, int ch, int wheel)
+{
+    if (g->await)
+        return;
+    if (wheel) {
+        if (g->mode == M_LIST)
+            set_sel(g, g->sel + wheel);
+        else if (g->mode == M_VIEW)
+            scroll_lines(g, wheel * 3);
+        return;
+    }
+    switch (g->mode) {
+    case M_LIST:
+        key_list(g, k, ch);
+        break;
+    case M_INPUT:
+        key_input(g, k, ch);
+        break;
+    case M_MSG:
+        g->stop = 1;                        /* any key closes */
+        break;
+    default:
+        key_view(g, k);
+    }
+}
+
+static void raw_key(gui *g, int code)
+{
+    switch (code) {
+    case 0x4C: key(g, K_UP, 0, 0); break;
+    case 0x4D: key(g, K_DOWN, 0, 0); break;
+    case 0x4E: key(g, K_RIGHT, 0, 0); break;
+    case 0x4F: key(g, K_LEFT, 0, 0); break;
+    case 0x48: key(g, K_PGUP, 0, 0); break;
+    case 0x49: key(g, K_PGDN, 0, 0); break;
+    case 0x7A: key(g, K_NONE, 0, -1); break;     /* wheel up */
+    case 0x7B: key(g, K_NONE, 0, 1); break;      /* wheel down */
+    }
+}
+
+static void vanilla_key(gui *g, int c)
+{
+    if (c == 27)
+        key(g, K_ESC, 0, 0);
+    else if (c == 13 || c == 10)
+        key(g, K_ENTER, 0, 0);
+    else if (c == 8 || c == 127)
+        key(g, K_BS, 0, 0);
+    else if (c >= 32 && c < 127)
+        key(g, K_CHAR, c, 0);
+}
+
+static void mouse_button(gui *g, int code, int mx, int my)
+{
+    int h;
+    if (g->await)
+        return;
+    if (code == MENUDOWN) {                    /* right button: back, as Escape without a filter */
+        if (g->mode == M_LIST)
+            go_up(g);
+        else if (g->mode == M_VIEW)
+            g->quit = g->stop = 1;
+        else
+            g->stop = 1;
+        return;
+    }
+    if (code != SELECTDOWN)
+        return;
+    if (g->mode == M_MSG) {
+        g->stop = 1;
+        return;
+    }
+    if (g->mode != M_LIST)
+        return;
+    h = mg_hit(&g->g, g->top, mx, my);
+    if (h >= 0) {
+        set_sel(g, h);
+        activate(g);
+    }
+}
+
+static void mouse_move(gui *g, int mx, int my)
+{
+    int h;
+    if (g->await || g->mode != M_LIST)
+        return;
+    h = mg_hit(&g->g, g->top, mx, my);
+    if (h >= 0 && h < g->top + g->g.visible && h != g->sel)
+        set_sel(g, h);
+}
+
+/* Runs until g->stop (this mode is done) or g->quit (the window goes). */
+static void event_loop(gui *g)
+{
+    struct IntuiMessage *im;
+    while (!g->stop && !g->quit) {
+        WaitPort(g->win->UserPort);
+        while (!g->stop && (im = (struct IntuiMessage *)GetMsg(g->win->UserPort)) != 0) {
+            ULONG cls = im->Class;
+            UWORD code = im->Code;
+            WORD mx = im->MouseX, my = im->MouseY;
+            ReplyMsg((struct Message *)im);
+            switch (cls) {
+            case IDCMP_VANILLAKEY:
+                vanilla_key(g, code);
+                break;
+            case IDCMP_RAWKEY:
+                if (!(code & IECODE_UP_PREFIX))
+                    raw_key(g, code);
+                break;
+            case IDCMP_MOUSEBUTTONS:
+                mouse_button(g, code, mx, my);
+                break;
+            case IDCMP_MOUSEMOVE:
+                mouse_move(g, mx, my);
+                break;
+            case IDCMP_CHANGEWINDOW:
+                if (g->await) {
+                    g->await = 0;
+                    draw_full(g);
+                }
+                break;
+            case IDCMP_ACTIVEWINDOW:
+                g->active_seen = 1;
+                break;
+            case IDCMP_INACTIVEWINDOW:      /* a launcher: another window taking the focus closes it */
+                if (g->active_seen)
+                    g->quit = g->stop = 1;
+                break;
+            }
+        }
+    }
+}
+
+/* ---- screen, font, pens, window ---------------------------------------------------------------------- */
+
+static void conf_read(void)
+{
+    BPTR f = Open((STRPTR) "ENV:up-term/up-term", MODE_OLDFILE);
+    LONG got;
+    if (!f)
+        f = Open((STRPTR) "ENVARC:up-term/up-term", MODE_OLDFILE);
+    if (!f)
+        return;
+    got = Read(f, conf_buf, UC_MAX_FILE);
+    Close(f);
+    if (got > 0) {
+        conf_buf[got] = 0;
+        upconf_parse(&conf, conf_buf, got);
+    }
+}
+
+static void pens_get(gui *g)
+{
+    uc_u32 pal[16], rgb[MT_ROLES];
+    const char *v;
+    int r;
+    memset(pal, 0, sizeof pal);
+    conf_read();
+    v = upconf_str(&conf, "default", "palette", 0);
+    if (v)
+        upconf_palette_parse(v, pal);
+    menu_theme_roles(pal, rgb);
+    for (r = 0; r < MT_ROLES; r++) {
+        long p = vr_pen_obtain(g->cm, rgb[r]);
+        g->pen_got[r] = p >= 0;
+        g->pen[r] = p >= 0 ? p : (r == MT_BG ? 0 : 1);
+    }
+}
+
+static void pens_release(gui *g)
+{
+    int r;
+    for (r = 0; r < MT_ROLES; r++)
+        if (g->pen_got[r])
+            ReleasePen(g->cm, (ULONG)g->pen[r]);
+}
+
+static struct Window *window_open(gui *g)
+{
+    struct TagItem tags[] = {
+        { WA_Left, g->g.x }, { WA_Top, g->g.y }, { WA_Width, g->g.w }, { WA_Height, g->g.h },
+        { WA_PubScreen, (ULONG)g->scr }, { WA_Title, (ULONG) "Amarchy" },
+        { WA_Borderless, TRUE }, { WA_Activate, TRUE }, { WA_RMBTrap, TRUE },
+        { WA_SmartRefresh, TRUE }, { WA_ReportMouse, TRUE },
+        { WA_BackFill, (ULONG)LAYERS_NOBACKFILL },
+        { WA_IDCMP, IDCMP_VANILLAKEY | IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE |
+                    IDCMP_INACTIVEWINDOW | IDCMP_ACTIVEWINDOW | IDCMP_CHANGEWINDOW },
+        { TAG_DONE, 0 }
+    };
+    return OpenWindowTagList(0, tags);
+}
+
+/* ---- viewer and message lines ------------------------------------------------------------------------ */
+
+static void lines_split(gui *g, char *text)
+{
+    char *p = text, *nl;
+    g->nlines = 0;
+    while (*p && g->nlines < MAX_LINES) {
+        nl = strchr(p, '\n');
+        g->ln[g->nlines] = p;
+        g->ll[g->nlines++] = nl ? (int)(nl - p) : (int)strlen(p);
+        if (!nl)
+            break;
+        p = nl + 1;
+    }
+}
+
+/* the message cut into lines that fit tw pixels, at most max of them */
+static void lines_wrap(gui *g, const char *s, int tw, int max)
+{
+    struct TextExtent te;
+    int left = (int)strlen(s);
+    g->nlines = 0;
+    while (left > 0 && g->nlines < max) {
+        int n = (int)TextFit(g->rp, (STRPTR)s, (ULONG)left, &te, 0, 1, (UWORD)tw, 32767);
+        if (n <= 0)
+            n = 1;
+        g->ln[g->nlines] = s;
+        g->ll[g->nlines++] = n;
+        s += n;
+        left -= n;
+    }
+}
+
+/* ---- leaf callbacks ---------------------------------------------------------------------------------- */
+
+/* A value for an action that needs one: the header shows the prompt, the first row is the edit line. */
+static int gui_ask_value(void *ctx, const char *label, const char *usage, char *out, int n)
+{
+    gui *g = (gui *)ctx;
+    int ok;
+    if (g->quit)
+        return 0;
+    strcpy(prompt_text, label);
+    strcat(prompt_text, " (");
+    strncat(prompt_text, usage, UPREQ_ANSWER);
+    strcat(prompt_text, "):");
+    g->head = prompt_text;
+    g->mode = M_INPUT;
+    g->elen = g->edone = g->stop = 0;
+    g->top = 0;
+    relayout(g, 1);
+    event_loop(g);
+    ok = g->edone && g->elen > 0 && !g->quit;
+    if (ok) {
+        int l = g->elen < n - 1 ? g->elen : n - 1;
+        memcpy(out, g->edit, (size_t)l);
+        out[l] = 0;
+    }
+    return ok;
+}
+
+/* A refused action says why before the window closes; any key closes. */
+static void gui_refused(void *ctx, const char *label, long rc, const char *answer)
+{
+    gui *g = (gui *)ctx;
+    const char *why = answer && answer[0] ? answer :
+                      rc == UPREQ_NOPORT ? "no UP-Term window to run it in" :
+                      rc == UPREQ_NOWINDOW ? "the terminal has no window" :
+                      rc == UPREQ_BADVERSION ? "the terminal is another UP-Term version: reboot" :
+                      "the terminal does not know it";
+    if (g->quit)
+        return;
+    strcpy(msg_text, label);
+    strcat(msg_text, ": ");
+    strncat(msg_text, why, UPREQ_ANSWER);
+    g->head = "Amarchy";
+    g->mode = M_MSG;
+    g->stop = 0;
+    g->top = 0;
+    lines_wrap(g, msg_text, g->g.list_w - 2 * g->g.m.row_pad, MG_MAX_ROWS);
+    relayout(g, g->nlines);
+    event_loop(g);
+}
+
+/* ---- main -------------------------------------------------------------------------------------------- */
+
+static void cleanup(gui *g)
+{
+    if (g->win)
+        CloseWindow(g->win);
+    g->win = 0;
+    if (g->cm)
+        pens_release(g);
+    g->cm = 0;
+    if (g->scr)
+        UnlockPubScreen(0, g->scr);
+    g->scr = 0;
+}
+
+int main(int argc, char **argv)
+{
+    gui *g = &G;
+    struct RastPort tmp;
+    int viewer, rc = 0;
+    const char *node;
+
+    if (qmark_argv(argc, argv) || (argc > 1 && !strcmp(argv[1], "help"))) {
+        PutStr((STRPTR) USAGE);
+        return 0;
+    }
+    if (argc < 2 || (strcmp(argv[1], "menu") && strcmp(argv[1], "viewer"))) {
+        PutStr((STRPTR) USAGE);
+        return 5;
+    }
+    viewer = !strcmp(argv[1], "viewer");
+    node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
+    keymap_load(&km, km_default_text);
+
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR) "intuition.library", 39);
+    GfxBase = (struct GfxBase *)OpenLibrary((STRPTR) "graphics.library", 39);
+    if (!IntuitionBase || !GfxBase) {
+        PutStr((STRPTR) "amarchy-gui: needs AmigaOS 3.0 or newer\n");
+        rc = 20;
+        goto done;
+    }
+    g->scr = lock_front_screen();
+    if (!g->scr)
+        g->scr = LockPubScreen(0);
+    if (!g->scr) {
+        PutStr((STRPTR) "amarchy-gui: no screen\n");
+        rc = 20;
+        goto done;
+    }
+    g->cm = g->scr->ViewPort.ColorMap;
+    g->font = g->scr->RastPort.Font;
+    g->mf.ysize = g->font->tf_YSize;
+    g->mf.cw = g->font->tf_XSize;
+    g->sw = g->scr->Width;
+    g->sh = g->scr->Height;
+    pens_get(g);
+
+    /* the font's text lengths before the window exists */
+    InitRastPort(&tmp);
+    SetFont(&tmp, g->font);
+    g->chev_w = text_len(">", &tmp);
+    g->chosen = -1;
+    strcpy(g->node, node);
+    if (viewer) {
+        int i, w = 0;
+        mg_metrics m;
+        mn_viewer_text(&km, view_text, sizeof view_text);
+        g->mode = M_VIEW;
+        g->head = "Key bindings";
+        lines_split(g, view_text);
+        for (i = 0; i < g->nlines; i++) {
+            int lw = (int)TextLength(&tmp, (STRPTR)g->ln[i], (ULONG)g->ll[i]);
+            if (lw > w)
+                w = lw;
+        }
+        mg_metrics_for(&m, &g->mf);
+        w += 2 * m.bx + 2 * m.hpad + 2 * m.row_pad;
+        if (w < m.min_w)
+            w = m.min_w;
+        if (w > g->sw - 2 * m.margin_x)
+            w = g->sw - 2 * m.margin_x;
+        g->w = w;
+        mg_layout(&g->g, &g->mf, g->w, g->nlines, g->sw, g->sh);
+    } else {
+        int n;
+        g->mode = M_LIST;
+        g->w = mg_width(&km, g->node, &g->mf, 0, g->chev_w, text_len, &tmp, g->sw);
+        n = mn_children(&km, g->node, g->it, MN_MAX_ITEMS);
+        g->count = mn_filter(g->it, n, g->filter, g->idx, MN_MAX_ITEMS);
+        mg_layout(&g->g, &g->mf, g->w, g->count, g->sw, g->sh);
+    }
+    g->win = window_open(g);
+    if (!g->win) {
+        PutStr((STRPTR) "amarchy-gui: cannot open the window\n");
+        rc = 20;
+        goto done;
+    }
+    g->rp = g->win->RPort;
+    SetFont(g->rp, g->font);
+    SetDrMd(g->rp, JAM1);
+    draw_full(g);
+    event_loop(g);
+
+    if (g->chosen >= 0 && !g->quit) {
+        lf_ui ui;
+        ui.ask_value = gui_ask_value;
+        ui.refused = gui_refused;
+        ui.ctx = g;
+        g->stop = 0;
+        /* a program, a script or a new window needs no menu around it; a terminal action may ask or refuse */
+        if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST) {
+            cleanup(g);
+            g->rp = 0;
+        }
+        rc = lf_run(&km.menu[g->chosen], &ui);
+    }
+done:
+    cleanup(g);
+    if (GfxBase)
+        CloseLibrary((struct Library *)GfxBase);
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
+    return rc;
+}

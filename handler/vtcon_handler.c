@@ -67,6 +67,7 @@
 #include "menu_ids.h"
 #include "keymap_act.h"
 #include "upreq.h"
+#include "frontscr.h"
 #include "upactive.h"
 #include "../config/keymap_load.h"
 #include "slash.h"
@@ -2771,28 +2772,6 @@ static int own_screen_retry(con *c)
 /* The screen the window opens on, locked: its own (OWNSCREEN /
  * FULLSCREEN / PUBSCREEN, opened now if need be), the named public screen,
  * the default one. 0 when none can be locked. */
-/* FRONT: the front screen locked by its public name, 0 when it is not
- * public (the caller falls back to the default public screen). */
-static struct Screen *lock_front_screen(void)
-{
-    struct Screen *scr = 0, *front = IntuitionBase->FirstScreen;
-    struct List *list = LockPubScreenList();
-    struct Node *n;
-    char name[MAXPUBSCREENNAME + 1];
-    name[0] = 0;
-    for (n = list->lh_Head; n->ln_Succ; n = n->ln_Succ) {
-        struct PubScreenNode *ps = (struct PubScreenNode *)n;
-        if (ps->psn_Screen == front && n->ln_Name) {
-            copy_str(name, n->ln_Name, sizeof(name));
-            break;
-        }
-    }
-    UnlockPubScreenList();
-    if (name[0])
-        scr = LockPubScreen((UBYTE *)name);
-    return scr;
-}
-
 static struct Screen *lock_screen(con *c)
 {
     struct Screen *scr = 0;

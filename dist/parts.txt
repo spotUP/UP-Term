@@ -46,6 +46,7 @@ tools           Files/UP-Term.version
 tools           Files/VERSIONS
 tools           Files/Amarchy
 tools           Files/amarchy-menu
+tools           Files/amarchy-gui
 tools           Files/keymap
 tools           Files/hl
 tools           Files/mdv

@@ -43,10 +43,10 @@ class AmarchyDocs(unittest.TestCase):
 
     def test_install_rows_and_startup_block(self):
         parts = read('dist/parts.txt')
-        for f in ('Amarchy', 'amarchy-menu', 'keymap'):
+        for f in ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'keymap'):
             self.assertRegex(parts, r'(?m)^tools\s+Files/%s$' % f)
         d = read('dist/install.dos')
-        self.assertIn('Copy Amarchy amarchy-menu UP-Term:bin CLONE', d)
+        self.assertIn('Copy Amarchy amarchy-menu amarchy-gui UP-Term:bin CLONE', d)
         self.assertIn('Run >NIL: UP-Term:bin/Amarchy', d)
         self.assertIn(';BEGIN UP-Term Amarchy', d)
 
@@ -58,7 +58,7 @@ class AmarchyDocs(unittest.TestCase):
     @unittest.skipUnless((KIT / 'Files/MANIFEST').is_file(), 'built kit missing: make dist-base')
     def test_built_base_kit_holds_amarchy(self):
         man = (KIT / 'Files/MANIFEST').read_text(encoding='latin-1')
-        for f in ('Amarchy', 'amarchy-menu', 'keymap'):
+        for f in ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'keymap'):
             self.assertTrue((KIT / 'Files' / f).is_file(), 'kit lacks Files/' + f)
             self.assertRegex(man, r'(?m)^tools \d+ [0-9a-f]{8} Files/%s$' % f)
         self.assertTrue((KIT / 'Files/userland/share/man/man1/amarchy.1').is_file())

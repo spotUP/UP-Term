@@ -382,12 +382,12 @@ Copy upgetty C:upgetty CLONE
 ; hl and mdv: a source file in colour, Markdown formatted for the window
 ; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
 Copy hl mdv UP-Term:bin CLONE
-; Amarchy: the Super-key commodity (Left Amiga + a key) and amarchy-menu, the quick menu
-; and key viewer its keys start. The key file: laid down where the user has none; an
+; Amarchy: the Super-key commodity (Left Amiga + a key) and amarchy-menu and amarchy-gui, the
+; quick menu and key viewer its keys start. The key file: laid down where the user has none; an
 ; edited file stays, the new one is written beside it as keymap.new (an Update never
 ; clobbers it). A marked block in S:User-Startup starts the commodity at every boot
 ; (Uninstall takes it out with unstartup.sh).
-Copy Amarchy amarchy-menu UP-Term:bin CLONE
+Copy Amarchy amarchy-menu amarchy-gui UP-Term:bin CLONE
 If NOT EXISTS ENVARC:up-term/keymap
   Copy keymap ENVARC:up-term/keymap CLONE QUIET
 Else

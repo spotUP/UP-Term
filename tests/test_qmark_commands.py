@@ -46,6 +46,7 @@ COMMANDS = {
     'Claude': 'claude/main_amiga.c',
     'Amarchy': 'amarchy/amarchy.c',
     'amarchy-menu': 'amarchy/menu.c',
+    'amarchy-gui': 'amarchy/gui.c',
 }
 # not commands: handlers, devices, objects, and probes / test tools
 EXCLUDED = {
