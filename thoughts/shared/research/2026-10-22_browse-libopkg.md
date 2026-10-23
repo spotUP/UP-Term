@@ -169,3 +169,9 @@ Cause: product, not the check. libupkgui built its \Z colour table (a_col[]) in 
 Evidence: host pty run of browse_tty.sh with KEEP=1, SGR histogram of the output held no \e[32m / \e[33m, only 36 (chrome), 90, 95; installed row came out as `\e[39;49m ... \e[m` (zero attribute). After the fix the same row is `\e[32m\e[40minstalled`. (The old PNGs in build/rig4/upkg-browse were stale: Oct 21.)
 Fix: upterm-ports eaf3118 (pkgs/upkg-ui/src/ui.c builds a_col always; regression check pkgs/upkg-ui/check/colorlate.sh + colorlate.c, fails before, passes after; note a selected row keeps the base attribute, so the check puts the \Z2 row second).
 Rig 4 (make opkg, rig start --max): upkg_browse_rig.py 13 of 13; green pixels 0 -> 1938 after install, 1938 -> 0 after remove.
+
+## R2 B5 and 0026 proof (2026-10-23)
+
+Cause: not the script. `upkg update` with `lists_dir NOSUCHVOL:lists` never returned: opkg's file_mkdir_hier (libopkg/file_util.c) recursed on the parent of an absent Amiga volume root, stat() kept returning ENOENT and xdirname() did not shrink the path, so the stack overflowed (minimal conf: vsh printed "Bus error - upkg"; real conf: no output, no "[exit N]", rc 1; a direct run hung 60 s and ignored Ctrl-C, slot held; a second probe under Stack 262144 behaved the same). Unverified: the exact dirname() result for "NOSUCHVOL:" (not read from ixemul); the fix guards on parent == path.
+Fix: upterm-ports opkg patch 0027 (file_mkdir_hier stops when parent equals path). Rig 4 upkg_browse_extra_rig.py with 0026 + 0027: B5 PASS (no requester, [exit 255]), 10 of 10 checks.
+Not done: revert proof (0026 removed, expect a requester) and a host regression test for 0027 (host dirname("/") exists, so the loop is not reproducible on the host; needs a fake-stat check). Rig 4 stopped at the end.
