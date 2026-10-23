@@ -73,4 +73,8 @@ void ix_load_file(const keymap *k, ix_index *x, const char *path);
 int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
              int max);
 
+/* The path an index item launches (the tool or project, no .info), copied into out. 1, or 0 when it is
+ * not an index item or its row is not in x. */
+int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n);
+
 #endif

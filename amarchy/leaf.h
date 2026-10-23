@@ -41,4 +41,9 @@ typedef struct lf_ui {
 /* returns the action's code (0 = done) */
 int lf_run(const km_menu *m, const lf_ui *ui);
 
+/* Launch an index row (an app or a game found by amarchy-index) the way a Workbench double-click does
+ * (wblaunch.h), never through a shell. Failure goes through ui->refused with the reason as answer, as a
+ * run: row's does. 0, or UPREQ_FAILED. */
+int lf_open_index(const char *label, const char *path, const lf_ui *ui);
+
 #endif

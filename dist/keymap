@@ -99,6 +99,7 @@ apps.upterm        = UP-Term               | open:uterm
 apps.upkg          = Install add-ons       | run:upkg-browse
 apps.tmux          = Tmux                  | run:tmux
 apps.editor        = Editor                | run:nvim
+apps.rescan        = Rescan apps           | run:amarchy-index
 apps.claude        = Claude                | menuid:MENU_CLAUDE
 style.theme        = Theme                 | slash:/theme
 style.font         = Font                  | slash:/font

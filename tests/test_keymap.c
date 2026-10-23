@@ -688,17 +688,17 @@ static void osd_size_counts_the_reachable_levels(void)
     CHECK_INT(rows, MN_OSD_HEAD_LINES + 1);
     CHECK_INT(cols, MN_OSD_MIN_COLS);              /* "Theme" + pad is shorter than the minimum */
     /* the shipped dist/keymap: the sizes the commodity opens Super+Space and Super+Shift+Space with
-     * (worked out from the file's [menu] rows with a separate script: 5 entries at most in apps, labels short) */
+     * (worked out from the file's [menu] rows with a separate script: 6 entries at most in apps, labels short) */
     {
         static char file[16384];
         long n = slurp("dist/keymap", file, sizeof(file));
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 5);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 6);
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 5);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 6);
     }
 }
 
@@ -767,11 +767,11 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     mg_header("apps.tools", head, sizeof head);
     CHECK_STR(head, "Tools");
 
-    /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 5 rows; the widest label of all
+    /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
     CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 3);
-    CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
+    CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 6);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
     /* 3 rows: chrome 2 x 2 + 2 x 11 + 20 + 4 = 50, rows 3 x 32 - 2 = 94 */
@@ -1521,6 +1521,38 @@ static void the_apps_level_lists_index_apps_after_merging(void)
     CHECK(idx >= 0 && !strcmp(x.rows[idx].path, "Sys:Tools/Clock"));
 }
 
+static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_apps_menu(void)
+{
+    static ix_index x;
+    static char buf[KM_MAX_BIND * 100];
+    mn_item it[IX_LEVEL_MAX];
+    char path[IX_PATH];
+    int n, i, clock = -1, rescan = -1;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_load_text(&km, &x, index_cache);
+    n = ix_level(&km, &x, "apps", "", it, IX_LEVEL_MAX);
+    for (i = 0; i < n; i++)
+        if (!strcmp(it[i].label, "Clock"))
+            clock = i;
+    CHECK(clock >= 0);
+    CHECK_INT(ix_launch_path(&x, &it[clock], path, sizeof path), 1);
+    CHECK_STR(path, "Sys:Tools/Clock");                /* the tool, no .info */
+    CHECK_INT(ix_launch_path(&x, &it[0], path, sizeof path), 0);   /* a menu row is not launched this way */
+    CHECK_INT(ix_launch_path(&x, &it[clock], path, 8), 0);         /* a path that does not fit */
+    /* the cache is read again when ix_load_text runs again: a rescan shows on the next menu open */
+    ix_load_text(&km, &x, "app\tZed\tWork:Zed\n");
+    CHECK_INT(x.n, 1);
+    /* the shipped menu has the Rescan apps row, and it starts the scanner */
+    n = slurp("dist/keymap", buf, sizeof(buf));
+    CHECK(n > 0 && keymap_parse(&km, buf, n));
+    for (i = 0; i < km.nmenu; i++)
+        if (!strcmp(km.menu[i].id, "apps.rescan"))
+            rescan = i;
+    CHECK(rescan >= 0);
+    CHECK_STR(km.menu[rescan].label, "Rescan apps");
+    CHECK_STR(km.menu[rescan].arg, "amarchy-index");
+}
+
 static void a_menu_row_hides_an_index_app_with_the_same_label(void)
 {
     static ix_index x;
@@ -1596,6 +1628,7 @@ static void the_app_index_core_behaves(void)
     equal_index_labels_get_their_volume_as_suffix_and_rows_sort_by_label();
     a_menu_row_wins_over_an_index_row_with_the_same_label();
     the_apps_level_lists_index_apps_after_merging();
+    an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_apps_menu();
     a_menu_row_hides_an_index_app_with_the_same_label();
     the_games_level_lists_index_games_and_the_root_offers_the_group();
     a_missing_or_empty_cache_adds_no_index_rows();

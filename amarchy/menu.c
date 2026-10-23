@@ -158,8 +158,12 @@ static int menu_loop(const char *start)
         if (ui_selected() < 0 || ui_selected() >= c)
             continue;
         i = idx[ui_selected()];
-        if (MN_IS_INDEX(&it[i]))
-            continue;                          /* launching an index row is X5 */
+        if (MN_IS_INDEX(&it[i])) {
+            char path[IX_PATH];
+            if (!ix_launch_path(&ixs, &it[i], path, sizeof path))
+                continue;
+            return lf_open_index(it[i].label, path, &leaf_ui);
+        }
         if (MN_IS_GROUP(&it[i])) {
             mn_child_node(node, &it[i], node, sizeof node);
             filter[0] = 0;
