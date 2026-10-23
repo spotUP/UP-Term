@@ -1397,7 +1397,8 @@ static void parse_spec(con *c, const char *s)
             c->wflags &= ~WFLG_DRAGBAR;
         } else if (str_ieq(field, "NOBORDER")) {
             /* borderless and bare: no drag bar, depth or size gadget (AM-OSD); no spec in the
-             * repo relied on them. CLOSE after it still adds the close gadget. */
+             * repo relied on them. No size gadget and no border also means no scroll bar
+             * (sbar_gad_fits), as the owner decided. CLOSE after it still adds the close gadget. */
             c->wflags |= WFLG_BORDERLESS;
             c->wflags &= ~(WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_SIZEGADGET);
         } else if (str_ieq(field, "NOSIZE")) {
