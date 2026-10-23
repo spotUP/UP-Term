@@ -381,11 +381,11 @@ Checklist:
 - [x] R6.1b (c6778285) `vo_set_aspect` + VO_CELL carries rx, ry; worker uses fit for shape-kept
   glyphs; cache cleared on change.
 - [x] R6.1c (c6778285) vtwin keeps Resolution and calls `vo_set_aspect` (screen change and font open).
-- [ ] R6.1d Rig: hires non-lace (tall pixels) and RTG (square): an icon's ink box
+- [ ] R6.1d [rig done 958f7f84: hires icon 16x7, RTG 16x15, r6_rig 4 of 4 each; A1200 open] Rig: hires non-lace (tall pixels) and RTG (square): an icon's ink box
   width:height in pixels follows the pixel aspect; a powerline separator still fills
   the cell. A1200 manual check by the owner.
 - [x] R6.2a (a6cc9caa) Icons two cells wide (handler wcwidth path), vsh agrees.
-- [ ] R6.2b Rig + A1200 check: icons two cells, prompt columns line up.
+- [ ] R6.2b [rig done 958f7f84: icons two cells on hires and RTG; A1200 and prompt-column check open] Rig + A1200 check: icons two cells, prompt columns line up.
 - [x] R6.3 (3093a67f) Placement fix from the first R6 rig run (ea4438ba, tools/rig/r6_rig.py):
   two-cell icons were fitted as two ems (half size: 8x8 on RTG 8x16) and powerline
   separators used the bitmap baseline (RTG E0B0 inked rows 0..9 of 16). `ttf_place`:
