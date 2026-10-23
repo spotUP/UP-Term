@@ -9,8 +9,15 @@
 
 #define MN_MAX_ITEMS 64
 
+#define MN_ROW_GROUP (-1)
+#define MN_ROW_INDEX (-2)       /* the action kind of an app or game from the index: X5 launches it */
+#define MN_IS_GROUP(it) ((it)->row == MN_ROW_GROUP)
+#define MN_IS_INDEX(it) ((it)->row == MN_ROW_INDEX)
+
 typedef struct mn_item {
-    int  row;                   /* index into keymap.menu, -1 for a group (a node with children) */
+    int  row;                   /* index into keymap.menu, MN_ROW_GROUP for a group (a node with children),
+                                 * MN_ROW_INDEX for an app index row (amarchy/index_core.h) */
+    int  ix;                    /* for MN_ROW_INDEX: the row in the ix_index; else -1 */
     char seg[KM_ID];            /* the id segment: the node path of a group is node + "." + seg */
     char label[KM_LABEL];       /* a leaf's own label; a group's segment with a capital */
 } mn_item;

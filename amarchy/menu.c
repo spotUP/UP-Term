@@ -17,6 +17,7 @@
 #include <proto/intuition.h>
 #include "atiming.h"
 #include "menu_core.h"
+#include "index_core.h"
 #include "leaf.h"
 #include "../config/keymap_load.h"
 #include "../handler/upreq.h"
@@ -98,20 +99,23 @@ static const lf_ui leaf_ui = { ask_value, say_refused, 0 };
 
 static int menu_loop(const char *start)
 {
-    mn_item it[MN_MAX_ITEMS];
-    int idx[MN_MAX_ITEMS], n, c, i, rc = 0;
+    static mn_item it[IX_LEVEL_MAX];
+    static ix_index ixs;
+    static int idx[IX_LEVEL_MAX];
+    int n, c, i, rc = 0;
     char node[KM_ID * 2], filter[KM_LABEL], prompt[96];
-    entry ent[MN_MAX_ITEMS];
+    static entry ent[IX_LEVEL_MAX];
 
     strncpy(node, start, sizeof node - 1);
     node[sizeof node - 1] = 0;
     filter[0] = 0;
+    ix_load_file(&km, &ixs, IX_CACHE_PATH);
     for (;;) {
-        n = mn_children(&km, node, it, MN_MAX_ITEMS);
-        c = mn_filter(it, n, filter, idx, MN_MAX_ITEMS);
+        n = ix_level(&km, &ixs, node, filter, it, IX_LEVEL_MAX);
+        c = mn_filter(it, n, filter, idx, IX_LEVEL_MAX);
         for (i = 0; i < c; i++) {
             ent[i].tag = it[idx[i]].label;
-            ent[i].item = it[idx[i]].row < 0 ? ">" : "";
+            ent[i].item = MN_IS_GROUP(&it[idx[i]]) ? ">" : "";
         }
         ui_opt.kind = K_MENU;
         ui_opt.title = "Menu";
@@ -154,7 +158,9 @@ static int menu_loop(const char *start)
         if (ui_selected() < 0 || ui_selected() >= c)
             continue;
         i = idx[ui_selected()];
-        if (it[i].row < 0) {
+        if (MN_IS_INDEX(&it[i]))
+            continue;                          /* launching an index row is X5 */
+        if (MN_IS_GROUP(&it[i])) {
             mn_child_node(node, &it[i], node, sizeof node);
             filter[0] = 0;
             continue;

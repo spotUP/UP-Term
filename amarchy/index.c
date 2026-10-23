@@ -23,7 +23,7 @@ static const char ver[] = "$VER: amarchy-index 1.0 (23.10.2026) (UP-Term)";
 #define IX_DEPTH    6
 #define IX_MAXROWS  3000
 #define IX_MAXVOLS  16
-#define IX_DEST     "ENVARC:Amarchy/apps"
+#define IX_DEST     IX_CACHE_PATH
 #define IX_TMP      "ENVARC:Amarchy/apps.tmp"
 #define ID_CD01 0x43443031L
 #define ID_CDFS 0x43444653L

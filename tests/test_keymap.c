@@ -1480,6 +1480,113 @@ static void a_menu_row_wins_over_an_index_row_with_the_same_label(void)
     CHECK_INT(ix_drop_shadowed(&km, "window", r, 1), 1);
 }
 
+static const char *const index_cache =
+    "app\tClock\tSys:Tools/Clock\n"
+    "app\tTmux\tWork:T/tmux\n"
+    "game\tTurrican 2\tWork:Games/Turrican2\n"
+    "bad row\n"
+    "app\tEditor\tSys:E/Editor\n"
+    "app\tEditor\tWork:E/Editor\n";
+
+static int level_has(const mn_item *it, int n, const char *label)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (!strcmp(it[i].label, label))
+            return 1;
+    return 0;
+}
+
+static void the_apps_level_lists_index_apps_after_merging(void)
+{
+    static ix_index x;
+    mn_item it[IX_LEVEL_MAX];
+    int n, base, i, idx = -1;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\napps.upkg = Add-ons | run:upkg\n"));
+    ix_load_text(&km, &x, index_cache);
+    base = mn_children(&km, "apps", it, IX_LEVEL_MAX);
+    n = ix_level(&km, &x, "apps", "", it, IX_LEVEL_MAX);
+    CHECK_INT(base, 2);
+    CHECK_INT(n, 5);                                   /* 2 menu rows + Clock + 2 Editors */
+    CHECK_STR(it[0].label, "Tmux");                    /* the keymap rows come first */
+    CHECK(level_has(it, n, "Clock"));
+    CHECK(level_has(it, n, "Editor (Sys)"));           /* a shared label carries its volume */
+    CHECK(level_has(it, n, "Editor (Work)"));
+    CHECK(!level_has(it, n, "Turrican 2"));
+    for (i = base; i < n; i++) {
+        CHECK(MN_IS_INDEX(&it[i]));                    /* the action kind X5 launches */
+        if (!strcmp(it[i].label, "Clock"))
+            idx = it[i].ix;
+    }
+    CHECK(idx >= 0 && !strcmp(x.rows[idx].path, "Sys:Tools/Clock"));
+}
+
+static void a_menu_row_hides_an_index_app_with_the_same_label(void)
+{
+    static ix_index x;
+    mn_item it[IX_LEVEL_MAX];
+    int n, i, tmux = 0;
+    CHECK(parse("[menu]\napps.tmux = tmux | run:tmux\n"));
+    ix_load_text(&km, &x, index_cache);
+    n = ix_level(&km, &x, "apps", "", it, IX_LEVEL_MAX);
+    for (i = 0; i < n; i++)
+        if (!strcasecmp(it[i].label, "tmux"))
+            tmux++;
+    CHECK_INT(tmux, 1);
+    CHECK(!MN_IS_INDEX(&it[0]));
+}
+
+static void the_games_level_lists_index_games_and_the_root_offers_the_group(void)
+{
+    static ix_index x;
+    mn_item it[IX_LEVEL_MAX];
+    int n;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_load_text(&km, &x, index_cache);
+    n = ix_level(&km, &x, "games", "", it, IX_LEVEL_MAX);
+    CHECK_INT(n, 1);
+    CHECK_STR(it[0].label, "Turrican 2");
+    CHECK(MN_IS_INDEX(&it[0]));
+    n = ix_level(&km, &x, "", "", it, IX_LEVEL_MAX);
+    CHECK(level_has(it, n, "Games"));
+    CHECK(!level_has(it, n, "Turrican 2"));            /* without a filter the root stays short */
+}
+
+static void a_missing_or_empty_cache_adds_no_index_rows(void)
+{
+    static ix_index x;
+    mn_item it[IX_LEVEL_MAX], base[IX_LEVEL_MAX];
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_load_text(&km, &x, "");
+    CHECK_INT(ix_level(&km, &x, "apps", "", it, IX_LEVEL_MAX), mn_children(&km, "apps", base, IX_LEVEL_MAX));
+    CHECK_INT(ix_level(&km, &x, "games", "", it, IX_LEVEL_MAX), 0);
+    CHECK_INT(ix_level(&km, &x, "", "tur", it, IX_LEVEL_MAX), mn_children(&km, "", base, IX_LEVEL_MAX));
+    ix_load_file(&km, &x, "/nonexistent/amarchy/apps");
+    CHECK_INT(x.n, 0);
+    ix_load_text(&km, &x, 0);
+    CHECK_INT(x.n, 0);
+}
+
+static void root_search_finds_an_index_game_and_an_index_app(void)
+{
+    static ix_index x;
+    mn_item it[IX_LEVEL_MAX];
+    int idx[IX_LEVEL_MAX], n, c;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_load_text(&km, &x, index_cache);
+    n = ix_level(&km, &x, "", "turr", it, IX_LEVEL_MAX);
+    c = mn_filter(it, n, "turr", idx, IX_LEVEL_MAX);
+    CHECK_INT(c, 1);
+    CHECK_STR(it[idx[0]].label, "Turrican 2");
+    CHECK(MN_IS_INDEX(&it[idx[0]]));
+    n = ix_level(&km, &x, "", "clo", it, IX_LEVEL_MAX);
+    c = mn_filter(it, n, "clo", idx, IX_LEVEL_MAX);
+    CHECK_INT(c, 1);
+    CHECK_STR(it[idx[0]].label, "Clock");
+    n = ix_level(&km, &x, "", "zzz", it, IX_LEVEL_MAX);
+    CHECK_INT(mn_filter(it, n, "zzz", idx, IX_LEVEL_MAX), 0);
+}
+
 static void the_app_index_core_behaves(void)
 {
     an_index_row_has_kind_label_and_path();
@@ -1488,4 +1595,9 @@ static void the_app_index_core_behaves(void)
     the_skip_list_skips_by_whole_path_prefix();
     equal_index_labels_get_their_volume_as_suffix_and_rows_sort_by_label();
     a_menu_row_wins_over_an_index_row_with_the_same_label();
+    the_apps_level_lists_index_apps_after_merging();
+    a_menu_row_hides_an_index_app_with_the_same_label();
+    the_games_level_lists_index_games_and_the_root_offers_the_group();
+    a_missing_or_empty_cache_adds_no_index_rows();
+    root_search_finds_an_index_game_and_an_index_app();
 }

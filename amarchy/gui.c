@@ -24,6 +24,7 @@
 #include <proto/intuition.h>
 #include <string.h>
 #include "menu_core.h"
+#include "index_core.h"
 #include "menu_geom.h"
 #include "menu_theme.h"
 #include "leaf.h"
@@ -78,8 +79,8 @@ typedef struct gui {
     long draws;
     /* list */
     char node[KM_ID * 2], filter[KM_LABEL];
-    mn_item it[MN_MAX_ITEMS];
-    int idx[MN_MAX_ITEMS], count;
+    mn_item it[IX_LEVEL_MAX];
+    int idx[IX_LEVEL_MAX], count;
     int sel, top;
     int chosen;                  /* index into keymap.menu of the leaf to run, else -1 */
     /* viewer and message: lines of text */
@@ -92,6 +93,7 @@ typedef struct gui {
 } gui;
 
 static keymap km;
+static ix_index ixs;
 static gui G;
 static upconf conf;
 static char conf_buf[UC_MAX_FILE + 2];
@@ -226,7 +228,7 @@ static void draw_row(gui *g, int e)
             tw -= ic;
         }
         put(g, role, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
-        if (it->row < 0)
+        if (MN_IS_GROUP(it))
             put(g, role, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
     } else if (g->mode == M_INPUT) {
         char t[EDIT_MAX + 2];
@@ -281,8 +283,8 @@ static void relayout(gui *g, int n)
 
 static void list_rebuild(gui *g)
 {
-    int n = mn_children(&km, g->node, g->it, MN_MAX_ITEMS);
-    g->count = mn_filter(g->it, n, g->filter, g->idx, MN_MAX_ITEMS);
+    int n = ix_level(&km, &ixs, g->node, g->filter, g->it, IX_LEVEL_MAX);
+    g->count = mn_filter(g->it, n, g->filter, g->idx, IX_LEVEL_MAX);
     g->sel = g->top = 0;
     relayout(g, g->count);
 }
@@ -339,7 +341,9 @@ static void activate(gui *g)
     if (g->sel < 0 || g->sel >= g->count)
         return;
     it = &g->it[g->idx[g->sel]];
-    if (it->row < 0) {
+    if (MN_IS_INDEX(it))
+        return;                                /* launching an index row is X5 */
+    if (MN_IS_GROUP(it)) {
         mn_child_node(g->node, it, g->node, sizeof g->node);
         g->filter[0] = 0;
         list_rebuild(g);
@@ -763,6 +767,7 @@ int main(int argc, char **argv)
     viewer = !strcmp(argv[1], "viewer");
     node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
     keymap_load(&km, km_default_text);
+    ix_load_file(&km, &ixs, IX_CACHE_PATH);
 
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR) "intuition.library", 39);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR) "graphics.library", 39);
@@ -821,8 +826,8 @@ int main(int argc, char **argv)
         g->icon_h = mi_count() > 0 ? mi_size(&m) : 0;
         g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
         g->w = mg_width(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms);
-        n = mn_children(&km, g->node, g->it, MN_MAX_ITEMS);
-        g->count = mn_filter(g->it, n, g->filter, g->idx, MN_MAX_ITEMS);
+        n = ix_level(&km, &ixs, g->node, g->filter, g->it, IX_LEVEL_MAX);
+        g->count = mn_filter(g->it, n, g->filter, g->idx, IX_LEVEL_MAX);
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
     }
     g->win = window_open(g);

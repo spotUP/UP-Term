@@ -152,3 +152,96 @@ int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n)
     }
     return out;
 }
+
+void ix_load_text(const keymap *k, ix_index *x, const char *text)
+{
+    static ix_row all[IX_MAX_ROWS];
+    int n = 0, i, na = 0, ng;
+    x->n = x->napps = 0;
+    while (text && *text && n < IX_MAX_ROWS) {
+        const char *nl = strchr(text, '\n');
+        char line[IX_LABEL + IX_PATH + 16];
+        int len = nl ? (int)(nl - text) : (int)strlen(text);
+        if (len < (int)sizeof line) {
+            memcpy(line, text, len);
+            line[len] = 0;
+            if (ix_parse_row(line, &all[n]))
+                n++;
+        }
+        text += len + (nl ? 1 : 0);
+    }
+    ix_sort_dedupe(all, n);
+    for (i = 0; i < n; i++)
+        if (all[i].kind == IX_KIND_APP)
+            x->rows[na++] = all[i];
+    x->napps = ix_drop_shadowed(k, "apps", x->rows, na);
+    for (ng = 0, i = 0; i < n; i++)
+        if (all[i].kind != IX_KIND_APP)
+            x->rows[x->napps + ng++] = all[i];
+    ng = ix_drop_shadowed(k, "games", x->rows + x->napps, ng);
+    x->n = x->napps + ng;
+}
+
+static int add_index(const ix_index *x, int from, int to, mn_item *out, int n, int max)
+{
+    int i;
+    for (i = from; i < to && n < max; i++) {
+        const ix_row *r = &x->rows[i];
+        char lab[IX_LABEL + IX_VOL + 4];
+        strcpy(lab, r->label);
+        if (r->suffix[0]) {
+            strcat(lab, " (");
+            strcat(lab, r->suffix);
+            strcat(lab, ")");
+        }
+        out[n].row = MN_ROW_INDEX;
+        out[n].ix = i;
+        out[n].seg[0] = 0;
+        strncpy(out[n].label, lab, KM_LABEL - 1);
+        out[n].label[KM_LABEL - 1] = 0;
+        n++;
+    }
+    return n;
+}
+
+static int has_group(const mn_item *it, int n, const char *seg)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (MN_IS_GROUP(&it[i]) && !strcmp(it[i].seg, seg))
+            return 1;
+    return 0;
+}
+
+static int add_group(mn_item *out, int n, int max, const char *seg, const char *label)
+{
+    if (n < max) {
+        out[n].row = MN_ROW_GROUP;
+        out[n].ix = -1;
+        strcpy(out[n].seg, seg);
+        strcpy(out[n].label, label);
+        n++;
+    }
+    return n;
+}
+
+int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
+             int max)
+{
+    int n = mn_children(k, node, out, max);
+    if (!x)
+        return n;
+    if (!strcmp(node, "apps")) {
+        n = add_index(x, 0, x->napps, out, n, max);
+    } else if (!strcmp(node, "games")) {
+        n = add_index(x, x->napps, x->n, out, n, max);
+    } else if (!*node) {
+        if (x->napps && !has_group(out, n, "apps"))
+            n = add_group(out, n, max, "apps", "Apps");
+        if (x->n > x->napps && !has_group(out, n, "games"))
+            n = add_group(out, n, max, "games", "Games");
+        if (filter && *filter)
+            n = add_index(x, 0, x->n, out, n, max);
+    }
+    return n;
+}
