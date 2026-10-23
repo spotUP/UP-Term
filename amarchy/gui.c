@@ -27,6 +27,7 @@
 #include "menu_geom.h"
 #include "menu_theme.h"
 #include "leaf.h"
+#include "menu_icon.h"
 #include "../config/keymap_load.h"
 #include "../config/upconf.h"
 #include "../handler/frontscr.h"
@@ -64,6 +65,7 @@ typedef struct gui {
     int w;                       /* the window's width, every level */
     mg_screen ms;                /* the screen */
     int chev_w;
+    int icon_w;                  /* the icon column's width, 0 for none */
     long pen[MT_ROLES];
     char pen_got[MT_ROLES];
     int mode;
@@ -173,6 +175,30 @@ static void draw_header(gui *g)
         q->head_w - 2 * q->m.row_pad);
 }
 
+/* The icon of the list item `it` at node: its coverage, an icon_w square, at (x, y) in the row of height
+ * boxh. Strong coverage in the row's colour, a weaker one in the dim pen; the rest is the row's box. */
+static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int boxh)
+{
+    static vt_u8 cov[MI_MAX * MI_MAX];
+    char id[KM_ID * 2 + 2];
+    const vt_u8 *glyph;
+    int s = g->icon_w, px, py, x0;
+    mn_child_node(g->node, it, id, sizeof id);
+    glyph = mi_find(id);
+    if (!glyph || !mi_render(glyph, s, cov))
+        return;
+    y += (boxh - s) / 2;
+    for (py = 0; py < s; py++)
+        for (px = 0; px < s;) {
+            int lv = cov[py * s + px] >= 170 ? 2 : (cov[py * s + px] >= 64 ? 1 : 0);
+            x0 = px;
+            while (px < s && (cov[py * s + px] >= 170 ? 2 : (cov[py * s + px] >= 64 ? 1 : 0)) == lv)
+                px++;
+            if (lv)
+                fill(g, lv == 2 || role != MT_TEXT ? role : MT_DIM, x + x0, y + py, x + px - 1, y + py);
+        }
+}
+
 /* One row of the current mode, entry e (0-based among all entries), when it is shown. */
 static void draw_row(gui *g, int e)
 {
@@ -191,6 +217,12 @@ static void draw_row(gui *g, int e)
     if (g->mode == M_LIST) {
         const mn_item *it = &g->it[g->idx[e]];
         int role = sel ? MT_ACCENT : MT_TEXT;
+        int ic = g->icon_w ? g->icon_w + q->m.icon_gap : 0;
+        if (ic) {
+            draw_icon(g, role, it, tx, y, q->m.row_h);
+            tx += ic;
+            tw -= ic;
+        }
         put(g, role, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
         if (it->row < 0)
             put(g, role, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
@@ -770,8 +802,11 @@ int main(int argc, char **argv)
         mg_layout(&g->g, &g->mf, g->w, g->nlines, &g->ms);
     } else {
         int n;
+        mg_metrics m;
         g->mode = M_LIST;
-        g->w = mg_width(&km, g->node, &g->mf, 0, g->chev_w, text_len, &tmp, &g->ms);
+        mg_metrics_for(&m, &g->mf, &g->ms);
+        g->icon_w = mi_count() > 0 ? mi_size(&m) : 0;
+        g->w = mg_width(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms);
         n = mn_children(&km, g->node, g->it, MN_MAX_ITEMS);
         g->count = mn_filter(g->it, n, g->filter, g->idx, MN_MAX_ITEMS);
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);

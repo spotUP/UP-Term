@@ -158,9 +158,9 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = man ]; then for f in man/*.1; do mandoc -T lint -W warning $$f || exit 1; done; echo "[OK] man/*.1 lint clean"; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
-$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) config/keymap.c config/keymap.h amarchy/cxdesc.c amarchy/cxdesc.h amarchy/menu_core.c amarchy/leaf_core.c amarchy/leaf.h amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_theme.c amarchy/menu_theme.h amarchy/menu_core.h amarchy/menu_geom.h handler/keymap_act.c handler/upmru.c handler/keymap_act.h $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h tty/qmark.h handler/ttyown.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h render/ttf.h tests/data/symnerd_subset.h tests/data/ttf_golden.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
+$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) config/keymap.c config/keymap.h amarchy/cxdesc.c amarchy/cxdesc.h amarchy/menu_core.c amarchy/leaf_core.c amarchy/leaf.h amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c amarchy/menu_theme.h amarchy/menu_core.h amarchy/menu_geom.h amarchy/menu_icon.h $(MENU_ICONS_INC) handler/keymap_act.c handler/upmru.c handler/keymap_act.h $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h tty/qmark.h handler/ttyown.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h render/ttf.h tests/data/symnerd_subset.h tests/data/ttf_golden.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) config/keymap.c amarchy/cxdesc.c amarchy/menu_core.c amarchy/leaf_core.c amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_theme.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -I$(BUILD)/amiga -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) config/keymap.c amarchy/cxdesc.c amarchy/menu_core.c amarchy/leaf_core.c amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
 
 # render/amiga_render.c itself on the host (ledger R8): the NDK's structs and a fake graphics.library
 # (tests/render_host/gfx_fake.c) that logs the calls and draws into a pixel canvas. Its own binary: the
@@ -238,6 +238,13 @@ KEYMAP_DEFAULT_INC := $(BUILD)/amiga/keymap_default.inc
 $(KEYMAP_DEFAULT_INC): tools/gen_keymap_default.py dist/keymap
 	@mkdir -p $(dir $@)
 	python3 tools/gen_keymap_default.py dist/keymap $@
+
+# The drawn Amarchy menu's icons (plan 2026-10-23-amarchy-drawn-menu.md, G3): dist/menu-icons names Symbols
+# Nerd Font glyphs; tools/gen_menu_icons.py (on tools/gen_emoji.py) makes one emoji page of them for amarchy/menu_icon.c.
+MENU_ICONS_INC := $(BUILD)/amiga/menu_icons.inc
+$(MENU_ICONS_INC): tools/gen_menu_icons.py tools/gen_emoji.py dist/menu-icons $(SYMBOLS_TTF)
+	@mkdir -p $(dir $@)
+	python3 tools/gen_menu_icons.py dist/menu-icons $(SYMBOLS_TTF) $@
 
 # the themes the UPDemo tour switches between, from themes/ (committed)
 demo/tour_themes.inc: tools/gen_tour_themes.py themes/dracula-default.conf themes/solarized-dark.conf themes/gruvbox-dark.conf themes/nord-default.conf
@@ -676,10 +683,10 @@ $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) handler/frontscr.h amarchy/menu
 
 # amarchy-gui: the drawn menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A plain vbcc
 # Intuition program, no ixemul, same command line as amarchy-menu.
-AMARCHY_GUI_SRC := amarchy/gui.c amarchy/leaf.c amarchy/leaf_core.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_theme.c render/pens_amiga.c handler/frontscr.c config/keymap.c config/keymap_load.c config/upconf.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
+AMARCHY_GUI_SRC := amarchy/gui.c amarchy/leaf.c amarchy/leaf_core.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c render/emoji.c render/unifont.c render/pens_amiga.c handler/frontscr.c config/keymap.c config/keymap_load.c config/upconf.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
 .PHONY: amarchy-gui
 amarchy-gui: $(BUILD)/amiga/amarchy-gui
-$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/menu_geom.h amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC)
+$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/menu_geom.h amarchy/menu_icon.h render/emoji.h render/unifont.h $(MENU_ICONS_INC) amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC)
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_GUI_SRC)
 

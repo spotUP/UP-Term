@@ -10,6 +10,8 @@
 #include "../amarchy/menu_core.h"
 #include "../amarchy/menu_geom.h"
 #include "../amarchy/leaf.h"
+#include "../amarchy/menu_icon.h"
+#include "../render/emoji.h"
 #include "../engine/vtengine.h"
 #include "harness.h"
 
@@ -830,8 +832,63 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     CHECK(parse("[menu]\napps.upkg = Install add-ons | run:upkg-browse\napps.tools.zzz = A much longer label here | run:z\n"));
     CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, &pal), 412);
     CHECK_INT(mg_width(&km, "apps", &topaz, 16, 8, fixed_width, &px16, &pal), 412 + 16 + 4);
+    /* any icon width adds itself plus the icon gap (4 at this size) to every row */
+    CHECK_INT(mg_width(&km, "apps", &topaz, 9, 8, fixed_width, &px16, &pal), 412 + 9 + 4);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 24, 8, fixed_width, &px16, &pal), 412 + 24 + 4);
     CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, &narrow), 316);
     CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px8, &narrow), 220);
+}
+
+/* G3: every node the shipped [menu] names (each row and each group above it) has an icon image in
+ * the compiled page, and the page is a valid emoji page; a missing one fails here */
+static void every_shipped_menu_node_has_an_icon_image(void)
+{
+    static char file[16384];
+    long n = slurp("dist/keymap", file, sizeof(file));
+    long plen = 0;
+    const vt_u8 *page = mi_page(&plen);
+    mg_metrics m;
+    vt_u8 cov[MI_MAX * MI_MAX];
+    int i, j, k, s, sum;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    CHECK(ce_page_check(page, plen, 0xE0));
+    CHECK(km.nmenu > 0);
+    for (i = 0; i < km.nmenu; i++) {
+        char node[64];
+        const char *id = km.menu[i].id;
+        int len = (int)strlen(id);
+        for (j = 0; j <= len; j++) {
+            if (id[j] != '.' && id[j] != 0)
+                continue;
+            for (k = 0; k < j; k++)
+                node[k] = id[k];
+            node[j] = 0;
+            if (!mi_find(node))
+                printf("  no icon for menu node '%s'\n", node);
+            CHECK(mi_find(node) != 0);
+        }
+    }
+    /* each table entry is drawn: its glyph covers some pixels at the icon size */
+    memset(&m, 0, sizeof(m));
+    m.row_h = 14;
+    s = mi_size(&m);
+    CHECK_INT(s, 8);
+    m.row_h = 40;
+    CHECK_INT(mi_size(&m), 20);
+    m.row_h = 400;
+    CHECK_INT(mi_size(&m), MI_MAX);
+    for (i = 0; i < mi_count(); i++) {
+        const vt_u8 *g = mi_find(mi_id(i));
+        CHECK(g != 0);
+        if (!g)
+            continue;
+        CHECK(mi_render(g, 16, cov));
+        for (sum = 0, j = 0; j < 16 * 16; j++)
+            sum += cov[j];
+        if (sum == 0)
+            printf("  blank icon '%s'\n", mi_id(i));
+        CHECK(sum > 0);
+    }
 }
 
 /* Phase D: the Super+K viewer prints one line per [bind] row of the shipped file; the expected
@@ -1181,6 +1238,7 @@ void suite_keymap(void)
     menu_levels_follow_the_ids_and_escape_goes_up();
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
+    every_shipped_menu_node_has_an_icon_image();
     the_key_viewer_lists_every_bind_row();
     the_key_viewer_follows_a_rebinding();
     a_request_resolves_like_its_bind_row();
