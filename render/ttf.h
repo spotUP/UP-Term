@@ -84,6 +84,23 @@ typedef struct ttf_fit_out {
 } ttf_fit_out;
 void ttf_fit(long units_w, int upem, int w, int h, int base, int rx, int ry, ttf_fit_out *out);
 
+/* Where glyph gid goes in a span w pixels wide and h rows tall, the
+ * bitmap font's baseline on row base, pixels rx x ry ticks (plan
+ * 2026-10-22-handler-rasterizer.md R6.1, R6.3). TTF_SHAPE: the glyph's own
+ * advance x one em fitted into the span with its shape kept (ttf_fit) and
+ * centred across. TTF_FILL (box drawing, blocks, powerline separators): the
+ * advance stretched across the span and the font's line (hhea ascender to
+ * descender) down the h rows, its baseline from the font, not from base;
+ * base only when the font has no usable line. xscale, yscale, baseline as
+ * ttf_render takes them; ox its origin's column. */
+enum { TTF_SHAPE, TTF_FILL };
+typedef struct ttf_place_out {
+    long xscale, yscale;
+    int ox, baseline;
+} ttf_place_out;
+void ttf_place(const ttf_font *f, unsigned gid, int how, int w, int h, int base, int rx, int ry,
+               ttf_place_out *out);
+
 /* cov one pixel bolder into out (both w x h bytes): each pixel the larger
  * of itself and its left neighbour, as Text() bold draws the glyph again
  * one pixel right */

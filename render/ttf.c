@@ -31,6 +31,7 @@ struct ttf_font {
     unsigned long cmap_len;
     int cmap_fmt;
     int upem, nglyphs;
+    int asc, desc;       /* hhea: the line's top and bottom, font units */
     long *acc;           /* the render accumulator, kept between renders */
     unsigned long acc_n;
 };
@@ -236,6 +237,8 @@ static int open_tables(ttf_font *f)
         return TTF_BAD_TABLE;
     if ((err = rd(f, off[2], hd, 36)) != TTF_OK)
         return err;
+    f->asc = (int)s16(hd + 4);
+    f->desc = (int)s16(hd + 6);
     f->nhm = (int)be16(hd + 34);
     if (!f->nglyphs || !f->nhm || f->nhm > f->nglyphs || (unsigned long)f->nhm * 4 > len[3])
         return TTF_BAD_TABLE;
@@ -799,4 +802,37 @@ void ttf_fit(long units_w, int upem, int w, int h, int base, int rx, int ry, ttf
         out->bh = (int)((wide + (unsigned long)ry * uw / 2) / ((unsigned long)ry * uw));
     }
     out->baseline = h > 0 ? (h - out->bh) / 2 + (base * out->bh + h / 2) / h : base;
+}
+
+void ttf_place(const ttf_font *f, unsigned gid, int how, int w, int h, int base, int rx, int ry,
+               ttf_place_out *out)
+{
+    long adv = ttf_advance(f, gid), line = (long)f->asc - f->desc;
+    if (adv < 1)
+        adv = f->upem;
+    if (how == TTF_FILL) {
+        /* the advance across the span, the line (ascender to descender)
+         * down it: the glyph's design cell on the screen's cell, whatever
+         * the bitmap font's baseline */
+        out->xscale = ((long)w << 16) / adv;
+        out->ox = 0;
+        if (line > 0 && f->asc > 0 && f->asc <= line) {
+            out->yscale = ((long)h << 16) / line;
+            out->baseline = (int)(((long)f->asc * h + line / 2) / line);
+        } else {
+            out->yscale = ((long)h << 16) / f->upem;
+            out->baseline = base;
+        }
+    } else {
+        /* the glyph's own advance x one em kept in shape over the span, centred
+         * across: a one-em icon fills two cells of a 1:2 cell */
+        ttf_fit_out fit;
+        long iw;
+        ttf_fit(adv, f->upem, w, h, base, rx, ry, &fit);
+        out->xscale = fit.xscale;
+        out->yscale = fit.yscale;
+        out->baseline = fit.baseline;
+        iw = (long)(((unsigned long)adv * (unsigned long)fit.xscale) >> 16);
+        out->ox = iw < w ? (int)((w - iw) / 2) : 0;
+    }
 }

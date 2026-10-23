@@ -77,31 +77,32 @@ struct vo_engine {
     ULONG fpos;          /* fh's position: a read there needs no Seek */
     long xscale, yscale; /* pixels per font unit, 16.16: the cell's scale */
     WORD rx, ry;         /* the screen's pixel in ticks */
-    ttf_fit_out fit[2];  /* one and two cells, the glyph's shape kept (R6.1) */
     UBYTE *cov;          /* VO_MAXW x VO_MAXH coverage, fast RAM */
     ULONG own;           /* glyphs ttf_render drew: /state outline-own */
 };
 
 /* cp's glyph into mask (cleared, ch rows of bpr bytes, w pixels used) and
- * its coverage into e->cov: the glyph's current point ox pixels from the
- * left edge (0, or the cell's width for a mark that draws left of its
- * point) and on the cell's baseline. Every code point; 0 when the font has
- * none (.notdef, glyph 0, is missing) or it is blank. */
-static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox,
-                  const ttf_fit_out *fit)
+ * its coverage into e->cov. how: TTF_SHAPE or TTF_FILL, placed by
+ * ttf_place; or VO_AT_CELL, at the cell's scale with its current point ox
+ * pixels from the left edge (0, or the cell's width for a mark that draws
+ * left of its point) and on the cell's baseline. Every code point; 0 when
+ * the font has none (.notdef, glyph 0, is missing) or it is blank. */
+#define VO_AT_CELL (-1)
+
+static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, WORD ox, int how)
 {
     unsigned gid = ttf_glyph_index(e->tt, cp);
     long xs = e->xscale, ys = e->yscale;
     int baseline = e->base;
     if (!gid)
         return 0;
-    if (fit) {
-        /* the shape kept: centred across by the glyph's own advance */
-        long adv = (long)(((unsigned long)ttf_advance(e->tt, gid) * (unsigned long)fit->xscale) >> 16);
-        xs = fit->xscale;
-        ys = fit->yscale;
-        baseline = fit->baseline;
-        ox = adv < w ? (WORD)((w - adv) / 2) : 0;
+    if (how != VO_AT_CELL) {
+        ttf_place_out pl;
+        ttf_place(e->tt, gid, how, w, e->ch, e->base, e->rx, e->ry, &pl);
+        xs = pl.xscale;
+        ys = pl.yscale;
+        baseline = pl.baseline;
+        ox = (WORD)pl.ox;
     }
     memset(e->cov, 0, (size_t)w * e->ch);
     if (ttf_render(e->tt, gid, xs, ys, ox, baseline, e->cov, w, e->ch) != 1)
@@ -111,9 +112,10 @@ static int render(struct vo_engine *e, ULONG cp, UBYTE *mask, WORD bpr, WORD w, 
     return 1;
 }
 
-/* the size: ch pixels an em down; across, the scale that makes the first
- * probe's advance one cell (a monospaced outline font's glyphs all advance
- * alike) */
+/* the scale combining marks are drawn at (VO_AT_CELL): ch pixels an em
+ * down; across, the scale that makes the first probe's advance one cell (a
+ * monospaced outline font's glyphs all advance alike). Other glyphs are
+ * placed one by one by ttf_place. */
 static const ULONG probe[] = { 'M', 0xE0A0, 0x2588, '0' };
 
 static void calibrate(struct vo_engine *e)
@@ -127,15 +129,10 @@ static void calibrate(struct vo_engine *e)
     }
     if (adv * 16 > upem) /* more than 1/16 em */
         e->xscale = ((long)e->cw << 16) / adv;
-    else
-        adv = upem;
-    /* a shape-kept glyph: a box of the probe's advance per cell, one em tall */
-    ttf_fit(adv, (int)upem, e->cw, e->ch, e->base, e->rx, e->ry, &e->fit[0]);
-    ttf_fit(2 * adv, (int)upem, 2 * e->cw, e->ch, e->base, e->rx, e->ry, &e->fit[1]);
 }
 
-/* glyphs made to fill the cell, drawn at the cell's scale whatever its
- * shape on the screen: box drawing, block elements, legacy computing and
+/* glyphs made to fill the cell (TTF_FILL), whatever its shape on the
+ * screen: box drawing, block elements, legacy computing and
  * the powerline separators (frames and prompts without gaps) */
 static int fills_cell(ULONG cp)
 {
@@ -307,10 +304,10 @@ static void worker(void)
             }
             /* a mark: drawn left of its point over the cell, as fonts make
              * them; one that draws nothing there is a spacing mark */
-            m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w, 0);
+            m->ok = m->mark && render(&e, m->cp, m->mask, m->bpr, w, w, VO_AT_CELL);
             if (!m->ok)
                 m->ok = render(&e, m->cp, m->mask, m->bpr, w, 0,
-                               m->mark || fills_cell(m->cp) ? 0 : &e.fit[m->cells == 2]);
+                               m->mark ? VO_AT_CELL : fills_cell(m->cp) ? TTF_FILL : TTF_SHAPE);
             m->cov_ok = m->ok && m->cov; /* render left the glyph's coverage in e.cov */
             if (m->cov_ok)
                 memcpy(m->cov, e.cov, (size_t)w * e.ch);

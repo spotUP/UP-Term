@@ -237,7 +237,7 @@ static void test_format4_fallback(void)
 
 #define S_HEAD 1
 #define S_CMAP 2
-#define MAXG 8
+#define MAXG 9
 
 typedef struct pt {
     int x, y, on;
@@ -247,6 +247,7 @@ static unsigned char sfont[4096];
 static unsigned char glyph[MAXG][256];
 static int glen[MAXG];
 static int nglyph;
+static int s_asc, s_desc; /* hhea ascender, descender; 0 0 unless a test sets them */
 
 /* a simple glyph: contours of pts, ends[] the last point of each */
 static void simple(int gid, const pt *p, const int *ends, int nc)
@@ -336,6 +337,8 @@ static long build(int omit)
             len[t] = 54;
             break;
         case 3: /* hhea */
+            wr16(p + 4, s_asc);
+            wr16(p + 6, s_desc);
             wr16(p + 34, nglyph);
             len[t] = 36;
             break;
@@ -620,12 +623,122 @@ static void test_embolden(void)
     CHECK_INT(out[7], 10);
 }
 
+/* the rows and columns with ink (coverage 128 or more) in a w x h render */
+static void ink_box(const unsigned char *cov, int w, int h, int *cols, int *rows)
+{
+    int x, y, x0 = w, x1 = -1, y0 = h, y1 = -1;
+    for (y = 0; y < h; y++)
+        for (x = 0; x < w; x++)
+            if (cov[y * w + x] >= 128) {
+                if (x < x0)
+                    x0 = x;
+                if (x > x1)
+                    x1 = x;
+                if (y < y0)
+                    y0 = y;
+                if (y > y1)
+                    y1 = y;
+            }
+    *cols = x1 < 0 ? 0 : x1 - x0 + 1;
+    *rows = y1 < 0 ? 0 : y1 - y0 + 1;
+}
+
+static int place_render(ttf_font *f, unsigned gid, int how, int w, int h, int base, int rx, int ry,
+                        unsigned char *cov, int *cols, int *rows)
+{
+    ttf_place_out pl;
+    int r;
+    ttf_place(f, gid, how, w, h, base, rx, ry, &pl);
+    memset(cov, 0, (size_t)w * h);
+    r = ttf_render(f, gid, pl.xscale, pl.yscale, pl.ox, pl.baseline, cov, w, h);
+    ink_box(cov, w, h, cols, rows);
+    return r;
+}
+
+/* R6.3 (rig 2026-10-23): a one-em Nerd Font icon over two cells fills the
+ * line, not half of it; a powerline glyph fills every row of a cell whose
+ * bitmap baseline is far from the TrueType font's (rows 0..9 of 16 before) */
+static void test_place(void)
+{
+    static unsigned char cov[16 * 16];
+    mem m;
+    ttf_font *f;
+    unsigned g;
+    int cols, rows, cols1, rows1;
+    if (open_mem(&m, symnerd_subset, SYMNERD_SUBSET_LEN, &f) != TTF_OK) {
+        CHECK(0);
+        return;
+    }
+    g = ttf_glyph_index(f, 0xE0A0UL); /* x 607..1441, y -410..1638: the whole line */
+    /* square pixels, cell 8 x 16: two cells are one em square */
+    CHECK_INT(place_render(f, g, TTF_SHAPE, 16, 16, 13, 1, 1, cov, &cols, &rows), 1);
+    CHECK(rows >= 15);
+    CHECK(cols >= 5);
+    /* one cell: the em fits its width, half the size */
+    CHECK_INT(place_render(f, g, TTF_SHAPE, 8, 16, 13, 1, 1, cov, &cols1, &rows1), 1);
+    CHECK(rows1 <= 9);
+    CHECK(rows >= 2 * rows1 - 2);
+    /* PAL hires, cell 8 x 8 on pixels twice as tall: two cells, all 8 rows */
+    CHECK_INT(place_render(f, g, TTF_SHAPE, 16, 8, 6, 1, 2, cov, &cols, &rows), 1);
+    CHECK(rows >= 7);
+    ttf_close(f);
+    CHECK_INT(m.live, 0);
+}
+
+/* glyph 8: a bar over the font's whole line, x 0..1024, y -205..819 */
+static void test_place_fill(void)
+{
+    static const pt bar[4] = { { 0, -205, 1 }, { 0, 819, 1 }, { 1024, 819, 1 }, { 1024, -205, 1 } };
+    static const int e4[1] = { 3 };
+    static unsigned char cov[8 * 16];
+    ttf_place_out pl;
+    mem m;
+    ttf_font *f;
+    long n;
+    int cols, rows;
+    base_glyphs();
+    simple(8, bar, e4, 1);
+    nglyph = 9;
+    s_asc = 819;
+    s_desc = -205;
+    n = build(0);
+    s_asc = s_desc = 0;
+    if (open_mem(&m, sfont, n, &f) != TTF_OK) {
+        CHECK(0);
+        return;
+    }
+    /* the bitmap baseline (6 of 16) is far from the font's (13 of 16): the
+     * font's wins, every row inked */
+    CHECK_INT(place_render(f, 8, TTF_FILL, 8, 16, 6, 1, 1, cov, &cols, &rows), 1);
+    CHECK_INT(rows, 16);
+    CHECK_INT(cols, 8);
+    CHECK(cov[0] >= 128);
+    CHECK(cov[15 * 8 + 7] >= 128);
+    ttf_place(f, 8, TTF_FILL, 8, 16, 6, 1, 1, &pl);
+    CHECK_INT(pl.baseline, 13);
+    ttf_close(f);
+    CHECK_INT(m.live, 0);
+
+    /* no usable line in hhea (0 0): the bitmap baseline and the em */
+    n = build(0);
+    CHECK_INT(open_mem(&m, sfont, n, &f), TTF_OK);
+    if (f) {
+        ttf_place(f, 8, TTF_FILL, 8, 16, 6, 1, 1, &pl);
+        CHECK_INT(pl.baseline, 6);
+        ttf_close(f);
+    }
+    CHECK_INT(m.live, 0);
+    base_glyphs();
+}
+
 void suite_ttf(void)
 {
     test_subset_font();
     test_goldens();
     test_format4_fallback();
     test_fit();
+    test_place();
+    test_place_fill();
     test_synthetic();
     test_refused();
     test_threshold();
