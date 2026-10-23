@@ -5606,17 +5606,26 @@ static struct tab_msg *tab_msg(con *c, int type)
 }
 
 static void tab_show_active(con *c);
+static void bar_draw(con *c);
 
 static void tab_replies(con *c)
 {
     struct Message *m;
+    int bar = 0;
     while (c->tab_reply && (m = GetMsg(c->tab_reply)) != 0) {
         if (m == c->hiding) {
             c->hiding = 0; /* the old tab has stopped drawing: the window is free */
             tab_show_active(c);
         }
+        /* A tab answers SHOW and INSET after it laid out and redrew its text area; the bar was drawn
+         * before that (tab_activate), and a hand-over to a tab process is answered later (owner,
+         * 2026-10-23: from the third tab on the bar stayed empty until a click). The bar goes last. */
+        if (c->ntabs >= 2 && (((struct tab_msg *)m)->type == TM_SHOW || ((struct tab_msg *)m)->type == TM_INSET))
+            bar = 1;
         FreeVec(m);
     }
+    if (bar)
+        bar_draw(c);
 }
 
 /* host -> a tab, answered later (freed by tab_replies) */
