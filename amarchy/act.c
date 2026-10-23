@@ -9,6 +9,7 @@
 #include "../claude/util.h"
 #include "../handler/frontscr.h"
 #include "leaf.h"
+#include "termenv.h"
 
 /* Clone the path list of this process's CLI (a chain of {BPTR next; BPTR lock}
  * nodes) for the child, which owns and frees it. 0 when there is no CLI. */
@@ -93,6 +94,7 @@ int act_in_window(const char *cmd, int cols, int rows)
     spec_on_front(full, sizeof full, spec);
     w = Open((STRPTR)full, MODE_NEWFILE);
     path = dup_path();
+    termenv_ensure();
     if (!cmd || !*cmd || !w) {
         if (w)
             Close(w);

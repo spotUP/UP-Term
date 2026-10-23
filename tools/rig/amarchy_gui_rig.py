@@ -337,6 +337,27 @@ def case_screen(geom, public):
         check(not where('UP-Term')[1] and not where(TITLE)[1], 'no menu or leaf window left behind (%s case)' % kind)
 
 
+def case_run_tmux():
+    """Apps > Tmux (run:tmux) from a menu with no TERM in ENV: leaves a running tmux and an UP-Term window.
+    The leaf program has no shell above it, so TERM is missing unless run_in_uterm sets it; tmux then exits
+    at once with "open terminal failed: not a terminal". Sentinel: the tmux server answers `tmux ls`."""
+    c.run('tmux kill-server', 20)
+    c.run('Delete >NIL: ENV:TERM')
+    s, w = open_menu()
+    check(bool(w), 'run_tmux: menu opens')
+    ami.key(RETURN)                       # Apps
+    time.sleep(2)
+    for _ in range(2):                    # Tmux is the third Apps row
+        ami.key(0x4D)
+        time.sleep(.5)
+    ami.key(RETURN)
+    time.sleep(6)
+    rc = c.run('tmux ls', 20)[0]
+    check(rc == 0, 'run_tmux: tmux server runs after Apps > Tmux (tmux ls rc %s)' % rc)
+    check(any(w['title'] == 'UP-Term' for s in screens() for w in s['windows']), 'run_tmux: an UP-Term window exists')
+    c.run('tmux kill-server', 20)
+
+
 def main():
     stage_rig.report(stage_rig.stage_build(NAMES, build='--no-build' not in sys.argv))
     geom = build_geom()
@@ -347,6 +368,7 @@ def main():
         case_default(geom)
         case_screen(geom, True)
         case_screen(geom, False)
+        case_run_tmux()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')

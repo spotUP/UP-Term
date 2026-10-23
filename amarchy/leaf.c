@@ -6,6 +6,7 @@
 #include <dos/dostags.h>
 #include <proto/dos.h>
 #include "leaf.h"
+#include "termenv.h"
 #include "../handler/upreq.h"
 #include "../handler/frontscr.h"
 
@@ -31,6 +32,7 @@ static int run_in_uterm(const char *cmd)
     char spec[128];
     if (!cmd || !*cmd)
         return 0;
+    termenv_ensure();
     uterm_spec(spec, sizeof spec);
     w = Open((STRPTR)spec, MODE_NEWFILE);
     if (!w) {
