@@ -26,6 +26,11 @@
 long __stack = MENU_STACK;
 __attribute__((used)) const char amarchy_stack_cookie[] = "$STACK: " MENU_STR(MENU_STACK);
 
+/* The commodity sizes the window with menu_core.h's constants (it cannot include ui.h): they must
+ * equal the library's, else the OSD clips or leaves blank rows. A negative array size fails the build. */
+typedef char osd_head_lines_match[MN_OSD_HEAD_LINES == UI_OSD_HEAD_LINES ? 1 : -1];
+typedef char osd_pad_match[MN_OSD_PAD == UI_OSD_PAD ? 1 : -1];
+
 static keymap km;
 
 /* every printable key plus Backspace and Delete ends the menu as a hotkey */
@@ -228,6 +233,8 @@ int main(int argc, char **argv)
         if (t)
             setenv("TERM", t, 1);
     }
+    if (strcmp(argv[1], "viewer"))
+        ui_osd(1);                             /* the menu is a launcher: no frame, no footer */
     rc = ui_start("amarchy-menu");
     at_mark("terminal");
     if (rc) {
@@ -241,5 +248,7 @@ int main(int argc, char **argv)
     else
         rc = menu_loop(argc > 2 && strcmp(argv[2], "root") ? argv[2] : "");
     ui_stop();
-    return rc == 255 ? 0 : rc;
+    /* Escape is a normal leave; so is end of file on the console (the window closed on
+     * deactivation, CLOSEINACTIVE): ui_run reports it as EXIT_NO_TERMINAL */
+    return rc == 255 || rc == EXIT_NO_TERMINAL ? 0 : rc;
 }
