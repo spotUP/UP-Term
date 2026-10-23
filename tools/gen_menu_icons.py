@@ -3,9 +3,10 @@
 (node id = code point) and Symbols Nerd Font Mono -> a C include with ONE colour-emoji page.
 
 Reuses the emoji converter (tools/gen_emoji.py): each glyph is rasterised here to a white
-RGBA image whose alpha is the coverage, and gen_emoji.glyph_bytes averages it to the 16x16 and
-16x8 images of one palette and gen_emoji.page_bytes packs them into the page file render/emoji.c
-reads (ce_page_check, ce_page_glyph). The glyph of the n-th line is code point U+E000 + n, so
+RGBA image whose alpha is the coverage, and gen_emoji.glyph_bytes averages it to ONE ICON x ICON
+image (32x32, amarchy/menu_icon.h MI_SRC; the menu only scales it down, so a 32 px icon is the glyph
+drawn at 32 px, not a 16 px one doubled) and gen_emoji.page_bytes packs them into the page file
+render/emoji.c reads (ce_page_check_px, ce_page_glyph_px). The glyph of the n-th line is code point U+E000 + n, so
 all of them are page "E0". The glyph is fitted to the square, centred, whatever its advance.
 
 usage: gen_menu_icons.py <dist/menu-icons> <SymbolsNerdFontMono.ttf> <out.inc>
@@ -20,7 +21,9 @@ from fontTools.pens.basePen import BasePen  # noqa: E402
 from fontTools.ttLib import TTFont  # noqa: E402
 
 BASE = 0xE000
-RES = 64              # the glyph's raster, square; gen_emoji averages it down to 16 and 8
+ICON = 32             # the icon image, square: amarchy/menu_icon.h MI_SRC
+SIZES = ((ICON, ICON),)
+RES = 64              # the glyph's raster, square; gen_emoji averages it down to ICON
 SUB = 4               # samples a raster pixel, each way
 EDGE = 0.04           # blank margin of the square, each side
 
@@ -124,7 +127,7 @@ def parse_table(path):
 def build(table, ttf):
     rows = parse_table(table)
     font = TTFont(ttf)
-    glyphs = {BASE + i: gen_emoji.glyph_bytes(*raster(font, cp)) for i, (_, cp) in enumerate(rows)}
+    glyphs = {BASE + i: gen_emoji.glyph_bytes(*raster(font, cp), sizes=SIZES) for i, (_, cp) in enumerate(rows)}
     return [r[0] for r in rows], gen_emoji.page_bytes(BASE >> 8, glyphs)
 
 

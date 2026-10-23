@@ -10,10 +10,13 @@
 #include "../render/emoji.h"
 #include "menu_geom.h"
 
+#define MI_SRC 32               /* the source glyph's size, square: the page holds ONE MI_SRC x MI_SRC image
+                                 * per icon (tools/gen_menu_icons.py ICON), so the icon sizes only scale down */
+#define MI_PIXELS (MI_SRC * MI_SRC) /* the pixels of a glyph record of the page */
 #define MI_MAX 32               /* the tallest icon, pixels */
 #define MI_MAX_W 64             /* the widest icon (tall pixels double the width of a 32 high one) */
 
-/* The generated page file (for ce_page_check) and its length. */
+/* The generated page file (for ce_page_check_px with MI_PIXELS) and its length. */
 const vt_u8 *mi_page(long *len);
 /* The icons: count, and the node id of the i-th. */
 int mi_count(void);
@@ -26,6 +29,9 @@ int mi_size(const mg_metrics *m);
 /* Its width: as many columns as look as long as that height on the screen's pixels (mg_cols), MI_MAX_W
  * at most. */
 int mi_width(const mg_metrics *m, const mg_screen *s);
+/* The glyph's source image: MI_SRC x MI_SRC palette indices into the glyph's RGBA palette (CE_BG none),
+ * row after row, into idx (MI_SRC * MI_SRC bytes). 0 when the glyph is 0. */
+int mi_source(const vt_u8 *glyph, vt_u8 *idx);
 /* The glyph's coverage (0..255) averaged to a w x h box into out (w * h bytes, h <= MI_MAX, w <= MI_MAX_W),
  * row after row. 0 when the size is out of range or the glyph is bad. */
 int mi_render(const vt_u8 *glyph, int w, int h, vt_u8 *out);

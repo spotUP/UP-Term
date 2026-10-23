@@ -12,10 +12,10 @@ static int present(const vt_u8 *p, int lo)
 }
 
 /* The bytes of the glyph record at g (gen_emoji.py's layout). */
-static long glyph_size(const vt_u8 *g)
+static long glyph_size(const vt_u8 *g, long pixels)
 {
     long n = (long)g[1] + 1;
-    return 2 + 4 * n + (long)(CE_W * 16 + CE_W * 8) * g[0] / 8;
+    return 2 + 4 * n + pixels * g[0] / 8;
 }
 
 long ce_page_length(const vt_u8 *p, long n)
@@ -31,6 +31,11 @@ long ce_page_length(const vt_u8 *p, long n)
 
 int ce_page_check(const vt_u8 *p, long len, int page)
 {
+    return ce_page_check_px(p, len, page, CE_PIXELS);
+}
+
+int ce_page_check_px(const vt_u8 *p, long len, int page, long pixels)
+{
     long off = CE_HEADER;
     int lo, count = 0;
     if (ce_page_length(p, len) != len || (((unsigned)p[4] << 8) | p[5]) != (unsigned)page)
@@ -43,13 +48,18 @@ int ce_page_check(const vt_u8 *p, long len, int page)
         if (off + 2 > len || (p[off] != 4 && p[off] != 8) || (p[off] == 4 && p[off + 1] > 15) ||
             p[off + 1] == 255)
             return 0; /* 4-bit indices into at most 16 entries; index 255 is the background's */
-        off += glyph_size(p + off);
+        off += glyph_size(p + off, pixels);
         count++;
     }
     return off == len && (unsigned)count == (((unsigned)p[6] << 8) | p[7]);
 }
 
 const vt_u8 *ce_page_glyph(const vt_u8 *p, int lo)
+{
+    return ce_page_glyph_px(p, lo, CE_PIXELS);
+}
+
+const vt_u8 *ce_page_glyph_px(const vt_u8 *p, int lo, long pixels)
 {
     unsigned long off;
     int k;
@@ -58,7 +68,7 @@ const vt_u8 *ce_page_glyph(const vt_u8 *p, int lo)
     off = be32(p + 44 + 4 * (lo >> 5));
     for (k = lo & ~31; k < lo; k++)
         if (present(p, k))
-            off += (unsigned long)glyph_size(p + off);
+            off += (unsigned long)glyph_size(p + off, pixels);
     return p + off;
 }
 
@@ -90,32 +100,36 @@ vt_u32 ce_mix(vt_u32 fg, vt_u32 bg, int a)
     return c;
 }
 
+void ce_unpack(const vt_u8 *src, int bits, int iw, int ih, int bw, int bh, vt_u8 *idx)
+{
+    int x0 = (bw - iw) / 2, y0 = (bh - ih) / 2, x, y, i;
+    for (i = 0; i < bw * bh; i++)
+        idx[i] = CE_BG;
+    for (y = 0; y < ih; y++) {
+        vt_u8 *d = idx + (y0 + y) * bw + x0;
+        if (bits == 8) {
+            for (x = 0; x < iw; x++)
+                d[x] = src[y * iw + x];
+        } else {
+            for (x = 0; x < iw; x += 2) {
+                vt_u8 b = src[(y * iw + x) >> 1];
+                d[x] = (vt_u8)(b >> 4);
+                d[x + 1] = (vt_u8)(b & 15);
+            }
+        }
+    }
+}
+
 int ce_image(const vt_u8 *g, int bw, int bh, vt_u8 *idx)
 {
-    int bits = g[0], n = g[1] + 1, h, x0, y0, x, y, i;
+    int bits = g[0], n = g[1] + 1, h;
     const vt_u8 *src = g + 2 + 4 * n;
     if (bw < CE_W || bh < 8 || (long)bw * bh > CE_BOX_MAX)
         return 0;
     h = bh >= 16 ? 16 : 8;
     if (h == 8)
         src += CE_W * 16 * bits / 8; /* past the 16x16 image */
-    x0 = (bw - CE_W) / 2;
-    y0 = (bh - h) / 2;
-    for (i = 0; i < bw * bh; i++)
-        idx[i] = CE_BG;
-    for (y = 0; y < h; y++) {
-        vt_u8 *d = idx + (y0 + y) * bw + x0;
-        if (bits == 8) {
-            for (x = 0; x < CE_W; x++)
-                d[x] = src[y * CE_W + x];
-        } else {
-            for (x = 0; x < CE_W; x += 2) {
-                vt_u8 b = src[(y * CE_W + x) >> 1];
-                d[x] = (vt_u8)(b >> 4);
-                d[x + 1] = (vt_u8)(b & 15);
-            }
-        }
-    }
+    ce_unpack(src, bits, CE_W, h, bw, bh, idx);
     return 1;
 }
 

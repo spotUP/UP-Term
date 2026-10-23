@@ -865,6 +865,36 @@ static void drawn_menu_icons_look_square_on_tall_pixels(void)
     CHECK_INT(mg_cols(&unknown, 16), 16);          /* aspect unknown: square */
 }
 
+/* The owner's symptom: the drawn menu's icons looked blocky, doubled pixels. The page held 16x16 glyphs
+ * and the 32 px icon of TopazPro 16 was them scaled UP 2x. The source is now the glyph drawn at 32 px:
+ * a 32x32 render is the source's coverage 1:1, and the source is not made of 2x2 blocks. */
+static void icons_are_not_upscaled_from_16px(void)
+{
+    static vt_u8 idx[MI_SRC * MI_SRC], cov[MI_SRC * MI_SRC];
+    long plen = 0;
+    int i, j, x, y, finer = 0;
+    CHECK_INT(MI_SRC, 32);
+    CHECK(ce_page_check_px(mi_page(&plen), plen, 0xE0, MI_PIXELS));
+    for (i = 0; i < mi_count(); i++) {
+        const vt_u8 *g = mi_find(mi_id(i));
+        int blocks = 1;
+        CHECK(g != 0 && mi_source(g, idx) && mi_render(g, 32, 32, cov));
+        if (!g)
+            continue;
+        for (j = 0; j < MI_SRC * MI_SRC; j++)
+            if (cov[j] != (idx[j] == CE_BG ? 0 : g[2 + 4 * idx[j] + 3]))
+                break;
+        CHECK_INT(j, MI_SRC * MI_SRC);                 /* 1:1, no filter at the source's own size */
+        for (y = 0; y < MI_SRC; y++)
+            for (x = 0; x < MI_SRC; x += 2)
+                if (idx[y * MI_SRC + x] != idx[y * MI_SRC + x + 1] ||
+                    idx[(y & ~1) * MI_SRC + x] != idx[y * MI_SRC + x])
+                    blocks = 0;
+        finer += !blocks;
+    }
+    CHECK_INT(finer, mi_count());                       /* every icon has detail finer than 2x2 */
+}
+
 /* G3: every node the shipped [menu] names (each row and each group above it) has an icon image in
  * the compiled page, and the page is a valid emoji page; a missing one fails here */
 static void every_shipped_menu_node_has_an_icon_image(void)
@@ -877,7 +907,7 @@ static void every_shipped_menu_node_has_an_icon_image(void)
     static vt_u8 cov[MI_MAX_W * MI_MAX];
     int i, j, k, s, sum, sum2;
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK(ce_page_check(page, plen, 0xE0));
+    CHECK(ce_page_check_px(page, plen, 0xE0, MI_PIXELS));
     CHECK(km.nmenu > 0);
     for (i = 0; i < km.nmenu; i++) {
         char node[64];
@@ -1274,6 +1304,7 @@ void suite_keymap(void)
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
     drawn_menu_icons_look_square_on_tall_pixels();
+    icons_are_not_upscaled_from_16px();
     every_shipped_menu_node_has_an_icon_image();
     the_key_viewer_lists_every_bind_row();
     the_key_viewer_follows_a_rebinding();
