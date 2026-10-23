@@ -15,7 +15,7 @@ conf swapped, rig stopped at the end). Needs the same files as upkg_browse_rig p
 
   upkg_browse_extra_rig.py [--out DIR]       report.md and screenshots go to DIR (default build/<rig>/upkg-browse-extra)
 """
-import argparse, re, os, pathlib, sys, tempfile, shutil, time
+import argparse, subprocess, re, os, pathlib, sys, tempfile, shutil, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import paths  # before ami: it sets the agent port of UPTERM_RIG
@@ -36,6 +36,7 @@ ANSWER = 'rigC.lan 2525'
 REMOTE = 'ENVARC:Claude/remote'
 SLOW_GAP = 20           # seconds between the two lines on the window; the postinst sleeps 40
 TITLE = B.TITLE
+TITLE5 = 'B5 user window'
 
 
 def slow_feed():
@@ -155,19 +156,42 @@ def main(argv):
                     upkg_rig.upkg('extra-rm', 'remove %s' % p, conf=False)
             ir.run('Delete >NIL: %s QUIET' % REMOTE)
 
-            # B5: upkg 0026 sets pr_WindowPtr to -1. A write to a volume that is not there must END in an error
+            # B5 (checks 0027 and the no-requester exit; NOT a proof of 0026: ixemul's default ix_no_insert_disk_requester
+            # already keeps the absent-volume requester away, ixemul-vtcon library/ix_settings.c:35, __plock.c:497; 0026 needs a
+            # FULL volume, whose requester comes from the file system on write). upkg 0026 sets pr_WindowPtr to -1. A write to a volume that is not there must END in an error
             # (exit != 0, no requester), not in a DOS "insert volume" requester that holds the process.
             # the browse setup put the feed conf at the default config path (T:upkg-rig.conf is upkg_rig.py's, not here)
             conf = ami.read_file(B.DEFCONF).decode('latin-1').rstrip('\n')
             # opkg keeps the FIRST lists_dir it sees: drop the conf's own, or the absent volume is never used
             conf = '\n'.join(l for l in conf.split('\n') if not re.match(r'\s*option\s+lists_dir\b', l))
             (ir.VTC / 'nosuchvol.conf').write_text(conf + '\noption lists_dir NOSUCHVOL:lists\n')
+            # A window of its own whose shell has a REAL pr_WindowPtr (VTC:winptr0), typed into as a user does.
+            # NOT the agent's commands and NOT the windows above: wasabi's runner has pr_WindowPtr -1
+            # (wasabid.c:836 job runner, :6837 daemon) and every process started from it inherits that, so an
+            # absent volume never opened a requester there whether or not upkg had patch 0026 (2026-10-23: B5
+            # passed with 0026 removed).
+            typewin.typ('exit\r')
+            time.sleep(3)
+            shutil.copyfile(B.ir.ROOT / 'build/amiga/winptr0', ir.VTC / 'winptr0')
+            vshwin.open_vsh(TITLE5, box='0/20/640/300', real_window_ptr=True)
+            typewin._last_title = TITLE5
             (ir.VTC / 'extra-novol.sh').write_text('UP-Term:bin/upkg -f VTC:nosuchvol.conf update 2>&1\necho "[exit $?]"\n')
-            rc, o = ir.run_slow('extra-novol', 'VTC:vsh VTC:extra-novol.sh', 120)
-            reqs = ami.requesters()
-            B.note('B5 output:\n' + o.rstrip()[-400:] + '\nrequesters: ' + '; '.join(ami.describe_requester(r) for r in reqs))
+            typewin.typ('VTC:vsh VTC:extra-novol.sh\r')
+            reqs = []
+            o = ''
+            end = time.time() + 90
+            while time.time() < end:
+                time.sleep(3)
+                reqs = ami.requesters()
+                o = text()
+                if reqs or re.search(r'\[exit \d+\]', o):
+                    break
+            B.shot(out, 'b5.png')
+            B.note('B5 window text:\n' + o.rstrip()[-400:] + '\nrequesters: ' + '; '.join(ami.describe_requester(r) for r in reqs))
+            for r in reqs:      # a requester holds the process and the writer: answer it so the rig can end
+                subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name('ami.py')), 'ui', 'click', r['title'], 'Cancel'], timeout=60)
             check('B5: no DOS requester opened for the absent volume', not reqs)
-            check('B5: upkg ended with an error exit', re.search(r'\[exit [1-9]\d*\]', o) is not None, o.rstrip()[-120:])
+            check('B5: upkg ended with an error exit', re.search(r'\[exit [1-9]\d*\]', text()) is not None, text().rstrip()[-120:])
         finally:
             B.teardown(rel, st)
             if tmp:

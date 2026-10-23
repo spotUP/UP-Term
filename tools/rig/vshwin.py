@@ -15,16 +15,19 @@ import paths
 HISTFILE = "RAM:rig.history"   # what the rig's lines are written to (RAM:, gone at the next boot)
 
 
-def open_vsh(title, box="0/20/600/200", options="", wait=4, before=""):
+def open_vsh(title, box="0/20/600/200", options="", wait=4, before="", real_window_ptr=False):
     """Open XCON:<box>/<title>/CLOSE<options> running VTC:vsh with HISTFILE set; `before` is a line of
-    AmigaDOS commands run first (in the script, not typed). Returns after `wait` seconds."""
+    AmigaDOS commands run first (in the script, not typed). real_window_ptr: see below. Returns after `wait` seconds."""
     name = "vshwin-%s.script" % re.sub(r"[^A-Za-z0-9]", "_", title)
     lines = ["Set HISTFILE %s" % HISTFILE]
     if before:
         lines.append(before)
     lines += ["VTC:vsh", "EndCLI"]
     (paths.RIG / "vtc" / name).write_text("\n".join(lines) + "\n")
-    cmd = 'Run >NIL: NewShell "XCON:%s/%s/CLOSE%s" FROM VTC:%s' % (box, title, options, name)
+    # The agent's commands come from wasabi's runner (pr_WindowPtr -1, inherited by every child): a window opened
+    # so never shows a DOS requester. real_window_ptr starts it through VTC:winptr0 (tests/amiga/winptr0.c,
+    # copied by the caller), as a user's own shell has it.
+    cmd = 'Run >NIL: %sNewShell "XCON:%s/%s/CLOSE%s" FROM VTC:%s' % ('VTC:winptr0 ' if real_window_ptr else '', box, title, options, name)
     ami.req(0x02, struct.pack('>H', 10) + cmd.encode('latin-1'))
     time.sleep(wait)
 

@@ -994,6 +994,11 @@ $(BUILD)/amiga/snipprobe: tests/amiga/snipprobe.c handler/clip.c handler/clip.h 
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/snipprobe.c handler/clip.c handler/clipfmt.c
 
+# runs a command line with pr_WindowPtr 0 (tools/rig/vshwin.py real_window_ptr; upkg_browse_extra_rig.py B5)
+$(BUILD)/amiga/winptr0: tests/amiga/winptr0.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/winptr0.c
+
 # D3.2's probe (tools/rig/cudump_rig.py)
 $(BUILD)/amiga/cudump: tests/amiga/cudump.c
 	@mkdir -p $(BUILD)/amiga
