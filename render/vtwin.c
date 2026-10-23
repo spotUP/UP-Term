@@ -1022,9 +1022,8 @@ int vtwin_set_font(vtwin *w, const char *name, WORD size)
     vr_layout(&w->r);
     vt_resize(w->t, w->r.cols, w->r.rows);
     w->host->resized(w->user);
-    /* the old cells' pixels go: the new grid may not cover them */
-    EraseRect(w->r.rp, w->win->BorderLeft, w->win->BorderTop + w->inset_top,
-              w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
+    /* vr_redraw fills the whole text area with the theme background first, covering the old cells
+     * (an EraseRect here painted pen 0 -- white -- before it) */
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
     return 1;
@@ -1056,8 +1055,8 @@ void vtwin_show(vtwin *w, int on)
         w->host->resized(w->user);
     }
     vtwin_show_title(w);
-    EraseRect(w->r.rp, w->win->BorderLeft, w->win->BorderTop + w->inset_top,
-              w->win->Width - w->win->BorderRight - 1, w->win->Height - w->win->BorderBottom - 1);
+    /* no EraseRect: it fills with the RastPort's pen 0 (white) and vr_redraw then paints the theme
+     * background over it, the white flash on a tab switch. vr_redraw fills the same rectangle. */
     vr_redraw(&w->r);
     vr_cursor_on(&w->r);
     vtwin_knob_resend(w); /* a tab shown: the window's scroll bar is its now */

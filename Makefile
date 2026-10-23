@@ -151,6 +151,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tutorial ]; then python3 tests/test_tutorial_wiring.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = wbtext ]; then python3 -I tests/test_wbtext.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = entry ]; then python3 tests/test_entry_stub.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = tab_bg ]; then python3 tests/test_tab_switch_bg.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = qmark ]; then python3 -I tests/test_qmark_commands.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = deps ]; then python3 tests/test_host_deps.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ixemul_startfile ]; then python3 -I tests/test_ixemul_startfile.py; fi
