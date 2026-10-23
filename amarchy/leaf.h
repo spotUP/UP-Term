@@ -9,6 +9,12 @@
 /* the window a run: leaf gets (the README's NewShell line, as open:uterm) */
 #define LF_UTERM_SPEC "XCON:0/20/640/300/UP-Term/CLOSE"
 
+/* spec with "/SCREEN name" appended so the window opens on that public screen (AMB3: the screen that was
+ * in front when the hotkey fired, a DOpus screen for one). screen NULL or "" leaves the spec as it is
+ * (the default public screen). 0 when it does not fit in cap, or the name has a '/' (it would end the
+ * option); out is then "". */
+int lf_screen_spec(char *out, int cap, const char *spec, const char *screen);
+
 typedef enum {
     LF_WINDOW,   /* run: a program, in a new UP-Term window of its own (never the menu's console) */
     LF_REXX,     /* rexx: RX "script" */

@@ -630,8 +630,8 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h pr
 
 # Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
-AMARCHY_SRC := claude/util.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c handler/upmru.c
-$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
+AMARCHY_SRC := claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c handler/upmru.c
+$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/leaf.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
@@ -667,10 +667,10 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 # libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
 # (that needs no ports build); `make amarchy-menu` after `make` in upterm-ports.
 UPKGUI_SYS ?= $(UPTERM_ROOT)/upterm-ports/build/sysroot/UP-Term
-AMARCHY_MENU_SRC := amarchy/menu.c amarchy/leaf.c amarchy/leaf_core.c amarchy/menu_core.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
+AMARCHY_MENU_SRC := amarchy/menu.c amarchy/leaf.c amarchy/leaf_core.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
-$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/menu_core.h amarchy/leaf.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a
+$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) handler/frontscr.h amarchy/menu_core.h amarchy/leaf.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a
 	@mkdir -p $(BUILD)/amiga
 	$(UPTERM_ROOT)/upterm-ports/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
 

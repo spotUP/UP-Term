@@ -11,6 +11,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <upkgui/ui.h>
+#include <exec/types.h>
+#include <intuition/intuitionbase.h>
+#include <proto/exec.h>
+#include <proto/intuition.h>
 #include "atiming.h"
 #include "menu_core.h"
 #include "leaf.h"
@@ -182,6 +186,9 @@ static int viewer(void)
     return ui_run();
 }
 
+/* front_screen_name (AMB3: leaves open on the screen in front) reads the front screen from it */
+struct IntuitionBase *IntuitionBase;
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -195,6 +202,7 @@ int main(int argc, char **argv)
         fputs("usage: amarchy-menu menu [node] | viewer\n", stderr);
         return 2;
     }
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     hotkeys_init();
     {
         const char *t = mn_term_default(getenv("TERM"));

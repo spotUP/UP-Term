@@ -7,6 +7,18 @@
 #include <proto/dos.h>
 #include "leaf.h"
 #include "../handler/upreq.h"
+#include "../handler/frontscr.h"
+
+/* LF_UTERM_SPEC on the public screen that is in front now: the menu's own window opened there (AMB3). A
+ * front screen without a public name leaves the default public screen. */
+static void uterm_spec(char *out, int cap)
+{
+    char name[64];
+    if (!front_screen_name(name, sizeof name))
+        name[0] = 0;
+    if (!lf_screen_spec(out, cap, LF_UTERM_SPEC, name))
+        strcpy(out, LF_UTERM_SPEC);
+}
 
 /* run: gets what the commodity's open:uterm gives a shell, an UP-Term window of its own, as the
  * program's input and output. system() would run it in the menu's own XCON: window (AMB1: nvim
@@ -16,9 +28,11 @@ static int run_in_uterm(const char *cmd)
 {
     BPTR w;
     LONG rc;
+    char spec[128];
     if (!cmd || !*cmd)
         return 0;
-    w = Open((STRPTR)LF_UTERM_SPEC, MODE_NEWFILE);
+    uterm_spec(spec, sizeof spec);
+    w = Open((STRPTR)spec, MODE_NEWFILE);
     if (!w) {
         fprintf(stderr, "amarchy: no UP-Term window for %s\n", cmd);
         return UPREQ_NOWINDOW;
@@ -70,8 +84,12 @@ int lf_run(const km_menu *m, const lf_ui *ui)
         snprintf(line, sizeof line, "RX \"%s\"", m->arg);
         return system(line);
     }
-    case LF_OPEN:
-        return system("NewShell \"" LF_UTERM_SPEC "\"");
+    case LF_OPEN: {
+        char spec[128], line[160];
+        uterm_spec(spec, sizeof spec);
+        snprintf(line, sizeof line, "NewShell \"%s\"", spec);
+        return system(line);
+    }
     default:
         return run_request(m, ui);
     }

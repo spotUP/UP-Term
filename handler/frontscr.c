@@ -8,26 +8,37 @@
 #include <proto/intuition.h>
 #include "frontscr.h"
 
-struct Screen *lock_front_screen(void)
+int front_screen_name(char *out, int cap)
 {
-    struct Screen *scr = 0, *front = IntuitionBase->FirstScreen;
-    struct List *list = LockPubScreenList();
+    struct Screen *front;
+    struct List *list;
     struct Node *n;
-    char name[MAXPUBSCREENNAME + 1];
-    name[0] = 0;
+    int found = 0;
+    out[0] = 0;
+    if (!IntuitionBase)
+        return 0;
+    front = IntuitionBase->FirstScreen;
+    list = LockPubScreenList();
     for (n = list->lh_Head; n->ln_Succ; n = n->ln_Succ) {
         struct PubScreenNode *ps = (struct PubScreenNode *)n;
         if (ps->psn_Screen == front && n->ln_Name) {
             const char *s = n->ln_Name;
             int i;
-            for (i = 0; i < MAXPUBSCREENNAME && s[i]; i++)
-                name[i] = s[i];
-            name[i] = 0;
+            for (i = 0; i < cap - 1 && s[i]; i++)
+                out[i] = s[i];
+            out[i] = 0;
+            found = out[0] != 0;
             break;
         }
     }
     UnlockPubScreenList();
-    if (name[0])
-        scr = LockPubScreen((UBYTE *)name);
-    return scr;
+    return found;
+}
+
+struct Screen *lock_front_screen(void)
+{
+    char name[MAXPUBSCREENNAME + 1];
+    if (!front_screen_name(name, sizeof name))
+        return 0;
+    return LockPubScreen((UBYTE *)name);
 }

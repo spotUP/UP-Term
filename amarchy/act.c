@@ -7,6 +7,8 @@
 #include <proto/dos.h>
 #include "act.h"
 #include "../claude/util.h"
+#include "../handler/frontscr.h"
+#include "leaf.h"
 
 /* Clone the path list of this process's CLI (a chain of {BPTR next; BPTR lock}
  * nodes) for the child, which owns and frees it. 0 when there is no CLI. */
@@ -62,12 +64,24 @@ int act_run(const char *cmd)
     return 1;
 }
 
+/* AMB3: a window opens on the public screen in front when the hotkey fired (a DOpus screen, say), not on
+ * the default one. out gets spec plus /SCREEN name; a front screen without a public name leaves the spec
+ * as it is. */
+static void spec_on_front(char *out, int cap, const char *spec)
+{
+    char name[64];
+    if (!front_screen_name(name, sizeof name))
+        name[0] = 0;
+    if (!lf_screen_spec(out, cap, spec, name))
+        cl_copy(out, spec, cap);
+}
+
 /* Like act_run, but the command's input and output are a new XCON: window (the quick menu and
  * the key viewer draw on a terminal). The window is borderless, centred, in front, sized
  * cols x rows cells, and closes when the command ends or when it is deactivated. */
 int act_in_window(const char *cmd, int cols, int rows)
 {
-    char spec[96], num[12];
+    char spec[96], full[160], num[12];
     BPTR w, path;
     LONG rc;
     cl_copy(spec, "XCON:0/0/0/0/Amarchy/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS ", sizeof(spec));
@@ -76,7 +90,8 @@ int act_in_window(const char *cmd, int cols, int rows)
     cl_cat(spec, "x", sizeof(spec));
     cl_ltoa(rows, num);
     cl_cat(spec, num, sizeof(spec));
-    w = Open((STRPTR)spec, MODE_NEWFILE);
+    spec_on_front(full, sizeof full, spec);
+    w = Open((STRPTR)full, MODE_NEWFILE);
     path = dup_path();
     if (!cmd || !*cmd || !w) {
         if (w)
@@ -110,5 +125,10 @@ int act_rexx(const char *arg)
 
 int act_open_uterm(void)
 {
-    return act_run("NewShell \"XCON:0/20/640/300/UP-Term/CLOSE\"");
+    char spec[128], line[160];
+    spec_on_front(spec, sizeof spec, LF_UTERM_SPEC);
+    cl_copy(line, "NewShell \"", sizeof line);
+    cl_cat(line, spec, sizeof line);
+    cl_cat(line, "\"", sizeof line);
+    return act_run(line);
 }

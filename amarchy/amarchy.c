@@ -8,6 +8,8 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/rexxsyslib.h>
+#include <intuition/intuitionbase.h>
+#include <proto/intuition.h>
 #include <string.h>
 #include "cx.h"
 #include "cxdesc.h"
@@ -222,6 +224,9 @@ static void rexx_serve(void)
     }
 }
 
+/* act.c reads the front screen (AMB3) from it */
+struct IntuitionBase *IntuitionBase;
+
 int main(void)
 {
     ULONG sigs, cxs, rxs, nts;
@@ -245,6 +250,7 @@ int main(void)
         cx_close();
         return 5;   /* already running (it was told), or commodities.library is missing */
     }
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     RexxSysBase = (struct RxsLib *)OpenLibrary((STRPTR)"rexxsyslib.library", 0);
     Forbid();
     rexx_port = FindPort((STRPTR)"AMARCHY") ? 0 : CreateMsgPort();
@@ -292,6 +298,8 @@ int main(void)
     }
     if (RexxSysBase)
         CloseLibrary((struct Library *)RexxSysBase);
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
     cx_close();
     return 0;
 }
