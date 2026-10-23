@@ -53,11 +53,7 @@ def ex(cmd, t=20):
     return ixpty_rig.run(cmd, t)
 
 
-def typeline(s, wait):
-    ami.req(0x08, bytes([4]) + s.encode())
-    time.sleep(0.4)
-    ami.key(0x44)
-    time.sleep(wait)
+typeline = vshwin.typeline
 
 
 def ctrl_a():

@@ -77,6 +77,16 @@ def main():
     stage_rig.report(stage_rig.stage_build(build='--no-build' not in sys.argv))
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     time.sleep(3)
+    try:
+        return run()
+    finally:
+        # the windows this run opened, so they do not pile up run after run
+        for t in ('osdother', 'osdhost'):
+            if not vshwin.close_vsh(t):
+                print('note: %s still open' % t)
+
+
+def run():
     tabstate.open_host('osdhost')
     check(ami.window(TITLE) is None, 'no "%s" window before the hotkey' % TITLE)
 
