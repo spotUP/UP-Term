@@ -534,8 +534,8 @@
 (P_STEP)
 
 (set #step "fonts" #kb @KBFONTS@ #n 2
-     #why (cat "Adding the TopazPro and IBM fonts (only the sizes you do\n"
-               "not have yet), the Symbols Nerd Font icons\n"
+     #why (cat "Adding the TopazPro, IBM and JetBrains Mono fonts (only the\n"
+               "sizes you do not have yet), the Symbols Nerd Font icons\n"
                "(FONTS:SymbolsNerdFontMono.ttf) and running FixFonts."))
 (P_STEP)
 

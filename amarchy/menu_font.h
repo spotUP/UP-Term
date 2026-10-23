@@ -10,8 +10,9 @@ struct TextFont;
  * unknown). Returns 1 when the pixels are square or the shape is unknown. */
 int menu_screen_aspect(struct Screen *scr, int *rx, int *ry);
 
-/* The font the terminal would use on this screen (render/fontpair.c: topaz 8 on tall pixels, TopazPro 16 on
- * square ones that fit it), opened from memory or FONTS:. When that fails: the screen's own font. *opened is
+/* The menu's font on this screen (render/fontpair.c fontpair_menu_choices: JetBrainsMono 16, then TopazPro 16 on
+ * square pixels that fit 25 rows; topaz 8 on tall ones), the first that opens from memory or FONTS:. When none
+ * does: the screen's own font. *opened is
  * 1 when the caller must CloseFont the result. */
 struct TextFont *menu_font_open(struct Screen *scr, int square, int *opened);
 

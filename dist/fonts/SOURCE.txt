@@ -11,12 +11,19 @@ FixFonts lists every size in the .font files).
                      Apache License 2.0), converted to an Amiga strike
                      font (IBM.readme).
 
+  JetBrainsMono.font 16   JetBrains Mono Regular 2.304 (OFL 1.1, Omarchy's
+                     font) drawn as an Amiga strike font, 7 x 16 cells,
+                     Latin-1, by tools/gen_jbmono.py at build time (make
+                     jbmono). The Amarchy menu opens it on square pixels
+                     (JetBrainsMonoLicence/SOURCE.txt: URL, SHA-256, OFL.txt).
+                     Not kept in this drawer.
+
   SymbolsNerdFontMono.ttf   the icons-only Nerd Font, Nerd Fonts 3.5.1
                      (SymbolsNerdFont/SOURCE.txt: URL, SHA-256; MIT.txt and
                      ICON-SETS.md hold its licences). Fetched by `make`, not
                      kept in this drawer.
 
-UP-Term draws topaz as TopazPro 16, and IBM 8 as IBM 16, on screens with
+UP-Term's terminal draws topaz as TopazPro 16, and IBM 8 as IBM 16, on screens with
 square pixels (graphics cards, AGA hires interlaced), and the 8-pixel
 fonts on the Amiga's tall PAL / NTSC hires pixels -- unless the profile
 says font-aspect = off. (Taken from DCTelnet, feature/ibm16-square-pixels.)

@@ -77,6 +77,36 @@ static void a_face_knows_its_pair(void)
     CHECK_INT(ch.size, 0);
 }
 
+/* Owner 2026-10-23: the Amarchy menu uses Omarchy's font, JetBrains Mono 16, on square pixels; the terminal
+ * keeps TopazPro 16; tall pixels keep topaz 8 for both. */
+static void menu_uses_jetbrains_mono_on_square_screens(void)
+{
+    fontpair_choice m[FONTPAIR_MENU_MAX];
+    CHECK_INT(fontpair_menu_choices(1, 1, m), 2);
+    CHECK_STR(m[0].name, "JetBrainsMono.font");
+    CHECK_INT(m[0].size, 16);
+    CHECK_STR(m[1].name, "TopazPro.font");        /* the fallback is the terminal's pick */
+    CHECK_INT(m[1].size, 16);
+}
+
+static void menu_keeps_topaz_8_on_tall_pixels_and_when_25_rows_do_not_fit(void)
+{
+    fontpair_choice m[FONTPAIR_MENU_MAX];
+    CHECK_INT(fontpair_menu_choices(0, 1, m), 1);
+    CHECK_STR(m[0].name, "topaz.font");
+    CHECK_INT(m[0].size, 8);
+    CHECK_INT(fontpair_menu_choices(1, 0, m), 1);
+    CHECK_STR(m[0].name, "topaz.font");
+    CHECK_INT(m[0].size, 8);
+}
+
+static void the_terminal_stays_on_topaz_pro_16_on_square_screens(void)
+{
+    fontpair_choose("topaz.font", 8, 1, 1, &ch);
+    CHECK_STR(ch.name, "TopazPro.font");
+    CHECK_INT(ch.size, 16);
+}
+
 void suite_fontpair(void)
 {
     square_fits_needs_25_rows_of_16_pixels();
@@ -85,4 +115,7 @@ void suite_fontpair(void)
     ibm_8_and_16_swap();
     the_tall_font_stays_when_25_rows_do_not_fit();
     other_fonts_are_left_alone();
+    menu_uses_jetbrains_mono_on_square_screens();
+    menu_keeps_topaz_8_on_tall_pixels_and_when_25_rows_do_not_fit();
+    the_terminal_stays_on_topaz_pro_16_on_square_screens();
 }

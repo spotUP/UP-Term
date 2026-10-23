@@ -202,7 +202,13 @@ EndIf
 If EXISTS ENVARC:up-term/font-SymbolsNerdFontMono
   Delete >NIL: FONTS:SymbolsNerdFontMono.ttf QUIET
 EndIf
-Delete >NIL: FONTS:TopazPro FONTS:IBM QUIET
+If EXISTS ENVARC:up-term/font-JetBrainsMono-16
+  Delete >NIL: FONTS:JetBrainsMono/16 QUIET
+EndIf
+Delete >NIL: FONTS:TopazPro FONTS:IBM FONTS:JetBrainsMono QUIET
+If NOT EXISTS FONTS:JetBrainsMono
+  Delete >NIL: FONTS:JetBrainsMono.font QUIET
+EndIf
 If NOT EXISTS FONTS:TopazPro
   Delete >NIL: FONTS:TopazPro.font QUIET
 EndIf

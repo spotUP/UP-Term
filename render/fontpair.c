@@ -76,3 +76,16 @@ int fontpair_square_fits(int screen_h, int bar_h)
 {
     return screen_h >= 25 * 16 + 2 * (bar_h + 1) + 4;
 }
+
+int fontpair_menu_choices(int square, int square_fits, fontpair_choice *out)
+{
+    int n = 0;
+    if (square && square_fits) {
+        out[n].name = "JetBrainsMono.font";
+        out[n].size = 16;
+        out[n].changed = 1;
+        n++;
+    }
+    fontpair_choose("topaz.font", 8, square, square_fits, &out[n]);
+    return n + 1;
+}

@@ -559,6 +559,22 @@ Else
 EndIf
 MakeDir >NIL: UP-Term:fonts UP-Term:fonts/SymbolsNerdFont
 Copy fonts/SymbolsNerdFont UP-Term:fonts/SymbolsNerdFont ALL CLONE QUIET
+; JetBrains Mono 16 (fonts/JetBrainsMonoLicence/SOURCE.txt): the Amarchy menu's font on square-pixel
+; screens, drawn at build time from the TrueType file. Only if FONTS: lacks it; ours is marked for Uninstall.
+MakeDir >NIL: FONTS:JetBrainsMono
+If NOT EXISTS FONTS:JetBrainsMono/16
+  Copy fonts/JetBrainsMono/16 FONTS:JetBrainsMono/16 CLONE QUIET
+  Echo >ENVARC:up-term/font-JetBrainsMono-16 "installed by UP-Term"
+Else
+  If EXISTS ENVARC:up-term/font-JetBrainsMono-16
+    Copy fonts/JetBrainsMono/16 FONTS:JetBrainsMono/16 CLONE QUIET
+  EndIf
+EndIf
+If NOT EXISTS FONTS:JetBrainsMono.font
+  Copy fonts/JetBrainsMono.font FONTS: CLONE QUIET
+EndIf
+MakeDir >NIL: UP-Term:fonts/JetBrainsMonoLicence
+Copy fonts/JetBrainsMonoLicence UP-Term:fonts/JetBrainsMonoLicence ALL CLONE QUIET
 If EXISTS SYS:System/FixFonts
   SYS:System/FixFonts
 EndIf
