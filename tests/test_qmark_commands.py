@@ -53,7 +53,7 @@ COMMANDS = {
 # not commands: handlers, devices, objects, and probes / test tools
 EXCLUDED = {
     'vtengine-$(CPU).o': 'object file, not a program',
-    'keymap.o': 'object file (the amarchy-size and dist-check alloc probe)',
+    'keymap.o': 'object file (the dist-check alloc probe)',
     'vtcon-handler': 'handler (mounted, takes no command line)',
     'pty-handler': 'handler',
     'ixpipe-handler': 'handler',

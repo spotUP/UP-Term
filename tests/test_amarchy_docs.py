@@ -54,7 +54,7 @@ class AmarchyDocs(unittest.TestCase):
 
     def test_rules_commands_rows(self):
         r = read('RULES.md')
-        for w in ('ONLY=keymap', 'make amarchy-size', 'amarchy_rig.py', 'keymap_rig.py', 'amarchy_menu_rig.py'):
+        for w in ('ONLY=keymap', 'amarchy_rig.py', 'keymap_rig.py', 'amarchy_menu_rig.py'):
             self.assertIn(w, r)
 
     @unittest.skipUnless((KIT / 'Files/MANIFEST').is_file(), 'built kit missing: make dist-base')

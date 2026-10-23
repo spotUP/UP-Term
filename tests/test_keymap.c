@@ -1250,7 +1250,7 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
 
 /* The Amarchy commodity holds only its own rows, at exact size: the heap bytes of dist/keymap
  * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
- * parsed table, 8288 B on the host; the budget is 32768 B for the whole resident set, plan section 6), carry no
+ * parsed table, 8288 B on the host), carry no
  * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
 #define AMARCHY_KEYMAP_HEAP_MAX 800   /* 8 rows, 460 B measured; the parsed table is 8288 B */
 static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
