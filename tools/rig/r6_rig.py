@@ -106,6 +106,12 @@ def analyse(mode, w, h, px, box):
         wpx, hpx = bb[1] - bb[0] + 1, bb[3] - bb[2] + 1
         print('  %s: ICON ink box %d x %d px (ratio %.3f), x %d..%d of cell span %d..%d' %
               (mode, wpx, hpx, wpx / hpx, bb[0] - ix, bb[1] - ix, 0, 2 * cw - 1))
+    if bb and mode == 'rtg':
+        check(hpx >= 14, 'rtg 2b: the icon inks at least 14 of the 16 cell rows', hpx)
+    elif bb:
+        check((wpx, hpx) == (16, 7), 'hires 2b: the icon ink box is 16 x 7 px', '%dx%d' % (wpx, hpx))
+    else:
+        check(False, mode + ' 2b: the icon has ink')
     check(bb is not None and bb[1] - ix >= cw, mode + ' 2b: the icon draws into its second cell', bb and (bb[1] - ix, cw))
     check(same(cell(5, 0), cell(1, 0)) and same(cell(6, 0), cell(2, 0)),
           mode + ' 2b: the cell after the icon is the next character (A B again; cursor advanced by 2)')
