@@ -8,6 +8,7 @@
 #include "../handler/menu_ids.h"
 #include "../amarchy/cxdesc.h"
 #include "../amarchy/menu_core.h"
+#include "../amarchy/menu_geom.h"
 #include "../engine/vtengine.h"
 #include "harness.h"
 
@@ -637,6 +638,124 @@ static void osd_size_counts_the_reachable_levels(void)
     }
 }
 
+/* AM-GUI G1: the drawn menu's rectangles. The text width is a fixed number of pixels per
+ * character (ctx), as topaz's is; the expected numbers are worked out by hand from the scaling in
+ * menu_geom.h (Omarchy's px * ysize / 12 down, px * cw / 7.2 across), not from menu_geom.c. */
+static int fixed_width(const char *s, void *ctx)
+{
+    return (int)strlen(s) * *(int *)ctx;
+}
+
+static void drawn_menu_geometry_follows_the_font_and_screen(void)
+{
+    static char file[16384];
+    mg_font topaz = { 8, 8 }, big = { 16, 10 };
+    int px8 = 8, px10 = 10, px16 = 16, w;
+    char head[KM_ID];
+    mn_item items[MN_MAX_ITEMS];
+    mg_geom g;
+    long n = slurp("dist/keymap", file, sizeof(file));
+
+    mg_metrics_for(&g.m, &topaz);
+    CHECK_INT(g.m.bx, 2);
+    CHECK_INT(g.m.by, 2);
+    CHECK_INT(g.m.hpad, 20);
+    CHECK_INT(g.m.vpad, 12);
+    CHECK_INT(g.m.head_h, 23);
+    CHECK_INT(g.m.gap, 4);
+    CHECK_INT(g.m.row_h, 33);
+    CHECK_INT(g.m.pitch, 35);
+    CHECK_INT(g.m.row_pad, 13);
+    CHECK_INT(g.m.min_w, 333);
+    CHECK_INT(g.m.margin_x, 11);
+    CHECK_INT(g.m.margin_y, 7);
+
+    mg_header("", head, sizeof head);
+    CHECK_STR(head, "Amarchy");
+    mg_header("apps", head, sizeof head);
+    CHECK_STR(head, "Apps");
+    mg_header("apps.tools", head, sizeof head);
+    CHECK_STR(head, "Tools");
+
+    /* the shipped keymap at topaz 8 on a 640x256 screen: root 3 groups, apps 5 rows, no label wide
+     * enough to pass the narrowest window */
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 3);
+    CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
+    w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, 640);
+    CHECK_INT(w, 333);
+    mg_layout(&g, &topaz, w, 3, 640, 256);
+    CHECK_INT(g.h, 158);
+    CHECK_INT(g.x, 153);
+    CHECK_INT(g.y, 49);
+    CHECK_INT(g.visible, 3);
+    CHECK_INT(g.peek, 0);
+    CHECK_INT(mg_more(&g, 0), 0);
+    CHECK_INT(g.list_x, 22);
+    CHECK_INT(g.list_y, 41);
+    CHECK_INT(g.list_w, 289);
+    mg_layout(&g, &topaz, w, 5, 640, 256);
+    CHECK_INT(g.h, 228);
+    CHECK_INT(g.y, 14);
+    CHECK_INT(g.visible, 5);
+    CHECK_INT(g.peek, 0);
+
+    /* hits: row 0 from y 41 for 33 px, then a 2 px gap, row 1 from 76 */
+    mg_layout(&g, &topaz, w, 3, 640, 256);
+    CHECK_INT(mg_hit(&g, 0, 22, 41), 0);
+    CHECK_INT(mg_hit(&g, 0, 22, 74), -1);
+    CHECK_INT(mg_row_y(&g, 1), 76);
+    CHECK_INT(mg_hit(&g, 0, 22, 76), 1);
+    CHECK_INT(mg_hit(&g, 0, 21, 41), -1);
+    CHECK_INT(mg_hit(&g, 0, 22 + 289, 41), -1);
+
+    /* 7 entries: 5 would fit 179 px, but the peek of the next row takes 18, so 4 rows + peek */
+    mg_layout(&g, &topaz, w, 7, 640, 256);
+    CHECK_INT(g.visible, 4);
+    CHECK_INT(g.peek, 18);
+    CHECK_INT(g.list_h, 158);
+    CHECK_INT(g.h, 213);
+    CHECK_INT(mg_more(&g, 0), 1);
+    CHECK_INT(mg_more(&g, 3), 0);                  /* at the bottom the cue goes */
+    CHECK_INT(mg_scroll(&g, 6, 0), 3);
+    CHECK_INT(mg_scroll(&g, 1, 3), 1);
+    CHECK_INT(mg_scroll(&g, 2, 1), 1);
+    CHECK_INT(mg_hit(&g, 0, 22, 181), 4);          /* the peek row selects the next entry */
+    CHECK_INT(mg_hit(&g, 3, 22, 181), -1);         /* no peek drawn at the bottom */
+
+    /* a 16 px font (10 px characters) on 1024x768 */
+    mg_metrics_for(&g.m, &big);
+    CHECK_INT(g.m.bx, 3);
+    CHECK_INT(g.m.hpad, 25);
+    CHECK_INT(g.m.vpad, 24);
+    CHECK_INT(g.m.head_h, 45);
+    CHECK_INT(g.m.row_h, 67);
+    CHECK_INT(g.m.pitch, 71);
+    CHECK_INT(g.m.min_w, 417);
+    w = mg_width(&km, "", &big, 0, 10, fixed_width, &px10, 1024);
+    CHECK_INT(w, 417);
+    mg_layout(&g, &big, w, 3, 1024, 768);
+    CHECK_INT(g.h, 316);
+    CHECK_INT(g.x, 303);
+    CHECK_INT(g.y, 226);
+    mg_layout(&g, &big, w, 5, 1024, 768);
+    CHECK_INT(g.h, 458);
+    CHECK_INT(g.y, 155);
+    CHECK_INT(g.peek, 0);
+    /* the same font on 640x256: 123 px for rows, one row and the peek */
+    mg_layout(&g, &big, w, 3, 640, 256);
+    CHECK_INT(g.visible, 1);
+    CHECK_INT(g.peek, 36);
+    CHECK_INT(g.h, 214);
+
+    /* width: the widest row two levels down sets it; the screen caps it */
+    CHECK(parse("[menu]\napps.upkg = Install add-ons | run:upkg-browse\napps.tools.zzz = A much longer label here | run:z\n"));
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, 640), 454);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 16, 8, fixed_width, &px16, 640), 454 + 16 + 11);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, 320), 298);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px8, 320), 298);
+}
+
 /* Phase D: the Super+K viewer prints one line per [bind] row of the shipped file; the expected
  * count is read from the file text (second source), the printed lines are counted from the output */
 static void the_key_viewer_lists_every_bind_row(void)
@@ -949,6 +1068,7 @@ void suite_keymap(void)
     typing_th_leaves_theme_first();
     menu_levels_follow_the_ids_and_escape_goes_up();
     osd_size_counts_the_reachable_levels();
+    drawn_menu_geometry_follows_the_font_and_screen();
     the_key_viewer_lists_every_bind_row();
     the_key_viewer_follows_a_rebinding();
     a_request_resolves_like_its_bind_row();
