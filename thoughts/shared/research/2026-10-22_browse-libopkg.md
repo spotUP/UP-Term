@@ -174,4 +174,15 @@ Rig 4 (make opkg, rig start --max): upkg_browse_rig.py 13 of 13; green pixels 0 
 
 Cause: not the script. `upkg update` with `lists_dir NOSUCHVOL:lists` never returned: opkg's file_mkdir_hier (libopkg/file_util.c) recursed on the parent of an absent Amiga volume root, stat() kept returning ENOENT and xdirname() did not shrink the path, so the stack overflowed (minimal conf: vsh printed "Bus error - upkg"; real conf: no output, no "[exit N]", rc 1; a direct run hung 60 s and ignored Ctrl-C, slot held; a second probe under Stack 262144 behaved the same). Unverified: the exact dirname() result for "NOSUCHVOL:" (not read from ixemul); the fix guards on parent == path.
 Fix: upterm-ports opkg patch 0027 (file_mkdir_hier stops when parent equals path). Rig 4 upkg_browse_extra_rig.py with 0026 + 0027: B5 PASS (no requester, [exit 255]), 10 of 10 checks.
-Not done: revert proof (0026 removed, expect a requester) and a host regression test for 0027 (host dirname("/") exists, so the loop is not reproducible on the host; needs a fake-stat check). Rig 4 stopped at the end.
+Not done at that time: revert proof (0026 removed, expect a requester) and a host regression test for 0027. Both were done afterwards (below).
+
+### R2b host regression test for 0027 (2026-10-23)
+
+upterm-ports 9a82468: pkgs/opkg/check/mkdir_absent_root.sh with the preload shim dirname_self.c. The shim makes dirname of "NOSUCHVOL:..." return "NOSUCHVOL:" (as the Amiga libc does for a volume root; the host returns "."), and the check runs `upkg update` with `option lists_dir NOSUCHVOL:lists` in an empty directory under a 20 s watchdog. With 0027 it prints "[OK] file_mkdir_hier returned -1 ... (upkg exit 255, no crash)". With the guard in file_util.c disabled (host build rebuilt that way) it prints "[FAIL] ... exited 134 instead of 255 (recursion in file_mkdir_hier?)" (abort from the stack overflow). The check runs with `make host-opkg` (every check/*.sh). This also confirms on the host that the recursion is the cause.
+
+### R2a revert proof of 0026 (2026-10-23): the rig case B5 does NOT discriminate
+
+Rig 4, `rig.py start --max`, `upkg_browse_extra_rig.py` (it runs B3, B4 and B5; there is no B5-only switch).
+- 0026 removed from the build (0027 kept; build/src/opkg re-extracted, no upkg_no_requesters in src/opkg.c; upkg 889708 bytes): B5 output "[exit 255]", requesters: none. PASS, 10 of 10 checks. Expected FAIL with a requester; did not happen.
+- 0026 restored (patch file touched so make re-applied it; upkg 889792 bytes, upkg_no_requesters back in src/opkg.c): B5 output "[exit 255]", requesters: none. PASS, 10 of 10.
+So with 0027 in place, B5 passes with or without 0026. The 2026-10-22 requester was seen on a FULL volume (a write error), not shown for an absent volume; on this rig an absent volume already gives an error exit and no requester. Whether 0026 does anything for B5 is therefore unproven; B5 proves only that 0027 ends the loop. To prove 0026 a case needs a full volume (or a volume that asks to be inserted, e.g. an unmounted floppy-style device) instead of NOSUCHVOL:. Rig 4 stopped (rig.py status: down). 0026 is back in upterm-ports (git status clean).
