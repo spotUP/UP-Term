@@ -25,8 +25,8 @@ WHAT YOU NEED
     AmiSSL 5: Aminet util/libs/AmiSSL-v5-OS3.lha; run its own installer
       (Install ticks curl only when LIBS:amisslmaster.library is found)
   Get up-term.lha onto the Amiga any way you like (a memory card, a shared
-  drive, ftp over the stack) and unpack it with lha. Reboot after Install:
-  XCON: and PTY: are mounted from then on.
+  drive, ftp over the stack) and unpack it with lha. Reboot after Install
+  (its last page offers to): XCON: and PTY: are mounted from then on.
 
 INSTALL
   Unpack the archive and double-click Install in the UP-Term drawer

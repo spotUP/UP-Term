@@ -412,6 +412,17 @@ EndIf
 Copy ps top UP-Term:bin CLONE
 ; UPDemo: the terminal's show-off and benchmark (README, DEMO)
 Copy UPDemo C:UPDemo CLONE
+; C:Reboot: writes every volume's buffers out, then restarts (the Install's
+; last page offers it). OS 3.2 has a C:Reboot of its own: that one stays,
+; an older one of ours (the "(UP-Term)" in its version) is replaced
+If EXISTS C:Reboot
+  Search >NIL: C:Reboot "(UP-Term)"
+  If NOT WARN
+    Copy Reboot C:Reboot CLONE
+  EndIf
+Else
+  Copy Reboot C:Reboot CLONE
+EndIf
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
 Copy UPTerm C:UPTerm CLONE
 ; C:uptelnet: a telnet client for the window (no ixemul; needs a TCP/IP

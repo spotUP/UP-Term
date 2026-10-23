@@ -28,6 +28,7 @@ def check(ok, what):
 COMMANDS = {
     'UPConsole': 'device/upconsole.c',
     'UPDemo': 'demo/updemo_amiga.c',
+    'Reboot': 'install/reboot.c',
     'UPTerm': 'handler/upterm.c',
     'upprefs': 'prefs/upprefs.c',
     'upicon': 'install/upicon.c',

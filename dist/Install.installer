@@ -456,6 +456,27 @@
     (set #name "UNIFONT" #val #unifont) (P_OPT)
     (set #name "EMOJI" #val #emoji) (P_OPT))
 
+; P_END: the last page. #done says what went where; then the
+; Install offers to reboot, since the handlers, XCON: and the
+; assigns it set up start with the next boot. Reboot is the
+; kit's own (Files/Reboot): it writes every volume's buffers
+; out before ColdReboot, so no disk needs validating after.
+(procedure P_END
+    (message #done)
+    (set #n 3)
+    (P_LEAD)
+    (if (askbool
+            (prompt (cat #lead "Reboot now? UP-Term's handlers, XCON:\n"
+                         "and its assigns start with the next boot."))
+            (help "Reboot writes every disk's buffers out, then "
+                  "restarts the Amiga. Later leaves the Amiga "
+                  "running; UP-Term works fully after the next "
+                  "boot, whenever that is.")
+            (choices "Reboot" "Later")
+            (default 1))
+        (run (cat "\"" (tackon #files "Reboot") "\"")))
+    (exit (quiet)))
+
 (complete 0)
 
 (P_OPTIONS)
@@ -577,7 +598,7 @@
         (if (<> #stays "") (set #n 9))
         (if (<> #adnote "") (set #n (+ #n 2)))
         (P_LEAD)
-        (set #updated (cat #lead "UP-Term is updated:\n" (getenv "UPTVEROLD") "\nto\n"
+        (set #done (cat #lead "UP-Term is updated:\n" (getenv "UPTVEROLD") "\nto\n"
                         (getenv "UPTVERNEW") "\n\n"
                         (if (<> #stays "")
                             (cat "Stays installed: " (substr #stays 2 (strlen #stays)) ".\n"
@@ -587,7 +608,7 @@
                         #adnote))
         (run "Delete >NIL: ENV:UPTHANDED QUIET")
         (run "Delete >NIL: ENV:UPTVER#? QUIET")
-        (exit #updated)))
+        (P_END)))
 
 ; ---- what went where ------------------------------------------------------------
 
@@ -705,4 +726,4 @@
              "  export WASABI_KEY=" (getenv "wasabi.key") "\n"
              "  ./wasabi discover\n"
              "The key is in ENVARC:wasabi.key; keep it to yourself.")))
-(exit #done)
+(P_END)

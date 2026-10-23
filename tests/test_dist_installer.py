@@ -165,7 +165,7 @@ class OneListOfParts(unittest.TestCase):
         self.assertIn('(set #name #con #val #con)', opts)
         self.assertIn('(set #name #dev #val #dev)', opts)
         self.assertLess(INSTALLER.index('\n(P_OPTIONS)\n'), INSTALLER.index('(set #step "drawer"'))
-        self.assertLess(INSTALLER.index('\n(P_OPTIONS_END)\n'), INSTALLER.index('(exit #done)'))
+        self.assertLess(INSTALLER.index('\n(P_OPTIONS_END)\n'), INSTALLER.rindex('(P_END)'))
         self.assertRegex(INSTALLER, r'\(P_OPTIONS_END\)\n\s+\(abort', 'a failed part removes them too')
 
 
@@ -359,8 +359,46 @@ class FindsTheAddOns(unittest.TestCase):
         self.assertIn('#adnote', update)
         full = INSTALLER[INSTALLER.index('; ---- what went where'):]
         self.assertLess(full.index('(P_OPTIONS_END)'), full.index('(P_ADDONS)'))
-        self.assertLess(full.index('(P_ADDONS)'), full.index('(exit #done)'))
+        self.assertLess(full.index('(P_ADDONS)'), full.rindex('(P_END)'))
         self.assertIn('#adnote))\n(if (= #wasabi "WASABI")', full)
+
+
+class OffersAReboot(unittest.TestCase):
+    """The handlers, XCON: and the assigns start with the next boot, so the
+    last page of a full install and of an Update asks to reboot."""
+    def setUp(self):
+        a = INSTALLER.index('(procedure P_END')
+        self.proc = INSTALLER[a:INSTALLER.index('\n\n', a)]
+
+    def test_both_last_pages_end_in_p_end_and_nothing_else_exits(self):
+        update = INSTALLER[INSTALLER.index('; ---- an Update ends here'):INSTALLER.index('; ---- what went where')]
+        full = INSTALLER[INSTALLER.index('; ---- what went where'):]
+        self.assertIn('(P_END)))', update)
+        self.assertTrue(full.rstrip().endswith('(P_END)'))
+        self.assertEqual(INSTALLER.count('(exit'), 1)
+        self.assertIn('(exit (quiet))', self.proc)
+
+    def test_the_question_says_reboot_or_later_and_later_is_the_default(self):
+        self.assertIn('(message #done)', self.proc)
+        self.assertIn('(askbool', self.proc)
+        self.assertIn('(choices "Reboot" "Later")', self.proc)
+        self.assertIn('(default 1)', self.proc)
+
+    def test_only_a_yes_runs_the_kits_flushing_reboot(self):
+        ask = self.proc[self.proc.index('(if (askbool'):]
+        self.assertEqual(self.proc.count('(run '), 1)
+        self.assertIn('(run (cat "\\"" (tackon #files "Reboot") "\\""))', ask)
+        self.assertNotIn('(reboot', self.proc)
+
+    def test_the_tools_part_installs_c_reboot_only_over_one_of_ours(self):
+        self.assertIn('tools           Files/Reboot',
+                      (ROOT / 'dist/parts.txt').read_text())
+        self.assertIn('Search >NIL: C:Reboot "(UP-Term)"\n  If NOT WARN\n'
+                      '    Copy Reboot C:Reboot CLONE', DOS)
+        un = (ROOT / 'dist/Uninstall').read_text()
+        self.assertIn('Search >NIL: C:Reboot "(UP-Term)"', un)
+        self.assertIn('Delete >NIL: C:Reboot QUIET', un)
+        self.assertIn('(UP-Term)"', (ROOT / 'install/reboot.c').read_text())
 
 
 class AmiSSLPart(unittest.TestCase):

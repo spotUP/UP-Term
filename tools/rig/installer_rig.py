@@ -511,6 +511,10 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
         ask = own_ask_answer(gads)
         if ask is not None:
             if not clicked_at or time.time() - clicked_at > 15:   # a click made while the page redraws is lost
+                # the last page asks to reboot (P_END): Later (id 1, the right button), or the rig's Amiga restarts
+                if 'Reboot' in window_ocr(tree, case + '-ask'):
+                    ask = 1
+                    log.append('reboot offered: answered Later (id 1)')
                 click(gads[ask][0])
                 clicked_at = time.time()
                 log.append('answered [%s] with id %d' % (title, ask))
@@ -641,6 +645,7 @@ def update_phase(ck, inst, level, base, t_install, noopts=False):
     (OUT / "update-2.log.txt").write_text('\n'.join(log) + '\n')
     print('installer_rig update: full install %.0f s, update %.0f s' % (t_install, t))
     ck(finished, 'the Update ran to its end (%.0f s; the full install %.0f s)' % (t, t_install), log[-1] if log else '')
+    ck(any(l.startswith('reboot offered') for l in log), 'the Update\'s last page offered a reboot (answered Later)')
     after = dates()
     changed = sorted(k for k in set(before) | set(after)
                      if before.get(k) != after.get(k) and k.lower() != 'up-term:manifest')
@@ -846,6 +851,8 @@ def run_base_case(case):
     t_install = time.time() - t_install
     (OUT / (case + ".log.txt")).write_text('\n'.join(log) + '\n')
     ck(finished, 'the Installer ran to its end (%s)' % level, log[-1] if log else '')
+    if case != 'space':
+        ck(any(l.startswith('reboot offered') for l in log), 'the last page offered a reboot (answered Later)')
     room = [l for l in log if l.startswith('room page: ')]
     if room:
         # SYS: has too little room for the default parts: the user takes another drive (ROOMDEST) and the install goes there
