@@ -49,11 +49,12 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_upassign.c
 
-.PHONY: symbolsnerd wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: symbolsnerd jbmono wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=winspec the XCON: spec's size fields and the default ground (a CON:/RAW: window looks like an XCON: one) (tests/test_winspec.c)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=rig_keys a rig's Right Option is Left Amiga (Amarchy), the Cmd keys stay Right Amiga (tests/test_rig_keys.py)
+# ONLY=rig_tty_mask a terminal case's check/mask rows are blanked before the screens are compared, nothing else (tools/test_rig_tty_mask.py)
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
@@ -115,7 +116,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_search ]; then python3 -I tests/test_pi_search.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = updiff ]; then ./$(BUILD)/updiff_stack_drv; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = render ]; then ./$(BUILD)/render_host; fi
-	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then python3 tests/test_dist_fonts.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then $(MAKE) --no-print-directory jbmono && python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_kitsize.py; fi
@@ -135,6 +136,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_stage_rig.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_keys ]; then python3 tests/test_rig_keys.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_tty_mask ]; then python3 -I tools/test_rig_tty_mask.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
@@ -295,6 +297,29 @@ $(SYMBOLS_TTF): $(SYMBOLS_ARCHIVE)
 	tar -xJf $(SYMBOLS_ARCHIVE) -C $(BUILD)/symbolsnerd SymbolsNerdFontMono-Regular.ttf
 	echo "$(SYMBOLS_TTF_SHA256)  $@" | shasum -a 256 -c -
 symbolsnerd: $(SYMBOLS_TTF)
+
+# JetBrains Mono (OFL 1.1; Omarchy's font): the release archive fetched once into build/jbmono/, SHA-256
+# checked, JetBrainsMono-Regular.ttf extracted, then drawn as the Amiga strike font JetBrainsMono.font 16
+# (tools/gen_jbmono.py: build/jbmono/out/JetBrainsMono.font and JetBrainsMono/16) for the Amarchy menu on
+# square-pixel screens. The kit's Files/fonts/JetBrainsMono.font + JetBrainsMono/16 (licence drawer dist/fonts/JetBrainsMonoLicence). JBMONO_VER= another
+# release (with JBMONO_SHA256 and JBMONO_TTF_SHA256).
+JBMONO_VER ?= 2.304
+JBMONO_SHA256 ?= 6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf
+JBMONO_TTF_SHA256 ?= a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f
+JBMONO_ARCHIVE := $(BUILD)/jbmono/JetBrainsMono-$(JBMONO_VER).zip
+JBMONO_TTF := $(BUILD)/jbmono/JetBrainsMono-Regular.ttf
+JBMONO_OUT := $(BUILD)/jbmono/out
+$(JBMONO_ARCHIVE):
+	@mkdir -p $(BUILD)/jbmono
+	curl -sSfL -o $@.tmp https://github.com/JetBrains/JetBrainsMono/releases/download/v$(JBMONO_VER)/JetBrainsMono-$(JBMONO_VER).zip
+	echo "$(JBMONO_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(JBMONO_TTF): $(JBMONO_ARCHIVE)
+	unzip -o -j -q $(JBMONO_ARCHIVE) fonts/ttf/JetBrainsMono-Regular.ttf -d $(BUILD)/jbmono
+	echo "$(JBMONO_TTF_SHA256)  $@" | shasum -a 256 -c -
+$(JBMONO_OUT)/JetBrainsMono.font: $(JBMONO_TTF) tools/gen_jbmono.py
+	python3 -I tools/gen_jbmono.py $(JBMONO_TTF) $(JBMONO_OUT)
+jbmono: $(JBMONO_OUT)/JetBrainsMono.font
 
 # Twemoji (ledger U4): the release archive fetched once into build/twemoji/
 # and checked against its pinned sha256, then the colour pages of the
@@ -1224,7 +1249,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dis
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -1268,7 +1293,7 @@ dist-base: amiga $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui bebbossh
 	cp $(BUILD)/bebbossh/out/* $(KIT)/Files/net/bebbossh-1.46.1/
 	# curl.020/.040/.060 are vendored Aminet binaries shipped with symbol hunks (~44 KB each); strip the kit's copies with the gcc-track strip (never on vbcc-built files)
 	for f in $(KIT)/Files/net/curl-*/curl.0?0; do $(AMIGA_STRIP) $$f; done
-	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts && cp $(SYMBOLS_TTF) $(KIT)/Files/fonts/SymbolsNerdFontMono.ttf
+	rm -rf $(KIT)/Files/fonts && cp -R dist/fonts $(KIT)/Files/fonts && cp $(SYMBOLS_TTF) $(KIT)/Files/fonts/SymbolsNerdFontMono.ttf && cp -R $(JBMONO_OUT)/JetBrainsMono $(JBMONO_OUT)/JetBrainsMono.font $(KIT)/Files/fonts/
 	mkdir -p $(KIT)/Files/unifont && cp $(UNIFONT_PAGES)/[0-9A-F][0-9A-F] $(UNIFONT_PAGES)/1F[0-9A] dist/unifont/OFL-1.1.txt dist/unifont/SOURCE.txt $(KIT)/Files/unifont/
 	mkdir -p $(KIT)/Files/emoji && cp $(EMOJI_PAGES)/[0-9A-F][0-9A-F] $(EMOJI_PAGES)/1F[0-9A] dist/emoji/CC-BY-4.0.txt dist/emoji/SOURCE.txt $(KIT)/Files/emoji/
 	@# wasabi: LICENSE and SOURCE.txt from dist/wasabi, the daemon and the client from the build (the wasabi stamp, the pin tools/nas/wasabi.rev)
