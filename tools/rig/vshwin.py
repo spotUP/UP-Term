@@ -27,3 +27,29 @@ def open_vsh(title, box="0/20/600/200", options="", wait=4, before=""):
     cmd = 'Run >NIL: NewShell "XCON:%s/%s/CLOSE%s" FROM VTC:%s' % (box, title, options, name)
     ami.req(0x02, struct.pack('>H', 10) + cmd.encode('latin-1'))
     time.sleep(wait)
+
+
+def typeline(s, wait):
+    """Type `s` and Return into the active window, then wait `wait` seconds."""
+    ami.req(0x08, bytes([4]) + s.encode())
+    time.sleep(0.4)
+    ami.key(0x44)
+    time.sleep(wait)
+
+
+def close_vsh(title, secs=15):
+    """End a window open_vsh opened: a click in it makes it active, `exit` ends its vsh and the window
+    closes (the script's EndCLI). True once the window is gone, so a run does not leave windows behind."""
+    w = ami.window(title)
+    if not w:
+        return True
+    x, y, ww, hh = w['box']
+    ami.click_px(x + ww // 2, y + hh // 2)
+    time.sleep(1)
+    typeline('exit', 0)
+    end = time.time() + secs
+    while time.time() < end:
+        if not ami.window(title):
+            return True
+        time.sleep(0.5)
+    return False

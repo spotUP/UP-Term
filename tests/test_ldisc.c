@@ -125,6 +125,35 @@ static void signals(void)
     CHECK_INT(L.stopped, 0);
 }
 
+/* A closed window (close gadget, CLOSEINACTIVE) hangs the terminal up: an
+ * ixemul program blocked in read() or select() in termios mode must see end
+ * of file, or it never leaves (the Amarchy menu stayed open on focus loss). */
+static void hangup_reads_find_the_end(void)
+{
+    vt_termios t;
+    int arm;
+    fresh();
+    t = L.t;
+    t.c_lflag &= ~(ld_flag)(LD_ICANON | LD_ECHO);
+    ld_set(&L, &t, LD_TCSANOW);
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_WAIT);  /* VMIN 1, nothing */
+    CHECK_INT(ld_input_pending(&L), 0);
+    type("q");
+    ld_hangup(&L);
+    CHECK_INT(ld_input_pending(&L), 1);
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_TAKE);  /* queued first */
+    CHECK_STR(rd(100), "q");
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_ZERO);  /* then the end */
+    CHECK_INT(ld_input_pending(&L), 1);
+    /* canonical with half a line: the end too, no wait for the newline */
+    fresh();
+    ld_hangup(&L);
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_ZERO);
+    /* termios mode entered again: a fresh terminal */
+    fresh();
+    CHECK_INT(ld_read_action(&L, 0, &arm), LD_RD_WAIT);
+}
+
 static void non_canonical(void)
 {
     vt_termios t;
@@ -285,5 +314,6 @@ void suite_ldisc(void)
     canonical_editing();
     signals();
     non_canonical();
+    hangup_reads_find_the_end();
     output();
 }

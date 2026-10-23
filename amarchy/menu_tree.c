@@ -1,0 +1,101 @@
+/* menu_tree.c -- the node paths of the [menu] table: a node's entries, a child's path and the
+ * OSD size. Its own file so the Amarchy commodity links only these (its 32 KB resident budget,
+ * tests/test_amarchy_size.py); amarchy-menu links it with menu_core.c. */
+#include <string.h>
+#include "menu_core.h"
+
+static void cpy(char *d, const char *s, int n)
+{
+    int i;
+    for (i = 0; i < n - 1 && s[i]; i++)
+        d[i] = s[i];
+    d[i] = 0;
+}
+
+int mn_children(const keymap *k, const char *node, mn_item *out, int max)
+{
+    int i, j, n = 0, nl = (int)strlen(node);
+    for (i = 0; i < k->nmenu && n < max; i++) {
+        const char *id = k->menu[i].id, *rest, *dot;
+        int seglen, dup = 0;
+        if (nl) {
+            if (strncmp(id, node, nl) || id[nl] != '.')
+                continue;
+            rest = id + nl + 1;
+        } else
+            rest = id;
+        if (!*rest)
+            continue;
+        dot = strchr(rest, '.');
+        seglen = dot ? (int)(dot - rest) : (int)strlen(rest);
+        if (seglen >= KM_ID)
+            continue;
+        if (dot) {
+            for (j = 0; j < n; j++)
+                if (out[j].row < 0 && !strncmp(out[j].seg, rest, seglen) && !out[j].seg[seglen])
+                    dup = 1;
+            if (dup)
+                continue;
+            out[n].row = -1;
+            memcpy(out[n].seg, rest, seglen);
+            out[n].seg[seglen] = 0;
+            out[n].label[0] = (char)((rest[0] >= 'a' && rest[0] <= 'z') ? rest[0] - 32 : rest[0]);
+            cpy(out[n].label + 1, rest + 1, seglen < KM_LABEL ? seglen : KM_LABEL);
+        } else {
+            out[n].row = i;
+            cpy(out[n].seg, rest, KM_ID);
+            cpy(out[n].label, k->menu[i].label, KM_LABEL);
+        }
+        n++;
+    }
+    return n;
+}
+
+void mn_child_node(const char *node, const mn_item *it, char *out, int n)
+{
+    if (*node) {
+        cpy(out, node, n);
+        strncat(out, ".", n - strlen(out) - 1);
+        strncat(out, it->seg, n - strlen(out) - 1);
+    } else
+        cpy(out, it->seg, n);
+}
+
+/* the most entries and the widest text of one group `g`, in the caller's buffer `it` */
+static void osd_group(const keymap *k, const char *g, mn_item *it, int *maxn, int *maxw)
+{
+    int i, n = mn_children(k, g, it, MN_MAX_ITEMS);
+    if (n > *maxn)
+        *maxn = n;
+    for (i = 0; i < n; i++) {
+        int w = (int)strlen(it[i].label) + 2 + (it[i].row < 0 ? 1 : 0);
+        if (w > *maxw)
+            *maxw = w;
+    }
+}
+
+/* `node` and every group below it: each id under node names its groups by its prefixes up to a dot.
+ * Not recursive, one item buffer: the commodity calls this on its own small stack. A group whose
+ * segment mn_children would skip (KM_ID or longer) is not reachable and is left out, as there. */
+void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows)
+{
+    mn_item it[MN_MAX_ITEMS];
+    char g[KM_ID * 2];
+    int maxn = 0, maxw = 0, i, c, nl = (int)strlen(node);
+    osd_group(k, node, it, &maxn, &maxw);
+    for (i = 0; i < k->nmenu; i++) {
+        const char *id = k->menu[i].id, *seg, *dot;
+        if (nl && (strncmp(id, node, nl) || id[nl] != '.'))
+            continue;
+        for (seg = id + (nl ? nl + 1 : 0); (dot = strchr(seg, '.')) != NULL; seg = dot + 1) {
+            if (dot - seg >= KM_ID || dot - id >= (int)sizeof g)
+                break;
+            memcpy(g, id, dot - id);
+            g[dot - id] = 0;
+            osd_group(k, g, it, &maxn, &maxw);
+        }
+    }
+    c = maxw + 2 * MN_OSD_PAD;
+    *cols = c < MN_OSD_MIN_COLS ? MN_OSD_MIN_COLS : c;
+    *rows = MN_OSD_HEAD_LINES + maxn;
+}

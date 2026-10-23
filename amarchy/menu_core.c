@@ -23,53 +23,6 @@ int mn_match(const char *label, const char *filter)
     return any;
 }
 
-static void cpy(char *d, const char *s, int n)
-{
-    int i;
-    for (i = 0; i < n - 1 && s[i]; i++)
-        d[i] = s[i];
-    d[i] = 0;
-}
-
-int mn_children(const keymap *k, const char *node, mn_item *out, int max)
-{
-    int i, j, n = 0, nl = (int)strlen(node);
-    for (i = 0; i < k->nmenu && n < max; i++) {
-        const char *id = k->menu[i].id, *rest, *dot;
-        int seglen, dup = 0;
-        if (nl) {
-            if (strncmp(id, node, nl) || id[nl] != '.')
-                continue;
-            rest = id + nl + 1;
-        } else
-            rest = id;
-        if (!*rest)
-            continue;
-        dot = strchr(rest, '.');
-        seglen = dot ? (int)(dot - rest) : (int)strlen(rest);
-        if (seglen >= KM_ID)
-            continue;
-        if (dot) {
-            for (j = 0; j < n; j++)
-                if (out[j].row < 0 && !strncmp(out[j].seg, rest, seglen) && !out[j].seg[seglen])
-                    dup = 1;
-            if (dup)
-                continue;
-            out[n].row = -1;
-            memcpy(out[n].seg, rest, seglen);
-            out[n].seg[seglen] = 0;
-            out[n].label[0] = (char)((rest[0] >= 'a' && rest[0] <= 'z') ? rest[0] - 32 : rest[0]);
-            cpy(out[n].label + 1, rest + 1, seglen < KM_LABEL ? seglen : KM_LABEL);
-        } else {
-            out[n].row = i;
-            cpy(out[n].seg, rest, KM_ID);
-            cpy(out[n].label, k->menu[i].label, KM_LABEL);
-        }
-        n++;
-    }
-    return n;
-}
-
 int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max)
 {
     int pass, i, c = 0;
@@ -92,16 +45,6 @@ int mn_parent(const char *node, char *out, int n)
     memcpy(out, node, len);
     out[len] = 0;
     return 1;
-}
-
-void mn_child_node(const char *node, const mn_item *it, char *out, int n)
-{
-    if (*node) {
-        cpy(out, node, n);
-        strncat(out, ".", n - strlen(out) - 1);
-        strncat(out, it->seg, n - strlen(out) - 1);
-    } else
-        cpy(out, it->seg, n);
 }
 
 static void app(char *out, int n, const char *s)

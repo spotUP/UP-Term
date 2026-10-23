@@ -3,6 +3,8 @@
 HOSTCC  ?= cc
 HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
 BUILD   := build
+# the generated version header; named here because the host rules above its own rule list it as a prerequisite
+UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
 
 # a recipe that fails must not leave its target behind: a 0-byte build/amiga/wbrun once counted as up to date (M2)
 .DELETE_ON_ERROR:
@@ -156,9 +158,9 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = man ]; then for f in man/*.1; do mandoc -T lint -W warning $$f || exit 1; done; echo "[OK] man/*.1 lint clean"; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = bashdiff ]; then python3 tools/bashdiff.py --gate && python3 tools/bashdiff.py --leak; fi
 
-$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) config/keymap.c config/keymap.h amarchy/cxdesc.c amarchy/cxdesc.h amarchy/menu_core.c amarchy/menu_core.h handler/keymap_act.c handler/keymap_act.h $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h tty/qmark.h handler/ttyown.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h render/ttf.h tests/data/symnerd_subset.h tests/data/ttf_golden.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
+$(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) proc/proc_core.h $(CONF) config/keymap.c config/keymap.h amarchy/cxdesc.c amarchy/cxdesc.h amarchy/menu_core.c amarchy/menu_tree.c amarchy/menu_core.h handler/keymap_act.c handler/upmru.c handler/keymap_act.h $(TERMURL) config/termurl.h $(PREFS_CORE) $(ICONSPEC) install/iconspec.h install/updiff.h $(ZMODEM) $(TELNET) net/tn.h demo/updemo.c demo/updemo.h demo/tour_themes.inc zm/zmodem.h device/upc_core.h config/upconf.h prefs/prefs_core.h tty/ldisc.h tty/bmsg.h tty/qmark.h handler/ttyown.h shell/sh_parse.h shell/sh_expand.h shell/sh_exec.h shell/sh_path.h engine/vtengine.h engine/vtwidth.h handler/complete_core.h render/glyphmap.h render/unifont.h render/emoji.h render/fontpair.h render/sbar.h render/pace.h render/otag.h render/ttf.h tests/data/symnerd_subset.h tests/data/ttf_golden.h handler/lineedit.h handler/slash.h handler/menu_ids.h render/glyph_tables.inc render/synchold.h engine/vtcaps.inc terminfo/vtcon.terminfo $(VIEW_CORE) $(VIEW_HDR) $(TESTS) tests/harness.h tests/claude_screen.h handler/clipfmt.h render/vtinput.h handler/brk.c handler/brk.h tests/exec_host/exec_host.h
 	@mkdir -p $(BUILD)
-	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) config/keymap.c amarchy/cxdesc.c amarchy/menu_core.c handler/keymap_act.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
+	$(HOSTCC) $(HOSTCFLAGS) -DVT_COUNT_ALLOC -Itests/exec_host -o $@ handler/brk.c $(ENGINE) $(RENDER) $(SHELL_CORE) $(TTY) $(DEVICE_CORE) $(PROC_CORE) $(CONF) config/keymap.c amarchy/cxdesc.c amarchy/menu_core.c amarchy/menu_tree.c handler/keymap_act.c handler/upmru.c $(TERMURL) $(PREFS_CORE) $(ICONSPEC) $(ZMODEM) $(TELNET) demo/updemo.c $(VIEW_CORE) $(CLAUDE_CORE) $(TESTS)
 
 # render/amiga_render.c itself on the host (ledger R8): the NDK's structs and a fake graphics.library
 # (tests/render_host/gfx_fake.c) that logs the calls and draws into a pixel canvas. Its own binary: the
@@ -476,7 +478,6 @@ GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --qui
 # day as mkkit.py writes it. C:Claude ships in the up-claude add-on and says that row's version
 # (UPCLAUDE_VERSION). The header is rewritten only when it changes, so the programs rebuild when a
 # version or the day moves, not on every make.
-UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
 $(UPTERM_VERSION_H): FORCE
 	@mkdir -p $(@D)
 	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" "$$(python3 tools/pkgs.py get claude version)" > $@.new
@@ -485,7 +486,7 @@ $(UPTERM_VERSION_H): FORCE
 ENGINE_68K := engine/vtengine_68k.s
 # the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over its DOS calls alone
 HANDLER_DATADIR := claude/datadir.c claude/path.c claude/util.c claude/datadir_amiga.c
-HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c config/keymap.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/winspec.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c handler/histfile.c shell/sh_path.c $(HANDLER_DATADIR)
+HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c handler/upmru.c config/keymap.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/winspec.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/prefs_dos.c handler/clipfmt.c handler/histfile.c shell/sh_path.c $(HANDLER_DATADIR)
 HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config/keymap_load.h handler/upactive.h handler/upreq.h engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h render/ttf.h \
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
                handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h
@@ -624,8 +625,8 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h pr
 
 # Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
-AMARCHY_SRC := claude/util.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/cxdesc.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c handler/keymap_act.c
-$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/cx.h amarchy/cxdesc.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
+AMARCHY_SRC := claude/util.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c handler/upmru.c
+$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/act.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
@@ -661,7 +662,7 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 # libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
 # (that needs no ports build); `make amarchy-menu` after `make` in upterm-ports.
 UPKGUI_SYS ?= $(UPTERM_ROOT)/upterm-ports/build/sysroot/UP-Term
-AMARCHY_MENU_SRC := amarchy/menu.c amarchy/menu_core.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upreq.c handler/upactive.c
+AMARCHY_MENU_SRC := amarchy/menu.c amarchy/menu_core.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
 $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/menu_core.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a
@@ -1084,6 +1085,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	$(VC) -c -o $(BUILD)/amiga/obj/waitset.o handler/waitset.c
 	$(VC) -c -o $(BUILD)/amiga/obj/slash.o handler/slash.c
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap_act.o handler/keymap_act.c
+	$(VC) -c -o $(BUILD)/amiga/obj/upmru.o handler/upmru.c
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap.o config/keymap.c
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap_load.o config/keymap_load.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upactive.o handler/upactive.c
@@ -1100,7 +1102,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	  $(BUILD)/amiga/obj/vtengine.o $(BUILD)/amiga/obj/vtengine_68k.o $(BUILD)/amiga/obj/amiga_render.o $(BUILD)/amiga/obj/amiga_render_68k.o $(BUILD)/amiga/obj/painter.o $(BUILD)/amiga/obj/painter_68k.o $(BUILD)/amiga/obj/vtwin.o $(BUILD)/amiga/obj/vtinput.o $(BUILD)/amiga/obj/sbar.o $(BUILD)/amiga/obj/sbar_gad.o $(BUILD)/amiga/obj/glyphmap.o $(BUILD)/amiga/obj/unifont.o $(BUILD)/amiga/obj/emoji.o \
 	  $(BUILD)/amiga/obj/outline.o $(BUILD)/amiga/obj/otag.o $(BUILD)/amiga/obj/ttf.o $(BUILD)/amiga/obj/fontpair.o \
 	  $(BUILD)/amiga/obj/clip.o $(BUILD)/amiga/obj/clipfmt.o $(BUILD)/amiga/obj/lineedit.o $(BUILD)/amiga/obj/kcmode.o $(BUILD)/amiga/obj/complete.o $(BUILD)/amiga/obj/complete_core.o $(BUILD)/amiga/obj/sh_path.o \
-	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/waitset.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/keymap_act.o $(BUILD)/amiga/obj/keymap.o $(BUILD)/amiga/obj/keymap_load.o $(BUILD)/amiga/obj/upactive.o $(BUILD)/amiga/obj/upreq.o $(BUILD)/amiga/obj/winspec.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/upconf_rows.o $(BUILD)/amiga/obj/termurl.o \
+	  $(BUILD)/amiga/obj/brk.o $(BUILD)/amiga/obj/waitset.o $(BUILD)/amiga/obj/slash.o $(BUILD)/amiga/obj/keymap_act.o $(BUILD)/amiga/obj/upmru.o $(BUILD)/amiga/obj/keymap.o $(BUILD)/amiga/obj/keymap_load.o $(BUILD)/amiga/obj/upactive.o $(BUILD)/amiga/obj/upreq.o $(BUILD)/amiga/obj/winspec.o $(BUILD)/amiga/obj/ldisc.o $(BUILD)/amiga/obj/upconf.o $(BUILD)/amiga/obj/upconf_rows.o $(BUILD)/amiga/obj/termurl.o \
 	  $(BUILD)/amiga/obj/prefs_core.o $(BUILD)/amiga/obj/prefs_dos.o $(BUILD)/amiga/obj/prefs_asl.o \
 	  $(BUILD)/amiga/obj/histfile.o $(BUILD)/amiga/obj/hd_datadir.o $(BUILD)/amiga/obj/hd_path.o $(BUILD)/amiga/obj/hd_util.o $(BUILD)/amiga/obj/hd_datadir_amiga.o \
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga

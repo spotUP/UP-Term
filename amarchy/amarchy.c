@@ -12,6 +12,7 @@
 #include "cx.h"
 #include "cxdesc.h"
 #include "act.h"
+#include "menu_core.h"
 #include "atiming.h"
 #include "../claude/util.h"
 #include "../config/keymap_load.h"
@@ -55,22 +56,34 @@ static void dir_resolve(void)
         g_dir[0] = 0;
 }
 
-/* the amarchy-menu helper (full path) with args, in its own terminal window */
-static int run_helper(const char *args)
+/* The key viewer's window, in cells (a fixed size: its text does not change with the node). */
+#define VIEWER_COLS 76
+#define VIEWER_ROWS 22
+
+/* the amarchy-menu helper (full path) with args, in its own terminal window of cols x rows cells */
+static int run_helper(const char *args, int cols, int rows)
 {
     char line[KM_ID + 160];
     if (!cx_helper_cmd(line, sizeof(line), g_dir, args))
         return 0;
-    return act_in_window(line);
+    return act_in_window(line, cols, rows);
 }
 
 /* menu:<node> -> the helper in its own terminal window */
 static int act_menu(const char *node)
 {
     char args[KM_ID + 16];
+    int cols, rows;
+    keymap full;
     cl_copy(args, "menu ", sizeof(args));
     cl_cat(args, node[0] ? node : "root", sizeof(args));
-    return run_helper(args);
+    /* g_km is compacted (no [menu] rows, keymap_compact): the size comes from the full table,
+     * loaded for this open and released again, the table amarchy-menu will show */
+    memset(&full, 0, sizeof full);
+    keymap_load(&full, km_default_text);
+    mn_osd_size(&full, strcmp(node, "root") ? node : "", &cols, &rows);
+    keymap_free(&full);
+    return run_helper(args, cols, rows);
 }
 
 /* A decimal number after optional blanks and sign, 0 when there is none (atoi). */
@@ -120,7 +133,7 @@ static int do_row(int row)
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
     case KA_MENU:  ok = act_menu(b->arg); break;
-    case KA_VIEWER: ok = run_helper("viewer"); break;
+    case KA_VIEWER: ok = run_helper("viewer", VIEWER_COLS, VIEWER_ROWS); break;
     default:       ok = 1; break;
     }
     return ok;
@@ -172,7 +185,7 @@ static void rexx_serve(void)
         else if (starts(cmd, "QUIT"))
             g_quit = 1;
         else if (starts(cmd, "SHOW"))
-            run_helper("viewer");
+            run_helper("viewer", VIEWER_COLS, VIEWER_ROWS);
         else
             rc = 10;
         m->rm_Result1 = rc;
