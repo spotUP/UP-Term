@@ -189,6 +189,7 @@ typedef struct con {
     struct MsgPort *rom_port;
     /* window spec */
     WORD wx, wy, ww, wh;
+    winspec_opts wopt; /* CELLS / CENTRE / FRONT / CLOSEINACTIVE (winspec.h) */
     char screen[64];
     ULONG wflags;
     /* a screen of its own (OWNSCREEN, FULLSCREEN, PUBSCREEN name; plan
@@ -1333,6 +1334,7 @@ static void parse_spec(con *c, const char *s)
     int fno = 0, k, colours = 0;
     c->wx = 0;
     c->wy = 0;
+    memset(&c->wopt, 0, sizeof(c->wopt));
     c->ww = 640;
     c->wh = 200;
     copy_str(c->w.title, "vtcon", sizeof(c->w.title));
@@ -1382,6 +1384,8 @@ static void parse_spec(con *c, const char *s)
         } else if (fno == 4) {
             if (n)
                 copy_str(c->w.title, field, sizeof(c->w.title));
+        } else if (winspec_option(field, &c->wopt)) {
+            /* CELLS cxr, CENTRE, FRONT, CLOSEINACTIVE: winspec.c parses them */
         } else if (str_ieq(field, "CLOSE")) {
             c->wflags |= WFLG_CLOSEGADGET;
         } else if (str_ieq(field, "WAIT")) {
@@ -2763,12 +2767,36 @@ static int own_screen_retry(con *c)
 /* The screen the window opens on, locked: its own (OWNSCREEN /
  * FULLSCREEN / PUBSCREEN, opened now if need be), the named public screen,
  * the default one. 0 when none can be locked. */
+/* FRONT: the front screen locked by its public name, 0 when it is not
+ * public (the caller falls back to the default public screen). */
+static struct Screen *lock_front_screen(void)
+{
+    struct Screen *scr = 0, *front = IntuitionBase->FirstScreen;
+    struct List *list = LockPubScreenList();
+    struct Node *n;
+    char name[MAXPUBSCREENNAME + 1];
+    name[0] = 0;
+    for (n = list->lh_Head; n->ln_Succ; n = n->ln_Succ) {
+        struct PubScreenNode *ps = (struct PubScreenNode *)n;
+        if (ps->psn_Screen == front && n->ln_Name) {
+            copy_str(name, n->ln_Name, sizeof(name));
+            break;
+        }
+    }
+    UnlockPubScreenList();
+    if (name[0])
+        scr = LockPubScreen((UBYTE *)name);
+    return scr;
+}
+
 static struct Screen *lock_screen(con *c)
 {
     struct Screen *scr = 0;
     DBG("own_screen", c->own_screen, c->myscreen);
     if (c->own_screen && !c->tab_host[0] && !c->foreign && (c->myscreen || own_screen_open(c)))
         scr = LockPubScreen((UBYTE *)c->pubname); /* ours, locked as any public screen */
+    if (!scr && c->wopt.front && !c->screen[0])
+        scr = lock_front_screen();
     if (!scr)
         scr = LockPubScreen(c->screen[0] ? (UBYTE *)c->screen : 0);
     if (!scr)
@@ -2796,11 +2824,26 @@ static struct Window *create_window(con *c, struct Screen *scr)
         tags[n].ti_Tag = WA_ScreenTitle; tags[n++].ti_Data = (ULONG)c->w.title;
         c->w.title_on_screen = 1;
     } else {
+        int bx = c->wx, by = c->wy;
+        int bw = winspec_size(c->ww, c->wx, scr->Width);
+        int bh = winspec_size(c->wh, c->wy, scr->Height);
         c->w.title_on_screen = 0;
-        tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = c->wx;
-        tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = c->wy;
-        tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = winspec_size(c->ww, c->wx, scr->Width);
-        tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = winspec_size(c->wh, c->wy, scr->Height);
+        if (c->wopt.cols || c->wopt.centre) {
+            /* CELLS / CENTRE: the box worked out once, here (winspec_box); the
+             * window opens at its place and size and never moves after. A
+             * borderless window has no borders; others the screen's. */
+            int borderless = (c->wflags & WFLG_BORDERLESS) != 0;
+            int bl = borderless ? 0 : scr->WBorLeft;
+            int br = borderless ? 0 : scr->WBorRight;
+            int bb = borderless ? 0 : scr->WBorBottom;
+            int bt = borderless ? 0 : scr->WBorTop + scr->Font->ta_YSize + 1;
+            winspec_box(&c->wopt, c->w.font->tf_XSize, c->w.font->tf_YSize, bl, bt, br, bb,
+                        scr->Width, scr->Height, &bx, &by, &bw, &bh);
+        }
+        tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = bx;
+        tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = by;
+        tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = bw;
+        tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = bh;
         tags[n].ti_Tag = WA_Flags;   tags[n++].ti_Data = c->wflags;
         tags[n].ti_Tag = WA_Title;   tags[n++].ti_Data = (ULONG)c->w.title;
     }
@@ -5473,6 +5516,8 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
     case IDCMP_INACTIVEWINDOW:
         ua_set(c, cls == IDCMP_ACTIVEWINDOW);
         vtwin_focus(&c->w, cls == IDCMP_ACTIVEWINDOW); /* ?1004: CSI I / CSI O */
+        if (cls == IDCMP_INACTIVEWINDOW && c->wopt.close_inactive)
+            close_gadget(c); /* CLOSEINACTIVE: the same path as the close gadget */
         break;
     case IDCMP_IDCMPUPDATE:
         /* the scroll bar (sbar_route): code is the gadget, prev the knob's top */
