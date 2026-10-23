@@ -3,38 +3,48 @@
 
 #include "menu_geom.h"
 
-/* Omarchy's px on this screen: vertical over its 1080 lines, horizontal over its 1920 columns */
-static int vs(const mg_screen *s, int px)
+/* The columns that look as long as `lines` lines on this screen's pixels (rx, ry: DisplayInfo
+ * Resolution ticks of one pixel, 0 when unknown = square). */
+int mg_cols(const mg_screen *s, int lines)
 {
-    return (px * s->h + 540) / 1080;
-}
-
-static int hs(const mg_screen *s, int px)
-{
-    return (px * s->w + 960) / 1920;
+    if (s->rx <= 0 || s->ry <= 0)
+        return lines;
+    return (lines * s->ry + s->rx / 2) / s->rx;
 }
 
 static int imax(int a, int b) { return a > b ? a : b; }
 static int imin(int a, int b) { return a < b ? a : b; }
 
+/* Omarchy's px (its rows are 50 px) in this font's rows: down, and across (same look on tall pixels) */
+static int vr(int row, int px)
+{
+    return (px * row + 25) / 50;
+}
+
+static int hr(const mg_screen *s, int row, int px)
+{
+    return mg_cols(s, vr(row, px));
+}
+
 void mg_metrics_for(mg_metrics *m, const mg_font *f, const mg_screen *s)
 {
     int half_w = imax(1, f->cw / 2);
-    m->bx = imax(2, hs(s, 2));
-    m->by = imax(2, vs(s, 2));
-    m->hpad = imax(hs(s, 18), f->cw);
-    m->vpad = imax(vs(s, 18), f->ysize / 2);
-    m->head_h = imax(vs(s, 34), f->ysize + 2 * imax(1, vs(s, 6)));
-    m->gap = imax(vs(s, 6), imax(1, f->ysize / 4));
-    m->row_h = imax(vs(s, 50), f->ysize + 2 * imax(2, vs(s, 12)));
-    m->row_gap = imax(1, vs(s, 3));
+    int row = imax(f->ysize * 15 / 4, f->ysize + 2);
+    m->by = imax(2, vr(row, 2));
+    m->bx = mg_cols(s, m->by);
+    m->hpad = imax(hr(s, row, 18), f->cw);
+    m->vpad = imax(vr(row, 18), f->ysize / 2);
+    m->head_h = imax(vr(row, 34), f->ysize + 2 * imax(1, vr(row, 6)));
+    m->gap = imax(vr(row, 6), imax(1, f->ysize / 4));
+    m->row_h = row;
+    m->row_gap = imax(1, vr(row, 3));
     m->pitch = m->row_h + m->row_gap;
-    m->row_pad = imax(hs(s, 12), half_w);
-    m->icon_gap = imax(hs(s, 10), half_w);
-    m->chev_gap = imax(hs(s, 12), half_w);
-    m->min_w = imax(hs(s, 300), 16 * f->cw);
-    m->margin_x = imax(1, hs(s, 10));
-    m->margin_y = imax(1, vs(s, 10));
+    m->row_pad = imax(hr(s, row, 12), half_w);
+    m->icon_gap = imax(hr(s, row, 10), half_w);
+    m->chev_gap = imax(hr(s, row, 12), half_w);
+    m->min_w = imax(hr(s, row, 300), 16 * f->cw);
+    m->margin_y = imax(1, vr(row, 10));
+    m->margin_x = imax(1, mg_cols(s, m->margin_y));
 }
 
 void mg_header(const char *node, char *out, int n)

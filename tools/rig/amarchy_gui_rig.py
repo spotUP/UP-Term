@@ -50,22 +50,23 @@ def build_geom():
 
 
 def probe(name):
-    """(w, h, ysize, xsize, proportional) of the public screen `name` ('-' = the default one) in the rig."""
+    """(w, h, ysize, xsize, proportional, rx, ry) of the public screen `name` ('-' = the default one) in the rig:
+    the font is the one the menu opens there (amarchy/menu_font.c), rx ry the screen's pixel shape."""
     rc, out = c.run('%s/scrprobe font %s' % (paths.UPTERM_BIN, name))
-    m = re.search(r'screen (\d+) (\d+) (\d+) (\d+) (\d+)', out)
+    m = re.search(r'screen (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)', out)
     if rc or not m:
         raise SystemExit('scrprobe font %s: rc %d %r' % (name, rc, out))
     return tuple(int(v) for v in m.groups())
 
 
 def expected(geom, name):
-    """{'icon': side, 'root'|'apps': {'box': (x, y, w, h), 'cell': (ix, iy, side, row2 iy), 'n': n}} for the
+    """{'icon': (w, h), 'root'|'apps': {'box': (x, y, w, h), 'cell': (ix, iy, w, h, row2 iy), 'n': n}} for the
     screen `name`: the geometry helper asks for every text it has to measure, scrprobe measures it in that
     screen's own font, and the helper runs again until it asks for nothing more."""
-    w, h, ys, xs, prop = probe(name)
+    w, h, ys, xs, prop, rx, ry = probe(name)
     lens = {}
     for _ in range(4):
-        r = subprocess.run([geom, str(w), str(h), str(ys), str(xs)] + ['%s=%d' % kv for kv in lens.items()],
+        r = subprocess.run([geom, str(w), str(h), str(ys), str(xs), str(rx), str(ry)] + ['%s=%d' % kv for kv in lens.items()],
                            capture_output=True, text=True)
         if r.returncode:
             raise SystemExit('amarchy_geom failed: ' + r.stderr)
@@ -81,15 +82,15 @@ def expected(geom, name):
             raise SystemExit('scrprobe did not measure %r: %r' % (need, out))
     else:
         raise SystemExit('amarchy_geom keeps asking for texts')
-    e = {'screen': (w, h, ys, xs, prop), 'icon': 0}
+    e = {'screen': (w, h, ys, xs, prop, rx, ry), 'icon': (0, 0)}
     for l in r.stdout.splitlines():
         f = l.split()
         if f[0] == 'icon':
-            e['icon'] = int(f[1])
+            e['icon'] = (int(f[1]), int(f[2]))
         elif f[0] == 'level':
             e.setdefault(f[1], {}).update(box=tuple(map(int, f[2:6])), n=int(f[6]))
         elif f[0] == 'cell':
-            e[f[1]]['cell'] = tuple(map(int, f[2:6]))
+            e[f[1]]['cell'] = tuple(map(int, f[2:7]))
     return e
 
 
@@ -160,13 +161,13 @@ def close_menu():
 
 # ---- pixels -------------------------------------------------------------------------------------------------
 
-def cell_pixels(s, wbox, cell_x, cell_y, side):
+def cell_pixels(s, wbox, cell_x, cell_y, cw, ch):
     """(number of pixels in the icon cell that differ from the row background, background RGB). The cell is
     grabbed from the front screen (picture rows: y and height times row_scale); the background is the pixel
     one column left of the cell (inside the row box, row_pad > 0)."""
     k = s['row_scale']
     x0, y0 = wbox[0] + cell_x, (wbox[1] + cell_y) * k
-    w, h, rows = ami.grab((x0 - 1, y0, side + 1, side * k))
+    w, h, rows = ami.grab((x0 - 1, y0, cw + 1, ch * k))
     bg = rows[h // 2][0:3]
     n = 0
     for r in rows:
@@ -187,8 +188,8 @@ def check_geometry(level, s, w, e, what):
 
 def case_default(geom):
     e = expected(geom, '-')
-    sw, sh, ys, xs, prop = e['screen']
-    print('info workbench screen %dx%d font %dx%d proportional %d, icon side %d' % (sw, sh, xs, ys, prop, e['icon']))
+    sw, sh, ys, xs, prop, rx, ry = e['screen']
+    print('info workbench screen %dx%d pixels %d:%d font %dx%d proportional %d, icon %dx%d' % (sw, sh, rx, ry, xs, ys, prop, e['icon'][0], e['icon'][1]))
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')
     check(draws() == 0, 'sentinel ENV:AMARCHY_DRAWS deleted before the run')
     check(not where(TITLE)[1] and not process_running('amarchy-gui'), 'no menu window and no amarchy-gui before the hotkey')
@@ -208,14 +209,16 @@ def case_default(geom):
     ui = ami.window(TITLE)
     gad = [k for k in ui if k.startswith('sys:') or k == 'custom']
     check(ui and not gad, 'no gadgets: no close, depth, drag, zoom, size or scroll bar (uitree gadgets %s)' % gad)
-    check(e['icon'] > 0, 'an icon column exists (side %d)' % e['icon'])
+    check(e['icon'][0] > 0 and e['icon'][1] > 0, 'an icon column exists (%dx%d)' % e['icon'])
+    iw, ih = e['icon']
+    check(ry <= rx or iw > ih, 'tall pixels (%d:%d): the icon is wider than high (%dx%d), so it looks square' % (rx, ry, iw, ih))
     check_geometry('root', s, w, e, 'Workbench')
     wbox = box_of(s, w)
     # icons: the first row is selected (SELBOX), the second is not (BG); both icon cells must hold drawn pixels
-    ix, iy, side, iy2 = e['root']['cell']
-    n1, bg1 = cell_pixels(s, wbox, ix, iy, side)
-    n2, bg2 = cell_pixels(s, wbox, ix, iy2, side)
-    check(n1 >= 4, 'selected row: icon cell %dx%d holds %d pixels unlike the row background %s' % (side, side, n1, bg1))
+    ix, iy, cw, ch, iy2 = e['root']['cell']
+    n1, bg1 = cell_pixels(s, wbox, ix, iy, cw, ch)
+    n2, bg2 = cell_pixels(s, wbox, ix, iy2, cw, ch)
+    check(n1 >= 4, 'selected row: icon cell %dx%d holds %d pixels unlike the row background %s' % (cw, ch, n1, bg1))
     check(n2 >= 4, 'plain row: icon cell holds %d pixels unlike the row background %s' % (n2, bg2))
     check(bg1 != bg2, 'selected and plain rows have different backgrounds (%s, %s)' % (bg1, bg2))
     # Enter on the first row (Apps) opens its level: new box, same width, another draw
@@ -226,8 +229,8 @@ def case_default(geom):
         check_geometry('apps', s, w, e, 'Workbench')
         check(box_of(s, w)[2] == e['root']['box'][2], 'the width stayed the same while walking a level')
         check(draws() > d0, 'a level change redrew: ENV:AMARCHY_DRAWS %d -> %d' % (d0, draws()))
-        ix, iy, side, iy2 = e['apps']['cell']
-        n3, bg3 = cell_pixels(s, box_of(s, w), ix, iy, side)
+        ix, iy, cw, ch, iy2 = e['apps']['cell']
+        n3, bg3 = cell_pixels(s, box_of(s, w), ix, iy, cw, ch)
         check(n3 >= 4, 'apps level: icon cell holds %d pixels unlike the row background %s' % (n3, bg3))
     # Esc: back to the root level, then closes
     ami.key(ESC)

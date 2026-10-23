@@ -3,8 +3,9 @@
  *                                  NAME, or private with "-" (a screen with no public name: the menu must fall back
  *                                  to the Workbench). Prints "open" once it is in front.
  *   scrprobe font NAME|- [text...] the public screen NAME (the default public screen for "-"): prints
- *                                  "screen W H ysize xsize proportional" and "len N text" for each text, the pixel
- *                                  width TextLength gives in that screen's font. */
+ *                                  "screen W H ysize xsize proportional rx ry" and "len N text" for each text, in
+ *                                  the font the menu opens on that screen (amarchy/menu_font.c), rx ry the
+ *                                  pixel shape of the screen's display mode. */
 #include <exec/types.h>
 #include <dos/dos.h>
 #include <graphics/text.h>
@@ -17,6 +18,7 @@
 #include <proto/intuition.h>
 #include <string.h>
 #include <stdlib.h>
+#include "../../amarchy/menu_font.h"
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -63,17 +65,22 @@ static int do_font(const char *name, int argc, char **argv)
 {
     struct Screen *s = LockPubScreen(strcmp(name, "-") ? (UBYTE *)name : 0);
     struct TextFont *f;
-    int i;
+    struct RastPort rp;
+    int i, rx, ry, opened, square;
     if (!s) {
         Printf((STRPTR)"scrprobe: no screen\n");
         return 20;
     }
-    f = s->RastPort.Font;
-    Printf((STRPTR)"screen %ld %ld %ld %ld %ld\n", (LONG)s->Width, (LONG)s->Height, (LONG)f->tf_YSize,
-           (LONG)f->tf_XSize, (LONG)((f->tf_Flags & FPF_PROPORTIONAL) != 0));
+    square = menu_screen_aspect(s, &rx, &ry);
+    f = menu_font_open(s, square, &opened);
+    InitRastPort(&rp);
+    SetFont(&rp, f);
+    Printf((STRPTR)"screen %ld %ld %ld %ld %ld %ld %ld\n", (LONG)s->Width, (LONG)s->Height, (LONG)f->tf_YSize,
+           (LONG)f->tf_XSize, (LONG)((f->tf_Flags & FPF_PROPORTIONAL) != 0), (LONG)rx, (LONG)ry);
     for (i = 0; i < argc; i++)
-        Printf((STRPTR)"len %ld %s\n", (LONG)TextLength(&s->RastPort, (STRPTR)argv[i], (ULONG)strlen(argv[i])),
-               argv[i]);
+        Printf((STRPTR)"len %ld %s\n", (LONG)TextLength(&rp, (STRPTR)argv[i], (ULONG)strlen(argv[i])), argv[i]);
+    if (opened)
+        CloseFont(f);
     UnlockPubScreen(0, s);
     return 0;
 }

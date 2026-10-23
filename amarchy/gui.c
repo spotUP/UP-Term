@@ -28,6 +28,7 @@
 #include "menu_theme.h"
 #include "leaf.h"
 #include "menu_icon.h"
+#include "menu_font.h"
 #include "../config/keymap_load.h"
 #include "../config/upconf.h"
 #include "../handler/frontscr.h"
@@ -59,13 +60,14 @@ typedef struct gui {
     struct Window *win;
     struct RastPort *rp;
     struct TextFont *font;
+    int font_opened;             /* font is ours (OpenFont / OpenDiskFont), closed at exit */
     struct ColorMap *cm;
     mg_font mf;
     mg_geom g;
     int w;                       /* the window's width, every level */
     mg_screen ms;                /* the screen */
     int chev_w;
-    int icon_w;                  /* the icon column's width, 0 for none */
+    int icon_w, icon_h;          /* the icon column's width and the icon's height, 0 for none */
     long pen[MT_ROLES];
     char pen_got[MT_ROLES];
     int mode;
@@ -175,20 +177,20 @@ static void draw_header(gui *g)
         q->head_w - 2 * q->m.row_pad);
 }
 
-/* The icon of the list item `it` at node: its coverage, an icon_w square, at (x, y) in the row of height
+/* The icon of the list item `it` at node: its coverage, icon_w x icon_h, at (x, y) in the row of height
  * boxh. Strong coverage in the row's colour, a weaker one in the dim pen; the rest is the row's box. */
 static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int boxh)
 {
-    static vt_u8 cov[MI_MAX * MI_MAX];
+    static vt_u8 cov[MI_MAX_W * MI_MAX];
     char id[KM_ID * 2 + 2];
     const vt_u8 *glyph;
-    int s = g->icon_w, px, py, x0;
+    int s = g->icon_w, sh = g->icon_h, px, py, x0;
     mn_child_node(g->node, it, id, sizeof id);
     glyph = mi_find(id);
-    if (!glyph || !mi_render(glyph, s, cov))
+    if (!glyph || !mi_render(glyph, s, sh, cov))
         return;
-    y += (boxh - s) / 2;
-    for (py = 0; py < s; py++)
+    y += (boxh - sh) / 2;
+    for (py = 0; py < sh; py++)
         for (px = 0; px < s;) {
             int lv = cov[py * s + px] >= 170 ? 2 : (cov[py * s + px] >= 64 ? 1 : 0);
             x0 = px;
@@ -730,6 +732,17 @@ static void cleanup(gui *g)
     if (g->scr)
         UnlockPubScreen(0, g->scr);
     g->scr = 0;
+    if (g->font_opened)
+        CloseFont(g->font);
+    g->font_opened = 0;
+}
+
+/* The screen's pixel shape: DisplayInfo Resolution into ms.rx, ms.ry (0, 0 when unknown), and 1 when the
+ * pixels are square. */
+static void pick_font(gui *g)
+{
+    int square = menu_screen_aspect(g->scr, &g->ms.rx, &g->ms.ry);
+    g->font = menu_font_open(g->scr, square, &g->font_opened);
 }
 
 int main(int argc, char **argv)
@@ -767,7 +780,7 @@ int main(int argc, char **argv)
         goto done;
     }
     g->cm = g->scr->ViewPort.ColorMap;
-    g->font = g->scr->RastPort.Font;
+    pick_font(g);
     g->mf.ysize = g->font->tf_YSize;
     g->mf.cw = g->font->tf_XSize;
     g->ms.w = g->scr->Width;
@@ -805,7 +818,8 @@ int main(int argc, char **argv)
         mg_metrics m;
         g->mode = M_LIST;
         mg_metrics_for(&m, &g->mf, &g->ms);
-        g->icon_w = mi_count() > 0 ? mi_size(&m) : 0;
+        g->icon_h = mi_count() > 0 ? mi_size(&m) : 0;
+        g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
         g->w = mg_width(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms);
         n = mn_children(&km, g->node, g->it, MN_MAX_ITEMS);
         g->count = mn_filter(g->it, n, g->filter, g->idx, MN_MAX_ITEMS);

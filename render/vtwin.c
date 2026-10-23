@@ -810,8 +810,7 @@ void vtwin_set_screen(vtwin *w, struct Screen *scr)
     w->res_y = di.Resolution.y;
     if (w->outline) /* outline glyphs keep their shape on this screen's pixels (R6.1) */
         vo_set_aspect(w->outline, w->res_x, w->res_y);
-    /* 25 rows of 16-pixel cells under the screen's title bar and a window's */
-    w->square_fits = scr->Height >= 25 * 16 + 2 * (scr->BarHeight + 1) + 4;
+    w->square_fits = fontpair_square_fits(scr->Height, scr->BarHeight);
     w->aspect_known = 1;
 }
 

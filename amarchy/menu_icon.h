@@ -10,7 +10,8 @@
 #include "../render/emoji.h"
 #include "menu_geom.h"
 
-#define MI_MAX 32               /* the largest icon square, pixels */
+#define MI_MAX 32               /* the tallest icon, pixels */
+#define MI_MAX_W 64             /* the widest icon (tall pixels double the width of a 32 high one) */
 
 /* The generated page file (for ce_page_check) and its length. */
 const vt_u8 *mi_page(long *len);
@@ -19,10 +20,14 @@ int mi_count(void);
 const char *mi_id(int i);
 /* The glyph of node id in the page, 0 when the node has no icon. */
 const vt_u8 *mi_find(const char *id);
-/* The icon square for these metrics: half the row's height, MI_MAX at most, 8 at least. */
+/* The icon's height for these metrics: 8/15 of the row (topaz 8: 16, TopazPro 16: 32), MI_MAX at most,
+ * 8 at least. */
 int mi_size(const mg_metrics *m);
-/* The glyph's coverage (0..255) averaged to an s x s square into out (s * s bytes, s <= MI_MAX),
- * row after row. 0 when s is out of range or the glyph is bad. */
-int mi_render(const vt_u8 *glyph, int s, vt_u8 *out);
+/* Its width: as many columns as look as long as that height on the screen's pixels (mg_cols), MI_MAX_W
+ * at most. */
+int mi_width(const mg_metrics *m, const mg_screen *s);
+/* The glyph's coverage (0..255) averaged to a w x h box into out (w * h bytes, h <= MI_MAX, w <= MI_MAX_W),
+ * row after row. 0 when the size is out of range or the glyph is bad. */
+int mi_render(const vt_u8 *glyph, int w, int h, vt_u8 *out);
 
 #endif

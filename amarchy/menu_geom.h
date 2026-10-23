@@ -1,12 +1,11 @@
 /* Amarchy drawn menu, the geometry (plan 2026-10-23-amarchy-drawn-menu.md, G1). No OS calls, so
  * tests/test_keymap.c covers it; amarchy-gui draws into the rectangles it gives.
  *
- * Every size keeps the share of the screen it has in Omarchy at 1920x1080 (research
- * 2026-10-23_amarchy-vs-omarchy-geometry.md, the owner's choice of 2026-10-23): a length of px
- * becomes px * h / 1080 vertically and px * w / 1920 horizontally. The font is the floor, so a row
- * is never shorter than its text plus a few pixels: on a 640x256 screen with topaz 8 that is
- * 8 rows on screen where scaling from the font alone gave 3, and on a 1080 line screen the sizes
- * are Omarchy's. */
+ * Every size comes from the font, not the screen: a row is ysize * 15 / 4 high (topaz 8: 30, TopazPro 16:
+ * 60, so the menu is as big on 640x256 as on 640x512) and Omarchy's px (its rows are 50 px) become
+ * px * row / 50 down and mg_cols() of that across. A length looks the same across and down on a screen
+ * whose pixels are not square (640x256 hires: twice as tall as wide); plan
+ * 2026-10-23-amarchy-menu-aspect.md. */
 #ifndef AMARCHY_MENU_GEOM_H
 #define AMARCHY_MENU_GEOM_H
 
@@ -21,7 +20,11 @@ typedef struct mg_font {
 
 typedef struct mg_screen {
     int w, h;                   /* the screen the menu opens on, pixels */
+    int rx, ry;                 /* DisplayInfo Resolution ticks of one pixel; 0, 0 = square */
 } mg_screen;
+
+/* The columns that look as long as `lines` lines (lines when the aspect is unknown). */
+int mg_cols(const mg_screen *s, int lines);
 
 /* The pixel width of a text in the window's font (TextLength on the Amiga). */
 typedef int (*mg_text_fn)(const char *s, void *ctx);

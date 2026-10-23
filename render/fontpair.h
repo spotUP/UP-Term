@@ -25,4 +25,8 @@ void fontpair_choose(const char *name, int size, int square, int square_fits, fo
  * through a face (vtwin_font_step). */
 void fontpair_face(const char *face, int square, int square_fits, fontpair_choice *out);
 
+/* The square font's cells give a screen of screen_h lines 25 rows under its title bar (bar_h) and a
+ * window's: 25 rows of 16-pixel cells. fontpair_choose's square_fits. */
+int fontpair_square_fits(int screen_h, int bar_h);
+
 #endif

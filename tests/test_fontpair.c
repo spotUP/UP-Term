@@ -43,6 +43,15 @@ static void the_tall_font_stays_when_25_rows_do_not_fit(void)
     CHECK_INT(ch.changed, 0);
 }
 
+/* 25 rows of 16-pixel cells = 400, two (bar + 1) = 2 x 12 for a 11 pixel bar, 4 spare: 428 lines */
+static void square_fits_needs_25_rows_of_16_pixels(void)
+{
+    CHECK_INT(fontpair_square_fits(256, 11), 0);
+    CHECK_INT(fontpair_square_fits(512, 11), 1);
+    CHECK_INT(fontpair_square_fits(427, 11), 0);
+    CHECK_INT(fontpair_square_fits(428, 11), 1);
+}
+
 static void other_fonts_are_left_alone(void)
 {
     fontpair_choose("courier.font", 13, 1, 1, &ch);
@@ -70,6 +79,7 @@ static void a_face_knows_its_pair(void)
 
 void suite_fontpair(void)
 {
+    square_fits_needs_25_rows_of_16_pixels();
     a_face_knows_its_pair();
     topaz_becomes_topaz_pro_on_square_pixels();
     ibm_8_and_16_swap();

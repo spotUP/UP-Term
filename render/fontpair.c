@@ -71,3 +71,8 @@ void fontpair_face(const char *face, int square, int square_fits, fontpair_choic
     out->size = 0;
     out->changed = 0;
 }
+
+int fontpair_square_fits(int screen_h, int bar_h)
+{
+    return screen_h >= 25 * 16 + 2 * (bar_h + 1) + 4;
+}

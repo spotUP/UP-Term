@@ -683,10 +683,10 @@ $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) handler/frontscr.h amarchy/menu
 
 # amarchy-gui: the drawn menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A plain vbcc
 # Intuition program, no ixemul, same command line as amarchy-menu.
-AMARCHY_GUI_SRC := amarchy/gui.c amarchy/leaf.c amarchy/leaf_core.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_theme.c render/emoji.c render/unifont.c render/pens_amiga.c handler/frontscr.c config/keymap.c config/keymap_load.c config/upconf.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
+AMARCHY_GUI_SRC := amarchy/gui.c amarchy/leaf.c amarchy/leaf_core.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_font.c amarchy/menu_theme.c render/emoji.c render/fontpair.c render/unifont.c render/pens_amiga.c handler/frontscr.c config/keymap.c config/keymap_load.c config/upconf.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
 .PHONY: amarchy-gui
 amarchy-gui: $(BUILD)/amiga/amarchy-gui
-$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/menu_geom.h amarchy/menu_icon.h render/emoji.h render/unifont.h $(MENU_ICONS_INC) amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC)
+$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/menu_geom.h amarchy/menu_icon.h amarchy/menu_font.h render/emoji.h render/fontpair.h render/unifont.h $(MENU_ICONS_INC) amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC)
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_GUI_SRC)
 
@@ -910,9 +910,9 @@ $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	$(VC) -o $@ tests/amiga/dripens.c
 
 # A public or a private screen to hold in front, and the font numbers of a public screen (amarchy_gui_rig, G7)
-$(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c
+$(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -o $@ tests/amiga/scrprobe.c
+	$(VC) -o $@ tests/amiga/scrprobe.c amarchy/menu_font.c render/fontpair.c
 
 # Picasso96's 24-bit pens (RPTAG_PenMode/FgColor/BgColor) on the Workbench screen (W-T13)
 $(BUILD)/amiga/rgbprobe: tests/amiga/rgbprobe.c

@@ -701,10 +701,11 @@ static void osd_size_counts_the_reachable_levels(void)
     }
 }
 
-/* AM-GUI G1: the drawn menu's rectangles. The text width is a fixed number of pixels per
- * character (ctx), as topaz's is; the expected numbers are worked out by hand from the scaling in
- * menu_geom.h (Omarchy's px * h / 1080 down, px * w / 1920 across, the font as the floor), not
- * from menu_geom.c. */
+/* AM-GUI G1, aspect plan 2026-10-23-amarchy-menu-aspect.md: the drawn menu's rectangles. The text
+ * width is a fixed number of pixels per character (ctx), as topaz's is; the expected numbers are worked
+ * out by hand from the rule in menu_geom.h, not from menu_geom.c: a row is R = ysize * 15 / 4 (topaz 8:
+ * 30, TopazPro 16: 60); Omarchy's px become V(px) = (px * R + 25) / 50 down and, across,
+ * mg_cols(V(px)) = (V * ry + rx / 2) / rx (on 640x256 hires rx 22, ry 44: twice V). */
 static int fixed_width(const char *s, void *ctx)
 {
     return (int)strlen(s) * *(int *)ctx;
@@ -713,38 +714,50 @@ static int fixed_width(const char *s, void *ctx)
 static void drawn_menu_geometry_follows_the_font_and_screen(void)
 {
     static char file[16384];
-    mg_font topaz = { 8, 8 }, big = { 16, 10 };
-    mg_screen pal = { 640, 256 }, narrow = { 320, 256 }, xga = { 1024, 768 }, hd = { 1920, 1080 };
-    int px8 = 8, px10 = 10, px16 = 16, w;
+    mg_font topaz = { 8, 8 }, pro = { 16, 8 };
+    mg_screen pal = { 640, 256, 22, 44 }, narrow = { 320, 256, 22, 44 }, sq = { 640, 512, 22, 22 };
+    int px8 = 8, px16 = 16, w;
     char head[KM_ID];
     mn_item items[MN_MAX_ITEMS];
     mg_geom g;
     long n = slurp("dist/keymap", file, sizeof(file));
 
-    /* topaz 8 on PAL: the screen share is below the font for most sizes, so the font sets them */
+    /* topaz 8 on 640x256 hires: R 30; V(2) 2, V(18) 11, V(34) 20, V(6) 4, V(3) 2, V(12) 7, V(10) 6,
+     * V(300) 180; across twice those: 4, 22, 14, 12, 360 */
     mg_metrics_for(&g.m, &topaz, &pal);
+    CHECK_INT(g.m.bx, 4);
+    CHECK_INT(g.m.by, 2);
+    CHECK_INT(g.m.hpad, 22);
+    CHECK_INT(g.m.vpad, 11);
+    CHECK_INT(g.m.head_h, 20);
+    CHECK_INT(g.m.gap, 4);
+    CHECK_INT(g.m.row_h, 30);
+    CHECK_INT(g.m.row_gap, 2);
+    CHECK_INT(g.m.pitch, 32);
+    CHECK_INT(g.m.row_pad, 14);
+    CHECK_INT(g.m.icon_gap, 12);
+    CHECK_INT(g.m.chev_gap, 14);
+    CHECK_INT(g.m.min_w, 360);
+    CHECK_INT(g.m.margin_x, 12);
+    CHECK_INT(g.m.margin_y, 6);
+
+    /* TopazPro 16 on 640x512 square pixels: R 60; V(2) 2, V(18) 22, V(34) 41, V(6) 7, V(3) 4, V(12) 14,
+     * V(10) 12, V(300) 360; across the same */
+    mg_metrics_for(&g.m, &pro, &sq);
     CHECK_INT(g.m.bx, 2);
     CHECK_INT(g.m.by, 2);
-    CHECK_INT(g.m.hpad, 8);
-    CHECK_INT(g.m.vpad, 4);
-    CHECK_INT(g.m.head_h, 10);
-    CHECK_INT(g.m.gap, 2);
-    CHECK_INT(g.m.row_h, 14);
-    CHECK_INT(g.m.pitch, 15);
-    CHECK_INT(g.m.row_pad, 4);
-    CHECK_INT(g.m.icon_gap, 4);
-    CHECK_INT(g.m.min_w, 128);
-    CHECK_INT(g.m.margin_x, 3);
-    CHECK_INT(g.m.margin_y, 2);
-
-    /* on a 1080 line screen the sizes are Omarchy's */
-    mg_metrics_for(&g.m, &topaz, &hd);
-    CHECK_INT(g.m.hpad, 18);
-    CHECK_INT(g.m.vpad, 18);
-    CHECK_INT(g.m.head_h, 34);
-    CHECK_INT(g.m.row_h, 50);
-    CHECK_INT(g.m.pitch, 53);
-    CHECK_INT(g.m.min_w, 300);
+    CHECK_INT(g.m.hpad, 22);
+    CHECK_INT(g.m.vpad, 22);
+    CHECK_INT(g.m.head_h, 41);
+    CHECK_INT(g.m.gap, 7);
+    CHECK_INT(g.m.row_h, 60);
+    CHECK_INT(g.m.row_gap, 4);
+    CHECK_INT(g.m.pitch, 64);
+    CHECK_INT(g.m.row_pad, 14);
+    CHECK_INT(g.m.icon_gap, 12);
+    CHECK_INT(g.m.min_w, 360);
+    CHECK_INT(g.m.margin_x, 12);
+    CHECK_INT(g.m.margin_y, 12);
 
     mg_header("", head, sizeof head);
     CHECK_STR(head, "Amarchy");
@@ -753,90 +766,103 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     mg_header("apps.tools", head, sizeof head);
     CHECK_STR(head, "Tools");
 
-    /* the shipped keymap at topaz 8 on PAL: root 3 groups, apps 5 rows; the widest label of all
-     * levels is "Install add-ons" (15 x 8 px), so 2 x 2 + 2 x 8 + 2 x 4 + 120 */
+    /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 5 rows; the widest label of all
+     * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
     CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 3);
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
-    CHECK_INT(w, 148);
+    CHECK_INT(w, 360);
+    /* 3 rows: chrome 2 x 2 + 2 x 11 + 20 + 4 = 50, rows 3 x 32 - 2 = 94 */
     mg_layout(&g, &topaz, w, 3, &pal);
-    CHECK_INT(g.h, 68);
-    CHECK_INT(g.x, 246);
-    CHECK_INT(g.y, 94);
+    CHECK_INT(g.h, 144);
+    CHECK_INT(g.x, 140);
+    CHECK_INT(g.y, 56);
     CHECK_INT(g.visible, 3);
     CHECK_INT(g.peek, 0);
     CHECK_INT(mg_more(&g, 0), 0);
-    CHECK_INT(g.list_x, 10);
-    CHECK_INT(g.list_y, 18);
-    CHECK_INT(g.list_w, 128);
+    CHECK_INT(g.list_x, 26);
+    CHECK_INT(g.list_y, 37);
+    CHECK_INT(g.list_w, 308);
+    /* room = min(256 - 12 - 50, 70 % of 256 = 179) = 179: 5 rows of 32 fit, no peek */
     mg_layout(&g, &topaz, w, 5, &pal);
-    CHECK_INT(g.h, 98);
-    CHECK_INT(g.y, 79);
+    CHECK_INT(g.h, 208);
+    CHECK_INT(g.y, 24);
     CHECK_INT(g.visible, 5);
     CHECK_INT(g.peek, 0);
-    mg_layout(&g, &topaz, w, 8, &pal);           /* 8 rows fit on PAL, no peek */
-    CHECK_INT(g.visible, 8);
-    CHECK_INT(g.peek, 0);
+    /* a sixth entry: 5 rows and the peek (55 % of 30 = 16) of the next */
+    mg_layout(&g, &topaz, w, 6, &pal);
+    CHECK_INT(g.visible, 5);
+    CHECK_INT(g.peek, 16);
 
-    /* hits: row 0 from y 18 for 14 px, then a 1 px gap, row 1 from 33 */
+    /* hits: row 0 from y 37 for 30 px, then a 2 px gap, row 1 from 69 */
     mg_layout(&g, &topaz, w, 3, &pal);
-    CHECK_INT(mg_hit(&g, 0, 10, 18), 0);
-    CHECK_INT(mg_hit(&g, 0, 10, 32), -1);
-    CHECK_INT(mg_row_y(&g, 1), 33);
-    CHECK_INT(mg_hit(&g, 0, 10, 33), 1);
-    CHECK_INT(mg_hit(&g, 0, 9, 18), -1);
-    CHECK_INT(mg_hit(&g, 0, 10 + 128, 18), -1);
+    CHECK_INT(mg_hit(&g, 0, 30, 37), 0);
+    CHECK_INT(mg_hit(&g, 0, 30, 67), -1);
+    CHECK_INT(mg_row_y(&g, 1), 69);
+    CHECK_INT(mg_hit(&g, 0, 30, 69), 1);
+    CHECK_INT(mg_hit(&g, 0, 25, 37), -1);
+    CHECK_INT(mg_hit(&g, 0, 26 + 308, 37), -1);
 
-    /* 11 entries: past the 8 row cap, so 8 rows and the peek (55 % of 14) of the next */
+    /* 11 entries: 5 rows and the peek; the list is 5 x 32 + 16 = 176, the window 50 + 176 */
     mg_layout(&g, &topaz, w, 11, &pal);
-    CHECK_INT(g.visible, 8);
-    CHECK_INT(g.peek, 7);
-    CHECK_INT(g.list_h, 127);
-    CHECK_INT(g.h, 151);
+    CHECK_INT(g.visible, 5);
+    CHECK_INT(g.peek, 16);
+    CHECK_INT(g.list_h, 176);
+    CHECK_INT(g.h, 226);
     CHECK_INT(mg_more(&g, 0), 1);
-    CHECK_INT(mg_more(&g, 3), 0);                  /* at the bottom the cue goes */
-    CHECK_INT(mg_scroll(&g, 10, 0), 3);
+    CHECK_INT(mg_more(&g, 6), 0);                  /* at the bottom the cue goes */
+    CHECK_INT(mg_scroll(&g, 10, 0), 6);
     CHECK_INT(mg_scroll(&g, 1, 3), 1);
     CHECK_INT(mg_scroll(&g, 2, 1), 1);
-    CHECK_INT(mg_hit(&g, 0, 10, 138), 8);          /* the peek row selects the next entry */
-    CHECK_INT(mg_hit(&g, 3, 10, 138), -1);         /* no peek drawn at the bottom */
+    CHECK_INT(mg_hit(&g, 0, 30, 200), 5);          /* the peek row (from 37 + 160) selects the next entry */
+    CHECK_INT(mg_hit(&g, 6, 30, 200), -1);         /* no peek drawn at the bottom */
 
-    /* a 16 px font (10 px characters) on 1024x768: the screen share sets most sizes */
-    mg_metrics_for(&g.m, &big, &xga);
-    CHECK_INT(g.m.bx, 2);
-    CHECK_INT(g.m.hpad, 10);
-    CHECK_INT(g.m.vpad, 13);
-    CHECK_INT(g.m.head_h, 24);
-    CHECK_INT(g.m.row_h, 36);
-    CHECK_INT(g.m.pitch, 38);
-    CHECK_INT(g.m.min_w, 160);
-    w = mg_width(&km, "", &big, 0, 10, fixed_width, &px10, &xga);
-    CHECK_INT(w, 186);
-    mg_layout(&g, &big, w, 3, &xga);
-    CHECK_INT(g.h, 170);
-    CHECK_INT(g.x, 419);
-    CHECK_INT(g.y, 299);
-    mg_layout(&g, &big, w, 5, &xga);
-    CHECK_INT(g.h, 246);
-    CHECK_INT(g.y, 261);
+    /* TopazPro 16 on 640x512: chrome 4 + 44 + 41 + 7 = 96; 3 rows 3 x 64 - 4 = 188; 5 rows fit in
+     * min(512 - 24 - 96, 358) = 358 */
+    w = mg_width(&km, "", &pro, 0, 8, fixed_width, &px8, &sq);
+    CHECK_INT(w, 360);
+    mg_layout(&g, &pro, w, 3, &sq);
+    CHECK_INT(g.h, 284);
+    CHECK_INT(g.x, 140);
+    CHECK_INT(g.y, 114);
+    mg_layout(&g, &pro, w, 5, &sq);
+    CHECK_INT(g.h, 412);
+    CHECK_INT(g.y, 50);
     CHECK_INT(g.peek, 0);
-    /* the same font on PAL: the font is the floor, a row is 16 + 2 x 3, not the 12 px share */
-    mg_layout(&g, &big, w, 3, &pal);
-    CHECK_INT(g.m.row_h, 22);
-    CHECK_INT(g.visible, 3);
-    CHECK_INT(g.peek, 0);
-    CHECK_INT(g.h, 110);
 
-    /* width: the widest row two levels down sets it; the screen caps it */
+    /* width: the widest row two levels down sets it ("A much longer label here", 24 x 16 px = 384, plus
+     * 2 x 4 + 2 x 22 + 2 x 14 = 80); the screen caps it at its width less 2 margins */
     CHECK(parse("[menu]\napps.upkg = Install add-ons | run:upkg-browse\napps.tools.zzz = A much longer label here | run:z\n"));
-    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, &pal), 412);
-    CHECK_INT(mg_width(&km, "apps", &topaz, 16, 8, fixed_width, &px16, &pal), 412 + 16 + 4);
-    /* any icon width adds itself plus the icon gap (4 at this size) to every row */
-    CHECK_INT(mg_width(&km, "apps", &topaz, 9, 8, fixed_width, &px16, &pal), 412 + 9 + 4);
-    CHECK_INT(mg_width(&km, "apps", &topaz, 24, 8, fixed_width, &px16, &pal), 412 + 24 + 4);
-    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, &narrow), 316);
-    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px8, &narrow), 220);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, &pal), 464);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 16, 8, fixed_width, &px16, &pal), 464 + 16 + 12);
+    /* any icon width adds itself plus the icon gap (12 here) to every row */
+    CHECK_INT(mg_width(&km, "apps", &topaz, 9, 8, fixed_width, &px16, &pal), 464 + 9 + 12);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 32, 8, fixed_width, &px16, &pal), 464 + 32 + 12);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, &narrow), 320 - 2 * 12);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px8, &pal), 360);   /* 272, min_w */
+}
+
+/* The owner's symptom (G8, A1200 640x256 hires): the icons were squashed to half width and the window
+ * narrow. A length looks the same across and down: on tall pixels (resolution 22 x 44) every across
+ * length is twice its down length, on square ones they are equal. */
+static void drawn_menu_icons_look_square_on_tall_pixels(void)
+{
+    mg_font topaz = { 8, 8 }, pro = { 16, 8 };
+    mg_screen pal = { 640, 256, 22, 44 }, sq = { 640, 512, 22, 22 }, unknown = { 640, 256, 0, 0 };
+    mg_metrics m;
+    mg_metrics_for(&m, &topaz, &pal);
+    CHECK_INT(mi_size(&m), 16);                    /* 30 * 8 / 15 */
+    CHECK_INT(mi_width(&m, &pal), 32);             /* twice as many columns as lines */
+    CHECK_INT(m.hpad, 2 * m.vpad);
+    CHECK_INT(m.bx, 2 * m.by);
+    CHECK_INT(m.row_pad, 2 * 7);
+    mg_metrics_for(&m, &pro, &sq);
+    CHECK_INT(mi_size(&m), 32);                    /* 60 * 8 / 15 */
+    CHECK_INT(mi_width(&m, &sq), 32);
+    CHECK_INT(mg_cols(&pal, 16), 32);
+    CHECK_INT(mg_cols(&sq, 16), 16);
+    CHECK_INT(mg_cols(&unknown, 16), 16);          /* aspect unknown: square */
 }
 
 /* G3: every node the shipped [menu] names (each row and each group above it) has an icon image in
@@ -848,8 +874,8 @@ static void every_shipped_menu_node_has_an_icon_image(void)
     long plen = 0;
     const vt_u8 *page = mi_page(&plen);
     mg_metrics m;
-    vt_u8 cov[MI_MAX * MI_MAX];
-    int i, j, k, s, sum;
+    static vt_u8 cov[MI_MAX_W * MI_MAX];
+    int i, j, k, s, sum, sum2;
     CHECK(n > 0 && keymap_parse(&km, file, n));
     CHECK(ce_page_check(page, plen, 0xE0));
     CHECK(km.nmenu > 0);
@@ -872,9 +898,11 @@ static void every_shipped_menu_node_has_an_icon_image(void)
     memset(&m, 0, sizeof(m));
     m.row_h = 14;
     s = mi_size(&m);
-    CHECK_INT(s, 8);
-    m.row_h = 40;
-    CHECK_INT(mi_size(&m), 20);
+    CHECK_INT(s, 8);                               /* 14 * 8 / 15 = 7, 8 at least */
+    m.row_h = 30;
+    CHECK_INT(mi_size(&m), 16);
+    m.row_h = 60;
+    CHECK_INT(mi_size(&m), 32);
     m.row_h = 400;
     CHECK_INT(mi_size(&m), MI_MAX);
     for (i = 0; i < mi_count(); i++) {
@@ -882,9 +910,16 @@ static void every_shipped_menu_node_has_an_icon_image(void)
         CHECK(g != 0);
         if (!g)
             continue;
-        CHECK(mi_render(g, 16, cov));
+        CHECK(mi_render(g, 16, 16, cov));
         for (sum = 0, j = 0; j < 16 * 16; j++)
             sum += cov[j];
+        /* twice as wide: twice the pixels at the same mean coverage, so about twice the sum */
+        CHECK(mi_render(g, 32, 16, cov));
+        for (sum2 = 0, j = 0; j < 32 * 16; j++)
+            sum2 += cov[j];
+        CHECK(sum2 * 10 >= sum * 18 && sum2 * 10 <= sum * 22);
+        CHECK(!mi_render(g, MI_MAX_W + 1, 16, cov));
+        CHECK(!mi_render(g, 16, MI_MAX + 1, cov));
         if (sum == 0)
             printf("  blank icon '%s'\n", mi_id(i));
         CHECK(sum > 0);
@@ -1238,6 +1273,7 @@ void suite_keymap(void)
     menu_levels_follow_the_ids_and_escape_goes_up();
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
+    drawn_menu_icons_look_square_on_tall_pixels();
     every_shipped_menu_node_has_an_icon_image();
     the_key_viewer_lists_every_bind_row();
     the_key_viewer_follows_a_rebinding();

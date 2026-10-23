@@ -176,7 +176,7 @@ click runs.
   within 2 px), its size equals menu_geom's numbers for the rig's font;
   sentinel: amarchy-menu's draw counter read through its ARexx-less
   probe (a `$AMARCHY_DRAWS` env var it sets) is above 0; Esc closes it.
-- [ ] G8 A1200 manual check by the owner against the Omarchy shots, and
+- [ ] G8 (the owner A1200 shot showed squashed icons and a narrow window: fixed by plan 2026-10-23-amarchy-menu-aspect.md, A1-A8; owner re-check is its A9) A1200 manual check by the owner against the Omarchy shots, and
   the text menu opening with Super+Alt+Space and with the setting = text.
 
 Done = G1-G8 (with G6b) ticked with commits; make dist and make dist-check pass.

@@ -1,11 +1,12 @@
 /* amarchy_geom -- the numbers amarchy-gui's window must have, from the same code (menu_geom.c, menu_core.c,
  * menu_icon.c, the default keymap) built for the host: tools/rig/amarchy_gui_rig.py compares the rig's window
  * with them (G7).
- *     amarchy_geom SCREEN_W SCREEN_H FONT_YSIZE FONT_XSIZE [label=pixels ...]
+ *     amarchy_geom SCREEN_W SCREEN_H FONT_YSIZE FONT_XSIZE RES_X RES_Y [label=pixels ...]
+ * (RES_X, RES_Y: the screen mode's DisplayInfo Resolution ticks of one pixel, 0 0 = square)
  * prints "need <label>" for every text the font must measure and has no label=pixels yet (the width then
- * assumes a fixed-width font: XSIZE per character), "icon <side>", and per level
- * "level <node> <window x> <y> <w> <h> <entries> <visible>" and "cell <node> <icon x> <icon y> <side> <row 2 icon y>" (window-relative). Same order as gui.c: mg_metrics_for ->
- * mi_size -> mg_width -> mn_children -> mg_layout. */
+ * assumes a fixed-width font: XSIZE per character), "icon <width> <height>", and per level
+ * "level <node> <window x> <y> <w> <h> <entries> <visible>" and "cell <node> <icon x> <icon y> <width> <height> <row 2 icon y>" (window-relative). Same order as gui.c: mg_metrics_for ->
+ * mi_size/mi_width -> mg_width -> mn_children -> mg_layout. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,14 +55,16 @@ int main(int argc, char **argv)
     mg_font f;
     mg_screen s;
     mg_metrics m;
-    int icon_w, chev_w, w, i;
-    if (argc < 5)
+    int icon_w, icon_h, chev_w, w, i;
+    if (argc < 7)
         return 2;
     s.w = atoi(argv[1]);
     s.h = atoi(argv[2]);
     f.ysize = atoi(argv[3]);
     f.cw = fixed_cw = atoi(argv[4]);
-    for (i = 5; i < argc && ntab < 256; i++) {
+    s.rx = atoi(argv[5]);
+    s.ry = atoi(argv[6]);
+    for (i = 7; i < argc && ntab < 256; i++) {
         char *eq = strrchr(argv[i], '=');
         if (!eq)
             return 2;
@@ -71,9 +74,10 @@ int main(int argc, char **argv)
     }
     keymap_parse(&km, km_default_text, (long)strlen(km_default_text));
     mg_metrics_for(&m, &f, &s);
-    icon_w = mi_count() > 0 ? mi_size(&m) : 0;
+    icon_h = mi_count() > 0 ? mi_size(&m) : 0;
+    icon_w = mi_count() > 0 ? mi_width(&m, &s) : 0;
     chev_w = text_len(">", 0);
-    printf("icon %d\n", icon_w);
+    printf("icon %d %d\n", icon_w, icon_h);
     for (i = 0; i < 2; i++) {
         mg_geom g;
         int n = mn_children(&km, nodes[i], it, MN_MAX_ITEMS);
@@ -81,8 +85,9 @@ int main(int argc, char **argv)
         mg_layout(&g, &f, w, n, &s);
         printf("level %s %d %d %d %d %d %d\n", nodes[i][0] ? nodes[i] : "root", g.x, g.y, g.w, g.h, g.n, g.visible);
         /* the first row's icon cell (draw_row/draw_icon): window-relative x, y, side; the second row's y */
-        printf("cell %s %d %d %d %d\n", nodes[i][0] ? nodes[i] : "root", g.list_x + g.m.row_pad,
-               mg_row_y(&g, 0) + (g.m.row_h - icon_w) / 2, icon_w, mg_row_y(&g, 1) + (g.m.row_h - icon_w) / 2);
+        printf("cell %s %d %d %d %d %d\n", nodes[i][0] ? nodes[i] : "root", g.list_x + g.m.row_pad,
+               mg_row_y(&g, 0) + (g.m.row_h - icon_h) / 2, icon_w, icon_h,
+               mg_row_y(&g, 1) + (g.m.row_h - icon_h) / 2);
     }
     return 0;
 }
