@@ -39,10 +39,38 @@ def done(tag, secs=30):
     return False
 
 
+KEY_C, RETURN, CTRL = 0x33, 0x44, 0x0008  # raw keys of c and Return, IEQUALIFIER_CONTROL
+
+
+def close(tag):
+    """Ends a window this run opened, so the windows do not pile up run after
+    run: a click activates it, Ctrl-C breaks its Copy and Return ends the
+    read Copy waits in, so Copy stops, the opener script ends and the window
+    closes. Then its RAM: files go."""
+    w = ami.window(tag)
+    if w:
+        x, y, ww, hh = w['box']
+        ami.click_px(x + ww // 2, y + hh // 2)
+        time.sleep(1)
+        ami.key(KEY_C, CTRL)
+        ami.key(RETURN)
+        if not wait_window(tag, False, 30):
+            print('note: %s still open after Ctrl-C' % tag)
+    run('Delete >NIL: RAM:%s.#?' % tag)
+
+
 def main():
-    bad = 0
     n = str(int(time.time()) % 10000)  # fresh titles every run
-    a, b, c = 'ca' + n, 'cb' + n, 'cc' + n
+    tags = ('ca' + n, 'cb' + n, 'cc' + n)
+    try:
+        return check(*tags)
+    finally:
+        for t in tags:
+            close(t)
+
+
+def check(a, b, c):
+    bad = 0
     opener(a, '0/20/300/100/%s/CLOSEINACTIVE' % a)
     ok = wait_window(a, True)
     print('%s %s opened (CLOSEINACTIVE)' % ('ok' if ok else 'FAIL', a))

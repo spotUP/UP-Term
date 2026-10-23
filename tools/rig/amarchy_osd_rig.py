@@ -62,6 +62,11 @@ def menu_running():
     return 'amarchy-menu' in c.run('Status')[1]
 
 
+def commodity_running():
+    # the Amarchy commodity itself (not amarchy-menu): its command name ends in /Amarchy or is Amarchy
+    return any(l.rstrip().split('/')[-1].split(':')[-1] == 'Amarchy' for l in c.run('Status')[1].splitlines())
+
+
 def open_menu():
     ami.key(SPACE, LAMIGA)
     return wait_window(True)
@@ -106,6 +111,7 @@ def main():
         check(wait_window(False, 30), 'a window taking the focus closed the menu (CLOSEINACTIVE)')
         time.sleep(2)
         check(not menu_running(), 'amarchy-menu exited after the focus loss')
+        check(commodity_running(), 'the Amarchy commodity is still running after the focus loss')
     c.run('Delete >NIL: RAM:osd.#? QUIET')
     print('FAIL' if bad else 'PASS')
     return 1 if bad else 0

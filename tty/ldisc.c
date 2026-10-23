@@ -347,6 +347,8 @@ int ld_read_action(const ldisc *l, int timer_fired, int *arm)
     *arm = 0;
     if (ld_read_ready(l) && (canon || vmin > 0 || l->qlen > 0))
         return LD_RD_TAKE;
+    if (l->hup)
+        return l->qlen > 0 ? LD_RD_TAKE : LD_RD_ZERO;
     if (canon)
         return LD_RD_WAIT;
     if (vmin == 0 && vtime == 0)
@@ -359,8 +361,15 @@ int ld_read_action(const ldisc *l, int timer_fired, int *arm)
     return LD_RD_WAIT;
 }
 
+void ld_hangup(ldisc *l)
+{
+    l->hup = 1;
+}
+
 int ld_input_pending(const ldisc *l)
 {
+    if (l->hup)
+        return 1;
     return (l->t.c_lflag & LD_ICANON) ? l->lines > 0 : l->qlen > 0;
 }
 
