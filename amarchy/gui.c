@@ -62,7 +62,7 @@ typedef struct gui {
     mg_font mf;
     mg_geom g;
     int w;                       /* the window's width, every level */
-    int sw, sh;                  /* the screen */
+    mg_screen ms;                /* the screen */
     int chev_w;
     long pen[MT_ROLES];
     char pen_got[MT_ROLES];
@@ -237,7 +237,7 @@ static void draw_full(gui *g)
 static void relayout(gui *g, int n)
 {
     struct Window *w = g->win;
-    mg_layout(&g->g, &g->mf, g->w, n, g->sw, g->sh);
+    mg_layout(&g->g, &g->mf, g->w, n, &g->ms);
     if (w->LeftEdge != g->g.x || w->TopEdge != g->g.y || w->Width != g->g.w || w->Height != g->g.h) {
         g->await = 1;
         ChangeWindowBox(w, g->g.x, g->g.y, g->g.w, g->g.h);
@@ -738,8 +738,8 @@ int main(int argc, char **argv)
     g->font = g->scr->RastPort.Font;
     g->mf.ysize = g->font->tf_YSize;
     g->mf.cw = g->font->tf_XSize;
-    g->sw = g->scr->Width;
-    g->sh = g->scr->Height;
+    g->ms.w = g->scr->Width;
+    g->ms.h = g->scr->Height;
     pens_get(g);
 
     /* the font's text lengths before the window exists */
@@ -760,21 +760,21 @@ int main(int argc, char **argv)
             if (lw > w)
                 w = lw;
         }
-        mg_metrics_for(&m, &g->mf);
+        mg_metrics_for(&m, &g->mf, &g->ms);
         w += 2 * m.bx + 2 * m.hpad + 2 * m.row_pad;
         if (w < m.min_w)
             w = m.min_w;
-        if (w > g->sw - 2 * m.margin_x)
-            w = g->sw - 2 * m.margin_x;
+        if (w > g->ms.w - 2 * m.margin_x)
+            w = g->ms.w - 2 * m.margin_x;
         g->w = w;
-        mg_layout(&g->g, &g->mf, g->w, g->nlines, g->sw, g->sh);
+        mg_layout(&g->g, &g->mf, g->w, g->nlines, &g->ms);
     } else {
         int n;
         g->mode = M_LIST;
-        g->w = mg_width(&km, g->node, &g->mf, 0, g->chev_w, text_len, &tmp, g->sw);
+        g->w = mg_width(&km, g->node, &g->mf, 0, g->chev_w, text_len, &tmp, &g->ms);
         n = mn_children(&km, g->node, g->it, MN_MAX_ITEMS);
         g->count = mn_filter(g->it, n, g->filter, g->idx, MN_MAX_ITEMS);
-        mg_layout(&g->g, &g->mf, g->w, g->count, g->sw, g->sh);
+        mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
     }
     g->win = window_open(g);
     if (!g->win) {

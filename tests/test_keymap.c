@@ -701,7 +701,8 @@ static void osd_size_counts_the_reachable_levels(void)
 
 /* AM-GUI G1: the drawn menu's rectangles. The text width is a fixed number of pixels per
  * character (ctx), as topaz's is; the expected numbers are worked out by hand from the scaling in
- * menu_geom.h (Omarchy's px * ysize / 12 down, px * cw / 7.2 across), not from menu_geom.c. */
+ * menu_geom.h (Omarchy's px * h / 1080 down, px * w / 1920 across, the font as the floor), not
+ * from menu_geom.c. */
 static int fixed_width(const char *s, void *ctx)
 {
     return (int)strlen(s) * *(int *)ctx;
@@ -711,25 +712,37 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
 {
     static char file[16384];
     mg_font topaz = { 8, 8 }, big = { 16, 10 };
+    mg_screen pal = { 640, 256 }, narrow = { 320, 256 }, xga = { 1024, 768 }, hd = { 1920, 1080 };
     int px8 = 8, px10 = 10, px16 = 16, w;
     char head[KM_ID];
     mn_item items[MN_MAX_ITEMS];
     mg_geom g;
     long n = slurp("dist/keymap", file, sizeof(file));
 
-    mg_metrics_for(&g.m, &topaz);
+    /* topaz 8 on PAL: the screen share is below the font for most sizes, so the font sets them */
+    mg_metrics_for(&g.m, &topaz, &pal);
     CHECK_INT(g.m.bx, 2);
     CHECK_INT(g.m.by, 2);
-    CHECK_INT(g.m.hpad, 20);
-    CHECK_INT(g.m.vpad, 12);
-    CHECK_INT(g.m.head_h, 23);
-    CHECK_INT(g.m.gap, 4);
-    CHECK_INT(g.m.row_h, 33);
-    CHECK_INT(g.m.pitch, 35);
-    CHECK_INT(g.m.row_pad, 13);
-    CHECK_INT(g.m.min_w, 333);
-    CHECK_INT(g.m.margin_x, 11);
-    CHECK_INT(g.m.margin_y, 7);
+    CHECK_INT(g.m.hpad, 8);
+    CHECK_INT(g.m.vpad, 4);
+    CHECK_INT(g.m.head_h, 10);
+    CHECK_INT(g.m.gap, 2);
+    CHECK_INT(g.m.row_h, 14);
+    CHECK_INT(g.m.pitch, 15);
+    CHECK_INT(g.m.row_pad, 4);
+    CHECK_INT(g.m.icon_gap, 4);
+    CHECK_INT(g.m.min_w, 128);
+    CHECK_INT(g.m.margin_x, 3);
+    CHECK_INT(g.m.margin_y, 2);
+
+    /* on a 1080 line screen the sizes are Omarchy's */
+    mg_metrics_for(&g.m, &topaz, &hd);
+    CHECK_INT(g.m.hpad, 18);
+    CHECK_INT(g.m.vpad, 18);
+    CHECK_INT(g.m.head_h, 34);
+    CHECK_INT(g.m.row_h, 50);
+    CHECK_INT(g.m.pitch, 53);
+    CHECK_INT(g.m.min_w, 300);
 
     mg_header("", head, sizeof head);
     CHECK_STR(head, "Amarchy");
@@ -738,83 +751,87 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     mg_header("apps.tools", head, sizeof head);
     CHECK_STR(head, "Tools");
 
-    /* the shipped keymap at topaz 8 on a 640x256 screen: root 3 groups, apps 5 rows, no label wide
-     * enough to pass the narrowest window */
+    /* the shipped keymap at topaz 8 on PAL: root 3 groups, apps 5 rows; the widest label of all
+     * levels is "Install add-ons" (15 x 8 px), so 2 x 2 + 2 x 8 + 2 x 4 + 120 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
     CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 3);
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
-    w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, 640);
-    CHECK_INT(w, 333);
-    mg_layout(&g, &topaz, w, 3, 640, 256);
-    CHECK_INT(g.h, 158);
-    CHECK_INT(g.x, 153);
-    CHECK_INT(g.y, 49);
+    w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
+    CHECK_INT(w, 148);
+    mg_layout(&g, &topaz, w, 3, &pal);
+    CHECK_INT(g.h, 68);
+    CHECK_INT(g.x, 246);
+    CHECK_INT(g.y, 94);
     CHECK_INT(g.visible, 3);
     CHECK_INT(g.peek, 0);
     CHECK_INT(mg_more(&g, 0), 0);
-    CHECK_INT(g.list_x, 22);
-    CHECK_INT(g.list_y, 41);
-    CHECK_INT(g.list_w, 289);
-    mg_layout(&g, &topaz, w, 5, 640, 256);
-    CHECK_INT(g.h, 228);
-    CHECK_INT(g.y, 14);
+    CHECK_INT(g.list_x, 10);
+    CHECK_INT(g.list_y, 18);
+    CHECK_INT(g.list_w, 128);
+    mg_layout(&g, &topaz, w, 5, &pal);
+    CHECK_INT(g.h, 98);
+    CHECK_INT(g.y, 79);
     CHECK_INT(g.visible, 5);
     CHECK_INT(g.peek, 0);
+    mg_layout(&g, &topaz, w, 8, &pal);           /* 8 rows fit on PAL, no peek */
+    CHECK_INT(g.visible, 8);
+    CHECK_INT(g.peek, 0);
 
-    /* hits: row 0 from y 41 for 33 px, then a 2 px gap, row 1 from 76 */
-    mg_layout(&g, &topaz, w, 3, 640, 256);
-    CHECK_INT(mg_hit(&g, 0, 22, 41), 0);
-    CHECK_INT(mg_hit(&g, 0, 22, 74), -1);
-    CHECK_INT(mg_row_y(&g, 1), 76);
-    CHECK_INT(mg_hit(&g, 0, 22, 76), 1);
-    CHECK_INT(mg_hit(&g, 0, 21, 41), -1);
-    CHECK_INT(mg_hit(&g, 0, 22 + 289, 41), -1);
+    /* hits: row 0 from y 18 for 14 px, then a 1 px gap, row 1 from 33 */
+    mg_layout(&g, &topaz, w, 3, &pal);
+    CHECK_INT(mg_hit(&g, 0, 10, 18), 0);
+    CHECK_INT(mg_hit(&g, 0, 10, 32), -1);
+    CHECK_INT(mg_row_y(&g, 1), 33);
+    CHECK_INT(mg_hit(&g, 0, 10, 33), 1);
+    CHECK_INT(mg_hit(&g, 0, 9, 18), -1);
+    CHECK_INT(mg_hit(&g, 0, 10 + 128, 18), -1);
 
-    /* 7 entries: 5 would fit 179 px, but the peek of the next row takes 18, so 4 rows + peek */
-    mg_layout(&g, &topaz, w, 7, 640, 256);
-    CHECK_INT(g.visible, 4);
-    CHECK_INT(g.peek, 18);
-    CHECK_INT(g.list_h, 158);
-    CHECK_INT(g.h, 213);
+    /* 11 entries: past the 8 row cap, so 8 rows and the peek (55 % of 14) of the next */
+    mg_layout(&g, &topaz, w, 11, &pal);
+    CHECK_INT(g.visible, 8);
+    CHECK_INT(g.peek, 7);
+    CHECK_INT(g.list_h, 127);
+    CHECK_INT(g.h, 151);
     CHECK_INT(mg_more(&g, 0), 1);
     CHECK_INT(mg_more(&g, 3), 0);                  /* at the bottom the cue goes */
-    CHECK_INT(mg_scroll(&g, 6, 0), 3);
+    CHECK_INT(mg_scroll(&g, 10, 0), 3);
     CHECK_INT(mg_scroll(&g, 1, 3), 1);
     CHECK_INT(mg_scroll(&g, 2, 1), 1);
-    CHECK_INT(mg_hit(&g, 0, 22, 181), 4);          /* the peek row selects the next entry */
-    CHECK_INT(mg_hit(&g, 3, 22, 181), -1);         /* no peek drawn at the bottom */
+    CHECK_INT(mg_hit(&g, 0, 10, 138), 8);          /* the peek row selects the next entry */
+    CHECK_INT(mg_hit(&g, 3, 10, 138), -1);         /* no peek drawn at the bottom */
 
-    /* a 16 px font (10 px characters) on 1024x768 */
-    mg_metrics_for(&g.m, &big);
-    CHECK_INT(g.m.bx, 3);
-    CHECK_INT(g.m.hpad, 25);
-    CHECK_INT(g.m.vpad, 24);
-    CHECK_INT(g.m.head_h, 45);
-    CHECK_INT(g.m.row_h, 67);
-    CHECK_INT(g.m.pitch, 71);
-    CHECK_INT(g.m.min_w, 417);
-    w = mg_width(&km, "", &big, 0, 10, fixed_width, &px10, 1024);
-    CHECK_INT(w, 417);
-    mg_layout(&g, &big, w, 3, 1024, 768);
-    CHECK_INT(g.h, 316);
-    CHECK_INT(g.x, 303);
-    CHECK_INT(g.y, 226);
-    mg_layout(&g, &big, w, 5, 1024, 768);
-    CHECK_INT(g.h, 458);
-    CHECK_INT(g.y, 155);
+    /* a 16 px font (10 px characters) on 1024x768: the screen share sets most sizes */
+    mg_metrics_for(&g.m, &big, &xga);
+    CHECK_INT(g.m.bx, 2);
+    CHECK_INT(g.m.hpad, 10);
+    CHECK_INT(g.m.vpad, 13);
+    CHECK_INT(g.m.head_h, 24);
+    CHECK_INT(g.m.row_h, 36);
+    CHECK_INT(g.m.pitch, 38);
+    CHECK_INT(g.m.min_w, 160);
+    w = mg_width(&km, "", &big, 0, 10, fixed_width, &px10, &xga);
+    CHECK_INT(w, 186);
+    mg_layout(&g, &big, w, 3, &xga);
+    CHECK_INT(g.h, 170);
+    CHECK_INT(g.x, 419);
+    CHECK_INT(g.y, 299);
+    mg_layout(&g, &big, w, 5, &xga);
+    CHECK_INT(g.h, 246);
+    CHECK_INT(g.y, 261);
     CHECK_INT(g.peek, 0);
-    /* the same font on 640x256: 123 px for rows, one row and the peek */
-    mg_layout(&g, &big, w, 3, 640, 256);
-    CHECK_INT(g.visible, 1);
-    CHECK_INT(g.peek, 36);
-    CHECK_INT(g.h, 214);
+    /* the same font on PAL: the font is the floor, a row is 16 + 2 x 3, not the 12 px share */
+    mg_layout(&g, &big, w, 3, &pal);
+    CHECK_INT(g.m.row_h, 22);
+    CHECK_INT(g.visible, 3);
+    CHECK_INT(g.peek, 0);
+    CHECK_INT(g.h, 110);
 
     /* width: the widest row two levels down sets it; the screen caps it */
     CHECK(parse("[menu]\napps.upkg = Install add-ons | run:upkg-browse\napps.tools.zzz = A much longer label here | run:z\n"));
-    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, 640), 454);
-    CHECK_INT(mg_width(&km, "apps", &topaz, 16, 8, fixed_width, &px16, 640), 454 + 16 + 11);
-    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, 320), 298);
-    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px8, 320), 298);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, &pal), 412);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 16, 8, fixed_width, &px16, &pal), 412 + 16 + 4);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px16, &narrow), 316);
+    CHECK_INT(mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px8, &narrow), 220);
 }
 
 /* Phase D: the Super+K viewer prints one line per [bind] row of the shipped file; the expected
@@ -970,6 +987,23 @@ static void a_run_leaf_gets_its_own_window_not_the_menus_console(void)
     CHECK_INT((int)lf_plan(KA_MENUID), (int)LF_REQUEST);
     CHECK_INT((int)lf_plan(KA_TAB), (int)LF_REQUEST);
     CHECK(!strncmp(LF_UTERM_SPEC, "XCON:", 5));
+}
+
+/* AMB3 (owner, 2026-10-23): leaves opened from a DOpus screen landed on Workbench, because the window
+ * spec had no SCREEN option. The spec builder appends the front screen's public name, and nothing when
+ * there is none (the default public screen). */
+static void a_leaf_window_spec_names_the_front_public_screen(void)
+{
+    char out[128];
+    CHECK_INT(lf_screen_spec(out, sizeof out, LF_UTERM_SPEC, "DOpus.1"), 1);
+    CHECK_STR(out, "XCON:0/20/640/300/UP-Term/CLOSE/SCREEN DOpus.1");
+    CHECK_INT(lf_screen_spec(out, sizeof out, LF_UTERM_SPEC, ""), 1);
+    CHECK_STR(out, LF_UTERM_SPEC);
+    CHECK_INT(lf_screen_spec(out, sizeof out, LF_UTERM_SPEC, 0), 1);
+    CHECK_STR(out, LF_UTERM_SPEC);
+    CHECK_INT(lf_screen_spec(out, 20, LF_UTERM_SPEC, "A"), 0);        /* does not fit */
+    CHECK_INT(lf_screen_spec(out, sizeof out, LF_UTERM_SPEC, "A/B"), 0); /* '/' would end the option */
+    CHECK_STR(out, "");
 }
 
 /* Owner's A1200, 2026-10-22: Preferences from the quick menu did nothing the first time. The
@@ -1154,6 +1188,7 @@ void suite_keymap(void)
     an_unknown_request_is_an_error_code();
     the_menu_builds_the_request_of_a_leaf();
     a_run_leaf_gets_its_own_window_not_the_menus_console();
+    a_leaf_window_spec_names_the_front_public_screen();
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
 }

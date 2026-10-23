@@ -3,39 +3,38 @@
 
 #include "menu_geom.h"
 
-/* Omarchy's px in this font: vertical over its 12 px line, horizontal over its 7.2 px character */
-static int vs(const mg_font *f, int px)
+/* Omarchy's px on this screen: vertical over its 1080 lines, horizontal over its 1920 columns */
+static int vs(const mg_screen *s, int px)
 {
-    int v = (px * f->ysize + 6) / 12;
-    return v < 1 ? 1 : v;
+    return (px * s->h + 540) / 1080;
 }
 
-static int hs(const mg_font *f, int px)
+static int hs(const mg_screen *s, int px)
 {
-    int v = (px * f->cw * 5 + 18) / 36;
-    return v < 1 ? 1 : v;
+    return (px * s->w + 960) / 1920;
 }
 
 static int imax(int a, int b) { return a > b ? a : b; }
 static int imin(int a, int b) { return a < b ? a : b; }
 
-void mg_metrics_for(mg_metrics *m, const mg_font *f)
+void mg_metrics_for(mg_metrics *m, const mg_font *f, const mg_screen *s)
 {
-    m->bx = imax(2, hs(f, 2));
-    m->by = imax(2, vs(f, 2));
-    m->hpad = hs(f, 18);
-    m->vpad = vs(f, 18);
-    m->head_h = imax(vs(f, 34), f->ysize + 2 * vs(f, 6));
-    m->gap = vs(f, 6);
-    m->row_h = imax(vs(f, 50), f->ysize + 2 * vs(f, 12));
-    m->row_gap = vs(f, 3);
+    int half_w = imax(1, f->cw / 2);
+    m->bx = imax(2, hs(s, 2));
+    m->by = imax(2, vs(s, 2));
+    m->hpad = imax(hs(s, 18), f->cw);
+    m->vpad = imax(vs(s, 18), f->ysize / 2);
+    m->head_h = imax(vs(s, 34), f->ysize + 2 * imax(1, vs(s, 6)));
+    m->gap = imax(vs(s, 6), imax(1, f->ysize / 4));
+    m->row_h = imax(vs(s, 50), f->ysize + 2 * imax(2, vs(s, 12)));
+    m->row_gap = imax(1, vs(s, 3));
     m->pitch = m->row_h + m->row_gap;
-    m->row_pad = hs(f, 12);
-    m->icon_gap = hs(f, 10);
-    m->chev_gap = hs(f, 12);
-    m->min_w = hs(f, 300);
-    m->margin_x = hs(f, 10);
-    m->margin_y = vs(f, 10);
+    m->row_pad = imax(hs(s, 12), half_w);
+    m->icon_gap = imax(hs(s, 10), half_w);
+    m->chev_gap = imax(hs(s, 12), half_w);
+    m->min_w = imax(hs(s, 300), 16 * f->cw);
+    m->margin_x = imax(1, hs(s, 10));
+    m->margin_y = imax(1, vs(s, 10));
 }
 
 void mg_header(const char *node, char *out, int n)
@@ -74,13 +73,13 @@ static void width_level(const mn_item *it, int n, void *ctx)
 }
 
 int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, int chev_w,
-             mg_text_fn text, void *ctx, int scr_w)
+             mg_text_fn text, void *ctx, const mg_screen *s)
 {
     mg_metrics m;
     width_acc a;
     char head[KM_ID];
     int w;
-    mg_metrics_for(&m, f);
+    mg_metrics_for(&m, f, s);
     a.m = &m;
     a.icon_w = icon_w;
     a.chev_w = chev_w;
@@ -93,16 +92,16 @@ int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, in
     mn_levels(k, node, width_level, &a);
     w = 2 * m.bx + 2 * m.hpad + 2 * m.row_pad + a.maxw;
     w = imax(w, m.min_w);
-    return imin(w, scr_w - 2 * m.margin_x);
+    return imin(w, s->w - 2 * m.margin_x);
 }
 
-void mg_layout(mg_geom *g, const mg_font *f, int w, int n, int scr_w, int scr_h)
+void mg_layout(mg_geom *g, const mg_font *f, int w, int n, const mg_screen *s)
 {
     const mg_metrics *m = &g->m;
     int chrome, room, fit;
-    mg_metrics_for(&g->m, f);
+    mg_metrics_for(&g->m, f, s);
     chrome = 2 * m->by + 2 * m->vpad + m->head_h + m->gap;
-    room = imin(scr_h - 2 * m->margin_y - chrome, scr_h * 7 / 10);
+    room = imin(s->h - 2 * m->margin_y - chrome, s->h * 7 / 10);
     fit = imin(imax(1, (room + m->row_gap) / m->pitch), MG_MAX_ROWS);
     g->n = n;
     if (n > fit) {
@@ -116,8 +115,8 @@ void mg_layout(mg_geom *g, const mg_font *f, int w, int n, int scr_w, int scr_h)
     }
     g->w = w;
     g->h = chrome + g->list_h;
-    g->x = (scr_w - g->w) / 2;
-    g->y = imax(0, (scr_h - g->h) / 2);
+    g->x = (s->w - g->w) / 2;
+    g->y = imax(0, (s->h - g->h) / 2);
     g->head_x = g->list_x = m->bx + m->hpad;
     g->head_w = g->list_w = w - 2 * (m->bx + m->hpad);
     g->head_y = m->by + m->vpad;
