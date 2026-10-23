@@ -160,6 +160,13 @@ class PartsTable(unittest.TestCase):
         labs = set(re.findall(r'(?m)^Lab (\S+)', DOS))
         self.assertEqual({p for p, _, _ in PARTS} - labs - {'-'}, set())
 
+    def test_every_file_the_makefile_copies_into_files_has_a_part(self):
+        """A cp into $(KIT)/Files/ with no parts.txt line stops make dist at kitsize (Files/upsame did)"""
+        mk = (ROOT / 'Makefile').read_text()
+        dests = re.findall(r'(?m)^\tcp (?:-\S+ )*\S+ \$\(KIT\)/(Files/[^\s/$*]+)$', mk)
+        self.assertIn('Files/upsame', dests)
+        self.assertEqual([d for d in dests if mm.part_of(d, PARTS) is None], [])
+
     def test_copy_parts_copy_the_drawers_parts_txt_names(self):
         """install.dos's copy-<part> and the Installer's P_COPY copy the same drawer to the same place."""
         copy = {p: (k, d) for p, k, d in PARTS if p.startswith('copy-')}
