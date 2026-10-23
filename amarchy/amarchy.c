@@ -73,9 +73,15 @@ static int act_menu(const char *node)
 {
     char args[KM_ID + 16];
     int cols, rows;
+    keymap full;
     cl_copy(args, "menu ", sizeof(args));
     cl_cat(args, node[0] ? node : "root", sizeof(args));
-    mn_osd_size(&g_km, strcmp(node, "root") ? node : "", &cols, &rows);
+    /* g_km is compacted (no [menu] rows, keymap_compact): the size comes from the full table,
+     * loaded for this open and released again, the table amarchy-menu will show */
+    memset(&full, 0, sizeof full);
+    keymap_load(&full, km_default_text);
+    mn_osd_size(&full, strcmp(node, "root") ? node : "", &cols, &rows);
+    keymap_free(&full);
     return run_helper(args, cols, rows);
 }
 
