@@ -436,6 +436,20 @@ def os_image_copy():
         paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
         shutil.copyfile(paths.LIB68040, dst / "Libs/68040.library")
 
+def sys_hdf_cpu_lib(image):
+    """The rig's own sys.hdf copy follows the machine: no Libs/68060.library on the FPU-less 68LC060 (SetPatch loads it
+    and it Gurus 80000006 before ENV:, rig 4 2026-10-23), the library present on a 060 with FPU; other CPUs untouched."""
+    if not M060:
+        return
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    have = subprocess.run([xdf, str(image), "list", "Libs"], capture_output=True, text=True).stdout
+    has = any(l.split()[:1] == ["68060.library"] for l in have.splitlines())
+    if NOFPU and has:
+        subprocess.run([xdf, str(image), "delete", "Libs/68060.library"], check=True, capture_output=True)
+    elif not NOFPU and not has:
+        paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
+        subprocess.run([xdf, str(image), "write", str(paths.LIB68060), "Libs/68060.library"], check=True, capture_output=True)
+
 def cpu_lines():
     """The A1200 machine's cpu and fpu keys: 68060 + 68060 FPU (default), 68020 + 68882 (--a1200); --nofpu: the
     68LC060 and no fpu key, or the 68020 and no fpu key (FS-UAE: cpu accepts 68LC060, fpu 68881/68882/68040/68060)."""
@@ -774,6 +788,8 @@ def start(retries=2):
     if not OS and not OS32 and not (RIG / "sys.hdf").exists():
         sys.exit("rig: %s has no system disk (%s): the boot would stop at \"Please insert volume dh0:\". "
                  "Run `rig.py setup` (copies 1.5 GB) or use a rig that has one" % (RIG.name, RIG / "sys.hdf"))
+    if not OS and not OS32:
+        sys_hdf_cpu_lib(RIG / "sys.hdf")   # only here: no emulator of this rig runs (mine() above), the master image is never touched
     START_ARGS.write_text(json.dumps(sys.argv[2:]))
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
