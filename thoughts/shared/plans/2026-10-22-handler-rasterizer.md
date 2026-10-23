@@ -386,3 +386,9 @@ Checklist:
   the cell. A1200 manual check by the owner.
 - [x] R6.2a (a6cc9caa) Icons two cells wide (handler wcwidth path), vsh agrees.
 - [ ] R6.2b Rig + A1200 check: icons two cells, prompt columns line up.
+- [x] R6.3 (3093a67f) Placement fix from the first R6 rig run (ea4438ba, tools/rig/r6_rig.py):
+  two-cell icons were fitted as two ems (half size: 8x8 on RTG 8x16) and powerline
+  separators used the bitmap baseline (RTG E0B0 inked rows 0..9 of 16). `ttf_place`:
+  TTF_SHAPE fits the glyph's own advance x one em into the span, centred; TTF_FILL maps
+  the advance across and the font's hhea line down the cell, baseline from the font.
+  Tests in tests/test_ttf.c (test_place, test_place_fill) fail on the old placement.
