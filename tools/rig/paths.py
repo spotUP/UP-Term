@@ -153,10 +153,12 @@ def repo(name):
     return UPTERM_ROOT / name
 
 
-# The default Kickstart 3.1 (40.068) ROM; UPTERM_ROM names another file.
-UPROUGH_ROOT = pathlib.Path(os.environ.get("UPROUGH_ROOT") or CODE_ROOT / "UpRough")
-KICKSTART = pathlib.Path(os.environ.get("UPTERM_ROM") or
-    UPROUGH_ROOT / "Up_Rough_Demo_System/web/maker/public/puae/kick40068.A1200")
+# The default Kickstart 3.1 (40.68, A1200) ROM; UPTERM_ROM names another file. It lives in the
+# workspace, outside every repository (the repositories are public; a ROM is not ours to
+# publish): a copy of the owner's Dropbox ROM, header 40.68,
+# sha1 e21545723fe8374e91342617604f1b3d703094f1. The UpRough file named kick40068.A1200 is
+# really 40.63 (the A500/A600/A2000 ROM) and is no longer used.
+KICKSTART = pathlib.Path(os.environ.get("UPTERM_ROM") or UPTERM_ROOT / "roms/kick40068-a1200.rom")
 
 
 # The rest of the rig's inputs, each an environment variable with the owner's
