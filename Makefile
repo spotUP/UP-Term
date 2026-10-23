@@ -3,6 +3,8 @@
 HOSTCC  ?= cc
 HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -DVT_CHECK_USED
 BUILD   := build
+# the generated version header; named here because the host rules above its own rule list it as a prerequisite
+UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
 
 # a recipe that fails must not leave its target behind: a 0-byte build/amiga/wbrun once counted as up to date (M2)
 .DELETE_ON_ERROR:
@@ -475,7 +477,6 @@ GITREV  := $(shell git rev-parse --short HEAD 2>/dev/null)$(shell git diff --qui
 # day as mkkit.py writes it. C:Claude ships in the up-claude add-on and says that row's version
 # (UPCLAUDE_VERSION). The header is rewritten only when it changes, so the programs rebuild when a
 # version or the day moves, not on every make.
-UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
 $(UPTERM_VERSION_H): FORCE
 	@mkdir -p $(@D)
 	@printf '#define UPTERM_VERSION "%s"\n#define UPTERM_DATE "%s"\n#define UPCLAUDE_VERSION "%s"\n' "$$(python3 tools/pkgs.py get base version)" "$$(date +%d.%m.%Y)" "$$(python3 tools/pkgs.py get claude version)" > $@.new
