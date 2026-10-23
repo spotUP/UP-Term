@@ -430,8 +430,9 @@ def os_image_copy():
         paths.require_input(paths.INSTALLER, "UPTERM_INSTALLER", "an Installer program")
         shutil.copyfile(paths.INSTALLER, dst / "C/Installer")
     if M060:
-        paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
-        shutil.copyfile(paths.LIB68060, dst / "Libs/68060.library")
+        if not NOFPU:   # on the FPU-less 68LC060 SetPatch's Phase5 68060.library Gurus 80000006 before ENV: (rig 4, 2026-10-23)
+            paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
+            shutil.copyfile(paths.LIB68060, dst / "Libs/68060.library")
         paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
         shutil.copyfile(paths.LIB68040, dst / "Libs/68040.library")
 
