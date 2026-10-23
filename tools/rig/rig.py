@@ -964,13 +964,14 @@ def wasabi():
     wb.main(sys.argv[2:])
 
 def main(argv):
-    """Run the command argv[1]. --help, -h, help and ? print this file's usage (rc 0); no command or an
+    """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
             "status": status, "logwatch": logwatch, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg")}
-    if len(argv) > 1 and argv[1] in ("--help", "-h", "help", "?"):
-        print(__doc__)
+    helps = ("--help", "-h", "help", "?")
+    if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):
+        print(__doc__)   # also `rig.py stop --help`: usage, never the command's side effect
         return 0
     if len(argv) < 2 or argv[1] not in cmds:
         print(__doc__, file=sys.stderr)
