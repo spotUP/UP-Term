@@ -25,6 +25,7 @@ typedef enum {
     LF_WINDOW,   /* run: a program, in a new UP-Term window of its own (never the menu's console) */
     LF_REXX,     /* rexx: RX "script" */
     LF_OPEN,     /* open:uterm: a new UP-Term window */
+    LF_DETACH,   /* detach: a program in the background, input and output NIL: (no window) */
     LF_REQUEST   /* tab:, menuid:, slash: ... a terminal window's request port takes the action */
 } lf_how;
 
@@ -40,6 +41,21 @@ typedef struct lf_ui {
 
 /* returns the action's code (0 = done) */
 int lf_run(const km_menu *m, const lf_ui *ui);
+
+/* The request an index row's launcher sends the running Amarchy (the Amiga side wraps it in an exec
+ * Message; wblaunch.c). Amarchy starts the WBStartup launch with its own reply port, so the message
+ * outlives the launcher, and answers rc (0 or -1) and err (the reason). */
+#define LF_LAUNCH_PORT "AMARCHY.launch"
+#define LF_LAUNCH_PATH 256
+#define LF_LAUNCH_ERR  96
+typedef struct lf_launch {
+    long rc;
+    char path[LF_LAUNCH_PATH];
+    char err[LF_LAUNCH_ERR];
+} lf_launch;
+
+/* Fill a request for path (the tool or project, no .info). 1, or 0 when path is empty or too long. */
+int lf_launch_fill(lf_launch *b, const char *path);
 
 /* Launch an index row (an app or a game found by amarchy-index) the way a Workbench double-click does
  * (wblaunch.h), never through a shell. Failure goes through ui->refused with the reason as answer, as a

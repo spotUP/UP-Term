@@ -35,7 +35,7 @@ int main(int argc, char **argv)
         Printf("usage: wbrun NAME [NAME ...] (at most %ld)\n", (LONG)MAXARGS - 1);
         return 20;
     }
-    if (wbl_start((const char *const *)argv + 1, argc - 1, 1, err, sizeof err) != 0) {
+    if (wbl_start((const char *const *)argv + 1, argc - 1, 0, err, sizeof err) != 0) {
         Printf("wbrun: %s\n", (ULONG)err);
         return 20;
     }

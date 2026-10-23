@@ -14,6 +14,8 @@
 #include "cx.h"
 #include "cxdesc.h"
 #include "act.h"
+#include "leaf.h"
+#include "wblaunch.h"
 #include "menu_core.h"
 #include "atiming.h"
 #include "../claude/util.h"
@@ -155,7 +157,8 @@ static int do_row(int row)
     if (b->kind == KA_MENU || b->kind == KA_VIEWER || b->kind == KA_OTHERMENU || b->kind == KA_OTHERVIEWER)
         at_mark("hotkey");   /* opt-in: AMARCHY_TIMING */
     switch (b->kind) {
-    case KA_RUN:   ok = act_run(b->arg); break;
+    case KA_RUN:
+    case KA_DETACH: ok = act_run(b->arg); break;
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
     case KA_MENU: case KA_VIEWER: case KA_OTHERMENU: case KA_OTHERVIEWER:
@@ -224,12 +227,51 @@ static void rexx_serve(void)
     }
 }
 
+/* WBStartup launches of index rows (Workbench's job, which Directory Opus does not do): the launcher
+ * (amarchy-gui, amarchy-menu) sends lf_launch to port LF_LAUNCH_PORT and goes; the program's message,
+ * segment and locks stay here, on a reply port that lives as long as this process, until the program
+ * replies when it ends. */
+struct launch_msg { struct Message msg; lf_launch b; };
+static struct MsgPort *launch_port, *wb_reply;
+static int launches_out;
+
+static void launch_serve(void)
+{
+    struct launch_msg *m;
+    while ((m = (struct launch_msg *)GetMsg(launch_port)) != 0) {
+        const char *path = m->b.path;
+        char err[LF_LAUNCH_ERR];
+        err[0] = 0;
+        m->b.path[LF_LAUNCH_PATH - 1] = 0;
+        if (!wb_reply)
+            m->b.rc = -1, strcpy(m->b.err, "no reply port");
+        else if (wbl_start(&path, 1, wb_reply, err, sizeof err) == 0) {
+            m->b.rc = 0;
+            launches_out++;
+        } else {
+            m->b.rc = -1;
+            err[LF_LAUNCH_ERR - 1] = 0;
+            strcpy(m->b.err, err);
+        }
+        ReplyMsg(&m->msg);
+    }
+}
+
+static void launch_replied(void)
+{
+    struct Message *m;
+    while ((m = GetMsg(wb_reply)) != 0) {
+        wbl_free((struct WBStartup *)m);
+        launches_out--;
+    }
+}
+
 /* act.c reads the front screen (AMB3) from it */
 struct IntuitionBase *IntuitionBase;
 
 int main(void)
 {
-    ULONG sigs, cxs, rxs, nts;
+    ULONG sigs, cxs, rxs, nts, lps, wrs;
     int row, ev;
     struct RDArgs *rda;
     LONG args[1] = { 0 };
@@ -259,6 +301,14 @@ int main(void)
         AddPort(rexx_port);
     }
     Permit();
+    wb_reply = CreateMsgPort();
+    Forbid();
+    launch_port = wb_reply && !FindPort((STRPTR)LF_LAUNCH_PORT) ? CreateMsgPort() : 0;
+    if (launch_port) {
+        launch_port->mp_Node.ln_Name = (char *)LF_LAUNCH_PORT;
+        AddPort(launch_port);
+    }
+    Permit();
     notify_port = CreateMsgPort();
     if (notify_port)
         notify_start();
@@ -266,8 +316,10 @@ int main(void)
     cxs = cx_sigmask();
     rxs = rexx_port ? 1UL << rexx_port->mp_SigBit : 0;
     nts = notify_port ? 1UL << notify_port->mp_SigBit : 0;
+    lps = launch_port ? 1UL << launch_port->mp_SigBit : 0;
+    wrs = wb_reply ? 1UL << wb_reply->mp_SigBit : 0;
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nts | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nts | lps | wrs | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cxs)
@@ -281,6 +333,10 @@ int main(void)
             }
         if (sigs & rxs)
             rexx_serve();
+        if (sigs & lps)
+            launch_serve();
+        if (sigs & wrs)
+            launch_replied();
         if (sigs & nts) {
             struct Message *m;
             while ((m = GetMsg(notify_port)) != 0)
@@ -301,5 +357,19 @@ int main(void)
     if (IntuitionBase)
         CloseLibrary((struct Library *)IntuitionBase);
     cx_close();
+    /* Quit (Exchange Remove, Ctrl-C, QUIT): no new launch, and the process stays until every program it
+     * started has replied its WBStartup message, so no reply goes to a deleted port. The commodity is
+     * already gone from Exchange and its hotkeys are released. */
+    if (launch_port) {
+        RemPort(launch_port);
+        launch_serve();             /* requests that came in before the port went still get started */
+        DeleteMsgPort(launch_port);
+    }
+    while (launches_out > 0) {
+        Wait(1UL << wb_reply->mp_SigBit);
+        launch_replied();
+    }
+    if (wb_reply)
+        DeleteMsgPort(wb_reply);
     return 0;
 }

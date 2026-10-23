@@ -8,6 +8,8 @@ lf_how lf_plan(int kind)
     switch (kind) {
     case KA_RUN:
         return LF_WINDOW;
+    case KA_DETACH:
+        return LF_DETACH;
     case KA_REXX:
         return LF_REXX;
     case KA_OPEN:
@@ -66,5 +68,14 @@ int lf_shell_command(char *out, int cap, const char *vsh, const char *cmd)
         out[0] = 0;
         return 0;
     }
+    return 1;
+}
+
+int lf_launch_fill(lf_launch *b, const char *path)
+{
+    memset(b, 0, sizeof *b);
+    if (!path || !*path || strlen(path) >= LF_LAUNCH_PATH)
+        return 0;
+    strcpy(b->path, path);
     return 1;
 }

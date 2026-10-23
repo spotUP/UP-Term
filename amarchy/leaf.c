@@ -101,9 +101,29 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui)
     return UPREQ_FAILED;
 }
 
+/* detach: the program runs on its own, with NIL: as input and output and no window anywhere */
+static int run_detached(const km_menu *m, const lf_ui *ui)
+{
+    BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    LONG rc = SystemTags((STRPTR)m->arg, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
+                         NP_StackSize, 32768, TAG_END);
+    if (rc == -1) {                 /* not started: the files are still ours */
+        if (in)
+            Close(in);
+        if (out)
+            Close(out);
+        if (ui && ui->refused)
+            ui->refused(ui->ctx, m->label, UPREQ_FAILED, "it could not be started");
+        return UPREQ_FAILED;
+    }
+    return 0;
+}
+
 int lf_run(const km_menu *m, const lf_ui *ui)
 {
     switch (lf_plan(m->kind)) {
+    case LF_DETACH:
+        return run_detached(m, ui);
     case LF_WINDOW:
         return run_in_uterm(m->arg, ui);
     case LF_REXX: {

@@ -1551,6 +1551,24 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
     CHECK(rescan >= 0);
     CHECK_STR(km.menu[rescan].label, "Rescan apps");
     CHECK_STR(km.menu[rescan].arg, "amarchy-index");
+    CHECK_INT(km.menu[rescan].kind, KA_DETACH);          /* in the background: no UP-Term window for a scan */
+    CHECK_INT((int)lf_plan(KA_DETACH), (int)LF_DETACH);
+    CHECK_INT(keymap_action_scope(KA_DETACH), KS_BOTH);
+}
+
+static void a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one(void)
+{
+    lf_launch b;
+    char longp[LF_LAUNCH_PATH + 8];
+    CHECK_INT(lf_launch_fill(&b, "Sys:Tools/Clock"), 1);
+    CHECK_STR(b.path, "Sys:Tools/Clock");
+    CHECK_STR(b.err, "");
+    CHECK_INT(lf_launch_fill(&b, ""), 0);
+    memset(longp, 'x', sizeof longp - 1);
+    longp[sizeof longp - 1] = 0;
+    CHECK_INT(lf_launch_fill(&b, longp), 0);
+    longp[LF_LAUNCH_PATH - 1] = 0;                     /* the longest that fits */
+    CHECK_INT(lf_launch_fill(&b, longp), 1);
 }
 
 static void a_menu_row_hides_an_index_app_with_the_same_label(void)
@@ -1629,6 +1647,7 @@ static void the_app_index_core_behaves(void)
     a_menu_row_wins_over_an_index_row_with_the_same_label();
     the_apps_level_lists_index_apps_after_merging();
     an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_apps_menu();
+    a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one();
     a_menu_row_hides_an_index_app_with_the_same_label();
     the_games_level_lists_index_games_and_the_root_offers_the_group();
     a_missing_or_empty_cache_adds_no_index_rows();
