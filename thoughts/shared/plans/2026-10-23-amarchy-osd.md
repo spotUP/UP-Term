@@ -7,6 +7,8 @@ ledger: thoughts/spot/todos.md, entries AM-OSD (2026-10-22, 2026-10-23)
 branch: amarchy-a (after the R6 merge to main, work continues on main)
 ---
 
+Superseded for the menu by 2026-10-23-amarchy-drawn-menu.md.
+
 # Amarchy quick menu as an on-screen display
 
 ## Owner requirements (ledger AM-OSD)

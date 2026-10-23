@@ -7,6 +7,8 @@ ledger: thoughts/spot/todos.md, item "SUPER-KEYS / AMARCHY"
 repos: vtcon (keymap parser, handler, commodity, dist, host and rig tests), upterm-ports (upkg-ui --menu filter field)
 ---
 
+Superseded for the menu by 2026-10-23-amarchy-drawn-menu.md.
+
 # Plan: Amarchy (keymap file, terminal side, commodity)
 
 ## Goal and finish line

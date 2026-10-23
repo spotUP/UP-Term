@@ -696,7 +696,20 @@ AMARCHY
   Left Amiga + I              Install add-ons
   [end keys]
   The quick menu (Left Amiga + Space) is a short list you filter by typing;
-  Left Amiga + K is the key viewer. Both are the program amarchy-menu.
+  Left Amiga + K is the key viewer. Two programs draw them. amarchy-gui is
+  the drawn menu: its own borderless window with an icon in front of each row.
+  amarchy-menu is the text menu in a console window. The setting
+    menu-style = graphical
+  in ENVARC:up-term/up-term (before the first section; graphical or text,
+  default graphical) picks the one Left Amiga + Space and Left Amiga + K
+  start. Left Amiga + Alt + Space and Left Amiga + Alt + K start the other
+  one. You can also run them by hand:
+    amarchy-gui menu [node]      the menu (node: a menu id, default root)
+    amarchy-gui viewer           the list of every key
+  and the same two words for amarchy-menu. The icons come from a table made
+  when the kit is built (the file dist/menu-icons in the source); a row in
+  keymap.user cannot name an icon, and a row without an entry in the table
+  shows an empty icon column.
   Change a key: edit ENVARC:up-term/keymap (the shipped file, written by
   Install; an upgrade never overwrites it, the new one is saved beside it as
   keymap.new) or put your own rows in ENVARC:up-term/keymap.user: a row there
