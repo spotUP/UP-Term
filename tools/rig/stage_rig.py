@@ -18,6 +18,9 @@ TARGETS = {'Amarchy': 'build/amiga/Amarchy', 'amarchy-menu': 'build/amiga/amarch
            'amarchy-gui': 'build/amiga/amarchy-gui', 'scrprobe': 'build/amiga/scrprobe',
            'lcmdprobe': 'build/amiga/lcmdprobe'}
 
+# staged when a rig script names nothing: amarchy-gui is the menu Amarchy draws, amarchy-menu its text fallback
+DEFAULT = ('Amarchy', 'amarchy-menu', 'amarchy-gui')
+
 
 class StageError(SystemExit):
     pass
@@ -34,7 +37,7 @@ def make(names, run=subprocess.run):
         raise StageError('stage_rig: make failed:\n' + (r.stdout + r.stderr)[-1500:])
 
 
-def stage_build(names=('Amarchy', 'amarchy-menu'), build=True, dest=None, read=None, put=None, run=subprocess.run):
+def stage_build(names=DEFAULT, build=True, dest=None, read=None, put=None, run=subprocess.run):
     """Returns {name: 'restaged' | 'current'}. read/put default to ami.read_file / ami.put (injectable for tests)."""
     if read is None or put is None:
         import ami

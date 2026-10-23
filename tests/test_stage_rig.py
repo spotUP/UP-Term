@@ -45,6 +45,18 @@ class Stage(unittest.TestCase):
             self.stage()
 
 
+class Default(unittest.TestCase):
+    def test_default_set_stages_amarchy_gui(self):
+        d = pathlib.Path(tempfile.mkdtemp())
+        for n in ("Amarchy", "amarchy-menu", "amarchy-gui"):
+            (d / n).write_bytes(n.encode())
+        stage_rig.BUILD, rig = d, {}
+        res = stage_rig.stage_build(build=False, dest="VTC:Apps/bin", read=rig.get,
+                                    put=lambda l, r: rig.__setitem__(r, pathlib.Path(l).read_bytes()))
+        self.assertEqual(res.get("amarchy-gui"), "restaged")
+        self.assertEqual(rig["VTC:Apps/bin/amarchy-gui"], b"amarchy-gui")
+
+
 class Wired(unittest.TestCase):
     def test_amarchy_rig_stages_before_any_row(self):
         import amarchy_rig
