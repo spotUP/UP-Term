@@ -1857,6 +1857,22 @@ int le_ctrl_d(int shell_armed, int reader_is_program, int line_len)
     return line_len ? LE_CTRLD_SEND : LE_CTRLD_EOF;
 }
 
+int le_break_key(int raw, int xterm, unsigned char b, int *brk_bit)
+{
+    *brk_bit = 0;
+    if (raw && xterm)
+        return LE_BRK_NONE;
+    if (b >= 0x03 && b <= 0x06)
+        *brk_bit = 12 + (b - 0x03);
+    else if (b == 0x1C)
+        *brk_bit = 14;
+    else if (b == 0x1A)
+        *brk_bit = 15;
+    else
+        return LE_BRK_NONE;
+    return raw || b == 0x1C ? LE_BRK_KEY : LE_BRK_ONLY;
+}
+
 #define AHEAD_HDR 6 /* length, modifiers, key (4 bytes, high byte first) */
 
 int le_ahead_key(le_ahead *a, int reader_waits, const unsigned char *b, int n, long key, int mods)

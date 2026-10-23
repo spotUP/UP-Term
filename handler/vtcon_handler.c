@@ -4666,19 +4666,13 @@ static void key_in(con *c, const vt_u8 *out, int n, long key, int mods)
             return;
         }
     }
-    if (n == 1 && !key && (!c->raw || c->w.pers != VT_XTERM)) {
-        ULONG brk = 0;
-        if (out[0] >= 0x03 && out[0] <= 0x06)
-            brk = SIGBREAKF_CTRL_C << (out[0] - 0x03);
-        else if (out[0] == 0x1C)
-            brk = SIGBREAKF_CTRL_E;
-        else if (out[0] == 0x1A)
-            brk = SIGBREAKF_CTRL_F;
-        if (brk) {
-            if (brk == SIGBREAKF_CTRL_C)
+    if (n == 1 && !key) {
+        int bit, act = le_break_key(c->raw, c->w.pers == VT_XTERM, out[0], &bit);
+        if (act != LE_BRK_NONE) {
+            if (bit == SIGBREAKB_CTRL_C)
                 le_ahead_clear(&c->ahead); /* an interrupt flushes what was typed ahead, as a tty's does */
-            send_break(c, brk);
-            if (!c->raw)
+            send_break(c, 1UL << bit);
+            if (act == LE_BRK_ONLY)
                 return;
         }
     }

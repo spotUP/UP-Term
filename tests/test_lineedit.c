@@ -1407,12 +1407,29 @@ static void ctrl_d_ends_a_program_read_under_vsh_only(void)
     CHECK_INT(le_ctrl_d(0, 1, 3), LE_CTRLD_KEY);
 }
 
+static void ctrl_backslash_ends_a_cooked_read_after_its_break(void)
+{
+    int bit;
+    CHECK_INT(le_break_key(0, 0, 0x1C, &bit), LE_BRK_KEY);  /* cooked: CTRL_E, then end of file (a cooked Copy ends) */
+    CHECK_INT(bit, 14);
+    CHECK_INT(le_break_key(0, 1, 0x1C, &bit), LE_BRK_KEY);
+    CHECK_INT(le_break_key(0, 0, 0x03, &bit), LE_BRK_ONLY); /* Ctrl-C: the break only */
+    CHECK_INT(bit, 12);
+    CHECK_INT(le_break_key(0, 0, 0x1A, &bit), LE_BRK_ONLY);
+    CHECK_INT(bit, 15);
+    CHECK_INT(le_break_key(1, 0, 0x03, &bit), LE_BRK_KEY);  /* Amiga raw: break and byte */
+    CHECK_INT(le_break_key(1, 1, 0x1C, &bit), LE_BRK_NONE); /* xterm raw: the byte only */
+    CHECK_INT(bit, 0);
+    CHECK_INT(le_break_key(0, 0, 'a', &bit), LE_BRK_NONE);
+}
+
 void suite_lineedit(void)
 {
     typed_ahead_enters_each_start_a_new_line();
     a_line_typed_ahead_is_drawn_after_the_next_prompt();
     typeahead_queue_drops_a_key_only_when_full();
     ctrl_d_ends_a_program_read_under_vsh_only();
+    ctrl_backslash_ends_a_cooked_read_after_its_break();
     bound_keys_run_their_functions_and_the_rest_keep_emacs();
     medium_mode_reports_tab_shift_tab_up_and_down_at_once();
     medium_mode_leaves_the_editing_keys_to_the_editor();

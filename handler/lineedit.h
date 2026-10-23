@@ -236,6 +236,13 @@ void le_hist_clear(le_line *le);
 enum { LE_CTRLD_KEY, LE_CTRLD_EOF, LE_CTRLD_SEND };
 int le_ctrl_d(int shell_armed, int reader_is_program, int line_len);
 
+/* A break key in key_in. Ctrl-C..F, Ctrl-\ (CTRL_E) and Ctrl-Z (CTRL_F) signal the opener in cooked mode and in
+ * Amiga raw mode; an xterm window in raw mode sends the byte only. *brk_bit is the break's bit (12 = CTRL_C ..
+ * 15 = CTRL_F), 0 for none. LE_BRK_ONLY: the key ends with its break. LE_BRK_KEY: the key then goes on as typed
+ * (raw mode appends it; cooked Ctrl-\ is end of file as well, as on CON:, so a cooked Copy ends). */
+enum { LE_BRK_NONE, LE_BRK_ONLY, LE_BRK_KEY };
+int le_break_key(int raw, int xterm, unsigned char b, int *brk_bit);
+
 /* A list to choose from with the keys, drawn under a finished line (W30:
  * /theme with no name): one name a row, the chosen one as a reverse bar,
  * the marked one (what the window has now) with a '*', a faint row under
