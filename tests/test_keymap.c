@@ -1128,6 +1128,23 @@ static void a_leaf_window_spec_names_the_front_public_screen(void)
     CHECK_STR(out, "");
 }
 
+/* Apps > Editor (run:nvim) started nothing: nvim is on vsh's $PATH (UP-Term:nvim/bin), not on the AmigaDOS
+ * path SystemTags searched. The leaf runs through the UP-Term shell, as a tab would. */
+static void a_run_row_starts_its_command_through_the_upterm_shell(void)
+{
+    char out[128];
+    CHECK_INT(lf_shell_command(out, sizeof out, "UP-Term:bin/vsh", "nvim"), 1);
+    CHECK_STR(out, "\"UP-Term:bin/vsh\" -c \"nvim\"");
+    CHECK_INT(lf_shell_command(out, sizeof out, "UP-Term:bin/vsh", "upkg upgrade"), 1);
+    CHECK_STR(out, "\"UP-Term:bin/vsh\" -c \"upkg upgrade\"");
+    CHECK_INT(lf_shell_command(out, sizeof out, 0, "tmux"), 1);      /* no vsh: the AmigaDOS command */
+    CHECK_STR(out, "tmux");
+    CHECK_INT(lf_shell_command(out, sizeof out, "UP-Term:bin/vsh", "a\"b"), 0); /* a quote ends the argument */
+    CHECK_STR(out, "");
+    CHECK_INT(lf_shell_command(out, 20, "UP-Term:bin/vsh", "nvim"), 0);          /* does not fit */
+    CHECK_INT(lf_shell_command(out, sizeof out, "UP-Term:bin/vsh", ""), 0);
+}
+
 /* Owner's A1200, 2026-10-22: Preferences from the quick menu did nothing the first time. The
  * menu window that closed was blanked out of the focus record, and the next menu window then
  * took the blank as "the terminal before me": the request found no port. The record keeps the
@@ -1314,6 +1331,7 @@ void suite_keymap(void)
     the_menu_builds_the_request_of_a_leaf();
     a_run_leaf_gets_its_own_window_not_the_menus_console();
     a_leaf_window_spec_names_the_front_public_screen();
+    a_run_row_starts_its_command_through_the_upterm_shell();
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
 }

@@ -5,10 +5,13 @@
 #include <dos/dos.h>
 #include <dos/dostags.h>
 #include <proto/dos.h>
+#include <proto/exec.h>
 #include "leaf.h"
 #include "termenv.h"
 #include "../handler/upreq.h"
 #include "../handler/frontscr.h"
+#define UPASSIGN_DOS
+#include "../config/upassign.h"
 
 /* LF_UTERM_SPEC on the public screen that is in front now: the menu's own window opened there (AMB3). A
  * front screen without a public name leaves the default public screen. */
@@ -25,24 +28,34 @@ static void uterm_spec(char *out, int cap)
  * program's input and output. system() would run it in the menu's own XCON: window (AMB1: nvim
  * opened inside the OSD), and the window closes when the menu leaves. Asynchronous, so the
  * menu's process does not wait for it and is not its parent console. */
-static int run_in_uterm(const char *cmd)
+static int run_in_uterm(const char *cmd, const lf_ui *ui)
 {
     BPTR w;
     LONG rc;
-    char spec[128];
+    char spec[128], line[512];
     if (!cmd || !*cmd)
         return 0;
+    if (!lf_shell_command(line, sizeof line, upassign_vsh(), cmd)) {
+        fprintf(stderr, "amarchy: %s is not a command line\n", cmd);
+        if (ui && ui->refused)
+            ui->refused(ui->ctx, cmd, UPREQ_FAILED, "the command line is not valid");
+        return UPREQ_FAILED;
+    }
     termenv_ensure();
     uterm_spec(spec, sizeof spec);
     w = Open((STRPTR)spec, MODE_NEWFILE);
     if (!w) {
         fprintf(stderr, "amarchy: no UP-Term window for %s\n", cmd);
+        if (ui && ui->refused)
+            ui->refused(ui->ctx, cmd, UPREQ_NOWINDOW, "");
         return UPREQ_NOWINDOW;
     }
-    rc = SystemTags((STRPTR)cmd, SYS_Input, w, SYS_Output, 0, SYS_Asynch, TRUE,
+    rc = SystemTags((STRPTR)line, SYS_Input, w, SYS_Output, 0, SYS_Asynch, TRUE,
                     NP_StackSize, 65536, TAG_END);
     if (rc == -1) {                 /* not started: the window is still ours */
         Close(w);
+        if (ui && ui->refused)
+            ui->refused(ui->ctx, cmd, UPREQ_FAILED, "it could not be started");
         return UPREQ_FAILED;
     }
     return 0;
@@ -80,7 +93,7 @@ int lf_run(const km_menu *m, const lf_ui *ui)
 {
     switch (lf_plan(m->kind)) {
     case LF_WINDOW:
-        return run_in_uterm(m->arg);
+        return run_in_uterm(m->arg, ui);
     case LF_REXX: {
         char line[160];
         snprintf(line, sizeof line, "RX \"%s\"", m->arg);

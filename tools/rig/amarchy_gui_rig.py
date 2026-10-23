@@ -358,6 +358,24 @@ def case_run_tmux():
     c.run('tmux kill-server', 20)
 
 
+def case_run_editor():
+    """Apps > Editor (run:nvim): nvim is on vsh's $PATH (UP-Term:nvim/bin), not on the AmigaDOS path, so the
+    leaf started nothing. The leaf runs it through the UP-Term shell now. Sentinel: an nvim process exists
+    (Status COM=nvim) and an UP-Term window is open."""
+    s, w = open_menu()
+    check(bool(w), 'run_editor: menu opens')
+    ami.key(RETURN)                       # Apps
+    time.sleep(2)
+    for _ in range(3):                    # Editor is the fourth Apps row
+        ami.key(0x4D)
+        time.sleep(.5)
+    ami.key(RETURN)
+    time.sleep(8)
+    out = c.run('Status', 20)[1]
+    check(re.search(r'\bnvim\b', out) is not None, 'run_editor: an nvim process runs after Apps > Editor (Status: %s)' % out.replace('\n', ' | ')[:120])
+    check(any(w['title'] == 'UP-Term' for s in screens() for w in s['windows']), 'run_editor: an UP-Term window exists')
+
+
 def main():
     stage_rig.report(stage_rig.stage_build(NAMES, build='--no-build' not in sys.argv))
     geom = build_geom()
@@ -369,6 +387,7 @@ def main():
         case_screen(geom, True)
         case_screen(geom, False)
         case_run_tmux()
+        case_run_editor()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')

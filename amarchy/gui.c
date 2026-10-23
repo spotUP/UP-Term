@@ -843,8 +843,8 @@ int main(int argc, char **argv)
         ui.refused = gui_refused;
         ui.ctx = g;
         g->stop = 0;
-        /* a program, a script or a new window needs no menu around it; a terminal action may ask or refuse */
-        if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST) {
+        /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
+        if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST && lf_plan(km.menu[g->chosen].kind) != LF_WINDOW) {
             cleanup(g);
             g->rp = 0;
         }

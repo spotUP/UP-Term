@@ -15,6 +15,12 @@
  * option); out is then "". */
 int lf_screen_spec(char *out, int cap, const char *spec, const char *screen);
 
+/* The command line a run: leaf starts. With a vsh, `"vsh" -c "cmd"`: the command runs the way it would typed
+ * in an UP-Term tab, with vshrc's $PATH (UP-Term:nvim/bin and the rest are not on the AmigaDOS path, so
+ * SystemTags on "nvim" returned -1: AMB, Apps > Editor did nothing). Without one, cmd as it is. 0 (out "")
+ * when it does not fit in cap, or cmd holds a '"' or a control character. */
+int lf_shell_command(char *out, int cap, const char *vsh, const char *cmd);
+
 typedef enum {
     LF_WINDOW,   /* run: a program, in a new UP-Term window of its own (never the menu's console) */
     LF_REXX,     /* rexx: RX "script" */
