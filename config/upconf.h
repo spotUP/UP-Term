@@ -110,6 +110,12 @@ int  upconf_profile_equal(const upconf *a, const upconf *b, const char *profile)
  * left out and counted in *dropped (may be NULL). Returns the rows passed. */
 typedef int (*upconf_row_fn)(void *ud, int lineno, const char *key, const char *value);
 int  upconf_rows(const char *buf, long len, const char *section, upconf_row_fn fn, void *ud, int *dropped);
+/* The menu program setting: "menu-style = graphical | text" in the default profile (rows before any
+ * section count), the last row wins, case-insensitive. Anything else, or no row: graphical. Reads the
+ * raw text through upconf_rows, so the commodity needs no table. */
+#define UC_MENU_GRAPHICAL 0
+#define UC_MENU_TEXT      1
+int  upconf_menu_style(const char *buf, long len);
 /* The last value of key in profile, 0 when absent. Case-insensitive. */
 const char *upconf_get(const upconf *c, const char *profile, const char *key);
 /* upconf_get, or def when the key is absent or its value is empty. */

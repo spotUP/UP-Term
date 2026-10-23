@@ -36,6 +36,8 @@ super = lamiga
 super+space       = menu:root              ; Menu                  | menu
 super+shift+space = menu:apps              ; Apps                  | menu
 super+k           = viewer                 ; Key bindings          | menu
+super+alt+space   = othermenu:root         ; Other menu            | menu
+super+alt+k       = otherviewer            ; Other key bindings    | menu
 super+h           = slash:/help            ; Help                  | menu
 super+shift+h     = slash:/tutorial        ; Tutorial              | menu
 

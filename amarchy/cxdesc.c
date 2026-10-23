@@ -1,5 +1,6 @@
 #include <string.h>
 #include "cxdesc.h"
+#include "../config/upconf.h"
 
 /* IEQUALIFIER_* values (devices/inputevent.h), kept here so the host builds */
 #define IEQ_LSHIFT   0x0001
@@ -30,23 +31,47 @@ int cx_row_takes(unsigned short row_code, unsigned row_qual, unsigned ie_code, u
     return row_code == ie_code && row_qual == cx_qual_mask(ie_qual);
 }
 
-int cx_helper_cmd(char *out, int cap, const char *dir, const char *args)
+int cx_helper_cmd(char *out, int cap, const char *dir, const char *prog, const char *args)
 {
-    int n = 0, dl = (int)strlen(dir), al = (int)strlen(args);
-    /* '"' dir ['/'] "amarchy-menu" '"' ' ' args NUL */
-    int need = 1 + dl + 1 + 12 + 1 + 1 + al + 1;
+    int n = 0, dl = (int)strlen(dir), al = (int)strlen(args), pl = (int)strlen(prog);
+    /* '"' dir ['/'] prog '"' ' ' args NUL */
+    int need = 1 + dl + 1 + pl + 1 + 1 + al + 1;
     if (dl == 0 || need > cap)
         return 0;
     out[n++] = '"';
     memcpy(out + n, dir, dl); n += dl;
     if (dir[dl - 1] != ':' && dir[dl - 1] != '/')
         out[n++] = '/';
-    memcpy(out + n, "amarchy-menu", 12); n += 12;
+    memcpy(out + n, prog, pl); n += pl;
     out[n++] = '"';
     out[n++] = ' ';
     memcpy(out + n, args, al); n += al;
     out[n] = 0;
     return 1;
+}
+
+int cx_menu_cmd(char *out, int cap, const char *dir, int kind, const char *node, int style, int *text)
+{
+    char args[KM_ARG + 8];
+    int other, is_text;
+    if (kind == KA_MENU || kind == KA_VIEWER)
+        other = 0;
+    else if (kind == KA_OTHERMENU || kind == KA_OTHERVIEWER)
+        other = 1;
+    else
+        return 0;
+    is_text = (style == UC_MENU_TEXT) != other;
+    if (kind == KA_MENU || kind == KA_OTHERMENU) {
+        if (strlen(node) + 6 >= sizeof args)
+            return 0;
+        strcpy(args, "menu ");
+        strcat(args, node[0] ? node : "root");
+    } else {
+        strcpy(args, "viewer");
+    }
+    if (text)
+        *text = is_text;
+    return cx_helper_cmd(out, cap, dir, is_text ? "amarchy-menu" : "amarchy-gui", args);
 }
 
 unsigned cx_qual_mask(unsigned q)

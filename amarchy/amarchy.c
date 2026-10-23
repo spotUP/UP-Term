@@ -16,6 +16,7 @@
 #include "atiming.h"
 #include "../claude/util.h"
 #include "../config/keymap_load.h"
+#include "../config/upconf.h"
 #include "../handler/upactive.h"
 #include "../tty/qmark.h"
 #include "keymap_default.inc"
@@ -34,9 +35,10 @@ static int starts(const char *cmd, const char *word)
 long __stack = 16384;
 
 static const char *notify_paths[] = {
-    "ENV:up-term/keymap", "ENVARC:up-term/keymap", "ENV:up-term/keymap.user", "ENVARC:up-term/keymap.user"
+    "ENV:up-term/keymap", "ENVARC:up-term/keymap", "ENV:up-term/keymap.user", "ENVARC:up-term/keymap.user",
+    "ENV:up-term/up-term", "ENVARC:up-term/up-term"
 };
-#define NNOTIFY 4
+#define NNOTIFY 6
 static struct NotifyRequest nr[NNOTIFY];
 static int nr_on[NNOTIFY];
 static struct MsgPort *rexx_port, *notify_port;
@@ -60,30 +62,52 @@ static void dir_resolve(void)
 #define VIEWER_COLS 76
 #define VIEWER_ROWS 22
 
-/* the amarchy-menu helper (full path) with args, in its own terminal window of cols x rows cells */
-static int run_helper(const char *args, int cols, int rows)
+/* the menu-style setting (UC_MENU_*), read from the upconf at startup and on every reload */
+static int g_style;
+
+static void style_load(void)
 {
-    char line[KM_ID + 160];
-    if (!cx_helper_cmd(line, sizeof(line), g_dir, args))
-        return 0;
-    return act_in_window(line, cols, rows);
+    static const char *const path[2] = { "ENV:up-term/up-term", "ENVARC:up-term/up-term" };
+    int i;
+    g_style = UC_MENU_GRAPHICAL;
+    for (i = 0; i < 2; i++) {
+        BPTR f = Open((STRPTR)path[i], MODE_OLDFILE);
+        char *buf;
+        LONG got = 0;
+        if (!f)
+            continue;
+        buf = AllocVec(UC_MAX_FILE + 1, MEMF_PUBLIC);
+        if (buf)
+            got = Read(f, buf, UC_MAX_FILE);
+        Close(f);
+        if (buf && got > 0)
+            g_style = upconf_menu_style(buf, got);
+        if (buf)
+            FreeVec(buf);
+        return;
+    }
 }
 
-/* menu:<node> -> the helper in its own terminal window */
-static int act_menu(const char *node)
+/* menu: / viewer / othermenu: / otherviewer: the program the setting names (or the other one), the
+ * text one in its own terminal window sized from the tree, the graphical one in its own window. */
+static int act_menu_kind(int kind, const char *node)
 {
-    char args[KM_ID + 16];
-    int cols, rows;
-    keymap full;
-    cl_copy(args, "menu ", sizeof(args));
-    cl_cat(args, node[0] ? node : "root", sizeof(args));
-    /* g_km is compacted (no [menu] rows, keymap_compact): the size comes from the full table,
-     * loaded for this open and released again, the table amarchy-menu will show */
-    memset(&full, 0, sizeof full);
-    keymap_load(&full, km_default_text);
-    mn_osd_size(&full, strcmp(node, "root") ? node : "", &cols, &rows);
-    keymap_free(&full);
-    return run_helper(args, cols, rows);
+    char line[KM_ID + 160];
+    int text = 0, cols = VIEWER_COLS, rows = VIEWER_ROWS;
+    if (!cx_menu_cmd(line, sizeof(line), g_dir, kind, node, g_style, &text))
+        return 0;
+    if (!text)
+        return act_run(line);
+    if (kind == KA_MENU || kind == KA_OTHERMENU) {
+        keymap full;
+        /* g_km is compacted (no [menu] rows, keymap_compact): the size comes from the full table,
+         * loaded for this open and released again, the table amarchy-menu will show */
+        memset(&full, 0, sizeof full);
+        keymap_load(&full, km_default_text);
+        mn_osd_size(&full, strcmp(node, "root") ? node : "", &cols, &rows);
+        keymap_free(&full);
+    }
+    return act_in_window(line, cols, rows);
 }
 
 /* A decimal number after optional blanks and sign, 0 when there is none (atoi). */
@@ -126,14 +150,15 @@ static int do_row(int row)
     if (!b)
         return 0;
     g_hits++;
-    if (b->kind == KA_MENU || b->kind == KA_VIEWER)
+    if (b->kind == KA_MENU || b->kind == KA_VIEWER || b->kind == KA_OTHERMENU || b->kind == KA_OTHERVIEWER)
         at_mark("hotkey");   /* opt-in: AMARCHY_TIMING */
     switch (b->kind) {
     case KA_RUN:   ok = act_run(b->arg); break;
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
-    case KA_MENU:  ok = act_menu(b->arg); break;
-    case KA_VIEWER: ok = run_helper("viewer", VIEWER_COLS, VIEWER_ROWS); break;
+    case KA_MENU: case KA_VIEWER: case KA_OTHERMENU: case KA_OTHERVIEWER:
+        ok = act_menu_kind(b->kind, b->arg);
+        break;
     default:       ok = 1; break;
     }
     return ok;
@@ -141,6 +166,7 @@ static int do_row(int row)
 
 static void reload(void)
 {
+    style_load();
     cx_detach();   /* the gate must not read the table that is about to be released */
     keymap_reload_compact(&g_km, cx_row_installed);   /* a bad edit leaves the old table */
     cx_install(&g_km);
@@ -185,7 +211,7 @@ static void rexx_serve(void)
         else if (starts(cmd, "QUIT"))
             g_quit = 1;
         else if (starts(cmd, "SHOW"))
-            run_helper("viewer", VIEWER_COLS, VIEWER_ROWS);
+            act_menu_kind(KA_VIEWER, "");
         else
             rc = 10;
         m->rm_Result1 = rc;
@@ -213,6 +239,7 @@ int main(void)
         FreeArgs(rda);
     }
     dir_resolve();
+    style_load();
     keymap_load_compact(&g_km, km_default_text, cx_row_installed);
     if (!cx_open(pri)) {
         cx_close();

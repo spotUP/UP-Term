@@ -73,13 +73,15 @@ enum {
     KA_SLASH,    /* slash:/cmd args */
     KA_RUN,      /* run:<command line> */
     KA_REXX,     /* rexx:<script or string> */
-    KA_OPEN      /* open:uterm */
+    KA_OPEN,     /* open:uterm */
+    KA_OTHERMENU,   /* othermenu:<id>  menu: with the other menu program (the upconf menu-style setting) */
+    KA_OTHERVIEWER  /* otherviewer     viewer with the other program */
 };
 
 /* where an action runs (keymap_action_scope) */
 #define KS_TERMINAL  1   /* tab:, menuid:, slash: */
 #define KS_COMMODITY 2   /* open:, rexx: */
-#define KS_BOTH      3   /* run:, menu:, viewer */
+#define KS_BOTH      3   /* run:, menu:, viewer, othermenu:, otherviewer */
 
 typedef struct km_bind {
     unsigned short qual;        /* KM_Q_* */

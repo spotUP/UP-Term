@@ -135,3 +135,22 @@ int upconf_rows(const char *buf, long len, const char *section, upconf_row_fn fn
     }
     return rows;
 }
+
+static int menu_style_row(void *ud, int lineno, const char *key, const char *value)
+{
+    (void)lineno;
+    if (uc_ieq(key, "menu-style")) {
+        if (uc_ieq(value, "text"))
+            *(int *)ud = UC_MENU_TEXT;
+        else
+            *(int *)ud = UC_MENU_GRAPHICAL;
+    }
+    return 0;
+}
+
+int upconf_menu_style(const char *buf, long len)
+{
+    int style = UC_MENU_GRAPHICAL;
+    upconf_rows(buf, len, "default", menu_style_row, &style, 0);
+    return style;
+}

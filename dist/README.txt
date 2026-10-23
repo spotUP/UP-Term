@@ -655,6 +655,8 @@ AMARCHY
   Left Amiga + Space          Menu
   Left Amiga + Shift + Space  Apps
   Left Amiga + K              Key bindings
+  Left Amiga + Alt + Space    Other menu
+  Left Amiga + Alt + K        Other key bindings
   Left Amiga + H              Help
   Left Amiga + Shift + H      Tutorial
   Left Amiga + T              New tab

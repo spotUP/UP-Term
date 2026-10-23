@@ -30,7 +30,14 @@ int cx_row_takes(unsigned short row_code, unsigned row_qual, unsigned ie_code, u
 /* The command line that runs the amarchy-menu helper from Amarchy's own directory: a quoted full
  * path ('"<dir>amarchy-menu" <args>'; a '/' is added unless dir ends in ':' or '/'). 0 when it
  * does not fit in cap bytes or dir is empty. The bare name is not on every command path. */
-int cx_helper_cmd(char *out, int cap, const char *dir, const char *args);
+int cx_helper_cmd(char *out, int cap, const char *dir, const char *prog, const char *args);
+
+/* The command for one of the four menu actions (KA_MENU, KA_VIEWER, KA_OTHERMENU, KA_OTHERVIEWER)
+ * under the menu-style setting (UC_MENU_*): the graphical program (amarchy-gui) or the text one
+ * (amarchy-menu) by style, the other one for the OTHER kinds. args is "menu <node>" (node empty =
+ * root) or "viewer". *text is set to 1 when the program is the text one (it needs an XCON: window),
+ * 0 for the graphical one (it opens its own). 0 when the kind is none of the four or it does not fit. */
+int cx_menu_cmd(char *out, int cap, const char *dir, int kind, const char *node, int style, int *text);
 
 /* 1 when the commodity installs a hotkey filter for this row. The terminal's own
  * actions (scope T: tab:, menuid:, slash:) are the handler's: the commodity has

@@ -459,16 +459,73 @@ static void cx_gate_takes_only_its_own_row(void)
 static void cx_helper_path(void)
 {
     char out[64];
-    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:bin", "menu root"));
+    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:bin", "amarchy-menu", "menu root"));
     CHECK_STR(out, "\"UP-Term:bin/amarchy-menu\" menu root");
-    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:", "viewer"));
+    CHECK(cx_helper_cmd(out, sizeof(out), "UP-Term:", "amarchy-menu", "viewer"));
     CHECK_STR(out, "\"UP-Term:amarchy-menu\" viewer");
-    CHECK(!cx_helper_cmd(out, 20, "UP-Term:bin", "viewer"));   /* does not fit */
-    CHECK(!cx_helper_cmd(out, sizeof(out), "", "viewer"));
+    CHECK(!cx_helper_cmd(out, 20, "UP-Term:bin", "amarchy-menu", "viewer"));   /* does not fit */
+    CHECK(!cx_helper_cmd(out, sizeof(out), "", "amarchy-menu", "viewer"));
     /* TERM unset (as on an Amiga): the helper defaults to vtcon; a TERM that is set is kept */
     CHECK_STR(mn_term_default(0), "vtcon");
     CHECK_STR(mn_term_default(""), "vtcon");
     CHECK(mn_term_default("xterm") == 0);      /* no directory resolved */
+}
+
+/* G6: the command each of the four menu actions builds under each menu-style value; the style
+ * parsed from upconf text; the new actions parsed from the keymap and shipped in dist/keymap. */
+static void menu_style_commands(void)
+{
+    static const struct {
+        int kind, style;
+        const char *node, *want;
+        int text;
+    } t[] = {
+        { KA_MENU,        UC_MENU_GRAPHICAL, "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
+        { KA_VIEWER,      UC_MENU_GRAPHICAL, "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
+        { KA_OTHERMENU,   UC_MENU_GRAPHICAL, "",     "\"UP-Term:bin/amarchy-menu\" menu root", 1 },
+        { KA_OTHERVIEWER, UC_MENU_GRAPHICAL, "",     "\"UP-Term:bin/amarchy-menu\" viewer", 1 },
+        { KA_MENU,        UC_MENU_TEXT,      "apps", "\"UP-Term:bin/amarchy-menu\" menu apps", 1 },
+        { KA_VIEWER,      UC_MENU_TEXT,      "",     "\"UP-Term:bin/amarchy-menu\" viewer", 1 },
+        { KA_OTHERMENU,   UC_MENU_TEXT,      "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
+        { KA_OTHERVIEWER, UC_MENU_TEXT,      "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
+    };
+    char out[96];
+    int i, text;
+    for (i = 0; i < 8; i++) {
+        text = -1;
+        CHECK(cx_menu_cmd(out, sizeof(out), "UP-Term:bin", t[i].kind, t[i].node, t[i].style, &text));
+        CHECK_STR(out, t[i].want);
+        CHECK_INT(text, t[i].text);
+    }
+    CHECK(!cx_menu_cmd(out, sizeof(out), "UP-Term:bin", KA_RUN, "", UC_MENU_TEXT, &text));
+    CHECK(!cx_menu_cmd(out, 20, "UP-Term:bin", KA_VIEWER, "", UC_MENU_TEXT, &text));
+}
+
+static void menu_style_parse(void)
+{
+#define STYLE(s) upconf_menu_style(s, (long)strlen(s))
+    CHECK_INT(STYLE(""), UC_MENU_GRAPHICAL);
+    CHECK_INT(STYLE("scrollback = 5\n"), UC_MENU_GRAPHICAL);
+    CHECK_INT(STYLE("menu-style = text\n"), UC_MENU_TEXT);
+    CHECK_INT(STYLE("[profile default]\nMenu-Style = TEXT\n"), UC_MENU_TEXT);
+    CHECK_INT(STYLE("menu-style = text\nmenu-style = graphical\n"), UC_MENU_GRAPHICAL);   /* last wins */
+    CHECK_INT(STYLE("menu-style = bogus\n"), UC_MENU_GRAPHICAL);
+    CHECK_INT(STYLE("[profile vim]\nmenu-style = text\n"), UC_MENU_GRAPHICAL);            /* default profile only */
+#undef STYLE
+}
+
+static void other_menu_actions(void)
+{
+    const km_bind *b;
+    CHECK(parse("[bind]\nsuper+alt+space = othermenu:root\nsuper+alt+k = otherviewer\n"));
+    CHECK_INT(km.skipped, 0);
+    b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, RAW_SPACE);
+    CHECK(b != 0 && b->kind == KA_OTHERMENU && !strcmp(b->arg, "root"));
+    b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, RAW_K);
+    CHECK(b != 0 && b->kind == KA_OTHERVIEWER);
+    CHECK_INT(keymap_action_scope(KA_OTHERMENU), KS_BOTH);
+    CHECK_INT(keymap_action_scope(KA_OTHERVIEWER), KS_BOTH);
+    CHECK(!parse("[bind]\nsuper+alt+k = otherviewer:x\n") || km.skipped == 1);
 }
 
 static void cx_descriptions_and_qualifier_mask(void)
@@ -493,6 +550,9 @@ static void cx_descriptions_and_qualifier_mask(void)
     cx_filter_models_matchix();
     cx_gate_takes_only_its_own_row();
     cx_helper_path();
+    menu_style_commands();
+    menu_style_parse();
+    other_menu_actions();
     /* the mask is the handler's: Left Amiga needed; Ctrl, Right Amiga, repeat refuse */
     CHECK_INT((int)cx_qual_mask(0x0040), KM_Q_SUPER);
     CHECK_INT((int)cx_qual_mask(0x0041), KM_Q_SUPER | KM_Q_SHIFT);
