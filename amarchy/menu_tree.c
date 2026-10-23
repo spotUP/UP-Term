@@ -32,17 +32,19 @@ int mn_children(const keymap *k, const char *node, mn_item *out, int max)
             continue;
         if (dot) {
             for (j = 0; j < n; j++)
-                if (out[j].row < 0 && !strncmp(out[j].seg, rest, seglen) && !out[j].seg[seglen])
+                if (out[j].row == MN_ROW_GROUP && !strncmp(out[j].seg, rest, seglen) && !out[j].seg[seglen])
                     dup = 1;
             if (dup)
                 continue;
-            out[n].row = -1;
+            out[n].row = MN_ROW_GROUP;
+            out[n].ix = -1;
             memcpy(out[n].seg, rest, seglen);
             out[n].seg[seglen] = 0;
             out[n].label[0] = (char)((rest[0] >= 'a' && rest[0] <= 'z') ? rest[0] - 32 : rest[0]);
             cpy(out[n].label + 1, rest + 1, seglen < KM_LABEL ? seglen : KM_LABEL);
         } else {
             out[n].row = i;
+            out[n].ix = -1;
             cpy(out[n].seg, rest, KM_ID);
             cpy(out[n].label, k->menu[i].label, KM_LABEL);
         }
@@ -95,7 +97,7 @@ static void osd_level(const mn_item *it, int n, void *ctx)
     if (n > a->maxn)
         a->maxn = n;
     for (i = 0; i < n; i++) {
-        int w = (int)strlen(it[i].label) + 2 + (it[i].row < 0 ? 1 : 0);
+        int w = (int)strlen(it[i].label) + 2 + (MN_IS_GROUP(&it[i]) ? 1 : 0);
         if (w > a->maxw)
             a->maxw = w;
     }

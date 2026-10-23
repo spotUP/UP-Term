@@ -5,12 +5,14 @@
 #define AMARCHY_INDEX_CORE_H
 
 #include "../config/keymap.h"
+#include "menu_core.h"
 
 #define IX_LABEL 48
 #define IX_PATH  256
 #define IX_VOL   32
 #define IX_KIND_APP  0
 #define IX_KIND_GAME 1
+#define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
 
 typedef struct ix_row {
     int  kind;                  /* IX_KIND_APP or IX_KIND_GAME */
@@ -47,5 +49,28 @@ void ix_sort_dedupe(ix_row *rows, int n);
 /* Drop the rows whose label equals (case-insensitive) a [menu] entry one level below node: the
  * keymap row wins. Keeps the order; the new count. */
 int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n);
+
+/* The cache as the menu shows it (plan X3): apps first, then games, each sorted with volume suffixes,
+ * the rows a [menu] entry shadows already dropped. */
+#define IX_MAX_ROWS 256
+#define IX_LEVEL_MAX (MN_MAX_ITEMS + IX_MAX_ROWS)   /* the most items a level can hold */
+typedef struct ix_index {
+    int    n, napps;            /* rows[0..napps) are apps, rows[napps..n) are games */
+    ix_row rows[IX_MAX_ROWS];
+} ix_index;
+
+/* The cache text (rows `kind<TAB>label<TAB>path`, bad rows skipped) into x. Empty or NULL text gives
+ * no rows. The [menu] rows of the "apps" and "games" nodes in k win over a row with their label. */
+void ix_load_text(const keymap *k, ix_index *x, const char *text);
+/* The cache file at path, read whole and given to ix_load_text; a missing file gives no rows. */
+void ix_load_file(const keymap *k, ix_index *x, const char *path);
+
+/* The entries of one level, as mn_children, extended with the index: the "apps" node lists the app
+ * rows after the [menu] ones, the "games" node lists the game rows, and the root gets an Apps or
+ * Games group when only the index fills it. With a non-empty filter the root also lists every index
+ * row, so typing there finds apps and games at any depth. Index items have row MN_ROW_INDEX and ix
+ * set. Count; at most max. */
+int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
+             int max);
 
 #endif

@@ -75,7 +75,7 @@ static void width_level(const mn_item *it, int n, void *ctx)
         int w = a->text(it[i].label, a->ctx);
         if (a->icon_w > 0)
             w += a->icon_w + a->m->icon_gap;
-        if (it[i].row < 0)
+        if (MN_IS_GROUP(&it[i]))
             w += a->m->chev_gap + a->chev_w;
         if (w > a->maxw)
             a->maxw = w;
