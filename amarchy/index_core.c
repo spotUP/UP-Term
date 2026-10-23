@@ -245,3 +245,13 @@ int ix_level(const keymap *k, const ix_index *x, const char *node, const char *f
     }
     return n;
 }
+
+int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n)
+{
+    if (n > 0)
+        out[0] = 0;
+    if (!MN_IS_INDEX(it) || it->ix < 0 || it->ix >= x->n || (int)strlen(x->rows[it->ix].path) >= n)
+        return 0;
+    strcpy(out, x->rows[it->ix].path);
+    return 1;
+}

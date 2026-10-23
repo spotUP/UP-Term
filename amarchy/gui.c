@@ -82,6 +82,8 @@ typedef struct gui {
     mn_item it[IX_LEVEL_MAX];
     int idx[IX_LEVEL_MAX], count;
     int sel, top;
+    char ixlabel[KM_LABEL];
+    char ixpath[IX_PATH];        /* the index row to launch (its tool or project), else empty */
     int chosen;                  /* index into keymap.menu of the leaf to run, else -1 */
     /* viewer and message: lines of text */
     const char *ln[MAX_LINES];
@@ -341,8 +343,13 @@ static void activate(gui *g)
     if (g->sel < 0 || g->sel >= g->count)
         return;
     it = &g->it[g->idx[g->sel]];
-    if (MN_IS_INDEX(it))
-        return;                                /* launching an index row is X5 */
+    if (MN_IS_INDEX(it)) {
+        if (ix_launch_path(&ixs, it, g->ixpath, sizeof g->ixpath)) {
+            strncpy(g->ixlabel, it->label, sizeof g->ixlabel - 1);
+            g->stop = 1;
+        }
+        return;
+    }
     if (MN_IS_GROUP(it)) {
         mn_child_node(g->node, it, g->node, sizeof g->node);
         g->filter[0] = 0;
@@ -797,6 +804,7 @@ int main(int argc, char **argv)
     SetFont(&tmp, g->font);
     g->chev_w = text_len(">", &tmp);
     g->chosen = -1;
+    g->ixpath[0] = g->ixlabel[0] = 0;
     strcpy(g->node, node);
     if (viewer) {
         int i, w = 0;
@@ -842,18 +850,19 @@ int main(int argc, char **argv)
     draw_full(g);
     event_loop(g);
 
-    if (g->chosen >= 0 && !g->quit) {
+    if ((g->chosen >= 0 || g->ixpath[0]) && !g->quit) {
         lf_ui ui;
         ui.ask_value = gui_ask_value;
         ui.refused = gui_refused;
         ui.ctx = g;
         g->stop = 0;
         /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
-        if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST && lf_plan(km.menu[g->chosen].kind) != LF_WINDOW) {
+        if (g->ixpath[0]) {                    /* an index row may be refused: the window stays for the message */
+        } else if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST && lf_plan(km.menu[g->chosen].kind) != LF_WINDOW) {
             cleanup(g);
             g->rp = 0;
         }
-        rc = lf_run(&km.menu[g->chosen], &ui);
+        rc = g->ixpath[0] ? lf_open_index(g->ixlabel, g->ixpath, &ui) : lf_run(&km.menu[g->chosen], &ui);
     }
 done:
     cleanup(g);

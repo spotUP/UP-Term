@@ -9,6 +9,7 @@ apps.upkg         = U+F019    ; fa-download
 apps.tmux         = U+EBC8    ; cod-terminal_tmux
 apps.editor       = U+F044    ; fa-pencil_square_o
 apps.claude       = U+F0E7    ; fa-flash
+apps.rescan       = U+F021    ; fa-refresh
 style.theme       = U+F1FC    ; fa-paintbrush
 style.font        = U+F031    ; fa-font
 style.background  = U+F03E    ; fa-picture_o

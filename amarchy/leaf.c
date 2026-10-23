@@ -7,6 +7,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "leaf.h"
+#include "wblaunch.h"
 #include "termenv.h"
 #include "../handler/upreq.h"
 #include "../handler/frontscr.h"
@@ -87,6 +88,17 @@ static int run_request(const km_menu *m, const lf_ui *ui)
     if (rc && ui->refused)
         ui->refused(ui->ctx, m->label, rc, r.answer);
     return (int)rc;
+}
+
+int lf_open_index(const char *label, const char *path, const lf_ui *ui)
+{
+    char err[160];
+    if (wbl_open(path, err, sizeof err) == 0)
+        return 0;
+    fprintf(stderr, "amarchy: %s: %s\n", label, err);
+    if (ui && ui->refused)
+        ui->refused(ui->ctx, label, UPREQ_FAILED, err);
+    return UPREQ_FAILED;
 }
 
 int lf_run(const km_menu *m, const lf_ui *ui)
