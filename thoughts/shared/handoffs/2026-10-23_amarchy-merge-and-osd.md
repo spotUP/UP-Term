@@ -1,7 +1,7 @@
 ---
 date: 2026-10-23
-topic: amarchy-a merged to main; AM-OSD O1-O6 done on amarchy-osd; O3b, O7 and A1200 checks open
-branch: main (e75adab3), amarchy-osd (worktree .claude/worktrees/agent-a8d806b793688db1e, 344d45ff)
+topic: amarchy-a and amarchy-osd merged to main; O7, the Ctrl-\\ bug and the A1200 checks open
+branch: main (f14afcab)
 ---
 
 # Handoff: amarchy-a merge and the AM-OSD quick menu
@@ -21,16 +21,21 @@ Night-run ledger (untracked): thoughts/spot/night-run.md. Plan: thoughts/shared/
 - upterm-ports amarchy-osd: O3 d6f758b (libupkgui OSD style). Sysroot lib must be the O3 build
   (sha 8e6a7469, copy in the night session's scratchpad o3/); a main upkg-ui rebuild overwrites it.
 
+## Update 2026-10-23 05:05
+
+- amarchy-osd merged into main as f14afcab and pushed; make test passes, the handler and amarchy-menu build.
+- The merge put Amarchy 1200 B over its 32 KB budget. amarchy/menu_tree.c (node-path code, mn_osd_size no
+  longer recursive) and handler/upmru.c (the MRU functions upactive.c needs) split out; Amarchy is now
+  28288 B resident.
+- O3b passed (0 px differ outside the masked clock corner). upterm-ports main fast-forwarded to d6f758b, so a
+  main upkg-ui rebuild now builds the OSD lib.
+- The OSD rig script closes its windows (4a7c6c83). Branches and worktrees for amarchy-osd and osd-o3 are gone.
+
 ## Open, in order
 
-1. O3b: upkg browse pixel compare before/after the O3 lib (an agent was running it at handoff time;
-   see the ledger for its verdict).
-2. Merge amarchy-osd into main. Expect a conflict in amarchy/menu.c: main added the qmark_argv
-   block at the top of main(). Then make test, push.
-3. amarchy_osd_rig.py leaves its "osdhost"/"osdother" windows open; close them at the end.
-4. Ctrl-\ does not end a cooked Copy waiting in a read. The cooked_key/service_reads guess is ruled
-   out (both callers call service_reads). Needs a rig repro.
-5. O7 and the A1200 checks: owner.
+1. Ctrl-\ does not end a cooked Copy waiting in a read. The cooked_key/service_reads guess is ruled
+   out (both callers call service_reads). Needs a rig repro first, then the fix and a regression test.
+2. O7 and the A1200 checks: owner.
 
 ## Owner questions (ask through AskUserQuestion)
 
