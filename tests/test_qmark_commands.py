@@ -33,6 +33,7 @@ COMMANDS = {
     'upprefs': 'prefs/upprefs.c',
     'upicon': 'install/upicon.c',
     'upupdate': 'install/upupdate.c',
+    'upsame': 'install/upsame.c',
     'upgetty': 'device/upgetty.c',
     'uptelnet': 'net/uptelnet.c',
     'sz': 'zm/zm_amiga.c',

@@ -62,5 +62,58 @@ class MiddleDot(unittest.TestCase):
         self.assertLess(rows_of(p, 0x27)[1], top)        # and below the apostrophe's rows
 
 
+class OriginalTopazProIsReplaced(unittest.TestCase):
+    """Owner 2026-10-23: a FONTS:TopazPro/16 that is byte for byte the dS-tprf.lha original (baseline 6,
+    no middle dot) was kept by the Install, so the owner's Shell showed the unfixed font. The original
+    is ours with these 9 bytes changed (offset, original byte); the Install knows it by size and
+    CRC-32 (upsame) and replaces it, marked ours."""
+    ORIGINAL_BYTES = {117: 6, 745: 12, 971: 12, 1197: 12, 1423: 12, 1875: 0, 2101: 0, 2327: 0, 2553: 0}
+    DOS = open(os.path.join(ROOT, 'dist/install.dos')).read()
+
+    def original(self):
+        d = bytearray(open(os.path.join(ROOT, 'dist/fonts/TopazPro/16'), 'rb').read())
+        for off, b in self.ORIGINAL_BYTES.items():
+            d[off] = b
+        return bytes(d)
+
+    def fonts_block(self):
+        a = self.DOS.index('Lab fonts')
+        return self.DOS[a:self.DOS.index('If NOT EXISTS FONTS:IBM/8', a)]
+
+    def test_the_install_names_the_originals_size_and_crc_and_ours_differs(self):
+        import zlib
+        o = self.original()
+        self.assertIn('upsame >NIL: FONTS:TopazPro/16 %d %08x' % (len(o), zlib.crc32(o)), self.fonts_block())
+        ours = open(os.path.join(ROOT, 'dist/fonts/TopazPro/16'), 'rb').read()
+        self.assertNotEqual(zlib.crc32(o), zlib.crc32(ours))
+
+    def test_the_original_has_baseline_6_and_ours_13(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile() as f:
+            f.write(self.original()); f.flush()
+            self.assertEqual(font(f.name)[2], 6)
+        self.assertEqual(font(os.path.join(ROOT, 'dist/fonts/TopazPro/16'))[2], 13)
+
+    def test_a_match_replaces_the_font_and_writes_the_marker_and_nothing_else_does(self):
+        b = self.fonts_block()
+        # the marker test comes first: ours from an earlier kit; else the original is looked for
+        marker = b.index('If EXISTS ENVARC:up-term/font-TopazPro-16')
+        els = b.index('Else', marker)
+        same = b.index('upsame >NIL: FONTS:TopazPro/16')
+        ifok = b.index('If NOT WARN', same)
+        copy = b.index('Copy fonts/TopazPro/16 FONTS:TopazPro/16 CLONE QUIET', ifok)
+        echo = b.index('Echo >ENVARC:up-term/font-TopazPro-16 "installed by UP-Term"', copy)
+        self.assertLess(els, same); self.assertLess(same, ifok); self.assertLess(ifok, copy); self.assertLess(copy, echo)
+        self.assertEqual(b.count('Copy fonts/TopazPro/16 FONTS:TopazPro/16'), 3)   # new, marked, original
+
+    def test_the_helper_is_built_shipped_and_compares_size_and_crc(self):
+        mk = open(os.path.join(ROOT, 'Makefile')).read()
+        self.assertIn('cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame', mk)
+        self.assertIn('$(BUILD)/amiga/upsame:', mk)
+        src = open(os.path.join(ROOT, 'install/upsame.c')).read()
+        self.assertIn('0xEDB88320UL', src)
+        self.assertIn('FILE/A,SIZE/A/N,CRC/A', src)
+
+
 if __name__ == '__main__':
     unittest.main()

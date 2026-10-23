@@ -515,6 +515,16 @@ Else
   ; ours from an earlier kit: replaced, its baseline is fixed (13, not 6)
   If EXISTS ENVARC:up-term/font-TopazPro-16
     Copy fonts/TopazPro/16 FONTS:TopazPro/16 CLONE QUIET
+  Else
+    ; the original of the dS-tprf.lha archive (baseline 6, no middle dot),
+    ; byte for byte by size and CRC-32 (upsame; AmigaDOS has no compare):
+    ; replaced and marked ours, so Uninstall treats it as ours. Any other
+    ; copy is the user's and stays.
+    upsame >NIL: FONTS:TopazPro/16 5604 bc7b98c0
+    If NOT WARN
+      Copy fonts/TopazPro/16 FONTS:TopazPro/16 CLONE QUIET
+      Echo >ENVARC:up-term/font-TopazPro-16 "installed by UP-Term"
+    EndIf
   EndIf
 EndIf
 If NOT EXISTS FONTS:IBM/8

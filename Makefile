@@ -503,7 +503,7 @@ HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
                handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude
 
 # hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
@@ -812,6 +812,11 @@ $(BUILD)/amiga/rz: zm/zm_amiga.c $(UPTERM_VERSION_H) zm/zmodem.c zm/zmodem.h $(B
 $(BUILD)/amiga/upicon: install/upicon.c install/iconspec.c install/iconspec.h $(BUILD)/amiga/obj/cpuchk-upicon.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -Dmain=up_main -o $@ install/upicon.c install/iconspec.c $(BUILD)/amiga/obj/cpuchk-upicon.o
+
+# the kit's byte compare by size and CRC-32 (Install: the original TopazPro 16)
+$(BUILD)/amiga/upsame: install/upsame.c tty/qmark.h $(BUILD)/amiga/obj/cpuchk-upsame.o
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -Dmain=up_main -o $@ install/upsame.c $(BUILD)/amiga/obj/cpuchk-upsame.o
 
 # the kit's update tool (Install: what changed since the installed kit; installer update plan U4)
 $(BUILD)/amiga/upupdate: install/upupdate.c install/updiff.c install/updiff.h $(BUILD)/amiga/obj/cpuchk-upupdate.o
@@ -1254,6 +1259,7 @@ dist-base: amiga $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui bebbossh
 	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
+	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
 	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui dist/keymap $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	# BebboSSH: our build (make bebbossh) over the drawer's sources, patches and licence; SHA256SUMS and TOOLCHAIN.txt from the build
