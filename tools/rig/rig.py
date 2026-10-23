@@ -463,6 +463,23 @@ def unimplemented_lines():
     """The 060 runs the instructions it lacks in the emulator (no 68060.library needed), the FPU's too when there is one."""
     return (["uae_cpu_no_unimplemented = false"] + ([] if NOFPU else ["uae_fpu_no_unimplemented = false"])) if M060 else []
 
+# The Mac keys the rig's fs-uae maps (setup writes them into the config).
+HOST_KEYS = [
+    # both Cmd keys are Right-Amiga, so Cmd+C/Cmd+V copy and paste from either
+    # side as on the Mac. FS-UAE's own modifier was the left Cmd (its log: "Using
+    # default modifier key LSUPER") and took those keys; it moves to the right
+    # Ctrl. The F12 menu is unchanged.
+    "modifier_key = rctrl",
+    "keyboard_key_lsuper = action_key_amiga_right",
+    "keyboard_key_rsuper = action_key_amiga_right",
+    # so no Cmd key is Left-Amiga, which Amarchy's bindings need (Super is
+    # "rawkey lcommand"), and macOS keeps Cmd+Space for Spotlight anyway: the right
+    # Option key is Left-Amiga (Right Option+Space opens the menu). The left Option
+    # key stays the Amiga's Left Alt.
+    "keyboard_key_ralt = action_key_amiga_left",
+]
+
+
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
     if paths.RIG_N > 1 and not (RIG / "vtc").exists():
@@ -567,13 +584,7 @@ def setup():
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
         "clipboard_sharing = 1",
-        # both Cmd keys are Right-Amiga, so Cmd+C/Cmd+V copy and paste from either
-        # side as on the Mac. FS-UAE's own modifier was the left Cmd (its log: "Using
-        # default modifier key LSUPER") and took those keys; it moves to the right
-        # Ctrl. The F12 menu is unchanged.
-        "modifier_key = rctrl",
-        "keyboard_key_lsuper = action_key_amiga_right",
-        "keyboard_key_rsuper = action_key_amiga_right",
+    ] + HOST_KEYS + [
         "window_width = 1280", "window_height = 1024",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,

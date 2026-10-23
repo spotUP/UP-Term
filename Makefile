@@ -53,6 +53,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 
 # ONLY=winspec the XCON: spec's size fields and the default ground (a CON:/RAW: window looks like an XCON: one) (tests/test_winspec.c)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
+# ONLY=rig_keys a rig's Right Option is Left Amiga (Amarchy), the Cmd keys stay Right Amiga (tests/test_rig_keys.py)
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
@@ -133,6 +134,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_rig_verdicts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_stage_rig.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_keys ]; then python3 tests/test_rig_keys.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
