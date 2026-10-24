@@ -169,7 +169,7 @@
 (set #big "")
 (if (not #old)
     (
-        (run (cat "\"" (tackon #files "UPBigVol") "\"") (safe))
+        (run (cat "\"" (tackon #files "UPBigVol") "\" >NIL:") (safe))
         (set #big (getenv "UPTBIGVOL"))
         (if (= #big 0) (set #big ""))))
 (set #dest (if #old #old (if (= #big "") "SYS:UP-Term" #big)))

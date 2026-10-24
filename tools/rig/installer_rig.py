@@ -415,12 +415,13 @@ def text_faults(tree):
 
 
 def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20, expect_abort=False,
-          room_dest=None, console=False, tick_all=False):
+          room_dest=None, console=False, tick_all=False, askdir_probe=None):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
     room_dest: the drawer to ask for when the room page ("<dest> has N KB free; the parts you chose need about
     M KB") comes after the drawer page (read from the screen, logged as `room page: N KB free, M KB needed`);
     console: tick "UP-Term serves CON: and RAW:" on the console page.
+    askdir_probe: a list; at the first drawer page drive appends the string gadget's text, clicks Abort Install (91) and returns.
     tick_all: on every options page tick every box not ticked (and not disabled) before Proceed; a page with the
     install-mode gadget 1 is a choice, not a list of boxes. Each Installer (the nested ones too: their window
     title is their script) asks its own drawer and room pages.
@@ -482,6 +483,11 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                 log.append('page text: %s' % window_ocr(tree, case + '-page'))
             last_sig, clicked_at, retried = sig, None, None
             last_page_at = time.time()
+            if 89 in gads and 92 in gads and askdir_probe is not None:
+                askdir_probe.append(gadget_text(92))
+                click(gads[91][0])   # Abort Install: nothing was copied
+                time.sleep(5)
+                return True, log
             if 89 in gads and 92 in gads:
                 asks += 1
             if room_dest and asks >= 1 and not room and set(gads) <= {0, 90, 91}:   # a message page after the drawer page
@@ -731,25 +737,11 @@ def run_bigvol():
     ck(not expect.upper().startswith('SYS:'), 'the biggest local disk on the rig is not SYS:', expect)
     ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER AVERAGE DEFUSER AVERAGE NOLOG' % inst, 30)
     time.sleep(5)
-    got, t0 = None, time.time()
-    while time.time() - t0 < 300 and got is None:
-        gads = installer_page(ami.req(0x0D).decode('latin-1'))[1]
-        if 89 in gads and 92 in gads:
-            got = gadget_text(92)
-        elif 1 in gads and 90 in gads:   # the install-mode page: Install for Real (id 1)
-            click(gads[1][0])
-            time.sleep(3)
-        elif 90 in gads:
-            click(gads[90][0])
-            time.sleep(3)
-        else:
-            time.sleep(3)
+    probe = []
+    ok, log = drive('bigvol', inst, None, set(), timeout=300, askdir_probe=probe)
+    got = probe[0] if probe else None
     ck(got == expect, 'the askdir string (gadget 92) shows %s' % expect, 'shows [%s]' % got)
     ck(got != 'SYS:UP-Term', 'the default is not SYS:UP-Term')
-    gads = installer_page(ami.req(0x0D).decode('latin-1'))[1]
-    if 91 in gads:
-        click(gads[91][0])   # Abort Install: nothing was copied
-        time.sleep(5)
     print('installer_rig bigvol: askdir default [%s]; UPBigVol LIST:\n%s' % (got, listing))
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 
@@ -884,6 +876,7 @@ def run_base_case(case):
     ck = Checks()
     ir.prepare(dest)
     drawer = dest or big_drawer()   # the Installer's own default (UPBigVol), not SYS:
+    ir.run('Delete >NIL: SYS:UP-Term', 20)   # an empty drawer an earlier run left (Delete refuses a full one): the "left unmade" check below must see only this run's work
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     parent_existed = True
