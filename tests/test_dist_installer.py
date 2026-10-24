@@ -792,6 +792,94 @@ class ConsoleTakeover(unittest.TestCase):
         self.assertRegex((ROOT / "Makefile").read_text(), r'cp [^\n]*dist/takecon\.sh[^\n]*\$\(KIT\)/Files/')
 
 
+class UserStartupBlocksAreGuarded(unittest.TestCase):
+    """BOOT-UPTERM-VOLUME-LOOP: with the UP-Term drawer gone, an unguarded S:User-Startup line that
+    names UP-Term: put up "Please insert volume UP-Term" at boot and nothing after it ran (wasabid
+    too). Every such line now sits inside Assign >NIL: UP-Term: EXISTS / If NOT WARN, the assign
+    inside If EXISTS "<drawer>"; an older unguarded block is rewritten; markers are unchanged."""
+
+    def blocks(self):
+        out, cur = {}, None
+        for m in re.finditer(r'(?m)^\s*Echo >>S:User-Startup "(.*)"$', DOS):
+            l = m.group(1).replace('*"', '"')
+            if l.startswith(';BEGIN'):
+                cur = out.setdefault(l, [])
+            elif l.startswith(';END'):
+                cur = None
+            elif cur is not None:
+                cur.append(l)
+        return out
+
+    def test_every_line_naming_upterm_is_guarded(self):
+        seen = 0
+        for name, lines in self.blocks().items():
+            for i, l in enumerate(lines):
+                if 'UP-Term:' not in l or l.strip() == 'Assign >NIL: UP-Term: EXISTS':
+                    continue
+                seen += 1
+                if name == ';BEGIN UP-Term assign':
+                    self.assertTrue(lines[i - 1].startswith('If EXISTS "'), (name, lines))
+                    continue
+                g = [j for j, x in enumerate(lines[:i]) if x.strip() == 'Assign >NIL: UP-Term: EXISTS']
+                self.assertTrue(g, (name, lines))
+                self.assertIn('If NOT WARN', [x.strip() for x in lines[g[-1] + 1:i]], (name, lines))
+                self.assertEqual(lines[-1], 'EndIf', (name, lines))
+        # the assign line, Amarchy, Amarchy index, GG
+        self.assertEqual(seen, 4)
+
+    def test_old_unguarded_block_is_replaced_on_update(self):
+        for key in ('  Run >NIL: UP-Term:bin/Amarchy', '  Run >NIL: UP-Term:bin/amarchy-index',
+                    '    Assign GG: UP-Term:', '  Assign UP-Term: *"$updest*"'):
+            self.assertIn('Search >NIL: S:User-Startup "%s' % key, DOS)
+        for call in ('vsh unstartup.sh Amarchy\n', 'vsh unstartup.sh "Amarchy index"\n',
+                     'vsh unstartup.sh UP-Term\n', 'vsh reassign.sh "$updest"'):
+            self.assertIn(call, DOS)
+
+    def sh(self, script, args, tmp):
+        import subprocess
+        s = (ROOT / 'dist' / script).read_text().replace('S:', 'S_').replace('T:', 'T_').replace('ENV:', 'E_')
+        r = subprocess.run(['sh', '-c', s, 'x', *args], cwd=tmp, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return pathlib.Path(tmp, 'T_User-Startup.up-term').read_text()
+
+    OLD = ('; user\n;BEGIN UP-Term assign\nAssign UP-Term: "Work:UP-Term"\n;END UP-Term assign\n'
+           ';BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n'
+           ';BEGIN UP-Term\nAssign >NIL: GG: EXISTS\nIf WARN\n  Assign GG: UP-Term:\nEndIf\n;END UP-Term\n'
+           ';BEGIN UP-Term wasabi\nRun >NIL: C:wasabid\n;END UP-Term wasabi\nEcho keep\n')
+
+    def test_reassign_rewrites_an_old_block_guarded_in_place(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as t:
+            pathlib.Path(t, 'S_User-Startup').write_text(self.OLD)
+            out = self.sh('reassign.sh', ['Work:UP-Term'], t)
+            guarded = 'If EXISTS "Work:UP-Term"\n  Assign UP-Term: "Work:UP-Term"\nEndIf'
+            self.assertIn(';BEGIN UP-Term assign\n' + guarded + '\n;END UP-Term assign\n', out)
+            self.assertEqual(out.replace(guarded, 'Assign UP-Term: "Work:UP-Term"'), self.OLD)
+            self.assertFalse(pathlib.Path(t, 'E_upold').exists())
+            # a guarded block for another drawer moves to the new one
+            pathlib.Path(t, 'S_User-Startup').write_text(out)
+            out2 = self.sh('reassign.sh', ['Sys:Other'], t)
+            self.assertIn('If EXISTS "Sys:Other"\n  Assign UP-Term: "Sys:Other"\nEndIf\n', out2)
+            self.assertEqual(pathlib.Path(t, 'E_upold').read_text(), 'Work:UP-Term')
+
+    def test_unstartup_strips_every_guarded_block(self):
+        import tempfile
+        text = '; user\n'
+        for name, lines in self.blocks().items():
+            text += '\n'.join([name] + lines + [name.replace('BEGIN', 'END')]) + '\n'
+        text += 'Echo keep\n'
+        self.assertIn('  Run >NIL: UP-Term:bin/Amarchy', text)
+        with tempfile.TemporaryDirectory() as t:
+            pathlib.Path(t, 'S_User-Startup').write_text(text)
+            self.assertEqual(self.sh('unstartup.sh', [], t), '; user\nEcho keep\n')
+            one = self.sh('unstartup.sh', ['Amarchy'], t)
+            self.assertNotIn('bin/Amarchy', one)
+            self.assertIn('bin/amarchy-index', one)
+            gg = self.sh('unstartup.sh', ['UP-Term'], t)
+            self.assertNotIn('Assign GG:', gg)
+            self.assertIn('bin/Amarchy', gg)
+
+
 class LinkedEnvOn32(unittest.TestCase):
     """UNINSTALL-HANGS-ON-32 / ENV-DRAWER-RESET: AmigaOS 3.2 links RAM:ENV to ENVARC:, so a
     drawer made in ENVARC: shows in ENV: at once. Deleting a drawer in that ENV: resets the
