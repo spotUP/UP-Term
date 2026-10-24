@@ -36,6 +36,8 @@
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 #include "../config/termurl.h"
+#define SEGSTACK_DOS
+#include "../config/segstack.h"
 #include "upterm_version.h"
 
 #ifdef VSH_DEBUG
@@ -654,31 +656,6 @@ static int replied(struct MsgPort *port, job *j)
     for (n = port->mp_MsgList.lh_Head; n->ln_Succ; n = n->ln_Succ)
         if (n == &j->msg.mn_Node)
             return 1;
-    return 0;
-}
-
-/* The stack a command asks for in its file: the "$STACK: n" cookie
- * (AmigaOS 3.2 and 4 honour it; vsh does on 3.1 too). 0: none. */
-static ULONG seg_stack(BPTR seg)
-{
-    static const char key[] = "$STACK:";
-    for (; seg; seg = *(BPTR *)BADDR(seg)) {
-        const UBYTE *p = (const UBYTE *)BADDR(seg) + 4;
-        ULONG n = ((ULONG *)BADDR(seg))[-1];
-        const UBYTE *end = (const UBYTE *)BADDR(seg) - 4 + n;
-        for (; p + 8 < end; p++) {
-            if (*p == '$' && !memcmp(p, key, 7)) {
-                const UBYTE *d = p + 7;
-                ULONG v = 0;
-                while (d < end && *d == ' ')
-                    d++;
-                while (d < end && *d >= '0' && *d <= '9')
-                    v = v * 10 + (*d++ - '0');
-                if (v)
-                    return v;
-            }
-        }
-    }
     return 0;
 }
 

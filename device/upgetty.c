@@ -36,6 +36,8 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "../handler/vtcon_packets.h"
+#define SEGSTACK_DOS
+#include "../config/segstack.h"
 extern struct DosLibrary *DOSBase;
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
@@ -44,6 +46,12 @@ extern struct DosLibrary *DOSBase;
 /* the base version and build day (upterm_version.h, written by the Makefile) */
 #include "upterm_version.h"
 static const char vers[] = "$VER: upgetty " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
+
+/* vbcc's startup (vc.lib) reads ___stack and runs main on a stack of this
+ * size, so upgetty does not depend on the stack its Shell or script gives it;
+ * the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6) */
+long __stack = 16384;
+const char upgetty_stack_cookie[] = "$STACK: 16384";
 
 struct ws { UWORD ws_row, ws_col, ws_xpixel, ws_ypixel; }; /* ixemul 48.2's winsize */
 
@@ -155,10 +163,13 @@ static void set_size(getty *g, int rows, int cols)
  * terminal's Ctrl-C (the rig: Ctrl-C over the wire stopped upgetty and with
  * it the pump). The shell is started with CreateNewProc so we know its
  * process, then ACTION_CHANGE_SIGNAL names it. */
+#define SHELL_MIN_STACK 16000
+
 static int start_shell(getty *g, const char *shell, const char *term)
 {
     char name[32];
     BPTR in, out, seg;
+    ULONG stack;
     struct Process *pr;
     struct FileHandle *fh;
     sprintf(name, "PTY:%s/s", g->id);
@@ -176,9 +187,12 @@ static int start_shell(getty *g, const char *shell, const char *term)
     }
     SetVar((STRPTR)"TERM", (STRPTR)term, -1, GVF_LOCAL_ONLY); /* NP_CopyVars: the shell gets our locals */
     fh = (struct FileHandle *)BADDR(in);
+    stack = seg_stack(seg); /* what the shell asks for (vsh: 262144), never less than 16000 */
+    if (stack < SHELL_MIN_STACK)
+        stack = SHELL_MIN_STACK;
     pr = CreateNewProcTags(NP_Seglist, (ULONG)seg, NP_FreeSeglist, TRUE, NP_Name, (ULONG)"upgetty shell",
                            NP_Input, (ULONG)in, NP_Output, (ULONG)out, NP_CloseInput, TRUE,
-                           NP_CloseOutput, TRUE, NP_Cli, TRUE, NP_CopyVars, TRUE, NP_StackSize, 16000,
+                           NP_CloseOutput, TRUE, NP_Cli, TRUE, NP_CopyVars, TRUE, NP_StackSize, stack,
                            NP_ConsoleTask, (ULONG)fh->fh_Type, NP_Arguments, (ULONG)"\n", TAG_DONE);
     if (!pr) {
         Close(in);
