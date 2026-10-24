@@ -15,6 +15,9 @@ talks to vsh over the wire:
   5. Ctrl-C over the wire stops `Wait 30` (ISIG: the line discipline's
      break), the prompt is back within 5 s.
   6. exit: the shell ends, upgetty ends (Status no longer lists it).
+  7. (after 1) the "upgetty shell" process has at least the 262144 byte
+     stack vsh's $STACK: cookie asks for (wasabi ps; upgetty once gave it a
+     fixed 16000 and vsh crashed on the owner's A1200, RULES.md rule 6).
 The rig is stopped before and after (its serial port changes). Log:
 build/rig/shots/getty.log."""
 import os, pathlib, re, select, shutil, struct, subprocess, sys, time, tty
@@ -32,6 +35,16 @@ lines, failed = [], 0
 def run(cmd, timeout=60):
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'))
     return struct.unpack('>I', b[:4])[0], b[4:].decode('latin-1')
+
+
+def shell_stack():
+    """The stack size wasabi ps reports for the "upgetty shell" process, 0: not listed."""
+    r = subprocess.run(RIG + ["wasabi", "ps", "upgetty shell"], capture_output=True, text=True, timeout=60)
+    for line in r.stdout.splitlines():
+        f = line.split()
+        if "upgetty shell" in line and len(f) > 5 and f[4].isdigit():
+            return int(f[4])
+    return 0
 
 
 def check(ok, what, seen=''):
@@ -92,6 +105,8 @@ def main():
     # is no longer the '%'. B is emitted only after a prompt, never for output.
     prompt = rb'\x1b\]133;B\x07'
     check(wire.wait_for(prompt, 30), 'vsh\'s prompt arrives over serial', wire.text())
+    stk = shell_stack()
+    check(stk >= 262144, 'the upgetty shell runs on the stack vsh asks for (%d)' % stk, stk)
     wire.seen = b''
     wire.send('echo getty-$((6*7))\r')
     check(wire.wait_for(rb'getty-42', 15), 'a command runs and its output comes back', wire.text())
