@@ -212,8 +212,8 @@ def r_lamiga_minus_sv():
 
 
 # ---- AM-IDX X9: the app index through the real entry points (plan 2026-10-23-amarchy-app-index.md) ----
-# Fake apps in drawers on the rig hard disk (volume System:; the labels start A0 because the menu reads the
-# first IX_MAX_ROWS = 256 cache lines in label order and a rig holds more apps than that), tests/amiga/wbfake (writes RAM:x9.<file>.started, waits 2 s, writes
+# Fake apps in drawers on the rig hard disk (volume System:; the labels start A0 so the filter "a0" narrows the
+# Apps level to them: a rig holds many apps and the 24x7 menu shows a level's first rows only), tests/amiga/wbfake (writes RAM:x9.<file>.started, waits 2 s, writes
 # .ended), icons made by tools/mkicon.py. amarchy-index scans, the text menu (Left Amiga + Alt + Space) lists them,
 # Enter launches through lf_open_index. On a rig Directory Opus replaces Workbench, so OpenWorkbenchObject fails
 # and every launch here takes the AMARCHY.launch port fallback; the OpenWorkbenchObject path needs the A1200.
@@ -284,6 +284,15 @@ def x9_wait_file(path, secs=15):
     return False
 
 
+def x9_upterm_target():
+    """where UP-Term: points now (the first directory of its `Assign LIST` line), None when unassigned"""
+    for line in c.run('Assign LIST')[1].splitlines():
+        f = line.split(None, 1)
+        if len(f) == 2 and f[0].upper() == 'UP-TERM':
+            return f[1].strip()
+    return None
+
+
 def r_app_index():
     import amarchy_rig, wbrun_rig
     res = []
@@ -296,6 +305,10 @@ def r_app_index():
     if not amarchy_rig.port_up():
         r_start()
     saved = {p: ami.read_file(p) for p in (X9_CONF, 'ENV:up-term/keymap.user', X9_CACHE)}
+    # Rescan apps runs amarchy-index from UP-Term:bin; on a rig with a kit installed UP-Term: points at the
+    # kit, not at the build stage_rig puts in VTC:Apps/bin, so the case points it there and back after
+    upterm = x9_upterm_target()
+    c.run('Assign UP-Term: VTC:%s' % paths.UPTERM_DRAWER)
     c.run('Delete >NIL: RAM:x9.#? QUIET')
     c.run('MakeDir >NIL: ENV:up-term')
     try:
@@ -396,6 +409,7 @@ def r_app_index():
         for p, b in saved.items():
             ami.restore_file(p, b)
         c.run('Delete >NIL: RAM:x9.#? QUIET')
+        c.run('Assign UP-Term: "%s"' % upterm if upterm else 'Assign UP-Term: REMOVE')
         amarchy_rig.arexx('RELOAD')
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
