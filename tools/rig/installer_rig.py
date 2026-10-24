@@ -876,7 +876,7 @@ def run_base_case(case):
     ck = Checks()
     ir.prepare(dest)
     drawer = dest or big_drawer()   # the Installer's own default (UPBigVol), not SYS:
-    ir.run('Delete >NIL: SYS:UP-Term', 20)   # an empty drawer an earlier run left (Delete refuses a full one): the "left unmade" check below must see only this run's work
+    sys_had = ir.run('List >NIL: SYS:UP-Term')[0] == 0   # the rig's baseline assign UP-Term: may name an empty SYS:UP-Term: leave it, and test only what this run adds
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     parent_existed = True
@@ -950,7 +950,7 @@ def run_base_case(case):
     ck(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
        'the UP-Term: block comes before the blocks that use it', out[-300:])
     if drawer.upper() != 'SYS:UP-TERM':
-        ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'a drawer on another disk leaves SYS:UP-Term unmade')
+        ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0 if sys_had else ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'a drawer on another disk leaves SYS:UP-Term unmade')
     for f in ('"%s/VERSIONS"' % drawer, 'UP-Term:bin/sh', 'UP-Term:bin/ls', 'UP-Term:unifont/00', 'UP-Term:emoji/1F6',
               'C:vsh', 'C:tmux', 'C:UPConsole', 'L:vtcon-handler', 'L:pty-handler', 'DEVS:DOSDrivers/XCON',
               'SYS:System/UP-Term.info', 'SYS:Prefs/UP-Term-Prefs.info', 'ENVARC:up-term/unstartup.sh',
