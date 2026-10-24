@@ -50,7 +50,7 @@ class AmarchyDocs(unittest.TestCase):
         self.assertIn('Run >NIL: UP-Term:bin/Amarchy', d)
         self.assertIn(';BEGIN UP-Term Amarchy', d)
         self.assertIn(';BEGIN UP-Term Amarchy index', d)  # its own block: an Update adds it once
-        self.assertEqual(d.count('Run >NIL: UP-Term:bin/amarchy-index'), 1)
+        self.assertEqual(d.count('Run >NIL: UP-Term:bin/amarchy-index'), 2)  # the Search for the guarded line, and the Echo that writes it
 
     def test_rules_commands_rows(self):
         r = read('RULES.md')

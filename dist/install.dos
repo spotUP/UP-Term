@@ -149,7 +149,15 @@ EndIf
 ; already, above. S:User-Startup.before-UP-Term is the file as it was before
 ; any UP-Term block, made once: it is never made from a file that holds our
 ; block (here: only when no block is in it yet).
-Search >NIL: S:User-Startup "Assign UP-Term: *"$updest*""
+; The assign line sits inside If EXISTS "<drawer>" (BOOT-UPTERM-VOLUME-LOOP): a
+; drawer that is gone leaves no assign, and the guards of the blocks below
+; (Assign >NIL: UP-Term: EXISTS) then skip their UP-Term: lines instead of
+; putting up "Please insert volume UP-Term" at boot. A missing VOLUME still
+; raises a requester at that If EXISTS check; that is not solved here. The
+; guarded line has two leading spaces, so searching for it finds only a block
+; of this version; an older unguarded block goes to reassign.sh, which rewrites
+; the whole block guarded, in place.
+Search >NIL: S:User-Startup "  Assign UP-Term: *"$updest*""
 If WARN
   Search >NIL: S:User-Startup ";BEGIN UP-Term assign"
   If WARN
@@ -157,7 +165,9 @@ If WARN
       Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
     EndIf
     Echo >>S:User-Startup ";BEGIN UP-Term assign"
-    Echo >>S:User-Startup "Assign UP-Term: *"$updest*""
+    Echo >>S:User-Startup "If EXISTS *"$updest*""
+    Echo >>S:User-Startup "  Assign UP-Term: *"$updest*""
+    Echo >>S:User-Startup "EndIf"
     Echo >>S:User-Startup ";END UP-Term assign"
   Else
     Delete >NIL: ENV:upold T:User-Startup.up-term QUIET
@@ -166,7 +176,7 @@ If WARN
     If EXISTS T:User-Startup.up-term
       Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
       Delete >NIL: T:User-Startup.up-term QUIET
-      Echo "UP-Term: S:User-Startup now assigns UP-Term: to $updest (it named another drawer)."
+      Echo "UP-Term: S:User-Startup now assigns UP-Term: to $updest (it named another drawer or had no guard)."
       If EXISTS ENV:upold
         If EXISTS "$upold"
           Echo "UP-Term: old drawer $upold is left in place: delete it or run Uninstall of that kit first."
@@ -399,21 +409,44 @@ EndIf
 If NOT EXISTS S:User-Startup
   Echo >S:User-Startup ""
 EndIf
-Search >NIL: S:User-Startup ";BEGIN UP-Term Amarchy"
+; Every line that names UP-Term: runs only when the assign exists
+; (BOOT-UPTERM-VOLUME-LOOP: a missing drawer made the line ask for the volume
+; and stopped the boot). The guarded Run line has two leading spaces, so an
+; older unguarded block (no such line) is stripped by unstartup.sh (this kit's,
+; the current drawer; the same marker) and written again guarded.
+Search >NIL: S:User-Startup "  Run >NIL: UP-Term:bin/Amarchy"
 If WARN
   If NOT EXISTS S:User-Startup.before-UP-Term
     Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
   EndIf
+  Delete >NIL: T:User-Startup.up-term QUIET
+  vsh unstartup.sh Amarchy
+  If EXISTS T:User-Startup.up-term
+    Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+    Delete >NIL: T:User-Startup.up-term QUIET
+  EndIf
   Echo >>S:User-Startup ";BEGIN UP-Term Amarchy"
-  Echo >>S:User-Startup "Run >NIL: UP-Term:bin/Amarchy"
+  Echo >>S:User-Startup "Assign >NIL: UP-Term: EXISTS"
+  Echo >>S:User-Startup "If NOT WARN"
+  Echo >>S:User-Startup "  Run >NIL: UP-Term:bin/Amarchy"
+  Echo >>S:User-Startup "EndIf"
   Echo >>S:User-Startup ";END UP-Term Amarchy"
 EndIf
 ; the boot scan of the app index: a block of its own, so an Update that finds the Amarchy block
 ; from an earlier version still adds it (and unstartup.sh strips it with the other UP-Term blocks)
-Search >NIL: S:User-Startup ";BEGIN UP-Term Amarchy index"
+Search >NIL: S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-index"
 If WARN
+  Delete >NIL: T:User-Startup.up-term QUIET
+  vsh unstartup.sh "Amarchy index"
+  If EXISTS T:User-Startup.up-term
+    Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+    Delete >NIL: T:User-Startup.up-term QUIET
+  EndIf
   Echo >>S:User-Startup ";BEGIN UP-Term Amarchy index"
-  Echo >>S:User-Startup "Run >NIL: UP-Term:bin/amarchy-index"
+  Echo >>S:User-Startup "Assign >NIL: UP-Term: EXISTS"
+  Echo >>S:User-Startup "If NOT WARN"
+  Echo >>S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-index"
+  Echo >>S:User-Startup "EndIf"
   Echo >>S:User-Startup ";END UP-Term Amarchy index"
 EndIf
 ; ps and top: the tasks, and the tasks by CPU use (sampled at the vertical blank)
@@ -604,27 +637,49 @@ If NOT WARN
     Assign GG: UP-Term:
   EndIf
 EndIf
+Set upgg NO
 Assign >NIL: GG: EXISTS
 If WARN
   Assign GG: UP-Term:
   Echo >ENVARC:up-term/gg "installed by UP-Term"
-  If NOT EXISTS S:User-Startup
-    Echo >S:User-Startup ""
-  EndIf
-  ; its own line, not ";BEGIN UP-Term": that also starts the other blocks
+  Set upgg YES
+EndIf
+If NOT EXISTS S:User-Startup
+  Echo >S:User-Startup ""
+EndIf
+; The block is written when this Install made GG:, and again when S:User-Startup
+; holds an older unguarded one (no line with four leading spaces): that one is
+; stripped (unstartup.sh UP-Term: only the block ";BEGIN UP-Term", not the
+; named ones) and written guarded, as the blocks above (BOOT-UPTERM-VOLUME-LOOP).
+Search >NIL: S:User-Startup "    Assign GG: UP-Term:"
+If WARN
   Search >NIL: S:User-Startup "Assign GG: UP-Term:"
-  If WARN
+  If NOT WARN
+    Set upgg YES
+    Delete >NIL: T:User-Startup.up-term QUIET
+    vsh unstartup.sh UP-Term
+    If EXISTS T:User-Startup.up-term
+      Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+      Delete >NIL: T:User-Startup.up-term QUIET
+    EndIf
+  EndIf
+  If "$upgg" EQ YES
     If NOT EXISTS S:User-Startup.before-UP-Term
       Copy S:User-Startup S:User-Startup.before-UP-Term CLONE
     EndIf
+    ; its own block, not ";BEGIN UP-Term assign": the name-less marker is this one's
     Echo >>S:User-Startup ";BEGIN UP-Term"
     Echo >>S:User-Startup "Assign >NIL: GG: EXISTS"
     Echo >>S:User-Startup "If WARN"
-    Echo >>S:User-Startup "  Assign GG: UP-Term:"
+    Echo >>S:User-Startup "  Assign >NIL: UP-Term: EXISTS"
+    Echo >>S:User-Startup "  If NOT WARN"
+    Echo >>S:User-Startup "    Assign GG: UP-Term:"
+    Echo >>S:User-Startup "  EndIf"
     Echo >>S:User-Startup "EndIf"
     Echo >>S:User-Startup ";END UP-Term"
   EndIf
 EndIf
+UnSet upgg
 ;
 ; upkg in every AmigaDOS Shell: an Alias in S:Shell-Startup, a marked block (Uninstall
 ; takes it out with unstartup.sh). UP-Term:bin is not on the AmigaDOS Path: it holds
