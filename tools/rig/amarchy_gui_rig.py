@@ -192,20 +192,19 @@ def close_menu():
 
 # ---- pixels -------------------------------------------------------------------------------------------------
 
+def cell_grid(s, wbox, cell_x, cell_y, cw, ch):
+    """(rows, background RGB) of the icon cell: the cell grabbed from the front screen, each row cw*3 bytes of
+    RGB; the background is the pixel one column left of the cell (inside the row box, row_pad > 0). ami.grab
+    returns the screen's own rows (the legacy shot is raw, not row-doubled), and wbox is in screen rows."""
+    w, h, rows = ami.grab((wbox[0] + cell_x - 1, wbox[1] + cell_y, cw + 1, ch))
+    return [bytes(r[3:]) for r in rows], tuple(rows[h // 2][0:3])
+
+
 def cell_pixels(s, wbox, cell_x, cell_y, cw, ch):
-    """(number of pixels in the icon cell that differ from the row background, background RGB). The cell is
-    grabbed from the front screen (picture rows: y and height times row_scale); the background is the pixel
-    one column left of the cell (inside the row box, row_pad > 0)."""
-    k = s['row_scale']
-    x0, y0 = wbox[0] + cell_x, (wbox[1] + cell_y) * k
-    w, h, rows = ami.grab((x0 - 1, y0, cw + 1, ch * k))
-    bg = rows[h // 2][0:3]
-    n = 0
-    for r in rows:
-        for x in range(1, w):
-            if r[x * 3:x * 3 + 3] != bg:
-                n += 1
-    return n, tuple(bg)
+    """(number of pixels in the icon cell that differ from the row background, background RGB)"""
+    rows, bg = cell_grid(s, wbox, cell_x, cell_y, cw, ch)
+    n = sum(1 for r in rows for x in range(len(r) // 3) if r[x * 3:x * 3 + 3] != bytes(bg))
+    return n, bg
 
 
 # ---- the cases ------------------------------------------------------------------------------------------------

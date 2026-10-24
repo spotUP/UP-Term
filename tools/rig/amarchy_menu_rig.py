@@ -212,12 +212,12 @@ def r_lamiga_minus_sv():
 
 
 # ---- AM-IDX X9: the app index through the real entry points (plan 2026-10-23-amarchy-app-index.md) ----
-# Fake apps in drawers on the rig hard disk (volume System:; the labels start A0 so the filter "a0" narrows the
+# Fake apps in drawers on the rig hard disk (the boot volume, named System: on OS 3.1 rigs and by its label on 3.2 ones, so SYS:; the labels start A0 so the filter "a0" narrows the
 # Apps level to them: a rig holds many apps and the 24x7 menu shows a level's first rows only), tests/amiga/wbfake (writes RAM:x9.<file>.started, waits 2 s, writes
 # .ended), icons made by tools/mkicon.py. amarchy-index scans, the text menu (Left Amiga + Alt + Space) lists them,
 # Enter launches through lf_open_index. On a rig Directory Opus replaces Workbench, so OpenWorkbenchObject fails
 # and every launch here takes the AMARCHY.launch port fallback; the OpenWorkbenchObject path needs the A1200.
-X9_DIR, X9_SKIP = 'System:X9Test', 'System:X9Skip'
+X9_DIR, X9_SKIP = 'SYS:X9Test', 'SYS:X9Skip'      # x9_begin respells X9_SKIP with the boot volume's name, see there
 X9_CONF = 'ENV:up-term/up-term'
 X9_CACHE = 'ENVARC:Amarchy/apps'
 ALT = 0x10
@@ -296,6 +296,116 @@ def x9_upterm_target():
     return None
 
 
+def x9_begin():
+    """Saves the files a case rewrites, points UP-Term: at the staged build (Rescan apps runs amarchy-index from
+    UP-Term:bin; on a rig with a kit installed UP-Term: points at the kit, not at the build stage_rig puts in
+    VTC:Apps/bin) and clears the case's files. Returns what x9_end gives back."""
+    global X9_SKIP
+    # amarchy-index-skip is a literal path prefix against the scanned path, which starts with the volume's name
+    # (System: on one rig, Empty-12MB-FFS: on the 3.2 rig), so the skip entry spells the volume, not SYS:
+    m = re.search(r'^SYS\s+(\S.*:)\s*$', c.run('Assign LIST')[1], re.M)
+    X9_SKIP = (m.group(1) if m else 'SYS:') + 'X9Skip'
+    saved = {p: ami.read_file(p) for p in (X9_CONF, 'ENV:up-term/keymap.user', X9_CACHE)}
+    upterm = x9_upterm_target()
+    c.run('Assign UP-Term: VTC:%s' % paths.UPTERM_DRAWER)
+    c.run('Delete >NIL: RAM:x9.#? QUIET')
+    c.run('MakeDir >NIL: ENV:up-term')
+    return saved, upterm
+
+
+def x9_end(saved, upterm):
+    import amarchy_rig
+    x9_leave()
+    time.sleep(3)
+    c.run('Delete >NIL: %s %s ALL QUIET' % (X9_DIR, X9_SKIP))
+    c.run('Delete >NIL: %s.info %s.info QUIET' % (X9_DIR, X9_SKIP))
+    for p, b in saved.items():
+        ami.restore_file(p, b)
+    c.run('Delete >NIL: RAM:x9.#? QUIET')
+    c.run('Assign UP-Term: "%s"' % upterm if upterm else 'Assign UP-Term: REMOVE')
+    amarchy_rig.arexx('RELOAD')
+
+
+def r_app_icons():
+    """AM-IDX-ICON I3: the drawn menu (amarchy-gui, the default hotkey Left Amiga + Space) shows an index row's own
+    .info image in the row's icon cell. The fake WBTOOL app A0Fake has its icon; A0NoIcon is indexed and then loses
+    its .info, so its row must show the generic Apps glyph, which is also what the root level's Apps row draws.
+    Sentinel: ENV:AMARCHY_ICON_LOADS (icon_gfx.c, .info images loaded) is deleted first and is above 0 after the
+    menu drew A0Fake. Needs icon.library V44 (OS 3.2: `rig.py start --os 32 --max`)."""
+    import amarchy_rig, amarchy_gui_rig as g
+    res = []
+
+    def ck(name, ok, detail=''):
+        res.append(ok)
+        print('  %s %s%s' % ('[OK]' if ok else '[FAIL]', name, (': ' + detail) if detail else ''), flush=True)
+        return ok
+
+    def loads():
+        rc, out = c.run('GetEnv AMARCHY_ICON_LOADS')
+        m = re.match(r'\s*(\d+)\s*$', out) if rc == 0 else None
+        return int(m.group(1)) if m else 0
+
+    def cell(e, level, row=0):
+        s, w = g.where(g.TITLE)
+        if not w:
+            return None
+        ix, iy, cw, ch, iy2 = e[level]['cell']
+        iy = iy2 if row else iy
+        return g.cell_grid(s, g.box_of(s, w), ix, iy, cw, ch)[0]
+
+    def inked(rows, bg):
+        return sum(1 for r in rows for x in range(len(r) // 3) if r[x * 3:x * 3 + 3] != bg)
+
+    if not amarchy_rig.port_up():
+        r_start()
+    stage_rig.report(stage_rig.stage_build(('scrprobe', 'wbfake'), build=True))
+    geom = g.build_geom()
+    e = g.expected(geom, '-')
+    saved, upterm = x9_begin()
+    try:
+        x9_files([(X9_DIR, 'A0NoIcon')])
+        c.run('Echo >%s "[profile default]"' % X9_CONF)
+        c.run('Echo >>%s "amarchy-index-skip = %s"' % (X9_CONF, X9_SKIP))
+        amarchy_rig.arexx('RELOAD')
+        c.run('Delete >NIL: %s QUIET' % X9_CACHE)
+        c.run('%s/amarchy-index' % paths.UPTERM_BIN, 120)
+        cache = (ami.read_file(X9_CACHE) or b'').decode('latin-1')
+        ck('scanner indexed A0Fake and A0NoIcon', re.search(r'^app\tA0Fake\t', cache, re.M) is not None
+           and re.search(r'^app\tA0NoIcon\t', cache, re.M) is not None)
+        c.run('Delete >NIL: %s/A0NoIcon.info QUIET' % X9_DIR)       # indexed, but its image is gone
+        c.run('Delete >NIL: ENV:AMARCHY_ICON_LOADS ENV:AMARCHY_DRAWS QUIET')
+        ck('sentinel ENV:AMARCHY_ICON_LOADS deleted before the run', loads() == 0)
+        ami.click_px(100, 100)
+        time.sleep(0.5)
+        s, w = g.open_menu()
+        if not ck('drawn menu opened', bool(w)):
+            return False, 'the drawn menu did not open'
+        time.sleep(2)
+        ck('amarchy-gui is the running process', g.process_running('amarchy-gui'))
+        root_glyph = cell(e, 'root')             # row 0 of the root is Apps, selected: the generic glyph
+        bg = bytes(g.cell_grid(s, g.box_of(s, w), e['root']['cell'][0] - 0, e['root']['cell'][1], e['root']['cell'][2], e['root']['cell'][3])[1])
+        ck('root level Apps row draws its glyph', inked(root_glyph, bg) >= 4, '%d pixels' % inked(root_glyph, bg))
+        ami.key(g.RETURN)
+        time.sleep(2)
+        x9_type('a0')                           # the filter leaves the two staged rows: A0Fake first, A0NoIcon second
+        time.sleep(1.5)
+        icon = cell(e, 'apps')
+        n_icon = inked(icon, bg) if icon else 0
+        ck('sentinel: ENV:AMARCHY_ICON_LOADS = %d after A0Fake drew (the icon loader ran)' % loads(), loads() > 0)
+        ck('A0Fake row: icon cell holds pixels', n_icon >= 4, '%d pixels' % n_icon)
+        ck('A0Fake row: its own icon, not the generic glyph', icon is not None and icon != root_glyph)
+        ami.key(RAW['down'])                    # row 1 selected: the same selection colour as the root glyph reference
+        time.sleep(1.0)
+        fall = cell(e, 'apps', 1)
+        ck('A0NoIcon row shows the generic glyph (the cell equals the root Apps row)', fall is not None and fall == root_glyph,
+           '%d pixels' % (inked(fall, bg) if fall else 0))
+        ck('the two icon rows differ', fall is not None and icon is not None and fall != icon)
+    finally:
+        g.close_menu()
+        x9_end(saved, upterm)
+    return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
 def r_app_index():
     import amarchy_rig, wbrun_rig
     res = []
@@ -307,13 +417,7 @@ def r_app_index():
 
     if not amarchy_rig.port_up():
         r_start()
-    saved = {p: ami.read_file(p) for p in (X9_CONF, 'ENV:up-term/keymap.user', X9_CACHE)}
-    # Rescan apps runs amarchy-index from UP-Term:bin; on a rig with a kit installed UP-Term: points at the
-    # kit, not at the build stage_rig puts in VTC:Apps/bin, so the case points it there and back after
-    upterm = x9_upterm_target()
-    c.run('Assign UP-Term: VTC:%s' % paths.UPTERM_DRAWER)
-    c.run('Delete >NIL: RAM:x9.#? QUIET')
-    c.run('MakeDir >NIL: ENV:up-term')
+    saved, upterm = x9_begin()
     try:
         x9_files()
         c.run('Echo >%s "[profile default]"' % X9_CONF)
@@ -325,7 +429,7 @@ def r_app_index():
         c.run('Delete >NIL: %s QUIET' % X9_CACHE)
         rc, out = c.run('%s/amarchy-index' % paths.UPTERM_BIN, 120)
         cache = (ami.read_file(X9_CACHE) or b'').decode('latin-1')
-        ck('1/2 scanner wrote a row (kind app) for the fake tool', re.search(r'^app\tA0Fake\tSystem:X9Test/A0Fake$', cache, re.M) is not None,
+        ck('1/2 scanner wrote a row (kind app) for the fake tool', re.search(r'^app\tA0Fake\t[^\t]*:X9Test/A0Fake$', cache, re.M) is not None,
            'rc %d, cache %d bytes' % (rc, len(cache)))
         ck('4 the WHDLoad project is a game row', re.search(r'^game\tA0Game\t', cache, re.M) is not None)
         ck('5 the skip-listed drawer is not indexed', 'A0Skipped' not in cache and 'A0Fake' in cache)
@@ -409,15 +513,7 @@ def r_app_index():
                     conn.expect_ok()
             ck('8 Clock quits', bool(quit_) and wbrun_rig.wait_gone(w['addr']))
     finally:
-        x9_leave()
-        time.sleep(3)
-        c.run('Delete >NIL: %s %s ALL QUIET' % (X9_DIR, X9_SKIP))
-        c.run('Delete >NIL: %s.info %s.info QUIET' % (X9_DIR, X9_SKIP))
-        for p, b in saved.items():
-            ami.restore_file(p, b)
-        c.run('Delete >NIL: RAM:x9.#? QUIET')
-        c.run('Assign UP-Term: "%s"' % upterm if upterm else 'Assign UP-Term: REMOVE')
-        amarchy_rig.arexx('RELOAD')
+        x9_end(saved, upterm)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
@@ -432,6 +528,7 @@ ROWS = [
     ('enter_th',     r_enter_th),
     ('lamiga_minus_sv', r_lamiga_minus_sv),
     ('app_index',    r_app_index),
+    ('app_icons',    r_app_icons),
 ]
 
 
