@@ -1,8 +1,8 @@
 /* icon_gfx: see icon_gfx.h. A slot holds the icon scaled to the size it is drawn at: a colour bitmap and a
  * one-plane-deep mask bitmap, both friends of the screen's bitmap. icon.library draws a palette icon with
  * its transparent pixels left alone, so the icon is drawn twice onto the offscreen bitmap, once on pen 0
- * and once on the last pen: a pixel that differs between the two is transparent. The difference (the first
- * plane of it) is the blit mask; BitMapScale scales colour and difference alike. */
+ * and once on the last pen: a pixel that differs between the two is transparent. The equality (the first
+ * plane of it) is the blit mask; BitMapScale scales colour and mask alike. */
 #include <exec/types.h>
 #include <graphics/gfx.h>
 #include <graphics/gfxbase.h>
@@ -129,8 +129,8 @@ static int load(int s, const char *path, int bw, int bh)
     DrawIconStateA(&rp, o, 0, 0, 0, IDS_NORMAL, dt);
     WaitBlit();
     scale(c0, sw, sh, sc, dw, dh);
-    /* c1 = c0 xor c1: set where the icon let the background through */
-    BltBitMap(c0, 0, 0, c1, 0, 0, sw, sh, 0x60, 0xFF, 0);
+    /* c1 = not (c0 xor c1): set where the icon covered the pixel, which is where BltMaskBitMapRastPort copies */
+    BltBitMap(c0, 0, 0, c1, 0, 0, sw, sh, 0x90, 0xFF, 0);
     WaitBlit();
     scale(c1, sw, sh, sx, dw, dh);
     bm[s] = sc;
