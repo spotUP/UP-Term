@@ -5,7 +5,7 @@
  * colours from menu_theme.c (the user's upconf palette through render/pens_amiga.c), a leaf is run by leaf.c.
  * Modes in the one window: list, input (a leaf's value), message (a refusal), viewer (the [bind] lines).
  * Every full draw bumps the global variable AMARCHY_DRAWS: the sentinel tools/rig/amarchy_gui_rig.py (G7)
- * reads. */
+ * reads; AMARCHY_ICON_LOADS beside it counts the .info images icon_gfx.c loaded (plan app-index, I3). */
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
@@ -108,7 +108,8 @@ static char prompt_text[UPREQ_ANSWER + 80];
 
 /* ---- sentinel ----------------------------------------------------------------------------------------- */
 
-static void draws_publish(long n)
+/* Publishes n as the global variable name: a rig case reads it after the run. */
+static void sentinel_publish(const char *name, long n)
 {
     char b[16];
     int i = 15;
@@ -117,7 +118,7 @@ static void draws_publish(long n)
         b[--i] = (char)('0' + n % 10);
         n /= 10;
     } while (n && i > 0);
-    SetVar((STRPTR) "AMARCHY_DRAWS", (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
+    SetVar((STRPTR) name, (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
 }
 
 /* ---- text and fills ----------------------------------------------------------------------------------- */
@@ -276,7 +277,8 @@ static void draw_full(gui *g)
     draw_header(g);
     draw_list(g);
     g->draws++;
-    draws_publish(g->draws);
+    sentinel_publish("AMARCHY_DRAWS", g->draws);
+    sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
 }
 
 /* ---- geometry ----------------------------------------------------------------------------------------- */
