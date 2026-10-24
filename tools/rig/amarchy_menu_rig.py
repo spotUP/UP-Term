@@ -259,8 +259,11 @@ def x9_type(text):
 
 
 def x9_level(label):
-    # from the root, Down to the group `label`, Enter; the screen text of that level
+    # from the root, Down to the group `label`, Enter; the screen text of that level. A root without the
+    # group (the X10 revert check takes Games away) stays at the root, so the level's checks fail, not the case
     rows = menu_rows(screen_text())
+    if label not in rows:
+        return screen_text()
     for _ in range(rows.index(label)):
         ami.key(RAW['down'])
         time.sleep(0.3)
