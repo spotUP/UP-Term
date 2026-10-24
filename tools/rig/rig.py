@@ -695,6 +695,13 @@ def refresh_kit_shadows(vtc):
         if src.is_file() and not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
             shutil.copyfile(src, dst)
             print("refreshed", name, dst.stat().st_size, "bytes")
+    # GG:bin/sh is vsh too: the boot assigns GG: to VTC:gg when it holds one, and ixemul programs run it
+    # as /gg/bin/sh (rig 3, 2026-10-24: an 8 Oct vsh there gave a pipeline's ixemul child a
+    # non-interactive stdout, so upkg-ui tty:programbox found no terminal and exited 3)
+    src, dst = ROOT / "build/amiga/vsh", vtc / "gg/bin/sh"
+    if src.is_file() and dst.is_file() and dst.read_bytes() != src.read_bytes():
+        shutil.copyfile(src, dst)
+        print("refreshed gg/bin/sh", dst.stat().st_size, "bytes")
 
 def install():
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)

@@ -134,9 +134,9 @@ def put_vsh():
     popen(), opkg's maintainer scripts). The kit puts vsh there only when the system has no GG: yet, and the
     rig's GG: is the fixture VTCX:gg, so a rig keeps whichever vsh was copied last until this runs. A rig
     without the fixture gets none (rig.py assigns GG: at boot only when VTC:gg/bin/sh is there)."""
+    import rig
     shutil.copyfile(ROOT / "build/amiga/vsh", VTC / "vsh")
-    if (VTC / "gg/bin/sh").exists():
-        shutil.copyfile(ROOT / "build/amiga/vsh", VTC / "gg/bin/sh")
+    rig.refresh_kit_shadows(VTC)   # GG:bin/sh among them
 
 ORIG_SIZE = 166972  # the 3.1 rig's ixemul.library 48.2 as released; main() takes the size the system has before Install (the 3.2 tree's differs)
 

@@ -185,6 +185,8 @@ with tempfile.TemporaryDirectory() as tmp:
     (tmp / "build/amiga/vsh").write_bytes(b"vsh 237268")
     (tmp / "build/amiga/UPDemo").write_bytes(b"updemo new")
     (tmp / "vtc/vsh").write_bytes(b"vsh 236784")
+    (tmp / "vtc/gg/bin").mkdir(parents=True)
+    (tmp / "vtc/gg/bin/sh").write_bytes(b"vsh 213744")
     old = rig.ROOT
     rig.ROOT = tmp
     try:
@@ -192,6 +194,9 @@ with tempfile.TemporaryDirectory() as tmp:
             rig.refresh_kit_shadows(tmp / "vtc")
             check((tmp / "vtc/vsh").read_bytes() == b"vsh 237268", "a stale VTC:vsh is replaced by the build")
             check((tmp / "vtc/UPDemo").read_bytes() == b"updemo new", "a missing VTC:UPDemo is added")
+            # rig 3, 2026-10-24: VTC:gg/bin/sh (GG:bin/sh, the sh of ixemul programs) was an 8 Oct vsh whose
+            # pipelines gave an ixemul child a non-interactive stdout (upkg-ui tty:programbox exit 3)
+            check((tmp / "vtc/gg/bin/sh").read_bytes() == b"vsh 237268", "a stale VTC:gg/bin/sh is replaced by the build vsh")
         else:
             check(False, "rig.refresh_kit_shadows exists")
     finally:
