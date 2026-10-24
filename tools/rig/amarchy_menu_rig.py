@@ -373,11 +373,11 @@ def r_app_index():
         old = cache
         x9_open_menu()
         x9_level('Apps')
-        win0 = {w['addr'] for w in wbrun_rig.windows()}
+        win0 = wbrun_rig.window_ids()
         x9_type('rescan')
         ami.key(RAW['return'])
         time.sleep(1)
-        new_win = [w for w in wbrun_rig.windows() if w['addr'] not in win0 and 'amarchy' not in w['title'].lower()]
+        new_win = [w for w in wbrun_rig.windows() if wbrun_rig.win_id(w) not in win0 and 'amarchy' not in w['title'].lower()]
         ck('7 Rescan apps opens no window', not new_win, str([w['title'] for w in new_win]))
         end = time.time() + 40
         cache2 = old
@@ -391,10 +391,14 @@ def r_app_index():
         x9_open_menu()
         x9_level('Apps')
         x9_type('clock')
-        w0 = {w['addr'] for w in wbrun_rig.windows()}
+        w0 = wbrun_rig.window_ids()
         ami.key(RAW['return'])
         w = wbrun_rig.wait_window(w0, lambda w: w.get('task') == 'Clock', 20)
         ck('8 Apps > Clock opens the Clock window (AMARCHY.launch fallback; OpenWorkbenchObject fails under Directory Opus)', w is not None)
+        if not w:
+            # failure output: what was open and running when no Clock window showed up
+            print('  [INFO] windows: %s' % [(x.get('task'), x.get('title')) for x in wbrun_rig.windows()])
+            print('  [INFO] Status: %s' % c.run('Status')[1].replace('\n', ' | ')[:1500])
         if w:
             quit_ = [m for m in w.get('menus', []) if ami._m().ui_norm(m['path']).endswith('quit')]
             if quit_:
