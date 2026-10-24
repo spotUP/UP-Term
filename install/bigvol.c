@@ -19,6 +19,11 @@
 
 static const char ver[] = "$VER: UPBigVol 1.0 (24.10.2026) (UP-Term)";
 
+/* vbcc's startup (vc.lib) runs main on a stack of ___stack bytes, whatever the Installer's run gives it; the
+ * cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). The volume list and Info need little. */
+long __stack = 8192;
+const char bigvol_stack_cookie[] = "$STACK: 8192";
+
 #define MAXVOL 16
 #define VAR "UPTBIGVOL"
 

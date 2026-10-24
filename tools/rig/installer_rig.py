@@ -10,7 +10,8 @@ and clicks them, then checks what landed and runs Uninstall.
   dest      AVERAGE, the drawer page given VTC:KitTest/UP-Term (typed into the
             askdir string gadget)
   space     AVERAGE on a System: partition made too full for the default choices (K7: a filler file leaves
-            about 12 MB; the kit needs more): the drawer page is answered by default, and the room message
+            about 12 MB; the kit needs more): the drawer page is answered with SYS:UP-Term (the default is the
+            biggest disk, VTCX: on the rig), and the room message
             (the choices need N KB, the drawer's disk has M KB; Proceed asks for another drawer) comes up
             before anything is copied. The case Aborts on the drawer page that follows it, and checks that
             nothing was installed. Every page is saved as build/<rig>/installer/space-<n>.png to read.
@@ -75,7 +76,7 @@ KIT = ir.KIT
 CLEAN = "--os" in os.environ.get("UPTERM_RIG_FLAGS", "")
 WORKDEST = "Work:Apps/UP-Term"
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:KitTest/UP-Term"),
-         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", None),
+         "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", "SYS:UP-Term"),
          "kingcon": ("AVERAGE", None)}
 # UPDATE-DETECT: the update case over an install that left no ENVARC:up-term/opts (a Shell install.dos run)
 CASES["update-noopts"] = CASES["update"]
@@ -87,9 +88,11 @@ FULL_DRAWER = "nvim"            # the add-on staged as an unpacked drawer; the r
 CASES["fullsuite"] = ("AVERAGE", None)
 # F1: the fresh kit, every box on every page ticked (only drawer and install mode stay default), a reboot, Amarchy up
 CASES["fresh-all"] = ("AVERAGE", None)
+# The default drawer is UP-Term on the local disk with the most free room (UPBigVol -> ENV:UPTBIGVOL), which on the rig
+# is VTCX: or BOOTX: (host directories, 2 GB), not SYS:. The `space` case asks for SYS:UP-Term itself (it needs a small disk).
 # BIGVOL: the drawer page's default is UP-Term on the local disk with the most free room (UPBigVol), not SYS:
 CASES["bigvol"] = ("AVERAGE", None)
-BIGVOL_EXPECT = "VTCX:UP-Term"   # the rig: DH0 System 64 MB (SYS:), DH1 Rushhours 519 MB, VTCX and BOOTX (uaefs directories) 2 GB
+# the rig: DH0 System 64 MB (SYS:), DH1 Rushhours 519 MB, VTCX and BOOTX (uaefs directories) 2 GB
 ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page: Rushhours, about 1 GB free
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs
@@ -701,9 +704,20 @@ def fill_sys():
     print('installer_rig space: SYS: has %d KB free after the filler' % (sys_free_bytes() // 1024))
 
 
+def big_drawer():
+    """The drawer the Installer offers as its default when no earlier install's assign exists: what the kit's UPBigVol
+    leaves in ENV:UPTBIGVOL (the variable is deleted again, so a stale value cannot stand in for the Installer's own
+    run of the helper), SYS:UP-Term when no volume qualifies."""
+    ir.run('Delete >NIL: ENV:UPTBIGVOL QUIET')
+    ir.run('VTC:distkit/Files/UPBigVol', 60)
+    rc, out = ir.run('Type ENV:UPTBIGVOL')
+    ir.run('Delete >NIL: ENV:UPTBIGVOL QUIET')
+    return out.strip() if rc == 0 and out.strip() else 'SYS:UP-Term'
+
+
 def run_bigvol():
     """BIGVOL, through the real Installer: click Proceed to the drawer page (gadgets 89 and 92), read the string
-    gadget 92 and Abort. PASS: it shows BIGVOL_EXPECT, the volume UPBigVol LIST marks with `*`, not SYS:UP-Term
+    gadget 92 and Abort. PASS: it shows the drawer big_drawer() reads from ENV:UPTBIGVOL, the volume UPBigVol LIST marks with `*`, not SYS:UP-Term
     (what the Installer offered before this case existed), and that volume has more free room than SYS:."""
     ck = Checks()
     ir.prepare(None)
@@ -712,7 +726,9 @@ def run_bigvol():
         return False, 'no Installer on the rig'
     listing = ir.run('VTC:distkit/Files/UPBigVol LIST', 60)[1]
     best = [l for l in listing.splitlines() if l.startswith('* ')]
-    ck(len(best) == 1 and best[0][2:].startswith(BIGVOL_EXPECT.split(':')[0] + ':'), 'UPBigVol LIST marks %s' % BIGVOL_EXPECT, listing)
+    expect = big_drawer()
+    ck(len(best) == 1 and best[0][2:].startswith(expect.split(':')[0] + ':'), 'UPBigVol LIST marks %s' % expect, listing)
+    ck(not expect.upper().startswith('SYS:'), 'the biggest local disk on the rig is not SYS:', expect)
     ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER AVERAGE DEFUSER AVERAGE NOLOG' % inst, 30)
     time.sleep(5)
     got, t0 = None, time.time()
@@ -728,7 +744,7 @@ def run_bigvol():
             time.sleep(3)
         else:
             time.sleep(3)
-    ck(got == BIGVOL_EXPECT, 'the askdir string (gadget 92) shows %s' % BIGVOL_EXPECT, 'shows [%s]' % got)
+    ck(got == expect, 'the askdir string (gadget 92) shows %s' % expect, 'shows [%s]' % got)
     ck(got != 'SYS:UP-Term', 'the default is not SYS:UP-Term')
     gads = installer_page(ami.req(0x0D).decode('latin-1'))[1]
     if 91 in gads:
@@ -745,6 +761,7 @@ def run_case(case):
             return run_base_case(case)
         finally:
             ir.run_slow('unfillsys', 'Delete >NIL: %s QUIET' % FILLER, 300)
+            ir.run_slow('deletedest', drawer_delete(CASES[case][1]))   # the empty drawer Make New Drawer made on the way to the room message
     if case.startswith("addon-"):
         return run_addon_case(case[len("addon-"):])
     if case == "migrate":
@@ -793,7 +810,7 @@ def run_kingcon():
         base = {t for t, _ in windows(ami.req(0x0D).decode('latin-1'))}
         ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER AVERAGE DEFUSER AVERAGE NOLOG' % inst, 30)
         time.sleep(5)
-        finished, dlog = drive('kingcon', inst, None, base, console=True, room_dest=ROOMDEST)   # SYS: is too small for the default drawer: the room page sends it to ROOMDEST
+        finished, dlog = drive('kingcon', inst, None, base, console=True)
         log += dlog
         (OUT / 'kingcon.log.txt').write_text('\n'.join(log) + '\n')
         ck(finished, 'the Installer ran to its end', log[-1])
@@ -825,7 +842,7 @@ def run_kingcon():
     return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
 
 
-ROOM_CASES = ('default', 'fresh-all')   # SYS: is too small for the default parts: the room page sends them to ROOMDEST
+ROOM_CASES = ()   # the default drawer is on the biggest disk (VTCX: on the rig), so no case meets the room page by default; `space` meets it on SYS:
 
 
 def amarchy_window():
@@ -864,9 +881,9 @@ def reboot_amarchy_check(ck, log):
 
 def run_base_case(case):
     level, dest = CASES[case]
-    drawer = dest or "SYS:UP-Term"
     ck = Checks()
     ir.prepare(dest)
+    drawer = dest or big_drawer()   # the Installer's own default (UPBigVol), not SYS:
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
     parent_existed = True
@@ -915,7 +932,7 @@ def run_base_case(case):
         # the room check: Install on a volume with too little room says so and changes nothing
         ck(any(l.startswith('room message seen') for l in log), 'the room message came up and led back to the drawer page', '; '.join(log[-3:]))
         ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase', '; '.join(log[-3:]))
-        ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'no drawer was made', '')
+        ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0, 'nothing was copied into the drawer', '')
         ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
         ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
         st = ir.lib_state()
@@ -939,8 +956,8 @@ def run_base_case(case):
     ck(('Assign UP-Term: "%s"' % drawer).lower() in out.lower(), 'S:User-Startup assigns UP-Term: to %s' % drawer, out[-300:])
     ck(out.find('Assign UP-Term:') >= 0 and (out.find('Assign GG:') < 0 or out.find('Assign UP-Term:') < out.find('Assign GG:')),
        'the UP-Term: block comes before the blocks that use it', out[-300:])
-    if dest or room:
-        ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'a chosen drawer leaves SYS:UP-Term unmade')
+    if drawer.upper() != 'SYS:UP-TERM':
+        ck(ir.run('List >NIL: SYS:UP-Term')[0] != 0, 'a drawer on another disk leaves SYS:UP-Term unmade')
     for f in ('"%s/VERSIONS"' % drawer, 'UP-Term:bin/sh', 'UP-Term:bin/ls', 'UP-Term:unifont/00', 'UP-Term:emoji/1F6',
               'C:vsh', 'C:tmux', 'C:UPConsole', 'L:vtcon-handler', 'L:pty-handler', 'DEVS:DOSDrivers/XCON',
               'SYS:System/UP-Term.info', 'SYS:Prefs/UP-Term-Prefs.info', 'ENVARC:up-term/unstartup.sh',
