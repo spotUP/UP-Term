@@ -511,7 +511,7 @@ def r_app_index():
                     import struct
                     conn.send(ami._m().UIACT, struct.pack('>III', 1, int(w['addr'], 16), quit_[0]['code']))
                     conn.expect_ok()
-            ck('8 Clock quits', bool(quit_) and wbrun_rig.wait_gone(w['addr']))
+            ck('8 Clock quits', bool(quit_) and wbrun_rig.wait_gone(w))
     finally:
         x9_end(saved, upterm)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))

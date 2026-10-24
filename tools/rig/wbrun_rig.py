@@ -56,10 +56,11 @@ def wait_window(before, match, secs=20):
     return None
 
 
-def wait_gone(addr, secs=15):
+def wait_gone(win, secs=15):
+    """True once `win` (a windows() entry) is closed. A window opened later at its address is another window."""
     end = time.time() + secs
     while time.time() < end:
-        if addr not in {w["addr"] for w in windows()}:
+        if win_id(win) not in window_ids():
             return True
         time.sleep(1)
     return False
@@ -89,7 +90,7 @@ def clock():
         with ami._conn() as c:
             c.send(m.UIACT, struct.pack(">III", 1, int(w["addr"], 16), quit_[0]["code"]))
             c.expect_ok()
-    ok &= check("Clock closes on Project/Quit", bool(quit_) and wait_gone(w["addr"]),
+    ok &= check("Clock closes on Project/Quit", bool(quit_) and wait_gone(w),
                 "" if quit_ else "no Quit menu: %s" % [m["path"] for m in w.get("menus", [])])
     time.sleep(2)
     t = out_text()
@@ -114,7 +115,7 @@ def shell():
     time.sleep(1)
     ami.req(0x08, bytes([4]) + b"EndCLI")
     ami.key(0x44)
-    return ok & check("the Shell closes on EndCLI", wait_gone(w["addr"]))
+    return ok & check("the Shell closes on EndCLI", wait_gone(w))
 
 
 def main():

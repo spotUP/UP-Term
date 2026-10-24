@@ -33,6 +33,17 @@ class AddressReuse(unittest.TestCase):
         before = wbrun_rig.window_ids()
         self.assertIsNone(wbrun_rig.wait_window(before, lambda w: w.get("task") == "Clock", 1.2))
 
+    def test_a_closed_window_is_gone_when_another_opens_at_its_address(self):
+        clock = win("0x1039cff4", "Clock", "Clock")
+        shell = win("0x1039cff4", "Shell Process", "AmigaShell")
+        wbrun_rig.windows = lambda: [shell]
+        self.assertTrue(wbrun_rig.wait_gone(clock, 1.2))
+
+    def test_an_open_window_is_not_gone(self):
+        clock = win("0x1039cff4", "Clock", "Clock")
+        wbrun_rig.windows = lambda: [clock]
+        self.assertFalse(wbrun_rig.wait_gone(clock, 1.2))
+
 
 if __name__ == "__main__":
     unittest.main()
