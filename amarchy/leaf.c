@@ -25,6 +25,18 @@ static void uterm_spec(char *out, int cap)
         strcpy(out, LF_UTERM_SPEC);
 }
 
+/* The row's command line run by the UP-Term shell, so a bare name finds UP-Term:bin on vsh's PATH
+ * (UP-Term:bin is not on the AmigaDOS Path, dist/install.dos). 0 after a refusal under label. */
+static int shell_line(char *line, int cap, const char *cmd, const char *label, const lf_ui *ui)
+{
+    if (lf_shell_command(line, cap, upassign_vsh(), cmd))
+        return 1;
+    fprintf(stderr, "amarchy: %s is not a command line\n", cmd);
+    if (ui && ui->refused)
+        ui->refused(ui->ctx, label, UPREQ_FAILED, "the command line is not valid");
+    return 0;
+}
+
 /* run: gets what the commodity's open:uterm gives a shell, an UP-Term window of its own, as the
  * program's input and output. system() would run it in the menu's own XCON: window (AMB1: nvim
  * opened inside the OSD), and the window closes when the menu leaves. Asynchronous, so the
@@ -36,12 +48,8 @@ static int run_in_uterm(const char *cmd, const lf_ui *ui)
     char spec[128], line[512];
     if (!cmd || !*cmd)
         return 0;
-    if (!lf_shell_command(line, sizeof line, upassign_vsh(), cmd)) {
-        fprintf(stderr, "amarchy: %s is not a command line\n", cmd);
-        if (ui && ui->refused)
-            ui->refused(ui->ctx, cmd, UPREQ_FAILED, "the command line is not valid");
+    if (!shell_line(line, sizeof line, cmd, cmd, ui))
         return UPREQ_FAILED;
-    }
     termenv_ensure();
     uterm_spec(spec, sizeof spec);
     w = Open((STRPTR)spec, MODE_NEWFILE);
@@ -101,11 +109,18 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui)
     return UPREQ_FAILED;
 }
 
-/* detach: the program runs on its own, with NIL: as input and output and no window anywhere */
+/* detach: the program runs on its own, with NIL: as input and output and no window anywhere. Through
+ * the UP-Term shell like run:, so detach:amarchy-index finds the indexer. */
 static int run_detached(const km_menu *m, const lf_ui *ui)
 {
-    BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE), out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-    LONG rc = SystemTags((STRPTR)m->arg, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
+    char line[512];
+    BPTR in, out;
+    LONG rc;
+    if (!shell_line(line, sizeof line, m->arg, m->label, ui))
+        return UPREQ_FAILED;
+    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    rc = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
                          NP_StackSize, 32768, TAG_END);
     if (rc == -1) {                 /* not started: the files are still ours */
         if (in)
