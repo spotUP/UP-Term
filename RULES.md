@@ -18,6 +18,16 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 5. **The owner's A1200 runs AmigaOS 3.2** (Kickstart 47.111, Workbench 47.5) with
    both an RTG card and AGA, Directory Opus in place of Workbench, and `UP-Term:`
    assigned to `Rushhours:UP-Term`. Drawing code is checked on both screen kinds.
+6. **Every Amiga program and every process it starts gets a proper stack.**
+   A program sets `long __stack = N` (vbcc startup) or its toolchain's equivalent,
+   plus a matching `"$STACK: N"` cookie, so it never runs on the caller's stack
+   (4 KB from a 3.1 Shell). A launcher that starts a loaded program (`NP_Seglist`,
+   `SystemTags`, `CreateNewProc`) gives it at least the stack the program's
+   `$STACK:` cookie asks for (`config/segstack.h`), never a fixed small number.
+   A new process entry (`NP_Entry`) sizes its stack from what it calls, not
+   from habit. A host test pins both: `make test ONLY=dist_stack` fails when a kit
+   program has no cookie. For any crash, hang or Guru, the first probe is the
+   same run under `Stack 262144`.
 
 ## Commands
 
