@@ -2,7 +2,7 @@
 """tools/rig on the host, against a fake agent (no emulator): gclick matches a
 gadget id exactly ('90' is not '290': it clicked a radio button), and a rig run
 puts back what it planted (ENVARC:Claude/remote from a killed run) even when it fails."""
-import os, pathlib, shlex, struct, sys, unittest
+import contextlib, io, os, pathlib, shlex, struct, sys, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import ami, install_rig as ir
@@ -467,8 +467,12 @@ class AddonCases(unittest.TestCase):
         ir.prepare = lambda dest, addons=(): sim.log.append('prepare %s' % ','.join(addons))
         ir.remote_banner = lambda ck: sim.log.append('banner')
         ck = verdicts.Checks()
+        # The simulated run's ok/FAIL lines stay out of the test log: the deliberate
+        # faults (skip=...) print FAIL lines a green dist-check must not show.
+        # Failures are asserted from ck.failed, which keeps them.
         try:
-            case(ck)
+            with contextlib.redirect_stdout(io.StringIO()):
+                case(ck)
         finally:
             ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep = saved
         return ck, sim
@@ -508,6 +512,13 @@ class AddonCases(unittest.TestCase):
         ck, sim = self.play(ir.case_python_ixemul)
         self.assertEqual(ck.failed, [])
         self.assertNotIn('ENVARC:upkg/ixemul/installed-by-Python3', sim.files)
+
+    def test_a_deliberate_fault_prints_no_fail_line(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            ck, _ = self.play(lambda ck: ir.case_addon(ck, 'nvim'), skip=('record',))
+        self.assertTrue(ck.failed)
+        self.assertNotIn('FAIL', out.getvalue())
 
     def test_an_add_on_without_its_record_fails_its_case(self):
         ck, _ = self.play(lambda ck: ir.case_addon(ck, 'nvim'), skip=('record',))
@@ -653,7 +664,8 @@ class NoBaseCase(unittest.TestCase):
         ir.run, ir.run_long, ir.prepare, ir.Before = run, run_long, lambda dest, addons=(): None, FakeBefore
         ck = verdicts.Checks()
         try:
-            ir.case_nobase(ck)
+            with contextlib.redirect_stdout(io.StringIO()):   # as play(): the faulted run's FAIL lines stay out of the log
+                ir.case_nobase(ck)
         finally:
             ir.run, ir.run_long, ir.prepare, ir.Before = saved
         return ck, ran, ids
