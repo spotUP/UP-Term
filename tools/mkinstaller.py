@@ -88,7 +88,7 @@ def addon_find(rows):
 def addon_choices(rows):
     """The choices of the add-on page: one per non-base row, saying where the archive was found."""
     return '\n'.join(
-        '(cat "%s" (if (= #ad%skind "drawer") " (drawer found)" (if (= #ad%skind "lha") " (lha file found)" " (not found)")))'
+        '(cat "%s" (if (= #ad%skind "drawer") " (drawer found)" (if (= #ad%skind "lha") " (will unpack lha)" " (not found)")))'
         % (r['archive'], r['id'], r['id']) for r in _addons(rows))
 
 
