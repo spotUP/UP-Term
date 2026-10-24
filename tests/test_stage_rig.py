@@ -48,7 +48,7 @@ class Stage(unittest.TestCase):
 class Default(unittest.TestCase):
     def test_default_set_stages_amarchy_gui(self):
         d = pathlib.Path(tempfile.mkdtemp())
-        for n in ("Amarchy", "amarchy-menu", "amarchy-gui"):
+        for n in stage_rig.DEFAULT:
             (d / n).write_bytes(n.encode())
         stage_rig.BUILD, rig = d, {}
         res = stage_rig.stage_build(build=False, dest="VTC:Apps/bin", read=rig.get,
