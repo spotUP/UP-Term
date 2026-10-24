@@ -160,10 +160,20 @@
 ; Its commands, Unifont and emoji live in one drawer (the add-on archives'
 ; files go there too) that is assigned as UP-Term: now and at every boot; every
 ; program reaches the files through that name. An earlier install's drawer is
-; the default.
+; the default. With none, the default is the local disk with the most free room
+; (Files/UPBigVol, install/bigvol.c, sets ENV:UPTBIGVOL to "<Volume>:UP-Term";
+; getdiskspace overflows past 2 GB, the helper counts in KiB, clamped at 4 TiB); SYS:UP-Term
+; when no local, writable disk with an Amiga file system is mounted.
 
 (set #old (getassign "UP-Term" "a"))
-(set #dest (if #old #old "SYS:UP-Term"))
+(set #big "")
+(if (not #old)
+    (
+        (run "Delete >NIL: ENV:UPTBIGVOL QUIET")
+        (run (cat "\"" (tackon #files "UPBigVol") "\" >NIL:") (safe))
+        (set #big (getenv "UPTBIGVOL"))
+        (if (= #big 0) (set #big ""))))
+(set #dest (if #old #old (if (= #big "") "SYS:UP-Term" #big)))
 ; asked again, with the last answer as its default, when the disk of the drawer is too small (room on the disk)
 ; #vol: the volume of the path in #volpath, up to and with its first colon ("Work:" of
 ; "Work:UP-Term"); the room checks add up what goes on one volume
@@ -188,7 +198,11 @@
                   "Install makes now and at every boot (a block in "
                   "S:User-Startup that Uninstall takes out again).\n\n"
                   "An earlier UP-Term's drawer is offered first: installing into "
-                  "it again replaces the files and keeps your settings.")
+                  "it again replaces the files and keeps your settings. "
+                  "Without one, the offer is the drawer UP-Term on the local "
+                  "disk with the most free room (hard disk partitions with an "
+                  "Amiga file system, not RAM:, network shares, FAT or CD), "
+                  "or on SYS: when there is none.")
             (default #dest)
             (newpath)))
     (if (= (substr #dest (- (strlen #dest) 1) 1) ":")

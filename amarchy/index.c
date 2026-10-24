@@ -15,6 +15,7 @@
 #include <proto/icon.h>
 #include <string.h>
 #include "index_core.h"
+#include "../install/hardvol.h"
 #include "../config/upconf.h"
 #include "../tty/qmark.h"
 
@@ -33,8 +34,6 @@ const char amarchy_index_stack_cookie[] = "$STACK: 16384";
 #define IX_MAXVOLS  16
 #define IX_DEST     IX_CACHE_PATH
 #define IX_TMP      "ENVARC:Amarchy/apps.tmp"
-#define ID_CD01 0x43443031L
-#define ID_CDFS 0x43444653L
 
 struct Library *IconBase;
 
@@ -184,40 +183,6 @@ static void walk(const char *dir, int depth)
     UnLock(lock);
 }
 
-/* A volume worth scanning: a disk is in, its handler is not RAM, a CD file system or trackdisk. */
-static int hard_disk(struct DosList *vol, struct DosList *devs)
-{
-    struct DosList *d;
-    if (!vol->dol_Task)
-        return 0;
-    if (vol->dol_misc.dol_volume.dol_DiskType == ID_CD01 || vol->dol_misc.dol_volume.dol_DiskType == ID_CDFS || vol->dol_misc.dol_volume.dol_DiskType == (ULONG)ID_NO_DISK_PRESENT ||
-        vol->dol_misc.dol_volume.dol_DiskType == ID_UNREADABLE_DISK)
-        return 0;
-    for (d = NextDosEntry(devs, LDF_DEVICES); d; d = NextDosEntry(d, LDF_DEVICES)) {
-        const unsigned char *nm = (const unsigned char *)BADDR(d->dol_Name);
-        if (d->dol_Task != vol->dol_Task || !nm)
-            continue;
-        if (nm[0] == 3 && nm[1] == 'D' && nm[2] == 'F' && nm[3] >= '0' && nm[3] <= '9')
-            return 0;
-        if (nm[0] == 3 && (nm[1] == 'R' || nm[1] == 'r') && (nm[2] == 'A' || nm[2] == 'a') && (nm[3] == 'M' || nm[3] == 'm'))
-            return 0;
-        if (nm[0] == 3 && nm[1] == 'C' && nm[2] == 'D' && nm[3] >= '0' && nm[3] <= '9')
-            return 0;
-        {
-            /* the startup message names the exec device; trackdisk is a floppy whatever the unit is called */
-            ULONG st = (ULONG)d->dol_misc.dol_handler.dol_Startup;
-            struct FileSysStartupMsg *fs = (struct FileSysStartupMsg *)BADDR(st);
-            if (st > 0x400 && fs->fssm_Device) {
-                const unsigned char *dn = (const unsigned char *)BADDR(fs->fssm_Device);
-                if (dn[0] >= 9 && ieqn((const char *)dn + 1, "trackdisk", 9))
-                    return 0;
-            }
-        }
-        return 1;
-    }
-    return 0;
-}
-
 static int volumes(char names[][IX_VOL])
 {
     struct DosList *head, *v = 0;
@@ -226,7 +191,7 @@ static int volumes(char names[][IX_VOL])
     while (n < IX_MAXVOLS && (v = NextDosEntry(v ? v : head, LDF_VOLUMES))) {
         const unsigned char *nm = (const unsigned char *)BADDR(v->dol_Name);
         int len = nm ? nm[0] : 0;
-        if (len <= 0 || len >= IX_VOL || !hard_disk(v, head))
+        if (len <= 0 || len >= IX_VOL || !hv_disk(v, head, 0))
             continue;
         memcpy(names[n], nm + 1, len);
         names[n][len] = 0;
