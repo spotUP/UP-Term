@@ -15,11 +15,12 @@ import paths
 BUILD = paths.VTCON / 'build/amiga'
 # program -> make target that builds it (amarchy-menu needs upterm-ports built, see the Makefile)
 TARGETS = {'Amarchy': 'build/amiga/Amarchy', 'amarchy-menu': 'build/amiga/amarchy-menu',
-           'amarchy-gui': 'build/amiga/amarchy-gui', 'scrprobe': 'build/amiga/scrprobe',
+           'amarchy-gui': 'build/amiga/amarchy-gui', 'amarchy-index': 'build/amiga/amarchy-index',
+           'wbfake': 'build/amiga/wbfake', 'scrprobe': 'build/amiga/scrprobe',
            'lcmdprobe': 'build/amiga/lcmdprobe'}
 
 # staged when a rig script names nothing: amarchy-gui is the menu Amarchy draws, amarchy-menu its text fallback
-DEFAULT = ('Amarchy', 'amarchy-menu', 'amarchy-gui')
+DEFAULT = ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'amarchy-index')
 
 
 class StageError(SystemExit):

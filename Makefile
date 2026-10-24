@@ -862,6 +862,10 @@ $(BUILD)/amiga/wbrun: tests/amiga/wbrun.c amarchy/wblaunch.c amarchy/leaf_core.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/wbrun.c amarchy/wblaunch.c amarchy/leaf_core.c
 
+$(BUILD)/amiga/wbfake: tests/amiga/wbfake.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wbfake.c
+
 $(BUILD)/amiga/taskdump: tests/amiga/taskdump.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/taskdump.c

@@ -210,6 +210,190 @@ def r_lamiga_minus_sv():
     return d == 1 and up, 'Swedish Left Amiga+minus: km-hits %+d (1 expected), Amarchy port up: %s' % (d, up)
 
 
+# ---- AM-IDX X9: the app index through the real entry points (plan 2026-10-23-amarchy-app-index.md) ----
+# Fake apps in drawers on the rig hard disk (volume System:; the labels start A0 because the menu reads the
+# first IX_MAX_ROWS = 256 cache lines in label order and a rig holds more apps than that), tests/amiga/wbfake (writes RAM:x9.<file>.started, waits 2 s, writes
+# .ended), icons made by tools/mkicon.py. amarchy-index scans, the text menu (Left Amiga + Alt + Space) lists them,
+# Enter launches through lf_open_index. On a rig Directory Opus replaces Workbench, so OpenWorkbenchObject fails
+# and every launch here takes the AMARCHY.launch port fallback; the OpenWorkbenchObject path needs the A1200.
+X9_DIR, X9_SKIP = 'System:X9Test', 'System:X9Skip'
+X9_CONF = 'ENV:up-term/up-term'
+X9_CACHE = 'ENVARC:Amarchy/apps'
+ALT = 0x10
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def x9_icon(remote, *args):
+    import subprocess, tempfile
+    with tempfile.TemporaryDirectory() as d:
+        f = pathlib.Path(d) / 'i.info'
+        subprocess.run([sys.executable, '-I', str(ROOT / 'tools/mkicon.py'), str(f), '--plain'] + list(args), check=True)
+        ami.put(str(f), remote)
+
+
+def x9_files(extra=()):
+    fake = str(ROOT / 'build/amiga/wbfake')
+    c.run('MakeDir >NIL: %s %s' % (X9_DIR, X9_SKIP))
+    for d, name in ((X9_DIR, 'A0Fake'), (X9_DIR, 'A0Shadow'), (X9_SKIP, 'A0Skipped')) + tuple(extra):
+        ami.put(fake, '%s/%s' % (d, name))
+        x9_icon('%s/%s.info' % (d, name), '--wbtool')
+    x9_icon(X9_DIR + '/A0Game.info', '--tool', 'WHDLoad')       # WBPROJECT, default tool WHDLoad
+
+
+def x9_open_menu():
+    ami.click_px(100, 100)                     # the host terminal has the focus
+    time.sleep(0.5)
+    ami.key(RAW['space'], LAMIGA | ALT)        # othermenu:root, the text menu
+    for _ in range(30):
+        if 'Filter' in screen_text():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def x9_type(text):
+    with ami._conn() as conn:
+        ami._type(conn, text.encode())
+    time.sleep(0.8)
+
+
+def x9_level(label):
+    # from the root, Down to the group `label`, Enter; the screen text of that level
+    rows = menu_rows(screen_text())
+    for _ in range(rows.index(label)):
+        ami.key(RAW['down'])
+        time.sleep(0.3)
+    ami.key(RAW['return'])
+    time.sleep(1)
+    return screen_text()
+
+
+def x9_leave():
+    for _ in range(4):
+        ami.key(RAW['esc'])
+        time.sleep(0.5)
+
+
+def x9_wait_file(path, secs=15):
+    end = time.time() + secs
+    while time.time() < end:
+        if ami.read_file(path) is not None:
+            return True
+        time.sleep(1)
+    return False
+
+
+def r_app_index():
+    import amarchy_rig, wbrun_rig
+    res = []
+
+    def ck(name, ok, detail=''):
+        res.append(ok)
+        print('  %s %s%s' % ('[OK]' if ok else '[FAIL]', name, (': ' + detail) if detail else ''), flush=True)
+        return ok
+
+    if not amarchy_rig.port_up():
+        r_start()
+    saved = {p: ami.read_file(p) for p in (X9_CONF, 'ENV:up-term/keymap.user', X9_CACHE)}
+    c.run('Delete >NIL: RAM:x9.#? QUIET')
+    c.run('MakeDir >NIL: ENV:up-term')
+    try:
+        x9_files()
+        c.run('Echo >%s "[profile default]"' % X9_CONF)
+        c.run('Echo >>%s "amarchy-index-skip = %s"' % (X9_CONF, X9_SKIP))
+        # step 6: a [menu] row with the label of an index row
+        c.run('Echo >ENV:up-term/keymap.user "[menu]"')
+        c.run('Echo >>ENV:up-term/keymap.user "apps.a0shadow = A0Shadow | run:C:Echo >RAM:x9.menurow hit"')
+        amarchy_rig.arexx('RELOAD')
+        c.run('Delete >NIL: %s QUIET' % X9_CACHE)
+        rc, out = c.run('%s/amarchy-index' % paths.UPTERM_BIN, 120)
+        cache = (ami.read_file(X9_CACHE) or b'').decode('latin-1')
+        ck('1/2 scanner wrote a row (kind app) for the fake tool', re.search(r'^app\tA0Fake\tSystem:X9Test/A0Fake$', cache, re.M) is not None,
+           'rc %d, cache %d bytes' % (rc, len(cache)))
+        ck('4 the WHDLoad project is a game row', re.search(r'^game\tA0Game\t', cache, re.M) is not None)
+        ck('5 the skip-listed drawer is not indexed', 'A0Skipped' not in cache and 'A0Fake' in cache)
+        # step 3: menu, Apps level, launch
+        ck('3 menu opens', x9_open_menu())
+        root = screen_text()
+        apps = x9_level('Apps')
+        ck('3 Apps level lists the row', 'A0Fake' in apps, ' '.join(menu_rows(apps))[:100])
+        ck('4 Apps level does not list the game', 'A0Game' not in apps)
+        ck('5 Apps level does not list the skipped app', 'A0Skipped' not in apps)
+        ck('6 one A0Shadow row at Apps (the [menu] row)', len(re.findall('A0Shadow', apps)) == 1)
+        ami.key(RAW['esc'])
+        time.sleep(0.8)
+        games = x9_level('Games')
+        ck('4 Games level lists the project', 'A0Game' in games, ' '.join(menu_rows(games))[:100])
+        ami.key(RAW['esc'])
+        time.sleep(0.8)
+        x9_level('Apps')
+        x9_type('a0shadow')
+        ami.key(RAW['return'])
+        ok6 = x9_wait_file('RAM:x9.menurow', 10)
+        time.sleep(3)
+        ck('6 launching A0Shadow ran the [menu] row, not the tool', ok6 and ami.read_file('RAM:x9.A0Shadow.started') is None)
+        x9_leave()
+        c.run('Delete >NIL: RAM:x9.#? QUIET')
+        x9_open_menu()
+        x9_level('Apps')
+        x9_type('a0fake')
+        ami.key(RAW['return'])
+        started = x9_wait_file('RAM:x9.A0Fake.started', 20)
+        ck('3 launch: the tool ran (sentinel written)', started)
+        time.sleep(1)
+        ck('3 launcher exited (amarchy-menu not running)', 'amarchy-menu' not in c.run('Status')[1])
+        ended = x9_wait_file('RAM:x9.A0Fake.ended', 10)
+        time.sleep(2)
+        ck('3 the app quit and the commodity survived', ended and amarchy_rig.port_up())
+        ck('3 no requester', not ami.requesters(), '; '.join(ami.describe_requester(r) for r in ami.requesters()))
+        # step 7: Rescan apps rewrites the cache and opens no window
+        x9_files([(X9_DIR, 'A0Late')])
+        old = cache
+        x9_open_menu()
+        x9_level('Apps')
+        win0 = {w['addr'] for w in wbrun_rig.windows()}
+        x9_type('rescan')
+        ami.key(RAW['return'])
+        time.sleep(1)
+        new_win = [w for w in wbrun_rig.windows() if w['addr'] not in win0 and 'amarchy' not in w['title'].lower()]
+        ck('7 Rescan apps opens no window', not new_win, str([w['title'] for w in new_win]))
+        end = time.time() + 40
+        cache2 = old
+        while time.time() < end and 'A0Late' not in cache2:
+            time.sleep(2)
+            cache2 = (ami.read_file(X9_CACHE) or b'').decode('latin-1')
+        ck('7 Rescan apps rewrote the cache (A0Late is in)', 'A0Late' in cache2 and cache2 != old)
+        x9_leave()
+        # step 8: Apps > Clock (index row of SYS:Utilities/Clock), through the AMARCHY.launch fallback
+        ck('8 Clock is indexed', re.search(r'^app\tClock\t', cache2, re.M) is not None)
+        x9_open_menu()
+        x9_level('Apps')
+        x9_type('clock')
+        w0 = {w['addr'] for w in wbrun_rig.windows()}
+        ami.key(RAW['return'])
+        w = wbrun_rig.wait_window(w0, lambda w: w.get('task') == 'Clock', 20)
+        ck('8 Apps > Clock opens the Clock window (AMARCHY.launch fallback; OpenWorkbenchObject fails under Directory Opus)', w is not None)
+        if w:
+            quit_ = [m for m in w.get('menus', []) if ami._m().ui_norm(m['path']).endswith('quit')]
+            if quit_:
+                with ami._conn() as conn:
+                    ami._m()
+                    import struct
+                    conn.send(ami._m().UIACT, struct.pack('>III', 1, int(w['addr'], 16), quit_[0]['code']))
+                    conn.expect_ok()
+            ck('8 Clock quits', bool(quit_) and wbrun_rig.wait_gone(w['addr']))
+    finally:
+        x9_leave()
+        time.sleep(3)
+        c.run('Delete >NIL: %s %s ALL QUIET' % (X9_DIR, X9_SKIP))
+        c.run('Delete >NIL: %s.info %s.info QUIET' % (X9_DIR, X9_SKIP))
+        for p, b in saved.items():
+            ami.restore_file(p, b)
+        c.run('Delete >NIL: RAM:x9.#? QUIET')
+        amarchy_rig.arexx('RELOAD')
+    return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
 ROWS = [
     ('start',        r_start),
     ('open_timing',  r_open_timing),
@@ -220,6 +404,7 @@ ROWS = [
     ('drill_redraw', r_drill_redraw),
     ('enter_th',     r_enter_th),
     ('lamiga_minus_sv', r_lamiga_minus_sv),
+    ('app_index',    r_app_index),
 ]
 
 

@@ -104,7 +104,7 @@ def drawer_data():
     return new_window + struct.pack('>llLH', 0, 0, 0, 0)   # origin 0/0, DDFLAGS_SHOWDEFAULT, DDVM_BYDEFAULT
 
 
-def icon(x, y, tool, tooltypes, drawer=False):
+def icon(x, y, tool, tooltypes, drawer=False, wbtool=False):
     art = DRAWER_ART if drawer else ART
     w, h = len(art[0]), len(art)
     gadget = struct.pack('>LhhhhHHHLLLLLHL',
@@ -119,8 +119,8 @@ def icon(x, y, tool, tooltypes, drawer=False):
                          1)             # UserData: WB_DISKREVISION
     diskobj = struct.pack('>HH', 0xE310, 1) + gadget + struct.pack(
         '>BBLLllLLl',
-        2 if drawer else 4, 0,         # do_Type WBDRAWER or WBPROJECT, pad
-        0 if drawer else 1, 1 if tooltypes else 0,   # do_DefaultTool, do_ToolTypes: present
+        2 if drawer else 3 if wbtool else 4, 0,   # do_Type WBDRAWER, WBTOOL or WBPROJECT, pad
+        0 if drawer or wbtool else 1, 1 if tooltypes else 0,   # do_DefaultTool, do_ToolTypes: present
         x, y,                          # do_CurrentX/Y
         1 if drawer else 0, 0,         # do_DrawerData, do_ToolWindow
         0 if drawer else 65536)        # do_StackSize
@@ -133,7 +133,7 @@ def icon(x, y, tool, tooltypes, drawer=False):
     tt = b''
     if tooltypes:
         tt = struct.pack('>L', (len(tooltypes) + 1) * 4) + b''.join(bstr(t) for t in tooltypes)
-    return diskobj + image + bstr(tool) + tt
+    return diskobj + image + (b'' if wbtool else bstr(tool)) + tt
 
 
 def main():
@@ -144,6 +144,7 @@ def main():
     ap.add_argument('--tool', default='UP-Term:bin/vsh')
     ap.add_argument('--drawer', action='store_true')
     ap.add_argument('--plain', action='store_true')
+    ap.add_argument('--wbtool', action='store_true', help='a WBTOOL icon (no default tool): an app, as the Amarchy app index lists it')
     ap.add_argument('--tooltype', action='append', default=[])
     a = ap.parse_args()
     x = a.x if a.x is not None else NO_ICON_POSITION
@@ -153,7 +154,7 @@ def main():
     own_window = any(t.startswith("WINDOW=") for t in a.tooltype)
     tooltypes = ([] if a.plain or own_window else ["WINDOW=" + WINDOW]) + a.tooltype
     data = icon(x - (1 << 32) if x >= 1 << 31 else x, y - (1 << 32) if y >= 1 << 31 else y,
-                a.tool, [] if a.drawer else tooltypes, a.drawer)
+                a.tool, [] if a.drawer else tooltypes, a.drawer, a.wbtool)
     open(a.out, 'wb').write(data)
 
 
