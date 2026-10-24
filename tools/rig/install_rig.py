@@ -470,18 +470,19 @@ def strip_upterm_blocks(data, name='UP-Term'):
     return ''.join(out).encode('latin-1')
 
 class Fixtures:
-    """take() once the rig is up (a reboot keeps the disk, so any time after the
-    first boot is the same), restore() in a finally. restore() without take() does nothing."""
+    """take() once the rig is up, restore() in a finally. restore() without take() does nothing.
+    Since RIG-FRESH-SYS (2026-10-24) every rig start boots a fresh clone of the master system disk, so a killed run
+    can no longer leave dirt for the NEXT run. restore() is kept only for the cases that share ONE boot (run_case
+    runs them one after another on the same disk): each case starts from what the previous one left, and the master's
+    own UP-Term blocks are stripped by take() (K3). It is not a cross-run safety net any more."""
     def __init__(self, files=()):
         self.paths = FIXTURE_FILES + tuple(files)
         self.files = self.assigns = None
 
     def take(self):
         if self.files is not None: return
-        # a killed run (pkill, the Monitor's timeout) is SIGTERM: Python then
-        # skips the finally, and the run left an UP-Term block in S:User-Startup
-        # whose drawer the next run deleted -- "Please insert volume UP-Term:"
-        # at every boot (rig 1, 2026-10-10)
+        # a killed run (pkill, the Monitor's timeout) is SIGTERM: exit through the finally so the rest of
+        # THIS boot's cases see a restored disk (the next boot is fresh from the master anyway)
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
         self.files = {p: ami.read_file(p) for p in self.paths}
         # the "as it was" of every check is a startup without UP-Term blocks;

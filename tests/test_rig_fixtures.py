@@ -889,24 +889,90 @@ class UserlandTtyStage(unittest.TestCase):
 
 
 class RigStart(unittest.TestCase):
-    def test_start_refuses_a_rig_with_no_system_disk(self):
-        # rig 3 had no sys.hdf and booted to "Please insert volume dh0:" under an agent's run
+    """RIG-FRESH-SYS (2026-10-24): a rig start boots a fresh APFS clone of the master system disk, so a killed or hung
+    run can never leave DH0: dirty for the next one."""
+    class Stop(Exception):
+        pass
+
+    def start_with(self, d, cp_c):
+        """rig.start() in a temp rig dir against a fake master; returns the ordered list of steps before the emulator.
+        cp_c replaces `cp -c` (subprocess.run); the run is cut at START_ARGS.write_text, just before the config."""
+        import rig
+        steps = []
+        master = pathlib.Path(d) / "master.hdf"
+        master.write_bytes(b"MASTER")
+        saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
+                 rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode)
+        class NoWrite:
+            def write_text(self, *_): raise RigStart.Stop()
+        def run(cmd, *a, **k):
+            steps.append(cmd[:2])
+            return cp_c(cmd)
+        try:
+            rig.RIG, rig.OS, rig.OS32, rig.mine = pathlib.Path(d) / "rig", None, False, lambda: False
+            rig.RIG.mkdir()
+            rig.SRC_HDF, rig.START_ARGS = master, NoWrite()
+            rig.subprocess.run = run
+            rig.sys_hdf_screenmode = lambda image: steps.append(["screenmode", image.name])
+            rig.sys_hdf_cpu_lib = lambda image: steps.append(["cpu_lib", image.name])
+            (rig.RIG / "sys.hdf").write_bytes(b"DIRTY from a killed run")
+            try:
+                rig.start()
+            except RigStart.Stop:
+                pass
+            return steps, rig.RIG
+        finally:
+            (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
+             rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode) = saved
+
+    def test_start_replaces_sys_hdf_from_the_master_by_clone_before_the_writes_into_it(self):
+        import tempfile
+        def clone(cmd):
+            self.assertEqual(cmd[:2], ["cp", "-c"])
+            shutil_copy(cmd[2], cmd[3])
+            return subprocess_result(0)
+        with tempfile.TemporaryDirectory() as d:
+            steps, rigdir = self.start_with(d, clone)
+            self.assertEqual((rigdir / "sys.hdf").read_bytes(), b"MASTER", "the dirty disk was not replaced")
+            self.assertFalse((rigdir / "sys.hdf.new").exists())
+            self.assertEqual([s[0] for s in steps], ["cp", "screenmode", "cpu_lib"],
+                             "the clone happens once, before every write into the image")
+
+    def test_start_without_a_clone_fails_and_never_copies_the_whole_disk(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            def no_clone(cmd):
+                return subprocess_result(1, "not supported")
+            with self.assertRaises(SystemExit) as e:
+                self.start_with(d, no_clone)
+            self.assertIn("APFS clone", str(e.exception))
+            self.assertFalse((pathlib.Path(d) / "rig/sys.hdf.new").exists())
+
+    def test_start_refuses_when_the_master_system_disk_is_missing(self):
         import tempfile, rig
-        saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.subprocess.Popen, rig.subprocess.run)
+        saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run)
         launched = []
         try:
             with tempfile.TemporaryDirectory() as d:
                 rig.RIG, rig.OS, rig.OS32, rig.mine = pathlib.Path(d), None, False, lambda: False
+                rig.SRC_HDF = pathlib.Path(d) / "no-master.hdf"
                 def launch(*a, **k):
                     launched.append(a)
                     raise AssertionError('the emulator was launched')
                 rig.subprocess.Popen = rig.subprocess.run = launch
-                with self.assertRaises(SystemExit) as e:
+                with self.assertRaises(SystemExit):
                     rig.start()
-                self.assertIn("no system disk", str(e.exception))
                 self.assertEqual(launched, [])
         finally:
-            rig.RIG, rig.OS, rig.OS32, rig.mine, rig.subprocess.Popen, rig.subprocess.run = saved
+            rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run = saved
+
+def shutil_copy(a, b):
+    import shutil
+    shutil.copyfile(a, b)
+
+def subprocess_result(rc, err=""):
+    import subprocess
+    return subprocess.CompletedProcess([], rc, "", err)
 
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
