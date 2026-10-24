@@ -145,7 +145,8 @@ def r_viewer_rows():
 
 def menu_rows(s):
     # the list rows of the menu box, labels only, in screen order (the frame and Filter line left out)
-    return [l.strip(' |') for l in s.splitlines() if re.match(r'\|  \S', l) and 'Filter' not in l]
+    # the OSD menu has no frame ("  Apps    >"); a framed box ("|  Apps  |") is read the same way
+    return [re.split(r'\s{2,}', l.strip(' |'))[0] for l in s.splitlines() if re.match(r'\|?  \S', l) and 'Filter' not in l]
 
 
 def theme_requester(before):
@@ -316,6 +317,11 @@ def r_app_index():
         ck('3 menu opens', x9_open_menu())
         root = screen_text()
         apps = x9_level('Apps')
+        # the menu is 24x7 cells: the level shows its first rows only, so the filter narrows it to the fake rows
+        x9_type('a0')
+        apps = screen_text()
+        ami.key(RAW['esc'])                    # clears the filter
+        time.sleep(0.5)
         ck('3 Apps level lists the row', 'A0Fake' in apps, ' '.join(menu_rows(apps))[:100])
         ck('4 Apps level does not list the game', 'A0Game' not in apps)
         ck('5 Apps level does not list the skipped app', 'A0Skipped' not in apps)

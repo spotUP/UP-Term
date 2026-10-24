@@ -61,7 +61,9 @@ def click_in(title):
         return False
     kx, ky = ami.pointer_scale()
     x, y, ww, hh = w['box']
-    ami.script(('move', int((x + 300) * kx), int((y + 150) * ky)), ('wait', 2), ('button', 0, 1),
+    # inside the window, whatever its size: a click outside a small one (the 24x7 OSD menu) lands on another
+    # window and CLOSEINACTIVE closes it
+    ami.script(('move', int((x + min(300, ww // 2)) * kx), int((y + min(150, hh // 2)) * ky)), ('wait', 2), ('button', 0, 1),
                ('wait', 2), ('button', 0, 0), ('wait', 5))
     return True
 
