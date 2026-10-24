@@ -1,6 +1,7 @@
 /* The keymap parser (config/keymap.c): syntax, expansion, refusals,
  * overrides, caps, and the shipped dist/keymap. No OS calls: a host suite. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "../config/upconf.h"
 #include "../config/keymap.h"
@@ -1497,15 +1498,41 @@ static int level_has(const mn_item *it, int n, const char *label)
     return 0;
 }
 
+/* the item arrays of the small index tests: the [menu] rows plus a few index rows */
+#define TEST_LEVEL_MAX (MN_MAX_ITEMS + 64)
+
+static void every_cache_row_reaches_the_apps_level_past_256(void)
+{
+    /* a big install (the rig has 258 apps plus games): rows late in the file were once dropped */
+    static ix_index x;
+    static char text[400 * 40];
+    mn_item *it;
+    int i, n, len = 0;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    for (i = 0; i < 399; i++)
+        len += snprintf(text + len, sizeof text - len, "app\tApp%03d\tWork:A/App%03d\n", i, i);
+    snprintf(text + len, sizeof text - len, "app\tZed Last\tWork:Z/Last\n");
+    ix_load_text(&km, &x, text);
+    CHECK_INT(x.n, 400);
+    CHECK(ix_level_cap(&x) >= MN_MAX_ITEMS + 400);
+    it = malloc(ix_level_cap(&x) * sizeof *it);
+    n = ix_level(&km, &x, "apps", "", it, ix_level_cap(&x));
+    CHECK_INT(n, 401);                                    /* Tmux plus every index row */
+    CHECK(level_has(it, n, "Zed Last"));
+    free(it);
+    ix_free(&x);
+    CHECK_INT(x.n, 0);
+}
+
 static void the_apps_level_lists_index_apps_after_merging(void)
 {
     static ix_index x;
-    mn_item it[IX_LEVEL_MAX];
+    mn_item it[TEST_LEVEL_MAX];
     int n, base, i, idx = -1;
     CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\napps.upkg = Add-ons | run:upkg\n"));
     ix_load_text(&km, &x, index_cache);
-    base = mn_children(&km, "apps", it, IX_LEVEL_MAX);
-    n = ix_level(&km, &x, "apps", "", it, IX_LEVEL_MAX);
+    base = mn_children(&km, "apps", it, TEST_LEVEL_MAX);
+    n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
     CHECK_INT(base, 2);
     CHECK_INT(n, 5);                                   /* 2 menu rows + Clock + 2 Editors */
     CHECK_STR(it[0].label, "Tmux");                    /* the keymap rows come first */
@@ -1525,12 +1552,12 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
 {
     static ix_index x;
     static char buf[KM_MAX_BIND * 100];
-    mn_item it[IX_LEVEL_MAX];
+    mn_item it[TEST_LEVEL_MAX];
     char path[IX_PATH];
     int n, i, clock = -1, rescan = -1;
     CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
     ix_load_text(&km, &x, index_cache);
-    n = ix_level(&km, &x, "apps", "", it, IX_LEVEL_MAX);
+    n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
     for (i = 0; i < n; i++)
         if (!strcmp(it[i].label, "Clock"))
             clock = i;
@@ -1574,11 +1601,11 @@ static void a_launch_request_for_the_resident_amarchy_carries_the_path_and_refus
 static void a_menu_row_hides_an_index_app_with_the_same_label(void)
 {
     static ix_index x;
-    mn_item it[IX_LEVEL_MAX];
+    mn_item it[TEST_LEVEL_MAX];
     int n, i, tmux = 0;
     CHECK(parse("[menu]\napps.tmux = tmux | run:tmux\n"));
     ix_load_text(&km, &x, index_cache);
-    n = ix_level(&km, &x, "apps", "", it, IX_LEVEL_MAX);
+    n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
     for (i = 0; i < n; i++)
         if (!strcasecmp(it[i].label, "tmux"))
             tmux++;
@@ -1589,15 +1616,15 @@ static void a_menu_row_hides_an_index_app_with_the_same_label(void)
 static void the_games_level_lists_index_games_and_the_root_offers_the_group(void)
 {
     static ix_index x;
-    mn_item it[IX_LEVEL_MAX];
+    mn_item it[TEST_LEVEL_MAX];
     int n;
     CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
     ix_load_text(&km, &x, index_cache);
-    n = ix_level(&km, &x, "games", "", it, IX_LEVEL_MAX);
+    n = ix_level(&km, &x, "games", "", it, TEST_LEVEL_MAX);
     CHECK_INT(n, 1);
     CHECK_STR(it[0].label, "Turrican 2");
     CHECK(MN_IS_INDEX(&it[0]));
-    n = ix_level(&km, &x, "", "", it, IX_LEVEL_MAX);
+    n = ix_level(&km, &x, "", "", it, TEST_LEVEL_MAX);
     CHECK(level_has(it, n, "Games"));
     CHECK(!level_has(it, n, "Turrican 2"));            /* without a filter the root stays short */
 }
@@ -1605,12 +1632,12 @@ static void the_games_level_lists_index_games_and_the_root_offers_the_group(void
 static void a_missing_or_empty_cache_adds_no_index_rows(void)
 {
     static ix_index x;
-    mn_item it[IX_LEVEL_MAX], base[IX_LEVEL_MAX];
+    mn_item it[TEST_LEVEL_MAX], base[TEST_LEVEL_MAX];
     CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
     ix_load_text(&km, &x, "");
-    CHECK_INT(ix_level(&km, &x, "apps", "", it, IX_LEVEL_MAX), mn_children(&km, "apps", base, IX_LEVEL_MAX));
-    CHECK_INT(ix_level(&km, &x, "games", "", it, IX_LEVEL_MAX), 0);
-    CHECK_INT(ix_level(&km, &x, "", "tur", it, IX_LEVEL_MAX), mn_children(&km, "", base, IX_LEVEL_MAX));
+    CHECK_INT(ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX), mn_children(&km, "apps", base, TEST_LEVEL_MAX));
+    CHECK_INT(ix_level(&km, &x, "games", "", it, TEST_LEVEL_MAX), 0);
+    CHECK_INT(ix_level(&km, &x, "", "tur", it, TEST_LEVEL_MAX), mn_children(&km, "", base, TEST_LEVEL_MAX));
     ix_load_file(&km, &x, "/nonexistent/amarchy/apps");
     CHECK_INT(x.n, 0);
     ix_load_text(&km, &x, 0);
@@ -1620,26 +1647,27 @@ static void a_missing_or_empty_cache_adds_no_index_rows(void)
 static void root_search_finds_an_index_game_and_an_index_app(void)
 {
     static ix_index x;
-    mn_item it[IX_LEVEL_MAX];
-    int idx[IX_LEVEL_MAX], n, c;
+    mn_item it[TEST_LEVEL_MAX];
+    int idx[TEST_LEVEL_MAX], n, c;
     CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
     ix_load_text(&km, &x, index_cache);
-    n = ix_level(&km, &x, "", "turr", it, IX_LEVEL_MAX);
-    c = mn_filter(it, n, "turr", idx, IX_LEVEL_MAX);
+    n = ix_level(&km, &x, "", "turr", it, TEST_LEVEL_MAX);
+    c = mn_filter(it, n, "turr", idx, TEST_LEVEL_MAX);
     CHECK_INT(c, 1);
     CHECK_STR(it[idx[0]].label, "Turrican 2");
     CHECK(MN_IS_INDEX(&it[idx[0]]));
-    n = ix_level(&km, &x, "", "clo", it, IX_LEVEL_MAX);
-    c = mn_filter(it, n, "clo", idx, IX_LEVEL_MAX);
+    n = ix_level(&km, &x, "", "clo", it, TEST_LEVEL_MAX);
+    c = mn_filter(it, n, "clo", idx, TEST_LEVEL_MAX);
     CHECK_INT(c, 1);
     CHECK_STR(it[idx[0]].label, "Clock");
-    n = ix_level(&km, &x, "", "zzz", it, IX_LEVEL_MAX);
-    CHECK_INT(mn_filter(it, n, "zzz", idx, IX_LEVEL_MAX), 0);
+    n = ix_level(&km, &x, "", "zzz", it, TEST_LEVEL_MAX);
+    CHECK_INT(mn_filter(it, n, "zzz", idx, TEST_LEVEL_MAX), 0);
 }
 
 static void the_app_index_core_behaves(void)
 {
     an_index_row_has_kind_label_and_path();
+    every_cache_row_reaches_the_apps_level_past_256();
     a_bad_index_row_is_rejected();
     an_index_label_is_the_icon_file_name_without_info();
     the_skip_list_skips_by_whole_path_prefix();

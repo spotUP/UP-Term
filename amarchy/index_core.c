@@ -1,4 +1,5 @@
 /* index_core.c -- see index_core.h. */
+#include <stdlib.h>
 #include <string.h>
 #include "index_core.h"
 #include "menu_core.h"
@@ -153,12 +154,31 @@ int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n)
     return out;
 }
 
+void ix_free(ix_index *x)
+{
+    free(x->rows);
+    x->rows = 0;
+    x->n = x->napps = 0;
+}
+
+int ix_level_cap(const ix_index *x)
+{
+    return MN_MAX_ITEMS + (x ? x->n : 0) + 2;
+}
+
 void ix_load_text(const keymap *k, ix_index *x, const char *text)
 {
-    static ix_row all[IX_MAX_ROWS];
-    int n = 0, i, na = 0, ng;
-    x->n = x->napps = 0;
-    while (text && *text && n < IX_MAX_ROWS) {
+    ix_row *all = 0;
+    const char *t;
+    int cap = 1, n = 0, i, na = 0, ng;
+    ix_free(x);
+    for (t = text; t && *t; t++)                /* a row per line at most */
+        cap += *t == '\n';
+    if (!text || !*text || !(all = malloc(cap * sizeof *all)) || !(x->rows = malloc(cap * sizeof *all))) {
+        free(all);
+        return;
+    }
+    while (*text && n < cap) {
         const char *nl = strchr(text, '\n');
         char line[IX_LABEL + IX_PATH + 16];
         int len = nl ? (int)(nl - text) : (int)strlen(text);
@@ -180,6 +200,7 @@ void ix_load_text(const keymap *k, ix_index *x, const char *text)
             x->rows[x->napps + ng++] = all[i];
     ng = ix_drop_shadowed(k, "games", x->rows + x->napps, ng);
     x->n = x->napps + ng;
+    free(all);
 }
 
 static int add_index(const ix_index *x, int from, int to, mn_item *out, int n, int max)

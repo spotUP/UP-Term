@@ -97,22 +97,23 @@ static void say_refused(void *ctx, const char *label, long rc, const char *answe
 
 static const lf_ui leaf_ui = { ask_value, say_refused, 0 };
 
-static int menu_loop(const char *start)
+/* One level's items, sized by ix_level_cap once the index is loaded (menu_loop) */
+static ix_index ixs;
+static mn_item *it;
+static int *idx, cap;
+static entry *ent;
+
+static int menu_levels(const char *start)
 {
-    static mn_item it[IX_LEVEL_MAX];
-    static ix_index ixs;
-    static int idx[IX_LEVEL_MAX];
     int n, c, i, rc = 0;
     char node[KM_ID * 2], filter[KM_LABEL], prompt[96];
-    static entry ent[IX_LEVEL_MAX];
 
     strncpy(node, start, sizeof node - 1);
     node[sizeof node - 1] = 0;
     filter[0] = 0;
-    ix_load_file(&km, &ixs, IX_CACHE_PATH);
     for (;;) {
-        n = ix_level(&km, &ixs, node, filter, it, IX_LEVEL_MAX);
-        c = mn_filter(it, n, filter, idx, IX_LEVEL_MAX);
+        n = ix_level(&km, &ixs, node, filter, it, cap);
+        c = mn_filter(it, n, filter, idx, cap);
         for (i = 0; i < c; i++) {
             ent[i].tag = it[idx[i]].label;
             ent[i].item = MN_IS_GROUP(&it[idx[i]]) ? ">" : "";
@@ -171,6 +172,25 @@ static int menu_loop(const char *start)
         }
         return lf_run(&km.menu[it[i].row], &leaf_ui);
     }
+}
+
+static int menu_loop(const char *start)
+{
+    int rc = 20;
+    ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    cap = ix_level_cap(&ixs);
+    it = malloc(cap * sizeof *it);
+    idx = malloc(cap * sizeof *idx);
+    ent = malloc(cap * sizeof *ent);
+    if (it && idx && ent)
+        rc = menu_levels(start);
+    else
+        ui_message("%s", "amarchy-menu: out of memory");
+    free(it);
+    free(idx);
+    free(ent);
+    ix_free(&ixs);
+    return rc;
 }
 
 static int viewer(void)

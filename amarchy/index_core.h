@@ -51,19 +51,24 @@ void ix_sort_dedupe(ix_row *rows, int n);
 int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n);
 
 /* The cache as the menu shows it (plan X3): apps first, then games, each sorted with volume suffixes,
- * the rows a [menu] entry shadows already dropped. */
-#define IX_MAX_ROWS 256
-#define IX_LEVEL_MAX (MN_MAX_ITEMS + IX_MAX_ROWS)   /* the most items a level can hold */
+ * the rows a [menu] entry shadows already dropped. Every row of the cache is kept, however many: the
+ * rows are on the heap. An ix_index starts zeroed (static, or {0}); ix_free releases its rows. */
 typedef struct ix_index {
     int    n, napps;            /* rows[0..napps) are apps, rows[napps..n) are games */
-    ix_row rows[IX_MAX_ROWS];
+    ix_row *rows;
 } ix_index;
 
-/* The cache text (rows `kind<TAB>label<TAB>path`, bad rows skipped) into x. Empty or NULL text gives
- * no rows. The [menu] rows of the "apps" and "games" nodes in k win over a row with their label. */
+/* The cache text (rows `kind<TAB>label<TAB>path`, bad rows skipped) into x, replacing the rows it
+ * held. Empty or NULL text, or no memory, gives no rows. The [menu] rows of the "apps" and "games"
+ * nodes in k win over a row with their label. */
 void ix_load_text(const keymap *k, ix_index *x, const char *text);
 /* The cache file at path, read whole and given to ix_load_text; a missing file gives no rows. */
 void ix_load_file(const keymap *k, ix_index *x, const char *path);
+void ix_free(ix_index *x);
+
+/* The most items one level can hold with x loaded: the [menu] rows, every index row, and the Apps and
+ * Games groups the root may get. The size of the item and filter arrays given to ix_level. */
+int ix_level_cap(const ix_index *x);
 
 /* The entries of one level, as mn_children, extended with the index: the "apps" node lists the app
  * rows after the [menu] ones, the "games" node lists the game rows, and the root gets an Apps or

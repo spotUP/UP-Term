@@ -22,6 +22,7 @@
 #include <proto/dos.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <stdlib.h>
 #include <string.h>
 #include "menu_core.h"
 #include "index_core.h"
@@ -79,8 +80,8 @@ typedef struct gui {
     long draws;
     /* list */
     char node[KM_ID * 2], filter[KM_LABEL];
-    mn_item it[IX_LEVEL_MAX];
-    int idx[IX_LEVEL_MAX], count;
+    mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
+    int *idx, cap, count;
     int sel, top;
     char ixlabel[KM_LABEL];
     char ixpath[IX_PATH];        /* the index row to launch (its tool or project), else empty */
@@ -285,8 +286,8 @@ static void relayout(gui *g, int n)
 
 static void list_rebuild(gui *g)
 {
-    int n = ix_level(&km, &ixs, g->node, g->filter, g->it, IX_LEVEL_MAX);
-    g->count = mn_filter(g->it, n, g->filter, g->idx, IX_LEVEL_MAX);
+    int n = ix_level(&km, &ixs, g->node, g->filter, g->it, g->cap);
+    g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
     g->sel = g->top = 0;
     relayout(g, g->count);
 }
@@ -775,6 +776,14 @@ int main(int argc, char **argv)
     node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
     keymap_load(&km, km_default_text);
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    g->cap = ix_level_cap(&ixs);
+    g->it = malloc(g->cap * sizeof *g->it);
+    g->idx = malloc(g->cap * sizeof *g->idx);
+    if (!g->it || !g->idx) {
+        PutStr((STRPTR) "amarchy-gui: out of memory\n");
+        rc = 20;
+        goto done;
+    }
 
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR) "intuition.library", 39);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR) "graphics.library", 39);
@@ -834,8 +843,8 @@ int main(int argc, char **argv)
         g->icon_h = mi_count() > 0 ? mi_size(&m) : 0;
         g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
         g->w = mg_width(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms);
-        n = ix_level(&km, &ixs, g->node, g->filter, g->it, IX_LEVEL_MAX);
-        g->count = mn_filter(g->it, n, g->filter, g->idx, IX_LEVEL_MAX);
+        n = ix_level(&km, &ixs, g->node, g->filter, g->it, g->cap);
+        g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
     }
     g->win = window_open(g);
@@ -866,6 +875,9 @@ int main(int argc, char **argv)
     }
 done:
     cleanup(g);
+    free(g->it);
+    free(g->idx);
+    ix_free(&ixs);
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase)
