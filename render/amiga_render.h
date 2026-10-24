@@ -253,6 +253,8 @@ typedef struct vr_render {
     /* W-T7: a screen of 16 pens or fewer, and its dithers (0 until needed) */
     UBYTE few;
     struct vr_dither *dith;
+    /* the screen's bitplanes: a pen number past them draws as its low bits */
+    UBYTE depth;
 } vr_render;
 
 /* Default colours from RGB (0xRRGGBB; VR_KEEP leaves the screen's text /

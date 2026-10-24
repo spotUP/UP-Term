@@ -97,6 +97,7 @@ ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp,
 #define vr_cgx_fill(lb, rp, x, y, w, h, c) (vr_gc[1]++, vr_cgx_fill(lb, rp, x, y, w, h, c))
 #endif
 #include "pen_match.h"
+#include "glyph_pen.h"
 #include "pens_amiga.h"
 #include "ttf.h"
 
@@ -406,7 +407,7 @@ static ULONG pen_for(vr_render *r, vt_color c, int is_bg)
     if (c == VT_COLOR_DEFAULT_BG)
         return r->pen_default_bg;
     if (vt_personality(r->t) == VT_AMIGA && !(c & VT_COLOR_RGB))
-        return (UBYTE)(c & 0xFF); /* amiga colours are screen pens; a direct colour (SGR 38;2 / 48;2) is a colour */
+        return vr_screen_pen(c & 0xFF, r->depth); /* amiga colours are screen pens; a direct colour (SGR 38;2 / 48;2) is a colour */
     if (c & VT_COLOR_RGB) {
         if (r->truecolor)
             return truecolor_ink(r, VT_RGB_OF(c));
@@ -546,7 +547,8 @@ void vr_init(vr_render *r, struct Window *win, struct TextFont *font, vt_term *t
                         GetBitMapAttr(win->RPort->BitMap, BMA_DEPTH) <= 8);
     /* 16 pens or fewer: palette colours no pen shows closely are dithered
      * (W-T7); 256-pen and true-colour screens never */
-    r->few = (UBYTE)(win->WScreen && GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) <= 4);
+    r->depth = (UBYTE)(win->WScreen ? GetBitMapAttr(win->WScreen->RastPort.BitMap, BMA_DEPTH) : 8);
+    r->few = (UBYTE)(win->WScreen && r->depth <= 4);
     r->dith = 0;
     r->dither_on = 1;
     r->aa_on = 1;
@@ -2183,16 +2185,15 @@ static void cell_style(vr_render *r, const vt_cell *c, int selected_cell, vr_sty
         vr_cs_split[2] += t3.ev_lo - t2.ev_lo;
     }
 #endif
-    if (st->fg == st->bg && f != b)
-        /* a screen with few pens (a 4-colour Workbench) gave the text the
-         * background's pen: the text went invisible (rig 3.2, the line
-         * editor's green command word). The plain text pen then, or the
-         * background's opposite. Conceal and the blink's off phase hide
-         * text on purpose below. Only the glyphs: an area of the colour
-         * (a block's, fgf) is that colour's pen -- the default text pen
-         * there drew a half block of two neighbouring colours half in it,
-         * a quarter of UPDemo's plasma in the Workbench's grey (W-T7). */
-        st->fg = st->bg == r->pen_default_fg ? r->pen_default_bg : r->pen_default_fg;
+    /* a screen with few pens (a 4-colour Workbench) gave the text the
+     * background's pen: the text went invisible (rig 3.2, the line
+     * editor's green command word). The plain text pen then, or the
+     * background's opposite. Conceal and the blink's off phase hide
+     * text on purpose below. Only the glyphs: an area of the colour
+     * (a block's, fgf) is that colour's pen -- the default text pen
+     * there drew a half block of two neighbouring colours half in it,
+     * a quarter of UPDemo's plasma in the Workbench's grey (W-T7). */
+    st->fg = vr_glyph_pen(st->fg, st->bg, f != b, r->pen_default_fg, r->pen_default_bg);
     if (selected_cell) {
         /* the profile's selection colours, else the swapped cell */
         if (r->sel_ink[0] != VR_KEEP)

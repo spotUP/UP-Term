@@ -1766,6 +1766,30 @@ static void a_kitty_image_draws_its_pixels_on_the_canvas(void)
     close_term();
 }
 
+/* "sometimes characters are not visible, they draw black on black, maybe in low color screenmodes only?" (owner
+ * 2026-10-24): a CON: window's text in pen 4 (SGR 34) on a 4-colour screen draws as pen 0, the background's pen.
+ * Every pixel of the cell came out pen 0; the glyph must show in another pen. */
+static int cell_pixels_not_in_pen(int col, int row, int pen)
+{
+    int x, y, n = 0;
+    for (y = row * CH; y < row * CH + CH; y++)
+        for (x = col * CW; x < col * CW + CW; x++)
+            n += gf_pixel(x, y) != pen;
+    return n;
+}
+
+static void amiga_text_pen_past_a_4_colour_screen_is_not_drawn_in_the_background(void)
+{
+    planar_depth = 2;
+    planar_left = 0;
+    open_term_in(0, VT_AMIGA);
+    pass("\x1b[34mH\x1b[35mH");
+    CHECK(cell_pixels_not_in_pen(0, 0, 0) > 0); /* pen 4 is pen 0 here: drawn in the text pen instead */
+    CHECK(cell_pixels_not_in_pen(1, 0, 0) > 0); /* pen 5 is pen 1, the text pen: drawn as it is */
+    close_term();
+    planar_depth = 0;
+}
+
 int main(void)
 {
     pen_matches_on_a_prepared_palette_are_the_bare_palettes_picks();
@@ -1777,6 +1801,7 @@ int main(void)
     the_default_cursor_is_the_cell_with_its_colours_swapped_not_its_pens_complemented();
     direct_colour_background_in_the_amiga_personality_is_drawn_in_its_colour();
     con_window_draws_pen_zero_with_its_own_ground();
+    amiga_text_pen_past_a_4_colour_screen_is_not_drawn_in_the_background();
     direct_colours_on_a_true_colour_screen_are_filled_by_fillpixelarray();
     direct_colours_are_exact_on_a_true_colour_screen_whose_colour_map_is_used_up();
     neighbouring_half_blocks_of_one_colour_are_one_fill_with_the_same_pixels();
