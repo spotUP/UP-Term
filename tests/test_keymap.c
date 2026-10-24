@@ -12,6 +12,7 @@
 #include "../amarchy/menu_geom.h"
 #include "../amarchy/leaf.h"
 #include "../amarchy/menu_icon.h"
+#include "../amarchy/icon_core.h"
 #include "../amarchy/index_core.h"
 #include "../render/emoji.h"
 #include "../engine/vtengine.h"
@@ -1298,6 +1299,8 @@ static void menu_theme_roles_map_the_palette(void);
 
 static void the_app_index_core_behaves(void);
 
+static void app_icons_are_cached_per_path_bounded_and_fitted(void);
+
 void suite_keymap(void)
 {
     menu_theme_roles_map_the_palette();
@@ -1339,6 +1342,7 @@ void suite_keymap(void)
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
     the_app_index_core_behaves();
+    app_icons_are_cached_per_path_bounded_and_fitted();
 }
 
 /* ---- menu_theme: the drawn menu's colour roles ---- */
@@ -1680,4 +1684,60 @@ static void the_app_index_core_behaves(void)
     the_games_level_lists_index_games_and_the_root_offers_the_group();
     a_missing_or_empty_cache_adds_no_index_rows();
     root_search_finds_an_index_game_and_an_index_app();
+}
+
+/* AM-IDX-ICON I1: the icon cache's slots and the fit of an image into the icon column. */
+static void app_icons_are_cached_per_path_bounded_and_fitted(void)
+{
+    static ic_cache c;
+    char p[IX_PATH + 1];
+    int i, a, b, first, dw, dh, dx, dy;
+    memset(&c, 0, sizeof c);
+    CHECK_INT(ic_find(&c, "Work:A"), -1);
+    a = ic_claim(&c, "Work:A");
+    CHECK(a >= 0);
+    CHECK_INT(ic_find(&c, "Work:A"), -1);              /* claimed, not yet loaded: not a hit */
+    ic_set(&c, a, IC_READY);
+    CHECK_INT(ic_find(&c, "Work:A"), a);
+    b = ic_claim(&c, "Work:B");
+    ic_set(&c, b, IC_FAILED);
+    CHECK(b != a);
+    CHECK_INT(ic_find(&c, "Work:B"), b);               /* a failure is remembered: not tried again */
+    CHECK_INT(c.state[b], IC_FAILED);
+    /* the cache is bounded: filling it past IC_SLOTS evicts the path used longest ago */
+    for (i = 0; i < IC_SLOTS - 2; i++) {
+        strcpy(p, "Work:F");
+        p[6] = (char)('a' + i);
+        p[7] = 0;
+        ic_set(&c, ic_claim(&c, p), IC_READY);
+    }
+    CHECK_INT(ic_find(&c, "Work:A"), a);               /* touched: now newer than Work:B */
+    first = ic_claim(&c, "Work:New");
+    CHECK_INT(first, b);                               /* Work:B was the oldest */
+    ic_set(&c, first, IC_READY);
+    CHECK_INT(ic_find(&c, "Work:B"), -1);
+    CHECK_INT(ic_find(&c, "Work:A"), a);
+    for (i = 0; i < 4 * IC_SLOTS; i++) {
+        strcpy(p, "Work:G");
+        p[6] = (char)('a' + i % 26);
+        p[7] = (char)('a' + i / 26);
+        p[8] = 0;
+        CHECK(ic_claim(&c, p) < IC_SLOTS);
+    }
+    memset(p, 'x', sizeof p);
+    p[IX_PATH] = 0;
+    CHECK_INT(ic_claim(&c, p), -1);
+    /* ic_fit: aspect kept, centred, up or down */
+    CHECK_INT(ic_fit(46, 22, 32, 16, &dw, &dh, &dx, &dy), 1);
+    CHECK_INT(dw, 32);
+    CHECK_INT(dh, 15);                                 /* 22 * 32 / 46 */
+    CHECK_INT(dx, 0);
+    CHECK_INT(dy, 0);
+    CHECK_INT(ic_fit(30, 30, 64, 32, &dw, &dh, &dx, &dy), 1);
+    CHECK_INT(dh, 32);
+    CHECK_INT(dw, 32);                                 /* square image in a wide box: centred sideways */
+    CHECK_INT(dx, 16);
+    CHECK_INT(ic_fit(100, 1, 16, 16, &dw, &dh, &dx, &dy), 1);
+    CHECK_INT(dh, 1);                                  /* never 0 */
+    CHECK_INT(ic_fit(0, 10, 16, 16, &dw, &dh, &dx, &dy), 0);
 }

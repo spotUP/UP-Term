@@ -31,6 +31,8 @@
 #include "leaf.h"
 #include "menu_icon.h"
 #include "menu_font.h"
+#include "icon_core.h"
+#include "icon_gfx.h"
 #include "../config/keymap_load.h"
 #include "../config/upconf.h"
 #include "../handler/frontscr.h"
@@ -182,7 +184,8 @@ static void draw_header(gui *g)
         q->head_w - 2 * q->m.row_pad);
 }
 
-/* The icon of the list item `it` at node: its coverage, icon_w x icon_h, at (x, y) in the row of height
+/* The icon of the list item `it` at node (draw_row calls it for the shown rows only, so icons load only
+ * for visible rows): its coverage, icon_w x icon_h, at (x, y) in the row of height
  * boxh. Strong coverage in the row's colour, a weaker one in the dim pen; the rest is the row's box. */
 static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int boxh)
 {
@@ -190,7 +193,14 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
     char id[KM_ID * 2 + 2];
     const vt_u8 *glyph;
     int s = g->icon_w, sh = g->icon_h, px, py, x0;
-    mn_child_node(g->node, it, id, sizeof id);
+    if (MN_IS_INDEX(it)) {
+        /* an app or game of the index: its own .info image; the generic glyph when that cannot be had */
+        char path[IX_PATH];
+        if (ix_launch_path(&ixs, it, path, sizeof path) && ig_draw(g->rp, path, x, y + (boxh - sh) / 2, s, sh))
+            return;
+        strcpy(id, "apps");
+    } else
+        mn_child_node(g->node, it, id, sizeof id);
     glyph = mi_find(id);
     if (!glyph || !mi_render(glyph, s, sh, cov))
         return;
@@ -735,6 +745,7 @@ static void gui_refused(void *ctx, const char *label, long rc, const char *answe
 
 static void cleanup(gui *g)
 {
+    ig_close();
     if (g->win)
         CloseWindow(g->win);
     g->win = 0;
@@ -807,6 +818,7 @@ int main(int argc, char **argv)
     g->ms.w = g->scr->Width;
     g->ms.h = g->scr->Height;
     pens_get(g);
+    ig_open(g->scr);          /* no icon.library V44: the index rows keep the generic glyph */
 
     /* the font's text lengths before the window exists */
     InitRastPort(&tmp);
