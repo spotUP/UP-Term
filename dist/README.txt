@@ -84,7 +84,8 @@ PACKAGES (upkg)
 
 WHERE IT IS INSTALLED
   UP-Term's own files (bin with the Unix commands and sh, unifont, emoji,
-  VERSIONS, and the add-on archives' files: Python3, nvim, pkg) live in one drawer: SYS:UP-Term unless you
+  VERSIONS, and the add-on archives' files: Python3, nvim, pkg) live in one drawer: UP-Term on the local disk with the most free
+  room (SYS: when none qualifies; an earlier install's drawer wins), unless you
   pick another in the first question of Install (DEST <drawer> from a
   Shell; the drawer's parent must exist). Everything finds it through the
   assign UP-Term:, which Install makes at once and at every boot (a block
