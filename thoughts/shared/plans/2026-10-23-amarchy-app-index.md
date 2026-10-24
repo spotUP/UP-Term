@@ -63,5 +63,5 @@ Done = X1-X11 ticked with commits; make test, make dist and make dist-check pass
 
 - [x] I1 (b7ac9164) Icon load (GetDiskObject or GetIconTagList with screen remap) plus scale to row height, cached per path, loaded for visible rows only.
 - [x] I2 (b7ac9164, d913b0ef sentinel; host only, rig proof is I3) Drawn menu Apps and Games levels draw the icon; fallback glyph on failure.
-- [ ] I3 Rig case: the fake WBTOOL app's icon appears in its row (pixel check), a row without an icon shows the fallback; revert-check fails.
+- [x] I3 (2a86726b mask fix, 5285f4ad rig case app_icons; 10/10 on OS 3.2 rig 5, revert of ig_draw fails it; app_index 19/19 twice on default rig 3) Rig case: the fake WBTOOL app's icon appears in its row (pixel check), a row without an icon shows the fallback; revert-check fails.
 - [ ] I4 Owner A1200 check: real app icons in Apps, menu open time noted.
