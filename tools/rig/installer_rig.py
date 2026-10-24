@@ -6,7 +6,7 @@ on the rig's screen; this script reads its pages through wasabi's UITREE
 and clicks them, then checks what landed and runs Uninstall.
 
   default   AVERAGE (the icon's MINUSER/DEFUSER), every page answered with
-            its default: the drawer SYS:UP-Term
+            its default: the drawer UP-Term on the local disk with the most free room (SYS: when none)
   dest      AVERAGE, the drawer page given VTC:KitTest/UP-Term (typed into the
             askdir string gadget)
   space     AVERAGE on a System: partition made too full for the default choices (K7: a filler file leaves
@@ -87,6 +87,9 @@ FULL_DRAWER = "nvim"            # the add-on staged as an unpacked drawer; the r
 CASES["fullsuite"] = ("AVERAGE", None)
 # F1: the fresh kit, every box on every page ticked (only drawer and install mode stay default), a reboot, Amarchy up
 CASES["fresh-all"] = ("AVERAGE", None)
+# BIGVOL: the drawer page's default is UP-Term on the local disk with the most free room (UPBigVol), not SYS:
+CASES["bigvol"] = ("AVERAGE", None)
+BIGVOL_EXPECT = "VTCX:UP-Term"   # the rig: DH0 System 64 MB (SYS:), DH1 Rushhours 519 MB, VTCX and BOOTX (uaefs directories) 2 GB
 ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page: Rushhours, about 1 GB free
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs
@@ -698,6 +701,43 @@ def fill_sys():
     print('installer_rig space: SYS: has %d KB free after the filler' % (sys_free_bytes() // 1024))
 
 
+def run_bigvol():
+    """BIGVOL, through the real Installer: click Proceed to the drawer page (gadgets 89 and 92), read the string
+    gadget 92 and Abort. PASS: it shows BIGVOL_EXPECT, the volume UPBigVol LIST marks with `*`, not SYS:UP-Term
+    (what the Installer offered before this case existed), and that volume has more free room than SYS:."""
+    ck = Checks()
+    ir.prepare(None)
+    inst = find_installer()
+    if not inst:
+        return False, 'no Installer on the rig'
+    listing = ir.run('VTC:distkit/Files/UPBigVol LIST', 60)[1]
+    best = [l for l in listing.splitlines() if l.startswith('* ')]
+    ck(len(best) == 1 and best[0][2:].startswith(BIGVOL_EXPECT.split(':')[0] + ':'), 'UPBigVol LIST marks %s' % BIGVOL_EXPECT, listing)
+    ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER AVERAGE DEFUSER AVERAGE NOLOG' % inst, 30)
+    time.sleep(5)
+    got, t0 = None, time.time()
+    while time.time() - t0 < 300 and got is None:
+        gads = installer_page(ami.req(0x0D).decode('latin-1'))[1]
+        if 89 in gads and 92 in gads:
+            got = gadget_text(92)
+        elif 1 in gads and 90 in gads:   # the install-mode page: Install for Real (id 1)
+            click(gads[1][0])
+            time.sleep(3)
+        elif 90 in gads:
+            click(gads[90][0])
+            time.sleep(3)
+        else:
+            time.sleep(3)
+    ck(got == BIGVOL_EXPECT, 'the askdir string (gadget 92) shows %s' % BIGVOL_EXPECT, 'shows [%s]' % got)
+    ck(got != 'SYS:UP-Term', 'the default is not SYS:UP-Term')
+    gads = installer_page(ami.req(0x0D).decode('latin-1'))[1]
+    if 91 in gads:
+        click(gads[91][0])   # Abort Install: nothing was copied
+        time.sleep(5)
+    print('installer_rig bigvol: askdir default [%s]; UPBigVol LIST:\n%s' % (got, listing))
+    return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
+
+
 def run_case(case):
     if case == "space":
         try:
@@ -713,6 +753,8 @@ def run_case(case):
         return run_fullsuite()
     if case == "kingcon":
         return run_kingcon()
+    if case == "bigvol":
+        return run_bigvol()
     return run_base_case(case)
 
 
