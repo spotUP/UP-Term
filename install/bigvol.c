@@ -86,7 +86,7 @@ int main(void)
     best = bv_choose(v, n);
     if (list)
         for (i = 0; i < n; i++)
-            Printf((STRPTR) "%s%s: type %08lx %s %ld KB free%s\n", i == best ? "* " : "  ", v[i].name, v[i].dostype, v[i].writable ? "rw" : "ro", v[i].free_kb, v[i].is_sys ? " (SYS:)" : "");
+            Printf((STRPTR) "%s%s: type %08lx %s %lu KB free%s\n", i == best ? "* " : "  ", v[i].name, v[i].dostype, v[i].writable ? "rw" : "ro", v[i].free_kb, v[i].is_sys ? " (SYS:)" : "");
     if (best >= 0) {
         strcpy(out, v[best].name);
         strcat(out, ":UP-Term");

@@ -162,13 +162,14 @@
 ; program reaches the files through that name. An earlier install's drawer is
 ; the default. With none, the default is the local disk with the most free room
 ; (Files/UPBigVol, install/bigvol.c, sets ENV:UPTBIGVOL to "<Volume>:UP-Term";
-; getdiskspace overflows past 2 GB, the helper counts in 64 bits); SYS:UP-Term
+; getdiskspace overflows past 2 GB, the helper counts in KiB, clamped at 4 TiB); SYS:UP-Term
 ; when no local, writable disk with an Amiga file system is mounted.
 
 (set #old (getassign "UP-Term" "a"))
 (set #big "")
 (if (not #old)
     (
+        (run "Delete >NIL: ENV:UPTBIGVOL QUIET")
         (run (cat "\"" (tackon #files "UPBigVol") "\" >NIL:") (safe))
         (set #big (getenv "UPTBIGVOL"))
         (if (= #big 0) (set #big ""))))

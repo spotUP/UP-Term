@@ -27,7 +27,7 @@ void suite_bigvol(void)
     CHECK(bv_dostype_ok(SFS) && bv_dostype_ok(0x53465302UL) && !bv_dostype_ok(0x53465301UL));
     CHECK(bv_dostype_ok(0x50465301UL) && bv_dostype_ok(PFS) && bv_dostype_ok(0x50445302UL) && !bv_dostype_ok(0x50465300UL));
     CHECK(!bv_dostype_ok(FAT) && !bv_dostype_ok(0x43444653UL) && !bv_dostype_ok(0x45584641UL) && !bv_dostype_ok(0));
-    /* free room in KiB, 64-bit safe: 3 GB on 512-byte blocks, 6 GB on 4096-byte blocks, no wrap at 4 GiB */
+    /* free room in KiB, clamped at 0xFFFFFFFF KiB (4 TiB): 3 GB on 512-byte blocks, 6 GB on 4096-byte blocks, no wrap at 4 GiB */
     CHECK(bv_free_kb(6291456UL, 0, 512) == 3145728UL);
     CHECK(bv_free_kb(2000000UL, 500000UL, 4096) == 6000000UL); /* 5.7 GiB: more than 32 bits of bytes */
     CHECK(bv_free_kb(100, 100, 512) == 0 && bv_free_kb(100, 200, 512) == 0 && bv_free_kb(100, 0, 0) == 0);
