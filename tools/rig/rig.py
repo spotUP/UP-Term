@@ -463,6 +463,13 @@ def unimplemented_lines():
     """The 060 runs the instructions it lacks in the emulator (no 68060.library needed), the FPU's too when there is one."""
     return (["uae_cpu_no_unimplemented = false"] + ([] if NOFPU else ["uae_fpu_no_unimplemented = false"])) if M060 else []
 
+def title_line():
+    """The window title names the rig and its machine: with several rigs open the
+    owner saw only identical FS-UAE windows (2026-10-24) and could not tell them apart."""
+    machine = ("A1200 stock" if STOCK else "A500" if A500 else
+               "060 max" if MAX else "060" if M060 else "68020")
+    return "title = vtcon rig %d (%s%s)" % (paths.RIG_N, machine, ", OS %s" % OS if OS else ", OS 3.2" if OS32 else "")
+
 # The Mac keys the rig's fs-uae maps (setup writes them into the config).
 HOST_KEYS = [
     # both Cmd keys are Right-Amiga, so Cmd+C/Cmd+V copy and paste from either
@@ -584,7 +591,7 @@ def setup():
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
         "clipboard_sharing = 1",
-    ] + HOST_KEYS + [
+    ] + HOST_KEYS + [title_line(),
         "window_width = 1280", "window_height = 1024",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,

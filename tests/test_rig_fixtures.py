@@ -344,6 +344,18 @@ class RigMachine(unittest.TestCase):
                 % (['start'] + list(flags), str(pathlib.Path(ir.__file__).parent)))
         return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True).stdout.split('\n')[:-1]
 
+    def title(self, rig, *flags):
+        import os, subprocess, sys
+        code = ("import sys; sys.argv = ['rig.py'] + %r; sys.path.insert(0, %r); import rig; print(rig.title_line())"
+                % (['start'] + list(flags), str(pathlib.Path(ir.__file__).parent)))
+        env = dict(os.environ, UPTERM_RIG=str(rig))
+        return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True, env=env).stdout.strip()
+
+    def test_each_rig_window_names_its_rig(self):
+        """With several rigs open the owner saw only identical FS-UAE windows (2026-10-24)."""
+        self.assertEqual(self.title(6), 'title = vtcon rig 6 (060 max)')
+        self.assertEqual(self.title(3, '--a1200'), 'title = vtcon rig 3 (68020)')
+
     def test_nofpu_drops_the_fpu_on_every_machine(self):
         self.assertEqual(self.config(), ['cpu = 68060-NOMMU', 'fpu = 68060',
                                          'uae_cpu_no_unimplemented = false', 'uae_fpu_no_unimplemented = false'])
