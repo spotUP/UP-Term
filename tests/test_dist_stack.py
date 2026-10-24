@@ -19,7 +19,7 @@ MOUNTED = {'vtcon-handler', 'pty-handler', 'ixpipe-handler', 'up-console.device'
 # audit sizes each from a measured run (wasabi ps headroom) and removes it here;
 # the set may only shrink.
 AUDIT_PENDING = {
-    'Amarchy', 'amarchy-index', 'hl', 'mdv', 'ps', 'top', 'Reboot', 'rz', 'sz',
+    'Amarchy', 'hl', 'mdv', 'ps', 'top', 'Reboot', 'rz', 'sz',
     'UP-Term Prefs', 'UPConsole', 'UPDemo', 'upicon', 'upsame', 'uptelnet',
     'UPTerm', 'upupdate', 'wasabikey',
 }

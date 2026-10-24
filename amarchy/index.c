@@ -20,6 +20,14 @@
 
 static const char ver[] = "$VER: amarchy-index 1.0 (23.10.2026) (UP-Term)";
 
+/* vbcc's startup (vc.lib) reads ___stack and runs main on a stack of this
+ * size, whatever stack the Shell, script or menu gives it; the cookie says the
+ * same to AmigaOS 3.2 and to vsh (RULES.md rule 6). A full scan measured under
+ * 1700 bytes on icon.library 40.1 and 47.5; the rest is room for other icon
+ * libraries' GetDiskObject. */
+long __stack = 16384;
+const char amarchy_index_stack_cookie[] = "$STACK: 16384";
+
 #define IX_DEPTH    6
 #define IX_MAXROWS  3000
 #define IX_MAXVOLS  16
