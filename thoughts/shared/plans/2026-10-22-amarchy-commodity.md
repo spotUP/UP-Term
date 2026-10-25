@@ -317,8 +317,8 @@ Done: `make dist dist-check` green; install on a fresh rig kit gives the commodi
 - [x] B1 handler match  [x] B2 dispatch  [x] B3 generated menu keys  [x] B4 Clear screen move  [x] B5 rig table (rig 5, 2026-10-25: 11 of 13, then 13 of 13 after keymap_rig fd3d2eec, see below)  [x] B6 R1 terminal (rig 5 r3_terminal)
 - [x] C1 broker  [x] C2 hotkeys  [x] C3 actions  [x] C4 semaphore  [x] C5 ARexx  [x] C6 (rig 5, 2026-10-25) R1 commodity  [x] C7 (rig 5, 2026-10-25) R3
   (C1-C5 host side built: make amiga and make test ONLY=keymap pass; tools/rig/amarchy_rig.py written, NOT RUN. Unverified on Amiga: CxFilter strings, DivertCxMsg pass-through, CxCustom signatures.)
-- [ ] D1 timing  [ ] D2 filter field  [ ] D3 tree  [ ] D4 viewer  [ ] D5 library swap
-- [x] E1 (rig 5, 2026-10-25) clash rig  [ ] F1 docs and packaging
+- [x] D1 timing (commit fc9cc538)  [x] D2 filter field (commits 511711c5, b82c01ae rig)  [x] D3 tree (commit 511711c5)  [x] D4 viewer (commits 511711c5 text, fc419f5d drawn)  [x] D5 library swap (commit 511711c5 links libupkgui in-process, no upkg-ui stopgap left in amarchy/; 11293773 rebuilds on libupkgui.a)
+- [x] E1 (rig 5, 2026-10-25) clash rig  [x] F1 docs and packaging (commits c40350b9 README/man/tutorial/kit/installer rows, 50d18346 drawn menu and menu-style docs; dist/parts.txt lists Amarchy, amarchy-menu, amarchy-gui, amarchy-index)
 
 ### Rig run 2026-10-25 (rig 5)
 Handler drift fixed first (rig.py install + reboot). Logs: scratchpad commodity_rig5_{meta_alt,keymap,amarchy,clash}.log.
