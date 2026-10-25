@@ -108,6 +108,10 @@ void le_init(le_line *le, vt_term *t, void (*out)(void *, const unsigned char *,
 /* The history and undo blocks back (le_init starts without any). Safe on a
  * line le_init made or on an all-zero one; le_init may follow. */
 void le_free(le_line *le);
+/* The terminal went with its window: nothing reads it until le_init binds
+ * the next one (a window opening fires le_resized before that). The
+ * history stays. */
+void le_unbind(le_line *le);
 /* One key: `key` as vt_encode_key takes it, `mods` VT_MOD_*, `bytes` what
  * the key encodes to (a character's bytes in the terminal's charset).
  * Returns 1 when Return completed the line: le->buf[0..le->len) then holds

@@ -773,6 +773,13 @@ void le_free(le_line *le)
     le->hist_n = le->hist_pos = le->undo_n = 0;
 }
 
+void le_unbind(le_line *le)
+{
+    le->t = 0;
+    le->started = 0;
+    le->shown = 0;
+}
+
 void le_reset(le_line *le)
 {
     le_ghost_clear(le);
@@ -794,10 +801,11 @@ void le_reset(le_line *le)
 
 void le_resized(le_line *le)
 {
-    int x, y, cols = vt_cols(le->t);
+    int x, y, cols;
     long at, row;
-    if (!le->started)
-        return;
+    if (!le->t || !le->started)
+        return; /* no line on the screen, or no terminal (le_unbind, before le_init) */
+    cols = vt_cols(le->t);
     vt_cursor(le->t, &x, &y);
     /* the cursor stands before byte pos: the line starts that many cells
      * earlier, counted in rows of the new width */
