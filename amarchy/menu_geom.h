@@ -83,10 +83,13 @@ int mg_row_y(const mg_geom *g, int i);
 int mg_hit(const mg_geom *g, int top, int mx, int my);
 
 /* 1 when a blit of the h display lines from top may start with the beam on line beam: the blitter copies top
- * down, `blit` lines of beam time for the box, a frame is `frame` lines. The beam is faster than a slow blit
- * (AGA, 8 planes: a 30-line row takes about 150) and must not reach the box while it is half copied, or that
- * frame shows the new top over the old bottom. A blit faster than the beam, or one with no such start in a
- * frame, may start at once. */
+ * down, `blit` lines of beam time for the box (0: not measured, planned as half a frame), a frame is `frame`
+ * lines. The beam must not show a box line while the copy runs, or that frame shows part new, part old (the
+ * white lines of 2026-10-25). The blitter's speed changes along the frame (the display's plane fetch slows it,
+ * the vertical blank does not), so a start where the beam would only just miss the copy's end still tears:
+ * a copy slower than the beam must be done before the beam is back on the box's top (it may start with the
+ * beam in the box, behind it). A faster one starts with the beam above or below the box and stays ahead. A
+ * copy no start can keep clear starts at once. */
 int mg_blit_safe(int beam, int top, int h, int frame, int blit);
 
 /* The blit rate the next start is planned with, from the last estimate and the rate a copy just took (both
@@ -95,5 +98,18 @@ int mg_blit_safe(int beam, int top, int h, int frame, int blit);
  * (the A1200: 13 of 30 rows late, white lines in the moving bar): a slower copy raises the estimate at once,
  * a faster one lowers it by a sixteenth of the difference. */
 long mg_blit_rate(long est, long took);
+
+/* The rates a menu's copies are planned with, kept apart for a box of one row or less and a taller one: a
+ * copy's time is not in proportion to its pixels (the full window at the menu's open took 308 lines, a row
+ * 150: per pixel three times as slow), so the open's rate planned the first row for 43 lines and the beam
+ * crossed it. Zeroed: nothing measured. */
+typedef struct mg_blit_plan {
+    long rate[2];
+} mg_blit_plan;
+
+/* The beam lines a w x h copy is planned to take, 0 when its kind (row_h or less, taller) is not measured. */
+long mg_blit_est(const mg_blit_plan *p, int w, int h, int row_h);
+/* A w x h copy took `lines` beam lines. */
+void mg_blit_took(mg_blit_plan *p, int w, int h, int row_h, int lines);
 
 #endif

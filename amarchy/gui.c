@@ -89,7 +89,7 @@ typedef struct gui {
     int bw, bh;                  /* its size */
     int nest;                    /* draws running: the outermost one blits */
     long blits;                  /* back buffer to window copies */
-    long blit_rate;              /* beam lines a blit took per 65536 pixels, 0 = not measured */
+    mg_blit_plan plan;           /* the rates the copies are planned with */
     int frame;                   /* beam lines in a frame */
     long beam_waits;             /* blits held back until the beam is clear of their box */
     long tears;                  /* blits the beam crossed half copied, from the time each took */
@@ -250,14 +250,13 @@ static int beam_now(gui *g)
  * row blit of a moving selection when started at once, the flicker of 2026-10-25. */
 static void paint_end(gui *g, int x0, int y0, int x1, int y1)
 {
-    long area;
-    int top, h, est, b0, b, d, laps = 0;
+    int w, top, h, est, b0, b, d, laps = 0;
     if (--g->nest || !g->bb || x1 < x0 || y1 < y0)
         return;
-    area = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
+    w = x1 - x0 + 1;
     top = beam_line(g, y0);
     h = beam_line(g, y1) - top + 1;
-    est = (int)(g->blit_rate * area / 65536);
+    est = (int)mg_blit_est(&g->plan, w, y1 - y0 + 1, g->g.m.row_h);
     WaitBlit();                                 /* the back buffer's drawing is done */
     b = b0 = beam_now(g);
     if (!mg_blit_safe(b, top, h, g->frame, est)) {
@@ -275,11 +274,11 @@ static void paint_end(gui *g, int x0, int y0, int x1, int y1)
     d = beam_now(g) - b0;
     if (d < 0)
         d += g->frame;
-    if (!mg_blit_safe(b0, top, h, g->frame, d))
+    if (!mg_blit_safe(b0, top, h, g->frame, d > 0 ? d : 1))
         g->tears++;                             /* from the time this copy took, not the estimate */
-    if (d > est)
+    if (est && d > est)
         g->late++;
-    g->blit_rate = mg_blit_rate(g->blit_rate, (long)d * 65536 / area);
+    mg_blit_took(&g->plan, w, y1 - y0 + 1, g->g.m.row_h, d);
     g->blits++;
 }
 

@@ -774,14 +774,18 @@ static void osd_size_counts_the_reachable_levels(void)
 
 /* The flicker of 2026-10-25: on the A1200's 8-plane AGA Workbench a 30-line row blit took about 150 beam lines
  * of a 313-line frame, so a row copied at once was crossed by the beam half done. Numbers from that machine:
- * the row on beam lines 151-180. The beam reaches the copy d lines after the start at d * blit / (blit - h). */
+ * the row on beam lines 151-180. The beam is back on the row's top d lines after the start; the copy must be
+ * done by then, as the blitter's speed changes along the frame. */
 static void blit_starts_where_the_beam_cannot_cross_it(void)
 {
-    /* 51 lines above the row: the beam meets the copy 64 lines in, a fifth of the row done */
+    /* 51 lines above the row: the beam meets the copy a third of the way */
     CHECK_INT(mg_blit_safe(100, 151, 30, 313, 150), 0);
-    /* 120 lines above: it meets the copy as it ends */
-    CHECK_INT(mg_blit_safe(31, 151, 30, 313, 150), 1);
-    CHECK_INT(mg_blit_safe(32, 151, 30, 313, 150), 0);
+    /* 120 lines above: by the mean speed the beam meets the copy as it ends, a tear when the copy slows down
+     * on the display's lines (the A1200 still showed white lines with such starts) */
+    CHECK_INT(mg_blit_safe(31, 151, 30, 313, 150), 0);
+    /* 150 lines above: done as the beam arrives */
+    CHECK_INT(mg_blit_safe(1, 151, 30, 313, 150), 1);
+    CHECK_INT(mg_blit_safe(2, 151, 30, 313, 150), 0);
     /* the line before the top, and the beam in the row (it runs ahead of the copy) */
     CHECK_INT(mg_blit_safe(150, 151, 30, 313, 150), 0);
     CHECK_INT(mg_blit_safe(151, 151, 30, 313, 150), 1);
@@ -791,10 +795,31 @@ static void blit_starts_where_the_beam_cannot_cross_it(void)
     CHECK_INT(mg_blit_safe(300, 151, 30, 313, 150), 1);
     /* a row near the top, the beam late in the frame: 30 lines to go, it wraps onto the copy */
     CHECK_INT(mg_blit_safe(290, 7, 30, 313, 150), 0);
-    /* a blit faster than the beam, an unmeasured one, one with no clear start in a frame: at once */
+    /* a copy faster than the beam: above or below the row it stays ahead, in the row it would overtake it */
     CHECK_INT(mg_blit_safe(140, 151, 30, 313, 20), 1);
-    CHECK_INT(mg_blit_safe(140, 151, 30, 313, 0), 1);
+    CHECK_INT(mg_blit_safe(160, 151, 30, 313, 20), 0);
+    /* not measured: planned as half a frame, so 11 lines above the row waits */
+    CHECK_INT(mg_blit_safe(140, 151, 30, 313, 0), 0);
+    CHECK_INT(mg_blit_safe(300, 151, 30, 313, 0), 1);
+    /* no clear start in a frame: at once */
     CHECK_INT(mg_blit_safe(140, 151, 30, 313, 400), 1);
+}
+
+/* The A1200 again: the full window at the menu's open (360 x 176) took 308 lines, so its rate planned the first
+ * row (360 x 30) for 52 lines, a start 52 lines above the row passed, and the copy took 150. A row is planned
+ * with the rows' rate only: not measured yet, it waits. */
+static void the_first_row_is_not_planned_with_the_open_s_rate(void)
+{
+    mg_blit_plan p;
+    p.rate[0] = p.rate[1] = 0;
+    mg_blit_took(&p, 360, 176, 30, 308);
+    CHECK_INT((int)mg_blit_est(&p, 360, 176, 30), 307);   /* the rate rounds down */
+    CHECK_INT((int)mg_blit_est(&p, 360, 30, 30), 0);
+    CHECK_INT(mg_blit_safe(99, 151, 30, 313, (int)mg_blit_est(&p, 360, 30, 30)), 0);
+    /* once a row is measured, rows are planned with it */
+    mg_blit_took(&p, 360, 30, 30, 150);
+    CHECK_INT((int)mg_blit_est(&p, 360, 30, 30), 149);
+    CHECK_INT(mg_blit_safe(1, 151, 30, 313, (int)mg_blit_est(&p, 360, 30, 30)), 1);
 }
 
 static void a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear(void)
@@ -1769,6 +1794,7 @@ void suite_keymap(void)
     drawn_menu_geometry_follows_the_font_and_screen();
     blit_starts_where_the_beam_cannot_cross_it();
     a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear();
+    the_first_row_is_not_planned_with_the_open_s_rate();
     drawn_menu_icons_look_square_on_tall_pixels();
     icons_are_not_upscaled_from_16px();
     every_shipped_menu_node_has_an_icon_image();

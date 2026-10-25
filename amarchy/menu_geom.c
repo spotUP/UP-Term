@@ -175,10 +175,16 @@ int mg_hit(const mg_geom *g, int top, int mx, int my)
 int mg_blit_safe(int beam, int top, int h, int frame, int blit)
 {
     int d;
-    if (blit <= h || frame <= 0 || blit - h >= frame)
+    if (frame <= 0)
         return 1;
+    if (blit <= 0)
+        blit = frame / 2;     /* not measured: plan for the slowest copy seen, a row on the A1200 */
+    if (blit > frame || h >= frame)
+        return 1;             /* no start keeps the beam off the box while it is copied */
     d = ((top - beam - 1) % frame + frame) % frame + 1;   /* lines until the beam is back on top, 1..frame */
-    return d >= blit - h;     /* the beam catches the copy at d * blit / (blit - h): after it is done */
+    if (blit < h)
+        return d <= frame - h;   /* faster than the beam: started with the beam above the box, it stays ahead */
+    return d >= blit;         /* slower: done before the beam is back on the box, which may run behind it */
 }
 
 long mg_blit_rate(long est, long took)
@@ -186,4 +192,16 @@ long mg_blit_rate(long est, long took)
     if (took >= est)
         return took;
     return est - (est - took) / 16;
+}
+
+long mg_blit_est(const mg_blit_plan *p, int w, int h, int row_h)
+{
+    long rate = p->rate[h > row_h];
+    return rate ? rate * ((long)w * h) / 65536 : 0;
+}
+
+void mg_blit_took(mg_blit_plan *p, int w, int h, int row_h, int lines)
+{
+    long *rate = &p->rate[h > row_h];
+    *rate = mg_blit_rate(*rate, (long)lines * 65536 / ((long)w * h));
 }
