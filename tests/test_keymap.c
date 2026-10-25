@@ -1301,6 +1301,44 @@ static void the_app_index_core_behaves(void);
 
 static void app_icons_are_cached_per_path_bounded_and_fitted(void);
 
+static void the_scan_record_names_the_last_path_and_the_where_text_tells_running_stuck_died_and_done(void)
+{
+    ix_prog p;
+    char buf[1024];
+    long seq;
+    ix_prog_begin(&p);
+    CHECK_INT(p.stage, IX_ST_VOLUMES);
+    ix_prog_note(&p, IX_ST_WALK, "Work:Games/Turrican");
+    ix_prog_note(&p, IX_ST_ICON, "Work:Games/Turrican/Turrican");
+    ix_prog_note(&p, IX_ST_ICON, "Work:Games/Turrican/Readme");
+    CHECK_INT(p.dirs, 1);
+    CHECK_INT(p.icons, 2);
+    CHECK_INT(p.seq, 4);
+    CHECK_STR(p.path, "Work:Games/Turrican/Readme");
+    CHECK(ix_prog_text(&p, 1, 1, buf, sizeof buf) > 0);
+    CHECK(strstr(buf, "running") && strstr(buf, "stage: icon") && strstr(buf, "volume: Work") &&
+          strstr(buf, "path: Work:Games/Turrican/Readme") && strstr(buf, "drawers: 1, icons: 2"));
+    CHECK(ix_prog_text(&p, 1, 0, buf, sizeof buf) > 0);
+    CHECK(strstr(buf, "stuck, or stopped at a requester") && strstr(buf, "path: Work:Games/Turrican/Readme"));
+    CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0);
+    CHECK(strstr(buf, "it died") && strstr(buf, "path: Work:Games/Turrican/Readme"));
+    seq = p.seq;
+    ix_prog_done(&p, 7, 2, 3);
+    CHECK(p.seq > seq);
+    CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0);
+    CHECK(strstr(buf, ": done") && strstr(buf, "7 apps, 2 games on 3 volumes") && !strstr(buf, "died"));
+    CHECK_INT(ix_prog_text(&p, 0, 0, buf, 20), -1);        /* does not fit */
+    {
+        char longp[IX_PATH + 40];
+        memset(longp, 'a', sizeof longp);
+        longp[sizeof longp - 1] = 0;
+        ix_prog_note(&p, IX_ST_WALK, longp);
+        CHECK_INT(strlen(p.path), IX_PATH - 1);
+    }
+    memset(&p, 0, sizeof p);
+    CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0 && strstr(buf, "no scan has run"));
+}
+
 void suite_keymap(void)
 {
     menu_theme_roles_map_the_palette();
@@ -1678,6 +1716,7 @@ static void the_app_index_core_behaves(void)
     equal_index_labels_get_their_volume_as_suffix_and_rows_sort_by_label();
     a_menu_row_wins_over_an_index_row_with_the_same_label();
     the_apps_level_lists_index_apps_after_merging();
+    the_scan_record_names_the_last_path_and_the_where_text_tells_running_stuck_died_and_done();
     an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_apps_menu();
     a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one();
     a_menu_row_hides_an_index_app_with_the_same_label();

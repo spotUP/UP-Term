@@ -4,8 +4,15 @@
  * tool is WHDLoad is a game. The rows (`kind<TAB>label<TAB>path`, amarchy/index_core.c) go to
  * ENVARC:Amarchy/apps through a temp file and a rename, so a reader never sees half a file. Amarchy
  * itself never scans. The upconf key amarchy-index-skip (comma separated path prefixes) leaves
- * drawers out. A plain vbcc program, no ixemul. */
+ * drawers out. A plain vbcc program, no ixemul.
+ *
+ * Progress (AMARCHY-INDEX-WHERE): the scan copies the drawer or icon path it is on, and a stage word,
+ * into a public record (a semaphore named "Amarchy.index", AllocVec MEMF_PUBLIC, never freed, found
+ * again by the next run) that outlives a scanner that dies at a Software Failure. No disk writes.
+ * `amarchy-index --where` prints it. The record's logic is index_core.c (ix_prog_*). */
 #include <exec/memory.h>
+#include <exec/execbase.h>
+#include <exec/semaphores.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
@@ -37,6 +44,20 @@ const char amarchy_index_stack_cookie[] = "$STACK: 16384";
 
 struct Library *IconBase;
 
+/* The public progress record. ss is first so AddSemaphore's node is the allocation's start; the
+ * scanner never takes the semaphore (a task that died holding it would block --where), it only
+ * names the record for FindSemaphore. */
+typedef struct ixshared {
+    struct SignalSemaphore ss;
+    char name[16];
+    struct Task *task;          /* the scanner of the last run; only compared, never dereferenced alone */
+    char tname[32];
+    ix_prog p;
+} ixshared;
+
+static ixshared *sh;
+static char where_buf[1024];
+
 static upconf conf;
 static char conf_buf[UC_MAX_FILE + 2];
 static const char *skip_list = "";
@@ -46,6 +67,102 @@ static long n_dirs;
 
 /* Drawers that hold no apps: system, fonts, env, trash. A name is compared whole, case-insensitive. */
 static const char *const skip_drawers[] = {"Devs", "Libs", "L", "Fonts", "Locale", "Env", "T", "Trashcan", 0};
+
+/* The record, made on first use and found again afterwards (never one per run). */
+static ixshared *shared_get(int create)
+{
+    ixshared *u;
+    int i;
+    Forbid();
+    u = (ixshared *)FindSemaphore((STRPTR)IX_PROG_NAME);
+    if (!u && create && (u = (ixshared *)AllocVec(sizeof(ixshared), MEMF_PUBLIC | MEMF_CLEAR))) {
+        for (i = 0; IX_PROG_NAME[i]; i++)
+            u->name[i] = IX_PROG_NAME[i];
+        u->ss.ss_Link.ln_Name = u->name;
+        AddSemaphore(&u->ss);   /* never freed: --where reads it after the scanner is gone */
+    }
+    Permit();
+    return u;
+}
+
+static void note(int stage, const char *path)
+{
+    if (sh)
+        ix_prog_note(&sh->p, stage, path);
+}
+
+/* Is t still a task? Walks the run, ready and wait lists under Forbid. A stale address equal to this
+ * program's own task counts as gone. */
+static int task_exists(struct Task *t, const char *tname)
+{
+    struct Node *n;
+    int ok = 0;
+    if (!t || t == FindTask(0))
+        return 0;
+    Forbid();
+    if ((struct Task *)SysBase->ThisTask == t)
+        ok = 1;
+    for (n = SysBase->TaskReady.lh_Head; !ok && n->ln_Succ; n = n->ln_Succ)
+        ok = ((struct Task *)n == t);
+    for (n = SysBase->TaskWait.lh_Head; !ok && n->ln_Succ; n = n->ln_Succ)
+        ok = ((struct Task *)n == t);
+    if (ok && t->tc_Node.ln_Name && tname[0] && strncmp((const char *)t->tc_Node.ln_Name, tname, 31))
+        ok = 0;                 /* the address was reused by another task */
+    Permit();
+    return ok;
+}
+
+/* --where: print the record, say whether the scanner still exists and whether it moved in a second. */
+static int where(void)
+{
+    ixshared *u = shared_get(0);
+    static ix_prog snap;
+    char tname[32];
+    struct Task *t;
+    long seq;
+    int alive, moving = 0;
+    if (!u) {
+        PutStr((STRPTR) "amarchy-index: no scan has run since the machine started\n");
+        return 0;
+    }
+    Forbid();
+    snap = u->p;
+    t = u->task;
+    strcpy(tname, u->tname);
+    Permit();
+    alive = task_exists(t, tname);
+    if (alive && snap.stage != IX_ST_DONE && snap.stage != IX_ST_IDLE) {
+        seq = snap.seq;
+        Delay(50);
+        moving = u->p.seq != seq;
+        snap = u->p;
+    }
+    if (ix_prog_text(&snap, alive, moving, where_buf, sizeof where_buf) < 0)
+        PutStr((STRPTR) "amarchy-index: record does not fit\n");
+    else
+        PutStr((STRPTR)where_buf);
+    return 0;
+}
+
+static int ieqn(const char *a, const char *b, int n);
+
+static int word_is(const char *line, const char *w1, const char *w2)
+{
+    int n = 0, i, hit = 0;
+    while (*line == ' ' || *line == '\t')
+        line++;
+    while (line[n] && line[n] != ' ' && line[n] != '\t' && line[n] != '\n' && line[n] != '\r')
+        n++;
+    for (i = n; line[i] == ' ' || line[i] == '\t' || line[i] == '\n' || line[i] == '\r'; i++)
+        ;
+    if (line[i])
+        return 0;
+    if (w1 && (int)strlen(w1) == n && ieqn(line, w1, n))
+        hit = 1;
+    if (w2 && (int)strlen(w2) == n && ieqn(line, w2, n))
+        hit = 1;
+    return hit;
+}
 
 static int lc(int c)
 {
@@ -129,6 +246,7 @@ static void add_icon(const char *dir, const char *name)
     strncat(base, name, nl);
     if (ix_skip_match(skip_list, base))
         return;
+    note(IX_ST_ICON, base);
     o = GetDiskObject((STRPTR)base);
     if (!o)
         return;
@@ -154,7 +272,10 @@ static void walk(const char *dir, int depth)
     struct FileInfoBlock *fib;
     BPTR lock;
     char sub[IX_PATH];
-    if (nrows >= IX_MAXROWS || !(lock = Lock((STRPTR)dir, ACCESS_READ)))
+    if (nrows >= IX_MAXROWS)
+        return;
+    note(IX_ST_WALK, dir);
+    if (!(lock = Lock((STRPTR)dir, ACCESS_READ)))
         return;
     n_dirs++;
     fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
@@ -229,10 +350,14 @@ int main(void)
 {
     char names[IX_MAXVOLS][IX_VOL];
     int nv, i, napps = 0, ngames = 0;
-    if (qmark_line((const char *)GetArgStr())) {
-        PutStr((STRPTR) "amarchy-index: scans the hard disks for apps and WHDLoad games and writes " IX_DEST "\n");
+    const char *args = (const char *)GetArgStr();
+    if (qmark_line(args) || word_is(args, "help", 0)) {
+        PutStr((STRPTR) "amarchy-index: scans the hard disks for apps and WHDLoad games and writes " IX_DEST "\n"
+               "amarchy-index --where (-w): the stage and path of the running or last scan, and whether the scanner task still exists\n");
         return 0;
     }
+    if (word_is(args, "--where", "-w"))
+        return where();
     if (!(IconBase = OpenLibrary((STRPTR) "icon.library", 36))) {
         PutStr((STRPTR) "amarchy-index: needs icon.library\n");
         return 20;
@@ -243,6 +368,11 @@ int main(void)
         return 20;
     }
     conf_read();
+    if ((sh = shared_get(1))) {
+        ix_prog_begin(&sh->p);
+        sh->task = FindTask(0);
+        strncpy(sh->tname, sh->task->tc_Node.ln_Name ? (const char *)sh->task->tc_Node.ln_Name : "", 31);
+    }
     nv = volumes(names);
     for (i = 0; i < nv; i++) {
         char root[IX_VOL + 2];
@@ -250,10 +380,13 @@ int main(void)
         strcat(root, ":");
         walk(root, 0);
     }
+    note(IX_ST_WRITE, IX_DEST);
     ix_sort_dedupe(rows, nrows);
     for (i = 0; i < nrows; i++)
         rows[i].kind == IX_KIND_GAME ? ngames++ : napps++;
     i = write_cache() ? 0 : 10;
+    if (!i && sh)
+        ix_prog_done(&sh->p, napps, ngames, nv);
     if (i)
         PutStr((STRPTR) "amarchy-index: cannot write " IX_DEST "\n");
     else

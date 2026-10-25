@@ -276,3 +276,124 @@ int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n)
     strcpy(out, x->rows[it->ix].path);
     return 1;
 }
+
+void ix_prog_begin(ix_prog *p)
+{
+    memset(p, 0, sizeof *p);
+    p->stage = IX_ST_VOLUMES;
+    p->seq = 1;
+}
+
+void ix_prog_note(ix_prog *p, int stage, const char *path)
+{
+    size_t n = strlen(path);
+    if (n >= IX_PATH)
+        n = IX_PATH - 1;
+    memcpy(p->path, path, n);
+    p->path[n] = 0;
+    p->stage = stage;
+    if (stage == IX_ST_WALK)
+        p->dirs++;
+    else if (stage == IX_ST_ICON)
+        p->icons++;
+    p->seq++;
+}
+
+void ix_prog_done(ix_prog *p, long napps, long ngames, long nvols)
+{
+    p->stage = IX_ST_DONE;
+    p->napps = napps;
+    p->ngames = ngames;
+    p->nvols = nvols;
+    p->seq++;
+}
+
+const char *ix_stage_name(int stage)
+{
+    static const char *const names[] = {"idle", "volumes", "walk", "icon", "write", "done"};
+    return (stage >= 0 && stage <= IX_ST_DONE) ? names[stage] : "unknown";
+}
+
+/* a bounded string builder: no printf family, so vbcc's plain DOS programs can take it */
+typedef struct pbuf {
+    char *s;
+    int n, len, over;
+} pbuf;
+
+static void pb_str(pbuf *b, const char *t)
+{
+    for (; *t; t++) {
+        if (b->len + 1 >= b->n) {
+            b->over = 1;
+            return;
+        }
+        b->s[b->len++] = *t;
+    }
+}
+
+static void pb_num(pbuf *b, long v)
+{
+    char t[24], one[2];
+    int i = 0;
+    unsigned long u = v < 0 ? 0UL - (unsigned long)v : (unsigned long)v;
+    do
+        t[i++] = (char)('0' + u % 10);
+    while ((u /= 10) != 0);
+    if (v < 0)
+        t[i++] = '-';
+    one[1] = 0;
+    while (i) {
+        one[0] = t[--i];
+        pb_str(b, one);
+    }
+}
+
+int ix_prog_text(const ix_prog *p, int task, int moving, char *out, int n)
+{
+    char vol[IX_VOL];
+    const char *state;
+    pbuf b;
+    b.s = out;
+    b.n = n;
+    b.len = 0;
+    b.over = 0;
+    if (n < 1)
+        return -1;
+    if (p->stage == IX_ST_DONE)
+        state = "done";
+    else if (p->stage == IX_ST_IDLE)
+        state = "no scan has run";
+    else if (!task)
+        state = "scanner task is gone before the scan finished (it died)";
+    else if (moving)
+        state = "running";
+    else
+        state = "scanner task exists but made no progress (stuck, or stopped at a requester)";
+    ix_volume_of(p->path, vol, sizeof vol);
+    pb_str(&b, "amarchy-index: ");
+    pb_str(&b, state);
+    pb_str(&b, "\nstage: ");
+    pb_str(&b, ix_stage_name(p->stage));
+    pb_str(&b, "\n");
+    if (p->stage == IX_ST_DONE) {
+        pb_num(&b, p->napps);
+        pb_str(&b, " apps, ");
+        pb_num(&b, p->ngames);
+        pb_str(&b, " games on ");
+        pb_num(&b, p->nvols);
+        pb_str(&b, " volumes\n");
+    } else {
+        pb_str(&b, "volume: ");
+        pb_str(&b, vol);
+        pb_str(&b, "\n");
+    }
+    pb_str(&b, "path: ");
+    pb_str(&b, p->path);
+    pb_str(&b, "\ndrawers: ");
+    pb_num(&b, p->dirs);
+    pb_str(&b, ", icons: ");
+    pb_num(&b, p->icons);
+    pb_str(&b, "\n");
+    out[b.len] = 0;
+    return b.over ? -1 : b.len;
+}
