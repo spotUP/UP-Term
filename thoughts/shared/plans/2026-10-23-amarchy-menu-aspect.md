@@ -81,4 +81,4 @@ font) plus gui.c's font pick. Not a drawing fix.
 - [x] A6 host tests rewritten + symptom test + revert-proof
 - [x] A7 rig test updated and run (rig 4, Kickstart 40.68: PASS; scrprobe now shares amarchy/menu_font.c with the gui)
 - [x] A8 docs
-- [ ] A9 owner A1200 check (also: what looks unlike Omarchy, from the owner's screenshot)
+- [~] A9 owner A1200 check 2026-10-25: aspect PASS (icons square, window wide enough); owner: border colours look wrong, and asked whether the user can theme Amarchy (menu_theme.c: border = palette index 14, Bright Cyan, remappable through the upconf palette). Colour question open.

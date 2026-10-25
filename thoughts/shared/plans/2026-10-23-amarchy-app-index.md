@@ -50,7 +50,7 @@ list are implementation defaults.
 - [x] X8 (ae767f38) Docs: Amarchy guide section on the app index, skip key, rescan row.
 - [x] X9 (7560a029, aa0a0f89 on am-idx-icon before rebase; 19/19 twice on rig 3, 2026-10-24) Reachability rig case (amarchy rig): put a fake WBTOOL app in a drawer on the rig hard disk, run the scanner, open the menu, Apps level shows the row, launching it runs the tool (sentinel file written by the tool). Also: a fake WHDLoad project icon shows under Games, not Apps; a drawer in the skip list is not indexed; a `[menu]` row with the same label wins.
 - [x] X10 (ix_level returning keymap rows only: case fails at "3 Apps level lists the row", 2026-10-24) Revert-check of X9: with X3 reverted the rig case fails.
-- [ ] X11 Owner A1200 check: the Apps level lists the owner's real apps, launch works, scan time noted.
+- [x] X11 Owner A1200 check (2026-10-25 PASS, owner): the Apps level lists the owner's real apps with icons, launch works, the menu opens in under 1 s.
 
 Done = X1-X11 ticked with commits; make test, make dist and make dist-check pass.
 
@@ -64,4 +64,4 @@ Done = X1-X11 ticked with commits; make test, make dist and make dist-check pass
 - [x] I1 (b7ac9164) Icon load (GetDiskObject or GetIconTagList with screen remap) plus scale to row height, cached per path, loaded for visible rows only.
 - [x] I2 (b7ac9164, d913b0ef sentinel; host only, rig proof is I3) Drawn menu Apps and Games levels draw the icon; fallback glyph on failure.
 - [x] I3 (2a86726b mask fix, 5285f4ad rig case app_icons; 10/10 on OS 3.2 rig 5, revert of ig_draw fails it; app_index 19/19 twice on default rig 3) Rig case: the fake WBTOOL app's icon appears in its row (pixel check), a row without an icon shows the fallback; revert-check fails.
-- [ ] I4 Owner A1200 check: real app icons in Apps, menu open time noted.
+- [x] I4 Owner A1200 check (2026-10-25 PASS, owner): real icons in Apps, menu open under 1 s.
