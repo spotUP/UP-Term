@@ -14,6 +14,7 @@
 #include "cx.h"
 #include "cxdesc.h"
 #include "act.h"
+#include "win.h"
 #include "leaf.h"
 #include "clipwatch.h"
 #include "wblaunch.h"
@@ -104,6 +105,7 @@ static int act_menu_kind(int kind, const char *node)
     int text = 0, cols = VIEWER_COLS, rows = VIEWER_ROWS;
     if (!cx_menu_cmd(line, sizeof(line), g_dir, kind, node, g_style, &text))
         return 0;
+    win_ticket_take();   /* K5a: the menu is about to become the active window; win: rows act on this one */
     if (!text)
         return act_run(line);
     if (kind == KA_MENU || kind == KA_OTHERMENU) {
@@ -132,19 +134,20 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N */
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N */
 static void status_text(char *out, long cap)
 {
     char num[12];
-    static const char *const key[4] = { "hits=", " rows=", " enabled=", " active=" };
-    long val[4];
+    static const char *const key[5] = { "hits=", " rows=", " enabled=", " active=", " wins=" };
+    long val[5];
     int i;
     val[0] = g_hits;
     val[1] = cx_nrows();
     val[2] = cx_enabled();
     val[3] = upactive_count();
+    val[4] = win_count();
     out[0] = 0;
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < 5; i++) {
         cl_cat(out, key[i], cap);
         cl_ltoa(val[i], num);
         cl_cat(out, num, cap);
@@ -166,6 +169,7 @@ static int do_row(int row)
     case KA_DETACH:
     case KA_SCAN: ok = act_run(b->arg); break;
     case KA_REXX:  ok = act_rexx(b->arg); break;
+    case KA_WIN:   ok = act_win(b->arg); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
     case KA_MENU: case KA_VIEWER: case KA_OTHERMENU: case KA_OTHERVIEWER:
         ok = act_menu_kind(b->kind, b->arg);
@@ -219,6 +223,8 @@ static void rexx_serve(void)
             reload();
         else if (starts(cmd, "RUN"))
             rc = do_row(parse_int(cmd + 3)) ? 0 : 5;
+        else if (starts(cmd, "WIN") && (cmd[3] == ' ' || cmd[3] == '\t'))
+            rc = win_port(cmd + 4);
         else if (starts(cmd, "QUIT"))
             g_quit = 1;
         else if (starts(cmd, "SHOW"))

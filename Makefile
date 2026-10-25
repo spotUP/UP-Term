@@ -678,8 +678,8 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h pr
 
 # Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
-AMARCHY_SRC := amarchy/termenv.c claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/wblaunch.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c
-$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
+AMARCHY_SRC := amarchy/termenv.c claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/wblaunch.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c
+$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC)
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
