@@ -165,7 +165,9 @@ out:
 /* ---- the persistent cache (icon_core.h file format) ---- */
 
 /* WritePixelArray8 and ReadPixelArray8 want a one row temp RastPort at least as wide as the array row,
- * and an array padded to a multiple of 16 bytes per row. */
+ * and an array whose rows are padded to a multiple of 16 bytes: the cache file stores dw bytes per row, so
+ * the rows are copied one by one with ROW_STRIDE. */
+#define ROW_STRIDE(w) (((w) + 15) & ~15)
 typedef struct pixctx {
     struct BitMap *tbm;
     struct RastPort trp;
@@ -215,7 +217,7 @@ static void restore(int bw, int bh)
     ic_dec *d;
     pixctx px;
     struct RastPort rp;
-    int n, i, k, s, depth = scr->RastPort.BitMap->Depth;
+    int n, i, k, s, stride, depth = scr->RastPort.BitMap->Depth;
 
     f = Open((STRPTR)IG_CACHE_PATH, MODE_OLDFILE);
     if (!f)
@@ -247,11 +249,13 @@ static void restore(int bw, int bh)
                     FreeBitMap(m);
                 break;
             }
-            memcpy(px.buf, d[i].pens, npx);
+            stride = ROW_STRIDE(d[i].dw);
+            for (k = 0; k < d[i].dh; k++)
+                memcpy(px.buf + k * stride, d[i].pens + k * d[i].dw, d[i].dw);
             bm_rastport(&rp, a);
             WritePixelArray8(&rp, 0, 0, d[i].dw - 1, d[i].dh - 1, px.buf, &px.trp);
             for (k = 0; k < npx; k++)
-                px.buf[k] = d[i].mask[k] ? (unsigned char)((1UL << depth) - 1) : 0;
+                px.buf[k / d[i].dw * stride + k % d[i].dw] = d[i].mask[k] ? (unsigned char)((1UL << depth) - 1) : 0;
             bm_rastport(&rp, m);
             WritePixelArray8(&rp, 0, 0, d[i].dw - 1, d[i].dh - 1, px.buf, &px.trp);
             s = ic_claim(&cache, d[i].path);
@@ -283,7 +287,7 @@ static void save(void)
     unsigned char *data;
     pixctx px;
     struct RastPort rp;
-    int i, k, npx, depth = scr->RastPort.BitMap->Depth;
+    int i, k, npx, stride, depth = scr->RastPort.BitMap->Depth;
     BPTR f;
 
     for (i = 0; i < nslots; i++)
@@ -304,13 +308,15 @@ static void save(void)
         npx = iw[i] * ih[i];
         pens = px.pm;
         mk = px.pm + IC_FILE_MAXPIX;
+        stride = ROW_STRIDE(iw[i]);
         bm_rastport(&rp, bm[i]);
         ReadPixelArray8(&rp, 0, 0, iw[i] - 1, ih[i] - 1, px.buf, &px.trp);
-        memcpy(pens, px.buf, npx);
+        for (k = 0; k < ih[i]; k++)
+            memcpy(pens + k * iw[i], px.buf + k * stride, iw[i]);
         bm_rastport(&rp, mask[i]);
         ReadPixelArray8(&rp, 0, 0, iw[i] - 1, ih[i] - 1, px.buf, &px.trp);
         for (k = 0; k < npx; k++)
-            mk[k] = px.buf[k] ? 1 : 0;
+            mk[k] = px.buf[k / iw[i] * stride + k % iw[i]] ? 1 : 0;
         w = ic_file_entry(data + off, size - off, cache.path[i], iw[i], ih[i], (gbw - iw[i]) / 2,
                           (gbh - ih[i]) / 2, pens, mk);
         off = w < 0 ? -1 : off + w;
