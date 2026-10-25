@@ -967,6 +967,25 @@ static void a_replaced_line_on_a_fresh_prompt_draws_after_it(void)
     vt_free(t);
 }
 
+/* A window opening resizes its new engine before le_init binds it, and
+ * a closed window's engine is gone (le_unbind): le_resized then has no
+ * terminal to read (rig, split panes: a NULL read per pane, 2026-10-20). */
+static void a_resize_without_a_terminal_reads_none(void)
+{
+    le_line z;
+    vt_term *t = h_new(20, 8, VT_XTERM);
+    memset(&z, 0, sizeof(z));
+    le_resized(&z); /* all zero: a con before its first window */
+    CHECK(z.t == 0);
+    le_init(&z, t, to_term, t);
+    z.started = 1;
+    le_unbind(&z);
+    vt_free(t);
+    le_resized(&z); /* the engine freed: nothing reads it */
+    CHECK(z.t == 0 && !z.started);
+    le_free(&z);
+}
+
 /* A reflow moves the line being edited (gaps #11): the editor finds its
  * start again from the cursor, so editing goes on in the right place. */
 static void reflow_moves_the_line_and_editing_follows(void)
@@ -1434,6 +1453,7 @@ void suite_lineedit(void)
     medium_mode_reports_tab_shift_tab_up_and_down_at_once();
     medium_mode_leaves_the_editing_keys_to_the_editor();
     reflow_moves_the_line_and_editing_follows();
+    a_resize_without_a_terminal_reads_none();
     a_replaced_line_on_a_fresh_prompt_draws_after_it();
     kingcon_word_and_quoting();
     kingcon_cycle_and_fncmode();
