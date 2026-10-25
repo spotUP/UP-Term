@@ -519,24 +519,81 @@ def r_app_index():
         time.sleep(2)
         ck('3 the app quit and the commodity survived', ended and amarchy_rig.port_up())
         ck('3 no requester', not ami.requesters(), '; '.join(ami.describe_requester(r) for r in ami.requesters()))
-        # step 7: Rescan apps rewrites the cache and opens no window
+        # step 7 (RESCAN-FEEDBACK): Rescan apps keeps the menu open and shows the scan
         x9_files([(X9_DIR, 'A0Late')])
         old = cache
         x9_open_menu()
         x9_level('Apps')
-        win0 = wbrun_rig.window_ids()
         x9_type('rescan')
         ami.key(RAW['return'])
-        time.sleep(1)
-        new_win = [w for w in wbrun_rig.windows() if wbrun_rig.win_id(w) not in win0 and 'amarchy' not in w['title'].lower()]
-        ck('7 Rescan apps opens no window', not new_win, str([w['title'] for w in new_win]))
-        end = time.time() + 40
-        cache2 = old
-        while time.time() < end and 'A0Late' not in cache2:
-            time.sleep(2)
-            cache2 = (ami.read_file(X9_CACHE) or b'').decode('latin-1')
-        ck('7 Rescan apps rewrote the cache (A0Late is in)', 'A0Late' in cache2 and cache2 != old)
+        seen, text = False, ''
+        for _ in range(40):                     # the status row shows the scan at once; poll fast, it can be short
+            text = screen_text()
+            if 'Scanning...' in text:
+                seen = True
+                break
+            if 'Scan done' in text:
+                break
+            time.sleep(0.25)
+        ck('7 the menu window stays open after Rescan apps', 'Filter' in text, ' '.join(menu_rows(text))[:100])
+        ck('7 a row starting "Scanning..." appears', seen, ' '.join(menu_rows(text))[:100])
+        m, end = None, time.time() + 90
+        while time.time() < end:
+            m = re.search(r'Scan done: (\d+) apps', screen_text())
+            if m:
+                break
+            time.sleep(1)
+        ck('7 a row "Scan done: N apps" appears', m is not None)
+        where_out = c.run('%s/amarchy-index --where' % paths.UPTERM_BIN, 30)[1]
+        mw = re.search(r'(\d+) apps, (\d+) games', where_out)
+        ck('7 N equals the count amarchy-index --where prints', bool(m and mw and m.group(1) == mw.group(1)),
+           'row %s, --where %s' % (m.group(1) if m else None, mw.group(1) if mw else None))
+        cache2 = (ami.read_file(X9_CACHE) or b'').decode('latin-1')
+        nrows = len(re.findall(r'^app\t', cache2, re.M))
+        ck('7 the cache holds N app rows and A0Late', bool(m) and nrows == int(m.group(1)) and 'A0Late' in cache2 and cache2 != old,
+           '%d app rows' % nrows)
         x9_leave()
+        x9_open_menu()
+        x9_level('Apps')
+        x9_type('a0late')
+        ck('7 the Apps level lists the new row', 'A0Late' in screen_text())
+        x9_leave()
+        # step 7, GUI: the drawn menu's "watch" sentinel (0 none, 1 starting, 2 running, 3 done, 4 failed)
+        import amarchy_gui_rig as g
+        c.run('Delete >NIL: ENV:watch ENV:AMARCHY_ROWS QUIET')
+        s_, w_ = g.open_menu()
+        ck('7 GUI menu opens', bool(w_))
+        if w_:
+            rows = ''
+            for _ in range(40):
+                rc, out = c.run('GetEnv AMARCHY_ROWS')
+                rows = out.strip() if rc == 0 else ''
+                if rows:
+                    break
+                time.sleep(0.25)
+            rl = rows.split('|')
+            if 'Apps' in rl:
+                for _ in range(rl.index('Apps')):
+                    ami.key(RAW['down'])
+                    time.sleep(0.3)
+                ami.key(RAW['return'])
+                time.sleep(1)
+            x9_type('rescan')
+            ami.key(RAW['return'])
+            states, end = [], time.time() + 90
+            while time.time() < end:
+                rc, out = c.run('GetEnv watch')
+                v = out.strip() if rc == 0 else ''
+                if v and (not states or states[-1] != v):
+                    states.append(v)
+                if v in ('3', '4'):
+                    break
+                time.sleep(0.5)
+            ck('7 GUI watch sentinel ends at 3 (done)', states[-1:] == ['3'], 'states %s' % states)
+            ck('7 GUI menu window stays open', g.where(g.TITLE)[1] is not None)
+            rc, out = c.run('GetEnv AMARCHY_ROWS')
+            ck('7 GUI keeps the status row out of AMARCHY_ROWS', 'Scan' not in out, out.strip()[:100])
+        g.close_menu()
         # step 8: Apps > Clock (index row of SYS:Utilities/Clock), through the AMARCHY.launch fallback
         ck('8 Clock is indexed', re.search(r'^app\tClock\t', cache2, re.M) is not None)
         x9_open_menu()
