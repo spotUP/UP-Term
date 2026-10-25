@@ -56,12 +56,14 @@ def main():
     (VTC / "zm-send.bin").write_bytes(data)
     wire = g.Wire()
     subprocess.run(g.RIG + ["stop"], capture_output=True)
-    subprocess.run(g.RIG + ["start", "--serial", wire.path], check=True)
+    subprocess.run(g.RIG + ["start", "--serial", wire.path, "--purpose", "zmodem_rig: sz/rz over the serial wire"], check=True)
     import ixpty_rig
     ixpty_rig.use_ixemul()
     if g.run('Assign >NIL: PTY: EXISTS DEVICES')[0] != 0:
         g.run('Mount PTY: FROM VTC:ptymount')
     g.run('Delete RAM:zm-send.bin QUIET')
+    if not g.end_boot_getty(wire):
+        sys.exit('zmodem_rig: the boot upgetty still runs after Break; the serial port is not free')
     g.run('Run >NIL: VTC:upgetty SHELL VTC:vsh')
     prompt = g.PROMPT
     check(wire.wait_for(prompt, 30), 'vsh\'s prompt arrives over serial', wire.text())

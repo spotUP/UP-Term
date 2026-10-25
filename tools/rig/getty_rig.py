@@ -47,6 +47,46 @@ def shell_stack():
     return 0
 
 
+def process_clis(status, names=("upgetty",)):
+    """CLI numbers of the Status lines ("Process 3: Loaded as command: C:upgetty") whose
+    command is one of names (a path prefix and a trailing argument do not matter)."""
+    out = []
+    for line in status.splitlines():
+        m = re.match(r'\s*Process\s+(\d+):\s*(.*)', line)
+        if m and any(re.search(r'(^|[:/\s])%s(\s|$)' % re.escape(n), m.group(2)) for n in names):
+            out.append(int(m.group(1)))
+    return out
+
+
+def end_boot_getty(wire=None, rounds=6):
+    """Rig fixture: the master disk's S:User-Startup carries UP-Term's serial block
+    (`C:upgetty LOOP`), so every boot starts upgetty on serial.device and writes the boot
+    shell's banner to the wire; the rig's own `upgetty SHELL` then finds the port owned and
+    check 1 never sees its prompt. Ends every upgetty (and the vsh it started) with AmigaDOS
+    `Break <cli> ALL`, re-listing Status each round so a restarted shell is caught, until Status
+    lists none, then drains the wire. Returns True when Status lists no upgetty."""
+    for _ in range(rounds):
+        clis = process_clis(run('Status')[1])
+        if not clis:
+            break
+        for n in clis:
+            run('Break %d ALL' % n)
+        time.sleep(2)
+    else:
+        clis = process_clis(run('Status')[1])
+    for _ in range(3):  # the shell vsh upgetty started ends with it; stray ones go too
+        shells = process_clis(run('Status')[1], ("vsh",))
+        if not shells:
+            break
+        for n in shells:
+            run('Break %d ALL' % n)
+        time.sleep(1)
+    gone = not process_clis(run('Status')[1])
+    if wire is not None:
+        wire.drain()
+    return gone
+
+
 def check(ok, what, seen=''):
     global failed
     failed += not ok
@@ -90,6 +130,19 @@ class Wire:
                     return True
         return False
 
+    def drain(self, quiet=2.0, limit=15.0):
+        """read until the line has been silent for quiet seconds, then forget it all"""
+        end, last = time.time() + limit, time.time()
+        while time.time() < end and time.time() - last < quiet:
+            r, _, _ = select.select([self.master], [], [], 0.3)
+            if r:
+                try:
+                    os.read(self.master, 4096)
+                except OSError:
+                    pass
+                last = time.time()
+        self.seen = b''
+
     def text(self):
         return self.seen.decode('latin-1', 'replace')
 
@@ -101,11 +154,13 @@ def main():
             shutil.copyfile(src, VTC / f)
     wire = Wire()
     subprocess.run(RIG + ["stop"], capture_output=True)
-    subprocess.run(RIG + ["start", "--serial", wire.path], check=True)
+    subprocess.run(RIG + ["start", "--serial", wire.path, "--purpose", "getty_rig: serial login checks"], check=True)
     import ixpty_rig
     ixpty_rig.use_ixemul()
     if run('Assign >NIL: PTY: EXISTS DEVICES')[0] != 0:
         run('Mount PTY: FROM VTC:ptymount')
+    if not end_boot_getty(wire):
+        sys.exit('getty_rig: the boot upgetty still runs after Break; the serial port is not free')
     run('Run >NIL: VTC:upgetty SHELL VTC:vsh')
     prompt = PROMPT
     check(wire.wait_for(prompt, 30), 'vsh\'s prompt arrives over serial', wire.text())
