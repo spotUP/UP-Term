@@ -480,6 +480,16 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     check_row("install.update", KA_RUN, "upkg update");
     CHECK(shipped_row("apps.upkg") == 0);                  /* moved under Install */
     CHECK_INT((int)lf_plan(KA_VIEWER), (int)LF_VIEWER);    /* a viewer row runs the viewer, not a terminal request */
+    {   /* the viewer is started by its full path beside the menu, never by a bare name through a PATH */
+        char vl[64];
+        CHECK_INT(lf_viewer_command(vl, sizeof vl, "UP-Term:bin"), 1);
+        CHECK_STR(vl, "\"UP-Term:bin/amarchy-gui\" viewer");
+        CHECK_INT(lf_viewer_command(vl, sizeof vl, "VTC:"), 1);
+        CHECK_STR(vl, "\"VTC:amarchy-gui\" viewer");
+        CHECK_INT(lf_viewer_command(vl, sizeof vl, ""), 0);
+        CHECK_INT(lf_viewer_command(vl, sizeof vl, "a\"b"), 0);
+        CHECK_INT(lf_viewer_command(vl, 10, "UP-Term:bin"), 0);
+    }
     /* without a terminal window the menuid and slash rows hide; Learn keeps the viewer, System keeps Reboot */
     {
         mn_item it[MN_MAX_ITEMS];
