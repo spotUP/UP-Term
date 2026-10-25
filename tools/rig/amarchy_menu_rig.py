@@ -736,6 +736,83 @@ def r_app_categories():
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
+def r_group_icons():
+    """GROUP-DRAWER-ICON: every group row of the drawn menu (amarchy-gui, Left Amiga + Space) shows a glyph in its
+    icon cell. A staged cache (a game, a demo, a song and two apps in the drawers RigAlpha and RigBeta) gives the root
+    the groups Apps, Games, Demos and Music and the Apps level two scanned drawers. Each group is brought to row 0 by
+    the filter (a root with the filter lists the matching groups first) and its icon cell compared by ink mask
+    (pixels that differ from the row's background; the selected row has other colours, the shape is what differs):
+    the four kind glyphs must all be inked and pairwise different, and the scanned drawer must be inked and differ
+    from the four (the folder). Sentinel: ENV:AMARCHY_DRAWS (gui.c, full draws) is deleted first and above 0 after."""
+    import amarchy_rig, amarchy_gui_rig as g
+    import tempfile
+    res = []
+
+    def ck(name, ok, detail=''):
+        res.append(ok)
+        print('  %s %s%s' % ('[OK]' if ok else '[FAIL]', name, (': ' + detail) if detail else ''), flush=True)
+        return ok
+
+    if not amarchy_rig.port_up():
+        r_start()
+    ensure_terminal()
+    geom = g.build_geom()
+    e = g.expected(geom, '-')
+    saved, upterm = x9_begin()
+    try:
+        c.run('Echo >%s "[profile default]"' % X9_CONF)
+        c.run('Echo >ENV:up-term/keymap.user "[menu]"')
+        amarchy_rig.arexx('RELOAD')
+        cache = ('app\tRigApp1\tWork:RigAlpha/RigApp1\napp\tRigApp2\tWork:RigBeta/RigApp2\n'
+                 'game\tRigGame\tWork:Games/RigGame\ngame\tRigDemo\tWork:Demos/RigDemo\n'
+                 'app\tRigSong\tWork:Music/RigSong\n')
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / 'apps'
+            f.write_text(cache)
+            ami.put(str(f), X9_CACHE)
+        c.run('Delete >NIL: ENV:AMARCHY_DRAWS QUIET')
+        ami.click_px(100, 100)
+        time.sleep(0.5)
+        s, w = g.open_menu()
+        if not ck('drawn menu opened', bool(w)):
+            return False, 'the drawn menu did not open'
+        time.sleep(2)
+
+        def mask(level, filt):
+            """The ink mask of the icon cell of row 0 with the filter `filt` typed (filter cleared after)."""
+            x9_type(filt)
+            time.sleep(1)
+            s2, w2 = g.where(g.TITLE)
+            ix, iy, cw, ch, _ = e[level]['cell']
+            rows, bg = g.cell_grid(s2, g.box_of(s2, w2), ix, iy, cw, ch)
+            ami.key(RAW['esc'])
+            time.sleep(0.8)
+            return tuple(tuple(r[x * 3:x * 3 + 3] != bytes(bg) for x in range(len(r) // 3)) for r in rows)
+
+        def ink(m):
+            return sum(sum(r) for r in m)
+
+        kinds = {}
+        for name, filt in (('Apps', 'apps'), ('Games', 'games'), ('Demos', 'demos'), ('Music', 'music')):
+            kinds[name] = mask('root', filt)
+            ck('root %s group: icon cell holds pixels' % name, ink(kinds[name]) >= 4, '%d pixels' % ink(kinds[name]))
+        names = list(kinds)
+        distinct = all(kinds[a] != kinds[b] for i, a in enumerate(names) for b in names[i + 1:])
+        ck('the four kind glyphs are pairwise different', distinct)
+        ami.key(RAW['return'])                  # root row 0 is Apps again after the filter was cleared
+        time.sleep(2)
+        drawer = mask('apps', 'rigalpha')
+        ck('scanned drawer group RigAlpha: icon cell holds pixels', ink(drawer) >= 4, '%d pixels' % ink(drawer))
+        ck('the drawer glyph differs from the four kind glyphs', all(drawer != m for m in kinds.values()))
+        rc, out = c.run('GetEnv AMARCHY_DRAWS')
+        m = re.match(r'\s*(\d+)\s*$', out) if rc == 0 else None
+        ck('sentinel: ENV:AMARCHY_DRAWS = %s (the drawn menu drew)' % (m.group(1) if m else 'unset'), bool(m) and int(m.group(1)) > 0)
+    finally:
+        g.close_menu()
+        x9_end(saved, upterm)
+    return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
 ROWS = [
     ('start',        r_start),
     ('rows_no_terminal', r_rows_no_terminal),
@@ -751,10 +828,11 @@ ROWS = [
     ('app_index',    r_app_index),
     ('app_icons',    r_app_icons),
     ('app_categories', r_app_categories),
+    ('group_icons', r_group_icons),
 ]
 
 
-ICON_ROWS = ('app_icons',)     # rows that need icon.library V44 (OS 3.2), see r_app_icons
+ICON_ROWS = ('app_icons', 'group_icons')     # rows that need icon.library V44 (OS 3.2), see r_app_icons
 OS32_NAMES = ('32', '321', '322')
 
 
