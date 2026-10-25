@@ -47,10 +47,11 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
            tests/test_upcon.c tests/test_upconf.c tests/test_keymap.c tests/test_prefs.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_ttf.c tests/test_slash.c tests/test_winspec.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
-           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_upassign.c tests/test_bigvol.c
+           tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c
 
 .PHONY: symbolsnerd jbmono wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
+# ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
 # ONLY=winspec the XCON: spec's size fields and the default ground (a CON:/RAW: window looks like an XCON: one) (tests/test_winspec.c)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=dist_stack every kit program sets its stack ($STACK: cookie), no launcher gives a loaded program a fixed stack (tests/test_dist_stack.py)
@@ -721,7 +722,7 @@ $(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/index
 AMARCHY_INDEX_SRC := amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c
 .PHONY: amarchy-index
 amarchy-index: $(BUILD)/amiga/amarchy-index
-$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/index_core.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h
+$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/index_core.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_INDEX_SRC)
 
@@ -930,7 +931,7 @@ $(BUILD)/amiga/Reboot: install/reboot.c
 	$(VC) -o $@ install/reboot.c
 
 # UPBigVol: the Install's helper that picks the drawer's default disk (the local one with the most room; ENV:UPTBIGVOL)
-$(BUILD)/amiga/UPBigVol: install/bigvol.c install/hardvol.c install/bigvol.h install/hardvol.h tty/qmark.h
+$(BUILD)/amiga/UPBigVol: install/bigvol.c install/hardvol.c install/bigvol.h install/hardvol.h install/fssm.h tty/qmark.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ install/bigvol.c install/hardvol.c
 
