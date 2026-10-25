@@ -378,6 +378,7 @@ def r_app_icons():
     Sentinel: ENV:AMARCHY_ICON_LOADS (icon_gfx.c, .info images loaded) is deleted first and is above 0 after the
     menu drew A0Fake. Needs icon.library V44 (OS 3.2: `rig.py start --os 32 --max`)."""
     import amarchy_rig, amarchy_gui_rig as g
+    ensure_terminal()
     res = []
 
     def ck(name, ok, detail=''):
