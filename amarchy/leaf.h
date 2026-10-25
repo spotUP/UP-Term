@@ -27,10 +27,17 @@ typedef enum {
     LF_OPEN,     /* open:uterm: a new UP-Term window */
     LF_DETACH,   /* detach: a program in the background, input and output NIL: (no window) */
     LF_SCAN,     /* scan: like detach:, and lf_run returns LF_WATCH so the menu watches the scan */
+    LF_VIEWER,   /* viewer: the key viewer, the program super+k opens, in its own window */
     LF_REQUEST   /* tab:, menuid:, slash: ... a terminal window's request port takes the action */
 } lf_how;
 
 lf_how lf_plan(int kind);
+
+/* The viewer's command line: the quoted full path of amarchy-gui in dir (the directory the running menu was
+ * loaded from, as the commodity's cx_helper_cmd does), then "viewer". A bare name goes through vsh's PATH,
+ * which is stale or missing where UP-Term: is not assigned (the rig): the program is beside us, not on a path.
+ * 0 when dir is empty, holds a quote or the line does not fit. */
+int lf_viewer_command(char *out, int cap, const char *dir);
 
 typedef struct lf_ui {
     /* a value for an action that needs one; 1 with out set, 0 on Escape or an empty line */

@@ -16,6 +16,8 @@ lf_how lf_plan(int kind)
         return LF_REXX;
     case KA_OPEN:
         return LF_OPEN;
+    case KA_VIEWER:
+        return LF_VIEWER;
     default:
         return LF_REQUEST;
     }
@@ -44,6 +46,23 @@ int lf_screen_spec(char *out, int cap, const char *spec, const char *screen)
         }
     }
     out[n] = 0;
+    return 1;
+}
+
+int lf_viewer_command(char *out, int cap, const char *dir)
+{
+    int n;
+    if (cap < 1)
+        return 0;
+    out[0] = 0;
+    if (!dir || !*dir || strchr(dir, '"'))
+        return 0;
+    n = snprintf(out, (size_t)cap, "\"%s%samarchy-gui\" viewer", dir,
+                 dir[strlen(dir) - 1] == ':' || dir[strlen(dir) - 1] == '/' ? "" : "/");
+    if (n < 0 || n >= cap) {
+        out[0] = 0;
+        return 0;
+    }
     return 1;
 }
 

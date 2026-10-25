@@ -112,13 +112,10 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 
 /* detach: the program runs on its own, with NIL: as input and output and no window anywhere. Through
  * the UP-Term shell like run:, so detach:amarchy-index finds the indexer. */
-static int run_detached(const km_menu *m, const lf_ui *ui)
+static int start_detached(const char *line, const km_menu *m, const lf_ui *ui)
 {
-    char line[512];
     BPTR in, out;
     LONG rc;
-    if (!shell_line(line, sizeof line, m->arg, m->label, ui))
-        return UPREQ_FAILED;
     in = Open((STRPTR)"NIL:", MODE_OLDFILE);
     out = Open((STRPTR)"NIL:", MODE_NEWFILE);
     rc = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
@@ -135,6 +132,28 @@ static int run_detached(const km_menu *m, const lf_ui *ui)
     return 0;
 }
 
+static int run_detached(const km_menu *m, const lf_ui *ui)
+{
+    char line[512];
+    if (!shell_line(line, sizeof line, m->arg, m->label, ui))
+        return UPREQ_FAILED;
+    return start_detached(line, m, ui);
+}
+
+/* viewer: amarchy-gui by its full path from the directory this program was loaded from (the commodity's own
+ * launch, amarchy.c dir_resolve + cx_helper_cmd), no shell and no PATH. */
+static int run_viewer(const km_menu *m, const lf_ui *ui)
+{
+    char dir[128], line[256];
+    BPTR l = GetProgramDir();
+    if (!l || !NameFromLock(l, (STRPTR)dir, sizeof dir) || !lf_viewer_command(line, sizeof line, dir)) {
+        if (ui && ui->refused)
+            ui->refused(ui->ctx, m->label, UPREQ_FAILED, "the key viewer is not beside this program");
+        return UPREQ_FAILED;
+    }
+    return start_detached(line, m, ui);
+}
+
 int lf_run(const km_menu *m, const lf_ui *ui)
 {
     switch (lf_plan(m->kind)) {
@@ -146,6 +165,8 @@ int lf_run(const km_menu *m, const lf_ui *ui)
     }
     case LF_WINDOW:
         return run_in_uterm(m->arg, ui);
+    case LF_VIEWER:                     /* the program super+k opens, on its own like detach: */
+        return run_viewer(m, ui);
     case LF_REXX: {
         char line[160];
         snprintf(line, sizeof line, "RX \"%s\"", m->arg);
