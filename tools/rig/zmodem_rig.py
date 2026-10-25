@@ -44,6 +44,24 @@ def host(cmd, wire, cwd, secs=120):
         return -1
 
 
+# rz's first word: a hex ZRINIT header (ZPAD ZPAD ZDLE 'B', type 01)
+ZRINIT = rb'\*\*\x18B01'
+
+
+def lsz_to_rz(wire, cwd, name, secs=120):
+    """`VTC:rz` at the prompt, then the host's lsz once rz's ZRINIT is on the
+    wire, as a terminal program's zmodem auto-upload starts it. lsz started
+    at once reads vsh's echo of the command line first: the 'C' of "VTC:rz"
+    is a YMODEM receiver's request to it, lsz sends YMODEM blocks that rz
+    never answers, and gives up with rc 128 (zmodem_rig 4 of 5, 2026-10-25).
+    -2: rz never said ZRINIT."""
+    wire.seen = b''
+    wire.send('VTC:rz\r')
+    if not wire.wait_for(ZRINIT, 15):
+        return -2
+    return host(['lsz', '-q', name], wire, cwd, secs)
+
+
 def main():
     if not shutil.which('lrz') or not shutil.which('lsz'):
         print('zmodem_rig: lrzsz is not installed on the host')
@@ -92,10 +110,8 @@ def main():
     # host -> Amiga
     src = got / 'zm-back.bin'
     src.write_bytes(data[::-1])
-    wire.seen = b''
-    wire.send('VTC:rz\r')
     t0 = time.time()
-    rc = host(['lsz', '-q', 'zm-back.bin'], wire, str(got))
+    rc = lsz_to_rz(wire, str(got), 'zm-back.bin')
     secs = time.time() - t0
     wire.seen = b''
     wire.send('\r')
