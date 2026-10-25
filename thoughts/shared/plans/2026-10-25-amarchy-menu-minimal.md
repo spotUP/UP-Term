@@ -153,12 +153,12 @@ Each item is ticked only with its test passing. Running count is reported at eve
 ### Phase R: rig (060 rig, OS 3.2)
 - [x] R1 (64a730d2) rig row `minimal` in `tools/rig/amarchy_menu_rig.py` (section 9); `rig.py start --max --os 32 --purpose
   "vtcon-05: minimal menu"`; rig stopped at the end.
-- [ ] R2 PASS recorded in the ledger with the sentinel numbers.
+- [x] R2 (ledger 2026-10-26 05:10) rig 7 row minimal 10 of 10: AMARCHY_MODE=2, AMARCHY_PENS=2, AMARCHY_ICON_LOADS=0, 2 distinct colours; graphical MODE=0, PENS=5.
 
 ### Phase D: docs
 - [x] D1 (64a730d2) `dist/up-term.conf` (line 30 and the app-icons comment), `dist/README.txt` (702-710), `man/amarchy.1` (47),
   RULES.md:59-68 name the mode and `none`; `tests/test_amarchy_docs.py` passes.
-- [ ] D2 ledger row MENU-MINIMAL closed with commit hashes.
+- [x] D2 ledger row MENU-MINIMAL closed (64a730d2, e4fe2520, this commit).
 
 ## 8. Reachability (one test per feature)
 

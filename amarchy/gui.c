@@ -313,7 +313,7 @@ static int shown_rows(const gui *g)
     return g->g.visible + (mg_more(&g->g, g->top) ? 1 : 0);
 }
 
-/* menu-style = minimal (menu-style = minimal): text rows, no border, no icon column, two pens */
+/* menu-style = minimal: text rows, no border, no icon column, two pens */
 static int minimal;
 
 static void draw_border(gui *g)
