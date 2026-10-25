@@ -189,6 +189,24 @@ const pg_item pg_items[] = {
     { PG_LINK_DEFAULT, PG_PAGE_ADVANCED, PGK_BUTTON, "Default",
       "Use OpenURL for links.",
       6, 1, 0, PGD_NONE },
+    { PG_AM_MUSIC, PG_PAGE_AMARCHY, PGK_STRING, "_Music drawers",
+      "More drawers, comma separated, listed under Music in the Amarchy menu.",
+      0, 0, 32, PGD_NONE },
+    { PG_AM_DEMO, PG_PAGE_AMARCHY, PGK_STRING, "_Demo drawers",
+      "More drawers, comma separated, listed under Demos in the Amarchy menu.",
+      1, 0, 32, PGD_NONE },
+    { PG_AM_HIDE, PG_PAGE_AMARCHY, PGK_STRING, "_Hidden drawers",
+      "Drawers, comma separated, the Amarchy menu leaves out of its lists.",
+      2, 0, 32, PGD_NONE },
+    { PG_AM_FONT, PG_PAGE_AMARCHY, PGK_TEXT, "Menu _font",
+      "The Amarchy menu font; empty: the built-in choice. Click to choose.",
+      3, 0, 14, PGD_NONE },
+    { PG_AM_FONT_CHOOSE, PG_PAGE_AMARCHY, PGK_BUTTON, "Choose...",
+      "Choose a fixed-width font for the Amarchy menu in the font requester.",
+      3, 1, 0, PGD_NONE },
+    { PG_AM_FONT_CLEAR, PG_PAGE_AMARCHY, PGK_BUTTON, "Clear",
+      "Use the built-in menu font again.",
+      3, 2, 0, PGD_NONE },
     { PG_PAL + 0, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 0, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 0, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 0, 1, 8, PGD_NONE },
     { PG_PAL + 1, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 1, 0, 0, PGD_NONE },
@@ -471,4 +489,27 @@ int pl_hit(const pl_result *r, int page, int x, int y)
             return it->id;
     }
     return 0;
+}
+
+int pg_page_for_args(const char *args)
+{
+    static const char kw[] = "AMARCHY";
+    int i = 0;
+    if (!args)
+        return PG_PAGE_GENERAL;
+    while (args[i] == ' ' || args[i] == '\t')
+        i++;
+    {
+        int k = 0;
+        while (kw[k] && args[i + k] && (args[i + k] & ~0x20) == kw[k])
+            k++;
+        if (!kw[k]) {
+            int e = i + k;
+            while (args[e] == ' ' || args[e] == '\t' || args[e] == '\n' || args[e] == '\r')
+                e++;
+            if (!args[e])
+                return PG_PAGE_AMARCHY;
+        }
+    }
+    return PG_PAGE_GENERAL;
 }

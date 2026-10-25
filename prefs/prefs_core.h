@@ -46,6 +46,12 @@ typedef struct prefs_fields {
     int aspect;     /* font-aspect: the font fitted to the screen's aspect (on by default) */
     int backspace_bs; /* backspace = bs: the key sends ^H; 0: del, ^? (the default) */
     int clipboard;  /* PREFS_CLIP_*: program-clipboard, what OSC 52 may do */
+    /* the Amarchy menu's keys: always the [default] profile's, whichever profile is edited (amarchy/gui.c
+     * reads them there); empty = key absent */
+    char am_music[UC_MAX_VALUE];    /* amarchy-music-drawers */
+    char am_demo[UC_MAX_VALUE];     /* amarchy-demo-drawers */
+    char am_hide[UC_MAX_VALUE];     /* amarchy-hide-drawers */
+    char am_font[UC_MAX_VALUE];     /* amarchy-menu-font, "name:size" as the font key */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
     int kcinfo;     /* KingCON completion lists .info files too */
     int kccache;    /* KingCON's directory cache (DIRCACHE; on by default) */

@@ -39,6 +39,9 @@ enum {
     PG_SCREEN = 120, PG_SCREEN_MODE = 121, PG_SCREEN_CHOOSE = 122, PG_SCREEN_WORKBENCH = 123,
     PG_ASPECT = 124, PG_CLIPBOARD = 125, PG_HLCAT = 126, PG_LINK = 127, PG_LINK_DEFAULT = 128,
     PG_TERM = 129, PG_COLORS = 130,
+    /* Amarchy */
+    PG_AM_MUSIC = 140, PG_AM_DEMO = 141, PG_AM_HIDE = 142,
+    PG_AM_FONT = 143, PG_AM_FONT_CHOOSE = 144, PG_AM_FONT_CLEAR = 145,
     /* the colour window (PX12) and the name window (PX11) */
     PC_WHEEL = 150, PC_BRIGHTNESS = 151, PC_RED = 152, PC_GREEN = 153, PC_BLUE = 154,
     PC_HEX = 155, PC_SWATCH = 156, PC_OK = 157, PC_CANCEL = 158,
@@ -46,7 +49,7 @@ enum {
 };
 
 enum { PG_PAGE_GENERAL, PG_PAGE_COLORS, PG_PAGE_PALETTE, PG_PAGE_KEYBOARD, PG_PAGE_ADVANCED,
-       PG_NPAGES };
+       PG_PAGE_AMARCHY, PG_NPAGES };
 #define PG_COMMON (-1)   /* in every page */
 
 /* the controls; a swatch is a gadget the program draws */
@@ -90,6 +93,9 @@ void pg_plain_label(const char *label, char *out, int cap);
 /* The gadget a key reaches on `page`: the page's own or a common one with
  * that shortcut (any case); 0 when none. */
 const pg_item *pg_for_key(int page, int key);
+/* The page the command line asks for: the keyword AMARCHY (any case, blanks around) opens the Amarchy page;
+ * anything else, and no arguments, the first page. */
+int pg_page_for_args(const char *args);
 
 /* ---- layout ------------------------------------------------------------------ */
 typedef struct pl_box { int x, y, w, h; } pl_box;

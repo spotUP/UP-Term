@@ -70,6 +70,10 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     prefs_defaults(f);
     pc_copy(f->font, upconf_str(c, p, "font", ""), sizeof(f->font));
     pc_copy(f->fallback, upconf_str(c, p, "font-fallback", ""), sizeof(f->fallback));
+    pc_copy(f->am_music, upconf_str(c, "default", "amarchy-music-drawers", ""), sizeof(f->am_music));
+    pc_copy(f->am_demo, upconf_str(c, "default", "amarchy-demo-drawers", ""), sizeof(f->am_demo));
+    pc_copy(f->am_hide, upconf_str(c, "default", "amarchy-hide-drawers", ""), sizeof(f->am_hide));
+    pc_copy(f->am_font, upconf_str(c, "default", "amarchy-menu-font", ""), sizeof(f->am_font));
     pc_copy(f->screenmode, upconf_str(c, p, "screen-mode", ""), sizeof(f->screenmode));
     pc_copy(f->screendepth, upconf_str(c, p, "screen-depth", ""), sizeof(f->screendepth));
     pc_copy(f->sb, upconf_str(c, p, "scrollback", ""), sizeof(f->sb));
@@ -593,6 +597,8 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
         strcmp(a->sb, b->sb) || strcmp(a->curcol, b->curcol) || strcmp(a->fg, b->fg) ||
         strcmp(a->bg, b->bg) || strcmp(a->selfg, b->selfg) || strcmp(a->selbg, b->selbg) ||
         strcmp(a->term, b->term) || strcmp(a->colors, b->colors) ||
+        strcmp(a->am_music, b->am_music) || strcmp(a->am_demo, b->am_demo) ||
+        strcmp(a->am_hide, b->am_hide) || strcmp(a->am_font, b->am_font) ||
         strcmp(a->linkopen, b->linkopen) || strcmp(a->kcmode, b->kcmode))
         return 0;
     for (i = 0; i < 16; i++)
@@ -752,6 +758,10 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     upconf_set(w, p, "amiga-keys", f->amiga_keys ? "on" : "off");
     upconf_set(w, p, "dither", f->dither ? "on" : "off");
     upconf_set(w, p, "outline-antialias", f->outline_aa ? "on" : "off");
+    pc_put(w, "default", "amarchy-music-drawers", f->am_music);
+    pc_put(w, "default", "amarchy-demo-drawers", f->am_demo);
+    pc_put(w, "default", "amarchy-hide-drawers", f->am_hide);
+    pc_put(w, "default", "amarchy-menu-font", f->am_font);
     upconf_set(w, p, "padding-color", f->pad_extend ? "extend" : "background");
     upconf_set(w, p, "highlight-cat", f->hlcat ? "on" : "off");
     upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"

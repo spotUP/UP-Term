@@ -134,7 +134,7 @@ struct app {
 static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFONT };
 
 static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", (STRPTR)"Palette",
-                                (STRPTR)"Keyboard", (STRPTR)"Advanced", 0 };
+                                (STRPTR)"Keyboard", (STRPTR)"Advanced", (STRPTR)"Amarchy", 0 };
 static STRPTR cursor_labels[] = { (STRPTR)"Block", (STRPTR)"Underline", (STRPTR)"Bar", 0 };
 static STRPTR bell_labels[] = { (STRPTR)"None", (STRPTR)"Beep", (STRPTR)"Visual", 0 };
 static STRPTR meta_labels[] = { (STRPTR)"Left Amiga", (STRPTR)"Alt", 0 };
@@ -250,6 +250,9 @@ static char *text_field(struct app *a, int id, int *cap)
     case PG_SELFG_HEX: return a->f.selfg;
     case PG_SELBG_HEX: return a->f.selbg;
     case PG_LINK: return a->f.linkopen;
+    case PG_AM_MUSIC: return a->f.am_music;
+    case PG_AM_DEMO: return a->f.am_demo;
+    case PG_AM_HIDE: return a->f.am_hide;
     case PG_TERM:
         *cap = (int)sizeof(a->f.term);
         return a->f.term;
@@ -416,6 +419,7 @@ static void show_texts(struct app *a)
 {
     char t[UC_MAX_VALUE];
     set_attr(a, PG_FONT, GTTX_Text, (ULONG)(a->f.font[0] ? a->f.font : "Screen's font"));
+    set_attr(a, PG_AM_FONT, GTTX_Text, (ULONG)(a->f.am_font[0] ? a->f.am_font : "Built-in"));
     set_attr(a, PG_FALLBACK, GTTX_Text, (ULONG)(a->f.fallback[0] ? a->f.fallback : "None"));
     mode_text(a, t, sizeof(t));
     set_attr(a, PG_SCREEN_MODE, GTTX_Text, (ULONG)t);
@@ -1474,6 +1478,23 @@ static void pick_font(struct app *a)
     set_status(a, "Font chosen: Save or Use writes it.");
 }
 
+static void pick_menu_font(struct app *a)
+{
+    char name[UC_MAX_VALUE], iname[UC_MAX_VALUE], spec[UC_MAX_VALUE];
+    long size = 0, isize = 0;
+    iname[0] = 0;
+    prefs_font_parse(a->f.am_font, iname, sizeof(iname), &isize);
+    if (!asl_pick_font(0, a->win, "Amarchy menu font", iname, isize, 1, name, sizeof(name), &size))
+        return;
+    if (!prefs_font_compose(name, size, spec, sizeof(spec))) {
+        set_status(a, "The font's name has a blank or a colon: not usable.");
+        return;
+    }
+    strcpy(a->f.am_font, spec);
+    show_texts(a);
+    set_status(a, "Menu font chosen: Save or Use writes it.");
+}
+
 static void pick_fallback(struct app *a)
 {
     char path[300], name[UC_MAX_VALUE];
@@ -1676,6 +1697,14 @@ static int act(struct app *a, int id, int val)
         a->f.font[0] = 0;
         show_texts(a);
         return 0;
+    case PG_AM_FONT:
+    case PG_AM_FONT_CHOOSE:
+        pick_menu_font(a);
+        return 0;
+    case PG_AM_FONT_CLEAR:
+        a->f.am_font[0] = 0;
+        show_texts(a);
+        return 0;
     case PG_FALLBACK:
     case PG_FALLBACK_CHOOSE:
         pick_fallback(a);
@@ -1835,9 +1864,9 @@ int main(void)
     ULONG sig;
     int done = 0, rc = 1, i;
 
-    /* `UP-Term Prefs ?` shows the usage and ends; the tool takes no arguments */
+    /* `UP-Term Prefs ?` shows the usage and ends; the one argument is the keyword AMARCHY */
     if (qmark_line((const char *)GetArgStr())) {
-        PutStr((STRPTR)"UP-Term Prefs: no arguments; opens the preferences window\n");
+        PutStr((STRPTR)"UP-Term Prefs [AMARCHY]: opens the preferences window; AMARCHY opens it on the Amarchy page\n");
         return RETURN_OK;
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39L);
@@ -1898,7 +1927,7 @@ int main(void)
     if (!a->win)  /* the screen stays locked while the window lives: the small windows open on it */
         goto out;
     GT_RefreshWindow(a->win, 0);
-    show_page(a, 0);
+    show_page(a, pg_page_for_args((const char *)GetArgStr()));
     show_fields(a);
     show_line(a, "Move the pointer over a control for its help.");
 

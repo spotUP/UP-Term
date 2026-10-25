@@ -491,6 +491,60 @@ static void dither_and_padding_color_round_trip(void)
     CHECK_INT(g.pad_extend, 0);
 }
 
+static void amarchy_keys_round_trip_through_the_default_section(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    static const char src[] = "[default]\nfont = x\namarchy-music-drawers = Music,Jams\n"
+                              "amarchy-demo-drawers = Demos\n[work]\nfont = y\n";
+    prefs_fields f, g;
+    long len;
+    CHECK_INT(prefs_load(&conf, src, (long)strlen(src), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_STR(f.am_music, "Music,Jams");
+    CHECK_STR(f.am_demo, "Demos");
+    CHECK_STR(f.am_hide, "");
+    CHECK_STR(f.am_font, "");
+    strcpy(f.am_hide, "Prefs,Utilities");
+    strcpy(f.am_font, "topaz.font:9");
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-music-drawers", "?"), "Music,Jams");
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-hide-drawers", "?"), "Prefs,Utilities");
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-menu-font", "?"), "topaz.font:9");
+    prefs_from_conf(&g, &conf, "default");
+    CHECK_INT(prefs_equal(&f, &g), 1);
+    strcpy(g.am_font, "other.font:8");
+    CHECK_INT(prefs_equal(&f, &g), 0);
+    /* editing another profile still writes the Amarchy keys into [default] */
+    prefs_from_conf(&g, &conf, "work");
+    strcpy(g.am_demo, "Shows");
+    len = prefs_stage(&work, &conf, "work", &g, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-demo-drawers", "?"), "Shows");
+    /* an empty value is an absent key */
+    g.am_demo[0] = 0;
+    g.am_font[0] = 0;
+    len = prefs_stage(&work, &conf, "default", &g, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-demo-drawers", "?"), "?");
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-menu-font", "?"), "?");
+}
+
+static void the_amarchy_keyword_picks_the_start_page(void)
+{
+    CHECK_INT(PG_NPAGES, 6);
+    CHECK_INT(pg_page_for_args("AMARCHY"), PG_PAGE_AMARCHY);
+    CHECK_INT(pg_page_for_args("amarchy"), PG_PAGE_AMARCHY);
+    CHECK_INT(pg_page_for_args("  Amarchy \n"), PG_PAGE_AMARCHY);
+    CHECK_INT(pg_page_for_args(""), PG_PAGE_GENERAL);
+    CHECK_INT(pg_page_for_args("foo"), PG_PAGE_GENERAL);
+    CHECK_INT(pg_page_for_args("amarchyx"), PG_PAGE_GENERAL);
+    CHECK_INT(pg_page_for_args(0), PG_PAGE_GENERAL);
+}
+
 static void keep_cases(void)
 {
     static char buf[UC_MAX_FILE + 1];
@@ -1324,5 +1378,7 @@ void suite_prefs(void)
     amiga_keys_and_highlight_cat_round_trip();
     style_stage_sets_only_the_look();
     dither_and_padding_color_round_trip();
+    amarchy_keys_round_trip_through_the_default_section();
+    the_amarchy_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
 }
