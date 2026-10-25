@@ -42,6 +42,7 @@ under test), shots/.
 import fcntl, json, os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
+import user_startup
 import wasabi as rigwasabi
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -470,6 +471,24 @@ def sys_hdf_cpu_lib(image):
         paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
         subprocess.run([xdf, str(image), "write", str(paths.LIB68060), "Libs/68060.library"], check=True, capture_output=True)
 
+def sys_hdf_no_wasabid(image):
+    """The master image's S:User-Startup carries the kit's ';BEGIN UP-Term wasabi' block (Run >NIL: C:wasabid). That
+    wasabid starts before BOOTX:go sets wasabi.key, so it serves an empty key on its default port 1234, and FS-UAE's
+    bsdsocket shares the Mac's ports: rig 1's BOOTX:wasabid (port 1234) lost the port to it and every request got
+    'auth failed: bad key' (2026-10-25). The block goes from the clone; the master is never touched."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    us = RIG / "user-startup.tmp"
+    us.unlink(missing_ok=True)
+    if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
+        return   # no S:User-Startup: no block
+    data = us.read_bytes()
+    clean = user_startup.strip_upterm_blocks(data, "UP-Term wasabi")
+    if clean != data:
+        us.write_bytes(clean)
+        subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
+        subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
+    us.unlink()
+
 SCREENMODE_NAME = RIG / "screenmode.name"   # the last `rig.py aga|aga256|rtg`: a start re-applies it to the fresh sys.hdf
 
 def sys_hdf_screenmode(image):
@@ -886,6 +905,7 @@ def start(retries=2):
     if not OS and not OS32:
         fresh_sys_hdf()
         sys_hdf_screenmode(RIG / "sys.hdf")
+        sys_hdf_no_wasabid(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     START_ARGS.write_text(json.dumps(sys.argv[2:]))
     setup_config_only()

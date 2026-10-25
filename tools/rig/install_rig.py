@@ -45,6 +45,7 @@ ends, with a fingerprint of the archives it installs; a case that passed with th
 One script per rig: a second one on the same rig stops with the first one's pid (paths.rig_lock)."""
 import os, pathlib, re, shutil, signal, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from user_startup import strip_upterm_blocks
 import paths  # before ami: it sets the agent port of UPTERM_RIG
 import ami
 import verdicts
@@ -458,16 +459,6 @@ FIXTURE_ASSIGNS = ('GG', 'UP-Term')
 # the add-ons that write a ;BEGIN block to S:User-Startup, and the block's name
 STARTUP_BLOCK = {'python': 'Python3'}
 
-
-def strip_upterm_blocks(data, name='UP-Term'):
-    """data without the ;BEGIN <name> ... ;END <name> blocks (UP-Term: every flavour:
-    assign, python, tmp, console, device ...) that Install writes."""
-    out, skip = [], False
-    for line in data.decode('latin-1').splitlines(True):
-        if line.startswith(';BEGIN ' + name): skip = True
-        if not skip: out.append(line)
-        if skip and line.startswith(';END ' + name): skip = False
-    return ''.join(out).encode('latin-1')
 
 class Fixtures:
     """take() once the rig is up, restore() in a finally. restore() without take() does nothing.
