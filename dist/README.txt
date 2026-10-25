@@ -757,7 +757,11 @@ AMARCHY
   stage, the volume and path last handled, the drawers and icons counted,
   and whether the scanner task still exists, is moving, is stuck (a
   Software Failure requester keeps it alive) or has died. After a normal
-  finish it shows done with the counts. The record lasts until a reboot.
+  finish it shows done with the counts. A failed cache write shows stage
+  "write failed" (and the scan returns ERROR). The record lasts until a
+  reboot; one left by an older amarchy-index build is not read or reused,
+  --where then says "record from another amarchy-index build, reboot to
+  clear".
 
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a

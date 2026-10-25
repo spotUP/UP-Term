@@ -91,9 +91,17 @@ int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n);
  * a scan that dies at a Software Failure still names the path it was on. The scanner copies the path
  * in before each drawer it enters and each icon it opens; no disk writes. Pure data and text here; the
  * OS side only allocates and finds it. */
-#define IX_PROG_NAME "Amarchy.index"
-enum { IX_ST_IDLE = 0, IX_ST_VOLUMES, IX_ST_WALK, IX_ST_ICON, IX_ST_WRITE, IX_ST_DONE, IX_ST_STOPPED };
+/* The record is never freed, so one left by an older build lives until reboot. The layout version is in
+ * the semaphore name (IX_PROG_NAME) and in the record (version): a build never writes into a record of
+ * another layout, it adds its own under its own name; the older name is IX_PROG_NAME_OLD (layout 1, no
+ * version word). */
+#define IX_PROG_VERSION  2
+#define IX_PROG_NAME     "Amarchy.index.2"
+#define IX_PROG_NAME_OLD "Amarchy.index"
+enum { IX_ST_IDLE = 0, IX_ST_VOLUMES, IX_ST_WALK, IX_ST_ICON, IX_ST_WRITE, IX_ST_DONE, IX_ST_STOPPED,
+       IX_ST_WRITE_FAILED };
 typedef struct ix_prog {
+    long version;               /* IX_PROG_VERSION; first, so a reader checks it before any other field */
     long seq;                   /* counts every update: a changing seq means the scanner is moving */
     int  stage;                 /* IX_ST_* */
     long dirs, icons;           /* drawers entered, icons opened so far */
@@ -109,6 +117,11 @@ void ix_prog_note(ix_prog *p, int stage, const char *path);
 void ix_prog_done(ix_prog *p, long napps, long ngames, long nvols);
 /* The scan was stopped (Ctrl-C): stage STOPPED, the path where it stopped is kept. */
 void ix_prog_stopped(ix_prog *p);
+/* The cache write failed (temp file, write or rename): stage WRITE_FAILED, the path is kept. */
+void ix_prog_write_failed(ix_prog *p);
+/* The line --where prints when it finds only a record of another layout (an older build's, left in
+ * memory until reboot); its fields are not read. Length, or -1 when it does not fit n. */
+int ix_prog_other_text(char *out, int n);
 /* The stage as a word: volumes, walk, icon, write, done, stopped, idle. */
 const char *ix_stage_name(int stage);
 /* The text `amarchy-index --where` prints (several lines, each ending in LF), into out; the length,
@@ -123,6 +136,9 @@ int ix_prog_text(const ix_prog *p, int task, int moving, char *out, int n);
  * message naming scsi.device. The handler name is the reliable signal, so a short list of known network
  * handlers (prefix of the file name: smb, nfs, ftp) decides. NULL or empty: 0. */
 int ix_net_handler(const char *handler);
+/* Does a device run the same handler task as a volume? A volume with no task (0, not mounted) matches
+ * nothing: 0 is also the task of every device that has not started. */
+int ix_same_handler_task(const void *vol_task, const void *dev_task);
 
 /* Is the volume scanned? A local volume always; a network one only when its name is in volumes, the
  * comma-separated upconf key amarchy-index-volumes (case-insensitive, blanks and a trailing colon

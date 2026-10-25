@@ -1426,11 +1426,54 @@ static void the_scan_record_names_the_last_path_and_the_where_text_tells_running
         CHECK_INT(strlen(p.path), IX_PATH - 1);
     }
     memset(&p, 0, sizeof p);
+    p.version = IX_PROG_VERSION;
     CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0 && strstr(buf, "no scan has run"));
+}
+
+static void the_scan_record_has_a_layout_version_and_an_older_one_is_not_read(void)
+{
+    ix_prog p;
+    char buf[1024];
+    ix_prog_begin(&p);
+    CHECK_INT(p.version, IX_PROG_VERSION);
+    ix_prog_note(&p, IX_ST_WALK, "Work:Games");
+    p.version = IX_PROG_VERSION - 1;   /* a record another build left in memory */
+    CHECK(ix_prog_text(&p, 1, 1, buf, sizeof buf) > 0);
+    CHECK(strstr(buf, "another amarchy-index build, reboot to clear") && !strstr(buf, "Work:Games") &&
+          !strstr(buf, "stage:"));
+    CHECK_INT(ix_prog_text(&p, 1, 1, buf, 10), -1);
+    CHECK(ix_prog_other_text(buf, sizeof buf) > 0 && strstr(buf, "another amarchy-index build"));
+    /* the scanner never reuses the older semaphore: its name differs from the older build's */
+    CHECK(strcmp(IX_PROG_NAME, IX_PROG_NAME_OLD) != 0);
+}
+
+static void a_failed_cache_write_is_its_own_stage_and_not_reported_as_died(void)
+{
+    ix_prog p;
+    char buf[1024];
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_WRITE, "ENVARC:Amarchy/apps");
+    ix_prog_write_failed(&p);
+    CHECK_INT(p.stage, IX_ST_WRITE_FAILED);
+    CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0);
+    CHECK(strstr(buf, "cache write failed") && strstr(buf, "stage: write failed") &&
+          strstr(buf, "path: ENVARC:Amarchy/apps") && !strstr(buf, "died"));
+}
+
+static void a_volume_without_a_handler_task_matches_no_device(void)
+{
+    int a, b;
+    CHECK_INT(ix_same_handler_task(&a, &a), 1);
+    CHECK_INT(ix_same_handler_task(&a, &b), 0);
+    CHECK_INT(ix_same_handler_task(0, 0), 0);
+    CHECK_INT(ix_same_handler_task(0, &b), 0);
 }
 
 void suite_keymap(void)
 {
+    the_scan_record_has_a_layout_version_and_an_older_one_is_not_read();
+    a_failed_cache_write_is_its_own_stage_and_not_reported_as_died();
+    a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
     a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothing();

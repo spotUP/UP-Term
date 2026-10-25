@@ -123,8 +123,16 @@ static int where(void)
     char tname[32];
     struct Task *t;
     long seq;
-    int alive, moving = 0;
+    int alive, moving = 0, old;
     if (!u) {
+        Forbid();
+        old = FindSemaphore((STRPTR)IX_PROG_NAME_OLD) != 0;
+        Permit();
+        if (old) {
+            if (ix_prog_other_text(where_buf, sizeof where_buf) > 0)
+                PutStr((STRPTR)where_buf);
+            return 0;
+        }
         PutStr((STRPTR) "amarchy-index: no scan has run since the machine started\n");
         return 0;
     }
@@ -134,6 +142,11 @@ static int where(void)
     strcpy(tname, u->tname);
     Permit();
     alive = task_exists(t, tname);
+    if (snap.version != IX_PROG_VERSION) {
+        ix_prog_text(&snap, alive, 0, where_buf, sizeof where_buf);
+        PutStr((STRPTR)where_buf);
+        return 0;
+    }
     if (alive && snap.stage != IX_ST_DONE && snap.stage != IX_ST_IDLE) {
         seq = snap.seq;
         Delay(50);
@@ -327,7 +340,7 @@ static int vol_network(struct DosList *vol, struct DosList *head)
     for (d = NextDosEntry(head, LDF_DEVICES); d; d = NextDosEntry(d, LDF_DEVICES)) {
         const unsigned char *hn;
         int n;
-        if (d->dol_Task != vol->dol_Task || !d->dol_misc.dol_handler.dol_Handler)
+        if (!ix_same_handler_task(vol->dol_Task, d->dol_Task) || !d->dol_misc.dol_handler.dol_Handler)
             continue;
         hn = (const unsigned char *)BADDR(d->dol_misc.dol_handler.dol_Handler);
         n = hn[0] < sizeof h - 1 ? hn[0] : (int)sizeof h - 1;
@@ -429,9 +442,11 @@ int main(void)
     ix_sort_dedupe(rows, nrows);
     for (i = 0; i < nrows; i++)
         rows[i].kind == IX_KIND_GAME ? ngames++ : napps++;
-    i = write_cache() ? 0 : 10;
+    i = write_cache() ? 0 : RETURN_ERROR;
     if (!i && sh)
         ix_prog_done(&sh->p, napps, ngames, nv);
+    else if (i && sh)
+        ix_prog_write_failed(&sh->p);
     if (i)
         PutStr((STRPTR) "amarchy-index: cannot write " IX_DEST "\n");
     else
