@@ -205,7 +205,7 @@ Window out (not built, reason):
 - Window transparency, gaps, aspect (A13 to A15): no compositor.
 - Focus-follows-mouse (AutoPoint) and ClickToFront: belong to the future Commodities group.
 
-### 2.2 Workbench group (new node `workbench`, 37 rows)
+### 2.2 Workbench group (new node `workbench`, 43 rows)
 
 All rows use `rexx:`. Mechanism: the WORKBENCH ARexx port, command `MENU WINDOW <window> INVOKE <item>`. The item
 names were VERIFIED on the OS 3.2 rig (Workbench 47.2/47.33) by the B0 probe, findings in
@@ -228,10 +228,15 @@ Probe column: VERIFIED = rc 0 and the effect read back (checkmark, window list);
 | workbench.lastmessage | Last Message | WORKBENCH.LASTMESSAGE | ROOT | rc 0 | A74 partial |
 | workbench.about | About Workbench | WORKBENCH.ABOUT | ROOT | VERIFIED (window opens) | B47 |
 | workbench.reset | Restart Workbench | TOOLS.RESETWB | ROOT | rc 0 | - |
+| workbench.autoarrange | Auto-arrange Icons | TOOLS.AUTO-ARRANGEICONS | ROOT | pattern (name rule unsure of the hyphen: B2 tries TOOLS.AUTO-ARRANGEICONS, then TOOLS.AUTOARRANGEICONS) | - |
+| workbench.help | Workbench Help | TOOLS.HELP | ROOT | pattern | - |
 | workbench.openparent | Open Parent Drawer | WINDOW.OPENPARENT | ACTIVE | rc 0 (disabled on ROOT) | - |
 | workbench.newdrawer | New Drawer | WINDOW.NEWDRAWER | ACTIVE | rc 0 (disabled on ROOT) | - |
+| workbench.closewindow | Close Drawer Window | WINDOW.CLOSE | ACTIVE | pattern | - |
 | workbench.updatewindow | Update Window | WINDOW.UPDATE | ACTIVE | rc 0 | - |
 | workbench.selectcontents | Select Contents | WINDOW.SELECTCONTENTS | ACTIVE | rc 0 | - |
+| workbench.clearselection | Clear Selection | WINDOW.CLEARSELECTION | ACTIVE | pattern | - |
+| workbench.resizetofit | Resize To Fit | WINDOW.RESIZETOFIT | ACTIVE | pattern | - |
 | workbench.cleanupcolumn | Clean Up By Column | WINDOW.CLEANUPBY.COLUMN | ACTIVE | rc 0 | - |
 | workbench.cleanupname | Clean Up By Name | WINDOW.CLEANUPBY.NAME | ACTIVE | rc 0 | - |
 | workbench.cleanupdate | Clean Up By Date | WINDOW.CLEANUPBY.DATE | ACTIVE | pattern | - |
@@ -248,6 +253,7 @@ Probe column: VERIFIED = rc 0 and the effect read back (checkmark, window list);
 | workbench.viewtype | View By Type | WINDOW.VIEWBY.TYPE | ACTIVE | rc 0 | - |
 | workbench.sortforward | Sort Order Forward | WINDOW.SORTORDER.FORWARD | ACTIVE | rc 0 | - |
 | workbench.sortreverse | Sort Order Reverse | WINDOW.SORTORDER.REVERSE | ACTIVE | rc 0 | - |
+| workbench.find | Find File | WINDOW.FIND... | ACTIVE | pattern (name rule unsure of the dots: B2 tries WINDOW.FIND..., then WINDOW.FIND) | - |
 | workbench.iconopen | Open Icon | ICONS.OPEN | ACTIVE | rc 0 (nothing selected) | - |
 | workbench.iconcopy | Copy Icon | ICONS.COPY | ACTIVE | pattern | - |
 | workbench.iconrename | Rename Icon | ICONS.RENAME | ACTIVE | pattern | - |
@@ -259,7 +265,7 @@ Probe column: VERIFIED = rc 0 and the effect read back (checkmark, window list);
 | workbench.delete | Delete Icon | ICONS.DELETE | ACTIVE | pattern, not sent on purpose | owner item 6: menu only, Workbench confirm |
 | workbench.emptytrash | Empty Trash | ICONS.EMPTYTRASH | ACTIVE | pattern, not sent on purpose | owner item 6: menu only, Workbench confirm |
 
-Count from the table: 7 Workbench and Tools rows, 20 Window-menu rows, 10 Icons-menu rows = 37. The group node
+Count from the table: 9 Workbench and Tools rows, 24 Window-menu rows, 10 Icons-menu rows = 43. The group node
 `workbench` needs an icon line (suggest fa-desktop for the node; rows reuse fa names such as fa-th, fa-list,
 fa-refresh, fa-folder_open, fa-info_circle, fa-clock_o, fa-sort_amount_asc, fa-files_o, fa-pencil, fa-eye, fa-eye_slash).
 
@@ -267,10 +273,12 @@ Changes against the first draft (30 rows), from the probe: Open Volume CUT (`WOR
 rc2 205: the submenu is the dynamic volume list); Clean Up became the five `WINDOW.CLEANUPBY.*` rows (`WINDOW.CLEANUP`
 is a submenu title and is refused); Sort Order became Forward and Reverse (`WINDOW.SORT` refused); View By Type added
 (it exists on 3.2 next to Icon, Name, Date, Size; the item is `ICON`, not `ICONS`); Delete and Empty Trash added per
-owner item 6. B1 sends every `pattern` row once on the rig and cuts a refused one, stating "n of 37".
+owner item 6. B1 sends every `pattern` row once on the rig and cuts a refused one, stating "n of 43".
 
-Seen in the 3.2 menus but NOT in the table (owner's call, section 6 item 9): Window > Close, Clear selection, Resize
-to fit, Find...; Tools > Auto-arrange Icons, Help.
+The six other 3.2 menu items the probe saw (Window > Close, Clear selection, Resize to fit, Find...; Tools >
+Auto-arrange Icons, Help) are IN (owner decision 2026-10-25 22:03, section 6 item 9). Two item names cannot be formed
+by the rule alone (the hyphen in Auto-arrange, the dots in Find...): B2 tries both spellings and the table keeps the
+one that answers rc 0; both refused = the row is cut and named.
 
 Workbench out (reason):
 - Workbench > Quit (also the research's System: Logout): destructive and refused by Workbench while programs run;
@@ -382,8 +390,8 @@ Each item is ticked only with its test passing. Running count is reported at eve
 
 ### Phase B: Workbench rows
 - [x] B0 probe on the rig (done 2026-10-25, rig 7, OS 3.2 image): port WORKBENCH present only on OS 3.2; `HELP` lists the 23 commands; item names take the `<MENU>.<ITEM>[.<SUB>]` form, table in 2.2 rewritten from the result. NOT probed: which window is active after amarchy-gui closes (R5); B1's rig test reads it (`wasabi windows`) before the first ACTIVE row. Findings: `thoughts/spot/term-findings/workbench-port-probe-2026-10-25.md`.
-- [ ] B0a probe on the owner's A1200 (OS 3.2, workbench.library 47.42): `SYS:Rexxc/rx "say 1+1"` answers 2, but `address WORKBENCH HELP` fails "Host environment not found" and `Version Workbench` says "Object not found" (checked 2026-10-25 from the vtcon-a1 session). Find why the port is missing (RexxMast started after LoadWB? Workbench's ARexx port opened lazily? a replacement Workbench?) and whether a startup-sequence change brings it back. Until it is back, the group hides on the A1200 (K9) and B2 can only run on the rig. Gates nothing on the host side; gates the owner's eye check of phase B.
-- [ ] B1 37 `[menu]` rows (table 2.2; each `pattern` row sent once on the rig in B2, a refused one cut and named, count stated as "n of 37"). Host test as W1. The 37 include
+- [x] B0a probe on the owner's A1200 (done 2026-10-25 22:00, read-only over ami.py): RexxMast 47.2 runs and starts BEFORE LoadWB (S:Startup-Sequence lines 108-109 RexxMast, 120 LoadWB), workbench.library 47.42, no `Rexx` line in S:User-Startup. The port list shows DOPUS.1, AMARCHY, WASABI and others but no WORKBENCH; `address WORKBENCH HELP` = "Error 13 ... Host environment not found". Process list: 1 LoadWB, 11 `DOpus5:DirectoryOpus` (user-startup assigns DOpus5: and adds DOpus5:c to the path); `dopus version` over DOPUS.1 answers `5 91`. Finding: the A1200 runs Directory Opus 5.91 as its Workbench replacement, so the real Workbench never opens its ARexx port; no startup-sequence change brings it back. Owner decision 22:03: phase B stays as planned, the group hides on the A1200 through K9, and the DOpus plan's P1 group (`thoughts/shared/plans/2026-10-25-amarchy-dopus-integration.md`) is the A1200 twin of this group. B2 runs on the rig only (`--os 32`); the owner's eye check of phase B is the K9 hiding on the A1200 plus the DOpus P1 group.
+- [ ] B1 43 `[menu]` rows (table 2.2; each `pattern` row sent once on the rig in B2, a refused one cut and named, count stated as "n of 43"). Host test as W1. The 43 include
   `workbench.delete` (Icons > Delete) and `workbench.emptytrash` (Icons > Empty Trash): menu only, no `[bind]` row,
   Workbench's own confirm requester left in place (owner decision 2026-10-25, section 6 item 6). The host test asserts
   both rows exist in `[menu]` and neither id appears in `[bind]`.
@@ -410,7 +418,7 @@ Total: 5 + 8 + 3 + 2 + 5 + 3 + 3 = 29 items (K1 to K4, K11; K5, K5a, K6, K7, K8,
   drawn menu, not only from a hotkey.
 - R-B: LockIBase nesting (K6) is unmeasured; a deadlock freezes Intuition input. Mitigation: the probe before the
   verbs are enabled, the verbs enabled one at a time, the rig watchdog (STATUS must still answer after each verb).
-- R-C: the WORKBENCH port and the item names were unverified (research); B0 verified them on the 3.2 rig (table 2.2). Open: the owner's A1200 has no WORKBENCH port (B0a); until that is understood, phase B is rig-only and the group hides on the A1200. A row marked `pattern` in 2.2 may still be refused: B2 sends each once and cuts it.
+- R-C: the WORKBENCH port and the item names were unverified (research); B0 verified them on the 3.2 rig (table 2.2). The owner's A1200 has no WORKBENCH port because it runs Directory Opus 5.91 as its Workbench (B0a, closed): phase B is rig-only by design and the group hides on the A1200 (K9); the DOpus P1 group is its twin there. A row marked `pattern` in 2.2 may still be refused: B2 sends each once and cuts it; `workbench.autoarrange` and `workbench.find` have two candidate spellings each.
 - R-D: MoveWindow and SizeWindow on a window whose owner uses a smart refresh or has a zoom box can leave the
   owner's layout unaware; this is normal Intuition behaviour (ClickToFront class), not special to Amarchy.
 - R-E: menu table capacity (80 of 128 rows) once the other groups land.
@@ -436,16 +444,26 @@ Total: 5 + 8 + 3 + 2 + 5 + 3 + 3 = 29 items (K1 to K4, K11; K5, K5a, K6, K7, K8,
 8. Whether the 12 geometry rows (move, resize, focus) belong in the visible menu or in a sub-level
    `window.arrange`: keep flat (recommended: the drawn menu scrolls); a sub-level costs two extra clicks.
 9. Six more 3.2 Workbench items the probe found (Window > Close, Clear selection, Resize to fit, Find...; Tools >
-   Auto-arrange Icons, Help): leave OUT (recommended: Close and Clear selection duplicate the window group and the
-   mouse; Find and Help open requesters; 37 rows is already the largest group). Alternative: add all six (43 rows).
+   Auto-arrange Icons, Help): owner 2026-10-25 22:03: ADD ALL SIX (43 rows; the recommendation was OUT because Close
+   and Clear selection duplicate the window group and the mouse, and Find and Help open requesters). Added to table 2.2
+   as `workbench.closewindow`, `workbench.clearselection`, `workbench.resizetofit`, `workbench.find`,
+   `workbench.autoarrange`, `workbench.help`; two names (Auto-arrange, Find...) get both spellings tried in B2.
 10. Clean Up as five rows (Column, Name, Date, Size, Type) because `WINDOW.CLEANUP` is a submenu title and is refused:
-   keep all five (recommended: the drawn menu scrolls, and the names are what the Workbench menu shows). Alternative:
-   Column and Name only (the two the probe sent), 34 rows.
+   owner 2026-10-25 22:03: keep all five (as recommended).
 
 Owner decisions 2026-10-25 21:30 (AskUserQuestion, four questions): 1 foreign-window close OUT; 3 keep the shipped
 tab and font keys, resize on Super+Alt+Arrows, the 19 new hotkeys on the free combos of section 3; 6 Delete and
 Empty Trash IN behind the confirm, Format Disk OUT (see item 6); 2, 4, 5, 7, 8 accepted as recommended. Section 6 is
 closed; implementation may start after CLIP-HISTORY lands and the A1200 deploy is done.
+
+Owner decisions 2026-10-25 22:03 (AskUserQuestion, three questions): 9 add all six (43 rows); 10 all five Clean Up
+rows; B0a closed by the finding that the A1200 runs Directory Opus 5.91 as its Workbench replacement (the port
+WORKBENCH never opens there): phase B stays, hidden on the A1200 through K9, with the DOpus plan's P1 group as the
+A1200 twin. Note for the DOpus plan: its research probed v5.104; the A1200 runs 5.91, whose `dopus version` answers
+`5 91` (not `5 99 104`), so P1's version gate and command templates must be checked against 5.91 on the A1200.
+Also decided the same evening, outside this plan: a third menu mode `minimal` (amarchy-menu-mode = drawn | text |
+minimal, text-only rows, two pens) and a drawer icon for scanned drawer groups; both ledgered (MENU-MINIMAL,
+GROUP-DRAWER-ICON) and offered to session vtcon-05 (icon domain).
 
 ## 7. Reachability (one test per feature)
 
