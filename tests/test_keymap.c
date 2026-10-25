@@ -1571,6 +1571,18 @@ static int node_has(const char *node, const char *label, int cond)
 
 /* DOPUS D3: the Dopus group and its rows are drawn only when DOPUS.1 exists (MN_COND_DOPUS, probed once at
  * open by upactive_dopus_present); every other group is unaffected, a terminal is not needed for them. */
+/* D5: the dopus-*.rexx scripts end RC 5 without DOPUS.1; that and only that is "Directory Opus is not running". */
+static void a_dopus_script_without_a_port_has_a_notice(void)
+{
+    const char *n = lf_rexx_notice("UP-Term:Rexx/dopus-newlister.rexx", 5);
+    CHECK(n && strcmp(n, "Directory Opus is not running") == 0);
+    CHECK(lf_rexx_notice("dopus-front.rexx", 5) != 0);
+    CHECK(lf_rexx_notice("UP-Term:Rexx/dopus-front.rexx", 0) == 0);
+    CHECK(lf_rexx_notice("UP-Term:Rexx/dopus-front.rexx", 10) == 0);
+    CHECK(lf_rexx_notice("UP-Term:Rexx/other.rexx", 5) == 0);
+    CHECK(lf_rexx_notice(0, 5) == 0);
+}
+
 static void the_dopus_group_needs_a_port(void)
 {
     static char file[16384];
@@ -2212,6 +2224,7 @@ void suite_keymap(void)
     a_leaf_window_spec_names_the_front_public_screen();
     dopus_binds_parse();
     the_dopus_group_needs_a_port();
+    a_dopus_script_without_a_port_has_a_notice();
     the_dopus_rows_are_shipped();
     a_run_row_starts_its_command_through_the_upterm_shell();
     a_rexx_script_path_runs_as_a_script_and_a_string_inline();

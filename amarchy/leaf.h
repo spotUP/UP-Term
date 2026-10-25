@@ -42,6 +42,10 @@ typedef enum {
 
 lf_how lf_plan(int kind);
 
+/* The notice for a finished ARexx leaf: the dopus-*.rexx scripts end with RC 5 when DOPUS.1 is absent (plan
+ * 2026-10-25-amarchy-dopus-integration.md, D5), which says "Directory Opus is not running". 0 for anything else. */
+const char *lf_rexx_notice(const char *script, long rc);
+
 /* The viewer's command line: the quoted full path of amarchy-gui in dir (the directory the running menu was
  * loaded from, as the commodity's cx_helper_cmd does), then "viewer". A bare name goes through vsh's PATH,
  * which is stale or missing where UP-Term: is not assigned (the rig): the program is beside us, not on a path.

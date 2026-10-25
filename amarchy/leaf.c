@@ -232,9 +232,15 @@ int lf_run(const km_menu *m, const lf_ui *ui)
         return run_viewer(m, ui);
     case LF_REXX: {
         char line[160];
+        int rc;
+        const char *note;
         if (!lf_rexx_command(line, sizeof line, m->arg))
             return -1;
-        return system(line);
+        rc = system(line);
+        note = lf_rexx_notice(m->arg, rc);
+        if (note && ui && ui->refused)
+            ui->refused(ui->ctx, m->label, UPREQ_FAILED, note);
+        return rc;
     }
     case LF_OPEN: {
         char spec[128], line[160];

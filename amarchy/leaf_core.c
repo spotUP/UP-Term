@@ -26,6 +26,18 @@ lf_how lf_plan(int kind)
     }
 }
 
+const char *lf_rexx_notice(const char *script, long rc)
+{
+    const char *base = script ? script : "";
+    const char *p;
+    for (p = base; *p; p++)
+        if (*p == '/' || *p == ':')
+            base = p + 1;
+    if (rc == 5 && strncmp(base, "dopus-", 6) == 0)
+        return "Directory Opus is not running";
+    return 0;
+}
+
 int lf_screen_spec(char *out, int cap, const char *spec, const char *screen)
 {
     static const char opt[] = "/SCREEN ";
