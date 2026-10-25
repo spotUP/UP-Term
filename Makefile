@@ -5,6 +5,10 @@ HOSTCFLAGS := -std=c89 -pedantic -Wno-long-long -Wall -Wextra -Werror -O1 -g -fs
 BUILD   := build
 # the generated version header; named here because the host rules above its own rule list it as a prerequisite
 UPTERM_VERSION_H := $(BUILD)/amiga/upterm_version.h
+# the generated menu icon page and the font it is drawn from, named here for the same reason: vttest_host
+# lists the page, whose rule lists the font, both above their own rules (a prerequisite expands when read)
+MENU_ICONS_INC := $(BUILD)/amiga/menu_icons.inc
+SYMBOLS_TTF := $(BUILD)/symbolsnerd/SymbolsNerdFontMono-Regular.ttf
 
 # a recipe that fails must not leave its target behind: a 0-byte build/amiga/wbrun once counted as up to date (M2)
 .DELETE_ON_ERROR:
@@ -252,7 +256,6 @@ $(KEYMAP_DEFAULT_INC): tools/gen_keymap_default.py dist/keymap
 
 # The drawn Amarchy menu's icons (plan 2026-10-23-amarchy-drawn-menu.md, G3): dist/menu-icons names Symbols
 # Nerd Font glyphs; tools/gen_menu_icons.py (on tools/gen_emoji.py) makes one emoji page of them for amarchy/menu_icon.c.
-MENU_ICONS_INC := $(BUILD)/amiga/menu_icons.inc
 $(MENU_ICONS_INC): tools/gen_menu_icons.py tools/gen_emoji.py dist/menu-icons $(SYMBOLS_TTF)
 	@mkdir -p $(dir $@)
 	python3 tools/gen_menu_icons.py dist/menu-icons $(SYMBOLS_TTF) $@
@@ -294,7 +297,6 @@ NERDFONTS_VER ?= 3.5.1
 NERDFONTS_SHA256 ?= 01172f37db8543edb102e5cb5c64101c9f4686630804d49b419aa07b23a69996
 SYMBOLS_TTF_SHA256 ?= fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749
 SYMBOLS_ARCHIVE := $(BUILD)/symbolsnerd/NerdFontsSymbolsOnly-$(NERDFONTS_VER).tar.xz
-SYMBOLS_TTF := $(BUILD)/symbolsnerd/SymbolsNerdFontMono-Regular.ttf
 $(SYMBOLS_ARCHIVE):
 	@mkdir -p $(BUILD)/symbolsnerd
 	curl -sSfL -o $@.tmp https://github.com/ryanoasis/nerd-fonts/releases/download/v$(NERDFONTS_VER)/NerdFontsSymbolsOnly.tar.xz
