@@ -890,7 +890,9 @@ def logwatch():
             paths.cap_fsuae_log(extra=[SERIAL])
             time.sleep(LOGWATCH_EVERY)
 
-def start(retries=2):
+START_RETRIES = 2
+
+def start(retries=START_RETRIES):
     """Boot; a boot that stops right after "go started" (the emulator froze
     before anything under test loaded: seen 3 times on 2026-09-29, cause not
     found) is killed and retried."""
@@ -939,7 +941,12 @@ def start(retries=2):
     if retries > 0:
         print("retrying the boot")
         stop()
-        start(retries - 1)
+        return start(retries - 1)
+    # out of retries: stop the last boot's emulator and fail the command. Falling off the end returned rc 0, so
+    # getty_rig (check=True) went on against a rig that never came up and died in wasabi Conn with
+    # ConnectionRefusedError, and the third boot's FS-UAE (with its logwatch) kept running unattended (rig 1, 2026-10-25).
+    stop()
+    sys.exit("rig: the boot failed %d times (no wasabid answer); see the boot.log lines above" % (START_RETRIES + 1))
 
 # the assigns every rig script uses, made by the boot hook and BOOTX:go: a
 # boot that lacks one has a requester waiting ("Please insert volume VTC:"
