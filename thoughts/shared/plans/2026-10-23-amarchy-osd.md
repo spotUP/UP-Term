@@ -85,22 +85,22 @@ constants in ui.h so the commodity sizes from the same numbers.
 
 ## Checklist
 
-- [ ] O1 handler: `CELLS`, `CENTRE`, `FRONT`, `CLOSEINACTIVE` in
+- [x] O1 handler: `CELLS`, `CENTRE`, `FRONT`, `CLOSEINACTIVE` in (landed 392f6092 2026-10-23, evidence handler/winspec.c:56, tests/test_winspec.c cells/centre checks)
   parse_spec; NOBORDER drops the gadgets and scroll bar (after the user
   check). Host tests: parse_spec is not host-testable today; move the
   field parsing that is pure (the spec string to a struct) into the
   winspec module tests/test_winspec.c already covers, and test every new
   field there, including clamping and CENTRE overriding x/y.
-- [ ] O2 handler: CLOSEINACTIVE routes IDCMP_INACTIVEWINDOW through the
+- [x] O2 handler: CLOSEINACTIVE routes IDCMP_INACTIVEWINDOW through the (landed ee88b76a 2026-10-23, evidence tools/rig/amarchy_osd_rig.py:176 focus loss closes the window)
   CLOSEWINDOW path. Rig test: a window opened with it reads EOF after
   another window is activated; a window without it does not.
-- [ ] O3 libupkgui OSD style option + host test of its line layout if the
+- [x] O3 libupkgui OSD style option + host test of its line layout if the (landed d6f758b in upterm-ports 2026-10-23, evidence ui_osd at upterm-ports/pkgs/upkg-ui/src/ui.c:887, host test 78/0; upkg-browse pixel compare 0 px differ, thoughts/spot/night-run.md O3b)
   library has tests, else a rig screenshot check; upkg-browse unchanged
   (rig screenshot before/after compared by pixels).
-- [ ] O4 amarchy-menu turns on the OSD style; exits on EOF.
-- [ ] O5 commodity: menu size in cells from mn_children, new spec string.
+- [x] O4 amarchy-menu turns on the OSD style; exits on EOF. (landed 75011583 2026-10-23, evidence amarchy/menu.c:322 ui_osd(1))
+- [x] O5 commodity: menu size in cells from mn_children, new spec string. (landed 41559439 2026-10-23, evidence make test ONLY=keymap; osd size walk)
   Host test: the size for the default keymap's root and apps nodes.
-- [ ] O6 reachability rig test (one, through the real entry point): the
+- [x] O6 reachability rig test (one, through the real entry point): the (landed 89b7f86c and 344d45ff 2026-10-23, evidence tools/rig/amarchy_osd_rig.py 13 checks pass on rig 3)
   commodity's Super+Space opens the menu window; Wasabi window list shows
   a borderless window centred on the front screen (centre within 1 cell),
   its size the computed cells; no masthead text on screen; clicking
