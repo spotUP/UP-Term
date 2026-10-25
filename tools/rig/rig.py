@@ -15,7 +15,9 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   and the owner's 3.2 install as DH0:, ledger T3;
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
-                  --serial <path>: the serial port to that path, not serial.log)
+                  --serial <path>: the serial port to that path, not serial.log;
+                  --purpose "<who: what>": the window title says which session runs the
+                  rig and for what, e.g. "Amarchy session: menu terminal check")
                   --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
                   Workbench of that version (paths.OS_IMAGES; own copy per rig,
                   --fresh copies it anew; the Kickstart goes with it)
@@ -86,6 +88,8 @@ if OS32:
 OS_NAMES = {"30": "3.0", "31": "3.1", "314": "3.1.4", "32": "3.2", "321": "3.2.1", "322": "3.2.2",
             "35": "3.5", "39": "3.9"}
 OS = sys.argv[sys.argv.index("--os") + 1] if "--os" in sys.argv else None
+# --purpose "<who: what>": the session and task the rig serves, shown in the window title (title_line).
+PURPOSE = " ".join(sys.argv[sys.argv.index("--purpose") + 1].split()) if "--purpose" in sys.argv[:-1] else None
 if OS is not None and OS not in OS_NAMES:
     sys.exit("rig: --os %s: one of %s" % (OS, " ".join(OS_NAMES)))
 FRESH = "--fresh" in sys.argv
@@ -495,10 +499,13 @@ def unimplemented_lines():
 
 def title_line():
     """The window title names the rig and its machine: with several rigs open the
-    owner saw only identical FS-UAE windows (2026-10-24) and could not tell them apart."""
+    owner saw only identical FS-UAE windows (2026-10-24) and could not tell them apart. It also names the
+    session and task from --purpose: with rigs of several sessions open the owner could not tell what each
+    one did or whose it was (2026-10-25). A start without --purpose says so in the title."""
     machine = ("A1200 stock" if STOCK else "A500" if A500 else
                "060 max" if MAX else "060" if M060 else "68020")
-    return "title = vtcon rig %d (%s%s)" % (paths.RIG_N, machine, ", OS %s" % OS if OS else ", OS 3.2" if OS32 else "")
+    return "title = vtcon rig %d (%s%s) - %s" % (paths.RIG_N, machine, ", OS %s" % OS if OS else ", OS 3.2" if OS32 else "",
+                                                  PURPOSE or "purpose not given (rig.py start --purpose)")
 
 # The Mac keys the rig's fs-uae maps (setup writes them into the config).
 HOST_KEYS = [
