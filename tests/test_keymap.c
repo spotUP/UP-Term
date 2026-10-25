@@ -318,7 +318,7 @@ static void the_shipped_keymap_loads_whole(void)
     CHECK_INT(km.refused, 0);
     CHECK_INT(km.overflow, 0);
     CHECK_INT(km.version, KM_VERSION);
-    CHECK(km.nbind >= 30 && km.nbind <= 60);
+    CHECK(km.nbind >= 30 && km.nbind <= 80);
     CHECK(km.nmenu > 0);
     for (i = 0; i < km.nbind; i++) {
         const km_bind *b = &km.bind[i];
@@ -528,6 +528,62 @@ static void check_row(const char *id, int kind, const char *arg)
         return;
     CHECK_INT(m->kind, kind);
     CHECK(!strcmp(m->arg, arg));
+}
+
+static void the_window_group_rows_and_hotkeys(void)
+{
+    check_row("window.next", KA_WIN, "cycle next");
+    check_row("window.previous", KA_WIN, "cycle prev");
+    check_row("window.front", KA_WIN, "front");
+    check_row("window.back", KA_WIN, "back");
+    check_row("window.zip", KA_WIN, "zip");
+    check_row("window.fullwidth", KA_WIN, "fullwidth");
+    check_row("window.fullscreen", KA_WIN, "fullscreen");
+    check_row("window.save", KA_WIN, "save");
+    check_row("window.restore", KA_WIN, "restore");
+    check_row("window.moveleft", KA_WIN, "move left");
+    check_row("window.moveright", KA_WIN, "move right");
+    check_row("window.moveup", KA_WIN, "move up");
+    check_row("window.movedown", KA_WIN, "move down");
+    check_row("window.narrower", KA_WIN, "size left");
+    check_row("window.wider", KA_WIN, "size right");
+    check_row("window.shorter", KA_WIN, "size up");
+    check_row("window.taller", KA_WIN, "size down");
+    check_row("window.focusleft", KA_WIN, "focus left");
+    check_row("window.focusright", KA_WIN, "focus right");
+    check_row("window.focusup", KA_WIN, "focus up");
+    check_row("window.focusdown", KA_WIN, "focus down");
+    check_row("window.closedrawer", KA_REXX, "address WORKBENCH 'WINDOW ACTIVE CLOSE'");
+    check_row("window.closedrawers", KA_WIN, "closedrawers");
+    {   /* the 16 Window hotkeys: each key is a KA_WIN bind with its verb (plan 3) */
+        static const struct { unsigned qual; unsigned code; const char *arg; } hk[] = {
+            { KM_Q_SUPER, 0x18, "front" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x18, "back" },
+            { KM_Q_SUPER, 0x31, "zip" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x23, "fullwidth" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x21, "save" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x13, "restore" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x42, "cycle next" },
+            { KM_Q_SUPER|KM_Q_ALT|KM_Q_SHIFT, 0x42, "cycle prev" },
+            { KM_Q_SUPER|KM_Q_SHIFT, 0x4F, "move left" },
+            { KM_Q_SUPER|KM_Q_SHIFT, 0x4E, "move right" },
+            { KM_Q_SUPER|KM_Q_SHIFT, 0x4C, "move up" },
+            { KM_Q_SUPER|KM_Q_SHIFT, 0x4D, "move down" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x4F, "size left" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x4E, "size right" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x4C, "size up" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x4D, "size down" },
+        };
+        unsigned i;
+        for (i = 0; i < sizeof hk / sizeof hk[0]; i++) {
+            const km_bind *b = keymap_find(&km, hk[i].qual, hk[i].code);
+            CHECK(b != 0);
+            if (b) {
+                CHECK_INT(b->kind, KA_WIN);
+                CHECK(!strcmp(b->arg, hk[i].arg));
+            }
+        }
+    }
 }
 
 static void the_shipped_menu_has_learn_system_and_install_groups(void)
@@ -811,11 +867,11 @@ static void terminal_rows_show_only_over_a_terminal(void)
     c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 0);
     CHECK(has_label(it, c, "Apps"));
     CHECK(!has_label(it, c, "Style"));
-    CHECK(!has_label(it, c, "Window"));
+    CHECK(has_label(it, c, "Window"));              /* the win: rows run in the commodity, over a terminal or not */
     c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 0);
     CHECK_INT(c, 0);
     c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 0);
+    CHECK_INT(c, 23);                                /* the 23 win:/rexx: rows; window.tab and window.preferences stay hidden */
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
     CHECK(has_label(it, c, "UP-Term") && has_label(it, c, "Editor"));
     CHECK(!has_label(it, c, "Claude"));
@@ -911,8 +967,8 @@ static void osd_size_counts_the_reachable_levels(void)
         long n = slurp("dist/keymap", file, sizeof(file));
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
-        CHECK_INT(cols, MN_OSD_MIN_COLS + 1);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 8);
+        CHECK_INT(cols, MN_OSD_MIN_COLS + 7);           /* "Focus window to the left" in Window */
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 25);        /* the tallest level is Window: 23 rows + the 2 terminal rows */
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
         CHECK_INT(rows, MN_OSD_HEAD_LINES + 4);
@@ -1567,7 +1623,7 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
  * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
  * parsed table, 8288 B on the host), carry no
  * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
-#define AMARCHY_KEYMAP_HEAP_MAX 800   /* 8 rows, 460 B measured; the parsed table is 8288 B */
+#define AMARCHY_KEYMAP_HEAP_MAX 1700  /* 26 rows (8 + the 18 window hotkeys' win: and rexx: rows), 1609 B measured; the parsed table is 8288 B */
 static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 {
     static char file[16384];
@@ -1944,6 +2000,7 @@ void suite_keymap(void)
     win_defers_in_the_handler();
     the_shipped_file_resolves_and_derives_menu_keys();
     the_shipped_menu_has_learn_system_and_install_groups();
+    the_window_group_rows_and_hotkeys();
     cx_descriptions_and_qualifier_mask();
     cx_installs_only_the_commodity_rows();
     ua_count_released_before_own_window_closes();
