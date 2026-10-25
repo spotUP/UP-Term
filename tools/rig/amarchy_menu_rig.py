@@ -391,7 +391,8 @@ def r_app_icons():
     .info image in the row's icon cell. The fake WBTOOL app A0Fake has its icon; A0NoIcon is indexed and then loses
     its .info, so its row must show the generic Apps glyph, which is also what the root level's Apps row draws.
     Sentinel: ENV:AMARCHY_ICON_LOADS (icon_gfx.c, .info images loaded) is deleted first and is above 0 after the
-    menu drew A0Fake. Needs icon.library V44 (OS 3.2: `rig.py start --os 32 --max`)."""
+    menu drew A0Fake. Needs icon.library V44 (OS 3.2: `rig.py start --os 32 --max`) and the upconf key
+    amarchy-app-icons = amiga (a12e12f2: generic glyphs by default), which the row writes itself."""
     import amarchy_rig, amarchy_gui_rig as g
     ensure_terminal()
     res = []
@@ -430,6 +431,9 @@ def r_app_icons():
         x9_files([(X9_DIR, 'A0NoIcon')])
         c.run('Echo >%s "[profile default]"' % X9_CONF)
         c.run('Echo >>%s "amarchy-index-skip = %s"' % (X9_CONF, X9_SKIP))
+        # since a12e12f2 the drawn menu loads .info images only with this key; without it every row draws a
+        # generic glyph and AMARCHY_ICON_LOADS stays 0
+        c.run('Echo >>%s "amarchy-app-icons = amiga"' % X9_CONF)
         amarchy_rig.arexx('RELOAD')
         c.run('Delete >NIL: %s QUIET' % X9_CACHE)
         c.run('%s/amarchy-index' % paths.UPTERM_BIN, 120)
