@@ -89,6 +89,18 @@ static void open_term(int lines)
     open_term_in(lines, VT_XTERM);
 }
 
+/* The engine damages the window during vtwin_attach (vt_set_personality resets it) before bind runs vr_init:
+ * sel_drop_if_hit asks a renderer with no terminal yet. Before 2026-10-25 vr_selection read the terminal's
+ * scroll count first, a read of NULL + 0x56 that MuForce reported on every new window. */
+static void selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_terminal(void)
+{
+    vr_render r;
+    int ax = -1, ay = -1, bx = -1, by = -1;
+    memset(&r, 0, sizeof r);
+    CHECK_INT(vr_selection(&r, &ax, &ay, &bx, &by), 0);
+    CHECK_INT(ax, -1);
+}
+
 static void close_term(void)
 {
     vr_free(&rn);
@@ -1826,6 +1838,7 @@ int main(void)
     padding_extend_gives_the_strips_the_colour_of_the_edge_cells();
     an_outline_glyph_is_antialiased_on_a_true_colour_screen_and_not_when_off();
     an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when_none();
+    selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_terminal();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }

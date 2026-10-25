@@ -3883,9 +3883,10 @@ void vr_set_view(vr_render *r, int lines)
 
 int vr_selection(const vr_render *r, int *ax, int *ay, int *bx, int *by)
 {
-    LONG base = vt_lines_scrolled(r->t);
-    if (!r->sel)
-        return 0;
+    LONG base;
+    if (!r->win || !r->sel)
+        return 0; /* no window (before vr_init: the engine's damage during vtwin_attach's vt_reset) or none held */
+    base = vt_lines_scrolled(r->t);
     *ax = r->sel_ax;
     *bx = r->sel_bx;
     *ay = (int)(r->sel_ay - base);
