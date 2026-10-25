@@ -10,6 +10,8 @@ lf_how lf_plan(int kind)
         return LF_WINDOW;
     case KA_DETACH:
         return LF_DETACH;
+    case KA_SCAN:
+        return LF_SCAN;
     case KA_REXX:
         return LF_REXX;
     case KA_OPEN:

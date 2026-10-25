@@ -336,9 +336,13 @@ int ix_same_handler_task(const void *vol_task, const void *dev_task)
     return vol_task != 0 && vol_task == dev_task;
 }
 
+const char *const ix_prog_old_names[] = { "Amarchy.index.2", "Amarchy.index", 0 };
+
 void ix_prog_begin(ix_prog *p)
 {
+    long runs = p->version == IX_PROG_VERSION ? p->runs : 0;   /* a fresh or other-layout record counts from 0 */
     memset(p, 0, sizeof *p);
+    p->runs = runs + 1;
     p->version = IX_PROG_VERSION;
     p->stage = IX_ST_VOLUMES;
     p->seq = 1;
@@ -484,4 +488,84 @@ int ix_prog_text(const ix_prog *p, int task, int moving, char *out, int n)
     pb_str(&b, "\n");
     out[b.len] = 0;
     return b.over ? -1 : b.len;
+}
+
+/* "<head><path>" into out, the path cut from the left (a leading "...") when it does not fit n. */
+static void watch_text(char *out, int n, const char *head, const char *path)
+{
+    int hl = (int)strlen(head), pl = (int)strlen(path), room = n - 1 - hl;
+    if (room < 4) {
+        out[0] = 0;
+        return;
+    }
+    memcpy(out, head, hl);
+    if (pl <= room) {
+        memcpy(out + hl, path, pl + 1);
+        return;
+    }
+    memcpy(out + hl, "...", 3);
+    memcpy(out + hl + 3, path + pl - (room - 3), room - 3 + 1);
+}
+
+static void watch_done(char *out, int n, const ix_prog *p)
+{
+    pbuf pb;
+    pb.s = out;
+    pb.n = n;
+    pb.len = 0;
+    pb.over = 0;
+    pb_str(&pb, "Scan done: ");
+    pb_num(&pb, p->napps);
+    pb_str(&pb, " apps, ");
+    pb_num(&pb, p->ngames);
+    pb_str(&pb, " games");
+    out[pb.len < n ? pb.len : n - 1] = 0;
+}
+
+int ix_watch_row(ix_watch *w, int have, const ix_prog *p, int alive, char *out, int n)
+{
+    int st;
+    if (n < 1)
+        return IXW_NONE;
+    out[0] = 0;
+    if (have && p->version != IX_PROG_VERSION)
+        have = 0;                                   /* another layout: its fields are not read */
+    if (w->runs0 >= 0 && (!have || p->runs <= w->runs0)) {
+        if (++w->polls > IXW_START_POLLS) {
+            strncpy(out, "Scan did not start", n - 1);
+            out[n - 1] = 0;
+            return IXW_FAILED;
+        }
+        strncpy(out, "Scanning... starting", n - 1);
+        out[n - 1] = 0;
+        return IXW_STARTING;
+    }
+    if (!have)
+        return IXW_NONE;
+    st = p->stage;
+    if (st == IX_ST_VOLUMES || st == IX_ST_WALK || st == IX_ST_ICON || st == IX_ST_WRITE) {
+        if (w->runs0 < 0) {
+            if (!alive)
+                return IXW_NONE;                    /* a scan that died long ago is not news */
+            w->runs0 = p->runs - 1;                 /* adopt the running scan: its end is shown */
+        }
+        watch_text(out, n, alive ? "Scanning... " : "Scan stopped working at ", p->path);
+        return alive ? IXW_RUNNING : IXW_FAILED;
+    }
+    if (w->runs0 < 0)
+        return IXW_NONE;                            /* an old result is not news */
+    if (st == IX_ST_STOPPED) {
+        watch_text(out, n, "Scan stopped at ", p->path);
+        return IXW_FAILED;
+    }
+    if (st == IX_ST_WRITE_FAILED) {
+        strncpy(out, "Scan could not save the list", n - 1);
+        out[n - 1] = 0;
+        return IXW_FAILED;
+    }
+    if (st == IX_ST_DONE) {
+        watch_done(out, n, p);
+        return IXW_DONE;
+    }
+    return IXW_NONE;
 }

@@ -26,6 +26,7 @@ typedef enum {
     LF_REXX,     /* rexx: RX "script" */
     LF_OPEN,     /* open:uterm: a new UP-Term window */
     LF_DETACH,   /* detach: a program in the background, input and output NIL: (no window) */
+    LF_SCAN,     /* scan: like detach:, and lf_run returns LF_WATCH so the menu watches the scan */
     LF_REQUEST   /* tab:, menuid:, slash: ... a terminal window's request port takes the action */
 } lf_how;
 
@@ -46,7 +47,11 @@ typedef struct lf_ui {
  * the menu's self_in_mru. Both menus and the commodity ask it once at open and pass the answer to
  * ix_level_t (TERM-ROWS-ONLY-OVER-TERMINAL). */
 
-/* returns the action's code (0 = done) */
+/* lf_run returns this after a scan: leaf started: the scanner runs and the menu should watch it. A positive
+ * code that is no UPREQ_* answer (those are 5..35). */
+#define LF_WATCH 1
+
+/* returns the action's code (0 = done, LF_WATCH = a scan was started) */
 int lf_run(const km_menu *m, const lf_ui *ui);
 
 /* The request an index row's launcher sends the running Amarchy (the Amiga side wraps it in an exec

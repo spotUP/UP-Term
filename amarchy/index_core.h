@@ -93,23 +93,25 @@ int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n);
  * OS side only allocates and finds it. */
 /* The record is never freed, so one left by an older build lives until reboot. The layout version is in
  * the semaphore name (IX_PROG_NAME) and in the record (version): a build never writes into a record of
- * another layout, it adds its own under its own name; the older name is IX_PROG_NAME_OLD (layout 1, no
- * version word). */
-#define IX_PROG_VERSION  2
-#define IX_PROG_NAME     "Amarchy.index.2"
-#define IX_PROG_NAME_OLD "Amarchy.index"
+ * another layout, it adds its own under its own name; the older names are ix_prog_old_names (layout 2, and
+ * layout 1 which has no version word). */
+#define IX_PROG_VERSION  3
+#define IX_PROG_NAME     "Amarchy.index.3"
+/* Older semaphore names, newest first, ending in 0: "Amarchy.index.2" (layout 2), "Amarchy.index" (layout 1). */
+extern const char *const ix_prog_old_names[];
 enum { IX_ST_IDLE = 0, IX_ST_VOLUMES, IX_ST_WALK, IX_ST_ICON, IX_ST_WRITE, IX_ST_DONE, IX_ST_STOPPED,
        IX_ST_WRITE_FAILED };
 typedef struct ix_prog {
     long version;               /* IX_PROG_VERSION; first, so a reader checks it before any other field */
     long seq;                   /* counts every update: a changing seq means the scanner is moving */
+    long runs;                  /* scans begun since the record was made; ix_prog_begin keeps it and adds 1 */
     int  stage;                 /* IX_ST_* */
     long dirs, icons;           /* drawers entered, icons opened so far */
     long napps, ngames, nvols;  /* set by ix_prog_done */
     char path[IX_PATH];         /* the drawer or icon file being handled; no slash added for a volume root */
 } ix_prog;
 
-/* A new scan: everything cleared, stage set to IX_ST_VOLUMES. */
+/* A new scan: everything cleared but runs, which gains 1; stage set to IX_ST_VOLUMES. */
 void ix_prog_begin(ix_prog *p);
 /* Note stage and path (cut to fit); a WALK counts a drawer, an ICON counts an icon. */
 void ix_prog_note(ix_prog *p, int stage, const char *path);
@@ -122,6 +124,15 @@ void ix_prog_write_failed(ix_prog *p);
 /* The line --where prints when it finds only a record of another layout (an older build's, left in
  * memory until reboot); its fields are not read. Length, or -1 when it does not fit n. */
 int ix_prog_other_text(char *out, int n);
+/* What a menu shows of a scan it watches (RESCAN-FEEDBACK). runs0: the record's runs when the menu started
+ * the scan, -1 for a menu that did not start one. polls: how many polls have passed (ix_watch_row counts). */
+enum { IXW_NONE, IXW_STARTING, IXW_RUNNING, IXW_DONE, IXW_FAILED };
+#define IXW_START_POLLS 10   /* polls a started scan may take to begin before it is reported as not started */
+typedef struct ix_watch { long runs0; int polls; } ix_watch;
+/* One poll. have: a record exists (p, alive: its scanner task exists). Returns IXW_* and writes the status
+ * row text into out (cut to n; a long path is cut from the left so the drawer name stays); "" for NONE.
+ * A menu that did not start the scan (runs0 -1) adopts a running one, so it shows that scan's end too. */
+int ix_watch_row(ix_watch *w, int have, const ix_prog *p, int alive, char *out, int n);
 /* The stage as a word: volumes, walk, icon, write, done, stopped, idle. */
 const char *ix_stage_name(int stage);
 /* The text `amarchy-index --where` prints (several lines, each ending in LF), into out; the length,

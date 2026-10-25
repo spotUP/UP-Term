@@ -703,28 +703,28 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 # libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
 # (that needs no ports build); `make amarchy-menu` after `make` in upterm-ports.
 UPKGUI_SYS ?= $(UPTERM_ROOT)/upterm-ports/build/sysroot/UP-Term
-AMARCHY_MENU_SRC := amarchy/termenv.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
+AMARCHY_MENU_SRC := amarchy/termenv.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
-$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) handler/frontscr.h amarchy/menu_core.h amarchy/index_core.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a
+$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) handler/frontscr.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a
 	@mkdir -p $(BUILD)/amiga
 	$(UPTERM_ROOT)/upterm-ports/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
 
 # amarchy-gui: the drawn menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A plain vbcc
 # Intuition program, no ixemul, same command line as amarchy-menu.
-AMARCHY_GUI_SRC := amarchy/termenv.c amarchy/gui.c amarchy/icon_core.c amarchy/icon_gfx.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_font.c amarchy/menu_theme.c render/emoji.c render/fontpair.c render/unifont.c render/pens_amiga.c handler/frontscr.c config/keymap.c config/keymap_load.c config/upconf.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
+AMARCHY_GUI_SRC := amarchy/termenv.c amarchy/gui.c amarchy/icon_core.c amarchy/icon_gfx.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c amarchy/menu_geom.c amarchy/menu_icon.c amarchy/menu_font.c amarchy/menu_theme.c render/emoji.c render/fontpair.c render/unifont.c render/pens_amiga.c handler/frontscr.c config/keymap.c config/keymap_load.c config/upconf.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c
 .PHONY: amarchy-gui
 amarchy-gui: $(BUILD)/amiga/amarchy-gui
-$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/index_core.h amarchy/icon_core.h amarchy/icon_gfx.h amarchy/wblaunch.h amarchy/menu_geom.h amarchy/menu_icon.h amarchy/menu_font.h render/emoji.h render/fontpair.h render/unifont.h $(MENU_ICONS_INC) amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC)
+$(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/icon_core.h amarchy/icon_gfx.h amarchy/wblaunch.h amarchy/menu_geom.h amarchy/menu_icon.h amarchy/menu_font.h render/emoji.h render/fontpair.h render/unifont.h $(MENU_ICONS_INC) amarchy/menu_theme.h amarchy/leaf.h render/pens_amiga.h handler/frontscr.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC)
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_GUI_SRC)
 
 # amarchy-index: the app index scanner (plan 2026-10-23-amarchy-app-index.md, X2). A plain vbcc DOS program,
 # no ixemul; it writes ENVARC:Amarchy/apps, which Amarchy reads (it never scans itself).
-AMARCHY_INDEX_SRC := amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c
+AMARCHY_INDEX_SRC := amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/ixwatch.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c
 .PHONY: amarchy-index
 amarchy-index: $(BUILD)/amiga/amarchy-index
-$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/index_core.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h
+$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/index_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_INDEX_SRC)
 
