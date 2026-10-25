@@ -885,7 +885,7 @@ DOPUS_COUNT = ('/* sentinel: the lister count of the running Directory Opus */\n
 
 def dopus_port():
     """True when the public port DOPUS.1 exists on the rig (Directory Opus 5 running)."""
-    rc, out = c.run('RX "SAY SHOW(\'P\',\'DOPUS.1\')"')
+    rc, out = c.run(RX_CMD + ' "SAY SHOW(\'P\',\'DOPUS.1\')"')
     return rc == 0 and out.strip().endswith('1')
 
 
@@ -903,9 +903,13 @@ def dopus_lister_count():
         f = pathlib.Path(d) / 'count.rexx'
         f.write_text(DOPUS_COUNT)
         ami.put(str(f), 'RAM:x9.dopus-count.rexx')
-    rc, out = c.run('RX RAM:x9.dopus-count.rexx')
+    rc, out = c.run(RX_CMD + ' RAM:x9.dopus-count.rexx')
     m = re.search(r'LISTERS (\d+)', out)
     return int(m.group(1)) if m else None
+
+
+# The rig's shell path is C: only (rig.py startup), so RX is named by its drawer; a real Workbench has SYS:Rexxc in the path.
+RX_CMD = 'SYS:Rexxc/rx'
 
 
 def r_dopus_absent():
@@ -919,7 +923,7 @@ def r_dopus_absent():
     before = dopus_windows()
     for n in DOPUS_SCRIPTS:
         ami.put(str(DOPUS_REXX / ('dopus-%s.rexx' % n)), 'RAM:x9.dopus-%s.rexx' % n)
-        rc, out = c.run('RX RAM:x9.dopus-%s.rexx' % n)
+        rc, out = c.run(RX_CMD + ' RAM:x9.dopus-%s.rexx' % n)
         print('  %s dopus-%s.rexx without a port: RC %s' % ('[OK]' if rc == 5 else '[FAIL]', n, rc), flush=True)
         res.append(rc == 5)
     time.sleep(1)
