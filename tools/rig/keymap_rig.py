@@ -53,6 +53,8 @@ def conf_lines(data):
         k = l.split('=', 1)[0].strip().lower()
         if '=' in l and (k in LOOK or k.startswith('color')):
             continue
+        if not l.strip() or l.strip().lower() == '[profile default]':
+            continue        # a file with no profile section gets "[profile default]" for the look keys
         keep.append(l.rstrip())
     return keep
 
@@ -82,7 +84,10 @@ def theme_saved(raw, qual):
             ami.key(RAW['x'], 0x80)        # Right Amiga X clears the string gadget
             with ami._conn() as conn:
                 ami._type(conn, THEME.encode('latin-1'))
-            ami.key(RETURN)
+            ami.key(RETURN)                # ASL splits the path into Drawer + File; the requester stays open
+            time.sleep(1)
+            with ami._conn() as conn:
+                ami._click_gadget(conn, 'UP-Term theme', 'OK')
         time.sleep(4)
         ami.click_px(100, 100)
         time.sleep(1)
