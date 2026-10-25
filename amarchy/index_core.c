@@ -207,6 +207,7 @@ void ix_free(ix_index *x)
     free(x->rows);
     x->rows = 0;
     x->n = x->napps = 0;
+    memset(x->kstart, 0, sizeof x->kstart);
 }
 
 int ix_level_cap(const ix_index *x)
@@ -214,11 +215,60 @@ int ix_level_cap(const ix_index *x)
     return MN_MAX_ITEMS + (x ? x->n : 0) + 2;
 }
 
+static char extra_music[128], extra_demo[128];
+
+void ix_set_drawers(const char *music, const char *demo)
+{
+    strncpy(extra_music, music ? music : "", sizeof extra_music - 1);
+    strncpy(extra_demo, demo ? demo : "", sizeof extra_demo - 1);
+}
+
+/* Is drawer (len chars) one of the names in the comma separated list (blanks around a name ignored)? */
+static int in_list(const char *list, const char *drawer, int len)
+{
+    while (*list) {
+        const char *e = strchr(list, ',');
+        int l = e ? (int)(e - list) : (int)strlen(list), a = 0, b = l;
+        while (a < b && list[a] == ' ')
+            a++;
+        while (b > a && list[b - 1] == ' ')
+            b--;
+        if (b - a == len && len > 0) {
+            int i = 0;
+            while (i < len && lower((unsigned char)list[a + i]) == lower((unsigned char)drawer[i]))
+                i++;
+            if (i == len)
+                return 1;
+        }
+        list += l + (e ? 1 : 0);
+    }
+    return 0;
+}
+
+int ix_row_kind(const ix_row *r)
+{
+    char seg[KM_ID], lab[KM_LABEL];
+    int len;
+    if (!ix_category(r->path, seg, sizeof seg, lab, sizeof lab))
+        return r->kind == IX_KIND_GAME ? IX_KIND_GAME : IX_KIND_APP;
+    len = (int)strlen(lab);
+    if (in_list("Music,Musicdisks,Musicdisk,Mods,Tunes", lab, len) || in_list(extra_music, lab, len))
+        return IX_KIND_MUSIC;
+    if (in_list("Demos,Demo,Scene,Intros,Cracktros", lab, len) || in_list(extra_demo, lab, len))
+        return IX_KIND_DEMO;
+    if (r->kind == IX_KIND_APP)
+        return in_list("Prefs", lab, len) ? IX_KIND_SETTINGS : IX_KIND_APP;
+    return IX_KIND_GAME;
+}
+
+static const char *const kind_node[IX_NKINDS] = { "apps", "games", "demos", "music", "settings" };
+static const char *const kind_label[IX_NKINDS] = { "Apps", "Games", "Demos", "Music", "Settings" };
+
 void ix_load_text(const keymap *k, ix_index *x, const char *text)
 {
     ix_row *all = 0;
     const char *t;
-    int cap = 1, n = 0, i, na = 0, ng;
+    int cap = 1, n = 0, i, na = 0, kd;
     ix_free(x);
     for (t = text; t && *t; t++)                /* a row per line at most */
         cap += *t == '\n';
@@ -240,14 +290,18 @@ void ix_load_text(const keymap *k, ix_index *x, const char *text)
     }
     ix_sort_dedupe(all, n);
     for (i = 0; i < n; i++)
-        if (all[i].kind == IX_KIND_APP)
-            x->rows[na++] = all[i];
-    x->napps = ix_drop_shadowed(k, "apps", x->rows, na);
-    for (ng = 0, i = 0; i < n; i++)
-        if (all[i].kind != IX_KIND_APP)
-            x->rows[x->napps + ng++] = all[i];
-    ng = ix_drop_shadowed(k, "games", x->rows + x->napps, ng);
-    x->n = x->napps + ng;
+        all[i].kind = ix_row_kind(&all[i]);
+    for (kd = 0; kd < IX_NKINDS; kd++) {         /* rows grouped by effective kind, each group still sorted */
+        int cnt = 0;
+        x->kstart[kd] = na;
+        for (i = 0; i < n; i++)
+            if (all[i].kind == kd)
+                x->rows[na + cnt++] = all[i];
+        na += ix_drop_shadowed(k, kind_node[kd], x->rows + na, cnt);
+    }
+    x->kstart[IX_NKINDS] = na;
+    x->napps = x->kstart[1];
+    x->n = na;
     free(all);
 }
 
@@ -328,6 +382,22 @@ int ix_category(const char *path, char *seg, int n, char *label, int ln)
     return 1;
 }
 
+/* Do the rows [from, to) all lie in one and the same category, or all at the volume root? */
+static int one_category(const ix_index *x, int from, int to)
+{
+    char first[KM_ID], seg[KM_ID];
+    int i, has0;
+    if (from >= to)
+        return 1;
+    has0 = ix_category(x->rows[from].path, first, sizeof first, 0, 0);
+    for (i = from + 1; i < to; i++) {
+        int has = ix_category(x->rows[i].path, seg, sizeof seg, 0, 0);
+        if (has != has0 || (has && cmp_ci(seg, first)))
+            return 0;
+    }
+    return 1;
+}
+
 int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
              int max)
 {
@@ -337,25 +407,24 @@ int ix_level(const keymap *k, const ix_index *x, const char *node, const char *f
 int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
                int max, int term)
 {
-    int from = 0, to;
-    const char *kind, *cat;
+    int from = 0, to = 0, kd, kl = 0;
+    const char *cat;
     int n = mn_children_t(k, node, out, max, term);
     if (!x)
         return n;
-    to = x->napps;
-    if (!strcmp(node, "apps") || !strncmp(node, "apps.", 5)) {
-        kind = "apps";
-    } else if (!strcmp(node, "games") || !strncmp(node, "games.", 6)) {
-        kind = "games";
-        from = x->napps;
-        to = x->n;
-    } else
-        kind = 0;
-    if (kind) {
-        int kl = (int)strlen(kind);
+    for (kd = 0; kd < IX_NKINDS; kd++) {
+        kl = (int)strlen(kind_node[kd]);
+        if (!strncmp(node, kind_node[kd], kl) && (!node[kl] || node[kl] == '.'))
+            break;
+    }
+    if (kd < IX_NKINDS) {
+        from = x->kstart[kd];
+        to = x->kstart[kd + 1];
         cat = node[kl] ? node + kl + 1 : 0;
         if (cat) {                                  /* a category: its apps, from every volume */
             n = add_index_cat(x, from, to, cat, out, n, max);
+        } else if (kd == IX_KIND_SETTINGS || one_category(x, from, to)) {
+            n = add_index(x, from, to, out, n, max);   /* flat: one category (or none) would be a lone group */
         } else {                                    /* the categories, then the volume-root apps */
             char last[KM_ID], seg[KM_ID], lab[KM_LABEL], best[KM_ID], blab[KM_LABEL];
             int i, any = 0, found;
@@ -381,10 +450,9 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
                 n = add_index_cat(x, from, to, 0, out, n, max);
         }
     } else if (!*node) {
-        if (x->napps && !has_group(out, n, "apps"))
-            n = add_group(out, n, max, "apps", "Apps");
-        if (x->n > x->napps && !has_group(out, n, "games"))
-            n = add_group(out, n, max, "games", "Games");
+        for (kd = 0; kd < IX_NKINDS; kd++)
+            if (x->kstart[kd + 1] > x->kstart[kd] && !has_group(out, n, kind_node[kd]))
+                n = add_group(out, n, max, kind_node[kd], kind_label[kd]);
         if (filter && *filter)
             n = add_index(x, 0, x->n, out, n, max);
     }

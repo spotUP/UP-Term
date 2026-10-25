@@ -2188,6 +2188,82 @@ static void the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume
     CHECK_INT(n, 1);
     CHECK_STR(it[0].label, "Turrican 2");
     n = ix_level(&km, &x, "apps", "cl", it, TEST_LEVEL_MAX);
+static const char owner_index[] =
+    "app\tOctaMED\tRushhours:Music/OctaMED/OctaMED\n"
+    "app\tProTracker\tRushhours:Music/ProTracker\n"
+    "game\tAlien Breed disk\tRushhours:Music/AB/AlienBreed\n"
+    "game\tTurrican 2\tRushhours:Games/Turrican2/Turrican2\n"
+    "app\tMultiView\tRushhours:Games/Tools/MView\n"
+    "app\tPalette\tSystem:Prefs/Palette\n"
+    "app\tScreenMode\tSystem:Prefs/ScreenMode\n"
+    "app\tClock\tSys:Tools/Clock\n"
+    "game\tState of the Art\tRushhours:Scene/SotA/SotA\n"
+    "game\tDesert Dream\tRushhours:Scene/DD/DD\n";
+
+static void music_disks_leave_games_and_get_a_flat_music_level(void)
+{
+    static ix_index x;
+    mn_item it[TEST_LEVEL_MAX];
+    int n, i;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_load_text(&km, &x, owner_index);
+    n = ix_level(&km, &x, "", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Apps") && level_has(it, n, "Games") && level_has(it, n, "Demos") &&
+          level_has(it, n, "Music") && level_has(it, n, "Settings"));
+    n = ix_level(&km, &x, "music", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Alien Breed disk") && level_has(it, n, "OctaMED") && level_has(it, n, "ProTracker"));
+    for (i = 0; i < n; i++)
+        CHECK(!MN_IS_GROUP(&it[i]));                   /* one drawer: no lone "Music" group */
+    n = ix_level(&km, &x, "games", "", it, TEST_LEVEL_MAX);
+    CHECK(!level_has(it, n, "Alien Breed disk"));
+    CHECK(level_has(it, n, "Turrican 2") || level_has(it, n, "Games"));
+    n = ix_level(&km, &x, "demos", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "State of the Art") && level_has(it, n, "Desert Dream"));
+}
+
+static void prefs_tools_get_a_flat_settings_level_and_leave_apps(void)
+{
+    static ix_index x;
+    mn_item it[TEST_LEVEL_MAX];
+    int n;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_load_text(&km, &x, owner_index);
+    n = ix_level(&km, &x, "settings", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Palette") && level_has(it, n, "ScreenMode"));
+    CHECK(!MN_IS_GROUP(&it[0]));
+    n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
+    CHECK(!level_has(it, n, "Prefs") && !level_has(it, n, "Palette") && !level_has(it, n, "Music"));
+    n = ix_level(&km, &x, "apps.Tools", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Clock"));
+}
+
+static void an_index_without_prefs_music_or_scene_rows_keeps_apps_and_games_only(void)
+{
+    static ix_index x;
+    mn_item it[TEST_LEVEL_MAX];
+    int n;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_load_text(&km, &x, "app\tClock\tSys:Tools/Clock\ngame\tTurrican 2\tWork:Games/T2\n");
+    n = ix_level(&km, &x, "", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Apps") && level_has(it, n, "Games"));
+    CHECK(!level_has(it, n, "Demos") && !level_has(it, n, "Music") && !level_has(it, n, "Settings"));
+}
+
+static void extra_music_drawers_from_the_upconf_move_games_to_music(void)
+{
+    static ix_index x;
+    mn_item it[TEST_LEVEL_MAX];
+    int n;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_set_drawers("Chiptunes, Trackers", "Showcases");
+    ix_load_text(&km, &x, "game\tX\tWork:chiptunes/X\ngame\tY\tWork:Showcases/Y\n");
+    ix_set_drawers(0, 0);
+    n = ix_level(&km, &x, "music", "", it, TEST_LEVEL_MAX);
+    CHECK(n > 0 && level_has(it, n, "X"));
+    n = ix_level(&km, &x, "demos", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Y"));
+}
+
     CHECK(level_has(it, n, "Clock") && level_has(it, n, "Flat"));   /* a filter at Apps searches every category */
     CHECK(level_has(it, n, "Utilities"));              /* the group stays, so its name can match too */
     n = ix_level(&km, &x, "", "shell", it, TEST_LEVEL_MAX);
@@ -2305,3 +2381,7 @@ static void app_icons_are_cached_per_path_bounded_and_fitted(void)
     CHECK_INT(dh, 1);                                  /* never 0 */
     CHECK_INT(ic_fit(0, 10, 16, 16, &dw, &dh, &dx, &dy), 0);
 }
+    music_disks_leave_games_and_get_a_flat_music_level();
+    prefs_tools_get_a_flat_settings_level_and_leave_apps();
+    an_index_without_prefs_music_or_scene_rows_keeps_apps_and_games_only();
+    extra_music_drawers_from_the_upconf_move_games_to_music();

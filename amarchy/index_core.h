@@ -12,10 +12,15 @@
 #define IX_VOL   32
 #define IX_KIND_APP  0
 #define IX_KIND_GAME 1
+/* effective kinds (ix_row_kind): never in the cache file, set on the rows of a loaded ix_index */
+#define IX_KIND_DEMO     2
+#define IX_KIND_MUSIC    3
+#define IX_KIND_SETTINGS 4
+#define IX_NKINDS        5
 #define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
 
 typedef struct ix_row {
-    int  kind;                  /* IX_KIND_APP or IX_KIND_GAME */
+    int  kind;                  /* in the file IX_KIND_APP or IX_KIND_GAME; in a loaded index the effective kind */
     char label[IX_LABEL];
     char path[IX_PATH];
     char suffix[IX_VOL];        /* the volume name, set only on a label shared with another row */
@@ -54,9 +59,20 @@ int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n);
  * the rows a [menu] entry shadows already dropped. Every row of the cache is kept, however many: the
  * rows are on the heap. An ix_index starts zeroed (static, or {0}); ix_free releases its rows. */
 typedef struct ix_index {
-    int    n, napps;            /* rows[0..napps) are apps, rows[napps..n) are games */
+    int    n, napps;            /* rows[0..napps) are apps; rows[kstart[k]..kstart[k+1]) have effective kind k */
+    int    kstart[IX_NKINDS + 1];
     ix_row *rows;
 } ix_index;
+
+/* The effective kind of a stored row, from its stored kind and its first drawer under the volume
+ * (case-insensitive): a row, app or game, in Music, Musicdisks, Musicdisk, Mods or Tunes is IX_KIND_MUSIC;
+ * one in Demos, Demo, Scene, Intros or Cracktros is IX_KIND_DEMO; an app in Prefs is IX_KIND_SETTINGS;
+ * any other row keeps its stored kind. */
+int ix_row_kind(const ix_row *r);
+/* Extra first-drawer names (comma separated, the upconf keys amarchy-music-drawers and
+ * amarchy-demo-drawers) added to the built-in lists of ix_row_kind. NULL clears. Copied. Set before
+ * ix_load_text/ix_load_file: the kinds are fixed at load. */
+void ix_set_drawers(const char *music, const char *demo);
 
 /* The cache text (rows `kind<TAB>label<TAB>path`, bad rows skipped) into x, replacing the rows it
  * held. Empty or NULL text, or no memory, gives no rows. The [menu] rows of the "apps" and "games"

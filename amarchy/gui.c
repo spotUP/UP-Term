@@ -548,6 +548,16 @@ static void watch_idcmp(gui *g)
     ModifyIDCMP(g->win, want ? g->win->IDCMPFlags | IDCMP_INTUITICKS : g->win->IDCMPFlags & ~IDCMP_INTUITICKS);
 }
 
+static void conf_read(void);
+
+/* The extra music and demo drawer names of the upconf (ix_row_kind), set before every index load. */
+static void index_drawers(void)
+{
+    conf_read();
+    ix_set_drawers(upconf_str(&conf, "default", "amarchy-music-drawers", 0),
+                   upconf_str(&conf, "default", "amarchy-demo-drawers", 0));
+}
+
 /* The scan finished: read the new index (the Apps level has new rows). 0 when memory ran out. */
 static int reload_index(gui *g)
 {
@@ -556,6 +566,7 @@ static int reload_index(gui *g)
     g->it = 0;
     g->idx = 0;
     ix_free(&ixs);
+    index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
@@ -1053,6 +1064,7 @@ int main(int argc, char **argv)
     viewer = !strcmp(argv[1], "viewer");
     node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
     keymap_load(&km, km_default_text);
+    index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     term_present = upactive_terminal_present(0);   /* a plain Intuition window: never in the MRU */
     {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
