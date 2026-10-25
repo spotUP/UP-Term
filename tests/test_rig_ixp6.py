@@ -45,5 +45,37 @@ class Ixp6(unittest.TestCase):
         # start() -> setup_config_only() -> setup(): the boot's staging, beside VTC:amissl
         self.assertIn('stage_ixemul(RIG / "vtc", NOFPU)', inspect.getsource(rig.setup))
 
+class BuildDrift(unittest.TestCase):
+    """rig.build_drift names every VTC: copy of a build/amiga program (and GG:bin/sh) that differs from the build;
+    install() and stage_upterm put the build in all of those places."""
+    def setUp(self):
+        self.d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.d)
+        self.save = rig.ROOT
+        self.addCleanup(setattr, rig, "ROOT", self.save)
+        rig.ROOT = self.d
+        (self.d / "build/amiga").mkdir(parents=True)
+        for name in ("vsh", "pty-handler", "amarchy-gui"):
+            (self.d / "build/amiga" / name).write_bytes(b"new " + name.encode())
+        self.vtc = self.d / "vtc"
+        (self.vtc / paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
+        (self.vtc / "gg/bin").mkdir(parents=True)
+
+    def test_names_stale_copies(self):
+        (self.vtc / "pty-handler").write_bytes(b"old")
+        (self.vtc / paths.UPTERM_DRAWER / "bin/amarchy-gui").write_bytes(b"old")
+        (self.vtc / "gg/bin/sh").write_bytes(b"old")
+        (self.vtc / "vsh").write_bytes(b"new vsh")
+        self.assertEqual(sorted(rig.build_drift(self.vtc)),
+                         sorted(["pty-handler", paths.UPTERM_DRAWER + "/bin/amarchy-gui", "gg/bin/sh"]))
+
+    def test_stage_upterm_carries_every_amarchy_program(self):
+        src = inspect.getsource(rig.stage_upterm)
+        for name in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index"):
+            self.assertIn('"%s"' % name, src)
+
+    def test_start_warns(self):
+        self.assertIn("build_drift(RIG / \"vtc\")", inspect.getsource(rig.setup))
+
 if __name__ == "__main__":
     unittest.main()

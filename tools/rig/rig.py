@@ -570,6 +570,10 @@ def setup():
     shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
     stage_amissl(RIG / "vtc", M060)
     stage_ixemul(RIG / "vtc", NOFPU)
+    stale = build_drift(RIG / "vtc")
+    if stale:
+        print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
+              % (len(stale), ", ".join(stale)))
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     machine = [
@@ -647,7 +651,7 @@ def stage_upterm(dest, vsh):
     rig scripts start them from there, as UP-Term: moves with a kit install); before this the rig had no Amarchy."""
     (dest / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(vsh, dest / "bin/vsh")
-    for name in ("Amarchy", "amarchy-menu"):
+    for name in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index"):
         if (vsh.parent / name).is_file():
             shutil.copyfile(vsh.parent / name, dest / "bin" / name)
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)
@@ -737,6 +741,23 @@ def stage_ixemul(vtc, nofpu):
         if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
             shutil.copyfile(src, dst)
             print("refreshed ixp6/%s" % name, dst.stat().st_size, "bytes")
+
+def build_drift(vtc):
+    """The VTC: files that differ from the host build they come from: build/amiga programs in VTC: and in the
+    UP-Term drawer's bin, GG:bin/sh (vsh). install() refreshes them, but a rig not installed since the last build
+    runs old ones and every check there tests old code (2026-10-25: rigs 3 and 4 held 16 and 19 stale programs,
+    rigs 5 and 6 an old pty-handler, while rig 7's stale ixemul was hunted as a menu bug)."""
+    stale = []
+    for f in sorted((ROOT / "build/amiga").iterdir()):
+        if not f.is_file():
+            continue
+        for dst in (vtc / f.name, vtc / paths.UPTERM_DRAWER / "bin" / f.name):
+            if dst.is_file() and dst.read_bytes() != f.read_bytes():
+                stale.append(str(dst.relative_to(vtc)))
+    sh, vsh = vtc / "gg/bin/sh", ROOT / "build/amiga/vsh"
+    if sh.is_file() and vsh.is_file() and sh.read_bytes() != vsh.read_bytes():
+        stale.append("gg/bin/sh")
+    return stale
 
 def kit_restore():
     """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
