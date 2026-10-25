@@ -362,11 +362,11 @@ remaining 48; check at phase gates with `the_tables_have_caps` (`tests/test_keym
 Each item is ticked only with its test passing. Running count is reported at every tick.
 
 ### Phase K: parser and kind (host)
-- [ ] K1 `KA_WIN` enum, prefix `win`, `win_arg_ok` (`config/keymap.h`, `config/keymap.c`). Test: `win_actions_parse`.
-- [ ] K2 scope `KS_COMMODITY` and the kind name. Test: `win_scope_is_commodity`.
-- [ ] K3 `handler/keymap_act.c` defers `KA_WIN`. Test: `win_defers_in_the_handler`.
-- [ ] K4 `LF_WIN` plan in `amarchy/leaf.h`, `amarchy/leaf_core.c`. Test: `lf_plan(KA_WIN) == LF_WIN`.
-- [ ] K11 `amarchy/win_core.c` pure geometry and verb struct, listed in the Makefile. Test: `tests/test_win.c`.
+- [x] K1 `KA_WIN` enum, prefix `win`, `win_arg_ok` (`config/keymap.h`, `config/keymap.c`). Test: `win_actions_parse`. -- done 2026-10-25: commit 4e62f6d0 (am-win); fail-before: prefix `winx:` gives 38 FAILs at tests/test_keymap.c:391; `make test ONLY=keymap` 2685 checks, 0 failed.
+- [x] K2 scope `KS_COMMODITY` and the kind name. Test: `win_scope_is_commodity`. -- done 2026-10-25: commit 4e62f6d0.
+- [x] K3 `handler/keymap_act.c` defers `KA_WIN`. Test: `win_defers_in_the_handler`. -- done 2026-10-25: commit 4e62f6d0.
+- [x] K4 `LF_WIN` plan in `amarchy/leaf.h`, `amarchy/leaf_core.c`. Test: `lf_plan(KA_WIN) == LF_WIN`. -- done 2026-10-25: commit 4e62f6d0.
+- [x] K11 `amarchy/win_core.c` pure geometry and verb struct, listed in the Makefile. Test: `tests/test_win.c`. -- done 2026-10-25: commit b7221fd3; fail-before: clamp removed gives a FAIL at tests/test_win.c:39; `make test ONLY=win` 59 checks, 0 failed.
 
 ### Phase R: commodity execution (rig)
 - [x] K5 `act_win` target lookup under LockIBase, window list membership check, Amarchy windows never targets. -- done f4e0a478: win.c act_win/win_port, membership walk, Title exactly "Amarchy" excluded; rig move_right/move_left on a live window PASS.
