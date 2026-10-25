@@ -82,4 +82,33 @@ int ix_level(const keymap *k, const ix_index *x, const char *node, const char *f
  * not an index item or its row is not in x. */
 int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n);
 
+/* Scan progress record (RESCAN-FEEDBACK, AMARCHY-INDEX-WHERE). amarchy-index keeps one of these in
+ * public memory (a semaphore named IX_PROG_NAME, amarchy/index.c) that outlives the scanner task, so
+ * a scan that dies at a Software Failure still names the path it was on. The scanner copies the path
+ * in before each drawer it enters and each icon it opens; no disk writes. Pure data and text here; the
+ * OS side only allocates and finds it. */
+#define IX_PROG_NAME "Amarchy.index"
+enum { IX_ST_IDLE = 0, IX_ST_VOLUMES, IX_ST_WALK, IX_ST_ICON, IX_ST_WRITE, IX_ST_DONE };
+typedef struct ix_prog {
+    long seq;                   /* counts every update: a changing seq means the scanner is moving */
+    int  stage;                 /* IX_ST_* */
+    long dirs, icons;           /* drawers entered, icons opened so far */
+    long napps, ngames, nvols;  /* set by ix_prog_done */
+    char path[IX_PATH];         /* the drawer or icon file being handled; no slash added for a volume root */
+} ix_prog;
+
+/* A new scan: everything cleared, stage set to IX_ST_VOLUMES. */
+void ix_prog_begin(ix_prog *p);
+/* Note stage and path (cut to fit); a WALK counts a drawer, an ICON counts an icon. */
+void ix_prog_note(ix_prog *p, int stage, const char *path);
+/* The scan finished: stage DONE with the counts. */
+void ix_prog_done(ix_prog *p, long napps, long ngames, long nvols);
+/* The stage as a word: volumes, walk, icon, write, done, idle. */
+const char *ix_stage_name(int stage);
+/* The text `amarchy-index --where` prints (several lines, each ending in LF), into out; the length,
+ * or -1 when it does not fit n. task: 1 the scanner task still exists, 0 it is gone. moving: 1 seq
+ * changed while --where watched, 0 it did not. A task that exists, is not done and does not move is
+ * reported as stuck or stopped (a requester waits for a click); one gone and not done as died. */
+int ix_prog_text(const ix_prog *p, int task, int moving, char *out, int n);
+
 #endif

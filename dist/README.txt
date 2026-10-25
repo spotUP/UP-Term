@@ -746,6 +746,13 @@ AMARCHY
     amarchy-index-skip = Work:Old,DH1:Backup
   A path matches when it begins with an entry, so Work:Old also skips
   Work:Old/Tools. Press Rescan apps afterwards to rebuild the cache.
+  The scan keeps its progress in memory (a record named Amarchy.index, no
+  disk writes): the stage and the drawer or icon it is on. After a scan
+  that failed or hung, run  amarchy-index --where  (or -w): it prints the
+  stage, the volume and path last handled, the drawers and icons counted,
+  and whether the scanner task still exists, is moving, is stuck (a
+  Software Failure requester keeps it alive) or has died. After a normal
+  finish it shows done with the counts. The record lasts until a reboot.
 
 SERIAL LOGIN
   A Unix-style login on the serial port: connect a null-modem cable (or a
