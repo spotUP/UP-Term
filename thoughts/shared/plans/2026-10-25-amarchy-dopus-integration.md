@@ -235,8 +235,8 @@ Answered 2026-10-25 about 22:05 (AskUserQuestion for 1 to 4; 5 to 7 taken as rec
 2. Hotkeys: three, super+o, super+shift+o, super+d. (Owner, 2026-10-25.)
 3. Add-on CPU builds: carry every 68k archive (os3 and os3-68000) and offer the one that fits the machine; see
    section 3 and D10. Owner's words: "i should carry all of them and off ther apropriate one for the system its being
-   installed on". The non-68k archives are out by assumption (the installer cannot run there); the owner has not
-   confirmed that reading.
+   installed on". The non-68k archives (os4, MorphOS, AROS) are out: the installer cannot run there, and the owner
+   confirmed it ("non 68k archives can be left out", Owner, 2026-10-26).
 4. UP-Term as shell: per-filetype AmigaDOS instruction, the user's output device untouched. (Owner, 2026-10-25.)
 5. Existing DOpus: the add-on never touches an existing `DOpus5:`. (Recommended, not vetoed.)
 6. Module upstream: PR a generic "run launcher on selection" command and keep Amarchy glue here. (Recommended, not
