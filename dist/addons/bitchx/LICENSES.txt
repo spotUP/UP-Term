@@ -1,0 +1,9 @@
+up-bitchx: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+BitchX (bin/BitchX, lib/bx)   BSD-3-Clause (licenses/bitchx)   upterm-ports (pkgs/bitchx; prime001/BitchX 3070a76)
+
+Notes
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha. Its row of SOURCES.txt is in UP-Term:licenses/bitchx/SOURCES.txt.

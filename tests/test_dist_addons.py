@@ -33,8 +33,8 @@ class EveryAddOn(unittest.TestCase):
     def each(self):
         return [(r['id'], scripts(r['id'])) for r in ADDONS]
 
-    def test_there_are_seven_add_ons(self):
-        self.assertEqual(sorted(r['id'] for r in ADDONS), ['claude', 'git', 'nvim', 'perl', 'pi', 'python', 'vim'])
+    def test_there_are_eight_add_ons(self):
+        self.assertEqual(sorted(r['id'] for r in ADDONS), ['bitchx', 'claude', 'git', 'nvim', 'perl', 'pi', 'python', 'vim'])
 
     def test_a_stand_alone_archive_never_names_an_up_term_object_outside_comments(self):
         """K2-1, owner 2026-10-13: Claude, amiga-pi and Python3 install on a Workbench with no UP-Term. An
@@ -217,7 +217,7 @@ class EveryAddOn(unittest.TestCase):
                     self.assertIsNotNone(d)        # a copy part of the Installer's copyfiles/Update names its drawer
             handed = {h for h in {r['id']: r for r in ADDONS}[pid]['handed'].split(',')}
             kit = {k for _, k, _ in parts}
-            # a handed path is the archive's own, or lies under a drawer it lists (userland of git, perl, vim)
+            # a handed path is the archive's own, or lies under a drawer it lists (userland of git, perl, vim, bitchx)
             lone = {h for h in handed if not any(h == k or h.startswith(k + '/') for k in kit)}
             self.assertEqual(lone, set(), '%s: handed paths the archive does not list' % pid)
 
@@ -249,19 +249,22 @@ class EveryAddOn(unittest.TestCase):
         self.assertEqual(names - old, want)
 
 
+RENAMED = [r for r in ADDONS if r['archive'] not in pkgs.NEW_PACKAGES]     # a new package has no old record
+
+
 class RecordMigration(unittest.TestCase):
     """The up-* rename: a record the old Installer or old .lha left under the old name is renamed to the new
     one before anything looks at it, in the add-on's own check step, in the Installer's update probe and in the
     base Uninstall (so it still finds the add-ons)."""
     def test_each_add_on_check_step_renames_its_old_record_first(self):
-        for r in ADDONS:
+        for r in RENAMED:
             (old, new), = pkgs.old_record(r)
             check = mi.build(ROOT / ('dist/common/%s' % mi.read_values(r['id'])['CHECKFRAG']), r['id'])
             block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf' % (old, new, old, new)
             self.assertIn(block, check, r['id'])
 
     def test_each_add_on_installer_probe_renames_it_too(self):
-        for r in ADDONS:
+        for r in RENAMED:
             (old, new), = pkgs.old_record(r)
             upd = mi.build(ROOT / 'dist/common/update.installer', r['id'])
             self.assertIn('(run (cat "Rename >NIL: " "%s" " " "%s"))' % (old, new), upd, r['id'])
@@ -269,7 +272,7 @@ class RecordMigration(unittest.TestCase):
     def test_the_base_uninstall_renames_all_seven_old_records_before_it_looks_at_any(self):
         base = mi.build(ROOT / 'dist/Uninstall', 'base')
         first_look = base.index('Execute UP-Term:pkg/up-')
-        for r in ADDONS:
+        for r in RENAMED:
             (old, new), = pkgs.old_record(r)
             block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf' % (old, new, old, new)
             self.assertIn(block, base, r['id'])

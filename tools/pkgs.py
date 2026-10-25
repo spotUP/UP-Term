@@ -74,7 +74,7 @@ def rename_lines(pairs):
 
 
 def lha_rows(path=TABLE):
-    """The rows published as an .lha next to up-term.lha. The packages of dist/slim.txt (git, perl, vim)
+    """The rows published as an .lha next to up-term.lha. The packages of dist/slim.txt (git, perl, vim, bitchx)
     are upkg-only (owner 2026-10-19): the .ipk feed ships them, so no .lha, no index line, no Installer
     checkbox and no Aminet readme."""
     upkg_only = slim.ids()
@@ -138,7 +138,11 @@ SUMMARY = {
     'git': 'git 2.56.0 in UP-Term:bin and UP-Term:share/git-core',
     'perl': 'Perl 5.42.3 in UP-Term:bin',
     'vim': 'Vim 9.2.1202 in UP-Term:bin and UP-Term:share/vim',
+    'bitchx': 'BitchX IRC client in UP-Term:bin and its IRCLIB in UP-Term:lib/bx',
 }
+# Packages that never had another name (born as up-<x>, 2026-10-25 up-bitchx): they have no line in
+# dist/package-renames.txt and no old record to migrate. tests/test_dist_packages.py holds both facts.
+NEW_PACKAGES = ('up-bitchx',)
 EPOCH = 0
 
 

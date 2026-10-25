@@ -14,3 +14,7 @@ vim   bin/vim
 vim   share/vim
 vim   share/man/man1/vim.1
 vim   licenses/vim
+bitchx  bin/BitchX
+bitchx  lib/bx
+bitchx  share/man/man1/BitchX.1.bz2
+bitchx  licenses/bitchx

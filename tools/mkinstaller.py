@@ -69,7 +69,7 @@ def addon_uninstall(rows):
 
 
 def _addons(rows):
-    upkg_only = slim.ids()      # git, perl, vim: upkg install, never a checkbox of the base Install
+    upkg_only = slim.ids()      # git, perl, vim, bitchx: upkg install, never a checkbox of the base Install
     return [r for r in rows if r['id'] != 'base' and r['id'] not in upkg_only]
 
 

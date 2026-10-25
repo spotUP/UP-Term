@@ -100,6 +100,6 @@ Notes
   was built from.
 - Claude, amiga-pi, Python and Neovim are archives of their own
   (up-claude.lha, up-pi.lha, up-python.lha, up-nvim.lha),
-  each with its own LICENSES.txt. Git, Perl and Vim are upkg packages (upkg
-  install git, perl, vim): their licence files and SOURCES rows are in
+  each with its own LICENSES.txt. Git, Perl, Vim and BitchX are upkg
+  packages (upkg install git, perl, vim, bitchx): their licence files and SOURCES rows are in
   UP-Term:licenses once installed, as the base had them.

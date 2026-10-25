@@ -8,7 +8,7 @@ import mkmanifest as mm
 import mkreadme as mr
 import pkgs
 
-ROWS = pkgs.lha_rows()     # the archives; git, perl and vim are upkg-only (tests/test_dist_slim.py)
+ROWS = pkgs.lha_rows()     # the archives; git, perl, vim and bitchx are upkg-only (tests/test_dist_slim.py)
 PARTS = mm.read_parts((ROOT / 'dist/parts.txt').read_text())
 
 
@@ -123,8 +123,12 @@ class Renames(unittest.TestCase):
             if r['id'] == 'base':
                 self.assertEqual(pkgs.old_record(r), [])
                 continue
-            self.assertIn(r['archive'], renamed, r['id'])
             self.assertTrue(r['record'].rstrip('/').endswith('/' + r['archive']), r['id'])
+            if r['archive'] in pkgs.NEW_PACKAGES:      # born as up-<x>: no old record to migrate
+                self.assertNotIn(r['archive'], renamed, r['id'])
+                self.assertEqual(pkgs.old_record(r), [], r['id'])
+                continue
+            self.assertIn(r['archive'], renamed, r['id'])
             (old, new), = pkgs.old_record(r)
             self.assertEqual(new, r['record'].rstrip('/'))
             self.assertNotEqual(old, new)
@@ -171,7 +175,7 @@ class Readme(unittest.TestCase):
 
     def test_the_directories_are_the_owners_choice(self):
         want = {'base': 'comm/term', 'src': 'comm/term', 'claude': 'comm/misc', 'pi': 'comm/misc',
-                'nvim': 'text/edit', 'python': 'dev/lang', 'git': 'dev/misc', 'perl': 'dev/lang', 'vim': 'text/edit'}
+                'nvim': 'text/edit', 'python': 'dev/lang', 'git': 'dev/misc', 'perl': 'dev/lang', 'vim': 'text/edit', 'bitchx': 'comm/irc'}
         for i, d in want.items():
             self.assertEqual(mr.fields(mr.build(i)[1])['Type'], d, i)
 

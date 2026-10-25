@@ -1,0 +1,50 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 8, lead 3
+(message
+    "\n\n\nB I T C H X\n\n"
+    "BitchX, the IRC client, for an UP-Term window.\n"
+    "It goes into UP-Term:bin and UP-Term:lib/bx\n"
+    "(its scripts and help).\n"
+    "Needs up-term.lha installed first.\n"
+    (all))
+(set #kb-bitchx @KBCOPYBITCHX@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "BitchX needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install BitchX into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-bitchx 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "copy-bitchx" #kb #kb-bitchx #n 1
+     #why "Copying BitchX to UP-Term:bin and UP-Term:lib/bx.")
+(P_STEP)
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "BitchX is installed. In an UP-Term window, in vsh:\n"
+         "  BitchX\n\n"
+         "Uninstall (beside Install) takes BitchX out again."))
+; @include dist/common/addon-tail.installer

@@ -27,3 +27,4 @@ python  up-python  1.0      -           47      ENVARC:upkg/up-python  Files/pyt
 git     up-git     1.0      1.0         80      UP-Term:pkg/up-git     Files/userland/bin/git,Files/userland/share/git-core  upterm-ports,ixemul-vtcon
 perl    up-perl    1.0      1.0         80      UP-Term:pkg/up-perl    Files/userland/bin/perl                               upterm-ports,ixemul-vtcon
 vim     up-vim     1.0      1.0         80      UP-Term:pkg/up-vim     Files/userland/bin/vim,Files/userland/share/vim       upterm-ports,ixemul-vtcon
+bitchx  up-bitchx  1.0      1.0         80      UP-Term:pkg/up-bitchx  Files/userland/bin/BitchX,Files/userland/lib/bx       upterm-ports,ixemul-vtcon

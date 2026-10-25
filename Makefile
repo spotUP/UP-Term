@@ -1239,6 +1239,7 @@ KIT_python := $(BUILD)/dist/up-python
 KIT_git := $(BUILD)/dist/up-git
 KIT_perl := $(BUILD)/dist/up-perl
 KIT_vim := $(BUILD)/dist/up-vim
+KIT_bitchx := $(BUILD)/dist/up-bitchx
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # the soft-float build of the same ixemul (no FPU opcodes): the installer puts it in on a machine
@@ -1276,7 +1277,7 @@ AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-src dist-index dist-ipk
+dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-bitchx dist-src dist-index dist-ipk
 
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
@@ -1305,7 +1306,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
-	@# the slim base (P9): git, perl and vim are packages (dist/slim.txt), staged by dist-git, dist-perl, dist-vim
+	@# the slim base (P9): git, perl, vim and bitchx are packages (dist/slim.txt), staged by dist-git, dist-perl, dist-vim, dist-bitchx
 	python3 tools/slim.py remove $(KIT)/Files/userland
 	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
@@ -1352,7 +1353,7 @@ pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
 LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
-.PHONY: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
+.PHONY: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-bitchx
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
@@ -1383,7 +1384,7 @@ dist-python: $(BUILD)/amiga/upupdate
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
-# git, perl and vim (P9, dist/slim.txt): the ports' own files at the paths the base used to carry, taken from the
+# git, perl, vim and bitchx (P9, dist/slim.txt): the ports' own files at the paths the base used to carry, taken from the
 # same PORTS_KIT as dist-base, which removes them
 define SLIM_STAGE
 	$(call ADDON_STAGE,$(1))
@@ -1397,12 +1398,14 @@ dist-perl: $(BUILD)/amiga/upupdate
 	$(call SLIM_STAGE,perl)
 dist-vim: $(BUILD)/amiga/upupdate
 	$(call SLIM_STAGE,vim)
+dist-bitchx: $(BUILD)/amiga/upupdate
+	$(call SLIM_STAGE,bitchx)
 
 # build/up-term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
 # upkg's index (upkg plan D1): released next to the archives it names
-dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim
+dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-bitchx
 	python3 tools/pkgs.py prune $(BUILD)
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
 # the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees.

@@ -21,7 +21,7 @@ REQUIRE = os.environ.get('SLIM_REQUIRE') == '1'
 ARCHIVE = {r['id']: r['archive'] for r in pkgs.rows()}
 BASE = BUILD / 'dist/UP-Term/Files/userland'
 MOVED = ('bin/git', 'bin/perl', 'bin/vim', 'share/vim', 'share/git-core', 'share/man/man1/vim.1',
-         'licenses/git', 'licenses/perl', 'licenses/vim')
+         'licenses/git', 'licenses/perl', 'licenses/vim', 'bin/BitchX', 'lib/bx', 'licenses/bitchx')
 
 
 def tree(root):
@@ -38,8 +38,8 @@ def need(case, path):
 
 
 class Table(unittest.TestCase):
-    def test_the_packages_are_git_perl_vim_and_are_rows_of_packages_txt(self):
-        self.assertEqual(slim.ids(), ['git', 'perl', 'vim'])
+    def test_the_packages_are_git_perl_vim_bitchx_and_are_rows_of_packages_txt(self):
+        self.assertEqual(slim.ids(), ['git', 'perl', 'vim', 'bitchx'])
         for i in slim.ids():
             self.assertIn(i, ARCHIVE)
             self.assertTrue(ARCHIVE[i].startswith('up-'), i)      # they need the base: UP-Term:bin
@@ -70,6 +70,14 @@ class SlimBase(unittest.TestCase):
         self.assertEqual(have, [])
         self.assertEqual([p for p in tree(BASE) if p.startswith('bin/git') or p.startswith('bin/perl') or p.startswith('bin/vim')], [])
 
+    def test_no_moved_program_leaves_its_man_page_in_the_base_kit(self):
+        # BitchX's slim rows moved bin/BitchX but left share/man/man1/BitchX.1.bz2 in up-term.lha (2026-10-25)
+        need(self, BASE)
+        need(self, PORTS / 'SOURCES.txt')
+        progs = {pathlib.Path(rel).name for i in slim.ids() for rel in slim.paths(i, PORTS) if rel.startswith('bin/')}
+        left = [p for p in tree(BASE) if p.startswith('share/man/man1/') and p[len('share/man/man1/'):].split('.1')[0] in progs]
+        self.assertEqual(left, [])
+
     def test_the_base_sources_name_no_moved_port(self):
         need(self, BASE)
         ports = {l.split('\t', 1)[0] for l in (BASE / 'SOURCES.txt').read_text().splitlines()}
@@ -79,7 +87,8 @@ class SlimBase(unittest.TestCase):
         need(self, BUILD / 'up-term.lha')
         out = subprocess.run(['lha', 'l', str(BUILD / 'up-term.lha')], capture_output=True, text=True, check=True).stdout
         for m in ('Files/userland/bin/git', 'Files/userland/bin/perl', 'Files/userland/bin/vim',
-                  'Files/userland/share/vim/', 'Files/userland/share/git-core/'):
+                  'Files/userland/share/vim/', 'Files/userland/share/git-core/',
+                  'Files/userland/bin/BitchX', 'Files/userland/lib/bx/'):
             self.assertNotIn(' UP-Term/' + m, out, m)
 
 

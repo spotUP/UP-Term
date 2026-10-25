@@ -1004,7 +1004,9 @@ ADD-ONS
   Git, Perl and Vim are packages for upkg, not archives: they were in this
   archive before the slim base, and they install at the same places
   (UP-Term:bin, UP-Term:share). Type  upkg install git  (or perl, vim) in an
-  UP-Term window; upkg remove takes them out. Uninstall of UP-Term takes
+  UP-Term window; upkg remove takes them out. BitchX, the IRC client, is an
+  upkg package too (upkg install bitchx): C:BitchX in UP-Term:bin and its
+  scripts and help in UP-Term:lib/bx. Uninstall of UP-Term takes
   them out too, before it takes UP-Term out.
   The stand-alone ones install on a Workbench with no UP-Term and record
   themselves in ENVARC:upkg; in an UP-Term window they use its screen, keys
