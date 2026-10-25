@@ -522,6 +522,16 @@ static void watch_done(char *out, int n, const ix_prog *p)
     out[pb.len < n ? pb.len : n - 1] = 0;
 }
 
+static int stage_running(int st)
+{
+    return st == IX_ST_VOLUMES || st == IX_ST_WALK || st == IX_ST_ICON || st == IX_ST_WRITE;
+}
+
+int ix_scan_live(int have, const ix_prog *p, int alive)
+{
+    return have && alive && p->version == IX_PROG_VERSION && stage_running(p->stage);
+}
+
 int ix_watch_row(ix_watch *w, int have, const ix_prog *p, int alive, char *out, int n)
 {
     int st;
@@ -543,7 +553,7 @@ int ix_watch_row(ix_watch *w, int have, const ix_prog *p, int alive, char *out, 
     if (!have)
         return IXW_NONE;
     st = p->stage;
-    if (st == IX_ST_VOLUMES || st == IX_ST_WALK || st == IX_ST_ICON || st == IX_ST_WRITE) {
+    if (stage_running(st)) {
         if (w->runs0 < 0) {
             if (!alive)
                 return IXW_NONE;                    /* a scan that died long ago is not news */
@@ -585,6 +595,14 @@ void ix_watcher_begin(ix_watcher *x, int started, int have, const ix_prog *p, in
     x->on = x->state == IXW_RUNNING;
     if (!x->on)
         x->row[0] = 0;
+}
+
+int ix_watcher_adopt_live(ix_watcher *x, int have, const ix_prog *p, int alive)
+{
+    if (!ix_scan_live(have, p, alive))
+        return 0;
+    ix_watcher_begin(x, 0, have, p, alive);
+    return 1;
 }
 
 int ix_watcher_step(ix_watcher *x, int have, const ix_prog *p, int alive)

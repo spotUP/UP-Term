@@ -594,6 +594,42 @@ def r_app_index():
             rc, out = c.run('GetEnv AMARCHY_ROWS')
             ck('7 GUI keeps the status row out of AMARCHY_ROWS', 'Scan' not in out, out.strip()[:100])
         g.close_menu()
+        # step 7b (RESCAN-ONE-SCANNER): one amarchy-index owns the record and the apps file. A second copy
+        # refuses while a scan runs, and Rescan in the GUI shows that scan instead of starting another.
+        def scanners():
+            return sum('amarchy-index' in l for l in c.run('Status')[1].splitlines())
+        c.run('Run >NIL: %s/amarchy-index' % paths.UPTERM_BIN)
+        running = False
+        for _ in range(20):
+            if 'amarchy-index: running' in c.run('%s/amarchy-index --where' % paths.UPTERM_BIN, 30)[1]:
+                running = True
+                break
+            time.sleep(0.25)
+        ck('7b the first scan runs', running)
+        rc, out = c.run('%s/amarchy-index' % paths.UPTERM_BIN, 30)
+        ck('7b a second amarchy-index refuses while the scan runs', rc == 5 and 'a scan runs already' in out,
+           'rc %s: %s' % (rc, out.strip()[:100]))
+        c.run('Delete >NIL: ENV:watch ENV:AMARCHY_ROWS QUIET')
+        s_, w_ = g.open_menu()
+        if w_:
+            for _ in range(40):
+                if c.run('GetEnv AMARCHY_ROWS')[0] == 0:
+                    break
+                time.sleep(0.25)
+            ami.key(RAW['return'])          # into Apps, the first row
+            time.sleep(1)
+            x9_type('rescan')
+            ami.key(RAW['return'])
+            time.sleep(1)
+            rc, out = c.run('GetEnv watch')
+            ck('7b GUI Rescan during a scan shows it running (watch 2)', rc == 0 and out.strip() == '2', out.strip())
+            ck('7b one amarchy-index process after the second Rescan', scanners() == 1, '%d' % scanners())
+        else:
+            ck('7b GUI menu opens', False)
+        g.close_menu()
+        end = time.time() + 120
+        while scanners() and time.time() < end:
+            time.sleep(1)
         # step 8: Apps > Clock (index row of SYS:Utilities/Clock), through the AMARCHY.launch fallback
         ck('8 Clock is indexed', re.search(r'^app\tClock\t', cache2, re.M) is not None)
         x9_open_menu()

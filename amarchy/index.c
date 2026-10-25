@@ -78,6 +78,28 @@ static ixshared *shared_make(void)
     return u;
 }
 
+/* Take the record for this scan, or refuse (0) when a live scanner owns it (ix_scan_live): one writer of
+ * the apps file. Check and take under one Forbid, so two copies started together cannot both pass. */
+static int claim(void)
+{
+    static ix_prog snap;
+    int alive = 0, ok = 1, have;
+    Forbid();
+    if ((sh = shared_make())) {
+        have = ixw_snapshot(&snap, &alive);   /* its own statement: alive is set before it is read */
+        if (ix_scan_live(have, &snap, alive)) {
+            sh = 0;
+            ok = 0;
+        } else {
+            ix_prog_begin(&sh->p);
+            sh->task = FindTask(0);
+            strncpy(sh->tname, sh->task->tc_Node.ln_Name ? (const char *)sh->task->tc_Node.ln_Name : "", 31);
+        }
+    }
+    Permit();
+    return ok;
+}
+
 static void note(int stage, const char *path)
 {
     if (sh)
@@ -375,10 +397,11 @@ int main(void)
         return 20;
     }
     conf_read();
-    if ((sh = shared_make())) {
-        ix_prog_begin(&sh->p);
-        sh->task = FindTask(0);
-        strncpy(sh->tname, sh->task->tc_Node.ln_Name ? (const char *)sh->task->tc_Node.ln_Name : "", 31);
+    if (!claim()) {
+        PutStr((STRPTR) "amarchy-index: a scan runs already, amarchy-index --where shows it\n");
+        FreeVec(rows);
+        CloseLibrary(IconBase);
+        return RETURN_WARN;
     }
     nv = volumes(names);
     for (i = 0; i < nv; i++) {

@@ -458,9 +458,11 @@ static void start_scan(gui *g, const mn_item *it)
     ui.refused = gui_refused;
     ui.ctx = g;
     ui.self_in_mru = 0;
-    if (lf_run(&km.menu[it->row], &ui) != LF_WATCH)
-        return;
-    ix_watcher_begin(&g->wt, 1, have0, &p0, alive0);
+    if (!ix_watcher_adopt_live(&g->wt, have0, &p0, alive0)) {    /* one scanner at a time: show the live one */
+        if (lf_run(&km.menu[it->row], &ui) != LF_WATCH)
+            return;
+        ix_watcher_begin(&g->wt, 1, have0, &p0, alive0);
+    }
     sentinel_publish("watch", g->wt.state);
     strcpy(keep, it->label);             /* the rebuild overwrites it */
     list_rebuild_keep(g, keep);

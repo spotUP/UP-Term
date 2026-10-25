@@ -243,6 +243,8 @@ static int menu_levels(const char *start)
         {
             ix_prog p0;
             int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);   /* the run counter before the launch */
+            if (lf_plan(km.menu[it[i].row].kind) == LF_SCAN && ix_watcher_adopt_live(&wt, have0, &p0, alive0))
+                continue;                               /* one scanner at a time: show the live one */
             rc = lf_run(&km.menu[it[i].row], &leaf_ui);
             if (rc != LF_WATCH)
                 return rc;

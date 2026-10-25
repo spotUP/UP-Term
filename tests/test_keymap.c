@@ -1480,6 +1480,39 @@ static void ixw_poll(ix_watch *w, const ix_prog *p, int have, int alive, int wan
     CHECK_STR(row, text);
 }
 
+/* RESCAN-ONE-SCANNER: Rescan chosen again while a scan ran started a second amarchy-index (three ran at
+ * once on the A1200, all writing the apps file). The menu now shows the live scan and starts nothing. */
+static void a_second_rescan_while_a_scan_runs_shows_that_scan_and_starts_nothing(void)
+{
+    ix_prog p = {0};
+    ix_watcher x;
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_WALK, "Work:Apps");
+    CHECK(ix_scan_live(1, &p, 1));
+    CHECK_INT(ix_watcher_adopt_live(&x, 1, &p, 1), 1);
+    CHECK_INT(x.state, IXW_RUNNING);
+    CHECK_INT(x.on, 1);
+    CHECK_STR(x.row, "Scanning... Work:Apps");
+}
+
+static void a_rescan_after_a_finished_stopped_or_dead_scan_starts_a_new_one(void)
+{
+    ix_prog p = {0};
+    ix_watcher x;
+    CHECK(!ix_scan_live(0, 0, 0));                         /* no record since boot */
+    CHECK_INT(ix_watcher_adopt_live(&x, 0, &p, 0), 0);
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_ICON, "Work:Apps/Foo.info");
+    CHECK(!ix_scan_live(1, &p, 0));                        /* the scanner task is gone */
+    ix_prog_done(&p, 3, 4, 1);
+    CHECK(!ix_scan_live(1, &p, 1));                        /* finished */
+    ix_prog_stopped(&p);
+    CHECK(!ix_scan_live(1, &p, 1));                        /* stopped by Ctrl-C */
+    ix_prog_begin(&p);
+    p.version = IX_PROG_VERSION + 1;                       /* another layout: its fields are not read */
+    CHECK(!ix_scan_live(1, &p, 1));
+}
+
 static void a_menu_that_started_a_scan_shows_scanning_starting_before_the_scanner_begins(void)
 {
     ix_prog p = {0};
@@ -1648,6 +1681,8 @@ void suite_keymap(void)
     a_scan_leaf_parses_to_ka_scan_and_a_detach_leaf_stays_ka_detach();
     a_run_counter_survives_ix_prog_begin();
     a_menu_that_started_a_scan_shows_scanning_starting_before_the_scanner_begins();
+    a_second_rescan_while_a_scan_runs_shows_that_scan_and_starts_nothing();
+    a_rescan_after_a_finished_stopped_or_dead_scan_starts_a_new_one();
     a_running_scan_shows_its_path_cut_from_the_left();
     a_scan_whose_task_is_gone_shows_it_stopped_working_at_its_path();
     a_finished_scan_shows_the_new_counts();
