@@ -15,6 +15,7 @@
 #include "cxdesc.h"
 #include "act.h"
 #include "leaf.h"
+#include "clipwatch.h"
 #include "wblaunch.h"
 #include "menu_core.h"
 #include "atiming.h"
@@ -276,7 +277,7 @@ struct IntuitionBase *IntuitionBase;
 
 int main(void)
 {
-    ULONG sigs, cxs, rxs, nts, lps, wrs;
+    ULONG sigs, cxs, rxs, nts, lps, wrs, cws;
     int row, ev;
     struct RDArgs *rda;
     LONG args[1] = { 0 };
@@ -323,8 +324,10 @@ int main(void)
     nts = notify_port ? 1UL << notify_port->mp_SigBit : 0;
     lps = launch_port ? 1UL << launch_port->mp_SigBit : 0;
     wrs = wb_reply ? 1UL << wb_reply->mp_SigBit : 0;
+    cw_start();                                 /* the clipboard history (Trigger > Clipboard history) */
+    cws = cw_sigmask();
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nts | lps | wrs | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nts | lps | wrs | cws | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cxs)
@@ -336,6 +339,8 @@ int main(void)
                 else if (ev == CXE_KILL)
                     g_quit = 1;
             }
+        if (sigs & cws)
+            cw_changed();
         if (sigs & rxs)
             rexx_serve();
         if (sigs & lps)
@@ -349,6 +354,7 @@ int main(void)
             reload();
         }
     }
+    cw_stop();
     notify_stop();
     if (notify_port)
         DeleteMsgPort(notify_port);

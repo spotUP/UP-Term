@@ -17,6 +17,11 @@
 #define IX_KIND_MUSIC    3
 #define IX_KIND_SETTINGS 4
 #define IX_NKINDS        5
+/* the clipboard history rows (ix_add_clips): after the app kinds, in no group of the root; their path is
+ * "clip:<entry>" (leaf_core.h lf_clip_entry), the node they fill IX_CLIPS_NODE */
+#define IX_KIND_CLIP     IX_NKINDS
+#define IX_CLIPS_NODE    "trigger.clipboard"
+#define IX_CLIP_NONE     "clip:none"
 #define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
 
 typedef struct ix_row {
@@ -60,7 +65,7 @@ int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n);
  * rows are on the heap. An ix_index starts zeroed (static, or {0}); ix_free releases its rows. */
 typedef struct ix_index {
     int    n, napps;            /* rows[0..napps) are apps; rows[kstart[k]..kstart[k+1]) have effective kind k */
-    int    kstart[IX_NKINDS + 1];
+    int    kstart[IX_NKINDS + 2];     /* [IX_NKINDS], [IX_NKINDS + 1]: the clipboard history rows */
     ix_row *rows;
 } ix_index;
 
@@ -81,6 +86,11 @@ void ix_load_text(const keymap *k, ix_index *x, const char *text);
 /* The cache file at path, read whole and given to ix_load_text; a missing file gives no rows. */
 void ix_load_file(const keymap *k, ix_index *x, const char *path);
 void ix_free(ix_index *x);
+/* The clipboard history rows after the app rows: one per label (path "clip:<position>"), or a single
+ * "Nothing copied yet" row (path IX_CLIP_NONE) for n = 0. Replaces rows added before. 1, or 0 on no memory. */
+int ix_add_clips(ix_index *x, const char *const *labels, int n);
+/* ix_add_clips for the ring file CLIPS_PATH (clips_core.h); in index_load.c. ix_load_file calls it. */
+void ix_load_clips(ix_index *x);
 
 /* The most items one level can hold with x loaded: the [menu] rows, every index row, and the Apps and
  * Games groups the root may get. The size of the item and filter arrays given to ix_level. */

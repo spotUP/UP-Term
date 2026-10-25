@@ -1,4 +1,5 @@
 /* index_core.c -- see index_core.h. */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "index_core.h"
@@ -210,6 +211,31 @@ void ix_free(ix_index *x)
     memset(x->kstart, 0, sizeof x->kstart);
 }
 
+int ix_add_clips(ix_index *x, const char *const *labels, int n)
+{
+    int base = x->kstart[IX_NKINDS + 1] ? x->kstart[IX_NKINDS] : x->n, i, add = n > 0 ? n : 1;
+    ix_row *rows = (ix_row *)realloc(x->rows, (size_t)(base + add) * sizeof *rows);
+    if (!rows)
+        return 0;
+    x->rows = rows;
+    for (i = 0; i < add; i++) {
+        ix_row *r = &rows[base + i];
+        memset(r, 0, sizeof *r);
+        r->kind = IX_KIND_CLIP;
+        if (n > 0) {
+            strncpy(r->label, labels[i], IX_LABEL - 1);
+            snprintf(r->path, sizeof r->path, "clip:%d", i);
+        } else {
+            strcpy(r->label, "Nothing copied yet");
+            strcpy(r->path, IX_CLIP_NONE);
+        }
+    }
+    x->kstart[IX_NKINDS] = base;
+    x->kstart[IX_NKINDS + 1] = base + add;
+    x->n = base + add;
+    return 1;
+}
+
 int ix_level_cap(const ix_index *x)
 {
     return MN_MAX_ITEMS + (x ? x->n : 0) + 2;
@@ -412,6 +438,13 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
     int n = mn_children_t(k, node, out, max, term);
     if (!x)
         return n;
+    for (kd = 0; kd < n; kd++)                      /* Trigger > Clipboard history is a group of ring rows */
+        if (out[kd].row >= 0 && !strcmp(k->menu[out[kd].row].id, IX_CLIPS_NODE)) {
+            out[kd].row = MN_ROW_GROUP;
+            out[kd].ix = -1;
+        }
+    if (!strcmp(node, IX_CLIPS_NODE))
+        return add_index(x, x->kstart[IX_NKINDS], x->kstart[IX_NKINDS + 1], out, n, max);
     for (kd = 0; kd < IX_NKINDS; kd++) {
         kl = (int)strlen(kind_node[kd]);
         if (!strncmp(node, kind_node[kd], kl) && (!node[kl] || node[kl] == '.'))
@@ -454,7 +487,7 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
             if (x->kstart[kd + 1] > x->kstart[kd] && !has_group(out, n, kind_node[kd]))
                 n = add_group(out, n, max, kind_node[kd], kind_label[kd]);
         if (filter && *filter)
-            n = add_index(x, 0, x->n, out, n, max);
+            n = add_index(x, 0, x->kstart[IX_NKINDS], out, n, max);
     }
     return n;
 }

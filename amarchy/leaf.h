@@ -39,6 +39,10 @@ lf_how lf_plan(int kind);
  * 0 when dir is empty, holds a quote or the line does not fit. */
 int lf_viewer_command(char *out, int cap, const char *dir);
 
+/* The clipboard history row a path names (index_core.h IX_KIND_CLIP): "clip:<n>" gives n >= 0, the empty
+ * ring's row IX_CLIP_NONE gives -1, any other path (a tool, a game) gives -2. */
+int lf_clip_entry(const char *path);
+
 typedef struct lf_ui {
     /* a value for an action that needs one; 1 with out set, 0 on Escape or an empty line */
     int (*ask_value)(void *ctx, const char *label, const char *usage, char *out, int n);

@@ -100,3 +100,19 @@ int lf_launch_fill(lf_launch *b, const char *path)
     strcpy(b->path, path);
     return 1;
 }
+
+int lf_clip_entry(const char *path)
+{
+    int n = 0;
+    if (strncmp(path, "clip:", 5))
+        return -2;
+    path += 5;
+    if (!*path || !strcmp(path, "none"))
+        return -1;
+    for (; *path; path++) {
+        if (*path < '0' || *path > '9' || n > 1000)
+            return -1;
+        n = n * 10 + (*path - '0');
+    }
+    return n;
+}

@@ -478,6 +478,8 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     check_row("install.browse", KA_RUN, "upkg-browse");
     check_row("install.upgrade", KA_RUN, "upkg upgrade");
     check_row("install.update", KA_RUN, "upkg update");
+    check_row("trigger.clipboard", KA_MENU, "trigger.clipboard");   /* a group of ring rows (tests/test_clips.c) */
+    CHECK(root_has_group("Trigger", 1) && root_has_group("Trigger", 0));
     CHECK(shipped_row("apps.upkg") == 0);                  /* moved under Install */
     CHECK_INT((int)lf_plan(KA_VIEWER), (int)LF_VIEWER);    /* a viewer row runs the viewer, not a terminal request */
     {   /* the viewer is started by its full path beside the menu, never by a bare name through a PATH */
@@ -840,7 +842,7 @@ static void osd_size_counts_the_reachable_levels(void)
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 6);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 7);
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
         CHECK_INT(rows, MN_OSD_HEAD_LINES + 5);
@@ -996,7 +998,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 6);
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 7);   /* with the Trigger group */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -2398,7 +2400,8 @@ static void a_missing_or_empty_cache_adds_no_index_rows(void)
     CHECK_INT(ix_level(&km, &x, "games", "", it, TEST_LEVEL_MAX), 0);
     CHECK_INT(ix_level(&km, &x, "", "tur", it, TEST_LEVEL_MAX), mn_children(&km, "", base, TEST_LEVEL_MAX));
     ix_load_file(&km, &x, "/nonexistent/amarchy/apps");
-    CHECK_INT(x.n, 0);
+    CHECK_INT(x.n, 1);                                  /* no cache rows; only the clipboard history placeholder */
+    CHECK_INT(x.rows[0].kind, IX_KIND_CLIP);
     ix_load_text(&km, &x, 0);
     CHECK_INT(x.n, 0);
 }

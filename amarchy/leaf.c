@@ -8,6 +8,8 @@
 #include <proto/exec.h>
 #include "leaf.h"
 #include "wblaunch.h"
+#include "clips_core.h"
+#include "../handler/clip.h"
 #include "termenv.h"
 #include "../handler/upreq.h"
 #include "../handler/upactive.h"
@@ -102,6 +104,19 @@ static int run_request(const km_menu *m, const lf_ui *ui)
 int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 {
     char err[160];
+    int ci = lf_clip_entry(path);
+    if (ci != -2) {                     /* a clipboard history row: its text goes back on the clipboard */
+        clip_ring r;
+        int ok = 0;
+        memset(&r, 0, sizeof r);
+        clips_load_file(&r, CLIPS_PATH);
+        if (ci >= 0 && ci < r.n)
+            ok = clip_write(r.text[ci], r.len[ci]);
+        clips_free(&r);
+        if (ci >= 0 && !ok && ui && ui->refused)
+            ui->refused(ui->ctx, label, UPREQ_FAILED, "the clipboard could not be written");
+        return ci < 0 || ok ? 0 : UPREQ_FAILED;
+    }
     if (wbl_open(path, err, sizeof err) == 0)
         return 0;
     fprintf(stderr, "amarchy: %s: %s\n", label, err);

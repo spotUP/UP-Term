@@ -30,6 +30,7 @@ void suite_ttyown(void);
 void suite_upassign(void);
 void suite_bigvol(void);
 void suite_fssm(void);
+void suite_clips(void);
 void suite_pi_llm(void);
 void suite_upcon(void);
 void suite_upconf(void);
@@ -101,6 +102,7 @@ static const h_suite suites[] = {
     { "upassign", suite_upassign },
     { "bigvol", suite_bigvol },
     { "fssm", suite_fssm },
+    { "clips", suite_clips },
     { "upcon", suite_upcon },
     { "upconf", suite_upconf },
     { "keymap", suite_keymap },
