@@ -32,6 +32,20 @@ const vt_u8 *mi_find(const char *id)
     return 0;
 }
 
+void mi_item_id(const char *node, const mn_item *it, char *id, int size)
+{
+    if (MN_IS_INDEX(it)) {
+        strncpy(id, node, size - 1);
+        id[size - 1] = 0;
+        if (!id[0] || !mi_find(id))
+            strcpy(id, "apps");
+        return;
+    }
+    mn_child_node(node, it, id, size);
+    if (MN_IS_GROUP(it) && !mi_find(id))
+        strcpy(id, "drawer");
+}
+
 int mi_size(const mg_metrics *m)
 {
     int h = m->row_h * 8 / 15;

@@ -8,6 +8,7 @@
 #define AMARCHY_MENU_ICON_H
 
 #include "../render/emoji.h"
+#include "menu_core.h"
 #include "menu_geom.h"
 
 #define MI_SRC 32               /* the source glyph's size, square: the page holds ONE MI_SRC x MI_SRC image
@@ -18,6 +19,11 @@
 
 /* The generated page file (for ce_page_check_px with MI_PIXELS) and its length. */
 const vt_u8 *mi_page(long *len);
+/* The node id whose glyph a list item shows, into id (size bytes), the one resolution of the drawn menu:
+ * an index row (app, game, song) shows the glyph of the level it is listed in (node) when that level has
+ * one, else "apps"; any other item is its own node (mn_child_node), and an index group (a kind group
+ * or a scanned drawer) with no glyph of its own shows "drawer". */
+void mi_item_id(const char *node, const mn_item *it, char *id, int size);
 /* The icons: count, and the node id of the i-th. */
 int mi_count(void);
 const char *mi_id(int i);

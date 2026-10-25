@@ -358,12 +358,8 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
         if (amiga_icons && ix_launch_path(&ixs, it, path, sizeof path) &&
             ig_draw(g->rp, path, x, y + (boxh - sh) / 2, s, sh))
             return;
-        strncpy(id, g->node, sizeof id - 1);
-        id[sizeof id - 1] = 0;
-        if (!id[0] || !mi_find(id))
-            strcpy(id, "apps");
-    } else
-        mn_child_node(g->node, it, id, sizeof id);
+    }
+    mi_item_id(g->node, it, id, sizeof id);
     glyph = mi_find(id);
     if (!glyph || !mi_render(glyph, s, sh, cov))
         return;

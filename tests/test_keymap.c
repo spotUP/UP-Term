@@ -2156,6 +2156,69 @@ static void every_cache_row_reaches_the_apps_level_past_256(void)
     CHECK_INT(x.n, 0);
 }
 
+/* GROUP-DRAWER-ICON: every item of the levels amarchy-gui draws resolves to an id with a glyph; the kind
+ * groups keep their own, a scanned drawer takes "drawer", an index row the glyph of its level */
+static void menu_item_id_cases(void)
+{
+    static ix_index x;
+    static char file[16384];
+    mn_item it[TEST_LEVEL_MAX];
+    char id[KM_ID * 2 + 2];
+    long fn = slurp("dist/keymap", file, sizeof(file));
+    const char *const nodes[] = { "", "games", "apps" };
+    int ni, i, n, ran = 0, want = 0, got_utils = 0, got_idx_games = 0, got_idx_apps = 0;
+    CHECK(fn > 0 && keymap_parse(&km, file, fn));
+    ix_load_text(&km, &x,
+                 "app\tClock\tWork:Tools/Clock\n"
+                 "app\tEdit\tWork:Dev/Edit\n"
+                 "app\tRootApp\tWork:RootApp\n"
+                 "game\tTurrican 2\tWork:Games/Turrican2\n"
+                 "game\tState of the Art\tWork:Demos/Soa\n"
+                 "app\tSong\tWork:Music/Song\n");
+    for (ni = 0; ni < 3; ni++) {
+        n = ix_level(&km, &x, nodes[ni], "", it, TEST_LEVEL_MAX);
+        want += n;
+        for (i = 0; i < n; i++) {
+            mi_item_id(nodes[ni], &it[i], id, sizeof id);
+            ran++;
+            if (!mi_find(id))
+                printf("  no icon for '%s' (node '%s', row '%s')\n", id, nodes[ni], it[i].label);
+            CHECK(mi_find(id) != 0);
+            if (MN_IS_INDEX(&it[i])) {
+                if (ni == 1) { CHECK_STR(id, "games"); got_idx_games++; }
+                if (ni == 2) { CHECK_STR(id, "apps"); got_idx_apps++; }
+            } else if (MN_IS_GROUP(&it[i]) && ni == 0) {
+                if (!strcmp(it[i].label, "Games")) CHECK_STR(id, "games");
+                if (!strcmp(it[i].label, "Demos")) CHECK_STR(id, "demos");
+                if (!strcmp(it[i].label, "Music")) CHECK_STR(id, "music");
+                if (!strcmp(it[i].label, "Style")) CHECK_STR(id, "style");
+            } else if (MN_IS_GROUP(&it[i]) && ni == 2) {
+                CHECK_STR(id, "drawer");               /* apps.tools, apps.dev */
+                got_utils++;
+            }
+        }
+    }
+    CHECK_INT(ran, want);                              /* the loop ran over every item mn level returned */
+    CHECK(want > 6);
+    CHECK_INT(got_utils, 2);
+    CHECK_INT(got_idx_games, 1);
+    CHECK_INT(got_idx_apps, 1);                        /* the volume-root app */
+    /* an index row at an unknown node, and a static leaf */
+    memset(&it[0], 0, sizeof it[0]);
+    it[0].row = MN_ROW_INDEX;
+    mi_item_id("foo", &it[0], id, sizeof id);
+    CHECK_STR(id, "apps");
+    n = mn_children(&km, "style", it, TEST_LEVEL_MAX);
+    for (i = 0; i < n; i++)
+        if (!MN_IS_GROUP(&it[i]) && !strcmp(it[i].label, "Theme")) {
+            mi_item_id("style", &it[i], id, sizeof id);
+            CHECK_STR(id, "style.theme");
+            ran = -1;
+        }
+    CHECK_INT(ran, -1);
+    ix_free(&x);
+}
+
 static void the_apps_level_lists_index_apps_after_merging(void)
 {
     static ix_index x;
@@ -2520,6 +2583,7 @@ static void the_app_index_core_behaves(void)
     equal_index_labels_get_their_volume_as_suffix_and_rows_sort_by_label();
     a_menu_row_wins_over_an_index_row_with_the_same_label();
     the_apps_level_lists_index_apps_after_merging();
+    menu_item_id_cases();
     the_scan_record_names_the_last_path_and_the_where_text_tells_running_stuck_died_and_done();
     an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_apps_menu();
     a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one();

@@ -1,7 +1,12 @@
 ; Icons of the drawn Amarchy menu: node id = Symbols Nerd Font code point ; Nerd Fonts name.
 ; An id is a [menu] row of keymap or a group (the node whose children are rows). A node without an
-; entry here leaves its icon column empty. tools/gen_menu_icons.py converts each glyph at build time.
+; entry here leaves its icon column empty, except an index group: `drawer` is the glyph of any index group
+; (a scanned drawer such as apps.tools) with no entry of its own (mi_item_id). tools/gen_menu_icons.py converts each glyph at build time.
 apps              = U+F003B   ; md-apps
+games             = U+F11B    ; fa-gamepad
+demos             = U+F008    ; fa-film
+music             = U+F001    ; fa-music
+drawer            = U+F07B    ; fa-folder
 style             = U+EBCF    ; cod-wand
 window            = U+F2D0    ; fa-window_maximize
 apps.upterm       = U+F120    ; fa-terminal
