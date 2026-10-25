@@ -80,6 +80,7 @@ typedef struct gui {
     int chev_w;
     int icon_w, icon_h;          /* the icon column's width and the icon's height, 0 for none */
     long pen[MT_ROLES];
+    int pens;                    /* distinct pens obtained (2 in the minimal mode) */
     char pen_got[MT_ROLES];
     int mode;
     int await;                   /* ChangeWindowBox sent, IDCMP_CHANGEWINDOW not yet seen */
@@ -312,9 +313,14 @@ static int shown_rows(const gui *g)
     return g->g.visible + (mg_more(&g->g, g->top) ? 1 : 0);
 }
 
+/* menu-style = minimal (menu-style = minimal): text rows, no border, no icon column, two pens */
+static int minimal;
+
 static void draw_border(gui *g)
 {
     const mg_metrics *m = &g->g.m;
+    if (minimal)
+        return;
     fill(g, MT_ACCENT, 0, 0, g->g.w - 1, m->by - 1);
     fill(g, MT_ACCENT, 0, g->g.h - m->by, g->g.w - 1, g->g.h - 1);
     fill(g, MT_ACCENT, 0, m->by, m->bx - 1, g->g.h - m->by - 1);
@@ -343,7 +349,7 @@ static void draw_header(gui *g)
  * for visible rows): its coverage, icon_w x icon_h, at (x, y) in the row of height
  * boxh. Strong coverage in the row's colour, a weaker one in the dim pen; the rest is the row's box. */
 /* amarchy-app-icons = amiga: the index rows show their .info images; anything else keeps generic glyphs */
-static int amiga_icons;
+static int app_icons;      /* UC_ICONS_*: the key amarchy-app-icons */
 
 static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int boxh)
 {
@@ -355,7 +361,7 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
         /* an app or game of the index: its own .info image when the upconf asks for them and one can be
          * had; else the generic glyph of the level the row is shown in ("apps" when that level has none) */
         char path[IX_PATH];
-        if (amiga_icons && ix_launch_path(&ixs, it, path, sizeof path) &&
+        if (app_icons == UC_ICONS_AMIGA && ix_launch_path(&ixs, it, path, sizeof path) &&
             ig_draw(g->rp, path, x, y + (boxh - sh) / 2, s, sh))
             return;
     }
@@ -402,8 +408,15 @@ static void draw_row(gui *g, int e)
             tx += ic;
             tw -= ic;
         }
-        put(g, role, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
-        if (MN_IS_GROUP(it))
+        if (minimal && MN_IS_GROUP(it)) {         /* the group marker is part of the text: label then " >" */
+            char t[KM_LABEL + 4];
+            strncpy(t, it->label, KM_LABEL);
+            t[KM_LABEL] = 0;
+            strcat(t, " >");
+            put(g, role, tx, y, q->m.row_h, t, (int)strlen(t), tw);
+        } else
+            put(g, role, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
+        if (MN_IS_GROUP(it) && !minimal)
             put(g, role, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
     } else if (g->mode == M_INPUT) {
         char t[EDIT_MAX + 2];
@@ -451,6 +464,8 @@ static void draw_full(gui *g)
     if (g->mode == M_LIST)
         sentinel_rows(g);
     sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
+    sentinel_publish("AMARCHY_MODE", minimal ? UC_MENU_MINIMAL : UC_MENU_GRAPHICAL);
+    sentinel_publish("AMARCHY_PENS", g->pens);
     sentinel_publish("AMARCHY_ICON_RESTORED", ig_restored());
 }
 
@@ -565,7 +580,8 @@ static void index_drawers(void)
     ix_set_drawers(upconf_str(&conf, "default", "amarchy-music-drawers", 0),
                    upconf_str(&conf, "default", "amarchy-demo-drawers", 0));
     ix_set_hidden_drawers(upconf_str(&conf, "default", "amarchy-hide-drawers", 0));
-    amiga_icons = uc_ieq(upconf_str(&conf, "default", "amarchy-app-icons", "generic"), "amiga");
+    app_icons = upconf_app_icons(upconf_str(&conf, "default", "amarchy-app-icons", "generic"));
+    minimal = upconf_menu_style_value(upconf_str(&conf, "default", "menu-style", "graphical")) == UC_MENU_MINIMAL;
 }
 
 /* The scan finished: read the new index (the Apps level has new rows). 0 when memory ran out. */
@@ -917,10 +933,32 @@ static void pens_get(gui *g)
     fg = upconf_rgb(&conf, "default", "fg", VR_KEEP);
     bg = upconf_rgb(&conf, "default", "bg", VR_KEEP);
     menu_theme_roles_fb(pal, fg == VR_KEEP ? 0 : 0x01000000UL | fg, bg == VR_KEEP ? 0 : 0x01000000UL | bg, rgb);
+    if (minimal) {
+        /* two colours: the terminal's bg and fg keys, each falling back to the screen's own pen (0, 1); fg equal
+         * to bg would hide the selection, so both fall back */
+        int bg_set = bg != VR_KEEP, fg_set = fg != VR_KEEP;
+        if (!menu_theme_minimal(rgb) && bg_set && fg_set)
+            bg_set = fg_set = 0;
+        for (r = 0; r < MT_ROLES; r++) {
+            int is_bg = r == MT_BG || r == MT_ACCENT;
+            long p = (is_bg ? bg_set : fg_set) ? vr_pen_obtain(g->cm, rgb[r]) : -1;
+            g->pen_got[r] = p >= 0;
+            g->pen[r] = p >= 0 ? p : (is_bg ? 0 : 1);
+        }
+    } else {
+        for (r = 0; r < MT_ROLES; r++) {
+            long p = vr_pen_obtain(g->cm, rgb[r]);
+            g->pen_got[r] = p >= 0;
+            g->pen[r] = p >= 0 ? p : (r == MT_BG ? 0 : 1);
+        }
+    }
+    g->pens = 0;
     for (r = 0; r < MT_ROLES; r++) {
-        long p = vr_pen_obtain(g->cm, rgb[r]);
-        g->pen_got[r] = p >= 0;
-        g->pen[r] = p >= 0 ? p : (r == MT_BG ? 0 : 1);
+        int q, dup = 0;
+        for (q = 0; q < r; q++)
+            if (g->pen[q] == g->pen[r])
+                dup = 1;
+        g->pens += !dup;
     }
 }
 
@@ -1122,14 +1160,16 @@ int main(int argc, char **argv)
     g->mf.cw = g->font->tf_XSize;
     g->ms.w = g->scr->Width;
     g->ms.h = g->scr->Height;
+    g->ms.minimal = minimal;
     pens_get(g);
-    if (amiga_icons)
+    if (app_icons == UC_ICONS_AMIGA && !minimal)
         ig_open(g->scr, ixs.n);      /* no icon.library V44: the index rows keep the generic glyph */
 
     /* the font's text lengths before the window exists */
     InitRastPort(&tmp);
     SetFont(&tmp, g->font);
-    g->chev_w = text_len(">", &tmp);
+    /* the minimal menu's group marker is part of the label's text: " >" after it, no gap column */
+    g->chev_w = text_len(minimal ? " >" : ">", &tmp);
     g->chosen = -1;
     g->ixpath[0] = g->ixlabel[0] = 0;
     strcpy(g->node, node);
@@ -1158,8 +1198,9 @@ int main(int argc, char **argv)
         mg_metrics m;
         g->mode = M_LIST;
         mg_metrics_for(&m, &g->mf, &g->ms);
-        g->icon_h = mi_count() > 0 ? mi_size(&m) : 0;
-        g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
+        /* no icon column in the minimal menu or with amarchy-app-icons = none */
+        g->icon_h = mi_count() > 0 && !minimal && app_icons != UC_ICONS_NONE ? mi_size(&m) : 0;
+        g->icon_w = mi_count() > 0 && !minimal && app_icons != UC_ICONS_NONE ? mi_width(&m, &g->ms) : 0;
         g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms, menu_cond);
         n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
         g->shift = g->wt.row[0] ? 1 : 0;

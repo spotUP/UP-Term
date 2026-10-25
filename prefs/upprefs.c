@@ -137,6 +137,8 @@ static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", (STRPTR)"Pa
                                 (STRPTR)"Keyboard", (STRPTR)"Advanced", (STRPTR)"Amarchy", 0 };
 static STRPTR cursor_labels[] = { (STRPTR)"Block", (STRPTR)"Underline", (STRPTR)"Bar", 0 };
 static STRPTR bell_labels[] = { (STRPTR)"None", (STRPTR)"Beep", (STRPTR)"Visual", 0 };
+static STRPTR icons_labels[] = { (STRPTR)"Generic", (STRPTR)"Amiga", (STRPTR)"None", 0 };
+static STRPTR mode_labels[] = { (STRPTR)"Drawn", (STRPTR)"Text", (STRPTR)"Minimal", 0 };
 static STRPTR meta_labels[] = { (STRPTR)"Left Amiga", (STRPTR)"Alt", 0 };
 static STRPTR complete_labels[] = { (STRPTR)"Unix", (STRPTR)"KingCON", 0 };
 /* in the order of PREFS_KC_*, PREFS_SCREEN_*, PREFS_CLIP_* */
@@ -299,6 +301,7 @@ static int *int_of(struct app *a, int id)
     case PG_CURSOR: return &a->f.cursor;
     case PG_BLINK: return &a->f.blink;
     case PG_AM_ICONS: return &a->f.am_icons;
+    case PG_AM_MODE: return &a->f.am_mode;
     case PG_BELL: return &a->f.bell;
     case PG_BOLD: return &a->f.bold;
     case PG_WHEEL: return &a->f.wheel;
@@ -334,6 +337,8 @@ static STRPTR *labels_of(int id)
     case PG_PAGE: return page_labels;
     case PG_CURSOR: return cursor_labels;
     case PG_BELL: return bell_labels;
+    case PG_AM_ICONS: return icons_labels;
+    case PG_AM_MODE: return mode_labels;
     case PG_META: return meta_labels;
     case PG_COMPLETE: return complete_labels;
     case PG_KC_MATCH: return kcmatch_labels;

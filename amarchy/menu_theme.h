@@ -28,4 +28,10 @@ void menu_theme_roles(const uc_u32 pal16[16], uc_u32 rgb[MT_ROLES]);
  * A set bg gives MT_BG, a set fg gives MT_TEXT; every other role, and an unset one, comes from the palette. */
 void menu_theme_roles_fb(const uc_u32 pal16[16], uc_u32 fg, uc_u32 bg, uc_u32 rgb[MT_ROLES]);
 
+/* The minimal menu's two colours: rgb[] from menu_theme_roles_fb is rewritten so only the background and the
+ * foreground (MT_TEXT) remain: MT_BG and MT_ACCENT = background, MT_TEXT, MT_DIM and MT_SELBOX = foreground
+ * (the selected row is the swap: foreground box, background text). Returns 0 when the two colours are equal: the
+ * selection would be invisible, and the caller falls back to the screen's own pens 1 and 0. */
+int menu_theme_minimal(uc_u32 rgb[MT_ROLES]);
+
 #endif

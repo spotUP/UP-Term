@@ -21,6 +21,7 @@ typedef struct mg_font {
 typedef struct mg_screen {
     int w, h;                   /* the screen the menu opens on, pixels */
     int rx, ry;                 /* DisplayInfo Resolution ticks of one pixel; 0, 0 = square */
+    int minimal;                /* 1 = the minimal menu (menu-style = minimal): no border, no icon or chevron gap */
 } mg_screen;
 
 /* The columns that look as long as `lines` lines (lines when the aspect is unknown). */

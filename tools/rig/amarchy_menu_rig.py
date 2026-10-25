@@ -475,6 +475,69 @@ def r_app_icons():
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
+def r_minimal():
+    """MENU-MINIMAL: menu-style = minimal makes the drawn menu (amarchy-gui, Left Amiga + Space) plain text rows with
+    two pens (the fg and bg keys), no border, no icon column and no chevron art. Sentinels (gui.c, beside
+    AMARCHY_ICON_LOADS): ENV:AMARCHY_MODE (2 = minimal), ENV:AMARCHY_PENS (distinct pens obtained: 2) and
+    ENV:AMARCHY_ICON_LOADS (0: no .info image is loaded even with amarchy-app-icons = amiga), all deleted first.
+    The second step reopens with menu-style = graphical: MODE 0 and more than 2 pens. The pixel check counts the
+    distinct colours inside the window."""
+    import amarchy_rig, amarchy_gui_rig as g
+    res = []
+
+    def ck(name, ok, detail=''):
+        res.append(ok)
+        print('  %s %s%s' % ('[OK]' if ok else '[FAIL]', name, (': ' + detail) if detail else ''), flush=True)
+        return ok
+
+    def colours():
+        s, w = g.where(g.TITLE)
+        if not w:
+            return -1
+        left, top, ww, hh = g.box_of(s, w)
+        gw, gh, rows = ami.grab((left + 6, top + 6, ww - 12, hh - 12))
+        return len({bytes(r[x * 3:x * 3 + 3]) for r in rows for x in range(len(r) // 3)})
+
+    def opened(style):
+        c.run('Echo >%s "[profile default]"' % X9_CONF)
+        c.run('Echo >>%s "menu-style = %s"' % (X9_CONF, style))
+        c.run('Echo >>%s "fg = E0E0A0"' % X9_CONF)
+        c.run('Echo >>%s "bg = 102040"' % X9_CONF)
+        c.run('Echo >>%s "amarchy-app-icons = amiga"' % X9_CONF)
+        amarchy_rig.arexx('RELOAD')
+        c.run('Delete >NIL: ENV:AMARCHY_MODE ENV:AMARCHY_PENS ENV:AMARCHY_ICON_LOADS ENV:AMARCHY_DRAWS QUIET')
+        ami.click_px(100, 100)
+        time.sleep(0.5)
+        s, w = g.open_menu()
+        time.sleep(2)
+        return bool(w)
+
+    if not amarchy_rig.port_up():
+        r_start()
+    ensure_terminal()
+    saved, upterm = x9_begin()
+    try:
+        c.run('Echo >ENV:up-term/keymap.user "[menu]"')
+        ck('minimal: drawn menu opened', opened('minimal'))
+        ck('minimal: sentinel AMARCHY_MODE = %d' % g.env_count('AMARCHY_MODE'), g.env_count('AMARCHY_MODE') == 2)
+        ck('minimal: sentinel AMARCHY_PENS = %d (two colours)' % g.env_count('AMARCHY_PENS'), g.env_count('AMARCHY_PENS') == 2)
+        ck('minimal: AMARCHY_ICON_LOADS = %d (no .info image)' % g.env_count('AMARCHY_ICON_LOADS'),
+           g.env_count('AMARCHY_ICON_LOADS') == 0)
+        ck('minimal: AMARCHY_DRAWS = %d (the menu drew)' % g.draws(), g.draws() >= 1)
+        n = colours()
+        ck('minimal: %d distinct colours inside the window (no border art, no glyphs)' % n, 0 < n <= 2)
+        g.close_menu()
+        ck('graphical: drawn menu opened', opened('graphical'))
+        ck('graphical: AMARCHY_MODE = %d' % g.env_count('AMARCHY_MODE'), g.env_count('AMARCHY_MODE') == 0)
+        ck('graphical: AMARCHY_PENS = %d (more than two)' % g.env_count('AMARCHY_PENS'), g.env_count('AMARCHY_PENS') > 2)
+        n2 = colours()
+        ck('graphical: %d distinct colours (more than minimal)' % n2, n2 > n)
+    finally:
+        g.close_menu()
+        x9_end(saved, upterm)
+    return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
 def r_app_index():
     import amarchy_rig, wbrun_rig
     res = []
@@ -921,6 +984,7 @@ ROWS = [
     ('group_icons', r_group_icons),
     ('dopus_absent', r_dopus_absent),
     ('dopus_present', r_dopus_present),
+    ('minimal',     r_minimal),
 ]
 
 

@@ -720,10 +720,16 @@ AMARCHY
   the drawn menu: its own borderless window with an icon in front of each row.
   amarchy-menu is the text menu in a console window. The setting
     menu-style = graphical
-  in ENVARC:up-term/up-term (before the first section; graphical or text,
-  default graphical) picks the one Left Amiga + Space and Left Amiga + K
-  start. Left Amiga + Alt + Space and Left Amiga + Alt + K start the other
-  one. You can also run them by hand:
+  in ENVARC:up-term/up-term (before the first section; graphical, text or
+  minimal, default graphical) picks the one Left Amiga + Space and Left
+  Amiga + K start. minimal is amarchy-gui as plain text rows: no border, no
+  icons, two colours (the fg and bg settings, else the screen's own pens 1
+  and 0), and a group row ends in " >". Left Amiga + Alt + Space and Left
+  Amiga + Alt + K start the other one (for minimal: the text menu). The
+  setting amarchy-app-icons = generic, amiga or none picks the icons of app
+  rows (amiga: their .info images; none: no icon column). The Prefs program
+  sets both on its Amarchy page (Menu mode, App icons). You can also run
+  them by hand:
     amarchy-gui menu [node]      the menu (node: a menu id, default root)
     amarchy-gui viewer           the list of every key
   and the same two words for amarchy-menu. The icons come from a table made

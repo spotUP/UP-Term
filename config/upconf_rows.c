@@ -136,17 +136,31 @@ int upconf_rows(const char *buf, long len, const char *section, upconf_row_fn fn
     return rows;
 }
 
+int upconf_menu_style_value(const char *value)
+{
+    if (value && uc_ieq(value, "text"))
+        return UC_MENU_TEXT;
+    if (value && uc_ieq(value, "minimal"))
+        return UC_MENU_MINIMAL;
+    return UC_MENU_GRAPHICAL;
+}
+
 static int menu_style_row(void *ud, int lineno, const char *key, const char *value)
 {
-    if (uc_ieq(key, "menu-style")) {
-        if (uc_ieq(value, "text"))
-            *(int *)ud = UC_MENU_TEXT;
-        else
-            *(int *)ud = UC_MENU_GRAPHICAL;
-    }
+    if (uc_ieq(key, "menu-style"))
+        *(int *)ud = upconf_menu_style_value(value);
     /* never stops the walk (line numbers start at 1); reads lineno because vbcc (-warnings-as-errors) refuses a
      * (void) cast of it and the host build (-Wextra -Werror) refuses an unused parameter */
     return lineno < 0;
+}
+
+int upconf_app_icons(const char *value)
+{
+    if (value && uc_ieq(value, "amiga"))
+        return UC_ICONS_AMIGA;
+    if (value && uc_ieq(value, "none"))
+        return UC_ICONS_NONE;
+    return UC_ICONS_GENERIC;
 }
 
 int upconf_menu_style(const char *buf, long len)

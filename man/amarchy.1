@@ -44,14 +44,27 @@ the list of every key.
 is the drawn version of the same two screens: its own borderless window with
 an icon in front of each row.
 The setting
-.Ql menu-style = graphical
-or
+.Ql menu-style = graphical ,
 .Ql menu-style = text
+or
+.Ql menu-style = minimal
 in
 .Pa ENVARC:up-term/up-term
 (before the first section; default graphical) chooses which program Left Amiga
 + Space and Left Amiga + K start; Left Amiga + Alt + Space and Left Amiga + Alt
 + K start the other one.
+.Ql minimal
+starts
+.Nm amarchy-gui
+as plain text rows: no border, no icons, two colours (the fg and bg settings,
+else the screen's own pens), a group row ends in
+.Ql \ > .
+The setting
+.Ql amarchy-app-icons = generic ,
+.Ql amiga
+or
+.Ql none
+chooses the icons of app rows.
 The icons come from a table made when the kit is built (dist/menu-icons in
 the source), so a row of
 .Pa keymap.user

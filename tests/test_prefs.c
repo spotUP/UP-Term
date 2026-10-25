@@ -566,6 +566,42 @@ static void the_app_icons_key_defaults_to_generic(void)
     }
 }
 
+/* the icons key is a three-way cycle and menu-style a second Amarchy field: a hand-written
+ * none / minimal survives loading, an edit of another field, and saving; the dirty check sees both. */
+static void app_icons_none_and_menu_mode_round_trip(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    static const char src[] = "[default]\namarchy-app-icons = none\nmenu-style = minimal\n";
+    static const char text[] = "[default]\nmenu-style = text\n";
+    prefs_fields f, g;
+    long len;
+    CHECK_INT(prefs_load(&conf, src, (long)strlen(src), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.am_icons, UC_ICONS_NONE);
+    CHECK_INT(f.am_mode, UC_MENU_MINIMAL);
+    strcpy(f.am_font, "topaz.font:9");
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-app-icons", "?"), "none");
+    CHECK_STR(upconf_str(&conf, "default", "menu-style", "?"), "minimal");
+    prefs_from_conf(&g, &conf, "default");
+    CHECK_INT(g.am_icons, UC_ICONS_NONE);
+    CHECK_INT(g.am_mode, UC_MENU_MINIMAL);
+    g.am_mode = UC_MENU_GRAPHICAL;
+    CHECK_INT(prefs_equal(&f, &g), 0);
+    len = prefs_stage(&work, &conf, "default", &g, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "menu-style", "?"), "?");
+    CHECK_INT(prefs_load(&conf, text, (long)strlen(text), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.am_mode, UC_MENU_TEXT);
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "menu-style", "?"), "text");
+}
+
 static void the_amarchy_keyword_picks_the_start_page(void)
 {
     CHECK_INT(PG_NPAGES, 6);
@@ -1413,6 +1449,7 @@ void suite_prefs(void)
     dither_and_padding_color_round_trip();
     amarchy_keys_round_trip_through_the_default_section();
     the_app_icons_key_defaults_to_generic();
+    app_icons_none_and_menu_mode_round_trip();
     the_amarchy_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
 }

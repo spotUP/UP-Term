@@ -696,10 +696,14 @@ static void menu_style_commands(void)
         { KA_VIEWER,      UC_MENU_TEXT,      "",     "\"UP-Term:bin/amarchy-menu\" viewer", 1 },
         { KA_OTHERMENU,   UC_MENU_TEXT,      "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
         { KA_OTHERVIEWER, UC_MENU_TEXT,      "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
+        { KA_MENU,        UC_MENU_MINIMAL,   "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
+        { KA_VIEWER,      UC_MENU_MINIMAL,   "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
+        { KA_OTHERMENU,   UC_MENU_MINIMAL,   "apps", "\"UP-Term:bin/amarchy-menu\" menu apps", 1 },
+        { KA_OTHERVIEWER, UC_MENU_MINIMAL,   "",     "\"UP-Term:bin/amarchy-menu\" viewer", 1 },
     };
     char out[96];
     int i, text;
-    for (i = 0; i < 8; i++) {
+    for (i = 0; i < 12; i++) {
         text = -1;
         CHECK(cx_menu_cmd(out, sizeof(out), "UP-Term:bin", t[i].kind, t[i].node, t[i].style, &text));
         CHECK_STR(out, t[i].want);
@@ -718,6 +722,13 @@ static void menu_style_parse(void)
     CHECK_INT(STYLE("[profile default]\nMenu-Style = TEXT\n"), UC_MENU_TEXT);
     CHECK_INT(STYLE("menu-style = text\nmenu-style = graphical\n"), UC_MENU_GRAPHICAL);   /* last wins */
     CHECK_INT(STYLE("menu-style = bogus\n"), UC_MENU_GRAPHICAL);
+    CHECK_INT(STYLE("menu-style = minimal\n"), UC_MENU_MINIMAL);
+    CHECK_INT(STYLE("menu-style = Minimal\nmenu-style = text\n"), UC_MENU_TEXT);        /* last wins */
+    CHECK_INT(STYLE("menu-style = text\nmenu-style = minimal\n"), UC_MENU_MINIMAL);
+    CHECK_INT(upconf_app_icons(""), UC_ICONS_GENERIC);
+    CHECK_INT(upconf_app_icons("amiga"), UC_ICONS_AMIGA);
+    CHECK_INT(upconf_app_icons("none"), UC_ICONS_NONE);
+    CHECK_INT(upconf_app_icons("bogus"), UC_ICONS_GENERIC);
     CHECK_INT(STYLE("[profile vim]\nmenu-style = text\n"), UC_MENU_GRAPHICAL);            /* default profile only */
 #undef STYLE
 }
@@ -895,7 +906,7 @@ static void menu_size_follows_the_filtered_rows(void)
 {
     int cols, rows, cols1, rows1, px = 16, w0, w1;
     mg_font topaz = { 8, 8 };
-    mg_screen pal = { 640, 256, 22, 44 };
+    mg_screen pal = { 640, 256, 22, 44, 0 };
     CHECK(parse("[menu]\napps.a = Short | run:a\napps.b = Other | run:b\n"
                 "apps.long = A very much longer slash label that is wider than the minimum window | slash:/theme\n"
                 "apps.t1 = Tab one | tab:new\napps.t2 = Tab two | tab:next\ntop = Top | run:x\n"));
@@ -1076,7 +1087,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
 {
     static char file[16384];
     mg_font topaz = { 8, 8 }, pro = { 16, 8 };
-    mg_screen pal = { 640, 256, 22, 44 }, narrow = { 320, 256, 22, 44 }, sq = { 640, 512, 22, 22 };
+    mg_screen pal = { 640, 256, 22, 44, 0 }, narrow = { 320, 256, 22, 44, 0 }, sq = { 640, 512, 22, 22, 0 };
     int px8 = 8, px16 = 16, w;
     char head[KM_ID];
     mn_item items[MN_MAX_ITEMS];
@@ -1210,7 +1221,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
 static void drawn_menu_icons_look_square_on_tall_pixels(void)
 {
     mg_font topaz = { 8, 8 }, pro = { 16, 8 };
-    mg_screen pal = { 640, 256, 22, 44 }, sq = { 640, 512, 22, 22 }, unknown = { 640, 256, 0, 0 };
+    mg_screen pal = { 640, 256, 22, 44, 0 }, sq = { 640, 512, 22, 22, 0 }, unknown = { 640, 256, 0, 0, 0 };
     mg_metrics m;
     mg_metrics_for(&m, &topaz, &pal);
     CHECK_INT(mi_size(&m), 16);                    /* 30 * 8 / 15 */
@@ -1789,6 +1800,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 }
 
 static void menu_theme_roles_map_the_palette(void);
+static void minimal_mode_reaches_the_program(void);
 static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
 
 static void the_app_index_core_behaves(void);
@@ -2103,6 +2115,7 @@ void suite_keymap(void)
     the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level();
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
+    minimal_mode_reaches_the_program();
     the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
     a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothing();
@@ -2198,6 +2211,55 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT((long)rgb[MT_ACCENT], 0xFFAA00L);
     CHECK_INT((long)rgb[MT_BG], 0x000000L);
     CHECK_INT((long)rgb[MT_SELBOX], 0x0000EEL);
+}
+
+/* Minimal menu mode, one reachability test: the upconf text selects it, the command builder sends
+ * it to the drawn program, the geometry drops border and gaps, and the theme has two colours. */
+static void minimal_mode_reaches_the_program(void)
+{
+    static const char conf[] = "menu-style = minimal\n";
+    mg_font topaz = { 8, 8 };
+    mg_screen drawn = { 640, 256, 22, 44, 0 }, mini = { 640, 256, 22, 44, 1 };
+    mg_metrics md, mm;
+    uc_u32 rgb[MT_ROLES];
+    char out[96];
+    int style, text = -1, px = 8, wd, wm, i;
+
+    style = upconf_menu_style(conf, (long)strlen(conf));
+    CHECK_INT(style, UC_MENU_MINIMAL);
+    CHECK(cx_menu_cmd(out, sizeof(out), "UP-Term:bin", KA_MENU, "apps", style, &text));
+    CHECK_STR(out, "\"UP-Term:bin/amarchy-gui\" menu apps");
+    CHECK_INT(text, 0);
+
+    mg_metrics_for(&md, &topaz, &drawn);
+    mg_metrics_for(&mm, &topaz, &mini);
+    CHECK(md.bx > 0 && md.by > 0 && md.icon_gap > 0 && md.chev_gap > 0);
+    CHECK_INT(mm.bx, 0);
+    CHECK_INT(mm.by, 0);
+    CHECK_INT(mm.icon_gap, 0);
+    CHECK_INT(mm.chev_gap, 0);
+    CHECK_INT(mm.row_h, md.row_h);
+
+    /* a label (31 letters, 16 pixels each) wider than the minimum window: the width follows the content */
+    CHECK(parse("[menu]\napps.a = Short | run:a\n"
+                "apps.b = A label of thirty one letters. | run:b\n"));
+    px = 16;
+    topaz.cw = 16;
+    wd = mg_width_t(&km, "apps", &topaz, 16, 8, fixed_width, &px, &drawn, 1);
+    wm = mg_width_t(&km, "apps", &topaz, 0, 16, fixed_width, &px, &mini, 1);
+    CHECK(wm > md.min_w && wm < wd);
+
+    /* two colours: the background roles share one value, the text roles the other */
+    for (i = 0; i < MT_ROLES; i++)
+        rgb[i] = 0x111111UL + (uc_u32)i;
+    rgb[MT_BG] = 0x102030UL;
+    rgb[MT_TEXT] = 0xA0B0C0UL;
+    CHECK_INT(menu_theme_minimal(rgb), 1);
+    CHECK_INT((long)rgb[MT_ACCENT], 0x102030L);
+    CHECK_INT((long)rgb[MT_DIM], 0xA0B0C0L);
+    CHECK_INT((long)rgb[MT_SELBOX], 0xA0B0C0L);
+    rgb[MT_BG] = rgb[MT_TEXT] = 0x555555UL;
+    CHECK_INT(menu_theme_minimal(rgb), 0);       /* equal colours: the caller uses screen pens */
 }
 
 /* the terminal draws its ground and text from the upconf bg and fg; the drawn menu follows them */

@@ -38,3 +38,11 @@ void menu_theme_roles(const uc_u32 pal16[16], uc_u32 rgb[MT_ROLES])
 {
     menu_theme_roles_fb(pal16, 0, 0, rgb);
 }
+
+int menu_theme_minimal(uc_u32 rgb[MT_ROLES])
+{
+    uc_u32 bg = rgb[MT_BG], fg = rgb[MT_TEXT];
+    rgb[MT_BG] = rgb[MT_ACCENT] = bg;
+    rgb[MT_TEXT] = rgb[MT_DIM] = rgb[MT_SELBOX] = fg;
+    return bg != fg;
+}

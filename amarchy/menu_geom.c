@@ -42,6 +42,8 @@ void mg_metrics_for(mg_metrics *m, const mg_font *f, const mg_screen *s)
     m->row_pad = imax(hr(s, row, 12), half_w);
     m->icon_gap = imax(hr(s, row, 10), half_w);
     m->chev_gap = imax(hr(s, row, 12), half_w);
+    if (s->minimal)                 /* text only: no border art, nothing between label and marker */
+        m->bx = m->by = m->icon_gap = m->chev_gap = 0;
     m->min_w = imax(hr(s, row, 300), 16 * f->cw);
     m->margin_y = imax(1, vr(row, 10));
     m->margin_x = imax(1, mg_cols(s, m->margin_y));
