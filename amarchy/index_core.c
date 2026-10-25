@@ -325,9 +325,15 @@ int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n)
     return 1;
 }
 
+int ix_same_handler_task(const void *vol_task, const void *dev_task)
+{
+    return vol_task != 0 && vol_task == dev_task;
+}
+
 void ix_prog_begin(ix_prog *p)
 {
     memset(p, 0, sizeof *p);
+    p->version = IX_PROG_VERSION;
     p->stage = IX_ST_VOLUMES;
     p->seq = 1;
 }
@@ -362,10 +368,17 @@ void ix_prog_stopped(ix_prog *p)
     p->seq++;
 }
 
+void ix_prog_write_failed(ix_prog *p)
+{
+    p->stage = IX_ST_WRITE_FAILED;
+    p->seq++;
+}
+
 const char *ix_stage_name(int stage)
 {
-    static const char *const names[] = {"idle", "volumes", "walk", "icon", "write", "done", "stopped"};
-    return (stage >= 0 && stage <= IX_ST_STOPPED) ? names[stage] : "unknown";
+    static const char *const names[] = {"idle", "volumes", "walk", "icon", "write", "done", "stopped",
+                                        "write failed"};
+    return (stage >= 0 && stage <= IX_ST_WRITE_FAILED) ? names[stage] : "unknown";
 }
 
 /* a bounded string builder: no printf family, so vbcc's plain DOS programs can take it */
@@ -402,6 +415,15 @@ static void pb_num(pbuf *b, long v)
     }
 }
 
+int ix_prog_other_text(char *out, int n)
+{
+    static const char t[] = "amarchy-index: record from another amarchy-index build, reboot to clear\n";
+    if (n < (int)sizeof t)
+        return -1;
+    memcpy(out, t, sizeof t);
+    return (int)sizeof t - 1;
+}
+
 int ix_prog_text(const ix_prog *p, int task, int moving, char *out, int n)
 {
     char vol[IX_VOL];
@@ -413,8 +435,12 @@ int ix_prog_text(const ix_prog *p, int task, int moving, char *out, int n)
     b.over = 0;
     if (n < 1)
         return -1;
+    if (p->version != IX_PROG_VERSION)
+        return ix_prog_other_text(out, n);
     if (p->stage == IX_ST_DONE)
         state = "done";
+    else if (p->stage == IX_ST_WRITE_FAILED)
+        state = "cache write failed (cannot write the cache file, the old cache is kept)";
     else if (p->stage == IX_ST_STOPPED)
         state = "stopped by Ctrl-C, no cache written";
     else if (p->stage == IX_ST_IDLE)
