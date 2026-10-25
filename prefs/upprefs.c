@@ -67,6 +67,11 @@
 #include "../tty/qmark.h"
 #include "prefs_dos.h"
 
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
+long __stack = 16384;
+const char upprefs_stack_cookie[] = "$STACK: 16384";
+
 /* The clib's calls read these; startup.o provides DOSBase only. */
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;

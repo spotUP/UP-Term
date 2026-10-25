@@ -18,6 +18,13 @@
 #include "upterm_version.h"
 static const char vers[] = "$VER: mdv " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 
+#ifdef __VBCC__
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
+long __stack = 20480;
+const char mdv_stack_cookie[] = "$STACK: 20480";
+#endif
+
 static void usage(void)
 {
     vw_say("mdv -- show Markdown formatted\n"

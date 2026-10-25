@@ -29,6 +29,11 @@ static const char vers[] = "$VER: sz " UPTERM_VERSION " (" UPTERM_DATE ") UP-Ter
 static const char vers[] = "$VER: rz " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 #endif
 
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
+long __stack = 16384;
+const char zm_stack_cookie[] = "$STACK: 16384";
+
 /* ---- the line: the shell's stream ---------------------------------------- */
 
 typedef struct aline {

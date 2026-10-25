@@ -34,6 +34,7 @@
 /* vbcc's startup (vc.lib) reads ___stack and runs main on a stack of this
  * size, so upupdate does not depend on the stack the Installer's run gives it */
 long __stack = 16384;
+const char upupdate_stack_cookie[] = "$STACK: 16384";
 
 static BPTR script[UD_MAXPARTS];
 static char scriptname[UD_MAXPARTS][UD_NAME];
