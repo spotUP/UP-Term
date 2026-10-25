@@ -59,3 +59,10 @@ int ixw_other_layout(void)
     Permit();
     return found;
 }
+
+int ixw_poll(ix_watcher *x)
+{
+    ix_prog p;
+    int alive = 0, have = ixw_snapshot(&p, &alive);
+    return ix_watcher_step(x, have, have ? &p : 0, alive);
+}

@@ -22,6 +22,8 @@ typedef struct ixshared {
 ixshared *ixw_find(void);
 /* A copy of the record and whether its scanner task still exists; 0 (out untouched) when no record. */
 int ixw_snapshot(ix_prog *out, int *alive);
+/* One poll of the record for a watching menu: ixw_snapshot, then ix_watcher_step. 1 when the row changed. */
+int ixw_poll(ix_watcher *x);
 /* 1 when only a record of an older layout (ix_prog_old_names) is in memory. */
 int ixw_other_layout(void);
 

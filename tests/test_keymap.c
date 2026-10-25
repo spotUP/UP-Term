@@ -1570,6 +1570,57 @@ static void stopped_and_write_failed_each_name_the_failure(void)
     ixw_poll(&w, &p, 1, 0, IXW_FAILED, "Scan could not save the list");
 }
 
+static void a_watching_menu_rebuilds_only_when_the_status_row_changes_and_stops_at_done(void)
+{
+    ix_prog p = {0};
+    ix_watcher x;
+    ix_prog_begin(&p);                                   /* runs 1 */
+    ix_watcher_begin(&x, 1, 0, 0, 0);                    /* started by this menu, no record before */
+    CHECK_INT(x.on, 1);
+    CHECK_STR(x.row, "Scanning... starting");
+    CHECK_INT(ix_watcher_step(&x, 0, 0, 0), 0);          /* no record yet: same row, no rebuild */
+    ix_prog_note(&p, IX_ST_WALK, "Work:Apps");
+    CHECK_INT(ix_watcher_step(&x, 1, &p, 1), 1);
+    CHECK_STR(x.row, "Scanning... Work:Apps");
+    CHECK_INT(ix_watcher_step(&x, 1, &p, 1), 0);         /* unchanged: the menu does not redraw */
+    ix_prog_done(&p, 3, 1, 1);
+    CHECK_INT(ix_watcher_step(&x, 1, &p, 0), 1);
+    CHECK_INT(x.state, IXW_DONE);
+    CHECK_INT(x.on, 0);                                  /* ticks stop, the row stays */
+    CHECK_STR(x.row, "Scan done: 3 apps, 1 games");
+}
+
+static void a_menu_opened_during_a_scan_it_did_not_start_adopts_it_and_a_quiet_record_shows_no_row(void)
+{
+    ix_prog p = {0};
+    ix_watcher x;
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_ICON, "Work:Apps/Foo");
+    ix_watcher_begin(&x, 0, 1, &p, 1);
+    CHECK_INT(x.on, 1);
+    CHECK_STR(x.row, "Scanning... Work:Apps/Foo");
+    ix_prog_done(&p, 1, 0, 1);
+    ix_watcher_begin(&x, 0, 1, &p, 0);                   /* an old result is not news */
+    CHECK_INT(x.on, 0);
+    CHECK_STR(x.row, "");
+    ix_watcher_begin(&x, 0, 0, 0, 0);
+    CHECK_INT(x.on, 0);
+}
+
+static void the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level(void)
+{
+    mn_item it[3];
+    int idx[3] = { 2, 0, 1 }, c = 3;
+    memset(it, 0, sizeof it);
+    strcpy(it[0].label, "Alpha");
+    strcpy(it[1].label, "Rescan apps");
+    strcpy(it[2].label, "Zed");
+    CHECK_INT(mn_pick(it, idx, c, "Rescan apps"), 2);
+    CHECK_INT(mn_pick(it, idx, c, "Zed"), 0);
+    CHECK_INT(mn_pick(it, idx, c, "Gone"), -1);
+    CHECK_INT(mn_pick(it, idx, c, 0), -1);
+}
+
 static void a_run_counter_survives_ix_prog_begin(void)
 {
     ix_prog p = {0};
@@ -1603,6 +1654,9 @@ void suite_keymap(void)
     an_old_finished_record_is_not_shown_in_a_menu_that_did_not_start_it();
     a_scan_that_never_begins_is_reported_after_10_polls();
     stopped_and_write_failed_each_name_the_failure();
+    a_watching_menu_rebuilds_only_when_the_status_row_changes_and_stops_at_done();
+    a_menu_opened_during_a_scan_it_did_not_start_adopts_it_and_a_quiet_record_shows_no_row();
+    the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level();
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
