@@ -389,6 +389,42 @@ def case_run_editor():
     check(any(w['title'] == 'UP-Term' for s in screens() for w in s['windows']), 'run_editor: an UP-Term window exists')
 
 
+def case_run_addons():
+    """Install add-ons (run:upkg browse) from the menu opens the upkg browse window. It ran `upkg-browse`, a script
+    the kit no longer ships, so the menu closed and nothing opened. The root rows come from ENV:AMARCHY_ROWS
+    (gui.c sentinel_rows); the Install group is picked by Down presses to its row, Enter drills in, Install
+    add-ons is its first row. Sentinel: an upkg process runs (Status) and a window titled for upkg exists."""
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    s, w = open_menu()
+    check(bool(w), 'run_addons: menu opens')
+    rows = []
+    for _ in range(40):
+        rc, out = c.run('GetEnv AMARCHY_ROWS')
+        rows = out.strip().split('|') if rc == 0 and out.strip() else []
+        if rows:
+            break
+        time.sleep(.25)
+    idx = [i for i, r in enumerate(rows) if r.startswith('Install')]
+    check(bool(idx), 'run_addons: the root has an Install row (rows: %s)' % rows)
+    if not idx:
+        close_menu()
+        return
+    for _ in range(idx[0]):
+        ami.key(0x4D)
+        time.sleep(.4)
+    ami.key(RETURN)                       # into Install
+    time.sleep(2)
+    ami.key(RETURN)                       # Install add-ons, the first row
+    time.sleep(8)
+    out = c.run('Status', 20)[1]
+    wins = [(sc.get('title'), w['title']) for sc in screens() for w in sc['windows']]
+    print('run_addons: Status: %s' % out.replace('\n', ' | ')[:200])
+    print('run_addons: windows: %s' % wins)
+    check(re.search(r'\bupkg\b', out) is not None, 'run_addons: an upkg process runs after Install > Install add-ons')
+    check(any('upkg' in t.lower() or 'add-on' in t.lower() or 'install' in t.lower() for _, t in wins),
+          'run_addons: an upkg browse window exists')
+
+
 def main():
     stage_rig.report(stage_rig.stage_build(NAMES, build='--no-build' not in sys.argv))
     geom = build_geom()
@@ -401,6 +437,7 @@ def main():
         case_screen(geom, False)
         case_run_tmux()
         case_run_editor()
+        case_run_addons()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')
