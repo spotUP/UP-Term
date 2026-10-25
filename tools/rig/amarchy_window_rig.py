@@ -6,9 +6,10 @@ Phase R, rows K5-K12; reachability section 7). Resumable like amarchy_rig.py: a 
 Entry point and sentinel: the commodity's own dispatch. A known window (NewShell CON:40/40/320/120/amarchy-target)
 is moved with the win: verb; STATUS `wins` (K9) proves the new code ran and the window's LeftEdge read back through
 the same window list the wasabi MCP amiga_windows reports proves the effect (32 pixels, other box fields kept).
-The shipped keymap has no win: hotkey rows yet (phase W2 adds them), so the verb is sent as `WIN move right` over
-the port AMARCHY with the wasabi ARexx call; once dist/keymap carries `super+shift+right = win:move right` the step
-presses the real key (Left Amiga + Shift + Right Arrow) instead and says so.
+The move-right step presses the real hotkey (Left Amiga + Shift + Right Arrow, the shipped win:move right row).
+The menu_move_left step opens the drawn menu (Super+Space) with the target active, picks Window then Move left, and
+so drives the ticket (K5a) and the LF_WIN leaf (K8, WIN verb over the port). The rc 5 ticket-box refusal (K5a step c)
+has no step: the menu window is active while it is open, so no input changes the target box without ending it.
 The K6 probe sends each held-lock verb (front, back, zip, move, size, fullwidth) and then a STATUS that must answer
 within 5 s: a deadlock of LockIBase with the queued Intuition call would leave the commodity silent.
 Needs the rig up (UPTERM_RIG=<n> rig.py start --max --purpose ...). Run from the checkout whose build is under
@@ -24,7 +25,8 @@ TARGET = 'amarchy-target'
 SPEC = 'CON:40/40/320/120/' + TARGET
 STEP = 32                      # win_core.h WIN_STEP
 RAW_RIGHT, LAMIGA, LSHIFT = 0x4E, 0x40, 0x01
-HOTKEY_ROW = re.compile(r'^\s*super\+shift\+right\s*=\s*win:move right\s*$', re.M)
+SPACE, MENU_TITLE = 0x40, 'Amarchy'
+ENTER = b'\r'
 
 
 def port(cmd, timeout=30):
@@ -96,20 +98,45 @@ def s_hotkey_move_right():
     if not b0:
         return False, 'no target window'
     n0 = status().get('wins', -1)
-    km = ami.read_file('ENV:up-term/keymap.user') or b''
-    if HOTKEY_ROW.search(km.decode('latin-1')):
-        ami.key(RAW_RIGHT, LAMIGA | LSHIFT)
-        how = 'real hotkey Super+Shift+Right'
-    else:
-        rc, _ = port('WIN move right')
-        how = 'WIN move right over the port (no win: hotkey row in the keymap yet, W2)'
+    ami.key(RAW_RIGHT, LAMIGA | LSHIFT)
+    how = 'real hotkey Super+Shift+Right'
     time.sleep(1)
     b1, n1 = box(), status().get('wins', -1)
     ok = b1 is not None and b1[0] == b0[0] + STEP and b1[1:] == b0[1:] and n1 == n0 + 1
     return ok, '%s: box %r -> %r, wins %d -> %d' % (how, b0, b1, n0, n1)
 
 
+def s_menu_move_left():
+    """drawn menu: Super+Space, Window, Move left; the ticket names the target although the menu is active"""
+    n0, b0 = status().get('wins', -1), box()
+    activate_target()
+    ami.key(SPACE, LAMIGA)
+    end = time.time() + 15
+    while time.time() < end and not ami.window(MENU_TITLE):
+        time.sleep(0.5)
+    if not ami.window(MENU_TITLE):
+        return False, 'no menu window titled %r' % MENU_TITLE
+    time.sleep(1)
+    with ami._conn() as conn:
+        for text in (b'Window', b'Move left'):
+            ami._type(conn, text)
+            time.sleep(0.7)
+            ami._type(conn, ENTER)
+            time.sleep(1)
+    time.sleep(2)
+    b1, n1 = box(), status().get('wins', -1)
+    still = bool(ami.window(MENU_TITLE))
+    for _ in range(3 if still else 0):        # never leave the menu open for the next step
+        ami.key(0x45, 0)
+        time.sleep(0.7)
+    ok = b0 is not None and b1 == STATE['box0'] and b1 != b0 and n1 == n0 + 1
+    return ok, 'menu Window > Move left: box %r -> %r (first %r), wins %d -> %d, menu open: %s' % (
+        b0, b1, STATE['box0'], n0, n1, still)
+
+
 def s_move_left():
+    port('WIN move right')                    # the menu step already moved the window back
+    time.sleep(1)
     b0, n0 = box(), status().get('wins', -1)
     rc, _ = port('WIN move left')
     time.sleep(1)
@@ -140,6 +167,7 @@ ROWS = [
     ('start',          s_start),
     ('open_target',    s_open_target),
     ('move_right',     s_hotkey_move_right),
+    ('menu_move_left', s_menu_move_left),
     ('move_left',      s_move_left),
     ('unknown_verb',   s_refuse_and_unknown),
     ('k6_front',       probe('front')),
