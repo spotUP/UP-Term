@@ -26,6 +26,15 @@ terminal's preferences program.
    The Menu font row opens Amarchy's own window (design decides whether it opens straight on the font field or
    the font requester).
 4. UP-Term Prefs loses the Amarchy page and the `AMARCHY` argument (`prefs/upprefs.c:1868-1871`).
+5. Menu style is a field in the Amarchy preferences window (owner, 2026-10-26: "add menu style to the amarchy
+   prefs plan"). Today `menu-style` (graphical | text; MENU-MINIMAL adds minimal) can only be set by editing
+   `ENVARC:up-term/up-term` by hand (`dist/README.txt:703`); no prefs program shows it. The window offers every
+   value the reader accepts (a cycle gadget), the key moves to `ENVARC:Amarchy/prefs` with the other Amarchy keys
+   (migration reads the old line from the UP-Term file), and the commodity re-reads it on Save so Super+Space
+   picks the new style without an Amarchy restart. Reader: `upconf_menu_style` (`config/upconf_rows.c:139-157`,
+   called from `amarchy/amarchy.c:92`); the value list comes from that one reader, not a second table. Test: host
+   test that every value the reader accepts is offered by the gadget; rig case: change the style in the window,
+   Save, Super+Space opens the other menu program.
 
 ## Facts found (2026-10-25, grep, not yet a full survey)
 
@@ -37,7 +46,7 @@ terminal's preferences program.
   tests/test_stage_rig.py, tests/test_rig_ixp6.py, tools/test_rig_upterm.py, tools/rig/amarchy_menu_rig.py,
   tools/rig/rig.py (peer up-term-00's file), tests/amiga/scrprobe.c.
 - Amarchy's commodity is created with COF_SHOW_HIDE (`amarchy/cx.c:70`).
-- The menu-style key (graphical | text, owner extends with minimal per the MENU-MINIMAL plan) is read by
+- The menu-style key (graphical | text, owner extends with minimal per the MENU-MINIMAL plan; moves per decision 5) is read by
   cx_menu_cmd from the UP-Term config (`config/upconf_rows.c:139-157`); the design must decide whether menu-style
   moves to the Amarchy file too (it is an Amarchy setting) and coordinate with vtcon-05's MENU-MINIMAL work.
 
