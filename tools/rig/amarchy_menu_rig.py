@@ -50,6 +50,14 @@ def open_terminal():
     tabstate.open_host('menuhost')
 
 
+def ensure_terminal():
+    # the cases that open the menu with Left Amiga + Alt + Space type into the UP-Term window under it; --only
+    # on a fresh rig skips rows_over_terminal, which opened it, so these cases open it themselves (once)
+    import wbrun_rig
+    if not any('menuhost' in (w.get('title') or '') for w in wbrun_rig.windows()):
+        open_terminal()
+
+
 def r_start():
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     return True, 'commodity started'
@@ -454,6 +462,7 @@ def r_app_index():
 
     if not amarchy_rig.port_up():
         r_start()
+    ensure_terminal()
     saved, upterm = x9_begin()
     try:
         x9_files()
