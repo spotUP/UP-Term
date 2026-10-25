@@ -78,6 +78,7 @@ SYSBIN = PORTS / "build/sysroot/UP-Term"
 PTYRUN = PORTS / "build/tools/ptyrun.amiga"
 TERMINFO = PORTS / "build/tools/terminfo"
 VTDUMP = ROOT / "build/vtdump"
+PURPOSE = "userland_rig: port checks"   # window title when a hung rig is rebooted
 
 
 def run(cmd, timeout=60):
@@ -510,7 +511,7 @@ def run_watched(pkg, name, limit=90):
         time.sleep(0.5)
     rig = [sys.executable, str(pathlib.Path(__file__).with_name("rig.py"))]
     subprocess.run(rig + ["stop"], capture_output=True, timeout=120)
-    subprocess.run(rig + ["start", "--max"], capture_output=True, timeout=400)
+    subprocess.run(rig + ["start", "--max", "--purpose", PURPOSE], capture_output=True, timeout=400)
     return "HANG (no end in %d s; rig rebooted)" % limit
 
 
@@ -554,13 +555,16 @@ def check_bash(area, only_case, failed=False):
 
 
 def main():
+    global PURPOSE
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--bash", metavar="AREA", help="the bash probes of tests/bash/probes/AREA instead of the ports' cases")
     ap.add_argument("--only", nargs="+", metavar="PKG", help="these packages, even if they passed")
     ap.add_argument("--case", help="one case (with one --only package)")
     ap.add_argument("--failed", action="store_true", help="the packages whose verdict is FAIL")
     ap.add_argument("--force", action="store_true", help="rerun passed packages too")
+    ap.add_argument("--purpose", default=PURPOSE, help="window title for a rig rebooted after a hang (\"<session>: <task>\")")
     a = ap.parse_args()
+    PURPOSE = a.purpose
     if a.bash:
         VERDICTS.mkdir(parents=True, exist_ok=True)
         if a.force:
