@@ -37,6 +37,7 @@
 #include "../config/upconf.h"
 #include "../handler/frontscr.h"
 #include "../handler/upreq.h"
+#include "../handler/upactive.h"
 #include "../render/pens_amiga.h"
 #include "../tty/qmark.h"
 #include "keymap_default.inc"
@@ -813,7 +814,7 @@ int main(int argc, char **argv)
     node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
     keymap_load(&km, km_default_text);
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
-    term_present = lf_terminal_present();
+    term_present = upactive_terminal_present(0);   /* a plain Intuition window: never in the MRU */
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
     g->idx = malloc(g->cap * sizeof *g->idx);
@@ -903,6 +904,7 @@ int main(int argc, char **argv)
         ui.ask_value = gui_ask_value;
         ui.refused = gui_refused;
         ui.ctx = g;
+        ui.self_in_mru = 0;
         g->stop = 0;
         /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
         if (g->ixpath[0]) {                    /* an index row may be refused: the window stays for the message */

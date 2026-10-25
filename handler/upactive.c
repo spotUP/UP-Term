@@ -92,16 +92,28 @@ void upactive_forget(unsigned long self)
     ReleaseSemaphore(&u->ss);
 }
 
-int upactive_prev(char out[24])
+int upactive_target(int self_in_mru, char out[24])
 {
     upact *u = find();
     unsigned long id;
     if (!u)
         return 0;
     ObtainSemaphoreShared(&u->ss);
-    id = upmru_prev(u->mru);
+    id = upmru_target(u->mru, self_in_mru);
     ReleaseSemaphore(&u->ss);
     if (id)
         upreq_portname(id, out);
     return id != 0;
+}
+
+int upactive_terminal_present(int self_in_mru)
+{
+    char name[24];
+    struct MsgPort *tp;
+    if (!upactive_target(self_in_mru, name))
+        return 0;
+    Forbid();
+    tp = FindPort((STRPTR)name);
+    Permit();
+    return tp != 0;
 }

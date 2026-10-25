@@ -21,6 +21,7 @@
 #include "leaf.h"
 #include "../config/keymap_load.h"
 #include "../handler/upreq.h"
+#include "../handler/upactive.h"
 #include "../tty/qmark.h"
 #include "keymap_default.inc"
 
@@ -95,7 +96,7 @@ static void say_refused(void *ctx, const char *label, long rc, const char *answe
     ui_message("%s", text);
 }
 
-static const lf_ui leaf_ui = { ask_value, say_refused, 0 };
+static const lf_ui leaf_ui = { ask_value, say_refused, 0, 1 };   /* the text menu is an UP-Term window: self_in_mru */
 
 /* One level's items, sized by ix_level_cap once the index is loaded (menu_loop) */
 static ix_index ixs;
@@ -179,7 +180,7 @@ static int menu_loop(const char *start)
 {
     int rc = 20;
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
-    term_present = lf_terminal_present();
+    term_present = upactive_terminal_present(leaf_ui.self_in_mru);
     cap = ix_level_cap(&ixs);
     it = malloc(cap * sizeof *it);
     idx = malloc(cap * sizeof *idx);

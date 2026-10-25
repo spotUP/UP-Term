@@ -85,8 +85,11 @@ int upreq_with_arg(upreq_body *r, const char *act, const char *value);
 #define UPMRU_N 12
 void upmru_focus(unsigned long l[UPMRU_N], unsigned long id);
 void upmru_forget(unsigned long l[UPMRU_N], unsigned long id);
-/* The window the quick menu means: the one focused before the front one (the menu); 0 none. */
-unsigned long upmru_prev(const unsigned long l[UPMRU_N]);
+/* The window the quick menu acts on: the most recently focused UP-Term window that is not the menu.
+ * self_in_mru = 1 when the menu is itself an UP-Term window (the text menu: the front entry is the
+ * menu, the target the one before it); 0 when it is a plain Intuition window that never enters the
+ * record (the graphical menu: the front entry is the target). 0 when there is none. */
+unsigned long upmru_target(const unsigned long l[UPMRU_N], int self_in_mru);
 /* The public port name of request port id: "UPTERM.req." and eight hex digits. */
 void upreq_portname(unsigned long id, char out[24]);
 

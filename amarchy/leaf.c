@@ -71,18 +71,6 @@ static int run_in_uterm(const char *cmd, const lf_ui *ui)
     return 0;
 }
 
-int lf_terminal_present(void)
-{
-    char name[UPREQ_NAMELEN];
-    struct MsgPort *tp;
-    if (!upactive_prev(name))
-        return 0;
-    Forbid();
-    tp = FindPort((STRPTR)name);
-    Permit();
-    return tp != 0;
-}
-
 static int run_request(const km_menu *m, const lf_ui *ui)
 {
     /* tab:, menuid: and slash: belong to a terminal window: the handler's request port
@@ -93,7 +81,7 @@ static int run_request(const km_menu *m, const lf_ui *ui)
         fprintf(stderr, "amarchy: %s is not a terminal action\n", m->arg);
         return UPREQ_UNKNOWN;
     }
-    rc = upreq_send(&r);
+    rc = upreq_send(&r, ui->self_in_mru);
     if (rc == UPREQ_NEEDARG) {
         /* /bg and the like take a value the row does not carry: ask for it, send again */
         char value[UPREQ_ACTION], act[UPREQ_ACTION];
@@ -104,7 +92,7 @@ static int run_request(const km_menu *m, const lf_ui *ui)
             strcpy(r.answer, "the value is too long");
             rc = UPREQ_FAILED;
         } else
-            rc = upreq_send(&r);
+            rc = upreq_send(&r, ui->self_in_mru);
     }
     if (rc && ui->refused)
         ui->refused(ui->ctx, m->label, rc, r.answer);

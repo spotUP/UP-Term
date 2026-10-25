@@ -1227,26 +1227,43 @@ static void the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_close
     unsigned long a = 0x1000, b = 0x2000, m1 = 0x3000, m2 = 0x4000;
     int i;
     upmru_focus(l, a);
-    CHECK(upmru_prev(l) == 0);                 /* one window: nothing before it */
+    CHECK(upmru_target(l, 1) == 0);                 /* one window: nothing before it */
     upmru_focus(l, m1);
-    CHECK(upmru_prev(l) == a);
+    CHECK(upmru_target(l, 1) == a);
     upmru_forget(l, m1);                       /* the first menu closes, no window active */
     upmru_focus(l, m2);                        /* the second menu, straight after */
-    CHECK(upmru_prev(l) == a);
+    CHECK(upmru_target(l, 1) == a);
     upmru_forget(l, m2);
     upmru_focus(l, b);                         /* another terminal, then back to the first */
     upmru_focus(l, a);
     upmru_focus(l, m1);
-    CHECK(upmru_prev(l) == a);
+    CHECK(upmru_target(l, 1) == a);
     upmru_forget(l, a);                        /* the target closes: the one before it */
-    CHECK(upmru_prev(l) == b);
+    CHECK(upmru_target(l, 1) == b);
     upmru_forget(l, b);
-    CHECK(upmru_prev(l) == 0);                 /* only the menu left */
+    CHECK(upmru_target(l, 1) == 0);                 /* only the menu left */
     for (i = 1; i <= UPMRU_N + 3; i++)         /* more windows than slots: the newest stay */
         upmru_focus(l, (unsigned long)i * 16);
-    CHECK(l[0] == (unsigned long)(UPMRU_N + 3) * 16 && upmru_prev(l) == (unsigned long)(UPMRU_N + 2) * 16);
+    CHECK(l[0] == (unsigned long)(UPMRU_N + 3) * 16 && upmru_target(l, 1) == (unsigned long)(UPMRU_N + 2) * 16);
     upreq_portname(0x0812abcdUL, name);
     CHECK_STR(name, "UPTERM.req.0812abcd");
+}
+
+/* TERM-ROWS-ONLY-OVER-TERMINAL: the graphical menu is a plain Intuition window that never enters
+ * the record, so with one terminal open the record is [term] and the terminal is the FRONT entry;
+ * the text menu is in the record ([menu, term]) and its terminal is the one behind it. */
+static void the_target_is_the_front_entry_for_a_menu_outside_the_record(void)
+{
+    unsigned long l[UPMRU_N] = {0};
+    unsigned long term = 0x1000, menu = 0x2000;
+    upmru_focus(l, term);
+    CHECK(upmru_target(l, 0) == term);         /* graphical menu, one terminal */
+    CHECK(upmru_target(l, 1) == 0);            /* a text menu would find nothing before it */
+    upmru_focus(l, menu);
+    CHECK(upmru_target(l, 1) == term);         /* text menu in the record: the one behind */
+    upmru_forget(l, term);
+    upmru_forget(l, menu);
+    CHECK(upmru_target(l, 0) == 0);            /* empty record: no target either way */
 }
 
 /* Owner's A1200, 2026-10-22: Style > Background just exited. /bg takes a colour the row does
@@ -1410,6 +1427,7 @@ void suite_keymap(void)
     a_leaf_window_spec_names_the_front_public_screen();
     a_run_row_starts_its_command_through_the_upterm_shell();
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
+    the_target_is_the_front_entry_for_a_menu_outside_the_record();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
     the_app_index_core_behaves();
     app_icons_are_cached_per_path_bounded_and_fitted();

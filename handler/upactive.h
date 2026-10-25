@@ -21,7 +21,11 @@ long upactive_count(void);
 void upactive_focus(unsigned long self);
 /* The window `self` goes: taken out of the record, the others keep their order. */
 void upactive_forget(unsigned long self);
-/* The previous window's port name into out; 1 when there is one. */
-int upactive_prev(char out[24]);
+/* The port name of the window the quick menu acts on into out; 1 when there is one.
+ * self_in_mru: see upmru_target (keymap_act.h). */
+int upactive_target(int self_in_mru, char out[24]);
+/* 1 when that window's request port is alive: the one check both menus and the Amarchy
+ * commodity use to decide whether the menu opened over a terminal. */
+int upactive_terminal_present(int self_in_mru);
 
 #endif

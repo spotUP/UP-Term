@@ -105,10 +105,11 @@ static int act_menu_kind(int kind, const char *node)
     if (kind == KA_MENU || kind == KA_OTHERMENU) {
         keymap full;
         /* g_km is compacted (no [menu] rows, keymap_compact): the size comes from the full table,
-         * loaded for this open and released again, the table amarchy-menu will show */
+         * loaded for this open and released again, the table amarchy-menu will show; the rows follow the terminal the hotkey was pressed over (the
+         * commodity is no UP-Term window: self 0) */
         memset(&full, 0, sizeof full);
         keymap_load(&full, km_default_text);
-        mn_osd_size(&full, strcmp(node, "root") ? node : "", &cols, &rows);
+        mn_osd_size_t(&full, strcmp(node, "root") ? node : "", &cols, &rows, upactive_terminal_present(0));
         keymap_free(&full);
     }
     return act_in_window(line, cols, rows);

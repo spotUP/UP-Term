@@ -39,13 +39,13 @@ void upreq_close(struct MsgPort *mp)
     DeleteMsgPort(mp);
 }
 
-long upreq_send(upreq_body *r)
+long upreq_send(upreq_body *r, int self_in_mru)
 {
     upreq_msg m;
     char name[UPREQ_NAMELEN];
     struct MsgPort *rp, *tp;
     long rc;
-    if (!upactive_prev(name))
+    if (!upactive_target(self_in_mru, name))
         return UPREQ_NOPORT;
     rp = CreateMsgPort();
     if (!rp)
