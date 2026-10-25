@@ -362,7 +362,10 @@ Each item is ticked only with its test passing. Running count is reported at eve
 
 ### Phase B: Workbench rows
 - [ ] B0 probe on the rig, before any row is written: is port WORKBENCH present (`amiga_arexx_ports`), does `HELP` list the commands, which item names does `MENU ... INVOKE` accept, and which window is active after amarchy-gui closes (decides R5). Result goes to `thoughts/spot/term-findings/workbench-port-probe-2026-10-25.md`. This gates B1.
-- [ ] B1 30 `[menu]` rows (cut to what B0 confirms; each cut named). Host test as W1.
+- [ ] B1 30 `[menu]` rows (cut to what B0 confirms; each cut named). Host test as W1. The 30 include
+  `workbench.delete` (Icons > Delete) and `workbench.emptytrash` (Icons > Empty Trash): menu only, no `[bind]` row,
+  Workbench's own confirm requester left in place (owner decision 2026-10-25, section 6 item 6). The host test asserts
+  both rows exist in `[menu]` and neither id appears in `[bind]`.
 - [ ] B2 rig: the drawn menu row runs one safe item (Redraw All) and the port reports success; a second row on an open drawer (Clean Up) changes the icon positions read back.
 - [ ] B3 `workbench` and `screens` group nodes.
 
