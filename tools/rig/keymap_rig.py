@@ -21,9 +21,33 @@ OUT = pathlib.Path(paths.RIG) / 'keymap'
 ESC = 0x45
 LAMIGA, LSHIFT = 0x40, 0x01        # IEQUALIFIER_LCOMMAND, IEQUALIFIER_LSHIFT
 RAW = {'t': 0x14, 'w': 0x11, 'c': 0x33, 'v': 0x34, 'a': 0x20, 'f': 0x23, 'g': 0x24, 'q': 0x10,
-       'p': 0x19, 'period': 0x39, 'comma': 0x38, 'plus': 0x0C, 'minus': 0x0B, 'k': 0x27, 'h': 0x25,
+       'p': 0x19, 'period': 0x39, 'comma': 0x38, 'k': 0x27, 'h': 0x25,
        '1': 0x01, '2': 0x02, 'x': 0x32}
 RETURN = 0x44
+
+# The key names minus and plus are the keys that PRINT '-' and '+' on the active keymap (config/keymap.c
+# keymap_set_layout, resolved through MapANSI when the handler loads the keymap), so their raw codes follow the
+# rig's keymap: USA "-" 0x0B and "+" shifted 0x0C (an unshifted name stays on 0x0C), Swedish "+" 0x0B and
+# "-" 0x3A. The rig's keymap is the one its input prefs name (IPrefs sets it at boot).
+SYMBOL_RAW = {'usa': {'minus': 0x0B, 'plus': 0x0C}}
+
+
+def active_keymap():
+    """The keymap name in the rig's ENV:Sys/input.prefs (INPT chunk, ip_KeymapName[16]); 'usa' when none is set."""
+    data = ami.read_file('ENV:Sys/input.prefs') or b''
+    at = data.find(b'INPT')
+    if at < 0:
+        return 'usa'
+    return data[at + 8:at + 24].split(b'\0', 1)[0].decode('latin-1') or 'usa'
+
+
+def symbol_raw(name):
+    """The raw code of the key named name ('minus', 'plus') on the rig's keymap, or None for a keymap with no table."""
+    layout = active_keymap()
+    if layout == 's' and 's' not in SYMBOL_RAW:
+        from amarchy_clash_rig import RAW as SWEDISH   # the Swedish table the clash rig presses
+        SYMBOL_RAW['s'] = {k: SWEDISH[k] for k in ('minus', 'plus')}
+    return SYMBOL_RAW.get(layout, {}).get(name), layout
 CONF = ('ENV:up-term/up-term', 'ENVARC:up-term/up-term')
 THEME = 'ENVARC:up-term/themes/nord-default.conf'   # bg = 2E3440
 LOOK = ('font', 'cursor-color', 'fg', 'bg', 'selection-fg', 'selection-bg', 'palette')
@@ -35,8 +59,8 @@ ROWS = [
     ('tab_goto_2',   RAW['2'],      LAMIGA,           'tab2'),
     ('tab_next',     RAW['period'], LAMIGA,           'tabmove'),
     ('tab_prev',     RAW['comma'],  LAMIGA,           'tabmove'),
-    ('font_smaller', RAW['minus'],  LAMIGA,           'font-'),
-    ('font_bigger',  RAW['plus'],   LAMIGA,           'font+'),
+    ('font_smaller', 'minus',       LAMIGA,           'font-'),   # by name: the code follows the keymap
+    ('font_bigger',  'plus',        LAMIGA,           'font+'),
     ('select_all',   RAW['a'],      LAMIGA,           'none'),
     ('find',         RAW['f'],      LAMIGA,           'findprompt'),
     ('theme_slash',  RAW['t'],      LAMIGA | LSHIFT,  'theme'),
@@ -108,6 +132,18 @@ def run_row(row):
     name, raw, qual, effect = row
     if effect == 'themesave':
         return theme_saved(raw, qual)
+    note = ''
+    if isinstance(raw, str):
+        raw, layout = symbol_raw(raw)
+        if raw is None:
+            return False, 'no raw code for %r on keymap %r' % (row[1], layout)
+        note = ' keymap %s raw 0x%02X' % (layout, raw)
+    if effect == 'font-':
+        # a fresh window opens on the font's smallest designed size (topaz 8: no 7 or 6, vtwin_font_step
+        # answers 0), so step up once first; a smaller key from there has a size to go to
+        up, _ = symbol_raw('plus')
+        ami.key(up, LAMIGA)
+        time.sleep(1.5)
     before = counters()
     ami.key(raw, qual)
     time.sleep(1.5)
@@ -137,7 +173,8 @@ def run_row(row):
     elif effect in ('font+', 'font-'):
         d = after.get('font-size', 0) - before.get('font-size', 0)
         ok = ok and (d > 0 if effect == 'font+' else d < 0)
-    return ok, 'km-hits %+d menu-picks %+d tabs %+d' % (hits, picks, tabs)
+        note += ' font-size %d -> %d' % (before.get('font-size', 0), after.get('font-size', 0))
+    return ok, 'km-hits %+d menu-picks %+d tabs %+d%s' % (hits, picks, tabs, note)
 
 
 def main():
