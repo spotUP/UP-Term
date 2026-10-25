@@ -2856,12 +2856,12 @@ static struct Window *create_window(con *c, struct Screen *scr)
         int bx = c->wx, by = c->wy;
         int bw = winspec_size(c->ww, c->wx, scr->Width);
         int bh = winspec_size(c->wh, c->wy, scr->Height);
+        int borderless = (c->wflags & WFLG_BORDERLESS) != 0;
         c->w.title_on_screen = 0;
         if (c->wopt.cols || c->wopt.centre) {
             /* CELLS / CENTRE: the box worked out once, here (winspec_box); the
              * window opens at its place and size and never moves after. A
              * borderless window has no borders; others the screen's. */
-            int borderless = (c->wflags & WFLG_BORDERLESS) != 0;
             int bl = borderless ? 0 : scr->WBorLeft;
             int br = borderless ? 0 : scr->WBorRight;
             int bb = borderless ? 0 : scr->WBorBottom;
@@ -2874,7 +2874,7 @@ static struct Window *create_window(con *c, struct Screen *scr)
         tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = bw;
         tags[n].ti_Tag = WA_Height;  tags[n++].ti_Data = bh;
         tags[n].ti_Tag = WA_Flags;   tags[n++].ti_Data = c->wflags;
-        tags[n].ti_Tag = WA_Title;   tags[n++].ti_Data = (ULONG)c->w.title;
+        tags[n].ti_Tag = WA_Title;   tags[n++].ti_Data = (ULONG)winspec_wa_title(borderless, c->w.title);
     }
     tags[n].ti_Tag = WA_IDCMP;       tags[n++].ti_Data = IDCMP_RAWKEY | IDCMP_NEWSIZE |
         IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE |

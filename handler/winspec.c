@@ -94,3 +94,8 @@ void winspec_box(const winspec_opts *o, int cw, int ch, int bl, int bt, int br, 
     if (*x < 0) *x = 0;
     if (*y < 0) *y = 0;
 }
+
+const char *winspec_wa_title(int borderless, const char *title)
+{
+    return borderless ? 0 : title;
+}
