@@ -23,7 +23,8 @@
 ;   tab:new | close | next | prev | goto N
 ;   menuid:<NAME>    any menu item by its MENU_ name
 ;   slash:/command   a slash command (/theme, /size 132x43 ...)
-;   run:<command>    start a program
+;   run:<command>    start a program (a vsh line: 'single quotes' round a path with a space,
+;                    never double quotes)
 ;   open:uterm       a new UP-Term window (commodity only; in a window: tab:new)
 ;   rexx:<script>    an ARexx script or string (commodity only)
 
@@ -100,8 +101,8 @@ apps.tmux          = Tmux                  | run:tmux
 apps.editor        = Editor                | run:nvim
 apps.claude        = Claude                | menuid:MENU_CLAUDE
 settings.amarchy.rescan      = Rescan apps          | scan:amarchy-index
-settings.amarchy.preferences = Amarchy preferences  | run:"C:UP-Term Prefs" AMARCHY
-settings.amarchy.font        = Menu font            | run:"C:UP-Term Prefs" AMARCHY
+settings.amarchy.preferences = Amarchy preferences  | run:'C:UP-Term Prefs' AMARCHY
+settings.amarchy.font        = Menu font            | run:'C:UP-Term Prefs' AMARCHY
 settings.amarchy.edit        = Edit menu            | run:nvim ENV:up-term/keymap
 style.theme        = Theme                 | slash:/theme
 style.font         = Font                  | slash:/font
