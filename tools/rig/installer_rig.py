@@ -48,7 +48,7 @@ text, for reading what the Installer showed); the verdict goes to
 build/rig/installer/<case>.json with the fingerprint of the kit's scripts.
 Resumable:
   installer_rig.py                the cases not yet passed with this kit
-  installer_rig.py ONLY dest      one case (re-run even when it passed)
+  installer_rig.py ONLY dest      one case (re-run even when it passed; --only dest is the same)
   installer_rig.py FAILED         only the cases that failed last time
   installer_rig.py FORCE          all, from zero
 Needs `make dist` and the default rig (tools/rig/rig.py, the 3.1 machine
@@ -733,6 +733,9 @@ def run_bigvol():
     (what the Installer offered before this case existed), and that volume has more free room than SYS:."""
     ck = Checks()
     ir.prepare(None)
+    # the case is a first install: an UP-Term: assign (rig.py install leaves one) is an earlier install, and
+    # P_ASKDEST offers that drawer before the biggest volume. Fixtures.restore puts the assign back.
+    ir.run('Assign >NIL: UP-Term:')
     inst = find_installer()
     if not inst:
         return False, 'no Installer on the rig'
@@ -1247,26 +1250,45 @@ def _migrate(case, ck):
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
 
 
+def parse_args(argv):
+    """(only, flags) from the command line. An unknown word or case stops the run before the rig is touched."""
+    args = list(argv)
+    only, flags = [], set()
+    while args:
+        a = args.pop(0)
+        if a in ("ONLY", "--only"):
+            if not args:
+                raise SystemExit("installer_rig: %s needs a case name" % a)
+            only.append(args.pop(0))
+        elif a in ("FAILED", "FORCE"):
+            flags.add(a)
+        else:   # an unknown word used to be ignored, and the run went on with every case
+            raise SystemExit("installer_rig: unknown argument %r (ONLY <case>, FAILED, FORCE)" % a)
+    unknown = [c for c in only if c not in CASES]
+    if unknown:
+        raise SystemExit("installer_rig: no case %s; cases: %s" % (" ".join(unknown), " ".join(CASES)))
+    return only, flags
+
+
 def main():
+    only, flags = parse_args(sys.argv[1:])
     fx = ir.Fixtures(('ENVARC:up-term/Dir',))
     with paths.rig_lock():
         try:
-            return _main(fx)
+            return _main(fx, only, flags)
         finally:
             fx.restore()   # a killed or failing run leaves nothing planted
             ir.show_close()
 
 
-def _main(fx):
-    args = sys.argv[1:]
-    only = [args[args.index("ONLY") + 1]] if "ONLY" in args else []
+def _main(fx, only, flags):
     # space fills SYS: with a file first (K7); it is not part of the default run
     names = [c for c in CASES if only or c != 'space']
     for case in (c for c in names if not only or c in only):
         for pkg in case_packages(case)[0]:
             if not (ir.kit_dir(pkg) / "Install").exists():
                 raise SystemExit('no kit %s: make dist first' % ir.kit_dir(pkg))
-    todo, skip = verdicts.select(STORE, names, fingerprint, only, "FAILED" in args, "FORCE" in args)
+    todo, skip = verdicts.select(STORE, names, fingerprint, only, "FAILED" in flags, "FORCE" in flags)
     for c, why in skip:
         print("[SKIP] %s: %s" % (c, why))
     booted = False
