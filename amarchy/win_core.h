@@ -58,6 +58,10 @@ int win_restore(const win_ring *r, long id, win_box *out);      /* 1 and *out wh
 /* win:focus: the index in boxes[0..n-1] of the nearest window in dir (WA_LEFT, WA_RIGHT, WA_UP, WA_DOWN), measured
  * between centres; WA_NEXT / WA_PREV step by array index and wrap. Never the target itself, never a box on another
  * screen than boxes[target]. -1 when there is none. */
+/* K5a: a target ticket stands only while its window is still a usable target and its box (left, top, width,
+ * height) is the one recorded when the menu opened; anything else and the verb must refuse. */
+int win_ticket_valid(int usable, const win_box *taken, const win_box *now);
+
 int win_pick(const win_box *boxes, int n, int target, win_arg dir);
 
 #endif

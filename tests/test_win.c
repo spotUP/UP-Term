@@ -139,6 +139,25 @@ static void direction_search(void)
     CHECK_INT(win_pick(w, 6, 9, WA_LEFT), -1);
 }
 
+static void ticket_needs_unchanged_box(void)
+{
+    win_box taken = box(40, 40, 320, 120), now = taken;
+    CHECK_INT(win_ticket_valid(1, &taken, &now), 1);   /* nothing moved: the menu's target stands */
+    now.left = 72;
+    CHECK_INT(win_ticket_valid(1, &taken, &now), 0);   /* moved since the menu opened */
+    now = taken;
+    now.top = 41;
+    CHECK_INT(win_ticket_valid(1, &taken, &now), 0);
+    now = taken;
+    now.width = 321;
+    CHECK_INT(win_ticket_valid(1, &taken, &now), 0);
+    now = taken;
+    now.height = 119;
+    CHECK_INT(win_ticket_valid(1, &taken, &now), 0);
+    now = taken;
+    CHECK_INT(win_ticket_valid(0, &taken, &now), 0);   /* window gone or ours: refused whatever the box */
+}
+
 void suite_win(void)
 {
     parse_verbs();
@@ -147,4 +166,5 @@ void suite_win(void)
     full_width_and_screen();
     save_restore_ring();
     direction_search();
+    ticket_needs_unchanged_box();
 }

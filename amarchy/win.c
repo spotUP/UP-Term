@@ -28,7 +28,7 @@ extern struct Library *WorkbenchBase;
 
 static long g_wins;
 static struct Window *g_ticket;
-static WORD g_tkl, g_tkt, g_tkw, g_tkh;   /* the ticket window's box at take time (K5a) */
+static win_box g_tkbox;                   /* the ticket window's box at take time (K5a) */
 static win_ring g_ring;
 static int g_ring_ready;
 
@@ -62,7 +62,15 @@ static int usable(const struct Window *w)
 static int ticket_valid(void)
 {
     const struct Window *t = g_ticket;
-    return usable(t) && t->LeftEdge == g_tkl && t->TopEdge == g_tkt && t->Width == g_tkw && t->Height == g_tkh;
+    win_box now;
+    if (!t)
+        return 0;
+    memset(&now, 0, sizeof now);
+    now.left = t->LeftEdge;
+    now.top = t->TopEdge;
+    now.width = t->Width;
+    now.height = t->Height;
+    return win_ticket_valid(usable(t), &g_tkbox, &now);
 }
 
 /* IBase locked: w's box and screen as win_core wants them */
@@ -94,10 +102,11 @@ void win_ticket_take(void)
         g_ticket = 0;
     else if (!is_ours(aw)) {
         g_ticket = aw;
-        g_tkl = aw->LeftEdge;
-        g_tkt = aw->TopEdge;
-        g_tkw = aw->Width;
-        g_tkh = aw->Height;
+        memset(&g_tkbox, 0, sizeof g_tkbox);
+        g_tkbox.left = aw->LeftEdge;
+        g_tkbox.top = aw->TopEdge;
+        g_tkbox.width = aw->Width;
+        g_tkbox.height = aw->Height;
     }
     UnlockIBase(lock);
 }

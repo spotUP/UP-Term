@@ -250,3 +250,9 @@ int win_pick(const win_box *boxes, int n, int target, win_arg dir)
     }
     return best;
 }
+
+int win_ticket_valid(int usable, const win_box *taken, const win_box *now)
+{
+    return usable && taken->left == now->left && taken->top == now->top && taken->width == now->width &&
+           taken->height == now->height;
+}
