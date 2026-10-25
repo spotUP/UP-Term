@@ -11,7 +11,7 @@ code path). The chord for /theme is NOT needed: the request port works with it u
 Needs the rig up (rig.py start --max), Amarchy and amarchy-menu in UP-Term:bin (rig.py install puts them there), the handler of this branch
 installed. NOT RUN when written: the rows stay open until it has run.
 """
-import argparse, pathlib, re, sys, time
+import argparse, json, pathlib, re, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
@@ -750,6 +750,54 @@ ROWS = [
 ]
 
 
+ICON_ROWS = ('app_icons',)     # rows that need icon.library V44 (OS 3.2), see r_app_icons
+OS32_NAMES = ('32', '321', '322')
+
+
+def start_args():
+    """The arguments the running rig was started with (rig.py writes them to <rig>/start.args); [] when unknown."""
+    try:
+        return json.loads((paths.RIG / 'start.args').read_text())
+    except (OSError, ValueError):
+        return []
+
+
+def is_os32(args):
+    """True when a rig.py start argument list boots AmigaOS 3.2 (--os32, or --os 32 / 321 / 322)."""
+    return '--os32' in args or ('--os' in args[:-1] and args[args.index('--os') + 1] in OS32_NAMES)
+
+
+def os32_start_args(args):
+    """The last start's arguments with the OS switched to 3.2 (the same reboot_args idea as rig.py screenmode:
+    keep the machine flags and the purpose, replace --os / --os32)."""
+    out, skip = [], False
+    for a in args:
+        if skip:
+            skip = False
+        elif a == '--os':
+            skip = True
+        elif a != '--os32':
+            out.append(a)
+    return out + ['--os', '32']
+
+
+def ensure_os32_rig():
+    """The rows in ICON_ROWS run on an OS 3.2 rig. A rig started otherwise is restarted with the same flags and
+    --os 32 (rig.py stop, then start, as rig.py screenmode does). Returns an error text, '' when the rig is OS 3.2.
+    Rig 1 is the owner's and is never stopped here."""
+    args = start_args()
+    if is_os32(args):
+        return ''
+    if paths.RIG_N == 1:
+        return 'rig 1 is not an OS 3.2 rig and is never restarted here; use another rig (UPTERM_RIG=<n>) or rig.py start --os 32'
+    rig = [sys.executable, '-I', str(ROOT / 'tools/rig/rig.py')]
+    new = os32_start_args(args or ['--max'])
+    print('amarchy_menu_rig: restarting rig %d on OS 3.2: rig.py start %s' % (paths.RIG_N, ' '.join(new)), flush=True)
+    subprocess.run(rig + ['stop'], check=True)
+    subprocess.run(rig + ['start'] + new, check=True)
+    return '' if is_os32(start_args()) else 'rig %d did not come up on OS 3.2' % paths.RIG_N
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--only')
@@ -758,6 +806,11 @@ def main():
     ap.add_argument('--no-build', action='store_true', help='stage what build/amiga holds, do not run make')
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    if any(n in ICON_ROWS and (not a.only or a.only == n) for n, _ in ROWS):
+        err = ensure_os32_rig()
+        if err:
+            print('FAIL app_icons: ' + err)
+            return 1
     # the rows run VTC:Apps/bin/Amarchy and amarchy-menu: those files must be this build
     stage_rig.report(stage_rig.stage_build(build=not a.no_build))
     passed = total = 0

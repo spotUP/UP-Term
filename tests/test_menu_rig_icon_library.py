@@ -27,5 +27,36 @@ class IconLibrary(unittest.TestCase):
         self.assertIn("V44", msg)
 
 
+class Os32Rig(unittest.TestCase):
+    def test_flag_forms(self):
+        self.assertTrue(m.is_os32(['--max', '--os32']))
+        self.assertTrue(m.is_os32(['--os', '322', '--max']))
+        self.assertFalse(m.is_os32(['--max']))
+        self.assertFalse(m.is_os32(['--os', '31']))
+
+    def test_start_args_switch_to_32_keep_flags(self):
+        a = m.os32_start_args(['--max', '--os', '31', '--purpose', 'x: y'])
+        self.assertEqual(a, ['--max', '--purpose', 'x: y', '--os', '32'])
+        self.assertTrue(m.is_os32(a))
+
+    def test_rig_restarted_on_os32(self):
+        calls = []
+        seq = [['--max'], ['--max', '--os', '32']]
+        with mock.patch.object(m, "start_args", side_effect=lambda: seq.pop(0)), \
+             mock.patch.object(m.paths, "RIG_N", 8), \
+             mock.patch.object(m.subprocess, "run", side_effect=lambda cmd, **k: calls.append(cmd[3:])):
+            self.assertEqual(m.ensure_os32_rig(), '')
+        self.assertEqual(calls, [['stop'], ['start', '--max', '--os', '32']])
+
+    def test_os32_rig_left_alone_and_rig1_never_stopped(self):
+        with mock.patch.object(m, "start_args", return_value=['--os32']), mock.patch.object(m.subprocess, "run") as r:
+            self.assertEqual(m.ensure_os32_rig(), '')
+            r.assert_not_called()
+        with mock.patch.object(m, "start_args", return_value=['--max']), mock.patch.object(m.paths, "RIG_N", 1), \
+             mock.patch.object(m.subprocess, "run") as r:
+            self.assertIn('rig 1', m.ensure_os32_rig())
+            r.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
