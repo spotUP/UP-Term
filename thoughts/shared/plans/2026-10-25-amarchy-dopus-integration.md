@@ -91,8 +91,12 @@ Describe only; `dist/` is another session's.
   (the clone here is at `c8fbeb6`, not necessarily the tag: U). `dist/LICENSES.txt` gets a DOpus paragraph.
 - Installer page: tick "Directory Opus 5 (Magellan II) file manager, optional"; the page runs upstream's own
   `Install DOpus5` script (Installer program) with every option ticked (rig rule), destination default; UP-Term does not
-  edit DOpus's start mode. Minimum CPU: 68020 (F6); on a 68000 the row says "needs 68020" and is not selectable
-  (the os3-68000 archive is not shipped: owner decision, section 7).
+  edit DOpus's start mode. CPU: the add-on carries BOTH 68k archives, `DOpus5_104_os3.lha` (68020+) and
+  `DOpus5_104_os3-68000.lha`, and the installer page offers the one that fits the machine (Installer's
+  `database "cpu"`: 68000/68010 get the 68000 archive, 68020 and up the os3 one); the other is never unpacked. Owner
+  decision 2026-10-25 ("carry all of them and offer the appropriate one for the system"). The os4, MorphOS and AROS
+  archives stay out: UP-Term's installer runs only on 68k AmigaOS 3, so nothing could install them (assumption, stated
+  to the owner).
 - Upgrade: if `DOpus5:` already exists the add-on does nothing (never overwrites a user's setup); an explicit
   "Update Directory Opus" row is out of scope.
 - P1 works with this add-on or any existing DOpus; P2 never makes P1 required.
@@ -180,7 +184,7 @@ unverified until then. 25 items.
 ### Phase P2: add-on
 - [ ] D8 `dist/packages.txt` row, `dist/addons/dopus/` drawer, pinned archive and md5, `COPYING`, `SOURCE.txt`, `LICENSES.txt` paragraph. Test: host `tests/test_dist_addons.py` (names and licence files present).
 - [ ] D9 Installer page tick and run. Test: rig install of the add-on with every option ticked (rig rule), then `dopus version`.
-- [ ] D10 68020 floor is enforced. Test: host test that the row's CPU field is 68020.
+- [ ] D10 CPU choice: both 68k archives present and the Installer script picks by `database "cpu"`. Test: host test that both archive names and md5s are in the row, and that the script text names both with the CPU branch; rig: a 68000 rig (`rig.py start` without `--max`, if the rig supports it) gets the 68000 archive, an 060 rig the os3 one (`Version DOpus5:DOpus5` and the archive's md5).
 
 ### Phase P3: shell and viewer
 - [ ] D11 Filetype generator and file (`FORM OPUS`). Test: upstream `filetype_tool.py check` round trip and `lint` clean; host golden of the bytes.
@@ -222,16 +226,19 @@ unverified until then. 25 items.
 
 ## 10. Open decisions for the owner (recommended first)
 
-1. Order and scope: (Recommended) P1 then P2 then P3, decide P4 to P6 after using them; alternative: all six now.
-   Trade-off: P5 and P6 are L and need P1's findings.
-2. Hotkeys: (Recommended) three, super+o, super+shift+o, super+d; alternative: menu-only.
-3. Add-on pin: (Recommended) pin v5.104 os3 only; alternative: also ship os3-68000 for 68000 machines (+1.8 MB).
-4. Existing DOpus: (Recommended) the add-on never touches an existing `DOpus5:`; alternative: offer upgrade.
-5. UP-Term as shell: (Recommended) per-filetype AmigaDOS instruction (no change to the user's config); alternative:
-   set DOpus's output device to `XCON:` globally.
-6. Module upstream: (Recommended) PR a generic "run launcher on selection" command and keep Amarchy glue here;
-   alternative: ship `amarchy.module` only in the add-on.
-7. P6: (Recommended) defer; alternative: do it with P5.
+Answered 2026-10-25 about 22:05 (AskUserQuestion for 1 to 4; 5 to 7 taken as recommended, the owner may veto).
+
+1. Order and scope: P1 then P2 then P3 now; P4 to P6 decided after using them. (Owner, 2026-10-25.)
+2. Hotkeys: three, super+o, super+shift+o, super+d. (Owner, 2026-10-25.)
+3. Add-on CPU builds: carry every 68k archive (os3 and os3-68000) and offer the one that fits the machine; see
+   section 3 and D10. Owner's words: "i should carry all of them and off ther apropriate one for the system its being
+   installed on". The non-68k archives are out by assumption (the installer cannot run there); the owner has not
+   confirmed that reading.
+4. UP-Term as shell: per-filetype AmigaDOS instruction, the user's output device untouched. (Owner, 2026-10-25.)
+5. Existing DOpus: the add-on never touches an existing `DOpus5:`. (Recommended, not vetoed.)
+6. Module upstream: PR a generic "run launcher on selection" command and keep Amarchy glue here. (Recommended, not
+   vetoed; P5 is not scheduled yet.)
+7. P6: deferred. (Recommended, not vetoed.)
 
 ## 11. Reachability (one test per piece)
 
