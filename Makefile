@@ -1421,6 +1421,8 @@ dist-check: $(BUILD)/amiga/keymap.o $(BUILD)/updiff_kit_drv
 	python3 tests/test_amarchy_docs.py
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-menu
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-gui
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/Amarchy
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-index
 	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py

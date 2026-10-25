@@ -36,7 +36,10 @@ static int starts(const char *cmd, const char *word)
     }
     return 1;
 }
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
 long __stack = 16384;
+const char amarchy_stack_cookie[] = "$STACK: 16384";
 
 static const char *notify_paths[] = {
     "ENV:up-term/keymap", "ENVARC:up-term/keymap", "ENV:up-term/keymap.user", "ENVARC:up-term/keymap.user",

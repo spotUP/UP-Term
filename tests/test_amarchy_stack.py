@@ -10,8 +10,9 @@ import pathlib, re, struct, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIN = 262144
-NO_SYMBOLS = ('amarchy-gui',)
-MIN_BY_NAME = {'amarchy-gui': 65536}       # the vbcc program has no curses: 64 KiB, set by `long __stack` and its cookie
+NO_SYMBOLS = ('amarchy-gui', 'Amarchy', 'amarchy-index')
+MIN_BY_NAME = {'amarchy-gui': 65536,       # the vbcc programs have no curses: set by `long __stack` and their cookie
+               'Amarchy': 16384, 'amarchy-index': 16384}
 
 
 def stack_symbol(d):
@@ -69,7 +70,7 @@ def main():
     except struct.error:
         v = None
     if path.name in NO_SYMBOLS:
-        pass                                            # vbcc links without a symbol hunk: gui.c derives __stack and the cookie from one macro
+        pass                                            # vbcc links without a symbol hunk: each sets __stack and the cookie side by side
     elif v is None or v < MIN:
         fails.append('%s sets ixemul __stack to %s, below %d: main runs on the default stack' % (path.name, v, MIN))
     for f in fails:
