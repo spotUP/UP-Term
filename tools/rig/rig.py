@@ -436,6 +436,22 @@ def os_image_copy():
         paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
         shutil.copyfile(paths.LIB68040, dst / "Libs/68040.library")
 
+def fresh_sys_hdf():
+    """RIG/sys.hdf as a new APFS clone of the master image: instant, and no disk used until the rig writes into it.
+    Every start does this, so what a killed, crashed or hung run left in DH0: (S:User-Startup blocks, ENVARC:, assigns,
+    a planted file) never reaches the next boot (owner 2026-10-24, RIG-FRESH-SYS). A full 1.5 GB copy is never the
+    fallback: the host disk has no room for one per rig."""
+    paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image")
+    dst = RIG / "sys.hdf"
+    new = RIG / "sys.hdf.new"
+    new.unlink(missing_ok=True)
+    r = subprocess.run(["cp", "-c", str(SRC_HDF), str(new)], capture_output=True, text=True)
+    if r.returncode != 0:
+        new.unlink(missing_ok=True)
+        sys.exit("rig: cannot clone the system disk %s to %s (cp -c: %s). The rig needs an APFS clone: a full 1.5 GB "
+                 "copy would fill the host disk." % (SRC_HDF, dst, r.stderr.strip() or r.returncode))
+    os.replace(new, dst)
+
 def sys_hdf_cpu_lib(image):
     """The rig's own sys.hdf copy follows the machine: no Libs/68060.library on the FPU-less 68LC060 (SetPatch loads it
     and it Gurus 80000006 before ENV:, rig 4 2026-10-23), the library present on a 060 with FPU; other CPUs untouched."""
@@ -449,6 +465,20 @@ def sys_hdf_cpu_lib(image):
     elif not NOFPU and not has:
         paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
         subprocess.run([xdf, str(image), "write", str(paths.LIB68060), "Libs/68060.library"], check=True, capture_output=True)
+
+SCREENMODE_NAME = RIG / "screenmode.name"   # the last `rig.py aga|aga256|rtg`: a start re-applies it to the fresh sys.hdf
+
+def sys_hdf_screenmode(image):
+    """`rig.py aga|aga256|rtg` writes ENVARC:Sys/screenmode.prefs and reboots; the reboot clones sys.hdf anew, so the
+    chosen mode is put into the fresh image from the host here (it persists as RIG/screenmode.name, not in the disk)."""
+    if not SCREENMODE_NAME.exists():
+        return
+    src = RIG / ("vtc/screenmode.%s.prefs" % {"aga": "aga16"}.get(SCREENMODE_NAME.read_text().strip(), SCREENMODE_NAME.read_text().strip()))
+    paths.require_input(src, "UPTERM_RIG", "the ScreenMode prefs of `rig.py %s`" % SCREENMODE_NAME.read_text().strip())
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    dst = "Prefs/Env-Archive/Sys/screenmode.prefs"
+    subprocess.run([xdf, str(image), "delete", dst], capture_output=True)   # absent in the master: nothing to delete
+    subprocess.run([xdf, str(image), "write", str(src), dst], check=True, capture_output=True)
 
 def cpu_lines():
     """The A1200 machine's cpu and fpu keys: 68060 + 68060 FPU (default), 68020 + 68882 (--a1200); --nofpu: the
@@ -508,9 +538,7 @@ def setup():
         (RIG / "work").mkdir(exist_ok=True)
         os_image_copy()
     elif not OS32 and not (RIG / "sys.hdf").exists():
-        print("copying the system disk (1.5 GB) ...")
-        paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image")
-        shutil.copyfile(SRC_HDF, RIG / "sys.hdf")
+        fresh_sys_hdf()
     (RIG / "boot/s").mkdir(exist_ok=True)
     # --060: at host speed the boot shell's window is open (something prints
     # into it) when IPrefs switches the Workbench to the saved RTG mode, and
@@ -762,6 +790,7 @@ def screenmode(name):
     else:
         cmd = b"Copy VTC:screenmode.rtg.prefs ENVARC:Sys/screenmode.prefs"
     print(ami.req(0x02, (20).to_bytes(2, "big") + cmd)[4:].decode("latin-1"))
+    SCREENMODE_NAME.write_text(name)   # the reboot's fresh sys.hdf gets the mode from here (sys_hdf_screenmode)
     args = reboot_args(sys.argv[2:])
     stop()
     # a new process: the machine flags are read from sys.argv when rig.py is loaded
@@ -807,14 +836,12 @@ def start(retries=2):
     if mine():
         print("already running")
         return
-    # a rig with no system disk still has an old config naming sys.hdf as DH0:
-    # (setup_config_only skips it), so the emulator boots to "Please insert
-    # volume dh0:" and every rig script waits on an agent that never comes up
-    if not OS and not OS32 and not (RIG / "sys.hdf").exists():
-        sys.exit("rig: %s has no system disk (%s): the boot would stop at \"Please insert volume dh0:\". "
-                 "Run `rig.py setup` (copies 1.5 GB) or use a rig that has one" % (RIG.name, RIG / "sys.hdf"))
+    # the system disk is new from the master on every start: nothing a dead run wrote into DH0: survives, and a rig
+    # that never had one gets it here. Only here: no emulator of this rig runs (mine() above).
     if not OS and not OS32:
-        sys_hdf_cpu_lib(RIG / "sys.hdf")   # only here: no emulator of this rig runs (mine() above), the master image is never touched
+        fresh_sys_hdf()
+        sys_hdf_screenmode(RIG / "sys.hdf")
+        sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     START_ARGS.write_text(json.dumps(sys.argv[2:]))
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)

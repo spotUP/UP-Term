@@ -163,11 +163,12 @@ KICKSTART = pathlib.Path(os.environ.get("UPTERM_ROM") or UPTERM_ROOT / "roms/kic
 
 # The rest of the rig's inputs, each an environment variable with the owner's
 # path as the default (the README says where each comes from):
-# UPTERM_SYSTEM_HDF  the Workbench 3.x hard-disk image copied once to build/rig/sys.hdf
+# UPTERM_SYSTEM_HDF  the Workbench 3.x hard-disk image every rig start clones to build/rigN/sys.hdf; outside
+#                    ~/Downloads, which macOS keeps from the CLI ("Operation not permitted", 2026-10-24)
 # UPTERM_OS32_TREE   an installed AmigaOS 3.2 tree (a host drawer), for --os32
 # UPTERM_OS32_ROM    the Kickstart 3.2.3 ROM, for --os32
 SYSTEM_HDF = pathlib.Path(os.environ.get("UPTERM_SYSTEM_HDF") or
-    pathlib.Path.home() / "Downloads/nyhd2.hdf")
+    UPTERM_ROOT / "images/nyhd2.hdf")
 OS32_TREE = pathlib.Path(os.environ.get("UPTERM_OS32_TREE") or
     pathlib.Path.home() / "Downloads/AmigaOS-3.2-full (1)")
 OS32_ROM = pathlib.Path(os.environ.get("UPTERM_OS32_ROM") or
