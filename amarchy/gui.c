@@ -36,6 +36,7 @@
 #include "menu_font.h"
 #include "../prefs/prefs_core.h"
 #include "icon_core.h"
+#include "../config/upconf_lex.h"
 #include "icon_gfx.h"
 #include "../config/keymap_load.h"
 #include "../config/upconf.h"
@@ -341,6 +342,9 @@ static void draw_header(gui *g)
 /* The icon of the list item `it` at node (draw_row calls it for the shown rows only, so icons load only
  * for visible rows): its coverage, icon_w x icon_h, at (x, y) in the row of height
  * boxh. Strong coverage in the row's colour, a weaker one in the dim pen; the rest is the row's box. */
+/* amarchy-app-icons = amiga: the index rows show their .info images; anything else keeps generic glyphs */
+static int amiga_icons;
+
 static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int boxh)
 {
     static vt_u8 cov[MI_MAX_W * MI_MAX];
@@ -348,11 +352,16 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
     const vt_u8 *glyph;
     int s = g->icon_w, sh = g->icon_h, px, py, x0;
     if (MN_IS_INDEX(it)) {
-        /* an app or game of the index: its own .info image; the generic glyph when that cannot be had */
+        /* an app or game of the index: its own .info image when the upconf asks for them and one can be
+         * had; else the generic glyph of the level the row is shown in ("apps" when that level has none) */
         char path[IX_PATH];
-        if (ix_launch_path(&ixs, it, path, sizeof path) && ig_draw(g->rp, path, x, y + (boxh - sh) / 2, s, sh))
+        if (amiga_icons && ix_launch_path(&ixs, it, path, sizeof path) &&
+            ig_draw(g->rp, path, x, y + (boxh - sh) / 2, s, sh))
             return;
-        strcpy(id, "apps");
+        strncpy(id, g->node, sizeof id - 1);
+        id[sizeof id - 1] = 0;
+        if (!id[0] || !mi_find(id))
+            strcpy(id, "apps");
     } else
         mn_child_node(g->node, it, id, sizeof id);
     glyph = mi_find(id);
@@ -559,6 +568,7 @@ static void index_drawers(void)
     ix_set_drawers(upconf_str(&conf, "default", "amarchy-music-drawers", 0),
                    upconf_str(&conf, "default", "amarchy-demo-drawers", 0));
     ix_set_hidden_drawers(upconf_str(&conf, "default", "amarchy-hide-drawers", 0));
+    amiga_icons = uc_ieq(upconf_str(&conf, "default", "amarchy-app-icons", "generic"), "amiga");
 }
 
 /* The scan finished: read the new index (the Apps level has new rows). 0 when memory ran out. */
@@ -1116,7 +1126,8 @@ int main(int argc, char **argv)
     g->ms.w = g->scr->Width;
     g->ms.h = g->scr->Height;
     pens_get(g);
-    ig_open(g->scr);          /* no icon.library V44: the index rows keep the generic glyph */
+    if (amiga_icons)
+        ig_open(g->scr);      /* no icon.library V44: the index rows keep the generic glyph */
 
     /* the font's text lengths before the window exists */
     InitRastPort(&tmp);
