@@ -140,6 +140,10 @@ int lf_run(const km_menu *m, const lf_ui *ui)
     switch (lf_plan(m->kind)) {
     case LF_DETACH:
         return run_detached(m, ui);
+    case LF_SCAN: {
+        int rc = run_detached(m, ui);
+        return rc ? rc : LF_WATCH;
+    }
     case LF_WINDOW:
         return run_in_uterm(m->arg, ui);
     case LF_REXX: {

@@ -1388,7 +1388,7 @@ static void app_icons_are_cached_per_path_bounded_and_fitted(void);
 
 static void the_scan_record_names_the_last_path_and_the_where_text_tells_running_stuck_died_and_done(void)
 {
-    ix_prog p;
+    ix_prog p = {0};
     char buf[1024];
     long seq;
     ix_prog_begin(&p);
@@ -1432,7 +1432,7 @@ static void the_scan_record_names_the_last_path_and_the_where_text_tells_running
 
 static void the_scan_record_has_a_layout_version_and_an_older_one_is_not_read(void)
 {
-    ix_prog p;
+    ix_prog p = {0};
     char buf[1024];
     ix_prog_begin(&p);
     CHECK_INT(p.version, IX_PROG_VERSION);
@@ -1444,12 +1444,15 @@ static void the_scan_record_has_a_layout_version_and_an_older_one_is_not_read(vo
     CHECK_INT(ix_prog_text(&p, 1, 1, buf, 10), -1);
     CHECK(ix_prog_other_text(buf, sizeof buf) > 0 && strstr(buf, "another amarchy-index build"));
     /* the scanner never reuses the older semaphore: its name differs from the older build's */
-    CHECK(strcmp(IX_PROG_NAME, IX_PROG_NAME_OLD) != 0);
+    CHECK(strcmp(IX_PROG_NAME, ix_prog_old_names[0]) != 0 && strcmp(IX_PROG_NAME, ix_prog_old_names[1]) != 0);
+    CHECK_STR(ix_prog_old_names[0], "Amarchy.index.2");
+    CHECK_STR(ix_prog_old_names[1], "Amarchy.index");
+    CHECK(ix_prog_old_names[2] == 0);
 }
 
 static void a_failed_cache_write_is_its_own_stage_and_not_reported_as_died(void)
 {
-    ix_prog p;
+    ix_prog p = {0};
     char buf[1024];
     ix_prog_begin(&p);
     ix_prog_note(&p, IX_ST_WRITE, "ENVARC:Amarchy/apps");
@@ -1458,6 +1461,124 @@ static void a_failed_cache_write_is_its_own_stage_and_not_reported_as_died(void)
     CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0);
     CHECK(strstr(buf, "cache write failed") && strstr(buf, "stage: write failed") &&
           strstr(buf, "path: ENVARC:Amarchy/apps") && !strstr(buf, "died"));
+}
+
+static void a_scan_leaf_parses_to_ka_scan_and_a_detach_leaf_stays_ka_detach(void)
+{
+    CHECK(parse("[keymap]\nversion = 1\n[menu]\napps.rescan = Rescan apps | scan:amarchy-index\napps.bg = Bg | detach:foo\n"));
+    CHECK_INT(km.nmenu, 2);
+    CHECK_INT(km.menu[0].kind, KA_SCAN);
+    CHECK_STR(km.menu[0].arg, "amarchy-index");
+    CHECK_INT(km.menu[1].kind, KA_DETACH);
+}
+
+static void ixw_poll(ix_watch *w, const ix_prog *p, int have, int alive, int want, const char *text)
+{
+    char row[96];
+    int st = ix_watch_row(w, have, p, alive, row, sizeof row);
+    CHECK_INT(st, want);
+    CHECK_STR(row, text);
+}
+
+static void a_menu_that_started_a_scan_shows_scanning_starting_before_the_scanner_begins(void)
+{
+    ix_prog p = {0};
+    ix_watch w = { 4, 0 };
+    ixw_poll(&w, 0, 0, 0, IXW_STARTING, "Scanning... starting");              /* no record yet */
+    p.version = IX_PROG_VERSION;
+    p.runs = 4;
+    p.stage = IX_ST_DONE;                                                      /* the older scan's record */
+    ixw_poll(&w, &p, 1, 0, IXW_STARTING, "Scanning... starting");
+    ix_prog_begin(&p);                                                         /* runs 5: the new scan began */
+    ix_prog_note(&p, IX_ST_WALK, "Work:Apps");
+    ixw_poll(&w, &p, 1, 1, IXW_RUNNING, "Scanning... Work:Apps");
+}
+
+static void a_running_scan_shows_its_path_cut_from_the_left(void)
+{
+    ix_prog p = {0};
+    ix_watch w = { -1, 0 };
+    char row[24];
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_WALK, "Work:Games/Turrican/Data");
+    CHECK_INT(ix_watch_row(&w, 1, &p, 1, row, sizeof row), IXW_RUNNING);
+    CHECK_STR(row, "Scanning... ...can/Data");        /* 23 characters: the drawer name stays */
+}
+
+static void a_scan_whose_task_is_gone_shows_it_stopped_working_at_its_path(void)
+{
+    ix_prog p = {0};
+    ix_watch w = { 0, 0 };
+    ix_prog_begin(&p);                                 /* runs 1 > runs0 0 */
+    ix_prog_note(&p, IX_ST_ICON, "Work:Apps/Foo");
+    ixw_poll(&w, &p, 1, 0, IXW_FAILED, "Scan stopped working at Work:Apps/Foo");
+}
+
+static void a_finished_scan_shows_the_new_counts(void)
+{
+    ix_prog p = {0};
+    ix_watch w = { 0, 0 };
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_WALK, "Work:Apps");
+    ix_prog_done(&p, 12, 3, 2);
+    ixw_poll(&w, &p, 1, 0, IXW_DONE, "Scan done: 12 apps, 3 games");
+}
+
+static void an_old_finished_record_is_not_shown_in_a_menu_that_did_not_start_it(void)
+{
+    ix_prog p = {0};
+    ix_watch w = { -1, 0 };
+    ix_prog_begin(&p);
+    ix_prog_done(&p, 12, 3, 2);
+    ixw_poll(&w, &p, 1, 0, IXW_NONE, "");
+    ixw_poll(&w, 0, 0, 0, IXW_NONE, "");
+    p.stage = IX_ST_STOPPED;
+    ixw_poll(&w, &p, 1, 0, IXW_NONE, "");
+    p.version = IX_PROG_VERSION - 1;                   /* another layout is never read */
+    ixw_poll(&w, &p, 1, 1, IXW_NONE, "");
+    /* a running scan is adopted, so its end is shown in the same menu */
+    p.version = IX_PROG_VERSION;
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_ICON, "Work:A");
+    ixw_poll(&w, &p, 1, 1, IXW_RUNNING, "Scanning... Work:A");
+    ix_prog_done(&p, 1, 0, 1);
+    ixw_poll(&w, &p, 1, 0, IXW_DONE, "Scan done: 1 apps, 0 games");
+}
+
+static void a_scan_that_never_begins_is_reported_after_10_polls(void)
+{
+    ix_watch w = { 7, 0 };
+    char row[96];
+    int i;
+    for (i = 0; i < IXW_START_POLLS; i++)
+        CHECK_INT(ix_watch_row(&w, 0, 0, 0, row, sizeof row), IXW_STARTING);
+    CHECK_INT(ix_watch_row(&w, 0, 0, 0, row, sizeof row), IXW_FAILED);
+    CHECK_STR(row, "Scan did not start");
+}
+
+static void stopped_and_write_failed_each_name_the_failure(void)
+{
+    ix_prog p = {0};
+    ix_watch w = { 0, 0 };
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_WALK, "Work:Apps");
+    ix_prog_stopped(&p);
+    ixw_poll(&w, &p, 1, 0, IXW_FAILED, "Scan stopped at Work:Apps");
+    ix_prog_begin(&p);
+    ix_prog_note(&p, IX_ST_WRITE, "ENVARC:Amarchy/apps");
+    ix_prog_write_failed(&p);
+    ixw_poll(&w, &p, 1, 0, IXW_FAILED, "Scan could not save the list");
+}
+
+static void a_run_counter_survives_ix_prog_begin(void)
+{
+    ix_prog p = {0};
+    ix_prog_begin(&p);
+    CHECK_INT(p.runs, 1);
+    ix_prog_note(&p, IX_ST_WALK, "Work:Apps");
+    ix_prog_begin(&p);
+    CHECK_INT(p.runs, 2);
+    CHECK_INT(p.dirs, 0);
 }
 
 static void a_volume_without_a_handler_task_matches_no_device(void)
@@ -1473,6 +1594,15 @@ void suite_keymap(void)
 {
     the_scan_record_has_a_layout_version_and_an_older_one_is_not_read();
     a_failed_cache_write_is_its_own_stage_and_not_reported_as_died();
+    a_scan_leaf_parses_to_ka_scan_and_a_detach_leaf_stays_ka_detach();
+    a_run_counter_survives_ix_prog_begin();
+    a_menu_that_started_a_scan_shows_scanning_starting_before_the_scanner_begins();
+    a_running_scan_shows_its_path_cut_from_the_left();
+    a_scan_whose_task_is_gone_shows_it_stopped_working_at_its_path();
+    a_finished_scan_shows_the_new_counts();
+    an_old_finished_record_is_not_shown_in_a_menu_that_did_not_start_it();
+    a_scan_that_never_begins_is_reported_after_10_polls();
+    stopped_and_write_failed_each_name_the_failure();
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
@@ -1773,9 +1903,11 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
     CHECK(rescan >= 0);
     CHECK_STR(km.menu[rescan].label, "Rescan apps");
     CHECK_STR(km.menu[rescan].arg, "amarchy-index");
-    CHECK_INT(km.menu[rescan].kind, KA_DETACH);          /* in the background: no UP-Term window for a scan */
+    CHECK_INT(km.menu[rescan].kind, KA_SCAN);            /* in the background, and the menu watches it */
     CHECK_INT((int)lf_plan(KA_DETACH), (int)LF_DETACH);
+    CHECK_INT((int)lf_plan(KA_SCAN), (int)LF_SCAN);
     CHECK_INT(keymap_action_scope(KA_DETACH), KS_BOTH);
+    CHECK_INT(keymap_action_scope(KA_SCAN), KS_BOTH);
 }
 
 static void a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one(void)

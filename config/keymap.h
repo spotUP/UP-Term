@@ -76,13 +76,14 @@ enum {
     KA_OPEN,     /* open:uterm */
     KA_OTHERMENU,   /* othermenu:<id>  menu: with the other menu program (the upconf menu-style setting) */
     KA_OTHERVIEWER, /* otherviewer     viewer with the other program */
-    KA_DETACH       /* detach:<command line>  a program in the background: no window, input and output NIL: */
+    KA_DETACH,      /* detach:<command line>  a program in the background: no window, input and output NIL: */
+    KA_SCAN         /* scan:<command line>  like detach:, and the menu watches the scan it started (RESCAN-FEEDBACK) */
 };
 
 /* where an action runs (keymap_action_scope) */
 #define KS_TERMINAL  1   /* tab:, menuid:, slash: */
 #define KS_COMMODITY 2   /* open:, rexx: */
-#define KS_BOTH      3   /* run:, detach:, menu:, viewer, othermenu:, otherviewer */
+#define KS_BOTH      3   /* run:, detach:, scan:, menu:, viewer, othermenu:, otherviewer */
 
 typedef struct km_bind {
     unsigned short qual;        /* KM_Q_* */

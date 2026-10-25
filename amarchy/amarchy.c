@@ -162,7 +162,8 @@ static int do_row(int row)
         at_mark("hotkey");   /* opt-in: AMARCHY_TIMING */
     switch (b->kind) {
     case KA_RUN:
-    case KA_DETACH: ok = act_run(b->arg); break;
+    case KA_DETACH:
+    case KA_SCAN: ok = act_run(b->arg); break;
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
     case KA_MENU: case KA_VIEWER: case KA_OTHERMENU: case KA_OTHERVIEWER:

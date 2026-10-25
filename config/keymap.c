@@ -132,6 +132,7 @@ int keymap_action_scope(int kind)
     case KA_OTHERVIEWER:
     case KA_RUN:
     case KA_DETACH:
+    case KA_SCAN:
         return KS_BOTH;
     }
     return 0;
@@ -210,7 +211,7 @@ typedef struct prefix {
 static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
     { "slash", KA_SLASH }, { "run", KA_RUN }, { "rexx", KA_REXX }, { "open", KA_OPEN },
-    { "othermenu", KA_OTHERMENU }, { "detach", KA_DETACH }
+    { "othermenu", KA_OTHERMENU }, { "detach", KA_DETACH }, { "scan", KA_SCAN }
 };
 
 static int tab_arg_ok(const char *a)
