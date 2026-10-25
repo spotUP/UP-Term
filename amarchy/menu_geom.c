@@ -180,3 +180,10 @@ int mg_blit_safe(int beam, int top, int h, int frame, int blit)
     d = ((top - beam - 1) % frame + frame) % frame + 1;   /* lines until the beam is back on top, 1..frame */
     return d >= blit - h;     /* the beam catches the copy at d * blit / (blit - h): after it is done */
 }
+
+long mg_blit_rate(long est, long took)
+{
+    if (took >= est)
+        return took;
+    return est - (est - took) / 16;
+}

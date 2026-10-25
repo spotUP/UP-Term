@@ -797,6 +797,29 @@ static void blit_starts_where_the_beam_cannot_cross_it(void)
     CHECK_INT(mg_blit_safe(140, 151, 30, 313, 400), 1);
 }
 
+static void a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear(void)
+{
+    long est = 0;
+    int i;
+    /* the first copy sets it, a slower one raises it at once */
+    est = mg_blit_rate(est, 300000);
+    CHECK_INT((int)est, 300000);
+    est = mg_blit_rate(est, 400000);
+    CHECK_INT((int)est, 400000);
+    /* a copy in the vertical blank is faster: the next start is still planned for the slow one */
+    est = mg_blit_rate(est, 240000);
+    CHECK_INT((int)est, 390000);
+    /* the slow 30-line row (150 lines) after a fast one (100): planned with the fast rate, a start 110 lines
+     * above the row passes, and the beam crosses the slow copy; with the kept rate it waits */
+    CHECK_INT(mg_blit_safe(41, 151, 30, 313, 100), 1);
+    CHECK_INT(mg_blit_safe(41, 151, 30, 313, (int)(mg_blit_rate(150, 100))), 0);
+    /* faster copies bring it down step by step */
+    est = 160000;
+    for (i = 0; i < 64; i++)
+        est = mg_blit_rate(est, 100000);
+    CHECK_INT(est < 105000 && est >= 100000, 1);
+}
+
 /* AM-GUI G1, aspect plan 2026-10-23-amarchy-menu-aspect.md: the drawn menu's rectangles. The text
  * width is a fixed number of pixels per character (ctx), as topaz's is; the expected numbers are worked
  * out by hand from the rule in menu_geom.h, not from menu_geom.c: a row is R = ysize * 15 / 4 (topaz 8:
@@ -1745,6 +1768,7 @@ void suite_keymap(void)
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
     blit_starts_where_the_beam_cannot_cross_it();
+    a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear();
     drawn_menu_icons_look_square_on_tall_pixels();
     icons_are_not_upscaled_from_16px();
     every_shipped_menu_node_has_an_icon_image();

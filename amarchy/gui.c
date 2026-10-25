@@ -92,7 +92,8 @@ typedef struct gui {
     long blit_rate;              /* beam lines a blit took per 65536 pixels, 0 = not measured */
     int frame;                   /* beam lines in a frame */
     long beam_waits;             /* blits held back until the beam is clear of their box */
-    long tears;                  /* blits started where the beam crosses the box half copied */
+    long tears;                  /* blits the beam crossed half copied, from the time each took */
+    long late;                   /* blits that took longer than estimated */
     /* list */
     char node[KM_ID * 2], filter[KM_LABEL];
     mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
@@ -268,15 +269,17 @@ static void paint_end(gui *g, int x0, int y0, int x1, int y1)
             b = d;
         }
     }
-    if (!mg_blit_safe(b, top, h, g->frame, est))
-        g->tears++;
     b0 = b;
     BltBitMapRastPort(g->bb, x0, y0, g->win->RPort, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0xC0);
     WaitBlit();
     d = beam_now(g) - b0;
     if (d < 0)
         d += g->frame;
-    g->blit_rate = (long)d * 65536 / area;
+    if (!mg_blit_safe(b0, top, h, g->frame, d))
+        g->tears++;                             /* from the time this copy took, not the estimate */
+    if (d > est)
+        g->late++;
+    g->blit_rate = mg_blit_rate(g->blit_rate, (long)d * 65536 / area);
     g->blits++;
 }
 
@@ -427,6 +430,7 @@ static void draw_full(gui *g)
     sentinel_publish("AMARCHY_BLITS", g->blits);
     sentinel_publish("AMARCHY_BEAM_WAITS", g->beam_waits);
     sentinel_publish("AMARCHY_TEARS", g->tears);
+    sentinel_publish("AMARCHY_LATE", g->late);
     if (g->mode == M_LIST)
         sentinel_rows(g);
     sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
@@ -488,6 +492,8 @@ static void set_sel(gui *g, int s)
         draw_row(g, old);
         sentinel_publish("AMARCHY_BEAM_WAITS", g->beam_waits);
         sentinel_publish("AMARCHY_TEARS", g->tears);
+        sentinel_publish("AMARCHY_LATE", g->late);
+        sentinel_publish("AMARCHY_BLITS", g->blits);
     }
 }
 

@@ -89,4 +89,11 @@ int mg_hit(const mg_geom *g, int top, int mx, int my);
  * frame, may start at once. */
 int mg_blit_safe(int beam, int top, int h, int frame, int blit);
 
+/* The blit rate the next start is planned with, from the last estimate and the rate a copy just took (both
+ * beam lines per 65536 pixels). The same copy takes longer while the display fetches its planes than in the
+ * vertical blank, so the last rate alone often promised a copy faster than it was and the beam crossed it
+ * (the A1200: 13 of 30 rows late, white lines in the moving bar): a slower copy raises the estimate at once,
+ * a faster one lowers it by a sixteenth of the difference. */
+long mg_blit_rate(long est, long took);
+
 #endif
