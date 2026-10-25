@@ -194,14 +194,15 @@ long mg_blit_rate(long est, long took)
     return est - (est - took) / 16;
 }
 
-long mg_blit_est(const mg_blit_plan *p, int w, int h, int row_h)
+int mg_blit_strip(int y0, int y1, int row_h, int i, int *s0, int *s1)
 {
-    long rate = p->rate[h > row_h];
-    return rate ? rate * ((long)w * h) / 65536 : 0;
-}
-
-void mg_blit_took(mg_blit_plan *p, int w, int h, int row_h, int lines)
-{
-    long *rate = &p->rate[h > row_h];
-    *rate = mg_blit_rate(*rate, (long)lines * 65536 / ((long)w * h));
+    if (row_h < 1)
+        row_h = 1;
+    *s0 = y0 + i * row_h;
+    if (*s0 > y1)
+        return 0;
+    *s1 = *s0 + row_h - 1;
+    if (*s1 > y1)
+        *s1 = y1;
+    return 1;
 }

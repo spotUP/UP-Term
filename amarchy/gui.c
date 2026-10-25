@@ -89,7 +89,7 @@ typedef struct gui {
     int bw, bh;                  /* its size */
     int nest;                    /* draws running: the outermost one blits */
     long blits;                  /* back buffer to window copies */
-    mg_blit_plan plan;           /* the rates the copies are planned with */
+    long blit_rate;              /* beam lines a row's copy took per 65536 pixels, 0 = not measured */
     int frame;                   /* beam lines in a frame */
     long beam_waits;             /* blits held back until the beam is clear of their box */
     long tears;                  /* blits the beam crossed half copied, from the time each took */
@@ -244,19 +244,18 @@ static int beam_now(gui *g)
     return b;
 }
 
-/* The end of a draw that changed the window-relative box x0,y0 - x1,y1. A planar screen's blit can be slower
- * than the beam (the A1200's 8-plane Workbench: a row takes half a frame), so the copy starts where the beam
- * cannot overtake it (mg_blit_safe), from the time the last copies took; the beam was measured to cross every
- * row blit of a moving selection when started at once, the flicker of 2026-10-25. */
-static void paint_end(gui *g, int x0, int y0, int x1, int y1)
+/* The back buffer's window-relative box x0,y0 - x1,y1 (a row or less high) to the window. A planar screen's
+ * blit can be slower than the beam (the A1200's 8-plane Workbench: a row takes half a frame), so the copy starts
+ * where the beam cannot overtake it (mg_blit_safe), from the time the last copies took; the beam was measured
+ * to cross every row blit of a moving selection when started at once, the flicker of 2026-10-25. */
+static void copy_box(gui *g, int x0, int y0, int x1, int y1)
 {
-    int w, top, h, est, b0, b, d, laps = 0;
-    if (--g->nest || !g->bb || x1 < x0 || y1 < y0)
-        return;
-    w = x1 - x0 + 1;
+    long area;
+    int top, h, est, b0, b, d, laps = 0;
+    area = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
     top = beam_line(g, y0);
     h = beam_line(g, y1) - top + 1;
-    est = (int)mg_blit_est(&g->plan, w, y1 - y0 + 1, g->g.m.row_h);
+    est = (int)(g->blit_rate * area / 65536);
     WaitBlit();                                 /* the back buffer's drawing is done */
     b = b0 = beam_now(g);
     if (!mg_blit_safe(b, top, h, g->frame, est)) {
@@ -278,8 +277,19 @@ static void paint_end(gui *g, int x0, int y0, int x1, int y1)
         g->tears++;                             /* from the time this copy took, not the estimate */
     if (est && d > est)
         g->late++;
-    mg_blit_took(&g->plan, w, y1 - y0 + 1, g->g.m.row_h, d);
+    g->blit_rate = mg_blit_rate(g->blit_rate, (long)d * 65536 / area);
     g->blits++;
+}
+
+/* The end of a draw that changed the window-relative box x0,y0 - x1,y1: copied a row at a time (mg_blit_strip),
+ * as a taller box has no start the beam cannot cross. */
+static void paint_end(gui *g, int x0, int y0, int x1, int y1)
+{
+    int i, s0, s1;
+    if (--g->nest || !g->bb || x1 < x0 || y1 < y0)
+        return;
+    for (i = 0; mg_blit_strip(y0, y1, g->g.m.row_h, i, &s0, &s1); i++)
+        copy_box(g, x0, s0, x1, s1);
 }
 
 static void buffer_free(gui *g)

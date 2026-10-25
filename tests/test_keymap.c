@@ -805,21 +805,23 @@ static void blit_starts_where_the_beam_cannot_cross_it(void)
     CHECK_INT(mg_blit_safe(140, 151, 30, 313, 400), 1);
 }
 
-/* The A1200 again: the full window at the menu's open (360 x 176) took 308 lines, so its rate planned the first
- * row (360 x 30) for 52 lines, a start 52 lines above the row passed, and the copy took 150. A row is planned
- * with the rows' rate only: not measured yet, it waits. */
-static void the_first_row_is_not_planned_with_the_open_s_rate(void)
+/* The A1200 again: the full window at the menu's open (176 lines) took 308 beam lines of 313, so no start kept
+ * the beam off it and every open showed a torn line (the grab of 2026-10-25 19:37). A box taller than a row is
+ * copied a row at a time; a row copies whole. */
+static void a_tall_copy_goes_a_row_at_a_time(void)
 {
-    mg_blit_plan p;
-    p.rate[0] = p.rate[1] = 0;
-    mg_blit_took(&p, 360, 176, 30, 308);
-    CHECK_INT((int)mg_blit_est(&p, 360, 176, 30), 307);   /* the rate rounds down */
-    CHECK_INT((int)mg_blit_est(&p, 360, 30, 30), 0);
-    CHECK_INT(mg_blit_safe(99, 151, 30, 313, (int)mg_blit_est(&p, 360, 30, 30)), 0);
-    /* once a row is measured, rows are planned with it */
-    mg_blit_took(&p, 360, 30, 30, 150);
-    CHECK_INT((int)mg_blit_est(&p, 360, 30, 30), 149);
-    CHECK_INT(mg_blit_safe(1, 151, 30, 313, (int)mg_blit_est(&p, 360, 30, 30)), 1);
+    int s0 = -1, s1 = -1;
+    CHECK_INT(mg_blit_strip(0, 175, 30, 0, &s0, &s1), 1);
+    CHECK_INT(s0, 0);
+    CHECK_INT(s1, 29);
+    CHECK_INT(mg_blit_strip(0, 175, 30, 5, &s0, &s1), 1);
+    CHECK_INT(s0, 150);
+    CHECK_INT(s1, 175);
+    CHECK_INT(mg_blit_strip(0, 175, 30, 6, &s0, &s1), 0);
+    CHECK_INT(mg_blit_strip(40, 69, 30, 0, &s0, &s1), 1);
+    CHECK_INT(s0, 40);
+    CHECK_INT(s1, 69);
+    CHECK_INT(mg_blit_strip(40, 69, 30, 1, &s0, &s1), 0);
 }
 
 static void a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear(void)
@@ -1794,7 +1796,7 @@ void suite_keymap(void)
     drawn_menu_geometry_follows_the_font_and_screen();
     blit_starts_where_the_beam_cannot_cross_it();
     a_slow_blit_keeps_the_estimate_up_so_the_bar_does_not_tear();
-    the_first_row_is_not_planned_with_the_open_s_rate();
+    a_tall_copy_goes_a_row_at_a_time();
     drawn_menu_icons_look_square_on_tall_pixels();
     icons_are_not_upscaled_from_16px();
     every_shipped_menu_node_has_an_icon_image();

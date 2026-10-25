@@ -99,17 +99,10 @@ int mg_blit_safe(int beam, int top, int h, int frame, int blit);
  * a faster one lowers it by a sixteenth of the difference. */
 long mg_blit_rate(long est, long took);
 
-/* The rates a menu's copies are planned with, kept apart for a box of one row or less and a taller one: a
- * copy's time is not in proportion to its pixels (the full window at the menu's open took 308 lines, a row
- * 150: per pixel three times as slow), so the open's rate planned the first row for 43 lines and the beam
- * crossed it. Zeroed: nothing measured. */
-typedef struct mg_blit_plan {
-    long rate[2];
-} mg_blit_plan;
-
-/* The beam lines a w x h copy is planned to take, 0 when its kind (row_h or less, taller) is not measured. */
-long mg_blit_est(const mg_blit_plan *p, int w, int h, int row_h);
-/* A w x h copy took `lines` beam lines. */
-void mg_blit_took(mg_blit_plan *p, int w, int h, int row_h, int lines);
+/* The i-th strip of a copy of the window lines y0..y1: a box taller than a row is copied a row at a time, each
+ * strip started where the beam cannot cross it (mg_blit_safe), as the whole box has no such start (the full
+ * window at the menu's open took 308 beam lines of 313, and every open showed a torn line: the grab of
+ * 2026-10-25 19:37). 1 with the strip in *s0, *s1; 0 past the last. */
+int mg_blit_strip(int y0, int y1, int row_h, int i, int *s0, int *s1);
 
 #endif
