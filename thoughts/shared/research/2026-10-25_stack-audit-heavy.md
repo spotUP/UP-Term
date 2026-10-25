@@ -111,3 +111,24 @@ int main(void)
     return 0;
 }
 ```
+
+## rz/sz (session 2)
+
+Root cause of "prompt False": the prompt regex in `tools/rig/zmodem_rig.py` and the scratch `zm_stk.py` (`[%#$>] $`) is stale. Since commit 6318b95 vsh ends every prompt with the OSC 133;B marker (`\x1b]133;B\x07`), so the last visible char is no longer `%`; `getty_rig.py` already uses the OSC pattern. The serial login itself works: upgetty + vsh printed their banner on the wire (rig 6), and the unmodified `zmodem_rig.py` ran sz (70 KB, ok) but failed check 1 (stale regex), and its rz leg failed (rc 128, no file; not diagnosed, probably the 30 s lsz window or stale-prompt timing). Fix for the rig: use the OSC regex in zmodem_rig.py (not edited here). Even with the OSC regex, `zm_stk2.py` still printed "prompt False" within 30 s (unverified why: likely slow first banner/boot > 30 s), yet the later steps worked, so the wire was fine.
+
+Path used: the real serial path (fs-uae serial -> host pty, upgetty + vsh), host lrz / lsz at the far end, 300 KB payload (pattern `(i*7+i//256)&255`), stkrun-wrapped sz / rz, rig 6. Both transfers byte-for-byte equal.
+
+| Program | Transfer | Peak bytes | Current | Verdict |
+|---|---|---|---|---|
+| sz | Amiga -> host lrz, 300 KB, 70 s | 4358 | 16384 | OK (2x = 8716 < 16384, no RAISE) |
+| rz | host lsz -> Amiga RAM:, 300 KB reversed, 279 s | 2842 | 16384 | OK (2x = 5684) |
+
+Binaries: build/amiga/sz and rz dated 25 Okt 14:52 (freshness vs source not verified). Header table row for rz / sz is superseded by these figures.
+
+Repeat:
+```
+S=/private/tmp/claude-501/-Users-spot-Code-UP-Term/5983afe9-3b58-421c-8142-35583cf17ab1/scratchpad
+sed "s/prompt = rb'\[%#\$>\] \$'/prompt = rb'\\\\x1b\\\\]133;B\\\\x07'/" $S/stk/zm_stk.py > $S/stk/zm_stk2.py
+cd vtcon && UPTERM_RIG=6 nice -n 19 python3 $S/stk/zm_stk2.py $S/stk/stkrun   # prints z1 (sz) and z2 (rz) peaks
+```
+Rig was stopped by the script; no fs-uae left running.

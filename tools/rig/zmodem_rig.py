@@ -63,7 +63,7 @@ def main():
         g.run('Mount PTY: FROM VTC:ptymount')
     g.run('Delete RAM:zm-send.bin QUIET')
     g.run('Run >NIL: VTC:upgetty SHELL VTC:vsh')
-    prompt = rb'[%#$>] $'
+    prompt = g.PROMPT
     check(wire.wait_for(prompt, 30), 'vsh\'s prompt arrives over serial', wire.text())
     wire.seen = b''
     wire.send('cd RAM:\r')
