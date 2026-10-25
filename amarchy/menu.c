@@ -38,6 +38,7 @@ __attribute__((used)) const char amarchy_stack_cookie[] = "$STACK: " MENU_STR(ME
 /* The commodity sizes the window with menu_core.h's constants (it cannot include ui.h): they must
  * equal the library's, else the OSD clips or leaves blank rows. A negative array size fails the build. */
 typedef char osd_head_lines_match[MN_OSD_HEAD_LINES == UI_OSD_HEAD_LINES ? 1 : -1];
+typedef char osd_bottom_lines_match[MN_OSD_BOTTOM_LINES == UI_OSD_BOTTOM_LINES ? 1 : -1];
 typedef char osd_pad_match[MN_OSD_PAD == UI_OSD_PAD ? 1 : -1];
 
 static keymap km;

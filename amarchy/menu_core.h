@@ -65,12 +65,14 @@ void mn_levels_t(const keymap *k, const char *node, mn_level_fn fn, void *ctx, i
 /* The menu window's size in cells, so the OSD fits its content (plan 2026-10-23-amarchy-osd.md,
  * O5). The head lines and the side padding equal the library's UI_OSD_HEAD_LINES and UI_OSD_PAD
  * (amarchy/menu.c checks that at compile time; the commodity cannot include upkgui/ui.h). */
-#define MN_OSD_HEAD_LINES 2     /* the filter line and the gap above the first entry */
+#define MN_OSD_PAD_LINES  2     /* blank rows above and below: as tall as MN_OSD_PAD columns are wide in Topaz 8 */
+#define MN_OSD_HEAD_LINES (MN_OSD_PAD_LINES + 2) /* padding, the filter line and the gap above the first entry */
+#define MN_OSD_BOTTOM_LINES MN_OSD_PAD_LINES     /* padding below the last entry row */
 #define MN_OSD_PAD        2     /* columns of padding on each side of the text */
 #define MN_OSD_MIN_COLS   24    /* room for the filter line however short the labels are */
 /* Rows and columns for `node` and every level reachable from it (the menu is walked with
  * mn_children, as amarchy-menu walks it): rows = head lines + the most entries any of those
- * levels has, cols = the widest "label  item" (a group's item is ">") + 2 * pad, at least
+ * levels has + the bottom padding lines, cols = the widest "label  item" (a group's item is ">") + 2 * pad, at least
  * MN_OSD_MIN_COLS. Both come back through the pointers. */
 void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows);
 /* mn_osd_size over the rows mn_row_visible(term) leaves: the size of the menu actually shown */

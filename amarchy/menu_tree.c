@@ -145,7 +145,7 @@ void mn_osd_size_t(const keymap *k, const char *node, int *cols, int *rows, int 
     mn_levels_t(k, node, osd_level, &a, term);
     c = a.maxw + 2 * MN_OSD_PAD;
     *cols = c < MN_OSD_MIN_COLS ? MN_OSD_MIN_COLS : c;
-    *rows = MN_OSD_HEAD_LINES + a.maxn;
+    *rows = MN_OSD_HEAD_LINES + a.maxn + MN_OSD_BOTTOM_LINES;
 }
 
 void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows)

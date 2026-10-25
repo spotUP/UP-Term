@@ -901,8 +901,8 @@ static void menu_size_follows_the_filtered_rows(void)
                 "apps.t1 = Tab one | tab:new\napps.t2 = Tab two | tab:next\ntop = Top | run:x\n"));
     mn_osd_size_t(&km, "apps", &cols, &rows, 0);
     mn_osd_size_t(&km, "apps", &cols1, &rows1, 1);
-    CHECK_INT(rows, MN_OSD_HEAD_LINES + 2);        /* Short, Other */
-    CHECK_INT(rows1, MN_OSD_HEAD_LINES + 5);
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 2);        /* Short, Other */
+    CHECK_INT(rows1, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 5);
     CHECK_INT(cols, MN_OSD_MIN_COLS);
     CHECK(cols1 > cols);
     mn_osd_size(&km, "apps", &cols, &rows);        /* the unfiltered call is the term = 1 one */
@@ -948,17 +948,22 @@ static void menu_levels_follow_the_ids_and_escape_goes_up(void)
 static void osd_size_counts_the_reachable_levels(void)
 {
     int cols, rows;
+    /* the padding, measured on the rig: 2 columns of Topaz 8 are 16 px, so 2 blank rows (16 px) above
+     * the filter line and below the last entry; head = 2 + filter + gap, one level of 3 entries = 4 + 3 + 2 */
+    CHECK(parse("[menu]\na.x = X | run:x\na.y = Y | run:y\na.z = Z | run:z\n"));
+    mn_osd_size(&km, "a", &cols, &rows);
+    CHECK_INT(rows, 9);
     CHECK(parse("[menu]\napps.upkg = Install add-ons | run:upkg-browse\napps.tools.tmux = Tmux | run:tmux\n"
                 "apps.tools.nvim = Editor | run:nvim\napps.tools.zzz = A much longer label here | run:z\n"
                 "style.theme = Theme | slash:/theme\ntop = Top | run:x\n"));
     mn_osd_size(&km, "apps", &cols, &rows);
-    CHECK_INT(rows, MN_OSD_HEAD_LINES + 3);        /* apps has 2 entries, apps.tools has 3 */
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 3);        /* apps has 2 entries, apps.tools has 3 */
     CHECK_INT(cols, 24 + 2 + 2 * MN_OSD_PAD);      /* "A much longer label here" + 2 spaces */
     mn_osd_size(&km, "", &cols, &rows);
-    CHECK_INT(rows, MN_OSD_HEAD_LINES + 3);        /* root has 3 (apps, style, top) */
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 3);        /* root has 3 (apps, style, top) */
     CHECK_INT(cols, 24 + 2 + 2 * MN_OSD_PAD);      /* reaches the long label two levels down */
     mn_osd_size(&km, "style", &cols, &rows);
-    CHECK_INT(rows, MN_OSD_HEAD_LINES + 1);
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 1);
     CHECK_INT(cols, MN_OSD_MIN_COLS);              /* "Theme" + pad is shorter than the minimum */
     /* the shipped dist/keymap: the sizes the commodity opens Super+Space and Super+Shift+Space with
      * (8 entries in the root, 4 in apps; the widest label, "Amarchy preferences" two levels down, is one column over the minimum) */
@@ -968,10 +973,10 @@ static void osd_size_counts_the_reachable_levels(void)
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS + 7);           /* "Focus window to the left" in Window */
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 25);        /* the tallest level is Window: 23 rows + the 2 terminal rows */
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 25); /* the tallest level is Window: 23 rows + the 2 terminal rows */
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 4);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 4);
     }
 }
 
