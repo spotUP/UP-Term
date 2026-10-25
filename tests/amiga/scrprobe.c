@@ -72,7 +72,8 @@ static int do_font(const char *name, int argc, char **argv)
         return 20;
     }
     square = menu_screen_aspect(s, &rx, &ry);
-    f = menu_font_open(s, square, &opened);
+    /* No preferred font: the probe reports the per-screen default choice the menu makes without amarchy-menu-font. */
+    f = menu_font_open(s, square, "", 0, &opened);
     InitRastPort(&rp);
     SetFont(&rp, f);
     Printf((STRPTR)"screen %ld %ld %ld %ld %ld %ld %ld\n", (LONG)s->Width, (LONG)s->Height, (LONG)f->tf_YSize,
