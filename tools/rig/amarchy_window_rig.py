@@ -159,7 +159,7 @@ def main():
     ap.add_argument('--no-build', action='store_true')
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
-    stage_rig.report(stage_rig.stage_build(build=not a.no_build))
+    stage_rig.report(stage_rig.stage_build(names=('Amarchy', 'amarchy-gui'), build=not a.no_build))
     passed = total = 0
     for name, fn in ROWS:
         f = OUT / (name + '.verdict')

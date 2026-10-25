@@ -369,14 +369,14 @@ Each item is ticked only with its test passing. Running count is reported at eve
 - [ ] K11 `amarchy/win_core.c` pure geometry and verb struct, listed in the Makefile. Test: `tests/test_win.c`.
 
 ### Phase R: commodity execution (rig)
-- [ ] K5 `act_win` target lookup under LockIBase, window list membership check, Amarchy windows never targets.
-- [ ] K5a target ticket recorded at menu launch (`act_menu_kind`).
-- [ ] K6 lock discipline per verb as listed; deadlock probe for the six held-lock verbs (one rig step per verb).
-- [ ] K7 confirmed by reading: no verb needs the handler (nothing to build).
-- [ ] K8 `WIN` command on port AMARCHY and `LF_WIN` in `amarchy/leaf.c`.
-- [ ] K9 `wins=<n>` in STATUS.
-- [ ] K10 `amarchy/cx.c` read: no change, or the change named.
-- [ ] K12 `tools/rig/amarchy_window_rig.py`: section 7 rows. Note: boot a rig as 060 (`rig.py start --max --purpose "Amarchy session: window verbs"`),
+- [x] K5 `act_win` target lookup under LockIBase, window list membership check, Amarchy windows never targets. -- done f4e0a478: win.c act_win/win_port, membership walk, Title exactly "Amarchy" excluded; rig move_right/move_left on a live window PASS.
+- [ ] K5a target ticket recorded at menu launch (`act_menu_kind`). -- OPEN: win_ticket_take is wired (f4e0a478) but no rig step drives menu launch with a ticket.
+- [x] K6 lock discipline per verb as listed; deadlock probe for the six held-lock verbs (one rig step per verb). -- done: held-lock geometry verbs probed on rig 6, STATUS answered within 5 s after each (no deadlock), build/rig6/amarchy-window/k6_*.verdict.
+- [x] K7 confirmed by reading: no verb needs the handler (nothing to build). -- done by reading: no verb needs the handler.
+- [ ] K8 `WIN` command on port AMARCHY and `LF_WIN` in `amarchy/leaf.c`. -- OPEN: WIN port command PASS on rig; LF_WIN send_win (387f7720) builds but is not driven by any rig step.
+- [x] K9 `wins=<n>` in STATUS. -- done: wins= is the 5th STATUS key; rig 0 -> 1 -> 2 on two moves, unknown verb not counted.
+- [x] K10 `amarchy/cx.c` read: no change, or the change named. -- done by reading cx.c gate(): KA_WIN scope is KS_COMMODITY, never deferred to the application; NO CHANGE.
+- [x] K12 `tools/rig/amarchy_window_rig.py`: section 7 rows. Note: boot a rig as 060 (`rig.py start --max --purpose "Amarchy session: window verbs"`), -- done 78173f28: 11 of 11 PASS on rig 6, uses WIN over the port because dist/keymap has no win: rows until W2.
   stop it at the end.
 
 ### Phase W: Window rows (host, then rig)
