@@ -82,14 +82,13 @@ int mg_row_y(const mg_geom *g, int i);
 /* The entry under a window-relative point, the peek row included; -1 off the rows. */
 int mg_hit(const mg_geom *g, int top, int mx, int my);
 
-/* 1 when a blit of the h display lines from top may start with the beam on line beam: the blitter copies top
- * down, `blit` lines of beam time for the box (0: not measured, planned as half a frame), a frame is `frame`
- * lines. The beam must not show a box line while the copy runs, or that frame shows part new, part old (the
- * white lines of 2026-10-25). The blitter's speed changes along the frame (the display's plane fetch slows it,
- * the vertical blank does not), so a start where the beam would only just miss the copy's end still tears:
- * a copy slower than the beam must be done before the beam is back on the box's top (it may start with the
- * beam in the box, behind it). A faster one starts with the beam above or below the box and stays ahead. A
- * copy no start can keep clear starts at once. */
+/* 1 when a blit of the h display lines from top may start with the beam on line beam: `blit` lines of beam time
+ * for the box (0: not measured, planned as half a frame), a frame is `frame` lines. The beam must not show a box
+ * line while the copy runs, or that frame shows part new, part old (the white lines of 2026-10-25). A planar
+ * copy is one blit per plane, the whole box each time, so while it runs every line of the box has some planes
+ * new and some old, and the beam crossing it shows pens neither picture has (white): the copy must be done
+ * before the beam reaches the box's top, and the beam must be off the box when it starts, however fast it is.
+ * A copy no start can keep clear starts at once. */
 int mg_blit_safe(int beam, int top, int h, int frame, int blit);
 
 /* The blit rate the next start is planned with, from the last estimate and the rate a copy just took (both

@@ -179,12 +179,10 @@ int mg_blit_safe(int beam, int top, int h, int frame, int blit)
         return 1;
     if (blit <= 0)
         blit = frame / 2;     /* not measured: plan for the slowest copy seen, a row on the A1200 */
-    if (blit > frame || h >= frame)
+    if (blit > frame - h)
         return 1;             /* no start keeps the beam off the box while it is copied */
     d = ((top - beam - 1) % frame + frame) % frame + 1;   /* lines until the beam is back on top, 1..frame */
-    if (blit < h)
-        return d <= frame - h;   /* faster than the beam: started with the beam above the box, it stays ahead */
-    return d >= blit;         /* slower: done before the beam is back on the box, which may run behind it */
+    return d >= blit && d <= frame - h;   /* the beam is off the box now and stays off until the copy is done */
 }
 
 long mg_blit_rate(long est, long took)

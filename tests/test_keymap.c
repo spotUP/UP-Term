@@ -772,10 +772,11 @@ static void osd_size_counts_the_reachable_levels(void)
     }
 }
 
-/* The flicker of 2026-10-25: on the A1200's 8-plane AGA Workbench a 30-line row blit took about 150 beam lines
- * of a 313-line frame, so a row copied at once was crossed by the beam half done. Numbers from that machine:
- * the row on beam lines 151-180. The beam is back on the row's top d lines after the start; the copy must be
- * done by then, as the blitter's speed changes along the frame. */
+/* The white lines of 2026-10-25: on the A1200's 8-plane AGA Workbench a 30-line row blit took about 150 beam
+ * lines of a 313-line frame. The copy is one blit per plane, so while it runs every line of the row mixes new
+ * and old planes: the beam must be off the row when the copy starts and must not reach the row's top before it
+ * is done. Numbers from that machine: the row on beam lines 151-180. The beam is back on the row's top d lines
+ * after the start. */
 static void blit_starts_where_the_beam_cannot_cross_it(void)
 {
     /* 51 lines above the row: the beam meets the copy a third of the way */
@@ -786,22 +787,27 @@ static void blit_starts_where_the_beam_cannot_cross_it(void)
     /* 150 lines above: done as the beam arrives */
     CHECK_INT(mg_blit_safe(1, 151, 30, 313, 150), 1);
     CHECK_INT(mg_blit_safe(2, 151, 30, 313, 150), 0);
-    /* the line before the top, and the beam in the row (it runs ahead of the copy) */
+    /* the line before the top, and the beam in the row: the lines below it show planes half copied (the white
+     * lines the owner saw at every step after 3734d9a2 planned such starts as safe) */
     CHECK_INT(mg_blit_safe(150, 151, 30, 313, 150), 0);
-    CHECK_INT(mg_blit_safe(151, 151, 30, 313, 150), 1);
-    CHECK_INT(mg_blit_safe(170, 151, 30, 313, 150), 1);
-    /* past the row, the frame wrapping: 282 lines until the top again */
+    CHECK_INT(mg_blit_safe(151, 151, 30, 313, 150), 0);
+    CHECK_INT(mg_blit_safe(170, 151, 30, 313, 150), 0);
+    CHECK_INT(mg_blit_safe(180, 151, 30, 313, 150), 0);
+    /* just past the row, the frame wrapping: 282 lines until the top again */
+    CHECK_INT(mg_blit_safe(181, 151, 30, 313, 150), 1);
     CHECK_INT(mg_blit_safe(182, 151, 30, 313, 150), 1);
     CHECK_INT(mg_blit_safe(300, 151, 30, 313, 150), 1);
     /* a row near the top, the beam late in the frame: 30 lines to go, it wraps onto the copy */
     CHECK_INT(mg_blit_safe(290, 7, 30, 313, 150), 0);
-    /* a copy faster than the beam: above or below the row it stays ahead, in the row it would overtake it */
-    CHECK_INT(mg_blit_safe(140, 151, 30, 313, 20), 1);
+    /* a copy faster than the beam is no exception: its planes mix like the slow one's while it runs */
+    CHECK_INT(mg_blit_safe(120, 151, 30, 313, 20), 1);
+    CHECK_INT(mg_blit_safe(140, 151, 30, 313, 20), 0);
     CHECK_INT(mg_blit_safe(160, 151, 30, 313, 20), 0);
     /* not measured: planned as half a frame, so 11 lines above the row waits */
     CHECK_INT(mg_blit_safe(140, 151, 30, 313, 0), 0);
     CHECK_INT(mg_blit_safe(300, 151, 30, 313, 0), 1);
-    /* no clear start in a frame: at once */
+    /* no clear start in a frame (the copy longer than the beam's time off the row): at once */
+    CHECK_INT(mg_blit_safe(140, 151, 30, 313, 284), 1);
     CHECK_INT(mg_blit_safe(140, 151, 30, 313, 400), 1);
 }
 

@@ -244,10 +244,11 @@ static int beam_now(gui *g)
     return b;
 }
 
-/* The back buffer's window-relative box x0,y0 - x1,y1 (a row or less high) to the window. A planar screen's
- * blit can be slower than the beam (the A1200's 8-plane Workbench: a row takes half a frame), so the copy starts
- * where the beam cannot overtake it (mg_blit_safe), from the time the last copies took; the beam was measured
- * to cross every row blit of a moving selection when started at once, the flicker of 2026-10-25. */
+/* The back buffer's window-relative box x0,y0 - x1,y1 (a row or less high) to the window. The copy is one blit
+ * per plane (the A1200's 8-plane Workbench: a row takes half a frame), so the beam must stay off the box from
+ * the first plane to the last, or it shows lines with mixed planes (the white lines of 2026-10-25): the copy
+ * starts where the beam is off the box and stays off until the copy is done (mg_blit_safe), from the time the
+ * last copies took. */
 static void copy_box(gui *g, int x0, int y0, int x1, int y1)
 {
     long area;
