@@ -74,7 +74,7 @@ real unknown is hiding a group when the port is absent.
 - Hotkeys `[bind]` on free combos. Taken (grep on `dist/keymap`): super+space, k, h, t, w, backspace, q, 1..9, f1..f4,
   period, comma, left, right, c, v, a, f, g, plus, minus, p, return, l, e, u, i; shift+t, b, f, s, w, d, r, l, h, u;
   alt+space, alt+k; M and N are Intuition's. Free (grep found no row, D2 re-checks with the parser, which refuses
-  duplicates): `super+o` = `Open lister`, `super+shift+o` = `Open lister at current folder`, `super+d` = `Bring
+  duplicates): `super+shift+d` = `Open lister` (was super+o; main took super+o for win:front, owner moved it 2026-10-26), `super+shift+o` = `Open lister at current folder`, `super+d` = `Bring
   Directory Opus to front`. Three keys only: the rest stay menu-only. A hotkey for an absent DOpus does nothing and shows
   a one-line "Directory Opus is not running" message through the menu's existing notice path (U: name of that path, D3).
 - Screen: scripts that open requesters or listers inherit nothing; DOpus listers land on DOpus's own screen by
@@ -181,7 +181,7 @@ unverified until then. 25 items.
 - [x] D3 Port-present condition for a group (mechanism chosen after reading how rows are dropped). Test: host test in `tests/test_main.c` (or a new `tests/test_dopus.c`): group hidden with no port, shown with a fake port (a host stub of `FindPort`). (done 2026-10-26, 1c002e70, host `dopus_binds_parse`, `the_dopus_group_needs_a_port`, `the_dopus_rows_are_shipped` in tests/test_keymap.c; fail-before shown for D3)
 - [x] D4 Rows, labels, icons in `dist/keymap` and `dist/menu-icons` (row commands and labels as in section 2 after D1: `lister refresh all`, label `Configure lister display format`, FTP without TLS options); generator accepts every glyph. Test: host `tests/test_keymap.c` row count and id uniqueness; icon generator run is reported by the other session. (done 2026-10-26, 1c002e70, host `dopus_binds_parse`, `the_dopus_group_needs_a_port`, `the_dopus_rows_are_shipped` in tests/test_keymap.c; fail-before shown for D3)
 - [ ] D5 Script drawer `UP-Term:Rexx/dopus-*.rexx` with the probe (RC 5 when no port) and the version gate (first token of `dopus version` is `5`; accepts `5 91` and `5 99 104`). Test: rig case: scripts run with no DOpus give RC 5 and no window. (code and rig row written in 1c002e70, rig NOT run: row dopus_absent, needs a rig (no DOpus))
-- [ ] D6 Hotkeys wired. Test: rig case: `super+o` opens a lister (sentinel: lister count from `lister query`). (code and rig row written in 1c002e70, rig NOT run: row dopus_present, needs a rig with Directory Opus 5 running; the add-on D8/D9 is not built)
+- [ ] D6 Hotkeys wired. Test: rig case: `super+shift+d` opens a lister (sentinel: lister count from `lister query`). (code and rig row written in 4edcb1c8, rig NOT run: row dopus_present, needs a rig with Directory Opus 5 running; the add-on D8/D9 is not built)
 - [ ] D7 UP-Term row `dopus.shell` opens on the user's screen. Test: rig case with DOpus on its own screen: window is on `DOPUS.1`. (code and rig row written in 1c002e70, rig NOT run: row dopus_present, needs a rig with Directory Opus 5 running; the add-on D8/D9 is not built)
 
 ### Phase P2: add-on
@@ -232,7 +232,7 @@ unverified until then. 25 items.
 Answered 2026-10-25 about 22:05 (AskUserQuestion for 1 to 4; 5 to 7 taken as recommended, the owner may veto).
 
 1. Order and scope: P1 then P2 then P3 now; P4 to P6 decided after using them. (Owner, 2026-10-25.)
-2. Hotkeys: three, super+o, super+shift+o, super+d. (Owner, 2026-10-25.)
+2. Hotkeys: three, super+shift+d, super+shift+o, super+d. (Owner, 2026-10-25; Open lister moved from super+o to super+shift+d on 2026-10-26 because super+o is win:front, Bring to front; the Wide window row moved to super+alt+d.)
 3. Add-on CPU builds: carry every 68k archive (os3 and os3-68000) and offer the one that fits the machine; see
    section 3 and D10. Owner's words: "i should carry all of them and off ther apropriate one for the system its being
    installed on". The non-68k archives (os4, MorphOS, AROS) are out: the installer cannot run there, and the owner
