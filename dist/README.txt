@@ -710,7 +710,9 @@ AMARCHY
   and the same two words for amarchy-menu. The icons come from a table made
   when the kit is built (the file dist/menu-icons in the source); a row in
   keymap.user cannot name an icon, and a row without an entry in the table
-  shows an empty icon column.
+  shows an empty icon column. The groups of the index have glyphs too:
+  games, demos and music each have their own, and every other drawer of the
+  Apps level (a drawer found by the scan) shows the drawer glyph, a folder.
   Change a key: edit ENVARC:up-term/keymap (the shipped file, written by
   Install; an upgrade never overwrites it, the new one is saved beside it as
   keymap.new) or put your own rows in ENVARC:up-term/keymap.user: a row there
