@@ -43,18 +43,21 @@ Why M: no new action kind (`rexx:` exists), but a probe, a script set, a conditi
 real unknown is hiding a group when the port is absent.
 
 - Rows (ids, all `rexx:` unless noted; labels in full English words):
-  - `dopus.newlister` = `Open lister` | `rexx:UP-Term:Rexx/dopus-newlister.rexx`
-  - `dopus.listerhere` = `Open lister at current folder` | `rexx:...dopus-listerhere.rexx`
+  - `dopus.newlister` = `Open lister` | `rexx:UP-Term:Rexx/dopus-newlister.rexx` (sends `lister new`; the handle comes back in RESULT; 5.91 guide: same template, a path must be last)
+  - `dopus.listerhere` = `Open lister at current folder` | `rexx:...dopus-listerhere.rexx` (`lister new <path>`; path last, per the 5.91 guide)
   - `dopus.front` = `Bring Directory Opus to front` | script sending `dopus front`
   - `dopus.back` = `Send Directory Opus to back` | `dopus back`
   - `dopus.parent` = `Parent folder in active lister` | `command Parent`
-  - `dopus.refresh` = `Refresh active lister` | `lister refresh`
+  - `dopus.refresh` = `Refresh active lister` | `lister refresh all` (the template needs `all` or a handle; a bare `lister refresh` is wrong on 5.91 and 5.104)
   - `dopus.devicelist` = `Show devices` | `command DeviceList`
-  - `dopus.ftp` = `FTP connect` | `command FTPConnect` (module command; present only if `ftp.module` is installed: probe row)
+  - `dopus.ftp` = `FTP connect` | `command FTPConnect` (module command; `DOpus5:Modules/ftp.module` is installed on the A1200. Use only HOST, PORT, USER, PASSWORD, DIR, SITE, GUI, NOSCAN, RECON: the 5.91 template has no TLS/K, TLSVERIFY, NOVERIFY or PROTOCOL, which v5.104 has)
   - `dopus.shell` = `Open UP-Term here` | `open:uterm` (P3 gives it the lister path)
-  - `dopus.configure` = `Configure Directory Opus` | `command Configure`
-  Command names come from the DOpus command list, not guessed: D1 reads them from the running DOpus with
-  `dopus` / `command` listing (U until D1: the argument templates were not read, research section 4).
+  - `dopus.configure` = `Configure lister display format` | `command Configure` (5.91 and 5.104 guides agree: `Configure` opens only the current lister's display-format dialog, not Directory Opus settings; the old label was wrong)
+  Command names and templates were read in D1 (2026-10-26, `thoughts/spot/term-findings/dopus-591-templates-2026-10-26.md`):
+  there is no ARexx verb that lists commands; names come from `DOpus5.guide` on the A1200. The 5.91 ARexx guide equals the
+  v5.104 one except the `$VER` line. Version gate: parse the first token of `dopus version` (must be `5`); the A1200
+  answers `5 91`, v5.104 answers `5 99 104`. Verified against the 5.91 guide, per row: `dopus back`, `dopus front`,
+  `lister new`, `lister refresh all`, `command Parent`, `command DeviceList` match; see `thoughts/spot/term-findings/plan-gaps-2026-10-26.md`.
 - Scripts live in one drawer, `UP-Term:Rexx/` (`dopus-*.rexx`), each starting with the same probe: `IF ~SHOW('P',
   'DOPUS.1')` then exit with RC 5 (no port). Port number: the script tries `DOPUS.1` to `DOPUS.9` and takes the first
   that answers `dopus version`; a later piece of work if two copies matter.
@@ -171,13 +174,13 @@ Running count is reported at every tick. A test column names the layer; "A1200 e
 unverified until then. 25 items.
 
 ### Phase A: facts (read, then lock)
-- [ ] D1 Read the `lister`/`dopus` verb templates from `documents/DOpusM2_ARexx.guide` and one live `dopus` session on the owner's A1200 (`dopus version` answers `5 91` there; also on a rig with v5.104 where it returns `5 99 104`; port name, command list; note every verb or argument 5.91 lacks); record in the research doc. Test: a rig case in `tools/rig/amarchy_menu_rig.py` prints `dopus version` and `dopus screen` (rig, text check).
+- [x] D1 (done 2026-10-26, findings `thoughts/spot/term-findings/dopus-591-templates-2026-10-26.md`: 5.91 answers `5 91`; `dopus.refresh` sends `lister refresh all`; 5.91 FTPConnect lacks TLS/K, TLSVERIFY, NOVERIFY, PROTOCOL; `Configure` is the lister display format; gate accepts `5 91` and `5 99 104`) Read the `lister`/`dopus` verb templates from `documents/DOpusM2_ARexx.guide` and one live `dopus` session on the owner's A1200 (`dopus version` answers `5 91` there; also on a rig with v5.104 where it returns `5 99 104`; port name, command list; note every verb or argument 5.91 lacks); record in the research doc. Test: a rig case in `tools/rig/amarchy_menu_rig.py` prints `dopus version` and `dopus screen` (rig, text check).
 - [ ] D2 Re-check the three hotkeys against the parser (duplicate refusal). Test: host test in `tests/test_keymap.c`, `dopus_binds_parse`.
 
 ### Phase P1: menu group
 - [ ] D3 Port-present condition for a group (mechanism chosen after reading how rows are dropped). Test: host test in `tests/test_main.c` (or a new `tests/test_dopus.c`): group hidden with no port, shown with a fake port (a host stub of `FindPort`).
-- [ ] D4 Rows, labels, icons in `dist/keymap` and `dist/menu-icons`; generator accepts every glyph. Test: host `tests/test_keymap.c` row count and id uniqueness; icon generator run is reported by the other session.
-- [ ] D5 Script drawer `UP-Term:Rexx/dopus-*.rexx` with the probe (RC 5 when no port). Test: rig case: scripts run with no DOpus give RC 5 and no window.
+- [ ] D4 Rows, labels, icons in `dist/keymap` and `dist/menu-icons` (row commands and labels as in section 2 after D1: `lister refresh all`, label `Configure lister display format`, FTP without TLS options); generator accepts every glyph. Test: host `tests/test_keymap.c` row count and id uniqueness; icon generator run is reported by the other session.
+- [ ] D5 Script drawer `UP-Term:Rexx/dopus-*.rexx` with the probe (RC 5 when no port) and the version gate (first token of `dopus version` is `5`; accepts `5 91` and `5 99 104`). Test: rig case: scripts run with no DOpus give RC 5 and no window.
 - [ ] D6 Hotkeys wired. Test: rig case: `super+o` opens a lister (sentinel: lister count from `lister query`).
 - [ ] D7 UP-Term row `dopus.shell` opens on the user's screen. Test: rig case with DOpus on its own screen: window is on `DOPUS.1`.
 
@@ -214,7 +217,7 @@ unverified until then. 25 items.
 ## 9. Risks
 
 - Hiding a group on a missing port may need a new mechanism in the menu builder (D3); size could rise to L.
-- DOpus verbs and templates are partly unread (D1 gates P1's rows); a wrong command name makes a row do nothing.
+- DOpus verbs and templates were read in D1 (guide text, 5.91 equals 5.104 except FTPConnect options and the version answer's token count). `dopus back`, `lister new`, `lister set`, `lister refresh` and the `command` rows were not run live (they change state); a wrong argument still makes a row do nothing, so the D5 rig case runs each script once on a rig.
 - DOpus on its own screen is the default public screen: any program started without a screen name lands there.
   AMB3 handles ours; other programs are not ours.
 - Binary FORM files cannot be reviewed as text: only round-trip and rig loads prove them.
@@ -244,7 +247,7 @@ Answered 2026-10-25 about 22:05 (AskUserQuestion for 1 to 4; 5 to 7 taken as rec
 
 - P1: `tools/rig/amarchy_menu_rig.py` case boots a rig with DOpus running, opens the drawn menu, picks
   `dopus.newlister` through amarchy-gui, asserts RC 0 and that `lister query` on the returned handle reports the
-  path; sentinel: DOpus lister count rose by 1 AND Amarchy's row counter (`g_hits` in STATUS) rose by 1. The same case
+  path; sentinel: DOpus lister count rose by 1 AND Amarchy's row counter (`g_hits` in STATUS) rose by 1. The same case asserts the version gate: `dopus version` answers `5 91` (A1200) or `5 99 104` (v5.104 rig) and both pass; `dopus.refresh` sends `lister refresh all`. The same case
   with DOpus quit asserts the group is absent (`dopus` not in the menu's node list).
 - P2: rig install of the add-on, then `FindPort DOPUS.1` after starting it; sentinel: `dopus version` returns `5 99 104` (the A1200's own 5.91 answers `5 91`; the P1 gate accepts both).
 - P3: rig: open a text file by DOpus double-click path (`command` of the filetype action) and assert an UP-Term
