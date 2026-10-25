@@ -370,10 +370,10 @@ Each item is ticked only with its test passing. Running count is reported at eve
 
 ### Phase R: commodity execution (rig)
 - [x] K5 `act_win` target lookup under LockIBase, window list membership check, Amarchy windows never targets. -- done f4e0a478: win.c act_win/win_port, membership walk, Title exactly "Amarchy" excluded; rig move_right/move_left on a live window PASS.
-- [ ] K5a target ticket recorded at menu launch (`act_menu_kind`). -- OPEN: win_ticket_take is wired (f4e0a478) but no rig step drives menu launch with a ticket. -- PARTIAL 2026-10-25: box check fix in commit 4eef78b0 (ticket_valid, unchanged window box); clear-on-close exempt: no close signal exists in the commodity (ticket cleared on use, live target or next hotkey); rig step not passing, row stays open
+- [x] K5a target ticket recorded at menu launch (`act_menu_kind`). -- done 2026-10-26: win_ticket_take wired (f4e0a478), box check 4eef78b0, host test tests/test_win.c ticket_needs_unchanged_box d70a1829 (fails 2 checks with the box comparison removed, passes with it), rig menu_move_left PASS (menu Window > Move left uses the ticket although the menu is active, wins 1 -> 2). EXEMPT: clear-on-close, no close signal exists in the commodity; the ticket is cleared on use, by a live target or by the next hotkey.
 - [x] K6 lock discipline per verb as listed; deadlock probe for the six held-lock verbs (one rig step per verb). -- done: held-lock geometry verbs probed on rig 6, STATUS answered within 5 s after each (no deadlock), build/rig6/amarchy-window/k6_*.verdict.
 - [x] K7 confirmed by reading: no verb needs the handler (nothing to build). -- done by reading: no verb needs the handler.
-- [ ] K8 `WIN` command on port AMARCHY and `LF_WIN` in `amarchy/leaf.c`. -- OPEN: WIN port command PASS on rig; LF_WIN send_win (387f7720) builds but is not driven by any rig step.
+- [x] K8 `WIN` command on port AMARCHY and `LF_WIN` in `amarchy/leaf.c`. -- done 2026-10-26: WIN port command PASS on rig; LF_WIN (387f7720) driven by rig step menu_move_left (Super+Space, Window, Move left: box 72 -> 40, wins +1), 12 of 12 PASS on rig 6 (build/rig6/amarchy-window).
 - [x] K9 `wins=<n>` in STATUS. -- done: wins= is the 5th STATUS key; rig 0 -> 1 -> 2 on two moves, unknown verb not counted.
 - [x] K10 `amarchy/cx.c` read: no change, or the change named. -- done by reading cx.c gate(): KA_WIN scope is KS_COMMODITY, never deferred to the application; NO CHANGE.
 - [x] K12 `tools/rig/amarchy_window_rig.py`: section 7 rows. Note: boot a rig as 060 (`rig.py start --max --purpose "Amarchy session: window verbs"`), -- done 78173f28: 11 of 11 PASS on rig 6, uses WIN over the port because dist/keymap has no win: rows until W2.
@@ -382,7 +382,7 @@ Each item is ticked only with its test passing. Running count is reported at eve
 ### Phase W: Window rows (host, then rig)
 - [x] W1 23 `[menu]` rows in `dist/keymap`. Test: extend `the_shipped_menu_has_learn_system_and_install_groups` (or add `the_window_group_rows`) with `check_row` for every id and its action. -- done 2026-10-25: commit 65ffb7df; keymap test 3229 checks 0 failed, 44 FAIL lines with HEAD keymap restored
 - [x] W2 the hotkeys of section 3 that belong to Window (16 rows). Test: `the_shipped_file_resolves_and_derives_menu_keys` stays green and a new loop asserts each hotkey's kind is `KA_WIN`. -- done 2026-10-25: commit 65ffb7df; 16 hotkeys; DEVIATION: super+m is refused by config/keymap.c spec_parse (Left Amiga+M/N are Intuition screen cycling), Send to back is super+alt+o
-- [ ] W3 rig: each verb on the known window moves or sizes it as the section 7 table says.
+- [x] W3 rig: each verb on the known window moves or sizes it as the section 7 table says. -- done 2026-10-26: amarchy_window_rig 12 of 12 PASS on rig 6 incl. menu_move_left; earlier FAIL was a stale amarchy-gui (rig run with --no-build; gui built before the keymap gained the window.* rows, so the menu Window group showed only New tab and Preferences).
 
 ### Phase S: Screens rows
 - [ ] S1 6 rows and 3 hotkeys (`super+tab`, `super+shift+tab`, `super+alt+b`). Host test as W1.
@@ -462,8 +462,8 @@ rows; B0a closed by the finding that the A1200 runs Directory Opus 5.91 as its W
 WORKBENCH never opens there): phase B stays, hidden on the A1200 through K9, with the DOpus plan's P1 group as the
 A1200 twin. Note for the DOpus plan: its research probed v5.104; the A1200 runs 5.91, whose `dopus version` answers
 `5 91` (not `5 99 104`), so P1's version gate and command templates must be checked against 5.91 on the A1200.
-Also decided the same evening, outside this plan: a third menu mode `minimal` (amarchy-menu-mode = drawn | text |
-minimal, text-only rows, two pens) and a drawer icon for scanned drawer groups; both ledgered (MENU-MINIMAL,
+Also decided the same evening, outside this plan: a third value `minimal` of the existing key `menu-style` (config/upconf_rows.c:139-157;
+`menu-style = minimal`, text-only rows, two pens) and a drawer icon for scanned drawer groups; both ledgered (MENU-MINIMAL,
 GROUP-DRAWER-ICON) and offered to session vtcon-05 (icon domain).
 
 ## 7. Reachability (one test per feature)
