@@ -746,6 +746,11 @@ AMARCHY
     amarchy-index-skip = Work:Old,DH1:Backup
   A path matches when it begins with an entry, so Work:Old also skips
   Work:Old/Tools. Press Rescan apps afterwards to rebuild the cache.
+  Network volumes (an SMB or NFS share, found by its handler) are left out
+  of the scan, since walking one over the network takes hours. To scan a
+  share, list its volume name, comma separated, in the same file:
+    amarchy-index-volumes = spotUP,Music
+  Ctrl-C stops a running scan: it writes no cache and returns WARN.
   The scan keeps its progress in memory (a record named Amarchy.index, no
   disk writes): the stage and the drawer or icon it is on. After a scan
   that failed or hung, run  amarchy-index --where  (or -w): it prints the

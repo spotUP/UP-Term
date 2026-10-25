@@ -1328,6 +1328,11 @@ static void the_scan_record_names_the_last_path_and_the_where_text_tells_running
     CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0);
     CHECK(strstr(buf, ": done") && strstr(buf, "7 apps, 2 games on 3 volumes") && !strstr(buf, "died"));
     CHECK_INT(ix_prog_text(&p, 0, 0, buf, 20), -1);        /* does not fit */
+    ix_prog_note(&p, IX_ST_WALK, "Work:Games");           /* Ctrl-C: stage stopped, path kept, not "died" */
+    ix_prog_stopped(&p);
+    CHECK_INT(p.stage, IX_ST_STOPPED);
+    CHECK(ix_prog_text(&p, 0, 0, buf, sizeof buf) > 0);
+    CHECK(strstr(buf, "stopped by Ctrl-C") && strstr(buf, "stage: stopped") && strstr(buf, "path: Work:Games") && !strstr(buf, "died"));
     {
         char longp[IX_PATH + 40];
         memset(longp, 'a', sizeof longp);
@@ -1473,6 +1478,23 @@ static void an_index_label_is_the_icon_file_name_without_info(void)
     CHECK_STR(l, "Tool");
     ix_label_from_name(".info", l, sizeof l);
     CHECK_STR(l, ".info");
+}
+
+static void network_volumes_are_skipped_unless_listed_in_amarchy_index_volumes(void)
+{
+    /* handler names measured on the A1200: SMB0 L:smb2-handler, FAT0 l:fat95, DH0 none (a startup message) */
+    CHECK(ix_net_handler("L:smb2-handler"));
+    CHECK(ix_net_handler("l:SMBFS"));
+    CHECK(ix_net_handler("nfs-handler"));
+    CHECK(!ix_net_handler("l:fat95"));
+    CHECK(!ix_net_handler(""));
+    CHECK(!ix_net_handler(0));
+    CHECK(!ix_volume_wanted("spotUP", 1, ""));
+    CHECK(!ix_volume_wanted("spotUP", 1, "Music, UpRough"));
+    CHECK(ix_volume_wanted("Music", 1, "spotUP, music ,UpRough:"));
+    CHECK(ix_volume_wanted("UpRough", 1, "spotUP, music ,UpRough:"));
+    CHECK(!ix_volume_wanted("Mus", 1, "Music"));
+    CHECK(ix_volume_wanted("System", 0, ""));        /* a local volume is always scanned */
 }
 
 static void the_skip_list_skips_by_whole_path_prefix(void)
@@ -1713,6 +1735,7 @@ static void the_app_index_core_behaves(void)
     a_bad_index_row_is_rejected();
     an_index_label_is_the_icon_file_name_without_info();
     the_skip_list_skips_by_whole_path_prefix();
+    network_volumes_are_skipped_unless_listed_in_amarchy_index_volumes();
     equal_index_labels_get_their_volume_as_suffix_and_rows_sort_by_label();
     a_menu_row_wins_over_an_index_row_with_the_same_label();
     the_apps_level_lists_index_apps_after_merging();

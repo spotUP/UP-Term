@@ -106,6 +106,54 @@ int ix_skip_match(const char *skip, const char *path)
     return 0;
 }
 
+int ix_net_handler(const char *handler)
+{
+    static const char *const known[] = {"smb", "nfs", "ftp", 0};
+    const char *base = handler, *p;
+    int i;
+    if (!handler)
+        return 0;
+    for (p = handler; *p; p++)
+        if (*p == ':' || *p == '/')
+            base = p + 1;
+    for (i = 0; known[i]; i++) {
+        int k = (int)strlen(known[i]), j;
+        for (j = 0; j < k && base[j] && lower((unsigned char)base[j]) == known[i][j]; j++)
+            ;
+        if (j == k)
+            return 1;
+    }
+    return 0;
+}
+
+int ix_volume_wanted(const char *vol, int network, const char *volumes)
+{
+    const char *p = volumes;
+    int vl = (int)strlen(vol);
+    if (!network)
+        return 1;
+    while (p && *p) {
+        const char *e = strchr(p, ','), *s = p, *f;
+        int len, i;
+        if (!e)
+            e = p + strlen(p);
+        f = e;
+        while (s < f && (*s == ' ' || *s == '\t'))
+            s++;
+        while (f > s && (f[-1] == ' ' || f[-1] == '\t' || f[-1] == ':'))
+            f--;
+        len = (int)(f - s);
+        if (len > 0 && len == vl) {
+            for (i = 0; i < len && lower((unsigned char)s[i]) == lower((unsigned char)vol[i]); i++)
+                ;
+            if (i == len)
+                return 1;
+        }
+        p = *e ? e + 1 : e;
+    }
+    return 0;
+}
+
 void ix_volume_of(const char *path, char *out, int n)
 {
     const char *c = strchr(path, ':');
@@ -308,10 +356,16 @@ void ix_prog_done(ix_prog *p, long napps, long ngames, long nvols)
     p->seq++;
 }
 
+void ix_prog_stopped(ix_prog *p)
+{
+    p->stage = IX_ST_STOPPED;
+    p->seq++;
+}
+
 const char *ix_stage_name(int stage)
 {
-    static const char *const names[] = {"idle", "volumes", "walk", "icon", "write", "done"};
-    return (stage >= 0 && stage <= IX_ST_DONE) ? names[stage] : "unknown";
+    static const char *const names[] = {"idle", "volumes", "walk", "icon", "write", "done", "stopped"};
+    return (stage >= 0 && stage <= IX_ST_STOPPED) ? names[stage] : "unknown";
 }
 
 /* a bounded string builder: no printf family, so vbcc's plain DOS programs can take it */
@@ -361,6 +415,8 @@ int ix_prog_text(const ix_prog *p, int task, int moving, char *out, int n)
         return -1;
     if (p->stage == IX_ST_DONE)
         state = "done";
+    else if (p->stage == IX_ST_STOPPED)
+        state = "stopped by Ctrl-C, no cache written";
     else if (p->stage == IX_ST_IDLE)
         state = "no scan has run";
     else if (!task)
