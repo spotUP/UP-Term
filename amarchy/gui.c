@@ -42,6 +42,7 @@
 #include "../handler/upreq.h"
 #include "../handler/upactive.h"
 #include "../render/pens_amiga.h"
+#include "../render/amiga_render.h"
 #include "../tty/qmark.h"
 #include "keymap_default.inc"
 
@@ -895,7 +896,7 @@ static void conf_read(void)
 
 static void pens_get(gui *g)
 {
-    uc_u32 pal[16], rgb[MT_ROLES];
+    uc_u32 pal[16], rgb[MT_ROLES], fg, bg;
     const char *v;
     int r;
     memset(pal, 0, sizeof pal);
@@ -903,7 +904,10 @@ static void pens_get(gui *g)
     v = upconf_str(&conf, "default", "palette", 0);
     if (v)
         upconf_palette_parse(v, pal);
-    menu_theme_roles(pal, rgb);
+    /* the terminal's colours (handler: upconf_rgb "fg"/"bg", VR_KEEP when unset) */
+    fg = upconf_rgb(&conf, "default", "fg", VR_KEEP);
+    bg = upconf_rgb(&conf, "default", "bg", VR_KEEP);
+    menu_theme_roles_fb(pal, fg == VR_KEEP ? 0 : 0x01000000UL | fg, bg == VR_KEEP ? 0 : 0x01000000UL | bg, rgb);
     for (r = 0; r < MT_ROLES; r++) {
         long p = vr_pen_obtain(g->cm, rgb[r]);
         g->pen_got[r] = p >= 0;

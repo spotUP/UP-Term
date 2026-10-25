@@ -1537,6 +1537,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 }
 
 static void menu_theme_roles_map_the_palette(void);
+static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
 
 static void the_app_index_core_behaves(void);
 
@@ -1850,6 +1851,7 @@ void suite_keymap(void)
     the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level();
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
+    the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
     a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothing();
     comments_crlf_and_fields();
@@ -1937,6 +1939,46 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT((long)rgb[MT_ACCENT], 0xFFAA00L);
     CHECK_INT((long)rgb[MT_BG], 0x000000L);
     CHECK_INT((long)rgb[MT_SELBOX], 0x0000EEL);
+}
+
+/* the terminal draws its ground and text from the upconf bg and fg; the drawn menu follows them */
+static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
+{
+    uc_u32 pal[16], rgb[MT_ROLES];
+    const uc_u32 fg = 0x01112233UL, bg = 0x01445566UL;
+
+    /* both set, no palette: ground and text are theirs, the other roles stay on the palette's index */
+    upconf_palette_parse(0, pal);
+    menu_theme_roles_fb(pal, fg, bg, rgb);
+    CHECK_INT((long)rgb[MT_BG], 0x445566L);
+    CHECK_INT((long)rgb[MT_TEXT], 0x112233L);
+    CHECK_INT((long)rgb[MT_DIM], (long)vt_palette_rgb(0, 8));
+    CHECK_INT((long)rgb[MT_ACCENT], (long)vt_palette_rgb(0, 14));
+    CHECK_INT((long)rgb[MT_SELBOX], (long)vt_palette_rgb(0, 4));
+
+    /* they win over a palette that remaps 0 and 7; the palette's accent still counts */
+    upconf_palette_parse("0,282A36,7,F8F8F2,14,8BE9FD", pal);
+    menu_theme_roles_fb(pal, fg, bg, rgb);
+    CHECK_INT((long)rgb[MT_BG], 0x445566L);
+    CHECK_INT((long)rgb[MT_TEXT], 0x112233L);
+    CHECK_INT((long)rgb[MT_ACCENT], 0x8BE9FDL);
+
+    /* only one set: the other keeps the palette */
+    menu_theme_roles_fb(pal, 0, bg, rgb);
+    CHECK_INT((long)rgb[MT_BG], 0x445566L);
+    CHECK_INT((long)rgb[MT_TEXT], 0xF8F8F2L);
+    menu_theme_roles_fb(pal, fg, 0, rgb);
+    CHECK_INT((long)rgb[MT_BG], 0x282A36L);
+    CHECK_INT((long)rgb[MT_TEXT], 0x112233L);
+
+    /* neither set: the old behaviour, palette 0 and 7, else the xterm colours */
+    menu_theme_roles_fb(pal, 0, 0, rgb);
+    CHECK_INT((long)rgb[MT_BG], 0x282A36L);
+    CHECK_INT((long)rgb[MT_TEXT], 0xF8F8F2L);
+    upconf_palette_parse(0, pal);
+    menu_theme_roles_fb(pal, 0, 0, rgb);
+    CHECK_INT((long)rgb[MT_BG], 0x000000L);
+    CHECK_INT((long)rgb[MT_TEXT], 0xE5E5E5L);
 }
 
 /* ---- index_core: the app index's cache rows (plan 2026-10-23-amarchy-app-index.md, X1) ---- */
