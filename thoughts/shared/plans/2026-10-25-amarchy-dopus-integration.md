@@ -238,10 +238,10 @@ Answered 2026-10-25 about 22:05 (AskUserQuestion for 1 to 4; 5 to 7 taken as rec
    installed on". The non-68k archives (os4, MorphOS, AROS) are out: the installer cannot run there, and the owner
    confirmed it ("non 68k archives can be left out", Owner, 2026-10-26).
 4. UP-Term as shell: per-filetype AmigaDOS instruction, the user's output device untouched. (Owner, 2026-10-25.)
-5. Existing DOpus: the add-on never touches an existing `DOpus5:`. (Recommended, not vetoed.)
-6. Module upstream: PR a generic "run launcher on selection" command and keep Amarchy glue here. (Recommended, not
-   vetoed; P5 is not scheduled yet.)
-7. P6: deferred. (Recommended, not vetoed.)
+5. Existing DOpus: the add-on never touches an existing `DOpus5:`. (Owner, 2026-10-26.)
+6. Module upstream: PR a generic "run launcher on selection" command and keep Amarchy glue here. (Owner, 2026-10-26;
+   P5 is not scheduled yet.)
+7. P6: deferred. (Owner, 2026-10-26.)
 
 ## 11. Reachability (one test per piece)
 
