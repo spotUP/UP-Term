@@ -858,7 +858,7 @@ int main(int argc, char **argv)
         mg_metrics_for(&m, &g->mf, &g->ms);
         g->icon_h = mi_count() > 0 ? mi_size(&m) : 0;
         g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
-        g->w = mg_width(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms);
+        g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms, term_present);
         n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
         g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);

@@ -55,6 +55,8 @@ void mn_child_node(const char *node, const mn_item *it, char *out, int n);
  * menu's amarchy/menu_geom.c) take their maxima over this one walk. */
 typedef void (*mn_level_fn)(const mn_item *items, int n, void *ctx);
 void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx);
+/* mn_levels over the tree mn_children_t(term) shows: the walk the drawn menu's sizes must use */
+void mn_levels_t(const keymap *k, const char *node, mn_level_fn fn, void *ctx, int term);
 
 /* The menu window's size in cells, so the OSD fits its content (plan 2026-10-23-amarchy-osd.md,
  * O5). The head lines and the side padding equal the library's UI_OSD_HEAD_LINES and UI_OSD_PAD
@@ -67,6 +69,8 @@ void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx);
  * levels has, cols = the widest "label  item" (a group's item is ">") + 2 * pad, at least
  * MN_OSD_MIN_COLS. Both come back through the pointers. */
 void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows);
+/* mn_osd_size over the rows mn_row_visible(term) leaves: the size of the menu actually shown */
+void mn_osd_size_t(const keymap *k, const char *node, int *cols, int *rows, int term);
 
 /* One viewer line for a [bind] row: "Super+Shift+Space  Apps  (menu)". The spec column is padded
  * to MN_SPEC_COL. 1 when it fit. */

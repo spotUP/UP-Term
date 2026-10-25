@@ -684,6 +684,32 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK(mn_row_visible(KA_SLASH, 1));
 }
 
+static int fixed_width(const char *s, void *ctx);
+
+/* The window is sized from the rows it draws: a tab:/menuid:/slash: row (and the longest label or the
+ * most entries among them) must not widen or heighten a menu shown without a terminal. */
+static void menu_size_follows_the_filtered_rows(void)
+{
+    int cols, rows, cols1, rows1, px = 16, w0, w1;
+    mg_font topaz = { 8, 8 };
+    mg_screen pal = { 640, 256, 22, 44 };
+    CHECK(parse("[menu]\napps.a = Short | run:a\napps.b = Other | run:b\n"
+                "apps.long = A very much longer slash label that is wider than the minimum window | slash:/theme\n"
+                "apps.t1 = Tab one | tab:new\napps.t2 = Tab two | tab:next\ntop = Top | run:x\n"));
+    mn_osd_size_t(&km, "apps", &cols, &rows, 0);
+    mn_osd_size_t(&km, "apps", &cols1, &rows1, 1);
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + 2);        /* Short, Other */
+    CHECK_INT(rows1, MN_OSD_HEAD_LINES + 5);
+    CHECK_INT(cols, MN_OSD_MIN_COLS);
+    CHECK(cols1 > cols);
+    mn_osd_size(&km, "apps", &cols, &rows);        /* the unfiltered call is the term = 1 one */
+    CHECK(cols == cols1 && rows == rows1);
+    w0 = mg_width_t(&km, "apps", &topaz, 0, 8, fixed_width, &px, &pal, 0);
+    w1 = mg_width_t(&km, "apps", &topaz, 0, 8, fixed_width, &px, &pal, 1);
+    CHECK(w0 < w1);
+    CHECK_INT(w1, mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px, &pal));
+}
+
 /* Phase D: the menu tree comes from the [menu] ids; Esc goes up one level and stops at the root */
 static void menu_levels_follow_the_ids_and_escape_goes_up(void)
 {
@@ -1368,6 +1394,7 @@ void suite_keymap(void)
     typing_th_leaves_theme_first();
     menu_levels_follow_the_ids_and_escape_goes_up();
     terminal_rows_show_only_over_a_terminal();
+    menu_size_follows_the_filtered_rows();
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
     drawn_menu_icons_look_square_on_tall_pixels();

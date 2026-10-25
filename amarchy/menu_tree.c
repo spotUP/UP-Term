@@ -96,12 +96,12 @@ void mn_child_node(const char *node, const mn_item *it, char *out, int n)
  * by its prefixes up to a dot. Not recursive, one item buffer: the commodity calls this on its own
  * small stack. A group whose segment mn_children would skip (KM_ID or longer) is not reachable and is
  * left out, as there. A level shared by two ids is visited once per id; the callers keep maxima. */
-void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx)
+void mn_levels_t(const keymap *k, const char *node, mn_level_fn fn, void *ctx, int term)
 {
     mn_item it[MN_MAX_ITEMS];
     char g[KM_ID * 2];
     int i, nl = (int)strlen(node);
-    fn(it, mn_children(k, node, it, MN_MAX_ITEMS), ctx);
+    fn(it, mn_children_t(k, node, it, MN_MAX_ITEMS, term), ctx);
     for (i = 0; i < k->nmenu; i++) {
         const char *id = k->menu[i].id, *seg, *dot;
         if (nl && (strncmp(id, node, nl) || id[nl] != '.'))
@@ -111,9 +111,14 @@ void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx)
                 break;
             memcpy(g, id, dot - id);
             g[dot - id] = 0;
-            fn(it, mn_children(k, g, it, MN_MAX_ITEMS), ctx);
+            fn(it, mn_children_t(k, g, it, MN_MAX_ITEMS, term), ctx);
         }
     }
+}
+
+void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx)
+{
+    mn_levels_t(k, node, fn, ctx, 1);
 }
 
 typedef struct osd_acc { int maxn, maxw; } osd_acc;
@@ -132,13 +137,18 @@ static void osd_level(const mn_item *it, int n, void *ctx)
     }
 }
 
-void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows)
+void mn_osd_size_t(const keymap *k, const char *node, int *cols, int *rows, int term)
 {
     osd_acc a;
     int c;
     a.maxn = a.maxw = 0;
-    mn_levels(k, node, osd_level, &a);
+    mn_levels_t(k, node, osd_level, &a, term);
     c = a.maxw + 2 * MN_OSD_PAD;
     *cols = c < MN_OSD_MIN_COLS ? MN_OSD_MIN_COLS : c;
     *rows = MN_OSD_HEAD_LINES + a.maxn;
+}
+
+void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows)
+{
+    mn_osd_size_t(k, node, cols, rows, 1);
 }
