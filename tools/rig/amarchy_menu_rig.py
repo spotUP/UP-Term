@@ -303,13 +303,19 @@ def x9_type(text):
     time.sleep(0.8)
 
 
+# the scan status row of amarchy/index_core.c ix_watch_row, the first entry of a level while it is shown
+SCAN_STATUS = re.compile(r'Scan(ning\.\.\. | done: | did not start| stopped | could not save)')
+
+
 def x9_level(label):
     # from the root, Down to the group `label`, Enter; the screen text of that level. A root without the
     # group (the X10 revert check takes Games away) stays at the root, so the level's checks fail, not the case
     rows = menu_rows(screen_text())
     if label not in rows:
         return screen_text()
-    for _ in range(rows.index(label)):
+    # a level opens with the cursor on its first item, below the scan status row (menu.c default_item)
+    first = 1 if rows and SCAN_STATUS.match(rows[0]) else 0
+    for _ in range(rows.index(label) - first):
         ami.key(RAW['down'])
         time.sleep(0.3)
     ami.key(RAW['return'])
