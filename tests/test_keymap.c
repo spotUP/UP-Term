@@ -948,11 +948,11 @@ static void menu_levels_follow_the_ids_and_escape_goes_up(void)
 static void osd_size_counts_the_reachable_levels(void)
 {
     int cols, rows;
-    /* the padding, measured on the rig: 2 columns of Topaz 8 are 16 px, so 2 blank rows (16 px) above
-     * the filter line and below the last entry; head = 2 + filter + gap, one level of 3 entries = 4 + 3 + 2 */
+    /* the padding, measured on the rig (cells are 8 px wide, 16 px tall): 2 columns are 16 px, so 1 blank row
+     * (16 px) above the filter line and below the last entry; head = 1 + filter + gap, 3 entries = 3 + 3 + 1 */
     CHECK(parse("[menu]\na.x = X | run:x\na.y = Y | run:y\na.z = Z | run:z\n"));
     mn_osd_size(&km, "a", &cols, &rows);
-    CHECK_INT(rows, 9);
+    CHECK_INT(rows, 7);
     CHECK(parse("[menu]\napps.upkg = Install add-ons | run:upkg-browse\napps.tools.tmux = Tmux | run:tmux\n"
                 "apps.tools.nvim = Editor | run:nvim\napps.tools.zzz = A much longer label here | run:z\n"
                 "style.theme = Theme | slash:/theme\ntop = Top | run:x\n"));
