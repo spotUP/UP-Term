@@ -2318,6 +2318,30 @@ static void extra_music_drawers_from_the_upconf_move_games_to_music(void)
     CHECK(level_has(it, n, "Y"));
 }
 
+static void system_drawers_vanish_from_the_apps_level(void)
+{
+    static ix_index x;
+    mn_item it[TEST_LEVEL_MAX];
+    int n;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_load_text(&km, &x, "app\tDir\tSystem:C/Dir\napp\tFormat\tSystem:Storage/Format\n"
+                 "app\tClock\tSystem:Utilities/Clock\napp\tCommodities\tSystem:WBStartup/Exchange\n"
+                 "app\tMUI\tWork:MUI/Setup\napp\tCED\tWork:Dev/CED\napp\tPalette\tSystem:Prefs/Palette\n"
+                 "game\tLemmings\tGames:Puzzle/Lemmings\n");
+    CHECK_INT(x.n, 3);                                  /* CED, Palette, Lemmings; the five system rows are dropped */
+    n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
+    CHECK(!level_has(it, n, "C") && !level_has(it, n, "Storage") && !level_has(it, n, "Utilities"));
+    CHECK(!level_has(it, n, "WBStartup") && !level_has(it, n, "MUI"));
+    CHECK(!level_has(it, n, "Dir") && !level_has(it, n, "Clock"));
+    CHECK(level_has(it, n, "CED"));         /* the one remaining category is shown flat */
+    n = ix_level(&km, &x, "apps", "Clock", it, TEST_LEVEL_MAX);
+    CHECK(!level_has(it, n, "Clock"));
+    n = ix_level(&km, &x, "settings", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Palette"));
+    n = ix_level(&km, &x, "games", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Lemmings"));        /* the one game category is shown flat */
+}
+
 static void the_games_level_lists_index_games_and_the_root_offers_the_group(void)
 {
     static ix_index x;
@@ -2350,7 +2374,7 @@ static void the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume
     int n;
     CHECK(parse("[menu]\napps.claude = Claude | run:claude\n"));
     ix_load_text(&km, &x,
-                 "app\tClock\tSys:Utilities/Clock\n"
+                 "app\tClock\tSys:Office/Clock\n"
                  "app\tCED\tWork:Dev/Editors/CED\n"
                  "app\tShell\tSys:Tools/Shell\n"
                  "app\tShell\tWork:Tools/Shell\n"
@@ -2359,12 +2383,12 @@ static void the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume
                  "game\tBoulder\tSys:Fun/Boulder\n"
                  "game\tRootGame\tWork:RootGame\n");
     n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
-    CHECK_INT(n, 5);                                   /* Claude, Dev, Tools, Utilities, Flat */
+    CHECK_INT(n, 5);                                   /* Claude, Dev, Office, Tools, Flat */
     CHECK(!MN_IS_GROUP(&it[0]));                       /* the [menu] row stays at the Apps level */
     CHECK_STR(it[0].label, "Claude");
     CHECK_INT(level_group(it, n, "Dev"), 1);       /* categories alphabetical, merged by drawer name */
-    CHECK_INT(level_group(it, n, "Tools"), 2);
-    CHECK_INT(level_group(it, n, "Utilities"), 3);
+    CHECK_INT(level_group(it, n, "Office"), 2);
+    CHECK_INT(level_group(it, n, "Tools"), 3);
     CHECK_STR(it[4].label, "Flat");                    /* the volume-root app is flat, below the categories */
     CHECK(MN_IS_INDEX(&it[4]));
     CHECK(!level_has(it, n, "Clock"));                 /* categorised apps are not at the Apps level */
@@ -2385,7 +2409,7 @@ static void the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume
     CHECK_STR(it[0].label, "Turrican 2");
     n = ix_level(&km, &x, "apps", "cl", it, TEST_LEVEL_MAX);
     CHECK(level_has(it, n, "Clock") && level_has(it, n, "Flat"));   /* a filter at Apps searches every category */
-    CHECK(level_has(it, n, "Utilities"));              /* the group stays, so its name can match too */
+    CHECK(level_has(it, n, "Office"));                 /* the group stays, so its name can match too */
     n = ix_level(&km, &x, "", "shell", it, TEST_LEVEL_MAX);
     CHECK(level_has(it, n, "Shell (Sys)"));            /* the root filter still finds apps in categories */
 }
@@ -2446,6 +2470,7 @@ static void the_app_index_core_behaves(void)
     prefs_tools_get_a_flat_settings_level_and_leave_apps();
     an_index_without_prefs_music_or_scene_rows_keeps_apps_and_games_only();
     extra_music_drawers_from_the_upconf_move_games_to_music();
+    system_drawers_vanish_from_the_apps_level();
     the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume();
     a_missing_or_empty_cache_adds_no_index_rows();
     root_search_finds_an_index_game_and_an_index_app();

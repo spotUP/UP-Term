@@ -22,6 +22,7 @@
 #define IX_KIND_CLIP     IX_NKINDS
 #define IX_CLIPS_NODE    "trigger.clipboard"
 #define IX_CLIP_NONE     "clip:none"
+#define IX_KIND_HIDDEN   (-1)   /* ix_row_kind result for a system-drawer app row: ix_load_text drops it */
 #define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
 
 typedef struct ix_row {
@@ -72,7 +73,8 @@ typedef struct ix_index {
 /* The effective kind of a stored row, from its stored kind and its first drawer under the volume
  * (case-insensitive): a row, app or game, in Music, Musicdisks, Musicdisk, Mods or Tunes is IX_KIND_MUSIC;
  * one in Demos, Demo, Scene, Intros or Cracktros is IX_KIND_DEMO; an app in Prefs is IX_KIND_SETTINGS;
- * any other row keeps its stored kind. */
+ * an app in C, Storage, Utilities, WBStartup, Libs, Devs or MUI is IX_KIND_HIDDEN, which ix_load_text drops
+ * from the index; any other row keeps its stored kind. */
 int ix_row_kind(const ix_row *r);
 /* Extra first-drawer names (comma separated, the upconf keys amarchy-music-drawers and
  * amarchy-demo-drawers) added to the built-in lists of ix_row_kind. NULL clears. Copied. Set before

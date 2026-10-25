@@ -282,6 +282,8 @@ int ix_row_kind(const ix_row *r)
         return IX_KIND_MUSIC;
     if (in_list("Demos,Demo,Scene,Intros,Cracktros", lab, len) || in_list(extra_demo, lab, len))
         return IX_KIND_DEMO;
+    if (r->kind == IX_KIND_APP && in_list("C,Storage,Utilities,WBStartup,Libs,Devs,MUI", lab, len))
+        return IX_KIND_HIDDEN;
     if (r->kind == IX_KIND_APP)
         return in_list("Prefs", lab, len) ? IX_KIND_SETTINGS : IX_KIND_APP;
     return IX_KIND_GAME;
@@ -317,7 +319,7 @@ void ix_load_text(const keymap *k, ix_index *x, const char *text)
     ix_sort_dedupe(all, n);
     for (i = 0; i < n; i++)
         all[i].kind = ix_row_kind(&all[i]);
-    for (kd = 0; kd < IX_NKINDS; kd++) {         /* rows grouped by effective kind, each group still sorted */
+    for (kd = 0; kd < IX_NKINDS; kd++) {         /* rows grouped by effective kind, each group still sorted; IX_KIND_HIDDEN rows match no kind and drop out */
         int cnt = 0;
         x->kstart[kd] = na;
         for (i = 0; i < n; i++)
