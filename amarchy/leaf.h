@@ -21,9 +21,17 @@ int lf_screen_spec(char *out, int cap, const char *spec, const char *screen);
  * when it does not fit in cap, or cmd holds a '"' or a control character. */
 int lf_shell_command(char *out, int cap, const char *vsh, const char *cmd);
 
+/* The command line a rexx: row or bind runs (the commodity's act_rexx and the menus' LF_REXX share it). A
+ * script, where the first word is a path (holds ':' or '/') or ends in .rexx or .rx: `RX <arg>`, the rest of
+ * arg its arguments. Anything else is an ARexx string: `RX "<arg>"` with each '"' turned into '\''. RX runs a
+ * quoted first argument as program text, so a quoted script path was never opened: Super+Shift+D and every
+ * rexx:UP-Term:Rexx/dopus-*.rexx row did nothing on the A1200 (2026-10-26). 0 (out "") when arg is empty,
+ * holds a control character, or the line does not fit in cap. */
+int lf_rexx_command(char *out, int cap, const char *arg);
+
 typedef enum {
     LF_WINDOW,   /* run: a program, in a new UP-Term window of its own (never the menu's console) */
-    LF_REXX,     /* rexx: RX "script" */
+    LF_REXX,     /* rexx: RX script or RX "string" (lf_rexx_command) */
     LF_OPEN,     /* open:uterm: a new UP-Term window */
     LF_DETACH,   /* detach: a program in the background, input and output NIL: (no window) */
     LF_SCAN,     /* scan: like detach:, and lf_run returns LF_WATCH so the menu watches the scan */

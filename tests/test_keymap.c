@@ -350,6 +350,25 @@ static void the_shipped_keymap_loads_whole(void)
         if (km.menu[i].kind == KA_RUN)
             CHECK(lf_shell_command(line, sizeof line, "UP-Term:bin/vsh", km.menu[i].arg));
     }
+    /* every shipped rexx: bind and row builds an RX line; a script path goes to RX bare, because RX
+     * runs a quoted first argument as inline program text (the DOpus hotkeys and menu rows built
+     * RX "UP-Term:Rexx/dopus-newlister.rexx" and never opened the script, A1200 2026-10-26) */
+    {
+        int scripts = 0;
+        for (i = 0; i < km.nbind + km.nmenu; i++) {
+            int kind = i < km.nbind ? km.bind[i].kind : km.menu[i - km.nbind].kind;
+            const char *arg = i < km.nbind ? km.bind[i].arg : km.menu[i - km.nbind].arg;
+            char line[512];
+            if (kind != KA_REXX)
+                continue;
+            CHECK(lf_rexx_command(line, sizeof line, arg));
+            if (!strncmp(arg, "UP-Term:Rexx/", 13)) {
+                CHECK(strchr(line, '"') == 0);
+                scripts++;
+            }
+        }
+        CHECK(scripts >= 12);
+    }
     /* the keys the plan names */
     CHECK(keymap_find(&km, KM_Q_SUPER, RAW_K) && keymap_find(&km, KM_Q_SUPER, RAW_K)->kind == KA_VIEWER);
     CHECK(keymap_find(&km, KM_Q_SUPER, RAW_SPACE) != 0);
@@ -1635,6 +1654,28 @@ static void a_run_row_starts_its_command_through_the_upterm_shell(void)
     CHECK_INT(lf_shell_command(out, sizeof out, "UP-Term:bin/vsh", ""), 0);
 }
 
+/* Owner's A1200, 2026-10-26: no DOpus hotkey or menu row did anything. RX "<arg>" runs the
+ * quoted text as an inline program, so a script path was never opened; a script goes to RX bare,
+ * an inline string stays quoted. */
+static void a_rexx_script_path_runs_as_a_script_and_a_string_inline(void)
+{
+    char out[128];
+    CHECK_INT(lf_rexx_command(out, sizeof out, "UP-Term:Rexx/dopus-newlister.rexx"), 1);
+    CHECK_STR(out, "RX UP-Term:Rexx/dopus-newlister.rexx");
+    CHECK_INT(lf_rexx_command(out, sizeof out, "REXX:tidy.rx"), 1);
+    CHECK_STR(out, "RX REXX:tidy.rx");
+    CHECK_INT(lf_rexx_command(out, sizeof out, "Tidy.REXX"), 1);       /* the suffix in any case */
+    CHECK_STR(out, "RX Tidy.REXX");
+    CHECK_INT(lf_rexx_command(out, sizeof out, "address WORKBENCH 'WINDOW ACTIVE CLOSE'"), 1);
+    CHECK_STR(out, "RX \"address WORKBENCH 'WINDOW ACTIVE CLOSE'\"");
+    CHECK_INT(lf_rexx_command(out, sizeof out, "say \"hi\""), 1);      /* a quote would end the string */
+    CHECK_STR(out, "RX \"say 'hi'\"");
+    CHECK_INT(lf_rexx_command(out, sizeof out, ""), 0);
+    CHECK_STR(out, "");
+    CHECK_INT(lf_rexx_command(out, sizeof out, "say 1\nsay 2"), 0);    /* a newline ends the command line */
+    CHECK_INT(lf_rexx_command(out, 10, "UP-Term:Rexx/dopus-front.rexx"), 0); /* does not fit */
+}
+
 /* Owner's A1200, 2026-10-22: Preferences from the quick menu did nothing the first time. The
  * menu window that closed was blanked out of the focus record, and the next menu window then
  * took the blank as "the terminal before me": the request found no port. The record keeps the
@@ -2165,6 +2206,7 @@ void suite_keymap(void)
     the_dopus_group_needs_a_port();
     the_dopus_rows_are_shipped();
     a_run_row_starts_its_command_through_the_upterm_shell();
+    a_rexx_script_path_runs_as_a_script_and_a_string_inline();
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
     the_target_is_the_front_entry_for_a_menu_outside_the_record();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();

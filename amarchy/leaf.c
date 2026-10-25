@@ -232,7 +232,8 @@ int lf_run(const km_menu *m, const lf_ui *ui)
         return run_viewer(m, ui);
     case LF_REXX: {
         char line[160];
-        snprintf(line, sizeof line, "RX \"%s\"", m->arg);
+        if (!lf_rexx_command(line, sizeof line, m->arg))
+            return -1;
         return system(line);
     }
     case LF_OPEN: {

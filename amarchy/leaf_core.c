@@ -1,6 +1,7 @@
 /* The portable decision of leaf.h: which way a leaf's kind runs. */
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include "leaf.h"
 
 lf_how lf_plan(int kind)
@@ -91,6 +92,55 @@ int lf_shell_command(char *out, int cap, const char *vsh, const char *cmd)
         out[0] = 0;
         return 0;
     }
+    return 1;
+}
+
+/* the n characters at s end in suffix, any case (vbcc has no strncasecmp) */
+static int ends_ci(const char *s, int n, const char *suffix)
+{
+    int k = (int)strlen(suffix), i;
+    if (n <= k)
+        return 0;
+    for (i = 0; i < k; i++)
+        if (tolower((unsigned char)s[n - k + i]) != suffix[i])
+            return 0;
+    return 1;
+}
+
+/* the first word of arg names a script file rather than starting ARexx program text */
+static int rexx_is_script(const char *arg)
+{
+    int n = 0;
+    while (arg[n] && arg[n] != ' ' && arg[n] != '\t') {
+        if (arg[n] == ':' || arg[n] == '/')
+            return 1;
+        n++;
+    }
+    return ends_ci(arg, n, ".rexx") || ends_ci(arg, n, ".rx");
+}
+
+int lf_rexx_command(char *out, int cap, const char *arg)
+{
+    int n = 0, script;
+    const char *p;
+    if (cap < 1)
+        return 0;
+    out[0] = 0;
+    if (!arg || !*arg)
+        return 0;
+    for (p = arg; *p; p++)
+        if ((unsigned char)*p < ' ' && *p != '\t')
+            return 0;
+    script = rexx_is_script(arg);
+    n = snprintf(out, (size_t)cap, script ? "RX %s" : "RX \"%s\"", arg);
+    if (n < 0 || n >= cap) {
+        out[0] = 0;
+        return 0;
+    }
+    if (!script)                        /* a '"' inside the string would end it early */
+        for (n = 4; out[n + 1]; n++)
+            if (out[n] == '"')
+                out[n] = '\'';
     return 1;
 }
 

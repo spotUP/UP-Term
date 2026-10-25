@@ -114,15 +114,7 @@ int act_in_window(const char *cmd, int cols, int rows)
 int act_rexx(const char *arg)
 {
     char line[160];
-    int i = 0;
-    const char *p = "RX \"";
-    while (*p && i < (int)sizeof(line) - 2)
-        line[i++] = *p++;
-    for (p = arg; p && *p && i < (int)sizeof(line) - 2; p++)
-        line[i++] = *p == '"' ? '\'' : *p;
-    line[i++] = '"';
-    line[i] = 0;
-    return act_run(line);
+    return lf_rexx_command(line, sizeof line, arg) && act_run(line);
 }
 
 int act_open_uterm(void)
