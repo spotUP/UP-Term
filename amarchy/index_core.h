@@ -115,10 +115,10 @@ int ix_category(const char *path, char *seg, int n, char *label, int ln);
  * set. Count; at most max. */
 int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
              int max);
-/* ix_level with the terminal-rows filter of menu_core.h (mn_children_t): term = 0 hides the rows
+/* ix_level with the terminal-rows filter of menu_core.h (mn_children_t): cond lacking MN_COND_TERM hides the rows
  * and groups that need a terminal window. */
 int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
-               int max, int term);
+               int max, int cond);
 
 /* The path an index item launches (the tool or project, no .info), copied into out. 1, or 0 when it is
  * not an index item or its row is not in x. */

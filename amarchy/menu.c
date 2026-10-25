@@ -102,7 +102,7 @@ static const lf_ui leaf_ui = { ask_value, say_refused, 0, 1 };   /* the text men
 
 /* One level's items, sized by ix_level_cap once the index is loaded (menu_loop) */
 static ix_index ixs;
-static int term_present;        /* decided once at open: lf_terminal_present */
+static int menu_cond;           /* decided once at open: mn_cond(terminal present, DOPUS.1 present) */
 static mn_item *it;
 static int *idx, cap;
 static entry *ent;
@@ -160,7 +160,7 @@ static int menu_levels(const char *start)
     filter[0] = 0;
     keep[0] = 0;
     for (;;) {
-        n = ix_level_t(&km, &ixs, node, filter, it, cap, term_present);
+        n = ix_level_t(&km, &ixs, node, filter, it, cap, menu_cond);
         c = mn_filter(it, n, filter, idx, cap);
         shift = wt.row[0] ? 1 : 0;
         if (shift) {
@@ -258,7 +258,7 @@ static int menu_loop(const char *start)
 {
     int rc = 20;
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
-    term_present = upactive_terminal_present(leaf_ui.self_in_mru);
+    menu_cond = mn_cond(upactive_terminal_present(leaf_ui.self_in_mru), upactive_dopus_present());
     {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
         ix_prog p0;
         int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);

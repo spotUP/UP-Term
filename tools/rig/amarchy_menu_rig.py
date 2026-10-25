@@ -19,7 +19,8 @@ import stage_rig, tabstate
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
 LAMIGA = 0x40                       # IEQUALIFIER_LCOMMAND
-RAW = {'down': 0x4D, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44}
+LSHIFT = 0x01                       # IEQUALIFIER_LSHIFT
+RAW = {'down': 0x4D, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
 KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
 TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
 
@@ -813,6 +814,95 @@ def r_group_icons():
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
+DOPUS_SCRIPTS = ('newlister', 'listerhere', 'front', 'back', 'parent', 'refresh', 'devicelist', 'ftp', 'configure')
+DOPUS_REXX = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'rexx'
+DOPUS_COUNT = ('/* sentinel: the lister count of the running Directory Opus */\nOPTIONS RESULTS\nADDRESS DOPUS.1\n'
+               "'lister query all'\nSAY 'LISTERS' WORDS(RESULT)\n")
+
+
+def dopus_port():
+    """True when the public port DOPUS.1 exists on the rig (Directory Opus 5 running)."""
+    rc, out = c.run('RX "SAY SHOW(\'P\',\'DOPUS.1\')"')
+    return rc == 0 and out.strip().endswith('1')
+
+
+def dopus_windows():
+    """(screen title, window title) of every window open now, to see which screen a new one lands on."""
+    m = ami._m()
+    with ami._conn() as conn:
+        return [((s or {}).get('title') if isinstance(s, dict) else s, w.get('title') or '')
+                for s, w in m.ui_windows(m.read_ui(conn, every_screen=True))]
+
+
+def dopus_lister_count():
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        f = pathlib.Path(d) / 'count.rexx'
+        f.write_text(DOPUS_COUNT)
+        ami.put(str(f), 'RAM:x9.dopus-count.rexx')
+    rc, out = c.run('RX RAM:x9.dopus-count.rexx')
+    m = re.search(r'LISTERS (\d+)', out)
+    return int(m.group(1)) if m else None
+
+
+def r_dopus_absent():
+    """DOPUS-ABSENT (plan 2026-10-25-amarchy-dopus-integration.md D5, D3): with no DOPUS.1 port every dist/rexx/dopus-*.rexx
+    script ends with RC 5 and opens no window, and the drawn root menu lists no Dopus group. Needs a rig that has no
+    Directory Opus running (a rig without DOpus, or one where it is quit)."""
+    if dopus_port():
+        return False, 'DOPUS.1 exists on this rig: this case needs no Directory Opus running'
+    res = []
+    c.run('Delete >NIL: RAM:x9.dopus-#? QUIET')
+    before = dopus_windows()
+    for n in DOPUS_SCRIPTS:
+        ami.put(str(DOPUS_REXX / ('dopus-%s.rexx' % n)), 'RAM:x9.dopus-%s.rexx' % n)
+        rc, out = c.run('RX RAM:x9.dopus-%s.rexx' % n)
+        print('  %s dopus-%s.rexx without a port: RC %s' % ('[OK]' if rc == 5 else '[FAIL]', n, rc), flush=True)
+        res.append(rc == 5)
+    time.sleep(1)
+    after = dopus_windows()
+    res.append(sorted(after) == sorted(before))
+    print('  %s windows before %d, after %d' % ('[OK]' if res[-1] else '[FAIL]', len(before), len(after)), flush=True)
+    c.run('Delete >NIL: RAM:x9.dopus-#? QUIET')
+    open_terminal()
+    up, rows = root_menu_rows()
+    res.append(bool(up) and 'Apps' in rows and 'Dopus' not in rows)
+    print('  %s root rows without a port: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
+    return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
+def r_dopus_present():
+    """DOPUS-PRESENT (D3, D6, D7): with Directory Opus 5 running (DOPUS.1, `dopus version` first word 5) the root menu lists
+    Dopus, Super+Shift+D adds one lister (count from `lister query all`, read through the port), and Open UP-Term here opens
+    its window on the Directory Opus screen. Blocked, not failed, on a rig where DOpus is not installed: the verdict
+    says so and stays FAIL until a rig with DOpus 5.104 runs it."""
+    if not dopus_port():
+        return False, 'BLOCKED: DOPUS.1 not on this rig (Directory Opus 5.104 not installed here)'
+    res = []
+    ensure_terminal()
+    up, rows = root_menu_rows()
+    res.append(bool(up) and 'Dopus' in rows)
+    print('  %s root rows with a port: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
+    c.run('Delete >NIL: ENV:AMARCHY_DRAWS QUIET')
+    n0 = dopus_lister_count()
+    ami.key(RAW['d'], LAMIGA | LSHIFT)
+    time.sleep(3)
+    n1 = dopus_lister_count()
+    res.append(n0 is not None and n1 == n0 + 1)
+    print('  %s Super+Shift+D: listers %s -> %s' % ('[OK]' if res[-1] else '[FAIL]', n0, n1), flush=True)
+    before = dopus_windows()
+    import amarchy_gui_rig as g
+    s, w = g.open_menu()
+    x9_type('Open UP-Term here')
+    time.sleep(1)
+    ami.key(RAW['return'])
+    time.sleep(4)
+    new = [x for x in dopus_windows() if x not in before]
+    res.append(any(sc == 'DOPUS.1' for sc, t in new))
+    print('  %s Open UP-Term here: new windows (screen, title) %s' % ('[OK]' if res[-1] else '[FAIL]', new), flush=True)
+    return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
 ROWS = [
     ('start',        r_start),
     ('rows_no_terminal', r_rows_no_terminal),
@@ -829,6 +919,8 @@ ROWS = [
     ('app_icons',    r_app_icons),
     ('app_categories', r_app_categories),
     ('group_icons', r_group_icons),
+    ('dopus_absent', r_dopus_absent),
+    ('dopus_present', r_dopus_present),
 ]
 
 

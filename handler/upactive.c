@@ -117,3 +117,13 @@ int upactive_terminal_present(int self_in_mru)
     Permit();
     return tp != 0;
 }
+
+/* Directory Opus runs when its first ARexx port exists (the Amarchy DOpus group needs it). */
+int upactive_dopus_present(void)
+{
+    struct MsgPort *p;
+    Forbid();
+    p = FindPort((STRPTR)"DOPUS.1");
+    Permit();
+    return p != 0;
+}

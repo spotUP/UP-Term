@@ -27,5 +27,7 @@ int upactive_target(int self_in_mru, char out[24]);
 /* 1 when that window's request port is alive: the one check both menus and the Amarchy
  * commodity use to decide whether the menu opened over a terminal. */
 int upactive_terminal_present(int self_in_mru);
+/* 1 when the DOPUS.1 port exists */
+int upactive_dopus_present(void);
 
 #endif

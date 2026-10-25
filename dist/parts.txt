@@ -51,6 +51,7 @@ tools           Files/amarchy-menu
 tools           Files/amarchy-gui
 tools           Files/amarchy-index
 tools           Files/keymap
+tools           Files/Rexx
 tools           Files/hl
 tools           Files/mdv
 tools           Files/net

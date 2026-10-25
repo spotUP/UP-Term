@@ -52,7 +52,7 @@ int mg_width(const keymap *k, const char *node, const mg_font *f, int icon_w, in
              mg_text_fn text, void *ctx, const mg_screen *s);
 /* mg_width over the rows shown with (term) or without an UP-Term window under the menu */
 int mg_width_t(const keymap *k, const char *node, const mg_font *f, int icon_w, int chev_w,
-             mg_text_fn text, void *ctx, const mg_screen *s, int term);
+             mg_text_fn text, void *ctx, const mg_screen *s, int cond);
 
 /* The header a level shows: "Amarchy" at the root, else the node's last segment with a capital. */
 void mg_header(const char *node, char *out, int n);

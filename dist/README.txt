@@ -653,48 +653,67 @@ AMARCHY
   reset keys are never touched.
   The keys it ships (generated from dist/keymap):
   [keys]
-  Left Amiga + Space          Menu
-  Left Amiga + Shift + Space  Apps
-  Left Amiga + K              Key bindings
-  Left Amiga + Alt + Space    Other menu
-  Left Amiga + Alt + K        Other key bindings
-  Left Amiga + H              Help
-  Left Amiga + Shift + H      Tutorial
-  Left Amiga + T              New tab
-  Left Amiga + W              Close tab
-  Left Amiga + Backspace      Close tab
-  Left Amiga + Q              Close window
-  Left Amiga + 1 to 9         Switch to tab N
-  Left Amiga + F1             Switch to tab 1
-  Left Amiga + F2             Switch to tab 2
-  Left Amiga + F3             Switch to tab 3
-  Left Amiga + F4             Switch to tab 4
-  Left Amiga + .              Next tab
-  Left Amiga + ,              Previous tab
-  Left Amiga + Right          Next tab
-  Left Amiga + Left           Previous tab
-  Left Amiga + C              Copy
-  Left Amiga + V              Paste
-  Left Amiga + A              Select all
-  Left Amiga + F              Find
-  Left Amiga + G              Find next
-  Left Amiga + +              Bigger font
-  Left Amiga + -              Smaller font
-  Left Amiga + Shift + T      Theme
-  Left Amiga + Shift + B      Background
-  Left Amiga + Shift + F      Font
-  Left Amiga + Shift + S      Own screen
-  Left Amiga + Shift + W      Workbench screen
-  Left Amiga + Shift + D      Wide window
-  Left Amiga + Shift + R      Standard window
-  Left Amiga + Shift + L      Demo tour
-  Left Amiga + P              Preferences
-  Left Amiga + Return         Tmux
-  Left Amiga + L              Claude
-  Left Amiga + E              Editor
-  Left Amiga + U              Install and update
-  Left Amiga + Shift + U      Upgrade all
-  Left Amiga + I              Install add-ons
+  Left Amiga + Space              Menu
+  Left Amiga + Shift + Space      Apps
+  Left Amiga + K                  Key bindings
+  Left Amiga + Alt + Space        Other menu
+  Left Amiga + Alt + K            Other key bindings
+  Left Amiga + H                  Help
+  Left Amiga + Shift + H          Tutorial
+  Left Amiga + T                  New tab
+  Left Amiga + W                  Close tab
+  Left Amiga + Backspace          Close tab
+  Left Amiga + Q                  Close window
+  Left Amiga + 1 to 9             Switch to tab N
+  Left Amiga + F1                 Switch to tab 1
+  Left Amiga + F2                 Switch to tab 2
+  Left Amiga + F3                 Switch to tab 3
+  Left Amiga + F4                 Switch to tab 4
+  Left Amiga + .                  Next tab
+  Left Amiga + ,                  Previous tab
+  Left Amiga + Right              Next tab
+  Left Amiga + Left               Previous tab
+  Left Amiga + O                  Bring to front
+  Left Amiga + Alt + O            Send to back
+  Left Amiga + Z                  Zoom or restore
+  Left Amiga + Alt + F            Full width
+  Left Amiga + Alt + S            Save position and size
+  Left Amiga + Alt + R            Restore position and size
+  Left Amiga + Alt + Tab          Next window
+  Left Amiga + Alt + Shift + Tab  Previous window
+  Left Amiga + Shift + Left       Move window left
+  Left Amiga + Shift + Right      Move window right
+  Left Amiga + Shift + Up         Move window up
+  Left Amiga + Shift + Down       Move window down
+  Left Amiga + Alt + Left         Make window narrower
+  Left Amiga + Alt + Right        Make window wider
+  Left Amiga + Alt + Up           Make window shorter
+  Left Amiga + Alt + Down         Make window taller
+  Left Amiga + C                  Copy
+  Left Amiga + V                  Paste
+  Left Amiga + A                  Select all
+  Left Amiga + F                  Find
+  Left Amiga + G                  Find next
+  Left Amiga + +                  Bigger font
+  Left Amiga + -                  Smaller font
+  Left Amiga + Shift + T          Theme
+  Left Amiga + Shift + B          Background
+  Left Amiga + Shift + F          Font
+  Left Amiga + Shift + S          Own screen
+  Left Amiga + Shift + W          Workbench screen
+  Left Amiga + Alt + D            Wide window
+  Left Amiga + Shift + R          Standard window
+  Left Amiga + Shift + L          Demo tour
+  Left Amiga + P                  Preferences
+  Left Amiga + Return             Tmux
+  Left Amiga + L                  Claude
+  Left Amiga + E                  Editor
+  Left Amiga + U                  Install and update
+  Left Amiga + Shift + U          Upgrade all
+  Left Amiga + I                  Install add-ons
+  Left Amiga + Shift + D          Open lister
+  Left Amiga + Shift + O          Open lister at current folder
+  Left Amiga + D                  Bring Directory Opus to front
   [end keys]
   The quick menu (Left Amiga + Space) is a short list you filter by typing;
   Left Amiga + K is the key viewer. Two programs draw them. amarchy-gui is

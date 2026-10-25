@@ -120,7 +120,7 @@ typedef struct gui {
 
 static keymap km;
 static ix_index ixs;
-static int term_present;         /* decided once at open: lf_terminal_present */
+static int menu_cond;            /* decided once at open: mn_cond(terminal present, DOPUS.1 present) */
 static gui G;
 static upconf conf;
 static char conf_buf[UC_MAX_FILE + 2];
@@ -473,7 +473,7 @@ static void relayout(gui *g, int n)
  * the first real entry. */
 static void list_rebuild_keep(gui *g, const char *keep)
 {
-    int n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
+    int n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
     int pos;
     g->shift = g->wt.row[0] ? 1 : 0;
     g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
@@ -1086,7 +1086,7 @@ int main(int argc, char **argv)
     keymap_load(&km, km_default_text);
     index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
-    term_present = upactive_terminal_present(0);   /* a plain Intuition window: never in the MRU */
+    menu_cond = mn_cond(upactive_terminal_present(0), upactive_dopus_present());   /* a plain Intuition window: never in the MRU */
     {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
         ix_prog p0;
         int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);
@@ -1160,8 +1160,8 @@ int main(int argc, char **argv)
         mg_metrics_for(&m, &g->mf, &g->ms);
         g->icon_h = mi_count() > 0 ? mi_size(&m) : 0;
         g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
-        g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms, term_present);
-        n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
+        g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms, menu_cond);
+        n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
         g->shift = g->wt.row[0] ? 1 : 0;
         g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
         g->sel = g->shift;

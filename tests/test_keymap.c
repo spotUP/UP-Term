@@ -966,13 +966,14 @@ static void osd_size_counts_the_reachable_levels(void)
     CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 1);
     CHECK_INT(cols, MN_OSD_MIN_COLS);              /* "Theme" + pad is shorter than the minimum */
     /* the shipped dist/keymap: the sizes the commodity opens Super+Space and Super+Shift+Space with
-     * (8 entries in the root, 4 in apps; the widest label, "Amarchy preferences" two levels down, is one column over the minimum) */
+     * (9 entries in the root, 4 in apps; the tallest level is Window, and the widest label is the Dopus group's
+     * "Configure lister display format" (31 columns + 2 + 2 pads)) */
     {
         static char file[16384];
         long n = slurp("dist/keymap", file, sizeof(file));
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
-        CHECK_INT(cols, MN_OSD_MIN_COLS + 7);           /* "Focus window to the left" in Window */
+        CHECK_INT(cols, 31 + 2 + 2 * MN_OSD_PAD);       /* "Configure lister display format" in Dopus */
         CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 25); /* the tallest level is Window: 23 rows + the 2 terminal rows */
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
@@ -1129,7 +1130,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 8);   /* with the Trigger and Settings groups */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 9);   /* with the Trigger, Settings and Dopus groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 4);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -1488,6 +1489,124 @@ static void a_leaf_window_spec_names_the_front_public_screen(void)
     CHECK_STR(out, "");
 }
 
+
+/* DOPUS D2 (plan 2026-10-25-amarchy-dopus-integration.md): the three Directory Opus hotkeys parse from the
+ * shipped dist/keymap, each is one rexx: row, and no other [bind] row (counted from the parsed table, not
+ * grepped) takes the same key. The parser keeps the last of two rows for one key without a word, so a
+ * clash would silently unbind a key: this count is the guard. */
+static void dopus_binds_parse(void)
+{
+    static char file[16384];
+    long n = slurp("dist/keymap", file, sizeof(file));
+    static const struct { unsigned qual; const char *key, *script; } want[] = {
+        { KM_Q_SUPER | KM_Q_SHIFT, "d", "UP-Term:Rexx/dopus-newlister.rexx" },
+        { KM_Q_SUPER | KM_Q_SHIFT, "o", "UP-Term:Rexx/dopus-listerhere.rexx" },
+        { KM_Q_SUPER, "d", "UP-Term:Rexx/dopus-front.rexx" },
+    };
+    int i, j;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    CHECK_INT(km.refused, 0);
+    for (i = 0; i < 3; i++) {
+        int code = keymap_key_code(want[i].key), same = 0;
+        const km_bind *b = keymap_find(&km, want[i].qual, (unsigned)code);
+        for (j = 0; j < km.nbind; j++)
+            if (km.bind[j].qual == want[i].qual && km.bind[j].code == (unsigned)code)
+                same++;
+        CHECK_INT(same, 1);
+        CHECK(b != 0);
+        if (b) {
+            CHECK_INT(b->kind, KA_REXX);
+            CHECK_STR(b->arg, want[i].script);
+        }
+    }
+}
+
+static int node_has(const char *node, const char *label, int cond)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int i, n = mn_children_t(&km, node, it, MN_MAX_ITEMS, cond);
+    for (i = 0; i < n; i++)
+        if (!strcmp(it[i].label, label))
+            return 1;
+    return 0;
+}
+
+/* DOPUS D3: the Dopus group and its rows are drawn only when DOPUS.1 exists (MN_COND_DOPUS, probed once at
+ * open by upactive_dopus_present); every other group is unaffected, a terminal is not needed for them. */
+static void the_dopus_group_needs_a_port(void)
+{
+    static char file[16384];
+    long n = slurp("dist/keymap", file, sizeof(file));
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    CHECK_INT(mn_cond(1, 0), MN_COND_TERM);
+    CHECK_INT(mn_cond(0, 1), MN_COND_DOPUS);
+    CHECK_INT(mn_row_needs(KA_REXX, "dopus.front"), MN_COND_DOPUS);
+    CHECK_INT(mn_row_needs(KA_OPEN, "dopus.shell"), MN_COND_DOPUS);
+    CHECK_INT(mn_row_needs(KA_REXX, "apps.claude"), 0);
+    CHECK(!node_has("", "Dopus", mn_cond(1, 0)));            /* no port: the group is gone, terminal or not */
+    CHECK(!node_has("", "Dopus", mn_cond(0, 0)));
+    CHECK(node_has("", "Dopus", mn_cond(1, 1)));              /* port present: the group shows */
+    CHECK(node_has("", "Dopus", mn_cond(0, 1)));
+    CHECK(node_has("", "Dopus", MN_COND_ALL));
+    CHECK(node_has("", "Dopus", mn_cond(1, 1)) && node_has("", "Apps", mn_cond(1, 0)));
+    CHECK(node_has("dopus", "Open lister", mn_cond(0, 1)));
+    CHECK(!node_has("dopus", "Open lister", mn_cond(1, 0)));
+    {
+        int c1, r1, c2, r2;                                   /* the OSD size ignores the hidden group */
+        mn_osd_size_t(&km, "", &c1, &r1, mn_cond(1, 0));
+        mn_osd_size_t(&km, "", &c2, &r2, mn_cond(1, 1));
+        CHECK(r2 >= r1 && c2 >= c1);
+    }
+}
+
+/* DOPUS D4: the ten rows of the group, their labels and commands as the plan fixed them after D1, ids unique
+ * over the whole [menu] table, every script a row runs shipped in dist/rexx, a glyph for the group. */
+static void the_dopus_rows_are_shipped(void)
+{
+    static char file[16384], icons[16384], sc[4096];
+    static const struct { const char *id, *label, *script; } rows[] = {
+        { "dopus.newlister", "Open lister", "newlister" },
+        { "dopus.listerhere", "Open lister at current folder", "listerhere" },
+        { "dopus.front", "Bring Directory Opus to front", "front" },
+        { "dopus.back", "Send Directory Opus to back", "back" },
+        { "dopus.parent", "Parent folder in active lister", "parent" },
+        { "dopus.refresh", "Refresh active lister", "refresh" },
+        { "dopus.devicelist", "Show devices", "devicelist" },
+        { "dopus.ftp", "FTP connect", "ftp" },
+        { "dopus.configure", "Configure lister display format", "configure" },
+    };
+    long n = slurp("dist/keymap", file, sizeof(file)), m = slurp("dist/menu-icons", icons, sizeof(icons));
+    int i, j, dopus = 0;
+    CHECK(n > 0 && m > 0 && keymap_parse(&km, file, n));
+    CHECK_INT(km.skipped, 0);
+    for (i = 0; i < km.nmenu; i++) {
+        for (j = i + 1; j < km.nmenu; j++)
+            CHECK(strcmp(km.menu[i].id, km.menu[j].id) != 0);
+        if (!strncmp(km.menu[i].id, "dopus.", 6))
+            dopus++;
+    }
+    CHECK_INT(dopus, 10);
+    for (i = 0; i < 9; i++) {
+        const km_menu *r = shipped_row(rows[i].id);
+        char path[96], arg[96];
+        CHECK(r != 0);
+        if (!r)
+            continue;
+        CHECK_INT(r->kind, KA_REXX);
+        CHECK_STR(r->label, rows[i].label);
+        snprintf(arg, sizeof arg, "UP-Term:Rexx/dopus-%s.rexx", rows[i].script);
+        CHECK_STR(r->arg, arg);
+        snprintf(path, sizeof path, "dist/rexx/dopus-%s.rexx", rows[i].script);
+        CHECK(slurp(path, sc, sizeof sc) > 0);
+        if (!strcmp(rows[i].script, "refresh"))
+            CHECK(strstr(sc, "'lister refresh all'") != 0);
+        if (!strcmp(rows[i].script, "ftp"))
+            CHECK(strstr(sc, "TLS") == 0 || strstr(sc, "no TLS") != 0);
+    }
+    check_row("dopus.shell", KA_OPEN, "uterm");
+    CHECK(strstr(icons, "\ndopus ") != 0 && strstr(icons, "\ndopus.newlister") != 0);
+}
+
 /* Apps > Editor (run:nvim) started nothing: nvim is on vsh's $PATH (UP-Term:nvim/bin), not on the AmigaDOS
  * path SystemTags searched. The leaf runs through the UP-Term shell, as a tab would. */
 static void a_run_row_starts_its_command_through_the_upterm_shell(void)
@@ -1628,7 +1747,7 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
  * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
  * parsed table, 8288 B on the host), carry no
  * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
-#define AMARCHY_KEYMAP_HEAP_MAX 1700  /* 26 rows (8 + the 18 window hotkeys' win: and rexx: rows), 1609 B measured; the parsed table is 8288 B */
+#define AMARCHY_KEYMAP_HEAP_MAX 1900  /* 29 rows (8 + the 18 window hotkeys' win: and rexx: rows + the three Directory Opus hotkeys); 1891 B measured; the full parsed table is 19696 B */
 static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 {
     static char file[16384];
@@ -2029,6 +2148,9 @@ void suite_keymap(void)
     the_menu_builds_the_request_of_a_leaf();
     a_run_leaf_gets_its_own_window_not_the_menus_console();
     a_leaf_window_spec_names_the_front_public_screen();
+    dopus_binds_parse();
+    the_dopus_group_needs_a_port();
+    the_dopus_rows_are_shipped();
     a_run_row_starts_its_command_through_the_upterm_shell();
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
     the_target_is_the_front_entry_for_a_menu_outside_the_record();

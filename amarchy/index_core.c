@@ -434,15 +434,15 @@ static int one_category(const ix_index *x, int from, int to)
 int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
              int max)
 {
-    return ix_level_t(k, x, node, filter, out, max, 1);
+    return ix_level_t(k, x, node, filter, out, max, MN_COND_ALL);
 }
 
 int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
-               int max, int term)
+               int max, int cond)
 {
     int from = 0, to = 0, kd, kl = 0;
     const char *cat;
-    int n = mn_children_t(k, node, out, max, term);
+    int n = mn_children_t(k, node, out, max, cond);
     if (!x)
         return n;
     for (kd = 0; kd < n; kd++)                      /* Trigger > Clipboard history is a group of ring rows */

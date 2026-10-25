@@ -90,7 +90,7 @@ super+shift+b     = slash:/bg              ; Background            | style
 super+shift+f     = slash:/font            ; Font                  | style
 super+shift+s     = slash:/screen own      ; Own screen            | style
 super+shift+w     = slash:/screen workbench       ; Workbench screen      | style
-super+shift+d     = slash:/size 132x43     ; Wide window           | style
+super+alt+d       = slash:/size 132x43     ; Wide window           | style
 super+shift+r     = slash:/size 80x24      ; Standard window       | style
 super+shift+l     = slash:/demo            ; Demo tour             | style
 super+p           = menuid:MENU_PREFS      ; Preferences           | style
@@ -102,6 +102,11 @@ super+e           = run:nvim               ; Editor                | apps
 super+u           = run:upkg browse        ; Install and update    | apps
 super+shift+u     = run:upkg upgrade       ; Upgrade all           | apps
 super+i           = run:upkg browse        ; Install add-ons       | apps
+
+; Directory Opus (rows of the Dopus menu group; the keys do nothing when Directory Opus is not running)
+super+shift+d     = rexx:UP-Term:Rexx/dopus-newlister.rexx   ; Open lister       | apps
+super+shift+o     = rexx:UP-Term:Rexx/dopus-listerhere.rexx  ; Open lister at current folder | apps
+super+d           = rexx:UP-Term:Rexx/dopus-front.rexx       ; Bring Directory Opus to front | apps
 
 ; Not shipped on (low value; remove the ; to try one).
 ; super+shift+e   = run:emoji              ; Emoji picker          | apps
@@ -118,6 +123,16 @@ apps.upterm        = UP-Term               | open:uterm
 apps.tmux          = Tmux                  | run:tmux
 apps.editor        = Editor                | run:nvim
 apps.claude        = Claude                | menuid:MENU_CLAUDE
+dopus.newlister    = Open lister           | rexx:UP-Term:Rexx/dopus-newlister.rexx
+dopus.listerhere   = Open lister at current folder | rexx:UP-Term:Rexx/dopus-listerhere.rexx
+dopus.front        = Bring Directory Opus to front | rexx:UP-Term:Rexx/dopus-front.rexx
+dopus.back         = Send Directory Opus to back   | rexx:UP-Term:Rexx/dopus-back.rexx
+dopus.parent       = Parent folder in active lister | rexx:UP-Term:Rexx/dopus-parent.rexx
+dopus.refresh      = Refresh active lister | rexx:UP-Term:Rexx/dopus-refresh.rexx
+dopus.devicelist   = Show devices          | rexx:UP-Term:Rexx/dopus-devicelist.rexx
+dopus.ftp          = FTP connect           | rexx:UP-Term:Rexx/dopus-ftp.rexx
+dopus.shell        = Open UP-Term here     | open:uterm
+dopus.configure    = Configure lister display format | rexx:UP-Term:Rexx/dopus-configure.rexx
 settings.amarchy.rescan      = Rescan apps          | scan:amarchy-index
 settings.amarchy.preferences = Amarchy preferences  | run:'C:UP-Term Prefs' AMARCHY
 settings.amarchy.font        = Menu font            | run:'C:UP-Term Prefs' AMARCHY

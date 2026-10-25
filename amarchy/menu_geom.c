@@ -83,7 +83,7 @@ static void width_level(const mn_item *it, int n, void *ctx)
 }
 
 int mg_width_t(const keymap *k, const char *node, const mg_font *f, int icon_w, int chev_w,
-               mg_text_fn text, void *ctx, const mg_screen *s, int term)
+               mg_text_fn text, void *ctx, const mg_screen *s, int cond)
 {
     mg_metrics m;
     width_acc a;
@@ -99,7 +99,7 @@ int mg_width_t(const keymap *k, const char *node, const mg_font *f, int icon_w, 
      * measured; only the opening level's own header is new */
     mg_header(node, head, sizeof head);
     a.maxw = text(head, ctx);
-    mn_levels_t(k, node, width_level, &a, term);
+    mn_levels_t(k, node, width_level, &a, cond);
     w = 2 * m.bx + 2 * m.hpad + 2 * m.row_pad + a.maxw;
     w = imax(w, m.min_w);
     return imin(w, s->w - 2 * m.margin_x);
