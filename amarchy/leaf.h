@@ -28,6 +28,7 @@ typedef enum {
     LF_DETACH,   /* detach: a program in the background, input and output NIL: (no window) */
     LF_SCAN,     /* scan: like detach:, and lf_run returns LF_WATCH so the menu watches the scan */
     LF_VIEWER,   /* viewer: the key viewer, the program super+k opens, in its own window */
+    LF_WIN,      /* win: a window verb, sent to the commodity (K8 wires the port) */
     LF_REQUEST   /* tab:, menuid:, slash: ... a terminal window's request port takes the action */
 } lf_how;
 

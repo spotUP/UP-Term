@@ -193,6 +193,8 @@ int lf_run(const km_menu *m, const lf_ui *ui)
         snprintf(line, sizeof line, "NewShell \"%s\"", spec);
         return system(line);
     }
+    case LF_WIN:                        /* K8 wires the port: the failure path until then */
+        return -1;
     default:
         return run_request(m, ui);
     }

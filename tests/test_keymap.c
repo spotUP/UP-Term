@@ -368,6 +368,61 @@ static kact resolve1(const char *text, int row)
     return a;
 }
 
+static int win_row_ok(const char *action)
+{
+    char buf[200];
+    snprintf(buf, sizeof buf, "[bind]\nsuper+d = win:%s\n", action);
+    return parse(buf) && km.nbind == 1 && km.skipped == 0 && km.bind[0].kind == KA_WIN && !strcmp(km.bind[0].arg, action);
+}
+
+static int win_row_bad(const char *action)
+{
+    char buf[200];
+    snprintf(buf, sizeof buf, "[bind]\nsuper+d = win:%s\n", action);
+    parse(buf);
+    return km.nbind == 0 && km.skipped == 1;
+}
+
+static void win_actions_parse(void)
+{
+    static const char *const good[] = {
+        "cycle next", "cycle prev", "front", "back", "zip", "fullwidth", "fullscreen", "save", "restore",
+        "move left", "move right", "move up", "move down", "move left 1", "move down 9999", "move up 0032",
+        "size left", "size right", "size up", "size down", "size right 64", "size down 1234",
+        "focus left", "focus right", "focus up", "focus down", "focus next", "focus prev",
+        "closedrawers", "screen next", "screen prev", "screen workbench", "screen back",
+        "title toggle", "title show", "title hide", 0 };
+    static const char *const bad[] = {
+        "bogus", "cycle", "cycle left", "cycle next now", "front now", "zip 1", "save x", "restore 3", "closedrawers all",
+        "move", "move sideways", "move left 0", "move left 00000", "move left 12345", "move left -5", "move left 3x",
+        "move left 32 64", "size", "size next", "size up 0", "size up 10000", "size up -1",
+        "focus", "focus left 5", "focus sideways", "screen", "screen left", "screen next 1",
+        "title", "title flip", "title hide now", "Front", " front", 0 };
+    int i;
+    for (i = 0; good[i]; i++) {
+        if (!win_row_ok(good[i]))
+            printf("  win good form refused: %s\n", good[i]);
+        CHECK(win_row_ok(good[i]));
+    }
+    for (i = 0; bad[i]; i++) {
+        if (!win_row_bad(bad[i]))
+            printf("  win bad form accepted: %s\n", bad[i]);
+        CHECK(win_row_bad(bad[i]));
+    }
+    CHECK(win_row_bad(""));                              /* empty */
+}
+
+static void win_scope_is_commodity(void)
+{
+    CHECK_INT(keymap_action_scope(KA_WIN), KS_COMMODITY);
+}
+
+static void win_defers_in_the_handler(void)
+{
+    kact a = resolve1("[bind]\nsuper+d = win:zip\n", 0);
+    CHECK_INT(a.kind, KACT_DEFER);
+}
+
 static void actions_resolve_to_menu_ids(void)
 {
     kact a;
@@ -495,6 +550,7 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     check_row("trigger.clipboard", KA_MENU, "trigger.clipboard");   /* a group of ring rows (tests/test_clips.c) */
     CHECK(root_has_group("Trigger", 1) && root_has_group("Trigger", 0));
     CHECK(shipped_row("apps.upkg") == 0);                  /* moved under Install */
+    CHECK_INT((int)lf_plan(KA_WIN), (int)LF_WIN);          /* a win: row goes to the commodity, not to a terminal request */
     CHECK_INT((int)lf_plan(KA_VIEWER), (int)LF_VIEWER);    /* a viewer row runs the viewer, not a terminal request */
     {   /* the viewer is started by its full path beside the menu, never by a bare name through a PATH */
         char vl[64];
@@ -1883,6 +1939,9 @@ void suite_keymap(void)
     symbol_names_follow_the_printed_key();
     the_shipped_keymap_loads_whole();
     actions_resolve_to_menu_ids();
+    win_actions_parse();
+    win_scope_is_commodity();
+    win_defers_in_the_handler();
     the_shipped_file_resolves_and_derives_menu_keys();
     the_shipped_menu_has_learn_system_and_install_groups();
     cx_descriptions_and_qualifier_mask();

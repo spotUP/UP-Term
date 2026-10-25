@@ -77,7 +77,8 @@ enum {
     KA_OTHERMENU,   /* othermenu:<id>  menu: with the other menu program (the upconf menu-style setting) */
     KA_OTHERVIEWER, /* otherviewer     viewer with the other program */
     KA_DETACH,      /* detach:<command line>  a program in the background: no window, input and output NIL: */
-    KA_SCAN         /* scan:<command line>  like detach:, and the menu watches the scan it started (RESCAN-FEEDBACK) */
+    KA_SCAN,        /* scan:<command line>  like detach:, and the menu watches the scan it started (RESCAN-FEEDBACK) */
+    KA_WIN          /* win:<verb [argument]>  a window verb on the active window, run by the commodity (win_core.h) */
 };
 
 /* where an action runs (keymap_action_scope) */

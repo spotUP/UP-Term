@@ -125,6 +125,7 @@ int keymap_action_scope(int kind)
         return KS_TERMINAL;
     case KA_OPEN:
     case KA_REXX:
+    case KA_WIN:
         return KS_COMMODITY;
     case KA_MENU:
     case KA_VIEWER:
@@ -211,7 +212,8 @@ typedef struct prefix {
 static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
     { "slash", KA_SLASH }, { "run", KA_RUN }, { "rexx", KA_REXX }, { "open", KA_OPEN },
-    { "othermenu", KA_OTHERMENU }, { "detach", KA_DETACH }, { "scan", KA_SCAN }
+    { "othermenu", KA_OTHERMENU }, { "detach", KA_DETACH }, { "scan", KA_SCAN },
+    { "win", KA_WIN }
 };
 
 static int tab_arg_ok(const char *a)
@@ -227,6 +229,61 @@ static int tab_arg_ok(const char *a)
                 return 0;
         return 1;
     }
+    return 0;
+}
+
+static int word_in(const char *w, int n, const char *const *list)
+{
+    int i;
+    for (i = 0; list[i]; i++)
+        if ((int)strlen(list[i]) == n && !strncmp(w, list[i], (size_t)n))
+            return 1;
+    return 0;
+}
+
+/* win:<verb [argument]>: the closed verb list of amarchy/win_core.c; 1 when text is exactly one of its forms. */
+static int win_arg_ok(const char *a)
+{
+    static const char *const bare[] = { "front", "back", "zip", "fullwidth", "fullscreen", "save", "restore",
+                                        "closedrawers", 0 };
+    static const char *const dir4[] = { "left", "right", "up", "down", 0 };
+    static const char *const dir6[] = { "left", "right", "up", "down", "next", "prev", 0 };
+    static const char *const cyc[] = { "next", "prev", 0 };
+    static const char *const scr[] = { "next", "prev", "workbench", "back", 0 };
+    static const char *const ttl[] = { "toggle", "show", "hide", 0 };
+    const char *sp = strchr(a, ' ');
+    const char *arg, *end;
+    int vn;
+    if (!sp)
+        return word_in(a, (int)strlen(a), bare);
+    vn = (int)(sp - a);
+    arg = sp + 1;
+    end = strchr(arg, ' ');
+    if (vn == 4 && (!strncmp(a, "move", 4) || !strncmp(a, "size", 4))) {
+        const char *p;
+        int n;
+        if (!end)
+            return word_in(arg, (int)strlen(arg), dir4);
+        if (!word_in(arg, (int)(end - arg), dir4))
+            return 0;
+        p = end + 1;
+        for (n = 0; p[n]; n++)
+            if (p[n] < '0' || p[n] > '9')
+                return 0;
+        if (n < 1 || n > 4)
+            return 0;
+        return strspn(p, "0") != (size_t)n;     /* not all zeros (no atoi: the Amiga build has no stdlib here) */
+    }
+    if (end)
+        return 0;
+    if (vn == 5 && !strncmp(a, "cycle", 5))
+        return word_in(arg, (int)strlen(arg), cyc);
+    if (vn == 5 && !strncmp(a, "focus", 5))
+        return word_in(arg, (int)strlen(arg), dir6);
+    if (vn == 6 && !strncmp(a, "screen", 6))
+        return word_in(arg, (int)strlen(arg), scr);
+    if (vn == 5 && !strncmp(a, "title", 5))
+        return word_in(arg, (int)strlen(arg), ttl);
     return 0;
 }
 
@@ -267,6 +324,8 @@ static int action_parse(const char *text, action *a)
         return 0;
     a->kind = prefixes[i].kind;
     if (a->kind == KA_TAB && !tab_arg_ok(text))
+        return 0;
+    if (a->kind == KA_WIN && !win_arg_ok(text))
         return 0;
     if (a->kind == KA_OPEN && strcmp(text, "uterm"))
         return 0;

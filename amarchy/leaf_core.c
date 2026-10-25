@@ -18,6 +18,8 @@ lf_how lf_plan(int kind)
         return LF_OPEN;
     case KA_VIEWER:
         return LF_VIEWER;
+    case KA_WIN:
+        return LF_WIN;
     default:
         return LF_REQUEST;
     }
