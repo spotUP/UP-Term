@@ -298,14 +298,14 @@ Omarchy workspaces are the Amiga's screens. Windows cannot move between screens 
 |---|---|---|---|---|---|
 | screens.next | Next screen | win:screen next | win: screen | Super+Tab next workspace (A67) | fa-arrow_right |
 | screens.previous | Previous screen | win:screen prev | win: screen | Super+Shift+Tab (A67) | fa-arrow_left |
-| screens.workbench | Workbench screen to front | win:screen workbench | win: screen | Super+1 workspace (A64), key taken by tab goto | fa-desktop |
+| screens.workbench | Workbench Screen To Front | win:screen workbench | win: screen | Super+1 workspace (A64), key taken by tab goto | fa-desktop |
 | screens.back | Send screen to back | win:screen back | win: screen | Ctrl+Alt+Tab (A63) | fa-angle_double_down |
 | screens.titlebar | Toggle title bar | win:title toggle | win: title | Super+Shift+Space top bar (A12), key taken | fa-bars |
 | screens.own | UP-Term own screen | slash:/screen own | existing slash: kind | A16 partial | fa-television |
 
 6 rows. Existing rows `system.workbench` (`slash:/screen workbench`) and `system.own` stay; `screens.workbench`
 differs: `system.workbench` moves the UP-Term window to the Workbench screen, `screens.workbench` only brings that
-screen to the front (open question R4). Group node `screens` needs an icon line (suggest fa-clone).
+screen to the front. R4 resolved (decided 2026-10-26, owner may veto): keep both rows; the labels make the difference explicit (`screens.workbench` = `Workbench Screen To Front`, `system.workbench` keeps its label); the Screens group row never moves a window. Group node `screens` needs an icon line (suggest fa-clone).
 
 Screens out: move window to workspace (A65, A66) because windows cannot change screens; named public-screen list
 (A64 beyond Workbench) because the list is dynamic and needs a generated sub-menu, a later project; scroll
@@ -434,6 +434,7 @@ Total: 5 + 8 + 3 + 2 + 5 + 3 + 3 = 29 items (K1 to K4, K11; K5, K5a, K6, K7, K8,
    keys already shipped.
 4. `screens.workbench` next to `system.workbench`: keep both (recommended; different actions, see 2.3). Alternative:
    drop `screens.workbench` and reuse `slash:/screen workbench` only, which moves the terminal window.
+   Resolved (decided 2026-10-26, owner may veto; R4): keep both; label `Workbench Screen To Front` for the Screens row, `system.workbench` keeps its label; the Screens group row never moves a window.
 5. Screens rows reuse the existing `slash:/screen` kind for the UP-Term own screen (recommended): yes, one row,
    no new code; the other five need `win:screen` and `win:title`.
 6. Destructive Workbench rows: owner 2026-10-25: Icons > Delete and Icons > Empty Trash stay IN, each behind a
