@@ -97,20 +97,20 @@ today (the test at test_keymap.c:1165 enforces it), so rule 2 never turns a stat
 Each item is ticked only with its test passing. Running count is reported at every tick (total 9).
 
 ### Phase H: host (no rig)
-- [ ] H1 four rows in `dist/menu-icons`; `make` builds `menu_icons.inc` (proves the four code points exist).
-- [ ] H2 `mi_item_id` in `amarchy/menu_icon.c`, declared in `menu_icon.h`. Test: `menu_item_id_cases`.
-- [ ] H3 `draw_icon` calls `mi_item_id`; the inline resolution is deleted (grep `strcpy(id, "apps")` in `gui.c`: zero).
-- [ ] H4 `tests/test_keymap.c`: `mi_find` for `games`, `demos`, `music`, `drawer`; blank-icon walk still green
+- [x] H1 four rows in `dist/menu-icons`; `make` builds `menu_icons.inc` (proves the four code points exist). DONE 4094e0d2: four rows, 1 of 9.
+- [x] H2 `mi_item_id` in `amarchy/menu_icon.c`, declared in `menu_icon.h`. Test: `menu_item_id_cases`. DONE 4094e0d2: mi_item_id, 2 of 9.
+- [x] H3 `draw_icon` calls `mi_item_id`; the inline resolution is deleted (grep `strcpy(id, "apps")` in `gui.c`: zero). DONE 4094e0d2: draw_icon uses it, 3 of 9.
+- [x] H4 `tests/test_keymap.c`: `mi_find` for `games`, `demos`, `music`, `drawer`; blank-icon walk still green DONE 4094e0d2: menu_item_id_cases, fail-before shown, 4 of 9.
   (it covers the new rows by itself).
-- [ ] H5 `make test ONLY=keymap` green; vbcc `make amiga` rc 0 with warnings as errors.
+- [x] H5 `make test ONLY=keymap` green; vbcc `make amiga` rc 0 with warnings as errors. DONE 4094e0d2: keymap 2696 checks 0 failed, make amiga rc 0, 5 of 9.
 
 ### Phase R: rig (060 rig, OS 3.2)
-- [ ] R1 one row `group_icons` in `tools/rig/amarchy_menu_rig.py` (section 8). Start with
+- [x] R1 one row `group_icons` in `tools/rig/amarchy_menu_rig.py` (section 8). Start with DONE e034e2a9: group_icons 9 of 9 on rig 7 (OS 3.2), AMARCHY_DRAWS=17, 6 of 9.
   `rig.py start --max --os 32 --purpose "vtcon-05: group drawer icons"`; stop the rig at the end.
 - [ ] R2 PASS recorded in the ledger with the sentinel numbers.
 
 ### Phase D: docs and ledger
-- [ ] D1 `dist/README.txt` icon-table paragraph (near line 702-710) lists the four new ids; `tests/test_amarchy_docs.py`
+- [x] D1 `dist/README.txt` icon-table paragraph (near line 702-710) lists the four new ids; `tests/test_amarchy_docs.py` DONE 54a1a903: docs test OK, 7 of 9.
   still passes. Ledger row ticked with the commit hash.
 - [ ] D2 ledger: GROUP-DRAWER-ICON row closed; MENU-MINIMAL unblocked (same `gui.c`).
 
