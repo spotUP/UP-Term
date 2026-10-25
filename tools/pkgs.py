@@ -176,10 +176,12 @@ def _scripts(r, keys=()):
     sep = '' if rec.endswith(':') else '/'
     # a record without its Uninstall (an install from before the copy was fixed) must not block an upgrade
     # or a removal: warn and go on, so opkg still replaces the package
-    pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: the Uninstall copy the install left in its record\n'
-           'if [ -f %(u)s ]; then\n    Execute %(u)s\nelse\n'
+    # the Uninstall deletes its own record drawer, and AmigaDOS cannot delete a file a running script holds
+    # open: it runs from a copy in T:, so the record drawer holds no open file when the Delete reaches it
+    pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs a copy of the Uninstall the install left in its record\n'
+           'if [ -f %(u)s ]; then\n    Copy %(u)s %(c)s CLONE QUIET\n    Execute %(c)s\n    Delete >NIL: %(c)s QUIET\nelse\n'
            '    echo "warning: %(u)s does not exist, nothing to uninstall; continuing" >&2\nfi\nexit 0\n'
-           % {'u': '%s%sUninstall' % (rec, sep)})
+           % {'u': '%s%sUninstall' % (rec, sep), 'c': 'T:%s.Uninstall' % r['archive']})
     need = None
     if r['needs-base'] != '-':
         # the refusal the retired vsh-script upkg made (same VERSIONS line, same older()): opkg aborts the

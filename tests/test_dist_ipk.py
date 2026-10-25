@@ -91,7 +91,12 @@ class IpkTest(unittest.TestCase):
         self.assertIn('head -n 1 UP-Term:VERSIONS', pre)
         self.assertIn('if older "$base" 1.0; then', pre)
         self.assertIn('exit 1', pre)
-        self.assertIn('Execute UP-Term:pkg/up-nvim/Uninstall\n', ctl.extractfile('./prerm').read().decode())
+        prerm = ctl.extractfile('./prerm').read().decode()
+        # the Uninstall deletes its own record drawer, so it runs from a copy: a running script holds its file open
+        self.assertIn('Copy UP-Term:pkg/up-nvim/Uninstall T:up-nvim.Uninstall CLONE QUIET\n', prerm)
+        self.assertIn('Execute T:up-nvim.Uninstall\n', prerm)
+        self.assertIn('Delete >NIL: T:up-nvim.Uninstall QUIET\n', prerm)
+        self.assertNotIn('Execute UP-Term:pkg/up-nvim/Uninstall', prerm)
         data = tarfile.open(fileobj=io.BytesIO(m['data.tar.gz']))
         top = './T/upkg-stage/up-nvim'
         for n in (top + '/Uninstall', top + '/Files/install.dos', top + '/Files/sub/prog'):
@@ -147,7 +152,7 @@ class IpkTest(unittest.TestCase):
             lines = prerm.splitlines()
             rec = rec or next(w for w in prerm.split() if w.endswith('/Uninstall'))
             self.assertIn('if [ -f %s ]; then' % rec, lines)
-            self.assertLess(lines.index('if [ -f %s ]; then' % rec), lines.index('    Execute ' + rec))
+            self.assertLess(lines.index('if [ -f %s ]; then' % rec), next(i for i, l in enumerate(lines) if l.startswith('    Copy ' + rec + ' ')))
             self.assertTrue(any(l.lstrip().startswith('echo "warning: ' + rec) for l in lines))
             self.assertEqual(lines[-1], 'exit 0')
 
