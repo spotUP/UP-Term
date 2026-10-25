@@ -171,3 +171,12 @@ int mg_hit(const mg_geom *g, int top, int mx, int my)
         return -1;                     /* past the rows, or in the gap below one */
     return top + i;
 }
+
+int mg_blit_safe(int beam, int top, int h, int frame, int blit)
+{
+    int d;
+    if (blit <= h || frame <= 0 || blit - h >= frame)
+        return 1;
+    d = ((top - beam - 1) % frame + frame) % frame + 1;   /* lines until the beam is back on top, 1..frame */
+    return d >= blit - h;     /* the beam catches the copy at d * blit / (blit - h): after it is done */
+}

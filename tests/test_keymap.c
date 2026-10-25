@@ -772,6 +772,31 @@ static void osd_size_counts_the_reachable_levels(void)
     }
 }
 
+/* The flicker of 2026-10-25: on the A1200's 8-plane AGA Workbench a 30-line row blit took about 150 beam lines
+ * of a 313-line frame, so a row copied at once was crossed by the beam half done. Numbers from that machine:
+ * the row on beam lines 151-180. The beam reaches the copy d lines after the start at d * blit / (blit - h). */
+static void blit_starts_where_the_beam_cannot_cross_it(void)
+{
+    /* 51 lines above the row: the beam meets the copy 64 lines in, a fifth of the row done */
+    CHECK_INT(mg_blit_safe(100, 151, 30, 313, 150), 0);
+    /* 120 lines above: it meets the copy as it ends */
+    CHECK_INT(mg_blit_safe(31, 151, 30, 313, 150), 1);
+    CHECK_INT(mg_blit_safe(32, 151, 30, 313, 150), 0);
+    /* the line before the top, and the beam in the row (it runs ahead of the copy) */
+    CHECK_INT(mg_blit_safe(150, 151, 30, 313, 150), 0);
+    CHECK_INT(mg_blit_safe(151, 151, 30, 313, 150), 1);
+    CHECK_INT(mg_blit_safe(170, 151, 30, 313, 150), 1);
+    /* past the row, the frame wrapping: 282 lines until the top again */
+    CHECK_INT(mg_blit_safe(182, 151, 30, 313, 150), 1);
+    CHECK_INT(mg_blit_safe(300, 151, 30, 313, 150), 1);
+    /* a row near the top, the beam late in the frame: 30 lines to go, it wraps onto the copy */
+    CHECK_INT(mg_blit_safe(290, 7, 30, 313, 150), 0);
+    /* a blit faster than the beam, an unmeasured one, one with no clear start in a frame: at once */
+    CHECK_INT(mg_blit_safe(140, 151, 30, 313, 20), 1);
+    CHECK_INT(mg_blit_safe(140, 151, 30, 313, 0), 1);
+    CHECK_INT(mg_blit_safe(140, 151, 30, 313, 400), 1);
+}
+
 /* AM-GUI G1, aspect plan 2026-10-23-amarchy-menu-aspect.md: the drawn menu's rectangles. The text
  * width is a fixed number of pixels per character (ctx), as topaz's is; the expected numbers are worked
  * out by hand from the rule in menu_geom.h, not from menu_geom.c: a row is R = ysize * 15 / 4 (topaz 8:
@@ -1719,6 +1744,7 @@ void suite_keymap(void)
     menu_size_follows_the_filtered_rows();
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
+    blit_starts_where_the_beam_cannot_cross_it();
     drawn_menu_icons_look_square_on_tall_pixels();
     icons_are_not_upscaled_from_16px();
     every_shipped_menu_node_has_an_icon_image();

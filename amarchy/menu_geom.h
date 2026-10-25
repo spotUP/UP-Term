@@ -82,4 +82,11 @@ int mg_row_y(const mg_geom *g, int i);
 /* The entry under a window-relative point, the peek row included; -1 off the rows. */
 int mg_hit(const mg_geom *g, int top, int mx, int my);
 
+/* 1 when a blit of the h display lines from top may start with the beam on line beam: the blitter copies top
+ * down, `blit` lines of beam time for the box, a frame is `frame` lines. The beam is faster than a slow blit
+ * (AGA, 8 planes: a 30-line row takes about 150) and must not reach the box while it is half copied, or that
+ * frame shows the new top over the old bottom. A blit faster than the beam, or one with no such start in a
+ * frame, may start at once. */
+int mg_blit_safe(int beam, int top, int h, int frame, int blit);
+
 #endif

@@ -14,6 +14,8 @@
 #include <graphics/rastport.h>
 #include <graphics/text.h>
 #include <graphics/layers.h>
+#include <graphics/gfxbase.h>
+#include <graphics/view.h>
 #include <intuition/intuition.h>
 #include <intuition/intuitionbase.h>
 #include <intuition/screens.h>
@@ -87,6 +89,10 @@ typedef struct gui {
     int bw, bh;                  /* its size */
     int nest;                    /* draws running: the outermost one blits */
     long blits;                  /* back buffer to window copies */
+    long blit_rate;              /* beam lines a blit took per 65536 pixels, 0 = not measured */
+    int frame;                   /* beam lines in a frame */
+    long beam_waits;             /* blits held back until the beam is clear of their box */
+    long tears;                  /* blits started where the beam crosses the box half copied */
     /* list */
     char node[KM_ID * 2], filter[KM_LABEL];
     mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
@@ -218,12 +224,59 @@ static void paint_begin(gui *g)
         buffer_fit(g);
 }
 
-/* The end of a draw that changed the window-relative box x0,y0 - x1,y1. */
+/* The beam line the window-relative line y is shown on. */
+static int beam_line(gui *g, int y)
+{
+    struct ViewPort *vp = &g->scr->ViewPort;
+    int l = g->win->TopEdge + y;
+    if (vp->Modes & LACE)
+        l /= 2;
+    return l + vp->DyOffset + (GfxBase->ActiView ? GfxBase->ActiView->DyOffset : 0);
+}
+
+/* The beam line now; a frame's length grows to the longest line seen. */
+static int beam_now(gui *g)
+{
+    int b = (int)VBeamPos();
+    if (b >= g->frame)
+        g->frame = b + 1;
+    return b;
+}
+
+/* The end of a draw that changed the window-relative box x0,y0 - x1,y1. A planar screen's blit can be slower
+ * than the beam (the A1200's 8-plane Workbench: a row takes half a frame), so the copy starts where the beam
+ * cannot overtake it (mg_blit_safe), from the time the last copies took; the beam was measured to cross every
+ * row blit of a moving selection when started at once, the flicker of 2026-10-25. */
 static void paint_end(gui *g, int x0, int y0, int x1, int y1)
 {
+    long area;
+    int top, h, est, b0, b, d, laps = 0;
     if (--g->nest || !g->bb || x1 < x0 || y1 < y0)
         return;
+    area = (long)(x1 - x0 + 1) * (y1 - y0 + 1);
+    top = beam_line(g, y0);
+    h = beam_line(g, y1) - top + 1;
+    est = (int)(g->blit_rate * area / 65536);
+    WaitBlit();                                 /* the back buffer's drawing is done */
+    b = b0 = beam_now(g);
+    if (!mg_blit_safe(b, top, h, g->frame, est)) {
+        g->beam_waits++;
+        while (!mg_blit_safe(b, top, h, g->frame, est) && laps < 2) {
+            d = beam_now(g);
+            if (d < b)
+                laps++;                         /* a frame wrapped: no clear start in two is not waited for */
+            b = d;
+        }
+    }
+    if (!mg_blit_safe(b, top, h, g->frame, est))
+        g->tears++;
+    b0 = b;
     BltBitMapRastPort(g->bb, x0, y0, g->win->RPort, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0xC0);
+    WaitBlit();
+    d = beam_now(g) - b0;
+    if (d < 0)
+        d += g->frame;
+    g->blit_rate = (long)d * 65536 / area;
     g->blits++;
 }
 
@@ -372,6 +425,8 @@ static void draw_full(gui *g)
     g->draws++;
     sentinel_publish("AMARCHY_DRAWS", g->draws);
     sentinel_publish("AMARCHY_BLITS", g->blits);
+    sentinel_publish("AMARCHY_BEAM_WAITS", g->beam_waits);
+    sentinel_publish("AMARCHY_TEARS", g->tears);
     if (g->mode == M_LIST)
         sentinel_rows(g);
     sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
@@ -429,8 +484,10 @@ static void set_sel(gui *g, int s)
     if (g->top != top) {
         draw_list(g);
     } else if (s != old) {
+        draw_row(g, s);         /* the new row first: a frame between the copies shows two selected, never none */
         draw_row(g, old);
-        draw_row(g, s);
+        sentinel_publish("AMARCHY_BEAM_WAITS", g->beam_waits);
+        sentinel_publish("AMARCHY_TEARS", g->tears);
     }
 }
 
@@ -1068,6 +1125,7 @@ int main(int argc, char **argv)
         goto done;
     }
     g->rp = g->win->RPort;
+    g->frame = (GfxBase->DisplayFlags & PAL) ? 313 : 263;
     SetFont(g->rp, g->font);
     SetDrMd(g->rp, JAM1);
     draw_full(g);
