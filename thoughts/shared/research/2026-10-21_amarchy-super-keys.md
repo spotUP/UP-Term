@@ -147,42 +147,65 @@ owner decision is one file for both; Omarchy gives no precedent for that, only f
 
 ## 3. Equivalents in UP-Term / Amiga
 
-Existing action surface found by grep (not exhaustive): the window menu (`menu_def`, handler/vtcon_handler.c:1493, ids in
-handler/menu_ids.h), the slash commands ("/tab new", "/find", "/font bigger", "/theme", "/prefs", "/size", "/screen",
-"/clear", "/copy", "/paste", "/select-all", "/claude", "/demo", "/tutorial", "/save", "/state", "/profile", ... table in
-handler/slash.c, parsed by slash.h), `upkg` and `upkg-browse` (dist/), tmux (C-b prefix, dist/tmux.conf sets only shell and TERM).
-All of these already map to a numeric `MENU_*` id, which is the natural action id for the keymap file.
+Rewritten 2026-10-25 against OS 3.2 (owner disputed the earlier "~40 of ~165" claim; it was a surface read). Full row-by-row
+evidence: `thoughts/shared/research/2026-10-25_amarchy-os32-gap-table.md` (rows A1-A87 bindings, B1-B55 menu rows, Table C).
+Verified in `vendor/ndk-3.2r4-Include_H/clib/intuition_protos.h`: MoveWindow, SizeWindow, ChangeWindowBox, ZipWindow, WindowToFront,
+WindowToBack, ActivateWindow, MoveWindowInFrontOf, ScreenToFront, ScreenToBack, ShowTitle, LockPubScreen, WBenchToFront; and in
+wb_protos/workbench.h: OpenWorkbenchObjectA, CloseWorkbenchObjectA, WorkbenchControlA, AddAppMenuItemA. The WORKBENCH ARexx command
+list (ACTIVATEWINDOW, CHANGEWINDOW, MOVEWINDOW, SIZEWINDOW, ZOOMWINDOW, UNZOOMWINDOW, WINDOWTOFRONT, WINDOWTOBACK, WINDOW, MENU, NEWDRAWER,
+INFO, RENAME, DELETE, ICON, VIEW, KEYBOARD, LOCKGUI, UNLOCKGUI, RX, GETATTR, FAULT, HELP) is from the Hyperion wiki page only: no ARexx
+documentation for the Workbench port is in vendor/ or thoughts/, and the NDK headers carry no command names. Marked unverified:
+that every command exists in 3.2r4, the exact MENU argument syntax, and whether the WINDOW commands reach non-Workbench windows
+(the wiki says drawer windows, ROOT and ACTIVE). Nothing here was run on a rig.
 
-| Omarchy group | Equivalent | Note |
-|---|---|---|
-| Menu, Esc system menu, K viewer | upkg-ui --menu with filter; viewer = same dialog fed from the keymap | new |
-| Terminal (S+Return) | `MENU_TAB_NEW` (RAmiga T); a new window = `NewShell`/UPTerm | exists |
-| Tmux (S+A+Return) | run `tmux` in the tab | exists, a command |
-| Browser, file manager, editor, web apps, music, docker, signal... | Editor: `nvim`/`vim` in dist/addons; Workbench: none; browsers/webapps: no equivalent | mostly none |
-| Close window (S+W/Q) | `MENU_TAB_CLOSE` / `MENU_CLOSE` | exists |
-| Workspaces 1..10 | Tabs: RAmiga 1-9 switches tab (vtcon_handler.c:5972) | exists for 1-9; move-to-tab: none |
-| Next/prev workspace | `MENU_TAB_NEXT` / `MENU_TAB_PREV` (RAmiga . and ,) | exists |
-| Focus/swap/resize/split/group windows | tmux panes inside a tab (C-b arrows, %, ", resize-pane); Intuition has no tiling | tmux only |
-| Floating/fullscreen/maximized | `MENU_SCREEN_WB/OWN/FULL` (/screen), 80x24 / 132x43 (/size) | partial |
-| Scratchpad | none (a pinned tab is closest) | none |
-| Minimize | Intuition window to back / Workbench screen cycle | Amiga action, no hook |
-| Copy/paste/select all | `MENU_COPY/PASTE/SELECT_ALL` (RAmiga C/V/A), console_key in render/vtwin.c:1387 | exists |
-| Find | `MENU_FIND` (RAmiga F, vtcon_handler.c:5264), `MENU_FIND_NEXT` (G) | exists |
-| Zoom in/out | `MENU_FONT_BIGGER/SMALLER` (RAmiga + and -) | exists |
-| Theme, background, font | `/theme`, `/font`, `/fg`, `/bg`, Prefs (`MENU_PREFS`) | exists |
-| Transparency, gaps, bar, dock, corners, animations | none | none |
-| Install/Remove/Update | `upkg-browse`, `upkg install/remove/upgrade/update` | exists |
-| Learn / keybinding viewer | `MENU_TUTORIAL` (/tutorial), `MENU_HELP_SLASH` (/help), `MENU_DEMO` | exists; keymap viewer new |
-| Agent picker | `MENU_CLAUDE` (RAmiga L), pi (dist/addons/pi) | exists |
-| Lock, suspend, logout, shutdown, reboot | Amiga: `Reboot`/`ColdReboot`, no suspend, no lock | reboot only |
-| Notifications, reminders, time, battery | none (a `Date` on the status line is a possible later thing) | none |
-| Screenshot, screenrecord, OCR, colour picker | none (no screen capture API for a handler) | none |
-| Audio, bluetooth, network, display panels | Workbench Prefs programs launched by name (Sound, Screenmode, Palette, Internet) | launch only |
-| Clipboard manager, emoji | clipboard.device is available; emoji exists as dist/emoji + tools/gen_emoji.py | maybe |
-| Dictation, input language, XF86 hardware keys | none (input language: Input prefs keymap) | none |
-| Lock-less system keys (C+A+Delete) | Ctrl+Amiga+Amiga is the hardware reset: must never be a binding | trap |
+Dispatch today: `KA_REXX` -> `LF_REXX` (amarchy/leaf_core.c:15, leaf.h) runs RX "script" from the commodity; other kinds are
+`KA_MENU/VIEWER/TAB/MENUID/SLASH/RUN/OPEN/DETACH/SCAN` (config/keymap.h:68-80). A `rexx:` row costs no C: `rexx:address WORKBENCH 'WINDOW ACTIVE CYCLE'`
+(needs RexxMast running; the exact RX string form is unverified). Intuition calls on windows of OTHER programs cannot be
+reached from ARexx and need one NEW C action kind, `KA_WIN:<verb>` (verbs: next, prev, front, back, zip, fullwidth, save, restore,
+focus-left/right/up/down, swap-*, nudge/grow-*), running under LockIBase in the commodity task. CloseWindow on a foreign window is
+unsafe (the owner holds the IDCMP port): closing stays with the owner (break signal) or the Workbench ARexx WINDOW ... CLOSE for drawers.
 
-About 40 of the roughly 165 Super bindings have an equivalent; the rest are tiling-window-manager or Linux-desktop concepts.
+| Omarchy binding | Omarchy effect | OS 3.2 equivalent | Amarchy row kind | Group |
+|---|---|---|---|---|
+| S+Space, S+Esc, S+K, S+A+K | root / system menu, key viewer | Amarchy itself | existing menu: / viewer | none |
+| S+A+Space, S+Sh+Return, S+Sh+B, S+Sh+A.. web apps | apps launcher, browser | OpenWorkbenchObjectA; app index | existing run: / index | Apps |
+| S+Return, S+A+Return, S+Sh+N, S+Sh+M, S+Sh+Q.. | terminal, tmux, editor, music | UPTerm, tmux, nvim | existing open: / run: | Apps |
+| S+Sh+F (+A) | file manager | WORKBENCH WINDOW ROOT OPEN (unverified syntax) | existing rexx: | Workbench |
+| S+Sh+T | activity | WorkbenchControlA GetProgramList; Status | existing run: Status | System |
+| S+C+A/B/D/N/P, S+C+H, S+C+A+D/E | audio..power panels | Prefs: Sound, ScreenMode, Input, Internet, Time | existing run: / rexx: OPEN | Workbench |
+| S+C+E, S+C+V, S+X | emoji, clipboard, cut | dist/emoji, clipboard.device | existing run: / slash: ; cut = NEW | System |
+| S+A, S+C, S+V; S+C+Z; S+C+Space/T | select/copy/paste, zoom, theme | MENU_*, /font-size, /theme | existing menuid: / slash: | Style |
+| S+C+O | toggle menu (backdrop) | WORKBENCH MENU .. INVOKE (name form unverified) | existing rexx: | Workbench |
+| S+Sh+Space | toggle top bar | ShowTitle(screen, FALSE) | NEW C (KA_WIN verb) | Workspace/Screens |
+| S+W, S+Q | close window | own tab: tab:close; drawer: WORKBENCH WINDOW ACTIVE CLOSE | existing tab: / rexx: | Window |
+| C+A+Delete | close all | WBCTRLA_GetOpenDrawerList, CloseWorkbenchObjectA each | NEW C | Window |
+| S+F, S+C+A+F | full screen | WORKBENCH WINDOW ACTIVE MAX; /screen full | existing rexx: / slash: | Window |
+| S+A+F | full width | ChangeWindowBox(left 0, screen width) | NEW C | Window |
+| S+Home, S+A+Home | restore / save width | UNZOOMWINDOW (rexx); saved box = ChangeWindowBox | existing rexx: / NEW C (save) | Window |
+| S+M | minimize | WORKBENCH WINDOW ACTIVE MIN, WINDOWTOBACK | existing rexx: (foreign: NEW back) | Window |
+| A+Tab, A+Sh+Tab | next / prev window | WORKBENCH WINDOW ACTIVE CYCLE (drawers); foreign: Screen->FirstWindow walk + ActivateWindow + WindowToFront | existing rexx: / NEW C | Window |
+| S+Arrows | focus direction | geometry search + ActivateWindow | NEW C | Window |
+| S+Sh+Arrows | swap windows | 2x ChangeWindowBox | NEW C | Window |
+| S+minus/equal (+Sh,A,C) | resize 25/100/300 | SizeWindow / MoveWindow (relative); ARexx SIZEWINDOW absolute | existing rexx: (drawers) / NEW C | Window |
+| S+Left/Right mouse drag | move / resize | commodity input handler + MoveWindow / SizeWindow | NEW C (handler, larger) | Window |
+| S+S, S+grave | scratchpad toggle | WindowToBack / ScreenToBack of one chosen window | NEW C | Window |
+| S+1..0, S+Tab, S+Sh+Tab, S+C+Tab, C+A+Tab | workspaces / monitors | tabs 1-9; ScreenToFront / ScreenToBack on public screens | existing tab: / NEW C (screens) | Workspace/Screens |
+| S+C+L | lock | LOCKGUI / UNLOCKGUI (drawers only, no real lock) | existing rexx: | System |
+| S+C+I, B19/B49 screensaver | idle lock / blanker | Blanker commodity enable / disable | NEW C (broker command) | System |
+| S+C+Delete.. , S+I, S+Sh+I | input language | Prefs Input / Locale | existing run: | System |
+| Workbench menu: Backdrop, Execute Command, Redraw All, Update All, Last Message, About, Open volume (unverified), Quit | not in Omarchy | WORKBENCH MENU WINDOW ROOT INVOKE ... | existing rexx: (8 rows) | Workbench |
+| Window menu: New Drawer, Open Parent, Close, Update, Select Contents, Clean Up, Snapshot, Show, View By, Sort Order (unverified) | not in Omarchy | NEWDRAWER; MENU INVOKE; VIEW | existing rexx: (10 rows) | Window |
+| Icons menu: Open, Copy, Rename, Information, Snapshot, UnSnapshot, Leave Out, Put Away, Delete, Format Disk, Empty Trash | not in Omarchy | MENU INVOKE on selection; RENAME, DELETE, INFO | existing rexx: (11 rows) | Workbench |
+| Tools menu: ResetWB, user items | not in Omarchy | MENU INVOKE; AddAppMenuItemA for an Amarchy entry | existing rexx: / NEW C (AppMenuItem) | Workbench |
+| S+J, S+P, S+T, S+C+F, S+O, S+L, S+A+L, S+G, S+A+G, S+A+Arrows, S+A+1..5, S+Backspace family | tiling: split, pseudo, float, layouts, groups, gaps, opacity | none: Intuition has no tiling layout engine or compositor | none (out) | none |
+| S+Sh+1..0, S+Sh+A+1..0, S+A+S, S+Sh+C+Arrows | move window to workspace / scratchpad / monitor | none: a window cannot change screen | out | none |
+| Print family, S+, family, reminders, weather, dictation, share, transcode, docker, signal, XF86 keys, S+wheel, laptop display | Linux desktop | none stock on 3.2 | out | none |
+
+Counts (Table A of the research file, 87 binding rows, one row may stand for several keys): 50 have an equivalent, 37 stay out.
+Of the 50: 27 reuse an existing kind (menu/run/slash/tab/open), 10 reuse `rexx:`, 13 need new C (one `KA_WIN` kind plus ShowTitle, screens, Blanker, clipboard cut).
+Table C adds about 30 Workbench menu rows (Workbench, Window, Icons, Tools) that Omarchy lacks: all `rexx:`, no new C, once the MENU syntax is verified on a rig.
+Proposed groups: Window (about 22 rows), Workbench (about 30), Workspace/Screens (about 6); System and Apps exist already.
+Cut first: (1) all tiling rows (split, group, layout, gaps, pseudo), (2) move-to-workspace/monitor, (3) the mouse-drag input handler (largest new C for the least use).
 
 ## 4. The modifier on the Amiga
 
