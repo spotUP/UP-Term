@@ -835,14 +835,14 @@ static void osd_size_counts_the_reachable_levels(void)
     CHECK_INT(rows, MN_OSD_HEAD_LINES + 1);
     CHECK_INT(cols, MN_OSD_MIN_COLS);              /* "Theme" + pad is shorter than the minimum */
     /* the shipped dist/keymap: the sizes the commodity opens Super+Space and Super+Shift+Space with
-     * (7 entries in the root, 4 in apps; the widest label, "Amarchy preferences" two levels down, is one column over the minimum) */
+     * (8 entries in the root, 4 in apps; the widest label, "Amarchy preferences" two levels down, is one column over the minimum) */
     {
         static char file[16384];
         long n = slurp("dist/keymap", file, sizeof(file));
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS + 1);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 7);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 8);
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
         CHECK_INT(rows, MN_OSD_HEAD_LINES + 4);
