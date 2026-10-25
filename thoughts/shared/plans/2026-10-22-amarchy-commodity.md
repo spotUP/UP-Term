@@ -313,12 +313,20 @@ Done: `make dist dist-check` green; install on a fresh rig kit gives the commodi
 
 ## Ledger (tick in the open; N of 6 phases, items below)
 
-- [x] A1 keymap.c/h  [x] A2 upconf_rows  [x] A3 dist/keymap  [x] A4 meta=alt default  [x] A5 host tests  [ ] A6 rig meta test (written, not run)
-- [x] B1 handler match  [x] B2 dispatch  [x] B3 generated menu keys  [x] B4 Clear screen move  [ ] B5 rig table (keymap_rig.py written, not run)  [ ] B6 R1 terminal
-- [x] C1 broker  [x] C2 hotkeys  [x] C3 actions  [x] C4 semaphore  [x] C5 ARexx  [ ] C6 R1 commodity  [ ] C7 R3
+- [x] A1 keymap.c/h  [x] A2 upconf_rows  [x] A3 dist/keymap  [x] A4 meta=alt default  [x] A5 host tests  [x] A6 (rig 5, 2026-10-25) rig meta test
+- [x] B1 handler match  [x] B2 dispatch  [x] B3 generated menu keys  [x] B4 Clear screen move  [x] B5 rig table (rig 5, 2026-10-25: 11 of 13, font_bigger/font_smaller open, see below)  [x] B6 R1 terminal (rig 5 r3_terminal)
+- [x] C1 broker  [x] C2 hotkeys  [x] C3 actions  [x] C4 semaphore  [x] C5 ARexx  [x] C6 (rig 5, 2026-10-25) R1 commodity  [x] C7 (rig 5, 2026-10-25) R3
   (C1-C5 host side built: make amiga and make test ONLY=keymap pass; tools/rig/amarchy_rig.py written, NOT RUN. Unverified on Amiga: CxFilter strings, DivertCxMsg pass-through, CxCustom signatures.)
 - [ ] D1 timing  [ ] D2 filter field  [ ] D3 tree  [ ] D4 viewer  [ ] D5 library swap
-- [ ] E1 clash rig  [ ] F1 docs and packaging
+- [x] E1 (rig 5, 2026-10-25) clash rig  [ ] F1 docs and packaging
+
+### Rig run 2026-10-25 (rig 5)
+Handler drift fixed first (rig.py install + reboot). Logs: scratchpad commodity_rig5_{meta_alt,keymap,amarchy,clash}.log.
+- A6 meta_alt_rig.py: PASS 3 of 3. C6/C7 amarchy_rig.py: PASS 7 of 7 (r1_commodity hits +1; r3_terminal commodity +1, km-hits +0). E1 amarchy_clash_rig.py: PASS 7 of 7 (weak spots: screen_m_n reads 'Workbench Screen' after both M and N; window_drag body drag shows (0, 0) both ways; cleanup reports probe window closed False).
+- B5/B6 keymap_rig.py: FAIL, 11 of 13 rows, still open:
+  - `FAIL font_smaller: km-hits +1 menu-picks +0 tabs +0` (key fires, but font-size went 9 -> 11, the wrong direction; a repeat hit +1 with no change at 11)
+  - `FAIL font_bigger: km-hits +0 menu-picks +0 tabs +0` (Left Amiga+plus raw 0x0C: the handler does not match it, no hit)
+  - Hypothesis (unverified, 2026-10-25 evening): the handler resolved "plus"/"minus" through a Swedish layout. amarchy_clash_rig.py runs `SetKeyboard s` and its cleanup never restores `usa`; the handler resolves symbol names once at keymap load (config/keymap_load.c char_to_raw). Swedish 0x0B prints '+' unshifted, so "plus" -> 0x0B and the rig's fixed US raw 0x0B (minus) fires FONT_BIGGER (9 -> 11, one hit) while 0x0C hits nothing. fontdiag log matches both rows. Fix candidates: clash cleanup restores `SetKeyboard usa`; keymap_rig derives plus/minus raw codes from the active layout like the handler instead of fixed US codes. Rigs 5 and 7 left orphaned by the earlier session (wasabi refuses connections); re-verify on a fresh rig.
 
 ## 6. Decisions the owner must make
 
