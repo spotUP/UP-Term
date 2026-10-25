@@ -5,7 +5,7 @@
  * colours from menu_theme.c (the user's upconf palette through render/pens_amiga.c), a leaf is run by leaf.c.
  * Modes in the one window: list, input (a leaf's value), message (a refusal), viewer (the [bind] lines).
  * Every full draw bumps the global variable AMARCHY_DRAWS: the sentinel tools/rig/amarchy_gui_rig.py (G7)
- * reads; AMARCHY_ICON_LOADS beside it counts the .info images icon_gfx.c loaded (plan app-index, I3). */
+ * reads; AMARCHY_ROWS lists the drawn rows' labels; AMARCHY_ICON_LOADS beside it counts the .info images icon_gfx.c loaded (plan app-index, I3). */
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
@@ -120,6 +120,27 @@ static void sentinel_publish(const char *name, long n)
         n /= 10;
     } while (n && i > 0);
     SetVar((STRPTR) name, (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
+}
+
+/* Publishes the labels of the rows the list shows, joined by '|', as AMARCHY_ROWS: the rig reads which
+ * rows were drawn (a menu's text is pixels, no uitree gadget). */
+static void sentinel_rows(const gui *g)
+{
+    char b[256];
+    int i, n = 0;
+    b[0] = 0;
+    for (i = 0; i < g->count; i++) {
+        const char *l = g->it[g->idx[i]].label;
+        int len = (int)strlen(l);
+        if (n + len + 2 >= (int)sizeof b)
+            break;
+        if (i)
+            b[n++] = '|';
+        memcpy(b + n, l, len);
+        n += len;
+        b[n] = 0;
+    }
+    SetVar((STRPTR) "AMARCHY_ROWS", (STRPTR)b, -1, GVF_GLOBAL_ONLY);
 }
 
 /* ---- text and fills ----------------------------------------------------------------------------------- */
@@ -279,6 +300,8 @@ static void draw_full(gui *g)
     draw_list(g);
     g->draws++;
     sentinel_publish("AMARCHY_DRAWS", g->draws);
+    if (g->mode == M_LIST)
+        sentinel_rows(g);
     sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
 }
 

@@ -55,35 +55,39 @@ def r_start():
     return True, 'commodity started'
 
 
-def root_menu_text():
-    # open the quick menu with Super+Space, read the screen once the filter line shows, leave with Esc
-    ami.key(RAW['space'], LAMIGA)
+def root_menu_rows():
+    # open the quick menu with Super+Space. The default menu is the drawn one (amarchy-gui, window "Amarchy"):
+    # its text is pixels, so the rows come from the sentinel ENV:AMARCHY_ROWS (gui.c sentinel_rows: the labels
+    # of the rows of each list draw, joined by '|'). Deleted first, read once the window is up, Esc leaves.
+    import amarchy_gui_rig as g
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    s, w = g.open_menu()
+    rows = ''
     for _ in range(40):
-        if 'Filter' in screen_text():
+        rc, out = c.run('GetEnv AMARCHY_ROWS')
+        rows = out.strip() if rc == 0 else ''
+        if w and rows:
             break
         time.sleep(0.25)
-    s = screen_text()
     ami.key(RAW['esc'])
     time.sleep(1)
-    return s
+    return bool(w), rows.split('|') if rows else []
 
 
 def r_rows_no_terminal():
     # TERM-ROWS-ONLY-OVER-TERMINAL: no UP-Term window exists yet, the menu is the only one. The rows
     # whose action needs a terminal (Style, Window: tab:, menuid:, slash:) are hidden, Apps stays.
-    s = root_menu_text()
-    ok = 'Filter' in s and 'Apps' in s and 'Style' not in s and 'Window' not in s
-    return ok, 'no UP-Term window: root lists Apps (%s), no Style (%s), no Window (%s)' % (
-        'Apps' in s, 'Style' not in s, 'Window' not in s)
+    up, rows = root_menu_rows()
+    ok = up and 'Apps' in rows and 'Style' not in rows and 'Window' not in rows
+    return ok, 'no UP-Term window: drawn root rows %s (menu up %s)' % (rows, up)
 
 
 def r_rows_over_terminal():
     # the same menu over an UP-Term window lists Style and Window again
     open_terminal()
-    s = root_menu_text()
-    ok = 'Filter' in s and 'Apps' in s and 'Style' in s and 'Window' in s
-    return ok, 'over an UP-Term window: root lists Apps (%s), Style (%s), Window (%s)' % (
-        'Apps' in s, 'Style' in s, 'Window' in s)
+    up, rows = root_menu_rows()
+    ok = up and 'Apps' in rows and 'Style' in rows and 'Window' in rows
+    return ok, 'over an UP-Term window: drawn root rows %s (menu up %s)' % (rows, up)
 
 
 def r_open_timing():
