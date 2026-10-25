@@ -4,7 +4,8 @@
  * tool is WHDLoad is a game. The rows (`kind<TAB>label<TAB>path`, amarchy/index_core.c) go to
  * ENVARC:Amarchy/apps through a temp file and a rename, so a reader never sees half a file. Amarchy
  * itself never scans. The upconf key amarchy-index-skip (comma separated path prefixes) leaves
- * drawers out. A plain vbcc program, no ixemul.
+ * drawers out. Network volumes (ix_net_handler) are left out unless
+ * the key amarchy-index-volumes lists their names. Ctrl-C stops the scan: no cache, RETURN_WARN. A plain vbcc program, no ixemul.
  *
  * Progress (AMARCHY-INDEX-WHERE): the scan copies the drawer or icon path it is on, and a stage word,
  * into a public record (a semaphore named "Amarchy.index", AllocVec MEMF_PUBLIC, never freed, found
@@ -61,6 +62,8 @@ static char where_buf[1024];
 static upconf conf;
 static char conf_buf[UC_MAX_FILE + 2];
 static const char *skip_list = "";
+static const char *net_volumes = "";   /* upconf amarchy-index-volumes: the network volumes to scan */
+static int stopped;                    /* Ctrl-C seen: unwind, write nothing */
 static ix_row *rows;
 static int nrows;
 static long n_dirs;
@@ -212,6 +215,7 @@ static void conf_read(void)
         conf_buf[got] = 0;
         upconf_parse(&conf, conf_buf, got);
         skip_list = upconf_str(&conf, "default", "amarchy-index-skip", "");
+        net_volumes = upconf_str(&conf, "default", "amarchy-index-volumes", "");
     }
 }
 
@@ -267,12 +271,22 @@ static void add_icon(const char *dir, const char *name)
     nrows++;
 }
 
+/* Ctrl-C pending? SetSignal(0, 0) reads the signals without clearing them. Latches in `stopped`. */
+static int broken(void)
+{
+    if (!stopped && (SetSignal(0, 0) & SIGBREAKF_CTRL_C))
+        stopped = 1;
+    return stopped;
+}
+
 static void walk(const char *dir, int depth)
 {
     struct FileInfoBlock *fib;
     BPTR lock;
     char sub[IX_PATH];
-    if (nrows >= IX_MAXROWS)
+    if (nrows >= IX_MAXROWS || stopped)
+        return;
+    if (broken())
         return;
     note(IX_ST_WALK, dir);
     if (!(lock = Lock((STRPTR)dir, ACCESS_READ)))
@@ -280,7 +294,7 @@ static void walk(const char *dir, int depth)
     n_dirs++;
     fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
     if (fib && Examine(lock, fib)) {
-        while (ExNext(lock, fib)) {
+        while (!broken() && ExNext(lock, fib)) {
             const char *nm = (const char *)fib->fib_FileName;
             int dl = (int)strlen(dir), nl = (int)strlen(nm);
             if (fib->fib_DirEntryType > 0) {
@@ -295,13 +309,34 @@ static void walk(const char *dir, int depth)
                 walk(sub, depth + 1);
             } else if (nl > 5 && ieq(nm + nl - 5, ".info"))
                 add_icon(dir, nm);
-            if (nrows >= IX_MAXROWS)
+            if (nrows >= IX_MAXROWS || stopped)
                 break;
         }
     }
     if (fib)
         FreeDosObject(DOS_FIB, fib);
     UnLock(lock);
+}
+
+/* Does the volume sit on a network handler (ix_net_handler)? The device that owns the volume's
+ * handler task names it; checked here, not in hv_disk(), which the installer shares. */
+static int vol_network(struct DosList *vol, struct DosList *head)
+{
+    struct DosList *d;
+    char h[64];
+    for (d = NextDosEntry(head, LDF_DEVICES); d; d = NextDosEntry(d, LDF_DEVICES)) {
+        const unsigned char *hn;
+        int n;
+        if (d->dol_Task != vol->dol_Task || !d->dol_misc.dol_handler.dol_Handler)
+            continue;
+        hn = (const unsigned char *)BADDR(d->dol_misc.dol_handler.dol_Handler);
+        n = hn[0] < sizeof h - 1 ? hn[0] : (int)sizeof h - 1;
+        memcpy(h, hn + 1, n);
+        h[n] = 0;
+        if (ix_net_handler(h))
+            return 1;
+    }
+    return 0;
 }
 
 static int volumes(char names[][IX_VOL])
@@ -316,6 +351,8 @@ static int volumes(char names[][IX_VOL])
             continue;
         memcpy(names[n], nm + 1, len);
         names[n][len] = 0;
+        if (!ix_volume_wanted(names[n], vol_network(v, head), net_volumes))
+            continue;
         n++;
     }
     UnLockDosList(LDF_VOLUMES | LDF_DEVICES | LDF_READ);
@@ -379,6 +416,14 @@ int main(void)
         strcpy(root, names[i]);
         strcat(root, ":");
         walk(root, 0);
+    }
+    if (broken()) {
+        if (sh)
+            ix_prog_stopped(&sh->p);
+        PutStr((STRPTR) "amarchy-index: stopped by Ctrl-C, no cache written\n");
+        FreeVec(rows);
+        CloseLibrary(IconBase);
+        return RETURN_WARN;
     }
     note(IX_ST_WRITE, IX_DEST);
     ix_sort_dedupe(rows, nrows);

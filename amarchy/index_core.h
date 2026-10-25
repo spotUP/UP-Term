@@ -88,7 +88,7 @@ int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n);
  * in before each drawer it enters and each icon it opens; no disk writes. Pure data and text here; the
  * OS side only allocates and finds it. */
 #define IX_PROG_NAME "Amarchy.index"
-enum { IX_ST_IDLE = 0, IX_ST_VOLUMES, IX_ST_WALK, IX_ST_ICON, IX_ST_WRITE, IX_ST_DONE };
+enum { IX_ST_IDLE = 0, IX_ST_VOLUMES, IX_ST_WALK, IX_ST_ICON, IX_ST_WRITE, IX_ST_DONE, IX_ST_STOPPED };
 typedef struct ix_prog {
     long seq;                   /* counts every update: a changing seq means the scanner is moving */
     int  stage;                 /* IX_ST_* */
@@ -103,12 +103,26 @@ void ix_prog_begin(ix_prog *p);
 void ix_prog_note(ix_prog *p, int stage, const char *path);
 /* The scan finished: stage DONE with the counts. */
 void ix_prog_done(ix_prog *p, long napps, long ngames, long nvols);
-/* The stage as a word: volumes, walk, icon, write, done, idle. */
+/* The scan was stopped (Ctrl-C): stage STOPPED, the path where it stopped is kept. */
+void ix_prog_stopped(ix_prog *p);
+/* The stage as a word: volumes, walk, icon, write, done, stopped, idle. */
 const char *ix_stage_name(int stage);
 /* The text `amarchy-index --where` prints (several lines, each ending in LF), into out; the length,
  * or -1 when it does not fit n. task: 1 the scanner task still exists, 0 it is gone. moving: 1 seq
  * changed while --where watched, 0 it did not. A task that exists, is not done and does not move is
  * reported as stuck or stopped (a requester waits for a click); one gone and not done as died. */
 int ix_prog_text(const ix_prog *p, int task, int moving, char *out, int n);
+
+/* Is handler (the DOS device's handler name, e.g. "L:smb2-handler", path allowed) a network file system?
+ * Measured on the A1200 (thoughts/spot/term-findings/index-skip-network.md): the SMB shares have handler
+ * L:smb2-handler, no startup message and no exec device, disk type "SMB\2"; a hard disk has a startup
+ * message naming scsi.device. The handler name is the reliable signal, so a short list of known network
+ * handlers (prefix of the file name: smb, nfs, ftp) decides. NULL or empty: 0. */
+int ix_net_handler(const char *handler);
+
+/* Is the volume scanned? A local volume always; a network one only when its name is in volumes, the
+ * comma-separated upconf key amarchy-index-volumes (case-insensitive, blanks and a trailing colon
+ * around a name ignored). */
+int ix_volume_wanted(const char *vol, int network, const char *volumes);
 
 #endif
