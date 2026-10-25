@@ -298,6 +298,7 @@ static int *int_of(struct app *a, int id)
     switch (id) {
     case PG_CURSOR: return &a->f.cursor;
     case PG_BLINK: return &a->f.blink;
+    case PG_AM_ICONS: return &a->f.am_icons;
     case PG_BELL: return &a->f.bell;
     case PG_BOLD: return &a->f.bold;
     case PG_WHEEL: return &a->f.wheel;

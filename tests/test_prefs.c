@@ -505,6 +505,7 @@ static void amarchy_keys_round_trip_through_the_default_section(void)
     CHECK_STR(f.am_demo, "Demos");
     CHECK_STR(f.am_hide, "");
     CHECK_STR(f.am_font, "");
+    CHECK_INT(f.am_icons, 0);
     strcpy(f.am_hide, "Prefs,Utilities");
     strcpy(f.am_font, "topaz.font:9");
     len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
@@ -531,6 +532,38 @@ static void amarchy_keys_round_trip_through_the_default_section(void)
     CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
     CHECK_STR(upconf_str(&conf, "default", "amarchy-demo-drawers", "?"), "?");
     CHECK_STR(upconf_str(&conf, "default", "amarchy-menu-font", "?"), "?");
+}
+
+static void the_app_icons_key_defaults_to_generic(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    static const char none[] = "[default]\nfont = x\n";
+    static const char amiga[] = "[default]\namarchy-app-icons = Amiga\n";
+    static const char other[] = "[default]\namarchy-app-icons = nonsense\n";
+    prefs_fields f;
+    long len;
+    CHECK_INT(prefs_load(&conf, none, (long)strlen(none), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.am_icons, 0);
+    CHECK_INT(prefs_load(&conf, amiga, (long)strlen(amiga), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.am_icons, 1);
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-app-icons", "?"), "amiga");
+    CHECK_INT(prefs_load(&conf, other, (long)strlen(other), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(f.am_icons, 0);
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-app-icons", "?"), "?");
+    f.am_icons = 1;
+    {
+        prefs_fields g = f;
+        g.am_icons = 0;
+        CHECK_INT(prefs_equal(&f, &g), 0);
+    }
 }
 
 static void the_amarchy_keyword_picks_the_start_page(void)
@@ -1379,6 +1412,7 @@ void suite_prefs(void)
     style_stage_sets_only_the_look();
     dither_and_padding_color_round_trip();
     amarchy_keys_round_trip_through_the_default_section();
+    the_app_icons_key_defaults_to_generic();
     the_amarchy_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
 }

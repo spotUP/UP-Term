@@ -41,7 +41,7 @@ enum {
     PG_TERM = 129, PG_COLORS = 130,
     /* Amarchy */
     PG_AM_MUSIC = 140, PG_AM_DEMO = 141, PG_AM_HIDE = 142,
-    PG_AM_FONT = 143, PG_AM_FONT_CHOOSE = 144, PG_AM_FONT_CLEAR = 145,
+    PG_AM_FONT = 143, PG_AM_FONT_CHOOSE = 144, PG_AM_FONT_CLEAR = 145, PG_AM_ICONS = 146,
     /* the colour window (PX12) and the name window (PX11) */
     PC_WHEEL = 150, PC_BRIGHTNESS = 151, PC_RED = 152, PC_GREEN = 153, PC_BLUE = 154,
     PC_HEX = 155, PC_SWATCH = 156, PC_OK = 157, PC_CANCEL = 158,
