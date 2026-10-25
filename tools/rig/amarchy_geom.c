@@ -1,7 +1,9 @@
 /* amarchy_geom -- the numbers amarchy-gui's window must have, from the same code (menu_geom.c, menu_core.c,
  * menu_icon.c, the default keymap) built for the host: tools/rig/amarchy_gui_rig.py compares the rig's window
  * with them (G7).
- *     amarchy_geom SCREEN_W SCREEN_H FONT_YSIZE FONT_XSIZE RES_X RES_Y [label=pixels ...]
+ *     amarchy_geom [--term] SCREEN_W SCREEN_H FONT_YSIZE FONT_XSIZE RES_X RES_Y [label=pixels ...]
+ * --term: an UP-Term window is under the menu (all rows); default is over Workbench, where tab:, menuid: and
+ * slash: rows are hidden (mn_children_t / mg_width_t, as gui.c's term_present).
  * (RES_X, RES_Y: the screen mode's DisplayInfo Resolution ticks of one pixel, 0 0 = square)
  * prints "need <label>" for every text the font must measure and has no label=pixels yet (the width then
  * assumes a fixed-width font: XSIZE per character), "icon <width> <height>", and per level
@@ -55,7 +57,12 @@ int main(int argc, char **argv)
     mg_font f;
     mg_screen s;
     mg_metrics m;
-    int icon_w, icon_h, chev_w, w, i;
+    int icon_w, icon_h, chev_w, w, i, term = 0;
+    if (argc > 1 && !strcmp(argv[1], "--term")) {
+        term = 1;
+        argv++;
+        argc--;
+    }
     if (argc < 7)
         return 2;
     s.w = atoi(argv[1]);
@@ -80,8 +87,8 @@ int main(int argc, char **argv)
     printf("icon %d %d\n", icon_w, icon_h);
     for (i = 0; i < 2; i++) {
         mg_geom g;
-        int n = mn_children(&km, nodes[i], it, MN_MAX_ITEMS);
-        w = mg_width(&km, nodes[i], &f, icon_w, chev_w, text_len, 0, &s);
+        int n = mn_children_t(&km, nodes[i], it, MN_MAX_ITEMS, term);
+        w = mg_width_t(&km, nodes[i], &f, icon_w, chev_w, text_len, 0, &s, term);
         mg_layout(&g, &f, w, n, &s);
         printf("level %s %d %d %d %d %d %d\n", nodes[i][0] ? nodes[i] : "root", g.x, g.y, g.w, g.h, g.n, g.visible);
         /* the first row's icon cell (draw_row/draw_icon): window-relative x, y, side; the second row's y */
