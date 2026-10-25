@@ -26,6 +26,15 @@ typedef struct mn_item {
  * 0 when not; case is ignored; an empty filter matches everything (2). */
 int mn_match(const char *label, const char *filter);
 
+/* Rows whose action needs a terminal window (tab:, menuid:, slash:) are shown only when the menu
+ * opened over an UP-Term window (TERM-ROWS-ONLY-OVER-TERMINAL). The one decision both menus use. */
+int mn_kind_needs_terminal(int kind);
+/* 1 when a row of action kind `kind` is shown, given term = a terminal window is present. */
+int mn_row_visible(int kind, int term);
+/* mn_children with that filter: a hidden row is left out, and a group with no visible row below it
+ * (at any depth) is left out too. term = 1 shows everything, which mn_children does. */
+int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int term);
+
 /* The entries one level below `node` ("" is the root, "apps" the Apps node), in file order: a
  * [menu] id one segment deeper is a leaf, a longer one makes a group (once). The count; at
  * most max. A row whose id equals the node itself is never its own child. */

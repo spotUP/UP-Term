@@ -39,6 +39,11 @@ typedef struct lf_ui {
     void *ctx;
 } lf_ui;
 
+/* 1 when the menu opened over an UP-Term window: the window the request port reaches (the one focused
+ * before the menu, handler/upactive.h) is alive. Both menus ask it once at open and pass the answer to
+ * ix_level_t (TERM-ROWS-ONLY-OVER-TERMINAL). */
+int lf_terminal_present(void);
+
 /* returns the action's code (0 = done) */
 int lf_run(const km_menu *m, const lf_ui *ui);
 

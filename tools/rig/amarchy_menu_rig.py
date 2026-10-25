@@ -52,8 +52,38 @@ def open_terminal():
 
 def r_start():
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+    return True, 'commodity started'
+
+
+def root_menu_text():
+    # open the quick menu with Super+Space, read the screen once the filter line shows, leave with Esc
+    ami.key(RAW['space'], LAMIGA)
+    for _ in range(40):
+        if 'Filter' in screen_text():
+            break
+        time.sleep(0.25)
+    s = screen_text()
+    ami.key(RAW['esc'])
+    time.sleep(1)
+    return s
+
+
+def r_rows_no_terminal():
+    # TERM-ROWS-ONLY-OVER-TERMINAL: no UP-Term window exists yet, the menu is the only one. The rows
+    # whose action needs a terminal (Style, Window: tab:, menuid:, slash:) are hidden, Apps stays.
+    s = root_menu_text()
+    ok = 'Filter' in s and 'Apps' in s and 'Style' not in s and 'Window' not in s
+    return ok, 'no UP-Term window: root lists Apps (%s), no Style (%s), no Window (%s)' % (
+        'Apps' in s, 'Style' not in s, 'Window' not in s)
+
+
+def r_rows_over_terminal():
+    # the same menu over an UP-Term window lists Style and Window again
     open_terminal()
-    return True, 'commodity started, terminal window open and focused'
+    s = root_menu_text()
+    ok = 'Filter' in s and 'Apps' in s and 'Style' in s and 'Window' in s
+    return ok, 'over an UP-Term window: root lists Apps (%s), Style (%s), Window (%s)' % (
+        'Apps' in s, 'Style' in s, 'Window' in s)
 
 
 def r_open_timing():
@@ -519,6 +549,8 @@ def r_app_index():
 
 ROWS = [
     ('start',        r_start),
+    ('rows_no_terminal', r_rows_no_terminal),
+    ('rows_over_terminal', r_rows_over_terminal),
     ('open_timing',  r_open_timing),
     ('type_th',      r_type_th),
     ('esc_up',       r_esc_up),

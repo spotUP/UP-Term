@@ -10,6 +10,7 @@
 #include "wblaunch.h"
 #include "termenv.h"
 #include "../handler/upreq.h"
+#include "../handler/upactive.h"
 #include "../handler/frontscr.h"
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
@@ -68,6 +69,18 @@ static int run_in_uterm(const char *cmd, const lf_ui *ui)
         return UPREQ_FAILED;
     }
     return 0;
+}
+
+int lf_terminal_present(void)
+{
+    char name[UPREQ_NAMELEN];
+    struct MsgPort *tp;
+    if (!upactive_prev(name))
+        return 0;
+    Forbid();
+    tp = FindPort((STRPTR)name);
+    Permit();
+    return tp != 0;
 }
 
 static int run_request(const km_menu *m, const lf_ui *ui)

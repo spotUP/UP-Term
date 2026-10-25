@@ -99,6 +99,7 @@ typedef struct gui {
 
 static keymap km;
 static ix_index ixs;
+static int term_present;         /* decided once at open: lf_terminal_present */
 static gui G;
 static upconf conf;
 static char conf_buf[UC_MAX_FILE + 2];
@@ -298,7 +299,7 @@ static void relayout(gui *g, int n)
 
 static void list_rebuild(gui *g)
 {
-    int n = ix_level(&km, &ixs, g->node, g->filter, g->it, g->cap);
+    int n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
     g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
     g->sel = g->top = 0;
     relayout(g, g->count);
@@ -789,6 +790,7 @@ int main(int argc, char **argv)
     node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
     keymap_load(&km, km_default_text);
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    term_present = lf_terminal_present();
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
     g->idx = malloc(g->cap * sizeof *g->idx);
@@ -857,7 +859,7 @@ int main(int argc, char **argv)
         g->icon_h = mi_count() > 0 ? mi_size(&m) : 0;
         g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
         g->w = mg_width(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms);
-        n = ix_level(&km, &ixs, g->node, g->filter, g->it, g->cap);
+        n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
         g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
     }

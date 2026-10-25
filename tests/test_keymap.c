@@ -642,6 +642,48 @@ static void typing_th_leaves_theme_first(void)
     CHECK_INT(mn_match("Font", ""), 2);
 }
 
+/* TERM-ROWS-ONLY-OVER-TERMINAL: the shipped [menu] tree, with and without an UP-Term window under the
+ * menu. Style and Window (tab:, menuid:, slash: rows) and their sections go; Apps stays, and the
+ * Claude row (menuid:) goes with them. */
+static int has_label(const mn_item *it, int n, const char *label)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (!strcmp(it[i].label, label))
+            return 1;
+    return 0;
+}
+
+static void terminal_rows_show_only_over_a_terminal(void)
+{
+    static char file[16384];
+    mn_item it[MN_MAX_ITEMS];
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int c;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 0);
+    CHECK(has_label(it, c, "Apps"));
+    CHECK(!has_label(it, c, "Style"));
+    CHECK(!has_label(it, c, "Window"));
+    c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 0);
+    c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 0);
+    c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
+    CHECK(has_label(it, c, "UP-Term") && has_label(it, c, "Editor"));
+    CHECK(!has_label(it, c, "Claude"));
+    CHECK_INT(c, mn_children(&km, "apps", it, MN_MAX_ITEMS) - 1);
+    c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 1);
+    CHECK(has_label(it, c, "Apps") && has_label(it, c, "Style") && has_label(it, c, "Window"));
+    c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 1);
+    CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
+    c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 1);
+    CHECK(has_label(it, c, "Claude"));
+    CHECK(!mn_row_visible(KA_TAB, 0) && !mn_row_visible(KA_MENUID, 0) && !mn_row_visible(KA_SLASH, 0));
+    CHECK(mn_row_visible(KA_RUN, 0) && mn_row_visible(KA_OPEN, 0) && mn_row_visible(KA_DETACH, 0));
+    CHECK(mn_row_visible(KA_SLASH, 1));
+}
+
 /* Phase D: the menu tree comes from the [menu] ids; Esc goes up one level and stops at the root */
 static void menu_levels_follow_the_ids_and_escape_goes_up(void)
 {
@@ -1325,6 +1367,7 @@ void suite_keymap(void)
     ua_count_released_before_own_window_closes();
     typing_th_leaves_theme_first();
     menu_levels_follow_the_ids_and_escape_goes_up();
+    terminal_rows_show_only_over_a_terminal();
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
     drawn_menu_icons_look_square_on_tall_pixels();

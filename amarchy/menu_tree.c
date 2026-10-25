@@ -12,7 +12,32 @@ static void cpy(char *d, const char *s, int n)
     d[i] = 0;
 }
 
+int mn_kind_needs_terminal(int kind)
+{
+    return kind == KA_TAB || kind == KA_MENUID || kind == KA_SLASH;
+}
+
+int mn_row_visible(int kind, int term)
+{
+    return term || !mn_kind_needs_terminal(kind);
+}
+
+/* 1 when some [menu] row whose id starts with prefix (a group's path and its dot) is visible */
+static int group_visible(const keymap *k, const char *prefix, int plen, int term)
+{
+    int i;
+    for (i = 0; i < k->nmenu; i++)
+        if (!strncmp(k->menu[i].id, prefix, plen) && mn_row_visible(k->menu[i].kind, term))
+            return 1;
+    return 0;
+}
+
 int mn_children(const keymap *k, const char *node, mn_item *out, int max)
+{
+    return mn_children_t(k, node, out, max, 1);
+}
+
+int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int term)
 {
     int i, j, n = 0, nl = (int)strlen(node);
     for (i = 0; i < k->nmenu && n < max; i++) {
@@ -31,6 +56,8 @@ int mn_children(const keymap *k, const char *node, mn_item *out, int max)
         if (seglen >= KM_ID)
             continue;
         if (dot) {
+            if (!group_visible(k, id, (int)(dot - id) + 1, term))
+                continue;
             for (j = 0; j < n; j++)
                 if (out[j].row == MN_ROW_GROUP && !strncmp(out[j].seg, rest, seglen) && !out[j].seg[seglen])
                     dup = 1;
@@ -43,6 +70,8 @@ int mn_children(const keymap *k, const char *node, mn_item *out, int max)
             out[n].label[0] = (char)((rest[0] >= 'a' && rest[0] <= 'z') ? rest[0] - 32 : rest[0]);
             cpy(out[n].label + 1, rest + 1, seglen < KM_LABEL ? seglen : KM_LABEL);
         } else {
+            if (!mn_row_visible(k->menu[i].kind, term))
+                continue;
             out[n].row = i;
             out[n].ix = -1;
             cpy(out[n].seg, rest, KM_ID);
