@@ -21,7 +21,7 @@ REQUIRE = os.environ.get('SLIM_REQUIRE') == '1'
 ARCHIVE = {r['id']: r['archive'] for r in pkgs.rows()}
 BASE = BUILD / 'dist/UP-Term/Files/userland'
 MOVED = ('bin/git', 'bin/perl', 'bin/vim', 'share/vim', 'share/git-core', 'share/man/man1/vim.1',
-         'licenses/git', 'licenses/perl', 'licenses/vim', 'bin/BitchX', 'lib/bx', 'licenses/bitchx')
+         'licenses/git', 'licenses/perl', 'licenses/vim', 'bin/BitchX', 'lib/bx', 'licenses/bitchx', 'vbcc', 'licenses/vbcc')
 
 
 def tree(root):
@@ -39,7 +39,7 @@ def need(case, path):
 
 class Table(unittest.TestCase):
     def test_the_packages_are_git_perl_vim_bitchx_and_are_rows_of_packages_txt(self):
-        self.assertEqual(slim.ids(), ['git', 'perl', 'vim', 'bitchx'])
+        self.assertEqual(slim.ids(), ['git', 'perl', 'vim', 'bitchx', 'vbcc'])
         for i in slim.ids():
             self.assertIn(i, ARCHIVE)
             self.assertTrue(ARCHIVE[i].startswith('up-'), i)      # they need the base: UP-Term:bin
@@ -88,7 +88,7 @@ class SlimBase(unittest.TestCase):
         out = subprocess.run(['lha', 'l', str(BUILD / 'up-term.lha')], capture_output=True, text=True, check=True).stdout
         for m in ('Files/userland/bin/git', 'Files/userland/bin/perl', 'Files/userland/bin/vim',
                   'Files/userland/share/vim/', 'Files/userland/share/git-core/',
-                  'Files/userland/bin/BitchX', 'Files/userland/lib/bx/'):
+                  'Files/userland/bin/BitchX', 'Files/userland/lib/bx/', 'Files/userland/vbcc/'):
             self.assertNotIn(' UP-Term/' + m, out, m)
 
 

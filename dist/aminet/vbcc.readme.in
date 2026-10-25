@@ -1,0 +1,18 @@
+Short:        vbcc C compiler for UP-Term
+Author:       spotUP
+Uploader:     spotup@gmail.com (spotUP)
+Type:         dev/c
+Version:      @VERSION@
+Architecture: m68k-amigaos >= 3.0.0; m68k-020
+Requires:     comm/term/up-term.lha >= @NEEDSBASE@ (it brings the patched ixemul.library)
+Distribution: Aminet
+
+vbcc 0.9h patch2 (vc, vbccm68k, vasm, vlink and the m68k-amigaos target, unmodified from the author)
+with UP-Term's configuration, for an UP-Term window. The Amiga NDK headers are not included: point
+NDKINC: at your Include_H drawer.
+
+Needs the base archive up-term.lha (version @NEEDSBASE@ or newer) installed first.
+
+Install: unpack, double-click Install. Uninstall removes what this archive installed.
+
+Licence: vbcc, vasm, vlink: redistributable unmodified, non-commercial use.

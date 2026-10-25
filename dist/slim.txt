@@ -18,3 +18,5 @@ bitchx  bin/BitchX
 bitchx  lib/bx
 bitchx  share/man/man1/BitchX.1.bz2
 bitchx  licenses/bitchx
+vbcc    vbcc
+vbcc    licenses/vbcc

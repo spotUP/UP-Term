@@ -119,7 +119,7 @@ class HandedLines(unittest.TestCase):
         want = ["handed 0 00000000 handed#" + p for p in
                 ("Files/Claude", "Files/amiga-pi", "Files/nvim", "Files/python3", "Files/userland/bin/git",
                  "Files/userland/bin/perl", "Files/userland/bin/vim", "Files/userland/share/git-core",
-                 "Files/userland/share/vim", "Files/userland/bin/BitchX", "Files/userland/lib/bx")]
+                 "Files/userland/share/vim", "Files/userland/bin/BitchX", "Files/userland/lib/bx", "Files/userland/vbcc")]
         self.assertEqual([l for l in lines if l.startswith("handed ")], sorted(want, key=lambda l: l.split(' ', 3)[3].encode()))
         paths = [l.split(' ', 3)[3].encode() for l in lines]
         self.assertEqual(paths, sorted(paths))

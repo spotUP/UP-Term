@@ -175,7 +175,7 @@ class Readme(unittest.TestCase):
 
     def test_the_directories_are_the_owners_choice(self):
         want = {'base': 'comm/term', 'src': 'comm/term', 'claude': 'comm/misc', 'pi': 'comm/misc',
-                'nvim': 'text/edit', 'python': 'dev/lang', 'git': 'dev/misc', 'perl': 'dev/lang', 'vim': 'text/edit', 'bitchx': 'comm/irc'}
+                'nvim': 'text/edit', 'python': 'dev/lang', 'git': 'dev/misc', 'perl': 'dev/lang', 'vim': 'text/edit', 'bitchx': 'comm/irc', 'vbcc': 'dev/c'}
         for i, d in want.items():
             self.assertEqual(mr.fields(mr.build(i)[1])['Type'], d, i)
 

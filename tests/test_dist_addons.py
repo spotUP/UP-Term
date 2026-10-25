@@ -33,8 +33,8 @@ class EveryAddOn(unittest.TestCase):
     def each(self):
         return [(r['id'], scripts(r['id'])) for r in ADDONS]
 
-    def test_there_are_eight_add_ons(self):
-        self.assertEqual(sorted(r['id'] for r in ADDONS), ['bitchx', 'claude', 'git', 'nvim', 'perl', 'pi', 'python', 'vim'])
+    def test_there_are_nine_add_ons(self):
+        self.assertEqual(sorted(r['id'] for r in ADDONS), ['bitchx', 'claude', 'git', 'nvim', 'perl', 'pi', 'python', 'vbcc', 'vim'])
 
     def test_a_failed_write_ends_the_install_with_rc_20_before_the_success_line(self):
         """Disk full (rig, up-nvim through upkg): Copy and Echo-to-file failed with rc 20, but `FailAt 21`

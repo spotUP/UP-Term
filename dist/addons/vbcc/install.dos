@@ -1,0 +1,69 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; up-vbcc install: the vbcc C compiler for AmigaOS 68k (vc, vbccm68k, vasm, vlink, the m68k-amigaos
+; target) in UP-Term:vbcc, with the VBCC: assign, its path and the VBCC environment variable
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. The Installer
+; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
+; the same list); the first part, check, stops the install when up-term.lha is
+; missing or too old (the reason is in ENV:UPTCHECK).
+FailAt 21
+; the archive's Files drawer: every name below is relative to it
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab copy-vbcc
+; The drawer userland/vbcc (the author's archives, unmodified, plus UP-Term's config/upterm68k) goes to
+; UP-Term:vbcc, the path config/upterm68k and startup.txt name. userland holds what dist/slim.txt names;
+; Copy of a drawer copies what is in it.
+MakeDir >NIL: UP-Term:licenses
+Copy userland UP-Term: ALL CLONE QUIET
+If WARN
+  Quit 20
+EndIf
+; VBCC: assigned now and at every boot: a block in S:User-Startup that assigns only while UP-Term:vbcc
+; is there, so one left behind by an Uninstall that could not take it out does no harm. The Amiga NDK
+; headers are not part of this package: NDKINC: stays the owner's assign (README.txt).
+Assign VBCC: UP-Term:vbcc
+Path VBCC:bin ADD
+SetEnv VBCC VBCC:
+Search >NIL: S:User-Startup ";BEGIN vbcc"
+If WARN
+  Echo >>S:User-Startup ";BEGIN vbcc"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "If EXISTS UP-Term:vbcc"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  Assign VBCC: UP-Term:vbcc"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  Path VBCC:bin ADD"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  SetEnv VBCC VBCC:"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "EndIf"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup ";END vbcc"
+  If WARN
+    Quit 20
+  EndIf
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "VBCC installed: in an UP-Term window  vc +upterm68k hello.c -o hello  (NDKINC: needs the NDK headers, see README.txt)."

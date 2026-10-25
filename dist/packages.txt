@@ -28,3 +28,4 @@ git     up-git     1.0      1.0         80      UP-Term:pkg/up-git     Files/use
 perl    up-perl    1.0      1.0         80      UP-Term:pkg/up-perl    Files/userland/bin/perl                               upterm-ports,ixemul-vtcon
 vim     up-vim     1.0      1.0         80      UP-Term:pkg/up-vim     Files/userland/bin/vim,Files/userland/share/vim       upterm-ports,ixemul-vtcon
 bitchx  up-bitchx  1.0      1.0         80      UP-Term:pkg/up-bitchx  Files/userland/bin/BitchX,Files/userland/lib/bx       upterm-ports,ixemul-vtcon
+vbcc    up-vbcc    1.0      1.0         80      UP-Term:pkg/up-vbcc    Files/userland/vbcc                                   upterm-ports,ixemul-vtcon

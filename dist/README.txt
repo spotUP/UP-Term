@@ -1033,7 +1033,9 @@ ADD-ONS
   (UP-Term:bin, UP-Term:share). Type  upkg install git  (or perl, vim) in an
   UP-Term window; upkg remove takes them out. BitchX, the IRC client, is an
   upkg package too (upkg install bitchx): C:BitchX in UP-Term:bin and its
-  scripts and help in UP-Term:lib/bx. Uninstall of UP-Term takes
+  scripts and help in UP-Term:lib/bx. vbcc, the C compiler, is one too
+  (upkg install vbcc): UP-Term:vbcc, with the VBCC: assign and path in
+  S:User-Startup (the Amiga NDK headers are not included). Uninstall of UP-Term takes
   them out too, before it takes UP-Term out.
   The stand-alone ones install on a Workbench with no UP-Term and record
   themselves in ENVARC:upkg; in an UP-Term window they use its screen, keys

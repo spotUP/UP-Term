@@ -1,0 +1,50 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 8, lead 3
+(message
+    "\n\n\nV B C C\n\n"
+    "VBCC, the C compiler, for an UP-Term window.\n"
+    "It goes into UP-Term:vbcc; the VBCC: assign\n"
+    "and path go into S:User-Startup.\n"
+    "Needs up-term.lha installed first.\n"
+    (all))
+(set #kb-vbcc @KBCOPYVBCC@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "VBCC needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install VBCC into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-vbcc 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "copy-vbcc" #kb #kb-vbcc #n 1
+     #why "Copying VBCC to UP-Term:vbcc.")
+(P_STEP)
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "VBCC is installed. In an UP-Term window, in vsh:\n"
+         "  vc +upterm68k hello.c -o hello\n\n"
+         "Uninstall (beside Install) takes VBCC out again."))
+; @include dist/common/addon-tail.installer
