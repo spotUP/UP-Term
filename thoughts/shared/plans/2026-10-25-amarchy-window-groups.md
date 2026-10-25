@@ -205,52 +205,72 @@ Window out (not built, reason):
 - Window transparency, gaps, aspect (A13 to A15): no compositor.
 - Focus-follows-mouse (AutoPoint) and ClickToFront: belong to the future Commodities group.
 
-### 2.2 Workbench group (new node `workbench`, 30 rows)
+### 2.2 Workbench group (new node `workbench`, 37 rows)
 
-All rows use `rexx:`. Mechanism: the WORKBENCH ARexx port, command `MENU WINDOW <window> INVOKE <menu item>`
-(research Table C), the item names (shown here as `<name>`) UNVERIFIED and fixed in phase B0 by probing the rig's
-Workbench. The row text is `rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE <name>'` (at most 79 characters; the
-`"` to `'` rewrite in `act_rexx` is why single quotes are used). Window-menu and icon-menu rows use `WINDOW ACTIVE`
-instead of `ROOT`, see risk R5.
+All rows use `rexx:`. Mechanism: the WORKBENCH ARexx port, command `MENU WINDOW <window> INVOKE <item>`. The item
+names were VERIFIED on the OS 3.2 rig (Workbench 47.2/47.33) by the B0 probe, findings in
+`thoughts/spot/term-findings/workbench-port-probe-2026-10-25.md`: the form is `<MENU>.<ITEM>[.<SUBITEM>]`, upper
+case, spaces removed, taken from the on-screen menu titles (`WORKBENCH.BACKDROP`, `WINDOW.VIEWBY.NAME`). The row
+text is `rexx:address WORKBENCH 'MENU WINDOW ROOT INVOKE <item>'` (at most 79 characters; the `"` to `'` rewrite in
+`act_rexx` is why single quotes are used). Window-menu and icon-menu rows use `WINDOW ACTIVE` instead of `ROOT`,
+see risk R5. The port exists only on OS 3.2 (the 3.1 rig has none, and the owner's A1200 on 3.2 has none either:
+B0a below), so every row is OS 3.2 only and the group hides when the port is absent (K9 port-present hiding).
 
-| Id | Label | Menu item invoked | Omarchy |
-|---|---|---|---|
-| workbench.backdrop | Backdrop | Workbench > Backdrop | A6 toggle menu, A16 partial |
-| workbench.execute | Execute Command | Workbench > Execute Command | OS 3.2 only |
-| workbench.openvolume | Open Volume | Workbench > Open volume (3.2, unverified) | OS 3.2 only |
-| workbench.redrawall | Redraw All | Workbench > Redraw All | OS 3.2 only |
-| workbench.updateall | Update All | Workbench > Update All | OS 3.2 only |
-| workbench.lastmessage | Last Message | Workbench > Last Message | A74 partial |
-| workbench.about | About Workbench | Workbench > About | B47 |
-| workbench.reset | Restart Workbench | Tools > ResetWB | OS 3.2 only |
-| workbench.openparent | Open Parent Drawer | Window > Open Parent | OS 3.2 only |
-| workbench.newdrawer | New Drawer | Window > New Drawer | OS 3.2 only |
-| workbench.updatewindow | Update Window | Window > Update | OS 3.2 only |
-| workbench.selectcontents | Select Contents | Window > Select Contents | OS 3.2 only |
-| workbench.cleanup | Clean Up | Window > Clean Up | OS 3.2 only |
-| workbench.snapshotwindow | Snapshot Window | Window > Snapshot > Window | OS 3.2 only |
-| workbench.snapshotall | Snapshot All | Window > Snapshot > All | OS 3.2 only |
-| workbench.showicons | Show Only Icons | Window > Show > Only Icons | OS 3.2 only |
-| workbench.showall | Show All Files | Window > Show > All Files | OS 3.2 only |
-| workbench.viewicons | View By Icon | Window > View By > Icons | OS 3.2 only |
-| workbench.viewname | View By Name | Window > View By > Name | OS 3.2 only |
-| workbench.viewdate | View By Date | Window > View By > Date | OS 3.2 only |
-| workbench.viewsize | View By Size | Window > View By > Size | OS 3.2 only |
-| workbench.sortorder | Sort Order | Window > Sort Order (3.2, unverified) | OS 3.2 only |
-| workbench.iconopen | Open Icon | Icons > Open | OS 3.2 only |
-| workbench.iconcopy | Copy Icon | Icons > Copy | OS 3.2 only |
-| workbench.iconrename | Rename Icon | Icons > Rename | OS 3.2 only |
-| workbench.iconinfo | Icon Information | Icons > Information | OS 3.2 only |
-| workbench.iconsnapshot | Snapshot Icon | Icons > Snapshot | OS 3.2 only |
-| workbench.iconunsnapshot | Unsnapshot Icon | Icons > UnSnapshot | OS 3.2 only |
-| workbench.iconleaveout | Leave Icon Out | Icons > Leave Out | OS 3.2 only |
-| workbench.iconputaway | Put Icon Away | Icons > Put Away | OS 3.2 only |
+Probe column: VERIFIED = rc 0 and the effect read back (checkmark, window list); rc 0 = accepted, effect not read
+(a disabled item also answers rc 0, so rc 0 alone proves nothing); pattern = name formed by the rule, not sent.
 
-Count from the table: 8 Workbench and Tools rows, 14 Window-menu rows, 8 Icons-menu rows = 30. The group node
+| Id | Label | Item (after `MENU WINDOW <win> INVOKE`) | Window | Probe | Omarchy |
+|---|---|---|---|---|---|
+| workbench.backdrop | Backdrop | WORKBENCH.BACKDROP | ROOT | VERIFIED (title toggles) | A6 toggle menu, A16 partial |
+| workbench.execute | Execute Command | WORKBENCH.EXECUTE | ROOT | VERIFIED (requester opens) | - |
+| workbench.redrawall | Redraw All | WORKBENCH.REDRAWALL | ROOT | rc 0 | - |
+| workbench.updateall | Update All | WORKBENCH.UPDATEALL | ROOT | rc 0 | - |
+| workbench.lastmessage | Last Message | WORKBENCH.LASTMESSAGE | ROOT | rc 0 | A74 partial |
+| workbench.about | About Workbench | WORKBENCH.ABOUT | ROOT | VERIFIED (window opens) | B47 |
+| workbench.reset | Restart Workbench | TOOLS.RESETWB | ROOT | rc 0 | - |
+| workbench.openparent | Open Parent Drawer | WINDOW.OPENPARENT | ACTIVE | rc 0 (disabled on ROOT) | - |
+| workbench.newdrawer | New Drawer | WINDOW.NEWDRAWER | ACTIVE | rc 0 (disabled on ROOT) | - |
+| workbench.updatewindow | Update Window | WINDOW.UPDATE | ACTIVE | rc 0 | - |
+| workbench.selectcontents | Select Contents | WINDOW.SELECTCONTENTS | ACTIVE | rc 0 | - |
+| workbench.cleanupcolumn | Clean Up By Column | WINDOW.CLEANUPBY.COLUMN | ACTIVE | rc 0 | - |
+| workbench.cleanupname | Clean Up By Name | WINDOW.CLEANUPBY.NAME | ACTIVE | rc 0 | - |
+| workbench.cleanupdate | Clean Up By Date | WINDOW.CLEANUPBY.DATE | ACTIVE | pattern | - |
+| workbench.cleanupsize | Clean Up By Size | WINDOW.CLEANUPBY.SIZE | ACTIVE | pattern | - |
+| workbench.cleanuptype | Clean Up By Type | WINDOW.CLEANUPBY.TYPE | ACTIVE | pattern | - |
+| workbench.snapshotwindow | Snapshot Window | WINDOW.SNAPSHOT.WINDOW | ACTIVE | rc 0 | - |
+| workbench.snapshotall | Snapshot All | WINDOW.SNAPSHOT.ALL | ACTIVE | rc 0 | - |
+| workbench.showicons | Show Only Icons | WINDOW.SHOW.ONLYICONS | ACTIVE | VERIFIED (checkmark) | - |
+| workbench.showall | Show All Files | WINDOW.SHOW.ALLFILES | ACTIVE | VERIFIED (checkmark) | - |
+| workbench.viewicon | View By Icon | WINDOW.VIEWBY.ICON | ACTIVE | VERIFIED (checkmark) | - |
+| workbench.viewname | View By Name | WINDOW.VIEWBY.NAME | ACTIVE | VERIFIED (checkmark) | - |
+| workbench.viewdate | View By Date | WINDOW.VIEWBY.DATE | ACTIVE | rc 0 | - |
+| workbench.viewsize | View By Size | WINDOW.VIEWBY.SIZE | ACTIVE | rc 0 | - |
+| workbench.viewtype | View By Type | WINDOW.VIEWBY.TYPE | ACTIVE | rc 0 | - |
+| workbench.sortforward | Sort Order Forward | WINDOW.SORTORDER.FORWARD | ACTIVE | rc 0 | - |
+| workbench.sortreverse | Sort Order Reverse | WINDOW.SORTORDER.REVERSE | ACTIVE | rc 0 | - |
+| workbench.iconopen | Open Icon | ICONS.OPEN | ACTIVE | rc 0 (nothing selected) | - |
+| workbench.iconcopy | Copy Icon | ICONS.COPY | ACTIVE | pattern | - |
+| workbench.iconrename | Rename Icon | ICONS.RENAME | ACTIVE | pattern | - |
+| workbench.iconinfo | Icon Information | ICONS.INFORMATION | ACTIVE | pattern | - |
+| workbench.iconsnapshot | Snapshot Icon | ICONS.SNAPSHOT | ACTIVE | pattern | - |
+| workbench.iconunsnapshot | Unsnapshot Icon | ICONS.UNSNAPSHOT | ACTIVE | pattern | - |
+| workbench.iconleaveout | Leave Icon Out | ICONS.LEAVEOUT | ACTIVE | pattern | - |
+| workbench.iconputaway | Put Icon Away | ICONS.PUTAWAY | ACTIVE | pattern | - |
+| workbench.delete | Delete Icon | ICONS.DELETE | ACTIVE | pattern, not sent on purpose | owner item 6: menu only, Workbench confirm |
+| workbench.emptytrash | Empty Trash | ICONS.EMPTYTRASH | ACTIVE | pattern, not sent on purpose | owner item 6: menu only, Workbench confirm |
+
+Count from the table: 7 Workbench and Tools rows, 20 Window-menu rows, 10 Icons-menu rows = 37. The group node
 `workbench` needs an icon line (suggest fa-desktop for the node; rows reuse fa names such as fa-th, fa-list,
 fa-refresh, fa-folder_open, fa-info_circle, fa-clock_o, fa-sort_amount_asc, fa-files_o, fa-pencil, fa-eye, fa-eye_slash).
-Rows that exist only on 3.2 (Open Volume, Sort Order) are shipped only if phase B0 finds the item; a row whose
-item the probe cannot find is cut and the count stated as "n of 30" in the checklist.
+
+Changes against the first draft (30 rows), from the probe: Open Volume CUT (`WORKBENCH.OPENVOLUME` refused, rc 10
+rc2 205: the submenu is the dynamic volume list); Clean Up became the five `WINDOW.CLEANUPBY.*` rows (`WINDOW.CLEANUP`
+is a submenu title and is refused); Sort Order became Forward and Reverse (`WINDOW.SORT` refused); View By Type added
+(it exists on 3.2 next to Icon, Name, Date, Size; the item is `ICON`, not `ICONS`); Delete and Empty Trash added per
+owner item 6. B1 sends every `pattern` row once on the rig and cuts a refused one, stating "n of 37".
+
+Seen in the 3.2 menus but NOT in the table (owner's call, section 6 item 9): Window > Close, Clear selection, Resize
+to fit, Find...; Tools > Auto-arrange Icons, Help.
 
 Workbench out (reason):
 - Workbench > Quit (also the research's System: Logout): destructive and refused by Workbench while programs run;
@@ -361,12 +381,13 @@ Each item is ticked only with its test passing. Running count is reported at eve
 - [ ] S2 rig: with the rig's Workbench and a second public screen (the UP-Term own screen from `slash:/screen own`) the front screen changes as read back from the screens list.
 
 ### Phase B: Workbench rows
-- [ ] B0 probe on the rig, before any row is written: is port WORKBENCH present (`amiga_arexx_ports`), does `HELP` list the commands, which item names does `MENU ... INVOKE` accept, and which window is active after amarchy-gui closes (decides R5). Result goes to `thoughts/spot/term-findings/workbench-port-probe-2026-10-25.md`. This gates B1.
-- [ ] B1 30 `[menu]` rows (cut to what B0 confirms; each cut named). Host test as W1. The 30 include
+- [x] B0 probe on the rig (done 2026-10-25, rig 7, OS 3.2 image): port WORKBENCH present only on OS 3.2; `HELP` lists the 23 commands; item names take the `<MENU>.<ITEM>[.<SUB>]` form, table in 2.2 rewritten from the result. NOT probed: which window is active after amarchy-gui closes (R5); B1's rig test reads it (`wasabi windows`) before the first ACTIVE row. Findings: `thoughts/spot/term-findings/workbench-port-probe-2026-10-25.md`.
+- [ ] B0a probe on the owner's A1200 (OS 3.2, workbench.library 47.42): `SYS:Rexxc/rx "say 1+1"` answers 2, but `address WORKBENCH HELP` fails "Host environment not found" and `Version Workbench` says "Object not found" (checked 2026-10-25 from the vtcon-a1 session). Find why the port is missing (RexxMast started after LoadWB? Workbench's ARexx port opened lazily? a replacement Workbench?) and whether a startup-sequence change brings it back. Until it is back, the group hides on the A1200 (K9) and B2 can only run on the rig. Gates nothing on the host side; gates the owner's eye check of phase B.
+- [ ] B1 37 `[menu]` rows (table 2.2; each `pattern` row sent once on the rig in B2, a refused one cut and named, count stated as "n of 37"). Host test as W1. The 37 include
   `workbench.delete` (Icons > Delete) and `workbench.emptytrash` (Icons > Empty Trash): menu only, no `[bind]` row,
   Workbench's own confirm requester left in place (owner decision 2026-10-25, section 6 item 6). The host test asserts
   both rows exist in `[menu]` and neither id appears in `[bind]`.
-- [ ] B2 rig: the drawn menu row runs one safe item (Redraw All) and the port reports success; a second row on an open drawer (Clean Up) changes the icon positions read back.
+- [ ] B2 rig (OS 3.2 image, `rig.py start --os 32`): the drawn menu row `workbench.redrawall` returns rc 0; a second row on an open drawer, `workbench.viewname` through WINDOW ACTIVE, is read back as `View by/Name [checked]` with `wasabi ui list` (the probe verified this item by hand, so the test asserts a known effect, not rc 0). The same run sends every `pattern` row once and records rc.
 - [ ] B3 `workbench` and `screens` group nodes.
 
 ### Phase I: icons
@@ -380,7 +401,7 @@ Each item is ticked only with its test passing. Running count is reported at eve
 - [ ] D3 `tests/test_amarchy_docs.py` expectations updated by the peer session with the text.
 Marked: peer session edits dist docs.
 
-Total: 5 + 8 + 3 + 2 + 4 + 3 + 3 = 28 items (K1 to K4, K11; K5, K5a, K6, K7, K8, K9, K10, K12; W1 to W3; S1, S2; B0 to B3; I1 to I3; D1 to D3).
+Total: 5 + 8 + 3 + 2 + 5 + 3 + 3 = 29 items (K1 to K4, K11; K5, K5a, K6, K7, K8, K9, K10, K12; W1 to W3; S1, S2; B0, B0a, B1 to B3; I1 to I3; D1 to D3). B0 is ticked.
 
 ## 5. Risks
 
@@ -389,7 +410,7 @@ Total: 5 + 8 + 3 + 2 + 4 + 3 + 3 = 28 items (K1 to K4, K11; K5, K5a, K6, K7, K8,
   drawn menu, not only from a hotkey.
 - R-B: LockIBase nesting (K6) is unmeasured; a deadlock freezes Intuition input. Mitigation: the probe before the
   verbs are enabled, the verbs enabled one at a time, the rig watchdog (STATUS must still answer after each verb).
-- R-C: the WORKBENCH port and the item names are unverified (research). Mitigation: B0 gates B1; rows are cut, not guessed.
+- R-C: the WORKBENCH port and the item names were unverified (research); B0 verified them on the 3.2 rig (table 2.2). Open: the owner's A1200 has no WORKBENCH port (B0a); until that is understood, phase B is rig-only and the group hides on the A1200. A row marked `pattern` in 2.2 may still be refused: B2 sends each once and cuts it.
 - R-D: MoveWindow and SizeWindow on a window whose owner uses a smart refresh or has a zoom box can leave the
   owner's layout unaware; this is normal Intuition behaviour (ClickToFront class), not special to Amarchy.
 - R-E: menu table capacity (80 of 128 rows) once the other groups land.
@@ -414,6 +435,12 @@ Total: 5 + 8 + 3 + 2 + 4 + 3 + 3 = 28 items (K1 to K4, K11; K5, K5a, K6, K7, K8,
    for what Amiga calls a screen).
 8. Whether the 12 geometry rows (move, resize, focus) belong in the visible menu or in a sub-level
    `window.arrange`: keep flat (recommended: the drawn menu scrolls); a sub-level costs two extra clicks.
+9. Six more 3.2 Workbench items the probe found (Window > Close, Clear selection, Resize to fit, Find...; Tools >
+   Auto-arrange Icons, Help): leave OUT (recommended: Close and Clear selection duplicate the window group and the
+   mouse; Find and Help open requesters; 37 rows is already the largest group). Alternative: add all six (43 rows).
+10. Clean Up as five rows (Column, Name, Date, Size, Type) because `WINDOW.CLEANUP` is a submenu title and is refused:
+   keep all five (recommended: the drawn menu scrolls, and the names are what the Workbench menu shows). Alternative:
+   Column and Name only (the two the probe sent), 34 rows.
 
 Owner decisions 2026-10-25 21:30 (AskUserQuestion, four questions): 1 foreign-window close OUT; 3 keep the shipped
 tab and font keys, resize on Super+Alt+Arrows, the 19 new hotkeys on the free combos of section 3; 6 Delete and
