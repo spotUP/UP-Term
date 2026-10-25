@@ -15,12 +15,10 @@ import ptytest_rig
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VTC = paths.RIG / "vtc"
-IXEMUL = pathlib.Path(os.environ.get("IXEMUL", paths.repo("ixemul-vtcon") /
-    "build295/library/68020/68881/amigaos/ixemul.library"))
-# ixnet.library from the same build: ixnet_open refuses (ix_panic) an ixemul
-# of another version or revision, so the two always travel together.
-IXNET = pathlib.Path(os.environ.get("IXNET", IXEMUL.parents[4] /
-    "ixnet/68020/amigaos/ixnet.library"))
+# IXEMUL= and IXNET= name others (paths.py): ixnet_open refuses (ix_panic) an
+# ixemul of another version or revision, so the two always travel together.
+IXEMUL = paths.IXEMUL_LIB
+IXNET = paths.IXNET_LIB
 
 def run(cmd, timeout=60):
     b = ami.req(0x02, struct.pack('>H', timeout) + cmd.encode('latin-1'))

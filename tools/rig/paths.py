@@ -221,6 +221,15 @@ LIB68040 = pathlib.Path(os.environ.get("UPTERM_LIB68040") or RIG_HOME / "rig-inp
 INSTALLER = pathlib.Path(os.environ.get("UPTERM_INSTALLER") or RIG_HOME / "rig-inputs/Installer")
 
 
+# the patched ixemul.library the kit ships (the Makefile's IXEMUL_LIB, IXEMUL_LIB_SOFT, IXNET_LIB): the FPU build,
+# the soft-float one for a machine with no FPU, and ixnet.library from the same tree (ixnet_open refuses an
+# ixemul of another revision, so the two always travel together). rig.py start puts them in VTC:ixp6.
+IXEMUL_LIB = pathlib.Path(os.environ.get("IXEMUL") or
+    repo("ixemul-vtcon") / "build295/library/68020/68881/amigaos/ixemul.library")
+IXEMUL_LIB_SOFT = IXEMUL_LIB.parents[2] / "soft-float/amigaos/ixemul.library"
+IXNET_LIB = pathlib.Path(os.environ.get("IXNET") or IXEMUL_LIB.parents[4] / "ixnet/68020/amigaos/ixnet.library")
+
+
 def require_input(path, var, what):
     """Exit with one clear message when a rig input is missing."""
     if not pathlib.Path(path).exists():

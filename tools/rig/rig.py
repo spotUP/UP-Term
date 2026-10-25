@@ -569,6 +569,7 @@ def setup():
     # the pinned wasabid (`make wasabi`), every start; one daemon, no other agent in the boot
     shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
     stage_amissl(RIG / "vtc", M060)
+    stage_ixemul(RIG / "vtc", NOFPU)
     (RIG / "boot/go").write_text(GO)
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     machine = [
@@ -720,6 +721,22 @@ def stage_amissl(vtc, m060):
     dst.parent.mkdir(parents=True, exist_ok=True)
     if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
         shutil.copyfile(src, dst)
+
+def stage_ixemul(vtc, nofpu):
+    """VTC:ixp6, first in LIBS: (RIG_LIBS), as the kit's patched ixemul.library and its ixnet.library, every
+    start: the soft-float ixemul with --nofpu, else the FPU one. Before this only ixpty_rig and stackext_rig
+    filled it, and a rig kept what they last put there: rig 7's 19 Oct ixemul (199528 bytes; the build's is
+    200644) made amarchy-menu stop with "Illegal instruction" and draw no menu (2026-10-25). Those scripts
+    still put their own library there after boot, for that boot."""
+    ixemul = paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB
+    for src, var in ((ixemul, "IXEMUL"), (paths.IXNET_LIB, "IXNET")):
+        paths.require_input(src, var, src.name)
+    (vtc / "ixp6").mkdir(parents=True, exist_ok=True)
+    for src, name in ((ixemul, "ixemul.library"), (paths.IXNET_LIB, "ixnet.library")):
+        dst = vtc / "ixp6" / name
+        if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+            shutil.copyfile(src, dst)
+            print("refreshed ixp6/%s" % name, dst.stat().st_size, "bytes")
 
 def kit_restore():
     """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
