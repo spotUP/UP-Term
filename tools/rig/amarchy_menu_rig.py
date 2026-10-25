@@ -377,6 +377,15 @@ def x9_end(saved, upterm):
     amarchy_rig.arexx('RELOAD')
 
 
+def icon_library_major():
+    """Major version of the icon.library in memory (0 when unreadable). icon_gfx.c ig_open opens it at V44, and
+    without it the index rows keep the generic glyph and ENV:AMARCHY_ICON_LOADS stays 0 (the default rig is
+    KS 3.1 with icon.library 40)."""
+    rc, out = c.run('Version icon.library')
+    m = re.search(r'icon\.library\s+(\d+)\.', out) if rc == 0 else None
+    return int(m.group(1)) if m else 0
+
+
 def r_app_icons():
     """AM-IDX-ICON I3: the drawn menu (amarchy-gui, the default hotkey Left Amiga + Space) shows an index row's own
     .info image in the row's icon cell. The fake WBTOOL app A0Fake has its icon; A0NoIcon is indexed and then loses
@@ -386,6 +395,9 @@ def r_app_icons():
     import amarchy_rig, amarchy_gui_rig as g
     ensure_terminal()
     res = []
+    if icon_library_major() < 44:
+        return False, ('icon.library is below V44 on this rig, so amarchy-gui draws only the generic glyph '
+                       '(icon_gfx.c ig_open); start it with `rig.py start --os 32`')
 
     def ck(name, ok, detail=''):
         res.append(ok)
