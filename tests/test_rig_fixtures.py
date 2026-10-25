@@ -353,8 +353,13 @@ class RigMachine(unittest.TestCase):
 
     def test_each_rig_window_names_its_rig(self):
         """With several rigs open the owner saw only identical FS-UAE windows (2026-10-24)."""
-        self.assertEqual(self.title(6), 'title = vtcon rig 6 (060 max)')
-        self.assertEqual(self.title(3, '--a1200'), 'title = vtcon rig 3 (68020)')
+        self.assertEqual(self.title(6), 'title = vtcon rig 6 (060 max) - purpose not given (rig.py start --purpose)')
+        self.assertEqual(self.title(3, '--a1200', '--purpose', 'x'), 'title = vtcon rig 3 (68020) - x')
+
+    def test_each_rig_window_names_its_session_and_task(self):
+        """The owner could not tell what each rig did or whose it was (2026-10-25): --purpose goes in the title."""
+        self.assertEqual(self.title(7, '--max', '--purpose', 'Amarchy session:\n menu  terminal check'),
+                         'title = vtcon rig 7 (060 max) - Amarchy session: menu terminal check')
 
     def test_nofpu_drops_the_fpu_on_every_machine(self):
         self.assertEqual(self.config(), ['cpu = 68060-NOMMU', 'fpu = 68060',
