@@ -99,9 +99,9 @@ super+p           = menuid:MENU_PREFS      ; Preferences           | style
 super+return      = run:tmux               ; Tmux                  | apps
 super+l           = menuid:MENU_CLAUDE     ; Claude                | apps
 super+e           = run:nvim               ; Editor                | apps
-super+u           = run:upkg-browse        ; Install and update    | apps
+super+u           = run:upkg browse        ; Install and update    | apps
 super+shift+u     = run:upkg upgrade       ; Upgrade all           | apps
-super+i           = run:upkg-browse        ; Install add-ons       | apps
+super+i           = run:upkg browse        ; Install add-ons       | apps
 
 ; Not shipped on (low value; remove the ; to try one).
 ; super+shift+e   = run:emoji              ; Emoji picker          | apps
@@ -157,7 +157,7 @@ learn.demo         = Demo tour             | slash:/demo
 system.reboot      = Reboot                | run:Reboot
 system.workbench   = Workbench screen      | slash:/screen workbench
 system.own         = Own screen            | slash:/screen own
-install.browse     = Install add-ons       | run:upkg-browse
+install.browse     = Install add-ons       | run:upkg browse
 install.upgrade    = Upgrade all           | run:upkg upgrade
 install.update     = Update lists          | run:upkg update
 trigger.clipboard  = Clipboard history     | menu:trigger.clipboard

@@ -15,7 +15,7 @@
  *   super+1..9         = tab:goto %n        ; Switch to tab %n | workspace
  *   [menu]
  *   ; dotted id        = label              | action
- *   apps.upkg          = Install add-ons    | run:upkg-browse
+ *   apps.upkg          = Install add-ons    | run:upkg browse
  *
  * Key spec: "super" plus optional shift, ctrl, alt, rshift, joined with +,
  * then one key name. Letters and digits are RAW key codes (the key's place

@@ -59,6 +59,26 @@ class Manifest(unittest.TestCase):
         self.assertFalse((ROOT / "dist/upkg-browse").exists())
         self.assertNotIn("upkg-browse", (ROOT / "Makefile").read_text())
 
+    def test_every_program_a_keymap_run_row_starts_is_shipped(self):
+        """dist/keymap rows `run:<program> ...` start a program by name: a name the kit does not ship
+        opens nothing (`run:upkg-browse` after the script was deleted: Install add-ons did nothing).
+        Shipped = the dist scripts the Makefile copies into userland/bin, plus the ports' programs
+        (upkg, tmux, nvim: built by upterm-ports into the same bin) and the ROM/system command Reboot.
+        A volume-qualified name (C:..., SYS:...) is a path, not a bare name, and is skipped."""
+        mk = (ROOT / "Makefile").read_text()
+        shipped = set(re.findall(r"cp dist/(\S+) \$\(KIT\)/Files/userland/bin/", mk))
+        shipped |= {"upkg", "tmux", "nvim"}      # ports' userland/bin
+        shipped |= {"Reboot"}                    # system command
+        started = set()
+        for line in (ROOT / "dist/keymap").read_text().splitlines():
+            if line.lstrip().startswith(";"):
+                continue
+            for m in re.finditer(r"(?:=|\|)\s*run:(\S+)", line):
+                if ":" not in m.group(1) and not m.group(1).startswith("'"):
+                    started.add(m.group(1))
+        self.assertTrue(started, "no run: rows found: the parser is stale")
+        self.assertEqual(sorted(started - shipped), [])
+
     def test_every_name_the_kit_installs_fits_amigados_30_characters(self):
         """OFS/FFS keep 30 characters: a longer name is cut (05-pipes-and-redirection.lesson lost its
         .lesson and the tutorial could not see it). The lessons, dist's own files and parts.txt's paths."""

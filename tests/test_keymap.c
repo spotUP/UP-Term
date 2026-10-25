@@ -600,7 +600,7 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     check_row("system.reboot", KA_RUN, "Reboot");
     check_row("system.workbench", KA_SLASH, "/screen workbench");
     check_row("system.own", KA_SLASH, "/screen own");
-    check_row("install.browse", KA_RUN, "upkg-browse");
+    check_row("install.browse", KA_RUN, "upkg browse");
     check_row("install.upgrade", KA_RUN, "upkg upgrade");
     check_row("install.update", KA_RUN, "upkg update");
     check_row("trigger.clipboard", KA_MENU, "trigger.clipboard");   /* a group of ring rows (tests/test_clips.c) */
