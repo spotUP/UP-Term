@@ -107,12 +107,12 @@ Each item is ticked only with its test passing. Running count is reported at eve
 ### Phase R: rig (060 rig, OS 3.2)
 - [x] R1 one row `group_icons` in `tools/rig/amarchy_menu_rig.py` (section 8). Start with DONE e034e2a9: group_icons 9 of 9 on rig 7 (OS 3.2), AMARCHY_DRAWS=17, 6 of 9.
   `rig.py start --max --os 32 --purpose "vtcon-05: group drawer icons"`; stop the rig at the end.
-- [ ] R2 PASS recorded in the ledger with the sentinel numbers.
+- [x] R2 PASS recorded in the ledger with the sentinel numbers (rig 7 OS 3.2, row group_icons 9 of 9, AMARCHY_DRAWS = 17; ledger 2026-10-26 03:15).
 
 ### Phase D: docs and ledger
 - [x] D1 `dist/README.txt` icon-table paragraph (near line 702-710) lists the four new ids; `tests/test_amarchy_docs.py` DONE 54a1a903: docs test OK, 7 of 9.
   still passes. Ledger row ticked with the commit hash.
-- [ ] D2 ledger: GROUP-DRAWER-ICON row closed; MENU-MINIMAL unblocked (same `gui.c`).
+- [x] D2 ledger: GROUP-DRAWER-ICON row closed; MENU-MINIMAL unblocked (same `gui.c`). 9 of 9 done 2026-10-26.
 
 ## 7. Reachability (one test per feature)
 
