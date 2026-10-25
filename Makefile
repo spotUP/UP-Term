@@ -55,6 +55,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=dist_stack every kit program sets its stack ($STACK: cookie), no launcher gives a loaded program a fixed stack (tests/test_dist_stack.py)
 # ONLY=rig_keys a rig's Right Option is Left Amiga (Amarchy), the Cmd keys stay Right Amiga (tests/test_rig_keys.py)
+# ONLY=installer_drive installer_rig.drive FAILs when the room page keeps coming back (tests/test_installer_drive_loop.py)
 # ONLY=rig_tty_mask a terminal case's check/mask rows are blanked before the screens are compared, nothing else (tools/test_rig_tty_mask.py)
 # ONLY=rig_paths a worktree's rig scripts use the main checkout's build/rig<N> (tools/test_rig_paths.py)
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
@@ -138,6 +139,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_stage_rig.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_keys ]; then python3 tests/test_rig_keys.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer_drive ]; then python3 tests/test_installer_drive_loop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_tty_mask ]; then python3 -I tools/test_rig_tty_mask.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi

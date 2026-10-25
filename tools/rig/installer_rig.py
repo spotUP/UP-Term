@@ -502,6 +502,12 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             if room_dest and asks >= 2 and not room:
                 log.append('the drawer page came a second time but the room page was not read (%s-room.png)' % case)
                 return False, log
+            if not expect_abort and asks > (2 if room_dest else 1):
+                # the room page sent us back to the drawer page once more than this case answers: the drawer
+                # typed last is too small too, and Proceed would loop drawer -> room page until the timeout
+                log.append('room page repeats: the drawer page came %d times in [%s]' % (asks, title))
+                dump(tree, 'room loop')
+                return False, log
             if expect_abort:
                 # K7: every page as an image (to read the room message), and the drawer page counted: a second
                 # one is the room message's Proceed (ask for another drawer)
