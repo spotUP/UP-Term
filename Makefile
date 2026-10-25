@@ -92,7 +92,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # and volatile loads (tests/test_gcc_move2_overlap.py, the installed $(AGCC), -m68080 -mexperimental)
 # The ONLY= names of the recipe lines below; the C suites are tests/test_main.c's (vttest_host --has)
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
-test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host
+test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
 	@if [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
@@ -123,6 +123,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pi_search ]; then python3 -I tests/test_pi_search.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = updiff ]; then ./$(BUILD)/updiff_stack_drv; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = render ]; then ./$(BUILD)/render_host; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = upgetty ]; then ./$(BUILD)/upgetty_host; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then $(MAKE) --no-print-directory jbmono && python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
@@ -1034,8 +1035,14 @@ $(BUILD)/amiga/uptelnet: net/uptelnet.c $(UPTERM_VERSION_H) net/tn.c net/tn.h ne
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(BUILD)/amiga -Dmain=up_main -I$(VTCON_NETINCLUDE) -o $@ net/uptelnet.c net/tn.c net/upagent.c llm/sha256.c tty/bmsg.c $(BUILD)/amiga/obj/cpuchk-uptelnet.o
 
+# ONLY=upgetty: upgetty's serial.device request on the host against the NDK's structs
+# (tests/test_upgetty_serial.c: the receive buffer zmodem's bursts need, flags)
+$(BUILD)/upgetty_host: tests/test_upgetty_serial.c device/upgetty_serial.h
+	@mkdir -p $(BUILD)
+	$(HOSTCC) -std=gnu99 -Wall -Wextra -Werror -Wno-unused-function -O1 -g -fsanitize=address,undefined -I$(VTCON_NDK) -DAMIGA_STDC_C99 -o $@ tests/test_upgetty_serial.c
+
 # C:upgetty: a shell over the serial port through a PTY: pair (ledger T4)
-$(BUILD)/amiga/upgetty: device/upgetty.c $(UPTERM_VERSION_H) handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
+$(BUILD)/amiga/upgetty: device/upgetty.c device/upgetty_serial.h $(UPTERM_VERSION_H) handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-upgetty.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153 -o $@ device/upgetty.c $(BUILD)/amiga/obj/cpuchk-upgetty.o
 

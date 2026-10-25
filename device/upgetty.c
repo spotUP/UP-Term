@@ -42,6 +42,7 @@ extern struct DosLibrary *DOSBase;
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 #include "../tty/qmark.h"
+#include "upgetty_serial.h"
 
 /* the base version and build day (upterm_version.h, written by the Makefile) */
 #include "upterm_version.h"
@@ -56,7 +57,8 @@ const char upgetty_stack_cookie[] = "$STACK: 16384";
 struct ws { UWORD ws_row, ws_col, ws_xpixel, ws_ypixel; }; /* ixemul 48.2's winsize */
 
 typedef struct {
-    struct MsgPort *port;               /* serial replies */
+    struct MsgPort *port;               /* serial read replies */
+    struct MsgPort *wport;              /* serial write replies: its own, DoIO on the write must not eat the read's signal */
     struct MsgPort *pport;              /* the master's packet replies: a port of their own */
     struct IOExtSer *rd, *wr;
     int rd_busy;
@@ -239,23 +241,20 @@ int main(void)
     memset(&g, 0, sizeof(g));
     g.port = CreateMsgPort();
     g.pport = CreateMsgPort();
-    g.rd = g.port && g.pport ? (struct IOExtSer *)CreateIORequest(g.port, sizeof(struct IOExtSer)) : 0;
-    g.wr = g.port ? (struct IOExtSer *)CreateIORequest(g.port, sizeof(struct IOExtSer)) : 0;
+    g.wport = CreateMsgPort();
+    g.rd = g.port && g.pport && g.wport ? (struct IOExtSer *)CreateIORequest(g.port, sizeof(struct IOExtSer)) : 0;
+    g.wr = g.wport ? (struct IOExtSer *)CreateIORequest(g.wport, sizeof(struct IOExtSer)) : 0;
     if (!g.rd || !g.wr || OpenDevice((STRPTR)dev, (ULONG)unit, (struct IORequest *)g.rd, 0)) {
         printf("upgetty: cannot open %s unit %ld\n", dev, unit);
         rc = RETURN_FAIL;
         goto out;
     }
-    /* 8N1, no XON/XOFF (zmodem's data must pass), RTS/CTS only when asked
-     * (FS-UAE's serial port and a three-wire cable never raise CTS) */
-    g.rd->io_Baud = (ULONG)baud;
-    g.rd->io_ReadLen = g.rd->io_WriteLen = 8;
-    g.rd->io_StopBits = 1;
-    g.rd->io_SerFlags = SERF_XDISABLED | SERF_RAD_BOOGIE | (args[8] ? SERF_7WIRE : 0);
-    g.rd->IOSer.io_Command = SDCMD_SETPARAMS;
-    DoIO((struct IORequest *)g.rd);
-    *g.wr = *g.rd;
-    g.wr->IOSer.io_Message.mn_ReplyPort = g.port;
+    /* 8N1, no XON/XOFF, RTS/CTS only when asked (FS-UAE's serial port and a
+     * three-wire cable never raise CTS), a 64 KB receive buffer
+     * (upgetty_serial.h says why) */
+    upgetty_setparams(g.rd, (ULONG)baud, args[8] != 0);
+    LG("setparams", DoIO((struct IORequest *)g.rd));
+    upgetty_setup_write(g.wr, g.rd, g.wport);
     if (!open_master(&g)) {
         printf("upgetty: no free PTY: pair (is PTY: mounted?)\n");
         rc = RETURN_FAIL;
@@ -301,6 +300,10 @@ int main(void)
                  * build: when it did not, this Write was the debug build's
                  * only, and no key reached the shell) */
                 LG("  master write", Write(g.master, g.rbuf, n));
+            } else {
+                /* SerErr_BufOverflow (12): the receive buffer filled, its
+                 * bytes are gone; the trace names it (it was silent) */
+                LG("serial read error", g.rd->IOSer.io_Error);
             }
             serial_read(&g);
         }
@@ -349,6 +352,8 @@ out:
         DeleteMsgPort(g.port);
     if (g.pport)
         DeleteMsgPort(g.pport);
+    if (g.wport)
+        DeleteMsgPort(g.wport);
     FreeArgs(rd);
     return rc;
 }
