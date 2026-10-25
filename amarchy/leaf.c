@@ -6,6 +6,9 @@
 #include <dos/dostags.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <rexx/storage.h>
+#include <rexx/rxslib.h>
+#include <proto/rexxsyslib.h>
 #include "leaf.h"
 #include "wblaunch.h"
 #include "clips_core.h"
@@ -169,6 +172,51 @@ static int run_viewer(const km_menu *m, const lf_ui *ui)
     return start_detached(line, m, ui);
 }
 
+struct RxsLib *RexxSysBase;   /* opened around each win: send (send_win) */
+
+/* win:<verb>: the commodity does it (amarchy-gui's own window is the active one, the owner's target is the
+ * commodity's ticket): send "WIN <verb>" to the ARexx port AMARCHY and wait for the reply. -1 and a line through
+ * ui->refused when the port is absent or the verb is refused. */
+static int send_win(const km_menu *m, const lf_ui *ui)
+{
+    struct MsgPort *reply, *port;
+    struct RexxMsg *rm;
+    struct Library *rxs;
+    char line[KM_ID + 16];
+    long rc = -1;
+    const char *why = "the Amarchy commodity is not running";
+    snprintf(line, sizeof line, "WIN %s", m->arg);
+    rxs = OpenLibrary((STRPTR)"rexxsyslib.library", 0);
+    reply = rxs ? CreateMsgPort() : 0;
+    if (reply) {
+        RexxSysBase = (struct RxsLib *)rxs;
+        if ((rm = CreateRexxMsg(reply, 0, 0)) != 0) {
+            if ((rm->rm_Args[0] = (STRPTR)CreateArgstring((STRPTR)line, strlen(line))) != 0) {
+                rm->rm_Action = RXCOMM;
+                Forbid();
+                port = FindPort((STRPTR)"AMARCHY");
+                if (port)
+                    PutMsg(port, (struct Message *)rm);
+                Permit();
+                if (port) {
+                    WaitPort(reply);
+                    GetMsg(reply);
+                    rc = rm->rm_Result1;
+                    why = "the window command was refused";
+                }
+                DeleteArgstring((STRPTR)rm->rm_Args[0]);
+            }
+            DeleteRexxMsg(rm);
+        }
+        DeleteMsgPort(reply);
+    }
+    if (rxs)
+        CloseLibrary(rxs);
+    if (rc != 0 && ui && ui->refused)
+        ui->refused(ui->ctx, m->label, UPREQ_FAILED, why);
+    return rc == 0 ? 0 : -1;
+}
+
 int lf_run(const km_menu *m, const lf_ui *ui)
 {
     switch (lf_plan(m->kind)) {
@@ -193,8 +241,8 @@ int lf_run(const km_menu *m, const lf_ui *ui)
         snprintf(line, sizeof line, "NewShell \"%s\"", spec);
         return system(line);
     }
-    case LF_WIN:                        /* K8 wires the port: the failure path until then */
-        return -1;
+    case LF_WIN:
+        return send_win(m, ui);
     default:
         return run_request(m, ui);
     }
