@@ -29,6 +29,7 @@
 #include "sh_pipe.h"
 #include "sh_ixargv.h"
 #include "sh_own.h"
+#include "vsh_cmdline.h"
 #include "../handler/vtcon_packets.h"
 #include "../tty/ldisc.h"
 #include "../tty/bmsg.h"
@@ -466,41 +467,6 @@ static int os_pipe(void *os, sh_fh *rd, sh_fh *wr)
     return 0;
 }
 
-/* argv as an AmigaDOS command line: arguments with spaces, quotes,
- * semicolons or newlines in double quotes, " and * escaped with * and a
- * newline written *N (AmigaDOS: ReadItem fails a raw newline inside quotes,
- * and an unquoted one ends the line, so `sed 'p<newline>p'` reached a native
- * or ixemul command cut after its first line). */
-static char *command_line(char **argv)
-{
-    long len = 1;
-    int i;
-    char *s, *o;
-    for (i = 0; argv[i]; i++)
-        len += 2 * (long)strlen(argv[i]) + 3;
-    s = (char *)malloc(len);
-    if (!s)
-        return 0;
-    o = s;
-    for (i = 0; argv[i]; i++) {
-        const char *a = argv[i];
-        int quote = !*a || strpbrk(a, " \t\";*=\n") != 0;
-        if (i)
-            *o++ = ' ';
-        if (quote)
-            *o++ = '"';
-        for (; *a; a++) {
-            if (quote && (*a == '"' || *a == '*' || *a == '\n'))
-                *o++ = '*';
-            *o++ = *a == '\n' ? 'N' : *a;
-        }
-        if (quote)
-            *o++ = '"';
-    }
-    *o = 0;
-    return s;
-}
-
 static int is_stream(BPTR fh);
 
 /* A command's own handle on the shell's stream `shared` (0: the shell has none there): "*" opened at
@@ -894,7 +860,7 @@ static long os_run(void *os, char **argv, const sh_io *io, int wait)
 static long os_start(void *os, char **argv, const sh_io *io, int wait, int interp)
 {
     sh_shell *sh = ((vproc *)os)->sh;
-    char *cmd = command_line(argv), *sp;
+    char *cmd = vsh_command_line(argv), *sp;
     int ixres, r;
     BPTR home;
     const sh_var *v;
@@ -947,7 +913,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         /* found through $PATH: the command line names that file */
         char *a0 = argv[0], *full;
         argv[0] = found;
-        full = command_line(argv);
+        full = vsh_command_line(argv);
         argv[0] = a0;
         if (full) {
             free(cmd);
@@ -1030,7 +996,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
                  command_is_ixemul(argv[1], sh_get(&sh->ctx, "PATH")))
             targ = argv + 1;
         if (targ) {
-            char *line = command_line(targ + 1);
+            char *line = vsh_command_line(targ + 1);
             long n = line ? ixa_len(line, targ + 1) : 0;
             char *all = line ? (char *)malloc(n + 1) : 0;
             if (all) {
