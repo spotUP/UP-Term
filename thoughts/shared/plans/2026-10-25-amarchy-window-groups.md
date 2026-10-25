@@ -370,7 +370,7 @@ Each item is ticked only with its test passing. Running count is reported at eve
 
 ### Phase R: commodity execution (rig)
 - [x] K5 `act_win` target lookup under LockIBase, window list membership check, Amarchy windows never targets. -- done f4e0a478: win.c act_win/win_port, membership walk, Title exactly "Amarchy" excluded; rig move_right/move_left on a live window PASS.
-- [ ] K5a target ticket recorded at menu launch (`act_menu_kind`). -- OPEN: win_ticket_take is wired (f4e0a478) but no rig step drives menu launch with a ticket.
+- [ ] K5a target ticket recorded at menu launch (`act_menu_kind`). -- OPEN: win_ticket_take is wired (f4e0a478) but no rig step drives menu launch with a ticket. -- PARTIAL 2026-10-25: box check fix in commit 4eef78b0 (ticket_valid, unchanged window box); clear-on-close exempt: no close signal exists in the commodity (ticket cleared on use, live target or next hotkey); rig step not passing, row stays open
 - [x] K6 lock discipline per verb as listed; deadlock probe for the six held-lock verbs (one rig step per verb). -- done: held-lock geometry verbs probed on rig 6, STATUS answered within 5 s after each (no deadlock), build/rig6/amarchy-window/k6_*.verdict.
 - [x] K7 confirmed by reading: no verb needs the handler (nothing to build). -- done by reading: no verb needs the handler.
 - [ ] K8 `WIN` command on port AMARCHY and `LF_WIN` in `amarchy/leaf.c`. -- OPEN: WIN port command PASS on rig; LF_WIN send_win (387f7720) builds but is not driven by any rig step.
@@ -380,8 +380,8 @@ Each item is ticked only with its test passing. Running count is reported at eve
   stop it at the end.
 
 ### Phase W: Window rows (host, then rig)
-- [ ] W1 23 `[menu]` rows in `dist/keymap`. Test: extend `the_shipped_menu_has_learn_system_and_install_groups` (or add `the_window_group_rows`) with `check_row` for every id and its action.
-- [ ] W2 the hotkeys of section 3 that belong to Window (16 rows). Test: `the_shipped_file_resolves_and_derives_menu_keys` stays green and a new loop asserts each hotkey's kind is `KA_WIN`.
+- [x] W1 23 `[menu]` rows in `dist/keymap`. Test: extend `the_shipped_menu_has_learn_system_and_install_groups` (or add `the_window_group_rows`) with `check_row` for every id and its action. -- done 2026-10-25: commit 65ffb7df; keymap test 3229 checks 0 failed, 44 FAIL lines with HEAD keymap restored
+- [x] W2 the hotkeys of section 3 that belong to Window (16 rows). Test: `the_shipped_file_resolves_and_derives_menu_keys` stays green and a new loop asserts each hotkey's kind is `KA_WIN`. -- done 2026-10-25: commit 65ffb7df; 16 hotkeys; DEVIATION: super+m is refused by config/keymap.c spec_parse (Left Amiga+M/N are Intuition screen cycling), Send to back is super+alt+o
 - [ ] W3 rig: each verb on the known window moves or sizes it as the section 7 table says.
 
 ### Phase S: Screens rows
