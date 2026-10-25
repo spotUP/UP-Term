@@ -130,33 +130,33 @@ Each item is ticked only with its test passing. Running count is reported at eve
 ## 7. Phases and checklist (total 14)
 
 ### Phase H: host
-- [ ] H1 `UC_MENU_MINIMAL` and the `minimal` value in `menu_style_row`. Test: `menu_style_parse` gains `minimal`,
+- [x] H1 (64a730d2) `UC_MENU_MINIMAL` and the `minimal` value in `menu_style_row`. Test: `menu_style_parse` gains `minimal`,
   `minimal` then `text` (last wins), bogus stays graphical.
-- [ ] H2 `cx_menu_cmd` keeps `minimal` on `amarchy-gui`, `other` still opens the text menu. Test: `menu_style_commands`
+- [x] H2 (64a730d2) `cx_menu_cmd` keeps `minimal` on `amarchy-gui`, `other` still opens the text menu. Test: `menu_style_commands`
   rows for `UC_MENU_MINIMAL` (four kinds).
-- [ ] H3 `menu_theme_minimal`: two distinct colours over the five roles, selection swapped, equal fg and bg falls back.
+- [x] H3 (64a730d2) `menu_theme_minimal`: two distinct colours over the five roles, selection swapped, equal fg and bg falls back.
   Test: `theme_minimal_two_pens` counts distinct rgb across `rgb[MT_ROLES]` == 2.
-- [ ] H4 `mg_metrics_for` minimal: `bx = by = 0`, `chev_gap = 0`, `icon_gap = 0`; `mg_layout` height and width with
+- [x] H4 (64a730d2) `mg_metrics_for` minimal: `bx = by = 0`, `chev_gap = 0`, `icon_gap = 0`; `mg_layout` height and width with
   `icon_w = 0`. Test: `geom_minimal` asserts the window is narrower by `2*bx` and `icon_w + icon_gap` than the drawn one.
-- [ ] H5 `UC_ICONS_*` enum and `upconf_app_icons` with `none`. Test in `test_keymap.c` or `test_upconf.c`.
-- [ ] H6 prefs: `am_icons` tri-state, `am_mode` field, read and write, dirty check, profile-table pressure case.
+- [x] H5 (64a730d2) `UC_ICONS_*` enum and `upconf_app_icons` with `none`. Test in `test_keymap.c` or `test_upconf.c`.
+- [x] H6 (64a730d2) prefs: `am_icons` tri-state, `am_mode` field, read and write, dirty check, profile-table pressure case.
   Test: `test_prefs.c` round trip: hand-written `none` survives a load, edit of another field and save.
-- [ ] H7 `prefs_ui.c`, `prefs_ui.h` rows and ids; `upprefs.c` getter/setter cases (`upprefs.c:253-301`).
+- [x] H7 (64a730d2) `prefs_ui.c`, `prefs_ui.h` rows and ids; `upprefs.c` getter/setter cases (`upprefs.c:253-301`).
 
 ### Phase G: amarchy-gui
-- [ ] G1 `minimal` flag read in `index_drawers`; `pens_get` applies H3; `draw_full` skips the border; layout block
+- [x] G1 (64a730d2) `minimal` flag read in `index_drawers`; `pens_get` applies H3; `draw_full` skips the border; layout block
   forces `icon_w = 0` and `chev_w = 0`; `draw_row` has no chevron branch for minimal.
-- [ ] G2 sentinel: `AMARCHY_MODE` published beside `AMARCHY_DRAWS` (`gui.c:446-460`) as 0/1/2 plus
+- [x] G2 (64a730d2) sentinel: `AMARCHY_MODE` published beside `AMARCHY_DRAWS` (`gui.c:446-460`) as 0/1/2 plus
   `AMARCHY_PENS` = number of distinct pens obtained (2 in minimal).
-- [ ] G3 `make amiga` rc 0, warnings as errors; `make test ONLY=keymap` and `ONLY=prefs` green.
+- [x] G3 (64a730d2) `make amiga` rc 0, warnings as errors; `make test ONLY=keymap` and `ONLY=prefs` green.
 
 ### Phase R: rig (060 rig, OS 3.2)
-- [ ] R1 rig row `minimal` in `tools/rig/amarchy_menu_rig.py` (section 9); `rig.py start --max --os 32 --purpose
+- [x] R1 (64a730d2) rig row `minimal` in `tools/rig/amarchy_menu_rig.py` (section 9); `rig.py start --max --os 32 --purpose
   "vtcon-05: minimal menu"`; rig stopped at the end.
 - [ ] R2 PASS recorded in the ledger with the sentinel numbers.
 
 ### Phase D: docs
-- [ ] D1 `dist/up-term.conf` (line 30 and the app-icons comment), `dist/README.txt` (702-710), `man/amarchy.1` (47),
+- [x] D1 (64a730d2) `dist/up-term.conf` (line 30 and the app-icons comment), `dist/README.txt` (702-710), `man/amarchy.1` (47),
   RULES.md:59-68 name the mode and `none`; `tests/test_amarchy_docs.py` passes.
 - [ ] D2 ledger row MENU-MINIMAL closed with commit hashes.
 
