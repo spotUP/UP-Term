@@ -297,7 +297,13 @@ static int add_group(mn_item *out, int n, int max, const char *seg, const char *
 int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
              int max)
 {
-    int n = mn_children(k, node, out, max);
+    return ix_level_t(k, x, node, filter, out, max, 1);
+}
+
+int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
+               int max, int term)
+{
+    int n = mn_children_t(k, node, out, max, term);
     if (!x)
         return n;
     if (!strcmp(node, "apps")) {

@@ -52,8 +52,42 @@ def open_terminal():
 
 def r_start():
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+    return True, 'commodity started'
+
+
+def root_menu_rows():
+    # open the quick menu with Super+Space. The default menu is the drawn one (amarchy-gui, window "Amarchy"):
+    # its text is pixels, so the rows come from the sentinel ENV:AMARCHY_ROWS (gui.c sentinel_rows: the labels
+    # of the rows of each list draw, joined by '|'). Deleted first, read once the window is up, Esc leaves.
+    import amarchy_gui_rig as g
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    s, w = g.open_menu()
+    rows = ''
+    for _ in range(40):
+        rc, out = c.run('GetEnv AMARCHY_ROWS')
+        rows = out.strip() if rc == 0 else ''
+        if w and rows:
+            break
+        time.sleep(0.25)
+    ami.key(RAW['esc'])
+    time.sleep(1)
+    return bool(w), rows.split('|') if rows else []
+
+
+def r_rows_no_terminal():
+    # TERM-ROWS-ONLY-OVER-TERMINAL: no UP-Term window exists yet, the menu is the only one. The rows
+    # whose action needs a terminal (Style, Window: tab:, menuid:, slash:) are hidden, Apps stays.
+    up, rows = root_menu_rows()
+    ok = up and 'Apps' in rows and 'Style' not in rows and 'Window' not in rows
+    return ok, 'no UP-Term window: drawn root rows %s (menu up %s)' % (rows, up)
+
+
+def r_rows_over_terminal():
+    # the same menu over an UP-Term window lists Style and Window again
     open_terminal()
-    return True, 'commodity started, terminal window open and focused'
+    up, rows = root_menu_rows()
+    ok = up and 'Apps' in rows and 'Style' in rows and 'Window' in rows
+    return ok, 'over an UP-Term window: drawn root rows %s (menu up %s)' % (rows, up)
 
 
 def r_open_timing():
@@ -98,6 +132,9 @@ def r_esc_up():
 
 
 def r_enter_slash():
+    # TERM-ROWS-ONLY-OVER-TERMINAL: the default menu is the drawn one (amarchy-gui, a plain Intuition window
+    # outside the focus record) and exactly one UP-Term window is open (rows_over_terminal's host): its slash:
+    # row must reach that terminal (upmru_target self 0).
     # reopen, Style, Enter on Theme: the request reaches the handler, which runs /theme through the keymap runner.
     # /theme opens a file requester ("UP-Term theme") and the handler sits in it until it closes, so the
     # effect is the requester on screen; the counter is read after its Cancel gadget (id 2) closed it, as keymap_rig.py does.
@@ -519,6 +556,8 @@ def r_app_index():
 
 ROWS = [
     ('start',        r_start),
+    ('rows_no_terminal', r_rows_no_terminal),
+    ('rows_over_terminal', r_rows_over_terminal),
     ('open_timing',  r_open_timing),
     ('type_th',      r_type_th),
     ('esc_up',       r_esc_up),

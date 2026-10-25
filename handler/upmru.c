@@ -25,9 +25,10 @@ void upmru_focus(unsigned long l[UPMRU_N], unsigned long id)
     l[0] = id;
 }
 
-unsigned long upmru_prev(const unsigned long l[UPMRU_N])
+unsigned long upmru_target(const unsigned long l[UPMRU_N], int self_in_mru)
 {
-    return l[0] ? l[1] : 0;
+    int n = self_in_mru ? 1 : 0;
+    return l[0] ? l[n] : 0;
 }
 
 void upreq_portname(unsigned long id, char out[24])

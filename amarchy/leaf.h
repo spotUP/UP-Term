@@ -37,7 +37,14 @@ typedef struct lf_ui {
     /* a refused action says why (answer may be empty) */
     void (*refused)(void *ctx, const char *label, long rc, const char *answer);
     void *ctx;
+    /* 1 when the menu is itself an UP-Term window (the text menu), 0 when it is a plain Intuition
+     * window (the graphical menu): which MRU entry is the terminal (upmru_target) */
+    int self_in_mru;
 } lf_ui;
+
+/* 1 when the menu opened over an UP-Term window: upactive_terminal_present (handler/upactive.h) with
+ * the menu's self_in_mru. Both menus and the commodity ask it once at open and pass the answer to
+ * ix_level_t (TERM-ROWS-ONLY-OVER-TERMINAL). */
 
 /* returns the action's code (0 = done) */
 int lf_run(const km_menu *m, const lf_ui *ui);

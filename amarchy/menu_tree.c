@@ -12,7 +12,32 @@ static void cpy(char *d, const char *s, int n)
     d[i] = 0;
 }
 
+int mn_kind_needs_terminal(int kind)
+{
+    return kind == KA_TAB || kind == KA_MENUID || kind == KA_SLASH;
+}
+
+int mn_row_visible(int kind, int term)
+{
+    return term || !mn_kind_needs_terminal(kind);
+}
+
+/* 1 when some [menu] row whose id starts with prefix (a group's path and its dot) is visible */
+static int group_visible(const keymap *k, const char *prefix, int plen, int term)
+{
+    int i;
+    for (i = 0; i < k->nmenu; i++)
+        if (!strncmp(k->menu[i].id, prefix, plen) && mn_row_visible(k->menu[i].kind, term))
+            return 1;
+    return 0;
+}
+
 int mn_children(const keymap *k, const char *node, mn_item *out, int max)
+{
+    return mn_children_t(k, node, out, max, 1);
+}
+
+int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int term)
 {
     int i, j, n = 0, nl = (int)strlen(node);
     for (i = 0; i < k->nmenu && n < max; i++) {
@@ -31,6 +56,8 @@ int mn_children(const keymap *k, const char *node, mn_item *out, int max)
         if (seglen >= KM_ID)
             continue;
         if (dot) {
+            if (!group_visible(k, id, (int)(dot - id) + 1, term))
+                continue;
             for (j = 0; j < n; j++)
                 if (out[j].row == MN_ROW_GROUP && !strncmp(out[j].seg, rest, seglen) && !out[j].seg[seglen])
                     dup = 1;
@@ -43,6 +70,8 @@ int mn_children(const keymap *k, const char *node, mn_item *out, int max)
             out[n].label[0] = (char)((rest[0] >= 'a' && rest[0] <= 'z') ? rest[0] - 32 : rest[0]);
             cpy(out[n].label + 1, rest + 1, seglen < KM_LABEL ? seglen : KM_LABEL);
         } else {
+            if (!mn_row_visible(k->menu[i].kind, term))
+                continue;
             out[n].row = i;
             out[n].ix = -1;
             cpy(out[n].seg, rest, KM_ID);
@@ -67,12 +96,12 @@ void mn_child_node(const char *node, const mn_item *it, char *out, int n)
  * by its prefixes up to a dot. Not recursive, one item buffer: the commodity calls this on its own
  * small stack. A group whose segment mn_children would skip (KM_ID or longer) is not reachable and is
  * left out, as there. A level shared by two ids is visited once per id; the callers keep maxima. */
-void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx)
+void mn_levels_t(const keymap *k, const char *node, mn_level_fn fn, void *ctx, int term)
 {
     mn_item it[MN_MAX_ITEMS];
     char g[KM_ID * 2];
     int i, nl = (int)strlen(node);
-    fn(it, mn_children(k, node, it, MN_MAX_ITEMS), ctx);
+    fn(it, mn_children_t(k, node, it, MN_MAX_ITEMS, term), ctx);
     for (i = 0; i < k->nmenu; i++) {
         const char *id = k->menu[i].id, *seg, *dot;
         if (nl && (strncmp(id, node, nl) || id[nl] != '.'))
@@ -82,9 +111,14 @@ void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx)
                 break;
             memcpy(g, id, dot - id);
             g[dot - id] = 0;
-            fn(it, mn_children(k, g, it, MN_MAX_ITEMS), ctx);
+            fn(it, mn_children_t(k, g, it, MN_MAX_ITEMS, term), ctx);
         }
     }
+}
+
+void mn_levels(const keymap *k, const char *node, mn_level_fn fn, void *ctx)
+{
+    mn_levels_t(k, node, fn, ctx, 1);
 }
 
 typedef struct osd_acc { int maxn, maxw; } osd_acc;
@@ -103,13 +137,18 @@ static void osd_level(const mn_item *it, int n, void *ctx)
     }
 }
 
-void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows)
+void mn_osd_size_t(const keymap *k, const char *node, int *cols, int *rows, int term)
 {
     osd_acc a;
     int c;
     a.maxn = a.maxw = 0;
-    mn_levels(k, node, osd_level, &a);
+    mn_levels_t(k, node, osd_level, &a, term);
     c = a.maxw + 2 * MN_OSD_PAD;
     *cols = c < MN_OSD_MIN_COLS ? MN_OSD_MIN_COLS : c;
     *rows = MN_OSD_HEAD_LINES + a.maxn;
+}
+
+void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows)
+{
+    mn_osd_size_t(k, node, cols, rows, 1);
 }

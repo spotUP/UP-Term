@@ -10,6 +10,7 @@
 #include "wblaunch.h"
 #include "termenv.h"
 #include "../handler/upreq.h"
+#include "../handler/upactive.h"
 #include "../handler/frontscr.h"
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
@@ -80,7 +81,7 @@ static int run_request(const km_menu *m, const lf_ui *ui)
         fprintf(stderr, "amarchy: %s is not a terminal action\n", m->arg);
         return UPREQ_UNKNOWN;
     }
-    rc = upreq_send(&r);
+    rc = upreq_send(&r, ui->self_in_mru);
     if (rc == UPREQ_NEEDARG) {
         /* /bg and the like take a value the row does not carry: ask for it, send again */
         char value[UPREQ_ACTION], act[UPREQ_ACTION];
@@ -91,7 +92,7 @@ static int run_request(const km_menu *m, const lf_ui *ui)
             strcpy(r.answer, "the value is too long");
             rc = UPREQ_FAILED;
         } else
-            rc = upreq_send(&r);
+            rc = upreq_send(&r, ui->self_in_mru);
     }
     if (rc && ui->refused)
         ui->refused(ui->ctx, m->label, rc, r.answer);

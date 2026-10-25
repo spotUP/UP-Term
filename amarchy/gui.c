@@ -5,7 +5,7 @@
  * colours from menu_theme.c (the user's upconf palette through render/pens_amiga.c), a leaf is run by leaf.c.
  * Modes in the one window: list, input (a leaf's value), message (a refusal), viewer (the [bind] lines).
  * Every full draw bumps the global variable AMARCHY_DRAWS: the sentinel tools/rig/amarchy_gui_rig.py (G7)
- * reads; AMARCHY_ICON_LOADS beside it counts the .info images icon_gfx.c loaded (plan app-index, I3). */
+ * reads; AMARCHY_ROWS lists the drawn rows' labels; AMARCHY_ICON_LOADS beside it counts the .info images icon_gfx.c loaded (plan app-index, I3). */
 #include <exec/types.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
@@ -37,6 +37,7 @@
 #include "../config/upconf.h"
 #include "../handler/frontscr.h"
 #include "../handler/upreq.h"
+#include "../handler/upactive.h"
 #include "../render/pens_amiga.h"
 #include "../tty/qmark.h"
 #include "keymap_default.inc"
@@ -99,6 +100,7 @@ typedef struct gui {
 
 static keymap km;
 static ix_index ixs;
+static int term_present;         /* decided once at open: lf_terminal_present */
 static gui G;
 static upconf conf;
 static char conf_buf[UC_MAX_FILE + 2];
@@ -119,6 +121,27 @@ static void sentinel_publish(const char *name, long n)
         n /= 10;
     } while (n && i > 0);
     SetVar((STRPTR) name, (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
+}
+
+/* Publishes the labels of the rows the list shows, joined by '|', as AMARCHY_ROWS: the rig reads which
+ * rows were drawn (a menu's text is pixels, no uitree gadget). */
+static void sentinel_rows(const gui *g)
+{
+    char b[256];
+    int i, n = 0;
+    b[0] = 0;
+    for (i = 0; i < g->count; i++) {
+        const char *l = g->it[g->idx[i]].label;
+        int len = (int)strlen(l);
+        if (n + len + 2 >= (int)sizeof b)
+            break;
+        if (i)
+            b[n++] = '|';
+        memcpy(b + n, l, len);
+        n += len;
+        b[n] = 0;
+    }
+    SetVar((STRPTR) "AMARCHY_ROWS", (STRPTR)b, -1, GVF_GLOBAL_ONLY);
 }
 
 /* ---- text and fills ----------------------------------------------------------------------------------- */
@@ -278,6 +301,8 @@ static void draw_full(gui *g)
     draw_list(g);
     g->draws++;
     sentinel_publish("AMARCHY_DRAWS", g->draws);
+    if (g->mode == M_LIST)
+        sentinel_rows(g);
     sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
 }
 
@@ -298,7 +323,7 @@ static void relayout(gui *g, int n)
 
 static void list_rebuild(gui *g)
 {
-    int n = ix_level(&km, &ixs, g->node, g->filter, g->it, g->cap);
+    int n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
     g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
     g->sel = g->top = 0;
     relayout(g, g->count);
@@ -789,6 +814,7 @@ int main(int argc, char **argv)
     node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
     keymap_load(&km, km_default_text);
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    term_present = upactive_terminal_present(0);   /* a plain Intuition window: never in the MRU */
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
     g->idx = malloc(g->cap * sizeof *g->idx);
@@ -856,8 +882,8 @@ int main(int argc, char **argv)
         mg_metrics_for(&m, &g->mf, &g->ms);
         g->icon_h = mi_count() > 0 ? mi_size(&m) : 0;
         g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
-        g->w = mg_width(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms);
-        n = ix_level(&km, &ixs, g->node, g->filter, g->it, g->cap);
+        g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms, term_present);
+        n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
         g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
     }
@@ -878,6 +904,7 @@ int main(int argc, char **argv)
         ui.ask_value = gui_ask_value;
         ui.refused = gui_refused;
         ui.ctx = g;
+        ui.self_in_mru = 0;
         g->stop = 0;
         /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
         if (g->ixpath[0]) {                    /* an index row may be refused: the window stays for the message */

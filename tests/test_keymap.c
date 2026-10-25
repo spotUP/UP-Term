@@ -642,6 +642,74 @@ static void typing_th_leaves_theme_first(void)
     CHECK_INT(mn_match("Font", ""), 2);
 }
 
+/* TERM-ROWS-ONLY-OVER-TERMINAL: the shipped [menu] tree, with and without an UP-Term window under the
+ * menu. Style and Window (tab:, menuid:, slash: rows) and their sections go; Apps stays, and the
+ * Claude row (menuid:) goes with them. */
+static int has_label(const mn_item *it, int n, const char *label)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (!strcmp(it[i].label, label))
+            return 1;
+    return 0;
+}
+
+static void terminal_rows_show_only_over_a_terminal(void)
+{
+    static char file[16384];
+    mn_item it[MN_MAX_ITEMS];
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int c;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 0);
+    CHECK(has_label(it, c, "Apps"));
+    CHECK(!has_label(it, c, "Style"));
+    CHECK(!has_label(it, c, "Window"));
+    c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 0);
+    c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 0);
+    c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
+    CHECK(has_label(it, c, "UP-Term") && has_label(it, c, "Editor"));
+    CHECK(!has_label(it, c, "Claude"));
+    CHECK_INT(c, mn_children(&km, "apps", it, MN_MAX_ITEMS) - 1);
+    c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 1);
+    CHECK(has_label(it, c, "Apps") && has_label(it, c, "Style") && has_label(it, c, "Window"));
+    c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 1);
+    CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
+    c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 1);
+    CHECK(has_label(it, c, "Claude"));
+    CHECK(!mn_row_visible(KA_TAB, 0) && !mn_row_visible(KA_MENUID, 0) && !mn_row_visible(KA_SLASH, 0));
+    CHECK(mn_row_visible(KA_RUN, 0) && mn_row_visible(KA_OPEN, 0) && mn_row_visible(KA_DETACH, 0));
+    CHECK(mn_row_visible(KA_SLASH, 1));
+}
+
+static int fixed_width(const char *s, void *ctx);
+
+/* The window is sized from the rows it draws: a tab:/menuid:/slash: row (and the longest label or the
+ * most entries among them) must not widen or heighten a menu shown without a terminal. */
+static void menu_size_follows_the_filtered_rows(void)
+{
+    int cols, rows, cols1, rows1, px = 16, w0, w1;
+    mg_font topaz = { 8, 8 };
+    mg_screen pal = { 640, 256, 22, 44 };
+    CHECK(parse("[menu]\napps.a = Short | run:a\napps.b = Other | run:b\n"
+                "apps.long = A very much longer slash label that is wider than the minimum window | slash:/theme\n"
+                "apps.t1 = Tab one | tab:new\napps.t2 = Tab two | tab:next\ntop = Top | run:x\n"));
+    mn_osd_size_t(&km, "apps", &cols, &rows, 0);
+    mn_osd_size_t(&km, "apps", &cols1, &rows1, 1);
+    CHECK_INT(rows, MN_OSD_HEAD_LINES + 2);        /* Short, Other */
+    CHECK_INT(rows1, MN_OSD_HEAD_LINES + 5);
+    CHECK_INT(cols, MN_OSD_MIN_COLS);
+    CHECK(cols1 > cols);
+    mn_osd_size(&km, "apps", &cols, &rows);        /* the unfiltered call is the term = 1 one */
+    CHECK(cols == cols1 && rows == rows1);
+    w0 = mg_width_t(&km, "apps", &topaz, 0, 8, fixed_width, &px, &pal, 0);
+    w1 = mg_width_t(&km, "apps", &topaz, 0, 8, fixed_width, &px, &pal, 1);
+    CHECK(w0 < w1);
+    CHECK_INT(w1, mg_width(&km, "apps", &topaz, 0, 8, fixed_width, &px, &pal));
+}
+
 /* Phase D: the menu tree comes from the [menu] ids; Esc goes up one level and stops at the root */
 static void menu_levels_follow_the_ids_and_escape_goes_up(void)
 {
@@ -1159,26 +1227,43 @@ static void the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_close
     unsigned long a = 0x1000, b = 0x2000, m1 = 0x3000, m2 = 0x4000;
     int i;
     upmru_focus(l, a);
-    CHECK(upmru_prev(l) == 0);                 /* one window: nothing before it */
+    CHECK(upmru_target(l, 1) == 0);                 /* one window: nothing before it */
     upmru_focus(l, m1);
-    CHECK(upmru_prev(l) == a);
+    CHECK(upmru_target(l, 1) == a);
     upmru_forget(l, m1);                       /* the first menu closes, no window active */
     upmru_focus(l, m2);                        /* the second menu, straight after */
-    CHECK(upmru_prev(l) == a);
+    CHECK(upmru_target(l, 1) == a);
     upmru_forget(l, m2);
     upmru_focus(l, b);                         /* another terminal, then back to the first */
     upmru_focus(l, a);
     upmru_focus(l, m1);
-    CHECK(upmru_prev(l) == a);
+    CHECK(upmru_target(l, 1) == a);
     upmru_forget(l, a);                        /* the target closes: the one before it */
-    CHECK(upmru_prev(l) == b);
+    CHECK(upmru_target(l, 1) == b);
     upmru_forget(l, b);
-    CHECK(upmru_prev(l) == 0);                 /* only the menu left */
+    CHECK(upmru_target(l, 1) == 0);                 /* only the menu left */
     for (i = 1; i <= UPMRU_N + 3; i++)         /* more windows than slots: the newest stay */
         upmru_focus(l, (unsigned long)i * 16);
-    CHECK(l[0] == (unsigned long)(UPMRU_N + 3) * 16 && upmru_prev(l) == (unsigned long)(UPMRU_N + 2) * 16);
+    CHECK(l[0] == (unsigned long)(UPMRU_N + 3) * 16 && upmru_target(l, 1) == (unsigned long)(UPMRU_N + 2) * 16);
     upreq_portname(0x0812abcdUL, name);
     CHECK_STR(name, "UPTERM.req.0812abcd");
+}
+
+/* TERM-ROWS-ONLY-OVER-TERMINAL: the graphical menu is a plain Intuition window that never enters
+ * the record, so with one terminal open the record is [term] and the terminal is the FRONT entry;
+ * the text menu is in the record ([menu, term]) and its terminal is the one behind it. */
+static void the_target_is_the_front_entry_for_a_menu_outside_the_record(void)
+{
+    unsigned long l[UPMRU_N] = {0};
+    unsigned long term = 0x1000, menu = 0x2000;
+    upmru_focus(l, term);
+    CHECK(upmru_target(l, 0) == term);         /* graphical menu, one terminal */
+    CHECK(upmru_target(l, 1) == 0);            /* a text menu would find nothing before it */
+    upmru_focus(l, menu);
+    CHECK(upmru_target(l, 1) == term);         /* text menu in the record: the one behind */
+    upmru_forget(l, term);
+    upmru_forget(l, menu);
+    CHECK(upmru_target(l, 0) == 0);            /* empty record: no target either way */
 }
 
 /* Owner's A1200, 2026-10-22: Style > Background just exited. /bg takes a colour the row does
@@ -1368,6 +1453,8 @@ void suite_keymap(void)
     ua_count_released_before_own_window_closes();
     typing_th_leaves_theme_first();
     menu_levels_follow_the_ids_and_escape_goes_up();
+    terminal_rows_show_only_over_a_terminal();
+    menu_size_follows_the_filtered_rows();
     osd_size_counts_the_reachable_levels();
     drawn_menu_geometry_follows_the_font_and_screen();
     drawn_menu_icons_look_square_on_tall_pixels();
@@ -1383,6 +1470,7 @@ void suite_keymap(void)
     a_leaf_window_spec_names_the_front_public_screen();
     a_run_row_starts_its_command_through_the_upterm_shell();
     the_quick_menu_finds_its_terminal_after_an_earlier_menu_window_closed();
+    the_target_is_the_front_entry_for_a_menu_outside_the_record();
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
     the_app_index_core_behaves();
     app_icons_are_cached_per_path_bounded_and_fitted();

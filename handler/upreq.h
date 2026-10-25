@@ -28,6 +28,6 @@ void upreq_close(struct MsgPort *mp);
 
 /* Sender side: the answer (UPREQ_*), r->answer set to the window's reason; UPREQ_NOPORT when
  * no terminal window is there to ask. */
-long upreq_send(upreq_body *r);
+long upreq_send(upreq_body *r, int self_in_mru);
 
 #endif
