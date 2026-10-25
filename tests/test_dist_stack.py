@@ -18,11 +18,7 @@ MOUNTED = {'vtcon-handler', 'pty-handler', 'ixpipe-handler', 'up-console.device'
 # Kit programs not yet audited for their stack (no __stack, no cookie). The
 # audit sizes each from a measured run (wasabi ps headroom) and removes it here;
 # the set may only shrink.
-AUDIT_PENDING = {
-    'hl', 'mdv', 'ps', 'top', 'Reboot', 'rz', 'sz',
-    'UP-Term Prefs', 'UPConsole', 'UPDemo', 'upicon', 'upsame', 'uptelnet',
-    'UPTerm', 'upupdate', 'wasabikey',
-}
+AUDIT_PENDING = set()
 
 # "$STACK: 262144", or "$STACK: " STR(MENU_STACK) (amarchy/menu.c, amarchy/gui.c).
 COOKIE = re.compile(r'"\$STACK: *([1-9][0-9]*"|"\s*[A-Za-z_]+\()')

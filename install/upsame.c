@@ -13,6 +13,11 @@
 #include <proto/dos.h>
 #include "../tty/qmark.h"
 
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
+long __stack = 8192;
+const char upsame_stack_cookie[] = "$STACK: 8192";
+
 static unsigned long crc_step(unsigned long c, const UBYTE *p, LONG n)
 {
     int k;

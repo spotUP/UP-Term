@@ -65,6 +65,11 @@
 #include "upterm_version.h"
 static const char vers[] = "$VER: uptelnet " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
+long __stack = 16384;
+const char uptelnet_stack_cookie[] = "$STACK: 16384";
+
 struct Library *SocketBase;
 struct Device *TimerBase;
 

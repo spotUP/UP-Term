@@ -19,6 +19,13 @@
 #include "upterm_version.h"
 static const char vers[] = "$VER: hl " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
 
+#ifdef __VBCC__
+/* vbcc's startup runs main on a stack of this size whatever the starter gives
+ * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
+long __stack = 24576;
+const char hl_stack_cookie[] = "$STACK: 24576";
+#endif
+
 static void usage(void)
 {
     vw_say("hl -- show files with syntax colours\n"
