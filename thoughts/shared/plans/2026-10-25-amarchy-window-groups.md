@@ -255,8 +255,9 @@ item the probe cannot find is cut and the count stated as "n of 30" in the check
 Workbench out (reason):
 - Workbench > Quit (also the research's System: Logout): destructive and refused by Workbench while programs run;
   stays in the System group, owner decision.
-- Icons > Delete, Icons > Format Disk, Icons > Empty Trash: destructive; Workbench's own confirmation requester
-  appears, but a menu row one key from the keyboard invites accidents. Open question R3.
+- Icons > Format Disk: destructive, stays out. Icons > Delete and Icons > Empty Trash: owner 2026-10-25 keeps them
+  IN behind the confirm (Workbench's own requester, never suppressed), menu only, no hotkey; rows `workbench.delete`
+  and `workbench.emptytrash` (section 6, item 6).
 - Tools user items and `MENU ADD` (mechanism unverified), `KEYBOARD ADD` hotkeys, AppIcon and AppMenuItem
   registration (research owner decision, separate item).
 - Lock out Workbench (LOCKGUI, A71): not a real lock; goes with System if ever built.
@@ -403,12 +404,18 @@ Total: 5 + 8 + 3 + 2 + 4 + 3 + 3 = 28 items (K1 to K4, K11; K5, K5a, K6, K7, K8,
    drop `screens.workbench` and reuse `slash:/screen workbench` only, which moves the terminal window.
 5. Screens rows reuse the existing `slash:/screen` kind for the UP-Term own screen (recommended): yes, one row,
    no new code; the other five need `win:screen` and `win:title`.
-6. Destructive Workbench rows (Delete, Format Disk, Empty Trash): leave out (recommended); alternative: add with
-   `workbench.` ids, relying on Workbench's confirmation requester.
+6. Destructive Workbench rows: owner 2026-10-25: Icons > Delete and Icons > Empty Trash stay IN, each behind a
+   confirm (Workbench's own requester; Amarchy never suppresses it), menu only, no hotkey, ids `workbench.delete`
+   and `workbench.emptytrash` (add them to the table in 2.2 and the checklist in phase B). Format Disk stays OUT.
 7. Group node labels: `Window`, `Workbench`, `Screens` (recommended; the owner's word Workspace is Omarchy's name
    for what Amiga calls a screen).
 8. Whether the 12 geometry rows (move, resize, focus) belong in the visible menu or in a sub-level
    `window.arrange`: keep flat (recommended: the drawn menu scrolls); a sub-level costs two extra clicks.
+
+Owner decisions 2026-10-25 21:30 (AskUserQuestion, four questions): 1 foreign-window close OUT; 3 keep the shipped
+tab and font keys, resize on Super+Alt+Arrows, the 19 new hotkeys on the free combos of section 3; 6 Delete and
+Empty Trash IN behind the confirm, Format Disk OUT (see item 6); 2, 4, 5, 7, 8 accepted as recommended. Section 6 is
+closed; implementation may start after CLIP-HISTORY lands and the A1200 deploy is done.
 
 ## 7. Reachability (one test per feature)
 
