@@ -233,6 +233,12 @@ int prefs_load_writable(int load_result);
 #define PREFS_STAGE_LOSSY (-3L)
 long prefs_stage(upconf *work, const upconf *cur, const char *profile,
                  const prefs_fields *f, char *buf, long cap);
+/* The same for the look alone (a Theme, Font or Background chosen in the
+ * window's menu becomes the profile's, STYLE-SAVED-DEFAULT): only font,
+ * fg, bg, cursor-color, selection-fg, selection-bg and palette are set;
+ * every other key stays as read, absent ones stay absent. Same results. */
+long prefs_stage_style(upconf *work, const upconf *cur, const char *profile,
+                       const prefs_fields *f, char *buf, long cap);
 
 /* The switch vsh's startup file reads (dist/vshrc): a variable of the
  * profile drawers (ENV:up-term/highlight-cat, and ENVARC:'s copy) holding

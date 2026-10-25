@@ -373,6 +373,48 @@ static void stage_cases(void)
  * font-aspect, any hand-typed key and every comment went on each Save,
  * Use and the window's Save settings to profile (which stages the same
  * way: prefs_from_conf, the window's values over it, prefs_stage). */
+/* STYLE-SAVED-DEFAULT: a Theme, Font or Background chosen in the window's
+ * menu is saved to the profile, and only the look's keys change -- the
+ * window's other settings (changed for this window alone) are not saved
+ * with it, and keys the file does not have are not added. */
+static void style_stage_sets_only_the_look(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    static const char file[] =
+        "# mine\n[default]\nfont = topaz.font 8\nscrollback = 500\nbg = 000000\n"
+        "link-open = run x %s\nhand-typed = kept\n[other]\nbg = 112233\n";
+    prefs_fields f;
+    long len;
+    CHECK_INT(prefs_load(&conf, file, (long)sizeof(file) - 1, UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    strcpy(f.font, "IBMPlexMono.font 12");
+    strcpy(f.bg, "1E1E2E");
+    strcpy(f.fg, "CDD6F4");
+    strcpy(f.pal[1], "F38BA8");
+    strcpy(f.sb, "9999");      /* the window's own: not saved by a style change */
+    strcpy(f.linkopen, "other %s");
+    f.reflow = 0;
+    len = prefs_stage_style(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK(strstr(buf, "# mine") != 0);
+    CHECK(strstr(buf, "reflow") == 0);    /* absent stays absent */
+    CHECK(strstr(buf, "cursor-blink") == 0);
+    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "font", "?"), "IBMPlexMono.font 12");
+    CHECK_STR(upconf_str(&conf, "default", "bg", "?"), "1E1E2E");
+    CHECK_STR(upconf_str(&conf, "default", "fg", "?"), "CDD6F4");
+    CHECK_STR(upconf_str(&conf, "default", "scrollback", "?"), "500");
+    CHECK_STR(upconf_str(&conf, "default", "link-open", "?"), "run x %s");
+    CHECK_STR(upconf_str(&conf, "default", "hand-typed", "?"), "kept");
+    CHECK_STR(upconf_str(&conf, "other", "bg", "?"), "112233");
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_STR(f.pal[1], "F38BA8");
+    /* a table that did not hold the whole file is not written back */
+    conf.overflow = 1;
+    CHECK_INT(prefs_stage_style(&work, &conf, "default", &f, buf, sizeof(buf)), PREFS_STAGE_LOSSY);
+}
+
 /* the two options default on, are written as on / off, and come back on */
 static void amiga_keys_and_highlight_cat_round_trip(void)
 {
@@ -1280,6 +1322,7 @@ void suite_prefs(void)
     stage_cases();
     keep_cases();
     amiga_keys_and_highlight_cat_round_trip();
+    style_stage_sets_only_the_look();
     dither_and_padding_color_round_trip();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
 }

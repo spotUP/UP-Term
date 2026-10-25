@@ -251,6 +251,7 @@ typedef struct con {
     char hist_queue[512];        /* lines waiting for the file, '\n'-ended */
     int hist_queue_len;
     int comp_busy, check_busy;
+    int style_save;              /* STYLE_SAVE_*: a look chosen in the menu, for the profile (style_save_run) */
     /* W21: ghost text from completion candidates, looked up off the key
      * path: the request (its names stay as the directory's listing), the
      * directory it lists, and what the pending look-up is for */
@@ -1899,12 +1900,14 @@ static void rgb_hex(ULONG rgb, char *out)
     out[6] = 0;
 }
 
+static void window_style_fields(con *c, prefs_fields *f);
+
 /* The window's settings now, as UP-Term Prefs' fields for its profile:
  * the profile's own values first (what no menu sets, the scrollback),
  * then everything the window has changed. */
 static void window_fields(con *c, prefs_fields *f)
 {
-    int cs = c->w.cursor_style, i, k = 0;
+    int cs = c->w.cursor_style, k = 0;
     prefs_from_conf(f, c->conf, c->profile);
     f->cursor = cs == 3 || cs == 4 ? PREFS_CURSOR_UNDERLINE : cs >= 5 ? PREFS_CURSOR_BAR
               : PREFS_CURSOR_BLOCK;
@@ -1948,6 +1951,14 @@ static void window_fields(con *c, prefs_fields *f)
             f->sb[k++] = n[--m];
         f->sb[k] = 0;
     }
+    window_style_fields(c, f);
+}
+
+/* The window's look over f: its font and colours, as the profile holds
+ * them (apply_profile reads them back). */
+static void window_style_fields(con *c, prefs_fields *f)
+{
+    int i, k;
     if (c->w.fontname[0]) {
         /* "NAME SIZE", as apply_profile reads it */
         char n[12];
@@ -1988,8 +1999,10 @@ static void comp_data_done(con *c)
 
 /* Settings > Save settings to profile: the file staged here (prefs_core,
  * as UP-Term Prefs does it), written by the worker (DOS) into ENV: and
- * ENVARC:; the window's table follows once both are in place. */
-static void save_ask(con *c)
+ * ENVARC:; the window's table follows once both are in place. style: the
+ * look alone (style_save_run) -- font and colours, every other key of the
+ * file as it is. */
+static void profile_save(con *c, int style)
 {
     prefs_fields f;
     long len;
@@ -2001,8 +2014,13 @@ static void save_ask(con *c)
         comp_data_done(c);
         return;
     }
-    window_fields(c, &f);
+    if (style) {
+        prefs_from_conf(&f, c->conf, c->profile);
+        window_style_fields(c, &f);
+    } else
+        window_fields(c, &f);
     len = prefs_validate(&f) ? -1
+        : style ? prefs_stage_style(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1)
         : prefs_stage(c->save_work, c->conf, c->profile, &f, c->comp->data, UC_MAX_FILE + 1);
     if (len < 0) {
         comp_data_done(c);
@@ -2017,6 +2035,34 @@ static void save_ask(con *c)
         c->comp_busy = 1;
     else
         comp_data_done(c);
+}
+
+/* STYLE-SAVED-DEFAULT: a Theme, Font or Background chosen in the window's
+ * menu (or its keys: the request port) is the profile's too, so the next
+ * window opens in it. A typed /bg, /font or /theme stays this window's.
+ * WAIT: the menu's change is out (a requester, the worker); DUE: it is on
+ * the window, the save starts when the worker is free. */
+enum { STYLE_SAVE_NONE, STYLE_SAVE_WAIT, STYLE_SAVE_DUE };
+
+/* The menu's request went out (the worker took it): its answer decides. */
+static void style_save_wait(con *c, int was_busy)
+{
+    c->style_save = !was_busy && c->comp_busy ? STYLE_SAVE_WAIT : STYLE_SAVE_NONE;
+}
+
+/* The change the menu asked for came (ok), or was cancelled or refused. */
+static void style_save_got(con *c, int ok)
+{
+    if (c->style_save == STYLE_SAVE_WAIT)
+        c->style_save = ok ? STYLE_SAVE_DUE : STYLE_SAVE_NONE;
+}
+
+static void style_save_run(con *c)
+{
+    if (c->style_save == STYLE_SAVE_DUE && !c->comp_busy) {
+        c->style_save = STYLE_SAVE_NONE;
+        profile_save(c, 1);
+    }
 }
 
 /* A theme request for the worker (DOS): COMPLETE_THEME -- name a theme's
@@ -2461,9 +2507,9 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_KC_DEVICE: kc_menu(c, COMPLETE_DEVICES); return 1;
     case MENU_KC_RESET: complete_cache_reset(); return 1;
     case MENU_KC_PURGE: complete_cache_purge(); return 1;
-    case MENU_SET_FONT: font_ask(c); return 1;
-    case MENU_SET_THEME: theme_ask(c, ""); return 1;
-    case MENU_SET_SAVE: save_ask(c); return 1;
+    case MENU_SET_FONT: { int b = c->comp_busy; font_ask(c); style_save_wait(c, b); return 1; }
+    case MENU_SET_THEME: { int b = c->comp_busy; theme_ask(c, ""); style_save_wait(c, b); return 1; }
+    case MENU_SET_SAVE: profile_save(c, 0); return 1;
     case MENU_ABOUT: about(c); return 1;
     case MENU_SCREEN_WB: case MENU_SCREEN_OWN: case MENU_SCREEN_FULL:
         /* after the IDCMP loop has replied its messages (the window goes) */
@@ -3948,12 +3994,15 @@ static void finish_completion(con *c)
             continue;
         }
         if (q->mode == COMPLETE_THEME) {
+            int ok = 0;
             if (q->matches && c->w.t) {
-                if (theme_apply(c, q->data, q->data_len))
+                if ((ok = theme_apply(c, q->data, q->data_len)) != 0)
                     theme_keep(c, q->add);
             } else if (q->word[0])
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* "/theme NAME": no such theme */
             comp_data_done(c);
+            style_save_got(c, ok);
+            style_save_run(c);
             continue;
         }
         if (q->mode == COMPLETE_THEMES) {
@@ -3962,8 +4011,11 @@ static void finish_completion(con *c)
         }
         if (q->mode == COMPLETE_FONT) {
             /* Settings > Font...: the window in the chosen font, live */
-            if (q->matches && c->w.t && !vtwin_set_font(&c->w, q->add, (WORD)q->font_size))
+            int ok = 0;
+            if (q->matches && c->w.t && !(ok = vtwin_set_font(&c->w, q->add, (WORD)q->font_size)))
                 DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* not fixed width, or gone */
+            style_save_got(c, ok);
+            style_save_run(c);
             continue;
         }
         c->menu_n = 0;
@@ -3996,6 +4048,7 @@ static void finish_completion(con *c)
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* completed as far as they agree */
     }
     partial_refine(c); /* a warm-up we waited for has ended */
+    style_save_run(c); /* a look waiting for the worker */
 }
 
 /* name (Latin-1) in place of the word a completion is for, in the line's encoding */
@@ -5376,6 +5429,27 @@ static void req_drop(con *c)
  * runners, both the menu bar's: a menu id through menu_do, a slash command
  * through slash_run, as the same line typed. The qualifier mask is the file's
  * (KM_Q_*): "shift" is either Shift, "rshift" the right one alone. */
+/* slash_run for a command the menu or a key sends: Theme, Font and
+ * Background are the profile's too (style_save_run); typed ones are not. */
+static int slash_menu(con *c, const char *line, char *ans, int cap)
+{
+    char err[80];
+    slash_cmd sc;
+    int len = (int)strlen(line), was_busy = c->comp_busy, ran,
+        style = slash_parse(line, len, &sc, err, sizeof err) == SLASH_OK &&
+                (sc.id == SLASH_THEME || sc.id == SLASH_FONT || sc.id == SLASH_BG);
+    ran = slash_run(c, line, len, ans, cap, 0);
+    if (!style)
+        return ran;
+    if (ran != 1)
+        c->style_save = STYLE_SAVE_NONE;
+    else if (sc.id == SLASH_BG || (sc.id == SLASH_FONT && sc.arg[0]))
+        c->style_save = STYLE_SAVE_DUE; /* on the window now */
+    else
+        style_save_wait(c, was_busy); /* a requester, or /theme NAME's read */
+    return ran;
+}
+
 static int keymap_key(con *c, UWORD code, UWORD qual)
 {
     const km_bind *b = 0;
@@ -5397,8 +5471,9 @@ static int keymap_key(con *c, UWORD code, UWORD qual)
         menu_do(c, a.id, !menu_checked(c, a.id));
     else {
         char ans[160];
-        slash_run(c, a.line, (int)strlen(a.line), ans, sizeof(ans), 0);
+        slash_menu(c, a.line, ans, sizeof(ans));
     }
+    style_save_run(c);
     return 1;
 }
 
@@ -5424,7 +5499,7 @@ static void req_service(con *c)
             else if (a.kind == KACT_SLASH) {
                 char ans[160], err[80];
                 slash_cmd sc = {0};
-                int ran = slash_run(c, a.line, (int)strlen(a.line), ans, sizeof(ans), 0);
+                int ran = slash_menu(c, a.line, ans, sizeof(ans));
                 /* a refusal goes back to the sender with its reason: the menu says it, or asks
                  * for the argument the command lacked (/bg from the menu has none) */
                 int missing = ran == 2 && slash_parse(a.line, (int)strlen(a.line), &sc, err, sizeof err) ==
@@ -5434,6 +5509,7 @@ static void req_service(con *c)
         }
         upreq_reply(m, rc);
     }
+    style_save_run(c);
 }
 
 static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULONG secs, ULONG mics,

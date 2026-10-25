@@ -684,13 +684,55 @@ static void pc_put(upconf *w, const char *p, const char *key, const char *v)
         upconf_del(w, p, key);
 }
 
-long prefs_stage(upconf *w, const upconf *cur, const char *p,
-                 const prefs_fields *f, char *buf, long cap)
+/* The look's keys -- font, the colours, the palette -- set from f in place,
+ * the table written into buf: the tail of both stagings. */
+static long pc_stage_style(upconf *w, const char *p, const prefs_fields *f, char *buf, long cap)
 {
     uc_u32 pal[16];
     char palstr[UC_MAX_VALUE];
     long len;
     int i;
+    pc_put(w, p, "font", f->font);
+    pc_put(w, p, "cursor-color", f->curcol);
+    pc_put(w, p, "fg", f->fg);
+    pc_put(w, p, "bg", f->bg);
+    /* blank keeps the swap for that half: the key is not written at all */
+    pc_put(w, p, "selection-fg", f->selfg);
+    pc_put(w, p, "selection-bg", f->selbg);
+    for (i = 0; i < 16; i++) {
+        uc_u32 rgb;
+        pal[i] = 0;
+        if (f->pal[i][0] && upconf_hex6(f->pal[i], &rgb))
+            pal[i] = 0x01000000UL | rgb;
+    }
+    /* a full 16-entry palette is 159 bytes: it always fits the slot */
+    len = upconf_palette_str(pal, palstr, sizeof(palstr) - 1);
+    if (len < 0)
+        return PREFS_STAGE_FULL;
+    palstr[len] = 0;
+    pc_put(w, p, "palette", palstr);
+    if (w->overflow)
+        return PREFS_STAGE_FULL; /* a key or the profile itself had no room */
+    len = upconf_save(w, buf, cap - 1);
+    if (len < 0)
+        return PREFS_STAGE_SIZE;
+    buf[len] = 0;
+    return len;
+}
+
+long prefs_stage_style(upconf *w, const upconf *cur, const char *p,
+                       const prefs_fields *f, char *buf, long cap)
+{
+    if (cur->overflow)
+        return PREFS_STAGE_LOSSY;
+    memcpy(w, cur, sizeof(*w));
+    w->overflow = 0;
+    return pc_stage_style(w, p, f, buf, cap);
+}
+
+long prefs_stage(upconf *w, const upconf *cur, const char *p,
+                 const prefs_fields *f, char *buf, long cap)
+{
     if (cur->overflow)
         return PREFS_STAGE_LOSSY; /* what did not fit would be gone from the file */
     memcpy(w, cur, sizeof(*w));
@@ -699,19 +741,12 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
      * else the profile holds -- keys only the handler reads, keys typed by
      * hand, comments -- is written back as it was read. (The profile was
      * removed and refilled here, and all of that went with every save.) */
-    pc_put(w, p, "font", f->font);
     pc_put(w, p, "font-fallback", f->fallback);
     upconf_set(w, p, "screen", f->screen == PREFS_SCREEN_OWN ? "own"
                                : f->screen == PREFS_SCREEN_FULL ? "fullscreen" : "workbench");
     pc_put(w, p, "screen-mode", f->screenmode);
     pc_put(w, p, "screen-depth", f->screendepth);
     pc_put(w, p, "scrollback", f->sb);
-    pc_put(w, p, "cursor-color", f->curcol);
-    pc_put(w, p, "fg", f->fg);
-    pc_put(w, p, "bg", f->bg);
-    /* blank keeps the swap for that half: the key is not written at all */
-    pc_put(w, p, "selection-fg", f->selfg);
-    pc_put(w, p, "selection-bg", f->selbg);
     upconf_set(w, p, "font-aspect", f->aspect ? "on" : "off");
     upconf_set(w, p, "backspace", f->backspace_bs ? "bs" : "del");
     upconf_set(w, p, "amiga-keys", f->amiga_keys ? "on" : "off");
@@ -740,25 +775,7 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     pc_put(w, p, "kingcon-mode", f->kcmode);
     upconf_set(w, p, "kingcon-info", f->kcinfo ? "show" : "hide");
     upconf_set(w, p, "kingcon-cache", f->kccache ? "on" : "off");
-    for (i = 0; i < 16; i++) {
-        uc_u32 rgb;
-        pal[i] = 0;
-        if (f->pal[i][0] && upconf_hex6(f->pal[i], &rgb))
-            pal[i] = 0x01000000UL | rgb;
-    }
-    /* a full 16-entry palette is 159 bytes: it always fits the slot */
-    len = upconf_palette_str(pal, palstr, sizeof(palstr) - 1);
-    if (len < 0)
-        return PREFS_STAGE_FULL;
-    palstr[len] = 0;
-    pc_put(w, p, "palette", palstr);
-    if (w->overflow)
-        return PREFS_STAGE_FULL; /* a key or the profile itself had no room */
-    len = upconf_save(w, buf, cap - 1);
-    if (len < 0)
-        return PREFS_STAGE_SIZE;
-    buf[len] = 0;
-    return len;
+    return pc_stage_style(w, p, f, buf, cap);
 }
 
 const char *prefs_hlcat_text(int on)
