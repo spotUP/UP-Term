@@ -24,7 +24,7 @@ All from the research doc (commit `c8fbeb66b0952fe493aab9dc0e4c8ac559fa602e` of 
 - ARexx port `DOPUS.<n>`, first free n from 1 (`rexx_proc.c:43`); two top-level verbs `lister` and `dopus`, 135 table
   keywords; replies are RESULT string plus RC (F1).
 - `dopus screen` returns `<screen name> <w> <h> <depth> ...`; on its own screen DOpus is the public screen `DOPUS.n`
-  and the default public screen (F4). `dopus version` returns `5 99 104` for v5.104.
+  and the default public screen (F4). `dopus version` returns `5 99 104` for v5.104. The owner's A1200 runs Directory Opus 5.91 as its Workbench replacement (`dopus version` answered `5 91` there on 2026-10-25, read-only probe): P1's version gate must accept any 5.x port, and D1 reads the 5.91 templates on the A1200 before trusting the v5.104 guide.
 - Modules are `*.module` libraries in `DOpus5:Modules/`, found by directory notification; entry gets the selection, a
   lister handle and an `EXTCMD_*` callback table; APL 1.1 headers in the repo (F2).
 - Filetypes and button banks are binary IFF `FORM OPUS`, readable and checkable with upstream `archive/tools/filetype_tool.py` (F3).
@@ -171,7 +171,7 @@ Running count is reported at every tick. A test column names the layer; "A1200 e
 unverified until then. 25 items.
 
 ### Phase A: facts (read, then lock)
-- [ ] D1 Read the `lister`/`dopus` verb templates from `documents/DOpusM2_ARexx.guide` and one live `dopus` session on a rig (`dopus version` returns `5 99 104`, port name, command list); record in the research doc. Test: a rig case in `tools/rig/amarchy_menu_rig.py` prints `dopus version` and `dopus screen` (rig, text check).
+- [ ] D1 Read the `lister`/`dopus` verb templates from `documents/DOpusM2_ARexx.guide` and one live `dopus` session on the owner's A1200 (`dopus version` answers `5 91` there; also on a rig with v5.104 where it returns `5 99 104`; port name, command list; note every verb or argument 5.91 lacks); record in the research doc. Test: a rig case in `tools/rig/amarchy_menu_rig.py` prints `dopus version` and `dopus screen` (rig, text check).
 - [ ] D2 Re-check the three hotkeys against the parser (duplicate refusal). Test: host test in `tests/test_keymap.c`, `dopus_binds_parse`.
 
 ### Phase P1: menu group
@@ -246,7 +246,7 @@ Answered 2026-10-25 about 22:05 (AskUserQuestion for 1 to 4; 5 to 7 taken as rec
   `dopus.newlister` through amarchy-gui, asserts RC 0 and that `lister query` on the returned handle reports the
   path; sentinel: DOpus lister count rose by 1 AND Amarchy's row counter (`g_hits` in STATUS) rose by 1. The same case
   with DOpus quit asserts the group is absent (`dopus` not in the menu's node list).
-- P2: rig install of the add-on, then `FindPort DOPUS.1` after starting it; sentinel: `dopus version` returns `5 99 104`.
+- P2: rig install of the add-on, then `FindPort DOPUS.1` after starting it; sentinel: `dopus version` returns `5 99 104` (the A1200's own 5.91 answers `5 91`; the P1 gate accepts both).
 - P3: rig: open a text file by DOpus double-click path (`command` of the filetype action) and assert an UP-Term
   window titled `UP-Term` exists on the asserted screen; sentinel: the launcher's counter file.
 - P4: rig: apply, read `dopus pens`, assert equal to `menu_theme_roles_fb` output; restore, assert original.
