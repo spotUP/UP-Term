@@ -24,6 +24,8 @@
 #define IX_CLIP_NONE     "clip:none"
 #define IX_KIND_HIDDEN   (-1)   /* ix_row_kind result for a system-drawer app row: ix_load_text drops it */
 #define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
+#define IG_CACHE_PATH "ENVARC:Amarchy/icons"  /* the menu's scaled icons (icon_core.h file format); a rescan deletes it */
+#define IG_CACHE_TMP  "ENVARC:Amarchy/icons.tmp"
 
 typedef struct ix_row {
     int  kind;                  /* in the file IX_KIND_APP or IX_KIND_GAME; in a loaded index the effective kind */

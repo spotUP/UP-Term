@@ -1544,7 +1544,7 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
 static void the_app_index_core_behaves(void);
 
 static void app_icons_are_cached_per_path_bounded_and_fitted(void);
-
+static void the_icon_cache_file_round_trips_and_rejects_bad_buffers(void);
 static void the_scan_record_names_the_last_path_and_the_where_text_tells_running_stuck_died_and_done(void)
 {
     ix_prog p = {0};
@@ -1900,8 +1900,8 @@ void suite_keymap(void)
     a_refused_slash_request_answers_why_and_a_missing_value_is_asked_for();
     the_app_index_core_behaves();
     app_icons_are_cached_per_path_bounded_and_fitted();
+    the_icon_cache_file_round_trips_and_rejects_bad_buffers();
 }
-
 /* ---- menu_theme: the drawn menu's colour roles ---- */
 #include "../amarchy/menu_theme.h"
 
@@ -2523,6 +2523,65 @@ static void the_app_index_core_behaves(void)
     root_search_finds_an_index_game_and_an_index_app();
 }
 
+/* The icon cache file and the dynamic slot count (the level's row count sets the slots). */
+static void the_icon_cache_file_round_trips_and_rejects_bad_buffers(void)
+{
+    static ic_cache c;
+    static unsigned char buf[2048];
+    unsigned char pens[6] = {1, 2, 3, 4, 5, 6}, mask[6] = {1, 0, 1, 1, 0, 1};
+    ic_dec d[4];
+    long n, h;
+    char p[16];
+    int i, a;
+    h = ic_file_head(buf, sizeof buf, 32, 16, 4);
+    CHECK(h > 0);
+    n = h;
+    n += ic_file_entry(buf + n, sizeof buf - n, "Work:A", 3, 2, 1, 2, pens, mask);
+    n += ic_file_entry(buf + n, sizeof buf - n, "Work:B", 3, 2, 0, 0, mask, pens);
+    CHECK_INT(ic_file_decode(buf, n, 32, 16, 4, d, 4), 2);
+    CHECK_STR(d[0].path, "Work:A");
+    CHECK_INT(d[0].dw, 3); CHECK_INT(d[0].dh, 2); CHECK_INT(d[0].dx, 1); CHECK_INT(d[0].dy, 2);
+    CHECK_INT(d[0].pens[5], 6); CHECK_INT(d[0].mask[1], 0);
+    CHECK_STR(d[1].path, "Work:B");
+    CHECK_INT(d[1].pens[0], 1); CHECK_INT(d[1].mask[0], 1); CHECK_INT(d[1].mask[1], 2);
+    /* a header that does not match the run's box or depth: the whole file is ignored */
+    CHECK_INT(ic_file_decode(buf, n, 33, 16, 4, d, 4), 0);
+    CHECK_INT(ic_file_decode(buf, n, 32, 17, 4, d, 4), 0);
+    CHECK_INT(ic_file_decode(buf, n, 32, 16, 5, d, 4), 0);
+    buf[4] = 2;
+    CHECK_INT(ic_file_decode(buf, n, 32, 16, 4, d, 4), 0);
+    buf[4] = 1;
+    /* truncated anywhere inside the entries: no entries at all */
+    CHECK_INT(ic_file_decode(buf, n - 1, 32, 16, 4, d, 4), 0);
+    CHECK_INT(ic_file_decode(buf, h + 3, 32, 16, 4, d, 4), 0);
+    CHECK_INT(ic_file_decode(buf, 5, 32, 16, 4, d, 4), 0);
+    buf[0] = 'X';
+    CHECK_INT(ic_file_decode(buf, n, 32, 16, 4, d, 4), 0);
+    buf[0] = 'A';
+    /* an oversize image is refused by the encoder and the decoder alike */
+    CHECK(ic_file_entry(buf + h, sizeof buf - h, "Work:C", 65, 1, 0, 0, pens, mask) < 0);
+    /* slots follow the caller's count: slots + 1 claims evict the oldest */
+    memset(&c, 0, sizeof c);
+    CHECK_INT(ic_init(&c, 300), 1);
+    for (i = 0; i < 300; i++) {
+        strcpy(p, "Work:");
+        p[5] = (char)('a' + i % 26);
+        p[6] = (char)('a' + i / 26);
+        p[7] = 0;
+        a = ic_claim(&c, p);
+        CHECK(a >= 0 && a < 300);
+        ic_set(&c, a, IC_READY);
+    }
+    CHECK(ic_find(&c, "Work:aa") >= 0);
+    CHECK(ic_find(&c, "Work:ba") >= 0);
+    a = ic_claim(&c, "Work:new");
+    CHECK(a >= 0 && a < 300);
+    ic_set(&c, a, IC_READY);
+    CHECK_INT(ic_find(&c, "Work:aa") >= 0, 1);
+    CHECK_INT(ic_find(&c, "Work:ca"), -1);
+    ic_free(&c);
+}
+
 /* AM-IDX-ICON I1: the icon cache's slots and the fit of an image into the icon column. */
 static void app_icons_are_cached_per_path_bounded_and_fitted(void)
 {
@@ -2530,6 +2589,7 @@ static void app_icons_are_cached_per_path_bounded_and_fitted(void)
     char p[IX_PATH + 1];
     int i, a, b, first, dw, dh, dx, dy;
     memset(&c, 0, sizeof c);
+    CHECK_INT(ic_init(&c, IC_SLOTS), 1);
     CHECK_INT(ic_find(&c, "Work:A"), -1);
     a = ic_claim(&c, "Work:A");
     CHECK(a >= 0);
@@ -2564,6 +2624,7 @@ static void app_icons_are_cached_per_path_bounded_and_fitted(void)
     memset(p, 'x', sizeof p);
     p[IX_PATH] = 0;
     CHECK_INT(ic_claim(&c, p), -1);
+    ic_free(&c);
     /* ic_fit: aspect kept, centred, up or down */
     CHECK_INT(ic_fit(46, 22, 32, 16, &dw, &dh, &dx, &dy), 1);
     CHECK_INT(dw, 32);
