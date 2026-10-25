@@ -28,6 +28,7 @@ extern struct Library *WorkbenchBase;
 
 static long g_wins;
 static struct Window *g_ticket;
+static WORD g_tkl, g_tkt, g_tkw, g_tkh;   /* the ticket window's box at take time (K5a) */
 static win_ring g_ring;
 static int g_ring_ready;
 
@@ -57,6 +58,13 @@ static int usable(const struct Window *w)
     return w && member(w) && !is_ours(w);
 }
 
+/* IBase locked: the ticket is still a window of some screen and nothing moved or sized it since the menu opened. */
+static int ticket_valid(void)
+{
+    const struct Window *t = g_ticket;
+    return usable(t) && t->LeftEdge == g_tkl && t->TopEdge == g_tkt && t->Width == g_tkw && t->Height == g_tkh;
+}
+
 /* IBase locked: w's box and screen as win_core wants them */
 static void box_of(const struct Window *w, win_box *b, win_screen *s)
 {
@@ -84,8 +92,13 @@ void win_ticket_take(void)
     aw = IntuitionBase->ActiveWindow;
     if (!aw || !member(aw))
         g_ticket = 0;
-    else if (!is_ours(aw))
+    else if (!is_ours(aw)) {
         g_ticket = aw;
+        g_tkl = aw->LeftEdge;
+        g_tkt = aw->TopEdge;
+        g_tkw = aw->Width;
+        g_tkh = aw->Height;
+    }
     UnlockIBase(lock);
 }
 
@@ -191,7 +204,7 @@ static int win_exec(const char *arg, int via_port)
     else {
         lock = LockIBase(0);
         aw = IntuitionBase->ActiveWindow;
-        if (via_port && aw && is_ours(aw) && member(aw) && usable(g_ticket))
+        if (via_port && aw && is_ours(aw) && member(aw) && ticket_valid())
             w = g_ticket;                 /* K5a: the menu is active, the owner meant the ticket's window */
         else if (usable(aw))
             w = aw;

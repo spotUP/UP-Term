@@ -12,7 +12,8 @@
 int act_win(const char *arg);
 
 /* The same verb from the ARexx port (the drawn menu's row): when the active window is an Amarchy window the
- * ticket taken at menu launch is the target. Returns WIN_RC_*. */
+ * ticket taken at menu launch is the target, if that window is still listed and its box is unchanged since the
+ * ticket was taken (else refused, DisplayBeep). Returns WIN_RC_*. */
 int win_port(const char *arg);
 
 /* Record the window the owner was in when a menu or viewer opens (the menu then becomes the active window). */
