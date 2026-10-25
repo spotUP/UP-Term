@@ -1625,6 +1625,43 @@ def case_wasabi(ck):
         run('SetEnv wasabi.key %s' % rigkey)
 
 
+def case_wasabi_owned(ck):
+    """UNINSTALL-WASABI-BLOCK: a wasabid the owner put in C: before Install (no marker of ours), with no line in
+    S:User-Startup. Install WASABI writes its block (it found no C:wasabid line); Uninstall takes the block out
+    but keeps C:wasabid and leaves a plain `Run >NIL: C:wasabid` line in its place (the owner, 2026-10-25), so
+    the owner's daemon still starts at boot."""
+    import subprocess
+    old = subprocess.run(['git', '-C', str(ROOT), 'show', '063bed5:dist/wasabi/wasabid'], capture_output=True).stdout
+    ck(len(old) > 10000, 'wasabi_owned: a wasabid binary is at hand (git history)', len(old))
+    prepare(None)
+    (VTC / 'old-wasabid').write_bytes(old)
+    before = Before()
+    (VTC / 'runinstallwasabi').write_text("Execute VTC:distkit/Files/install.dos VTC:distkit/Files NOCONSOLE NODEVICE WASABI\n")
+    ck(run('Copy VTC:old-wasabid C:wasabid CLONE')[0] == 0, "wasabi_owned: planted the owner's C:wasabid, no marker")
+    ck('C:wasabid' not in before.startup, 'wasabi_owned: S:User-Startup has no wasabid line before Install')
+    try:
+        rc, out = run_long('runinstallwasabi')
+        ck(rc == 0, 'wasabi_owned: Install WASABI runs', out)
+        ck(run('List >NIL: ENVARC:up-term/wasabid')[0] != 0, 'wasabi_owned: no marker (the wasabid was there before)')
+        ck(';BEGIN UP-Term wasabi' in run('Type S:User-Startup')[1], 'wasabi_owned: Install wrote its block')
+        run('Status COM C:wasabid >T:wpid')
+        pid = (run('Type T:wpid')[1].split() or [''])[0]
+        if pid.isdigit():
+            run('Break %s C' % pid)
+            time.sleep(3)
+        base_uninstall(ck, before, expect_user_startup_clean=False)
+        after = run('Type S:User-Startup')[1]
+        ck(run('List >NIL: C:wasabid')[0] == 0, "wasabi_owned: after Uninstall the owner's C:wasabid stays")
+        ck(';BEGIN UP-Term wasabi' not in after, 'wasabi_owned: after Uninstall the block is gone', after[-200:])
+        ck(after == before.startup + 'Run >NIL: C:wasabid\n',
+           'wasabi_owned: after Uninstall S:User-Startup is as it was plus the plain wasabid line',
+           'now %r before %r' % (after[-120:], before.startup[-120:]))
+    finally:
+        run('Delete >NIL: C:wasabid QUIET')
+        (VTC / 'startup-before').write_text(before.startup)
+        run('Copy VTC:startup-before S:User-Startup CLONE QUIET')
+
+
 def _global_pass(fn, *args):
     """A pass written with the module's own check(): its failures become the case's."""
     def run_(ck):
@@ -1660,6 +1697,7 @@ def case_table():
     t['net'] = (['base'], [], case_net)
     t['net-upgrade'] = (['base'], [], case_net_upgrade)
     t['wasabi'] = (['base'], [], case_wasabi)
+    t['wasabi-owned'] = (['base'], [], case_wasabi_owned)
     t['shellalias'] = (['base'], [], case_shellalias)
     return t
 

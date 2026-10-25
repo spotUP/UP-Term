@@ -89,12 +89,30 @@ If NOT WARN
     Set unvsh UP-Term:bin/vsh
   EndIf
 EndIf
+; a wasabid that was in C: before Install (no marker of ours) stays, and so
+; does its boot line: Install wrote the wasabi block only because
+; S:User-Startup had no line, so a plain one takes the block's place
+; (the owner, 2026-10-25)
+Set unwasabi ""
+If NOT EXISTS ENVARC:up-term/wasabid
+  If EXISTS C:wasabid
+    If EXISTS S:User-Startup
+      Search >NIL: S:User-Startup ";BEGIN UP-Term wasabi"
+      If NOT WARN
+        Set unwasabi 1
+      EndIf
+    EndIf
+  EndIf
+EndIf
 If NOT "$unst" EQ ""
   If EXISTS S:User-Startup
     $unvsh "$unst"
     If EXISTS T:User-Startup.up-term
       Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
       Delete >NIL: T:User-Startup.up-term QUIET
+      If "$unwasabi" EQ "1"
+        Echo >>S:User-Startup "Run >NIL: C:wasabid"
+      EndIf
     EndIf
   EndIf
   ; the upkg Alias block of S:Shell-Startup (its own output file, so an older
@@ -110,6 +128,7 @@ If NOT "$unst" EQ ""
 EndIf
 UnSet unst
 UnSet unvsh
+UnSet unwasabi
 ; TMP: only when Install assigned it (its marker)
 If EXISTS ENVARC:up-term/tmp
   Assign >NIL: TMP: T: REMOVE

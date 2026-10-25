@@ -554,6 +554,24 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertLess(mark, un.index("Delete >NIL: C:wasabid QUIET"))
         self.assertLess(un.index("Delete >NIL: C:wasabid QUIET"), un.index("EndIf", mark))
 
+    def test_uninstall_keeps_a_boot_line_for_a_wasabid_that_was_there_before_install(self):
+        # UNINSTALL-WASABI-BLOCK: Install writes its wasabi block whenever S:User-Startup has no C:wasabid
+        # line, also for a wasabid the owner put in C: (no marker). Stripping the block alone left that
+        # wasabid with no boot line; a plain one takes the block's place (the owner, 2026-10-25).
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        decide = un.index('Set unwasabi ""')
+        strip = un.index('$unvsh "$unst"\n')
+        self.assertLess(decide, strip)
+        cond = un[decide:strip]
+        for need in ("If NOT EXISTS ENVARC:up-term/wasabid", "If EXISTS C:wasabid",
+                     'Search >NIL: S:User-Startup ";BEGIN UP-Term wasabi"', "Set unwasabi 1"):
+            self.assertIn(need, cond)
+        copy = un.index("Copy T:User-Startup.up-term S:User-Startup CLONE QUIET")
+        add = un.index('Echo >>S:User-Startup "Run >NIL: C:wasabid"')
+        self.assertLess(copy, add)
+        self.assertIn('If "$unwasabi" EQ "1"', un[copy:add])
+        self.assertIn("UnSet unwasabi", un)
+
     def test_uninstall_stops_and_removes_both_daemons_before_the_drawer_goes(self):
         un = mi.build(ROOT / "dist/Uninstall", "base")
         stop = un.index("If EXISTS ENVARC:up-term/amiagent")
