@@ -4,6 +4,8 @@
 Entry point: the Amarchy commodity's hotkey (Left Amiga + Space), typed as a user would; the default
 menu style (G6) routes it to amarchy-gui. Plan: thoughts/shared/plans/2026-10-23-amarchy-drawn-menu.md.
 Proves, on the rig:
+  * the menu is drawn offscreen and blitted (no flicker when the bar moves): ENV:AMARCHY_BLITS is above 0 once
+    the menu is open and rises with a level change
   * the new code RAN: ENV:AMARCHY_DRAWS (gui.c draws_publish, bumped on every full draw) is deleted before the
     run, is above 0 once the menu is open and rises when a level change redraws; amarchy-gui is a running process
   * the window is titled "Amarchy", borderless, and has the size and place that amarchy/menu_geom.c gives for
@@ -175,10 +177,19 @@ def process_running(name):
     return any(name in l for l in c.run('Status')[1].splitlines())
 
 
-def draws():
-    rc, out = c.run('GetEnv AMARCHY_DRAWS')
+def env_count(name):
+    rc, out = c.run('GetEnv ' + name)
     m = re.match(r'\s*(\d+)\s*$', out) if rc == 0 else None
     return int(m.group(1)) if m else 0
+
+
+def draws():
+    return env_count('AMARCHY_DRAWS')
+
+
+def blits():
+    """ENV:AMARCHY_BLITS: back buffer to window copies (gui.c paint_end), published with every full draw"""
+    return env_count('AMARCHY_BLITS')
 
 
 def close_menu():
@@ -220,7 +231,7 @@ def case_default(geom):
     e = expected(geom, '-')
     sw, sh, ys, xs, prop, rx, ry = e['screen']
     print('info workbench screen %dx%d pixels %d:%d font %dx%d proportional %d, icon %dx%d' % (sw, sh, rx, ry, xs, ys, prop, e['icon'][0], e['icon'][1]))
-    c.run('Delete >NIL: ENV:AMARCHY_DRAWS')
+    c.run('Delete >NIL: ENV:AMARCHY_DRAWS ENV:AMARCHY_BLITS')
     check(draws() == 0, 'sentinel ENV:AMARCHY_DRAWS deleted before the run')
     check(not where(TITLE)[1] and not process_running('amarchy-gui'), 'no menu window and no amarchy-gui before the hotkey')
     s, w = open_menu()
@@ -232,6 +243,8 @@ def case_default(geom):
     check(not process_running('amarchy-menu'), 'amarchy-menu (the text menu) is not running')
     d0 = draws()
     check(d0 > 0, 'sentinel: ENV:AMARCHY_DRAWS = %d after the menu opened (the drawing code ran)' % d0)
+    b0 = blits()
+    check(b0 > 0, 'sentinel: ENV:AMARCHY_BLITS = %d, the menu is drawn offscreen and blitted (a moving bar does not flicker)' % b0)
     check(s['front'], 'the window is on the front screen')
     # WA_Borderless leaves no edges and no gadgets; the title bar's height stays as the top border
     bl, bt, br, bb = w['border']
@@ -260,6 +273,7 @@ def case_default(geom):
         check_geometry('apps', s, w, e, 'Workbench')
         check(box_of(s, w)[2] == e['root']['box'][2], 'the width stayed the same while walking a level')
         check(draws() > d0, 'a level change redrew: ENV:AMARCHY_DRAWS %d -> %d' % (d0, draws()))
+        check(blits() > b0, 'the level change reached the window by a blit: ENV:AMARCHY_BLITS %d -> %d' % (b0, blits()))
         ix, iy, cw, ch, iy2 = e['apps']['cell']
         n3, bg3 = cell_pixels(s, box_of(s, w), ix, iy, cw, ch)
         check(n3 >= 4, 'apps level: icon cell holds %d pixels unlike the row background %s' % (n3, bg3))

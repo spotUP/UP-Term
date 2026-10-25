@@ -82,6 +82,11 @@ typedef struct gui {
     int stop;                    /* the running event loop ends */
     int quit;                    /* the window is going: every loop ends */
     long draws;
+    struct BitMap *bb;           /* the back buffer every draw goes to, else 0 (g->rp is the window's) */
+    struct RastPort brp;         /* its rastport */
+    int bw, bh;                  /* its size */
+    int nest;                    /* draws running: the outermost one blits */
+    long blits;                  /* back buffer to window copies */
     /* list */
     char node[KM_ID * 2], filter[KM_LABEL];
     mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
@@ -179,6 +184,58 @@ static void put(gui *g, int role, int x, int y, int boxh, const char *s, int len
     Text(g->rp, (STRPTR)s, n);
 }
 
+/* ---- back buffer -------------------------------------------------------------------------------------- */
+
+/* Every draw goes to an offscreen bitmap and reaches the window in one blit when the outermost draw ends, so
+ * the window never shows a row half drawn (cleared, then box, icon, text): drawn on the window, a moving
+ * selection flickered. When the bitmap cannot be had, g->rp stays the window's rastport. */
+static void buffer_fit(gui *g)
+{
+    int w = g->g.w, h = g->g.h + g->g.m.row_h;   /* a row of room below: the peek row's text runs past the list */
+    if (g->bb && g->bw >= w && g->bh >= h)
+        return;
+    if (g->bb) {
+        WaitBlit();
+        FreeBitMap(g->bb);
+    }
+    g->bb = AllocBitMap((ULONG)w, (ULONG)h, g->scr->RastPort.BitMap->Depth, BMF_MINPLANES | BMF_CLEAR,
+                        g->scr->RastPort.BitMap);
+    g->rp = g->win->RPort;
+    if (!g->bb)
+        return;
+    g->bw = w;
+    g->bh = h;
+    InitRastPort(&g->brp);
+    g->brp.BitMap = g->bb;
+    g->rp = &g->brp;
+    SetFont(g->rp, g->font);
+    SetDrMd(g->rp, JAM1);
+}
+
+static void paint_begin(gui *g)
+{
+    if (!g->nest++)
+        buffer_fit(g);
+}
+
+/* The end of a draw that changed the window-relative box x0,y0 - x1,y1. */
+static void paint_end(gui *g, int x0, int y0, int x1, int y1)
+{
+    if (--g->nest || !g->bb || x1 < x0 || y1 < y0)
+        return;
+    BltBitMapRastPort(g->bb, x0, y0, g->win->RPort, x0, y0, x1 - x0 + 1, y1 - y0 + 1, 0xC0);
+    g->blits++;
+}
+
+static void buffer_free(gui *g)
+{
+    if (g->bb) {
+        WaitBlit();
+        FreeBitMap(g->bb);
+    }
+    g->bb = 0;
+}
+
 /* ---- drawing ------------------------------------------------------------------------------------------ */
 
 static int shown_rows(const gui *g)
@@ -257,6 +314,7 @@ static void draw_row(gui *g, int e)
     if (bottom > q->list_y + q->list_h - 1)
         bottom = q->list_y + q->list_h - 1;
     sel = (g->mode == M_LIST && e == g->sel) || g->mode == M_INPUT;
+    paint_begin(g);
     fill(g, sel ? MT_SELBOX : MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
     tx = q->list_x + q->m.row_pad;
     tw = q->list_w - 2 * q->m.row_pad;
@@ -281,6 +339,7 @@ static void draw_row(gui *g, int e)
         put(g, MT_ACCENT, tx, y, q->m.row_h, t, g->elen + 1, tw);
     } else
         put(g, MT_TEXT, tx, y, q->m.row_h, g->ln[e], g->ll[e], tw);
+    paint_end(g, q->list_x, y, q->list_x + q->list_w - 1, bottom);
 }
 
 /* The rows area (not a full draw: the sentinel counts those). */
@@ -290,24 +349,29 @@ static void draw_list(gui *g)
     int e;
     if (g->await)
         return;
+    paint_begin(g);
     fill(g, MT_BG, q->list_x, q->list_y, q->list_x + q->list_w - 1, q->list_y + q->list_h - 1);
     for (e = g->top; e < g->top + shown_rows(g); e++)
         draw_row(g, e);
     /* the peek row's text runs past the list: put the padding and the border back */
     fill(g, MT_BG, q->m.bx, q->list_y + q->list_h, q->w - q->m.bx - 1, q->h - q->m.by - 1);
     draw_border(g);
+    paint_end(g, 0, 0, g->g.w - 1, g->g.h - 1);
 }
 
 static void draw_full(gui *g)
 {
     if (g->await)
         return;
+    paint_begin(g);
     fill(g, MT_BG, 0, 0, g->g.w - 1, g->g.h - 1);
     draw_border(g);
     draw_header(g);
     draw_list(g);
+    paint_end(g, 0, 0, g->g.w - 1, g->g.h - 1);
     g->draws++;
     sentinel_publish("AMARCHY_DRAWS", g->draws);
+    sentinel_publish("AMARCHY_BLITS", g->blits);
     if (g->mode == M_LIST)
         sentinel_rows(g);
     sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
@@ -875,6 +939,7 @@ static void gui_refused(void *ctx, const char *label, long rc, const char *answe
 static void cleanup(gui *g)
 {
     ig_close();
+    buffer_free(g);
     if (g->win)
         CloseWindow(g->win);
     g->win = 0;
