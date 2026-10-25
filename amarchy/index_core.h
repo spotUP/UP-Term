@@ -70,6 +70,11 @@ void ix_free(ix_index *x);
  * Games groups the root may get. The size of the item and filter arrays given to ix_level. */
 int ix_level_cap(const ix_index *x);
 
+/* The category of an app or game path: the first drawer under the volume ("Sys:Utilities/Clock" gives
+ * Utilities, "Work:Dev/Editors/CED" gives Dev). 1 with seg (the menu node segment, dots as '_') and
+ * label (the drawer name) filled (either may be NULL), 0 for a path at the volume root. */
+int ix_category(const char *path, char *seg, int n, char *label, int ln);
+
 /* The entries of one level, as mn_children, extended with the index: the "apps" node lists the app
  * rows after the [menu] ones, the "games" node lists the game rows, and the root gets an Apps or
  * Games group when only the index fills it. With a non-empty filter the root also lists every index

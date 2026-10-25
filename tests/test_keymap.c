@@ -1950,8 +1950,8 @@ static void every_cache_row_reaches_the_apps_level_past_256(void)
     int i, n, len = 0;
     CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
     for (i = 0; i < 399; i++)
-        len += snprintf(text + len, sizeof text - len, "app\tApp%03d\tWork:A/App%03d\n", i, i);
-    snprintf(text + len, sizeof text - len, "app\tZed Last\tWork:Z/Last\n");
+        len += snprintf(text + len, sizeof text - len, "app\tApp%03d\tWork:App%03d\n", i, i);
+    snprintf(text + len, sizeof text - len, "app\tZed Last\tWork:Last\n");
     ix_load_text(&km, &x, text);
     CHECK_INT(x.n, 400);
     CHECK(ix_level_cap(&x) >= MN_MAX_ITEMS + 400);
@@ -1974,18 +1974,23 @@ static void the_apps_level_lists_index_apps_after_merging(void)
     base = mn_children(&km, "apps", it, TEST_LEVEL_MAX);
     n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
     CHECK_INT(base, 2);
-    CHECK_INT(n, 5);                                   /* 2 menu rows + Clock + 2 Editors */
+    CHECK_INT(n, 4);                                   /* 2 menu rows + the drawers Tools and E */
     CHECK_STR(it[0].label, "Tmux");                    /* the keymap rows come first */
-    CHECK(level_has(it, n, "Clock"));
+    CHECK(level_has(it, n, "Tools") && level_has(it, n, "E"));
+    n = ix_level(&km, &x, "apps.Tools", "", it, TEST_LEVEL_MAX);
+    CHECK_INT(n, 1);
+    CHECK_STR(it[0].label, "Clock");
+    base = 0;
+    CHECK(MN_IS_INDEX(&it[0]));
+    idx = it[0].ix;
+    CHECK(idx >= 0 && !strcmp(x.rows[idx].path, "Sys:Tools/Clock"));
+    n = ix_level(&km, &x, "apps.E", "", it, TEST_LEVEL_MAX);
+    CHECK_INT(n, 2);
     CHECK(level_has(it, n, "Editor (Sys)"));           /* a shared label carries its volume */
     CHECK(level_has(it, n, "Editor (Work)"));
     CHECK(!level_has(it, n, "Turrican 2"));
-    for (i = base; i < n; i++) {
+    for (i = base; i < n; i++)
         CHECK(MN_IS_INDEX(&it[i]));                    /* the action kind X5 launches */
-        if (!strcmp(it[i].label, "Clock"))
-            idx = it[i].ix;
-    }
-    CHECK(idx >= 0 && !strcmp(x.rows[idx].path, "Sys:Tools/Clock"));
 }
 
 static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_apps_menu(void)
@@ -1997,14 +2002,18 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
     int n, i, clock = -1, rescan = -1;
     CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
     ix_load_text(&km, &x, index_cache);
-    n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
+    n = ix_level(&km, &x, "apps.Tools", "", it, TEST_LEVEL_MAX);
     for (i = 0; i < n; i++)
         if (!strcmp(it[i].label, "Clock"))
             clock = i;
     CHECK(clock >= 0);
     CHECK_INT(ix_launch_path(&x, &it[clock], path, sizeof path), 1);
     CHECK_STR(path, "Sys:Tools/Clock");                /* the tool, no .info */
-    CHECK_INT(ix_launch_path(&x, &it[0], path, sizeof path), 0);   /* a menu row is not launched this way */
+    {
+        mn_item top[TEST_LEVEL_MAX];
+        ix_level(&km, &x, "apps", "", top, TEST_LEVEL_MAX);
+        CHECK_INT(ix_launch_path(&x, &top[0], path, sizeof path), 0);   /* a menu row is not launched this way */
+    }
     CHECK_INT(ix_launch_path(&x, &it[clock], path, 8), 0);         /* a path that does not fit */
     /* the cache is read again when ix_load_text runs again: a rescan shows on the next menu open */
     ix_load_text(&km, &x, "app\tZed\tWork:Zed\n");
@@ -2062,13 +2071,69 @@ static void the_games_level_lists_index_games_and_the_root_offers_the_group(void
     int n;
     CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
     ix_load_text(&km, &x, index_cache);
-    n = ix_level(&km, &x, "games", "", it, TEST_LEVEL_MAX);
+    n = ix_level(&km, &x, "games.Games", "", it, TEST_LEVEL_MAX);
     CHECK_INT(n, 1);
     CHECK_STR(it[0].label, "Turrican 2");
     CHECK(MN_IS_INDEX(&it[0]));
     n = ix_level(&km, &x, "", "", it, TEST_LEVEL_MAX);
     CHECK(level_has(it, n, "Games"));
     CHECK(!level_has(it, n, "Turrican 2"));            /* without a filter the root stays short */
+}
+
+static int level_group(const mn_item *it, int n, const char *label)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (MN_IS_GROUP(&it[i]) && !strcmp(it[i].label, label))
+            return i;
+    return -1;
+}
+
+static void the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume(void)
+{
+    static ix_index x;
+    mn_item it[TEST_LEVEL_MAX];
+    int n;
+    CHECK(parse("[menu]\napps.claude = Claude | run:claude\n"));
+    ix_load_text(&km, &x,
+                 "app\tClock\tSys:Utilities/Clock\n"
+                 "app\tCED\tWork:Dev/Editors/CED\n"
+                 "app\tShell\tSys:Tools/Shell\n"
+                 "app\tShell\tWork:Tools/Shell\n"
+                 "app\tFlat\tWork:Flat\n"
+                 "game\tTurrican 2\tWork:Games/Turrican2\n"
+                 "game\tBoulder\tSys:Fun/Boulder\n"
+                 "game\tRootGame\tWork:RootGame\n");
+    n = ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX);
+    CHECK_INT(n, 5);                                   /* Claude, Dev, Tools, Utilities, Flat */
+    CHECK(!MN_IS_GROUP(&it[0]));                       /* the [menu] row stays at the Apps level */
+    CHECK_STR(it[0].label, "Claude");
+    CHECK_INT(level_group(it, n, "Dev"), 1);       /* categories alphabetical, merged by drawer name */
+    CHECK_INT(level_group(it, n, "Tools"), 2);
+    CHECK_INT(level_group(it, n, "Utilities"), 3);
+    CHECK_STR(it[4].label, "Flat");                    /* the volume-root app is flat, below the categories */
+    CHECK(MN_IS_INDEX(&it[4]));
+    CHECK(!level_has(it, n, "Clock"));                 /* categorised apps are not at the Apps level */
+    n = ix_level(&km, &x, "apps.Tools", "", it, TEST_LEVEL_MAX);
+    CHECK_INT(n, 2);                                   /* Sys:Tools and Work:Tools merged, suffix kept */
+    CHECK_STR(it[0].label, "Shell (Sys)");
+    CHECK_STR(it[1].label, "Shell (Work)");
+    n = ix_level(&km, &x, "apps.dev", "", it, TEST_LEVEL_MAX);
+    CHECK_INT(n, 1);                                   /* a single-app category is kept; case-insensitive node */
+    CHECK_STR(it[0].label, "CED");
+    n = ix_level(&km, &x, "games", "", it, TEST_LEVEL_MAX);
+    CHECK_INT(n, 3);
+    CHECK_INT(level_group(it, n, "Fun"), 0);
+    CHECK_INT(level_group(it, n, "Games"), 1);
+    CHECK_STR(it[2].label, "RootGame");
+    n = ix_level(&km, &x, "games.Games", "", it, TEST_LEVEL_MAX);
+    CHECK_INT(n, 1);
+    CHECK_STR(it[0].label, "Turrican 2");
+    n = ix_level(&km, &x, "apps", "cl", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Clock") && level_has(it, n, "Flat"));   /* a filter at Apps searches every category */
+    CHECK(level_has(it, n, "Utilities"));              /* the group stays, so its name can match too */
+    n = ix_level(&km, &x, "", "shell", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Shell (Sys)"));            /* the root filter still finds apps in categories */
 }
 
 static void a_missing_or_empty_cache_adds_no_index_rows(void)
@@ -2122,6 +2187,7 @@ static void the_app_index_core_behaves(void)
     a_launch_request_for_the_resident_amarchy_carries_the_path_and_refuses_a_bad_one();
     a_menu_row_hides_an_index_app_with_the_same_label();
     the_games_level_lists_index_games_and_the_root_offers_the_group();
+    the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume();
     a_missing_or_empty_cache_adds_no_index_rows();
     root_search_finds_an_index_game_and_an_index_app();
 }

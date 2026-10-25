@@ -277,7 +277,7 @@ static int has_group(const mn_item *it, int n, const char *seg)
 {
     int i;
     for (i = 0; i < n; i++)
-        if (MN_IS_GROUP(&it[i]) && !strcmp(it[i].seg, seg))
+        if (MN_IS_GROUP(&it[i]) && !cmp_ci(it[i].seg, seg))
             return 1;
     return 0;
 }
@@ -294,6 +294,40 @@ static int add_group(mn_item *out, int n, int max, const char *seg, const char *
     return n;
 }
 
+/* add_index for the rows of [from, to) that fall in category cat (NULL: the rows with no category) */
+static int add_index_cat(const ix_index *x, int from, int to, const char *cat, mn_item *out, int n, int max)
+{
+    int i;
+    for (i = from; i < to && n < max; i++) {
+        char seg[KM_ID];
+        int has = ix_category(x->rows[i].path, seg, sizeof seg, 0, 0);
+        if (cat ? (has && !cmp_ci(seg, cat)) : !has)
+            n = add_index(x, i, i + 1, out, n, max);
+    }
+    return n;
+}
+
+int ix_category(const char *path, char *seg, int n, char *label, int ln)
+{
+    const char *c = strchr(path, ':'), *e;
+    int len, i;
+    if (!c || !(e = strchr(c + 1, '/')) || e == c + 1)
+        return 0;                                  /* no volume, or an app at the volume root */
+    len = (int)(e - (c + 1));
+    if (seg && n > 0) {
+        int m = len < n - 1 ? len : n - 1;
+        for (i = 0; i < m; i++)
+            seg[i] = c[1 + i] == '.' ? '_' : c[1 + i];   /* a dot would break the node path */
+        seg[m] = 0;
+    }
+    if (label && ln > 0) {
+        int m = len < ln - 1 ? len : ln - 1;
+        memcpy(label, c + 1, m);
+        label[m] = 0;
+    }
+    return 1;
+}
+
 int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
              int max)
 {
@@ -303,13 +337,49 @@ int ix_level(const keymap *k, const ix_index *x, const char *node, const char *f
 int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
                int max, int term)
 {
+    int from = 0, to;
+    const char *kind, *cat;
     int n = mn_children_t(k, node, out, max, term);
     if (!x)
         return n;
-    if (!strcmp(node, "apps")) {
-        n = add_index(x, 0, x->napps, out, n, max);
-    } else if (!strcmp(node, "games")) {
-        n = add_index(x, x->napps, x->n, out, n, max);
+    to = x->napps;
+    if (!strcmp(node, "apps") || !strncmp(node, "apps.", 5)) {
+        kind = "apps";
+    } else if (!strcmp(node, "games") || !strncmp(node, "games.", 6)) {
+        kind = "games";
+        from = x->napps;
+        to = x->n;
+    } else
+        kind = 0;
+    if (kind) {
+        int kl = (int)strlen(kind);
+        cat = node[kl] ? node + kl + 1 : 0;
+        if (cat) {                                  /* a category: its apps, from every volume */
+            n = add_index_cat(x, from, to, cat, out, n, max);
+        } else {                                    /* the categories, then the volume-root apps */
+            char last[KM_ID], seg[KM_ID], lab[KM_LABEL], best[KM_ID], blab[KM_LABEL];
+            int i, any = 0, found;
+            for (;;) {
+                found = 0;
+                for (i = from; i < to; i++)
+                    if (ix_category(x->rows[i].path, seg, sizeof seg, lab, sizeof lab) &&
+                        (!any || cmp_ci(seg, last) > 0) && (!found || cmp_ci(seg, best) < 0)) {
+                        strcpy(best, seg);
+                        strcpy(blab, lab);
+                        found = 1;
+                    }
+                if (!found)
+                    break;
+                strcpy(last, best);
+                any = 1;
+                if (!has_group(out, n, best))
+                    n = add_group(out, n, max, best, blab);
+            }
+            if (filter && *filter)                  /* typing searches every app, whatever its category */
+                n = add_index(x, from, to, out, n, max);
+            else
+                n = add_index_cat(x, from, to, 0, out, n, max);
+        }
     } else if (!*node) {
         if (x->napps && !has_group(out, n, "apps"))
             n = add_group(out, n, max, "apps", "Apps");

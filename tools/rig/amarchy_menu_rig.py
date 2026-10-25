@@ -501,9 +501,13 @@ def r_app_index():
         ck('6 one A0Shadow row at Apps (the [menu] row)', len(re.findall('A0Shadow', apps)) == 1)
         ami.key(RAW['esc'])
         time.sleep(0.8)
-        games = x9_level('Games')
+        x9_level('Games')
+        x9_type('a0')                           # a filter searches every category (the level lists drawers first)
+        games = screen_text()
         ck('4 Games level lists the project', 'A0Game' in games, ' '.join(menu_rows(games))[:100])
         ami.key(RAW['esc'])
+        time.sleep(0.8)
+        ami.key(RAW['esc'])                     # the first Esc cleared the filter, this one leaves Games
         time.sleep(0.8)
         x9_level('Apps')
         x9_type('a0shadow')
@@ -663,6 +667,59 @@ def r_app_index():
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
+def r_app_categories():
+    """SYS-CATEGORIES: the Apps and Games levels list the first drawer under the volume as a group; the apps
+    sit inside it (the host test tests/test_keymap.c holds merge, volume-root and single-app rules)."""
+    import amarchy_rig
+    res = []
+
+    def ck(name, ok, detail=''):
+        res.append(ok)
+        print('  %s %s%s' % ('[OK]' if ok else '[FAIL]', name, (': ' + detail) if detail else ''), flush=True)
+        return ok
+
+    if not amarchy_rig.port_up():
+        r_start()
+    ensure_terminal()
+    saved, upterm = x9_begin()
+    try:
+        x9_files()
+        c.run('Echo >%s "[profile default]"' % X9_CONF)
+        c.run('Echo >>%s "amarchy-index-skip = %s"' % (X9_CONF, X9_SKIP))
+        c.run('Echo >ENV:up-term/keymap.user "[menu]"')
+        c.run('Echo >>ENV:up-term/keymap.user "apps.a0shadow = A0Shadow | run:C:Echo >RAM:x9.menurow hit"')
+        amarchy_rig.arexx('RELOAD')
+        c.run('Delete >NIL: %s QUIET' % X9_CACHE)
+        c.run('%s/amarchy-index' % paths.UPTERM_BIN, 120)
+        ck('menu opens', x9_open_menu())
+        x9_level('Apps')
+        x9_type('x9test')                       # the group name matches; the fake apps' labels do not
+        top = screen_text()
+        ck('Apps level has the category group X9Test', 'X9Test' in top and 'A0Fake' not in top, ' '.join(menu_rows(top))[:100])
+        ami.key(RAW['return'])                  # into the category
+        time.sleep(1)
+        inside = screen_text()
+        ck('the category holds the app (the shadowed one stays a [menu] row at Apps)', 'A0Fake' in inside and 'A0Shadow' not in inside, ' '.join(menu_rows(inside))[:100])
+        ck('the category does not hold the game', 'A0Game' not in inside)
+        x9_leave()
+        ck('menu reopens', x9_open_menu())
+        x9_level('Apps')
+        x9_type('a0shadow')
+        shadow = screen_text()
+        ck('the [menu] row stays at the Apps level, once', len(re.findall('A0Shadow', shadow)) == 1, ' '.join(menu_rows(shadow))[:100])
+        x9_leave()
+        ck('menu reopens for Games', x9_open_menu())
+        x9_level('Games')
+        x9_type('x9test')
+        ami.key(RAW['return'])
+        time.sleep(1)
+        games = screen_text()
+        ck('Games level: the category holds the game', 'A0Game' in games, ' '.join(menu_rows(games))[:100])
+    finally:
+        x9_end(saved, upterm)
+    return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
 ROWS = [
     ('start',        r_start),
     ('rows_no_terminal', r_rows_no_terminal),
@@ -677,6 +734,7 @@ ROWS = [
     ('lamiga_minus_sv', r_lamiga_minus_sv),
     ('app_index',    r_app_index),
     ('app_icons',    r_app_icons),
+    ('app_categories', r_app_categories),
 ]
 
 
