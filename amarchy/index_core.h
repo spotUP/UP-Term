@@ -133,6 +133,15 @@ typedef struct ix_watch { long runs0; int polls; } ix_watch;
  * row text into out (cut to n; a long path is cut from the left so the drawer name stays); "" for NONE.
  * A menu that did not start the scan (runs0 -1) adopts a running one, so it shows that scan's end too. */
 int ix_watch_row(ix_watch *w, int have, const ix_prog *p, int alive, char *out, int n);
+/* A watching menu: the ix_watch, the last state and the row text shown. on: polls still matter (a
+ * DONE or FAILED row stays on screen, the ticks stop). */
+#define IXW_ROW 96
+typedef struct ix_watcher { ix_watch w; int on, state; char row[IXW_ROW]; } ix_watcher;
+/* Begin watching. started: this menu launched the scan just now (runs0 = the record's runs, read BEFORE
+ * the launch: pass the record then); 0: adopt a scan that already runs (on only when one does). */
+void ix_watcher_begin(ix_watcher *x, int started, int have, const ix_prog *p, int alive);
+/* One poll. 1 when the row text changed (the menu rebuilds); on goes 0 at DONE and FAILED. */
+int ix_watcher_step(ix_watcher *x, int have, const ix_prog *p, int alive);
 /* The stage as a word: volumes, walk, icon, write, done, stopped, idle. */
 const char *ix_stage_name(int stage);
 /* The text `amarchy-index --where` prints (several lines, each ending in LF), into out; the length,

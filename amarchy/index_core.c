@@ -569,3 +569,32 @@ int ix_watch_row(ix_watch *w, int have, const ix_prog *p, int alive, char *out, 
     }
     return IXW_NONE;
 }
+
+void ix_watcher_begin(ix_watcher *x, int started, int have, const ix_prog *p, int alive)
+{
+    memset(x, 0, sizeof *x);
+    if (started) {
+        x->w.runs0 = have && p->version == IX_PROG_VERSION ? p->runs : 0;
+        x->on = 1;
+        x->state = IXW_STARTING;
+        strcpy(x->row, "Scanning... starting");
+        return;
+    }
+    x->w.runs0 = -1;
+    ix_watcher_step(x, have, p, alive);
+    x->on = x->state == IXW_RUNNING;
+    if (!x->on)
+        x->row[0] = 0;
+}
+
+int ix_watcher_step(ix_watcher *x, int have, const ix_prog *p, int alive)
+{
+    char row[IXW_ROW];
+    int st = ix_watch_row(&x->w, have, p, alive, row, sizeof row), changed;
+    changed = strcmp(row, x->row) != 0 || st != x->state;
+    memcpy(x->row, row, sizeof row);
+    x->state = st;
+    if (st == IXW_DONE || st == IXW_FAILED)
+        x->on = 0;
+    return changed;
+}

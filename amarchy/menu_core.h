@@ -44,6 +44,10 @@ int mn_children(const keymap *k, const char *node, mn_item *out, int max);
  * indices into items to idx; the count. */
 int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max);
 
+/* Where the entry labelled label sits among the c shown entries (items[idx[i]]); -1 when it is not shown.
+ * A rebuilt level (the scan's status row changed) keeps the cursor on the same entry with it. */
+int mn_pick(const mn_item *items, const int *idx, int c, const char *label);
+
 /* The node one level up ("apps.tools" -> "apps", "apps" -> ""). 0 at the root: Esc there leaves
  * the menu; otherwise 1 and out holds the parent. */
 int mn_parent(const char *node, char *out, int n);

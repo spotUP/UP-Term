@@ -26,6 +26,7 @@
 #include <string.h>
 #include "menu_core.h"
 #include "index_core.h"
+#include "ixwatch.h"
 #include "menu_geom.h"
 #include "menu_theme.h"
 #include "leaf.h"
@@ -86,6 +87,10 @@ typedef struct gui {
     mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
     int *idx, cap, count;
     int sel, top;
+    ix_watcher wt;               /* the scan this window watches; its status row is entry 0 while wt.row is set */
+    int shift;                   /* 1 when entry 0 is the status row (never selectable), else 0 */
+    int ticks;                   /* IDCMP_INTUITICKS since the last poll */
+    int ticking;                 /* IDCMP_INTUITICKS is on */
     char ixlabel[KM_LABEL];
     char ixpath[IX_PATH];        /* the index row to launch (its tool or project), else empty */
     int chosen;                  /* index into keymap.menu of the leaf to run, else -1 */
@@ -130,12 +135,12 @@ static void sentinel_rows(const gui *g)
     char b[256];
     int i, n = 0;
     b[0] = 0;
-    for (i = 0; i < g->count; i++) {
-        const char *l = g->it[g->idx[i]].label;
+    for (i = g->shift; i < g->count; i++) {
+        const char *l = g->it[g->idx[i - g->shift]].label;
         int len = (int)strlen(l);
         if (n + len + 2 >= (int)sizeof b)
             break;
-        if (i)
+        if (i > g->shift)
             b[n++] = '|';
         memcpy(b + n, l, len);
         n += len;
@@ -255,8 +260,10 @@ static void draw_row(gui *g, int e)
     fill(g, sel ? MT_SELBOX : MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
     tx = q->list_x + q->m.row_pad;
     tw = q->list_w - 2 * q->m.row_pad;
-    if (g->mode == M_LIST) {
-        const mn_item *it = &g->it[g->idx[e]];
+    if (g->mode == M_LIST && e < g->shift) {      /* the scan's status row */
+        put(g, MT_DIM, tx, y, q->m.row_h, g->wt.row, (int)strlen(g->wt.row), tw);
+    } else if (g->mode == M_LIST) {
+        const mn_item *it = &g->it[g->idx[e - g->shift]];
         int role = sel ? MT_ACCENT : MT_TEXT;
         int ic = g->icon_w ? g->icon_w + q->m.icon_gap : 0;
         if (ic) {
@@ -321,21 +328,36 @@ static void relayout(gui *g, int n)
         draw_full(g);
 }
 
-static void list_rebuild(gui *g)
+/* The level for the node and filter; the cursor goes to the entry labelled keep when it is still shown, else
+ * the first real entry. */
+static void list_rebuild_keep(gui *g, const char *keep)
 {
     int n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
-    g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
-    g->sel = g->top = 0;
+    int pos;
+    g->shift = g->wt.row[0] ? 1 : 0;
+    g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
+    pos = mn_pick(g->it, g->idx, g->count - g->shift, keep);
+    g->sel = g->shift + (pos > 0 ? pos : 0);
+    g->top = 0;
+    if (pos > 0) {                       /* the layout (visible rows) is needed to scroll to it */
+        mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
+        g->top = mg_scroll(&g->g, g->sel, 0);
+    }
     relayout(g, g->count);
+}
+
+static void list_rebuild(gui *g)
+{
+    list_rebuild_keep(g, 0);
 }
 
 static void set_sel(gui *g, int s)
 {
     int old = g->sel, top = g->top;
-    if (g->count <= 0)
+    if (g->count <= g->shift)
         return;
-    if (s < 0)
-        s = 0;
+    if (s < g->shift)
+        s = g->shift;
     if (s >= g->count)
         s = g->count - 1;
     g->sel = s;
@@ -375,12 +397,82 @@ static void go_up(gui *g)
         g->quit = g->stop = 1;
 }
 
+static int gui_ask_value(void *ctx, const char *label, const char *usage, char *out, int n);
+static void gui_refused(void *ctx, const char *label, long rc, const char *answer);
+
+/* IDCMP_INTUITICKS only while a scan is watched: the window is a launcher, ticks come while it is in use. */
+static void watch_idcmp(gui *g)
+{
+    int want = g->wt.on;
+    if (want == g->ticking || !g->win)
+        return;
+    g->ticking = want;
+    g->ticks = 0;
+    ModifyIDCMP(g->win, want ? g->win->IDCMPFlags | IDCMP_INTUITICKS : g->win->IDCMPFlags & ~IDCMP_INTUITICKS);
+}
+
+/* The scan finished: read the new index (the Apps level has new rows). 0 when memory ran out. */
+static int reload_index(gui *g)
+{
+    free(g->it);
+    free(g->idx);
+    g->it = 0;
+    g->idx = 0;
+    ix_free(&ixs);
+    ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    g->cap = ix_level_cap(&ixs);
+    g->it = malloc(g->cap * sizeof *g->it);
+    g->idx = malloc(g->cap * sizeof *g->idx);
+    if (g->it && g->idx)
+        return 1;
+    g->quit = g->stop = 1;
+    return 0;
+}
+
+/* One poll of the record; a changed row redraws the list, DONE also reloads the index. */
+static void watch_poll(gui *g)
+{
+    char keep[KM_LABEL];
+    int done;
+    if (!ixw_poll(&g->wt))
+        return;
+    sentinel_publish("watch", g->wt.state);
+    done = g->wt.state == IXW_DONE;
+    keep[0] = 0;
+    if (g->sel >= g->shift && g->sel < g->count)
+        strcpy(keep, g->it[g->idx[g->sel - g->shift]].label);
+    if (done && !reload_index(g))
+        return;
+    list_rebuild_keep(g, keep);
+    watch_idcmp(g);
+}
+
+/* A scan: leaf: run it at once, the window stays and shows the scan. */
+static void start_scan(gui *g, const mn_item *it)
+{
+    lf_ui ui;
+    ix_prog p0;
+    char keep[KM_LABEL];
+    int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);   /* the run counter before the launch */
+    ui.ask_value = gui_ask_value;
+    ui.refused = gui_refused;
+    ui.ctx = g;
+    ui.self_in_mru = 0;
+    if (lf_run(&km.menu[it->row], &ui) != LF_WATCH)
+        return;
+    ix_watcher_begin(&g->wt, 1, have0, &p0, alive0);
+    sentinel_publish("watch", g->wt.state);
+    strcpy(keep, it->label);             /* the rebuild overwrites it */
+    list_rebuild_keep(g, keep);
+    watch_idcmp(g);
+}
+
 static void activate(gui *g)
 {
     const mn_item *it;
-    if (g->sel < 0 || g->sel >= g->count)
+    if (g->sel < g->shift || g->sel >= g->count)
         return;
-    it = &g->it[g->idx[g->sel]];
+    it = &g->it[g->idx[g->sel - g->shift]];
     if (MN_IS_INDEX(it)) {
         if (ix_launch_path(&ixs, it, g->ixpath, sizeof g->ixpath)) {
             strncpy(g->ixlabel, it->label, sizeof g->ixlabel - 1);
@@ -392,6 +484,8 @@ static void activate(gui *g)
         mn_child_node(g->node, it, g->node, sizeof g->node);
         g->filter[0] = 0;
         list_rebuild(g);
+    } else if (lf_plan(km.menu[it->row].kind) == LF_SCAN) {
+        start_scan(g, it);
     } else {
         g->chosen = it->row;
         g->stop = 1;
@@ -566,7 +660,7 @@ static void mouse_button(gui *g, int code, int mx, int my)
     if (g->mode != M_LIST)
         return;
     h = mg_hit(&g->g, g->top, mx, my);
-    if (h >= 0) {
+    if (h >= g->shift) {
         set_sel(g, h);
         activate(g);
     }
@@ -611,6 +705,12 @@ static void event_loop(gui *g)
                 if (g->await) {
                     g->await = 0;
                     draw_full(g);
+                }
+                break;
+            case IDCMP_INTUITICKS:          /* about 10 a second: poll the scan every 10th */
+                if (g->wt.on && ++g->ticks >= 10) {
+                    g->ticks = 0;
+                    watch_poll(g);
                 }
                 break;
             case IDCMP_ACTIVEWINDOW:
@@ -815,6 +915,11 @@ int main(int argc, char **argv)
     keymap_load(&km, km_default_text);
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     term_present = upactive_terminal_present(0);   /* a plain Intuition window: never in the MRU */
+    {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
+        ix_prog p0;
+        int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);
+        ix_watcher_begin(&g->wt, 0, have0, have0 ? &p0 : 0, alive0);
+    }
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
     g->idx = malloc(g->cap * sizeof *g->idx);
@@ -884,7 +989,9 @@ int main(int argc, char **argv)
         g->icon_w = mi_count() > 0 ? mi_width(&m, &g->ms) : 0;
         g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms, term_present);
         n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, term_present);
-        g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap);
+        g->shift = g->wt.row[0] ? 1 : 0;
+        g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
+        g->sel = g->shift;
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
     }
     g->win = window_open(g);
@@ -897,6 +1004,7 @@ int main(int argc, char **argv)
     SetFont(g->rp, g->font);
     SetDrMd(g->rp, JAM1);
     draw_full(g);
+    watch_idcmp(g);
     event_loop(g);
 
     if ((g->chosen >= 0 || g->ixpath[0]) && !g->quit) {

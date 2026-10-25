@@ -18,6 +18,7 @@
 #include "atiming.h"
 #include "menu_core.h"
 #include "index_core.h"
+#include "ixwatch.h"
 #include "leaf.h"
 #include "../config/keymap_load.h"
 #include "../handler/upreq.h"
@@ -104,34 +105,101 @@ static int term_present;        /* decided once at open: lf_terminal_present */
 static mn_item *it;
 static int *idx, cap;
 static entry *ent;
+/* The scan this menu watches (RESCAN-FEEDBACK): its status row is the first entry of every level while
+ * wt.row is set. Ticks poll it while wt.on; the DONE or FAILED row stays until the menu closes. */
+static ix_watcher wt;
+
+static int on_tick(void *ctx)
+{
+    (void)ctx;
+    return wt.on && ixw_poll(&wt);
+}
+
+static void free_level(void)
+{
+    free(it);
+    free(idx);
+    free(ent);
+    it = 0;
+    idx = 0;
+    ent = 0;
+}
+
+/* Size the level buffers for the loaded index (one more entry for the status row). 1 on success. */
+static int alloc_level(void)
+{
+    cap = ix_level_cap(&ixs);
+    it = malloc(cap * sizeof *it);
+    idx = malloc(cap * sizeof *idx);
+    ent = malloc((cap + 1) * sizeof *ent);
+    if (it && idx && ent)
+        return 1;
+    free_level();
+    return 0;
+}
+
+/* The scan finished: read the new index so the Apps level lists the new rows. */
+static int reload_index(void)
+{
+    free_level();
+    ix_free(&ixs);
+    ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    return alloc_level();
+}
 
 static int menu_levels(const char *start)
 {
     int n, c, i, rc = 0;
     char node[KM_ID * 2], filter[KM_LABEL], prompt[96];
+    char keep[IXW_ROW > KM_LABEL ? IXW_ROW : KM_LABEL];   /* the entry the cursor stays on over a rebuild */
+    int keep_status = 0, shift;
 
     strncpy(node, start, sizeof node - 1);
     node[sizeof node - 1] = 0;
     filter[0] = 0;
+    keep[0] = 0;
     for (;;) {
         n = ix_level_t(&km, &ixs, node, filter, it, cap, term_present);
         c = mn_filter(it, n, filter, idx, cap);
+        shift = wt.row[0] ? 1 : 0;
+        if (shift) {
+            ent[0].tag = wt.row;
+            ent[0].item = "";
+        }
         for (i = 0; i < c; i++) {
-            ent[i].tag = it[idx[i]].label;
-            ent[i].item = MN_IS_GROUP(&it[idx[i]]) ? ">" : "";
+            ent[i + shift].tag = it[idx[i]].label;
+            ent[i + shift].item = MN_IS_GROUP(&it[idx[i]]) ? ">" : "";
         }
         ui_opt.kind = K_MENU;
         ui_opt.title = "Menu";
         ui_opt.backtitle = node[0] ? node : "Amarchy";
         ui_opt.hotkeys = hot;
         ui_opt.entries = ent;
-        ui_opt.nentries = c;
-        ui_opt.default_item = c ? ent[0].tag : 0;
+        ui_opt.nentries = c + shift;
+        ui_opt.default_item = c + shift ? ent[c ? shift : 0].tag : 0;
+        if (shift && keep_status)
+            ui_opt.default_item = ent[0].tag;
+        else if (keep[0] && (i = mn_pick(it, idx, c, keep)) >= 0)
+            ui_opt.default_item = ent[i + shift].tag;
+        keep_status = 0;
+        keep[0] = 0;
         snprintf(prompt, sizeof prompt, "Filter: %s", filter);
         ui_opt.prompt = prompt;
         ui_prepare();
         at_mark("ready");
+        ui_on_tick(wt.on ? on_tick : 0, 0);
         rc = ui_run();
+        if (rc == UI_TICK) {                   /* the status row changed: rebuild, cursor stays */
+            int s = ui_selected();
+            keep_status = shift && s == 0;
+            if (!keep_status && s >= shift && s - shift < c)
+                strcpy(keep, it[idx[s - shift]].label);
+            if (wt.state == IXW_DONE && !reload_index()) {
+                ui_message("%s", "amarchy-menu: out of memory");
+                return 20;
+            }
+            continue;
+        }
         if (rc == EXIT_NO_TERMINAL)
             return rc;
         if (rc == 255) {                       /* Escape */
@@ -158,9 +226,9 @@ static int menu_levels(const char *start)
             }
             continue;
         }
-        if (ui_selected() < 0 || ui_selected() >= c)
-            continue;
-        i = idx[ui_selected()];
+        if (ui_selected() < shift || ui_selected() >= c + shift)
+            continue;                          /* the status row does nothing */
+        i = idx[ui_selected() - shift];
         if (MN_IS_INDEX(&it[i])) {
             char path[IX_PATH];
             if (!ix_launch_path(&ixs, &it[i], path, sizeof path))
@@ -172,7 +240,14 @@ static int menu_levels(const char *start)
             filter[0] = 0;
             continue;
         }
-        return lf_run(&km.menu[it[i].row], &leaf_ui);
+        {
+            ix_prog p0;
+            int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);   /* the run counter before the launch */
+            rc = lf_run(&km.menu[it[i].row], &leaf_ui);
+            if (rc != LF_WATCH)
+                return rc;
+            ix_watcher_begin(&wt, 1, have0, &p0, alive0);
+        }
     }
 }
 
@@ -181,17 +256,16 @@ static int menu_loop(const char *start)
     int rc = 20;
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     term_present = upactive_terminal_present(leaf_ui.self_in_mru);
-    cap = ix_level_cap(&ixs);
-    it = malloc(cap * sizeof *it);
-    idx = malloc(cap * sizeof *idx);
-    ent = malloc(cap * sizeof *ent);
-    if (it && idx && ent)
+    {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
+        ix_prog p0;
+        int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);
+        ix_watcher_begin(&wt, 0, have0, have0 ? &p0 : 0, alive0);
+    }
+    if (alloc_level())
         rc = menu_levels(start);
     else
         ui_message("%s", "amarchy-menu: out of memory");
-    free(it);
-    free(idx);
-    free(ent);
+    free_level();
     ix_free(&ixs);
     return rc;
 }

@@ -733,8 +733,10 @@ AMARCHY
   written to a temporary file and renamed, so a scan cut short never leaves
   a broken cache. Amarchy only reads the cache; it never scans itself.
   The scan runs in the background at every boot (a line in S:User-Startup,
-  taken out by Uninstall) and on demand with the Rescan apps row, which
-  runs detached in an UP-Term window: the menu stays usable meanwhile.
+  taken out by Uninstall) and on demand with the Rescan apps row. The
+  scan runs in the background and the menu stays open: its first row shows
+  "Scanning..." with the drawer being read, then "Scan done: N apps, M
+  games" (or why it stopped), and the Apps level lists the new rows.
   The Apps level of the menu lists the indexed apps after the menu's own
   rows, a Games level lists the games, and the search at the root finds
   both. When a menu row has the same label as an indexed app, the menu row

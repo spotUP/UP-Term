@@ -33,6 +33,15 @@ int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max
     return c;
 }
 
+int mn_pick(const mn_item *items, const int *idx, int c, const char *label)
+{
+    int i;
+    for (i = 0; label && i < c; i++)
+        if (!strcmp(items[idx[i]].label, label))
+            return i;
+    return -1;
+}
+
 int mn_parent(const char *node, char *out, int n)
 {
     const char *dot = strrchr(node, '.');
