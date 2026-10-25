@@ -132,6 +132,9 @@ def r_esc_up():
 
 
 def r_enter_slash():
+    # TERM-ROWS-ONLY-OVER-TERMINAL: the default menu is the drawn one (amarchy-gui, a plain Intuition window
+    # outside the focus record) and exactly one UP-Term window is open (rows_over_terminal's host): its slash:
+    # row must reach that terminal (upmru_target self 0).
     # reopen, Style, Enter on Theme: the request reaches the handler, which runs /theme through the keymap runner.
     # /theme opens a file requester ("UP-Term theme") and the handler sits in it until it closes, so the
     # effect is the requester on screen; the counter is read after its Cancel gadget (id 2) closed it, as keymap_rig.py does.
