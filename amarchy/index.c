@@ -372,7 +372,10 @@ static int write_cache(void)
         return 0;
     }
     DeleteFile((STRPTR)IX_DEST);
-    return Rename((STRPTR)IX_TMP, (STRPTR)IX_DEST) != 0;
+    if (!Rename((STRPTR)IX_TMP, (STRPTR)IX_DEST))
+        return 0;
+    DeleteFile((STRPTR)IG_CACHE_PATH);   /* the icons follow the index: the menu rebuilds them from the new rows */
+    return 1;
 }
 
 int main(void)

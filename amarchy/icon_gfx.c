@@ -11,7 +11,9 @@
 #include <workbench/workbench.h>
 #include <workbench/icon.h>
 #include <utility/tagitem.h>
+#include <dos/dos.h>
 #include <proto/exec.h>
+#include <proto/dos.h>
 #include <proto/graphics.h>
 #include <proto/icon.h>
 #include <string.h>
@@ -27,9 +29,11 @@ extern struct GfxBase *GfxBase;
 
 static struct Screen *scr;
 static ic_cache cache;
-static struct BitMap *bm[IC_SLOTS], *mask[IC_SLOTS];
-static short iw[IC_SLOTS], ih[IC_SLOTS];
-static long loads;
+static struct BitMap **bm, **mask;
+static short *iw, *ih;
+static int nslots;
+static long loads, restored;
+static int tried, gbw, gbh;     /* the restore ran at the first draw; the box it ran for */
 
 static void slot_free(int s)
 {
@@ -40,30 +44,36 @@ static void slot_free(int s)
     bm[s] = mask[s] = 0;
 }
 
-int ig_open(struct Screen *s)
+int ig_open(struct Screen *s, int slots)
 {
     scr = s;
     if (!s || s->BitMap.Depth > MAX_DEPTH || s->RastPort.BitMap->Depth > MAX_DEPTH)
         return 0;
+    if (!ic_init(&cache, slots + 8))
+        return 0;
+    nslots = cache.slots;
+    bm = AllocVec(nslots * sizeof *bm, MEMF_ANY | MEMF_CLEAR);
+    mask = AllocVec(nslots * sizeof *mask, MEMF_ANY | MEMF_CLEAR);
+    iw = AllocVec(nslots * sizeof *iw, MEMF_ANY | MEMF_CLEAR);
+    ih = AllocVec(nslots * sizeof *ih, MEMF_ANY | MEMF_CLEAR);
+    if (!bm || !mask || !iw || !ih) {
+        ig_close();
+        return 0;
+    }
     IconBase = OpenLibrary((STRPTR) "icon.library", 44);
+    if (!IconBase)
+        ig_close();
     return IconBase != 0;
-}
-
-void ig_close(void)
-{
-    int i;
-    for (i = 0; i < IC_SLOTS; i++)
-        slot_free(i);
-    memset(&cache, 0, sizeof cache);
-    if (IconBase)
-        CloseLibrary(IconBase);
-    IconBase = 0;
-    scr = 0;
 }
 
 long ig_loads(void)
 {
     return loads;
+}
+
+long ig_restored(void)
+{
+    return restored;
 }
 
 static struct BitMap *make_bm(int w, int h)
@@ -152,11 +162,214 @@ out:
     return ok;
 }
 
+/* ---- the persistent cache (icon_core.h file format) ---- */
+
+/* WritePixelArray8 and ReadPixelArray8 want a one row temp RastPort at least as wide as the array row,
+ * and an array padded to a multiple of 16 bytes per row. */
+typedef struct pixctx {
+    struct BitMap *tbm;
+    struct RastPort trp;
+    unsigned char *buf;
+    unsigned char *pm;          /* pens then mask of one icon, for the encoder */
+} pixctx;
+
+static int pix_open(pixctx *p)
+{
+    memset(p, 0, sizeof *p);
+    p->tbm = AllocBitMap(IC_FILE_MAXDIM, 1, scr->RastPort.BitMap->Depth, 0, scr->RastPort.BitMap);
+    p->buf = AllocVec(((IC_FILE_MAXDIM + 15) & ~15) * (IC_FILE_MAXDIM + 1), MEMF_ANY);
+    p->pm = AllocVec(2 * IC_FILE_MAXPIX, MEMF_ANY);
+    if (!p->tbm || !p->buf || !p->pm) {
+        if (p->tbm)
+            FreeBitMap(p->tbm);
+        if (p->buf)
+            FreeVec(p->buf);
+        if (p->pm)
+            FreeVec(p->pm);
+        return 0;
+    }
+    InitRastPort(&p->trp);
+    p->trp.BitMap = p->tbm;
+    return 1;
+}
+
+static void pix_close(pixctx *p)
+{
+    FreeBitMap(p->tbm);
+    FreeVec(p->buf);
+    FreeVec(p->pm);
+}
+
+static void bm_rastport(struct RastPort *rp, struct BitMap *b)
+{
+    InitRastPort(rp);
+    rp->BitMap = b;
+}
+
+/* Reads the file once and fills a slot per entry. Runs at the first draw: the box and depth are known. */
+static void restore(int bw, int bh)
+{
+    BPTR f;
+    long len;
+    unsigned char *data;
+    ic_dec *d;
+    pixctx px;
+    struct RastPort rp;
+    int n, i, k, s, depth = scr->RastPort.BitMap->Depth;
+
+    f = Open((STRPTR)IG_CACHE_PATH, MODE_OLDFILE);
+    if (!f)
+        return;
+    Seek(f, 0, OFFSET_END);
+    len = Seek(f, 0, OFFSET_BEGINNING);
+    data = len > IC_FILE_HEAD ? AllocVec(len, MEMF_ANY) : 0;
+    if (!data || Read(f, data, len) != len) {
+        Close(f);
+        if (data)
+            FreeVec(data);
+        return;
+    }
+    Close(f);
+    d = AllocVec(nslots * sizeof *d, MEMF_ANY);
+    if (d && pix_open(&px)) {
+        n = ic_file_decode(data, len, bw, bh, depth, d, nslots);
+        for (i = 0; i < n; i++) {
+            struct BitMap *a, *m;
+            int npx = d[i].dw * d[i].dh;
+            if (d[i].dw > bw || d[i].dh > bh)
+                continue;
+            a = make_bm(d[i].dw, d[i].dh);
+            m = make_bm(d[i].dw, d[i].dh);
+            if (!a || !m) {
+                if (a)
+                    FreeBitMap(a);
+                if (m)
+                    FreeBitMap(m);
+                break;
+            }
+            memcpy(px.buf, d[i].pens, npx);
+            bm_rastport(&rp, a);
+            WritePixelArray8(&rp, 0, 0, d[i].dw - 1, d[i].dh - 1, px.buf, &px.trp);
+            for (k = 0; k < npx; k++)
+                px.buf[k] = d[i].mask[k] ? (unsigned char)((1UL << depth) - 1) : 0;
+            bm_rastport(&rp, m);
+            WritePixelArray8(&rp, 0, 0, d[i].dw - 1, d[i].dh - 1, px.buf, &px.trp);
+            s = ic_claim(&cache, d[i].path);
+            if (s < 0) {
+                FreeBitMap(a);
+                FreeBitMap(m);
+                continue;
+            }
+            slot_free(s);
+            bm[s] = a;
+            mask[s] = m;
+            iw[s] = (short)d[i].dw;
+            ih[s] = (short)d[i].dh;
+            ic_set(&cache, s, IC_READY);
+            restored++;
+        }
+        WaitBlit();
+        pix_close(&px);
+    }
+    if (d)
+        FreeVec(d);
+    FreeVec(data);
+}
+
+/* Writes every ready slot to IG_CACHE_TMP, then swaps it in (the way index.c writes the apps index). */
+static void save(void)
+{
+    long size = IC_FILE_HEAD, off, w;
+    unsigned char *data;
+    pixctx px;
+    struct RastPort rp;
+    int i, k, npx, depth = scr->RastPort.BitMap->Depth;
+    BPTR f;
+
+    for (i = 0; i < nslots; i++)
+        if (cache.state[i] == IC_READY)
+            size += (long)strlen(cache.path[i]) + 1 + 8 + 2L * iw[i] * ih[i];
+    data = AllocVec(size, MEMF_ANY);
+    if (!data)
+        return;
+    if (!pix_open(&px)) {
+        FreeVec(data);
+        return;
+    }
+    off = ic_file_head(data, size, gbw, gbh, depth);
+    for (i = 0; off > 0 && i < nslots; i++) {
+        unsigned char *pens, *mk;
+        if (cache.state[i] != IC_READY)
+            continue;
+        npx = iw[i] * ih[i];
+        pens = px.pm;
+        mk = px.pm + IC_FILE_MAXPIX;
+        bm_rastport(&rp, bm[i]);
+        ReadPixelArray8(&rp, 0, 0, iw[i] - 1, ih[i] - 1, px.buf, &px.trp);
+        memcpy(pens, px.buf, npx);
+        bm_rastport(&rp, mask[i]);
+        ReadPixelArray8(&rp, 0, 0, iw[i] - 1, ih[i] - 1, px.buf, &px.trp);
+        for (k = 0; k < npx; k++)
+            mk[k] = px.buf[k] ? 1 : 0;
+        w = ic_file_entry(data + off, size - off, cache.path[i], iw[i], ih[i], (gbw - iw[i]) / 2,
+                          (gbh - ih[i]) / 2, pens, mk);
+        off = w < 0 ? -1 : off + w;
+    }
+    pix_close(&px);
+    if (off == size) {
+        UnLock(CreateDir((STRPTR) "ENVARC:Amarchy")); /* fails when the drawer exists, which is fine */
+        f = Open((STRPTR)IG_CACHE_TMP, MODE_NEWFILE);
+        if (f) {
+            w = Write(f, data, size);
+            if (!Close(f) || w != size) {
+                DeleteFile((STRPTR)IG_CACHE_TMP);
+            } else {
+                DeleteFile((STRPTR)IG_CACHE_PATH);
+                if (!Rename((STRPTR)IG_CACHE_TMP, (STRPTR)IG_CACHE_PATH))
+                    DeleteFile((STRPTR)IG_CACHE_TMP);
+            }
+        }
+    }
+    FreeVec(data);
+}
+
+void ig_close(void)
+{
+    int i;
+    if (scr && gbw && loads > 0 && cache.slots)
+        save();
+    for (i = 0; bm && i < nslots; i++)
+        slot_free(i);
+    ic_free(&cache);
+    if (bm)
+        FreeVec(bm);
+    if (mask)
+        FreeVec(mask);
+    if (iw)
+        FreeVec(iw);
+    if (ih)
+        FreeVec(ih);
+    bm = mask = 0;
+    iw = ih = 0;
+    nslots = 0;
+    if (IconBase)
+        CloseLibrary(IconBase);
+    IconBase = 0;
+    scr = 0;
+    tried = gbw = gbh = 0;
+}
+
 int ig_draw(struct RastPort *rp, const char *path, int x, int y, int bw, int bh)
 {
     int s, dx, dy;
     if (!IconBase)
         return 0;
+    if (!tried) {
+        tried = 1;
+        gbw = bw;
+        gbh = bh;
+        restore(bw, bh);
+    }
     s = ic_find(&cache, path);
     if (s < 0) {
         s = ic_claim(&cache, path);

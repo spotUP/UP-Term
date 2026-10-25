@@ -455,6 +455,7 @@ static void draw_full(gui *g)
     if (g->mode == M_LIST)
         sentinel_rows(g);
     sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
+    sentinel_publish("AMARCHY_ICON_RESTORED", ig_restored());
 }
 
 /* ---- geometry ----------------------------------------------------------------------------------------- */
@@ -1127,7 +1128,7 @@ int main(int argc, char **argv)
     g->ms.h = g->scr->Height;
     pens_get(g);
     if (amiga_icons)
-        ig_open(g->scr);      /* no icon.library V44: the index rows keep the generic glyph */
+        ig_open(g->scr, ixs.n);      /* no icon.library V44: the index rows keep the generic glyph */
 
     /* the font's text lengths before the window exists */
     InitRastPort(&tmp);
