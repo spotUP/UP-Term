@@ -835,17 +835,17 @@ static void osd_size_counts_the_reachable_levels(void)
     CHECK_INT(rows, MN_OSD_HEAD_LINES + 1);
     CHECK_INT(cols, MN_OSD_MIN_COLS);              /* "Theme" + pad is shorter than the minimum */
     /* the shipped dist/keymap: the sizes the commodity opens Super+Space and Super+Shift+Space with
-     * (worked out from the file's [menu] rows with a separate script: 6 entries in the root, 5 in apps, labels short) */
+     * (7 entries in the root, 4 in apps; the widest label, "Amarchy preferences" two levels down, is one column over the minimum) */
     {
         static char file[16384];
         long n = slurp("dist/keymap", file, sizeof(file));
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
-        CHECK_INT(cols, MN_OSD_MIN_COLS);
+        CHECK_INT(cols, MN_OSD_MIN_COLS + 1);
         CHECK_INT(rows, MN_OSD_HEAD_LINES + 7);
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + 5);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + 4);
     }
 }
 
@@ -998,8 +998,8 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 7);   /* with the Trigger group */
-    CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 8);   /* with the Trigger and Settings groups */
+    CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 4);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
     /* 3 rows: chrome 2 x 2 + 2 x 11 + 20 + 4 = 50, rows 3 x 32 - 2 = 94 */
@@ -2200,7 +2200,7 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
     n = slurp("dist/keymap", buf, sizeof(buf));
     CHECK(n > 0 && keymap_parse(&km, buf, n));
     for (i = 0; i < km.nmenu; i++)
-        if (!strcmp(km.menu[i].id, "apps.rescan"))
+        if (!strcmp(km.menu[i].id, "settings.amarchy.rescan"))
             rescan = i;
     CHECK(rescan >= 0);
     CHECK_STR(km.menu[rescan].label, "Rescan apps");
@@ -2342,6 +2342,51 @@ static void system_drawers_vanish_from_the_apps_level(void)
     CHECK(level_has(it, n, "Lemmings"));        /* the one game category is shown flat */
 }
 
+static void the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and_edit(void)
+{
+    static char buf[16384];
+    static ix_index x;
+    mn_item it[TEST_LEVEL_MAX];
+    int n, g, i, found = 0;
+    long len = slurp("dist/keymap", buf, sizeof(buf));
+    CHECK(len > 0 && keymap_parse(&km, buf, len));
+    check_row("settings.amarchy.rescan", KA_SCAN, "amarchy-index");
+    check_row("settings.amarchy.preferences", KA_RUN, "\"C:UP-Term Prefs\" AMARCHY");
+    check_row("settings.amarchy.font", KA_RUN, "\"C:UP-Term Prefs\" AMARCHY");
+    check_row("settings.amarchy.edit", KA_RUN, "nvim ENV:up-term/keymap");
+    CHECK(shipped_row("apps.rescan") == 0);
+    ix_load_text(&km, &x, "app\tClock\tSys:Tools/Clock\napp\tPalette\tSystem:Prefs/Palette\n");
+    n = ix_level(&km, &x, "", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Settings"));
+    CHECK(root_has_group("Settings", 1));
+    n = ix_level(&km, &x, "settings", "", it, TEST_LEVEL_MAX);
+    CHECK(level_has(it, n, "Amarchy") && level_has(it, n, "Palette"));
+    for (g = 0; g < n; g++)
+        if (!strcmp(it[g].label, "Amarchy"))
+            found = 1;
+    CHECK(found);
+    n = ix_level(&km, &x, "settings.amarchy", "", it, TEST_LEVEL_MAX);
+    CHECK_INT(n, 4);
+    CHECK(level_has(it, n, "Rescan apps") && level_has(it, n, "Amarchy preferences") &&
+          level_has(it, n, "Menu font") && level_has(it, n, "Edit menu"));
+    for (i = 0; i < n; i++)
+        CHECK(!MN_IS_GROUP(&it[i]));
+}
+
+static void hidden_drawers_from_the_upconf_vanish_too(void)
+{
+    static ix_index x;
+    int n;
+    CHECK(parse("[menu]\napps.tmux = Tmux | run:tmux\n"));
+    ix_set_hidden_drawers("Tools");
+    ix_load_text(&km, &x, "app\tFoo\tSys:Tools/Foo\napp\tCED\tWork:Dev/CED\n");
+    n = x.n;
+    ix_set_hidden_drawers(0);
+    CHECK_INT(n, 1);
+    ix_load_text(&km, &x, "app\tFoo\tSys:Tools/Foo\napp\tCED\tWork:Dev/CED\n");
+    CHECK_INT(x.n, 2);
+}
+
 static void the_games_level_lists_index_games_and_the_root_offers_the_group(void)
 {
     static ix_index x;
@@ -2471,6 +2516,8 @@ static void the_app_index_core_behaves(void)
     an_index_without_prefs_music_or_scene_rows_keeps_apps_and_games_only();
     extra_music_drawers_from_the_upconf_move_games_to_music();
     system_drawers_vanish_from_the_apps_level();
+    the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and_edit();
+    hidden_drawers_from_the_upconf_vanish_too();
     the_apps_and_games_levels_group_by_the_first_drawer_under_the_volume();
     a_missing_or_empty_cache_adds_no_index_rows();
     root_search_finds_an_index_game_and_an_index_app();

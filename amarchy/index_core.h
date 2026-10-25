@@ -80,6 +80,9 @@ int ix_row_kind(const ix_row *r);
  * amarchy-demo-drawers) added to the built-in lists of ix_row_kind. NULL clears. Copied. Set before
  * ix_load_text/ix_load_file: the kinds are fixed at load. */
 void ix_set_drawers(const char *music, const char *demo);
+/* The extra system drawer names of the upconf (amarchy-hide-drawers), added to the built-in hidden list of
+ * ix_row_kind with the same separator and rules as ix_set_drawers. NULL clears. Copied. */
+void ix_set_hidden_drawers(const char *list);
 
 /* The cache text (rows `kind<TAB>label<TAB>path`, bad rows skipped) into x, replacing the rows it
  * held. Empty or NULL text, or no memory, gives no rows. The [menu] rows of the "apps" and "games"

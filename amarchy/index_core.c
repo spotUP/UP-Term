@@ -241,12 +241,17 @@ int ix_level_cap(const ix_index *x)
     return MN_MAX_ITEMS + (x ? x->n : 0) + 2;
 }
 
-static char extra_music[128], extra_demo[128];
+static char extra_music[128], extra_demo[128], extra_hidden[128];
 
 void ix_set_drawers(const char *music, const char *demo)
 {
     strncpy(extra_music, music ? music : "", sizeof extra_music - 1);
     strncpy(extra_demo, demo ? demo : "", sizeof extra_demo - 1);
+}
+
+void ix_set_hidden_drawers(const char *list)
+{
+    strncpy(extra_hidden, list ? list : "", sizeof extra_hidden - 1);
 }
 
 /* Is drawer (len chars) one of the names in the comma separated list (blanks around a name ignored)? */
@@ -282,7 +287,7 @@ int ix_row_kind(const ix_row *r)
         return IX_KIND_MUSIC;
     if (in_list("Demos,Demo,Scene,Intros,Cracktros", lab, len) || in_list(extra_demo, lab, len))
         return IX_KIND_DEMO;
-    if (r->kind == IX_KIND_APP && in_list("C,Storage,Utilities,WBStartup,Libs,Devs,MUI", lab, len))
+    if (r->kind == IX_KIND_APP && (in_list("C,Storage,Utilities,WBStartup,Libs,Devs,MUI", lab, len) || in_list(extra_hidden, lab, len)))
         return IX_KIND_HIDDEN;
     if (r->kind == IX_KIND_APP)
         return in_list("Prefs", lab, len) ? IX_KIND_SETTINGS : IX_KIND_APP;

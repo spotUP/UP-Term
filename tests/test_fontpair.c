@@ -82,20 +82,33 @@ static void a_face_knows_its_pair(void)
 static void menu_uses_jetbrains_mono_on_square_screens(void)
 {
     fontpair_choice m[FONTPAIR_MENU_MAX];
-    CHECK_INT(fontpair_menu_choices(1, 1, m), 2);
+    CHECK_INT(fontpair_menu_choices(0, 0, 1, 1, m), 2);
     CHECK_STR(m[0].name, "JetBrainsMono.font");
     CHECK_INT(m[0].size, 16);
     CHECK_STR(m[1].name, "TopazPro.font");        /* the fallback is the terminal's pick */
     CHECK_INT(m[1].size, 16);
 }
 
+static void a_preferred_menu_font_comes_first_and_the_built_in_choices_stay_as_fallbacks(void)
+{
+    fontpair_choice m[FONTPAIR_MENU_MAX];
+    CHECK_INT(fontpair_menu_choices("IBM.font", 16, 1, 1, m), 3);
+    CHECK_STR(m[0].name, "IBM.font");
+    CHECK_INT(m[0].size, 16);
+    CHECK_STR(m[1].name, "JetBrainsMono.font");
+    CHECK_STR(m[2].name, "TopazPro.font");
+    CHECK_INT(fontpair_menu_choices("", 16, 1, 1, m), 2);       /* no preference: nothing changes */
+    CHECK_INT(fontpair_menu_choices("IBM.font", 0, 0, 1, m), 1);
+    CHECK_STR(m[0].name, "topaz.font");
+}
+
 static void menu_keeps_topaz_8_on_tall_pixels_and_when_25_rows_do_not_fit(void)
 {
     fontpair_choice m[FONTPAIR_MENU_MAX];
-    CHECK_INT(fontpair_menu_choices(0, 1, m), 1);
+    CHECK_INT(fontpair_menu_choices(0, 0, 0, 1, m), 1);
     CHECK_STR(m[0].name, "topaz.font");
     CHECK_INT(m[0].size, 8);
-    CHECK_INT(fontpair_menu_choices(1, 0, m), 1);
+    CHECK_INT(fontpair_menu_choices(0, 0, 1, 0, m), 1);
     CHECK_STR(m[0].name, "topaz.font");
     CHECK_INT(m[0].size, 8);
 }
@@ -116,6 +129,7 @@ void suite_fontpair(void)
     the_tall_font_stays_when_25_rows_do_not_fit();
     other_fonts_are_left_alone();
     menu_uses_jetbrains_mono_on_square_screens();
+    a_preferred_menu_font_comes_first_and_the_built_in_choices_stay_as_fallbacks();
     menu_keeps_topaz_8_on_tall_pixels_and_when_25_rows_do_not_fit();
     the_terminal_stays_on_topaz_pro_16_on_square_screens();
 }

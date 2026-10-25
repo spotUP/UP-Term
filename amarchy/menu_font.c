@@ -57,11 +57,11 @@ static struct TextFont *open_one(const fontpair_choice *ch)
     return 0;
 }
 
-struct TextFont *menu_font_open(struct Screen *scr, int square, int *opened)
+struct TextFont *menu_font_open(struct Screen *scr, int square, const char *pref_name, int pref_size, int *opened)
 {
     fontpair_choice ch[FONTPAIR_MENU_MAX];
     struct TextFont *f;
-    int i, n = fontpair_menu_choices(square, fontpair_square_fits(scr->Height, scr->BarHeight), ch);
+    int i, n = fontpair_menu_choices(pref_name, pref_size, square, fontpair_square_fits(scr->Height, scr->BarHeight), ch);
     *opened = 0;
     for (i = 0; i < n; i++) {
         f = open_one(&ch[i]);

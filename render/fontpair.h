@@ -34,7 +34,10 @@ int fontpair_square_fits(int screen_h, int bar_h);
  * build time by tools/gen_jbmono.py), then what the terminal gets (TopazPro 16); otherwise topaz 8, as
  * fontpair_choose gives it. The TERMINAL does not use JetBrains Mono: fontpair_choose is unchanged.
  * Fills out[] (room for FONTPAIR_MENU_MAX), returns how many. */
-#define FONTPAIR_MENU_MAX 2
-int fontpair_menu_choices(int square, int square_fits, fontpair_choice *out);
+#define FONTPAIR_MENU_MAX 3
+/* The preferred font (upconf amarchy-menu-font as a requester gives it: name with ".font", size; NULL or an
+ * empty name or size < 1 = none) is tried FIRST, through fontpair_choose, and the built-in choices follow as
+ * fallbacks, so a font that is not installed leaves the menu as it was. */
+int fontpair_menu_choices(const char *pref_name, int pref_size, int square, int square_fits, fontpair_choice *out);
 
 #endif

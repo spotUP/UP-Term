@@ -77,9 +77,13 @@ int fontpair_square_fits(int screen_h, int bar_h)
     return screen_h >= 25 * 16 + 2 * (bar_h + 1) + 4;
 }
 
-int fontpair_menu_choices(int square, int square_fits, fontpair_choice *out)
+int fontpair_menu_choices(const char *pref_name, int pref_size, int square, int square_fits, fontpair_choice *out)
 {
     int n = 0;
+    if (pref_name && pref_name[0] && pref_size > 0) {
+        fontpair_choose(pref_name, pref_size, square, square_fits, &out[n]);
+        n++;
+    }
     if (square && square_fits) {
         out[n].name = "JetBrainsMono.font";
         out[n].size = 16;

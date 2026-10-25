@@ -34,6 +34,7 @@
 #include "leaf.h"
 #include "menu_icon.h"
 #include "menu_font.h"
+#include "../prefs/prefs_core.h"
 #include "icon_core.h"
 #include "icon_gfx.h"
 #include "../config/keymap_load.h"
@@ -557,6 +558,7 @@ static void index_drawers(void)
     conf_read();
     ix_set_drawers(upconf_str(&conf, "default", "amarchy-music-drawers", 0),
                    upconf_str(&conf, "default", "amarchy-demo-drawers", 0));
+    ix_set_hidden_drawers(upconf_str(&conf, "default", "amarchy-hide-drawers", 0));
 }
 
 /* The scan finished: read the new index (the Apps level has new rows). 0 when memory ran out. */
@@ -1047,7 +1049,14 @@ static void cleanup(gui *g)
 static void pick_font(gui *g)
 {
     int square = menu_screen_aspect(g->scr, &g->ms.rx, &g->ms.ry);
-    g->font = menu_font_open(g->scr, square, &g->font_opened);
+    char pref[64];
+    long pref_size = 0;
+    const char *spec;
+    conf_read();
+    spec = upconf_str(&conf, "default", "amarchy-menu-font", "");   /* "name:size", as the terminal's font key */
+    if (!prefs_font_parse(spec, pref, sizeof pref, &pref_size))
+        pref[0] = 0;
+    g->font = menu_font_open(g->scr, square, pref, (int)pref_size, &g->font_opened);
 }
 
 int main(int argc, char **argv)
