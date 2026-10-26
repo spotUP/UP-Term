@@ -208,7 +208,7 @@ unverified until then. 25 items.
 
 ### Phase P6: index
 - [ ] D21 Lister rows in the index with refresh. Test: host `tests/test_main.c` for the pure part; rig for the live part.
-  - Pure part done (HASH): `ix_lister_handles`, `ix_lister_row`, `ix_lister_of`, `IX_KIND_LISTER` in amarchy/index_core.c; host `the_lister_rows` in tests/test_clips.c (ONLY=clips). NOT done: ARexx send of `lister query all` / `lister query <h> path` (needs upactive-style DOPUS port call), an ix_index kind slot for the rows (kstart), refresh when the menu opens, the jump action, rig check on v5.104 (5.82 answers nothing).
+  - Pure part done (f917e3c4): `ix_lister_handles`, `ix_lister_row`, `ix_lister_of`, `IX_KIND_LISTER` in amarchy/index_core.c; host `the_lister_rows` in tests/test_clips.c (ONLY=clips). NOT done: ARexx send of `lister query all` / `lister query <h> path` (needs upactive-style DOPUS port call), an ix_index kind slot for the rows (kstart), refresh when the menu opens, the jump action, rig check on v5.104 (5.82 answers nothing).
 - [ ] D22 Group gone when DOpus quits. Test: rig case, quit DOpus, rows vanish. Half measured, 2026-10-26: rig 4 started --no-dopus, dopus_absent: "[OK] root rows without a port: ['Apps', 'Settings', ...]" (no Dopus). The vanish-on-quit half is not measured: `dopus quit` does not quit DOpus 5.82 on the rig.
 
 ### Phase Z: finish
