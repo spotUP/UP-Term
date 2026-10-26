@@ -1,0 +1,17 @@
+Short:        Directory Opus 5 for the Amiga (68k)
+Author:       spotUP
+Uploader:     spotup@gmail.com (spotUP)
+Type:         util/dopus
+Version:      @VERSION@
+Architecture: m68k-amigaos >= 3.0.0
+Requires:     none
+Distribution: Aminet
+
+The open-source Directory Opus 5 5.104 release builds for AmigaOS 3, unmodified, with their own
+installer: the 68000 build for a 68000 or 68010, the 68020 build for a 68020 and newer. It stands
+alone, and a Directory Opus that is already installed (DOpus5: assigned) is never touched.
+
+Install: unpack, double-click Install. Uninstall removes this archive's record; the DOpus5: drawer
+stays.
+
+Licence: AROS Public License 1.1 (Files/COPYING); source: https://github.com/BlitterStudio/dopus5, tag v5.104.

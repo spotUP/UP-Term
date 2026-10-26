@@ -45,3 +45,4 @@ nc      up-nc     1.0      1.0         80      UP-Term:pkg/up-nc      Files/user
 fzy     up-fzy    1.0      1.0         80      UP-Term:pkg/up-fzy     Files/userland/bin/fzy  upterm-ports,ixemul-vtcon
 ctags   up-ctags  1.0      1.0         80      UP-Term:pkg/up-ctags   Files/userland/bin/ctags  upterm-ports,ixemul-vtcon
 zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/userland/bin/zip  upterm-ports,ixemul-vtcon
+dopus   up-dopus   1.0      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000                                       -

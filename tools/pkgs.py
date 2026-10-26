@@ -135,6 +135,7 @@ SUMMARY = {
     'pi': 'amiga-pi, the pi coding agent',
     'nvim': 'Neovim 0.12 in UP-Term:nvim',
     'python': 'Python 3.14 in SYS:Python3',
+    'dopus': 'Directory Opus 5 5.104 (the 68k build for the CPU), through its own installer',
     'git': 'git 2.56.0 in UP-Term:bin and UP-Term:share/git-core',
     'perl': 'Perl 5.42.3 in UP-Term:bin',
     'vim': 'Vim 9.2.1202 in UP-Term:bin and UP-Term:share/vim',
@@ -144,7 +145,8 @@ SUMMARY = {
 # Packages that never had another name (born as up-<x>, 2026-10-25 up-bitchx): they have no line in
 # dist/package-renames.txt and no old record to migrate. tests/test_dist_packages.py holds both facts.
 # Derived: every slim package (dist/slim.txt) with no old name.
-NEW_PACKAGES = tuple('up-' + i for i in slim.ids() if not old_names('up-' + i))
+# up-dopus is no slim package: born as up-dopus (2026-10-26), the one hand-written package without an old record.
+NEW_PACKAGES = tuple('up-' + i for i in slim.ids() if not old_names('up-' + i)) + ('up-dopus',)
 EPOCH = 0
 
 

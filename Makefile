@@ -1246,6 +1246,7 @@ KIT_claude := $(BUILD)/dist/up-claude
 KIT_pi := $(BUILD)/dist/up-pi
 KIT_nvim := $(BUILD)/dist/up-nvim
 KIT_python := $(BUILD)/dist/up-python
+KIT_dopus := $(BUILD)/dist/up-dopus
 # the upkg-only packages: every id of dist/slim.txt (git, perl, vim, bitchx, vbcc and the application ports); one stage
 # drawer and one dist-<id> target each, from the table, no target per package
 SLIM_IDS := $(shell python3 tools/slim.py ids)
@@ -1288,7 +1289,7 @@ AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-claude dist-pi dist-nvim dist-python $(SLIM_DIST) dist-src dist-index dist-ipk
+dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus $(SLIM_DIST) dist-src dist-index dist-ipk
 
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
@@ -1365,7 +1366,7 @@ pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
 LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
-.PHONY: dist-claude dist-pi dist-nvim dist-python $(SLIM_DIST)
+.PHONY: dist-claude dist-pi dist-nvim dist-python dist-dopus $(SLIM_DIST)
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
@@ -1396,6 +1397,17 @@ dist-python: $(BUILD)/amiga/upupdate
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
+# up-dopus: the unmodified upstream Directory Opus 5 68k archives (dist/addons/dopus/archives.txt), each checked
+# against its md5 in vendor/dopus5-5.104/ (download URLs: dist/addons/dopus/SOURCE.txt) and unpacked into its
+# drawer of Files; Install runs upstream's own "Install DOpus5" from the drawer that fits the CPU
+dist-dopus: $(BUILD)/amiga/upupdate
+	$(call ADDON_STAGE,dopus)
+	cp dist/addons/dopus/COPYING dist/addons/dopus/SOURCE.txt dist/addons/dopus/archives.txt $(KIT_dopus)/Files/
+	grep -v '^#' dist/addons/dopus/archives.txt | while read a md5 drawer rest; do \
+	  [ "$$(md5 -q vendor/dopus5-5.104/$$a 2>/dev/null || md5sum < vendor/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
+	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer vendor/dopus5-5.104/$$a || exit 1; \
+	done
+	python3 tools/mkkit.py dopus
 # every package of dist/slim.txt (P9): the ports' own files at the paths the base used to carry, taken from the
 # same PORTS_KIT as dist-base, which removes them
 define SLIM_STAGE
@@ -1414,7 +1426,7 @@ $(foreach p,$(SLIM_IDS),$(eval $(call SLIM_RULE,$(p))))
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
 # upkg's index (upkg plan D1): released next to the archives it names
-dist-index: dist-base dist-claude dist-pi dist-nvim dist-python $(SLIM_DIST)
+dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus $(SLIM_DIST)
 	python3 tools/pkgs.py prune $(BUILD)
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
 # the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees.

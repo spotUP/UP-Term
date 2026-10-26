@@ -35,8 +35,8 @@ class EveryAddOn(unittest.TestCase):
         return [(r['id'], scripts(r['id'])) for r in ADDONS]
 
     def test_every_add_on_row_has_its_drawer_and_every_slim_package_is_one(self):
-        """One loop over the whole table: the add-ons are the hand-written five plus every slim package."""
-        hand = ['claude', 'nvim', 'pi', 'python']
+        """One loop over the whole table: the add-ons are the hand-written six plus every slim package."""
+        hand = ['claude', 'dopus', 'nvim', 'pi', 'python']
         self.assertEqual(sorted(r['id'] for r in ADDONS), sorted(hand + slim.ids()))
 
     def test_a_failed_write_ends_the_install_with_rc_20_before_the_success_line(self):
@@ -258,7 +258,7 @@ class EveryAddOn(unittest.TestCase):
         for r in ADDONS:
             if r['needs-base'] == '-':
                 self.assertNotIn(r['record'], base.replace('ENVARC:upkg/up-claude\n', '').replace('ENVARC:upkg/up-pi\n', '')
-                                 .replace('ENVARC:upkg/up-python\n', ''), r['id'])
+                                 .replace('ENVARC:upkg/up-python\n', '').replace('ENVARC:upkg/up-dopus\n', ''), r['id'])
             else:
                 self.assertIn('Execute %s/Uninstall' % r['record'], base)
 
@@ -266,7 +266,8 @@ class EveryAddOn(unittest.TestCase):
         """The base Uninstall asks three questions of ENVARC:upkg: the names in it are packages.txt's"""
         base = mi.build(ROOT / 'dist/Uninstall', 'base')
         names = set(re.findall(r'EXISTS ENVARC:upkg/(\S+)', base))
-        want = {r['record'].split('/')[-1] for r in ADDONS if r['needs-base'] == '-'}
+        # up-dopus leaves no assign, startup block or library behind: the base Uninstall has nothing to undo for it
+        want = {r['record'].split('/')[-1] for r in ADDONS if r['needs-base'] == '-' and r['id'] != 'dopus'}
         old = {o.split('/')[-1] for r in ADDONS for o, _ in pkgs.old_record(r)}    # the migration renames name the old records too
         self.assertEqual(names - old, want)
 
@@ -625,6 +626,41 @@ class NvimShell(unittest.TestCase):
         mk = (ROOT / 'Makefile').read_text()
         m = re.search(r'(?ms)^dist-nvim:.*?^dist-python:', mk)
         self.assertIn('dist/addons/nvim/sysinit.vim $(KIT_nvim)/Files/nvim/share/nvim/sysinit.vim', m.group(0))
+
+
+class DopusAddOn(unittest.TestCase):
+    """D8 and D10 of the Amarchy DOpus plan: the add-on carries both upstream 68k archives, pinned by md5
+    (dist/addons/dopus/archives.txt), with the licence files, and the Installer picks one by (database "cpu")."""
+    A = ROOT / 'dist/addons/dopus'
+
+    def pins(self):
+        return {f[0]: (f[1], f[2]) for f in (l.split() for l in (self.A / 'archives.txt').read_text().splitlines()
+                                              if l.strip() and not l.startswith('#'))}
+
+    def test_both_68k_archives_are_pinned_licensed_and_chosen_by_cpu(self):
+        self.assertEqual(self.pins(), {
+            'DOpus5_104_os3.lha': ('0800b7b3bf02c83bd45a84d038ee483e', 'os3'),
+            'DOpus5_104_os3-68000.lha': ('f8cc057cedabccdd5df0b0e4c2ab8cc2', 'os3-68000')})
+        self.assertIn('dopus', [r['id'] for r in ADDONS])
+        for f in ('COPYING', 'SOURCE.txt', 'LICENSES.txt'):
+            self.assertTrue((self.A / f).stat().st_size > 0, f)
+        self.assertIn('AROS PUBLIC LICENSE', (self.A / 'COPYING').read_text())
+        self.assertIn('Directory Opus 5', (ROOT / 'dist/LICENSES.txt').read_text())
+        src = (self.A / 'SOURCE.txt').read_text()
+        for name in self.pins():
+            self.assertIn(name, src)
+        s = scripts('dopus')
+        for name in self.pins():
+            self.assertIn(name, s['installer'])      # the page text names both archives
+        self.assertRegex(s['installer'], r'database "cpu"\) "68000"\)\s+\(= \(database "cpu"\) "68010"')
+        self.assertIn('ENV:UPTOPTCPU68000', s['installer'])
+        self.assertIn('Set dopusbuild os3-68000', s['dos'])
+        self.assertIn('Set dopusbuild os3\n', s['dos'])
+        self.assertIn('If EXISTS ENV:UPTOPTCPU68000', s['dos'])
+        self.assertIn('Install DOpus5', s['dos'])
+        # the Makefile unpacks the pinned drawers: its rule reads this table
+        mk = (ROOT / 'Makefile').read_text()
+        self.assertIn('dist/addons/dopus/archives.txt', mk[mk.index('\ndist-dopus:'):])
 
 
 if __name__ == '__main__':

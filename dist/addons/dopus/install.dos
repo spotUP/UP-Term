@@ -1,0 +1,38 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; Directory Opus 5 install: upstream's own Install DOpus5 script, from the build that fits the CPU
+; It stands alone: nothing here needs UP-Term, and nothing here looks at an UP-Term: assign.
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; The CPU choice is the installer's (database "cpu"), handed as ENV:UPTOPTCPU68000 (set for a 68000 or
+; 68010): then the os3-68000 drawer (DOpus5_104_os3-68000.lha), else the os3 one (DOpus5_104_os3.lha).
+FailAt 21
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab dopus
+; an existing Directory Opus is never touched (owner 2026-10-26)
+Assign >NIL: DOpus5: EXISTS
+If NOT WARN
+  Echo "Directory Opus 5 is already installed (DOpus5: is assigned): left as it is."
+Else
+  Set dopusbuild os3
+  If EXISTS ENV:UPTOPTCPU68000
+    Set dopusbuild os3-68000
+  EndIf
+  ; upstream's own Installer script, from the build that fits the CPU
+  Installer SCRIPT "$dopusbuild/Install DOpus5" APPNAME "Directory Opus 5" MINUSER Novice DEFUSER Novice NOLOG
+  If WARN
+    UnSet dopusbuild
+    Quit 20
+  EndIf
+  UnSet dopusbuild
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "Directory Opus 5 installed (DOpus5:), or found already installed."

@@ -1,0 +1,7 @@
+# The upstream Directory Opus 5 archives this add-on carries, unmodified (owner decision 2026-10-26: only the
+# 68k builds; the os4, MorphOS and AROS archives stay out, UP-Term's installer runs on 68k AmigaOS 3 only).
+# <archive> <md5> <drawer in the kit's Files> <for>. The Makefile (dist-dopus) checks the md5 of each file in
+# vendor/dopus5-5.104/ and unpacks it into its drawer; Install picks the drawer by (database "cpu").
+# Source: https://github.com/BlitterStudio/dopus5/releases/tag/v5.104 (tag commit 22d60611466cf9f02dedaf891e02651067b2381c)
+DOpus5_104_os3.lha        0800b7b3bf02c83bd45a84d038ee483e  os3        68020 and newer
+DOpus5_104_os3-68000.lha  f8cc057cedabccdd5df0b0e4c2ab8cc2  os3-68000  68000 and 68010
