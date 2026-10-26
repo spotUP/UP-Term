@@ -412,6 +412,15 @@ def x9_conf(*lines):
             c.run('Echo >>%s "%s"' % (path, l))
 
 
+DRAWN = 'menu-in-terminal = graphical'
+
+
+def x9_drawn(*lines):
+    """x9_conf for a case that expects the drawn menu: its Super+Space lands in the rig's UP-Term terminal, where the
+    default menu-in-terminal = text would open amarchy-menu instead."""
+    x9_drawn(*lines, DRAWN)
+
+
 def x9_end(saved, upterm):
     import amarchy_rig
     x9_leave()
@@ -479,7 +488,7 @@ def r_app_icons():
         x9_files([(X9_DIR, 'A0NoIcon')])
         # since a12e12f2 the drawn menu loads .info images only with the app-icons key; without it every row
         # draws a generic glyph and AMARCHY_ICON_LOADS stays 0
-        x9_conf('amarchy-index-skip = %s' % X9_SKIP, 'amarchy-app-icons = amiga')
+        x9_drawn('amarchy-index-skip = %s' % X9_SKIP, 'amarchy-app-icons = amiga')
         amarchy_rig.arexx('RELOAD')
         c.run('Delete >NIL: %s QUIET' % X9_CACHE)
         c.run('%s/amarchy-index' % paths.UPTERM_BIN, 120)
@@ -544,7 +553,7 @@ def r_minimal():
         return len({bytes(r[x * 3:x * 3 + 3]) for r in rows for x in range(len(r) // 3)})
 
     def opened(style):
-        x9_conf('menu-style = %s' % style, 'fg = E0E0A0', 'bg = 102040', 'amarchy-app-icons = amiga')
+        x9_drawn('menu-style = %s' % style, 'fg = E0E0A0', 'bg = 102040', 'amarchy-app-icons = amiga')
         amarchy_rig.arexx('RELOAD')
         c.run('Delete >NIL: ENV:AMARCHY_MODE ENV:AMARCHY_PENS ENV:AMARCHY_ICON_LOADS ENV:AMARCHY_DRAWS QUIET')
         ami.click_px(100, 100)
@@ -594,7 +603,7 @@ def r_app_index():
     saved, upterm = x9_begin()
     try:
         x9_files()
-        x9_conf('amarchy-index-skip = %s' % X9_SKIP)
+        x9_drawn('amarchy-index-skip = %s' % X9_SKIP)
         # step 6: a [menu] row with the label of an index row
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
         c.run('Echo >>ENV:up-term/keymap.user "apps.a0shadow = A0Shadow | run:C:Echo >RAM:x9.menurow hit"')
@@ -804,7 +813,7 @@ def r_app_categories():
     saved, upterm = x9_begin()
     try:
         x9_files()
-        x9_conf('amarchy-index-skip = %s' % X9_SKIP)
+        x9_drawn('amarchy-index-skip = %s' % X9_SKIP)
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
         c.run('Echo >>ENV:up-term/keymap.user "apps.a0shadow = A0Shadow | run:C:Echo >RAM:x9.menurow hit"')
         amarchy_rig.arexx('RELOAD')
@@ -863,7 +872,7 @@ def r_group_icons():
     e = g.expected(geom, '-')
     saved, upterm = x9_begin()
     try:
-        x9_conf()
+        x9_drawn()
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
         amarchy_rig.arexx('RELOAD')
         cache = ('app\tRigApp1\tWork:RigAlpha/RigApp1\napp\tRigApp2\tWork:RigBeta/RigApp2\n'

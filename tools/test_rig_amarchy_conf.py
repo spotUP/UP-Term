@@ -19,6 +19,11 @@ assert len(keys) == 10 and {'menu-style', 'amarchy-gui-theme', 'menu-in-terminal
 bad = [n + 1 for n, l in enumerate(src.read_text().splitlines()) if 'X9_CONF' in l and any(re.search(r'["\s]%s\s*=' % re.escape(k), l) for k in keys)]
 assert not bad, '%s writes an am_keys key to the up-term file at lines %s' % (src.name, bad)
 
+# a case that expects the drawn menu must write menu-in-terminal = graphical (x9_drawn does); a bare x9_conf( call
+# leaves the default text and Super+Space over the rig's terminal opens amarchy-menu
+bare = [n + 1 for n, l in enumerate(src.read_text().splitlines()) if re.search(r'\bx9_conf\(', l) and not l.startswith('def ') and 'menu-in-terminal' not in l and 'DRAWN' not in l]
+assert not bare, '%s: drawn-menu cases call x9_conf without menu-in-terminal = graphical at lines %s' % (src.name, bare)
+
 calls = []
 r.c.run = lambda cmd, *a, **k: calls.append(cmd) or (0, '')
 r.x9_conf('menu-style = text', 'fg = E0E0A0', 'amarchy-gui-theme = nord')
