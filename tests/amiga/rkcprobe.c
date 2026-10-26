@@ -1,7 +1,8 @@
 /* rkcprobe TABLE <file> | SWAP -- D2.3 of the console.device plan.
  *
  * TABLE: RawKeyConvert, through console.device CONU_LIBRARY, for every raw
- *        code 0-127 with no qualifier, Shift, Alt and Ctrl, default keymap:
+ *        code 0-127 with no qualifier, Shift, Alt, Ctrl and Shift+Alt, default keymap:
+ *        (tools/rig/ami.py types text from this table)
  *        one line per code and qualifier into <file>. Run before and after
  *        UPConsole DEVICE ON, the files must be byte-identical (our vector
  *        goes to the ROM's).
@@ -29,13 +30,14 @@ struct IntuitionBase *IntuitionBase;
 
 static int table(const char *file)
 {
-    static const UWORD quals[4] = { 0, IEQUALIFIER_LSHIFT, IEQUALIFIER_LALT, IEQUALIFIER_CONTROL };
+    static const UWORD quals[5] = { 0, IEQUALIFIER_LSHIFT, IEQUALIFIER_LALT, IEQUALIFIER_CONTROL,
+                                    IEQUALIFIER_LSHIFT | IEQUALIFIER_LALT };
     FILE *f = fopen(file, "w");
     int code, q;
     if (!f)
         return 20;
     for (code = 0; code < 128; code++)
-        for (q = 0; q < 4; q++) {
+        for (q = 0; q < 5; q++) {
             struct InputEvent ie;
             UBYTE buf[32];
             LONG n, i;
