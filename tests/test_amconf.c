@@ -550,6 +550,95 @@ static void test_lf_setting_colour_picker(void)
     CHECK_STR(it[1].label, "Custom...");
 }
 
+
+/* fake requesters: a pick, or a cancel; calls counted so the test proves the fake ran */
+typedef struct fake_asl { int ok, font_calls, mode_calls, fixed; char in_name[64]; long in_size; unsigned long in_id; int in_depth; } fake_asl;
+static int fake_font(void *ctx, const char *name, long size, int fixed, char *out, int cap, long *osize)
+{
+    fake_asl *f = (fake_asl *)ctx;
+    f->font_calls++;
+    f->fixed = fixed;
+    snprintf(f->in_name, sizeof f->in_name, "%s", name);
+    f->in_size = size;
+    if (!f->ok)
+        return 0;
+    snprintf(out, (size_t)cap, "%s", "JetBrains Mono");
+    *osize = 13;
+    return 1;
+}
+static int fake_mode(void *ctx, unsigned long id, int depth, unsigned long *oid, int *odepth)
+{
+    fake_asl *f = (fake_asl *)ctx;
+    f->mode_calls++;
+    f->in_id = id;
+    f->in_depth = depth;
+    if (!f->ok)
+        return 0;
+    *oid = 0x29000UL;
+    *odepth = 6;
+    return 1;
+}
+
+/* LF_SETTING font and screen mode pickers (plan 2026-10-26-amarchy-prefs-inline.md, M6): a picked font or mode
+ * is written to ENV: and ENVARC:, a cancelled requester leaves both files byte-identical. */
+static void test_lf_setting_asl_pickers(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    const sd_setting *font = &sd_settings[SDI_FONT], *mode = &sd_settings[SDI_SCREEN_MODE], *mf = &sd_settings[SDI_AM_FONT];
+    fake_asl fk;
+    lf_asl asl;
+    char before_u[UC_MAX_FILE + 2], before_a[UC_MAX_FILE + 2], buf[UC_MAX_FILE + 2];
+    upconf c;
+    prefs_fields f;
+    am_prefs a;
+    long got;
+    int failed = -1, t;
+    memset(&fk, 0, sizeof fk);
+    asl.font = fake_font;
+    asl.mode = fake_mode;
+    asl.ctx = &fk;
+    mf_put(&m, UP, "[default]\nfont = topaz:8\nscreen-mode = 0x11000\nscreen-depth = 4\n");
+    mf_put(&m, UA, "[default]\nfont = topaz:8\nscreen-mode = 0x11000\nscreen-depth = 4\n");
+    /* cancelled: nothing written, in either store */
+    snprintf(before_u, sizeof before_u, "%s", mf_get(&m, UP));
+    snprintf(before_a, sizeof before_a, "%s", mf_get(&m, UA));
+    CHECK_INT(lf_setting_pick(&io, font, &asl, &failed), LF_SET_CANCELLED);
+    CHECK_STR(fk.in_name, "topaz.font");                          /* the requester starts on the current value */
+    CHECK_INT(fk.in_size, 8);
+    CHECK_INT(lf_setting_pick(&io, mode, &asl, &failed), LF_SET_CANCELLED);
+    CHECK_INT(fk.in_id, 0x11000);
+    CHECK_INT(fk.in_depth, 4);
+    CHECK_INT(lf_setting_pick(&io, mf, &asl, &failed), LF_SET_CANCELLED);
+    CHECK_INT(fk.font_calls, 2);                             /* the requesters ran */
+    CHECK_INT(fk.mode_calls, 1);
+    CHECK_STR(mf_get(&m, UP), before_u);
+    CHECK_STR(mf_get(&m, UA), before_a);
+    CHECK_STR(mf_get(&m, AP), "<absent>");                /* Amarchy's file never created */
+    /* picked */
+    fk.ok = 1;
+    CHECK_INT(lf_setting_pick(&io, font, &asl, &failed), LF_SET_OK);
+    CHECK_INT(fk.fixed, 1);                                  /* the terminal font asks for fixed width */
+    CHECK_INT(lf_setting_pick(&io, mode, &asl, &failed), LF_SET_OK);
+    for (t = 0; t < 2; t++) {
+        got = io.read(io.fs->ctx, t ? UA : UP, buf, UC_MAX_FILE + 1);
+        buf[got < 0 ? 0 : got] = 0;
+        CHECK_INT(prefs_load(&c, buf, got, UC_MAX_FILE), PREFS_LOAD_OK);
+        prefs_from_conf(&f, &c, LF_PROFILE);
+        CHECK_STR(f.font, "JetBrains Mono:13");
+        CHECK_STR(f.screenmode, "0x00029000");
+        CHECK_STR(f.screendepth, "6");
+    }
+    /* the menu font lives in Amarchy's file, and any width may be picked */
+    CHECK_INT(lf_setting_pick(&io, mf, &asl, &failed), LF_SET_OK);
+    CHECK_INT(fk.fixed, 0);
+    amconf_load_with(&io, &a);
+    CHECK_STR(a.val[AM_FONT], "JetBrains Mono:13");
+    /* the fallback font is an outline file, not this requester */
+    CHECK_INT(lf_setting_pick(&io, &sd_settings[SDI_FALLBACK], &asl, &failed), LF_SET_KIND);
+}
+
 void suite_amconf(void)
 {
     test_amconf_parse_defaults();
@@ -572,4 +661,5 @@ void suite_amconf(void)
     test_lf_setting_cycle_next_and_choices();
     test_lf_setting_text();
     test_lf_setting_colour_picker();
+    test_lf_setting_asl_pickers();
 }

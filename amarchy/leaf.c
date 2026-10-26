@@ -10,6 +10,7 @@
 #include <rexx/rxslib.h>
 #include <proto/rexxsyslib.h>
 #include "leaf.h"
+#include "../prefs/prefs_asl.h"
 #include "amconf_dos.h"
 #include "gthemes_dos.h"
 #include "wblaunch.h"
@@ -118,6 +119,17 @@ static int run_request(const km_menu *m, const lf_ui *ui, const char *value)
 
 static int lister_front(unsigned long handle);
 
+/* the real requesters behind lf_asl: asl.library over the menu's window (prefs_asl.c, shared with Prefs) */
+static int asl_font(void *ctx, const char *name, long size, int fixed, char *out, int cap, long *osize)
+{
+    return asl_pick_font(0, (struct Window *)ctx, "Choose a font", name, size, fixed, out, cap, osize);
+}
+
+static int asl_mode(void *ctx, unsigned long id, int depth, unsigned long *oid, int *odepth)
+{
+    return asl_pick_screenmode((struct Window *)ctx, "Choose a screen mode", id, depth, PREFS_DEPTH_MIN, PREFS_DEPTH_MAX, oid, odepth);
+}
+
 int lf_setting_enter(const mn_item *it, const lf_ui *ui)
 {
     const sd_setting *s;
@@ -136,6 +148,20 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
             return 1;
         snprintf(why, sizeof why, "%s", r == LF_SET_INVALID ? sd_text_reason(sd_text_check(s, value)) : "");
         ui->refused(ui->ctx, it->label, r, why);
+        return 0;
+    }
+    if (s->kind == SD_FONT || s->kind == SD_SCREENMODE) {
+        lf_asl asl;
+        asl.font = asl_font;
+        asl.mode = asl_mode;
+        asl.ctx = ui->win;
+        if (!MN_IS_SETTING(it))
+            return 0;
+        r = lf_setting_pick(amconf_dos_io(), s, &asl, &failed);
+        if (r == LF_SET_OK)
+            return 1;
+        if (r != LF_SET_CANCELLED && r != LF_SET_KIND)
+            ui->refused(ui->ctx, it->label, r, r == LF_SET_INVALID ? "not usable" : "");
         return 0;
     }
     if (SD_HAS_PICKER(s)) {

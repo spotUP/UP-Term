@@ -65,7 +65,7 @@ lf_how lf_plan_ta(int kind, int term, int needs_value);
  * prefs_save_at (ENVARC: then ENV:, the profile LF_PROFILE), Amarchy's by amconf_save_with. The files
  * notify their readers, so nothing else is sent. */
 #define LF_PROFILE "default"
-enum { LF_SET_OK = 0, LF_SET_READONLY = -200, LF_SET_INVALID = -201, LF_SET_FULL = -202, LF_SET_KIND = -203 };
+enum { LF_SET_OK = 0, LF_SET_READONLY = -200, LF_SET_INVALID = -201, LF_SET_FULL = -202, LF_SET_KIND = -203, LF_SET_CANCELLED = -204 };
 
 /* The value Enter moves a check or cycle row to: the next index, wrapping. -1 for any other kind. */
 int lf_setting_next(const sd_setting *s, int cur);
@@ -86,6 +86,16 @@ int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, c
  * (the swatch's own, or the palette entry `entry`) for the Custom prompt's prefill. */
 void lf_palette_hex(const amconf_io *io, int n, char *out);
 void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char *out);
+/* The font and screen mode rows (SD_FONT except the outline fallback, SD_SCREENMODE): the requester is asked
+ * through `asl` (the Amiga layer wraps asl.library; a test passes a fake), starting on the row's current value.
+ * A pick is written to both files (a font as name:size, a mode as 0xID plus the depth); a requester that
+ * returns 0 is LF_SET_CANCELLED with the files untouched. fixed_only is 1 for the terminal font. */
+typedef struct lf_asl {
+    int (*font)(void *ctx, const char *name, long size, int fixed_only, char *out, int cap, long *out_size);
+    int (*mode)(void *ctx, unsigned long id, int depth, unsigned long *out_id, int *out_depth);
+    void *ctx;
+} lf_asl;
+int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl, int *failed);
 /* Enter on a check or cycle row: lf_setting_next of the current value, then lf_setting_set. */
 int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed);
 /* Rewrite the labels of a menu level: a MN_ROW_SETTING row shows sd_row_label (label and value), a
@@ -129,6 +139,8 @@ typedef struct lf_ui {
     /* 1 when the menu is itself an UP-Term window (the text menu), 0 when it is a plain Intuition
      * window (the graphical menu): which MRU entry is the terminal (upmru_target) */
     int self_in_mru;
+    /* the menu's struct Window (or 0): the font and screen mode requesters open over it */
+    void *win;
 } lf_ui;
 
 /* 1 when the menu opened over an UP-Term window: upactive_terminal_present (handler/upactive.h) with

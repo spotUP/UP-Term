@@ -270,7 +270,7 @@ static int lf_load_upterm(const amconf_io *io)
 }
 
 /* index >= 0: a check or cycle value; else the text of an SD_INT or SD_STRING row */
-static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, const char *text, int n, int *failed)
+static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, const char *text, int n, const char *text2, int *failed)
 {
     prefs_fields f;
     long len;
@@ -282,6 +282,8 @@ static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, co
         strcpy(sd_string(s, &f, n), text);
     else
         sd_set_index(s, &f, index);
+    if (text2 && s->off2)
+        strcpy((char *)&f + s->off2, text2);
     if (prefs_validate(&f))
         return LF_SET_INVALID;
     len = prefs_stage(&lf_work, &lf_conf, LF_PROFILE, &f, lf_buf, UC_MAX_FILE + 1);
@@ -314,7 +316,7 @@ int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *fai
         sd_set_index(s, &a, index);
         return amconf_save_with(io, &a, 1, failed);
     }
-    return lf_set_upterm(io, s, index, 0, 0, failed);
+    return lf_set_upterm(io, s, index, 0, 0, 0, failed);
 }
 
 int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *text, int *failed)
@@ -330,7 +332,7 @@ int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *te
         strcpy(sd_string(s, &a, 0), text);
         return amconf_save_with(io, &a, 1, failed);
     }
-    return lf_set_upterm(io, s, -1, text, 0, failed);
+    return lf_set_upterm(io, s, -1, text, 0, 0, failed);
 }
 
 /* xterm's default 16, what an unset palette entry shows */
@@ -385,7 +387,73 @@ int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, c
         prefs_hex_format(rgb, hex);
     } else
         return LF_SET_INVALID;
-    return lf_set_upterm(io, s, -1, hex, s->kind == SD_PALETTE ? entry : 0, failed);
+    return lf_set_upterm(io, s, -1, hex, s->kind == SD_PALETTE ? entry : 0, 0, failed);
+}
+
+
+/* ---- font and screen mode pickers (M6) ---- */
+
+/* the current text of a string row (and its second key, the screen depth), from the file */
+static void lf_current_str(const amconf_io *io, const sd_setting *s, char *out, int n, char *out2, int n2)
+{
+    const char *t, *t2 = 0;
+    out[0] = 0;
+    if (out2)
+        out2[0] = 0;
+    if (s->store == SD_AMARCHY) {
+        am_prefs a;
+        amconf_load_with(io, &a);
+        t = sd_string(s, &a, 0);
+        snprintf(out, (size_t)n, "%s", t ? t : "");
+    } else {
+        prefs_fields f;
+        lf_load_upterm(io);
+        prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+        t = sd_string(s, &f, 0);
+        if (s->off2)
+            t2 = (const char *)&f + s->off2;
+        snprintf(out, (size_t)n, "%s", t ? t : "");
+        if (out2 && t2)
+            snprintf(out2, (size_t)n2, "%s", t2);
+    }
+}
+
+int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl, int *failed)
+{
+    char cur[UC_MAX_VALUE], depth[UC_MAX_VALUE], spec[UC_MAX_VALUE];
+    *failed = 0;
+    if (s->kind == SD_FONT && s->id != SDI_FALLBACK) {
+        char name[UC_MAX_VALUE], iname[UC_MAX_VALUE];
+        long size = 0, isize = 0;
+        lf_current_str(io, s, cur, sizeof cur, 0, 0);
+        iname[0] = 0;
+        prefs_font_parse(cur, iname, sizeof iname, &isize);
+        if (!asl->font || !asl->font(asl->ctx, iname, isize, s->id == SDI_FONT, name, sizeof name, &size))
+            return LF_SET_CANCELLED;
+        if (!prefs_font_compose(name, size, spec, sizeof spec))
+            return LF_SET_INVALID;      /* a colon in the name: not usable */
+        if (s->store == SD_AMARCHY) {
+            am_prefs a;
+            amconf_load_with(io, &a);
+            strcpy(sd_string(s, &a, 0), spec);
+            return amconf_save_with(io, &a, 1, failed);
+        }
+        return lf_set_upterm(io, s, -1, spec, 0, 0, failed);
+    }
+    if (s->kind == SD_SCREENMODE) {
+        unsigned long id = 0, nid = 0;
+        int nd = 0;
+        char dtext[UC_MAX_VALUE];
+        lf_current_str(io, s, cur, sizeof cur, depth, sizeof depth);
+        if (!prefs_mode_parse(cur, &id))
+            id = 0;
+        if (!asl->mode || !asl->mode(asl->ctx, id, prefs_depth_parse(depth), &nid, &nd))
+            return LF_SET_CANCELLED;
+        prefs_mode_format(nid, spec);
+        prefs_depth_format(nd, dtext);
+        return lf_set_upterm(io, s, -1, spec, 0, dtext, failed);
+    }
+    return LF_SET_KIND;
 }
 
 /* the current value index of row s, read from its file */

@@ -659,6 +659,7 @@ static void start_scan(gui *g, const mn_item *it)
     ui.refused = gui_refused;
     ui.ctx = g;
     ui.self_in_mru = 0;
+    ui.win = g->win;
     if (!ix_watcher_adopt_live(&g->wt, have0, &p0, alive0)) {    /* one scanner at a time: show the live one */
         if (lf_run(&km.menu[it->row], &ui) != LF_WATCH)
             return;
@@ -680,6 +681,7 @@ static void activate_setting(gui *g, const mn_item *it, int right)
     ui.refused = gui_refused;
     ui.ctx = g;
     ui.self_in_mru = 0;
+    ui.win = g->win;
     if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(&sd_settings[it->ix]))) {
         if (sd_settings[it->ix].kind == SD_CYCLE || SD_HAS_PICKER(&sd_settings[it->ix])) {
             mn_child_node(g->node, it, g->node, sizeof g->node);
@@ -1276,6 +1278,7 @@ int main(int argc, char **argv)
         ui.refused = gui_refused;
         ui.ctx = g;
         ui.self_in_mru = 0;
+        ui.win = g->win;
         g->stop = 0;
         /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
         if (g->ixpath[0]) {                    /* an index row may be refused: the window stays for the message */
