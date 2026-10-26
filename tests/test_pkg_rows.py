@@ -37,8 +37,7 @@ class PkgRows(unittest.TestCase):
             self.assertEqual(rc, 0)
             # the generator really asked the ports Makefile: the recipe's summary came back through it
             summary = [v for _, f, v in calls if f == 'SUMMARY'][0]
-            self.assertEqual(summary, pkgs.SUMMARY['bitchx'])
-            self.assertIn(summary, out)
+            self.assertEqual(summary, pkgs.summary('bitchx', ''))
             d = pathlib.Path(d)
             row = (d / 'dist/packages.row').read_text()
             self.assertIn(row, (ROOT / 'dist/packages.txt').read_text())
@@ -49,7 +48,12 @@ class PkgRows(unittest.TestCase):
             self.assertEqual(len(made), 6)
             for n in made:
                 self.assertEqual((d / 'dist/addons/bitchx' / n).read_bytes(), (ROOT / 'dist/addons/bitchx' / n).read_bytes(), n)
-            self.assertIn(pkgs.SUMMARY['bitchx'], (d / 'pkgs.py.line').read_text())
+            # CP3: a package is data only. No shared-code hunks are made, and the feed Description comes from the recipe.
+            self.assertFalse((d / 'pkgs.py.line').exists() or (d / 'Makefile.snippet').exists())
+            self.assertNotIn('bitchx', pkgs.SUMMARY)
+            self.assertNotIn('dist-bitchx', (ROOT / 'Makefile').read_text().replace('dist-<id>', ''))
+            self.assertEqual(pkgs.summary('bitchx', ''), summary)
+            self.assertNotEqual(summary, '')
 
     def test_a_changed_bins_changes_the_slim_rows(self):
         with tempfile.TemporaryDirectory() as d:
