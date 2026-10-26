@@ -410,7 +410,7 @@ static int f_stat(void *os, const char *path, sh_stat *st, int nofollow)
     memset(st, 0, sizeof(*st));
     st->mode = 0644;
     st->access = 6;
-    if (!strcmp(path, "SYS:")) {
+    if (!strcmp(path, "SYS:") || !strcmp(path, "tmpdir") || !strcmp(path, "ram:") || !strcmp(path, "cd")) {
         st->type = SH_ST_DIR;
         return 0;
     }
@@ -520,6 +520,24 @@ static void kill_names_a_missing_signal_sender(void)
     }
     CHECK_STR(slot(OUT)->data, "st=1\n");
     CHECK_STR(slot(ERR)->data, "vsh: kill: ixkill not found: looked here\nvsh: 77: No such process\n");
+}
+
+/* A bare directory word is a cd (AmigaDOS implicit cd, zsh AUTO_CD); a program or builtin of that name wins */
+static void autocd(void)
+{
+    run("tmpdir; echo $PWD");
+    CHECK_STR(slot(OUT)->data, "tmpdir\n");
+    CHECK_STR(slot(ERR)->data, "");
+    run("ram:; echo $PWD $OLDPWD");
+    CHECK_STR(slot(OUT)->data, "ram: RAM:\n");
+    run("tmpdir extra");
+    CHECK_STR(slot(ERR)->data, "vsh: tmpdir: not found\n");
+    CHECK_INT(sh.ctx.status, 127);
+    run("nosuchdir:");
+    CHECK_STR(slot(ERR)->data, "vsh: nosuchdir:: not found\n");
+    CHECK_INT(sh.ctx.status, 127);
+    run("cd; echo $PWD"); /* the builtin, not the directory named cd */
+    CHECK_STR(slot(OUT)->data, "SYS:\n");
 }
 
 static void basics(void)
@@ -2145,6 +2163,7 @@ void suite_sh_exec(void)
     printf_builtin();
     prompts();
     basics();
+    autocd();
     kill_names_a_missing_signal_sender();
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();

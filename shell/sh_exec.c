@@ -933,6 +933,23 @@ static void err_not_found(sh_shell *sh, const sh_io *io, const char *name)
     say(sh, io->err, "\n");
 }
 
+static long b_cd(sh_shell *sh, int argc, char **argv, const sh_io *io);
+
+/* AmigaDOS (and zsh AUTO_CD): a bare word that starts nothing but names a directory
+ * (ram:, sys:c, .., src) is a cd to it, through b_cd so OLDPWD, PWD and the prompt follow.
+ * A program, builtin or function of that name never reaches here: bash wins on a real clash. */
+static int try_autocd(sh_shell *sh, const sh_io *io, const sh_list *argv, long *st)
+{
+    char *cdargv[3];
+    if (argv->n != 1 || !argv->v[0][0] || !sh_exists(sh, argv->v[0], 1))
+        return 0;
+    cdargv[0] = (char *)"cd";
+    cdargv[1] = argv->v[0];
+    cdargv[2] = 0;
+    *st = b_cd(sh, 2, cdargv, io);
+    return 1;
+}
+
 static void num(char *out, long v)
 {
     char t[24];
@@ -8052,8 +8069,13 @@ static long exec_cmd1(sh_shell *sh, const sh_node *n, const sh_io *parent, int w
             } else
                 st = 0;
         } else if (st < 0) {
-            err_not_found(sh, &io, argv.v[0]);
-            st = 127;
+            long cst;
+            if (try_autocd(sh, &io, &argv, &cst)) {
+                st = cst;
+            } else {
+                err_not_found(sh, &io, argv.v[0]);
+                st = 127;
+            }
         }
     }
     if ((sh->opts & SO_POSIX) && n_saved > 0 && !nofunc && special_bi(argv.v[0]) && !cmd_mode) {
