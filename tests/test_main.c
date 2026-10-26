@@ -43,6 +43,7 @@ void suite_otag(void);
 void suite_ttf(void);
 void suite_slash(void);
 void suite_winspec(void);
+void suite_screenreq(void);
 void suite_cmdline(void);
 void suite_win(void);
 void suite_fontpair(void);
@@ -116,6 +117,7 @@ static const h_suite suites[] = {
     { "ttf", suite_ttf },
     { "slash", suite_slash },
     { "winspec", suite_winspec },
+    { "screenreq", suite_screenreq },
     { "cmdline", suite_cmdline },
     { "win", suite_win },
     { "fontpair", suite_fontpair },

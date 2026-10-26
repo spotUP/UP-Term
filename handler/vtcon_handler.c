@@ -83,6 +83,7 @@
 #include "../config/upconf.h"
 #include "../prefs/prefs_core.h"
 #include "upterm_version.h"
+#include "screenreq.h"
 
 /* rexx/rexxio.h: ARexx PUSH and QUEUE */
 #ifndef ACTION_FORCE
@@ -200,7 +201,7 @@ typedef struct con {
     ULONG mode_id;               /* SCREENMODE 0x...; INVALID_ID = the Workbench's */
     int depth;                   /* DEPTH n; 0 = 4 on a native screen, 8 on a card */
     struct Screen *myscreen;     /* the screen opened for this window */
-    int screen_want;             /* a move to this screen kind asked for (-1 none): done after the IDCMP loop */
+    screenreq screen_want;       /* a move to another screen kind asked for: done after the IDCMP loop */
     struct Screen *screen_closing; /* ours, its close refused (a visitor still on it): tried again */
     int inactive;
     int auto_open;               /* AUTO: no window until the first read or write */
@@ -1349,7 +1350,7 @@ static void parse_spec(con *c, const char *s)
     vtwin_profile_defaults(&c->w); /* a profile may change them */
     copy_str(c->profile, "default", sizeof(c->profile));
     c->own_screen = 0;
-    c->screen_want = -1;
+    screenreq_clear(&c->screen_want);
     c->pubname[0] = 0;
     c->mode_id = (ULONG)INVALID_ID;
     c->depth = 0;
@@ -2513,7 +2514,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_ABOUT: about(c); return 1;
     case MENU_SCREEN_WB: case MENU_SCREEN_OWN: case MENU_SCREEN_FULL:
         /* after the IDCMP loop has replied its messages (the window goes) */
-        c->screen_want = (int)(id - MENU_SCREEN_WB);
+        screenreq_ask(&c->screen_want, (int)(id - MENU_SCREEN_WB));
         return 3;
     case MENU_SELECT_ALL: vtwin_select_all(&c->w); return 1;
     case MENU_FIND_NEXT:
@@ -3071,9 +3072,8 @@ static int screen_switch(con *c, int mode)
 
 static void screen_pending(con *c)
 {
-    if (c->screen_want >= 0) {
-        int m = c->screen_want;
-        c->screen_want = -1;
+    int m = screenreq_take(&c->screen_want);
+    if (m != SCREENREQ_NONE) {
         if (!screen_switch(c, m))
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* tabs, or no such screen */
     }
