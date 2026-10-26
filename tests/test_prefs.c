@@ -9,6 +9,7 @@
 #include "../handler/kcmode.h"
 #include "../prefs/prefs_ui.h"
 #include "../prefs/settings_def.h"
+#include "../amarchy/amconf_core.h"
 #include "harness.h"
 #include "memfs.h"
 
@@ -1421,6 +1422,56 @@ static void file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_ke
     staged_text_matches_the_recorded_file("prefs_garbage", "prefs_garbage", 0);
 }
 
+/* AM-PREFS-THEME-PICKER: the Menu theme row is a select over the scanned GUI themes (gt_scan), the current one selected,
+ * and choosing one writes AM_GTHEME through amconf. */
+static void fake_theme_dir(void *ctx, const char *dir, gt_emit_fn emit, void *ectx)
+{
+    (void)ctx;
+    if (!strcmp(dir, GT_SHIPPED_DIR)) {
+        emit(ectx, "tokyo-night.theme");
+        emit(ectx, "nord.theme");
+    } else if (!strcmp(dir, GT_USER_DIR)) {
+        emit(ectx, "mine.theme");
+    }
+}
+
+static void the_menu_theme_row_is_a_select_over_the_scanned_themes(void)
+{
+    const sd_setting *s = &sd_settings[SDI_AM_GTHEME];
+    const pg_item *it = pg_find(s->gadget);
+    gt_list l;
+    pg_themes t;
+    prefs_fields f;
+    am_prefs ap, back;
+    char name[GT_NAME], buf[4096];
+    long n;
+    CHECK_INT(s->kind, SD_DYNLIST);
+    CHECK(it && it->kind == PGK_CYCLE);
+    gt_scan(fake_theme_dir, 0, &l);
+    pg_themes_build(&t, &l, "nord");
+    CHECK_INT(t.n, 3);                      /* mine, nord, tokyo-night: sorted */
+    CHECK_INT(t.active, 1);
+    CHECK_STR(t.text[0], "mine");
+    CHECK_STR(t.text[1], "nord (current)"); /* gt_label marks the saved one */
+    CHECK(t.text[3] == NULL);
+    /* a saved name with no file stays selectable, so Save does not silently change it */
+    pg_themes_build(&t, &l, "gone");
+    CHECK_INT(t.n, 4);
+    CHECK_STR(t.text[t.active], "gone (current)");
+    pg_themes_build(&t, &l, "nord");
+    /* choosing "mine" writes AM_GTHEME */
+    CHECK_INT(pg_themes_pick(&t, 0, name, sizeof name), 1);
+    memset(&f, 0, sizeof f);
+    strcpy(f.am_gtheme, name);
+    amconf_defaults(&ap);
+    amconf_from_fields(&ap, &f);
+    n = amconf_serialize(&ap, buf, sizeof buf);
+    CHECK(n > 0);
+    amconf_parse(buf, n, &back);
+    CHECK_STR(back.val[AM_GTHEME], "mine");
+    CHECK_INT(pg_themes_pick(&t, 9, name, sizeof name), 0);
+}
+
 void suite_prefs(void)
 {
     meta_defaults_to_alt();
@@ -1451,4 +1502,5 @@ void suite_prefs(void)
     the_amarchy_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
     file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_key();
+    the_menu_theme_row_is_a_select_over_the_scanned_themes();
 }

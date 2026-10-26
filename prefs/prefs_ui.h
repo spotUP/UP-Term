@@ -15,6 +15,8 @@
 #define PREFS_UI_H
 
 /* ---- gadget ids: stable, the rig names them ------------------------------ */
+#include "../amarchy/gthemes_core.h"
+
 enum {
     /* in every page */
     PG_PAGE = 1, PG_SAVE = 2, PG_USE = 3, PG_CANCEL = 4, PG_STATUS = 5,
@@ -92,6 +94,21 @@ const char *pg_help(const pg_item *it);
  * (out has room for cap pointers): the count, 0 when the id is no cycle of the table (the page switch, the
  * profile). */
 int pg_cycle_texts(int id, const char **out, int cap);
+
+/* The choices of an SD_DYNLIST cycle (the Menu theme): the themes gt_scan found, each labelled by gt_label with the
+ * saved one marked, ended by a null. A saved name with no theme file is added, so it stays selected. */
+typedef struct pg_themes {
+    int n;                                  /* entries */
+    int active;                             /* the saved theme's entry */
+    char name[GT_MAX + 1][GT_NAME];
+    char label[GT_MAX + 1][GT_NAME + 12];
+    const char *text[GT_MAX + 2];           /* label[i], ended by NULL: the cycle's labels */
+} pg_themes;
+void pg_themes_build(pg_themes *t, const gt_list *scanned, const char *current);
+/* the entry whose name is name (no case), -1 when none */
+int pg_themes_find(const pg_themes *t, const char *name);
+/* entry idx's theme name into out: 1, or 0 when idx is out of range or out is too small */
+int pg_themes_pick(const pg_themes *t, int idx, char *out, int cap);
 
 /* "_Font" -> 'f' (lower case), 0 when the label has no shortcut */
 int pg_shortcut(const char *label);

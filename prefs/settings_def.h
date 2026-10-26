@@ -46,6 +46,7 @@ enum {
     SD_FONT,        /* name:size, or empty; the font requester picks it */
     SD_SCREENMODE,  /* mode id (key) and depth (key2); the screen mode requester picks them */
     SD_PALETTE,     /* the 16 colour entries (count rows of size bytes each) */
+    SD_DYNLIST,     /* one of a list read at run time (the GUI themes, gt_scan); the file text is the chosen name */
     SD_THEME,       /* takes the colours of a theme file; holds no value */
     SD_PROFILE      /* the profile being edited; holds no value */
 };

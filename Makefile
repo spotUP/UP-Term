@@ -690,9 +690,9 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 # program (its own window), so vc links it. vbcc warns (153, 65) on the
 # (void) parameter casts of the file callbacks, as for vsh.
 # The kit ships it as Files/upprefs; Install copies it to C:UP-Term-Prefs.
-$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/settings_def.c prefs/settings_def.h prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h amarchy/amconf_core.c amarchy/amconf_core.h amarchy/amconf_dos.c amarchy/amconf_dos.h amarchy/amconf_keys.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
+$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/settings_def.c prefs/settings_def.h prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h amarchy/amconf_core.c amarchy/amconf_core.h amarchy/amconf_dos.c amarchy/amconf_dos.h amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/gthemes_dos.c amarchy/gthemes_dos.h amarchy/index_core.c amarchy/index_core.h amarchy/menu_tree.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_dos.c amarchy/amconf_keys.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_dos.c amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/index_core.c amarchy/menu_tree.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
 
 # Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.

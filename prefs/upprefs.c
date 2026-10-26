@@ -65,6 +65,7 @@
 #include "prefs_ui.h"
 #include "settings_def.h"
 #include "prefs_asl.h"
+#include "../amarchy/gthemes_dos.h"
 #include "../tty/qmark.h"
 #include "prefs_dos.h"
 #include "../amarchy/amconf_dos.h"
@@ -244,7 +245,6 @@ static char *text_field(struct app *a, int id, int *cap)
     case PG_AM_MUSIC: return a->f.am_music;
     case PG_AM_DEMO: return a->f.am_demo;
     case PG_AM_HIDE: return a->f.am_hide;
-    case PG_AM_GTHEME: return a->f.am_gtheme;
     case PG_TERM:
         *cap = (int)sizeof(a->f.term);
         return a->f.term;
@@ -325,12 +325,18 @@ static int *int_of(struct app *a, int id)
 /* The choices of a cycle: the page switch here, every other cycle from its row of the settings table. */
 #define CYC_MAX 8
 static STRPTR cyc_buf[SDI_COUNT][CYC_MAX];
+static int get_state(struct app *a, int id);
+
+/* The Menu theme's choices: the one theme scan (gt_dos_scan) made when the window opened. */
+static pg_themes themes;
 
 static STRPTR *labels_of(int id)
 {
     const sd_setting *s;
     if (id == PG_PAGE)
         return page_labels;
+    if (id == PG_AM_GTHEME)
+        return (STRPTR *)themes.text;
     s = sd_find_gadget(id);
     if (!s || s->kind != SD_CYCLE || id != s->gadget)
         return 0;
@@ -571,6 +577,8 @@ static void show_fields(struct app *a)
             p = int_of(a, it->id);
             if (p)
                 set_attr(a, it->id, GTCY_Active, (ULONG)*p);
+            else if (it->id == PG_AM_GTHEME)
+                set_attr(a, it->id, GTCY_Active, (ULONG)get_state(a, it->id));
             break;
         case PGK_CHECK:
             p = int_of(a, it->id);
@@ -1651,6 +1659,10 @@ static int get_state(struct app *a, int id)
     int *p;
     if (id == PG_CURSOR_INVERSE)
         return cursor_inverse(a);
+    if (id == PG_AM_GTHEME) {
+        int i = pg_themes_find(&themes, a->f.am_gtheme);
+        return i < 0 ? 0 : i;
+    }
     p = int_of(a, id);
     return p ? *p : 0;
 }
@@ -1658,7 +1670,9 @@ static int get_state(struct app *a, int id)
 static void put_state(struct app *a, int id, int v)
 {
     int *p = int_of(a, id);
-    if (id == PG_CURSOR_INVERSE) {
+    if (id == PG_AM_GTHEME)
+        pg_themes_pick(&themes, v, a->f.am_gtheme, (int)sizeof a->f.am_gtheme);
+    else if (id == PG_CURSOR_INVERSE) {
         if (v)
             strcpy(a->f.curcol, "inverse");
         else
@@ -1932,6 +1946,11 @@ int main(void)
         prefs_defaults(&a->f);
     a->am_src = amconf_load(&a->am);
     amconf_to_fields(&a->am, &a->f);
+    {
+        gt_list found;
+        gt_dos_scan(&found);
+        pg_themes_build(&themes, &found, a->f.am_gtheme);
+    }
     a->prof_new = 0; /* the first profile is the file's own, or "default" as built in: nothing to lose */
     a->orig = a->f;
     sb_load(a);

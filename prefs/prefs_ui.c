@@ -207,7 +207,7 @@ const pg_item pg_items[] = {
     { PG_AM_TERMMENU, PG_PAGE_AMARCHY, PGK_CYCLE, NULL,
       NULL,
       6, 0, 9, PGD_NONE },
-    { PG_AM_GTHEME, PG_PAGE_AMARCHY, PGK_STRING, NULL,
+    { PG_AM_GTHEME, PG_PAGE_AMARCHY, PGK_CYCLE, NULL,
       NULL,
       7, 0, 16, PGD_NONE },
     { PG_AM_FONT, PG_PAGE_AMARCHY, PGK_TEXT, NULL,
@@ -560,4 +560,55 @@ int pg_page_for_args(const char *args)
         }
     }
     return PG_PAGE_GENERAL;
+}
+
+static int ci_eq(const char *a, const char *b)
+{
+    for (; *a && *b; a++, b++) {
+        int x = (unsigned char)*a, y = (unsigned char)*b;
+        if (x >= 'A' && x <= 'Z') x += 32;
+        if (y >= 'A' && y <= 'Z') y += 32;
+        if (x != y)
+            return 0;
+    }
+    return !*a && !*b;
+}
+
+int pg_themes_find(const pg_themes *t, const char *name)
+{
+    int i;
+    for (i = 0; i < t->n; i++)
+        if (ci_eq(t->name[i], name))
+            return i;
+    return -1;
+}
+
+void pg_themes_build(pg_themes *t, const gt_list *scanned, const char *current)
+{
+    gt_list l = *scanned;
+    char file[GT_NAME + 8];
+    int i;
+    if (current && *current && gt_name_ok(current) && strlen(current) + sizeof GT_EXT <= sizeof file) {
+        strcpy(file, current);
+        strcat(file, GT_EXT);
+        gt_list_add(&l, file, 0);       /* no-op when the scan has it: gt_list_add keeps one row per name */
+    }
+    t->n = l.n;
+    for (i = 0; i < l.n; i++) {
+        strcpy(t->name[i], l.name[i]);
+        gt_label(l.name[i], current, t->label[i], (int)sizeof t->label[i]);
+        t->text[i] = t->label[i];
+    }
+    t->text[l.n] = NULL;
+    t->active = current ? pg_themes_find(t, current) : -1;
+    if (t->active < 0)
+        t->active = 0;
+}
+
+int pg_themes_pick(const pg_themes *t, int idx, char *out, int cap)
+{
+    if (idx < 0 || idx >= t->n || (int)strlen(t->name[idx]) >= cap)
+        return 0;
+    strcpy(out, t->name[idx]);
+    return 1;
 }
