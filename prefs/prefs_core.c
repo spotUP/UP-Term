@@ -84,14 +84,12 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     for (i = 0; i < sd_nsettings; i++) {
         const sd_setting *s = &sd_settings[i];
         char *at = (char *)f + s->off;
-        int x;
         if (s->store != SD_UPTERM || !s->key || s->ftype == SDF_KC_COMMON || s->ftype == SDF_KC_SILENT)
             continue;
         if (s->kind == SD_PALETTE) {
             pc_palette_from_conf(f, c, p, s);
         } else if (s->ftype == SDF_INT) {
-            x = sd_value_index(s, upconf_str(c, p, s->key, s->def));
-            *(int *)at = x < 0 ? sd_def_index(s) : x;
+            *(int *)at = sd_conf_index(s, c, p);
         } else {
             pc_copy(at, upconf_str(c, p, s->key, ""), s->size);
             if (s->key2)

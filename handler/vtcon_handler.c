@@ -82,6 +82,7 @@
 #include "../config/termurl.h"
 #include "../config/upconf.h"
 #include "../prefs/prefs_core.h"
+#include "../prefs/settings_def.h"
 #include "upterm_version.h"
 #include "screenreq.h"
 
@@ -1271,9 +1272,8 @@ static void apply_profile(con *c)
         else if (str_ieq(v, "bar"))
             c->w.cursor_style = 6;
     }
-    v = upconf_str(c->conf, p, "cursor-blink", 0);
-    if (v)
-        c->w.cursor_blink = str_ieq(v, "on");
+    if (upconf_get(c->conf, p, "cursor-blink"))
+        c->w.cursor_blink = sd_conf_key_index("cursor-blink", c->conf, p);
     v = upconf_str(c->conf, p, "bell", 0);
     if (v) {
         if (str_ieq(v, "none"))
@@ -1283,50 +1283,37 @@ static void apply_profile(con *c)
         else if (str_ieq(v, "beep"))
             c->w.bell = 1;
     }
-    v = upconf_str(c->conf, p, "bold-bright", 0);
-    if (v)
-        c->w.bold_bright = str_ieq(v, "on");
-    v = upconf_str(c->conf, p, "meta", 0);
-    if (v) /* alt is the default (vtwin reset); only "amiga" moves Meta to Left Amiga */
-        c->w.meta_alt = !str_ieq(v, "amiga");
+    if (upconf_get(c->conf, p, "bold-bright"))
+        c->w.bold_bright = sd_conf_key_index("bold-bright", c->conf, p);
+    if (upconf_get(c->conf, p, "meta"))
+        c->w.meta_alt = sd_conf_key_index("meta", c->conf, p); /* index 1 is alt (vtwin reset: the default); 0 moves Meta to Left Amiga */
     v = upconf_str(c->conf, p, "program-clipboard", 0);
     if (v) /* OSC 52: write (default) | read-write | off */
         c->w.clip_access = str_ieq(v, "off") ? 0 : str_ieq(v, "read-write") ? VT_CLIP_WRITE | VT_CLIP_READ
                          : VT_CLIP_WRITE;
-    v = upconf_str(c->conf, p, "copy-on-select", 0);
-    if (v)
-        c->w.copy_on_select = str_ieq(v, "on");
-    v = upconf_str(c->conf, p, "wheel", 0);
-    if (v)
-        c->w.wheel_scroll = !str_ieq(v, "ignore");
-    v = upconf_str(c->conf, p, "reflow", 0);
-    if (v)
-        c->w.reflow = !str_ieq(v, "off");
-    v = upconf_str(c->conf, p, "backspace", 0);
-    if (v)
-        c->w.backspace_bs = str_ieq(v, "bs"); /* del (^?, the default) or bs (^H) */
-    v = upconf_str(c->conf, p, "amiga-keys", 0);
-    if (v)
-        c->w.amiga_keys = !str_ieq(v, "off"); /* Shift+Left / Right as Home / End (on by default) */
-    v = upconf_str(c->conf, p, "dither", 0);
-    if (v)
-        c->w.dither = !str_ieq(v, "off"); /* few-pen screens dither (W-T9; on by default) */
-    v = upconf_str(c->conf, p, "outline-antialias", 0);
-    if (v)
-        c->w.outline_aa = !str_ieq(v, "off"); /* outline glyphs drawn smoothed (on by default) */
-    v = upconf_str(c->conf, p, "padding-color", 0);
-    if (v)
-        c->w.pad_extend = str_ieq(v, "extend"); /* the strips beside the grid (W-T14; background by default) */
-    v = upconf_str(c->conf, p, "scrollbar", 0);
-    if (v)
-        c->sbar_on = !str_ieq(v, "hide");
+    if (upconf_get(c->conf, p, "copy-on-select"))
+        c->w.copy_on_select = sd_conf_key_index("copy-on-select", c->conf, p);
+    if (upconf_get(c->conf, p, "wheel"))
+        c->w.wheel_scroll = sd_conf_key_index("wheel", c->conf, p);
+    if (upconf_get(c->conf, p, "reflow"))
+        c->w.reflow = sd_conf_key_index("reflow", c->conf, p);
+    if (upconf_get(c->conf, p, "backspace"))
+        c->w.backspace_bs = sd_conf_key_index("backspace", c->conf, p); /* del (^?, the default) or bs (^H) */
+    if (upconf_get(c->conf, p, "amiga-keys"))
+        c->w.amiga_keys = sd_conf_key_index("amiga-keys", c->conf, p); /* Shift+Left / Right as Home / End */
+    if (upconf_get(c->conf, p, "dither"))
+        c->w.dither = sd_conf_key_index("dither", c->conf, p); /* few-pen screens dither */
+    if (upconf_get(c->conf, p, "outline-antialias"))
+        c->w.outline_aa = sd_conf_key_index("outline-antialias", c->conf, p); /* outline glyphs drawn smoothed */
+    if (upconf_get(c->conf, p, "padding-color"))
+        c->w.pad_extend = sd_conf_key_index("padding-color", c->conf, p); /* the strips beside the grid: background or extend */
+    if (upconf_get(c->conf, p, "scrollbar"))
+        c->sbar_on = sd_conf_key_index("scrollbar", c->conf, p);
     v = upconf_str(c->conf, p, "completion", 0);
     c->kingcon = v && str_ieq(v, "kingcon");
     c->kc_style = le_kc_fncmode(upconf_str(c->conf, p, "kingcon-mode", ""));
-    v = upconf_str(c->conf, p, "kingcon-info", 0);
-    c->kc_info = v && str_ieq(v, "show");
-    v = upconf_str(c->conf, p, "kingcon-cache", 0);
-    c->kc_cache = !(v && str_ieq(v, "off"));
+    c->kc_info = sd_conf_key_index("kingcon-info", c->conf, p);
+    c->kc_cache = sd_conf_key_index("kingcon-cache", c->conf, p);
 }
 
 /* "x/y/w/h/title/OPT/OPT..." after the colon. A w or h of 0 is the screen's

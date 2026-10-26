@@ -269,6 +269,18 @@ int sd_value_index(const sd_setting *s, const char *file)
     return -1;
 }
 
+int sd_conf_index(const sd_setting *s, const upconf *c, const char *p)
+{
+    int x = sd_value_index(s, upconf_str(c, p, s->key, s->def));
+    return x < 0 ? sd_def_index(s) : x;
+}
+
+int sd_conf_key_index(const char *key, const upconf *c, const char *p)
+{
+    const sd_setting *s = sd_find_key(SD_UPTERM, key);
+    return s && s->nvalues ? sd_conf_index(s, c, p) : 0;
+}
+
 const int sd_write_order[] = {
     SDI_FALLBACK, SDI_SCREEN, SDI_SCREEN_MODE, SDI_SCROLLBACK, SDI_ASPECT, SDI_BACKSPACE, SDI_AMIGAKEYS,
     SDI_DITHER, SDI_OUTLINE_AA, SDI_PADDING, SDI_HLCAT, SDI_CLIPBOARD, SDI_LINK, SDI_TERM, SDI_COLORS,

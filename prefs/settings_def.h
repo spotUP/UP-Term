@@ -13,6 +13,7 @@
 #include <stddef.h>
 
 #include "prefs_ui.h"
+#include "../config/upconf.h"
 
 /* the rows, in the order of the pages and, within a page, of pg_items */
 enum {
@@ -120,6 +121,12 @@ int sd_index(const sd_setting *s, const void *store);
 int sd_def_index(const sd_setting *s);
 /* The index into values[] of the file text (case-insensitive), -1 when no value names it. */
 int sd_value_index(const sd_setting *s, const char *file);
+/* The index into values[] that profile p of c gives the row: the file text's, the default's when the key is
+ * absent or its text names no value (a garbage "bold-bright = zzz" is the default, on). The one parse of a
+ * check or cycle: prefs_from_conf and the handler's window setup both read through it. */
+int sd_conf_index(const sd_setting *s, const upconf *c, const char *p);
+/* The same for the key of an SD_UPTERM row; 0 when no row has the key. */
+int sd_conf_key_index(const char *key, const upconf *c, const char *p);
 void sd_set_index(const sd_setting *s, void *store, int index);
 /* The other kinds: the text of entry n (0 unless the row is the palette) in store, 0 when the row has no
  * text. s->size bytes. */

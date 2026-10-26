@@ -220,8 +220,46 @@ static void test_settings_roundtrip(void)
     }
 }
 
+/* A garbage value ("bold-bright = zzz") is the row's default for every reader of the file: prefs_from_conf and
+ * the handler's window setup (sd_conf_key_index) give the same index, the default's. The handler reads a switch
+ * through sd_conf_key_index alone; bold-bright is on by no value, so a parse of its own read zzz as off. */
+static void test_settings_garbage_value(void)
+{
+    static upconf conf;
+    prefs_fields f;
+    char text[128];
+    int i, bold_on = -1;
+    for (i = 0; i < sd_nsettings; i++) {
+        const sd_setting *s = &sd_settings[i];
+        if (s->store != SD_UPTERM || !s->key || s->ftype != SDF_INT || !s->nvalues)
+            continue;
+        strcpy(text, "[profile default]\n");
+        strcat(text, s->key);
+        strcat(text, " = zzz\n");
+        CHECK_INT(prefs_load(&conf, text, (long)strlen(text), UC_MAX_FILE), PREFS_LOAD_OK);
+        prefs_from_conf(&f, &conf, "default");
+        if (sd_conf_key_index(s->key, &conf, "default") != sd_def_index(s))
+            printf("garbage %s: handler path %d, default %d\n", s->key,
+                   sd_conf_key_index(s->key, &conf, "default"), sd_def_index(s));
+        CHECK_INT(sd_conf_key_index(s->key, &conf, "default"), sd_def_index(s));
+        CHECK_INT(sd_conf_key_index(s->key, &conf, "default"), sd_index(s, &f));
+    }
+    /* the named case: default on, garbage reads on */
+    strcpy(text, "[profile default]\nbold-bright = zzz\n");
+    CHECK_INT(prefs_load(&conf, text, (long)strlen(text), UC_MAX_FILE), PREFS_LOAD_OK);
+    bold_on = sd_conf_key_index("bold-bright", &conf, "default");
+    prefs_from_conf(&f, &conf, "default");
+    CHECK_INT(bold_on, 1);
+    CHECK_INT(sd_index(sd_find_key(SD_UPTERM, "bold-bright"), &f), 1);
+    /* and a real value still moves it */
+    strcpy(text, "[profile default]\nbold-bright = off\n");
+    CHECK_INT(prefs_load(&conf, text, (long)strlen(text), UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_INT(sd_conf_key_index("bold-bright", &conf, "default"), 0);
+}
+
 void suite_settings_def(void)
 {
+    test_settings_garbage_value();
     test_settings_gadgets();
     test_settings_table();
     test_settings_amarchy();
