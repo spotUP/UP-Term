@@ -38,6 +38,23 @@ const char *lf_rexx_notice(const char *script, long rc)
     return 0;
 }
 
+int lf_rexx_notice_command(char *out, int cap, const char *script, long rc)
+{
+    const char *note = lf_rexx_notice(script, rc);
+    int n;
+    if (cap < 1)
+        return 0;
+    out[0] = 0;
+    if (!note)
+        return 0;
+    n = snprintf(out, (size_t)cap, "RX \"say '%s'; address command 'Wait 3 SECS'\"", note);
+    if (n < 0 || n >= cap) {
+        out[0] = 0;
+        return 0;
+    }
+    return 1;
+}
+
 int lf_screen_spec(char *out, int cap, const char *spec, const char *screen)
 {
     static const char opt[] = "/SCREEN ";

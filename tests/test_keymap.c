@@ -1583,6 +1583,18 @@ static void a_dopus_script_without_a_port_has_a_notice(void)
     CHECK(lf_rexx_notice(0, 5) == 0);
 }
 
+/* D5 hotkey: act_rexx shows the same message in an act_in_window window; the command is built from lf_rexx_notice. */
+static void a_hotkey_dopus_script_without_a_port_shows_the_notice_window(void)
+{
+    char c[160];
+    CHECK(lf_rexx_notice_command(c, sizeof c, "UP-Term:Rexx/dopus-front.rexx", 5) == 1);
+    CHECK(strstr(c, lf_rexx_notice("dopus-front.rexx", 5)) != 0);
+    CHECK(strncmp(c, "RX ", 3) == 0);
+    CHECK(lf_rexx_notice_command(c, sizeof c, "UP-Term:Rexx/dopus-front.rexx", 0) == 0 && c[0] == 0);
+    CHECK(lf_rexx_notice_command(c, sizeof c, "UP-Term:Rexx/other.rexx", 5) == 0);
+    CHECK(lf_rexx_notice_command(c, 8, "dopus-front.rexx", 5) == 0);
+}
+
 static void the_dopus_group_needs_a_port(void)
 {
     static char file[16384];
@@ -2225,6 +2237,7 @@ void suite_keymap(void)
     dopus_binds_parse();
     the_dopus_group_needs_a_port();
     a_dopus_script_without_a_port_has_a_notice();
+    a_hotkey_dopus_script_without_a_port_shows_the_notice_window();
     the_dopus_rows_are_shipped();
     a_run_row_starts_its_command_through_the_upterm_shell();
     a_rexx_script_path_runs_as_a_script_and_a_string_inline();

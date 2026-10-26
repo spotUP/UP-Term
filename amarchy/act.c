@@ -113,8 +113,28 @@ int act_in_window(const char *cmd, int cols, int rows)
 
 int act_rexx(const char *arg)
 {
-    char line[160];
-    return lf_rexx_command(line, sizeof line, arg) && act_run(line);
+    char line[160], note[160];
+    BPTR in, out;
+    LONG rc;
+    if (!lf_rexx_command(line, sizeof line, arg))
+        return 0;
+    /* a dopus-*.rexx script ends in milliseconds: run it to the end for its RC (D5), then show the notice
+     * in the same small window the quick menu uses; every other script stays asynchronous */
+    if (!lf_rexx_notice(arg, 5))
+        return act_run(line);
+    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    rc = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, out, NP_StackSize, 32768, TAG_END);
+    if (rc == -1) {
+        if (in)
+            Close(in);
+        if (out)
+            Close(out);
+        return 0;
+    }
+    if (lf_rexx_notice_command(note, sizeof note, arg, rc))
+        act_in_window(note, 36, 3);
+    return 1;
 }
 
 int act_open_uterm(void)
