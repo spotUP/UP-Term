@@ -1337,6 +1337,9 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	python3 tools/slim.py remove $(KIT)/Files/userland
 	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
+	@# upkg's Workbench icon (UPKG-WB-UI): a tool icon, no XCON window (upkg opens its own "UP-Term Add-ons"
+	@# window); stack 262144 as upkg's $$STACK cookie. install.dos copies it with userland/bin.
+	python3 tools/mkicon.py $(KIT)/Files/userland/bin/upkg.info --wbtool --plain --stack 262144
 	@# the shell tutorial (plan 2026-10-19-shell-tutorial L-6): the script in bin (copy-userland), the lessons in
 	@# share/tutorial (userland); after slim.py, which removes only what dist/slim.txt names
 	cp dist/tutorial $(KIT)/Files/userland/bin/tutorial
