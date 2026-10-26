@@ -327,9 +327,31 @@ static void test_settings_row_label(void)
     CHECK_INT((int)strlen(buf) < 12, 1);
 }
 
+static void test_settings_text_check(void)
+{
+    const sd_setting *sb = &sd_settings[SDI_SCROLLBACK], *lk = &sd_settings[SDI_LINK];
+    char big[UC_MAX_VALUE + 8];
+    CHECK_INT(sd_text_check(sb, "99999"), SD_TEXT_OK);
+    CHECK_INT(sd_text_check(sb, "0"), SD_TEXT_OK);
+    CHECK_INT(sd_text_check(sb, ""), SD_TEXT_OK);
+    CHECK_INT(sd_text_check(sb, "100000"), SD_TEXT_RANGE);
+    CHECK_INT(sd_text_check(sb, "99999999999999999999"), SD_TEXT_RANGE);
+    CHECK_INT(sd_text_check(sb, "-1"), SD_TEXT_NAN);
+    CHECK_INT(sd_text_check(sb, "1 2"), SD_TEXT_NAN);
+    CHECK_INT(sd_text_check(lk, "run %s"), SD_TEXT_OK);
+    CHECK_INT(sd_text_check(lk, "a\nb"), SD_TEXT_CTRL);
+    memset(big, 'x', sizeof big);
+    big[lk->size] = 0;
+    CHECK_INT(sd_text_check(lk, big), SD_TEXT_LONG);
+    big[lk->size - 1] = 0;
+    CHECK_INT(sd_text_check(lk, big), SD_TEXT_OK);
+    CHECK_INT(sd_text_check(&sd_settings[SDI_BLINK], "1"), SD_TEXT_KIND);
+}
+
 void suite_settings_def(void)
 {
     test_settings_row_label();
+    test_settings_text_check();
     test_settings_garbage_value();
     test_settings_gadgets();
     test_settings_table();

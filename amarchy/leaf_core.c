@@ -269,7 +269,8 @@ static int lf_load_upterm(const amconf_io *io)
     return prefs_load(&lf_conf, lf_buf, got, UC_MAX_FILE);
 }
 
-static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, int *failed)
+/* index >= 0: a check or cycle value; else the text of an SD_INT or SD_STRING row */
+static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, const char *text, int *failed)
 {
     prefs_fields f;
     long len;
@@ -277,7 +278,10 @@ static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, in
     if (!prefs_load_writable(lf_load_upterm(io)))
         return LF_SET_READONLY;
     prefs_from_conf(&f, &lf_conf, LF_PROFILE);
-    sd_set_index(s, &f, index);
+    if (text)
+        strcpy(sd_string(s, &f, 0), text);
+    else
+        sd_set_index(s, &f, index);
     if (prefs_validate(&f))
         return LF_SET_INVALID;
     len = prefs_stage(&lf_work, &lf_conf, LF_PROFILE, &f, lf_buf, UC_MAX_FILE + 1);
@@ -310,7 +314,23 @@ int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *fai
         sd_set_index(s, &a, index);
         return amconf_save_with(io, &a, 1, failed);
     }
-    return lf_set_upterm(io, s, index, failed);
+    return lf_set_upterm(io, s, index, 0, failed);
+}
+
+int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *text, int *failed)
+{
+    *failed = 0;
+    if (sd_text_check(s, text) == SD_TEXT_KIND)
+        return LF_SET_KIND;
+    if (sd_text_check(s, text))
+        return LF_SET_INVALID;
+    if (s->store == SD_AMARCHY) {
+        am_prefs a;
+        amconf_load_with(io, &a);
+        strcpy(sd_string(s, &a, 0), text);
+        return amconf_save_with(io, &a, 1, failed);
+    }
+    return lf_set_upterm(io, s, -1, text, failed);
 }
 
 /* the current value index of row s, read from its file */
@@ -326,6 +346,31 @@ static int lf_current(const amconf_io *io, const sd_setting *s)
         prefs_from_conf(&f, &lf_conf, LF_PROFILE);
         return sd_index(s, &f);
     }
+}
+
+int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n)
+{
+    const char *t;
+    if (n < 1)
+        return 0;
+    out[0] = 0;
+    if (s->kind != SD_INT && s->kind != SD_STRING)
+        return 0;
+    if (s->store == SD_AMARCHY) {
+        am_prefs a;
+        amconf_load_with(io, &a);
+        t = sd_string(s, &a, 0);
+        if (t)
+            snprintf(out, (size_t)n, "%s", t);
+    } else {
+        prefs_fields f;
+        lf_load_upterm(io);
+        prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+        t = sd_string(s, &f, 0);
+        if (t)
+            snprintf(out, (size_t)n, "%s", t);
+    }
+    return t != 0;
 }
 
 int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed)

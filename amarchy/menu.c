@@ -60,12 +60,13 @@ static void hotkeys_init(void)
     hot[n] = 0;
 }
 
-/* A value for an action that needs one; 1 with out set, 0 on Escape or an empty line. */
+/* A value for an action that needs one; 1 with out set, 0 on Escape or an empty line. out[0] is the text the
+ * line starts with (the caller clears it when there is none). */
 static int ask_value(void *ctx, const char *label, const char *usage, char *out, int n)
 {
     char prompt[UPREQ_ANSWER + 40];
     FILE *f;
-    int ok = 0;
+    int ok = 0, i;
     (void)ctx;
     snprintf(prompt, sizeof prompt, "%s (%s):", label, usage);
     ui_opt.kind = K_INPUT;
@@ -73,7 +74,10 @@ static int ask_value(void *ctx, const char *label, const char *usage, char *out,
     ui_opt.prompt = prompt;
     ui_opt.hotkeys = 0;
     ui_opt.nentries = 0;
-    ui_opt.init[0] = 0;
+    /* init is wide: widen the bytes one for one (Amiga text is Latin-1, so each byte is its code point) */
+    for (i = 0; i < (int)(sizeof ui_opt.init / sizeof ui_opt.init[0]) - 1 && out[i]; i++)
+        ui_opt.init[i] = (unsigned char)out[i];
+    ui_opt.init[i] = 0;
     ui_prepare();
     if (ui_run() != 0 || !(f = tmpfile()))
         return 0;

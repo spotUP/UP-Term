@@ -72,6 +72,11 @@ int lf_setting_next(const sd_setting *s, int cur);
 /* Set row s to value index `index` in its file and write it. LF_SET_OK, LF_SET_* or a prefs_save_at result
  * (*failed the target). */
 int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *failed);
+/* SD_INT and SD_STRING rows: sd_text_check the text (LF_SET_INVALID, nothing written, when it fails), then
+ * write it like lf_setting_set. lf_setting_text gives the row's current text from its file (the prompt's
+ * prefill); 0 when the row has no text. */
+int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *text, int *failed);
+int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n);
 /* Enter on a check or cycle row: lf_setting_next of the current value, then lf_setting_set. */
 int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed);
 /* Rewrite the labels of a menu level: a MN_ROW_SETTING row shows sd_row_label (label and value), a
@@ -107,6 +112,7 @@ void lf_load_listers(ix_index *x);
 
 typedef struct lf_ui {
     /* a value for an action that needs one; 1 with out set, 0 on Escape or an empty line */
+    /* out[0] is the text the line starts with: callers with no start text clear it first */
     int (*ask_value)(void *ctx, const char *label, const char *usage, char *out, int n);
     /* a refused action says why (answer may be empty) */
     void (*refused)(void *ctx, const char *label, long rc, const char *answer);

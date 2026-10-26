@@ -1078,7 +1078,9 @@ static int gui_ask_value(void *ctx, const char *label, const char *usage, char *
     strcat(prompt_text, "):");
     g->head = prompt_text;
     g->mode = M_INPUT;
-    g->elen = g->edone = g->stop = 0;
+    g->edone = g->stop = 0;             /* out[0] is the text the line starts with */
+    g->elen = (int)strlen(out) < EDIT_MAX ? (int)strlen(out) : EDIT_MAX - 1;
+    memcpy(g->edit, out, (size_t)g->elen);
     g->top = 0;
     relayout(g, 1);
     event_loop(g);

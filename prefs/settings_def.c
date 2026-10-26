@@ -361,6 +361,44 @@ char *sd_string(const sd_setting *s, void *store, int n)
     return (char *)store + s->off + (size_t)n * (size_t)s->size;
 }
 
+int sd_text_check(const sd_setting *s, const char *text)
+{
+    long v = 0;
+    const char *p;
+    if (s->kind != SD_INT && s->kind != SD_STRING)
+        return SD_TEXT_KIND;
+    if (s->kind == SD_STRING) {
+        if (s->nvalues || (s->ftype != SDF_STR && s->ftype != SDF_AMSTR))
+            return SD_TEXT_KIND;
+        if (strlen(text) >= (size_t)s->size)
+            return SD_TEXT_LONG;
+        for (p = text; *p; p++)
+            if ((unsigned char)*p < ' ' || *p == 0x7f)
+                return SD_TEXT_CTRL;
+        return SD_TEXT_OK;
+    }
+    if (!*text)
+        return SD_TEXT_OK;
+    for (p = text; *p; p++) {
+        if (*p < '0' || *p > '9')
+            return SD_TEXT_NAN;
+        if (v <= s->max)
+            v = v * 10 + (*p - '0');
+    }
+    return v < s->min || v > s->max ? SD_TEXT_RANGE : SD_TEXT_OK;
+}
+
+const char *sd_text_reason(int check)
+{
+    switch (check) {
+    case SD_TEXT_NAN:   return "not a whole number";
+    case SD_TEXT_RANGE: return "out of range";
+    case SD_TEXT_LONG:  return "too long";
+    case SD_TEXT_CTRL:  return "no control characters";
+    default:            return "not a text or number setting";
+    }
+}
+
 /* ---- menu rows ---- */
 
 static const char *const sd_page_names[PG_NPAGES] = {

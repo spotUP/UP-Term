@@ -101,6 +101,7 @@ static int run_request(const km_menu *m, const lf_ui *ui, const char *value)
     if (rc == UPREQ_NEEDARG && !value) {
         /* /bg and the like take a value the row does not carry: ask for it, send again */
         char value[UPREQ_ACTION], act[UPREQ_ACTION];
+        value[0] = 0;
         strcpy(act, r.action);
         if (!ui->ask_value || !ui->ask_value(ui->ctx, m->label, r.answer, value, sizeof value))
             return 0;                      /* Escape: nothing asked of the terminal */
@@ -124,6 +125,19 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
     if (!MN_IS_SETTING(it) && !MN_IS_CHOICE(it))
         return 0;
     s = &sd_settings[it->ix];
+    if (s->kind == SD_INT || s->kind == SD_STRING) {
+        char value[UC_MAX_VALUE + 2], why[80];
+        if (!MN_IS_SETTING(it) || !lf_setting_text(amconf_dos_io(), s, value, sizeof value))
+            return 0;
+        if (!ui->ask_value || !ui->ask_value(ui->ctx, it->label, s->kind == SD_INT ? "number" : "text", value, sizeof value))
+            return 0;                   /* cancelled */
+        r = lf_setting_set_text(amconf_dos_io(), s, value, &failed);
+        if (r == LF_SET_OK)
+            return 1;
+        snprintf(why, sizeof why, "%s", r == LF_SET_INVALID ? sd_text_reason(sd_text_check(s, value)) : "");
+        ui->refused(ui->ctx, it->label, r, why);
+        return 0;
+    }
     if (s->kind != SD_CHECK && s->kind != SD_CYCLE)
         return 0;                       /* the other kinds are the next rows of the plan */
     if (MN_IS_CHOICE(it))
@@ -351,6 +365,7 @@ int lf_run(const km_menu *m, const lf_ui *ui)
     case LF_ASK_THEN_OPEN_REQUEST: {
         /* the value first: the terminal that opens next takes the focus, and the menu closes with it */
         char value[UPREQ_ACTION];
+        value[0] = 0;
         if (!ui->ask_value || !ui->ask_value(ui->ctx, m->label, usage, value, sizeof value))
             return 0;                   /* cancelled: no terminal opens */
         return open_then_request(m, ui, value);

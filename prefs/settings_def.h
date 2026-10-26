@@ -132,6 +132,13 @@ void sd_set_index(const sd_setting *s, void *store, int index);
 /* The other kinds: the text of entry n (0 unless the row is the palette) in store, 0 when the row has no
  * text. s->size bytes. */
 char *sd_string(const sd_setting *s, void *store, int n);
+/* The one range check of a typed value, for the menu rows (Prefs' own gadgets cut to the same bounds): SD_INT
+ * text is blank (the built-in) or a whole number min..max; SD_STRING text is one line of printable characters
+ * that fits the field (s->size - 1). SD_TEXT_OK or the reason; SD_TEXT_KIND for any other kind. */
+enum { SD_TEXT_OK = 0, SD_TEXT_NAN, SD_TEXT_RANGE, SD_TEXT_LONG, SD_TEXT_CTRL, SD_TEXT_KIND };
+int sd_text_check(const sd_setting *s, const char *text);
+/* The words of a refusal, for the menu's message line. */
+const char *sd_text_reason(int check);
 
 /* The menu's page groups: `settings:<name>` in the keymap [menu] names a page of Prefs. The PG_PAGE_* of a
  * name, -1 when none; the name of a page, 0 when out of range. */

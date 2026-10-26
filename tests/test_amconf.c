@@ -443,6 +443,39 @@ static void test_lf_setting_cycle_next_and_choices(void)
     CHECK(strchr(it[0].label, ':') != 0);
 }
 
+static void test_lf_setting_text(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    const sd_setting *sb = &sd_settings[SDI_SCROLLBACK], *mu = &sd_settings[SDI_AM_MUSIC];
+    char out[UC_MAX_VALUE + 2], before[UC_MAX_FILE + 2];
+    const char *f;
+    am_prefs a;
+    int failed = -1;
+    mf_put(&m, UP, "[default]\nfont = topaz\nscrollback = 300\n");
+    mf_put(&m, UA, "[default]\nscrollback = 300\n");
+    CHECK_INT(lf_setting_text(&io, sb, out, sizeof out), 1);
+    CHECK_STR(out, "300");                                   /* the prompt's prefill */
+    f = mf_get(&m, UP);
+    snprintf(before, sizeof before, "%s", f);
+    CHECK_INT(lf_setting_set_text(&io, sb, "100000", &failed), LF_SET_INVALID);   /* over 99999 */
+    CHECK_INT(lf_setting_set_text(&io, sb, "12x", &failed), LF_SET_INVALID);
+    CHECK_INT(lf_setting_set_text(&io, sb, "-5", &failed), LF_SET_INVALID);
+    CHECK_STR(mf_get(&m, UP), before);                       /* file bytes unchanged */
+    CHECK_STR(mf_get(&m, UA), "[default]\nscrollback = 300\n");   /* and ENVARC: untouched */
+    CHECK_INT(lf_setting_set_text(&io, sb, "1200", &failed), LF_SET_OK);
+    lf_setting_text(&io, sb, out, sizeof out);
+    CHECK_STR(out, "1200");                                  /* written and reloaded */
+    CHECK(strstr(mf_get(&m, UP), "font = topaz") != 0);
+    CHECK_INT(lf_setting_set_text(&io, mu, "Mods:Music", &failed), LF_SET_OK);   /* Amarchy's file */
+    amconf_load_with(&io, &a);
+    CHECK_STR(a.val[AM_MUSIC], "Mods:Music");
+    CHECK_INT(lf_setting_set_text(&io, mu, "a\tb", &failed), LF_SET_INVALID);
+    CHECK_INT(lf_setting_set_text(&io, &sd_settings[SDI_BLINK], "1", &failed), LF_SET_KIND);
+    CHECK_INT(sb->max, PREFS_SB_MAX);                        /* the row's bound is Prefs' cut */
+}
+
 void suite_amconf(void)
 {
     test_amconf_parse_defaults();
@@ -462,4 +495,5 @@ void suite_amconf(void)
     test_amconf_save_nodir();
     test_lf_setting_check_toggle();
     test_lf_setting_cycle_next_and_choices();
+    test_lf_setting_text();
 }
