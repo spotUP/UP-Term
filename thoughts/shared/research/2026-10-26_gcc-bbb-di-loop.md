@@ -70,3 +70,28 @@ build/gcc/obj/config.log (prefix ~/opt/amiga). `nice -n 19 make -j2 all-gcc`.
   that is copied, changed and copied back inside a loop whose exit test is the DImode cbranch. Cannot be
   told cheaply from source; rebuild suspect ports (anything with u64 bitmask/shift loops, e.g. sqlite)
   with the new cc1.
+
+## Regression test
+
+gcc commit 4c4793bbf on fix/m68k-bbb-di-loop: gcc/testsuite/gcc.c-torture/execute/bbb-propagate-moves-di-loop-1.c (69 lines).
+Method: stripped sqlite3.i to sqlite3WhereBegin plus its direct-call closure (2.2 MB; other function bodies dropped, the
+inlined callees must stay or the allocation changes), then creduce --n 2 with an interestingness check that needs:
+host clang accepts it (implicit declarations, return-type and uninitialised use are errors), the pre-fix cc1
+(cc1.pre-diloop-2026-10-26 via -B) emits a lsr/roxr loop that tests registers it never writes, the fixed cc1 does not.
+Reduced to 1.1 KB, then hand-made valid C and executable (main sets the data, aborts if the shift count is not 31
+or the h() sum is wrong). Two details decide the shape: `struct o *n` must be a pointer (not an array), and h() must
+be noinline (inlined, the register allocation changes and the bug disappears).
+Proof: -m68020 -O2 -S with the pre-fix cc1 gives the BAD loop (tst a0/a1, copy-back after the loop); with the fixed cc1
+the copy-back stays inside the loop. Execution NOT shown: vamos here returns rc 20 even for an empty main (no libs set up),
+so the hang itself was not run; the host build of the test passes (rc 0). Check script: scratchpad bbb/red/interest.sh.
+
+## Second bbb bug: elim_dead_assign2 (fts5)
+
+With the DI-loop fix, sqlite fts5 still failed (8 of 9). A per-function gate on the bbb `e` pass found
+`_sqlite3CompleteInsertion.isra.551`. Rule `opt_elim_dead_assign2` (log "e0: eliminate superfluous clear of dX")
+deletes a SImode constant load when the next insn writes the same register in QImode/HImode and the upper bits
+are dead or known zero. It does not check that the next insn reads the register, so `moveq #32,d4; or.b #1,d4`
+lost the moveq (flags 1, not 33). Same pattern in adjustOrderByCol (`moveq #0,d0; addq.w #1,d0`).
+Fix: also require `!jj.is_myuse(regno)`; strict_low_part destinations do not set the use bit, so the intended
+`clr; move.b` case still fires. gcc commits ab34f2880 (fix) and 9691feda3 (test bbb-elim-clr-partial-or-1.c) on
+fix/m68k-bbb-di-loop; separate codeberg PR branch spotup/m68k-bbb-e0-partial-or.
