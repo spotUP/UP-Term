@@ -2,7 +2,7 @@
  * Intuition program, no ixemul. Same command line as amarchy-menu, so the commodity switches only the name:
  *     amarchy-gui menu [node]      amarchy-gui viewer
  * Rows and walking come from the one keymap (keymap_load, menu_core), the rectangles from menu_geom.c, the
- * colours from menu_theme.c (the user's upconf palette through render/pens_amiga.c), a leaf is run by leaf.c.
+ * colours from the Omarchy GUI theme (Style > Theme, AM_GTHEME: gthemes_core.c via menu_theme_roles_gui, pens_get), a leaf is run by leaf.c.
  * Modes in the one window: list, input (a leaf's value), message (a refusal), viewer (the [bind] lines).
  * Every full draw bumps the global variable AMARCHY_DRAWS: the sentinel tools/rig/amarchy_gui_rig.py (G7)
  * reads; AMARCHY_ROWS lists the drawn rows' labels; AMARCHY_ICON_LOADS beside it counts the .info images icon_gfx.c loaded (plan app-index, I3). */

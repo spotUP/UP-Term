@@ -79,6 +79,17 @@ Your own rows.
 A row replaces the row for the same key;
 .Ql super+t = none
 unbinds one.
+.It Pa UP-Term:Amarchy/Themes/NAME.theme
+The shipped GUI themes of the drawn menu (the Omarchy colour themes; the default is tokyo-night).
+.It Pa ENVARC:Amarchy/themes/NAME.theme
+Your own GUI themes; a file of the same name as a shipped one wins.
+To add one, copy an Omarchy
+.Pa colors.toml
+(keys accent, background, foreground, dark_foreground, optional mode = "light") to this drawer under the new name,
+then pick it under Style > Theme in the menu or in the Menu theme row of UP-Term Prefs (Amarchy page).
+It applies the next time the menu opens.
+An unknown or unreadable theme name draws the compiled-in tokyo-night.
+The terminal's own colours (Terminal theme, super+shift+t) are separate.
 .El
 .Pp
 Each row reads

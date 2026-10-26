@@ -2569,14 +2569,16 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
 /* DOpus ARexx syntax: dopus5 v5.104 source/Program/rexx_dopus.c:587 (palette) and :616 (pens) */
 static void menu_theme_formats_the_dopus_palette_and_pens_commands(void)
 {
-    uc_u32 pal[16], rgb[MT_ROLES];
+    uc_u32 rgb[MT_ROLES];
+    gtheme th;
     char buf[256], tight[8];
     unsigned n;
-    const char *want = "dopus set palette 0x282a36 0xf8f8f2 0x7f7f7f 0x8be9fd 0x0000ee\n"
+    const char *want = "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x1a1b26 0x7aa2f7\n"
                        "dopus set pens files 1 0 dirs 3 0 selfiles 1 4 seldirs 3 4\n";
 
-    upconf_palette_parse("0,282A36,7,F8F8F2,14,8BE9FD", pal);
-    menu_theme_roles(pal, rgb);
+    /* T11 (D6): the Directory Opus listers take the GUI theme's roles, the same five the drawn menu uses */
+    gt_builtin(&th);
+    menu_theme_roles_gui(&th, rgb);
     n = menu_theme_dopus_commands(rgb, buf, sizeof buf);
     CHECK_INT((long)n, (long)strlen(want));
     CHECK_STR(buf, want);
@@ -2587,7 +2589,7 @@ static void menu_theme_formats_the_dopus_palette_and_pens_commands(void)
     CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, sizeof buf), 0L);
     CHECK_STR(buf, "");
     CHECK_INT((long)menu_theme_dopus_commands(0, buf, sizeof buf), 0L);
-    menu_theme_roles(pal, rgb);
+    menu_theme_roles_gui(&th, rgb);
     CHECK_INT((long)menu_theme_dopus_commands(rgb, tight, sizeof tight), 0L);
     CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, n), 0L);
     CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, n + 1), (long)n);
