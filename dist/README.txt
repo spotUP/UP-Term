@@ -758,6 +758,20 @@ AMARCHY
   stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
   out. man amarchy has the file format.
 
+  Directory Opus (the DOpus group of the menu): if Directory Opus 5 is
+  running, Amarchy drives it. Left Amiga + Shift + D opens a lister, Left
+  Amiga + Shift + O opens a lister at the current folder, and Left Amiga + D
+  brings Directory Opus to the front. The DOpus group also sends it to the
+  back, goes to the parent folder, refreshes the lister, shows the devices,
+  connects FTP, opens UP-Term here and configures the lister display.
+  Directory Opus is not part of the base kit. To get it, type
+    upkg install dopus
+  (the package up-dopus: upstream Directory Opus 5.104, the build for your
+  CPU, installed by its own installer; an existing DOpus5: drawer is never
+  touched). Without Directory Opus running, these keys do nothing and no
+  window opens. The commands uterm-edit and uterm-view open a file in an
+  UP-Term window (the editor, or the pager) for Directory Opus to call.
+
   Window, Screens and Workbench groups: rows of the form  win:<verb>  act on
   windows of any program. Verbs: cycle, front, back, zip, fullwidth,
   fullscreen, save, restore, move, size, focus, closedrawers, screen, title.

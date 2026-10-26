@@ -23,3 +23,7 @@ $ cd "$start"
 > windows of any program. There is no verb that closes another program's window.
 > To switch it off for a while, open Exchange and Disable AMARCHY: every Left Amiga key
 > then behaves as before. man amarchy has the whole file format.
+> Directory Opus: when Directory Opus 5 is running, the DOpus group of the quick menu and
+> Left Amiga + Shift + D (new lister), Left Amiga + Shift + O (lister at this folder) and
+> Left Amiga + D (bring it to the front) drive it. Install it with  upkg install dopus .
+> Without Directory Opus these keys do nothing.

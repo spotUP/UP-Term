@@ -36,6 +36,14 @@ class AmarchyDocs(unittest.TestCase):
         for w in ('AMARCHY', 'STATUS', 'RELOAD', 'RUN n', 'SHOW', 'QUIT', 'Exchange', 'keymap.user'):
             self.assertIn(w, r)
 
+    def test_directory_opus_section_in_readme_and_lesson(self):
+        r, les = read('dist/README.txt'), read('dist/tutorial-lessons/14-amarchy-keys.lesson')
+        for w in ('Directory Opus', 'upkg install dopus', 'Left Amiga + Shift + D', 'uterm-edit'):
+            self.assertIn(w, r)
+        for w in ('Directory Opus', 'upkg install dopus', 'Left Amiga + Shift + D'):
+            self.assertIn(w, les)
+        self.assertIn('do nothing', r)
+
     def test_lesson_and_man_page_exist(self):
         self.assertIn('Amarchy', read('dist/tutorial-lessons/14-amarchy-keys.lesson'))
         self.assertLessEqual(len('14-amarchy-keys.lesson'), 30)
