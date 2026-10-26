@@ -1067,6 +1067,36 @@ static void check_layout(const pl_result *r, int page, const pl_font *f)
     }
 }
 
+/* GadTools puts a PLACETEXT_LEFT label this far left of its gadget (measured on the A1200) */
+#define GADTOOLS_LABEL_GAP 8
+
+static void every_label_ends_gap_label_before_its_control(void)
+{
+    pl_font f;
+    pl_result *r = (pl_result *)malloc(sizeof(*r));
+    int i, page;
+    f.w = 8; f.h = 8; f.text_w = tw_prop7; f.ctx = 0;
+    pl_layout(&f, 618, 232, r);
+    for (page = 0; page < PG_NPAGES; page++)
+        for (i = 0; i < pg_nitems; i++) {
+            const pg_item *it = &pg_items[i];
+            char plain[80];
+            int gap;
+            if (it->page != page || !r->label_w[it->id])
+                continue;
+            pg_plain_label(pg_label(it), plain, sizeof(plain));
+            gap = r->label_w[it->id] - tw_prop7(0, plain);
+            if (gap < GADTOOLS_LABEL_GAP) {
+                h_checks++;
+                h_failures++;
+                printf("  FAIL label gap: \"%s\" ends %d px before its control, wants %d\n",
+                       plain, gap, GADTOOLS_LABEL_GAP);
+            } else
+                h_checks++;
+        }
+    free(r);
+}
+
 static void the_window_fits_an_ntsc_and_a_pal_workbench(void)
 {
     pl_font topaz, big;
@@ -1292,6 +1322,7 @@ void suite_prefs(void)
     a_renamed_profile_keeps_its_keys_and_comments();
     wheel_colours_round_trip_within_one_step();
     the_window_fits_an_ntsc_and_a_pal_workbench();
+    every_label_ends_gap_label_before_its_control();
     every_gadget_has_help_and_a_unique_shortcut();
     kingcon_style_letters_round_trip_through_the_handlers_function();
     colour_fields_are_validated_strictly_and_named();

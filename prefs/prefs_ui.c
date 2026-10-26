@@ -304,7 +304,10 @@ const pg_item *pg_for_key(int page, int key)
 
 /* ---- layout -------------------------------------------------------------------- */
 
-#define GAP_LABEL 6      /* between a label and its control */
+/* between a label and its control. GadTools draws a PLACETEXT_LEFT label 8 px left of its gadget
+ * whatever the layout reserved (measured on the A1200: label ends 8 px before the cycle), so a
+ * smaller reserve lets that label overhang its slot while our own swatch labels sit closer. */
+#define GAP_LABEL 8
 #define GAP_SLOT 8       /* between two slots of a row */
 #define CHECK_W 26
 #define STRING_PAD 8     /* a string gadget's bevel and caret room */
