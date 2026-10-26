@@ -180,22 +180,32 @@ int mtc_scale(int units, int upem, int px)
     return (int)(v >= 0 ? (v + upem / 2) / upem : -((-v + upem / 2) / upem));
 }
 
-int mtc_ttf_init(mtc_ttf *t, ttf_font *f, int px)
+/* px is the em across, in columns; down it is the same em in rows, which on a tall pixel (rx, ry: the screen's pixel in
+ * DisplayInfo ticks, 0 = square) are fewer: the look the terminal's ttf_fit gives a glyph. Sizing both by px drew
+ * every glyph twice too tall on a 640x256 screen and doubled the row height. */
+int mtc_ttf_init(mtc_ttf *t, ttf_font *f, int px, int rx, int ry)
 {
+    int py = px;
     int asc = ttf_ascender(f), desc = ttf_descender(f);
     t->f = f;
     t->px = px;
     t->upem = ttf_units_per_em(f);
     if (px < 4 || px > 128 || t->upem <= 0)
         return 0;
+    if (rx > 0 && ry > 0)
+        py = mtc_scale(px, ry, rx);
+    if (py < 1)
+        py = 1;
+    t->py = py;
     t->scale = ((long)px << 16) / t->upem;
+    t->yscale = ((long)py << 16) / t->upem;
     t->asc = asc;
-    t->base = mtc_scale(asc, t->upem, px);
-    t->line = mtc_scale(asc - desc, t->upem, px);
-    if (t->line < px)
-        t->line = px;
+    t->base = mtc_scale(asc, t->upem, py);
+    t->line = mtc_scale(asc - desc, t->upem, py);
+    if (t->line < py)
+        t->line = py;
     if (t->base < 1)
-        t->base = px;
+        t->base = py;
     return 1;
 }
 
@@ -222,7 +232,7 @@ static int ttf_rend(void *u, unsigned long cp, mtc_glyph *g)
     if (bw > 512 || bh > 512 || !gid || !(tmp = (unsigned char *)alloc((unsigned long)bw * bh)))
         return 0;
     memset(tmp, 0, (size_t)bw * bh);
-    if (ttf_render(t->f, gid, t->scale, t->scale, pad, t->base, tmp, bw, bh) != 1) {
+    if (ttf_render(t->f, gid, t->scale, t->yscale, pad, t->base, tmp, bw, bh) != 1) {
         rel(tmp);
         return 0;
     }

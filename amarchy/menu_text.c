@@ -27,6 +27,7 @@ struct Library *CyberGfxBase;
 
 struct menu_text {
     struct Screen *scr;
+    int rx, ry;   /* the screen's pixel in ticks, 0 when unknown */
     mtc core;
     mtc_ttf tt;
     ttf_font *font;
@@ -181,7 +182,7 @@ static int mt_open_ttf_spec(menu_text *m, const char *spec, int px)
     if (ft_read(m, 0, head, 4) == 4 &&
         ((head[0] == 0 && head[1] == 1 && head[2] == 0 && head[3] == 0) || !memcmp(head, "true", 4)) &&
         ttf_open(&io, &m->font) == TTF_OK) {
-        if (mtc_ttf_init(&m->tt, m->font, px)) {
+        if (mtc_ttf_init(&m->tt, m->font, px, m->rx, m->ry)) {
             mtc_ttf_source(&src, &m->tt, mt_alloc, mt_free_mem);
             mtc_init(&m->core, &src);
             m->height = m->tt.line;
@@ -217,6 +218,7 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
     if (!m)
         return 0;
     m->scr = scr;
+    menu_screen_aspect(scr, &m->rx, &m->ry);
     if (!prefs_font_parse(spec, name, sizeof name, &size))
         name[0] = 0;
     if (name[0] && size > 0 && mt_open_ttf(m, name, (int)size)) {

@@ -63,14 +63,14 @@ int mtc_scale(int units, int upem, int px);
 
 typedef struct mtc_ttf {
     ttf_font *f;
-    int px, upem, asc, line; /* line: the height of a coverage box, baseline row asc */
-    long scale;              /* pixels per font unit, 16.16 */
+    int px, py, upem, asc, line; /* line: the height of a coverage box, baseline row asc */
+    long scale, yscale;      /* pixels per font unit across and down, 16.16 */
     int base;
     void *(*alloc)(unsigned long);
     void (*release)(void *);
 } mtc_ttf;
 
-int mtc_ttf_init(mtc_ttf *t, ttf_font *f, int px);
+int mtc_ttf_init(mtc_ttf *t, ttf_font *f, int px, int rx, int ry);
 /* the source over t: its alloc and release are the caller's (AllocVec on the Amiga, malloc on the host) */
 void mtc_ttf_source(mtc_src *s, mtc_ttf *t, void *(*alloc)(unsigned long), void (*release)(void *));
 

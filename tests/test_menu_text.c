@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../amarchy/menu_text_core.h"
+#include "../render/ttf.h"
+#include "data/symnerd_subset.h"
 #include "harness.h"
 
 static unsigned long fake_adv_calls, fake_render_calls;
@@ -153,8 +155,54 @@ static void test_scale(void)
     CHECK_INT(mtc_scale(5, 0, 16), 0);
 }
 
+typedef struct mem_font { const unsigned char *d; long n; } mem_font;
+
+static long mf_read(void *ctx, unsigned long off, void *buf, long len)
+{
+    mem_font *m = (mem_font *)ctx;
+    if (off >= (unsigned long)m->n)
+        return 0;
+    if (off + (unsigned long)len > (unsigned long)m->n)
+        len = (long)((unsigned long)m->n - off);
+    memcpy(buf, m->d + off, (size_t)len);
+    return len;
+}
+
+static void *mf_alloc(void *ctx, unsigned long n) { (void)ctx; return calloc(1, n); }
+static void mf_free(void *ctx, void *p) { (void)ctx; free(p); }
+
+/* On a tall-pixel screen (640x256 PAL hires: a pixel is twice as tall as wide) the TrueType em down is fewer rows
+ * than the em across: rig 7 showed JBMono:14 with rows twice the bitmap's and the window two rows deep. The width
+ * is the same on every screen; a square screen is unchanged. */
+static void test_ttf_tall_pixels(void)
+{
+    mem_font mf;
+    ttf_io io;
+    ttf_font *f = 0;
+    mtc_ttf sq, tall, unknown;
+    mf.d = symnerd_subset;
+    mf.n = SYMNERD_SUBSET_LEN;
+    io.read = mf_read;
+    io.alloc = mf_alloc;
+    io.free = mf_free;
+    io.ctx = &mf;
+    CHECK_INT(ttf_open(&io, &f), TTF_OK);
+    CHECK_INT(mtc_ttf_init(&sq, f, 16, 22, 22), 1);
+    CHECK_INT(mtc_ttf_init(&tall, f, 16, 22, 44), 1);
+    CHECK_INT(mtc_ttf_init(&unknown, f, 16, 0, 0), 1);
+    CHECK_INT(sq.line, unknown.line);                     /* unknown aspect = square */
+    CHECK_INT(sq.line >= 16, 1);
+    CHECK_INT(tall.line < sq.line, 1);                    /* about half the rows */
+    CHECK_INT(tall.line >= 8, 1);
+    CHECK_INT(tall.base < sq.base, 1);
+    CHECK_INT(tall.scale == sq.scale, 1);                 /* across: unchanged */
+    CHECK_INT(tall.yscale * 2 == tall.scale, 1);          /* down: half */
+    ttf_close(f);
+}
+
 void suite_menu_text(void)
 {
+    test_ttf_tall_pixels();
     test_width();
     test_fit();
     test_cache();
