@@ -10,6 +10,7 @@
 #include <rexx/rxslib.h>
 #include <proto/rexxsyslib.h>
 #include "leaf.h"
+#include "amconf_dos.h"
 #include "gthemes_dos.h"
 #include "wblaunch.h"
 #include "clips_core.h"
@@ -106,6 +107,31 @@ static int run_request(const km_menu *m, const lf_ui *ui)
 }
 
 static int lister_front(unsigned long handle);
+
+int lf_setting_enter(const mn_item *it, const lf_ui *ui)
+{
+    const sd_setting *s;
+    int failed = 0, r;
+    if (!MN_IS_SETTING(it) && !MN_IS_CHOICE(it))
+        return 0;
+    s = &sd_settings[it->ix];
+    if (s->kind != SD_CHECK && s->kind != SD_CYCLE)
+        return 0;                       /* the other kinds are the next rows of the plan */
+    if (MN_IS_CHOICE(it))
+        r = lf_setting_set(amconf_dos_io(), s, atoi(it->seg), &failed);
+    else
+        r = lf_setting_step(amconf_dos_io(), s, &failed);
+    if (r != LF_SET_OK) {
+        ui->refused(ui->ctx, it->label, r, r == LF_SET_READONLY ? "the settings file is read only here: use UP-Term Prefs" : "");
+        return 0;
+    }
+    return 1;
+}
+
+void lf_setting_relabel(mn_item *it, int n)
+{
+    lf_setting_labels(amconf_dos_io(), it, n);
+}
 
 int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 {

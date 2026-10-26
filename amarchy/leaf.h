@@ -6,6 +6,9 @@
 
 #include "../config/keymap.h"
 #include "index_core.h"
+#include "menu_core.h"
+#include "amconf_core.h"
+#include "../prefs/settings_def.h"
 
 /* the window a run: leaf gets (the README's NewShell line, as open:uterm) */
 #define LF_UTERM_SPEC "XCON:0/20/640/300/UP-Term/CLOSE"
@@ -38,11 +41,31 @@ typedef enum {
     LF_SCAN,     /* scan: like detach:, and lf_run returns LF_WATCH so the menu watches the scan */
     LF_VIEWER,   /* viewer: the key viewer, the program super+k opens, in its own window */
     LF_WIN,      /* win: a window verb, sent to the commodity (K8 wires the port) */
+    LF_SETTING,  /* a settings row of the menu (MN_ROW_SETTING): lf_setting_* below, no [menu] row behind it */
     LF_GTHEME,   /* gtheme: the drawn menu's theme is saved (gthemes_dos.h gt_dos_select) */
     LF_REQUEST   /* tab:, menuid:, slash: ... a terminal window's request port takes the action */
 } lf_how;
 
 lf_how lf_plan(int kind);
+
+/* ---- LF_SETTING: a setting row of a settings page group (plan 2026-10-26-amarchy-prefs-inline.md, M3) ----
+ * Pure decisions here (leaf_core.c), the file I/O through an amconf_io (the DOS one on the Amiga, the memory
+ * one in tests/test_amconf.c). The write is the Prefs window's own: UP-Term's file by prefs_stage and
+ * prefs_save_at (ENVARC: then ENV:, the profile LF_PROFILE), Amarchy's by amconf_save_with. The files
+ * notify their readers, so nothing else is sent. */
+#define LF_PROFILE "default"
+enum { LF_SET_OK = 0, LF_SET_READONLY = -200, LF_SET_INVALID = -201, LF_SET_FULL = -202, LF_SET_KIND = -203 };
+
+/* The value Enter moves a check or cycle row to: the next index, wrapping. -1 for any other kind. */
+int lf_setting_next(const sd_setting *s, int cur);
+/* Set row s to value index `index` in its file and write it. LF_SET_OK, LF_SET_* or a prefs_save_at result
+ * (*failed the target). */
+int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *failed);
+/* Enter on a check or cycle row: lf_setting_next of the current value, then lf_setting_set. */
+int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed);
+/* Rewrite the labels of a menu level: a MN_ROW_SETTING row shows sd_row_label (label and value), a
+ * MN_ROW_CHOICE row shows its value text with "* " when it is the current one, else "  ". Reads the files. */
+void lf_setting_labels(const amconf_io *io, mn_item *it, int n);
 
 /* The notice for a finished ARexx leaf: the dopus-*.rexx scripts end with RC 5 when DOPUS.1 is absent (plan
  * 2026-10-25-amarchy-dopus-integration.md, D5), which says "Directory Opus is not running". 0 for anything else. */
@@ -112,5 +135,12 @@ int lf_launch_fill(lf_launch *b, const char *path);
  * (wblaunch.h), never through a shell. Failure goes through ui->refused with the reason as answer, as a
  * run: row's does. 0, or UPREQ_FAILED. */
 int lf_open_index(const char *label, const char *path, const lf_ui *ui);
+
+/* Enter on a settings row of the menu (MN_ROW_SETTING check or cycle: the next value; MN_ROW_CHOICE: that
+ * value), written to the file through the DOS io. A failed write goes to ui->refused. 1 when a value was
+ * written (the caller rebuilds the level), 0 when not. */
+int lf_setting_enter(const mn_item *it, const lf_ui *ui);
+/* lf_setting_labels over the DOS io: the level's setting rows show their current values. */
+void lf_setting_relabel(mn_item *it, int n);
 
 #endif

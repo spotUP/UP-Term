@@ -487,13 +487,18 @@ static void relayout(gui *g, int n)
 
 /* The level for the node and filter; the cursor goes to the entry labelled keep when it is still shown, else
  * the first real entry. */
+static int keep_setting = -1;   /* the SDI_* id of the setting row the cursor stays on after a set, else -1 */
+
 static void list_rebuild_keep(gui *g, const char *keep)
 {
     int n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
     int pos;
+    lf_setting_relabel(g->it, n);       /* a settings row shows its value */
     g->shift = g->wt.row[0] ? 1 : 0;
     g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
-    pos = mn_pick(g->it, g->idx, g->count - g->shift, keep);
+    pos = keep_setting >= 0 ? mn_pick_setting(g->it, g->idx, g->count - g->shift, keep_setting)
+                            : mn_pick(g->it, g->idx, g->count - g->shift, keep);
+    keep_setting = -1;
     g->sel = g->shift + (pos > 0 ? pos : 0);
     g->top = 0;
     if (pos > 0) {                       /* the layout (visible rows) is needed to scroll to it */
@@ -644,7 +649,38 @@ static void start_scan(gui *g, const mn_item *it)
     watch_idcmp(g);
 }
 
-static void activate(gui *g)
+/* Enter or Right on a settings row. Enter on a check or cycle row sets the next value; Right on a cycle row
+ * opens its submenu of values (MN_ROW_CHOICE rows, the current one marked); Enter on a value sets it and goes
+ * back. The level is rebuilt with the new label. */
+static void activate_setting(gui *g, const mn_item *it, int right)
+{
+    lf_ui ui;
+    ui.ask_value = gui_ask_value;
+    ui.refused = gui_refused;
+    ui.ctx = g;
+    ui.self_in_mru = 0;
+    if (MN_IS_SETTING(it) && right) {
+        if (sd_settings[it->ix].kind == SD_CYCLE) {
+            mn_child_node(g->node, it, g->node, sizeof g->node);
+            g->filter[0] = 0;
+            list_rebuild(g);
+        }
+        return;
+    }
+    {
+        mn_item row = *it;                  /* the rebuild below overwrites g->it */
+        if (!lf_setting_enter(&row, &ui))
+            return;
+        if (MN_IS_CHOICE(&row)) {
+            go_up(g);                       /* the pick is made: back to the page */
+            return;
+        }
+        keep_setting = row.ix;
+        list_rebuild(g);
+    }
+}
+
+static void activate(gui *g, int right)
 {
     const mn_item *it;
     if (g->sel < g->shift || g->sel >= g->count)
@@ -655,6 +691,10 @@ static void activate(gui *g)
             strncpy(g->ixlabel, it->label, sizeof g->ixlabel - 1);
             g->stop = 1;
         }
+        return;
+    }
+    if (MN_IS_SETTING(it) || MN_IS_CHOICE(it)) {
+        activate_setting(g, it, right);
         return;
     }
     if (MN_IS_GROUP(it)) {
@@ -684,8 +724,10 @@ static void key_list(gui *g, int k, int ch)
         go_up(g);
         break;
     case K_ENTER:
+        activate(g, 0);
+        break;
     case K_RIGHT:
-        activate(g);
+        activate(g, 1);
         break;
     case K_UP:
         set_sel(g, g->sel - 1);
@@ -840,7 +882,7 @@ static void mouse_button(gui *g, int code, int mx, int my)
     h = mg_hit(&g->g, g->top, mx, my);
     if (h >= g->shift) {
         set_sel(g, h);
-        activate(g);
+        activate(g, 0);
     }
 }
 
@@ -1190,6 +1232,7 @@ int main(int argc, char **argv)
         g->icon_w = mi_count() > 0 && !minimal && app_icons != UC_ICONS_NONE ? mi_width(&m, &g->ms) : 0;
         g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms, menu_cond);
         n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
+        lf_setting_relabel(g->it, n);
         g->shift = g->wt.row[0] ? 1 : 0;
         g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
         g->sel = g->shift;

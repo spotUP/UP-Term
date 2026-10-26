@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 #include "leaf.h"
 
 lf_how lf_plan(int kind)
@@ -229,4 +230,134 @@ int lf_clip_entry(const char *path)
         n = n * 10 + (*path - '0');
     }
     return n;
+}
+
+/* ---- LF_SETTING ---- */
+
+int lf_setting_next(const sd_setting *s, int cur)
+{
+    if (s->kind == SD_CHECK)
+        return cur ? 0 : 1;
+    if (s->kind == SD_CYCLE && s->nvalues > 0)
+        return (cur + 1) % s->nvalues;
+    return -1;
+}
+
+/* One 16 KiB file at a time: static, the Amiga callers run on a small stack. */
+static upconf lf_conf, lf_work;
+static char lf_buf[UC_MAX_FILE + 2];
+
+/* The UP-Term file as the Prefs window reads it: ENV:, else ENVARC:. The prefs_load result. */
+static int lf_load_upterm(const amconf_io *io)
+{
+    long got = io->read(io->fs->ctx, prefs_conf_path[PREFS_T_ENV], lf_buf, UC_MAX_FILE + 1);
+    if (got <= 0)
+        got = io->read(io->fs->ctx, prefs_conf_path[PREFS_T_ENVARC], lf_buf, UC_MAX_FILE + 1);
+    if (got < 0)
+        got = 0;
+    lf_buf[got] = 0;
+    return prefs_load(&lf_conf, lf_buf, got, UC_MAX_FILE);
+}
+
+static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, int *failed)
+{
+    prefs_fields f;
+    long len;
+    int r, t;
+    if (!prefs_load_writable(lf_load_upterm(io)))
+        return LF_SET_READONLY;
+    prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+    sd_set_index(s, &f, index);
+    if (prefs_validate(&f))
+        return LF_SET_INVALID;
+    len = prefs_stage(&lf_work, &lf_conf, LF_PROFILE, &f, lf_buf, UC_MAX_FILE + 1);
+    if (len == PREFS_STAGE_LOSSY)
+        return LF_SET_READONLY;
+    if (len < 0)
+        return LF_SET_FULL;
+    r = prefs_save_at(io->fs, io->dir, &prefs_paths_upterm, lf_buf, len, 1, failed);
+    if (r != PREFS_INSTALL_OK)
+        return r;
+    for (t = PREFS_T_ENVARC; t >= PREFS_T_ENV; t--) {
+        *failed = t;
+        r = prefs_write_hlcat(io->fs, t, f.hlcat);
+        if (r != PREFS_INSTALL_OK)
+            return r;
+    }
+    return LF_SET_OK;
+}
+
+int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *failed)
+{
+    *failed = 0;
+    if (s->kind != SD_CHECK && s->kind != SD_CYCLE)
+        return LF_SET_KIND;
+    if (index < 0 || index >= s->nvalues)
+        return LF_SET_KIND;
+    if (s->store == SD_AMARCHY) {
+        am_prefs a;
+        amconf_load_with(io, &a);
+        sd_set_index(s, &a, index);
+        return amconf_save_with(io, &a, 1, failed);
+    }
+    return lf_set_upterm(io, s, index, failed);
+}
+
+/* the current value index of row s, read from its file */
+static int lf_current(const amconf_io *io, const sd_setting *s)
+{
+    if (s->store == SD_AMARCHY) {
+        am_prefs a;
+        amconf_load_with(io, &a);
+        return sd_index(s, &a);
+    } else {
+        prefs_fields f;
+        lf_load_upterm(io);
+        prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+        return sd_index(s, &f);
+    }
+}
+
+int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed)
+{
+    int next = lf_setting_next(s, lf_current(io, s));
+    *failed = 0;
+    if (next < 0)
+        return LF_SET_KIND;
+    return lf_setting_set(io, s, next, failed);
+}
+
+void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
+{
+    prefs_fields f;
+    am_prefs a;
+    int i, have_u = 0, have_a = 0;
+    for (i = 0; i < n; i++) {
+        const sd_setting *s;
+        const void *store;
+        if (!MN_IS_SETTING(&it[i]) && !MN_IS_CHOICE(&it[i]))
+            continue;
+        s = &sd_settings[it[i].ix];
+        if (s->store == SD_AMARCHY) {
+            if (!have_a++)
+                amconf_load_with(io, &a);
+            store = &a;
+        } else {
+            if (!have_u++) {
+                lf_load_upterm(io);
+                prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+            }
+            store = &f;
+        }
+        if (MN_IS_SETTING(&it[i]))
+            sd_row_label(s, store, it[i].label, KM_LABEL);
+        else {
+            char txt[KM_LABEL];
+            int v = atoi(it[i].seg);
+            strncpy(txt, v >= 0 && v < s->nvalues ? s->values[v].text : "", KM_LABEL - 3);
+            txt[KM_LABEL - 3] = 0;
+            strcpy(it[i].label, v == sd_index(s, store) ? "* " : "  ");
+            strcat(it[i].label, txt);
+        }
+    }
 }

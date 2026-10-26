@@ -760,6 +760,15 @@ const char *prefs_hlcat_text(int on)
     return on ? "on\n" : "off\n";
 }
 
+int prefs_write_hlcat(const prefs_fs *fs, int t, int on)
+{
+    char path[48];
+    const char *v = prefs_hlcat_text(on);
+    strcpy(path, prefs_conf_dir[t]);
+    strcat(path, "/" PREFS_HLCAT_VAR);
+    return fs->write_file(fs->ctx, path, v, (long)strlen(v)) ? PREFS_INSTALL_OK : PREFS_INSTALL_WRITE;
+}
+
 int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
                   const char *orig, const char *buf, long len)
 {

@@ -83,9 +83,47 @@ static int setting_rows(const keymap *k, int row, mn_item *out, int max)
     return n;
 }
 
+/* node is "<settings page node>.<key>" of a cycle setting: that setting, else 0 */
+static const sd_setting *choice_setting(const keymap *k, const char *node)
+{
+    int i, page;
+    for (i = 0; i < k->nmenu; i++) {
+        const char *id = k->menu[i].id;
+        size_t l = strlen(id);
+        int j;
+        if (k->menu[i].kind != KA_SETTINGS || strncmp(node, id, l) || node[l] != '.')
+            continue;
+        page = sd_page_by_name(k->menu[i].arg);
+        for (j = 0; page >= 0 && j < sd_nsettings; j++) {
+            const sd_setting *s = &sd_settings[j];
+            if (s->page == page && s->kind == SD_CYCLE && s->key && !strcmp(s->key, node + l + 1))
+                return s;
+        }
+    }
+    return 0;
+}
+
+/* the values of a cycle setting, one MN_ROW_CHOICE row each */
+static int choice_rows(const sd_setting *s, mn_item *out, int max)
+{
+    int v, n = 0;
+    for (v = 0; v < s->nvalues && n < max; v++, n++) {
+        out[n].row = MN_ROW_CHOICE;
+        out[n].ix = s->id;
+        out[n].seg[0] = (char)(v >= 10 ? '0' + v / 10 : '0' + v);   /* a cycle has under 100 values */
+        out[n].seg[1] = (char)(v >= 10 ? '0' + v % 10 : 0);
+        out[n].seg[2] = 0;
+        cpy(out[n].label, s->values[v].text, KM_LABEL);
+    }
+    return n;
+}
+
 int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int cond)
 {
     int i, j, n = 0, nl = (int)strlen(node);
+    const sd_setting *cs;
+    if (nl && (cs = choice_setting(k, node)) != 0)
+        return choice_rows(cs, out, max);
     if (nl && (i = settings_row(k, node)) >= 0)
         return setting_rows(k, i, out, max);
     for (i = 0; i < k->nmenu && n < max; i++) {

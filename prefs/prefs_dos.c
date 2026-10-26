@@ -70,14 +70,9 @@ int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat)
         r = dos_save_one(&prefs_paths_upterm, t, buf, len);
         if (r != PREFS_INSTALL_OK)
             return r;
-        {   /* the variable is a few bytes: written in place, no backup */
-            char path[48];
-            const char *v = prefs_hlcat_text(hlcat);
-            strcpy(path, prefs_conf_dir[t]);
-            strcat(path, "/" PREFS_HLCAT_VAR);
-            if (!dos_write(0, path, v, (long)strlen(v)))
-                return PREFS_INSTALL_WRITE;
-        }
+        r = prefs_write_hlcat(&prefs_dos_fs, t, hlcat);
+        if (r != PREFS_INSTALL_OK)
+            return r;
     }
     return PREFS_INSTALL_OK;
 }

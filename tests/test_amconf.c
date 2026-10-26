@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "../amarchy/amconf_core.h"
+#include "../amarchy/leaf.h"
 #include "harness.h"
 #include "memfs.h"
 
@@ -354,6 +355,70 @@ static void test_amconf_save_nodir(void)
     CHECK_INT(failed, PREFS_T_ENVARC);
 }
 
+/* LF_SETTING (plan 2026-10-26-amarchy-prefs-inline.md, M3): Enter on a check row writes UP-Term's file and the
+ * reloaded fields show the new value; the profile's other keys and the highlight-cat variable go with it. */
+static void test_lf_setting_check_toggle(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    const sd_setting *s = &sd_settings[SDI_BLINK];
+    upconf c;
+    prefs_fields f;
+    char buf[UC_MAX_FILE + 2];
+    long got;
+    int failed = -1;
+    mf_put(&m, UP, "[default]\nfont = topaz\n");
+    CHECK_INT(lf_setting_step(&io, s, &failed), LF_SET_OK);
+    got = io.read(io.fs->ctx, UP, buf, UC_MAX_FILE + 1);
+    buf[got < 0 ? 0 : got] = 0;
+    CHECK_INT(prefs_load(&c, buf, got, UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &c, LF_PROFILE);
+    CHECK_INT(sd_index(s, &f), 1);
+    CHECK(strstr(buf, "font") != 0);                         /* the other keys stay */
+    CHECK(mf_get(&m, UA) != 0);                              /* ENVARC: written too (keep) */
+    CHECK_STR(mf_get(&m, "ENV:up-term/highlight-cat"), "on\n");
+    CHECK_INT(lf_setting_step(&io, s, &failed), LF_SET_OK);  /* toggles back */
+    got = io.read(io.fs->ctx, UP, buf, UC_MAX_FILE + 1);
+    buf[got] = 0;
+    prefs_load(&c, buf, got, UC_MAX_FILE);
+    prefs_from_conf(&f, &c, LF_PROFILE);
+    CHECK_INT(sd_index(s, &f), 0);
+}
+
+static void test_lf_setting_cycle_next_and_choices(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    const sd_setting *s = &sd_settings[SDI_AM_ICONS];
+    mn_item it[8];
+    am_prefs a;
+    int v, failed = -1;
+    CHECK_INT(s->nvalues >= 2, 1);
+    CHECK_INT(lf_setting_next(s, 0), 1);
+    CHECK_INT(lf_setting_next(s, s->nvalues - 1), 0);        /* wraps */
+    CHECK_INT(lf_setting_next(&sd_settings[SDI_SCROLLBACK], 0), -1);
+    CHECK_INT(lf_setting_step(&io, s, &failed), LF_SET_OK);  /* Amarchy's own file */
+    CHECK(mf_get(&m, AP) != 0);
+    amconf_load_with(&io, &a);
+    CHECK_INT(sd_index(s, &a), (sd_def_index(s) + 1) % s->nvalues);
+    memset(it, 0, sizeof it);
+    for (v = 0; v < s->nvalues && v < 8; v++) {
+        it[v].row = MN_ROW_CHOICE;
+        it[v].ix = s->id;
+        it[v].seg[0] = (char)('0' + v);
+        it[v].seg[1] = 0;
+        strcpy(it[v].label, s->values[v].text);
+    }
+    lf_setting_labels(&io, it, v);
+    for (v = 0; v < s->nvalues && v < 8; v++)
+        CHECK_INT(it[v].label[0] == '*', v == sd_index(s, &a));
+    it[0].row = MN_ROW_SETTING;                              /* a setting row shows "Label: Value" */
+    lf_setting_labels(&io, it, 1);
+    CHECK(strchr(it[0].label, ':') != 0);
+}
+
 void suite_amconf(void)
 {
     test_amconf_parse_defaults();
@@ -370,4 +435,6 @@ void suite_amconf(void)
     test_amconf_install_both_sets();
     test_prefs_dos_dir_amarchy();
     test_amconf_save_nodir();
+    test_lf_setting_check_toggle();
+    test_lf_setting_cycle_next_and_choices();
 }

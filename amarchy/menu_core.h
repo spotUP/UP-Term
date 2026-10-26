@@ -12,9 +12,11 @@
 #define MN_ROW_GROUP (-1)
 #define MN_ROW_INDEX (-2)       /* the action kind of an app or game from the index: X5 launches it */
 #define MN_ROW_SETTING (-3)     /* a setting of a settings page group: ix is its SDI_* row in prefs/settings_def.h; label is the plain label, sd_row_label adds the value */
+#define MN_ROW_CHOICE (-4)      /* one value of a cycle setting's submenu (node <page node>.<key>): ix is the SDI_* id, seg the value index in decimal, label the value text */
 #define MN_IS_GROUP(it) ((it)->row == MN_ROW_GROUP)
 #define MN_IS_INDEX(it) ((it)->row == MN_ROW_INDEX)
 #define MN_IS_SETTING(it) ((it)->row == MN_ROW_SETTING)
+#define MN_IS_CHOICE(it) ((it)->row == MN_ROW_CHOICE)
 
 typedef struct mn_item {
     int  row;                   /* index into keymap.menu, MN_ROW_GROUP for a group (a node with children),
@@ -64,6 +66,9 @@ int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max
 /* Where the entry labelled label sits among the c shown entries (items[idx[i]]); -1 when it is not shown.
  * A rebuilt level (the scan's status row changed) keeps the cursor on the same entry with it. */
 int mn_pick(const mn_item *items, const int *idx, int c, const char *label);
+/* The position of the setting row with SDI_* id ix: its label changes with its value, so a rebuild after a
+ * set keeps the cursor by id. -1 when it is not listed. */
+int mn_pick_setting(const mn_item *items, const int *idx, int c, int ix);
 
 /* The node one level up ("apps.tools" -> "apps", "apps" -> ""). 0 at the root: Esc there leaves
  * the menu; otherwise 1 and out holds the parent. */

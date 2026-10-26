@@ -42,6 +42,15 @@ int mn_pick(const mn_item *items, const int *idx, int c, const char *label)
     return -1;
 }
 
+int mn_pick_setting(const mn_item *items, const int *idx, int c, int ix)
+{
+    int i;
+    for (i = 0; i < c; i++)
+        if (MN_IS_SETTING(&items[idx[i]]) && items[idx[i]].ix == ix)
+            return i;
+    return -1;
+}
+
 int mn_back(int bs, const char *filter, const char *node)
 {
     if (filter[0])

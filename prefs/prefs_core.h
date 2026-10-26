@@ -256,7 +256,6 @@ long prefs_stage_style(upconf *work, const upconf *cur, const char *profile,
  * means on. */
 #define PREFS_HLCAT_VAR "highlight-cat"
 const char *prefs_hlcat_text(int on);
-
 /* The file operations the install needs; the Amiga's are DOS calls, the
  * tests' a table in memory. Each answers 1 on success. */
 typedef struct prefs_fs {
@@ -317,6 +316,9 @@ int prefs_install_target_at(const prefs_fs *fs, const prefs_paths *p, int t, con
 #define PREFS_SAVE_NODIR (-100)
 int prefs_save_at(const prefs_fs *fs, int (*dir)(const prefs_paths *, int), const prefs_paths *p,
                   const char *buf, long len, int keep, int *failed);
+/* The variable of target t (PREFS_T_*) written in place through fs.write_file, no backup: the one write
+ * prefs_dos_save and the Amarchy menu's setting rows share. PREFS_INSTALL_OK or PREFS_INSTALL_WRITE. */
+int prefs_write_hlcat(const prefs_fs *fs, int t, int on);
 /* prefs_install_target_at with UP-Term's file. */
 int prefs_install_target(const prefs_fs *fs, int t, const char *buf, long len);
 

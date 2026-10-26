@@ -175,7 +175,7 @@ static int menu_levels(const char *start)
     int n, c, i, rc = 0;
     char node[KM_ID * 2], filter[KM_LABEL], prompt[96];
     char keep[IXW_ROW > KM_LABEL ? IXW_ROW : KM_LABEL];   /* the entry the cursor stays on over a rebuild */
-    int keep_status = 0, shift;
+    int keep_status = 0, shift, keep_ix = -1;   /* keep_ix: a setting row the cursor stays on after a set */
 
     strncpy(node, start, sizeof node - 1);
     node[sizeof node - 1] = 0;
@@ -183,6 +183,7 @@ static int menu_levels(const char *start)
     keep[0] = 0;
     for (;;) {
         n = ix_level_t(&km, &ixs, node, filter, it, cap, menu_cond);
+        lf_setting_relabel(it, n);          /* a settings row shows its value */
         c = mn_filter(it, n, filter, idx, cap);
         shift = wt.row[0] ? 1 : 0;
         if (shift) {
@@ -202,8 +203,11 @@ static int menu_levels(const char *start)
         ui_opt.default_item = c + shift ? ent[c ? shift : 0].tag : 0;
         if (shift && keep_status)
             ui_opt.default_item = ent[0].tag;
+        else if (keep_ix >= 0 && (i = mn_pick_setting(it, idx, c, keep_ix)) >= 0)
+            ui_opt.default_item = ent[i + shift].tag;
         else if (keep[0] && (i = mn_pick(it, idx, c, keep)) >= 0)
             ui_opt.default_item = ent[i + shift].tag;
+        keep_ix = -1;
         keep_status = 0;
         keep[0] = 0;
         snprintf(prompt, sizeof prompt, "Filter: %s", filter);
@@ -270,6 +274,17 @@ static int menu_levels(const char *start)
         if (MN_IS_GROUP(&it[i])) {
             mn_child_node(node, &it[i], node, sizeof node);
             filter[0] = 0;
+            continue;
+        }
+        if (MN_IS_SETTING(&it[i]) || MN_IS_CHOICE(&it[i])) {
+            int choice = MN_IS_CHOICE(&it[i]);
+            char up[KM_ID * 2];
+            if (!lf_setting_enter(&it[i], &leaf_ui))
+                continue;
+            if (choice && mn_parent(node, up, sizeof up))
+                strcpy(node, up);           /* the pick is made: back to the page */
+            else
+                keep_ix = it[i].ix;
             continue;
         }
         {

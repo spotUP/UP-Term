@@ -25,6 +25,11 @@ static int dos_dir(const prefs_paths *p, int t)
 
 static const amconf_io dos_io = { &prefs_dos_fs, dos_read, dos_dir };
 
+const amconf_io *amconf_dos_io(void)
+{
+    return &dos_io;
+}
+
 int amconf_load(am_prefs *out)
 {
     return amconf_load_with(&dos_io, out);

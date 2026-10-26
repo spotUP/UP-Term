@@ -6,6 +6,7 @@
 int amconf_load(am_prefs *out);                     /* the AMCONF_* source taken */
 int amconf_save(const am_prefs *p, int keep, int *failed);
 int amconf_save_fields(am_prefs *cur, int *src, const prefs_fields *f, int keep, int *failed);
+const amconf_io *amconf_dos_io(void);              /* the DOS callbacks, for the *_with functions */
 int amconf_migrate(void);                           /* AMCONF_MIG_* */
 
 #endif
