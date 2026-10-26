@@ -634,4 +634,14 @@ def main(a):
         print('rc', rc)
     else: raise SystemExit(__doc__)
 
-if __name__ == '__main__': main(sys.argv[1:])
+def require_target():
+    # the command line must name its machine: with neither set it would silently drive local rig 1 (a session meaning the
+    # A1200 wrote its files there). Imports of ami keep the 127.0.0.1 / rig 1 default.
+    if not (os.environ.get('AMI_HOST') or os.environ.get('UPTERM_RIG')):
+        sys.stderr.write('ami.py: set UPTERM_RIG or AMI_HOST first, e.g. UPTERM_RIG=7 for a rig, or AMI_HOST=192.168.0.74 for the A1200\n')
+        raise SystemExit(2)
+
+
+if __name__ == '__main__':
+    require_target()
+    main(sys.argv[1:])
