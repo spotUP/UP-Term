@@ -38,3 +38,11 @@ def test_verdicts():
 
 def test_parse_md5sum():
     assert d.parse_md5sum("rc 0\n" + "a" * 32 + "  UP-Term:bin/x y\nmd5sum: nope\n") == {"UP-Term:bin/x y": "a" * 32}
+
+
+def test_real_install_dos_checks_keymap_in_envarc_and_env():
+    text = (pathlib.Path(__file__).resolve().parent.parent / "dist/install.dos").read_text(errors="replace")
+    got = d.install_map(text, ["Amarchy"] + list(d.DIST_SOURCES))
+    assert ("keymap", "ENVARC:up-term/keymap") in got
+    assert ("keymap", "ENV:up-term/keymap") in got
+    assert (pathlib.Path(__file__).resolve().parent.parent / "dist/keymap").is_file()

@@ -5,7 +5,8 @@
 
 One line per installed file: `same`, `DIFF` or `missing`, with the file's path on the Amiga. The paths come from
 the `Copy` lines of dist/install.dos (what the kit installs where), not from a second list: a program the kit
-copies to C:, L:, DEVS: or UP-Term:bin is checked at that place. md5 is read on the Amiga (UP-Term:bin/md5sum)
+copies to C:, L:, DEVS: or UP-Term:bin is checked at that place; dist/keymap is checked at ENVARC:up-term/keymap
+and ENV:up-term/keymap (DIST_SOURCES). md5 is read on the Amiga (UP-Term:bin/md5sum)
 over ami.py. Exit status 1 when anything differs or is missing. The rig's start-time [WARN] (rig.build_drift)
 checks the same build files against a rig's VTC: copies; this is the same check against an installed Amiga."""
 import hashlib, pathlib, re, subprocess, sys
@@ -15,6 +16,9 @@ ROOT = HERE.parent.parent
 AMI = HERE / "ami.py"
 CHUNK = 12           # files per md5sum call (command line length)
 MD5 = "UP-Term:bin/md5sum"
+# Files the kit copies from dist/ rather than build/amiga, checked like built programs. keymap is checked whole:
+# the user's own rows live in ENVARC:up-term/keymap.user, so the installed keymap must equal dist/keymap exactly.
+DIST_SOURCES = ("keymap",)
 
 
 def install_map(install_dos_text, built_names):
@@ -75,8 +79,8 @@ def verdicts(entries, build, amiga):
 def main(argv):
     bdir = pathlib.Path(argv[argv.index("--build") + 1]) if "--build" in argv else ROOT / "build/amiga"
     names = [f.name for f in bdir.iterdir() if f.is_file()]
-    entries = install_map((ROOT / "dist/install.dos").read_text(errors="replace"), names)
-    build = {n: md5_file(bdir / n) for n, _ in entries}
+    entries = install_map((ROOT / "dist/install.dos").read_text(errors="replace"), names + list(DIST_SOURCES))
+    build = {n: md5_file(ROOT / "dist" / n if n in DIST_SOURCES else bdir / n) for n, _ in entries}
     res = verdicts(entries, build, amiga_md5s([p for _, p in entries]))
     for state, n, p in res:
         print("%-8s %-28s %s" % (state, n, p))
