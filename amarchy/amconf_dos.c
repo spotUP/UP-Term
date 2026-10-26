@@ -35,6 +35,11 @@ int amconf_save(const am_prefs *p, int keep, int *failed)
     return amconf_save_with(&dos_io, p, keep, failed);
 }
 
+int amconf_save_fields(am_prefs *cur, int *src, const prefs_fields *f, int keep, int *failed)
+{
+    return amconf_save_fields_with(&dos_io, cur, src, f, keep, failed);
+}
+
 int amconf_migrate(void)
 {
     return amconf_migrate_with(&dos_io);

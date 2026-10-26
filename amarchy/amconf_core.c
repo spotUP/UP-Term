@@ -2,17 +2,6 @@
 #include <string.h>
 #include "amconf_core.h"
 
-const am_key am_keys[AM_NKEYS] = {
-    { "amarchy-music-drawers", "" },
-    { "amarchy-demo-drawers", "" },
-    { "amarchy-hide-drawers", "" },
-    { "amarchy-menu-font", "" },
-    { "amarchy-app-icons", "generic" },
-    { "menu-style", "graphical" },
-    { "amarchy-index-skip", "" },
-    { "amarchy-index-volumes", "" },
-    { "menu-in-terminal", "text" },
-};
 
 /* one parse table: the whole file is never held twice */
 static upconf g_conf;
@@ -59,6 +48,28 @@ long amconf_serialize(const am_prefs *p, char *buf, long cap)
     memcpy(buf, hdr, (size_t)n);
     body = upconf_save(&g_conf, buf + n, cap - n);
     return body < 0 ? -1 : n + body;
+}
+
+void amconf_to_fields(const am_prefs *p, prefs_fields *f)
+{
+    strncpy(f->am_music, p->val[AM_MUSIC], sizeof f->am_music - 1);
+    strncpy(f->am_demo, p->val[AM_DEMO], sizeof f->am_demo - 1);
+    strncpy(f->am_hide, p->val[AM_HIDE], sizeof f->am_hide - 1);
+    strncpy(f->am_font, p->val[AM_FONT], sizeof f->am_font - 1);
+    f->am_icons = amconf_icons(p);
+    f->am_mode = amconf_style(p);
+    f->am_termmenu = amconf_term_menu(p);
+}
+
+void amconf_from_fields(am_prefs *p, const prefs_fields *f)
+{
+    strcpy(p->val[AM_MUSIC], f->am_music);
+    strcpy(p->val[AM_DEMO], f->am_demo);
+    strcpy(p->val[AM_HIDE], f->am_hide);
+    strcpy(p->val[AM_FONT], f->am_font);
+    strcpy(p->val[AM_ICONS], f->am_icons == UC_ICONS_AMIGA ? "amiga" : f->am_icons == UC_ICONS_NONE ? "none" : "generic");
+    strcpy(p->val[AM_STYLE], f->am_mode == UC_MENU_TEXT ? "text" : f->am_mode == UC_MENU_MINIMAL ? "minimal" : "graphical");
+    strcpy(p->val[AM_TERMMENU], f->am_termmenu == UC_TERMMENU_GRAPHICAL ? "graphical" : "text");
 }
 
 int amconf_icons(const am_prefs *p)
@@ -114,6 +125,21 @@ int amconf_save_with(const amconf_io *io, const am_prefs *p, int keep, int *fail
     return prefs_save_at(io->fs, io->dir, &prefs_paths_amarchy, out, n, keep, failed);
 }
 
+int amconf_save_fields_with(const amconf_io *io, am_prefs *cur, int *src, const prefs_fields *f, int keep, int *failed)
+{
+    am_prefs next = *cur;
+    int r;
+    amconf_from_fields(&next, f);
+    if (memcmp(&next, cur, sizeof next) == 0 && *src < AMCONF_LEGACY_ENV)
+        return PREFS_INSTALL_OK;
+    r = amconf_save_with(io, &next, keep, failed);
+    if (r == PREFS_INSTALL_OK) {
+        *cur = next;
+        *src = keep ? AMCONF_ENVARC : AMCONF_ENV;
+    }
+    return r;
+}
+
 int amconf_migrate_with(const amconf_io *io)
 {
     am_prefs p;
@@ -124,11 +150,3 @@ int amconf_migrate_with(const amconf_io *io)
     return amconf_save_with(io, &p, 1, &failed) == PREFS_INSTALL_OK ? AMCONF_MIG_DONE : AMCONF_MIG_FAILED;
 }
 
-int amconf_strip_legacy(upconf *c)
-{
-    int k, n = 0;
-    for (k = 0; k < AM_NKEYS; k++)
-        if (upconf_str(c, "default", am_keys[k].name, 0) && upconf_del(c, "default", am_keys[k].name))
-            n++;
-    return n;
-}

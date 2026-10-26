@@ -430,115 +430,29 @@ static void dither_and_padding_color_round_trip(void)
     CHECK_INT(g.pad_extend, 0);
 }
 
-static void amarchy_keys_round_trip_through_the_default_section(void)
+/* The Amarchy keys have one store (Amarchy/prefs): the UP-Term profile neither reads them into the editor's
+ * fields nor writes them, and a save drops what an older version left there (plan 2026-10-25-amarchy-own-prefs.md M3). */
+static void prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile(void)
 {
     static upconf conf, work;
     static char buf[UC_MAX_FILE + 1];
-    static const char src[] = "[default]\nfont = x\namarchy-music-drawers = Music,Jams\n"
-                              "amarchy-demo-drawers = Demos\n[work]\nfont = y\n";
-    prefs_fields f, g;
-    long len;
-    CHECK_INT(prefs_load(&conf, src, (long)strlen(src), UC_MAX_FILE), PREFS_LOAD_OK);
-    prefs_from_conf(&f, &conf, "default");
-    CHECK_STR(f.am_music, "Music,Jams");
-    CHECK_STR(f.am_demo, "Demos");
-    CHECK_STR(f.am_hide, "");
-    CHECK_STR(f.am_font, "");
-    CHECK_INT(f.am_icons, 0);
-    strcpy(f.am_hide, "Prefs,Utilities");
-    strcpy(f.am_font, "topaz.font:9");
-    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
-    CHECK(len > 0);
-    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-music-drawers", "?"), "Music,Jams");
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-hide-drawers", "?"), "Prefs,Utilities");
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-menu-font", "?"), "topaz.font:9");
-    prefs_from_conf(&g, &conf, "default");
-    CHECK_INT(prefs_equal(&f, &g), 1);
-    strcpy(g.am_font, "other.font:8");
-    CHECK_INT(prefs_equal(&f, &g), 0);
-    /* editing another profile still writes the Amarchy keys into [default] */
-    prefs_from_conf(&g, &conf, "work");
-    strcpy(g.am_demo, "Shows");
-    len = prefs_stage(&work, &conf, "work", &g, buf, sizeof(buf));
-    CHECK(len > 0);
-    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-demo-drawers", "?"), "Shows");
-    /* an empty value is an absent key */
-    g.am_demo[0] = 0;
-    g.am_font[0] = 0;
-    len = prefs_stage(&work, &conf, "default", &g, buf, sizeof(buf));
-    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-demo-drawers", "?"), "?");
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-menu-font", "?"), "?");
-}
-
-static void the_app_icons_key_defaults_to_generic(void)
-{
-    static upconf conf, work;
-    static char buf[UC_MAX_FILE + 1];
-    static const char none[] = "[default]\nfont = x\n";
-    static const char amiga[] = "[default]\namarchy-app-icons = Amiga\n";
-    static const char other[] = "[default]\namarchy-app-icons = nonsense\n";
+    static const char src[] = "[default]\nfont = x\namarchy-music-drawers = Music\nmenu-style = text\n"
+                              "menu-in-terminal = graphical\n[work]\nfont = y\namarchy-app-icons = none\n";
     prefs_fields f;
     long len;
-    CHECK_INT(prefs_load(&conf, none, (long)strlen(none), UC_MAX_FILE), PREFS_LOAD_OK);
-    prefs_from_conf(&f, &conf, "default");
-    CHECK_INT(f.am_icons, 0);
-    CHECK_INT(prefs_load(&conf, amiga, (long)strlen(amiga), UC_MAX_FILE), PREFS_LOAD_OK);
-    prefs_from_conf(&f, &conf, "default");
-    CHECK_INT(f.am_icons, 1);
-    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
-    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-app-icons", "?"), "amiga");
-    CHECK_INT(prefs_load(&conf, other, (long)strlen(other), UC_MAX_FILE), PREFS_LOAD_OK);
-    prefs_from_conf(&f, &conf, "default");
-    CHECK_INT(f.am_icons, 0);
-    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
-    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-app-icons", "?"), "?");
-    f.am_icons = 1;
-    {
-        prefs_fields g = f;
-        g.am_icons = 0;
-        CHECK_INT(prefs_equal(&f, &g), 0);
-    }
-}
-
-/* the icons key is a three-way cycle and menu-style a second Amarchy field: a hand-written
- * none / minimal survives loading, an edit of another field, and saving; the dirty check sees both. */
-static void app_icons_none_and_menu_mode_round_trip(void)
-{
-    static upconf conf, work;
-    static char buf[UC_MAX_FILE + 1];
-    static const char src[] = "[default]\namarchy-app-icons = none\nmenu-style = minimal\n";
-    static const char text[] = "[default]\nmenu-style = text\n";
-    prefs_fields f, g;
-    long len;
     CHECK_INT(prefs_load(&conf, src, (long)strlen(src), UC_MAX_FILE), PREFS_LOAD_OK);
     prefs_from_conf(&f, &conf, "default");
-    CHECK_INT(f.am_icons, UC_ICONS_NONE);
-    CHECK_INT(f.am_mode, UC_MENU_MINIMAL);
-    strcpy(f.am_font, "topaz.font:9");
+    CHECK_STR(f.am_music, "");
+    CHECK_INT(f.am_mode, UC_MENU_GRAPHICAL);
+    strcpy(f.am_music, "Edited");
+    f.am_termmenu = UC_TERMMENU_GRAPHICAL;
     len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
     CHECK(len > 0);
     CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
-    CHECK_STR(upconf_str(&conf, "default", "amarchy-app-icons", "?"), "none");
-    CHECK_STR(upconf_str(&conf, "default", "menu-style", "?"), "minimal");
-    prefs_from_conf(&g, &conf, "default");
-    CHECK_INT(g.am_icons, UC_ICONS_NONE);
-    CHECK_INT(g.am_mode, UC_MENU_MINIMAL);
-    g.am_mode = UC_MENU_GRAPHICAL;
-    CHECK_INT(prefs_equal(&f, &g), 0);
-    len = prefs_stage(&work, &conf, "default", &g, buf, sizeof(buf));
-    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
+    CHECK_STR(upconf_str(&conf, "default", "font", "?"), "x");
+    CHECK_STR(upconf_str(&conf, "default", "amarchy-music-drawers", "?"), "?");
     CHECK_STR(upconf_str(&conf, "default", "menu-style", "?"), "?");
-    CHECK_INT(prefs_load(&conf, text, (long)strlen(text), UC_MAX_FILE), PREFS_LOAD_OK);
-    prefs_from_conf(&f, &conf, "default");
-    CHECK_INT(f.am_mode, UC_MENU_TEXT);
-    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
-    CHECK_INT(prefs_load(&conf, buf, len, UC_MAX_FILE), PREFS_LOAD_OK);
-    CHECK_STR(upconf_str(&conf, "default", "menu-style", "?"), "text");
+    CHECK_STR(upconf_str(&conf, "default", "menu-in-terminal", "?"), "?");
 }
 
 static void the_amarchy_keyword_picks_the_start_page(void)
@@ -1396,9 +1310,7 @@ void suite_prefs(void)
     amiga_keys_and_highlight_cat_round_trip();
     style_stage_sets_only_the_look();
     dither_and_padding_color_round_trip();
-    amarchy_keys_round_trip_through_the_default_section();
-    the_app_icons_key_defaults_to_generic();
-    app_icons_none_and_menu_mode_round_trip();
+    prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile();
     the_amarchy_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
 }

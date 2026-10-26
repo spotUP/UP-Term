@@ -141,6 +141,54 @@ static void test_prefs_strip_legacy_amarchy(void)
     CHECK_INT(amconf_strip_legacy(&c), 0);
 }
 
+/* The reported symptom: ENVARC:Amarchy/prefs exists, so an edit of the Amarchy page that went into the
+ * UP-Term profile was never read. The page now loads from and saves to Amarchy's file; the profile holds no
+ * Amarchy key afterwards. Drives the editor's path: load, edit a field, amconf_save_fields_with, prefs_stage,
+ * prefs_save_at on the UP-Term paths. */
+static void prefs_amarchy_page_edit_reaches_amarchy_prefs(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 1];
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    prefs_fields f;
+    am_prefs am, got;
+    int src, failed;
+    long len;
+    mf_put(&m, AP, "amarchy-music-drawers = Mod\n");
+    mf_put(&m, UA, "[profile default]\nfont = topaz.font:8\nmenu-in-terminal = graphical\nmenu-style = text\n");
+    src = amconf_load_with(&io, &am);
+    CHECK_INT(src, AMCONF_ENVARC);
+    CHECK_INT(amconf_term_menu(&am), UC_TERMMENU_TEXT);
+    CHECK_INT(prefs_load(&conf, mf_get(&m, UA), (long)strlen(mf_get(&m, UA)), UC_MAX_FILE), PREFS_LOAD_OK);
+    prefs_from_conf(&f, &conf, "default");
+    amconf_to_fields(&am, &f);
+    CHECK_STR(f.am_music, "Mod");
+    f.am_termmenu = UC_TERMMENU_GRAPHICAL;
+    CHECK_INT(amconf_save_fields_with(&io, &am, &src, &f, 1, &failed), PREFS_INSTALL_OK);
+    len = prefs_stage(&work, &conf, "default", &f, buf, sizeof(buf));
+    CHECK(len > 0);
+    CHECK_INT(prefs_save_at(io.fs, io.dir, &prefs_paths_upterm, buf, len, 1, &failed), PREFS_INSTALL_OK);
+    CHECK_INT(amconf_load_with(&io, &got), AMCONF_ENV);
+    CHECK_STR(got.val[AM_TERMMENU], "graphical");
+    CHECK_STR(got.val[AM_MUSIC], "Mod");
+    CHECK(strstr(mf_get(&m, AP), "menu-in-terminal = graphical") != 0);
+    CHECK(strstr(mf_get(&m, UA), "menu-in-terminal") == 0);
+    CHECK(strstr(mf_get(&m, UA), "menu-style") == 0);
+    CHECK(strstr(mf_get(&m, UA), "topaz.font:8") != 0);
+    /* nothing changed and nothing legacy: no write at all */
+    mf_put(&m, AP, "marker\n");
+    CHECK_INT(amconf_save_fields_with(&io, &am, &src, &f, 1, &failed), PREFS_INSTALL_OK);
+    CHECK_STR(mf_get(&m, AP), "marker\n");
+    /* values only read from the old UP-Term file are moved into Amarchy's file before the profile drops them */
+    mf_put(&m, AP, "");
+    am.val[AM_MUSIC][0] = 0;
+    src = AMCONF_LEGACY_ENVARC;
+    CHECK_INT(amconf_save_fields_with(&io, &am, &src, &f, 1, &failed), PREFS_INSTALL_OK);
+    CHECK_INT(src, AMCONF_ENVARC);
+}
+
 static void test_amconf_migrate_rule(void)
 {
     CHECK_INT(amconf_need_migrate(0), 1);
@@ -296,6 +344,7 @@ void suite_amconf(void)
     test_amconf_style();
     test_amconf_index_keys();
     test_prefs_strip_legacy_amarchy();
+    prefs_amarchy_page_edit_reaches_amarchy_prefs();
     test_amconf_migrate_rule();
     test_amconf_load_chain();
     test_amconf_migrate_idempotent();

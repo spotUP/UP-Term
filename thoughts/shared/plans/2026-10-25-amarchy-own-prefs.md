@@ -240,7 +240,7 @@ Phase R, readers:
 Phase M, migration:
 - [x] M1 Commodity startup migration before first load. Test: G4. Commit 4c48a1a2. Rig 2 (060), tools/rig/own_prefs_rig.py own_prefs_migrate, file-driven.
 - [x] M2 Idempotence: second start no write; both-exist keeps new file. Test: test_amconf_migrate_idempotent. Commit 4c48a1a2.
-- [ ] M3 UP-Term Prefs Save strips legacy keys over `am_keys[]`. Test: test_prefs_strip_legacy_amarchy. Commit 4c48a1a2. (function amconf_strip_legacy and test done; NOT wired into prefs_stage: UP-Term Prefs would lose its Amarchy page edits until phase X moves them. Open.)
+- [x] M3 UP-Term Prefs Save strips legacy keys over `am_keys[]`. Test: test_prefs_strip_legacy_amarchy plus prefs_amarchy_page_edit_reaches_amarchy_prefs (tests/test_amconf.c) and prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile. Wired into prefs_stage (2026-10-26, branch prefssplit). UP-Term Prefs keeps its Amarchy page, now a view of Amarchy/prefs (amconf_load, amconf_save_fields: ENV: on Use, ENVARC:+ENV: on Save, before the profile is written). The am_* fields stay as the page model; they no longer round-trip through the up-term profile.
 
 Phase U, window:
 - [ ] U1 `pg_table` parameter for pl_layout/pl_hit/pg_find/pg_for_key; old names wrap. Test: existing test_prefs layout cases unchanged.
@@ -259,7 +259,7 @@ Phase E, entry points:
 - [ ] E4 Row kind `amarchy:` through the generalized LF_WIN sender; dist/keymap 137-138 rewritten. Test: test_leaf_amarchy_kind.
 - [ ] E5 tests/test_keymap.c rows 2819-2820 updated. Test: test_keymap.
 
-Phase X, removal from UP-Term Prefs:
+Phase X, removal from UP-Term Prefs: SUPERSEDED 2026-10-26 by owner decision. UP-Term Prefs keeps its Amarchy page as a second editor of the one store (Amarchy/prefs); X1-X4 are not to be done (X2 and X4 are partly met: the profile no longer holds am keys; the am_* fields stay as the page model).
 - [ ] X1 Amarchy page rows and PG_PAGE_AMARCHY gone. Test: test_prefs page count.
 - [ ] X2 am_* fields, read, equal, stage lines gone (stage keeps strip). Test: test_prefs.
 - [ ] X3 AMARCHY argument, pg_page_for_args keyword, usage text gone. Test: test_prefs_args_no_amarchy.

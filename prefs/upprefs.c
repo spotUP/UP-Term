@@ -66,6 +66,7 @@
 #include "prefs_asl.h"
 #include "../tty/qmark.h"
 #include "prefs_dos.h"
+#include "../amarchy/amconf_dos.h"
 
 /* vbcc's startup runs main on a stack of this size whatever the starter gives
  * it; the cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). */
@@ -118,6 +119,8 @@ struct app {
     int tab_dirty;            /* the table changed (rename, delete) and is not saved */
     STRPTR plab[UC_MAX_PROFILES + 2]; /* the Profile gadget's labels */
     prefs_fields f;           /* what the gadgets show */
+    am_prefs am;              /* Amarchy's own file (the one store of the Amarchy page), as loaded or last written */
+    int am_src;               /* the AMCONF_* source it came from */
     prefs_fields orig;        /* what the profile held when it was loaded or last written */
     prefs_kc kc;              /* KingCON's style, decoded from f.kcmode */
     long sb_lines;            /* the scrollback gadget's number */
@@ -755,6 +758,7 @@ static void load_profile(struct app *a, const char *name)
         prefs_defaults(&a->f);
         a->prof_new = 1;
     }
+    amconf_to_fields(&a->am, &a->f); /* the Amarchy page is the same in every profile */
     a->orig = a->f;
     sb_load(a);
     a->colors = prefs_colors_index(a->f.colors);
@@ -854,6 +858,20 @@ static int commit(struct app *a, int keep)
     }
     if (len < 0) {
         puts_(msg, puts_(msg, 0, "The file would be over ", CONF_MAX), " bytes.", -1);
+        set_status(a, msg);
+        return 0;
+    }
+    /* Amarchy's file first: the profile's save below drops the Amarchy keys an older version left in it, so
+     * the values must already be in their one store. Written when the page changed, or when they were only
+     * read from that old copy. */
+    r = amconf_save_fields(&a->am, &a->am_src, &a->f, keep, &t);
+    if (r == PREFS_SAVE_NODIR) {
+        puts_(msg, puts_(msg, 0, "Cannot create ", -1), prefs_paths_amarchy.dir[t], -1);
+        set_status(a, msg);
+        return 0;
+    }
+    if (r != PREFS_INSTALL_OK) {
+        puts_(msg, 0, "Amarchy preferences could not be written.", -1);
         set_status(a, msg);
         return 0;
     }
@@ -1923,6 +1941,8 @@ int main(void)
         prefs_from_conf(&a->f, &a->conf, a->prof);
     else
         prefs_defaults(&a->f);
+    a->am_src = amconf_load(&a->am);
+    amconf_to_fields(&a->am, &a->f);
     a->prof_new = 0; /* the first profile is the file's own, or "default" as built in: nothing to lose */
     a->orig = a->f;
     sb_load(a);

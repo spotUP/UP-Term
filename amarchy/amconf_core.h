@@ -46,6 +46,11 @@ int amconf_icons(const am_prefs *p);
 int amconf_style(const am_prefs *p);
 int amconf_term_menu(const am_prefs *p);   /* UC_TERMMENU_* */
 
+/* The Prefs editor's view of the file: the six keys its Amarchy page shows, to and from its field set. The
+ * keys it does not show (index skip, volumes) stay as they were in the am_prefs it writes back. */
+void amconf_to_fields(const am_prefs *p, prefs_fields *f);
+void amconf_from_fields(am_prefs *p, const prefs_fields *f);
+
 /* the migration decision: the marker is the ENVARC: file of the new name being absent (never the ENV: one,
  * OS 3.2 answers a lookup there with the ENVARC: copy) */
 int amconf_need_migrate(int envarc_new_exists);
@@ -69,6 +74,12 @@ int amconf_load_with(const amconf_io *io, am_prefs *out);
 
 /* Save p to ENVARC: then ENV: (keep 0: ENV: only, "Use"). A prefs_save_at result; *failed the target. */
 int amconf_save_with(const amconf_io *io, const am_prefs *p, int keep, int *failed);
+
+/* The Prefs editor's save of its Amarchy page: the six fields over *cur (the keys the page does not show stay as
+ * loaded), written to Amarchy's file when they changed or when *src says they were only read from the old UP-Term
+ * file (the save of that file drops them, so they must already be in their store). On success *cur and *src
+ * are what the files now hold. A prefs_save_at result. Call it BEFORE saving the UP-Term file. */
+int amconf_save_fields_with(const amconf_io *io, am_prefs *cur, int *src, const prefs_fields *f, int keep, int *failed);
 
 enum { AMCONF_MIG_NONE, AMCONF_MIG_DONE, AMCONF_MIG_FAILED };
 /* Startup migration: the ENVARC: file absent: the legacy keys (or defaults) written to it and to ENV:, the
