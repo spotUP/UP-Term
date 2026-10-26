@@ -76,7 +76,8 @@ enum {
     KA_OPEN,     /* open:uterm */
     KA_DETACH,      /* detach:<command line>  a program in the background: no window, input and output NIL: */
     KA_SCAN,        /* scan:<command line>  like detach:, and the menu watches the scan it started (RESCAN-FEEDBACK) */
-    KA_WIN          /* win:<verb [argument]>  a window verb on the active window, run by the commodity (win_core.h) */
+    KA_WIN,         /* win:<verb [argument]>  a window verb on the active window, run by the commodity (win_core.h) */
+    KA_GTHEME       /* gtheme:<name>  the drawn menu's Omarchy theme (amarchy/gthemes_core.h), run by the commodity */
 };
 
 /* where an action runs (keymap_action_scope) */

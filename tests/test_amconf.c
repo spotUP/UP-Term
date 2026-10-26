@@ -35,7 +35,7 @@ static void test_amconf_parse_defaults(void)
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
     /* the table lists ten keys, each named once */
-    CHECK_INT(AM_NKEYS, 9);
+    CHECK_INT(AM_NKEYS, 10);
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)

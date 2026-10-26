@@ -20,6 +20,7 @@
 #include "index_core.h"
 #include "ixwatch.h"
 #include "leaf.h"
+#include "gthemes_dos.h"
 #include "menu_open.h"
 #include <signal.h>
 #include "../config/keymap_load.h"
@@ -165,6 +166,7 @@ static int reload_index(void)
     ix_free(&ixs);
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     lf_load_listers(&ixs);
+    gt_dos_load_rows(&ixs);
     return alloc_level();
 }
 
@@ -288,6 +290,7 @@ static int menu_loop(const char *start)
     int rc = 20;
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     lf_load_listers(&ixs);
+    gt_dos_load_rows(&ixs);
     menu_cond = mn_cond(upactive_terminal_present(leaf_ui.self_in_mru), upactive_dopus_present(), upactive_workbench_present());
     {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
         ix_prog p0;

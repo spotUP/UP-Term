@@ -48,7 +48,18 @@ typedef long (*gt_read_fn)(void *ctx, const char *path, char *buf, long cap); /*
 /* Load a theme by name: the user's file, else the shipped one, else (unknown or unreadable name) the built-in default. */
 void gt_load(gt_read_fn rd, void *ctx, const char *name, gtheme *out);
 
+/* One drawer's file names, given one by one to emit (the DOS side walks the drawer; a host test fakes it). */
+typedef void (*gt_emit_fn)(void *ectx, const char *file);
+typedef void (*gt_dir_fn)(void *ctx, const char *dir, gt_emit_fn emit, void *ectx);
+
+/* The theme list of both drawers: shipped first, then the user's (whose file wins and marks the row). */
+void gt_scan(gt_dir_fn dir, void *ctx, gt_list *l);
+
 /* The menu row label: the name, with " (current)" appended when it is the saved theme (compared without case). */
 void gt_label(const char *name, const char *current, char *out, int cap);
+
+/* A theme row's path in the menu index ("gtheme:<name>"); gt_path_name gives the name back, 0 when the path is not one. */
+#define GT_ROW_PREFIX "gtheme:"
+int gt_path_name(const char *path, char *out, int cap);
 
 #endif

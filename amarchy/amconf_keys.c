@@ -12,6 +12,7 @@ const am_key am_keys[AM_NKEYS] = {
     { "amarchy-index-skip", "" },
     { "amarchy-index-volumes", "" },
     { "menu-in-terminal", "text" },
+    { "amarchy-gui-theme", "tokyo-night" },
 };
 
 int amconf_strip_legacy(upconf *c)

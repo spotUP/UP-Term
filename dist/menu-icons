@@ -14,6 +14,7 @@ apps.tmux         = U+EBC8    ; cod-terminal_tmux
 apps.editor       = U+F044    ; fa-pencil_square_o
 apps.claude       = U+F0E7    ; fa-flash
 style.theme       = U+F1FC    ; fa-paintbrush
+style.terminal    = U+F120    ; fa-terminal
 style.font        = U+F031    ; fa-font
 style.background  = U+F03E    ; fa-picture_o
 window.tab        = U+F067    ; fa-plus

@@ -1011,6 +1011,36 @@ static int has_label(const mn_item *it, int n, const char *label)
     return 0;
 }
 
+
+/* T9: Style > Theme lists the GUI theme rows, each path "gtheme:<name>"; a gtheme: bind is a commodity-scope
+ * action with a plain name, and lf_plan runs it as LF_GTHEME */
+static void style_theme_lists_the_gui_theme_rows(void)
+{
+    static char file[32768];
+    mn_item it[MN_MAX_ITEMS];
+    ix_index x;
+    const char *labels[2] = { "nord (current)", "solo" };
+    const char *names[2] = { "nord", "solo" };
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int c;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    memset(&x, 0, sizeof x);
+    CHECK(ix_add_gthemes(&x, labels, names, 2));
+    c = ix_level_t(&km, &x, "style.theme", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 2);
+    CHECK_STR(it[0].label, "nord (current)");
+    CHECK_INT(it[0].row, MN_ROW_INDEX);
+    CHECK_STR(x.rows[it[0].ix].path, "gtheme:nord");
+    CHECK_STR(x.rows[it[1].ix].path, "gtheme:solo");
+    CHECK_INT(x.rows[it[1].ix].kind, IX_KIND_GTHEME);
+    c = ix_level_t(&km, &x, "style", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 1);
+    CHECK_STR(it[0].label, "Theme");
+    CHECK_INT(it[0].row, MN_ROW_GROUP);
+    ix_free(&x);
+    CHECK_INT(lf_plan(KA_GTHEME), LF_GTHEME);
+    CHECK_INT(keymap_action_scope(KA_GTHEME), KS_COMMODITY);
+}
 static void terminal_rows_show_only_over_a_terminal(void)
 {
     static char file[32768];
@@ -1020,10 +1050,10 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK(n > 0 && keymap_parse(&km, file, n));
     c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 0);
     CHECK(has_label(it, c, "Apps"));
-    CHECK(!has_label(it, c, "Style"));
+    CHECK(has_label(it, c, "Style"));               /* the Theme group lists the GUI themes, over a terminal or not */
     CHECK(has_label(it, c, "Window"));              /* the win: rows run in the commodity, over a terminal or not */
     c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 0);
+    CHECK_INT(c, 1);                                 /* Theme only; Terminal theme, Font, Background need a terminal */
     c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
     CHECK_INT(c, 23);                                /* the 23 win:/rexx: rows; window.tab and window.preferences stay hidden */
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
@@ -2321,6 +2351,7 @@ static void a_volume_without_a_handler_task_matches_no_device(void)
 
 void suite_keymap(void)
 {
+    style_theme_lists_the_gui_theme_rows();
     the_scan_record_has_a_layout_version_and_an_older_one_is_not_read();
     a_failed_cache_write_is_its_own_stage_and_not_reported_as_died();
     a_scan_leaf_parses_to_ka_scan_and_a_detach_leaf_stays_ka_detach();

@@ -126,6 +126,7 @@ int keymap_action_scope(int kind)
     case KA_OPEN:
     case KA_REXX:
     case KA_WIN:
+    case KA_GTHEME:
         return KS_COMMODITY;
     case KA_MENU:
     case KA_VIEWER:
@@ -211,7 +212,7 @@ static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
     { "slash", KA_SLASH }, { "run", KA_RUN }, { "rexx", KA_REXX }, { "open", KA_OPEN },
     { "detach", KA_DETACH }, { "scan", KA_SCAN },
-    { "win", KA_WIN }
+    { "win", KA_WIN }, { "gtheme", KA_GTHEME }
 };
 
 static int tab_arg_ok(const char *a)
@@ -321,6 +322,8 @@ static int action_parse(const char *text, action *a)
         return 0;
     if (a->kind == KA_WIN && !win_arg_ok(text))
         return 0;
+    if (a->kind == KA_GTHEME && (!*text || strchr(text, '/') || strchr(text, ':')))
+        return 0;   /* a theme name, never a path */
     if (a->kind == KA_OPEN && strcmp(text, "uterm"))
         return 0;
     if (!km_copy(a->arg, KM_ARG, text))

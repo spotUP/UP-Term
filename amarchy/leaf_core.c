@@ -21,6 +21,8 @@ lf_how lf_plan(int kind)
         return LF_VIEWER;
     case KA_WIN:
         return LF_WIN;
+    case KA_GTHEME:
+        return LF_GTHEME;
     default:
         return LF_REQUEST;
     }

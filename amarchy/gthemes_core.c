@@ -120,3 +120,36 @@ void gt_label(const char *name, const char *current, char *out, int cap)
 {
     snprintf(out, (size_t)cap, "%s%s", name, current && !cmp_ci(name, current) ? " (current)" : "");
 }
+
+typedef struct scan_ctx {
+    gt_list *l;
+    int user;
+} scan_ctx;
+
+static void scan_emit(void *ectx, const char *file)
+{
+    scan_ctx *c = (scan_ctx *)ectx;
+    gt_list_add(c->l, file, c->user);
+}
+
+void gt_scan(gt_dir_fn dir, void *ctx, gt_list *l)
+{
+    scan_ctx c;
+    memset(l, 0, sizeof *l);
+    c.l = l;
+    c.user = 0;
+    dir(ctx, GT_SHIPPED_DIR, scan_emit, &c);
+    c.user = 1;
+    dir(ctx, GT_USER_DIR, scan_emit, &c);
+    if (!l->n)
+        gt_list_add(l, GT_DEFAULT GT_EXT, 0); /* a bare install: the compiled-in theme is still pickable */
+}
+
+int gt_path_name(const char *path, char *out, int cap)
+{
+    size_t p = sizeof GT_ROW_PREFIX - 1;
+    if (strncmp(path, GT_ROW_PREFIX, p) || !path[p] || (int)strlen(path + p) >= cap || (int)strlen(path + p) >= GT_NAME)
+        return 0;
+    strcpy(out, path + p);
+    return 1;
+}

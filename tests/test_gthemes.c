@@ -282,10 +282,52 @@ static void test_gthemes_amconf(void)
     CHECK_STR(q.val[AM_GTHEME], "nord");
 }
 
+
+/* fake drawers: the shipped one holds nord and solo, the user's holds nord (an override) and mine */
+static void fake_dir(void *ctx, const char *dir, gt_emit_fn emit, void *ectx)
+{
+    int *empty = (int *)ctx;
+    if (*empty)
+        return;
+    if (!strcmp(dir, GT_SHIPPED_DIR)) {
+        emit(ectx, "solo.theme");
+        emit(ectx, "nord.theme");
+    } else if (!strcmp(dir, GT_USER_DIR)) {
+        emit(ectx, "mine.theme");
+        emit(ectx, "nord.theme");
+    }
+}
+
+/* T5: gt_scan merges both drawers, the user's file wins and marks the row, an empty pair gives the default */
+static void test_gthemes_scan(void)
+{
+    gt_list l;
+    int empty = 0;
+    char nm[GT_NAME];
+    memset(&l, 0, sizeof l);
+    gt_scan(fake_dir, &empty, &l);
+    CHECK_INT(l.n, 3);
+    CHECK_STR(l.name[0], "mine");
+    CHECK_STR(l.name[1], "nord");
+    CHECK_STR(l.name[2], "solo");
+    CHECK_INT(l.user[0], 1);
+    CHECK_INT(l.user[1], 1);
+    CHECK_INT(l.user[2], 0);
+    empty = 1;
+    memset(&l, 0, sizeof l);
+    gt_scan(fake_dir, &empty, &l);
+    CHECK_INT(l.n, 1);
+    CHECK_STR(l.name[0], GT_DEFAULT);
+    CHECK(gt_path_name("gtheme:nord", nm, sizeof nm));
+    CHECK_STR(nm, "nord");
+    CHECK(!gt_path_name("clip:3", nm, sizeof nm));
+    CHECK(!gt_path_name("gtheme:", nm, sizeof nm));
+}
 void suite_gthemes(void)
 {
     test_gthemes_parse();
     test_gthemes_roles();
     test_gthemes_user();
     test_gthemes_amconf();
+    test_gthemes_scan();
 }

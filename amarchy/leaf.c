@@ -10,6 +10,7 @@
 #include <rexx/rxslib.h>
 #include <proto/rexxsyslib.h>
 #include "leaf.h"
+#include "gthemes_dos.h"
 #include "wblaunch.h"
 #include "clips_core.h"
 #include "../handler/clip.h"
@@ -111,6 +112,14 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui)
     char err[160];
     int ci = lf_clip_entry(path);
     long lh = ix_lister_of(path);
+    char tname[GT_NAME];
+    if (gt_path_name(path, tname, sizeof tname)) {      /* a Style > Theme row: the drawn menu's theme is saved */
+        if (gt_dos_select(tname))
+            return 0;
+        if (ui && ui->refused)
+            ui->refused(ui->ctx, label, UPREQ_FAILED, "the theme could not be saved");
+        return UPREQ_FAILED;
+    }
     if (lh >= 0) {
         int rc = lister_front((unsigned long)lh);
         if (rc && ui && ui->refused)
@@ -308,6 +317,12 @@ int lf_run(const km_menu *m, const lf_ui *ui)
     }
     case LF_WIN:
         return send_win(m, ui);
+    case LF_GTHEME:
+        if (gt_dos_select(m->arg))
+            return 0;
+        if (ui && ui->refused)
+            ui->refused(ui->ctx, m->label, UPREQ_FAILED, "the theme could not be saved");
+        return UPREQ_FAILED;
     default:
         return run_request(m, ui);
     }

@@ -32,6 +32,7 @@
 #include "menu_geom.h"
 #include "menu_theme.h"
 #include "leaf.h"
+#include "gthemes_dos.h"
 #include "menu_open.h"
 #include "menu_icon.h"
 #include "menu_font.h"
@@ -125,8 +126,6 @@ static keymap km;
 static ix_index ixs;
 static int menu_cond;            /* decided once at open: mn_cond(terminal present, DOPUS.1 present, WORKBENCH present) */
 static gui G;
-static upconf conf;
-static char conf_buf[UC_MAX_FILE + 2];
 static char view_text[KM_MAX_BIND * 100];
 static char msg_text[UPREQ_ANSWER + 140];
 static char prompt_text[UPREQ_ANSWER + 80];
@@ -595,6 +594,7 @@ static int reload_index(gui *g)
     index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     lf_load_listers(&ixs);
+    gt_dos_load_rows(&ixs);
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
     g->idx = malloc(g->cap * sizeof *g->idx);
@@ -909,45 +909,22 @@ static void event_loop(gui *g)
 
 /* ---- screen, font, pens, window ---------------------------------------------------------------------- */
 
-static void conf_read(void)
-{
-    BPTR f = Open((STRPTR) "ENV:up-term/up-term", MODE_OLDFILE);
-    LONG got;
-    if (!f)
-        f = Open((STRPTR) "ENVARC:up-term/up-term", MODE_OLDFILE);
-    if (!f)
-        return;
-    got = Read(f, conf_buf, UC_MAX_FILE);
-    Close(f);
-    if (got > 0) {
-        conf_buf[got] = 0;
-        upconf_parse(&conf, conf_buf, got);
-    }
-}
-
 static void pens_get(gui *g)
 {
-    uc_u32 pal[16], rgb[MT_ROLES], fg, bg;
-    const char *v;
+    uc_u32 rgb[MT_ROLES];
+    gtheme th;
     int r;
-    memset(pal, 0, sizeof pal);
-    conf_read();
-    v = upconf_str(&conf, "default", "palette", 0);
-    if (v)
-        upconf_palette_parse(v, pal);
-    /* the terminal's colours (handler: upconf_rgb "fg"/"bg", VR_KEEP when unset) */
-    fg = upconf_rgb(&conf, "default", "fg", VR_KEEP);
-    bg = upconf_rgb(&conf, "default", "bg", VR_KEEP);
-    menu_theme_roles_fb(pal, fg == VR_KEEP ? 0 : 0x01000000UL | fg, bg == VR_KEEP ? 0 : 0x01000000UL | bg, rgb);
+    /* the drawn menu's colours are the Omarchy GUI theme (Style > Theme, AM_GTHEME), not the terminal's */
+    gt_dos_load_current(&th);
+    menu_theme_roles_gui(&th, rgb);
+    SetVar((STRPTR) "AMARCHY_THEME", (STRPTR)th.name, -1, GVF_GLOBAL_ONLY);   /* sentinel: the rig reads which theme drew */
     if (minimal) {
-        /* two colours: the terminal's bg and fg keys, each falling back to the screen's own pen (0, 1); fg equal
-         * to bg would hide the selection, so both fall back */
-        int bg_set = bg != VR_KEEP, fg_set = fg != VR_KEEP;
-        if (!menu_theme_minimal(rgb) && bg_set && fg_set)
-            bg_set = fg_set = 0;
+        /* two colours: the theme's background and foreground; equal ones would hide the selection, so both
+         * fall back to the screen's own pens (0, 1) */
+        int themed = menu_theme_minimal(rgb);
         for (r = 0; r < MT_ROLES; r++) {
             int is_bg = r == MT_BG || r == MT_ACCENT;
-            long p = (is_bg ? bg_set : fg_set) ? vr_pen_obtain(g->cm, rgb[r]) : -1;
+            long p = themed ? vr_pen_obtain(g->cm, rgb[r]) : -1;
             g->pen_got[r] = p >= 0;
             g->pen[r] = p >= 0 ? p : (is_bg ? 0 : 1);
         }
@@ -1133,6 +1110,7 @@ int main(int argc, char **argv)
     index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     lf_load_listers(&ixs);
+    gt_dos_load_rows(&ixs);
     menu_cond = mn_cond(upactive_terminal_present(0), upactive_dopus_present(), upactive_workbench_present());   /* a plain Intuition window: never in the MRU */
     {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
         ix_prog p0;
