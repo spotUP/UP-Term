@@ -205,6 +205,17 @@ def blink_value(path):
     return m[-1] if m else 'off'          # absent key: the default, off (settings_def.c)
 
 
+def set_graphical():
+    """Amarchy reads menu-in-terminal from ENV:Amarchy/prefs, then ENVARC:Amarchy/prefs, and falls back to the
+    up-term files only when neither exists (amconf_core.c amconf_load_with): set it where it is read. Callers
+    save and restore PREFS."""
+    for p in PREFS:
+        old = ami.read_file(p)
+        keep = [l for l in (old or b'').decode('latin-1').splitlines()
+                if not re.match(r'\s*menu-in-terminal\s*=', l)]
+        ami.restore_file(p, ('\n'.join(keep + ['menu-in-terminal = graphical']) + '\n').encode('latin-1'))
+
+
 def write_conf(blink, drawn):
     """Both stores start from the same text: the state under test and, for the drawn rows, the setting that
     makes Super+Space over the terminal open the drawn menu."""
@@ -213,13 +224,7 @@ def write_conf(blink, drawn):
         c.run('Echo >%s "[profile default]"' % p)
         c.run('Echo >>%s "cursor-blink = %s"' % (p, blink))
     if drawn:
-        # Amarchy reads menu-in-terminal from ENV:Amarchy/prefs, then ENVARC:Amarchy/prefs, and falls back to the
-        # up-term files only when neither exists (amconf_core.c amconf_load_with): set it where it is read.
-        for p in PREFS:
-            old = ami.read_file(p)
-            keep = [l for l in (old or b'').decode('latin-1').splitlines()
-                    if not re.match(r'\s*menu-in-terminal\s*=', l)]
-            ami.restore_file(p, ('\n'.join(keep + ['menu-in-terminal = graphical']) + '\n').encode('latin-1'))
+        set_graphical()
     time.sleep(3)                          # the handler reloads on the notify of ENV:up-term/up-term
 
 
@@ -426,6 +431,8 @@ def r_theme_name():
     saved = {p: ami.read_file(p) for p in PREFS}
     try:
         stage_themes()
+        set_graphical()
+        time.sleep(3)                      # Amarchy reloads on the prefs notify
         if not g.process_running('Amarchy'):
             return False, 'the Amarchy commodity is not running'
         g.close_menu()
