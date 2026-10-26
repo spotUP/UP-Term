@@ -213,6 +213,17 @@ int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int 
     return n;
 }
 
+int mn_right_enters(const mn_item *it)
+{
+    if (MN_IS_GROUP(it))
+        return 1;
+    if (MN_IS_SETTING(it)) {
+        const sd_setting *s = &sd_settings[it->ix];
+        return s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s);
+    }
+    return 0;
+}
+
 void mn_child_node(const char *node, const mn_item *it, char *out, int n)
 {
     if (*node) {

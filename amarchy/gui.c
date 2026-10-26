@@ -200,7 +200,8 @@ static void fill(gui *g, int role, int x0, int y0, int x1, int y1)
 
 /* A text in a box of height boxh whose top is y, cut to maxw pixels with an ellipsis, in role over the box's
  * background role bgrole (the caller has filled the box in it). */
-static void put(gui *g, int role, int bgrole, int x, int y, int boxh, const char *s, int len, int maxw)
+/* keep >= 0: s[keep..] stays whole when the text is clipped (a settings row's ": Value"); the label is cut */
+static void put_keep(gui *g, int role, int bgrole, int x, int y, int boxh, const char *s, int len, int maxw, int keep)
 {
     char buf[PUT_MAX], out[PUT_MAX];
     if (len <= 0 || maxw <= 0)
@@ -209,11 +210,16 @@ static void put(gui *g, int role, int bgrole, int x, int y, int boxh, const char
         len = PUT_MAX - 1;
     memcpy(buf, s, (size_t)len);
     buf[len] = 0;
-    mt_fit(g->mt, buf, maxw, out, sizeof out);
+    mt_fit_tail(g->mt, buf, keep, maxw, out, sizeof out);
     if (!out[0])
         return;
     mt_draw(g->mt, g->rp, x, y + (boxh - mt_height(g->mt)) / 2, out, role_rgb(g, role), role_rgb(g, bgrole));
     SetDrMd(g->rp, JAM1);   /* a bitmap font's draw left JAM2 */
+}
+
+static void put(gui *g, int role, int bgrole, int x, int y, int boxh, const char *s, int len, int maxw)
+{
+    put_keep(g, role, bgrole, x, y, boxh, s, len, maxw, -1);
 }
 
 /* ---- back buffer -------------------------------------------------------------------------------------- */
@@ -430,9 +436,9 @@ static void draw_row(gui *g, int e)
             tw -= ic;
         }
         if (minimal && MN_IS_GROUP(it)) {         /* the group marker is part of the text: label then " >" */
-            char t[KM_LABEL + 4];
-            strncpy(t, it->label, KM_LABEL);
-            t[KM_LABEL] = 0;
+            char t[MN_LABEL + 4];
+            strncpy(t, it->label, MN_LABEL);
+            t[MN_LABEL] = 0;
             strcat(t, " >");
             put(g, role, rbg, tx, y, q->m.row_h, t, (int)strlen(t), tw);
         } else {
@@ -448,7 +454,11 @@ static void draw_row(gui *g, int e)
                 }
                 tw -= cs + 4 + q->m.row_pad;
             }
-            put(g, role, rbg, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
+            {
+                const char *sep = MN_IS_SETTING(it) ? strstr(it->label, ": ") : 0;   /* the value is not what is cut */
+                put_keep(g, role, rbg, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw,
+                         sep ? (int)(sep - it->label) : -1);
+            }
         }
         if (MN_IS_GROUP(it) && !minimal)
             put(g, role, rbg, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
@@ -651,7 +661,7 @@ static int reload_index(gui *g)
 /* One poll of the record; a changed row redraws the list, DONE also reloads the index. */
 static void watch_poll(gui *g)
 {
-    char keep[KM_LABEL];
+    char keep[MN_LABEL];
     int done;
     if (!ixw_poll(&g->wt))
         return;
@@ -671,7 +681,7 @@ static void start_scan(gui *g, const mn_item *it)
 {
     lf_ui ui;
     ix_prog p0;
-    char keep[KM_LABEL];
+    char keep[MN_LABEL];
     int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);   /* the run counter before the launch */
     ui.ask_value = gui_ask_value;
     ui.refused = gui_refused;
@@ -768,7 +778,8 @@ static void key_list(gui *g, int k, int ch)
         activate(g, 0);
         break;
     case K_RIGHT:
-        activate(g, 1);
+        if (g->sel >= g->shift && g->sel < g->count && mn_right_enters(&g->it[g->idx[g->sel - g->shift]]))
+            activate(g, 1);              /* the Return path; a leaf is not run by Right */
         break;
     case K_UP:
         set_sel(g, g->sel - 1);

@@ -618,6 +618,32 @@ static void settings_page_group_lists_the_table_rows(void)
     }
 }
 
+/* Right enters what Return enters (a group, a cycle, colour or list setting) and nothing else: a leaf, an index
+ * row, a choice row, a check/number/text setting stay put. */
+static void right_enters_only_rows_with_children(void)
+{
+    mn_item it;
+    int i, enter = 0;
+    memset(&it, 0, sizeof it);
+    it.row = MN_ROW_GROUP;
+    CHECK_INT(mn_right_enters(&it), 1);
+    it.row = 0;
+    CHECK_INT(mn_right_enters(&it), 0);
+    it.row = MN_ROW_INDEX;
+    CHECK_INT(mn_right_enters(&it), 0);
+    it.row = MN_ROW_CHOICE;
+    CHECK_INT(mn_right_enters(&it), 0);
+    it.row = MN_ROW_SETTING;
+    for (i = 0; i < sd_nsettings; i++) {
+        const sd_setting *s = &sd_settings[i];
+        int want = s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s);
+        it.ix = s->id;
+        CHECK_INT(mn_right_enters(&it), want);
+        enter += want;
+    }
+    CHECK(enter > 0);
+}
+
 /* M9: the shipped dist/keymap carries the six Settings page groups, in table order, each listing its
  * settings-table rows, and the Preferences row that opens Prefs stays. */
 static void shipped_settings_has_the_six_page_groups(void)
@@ -2544,6 +2570,7 @@ void suite_keymap(void)
     the_shipped_menu_has_learn_system_and_install_groups();
     the_window_group_rows_and_hotkeys();
     settings_page_group_lists_the_table_rows();
+    right_enters_only_rows_with_children();
     shipped_settings_has_the_six_page_groups();
     the_screens_group_rows_and_hotkeys();
     the_workbench_group_rows();

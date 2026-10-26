@@ -560,7 +560,7 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             store = &f;
         }
         if (MN_IS_SETTING(&it[i]))
-            sd_row_label(s, store, it[i].label, KM_LABEL);
+            sd_row_label(s, store, it[i].label, MN_LABEL);
         else if (SD_HAS_LIST(s)) {
             /* the names and actions come labelled from the tree */
         } else if (SD_HAS_PICKER(s)) {
@@ -570,7 +570,7 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             else if (v >= 0 && v < 16) {
                 char hex[16];
                 lf_palette_hex(io, v, hex);
-                snprintf(it[i].label, KM_LABEL, "%s: #%s", prefs_pal_name(v), hex);
+                snprintf(it[i].label, MN_LABEL, "%s: #%s", prefs_pal_name(v), hex);
             }
         } else {
             char txt[KM_LABEL];

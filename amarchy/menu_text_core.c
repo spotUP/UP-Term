@@ -170,6 +170,27 @@ int mtc_fit(mtc *c, const char *s, int maxw, char *out, int n)
     return w + dotw;
 }
 
+int mtc_fit_tail(mtc *c, const char *s, int keep, int maxw, char *out, int n)
+{
+    char head[256];
+    int tailw, hw, hl;
+    if (keep <= 0 || keep >= (int)strlen(s) || keep >= (int)sizeof head)
+        return mtc_fit(c, s, maxw, out, n);
+    if (mtc_width(c, s) <= maxw && (int)strlen(s) < n) {
+        strcpy(out, s);
+        return mtc_width(c, s);
+    }
+    tailw = mtc_width(c, s + keep);
+    if (tailw + 3 * mtc_advance(c, '.') > maxw || (int)strlen(s + keep) + 4 > n)
+        return mtc_fit(c, s + keep, maxw, out, n);
+    memcpy(head, s, (size_t)keep);
+    head[keep] = 0;
+    hw = mtc_fit(c, head, maxw - tailw, out, n - (int)strlen(s + keep));
+    hl = (int)strlen(out);
+    strcpy(out + hl, s + keep);
+    return hw + tailw;
+}
+
 /* ---- TrueType ---- */
 
 int mtc_scale(int units, int upem, int px)
