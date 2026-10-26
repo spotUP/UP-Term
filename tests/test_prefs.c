@@ -852,22 +852,26 @@ static void font_requester_results_become_profile_values(void)
 {
     char out[40], name[40], drawer[40];
     long size = 9;
-    CHECK_INT(prefs_font_compose("topaz.font", 8, out, sizeof(out)), 1);
+    CHECK_INT(prefs_font_compose("topaz.font", 8, 0, out, sizeof(out)), 1);
     CHECK_STR(out, "topaz:8");
-    CHECK_INT(prefs_font_compose("Topaz.FONT", 11, out, sizeof(out)), 1);
+    CHECK_INT(prefs_font_compose("Topaz.FONT", 11, 0, out, sizeof(out)), 1);
     CHECK_STR(out, "Topaz:11");
-    CHECK_INT(prefs_font_compose("mono", 12, out, sizeof(out)), 1);   /* no .font to cut */
+    CHECK_INT(prefs_font_compose("mono", 12, 0, out, sizeof(out)), 1);   /* no .font to cut */
     CHECK_STR(out, "mono:12");
-    CHECK_INT(prefs_font_compose("topaz.font", 0, out, sizeof(out)), 1);
+    CHECK_INT(prefs_font_compose("topaz.font", 0, 0, out, sizeof(out)), 1);
     CHECK_STR(out, "topaz");
-    CHECK_INT(prefs_font_compose(".font", 8, out, sizeof(out)), 0);   /* nothing left */
+    CHECK_INT(prefs_font_compose(".font", 8, 0, out, sizeof(out)), 0);   /* nothing left */
     CHECK_STR(out, "");
-    CHECK_INT(prefs_font_compose("", 8, out, sizeof(out)), 0);
-    CHECK_INT(prefs_font_compose("My Font.font", 8, out, sizeof(out)), 0); /* the handler splits at blanks */
+    CHECK_INT(prefs_font_compose("", 8, 0, out, sizeof(out)), 0);
+    CHECK_INT(prefs_font_compose("My Font.font", 8, 0, out, sizeof(out)), 0); /* the handler splits at blanks */
     CHECK_STR(out, "");
-    CHECK_INT(prefs_font_compose("a:b.font", 8, out, sizeof(out)), 0);
-    CHECK_INT(prefs_font_compose("topaz.font", 8, out, 7), 0);        /* "topaz:8" needs 8 */
-    CHECK_INT(prefs_font_compose("topaz.font", 8, out, 8), 1);
+    CHECK_INT(prefs_font_compose("a:b.font", 8, 0, out, sizeof(out)), 0);
+    /* the Amarchy menu reads by the last colon: blanks are kept, a colon is not */
+    CHECK_INT(prefs_font_compose("Vera Mono.font", 14, 1, out, sizeof(out)), 1);
+    CHECK_STR(out, "Vera Mono:14");
+    CHECK_INT(prefs_font_compose("a:b.font", 8, 1, out, sizeof(out)), 0);
+    CHECK_INT(prefs_font_compose("topaz.font", 8, 0, out, 7), 0);        /* "topaz:8" needs 8 */
+    CHECK_INT(prefs_font_compose("topaz.font", 8, 0, out, 8), 1);
     /* and back: the requester starts from name with .font and the size */
     CHECK_INT(prefs_font_parse("topaz:8", name, sizeof(name), &size), 1);
     CHECK_STR(name, "topaz.font");

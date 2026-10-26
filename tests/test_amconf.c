@@ -129,14 +129,16 @@ static void test_amconf_ttf_font_roundtrip(void)
     long n;
     memset(&f, 0, sizeof f);
     amconf_defaults(&p);
-    CHECK_INT(prefs_font_compose("DejaVuSansMono.font", 14, f.am_font, sizeof f.am_font), 1);
-    CHECK_STR(f.am_font, "DejaVuSansMono:14");
+    /* the menu picker composes with blanks allowed: ttfinstall names faces
+     * "Vera Mono", and the A1200's ASL list offers exactly that */
+    CHECK_INT(prefs_font_compose("Vera Mono.font", 14, 1, f.am_font, sizeof f.am_font), 1);
+    CHECK_STR(f.am_font, "Vera Mono:14");
     amconf_from_fields(&p, &f);
     n = amconf_serialize(&p, buf, sizeof buf);
-    CHECK(strstr(buf, "amarchy-menu-font = DejaVuSansMono:14") != 0);
+    CHECK(strstr(buf, "amarchy-menu-font = Vera Mono:14") != 0);
     amconf_parse(buf, n, &q);
     CHECK_INT(prefs_font_parse(q.val[AM_FONT], name, sizeof name, &size), 1);
-    CHECK_STR(name, "DejaVuSansMono.font"); /* what vo_ttf_spec cuts to FONTS:DejaVuSansMono.otag */
+    CHECK_STR(name, "Vera Mono.font"); /* what vo_ttf_spec cuts to FONTS:Vera Mono.otag */
     CHECK_INT((int)size, 14);
 }
 
