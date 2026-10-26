@@ -103,6 +103,8 @@ struct app {
     struct DrawInfo *dri;
     APTR vi;                  /* GadTools' VisualInfo of the screen */
     struct TextAttr *ta;      /* the font of the gadgets: the screen's, or topaz 8 */
+    struct TextFont *tf;      /* the font ta names, opened: what the swatch labels are drawn in */
+    int tf_owned;             /* tf was opened here, so it is closed here */
     WORD ox, oy;              /* the inner top left, in window coordinates */
     pl_result lay;            /* the boxes of every gadget */
     struct Gadget *glist_common; /* Page, status, Save / Use / Cancel */
@@ -495,6 +497,8 @@ static void draw_swatch(struct app *a, int id)
         SetAPen(rp, pens[disabled ? SHADOWPEN : TEXTPEN]);
         SetBPen(rp, pens[BACKGROUNDPEN]);
         SetDrMd(rp, JAM2);
+        if (a->tf)
+            SetFont(rp, a->tf);
         Move(rp, x - a->lay.label_w[id], (WORD)(y + (b->h - a->lay.font_h) / 2 + rp->TxBaseline));
         Text(rp, (STRPTR)plain, (ULONG)strlen(plain));
     }
@@ -1928,6 +1932,10 @@ int main(void)
               a->scr->Height - (a->scr->BarHeight + 1) - (a->scr->WBorTop + a->scr->Font->ta_YSize + 1) -
               a->scr->WBorBottom - 2 * MARGIN_Y, &a->lay);
     a->ta = a->lay.fallback ? &topaz8 : a->scr->Font;
+    /* a window's RastPort starts in the system font (topaz 8), not the screen's: the swatch labels
+     * are drawn in the font they were measured in, set on the RastPort explicitly */
+    a->tf = a->lay.fallback ? OpenFont(&topaz8) : a->scr->RastPort.Font;
+    a->tf_owned = a->lay.fallback && a->tf;
     a->ox = (WORD)(a->scr->WBorLeft + MARGIN_X);
     a->oy = (WORD)(a->scr->WBorTop + a->scr->Font->ta_YSize + 1 + MARGIN_Y);
 
@@ -2007,6 +2015,8 @@ out:
                     ReleasePen(a->scr->ViewPort.ColorMap, (ULONG)a->pen[i]);
         if (a->dri && a->scr)
             FreeScreenDrawInfo(a->scr, a->dri);
+        if (a->tf_owned)
+            CloseFont(a->tf);
         if (a->vi)
             FreeVisualInfo(a->vi);
         if (a->scr)
