@@ -5,6 +5,7 @@
 #define GTHEMES_DOS_H
 
 #include "gthemes_core.h"
+#include "gthemes_scan_dos.h"
 #include "index_core.h"
 
 /* the current theme's name: AM_GTHEME of the settings file, GT_DEFAULT when unset */
@@ -15,8 +16,6 @@ void gt_dos_load_current(gtheme *out);
 void gt_dos_load(const char *name, gtheme *out);
 /* make name the drawn menu's theme: AM_GTHEME is saved to ENVARC: and ENV:. 1 saved, 0 refused or failed */
 int gt_dos_select(const char *name);
-/* the theme list: every file of the shipped and the user drawer */
-void gt_dos_scan(gt_list *l);
 /* fill the Style > Theme rows (ix_add_gthemes) with the current one marked. Call after the other loaders. */
 void gt_dos_load_rows(ix_index *x);
 

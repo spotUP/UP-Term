@@ -66,7 +66,7 @@
 #include "prefs_ui.h"
 #include "settings_def.h"
 #include "prefs_asl.h"
-#include "../amarchy/gthemes_dos.h"
+#include "../amarchy/gthemes_scan_dos.h"
 #include "../tty/qmark.h"
 #include "prefs_dos.h"
 #include "../amarchy/amconf_dos.h"

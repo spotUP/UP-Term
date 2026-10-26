@@ -19,29 +19,6 @@ static long gt_read(void *ctx, const char *path, char *buf, long cap)
     return got < 0 ? 0 : got;
 }
 
-static void gt_dir(void *ctx, const char *dir, gt_emit_fn emit, void *ectx)
-{
-    BPTR lock = Lock((STRPTR)dir, ACCESS_READ);
-    struct FileInfoBlock *fib;
-    (void)ctx;
-    if (!lock)
-        return;
-    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
-    if (fib) {
-        if (Examine(lock, fib))
-            while (ExNext(lock, fib))
-                if (fib->fib_DirEntryType < 0)      /* a file, not a drawer */
-                    emit(ectx, (const char *)fib->fib_FileName);
-        FreeDosObject(DOS_FIB, fib);
-    }
-    UnLock(lock);
-}
-
-void gt_dos_scan(gt_list *l)
-{
-    gt_scan(gt_dir, 0, l);
-}
-
 void gt_dos_load(const char *name, gtheme *out)
 {
     gt_load(gt_read, 0, name, out);
