@@ -716,7 +716,8 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     check_row("learn.tutorial", KA_MENUID, "MENU_TUTORIAL");
     check_row("learn.help", KA_MENUID, "MENU_HELP_SLASH");
     check_row("learn.demo", KA_SLASH, "/demo");
-    check_row("system.reboot", KA_RUN, "Reboot");
+    check_row("system.reboot", KA_DETACH, "Reboot");  /* run:Reboot opened an UP-Term window (A1200 2026-10-26) */
+    CHECK_INT((int)lf_plan(KA_DETACH), (int)LF_DETACH);  /* detach: NIL: in and out, no window */
     check_row("system.workbench", KA_SLASH, "/screen workbench");
     check_row("system.own", KA_SLASH, "/screen own");
     check_row("install.browse", KA_RUN, "upkg browse");
