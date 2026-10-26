@@ -618,6 +618,40 @@ static void settings_page_group_lists_the_table_rows(void)
     }
 }
 
+/* M9: the shipped dist/keymap carries the six Settings page groups, in table order, each listing its
+ * settings-table rows, and the Preferences row that opens Prefs stays. */
+static void shipped_settings_has_the_six_page_groups(void)
+{
+    mn_item it[MN_MAX_ITEMS], pg[MN_MAX_ITEMS];
+    int i, n, p, k, want, at = -1;
+    char node[40];
+    const km_menu *pref = shipped_row("settings.amarchy.preferences");
+    n = mn_children(&km, "settings", it, MN_MAX_ITEMS);
+    for (p = 0; p < PG_NPAGES; p++) {
+        int found = -1;
+        for (i = 0; i < n; i++)
+            if (it[i].row == MN_ROW_GROUP &&
+                !strcmp(it[i].seg, p == PG_PAGE_AMARCHY ? "amarchysettings" : sd_page_name(p)))
+                found = i;
+        CHECK(found >= 0);
+        CHECK(found > at);
+        at = found;
+        strcpy(node, "settings.");
+        strcat(node, p == PG_PAGE_AMARCHY ? "amarchysettings" : sd_page_name(p));
+        want = 0;
+        for (i = 0; i < sd_nsettings; i++)
+            want += sd_settings[i].page == p;
+        k = mn_children(&km, node, pg, MN_MAX_ITEMS);
+        CHECK_INT(k, want);
+        CHECK(want > 0);
+    }
+    CHECK(pref != 0);
+    if (pref) {
+        CHECK_INT(pref->kind, KA_DETACH);
+        CHECK(!strcmp(pref->arg, "C:UP-Term-Prefs AMARCHY"));
+    }
+}
+
 static void the_window_group_rows_and_hotkeys(void)
 {
     check_row("window.next", KA_WIN, "cycle next");
@@ -2493,6 +2527,7 @@ void suite_keymap(void)
     the_shipped_menu_has_learn_system_and_install_groups();
     the_window_group_rows_and_hotkeys();
     settings_page_group_lists_the_table_rows();
+    shipped_settings_has_the_six_page_groups();
     the_screens_group_rows_and_hotkeys();
     the_workbench_group_rows();
     cx_descriptions_and_qualifier_mask();
