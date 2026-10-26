@@ -131,7 +131,7 @@ static void test_amconf_ttf_font_roundtrip(void)
     amconf_defaults(&p);
     /* the menu picker composes with blanks allowed: ttfinstall names faces
      * "Vera Mono", and the A1200's ASL list offers exactly that */
-    CHECK_INT(prefs_font_compose("Vera Mono.font", 14, 1, f.am_font, sizeof f.am_font), 1);
+    CHECK_INT(prefs_font_compose("Vera Mono.font", 14, f.am_font, sizeof f.am_font), 1);
     CHECK_STR(f.am_font, "Vera Mono:14");
     amconf_from_fields(&p, &f);
     n = amconf_serialize(&p, buf, sizeof buf);

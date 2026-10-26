@@ -388,7 +388,7 @@ void prefs_kc_encode(const prefs_kc *k, char *out, int cap)
     pc_copy(out, t, cap);
 }
 
-int prefs_font_compose(const char *name, long size, int blanks_ok, char *out, int cap)
+int prefs_font_compose(const char *name, long size, char *out, int cap)
 {
     int n = (int)strlen(name), i, j = 0;
     char num[12];
@@ -399,7 +399,7 @@ int prefs_font_compose(const char *name, long size, int blanks_ok, char *out, in
     if (n < 1)
         return 0;
     for (i = 0; i < n; i++)
-        if (name[i] == ':' || ((name[i] == ' ' || name[i] == '\t') && !blanks_ok))
+        if (name[i] == ':')
             return 0;
     if (n >= cap)
         return 0;

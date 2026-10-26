@@ -49,4 +49,11 @@ void winspec_box(const winspec_opts *o, int cw, int ch, int bl, int bt, int br, 
  * its own copy of the title for the tab bar. */
 const char *winspec_wa_title(int borderless, const char *title);
 
+/* A font option, "name size" (FONT, FONT1..9, the profile's font, /font). The
+ * size is the digits after the LAST blank, the name everything before it, so a
+ * name may hold blanks ("Vera Mono 14", a TrueType face). With no trailing
+ * digits the whole field is the name and *size is 0. Blanks around the name
+ * are dropped; name is cut to max - 1 characters. */
+void winspec_font(const char *rest, char *name, int max, int *size);
+
 #endif

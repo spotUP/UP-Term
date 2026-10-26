@@ -154,12 +154,11 @@ void prefs_kc_encode(const prefs_kc *k, char *out, int cap);
 /* ---- font strings ------------------------------------------------------- */
 /* A font requester's result (ta_Name "topaz.font", size 8) as the profile's
  * font value "topaz:8" (".font" cut, any case). 0 and out "" when the name
- * is empty, holds a colon, holds a blank while blanks_ok is 0 or the result
- * does not fit cap; a size under 1 gives the bare name. blanks_ok follows the
- * reader: the terminal handler splits its font value at the blank (0), the
- * Amarchy menu reads it with prefs_font_parse, which splits at the last
- * colon only, so "Vera Mono:14" is fine there (1). */
-int prefs_font_compose(const char *name, long size, int blanks_ok, char *out, int cap);
+ * is empty, holds a colon or the result does not fit cap; a size under 1
+ * gives the bare name. A blank is kept ("Vera Mono:14"): both readers split
+ * at the last separator only, the Amarchy menu by prefs_font_parse, the
+ * terminal handler by winspec_font. */
+int prefs_font_compose(const char *name, long size, char *out, int cap);
 /* The profile's font value back into what a requester starts from: name
  * with ".font" ("topaz:8" -> "topaz.font"), size 0 when none. 0 on "". */
 int prefs_font_parse(const char *spec, char *name, int cap, long *size);

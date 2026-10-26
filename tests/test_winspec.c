@@ -1,5 +1,6 @@
 #include "harness.h"
 #include "../handler/winspec.h"
+#include <string.h>
 
 /* The Workbench icon's window "XCON:0/20/0/400/UP-Term/CLOSE": width 0 is the
  * screen's width, height 0 the screen's height, from the spec's edge on. */
@@ -109,8 +110,32 @@ static void wa_title(void)
     CHECK_INT(winspec_wa_title(1, 0) == 0, 1);
 }
 
+static void font(void)
+{
+    char n[40];
+    int sz;
+    winspec_font("topaz.font 8", n, sizeof(n), &sz);
+    CHECK_INT(!strcmp(n, "topaz.font") && sz == 8, 1);
+    /* a TrueType face with a blank keeps its whole name (TERM-FONT-BLANK, 2026-10-26) */
+    winspec_font(" Vera Mono 14 ", n, sizeof(n), &sz);
+    CHECK_INT(!strcmp(n, "Vera Mono") && sz == 14, 1);
+    winspec_font("Vera Mono.font  16", n, sizeof(n), &sz);
+    CHECK_INT(!strcmp(n, "Vera Mono.font") && sz == 16, 1);
+    /* no size: the whole field is the name */
+    winspec_font("Vera Mono", n, sizeof(n), &sz);
+    CHECK_INT(!strcmp(n, "Vera Mono") && sz == 0, 1);
+    /* digits glued to the name are part of it */
+    winspec_font("xen8", n, sizeof(n), &sz);
+    CHECK_INT(!strcmp(n, "xen8") && sz == 0, 1);
+    winspec_font("", n, sizeof(n), &sz);
+    CHECK_INT(n[0] == 0 && sz == 0, 1);
+    winspec_font("abcdefgh 9", n, 5, &sz);
+    CHECK_INT(!strcmp(n, "abcd") && sz == 9, 1);
+}
+
 void suite_winspec(void)
 {
+    font();
     sizes();
     ground();
     options();

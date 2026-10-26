@@ -99,3 +99,28 @@ const char *winspec_wa_title(int borderless, const char *title)
 {
     return borderless ? 0 : title;
 }
+
+void winspec_font(const char *rest, char *name, int max, int *size)
+{
+    int end, cut, i, n;
+    while (*rest == ' ')
+        rest++;
+    for (end = 0; rest[end]; end++)
+        ;
+    while (end > 0 && rest[end - 1] == ' ')
+        end--;
+    *size = 0;
+    for (cut = end; cut > 0 && rest[cut - 1] >= '0' && rest[cut - 1] <= '9'; cut--)
+        ;
+    if (cut < end && cut > 0 && rest[cut - 1] == ' ') {
+        for (i = cut; i < end; i++)
+            *size = *size * 10 + (rest[i] - '0');
+        end = cut;
+        while (end > 0 && rest[end - 1] == ' ')
+            end--;
+    }
+    n = end < max - 1 ? end : max - 1;
+    for (i = 0; i < n; i++)
+        name[i] = rest[i];
+    name[n] = 0;
+}
