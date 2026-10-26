@@ -275,6 +275,11 @@ void lf_setting_relabel(mn_item *it, int n)
     lf_setting_labels(amconf_dos_io(), it, n);
 }
 
+void lf_setting_rechip(const mn_item *it, int n, long *out)
+{
+    lf_setting_chips(amconf_dos_io(), it, n, out);
+}
+
 int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 {
     char err[160];

@@ -127,6 +127,11 @@ int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed);
 /* Rewrite the labels of a menu level: a MN_ROW_SETTING row shows sd_row_label (label and value), a
  * MN_ROW_CHOICE row shows its value text with "* " when it is the current one, else "  ". Reads the files. */
 void lf_setting_labels(const amconf_io *io, mn_item *it, int n);
+/* The colour chip of a row (drawn menu): 0xRRGGBB of a colour swatch row that has a colour and of a picker row of
+ * palette entry 0..15, else -1. lf_setting_chips fills out[0..n) for a level; lf_setting_rechip does it over the DOS io. */
+long lf_row_chip(const amconf_io *io, const mn_item *it);
+void lf_setting_chips(const amconf_io *io, const mn_item *it, int n, long *out);
+void lf_setting_rechip(const mn_item *it, int n, long *out);
 
 /* The notice for a finished ARexx leaf: the dopus-*.rexx scripts end with RC 5 when DOPUS.1 is absent (plan
  * 2026-10-25-amarchy-dopus-integration.md, D5), which says "Directory Opus is not running". 0 for anything else. */

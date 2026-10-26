@@ -803,3 +803,33 @@ int lf_theme_delete(const amconf_io *io, const char *name, int *failed)
     }
     return LF_SET_OK;
 }
+
+/* The colour chip of each row of a level: out[i] is 0xRRGGBB for a swatch row with a colour set and for a picker
+ * row of palette entry 0..15, else -1 (no chip: "Custom...", an unset swatch, every other row). */
+long lf_row_chip(const amconf_io *io, const mn_item *it)
+{
+    char hex[16];
+    uc_u32 rgb;
+    const sd_setting *s;
+    hex[0] = 0;
+    if (MN_IS_SETTING(it)) {
+        s = &sd_settings[it->ix];
+        if (s->kind != SD_COLOUR)
+            return -1;
+        lf_colour_current(io, s, 0, hex);
+    } else if (MN_IS_CHOICE(it) && SD_HAS_PICKER(&sd_settings[it->ix])) {
+        int v = atoi(it->seg);
+        if (v < 0 || v > 15)
+            return -1;
+        lf_palette_hex(io, v, hex);
+    } else
+        return -1;
+    return prefs_hex_parse(hex, &rgb) ? (long)rgb : -1;
+}
+
+void lf_setting_chips(const amconf_io *io, const mn_item *it, int n, long *out)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        out[i] = lf_row_chip(io, &it[i]);
+}

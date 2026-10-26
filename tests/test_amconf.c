@@ -548,6 +548,26 @@ static void test_lf_setting_colour_picker(void)
     lf_setting_labels(&io, it, 2);
     CHECK(strstr(it[0].label, "AA11BB") != 0);
     CHECK_STR(it[1].label, "Custom...");
+    /* M8: the drawn menu's chip colour per row (lf_row_chip), the text menu's hex in the label */
+    {
+        long chip[6];
+        memset(it, 0, sizeof it);
+        it[0].row = MN_ROW_SETTING; it[0].ix = SDI_FG;
+        it[1].row = MN_ROW_CHOICE; it[1].ix = SDI_PALETTE; strcpy(it[1].seg, "5");
+        it[2].row = MN_ROW_CHOICE; it[2].ix = SDI_FG; strcpy(it[2].seg, "1");
+        it[3].row = MN_ROW_CHOICE; it[3].ix = SDI_FG; strcpy(it[3].seg, "16");
+        it[4].row = MN_ROW_SETTING; it[4].ix = SDI_BLINK;
+        it[5].row = MN_ROW_SETTING; it[5].ix = SDI_PALETTE;
+        lf_setting_chips(&io, it, 6, chip);
+        CHECK_INT(chip[0], 0x010203L);                       /* a swatch row with its colour set */
+        CHECK_INT(chip[1], 0xAA11BBL);                       /* palette entry 5 as written */
+        CHECK_INT(chip[2], 0xCD0000L);                       /* an unset entry: xterm's built-in */
+        CHECK_INT(chip[3], -1L);                             /* Custom... has no chip */
+        CHECK_INT(chip[4], -1L);                             /* a cycle row has none */
+        CHECK_INT(chip[5], -1L);                             /* nor the palette row itself ("...") */
+        lf_setting_labels(&io, it, 1);
+        CHECK(strstr(it[0].label, "#010203") != 0);          /* text menu: the value as hex */
+    }
 }
 
 

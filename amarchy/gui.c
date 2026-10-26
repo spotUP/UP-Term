@@ -106,6 +106,7 @@ typedef struct gui {
     char node[KM_ID * 2], filter[KM_LABEL];
     mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
     int *idx, cap, count;
+    long *chip;                  /* per item of it: the 0xRRGGBB colour chip of a colour row, else -1 (lf_setting_rechip) */
     int sel, top;
     ix_watcher wt;               /* the scan this window watches; its status row is entry 0 while wt.row is set */
     int shift;                   /* 1 when entry 0 is the status row (never selectable), else 0 */
@@ -434,8 +435,21 @@ static void draw_row(gui *g, int e)
             t[KM_LABEL] = 0;
             strcat(t, " >");
             put(g, role, rbg, tx, y, q->m.row_h, t, (int)strlen(t), tw);
-        } else
+        } else {
+            long rgb = g->chip[it - g->it];
+            if (rgb >= 0) {                       /* a colour row: a filled chip at the right edge, label left of it */
+                int cs = q->m.row_h - 4, cx = tx + tw - cs, p = vr_pen_obtain(g->cm, (unsigned long)rgb);
+                if (p >= 0) {
+                    SetAPen(g->rp, (ULONG)g->pen[MT_TEXT]);
+                    RectFill(g->rp, cx - 1, y + 1, cx + cs, y + 2 + cs);        /* border in the text colour */
+                    SetAPen(g->rp, (ULONG)p);
+                    RectFill(g->rp, cx, y + 2, cx + cs - 1, y + 1 + cs);
+                    ReleasePen(g->cm, (ULONG)p);
+                }
+                tw -= cs + 4 + q->m.row_pad;
+            }
             put(g, role, rbg, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
+        }
         if (MN_IS_GROUP(it) && !minimal)
             put(g, role, rbg, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
     } else if (g->mode == M_INPUT) {
@@ -514,6 +528,7 @@ static void list_rebuild_keep(gui *g, const char *keep)
     int n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
     int pos;
     lf_setting_relabel(g->it, n);       /* a settings row shows its value */
+    lf_setting_rechip(g->it, n, g->chip);
     g->shift = g->wt.row[0] ? 1 : 0;
     g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
     pos = keep_setting >= 0 ? mn_pick_setting(g->it, g->idx, g->count - g->shift, keep_setting)
@@ -614,6 +629,8 @@ static int reload_index(gui *g)
 {
     free(g->it);
     free(g->idx);
+    free(g->chip);
+    g->chip = 0;
     g->it = 0;
     g->idx = 0;
     ix_free(&ixs);
@@ -623,6 +640,7 @@ static int reload_index(gui *g)
     gt_dos_load_rows(&ixs);
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
+    g->chip = malloc(g->cap * sizeof *g->chip);
     g->idx = malloc(g->cap * sizeof *g->idx);
     if (g->it && g->idx)
         return 1;
@@ -1180,6 +1198,7 @@ int main(int argc, char **argv)
     }
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
+    g->chip = malloc(g->cap * sizeof *g->chip);
     g->idx = malloc(g->cap * sizeof *g->idx);
     if (!g->it || !g->idx) {
         PutStr((STRPTR) "amarchy-gui: out of memory\n");
@@ -1255,6 +1274,7 @@ int main(int argc, char **argv)
         g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond);
         n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
         lf_setting_relabel(g->it, n);
+        lf_setting_rechip(g->it, n, g->chip);
         g->shift = g->wt.row[0] ? 1 : 0;
         g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
         g->sel = g->shift;
@@ -1294,6 +1314,7 @@ done:
     cleanup(g);
     free(g->it);
     free(g->idx);
+    free(g->chip);
     ix_free(&ixs);
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);
