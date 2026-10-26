@@ -673,7 +673,7 @@ static void key_list(gui *g, int k, int ch)
     int l = (int)strlen(g->filter);
     switch (k) {
     case K_ESC:
-        if (l) {
+        if (mn_back(0, g->filter, g->node) == MN_BACK_CLEAR_FILTER) {
             g->filter[0] = 0;
             list_rebuild(g);
         } else
@@ -699,10 +699,11 @@ static void key_list(gui *g, int k, int ch)
         set_sel(g, g->sel + g->g.visible);
         break;
     case K_BS:
-        if (l) {
+        if (mn_back(1, g->filter, g->node) == MN_BACK_DROP_CHAR) {
             g->filter[l - 1] = 0;
             list_rebuild(g);
-        }
+        } else
+            go_up(g);                       /* no filter: back, as Escape */
         break;
     case K_CHAR:
         if (l < (int)sizeof g->filter - 1) {

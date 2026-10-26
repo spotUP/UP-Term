@@ -970,6 +970,14 @@ static void menu_levels_follow_the_ids_and_escape_goes_up(void)
     CHECK_INT(mn_parent("apps", up, sizeof up), 1);
     CHECK_STR(up, "");
     CHECK_INT(mn_parent("", up, sizeof up), 0);    /* Esc at the root leaves the menu */
+    /* MENU-BACKSPACE: one rule for both menus */
+    CHECK_INT(mn_back(1, "ab", "apps"), MN_BACK_DROP_CHAR);
+    CHECK_INT(mn_back(1, "ab", ""), MN_BACK_DROP_CHAR);
+    CHECK_INT(mn_back(1, "", "apps.tools"), MN_BACK_UP);
+    CHECK_INT(mn_back(1, "", ""), MN_BACK_CLOSE);
+    CHECK_INT(mn_back(0, "ab", "apps"), MN_BACK_CLEAR_FILTER);
+    CHECK_INT(mn_back(0, "", "apps"), MN_BACK_UP);
+    CHECK_INT(mn_back(0, "", ""), MN_BACK_CLOSE);
 }
 
 /* AM-OSD O5: the commodity sizes the menu window from the keymap it holds, walking every level

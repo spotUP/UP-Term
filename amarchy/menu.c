@@ -205,9 +205,10 @@ static int menu_levels(const char *start)
             return rc;
         if (rc == 255) {                       /* Escape */
             char up[KM_ID * 2];
-            if (filter[0]) {
+            int act = mn_back(0, filter, node);
+            if (act == MN_BACK_CLEAR_FILTER) {
                 filter[0] = 0;
-            } else if (mn_parent(node, up, sizeof up)) {
+            } else if (act == MN_BACK_UP && mn_parent(node, up, sizeof up)) {
                 strcpy(node, up);
             } else
                 return 0;
@@ -219,8 +220,14 @@ static int menu_levels(const char *start)
         if (i) {                               /* a typed key: grow or shorten the filter */
             int l = (int)strlen(filter);
             if (i == 8 || i == 127) {
-                if (l)
+                int act = mn_back(1, filter, node);
+                char up[KM_ID * 2];
+                if (act == MN_BACK_DROP_CHAR)
                     filter[l - 1] = 0;
+                else if (act == MN_BACK_UP && mn_parent(node, up, sizeof up))
+                    strcpy(node, up);
+                else
+                    return 0;               /* root, no filter: closes as Escape */
             } else if (l < (int)sizeof filter - 1) {
                 filter[l] = (char)i;
                 filter[l + 1] = 0;

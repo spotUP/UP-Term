@@ -42,6 +42,13 @@ int mn_pick(const mn_item *items, const int *idx, int c, const char *label)
     return -1;
 }
 
+int mn_back(int bs, const char *filter, const char *node)
+{
+    if (filter[0])
+        return bs ? MN_BACK_DROP_CHAR : MN_BACK_CLEAR_FILTER;
+    return node[0] ? MN_BACK_UP : MN_BACK_CLOSE;
+}
+
 int mn_parent(const char *node, char *out, int n)
 {
     const char *dot = strrchr(node, '.');

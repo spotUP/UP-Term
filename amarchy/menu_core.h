@@ -62,6 +62,11 @@ int mn_pick(const mn_item *items, const int *idx, int c, const char *label);
 /* The node one level up ("apps.tools" -> "apps", "apps" -> ""). 0 at the root: Esc there leaves
  * the menu; otherwise 1 and out holds the parent. */
 int mn_parent(const char *node, char *out, int n);
+/* What Escape and Backspace do in both Amarchy menus (gui.c and menu.c). Escape with a filter clears it,
+ * Backspace with a filter drops its last character; with no filter both go up one level, and at the root
+ * (node empty) both close the menu. bs is 1 for Backspace, 0 for Escape. */
+enum { MN_BACK_CLEAR_FILTER, MN_BACK_DROP_CHAR, MN_BACK_UP, MN_BACK_CLOSE };
+int mn_back(int bs, const char *filter, const char *node);
 /* The node an item opens (groups only): node + "." + seg. */
 void mn_child_node(const char *node, const mn_item *it, char *out, int n);
 
