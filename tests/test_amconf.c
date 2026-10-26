@@ -118,6 +118,28 @@ static void test_amconf_style(void)
 
 /* T12: the Prefs "Menu theme" row reaches the saved key through the fields: to_fields shows the saved name, from_fields
  * stores the typed one, an emptied row falls back to the default theme */
+/* The Amarchy font row's chooser result (ASL name + size, a TrueType face included) reaches the spec
+ * amarchy-gui's mt_open parses: compose -> field -> amconf file -> parse gives the same name and size. */
+static void test_amconf_ttf_font_roundtrip(void)
+{
+    am_prefs p, q;
+    prefs_fields f;
+    char buf[1024], name[64];
+    long size = 0;
+    long n;
+    memset(&f, 0, sizeof f);
+    amconf_defaults(&p);
+    CHECK_INT(prefs_font_compose("DejaVuSansMono.font", 14, f.am_font, sizeof f.am_font), 1);
+    CHECK_STR(f.am_font, "DejaVuSansMono:14");
+    amconf_from_fields(&p, &f);
+    n = amconf_serialize(&p, buf, sizeof buf);
+    CHECK(strstr(buf, "amarchy-menu-font = DejaVuSansMono:14") != 0);
+    amconf_parse(buf, n, &q);
+    CHECK_INT(prefs_font_parse(q.val[AM_FONT], name, sizeof name, &size), 1);
+    CHECK_STR(name, "DejaVuSansMono.font"); /* what vo_ttf_spec cuts to FONTS:DejaVuSansMono.otag */
+    CHECK_INT((int)size, 14);
+}
+
 static void test_amconf_gtheme_fields(void)
 {
     am_prefs p;
@@ -361,6 +383,7 @@ void suite_amconf(void)
     test_amconf_legacy();
     test_amconf_style();
     test_amconf_gtheme_fields();
+    test_amconf_ttf_font_roundtrip();
     test_amconf_index_keys();
     test_prefs_strip_legacy_amarchy();
     prefs_amarchy_page_edit_reaches_amarchy_prefs();
