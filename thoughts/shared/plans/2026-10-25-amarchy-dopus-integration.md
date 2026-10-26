@@ -185,9 +185,9 @@ unverified until then. 25 items.
 - [ ] D7 UP-Term row `dopus.shell` opens on the user's screen. Test: rig case with DOpus on its own screen: window is on `DOPUS.1`. (code and rig row written in 1c002e70, rig NOT run: row dopus_present, needs a rig with Directory Opus 5 running; the add-on D8/D9 is not built)
 
 ### Phase P2: add-on
-- [ ] D8 `dist/packages.txt` row, `dist/addons/dopus/` drawer, pinned archive and md5, `COPYING`, `SOURCE.txt`, `LICENSES.txt` paragraph. Test: host `tests/test_dist_addons.py` (names and licence files present).
+- [x] D8 `dist/packages.txt` row, `dist/addons/dopus/` drawer, pinned archive and md5, `COPYING`, `SOURCE.txt`, `LICENSES.txt` paragraph. Test: host `tests/test_dist_addons.py` (names and licence files present). (37895055, test DopusAddOn.test_both_68k_archives_are_pinned_licensed_and_chosen_by_cpu in tests/test_dist_addons.py; md5 pins are in dist/addons/dopus/archives.txt, not the packages.txt row, whose columns are fixed. `make dist-dopus` NOT built: archives must be placed in vendor/dopus5-5.104/; install.dos Installer call NOT rig-tested, see D9)
 - [ ] D9 Installer page tick and run. Test: rig install of the add-on with every option ticked (rig rule), then `dopus version`.
-- [ ] D10 CPU choice: both 68k archives present and the Installer script picks by `database "cpu"`. Test: host test that both archive names and md5s are in the row, and that the script text names both with the CPU branch; rig: a 68000 rig (`rig.py start` without `--max`, if the rig supports it) gets the 68000 archive, an 060 rig the os3 one (`Version DOpus5:DOpus5` and the archive's md5).
+- [ ] D10 CPU choice: both 68k archives present and the Installer script picks by `database "cpu"`. Test: host test that both archive names and md5s are in the row, and that the script text names both with the CPU branch; rig: a 68000 rig (`rig.py start` without `--max`, if the rig supports it) gets the 68000 archive, an 060 rig the os3 one (`Version DOpus5:DOpus5` and the archive's md5). (host half done in 37895055, same test; rig half OPEN: 68000 vs 060 rig run not done, so box stays unticked)
 
 ### Phase P3: shell and viewer
 - [ ] D11 Filetype generator and file (`FORM OPUS`). Test: upstream `filetype_tool.py check` round trip and `lint` clean; host golden of the bytes.
@@ -195,7 +195,7 @@ unverified until then. 25 items.
 - [ ] D13 Double-click on a text file opens an UP-Term window on the user's screen. Test: rig case, screen name asserted; A1200 eye check (owner).
 
 ### Phase P4: theme
-- [ ] D14 `menu_theme_roles_fb` output formatted for DOpus. Test: host `tests/test_main.c` (five triples equal the role colours).
+- [ ] D14 `menu_theme_roles_fb` output formatted for DOpus. Test: host `tests/test_main.c` (five triples equal the role colours). (SKIPPED: DOpus argument syntax undefined, question in scratchpad dopus-pkg-questions.md)
 - [ ] D15 `dopus.theme` and restore rows; auto-revert. Test: rig case: pens read back with `dopus pens` equal the roles, then equal the saved set after restore.
 
 ### Phase P5: module
