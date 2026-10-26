@@ -1032,6 +1032,14 @@ static void style_theme_lists_the_gui_theme_rows(void)
     CHECK_INT(it[0].row, MN_ROW_INDEX);
     CHECK_STR(x.rows[it[0].ix].path, "gtheme:nord");
     CHECK_STR(x.rows[it[1].ix].path, "gtheme:solo");
+    {   /* AM-GTHEME-ICON-REQ: the drawn menu asks ix_icon_path for the row's .info; "gtheme:nord" is no file and
+         * DOS answered it with the requester "Please insert volume gtheme:" */
+        char ip[IX_PATH];
+        CHECK_INT(ix_icon_path(&x, &it[0], ip, sizeof ip), 0);
+        CHECK_STR(ip, "");
+        CHECK_INT(ix_launch_path(&x, &it[0], ip, sizeof ip), 1);     /* launching is unchanged */
+        CHECK_STR(ip, "gtheme:nord");
+    }
     CHECK_INT(x.rows[it[1].ix].kind, IX_KIND_GTHEME);
     c = ix_level_t(&km, &x, "style", "", it, MN_MAX_ITEMS, 0);
     CHECK_INT(c, 2);                                 /* Amarchy theme (the GUI themes) and the Terminal group */
@@ -2883,6 +2891,16 @@ static void an_index_row_launches_its_tool_path_and_a_rescan_row_ships_in_the_ap
     CHECK(clock >= 0);
     CHECK_INT(ix_launch_path(&x, &it[clock], path, sizeof path), 1);
     CHECK_STR(path, "Sys:Tools/Clock");                /* the tool, no .info */
+    CHECK_INT(ix_icon_path(&x, &it[clock], path, sizeof path), 1);   /* an app row is a file: its icon path */
+    CHECK_STR(path, "Sys:Tools/Clock");
+    {   /* a clip row is no file either (AM-GTHEME-ICON-REQ) */
+        const char *cl[1] = { "copied" };
+        mn_item ci[4];
+        CHECK_INT(ix_add_clips(&x, cl, 1), 1);
+        CHECK_INT(ix_level(&km, &x, IX_CLIPS_NODE, "", ci, 4), 1);
+        CHECK_INT(ix_icon_path(&x, &ci[0], path, sizeof path), 0);
+        CHECK_INT(ix_launch_path(&x, &ci[0], path, sizeof path), 1);
+    }
     {
         mn_item top[TEST_LEVEL_MAX];
         ix_level(&km, &x, "apps", "", top, TEST_LEVEL_MAX);

@@ -362,7 +362,7 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
         /* an app or game of the index: its own .info image when the upconf asks for them and one can be
          * had; else the generic glyph of the level the row is shown in ("apps" when that level has none) */
         char path[IX_PATH];
-        if (app_icons == UC_ICONS_AMIGA && ix_launch_path(&ixs, it, path, sizeof path) &&
+        if (app_icons == UC_ICONS_AMIGA && ix_icon_path(&ixs, it, path, sizeof path) &&
             ig_draw(g->rp, path, x, y + (boxh - sh) / 2, s, sh))
             return;
     }

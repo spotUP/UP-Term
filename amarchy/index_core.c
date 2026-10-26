@@ -639,6 +639,17 @@ int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n)
     return 1;
 }
 
+int ix_icon_path(const ix_index *x, const mn_item *it, char *out, int n)
+{
+    if (!ix_launch_path(x, it, out, n))
+        return 0;
+    if (x->rows[it->ix].kind < 0 || x->rows[it->ix].kind >= IX_NKINDS) {
+        out[0] = 0;
+        return 0;
+    }
+    return 1;
+}
+
 int ix_same_handler_task(const void *vol_task, const void *dev_task)
 {
     return vol_task != 0 && vol_task == dev_task;
