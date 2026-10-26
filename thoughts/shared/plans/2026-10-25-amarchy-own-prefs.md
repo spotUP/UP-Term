@@ -221,26 +221,26 @@ expectations. The peer docs session (vtcon-05) owns dist/README.txt wording; thi
 ## Phases and checklist
 
 Phase C, core (host):
-- [ ] C1 `amconf_core` key table and parse with defaults. Test: test_amconf_parse_defaults.
-- [ ] C2 Serialize: default value absent, non-default written, round trip. Test: test_amconf_roundtrip.
-- [ ] C3 Legacy read from the UP-Term `[profile default]` section. Test: test_amconf_legacy.
-- [ ] C4 Migration decision function (absent, both exist, empty legacy). Test: test_amconf_migrate_rule.
-- [ ] C5 `prefs_install_target_at` with path sets; `prefs_install_target` wraps it. Test: install_env_fallthrough (both sets).
-- [ ] C6 `prefs_dos_dir` takes a path set. Test: test_prefs_dos_dir_amarchy.
-- [ ] C7 `amconf_dos` load chain ENV, ENVARC, legacy ENV, legacy ENVARC. Test: test_amconf_load_chain (memfs).
-- [ ] C8 Makefile host test binary links amconf_core. Test: make test-host.
+- [x] C1 `amconf_core` key table and parse with defaults. Test: test_amconf_parse_defaults. Commit 4c48a1a2.
+- [x] C2 Serialize: default value absent, non-default written, round trip. Test: test_amconf_roundtrip. Commit 4c48a1a2.
+- [x] C3 Legacy read from the UP-Term `[profile default]` section. Test: test_amconf_legacy. Commit 4c48a1a2.
+- [x] C4 Migration decision function (absent, both exist, empty legacy). Test: test_amconf_migrate_rule. Commit 4c48a1a2.
+- [x] C5 `prefs_install_target_at` with path sets; `prefs_install_target` wraps it. Test: install_env_fallthrough (both sets). Commit 4c48a1a2.
+- [x] C6 `prefs_dos_dir` takes a path set. Test: test_prefs_dos_dir_amarchy. Commit 4c48a1a2.
+- [x] C7 `amconf_dos` load chain ENV, ENVARC, legacy ENV, legacy ENVARC. Test: test_amconf_load_chain (memfs). Commit 4c48a1a2.
+- [x] C8 Makefile host test binary links amconf_core. Test: make test-host. Commit 4c48a1a2.
 
 Phase R, readers:
-- [ ] R1 Commodity style_load uses amconf_load. Test: test_amconf_style (host) plus G2.
-- [ ] R2 amarchy-gui drawers, app icons, menu font via amconf_load; theme read stays. Test: G3.
-- [ ] R3 amarchy-index skip/volumes via amconf_load. Test: test_amconf_index_keys.
-- [ ] R4 notify_paths watch ENV/ENVARC:Amarchy/prefs instead of up-term. Test: G2.
-- [ ] R5 Makefile links amconf into amarchy, amarchy-gui, amarchy-index (vbcc). Test: make amiga build.
+- [ ] R1 Commodity style_load uses amconf_load. Test: test_amconf_style (host) plus G2. Commit 4c48a1a2. (G2 rig half open)
+- [ ] R2 amarchy-gui drawers, app icons, menu font via amconf_load; theme read stays. Test: G3. Commit 4c48a1a2. (G3 rig half open)
+- [x] R3 amarchy-index skip/volumes via amconf_load. Test: test_amconf_index_keys. Commit 4c48a1a2.
+- [ ] R4 notify_paths watch ENV/ENVARC:Amarchy/prefs instead of up-term. Test: G2. Commit 4c48a1a2. (G2 rig half open)
+- [x] R5 Makefile links amconf into amarchy, amarchy-gui, amarchy-index (vbcc). Test: make amiga build. Commit 4c48a1a2.
 
 Phase M, migration:
-- [ ] M1 Commodity startup migration before first load. Test: G4.
-- [ ] M2 Idempotence: second start no write; both-exist keeps new file. Test: test_amconf_migrate_idempotent.
-- [ ] M3 UP-Term Prefs Save strips legacy keys over `am_keys[]`. Test: test_prefs_strip_legacy_amarchy.
+- [ ] M1 Commodity startup migration before first load. Test: G4. Commit 4c48a1a2. (G4 rig half open)
+- [x] M2 Idempotence: second start no write; both-exist keeps new file. Test: test_amconf_migrate_idempotent. Commit 4c48a1a2.
+- [ ] M3 UP-Term Prefs Save strips legacy keys over `am_keys[]`. Test: test_prefs_strip_legacy_amarchy. Commit 4c48a1a2. (function amconf_strip_legacy and test done; NOT wired into prefs_stage: UP-Term Prefs would lose its Amarchy page edits until phase X moves them. Open.)
 
 Phase U, window:
 - [ ] U1 `pg_table` parameter for pl_layout/pl_hit/pg_find/pg_for_key; old names wrap. Test: existing test_prefs layout cases unchanged.
