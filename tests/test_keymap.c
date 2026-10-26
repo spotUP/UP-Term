@@ -2976,8 +2976,9 @@ static void the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and
     long len = slurp("dist/keymap", buf, sizeof(buf));
     CHECK(len > 0 && keymap_parse(&km, buf, len));
     check_row("settings.amarchy.rescan", KA_SCAN, "amarchy-index");
-    check_row("settings.amarchy.preferences", KA_RUN, "C:UP-Term-Prefs AMARCHY");
-    check_row("settings.amarchy.font", KA_RUN, "C:UP-Term-Prefs AMARCHY");
+    /* run: opened an UP-Term window beside the Prefs window (A1200 2026-10-26) */
+    check_row("settings.amarchy.preferences", KA_DETACH, "C:UP-Term-Prefs AMARCHY");
+    check_row("settings.amarchy.font", KA_DETACH, "C:UP-Term-Prefs AMARCHY");
     check_row("settings.amarchy.edit", KA_RUN, "nvim ENV:up-term/keymap");
     CHECK(shipped_row("apps.rescan") == 0);
     ix_load_text(&km, &x, "app\tClock\tSys:Tools/Clock\napp\tPalette\tSystem:Prefs/Palette\n");
