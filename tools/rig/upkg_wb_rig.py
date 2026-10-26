@@ -12,6 +12,12 @@ window. Steps, each verdict printed as [OK] / [FAIL] and appended to <out>/repor
      the Workbench-started process). The wait is bounded (--install-secs): a hang ends as a [FAIL] naming it.
   4  stock `upkg list` from a Shell still returns 0 with at least one line.
   5  stack: the host binary's `$STACK: N` cookie and the stack of the icon used (do_StackSize of the .info).
+  --wbcd   the exit test instead of steps 3-5 (needs the rig started with `--mmu` and `rig.py muforce on`): the icon
+           start, the window closed through its close gadget, then: zero new MuForce hits, no new CPU reset in the
+           FS-UAE log, the machine answers. Without the ixemul fix every Workbench-started ixemul program UnLocks
+           the launcher's wa_Lock a second time at exit (DOS frees pr_CurrentDir): MuForce shows 4 hits, a rig
+           without an MMU resets. IXEMUL=<path> puts that ixemul.library in LIBS: first (the kit's is restored by
+           the caller); the run FAILS with the kit 80.1 library and PASSES with the fix (ixemul fix/wb-currentdir).
 Exit status is non-zero on any FAIL.
 
 Needs the rig up with `UPTERM_RIG=<n> python3 tools/rig/rig.py start --os 32 --max` and UPTERM_RIG set (an unset
@@ -20,6 +26,7 @@ drawer (Packages, Packages.gz, .ipk files: make dist-ipk). The rig is left runni
 
   UPTERM_RIG=8 python3 tools/rig/upkg_wb_rig.py [--upkg PATH] [--feed DIR] [--icon FILE.info] [--out DIR]
                                                 [--install-secs N]
+  UPTERM_RIG=8 IXEMUL=<ixemul.library> python3 tools/rig/upkg_wb_rig.py --wbcd
 """
 import os, re, struct, sys
 
@@ -128,6 +135,7 @@ def main(argv):
     ap.add_argument('--icon', help='host .info file for the upkg icon (default: the rig\'s %s, a stand-in)' % STOCK_ICON)
     ap.add_argument('--out', default=str(paths.RIG / 'upkg-wb'))
     ap.add_argument('--install-secs', type=int, default=120, help='how long Install may take before the run calls it a hang')
+    ap.add_argument('--wbcd', action='store_true', help='the exit test: zero MuForce hits, no CPU reset (see the header)')
     a = ap.parse_args(argv)
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -146,6 +154,9 @@ def main(argv):
             ami.put(a.icon, 'RAM:upkg-icon.info')
             icon_remote, icon_note = 'RAM:upkg-icon.info', a.icon
         setup(upkg, feed, icon_remote)
+
+        if a.wbcd:
+            return wbcd(a)
 
         # step 1: the feed works from a Shell
         rc, o = shell_upkg('update')
@@ -194,6 +205,40 @@ def main(argv):
             verdict(True, 'step 3: Install of %s reached UP-Term:pkg/upkg/status' % first)
 
         return finish_after(upkg, icon_remote, icon_note)
+
+
+def wbcd(a):
+    """Workbench start and exit of an ixemul program under MuForce: no new hit, no CPU reset, machine answers."""
+    import muforce
+    if not muforce.running():
+        return verdict(False, 'wbcd: MuForce is running (rig started --mmu, `rig.py muforce on`)') and 0 or finish()
+    lib = os.environ.get('IXEMUL')
+    if lib:
+        ami.put(lib, 'LIBS:ixemul.library')
+        for _ in range(2):
+            ir.run('Avail FLUSH')
+    print('[INFO] wbcd: ixemul.library in LIBS: %s' % (lib or 'as installed'))
+    hits0 = len(muforce.parse_hits(muforce.drawer().joinpath(muforce.LOG).read_text(encoding='latin-1')
+                                   if muforce.drawer().joinpath(muforce.LOG).is_file() else ''))
+    crash0 = paths.fsuae_crash()
+    ir.run('Run >NIL: RAM:wbrun RAM:U/upkg', 30)
+    m = wait_for(lambda: SENTINEL.search(read(LOG)), 90)
+    if not verdict(bool(m), 'wbcd: the icon start opened the window (sentinel in %s)' % LOG):
+        return finish()
+    try:
+        ami.main(['gclick', WINDOW, 'sys:close'])
+    except SystemExit as e:
+        verdict(False, 'wbcd: close gadget of "%s" clicked' % WINDOW, str(e))
+        return finish()
+    time.sleep(20)
+    rc, o = ir.run('Echo ok', 30)
+    verdict('ok' in o, 'wbcd: the machine answers after the window closed')
+    f = muforce.drawer() / muforce.LOG
+    new = muforce.parse_hits(f.read_text(encoding='latin-1') if f.is_file() else '')[hits0:]
+    verdict(not new, 'wbcd: zero new MuForce hits after the window closed',
+            '%d new: %s' % (len(new), muforce.summary(new).replace('\n', ' | ')) if new else '')
+    verdict(paths.fsuae_crash() == crash0, 'wbcd: no new CPU reset in the FS-UAE log')
+    return finish()
 
 
 def finish_after(upkg, icon_remote, icon_note):
