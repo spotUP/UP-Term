@@ -73,8 +73,11 @@ class Manifest(unittest.TestCase):
             self.assertIn(b'Execute UP-Term:bin/' + n.encode() + b' "%s"', data)
             s = (ROOT / "dist" / n).read_text()
             self.assertIn(".KEY FILE/A", s)
-            self.assertIn("SetEnv UPTLAUNCHCMD " + mode + "\n", s)
-            self.assertIn('SetEnv UPTLAUNCHFILE "{FILE}"', s)
+            # a local variable per launch: a global SetEnv is one slot, and two launches back to back (two files
+            # double-clicked in Opus) gave both windows the second file (measured on rig 3, 2026-10-26)
+            self.assertIn("\nSet UPTLAUNCHCMD " + mode + "\n", s)
+            self.assertIn('\nSet UPTLAUNCHFILE "{FILE}"\n', s)
+            self.assertNotIn("SetEnv UPTLAUNCH", s)
             self.assertIn('NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-start', s)
         start = (ROOT / "dist/uterm-start").read_text()
         self.assertIn("UP-Term:bin/vsh UP-Term:bin/uterm-open", start)

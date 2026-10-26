@@ -4,8 +4,10 @@
 ; uterm-view FILE -- an UP-Term window on the screen in front, running the pager (less) on FILE. What the Directory
 ; Opus filetype runs on a User1 button (tools/gen_dopus_filetype.py): Run >NIL: Execute UP-Term:bin/uterm-view "%s".
 ; Opus has no console, so the window comes from NewShell ... FROM (the way the quick-launch icons and the Amarchy
-; menu open one); the file and the mode go to the shell the window runs as global variables (vsh reads ENV:).
-SetEnv UPTLAUNCHCMD view
-SetEnv UPTLAUNCHFILE "{FILE}"
+; menu open one); the file and the mode go to the window's shell as local variables of this process (Set, not SetEnv: a global
+; variable is one slot, so two launches back to back would give both windows the second file; NewShell hands the
+; launcher's local variables to the new CLI and vsh takes them in as exported shell variables).
+Set UPTLAUNCHCMD view
+Set UPTLAUNCHFILE "{FILE}"
 ; FRONT puts the window on the screen in front (handler/winspec.c); uterm-start ends it with EndCLI
 NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-start
