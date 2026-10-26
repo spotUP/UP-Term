@@ -118,6 +118,16 @@ int upactive_terminal_present(int self_in_mru)
     return tp != 0;
 }
 
+/* The Workbench ARexx port exists on OS 3.2 only, and not where Directory Opus replaces Workbench (the Workbench group needs it). */
+int upactive_workbench_present(void)
+{
+    struct MsgPort *p;
+    Forbid();
+    p = FindPort((STRPTR)"WORKBENCH");
+    Permit();
+    return p != 0;
+}
+
 /* Directory Opus runs when its first ARexx port exists (the Amarchy DOpus group needs it). */
 int upactive_dopus_present(void)
 {

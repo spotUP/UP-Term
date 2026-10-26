@@ -30,14 +30,15 @@ int mn_match(const char *label, const char *filter);
  * opened over an UP-Term window (TERM-ROWS-ONLY-OVER-TERMINAL). The one decision both menus use. */
 int mn_kind_needs_terminal(int kind);
 /* Conditions a menu is drawn under (`cond`, a bit set): a terminal window is present, a Directory Opus port
- * is present. A row that needs one is shown only when its bit is set; MN_COND_ALL shows everything, which
+ * is present, the WORKBENCH ARexx port is present (OS 3.2 only). A row that needs one is shown only when its bit is set; MN_COND_ALL shows everything, which
  * mn_children does. The callers probe once at open: mn_cond(upactive_terminal_present(..),
- * upactive_dopus_present()). */
+ * upactive_dopus_present(), upactive_workbench_present()). */
 #define MN_COND_TERM 1
 #define MN_COND_DOPUS 2
-#define MN_COND_ALL (MN_COND_TERM | MN_COND_DOPUS)
-int mn_cond(int term, int dopus);
-/* the bits a [menu] row needs: MN_COND_DOPUS for every id under the `dopus` group, MN_COND_TERM for the
+#define MN_COND_WB 4
+#define MN_COND_ALL (MN_COND_TERM | MN_COND_DOPUS | MN_COND_WB)
+int mn_cond(int term, int dopus, int workbench);
+/* the bits a [menu] row needs: MN_COND_DOPUS for every id under the `dopus` group, MN_COND_WB under `workbench`, MN_COND_TERM for the
  * terminal kinds (tab:, menuid:, slash:) */
 int mn_row_needs(int kind, const char *id);
 /* 1 when a row of action kind `kind` is shown, given term = a terminal window is present. */

@@ -306,7 +306,7 @@ static int word_in(const char *hay, const char *word)
 
 static void the_shipped_keymap_loads_whole(void)
 {
-    static char file[16384], ids[16384];
+    static char file[32768], ids[32768];
     long n = slurp("dist/keymap", file, sizeof(file));
     long m = slurp("handler/menu_ids.h", ids, sizeof(ids));
     int i, scoped_menu = 0;
@@ -493,7 +493,7 @@ static int comm_is(const char *key, long id, const char *want)
 
 static void the_shipped_file_resolves_and_derives_menu_keys(void)
 {
-    char buf[16384];
+    char buf[32768];
     long n = slurp("dist/keymap", buf, sizeof(buf));
     int i;
     CHECK(n > 0 && keymap_parse(&km, buf, n));
@@ -605,9 +605,106 @@ static void the_window_group_rows_and_hotkeys(void)
     }
 }
 
+static void the_screens_group_rows_and_hotkeys(void)
+{
+    check_row("screens.next", KA_WIN, "screen next");
+    check_row("screens.previous", KA_WIN, "screen prev");
+    check_row("screens.workbench", KA_WIN, "screen workbench");
+    check_row("screens.back", KA_WIN, "screen back");
+    check_row("screens.titlebar", KA_WIN, "title toggle");
+    check_row("screens.own", KA_SLASH, "/screen own");
+    {   /* the 3 Screens hotkeys (plan 3): super+tab, super+shift+tab, super+alt+b */
+        static const struct { unsigned qual; unsigned code; const char *arg; } hk[] = {
+            { KM_Q_SUPER, 0x42, "screen next" },
+            { KM_Q_SUPER|KM_Q_SHIFT, 0x42, "screen prev" },
+            { KM_Q_SUPER|KM_Q_ALT, 0x35, "title toggle" },
+        };
+        unsigned i;
+        for (i = 0; i < sizeof hk / sizeof hk[0]; i++) {
+            const km_bind *b = keymap_find(&km, hk[i].qual, hk[i].code);
+            CHECK(b != 0);
+            if (b) {
+                CHECK_INT(b->kind, KA_WIN);
+                CHECK(!strcmp(b->arg, hk[i].arg));
+            }
+        }
+    }
+}
+
+/* B1: the 43 Workbench rows (plan 2.2), each the exact WORKBENCH port command; Delete and Empty Trash are menu only. */
+static void the_workbench_group_rows(void)
+{
+    static const struct { const char *id; const char *item; int root; } wb[] = {
+        { "workbench.backdrop", "WORKBENCH.BACKDROP", 1 },
+        { "workbench.execute", "WORKBENCH.EXECUTE", 1 },
+        { "workbench.redrawall", "WORKBENCH.REDRAWALL", 1 },
+        { "workbench.updateall", "WORKBENCH.UPDATEALL", 1 },
+        { "workbench.lastmessage", "WORKBENCH.LASTMESSAGE", 1 },
+        { "workbench.about", "WORKBENCH.ABOUT", 1 },
+        { "workbench.reset", "TOOLS.RESETWB", 1 },
+        { "workbench.autoarrange", "TOOLS.AUTO-ARRANGEICONS", 1 },
+        { "workbench.help", "TOOLS.HELP", 1 },
+        { "workbench.openparent", "WINDOW.OPENPARENT", 0 },
+        { "workbench.newdrawer", "WINDOW.NEWDRAWER", 0 },
+        { "workbench.closewindow", "WINDOW.CLOSE", 0 },
+        { "workbench.updatewindow", "WINDOW.UPDATE", 0 },
+        { "workbench.selectcontents", "WINDOW.SELECTCONTENTS", 0 },
+        { "workbench.clearselection", "WINDOW.CLEARSELECTION", 0 },
+        { "workbench.resizetofit", "WINDOW.RESIZETOFIT", 0 },
+        { "workbench.cleanupcolumn", "WINDOW.CLEANUPBY.COLUMN", 0 },
+        { "workbench.cleanupname", "WINDOW.CLEANUPBY.NAME", 0 },
+        { "workbench.cleanupdate", "WINDOW.CLEANUPBY.DATE", 0 },
+        { "workbench.cleanupsize", "WINDOW.CLEANUPBY.SIZE", 0 },
+        { "workbench.cleanuptype", "WINDOW.CLEANUPBY.TYPE", 0 },
+        { "workbench.snapshotwindow", "WINDOW.SNAPSHOT.WINDOW", 0 },
+        { "workbench.snapshotall", "WINDOW.SNAPSHOT.ALL", 0 },
+        { "workbench.showicons", "WINDOW.SHOW.ONLYICONS", 0 },
+        { "workbench.showall", "WINDOW.SHOW.ALLFILES", 0 },
+        { "workbench.viewicon", "WINDOW.VIEWBY.ICON", 0 },
+        { "workbench.viewname", "WINDOW.VIEWBY.NAME", 0 },
+        { "workbench.viewdate", "WINDOW.VIEWBY.DATE", 0 },
+        { "workbench.viewsize", "WINDOW.VIEWBY.SIZE", 0 },
+        { "workbench.viewtype", "WINDOW.VIEWBY.TYPE", 0 },
+        { "workbench.sortforward", "WINDOW.SORTORDER.FORWARD", 0 },
+        { "workbench.sortreverse", "WINDOW.SORTORDER.REVERSE", 0 },
+        { "workbench.find", "WINDOW.FIND...", 0 },
+        { "workbench.iconopen", "ICONS.OPEN", 0 },
+        { "workbench.iconcopy", "ICONS.COPY", 0 },
+        { "workbench.iconrename", "ICONS.RENAME", 0 },
+        { "workbench.iconinfo", "ICONS.INFORMATION", 0 },
+        { "workbench.iconsnapshot", "ICONS.SNAPSHOT", 0 },
+        { "workbench.iconunsnapshot", "ICONS.UNSNAPSHOT", 0 },
+        { "workbench.iconleaveout", "ICONS.LEAVEOUT", 0 },
+        { "workbench.iconputaway", "ICONS.PUTAWAY", 0 },
+        { "workbench.delete", "ICONS.DELETE", 0 },
+        { "workbench.emptytrash", "ICONS.EMPTYTRASH", 0 },
+    };
+    unsigned i;
+    char want[96];
+    CHECK_INT((int)(sizeof wb / sizeof wb[0]), 43);
+    for (i = 0; i < sizeof wb / sizeof wb[0]; i++) {
+        strcpy(want, "address WORKBENCH 'MENU WINDOW ");
+        strcat(want, wb[i].root ? "ROOT" : "ACTIVE");
+        strcat(want, " INVOKE ");
+        strcat(want, wb[i].item);
+        strcat(want, "'");
+        check_row(wb[i].id, KA_REXX, want);
+        CHECK(strlen(want) <= 79);
+    }
+    {   /* no row of the group is a hotkey, and every row of the group is in the table above */
+        int j, n = 0;
+        for (j = 0; j < km.nmenu; j++)
+            if (!strncmp(km.menu[j].id, "workbench.", 10))
+                n++;
+        CHECK_INT(n, 43);
+        for (j = 0; j < km.nbind; j++)
+            CHECK(!strstr(km.bind[j].arg, "WORKBENCH"));
+    }
+}
+
 static void the_shipped_menu_has_learn_system_and_install_groups(void)
 {
-    static char buf[16384];
+    static char buf[32768];
     long n = slurp("dist/keymap", buf, sizeof(buf));
     CHECK(n > 0 && keymap_parse(&km, buf, n));
     CHECK(root_has_group("Learn", 1) && root_has_group("System", 1) && root_has_group("Install", 1));
@@ -768,7 +865,7 @@ static void other_menu_actions(void)
 
 static void cx_descriptions_and_qualifier_mask(void)
 {
-    char buf[16384];
+    char buf[32768];
     cx_ixspec_t x;
     const km_bind *b;
     long n;
@@ -814,7 +911,7 @@ static void cx_descriptions_and_qualifier_mask(void)
 
 static void cx_installs_only_the_commodity_rows(void)
 {
-    char buf[16384];
+    char buf[32768];
     long n = slurp("dist/keymap", buf, sizeof(buf));
     int i, term = 0, comm = 0;
     CHECK(n > 0 && keymap_parse(&km, buf, n));
@@ -889,7 +986,7 @@ static int has_label(const mn_item *it, int n, const char *label)
 
 static void terminal_rows_show_only_over_a_terminal(void)
 {
-    static char file[16384];
+    static char file[32768];
     mn_item it[MN_MAX_ITEMS];
     long n = slurp("dist/keymap", file, sizeof(file));
     int c;
@@ -1007,12 +1104,12 @@ static void osd_size_counts_the_reachable_levels(void)
      * (9 entries in the root, 4 in apps; the tallest level is Window, and the widest label is the Dopus group's
      * "Configure lister display format" (31 columns + 2 + 2 pads)) */
     {
-        static char file[16384];
+        static char file[32768];
         long n = slurp("dist/keymap", file, sizeof(file));
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
         CHECK_INT(cols, 31 + 2 + 2 * MN_OSD_PAD);       /* "Configure lister display format" in Dopus */
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 25); /* the tallest level is Window: 23 rows + the 2 terminal rows */
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 43); /* the tallest level is Workbench: its 43 rows */
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
         CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 4);
@@ -1112,7 +1209,7 @@ static int fixed_width(const char *s, void *ctx)
 
 static void drawn_menu_geometry_follows_the_font_and_screen(void)
 {
-    static char file[16384];
+    static char file[32768];
     mg_font topaz = { 8, 8 }, pro = { 16, 8 };
     mg_screen pal = { 640, 256, 22, 44, 0 }, narrow = { 320, 256, 22, 44, 0 }, sq = { 640, 512, 22, 22, 0 };
     int px8 = 8, px16 = 16, w;
@@ -1168,7 +1265,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 9);   /* with the Trigger, Settings and Dopus groups (all shown) */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 11);   /* with the Trigger, Settings, Dopus, Workbench and Screens groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 4);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -1298,7 +1395,7 @@ static void icons_are_not_upscaled_from_16px(void)
  * the compiled page, and the page is a valid emoji page; a missing one fails here */
 static void every_shipped_menu_node_has_an_icon_image(void)
 {
-    static char file[16384];
+    static char file[32768];
     long n = slurp("dist/keymap", file, sizeof(file));
     long plen = 0;
     const vt_u8 *page = mi_page(&plen);
@@ -1359,7 +1456,7 @@ static void every_shipped_menu_node_has_an_icon_image(void)
  * count is read from the file text (second source), the printed lines are counted from the output */
 static void the_key_viewer_lists_every_bind_row(void)
 {
-    static char file[16384], text[16384];
+    static char file[32768], text[32768];
     char *p;
     long n = slurp("dist/keymap", file, sizeof(file));
     int expect = 0, lines = 0, in_bind = 0, printed;
@@ -1534,7 +1631,7 @@ static void a_leaf_window_spec_names_the_front_public_screen(void)
  * clash would silently unbind a key: this count is the guard. */
 static void dopus_binds_parse(void)
 {
-    static char file[16384];
+    static char file[32768];
     long n = slurp("dist/keymap", file, sizeof(file));
     static const struct { unsigned qual; const char *key, *script; } want[] = {
         { KM_Q_SUPER | KM_Q_SHIFT, "d", "UP-Term:Rexx/dopus-newlister.rexx" },
@@ -1604,35 +1701,53 @@ static void a_hotkey_dopus_script_without_a_port_shows_the_notice_window(void)
 
 static void the_dopus_group_needs_a_port(void)
 {
-    static char file[16384];
+    static char file[32768];
     long n = slurp("dist/keymap", file, sizeof(file));
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_cond(1, 0), MN_COND_TERM);
-    CHECK_INT(mn_cond(0, 1), MN_COND_DOPUS);
+    CHECK_INT(mn_cond(1, 0, 0), MN_COND_TERM);
+    CHECK_INT(mn_cond(0, 1, 0), MN_COND_DOPUS);
     CHECK_INT(mn_row_needs(KA_REXX, "dopus.front"), MN_COND_DOPUS);
     CHECK_INT(mn_row_needs(KA_OPEN, "dopus.shell"), MN_COND_DOPUS);
     CHECK_INT(mn_row_needs(KA_REXX, "apps.claude"), 0);
-    CHECK(!node_has("", "Dopus", mn_cond(1, 0)));            /* no port: the group is gone, terminal or not */
-    CHECK(!node_has("", "Dopus", mn_cond(0, 0)));
-    CHECK(node_has("", "Dopus", mn_cond(1, 1)));              /* port present: the group shows */
-    CHECK(node_has("", "Dopus", mn_cond(0, 1)));
+    CHECK(!node_has("", "Dopus", mn_cond(1, 0, 1)));            /* no port: the group is gone, terminal or not */
+    CHECK(!node_has("", "Dopus", mn_cond(0, 0, 1)));
+    CHECK(node_has("", "Dopus", mn_cond(1, 1, 1)));              /* port present: the group shows */
+    CHECK(node_has("", "Dopus", mn_cond(0, 1, 1)));
     CHECK(node_has("", "Dopus", MN_COND_ALL));
-    CHECK(node_has("", "Dopus", mn_cond(1, 1)) && node_has("", "Apps", mn_cond(1, 0)));
-    CHECK(node_has("dopus", "Open lister", mn_cond(0, 1)));
-    CHECK(!node_has("dopus", "Open lister", mn_cond(1, 0)));
+    CHECK(node_has("", "Dopus", mn_cond(1, 1, 1)) && node_has("", "Apps", mn_cond(1, 0, 1)));
+    CHECK(node_has("dopus", "Open lister", mn_cond(0, 1, 1)));
+    CHECK(!node_has("dopus", "Open lister", mn_cond(1, 0, 1)));
     {
         int c1, r1, c2, r2;                                   /* the OSD size ignores the hidden group */
-        mn_osd_size_t(&km, "", &c1, &r1, mn_cond(1, 0));
-        mn_osd_size_t(&km, "", &c2, &r2, mn_cond(1, 1));
+        mn_osd_size_t(&km, "", &c1, &r1, mn_cond(1, 0, 1));
+        mn_osd_size_t(&km, "", &c2, &r2, mn_cond(1, 1, 1));
         CHECK(r2 >= r1 && c2 >= c1);
     }
+}
+
+/* K9 port-present hiding: the Workbench group is drawn only when the WORKBENCH port exists; Screens always. */
+static void the_workbench_group_needs_its_port(void)
+{
+    CHECK_INT(mn_cond(1, 0, 0), MN_COND_TERM);
+    CHECK_INT(mn_cond(0, 0, 1), MN_COND_WB);
+    CHECK_INT(mn_row_needs(KA_REXX, "workbench.backdrop"), MN_COND_WB);
+    CHECK_INT(mn_row_needs(KA_WIN, "screens.next"), 0);
+    CHECK(!node_has("", "Workbench", mn_cond(1, 1, 0)));
+    CHECK(!node_has("", "Workbench", mn_cond(0, 0, 0)));
+    CHECK(node_has("", "Workbench", mn_cond(0, 0, 1)));
+    CHECK(node_has("", "Workbench", MN_COND_ALL));
+    CHECK(node_has("", "Screens", mn_cond(0, 0, 0)));
+    CHECK(node_has("workbench", "Redraw All", mn_cond(0, 0, 1)));
+    CHECK(node_has("screens", "Next screen", mn_cond(0, 0, 0)));
+    CHECK(!node_has("screens", "UP-Term own screen", mn_cond(0, 0, 0)));   /* slash: needs a terminal */
+    CHECK(node_has("screens", "UP-Term own screen", mn_cond(1, 0, 0)));
 }
 
 /* DOPUS D4: the ten rows of the group, their labels and commands as the plan fixed them after D1, ids unique
  * over the whole [menu] table, every script a row runs shipped in dist/rexx, a glyph for the group. */
 static void the_dopus_rows_are_shipped(void)
 {
-    static char file[16384], icons[16384], sc[4096];
+    static char file[32768], icons[32768], sc[4096];
     static const struct { const char *id, *label, *script; } rows[] = {
         { "dopus.newlister", "Open lister", "newlister" },
         { "dopus.listerhere", "Open lister at current folder", "listerhere" },
@@ -1838,10 +1953,10 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
  * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
  * parsed table, 8288 B on the host), carry no
  * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
-#define AMARCHY_KEYMAP_HEAP_MAX 1900  /* 29 rows (8 + the 18 window hotkeys' win: and rexx: rows + the three Directory Opus hotkeys); 1891 B measured; the full parsed table is 19696 B */
+#define AMARCHY_KEYMAP_HEAP_MAX 2150  /* 32 rows (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys); 2099 B measured; the full parsed table is larger */
 static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 {
-    static char file[16384];
+    static char file[32768];
     long n = slurp("dist/keymap", file, sizeof(file));
     long base = vt_count_live, parsed, held, want = 0;
     int i, kept = 0, ref_n;
@@ -2218,6 +2333,8 @@ void suite_keymap(void)
     the_shipped_file_resolves_and_derives_menu_keys();
     the_shipped_menu_has_learn_system_and_install_groups();
     the_window_group_rows_and_hotkeys();
+    the_screens_group_rows_and_hotkeys();
+    the_workbench_group_rows();
     cx_descriptions_and_qualifier_mask();
     cx_installs_only_the_commodity_rows();
     ua_count_released_before_own_window_closes();
@@ -2243,6 +2360,7 @@ void suite_keymap(void)
     a_leaf_window_spec_names_the_front_public_screen();
     dopus_binds_parse();
     the_dopus_group_needs_a_port();
+    the_workbench_group_needs_its_port();
     a_dopus_script_without_a_port_has_a_notice();
     a_hotkey_dopus_script_without_a_port_shows_the_notice_window();
     the_dopus_rows_are_shipped();
@@ -2549,7 +2667,7 @@ static void every_cache_row_reaches_the_apps_level_past_256(void)
 static void menu_item_id_cases(void)
 {
     static ix_index x;
-    static char file[16384];
+    static char file[32768];
     mn_item it[TEST_LEVEL_MAX];
     char id[KM_ID * 2 + 2];
     long fn = slurp("dist/keymap", file, sizeof(file));
@@ -2809,7 +2927,7 @@ static void system_drawers_vanish_from_the_apps_level(void)
 
 static void the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and_edit(void)
 {
-    static char buf[16384];
+    static char buf[32768];
     static ix_index x;
     mn_item it[TEST_LEVEL_MAX];
     int n, g, i, found = 0;

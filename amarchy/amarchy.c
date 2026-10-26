@@ -104,7 +104,7 @@ static int act_menu_kind(int kind, const char *node)
         memset(&full, 0, sizeof full);
         keymap_load(&full, km_default_text);
         mn_osd_size_t(&full, strcmp(node, "root") ? node : "", &cols, &rows,
-                      mn_cond(upactive_terminal_present(0), upactive_dopus_present()));
+                      mn_cond(upactive_terminal_present(0), upactive_dopus_present(), upactive_workbench_present()));
         keymap_free(&full);
     }
     return act_in_window(line, cols, rows);

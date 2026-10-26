@@ -29,5 +29,6 @@ int upactive_target(int self_in_mru, char out[24]);
 int upactive_terminal_present(int self_in_mru);
 /* 1 when the DOPUS.1 port exists */
 int upactive_dopus_present(void);
+int upactive_workbench_present(void);
 
 #endif

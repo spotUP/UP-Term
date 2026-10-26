@@ -123,7 +123,7 @@ typedef struct gui {
 
 static keymap km;
 static ix_index ixs;
-static int menu_cond;            /* decided once at open: mn_cond(terminal present, DOPUS.1 present) */
+static int menu_cond;            /* decided once at open: mn_cond(terminal present, DOPUS.1 present, WORKBENCH present) */
 static gui G;
 static upconf conf;
 static char conf_buf[UC_MAX_FILE + 2];
@@ -1131,7 +1131,7 @@ int main(int argc, char **argv)
     keymap_load(&km, km_default_text);
     index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
-    menu_cond = mn_cond(upactive_terminal_present(0), upactive_dopus_present());   /* a plain Intuition window: never in the MRU */
+    menu_cond = mn_cond(upactive_terminal_present(0), upactive_dopus_present(), upactive_workbench_present());   /* a plain Intuition window: never in the MRU */
     {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
         ix_prog p0;
         int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);

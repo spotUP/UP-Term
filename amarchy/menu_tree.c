@@ -17,15 +17,16 @@ int mn_kind_needs_terminal(int kind)
     return kind == KA_TAB || kind == KA_MENUID || kind == KA_SLASH;
 }
 
-int mn_cond(int term, int dopus)
+int mn_cond(int term, int dopus, int workbench)
 {
-    return (term ? MN_COND_TERM : 0) | (dopus ? MN_COND_DOPUS : 0);
+    return (term ? MN_COND_TERM : 0) | (dopus ? MN_COND_DOPUS : 0) | (workbench ? MN_COND_WB : 0);
 }
 
 int mn_row_needs(int kind, const char *id)
 {
     return (mn_kind_needs_terminal(kind) ? MN_COND_TERM : 0) |
-           (!strncmp(id, "dopus.", 6) ? MN_COND_DOPUS : 0);
+           (!strncmp(id, "dopus.", 6) ? MN_COND_DOPUS : 0) |
+           (!strncmp(id, "workbench.", 10) ? MN_COND_WB : 0);
 }
 
 int mn_row_visible(int kind, int term)

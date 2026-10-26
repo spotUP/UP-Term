@@ -4,7 +4,7 @@
 #define KEYMAP_LOAD_H
 #include "keymap.h"
 
-#define KM_FILE_MAX 16384
+#define KM_FILE_MAX 32768
 
 /* ENV:up-term/keymap, ENVARC:up-term/keymap when ENV: has none, else def_text
  * (the compiled-in copy); then keymap.user over it. 1 when a file was read and
