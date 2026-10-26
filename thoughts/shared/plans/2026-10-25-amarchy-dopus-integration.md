@@ -43,7 +43,7 @@ Why M: no new action kind (`rexx:` exists), but a probe, a script set, a conditi
 real unknown is hiding a group when the port is absent.
 
 - Rows (ids, all `rexx:` unless noted; labels in full English words):
-  - `dopus.newlister` = `Open lister` | `rexx:UP-Term:Rexx/dopus-newlister.rexx` (sends `lister new`; the handle comes back in RESULT; 5.91 guide: same template, a path must be last)
+  - `dopus.newlister` = `Open lister` | `rexx:UP-Term:Rexx/dopus-newlister.rexx` (sends `command DeviceList NEW`, a new lister showing the device list; owner 2026-10-26: an empty `lister new` lister shows nothing)
   - `dopus.listerhere` = `Open lister at current folder` | `rexx:...dopus-listerhere.rexx` (`lister new <path>`; path last, per the 5.91 guide)
   - `dopus.front` = `Bring Directory Opus to front` | script sending `dopus front`
   - `dopus.back` = `Send Directory Opus to back` | `dopus back`
