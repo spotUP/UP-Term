@@ -551,6 +551,22 @@ def unimplemented_lines():
     """The 060 runs the instructions it lacks in the emulator (no 68060.library needed), the FPU's too when there is one."""
     return (["uae_cpu_no_unimplemented = false"] + ([] if NOFPU else ["uae_fpu_no_unimplemented = false"])) if M060 else []
 
+# The Amiga picture each screen mode puts in the window, in Amiga pixels: the master sys.hdf's
+# ScreenMode prefs is uaegfx mode 0x5004xxxx (800x600, `rig.py rtg`); `rig.py aga|aga256` and the
+# --os images are PAL hires (640x256, line-doubled to 640x512 and cropped there by FS-UAE's zoom).
+SCREEN_SIZES = {"rtg": (800, 600), "aga": (640, 512), "aga256": (640, 512)}
+WINDOW_BUDGET = (1280, 1024)   # the window size the rigs opened at before integer scaling
+
+def window_lines():
+    """The window fits the picture: with scale = integer a fixed 1280x1024 window showed the 800x600 RTG
+    Workbench at x1 inside wide black bands (owner 2026-10-26: "they open windows much bigger than the
+    content"). The window is the picture times the largest whole factor that stays inside WINDOW_BUDGET."""
+    name = SCREENMODE_NAME.read_text().strip() if SCREENMODE_NAME.exists() else "aga256" if OS else "rtg"
+    w, h = SCREEN_SIZES[name]
+    k = max(1, min(WINDOW_BUDGET[0] // w, WINDOW_BUDGET[1] // h))
+    return ["window_width = %d" % (w * k), "window_height = %d" % (h * k)] + (
+        [] if name == "rtg" else ["zoom = 640x512"])   # AGA: crop the overscan border, or x2 no longer fits
+
 def title_line():
     """The window title names the rig and its machine: with several rigs open the
     owner saw only identical FS-UAE windows (2026-10-24) and could not tell them apart. It also names the
@@ -688,7 +704,7 @@ def setup():
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
         "clipboard_sharing = 1",
     ] + HOST_KEYS + [title_line(),
-        "window_width = 1280", "window_height = 1024",
+    ] + window_lines() + [
         # sharp pixels: nearest-neighbour texture filter instead of the default linear blur
         # (the owner found the rigs blurry, 2026-10-26)
         "texture_filter = nearest",
