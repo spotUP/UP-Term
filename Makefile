@@ -78,6 +78,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_screenmode rig.py aga/aga256/rtg reboot with the last start's machine flags (tools/test_rig_screenmode.py)
 # ONLY=rig_claude_import importing tools/rig/claude_rig.py runs nothing (tools/test_rig_claude_import.py)
 # ONLY=rig_stdin amiga-pi in a rig window script gets <NIL: (tools/test_rig_stdin.py)
+# ONLY=pkg_rows tools/pkg_rows.py emit bitchx against the committed rows, through main(argv); needs upterm-ports (../upterm-ports, UPTERM_PORTS= to move it; skips when absent) (tests/test_pkg_rows.py)
 # ONLY=win the win: verbs' parse and window geometry: step, clamp, size limits, full width/screen, save ring, direction search (tests/test_win.c)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
 # ONLY=rig_browse_base upkg_browse_rig step 0 installs the kit over an older base (tools/test_rig_browse_base.py)
@@ -99,9 +100,13 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # and volatile loads (tests/test_gcc_move2_overlap.py, the installed $(AGCC), -m68080 -mexperimental)
 # The ONLY= names of the recipe lines below; the C suites are tests/test_main.c's (vttest_host --has)
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
-test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
+# ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
+# cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
+TEST_PY_ONLY := pkg_rows
+TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
+test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
-	@if [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); then ./$(BUILD)/vttest_host $(ONLY); fi
+	@if [ -z "$(filter $(ONLY),$(TEST_PY_ONLY))" ] && { [ -z "$(ONLY)" ] || ./$(BUILD)/vttest_host --has $(ONLY); }; then ./$(BUILD)/vttest_host $(ONLY); fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = uptelnetd ]; then python3 tools/test_uptelnetd.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = claude_fixture ]; then python3 tools/test_claude_fixture.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = build_stamp ]; then python3 -I tools/test_build_stamp.py; fi
@@ -140,6 +145,7 @@ test: $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_kitsize.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_bebbossh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_stack ]; then python3 tests/test_dist_stack.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pkg_rows ]; then python3 -I tests/test_pkg_rows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_fresh.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_addons.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_userdata.py; fi
@@ -1276,6 +1282,8 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # pages, licences, SOURCES.txt) with their source beside it; the source goes
 # into build/up-term-src.lha, published next to the kit (plan D2)
 UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+# tools/pkgs.py reads a ports package's Description from its recipe there
+export UPTERM_PORTS
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
 # a package's build/state/<p>.checked newer than the staged SOURCES.txt means the ports were rebuilt after the last
 # kit-stage: the kit would ship the old programs (v1.2 feed build of 2026-10-20 carried the old upkg)
@@ -1334,10 +1342,13 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
-	@# the slim base (P9): git, perl, vim, bitchx and vbcc are packages (dist/slim.txt), staged by dist-git, dist-perl, dist-vim, dist-bitchx, dist-vbcc
+	@# the slim base (P9): git, perl, vim, bitchx and vbcc are packages (dist/slim.txt), staged by dist-<id>
 	python3 tools/slim.py remove $(KIT)/Files/userland
 	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
+	@# upkg's Workbench icon (UPKG-WB-UI): a tool icon, no XCON window (upkg opens its own "UP-Term Add-ons"
+	@# window); stack 262144 as upkg's $$STACK cookie. install.dos copies it with userland/bin.
+	python3 tools/mkicon.py $(KIT)/Files/userland/bin/upkg.info --wbtool --plain --stack 262144
 	@# the shell tutorial (plan 2026-10-19-shell-tutorial L-6): the script in bin (copy-userland), the lessons in
 	@# share/tutorial (userland); after slim.py, which removes only what dist/slim.txt names
 	cp dist/tutorial $(KIT)/Files/userland/bin/tutorial

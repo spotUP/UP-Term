@@ -54,6 +54,26 @@ class Manifest(unittest.TestCase):
                         mk.index("cp dist/tutorial $(KIT)/Files/userland/bin/tutorial"))
         self.assertIn("cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/", mk)
 
+    def test_upkg_has_a_workbench_tool_icon_with_its_stack_in_the_userland_bin(self):
+        """UPKG-WB-UI (owner Q10): upkg.info is a WBTOOL icon without a WINDOW tooltype (upkg opens its own window),
+        do_StackSize 262144 as upkg's $STACK cookie, and it installs with the userland bin (copy-userland)"""
+        import struct, subprocess
+        mk = (ROOT / "Makefile").read_text()
+        line = "python3 tools/mkicon.py $(KIT)/Files/userland/bin/upkg.info --wbtool --plain --stack 262144"
+        self.assertIn(line, mk)
+        self.assertLess(mk.index("python3 tools/slim.py remove $(KIT)/Files/userland"), mk.index(line))
+        k = kit({"Files/userland/bin/upkg.info": b"i"})
+        self.assertIn("copy-userland 1 %08x Files/userland/bin/upkg.info" % zlib.crc32(b"i"),
+                      mm.manifest(k, PARTS, "").splitlines())
+        out = pathlib.Path(tempfile.mkdtemp()) / "upkg.info"
+        subprocess.run([sys.executable, str(ROOT / "tools/mkicon.py"), str(out), "--wbtool", "--plain",
+                        "--stack", "262144"], check=True)
+        data = out.read_bytes()
+        self.assertEqual(struct.unpack(">H", data[:2])[0], 0xE310)    # WB_DISKMAGIC
+        self.assertEqual(data[48], 3)                                 # do_Type WBTOOL
+        self.assertEqual(struct.unpack(">I", data[74:78])[0], 262144) # do_StackSize
+        self.assertNotIn(b"WINDOW=", data)
+
     def test_the_dopus_launchers_are_in_the_base_kit_and_the_filetype_names_them(self):
         """D13: the filetype runs UP-Term:bin/uterm-edit and uterm-view; both ship (and their two helpers) as userland
         bin files, are AmigaDOS scripts that open the XCON: window on the front screen, and hand the file to vsh by ENV:"""

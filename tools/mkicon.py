@@ -104,7 +104,7 @@ def drawer_data():
     return new_window + struct.pack('>llLH', 0, 0, 0, 0)   # origin 0/0, DDFLAGS_SHOWDEFAULT, DDVM_BYDEFAULT
 
 
-def icon(x, y, tool, tooltypes, drawer=False, wbtool=False):
+def icon(x, y, tool, tooltypes, drawer=False, wbtool=False, stack=65536):
     art = DRAWER_ART if drawer else ART
     w, h = len(art[0]), len(art)
     gadget = struct.pack('>LhhhhHHHLLLLLHL',
@@ -123,7 +123,7 @@ def icon(x, y, tool, tooltypes, drawer=False, wbtool=False):
         0 if drawer or wbtool else 1, 1 if tooltypes else 0,   # do_DefaultTool, do_ToolTypes: present
         x, y,                          # do_CurrentX/Y
         1 if drawer else 0, 0,         # do_DrawerData, do_ToolWindow
-        0 if drawer else 65536)        # do_StackSize
+        0 if drawer else stack)        # do_StackSize
     image = struct.pack('>hhhhhLBBL', 0, 0, w, h, 2, 1, 3, 0, 0) + planes(art)
     if drawer:
         tt = b''
@@ -146,6 +146,8 @@ def main():
     ap.add_argument('--plain', action='store_true')
     ap.add_argument('--wbtool', action='store_true', help='a WBTOOL icon (no default tool): an app, as the Amarchy app index lists it')
     ap.add_argument('--tooltype', action='append', default=[])
+    ap.add_argument('--stack', type=int, default=65536,
+                    help='do_StackSize: the stack Workbench gives the program (upkg: 262144, as its $STACK cookie)')
     a = ap.parse_args()
     x = a.x if a.x is not None else NO_ICON_POSITION
     y = a.y if a.y is not None else NO_ICON_POSITION
@@ -154,7 +156,7 @@ def main():
     own_window = any(t.startswith("WINDOW=") for t in a.tooltype)
     tooltypes = ([] if a.plain or own_window else ["WINDOW=" + WINDOW]) + a.tooltype
     data = icon(x - (1 << 32) if x >= 1 << 31 else x, y - (1 << 32) if y >= 1 << 31 else y,
-                a.tool, [] if a.drawer else tooltypes, a.drawer, a.wbtool)
+                a.tool, [] if a.drawer else tooltypes, a.drawer, a.wbtool, a.stack)
     open(a.out, 'wb').write(data)
 
 

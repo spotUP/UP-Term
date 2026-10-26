@@ -80,6 +80,14 @@ PACKAGES (upkg)
   i installs, r removes (after a Yes/No question), u upgrades, q or Escape
   quits. After each action the list comes back on the same add-on. Run
   upkg update first so the list is current.
+  From Workbench, double-click UP-Term:bin/upkg. It opens the window
+  "UP-Term Add-ons" on the Workbench screen: the list of add-ons with
+  their state, a cycle gadget that shows All, Installed or Upgradable,
+  the buttons Install, Remove, Upgrade and Update, and a log of what
+  upkg does. An add-on that asks questions of its own is not installed
+  from the window; run it from a Shell: upkg install <name>. When upkg
+  cannot make its temporary drawer (TMP: is not assigned, or its volume
+  is full), a requester names the reason; Assign TMP: T: gives it one.
   Uninstall removes UP-Term:pkg/upkg and UP-Term:etc/upkg.conf with the drawer.
 
 WHERE IT IS INSTALLED
