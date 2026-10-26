@@ -115,11 +115,10 @@ def r_open_timing():
 
 
 def into_style():
-    # The root lists Apps, Style, Window (submenus); Theme is the first leaf of Style: Down, Enter descends.
+    # Theme is the first leaf of Style. The root's order moves (Dopus and Settings come before Style), so the
+    # level is found by its label, not by a fixed number of Down presses.
     # (The old stale-hotkey ordering rule is gone: upterm-ports ebf5d1c makes ui_hotkey() describe the last run only.)
-    for k in 'down', 'return':
-        ami.key(RAW[k])
-        time.sleep(0.6)
+    x9_level('Style')
 
 
 def r_type_th():
@@ -301,8 +300,12 @@ def x9_open_menu():
 
 
 def x9_type(text):
+    # one KEY frame per character: a whole string in one frame loses all but the first two or so characters
+    # on rig 4 (fast "Open UP-Term here" left the filter at "Op"); one key per 100 ms delivers every one
     with ami._conn() as conn:
-        ami._type(conn, text.encode())
+        for ch in text:
+            ami._type(conn, ch.encode())
+            time.sleep(0.1)
     time.sleep(0.8)
 
 
@@ -975,9 +978,9 @@ def r_dopus_present():
     before = dopus_windows()
     import amarchy_gui_rig as g
     s, w = g.open_menu()
-    # the filter works on the level shown: the group, then its row. It is fuzzy and ranks by position, so the full label
-    # "Open UP-Term here" also matches "Open lister" first and Enter opens a lister; "UP-Term here" matches only the row.
-    for label in ('Dopus', 'UP-Term here'):
+    # the filter works on the level shown: the group at the root, then its row inside the group (a contiguous
+    # case-insensitive substring, amarchy/menu_core.c mn_match)
+    for label in ('Dopus', 'Open UP-Term here'):
         x9_type(label)
         ami.key(RAW['return'])
         time.sleep(1)
