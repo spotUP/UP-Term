@@ -710,6 +710,28 @@ static void dollar_name_reads_the_system_variables(void)
     sh.os.getenv = 0;
 }
 
+/* unset NAME of a system variable (ENV:) hides it from $name for the rest of the shell and its subshells, as bash's
+ * unset does; a name never expanded before is hidden too, and the shell's own assignment still works afterwards */
+static void unset_hides_the_system_variable(void)
+{
+    int inc = 0;
+    run("");                                    /* a fresh shell, output from here on in OUT */
+    strcpy(sysenv_name, "pre1");
+    strcpy(sysenv_val, "fromshell");
+    sh.os.getenv = f_getenv;
+    sh_run_text(&sh, "echo \"[$pre1]\"; unset pre1; echo \"[$pre1]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[fromshell]\n[]\n");
+    strcpy(sysenv_val, "changed");              /* a later SetEnv by a command stays hidden too */
+    sysenv_asked = 0;
+    sh_run_text(&sh, "echo \"[$pre1]\"; (echo \"[$pre1]\")", &inc);
+    CHECK_STR(slot(OUT)->data, "[fromshell]\n[]\n[]\n[]\n");
+    CHECK_INT(sysenv_asked, 0);                 /* the hidden name is not even asked of the system */
+    strcpy(sysenv_name, "pre2");                /* unset before the first $pre2 */
+    sh_run_text(&sh, "unset pre2; echo \"[$pre2]\"; pre2=mine; echo \"[$pre2]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[fromshell]\n[]\n[]\n[]\n[]\n[mine]\n");
+    sh.os.getenv = 0;
+}
+
 static void history_has_one_owner_the_console_list_or_the_shell(void)
 {
     /* the shell's own list: interactive notes, HISTCONTROL, HISTFILE loaded at start and kept at the end */
@@ -2280,6 +2302,7 @@ void suite_sh_exec(void)
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
     dollar_name_reads_the_system_variables();
+    unset_hides_the_system_variable();
     history_has_one_owner_the_console_list_or_the_shell();
     histfile_is_told_to_the_console_that_keeps_the_list();
     control_flow();

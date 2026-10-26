@@ -263,6 +263,7 @@ typedef struct sh_shell {
     sh_list hashtab;       /* hash: "name\tpath\thits" in the order they were added */
     char *hashpath;        /* the PATH the hash table was built for */
     sh_list disabled;      /* enable -n: the builtins switched off */
+    sh_list env_hidden;    /* names the script unset: the system's variable of that name (ENV:) stays hidden from $name */
     int exiting;           /* exit ran: stop */
     long exit_status;
     int breaking;          /* break / continue levels pending */

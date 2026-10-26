@@ -357,6 +357,7 @@ void sh_shell_free(sh_shell *sh)
     sh_list_free(&sh->hashtab);
     free(sh->hashpath);
     sh_list_free(&sh->disabled);
+    sh_list_free(&sh->env_hidden);
     sh_ctx_free(&sh->ctx);
 }
 
@@ -598,6 +599,8 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
     c->hashpath = sh->hashpath ? sdup(sh->hashpath) : 0;
     for (i = 0; i < sh->disabled.n; i++)
         sh_list_add(&c->disabled, sh->disabled.v[i]);
+    for (i = 0; i < sh->env_hidden.n; i++)
+        sh_list_add(&c->env_hidden, sh->env_hidden.v[i]);
     return c;
 }
 
@@ -791,11 +794,15 @@ static void core_import(sh_ctx *c, const char *name)
     sh_shell *sh = (sh_shell *)c->user;
     char v[512];
     unsigned a;
+    int i;
     if (!sh->os.getenv || sh->special_busy || !(isalpha((unsigned char)*name) || *name == '_'))
         return;
     a = sh_attr(&sh->ctx, name);
     if (sh_lookup_raw(&sh->ctx, name) && !(a & SH_ATTR_ENVCOPY))
         return;
+    for (i = 0; i < sh->env_hidden.n; i++) /* unset by the script: hidden for the rest of the shell */
+        if (!strcmp(sh->env_hidden.v[i], name))
+            return;
     if (!sh->os.getenv(sh->os.data, name, v, sizeof(v)))
         return;
     sh->special_busy = 1;
@@ -3952,6 +3959,17 @@ static long b_export(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return declare_main(sh, 3, argc, argv, io);
 }
 
+/* unset NAME hides the system's variable of that name (ENV:) from $name for the rest of the shell, as bash's unset
+ * leaves nothing behind; ENV: itself is not touched (the AmigaDOS Shell's Unsetenv does that) */
+static void env_hide(sh_shell *sh, const char *name)
+{
+    int i;
+    for (i = 0; i < sh->env_hidden.n; i++)
+        if (!strcmp(sh->env_hidden.v[i], name))
+            return;
+    sh_list_add(&sh->env_hidden, name);
+}
+
 static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int i = 1, fn = 0, nameref = 0;
@@ -4020,6 +4038,8 @@ static long b_unset(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 free(nm);
             } else {
                 bad = sh_unset(&sh->ctx, argv[i]);
+                if (!bad && sh->os.getenv)
+                    env_hide(sh, argv[i]);
                 if (!bad && !strcmp(argv[i], "DIRSTACK"))
                     sh->dirstack_gone = 1;
                 if (!bad && !strcmp(argv[i], "POSIXLY_CORRECT")) {
