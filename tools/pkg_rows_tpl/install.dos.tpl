@@ -1,0 +1,31 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; {{ID}} install: {{ABOUT}}
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. The Installer
+; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
+; the same list); the first part, check, stops the install when up-term.lha is
+; missing or too old (the reason is in ENV:UPTCHECK).
+FailAt 21
+; the archive's Files drawer: every name below is relative to it
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab copy-{{PKG}}
+{{COPY_COMMENT}}; userland holds what dist/slim.txt names; Copy of a drawer copies what is in it.
+MakeDir >NIL: UP-Term:bin
+MakeDir >NIL: UP-Term:lib
+MakeDir >NIL: UP-Term:licenses
+Copy userland UP-Term: ALL CLONE QUIET
+If WARN
+  Quit 20
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "{{NAME}} installed: type  {{CMD}}  in an UP-Term window (vsh)."
