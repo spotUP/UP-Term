@@ -491,6 +491,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
         sh_list_add(&c->ctx.args, sh->ctx.args.v[i]);
     c->ctx.arg0 = sh->ctx.arg0;  /* not owned by a ctx */
     c->ctx.status = sh->ctx.status;
+    c->ctx.fault = sh->ctx.fault;
     c->ctx.pid = sh->ctx.pid;
     c->ctx.top_pid = sh->ctx.top_pid ? sh->ctx.top_pid : sh->ctx.pid;
     c->ctx.last_bg = sh->ctx.last_bg;
@@ -4724,6 +4725,7 @@ static long b_caller(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_logout(sh_shell *sh, int argc, char **argv, const sh_io *io);
+static long b_why(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_complete(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_bind(sh_shell *sh, int argc, char **argv, const sh_io *io);
 static long b_compgen(sh_shell *sh, int argc, char **argv, const sh_io *io);
@@ -4751,7 +4753,7 @@ static const struct {
     { "which", b_type }, { "type", b_type }, { "readonly", b_readonly }, { "declare", b_declare },
     { "typeset", b_declare }, { "mapfile", b_mapfile }, { "readarray", b_mapfile }, { "builtin", b_builtin }, { "kill", b_kill },
     { "hash", b_hash }, { "history", b_history }, { "fc", b_fc }, { "enable", b_enable }, { "times", b_times }, { "caller", b_caller }, { "ulimit", b_ulimit }, { "help", b_help }, { "logout", b_logout },
-    { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
+    { "why", b_why }, { "bind", b_bind }, { "complete", b_complete }, { "compgen", b_compgen }, { "compopt", b_compopt }, { 0, 0 }
 };
 
 /* ---- hash, enable, times, caller, ulimit, help ---------------------------------- */
@@ -5895,6 +5897,20 @@ static long b_ulimit(sh_shell *sh, int argc, char **argv, const sh_io *io)
     return 0;
 }
 
+/* Why (AmigaDOS Shell): explains the last failure of THIS shell, as the AmigaShell's own does for its own. The
+ * secondary result is ctx.fault, kept beside $? when the command finished. */
+static long b_why(sh_shell *sh, int argc, char **argv, const sh_io *io)
+{
+    char text[128];
+    (void)argc;
+    (void)argv;
+    if (sh->ctx.status && sh->ctx.fault && sh->os.fault && sh->os.fault(sh->os.data, sh->ctx.fault, text, (long)sizeof(text)))
+        sayl(sh, io->out, "Last command failed because ", text, "\n", NULL);
+    else
+        say(sh, io->out, "The last command did not set a return code\n");
+    return 0;
+}
+
 static long b_help(sh_shell *sh, int argc, char **argv, const sh_io *io)
 {
     int k, a, found = 0;
@@ -6810,7 +6826,7 @@ done:
     return n;
 }
 
-static const char *const amiga_internals[] = { "endcli", "endshell", 0 };
+static const char *const amiga_internals[] = { "endcli", "endshell", "why", 0 };
 
 static builtin_fn find_builtin(const char *name)
 {
@@ -6818,7 +6834,7 @@ static builtin_fn find_builtin(const char *name)
     for (i = 0; builtins[i].name; i++)
         if (!strcmp(builtins[i].name, name))
             return builtins[i].fn;
-    /* EndCLI and EndShell are AmigaDOS Shell internals, and AmigaDOS names ignore case: only these two do */
+    /* EndCLI, EndShell and Why are AmigaDOS Shell internals, and AmigaDOS names ignore case: only these do */
     for (i = 0; amiga_internals[i]; i++) {
         const char *a = amiga_internals[i], *b = name;
         while (*a && *b && *a == tolower((unsigned char)*b)) {
@@ -9035,6 +9051,11 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
     case SH_CMD:
         st = exec_cmd(sh, n, io, 1, 0);
         sh_pstat(&sh->ctx, &st, 1);
+        /* the secondary result of this command, for why: only a failure keeps one */
+        {
+            long e = sh->os.ioerr ? sh->os.ioerr(sh->os.data) : 0;
+            sh->ctx.fault = st ? e : 0;
+        }
         break;
     case SH_SEQ:
         st = exec_node(sh, n->a, io);

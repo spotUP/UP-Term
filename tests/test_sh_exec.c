@@ -95,6 +95,28 @@ static long f_write(void *os, sh_fh fh, const char *b, long n)
 
 static void run_pending(pending *p);
 
+/* the fake OS layer's secondary result (AmigaDOS IoErr) and its Fault text, for why */
+static long fake_ioerr;
+static int fault_calls;
+
+static long f_ioerr(void *os)
+{
+    long e = fake_ioerr;
+    (void)os;
+    fake_ioerr = 0;
+    return e;
+}
+
+static int f_fault(void *os, long code, char *buf, long max)
+{
+    (void)os;
+    fault_calls++;
+    if (code != 205)
+        return 0;
+    strncpy(buf, "object not found", (size_t)max);
+    return 1;
+}
+
 /* An empty pipe with a job still to write it: run that job first, as a
  * reader blocks until its writer has written (the fake runs jobs whole). */
 static void feed(sh_fh fh)
@@ -203,8 +225,10 @@ static long run_now(char argv[][64], int argc, const sh_io *io)
         f_write(0, io->out, out, 2);
         return 0;
     }
-    if (!strcmp(argv[0], "fail"))
+    if (!strcmp(argv[0], "fail")) {
+        fake_ioerr = 205; /* object not found: the secondary result a failing command leaves */
         return argc > 1 ? atol(argv[1]) : 5;
+    }
     if (!strcmp(argv[0], "ls")) {
         /* Bare ls is the fake listing the pipeline tests count. Given
          * arguments it echoes them instead, so a test can see what vshrc's
@@ -464,6 +488,10 @@ static void fresh(void)
     sh.os.pipe = f_pipe;
     sh.os.run = f_run;
     sh.os.wait = f_wait;
+    sh.os.ioerr = f_ioerr;
+    sh.os.fault = f_fault;
+    fake_ioerr = 0;
+    fault_calls = 0;
     sh.os.done = f_done;
     sh.os.cont = f_cont;
     sh.os.isatty = f_isatty;
@@ -2207,6 +2235,22 @@ static void endcli_and_endshell_end_the_shell_like_exit(void)
     CHECK_INT(sh.ctx.status, 127);
 }
 
+/* Why explains THIS shell's last failure from the secondary result kept beside $?: a failing command then why
+ * prints the system's text for it (the sentinel: f_fault ran); after a success, or a failure that left none, it says
+ * no return code was set; the name matches in any case. */
+static void why_explains_the_last_failure_of_this_shell(void)
+{
+    run("fail");
+    CHECK_INT(sh.ctx.fault, 205);
+    CHECK_STR(run("fail; why"), "Last command failed because object not found\n");
+    CHECK_INT(fault_calls, 1);
+    CHECK_INT(sh.ctx.status, 0);
+    CHECK_STR(run("echo hi; why"), "hi\nThe last command did not set a return code\n");
+    CHECK_INT(fault_calls, 0);
+    CHECK_STR(run("fail; echo hi; WHY"), "hi\nThe last command did not set a return code\n");
+    CHECK_STR(run("fail; false; Why"), "The last command did not set a return code\n");
+}
+
 void suite_sh_exec(void)
 {
     bind_and_inputrc_reach_the_console_line_editor();
@@ -2255,6 +2299,7 @@ void suite_sh_exec(void)
     command_skips_functions();
     deep_recursion();
     endcli_and_endshell_end_the_shell_like_exit();
+    why_explains_the_last_failure_of_this_shell();
     word_lists();
     the_console_env_is_exported_and_unset();
     uninstall_removes_every_up_term_block();

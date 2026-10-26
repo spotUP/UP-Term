@@ -162,6 +162,12 @@ typedef struct sh_os {
      * 0 when not; a $name the shell has no variable for is looked up here, so a SetEnv done before the shell
      * started or by a command it ran is seen as in the AmigaDOS Shell. 0 in the table: no such store */
     int   (*getenv)(void *os, const char *name, char *buf, long max);
+    /* the secondary result (AmigaDOS IoErr) of the last command run(wait)/wait finished, returned once and
+     * cleared (a second call gives 0); 0 in the table: none. `why` explains it */
+    long  (*ioerr)(void *os);
+    /* the system's text for a secondary result (AmigaDOS Fault), copied into buf (max bytes, NUL ended); 1 when
+     * there is one; 0 in the table: no text */
+    int   (*fault)(void *os, long code, char *buf, long max);
     void *data;
 } sh_os;
 #define SH_HIST_COUNT 0   /* the number of lines */

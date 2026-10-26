@@ -101,6 +101,7 @@ typedef struct job {
     sh_io io;
     int done;               /* set (under Forbid) as the runner ends */
     LONG rc;
+    LONG ioerr;             /* the runner's IoErr() when the command ended (the secondary result), for why */
     struct Task *held;      /* its process, whose console reads wait (stopped, bg) */
     vt_termios tios;        /* the console's termios when it was suspended ... */
     int tios_saved;         /* ... if the job had set one (S8) */
@@ -602,6 +603,7 @@ static void runner(void)
      * -1 on an error) printed "vsh: upkg: not found" after its own message. */
     if (j->rc < 0)
         j->rc &= 255;
+    j->ioerr = IoErr(); /* the runner's own, read before any call below sets it */
     input_restore(j->in, mark);
     if (j->close_in)
         close_stream(j->in);
@@ -620,6 +622,7 @@ static void runner(void)
 typedef struct vproc {
     sh_shell *sh;
     struct MsgPort *port;
+    LONG ioerr;             /* the secondary result of the last command waited for (os_ioerr takes it) */
 } vproc;
 
 #define PORT(os) (((vproc *)(os))->port)
@@ -1166,6 +1169,22 @@ static int os_cont(void *os, long id)
     return job_unix_signal((job *)id, "CONT", sh_get(&((vproc *)os)->sh->ctx, "PATH")) ? -1 : 0;
 }
 
+/* The secondary result of the last command this process waited for, once (why) */
+static long os_ioerr(void *os)
+{
+    vproc *vp = (vproc *)os;
+    long e = vp->ioerr;
+    vp->ioerr = 0;
+    return e;
+}
+
+/* dos.library's text for a secondary result, as Why prints it ("object not found") */
+static int os_fault(void *os, long code, char *buf, long max)
+{
+    (void)os;
+    return Fault(code, 0, (STRPTR)buf, max) > 0;
+}
+
 /* Wait for a job. Ctrl-C (and ^\) while waiting goes on to the job's
  * runner, the command's process, as long as it runs (the console signals
  * the shell); ^Z suspends it when the shell allows (SH_STOPPED). */
@@ -1220,6 +1239,7 @@ static long os_wait(void *os, long id)
     if (broke)
         SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
     rc = j->rc;
+    ((vproc *)os)->ioerr = j->ioerr;
     {
         int i;
         Forbid();
@@ -1754,6 +1774,7 @@ static void subshell_proc(void)
     WaitPort(&me->pr_MsgPort);
     j = (job *)GetMsg(&me->pr_MsgPort);
     vp.sh = j->sub;
+    vp.ioerr = 0;
     vp.port = CreateMsgPort();
     if (vp.port) {
         j->sub->os.data = &vp;
@@ -2118,6 +2139,8 @@ static int vsh_main(int argc, char **argv)
     sh.os.pipe = os_pipe;
     sh.os.run = os_run;
     sh.os.wait = os_wait;
+    sh.os.ioerr = os_ioerr;
+    sh.os.fault = os_fault;
     sh.os.done = os_done;
     sh.os.cont = os_cont;
     sh.os.isatty = os_isatty;
