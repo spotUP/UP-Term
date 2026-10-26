@@ -418,7 +418,7 @@ DRAWN = 'menu-in-terminal = graphical'
 def x9_drawn(*lines):
     """x9_conf for a case that expects the drawn menu: its Super+Space lands in the rig's UP-Term terminal, where the
     default menu-in-terminal = text would open amarchy-menu instead."""
-    x9_drawn(*lines, DRAWN)
+    x9_conf(*lines, DRAWN)
 
 
 def x9_end(saved, upterm):
