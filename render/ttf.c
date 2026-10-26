@@ -277,6 +277,16 @@ int ttf_units_per_em(const ttf_font *f)
     return f->upem;
 }
 
+int ttf_ascender(const ttf_font *f)
+{
+    return f->asc;
+}
+
+int ttf_descender(const ttf_font *f)
+{
+    return f->desc;
+}
+
 int ttf_num_glyphs(const ttf_font *f)
 {
     return f->nglyphs;

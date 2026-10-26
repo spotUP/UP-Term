@@ -26,6 +26,9 @@ typedef struct vo_font vo_font;
  * baseline `base` rows down. 0 when there is no such font, it is not
  * TrueType, or no memory: the caller draws as without one.
  * name "" opens the worker alone, for vo_read (its glyphs all missing). */
+/* The file spec of the TrueType font `name` (the lookup vo_open uses: .otag naming the .ttf, else .ttf), into spec
+ * (n bytes); 1 when that file opens, else 0. The file may still not be TrueType: ttf_open decides. */
+int vo_ttf_spec(const char *name, char *spec, int n);
 vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base);
 void vo_close(vo_font *f);
 
