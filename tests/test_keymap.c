@@ -631,20 +631,37 @@ static void shipped_settings_has_the_six_page_groups(void)
         int found = -1;
         for (i = 0; i < n; i++)
             if (it[i].row == MN_ROW_GROUP &&
-                !strcmp(it[i].seg, p == PG_PAGE_AMARCHY ? "amarchysettings" : sd_page_name(p)))
+                !strcmp(it[i].seg, sd_page_name(p)))
                 found = i;
         CHECK(found >= 0);
         CHECK(found > at);
         at = found;
         strcpy(node, "settings.");
-        strcat(node, p == PG_PAGE_AMARCHY ? "amarchysettings" : sd_page_name(p));
+        strcat(node, sd_page_name(p));
         want = 0;
         for (i = 0; i < sd_nsettings; i++)
             want += sd_settings[i].page == p;
+        /* M9b: Amarchy is one entry; the page rows come first, then its static children */
+        if (p == PG_PAGE_AMARCHY) {
+            int st = 0, j;
+            for (j = 0; j < km.nmenu; j++)
+                st += !strncmp(km.menu[j].id, "settings.amarchy.", 17);
+            CHECK(st > 0);
+            want += st;
+        }
         k = mn_children(&km, node, pg, MN_MAX_ITEMS);
         CHECK_INT(k, want);
         CHECK(want > 0);
+        if (p == PG_PAGE_AMARCHY && k == want) {
+            CHECK_INT(pg[0].row, MN_ROW_SETTING);
+            CHECK(pg[k - 1].row >= 0);
+        }
     }
+    /* one Amarchy entry under Settings: no second group, no settings.amarchysettings row */
+    for (i = 0, k = 0; i < n; i++)
+        k += it[i].row == MN_ROW_GROUP && !strcmp(it[i].seg, "amarchy");
+    CHECK_INT(k, 1);
+    CHECK(shipped_row("settings.amarchysettings") == 0);
     CHECK(pref != 0);
     if (pref) {
         CHECK_INT(pref->kind, KA_DETACH);
@@ -3186,7 +3203,9 @@ static void the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and
             found = 1;
     CHECK(found);
     n = ix_level(&km, &x, "settings.amarchy", "", it, TEST_LEVEL_MAX);
-    CHECK_INT(n, 4);
+    for (g = 0, i = 0; i < sd_nsettings; i++)
+        g += sd_settings[i].page == PG_PAGE_AMARCHY;
+    CHECK_INT(n, g + 4); /* the page's table rows plus the four static rows */
     CHECK(level_has(it, n, "Rescan apps") && level_has(it, n, "Amarchy preferences") &&
           level_has(it, n, "Menu font") && level_has(it, n, "Edit menu"));
     for (i = 0; i < n; i++)

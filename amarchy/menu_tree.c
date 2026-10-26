@@ -155,8 +155,10 @@ int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int 
     const sd_setting *cs;
     if (nl && (cs = choice_setting(k, node)) != 0)
         return choice_rows(cs, out, max);
+    /* a settings page node lists its table rows first, then any static children the file hangs under the
+     * same id (settings.amarchy: the page and the Rescan, Preferences, Menu font and Edit rows) */
     if (nl && (i = settings_row(k, node)) >= 0)
-        return setting_rows(k, i, out, max);
+        n = setting_rows(k, i, out, max);
     for (i = 0; i < k->nmenu && n < max; i++) {
         const char *id = k->menu[i].id, *rest, *dot;
         int seglen, dup = 0;
@@ -187,7 +189,13 @@ int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int 
             out[n].label[0] = (char)((rest[0] >= 'a' && rest[0] <= 'z') ? rest[0] - 32 : rest[0]);
             cpy(out[n].label + 1, rest + 1, seglen < KM_LABEL ? seglen : KM_LABEL);
         } else if (k->menu[i].kind == KA_SETTINGS) {
-            /* a settings page: a group here, its rows below it */
+            /* a settings page: a group here, its rows below it; static children of the same id already made
+             * this group, so it is listed once */
+            for (j = 0; j < n; j++)
+                if (out[j].row == MN_ROW_GROUP && !strcmp(out[j].seg, rest))
+                    dup = 1;
+            if (dup)
+                continue;
             out[n].row = MN_ROW_GROUP;
             out[n].ix = -1;
             cpy(out[n].seg, rest, KM_ID);

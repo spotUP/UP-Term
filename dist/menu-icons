@@ -53,7 +53,6 @@ settings.colors              = U+F1FC    ; fa-paint_brush
 settings.palette             = U+F043    ; fa-tint
 settings.keyboard            = U+F11C    ; fa-keyboard_o
 settings.advanced            = U+F0AD    ; fa-wrench
-settings.amarchysettings     = U+F085    ; fa-cogs
 settings.amarchy             = U+F085    ; fa-cogs
 settings.amarchy.rescan      = U+F021    ; fa-refresh
 settings.amarchy.preferences = U+F1DE    ; fa-sliders
