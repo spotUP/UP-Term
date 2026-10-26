@@ -50,6 +50,10 @@ const mtc_glyph *mtc_glyph_of(mtc *c, unsigned long cp);
 
 /* pixels s takes */
 int mtc_width(mtc *c, const char *s);
+/* pixels the first len bytes of s take (whole code points) */
+int mtc_width_n(mtc *c, const char *s, int len);
+/* bytes of the first len bytes of s, whole code points, that fit maxw pixels (a wrapped line's length) */
+int mtc_prefix(mtc *c, const char *s, int len, int maxw);
 /* s cut to fit maxw pixels into out (n bytes): s whole when it fits, else the longest head that with "..."
  * fits ("." when even that is too wide for more; "" when nothing fits). Returns the pixel width of out. */
 int mtc_fit(mtc *c, const char *s, int maxw, char *out, int n);

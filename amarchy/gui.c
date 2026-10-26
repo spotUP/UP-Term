@@ -36,6 +36,7 @@
 #include "menu_open.h"
 #include "menu_icon.h"
 #include "menu_font.h"
+#include "menu_text.h"
 #include "../prefs/prefs_core.h"
 #include "icon_core.h"
 #include "../config/upconf_lex.h"
@@ -62,6 +63,7 @@ const char amarchy_gui_stack_cookie[] = "$STACK: " GUI_STR(GUI_STACK);
 #define USAGE "usage: amarchy-gui menu [node] | viewer\n"
 #define MAX_LINES 200
 #define EDIT_MAX 80
+#define PUT_MAX 384          /* the longest label put() cuts */
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
@@ -73,8 +75,7 @@ typedef struct gui {
     struct Screen *scr;
     struct Window *win;
     struct RastPort *rp;
-    struct TextFont *font;
-    int font_opened;             /* font is ours (OpenFont / OpenDiskFont), closed at exit */
+    menu_text *mt;               /* every label's font: TrueType through aa_ink or bitmap (menu_text.c), closed at exit */
     struct ColorMap *cm;
     mg_font mf;
     mg_geom g;
@@ -145,6 +146,13 @@ static void sentinel_publish(const char *name, long n)
     SetVar((STRPTR) name, (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
 }
 
+/* Publishes the antialiased glyphs drawn so far as AMARCHY_AA_GLYPHS: 0 for a bitmap font, so a rig reads
+ * whether the TrueType path ran. */
+static void sentinel_aa(const gui *g)
+{
+    sentinel_publish("AMARCHY_AA_GLYPHS", mt_aa_glyphs(g->mt));
+}
+
 /* Publishes the labels of the rows the list shows, joined by '|', as AMARCHY_ROWS: the rig reads which
  * rows were drawn (a menu's text is pixels, no uitree gadget). */
 static void sentinel_rows(const gui *g)
@@ -170,7 +178,15 @@ static void sentinel_rows(const gui *g)
 
 static int text_len(const char *s, void *ctx)
 {
-    return (int)TextLength((struct RastPort *)ctx, (STRPTR)s, (ULONG)strlen(s));
+    return mt_width((menu_text *)ctx, s);
+}
+
+/* the pen's colour as 0xRRGGBB: what menu_text draws a role in (a bitmap font finds this pen again) */
+static ULONG role_rgb(const gui *g, int role)
+{
+    ULONG c[3];
+    GetRGB32(g->cm, (ULONG)g->pen[role], 1, c);
+    return ((c[0] >> 24) << 16) | ((c[1] >> 24) << 8) | (c[2] >> 24);
 }
 
 static void fill(gui *g, int role, int x0, int y0, int x1, int y1)
@@ -181,19 +197,22 @@ static void fill(gui *g, int role, int x0, int y0, int x1, int y1)
     RectFill(g->rp, x0, y0, x1, y1);
 }
 
-/* A text in a box of height boxh whose top is y, cut to maxw pixels. */
-static void put(gui *g, int role, int x, int y, int boxh, const char *s, int len, int maxw)
+/* A text in a box of height boxh whose top is y, cut to maxw pixels with an ellipsis, in role over the box's
+ * background role bgrole (the caller has filled the box in it). */
+static void put(gui *g, int role, int bgrole, int x, int y, int boxh, const char *s, int len, int maxw)
 {
-    struct TextExtent te;
-    ULONG n;
+    char buf[PUT_MAX], out[PUT_MAX];
     if (len <= 0 || maxw <= 0)
         return;
-    n = TextFit(g->rp, (STRPTR)s, (ULONG)len, &te, 0, 1, (UWORD)maxw, 32767);
-    if (!n)
+    if (len > PUT_MAX - 1)
+        len = PUT_MAX - 1;
+    memcpy(buf, s, (size_t)len);
+    buf[len] = 0;
+    mt_fit(g->mt, buf, maxw, out, sizeof out);
+    if (!out[0])
         return;
-    SetAPen(g->rp, (ULONG)g->pen[role]);
-    Move(g->rp, x, y + (boxh - g->mf.ysize) / 2 + g->font->tf_Baseline);
-    Text(g->rp, (STRPTR)s, n);
+    mt_draw(g->mt, g->rp, x, y + (boxh - mt_height(g->mt)) / 2, out, role_rgb(g, role), role_rgb(g, bgrole));
+    SetDrMd(g->rp, JAM1);   /* a bitmap font's draw left JAM2 */
 }
 
 /* ---- back buffer -------------------------------------------------------------------------------------- */
@@ -220,7 +239,6 @@ static void buffer_fit(gui *g)
     InitRastPort(&g->brp);
     g->brp.BitMap = g->bb;
     g->rp = &g->brp;
-    SetFont(g->rp, g->font);
     SetDrMd(g->rp, JAM1);
 }
 
@@ -342,7 +360,7 @@ static void draw_header(gui *g)
         }
         s = h;
     }
-    put(g, MT_DIM, q->head_x + q->m.row_pad, q->head_y, q->m.head_h, s, (int)strlen(s),
+    put(g, MT_DIM, MT_BG, q->head_x + q->m.row_pad, q->head_y, q->m.head_h, s, (int)strlen(s),
         q->head_w - 2 * q->m.row_pad);
 }
 
@@ -386,7 +404,7 @@ static void draw_icon(gui *g, int role, const mn_item *it, int x, int y, int box
 static void draw_row(gui *g, int e)
 {
     const mg_geom *q = &g->g;
-    int i = e - g->top, y, bottom, sel, tx, tw;
+    int i = e - g->top, y, bottom, sel, rbg, tx, tw;
     if (g->await || e < 0 || e >= q->n || i < 0 || i >= shown_rows(g))
         return;
     y = mg_row_y(q, i);
@@ -394,12 +412,13 @@ static void draw_row(gui *g, int e)
     if (bottom > q->list_y + q->list_h - 1)
         bottom = q->list_y + q->list_h - 1;
     sel = (g->mode == M_LIST && e == g->sel) || g->mode == M_INPUT;
+    rbg = sel ? MT_SELBOX : MT_BG;
     paint_begin(g);
     fill(g, sel ? MT_SELBOX : MT_BG, q->list_x, y, q->list_x + q->list_w - 1, bottom);
     tx = q->list_x + q->m.row_pad;
     tw = q->list_w - 2 * q->m.row_pad;
     if (g->mode == M_LIST && e < g->shift) {      /* the scan's status row */
-        put(g, MT_DIM, tx, y, q->m.row_h, g->wt.row, (int)strlen(g->wt.row), tw);
+        put(g, MT_DIM, rbg, tx, y, q->m.row_h, g->wt.row, (int)strlen(g->wt.row), tw);
     } else if (g->mode == M_LIST) {
         const mn_item *it = &g->it[g->idx[e - g->shift]];
         int role = sel ? MT_ACCENT : MT_TEXT;
@@ -414,18 +433,18 @@ static void draw_row(gui *g, int e)
             strncpy(t, it->label, KM_LABEL);
             t[KM_LABEL] = 0;
             strcat(t, " >");
-            put(g, role, tx, y, q->m.row_h, t, (int)strlen(t), tw);
+            put(g, role, rbg, tx, y, q->m.row_h, t, (int)strlen(t), tw);
         } else
-            put(g, role, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
+            put(g, role, rbg, tx, y, q->m.row_h, it->label, (int)strlen(it->label), tw);
         if (MN_IS_GROUP(it) && !minimal)
-            put(g, role, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
+            put(g, role, rbg, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
     } else if (g->mode == M_INPUT) {
         char t[EDIT_MAX + 2];
         memcpy(t, g->edit, (size_t)g->elen);
         t[g->elen] = '_';
-        put(g, MT_ACCENT, tx, y, q->m.row_h, t, g->elen + 1, tw);
+        put(g, MT_ACCENT, rbg, tx, y, q->m.row_h, t, g->elen + 1, tw);
     } else
-        put(g, MT_TEXT, tx, y, q->m.row_h, g->ln[e], g->ll[e], tw);
+        put(g, MT_TEXT, rbg, tx, y, q->m.row_h, g->ln[e], g->ll[e], tw);
     paint_end(g, q->list_x, y, q->list_x + q->list_w - 1, bottom);
 }
 
@@ -462,6 +481,7 @@ static void draw_full(gui *g)
     sentinel_publish("AMARCHY_BEAM_WAITS", g->beam_waits);
     sentinel_publish("AMARCHY_TEARS", g->tears);
     sentinel_publish("AMARCHY_LATE", g->late);
+    sentinel_aa(g);
     if (g->mode == M_LIST)
         sentinel_rows(g);
     sentinel_publish("AMARCHY_ICON_LOADS", ig_loads());
@@ -527,6 +547,7 @@ static void set_sel(gui *g, int s)
         sentinel_publish("AMARCHY_BEAM_WAITS", g->beam_waits);
         sentinel_publish("AMARCHY_TEARS", g->tears);
         sentinel_publish("AMARCHY_LATE", g->late);
+    sentinel_aa(g);
         sentinel_publish("AMARCHY_BLITS", g->blits);
     }
 }
@@ -987,11 +1008,10 @@ static void lines_split(gui *g, char *text)
 /* the message cut into lines that fit tw pixels, at most max of them */
 static void lines_wrap(gui *g, const char *s, int tw, int max)
 {
-    struct TextExtent te;
     int left = (int)strlen(s);
     g->nlines = 0;
     while (left > 0 && g->nlines < max) {
-        int n = (int)TextFit(g->rp, (STRPTR)s, (ULONG)left, &te, 0, 1, (UWORD)tw, 32767);
+        int n = mt_prefix(g->mt, s, left, tw);
         if (n <= 0)
             n = 1;
         g->ln[g->nlines] = s;
@@ -1067,9 +1087,8 @@ static void cleanup(gui *g)
     if (g->scr)
         UnlockPubScreen(0, g->scr);
     g->scr = 0;
-    if (g->font_opened)
-        CloseFont(g->font);
-    g->font_opened = 0;
+    mt_close(g->mt);
+    g->mt = 0;
 }
 
 /* The screen's pixel shape: DisplayInfo Resolution into ms.rx, ms.ry (0, 0 when unknown), and 1 when the
@@ -1077,21 +1096,16 @@ static void cleanup(gui *g)
 static void pick_font(gui *g)
 {
     int square = menu_screen_aspect(g->scr, &g->ms.rx, &g->ms.ry);
-    char pref[64];
-    long pref_size = 0;
     const char *spec;
     am_prefs ap;
     amconf_load(&ap);
     spec = ap.val[AM_FONT];   /* "name:size", as the terminal's font key */
-    if (!prefs_font_parse(spec, pref, sizeof pref, &pref_size))
-        pref[0] = 0;
-    g->font = menu_font_open(g->scr, square, pref, (int)pref_size, &g->font_opened);
+    g->mt = mt_open(g->scr, square, spec);
 }
 
 int main(int argc, char **argv)
 {
     gui *g = &G;
-    struct RastPort tmp;
     int viewer, rc = 0;
     const char *node;
 
@@ -1143,8 +1157,13 @@ int main(int argc, char **argv)
     }
     g->cm = g->scr->ViewPort.ColorMap;
     pick_font(g);
-    g->mf.ysize = g->font->tf_YSize;
-    g->mf.cw = g->font->tf_XSize;
+    if (!g->mt) {
+        PutStr((STRPTR) "amarchy-gui: no memory for the font\n");
+        rc = 20;
+        goto done;
+    }
+    g->mf.ysize = mt_height(g->mt);
+    g->mf.cw = mt_bitmap_font(g->mt) ? mt_bitmap_font(g->mt)->tf_XSize : mt_width(g->mt, "n");
     g->ms.w = g->scr->Width;
     g->ms.h = g->scr->Height;
     g->ms.minimal = minimal;
@@ -1153,10 +1172,8 @@ int main(int argc, char **argv)
         ig_open(g->scr, ixs.n);      /* no icon.library V44: the index rows keep the generic glyph */
 
     /* the font's text lengths before the window exists */
-    InitRastPort(&tmp);
-    SetFont(&tmp, g->font);
     /* the minimal menu's group marker is part of the label's text: " >" after it, no gap column */
-    g->chev_w = text_len(minimal ? " >" : ">", &tmp);
+    g->chev_w = text_len(minimal ? " >" : ">", g->mt);
     g->chosen = -1;
     g->ixpath[0] = g->ixlabel[0] = 0;
     strcpy(g->node, node);
@@ -1168,7 +1185,7 @@ int main(int argc, char **argv)
         g->head = "Key bindings";
         lines_split(g, view_text);
         for (i = 0; i < g->nlines; i++) {
-            int lw = (int)TextLength(&tmp, (STRPTR)g->ln[i], (ULONG)g->ll[i]);
+            int lw = mt_width_n(g->mt, g->ln[i], g->ll[i]);
             if (lw > w)
                 w = lw;
         }
@@ -1188,7 +1205,7 @@ int main(int argc, char **argv)
         /* no icon column in the minimal menu or with amarchy-app-icons = none */
         g->icon_h = mi_count() > 0 && !minimal && app_icons != UC_ICONS_NONE ? mi_size(&m) : 0;
         g->icon_w = mi_count() > 0 && !minimal && app_icons != UC_ICONS_NONE ? mi_width(&m, &g->ms) : 0;
-        g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, &tmp, &g->ms, menu_cond);
+        g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond);
         n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
         g->shift = g->wt.row[0] ? 1 : 0;
         g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
@@ -1203,7 +1220,6 @@ int main(int argc, char **argv)
     }
     g->rp = g->win->RPort;
     g->frame = (GfxBase->DisplayFlags & PAL) ? 313 : 263;
-    SetFont(g->rp, g->font);
     SetDrMd(g->rp, JAM1);
     draw_full(g);
     watch_idcmp(g);

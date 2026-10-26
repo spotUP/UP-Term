@@ -26,6 +26,11 @@ int mt_baseline(const menu_text *m);
 struct TextFont *mt_bitmap_font(const menu_text *m);
 
 int mt_width(menu_text *m, const char *text);
+/* pixels the first len bytes take; the bytes of the first len that fit maxw pixels (whole code points) */
+int mt_width_n(menu_text *m, const char *text, int len);
+int mt_prefix(menu_text *m, const char *text, int len, int maxw);
+/* antialiased glyphs mt_draw has drawn since mt_open (0 for a bitmap font): the rig's proof the TrueType path ran */
+long mt_aa_glyphs(const menu_text *m);
 /* text cut with an ellipsis to fit maxw pixels into out (n bytes); the pixel width of out */
 int mt_fit(menu_text *m, const char *text, int maxw, char *out, int n);
 /* text with its line top at x, y of rp, fg over bg (0xRRGGBB). The caller has not filled the background of

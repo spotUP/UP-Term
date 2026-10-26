@@ -43,6 +43,7 @@ struct menu_text {
     ULONG pen_rgb_[MT_PENS];
     int npens;
     int height, base;
+    long aa_drawn;
 };
 
 static void *mt_alloc(unsigned long n)
@@ -284,6 +285,21 @@ int mt_width(menu_text *m, const char *text)
     return mtc_width(&m->core, text);
 }
 
+int mt_width_n(menu_text *m, const char *text, int len)
+{
+    return mtc_width_n(&m->core, text, len);
+}
+
+int mt_prefix(menu_text *m, const char *text, int len, int maxw)
+{
+    return mtc_prefix(&m->core, text, len, maxw);
+}
+
+long mt_aa_glyphs(const menu_text *m)
+{
+    return m->aa_drawn;
+}
+
 int mt_fit(menu_text *m, const char *text, int maxw, char *out, int n)
 {
     return mtc_fit(&m->core, text, maxw, out, n);
@@ -308,6 +324,7 @@ void mt_draw(menu_text *m, struct RastPort *rp, int x, int y, const char *text, 
             LONG pf = m->cgx ? 0 : pen_of(m, fg), pb = m->cgx ? 0 : pen_of(m, bg);
             ULONG fi = m->cgx ? (MT_INK_RGB | fg) : (ULONG)(pf < 0 ? 1 : pf);
             ULONG bi = m->cgx ? (MT_INK_RGB | bg) : (ULONG)(pb < 0 ? 0 : pb);
+            m->aa_drawn++;
             aa_ink_draw(&m->ink, rp, m->cgx, m->truecolor, (WORD)(x + g->left), (WORD)y, g->cov, (WORD)g->w, (WORD)g->h, fi, fg, bi, bg);
         }
         x += mtc_advance(&m->core, cp);

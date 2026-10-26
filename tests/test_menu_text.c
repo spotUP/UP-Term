@@ -1,5 +1,6 @@
 /* The Amarchy menu text layout (amarchy/menu_text_core.c; plan 2026-10-26-amarchy-gui-aa-font.md A2): string
  * width, ellipsis fitting, the per-code-point glyph cache. A fake glyph source stands in for a font. */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "../amarchy/menu_text_core.h"
@@ -78,6 +79,45 @@ static void test_fit(void)
     mtc_free(&c);
 }
 
+/* the wrapped-line and prefix widths gui.c uses for the viewer and the message */
+static void test_prefix(void)
+{
+    static mtc c;
+    const char *t = "ab\xC3\xA9" "cd"; /* 6 + 6 + 7 + 6 + 6 */
+    open_fake(&c);
+    CHECK_INT(mtc_width_n(&c, t, 3), 12);                /* a whole code point only: the cut e-acute is left out */
+    CHECK_INT(mtc_width_n(&c, t, 4), 6 + 6 + 7);
+    CHECK_INT(mtc_prefix(&c, t, 6, 100), 6);             /* all fit */
+    CHECK_INT(mtc_prefix(&c, t, 6, 18), 2);              /* ab = 12, the e-acute would be 19 */
+    CHECK_INT(mtc_prefix(&c, t, 6, 19), 4);              /* ab + e-acute = 2 + 2 bytes */
+    CHECK_INT(mtc_prefix(&c, t, 3, 100), 2);             /* the cut inside the e-acute stops before it */
+    CHECK_INT(mtc_prefix(&c, t, 6, 3), 0);
+    mtc_free(&c);
+}
+
+/* amarchy/gui.c measures and draws every label through menu_text (A3): none of the bitmap-font calls are left
+ * in it, and its width callback is mt_width. Fails when a TextLength/TextFit/Text call comes back. */
+static void test_gui_uses_menu_text(void)
+{
+    static char src[300000];
+    size_t n;
+    FILE *f = fopen("amarchy/gui.c", "rb");
+    CHECK(f != 0);
+    if (!f)
+        return;
+    n = fread(src, 1, sizeof src - 1, f);
+    fclose(f);
+    src[n] = 0;
+    CHECK(strstr(src, "TextLength(") == 0);
+    CHECK(strstr(src, "TextFit(") == 0);
+    CHECK(strstr(src, " Text(") == 0 && strstr(src, "\tText(") == 0);
+    CHECK(strstr(src, "return mt_width((menu_text *)ctx, s);") != 0);
+    CHECK(strstr(src, "mt_draw(g->mt") != 0);
+    CHECK(strstr(src, "mt_fit(g->mt") != 0);
+    CHECK(strstr(src, "mt_prefix(g->mt") != 0);
+    CHECK(strstr(src, "mt_aa_glyphs(g->mt)") != 0);
+}
+
 /* the second width call of the same text asks the source for nothing; draw-side coverage is cached per code point */
 static void test_cache(void)
 {
@@ -119,4 +159,6 @@ void suite_menu_text(void)
     test_fit();
     test_cache();
     test_scale();
+    test_prefix();
+    test_gui_uses_menu_text();
 }

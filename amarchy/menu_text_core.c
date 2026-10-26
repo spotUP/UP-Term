@@ -106,6 +106,32 @@ int mtc_width(mtc *c, const char *s)
     return w;
 }
 
+int mtc_width_n(mtc *c, const char *s, int len)
+{
+    int w = 0, n;
+    unsigned long cp;
+    const char *e = s + len;
+    while (s < e && ((cp = mtc_next(s, &n)), n > 0) && s + n <= e) {
+        w += mtc_advance(c, cp);
+        s += n;
+    }
+    return w;
+}
+
+int mtc_prefix(mtc *c, const char *s, int len, int maxw)
+{
+    int w = 0, used = 0, n;
+    unsigned long cp;
+    while (used < len && ((cp = mtc_next(s + used, &n)), n > 0)) {
+        int a = mtc_advance(c, cp);
+        if (used + n > len || w + a > maxw)
+            break;
+        w += a;
+        used += n;
+    }
+    return used;
+}
+
 int mtc_fit(mtc *c, const char *s, int maxw, char *out, int n)
 {
     static const char dots[] = "...";
