@@ -3,7 +3,7 @@
 (call counter on the recipe-field reader, sentinel: the print-bitchx_SUMMARY answer is in the output) and
 produces the committed rows and files byte for byte. tree (no _FEED_ID) produces none.
 Run: python3 -I tests/test_pkg_rows.py   (UPTERM_PORTS=<dir> overrides ../upterm-ports; skips when absent)"""
-import contextlib, io, os, pathlib, shutil, sys, tempfile, unittest
+import contextlib, io, os, pathlib, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -158,6 +158,21 @@ class Replace(unittest.TestCase):
                 self.assertEqual(len(new), len(old), n)
             self.assertIn('bitchx  bin/BitchX2', ''.join((pathlib.Path(d) / 'dist/slim.txt').read_text()))
             self.assertNotIn('bitchx  bin/BitchX\n', (pathlib.Path(d) / 'dist/slim.txt').read_text())
+
+
+class MakeOnly(unittest.TestCase):
+    """D3: make test ONLY=pkg_rows builds no C binary (a worktree without the vendor NDK cannot build render_host);
+    a full make test still builds all of them."""
+
+    def dry(self, *args):
+        return subprocess.run(['make', '-n', 'test'] + list(args), cwd=ROOT, capture_output=True, text=True).stdout
+
+    def test_pkg_rows_row_needs_no_c_prerequisite(self):
+        only = self.dry('ONLY=pkg_rows')
+        self.assertIn('tests/test_pkg_rows.py', only)
+        self.assertNotIn('render_host', only)
+        self.assertNotIn('vttest_host', only)
+        self.assertIn('render_host', self.dry())
 
 
 STAGED = ROOT / 'build/dist/up-bitchx'
