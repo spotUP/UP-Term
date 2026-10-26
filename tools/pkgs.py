@@ -130,8 +130,10 @@ MAINTAINER = 'UP-Term <https://github.com/spotUP/UP-Term>'
 # ./T/upkg-stage/<archive>/... lands in T: with no second dest and no patch of the upkg binary.
 STAGE = 'T/upkg-stage'
 STAGE_DOS = 'T:upkg-stage'
+# Packages whose files do not come from an upterm-ports recipe. A ports package (one with a _FEED_ID) has no line here:
+# its summary is the recipe's _SUMMARY (summary() below), so adding one touches no shared code.
 SUMMARY = {
-        'claude': 'Claude Code for the Amiga (C:Claude)',
+    'claude': 'Claude Code for the Amiga (C:Claude)',
     'pi': 'amiga-pi, the pi coding agent',
     'nvim': 'Neovim 0.12 in UP-Term:nvim',
     'python': 'Python 3.14 in SYS:Python3',
@@ -139,7 +141,6 @@ SUMMARY = {
     'git': 'git 2.56.0 in UP-Term:bin and UP-Term:share/git-core',
     'perl': 'Perl 5.42.3 in UP-Term:bin',
     'vim': 'Vim 9.2.1202 in UP-Term:bin and UP-Term:share/vim',
-    'bitchx': 'BitchX IRC client in UP-Term:bin and its IRCLIB in UP-Term:lib/bx',
     'uhc': 'the UHC tools (aget, UHCSearch and the get/search scripts) in UP-Term:uhc',
     'vbcc': 'vbcc 0.9h C compiler for AmigaOS 68k in UP-Term:vbcc',
 }
@@ -149,6 +150,18 @@ SUMMARY = {
 # up-dopus is no slim package: born as up-dopus (2026-10-26), the one hand-written package without an old record (up-uhc, 2026-10-26, the second).
 NEW_PACKAGES = tuple('up-' + i for i in slim.ids() if not old_names('up-' + i)) + ('up-dopus', 'up-uhc')
 EPOCH = 0
+
+
+def summary(pkg_id, default):
+    """The Description of a package: SUMMARY for the hand-built ones, else the recipe's _SUMMARY in $UPTERM_PORTS
+    (tools/pkg_rows.py read_field, the one reader), else default."""
+    if pkg_id in SUMMARY:
+        return SUMMARY[pkg_id]
+    ports = pathlib.Path(os.environ.get('UPTERM_PORTS') or ROOT.parent / 'upterm-ports')
+    if (ports / 'pkgs' / pkg_id / 'recipe.mk').is_file():
+        import pkg_rows
+        return pkg_rows.read_field(ports, pkg_id, 'SUMMARY') or default
+    return default
 
 
 def addons(path=TABLE):
@@ -315,7 +328,7 @@ def build_ipk(r, build):
     need, post, pre = _scripts(r, keys)
     lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + ARCH,
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
-             'Description: ' + SUMMARY.get(r['id'], r['archive'])]
+             'Description: ' + summary(r['id'], r['archive'])]
     lines[2:2] = _rename_fields(r)
     lines += _interactive_fields(build, r)
     ctl = ('\n'.join(lines) + '\n').encode()
@@ -352,7 +365,7 @@ def feed(build, path=TABLE):
         b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _interactive_fields(build, r)
         b += ['Architecture: ' + ARCH, 'Filename: ' + f.name, 'Size: %d' % len(data),
               'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
-              'Description: ' + SUMMARY.get(r['id'], r['archive'])]
+              'Description: ' + summary(r['id'], r['archive'])]
         blocks.append('\n'.join(b) + '\n')
     return '\n'.join(blocks)
 

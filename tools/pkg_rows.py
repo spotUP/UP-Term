@@ -8,8 +8,8 @@ The recipe (DIR/pkgs/<pkg>/recipe.mk) is read with upterm-ports' own tools/recip
 _FEED_ID, _SUMMARY, _FEED_MIN_BASE, _BINS, _DATA, _LICENSE, _VERSION. A recipe without _FEED_ID is a base-kit
 program (tree): no rows. From the fields emit makes
   the dist/packages.txt row, the dist/slim.txt rows, the six files of dist/addons/<pkg>/ (templates in
-  tools/pkg_rows_tpl/), the Makefile snippet and the pkgs.py SUMMARY line (the last two are only printed: they
-  are hunks for the owner to apply to the shared files, see plan CP3).
+  tools/pkg_rows_tpl/). Nothing else: the Makefile targets (dist-<id>, KIT_<id>) loop over dist/slim.txt and
+  tools/pkgs.py reads the summary from the recipe, so a package touches no shared code (plan CP3).
 With --write the rows are appended to the tables and the addons drawer is created; default is a scratch dir.
 `check` regenerates and diffs against the committed rows, exits 1 naming the file and row that drifted.
 What the recipe cannot say (prose of the Installer, README, the man page row) comes from tools/pkg_rows_prose/<pkg>.json
@@ -42,7 +42,7 @@ def load_prose(pkg, path=None):
 
 
 def generate(pkg, ports, a):
-    """{'packages': row, 'slim': [rows], 'addons': {name: text}, 'makefile': text, 'summary': line} or None (base-kit program)."""
+    """{'packages': row, 'slim': [rows], 'addons': {name: text}} or None (base-kit program)."""
     fid = read_field(ports, pkg, 'FEED_ID')
     if not fid:
         return None
@@ -93,11 +93,7 @@ def generate(pkg, ports, a):
         + ln('-' * w1, '-' * w2, '-' * w3) + ln(label, lcol, src)
         + '\nNotes\n- The complete source with UP-Term\'s patches and build recipes is up-term-src.lha, published next to\n'
           '  up-term.lha. Its row of SOURCES.txt is in UP-Term:licenses/%s/SOURCES.txt.\n' % pkg)
-    mk = ('KIT_%s := $(BUILD)/dist/%s\n'
-          'dist-%s: $(BUILD)/amiga/upupdate\n\t$(call SLIM_STAGE,%s)\n'
-          '# and add dist-%s to the prerequisites of dist: and dist-index: and to the .PHONY list\n' % (pkg, fid, pkg, pkg, pkg))
-    return {'packages': row, 'slim': slim_rows, 'addons': add, 'makefile': mk,
-            'summary': "    '%s': '%s'," % (pkg, summary)}
+    return {'packages': row, 'slim': slim_rows, 'addons': add}
 
 
 def table_row(pkg, root):
@@ -119,8 +115,6 @@ def emit(pkg, g, out, write, root):
         (out / 'dist').mkdir(parents=True, exist_ok=True)
         (out / 'dist/packages.row').write_text(g['packages'] + '\n', encoding='utf-8')
         (out / 'dist/slim.rows').write_text('\n'.join(g['slim']) + '\n', encoding='utf-8')
-        (out / 'Makefile.snippet').write_text(g['makefile'], encoding='utf-8')
-        (out / 'pkgs.py.line').write_text(g['summary'] + '\n', encoding='utf-8')
         out = out / 'dist/addons' / pkg
     out.mkdir(parents=True, exist_ok=True)
     for n, t in g['addons'].items():
@@ -143,12 +137,6 @@ def check(pkg, g, root):
         p = root / 'dist/addons' / pkg / n
         if not p.exists() or p.read_text(encoding='utf-8') != t:
             bad.append('dist/addons/%s/%s: differs from the generated file' % (pkg, n))
-    if pkgs.SUMMARY.get(pkg) != g['summary'].split("': '", 1)[1].rstrip("',"):
-        bad.append('tools/pkgs.py: SUMMARY[%r] differs from the recipe _SUMMARY' % pkg)
-    mk = (root / 'Makefile').read_text(encoding='utf-8')
-    for line in g['makefile'].splitlines():
-        if not line.startswith('#') and line.strip() and line not in mk:
-            bad.append('Makefile: line missing: %s' % line.strip())
     return bad
 
 
@@ -179,7 +167,6 @@ def main(argv=None):
     out = pathlib.Path(a.out) if a.out else pathlib.Path(tempfile.mkdtemp(prefix='pkg_rows-'))
     emit(a.pkg, g, out, a.write, root)
     print('pkg_rows: %s -> %s' % (a.pkg, root if a.write else out))
-    print(g['makefile'] + g['summary'])
     return 0
 
 

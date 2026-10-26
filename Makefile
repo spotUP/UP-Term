@@ -1275,6 +1275,8 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # pages, licences, SOURCES.txt) with their source beside it; the source goes
 # into build/up-term-src.lha, published next to the kit (plan D2)
 UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+# tools/pkgs.py reads a ports package's Description from its recipe there
+export UPTERM_PORTS
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
 # a package's build/state/<p>.checked newer than the staged SOURCES.txt means the ports were rebuilt after the last
 # kit-stage: the kit would ship the old programs (v1.2 feed build of 2026-10-20 carried the old upkg)
@@ -1333,7 +1335,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	@# UP-Term's own pages beside theirs (sz.1 is rz's too: no links on AmigaOS)
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT)/Files/userland && cp -R $(PORTS_KIT) $(KIT)/Files/userland
-	@# the slim base (P9): git, perl, vim, bitchx and vbcc are packages (dist/slim.txt), staged by dist-git, dist-perl, dist-vim, dist-bitchx, dist-vbcc
+	@# the slim base (P9): git, perl, vim, bitchx and vbcc are packages (dist/slim.txt), staged by dist-<id>
 	python3 tools/slim.py remove $(KIT)/Files/userland
 	@# upkg-ask (upkg plan P10.6): asks an add-on's install questions, through the ports' upkg-ui
 	cp dist/upkg-ask $(KIT)/Files/userland/bin/upkg-ask
