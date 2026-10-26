@@ -31,14 +31,13 @@ APPS = {
     'nc': ('nc', 'the OpenBSD netcat', 'nc -h'),
     'fzy': ('fzy', 'the fuzzy finder', 'fzy --version'),
     'ctags': ('ctags', 'the source tag generator', 'ctags --version'),
-    'mandoc': ('mandoc', 'the man page viewer', 'mandoc -V'),
     'zip': ('zip', 'the Info-ZIP archiver', 'zip -v'),
 }
 LICENCE = {  # SOURCES.txt of the ports kit
     'mutt': 'GPL v2 or later', 'lynx': 'GPL v2', 'joe': 'GPL v2 or later', 'mg': 'public domain, BSD and ISC',
     'nano': 'GPL v3 or later', 'tig': 'GPL v2 or later', 'htop': 'GPL v2 or later', 'ncdu': 'MIT',
     'nnn': 'BSD 2-clause', 'lua': 'MIT', 'jq': 'MIT', 'hexedit': 'GPL v2 or later', 'picocom': 'GPL v2 or later',
-    'nc': 'ISC', 'fzy': 'MIT', 'ctags': 'GPL v2 or later', 'mandoc': 'ISC', 'zip': 'Info-ZIP (BSD-like)',
+    'nc': 'ISC', 'fzy': 'MIT', 'ctags': 'GPL v2 or later', 'zip': 'Info-ZIP (BSD-like)',
 }
 
 

@@ -45,5 +45,4 @@ picocom  up-picocom  1.0      1.0         80      UP-Term:pkg/up-picocom  Files/
 nc      up-nc     1.0      1.0         80      UP-Term:pkg/up-nc      Files/userland/bin/nc  upterm-ports,ixemul-vtcon
 fzy     up-fzy    1.0      1.0         80      UP-Term:pkg/up-fzy     Files/userland/bin/fzy  upterm-ports,ixemul-vtcon
 ctags   up-ctags  1.0      1.0         80      UP-Term:pkg/up-ctags   Files/userland/bin/ctags  upterm-ports,ixemul-vtcon
-mandoc  up-mandoc  1.0      1.0         80      UP-Term:pkg/up-mandoc   Files/userland/bin/mandoc,Files/userland/bin/man  upterm-ports,ixemul-vtcon
 zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/userland/bin/zip  upterm-ports,ixemul-vtcon

@@ -75,14 +75,6 @@ fzy     licenses/fzy
 ctags   bin/ctags
 ctags   share/man/man1/ctags.1
 ctags   licenses/ctags
-mandoc  bin/mandoc
-mandoc  bin/man
-mandoc  share/man/man1/mandoc.1
-mandoc  share/man/man1/man.1
-mandoc  share/man/man7/man.7
-mandoc  share/man/man7/mdoc.7
-mandoc  share/man/man7/roff.7
-mandoc  licenses/mandoc
 zip     bin/zip
 zip     share/man/man1/zip.1
 zip     licenses/zip
