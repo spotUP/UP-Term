@@ -5,6 +5,7 @@
 #define AMARCHY_LEAF_H
 
 #include "../config/keymap.h"
+#include "index_core.h"
 
 /* the window a run: leaf gets (the README's NewShell line, as open:uterm) */
 #define LF_UTERM_SPEC "XCON:0/20/640/300/UP-Term/CLOSE"
@@ -61,6 +62,10 @@ int lf_viewer_command(char *out, int cap, const char *dir);
 /* The clipboard history row a path names (index_core.h IX_KIND_CLIP): "clip:<n>" gives n >= 0, the empty
  * ring's row IX_CLIP_NONE gives -1, any other path (a tool, a game) gives -2. */
 int lf_clip_entry(const char *path);
+
+/* Fill the lister rows (index_core.h IX_LISTERS_NODE) from Directory Opus: `lister query all`, then `lister query
+ * <handle> path` per lister, over ARexx port DOPUS.1. No port, no rows, no wait. Call after ix_load_file. */
+void lf_load_listers(ix_index *x);
 
 typedef struct lf_ui {
     /* a value for an action that needs one; 1 with out set, 0 on Escape or an empty line */

@@ -22,7 +22,8 @@
 #define IX_KIND_CLIP     IX_NKINDS
 #define IX_CLIPS_NODE    "trigger.clipboard"
 #define IX_CLIP_NONE     "clip:none"
-#define IX_KIND_LISTER   (IX_NKINDS + 1)   /* a Directory Opus lister row (ix_lister_row); not stored in the index yet */
+#define IX_KIND_LISTER   (IX_NKINDS + 1)   /* a Directory Opus lister row (ix_lister_row); stored by ix_add_listers, the node they fill IX_LISTERS_NODE */
+#define IX_LISTERS_NODE  "dopus.listers"
 #define IX_KIND_HIDDEN   (-1)   /* ix_row_kind result for a system-drawer app row: ix_load_text drops it */
 #define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
 #define IG_CACHE_PATH "ENVARC:Amarchy/icons"  /* the menu's scaled icons (icon_core.h file format); a rescan deletes it */
@@ -69,7 +70,7 @@ int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n);
  * rows are on the heap. An ix_index starts zeroed (static, or {0}); ix_free releases its rows. */
 typedef struct ix_index {
     int    n, napps;            /* rows[0..napps) are apps; rows[kstart[k]..kstart[k+1]) have effective kind k */
-    int    kstart[IX_NKINDS + 2];     /* [IX_NKINDS], [IX_NKINDS + 1]: the clipboard history rows */
+    int    kstart[IX_NKINDS + 4];     /* [IX_NKINDS], [IX_NKINDS + 1]: the clipboard history rows; [IX_NKINDS + 2], [IX_NKINDS + 3]: the lister rows */
     ix_row *rows;
 } ix_index;
 
@@ -104,6 +105,9 @@ void ix_load_clips(ix_index *x);
  * `lister query all` with the open listers' handles (decimal numbers, blank or newline separated; 5.82 answers
  * nothing, v5.104 is the target). Fills out with at most max handles in the order given; non-numeric tokens are
  * skipped; empty or NULL answer, or no port, gives 0. */
+/* Store n lister rows (ix_lister_row) after the clipboard rows, replacing the ones stored before; n == 0 removes them.
+ * 1 on success, 0 when memory is short. Call after ix_add_clips (which drops the lister rows). */
+int ix_add_listers(ix_index *x, const ix_row *rows, int n);
 int ix_lister_handles(const char *answer, unsigned long *out, int max);
 /* The row of one lister from its `lister query <handle> path` answer (a trailing CR/LF and surrounding blanks
  * are dropped, spaces inside kept). kind IX_KIND_LISTER, label the last drawer ("Work:Dev/My Stuff" gives "My Stuff",

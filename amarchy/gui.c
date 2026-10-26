@@ -594,6 +594,7 @@ static int reload_index(gui *g)
     ix_free(&ixs);
     index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    lf_load_listers(&ixs);
     g->cap = ix_level_cap(&ixs);
     g->it = malloc(g->cap * sizeof *g->it);
     g->idx = malloc(g->cap * sizeof *g->idx);
@@ -1131,6 +1132,7 @@ int main(int argc, char **argv)
     keymap_load(&km, km_default_text);
     index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    lf_load_listers(&ixs);
     menu_cond = mn_cond(upactive_terminal_present(0), upactive_dopus_present(), upactive_workbench_present());   /* a plain Intuition window: never in the MRU */
     {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
         ix_prog p0;

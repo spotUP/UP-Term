@@ -209,6 +209,7 @@ unverified until then. 25 items.
 ### Phase P6: index
 - [ ] D21 Lister rows in the index with refresh. Test: host `tests/test_main.c` for the pure part; rig for the live part.
   - Pure part done (f917e3c4): `ix_lister_handles`, `ix_lister_row`, `ix_lister_of`, `IX_KIND_LISTER` in amarchy/index_core.c; host `the_lister_rows` in tests/test_clips.c (ONLY=clips). NOT done: ARexx send of `lister query all` / `lister query <h> path` (needs upactive-style DOPUS port call), an ix_index kind slot for the rows (kstart), refresh when the menu opens, the jump action, rig check on v5.104 (5.82 answers nothing).
+  - Amiga half wired (commit 8b6aff87): `rexx_send` in amarchy/leaf.c, `lf_load_listers` (`lister query all`, `lister query <h> path` on DOPUS.1, no port = no rows, no wait) called after every ix_load_file in gui.c and menu.c, `ix_add_listers` with its own kstart slot, group `dopus.listers` in dist/keymap, row activation sends `lister activate <h>` (LISTER_FRONT_FMT, command name UNVERIFIED). Host: the_lister_group (ONLY=clips, 95 checks) and keymap; amarchy-gui and amarchy-menu compile. Rig check needs DOpus v5.104 (5.82 answers nothing).
 - [ ] D22 Group gone when DOpus quits. Test: rig case, quit DOpus, rows vanish. Half measured, 2026-10-26: rig 4 started --no-dopus, dopus_absent: "[OK] root rows without a port: ['Apps', 'Settings', ...]" (no Dopus). The vanish-on-quit half is not measured: `dopus quit` does not quit DOpus 5.82 on the rig.
 
 ### Phase Z: finish

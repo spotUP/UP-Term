@@ -139,6 +139,7 @@ dopus.refresh      = Refresh active lister | rexx:UP-Term:Rexx/dopus-refresh.rex
 dopus.devicelist   = Show devices          | rexx:UP-Term:Rexx/dopus-devicelist.rexx
 dopus.ftp          = FTP connect           | rexx:UP-Term:Rexx/dopus-ftp.rexx
 dopus.shell        = Open UP-Term here     | open:uterm
+dopus.listers      = Open listers          | menu:dopus.listers
 dopus.configure    = Configure lister display format | rexx:UP-Term:Rexx/dopus-configure.rexx
 settings.amarchy.rescan      = Rescan apps          | scan:amarchy-index
 settings.amarchy.preferences = Amarchy preferences  | run:C:UP-Term-Prefs AMARCHY

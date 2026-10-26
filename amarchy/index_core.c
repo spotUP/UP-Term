@@ -232,7 +232,28 @@ int ix_add_clips(ix_index *x, const char *const *labels, int n)
     }
     x->kstart[IX_NKINDS] = base;
     x->kstart[IX_NKINDS + 1] = base + add;
+    x->kstart[IX_NKINDS + 2] = x->kstart[IX_NKINDS + 3] = 0;   /* the lister rows sat after the ring: gone */
     x->n = base + add;
+    return 1;
+}
+
+int ix_add_listers(ix_index *x, const ix_row *lrows, int n)
+{
+    int base = x->kstart[IX_NKINDS + 3] ? x->kstart[IX_NKINDS + 2] : x->n;
+    ix_row *rows;
+    if (n <= 0) {
+        x->n = base;
+        x->kstart[IX_NKINDS + 2] = x->kstart[IX_NKINDS + 3] = 0;
+        return 1;
+    }
+    rows = (ix_row *)realloc(x->rows, (size_t)(base + n) * sizeof *rows);
+    if (!rows)
+        return 0;
+    x->rows = rows;
+    memcpy(rows + base, lrows, (size_t)n * sizeof *rows);
+    x->kstart[IX_NKINDS + 2] = base;
+    x->kstart[IX_NKINDS + 3] = base + n;
+    x->n = base + n;
     return 1;
 }
 
@@ -520,12 +541,15 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
     if (!x)
         return n;
     for (kd = 0; kd < n; kd++)                      /* Trigger > Clipboard history is a group of ring rows */
-        if (out[kd].row >= 0 && !strcmp(k->menu[out[kd].row].id, IX_CLIPS_NODE)) {
+        if (out[kd].row >= 0 && (!strcmp(k->menu[out[kd].row].id, IX_CLIPS_NODE) ||
+                                 !strcmp(k->menu[out[kd].row].id, IX_LISTERS_NODE))) {
             out[kd].row = MN_ROW_GROUP;
             out[kd].ix = -1;
         }
     if (!strcmp(node, IX_CLIPS_NODE))
         return add_index(x, x->kstart[IX_NKINDS], x->kstart[IX_NKINDS + 1], out, n, max);
+    if (!strcmp(node, IX_LISTERS_NODE))
+        return add_index(x, x->kstart[IX_NKINDS + 2], x->kstart[IX_NKINDS + 3], out, n, max);
     for (kd = 0; kd < IX_NKINDS; kd++) {
         kl = (int)strlen(kind_node[kd]);
         if (!strncmp(node, kind_node[kd], kl) && (!node[kl] || node[kl] == '.'))

@@ -104,10 +104,19 @@ static int run_request(const km_menu *m, const lf_ui *ui)
     return (int)rc;
 }
 
+static int lister_front(unsigned long handle);
+
 int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 {
     char err[160];
     int ci = lf_clip_entry(path);
+    long lh = ix_lister_of(path);
+    if (lh >= 0) {
+        int rc = lister_front((unsigned long)lh);
+        if (rc && ui && ui->refused)
+            ui->refused(ui->ctx, label, UPREQ_FAILED, "Directory Opus did not bring the lister forward");
+        return rc;
+    }
     if (ci != -2) {                     /* a clipboard history row: its text goes back on the clipboard */
         clip_ring r;
         int ok = 0;
@@ -172,29 +181,31 @@ static int run_viewer(const km_menu *m, const lf_ui *ui)
     return start_detached(line, m, ui);
 }
 
+/* Directory Opus: bring one lister forward (handle from `lister query all`). UNVERIFIED on a rig: needs DOpus v5.104. */
+#define LISTER_FRONT_FMT "lister activate %lu"
+
 struct RxsLib *RexxSysBase;   /* opened around each win: send (send_win) */
 
-/* win:<verb>: the commodity does it (amarchy-gui's own window is the active one, the owner's target is the
- * commodity's ticket): send "WIN <verb>" to the ARexx port AMARCHY and wait for the reply. -1 and a line through
- * ui->refused when the port is absent or the verb is refused. */
-static int send_win(const km_menu *m, const lf_ui *ui)
+/* One ARexx command to a port and its reply: the command line goes to port as an RXCOMM message and this waits for
+ * the reply. Returns the return code, or -1 when the port or rexxsyslib.library is absent. A result string (the
+ * reply's argstring, when the receiver gives one) is copied into result[cap] when result is set, else "". */
+static long rexx_send(const char *portname, const char *line, char *result, int cap)
 {
     struct MsgPort *reply, *port;
     struct RexxMsg *rm;
     struct Library *rxs;
-    char line[KM_ID + 16];
     long rc = -1;
-    const char *why = "the Amarchy commodity is not running";
-    snprintf(line, sizeof line, "WIN %s", m->arg);
+    if (result && cap > 0)
+        result[0] = 0;
     rxs = OpenLibrary((STRPTR)"rexxsyslib.library", 0);
     reply = rxs ? CreateMsgPort() : 0;
     if (reply) {
         RexxSysBase = (struct RxsLib *)rxs;
         if ((rm = CreateRexxMsg(reply, 0, 0)) != 0) {
             if ((rm->rm_Args[0] = (STRPTR)CreateArgstring((STRPTR)line, strlen(line))) != 0) {
-                rm->rm_Action = RXCOMM;
+                rm->rm_Action = RXCOMM | (result ? RXFF_RESULT : 0);
                 Forbid();
-                port = FindPort((STRPTR)"AMARCHY");
+                port = FindPort((STRPTR)portname);
                 if (port)
                     PutMsg(port, (struct Message *)rm);
                 Permit();
@@ -202,7 +213,11 @@ static int send_win(const km_menu *m, const lf_ui *ui)
                     WaitPort(reply);
                     GetMsg(reply);
                     rc = rm->rm_Result1;
-                    why = "the window command was refused";
+                    if (rc == 0 && result && rm->rm_Result2) {
+                        strncpy(result, (const char *)rm->rm_Result2, cap - 1);
+                        result[cap - 1] = 0;
+                        DeleteArgstring((STRPTR)rm->rm_Result2);
+                    }
                 }
                 DeleteArgstring((STRPTR)rm->rm_Args[0]);
             }
@@ -212,9 +227,52 @@ static int send_win(const km_menu *m, const lf_ui *ui)
     }
     if (rxs)
         CloseLibrary(rxs);
+    return rc;
+}
+
+/* win:<verb>: the commodity does it (amarchy-gui's own window is the active one, the owner's target is the
+ * commodity's ticket): send "WIN <verb>" to the ARexx port AMARCHY and wait for the reply. -1 and a line through
+ * ui->refused when the port is absent or the verb is refused. */
+static int send_win(const km_menu *m, const lf_ui *ui)
+{
+    char line[KM_ID + 16];
+    long rc;
+    snprintf(line, sizeof line, "WIN %s", m->arg);
+    rc = rexx_send("AMARCHY", line, 0, 0);
     if (rc != 0 && ui && ui->refused)
-        ui->refused(ui->ctx, m->label, UPREQ_FAILED, why);
+        ui->refused(ui->ctx, m->label, UPREQ_FAILED,
+                    rc < 0 ? "the Amarchy commodity is not running" : "the window command was refused");
     return rc == 0 ? 0 : -1;
+}
+
+#define LISTER_MAX 16
+void lf_load_listers(ix_index *x)
+{
+    char ans[256], path[IX_PATH];
+    unsigned long h[LISTER_MAX];
+    ix_row rows[LISTER_MAX];
+    int n, i, got = 0;
+    if (!upactive_dopus_present())
+        return;                                             /* no DOpus: no rows, no wait */
+    if (rexx_send("DOPUS.1", "lister query all", ans, sizeof ans) != 0)
+        return;
+    n = ix_lister_handles(ans, h, LISTER_MAX);
+    for (i = 0; i < n; i++) {
+        char q[48];
+        snprintf(q, sizeof q, "lister query %lu path", h[i]);
+        path[0] = 0;
+        if (rexx_send("DOPUS.1", q, path, sizeof path) == 0 && ix_lister_row(h[i], path, &rows[got]))
+            got++;
+    }
+    ix_add_listers(x, rows, got);
+}
+
+/* A lister row: bring that lister to the front. */
+static int lister_front(unsigned long handle)
+{
+    char line[48];
+    snprintf(line, sizeof line, LISTER_FRONT_FMT, handle);
+    return rexx_send("DOPUS.1", line, 0, 0) == 0 ? 0 : UPREQ_FAILED;
 }
 
 int lf_run(const km_menu *m, const lf_ui *ui)

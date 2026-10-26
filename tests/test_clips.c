@@ -155,6 +155,35 @@ static void the_lister_rows(void)
     CHECK(ix_lister_of("lister:") == -1 && ix_lister_of("lister:4x") == -1 && ix_lister_of("clip:3") == -1 && ix_lister_of(0) == -1);
 }
 
+static void the_lister_group(void)
+{
+    static const char km_text[] = "[menu]\ndopus.listers = Open listers | menu:dopus.listers\ndopus.front = Front | open:uterm\n";
+    static keymap km;
+    ix_index x;
+    ix_row lr[2];
+    mn_item it[MN_MAX_ITEMS + 40];
+    char path[64];
+    int n;
+    CHECK(keymap_parse(&km, km_text, (long)strlen(km_text)));
+    memset(&x, 0, sizeof x);
+    ix_load_text(&km, &x, 0);
+    CHECK(ix_lister_row(7, "Work:Dev/", &lr[0]) && ix_lister_row(9, "", &lr[1]));
+    CHECK_INT(ix_add_clips(&x, 0, 0), 1);
+    CHECK_INT(ix_add_listers(&x, lr, 2), 1);
+    n = ix_level(&km, &x, IX_LISTERS_NODE, "", it, 60);
+    CHECK_INT(n, 2);
+    CHECK_STR(it[0].label, "Dev");
+    CHECK(ix_launch_path(&x, &it[1], path, sizeof path));
+    CHECK_INT((int)ix_lister_of(path), 9);
+    CHECK_INT(ix_level(&km, &x, IX_CLIPS_NODE, "", it, 60), 1);      /* the ring is untouched */
+    CHECK_INT(ix_add_listers(&x, lr, 1), 1);                         /* a refresh replaces, not appends */
+    CHECK_INT(ix_level(&km, &x, IX_LISTERS_NODE, "", it, 60), 1);
+    CHECK_INT(ix_add_listers(&x, lr, 0), 1);                         /* DOpus gone: no rows */
+    CHECK_INT(ix_level(&km, &x, IX_LISTERS_NODE, "", it, 60), 0);
+    CHECK_INT(ix_level(&km, &x, IX_CLIPS_NODE, "", it, 60), 1);
+    ix_free(&x);
+}
+
 static void the_menu_level(void)
 {
     static const char km_text[] = "[menu]\ntrigger.clipboard = Clipboard history | menu:trigger.clipboard\n";
@@ -204,5 +233,6 @@ void suite_clips(void)
     labels();
     file_round_trip();
     the_lister_rows();
+    the_lister_group();
     the_menu_level();
 }

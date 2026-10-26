@@ -45,6 +45,7 @@ dopus.configure              = U+F013    ; fa-gear
 dopus.shell                  = U+F120    ; fa-terminal
 dopus.devicelist             = U+F0A0    ; fa-hdd_o
 dopus.ftp                    = U+F0AC    ; fa-globe
+dopus.listers                = U+F0CA    ; fa-list_ul
 settings.amarchy             = U+F085    ; fa-cogs
 settings.amarchy.rescan      = U+F021    ; fa-refresh
 settings.amarchy.preferences = U+F1DE    ; fa-sliders

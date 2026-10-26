@@ -1772,7 +1772,7 @@ static void the_dopus_rows_are_shipped(void)
         if (!strncmp(km.menu[i].id, "dopus.", 6))
             dopus++;
     }
-    CHECK_INT(dopus, 10);
+    CHECK_INT(dopus, 11);                       /* ten rows plus the dopus.listers group (amarchy/index_core.h) */
     for (i = 0; i < 9; i++) {
         const km_menu *r = shipped_row(rows[i].id);
         char path[96], arg[96];
@@ -1791,6 +1791,7 @@ static void the_dopus_rows_are_shipped(void)
             CHECK(strstr(sc, "TLS") == 0 || strstr(sc, "no TLS") != 0);
     }
     check_row("dopus.shell", KA_OPEN, "uterm");
+    check_row("dopus.listers", KA_MENU, "dopus.listers");
     CHECK(strstr(icons, "\ndopus ") != 0 && strstr(icons, "\ndopus.newlister") != 0);
 }
 

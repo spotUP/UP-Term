@@ -164,6 +164,7 @@ static int reload_index(void)
     free_level();
     ix_free(&ixs);
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    lf_load_listers(&ixs);
     return alloc_level();
 }
 
@@ -286,6 +287,7 @@ static int menu_loop(const char *start)
 {
     int rc = 20;
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
+    lf_load_listers(&ixs);
     menu_cond = mn_cond(upactive_terminal_present(leaf_ui.self_in_mru), upactive_dopus_present(), upactive_workbench_present());
     {   /* a scan that runs already (started from a menu that closed on deactivation) is shown too */
         ix_prog p0;
