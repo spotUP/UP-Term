@@ -1,0 +1,23 @@
+{
+ "about": "the BitchX IRC client and its IRCLIB (scripts, help), new in UP-Term:bin and UP-Term:lib/bx",
+ "copy_comment": [
+  "; BitchX (bin/BitchX) and its IRCLIB lib/bx (scripts, help, translation): BitchX has /UP-Term/lib/bx",
+  "; compiled in as its IRCLIB, so the drawer must be exactly UP-Term:lib/bx (vsh finds the program on its path)."
+ ],
+ "welcome": [
+  "BitchX, the IRC client, for an UP-Term window.",
+  "It goes into UP-Term:bin and UP-Term:lib/bx",
+  "(its scripts and help)."
+ ],
+ "title": "B I T C H X",
+ "why": "Copying BitchX to UP-Term:bin and UP-Term:lib/bx.",
+ "name": "BitchX",
+ "readme_title": "the BitchX IRC client and its IRCLIB for UP-Term",
+ "readme_contents": "bin/BitchX and lib/bx (scripts, help, translation tables).",
+ "readme_use": "BitchX has /UP-Term/lib/bx compiled in as\nits IRCLIB, so the files install at exactly those paths in UP-Term: (bin, lib/bx, licenses). In an\nUP-Term window, in vsh:\n  BitchX",
+ "part_label": "BitchX (bin/BitchX, lib/bx)",
+ "source": "upterm-ports (pkgs/bitchx; prime001/BitchX 3070a76)",
+ "man": [
+  "share/man/man1/BitchX.1.bz2"
+ ]
+}
