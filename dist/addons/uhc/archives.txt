@@ -1,0 +1,5 @@
+# The upstream UHC tools archive this add-on carries, unmodified (permission of its author, Patrik, to redistribute it).
+# <archive> <sha256> <drawer under Files/userland> <download URL>. The Makefile (dist-uhc) fetches the archive into
+# vendor/uhc/ when it is missing, refuses it when the sha256 differs, and unpacks it, as it is, into the drawer.
+# Mirrors of the same file: uhc.driar.se, uhc.a1k.org, uhc.no0b.de, uhc.hex9d.com (the same path).
+uhctools_os3.lha  b457047024a7e9a8f01373f1cda56274d8f902b5a70caf4babd78b1668742e34  uhc  https://uhc.megaburken.net/uhctools_os3.lha

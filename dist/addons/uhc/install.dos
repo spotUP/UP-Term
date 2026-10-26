@@ -1,0 +1,68 @@
+.KEY DIR/A,STEP/K
+.BRA {
+.KET }
+; up-uhc install: the UHC tools for AmigaOS 3 (aget, UHCSearch and the get/search scripts), unmodified, in
+; UP-Term:uhc, with the UHC: assign, its path and the UHCBIN environment variable
+; Run by this archive's Install (an Installer script), which asks the questions:
+;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
+; From a Shell without Installer the same line installs everything. The Installer
+; runs the parts one at a time with STEP (tests/test_dist_addons.py holds the two to
+; the same list); the first part, check, stops the install when up-term.lha is
+; missing or too old (the reason is in ENV:UPTCHECK).
+FailAt 21
+; the archive's Files drawer: every name below is relative to it
+CD "{DIR}"
+If NOT "{STEP}" EQ ""
+  Skip {STEP}
+EndIf
+; @include dist/common/@CHECKFRAG@
+Lab copy-uhc
+; The drawer userland/uhc (the author's archive uhctools_os3.lha, unmodified) goes to UP-Term:uhc.
+; Copy of a drawer copies what is in it.
+MakeDir >NIL: UP-Term:licenses
+Copy userland UP-Term: ALL CLONE QUIET
+If WARN
+  Quit 20
+EndIf
+; UHC: and UHCBIN: assigned now and at every boot, as UHC's own UHC-Startup expects (it assigns UHC: from
+; $UHCBIN and adds UHC:C and UHC:S to the path). A block in S:User-Startup that does it only while
+; UP-Term:uhc is there, so one left behind by an Uninstall that could not take it out does no harm.
+SetEnv UHCBIN UP-Term:uhc
+Assign UHC: UP-Term:uhc
+Path UHC:C UHC:S ADD
+Search >NIL: S:User-Startup ";BEGIN uhc"
+If WARN
+  Echo >>S:User-Startup ";BEGIN uhc"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "If EXISTS UP-Term:uhc"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  Assign UHC: UP-Term:uhc"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  Path UHC:C UHC:S ADD"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  SetEnv UHCBIN UP-Term:uhc"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "EndIf"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup ";END uhc"
+  If WARN
+    Quit 20
+  EndIf
+EndIf
+If NOT "{STEP}" EQ ""
+  Quit 0
+EndIf
+; @include dist/common/record.dos
+Echo "UHC installed: in an UP-Term window, for example  aget  (README.txt)."

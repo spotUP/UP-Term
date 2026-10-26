@@ -36,7 +36,7 @@ class EveryAddOn(unittest.TestCase):
 
     def test_every_add_on_row_has_its_drawer_and_every_slim_package_is_one(self):
         """One loop over the whole table: the add-ons are the hand-written six plus every slim package."""
-        hand = ['claude', 'dopus', 'nvim', 'pi', 'python']
+        hand = ['claude', 'dopus', 'nvim', 'pi', 'python', 'uhc']
         self.assertEqual(sorted(r['id'] for r in ADDONS), sorted(hand + slim.ids()))
 
     def test_a_failed_write_ends_the_install_with_rc_20_before_the_success_line(self):
@@ -661,6 +661,36 @@ class DopusAddOn(unittest.TestCase):
         # the Makefile unpacks the pinned drawers: its rule reads this table
         mk = (ROOT / 'Makefile').read_text()
         self.assertIn('dist/addons/dopus/archives.txt', mk[mk.index('\ndist-dopus:'):])
+
+
+class UhcAddOn(unittest.TestCase):
+    """The UHC add-on carries the author's archive unmodified (permission to redistribute: Patrik, UHC), pinned by
+    sha256 in dist/addons/uhc/archives.txt, installed in UP-Term:uhc with the UHC: assign and the UHCBIN variable."""
+    A = ROOT / 'dist/addons/uhc'
+
+    def test_the_archive_is_pinned_licensed_and_installed_with_its_startup_block(self):
+        pins = [l.split() for l in (self.A / 'archives.txt').read_text().splitlines() if l.strip() and not l.startswith('#')]
+        self.assertEqual(pins, [['uhctools_os3.lha', 'b457047024a7e9a8f01373f1cda56274d8f902b5a70caf4babd78b1668742e34',
+                                 'uhc', 'https://uhc.megaburken.net/uhctools_os3.lha']])
+        self.assertIn('uhc', [r['id'] for r in ADDONS])
+        lic = (self.A / 'LICENSES.txt').read_text()
+        self.assertIn('uhctools_os3.lha', lic)
+        self.assertIn('permission', lic)
+        self.assertIn('copy-uhc        Files/userland', (self.A / 'parts.txt').read_text())
+        s = scripts('uhc')
+        self.assertIn('Lab copy-uhc', s['dos'])
+        self.assertIn('SetEnv UHCBIN UP-Term:uhc', s['dos'])
+        self.assertIn('Assign UHC: UP-Term:uhc', s['dos'])
+        self.assertIn(';BEGIN uhc', s['dos'])
+        self.assertIn(';END uhc', s['dos'])
+        self.assertIn('unstartup.sh uhc', (self.A / 'uninstall-body.dos').read_text())
+        self.assertIn('copy-uhc', s['installer'])
+        # the Makefile checks the pinned sha256 before it unpacks: its rule reads this table
+        mk = (ROOT / 'Makefile').read_text()
+        rule = mk[mk.index('\ndist-uhc:'):]
+        self.assertIn('dist/addons/uhc/archives.txt', rule)
+        self.assertIn('shasum -a 256', rule)
+        self.assertIn('dist-uhc', mk[mk.index('\ndist:'):mk.index('\ndist:') + 200])
 
 
 if __name__ == '__main__':

@@ -140,13 +140,14 @@ SUMMARY = {
     'perl': 'Perl 5.42.3 in UP-Term:bin',
     'vim': 'Vim 9.2.1202 in UP-Term:bin and UP-Term:share/vim',
     'bitchx': 'BitchX IRC client in UP-Term:bin and its IRCLIB in UP-Term:lib/bx',
+    'uhc': 'the UHC tools (aget, UHCSearch and the get/search scripts) in UP-Term:uhc',
     'vbcc': 'vbcc 0.9h C compiler for AmigaOS 68k in UP-Term:vbcc',
 }
 # Packages that never had another name (born as up-<x>, 2026-10-25 up-bitchx): they have no line in
 # dist/package-renames.txt and no old record to migrate. tests/test_dist_packages.py holds both facts.
 # Derived: every slim package (dist/slim.txt) with no old name.
-# up-dopus is no slim package: born as up-dopus (2026-10-26), the one hand-written package without an old record.
-NEW_PACKAGES = tuple('up-' + i for i in slim.ids() if not old_names('up-' + i)) + ('up-dopus',)
+# up-dopus is no slim package: born as up-dopus (2026-10-26), the one hand-written package without an old record (up-uhc, 2026-10-26, the second).
+NEW_PACKAGES = tuple('up-' + i for i in slim.ids() if not old_names('up-' + i)) + ('up-dopus', 'up-uhc')
 EPOCH = 0
 
 

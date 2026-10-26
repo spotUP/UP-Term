@@ -69,7 +69,7 @@ class Packages(unittest.TestCase):
             else:
                 self.assertTrue(r['archive'].startswith('up-'), r['id'])
         self.assertEqual({r['id'] for r in ROWS[1:] if r['needs-base'] == '-'}, {'claude', 'dopus', 'pi', 'python'})
-        self.assertEqual([r['archive'] for r in ROWS], ['up-term', 'up-claude', 'up-pi', 'up-nvim', 'up-python', 'up-dopus'])
+        self.assertEqual([r['archive'] for r in ROWS], ['up-term', 'up-claude', 'up-pi', 'up-nvim', 'up-python', 'up-dopus', 'up-uhc'])
 
     def test_a_stand_alone_archive_with_an_ixemul_version_carries_the_library(self):
         for r in ROWS[1:]:

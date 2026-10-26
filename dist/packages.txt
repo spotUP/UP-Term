@@ -46,3 +46,4 @@ fzy     up-fzy    1.0      1.0         80      UP-Term:pkg/up-fzy     Files/user
 ctags   up-ctags  1.0      1.0         80      UP-Term:pkg/up-ctags   Files/userland/bin/ctags  upterm-ports,ixemul-vtcon
 zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/userland/bin/zip  upterm-ports,ixemul-vtcon
 dopus   up-dopus   1.0      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000                                       -
+uhc     up-uhc     1.0      1.0         -       UP-Term:pkg/up-uhc     Files/userland/uhc                                                             -
