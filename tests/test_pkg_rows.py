@@ -3,7 +3,7 @@
 (call counter on the recipe-field reader, sentinel: the print-bitchx_SUMMARY answer is in the output) and
 produces the committed rows and files byte for byte. tree (no _FEED_ID) produces none.
 Run: python3 -I tests/test_pkg_rows.py   (UPTERM_PORTS=<dir> overrides ../upterm-ports; skips when absent)"""
-import contextlib, io, os, pathlib, sys, tempfile, unittest
+import contextlib, io, os, pathlib, shutil, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -76,6 +76,88 @@ class PkgRows(unittest.TestCase):
                                    mutate=lambda p, f, v: v + 'x' if f == 'LICENSE' else v)
         self.assertEqual(rc, 1)
         self.assertIn('dist/addons/bitchx/', out)
+
+
+MOCK_MAKEFILE = """SYSROOT := /sys
+PREFIX := /UP-Term
+fig_FEED_ID := up-fig
+fig_SUMMARY := Big letters
+fig_BINS := bin/fig
+fig_LICENSE := BSD-3-Clause
+fig_VERSION := 1
+fig_INSTALL_CMD = install -d $(SYSROOT)$(PREFIX)/bin $(SYSROOT)$(PREFIX)/share/fig && install -m 644 f $(SYSROOT)$(PREFIX)/share/fig/
+%(data)s
+print-%%:
+\t@echo '$($*)'
+"""
+
+
+class InstallStepCoverage(unittest.TestCase):
+    """D1: a path the recipe's install step puts under UP-Term: that no _BINS/_DATA row covers is left out of the
+    package without a word. emit stops and check fails naming it."""
+
+    def mock(self, d, data):
+        d = pathlib.Path(d)
+        (d / 'Makefile').write_text(MOCK_MAKEFILE % {'data': data})
+        (d / 'tools').mkdir()
+        shutil.copy(PORTS / 'tools/recipe-var.sh', d / 'tools/recipe-var.sh')
+        return d
+
+    def run_cli(self, argv):
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                rc = pkg_rows.main(argv)
+        except SystemExit as e:
+            rc = str(e)
+        return rc, out.getvalue()
+
+    def test_an_installed_drawer_without_data_fails_emit_and_check(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as out:
+            ports = self.mock(d, '')
+            rc, _ = self.run_cli(['emit', 'fig', '--ports', str(ports), '--out', out])
+            self.assertIn('share/fig', str(rc))
+            self.assertIn('fig_DATA', str(rc))
+            rc, text = self.run_cli(['check', 'fig', '--ports', str(ports)])
+            self.assertEqual(rc, 1)
+            self.assertIn('share/fig', text)
+
+    def test_the_drawer_in_data_is_covered(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as out:
+            ports = self.mock(d, 'fig_DATA := share/fig')
+            rc, _ = self.run_cli(['emit', 'fig', '--ports', str(ports), '--out', out])
+            self.assertEqual(rc, 0)
+            self.assertIn('fig  share/fig', (pathlib.Path(out) / 'dist/slim.rows').read_text())
+
+
+@unittest.skipUnless((PORTS / 'Makefile').exists(), 'upterm-ports not found at %s (set UPTERM_PORTS)' % PORTS)
+class Replace(unittest.TestCase):
+    """D4: --write refuses an id with rows; --replace rewrites that id's rows in place, every other row byte-identical."""
+
+    def test_replace_rewrites_only_this_ids_rows(self):
+        with tempfile.TemporaryDirectory() as d:
+            for n in ('dist', 'Makefile'):
+                (shutil.copytree if (ROOT / n).is_dir() else shutil.copy)(ROOT / n, pathlib.Path(d) / n)
+            before = {n: (pathlib.Path(d) / n).read_text().splitlines(keepends=True) for n in ('dist/packages.txt', 'dist/slim.txt')}
+            real = pkg_rows.read_field
+            pkg_rows.read_field = lambda p, k, f: 'bin/BitchX2' if f == 'BINS' and k == 'bitchx' else real(p, k, f)
+            argv = ['emit', 'bitchx', '--ports', str(PORTS), '--root', d, '--write']
+            try:
+                with self.assertRaises(SystemExit) as cm:
+                    pkg_rows.main(argv)
+                self.assertIn('--replace', str(cm.exception))
+                self.assertEqual({n: (pathlib.Path(d) / n).read_text().splitlines(keepends=True) for n in before}, before)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(pkg_rows.main(argv + ['--replace']), 0)
+            finally:
+                pkg_rows.read_field = real
+            for n, old in before.items():
+                new = (pathlib.Path(d) / n).read_text().splitlines(keepends=True)
+                keep = lambda ls: [l for l in ls if l.split()[:1] != ['bitchx']]
+                self.assertEqual(keep(new), keep(old), n)
+                self.assertEqual(len(new) - len(old), 0 if n == 'dist/packages.txt' else 0, n)
+            self.assertIn('bitchx  bin/BitchX2', ''.join((pathlib.Path(d) / 'dist/slim.txt').read_text()))
+            self.assertNotIn('bitchx  bin/BitchX\n', (pathlib.Path(d) / 'dist/slim.txt').read_text())
 
 
 STAGED = ROOT / 'build/dist/up-bitchx'

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Contributor packages: the vtcon rows of one upterm-ports recipe, generated from the recipe.
 
-  python3 tools/pkg_rows.py emit  <pkg> --ports DIR [--out DIR | --write]
+  python3 tools/pkg_rows.py emit  <pkg> --ports DIR [--out DIR | --write [--replace]]
   python3 tools/pkg_rows.py check <pkg> --ports DIR
 
 The recipe (DIR/pkgs/<pkg>/recipe.mk) is read with upterm-ports' own tools/recipe-var.sh (`make print-<pkg>_<FIELD>`):
@@ -11,12 +11,16 @@ program (tree): no rows. From the fields emit makes
   tools/pkg_rows_tpl/). Nothing else: the Makefile targets (dist-<id>, KIT_<id>) loop over dist/slim.txt and
   tools/pkgs.py reads the summary from the recipe, so a package touches no shared code (plan CP3).
 With --write the rows are appended to the tables and the addons drawer is created; default is a scratch dir.
+--write refuses an id that already has rows; --replace (the owner's decision) rewrites that id's rows in place and
+keeps every other row byte-identical. Both emit and check also compare the rows with what the recipe's _INSTALL_CMD
+installs under $(SYSROOT)$(PREFIX): an installed path no _BINS/_DATA covers (figlet's share/figlet without
+`_DATA := share/figlet`) would be left out of the package, so emit stops and check fails naming it.
 `check` regenerates and diffs against the committed rows, exits 1 naming the file and row that drifted.
 What the recipe cannot say (prose of the Installer, README, the man page row) comes from tools/pkg_rows_prose/<pkg>.json
 (or --prose FILE; key man lists the man page rows) and falls back to text built from _SUMMARY; --man PATH adds a slim row,
 --pkg-version, --base-version, --ixemul set the packages.txt columns (defaults 1.0, 1.0, 80).
 """
-import argparse, json, os, pathlib, subprocess, sys, tempfile
+import argparse, json, os, pathlib, re, subprocess, sys, tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import pkgs, slim
@@ -34,6 +38,34 @@ def read_field(ports, pkg, field):
                        env=dict(os.environ, ROOT=str(ports), P=pkg, F=field),
                        capture_output=True, text=True, check=True)
     return r.stdout.strip()
+
+
+def read_make(ports, var):
+    """A plain make variable of the ports Makefile (SYSROOT, PREFIX), through the same print-% rule."""
+    return subprocess.run(['make', '-s', '-C', str(ports), 'print-' + var], capture_output=True, text=True, check=True).stdout.strip()
+
+
+# Installed paths that need no _BINS/_DATA row: the man pages (listed through the prose file) and the licence drawer.
+IGNORED_INSTALLS = ('share/man', 'share/doc', 'share/info', 'licenses')
+
+
+def uncovered_installs(ports, pkg, bins, data):
+    """Paths the recipe's _INSTALL_CMD installs under $(SYSROOT)$(PREFIX) that no _BINS or _DATA row covers.
+    The recipe's install step is the only per-package statement of what is installed (the shared sysroot holds every
+    package), so it is what check compares against; the default `make install` names no path and yields none."""
+    cmd = read_field(ports, pkg, 'INSTALL_CMD')
+    root = read_make(ports, 'SYSROOT') + read_make(ports, 'PREFIX')
+    covered = [c.rstrip('/') for c in bins + data]
+    out = []
+    for rel in re.findall(re.escape(root) + r'/([^\s;&|"\']+)', cmd):
+        rel = rel.rstrip('/')
+        if any(rel == i or rel.startswith(i + '/') for i in IGNORED_INSTALLS):
+            continue
+        if any(rel == c or rel.startswith(c + '/') or c.startswith(rel + '/') for c in covered):
+            continue
+        if rel not in out:
+            out.append(rel)
+    return out
 
 
 def load_prose(pkg, path=None):
@@ -93,7 +125,7 @@ def generate(pkg, ports, a):
         + ln('-' * w1, '-' * w2, '-' * w3) + ln(label, lcol, src)
         + '\nNotes\n- The complete source with UP-Term\'s patches and build recipes is up-term-src.lha, published next to\n'
           '  up-term.lha. Its row of SOURCES.txt is in UP-Term:licenses/%s/SOURCES.txt.\n' % pkg)
-    return {'packages': row, 'slim': slim_rows, 'addons': add}
+    return {'packages': row, 'slim': slim_rows, 'addons': add, 'uncovered': uncovered_installs(ports, pkg, bins, data)}
 
 
 def table_row(pkg, root):
@@ -103,13 +135,35 @@ def table_row(pkg, root):
     return None
 
 
-def emit(pkg, g, out, write, root):
+def replace_rows(path, pkg, new):
+    """The file with pkg's rows replaced by `new` at the place of the first one (appended when it had none);
+    every other line stays byte-identical."""
+    out, done = [], False
+    for line in path.read_text(encoding='utf-8').splitlines(keepends=True):
+        f = line.split()
+        if f and not line.startswith('#') and f[0] == pkg:
+            if not done:
+                out.extend(n + '\n' for n in new)
+                done = True
+            continue
+        out.append(line)
+    if not done:
+        if out and not out[-1].endswith('\n'):
+            out[-1] += '\n'
+        out.extend(n + '\n' for n in new)
+    path.write_text(''.join(out), encoding='utf-8')
+
+
+def emit(pkg, g, out, write, root, replace=False):
+    if g['uncovered']:
+        raise SystemExit('pkg_rows: %s installs %s which no _BINS or _DATA covers: add it to the recipe (e.g. %s_DATA := %s)'
+                         % (pkg, ', '.join(g['uncovered']), pkg, g['uncovered'][0]))
     if write:
-        if table_row(pkg, root) or any(i == pkg for i, _ in slim.rows(root / 'dist/slim.txt')):
-            raise SystemExit('pkg_rows: %s already has rows; refusing to overwrite (Replaces decision is the owner\'s)' % pkg)
-        for rel, text in (('dist/packages.txt', g['packages'] + '\n'), ('dist/slim.txt', '\n'.join(g['slim']) + '\n')):
-            with open(root / rel, 'a', encoding='utf-8') as f:
-                f.write(text)
+        has = table_row(pkg, root) or any(i == pkg for i, _ in slim.rows(root / 'dist/slim.txt'))
+        if has and not replace:
+            raise SystemExit('pkg_rows: %s already has rows; refusing to overwrite (Replaces decision is the owner\'s; --replace rewrites them)' % pkg)
+        replace_rows(root / 'dist/packages.txt', pkg, [g['packages']])
+        replace_rows(root / 'dist/slim.txt', pkg, g['slim'])
         out = root / 'dist/addons' / pkg
     else:
         (out / 'dist').mkdir(parents=True, exist_ok=True)
@@ -122,7 +176,7 @@ def emit(pkg, g, out, write, root):
 
 
 def check(pkg, g, root):
-    bad = []
+    bad = ['recipe installs %s but no _BINS or _DATA row covers it (the package would leave it out)' % u for u in g['uncovered']]
     got = table_row(pkg, root)
     if got is None or got != g['packages']:
         bad.append('dist/packages.txt: row %s: committed %r, generated %r' % (pkg, got, g['packages']))
@@ -148,6 +202,7 @@ def main(argv=None):
     ap.add_argument('--root', default=str(ROOT), help='the vtcon tree whose tables are written or checked')
     ap.add_argument('--out')
     ap.add_argument('--write', action='store_true')
+    ap.add_argument('--replace', action='store_true', help='with --write: rewrite the rows of an id that already has them')
     ap.add_argument('--prose')
     ap.add_argument('--man', action='append', default=[])
     ap.add_argument('--pkg-version', default='1.0')
@@ -165,7 +220,7 @@ def main(argv=None):
             print('[DRIFT] ' + b)
         return 1 if bad else 0
     out = pathlib.Path(a.out) if a.out else pathlib.Path(tempfile.mkdtemp(prefix='pkg_rows-'))
-    emit(a.pkg, g, out, a.write, root)
+    emit(a.pkg, g, out, a.write, root, a.replace)
     print('pkg_rows: %s -> %s' % (a.pkg, root if a.write else out))
     return 0
 
