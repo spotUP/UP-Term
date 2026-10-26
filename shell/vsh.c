@@ -741,9 +741,10 @@ static int resolve(const char *name, const char *path, BPTR *seg, char *found, l
     }
     {
         char used[256];
-        /* a bare name naming a drawer here goes on to $PATH; a path to a drawer stays the Shell's */
-        if ((lock = lock_name(name, used, sizeof(used))) != 0 &&
-            (strchr(name, ':') || strchr(name, '/') || !lock_is_dir(lock))) {
+        /* a bare name naming a drawer here goes on to $PATH; a path to a drawer is no command either (the
+         * Shell SystemTags started for it entered the drawer in its own process, a cd that never reached
+         * vsh): not found, and the executor's bare-directory cd takes it */
+        if ((lock = lock_name(name, used, sizeof(used))) != 0 && !lock_is_dir(lock)) {
             UnLock(lock);
             if ((*seg = LoadSeg((STRPTR)used)) != 0)
                 home_of(used, home);
