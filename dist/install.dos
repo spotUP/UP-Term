@@ -395,22 +395,34 @@ Copy upgetty C:upgetty CLONE
 ; (README, VIEWING FILES), beside coreutils; vshrc pages them (hlp, mdp)
 Copy hl mdv UP-Term:bin CLONE
 ; Amarchy: the Super-key commodity (Left Amiga + a key) and amarchy-menu and amarchy-gui, the
-; quick menu and key viewer its keys start. The key file: laid down where the user has none; an
-; edited file stays, the new one is written beside it as keymap.new (an Update never
-; clobbers it). A marked block in S:User-Startup starts the commodity at every boot
+; quick menu and key viewer its keys start. The key file: every Install lays the shipped one down
+; in ENVARC: and ENV: (a stale copy would hide the keys a newer kit adds). A different file already
+; in ENVARC: is first saved as keymap.bak (keymap.bak2 when keymap.bak holds another file), so
+; nothing is lost; the user's own rows belong in ENVARC:up-term/keymap.user, which is never
+; touched. A marked block in S:User-Startup starts the commodity at every boot
 ; (Uninstall takes it out with unstartup.sh).
 Copy Amarchy amarchy-menu amarchy-gui amarchy-index UP-Term:bin CLONE
 ; the DOpus menu group's ARexx scripts (menu rows and keys run UP-Term:Rexx/dopus-*.rexx)
 MakeDir >NIL: UP-Term:Rexx
 Copy Rexx UP-Term:Rexx ALL CLONE
-If NOT EXISTS ENVARC:up-term/keymap
-  Copy keymap ENVARC:up-term/keymap CLONE QUIET
-Else
-  Copy keymap ENVARC:up-term/keymap.new CLONE QUIET
+If EXISTS ENVARC:up-term/keymap
+  upsame >NIL: ENVARC:up-term/keymap WITH keymap
+  If WARN
+    ; a different file (an older kit's, or edited): saved before it is replaced
+    Set kmbak "keymap.bak"
+    If EXISTS ENVARC:up-term/keymap.bak
+      upsame >NIL: ENVARC:up-term/keymap.bak WITH ENVARC:up-term/keymap
+      If WARN
+        Set kmbak "keymap.bak2"
+      EndIf
+    EndIf
+    Copy ENVARC:up-term/keymap ENVARC:up-term/$kmbak CLONE QUIET
+    Echo "Your old keymap is saved as ENVARC:up-term/$kmbak; put your own rows in ENVARC:up-term/keymap.user."
+    UnSet kmbak
+  EndIf
 EndIf
-If NOT EXISTS ENV:up-term/keymap
-  Copy ENVARC:up-term/keymap ENV:up-term/keymap CLONE QUIET
-EndIf
+Copy keymap ENVARC:up-term/keymap CLONE QUIET
+Copy keymap ENV:up-term/keymap CLONE QUIET
 If NOT EXISTS S:User-Startup
   Echo >S:User-Startup ""
 EndIf
@@ -550,8 +562,8 @@ If NOT "{STEP}" EQ ""
 EndIf
 Lab fonts
 ; The fonts by pixel shape (fonts/SOURCE.txt): TopazPro 16, IBM 8 / 11 /
-; 16 into FONTS:, only the sizes not there yet -- a user's own IBM.font
-; keeps its files -- each marked for Uninstall; FixFonts then lists every
+; 16 into FONTS:, the sizes not there yet and those an earlier kit marked ours
+; (replaced) -- a user's own IBM.font keeps its files -- each marked for Uninstall; FixFonts then lists every
 ; size in the .font files
 MakeDir >NIL: FONTS:TopazPro FONTS:IBM
 If NOT EXISTS FONTS:TopazPro/16
@@ -576,14 +588,29 @@ EndIf
 If NOT EXISTS FONTS:IBM/8
   Copy fonts/IBM/8 FONTS:IBM/8 CLONE QUIET
   Echo >ENVARC:up-term/font-IBM-8 "installed by UP-Term"
+Else
+  ; ours from an earlier kit (its marker): replaced; a user's own copy has no marker and stays
+  If EXISTS ENVARC:up-term/font-IBM-8
+    Copy fonts/IBM/8 FONTS:IBM/8 CLONE QUIET
+  EndIf
 EndIf
 If NOT EXISTS FONTS:IBM/11
   Copy fonts/IBM/11 FONTS:IBM/11 CLONE QUIET
   Echo >ENVARC:up-term/font-IBM-11 "installed by UP-Term"
+Else
+  ; ours from an earlier kit (its marker): replaced; a user's own copy has no marker and stays
+  If EXISTS ENVARC:up-term/font-IBM-11
+    Copy fonts/IBM/11 FONTS:IBM/11 CLONE QUIET
+  EndIf
 EndIf
 If NOT EXISTS FONTS:IBM/16
   Copy fonts/IBM/16 FONTS:IBM/16 CLONE QUIET
   Echo >ENVARC:up-term/font-IBM-16 "installed by UP-Term"
+Else
+  ; ours from an earlier kit (its marker): replaced; a user's own copy has no marker and stays
+  If EXISTS ENVARC:up-term/font-IBM-16
+    Copy fonts/IBM/16 FONTS:IBM/16 CLONE QUIET
+  EndIf
 EndIf
 If NOT EXISTS FONTS:TopazPro.font
   Copy fonts/TopazPro.font FONTS: CLONE QUIET

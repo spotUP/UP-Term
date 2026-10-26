@@ -73,7 +73,7 @@ cannot name an icon.
 .Bl -tag -width Ds
 .It Pa ENVARC:up-term/keymap
 The shipped key file (a copy is in ENV:up-term/keymap, read first).
-Install never overwrites an edited file: the new one is written as keymap.new.
+Every Install replaces it; a different old file is first saved as keymap.bak.
 .It Pa ENVARC:up-term/keymap.user
 Your own rows.
 A row replaces the row for the same key;

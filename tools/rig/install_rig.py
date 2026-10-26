@@ -1533,6 +1533,48 @@ def case_net_upgrade(ck):
         run('Delete >NIL: LIBS:libcryptossh.library ENVARC:up-term/cryptossh QUIET')
 
 
+def case_stale(ck):
+    """An Install over an older Install refreshes what the kit ships: the key file (ENVARC: and ENV:, the old
+    different one saved as keymap.bak, a line says so) and each font a kit marked ours (ENVARC:up-term/font-*),
+    while a font without the marker (the user's own) is kept."""
+    prepare(None)
+    before = Before()
+    base_install(ck)
+    shipped = run('Type ENVARC:up-term/keymap')[1]
+    ck(len(shipped) > 100, 'stale: the first Install wrote ENVARC:up-term/keymap', shipped[:80])
+    old_font_marked, old_font_user = 'OLD MARKED FONT BYTES', 'USER OWN FONT BYTES'
+    (VTC / 'stale_keymap').write_text('; an older kit keymap\nsuper+q = quit\n')
+    (VTC / 'stale_font_marked').write_text(old_font_marked)
+    (VTC / 'stale_font_user').write_text(old_font_user)
+    run('Copy VTC:stale_keymap ENVARC:up-term/keymap')
+    run('Copy VTC:stale_keymap ENV:up-term/keymap')
+    run('Delete >NIL: ENVARC:up-term/keymap.bak ENVARC:up-term/keymap.bak2 QUIET')
+    (VTC / 'stale_marker').write_text('installed by UP-Term\n')
+    run('Copy VTC:stale_marker ENVARC:up-term/font-IBM-11')
+    run('Copy VTC:stale_font_marked FONTS:IBM/11')              # marker present: ours from an earlier kit
+    run('Copy VTC:stale_font_user FONTS:IBM/16')               # no marker: the user's own
+    run('Delete >NIL: ENVARC:up-term/font-IBM-16 QUIET')
+    ck(run('Type ENVARC:up-term/keymap')[1].startswith('; an older kit keymap') and run('Type ENV:up-term/keymap')[1].startswith('; an older'),
+       'stale: set-up: the older keymap is planted in ENVARC: and ENV:')
+    ck(run('Type FONTS:IBM/11')[1].strip() == old_font_marked and run('Type FONTS:IBM/16')[1].strip() == old_font_user
+       and run('List >NIL: ENVARC:up-term/font-IBM-11')[0] == 0 and run('List >NIL: ENVARC:up-term/font-IBM-16')[0] != 0,
+       'stale: set-up: IBM/11 old and marked, IBM/16 old and unmarked')
+    rc, out = run_long('runinstall')
+    ck(rc == 0, 'stale: the Install over the older one runs', out)
+    ck('keymap.bak' in out, 'stale: the Install says where the old keymap is saved', out[-300:])
+    ck(run('Type ENVARC:up-term/keymap')[1] == shipped, 'stale: ENVARC:up-term/keymap is the shipped one again')
+    ck(run('Type ENV:up-term/keymap')[1] == shipped, 'stale: ENV:up-term/keymap is the shipped one again')
+    ck(run('Type ENVARC:up-term/keymap.bak')[1].startswith('; an older kit keymap'), 'stale: the old keymap is saved as keymap.bak')
+    ck(run('List >NIL: ENVARC:up-term/keymap.new')[0] != 0, 'stale: no keymap.new is written')
+    ck(run('Type FONTS:IBM/11')[1].strip() != old_font_marked, 'stale: the marked old font FONTS:IBM/11 is replaced')
+    ck(run('Type FONTS:IBM/16')[1].strip() == old_font_user, 'stale: the unmarked FONTS:IBM/16 is kept')
+    rc, out = run_long('runinstall')
+    ck('keymap.bak' not in out, 'stale: a third Install over the same keymap saves nothing', out[-300:])
+    base_uninstall(ck, before)
+    ck(run('List >NIL: FONTS:IBM/16')[0] == 0, 'stale: Uninstall leaves the user\'s own FONTS:IBM/16')
+    run('Delete >NIL: FONTS:IBM/16 ENVARC:up-term/keymap.bak QUIET')
+
+
 def case_shellalias(ck):
     """Install's upkg Alias in S:Shell-Startup: one marked block after the base Install, a new AmigaDOS Shell
     (Shell FROM, which runs S:Shell-Startup) resolves upkg, a second Install leaves one block, Uninstall takes
@@ -1712,6 +1754,7 @@ def case_table():
     t['wasabi'] = (['base'], [], case_wasabi)
     t['wasabi-owned'] = (['base'], [], case_wasabi_owned)
     t['shellalias'] = (['base'], [], case_shellalias)
+    t['stale'] = (['base'], [], case_stale)
     return t
 
 

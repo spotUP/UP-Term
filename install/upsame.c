@@ -1,6 +1,7 @@
 /* upsame -- is a file exactly the one the kit knows by size and CRC-32?
  *
  *   upsame FILE SIZE CRC          (CRC in hex, as zlib.crc32 prints it)
+ *   upsame FILE WITH OTHER        (the two files are byte for byte the same)
  *
  * Stock AmigaDOS has no byte compare and the cmp port needs ixemul, which
  * the Install puts in after the fonts; this runs in a plain Shell as well as
@@ -46,8 +47,8 @@ static int hexval(const char *s, unsigned long *out)
 
 int main(void)
 {
-    static const char tmpl[] = "FILE/A,SIZE/A/N,CRC/A";
-    LONG args[3] = { 0, 0, 0 };
+    static const char tmpl[] = "FILE/A,SIZE/N,CRC,WITH/K";
+    LONG args[4] = { 0, 0, 0, 0 };
     struct RDArgs *rd;
     unsigned long want, crc = 0xFFFFFFFFUL, total = 0;
     static UBYTE buf[4096];
@@ -62,6 +63,43 @@ int main(void)
     rd = ReadArgs((STRPTR)tmpl, args, 0);
     if (!rd) {
         PrintFault(IoErr(), (STRPTR)"upsame");
+        return 20;
+    }
+    if (args[3]) {
+        static UBYTE buf2[4096];
+        BPTR g;
+        if (args[1] || args[2]) {
+            FreeArgs(rd);
+            return 20;
+        }
+        f = Open((STRPTR)args[0], MODE_OLDFILE);
+        g = f ? Open((STRPTR)args[3], MODE_OLDFILE) : 0;
+        if (f && g) {
+            LONG m;
+            for (;;) {
+                n = Read(f, buf, sizeof buf);
+                m = Read(g, buf2, n > 0 ? n : 1);
+                if (n < 0 || m < 0 || n != m)
+                    break;
+                if (n == 0) {
+                    rc = 0;
+                    break;
+                }
+                for (m = 0; m < n && buf[m] == buf2[m]; m++)
+                    ;
+                if (m < n)
+                    break;
+            }
+        }
+        if (g)
+            Close(g);
+        if (f)
+            Close(f);
+        FreeArgs(rd);
+        return rc;
+    }
+    if (!args[1] || !args[2]) {
+        FreeArgs(rd);
         return 20;
     }
     if (!hexval((const char *)args[2], &want)) {

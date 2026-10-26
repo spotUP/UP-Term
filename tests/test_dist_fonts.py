@@ -112,7 +112,7 @@ class OriginalTopazProIsReplaced(unittest.TestCase):
         self.assertIn('$(BUILD)/amiga/upsame:', mk)
         src = open(os.path.join(ROOT, 'install/upsame.c')).read()
         self.assertIn('0xEDB88320UL', src)
-        self.assertIn('FILE/A,SIZE/A/N,CRC/A', src)
+        self.assertIn('FILE/A,SIZE/N,CRC,WITH/K', src)
 
 
 if __name__ == '__main__':

@@ -747,8 +747,8 @@ AMARCHY
   games, demos and music each have their own, and every other drawer of the
   Apps level (a drawer found by the scan) shows the drawer glyph, a folder.
   Change a key: edit ENVARC:up-term/keymap (the shipped file, written by
-  Install; an upgrade never overwrites it, the new one is saved beside it as
-  keymap.new) or put your own rows in ENVARC:up-term/keymap.user: a row there
+  every Install: an older copy that differs is first saved as keymap.bak, so
+  edits there do not survive an upgrade) or put your own rows in ENVARC:up-term/keymap.user: a row there
   replaces the row for the same key, and  super+t = none  unbinds one. Then
   tell Amarchy and every window to read the file again:
     rx "address AMARCHY RELOAD"
