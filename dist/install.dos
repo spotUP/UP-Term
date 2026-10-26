@@ -296,9 +296,11 @@ Copy upkg.conf UP-Term:etc/upkg.conf CLONE
 MakeDir >NIL: UP-Term:pkg UP-Term:pkg/upkg UP-Term:pkg/upkg/lists UP-Term:pkg/upkg/info UP-Term:pkg/upkg/cache
 Copy vsh C:vsh CLONE
 Copy ixkill C:ixkill CLONE
-; the preferences editor: C:UP-Term Prefs (its file keeps the space) and a
-; plain program icon in SYS:Prefs
-Copy "UP-Term Prefs" "C:UP-Term Prefs" CLONE
+; the preferences editor: C:UP-Term-Prefs and a plain program icon in
+; SYS:Prefs. Older kits named it "C:UP-Term Prefs"; a space in a command
+; name breaks an unquoted call, so the old file goes.
+Copy upprefs C:UP-Term-Prefs CLONE
+Delete >NIL: "C:UP-Term Prefs" QUIET
 ; GNU screen, and its system screenrc (the port reads /ENV/screenrc)
 Copy screen C:screen CLONE
 Copy screenrc ENVARC:screenrc CLONE

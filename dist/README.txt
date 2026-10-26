@@ -137,7 +137,7 @@ USE
 CONFIGURATION (profiles)
    XCON: windows are user-configurable like iTerm2's: /ENV/up-term/up-term
    holds named profiles; the Prefs app (SYS:Prefs/UP-Term-Prefs, its
-   tool is "C:UP-Term Prefs") writes it. Install lays down a fully
+   tool is "C:UP-Term-Prefs") writes it. Install lays down a fully
    commented sample; without the file every window behaves as before.
 
    Prefs: five pages, General (profile, font, fallback font, scrollback,

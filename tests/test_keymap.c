@@ -338,7 +338,7 @@ static void the_shipped_keymap_loads_whole(void)
     }
     /* every shipped run: row is a line lf_shell_command can hand to `vsh -c "..."`: a double quote
      * in the row ends that argument, so the leaf refuses it ("the command line is not valid",
-     * Settings > Amarchy > Amarchy preferences shipped as run:"C:UP-Term Prefs" AMARCHY); vsh
+     * Settings > Amarchy > Amarchy preferences shipped as run:"C:UP-Term-Prefs" AMARCHY); vsh
      * takes single quotes for a path with a space */
     for (i = 0; i < km.nbind; i++) {
         char line[512];
@@ -2816,8 +2816,8 @@ static void the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and
     long len = slurp("dist/keymap", buf, sizeof(buf));
     CHECK(len > 0 && keymap_parse(&km, buf, len));
     check_row("settings.amarchy.rescan", KA_SCAN, "amarchy-index");
-    check_row("settings.amarchy.preferences", KA_RUN, "'C:UP-Term Prefs' AMARCHY");
-    check_row("settings.amarchy.font", KA_RUN, "'C:UP-Term Prefs' AMARCHY");
+    check_row("settings.amarchy.preferences", KA_RUN, "C:UP-Term-Prefs AMARCHY");
+    check_row("settings.amarchy.font", KA_RUN, "C:UP-Term-Prefs AMARCHY");
     check_row("settings.amarchy.edit", KA_RUN, "nvim ENV:up-term/keymap");
     CHECK(shipped_row("apps.rescan") == 0);
     ix_load_text(&km, &x, "app\tClock\tSys:Tools/Clock\napp\tPalette\tSystem:Prefs/Palette\n");

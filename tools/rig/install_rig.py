@@ -721,7 +721,7 @@ def _main(dest=None):
     if not tmp_before:
         rc, out = run('Search S:User-Startup "Assign TMP: T:"')
         check('Assign TMP: T:' in out, 'S:User-Startup assigns TMP: (/tmp) at boot', out)
-    check(run('List >NIL: "C:UP-Term Prefs"')[0] == 0 and
+    check(run('List >NIL: "C:UP-Term-Prefs"')[0] == 0 and
           run('List >NIL: SYS:Prefs/UP-Term-Prefs.info')[0] == 0,
           'the preferences editor is in C: (the menu\'s Preferences runs it) and in SYS:Prefs', '')
     check(run('List >NIL: ENVARC:up-term/up-term')[0] == 0, 'the window preferences file is in place', '')
@@ -759,7 +759,7 @@ def _main(dest=None):
     left = [f for f in ('DEVS:DOSDrivers/PTY', 'DEVS:DOSDrivers/XCON', 'L:pty-handler',
                         'L:vtcon-handler', 'L:ixpipe-handler', 'DEVS:DOSDrivers/IXPIPE', 'C:vsh', 'C:tmux', '"%s"' % drawer, 'ENVARC:tmux.conf', 'C:ixkill', 'ENVARC:up-term', 'ENVARC:up-term-orig', 'ENVARC:TERMINFO', 'ENVARC:vsh',
                         'SYS:System/UP-Term', 'SYS:System/UP-Term.info', 'C:UPConsole', 'DEVS:up-console.device',
-                        '"C:UP-Term Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
+                        '"C:UP-Term-Prefs"', 'SYS:Prefs/UP-Term-Prefs', 'SYS:Prefs/UP-Term-Prefs.info')
             if run('List >NIL: %s' % f)[0] == 0]
     if not tmp_before:
         check(run('Assign >NIL: TMP: EXISTS')[0] != 0, 'after Uninstall: no TMP: (Install made it)')

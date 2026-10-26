@@ -106,22 +106,22 @@ f3, _ = boot({**f2, "VTC:kit-restore": ""}, {"UP-TERM": "SYS:UP-Term"})
 check(f3["l:vtcon-handler"] == "kit-handler", "kit-restore: L:vtcon-handler is the kit's again")
 check(f3["l:pty-handler"] == "kit-pty", "kit-restore: L:pty-handler is the kit's again")
 
-# W-R3: the Prefs editor is C:"UP-Term Prefs" (the handler's menu runs that name); a kit's copy
+# W-R3: the Prefs editor is C:UP-Term-Prefs (the handler's menu runs that name); a kit's copy
 # is refreshed from VTC:upprefs, and the kit's own is kept for kit-restore
-PK = {"C:UP-Term Prefs": "kit-prefs"}
+PK = {"C:UP-Term-Prefs": "kit-prefs"}
 fp, reqp = boot({**KIT, **PK, **BUILD, "VTC:upprefs": "new-prefs"}, {"UP-TERM": "SYS:UP-Term"})
-check(fp["c:up-term prefs"] == "new-prefs", "kit: C:UP-Term Prefs is the VTC: build")
+check(fp["c:up-term-prefs"] == "new-prefs", "kit: C:UP-Term-Prefs is the VTC: build")
 check(fp["vtc:kit-orig/c-up-term-prefs"] == "kit-prefs", "kit: the kit's Prefs editor is kept in VTC:kit-orig")
 fp2, _ = boot({**fp, "VTC:kit-restore": ""}, {"UP-TERM": "SYS:UP-Term"})
-check(fp2["c:up-term prefs"] == "kit-prefs", "kit-restore: the kit's Prefs editor is back")
+check(fp2["c:up-term-prefs"] == "kit-prefs", "kit-restore: the kit's Prefs editor is back")
 fp3, reqp3 = boot({**BUILD, "VTC:upprefs": "new-prefs"})
-check(fp3.get("c:up-term prefs") == "new-prefs", "no kit: C:UP-Term Prefs is installed from VTC:upprefs")
+check(fp3.get("c:up-term-prefs") == "new-prefs", "no kit: C:UP-Term-Prefs is installed from VTC:upprefs")
 check(not reqp3, "no kit, Prefs: the boot asks for no volume (asked for %s)" % reqp3)
 
 # W-R4: every C: command the kit installs is the build on a rig with no kit too (plain `UPDemo`
 # ran an old C:UPDemo while the build sat in VTC:). The list is KIT_SHADOWS' C: rows.
 CNAMES = [(src, dest) for src, dest, _ in rig.KIT_SHADOWS if dest.startswith("C:")]
-check({d for _, d in CNAMES} >= {"C:UPDemo", "C:UPConsole", "C:vsh", "C:upgetty", "C:ixkill", "C:UP-Term Prefs"},
+check({d for _, d in CNAMES} >= {"C:UPDemo", "C:UPConsole", "C:vsh", "C:upgetty", "C:ixkill", "C:UP-Term-Prefs"},
       "KIT_SHADOWS names the kit's C: commands (%s)" % [d for _, d in CNAMES])
 nk = {"VTC:" + src: "new-" + src for src, _ in CNAMES} | {"VTC:vtcon-handler": "new-handler"}
 f4, req4 = boot(nk)

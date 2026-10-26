@@ -3,7 +3,7 @@
  * thoughts/shared/plans/2026-10-01-terminal-preferences.md and
  * 2026-10-14-prefs-ux.md).
  *
- * C:UP-Term Prefs opens a window with five pages, General, Colors, Palette,
+ * C:UP-Term-Prefs opens a window with five pages, General, Colors, Palette,
  * Keyboard and Advanced, picked with the Page gadget. The fields edit one
  * profile at a time (the Profile gadget lists the file's profiles; New...,
  * Rename... and Delete work on the list), then the Amiga Prefs buttons: Save

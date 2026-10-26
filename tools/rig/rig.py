@@ -174,8 +174,8 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
                ("ixkill", "C:ixkill", "C-ixkill"),
                ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device"),
                # the preferences editor: the kit's file keeps the space (install.dos), which
-               # the handler's menu runs as C:"UP-Term Prefs" (launcher)
-               ("upprefs", "C:UP-Term Prefs", "C-UP-Term-Prefs")]
+               # the handler's menu runs as C:UP-Term-Prefs (launcher)
+               ("upprefs", "C:UP-Term-Prefs", "C-UP-Term-Prefs")]
 
 
 def q(path):
@@ -694,7 +694,7 @@ def stage_upterm(dest, vsh):
     (dest / "UP-Term").write_text("UP-Term: double-click the icon to open a terminal with vsh.\n")
     # the Prefs editor's icon (W-R3), as make dist-base makes it; GO copies it to SYS:Prefs
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term-Prefs.info"),
-                    "--tool", "C:UP-Term Prefs", "--plain"], check=True)
+                    "--tool", "C:UP-Term-Prefs", "--plain"], check=True)
     (dest / "UP-Term-Prefs").write_text("UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n")
     # the drawer's own icon, beside it (VTC:Apps.info): without it the drawer cannot be opened from the
     # Workbench, and Directory Opus showed only the stale Apps and UP-Term icons (rig 1, 2026-10-14)

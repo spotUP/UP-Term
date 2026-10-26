@@ -27,7 +27,7 @@ SKIP = {"Files/MANIFEST"}
 
 def read_parts(text):
     """[(part, kit path, drawer or None)] from parts.txt: columns are separated by two or more spaces
-    (a path can hold one: Files/UP-Term Prefs)."""
+    (a path can hold one)."""
     out = []
     for line in text.splitlines():
         line = line.rstrip()

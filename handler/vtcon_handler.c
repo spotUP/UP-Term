@@ -1833,14 +1833,14 @@ static void launcher(void)
 {
     static struct EasyStruct missing = {
         sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term",
-        (UBYTE *)"The preferences editor is not installed:\nC:UP-Term Prefs was not found.\n\n"
+        (UBYTE *)"The preferences editor is not installed:\nC:UP-Term-Prefs was not found.\n\n"
                  "Install UP-Term from its archive to get it.",
         (UBYTE *)"OK"
     };
     BPTR in, out, lock;
     /* the editor's errors would go to NIL: below: say here that it is not
      * there, instead of a menu item that does nothing */
-    if (!(lock = Lock((STRPTR)"C:UP-Term Prefs", SHARED_LOCK))) {
+    if (!(lock = Lock((STRPTR)"C:UP-Term-Prefs", SHARED_LOCK))) {
         EasyRequestArgs(0, &missing, 0, 0);
         return;
     }
@@ -1848,7 +1848,7 @@ static void launcher(void)
     in = Open((STRPTR)"NIL:", MODE_OLDFILE);
     out = Open((STRPTR)"NIL:", MODE_NEWFILE);
     if (in && out &&
-        SystemTags((STRPTR)"\"C:UP-Term Prefs\"", SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
+        SystemTags((STRPTR)"C:UP-Term-Prefs", SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
                    TAG_DONE) != -1)
         return; /* the streams are the editor's now */
     if (in)

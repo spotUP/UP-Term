@@ -91,7 +91,7 @@ def launches(text):
 class Stack(unittest.TestCase):
     def test_the_kit_list_is_read_from_the_makefile(self):
         progs = kit_programs(makefile())
-        for name in ('upgetty', 'vsh', 'amarchy-menu', 'UP-Term Prefs'):
+        for name in ('upgetty', 'vsh', 'amarchy-menu', 'upprefs'):
             self.assertIn(name, progs)
 
     def test_every_kit_program_sets_its_own_stack(self):

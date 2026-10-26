@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory() as tmp:
         # do_DefaultTool 0, do_DrawerData present: the 62-byte DrawerData follows the 78-byte DiskObject
         check(drawer[50:54] == b"\0\0\0\0" and drawer[66:70] != b"\0\0\0\0",
               "the drawer icon has no default tool and carries a DrawerData")
-        check(b"UP-Term Prefs" in (tmp / "Apps/UP-Term-Prefs.info").read_bytes(), "the Prefs icon's tool is C:UP-Term Prefs")
+        check(b"C:UP-Term-Prefs" in (tmp / "Apps/UP-Term-Prefs.info").read_bytes(), "the Prefs icon's tool is C:UP-Term-Prefs")
     else:
         check(False, "rig.stage_upterm exists")
 
@@ -171,7 +171,7 @@ a, f, req = boot(rig.GO, {}, PICON)
 check("sys:prefs/up-term-prefs.info" in f, "no kit: the Prefs icon is copied to SYS:Prefs")
 a, f, req = boot(rig.GO, {}, PICON | {"sys:prefs/up-term-prefs.info"})
 check("sys:prefs/up-term-prefs" not in f, "a kit's Prefs icon in SYS:Prefs stays")
-check('C:Copy >NIL: VTC:upprefs "C:UP-Term Prefs" CLONE' in [l.strip() for l in rig.GO.splitlines()], "GO installs C:UP-Term Prefs")
+check('C:Copy >NIL: VTC:upprefs C:UP-Term-Prefs CLONE' in [l.strip() for l in rig.GO.splitlines()], "GO installs C:UP-Term-Prefs")
 
 # regression (rig 1, 2026-10-13): an installer_rig run left ENVARC:up-term/Dir naming
 # SYS:UP-Term, a drawer it had deleted; the boot asked for the volume UP-Term: and froze

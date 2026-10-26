@@ -676,7 +676,7 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 # of GadTools gadgets; its model (prefs_core) is host-tested. A plain CLI
 # program (its own window), so vc links it. vbcc warns (153, 65) on the
 # (void) parameter casts of the file callbacks, as for vsh.
-# The kit ships it as "UP-Term Prefs" (make cannot hold a space in a target).
+# The kit ships it as Files/upprefs; Install copies it to C:UP-Term-Prefs.
 $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_core.c prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_core.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
@@ -1305,7 +1305,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(KIT)/Files/banner
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term.info
 	printf 'UP-Term: double-click the icon to open a terminal with vsh.\n' > $(KIT)/Files/UP-Term
-	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term Prefs" --plain
+	python3 tools/mkicon.py $(KIT)/Files/UP-Term-Prefs.info --tool "C:UP-Term-Prefs" --plain
 	printf 'UP-Term Prefs: edit the profiles in ENVARC:up-term/up-term.\n' > $(KIT)/Files/UP-Term-Prefs
 	cp $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/amiga/pty-handler $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/vsh $(BUILD)/amiga/ixkill dist/XCON dist/PTY dist/IXPIPE dist/vshrc \
 	  dist/up-term.conf $(KIT)/Files/
@@ -1326,7 +1326,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	mkdir -p $(KIT)/Files/userland/share/tutorial && cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/
 	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
 	cp man/sz.1 $(KIT)/Files/userland/share/man/man1/rz.1
-	cp $(BUILD)/amiga/upprefs "$(KIT)/Files/UP-Term Prefs"
+	cp $(BUILD)/amiga/upprefs $(KIT)/Files/upprefs
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
 	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame

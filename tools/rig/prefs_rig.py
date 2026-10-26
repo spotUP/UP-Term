@@ -241,7 +241,7 @@ def report():
 #     the same values (read from UITREE) and Use writes the same file again;
 #   - Cancel with an edit asks "Discard changes?" and Keep editing keeps the window.
 # The app is put on the rig as VTC:upprefs (the kit installs it as
-# "C:UP-Term Prefs"; a space in the rig's run command would break the CLI, the
+# "C:UP-Term-Prefs"; a space in the rig's run command would break the CLI, the
 # name itself is Install's business, not the app's). Gadget ids come from
 # prefs/prefs_ui.h and the page of each from the table in prefs/prefs_ui.c, so
 # a gadget added to the table is checked here without a line changing.
