@@ -249,6 +249,22 @@ Answered 2026-10-25 about 22:05 (AskUserQuestion for 1 to 4; 5 to 7 taken as rec
    P5 is not scheduled yet.)
 7. P6: deferred. (Owner, 2026-10-26.)
 
+Answered 2026-10-26 morning (AskUserQuestion, owner; all recommended options):
+
+8. D21 raise: DOpus 5.104 ARexx has no per-lister raise; the row sends `dopus front`, `lister set <h> visible off`,
+   `lister set <h> visible on` (13eaf6c1). The owner accepts the hide/show flicker.
+9. D9: `rig.py --no-dopus` also drops the `DOpus5:` assign and PATH lines from the rig's S:User-Startup and hides
+   DH0:Opus5, so the add-on takes the fresh-install branch. Done in a worktree commit.
+10. D21 rig: install DOpus v5.104 on a rig image (5.82 answers nothing to `lister query all`).
+11. D11/D14 defaults stand: pens `files 1 0 dirs 3 0 selfiles 1 4 seldirs 3 4`, palette pens 0-3 from the menu
+    theme, viewer launcher `uterm-view` next to `uterm-edit`.
+12. D13 filetype: the base kit installs the DOpus filetype when `DOpus5:` exists (it needs UP-Term:bin); the
+    add-on stays standalone.
+13. D13 editor: the launcher uses the user's `EDITOR`, else joe, the same default as interactive vsh (one editor
+    setting everywhere). The plan text's nvim is replaced.
+14. D12 buttons: "UP-Term here" and "Shell" open vsh through a new `uterm-shell` launcher in the uterm-* pattern,
+    not a plain AmigaDOS NewShell.
+
 ## 11. Reachability (one test per piece)
 
 - P1: `tools/rig/amarchy_menu_rig.py` case boots a rig with DOpus running, opens the drawn menu, picks

@@ -310,3 +310,8 @@ above).
    Alternative: leave them hand-edited (smaller window).
 5. Menu row mechanism. Recommended: new `amarchy:` row kind using the existing direct port sender (no RexxMast
    needed). Alternative: `rexx:` rows (no new kind, but needs RexxMast running).
+
+Answered 2026-10-26 (AskUserQuestion, owner): all five take the recommended option. 1 UP-Term Prefs strips the
+legacy keys on its next Save (wired with phase X, M3). 2 Menu font row opens the window and the font requester
+at once. 3 The window runs in the commodity task with a modal ASL requester. 4 Index skip and volumes fields are
+shown in the window. 5 New `amarchy:` row kind through the direct AMARCHY port sender. U, E, X are unblocked.
