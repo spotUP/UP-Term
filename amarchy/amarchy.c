@@ -163,7 +163,7 @@ static int do_row(int row)
     case KA_SCAN: ok = act_run(b->arg); break;
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_WIN:   ok = act_win(b->arg); break;
-    case KA_GTHEME: ok = gt_dos_select(b->arg); break;
+    case KA_GTHEME: ok = gt_dos_select(b->arg, 0, 0); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
     case KA_MENU: case KA_VIEWER:
         ok = act_menu_kind(b->kind, b->arg);

@@ -8,6 +8,9 @@
 
 extern const prefs_fs prefs_dos_fs;
 
+/* The DOS error (IoErr) of the last failed write, remove, rename or drawer step here; 0 before any failure. */
+long prefs_dos_last_error(void);
+
 /* Make the drawer of target t in path set p when it is missing; 1 when it is there. */
 int prefs_dos_dir(const prefs_paths *p, int t);
 

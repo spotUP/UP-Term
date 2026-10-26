@@ -355,8 +355,29 @@ static void test_gthemes_fallback(void)
     CHECK_INT((long)d.bg, 0x1a1b26L);
 }
 
+/* a failed theme save says which step and which file, with the DOS error */
+static void test_gthemes_save_text(void)
+{
+    char t[200];
+    gt_save_text(GT_SAVE_NAME, 0, 0, t, sizeof t);
+    CHECK_STR(t, "the theme could not be saved: check the name of the theme");
+    gt_save_text(PREFS_INSTALL_WRITE, PREFS_T_ENV, 202, t, sizeof t);
+    CHECK_STR(t, "the theme could not be saved: write ENV:Amarchy/prefs, error 202");
+    gt_save_text(PREFS_INSTALL_WRITE, PREFS_T_ENVARC, 103, t, sizeof t);
+    CHECK(strstr(t, "write ENVARC:Amarchy/") && strstr(t, ", error 103"));
+    gt_save_text(PREFS_SAVE_NODIR, PREFS_T_ENVARC, 0, t, sizeof t);
+    CHECK_STR(t, "the theme could not be saved: make the drawer ENVARC:Amarchy");
+    gt_save_text(PREFS_INSTALL_BACKUP, PREFS_T_ENVARC, 5, t, sizeof t);
+    CHECK(strstr(t, "back up to ENVARC:Amarchy/") && strstr(t, ", error 5"));
+    gt_save_text(PREFS_INSTALL_PLACE, PREFS_T_ENVARC, 5, t, sizeof t);
+    CHECK(strstr(t, "rename into place ENVARC:Amarchy/prefs"));
+    gt_save_text(PREFS_INSTALL_STRANDED, PREFS_T_ENVARC, 5, t, sizeof t);
+    CHECK(strstr(t, "restore after a failed rename"));
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_save_text();
     test_gthemes_select_name();
     test_gthemes_fallback();
     test_gthemes_parse();

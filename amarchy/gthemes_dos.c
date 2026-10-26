@@ -6,6 +6,7 @@
 #include <proto/exec.h>
 #include "gthemes_dos.h"
 #include "amconf_dos.h"
+#include "../prefs/prefs_dos.h"
 
 static long gt_read(void *ctx, const char *path, char *buf, long cap)
 {
@@ -65,15 +66,23 @@ void gt_dos_load_current(gtheme *out)
     gt_dos_load(name, out);
 }
 
-int gt_dos_select(const char *name)
+int gt_dos_select(const char *name, char *why, int cap)
 {
     am_prefs ap;
-    int failed = 0;
-    if (!gt_name_ok(name))
+    int failed = 0, r;
+    if (!gt_name_ok(name)) {
+        if (why)
+            gt_save_text(GT_SAVE_NAME, 0, 0, why, cap);
         return 0;
+    }
     amconf_load(&ap);
     strcpy(ap.val[AM_GTHEME], name);
-    return amconf_save(&ap, 1, &failed) == 0 && !failed;
+    r = amconf_save(&ap, 1, &failed);
+    if (r == PREFS_INSTALL_OK)
+        return 1;
+    if (why)
+        gt_save_text(r, failed, prefs_dos_last_error(), why, cap);
+    return 0;
 }
 
 void gt_dos_load_rows(ix_index *x)

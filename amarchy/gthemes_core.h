@@ -65,4 +65,11 @@ int gt_name_ok(const char *name);
 #define GT_ROW_PREFIX "gtheme:"
 int gt_path_name(const char *path, char *out, int cap);
 
+
+/* Why a theme save failed, as the text the menu shows. step: GT_SAVE_NAME (the name check), or a prefs_save_at result
+ * (PREFS_SAVE_NODIR, PREFS_INSTALL_WRITE / BACKUP / PLACE / STRANDED); failed: the PREFS_T_ target; err: the DOS error
+ * (0: unknown). Writes e.g. "the theme could not be saved: write ENV:Amarchy/prefs, error 202". */
+#define GT_SAVE_NAME (-200)
+void gt_save_text(int step, int failed, long err, char *out, int cap);
+
 #endif

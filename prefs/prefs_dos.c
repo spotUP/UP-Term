@@ -5,15 +5,28 @@
 #include <string.h>
 #include "prefs_dos.h"
 
+static long g_last_err;
+
+long prefs_dos_last_error(void)
+{
+    return g_last_err;
+}
+
 static int dos_write(void *ctx, const char *path, const char *buf, long len)
 {
     BPTR f = Open((STRPTR)path, MODE_NEWFILE);
     LONG w, closed;
     (void)ctx;
-    if (!f)
+    if (!f) {
+        g_last_err = IoErr();
         return 0;
+    }
     w = Write(f, (APTR)buf, len);
+    if (w != len)
+        g_last_err = IoErr();
     closed = Close(f); /* a buffered write can fail only here */
+    if (w == len && !closed)
+        g_last_err = IoErr();
     return w == len && closed;
 }
 
@@ -32,13 +45,17 @@ static int dos_remove(void *ctx, const char *path)
     (void)ctx;
     if (DeleteFile((STRPTR)path))
         return 1;
-    return IoErr() == ERROR_OBJECT_NOT_FOUND;
+    g_last_err = IoErr();
+    return g_last_err == ERROR_OBJECT_NOT_FOUND;
 }
 
 static int dos_rename(void *ctx, const char *from, const char *to)
 {
     (void)ctx;
-    return Rename((STRPTR)from, (STRPTR)to) ? 1 : 0;
+    if (Rename((STRPTR)from, (STRPTR)to))
+        return 1;
+    g_last_err = IoErr();
+    return 0;
 }
 
 const prefs_fs prefs_dos_fs = { 0, dos_write, dos_exists, dos_remove, dos_rename };
@@ -49,8 +66,10 @@ int prefs_dos_dir(const prefs_paths *p, int t)
     if (l)
         UnLock(l);
     l = Lock((STRPTR)p->dir[t], SHARED_LOCK);
-    if (!l)
+    if (!l) {
+        g_last_err = IoErr();
         return 0;
+    }
     UnLock(l);
     return 1;
 }
