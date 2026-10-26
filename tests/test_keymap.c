@@ -1583,16 +1583,23 @@ static void a_dopus_script_without_a_port_has_a_notice(void)
     CHECK(lf_rexx_notice(0, 5) == 0);
 }
 
-/* D5 hotkey: act_rexx shows the same message in an act_in_window window; the command is built from lf_rexx_notice. */
+/* D5 hotkey: act_rexx runs one RX line that calls the script and shows the notice window only on RC 5. */
 static void a_hotkey_dopus_script_without_a_port_shows_the_notice_window(void)
 {
-    char c[160];
-    CHECK(lf_rexx_notice_command(c, sizeof c, "UP-Term:Rexx/dopus-front.rexx", 5) == 1);
-    CHECK(strstr(c, lf_rexx_notice("dopus-front.rexx", 5)) != 0);
-    CHECK(strncmp(c, "RX ", 3) == 0);
-    CHECK(lf_rexx_notice_command(c, sizeof c, "UP-Term:Rexx/dopus-front.rexx", 0) == 0 && c[0] == 0);
-    CHECK(lf_rexx_notice_command(c, sizeof c, "UP-Term:Rexx/other.rexx", 5) == 0);
-    CHECK(lf_rexx_notice_command(c, 8, "dopus-front.rexx", 5) == 0);
+    char c[480];
+    const char *spec = "XCON:0/0/0/0/Amarchy/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS 36x3";
+    const char *want =
+        "RX \"r = 'UP-Term:Rexx/dopus-front.rexx'(); if r = 5 then do; if open(w, '"
+        "XCON:0/0/0/0/Amarchy/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS 36x3', 'W') then do; "
+        "call writech(w, 'Directory Opus is not running'); address command 'Wait 3 SECS'; "
+        "call close(w); end; end\"";
+    CHECK(lf_rexx_notice_line(c, sizeof c, "UP-Term:Rexx/dopus-front.rexx", spec) == 1);
+    CHECK(strcmp(c, want) == 0);
+    CHECK(lf_rexx_notice_line(c, sizeof c, "UP-Term:Rexx/other.rexx", spec) == 0 && c[0] == 0);
+    CHECK(lf_rexx_notice_line(c, 8, "dopus-front.rexx", spec) == 0 && c[0] == 0);
+    CHECK(lf_rexx_notice_line(c, sizeof c, "RAM:dopus-a'b.rexx", spec) == 0);
+    CHECK(lf_rexx_notice_line(c, sizeof c, "RAM:dopus-a\"b.rexx", spec) == 0);
+    CHECK(lf_rexx_notice_line(c, sizeof c, "dopus-front.rexx", "XCON:a'b") == 0);
 }
 
 static void the_dopus_group_needs_a_port(void)

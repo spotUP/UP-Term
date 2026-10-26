@@ -77,21 +77,29 @@ static void spec_on_front(char *out, int cap, const char *spec)
         cl_copy(out, spec, cap);
 }
 
-/* Like act_run, but the command's input and output are a new XCON: window (the quick menu and
- * the key viewer draw on a terminal). The window is borderless, centred, in front, sized
- * cols x rows cells, and closes when the command ends or when it is deactivated. */
-int act_in_window(const char *cmd, int cols, int rows)
+/* The XCON: spec of the small Amarchy window: borderless, centred, in front, cols x rows cells, closing when
+ * deactivated, on the front public screen. The one copy: act_in_window and the D5 notice line use it. */
+static void window_spec(char *full, int cap, int cols, int rows)
 {
-    char spec[96], full[160], num[12];
-    BPTR w, path;
-    LONG rc;
+    char spec[96], num[12];
     cl_copy(spec, "XCON:0/0/0/0/Amarchy/NOBORDER/CENTRE/FRONT/CLOSEINACTIVE/CELLS ", sizeof(spec));
     cl_ltoa(cols, num);
     cl_cat(spec, num, sizeof(spec));
     cl_cat(spec, "x", sizeof(spec));
     cl_ltoa(rows, num);
     cl_cat(spec, num, sizeof(spec));
-    spec_on_front(full, sizeof full, spec);
+    spec_on_front(full, cap, spec);
+}
+
+/* Like act_run, but the command's input and output are a new XCON: window (the quick menu and
+ * the key viewer draw on a terminal). The window is borderless, centred, in front, sized
+ * cols x rows cells, and closes when the command ends or when it is deactivated. */
+int act_in_window(const char *cmd, int cols, int rows)
+{
+    char full[160];
+    BPTR w, path;
+    LONG rc;
+    window_spec(full, sizeof full, cols, rows);
     w = Open((STRPTR)full, MODE_NEWFILE);
     path = dup_path();
     termenv_ensure();
@@ -113,28 +121,17 @@ int act_in_window(const char *cmd, int cols, int rows)
 
 int act_rexx(const char *arg)
 {
-    char line[160], note[160];
-    BPTR in, out;
-    LONG rc;
+    char line[160], spec[160], note[480];
     if (!lf_rexx_command(line, sizeof line, arg))
         return 0;
-    /* a dopus-*.rexx script ends in milliseconds: run it to the end for its RC (D5), then show the notice
-     * in the same small window the quick menu uses; every other script stays asynchronous */
+    /* a dopus-*.rexx script runs inside one RX program that opens the notice window only when the script
+     * returned 5 (D5); asynchronous like every other script, so a busy DOpus never stalls the hotkeys */
     if (!lf_rexx_notice(arg, 5))
         return act_run(line);
-    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
-    out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-    rc = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, out, NP_StackSize, 32768, TAG_END);
-    if (rc == -1) {
-        if (in)
-            Close(in);
-        if (out)
-            Close(out);
-        return 0;
-    }
-    if (lf_rexx_notice_command(note, sizeof note, arg, rc))
-        act_in_window(note, 36, 3);
-    return 1;
+    window_spec(spec, sizeof spec, 36, 3);
+    if (!lf_rexx_notice_line(note, sizeof note, arg, spec))
+        return act_run(line);
+    return act_run(note);
 }
 
 int act_open_uterm(void)

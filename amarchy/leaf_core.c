@@ -38,16 +38,26 @@ const char *lf_rexx_notice(const char *script, long rc)
     return 0;
 }
 
-int lf_rexx_notice_command(char *out, int cap, const char *script, long rc)
+int lf_rexx_notice_line(char *out, int cap, const char *script, const char *spec)
 {
-    const char *note = lf_rexx_notice(script, rc);
+    const char *note = lf_rexx_notice(script, 5);
+    const char *p;
     int n;
     if (cap < 1)
         return 0;
     out[0] = 0;
-    if (!note)
+    if (!note || !spec || !*spec)
         return 0;
-    n = snprintf(out, (size_t)cap, "RX \"say '%s'; address command 'Wait 3 SECS'\"", note);
+    for (p = script; *p; p++)
+        if (*p == '\'' || *p == '"' || (unsigned char)*p < ' ')
+            return 0;
+    for (p = spec; *p; p++)
+        if (*p == '\'' || *p == '"' || (unsigned char)*p < ' ')
+            return 0;
+    n = snprintf(out, (size_t)cap,
+                 "RX \"r = '%s'(); if r = 5 then do; if open(w, '%s', 'W') then do; "
+                 "call writech(w, '%s'); address command 'Wait 3 SECS'; call close(w); end; end\"",
+                 script, spec, note);
     if (n < 0 || n >= cap) {
         out[0] = 0;
         return 0;

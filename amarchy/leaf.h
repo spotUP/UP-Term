@@ -46,10 +46,11 @@ lf_how lf_plan(int kind);
  * 2026-10-25-amarchy-dopus-integration.md, D5), which says "Directory Opus is not running". 0 for anything else. */
 const char *lf_rexx_notice(const char *script, long rc);
 
-/* The window command a hotkey shows when its script ended with a notice (lf_rexx_notice): a small Amarchy
- * window (act_in_window) that says the message and closes after three seconds. 1 with out set; 0 (out "")
- * when there is no notice for script and rc, or the line does not fit in cap. */
-int lf_rexx_notice_command(char *out, int cap, const char *script, long rc);
+/* The RX line a hotkey runs for a dopus-*.rexx script, asynchronously: it calls the script by its path and, only
+ * when the script returned 5, opens the XCON window spec and writes the lf_rexx_notice message there (no newline: the window is one row high) for three
+ * seconds. 1 with out set; 0 (out "") when script has no notice, or script or spec holds a quote or control
+ * character, or the line does not fit in cap. */
+int lf_rexx_notice_line(char *out, int cap, const char *script, const char *spec);
 
 /* The viewer's command line: the quoted full path of amarchy-gui in dir (the directory the running menu was
  * loaded from, as the commodity's cx_helper_cmd does), then "viewer". A bare name goes through vsh's PATH,
