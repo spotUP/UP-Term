@@ -904,6 +904,15 @@ def new_windows(before):
     return list((collections.Counter(dopus_windows()) - collections.Counter(before)).elements())
 
 
+def new_titled(before):
+    """Like new_windows, but by window title alone: the screen name flips between "Directory Opus" and "Workbench Screen"
+    with the active window, and the first lister also brings DOpus's own 'menuhost' and untitled helper windows, which
+    are not what a hotkey or a row opens. Returns the titles of the new real windows."""
+    import collections
+    keep = lambda ws: collections.Counter(t for _s, t in ws if t not in ('', 'menuhost'))
+    return list((keep(dopus_windows()) - keep(before)).elements())
+
+
 def stage_dopus_rexx():
     """Put the dopus-*.rexx scripts into UP-Term:Rexx, where dist/keymap names them (rexx:UP-Term:Rexx/dopus-*.rexx). A rig's
     UP-Term: is the drawer of an older kit install that has no Rexx drawer; a current kit install creates it."""
@@ -960,22 +969,23 @@ def r_dopus_present():
     before = dopus_windows()
     ami.key(RAW['d'], LAMIGA | LSHIFT)
     time.sleep(3)
-    listers = new_windows(before)
+    listers = new_titled(before)
     res.append(len(listers) == 1)
-    print('  %s Super+Shift+D: new windows (screen, title) %s' % ('[OK]' if res[-1] else '[FAIL]', listers), flush=True)
-    lister_screen = listers[0][0] if listers else None
+    print('  %s Super+Shift+D: new windows (title) %s' % ('[OK]' if res[-1] else '[FAIL]', listers), flush=True)
     before = dopus_windows()
     import amarchy_gui_rig as g
     s, w = g.open_menu()
-    for label in ('Dopus', 'Open UP-Term here'):    # the filter works on the level shown: the group, then its row
+    # the filter works on the level shown: the group, then its row. It is fuzzy and ranks by position, so the full label
+    # "Open UP-Term here" also matches "Open lister" first and Enter opens a lister; "UP-Term here" matches only the row.
+    for label in ('Dopus', 'UP-Term here'):
         x9_type(label)
         ami.key(RAW['return'])
         time.sleep(1)
     time.sleep(3)
-    new = [x for x in new_windows(before) if x[1] != 'Amarchy']
+    new = [t for t in new_titled(before) if t != 'Amarchy']
     # screen titles follow the active window, so they name no screen; the window title UP-Term is the proof
-    res.append(len(new) == 1 and new[0][1] == 'UP-Term')
-    print('  %s Open UP-Term here: new windows (screen, title) %s, Directory Opus lister on %r' % ('[OK]' if res[-1] else '[FAIL]', new, lister_screen), flush=True)
+    res.append(new == ['UP-Term'])
+    print('  %s Open UP-Term here: new windows (title) %s' % ('[OK]' if res[-1] else '[FAIL]', new), flush=True)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
