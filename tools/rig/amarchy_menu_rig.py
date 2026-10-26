@@ -251,15 +251,31 @@ def r_enter_th():
 def r_lamiga_minus_sv():
     # Owner bug AM-MINUS-EXIT: Swedish keymap, Left Amiga + "-" (raw 0x3A there) made Amarchy exit on the A1200.
     # With the keymap set to "s", the chord must reach the handler (km-hits +1) and the commodity must stay up.
-    import amarchy_rig
-    c.run('SetKeyboard s')
+    # Symbol key names (minus = the key that prints "-") are resolved when a table loads: Amarchy's at RELOAD, the
+    # handler's when the first UP-Term window opens (g_km_users), so the keymap is set to Swedish before a fresh
+    # window opens and Amarchy reloads. Both counter reads happen on the USA keymap: the rig types "VTC:UPTerm
+    # state" through wasabi with US raw codes, which the Swedish keymap turns into other characters.
+    import amarchy_rig, vshwin
+    vshwin.close_vsh('menuhost')
+    time.sleep(1)
     try:
+        c.run('SetKeyboard s')
+        amarchy_rig.arexx('RELOAD')
+        time.sleep(2)
+        open_terminal()
+        c.run('SetKeyboard usa')
         before = km_hits()
+        c.run('SetKeyboard s')
         ami.key(0x3A, LAMIGA)
         time.sleep(2)
-        d, up = km_hits() - before, amarchy_rig.port_up()
     finally:
         c.run('SetKeyboard usa')
+    d, up = km_hits() - before, amarchy_rig.port_up()
+    # the later rows get the USA table back: the Swedish window goes, the next one loads the table again
+    amarchy_rig.arexx('RELOAD')
+    vshwin.close_vsh('menuhost')
+    time.sleep(1)
+    open_terminal()
     return d == 1 and up, 'Swedish Left Amiga+minus: km-hits %+d (1 expected), Amarchy port up: %s' % (d, up)
 
 
