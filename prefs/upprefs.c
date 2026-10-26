@@ -261,6 +261,7 @@ static char *text_field(struct app *a, int id, int *cap)
     case PG_AM_MUSIC: return a->f.am_music;
     case PG_AM_DEMO: return a->f.am_demo;
     case PG_AM_HIDE: return a->f.am_hide;
+    case PG_AM_GTHEME: return a->f.am_gtheme;
     case PG_TERM:
         *cap = (int)sizeof(a->f.term);
         return a->f.term;

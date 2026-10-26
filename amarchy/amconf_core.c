@@ -56,6 +56,7 @@ void amconf_to_fields(const am_prefs *p, prefs_fields *f)
     strncpy(f->am_demo, p->val[AM_DEMO], sizeof f->am_demo - 1);
     strncpy(f->am_hide, p->val[AM_HIDE], sizeof f->am_hide - 1);
     strncpy(f->am_font, p->val[AM_FONT], sizeof f->am_font - 1);
+    strncpy(f->am_gtheme, p->val[AM_GTHEME], sizeof f->am_gtheme - 1);
     f->am_icons = amconf_icons(p);
     f->am_mode = amconf_style(p);
     f->am_termmenu = amconf_term_menu(p);
@@ -67,6 +68,7 @@ void amconf_from_fields(am_prefs *p, const prefs_fields *f)
     strcpy(p->val[AM_DEMO], f->am_demo);
     strcpy(p->val[AM_HIDE], f->am_hide);
     strcpy(p->val[AM_FONT], f->am_font);
+    strcpy(p->val[AM_GTHEME], f->am_gtheme[0] ? f->am_gtheme : am_keys[AM_GTHEME].def);
     strcpy(p->val[AM_ICONS], f->am_icons == UC_ICONS_AMIGA ? "amiga" : f->am_icons == UC_ICONS_NONE ? "none" : "generic");
     strcpy(p->val[AM_STYLE], f->am_mode == UC_MENU_TEXT ? "text" : f->am_mode == UC_MENU_MINIMAL ? "minimal" : "graphical");
     strcpy(p->val[AM_TERMMENU], f->am_termmenu == UC_TERMMENU_GRAPHICAL ? "graphical" : "text");

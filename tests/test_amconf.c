@@ -116,6 +116,24 @@ static void test_amconf_style(void)
     CHECK_INT(amconf_icons(&p), UC_ICONS_NONE);
 }
 
+/* T12: the Prefs "Menu theme" row reaches the saved key through the fields: to_fields shows the saved name, from_fields
+ * stores the typed one, an emptied row falls back to the default theme */
+static void test_amconf_gtheme_fields(void)
+{
+    am_prefs p;
+    prefs_fields f;
+    memset(&f, 0, sizeof f);
+    amconf_defaults(&p);
+    amconf_to_fields(&p, &f);
+    CHECK_STR(f.am_gtheme, "tokyo-night");
+    strcpy(f.am_gtheme, "nord");
+    amconf_from_fields(&p, &f);
+    CHECK_STR(p.val[AM_GTHEME], "nord");
+    f.am_gtheme[0] = 0;
+    amconf_from_fields(&p, &f);
+    CHECK_STR(p.val[AM_GTHEME], "tokyo-night");
+}
+
 static void test_amconf_index_keys(void)
 {
     memfs m;
@@ -342,6 +360,7 @@ void suite_amconf(void)
     test_amconf_roundtrip();
     test_amconf_legacy();
     test_amconf_style();
+    test_amconf_gtheme_fields();
     test_amconf_index_keys();
     test_prefs_strip_legacy_amarchy();
     prefs_amarchy_page_edit_reaches_amarchy_prefs();
