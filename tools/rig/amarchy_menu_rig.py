@@ -973,7 +973,8 @@ def r_dopus_present():
         time.sleep(1)
     time.sleep(3)
     new = [x for x in new_windows(before) if x[1] != 'Amarchy']
-    res.append(len(new) == 1 and new[0][0] == lister_screen)
+    # screen titles follow the active window, so they name no screen; the window title UP-Term is the proof
+    res.append(len(new) == 1 and new[0][1] == 'UP-Term')
     print('  %s Open UP-Term here: new windows (screen, title) %s, Directory Opus lister on %r' % ('[OK]' if res[-1] else '[FAIL]', new, lister_screen), flush=True)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
