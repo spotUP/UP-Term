@@ -438,8 +438,9 @@ def os_image_copy():
         shutil.copyfile(paths.INSTALLER, dst / "C/Installer")
     if M060:
         if not NOFPU:   # on the FPU-less 68LC060 SetPatch's Phase5 68060.library Gurus 80000006 before ENV: (rig 4, 2026-10-23)
-            paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
-            shutil.copyfile(paths.LIB68060, dst / "Libs/68060.library")
+            for lib, name, var in paths.libs060():
+                paths.require_input(lib, var, name)
+                shutil.copyfile(lib, dst / "Libs" / name)
         paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
         shutil.copyfile(paths.LIB68040, dst / "Libs/68040.library")
 
@@ -461,17 +462,23 @@ def fresh_sys_hdf():
 
 def sys_hdf_cpu_lib(image):
     """The rig's own sys.hdf copy follows the machine: no Libs/68060.library on the FPU-less 68LC060 (SetPatch loads it
-    and it Gurus 80000006 before ENV:, rig 4 2026-10-23), the library present on a 060 with FPU; other CPUs untouched."""
+    and it Gurus 80000006 before ENV:, rig 4 2026-10-23), the paths.libs060() set on a 060 with FPU; other CPUs untouched.
+    The set is written even where the master image already has a 68060.library: the master's is Phase5's 44.3, whose
+    SetPatch run resets OS 3.1 in a loop (paths.LIB68060)."""
     if not M060:
         return
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     have = subprocess.run([xdf, str(image), "list", "Libs"], capture_output=True, text=True).stdout
-    has = any(l.split()[:1] == ["68060.library"] for l in have.splitlines())
-    if NOFPU and has:
-        subprocess.run([xdf, str(image), "delete", "Libs/68060.library"], check=True, capture_output=True)
-    elif not NOFPU and not has:
-        paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
-        subprocess.run([xdf, str(image), "write", str(paths.LIB68060), "Libs/68060.library"], check=True, capture_output=True)
+    names = {l.split()[0] for l in have.splitlines() if l.split()}
+    if NOFPU:
+        if "68060.library" in names:
+            subprocess.run([xdf, str(image), "delete", "Libs/68060.library"], check=True, capture_output=True)
+        return
+    for lib, name, var in paths.libs060():
+        paths.require_input(lib, var, name)
+        if name in names:
+            subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
+        subprocess.run([xdf, str(image), "write", str(lib), "Libs/" + name], check=True, capture_output=True)
 
 def strip_user_startup_blocks(image, name):
     """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""

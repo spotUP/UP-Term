@@ -206,10 +206,21 @@ ROM314 = pathlib.Path(os.environ.get("UPTERM_ROM314") or
 
 # --os with --060/--max: the clean system has no 68060.library and its
 # Startup-Sequence (SetPatch, CPU CHECKINSTALL) fails on a 68060 without it
-# (Software Failure 8000 888B, rig 3, 2026-10-10); UPTERM_LIB68060 names the file (default: Phase5's 68060.library 44.3,
-# taken from the old rig system disk's Libs:; GG-Lite's 68060.library did not help).
+# (Software Failure 8000 888B, rig 3, 2026-10-10); UPTERM_LIB68060 names the file. Default: Thor's MMULib 68060.library
+# 47.2 (Aminet util/libs/MMULib.lha), which needs its mmu.library and 680x0.library beside it (UPTERM_LIBMMU,
+# UPTERM_LIB680X0). Phase5's 68060.library 44.3 (the old rig system disk's) made OS 3.1 on the emulated 060 reset
+# in a loop once SetPatch had run: 333 resets on a clean 3.1, none with SetPatch commented out, none on MMULib
+# (rig 8, 2026-10-26, thoughts/spot/term-findings/reset-loop-cause-rig8-2026-10-26.md). GG-Lite's did not help.
 LIB68060 = pathlib.Path(os.environ.get("UPTERM_LIB68060") or
-    RIG_HOME / "rig-inputs/68060.library")
+    RIG_HOME / "rig-inputs/mmulib/68060.library")
+LIBMMU = pathlib.Path(os.environ.get("UPTERM_LIBMMU") or RIG_HOME / "rig-inputs/mmulib/mmu.library")
+LIB680X0 = pathlib.Path(os.environ.get("UPTERM_LIB680X0") or RIG_HOME / "rig-inputs/mmulib/680x0.library")
+def libs060():
+    """Every Libs: file a 060 with FPU gets, as (source, Libs: name, variable) for require_input; read at call time,
+    so a test that points LIB68060 elsewhere is followed."""
+    return ((LIB68060, "68060.library", "UPTERM_LIB68060"),
+            (LIBMMU, "mmu.library", "UPTERM_LIBMMU"),
+            (LIB680X0, "680x0.library", "UPTERM_LIB680X0"))
 
 
 # ... and the 3.1 68040.library, which SetPatch also loads on a 68060, crashes
