@@ -126,6 +126,35 @@ static void file_round_trip(void)
     clips_free(&b);
 }
 
+static void the_lister_rows(void)
+{
+    unsigned long h[4];
+    ix_row r;
+    CHECK_INT(ix_lister_handles(0, h, 4), 0);                   /* no port: nothing */
+    CHECK_INT(ix_lister_handles("", h, 4), 0);                  /* DOpus 5.82 answers nothing */
+    CHECK_INT(ix_lister_handles("  \r\n", h, 4), 0);
+    CHECK_INT(ix_lister_handles("1234 5678\n91011\r\n", h, 4), 3);
+    CHECK(h[0] == 1234 && h[1] == 5678 && h[2] == 91011);
+    CHECK_INT(ix_lister_handles("1 2 3 4 5 6", h, 4), 4);       /* many: capped at max */
+    CHECK_INT(ix_lister_handles("RC 0x10 7 8x 9", h, 4), 2);    /* junk tokens skipped */
+    CHECK(h[0] == 7 && h[1] == 9);
+    CHECK(ix_lister_row(42, "Work:Dev/My Stuff\r\n", &r));     /* spaces inside a path stay */
+    CHECK_INT(r.kind, IX_KIND_LISTER);
+    CHECK_STR(r.label, "My Stuff");
+    CHECK_STR(r.path, "lister:42");
+    CHECK(ix_lister_row(7, "Work:", &r));
+    CHECK_STR(r.label, "Work:");
+    CHECK(ix_lister_row(8, "  Sys:C/ \n", &r));
+    CHECK_STR(r.label, "C");
+    CHECK(ix_lister_row(9, "Work:Dev", &r));
+    CHECK_STR(r.label, "Dev");
+    CHECK(ix_lister_row(10, "", &r));                           /* the device list */
+    CHECK_STR(r.label, "Device list");
+    CHECK(!ix_lister_row(1, "x", 0));
+    CHECK(ix_lister_of("lister:42") == 42);
+    CHECK(ix_lister_of("lister:") == -1 && ix_lister_of("lister:4x") == -1 && ix_lister_of("clip:3") == -1 && ix_lister_of(0) == -1);
+}
+
 static void the_menu_level(void)
 {
     static const char km_text[] = "[menu]\ntrigger.clipboard = Clipboard history | menu:trigger.clipboard\n";
@@ -174,5 +203,6 @@ void suite_clips(void)
     cap_of_twenty();
     labels();
     file_round_trip();
+    the_lister_rows();
     the_menu_level();
 }

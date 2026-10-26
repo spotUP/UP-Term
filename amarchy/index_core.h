@@ -22,6 +22,7 @@
 #define IX_KIND_CLIP     IX_NKINDS
 #define IX_CLIPS_NODE    "trigger.clipboard"
 #define IX_CLIP_NONE     "clip:none"
+#define IX_KIND_LISTER   (IX_NKINDS + 1)   /* a Directory Opus lister row (ix_lister_row); not stored in the index yet */
 #define IX_KIND_HIDDEN   (-1)   /* ix_row_kind result for a system-drawer app row: ix_load_text drops it */
 #define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
 #define IG_CACHE_PATH "ENVARC:Amarchy/icons"  /* the menu's scaled icons (icon_core.h file format); a rescan deletes it */
@@ -98,6 +99,19 @@ void ix_free(ix_index *x);
 int ix_add_clips(ix_index *x, const char *const *labels, int n);
 /* ix_add_clips for the ring file CLIPS_PATH (clips_core.h); in index_load.c. ix_load_file calls it. */
 void ix_load_clips(ix_index *x);
+
+/* Directory Opus lister rows (plan 2026-10-25-amarchy-dopus-integration.md, D21), the pure part. DOpus answers
+ * `lister query all` with the open listers' handles (decimal numbers, blank or newline separated; 5.82 answers
+ * nothing, v5.104 is the target). Fills out with at most max handles in the order given; non-numeric tokens are
+ * skipped; empty or NULL answer, or no port, gives 0. */
+int ix_lister_handles(const char *answer, unsigned long *out, int max);
+/* The row of one lister from its `lister query <handle> path` answer (a trailing CR/LF and surrounding blanks
+ * are dropped, spaces inside kept). kind IX_KIND_LISTER, label the last drawer ("Work:Dev/My Stuff" gives "My Stuff",
+ * a volume root "Work:" gives "Work:"), path "lister:<handle>". An empty answer (a lister showing the device list)
+ * gives the label "Device list". 1, or 0 for a NULL out. */
+int ix_lister_row(unsigned long handle, const char *path_answer, ix_row *out);
+/* The handle of a "lister:<handle>" row path, or -1 for any other path. */
+long ix_lister_of(const char *path);
 
 /* The most items one level can hold with x loaded: the [menu] rows, every index row, and the Apps and
  * Games groups the root may get. The size of the item and filter arrays given to ix_level. */

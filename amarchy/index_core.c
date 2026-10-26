@@ -236,6 +236,80 @@ int ix_add_clips(ix_index *x, const char *const *labels, int n)
     return 1;
 }
 
+int ix_lister_handles(const char *answer, unsigned long *out, int max)
+{
+    int n = 0;
+    const char *p = answer;
+    while (p && *p && n < max) {
+        char *end;
+        unsigned long v;
+        while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+            p++;
+        if (!*p)
+            break;
+        if (*p >= '0' && *p <= '9') {
+            v = strtoul(p, &end, 10);
+            if (*end == 0 || *end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') {
+                out[n++] = v;
+                p = end;
+                continue;
+            }
+        }
+        while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n')
+            p++;
+    }
+    return n;
+}
+
+int ix_lister_row(unsigned long handle, const char *path_answer, ix_row *out)
+{
+    char buf[IX_PATH];
+    const char *s = path_answer ? path_answer : "", *label;
+    size_t len;
+    if (!out)
+        return 0;
+    while (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n')
+        s++;
+    len = strlen(s);
+    while (len && (s[len - 1] == ' ' || s[len - 1] == '\t' || s[len - 1] == '\r' || s[len - 1] == '\n'))
+        len--;
+    if (len >= sizeof buf)
+        len = sizeof buf - 1;
+    memcpy(buf, s, len);
+    buf[len] = 0;
+    memset(out, 0, sizeof *out);
+    out->kind = IX_KIND_LISTER;
+    if (!len) {
+        strcpy(out->label, "Device list");
+    } else {
+        size_t e = len;
+        if (buf[e - 1] == '/' )
+            buf[--e] = 0;                       /* "Work:Dev/" names Dev */
+        label = buf;
+        while (e > 0 && buf[e - 1] != '/' && buf[e - 1] != ':')
+            e--;
+        if (e > 0 && buf[e - 1] == '/')
+            label = buf + e;
+        else if (e > 0)
+            label = buf + e;                    /* "Work:Dev" gives Dev */
+        if (!*label)
+            label = buf;                        /* volume root "Work:" */
+        strncpy(out->label, label, IX_LABEL - 1);
+    }
+    snprintf(out->path, sizeof out->path, "lister:%lu", handle);
+    return 1;
+}
+
+long ix_lister_of(const char *path)
+{
+    char *end;
+    unsigned long v;
+    if (!path || strncmp(path, "lister:", 7) != 0 || path[7] < '0' || path[7] > '9')
+        return -1;
+    v = strtoul(path + 7, &end, 10);
+    return *end ? -1 : (long)v;
+}
+
 int ix_level_cap(const ix_index *x)
 {
     return MN_MAX_ITEMS + (x ? x->n : 0) + 2;
