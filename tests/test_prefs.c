@@ -867,9 +867,10 @@ static void font_requester_results_become_profile_values(void)
     CHECK_INT(prefs_font_compose(".font", 8, out, sizeof(out)), 0);   /* nothing left */
     CHECK_STR(out, "");
     CHECK_INT(prefs_font_compose("", 8, out, sizeof(out)), 0);
-    CHECK_INT(prefs_font_compose("My Font.font", 8, out, sizeof(out)), 0); /* the handler splits at blanks */
-    CHECK_STR(out, "");
     CHECK_INT(prefs_font_compose("a:b.font", 8, out, sizeof(out)), 0);
+    /* both readers split at the last separator: blanks are kept, a colon is not (TERM-FONT-BLANK) */
+    CHECK_INT(prefs_font_compose("Vera Mono.font", 14, out, sizeof(out)), 1);
+    CHECK_STR(out, "Vera Mono:14");
     CHECK_INT(prefs_font_compose("topaz.font", 8, out, 7), 0);        /* "topaz:8" needs 8 */
     CHECK_INT(prefs_font_compose("topaz.font", 8, out, 8), 1);
     /* and back: the requester starts from name with .font and the size */

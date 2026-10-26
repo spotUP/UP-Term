@@ -15,7 +15,7 @@ void gt_dos_load_current(gtheme *out);
 /* load a theme by name */
 void gt_dos_load(const char *name, gtheme *out);
 /* make name the drawn menu's theme: AM_GTHEME is saved to ENVARC: and ENV:. 1 saved, 0 refused or failed */
-int gt_dos_select(const char *name);
+int gt_dos_select(const char *name, char *why, int cap);
 /* fill the Style > Theme rows (ix_add_gthemes) with the current one marked. Call after the other loaders. */
 void gt_dos_load_rows(ix_index *x);
 

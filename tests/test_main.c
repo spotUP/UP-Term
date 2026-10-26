@@ -39,6 +39,7 @@ void suite_prefs(void);
 void suite_amconf(void);
 void suite_settings_def(void);
 void suite_gthemes(void);
+void suite_menu_text(void);
 void suite_iconspec(void);
 void suite_updiff(void);
 void suite_zmodem(void);
@@ -116,6 +117,7 @@ static const h_suite suites[] = {
     { "amconf", suite_amconf },
     { "settings_def", suite_settings_def },
     { "gthemes", suite_gthemes },
+    { "menu_text", suite_menu_text },
     { "iconspec", suite_iconspec },
     { "updiff", suite_updiff },
     { "zmodem", suite_zmodem },

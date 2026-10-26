@@ -33,10 +33,10 @@ def rig_of(checkout, rig_n):
     env["UPTERM_RIG"] = str(rig_n)
     out = subprocess.run(
         [sys.executable, "-I", "-c",
-         "import sys; sys.path.insert(0, sys.argv[1]); import paths; print(paths.RIG); print(paths.LIB68040)",
+         "import sys; sys.path.insert(0, sys.argv[1]); import paths; print(paths.RIG); print(paths.LIB68040); print(paths.UPTERM_ROOT); print(paths.VENDOR)",
          str(checkout / "tools/rig")],
         env=env, capture_output=True, text=True, check=True).stdout.split("\n")
-    return pathlib.Path(out[0]), pathlib.Path(out[1])
+    return pathlib.Path(out[0]), pathlib.Path(out[1]), pathlib.Path(out[2]), pathlib.Path(out[3])
 
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -46,21 +46,27 @@ with tempfile.TemporaryDirectory() as tmp:
     git("init", "-q", cwd=main)
     git("add", "tools/rig/paths.py", cwd=main)
     git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "paths", cwd=main)
+    (main / "vendor").mkdir()
     wt = main / ".claude/worktrees/phase-x"
     git("worktree", "add", "-q", "-b", "phase-x", str(wt), cwd=main)
 
-    rig, lib = rig_of(main, 2)
+    rig, lib, root, vendor = rig_of(main, 2)
     check(rig == main / "build/rig2", "main checkout: rig 2 is %s, not %s" % (rig, main / "build/rig2"))
-    rig, lib = rig_of(wt, 2)
+    rig, lib, root, vendor = rig_of(wt, 2)
     check(rig == main / "build/rig2", "worktree: rig 2 is %s, not the main checkout's %s" % (rig, main / "build/rig2"))
-    rig, lib = rig_of(wt, 1)
+    rig, lib, root, vendor = rig_of(wt, 1)
     check(rig == main / "build/rig", "worktree: rig 1 is %s, not %s" % (rig, main / "build/rig"))
     check(lib == main / "build/rig-inputs/68040.library", "worktree: rig inputs at %s" % lib)
+
+    check(root == main.parent, "worktree: UPTERM_ROOT is %s, not the main checkout's parent %s" % (root, main.parent))
+    check(vendor == main / "vendor", "worktree: vendor is %s, not the main checkout's %s" % (vendor, main / "vendor"))
+    (wt / "vendor").mkdir()
+    check(rig_of(wt, 1)[3] == wt / "vendor", "worktree with its own vendor/: vendor is not its own")
 
     # not a git checkout (a source tarball): the rig stays under the checkout
     plain = pathlib.Path(tmp).resolve() / "plain"
     shutil.copytree(main / "tools", plain / "tools", ignore=shutil.ignore_patterns(".git"))
-    rig, lib = rig_of(plain, 1)
+    rig, lib, root, vendor = rig_of(plain, 1)
     check(rig == plain / "build/rig", "no git: rig 1 is %s, not %s" % (rig, plain / "build/rig"))
 
 # make test-rig's entry point loads (it used paths.RIG before importing paths)
@@ -71,4 +77,4 @@ check(r.returncode == 0, "tools/rig/reach.py does not load: %s" % r.stderr.strip
 
 if fails:
     sys.exit("%d failed" % fails)
-print("[OK] rig_paths: 6 checks, 0 failed")
+print("[OK] rig_paths: 10 checks, 0 failed")

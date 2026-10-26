@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "gthemes_core.h"
+#include "../prefs/prefs_core.h"
 
 static upconf g_conf;
 
@@ -157,4 +158,44 @@ int gt_path_name(const char *path, char *out, int cap)
         return 0;
     strcpy(out, path + p);
     return 1;
+}
+
+/* The path each install step touched, by the step's own words (prefs_core.h prefs_install_target_at). */
+void gt_save_text(int step, int failed, long err, char *out, int cap)
+{
+    const prefs_paths *p = &prefs_paths_amarchy;
+    const char *verb = "write", *what;
+    int t = failed == PREFS_T_ENVARC ? PREFS_T_ENVARC : PREFS_T_ENV;
+    long e = err < 0 ? 0 : err;
+    switch (step) {
+    case GT_SAVE_NAME:
+        verb = "check the name of";
+        what = "the theme";
+        break;
+    case PREFS_SAVE_NODIR:
+        verb = "make the drawer";
+        what = p->dir[t];
+        break;
+    case PREFS_INSTALL_BACKUP:
+        verb = "back up to";
+        what = p->orig;
+        break;
+    case PREFS_INSTALL_PLACE:
+        verb = "rename into place";
+        what = p->path[t];
+        break;
+    case PREFS_INSTALL_STRANDED:
+        verb = "restore after a failed rename";
+        what = p->path[t];
+        break;
+    default: /* PREFS_INSTALL_WRITE: ENVARC: writes the tmp file first, ENV: the file itself */
+        what = t == PREFS_T_ENVARC ? p->tmp : p->path[t];
+        break;
+    }
+    if (cap <= 0)
+        return;
+    if (e)
+        snprintf(out, (size_t)cap, "the theme could not be saved: %s %s, error %ld", verb, what, e);
+    else
+        snprintf(out, (size_t)cap, "the theme could not be saved: %s %s", verb, what);
 }

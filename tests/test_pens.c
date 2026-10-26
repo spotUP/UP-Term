@@ -3,6 +3,7 @@
 #include "harness.h"
 #include "../render/pen_rule.h"
 #include "../render/glyph_pen.h"
+#include "../render/aa_ink_rule.h"
 
 #define MAP 8
 static unsigned long col[MAP];
@@ -88,8 +89,29 @@ static void glyph_pen_kept_when_it_differs_or_was_asked_equal(void)
     CHECK(vr_glyph_pen(2, 2, 0, 1, 0) == 2);
 }
 
+/* render/aa_ink.c's rules, the shared coverage-to-ink path (terminal glyphs and amarchy-gui's text): the table
+ * runs from bg (coverage 0) to fg (255), the shades aim at 1/4, 1/2, 3/4, the passes sit at 64/128/192/255, and a
+ * nearest pen is taken only when it beats both the text pen and the background pen. */
+static void aa_ink_rules(void)
+{
+    aa_ink_rgb tab[256];
+    aa_ink_build_tab(tab, 0xFFFFFF, 0x000000);
+    CHECK(tab[0] == 0x000000);
+    CHECK(tab[255] == 0xFFFFFF);
+    CHECK(tab[128] == ce_mix(0xFFFFFF, 0, 128));
+    CHECK(aa_ink_shade_target(tab, 0) == tab[64]);
+    CHECK(aa_ink_shade_target(tab, 1) == tab[128]);
+    CHECK(aa_ink_shade_target(tab, 2) == tab[192]);
+    CHECK(aa_ink_level(0) == 64 && aa_ink_level(1) == 128 && aa_ink_level(2) == 192 && aa_ink_level(3) == 255);
+    CHECK(aa_ink_shade_accept(10, 50, 60));   /* closer than both: used */
+    CHECK(!aa_ink_shade_accept(50, 50, 60));  /* as far as the text pen: the text pen draws it */
+    CHECK(!aa_ink_shade_accept(60, 70, 60));  /* as far as the background pen */
+    CHECK(!aa_ink_shade_accept(90, 50, 60));
+}
+
 void suite_pens(void)
 {
+    aa_ink_rules();
     text_pen_past_a_4_colour_screen_is_not_drawn_in_the_background();
     glyph_pen_kept_when_it_differs_or_was_asked_equal();
     cube_colour_near_a_workbench_pen_gets_its_own_pen();

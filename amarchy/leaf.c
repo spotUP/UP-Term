@@ -78,7 +78,7 @@ static int run_in_uterm(const char *cmd, const lf_ui *ui)
     return 0;
 }
 
-static int run_request(const km_menu *m, const lf_ui *ui)
+static int run_request(const km_menu *m, const lf_ui *ui, const char *value)
 {
     /* tab:, menuid: and slash: belong to a terminal window: the handler's request port
      * (handler/upreq.h) takes the action by name and runs it as a key binding would */
@@ -88,8 +88,17 @@ static int run_request(const km_menu *m, const lf_ui *ui)
         fprintf(stderr, "amarchy: %s is not a terminal action\n", m->arg);
         return UPREQ_UNKNOWN;
     }
+    if (value) {                         /* asked before the terminal opened */
+        char act[UPREQ_ACTION];
+        strcpy(act, r.action);
+        if (!upreq_with_arg(&r, act, value)) {
+            if (ui->refused)
+                ui->refused(ui->ctx, m->label, UPREQ_FAILED, "the value is too long");
+            return UPREQ_FAILED;
+        }
+    }
     rc = upreq_send(&r, ui->self_in_mru);
-    if (rc == UPREQ_NEEDARG) {
+    if (rc == UPREQ_NEEDARG && !value) {
         /* /bg and the like take a value the row does not carry: ask for it, send again */
         char value[UPREQ_ACTION], act[UPREQ_ACTION];
         strcpy(act, r.action);
@@ -140,10 +149,10 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui)
     long lh = ix_lister_of(path);
     char tname[GT_NAME];
     if (gt_path_name(path, tname, sizeof tname)) {      /* a Style > Theme row: the drawn menu's theme is saved */
-        if (gt_dos_select(tname))
+        if (gt_dos_select(tname, err, (int)sizeof err))
             return 0;
         if (ui && ui->refused)
-            ui->refused(ui->ctx, label, UPREQ_FAILED, "the theme could not be saved");
+            ui->refused(ui->ctx, label, UPREQ_FAILED, err);
         return UPREQ_FAILED;
     }
     if (lh >= 0) {
@@ -310,9 +319,44 @@ static int lister_front(unsigned long handle)
     return 0;
 }
 
+/* open:uterm: a new UP-Term window (NewShell on LF_UTERM_SPEC) */
+static int open_uterm(void)
+{
+    char spec[128], line[160];
+    uterm_spec(spec, sizeof spec);
+    snprintf(line, sizeof line, "NewShell \"%s\"", spec);
+    return system(line);
+}
+
+/* Style > Terminal with no terminal window open: open one, wait for its request port, then send the row there. */
+static int open_then_request(const km_menu *m, const lf_ui *ui, const char *value)
+{
+    int i, rc = open_uterm();
+    if (rc)
+        return rc;
+    for (i = 0; i < 100 && !upactive_terminal_present(ui->self_in_mru); i++)
+        Delay(5);                       /* up to 5 seconds, a tick of 0.1 s */
+    if (!upactive_terminal_present(ui->self_in_mru)) {
+        if (ui->refused)
+            ui->refused(ui->ctx, m->label, UPREQ_NOWINDOW, "");
+        return UPREQ_NOWINDOW;
+    }
+    return run_request(m, ui, value);
+}
+
 int lf_run(const km_menu *m, const lf_ui *ui)
 {
-    switch (lf_plan(m->kind)) {
+    const char *usage = upreq_needs_value(m->kind, m->arg);
+    switch (lf_plan_ta(m->kind, upactive_terminal_present(ui->self_in_mru), usage != 0)) {
+    case LF_ASK_THEN_OPEN_REQUEST: {
+        /* the value first: the terminal that opens next takes the focus, and the menu closes with it */
+        char value[UPREQ_ACTION];
+        if (!ui->ask_value || !ui->ask_value(ui->ctx, m->label, usage, value, sizeof value))
+            return 0;                   /* cancelled: no terminal opens */
+        return open_then_request(m, ui, value);
+    }
+    case LF_OPEN_THEN_REQUEST:
+        return open_then_request(m, ui, 0);
     case LF_DETACH:
         return run_detached(m, ui);
     case LF_SCAN: {
@@ -335,21 +379,20 @@ int lf_run(const km_menu *m, const lf_ui *ui)
             ui->refused(ui->ctx, m->label, UPREQ_FAILED, note);
         return rc;
     }
-    case LF_OPEN: {
-        char spec[128], line[160];
-        uterm_spec(spec, sizeof spec);
-        snprintf(line, sizeof line, "NewShell \"%s\"", spec);
-        return system(line);
-    }
+    case LF_OPEN:
+        return open_uterm();
     case LF_WIN:
         return send_win(m, ui);
     case LF_GTHEME:
-        if (gt_dos_select(m->arg))
+    {
+        char why[160];
+        if (gt_dos_select(m->arg, why, (int)sizeof why))
             return 0;
         if (ui && ui->refused)
-            ui->refused(ui->ctx, m->label, UPREQ_FAILED, "the theme could not be saved");
+            ui->refused(ui->ctx, m->label, UPREQ_FAILED, why);
+    }
         return UPREQ_FAILED;
     default:
-        return run_request(m, ui);
+        return run_request(m, ui, 0);
     }
 }

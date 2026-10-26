@@ -203,10 +203,12 @@ static int own_open(struct vo_engine *e, const char *spec)
     return 0;
 }
 
-/* the font `name`: FONTS:<name>.otag (ttfinstall's, for ttf.library) when
- * its OT_Spec1 names a TrueType file, else FONTS:<name>.ttf itself. The
- * .otag's engine is not opened: render/ttf.c draws every TrueType font. */
-static int engine_open(struct vo_engine *e, const char *name)
+/* The candidate TrueType files of the font `name`, tried in order by the caller (own_open here, the file read in
+ * amarchy/menu_text.c): which 0 is the OT_Spec1 of FONTS:<name>.otag (ttfinstall's, for ttf.library), which 1 is
+ * FONTS:<name>.ttf itself. The .otag's engine is not opened: render/ttf.c draws every TrueType font. Into spec
+ * (n bytes); 1 when the candidate exists as a string, else 0. Whether the file opens and is TrueType is the
+ * caller's to decide, so a spec that is no TrueType still falls through to the .ttf. */
+int vo_ttf_spec(const char *name, int which, char *spec, int n)
 {
     char path[96];
     UBYTE *otag;
@@ -214,15 +216,22 @@ static int engine_open(struct vo_engine *e, const char *name)
     BPTR f;
     LONG len = 0, got;
     otag_info in;
-    int i, n, ok = 0;
+    int i, m, ok = 0;
     strcpy(path, "FONTS:");
-    n = (int)strlen(path);
-    for (i = 0; name[i] && n < (int)sizeof(path) - 6; i++)
-        path[n++] = name[i];
-    path[n] = 0;
-    if (n > 5 && (!strcmp(path + n - 5, ".font") || !strcmp(path + n - 5, ".otag")))
-        path[n - 5] = 0;
-    n = (int)strlen(path);
+    m = (int)strlen(path);
+    for (i = 0; name[i] && m < (int)sizeof(path) - 6; i++)
+        path[m++] = name[i];
+    path[m] = 0;
+    if (m > 5 && (!strcmp(path + m - 5, ".font") || !strcmp(path + m - 5, ".otag")))
+        path[m - 5] = 0;
+    m = (int)strlen(path);
+    if (which) {
+        strcat(path, ".ttf");
+        if (strlen(path) >= (size_t)n)
+            return 0;
+        strcpy(spec, path);
+        return 1;
+    }
     strcat(path, ".otag");
     if ((f = Open((STRPTR)path, MODE_OLDFILE)) != 0) {
         if ((fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0)) != 0) {
@@ -232,15 +241,25 @@ static int engine_open(struct vo_engine *e, const char *name)
         }
         if (len > 0 && len <= 65536 && (otag = (UBYTE *)AllocVec((ULONG)len, MEMF_ANY)) != 0) {
             got = Read(f, otag, len);
-            ok = got == len && otag_check(otag, len, &in) == OTAG_OK && in.spec1_off >= 0 &&
-                 own_open(e, (const char *)otag + in.spec1_off);
+            if (got == len && otag_check(otag, len, &in) == OTAG_OK && in.spec1_off >= 0 &&
+                (int)strlen((const char *)otag + in.spec1_off) < n) {
+                strcpy(spec, (const char *)otag + in.spec1_off);
+                ok = 1;
+            }
             FreeVec(otag);
         }
         Close(f);
     }
-    path[n] = 0;
-    strcat(path, ".ttf");
-    if (!ok && !own_open(e, path))
+    return ok;
+}
+
+static int engine_open(struct vo_engine *e, const char *name)
+{
+    char spec[128];
+    int which, ok = 0;
+    for (which = 0; which < 2 && !ok; which++)
+        ok = vo_ttf_spec(name, which, spec, sizeof(spec)) && own_open(e, spec);
+    if (!ok)
         return 0;
     calibrate(e);
     return 1;

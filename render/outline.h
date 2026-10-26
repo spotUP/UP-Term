@@ -26,6 +26,10 @@ typedef struct vo_font vo_font;
  * baseline `base` rows down. 0 when there is no such font, it is not
  * TrueType, or no memory: the caller draws as without one.
  * name "" opens the worker alone, for vo_read (its glyphs all missing). */
+/* Candidate TrueType file `which` of the font `name` (0: the .otag's OT_Spec1, 1: FONTS:<name>.ttf) into spec
+ * (n bytes); 1 when the candidate exists as a string. The caller opens each in turn and takes the first that is a
+ * TrueType file (vo_open does; amarchy/menu_text.c does), so an .otag naming a non-TrueType file falls through. */
+int vo_ttf_spec(const char *name, int which, char *spec, int n);
 vo_font *vo_open(const char *name, WORD cw, WORD ch, WORD base);
 void vo_close(vo_font *f);
 

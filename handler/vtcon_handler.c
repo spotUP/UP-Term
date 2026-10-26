@@ -829,23 +829,12 @@ static int alt_font_option(const char *field, const char **rest)
     return 0;
 }
 
-/* "name.font size" of a font option. */
+/* "name.font size" of a font option; the name may hold blanks (winspec_font). */
 static void parse_font(const char *rest, char *name, int max, WORD *size)
 {
-    int i = 0;
-    while (*rest == ' ')
-        rest++;
-    while (rest[i] && rest[i] != ' ' && i < max - 1) {
-        name[i] = rest[i];
-        i++;
-    }
-    name[i] = 0;
-    rest += i;
-    while (*rest == ' ')
-        rest++;
-    *size = 0;
-    while (*rest >= '0' && *rest <= '9')
-        *size = (WORD)(*size * 10 + (*rest++ - '0'));
+    int sz;
+    winspec_font(rest, name, max, &sz);
+    *size = (WORD)sz;
 }
 
 /* Is our DOS device node named `want` (case-insensitive)? The CON:/RAW:

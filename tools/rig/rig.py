@@ -438,8 +438,9 @@ def os_image_copy():
         shutil.copyfile(paths.INSTALLER, dst / "C/Installer")
     if M060:
         if not NOFPU:   # on the FPU-less 68LC060 SetPatch's Phase5 68060.library Gurus 80000006 before ENV: (rig 4, 2026-10-23)
-            paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
-            shutil.copyfile(paths.LIB68060, dst / "Libs/68060.library")
+            for lib, name, var in paths.libs060():
+                paths.require_input(lib, var, name)
+                shutil.copyfile(lib, dst / "Libs" / name)
         paths.require_input(paths.LIB68040, "UPTERM_LIB68040", "the 68040.library stub")
         shutil.copyfile(paths.LIB68040, dst / "Libs/68040.library")
 
@@ -461,17 +462,23 @@ def fresh_sys_hdf():
 
 def sys_hdf_cpu_lib(image):
     """The rig's own sys.hdf copy follows the machine: no Libs/68060.library on the FPU-less 68LC060 (SetPatch loads it
-    and it Gurus 80000006 before ENV:, rig 4 2026-10-23), the library present on a 060 with FPU; other CPUs untouched."""
+    and it Gurus 80000006 before ENV:, rig 4 2026-10-23), the paths.libs060() set on a 060 with FPU; other CPUs untouched.
+    The set is written even where the master image already has a 68060.library: the master's is Phase5's 44.3, whose
+    SetPatch run resets OS 3.1 in a loop (paths.LIB68060)."""
     if not M060:
         return
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     have = subprocess.run([xdf, str(image), "list", "Libs"], capture_output=True, text=True).stdout
-    has = any(l.split()[:1] == ["68060.library"] for l in have.splitlines())
-    if NOFPU and has:
-        subprocess.run([xdf, str(image), "delete", "Libs/68060.library"], check=True, capture_output=True)
-    elif not NOFPU and not has:
-        paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
-        subprocess.run([xdf, str(image), "write", str(paths.LIB68060), "Libs/68060.library"], check=True, capture_output=True)
+    names = {l.split()[0] for l in have.splitlines() if l.split()}
+    if NOFPU:
+        if "68060.library" in names:
+            subprocess.run([xdf, str(image), "delete", "Libs/68060.library"], check=True, capture_output=True)
+        return
+    for lib, name, var in paths.libs060():
+        paths.require_input(lib, var, name)
+        if name in names:
+            subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
+        subprocess.run([xdf, str(image), "write", str(lib), "Libs/" + name], check=True, capture_output=True)
 
 def strip_user_startup_blocks(image, name):
     """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""
@@ -543,6 +550,22 @@ def cpu_lines():
 def unimplemented_lines():
     """The 060 runs the instructions it lacks in the emulator (no 68060.library needed), the FPU's too when there is one."""
     return (["uae_cpu_no_unimplemented = false"] + ([] if NOFPU else ["uae_fpu_no_unimplemented = false"])) if M060 else []
+
+# The Amiga picture each screen mode puts in the window, in Amiga pixels: the master sys.hdf's
+# ScreenMode prefs is uaegfx mode 0x5004xxxx (800x600, `rig.py rtg`); `rig.py aga|aga256` and the
+# --os images are PAL hires (640x256, line-doubled to 640x512 and cropped there by FS-UAE's zoom).
+SCREEN_SIZES = {"rtg": (800, 600), "aga": (640, 512), "aga256": (640, 512)}
+WINDOW_BUDGET = (1280, 1024)   # the window size the rigs opened at before integer scaling
+
+def window_lines():
+    """The window fits the picture: with scale = integer a fixed 1280x1024 window showed the 800x600 RTG
+    Workbench at x1 inside wide black bands (owner 2026-10-26: "they open windows much bigger than the
+    content"). The window is the picture times the largest whole factor that stays inside WINDOW_BUDGET."""
+    name = SCREENMODE_NAME.read_text().strip() if SCREENMODE_NAME.exists() else "aga256" if OS else "rtg"
+    w, h = SCREEN_SIZES[name]
+    k = max(1, min(WINDOW_BUDGET[0] // w, WINDOW_BUDGET[1] // h))
+    return ["window_width = %d" % (w * k), "window_height = %d" % (h * k)] + (
+        [] if name == "rtg" else ["zoom = 640x512"])   # AGA: crop the overscan border, or x2 no longer fits
 
 def title_line():
     """The window title names the rig and its machine: with several rigs open the
@@ -674,12 +697,20 @@ def setup():
         "hard_drive_2_priority = %d" % (0 if OS else 10), "joystick_port_1 = none",
         "kickstart_file = %s" % KICK,
     ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
-        "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
+        # audible output on every rig: "interrupts" is emulated with no output and
+        # volume 0 muted it, so no rig made sound (owner, 2026-10-26)
+        "uae_sound_output = exact", "volume = 100", "initial_input_grab = 0",
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
         "clipboard_sharing = 1",
     ] + HOST_KEYS + [title_line(),
-        "window_width = 1280", "window_height = 1024",
+    ] + window_lines() + [
+        # sharp pixels: nearest-neighbour texture filter instead of the default linear blur
+        # (the owner found the rigs blurry, 2026-10-26)
+        "texture_filter = nearest",
+        # whole-number zoom only (the Amiga mode shown at x1, x2, never 1.6x), FS-UAE scale = integer
+        # (owner, 2026-10-26)
+        "scale = integer",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,
         "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
@@ -765,7 +796,7 @@ def stage_terminfo(src, dest):
 def stage_amissl(vtc, m060):
     """VTC:amissl/AmiSSL/amissl_v362.library (RIG_LIBS): the kit's AmiSSL library for the CPU the rig
     boots as (68060 with --060/--max, else 68020-40), flat, where amisslmaster.library looks for it."""
-    src = ROOT / "vendor/amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / ("68060" if m060 else "68020-40") / "amissl_v362.library"
+    src = paths.VENDOR / "amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / ("68060" if m060 else "68020-40") / "amissl_v362.library"
     if not src.is_file():
         sys.exit("rig: the kit's AmiSSL 5.27 library not found: %s (vendor/amissl-5.27, the kit's AmiSSL drawer)" % src)
     dst = vtc / "amissl/AmiSSL" / src.name
@@ -947,8 +978,9 @@ def start(retries=START_RETRIES):
         log.unlink()
     if paths.FSUAE.suffix == ".app":
         subprocess.run(["open", "-g", "-n", "-a", str(paths.FSUAE), "--args", str(CFG)], check=True)
-    else:  # a bare binary: detached, so the rig outlives this command
-        subprocess.Popen([str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
+    else:  # a bare binary: detached, so the rig outlives this command; nice 19 so the
+        # machine-load gates of other sessions do not block on the rig
+        subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)

@@ -51,6 +51,9 @@ unsigned ttf_glyph_index(const ttf_font *f, unsigned long cp);
 /* gid's advance width in font units */
 int ttf_advance(const ttf_font *f, unsigned gid);
 int ttf_units_per_em(const ttf_font *f);
+/* the line's top and bottom (hhea ascender, descender; the latter negative) in font units */
+int ttf_ascender(const ttf_font *f);
+int ttf_descender(const ttf_font *f);
 int ttf_num_glyphs(const ttf_font *f);
 
 /* gid's outline into cov, w x h bytes (row 0 the top), which the caller

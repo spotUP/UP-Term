@@ -146,6 +146,11 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
 /* The path an index item launches (the tool or project, no .info), copied into out. 1, or 0 when it is
  * not an index item or its row is not in x. */
 int ix_launch_path(const ix_index *x, const mn_item *it, char *out, int n);
+/* The path of the file whose .info icon an index row shows: ix_launch_path, but only for rows that are files
+ * on disk (a kind below IX_NKINDS: app, game, demo, music, settings). The synthesised rows have a path that
+ * names no file: "clip:<n>", "lister:<handle>" (a handle, whatever the drawer it shows) and "gtheme:<name>"; a
+ * lookup of "gtheme:x" makes DOS ask for a volume gtheme:. 0 for those, with out emptied. */
+int ix_icon_path(const ix_index *x, const mn_item *it, char *out, int n);
 
 /* Scan progress record (RESCAN-FEEDBACK, AMARCHY-INDEX-WHERE). amarchy-index keeps one of these in
  * public memory (a semaphore named IX_PROG_NAME, amarchy/index.c) that outlives the scanner task, so

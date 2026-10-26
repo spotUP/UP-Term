@@ -1564,7 +1564,7 @@ static void pick_font(struct app *a)
     if (!asl_pick_font(0, a->win, "UP-Term font", iname, isize, 1, name, sizeof(name), &size))
         return;
     if (!prefs_font_compose(name, size, spec, sizeof(spec))) {
-        set_status(a, "The font's name has a blank or a colon: not usable.");
+        set_status(a, "The font's name has a colon: not usable.");
         return;
     }
     strcpy(a->f.font, spec);
@@ -1578,10 +1578,10 @@ static void pick_menu_font(struct app *a)
     long size = 0, isize = 0;
     iname[0] = 0;
     prefs_font_parse(a->f.am_font, iname, sizeof(iname), &isize);
-    if (!asl_pick_font(0, a->win, "Amarchy menu font", iname, isize, 1, name, sizeof(name), &size))
+    if (!asl_pick_font(0, a->win, "Amarchy menu font", iname, isize, 0, name, sizeof(name), &size))
         return;
     if (!prefs_font_compose(name, size, spec, sizeof(spec))) {
-        set_status(a, "The font's name has a blank or a colon: not usable.");
+        set_status(a, "The font's name has a colon: not usable.");
         return;
     }
     strcpy(a->f.am_font, spec);

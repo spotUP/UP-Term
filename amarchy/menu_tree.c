@@ -25,7 +25,8 @@ int mn_cond(int term, int dopus, int workbench)
 
 int mn_row_needs(int kind, const char *id)
 {
-    return (mn_kind_needs_terminal(kind) ? MN_COND_TERM : 0) |
+    /* the Style > Terminal rows are shown with no terminal open: picking one opens a terminal first (lf_plan_t) */
+    return (mn_kind_needs_terminal(kind) && strncmp(id, "style.terminal.", 15) ? MN_COND_TERM : 0) |
            (!strncmp(id, "dopus.", 6) ? MN_COND_DOPUS : 0) |
            (!strncmp(id, "workbench.", 10) ? MN_COND_WB : 0);
 }

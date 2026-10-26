@@ -5,7 +5,7 @@ UPTERM_OS32_TREE, UPTERM_OS32_ROM).
 
 UPTERM_ROOT is the workspace directory that holds vtcon, ixemul-vtcon,
 tmux-amiga, ... side by side (the meta-repo `upterm` creates it). Default:
-the parent of this vtcon checkout. The Makefile's default is the same
+the parent of the main vtcon checkout (a git worktree's parent is not it). The Makefile's default is the same
 (`UPTERM_ROOT ?= $(abspath $(CURDIR)/..)`).
 """
 import contextlib
@@ -16,7 +16,25 @@ import subprocess
 import sys
 
 VTCON = pathlib.Path(__file__).resolve().parents[2]
-UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
+
+
+def _main_checkout(checkout):
+    """The main checkout of the repository `checkout` belongs to: `checkout`
+    itself, or for a git worktree the checkout that owns its .git."""
+    try:
+        common = subprocess.run(
+            ["git", "-C", str(checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return checkout
+    return pathlib.Path(common).resolve().parent
+
+
+MAIN_CHECKOUT = _main_checkout(VTCON)
+UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or MAIN_CHECKOUT.parent)
+# third-party SDKs and archives (gitignored, so a worktree has none): this checkout's vendor/ if it has one, else the
+# main checkout's. The Makefile asks (`paths.py vendor`).
+VENDOR = VTCON / "vendor" if (VTCON / "vendor").is_dir() else MAIN_CHECKOUT / "vendor"
 # the rig's own UP-Term: drawer in the host drawer VTC: (the Workbench labels a drawer icon with the file name,
 # so the owner sees Apps); rig.py, the rig scripts and their tests all take it from here
 UPTERM_DRAWER = "Apps"
@@ -45,23 +63,11 @@ def code_root(upterm_root=None):
 CODE_ROOT = code_root()
 
 
-def _main_checkout(checkout):
-    """The main checkout of the repository `checkout` belongs to: `checkout`
-    itself, or for a git worktree the checkout that owns its .git."""
-    try:
-        common = subprocess.run(
-            ["git", "-C", str(checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-            capture_output=True, text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return checkout
-    return pathlib.Path(common).resolve().parent
-
-
 # The rigs are machine resources (an FS-UAE each, a fixed wasabid port, a
 # 1.5 GB system disk), so they live in the main checkout's build/ for every
 # worktree. A worktree has no build/rig2: FS-UAE started from one booted with
 # no bootable device (2026-10-12).
-RIG_HOME = _main_checkout(VTCON) / "build"
+RIG_HOME = MAIN_CHECKOUT / "build"
 
 # Which rig: UPTERM_RIG unset or 1 is the first (build/rig, wasabid port 1234);
 # UPTERM_RIG=2 is the second (build/rig2, port 1235), a separate FS-UAE with
@@ -206,10 +212,21 @@ ROM314 = pathlib.Path(os.environ.get("UPTERM_ROM314") or
 
 # --os with --060/--max: the clean system has no 68060.library and its
 # Startup-Sequence (SetPatch, CPU CHECKINSTALL) fails on a 68060 without it
-# (Software Failure 8000 888B, rig 3, 2026-10-10); UPTERM_LIB68060 names the file (default: Phase5's 68060.library 44.3,
-# taken from the old rig system disk's Libs:; GG-Lite's 68060.library did not help).
+# (Software Failure 8000 888B, rig 3, 2026-10-10); UPTERM_LIB68060 names the file. Default: Thor's MMULib 68060.library
+# 47.2 (Aminet util/libs/MMULib.lha), which needs its mmu.library and 680x0.library beside it (UPTERM_LIBMMU,
+# UPTERM_LIB680X0). Phase5's 68060.library 44.3 (the old rig system disk's) made OS 3.1 on the emulated 060 reset
+# in a loop once SetPatch had run: 333 resets on a clean 3.1, none with SetPatch commented out, none on MMULib
+# (rig 8, 2026-10-26, thoughts/spot/term-findings/reset-loop-cause-rig8-2026-10-26.md). GG-Lite's did not help.
 LIB68060 = pathlib.Path(os.environ.get("UPTERM_LIB68060") or
-    RIG_HOME / "rig-inputs/68060.library")
+    RIG_HOME / "rig-inputs/mmulib/68060.library")
+LIBMMU = pathlib.Path(os.environ.get("UPTERM_LIBMMU") or RIG_HOME / "rig-inputs/mmulib/mmu.library")
+LIB680X0 = pathlib.Path(os.environ.get("UPTERM_LIB680X0") or RIG_HOME / "rig-inputs/mmulib/680x0.library")
+def libs060():
+    """Every Libs: file a 060 with FPU gets, as (source, Libs: name, variable) for require_input; read at call time,
+    so a test that points LIB68060 elsewhere is followed."""
+    return ((LIB68060, "68060.library", "UPTERM_LIB68060"),
+            (LIBMMU, "mmu.library", "UPTERM_LIBMMU"),
+            (LIB680X0, "680x0.library", "UPTERM_LIB680X0"))
 
 
 # ... and the 3.1 68040.library, which SetPatch also loads on a 68060, crashes
@@ -279,3 +296,7 @@ def rig_lock(rig_dir=None):
 
 if __name__ == "__main__" and sys.argv[1:] == ["code-root"]:
     print(CODE_ROOT)
+elif __name__ == "__main__" and sys.argv[1:] == ["main-checkout"]:
+    print(MAIN_CHECKOUT)
+elif __name__ == "__main__" and sys.argv[1:] == ["vendor"]:
+    print(VENDOR)

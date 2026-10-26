@@ -1,6 +1,7 @@
 #include <string.h>
 #include "keymap_act.h"
 #include "menu_ids.h"
+#include "slash.h"
 
 static const struct { const char *name; long id; } ids[] = {
 #define KACT_ROW(n) { #n, n },
@@ -169,6 +170,18 @@ int upreq_fill(upreq_body *r, int kind, const char *arg)
     strcat(r->action, ":");
     strcat(r->action, arg);
     return 1;
+}
+
+const char *upreq_needs_value(int kind, const char *arg)
+{
+    slash_cmd sc;
+    char err[80];
+    memset(&sc, 0, sizeof sc);
+    if (kind != KA_SLASH || !arg || !*arg)
+        return 0;
+    if (slash_parse(arg, (int)strlen(arg), &sc, err, sizeof err) != SLASH_ERROR)
+        return 0;
+    return sc.def && sc.def->need_arg && !sc.arg[0] ? sc.def->args : 0;
 }
 
 long upreq_slash_answer(upreq_body *r, int ran, const char *ans, const char *missing_usage)

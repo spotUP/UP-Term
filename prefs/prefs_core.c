@@ -377,7 +377,7 @@ int prefs_font_compose(const char *name, long size, char *out, int cap)
     if (n < 1)
         return 0;
     for (i = 0; i < n; i++)
-        if (name[i] == ' ' || name[i] == ':' || name[i] == '\t')
+        if (name[i] == ':')
             return 0;
     if (n >= cap)
         return 0;
