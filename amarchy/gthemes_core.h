@@ -58,6 +58,9 @@ void gt_scan(gt_dir_fn dir, void *ctx, gt_list *l);
 /* The menu row label: the name, with " (current)" appended when it is the saved theme (compared without case). */
 void gt_label(const char *name, const char *current, char *out, int cap);
 
+/* 1 when name can be saved as the current theme: non-empty, fits GT_NAME, no path characters ('/' or ':'). */
+int gt_name_ok(const char *name);
+
 /* A theme row's path in the menu index ("gtheme:<name>"); gt_path_name gives the name back, 0 when the path is not one. */
 #define GT_ROW_PREFIX "gtheme:"
 int gt_path_name(const char *path, char *out, int cap);

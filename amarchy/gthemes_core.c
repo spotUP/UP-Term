@@ -116,6 +116,11 @@ void gt_load(gt_read_fn rd, void *ctx, const char *name, gtheme *out)
     }
 }
 
+int gt_name_ok(const char *name)
+{
+    return name && *name && (int)strlen(name) < GT_NAME && !strchr(name, '/') && !strchr(name, ':');
+}
+
 void gt_label(const char *name, const char *current, char *out, int cap)
 {
     snprintf(out, (size_t)cap, "%s%s", name, current && !cmp_ci(name, current) ? " (current)" : "");

@@ -31,7 +31,7 @@ static void gt_dir(void *ctx, const char *dir, gt_emit_fn emit, void *ectx)
         if (Examine(lock, fib))
             while (ExNext(lock, fib))
                 if (fib->fib_DirEntryType < 0)      /* a file, not a drawer */
-                    emit(ectx, fib->fib_FileName);
+                    emit(ectx, (const char *)fib->fib_FileName);
         FreeDosObject(DOS_FIB, fib);
     }
     UnLock(lock);
@@ -69,7 +69,7 @@ int gt_dos_select(const char *name)
 {
     am_prefs ap;
     int failed = 0;
-    if (!name || !*name || (int)strlen(name) >= GT_NAME || strchr(name, '/') || strchr(name, ':'))
+    if (!gt_name_ok(name))
         return 0;
     amconf_load(&ap);
     strcpy(ap.val[AM_GTHEME], name);

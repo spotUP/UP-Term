@@ -323,8 +323,42 @@ static void test_gthemes_scan(void)
     CHECK(!gt_path_name("clip:3", nm, sizeof nm));
     CHECK(!gt_path_name("gtheme:", nm, sizeof nm));
 }
+/* T8: the name the commodity saves is a plain theme name, never a path or an overlong string */
+static void test_gthemes_select_name(void)
+{
+    char longname[GT_NAME + 4];
+    memset(longname, 'a', sizeof longname - 1);
+    longname[sizeof longname - 1] = 0;
+    CHECK(gt_name_ok("nord"));
+    CHECK(!gt_name_ok(""));
+    CHECK(!gt_name_ok(0));
+    CHECK(!gt_name_ok("../x"));
+    CHECK(!gt_name_ok("ram:nord"));
+    CHECK(!gt_name_ok(longname));
+}
+
+/* T13: an unreadable or unknown theme name draws the compiled-in default, never garbage or the terminal's colours */
+static long no_files(void *ctx, const char *path, char *buf, long cap)
+{
+    (void)ctx; (void)path; (void)buf; (void)cap;
+    return -1;
+}
+
+static void test_gthemes_fallback(void)
+{
+    gtheme t, d;
+    gt_builtin(&d);
+    gt_load(no_files, 0, "missing", &t);
+    CHECK_INT((long)t.bg, (long)d.bg);
+    CHECK_INT((long)t.accent, (long)d.accent);
+    CHECK_STR(d.name, GT_DEFAULT);
+    CHECK_INT((long)d.bg, 0x1a1b26L);
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_select_name();
+    test_gthemes_fallback();
     test_gthemes_parse();
     test_gthemes_roles();
     test_gthemes_user();
