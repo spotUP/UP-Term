@@ -222,6 +222,8 @@ def host_window():
     import wbrun_rig
     if not any(HOST in (w.get('title') or '') for w in wbrun_rig.windows()):
         tabstate.open_host(HOST)
+        import vshwin
+        vshwin.typeline('clear', 1)        # vsh's banner art holds an 8-pixel run that find_cursor would take for the cursor
     for w in wbrun_rig.windows():
         if HOST in (w.get('title') or ''):
             return w['title']
@@ -260,12 +262,9 @@ def pick_blink(drawn):
         rows = drawn_enter('General')
         drawn_down(rows, row_label, [l for _, l in pages], 'General')
         ami.key(g.RETURN)
-        end = time.time() + 30
-        while time.time() < end and g.where(g.TITLE)[1]:
-            time.sleep(0.5)
+        time.sleep(2)                      # a check row toggles and the menu stays open (seen on the text menu, rig 7)
         if g.where(g.TITLE)[1]:
             g.close_menu()
-            raise RuntimeError('drawn menu still open 30 s after the final Return')
     else:
         rows = text_open()
         text_down(rows, 'Settings', groups_under(), 'root')
@@ -274,9 +273,8 @@ def pick_blink(drawn):
         rows = text_enter()
         text_down(rows, row_label, [l for _, l in pages], 'General')
         ami.key(RAW['return'])
-        if not text_closed():
-            x9_leave()
-            raise RuntimeError('text menu still open 20 s after the final Return')
+        time.sleep(2)                      # a check row toggles and the menu stays open (seen on rig 7): Esc closes it
+        x9_leave()
 
 
 def r_blink(drawn, new):
