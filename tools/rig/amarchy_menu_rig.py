@@ -20,6 +20,10 @@ import stage_rig, tabstate
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
 LAMIGA = 0x40                       # IEQUALIFIER_LCOMMAND
 LSHIFT = 0x01                       # IEQUALIFIER_LSHIFT
+ALT = 0x10                          # IEQUALIFIER_LALT
+# Super+Space opens the drawn menu (pixels, no screen text); the rows below that read the menu through
+# screen_text() open the text menu (amarchy-menu in the UP-Term window), Super+Alt+Space = othermenu:root
+TEXT_MENU = LAMIGA | ALT
 RAW = {'down': 0x4D, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
 KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
 TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
@@ -87,9 +91,10 @@ def root_menu_rows():
 
 def r_rows_no_terminal():
     # TERM-ROWS-ONLY-OVER-TERMINAL: no UP-Term window exists yet, the menu is the only one. The rows
-    # whose action needs a terminal (Style, Window: tab:, menuid:, slash:) are hidden, Apps stays.
+    # whose action needs a terminal (tab:, menuid:, slash:: the Style group) are hidden; Apps stays, and so does Window,
+    # whose win: rows (cycle, move, size ...) act on any window and are shown with no UP-Term window (9ad02f94).
     up, rows = root_menu_rows()
-    ok = up and 'Apps' in rows and 'Style' not in rows and 'Window' not in rows
+    ok = up and 'Apps' in rows and 'Style' not in rows and 'Window' in rows
     return ok, 'no UP-Term window: drawn root rows %s (menu up %s)' % (rows, up)
 
 
@@ -103,7 +108,7 @@ def r_rows_over_terminal():
 
 def r_open_timing():
     t0 = time.time()
-    ami.key(RAW['space'], LAMIGA)
+    ami.key(RAW['space'], TEXT_MENU)
     while time.time() - t0 < 10:
         if 'Filter' in screen_text():
             break
@@ -149,7 +154,7 @@ def r_enter_slash():
     # /theme opens a file requester ("UP-Term theme") and the handler sits in it until it closes, so the
     # effect is the requester on screen; the counter is read after its Cancel gadget (id 2) closed it, as keymap_rig.py does.
     before = km_hits()
-    ami.key(RAW['space'], LAMIGA)
+    ami.key(RAW['space'], TEXT_MENU)
     time.sleep(1.5)
     into_style()
     ami.key(RAW['return'])             # Theme is the first row
@@ -172,7 +177,7 @@ def viewer_lines(s):
 def r_viewer_rows():
     # the viewer is a text box (amarchy/menu.c viewer, K_TEXTBOX in a 640x300 window): one page of rows at a time.
     # Scroll with Down, a few lines per step, and collect every distinct row line seen until a step adds none.
-    ami.key(RAW['k'], LAMIGA)
+    ami.key(RAW['k'], TEXT_MENU)       # Super+Alt+K: otherviewer, the text viewer (Super+K is the drawn one)
     time.sleep(1.5)
     rows = viewer_lines(screen_text())
     for _ in range(40):
@@ -213,7 +218,7 @@ def r_drill_redraw():
     # Owner bug AM-DRILL-REDRAW (A1200): Style drawn over the root, then "th" left "   me" and a stale Font row.
     # Cause: ncurses tparm memo keyed by the %i-bumped cup values (upterm-ports 7600cda), so rows landed one
     # line off. The cells must hold exactly the submenu's rows after the drill and after the filter.
-    ami.key(RAW['space'], LAMIGA)
+    ami.key(RAW['space'], TEXT_MENU)
     time.sleep(1.5)
     into_style()
     style = menu_rows(screen_text())
@@ -232,7 +237,7 @@ def r_enter_th():
     # Owner bug AM-ENTER-H: Enter after the filter "th" added another "h" (stale ui_hotkey, upterm-ports ebf5d1c).
     # Enter must run Theme: the requester opens and km-hits moves by 1.
     before = km_hits()
-    ami.key(RAW['space'], LAMIGA)
+    ami.key(RAW['space'], TEXT_MENU)
     time.sleep(1.5)
     into_style()
     for k in 't', 'h':
@@ -267,7 +272,6 @@ def r_lamiga_minus_sv():
 X9_DIR, X9_SKIP = 'SYS:X9Test', 'SYS:X9Skip'      # x9_begin respells X9_SKIP with the boot volume's name, see there
 X9_CONF = 'ENV:up-term/up-term'
 X9_CACHE = 'ENVARC:Amarchy/apps'
-ALT = 0x10
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 

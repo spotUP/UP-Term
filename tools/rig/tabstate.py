@@ -28,7 +28,8 @@ def parse(text):
 
 def counters():
     c.run('Delete RAM:cnt.out QUIET')
-    ami.req(0x08, bytes([4]) + b'UPTerm state >RAM:cnt.out')
+    # VTC:UPTerm by path: the rig's shell path has no UPTerm (vsh answers "UPTerm: not found")
+    ami.req(0x08, bytes([4]) + b'VTC:UPTerm state >RAM:cnt.out')
     time.sleep(0.5)
     ami.key(RET)
     time.sleep(2.5)
