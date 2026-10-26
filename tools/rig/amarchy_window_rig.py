@@ -228,12 +228,18 @@ def s_wb_viewname():
     return rc == 0 and any(' checked ' in l for l in got), 'rc %r %r; menu rows %r' % (rc, res, got)
 
 
+# Rows that need a selected icon (Icons menu) or an active drawer (Auto-arrange Icons); b2_icons_selected owns them
+ICON_ROWS = ('workbench.iconopen', 'workbench.iconcopy', 'workbench.iconrename', 'workbench.iconinfo',
+             'workbench.iconsnapshot', 'workbench.iconunsnapshot', 'workbench.iconleaveout', 'workbench.iconputaway',
+             'workbench.autoarrange')
+
+
 def s_wb_patterns():
     out = []
     wb_port('WINDOW SYS: OPEN')
     time.sleep(1)
     for rid, scope, item in wb_rows():
-        if rid in ('workbench.delete', 'workbench.emptytrash'):
+        if rid in ('workbench.delete', 'workbench.emptytrash') or rid in ICON_ROWS:
             continue
         wb_port('ACTIVATEWINDOW WINDOW SYS:')
         if not item.startswith('WINDOW.VIEWBY'):
@@ -248,6 +254,90 @@ def s_wb_patterns():
     (OUT / 'wb_patterns.txt').write_text('\n'.join(out) + '\n')
     bad = [o for o in out if ' rc 0' not in o]
     return not bad, '%d sent, %d refused: %s' % (len(out), len(bad), '; '.join(bad))
+
+
+def ui_windows():
+    """{title: [gadget names]} of the front screen's windows, from the uitree text; a volume window's title carries live
+    free-space numbers, so those are cut off at the first double space ("RAM Disk  0% full ..." is "RAM Disk")"""
+    out, cur = {}, None
+    for line in ami.req(0x0D).decode('latin-1').splitlines():
+        m = re.match(r'W \d+ \d+ \d+ \S+ \S+ "(.*)"$', line)
+        if m:
+            cur = out.setdefault(m.group(1).split('  ')[0], [])
+        elif cur is not None and line.startswith('G '):
+            m = re.match(r'G \d+ \d+ \d+ \S+ (\S+) - "(.*)"$', line)
+            if m:
+                cur.append(m.group(2) or m.group(1))
+    return out
+
+
+def close_extras(keep):
+    """Cancel or close every window whose title is not in `keep` (a requester has a Cancel gadget); returns their titles"""
+    closed = []
+    for _ in range(12):
+        wins = ui_windows()
+        extra = [t for t in wins if t not in keep]
+        if not extra:
+            return closed
+        t = extra[0]
+        with ami._conn() as conn:
+            ami._click_gadget(conn, t, 'Cancel' if 'Cancel' in wins[t] else 'close')
+        closed.append(t)
+        time.sleep(0.8)
+    return closed + ['STILL OPEN %r' % [t for t in ui_windows() if t not in keep]]
+
+
+def s_wb_icons_selected():
+    """B2: the 8 Icons rows with one icon selected in a scratch drawer window in RAM:, then Auto-arrange Icons with a drawer
+    window active. Nothing system-owned is touched: the icon is RAM:Scr (a drawer icon copied from SYS:Prefs.info).
+    Auto-arrange Icons is a WBStartup AppMenuItem, not a workbench.library menu name: MENU INVOKE TOOLS.AUTOARRANGEICONS
+    is rc 10 in every state; the item runs S:AutoArrangeIcons.rexx, which this step runs with a drawer window active."""
+    c.run('Delete RAM:Scr RAM:Scr.info RAM:.backdrop RAM:copy_of_Scr#? ALL QUIET')
+    c.run('MakeDir RAM:Scr')
+    c.run('Copy SYS:Prefs.info RAM:Scr.info')
+    wb_port('WINDOW RAM: OPEN')
+    wb_port('MENU WINDOW RAM: INVOKE WINDOW.UPDATE')     # the window may be open from before the scratch icon existed
+    time.sleep(1.5)
+    keep = set(ui_windows())
+    out, bad = [], []
+    shows = {'workbench.iconopen': 'Scr', 'workbench.iconrename': 'Rename', 'workbench.iconinfo': 'RAM Disk:Scr'}
+    for rid, scope, item in wb_rows():
+        if rid not in ICON_ROWS or rid == 'workbench.autoarrange':
+            continue
+        # a left-out icon lives on the Workbench root (RAM:.backdrop names it), so Put Away selects it there
+        win = 'ROOT' if rid == 'workbench.iconputaway' else 'RAM:'
+        wb_port('ACTIVATEWINDOW WINDOW ' + win)
+        if win == 'RAM:':
+            wb_port('MENU WINDOW ACTIVE INVOKE WINDOW.VIEWBY.ICON')
+            time.sleep(0.3)
+        src, _ = wb_port('ICON WINDOW %s NAMES Scr SELECT' % win)
+        time.sleep(0.3)
+        rc, res = wb_port('MENU WINDOW %s INVOKE %s' % (scope, item))
+        time.sleep(1.5)
+        opened = [t for t in ui_windows() if t not in keep]
+        close_extras(keep)
+        c.run('Delete RAM:copy_of_Scr#? ALL QUIET')
+        backdrop = c.run('List RAM:.backdrop')[0] == 0
+        if rid != 'workbench.iconleaveout':
+            wb_port('ICON WINDOW %s NAMES Scr UNSELECT' % win)
+        out.append('%s %s select rc %r, invoke rc %r %s; windows opened: %r; RAM:.backdrop %s' % (
+            rid, item, src, rc, res if rc else '', opened, 'present' if backdrop else 'absent'))
+        if rid == 'workbench.iconleaveout' and not backdrop or rid == 'workbench.iconputaway' and backdrop:
+            bad.append(rid + ' effect')
+        if rc != 0 or (rid in shows and shows[rid] not in opened):   # the selection really reached the row
+            bad.append(rid)
+    wb_port('ACTIVATEWINDOW WINDOW RAM:')
+    time.sleep(0.5)
+    menu_rc = wb_port('MENU WINDOW ROOT INVOKE TOOLS.AUTOARRANGEICONS')[0]
+    arc, ares = c.run('RX S:AutoArrangeIcons.rexx')
+    out.append('workbench.autoarrange: MENU INVOKE TOOLS.AUTOARRANGEICONS rc %r; RX S:AutoArrangeIcons.rexx with RAM: active rc %r %s'
+               % (menu_rc, arc, ares.strip()))
+    if arc != 0:
+        bad.append('workbench.autoarrange')
+    close_extras(keep)
+    c.run('Delete RAM:Scr RAM:Scr.info RAM:.backdrop RAM:copy_of_Scr#? ALL QUIET')
+    (OUT / 'wb_icons_selected.txt').write_text('\n'.join(out) + '\n')
+    return not bad, '%d rows, refused: %s' % (len(out), bad)
 
 
 ROWS = [
@@ -266,6 +356,7 @@ ROWS = [
     ('s2_screen_cycle', s_screen_cycle),
     ('b2_redraw',      s_wb_redraw),
     ('b2_patterns',    s_wb_patterns),
+    ('b2_icons_selected', s_wb_icons_selected),
     ('b2_viewname',    s_wb_viewname),
 ]
 
