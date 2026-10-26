@@ -1120,7 +1120,7 @@ static void osd_size_counts_the_reachable_levels(void)
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
         CHECK_INT(cols, 31 + 2 + 2 * MN_OSD_PAD);       /* "Configure lister display format" in Dopus */
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 42); /* the tallest level is Workbench: its 42 rows */
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + MN_OSD_MAX_ENTRIES); /* Workbench has 42 rows: the window caps them, the list scrolls (owner 2026-10-26: taller than needed) */
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
         CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 4);

@@ -87,9 +87,10 @@ void mn_levels_t(const keymap *k, const char *node, mn_level_fn fn, void *ctx, i
 #define MN_OSD_BOTTOM_LINES MN_OSD_PAD_LINES     /* padding below the last entry row */
 #define MN_OSD_PAD        2     /* columns of padding on each side of the text */
 #define MN_OSD_MIN_COLS   24    /* room for the filter line however short the labels are */
+#define MN_OSD_MAX_ENTRIES 8    /* entry rows shown at once, text and drawn menu alike; a longer level scrolls */
 /* Rows and columns for `node` and every level reachable from it (the menu is walked with
  * mn_children, as amarchy-menu walks it): rows = head lines + the most entries any of those
- * levels has + the bottom padding lines, cols = the widest "label  item" (a group's item is ">") + 2 * pad, at least
+ * levels has, at most MN_OSD_MAX_ENTRIES (the list scrolls past that) + the bottom padding lines, cols = the widest "label  item" (a group's item is ">") + 2 * pad, at least
  * MN_OSD_MIN_COLS. Both come back through the pointers. */
 void mn_osd_size(const keymap *k, const char *node, int *cols, int *rows);
 /* mn_osd_size over the rows mn_row_visible(term) leaves: the size of the menu actually shown */

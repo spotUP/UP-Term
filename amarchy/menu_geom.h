@@ -11,7 +11,7 @@
 
 #include "menu_core.h"
 
-#define MG_MAX_ROWS 8           /* rows shown at once, however tall the screen */
+#define MG_MAX_ROWS MN_OSD_MAX_ENTRIES /* rows shown at once, however tall the screen: the text menu's cap */
 
 typedef struct mg_font {
     int ysize;                  /* the font's line height in pixels (tf_YSize) */

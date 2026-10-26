@@ -163,6 +163,8 @@ void mn_osd_size_t(const keymap *k, const char *node, int *cols, int *rows, int 
     mn_levels_t(k, node, osd_level, &a, cond);
     c = a.maxw + 2 * MN_OSD_PAD;
     *cols = c < MN_OSD_MIN_COLS ? MN_OSD_MIN_COLS : c;
+    if (a.maxn > MN_OSD_MAX_ENTRIES)
+        a.maxn = MN_OSD_MAX_ENTRIES;   /* the window fits the shown rows, not the tallest level: the list scrolls */
     *rows = MN_OSD_HEAD_LINES + a.maxn + MN_OSD_BOTTOM_LINES;
 }
 
