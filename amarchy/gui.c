@@ -323,10 +323,10 @@ static void draw_border(gui *g)
     const mg_metrics *m = &g->g.m;
     if (minimal)
         return;
-    fill(g, MT_ACCENT, 0, 0, g->g.w - 1, m->by - 1);
-    fill(g, MT_ACCENT, 0, g->g.h - m->by, g->g.w - 1, g->g.h - 1);
-    fill(g, MT_ACCENT, 0, m->by, m->bx - 1, g->g.h - m->by - 1);
-    fill(g, MT_ACCENT, g->g.w - m->bx, m->by, g->g.w - 1, g->g.h - m->by - 1);
+    fill(g, MT_BORDER_ROLE, 0, 0, g->g.w - 1, m->by - 1);
+    fill(g, MT_BORDER_ROLE, 0, g->g.h - m->by, g->g.w - 1, g->g.h - 1);
+    fill(g, MT_BORDER_ROLE, 0, m->by, m->bx - 1, g->g.h - m->by - 1);
+    fill(g, MT_BORDER_ROLE, g->g.w - m->bx, m->by, g->g.w - 1, g->g.h - m->by - 1);
 }
 
 static void draw_header(gui *g)

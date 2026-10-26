@@ -2411,6 +2411,8 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT(menu_theme_index(MT_DIM), 8);
     CHECK_INT(menu_theme_index(MT_ACCENT), 14);
     CHECK_INT(menu_theme_index(MT_SELBOX), 4);
+    /* outline and selected row box are one colour: the border role is the selection box role, not the accent */
+    CHECK_INT(MT_BORDER_ROLE, MT_SELBOX);
 
     /* a Dracula-like palette remaps 0, 7, 8, 14 and 4; index 1 (no role) is ignored */
     CHECK_INT(upconf_palette_parse("0,282A36,1,FF5555,7,F8F8F2,8,6272A4,14,8BE9FD,4,44475A", pal), 6);

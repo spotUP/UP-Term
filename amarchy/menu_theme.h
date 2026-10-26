@@ -13,10 +13,14 @@ enum {
     MT_BG,     /* the menu's background */
     MT_TEXT,   /* row text */
     MT_DIM,    /* the header's dim text */
-    MT_ACCENT, /* the border and the selected row's text */
-    MT_SELBOX, /* the selected row's box */
+    MT_ACCENT, /* the selected row's text */
+    MT_SELBOX, /* the selected row's box and the border */
     MT_ROLES
 };
+
+/* The role the border is drawn in: the selected row's box role, so outline and selection are one colour (gui.c
+ * draw_border reads this; tests/test_keymap.c asserts it equals MT_SELBOX). */
+#define MT_BORDER_ROLE MT_SELBOX
 
 /* The palette index that gives a role its colour (0..15) */
 int menu_theme_index(int role);
