@@ -681,12 +681,20 @@ def setup():
         "hard_drive_2_priority = %d" % (0 if OS else 10), "joystick_port_1 = none",
         "kickstart_file = %s" % KICK,
     ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
-        "uae_sound_output = interrupts", "volume = 0", "initial_input_grab = 0",
+        # audible output on every rig: "interrupts" is emulated with no output and
+        # volume 0 muted it, so no rig made sound (owner, 2026-10-26)
+        "uae_sound_output = exact", "volume = 100", "initial_input_grab = 0",
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
         "clipboard_sharing = 1",
     ] + HOST_KEYS + [title_line(),
         "window_width = 1280", "window_height = 1024",
+        # sharp pixels: nearest-neighbour texture filter instead of the default linear blur
+        # (the owner found the rigs blurry, 2026-10-26)
+        "texture_filter = nearest",
+        # whole-number zoom only (the Amiga mode shown at x1, x2, never 1.6x), FS-UAE scale = integer
+        # (owner, 2026-10-26)
+        "scale = integer",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,
         "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
@@ -954,8 +962,9 @@ def start(retries=START_RETRIES):
         log.unlink()
     if paths.FSUAE.suffix == ".app":
         subprocess.run(["open", "-g", "-n", "-a", str(paths.FSUAE), "--args", str(CFG)], check=True)
-    else:  # a bare binary: detached, so the rig outlives this command
-        subprocess.Popen([str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
+    else:  # a bare binary: detached, so the rig outlives this command; nice 19 so the
+        # machine-load gates of other sessions do not block on the rig
+        subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
