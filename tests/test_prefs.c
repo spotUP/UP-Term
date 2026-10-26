@@ -1217,6 +1217,15 @@ static void every_gadget_has_help_and_a_unique_shortcut(void)
         CHECK(it->kind != PGK_CHECK || it->label != 0);
     }
     CHECK(pg_find(9999) == 0);
+    /* a cycle gadget is as wide as its longest label: a 26 pixel arrow-only
+     * cycle (chars 0) let "Generic", "Drawn" and "Graphical" run over the
+     * label of the row below it (A1200, 2026-10-26) */
+    for (i = 0; i < pg_nitems; i++)
+        if (pg_items[i].kind == PGK_CYCLE)
+            CHECK(pg_items[i].chars > 0);
+    CHECK(pg_find(PG_AM_ICONS)->chars >= 7);    /* Generic */
+    CHECK(pg_find(PG_AM_MODE)->chars >= 7);     /* Minimal */
+    CHECK(pg_find(PG_AM_TERMMENU)->chars >= 9); /* Graphical */
     /* a key reaches one gadget per page, the page's or a common one */
     for (page = 0; page < PG_NPAGES; page++)
         for (i = 0; i < pg_nitems; i++) {
