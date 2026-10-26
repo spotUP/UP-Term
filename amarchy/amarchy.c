@@ -25,6 +25,7 @@
 #include "../config/upconf.h"
 #include "../handler/upactive.h"
 #include "../tty/qmark.h"
+#include "menu_open.h"
 #include "keymap_default.inc"
 
 struct RxsLib *RexxSysBase;
@@ -103,6 +104,8 @@ static int act_menu_kind(int kind, const char *node)
 {
     char line[KM_ID + 160];
     int text = 0, cols = VIEWER_COLS, rows = VIEWER_ROWS;
+    if (mo_close_open())
+        return 1;   /* MENU-TOGGLE: a menu or viewer hotkey closes whichever menu is open */
     if (!cx_menu_cmd(line, sizeof(line), g_dir, kind, node, g_style, &text))
         return 0;
     win_ticket_take();   /* K5a: the menu is about to become the active window; win: rows act on this one */

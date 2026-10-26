@@ -32,6 +32,7 @@
 #include "menu_geom.h"
 #include "menu_theme.h"
 #include "leaf.h"
+#include "menu_open.h"
 #include "menu_icon.h"
 #include "menu_font.h"
 #include "../prefs/prefs_core.h"
@@ -858,7 +859,11 @@ static void event_loop(gui *g)
 {
     struct IntuiMessage *im;
     while (!g->stop && !g->quit) {
-        WaitPort(g->win->UserPort);
+        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C);
+        if (got & SIGBREAKF_CTRL_C) {          /* MENU-TOGGLE: the menu hotkey pressed again */
+            g->quit = g->stop = 1;
+            break;
+        }
         while (!g->stop && (im = (struct IntuiMessage *)GetMsg(g->win->UserPort)) != 0) {
             ULONG cls = im->Class;
             UWORD code = im->Code;
@@ -1120,6 +1125,7 @@ int main(int argc, char **argv)
         PutStr((STRPTR) USAGE);
         return 5;
     }
+    mo_register();   /* MENU-TOGGLE: the menu hotkey again ends this menu */
     viewer = !strcmp(argv[1], "viewer");
     node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
     keymap_load(&km, km_default_text);

@@ -20,6 +20,8 @@
 #include "index_core.h"
 #include "ixwatch.h"
 #include "leaf.h"
+#include "menu_open.h"
+#include <signal.h>
 #include "../config/keymap_load.h"
 #include "../handler/upreq.h"
 #include "../handler/upactive.h"
@@ -111,9 +113,25 @@ static entry *ent;
  * wt.row is set. Ticks poll it while wt.on; the DONE or FAILED row stays until the menu closes. */
 static ix_watcher wt;
 
+/* MENU-TOGGLE: the menu hotkey pressed again signals Ctrl-C to this task; ixemul turns it into SIGINT,
+ * a plain break bit is checked as well. Either sets closing; the next tick ends the menu. */
+static volatile int closing;
+
+static void on_int(int sig)
+{
+    (void)sig;
+    closing = 1;
+}
+
 static int on_tick(void *ctx)
 {
     (void)ctx;
+    if (SetSignal(0, 0) & SIGBREAKF_CTRL_C) {
+        SetSignal(0, SIGBREAKF_CTRL_C);
+        closing = 1;
+    }
+    if (closing)
+        return 1;
     return wt.on && ixw_poll(&wt);
 }
 
@@ -189,8 +207,10 @@ static int menu_levels(const char *start)
         ui_opt.prompt = prompt;
         ui_prepare();
         at_mark("ready");
-        ui_on_tick(wt.on ? on_tick : 0, 0);
+        ui_on_tick(on_tick, 0);
         rc = ui_run();
+        if (closing)
+            return 255;                    /* MENU-TOGGLE: leave from any level, as Escape at the root */
         if (rc == UI_TICK) {                   /* the status row changed: rebuild, cursor stays */
             int s = ui_selected();
             keep_status = shift && s == 0;
@@ -301,7 +321,11 @@ static int viewer(void)
     ui_opt.hotkeys = 0;
     ui_opt.nentries = 0;
     ui_prepare();
-    return ui_run();
+    ui_on_tick(on_tick, 0);
+    {
+        int vrc = ui_run();
+        return closing ? 255 : vrc;
+    }
 }
 
 /* front_screen_name (AMB3: leaves open on the screen in front) reads the front screen from it */
@@ -320,6 +344,8 @@ int main(int argc, char **argv)
         fputs("usage: amarchy-menu menu [node] | viewer\n", stderr);
         return 2;
     }
+    mo_register();
+    signal(SIGINT, on_int);
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     hotkeys_init();
     {
