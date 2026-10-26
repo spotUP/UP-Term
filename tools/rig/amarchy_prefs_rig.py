@@ -228,12 +228,16 @@ def write_conf(blink, drawn):
     time.sleep(3)                          # the handler reloads on the notify of ENV:up-term/up-term
 
 
-def host_window():
-    """Opens the handler's terminal window (the cursor under test) once; returns its title."""
+def host_window(options=''):
+    """Opens the handler's terminal window (the cursor under test) once; returns its title. `options` are
+    appended to the XCON spec (e.g. '/OWNSCREEN': the window opens on a public screen of its own, which the
+    drawn menu then takes as the front public screen)."""
     import wbrun_rig
     if not any(HOST in (w.get('title') or '') for w in wbrun_rig.windows()):
-        tabstate.open_host(HOST)
         import vshwin
+        vshwin.open_vsh(HOST, options=options, wait=5)
+        ami.click_px(100, 100)
+        time.sleep(1)
         vshwin.typeline('clear', 1)        # vsh's banner art holds an 8-pixel run that find_cursor would take for the cursor
     for w in wbrun_rig.windows():
         if HOST in (w.get('title') or ''):
@@ -348,7 +352,7 @@ def r_text_on():    return r_blink(False, 'on')
 def r_m6_font():
     saved = {p: ami.read_file(p) for p in UPTERM_FILES + PREFS}
     try:
-        host_window()
+        host_window('/OWNSCREEN')
         write_conf('off', True)
         pages = page_rows('GENERAL')
         font_label = dict(pages)['FONT']
@@ -383,8 +387,9 @@ def r_m6_font():
         if g.where('Choose a font')[1]:
             g.close_window('Choose a font')
         g.close_menu()
-        note = ' (the menu is on %s itself, so this proves nothing about the screen choice; run with a public screen in front)' % menu_screen \
-            if menu_screen.lower() == 'workbench screen' or menu_screen.lower() == 'workbench' else ''
+        if menu_screen.lower() in ('workbench screen', 'workbench'):
+            return False, 'the drawn menu is on "%s": the host window did not get a screen of its own, so this proves nothing' % menu_screen
+        note = ''
         if req_screen != menu_screen:
             return False, 'requester on screen "%s", menu on screen "%s"' % (req_screen, menu_screen)
         return True, 'font requester on the menu screen "%s"%s' % (menu_screen, note)
