@@ -256,6 +256,14 @@ def check_package(pkg, only_case):
         return False
     # a case that passed under this fingerprint stays passed unless it is asked for
     todo = [c for c in wanted if only_case or prior.get(c[0]) != "PASS"]
+    # every case compares against the ports' host run; without it each case would FAIL like a broken
+    # port after a whole rig run, so a missing expected output stops the package before the rig is used
+    exp = PORTS / "build/expected" / pkg
+    lost = [n for n, _ in todo if not (exp / (n[4:] + ".stream" if n.startswith("tty:") else n + ".txt")).exists()]
+    if lost:
+        print("[ERROR] %s: no expected output for %d of %d cases (%s): make host-%s in the ports repo, then --only %s"
+              % (pkg, len(lost), len(todo), ", ".join(lost[:5]) + (", ..." if len(lost) > 5 else ""), pkg, pkg))
+        return False
     results = dict(prior)
     plain = [c for c in todo if not c[0].startswith("tty:")]
     tty = [(n[4:], c) for n, c in todo if n.startswith("tty:")]
