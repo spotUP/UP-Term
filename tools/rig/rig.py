@@ -16,6 +16,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
                   --serial <path>: the serial port to that path, not serial.log;
+                  --no-dopus: Workbench without Directory Opus (no DOPUS.1; Libs/workbench.library
+                  removed from the clone, the ROM's stock one runs);
                   --purpose "<who: what>": the window title says which session runs the
                   rig and for what, e.g. "Amarchy session: menu terminal check")
                   --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
@@ -489,6 +491,14 @@ def sys_hdf_no_wasabid(image):
         subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
     us.unlink()
 
+def sys_hdf_no_dopus(image):
+    """--no-dopus: a rig without Directory Opus (the not-running notice, plan D5). The master image's Libs/ holds
+    Directory Opus 5's workbench.library (45.130), which is what starts DOpus when S:Startup-Sequence runs C:LoadWB;
+    the Kickstart 3.1 ROM carries its own, so removing the file from the clone gives the stock Workbench and no
+    DOPUS.1 port. The master image is never touched."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    subprocess.run([xdf, str(image), "delete", "Libs/workbench.library"], check=True, capture_output=True)
+
 SCREENMODE_NAME = RIG / "screenmode.name"   # the last `rig.py aga|aga256|rtg`: a start re-applies it to the fresh sys.hdf
 
 def sys_hdf_screenmode(image):
@@ -908,6 +918,8 @@ def start(retries=START_RETRIES):
         fresh_sys_hdf()
         sys_hdf_screenmode(RIG / "sys.hdf")
         sys_hdf_no_wasabid(RIG / "sys.hdf")
+        if "--no-dopus" in sys.argv:
+            sys_hdf_no_dopus(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     START_ARGS.write_text(json.dumps(sys.argv[2:]))
     setup_config_only()
