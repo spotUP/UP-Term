@@ -50,7 +50,7 @@ SENTINEL = re.compile(r'^window opened, (\d+) rows$', re.M)
 LOG = 'UP-Term:log/upkg-wb.log'
 WINDOW = 'UP-Term Add-ons'
 INSTALL_GADGET = '2'
-ROW_PX = (60, 50)        # first row of the list, as the earlier manual runs clicked it
+ROW_PX = (60, 60)        # first row of the list: rows start at y 58 on the 800x600 screen (y 50 is above the listview: nothing is selected)
 STOCK_ICON = 'SYS:Utilities/Clock.info'
 FAILS = []
 report = None
@@ -92,7 +92,8 @@ def setup(upkg, feed, icon_remote):
         ir.run('MakeDir >NIL: ' + d)
     for f in sorted(feed.iterdir()):
         if f.name in ('Packages', 'Packages.gz') or f.suffix == '.ipk':
-            ami.put(str(f), 'RAM:feed/' + f.name)
+            ami.put(str(f), 'RAM:feed/t.tmp')      # ami.put fails for destination names of ~30+ characters
+            ir.run('Rename RAM:feed/t.tmp RAM:feed/' + f.name)
     conf = upkg_rig.conf_for((ir.ROOT / 'dist/upkg.conf').read_text(), 'file:/RAM/feed')
     (ir.VTC / 'wb-rig.conf').write_text(conf)
     ir.run('Copy VTC:wb-rig.conf UP-Term:etc/upkg.conf')
