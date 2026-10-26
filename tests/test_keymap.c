@@ -1121,7 +1121,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     mg_geom g;
     long n = slurp("dist/keymap", file, sizeof(file));
 
-    /* topaz 8 on 640x256 hires: R 30; V(2) 2, V(18) 11, V(34) 20, V(6) 4, V(3) 2, V(12) 7, V(10) 6,
+    /* topaz 8 on 640x256 hires: R 30, row 16 + 2 * V(5) 3 = 22; V(2) 2, V(18) 11, V(34) 20, V(6) 4, V(3) 2, V(12) 7, V(10) 6,
      * V(300) 180; across twice those: 4, 22, 14, 12, 360 */
     mg_metrics_for(&g.m, &topaz, &pal);
     CHECK_INT(g.m.bx, 4);
@@ -1130,9 +1130,9 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     CHECK_INT(g.m.vpad, 11);
     CHECK_INT(g.m.head_h, 20);
     CHECK_INT(g.m.gap, 4);
-    CHECK_INT(g.m.row_h, 30);
+    CHECK_INT(g.m.row_h, 22);
     CHECK_INT(g.m.row_gap, 2);
-    CHECK_INT(g.m.pitch, 32);
+    CHECK_INT(g.m.pitch, 24);
     CHECK_INT(g.m.row_pad, 14);
     CHECK_INT(g.m.icon_gap, 12);
     CHECK_INT(g.m.chev_gap, 14);
@@ -1140,7 +1140,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     CHECK_INT(g.m.margin_x, 12);
     CHECK_INT(g.m.margin_y, 6);
 
-    /* TopazPro 16 on 640x512 square pixels: R 60; V(2) 2, V(18) 22, V(34) 41, V(6) 7, V(3) 4, V(12) 14,
+    /* TopazPro 16 on 640x512 square pixels: R 60, row 32 + 2 * V(5) 6 = 44; V(2) 2, V(18) 22, V(34) 41, V(6) 7, V(3) 4, V(12) 14,
      * V(10) 12, V(300) 360; across the same */
     mg_metrics_for(&g.m, &pro, &sq);
     CHECK_INT(g.m.bx, 2);
@@ -1149,9 +1149,9 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     CHECK_INT(g.m.vpad, 22);
     CHECK_INT(g.m.head_h, 41);
     CHECK_INT(g.m.gap, 7);
-    CHECK_INT(g.m.row_h, 60);
+    CHECK_INT(g.m.row_h, 44);
     CHECK_INT(g.m.row_gap, 4);
-    CHECK_INT(g.m.pitch, 64);
+    CHECK_INT(g.m.pitch, 48);
     CHECK_INT(g.m.row_pad, 14);
     CHECK_INT(g.m.icon_gap, 12);
     CHECK_INT(g.m.min_w, 360);
@@ -1172,62 +1172,62 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 4);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
-    /* 3 rows: chrome 2 x 2 + 2 x 11 + 20 + 4 = 50, rows 3 x 32 - 2 = 94 */
+    /* 3 rows: chrome 2 x 2 + 2 x 11 + 20 + 4 = 50, rows 3 x 24 - 2 = 70 */
     mg_layout(&g, &topaz, w, 3, &pal);
-    CHECK_INT(g.h, 144);
+    CHECK_INT(g.h, 120);
     CHECK_INT(g.x, 140);
-    CHECK_INT(g.y, 56);
+    CHECK_INT(g.y, 68);
     CHECK_INT(g.visible, 3);
     CHECK_INT(g.peek, 0);
     CHECK_INT(mg_more(&g, 0), 0);
     CHECK_INT(g.list_x, 26);
     CHECK_INT(g.list_y, 37);
     CHECK_INT(g.list_w, 308);
-    /* room = min(256 - 12 - 50, 70 % of 256 = 179) = 179: 5 rows of 32 fit, no peek */
-    mg_layout(&g, &topaz, w, 5, &pal);
-    CHECK_INT(g.h, 208);
-    CHECK_INT(g.y, 24);
-    CHECK_INT(g.visible, 5);
+    /* room = min(256 - 12 - 50, 70 % of 256 = 179) = 179: 7 rows of 24 fit (7 x 24 - 2 = 166), no peek */
+    mg_layout(&g, &topaz, w, 7, &pal);
+    CHECK_INT(g.h, 216);
+    CHECK_INT(g.y, 20);
+    CHECK_INT(g.visible, 7);
     CHECK_INT(g.peek, 0);
-    /* a sixth entry: 5 rows and the peek (55 % of 30 = 16) of the next */
-    mg_layout(&g, &topaz, w, 6, &pal);
-    CHECK_INT(g.visible, 5);
-    CHECK_INT(g.peek, 16);
+    /* an eighth entry: the peek (55 % of 22 = 12) of the next leaves room for 6 rows */
+    mg_layout(&g, &topaz, w, 8, &pal);
+    CHECK_INT(g.visible, 6);
+    CHECK_INT(g.peek, 12);
 
-    /* hits: row 0 from y 37 for 30 px, then a 2 px gap, row 1 from 69 */
+    /* hits: row 0 from y 37 for 22 px, then a 2 px gap, row 1 from 61 */
     mg_layout(&g, &topaz, w, 3, &pal);
     CHECK_INT(mg_hit(&g, 0, 30, 37), 0);
-    CHECK_INT(mg_hit(&g, 0, 30, 67), -1);
-    CHECK_INT(mg_row_y(&g, 1), 69);
-    CHECK_INT(mg_hit(&g, 0, 30, 69), 1);
+    CHECK_INT(mg_hit(&g, 0, 30, 59), -1);
+    CHECK_INT(mg_row_y(&g, 1), 61);
+    CHECK_INT(mg_hit(&g, 0, 30, 61), 1);
     CHECK_INT(mg_hit(&g, 0, 25, 37), -1);
     CHECK_INT(mg_hit(&g, 0, 26 + 308, 37), -1);
 
-    /* 11 entries: 5 rows and the peek; the list is 5 x 32 + 16 = 176, the window 50 + 176 */
+    /* 11 entries: 6 rows and the peek; the list is 6 x 24 + 12 = 156, the window 50 + 156 */
     mg_layout(&g, &topaz, w, 11, &pal);
-    CHECK_INT(g.visible, 5);
-    CHECK_INT(g.peek, 16);
-    CHECK_INT(g.list_h, 176);
-    CHECK_INT(g.h, 226);
+    CHECK_INT(g.visible, 6);
+    CHECK_INT(g.peek, 12);
+    CHECK_INT(g.list_h, 156);
+    CHECK_INT(g.h, 206);
     CHECK_INT(mg_more(&g, 0), 1);
-    CHECK_INT(mg_more(&g, 6), 0);                  /* at the bottom the cue goes */
-    CHECK_INT(mg_scroll(&g, 10, 0), 6);
+    CHECK_INT(mg_more(&g, 5), 0);                  /* at the bottom the cue goes */
+    CHECK_INT(mg_scroll(&g, 10, 0), 5);
     CHECK_INT(mg_scroll(&g, 1, 3), 1);
     CHECK_INT(mg_scroll(&g, 2, 1), 1);
-    CHECK_INT(mg_hit(&g, 0, 30, 200), 5);          /* the peek row (from 37 + 160) selects the next entry */
-    CHECK_INT(mg_hit(&g, 6, 30, 200), -1);         /* no peek drawn at the bottom */
+    CHECK_INT(mg_hit(&g, 0, 30, 185), 6);          /* the peek row (from 37 + 144) selects the next entry */
+    CHECK_INT(mg_hit(&g, 5, 30, 185), -1);         /* no peek drawn at the bottom */
 
-    /* TopazPro 16 on 640x512: chrome 4 + 44 + 41 + 7 = 96; 3 rows 3 x 64 - 4 = 188; 5 rows fit in
+    /* TopazPro 16 on 640x512: chrome 4 + 44 + 41 + 7 = 96; 3 rows 3 x 48 - 4 = 140; 5 rows fit in
      * min(512 - 24 - 96, 358) = 358 */
     w = mg_width(&km, "", &pro, 0, 8, fixed_width, &px8, &sq);
     CHECK_INT(w, 360);
     mg_layout(&g, &pro, w, 3, &sq);
-    CHECK_INT(g.h, 284);
+    CHECK_INT(g.h, 236);
     CHECK_INT(g.x, 140);
-    CHECK_INT(g.y, 114);
+    CHECK_INT(g.y, 138);
     mg_layout(&g, &pro, w, 5, &sq);
-    CHECK_INT(g.h, 412);
-    CHECK_INT(g.y, 50);
+    CHECK_INT(g.h, 332);
+    CHECK_INT(g.y, 90);
     CHECK_INT(g.peek, 0);
 
     /* width: the widest row two levels down sets it ("A much longer label here", 24 x 16 px = 384, plus
@@ -1325,14 +1325,14 @@ static void every_shipped_menu_node_has_an_icon_image(void)
     }
     /* each table entry is drawn: its glyph covers some pixels at the icon size */
     memset(&m, 0, sizeof(m));
-    m.row_h = 14;
+    m.unit = 14;
     s = mi_size(&m);
     CHECK_INT(s, 8);                               /* 14 * 8 / 15 = 7, 8 at least */
-    m.row_h = 30;
+    m.unit = 30;
     CHECK_INT(mi_size(&m), 16);
-    m.row_h = 60;
+    m.unit = 60;
     CHECK_INT(mi_size(&m), 32);
-    m.row_h = 400;
+    m.unit = 400;
     CHECK_INT(mi_size(&m), MI_MAX);
     for (i = 0; i < mi_count(); i++) {
         const vt_u8 *g = mi_find(mi_id(i));

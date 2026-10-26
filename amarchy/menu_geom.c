@@ -36,7 +36,10 @@ void mg_metrics_for(mg_metrics *m, const mg_font *f, const mg_screen *s)
     m->vpad = imax(vr(row, 18), f->ysize / 2);
     m->head_h = imax(vr(row, 34), f->ysize + 2 * imax(1, vr(row, 6)));
     m->gap = imax(vr(row, 6), imax(1, f->ysize / 4));
-    m->row_h = row;
+    m->unit = row;
+    /* the icon (8/15 of Omarchy's row, mi_size) and a thin band above and below it: Omarchy's full row
+     * left a wide empty band around every label on the Amiga's small fonts */
+    m->row_h = imax(f->ysize + 2, row * 8 / 15 + 2 * vr(row, 5));
     m->row_gap = imax(1, vr(row, 3));
     m->pitch = m->row_h + m->row_gap;
     m->row_pad = imax(hr(s, row, 12), half_w);

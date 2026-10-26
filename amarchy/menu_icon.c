@@ -48,7 +48,7 @@ void mi_item_id(const char *node, const mn_item *it, char *id, int size)
 
 int mi_size(const mg_metrics *m)
 {
-    int h = m->row_h * 8 / 15;
+    int h = m->unit * 8 / 15;
     return h < 8 ? 8 : (h > MI_MAX ? MI_MAX : h);
 }
 

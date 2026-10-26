@@ -29,7 +29,7 @@ int mi_count(void);
 const char *mi_id(int i);
 /* The glyph of node id in the page, 0 when the node has no icon. */
 const vt_u8 *mi_find(const char *id);
-/* The icon's height for these metrics: 8/15 of the row (topaz 8: 16, TopazPro 16: 32), MI_MAX at most,
+/* The icon's height for these metrics: 8/15 of Omarchy's row (mg_metrics unit; topaz 8: 16, TopazPro 16: 32), MI_MAX at most,
  * 8 at least. */
 int mi_size(const mg_metrics *m);
 /* Its width: as many columns as look as long as that height on the screen's pixels (mg_cols), MI_MAX_W

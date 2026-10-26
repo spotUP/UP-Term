@@ -36,6 +36,7 @@ typedef struct mg_metrics {
     int hpad, vpad;             /* inside the border */
     int head_h;                 /* the header row (the node's name) */
     int gap;                    /* between the header and the first row */
+    int unit;                   /* Omarchy's 50 px row in this font: the scale of every size here */
     int row_h, row_gap, pitch;  /* one row, the space below it, their sum */
     int row_pad;                /* text inset inside a row's box, each side */
     int icon_gap, chev_gap;     /* icon to label, label to the group chevron */
