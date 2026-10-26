@@ -91,7 +91,6 @@ workbench.lastmessage       = U+F0E5    ; fa-comment_o
 workbench.about             = U+F05A    ; fa-info_circle
 workbench.reset             = U+F011    ; fa-power_off
 workbench.autoarrange       = U+F00A    ; fa-th
-workbench.help              = U+F059    ; fa-question_circle
 workbench.openparent        = U+F062    ; fa-arrow_up
 workbench.newdrawer         = U+F07C    ; fa-folder_open
 workbench.closewindow       = U+F00D    ; fa-xmark

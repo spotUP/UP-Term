@@ -163,6 +163,93 @@ def probe(verb, undo=None):
     return step
 
 
+def front_screen():
+    """the screens list, front first, as a tuple of titles (a second screen of the same title still changes the tuple)"""
+    b = ami.req(0x0A)
+    out, off = [], 1
+    for _ in range(b[0] if b else 0):
+        ln = b[off + 10]
+        out.append(b[off + 11:off + 11 + ln].decode('latin-1'))
+        off += 11 + ln
+    return tuple(out)
+
+
+def wb_port(cmd, timeout=15):
+    """(rc, result) of one command to port WORKBENCH; (None, error) when it fails"""
+    m = ami._m()
+    try:
+        with ami._conn() as conn:
+            rc, _, res = m.arexx(conn, 'WORKBENCH', cmd, timeout=timeout)
+            return rc, res.strip()
+    except m.WasabiError as e:
+        return None, 'error %s' % (e,)
+
+
+def wb_rows():
+    """(id, scope, item) of every workbench.* row in dist/keymap"""
+    rows = []
+    path = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
+    for line in path.read_text(encoding='latin-1').splitlines():
+        m = re.match(r"(workbench\.\w+)\s*=.*MENU WINDOW (ROOT|ACTIVE) INVOKE (\S+)'", line)
+        if m:
+            rows.append(m.groups())
+    return rows
+
+
+def s_screen_cycle():
+    """S2: with the UP-Term own screen up, win:screen moves the front screen, read back from the screens list"""
+    c.run('Run >NIL: NewShell "XCON:0/20/400/100/own/OWNSCREEN"')
+    time.sleep(4)
+    log, ok = ['front %r' % (front_screen(),)], True
+    for verb in ('workbench', 'next', 'next', 'prev', 'back', 'workbench'):
+        before = front_screen()
+        rc, _ = port('WIN screen ' + verb, timeout=10)
+        time.sleep(1.5)
+        after = front_screen()
+        log.append('%s rc %r: %r -> %r' % (verb, rc, before, after))
+        ok = ok and rc == 0 and (after != before or verb == 'workbench' and 'Workbench' in after[0])
+    return ok, '; '.join(log)
+
+
+def s_wb_redraw():
+    rc, res = wb_port('MENU WINDOW ROOT INVOKE WORKBENCH.REDRAWALL')
+    return rc == 0, 'workbench.redrawall rc %r %r' % (rc, res)
+
+
+def s_wb_viewname():
+    """B2: workbench.viewname through WINDOW ACTIVE reads back as View by / Name [checked] in the menu strip"""
+    wb_port('WINDOW SYS: OPEN')
+    time.sleep(1)
+    wb_port('ACTIVATEWINDOW WINDOW SYS:')
+    time.sleep(1)
+    rc, res = wb_port('MENU WINDOW ACTIVE INVOKE WINDOW.VIEWBY.NAME')
+    time.sleep(1)
+    got = [l for l in ami.req(0x0F, b'').decode('latin-1').splitlines() if l.startswith('I 1 10 ') and '"Name"' in l]
+    return rc == 0 and any(' checked ' in l for l in got), 'rc %r %r; menu rows %r' % (rc, res, got)
+
+
+def s_wb_patterns():
+    out = []
+    wb_port('WINDOW SYS: OPEN')
+    time.sleep(1)
+    for rid, scope, item in wb_rows():
+        if rid in ('workbench.delete', 'workbench.emptytrash'):
+            continue
+        wb_port('ACTIVATEWINDOW WINDOW SYS:')
+        if not item.startswith('WINDOW.VIEWBY'):
+            wb_port('MENU WINDOW ACTIVE INVOKE WINDOW.VIEWBY.ICON')
+            time.sleep(0.3)
+        if scope == 'ACTIVE':
+            wb_port('ICON WINDOW SYS: NAMES Prefs SELECT')    # the Icons menu is disabled with nothing selected
+            time.sleep(0.3)
+        rc, res = wb_port('MENU WINDOW %s INVOKE %s' % (scope, item))
+        out.append('%s %s rc %r %s' % (rid, item, rc, res if rc else ''))
+        time.sleep(0.4)
+    (OUT / 'wb_patterns.txt').write_text('\n'.join(out) + '\n')
+    bad = [o for o in out if ' rc 0' not in o]
+    return not bad, '%d sent, %d refused: %s' % (len(out), len(bad), '; '.join(bad))
+
+
 ROWS = [
     ('start',          s_start),
     ('open_target',    s_open_target),
@@ -176,6 +263,10 @@ ROWS = [
     ('k6_move',        probe('move down', 'move up')),
     ('k6_size',        probe('size right', 'size left')),
     ('k6_fullwidth',   probe('fullwidth', 'restore')),
+    ('s2_screen_cycle', s_screen_cycle),
+    ('b2_redraw',      s_wb_redraw),
+    ('b2_patterns',    s_wb_patterns),
+    ('b2_viewname',    s_wb_viewname),
 ]
 
 

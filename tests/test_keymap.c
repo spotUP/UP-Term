@@ -631,7 +631,7 @@ static void the_screens_group_rows_and_hotkeys(void)
     }
 }
 
-/* B1: the 43 Workbench rows (plan 2.2), each the exact WORKBENCH port command; Delete and Empty Trash are menu only. */
+/* B1: the 42 Workbench rows (plan 2.2), each the exact WORKBENCH port command; Delete and Empty Trash are menu only. */
 static void the_workbench_group_rows(void)
 {
     static const struct { const char *id; const char *item; int root; } wb[] = {
@@ -642,8 +642,7 @@ static void the_workbench_group_rows(void)
         { "workbench.lastmessage", "WORKBENCH.LASTMESSAGE", 1 },
         { "workbench.about", "WORKBENCH.ABOUT", 1 },
         { "workbench.reset", "TOOLS.RESETWB", 1 },
-        { "workbench.autoarrange", "TOOLS.AUTO-ARRANGEICONS", 1 },
-        { "workbench.help", "TOOLS.HELP", 1 },
+        { "workbench.autoarrange", "TOOLS.AUTOARRANGEICONS", 1 },
         { "workbench.openparent", "WINDOW.OPENPARENT", 0 },
         { "workbench.newdrawer", "WINDOW.NEWDRAWER", 0 },
         { "workbench.closewindow", "WINDOW.CLOSE", 0 },
@@ -667,7 +666,7 @@ static void the_workbench_group_rows(void)
         { "workbench.viewtype", "WINDOW.VIEWBY.TYPE", 0 },
         { "workbench.sortforward", "WINDOW.SORTORDER.FORWARD", 0 },
         { "workbench.sortreverse", "WINDOW.SORTORDER.REVERSE", 0 },
-        { "workbench.find", "WINDOW.FIND...", 0 },
+        { "workbench.find", "WINDOW.FIND", 0 },
         { "workbench.iconopen", "ICONS.OPEN", 0 },
         { "workbench.iconcopy", "ICONS.COPY", 0 },
         { "workbench.iconrename", "ICONS.RENAME", 0 },
@@ -681,7 +680,7 @@ static void the_workbench_group_rows(void)
     };
     unsigned i;
     char want[96];
-    CHECK_INT((int)(sizeof wb / sizeof wb[0]), 43);
+    CHECK_INT((int)(sizeof wb / sizeof wb[0]), 42);
     for (i = 0; i < sizeof wb / sizeof wb[0]; i++) {
         strcpy(want, "address WORKBENCH 'MENU WINDOW ");
         strcat(want, wb[i].root ? "ROOT" : "ACTIVE");
@@ -696,7 +695,7 @@ static void the_workbench_group_rows(void)
         for (j = 0; j < km.nmenu; j++)
             if (!strncmp(km.menu[j].id, "workbench.", 10))
                 n++;
-        CHECK_INT(n, 43);
+        CHECK_INT(n, 42);
         for (j = 0; j < km.nbind; j++)
             CHECK(!strstr(km.bind[j].arg, "WORKBENCH"));
     }
@@ -1109,7 +1108,7 @@ static void osd_size_counts_the_reachable_levels(void)
         CHECK(n > 0 && keymap_parse(&km, file, n));
         mn_osd_size(&km, "", &cols, &rows);
         CHECK_INT(cols, 31 + 2 + 2 * MN_OSD_PAD);       /* "Configure lister display format" in Dopus */
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 43); /* the tallest level is Workbench: its 43 rows */
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 42); /* the tallest level is Workbench: its 42 rows */
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
         CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 4);
