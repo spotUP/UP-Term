@@ -170,9 +170,8 @@ class MakeOnly(unittest.TestCase):
     def test_pkg_rows_row_needs_no_c_prerequisite(self):
         only = self.dry('ONLY=pkg_rows')
         self.assertIn('tests/test_pkg_rows.py', only)
-        self.assertNotIn('render_host', only)
-        self.assertNotIn('vttest_host', only)
-        self.assertIn('render_host', self.dry())
+        compiles = lambda out: [l for l in out.splitlines() if ' -o ' in l]
+        self.assertEqual(compiles(only), [])
 
 
 STAGED = ROOT / 'build/dist/up-bitchx'
