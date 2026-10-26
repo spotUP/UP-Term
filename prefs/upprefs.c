@@ -40,6 +40,7 @@
 #include <exec/memory.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
+#include <dos/notify.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <intuition/intuitionbase.h>
@@ -69,6 +70,7 @@
 #include "../amarchy/gthemes_scan_dos.h"
 #include "../tty/qmark.h"
 #include "prefs_dos.h"
+#include "prefs_merge.h"
 #include "../amarchy/amconf_dos.h"
 
 /* vbcc's startup runs main on a stack of this size whatever the starter gives
@@ -100,6 +102,8 @@ struct Library *UtilityBase;
 /* a swatch's line of text is the larger of these, a name the longest */
 #define PROFNAME_CAP UC_NAME
 
+#define NNOTIFY 4 /* the profile file and Amarchy's file, in ENV: and ENVARC: */
+
 struct app {
     struct Window *win;
     struct Screen *scr;
@@ -127,6 +131,9 @@ struct app {
     am_prefs am;              /* Amarchy's own file (the one store of the Amarchy page), as loaded or last written */
     int am_src;               /* the AMCONF_* source it came from */
     prefs_fields orig;        /* what the profile held when it was loaded or last written */
+    struct MsgPort *nport;    /* the files' change notices (the Amarchy menu writes them while Prefs is open) */
+    struct NotifyRequest nreq[NNOTIFY];
+    int non[NNOTIFY];         /* StartNotify took nreq[i] */
     prefs_kc kc;              /* KingCON's style, decoded from f.kcmode */
     long sb_lines;            /* the scrollback gadget's number */
     int sb_none;              /* "No scrollback" */
@@ -755,6 +762,63 @@ static void load_profile(struct app *a, const char *name)
     a->colors = prefs_colors_index(a->f.colors);
     prefs_kc_decode(a->f.kcmode, &a->kc);
     show_fields(a);
+}
+
+/* ---- the files change while the window is open ---------------------------------------- */
+
+static void notify_start(struct app *a)
+{
+    int i;
+    a->nport = CreateMsgPort();
+    if (!a->nport)
+        return;
+    for (i = 0; i < NNOTIFY; i++) {
+        a->nreq[i].nr_Name = (STRPTR)(i < 2 ? prefs_paths_upterm.path[i] : prefs_paths_amarchy.path[i - 2]);
+        a->nreq[i].nr_Flags = NRF_SEND_MESSAGE;
+        a->nreq[i].nr_stuff.nr_Msg.nr_Port = a->nport;
+        a->non[i] = StartNotify(&a->nreq[i]) ? 1 : 0;
+    }
+}
+
+static void notify_stop(struct app *a)
+{
+    int i;
+    struct Message *m;
+    for (i = 0; i < NNOTIFY; i++)
+        if (a->non[i])
+            EndNotify(&a->nreq[i]);
+    while (a->nport && (m = GetMsg(a->nport)) != 0)
+        ReplyMsg(m);
+    if (a->nport)
+        DeleteMsgPort(a->nport);
+}
+
+/* A file changed: the pages the user has not edited take the file's values, the edited ones keep the
+ * user's (prefs_merge_external). A renamed or deleted profile, or one not in the table yet, is the user's
+ * own work in progress: the file is not read over it. */
+static void files_changed(struct app *a)
+{
+    prefs_fields file;
+    unsigned changed;
+    prefs_fields merged, orig;
+    if (a->tab_dirty || a->prof_new)
+        return;
+    collect(a);
+    load_file(a);
+    if (!prefs_profile_exists(&a->conf, a->prof))
+        return;
+    prefs_from_conf(&file, &a->conf, a->prof);
+    a->am_src = amconf_load(&a->am);
+    amconf_to_fields(&a->am, &file);
+    changed = prefs_merge_external(&a->f, &a->orig, &file, &merged, &orig);
+    a->f = merged;
+    a->orig = orig;
+    sb_load(a);
+    a->colors = prefs_colors_index(a->f.colors);
+    prefs_kc_decode(a->f.kcmode, &a->kc);
+    show_fields(a);
+    if (changed)
+        set_status(a, "A file changed: the pages you have not edited were reloaded.");
 }
 
 /* Is there something a Cancel would lose? */
@@ -1895,7 +1959,7 @@ int main(void)
     struct IntuiMessage *im;
     struct RastPort mrp;
     pl_font pf;
-    ULONG sig;
+    ULONG sig, nsig;
     int done = 0, rc = 1, i;
 
     /* `UP-Term Prefs ?` shows the usage and ends; the one argument is the keyword AMARCHY */
@@ -1976,9 +2040,21 @@ int main(void)
     show_fields(a);
     show_line(a, "Move the pointer over a control for its help.");
 
+    notify_start(a);
     sig = 1UL << a->win->UserPort->mp_SigBit;
+    nsig = a->nport ? 1UL << a->nport->mp_SigBit : 0;
     while (!done) {
-        Wait(sig);
+        ULONG got = Wait(sig | nsig);
+        if (nsig && (got & nsig)) {
+            struct Message *nm;
+            int any = 0;
+            while ((nm = GetMsg(a->nport)) != 0) {
+                ReplyMsg(nm);
+                any = 1;
+            }
+            if (any)
+                files_changed(a);
+        }
         while (!done && (im = GT_GetIMsg(a->win->UserPort))) {
             ULONG cls = im->Class;
             UWORD code = im->Code;
@@ -2004,6 +2080,7 @@ int main(void)
 out:
     /* whatever was made, undone once, in the reverse order */
     if (a) {
+        notify_stop(a);
         if (a->win) {
             /* the shown page is chained behind the common gadgets (AddGList):
              * unhook it first, or FreeGadgets(glist_common) walks on into

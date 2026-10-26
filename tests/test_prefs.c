@@ -10,6 +10,7 @@
 #include "../prefs/prefs_ui.h"
 #include "../prefs/pick_list.h"
 #include "../prefs/settings_def.h"
+#include "../prefs/prefs_merge.h"
 #include "../amarchy/amconf_core.h"
 #include "harness.h"
 #include "memfs.h"
@@ -1491,6 +1492,57 @@ static void the_menu_theme_row_is_a_select_over_the_scanned_themes(void)
     CHECK_INT(pg_themes_pick(&t, 9, name, sizeof name), 0);
 }
 
+/* C1: the files change while Prefs is open (the Amarchy menu wrote a setting). An unedited page takes the
+ * file's value, an edited page keeps the user's, and a Save afterwards writes both. */
+static void a_file_change_while_open_reloads_only_the_unedited_pages(void)
+{
+    static upconf conf, work;
+    static char buf[UC_MAX_FILE + 2];
+    prefs_fields open_f, user, file_f, merged, orig2, saved;
+    am_prefs am_file, am_saved;
+    unsigned changed;
+    long len;
+
+    /* open: the file as loaded */
+    upconf_clear(&conf);
+    prefs_defaults(&open_f);
+    CHECK(prefs_stage(&work, &conf, "default", &open_f, buf, sizeof(buf)) > 0);
+    prefs_load(&conf, buf, (long)strlen(buf), UC_MAX_FILE);
+    prefs_from_conf(&open_f, &conf, "default");
+    amconf_defaults(&am_file);
+    amconf_to_fields(&am_file, &open_f);
+
+    /* the user edits the General page (cursor) in the open window */
+    user = open_f;
+    user.cursor = PREFS_CURSOR_BAR;
+    CHECK_INT((int)prefs_pages_edited(&user, &open_f), 1 << PG_PAGE_GENERAL);
+
+    /* the menu writes two settings: the Keyboard page in the UP-Term file, the Amarchy page in its own */
+    file_f = open_f;
+    file_f.meta_alt = !open_f.meta_alt;
+    file_f.cursor = PREFS_CURSOR_UNDERLINE;     /* the menu also touched the page the user edited */
+    strcpy(am_file.val[AM_STYLE], "minimal");
+    amconf_to_fields(&am_file, &file_f);
+
+    changed = prefs_merge_external(&user, &open_f, &file_f, &merged, &orig2);
+    CHECK_INT((int)changed, (1 << PG_PAGE_KEYBOARD) | (1 << PG_PAGE_AMARCHY));
+    CHECK_INT(merged.meta_alt, file_f.meta_alt);            /* unedited page: the file's value */
+    CHECK_INT(merged.am_mode, UC_MENU_MINIMAL);             /* unedited page: the file's value */
+    CHECK_INT(merged.cursor, PREFS_CURSOR_BAR);             /* edited page: the user's value */
+    CHECK_INT((int)prefs_pages_edited(&merged, &orig2), 1 << PG_PAGE_GENERAL);  /* still edited, nothing else is */
+
+    /* Save: both land in the files */
+    len = prefs_stage(&work, &conf, "default", &merged, buf, sizeof(buf));
+    CHECK(len > 0);
+    prefs_load(&conf, buf, len, UC_MAX_FILE);
+    prefs_from_conf(&saved, &conf, "default");
+    CHECK_INT(saved.cursor, PREFS_CURSOR_BAR);              /* the user's edit */
+    CHECK_INT(saved.meta_alt, file_f.meta_alt);             /* the menu's change, not overwritten */
+    amconf_defaults(&am_saved);
+    amconf_from_fields(&am_saved, &merged);
+    CHECK_STR(am_saved.val[AM_STYLE], "minimal");           /* the menu's change in Amarchy's file */
+}
+
 void suite_prefs(void)
 {
     meta_defaults_to_alt();
@@ -1522,4 +1574,5 @@ void suite_prefs(void)
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
     file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_key();
     the_menu_theme_row_is_a_select_over_the_scanned_themes();
+    a_file_change_while_open_reloads_only_the_unedited_pages();
 }
