@@ -16,7 +16,7 @@ import slim
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TABLE = ROOT / 'dist/packages.txt'
 RENAMES = ROOT / 'dist/package-renames.txt'
-COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed', 'consumes')
+COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed', 'consumes', 'launch')
 
 
 def parse(text):
@@ -309,6 +309,11 @@ def _rename_fields(r):
     return ['Replaces: ' + j, 'Conflicts: ' + j, 'Provides: ' + j]
 
 
+def _launch_fields(r):
+    """['Launch: <command line>'] for a row with a launch value, else []. upkg browse runs it on Enter."""
+    return [] if r['launch'] == '-' else ['Launch: ' + r['launch']]
+
+
 def _interactive_fields(build, r):
     """['UP-Term-Interactive: yes'] for an archive with install questions (its Files/questions file), else [].
     upkg browse reads it from the feed's Packages list and runs such a package in the plain window, not in
@@ -330,7 +335,7 @@ def build_ipk(r, build):
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
              'Description: ' + summary(r['id'])]
     lines[2:2] = _rename_fields(r)
-    lines += _interactive_fields(build, r)
+    lines += _interactive_fields(build, r) + _launch_fields(r)
     ctl = ('\n'.join(lines) + '\n').encode()
     ents = [(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None), (_tinfo('./control', len(ctl)), ctl)]
     if need:
@@ -362,7 +367,7 @@ def feed(build, path=TABLE):
         if not f.is_file():
             raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
         data = f.read_bytes()
-        b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _interactive_fields(build, r)
+        b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _interactive_fields(build, r) + _launch_fields(r)
         b += ['Architecture: ' + ARCH, 'Filename: ' + f.name, 'Size: %d' % len(data),
               'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
               'Description: ' + summary(r['id'])]

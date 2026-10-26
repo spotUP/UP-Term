@@ -1,4 +1,5 @@
 {
+ "launch": "UP-Term:bin/BitchX",
  "about": "the BitchX IRC client and its IRCLIB (scripts, help), new in UP-Term:bin and UP-Term:lib/bx",
  "copy_comment": [
   "; BitchX (bin/BitchX) and its IRCLIB lib/bx (scripts, help, translation): BitchX has /UP-Term/lib/bx",

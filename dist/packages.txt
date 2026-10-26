@@ -18,33 +18,37 @@
 #               archive: the base's Update leaves them alone (kit-split D7)
 #   consumes    the repositories (comma separated; vtcon is this one) the archive is
 #               built from: the lines of its Files/VERSIONS (tools/mkversions.sh)
-# id    archive    version  needs-base  ixemul  record                 handed                                                consumes
-base    up-term    1.0      -           -       UP-Term:               -                                                     vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src
-claude  up-claude  1.2      -           -       ENVARC:upkg/up-claude  Files/Claude                                          vtcon
-pi      up-pi      1.0      -           -       ENVARC:upkg/up-pi      Files/amiga-pi                                        amiga-pi,vtcon
-nvim    up-nvim    1.0      1.0         80      UP-Term:pkg/up-nvim    Files/nvim                                            neovim-amiga,ixemul-vtcon
-python  up-python  1.0      -           47      ENVARC:upkg/up-python  Files/python3                                         cpython-amiga,ixemul-vtcon
-git     up-git     1.0      1.0         80      UP-Term:pkg/up-git     Files/userland/bin/git,Files/userland/share/git-core  upterm-ports,ixemul-vtcon
-perl    up-perl    1.0      1.0         80      UP-Term:pkg/up-perl    Files/userland/bin/perl                               upterm-ports,ixemul-vtcon
-vim     up-vim     1.0      1.0         80      UP-Term:pkg/up-vim     Files/userland/bin/vim,Files/userland/share/vim       upterm-ports,ixemul-vtcon
-bitchx  up-bitchx  1.0      1.0         80      UP-Term:pkg/up-bitchx  Files/userland/bin/BitchX,Files/userland/lib/bx       upterm-ports,ixemul-vtcon
-vbcc    up-vbcc    1.0      1.0         80      UP-Term:pkg/up-vbcc    Files/userland/vbcc                                   upterm-ports,ixemul-vtcon
-mutt    up-mutt   1.0      1.0         80      UP-Term:pkg/up-mutt    Files/userland/bin/mutt  upterm-ports,ixemul-vtcon
-lynx    up-lynx   1.0      1.0         80      UP-Term:pkg/up-lynx    Files/userland/bin/lynx,Files/userland/etc/lynx.cfg  upterm-ports,ixemul-vtcon
-joe     up-joe    1.0      1.0         80      UP-Term:pkg/up-joe     Files/userland/bin/joe,Files/userland/share/joe  upterm-ports,ixemul-vtcon
-mg      up-mg     1.0      1.0         80      UP-Term:pkg/up-mg      Files/userland/bin/mg  upterm-ports,ixemul-vtcon
-nano    up-nano   1.0      1.0         80      UP-Term:pkg/up-nano    Files/userland/bin/nano,Files/userland/share/nano  upterm-ports,ixemul-vtcon
-tig     up-tig    1.0      1.0         80      UP-Term:pkg/up-tig     Files/userland/bin/tig  upterm-ports,ixemul-vtcon
-ncdu    up-ncdu   1.0      1.0         80      UP-Term:pkg/up-ncdu    Files/userland/bin/ncdu  upterm-ports,ixemul-vtcon
-nnn     up-nnn    1.0      1.0         80      UP-Term:pkg/up-nnn     Files/userland/bin/nnn  upterm-ports,ixemul-vtcon
-lua     up-lua    1.0      1.0         80      UP-Term:pkg/up-lua     Files/userland/bin/lua  upterm-ports,ixemul-vtcon
-jq      up-jq     1.0      1.0         80      UP-Term:pkg/up-jq      Files/userland/bin/jq  upterm-ports,ixemul-vtcon
-hexedit  up-hexedit  1.0      1.0         80      UP-Term:pkg/up-hexedit  Files/userland/bin/hexedit  upterm-ports,ixemul-vtcon
-picocom  up-picocom  1.0      1.0         80      UP-Term:pkg/up-picocom  Files/userland/bin/picocom  upterm-ports,ixemul-vtcon
-nc      up-nc     1.0      1.0         80      UP-Term:pkg/up-nc      Files/userland/bin/nc  upterm-ports,ixemul-vtcon
-fzy     up-fzy    1.0      1.0         80      UP-Term:pkg/up-fzy     Files/userland/bin/fzy  upterm-ports,ixemul-vtcon
-ctags   up-ctags  1.0      1.0         80      UP-Term:pkg/up-ctags   Files/userland/bin/ctags  upterm-ports,ixemul-vtcon
-zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/userland/bin/zip  upterm-ports,ixemul-vtcon
-dopus   up-dopus   1.0      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000                                       -
-uhc     up-uhc     1.0      1.0         -       UP-Term:pkg/up-uhc     Files/userland/uhc                                                             -
-sqlite  up-sqlite3  1.0      1.0         80      UP-Term:pkg/up-sqlite3  Files/userland/bin/sqlite3                            upterm-ports,ixemul-vtcon
+#   launch      the AmigaDOS command line that starts the program from vsh, at the path the
+#               archive installs it; "-" for a package with nothing to start (libraries, git,
+#               perl, plain tools). upkg browse launches it on Enter; the .ipk control file
+#               and the Packages index carry it as `Launch:`
+# id    archive    version  needs-base  ixemul  record                 handed                                                consumes  launch
+base    up-term    1.0      -           -       UP-Term:               -                                                     vtcon,ixemul-vtcon,upterm-ports,tmux-amiga,screen-amiga/src  -
+claude  up-claude  1.2      -           -       ENVARC:upkg/up-claude  Files/Claude                                          vtcon  C:Claude
+pi      up-pi      1.0      -           -       ENVARC:upkg/up-pi      Files/amiga-pi                                        amiga-pi,vtcon  C:amiga-pi
+nvim    up-nvim    1.0      1.0         80      UP-Term:pkg/up-nvim    Files/nvim                                            neovim-amiga,ixemul-vtcon  UP-Term:nvim/bin/nvim
+python  up-python  1.0      -           47      ENVARC:upkg/up-python  Files/python3                                         cpython-amiga,ixemul-vtcon  Python3:bin/python3
+git     up-git     1.0      1.0         80      UP-Term:pkg/up-git     Files/userland/bin/git,Files/userland/share/git-core  upterm-ports,ixemul-vtcon  -
+perl    up-perl    1.0      1.0         80      UP-Term:pkg/up-perl    Files/userland/bin/perl                               upterm-ports,ixemul-vtcon  -
+vim     up-vim     1.0      1.0         80      UP-Term:pkg/up-vim     Files/userland/bin/vim,Files/userland/share/vim       upterm-ports,ixemul-vtcon  UP-Term:bin/vim
+bitchx  up-bitchx  1.0      1.0         80      UP-Term:pkg/up-bitchx  Files/userland/bin/BitchX,Files/userland/lib/bx       upterm-ports,ixemul-vtcon  UP-Term:bin/BitchX
+vbcc    up-vbcc    1.0      1.0         80      UP-Term:pkg/up-vbcc    Files/userland/vbcc                                   upterm-ports,ixemul-vtcon  -
+mutt    up-mutt   1.0      1.0         80      UP-Term:pkg/up-mutt    Files/userland/bin/mutt  upterm-ports,ixemul-vtcon  UP-Term:bin/mutt
+lynx    up-lynx   1.0      1.0         80      UP-Term:pkg/up-lynx    Files/userland/bin/lynx,Files/userland/etc/lynx.cfg  upterm-ports,ixemul-vtcon  UP-Term:bin/lynx
+joe     up-joe    1.0      1.0         80      UP-Term:pkg/up-joe     Files/userland/bin/joe,Files/userland/share/joe  upterm-ports,ixemul-vtcon  UP-Term:bin/joe
+mg      up-mg     1.0      1.0         80      UP-Term:pkg/up-mg      Files/userland/bin/mg  upterm-ports,ixemul-vtcon  UP-Term:bin/mg
+nano    up-nano   1.0      1.0         80      UP-Term:pkg/up-nano    Files/userland/bin/nano,Files/userland/share/nano  upterm-ports,ixemul-vtcon  UP-Term:bin/nano
+tig     up-tig    1.0      1.0         80      UP-Term:pkg/up-tig     Files/userland/bin/tig  upterm-ports,ixemul-vtcon  UP-Term:bin/tig
+ncdu    up-ncdu   1.0      1.0         80      UP-Term:pkg/up-ncdu    Files/userland/bin/ncdu  upterm-ports,ixemul-vtcon  UP-Term:bin/ncdu
+nnn     up-nnn    1.0      1.0         80      UP-Term:pkg/up-nnn     Files/userland/bin/nnn  upterm-ports,ixemul-vtcon  UP-Term:bin/nnn
+lua     up-lua    1.0      1.0         80      UP-Term:pkg/up-lua     Files/userland/bin/lua  upterm-ports,ixemul-vtcon  UP-Term:bin/lua
+jq      up-jq     1.0      1.0         80      UP-Term:pkg/up-jq      Files/userland/bin/jq  upterm-ports,ixemul-vtcon  -
+hexedit  up-hexedit  1.0      1.0         80      UP-Term:pkg/up-hexedit  Files/userland/bin/hexedit  upterm-ports,ixemul-vtcon  UP-Term:bin/hexedit
+picocom  up-picocom  1.0      1.0         80      UP-Term:pkg/up-picocom  Files/userland/bin/picocom  upterm-ports,ixemul-vtcon  UP-Term:bin/picocom
+nc      up-nc     1.0      1.0         80      UP-Term:pkg/up-nc      Files/userland/bin/nc  upterm-ports,ixemul-vtcon  -
+fzy     up-fzy    1.0      1.0         80      UP-Term:pkg/up-fzy     Files/userland/bin/fzy  upterm-ports,ixemul-vtcon  -
+ctags   up-ctags  1.0      1.0         80      UP-Term:pkg/up-ctags   Files/userland/bin/ctags  upterm-ports,ixemul-vtcon  -
+zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/userland/bin/zip  upterm-ports,ixemul-vtcon  -
+dopus   up-dopus   1.0      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000                                       -  -
+uhc     up-uhc     1.0      1.0         -       UP-Term:pkg/up-uhc     Files/userland/uhc                                                             -  -
+sqlite  up-sqlite3  1.0      1.0         80      UP-Term:pkg/up-sqlite3  Files/userland/bin/sqlite3                            upterm-ports,ixemul-vtcon  UP-Term:bin/sqlite3
