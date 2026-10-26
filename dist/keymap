@@ -26,7 +26,7 @@
 ;   run:<command>    start a program (a vsh line: 'single quotes' round a path with a space,
 ;                    never double quotes)
 ;   open:uterm       a new UP-Term window (commodity only; in a window: tab:new)
-;   rexx:<script>    an ARexx script or string (commodity only)
+;   rexx:<script>    an ARexx script or string (Amarchy hotkeys and menu rows)
 
 [keymap]
 version = 1
