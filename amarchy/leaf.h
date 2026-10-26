@@ -64,8 +64,12 @@ lf_how lf_plan_ta(int kind, int term, int needs_value);
  * one in tests/test_amconf.c). The write is the Prefs window's own: UP-Term's file by prefs_stage and
  * prefs_save_at (ENVARC: then ENV:, the profile LF_PROFILE), Amarchy's by amconf_save_with. The files
  * notify their readers, so nothing else is sent. */
-#define LF_PROFILE "default"
-enum { LF_SET_OK = 0, LF_SET_READONLY = -200, LF_SET_INVALID = -201, LF_SET_FULL = -202, LF_SET_KIND = -203, LF_SET_CANCELLED = -204 };
+/* The profile the rows edit (D5): "default" until lf_profile_use switches it. */
+const char *lf_profile(void);
+void lf_init(void);   /* installs the Theme and Profile list rows of the menu tree (mn_list_hook) */
+#define LF_PROFILE lf_profile()
+enum { LF_SET_OK = 0, LF_SET_READONLY = -200, LF_SET_INVALID = -201, LF_SET_FULL = -202, LF_SET_KIND = -203, LF_SET_CANCELLED = -204,
+       LF_SET_EXISTS = -205, LF_SET_MISSING = -206, LF_SET_LAST = -207 };
 
 /* The value Enter moves a check or cycle row to: the next index, wrapping. -1 for any other kind. */
 int lf_setting_next(const sd_setting *s, int cur);
@@ -96,6 +100,28 @@ typedef struct lf_asl {
     void *ctx;
 } lf_asl;
 int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl, int *failed);
+/* ---- M7: the profile list and the theme list (plan 2026-10-26-amarchy-prefs-inline.md, D1/D4/D5) ----
+ * Names come back NUL-separated in `names` (cap bytes), the count as the result. Every write goes to ENVARC:
+ * and ENV: like Prefs Save. New/Rename names are cleaned (prefs_clean_name); a theme name may not hold a
+ * path character. LF_SET_EXISTS: the name is taken (any case); LF_SET_MISSING: no such profile or theme;
+ * LF_SET_LAST: the only profile cannot be deleted; LF_SET_INVALID: an empty or unusable name. */
+int lf_profile_names(const amconf_io *io, char *names, int cap);
+/* Make `name` the profile the rows edit and show. */
+int lf_profile_use(const amconf_io *io, const char *name);
+/* A new profile holding a copy of the active one's values; it becomes the active one. */
+int lf_profile_new(const amconf_io *io, const char *name, int *failed);
+/* Profile `from` becomes `to`, every key and comment staying with it; the active profile follows. */
+int lf_profile_rename(const amconf_io *io, const char *from, const char *to, int *failed);
+/* Profile `name` removed; when it was the active one the first remaining profile takes over. */
+int lf_profile_delete(const amconf_io *io, const char *name, int *failed);
+int lf_theme_names(const amconf_io *io, char *names, int cap);
+/* The theme's colours replace the active profile's (prefs_apply_theme), then both files are written. */
+int lf_theme_apply(const amconf_io *io, const char *name, int *failed);
+/* A new theme file holding the active profile's colours. */
+int lf_theme_new(const amconf_io *io, const char *name, int *failed);
+int lf_theme_rename(const amconf_io *io, const char *from, const char *to, int *failed);
+int lf_theme_delete(const amconf_io *io, const char *name, int *failed);
+
 /* Enter on a check or cycle row: lf_setting_next of the current value, then lf_setting_set. */
 int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed);
 /* Rewrite the labels of a menu level: a MN_ROW_SETTING row shows sd_row_label (label and value), a

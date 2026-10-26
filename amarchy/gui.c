@@ -682,8 +682,8 @@ static void activate_setting(gui *g, const mn_item *it, int right)
     ui.ctx = g;
     ui.self_in_mru = 0;
     ui.win = g->win;
-    if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(&sd_settings[it->ix]))) {
-        if (sd_settings[it->ix].kind == SD_CYCLE || SD_HAS_PICKER(&sd_settings[it->ix])) {
+    if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(&sd_settings[it->ix]) || SD_HAS_LIST(&sd_settings[it->ix]))) {
+        if (sd_settings[it->ix].kind == SD_CYCLE || SD_HAS_PICKER(&sd_settings[it->ix]) || SD_HAS_LIST(&sd_settings[it->ix])) {
             mn_child_node(g->node, it, g->node, sizeof g->node);
             g->filter[0] = 0;
             list_rebuild(g);
@@ -1155,6 +1155,7 @@ int main(int argc, char **argv)
     int viewer, rc = 0;
     const char *node;
 
+    lf_init();
     if (qmark_argv(argc, argv) || (argc > 1 && !strcmp(argv[1], "help"))) {
         PutStr((STRPTR) USAGE);
         return 0;

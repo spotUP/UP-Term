@@ -141,6 +141,8 @@ int sd_text_check(const sd_setting *s, const char *text);
 const char *sd_text_reason(int check);
 
 /* A row that opens a picker level of its own (the 16 palette entries, plus Custom for a swatch). */
+/* Theme and Profile rows open a list of names with New / Rename / Delete rows (seg "N", "R", "D") */
+#define SD_HAS_LIST(s) ((s)->kind == SD_THEME || (s)->kind == SD_PROFILE)
 #define SD_HAS_PICKER(s) ((s)->kind == SD_COLOUR || (s)->kind == SD_PALETTE)
 /* Entry numbers of the picker's rows (seg of a MN_ROW_CHOICE row): 0..15 the palette entries, then this. */
 #define SD_PICK_CUSTOM 16

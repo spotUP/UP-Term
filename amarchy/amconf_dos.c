@@ -23,7 +23,28 @@ static int dos_dir(const prefs_paths *p, int t)
     return prefs_dos_dir(p, t);
 }
 
-static const amconf_io dos_io = { &prefs_dos_fs, dos_read, dos_dir };
+static int dos_list(const char *dir, void (*add)(void *ud, const char *file), void *ud)
+{
+    BPTR lock = Lock((STRPTR)dir, ACCESS_READ);
+    struct FileInfoBlock *fib;
+    int ok = 0;
+    if (!lock)
+        return 0;
+    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (fib) {
+        if (Examine(lock, fib)) {
+            ok = 1;
+            while (ExNext(lock, fib))
+                if (fib->fib_DirEntryType < 0)
+                    add(ud, (const char *)fib->fib_FileName);
+        }
+        FreeDosObject(DOS_FIB, fib);
+    }
+    UnLock(lock);
+    return ok;
+}
+
+static const amconf_io dos_io = { &prefs_dos_fs, dos_read, dos_dir, dos_list };
 
 const amconf_io *amconf_dos_io(void)
 {

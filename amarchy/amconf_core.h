@@ -69,6 +69,9 @@ typedef struct amconf_io {
     const prefs_fs *fs;
     amconf_read_fn read;
     int (*dir)(const prefs_paths *, int t); /* make the drawer of a target */
+    /* every file name in drawer dir, each handed to add(ud, name); 1 when the drawer was read. 0 (unset)
+     * where nothing lists drawers: the theme list is then empty. */
+    int (*list)(const char *dir, void (*add)(void *ud, const char *file), void *ud);
 } amconf_io;
 
 /* where the values came from */

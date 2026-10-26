@@ -16,6 +16,8 @@
 #define MN_IS_GROUP(it) ((it)->row == MN_ROW_GROUP)
 #define MN_IS_INDEX(it) ((it)->row == MN_ROW_INDEX)
 #define MN_IS_SETTING(it) ((it)->row == MN_ROW_SETTING)
+/* set by lf_init (leaf.c): fills the names of the Profile (1) or Theme (0) list, marked "* " when current */
+extern int (*mn_list_hook)(int profile, char names[][KM_LABEL], int max);
 #define MN_IS_CHOICE(it) ((it)->row == MN_ROW_CHOICE)
 
 typedef struct mn_item {

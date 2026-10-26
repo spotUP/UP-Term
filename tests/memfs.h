@@ -11,7 +11,7 @@
 #define FS_FILES 12
 typedef struct {
     char name[FS_FILES][48];
-    char data[FS_FILES][512];
+    char data[FS_FILES][2048];
     int used[FS_FILES];
     const char *fail_write;   /* writing this path fails */
     const char *fail_rename;  /* renaming onto this path fails */
@@ -48,7 +48,7 @@ static void mf_put(memfs *m, const char *path, const char *data)
 static int mf_write(void *ctx, const char *path, const char *buf, long len)
 {
     memfs *m = (memfs *)ctx;
-    char tmp[512];
+    char tmp[2048];
     if (m->fail_write && !strcmp(m->fail_write, path)) {
         mf_put(m, path, "<partial>"); /* a short write leaves a stub behind */
         return 0;

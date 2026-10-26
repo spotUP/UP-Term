@@ -256,6 +256,13 @@ int lf_setting_next(const sd_setting *s, int cur)
 /* One 16 KiB file at a time: static, the Amiga callers run on a small stack. */
 static upconf lf_conf, lf_work;
 static char lf_buf[UC_MAX_FILE + 2];
+static char lf_tbuf[UC_MAX_FILE + 2];   /* a theme file */
+static char lf_active[UC_NAME] = "default";
+
+const char *lf_profile(void)
+{
+    return lf_active;
+}
 
 /* The UP-Term file as the Prefs window reads it: ENV:, else ENVARC:. The prefs_load result. */
 static int lf_load_upterm(const amconf_io *io)
@@ -269,12 +276,33 @@ static int lf_load_upterm(const amconf_io *io)
     return prefs_load(&lf_conf, lf_buf, got, UC_MAX_FILE);
 }
 
+/* Stage f over the loaded table (lf_conf, loaded by the caller) as profile `prof` and write both files
+ * (ENVARC: then ENV:) and the highlight category variables, like Prefs Save. */
+static int lf_put_fields(const amconf_io *io, const char *prof, const prefs_fields *f, int *failed)
+{
+    long len;
+    int r, t;
+    len = prefs_stage(&lf_work, &lf_conf, prof, f, lf_buf, UC_MAX_FILE + 1);
+    if (len == PREFS_STAGE_LOSSY)
+        return LF_SET_READONLY;
+    if (len < 0)
+        return LF_SET_FULL;
+    r = prefs_save_at(io->fs, io->dir, &prefs_paths_upterm, lf_buf, len, 1, failed);
+    if (r != PREFS_INSTALL_OK)
+        return r;
+    for (t = PREFS_T_ENVARC; t >= PREFS_T_ENV; t--) {
+        *failed = t;
+        r = prefs_write_hlcat(io->fs, t, f->hlcat);
+        if (r != PREFS_INSTALL_OK)
+            return r;
+    }
+    return LF_SET_OK;
+}
+
 /* index >= 0: a check or cycle value; else the text of an SD_INT or SD_STRING row */
 static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, const char *text, int n, const char *text2, int *failed)
 {
     prefs_fields f;
-    long len;
-    int r, t;
     if (!prefs_load_writable(lf_load_upterm(io)))
         return LF_SET_READONLY;
     prefs_from_conf(&f, &lf_conf, LF_PROFILE);
@@ -286,21 +314,7 @@ static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, co
         strcpy((char *)&f + s->off2, text2);
     if (prefs_validate(&f))
         return LF_SET_INVALID;
-    len = prefs_stage(&lf_work, &lf_conf, LF_PROFILE, &f, lf_buf, UC_MAX_FILE + 1);
-    if (len == PREFS_STAGE_LOSSY)
-        return LF_SET_READONLY;
-    if (len < 0)
-        return LF_SET_FULL;
-    r = prefs_save_at(io->fs, io->dir, &prefs_paths_upterm, lf_buf, len, 1, failed);
-    if (r != PREFS_INSTALL_OK)
-        return r;
-    for (t = PREFS_T_ENVARC; t >= PREFS_T_ENV; t--) {
-        *failed = t;
-        r = prefs_write_hlcat(io->fs, t, f.hlcat);
-        if (r != PREFS_INSTALL_OK)
-            return r;
-    }
-    return LF_SET_OK;
+    return lf_put_fields(io, LF_PROFILE, &f, failed);
 }
 
 int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *failed)
@@ -539,7 +553,9 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
         }
         if (MN_IS_SETTING(&it[i]))
             sd_row_label(s, store, it[i].label, KM_LABEL);
-        else if (SD_HAS_PICKER(s)) {
+        else if (SD_HAS_LIST(s)) {
+            /* the names and actions come labelled from the tree */
+        } else if (SD_HAS_PICKER(s)) {
             int v = atoi(it[i].seg);
             if (v == SD_PICK_CUSTOM)
                 strcpy(it[i].label, "Custom...");
@@ -557,4 +573,233 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
             strcat(it[i].label, txt);
         }
     }
+}
+
+/* ---- M7: profiles and themes ---- */
+
+/* The loaded table written back whole (ENVARC: then ENV:), like Prefs Save of an edited table. */
+static int lf_write_conf(const amconf_io *io, int *failed)
+{
+    long len = upconf_save(&lf_conf, lf_buf, UC_MAX_FILE);
+    if (len < 0)
+        return LF_SET_FULL;
+    lf_buf[len] = 0;
+    return prefs_save_at(io->fs, io->dir, &prefs_paths_upterm, lf_buf, len, 1, failed);
+}
+
+int lf_profile_names(const amconf_io *io, char *names, int cap)
+{
+    int i, len = 0, n = 0;
+    lf_load_upterm(io);
+    for (i = 0; i < lf_conf.nprof; i++) {
+        int l = (int)strlen(lf_conf.prof[i]);
+        if (len + l + 1 > cap)
+            break;
+        memcpy(names + len, lf_conf.prof[i], (size_t)l + 1);
+        len += l + 1;
+        n++;
+    }
+    return n;
+}
+
+int lf_profile_use(const amconf_io *io, const char *name)
+{
+    int i;
+    lf_load_upterm(io);
+    for (i = 0; i < lf_conf.nprof; i++)
+        if (!strcmp(lf_conf.prof[i], name)) {
+            strcpy(lf_active, lf_conf.prof[i]);
+            return LF_SET_OK;
+        }
+    return LF_SET_MISSING;
+}
+
+int lf_profile_new(const amconf_io *io, const char *name, int *failed)
+{
+    char clean[UC_NAME];
+    prefs_fields f;
+    int r;
+    *failed = 0;
+    if (!prefs_load_writable(lf_load_upterm(io)))
+        return LF_SET_READONLY;
+    prefs_clean_name(name, clean, sizeof clean);
+    if (!clean[0])
+        return LF_SET_INVALID;
+    if (prefs_profile_exists(&lf_conf, clean))
+        return LF_SET_EXISTS;
+    prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+    r = lf_put_fields(io, clean, &f, failed);
+    if (r == LF_SET_OK)
+        strcpy(lf_active, clean);
+    return r;
+}
+
+int lf_profile_rename(const amconf_io *io, const char *from, const char *to, int *failed)
+{
+    char clean[UC_NAME];
+    int r;
+    *failed = 0;
+    if (!prefs_load_writable(lf_load_upterm(io)))
+        return LF_SET_READONLY;
+    r = prefs_rename_profile(&lf_conf, from, to);
+    if (r == PREFS_RENAME_MISSING)
+        return LF_SET_MISSING;
+    if (r == PREFS_RENAME_EMPTY)
+        return LF_SET_INVALID;
+    if (r == PREFS_RENAME_EXISTS)
+        return LF_SET_EXISTS;
+    prefs_clean_name(to, clean, sizeof clean);
+    r = lf_write_conf(io, failed);
+    if (r == LF_SET_OK && !strcmp(lf_active, from))
+        strcpy(lf_active, clean);
+    return r;
+}
+
+int lf_profile_delete(const amconf_io *io, const char *name, int *failed)
+{
+    int r;
+    *failed = 0;
+    if (!prefs_load_writable(lf_load_upterm(io)))
+        return LF_SET_READONLY;
+    if (!prefs_profile_exists(&lf_conf, name))
+        return LF_SET_MISSING;
+    if (lf_conf.nprof < 2)
+        return LF_SET_LAST;
+    upconf_rmprof(&lf_conf, name);
+    r = lf_write_conf(io, failed);
+    if (r == LF_SET_OK && !strcmp(lf_active, name))
+        strcpy(lf_active, lf_conf.prof[0]);
+    return r;
+}
+
+typedef struct lf_tlist {
+    char *names;
+    int len, cap, n;
+} lf_tlist;
+
+static void lf_tlist_add(void *ud, const char *file)
+{
+    lf_tlist *t = (lf_tlist *)ud;
+    if (prefs_theme_add(t->names, &t->len, t->cap, file) > 0)
+        t->n++;
+}
+
+int lf_theme_names(const amconf_io *io, char *names, int cap)
+{
+    lf_tlist t;
+    t.names = names;
+    t.len = 0;
+    t.cap = cap;
+    t.n = 0;
+    if (io->list)
+        io->list(PREFS_THEMES_DIR, lf_tlist_add, &t);
+    return t.n;
+}
+
+/* the theme's file in the ENVARC: drawer (envarc 1) or the ENV: copy (0); 0 when the name is no theme name */
+static int lf_theme_path(const char *name, int envarc, char *out, int cap)
+{
+    char clean[UC_NAME];
+    prefs_clean_name(name, clean, sizeof clean);
+    if (!clean[0] || strchr(clean, ':') || strchr(clean, '/'))
+        return 0;
+    prefs_theme_file(envarc ? PREFS_THEMES_DIR : PREFS_THEMES_ENV, clean, out, cap);
+    return 1;
+}
+
+int lf_theme_apply(const amconf_io *io, const char *name, int *failed)
+{
+    char path[160];
+    prefs_fields f;
+    long got;
+    *failed = 0;
+    if (!lf_theme_path(name, 1, path, sizeof path))
+        return LF_SET_INVALID;
+    got = io->read(io->fs->ctx, path, lf_tbuf, UC_MAX_FILE + 1);
+    if (got <= 0 || got > UC_MAX_FILE)
+        return LF_SET_MISSING;
+    if (!prefs_load_writable(lf_load_upterm(io)))
+        return LF_SET_READONLY;
+    prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+    if (!prefs_apply_theme(&f, &lf_work, lf_tbuf, got))
+        return LF_SET_INVALID;
+    if (prefs_validate(&f))
+        return LF_SET_INVALID;
+    return lf_put_fields(io, LF_PROFILE, &f, failed);
+}
+
+int lf_theme_new(const amconf_io *io, const char *name, int *failed)
+{
+    static const char *const keys[] = { "fg", "bg", "cursor-color", "selection-fg", "selection-bg", "palette" };
+    char path[160], clean[UC_NAME];
+    long len;
+    int i, t;
+    *failed = 0;
+    if (!lf_theme_path(name, 1, path, sizeof path))
+        return LF_SET_INVALID;
+    if (io->fs->exists(io->fs->ctx, path))
+        return LF_SET_EXISTS;
+    if (!prefs_load_writable(lf_load_upterm(io)))
+        return LF_SET_READONLY;
+    prefs_clean_name(name, clean, sizeof clean);
+    upconf_clear(&lf_work);
+    for (i = 0; i < 6; i++) {
+        const char *v = upconf_get(&lf_conf, LF_PROFILE, keys[i]);
+        if (v)
+            upconf_set(&lf_work, clean, keys[i], v);
+    }
+    len = upconf_save(&lf_work, lf_tbuf, UC_MAX_FILE);
+    if (len < 0 || lf_work.overflow)
+        return LF_SET_FULL;
+    for (t = 1; t >= 0; t--) {
+        lf_theme_path(name, t, path, sizeof path);
+        if (!io->fs->write_file(io->fs->ctx, path, lf_tbuf, len) && t == 1) {
+            *failed = PREFS_T_ENVARC;
+            return PREFS_INSTALL_WRITE;
+        }
+    }
+    return LF_SET_OK;
+}
+
+int lf_theme_rename(const amconf_io *io, const char *from, const char *to, int *failed)
+{
+    char a[160], b[160];
+    int t;
+    *failed = 0;
+    if (!lf_theme_path(from, 1, a, sizeof a) || !lf_theme_path(to, 1, b, sizeof b))
+        return LF_SET_INVALID;
+    if (!io->fs->exists(io->fs->ctx, a))
+        return LF_SET_MISSING;
+    if (io->fs->exists(io->fs->ctx, b))
+        return LF_SET_EXISTS;
+    for (t = 1; t >= 0; t--) {
+        lf_theme_path(from, t, a, sizeof a);
+        lf_theme_path(to, t, b, sizeof b);
+        if (!io->fs->exists(io->fs->ctx, a))
+            continue;               /* the ENV: copy is made at boot: no copy, nothing to move */
+        if (!io->fs->rename(io->fs->ctx, a, b) && t == 1) {
+            *failed = PREFS_T_ENVARC;
+            return PREFS_INSTALL_PLACE;
+        }
+    }
+    return LF_SET_OK;
+}
+
+int lf_theme_delete(const amconf_io *io, const char *name, int *failed)
+{
+    char a[160];
+    int t;
+    *failed = 0;
+    if (!lf_theme_path(name, 1, a, sizeof a))
+        return LF_SET_INVALID;
+    if (!io->fs->exists(io->fs->ctx, a))
+        return LF_SET_MISSING;
+    for (t = 1; t >= 0; t--) {
+        lf_theme_path(name, t, a, sizeof a);
+        if (!io->fs->remove(io->fs->ctx, a) && t == 1) {
+            *failed = PREFS_T_ENVARC;
+            return PREFS_INSTALL_WRITE;
+        }
+    }
+    return LF_SET_OK;
 }

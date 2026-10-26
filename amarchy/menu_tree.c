@@ -97,17 +97,45 @@ static const sd_setting *choice_setting(const keymap *k, const char *node)
         page = sd_page_by_name(k->menu[i].arg);
         for (j = 0; page >= 0 && j < sd_nsettings; j++) {
             const sd_setting *s = &sd_settings[j];
-            if (s->page == page && (s->kind == SD_CYCLE || SD_HAS_PICKER(s)) && s->key && !strcmp(s->key, node + l + 1))
+            if (s->page == page && (s->kind == SD_CYCLE || SD_HAS_PICKER(s) || SD_HAS_LIST(s)) && s->key && !strcmp(s->key, node + l + 1))
                 return s;
         }
     }
     return 0;
 }
 
+int (*mn_list_hook)(int profile, char names[][KM_LABEL], int max);
+
+/* the names of the Theme or Profile list, one MN_ROW_CHOICE row each (seg the index), then the action rows */
+static int list_rows(const sd_setting *s, mn_item *out, int max)
+{
+    static char nm[24][KM_LABEL];
+    static const char act[3] = { 'N', 'R', 'D' };
+    static const char *const text[3] = { "New...", "Rename...", "Delete..." };
+    int v, n = 0, c = mn_list_hook ? mn_list_hook(s->kind == SD_PROFILE, nm, 24) : 0;
+    for (v = 0; v < c + 3 && n < max; v++, n++) {
+        out[n].row = MN_ROW_CHOICE;
+        out[n].ix = s->id;
+        if (v < c) {
+            out[n].seg[0] = (char)(v >= 10 ? '0' + v / 10 : '0' + v);
+            out[n].seg[1] = (char)(v >= 10 ? '0' + v % 10 : 0);
+            cpy(out[n].label, nm[v], KM_LABEL);
+        } else {
+            out[n].seg[0] = act[v - c];
+            out[n].seg[1] = 0;
+            cpy(out[n].label, text[v - c], KM_LABEL);
+        }
+        out[n].seg[2] = 0;
+    }
+    return n;
+}
+
 /* the values of a cycle setting, one MN_ROW_CHOICE row each */
 static int choice_rows(const sd_setting *s, mn_item *out, int max)
 {
     int v, n = 0, nv = s->nvalues;
+    if (SD_HAS_LIST(s))
+        return list_rows(s, out, max);
     if (SD_HAS_PICKER(s))
         nv = s->kind == SD_COLOUR ? SD_PICK_CUSTOM + 1 : 16;   /* the 16 palette entries, and Custom for a swatch */
     for (v = 0; v < nv && n < max; v++, n++) {

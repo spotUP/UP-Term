@@ -130,6 +130,78 @@ static int asl_mode(void *ctx, unsigned long id, int depth, unsigned long *oid, 
     return asl_pick_screenmode((struct Window *)ctx, "Choose a screen mode", id, depth, PREFS_DEPTH_MIN, PREFS_DEPTH_MAX, oid, odepth);
 }
 
+/* names of the Profile or Theme list, "* " marks the current profile; the row index selects from the plain names */
+static int list_names(int profile, char names[][KM_LABEL], int max)
+{
+    char buf[1024];
+    const char *p = buf;
+    int n = profile ? lf_profile_names(amconf_dos_io(), buf, sizeof buf) : lf_theme_names(amconf_dos_io(), buf, sizeof buf);
+    int i;
+    for (i = 0; i < n && i < max; i++, p += strlen(p) + 1) {
+        if (profile)
+            snprintf(names[i], KM_LABEL, "%s%s", strcmp(p, lf_profile()) ? "  " : "* ", p);
+        else
+            snprintf(names[i], KM_LABEL, "  %s", p);
+    }
+    return i;
+}
+
+void lf_init(void)
+{
+    mn_list_hook = list_names;
+}
+
+static const char *list_why(long r)
+{
+    switch (r) {
+    case LF_SET_EXISTS: return "that name is taken";
+    case LF_SET_MISSING: return "there is no such name";
+    case LF_SET_LAST: return "the last profile cannot be deleted";
+    case LF_SET_INVALID: return "not a usable name";
+    case LF_SET_READONLY: return "the settings file is read only here: use UP-Term Prefs";
+    default: return "";
+    }
+}
+
+/* Enter on a Theme or Profile list row: a name applies it, New / Rename / Delete ask for the names */
+static int list_enter(const mn_item *it, const sd_setting *s, const lf_ui *ui)
+{
+    int profile = s->kind == SD_PROFILE, failed = 0, i;
+    long r;
+    char buf[1024], a[UC_MAX_VALUE + 2], b[UC_MAX_VALUE + 2];
+    const char *p = buf;
+    if (!MN_IS_CHOICE(it))
+        return 0;
+    if (it->seg[0] >= '0' && it->seg[0] <= '9') {
+        int n = profile ? lf_profile_names(amconf_dos_io(), buf, sizeof buf) : lf_theme_names(amconf_dos_io(), buf, sizeof buf);
+        for (i = atoi(it->seg); i > 0 && n > 0; i--)
+            p += strlen(p) + 1;
+        if (atoi(it->seg) >= n)
+            return 0;
+        r = profile ? lf_profile_use(amconf_dos_io(), p) : lf_theme_apply(amconf_dos_io(), p, &failed);
+    } else {
+        a[0] = b[0] = 0;
+        if (it->seg[0] != 'N' && profile)
+            strcpy(a, lf_profile());
+        if (!ui->ask_value)
+            return 0;
+        if (!ui->ask_value(ui->ctx, it->seg[0] == 'N' ? "New name" : it->seg[0] == 'R' ? "Rename which" : "Delete which", "name", a, sizeof a))
+            return 0;
+        if (it->seg[0] == 'R' && !ui->ask_value(ui->ctx, "New name", "name", b, sizeof b))
+            return 0;
+        if (it->seg[0] == 'N')
+            r = profile ? lf_profile_new(amconf_dos_io(), a, &failed) : lf_theme_new(amconf_dos_io(), a, &failed);
+        else if (it->seg[0] == 'R')
+            r = profile ? lf_profile_rename(amconf_dos_io(), a, b, &failed) : lf_theme_rename(amconf_dos_io(), a, b, &failed);
+        else
+            r = profile ? lf_profile_delete(amconf_dos_io(), a, &failed) : lf_theme_delete(amconf_dos_io(), a, &failed);
+    }
+    if (r == LF_SET_OK)
+        return 1;
+    ui->refused(ui->ctx, it->label, r, list_why(r));
+    return 0;
+}
+
 int lf_setting_enter(const mn_item *it, const lf_ui *ui)
 {
     const sd_setting *s;
@@ -164,6 +236,8 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
             ui->refused(ui->ctx, it->label, r, r == LF_SET_INVALID ? "not usable" : "");
         return 0;
     }
+    if (SD_HAS_LIST(s))
+        return list_enter(it, s, ui);
     if (SD_HAS_PICKER(s)) {
         int entry = atoi(it->seg);
         const char *text = 0;

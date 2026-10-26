@@ -639,6 +639,112 @@ static void test_lf_setting_asl_pickers(void)
     CHECK_INT(lf_setting_pick(&io, &sd_settings[SDI_FALLBACK], &asl, &failed), LF_SET_KIND);
 }
 
+/* M7: the profile list and the theme list ------------------------------------------------------------ */
+static memfs *list_fs;      /* the file table the fake drawer listing scans */
+
+static int mem_list(const char *dir, void (*add)(void *ud, const char *file), void *ud)
+{
+    size_t l = strlen(dir);
+    int i;
+    for (i = 0; i < FS_FILES; i++)
+        if (list_fs->used[i] && !strncmp(list_fs->name[i], dir, l) && list_fs->name[i][l] == '/')
+            add(ud, list_fs->name[i] + l + 1);
+    return 1;
+}
+
+static void test_lf_profile_and_theme_lists(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    static const char file[] =
+        "# my terminals\n[profile default]\nfont = topaz.font:8\ncursor-blink = off\nscrollback = 777\n\n"
+        "[profile work]\n# the office box\nfont = JetBrains Mono:13\nfg = ff8800\nbg = 102030\nscrollback = 4000\n";
+    char names[256];
+    upconf c;
+    int failed = 0, k;
+    static const char *const wkeys[] = { "font", "fg", "bg", "scrollback" };
+    static const char *const wvals[] = { "JetBrains Mono:13", "ff8800", "102030", "4000" };
+    io.list = mem_list;
+    list_fs = &m;
+    mf_put(&m, UP, file);
+    mf_put(&m, UA, file);
+    CHECK_INT(lf_profile_use(&io, "default"), LF_SET_OK);
+    CHECK_INT(lf_profile_names(&io, names, sizeof names), 2);
+    CHECK_STR(names, "default");
+    CHECK_STR(names + 8, "work");
+
+    /* rename keeps every key, the other profile and both files; the comment goes with it */
+    CHECK_INT(lf_profile_rename(&io, "work", "  [office] ", &failed), LF_SET_OK);
+    upconf_parse(&c, mf_get(&m, UA), (long)strlen(mf_get(&m, UA)));
+    CHECK(!prefs_profile_exists(&c, "work"));
+    CHECK(prefs_profile_exists(&c, "office"));
+    for (k = 0; k < 4; k++)
+        CHECK_STR(upconf_str(&c, "office", wkeys[k], "<absent>"), wvals[k]);
+    CHECK_STR(upconf_str(&c, "default", "scrollback", ""), "777");
+    CHECK_STR(upconf_str(&c, "default", "cursor-blink", ""), "off");
+    CHECK(strstr(mf_get(&m, UA), "# the office box") != 0);
+    CHECK_STR(mf_get(&m, UP), mf_get(&m, UA));
+    CHECK_INT(lf_profile_rename(&io, "nosuch", "x", &failed), LF_SET_MISSING);
+    CHECK_INT(lf_profile_rename(&io, "office", "DEFAULT", &failed), LF_SET_EXISTS);
+    CHECK_INT(lf_profile_rename(&io, "office", " [] ", &failed), LF_SET_INVALID);
+
+    /* renaming the active profile moves the rows with it */
+    CHECK_INT(lf_profile_use(&io, "office"), LF_SET_OK);
+    CHECK_STR(lf_profile(), "office");
+    CHECK_INT(lf_profile_rename(&io, "office", "lab", &failed), LF_SET_OK);
+    CHECK_STR(lf_profile(), "lab");
+
+    /* new: a copy of the active profile, which becomes the active one; a taken name is refused */
+    CHECK_INT(lf_profile_new(&io, "copy", &failed), LF_SET_OK);
+    CHECK_STR(lf_profile(), "copy");
+    upconf_parse(&c, mf_get(&m, UA), (long)strlen(mf_get(&m, UA)));
+    for (k = 0; k < 4; k++)
+        CHECK_STR(upconf_str(&c, "copy", wkeys[k], "<absent>"), wvals[k]);
+    CHECK_INT(lf_profile_new(&io, "LAB", &failed), LF_SET_EXISTS);
+    CHECK_INT(lf_profile_new(&io, "  ", &failed), LF_SET_INVALID);
+    CHECK_INT(lf_profile_names(&io, names, sizeof names), 3);
+
+    /* delete: gone from both files; deleting the active one hands over to the first profile left */
+    CHECK_INT(lf_profile_delete(&io, "copy", &failed), LF_SET_OK);
+    CHECK_STR(lf_profile(), "default");
+    CHECK(strstr(mf_get(&m, UP), "copy") == 0);
+    CHECK_INT(lf_profile_delete(&io, "copy", &failed), LF_SET_MISSING);
+    CHECK_INT(lf_profile_delete(&io, "lab", &failed), LF_SET_OK);
+    CHECK_INT(lf_profile_delete(&io, "default", &failed), LF_SET_LAST);
+    CHECK_INT(lf_profile_names(&io, names, sizeof names), 1);
+
+    /* themes: new holds the active profile's colours; apply, rename, delete */
+    mf_put(&m, UP, file);
+    mf_put(&m, UA, file);
+    CHECK_INT(lf_profile_use(&io, "work"), LF_SET_OK);
+    CHECK_INT(lf_theme_names(&io, names, sizeof names), 0);
+    CHECK_INT(lf_theme_new(&io, "Sunset", &failed), LF_SET_OK);
+    CHECK_INT(lf_theme_new(&io, "Sunset", &failed), LF_SET_EXISTS);
+    CHECK_INT(lf_theme_new(&io, "a/b", &failed), LF_SET_INVALID);
+    CHECK_INT(lf_theme_names(&io, names, sizeof names), 1);
+    CHECK_STR(names, "Sunset");
+    CHECK(strstr(mf_get(&m, "ENVARC:up-term/themes/Sunset.conf"), "ff8800") != 0);
+    CHECK(strstr(mf_get(&m, "ENVARC:up-term/themes/Sunset.conf"), "scrollback") == 0);   /* colours only */
+    CHECK_STR(mf_get(&m, "ENV:up-term/themes/Sunset.conf"), mf_get(&m, "ENVARC:up-term/themes/Sunset.conf"));
+    CHECK_INT(lf_theme_rename(&io, "Sunset", "Dusk", &failed), LF_SET_OK);
+    CHECK_INT(lf_theme_names(&io, names, sizeof names), 1);
+    CHECK_STR(names, "Dusk");
+    CHECK_STR(mf_get(&m, "ENV:up-term/themes/Dusk.conf") , mf_get(&m, "ENVARC:up-term/themes/Dusk.conf"));
+    CHECK_INT(lf_theme_rename(&io, "Sunset", "Other", &failed), LF_SET_MISSING);
+    CHECK_INT(lf_profile_use(&io, "default"), LF_SET_OK);
+    CHECK_INT(lf_theme_apply(&io, "Dusk", &failed), LF_SET_OK);
+    upconf_parse(&c, mf_get(&m, UA), (long)strlen(mf_get(&m, UA)));
+    CHECK_STR(upconf_str(&c, "default", "fg", ""), "ff8800");
+    CHECK_STR(upconf_str(&c, "default", "scrollback", ""), "777");      /* the rest of the profile stays */
+    CHECK_INT(lf_theme_apply(&io, "Nothing", &failed), LF_SET_MISSING);
+    CHECK_INT(lf_theme_delete(&io, "Dusk", &failed), LF_SET_OK);
+    CHECK_INT(lf_theme_names(&io, names, sizeof names), 0);
+    CHECK_STR(mf_get(&m, "ENV:up-term/themes/Dusk.conf"), "<absent>");
+    CHECK_INT(lf_theme_delete(&io, "Dusk", &failed), LF_SET_MISSING);
+    CHECK_INT(lf_profile_use(&io, "default"), LF_SET_OK);
+}
+
 void suite_amconf(void)
 {
     test_amconf_parse_defaults();
@@ -662,4 +768,5 @@ void suite_amconf(void)
     test_lf_setting_text();
     test_lf_setting_colour_picker();
     test_lf_setting_asl_pickers();
+    test_lf_profile_and_theme_lists();
 }

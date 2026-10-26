@@ -283,7 +283,7 @@ static int menu_levels(const char *start)
         if (MN_IS_SETTING(&it[i]) || MN_IS_CHOICE(&it[i])) {
             int choice = MN_IS_CHOICE(&it[i]);
             char up[KM_ID * 2];
-            if (!choice && SD_HAS_PICKER(&sd_settings[it[i].ix])) {
+            if (!choice && (SD_HAS_PICKER(&sd_settings[it[i].ix]) || SD_HAS_LIST(&sd_settings[it[i].ix]))) {
                 mn_child_node(node, &it[i], node, sizeof node);   /* the colour list */
                 filter[0] = 0;
                 continue;
@@ -363,6 +363,7 @@ struct IntuitionBase *IntuitionBase;
 int main(int argc, char **argv)
 {
     int rc;
+    lf_init();
     if (qmark_argv(argc, argv)) { /* `amarchy-menu ?` shows the usage and ends */
         fputs("usage: amarchy-menu menu [node] | viewer\n", stdout);
         return 0;
