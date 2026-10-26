@@ -203,11 +203,12 @@ static int own_open(struct vo_engine *e, const char *spec)
     return 0;
 }
 
-/* The TrueType file of the font `name`: FONTS:<name>.otag (ttfinstall's, for ttf.library) when its OT_Spec1
- * names a file, else FONTS:<name>.ttf itself. The .otag's engine is not opened: render/ttf.c draws every
- * TrueType font. Into spec (n bytes), a path own_open takes; 1 when that file opens, else 0. Shared with the
- * programs that draw TrueType text in windows of their own (amarchy/menu_text.c). */
-int vo_ttf_spec(const char *name, char *spec, int n)
+/* The candidate TrueType files of the font `name`, tried in order by the caller (own_open here, the file read in
+ * amarchy/menu_text.c): which 0 is the OT_Spec1 of FONTS:<name>.otag (ttfinstall's, for ttf.library), which 1 is
+ * FONTS:<name>.ttf itself. The .otag's engine is not opened: render/ttf.c draws every TrueType font. Into spec
+ * (n bytes); 1 when the candidate exists as a string, else 0. Whether the file opens and is TrueType is the
+ * caller's to decide, so a spec that is no TrueType still falls through to the .ttf. */
+int vo_ttf_spec(const char *name, int which, char *spec, int n)
 {
     char path[96];
     UBYTE *otag;
@@ -224,6 +225,13 @@ int vo_ttf_spec(const char *name, char *spec, int n)
     if (m > 5 && (!strcmp(path + m - 5, ".font") || !strcmp(path + m - 5, ".otag")))
         path[m - 5] = 0;
     m = (int)strlen(path);
+    if (which) {
+        strcat(path, ".ttf");
+        if (strlen(path) >= (size_t)n)
+            return 0;
+        strcpy(spec, path);
+        return 1;
+    }
     strcat(path, ".otag");
     if ((f = Open((STRPTR)path, MODE_OLDFILE)) != 0) {
         if ((fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0)) != 0) {
@@ -242,39 +250,16 @@ int vo_ttf_spec(const char *name, char *spec, int n)
         }
         Close(f);
     }
-    if (ok) {
-        BPTR t = Open((STRPTR)spec, MODE_OLDFILE); /* a spec without a volume is in FONTS: */
-        char full[128];
-        if (!t && !strchr(spec, ':') && strlen(spec) < sizeof(full) - 7) {
-            strcpy(full, "FONTS:");
-            strcat(full, spec);
-            t = Open((STRPTR)full, MODE_OLDFILE);
-        }
-        if (t)
-            Close(t);
-        else
-            ok = 0;
-    }
-    if (!ok) {
-        path[m] = 0;
-        strcat(path, ".ttf");
-        if (strlen(path) >= (size_t)n)
-            return 0;
-        {
-            BPTR t = Open((STRPTR)path, MODE_OLDFILE);
-            if (!t)
-                return 0;
-            Close(t);
-        }
-        strcpy(spec, path);
-    }
-    return 1;
+    return ok;
 }
 
 static int engine_open(struct vo_engine *e, const char *name)
 {
     char spec[128];
-    if (!vo_ttf_spec(name, spec, sizeof(spec)) || !own_open(e, spec))
+    int which, ok = 0;
+    for (which = 0; which < 2 && !ok; which++)
+        ok = vo_ttf_spec(name, which, spec, sizeof(spec)) && own_open(e, spec);
+    if (!ok)
         return 0;
     calibrate(e);
     return 1;

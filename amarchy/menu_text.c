@@ -158,14 +158,13 @@ static int bm_advance(void *u, unsigned long cp)
     return (int)TextLength(m->measure_rp, &ch, 1);
 }
 
-static int mt_open_ttf(menu_text *m, const char *name, int px)
+/* one candidate file spec of the font (a path without a volume is in FONTS:); 0 when it is missing or no TrueType */
+static int mt_open_ttf_spec(menu_text *m, const char *spec, int px)
 {
-    char spec[128], full[160];
+    char full[160];
     UBYTE head[4];
     ttf_io io;
     mtc_src src;
-    if (!vo_ttf_spec(name, spec, sizeof spec))
-        return 0;
     if (!strchr(spec, ':')) {
         strcpy(full, "FONTS:");
         strcat(full, spec);
@@ -193,6 +192,18 @@ static int mt_open_ttf(menu_text *m, const char *name, int px)
     }
     Close(m->fh);
     m->fh = 0;
+    return 0;
+}
+
+/* the terminal's lookup (render/outline.c engine_open): the .otag's spec, and when that is missing or no TrueType
+ * the FONTS:<name>.ttf */
+static int mt_open_ttf(menu_text *m, const char *name, int px)
+{
+    char spec[128];
+    int which;
+    for (which = 0; which < 2; which++)
+        if (vo_ttf_spec(name, which, spec, sizeof spec) && mt_open_ttf_spec(m, spec, px))
+            return 1;
     return 0;
 }
 
