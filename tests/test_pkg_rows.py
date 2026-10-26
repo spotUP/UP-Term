@@ -155,7 +155,7 @@ class Replace(unittest.TestCase):
                 new = (pathlib.Path(d) / n).read_text().splitlines(keepends=True)
                 keep = lambda ls: [l for l in ls if l.split()[:1] != ['bitchx']]
                 self.assertEqual(keep(new), keep(old), n)
-                self.assertEqual(len(new) - len(old), 0 if n == 'dist/packages.txt' else 0, n)
+                self.assertEqual(len(new), len(old), n)
             self.assertIn('bitchx  bin/BitchX2', ''.join((pathlib.Path(d) / 'dist/slim.txt').read_text()))
             self.assertNotIn('bitchx  bin/BitchX\n', (pathlib.Path(d) / 'dist/slim.txt').read_text())
 
