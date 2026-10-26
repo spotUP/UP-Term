@@ -8,6 +8,7 @@
 #include "../prefs/prefs_core.h"
 #include "../handler/kcmode.h"
 #include "../prefs/prefs_ui.h"
+#include "../prefs/settings_def.h"
 #include "harness.h"
 #include "memfs.h"
 
@@ -1044,7 +1045,7 @@ static void check_layout(const pl_result *r, int page, const pl_font *f)
         /* a check box's label to its right fits too */
         if (a->kind == PGK_CHECK) {
             char plain[80];
-            pg_plain_label(a->label, plain, sizeof(plain));
+            pg_plain_label(pg_label(a), plain, sizeof(plain));
             CHECK(ba.x + ba.w + 6 + (r->fallback ? tw_fixed(0, plain) : f->text_w(f->ctx, plain)) <= r->inner_w);
         }
         for (j = i + 1; j < pg_nitems; j++) {
@@ -1145,6 +1146,45 @@ static void the_window_fits_an_ntsc_and_a_pal_workbench(void)
     free(r);
 }
 
+/* PT3: the label, the help and the cycle choices of a setting's main control are the settings table's; pg_items
+ * holds no copy. The layout cases above, run on the table's text, are the proof the window did not change. */
+static void labels_help_and_choices_come_from_the_table(void)
+{
+    int i, n, rows = 0;
+    const char *out[8];
+    for (i = 0; i < sd_nsettings; i++) {
+        const sd_setting *s = &sd_settings[i];
+        const pg_item *it = pg_find(s->gadget);
+        CHECK(it != 0);
+        if (!it)
+            continue;
+        rows++;
+        /* no second copy in pg_items */
+        CHECK(it->help == 0);
+        if (s->kind != SD_PALETTE) {
+            CHECK(it->label == 0);
+            CHECK_STR(pg_label(it), s->label);
+        }
+        CHECK_STR(pg_help(it), s->help);
+        if (s->kind == SD_CYCLE) {
+            CHECK_INT(pg_cycle_texts(s->gadget, out, 8), s->nvalues);
+            for (n = 0; n < s->nvalues; n++)
+                CHECK(out[n] == s->values[n].text);
+            CHECK(out[s->nvalues] == 0);
+            CHECK_INT(pg_cycle_texts(s->gadget, out, s->nvalues), 0);  /* no room for the end mark */
+        } else {
+            CHECK_INT(pg_cycle_texts(s->gadget, out, 8), 0);
+        }
+    }
+    CHECK_INT(rows, sd_nsettings);
+    /* the page switch is no row of the table: its own text stays */
+    CHECK(pg_label(pg_find(PG_PAGE)) != 0);
+    CHECK_INT(pg_cycle_texts(PG_PAGE, out, 8), 0);
+    /* a second control of a row keeps its own help */
+    CHECK_STR(pg_help(pg_find(PG_FG_HEX)), "The text colour as six hex digits, RRGGBB.");
+    CHECK_STR(pg_label(pg_find(PG_SCROLLBACK_NONE)), "N_o scrollback");
+}
+
 /* ---- PX13, PX14: help lines and shortcuts ------------------------------------------ */
 
 static void every_gadget_has_help_and_a_unique_shortcut(void)
@@ -1152,13 +1192,13 @@ static void every_gadget_has_help_and_a_unique_shortcut(void)
     int i, j, page;
     for (i = 0; i < pg_nitems; i++) {
         const pg_item *it = &pg_items[i];
-        CHECK(it->help != 0 && it->help[0] != 0);
+        CHECK(pg_help(it) != 0 && pg_help(it)[0] != 0);
         /* the status row is 618 pixels of topaz 8: 77 letters */
-        CHECK(it->help == 0 || strlen(it->help) <= 76);
+        CHECK(pg_help(it) == 0 || strlen(pg_help(it)) <= 76);
         for (j = i + 1; j < pg_nitems; j++)
             CHECK(pg_items[j].id != it->id);
         CHECK(pg_find(it->id) == it);
-        CHECK(it->kind != PGK_CHECK || it->label != 0);
+        CHECK(it->kind != PGK_CHECK || pg_label(it) != 0);
     }
     CHECK(pg_find(9999) == 0);
     /* a cycle gadget is as wide as its longest label: a 26 pixel arrow-only
@@ -1388,6 +1428,7 @@ void suite_prefs(void)
     wheel_colours_round_trip_within_one_step();
     the_window_fits_an_ntsc_and_a_pal_workbench();
     every_label_ends_gap_label_before_its_control();
+    labels_help_and_choices_come_from_the_table();
     every_gadget_has_help_and_a_unique_shortcut();
     kingcon_style_letters_round_trip_through_the_handlers_function();
     colour_fields_are_validated_strictly_and_named();

@@ -69,8 +69,8 @@ typedef struct pg_item {
     int id;
     int page;          /* PG_PAGE_* or PG_COMMON */
     int kind;          /* PGK_* */
-    const char *label; /* the text; "_" before the shortcut letter; 0: none */
-    const char *help;  /* one line for the status row */
+    const char *label; /* the text; "_" before the shortcut letter; 0: none, or the settings row's (pg_label) */
+    const char *help;  /* one line for the status row; 0: the settings row's (pg_help) */
     int row, col;      /* the grid: row 0.., slot 0..PG_COLS-1 */
     int chars;         /* the control's width in characters (string, text, cycle, integer) */
     int disabled;      /* PGD_* */
@@ -86,6 +86,12 @@ extern const int pg_nitems;
 const pg_item *pg_find(int id);
 /* the label the gadget shows: the table's, or a palette entry's ANSI name */
 const char *pg_label(const pg_item *it);
+/* the one-line help of the gadget: pg_items' own (hex fields, buttons), else its settings row's */
+const char *pg_help(const pg_item *it);
+/* The choices of the cycle gadget id as display text, from its settings row's values, ended by a null
+ * (out has room for cap pointers): the count, 0 when the id is no cycle of the table (the page switch, the
+ * profile). */
+int pg_cycle_texts(int id, const char **out, int cap);
 
 /* "_Font" -> 'f' (lower case), 0 when the label has no shortcut */
 int pg_shortcut(const char *label);

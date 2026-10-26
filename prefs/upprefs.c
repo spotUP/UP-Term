@@ -63,6 +63,7 @@
 #include "../config/upconf.h"
 #include "prefs_core.h"
 #include "prefs_ui.h"
+#include "settings_def.h"
 #include "prefs_asl.h"
 #include "../tty/qmark.h"
 #include "prefs_dos.h"
@@ -140,24 +141,6 @@ static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFON
 
 static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", (STRPTR)"Palette",
                                 (STRPTR)"Keyboard", (STRPTR)"Advanced", (STRPTR)"Amarchy", 0 };
-static STRPTR cursor_labels[] = { (STRPTR)"Block", (STRPTR)"Underline", (STRPTR)"Bar", 0 };
-static STRPTR bell_labels[] = { (STRPTR)"None", (STRPTR)"Beep", (STRPTR)"Visual", 0 };
-static STRPTR icons_labels[] = { (STRPTR)"Generic", (STRPTR)"Amiga", (STRPTR)"None", 0 };
-static STRPTR termmenu_labels[] = { (STRPTR)"Text", (STRPTR)"Graphical", 0 };
-static STRPTR mode_labels[] = { (STRPTR)"Drawn", (STRPTR)"Text", (STRPTR)"Minimal", 0 };
-static STRPTR meta_labels[] = { (STRPTR)"Left Amiga", (STRPTR)"Alt", 0 };
-static STRPTR complete_labels[] = { (STRPTR)"Unix", (STRPTR)"KingCON", 0 };
-/* in the order of PREFS_KC_*, PREFS_SCREEN_*, PREFS_CLIP_* */
-static STRPTR kcmatch_labels[] = { (STRPTR)"Window", (STRPTR)"List under the line", (STRPTR)"Tab cycles",
-                                   (STRPTR)"List and Tab cycles", (STRPTR)"Common part only", 0 };
-static STRPTR screen_labels[] = { (STRPTR)"Workbench", (STRPTR)"Own screen", (STRPTR)"Full screen", 0 };
-static STRPTR backspace_labels[] = { (STRPTR)"Delete", (STRPTR)"Backspace", 0 };
-static STRPTR clip_labels[] = { (STRPTR)"Set the clipboard", (STRPTR)"Set and read the clipboard",
-                                (STRPTR)"Not use the clipboard", 0 };
-/* in prefs_colors_index order; the Settings menu's Colour mode words */
-static STRPTR colors_labels[] = { (STRPTR)"Not told", (STRPTR)"Full colour (RGB)", (STRPTR)"256 colours",
-                                  (STRPTR)"16 colours", 0 };
-
 /* A taglist from (tag, data) pairs, ended by TAG_DONE: t has room for them.
  * (A compound literal: vbcc warns about va_start, and the values are not
  * constants.) */
@@ -242,7 +225,7 @@ static void show_help(struct app *a, int id)
         return;
     a->helped = id;
     it = id ? pg_find(id) : 0;
-    show_line(a, it && it->help ? it->help : a->action);
+    show_line(a, it && pg_help(it) ? pg_help(it) : a->action);
 }
 
 /* ---- the fields <-> the gadgets ------------------------------------------------- */
@@ -339,24 +322,21 @@ static int *int_of(struct app *a, int id)
     }
 }
 
+/* The choices of a cycle: the page switch here, every other cycle from its row of the settings table. */
+#define CYC_MAX 8
+static STRPTR cyc_buf[SDI_COUNT][CYC_MAX];
+
 static STRPTR *labels_of(int id)
 {
-    switch (id) {
-    case PG_PAGE: return page_labels;
-    case PG_CURSOR: return cursor_labels;
-    case PG_BELL: return bell_labels;
-    case PG_AM_ICONS: return icons_labels;
-    case PG_AM_MODE: return mode_labels;
-    case PG_AM_TERMMENU: return termmenu_labels;
-    case PG_META: return meta_labels;
-    case PG_COMPLETE: return complete_labels;
-    case PG_KC_MATCH: return kcmatch_labels;
-    case PG_SCREEN: return screen_labels;
-    case PG_BACKSPACE: return backspace_labels;
-    case PG_CLIPBOARD: return clip_labels;
-    case PG_COLORS: return colors_labels;
-    default: return 0;
-    }
+    const sd_setting *s;
+    if (id == PG_PAGE)
+        return page_labels;
+    s = sd_find_gadget(id);
+    if (!s || s->kind != SD_CYCLE || id != s->gadget)
+        return 0;
+    if (!cyc_buf[s->id][0])
+        pg_cycle_texts(id, (const char **)cyc_buf[s->id], CYC_MAX);
+    return cyc_buf[s->id];
 }
 
 static int count_of(STRPTR *l)

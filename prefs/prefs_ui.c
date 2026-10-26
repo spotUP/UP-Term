@@ -4,8 +4,8 @@
 
 #include "prefs_ui.h"
 #include "prefs_core.h"
+#include "settings_def.h"
 
-#define PAL_SWATCH_HELP "Click to pick this palette colour."
 #define PAL_HEX_HELP "This palette colour as six hex digits, RRGGBB; empty: the built-in."
 
 const pg_item pg_items[] = {
@@ -24,8 +24,8 @@ const pg_item pg_items[] = {
     { PG_CANCEL, PG_COMMON, PGK_BUTTON, "_Cancel",
       "Close without writing anything.",
       PG_ROW_BUTTONS, 2, 0, PGD_NONE },
-    { PG_PROFILE, PG_PAGE_GENERAL, PGK_CYCLE, "_Profile",
-      "The profile being edited; each profile is one set of settings.",
+    { PG_PROFILE, PG_PAGE_GENERAL, PGK_CYCLE, NULL,
+      NULL,
       0, 0, 12, PGD_NONE },
     { PG_PROFILE_NEW, PG_PAGE_GENERAL, PGK_BUTTON, "_New...",
       "Start a new profile with the built-in values.",
@@ -36,8 +36,8 @@ const pg_item pg_items[] = {
     { PG_PROFILE_DELETE, PG_PAGE_GENERAL, PGK_BUTTON, "_Delete",
       "Remove this profile from the file (asks first).",
       0, 3, 0, PGD_NONE },
-    { PG_FONT, PG_PAGE_GENERAL, PGK_TEXT, "Fon_t",
-      "The window font; empty: the screen's font. Click to choose.",
+    { PG_FONT, PG_PAGE_GENERAL, PGK_TEXT, NULL,
+      NULL,
       1, 0, 14, PGD_NONE },
     { PG_FONT_CHOOSE, PG_PAGE_GENERAL, PGK_BUTTON, "Choose...",
       "Choose a fixed-width font in the font requester.",
@@ -45,8 +45,8 @@ const pg_item pg_items[] = {
     { PG_FONT_CLEAR, PG_PAGE_GENERAL, PGK_BUTTON, "Clear",
       "Use the screen's font again.",
       1, 2, 0, PGD_NONE },
-    { PG_FALLBACK, PG_PAGE_GENERAL, PGK_TEXT, "_Fallback font",
-      "Outline font for glyphs the font lacks. Click to choose.",
+    { PG_FALLBACK, PG_PAGE_GENERAL, PGK_TEXT, NULL,
+      NULL,
       2, 0, 14, PGD_NONE },
     { PG_FALLBACK_CHOOSE, PG_PAGE_GENERAL, PGK_BUTTON, "Choose...",
       "Choose an outline font (.otag) from FONTS:.",
@@ -54,20 +54,20 @@ const pg_item pg_items[] = {
     { PG_FALLBACK_CLEAR, PG_PAGE_GENERAL, PGK_BUTTON, "Clear",
       "Use no fallback font.",
       2, 2, 0, PGD_NONE },
-    { PG_SCROLLBACK, PG_PAGE_GENERAL, PGK_INTEGER, "Scrollbac_k",
-      "Lines kept above the window, 1 to 99999 (500 when not set).",
+    { PG_SCROLLBACK, PG_PAGE_GENERAL, PGK_INTEGER, NULL,
+      NULL,
       3, 0, 7, PGD_SCROLLBACK_NONE },
     { PG_SCROLLBACK_NONE, PG_PAGE_GENERAL, PGK_CHECK, "N_o scrollback",
       "Keep no lines above the window.",
       3, 1, 0, PGD_NONE },
-    { PG_CURSOR, PG_PAGE_GENERAL, PGK_CYCLE, "Curso_r",
-      "The shape of the cursor.",
+    { PG_CURSOR, PG_PAGE_GENERAL, PGK_CYCLE, NULL,
+      NULL,
       4, 0, 10, PGD_NONE },
-    { PG_BLINK, PG_PAGE_GENERAL, PGK_CHECK, "Cursor bl_inks",
-      "The cursor blinks.",
+    { PG_BLINK, PG_PAGE_GENERAL, PGK_CHECK, NULL,
+      NULL,
       4, 1, 0, PGD_NONE },
-    { PG_CURSOR_COLOUR, PG_PAGE_GENERAL, PGK_SWATCH, "Cursor co_lour",
-      "The cursor's colour. Click to pick one.",
+    { PG_CURSOR_COLOUR, PG_PAGE_GENERAL, PGK_SWATCH, NULL,
+      NULL,
       5, 0, 0, PGD_CURSOR_INVERSE },
     { PG_CURSOR_COLOUR_HEX, PG_PAGE_GENERAL, PGK_STRING, NULL,
       "The cursor's colour as six hex digits, RRGGBB.",
@@ -75,95 +75,95 @@ const pg_item pg_items[] = {
     { PG_CURSOR_INVERSE, PG_PAGE_GENERAL, PGK_CHECK, "In_verse",
       "The cursor swaps the colours of the cell under it.",
       5, 2, 0, PGD_NONE },
-    { PG_BELL, PG_PAGE_GENERAL, PGK_CYCLE, "_Bell",
-      "What the bell character does.",
+    { PG_BELL, PG_PAGE_GENERAL, PGK_CYCLE, NULL,
+      NULL,
       6, 0, 10, PGD_NONE },
-    { PG_BOLD, PG_PAGE_GENERAL, PGK_CHECK, "Bold is brig_ht",
-      "Bold text uses the bright colours.",
+    { PG_BOLD, PG_PAGE_GENERAL, PGK_CHECK, NULL,
+      NULL,
       6, 1, 0, PGD_NONE },
-    { PG_SCROLLBAR, PG_PAGE_GENERAL, PGK_CHECK, "Scroll b_ar",
-      "Show the scroll bar in the window border.",
+    { PG_SCROLLBAR, PG_PAGE_GENERAL, PGK_CHECK, NULL,
+      NULL,
       7, 1, 0, PGD_NONE },
-    { PG_FG, PG_PAGE_COLORS, PGK_SWATCH, "_Text colour",
-      "The colour of text. Click to pick one.",
+    { PG_FG, PG_PAGE_COLORS, PGK_SWATCH, NULL,
+      NULL,
       0, 0, 0, PGD_NONE },
     { PG_FG_HEX, PG_PAGE_COLORS, PGK_STRING, NULL,
       "The text colour as six hex digits, RRGGBB.",
       0, 1, 8, PGD_NONE },
-    { PG_BG, PG_PAGE_COLORS, PGK_SWATCH, "_Background",
-      "The window's background colour. Click to pick one.",
+    { PG_BG, PG_PAGE_COLORS, PGK_SWATCH, NULL,
+      NULL,
       0, 2, 0, PGD_NONE },
     { PG_BG_HEX, PG_PAGE_COLORS, PGK_STRING, NULL,
       "The background colour as six hex digits, RRGGBB.",
       0, 3, 8, PGD_NONE },
-    { PG_SELFG, PG_PAGE_COLORS, PGK_SWATCH, "Selected te_xt",
-      "The colour of selected text; empty swaps the colours. Click to pick one.",
+    { PG_SELFG, PG_PAGE_COLORS, PGK_SWATCH, NULL,
+      NULL,
       1, 0, 0, PGD_NONE },
     { PG_SELFG_HEX, PG_PAGE_COLORS, PGK_STRING, NULL,
       "The selected text colour as six hex digits, RRGGBB.",
       1, 1, 8, PGD_NONE },
-    { PG_SELBG, PG_PAGE_COLORS, PGK_SWATCH, "Se_lection",
-      "The colour behind selected text; empty swaps the colours. Click to pick one.",
+    { PG_SELBG, PG_PAGE_COLORS, PGK_SWATCH, NULL,
+      NULL,
       1, 2, 0, PGD_NONE },
     { PG_SELBG_HEX, PG_PAGE_COLORS, PGK_STRING, NULL,
       "The selection colour as six hex digits, RRGGBB.",
       1, 3, 8, PGD_NONE },
-    { PG_THEME, PG_PAGE_COLORS, PGK_BUTTON, "T_heme...",
-      "Take the colours of a theme file.",
+    { PG_THEME, PG_PAGE_COLORS, PGK_BUTTON, NULL,
+      NULL,
       2, 0, 0, PGD_NONE },
-    { PG_DITHER, PG_PAGE_COLORS, PGK_CHECK, "_Dither on few colours",
-      "On a screen of few colours, mix two colours for one that is missing.",
+    { PG_DITHER, PG_PAGE_COLORS, PGK_CHECK, NULL,
+      NULL,
       3, 0, 0, PGD_NONE },
-    { PG_OUTLINE_AA, PG_PAGE_COLORS, PGK_CHECK, "_Antialias outline glyphs",
-      "Fallback font glyphs get soft edges in shades between text and background.",
+    { PG_OUTLINE_AA, PG_PAGE_COLORS, PGK_CHECK, NULL,
+      NULL,
       7, 0, 0, PGD_NONE },
-    { PG_PADDING, PG_PAGE_COLORS, PGK_CHECK, "Padding _extends edges",
-      "The strips beside the text take the colour of the edge cells.",
+    { PG_PADDING, PG_PAGE_COLORS, PGK_CHECK, NULL,
+      NULL,
       4, 0, 0, PGD_NONE },
-    { PG_TERM, PG_PAGE_COLORS, PGK_STRING, "Ter_minal type",
-      "TERM for programs vsh starts; empty: vtcon. /term sets it for one window.",
+    { PG_TERM, PG_PAGE_COLORS, PGK_STRING, NULL,
+      NULL,
       5, 0, 20, PGD_NONE },
-    { PG_COLORS, PG_PAGE_COLORS, PGK_CYCLE, "Colour m_ode",
-      "The colours programs are told they have. /colors sets it for one window.",
+    { PG_COLORS, PG_PAGE_COLORS, PGK_CYCLE, NULL,
+      NULL,
       6, 0, 19, PGD_NONE },
-    { PG_META, PG_PAGE_KEYBOARD, PGK_CYCLE, "Meta ke_y",
-      "Which key acts as Meta.",
+    { PG_META, PG_PAGE_KEYBOARD, PGK_CYCLE, NULL,
+      NULL,
       0, 0, 12, PGD_NONE },
-    { PG_AMIGAKEYS, PG_PAGE_KEYBOARD, PGK_CHECK, "AmigaShell _keys",
-      "Shift with Left and Right sends Home and End.",
+    { PG_AMIGAKEYS, PG_PAGE_KEYBOARD, PGK_CHECK, NULL,
+      NULL,
       0, 1, 0, PGD_NONE },
-    { PG_BACKSPACE, PG_PAGE_KEYBOARD, PGK_CYCLE, "_Backspace key sends",
-      "What the Backspace key sends to programs.",
+    { PG_BACKSPACE, PG_PAGE_KEYBOARD, PGK_CYCLE, NULL,
+      NULL,
       1, 0, 10, PGD_NONE },
-    { PG_COMPLETE, PG_PAGE_KEYBOARD, PGK_CYCLE, "_Tab completion",
-      "How the Tab key completes names.",
+    { PG_COMPLETE, PG_PAGE_KEYBOARD, PGK_CYCLE, NULL,
+      NULL,
       2, 0, 10, PGD_NONE },
-    { PG_KC_MATCH, PG_PAGE_KEYBOARD, PGK_CYCLE, "Wh_en several names match",
-      "What Tab does when several names match (KingCON completion).",
+    { PG_KC_MATCH, PG_PAGE_KEYBOARD, PGK_CYCLE, NULL,
+      NULL,
       3, 0, 19, PGD_NOT_KINGCON },
-    { PG_KC_COMMON, PG_PAGE_KEYBOARD, PGK_CHECK, "Complete the co_mmon part first",
-      "Tab first completes what all matching names share.",
+    { PG_KC_COMMON, PG_PAGE_KEYBOARD, PGK_CHECK, NULL,
+      NULL,
       4, 0, 0, PGD_NOT_KINGCON },
-    { PG_KC_SILENT, PG_PAGE_KEYBOARD, PGK_CHECK, "No bee_ps",
-      "KingCON completion never beeps.",
+    { PG_KC_SILENT, PG_PAGE_KEYBOARD, PGK_CHECK, NULL,
+      NULL,
       4, 1, 0, PGD_NOT_KINGCON },
-    { PG_KC_INFO, PG_PAGE_KEYBOARD, PGK_CHECK, ".info in _lists",
-      "KingCON lists show .info files too.",
+    { PG_KC_INFO, PG_PAGE_KEYBOARD, PGK_CHECK, NULL,
+      NULL,
       5, 0, 0, PGD_NOT_KINGCON },
-    { PG_KC_CACHE, PG_PAGE_KEYBOARD, PGK_CHECK, "_Directory cache",
-      "KingCON keeps directory listings for the next Tab.",
+    { PG_KC_CACHE, PG_PAGE_KEYBOARD, PGK_CHECK, NULL,
+      NULL,
       5, 1, 0, PGD_NOT_KINGCON },
-    { PG_COPY, PG_PAGE_KEYBOARD, PGK_CHECK, "C_opy on select",
-      "Selecting text copies it to the clipboard.",
+    { PG_COPY, PG_PAGE_KEYBOARD, PGK_CHECK, NULL,
+      NULL,
       6, 0, 0, PGD_NONE },
-    { PG_WHEEL, PG_PAGE_KEYBOARD, PGK_CHECK, "_Wheel scrolls",
-      "The mouse wheel scrolls the window.",
+    { PG_WHEEL, PG_PAGE_KEYBOARD, PGK_CHECK, NULL,
+      NULL,
       6, 1, 0, PGD_NONE },
-    { PG_SCREEN, PG_PAGE_ADVANCED, PGK_CYCLE, "Scree_n",
-      "Open on the Workbench, on a screen of its own, or on the whole screen.",
+    { PG_SCREEN, PG_PAGE_ADVANCED, PGK_CYCLE, NULL,
+      NULL,
       0, 0, 12, PGD_NONE },
-    { PG_SCREEN_MODE, PG_PAGE_ADVANCED, PGK_TEXT, "Screen _mode",
-      "The display mode and depth of an own screen. Click to choose.",
+    { PG_SCREEN_MODE, PG_PAGE_ADVANCED, PGK_TEXT, NULL,
+      NULL,
       1, 0, 28, PGD_NOT_OWN_SCREEN },
     { PG_SCREEN_CHOOSE, PG_PAGE_ADVANCED, PGK_BUTTON, "Choose...",
       "Choose the display mode and depth in the screen mode requester.",
@@ -171,47 +171,47 @@ const pg_item pg_items[] = {
     { PG_SCREEN_WORKBENCH, PG_PAGE_ADVANCED, PGK_BUTTON, "Use Workbench's",
       "Use the Workbench's display mode and depth.",
       1, 2, 0, PGD_NOT_OWN_SCREEN },
-    { PG_ASPECT, PG_PAGE_ADVANCED, PGK_CHECK, "Font follows screen _aspect",
-      "Swap the font for its pair that keeps its shape on this screen.",
+    { PG_ASPECT, PG_PAGE_ADVANCED, PGK_CHECK, NULL,
+      NULL,
       2, 0, 0, PGD_NONE },
-    { PG_CLIPBOARD, PG_PAGE_ADVANCED, PGK_CYCLE, "_Programs may",
-      "What programs may do with the clipboard (OSC 52).",
+    { PG_CLIPBOARD, PG_PAGE_ADVANCED, PGK_CYCLE, NULL,
+      NULL,
       3, 0, 26, PGD_NONE },
-    { PG_HLCAT, PG_PAGE_ADVANCED, PGK_CHECK, "_Highlight files shown with cat",
-      "vsh's cat colours the file through hl.",
+    { PG_HLCAT, PG_PAGE_ADVANCED, PGK_CHECK, NULL,
+      NULL,
       4, 0, 0, PGD_NONE },
-    { PG_REFLOW, PG_PAGE_ADVANCED, PGK_CHECK, "_Reflow on resize",
-      "Re-wrap the lines when the window changes size.",
+    { PG_REFLOW, PG_PAGE_ADVANCED, PGK_CHECK, NULL,
+      NULL,
       5, 0, 0, PGD_NONE },
-    { PG_LINK, PG_PAGE_ADVANCED, PGK_STRING, "_Link command",
-      "The command a Ctrl-clicked link runs; %s is the address.",
+    { PG_LINK, PG_PAGE_ADVANCED, PGK_STRING, NULL,
+      NULL,
       6, 0, 32, PGD_NONE },
     { PG_LINK_DEFAULT, PG_PAGE_ADVANCED, PGK_BUTTON, "Default",
       "Use OpenURL for links.",
       6, 1, 0, PGD_NONE },
-    { PG_AM_MUSIC, PG_PAGE_AMARCHY, PGK_STRING, "_Music drawers",
-      "More drawers, comma separated, listed under Music in the Amarchy menu.",
+    { PG_AM_MUSIC, PG_PAGE_AMARCHY, PGK_STRING, NULL,
+      NULL,
       0, 0, 32, PGD_NONE },
-    { PG_AM_DEMO, PG_PAGE_AMARCHY, PGK_STRING, "_Demo drawers",
-      "More drawers, comma separated, listed under Demos in the Amarchy menu.",
+    { PG_AM_DEMO, PG_PAGE_AMARCHY, PGK_STRING, NULL,
+      NULL,
       1, 0, 32, PGD_NONE },
-    { PG_AM_HIDE, PG_PAGE_AMARCHY, PGK_STRING, "_Hidden drawers",
-      "Drawers, comma separated, the Amarchy menu leaves out of its lists.",
+    { PG_AM_HIDE, PG_PAGE_AMARCHY, PGK_STRING, NULL,
+      NULL,
       2, 0, 32, PGD_NONE },
-    { PG_AM_ICONS, PG_PAGE_AMARCHY, PGK_CYCLE, "App _icons",
-      "Generic: drawn glyphs. Amiga: .info icons of apps and games. None: no icons.",
+    { PG_AM_ICONS, PG_PAGE_AMARCHY, PGK_CYCLE, NULL,
+      NULL,
       3, 0, 7, PGD_NONE },
-    { PG_AM_MODE, PG_PAGE_AMARCHY, PGK_CYCLE, "Menu mod_e",
-      "Drawn: icons, border. Text: terminal menu. Minimal: text only, two colours.",
+    { PG_AM_MODE, PG_PAGE_AMARCHY, PGK_CYCLE, NULL,
+      NULL,
       5, 0, 7, PGD_NONE },
-    { PG_AM_TERMMENU, PG_PAGE_AMARCHY, PGK_CYCLE, "Menu in _terminal",
-      "Menu over a UP-Term window: Text or Graphical. Full screen: always Text.",
+    { PG_AM_TERMMENU, PG_PAGE_AMARCHY, PGK_CYCLE, NULL,
+      NULL,
       6, 0, 9, PGD_NONE },
-    { PG_AM_GTHEME, PG_PAGE_AMARCHY, PGK_STRING, "Me_nu theme",
-      "Colours of the drawn menu: a theme name from Amarchy/Themes.",
+    { PG_AM_GTHEME, PG_PAGE_AMARCHY, PGK_STRING, NULL,
+      NULL,
       7, 0, 16, PGD_NONE },
-    { PG_AM_FONT, PG_PAGE_AMARCHY, PGK_TEXT, "Menu _font",
-      "The Amarchy menu font; empty: the built-in choice. Click to choose.",
+    { PG_AM_FONT, PG_PAGE_AMARCHY, PGK_TEXT, NULL,
+      NULL,
       4, 0, 14, PGD_NONE },
     { PG_AM_FONT_CHOOSE, PG_PAGE_AMARCHY, PGK_BUTTON, "Choose...",
       "Choose a fixed-width font for the Amarchy menu in the font requester.",
@@ -219,37 +219,37 @@ const pg_item pg_items[] = {
     { PG_AM_FONT_CLEAR, PG_PAGE_AMARCHY, PGK_BUTTON, "Clear",
       "Use the built-in menu font again.",
       4, 2, 0, PGD_NONE },
-    { PG_PAL + 0, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 0, 0, 0, PGD_NONE },
+    { PG_PAL + 0, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 0, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 0, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 0, 1, 8, PGD_NONE },
-    { PG_PAL + 1, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 1, 0, 0, PGD_NONE },
+    { PG_PAL + 1, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 1, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 1, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 1, 1, 8, PGD_NONE },
-    { PG_PAL + 2, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 2, 0, 0, PGD_NONE },
+    { PG_PAL + 2, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 2, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 2, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 2, 1, 8, PGD_NONE },
-    { PG_PAL + 3, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 3, 0, 0, PGD_NONE },
+    { PG_PAL + 3, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 3, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 3, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 3, 1, 8, PGD_NONE },
-    { PG_PAL + 4, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 4, 0, 0, PGD_NONE },
+    { PG_PAL + 4, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 4, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 4, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 4, 1, 8, PGD_NONE },
-    { PG_PAL + 5, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 5, 0, 0, PGD_NONE },
+    { PG_PAL + 5, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 5, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 5, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 5, 1, 8, PGD_NONE },
-    { PG_PAL + 6, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 6, 0, 0, PGD_NONE },
+    { PG_PAL + 6, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 6, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 6, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 6, 1, 8, PGD_NONE },
-    { PG_PAL + 7, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 7, 0, 0, PGD_NONE },
+    { PG_PAL + 7, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 7, 0, 0, PGD_NONE },
     { PG_PAL_HEX + 7, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 7, 1, 8, PGD_NONE },
-    { PG_PAL + 8, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 0, 2, 0, PGD_NONE },
+    { PG_PAL + 8, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 0, 2, 0, PGD_NONE },
     { PG_PAL_HEX + 8, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 0, 3, 8, PGD_NONE },
-    { PG_PAL + 9, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 1, 2, 0, PGD_NONE },
+    { PG_PAL + 9, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 1, 2, 0, PGD_NONE },
     { PG_PAL_HEX + 9, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 1, 3, 8, PGD_NONE },
-    { PG_PAL + 10, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 2, 2, 0, PGD_NONE },
+    { PG_PAL + 10, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 2, 2, 0, PGD_NONE },
     { PG_PAL_HEX + 10, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 2, 3, 8, PGD_NONE },
-    { PG_PAL + 11, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 3, 2, 0, PGD_NONE },
+    { PG_PAL + 11, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 3, 2, 0, PGD_NONE },
     { PG_PAL_HEX + 11, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 3, 3, 8, PGD_NONE },
-    { PG_PAL + 12, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 4, 2, 0, PGD_NONE },
+    { PG_PAL + 12, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 4, 2, 0, PGD_NONE },
     { PG_PAL_HEX + 12, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 4, 3, 8, PGD_NONE },
-    { PG_PAL + 13, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 5, 2, 0, PGD_NONE },
+    { PG_PAL + 13, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 5, 2, 0, PGD_NONE },
     { PG_PAL_HEX + 13, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 5, 3, 8, PGD_NONE },
-    { PG_PAL + 14, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 6, 2, 0, PGD_NONE },
+    { PG_PAL + 14, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 6, 2, 0, PGD_NONE },
     { PG_PAL_HEX + 14, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 6, 3, 8, PGD_NONE },
-    { PG_PAL + 15, PG_PAGE_PALETTE, PGK_SWATCH, NULL, PAL_SWATCH_HELP, 7, 2, 0, PGD_NONE },
+    { PG_PAL + 15, PG_PAGE_PALETTE, PGK_SWATCH, NULL, NULL, 7, 2, 0, PGD_NONE },
     { PG_PAL_HEX + 15, PG_PAGE_PALETTE, PGK_STRING, NULL, PAL_HEX_HELP, 7, 3, 8, PGD_NONE },
 };
 const int pg_nitems = (int)(sizeof(pg_items) / sizeof(pg_items[0]));
@@ -263,11 +263,44 @@ const pg_item *pg_find(int id)
     return NULL;
 }
 
+/* The table row a gadget is the main control of (not its hex field or second check): the row owns the
+ * gadget's label and help, so pg_items holds neither for it. */
+static const sd_setting *row_of(const pg_item *it)
+{
+    const sd_setting *s = sd_find_gadget(it->id);
+    return s && it->id >= s->gadget && it->id < s->gadget + s->count ? s : NULL;
+}
+
 const char *pg_label(const pg_item *it)
 {
+    const sd_setting *s;
     if (it->id >= PG_PAL && it->id < PG_PAL + 16)
         return prefs_pal_name(it->id - PG_PAL);
-    return it->label;
+    if (it->label)
+        return it->label;
+    s = row_of(it);
+    return s ? s->label : NULL;
+}
+
+const char *pg_help(const pg_item *it)
+{
+    const sd_setting *s;
+    if (it->help)
+        return it->help;
+    s = row_of(it);
+    return s ? s->help : NULL;
+}
+
+int pg_cycle_texts(int id, const char **out, int cap)
+{
+    const sd_setting *s = sd_find_gadget(id);
+    int i;
+    if (!s || s->kind != SD_CYCLE || id != s->gadget || s->nvalues + 1 > cap)
+        return 0;
+    for (i = 0; i < s->nvalues; i++)
+        out[i] = s->values[i].text;
+    out[i] = NULL;
+    return i;
 }
 
 int pg_shortcut(const char *label)
@@ -344,9 +377,9 @@ static int left_label_w(const pl_font *f, const pg_item *it)
 /* the label right of a check box */
 static int right_label_w(const pl_font *f, const pg_item *it)
 {
-    if (it->kind != PGK_CHECK || !it->label)
+    if (it->kind != PGK_CHECK || !pg_label(it))
         return 0;
-    return GAP_LABEL + plain_w(f, it->label);
+    return GAP_LABEL + plain_w(f, pg_label(it));
 }
 
 static int ctl_w(const pl_font *f, const pg_item *it)
@@ -359,7 +392,7 @@ static int ctl_w(const pl_font *f, const pg_item *it)
     case PGK_CYCLE:
         return it->chars * f->w + CYCLE_PAD;
     case PGK_BUTTON:
-        return plain_w(f, it->label) + BUTTON_PAD;
+        return plain_w(f, pg_label(it)) + BUTTON_PAD;
     case PGK_CHECK:
         return CHECK_W;
     default:

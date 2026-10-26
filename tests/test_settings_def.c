@@ -44,7 +44,7 @@ static void test_settings_gadgets(void)
             continue;
         ctl++;
         if (claims(p->id) != 1)
-            printf("pg_items id %d (%s) claimed %d times\n", p->id, p->label ? p->label : "-", claims(p->id));
+            printf("pg_items id %d (%s) claimed %d times\n", p->id, pg_label(p) ? pg_label(p) : "-", claims(p->id));
         CHECK_INT(claims(p->id), 1);
     }
     /* every control a row names is one pg_items entry, on the row's page */
