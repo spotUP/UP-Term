@@ -1013,6 +1013,149 @@ def r_dopus_present():
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
+THEME_DIR = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'amarchy-themes'
+GT_FIXTURES = {'kbg': ('background', '#103020'), 'kfg': ('foreground', '#e0a0a0'),
+               'kdf': ('dark_foreground', '#20e0e0'), 'kac': ('accent', '#e02080')}
+
+
+def r_gtheme():
+    """GUI-THEME reachability (plan 2026-10-26-amarchy-gui-themes.md, T15/T6/T7/T20): the drawn menu (Left Amiga +
+    Space) takes its pens from the Omarchy GUI theme. Fixtures in ENVARC:Amarchy/themes: nord and gruvbox as shipped, and
+    four copies of nord that change one key each (kbg background, kfg foreground, kdf dark_foreground, kac accent).
+    Sentinel ENV:AMARCHY_THEME (gui.c pens_get) names the theme that drew; it is deleted before every open and read
+    after the menu closes (no Amiga command runs while the menu window is open, so the UI list stays small).
+    T15: the theme is picked through the menu (Style > Theme > <name>, filter typing) and the next open draws it; the
+    terminal window's pixels are the same before and after. T20: each of the four keys shows up as pixels of its colour
+    that the nord baseline does not have. T6: fg/bg keys of the upconf do not reach the drawn menu. T7: minimal style
+    draws the theme's background and foreground."""
+    import collections, amarchy_rig, amarchy_gui_rig as g
+    res = []
+
+    def ck(name, ok, detail=''):
+        res.append(ok)
+        print('  %s %s%s' % ('[OK]' if ok else '[FAIL]', name, (': ' + detail) if detail else ''), flush=True)
+        return ok
+
+    files = {n: (THEME_DIR / (n + '.theme')).read_text() for n in ('nord', 'gruvbox')}
+    for n, (key, val) in GT_FIXTURES.items():
+        files[n] = re.sub(r'^%s = ".*"' % key, '%s = "%s"' % (key, val), files['nord'], flags=re.M)
+
+    def role(n, key):
+        return bytes.fromhex(re.search(r'^%s = "#(\w+)"' % key, files[n], re.M).group(1))
+
+    def window_hist(title):
+        s, w = g.where(title)
+        if not w:
+            return None
+        left, top, ww, hh = g.box_of(s, w)
+        gw, gh, rows = ami.grab((left + 6, top + 6, ww - 12, hh - 12))
+        return collections.Counter(bytes(r[x * 3:x * 3 + 3]) for r in rows for x in range(len(r) // 3))
+
+    def host_hist():
+        titles = [w['title'] for s in g.screens() for w in s['windows'] if 'menuhost' in (w['title'] or '')]
+        return window_hist(titles[0]) if titles else None
+
+    def prefs(theme, style, extra=()):
+        c.run('Echo >%s "[profile default]"' % X9_CONF)
+        c.run('Echo >>%s "amarchy-gui-theme = %s"' % (X9_CONF, theme))
+        c.run('Echo >>%s "menu-style = %s"' % (X9_CONF, style))
+        c.run('Echo >>%s "menu-in-terminal = graphical"' % X9_CONF)   # the click below lands in the host terminal
+        for e in extra:
+            c.run('Echo >>%s "%s"' % (X9_CONF, e))
+        amarchy_rig.arexx('RELOAD')
+
+    def open_drawn():
+        c.run('Delete >NIL: ENV:AMARCHY_THEME ENV:AMARCHY_DRAWS QUIET')
+        ami.click_px(100, 100)
+        time.sleep(0.5)
+        s, w = g.open_menu()
+        time.sleep(2)
+        return bool(w)
+
+    def sentinel():
+        return c.run('GetEnv AMARCHY_THEME')[1].strip()
+
+    def draw(theme, style='graphical', extra=()):
+        # one open: pixels while it is open, sentinels once closed
+        prefs(theme, style, extra)
+        up = open_drawn()
+        h = window_hist(g.TITLE) or collections.Counter()
+        g.close_menu()
+        return up, h, sentinel()
+
+    if not amarchy_rig.port_up():
+        r_start()
+    ensure_terminal()
+    saved, upterm = x9_begin()
+    try:
+        c.run('Echo >ENV:up-term/keymap.user "[menu]"')
+        c.run('MakeDir >NIL: ENVARC:Amarchy ENVARC:Amarchy/themes ENV:Amarchy')
+        for n, t in files.items():
+            f = OUT / ('gtheme_' + n + '.theme')
+            f.write_text(t)
+            ami.put(str(f), 'ENVARC:Amarchy/themes/%s.theme' % n)
+        try:                                   # a fresh commodity reads the fixtures and the assign
+            amarchy_rig.arexx('QUIT')
+        except Exception:
+            pass
+        time.sleep(2)
+        r_start()
+        time.sleep(3)
+        ck('commodity port up', amarchy_rig.port_up())
+        ami.key(g.ESC)                         # a text menu left open by an earlier run
+        time.sleep(1)
+        base = None
+        for n in ('nord', 'gruvbox', 'kbg', 'kfg', 'kdf', 'kac'):
+            up, h, th = draw(n)
+            ck('%s: drawn menu opened, AMARCHY_THEME = %r, draws %d' % (n, th, g.draws()), up and th == n and g.draws() >= 1)
+            if n == 'nord':
+                base = h
+            bg, fg = role(n, 'background'), role(n, 'foreground')
+            ck('%s: background %s px %d, foreground %s px %d' % (n, bg.hex(), h[bg], fg.hex(), h[fg]), h[bg] > 0 and h[fg] > 0)
+            if n in GT_FIXTURES:
+                key = GT_FIXTURES[n][0]
+                col = role(n, key)
+                ck('T20 %s: changed %s %s px %d (nord baseline %d)' % (n, key, col.hex(), h[col], base[col]),
+                   h[col] > 0 and base[col] == 0)
+            if n == 'gruvbox':
+                nb = role('nord', 'background')
+                ck('gruvbox: nord background %s px %d (0 expected)' % (nb.hex(), h[nb]), h[nb] == 0)
+        # T6: fg/bg keys of the upconf do not reach the drawn menu
+        up, h, th = draw('nord', 'graphical', ('fg = E0E0A0', 'bg = 102040'))
+        pf, pb = bytes.fromhex('e0e0a0'), bytes.fromhex('102040')
+        ck('T6 upconf fg E0E0A0 px %d, bg 102040 px %d (0 expected), theme %r' % (h[pf], h[pb], th),
+           up and h[pf] == 0 and h[pb] == 0 and th == 'nord')
+        # T7: minimal style follows the theme
+        up, h, th = draw('gruvbox', 'minimal')
+        gb, gf = role('gruvbox', 'background'), role('gruvbox', 'foreground')
+        ck('T7 minimal: theme %r, mode %d, pens %d, background px %d, foreground px %d' % (
+            th, g.env_count('AMARCHY_MODE'), g.env_count('AMARCHY_PENS'), h[gb], h[gf]),
+           up and th == 'gruvbox' and g.env_count('AMARCHY_MODE') == 2 and h[gb] > 0 and h[gf] > 0)
+        # T15: pick Style > Theme > kbg through the drawn menu (the filter typed at each level), reopen, read the sentinel
+        prefs('nord', 'graphical')
+        before = host_hist()
+        open_drawn()
+        for word in ('Style', 'Theme', 'kbg'):
+            x9_type(word)
+            ami.key(RAW['return'])
+            time.sleep(1.5)
+        g.close_menu()
+        up = open_drawn()
+        h = window_hist(g.TITLE) or collections.Counter()
+        g.close_menu()
+        th, kb = sentinel(), role('kbg', 'background')
+        ck('T15 picked through the menu: next open AMARCHY_THEME = %r, kbg background %s px %d' % (th, kb.hex(), h[kb]),
+           up and th == 'kbg' and h[kb] > 0)
+        after = host_hist()
+        ck('T15 terminal window pixels unchanged by the pick', before is not None and before == after,
+           'colours before %d, after %d' % (len(before or ()), len(after or ())))
+    finally:
+        g.close_menu()
+        c.run('Delete >NIL: ENVARC:Amarchy/themes/#?.theme QUIET')
+        x9_end(saved, upterm)
+    return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
 ROWS = [
     ('start',        r_start),
     ('rows_no_terminal', r_rows_no_terminal),
@@ -1032,6 +1175,7 @@ ROWS = [
     ('dopus_absent', r_dopus_absent),
     ('dopus_present', r_dopus_present),
     ('minimal',     r_minimal),
+    ('gtheme',      r_gtheme),
 ]
 
 
