@@ -1,0 +1,11 @@
+# uterm-open -- run by vsh in the window uterm-edit or uterm-view opened (from uterm-start): the editor ($EDITOR, nvim when
+# it is not set) or less on the file named by UPTLAUNCHFILE, as UPTLAUNCHCMD (edit or view) says.
+f=$UPTLAUNCHFILE
+if [ -z "$f" ]; then
+    echo "uterm-open: no file given"
+    exit 1
+fi
+case "$UPTLAUNCHCMD" in
+view) exec less "$f" ;;
+*) exec ${EDITOR:-nvim} "$f" ;;
+esac

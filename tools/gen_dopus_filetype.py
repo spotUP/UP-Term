@@ -38,8 +38,8 @@ def generate():
     recognition = bytes([MATCHNAME]) + TEXT_PATTERN
     body = type_header(b"UP-Term", b"UPTERM", -10) + recognition + b"\0" + b"\0" + b"\0" * 16
     out = chunk(b"TYPE", body)
-    out += func(EV_DOUBLE_CLICK, b'Run >NIL: UP-Term:bin/uterm-edit "%s"')
-    out += func(EV_USER1, b'Run >NIL: UP-Term:bin/uterm-view "%s"')
+    out += func(EV_DOUBLE_CLICK, b'Run >NIL: Execute UP-Term:bin/uterm-edit "%s"')
+    out += func(EV_USER1, b'Run >NIL: Execute UP-Term:bin/uterm-view "%s"')
     return b"FORM" + struct.pack(">I", len(out) + 4) + b"OPUS" + out
 
 

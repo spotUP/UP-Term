@@ -54,6 +54,36 @@ class Manifest(unittest.TestCase):
                         mk.index("cp dist/tutorial $(KIT)/Files/userland/bin/tutorial"))
         self.assertIn("cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/", mk)
 
+    def test_the_dopus_launchers_are_in_the_base_kit_and_the_filetype_names_them(self):
+        """D13: the filetype runs UP-Term:bin/uterm-edit and uterm-view; both ship (and their two helpers) as userland
+        bin files, are AmigaDOS scripts that open the XCON: window on the front screen, and hand the file to vsh by ENV:"""
+        import sys
+        sys.path.insert(0, str(ROOT / "tools"))
+        import gen_dopus_filetype as g
+        mk = (ROOT / "Makefile").read_text()
+        data = g.generate()
+        for n in ("uterm-edit", "uterm-view", "uterm-start", "uterm-open"):
+            self.assertTrue((ROOT / "dist" / n).is_file(), n)
+            self.assertRegex(mk, r"(?m)^\tcp (?:\S+ )*dist/%s (?:\S+ )*\$\(KIT\)/Files/userland/bin/$" % n)
+        self.assertLess(mk.index("python3 tools/slim.py remove $(KIT)/Files/userland"), mk.index("cp dist/uterm-edit"))
+        k = kit({"Files/userland/bin/uterm-edit": b"e", "Files/userland/bin/uterm-open": b"o"})
+        lines = mm.manifest(k, PARTS, "").splitlines()
+        self.assertIn("copy-userland 1 %08x Files/userland/bin/uterm-edit" % zlib.crc32(b"e"), lines)
+        for n, mode in (("uterm-edit", "edit"), ("uterm-view", "view")):
+            self.assertIn(b'Execute UP-Term:bin/' + n.encode() + b' "%s"', data)
+            s = (ROOT / "dist" / n).read_text()
+            self.assertIn(".KEY FILE/A", s)
+            self.assertIn("SetEnv UPTLAUNCHCMD " + mode + "\n", s)
+            self.assertIn('SetEnv UPTLAUNCHFILE "{FILE}"', s)
+            self.assertIn('NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-start', s)
+        start = (ROOT / "dist/uterm-start").read_text()
+        self.assertIn("UP-Term:bin/vsh UP-Term:bin/uterm-open", start)
+        self.assertTrue(start.rstrip().endswith("EndCLI"))
+        self.assertRegex(start, r"(?m)^Stack [1-9][0-9]*$")
+        op = (ROOT / "dist/uterm-open").read_text()
+        self.assertIn('exec less "$f"', op)
+        self.assertIn('exec ${EDITOR:-nvim} "$f"', op)
+
     def test_upkg_browse_is_inside_upkg_not_a_script_in_the_kit(self):
         """`upkg browse` runs in the upkg binary (opkg patch 0025): the kit carries no bin/upkg-browse script"""
         self.assertFalse((ROOT / "dist/upkg-browse").exists())

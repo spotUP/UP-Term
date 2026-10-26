@@ -9,14 +9,15 @@ sys.path.insert(0, str(ROOT / "tools"))
 import gen_dopus_filetype as g
 
 GOLDEN = bytes.fromhex(
-    "464f524d000000ee4f505553545950450000005555502d5465726d0000000000"
+    "464f524d000000fe4f505553545950450000005555502d5465726d0000000000"
     "000000000000000000000000000000000000000055505445524d00000000f600"
     "001002233f2e28637c687c7478747c6d647c7265787829000000000000000000"
-    "0000000000000000000046554e430000003e000000100000000000000000ffff"
-    "00000002ffff000052756e203e4e494c3a2055502d5465726d3a62696e2f7574"
-    "65726d2d65646974202225732200000146554e430000003e0000001000000000"
-    "00000000ffff00000000ffff000052756e203e4e494c3a2055502d5465726d3a"
-    "62696e2f757465726d2d766965772022257322000001"
+    "0000000000000000000046554e4300000046000000100000000000000000ffff"
+    "00000002ffff000052756e203e4e494c3a20457865637574652055502d546572"
+    "6d3a62696e2f757465726d2d65646974202225732200000146554e4300000046"
+    "000000100000000000000000ffff00000000ffff000052756e203e4e494c3a20"
+    "457865637574652055502d5465726d3a62696e2f757465726d2d766965772022"
+    "257322000001"
 )
 SRC = os.environ.get("DOPUS5_SRC", "")
 TOOL = pathlib.Path(SRC) / "archive/tools/filetype_tool.py"
@@ -28,8 +29,8 @@ class Filetype(unittest.TestCase):
 
     def test_a_double_click_runs_the_editor_and_user1_the_viewer(self):
         data = g.generate()
-        self.assertIn(b'Run >NIL: UP-Term:bin/uterm-edit "%s"', data)
-        self.assertIn(b'Run >NIL: UP-Term:bin/uterm-view "%s"', data)
+        self.assertIn(b'Run >NIL: Execute UP-Term:bin/uterm-edit "%s"', data)
+        self.assertIn(b'Run >NIL: Execute UP-Term:bin/uterm-view "%s"', data)
         self.assertTrue(data.startswith(b"FORM") and data[8:12] == b"OPUS")
 
     @unittest.skipUnless(TOOL.is_file(), "set DOPUS5_SRC to a dopus5 v5.104 checkout")

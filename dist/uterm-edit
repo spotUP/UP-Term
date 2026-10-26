@@ -1,0 +1,11 @@
+.KEY FILE/A
+.BRA {
+.KET }
+; uterm-edit FILE -- an UP-Term window on the screen in front, running the editor on FILE. What the Directory
+; Opus filetype runs on a double-click (tools/gen_dopus_filetype.py): Run >NIL: Execute UP-Term:bin/uterm-edit "%s".
+; Opus has no console, so the window comes from NewShell ... FROM (the way the rig scripts and the Amarchy
+; menu open one); the file and the mode go to the shell the window runs as global variables (vsh reads ENV:).
+SetEnv UPTLAUNCHCMD edit
+SetEnv UPTLAUNCHFILE "{FILE}"
+; FRONT puts the window on the screen in front (handler/winspec.c); uterm-start ends it with EndCLI
+NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-start
