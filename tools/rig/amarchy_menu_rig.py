@@ -288,6 +288,8 @@ def r_lamiga_minus_sv():
 # and every launch here takes the AMARCHY.launch port fallback; the OpenWorkbenchObject path needs the A1200.
 X9_DIR, X9_SKIP = 'SYS:X9Test', 'SYS:X9Skip'      # x9_begin respells X9_SKIP with the boot volume's name, see there
 X9_CONF = 'ENV:up-term/up-term'
+X9_AMCONF = 'ENV:Amarchy/prefs'     # Amarchy's own store since 5270f4ba; it is read before the up-term file
+AM_KEYS_C = pathlib.Path(__file__).resolve().parents[2] / 'amarchy' / 'amconf_keys.c'
 X9_CACHE = 'ENVARC:Amarchy/apps'
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -383,12 +385,31 @@ def x9_begin():
     # (System: on one rig, Empty-12MB-FFS: on the 3.2 rig), so the skip entry spells the volume, not SYS:
     m = re.search(r'^SYS\s+(\S.*:)\s*$', c.run('Assign LIST')[1], re.M)
     X9_SKIP = (m.group(1) if m else 'SYS:') + 'X9Skip'
-    saved = {p: ami.read_file(p) for p in (X9_CONF, 'ENV:up-term/keymap.user', X9_CACHE)}
+    saved = {p: ami.read_file(p) for p in (X9_CONF, X9_AMCONF, 'ENV:up-term/keymap.user', X9_CACHE)}
     upterm = x9_upterm_target()
     c.run('Assign UP-Term: VTC:%s' % paths.UPTERM_DRAWER)
     c.run('Delete >NIL: RAM:x9.#? QUIET')
-    c.run('MakeDir >NIL: ENV:up-term')
+    c.run('MakeDir >NIL: ENV:up-term ENV:Amarchy')
     return saved, upterm
+
+
+def am_key_names():
+    """The keys Amarchy's own store owns: the names in the product table am_keys[] (amarchy/amconf_keys.c)."""
+    return set(re.findall(r'^\s*\{\s*"([a-z-]+)"\s*,', AM_KEYS_C.read_text(), re.M))
+
+
+def x9_conf(*lines):
+    """Write a case's settings, each 'key = value' line to the store that owns the key: Amarchy keys to
+    ENV:Amarchy/prefs, every other key to ENV:up-term/up-term. Both files are rewritten, so a case starts from
+    defaults; Amarchy reloads on the notify of ENV:Amarchy/prefs (the RELOAD the cases send follows)."""
+    import amarchy_rig
+    owned = am_key_names()
+    am = [l for l in lines if l.split('=')[0].strip() in owned]
+    up = [l for l in lines if l not in am]
+    for path, rows in ((X9_AMCONF, am), (X9_CONF, up)):
+        c.run('Echo >%s "[profile default]"' % path)
+        for l in rows:
+            c.run('Echo >>%s "%s"' % (path, l))
 
 
 def x9_end(saved, upterm):
@@ -456,11 +477,9 @@ def r_app_icons():
     saved, upterm = x9_begin()
     try:
         x9_files([(X9_DIR, 'A0NoIcon')])
-        c.run('Echo >%s "[profile default]"' % X9_CONF)
-        c.run('Echo >>%s "amarchy-index-skip = %s"' % (X9_CONF, X9_SKIP))
-        # since a12e12f2 the drawn menu loads .info images only with this key; without it every row draws a
-        # generic glyph and AMARCHY_ICON_LOADS stays 0
-        c.run('Echo >>%s "amarchy-app-icons = amiga"' % X9_CONF)
+        # since a12e12f2 the drawn menu loads .info images only with the app-icons key; without it every row
+        # draws a generic glyph and AMARCHY_ICON_LOADS stays 0
+        x9_conf('amarchy-index-skip = %s' % X9_SKIP, 'amarchy-app-icons = amiga')
         amarchy_rig.arexx('RELOAD')
         c.run('Delete >NIL: %s QUIET' % X9_CACHE)
         c.run('%s/amarchy-index' % paths.UPTERM_BIN, 120)
@@ -525,11 +544,7 @@ def r_minimal():
         return len({bytes(r[x * 3:x * 3 + 3]) for r in rows for x in range(len(r) // 3)})
 
     def opened(style):
-        c.run('Echo >%s "[profile default]"' % X9_CONF)
-        c.run('Echo >>%s "menu-style = %s"' % (X9_CONF, style))
-        c.run('Echo >>%s "fg = E0E0A0"' % X9_CONF)
-        c.run('Echo >>%s "bg = 102040"' % X9_CONF)
-        c.run('Echo >>%s "amarchy-app-icons = amiga"' % X9_CONF)
+        x9_conf('menu-style = %s' % style, 'fg = E0E0A0', 'bg = 102040', 'amarchy-app-icons = amiga')
         amarchy_rig.arexx('RELOAD')
         c.run('Delete >NIL: ENV:AMARCHY_MODE ENV:AMARCHY_PENS ENV:AMARCHY_ICON_LOADS ENV:AMARCHY_DRAWS QUIET')
         ami.click_px(100, 100)
@@ -579,8 +594,7 @@ def r_app_index():
     saved, upterm = x9_begin()
     try:
         x9_files()
-        c.run('Echo >%s "[profile default]"' % X9_CONF)
-        c.run('Echo >>%s "amarchy-index-skip = %s"' % (X9_CONF, X9_SKIP))
+        x9_conf('amarchy-index-skip = %s' % X9_SKIP)
         # step 6: a [menu] row with the label of an index row
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
         c.run('Echo >>ENV:up-term/keymap.user "apps.a0shadow = A0Shadow | run:C:Echo >RAM:x9.menurow hit"')
@@ -790,8 +804,7 @@ def r_app_categories():
     saved, upterm = x9_begin()
     try:
         x9_files()
-        c.run('Echo >%s "[profile default]"' % X9_CONF)
-        c.run('Echo >>%s "amarchy-index-skip = %s"' % (X9_CONF, X9_SKIP))
+        x9_conf('amarchy-index-skip = %s' % X9_SKIP)
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
         c.run('Echo >>ENV:up-term/keymap.user "apps.a0shadow = A0Shadow | run:C:Echo >RAM:x9.menurow hit"')
         amarchy_rig.arexx('RELOAD')
@@ -850,7 +863,7 @@ def r_group_icons():
     e = g.expected(geom, '-')
     saved, upterm = x9_begin()
     try:
-        c.run('Echo >%s "[profile default]"' % X9_CONF)
+        x9_conf()
         c.run('Echo >ENV:up-term/keymap.user "[menu]"')
         amarchy_rig.arexx('RELOAD')
         cache = ('app\tRigApp1\tWork:RigAlpha/RigApp1\napp\tRigApp2\tWork:RigBeta/RigApp2\n'
@@ -1056,12 +1069,8 @@ def r_gtheme():
         return window_hist(titles[0]) if titles else None
 
     def prefs(theme, style, extra=()):
-        c.run('Echo >%s "[profile default]"' % X9_CONF)
-        c.run('Echo >>%s "amarchy-gui-theme = %s"' % (X9_CONF, theme))
-        c.run('Echo >>%s "menu-style = %s"' % (X9_CONF, style))
-        c.run('Echo >>%s "menu-in-terminal = graphical"' % X9_CONF)   # the click below lands in the host terminal
-        for e in extra:
-            c.run('Echo >>%s "%s"' % (X9_CONF, e))
+        # menu-in-terminal: the click below lands in the host terminal
+        x9_conf('amarchy-gui-theme = %s' % theme, 'menu-style = %s' % style, 'menu-in-terminal = graphical', *extra)
         amarchy_rig.arexx('RELOAD')
 
     def open_drawn():
