@@ -1669,6 +1669,16 @@ static void a_run_leaf_gets_its_own_window_not_the_menus_console(void)
     CHECK_INT((int)lf_plan_t(KA_SLASH, 0), (int)LF_OPEN_THEN_REQUEST);   /* no terminal: open one, then send the slash command */
     CHECK_INT((int)lf_plan_t(KA_SLASH, 1), (int)LF_REQUEST);
     CHECK_INT((int)lf_plan_t(KA_RUN, 0), (int)LF_WINDOW);
+    /* a row that needs a value (slash:/bg) with no terminal: ask FIRST, while the menu has the focus; the new
+     * terminal takes it and the menu's INACTIVEWINDOW closes the prompt before it is answered (rig 7, 27eda4b7) */
+    CHECK(upreq_needs_value(KA_SLASH, "/bg") != 0);
+    CHECK(upreq_needs_value(KA_SLASH, "/theme") == 0);
+    CHECK(upreq_needs_value(KA_SLASH, "/font") == 0);
+    CHECK(upreq_needs_value(KA_SLASH, "/bg 102030") == 0);
+    CHECK(upreq_needs_value(KA_TAB, "new") == 0);
+    CHECK_INT((int)lf_plan_ta(KA_SLASH, 0, upreq_needs_value(KA_SLASH, "/bg") != 0), (int)LF_ASK_THEN_OPEN_REQUEST);
+    CHECK_INT((int)lf_plan_ta(KA_SLASH, 0, upreq_needs_value(KA_SLASH, "/theme") != 0), (int)LF_OPEN_THEN_REQUEST);
+    CHECK_INT((int)lf_plan_ta(KA_SLASH, 1, 1), (int)LF_REQUEST);
     CHECK_INT((int)lf_plan(KA_TAB), (int)LF_REQUEST);
     CHECK(!strncmp(LF_UTERM_SPEC, "XCON:", 5));
 }

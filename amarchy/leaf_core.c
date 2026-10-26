@@ -33,6 +33,11 @@ lf_how lf_plan_t(int kind, int term)
     return kind == KA_SLASH && !term ? LF_OPEN_THEN_REQUEST : lf_plan(kind);
 }
 
+lf_how lf_plan_ta(int kind, int term, int needs_value)
+{
+    return kind == KA_SLASH && !term && needs_value ? LF_ASK_THEN_OPEN_REQUEST : lf_plan_t(kind, term);
+}
+
 const char *lf_rexx_notice(const char *script, long rc)
 {
     const char *base = script ? script : "";

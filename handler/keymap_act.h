@@ -64,6 +64,11 @@ int upreq_resolve(const upreq_body *r, kact *out, km_bind *tmp);
  * 1 when it fits and the kind goes to a terminal; 0 otherwise (nothing to send). */
 int upreq_fill(upreq_body *r, int kind, const char *arg);
 
+/* The usage ("RRGGBB | none") of the value a slash: leaf needs and its row does not carry (slash:/bg), or 0 when
+ * the leaf is not a slash row or runs as it stands. Known without any terminal window, so a sender can ask for the
+ * value before it opens one. */
+const char *upreq_needs_value(int kind, const char *arg);
+
 /* The window's verdict on a slash request it ran: slash_run's result (1 ran, 2 refused), its
  * answer text and, when the line lacked a required argument, the command's usage from the slash
  * table ("RRGGBB | none"; 0 otherwise). Sets r->answer and returns the rc to reply: a refusal is

@@ -40,6 +40,8 @@ typedef enum {
     LF_WIN,      /* win: a window verb, sent to the commodity (K8 wires the port) */
     LF_GTHEME,   /* gtheme: the drawn menu's theme is saved (gthemes_dos.h gt_dos_select) */
     LF_OPEN_THEN_REQUEST, /* slash: with no terminal window open: open one (as LF_OPEN), then send the request to it */
+    LF_ASK_THEN_OPEN_REQUEST, /* like LF_OPEN_THEN_REQUEST, for a row that needs a value (slash:/bg): ask for the value FIRST, while the
+                               * menu still has the focus (the new terminal window takes it and closes the menu), then open, then send */
     LF_REQUEST   /* tab:, menuid:, slash: ... a terminal window's request port takes the action */
 } lf_how;
 
@@ -48,6 +50,10 @@ lf_how lf_plan(int kind);
 /* lf_plan with whether a terminal window is open (upactive_terminal_present): a slash: row (the Style > Terminal
  * rows) shown with no terminal opens one first, then applies there. Every other kind plans as lf_plan. */
 lf_how lf_plan_t(int kind, int term);
+
+/* lf_plan_t with whether the row needs a value it does not carry (upreq_needs_value): such a row with no terminal
+ * open is LF_ASK_THEN_OPEN_REQUEST. Every other case plans as lf_plan_t. */
+lf_how lf_plan_ta(int kind, int term, int needs_value);
 
 /* The notice for a finished ARexx leaf: the dopus-*.rexx scripts end with RC 5 when DOPUS.1 is absent (plan
  * 2026-10-25-amarchy-dopus-integration.md, D5), which says "Directory Opus is not running". 0 for anything else. */
