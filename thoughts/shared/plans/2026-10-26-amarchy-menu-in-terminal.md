@@ -43,13 +43,14 @@ XCON popup exactly as today.
    going through the commodity port, as today.
 4. Escape at the top level ends the program; vsh redraws its prompt.
 
-## Open questions for the owner (ask through AskUserQuestion before phase 2)
+## Answered 2026-10-26 (owner, AskUserQuestion, all recommended)
 
-- A non-empty prompt line (half-typed command): fall back to the popup (recommended) or keep
-  the line and restore it after the menu?
-- Should the viewer hotkey (Super+K) follow the same setting?
-- Window height: the menu uses the whole terminal, or only MN_OSD_MAX_ENTRIES + head rows at
-  the bottom like fzf --height (recommended: bottom rows, the scrollback stays visible)?
+- A half-typed prompt line: the hotkey opens the XCON popup; the line stays untouched.
+- The viewer hotkey (Super+K) follows the same `menu-place` setting.
+- Height: bottom rows only, like fzf --height: head lines + at most MN_OSD_MAX_ENTRIES entries +
+  bottom line, drawn at the bottom of the window; the scrollback above stays visible. The menu
+  program needs region drawing for this (upkg-ui draws the whole screen today: check the
+  library for a region or scroll-region mode first, extend it there, not in amarchy).
 
 ## Checklist
 
@@ -57,7 +58,8 @@ XCON popup exactly as today.
 - [ ] T2 handler: prompt-idle test (armed, empty line) as a pure function with a host test.
 - [ ] T3 handler: KACT_DEFER branch types the command when T2 holds and the setting says
       terminal; host test with a sentinel that the deferral did not run.
-- [ ] T4 amarchy-menu: in-console run: leaves; host test in tests/test_keymap.c (leaf_core).
+- [ ] T4a upkg-ui/amarchy-menu: bottom-region drawing (rows = mn_osd_size_t height), scrollback kept.
+- [ ] T4 amarchy-menu and the viewer: in-console run: leaves; host test in tests/test_keymap.c (leaf_core).
 - [ ] T5 rig row in tools/rig/amarchy_menu_rig.py: hotkey at an idle vsh prompt, the menu text
       appears in the UP-Term window (screen_text), a run: leaf output lands there, prompt back.
 - [ ] T6 rig row: same hotkey while a program runs opens the XCON popup.
