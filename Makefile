@@ -1534,3 +1534,8 @@ test-rig: amiga
 
 clean:
 	rm -rf $(BUILD)
+
+# upkg browse launch rig (tools/rig/upkg_browse_launch_rig.py): writes a sentinel, reports its stack, exits 7
+$(BUILD)/amiga/launchprobe: tests/amiga/launchprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/launchprobe.c
