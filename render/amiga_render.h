@@ -18,6 +18,7 @@
 #include "outline.h"
 #include "unifont.h"
 #include "emoji.h"
+#include "aa_ink.h"
 
 #define VR_EXACT_SLOTS 256  /* a power of two */
 #define VR_EXACT_MAX 160
@@ -196,17 +197,11 @@ typedef struct vr_render {
     /* R4 (plan 2026-10-22-handler-rasterizer.md): an outline glyph with a
      * coverage (vo_coverage) drawn antialiased, the profile's
      * `outline-antialias` (1, default; vr_set_antialias). The table and the
-     * shades are for the last text and background colours (aa_ok). */
+     * shades are for the last text and background colours (aa.ok). */
     UBYTE aa_on;
-    UBYTE aa_ok, aa_shades_ok;
-    ULONG aa_fg, aa_bg;           /* 0xRRGGBB */
-    ULONG *aa_tab;                /* fg over bg at each coverage (ce_mix), 256 entries made at the first
-                                   * antialiased glyph (1 KB kept out of the unit's block, upc_unit_size_bound) */
-    ULONG aa_shade[3];            /* the inks of 1/4, 1/2, 3/4 of the way to fg */
-    UBYTE aa_use[3];              /* 1 when that ink shows its shade closer than fg and bg */
+    aa_ink aa;                    /* the coverage-to-ink path (render/aa_ink.c): table, shades, template */
     UBYTE *aa_buf;                /* a bold glyph's coverage, fast RAM */
-    UBYTE *aa_mask;               /* a pass's template, chip RAM */
-    ULONG aa_buf_size, aa_mask_size;
+    ULONG aa_buf_size;
     ULONG n_aa;                   /* glyphs drawn antialiased: the reachability sentinel */
     /* GNU Unifont's pages for the BMP the font and the outline font lack
      * (U2), 0 for none; the owner keeps it (vr_set_unifont) */
