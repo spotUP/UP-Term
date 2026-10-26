@@ -48,6 +48,7 @@ enum {
     /* the colour window (PX12) and the name window (PX11) */
     PC_WHEEL = 150, PC_BRIGHTNESS = 151, PC_RED = 152, PC_GREEN = 153, PC_BLUE = 154,
     PC_HEX = 155, PC_SWATCH = 156, PC_OK = 157, PC_CANCEL = 158,
+    PG_AM_GTHEME_CHOOSE = 159,
     PN_NAME = 170, PN_OK = 171, PN_CANCEL = 172
 };
 
@@ -95,14 +96,14 @@ const char *pg_help(const pg_item *it);
  * profile). */
 int pg_cycle_texts(int id, const char **out, int cap);
 
-/* The choices of an SD_DYNLIST cycle (the Menu theme): the themes gt_scan found, each labelled by gt_label with the
+/* The choices of an SD_DYNLIST row (the Menu theme, picked from a list by pick_list): the themes gt_scan found, each labelled by gt_label with the
  * saved one marked, ended by a null. A saved name with no theme file is added, so it stays selected. */
 typedef struct pg_themes {
     int n;                                  /* entries */
     int active;                             /* the saved theme's entry */
     char name[GT_MAX + 1][GT_NAME];
     char label[GT_MAX + 1][GT_NAME + 12];
-    const char *text[GT_MAX + 2];           /* label[i], ended by NULL: the cycle's labels */
+    const char *text[GT_MAX + 2];           /* label[i], ended by NULL: the picker list's entries */
 } pg_themes;
 void pg_themes_build(pg_themes *t, const gt_list *scanned, const char *current);
 /* the entry whose name is name (no case), -1 when none */

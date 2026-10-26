@@ -8,6 +8,7 @@
 #include "../prefs/prefs_core.h"
 #include "../handler/kcmode.h"
 #include "../prefs/prefs_ui.h"
+#include "../prefs/pick_list.h"
 #include "../prefs/settings_def.h"
 #include "../amarchy/amconf_core.h"
 #include "harness.h"
@@ -1437,6 +1438,8 @@ static void fake_theme_dir(void *ctx, const char *dir, gt_emit_fn emit, void *ec
 
 static void the_menu_theme_row_is_a_select_over_the_scanned_themes(void)
 {
+    const pg_item *choose = pg_find(PG_AM_GTHEME_CHOOSE);
+    int cur;
     const sd_setting *s = &sd_settings[SDI_AM_GTHEME];
     const pg_item *it = pg_find(s->gadget);
     gt_list l;
@@ -1446,7 +1449,8 @@ static void the_menu_theme_row_is_a_select_over_the_scanned_themes(void)
     char name[GT_NAME], buf[4096];
     long n;
     CHECK_INT(s->kind, SD_DYNLIST);
-    CHECK(it && it->kind == PGK_CYCLE);
+    CHECK(it && it->kind == PGK_TEXT);      /* the row shows the name, a button opens the picker list */
+    CHECK(choose && choose->kind == PGK_BUTTON && choose->row == it->row && choose->col == 1);
     gt_scan(fake_theme_dir, 0, &l);
     pg_themes_build(&t, &l, "nord");
     CHECK_INT(t.n, 3);                      /* mine, nord, tokyo-night: sorted */
@@ -1459,9 +1463,24 @@ static void the_menu_theme_row_is_a_select_over_the_scanned_themes(void)
     CHECK_INT(t.n, 4);
     CHECK_STR(t.text[t.active], "gone (current)");
     pg_themes_build(&t, &l, "nord");
-    /* choosing "mine" writes AM_GTHEME */
-    CHECK_INT(pg_themes_pick(&t, 0, name, sizeof name), 1);
+    /* the picker list opens with the saved theme selected and in view */
+    cur = pk_initial(t.n, pg_themes_find(&t, "nord"));
+    CHECK_INT(cur, 1);
+    CHECK_INT(pk_initial(t.n, pg_themes_find(&t, "absent")), 0);
+    CHECK_INT(pk_rows(3), 3);
+    CHECK_INT(pk_rows(23), PK_ROWS);
+    CHECK_INT(pk_top(23, PK_ROWS, 22), 23 - PK_ROWS);
+    CHECK_INT(pk_top(23, PK_ROWS, 0), 0);
+    CHECK_INT(pk_top(23, PK_ROWS, 12), 12 - PK_ROWS / 2);
+    /* Cancel or the close gadget keeps the old theme: the file's value is untouched */
     memset(&f, 0, sizeof f);
+    strcpy(f.am_gtheme, "nord");
+    CHECK_INT(pk_result(t.n, 0, 0), -1);
+    CHECK_INT(pk_result(t.n, 9, 1), -1);
+    CHECK_INT(pk_result(t.n, -1, 1), -1);
+    CHECK_STR(f.am_gtheme, "nord");
+    /* choosing "mine" writes AM_GTHEME */
+    CHECK_INT(pg_themes_pick(&t, pk_result(t.n, 0, 1), name, sizeof name), 1);
     strcpy(f.am_gtheme, name);
     amconf_defaults(&ap);
     amconf_from_fields(&ap, &f);

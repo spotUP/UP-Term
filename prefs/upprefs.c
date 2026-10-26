@@ -58,6 +58,7 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include <proto/gadtools.h>
+#include "pick_list.h"
 #include <proto/utility.h>
 
 #include "../config/upconf.h"
@@ -335,8 +336,6 @@ static STRPTR *labels_of(int id)
     const sd_setting *s;
     if (id == PG_PAGE)
         return page_labels;
-    if (id == PG_AM_GTHEME)
-        return (STRPTR *)themes.text;
     s = sd_find_gadget(id);
     if (!s || s->kind != SD_CYCLE || id != s->gadget)
         return 0;
@@ -421,6 +420,7 @@ static void show_texts(struct app *a)
     char t[UC_MAX_VALUE];
     set_attr(a, PG_FONT, GTTX_Text, (ULONG)(a->f.font[0] ? a->f.font : "Screen's font"));
     set_attr(a, PG_AM_FONT, GTTX_Text, (ULONG)(a->f.am_font[0] ? a->f.am_font : "Built-in"));
+    set_attr(a, PG_AM_GTHEME, GTTX_Text, (ULONG)a->f.am_gtheme);
     set_attr(a, PG_FALLBACK, GTTX_Text, (ULONG)(a->f.fallback[0] ? a->f.fallback : "None"));
     mode_text(a, t, sizeof(t));
     set_attr(a, PG_SCREEN_MODE, GTTX_Text, (ULONG)t);
@@ -577,8 +577,6 @@ static void show_fields(struct app *a)
             p = int_of(a, it->id);
             if (p)
                 set_attr(a, it->id, GTCY_Active, (ULONG)*p);
-            else if (it->id == PG_AM_GTHEME)
-                set_attr(a, it->id, GTCY_Active, (ULONG)get_state(a, it->id));
             break;
         case PGK_CHECK:
             p = int_of(a, it->id);
@@ -1481,6 +1479,18 @@ static void pick_theme(struct app *a)
         set_status(a, "That file holds no colours.");
 }
 
+/* The Menu theme: the list of the installed themes (the scan made when the window opened) in the picker. */
+static void pick_menu_theme(struct app *a)
+{
+    int at = pk_initial(themes.n, pg_themes_find(&themes, a->f.am_gtheme));
+    int r = pk_result(themes.n, pk_run(a->scr, a->win, a->vi, a->ta, a->lay.font_w, a->lay.font_h,
+                                       "Menu theme", themes.text, themes.n, at), 1);
+    if (r < 0 || !pg_themes_pick(&themes, r, a->f.am_gtheme, (int)sizeof a->f.am_gtheme))
+        return;
+    show_texts(a);
+    set_status(a, "Theme chosen: Save or Use writes it.");
+}
+
 static void pick_font(struct app *a)
 {
     char name[UC_MAX_VALUE], iname[UC_MAX_VALUE], spec[UC_MAX_VALUE];
@@ -1659,10 +1669,6 @@ static int get_state(struct app *a, int id)
     int *p;
     if (id == PG_CURSOR_INVERSE)
         return cursor_inverse(a);
-    if (id == PG_AM_GTHEME) {
-        int i = pg_themes_find(&themes, a->f.am_gtheme);
-        return i < 0 ? 0 : i;
-    }
     p = int_of(a, id);
     return p ? *p : 0;
 }
@@ -1670,9 +1676,7 @@ static int get_state(struct app *a, int id)
 static void put_state(struct app *a, int id, int v)
 {
     int *p = int_of(a, id);
-    if (id == PG_AM_GTHEME)
-        pg_themes_pick(&themes, v, a->f.am_gtheme, (int)sizeof a->f.am_gtheme);
-    else if (id == PG_CURSOR_INVERSE) {
+    if (id == PG_CURSOR_INVERSE) {
         if (v)
             strcpy(a->f.curcol, "inverse");
         else
@@ -1726,6 +1730,10 @@ static int act(struct app *a, int id, int val)
     case PG_AM_FONT:
     case PG_AM_FONT_CHOOSE:
         pick_menu_font(a);
+        return 0;
+    case PG_AM_GTHEME:
+    case PG_AM_GTHEME_CHOOSE:
+        pick_menu_theme(a);
         return 0;
     case PG_AM_FONT_CLEAR:
         a->f.am_font[0] = 0;
