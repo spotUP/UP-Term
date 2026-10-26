@@ -126,6 +126,35 @@ export EDITOR
 alias ls='ls --color=auto'
 alias ll='ls -l'
 
+# Archivers complete only their own archives (bash's complete -f -X '!pattern'
+# for lha, unzip, tar ...): "lha x H<Tab>" in a drawer holding HiP/ and
+# HiP.lha offers HiP.lha. Only when no archive matches are the drawers
+# offered, so a Tab can walk into one to reach an archive (bash's -o plusdirs
+# would always add them, and Tab would stop at the drawer's name). The match
+# ignores case (.LHA, .lha). vsh's complete has no -X, so one -F function
+# does the filtering.
+_archive_match() {
+    case $1 in
+    lha) case $2 in *.[lL][hH][aA]|*.[lL][zZ][hH]|*.[lL][zZ][xX]) return 0 ;; esac ;;
+    lzx) case $2 in *.[lL][zZ][xX]) return 0 ;; esac ;;
+    unzip) case $2 in *.[zZ][iI][pP]) return 0 ;; esac ;;
+    tar) case $2 in *.[tT][aA][rR]|*.[tT][gG][zZ]|*.[tT][aA][rR].[gG][zZ]|*.[tT][aA][rR].[bB][zZ]2|*.[tT][aA][rR].[xX][zZ]) return 0 ;; esac ;;
+    gunzip) case $2 in *.[gG][zZ]|*.[tT][gG][zZ]) return 0 ;; esac ;;
+    unxz) case $2 in *.[xX][zZ]|*.[tT][xX][zZ]) return 0 ;; esac ;;
+    esac
+    return 1
+}
+_archive_complete() {
+    local f
+    COMPREPLY=()
+    for f in $(compgen -f -- "$2"); do
+        [ -d "$f" ] && continue
+        _archive_match "$1" "$f" && COMPREPLY[${#COMPREPLY[@]}]=$f
+    done
+    [ ${#COMPREPLY[@]} -eq 0 ] && COMPREPLY=($(compgen -d -- "$2"))
+}
+complete -F _archive_complete lha lzx unzip tar gunzip unxz
+
 # hl and mdv (UP-Term:bin, see the README): a source in colour with
 # line numbers (hl file.c; to a pipe or a file it is plain cat), Markdown
 # formatted for the window (mdv README.md). hlp and mdp page them: less -R

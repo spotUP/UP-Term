@@ -419,6 +419,9 @@ VSH (the shell)
   compopt as in bash; Tab in an XCON: window asks vsh for the words.
   COMP_WORDS splits at blanks, " and = only (bash also at :, which would cut
   an Amiga path in two); -G -X -P -S -D -E -I are not there.
+  The vshrc completes lha, lzx, unzip, tar, gunzip and unxz with their own
+  archives only (any case); drawers appear when none matches. To change a
+  rule, in $HOME/.vshrc:  complete -r lha  and then your own  complete ... lha
   Keys: bind and an .inputrc ($INPUTRC, else $HOME/.inputrc) set the
   window's line editor: set editing-mode vi|emacs, and "\C-x" / "\M-x" /
   Control-x / Meta-x bound to one of the 19 functions bind -l lists (no
@@ -431,6 +434,10 @@ VSH (the shell)
   CDPATH is a list of directories in Unix form (/RAM/work:/Work/src), as PATH
   is: a volume name (RAM:work) holds a colon, which splits the entry, so it
   cannot be listed. cd and pushd themselves take either form.
+  A bare directory word runs cd on it, as in the AmigaDOS Shell and zsh
+  AUTO_CD: ram:  or  sys:c  or  ..  or  src  alone changes directory. A
+  program, builtin or function of that name wins, and a word that is
+  neither says  vsh: nosuchdir:: not found.
   Process substitution goes through a file in T: (T:vsh-ps-...; RAM: without
   T:), which native commands and ixemul programs both open: <(cmd) runs cmd
   to its end before the command starts, so the two do not run at the same
