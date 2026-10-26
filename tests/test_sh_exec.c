@@ -594,6 +594,20 @@ static int native_file_sent;
 static char native_list[8][40];
 static int native_n, native_asked;
 
+/* the system's variables (ENV:) a console-less host stands in for: one name and its value */
+static char sysenv_name[40], sysenv_val[80];
+static int sysenv_asked;
+
+static int f_getenv(void *os, const char *name, char *buf, long max)
+{
+    (void)os;
+    sysenv_asked++;
+    if (strcmp(name, sysenv_name) || strlen(sysenv_val) >= (size_t)max)
+        return 0;
+    strcpy(buf, sysenv_val);
+    return 1;
+}
+
 static long f_hist(void *os, int op, long arg, char *buf, long max)
 {
     (void)os;
@@ -636,6 +650,36 @@ static const char *file_data(const char *name)
         if (fs[i].used && !fs[i].is_pipe && !strcmp(fs[i].name, name))
             return fs[i].data;
     return "(no file)";
+}
+
+/* $name sees the system's variables (ENV:) the shell never assigned, as the AmigaDOS Shell does: one set before the
+ * shell started, one a command set during the run (read again at each lookup), and a variable the shell assigns is its
+ * own from then on. Without the os hook nothing changes. This is the path `echo "$pre1"` takes in a vsh script. */
+static void dollar_name_reads_the_system_variables(void)
+{
+    int inc = 0;
+    run("echo \"[$pre1]\"");                    /* no hook (run starts a fresh shell): unchanged */
+    CHECK_STR(slot(OUT)->data, "[]\n");
+    CHECK_INT(sysenv_asked, 0);
+    /* one shell from here on: its output accumulates in OUT */
+    strcpy(sysenv_name, "pre1");
+    strcpy(sysenv_val, "fromshell");
+    sh.os.getenv = f_getenv;
+    sh_run_text(&sh, "echo \"[$pre1][$nosuch]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[]\n[fromshell][]\n");
+    CHECK(sysenv_asked > 0);                    /* the hook ran */
+    strcpy(sysenv_val, "changed");              /* a SetEnv by a command during the run */
+    sh_run_text(&sh, "echo \"[$pre1]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[]\n[fromshell][]\n[changed]\n");
+    sh_run_text(&sh, "pre1=local; echo \"[$pre1]\"", &inc); /* the shell's own assignment wins from then on */
+    strcpy(sysenv_val, "again");
+    sh_run_text(&sh, "echo \"[$pre1]\"", &inc);
+    CHECK_STR(slot(OUT)->data, "[]\n[fromshell][]\n[changed]\n[local]\n[local]\n");
+    sh_run_text(&sh, "x=mine", &inc);           /* a plain shell variable is never asked of the system */
+    sysenv_asked = 0;
+    sh_run_text(&sh, "echo \"[$x]\"", &inc);
+    CHECK_INT(sysenv_asked, 0);
+    sh.os.getenv = 0;
 }
 
 static void history_has_one_owner_the_console_list_or_the_shell(void)
@@ -2191,6 +2235,7 @@ void suite_sh_exec(void)
     kill_names_a_missing_signal_sender();
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
+    dollar_name_reads_the_system_variables();
     history_has_one_owner_the_console_list_or_the_shell();
     histfile_is_told_to_the_console_that_keeps_the_list();
     control_flow();

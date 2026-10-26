@@ -158,6 +158,10 @@ typedef struct sh_os {
     /* the console's line history (history): op is SH_HIST_*; a result below 0 for COUNT means the console does not
      * have one, and the shell keeps a list of its own from then on; 0 in the table: the shell's own list */
     long  (*hist)(void *os, int op, long arg, char *buf, long max);
+    /* the system's variable of this name (vsh: ENV:), copied into buf (max bytes, NUL ended): 1 when it is set,
+     * 0 when not; a $name the shell has no variable for is looked up here, so a SetEnv done before the shell
+     * started or by a command it ran is seen as in the AmigaDOS Shell. 0 in the table: no such store */
+    int   (*getenv)(void *os, const char *name, char *buf, long max);
     void *data;
 } sh_os;
 #define SH_HIST_COUNT 0   /* the number of lines */

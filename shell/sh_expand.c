@@ -1618,6 +1618,8 @@ static const char *param(ex *e, const char *name)
             return c->arg0 ? c->arg0 : "vsh";
         return i <= c->args.n ? c->args.v[i - 1] : 0;
     }
+    if (c->import)
+        c->import(c, name);
     return sh_get(c, name);
 }
 

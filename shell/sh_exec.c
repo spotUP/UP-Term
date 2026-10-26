@@ -247,6 +247,7 @@ static int opt_on(const sh_shell *sh, int i)
 
 static void core_warn(sh_ctx *c, const char *name, const char *msg);
 static void core_refresh(sh_ctx *c, const char *name);
+static void core_import(sh_ctx *c, const char *name);
 static char *core_unescape(sh_ctx *c, const char *s);
 static char *core_prompt(sh_ctx *c, const char *ps);
 static char *core_declared(sh_ctx *c, const char *name, int flags_only, int whole);
@@ -264,6 +265,7 @@ void sh_shell_init(sh_shell *sh)
     sh->ctx.user = sh;
     sh->ctx.warn = core_warn;
     sh->ctx.refresh = core_refresh;
+    sh->ctx.import = core_import;
     sh->ctx.on_assign = core_on_assign;
     sh->ctx.unescape = core_unescape;
     sh->ctx.prompt = core_prompt;
@@ -541,6 +543,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
     c->ctx.procsub = sh->ctx.procsub;
     c->ctx.warn = sh->ctx.warn;
     c->ctx.refresh = sh->ctx.refresh;
+    c->ctx.import = sh->ctx.import;
     c->ctx.on_assign = sh->ctx.on_assign;
     c->ctx.unescape = sh->ctx.unescape;
     c->ctx.prompt = sh->ctx.prompt;
@@ -778,6 +781,28 @@ static int special_id(const char *name)
     return -1;
 }
 
+/* A $name the shell has no variable for, or only a copy of the system's (SH_ATTR_ENVCOPY), is read from the
+ * system store (os.getenv) at each expansion (not at the shell's own reads of IFS, PATH, HOME): ENV: is the AmigaDOS Shell's variable table, and a SetEnv made
+ * before vsh started or by a command it ran must reach $name. The copy is dropped from the shell's own
+ * assignments by core_on_assign. */
+static void core_import(sh_ctx *c, const char *name)
+{
+    sh_shell *sh = (sh_shell *)c->user;
+    char v[512];
+    unsigned a;
+    if (!sh->os.getenv || sh->special_busy || !(isalpha((unsigned char)*name) || *name == '_'))
+        return;
+    a = sh_attr(&sh->ctx, name);
+    if (sh_lookup_raw(&sh->ctx, name) && !(a & SH_ATTR_ENVCOPY))
+        return;
+    if (!sh->os.getenv(sh->os.data, name, v, sizeof(v)))
+        return;
+    sh->special_busy = 1;
+    sh_set(&sh->ctx, name, v);
+    sh_attr_change(&sh->ctx, name, SH_ATTR_ENVCOPY, 0);
+    sh->special_busy = 0;
+}
+
 /* the store's copy of a special variable is brought up to date just before it is read */
 static void core_refresh(sh_ctx *c, const char *name)
 {
@@ -860,6 +885,8 @@ static void core_on_assign(sh_ctx *c, const char *name, const char *value)
     sh_shell *sh = (sh_shell *)c->user;
     int k = special_id(name);
     long us;
+    if (!sh->special_busy && (sh_attr(c, name) & SH_ATTR_ENVCOPY))
+        sh_attr_change(c, name, 0, SH_ATTR_ENVCOPY); /* assigned by the shell: its own from here */
     if (!strcmp(name, "POSIXLY_CORRECT")) {
         sh->opts |= SO_POSIX;  /* assigning it, to anything, turns posix mode on */
         SH_HIT(POSIX_VAR);

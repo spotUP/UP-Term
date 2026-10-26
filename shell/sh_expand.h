@@ -29,6 +29,7 @@ typedef unsigned long long sh_uint;
 #define SH_ATTR_ASSOC    64
 #define SH_ATTR_NAMEREF  128
 #define SH_ATTR_NOVALUE  256 /* declared (declare -a x) and never assigned: declare -p prints no value */
+#define SH_ATTR_ENVCOPY  1024 /* a copy of an ENV: variable (sh_os.getenv), read again at each lookup until the shell assigns it */
 #define SH_ATTR_GONE     512 /* a tombstone in a shared table's own list: the base's variable of this name is unset */
 /* An array is a sparse vector sorted by index (indexed) or by key (associative):
  * append is O(1), lookup a binary search. An element has the index or the key,
@@ -93,6 +94,9 @@ typedef struct sh_ctx {
      * to bring the store's copy up to date; on_assign after a scalar assignment succeeded. NULL: none */
     void (*refresh)(struct sh_ctx *c, const char *name);
     void (*on_assign)(struct sh_ctx *c, const char *name, const char *value);
+    /* called for a $name the script wrote (not for the shell's own reads of IFS, PATH ...), before the lookup:
+     * the OS layer may bring a variable of the system (ENV:) into the store. NULL: none */
+    void (*import)(struct sh_ctx *c, const char *name);
     /* ${x@E}: the text with backslash escapes read as $'...' reads them; ${x@P}: as a prompt string
      * (bash's backslash escapes, then expansion); ${x@A} (flags_only 0) and ${x@a} (1): the declare
      * text or the attribute letters of a variable, whole = every element. malloc'ed; NULL: no hook */

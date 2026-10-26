@@ -1956,6 +1956,12 @@ static void sync_env(sh_shell *sh)
 #if SH_HIST_FILE != VTCON_HIST_FILE || SH_HIST_CONFIG != VTCON_HIST_CONFIG
 #error the history operations of sh_exec.h and vtcon_packets.h differ
 #endif
+static int os_getenv(void *os, const char *name, char *buf, long max)
+{
+    (void)os;
+    return GetVar((STRPTR)name, (STRPTR)buf, max, GVF_GLOBAL_ONLY) >= 0;
+}
+
 static long os_hist(void *os, int op, long arg, char *buf, long max)
 {
     struct FileHandle *fh = (struct FileHandle *)BADDR(Input());
@@ -2130,6 +2136,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;
     sh.os.hist = os_hist;
+    sh.os.getenv = os_getenv;
     sh.os.chdir = os_chdir;
     sh.os.cwd = os_cwd;
     sh.os.realpath = os_realpath;
