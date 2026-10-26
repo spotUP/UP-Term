@@ -212,8 +212,14 @@ def write_conf(blink, drawn):
     for p in UPTERM_FILES:
         c.run('Echo >%s "[profile default]"' % p)
         c.run('Echo >>%s "cursor-blink = %s"' % (p, blink))
-        if drawn:
-            c.run('Echo >>%s "menu-in-terminal = graphical"' % p)
+    if drawn:
+        # Amarchy reads menu-in-terminal from ENV:Amarchy/prefs, then ENVARC:Amarchy/prefs, and falls back to the
+        # up-term files only when neither exists (amconf_core.c amconf_load_with): set it where it is read.
+        for p in PREFS:
+            old = ami.read_file(p)
+            keep = [l for l in (old or b'').decode('latin-1').splitlines()
+                    if not re.match(r'\s*menu-in-terminal\s*=', l)]
+            ami.restore_file(p, ('\n'.join(keep + ['menu-in-terminal = graphical']) + '\n').encode('latin-1'))
     time.sleep(3)                          # the handler reloads on the notify of ENV:up-term/up-term
 
 
@@ -280,7 +286,7 @@ def pick_blink(drawn):
 def r_blink(drawn, new):
     """One blink row: start from the opposite state, pick the row once, assert files and cursor."""
     old = 'off' if new == 'on' else 'on'
-    saved = {p: ami.read_file(p) for p in UPTERM_FILES}
+    saved = {p: ami.read_file(p) for p in UPTERM_FILES + PREFS}
     try:
         title = host_window()
         write_conf(old, drawn)
@@ -335,7 +341,7 @@ def r_text_on():    return r_blink(False, 'on')
 
 # ---- M6: the font and screen mode requesters ----------------------------------------------------------------------
 def r_m6_font():
-    saved = {p: ami.read_file(p) for p in UPTERM_FILES}
+    saved = {p: ami.read_file(p) for p in UPTERM_FILES + PREFS}
     try:
         host_window()
         write_conf('off', True)
@@ -383,7 +389,7 @@ def r_m6_font():
 
 
 def r_m6_mode():
-    saved = {p: ami.read_file(p) for p in UPTERM_FILES}
+    saved = {p: ami.read_file(p) for p in UPTERM_FILES + PREFS}
     try:
         host_window()
         write_conf('off', False)
