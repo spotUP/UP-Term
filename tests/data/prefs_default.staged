@@ -1,0 +1,22 @@
+[profile default]
+screen = workbench
+font-aspect = on
+backspace = del
+amiga-keys = on
+dither = on
+outline-antialias = on
+padding-color = background
+highlight-cat = on
+program-clipboard = write
+cursor = block
+cursor-blink = off
+bell = beep
+bold-bright = on
+meta = alt
+copy-on-select = off
+wheel = scroll
+reflow = on
+scrollbar = show
+completion = unix
+kingcon-info = hide
+kingcon-cache = on

@@ -1,0 +1,24 @@
+; synthetic: values the editor does not offer
+
+[profile default]
+cursor = block
+bell = beep
+screen = workbench
+program-clipboard = write
+completion = unix
+meta = alt
+backspace = del
+wheel = scroll
+reflow = on
+scrollbar = show
+cursor-blink = off
+bold-bright = off
+copy-on-select = off
+dither = on
+padding-color = background
+kingcon-info = hide
+kingcon-cache = on
+highlight-cat = on
+amiga-keys = on
+font-aspect = on
+outline-antialias = on

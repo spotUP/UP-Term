@@ -1,0 +1,70 @@
+; UP-Term window preferences. The XCON: handler reads this file at startup;
+; the Prefs app (UP-Term Prefs) writes it. Without the file every XCON:
+; window behaves exactly as before preferences existed.
+;
+; Profiles: sections named "[profile <name>]". A window takes the profile
+; named by its spec option  PROFILE <name>  (default: "default"). Keys and
+; names are case-insensitive. A later section with the same name adds to
+; the earlier one (last value wins). Keys and profile names are not
+; inherited from other profiles: a profile only changes what it names.
+;
+; Precedence, low to high: the built-in defaults < the profile < the window
+; spec options (XCON:.../DARK, /FG rrggbb, /FONT ...) < the running program
+; (OSC 4/10/11/12 colours, DECSCUSR, DECSC).
+;
+;   ; -- the default profile: every XCON: window without PROFILE <name>
+;   [profile default]
+;   ; font = TOPAZ:8.8.font        ; name:size, any fixed-width font
+;   ; fg = C0C0C0                  ; default foreground, RRGGBB hex
+;   ; bg = 000000                  ; default background
+;   ; scrollback = 2000            ; lines to keep (0 = the built-in 500, -1 = none)
+;   ; cursor = block               ; block | underline | bar (xterm DECSCUSR shape)
+;   ; cursor-blink = off           ; on | off (xterm ?12)
+;   ; cursor-color = inverse       ; inverse (the flipped cell) or RRGGBB
+;   ; bell = beep                  ; none | beep | visual (a one-frame screen flash)
+;   ; bold-bright = on             ; xterm: SGR 1 takes the bright 8-15
+;   ; meta = amiga                  ; amiga (Left Amiga = Meta, default) | alt
+;   ; copy-on-select = off         ; on: a mouse drag ends with the text on the clipboard
+;   ; wheel = scroll               ; scroll | ignore (the mouse wheel moves the scrollback)
+;   ; reflow = on                  ; on | off (a resize re-wraps the lines and the scrollback)
+;   ; backspace = del              ; del | bs: what Backspace sends (bs, ^H, for a remote host whose
+;   ;                                ; terminfo says kbs=^H -- upstream ncurses' xterm-256color, as on
+;   ;                                ; Arch or macOS; Debian and Fedora say ^?). A program can switch
+;   ;                                ; it with DECBKM (?67).
+;   ; program-clipboard = write     ; write | read-write | off: what programs may do with the
+;   ;                               ; clipboard (OSC 52). read-write lets any program -- a
+;   ;                               ; remote one over ssh too -- read what you copied
+;   ; link-open = OpenURL %s        ; the command Ctrl + click on a link runs, %s the URL
+;   ; scrollbar = show             ; show | hide (the scroll bar in a sizable window's border)
+;   ; palette = 1,0x00CD00,4,0x5C5CFF   ; remap the 16 ANSI colours: index,RRGGBB pairs
+;
+;   ; -- one for the editor: the same keys, only what it changes
+;   ; [profile vim]
+;   ; font = PARADISEC:8.8.font
+;   ; bell = none
+;
+;   ; a window gets it:  NewShell "XCON:0/20/640/300/vim/PROFILE vim/CLOSE"
+
+[profile default]
+font-fallback = SymbolsNerdFontMono
+screen = workbench
+font-aspect = on
+backspace = del
+amiga-keys = on
+dither = on
+outline-antialias = on
+padding-color = background
+highlight-cat = on
+program-clipboard = write
+cursor = block
+cursor-blink = off
+bell = beep
+bold-bright = on
+meta = alt
+copy-on-select = off
+wheel = scroll
+reflow = on
+scrollbar = show
+completion = unix
+kingcon-info = hide
+kingcon-cache = on

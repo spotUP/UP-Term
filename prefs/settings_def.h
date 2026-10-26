@@ -87,10 +87,20 @@ typedef struct sd_setting {
     int gadget;             /* the PG_* id of the row's control in Prefs */
     int aux, aux2;          /* its other controls (hex field, "No scrollback", "Inverse"), else 0 */
     int count;              /* 1; 16 for the palette: gadget + i and aux + i */
+    size_t off2;            /* key2's char array of size bytes in prefs_fields (screen-depth), else 0 */
 } sd_setting;
 
 extern const sd_setting sd_settings[SDI_COUNT];
 extern const int sd_nsettings;
+
+/* The order prefs_stage writes the keys of a profile that has none yet (a key already in the file is set in
+ * place, whatever the order): the ids of the SD_UPTERM rows that own a file key, with the three KingCON rows
+ * as SDI_KC_MATCH alone. It is the order of the files already on disks, kept so a save writes the bytes it
+ * always wrote; the table above is in page order. The last sd_nstyle ids are the look (font, colours,
+ * palette), which prefs_stage_style writes alone. */
+extern const int sd_write_order[];
+extern const int sd_nwrite;
+extern const int sd_nstyle;
 
 /* The row of a file key within a store (SD_UPTERM or SD_AMARCHY), 0 when none; a key two rows share
  * (kingcon-mode) gives the first. */
@@ -102,6 +112,8 @@ const sd_setting *sd_find_gadget(int id);
  * row->store says); a text no value names gives the default's. */
 int sd_index(const sd_setting *s, const void *store);
 int sd_def_index(const sd_setting *s);
+/* The index into values[] of the file text (case-insensitive), -1 when no value names it. */
+int sd_value_index(const sd_setting *s, const char *file);
 void sd_set_index(const sd_setting *s, void *store, int index);
 /* The other kinds: the text of entry n (0 unless the row is the palette) in store, 0 when the row has no
  * text. s->size bytes. */

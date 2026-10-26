@@ -1,0 +1,12 @@
+; synthetic: every free-text key of the editor set, nothing else
+
+[profile default]
+font = topaz.font:11
+font-fallback = SymbolsNerdFontMono
+screen-mode = 0x29000
+screen-depth = 5
+scrollback = 4000
+link-open = Run >NIL: OpenURL %s
+term = xterm-256color
+colors = 256
+cursor-color = FF8800

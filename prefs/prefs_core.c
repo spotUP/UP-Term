@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "prefs_core.h"
+#include "settings_def.h"
 #include "../amarchy/amconf_core.h"
 #include "../handler/kcmode.h"
 #include "../handler/slash.h"
@@ -63,61 +64,40 @@ void prefs_defaults(prefs_fields *f)
     f->hlcat = 1;
 }
 
-void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
+/* The palette key's entries into the 16 hex fields; an entry the key does not name stays empty. */
+static void pc_palette_from_conf(prefs_fields *f, const upconf *c, const char *p, const sd_setting *s)
 {
-    const char *v;
     uc_u32 pal[16];
     int i;
-    prefs_defaults(f);
-    pc_copy(f->font, upconf_str(c, p, "font", ""), sizeof(f->font));
-    pc_copy(f->fallback, upconf_str(c, p, "font-fallback", ""), sizeof(f->fallback));
-    pc_copy(f->screenmode, upconf_str(c, p, "screen-mode", ""), sizeof(f->screenmode));
-    pc_copy(f->screendepth, upconf_str(c, p, "screen-depth", ""), sizeof(f->screendepth));
-    pc_copy(f->sb, upconf_str(c, p, "scrollback", ""), sizeof(f->sb));
-    pc_copy(f->curcol, upconf_str(c, p, "cursor-color", ""), sizeof(f->curcol));
-    pc_copy(f->fg, upconf_str(c, p, "fg", ""), sizeof(f->fg));
-    pc_copy(f->bg, upconf_str(c, p, "bg", ""), sizeof(f->bg));
-    pc_copy(f->selfg, upconf_str(c, p, "selection-fg", ""), sizeof(f->selfg));
-    pc_copy(f->selbg, upconf_str(c, p, "selection-bg", ""), sizeof(f->selbg));
-    pc_copy(f->linkopen, upconf_str(c, p, "link-open", ""), sizeof(f->linkopen));
-    pc_copy(f->term, upconf_str(c, p, "term", ""), sizeof(f->term));
-    pc_copy(f->colors, upconf_str(c, p, "colors", ""), sizeof(f->colors));
-    v = upconf_str(c, p, "cursor", "block");
-    f->cursor = pc_ieq(v, "underline") ? PREFS_CURSOR_UNDERLINE
-              : pc_ieq(v, "bar") ? PREFS_CURSOR_BAR : PREFS_CURSOR_BLOCK;
-    f->blink = pc_ieq(upconf_str(c, p, "cursor-blink", "off"), "on");
-    v = upconf_str(c, p, "bell", "beep");
-    f->bell = pc_ieq(v, "none") ? PREFS_BELL_NONE
-            : pc_ieq(v, "visual") ? PREFS_BELL_VISUAL : PREFS_BELL_BEEP;
-    f->bold = pc_ieq(upconf_str(c, p, "bold-bright", "on"), "on");
-    f->meta_alt = !pc_ieq(upconf_str(c, p, "meta", "alt"), "amiga");
-    f->copy_sel = pc_ieq(upconf_str(c, p, "copy-on-select", "off"), "on");
-    f->wheel = !pc_ieq(upconf_str(c, p, "wheel", "scroll"), "ignore");
-    f->reflow = !pc_ieq(upconf_str(c, p, "reflow", "on"), "off");
-    f->scrollbar = !pc_ieq(upconf_str(c, p, "scrollbar", "show"), "hide");
-    /* as the handler reads them (apply_profile) */
-    v = upconf_str(c, p, "screen", "workbench");
-    f->screen = pc_ieq(v, "own") ? PREFS_SCREEN_OWN
-              : pc_ieq(v, "fullscreen") ? PREFS_SCREEN_FULL : PREFS_SCREEN_WORKBENCH;
-    f->aspect = !pc_ieq(upconf_str(c, p, "font-aspect", "on"), "off");
-    f->backspace_bs = pc_ieq(upconf_str(c, p, "backspace", "del"), "bs");
-    f->amiga_keys = !pc_ieq(upconf_str(c, p, "amiga-keys", "on"), "off");
-    f->dither = !pc_ieq(upconf_str(c, p, "dither", "on"), "off");
-    f->outline_aa = !pc_ieq(upconf_str(c, p, "outline-antialias", "on"), "off");
-    f->pad_extend = pc_ieq(upconf_str(c, p, "padding-color", "background"), "extend");
-    f->hlcat = !pc_ieq(upconf_str(c, p, "highlight-cat", "on"), "off");
-    v = upconf_str(c, p, "program-clipboard", "write");
-    f->clipboard = pc_ieq(v, "off") ? PREFS_CLIP_OFF
-                 : pc_ieq(v, "read-write") ? PREFS_CLIP_READ_WRITE : PREFS_CLIP_WRITE;
-    f->completion = pc_ieq(upconf_str(c, p, "completion", "unix"), "kingcon")
-                  ? PREFS_COMPLETE_KINGCON : PREFS_COMPLETE_UNIX;
-    pc_copy(f->kcmode, upconf_str(c, p, "kingcon-mode", ""), sizeof(f->kcmode));
-    f->kcinfo = pc_ieq(upconf_str(c, p, "kingcon-info", "hide"), "show");
-    f->kccache = !pc_ieq(upconf_str(c, p, "kingcon-cache", "on"), "off");
-    upconf_palette_parse(upconf_get(c, p, "palette"), pal);
+    upconf_palette_parse(upconf_get(c, p, s->key), pal);
     for (i = 0; i < 16; i++)
         if (pal[i] & 0x01000000UL)
             pc_rgb_chars(pal[i] & 0xFFFFFFUL, f->pal[i]);
+}
+
+/* One row of the table into prefs_fields: a check or cycle is the index of its file text in values[] (a text
+ * no value names takes the default's), a text key is copied. The KingCON rows share one key and one string. */
+void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
+{
+    int i;
+    prefs_defaults(f);
+    for (i = 0; i < sd_nsettings; i++) {
+        const sd_setting *s = &sd_settings[i];
+        char *at = (char *)f + s->off;
+        int x;
+        if (s->store != SD_UPTERM || !s->key || s->ftype == SDF_KC_COMMON || s->ftype == SDF_KC_SILENT)
+            continue;
+        if (s->kind == SD_PALETTE) {
+            pc_palette_from_conf(f, c, p, s);
+        } else if (s->ftype == SDF_INT) {
+            x = sd_value_index(s, upconf_str(c, p, s->key, s->def));
+            *(int *)at = x < 0 ? sd_def_index(s) : x;
+        } else {
+            pc_copy(at, upconf_str(c, p, s->key, ""), s->size);
+            if (s->key2)
+                pc_copy((char *)f + s->off2, upconf_str(c, p, s->key2, ""), s->size);
+        }
+    }
 }
 
 int prefs_apply_theme(prefs_fields *f, upconf *work, const char *text, long len)
@@ -688,33 +668,58 @@ static void pc_put(upconf *w, const char *p, const char *key, const char *v)
         upconf_del(w, p, key);
 }
 
-/* The look's keys -- font, the colours, the palette -- set from f in place,
- * the table written into buf: the tail of both stagings. */
-static long pc_stage_style(upconf *w, const char *p, const prefs_fields *f, char *buf, long cap)
+/* One row of prefs_fields into the profile, in place. A check or cycle is always written (the file text of
+ * its value); a text key is written, or deleted when empty so the handler's built-in stands. -1: the palette
+ * did not fit its slot. */
+static int pc_stage_row(upconf *w, const char *p, const prefs_fields *f, const sd_setting *s)
 {
+    const char *at = (const char *)f + s->off;
     uc_u32 pal[16];
     char palstr[UC_MAX_VALUE];
     long len;
     int i;
-    pc_put(w, p, "font", f->font);
-    pc_put(w, p, "cursor-color", f->curcol);
-    pc_put(w, p, "fg", f->fg);
-    pc_put(w, p, "bg", f->bg);
-    /* blank keeps the swap for that half: the key is not written at all */
-    pc_put(w, p, "selection-fg", f->selfg);
-    pc_put(w, p, "selection-bg", f->selbg);
-    for (i = 0; i < 16; i++) {
-        uc_u32 rgb;
-        pal[i] = 0;
-        if (f->pal[i][0] && upconf_hex6(f->pal[i], &rgb))
-            pal[i] = 0x01000000UL | rgb;
+    if (s->kind == SD_PALETTE) {
+        for (i = 0; i < 16; i++) {
+            uc_u32 rgb;
+            pal[i] = 0;
+            if (f->pal[i][0] && upconf_hex6(f->pal[i], &rgb))
+                pal[i] = 0x01000000UL | rgb;
+        }
+        /* a full 16-entry palette is 159 bytes: it always fits the slot */
+        len = upconf_palette_str(pal, palstr, sizeof(palstr) - 1);
+        if (len < 0)
+            return -1;
+        palstr[len] = 0;
+        pc_put(w, p, s->key, palstr);
+    } else if (s->ftype == SDF_INT) {
+        i = s->kind == SD_CHECK ? *(const int *)at != 0 : sd_index(s, f);
+        upconf_set(w, p, s->key, s->values[i].file);
+    } else {
+        pc_put(w, p, s->key, at);
+        if (s->key2)
+            pc_put(w, p, s->key2, (const char *)f + s->off2);
     }
-    /* a full 16-entry palette is 159 bytes: it always fits the slot */
-    len = upconf_palette_str(pal, palstr, sizeof(palstr) - 1);
-    if (len < 0)
+    return 0;
+}
+
+/* The rows from..to of sd_write_order. */
+static int pc_stage_rows(upconf *w, const char *p, const prefs_fields *f, int from, int to)
+{
+    int i;
+    for (i = from; i < to; i++)
+        if (pc_stage_row(w, p, f, &sd_settings[sd_write_order[i]]) < 0)
+            return -1;
+    return 0;
+}
+
+/* The look's keys -- font, the colours, the palette -- set from f in place,
+ * the table written into buf: the tail of both stagings. */
+static long pc_stage_style(upconf *w, const char *p, const prefs_fields *f, char *buf, long cap)
+{
+    long len;
+    /* blank selection colours keep the swap for that half: the key is not written at all */
+    if (pc_stage_rows(w, p, f, sd_nwrite - sd_nstyle, sd_nwrite) < 0)
         return PREFS_STAGE_FULL;
-    palstr[len] = 0;
-    pc_put(w, p, "palette", palstr);
     if (w->overflow)
         return PREFS_STAGE_FULL; /* a key or the profile itself had no room */
     len = upconf_save(w, buf, cap - 1);
@@ -745,43 +750,10 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
      * else the profile holds -- keys only the handler reads, keys typed by
      * hand, comments -- is written back as it was read. (The profile was
      * removed and refilled here, and all of that went with every save.) */
-    pc_put(w, p, "font-fallback", f->fallback);
-    upconf_set(w, p, "screen", f->screen == PREFS_SCREEN_OWN ? "own"
-                               : f->screen == PREFS_SCREEN_FULL ? "fullscreen" : "workbench");
-    pc_put(w, p, "screen-mode", f->screenmode);
-    pc_put(w, p, "screen-depth", f->screendepth);
-    pc_put(w, p, "scrollback", f->sb);
-    upconf_set(w, p, "font-aspect", f->aspect ? "on" : "off");
-    upconf_set(w, p, "backspace", f->backspace_bs ? "bs" : "del");
-    upconf_set(w, p, "amiga-keys", f->amiga_keys ? "on" : "off");
-    upconf_set(w, p, "dither", f->dither ? "on" : "off");
-    upconf_set(w, p, "outline-antialias", f->outline_aa ? "on" : "off");
     /* The Amarchy keys have one store, ENVARC:Amarchy/prefs (amconf); this file no longer carries them, and a
      * save drops what an older version left here, so a stale copy cannot shadow or mislead (plan M3). */
     amconf_strip_legacy(w);
-    upconf_set(w, p, "padding-color", f->pad_extend ? "extend" : "background");
-    upconf_set(w, p, "highlight-cat", f->hlcat ? "on" : "off");
-    upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"
-                                          : f->clipboard == PREFS_CLIP_READ_WRITE ? "read-write"
-                                          : "write");
-    pc_put(w, p, "link-open", f->linkopen);
-    pc_put(w, p, "term", f->term);
-    pc_put(w, p, "colors", f->colors);
-    upconf_set(w, p, "cursor", f->cursor == PREFS_CURSOR_UNDERLINE ? "underline"
-                               : f->cursor == PREFS_CURSOR_BAR ? "bar" : "block");
-    upconf_set(w, p, "cursor-blink", f->blink ? "on" : "off");
-    upconf_set(w, p, "bell", f->bell == PREFS_BELL_NONE ? "none"
-                             : f->bell == PREFS_BELL_VISUAL ? "visual" : "beep");
-    upconf_set(w, p, "bold-bright", f->bold ? "on" : "off");
-    upconf_set(w, p, "meta", f->meta_alt ? "alt" : "amiga");
-    upconf_set(w, p, "copy-on-select", f->copy_sel ? "on" : "off");
-    upconf_set(w, p, "wheel", f->wheel ? "scroll" : "ignore");
-    upconf_set(w, p, "reflow", f->reflow ? "on" : "off");
-    upconf_set(w, p, "scrollbar", f->scrollbar ? "show" : "hide");
-    upconf_set(w, p, "completion", f->completion == PREFS_COMPLETE_KINGCON ? "kingcon" : "unix");
-    pc_put(w, p, "kingcon-mode", f->kcmode);
-    upconf_set(w, p, "kingcon-info", f->kcinfo ? "show" : "hide");
-    upconf_set(w, p, "kingcon-cache", f->kccache ? "on" : "off");
+    pc_stage_rows(w, p, f, 0, sd_nwrite - sd_nstyle);
     return pc_stage_style(w, p, f, buf, cap);
 }
 

@@ -1,0 +1,23 @@
+; synthetic: values the editor does not offer
+[profile default]
+cursor = zzz
+bell = zzz
+screen = zzz
+program-clipboard = zzz
+completion = zzz
+meta = zzz
+backspace = zzz
+wheel = zzz
+reflow = zzz
+scrollbar = zzz
+cursor-blink = zzz
+bold-bright = off
+copy-on-select = zzz
+dither = zzz
+padding-color = zzz
+kingcon-info = zzz
+kingcon-cache = zzz
+highlight-cat = zzz
+amiga-keys = zzz
+font-aspect = zzz
+outline-antialias = zzz

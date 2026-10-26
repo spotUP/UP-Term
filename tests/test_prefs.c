@@ -1316,6 +1316,71 @@ static void meta_defaults_to_alt(void)
     CHECK_INT(f.meta_alt, 1);
 }
 
+/* The file text the editor writes is the contract with the handler and with every file already on a disk: the
+ * recorded outputs of prefs_stage / prefs_stage_style (the .staged and .style files in tests/data) were made by the
+ * hand-written per-key code and must not move when parse and serialise walk the settings table instead.
+ * Inputs: the default profile (no file), the owner's A1200 ENVARC:up-term/up-term, and synthetic files that
+ * put every check and cycle, every text key, the colours with a full palette, and values the editor does not
+ * offer through the same path. */
+static long read_data(const char *name, char *buf, long cap)
+{
+    FILE *fp = fopen(name, "rb");
+    long n;
+    if (!fp)
+        return -1;
+    n = (long)fread(buf, 1, (size_t)cap, fp);
+    fclose(fp);
+    return n;
+}
+
+static void staged_text_matches_the_recorded_file(const char *input, const char *base, int style)
+{
+    static upconf conf, work;
+    static char in[UC_MAX_FILE + 1], want[UC_MAX_FILE + 1], got[UC_MAX_FILE + 1], path[160];
+    prefs_fields f;
+    long n, wn, len;
+    if (input) {
+        strcpy(path, "tests/data/");
+        strcat(path, input);
+        strcat(path, ".prefs");
+        n = read_data(path, in, UC_MAX_FILE);
+        CHECK(n > 0);
+        CHECK_INT(prefs_load(&conf, in, n, UC_MAX_FILE), PREFS_LOAD_OK);
+        prefs_from_conf(&f, &conf, "default");
+    } else {
+        CHECK_INT(prefs_load(&conf, 0, 0, UC_MAX_FILE), PREFS_LOAD_NONE);
+        prefs_defaults(&f);
+    }
+    strcpy(path, "tests/data/");
+        strcat(path, base);
+        strcat(path, ".staged");
+    wn = read_data(path, want, UC_MAX_FILE);
+    CHECK(wn > 0);
+    len = prefs_stage(&work, &conf, "default", &f, got, sizeof(got));
+    CHECK_INT(len, wn);
+    CHECK(len == wn && memcmp(got, want, (size_t)wn) == 0);
+    if (!style)
+        return;
+    strcpy(path, "tests/data/");
+        strcat(path, base);
+        strcat(path, ".style");
+    wn = read_data(path, want, UC_MAX_FILE);
+    CHECK(wn > 0);
+    len = prefs_stage_style(&work, &conf, "default", &f, got, sizeof(got));
+    CHECK_INT(len, wn);
+    CHECK(len == wn && memcmp(got, want, (size_t)wn) == 0);
+}
+
+static void file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_key(void)
+{
+    staged_text_matches_the_recorded_file(0, "prefs_default", 0);
+    staged_text_matches_the_recorded_file("a1200_up-term", "a1200_up-term", 1);
+    staged_text_matches_the_recorded_file("prefs_switches", "prefs_switches", 0);
+    staged_text_matches_the_recorded_file("prefs_texts", "prefs_texts", 1);
+    staged_text_matches_the_recorded_file("prefs_colours", "prefs_colours", 1);
+    staged_text_matches_the_recorded_file("prefs_garbage", "prefs_garbage", 0);
+}
+
 void suite_prefs(void)
 {
     meta_defaults_to_alt();
@@ -1344,4 +1409,5 @@ void suite_prefs(void)
     prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile();
     the_amarchy_keyword_picks_the_start_page();
     the_brightness_slider_gets_a_uword_pen_list_ended_by_ffff();
+    file_text_is_byte_identical_for_defaults_the_a1200_file_and_every_key();
 }
