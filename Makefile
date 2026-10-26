@@ -567,6 +567,9 @@ $(BUILD)/amiga/rcneg: tests/amiga/rcneg.c
 $(BUILD)/amiga/clistdin: tests/amiga/clistdin.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/clistdin.c
+$(BUILD)/amiga/detach: tests/amiga/detach.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/detach.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c

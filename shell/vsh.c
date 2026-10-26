@@ -559,6 +559,13 @@ static void runner(void)
         if (cli && j->term_out)
             cli->cli_StandardOutput = j->term_out;
         BPTR oerr = me->pr_CES;
+        /* the command's seglist is in cli_Module while it runs, as the Shell has it, and what is still
+         * there afterwards is what gets unloaded. A program that detaches (cback.o, which CygnusEd and
+         * HiP link) takes its code by setting cli_Module to 0 and leaves a child running in it: freeing
+         * j->seg under that child was a Guru / reboot loop from vsh, fine from AmigaShell. */
+        BPTR omod = cli ? cli->cli_Module : 0;
+        if (cli)
+            cli->cli_Module = j->seg;
         BPTR ohome = j->home ? SetProgramDir(j->home) : 0;
         if (j->err)
             me->pr_CES = j->err;
@@ -575,6 +582,8 @@ static void runner(void)
             Flush(j->err);
         TR("runcommand back", j, j->rc);
         if (cli) {
+            j->seg = cli->cli_Module; /* 0 when the command took its code: nothing left to unload */
+            cli->cli_Module = omod;
             cli->cli_StandardInput = ostdin;
             cli->cli_StandardOutput = ostdout;
         }
