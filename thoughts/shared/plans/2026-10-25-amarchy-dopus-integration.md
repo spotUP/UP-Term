@@ -190,12 +190,12 @@ unverified until then. 25 items.
 - [ ] D10 CPU choice: both 68k archives present and the Installer script picks by `database "cpu"`. Test: host test that both archive names and md5s are in the row, and that the script text names both with the CPU branch; rig: a 68000 rig (`rig.py start` without `--max`, if the rig supports it) gets the 68000 archive, an 060 rig the os3 one (`Version DOpus5:DOpus5` and the archive's md5). (host half done in 37895055, same test; rig half OPEN: 68000 vs 060 rig run not done, so box stays unticked)
 
 ### Phase P3: shell and viewer
-- [ ] D11 Filetype generator and file (`FORM OPUS`). Test: upstream `filetype_tool.py check` round trip and `lint` clean; host golden of the bytes.
+- [x] D11 Filetype generator and file (`FORM OPUS`). Test: upstream `filetype_tool.py check` round trip and `lint` clean; host golden of the bytes. DONE: generator `tools/gen_dopus_filetype.py` (generator only; the file is not yet built into the kit or installed); test `tests/test_dopus_filetype.py` (`make test ONLY=dopus_filetype`, upstream check/lint run when `DOPUS5_SRC` is set); lint leaves only the UP-TERM: assign note (ours) and 'recognised by file name only'. `uterm-view` is a name I chose for User1; neither it nor `uterm-edit` exists yet.
 - [ ] D12 Button bank generator and file. Test: same tool if it covers banks, else a rig load: `command LoadButtons` returns RC 0 (U).
 - [ ] D13 Double-click on a text file opens an UP-Term window on the user's screen. Test: rig case, screen name asserted; A1200 eye check (owner).
 
 ### Phase P4: theme
-- [ ] D14 `menu_theme_roles_fb` output formatted for DOpus. Test: host `tests/test_main.c` (five triples equal the role colours). (SKIPPED: DOpus argument syntax undefined, question in scratchpad dopus-pkg-questions.md)
+- [x] D14 `menu_theme_roles_fb` output formatted for DOpus. Test: host `tests/test_main.c` (five triples equal the role colours). DONE: `menu_theme_dopus_commands` in `amarchy/menu_theme.c`; test `menu_theme_formats_the_dopus_palette_and_pens_commands` in `tests/test_keymap.c` (golden string + bad input). Syntax read from dopus5 v5.104 `source/Program/rexx_dopus.c:587` (set palette), `:616` (set pens), `:994` (pen mapping), keywords `source/Program/rexx_data.c:223`. Not yet called from any commodity entry (apply/restore rows are later items). (SKIPPED: DOpus argument syntax undefined, question in scratchpad dopus-pkg-questions.md)
 - [ ] D15 `dopus.theme` and restore rows; auto-revert. Test: rig case: pens read back with `dopus pens` equal the roles, then equal the saved set after restore.
 
 ### Phase P5: module

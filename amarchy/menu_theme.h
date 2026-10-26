@@ -34,4 +34,15 @@ void menu_theme_roles_fb(const uc_u32 pal16[16], uc_u32 fg, uc_u32 bg, uc_u32 rg
  * selection would be invisible, and the caller falls back to the screen's own pens 1 and 0. */
 int menu_theme_minimal(uc_u32 rgb[MT_ROLES]);
 
+/* The two Directory Opus ARexx commands that make its lister colours the menu's roles. Syntax read from upstream
+ * dopus5 v5.104 source/Program/rexx_dopus.c: RXCMD_PALETTE (set: from line 587) takes "0xRRGGBB" words, 8 bits a
+ * channel, one per colour from colour 0 (at most 16); RXCMD_PENS (set: from line 616) takes keyword groups
+ * (files, dirs, selfiles, seldirs, ...) each followed by a foreground and a background pen number, which are the
+ * palette colour numbers (rexx_dopus_get_pen, line 994). Colour n is role n (MT_BG is colour 0 ... MT_SELBOX 4), so
+ * the pens read: files text on ground, directories accent on ground, the selected two on the selection box.
+ * Writes two lines, "dopus set palette ..." and "dopus set pens ...", each ending in a newline, and a NUL.
+ * Returns the length written (without the NUL), or 0 when rgb is NULL, a colour is above 0xFFFFFF, or cap is too
+ * small (out[0] is then 0 when cap is at least 1). */
+unsigned menu_theme_dopus_commands(const uc_u32 rgb[MT_ROLES], char *out, unsigned cap);
+
 #endif

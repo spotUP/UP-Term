@@ -1998,6 +1998,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 }
 
 static void menu_theme_roles_map_the_palette(void);
+static void menu_theme_formats_the_dopus_palette_and_pens_commands(void);
 static void minimal_mode_reaches_the_program(void);
 static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
 
@@ -2313,6 +2314,7 @@ void suite_keymap(void)
     the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level();
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
+    menu_theme_formats_the_dopus_palette_and_pens_commands();
     minimal_mode_reaches_the_program();
     the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
@@ -2504,6 +2506,33 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
     menu_theme_roles_fb(pal, 0, 0, rgb);
     CHECK_INT((long)rgb[MT_BG], 0x000000L);
     CHECK_INT((long)rgb[MT_TEXT], 0xE5E5E5L);
+}
+
+/* DOpus ARexx syntax: dopus5 v5.104 source/Program/rexx_dopus.c:587 (palette) and :616 (pens) */
+static void menu_theme_formats_the_dopus_palette_and_pens_commands(void)
+{
+    uc_u32 pal[16], rgb[MT_ROLES];
+    char buf[256], tight[8];
+    unsigned n;
+    const char *want = "dopus set palette 0x282a36 0xf8f8f2 0x7f7f7f 0x8be9fd 0x0000ee\n"
+                       "dopus set pens files 1 0 dirs 3 0 selfiles 1 4 seldirs 3 4\n";
+
+    upconf_palette_parse("0,282A36,7,F8F8F2,14,8BE9FD", pal);
+    menu_theme_roles(pal, rgb);
+    n = menu_theme_dopus_commands(rgb, buf, sizeof buf);
+    CHECK_INT((long)n, (long)strlen(want));
+    CHECK_STR(buf, want);
+
+    /* a colour above 24 bits (0x01RRGGBB leaked in), a missing array, too small a buffer: 0 and an empty string */
+    rgb[MT_DIM] = 0x01000000UL;
+    strcpy(buf, "x");
+    CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, sizeof buf), 0L);
+    CHECK_STR(buf, "");
+    CHECK_INT((long)menu_theme_dopus_commands(0, buf, sizeof buf), 0L);
+    menu_theme_roles(pal, rgb);
+    CHECK_INT((long)menu_theme_dopus_commands(rgb, tight, sizeof tight), 0L);
+    CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, n), 0L);
+    CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, n + 1), (long)n);
 }
 
 /* ---- index_core: the app index's cache rows (plan 2026-10-23-amarchy-app-index.md, X1) ---- */
