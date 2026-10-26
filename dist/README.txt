@@ -703,6 +703,9 @@ AMARCHY
   Left Amiga + Alt + Right        Make window wider
   Left Amiga + Alt + Up           Make window shorter
   Left Amiga + Alt + Down         Make window taller
+  Left Amiga + Tab                Next screen
+  Left Amiga + Shift + Tab        Previous screen
+  Left Amiga + Alt + B            Toggle title bar
   Left Amiga + C                  Copy
   Left Amiga + V                  Paste
   Left Amiga + A                  Select all
@@ -710,7 +713,7 @@ AMARCHY
   Left Amiga + G                  Find next
   Left Amiga + +                  Bigger font
   Left Amiga + -                  Smaller font
-  Left Amiga + Shift + T          Theme
+  Left Amiga + Shift + T          Terminal theme
   Left Amiga + Shift + B          Background
   Left Amiga + Shift + F          Font
   Left Amiga + Shift + S          Own screen

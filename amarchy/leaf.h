@@ -39,10 +39,15 @@ typedef enum {
     LF_VIEWER,   /* viewer: the key viewer, the program super+k opens, in its own window */
     LF_WIN,      /* win: a window verb, sent to the commodity (K8 wires the port) */
     LF_GTHEME,   /* gtheme: the drawn menu's theme is saved (gthemes_dos.h gt_dos_select) */
+    LF_OPEN_THEN_REQUEST, /* slash: with no terminal window open: open one (as LF_OPEN), then send the request to it */
     LF_REQUEST   /* tab:, menuid:, slash: ... a terminal window's request port takes the action */
 } lf_how;
 
 lf_how lf_plan(int kind);
+
+/* lf_plan with whether a terminal window is open (upactive_terminal_present): a slash: row (the Style > Terminal
+ * rows) shown with no terminal opens one first, then applies there. Every other kind plans as lf_plan. */
+lf_how lf_plan_t(int kind, int term);
 
 /* The notice for a finished ARexx leaf: the dopus-*.rexx scripts end with RC 5 when DOPUS.1 is absent (plan
  * 2026-10-25-amarchy-dopus-integration.md, D5), which says "Directory Opus is not running". 0 for anything else. */

@@ -1218,7 +1218,8 @@ int main(int argc, char **argv)
         g->stop = 0;
         /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
         if (g->ixpath[0]) {                    /* an index row may be refused: the window stays for the message */
-        } else if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST && lf_plan(km.menu[g->chosen].kind) != LF_WINDOW) {
+        } else if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST && lf_plan(km.menu[g->chosen].kind) != LF_WINDOW &&
+                   lf_plan_t(km.menu[g->chosen].kind, 0) != LF_OPEN_THEN_REQUEST) {
             cleanup(g);
             g->rp = 0;
         }

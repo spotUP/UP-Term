@@ -284,9 +284,36 @@ static int lister_front(unsigned long handle)
     return 0;
 }
 
+/* open:uterm: a new UP-Term window (NewShell on LF_UTERM_SPEC) */
+static int open_uterm(void)
+{
+    char spec[128], line[160];
+    uterm_spec(spec, sizeof spec);
+    snprintf(line, sizeof line, "NewShell \"%s\"", spec);
+    return system(line);
+}
+
+/* Style > Terminal with no terminal window open: open one, wait for its request port, then send the row there. */
+static int open_then_request(const km_menu *m, const lf_ui *ui)
+{
+    int i, rc = open_uterm();
+    if (rc)
+        return rc;
+    for (i = 0; i < 100 && !upactive_terminal_present(ui->self_in_mru); i++)
+        Delay(5);                       /* up to 5 seconds, a tick of 0.1 s */
+    if (!upactive_terminal_present(ui->self_in_mru)) {
+        if (ui->refused)
+            ui->refused(ui->ctx, m->label, UPREQ_NOWINDOW, "");
+        return UPREQ_NOWINDOW;
+    }
+    return run_request(m, ui);
+}
+
 int lf_run(const km_menu *m, const lf_ui *ui)
 {
-    switch (lf_plan(m->kind)) {
+    switch (lf_plan_t(m->kind, upactive_terminal_present(ui->self_in_mru))) {
+    case LF_OPEN_THEN_REQUEST:
+        return open_then_request(m, ui);
     case LF_DETACH:
         return run_detached(m, ui);
     case LF_SCAN: {
@@ -309,12 +336,8 @@ int lf_run(const km_menu *m, const lf_ui *ui)
             ui->refused(ui->ctx, m->label, UPREQ_FAILED, note);
         return rc;
     }
-    case LF_OPEN: {
-        char spec[128], line[160];
-        uterm_spec(spec, sizeof spec);
-        snprintf(line, sizeof line, "NewShell \"%s\"", spec);
-        return system(line);
-    }
+    case LF_OPEN:
+        return open_uterm();
     case LF_WIN:
         return send_win(m, ui);
     case LF_GTHEME:

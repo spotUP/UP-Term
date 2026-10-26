@@ -28,6 +28,11 @@ lf_how lf_plan(int kind)
     }
 }
 
+lf_how lf_plan_t(int kind, int term)
+{
+    return kind == KA_SLASH && !term ? LF_OPEN_THEN_REQUEST : lf_plan(kind);
+}
+
 const char *lf_rexx_notice(const char *script, long rc)
 {
     const char *base = script ? script : "";

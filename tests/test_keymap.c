@@ -1034,8 +1034,8 @@ static void style_theme_lists_the_gui_theme_rows(void)
     CHECK_STR(x.rows[it[1].ix].path, "gtheme:solo");
     CHECK_INT(x.rows[it[1].ix].kind, IX_KIND_GTHEME);
     c = ix_level_t(&km, &x, "style", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 1);
-    CHECK_STR(it[0].label, "Theme");
+    CHECK_INT(c, 2);                                 /* Amarchy theme (the GUI themes) and the Terminal group */
+    CHECK_STR(it[0].label, "Amarchy theme");
     CHECK_INT(it[0].row, MN_ROW_GROUP);
     ix_free(&x);
     CHECK_INT(lf_plan(KA_GTHEME), LF_GTHEME);
@@ -1053,7 +1053,11 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK(has_label(it, c, "Style"));               /* the Theme group lists the GUI themes, over a terminal or not */
     CHECK(has_label(it, c, "Window"));              /* the win: rows run in the commodity, over a terminal or not */
     c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 1);                                 /* Theme only; Terminal theme, Font, Background need a terminal */
+    CHECK_INT(c, 2);                                 /* Amarchy theme and the Terminal group, shown with no terminal open */
+    CHECK(has_label(it, c, "Amarchy theme") && has_label(it, c, "Terminal"));
+    c = ix_level_t(&km, 0, "style.terminal", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 3);                                 /* Theme, Font, Background: picking one opens a terminal first */
+    CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
     c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
     CHECK_INT(c, 23);                                /* the 23 win:/rexx: rows; window.tab and window.preferences stay hidden */
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
@@ -1063,6 +1067,8 @@ static void terminal_rows_show_only_over_a_terminal(void)
     c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 1);
     CHECK(has_label(it, c, "Apps") && has_label(it, c, "Style") && has_label(it, c, "Window"));
     c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 1);
+    CHECK(has_label(it, c, "Amarchy theme") && has_label(it, c, "Terminal"));
+    c = ix_level_t(&km, 0, "style.terminal", "", it, MN_MAX_ITEMS, 1);
     CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 1);
     CHECK(has_label(it, c, "Claude"));
@@ -1660,6 +1666,9 @@ static void a_run_leaf_gets_its_own_window_not_the_menus_console(void)
     CHECK_INT((int)lf_plan(KA_OPEN), (int)LF_OPEN);
     CHECK_INT((int)lf_plan(KA_SLASH), (int)LF_REQUEST);
     CHECK_INT((int)lf_plan(KA_MENUID), (int)LF_REQUEST);
+    CHECK_INT((int)lf_plan_t(KA_SLASH, 0), (int)LF_OPEN_THEN_REQUEST);   /* no terminal: open one, then send the slash command */
+    CHECK_INT((int)lf_plan_t(KA_SLASH, 1), (int)LF_REQUEST);
+    CHECK_INT((int)lf_plan_t(KA_RUN, 0), (int)LF_WINDOW);
     CHECK_INT((int)lf_plan(KA_TAB), (int)LF_REQUEST);
     CHECK(!strncmp(LF_UTERM_SPEC, "XCON:", 5));
 }
@@ -1766,6 +1775,8 @@ static void the_dopus_group_needs_a_port(void)
     CHECK_INT(mn_row_needs(KA_REXX, "dopus.front"), MN_COND_DOPUS);
     CHECK_INT(mn_row_needs(KA_OPEN, "dopus.shell"), MN_COND_DOPUS);
     CHECK_INT(mn_row_needs(KA_REXX, "apps.claude"), 0);
+    CHECK_INT(mn_row_needs(KA_SLASH, "style.terminal.font"), 0);   /* the Terminal group opens a terminal when none is open */
+    CHECK_INT(mn_row_needs(KA_SLASH, "style.other"), MN_COND_TERM);
     CHECK(!node_has("", "Dopus", mn_cond(1, 0, 1)));            /* no port: the group is gone, terminal or not */
     CHECK(!node_has("", "Dopus", mn_cond(0, 0, 1)));
     CHECK(node_has("", "Dopus", mn_cond(1, 1, 1)));              /* port present: the group shows */
@@ -2808,7 +2819,7 @@ static void menu_item_id_cases(void)
     CHECK_STR(id, "apps");
     n = mn_children(&km, "style", it, TEST_LEVEL_MAX);
     for (i = 0; i < n; i++)
-        if (!MN_IS_GROUP(&it[i]) && !strcmp(it[i].label, "Theme")) {
+        if (!MN_IS_GROUP(&it[i]) && !strcmp(it[i].label, "Amarchy theme")) {
             mi_item_id("style", &it[i], id, sizeof id);
             CHECK_STR(id, "style.theme");
             ran = -1;
