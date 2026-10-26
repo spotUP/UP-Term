@@ -772,7 +772,7 @@ def stage_terminfo(src, dest):
 def stage_amissl(vtc, m060):
     """VTC:amissl/AmiSSL/amissl_v362.library (RIG_LIBS): the kit's AmiSSL library for the CPU the rig
     boots as (68060 with --060/--max, else 68020-40), flat, where amisslmaster.library looks for it."""
-    src = ROOT / "vendor/amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / ("68060" if m060 else "68020-40") / "amissl_v362.library"
+    src = paths.VENDOR / "amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / ("68060" if m060 else "68020-40") / "amissl_v362.library"
     if not src.is_file():
         sys.exit("rig: the kit's AmiSSL 5.27 library not found: %s (vendor/amissl-5.27, the kit's AmiSSL drawer)" % src)
     dst = vtc / "amissl/AmiSSL" / src.name

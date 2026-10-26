@@ -16,7 +16,10 @@ SYMBOLS_TTF := $(BUILD)/symbolsnerd/SymbolsNerdFontMono-Regular.ttf
 # The workspace directory that holds vtcon and the other UP-Term repos side by
 # side (see the upterm meta-repo); every sibling default below hangs off it.
 # tools/rig/paths.py reads the same variable, with the same default.
-UPTERM_ROOT ?= $(abspath $(CURDIR)/..)
+# A git worktree sits inside the main checkout (.claude/worktrees/x), so the workspace is the main checkout's parent,
+# and vendor/ (gitignored) is the main checkout's when the worktree has none: both asked of tools/rig/paths.py.
+VENDOR := $(shell python3 -I $(CURDIR)/tools/rig/paths.py vendor)
+UPTERM_ROOT ?= $(abspath $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)/..)
 # The directory of the projects that are not UP-Term repos (DCTelnet/, AmiExpress/, UpRough/): CODE_ROOT, else the
 # nearest ancestor of UPTERM_ROOT holding DCTelnet/. One rule for the flat layout and the ~/Code/UP-Term umbrella;
 # it lives in tools/rig/paths.py (code_root), which the rig scripts read too.
@@ -529,7 +532,7 @@ CPU      ?= 68020
 # The AmigaOS 3.2 SDK headers. vendor/ is gitignored (4.1 MB of third-party
 # headers), so unpack NDK3.2R4 there once, or point this at your own copy:
 #   make amiga VTCON_NDK=<path>/Include_H
-VTCON_NDK ?= $(CURDIR)/vendor/ndk-3.2r4-Include_H
+VTCON_NDK ?= $(VENDOR)/ndk-3.2r4-Include_H
 VC       := vc +$(VBCC_CFG) -I$(VTCON_NDK) -cpu=$(CPU) -O2 -warn=-1 -dontwarn=163,166,167,168,170,306,307,81 -warnings-as-errors
 
 # The 68020 check (tty/cpucheck.c, built for the 68000): the program's main is
@@ -603,7 +606,7 @@ $(BUILD)/amiga/mdv: view/md_main.c $(UPTERM_VERSION_H) $(VIEW_MD) $(VIEW_CLI) vi
 # build without TLS that refuses https (http URLs, the fixture, still work).
 VTCON_NETINCLUDE ?= $(CURDIR)/third_party/roadshow-netinclude
 # the SDK unpacked into vendor/ (gitignored, like the NDK) is used when present
-AMISSL_SDK ?= $(firstword $(wildcard $(CURDIR)/vendor/amissl-*/AmiSSL/Developer))
+AMISSL_SDK ?= $(firstword $(wildcard $(VENDOR)/amissl-*/AmiSSL/Developer))
 ifdef AMISSL_SDK
 CLAUDE_TLS := claude/tls_amissl.c
 CLAUDE_TLS_INC := -I$(AMISSL_SDK)/include
@@ -1376,7 +1379,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	rm -rf $(KIT)/Files/wasabi && cp -R dist/wasabi $(KIT)/Files/wasabi
 	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	@# AmiSSL 5.27 (Apache 2.0) as its own release drawer: the Install runs its Install-AmiSSL (the Developer SDK is for building only, so it stays out)
-	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R vendor/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info
+	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R $(VENDOR)/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
 	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
 	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)
@@ -1434,8 +1437,8 @@ dist-dopus: $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,dopus)
 	cp dist/addons/dopus/COPYING dist/addons/dopus/SOURCE.txt dist/addons/dopus/archives.txt $(KIT_dopus)/Files/
 	grep -v '^#' dist/addons/dopus/archives.txt | while read a md5 drawer rest; do \
-	  [ "$$(md5 -q vendor/dopus5-5.104/$$a 2>/dev/null || md5sum < vendor/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
-	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer vendor/dopus5-5.104/$$a || exit 1; \
+	  [ "$$(md5 -q $(VENDOR)/dopus5-5.104/$$a 2>/dev/null || md5sum < $(VENDOR)/dopus5-5.104/$$a | cut -d' ' -f1)" = "$$md5" ] || { echo "[ERROR] $$a: md5 is not $$md5"; exit 1; }; \
+	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
 	done
 	python3 tools/mkkit.py dopus
 # up-uhc: the unmodified UHC tools archive (dist/addons/uhc/archives.txt: permission of its author to redistribute it).
@@ -1445,9 +1448,9 @@ dist-dopus: $(BUILD)/amiga/upupdate
 dist-uhc: $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,uhc)
 	grep -v '^#' dist/addons/uhc/archives.txt | while read a sha drawer url rest; do \
-	  mkdir -p vendor/uhc && { [ -f vendor/uhc/$$a ] || curl -fsSL -o vendor/uhc/$$a $$url; } || exit 1; \
-	  [ "$$(shasum -a 256 < vendor/uhc/$$a | cut -d' ' -f1)" = "$$sha" ] || { echo "[ERROR] $$a: sha256 is not $$sha"; exit 1; }; \
-	  mkdir -p $(KIT_uhc)/Files/userland/$$drawer && lha -xqw=$(KIT_uhc)/Files/userland/$$drawer vendor/uhc/$$a || exit 1; \
+	  mkdir -p $(VENDOR)/uhc && { [ -f $(VENDOR)/uhc/$$a ] || curl -fsSL -o $(VENDOR)/uhc/$$a $$url; } || exit 1; \
+	  [ "$$(shasum -a 256 < $(VENDOR)/uhc/$$a | cut -d' ' -f1)" = "$$sha" ] || { echo "[ERROR] $$a: sha256 is not $$sha"; exit 1; }; \
+	  mkdir -p $(KIT_uhc)/Files/userland/$$drawer && lha -xqw=$(KIT_uhc)/Files/userland/$$drawer $(VENDOR)/uhc/$$a || exit 1; \
 	done
 	python3 tools/mkkit.py uhc
 # every package of dist/slim.txt (P9): the ports' own files at the paths the base used to carry, taken from the

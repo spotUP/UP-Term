@@ -5,7 +5,7 @@ UPTERM_OS32_TREE, UPTERM_OS32_ROM).
 
 UPTERM_ROOT is the workspace directory that holds vtcon, ixemul-vtcon,
 tmux-amiga, ... side by side (the meta-repo `upterm` creates it). Default:
-the parent of this vtcon checkout. The Makefile's default is the same
+the parent of the main vtcon checkout (a git worktree's parent is not it). The Makefile's default is the same
 (`UPTERM_ROOT ?= $(abspath $(CURDIR)/..)`).
 """
 import contextlib
@@ -16,7 +16,25 @@ import subprocess
 import sys
 
 VTCON = pathlib.Path(__file__).resolve().parents[2]
-UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or VTCON.parent)
+
+
+def _main_checkout(checkout):
+    """The main checkout of the repository `checkout` belongs to: `checkout`
+    itself, or for a git worktree the checkout that owns its .git."""
+    try:
+        common = subprocess.run(
+            ["git", "-C", str(checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return checkout
+    return pathlib.Path(common).resolve().parent
+
+
+MAIN_CHECKOUT = _main_checkout(VTCON)
+UPTERM_ROOT = pathlib.Path(os.environ.get("UPTERM_ROOT") or MAIN_CHECKOUT.parent)
+# third-party SDKs and archives (gitignored, so a worktree has none): this checkout's vendor/ if it has one, else the
+# main checkout's. The Makefile asks (`paths.py vendor`).
+VENDOR = VTCON / "vendor" if (VTCON / "vendor").is_dir() else MAIN_CHECKOUT / "vendor"
 # the rig's own UP-Term: drawer in the host drawer VTC: (the Workbench labels a drawer icon with the file name,
 # so the owner sees Apps); rig.py, the rig scripts and their tests all take it from here
 UPTERM_DRAWER = "Apps"
@@ -45,23 +63,11 @@ def code_root(upterm_root=None):
 CODE_ROOT = code_root()
 
 
-def _main_checkout(checkout):
-    """The main checkout of the repository `checkout` belongs to: `checkout`
-    itself, or for a git worktree the checkout that owns its .git."""
-    try:
-        common = subprocess.run(
-            ["git", "-C", str(checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"],
-            capture_output=True, text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return checkout
-    return pathlib.Path(common).resolve().parent
-
-
 # The rigs are machine resources (an FS-UAE each, a fixed wasabid port, a
 # 1.5 GB system disk), so they live in the main checkout's build/ for every
 # worktree. A worktree has no build/rig2: FS-UAE started from one booted with
 # no bootable device (2026-10-12).
-RIG_HOME = _main_checkout(VTCON) / "build"
+RIG_HOME = MAIN_CHECKOUT / "build"
 
 # Which rig: UPTERM_RIG unset or 1 is the first (build/rig, wasabid port 1234);
 # UPTERM_RIG=2 is the second (build/rig2, port 1235), a separate FS-UAE with
@@ -290,3 +296,7 @@ def rig_lock(rig_dir=None):
 
 if __name__ == "__main__" and sys.argv[1:] == ["code-root"]:
     print(CODE_ROOT)
+elif __name__ == "__main__" and sys.argv[1:] == ["main-checkout"]:
+    print(MAIN_CHECKOUT)
+elif __name__ == "__main__" and sys.argv[1:] == ["vendor"]:
+    print(VENDOR)
