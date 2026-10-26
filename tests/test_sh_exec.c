@@ -1699,6 +1699,7 @@ static const char *started(const char *text)
     put_file("RAM:s8", ".key a/m\necho ok\n", 17);
     put_file("RAM:s9", "ab\0cd\n", 6);
     put_file("RAM:prog", "\0\0\3\363#!/bin/sh\n", 14);
+    put_file("/tmp/opkg-ab/preinst", "#!/bin/sh\necho ok\n", 18);
     watched_io = 0;
     {
         int inc = 0;
@@ -1730,6 +1731,8 @@ static void a_bin_sh_and_bin_bash_are_the_shell_and_no_other_path_is(void)
     CHECK_STR(started("RAM:s7 x"), "RAM:s7|x");           /* the S bit: an AmigaDOS script, the OS layer's */
     CHECK_STR(started("RAM:s8 x"), "RAM:s8|x");           /* a .key line: an AmigaDOS script too */
     CHECK_STR(started("RAM:s9 x"), "RAM:s9|x");           /* a NUL byte: binary, not a script */
+    /* opkg's maintainer script: an absolute Unix path, no E bit (the fake has none), a #!/bin/sh line */
+    CHECK_STR(started("/tmp/opkg-ab/preinst install"), "VTC:vsh|/tmp/opkg-ab/preinst|install");
     /* an ordinary executable starts with no open or read of its file by the shell */
     strcpy(watched, "RAM:prog");
     CHECK_STR(started("RAM:prog x"), "RAM:prog|x");
