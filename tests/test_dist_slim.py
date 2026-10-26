@@ -64,6 +64,20 @@ class Table(unittest.TestCase):
         self.assertEqual(got.stdout.strip(), '/nowhere/ws/upterm-ports/build/kit/userland')
 
 
+    def test_each_package_stages_into_the_drawer_of_its_archive(self):
+        """2026-10-26: make dist failed at dist-sqlite with FileExistsError on
+        build/dist/up-sqlite/Files/userland/licenses/sqlite. The Makefile named every package's drawer
+        up-<id>, while ADDON_STAGE and mkkit.py use the packages.txt archive, up-sqlite3 for sqlite: the
+        payload went into a drawer no archive packed and a rerun tripped over it. Read through make -n."""
+        got = subprocess.run(['make', '-n', '-C', str(ROOT)] + ['dist-' + i for i in slim.ids()],
+                             capture_output=True, text=True, env=dict(os.environ, UPTERM_ROOT=str(ROOT.parent)))
+        self.assertEqual(got.returncode, 0, got.stderr[-2000:])
+        for i in slim.ids():
+            if ARCHIVE[i] != 'up-' + i:
+                self.assertTrue('build/dist/%s/Files/userland' % ARCHIVE[i] in got.stdout, '%s: not staged into %s' % (i, ARCHIVE[i]))
+                self.assertFalse('build/dist/up-%s/' % i in got.stdout, '%s: staged into up-%s' % (i, i))
+
+
 class SlimBase(unittest.TestCase):
     def test_the_base_kit_has_none_of_the_moved_paths(self):
         need(self, BASE)
