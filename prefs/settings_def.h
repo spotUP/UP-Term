@@ -133,4 +133,19 @@ void sd_set_index(const sd_setting *s, void *store, int index);
  * text. s->size bytes. */
 char *sd_string(const sd_setting *s, void *store, int n);
 
+/* The menu's page groups: `settings:<name>` in the keymap [menu] names a page of Prefs. The PG_PAGE_* of a
+ * name, -1 when none; the name of a page, 0 when out of range. */
+int sd_page_by_name(const char *name);
+const char *sd_page_name(int page);
+
+/* The label without the Prefs shortcut `_`, copied to out (n bytes, always terminated); the length. */
+int sd_label_plain(const sd_setting *s, char *out, int n);
+/* One menu row, "Label: Value" for every kind, the label without its `_`. store is the row's own store
+ * (a prefs_fields for SD_UPTERM, an am_prefs for SD_AMARCHY, as s->store says). width is the size of buf in
+ * bytes: when label and value do not fit, the value is cut (ending in "..") and the label is kept whole.
+ * Shown values: a check or cycle the display text of its value, an int, string, colour, font, screen mode
+ * and theme name as stored ("default" when empty, "(empty)" for an empty string), the palette, theme and
+ * profile rows "...". The length of the text. */
+int sd_row_label(const sd_setting *s, const void *store, char *buf, int width);
+
 #endif

@@ -3,6 +3,7 @@
  * with menu_core.c. */
 #include <string.h>
 #include "menu_core.h"
+#include "../prefs/settings_def.h"
 
 static void cpy(char *d, const char *s, int n)
 {
@@ -55,9 +56,38 @@ int mn_children(const keymap *k, const char *node, mn_item *out, int max)
     return mn_children_t(k, node, out, max, MN_COND_ALL);
 }
 
+/* the row of the keymap that is the settings page group `node` (id == node, kind settings:), else -1 */
+static int settings_row(const keymap *k, const char *node)
+{
+    int i;
+    for (i = 0; i < k->nmenu; i++)
+        if (k->menu[i].kind == KA_SETTINGS && !strcmp(k->menu[i].id, node))
+            return i;
+    return -1;
+}
+
+/* the page's settings in table order: the rows the Prefs window shows on that page */
+static int setting_rows(const keymap *k, int row, mn_item *out, int max)
+{
+    int page = sd_page_by_name(k->menu[row].arg), i, n = 0;
+    for (i = 0; page >= 0 && i < sd_nsettings && n < max; i++) {
+        const sd_setting *s = &sd_settings[i];
+        if (s->page != page)
+            continue;
+        out[n].row = MN_ROW_SETTING;
+        out[n].ix = s->id;
+        cpy(out[n].seg, s->key ? s->key : "", KM_ID);
+        sd_label_plain(s, out[n].label, KM_LABEL);
+        n++;
+    }
+    return n;
+}
+
 int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int cond)
 {
     int i, j, n = 0, nl = (int)strlen(node);
+    if (nl && (i = settings_row(k, node)) >= 0)
+        return setting_rows(k, i, out, max);
     for (i = 0; i < k->nmenu && n < max; i++) {
         const char *id = k->menu[i].id, *rest, *dot;
         int seglen, dup = 0;
@@ -87,6 +117,12 @@ int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int 
             out[n].seg[seglen] = 0;
             out[n].label[0] = (char)((rest[0] >= 'a' && rest[0] <= 'z') ? rest[0] - 32 : rest[0]);
             cpy(out[n].label + 1, rest + 1, seglen < KM_LABEL ? seglen : KM_LABEL);
+        } else if (k->menu[i].kind == KA_SETTINGS) {
+            /* a settings page: a group here, its rows below it */
+            out[n].row = MN_ROW_GROUP;
+            out[n].ix = -1;
+            cpy(out[n].seg, rest, KM_ID);
+            cpy(out[n].label, k->menu[i].label, KM_LABEL);
         } else {
             if (!row_shown(&k->menu[i], cond))
                 continue;
@@ -131,6 +167,8 @@ void mn_levels_t(const keymap *k, const char *node, mn_level_fn fn, void *ctx, i
             g[dot - id] = 0;
             fn(it, mn_children_t(k, g, it, MN_MAX_ITEMS, cond), ctx);
         }
+        if (k->menu[i].kind == KA_SETTINGS)
+            fn(it, mn_children_t(k, id, it, MN_MAX_ITEMS, cond), ctx);
     }
 }
 

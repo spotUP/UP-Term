@@ -360,3 +360,86 @@ char *sd_string(const sd_setting *s, void *store, int n)
         return 0;
     return (char *)store + s->off + (size_t)n * (size_t)s->size;
 }
+
+/* ---- menu rows ---- */
+
+static const char *const sd_page_names[PG_NPAGES] = {
+    "general", "colors", "palette", "keyboard", "advanced", "amarchy"
+};
+
+int sd_page_by_name(const char *name)
+{
+    int i;
+    for (i = 0; name && i < PG_NPAGES; i++)
+        if (!strcmp(name, sd_page_names[i]))
+            return i;
+    return -1;
+}
+
+const char *sd_page_name(int page)
+{
+    return page >= 0 && page < PG_NPAGES ? sd_page_names[page] : 0;
+}
+
+int sd_label_plain(const sd_setting *s, char *out, int n)
+{
+    const char *p;
+    int len = 0;
+    if (n < 1)
+        return 0;
+    for (p = s->label ? s->label : ""; *p && len < n - 1; p++)
+        if (*p != '_')
+            out[len++] = *p;
+    out[len] = 0;
+    return len;
+}
+
+/* the text a row shows for its value; "" for a kind that shows "..." */
+static const char *row_value(const sd_setting *s, const void *store, char *hex)
+{
+    char *t;
+    switch (s->kind) {
+    case SD_CHECK:
+    case SD_CYCLE:
+        return s->values[sd_index(s, store)].text;
+    case SD_PALETTE:
+    case SD_THEME:
+    case SD_PROFILE:
+        return "...";
+    }
+    t = sd_string(s, (void *)store, 0);
+    if (!t || !*t)
+        return s->kind == SD_STRING ? "(empty)" : "default";
+    if (s->kind == SD_COLOUR) {
+        hex[0] = '#';
+        strncpy(hex + 1, t, UC_MAX_VALUE);
+        hex[UC_MAX_VALUE + 1] = 0;
+        return hex;
+    }
+    return t;
+}
+
+int sd_row_label(const sd_setting *s, const void *store, char *buf, int width)
+{
+    char hex[UC_MAX_VALUE + 2];
+    const char *v = row_value(s, store, hex);
+    int len = sd_label_plain(s, buf, width), room, vl = (int)strlen(v);
+    if (len + 2 >= width)
+        return len;
+    buf[len++] = ':';
+    buf[len++] = ' ';
+    room = width - 1 - len;
+    if (vl > room) {
+        /* cut the value, never the label; "..", or a bare cut when there is no room for them */
+        if (room >= 4) {
+            memcpy(buf + len, v, (size_t)(room - 2));
+            buf[len + room - 2] = '.';
+            buf[len + room - 1] = '.';
+        } else
+            memcpy(buf + len, v, (size_t)room);
+        vl = room;
+    } else
+        memcpy(buf + len, v, (size_t)vl);
+    buf[len + vl] = 0;
+    return len + vl;
+}

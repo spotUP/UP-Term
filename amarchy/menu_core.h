@@ -11,13 +11,16 @@
 
 #define MN_ROW_GROUP (-1)
 #define MN_ROW_INDEX (-2)       /* the action kind of an app or game from the index: X5 launches it */
+#define MN_ROW_SETTING (-3)     /* a setting of a settings page group: ix is its SDI_* row in prefs/settings_def.h; label is the plain label, sd_row_label adds the value */
 #define MN_IS_GROUP(it) ((it)->row == MN_ROW_GROUP)
 #define MN_IS_INDEX(it) ((it)->row == MN_ROW_INDEX)
+#define MN_IS_SETTING(it) ((it)->row == MN_ROW_SETTING)
 
 typedef struct mn_item {
     int  row;                   /* index into keymap.menu, MN_ROW_GROUP for a group (a node with children),
-                                 * MN_ROW_INDEX for an app index row (amarchy/index_core.h) */
-    int  ix;                    /* for MN_ROW_INDEX: the row in the ix_index; else -1 */
+                                 * MN_ROW_INDEX for an app index row (amarchy/index_core.h),
+                                 * MN_ROW_SETTING for a setting row (settings_def) */
+    int  ix;                    /* for MN_ROW_INDEX: the row in the ix_index; MN_ROW_SETTING: the SDI_* id; else -1 */
     char seg[KM_ID];            /* the id segment: the node path of a group is node + "." + seg */
     char label[KM_LABEL];       /* a leaf's own label; a group's segment with a capital */
 } mn_item;
@@ -49,7 +52,9 @@ int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int 
 
 /* The entries one level below `node` ("" is the root, "apps" the Apps node), in file order: a
  * [menu] id one segment deeper is a leaf, a longer one makes a group (once). The count; at
- * most max. A row whose id equals the node itself is never its own child. */
+ * most max. A row whose id equals the node itself is never its own child, except that a row of
+ * kind KA_SETTINGS (`settings:<page>`) makes its id a group in its parent and, as the node, lists the
+ * page's settings as MN_ROW_SETTING rows in settings_def table order. */
 int mn_children(const keymap *k, const char *node, mn_item *out, int max);
 
 /* The entries that match filter, prefix matches first, each group in its order. Writes the

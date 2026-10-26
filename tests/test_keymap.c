@@ -9,6 +9,7 @@
 #include "../handler/menu_ids.h"
 #include "../amarchy/cxdesc.h"
 #include "../amarchy/menu_core.h"
+#include "../prefs/settings_def.h"
 #include "../amarchy/menu_geom.h"
 #include "../amarchy/leaf.h"
 #include "../amarchy/menu_icon.h"
@@ -547,6 +548,74 @@ static void check_row(const char *id, int kind, const char *arg)
         return;
     CHECK_INT(m->kind, kind);
     CHECK(!strcmp(m->arg, arg));
+}
+
+static void count_level(const mn_item *items, int n, void *ctx)
+{
+    (void)items; (void)n;
+    ++*(int *)ctx;
+}
+
+/* M1: a settings page group (settings.<page> = Label | settings:<page>) is a group in its parent and lists the
+ * page's rows of the settings table, in table order, as MN_ROW_SETTING rows; count and order from the table. */
+static void settings_page_group_lists_the_table_rows(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    keymap pk;
+    int page, i, n, want, seen_pages = 0;
+    char text[1024], line[128];
+    strcpy(text, "[menu]\n");
+    for (page = 0; page < PG_NPAGES; page++) {
+        strcpy(line, "settings.");
+        strcat(line, sd_page_name(page));
+        strcat(line, " = Page X | settings:");
+        strcat(line, sd_page_name(page));
+        strcat(line, "\n");
+        strcat(text, line);
+    }
+    strcat(text, "settings.other = Other | run:x\n");
+    CHECK(keymap_parse(&pk, text, (long)strlen(text)));
+    /* the page lines are groups under settings, labelled by the file */
+    n = mn_children(&pk, "settings", it, MN_MAX_ITEMS);
+    CHECK_INT(n, PG_NPAGES + 1);
+    for (i = 0; i < PG_NPAGES; i++) {
+        CHECK_INT(it[i].row, MN_ROW_GROUP);
+        CHECK(!strncmp(it[i].label, "Page ", 5));
+    }
+    CHECK_INT(it[PG_NPAGES].row >= 0, 1);
+    for (page = 0; page < PG_NPAGES; page++) {
+        char node[32];
+        int k = 0;
+        strcpy(node, "settings.");
+        strcat(node, sd_page_name(page));
+        want = 0;
+        for (i = 0; i < sd_nsettings; i++)
+            want += sd_settings[i].page == page;
+        n = mn_children(&pk, node, it, MN_MAX_ITEMS);
+        CHECK_INT(n, want);
+        CHECK(want > 0);
+        for (i = 0; i < sd_nsettings; i++) {
+            if (sd_settings[i].page != page)
+                continue;
+            if (k < n) {
+                CHECK_INT(it[k].row, MN_ROW_SETTING);
+                CHECK_INT(it[k].ix, sd_settings[i].id);
+                CHECK(strchr(it[k].label, '_') == 0);
+            }
+            k++;
+        }
+        seen_pages += n;
+    }
+    /* every settings row of a page appears once across the six groups */
+    for (want = 0, i = 0; i < sd_nsettings; i++)
+        want += sd_settings[i].page >= 0 && sd_settings[i].page < PG_NPAGES;
+    CHECK_INT(seen_pages, want);
+    /* the walk the window sizes use visits the page levels too */
+    {
+        int levels = 0;
+        mn_levels(&pk, "settings", count_level, &levels);
+        CHECK_INT(levels, 1 + PG_NPAGES);
+    }
 }
 
 static void the_window_group_rows_and_hotkeys(void)
@@ -2394,6 +2463,7 @@ void suite_keymap(void)
     the_shipped_file_resolves_and_derives_menu_keys();
     the_shipped_menu_has_learn_system_and_install_groups();
     the_window_group_rows_and_hotkeys();
+    settings_page_group_lists_the_table_rows();
     the_screens_group_rows_and_hotkeys();
     the_workbench_group_rows();
     cx_descriptions_and_qualifier_mask();

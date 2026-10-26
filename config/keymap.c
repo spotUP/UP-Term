@@ -127,6 +127,7 @@ int keymap_action_scope(int kind)
     case KA_REXX:
     case KA_WIN:
     case KA_GTHEME:
+    case KA_SETTINGS:
         return KS_COMMODITY;
     case KA_MENU:
     case KA_VIEWER:
@@ -212,7 +213,7 @@ static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
     { "slash", KA_SLASH }, { "run", KA_RUN }, { "rexx", KA_REXX }, { "open", KA_OPEN },
     { "detach", KA_DETACH }, { "scan", KA_SCAN },
-    { "win", KA_WIN }, { "gtheme", KA_GTHEME }
+    { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "settings", KA_SETTINGS }
 };
 
 static int tab_arg_ok(const char *a)
