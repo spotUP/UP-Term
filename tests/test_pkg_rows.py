@@ -37,7 +37,7 @@ class PkgRows(unittest.TestCase):
             self.assertEqual(rc, 0)
             # the generator really asked the ports Makefile: the recipe's summary came back through it
             summary = [v for _, f, v in calls if f == 'SUMMARY'][0]
-            self.assertEqual(summary, pkgs.summary('bitchx', ''))
+            self.assertEqual(summary, pkgs.summary('bitchx'))
             d = pathlib.Path(d)
             row = (d / 'dist/packages.row').read_text()
             self.assertIn(row, (ROOT / 'dist/packages.txt').read_text())
@@ -52,7 +52,7 @@ class PkgRows(unittest.TestCase):
             self.assertFalse((d / 'pkgs.py.line').exists() or (d / 'Makefile.snippet').exists())
             self.assertNotIn('bitchx', pkgs.SUMMARY)
             self.assertNotIn('dist-bitchx', (ROOT / 'Makefile').read_text().replace('dist-<id>', ''))
-            self.assertEqual(pkgs.summary('bitchx', ''), summary)
+            self.assertEqual(pkgs.summary('bitchx'), summary)
             self.assertNotEqual(summary, '')
 
     def test_a_changed_bins_changes_the_slim_rows(self):
@@ -76,6 +76,37 @@ class PkgRows(unittest.TestCase):
                                    mutate=lambda p, f, v: v + 'x' if f == 'LICENSE' else v)
         self.assertEqual(rc, 1)
         self.assertIn('dist/addons/bitchx/', out)
+
+
+STAGED = ROOT / 'build/dist/up-bitchx'
+MAIN_STAGED = pathlib.Path('/Users/spot/Code/UP-Term/vtcon/build/dist/up-bitchx')
+
+
+class NoPortsCheckout(unittest.TestCase):
+    """A recipe-backed package whose recipe cannot be found must fail loudly, never take the archive name as its
+    Description (the silent fallback CP3 left behind)."""
+
+    def test_missing_ports_dir_is_an_error_naming_the_id_and_path(self):
+        row = [r for r in pkgs.rows() if r['id'] == 'bitchx'][0]
+        with tempfile.TemporaryDirectory() as build, tempfile.TemporaryDirectory() as empty:
+            (pathlib.Path(build) / 'dist').mkdir()
+            src = STAGED if STAGED.exists() else MAIN_STAGED
+            if not src.exists():
+                self.skipTest('up-bitchx not staged (make dist)')
+            (pathlib.Path(build) / 'dist' / row['archive']).symlink_to(src)
+            old = os.environ.get('UPTERM_PORTS')
+            os.environ['UPTERM_PORTS'] = empty
+            try:
+                with self.assertRaises(SystemExit) as cm:
+                    pkgs.build_ipk(row, build)
+            finally:
+                if old is None:
+                    del os.environ['UPTERM_PORTS']
+                else:
+                    os.environ['UPTERM_PORTS'] = old
+            msg = str(cm.exception)
+            self.assertIn('bitchx', msg)
+            self.assertIn(empty, msg)
 
 
 if __name__ == '__main__':
