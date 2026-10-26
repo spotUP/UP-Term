@@ -148,11 +148,14 @@ class HandedLines(unittest.TestCase):
     (kit-split D7): the line an Update over the single kit reads to leave those files alone."""
     def test_the_base_hands_over_every_add_ons_paths_in_sorted_order(self):
         k = kit({"Files/vsh": b"v"})
-        lines = mm.manifest(k, mm.read_parts("system  Files/vsh\n"), "", mm.handed_paths('base')).splitlines()
+        rows = [{'id': 'base', 'handed': 'Files/vsh'}, {'id': 'nvim', 'handed': 'Files/nvim'},
+                {'id': 'git', 'handed': 'Files/userland/bin/git,Files/userland/share/git-core'},
+                {'id': 'bitchx', 'handed': 'Files/userland/bin/BitchX,Files/userland/lib/bx'},
+                {'id': 'claude', 'handed': 'Files/Claude'}, {'id': 'docs', 'handed': '-'}]
+        lines = mm.manifest(k, mm.read_parts("system  Files/vsh\n"), "", mm.handed_paths('base', rows)).splitlines()
         want = ["handed 0 00000000 handed#" + p for p in
-                ("Files/Claude", "Files/amiga-pi", "Files/nvim", "Files/python3", "Files/userland/bin/git",
-                 "Files/userland/bin/perl", "Files/userland/bin/vim", "Files/userland/share/git-core",
-                 "Files/userland/share/vim", "Files/userland/bin/BitchX", "Files/userland/lib/bx", "Files/userland/vbcc")]
+                ("Files/nvim", "Files/userland/bin/git", "Files/userland/share/git-core",
+                 "Files/userland/bin/BitchX", "Files/userland/lib/bx", "Files/Claude")]
         self.assertEqual([l for l in lines if l.startswith("handed ")], sorted(want, key=lambda l: l.split(' ', 3)[3].encode()))
         paths = [l.split(' ', 3)[3].encode() for l in lines]
         self.assertEqual(paths, sorted(paths))
