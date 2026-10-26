@@ -25,7 +25,7 @@ import os, re, shlex, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths, ami, condev_rig as c, stage_rig
 
-LAMIGA, SPACE, ESC, RETURN = 0x40, 0x40, 0x45, 0x44
+LAMIGA, SPACE, ESC, RETURN, DOWN = 0x40, 0x40, 0x45, 0x44, 0x4D
 TITLE = 'Amarchy'
 PROBE_TITLE = 'G7 screen'      # tests/amiga/scrprobe.c
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -92,25 +92,34 @@ def stage_fonts():
     c.run('Assign FONTS: VTC:%s ADD' % FONT_DRAWER)
 
 
-def expected(geom, name):
+def expected(geom, name, wb=False):
     """{'icon': (w, h), 'root'|'apps': {'box': (x, y, w, h), 'cell': (ix, iy, w, h, row2 iy), 'n': n}} for the
     screen `name`: the geometry helper asks for every text it has to measure, scrprobe measures it in that
     screen's own font, and the helper runs again until it asks for nothing more."""
     w, h, ys, xs, prop, rx, ry = probe(name)
     lens = {}
     for _ in range(4):
-        r = subprocess.run([geom, str(w), str(h), str(ys), str(xs), str(rx), str(ry)] + ['%s=%d' % kv for kv in lens.items()],
+        r = subprocess.run([geom] + (['--wb'] if wb else []) + [str(w), str(h), str(ys), str(xs), str(rx), str(ry)] + ['%s=%d' % kv for kv in lens.items()],
                            capture_output=True, text=True)
         if r.returncode:
             raise SystemExit('amarchy_geom failed: ' + r.stderr)
         need = [l[5:] for l in r.stdout.splitlines() if l.startswith('need ')]
         if not need:
             break
-        rc, out = c.run('%s/scrprobe font %s %s' % (paths.UPTERM_BIN, name, ' '.join('"%s"' % t for t in need)))
-        for l in out.splitlines():
-            m = re.match(r'len (\d+) (.*)$', l)
-            if m:
-                lens[m.group(2)] = int(m.group(1))
+        # wasabid holds 511 bytes of command: the texts go in chunks (the Workbench group has 42 labels)
+        chunks, cur = [], []
+        for t in need:
+            if cur and len(' '.join('"%s"' % x for x in cur + [t])) > 300:
+                chunks.append(cur)
+                cur = []
+            cur.append(t)
+        chunks.append(cur)
+        for chunk in chunks:
+            rc, out = c.run('%s/scrprobe font %s %s' % (paths.UPTERM_BIN, name, ' '.join('"%s"' % t for t in chunk)))
+            for l in out.splitlines():
+                m = re.match(r'len (\d+) (.*)$', l)
+                if m:
+                    lens[m.group(2)] = int(m.group(1))
         if not all(t in lens for t in need):
             raise SystemExit('scrprobe did not measure %r: %r' % (need, out))
     else:
@@ -122,6 +131,8 @@ def expected(geom, name):
             e['icon'] = (int(f[1]), int(f[2]))
         elif f[0] == 'level':
             e.setdefault(f[1], {}).update(box=tuple(map(int, f[2:6])), n=int(f[6]))
+        elif f[0] == 'row':
+            e.setdefault('rows', {})[f[1]] = int(f[2])
         elif f[0] == 'cell':
             e[f[1]]['cell'] = tuple(map(int, f[2:7]))
     return e
@@ -291,6 +302,37 @@ def case_default(geom):
     check(process_running('Amarchy'), 'the Amarchy commodity is still running')
 
 
+def case_groups(geom):
+    """Window groups (plan 2026-10-25-amarchy-window-groups.md, I3): the Screens and Workbench groups' rows draw
+    their icons. The rig is OS 3.2, so the WORKBENCH port exists and both groups show. For each group: walk to its
+    row in the root level (Down, Return), then the first and the second row's icon cells of that level, grabbed
+    from the screen, hold at least 4 pixels unlike the row background; Esc steps back."""
+    e = expected(geom, '-', wb=True)
+    s, w = open_menu()
+    if not check(bool(w), 'Super+Space opened a window titled "%s"' % TITLE):
+        return
+    time.sleep(2)
+    for g in ('screens', 'workbench'):
+        k = e.get('rows', {}).get(g)
+        if not check(k is not None, 'the root level lists the %s group (rows %s)' % (g, e.get('rows'))):
+            continue
+        for _ in range(k):
+            ami.key(DOWN)
+            time.sleep(0.5)
+        ami.key(RETURN)
+        time.sleep(2)
+        s, w = where(TITLE)
+        if not check(bool(w), 'Return on %s kept the window' % g):
+            continue
+        ix, iy, cw, ch, iy2 = e[g]['cell']
+        for row, y in (('first', iy), ('second', iy2)):
+            n, bg = cell_pixels(s, box_of(s, w), ix, y, cw, ch)
+            check(n >= 4, '%s group, %s row: icon cell %dx%d holds %d pixels unlike the row background %s' % (g, row, cw, ch, n, bg))
+        ami.key(ESC)
+        time.sleep(2)
+    close_menu()
+
+
 def break_probe():
     for l in c.run('Status')[1].splitlines():
         m = re.match(r'\s*Process\s+(\d+):.*scrprobe', l)
@@ -432,12 +474,15 @@ def main():
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     time.sleep(3)
     try:
-        case_default(geom)
-        case_screen(geom, True)
-        case_screen(geom, False)
-        case_run_tmux()
-        case_run_editor()
-        case_run_addons()
+        if '--groups' in sys.argv:      # on an OS 3.2 rig (the WORKBENCH port exists): only the group icons
+            case_groups(geom)
+        else:
+            case_default(geom)
+            case_screen(geom, True)
+            case_screen(geom, False)
+            case_run_tmux()
+            case_run_editor()
+            case_run_addons()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')

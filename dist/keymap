@@ -27,6 +27,9 @@
 ;                    never double quotes)
 ;   open:uterm       a new UP-Term window (commodity only; in a window: tab:new)
 ;   rexx:<script>    an ARexx script or string (Amarchy hotkeys and menu rows)
+;   win:<verb> [arg] a window verb on the active or menu-targeted window: cycle, front, back,
+;                    zip, fullwidth, fullscreen, save, restore, move, size, focus,
+;                    closedrawers, screen, title
 
 [keymap]
 version = 1

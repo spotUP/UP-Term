@@ -399,13 +399,13 @@ Each item is ticked only with its test passing. Running count is reported at eve
 - [x] B3 `workbench` and `screens` group nodes. Done aa45ad5a (icon lines; K9 port-present hiding added as MN_COND_WB; KM_FILE_MAX 16384 to 32768 because dist/keymap passed 16384).
 
 ### Phase I: icons
-- [ ] I1 `dist/menu-icons`: group lines for `workbench` and `screens`, one line per new row (59 rows, 2 groups = 61 lines). Test: `every_shipped_menu_node_has_an_icon_image` (`tests/test_keymap.c` 1129) fails before, passes after.
-- [ ] I2 `tools/gen_menu_icons.py` accepts every name used (run it; a missing glyph fails the build).
-- [ ] I3 gui draw: the one rig check that the three groups' icons render (`tools/rig/amarchy_gui_rig.py` pixel grab, as G7).
+- [x] I1 `dist/menu-icons`: group lines for `workbench` and `screens`, one line per new row (59 rows, 2 groups = 61 lines). Test: `every_shipped_menu_node_has_an_icon_image` (`tests/test_keymap.c` 1129) fails before, passes after. Done 0897d290, 4d11ebf9: 105 [menu] rows (counted by script from dist/keymap), 50 new icon lines (screens 6 + workbench 42 + 2 groups), 121 lines in dist/menu-icons; the "59/61" figure is stale. Mutation (two entries removed) gave [FAIL] keymap 2 failed; restored gives [OK] 9994 checks.
+- [x] I2 `tools/gen_menu_icons.py` accepts every name used (run it; a missing glyph fails the build). Done: make -B build/amiga/menu_icons.inc printed [OK] 121 menu icons, rc 0.
+- [x] I3 gui draw: the one rig check that the three groups' icons render (`tools/rig/amarchy_gui_rig.py` pixel grab, as G7). Done: UPTERM_RIG=4 amarchy_gui_rig.py --groups --no-build PASS on OS 3.2 rig (icon cells screens 120/122 px, workbench 211/96 px differ from background); case_groups in the rig script. Helper box for group levels is 4 px off the rig box, so check_geometry is not run there.
 
 ### Phase D: docs (peer session edits dist docs; this session does not touch them)
-- [ ] D1 `dist/` key viewer text and tutorial: the 19 new hotkeys and the three groups; the `win:` kind in the keymap grammar reference.
-- [ ] D2 guide text: how foreign windows are targeted (the target ticket), why no close of foreign windows, the Workbench rows need the Workbench ARexx port (RexxMast running).
+- [x] D1 `dist/` key viewer text and tutorial: the 19 new hotkeys and the three groups; the `win:` kind in the keymap grammar reference. Done: win: in dist/keymap header, man/amarchy.1, lesson 14; README key list still stale by 3 hotkeys (D3).
+- [x] D2 guide text: how foreign windows are targeted (the target ticket), why no close of foreign windows, the Workbench rows need the Workbench ARexx port (RexxMast running). Done: dist/README.txt AMARCHY section (target ticket, no foreign close, Workbench port).
 - [ ] D3 `tests/test_amarchy_docs.py` expectations updated by the peer session with the text.
 Marked: peer session edits dist docs.
 

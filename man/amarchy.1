@@ -84,8 +84,10 @@ unbinds one.
 Each row reads
 .Dl super[+shift][+alt][+rshift]+KEY = action ; label | category
 Actions are menu:id, viewer, tab:new, tab:close, tab:next, tab:prev,
-tab:goto N, menuid:NAME, slash:/command, run:command, open:uterm and
-rexx:script.
+tab:goto N, menuid:NAME, slash:/command, run:command, open:uterm,
+rexx:script and win:verb [argument]. The verbs are cycle, front, back, zip,
+fullwidth, fullscreen, save, restore, move, size, focus, closedrawers, screen
+and title.
 Lines starting with a semicolon are comments.
 .Sh ARexx
 The port AMARCHY takes STATUS (hits, rows, enabled and active), RELOAD (read

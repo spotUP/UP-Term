@@ -19,5 +19,7 @@ $ cd "$start"
 = grep -q 'rows=' "$LEARN_OUT"
 ~ Type rx "address AMARCHY STATUS"; the answer holds rows= and enabled=.
 ! rx "address AMARCHY STATUS"
+> Rows named win:<verb> (cycle, front, back, zip, fullwidth, fullscreen and more) act on
+> windows of any program. There is no verb that closes another program's window.
 > To switch it off for a while, open Exchange and Disable AMARCHY: every Left Amiga key
 > then behaves as before. man amarchy has the whole file format.

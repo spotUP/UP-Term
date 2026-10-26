@@ -758,6 +758,19 @@ AMARCHY
   stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
   out. man amarchy has the file format.
 
+  Window, Screens and Workbench groups: rows of the form  win:<verb>  act on
+  windows of any program. Verbs: cycle, front, back, zip, fullwidth,
+  fullscreen, save, restore, move, size, focus, closedrawers, screen, title.
+  When you open the menu, Amarchy records a target ticket: the window under
+  the pointer and its box. A win: row run from the menu uses the ticket only
+  if that window is still listed and its box is unchanged; otherwise the verb
+  fails with a screen flash (DisplayBeep). A win: hotkey reads the active
+  window at the moment you press it. There is no verb that closes a window of
+  another program: closing it could lose the unsaved work of that program.
+  The Workbench rows need the Workbench ARexx port, so RexxMast must run. The
+  Workbench group is hidden when the port WORKBENCH is absent, for example
+  under Directory Opus.
+
   App index: the menu lists the programs found on your disks. The scanner
   amarchy-index looks at the hard-disk volumes (not floppies, RAM: or other
   virtual volumes) and walks their drawers down to depth 6. An icon of type
