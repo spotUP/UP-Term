@@ -138,6 +138,25 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
         ui->refused(ui->ctx, it->label, r, why);
         return 0;
     }
+    if (SD_HAS_PICKER(s)) {
+        int entry = atoi(it->seg);
+        const char *text = 0;
+        char value[UC_MAX_VALUE + 2], why[80];
+        if (!MN_IS_CHOICE(it))
+            return 0;                   /* the row opens its picker level: the menu does that */
+        if (s->kind == SD_PALETTE || entry == SD_PICK_CUSTOM) {
+            lf_colour_current(amconf_dos_io(), s, entry, value);
+            if (!ui->ask_value || !ui->ask_value(ui->ctx, it->label, "RRGGBB", value, sizeof value))
+                return 0;               /* cancelled */
+            text = value;
+        }
+        r = lf_setting_set_colour(amconf_dos_io(), s, entry, text, &failed);
+        if (r == LF_SET_OK)
+            return 1;
+        snprintf(why, sizeof why, "%s", r == LF_SET_INVALID ? "not a colour: use RRGGBB" : "");
+        ui->refused(ui->ctx, it->label, r, why);
+        return 0;
+    }
     if (s->kind != SD_CHECK && s->kind != SD_CYCLE)
         return 0;                       /* the other kinds are the next rows of the plan */
     if (MN_IS_CHOICE(it))

@@ -680,8 +680,8 @@ static void activate_setting(gui *g, const mn_item *it, int right)
     ui.refused = gui_refused;
     ui.ctx = g;
     ui.self_in_mru = 0;
-    if (MN_IS_SETTING(it) && right) {
-        if (sd_settings[it->ix].kind == SD_CYCLE) {
+    if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(&sd_settings[it->ix]))) {
+        if (sd_settings[it->ix].kind == SD_CYCLE || SD_HAS_PICKER(&sd_settings[it->ix])) {
             mn_child_node(g->node, it, g->node, sizeof g->node);
             g->filter[0] = 0;
             list_rebuild(g);

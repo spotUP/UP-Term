@@ -140,6 +140,11 @@ int sd_text_check(const sd_setting *s, const char *text);
 /* The words of a refusal, for the menu's message line. */
 const char *sd_text_reason(int check);
 
+/* A row that opens a picker level of its own (the 16 palette entries, plus Custom for a swatch). */
+#define SD_HAS_PICKER(s) ((s)->kind == SD_COLOUR || (s)->kind == SD_PALETTE)
+/* Entry numbers of the picker's rows (seg of a MN_ROW_CHOICE row): 0..15 the palette entries, then this. */
+#define SD_PICK_CUSTOM 16
+
 /* The menu's page groups: `settings:<name>` in the keymap [menu] names a page of Prefs. The PG_PAGE_* of a
  * name, -1 when none; the name of a page, 0 when out of range. */
 int sd_page_by_name(const char *name);

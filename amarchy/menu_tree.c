@@ -97,7 +97,7 @@ static const sd_setting *choice_setting(const keymap *k, const char *node)
         page = sd_page_by_name(k->menu[i].arg);
         for (j = 0; page >= 0 && j < sd_nsettings; j++) {
             const sd_setting *s = &sd_settings[j];
-            if (s->page == page && s->kind == SD_CYCLE && s->key && !strcmp(s->key, node + l + 1))
+            if (s->page == page && (s->kind == SD_CYCLE || SD_HAS_PICKER(s)) && s->key && !strcmp(s->key, node + l + 1))
                 return s;
         }
     }
@@ -107,14 +107,16 @@ static const sd_setting *choice_setting(const keymap *k, const char *node)
 /* the values of a cycle setting, one MN_ROW_CHOICE row each */
 static int choice_rows(const sd_setting *s, mn_item *out, int max)
 {
-    int v, n = 0;
-    for (v = 0; v < s->nvalues && n < max; v++, n++) {
+    int v, n = 0, nv = s->nvalues;
+    if (SD_HAS_PICKER(s))
+        nv = s->kind == SD_COLOUR ? SD_PICK_CUSTOM + 1 : 16;   /* the 16 palette entries, and Custom for a swatch */
+    for (v = 0; v < nv && n < max; v++, n++) {
         out[n].row = MN_ROW_CHOICE;
         out[n].ix = s->id;
         out[n].seg[0] = (char)(v >= 10 ? '0' + v / 10 : '0' + v);   /* a cycle has under 100 values */
         out[n].seg[1] = (char)(v >= 10 ? '0' + v % 10 : 0);
         out[n].seg[2] = 0;
-        cpy(out[n].label, s->values[v].text, KM_LABEL);
+        cpy(out[n].label, SD_HAS_PICKER(s) ? "" : s->values[v].text, KM_LABEL);   /* a picker row is labelled by lf_setting_labels */
     }
     return n;
 }

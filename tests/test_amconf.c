@@ -492,6 +492,64 @@ static void test_lf_setting_text(void)
     CHECK_INT(sb->max, PREFS_SB_MAX);                        /* the row's bound is Prefs' cut */
 }
 
+/* LF_SETTING colour pickers (plan 2026-10-26-amarchy-prefs-inline.md, M5): picking palette entry 5 writes that
+ * slot to ENV: and ENVARC:; a swatch takes a palette entry or a typed hex; bad hex leaves the files alone. */
+static void test_lf_setting_colour_picker(void)
+{
+    memfs m;
+    prefs_fs fs;
+    amconf_io io = io_of(&m, &fs);
+    const sd_setting *pal = &sd_settings[SDI_PALETTE], *fg = &sd_settings[SDI_FG];
+    char before[UC_MAX_FILE + 2], hex[16];
+    mn_item it[20];
+    upconf c;
+    prefs_fields f;
+    char buf[UC_MAX_FILE + 2];
+    long got;
+    int failed = -1, t;
+    mf_put(&m, UP, "[default]\nfont = topaz\n");
+    mf_put(&m, UA, "[default]\nfont = topaz\n");
+    snprintf(before, sizeof before, "%s", mf_get(&m, UP));
+    CHECK_INT(lf_setting_set_colour(&io, pal, 5, "zz0000", &failed), LF_SET_INVALID);   /* bad hex */
+    CHECK_INT(lf_setting_set_colour(&io, pal, 5, "12345", &failed), LF_SET_INVALID);
+    CHECK_INT(lf_setting_set_colour(&io, pal, 16, "112233", &failed), LF_SET_KIND);
+    CHECK_INT(lf_setting_set_colour(&io, pal, 5, 0, &failed), LF_SET_KIND);
+    CHECK_STR(mf_get(&m, UP), before);                       /* ENV: unchanged */
+    CHECK_STR(mf_get(&m, UA), before);                       /* ENVARC: unchanged */
+    CHECK_INT(lf_setting_set_colour(&io, pal, 5, "#aa11BB", &failed), LF_SET_OK);
+    for (t = 0; t < 2; t++) {
+        got = io.read(io.fs->ctx, t ? UA : UP, buf, UC_MAX_FILE + 1);
+        buf[got < 0 ? 0 : got] = 0;
+        CHECK_INT(prefs_load(&c, buf, got, UC_MAX_FILE), PREFS_LOAD_OK);
+        prefs_from_conf(&f, &c, LF_PROFILE);
+        CHECK_STR(f.pal[5], "AA11BB");                       /* the slot, in both files */
+        CHECK_STR(f.pal[4], "");                             /* and only that slot */
+        CHECK(strstr(buf, "font") != 0);
+    }
+    lf_palette_hex(&io, 5, hex);
+    CHECK_STR(hex, "AA11BB");
+    lf_palette_hex(&io, 1, hex);
+    CHECK_STR(hex, "CD0000");                                /* unset entry: xterm's built-in */
+    /* a swatch picks palette entry 5, then a typed hex */
+    CHECK_INT(lf_setting_set_colour(&io, fg, 5, 0, &failed), LF_SET_OK);
+    got = io.read(io.fs->ctx, UP, buf, UC_MAX_FILE + 1);
+    buf[got] = 0;
+    prefs_load(&c, buf, got, UC_MAX_FILE);
+    prefs_from_conf(&f, &c, LF_PROFILE);
+    CHECK_STR(f.fg, "AA11BB");
+    CHECK_INT(lf_setting_set_colour(&io, fg, SD_PICK_CUSTOM, "nothex", &failed), LF_SET_INVALID);
+    CHECK_INT(lf_setting_set_colour(&io, fg, SD_PICK_CUSTOM, "010203", &failed), LF_SET_OK);
+    lf_colour_current(&io, fg, 0, hex);
+    CHECK_STR(hex, "010203");
+    /* the picker level's rows: 16 entries (+ Custom for a swatch), labelled with the entry name and hex */
+    memset(it, 0, sizeof it);
+    it[0].row = MN_ROW_CHOICE; it[0].ix = SDI_PALETTE; strcpy(it[0].seg, "5");
+    it[1].row = MN_ROW_CHOICE; it[1].ix = SDI_FG; strcpy(it[1].seg, "16");
+    lf_setting_labels(&io, it, 2);
+    CHECK(strstr(it[0].label, "AA11BB") != 0);
+    CHECK_STR(it[1].label, "Custom...");
+}
+
 void suite_amconf(void)
 {
     test_amconf_parse_defaults();
@@ -513,4 +571,5 @@ void suite_amconf(void)
     test_lf_setting_check_toggle();
     test_lf_setting_cycle_next_and_choices();
     test_lf_setting_text();
+    test_lf_setting_colour_picker();
 }

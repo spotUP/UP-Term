@@ -270,7 +270,7 @@ static int lf_load_upterm(const amconf_io *io)
 }
 
 /* index >= 0: a check or cycle value; else the text of an SD_INT or SD_STRING row */
-static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, const char *text, int *failed)
+static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, const char *text, int n, int *failed)
 {
     prefs_fields f;
     long len;
@@ -279,7 +279,7 @@ static int lf_set_upterm(const amconf_io *io, const sd_setting *s, int index, co
         return LF_SET_READONLY;
     prefs_from_conf(&f, &lf_conf, LF_PROFILE);
     if (text)
-        strcpy(sd_string(s, &f, 0), text);
+        strcpy(sd_string(s, &f, n), text);
     else
         sd_set_index(s, &f, index);
     if (prefs_validate(&f))
@@ -314,7 +314,7 @@ int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *fai
         sd_set_index(s, &a, index);
         return amconf_save_with(io, &a, 1, failed);
     }
-    return lf_set_upterm(io, s, index, 0, failed);
+    return lf_set_upterm(io, s, index, 0, 0, failed);
 }
 
 int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *text, int *failed)
@@ -330,7 +330,62 @@ int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *te
         strcpy(sd_string(s, &a, 0), text);
         return amconf_save_with(io, &a, 1, failed);
     }
-    return lf_set_upterm(io, s, -1, text, failed);
+    return lf_set_upterm(io, s, -1, text, 0, failed);
+}
+
+/* xterm's default 16, what an unset palette entry shows */
+static const unsigned long lf_ansi_rgb[16] = {
+    0x000000UL, 0xCD0000UL, 0x00CD00UL, 0xCDCD00UL, 0x0000EEUL, 0xCD00CDUL, 0x00CDCDUL, 0xE5E5E5UL,
+    0x7F7F7FUL, 0xFF0000UL, 0x00FF00UL, 0xFFFF00UL, 0x5C5CFFUL, 0xFF00FFUL, 0x00FFFFUL, 0xFFFFFFUL
+};
+
+static void lf_setting_text_raw(const amconf_io *io, const sd_setting *s, char *out, int n);
+
+void lf_palette_hex(const amconf_io *io, int n, char *out)
+{
+    prefs_fields f;
+    out[0] = 0;
+    if (n < 0 || n > 15)
+        return;
+    lf_load_upterm(io);
+    prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+    if (f.pal[n][0])
+        snprintf(out, 8, "%s", f.pal[n]);
+    else
+        prefs_hex_format((uc_u32)lf_ansi_rgb[n], out);
+}
+
+void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char *out)
+{
+    out[0] = 0;
+    if (s->kind == SD_PALETTE)
+        lf_palette_hex(io, entry, out);
+    else if (s->kind == SD_COLOUR)
+        lf_setting_text_raw(io, s, out, 8);
+}
+
+int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, const char *text, int *failed)
+{
+    char hex[16];
+    uc_u32 rgb;
+    *failed = 0;
+    if (!SD_HAS_PICKER(s) || s->store != SD_UPTERM)
+        return LF_SET_KIND;
+    if (s->kind == SD_PALETTE && (entry < 0 || entry > 15 || !text))
+        return LF_SET_KIND;
+    if (s->kind == SD_COLOUR && entry != SD_PICK_CUSTOM && (entry < 0 || entry > 15))
+        return LF_SET_KIND;
+    if (s->kind == SD_COLOUR && entry != SD_PICK_CUSTOM) {
+        lf_palette_hex(io, entry, hex);
+    } else if (!text) {
+        return LF_SET_KIND;
+    } else if (!*text) {
+        hex[0] = 0;                     /* empty: back to the built-in */
+    } else if (prefs_hex_parse(text, &rgb)) {
+        prefs_hex_format(rgb, hex);
+    } else
+        return LF_SET_INVALID;
+    return lf_set_upterm(io, s, -1, hex, s->kind == SD_PALETTE ? entry : 0, failed);
 }
 
 /* the current value index of row s, read from its file */
@@ -346,6 +401,16 @@ static int lf_current(const amconf_io *io, const sd_setting *s)
         prefs_from_conf(&f, &lf_conf, LF_PROFILE);
         return sd_index(s, &f);
     }
+}
+
+static void lf_setting_text_raw(const amconf_io *io, const sd_setting *s, char *out, int n)
+{
+    prefs_fields f;
+    const char *t;
+    lf_load_upterm(io);
+    prefs_from_conf(&f, &lf_conf, LF_PROFILE);
+    t = sd_string(s, &f, 0);
+    snprintf(out, (size_t)n, "%s", t ? t : "");
 }
 
 int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n)
@@ -406,7 +471,16 @@ void lf_setting_labels(const amconf_io *io, mn_item *it, int n)
         }
         if (MN_IS_SETTING(&it[i]))
             sd_row_label(s, store, it[i].label, KM_LABEL);
-        else {
+        else if (SD_HAS_PICKER(s)) {
+            int v = atoi(it[i].seg);
+            if (v == SD_PICK_CUSTOM)
+                strcpy(it[i].label, "Custom...");
+            else if (v >= 0 && v < 16) {
+                char hex[16];
+                lf_palette_hex(io, v, hex);
+                snprintf(it[i].label, KM_LABEL, "%s: #%s", prefs_pal_name(v), hex);
+            }
+        } else {
             char txt[KM_LABEL];
             int v = atoi(it[i].seg);
             strncpy(txt, v >= 0 && v < s->nvalues ? s->values[v].text : "", KM_LABEL - 3);

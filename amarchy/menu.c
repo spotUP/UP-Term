@@ -283,6 +283,11 @@ static int menu_levels(const char *start)
         if (MN_IS_SETTING(&it[i]) || MN_IS_CHOICE(&it[i])) {
             int choice = MN_IS_CHOICE(&it[i]);
             char up[KM_ID * 2];
+            if (!choice && SD_HAS_PICKER(&sd_settings[it[i].ix])) {
+                mn_child_node(node, &it[i], node, sizeof node);   /* the colour list */
+                filter[0] = 0;
+                continue;
+            }
             if (!lf_setting_enter(&it[i], &leaf_ui))
                 continue;
             if (choice && mn_parent(node, up, sizeof up))

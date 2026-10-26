@@ -77,6 +77,15 @@ int lf_setting_set(const amconf_io *io, const sd_setting *s, int index, int *fai
  * prefill); 0 when the row has no text. */
 int lf_setting_set_text(const amconf_io *io, const sd_setting *s, const char *text, int *failed);
 int lf_setting_text(const amconf_io *io, const sd_setting *s, char *out, int n);
+/* The colour pickers (SD_COLOUR swatches, SD_PALETTE): entry 0..15 of the palette. A swatch takes the colour
+ * of palette entry `entry` (text 0) or the typed hex (entry SD_PICK_CUSTOM); the palette row sets entry
+ * `entry` to the typed hex (text "" puts it back to the built-in). Hex is RRGGBB with an optional "#"; bad
+ * input is LF_SET_INVALID with the files untouched. Both files are written like lf_setting_set. */
+int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, const char *text, int *failed);
+/* The "RRGGBB" palette entry n has now (the file's, else xterm's built-in), and the current hex of row s
+ * (the swatch's own, or the palette entry `entry`) for the Custom prompt's prefill. */
+void lf_palette_hex(const amconf_io *io, int n, char *out);
+void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char *out);
 /* Enter on a check or cycle row: lf_setting_next of the current value, then lf_setting_set. */
 int lf_setting_step(const amconf_io *io, const sd_setting *s, int *failed);
 /* Rewrite the labels of a menu level: a MN_ROW_SETTING row shows sd_row_label (label and value), a
