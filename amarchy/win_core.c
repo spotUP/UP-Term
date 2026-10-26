@@ -176,6 +176,11 @@ int win_fullscreen(win_box *b, const win_screen *s)
     return 1;
 }
 
+int win_is_fullscreen_terminal(int backdrop_borderless, int left, int top, int width, int height, const win_screen *s)
+{
+    return backdrop_borderless && left == 0 && top == 0 && width == s->width && height == s->height;
+}
+
 void win_ring_clear(win_ring *r)
 {
     memset(r, 0, sizeof *r);

@@ -818,20 +818,14 @@ static void menu_style_commands(void)
     } t[] = {
         { KA_MENU,        UC_MENU_GRAPHICAL, "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
         { KA_VIEWER,      UC_MENU_GRAPHICAL, "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
-        { KA_OTHERMENU,   UC_MENU_GRAPHICAL, "",     "\"UP-Term:bin/amarchy-menu\" menu root", 1 },
-        { KA_OTHERVIEWER, UC_MENU_GRAPHICAL, "",     "\"UP-Term:bin/amarchy-menu\" viewer", 1 },
         { KA_MENU,        UC_MENU_TEXT,      "apps", "\"UP-Term:bin/amarchy-menu\" menu apps", 1 },
         { KA_VIEWER,      UC_MENU_TEXT,      "",     "\"UP-Term:bin/amarchy-menu\" viewer", 1 },
-        { KA_OTHERMENU,   UC_MENU_TEXT,      "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
-        { KA_OTHERVIEWER, UC_MENU_TEXT,      "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
         { KA_MENU,        UC_MENU_MINIMAL,   "apps", "\"UP-Term:bin/amarchy-gui\" menu apps", 0 },
         { KA_VIEWER,      UC_MENU_MINIMAL,   "",     "\"UP-Term:bin/amarchy-gui\" viewer", 0 },
-        { KA_OTHERMENU,   UC_MENU_MINIMAL,   "apps", "\"UP-Term:bin/amarchy-menu\" menu apps", 1 },
-        { KA_OTHERVIEWER, UC_MENU_MINIMAL,   "",     "\"UP-Term:bin/amarchy-menu\" viewer", 1 },
     };
     char out[96];
     int i, text;
-    for (i = 0; i < 12; i++) {
+    for (i = 0; i < 6; i++) {
         text = -1;
         CHECK(cx_menu_cmd(out, sizeof(out), "UP-Term:bin", t[i].kind, t[i].node, t[i].style, &text));
         CHECK_STR(out, t[i].want);
@@ -861,18 +855,39 @@ static void menu_style_parse(void)
 #undef STYLE
 }
 
-static void other_menu_actions(void)
+/* Menu in terminal: the style a menu hotkey opens is chosen by cx_menu_style, the function amarchy.c's
+ * act_menu_kind passes to cx_menu_cmd; the other-style bindings are gone from the keymap. */
+static void menu_in_terminal_setting(void)
 {
-    const km_bind *b;
-    CHECK(parse("[bind]\nsuper+alt+space = othermenu:root\nsuper+alt+k = otherviewer\n"));
-    CHECK_INT(km.skipped, 0);
-    b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, RAW_SPACE);
-    CHECK(b != 0 && b->kind == KA_OTHERMENU && !strcmp(b->arg, "root"));
-    b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, RAW_K);
-    CHECK(b != 0 && b->kind == KA_OTHERVIEWER);
-    CHECK_INT(keymap_action_scope(KA_OTHERMENU), KS_BOTH);
-    CHECK_INT(keymap_action_scope(KA_OTHERVIEWER), KS_BOTH);
-    CHECK(!parse("[bind]\nsuper+alt+k = otherviewer:x\n") || km.skipped == 1);
+    char out[96];
+    int text = -1, style;
+    /* windowed terminal: the menu-in-terminal setting, whatever the general style */
+    CHECK_INT(cx_menu_style(UC_MENU_GRAPHICAL, UC_TERMMENU_TEXT, 1, 0), UC_MENU_TEXT);
+    CHECK_INT(cx_menu_style(UC_MENU_TEXT, UC_TERMMENU_GRAPHICAL, 1, 0), UC_MENU_GRAPHICAL);
+    /* a full-screen terminal always gets the text menu */
+    CHECK_INT(cx_menu_style(UC_MENU_GRAPHICAL, UC_TERMMENU_GRAPHICAL, 1, 1), UC_MENU_TEXT);
+    /* outside a terminal the general setting stands */
+    CHECK_INT(cx_menu_style(UC_MENU_GRAPHICAL, UC_TERMMENU_TEXT, 0, 0), UC_MENU_GRAPHICAL);
+    CHECK_INT(cx_menu_style(UC_MENU_MINIMAL, UC_TERMMENU_TEXT, 0, 1), UC_MENU_MINIMAL);
+    /* through the command builder: the program that would run */
+    style = cx_menu_style(UC_MENU_GRAPHICAL, UC_TERMMENU_TEXT, 1, 0);
+    CHECK(cx_menu_cmd(out, sizeof(out), "UP-Term:bin", KA_MENU, "", style, &text));
+    CHECK_STR(out, "\"UP-Term:bin/amarchy-menu\" menu root");
+    CHECK_INT(text, 1);
+    /* the setting's value parser: text unless graphical */
+    CHECK_INT(upconf_term_menu_value(0), UC_TERMMENU_TEXT);
+    CHECK_INT(upconf_term_menu_value("bogus"), UC_TERMMENU_TEXT);
+    CHECK_INT(upconf_term_menu_value("Graphical"), UC_TERMMENU_GRAPHICAL);
+    /* the other-style actions no longer parse, and the shipped keymap has no row for them */
+    CHECK(!parse("[bind]\nsuper+alt+space = othermenu:root\n") || km.skipped == 1);
+    CHECK(!parse("[bind]\nsuper+alt+k = otherviewer\n") || km.skipped == 1);
+    {
+        static char file[32768];
+        long n = slurp("dist/keymap", file, sizeof(file));
+        CHECK(n > 0);
+        CHECK(strstr(file, "othermenu") == 0);
+        CHECK(strstr(file, "otherviewer") == 0);
+    }
 }
 
 static void cx_descriptions_and_qualifier_mask(void)
@@ -899,7 +914,7 @@ static void cx_descriptions_and_qualifier_mask(void)
     cx_helper_path();
     menu_style_commands();
     menu_style_parse();
-    other_menu_actions();
+    menu_in_terminal_setting();
     /* the mask is the handler's: Left Amiga needed; Ctrl, Right Amiga, repeat refuse */
     CHECK_INT((int)cx_qual_mask(0x0040), KM_Q_SUPER);
     CHECK_INT((int)cx_qual_mask(0x0041), KM_Q_SUPER | KM_Q_SHIFT);

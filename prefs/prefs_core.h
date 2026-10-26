@@ -53,6 +53,7 @@ typedef struct prefs_fields {
     char am_hide[UC_MAX_VALUE];     /* amarchy-hide-drawers */
     char am_font[UC_MAX_VALUE];     /* amarchy-menu-font, "name:size" as the font key */
     int am_icons;                   /* amarchy-app-icons: UC_ICONS_* (generic glyphs, amiga .info images, none) */
+    int am_termmenu;                /* menu-in-terminal: UC_TERMMENU_* (text, graphical) */
     int am_mode;                    /* menu-style: UC_MENU_* (graphical = drawn, text, minimal) */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */
     int kcinfo;     /* KingCON completion lists .info files too */

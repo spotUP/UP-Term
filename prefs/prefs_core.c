@@ -76,6 +76,7 @@ void prefs_from_conf(prefs_fields *f, const upconf *c, const char *p)
     pc_copy(f->am_font, upconf_str(c, "default", "amarchy-menu-font", ""), sizeof(f->am_font));
     f->am_icons = upconf_app_icons(upconf_str(c, "default", "amarchy-app-icons", "generic"));
     f->am_mode = upconf_menu_style_value(upconf_str(c, "default", "menu-style", "graphical"));
+    f->am_termmenu = upconf_term_menu_value(upconf_str(c, "default", "menu-in-terminal", "text"));
     pc_copy(f->screenmode, upconf_str(c, p, "screen-mode", ""), sizeof(f->screenmode));
     pc_copy(f->screendepth, upconf_str(c, p, "screen-depth", ""), sizeof(f->screendepth));
     pc_copy(f->sb, upconf_str(c, p, "scrollback", ""), sizeof(f->sb));
@@ -601,7 +602,7 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
         strcmp(a->term, b->term) || strcmp(a->colors, b->colors) ||
         strcmp(a->am_music, b->am_music) || strcmp(a->am_demo, b->am_demo) ||
         strcmp(a->am_hide, b->am_hide) || strcmp(a->am_font, b->am_font) || a->am_icons != b->am_icons ||
-        a->am_mode != b->am_mode ||
+        a->am_mode != b->am_mode || a->am_termmenu != b->am_termmenu ||
         strcmp(a->linkopen, b->linkopen) || strcmp(a->kcmode, b->kcmode))
         return 0;
     for (i = 0; i < 16; i++)
@@ -772,6 +773,8 @@ long prefs_stage(upconf *w, const upconf *cur, const char *p,
     /* drawn is the default, so it is the absent key as well */
     pc_put(w, "default", "menu-style",
            f->am_mode == UC_MENU_TEXT ? "text" : f->am_mode == UC_MENU_MINIMAL ? "minimal" : "");
+    /* text is the default, so graphical is the only written value */
+    pc_put(w, "default", "menu-in-terminal", f->am_termmenu == UC_TERMMENU_GRAPHICAL ? "graphical" : "");
     upconf_set(w, p, "padding-color", f->pad_extend ? "extend" : "background");
     upconf_set(w, p, "highlight-cat", f->hlcat ? "on" : "off");
     upconf_set(w, p, "program-clipboard", f->clipboard == PREFS_CLIP_OFF ? "off"

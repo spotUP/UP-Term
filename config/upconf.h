@@ -124,6 +124,11 @@ int  upconf_app_icons(const char *value);
 int  upconf_menu_style(const char *buf, long len);
 /* One menu-style value to UC_MENU_*: the single parser the rows above and the Prefs editor share. */
 int  upconf_menu_style_value(const char *value);
+/* "menu-in-terminal = text | graphical" (absent or anything else: text): the menu style Super+Space opens while the
+ * active window is an UP-Term terminal (windowed; a full-screen terminal always gets the text menu). */
+#define UC_TERMMENU_TEXT       0
+#define UC_TERMMENU_GRAPHICAL  1
+int  upconf_term_menu_value(const char *value);
 /* The last value of key in profile, 0 when absent. Case-insensitive. */
 const char *upconf_get(const upconf *c, const char *profile, const char *key);
 /* upconf_get, or def when the key is absent or its value is empty. */

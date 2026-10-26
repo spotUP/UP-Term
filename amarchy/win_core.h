@@ -44,6 +44,10 @@ int win_size(win_box *b, win_arg dir, int pixels, const win_screen *s);   /* lef
 int win_fullwidth(win_box *b, const win_screen *s);                       /* left 0, the screen's width */
 int win_fullscreen(win_box *b, const win_screen *s);                      /* the area below the title bar */
 
+/* 1 when a window is a full-screen terminal's: backdrop and borderless (the handler's FULLSCREEN window,
+ * create_window in handler/vtcon_handler.c) and exactly the screen's size at 0,0. */
+int win_is_fullscreen_terminal(int backdrop_borderless, int left, int top, int width, int height, const win_screen *s);
+
 /* win:save / win:restore: a ring of the last WIN_RING_MAX windows, keyed by an opaque id (the window pointer). */
 typedef struct win_ring {
     long id[WIN_RING_MAX];

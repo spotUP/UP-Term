@@ -17,6 +17,7 @@ enum {
     AM_STYLE,   /* menu-style: graphical, text, minimal */
     AM_SKIP,    /* amarchy-index-skip: path list */
     AM_VOLUMES, /* amarchy-index-volumes: volume list */
+    AM_TERMMENU, /* menu-in-terminal: text, graphical */
     AM_NKEYS
 };
 
@@ -43,6 +44,7 @@ long amconf_serialize(const am_prefs *p, char *buf, long cap);
 /* the enumerated keys as UC_ICONS_* and UC_MENU_*, by the shared readers */
 int amconf_icons(const am_prefs *p);
 int amconf_style(const am_prefs *p);
+int amconf_term_menu(const am_prefs *p);   /* UC_TERMMENU_* */
 
 /* the migration decision: the marker is the ENVARC: file of the new name being absent (never the ENV: one,
  * OS 3.2 answers a lookup there with the ENVARC: copy) */

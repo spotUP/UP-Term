@@ -19,6 +19,7 @@
 #include <string.h>
 #include "win.h"
 #include "win_core.h"
+#include "../handler/upactive.h"
 
 #define WIN_MAXW 32          /* windows on one screen considered by cycle and focus */
 #define MENU_TITLE "Amarchy" /* the drawn menu, the viewer and the text menu all carry it (gui.c, act.c) */
@@ -107,6 +108,27 @@ void win_ticket_take(void)
         g_tkbox.top = aw->TopEdge;
         g_tkbox.width = aw->Width;
         g_tkbox.height = aw->Height;
+    }
+    UnlockIBase(lock);
+}
+
+void win_active_terminal(int *in_term, int *full)
+{
+    struct Window *aw;
+    ULONG lock;
+    *in_term = *full = 0;
+    if (!IntuitionBase || upactive_count() <= 0)
+        return;
+    lock = LockIBase(0);
+    aw = IntuitionBase->ActiveWindow;
+    if (aw && member(aw) && !is_ours(aw)) {
+        win_screen s;
+        *in_term = 1;
+        s.width = aw->WScreen->Width;
+        s.height = aw->WScreen->Height;
+        s.title = 0;
+        *full = win_is_fullscreen_terminal((aw->Flags & (WFLG_BACKDROP | WFLG_BORDERLESS)) == (WFLG_BACKDROP | WFLG_BORDERLESS),
+                                           aw->LeftEdge, aw->TopEdge, aw->Width, aw->Height, &s);
     }
     UnlockIBase(lock);
 }

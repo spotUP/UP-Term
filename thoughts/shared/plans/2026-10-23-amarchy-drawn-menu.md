@@ -51,13 +51,15 @@ The choice: one upconf key (name to match upconf's existing keys, e.g.
 reload. act_menu and the viewer action start amarchy-gui or, for text,
 amarchy-menu in its XCON: window exactly as today.
 
-The extra modifier: Alt. Super+Shift+Space is already menu:apps in
-dist/keymap:37, so Super+Alt+Space and Super+Alt+K open the style the
-setting does not name. They are ordinary keymap lines with two new
-actions, `othermenu:<node>` and `otherviewer`, so a user can move them like
-any other binding:
-    super+alt+space = othermenu:root ; Menu (other style)  | menu
-    super+alt+k     = otherviewer    ; Key bindings (other style) | menu
+The extra modifier (superseded 2026-10-26, owner decision): there are no other-style
+bindings. Super+Alt+Space and Super+Alt+K, `othermenu:<node>` and `otherviewer`, are
+removed from dist/keymap, the keymap parser and cx_menu_cmd. Instead a second setting,
+`menu-in-terminal = text | graphical` (default text; Prefs row "Menu in terminal"), is the
+style Super+Space and Super+K open while the active window is an UP-Term terminal
+(upactive_count() above 0 and an Intuition window active, win_active_terminal in
+amarchy/win.c). A full-screen terminal (backdrop, borderless, the screen's size) always gets
+the text menu. Outside a terminal `menu-style` stands. The choice is cx_menu_style in
+amarchy/cxdesc.c.
 
 Every libupkgui use in the text menu has a drawn counterpart in amarchy-gui:
 - K_MENU (menu_loop): the drawn list.

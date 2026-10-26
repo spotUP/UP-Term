@@ -72,6 +72,13 @@ static void size_stops_at_limits(void)
     CHECK_INT(b.width, 640);
 }
 
+static void fullscreen_terminal_window(void)
+{
+    CHECK_INT(win_is_fullscreen_terminal(1, 0, 0, 640, 256, &scr), 1);
+    CHECK_INT(win_is_fullscreen_terminal(0, 0, 0, 640, 256, &scr), 0);   /* not backdrop and borderless */
+    CHECK_INT(win_is_fullscreen_terminal(1, 0, 0, 600, 256, &scr), 0);   /* not the screen's size */
+}
+
 static void full_width_and_screen(void)
 {
     win_box b = box(50, 60, 200, 100);
@@ -164,6 +171,7 @@ void suite_win(void)
     move_steps_and_clamps();
     size_stops_at_limits();
     full_width_and_screen();
+    fullscreen_terminal_window();
     save_restore_ring();
     direction_search();
     ticket_needs_unchanged_box();

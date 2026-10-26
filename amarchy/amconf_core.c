@@ -11,6 +11,7 @@ const am_key am_keys[AM_NKEYS] = {
     { "menu-style", "graphical" },
     { "amarchy-index-skip", "" },
     { "amarchy-index-volumes", "" },
+    { "menu-in-terminal", "text" },
 };
 
 /* one parse table: the whole file is never held twice */
@@ -68,6 +69,11 @@ int amconf_icons(const am_prefs *p)
 int amconf_style(const am_prefs *p)
 {
     return upconf_menu_style_value(p->val[AM_STYLE]);
+}
+
+int amconf_term_menu(const am_prefs *p)
+{
+    return upconf_term_menu_value(p->val[AM_TERMMENU]);
 }
 
 int amconf_need_migrate(int envarc_new_exists)

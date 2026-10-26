@@ -145,6 +145,11 @@ int upconf_menu_style_value(const char *value)
     return UC_MENU_GRAPHICAL;
 }
 
+int upconf_term_menu_value(const char *value)
+{
+    return value && uc_ieq(value, "graphical") ? UC_TERMMENU_GRAPHICAL : UC_TERMMENU_TEXT;
+}
+
 static int menu_style_row(void *ud, int lineno, const char *key, const char *value)
 {
     if (uc_ieq(key, "menu-style"))

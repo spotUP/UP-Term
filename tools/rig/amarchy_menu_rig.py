@@ -22,8 +22,9 @@ LAMIGA = 0x40                       # IEQUALIFIER_LCOMMAND
 LSHIFT = 0x01                       # IEQUALIFIER_LSHIFT
 ALT = 0x10                          # IEQUALIFIER_LALT
 # Super+Space opens the drawn menu (pixels, no screen text); the rows below that read the menu through
-# screen_text() open the text menu (amarchy-menu in the UP-Term window), Super+Alt+Space = othermenu:root
-TEXT_MENU = LAMIGA | ALT
+# screen_text() open the text menu (amarchy-menu in the UP-Term window): over a terminal Super+Space opens it
+# (menu-in-terminal = text, the default)
+TEXT_MENU = LAMIGA
 RAW = {'down': 0x4D, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
 KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
 TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
@@ -177,7 +178,7 @@ def viewer_lines(s):
 def r_viewer_rows():
     # the viewer is a text box (amarchy/menu.c viewer, K_TEXTBOX in a 640x300 window): one page of rows at a time.
     # Scroll with Down, a few lines per step, and collect every distinct row line seen until a step adds none.
-    ami.key(RAW['k'], TEXT_MENU)       # Super+Alt+K: otherviewer, the text viewer (Super+K is the drawn one)
+    ami.key(RAW['k'], TEXT_MENU)       # Super+K over the terminal: the text viewer
     time.sleep(1.5)
     rows = viewer_lines(screen_text())
     for _ in range(40):
@@ -311,7 +312,7 @@ def x9_files(extra=()):
 def x9_open_menu():
     ami.click_px(100, 100)                     # the host terminal has the focus
     time.sleep(0.5)
-    ami.key(RAW['space'], LAMIGA | ALT)        # othermenu:root, the text menu
+    ami.key(RAW['space'], LAMIGA)              # over the terminal: the text menu
     for _ in range(30):
         if 'Filter' in screen_text():
             return True

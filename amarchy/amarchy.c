@@ -75,28 +75,31 @@ static void dir_resolve(void)
 
 /* the menu-style setting (UC_MENU_*), read from the upconf at startup and on every reload */
 static int g_style;
+static int g_term_menu;   /* menu-in-terminal (UC_TERMMENU_*) */
 
 static void style_load(void)
 {
     am_prefs p;
     amconf_load(&p);
     g_style = amconf_style(&p);
+    g_term_menu = amconf_term_menu(&p);
 }
 
-/* menu: / viewer / othermenu: / otherviewer: the program the setting names (or the other one), the
+/* menu: / viewer: the program the settings name (menu-style, or menu-in-terminal over a terminal), the
  * text one in its own terminal window sized from the tree, the graphical one in its own window. */
 static int act_menu_kind(int kind, const char *node)
 {
     char line[KM_ID + 160];
-    int text = 0, cols = VIEWER_COLS, rows = VIEWER_ROWS;
+    int text = 0, cols = VIEWER_COLS, rows = VIEWER_ROWS, in_term = 0, full = 0;
     if (mo_close_open())
         return 1;   /* MENU-TOGGLE: a menu or viewer hotkey closes whichever menu is open */
-    if (!cx_menu_cmd(line, sizeof(line), g_dir, kind, node, g_style, &text))
+    win_active_terminal(&in_term, &full);
+    if (!cx_menu_cmd(line, sizeof(line), g_dir, kind, node, cx_menu_style(g_style, g_term_menu, in_term, full), &text))
         return 0;
     win_ticket_take();   /* K5a: the menu is about to become the active window; win: rows act on this one */
     if (!text)
         return act_run(line);
-    if (kind == KA_MENU || kind == KA_OTHERMENU) {
+    if (kind == KA_MENU) {
         keymap full;
         /* g_km is compacted (no [menu] rows, keymap_compact): the size comes from the full table,
          * loaded for this open and released again, the table amarchy-menu will show; the rows follow the terminal the hotkey was pressed over (the
@@ -151,7 +154,7 @@ static int do_row(int row)
     if (!b)
         return 0;
     g_hits++;
-    if (b->kind == KA_MENU || b->kind == KA_VIEWER || b->kind == KA_OTHERMENU || b->kind == KA_OTHERVIEWER)
+    if (b->kind == KA_MENU || b->kind == KA_VIEWER)
         at_mark("hotkey");   /* opt-in: AMARCHY_TIMING */
     switch (b->kind) {
     case KA_RUN:
@@ -160,7 +163,7 @@ static int do_row(int row)
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_WIN:   ok = act_win(b->arg); break;
     case KA_OPEN:  ok = act_open_uterm(); break;
-    case KA_MENU: case KA_VIEWER: case KA_OTHERMENU: case KA_OTHERVIEWER:
+    case KA_MENU: case KA_VIEWER:
         ok = act_menu_kind(b->kind, b->arg);
         break;
     default:       ok = 1; break;

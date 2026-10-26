@@ -50,18 +50,23 @@ int cx_helper_cmd(char *out, int cap, const char *dir, const char *prog, const c
     return 1;
 }
 
+int cx_menu_style(int general, int term_setting, int in_terminal, int fullscreen)
+{
+    if (!in_terminal)
+        return general;
+    if (fullscreen || term_setting == UC_TERMMENU_TEXT)
+        return UC_MENU_TEXT;
+    return UC_MENU_GRAPHICAL;
+}
+
 int cx_menu_cmd(char *out, int cap, const char *dir, int kind, const char *node, int style, int *text)
 {
     char args[KM_ARG + 8];
-    int other, is_text;
-    if (kind == KA_MENU || kind == KA_VIEWER)
-        other = 0;
-    else if (kind == KA_OTHERMENU || kind == KA_OTHERVIEWER)
-        other = 1;
-    else
+    int is_text;
+    if (kind != KA_MENU && kind != KA_VIEWER)
         return 0;
-    is_text = (style == UC_MENU_TEXT) != other;
-    if (kind == KA_MENU || kind == KA_OTHERMENU) {
+    is_text = style == UC_MENU_TEXT;
+    if (kind == KA_MENU) {
         if (strlen(node) + 6 >= sizeof args)
             return 0;
         strcpy(args, "menu ");

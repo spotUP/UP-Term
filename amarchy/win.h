@@ -19,6 +19,10 @@ int win_port(const char *arg);
 /* Record the window the owner was in when a menu or viewer opens (the menu then becomes the active window). */
 void win_ticket_take(void);
 
+/* Whether the active window is an UP-Term terminal (*in_term: the "UPTERM.active" focus count is above 0 and an
+ * Intuition window is active) and a full-screen one (*full: backdrop, borderless, the screen's size). */
+void win_active_terminal(int *in_term, int *full);
+
 /* Verbs executed so far (the STATUS `wins=` sentinel). */
 long win_count(void);
 

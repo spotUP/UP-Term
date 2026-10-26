@@ -129,8 +129,6 @@ int keymap_action_scope(int kind)
         return KS_COMMODITY;
     case KA_MENU:
     case KA_VIEWER:
-    case KA_OTHERMENU:
-    case KA_OTHERVIEWER:
     case KA_RUN:
     case KA_DETACH:
     case KA_SCAN:
@@ -212,7 +210,7 @@ typedef struct prefix {
 static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
     { "slash", KA_SLASH }, { "run", KA_RUN }, { "rexx", KA_REXX }, { "open", KA_OPEN },
-    { "othermenu", KA_OTHERMENU }, { "detach", KA_DETACH }, { "scan", KA_SCAN },
+    { "detach", KA_DETACH }, { "scan", KA_SCAN },
     { "win", KA_WIN }
 };
 
@@ -300,10 +298,6 @@ static int action_parse(const char *text, action *a)
     }
     if (!strcmp(text, "viewer")) {
         a->kind = KA_VIEWER;
-        return 1;
-    }
-    if (!strcmp(text, "otherviewer")) {
-        a->kind = KA_OTHERVIEWER;
         return 1;
     }
     colon = strchr(text, ':');

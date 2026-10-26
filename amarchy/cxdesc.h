@@ -32,11 +32,16 @@ int cx_row_takes(unsigned short row_code, unsigned row_qual, unsigned ie_code, u
  * does not fit in cap bytes or dir is empty. The bare name is not on every command path. */
 int cx_helper_cmd(char *out, int cap, const char *dir, const char *prog, const char *args);
 
-/* The command for one of the four menu actions (KA_MENU, KA_VIEWER, KA_OTHERMENU, KA_OTHERVIEWER)
- * under the menu-style setting (UC_MENU_*): the graphical program (amarchy-gui) or the text one
- * (amarchy-menu) by style, the other one for the OTHER kinds. args is "menu <node>" (node empty =
+/* The menu style (UC_MENU_*) a menu hotkey opens: the general menu-style setting, except while the active
+ * window is an UP-Term terminal, where the menu-in-terminal setting (UC_TERMMENU_*) decides; a full-screen
+ * terminal always gets the text menu. */
+int cx_menu_style(int general, int term_setting, int in_terminal, int fullscreen);
+
+/* The command for one of the two menu actions (KA_MENU, KA_VIEWER) under a style (UC_MENU_*,
+ * from cx_menu_style): the graphical program (amarchy-gui) or the text one
+ * (amarchy-menu). args is "menu <node>" (node empty =
  * root) or "viewer". *text is set to 1 when the program is the text one (it needs an XCON: window),
- * 0 for the graphical one (it opens its own). 0 when the kind is none of the four or it does not fit. */
+ * 0 for the graphical one (it opens its own). 0 when the kind is neither or it does not fit. */
 int cx_menu_cmd(char *out, int cap, const char *dir, int kind, const char *node, int style, int *text);
 
 /* 1 when the commodity installs a hotkey filter for this row. The terminal's own

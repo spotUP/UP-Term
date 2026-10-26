@@ -664,8 +664,6 @@ AMARCHY
   Left Amiga + Space              Menu
   Left Amiga + Shift + Space      Apps
   Left Amiga + K                  Key bindings
-  Left Amiga + Alt + Space        Other menu
-  Left Amiga + Alt + K            Other key bindings
   Left Amiga + H                  Help
   Left Amiga + Shift + H          Tutorial
   Left Amiga + T                  New tab
@@ -732,9 +730,12 @@ AMARCHY
   minimal, default graphical) picks the one Left Amiga + Space and Left
   Amiga + K start. minimal is amarchy-gui as plain text rows: no border, no
   icons, two colours (the fg and bg settings, else the screen's own pens 1
-  and 0), and a group row ends in " >". Left Amiga + Alt + Space and Left
-  Amiga + Alt + K start the other one (for minimal: the text menu). The
-  setting amarchy-app-icons = generic, amiga or none picks the icons of app
+  and 0), and a group row ends in " >". While an UP-Term window is
+  active, the setting
+    menu-in-terminal = text
+  (text or graphical, default text; the Prefs row "Menu in terminal") picks
+  the program instead, and a full-screen terminal always gets the text
+  menu. The setting amarchy-app-icons = generic, amiga or none picks the icons of app
   rows (amiga: their .info images; none: no icon column). The Prefs program
   sets both on its Amarchy page (Menu mode, App icons). You can also run
   them by hand:

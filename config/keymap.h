@@ -74,8 +74,6 @@ enum {
     KA_RUN,      /* run:<command line> */
     KA_REXX,     /* rexx:<script or string> */
     KA_OPEN,     /* open:uterm */
-    KA_OTHERMENU,   /* othermenu:<id>  menu: with the other menu program (the upconf menu-style setting) */
-    KA_OTHERVIEWER, /* otherviewer     viewer with the other program */
     KA_DETACH,      /* detach:<command line>  a program in the background: no window, input and output NIL: */
     KA_SCAN,        /* scan:<command line>  like detach:, and the menu watches the scan it started (RESCAN-FEEDBACK) */
     KA_WIN          /* win:<verb [argument]>  a window verb on the active window, run by the commodity (win_core.h) */
@@ -84,7 +82,7 @@ enum {
 /* where an action runs (keymap_action_scope) */
 #define KS_TERMINAL  1   /* tab:, menuid:, slash: */
 #define KS_COMMODITY 2   /* open:, rexx: */
-#define KS_BOTH      3   /* run:, detach:, scan:, menu:, viewer, othermenu:, otherviewer */
+#define KS_BOTH      3   /* run:, detach:, scan:, menu:, viewer */
 
 typedef struct km_bind {
     unsigned short qual;        /* KM_Q_* */
