@@ -1,0 +1,11 @@
+up-jq: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+jq (bin/jq, share/man/man1/jq.1, licenses/jq) MIT upterm-ports (pkgs/jq)
+
+Notes
+- These files were part of up-term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/jq/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha.

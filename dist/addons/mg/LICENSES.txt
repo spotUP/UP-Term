@@ -1,0 +1,11 @@
+up-mg: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+mg (bin/mg, share/man/man1/mg.1, licenses/mg) public domain, BSD and ISC upterm-ports (pkgs/mg)
+
+Notes
+- These files were part of up-term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/mg/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha.

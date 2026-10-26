@@ -1,0 +1,11 @@
+up-nano: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+nano (bin/nano, etc/nanorc, share/nano, share/man/man1/nano.1, licenses/nano) GPL v3 or later upterm-ports (pkgs/nano)
+
+Notes
+- These files were part of up-term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/nano/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha.

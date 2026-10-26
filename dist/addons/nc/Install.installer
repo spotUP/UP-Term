@@ -1,0 +1,50 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 8, lead 3
+(message
+    "\n\n\nN C\n\n"
+    "nc, the OpenBSD netcat, for an UP-Term window.\n"
+    "It goes into UP-Term:bin, share,\n"
+    "where the base had it.\n"
+    "Needs up-term.lha installed first.\n"
+    (all))
+(set #kb-nc @KBCOPYNC@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "nc needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install nc into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-nc 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "copy-nc" #kb #kb-nc #n 1
+     #why "Copying nc to UP-Term:bin, share.")
+(P_STEP)
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "nc is installed. In an UP-Term window, in vsh:\n"
+         "  nc -h\n\n"
+         "Uninstall (beside Install) takes nc out again."))
+; @include dist/common/addon-tail.installer

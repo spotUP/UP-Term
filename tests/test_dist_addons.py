@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 import mkinstaller as mi
 import mkmanifest as mm
 import pkgs
+import slim
 import test_dist_installer as ti
 
 ADDONS = [r for r in pkgs.rows() if r['id'] != 'base']
@@ -33,8 +34,10 @@ class EveryAddOn(unittest.TestCase):
     def each(self):
         return [(r['id'], scripts(r['id'])) for r in ADDONS]
 
-    def test_there_are_nine_add_ons(self):
-        self.assertEqual(sorted(r['id'] for r in ADDONS), ['bitchx', 'claude', 'git', 'nvim', 'perl', 'pi', 'python', 'vbcc', 'vim'])
+    def test_every_add_on_row_has_its_drawer_and_every_slim_package_is_one(self):
+        """One loop over the whole table: the add-ons are the hand-written five plus every slim package."""
+        hand = ['claude', 'nvim', 'pi', 'python']
+        self.assertEqual(sorted(r['id'] for r in ADDONS), sorted(hand + slim.ids()))
 
     def test_a_failed_write_ends_the_install_with_rc_20_before_the_success_line(self):
         """Disk full (rig, up-nvim through upkg): Copy and Echo-to-file failed with rc 20, but `FailAt 21`
@@ -100,7 +103,7 @@ class EveryAddOn(unittest.TestCase):
             self.assertEqual(depth, 0)
 
     def test_page_text_lines_fit_the_32_window(self):
-        for _, s in self.each():
+        for pid, s in self.each():
             stack, long = [], []
             toks = ti.tokens(s['installer'])
             for i, (kind, text) in enumerate(toks):
@@ -110,7 +113,7 @@ class EveryAddOn(unittest.TestCase):
                     stack.pop()
                 elif kind == 'str' and 'help' not in stack and 'abort' not in stack:
                     long += [p for p in text.split('\\n') if len(p) > 56 and not p.startswith(' ONLY=')]   # ONLY= is upupdate's argument, not page text
-            self.assertEqual(long, [])
+            self.assertEqual(long, [], pid)
 
     def test_only_installer_43_language(self):
         for _, s in self.each():

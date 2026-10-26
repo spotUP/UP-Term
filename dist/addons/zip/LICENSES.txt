@@ -1,0 +1,11 @@
+up-zip: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+zip (bin/zip, share/man/man1/zip.1, licenses/zip) Info-ZIP (BSD-like) upterm-ports (pkgs/zip)
+
+Notes
+- These files were part of up-term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/zip/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha.

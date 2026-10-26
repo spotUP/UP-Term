@@ -1242,11 +1242,11 @@ KIT_claude := $(BUILD)/dist/up-claude
 KIT_pi := $(BUILD)/dist/up-pi
 KIT_nvim := $(BUILD)/dist/up-nvim
 KIT_python := $(BUILD)/dist/up-python
-KIT_git := $(BUILD)/dist/up-git
-KIT_perl := $(BUILD)/dist/up-perl
-KIT_vim := $(BUILD)/dist/up-vim
-KIT_bitchx := $(BUILD)/dist/up-bitchx
-KIT_vbcc := $(BUILD)/dist/up-vbcc
+# the upkg-only packages: every id of dist/slim.txt (git, perl, vim, bitchx, vbcc and the application ports); one stage
+# drawer and one dist-<id> target each, from the table, no target per package
+SLIM_IDS := $(shell python3 tools/slim.py ids)
+SLIM_DIST := $(addprefix dist-,$(SLIM_IDS))
+$(foreach p,$(SLIM_IDS),$(eval KIT_$(p) := $(BUILD)/dist/up-$(p)))
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # the soft-float build of the same ixemul (no FPU opcodes): the installer puts it in on a machine
@@ -1284,7 +1284,7 @@ AMIGA_PI_SKILLS := $(AMIGA_PI)/skills
 .PHONY: amiga-pi-bin
 amiga-pi-bin:
 	$(MAKE) -C $(AMIGA_PI) UPTERM_ROOT=$(UPTERM_ROOT) amiga
-dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-bitchx dist-vbcc dist-src dist-index dist-ipk
+dist: dist-base dist-claude dist-pi dist-nvim dist-python $(SLIM_DIST) dist-src dist-index dist-ipk
 
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
@@ -1361,7 +1361,7 @@ pkg = $(shell python3 tools/pkgs.py get $(1) $(2))
 LAUNCHER = mkdir -p "$(1)/Files/launch" && cp "$(2)" "$(1)/Files/launch/$(3)" \
 	&& python3 tools/mkicon.py "$(1)/Files/launch/$(3).info" --tool C:IconX \
 	  --tooltype "WINDOW=XCON:0/12/$(4)/$(3)/CLOSE"
-.PHONY: dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-bitchx dist-vbcc
+.PHONY: dist-claude dist-pi dist-nvim dist-python $(SLIM_DIST)
 dist-claude: $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(BUILD)/amiga/upupdate $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	$(call ADDON_STAGE,claude)
 	cp $(BUILD)/amiga/Claude $(BUILD)/amiga/uptelnet $(KIT_claude)/Files/
@@ -1392,7 +1392,7 @@ dist-python: $(BUILD)/amiga/upupdate
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
-# git, perl, vim, bitchx and vbcc (P9, dist/slim.txt): the ports' own files at the paths the base used to carry, taken from the
+# every package of dist/slim.txt (P9): the ports' own files at the paths the base used to carry, taken from the
 # same PORTS_KIT as dist-base, which removes them
 define SLIM_STAGE
 	$(call ADDON_STAGE,$(1))
@@ -1400,22 +1400,17 @@ define SLIM_STAGE
 	python3 tools/slim.py stage $(1) $(PORTS_KIT) $(KIT_$(1))/Files/userland
 	python3 tools/mkkit.py $(1)
 endef
-dist-git: $(BUILD)/amiga/upupdate
-	$(call SLIM_STAGE,git)
-dist-perl: $(BUILD)/amiga/upupdate
-	$(call SLIM_STAGE,perl)
-dist-vim: $(BUILD)/amiga/upupdate
-	$(call SLIM_STAGE,vim)
-dist-bitchx: $(BUILD)/amiga/upupdate
-	$(call SLIM_STAGE,bitchx)
-dist-vbcc: $(BUILD)/amiga/upupdate
-	$(call SLIM_STAGE,vbcc)
+define SLIM_RULE
+dist-$(1): $$(BUILD)/amiga/upupdate
+	$$(call SLIM_STAGE,$(1))
+endef
+$(foreach p,$(SLIM_IDS),$(eval $(call SLIM_RULE,$(p))))
 
 # build/up-term-src.lha, published next to the kit: the Unix tools' source (upterm-ports) and the
 # complete source of GNU coreutils (GPL v2 section 3: the same place as the binaries)
 .PHONY: dist-base dist-src dist-index dist-ipk
 # upkg's index (upkg plan D1): released next to the archives it names
-dist-index: dist-base dist-claude dist-pi dist-nvim dist-python dist-git dist-perl dist-vim dist-bitchx dist-vbcc
+dist-index: dist-base dist-claude dist-pi dist-nvim dist-python $(SLIM_DIST)
 	python3 tools/pkgs.py prune $(BUILD)
 	python3 tools/pkgs.py index $(BUILD) > $(BUILD)/upkg-index.txt
 # the .ipk feed for the opkg-based upkg (P10.4): build/ipk/*.ipk, Packages, Packages.gz from the staged trees.

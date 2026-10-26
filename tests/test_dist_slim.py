@@ -20,8 +20,8 @@ PORTS = pathlib.Path(os.environ.get('PORTS_KIT') or paths.repo('upterm-ports') /
 REQUIRE = os.environ.get('SLIM_REQUIRE') == '1'
 ARCHIVE = {r['id']: r['archive'] for r in pkgs.rows()}
 BASE = BUILD / 'dist/UP-Term/Files/userland'
-MOVED = ('bin/git', 'bin/perl', 'bin/vim', 'share/vim', 'share/git-core', 'share/man/man1/vim.1',
-         'licenses/git', 'licenses/perl', 'licenses/vim', 'bin/BitchX', 'lib/bx', 'licenses/bitchx', 'vbcc', 'licenses/vbcc')
+# every path a slim package owns by name (dist/slim.txt), read from the table: a new row is covered by this loop
+MOVED = tuple(p for _, p in slim.rows() if not any(c in p for c in '*?['))
 
 
 def tree(root):
@@ -38,8 +38,9 @@ def need(case, path):
 
 
 class Table(unittest.TestCase):
-    def test_the_packages_are_git_perl_vim_bitchx_and_are_rows_of_packages_txt(self):
-        self.assertEqual(slim.ids(), ['git', 'perl', 'vim', 'bitchx', 'vbcc'])
+    def test_the_packages_are_the_slim_rows_and_are_rows_of_packages_txt(self):
+        self.assertEqual(slim.ids()[:5], ['git', 'perl', 'vim', 'bitchx', 'vbcc'])
+        self.assertEqual(len(slim.ids()), len(set(slim.ids())))
         for i in slim.ids():
             self.assertIn(i, ARCHIVE)
             self.assertTrue(ARCHIVE[i].startswith('up-'), i)      # they need the base: UP-Term:bin
@@ -86,9 +87,7 @@ class SlimBase(unittest.TestCase):
     def test_the_base_archive_lists_none_of_them(self):
         need(self, BUILD / 'up-term.lha')
         out = subprocess.run(['lha', 'l', str(BUILD / 'up-term.lha')], capture_output=True, text=True, check=True).stdout
-        for m in ('Files/userland/bin/git', 'Files/userland/bin/perl', 'Files/userland/bin/vim',
-                  'Files/userland/share/vim/', 'Files/userland/share/git-core/',
-                  'Files/userland/bin/BitchX', 'Files/userland/lib/bx/', 'Files/userland/vbcc/'):
+        for m in ['Files/userland/' + p for p in MOVED]:
             self.assertNotIn(' UP-Term/' + m, out, m)
 
 

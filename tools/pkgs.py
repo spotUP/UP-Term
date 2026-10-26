@@ -143,7 +143,8 @@ SUMMARY = {
 }
 # Packages that never had another name (born as up-<x>, 2026-10-25 up-bitchx): they have no line in
 # dist/package-renames.txt and no old record to migrate. tests/test_dist_packages.py holds both facts.
-NEW_PACKAGES = ('up-bitchx', 'up-vbcc')
+# Derived: every slim package (dist/slim.txt) with no old name.
+NEW_PACKAGES = tuple('up-' + i for i in slim.ids() if not old_names('up-' + i))
 EPOCH = 0
 
 

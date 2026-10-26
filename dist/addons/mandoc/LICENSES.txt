@@ -1,0 +1,11 @@
+up-mandoc: parts, licences and where the source is
+
+Part                          Licence                          Source
+----------------------------  -------------------------------  --------------------------------------------
+mandoc (bin/mandoc, bin/man, share/man/man1/mandoc.1, share/man/man1/man.1, share/man/man7/man.7, share/man/man7/mdoc.7, share/man/man7/roff.7, licenses/mandoc) ISC upterm-ports (pkgs/mandoc)
+
+Notes
+- These files were part of up-term.lha until the slim base (P9); the package installs them at the
+  same paths in UP-Term:. Its row of SOURCES.txt is in UP-Term:licenses/mandoc/SOURCES.txt.
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha.

@@ -1,0 +1,50 @@
+; @include dist/common/addon-head.installer
+
+(if (not #update)
+(
+; welcome: n = 8, lead 3
+(message
+    "\n\n\nL Y N X\n\n"
+    "lynx, the text web browser, for an UP-Term window.\n"
+    "It goes into UP-Term:bin, etc, share, licenses,\n"
+    "where the base had it.\n"
+    "Needs up-term.lha installed first.\n"
+    (all))
+(set #kb-lynx @KBCOPYLYNX@)
+(set #totalkb @KBTOTAL@)
+(set #free (getdiskspace (pathonly #dest)))
+(if (and (> #free 0) (< (/ #free 1024) #totalkb))
+    (abort "Nothing was installed. " #dest " has " (/ #free 1024) " KB free;\n"
+           "lynx needs about " #totalkb " KB. Free room and\n"
+           "run Install again."))
+
+;  ready: n = 7, lead 3
+(message
+    (cat "\n\n\nReady to install lynx into\n\n" #dest "\n\n"
+         "about " (/ #totalkb 1024) " MB.\n"
+         "Proceed starts the install;\n"
+         "Abort Install leaves everything as it was."))
+)
+    ; Update: the options of the last install, from its record
+    (
+        (if (exists "@OPTS@/UPTOPTDEST") (run "Copy @OPTS@/#? ENV: QUIET"))
+        (set #kb-lynx 0)
+        (set #totalkb (+ 1 (getenv "UPTUPDKB")))
+        ))
+(set #donekb 0)
+
+(complete 0)
+
+(P_OPTIONS)
+
+(set #step "copy-lynx" #kb #kb-lynx #n 1
+     #why "Copying lynx to UP-Term:bin, etc, share, licenses.")
+(P_STEP)
+
+(set #n 6)
+(P_LEAD)
+(set #done
+    (cat #lead "lynx is installed. In an UP-Term window, in vsh:\n"
+         "  lynx -version\n\n"
+         "Uninstall (beside Install) takes lynx out again."))
+; @include dist/common/addon-tail.installer
