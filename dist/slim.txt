@@ -75,3 +75,5 @@ ctags   licenses/ctags
 zip     bin/zip
 zip     share/man/man1/zip.1
 zip     licenses/zip
+sqlite  bin/sqlite3
+sqlite  licenses/sqlite
