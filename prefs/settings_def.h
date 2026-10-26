@@ -93,6 +93,12 @@ typedef struct sd_setting {
 extern const sd_setting sd_settings[SDI_COUNT];
 extern const int sd_nsettings;
 
+/* The Amarchy keys with no control in Prefs (index skip list, index volumes): rows of the same kind, no page. */
+#define SD_NHIDDEN 2
+extern const sd_setting sd_hidden[SD_NHIDDEN];
+/* The row, of sd_settings or sd_hidden, that stores the am_prefs value k (AM_*); every k has one. */
+const sd_setting *sd_amarchy_key(int k);
+
 /* The order prefs_stage writes the keys of a profile that has none yet (a key already in the file is set in
  * place, whatever the order): the ids of the SD_UPTERM rows that own a file key, with the three KingCON rows
  * as SDI_KC_MATCH alone. It is the order of the files already on disks, kept so a save writes the bytes it

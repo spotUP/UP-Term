@@ -203,6 +203,28 @@ const sd_setting sd_settings[SDI_COUNT] = {
 };
 const int sd_nsettings = SDI_COUNT;
 
+/* The Amarchy keys no control of Prefs edits: they live in the file for the index (amarchy-index) and are
+ * set by hand. They have no page, label or help; the rows above are all that Prefs shows. */
+const sd_setting sd_hidden[SD_NHIDDEN] = {
+    { -1, "amarchy-index-skip", 0, -1, SD_STRING, 0, 0, NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_SKIP),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "amarchy-index-volumes", 0, -1, SD_STRING, 0, 0, NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_VOLUMES),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+};
+
+const sd_setting *sd_amarchy_key(int k)
+{
+    size_t off = AO(k);
+    int i;
+    for (i = 0; i < sd_nsettings; i++)
+        if (sd_settings[i].store == SD_AMARCHY && sd_settings[i].off == off)
+            return &sd_settings[i];
+    for (i = 0; i < SD_NHIDDEN; i++)
+        if (sd_hidden[i].off == off)
+            return &sd_hidden[i];
+    return 0;
+}
+
 static int sd_ieq(const char *a, const char *b)
 {
     for (; *a && *b; a++, b++) {

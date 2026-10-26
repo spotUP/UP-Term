@@ -26,7 +26,10 @@ typedef struct am_key {
     const char *name;
     const char *def; /* the value of an absent key; a key at its default is not written */
 } am_key;
-extern const am_key am_keys[AM_NKEYS];
+/* The keys, in AM_* order, read from the settings table (prefs/settings_def.c) on the first use: the table
+ * is the one place a key's name and default are written. am_keys[k] reads as an array. */
+const am_key *amconf_keys(void);
+#define am_keys (amconf_keys())
 
 /* every key's value as text; the enumerated ones read through amconf_icons / amconf_style */
 typedef struct am_prefs {
