@@ -604,6 +604,7 @@ void vtwin_render(vtwin *w)
 }
 
 static void drag_to(vtwin *w, WORD mx, WORD my);
+static void end_drag(vtwin *w);
 static void motion_to(vtwin *w, WORD mx, WORD my);
 static void pointer_sync(vtwin *w);
 
@@ -638,7 +639,7 @@ ULONG vtwin_tick(vtwin *w)
         if (w->t && vr_flash_tick(&w->r))
             vtwin_render(w); /* the flash's frame is over */
     }
-    if (w->dragging && w->win) {
+    if (w->dragging && !w->inactive && w->win) {
         /* follow the pointer on the frame clock (after the frame's own
          * bookkeeping, or frame_start finds it busy and the polling stops):
          * moves may never reach us as events -- Intuition keeps absolute
@@ -1326,8 +1327,7 @@ static void paste(vtwin *w)
     for (i = 0; i < n;) {
         unsigned long ch = cf_next(text, n, &i);
         long key = ch == '\n' ? VT_KEY_RETURN : (long)ch;
-        if (ch == '
-' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
+        if (ch == '\n' || !cf_paste_keeps(ch) || !vti_paste_keeps(w->t, ch))
             continue; /* controls never; inside ?2004 nothing that ends the brackets early */
         k = encode_key(w, !raw, key, 0, out);
         w->host->pasted(w->user, out, k, key == VT_KEY_RETURN ? key : 0);
@@ -1345,6 +1345,12 @@ void vtwin_focus(vtwin *w, int in)
 {
     vt_u8 out[8];
     int k;
+    w->inactive = !in;
+    if (!in && w->dragging) {
+        /* the button's release goes to the window that took the focus: the drag ends here, as on the release */
+        end_drag(w);
+        pointer_sync(w);
+    }
     if (!w->t || !w->host->raw(w->user))
         return; /* a cooked line would get the bytes as typing */
     k = vt_encode_focus(w->t, in, out);
@@ -1615,6 +1621,17 @@ static void drag_to(vtwin *w, WORD mx, WORD my)
     w->drag_moved = 1;
 }
 
+/* The drag ends: on the release, when the window loses the focus, when a move comes with the left button up
+ * (the release went to another window). The selection stays as it is; a click that never moved clears it. */
+static void end_drag(vtwin *w)
+{
+    w->dragging = 0;
+    if (!w->drag_moved)
+        vr_select(&w->r, 0, 0, 0, 0, 0); /* a click clears the selection */
+    else if (w->copy_on_select && !w->no_clipboard)
+        copy_selection(w); /* the profile's copy-on-select */
+}
+
 /* Ctrl + click on a cell of an OSC 8 hyperlink: the owner opens it. 1 when
  * the click was that. */
 static int link_click(vtwin *w, UWORD code, UWORD qual, WORD mx, WORD my)
@@ -1674,7 +1691,10 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
     in = cell_at(w, mx, my, &x, &y);
     w->mouse_mods = qual_mods(w, qual); /* Ctrl +16, Meta +8 in the reports */
     if (move) {
-        if (w->dragging)
+        if (w->dragging && !(qual & IEQUALIFIER_LEFTBUTTON)) {
+            end_drag(w); /* the left button is up and the release never came here */
+            pointer_sync(w);
+        } else if (w->dragging)
             drag_to(w, mx, my);
         else
             motion_to(w, mx, my);
@@ -1718,11 +1738,7 @@ void vtwin_mouse(vtwin *w, int move, UWORD code, UWORD qual, WORD mx, WORD my, U
         w->drag_moved = w->sel_whole; /* a word or line stays selected on release */
         break;
     case VTI_SELECT_END:
-        w->dragging = 0;
-        if (!w->drag_moved)
-            vr_select(&w->r, 0, 0, 0, 0, 0); /* a click clears the selection */
-        else if (w->copy_on_select && !w->no_clipboard)
-            copy_selection(w); /* the profile's copy-on-select */
+        end_drag(w);
         break;
     case VTI_PASTE:
         if (!w->no_clipboard)

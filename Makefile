@@ -193,11 +193,12 @@ $(BUILD)/vttest_host: $(HOST_HDR) $(CLAUDE_CORE) $(CLAUDE_HDR) $(ENGINE) $(RENDE
 # (tests/render_host/gfx_fake.c) that logs the calls and draws into a pixel canvas. Its own binary: the
 # NDK headers and the engine's strict host build cannot share a translation unit (struct timeval).
 # Needs the NDK of `make amiga` (VTCON_NDK); the sanitizers stay on.
-RENDER_HOST_SRC := tests/test_render.c tests/render_host/gfx_fake.c render/amiga_render.c render/pens_amiga.c tests/harness.c $(ENGINE) render/glyphmap.c render/unifont.c render/emoji.c render/painter.c render/vtinput.c render/ttf.c
+# render/vtwin.c is the Amiga 32-bit code: its ULONG <-> pointer casts get the two -Wno flags below
+RENDER_HOST_SRC := tests/test_render.c tests/render_host/gfx_fake.c render/amiga_render.c render/pens_amiga.c tests/harness.c $(ENGINE) render/glyphmap.c render/unifont.c render/emoji.c render/painter.c render/vtinput.c render/ttf.c render/vtwin.c render/fontpair.c render/sbar.c handler/clipfmt.c tests/render_host/vtwin_stubs.c
 $(BUILD)/render_host: $(HOST_HDR) tests/render_host/gfx_fake.h tests/render_host/proto/*.h $(RENDER_HOST_SRC)
 	@mkdir -p $(BUILD)
 	@test -d $(VTCON_NDK) || { echo "[ERROR] the NDK headers are missing: unpack NDK3.2R4 to $(VTCON_NDK) (see make amiga)"; exit 1; }
-	$(HOSTCC) -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter -O1 -g -fsanitize=address,undefined -Itests -Itests/render_host -I$(VTCON_NDK) -DAMIGA_STDC_C99 -DVR_HOST_TEST -o $@ $(RENDER_HOST_SRC)
+	$(HOSTCC) -std=gnu99 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-pointer-to-int-cast -Wno-int-to-void-pointer-cast -O1 -g -fsanitize=address,undefined -Itests -Itests/render_host -I$(VTCON_NDK) -DAMIGA_STDC_C99 -DVR_HOST_TEST -o $@ $(RENDER_HOST_SRC)
 
 # amiga-pi's NFKC (claude/unorm.c) for tests/test_unorm.py
 $(BUILD)/unorm_drv: tests/unorm_drv.c claude/unorm.c claude/unorm.h claude/unorm_tab.h claude/json.c claude/util.c

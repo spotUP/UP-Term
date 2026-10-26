@@ -12,6 +12,7 @@
 #include "../render/pen_match.h"
 #include "../render/emoji.h"
 #include "../render/outline.h"
+#include "../render/vtwin.h"
 
 #define COLS 20
 #define ROWS 8
@@ -99,6 +100,102 @@ static void selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_ter
     memset(&r, 0, sizeof r);
     CHECK_INT(vr_selection(&r, &ax, &ay, &bx, &by), 0);
     CHECK_INT(ax, -1);
+}
+
+
+/* A drag selection exists only while the left button is down and the window is active (render/vtwin.c). The
+ * release of a press that opened the Amarchy text menu's window went to that window: the terminal kept
+ * dragging, and every pointer move extended the selection for good. */
+static vtwin dw;
+static int dh_raw(void *u) { (void)u; return 0; }
+static void dh_input(void *u, const vt_u8 *b, long n) { (void)u; (void)b; (void)n; }
+static const vtwin_host dhost = { 0, dh_input, 0, 0, dh_raw, 0, 0, 0, 0, 0 };
+
+static void drag_open(void)
+{
+    vt_callbacks cb;
+    memset(&dw, 0, sizeof dw);
+    memset(&cb, 0, sizeof(cb));
+    cb.damage = cb_damage;
+    cb.scroll = cb_scroll;
+    gf_open(COLS * CW, ROWS * CH, CW, CH, 6);
+    vtwin_init(&dw, &dhost, 0);
+    term = vt_new(COLS, ROWS, 100, &cb, &dw.r);
+    dw.t = term;
+    dw.win = gf_window();
+    vr_init(&dw.r, gf_window(), gf_font(), term, VT_ENC_LATIN1);
+    vt_feed(term, (const vt_u8 *)"alpha beta gamma delta\r\nline two\r\n", 34);
+    vt_flush(term);
+}
+
+static void drag_close(void)
+{
+    vr_free(&dw.r);
+    vt_free(term);
+    gf_close();
+}
+
+/* the pixel in the middle of cell (cx, cy) */
+#define PX(cx) (dw.r.ox + (cx) * CW + 1)
+#define PY(cy) (dw.r.oy + (cy) * CH + 1)
+
+static int sel_end(int *bx, int *by)
+{
+    int ax, ay;
+    return vr_selection(&dw.r, &ax, &ay, bx, by);
+}
+
+static void a_drag_ends_when_the_left_button_is_up_or_the_window_goes_inactive(void)
+{
+    int bx = -1, by = -1;
+    drag_open();
+
+    /* round trip: the press, then moves WITH the left button, extend */
+    vtwin_mouse(&dw, 0, SELECTDOWN, 0, PX(2), PY(0), 10, 0);
+    CHECK_INT(dw.dragging, 1);
+    vtwin_mouse(&dw, 1, 0, IEQUALIFIER_LEFTBUTTON, PX(6), PY(0), 10, 1);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 6);
+    CHECK_INT(dw.dragging, 1);
+
+    /* the release went elsewhere: a move without the button ends the drag, the selection stays, no extension */
+    vtwin_mouse(&dw, 1, 0, 0, PX(12), PY(0), 10, 2);
+    CHECK_INT(dw.dragging, 0);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 6);
+    vtwin_mouse(&dw, 1, 0, IEQUALIFIER_LEFTBUTTON, PX(15), PY(0), 10, 3);
+    CHECK_INT(sel_end(&bx, &by), 1); /* no drag any more: even a move with the bit set extends nothing */
+    CHECK_INT(bx, 6);
+
+    /* the window goes inactive mid-drag: the drag ends, a tick and a move do not extend */
+    vtwin_mouse(&dw, 0, SELECTDOWN, 0, PX(1), PY(1), 20, 0);
+    vtwin_mouse(&dw, 1, 0, IEQUALIFIER_LEFTBUTTON, PX(4), PY(1), 20, 1);
+    CHECK_INT(dw.dragging, 1);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 4);
+    vtwin_focus(&dw, 0);
+    CHECK_INT(dw.dragging, 0);
+    dw.win->MouseX = PX(9);
+    dw.win->MouseY = PY(1);
+    vtwin_tick(&dw);
+    vtwin_mouse(&dw, 1, 0, IEQUALIFIER_LEFTBUTTON, PX(9), PY(1), 20, 2);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 4);
+
+    /* the tick's poll follows the pointer only while the window is active */
+    vtwin_focus(&dw, 1);
+    dw.dragging = 1;
+    dw.drag_x = 4;
+    dw.drag_y = 1;
+    dw.inactive = 1;
+    vtwin_tick(&dw);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 4);
+    dw.inactive = 0;
+    vtwin_tick(&dw);
+    CHECK_INT(sel_end(&bx, &by), 1);
+    CHECK_INT(bx, 9); /* active and dragging: the poll extends */
+    drag_close();
 }
 
 static void close_term(void)
@@ -1839,6 +1936,7 @@ int main(void)
     an_outline_glyph_is_antialiased_on_a_true_colour_screen_and_not_when_off();
     an_outline_glyph_uses_the_shade_pens_a_palette_has_and_the_mask_when_none();
     selection_of_a_renderer_not_yet_initialised_is_none_and_reads_no_terminal();
+    a_drag_ends_when_the_left_button_is_up_or_the_window_goes_inactive();
     printf("render: %d checks, %d failures\n", h_checks, h_failures);
     return h_failures ? 1 : 0;
 }

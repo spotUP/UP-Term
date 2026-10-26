@@ -140,7 +140,8 @@ typedef struct vtwin {
     long sync_held;              /* microseconds a ?2026 update has been held back */
     long note_us;                /* OSC 9 / 777: microseconds the notice stays in the title */
     char note_saved[80];         /* the title it stands in for */
-    int dragging, drag_moved;    /* mouse selection */
+    int dragging, drag_moved;    /* mouse selection: only while the left button is down and the window is active */
+    int inactive;                /* IDCMP_INACTIVEWINDOW came (vtwin_focus): no drag follows the pointer */
     long scroll_base;            /* vt_lines_scrolled at the last scroll report: how far a scroll fed the scrollback */
     int drag_ax, drag_ay;
     int drag_x, drag_y;          /* the cell the selection ends at now */
