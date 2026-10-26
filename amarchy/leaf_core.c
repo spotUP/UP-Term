@@ -91,6 +91,27 @@ int lf_screen_spec(char *out, int cap, const char *spec, const char *screen)
     return 1;
 }
 
+/* Directory Opus 5 has no per-lister raise (DOpusM2_ARexx.guide): `dopus front` moves the whole Opus screen forward,
+ * and `lister set <h> visible off` then `visible on` re-opens that one lister on top of the others. */
+int lf_lister_front_command(char *out, int cap, int step, unsigned long handle)
+{
+    int n;
+    if (cap < 1)
+        return 0;
+    out[0] = 0;
+    if (step == 0)
+        n = snprintf(out, (size_t)cap, "dopus front");
+    else if (step == 1 || step == 2)
+        n = snprintf(out, (size_t)cap, "lister set %lu visible %s", handle, step == 1 ? "off" : "on");
+    else
+        return 0;
+    if (n < 0 || n >= cap) {
+        out[0] = 0;
+        return 0;
+    }
+    return 1;
+}
+
 int lf_viewer_command(char *out, int cap, const char *dir)
 {
     int n;

@@ -58,6 +58,9 @@ int lf_rexx_notice_line(char *out, int cap, const char *script, const char *spec
  * which is stale or missing where UP-Term: is not assigned (the rig): the program is beside us, not on a path.
  * 0 when dir is empty, holds a quote or the line does not fit. */
 int lf_viewer_command(char *out, int cap, const char *dir);
+/* The ARexx lines that bring one Directory Opus lister forward: step 0 `dopus front`, 1 `lister set <h> visible off`,
+ * 2 `... visible on`. 1 when a line was written, 0 past the last step or when cap is too small. */
+int lf_lister_front_command(char *out, int cap, int step, unsigned long handle);
 
 /* The clipboard history row a path names (index_core.h IX_KIND_CLIP): "clip:<n>" gives n >= 0, the empty
  * ring's row IX_CLIP_NONE gives -1, any other path (a tool, a game) gives -2. */

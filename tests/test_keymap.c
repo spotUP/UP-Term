@@ -736,6 +736,14 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
         CHECK_INT(lf_viewer_command(vl, sizeof vl, ""), 0);
         CHECK_INT(lf_viewer_command(vl, sizeof vl, "a\"b"), 0);
         CHECK_INT(lf_viewer_command(vl, 10, "UP-Term:bin"), 0);
+        /* a lister row raises one lister with documented DOpus 5 commands; `lister activate` is not one */
+        CHECK_INT(lf_lister_front_command(vl, sizeof vl, 0, 77), 1);
+        CHECK_STR(vl, "dopus front");
+        CHECK_INT(lf_lister_front_command(vl, sizeof vl, 1, 77), 1);
+        CHECK_STR(vl, "lister set 77 visible off");
+        CHECK_INT(lf_lister_front_command(vl, sizeof vl, 2, 77), 1);
+        CHECK_STR(vl, "lister set 77 visible on");
+        CHECK_INT(lf_lister_front_command(vl, sizeof vl, 3, 77), 0);
     }
     /* without a terminal window the menuid and slash rows hide; Learn keeps the viewer, System keeps Reboot */
     {

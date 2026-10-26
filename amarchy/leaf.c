@@ -181,9 +181,6 @@ static int run_viewer(const km_menu *m, const lf_ui *ui)
     return start_detached(line, m, ui);
 }
 
-/* Directory Opus: bring one lister forward (handle from `lister query all`). UNVERIFIED on a rig: needs DOpus v5.104. */
-#define LISTER_FRONT_FMT "lister activate %lu"
-
 struct RxsLib *RexxSysBase;   /* opened around each win: send (send_win) */
 
 /* One ARexx command to a port and its reply: the command line goes to port as an RXCOMM message and this waits for
@@ -267,12 +264,15 @@ void lf_load_listers(ix_index *x)
     ix_add_listers(x, rows, got);
 }
 
-/* A lister row: bring that lister to the front. */
+/* A lister row: bring that lister to the front (handle from `lister query all`). UNVERIFIED on a rig: needs DOpus v5.104. */
 static int lister_front(unsigned long handle)
 {
     char line[48];
-    snprintf(line, sizeof line, LISTER_FRONT_FMT, handle);
-    return rexx_send("DOPUS.1", line, 0, 0) == 0 ? 0 : UPREQ_FAILED;
+    int step;
+    for (step = 0; lf_lister_front_command(line, sizeof line, step, handle); step++)
+        if (rexx_send("DOPUS.1", line, 0, 0) != 0)
+            return UPREQ_FAILED;
+    return 0;
 }
 
 int lf_run(const km_menu *m, const lf_ui *ui)
