@@ -345,6 +345,9 @@ Lab userland
 ; and build recipes is up-term-src.lha, published next to up-term.lha.
 ; one MakeDir each: an Install over an Install finds them there
 MakeDir >NIL: UP-Term:share
+; the Omarchy colour themes of the drawn Amarchy menu (Style > Theme); a user theme goes in ENVARC:Amarchy/themes
+MakeDir >NIL: UP-Term:Amarchy UP-Term:Amarchy/Themes
+Copy amarchy-themes UP-Term:Amarchy/Themes ALL CLONE QUIET
 MakeDir >NIL: UP-Term:etc
 MakeDir >NIL: UP-Term:licenses
 Copy userland/share UP-Term:share ALL CLONE QUIET

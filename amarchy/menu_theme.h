@@ -8,6 +8,7 @@
 #define MENU_THEME_H
 
 #include "../config/upconf.h"
+#include "gthemes_core.h"
 
 enum {
     MT_BG,     /* the menu's background */
@@ -31,6 +32,10 @@ void menu_theme_roles(const uc_u32 pal16[16], uc_u32 rgb[MT_ROLES]);
 /* menu_theme_roles with the terminal's fg and bg: each is 0x01RRGGBB when the upconf key is set, 0 when not.
  * A set bg gives MT_BG, a set fg gives MT_TEXT; every other role, and an unset one, comes from the palette. */
 void menu_theme_roles_fb(const uc_u32 pal16[16], uc_u32 fg, uc_u32 bg, uc_u32 rgb[MT_ROLES]);
+
+/* The drawn menu's roles from an Omarchy GUI theme (gthemes_core.h): BG = background, TEXT = foreground, DIM =
+ * dark_foreground, ACCENT (the selected row's text) = background, SELBOX (box and border) = accent. */
+void menu_theme_roles_gui(const gtheme *t, uc_u32 rgb[MT_ROLES]);
 
 /* The minimal menu's two colours: rgb[] from menu_theme_roles_fb is rewritten so only the background and the
  * foreground (MT_TEXT) remain: MT_BG and MT_ACCENT = background, MT_TEXT, MT_DIM and MT_SELBOX = foreground

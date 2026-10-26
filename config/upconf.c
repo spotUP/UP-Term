@@ -347,6 +347,8 @@ uc_u32 upconf_hex(const char *v, uc_u32 def)
         return def;
     while (*v == ' ')
         v++;
+    if (*v == '"') /* a TOML string, as in an Omarchy colors.toml: key = "#rrggbb" (the closing quote ends the digits) */
+        v++;
     if (*v == '#')
         v++;
     else if (*v == '0' && (v[1] == 'x' || v[1] == 'X'))

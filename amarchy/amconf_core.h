@@ -18,6 +18,7 @@ enum {
     AM_SKIP,    /* amarchy-index-skip: path list */
     AM_VOLUMES, /* amarchy-index-volumes: volume list */
     AM_TERMMENU, /* menu-in-terminal: text, graphical */
+    AM_GTHEME,  /* amarchy-gui-theme: the drawn menu's Omarchy theme name (gthemes_core.h) */
     AM_NKEYS
 };
 

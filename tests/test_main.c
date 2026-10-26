@@ -37,6 +37,7 @@ void suite_upconf(void);
 void suite_keymap(void);
 void suite_prefs(void);
 void suite_amconf(void);
+void suite_gthemes(void);
 void suite_iconspec(void);
 void suite_updiff(void);
 void suite_zmodem(void);
@@ -112,6 +113,7 @@ static const h_suite suites[] = {
     { "keymap", suite_keymap },
     { "prefs", suite_prefs },
     { "amconf", suite_amconf },
+    { "gthemes", suite_gthemes },
     { "iconspec", suite_iconspec },
     { "updiff", suite_updiff },
     { "zmodem", suite_zmodem },
