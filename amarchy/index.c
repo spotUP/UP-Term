@@ -3,7 +3,7 @@
  * Walks every hard-disk volume for icons: a WBTOOL icon is an app, a WBPROJECT icon whose default
  * tool is WHDLoad is a game. The rows (`kind<TAB>label<TAB>path`, amarchy/index_core.c) go to
  * ENVARC:Amarchy/apps through a temp file and a rename, so a reader never sees half a file. Amarchy
- * itself never scans. The upconf key amarchy-index-skip (comma separated path prefixes) leaves
+ * itself never scans. The Amarchy prefs key amarchy-index-skip (comma separated path prefixes) leaves
  * drawers out. Network volumes (ix_net_handler) are left out unless
  * the key amarchy-index-volumes lists their names. Ctrl-C stops the scan: no cache, RETURN_WARN. A plain vbcc program, no ixemul.
  *
@@ -25,7 +25,7 @@
 #include "index_core.h"
 #include "ixwatch.h"
 #include "../install/hardvol.h"
-#include "../config/upconf.h"
+#include "amconf_dos.h"
 #include "../tty/qmark.h"
 
 static const char ver[] = "$VER: amarchy-index 1.0 (23.10.2026) (UP-Term)";
@@ -49,10 +49,9 @@ struct Library *IconBase;
 static ixshared *sh;
 static char where_buf[1024];
 
-static upconf conf;
-static char conf_buf[UC_MAX_FILE + 2];
+static am_prefs am;   /* Amarchy's settings; skip_list and net_volumes point into it */
 static const char *skip_list = "";
-static const char *net_volumes = "";   /* upconf amarchy-index-volumes: the network volumes to scan */
+static const char *net_volumes = "";   /* Amarchy prefs amarchy-index-volumes: the network volumes to scan */
 static int stopped;                    /* Ctrl-C seen: unwind, write nothing */
 static ix_row *rows;
 static int nrows;
@@ -195,20 +194,9 @@ static int skipped_drawer(const char *path, const char *name)
 
 static void conf_read(void)
 {
-    BPTR f = Open((STRPTR) "ENV:up-term/up-term", MODE_OLDFILE);
-    LONG got;
-    if (!f)
-        f = Open((STRPTR) "ENVARC:up-term/up-term", MODE_OLDFILE);
-    if (!f)
-        return;
-    got = Read(f, conf_buf, UC_MAX_FILE);
-    Close(f);
-    if (got > 0) {
-        conf_buf[got] = 0;
-        upconf_parse(&conf, conf_buf, got);
-        skip_list = upconf_str(&conf, "default", "amarchy-index-skip", "");
-        net_volumes = upconf_str(&conf, "default", "amarchy-index-volumes", "");
-    }
+    amconf_load(&am);
+    skip_list = am.val[AM_SKIP];
+    net_volumes = am.val[AM_VOLUMES];
 }
 
 static int file_exists(const char *path)

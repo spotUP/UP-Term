@@ -23,6 +23,7 @@
 #include "../claude/util.h"
 #include "../config/keymap_load.h"
 #include "../config/upconf.h"
+#include "amconf_dos.h"
 #include "../handler/upactive.h"
 #include "../tty/qmark.h"
 #include "menu_open.h"
@@ -46,7 +47,7 @@ const char amarchy_stack_cookie[] = "$STACK: 16384";
 
 static const char *notify_paths[] = {
     "ENV:up-term/keymap", "ENVARC:up-term/keymap", "ENV:up-term/keymap.user", "ENVARC:up-term/keymap.user",
-    "ENV:up-term/up-term", "ENVARC:up-term/up-term"
+    0, 0 /* Amarchy's own file in ENV: and ENVARC: (prefs_paths_amarchy), set in notify_start */
 };
 #define NNOTIFY 6
 static struct NotifyRequest nr[NNOTIFY];
@@ -77,25 +78,9 @@ static int g_style;
 
 static void style_load(void)
 {
-    static const char *const path[2] = { "ENV:up-term/up-term", "ENVARC:up-term/up-term" };
-    int i;
-    g_style = UC_MENU_GRAPHICAL;
-    for (i = 0; i < 2; i++) {
-        BPTR f = Open((STRPTR)path[i], MODE_OLDFILE);
-        char *buf;
-        LONG got = 0;
-        if (!f)
-            continue;
-        buf = AllocVec(UC_MAX_FILE + 1, MEMF_PUBLIC);
-        if (buf)
-            got = Read(f, buf, UC_MAX_FILE);
-        Close(f);
-        if (buf && got > 0)
-            g_style = upconf_menu_style(buf, got);
-        if (buf)
-            FreeVec(buf);
-        return;
-    }
+    am_prefs p;
+    amconf_load(&p);
+    g_style = amconf_style(&p);
 }
 
 /* menu: / viewer / othermenu: / otherviewer: the program the setting names (or the other one), the
@@ -195,6 +180,8 @@ static void notify_start(void)
 {
     int i;
     for (i = 0; i < NNOTIFY; i++) {
+        if (!notify_paths[i])
+            notify_paths[i] = prefs_paths_amarchy.path[i - 4];
         nr[i].nr_Name = (STRPTR)notify_paths[i];
         nr[i].nr_Flags = NRF_SEND_MESSAGE;
         nr[i].nr_stuff.nr_Msg.nr_Port = notify_port;
@@ -302,6 +289,8 @@ int main(void)
         FreeArgs(rda);
     }
     dir_resolve();
+    if (amconf_migrate() == AMCONF_MIG_FAILED)
+        PutStr((STRPTR)"Amarchy: could not write ENVARC:Amarchy/prefs; reading the UP-Term file's keys, retrying next start\n");
     style_load();
     keymap_load_compact(&g_km, km_default_text, cx_row_installed);
     if (!cx_open(pri)) {

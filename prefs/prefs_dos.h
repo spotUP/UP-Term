@@ -8,14 +8,15 @@
 
 extern const prefs_fs prefs_dos_fs;
 
-/* Make the profile drawer t when it is missing; 1 when it is there. */
-int prefs_dos_dir(int t);
+/* Make the drawer of target t in path set p when it is missing; 1 when it is there. */
+int prefs_dos_dir(const prefs_paths *p, int t);
+
 
 /* buf (len bytes) into ENV:'s file, and ENVARC:'s too when keep, each by
  * prefs_install_target.
  * PREFS_INSTALL_OK, PREFS_DOS_NODIR (a drawer could not be made) or
  * another prefs_install result; *failed is the target that failed. */
-#define PREFS_DOS_NODIR (-100)
+#define PREFS_DOS_NODIR PREFS_SAVE_NODIR
 int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat);
 /* The variable dist/vshrc reads: PREFS_HLCAT_VAR in the same drawers, the
  * text prefs_hlcat_text gives (on / off). */

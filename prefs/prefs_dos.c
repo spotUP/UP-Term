@@ -43,16 +43,23 @@ static int dos_rename(void *ctx, const char *from, const char *to)
 
 const prefs_fs prefs_dos_fs = { 0, dos_write, dos_exists, dos_remove, dos_rename };
 
-int prefs_dos_dir(int t)
+int prefs_dos_dir(const prefs_paths *p, int t)
 {
-    BPTR l = CreateDir((STRPTR)prefs_conf_dir[t]); /* fails when it exists: fine */
+    BPTR l = CreateDir((STRPTR)p->dir[t]); /* fails when it exists: fine */
     if (l)
         UnLock(l);
-    l = Lock((STRPTR)prefs_conf_dir[t], SHARED_LOCK);
+    l = Lock((STRPTR)p->dir[t], SHARED_LOCK);
     if (!l)
         return 0;
     UnLock(l);
     return 1;
+}
+
+static int dos_save_one(const prefs_paths *p, int t, const char *buf, long len)
+{
+    if (!prefs_dos_dir(p, t))
+        return PREFS_DOS_NODIR;
+    return prefs_install_target_at(&prefs_dos_fs, p, t, buf, len);
 }
 
 int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat)
@@ -60,9 +67,7 @@ int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat)
     int t, r;
     for (t = keep ? PREFS_T_ENVARC : PREFS_T_ENV; t >= PREFS_T_ENV; t--) {
         *failed = t;
-        if (!prefs_dos_dir(t))
-            return PREFS_DOS_NODIR;
-        r = prefs_install_target(&prefs_dos_fs, t, buf, len);
+        r = dos_save_one(&prefs_paths_upterm, t, buf, len);
         if (r != PREFS_INSTALL_OK)
             return r;
         {   /* the variable is a few bytes: written in place, no backup */

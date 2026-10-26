@@ -285,8 +285,20 @@ int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
 /* The two places the profile file lives: ENV: (what the windows read) and
  * ENVARC: (what the next boot copies to ENV:). */
 enum { PREFS_T_ENV, PREFS_T_ENVARC };
-extern const char *const prefs_conf_dir[2];   /* ENV:up-term, ENVARC:up-term */
-extern const char *const prefs_conf_path[2];  /* .../up-term */
+
+/* One program's settings file: where it lives in ENV: and ENVARC:, and the
+ * names the ENVARC: install uses. UP-Term Prefs has one set, Amarchy its own;
+ * every writer goes through prefs_install_target_at with its set. */
+typedef struct prefs_paths {
+    const char *dir[2];   /* the drawer of each target, made when missing */
+    const char *path[2];  /* the file of each target */
+    const char *tmp;      /* ENVARC: install: the new file before it is renamed in */
+    const char *orig;     /* ENVARC: install: where the old file goes */
+} prefs_paths;
+extern const prefs_paths prefs_paths_upterm;  /* ENV:up-term/up-term, ENVARC:up-term/up-term */
+extern const prefs_paths prefs_paths_amarchy; /* ENV:Amarchy/prefs, ENVARC:Amarchy/prefs */
+#define prefs_conf_dir  (prefs_paths_upterm.dir)   /* ENV:up-term, ENVARC:up-term */
+#define prefs_conf_path (prefs_paths_upterm.path)  /* .../up-term */
 
 /* buf into target t's file. ENVARC: by prefs_install (tmp, then the old file
  * to orig, then tmp to the file). ENV: is written in place: OS 3.2's
@@ -296,6 +308,14 @@ extern const char *const prefs_conf_path[2];  /* .../up-term */
  * "already there", and Save and Use failed every time ("no backup
  * possible"). A RAM file has no half-written state to guard against, and
  * ENVARC: holds the copy that survives. A prefs_install result. */
+int prefs_install_target_at(const prefs_fs *fs, const prefs_paths *p, int t, const char *buf, long len);
+/* buf into path set p's ENV: file and, when keep, its ENVARC: file first (ENVARC: is the one that
+ * survives). dir(p, t) makes the drawer of target t (1 when it is there; the Amiga's is a CreateDir);
+ * *failed is the target that failed. PREFS_INSTALL_OK, PREFS_SAVE_NODIR or a prefs_install result. */
+#define PREFS_SAVE_NODIR (-100)
+int prefs_save_at(const prefs_fs *fs, int (*dir)(const prefs_paths *, int), const prefs_paths *p,
+                  const char *buf, long len, int keep, int *failed);
+/* prefs_install_target_at with UP-Term's file. */
 int prefs_install_target(const prefs_fs *fs, int t, const char *buf, long len);
 
 /* ---- W30: the themes drawer ------------------------------------------------

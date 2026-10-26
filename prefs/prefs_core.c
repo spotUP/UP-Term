@@ -830,16 +830,46 @@ int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
     return PREFS_INSTALL_OK;
 }
 
-const char *const prefs_conf_dir[2] = { "ENV:up-term", "ENVARC:up-term" };
-const char *const prefs_conf_path[2] = { "ENV:up-term/up-term", "ENVARC:up-term/up-term" };
+const prefs_paths prefs_paths_upterm = {
+    { "ENV:up-term", "ENVARC:up-term" },
+    { "ENV:up-term/up-term", "ENVARC:up-term/up-term" },
+    "ENVARC:up-term/up-term.new",
+    "ENVARC:up-term/up-term.orig"
+};
+
+const prefs_paths prefs_paths_amarchy = {
+    { "ENV:Amarchy", "ENVARC:Amarchy" },
+    { "ENV:Amarchy/prefs", "ENVARC:Amarchy/prefs" },
+    "ENVARC:Amarchy/prefs.new",
+    "ENVARC:Amarchy/prefs.orig"
+};
+
+int prefs_install_target_at(const prefs_fs *fs, const prefs_paths *p, int t, const char *buf, long len)
+{
+    if (t == PREFS_T_ENV)
+        return fs->write_file(fs->ctx, p->path[t], buf, len) ? PREFS_INSTALL_OK
+                                                              : PREFS_INSTALL_WRITE;
+    return prefs_install(fs, p->path[t], p->tmp, p->orig, buf, len);
+}
+
+int prefs_save_at(const prefs_fs *fs, int (*dir)(const prefs_paths *, int), const prefs_paths *p,
+                  const char *buf, long len, int keep, int *failed)
+{
+    int t, r;
+    for (t = keep ? PREFS_T_ENVARC : PREFS_T_ENV; t >= PREFS_T_ENV; t--) {
+        *failed = t;
+        if (!dir(p, t))
+            return PREFS_SAVE_NODIR;
+        r = prefs_install_target_at(fs, p, t, buf, len);
+        if (r != PREFS_INSTALL_OK)
+            return r;
+    }
+    return PREFS_INSTALL_OK;
+}
 
 int prefs_install_target(const prefs_fs *fs, int t, const char *buf, long len)
 {
-    if (t == PREFS_T_ENV)
-        return fs->write_file(fs->ctx, prefs_conf_path[t], buf, len) ? PREFS_INSTALL_OK
-                                                                      : PREFS_INSTALL_WRITE;
-    return prefs_install(fs, prefs_conf_path[t], "ENVARC:up-term/up-term.new",
-                         "ENVARC:up-term/up-term.orig", buf, len);
+    return prefs_install_target_at(fs, &prefs_paths_upterm, t, buf, len);
 }
 
 /* ---- W30: the themes drawer ------------------------------------------------ */

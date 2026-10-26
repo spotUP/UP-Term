@@ -41,6 +41,7 @@
 #include "icon_gfx.h"
 #include "../config/keymap_load.h"
 #include "../config/upconf.h"
+#include "amconf_dos.h"
 #include "../handler/frontscr.h"
 #include "../handler/upreq.h"
 #include "../handler/upactive.h"
@@ -572,17 +573,15 @@ static void watch_idcmp(gui *g)
     ModifyIDCMP(g->win, want ? g->win->IDCMPFlags | IDCMP_INTUITICKS : g->win->IDCMPFlags & ~IDCMP_INTUITICKS);
 }
 
-static void conf_read(void);
-
-/* The extra music and demo drawer names of the upconf (ix_row_kind), set before every index load. */
+/* The extra music and demo drawer names of Amarchy's file (ix_row_kind), set before every index load. */
 static void index_drawers(void)
 {
-    conf_read();
-    ix_set_drawers(upconf_str(&conf, "default", "amarchy-music-drawers", 0),
-                   upconf_str(&conf, "default", "amarchy-demo-drawers", 0));
-    ix_set_hidden_drawers(upconf_str(&conf, "default", "amarchy-hide-drawers", 0));
-    app_icons = upconf_app_icons(upconf_str(&conf, "default", "amarchy-app-icons", "generic"));
-    minimal = upconf_menu_style_value(upconf_str(&conf, "default", "menu-style", "graphical")) == UC_MENU_MINIMAL;
+    am_prefs ap;
+    amconf_load(&ap);
+    ix_set_drawers(ap.val[AM_MUSIC], ap.val[AM_DEMO]);
+    ix_set_hidden_drawers(ap.val[AM_HIDE]);
+    app_icons = amconf_icons(&ap);
+    minimal = amconf_style(&ap) == UC_MENU_MINIMAL;
 }
 
 /* The scan finished: read the new index (the Apps level has new rows). 0 when memory ran out. */
@@ -1103,8 +1102,9 @@ static void pick_font(gui *g)
     char pref[64];
     long pref_size = 0;
     const char *spec;
-    conf_read();
-    spec = upconf_str(&conf, "default", "amarchy-menu-font", "");   /* "name:size", as the terminal's font key */
+    am_prefs ap;
+    amconf_load(&ap);
+    spec = ap.val[AM_FONT];   /* "name:size", as the terminal's font key */
     if (!prefs_font_parse(spec, pref, sizeof pref, &pref_size))
         pref[0] = 0;
     g->font = menu_font_open(g->scr, square, pref, (int)pref_size, &g->font_opened);
