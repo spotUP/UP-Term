@@ -642,7 +642,7 @@ static void the_workbench_group_rows(void)
         { "workbench.lastmessage", "WORKBENCH.LASTMESSAGE", 1 },
         { "workbench.about", "WORKBENCH.ABOUT", 1 },
         { "workbench.reset", "TOOLS.RESETWB", 1 },
-        { "workbench.autoarrange", "TOOLS.AUTOARRANGEICONS", 1 },
+        { "workbench.autoarrange", "UP-Term:Rexx/wb-autoarrange.rexx", 2 },   /* a WBStartup item, not a menu name: a script */
         { "workbench.openparent", "WINDOW.OPENPARENT", 0 },
         { "workbench.newdrawer", "WINDOW.NEWDRAWER", 0 },
         { "workbench.closewindow", "WINDOW.CLOSE", 0 },
@@ -682,6 +682,10 @@ static void the_workbench_group_rows(void)
     char want[96];
     CHECK_INT((int)(sizeof wb / sizeof wb[0]), 42);
     for (i = 0; i < sizeof wb / sizeof wb[0]; i++) {
+        if (wb[i].root == 2) {
+            check_row(wb[i].id, KA_REXX, wb[i].item);
+            continue;
+        }
         strcpy(want, "address WORKBENCH 'MENU WINDOW ");
         strcat(want, wb[i].root ? "ROOT" : "ACTIVE");
         strcat(want, " INVOKE ");

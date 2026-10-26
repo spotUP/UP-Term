@@ -20,6 +20,7 @@ import paths
 import ami, condev_rig as c
 import stage_rig
 
+DIST = pathlib.Path(__file__).resolve().parents[2] / 'dist'
 OUT = pathlib.Path(paths.RIG) / 'amarchy-window'
 TARGET = 'amarchy-target'
 SPEC = 'CON:40/40/320/120/' + TARGET
@@ -287,11 +288,20 @@ def close_extras(keep):
     return closed + ['STILL OPEN %r' % [t for t in ui_windows() if t not in keep]]
 
 
+def ram_window():
+    """geometry '118x65' of the RAM Disk window from the uitree text, None when it is not open"""
+    for l in ami.req(0x0D).decode('latin-1').splitlines():
+        m = re.match(r'W \d+ -?\d+ -?\d+ (\d+x\d+) \S+ "RAM Disk', l)
+        if m:
+            return m.group(1)
+    return None
+
+
 def s_wb_icons_selected():
     """B2: the 8 Icons rows with one icon selected in a scratch drawer window in RAM:, then Auto-arrange Icons with a drawer
     window active. Nothing system-owned is touched: the icon is RAM:Scr (a drawer icon copied from SYS:Prefs.info).
     Auto-arrange Icons is a WBStartup AppMenuItem, not a workbench.library menu name: MENU INVOKE TOOLS.AUTOARRANGEICONS
-    is rc 10 in every state; the item runs S:AutoArrangeIcons.rexx, which this step runs with a drawer window active."""
+    is rc 10 in every state; the shipped row runs dist/rexx/wb-autoarrange.rexx, which this step runs with a drawer window active."""
     c.run('Delete RAM:Scr RAM:Scr.info RAM:.backdrop RAM:copy_of_Scr#? ALL QUIET')
     c.run('MakeDir RAM:Scr')
     c.run('Copy SYS:Prefs.info RAM:Scr.info')
@@ -326,16 +336,36 @@ def s_wb_icons_selected():
             bad.append(rid + ' effect')
         if rc != 0 or (rid in shows and shows[rid] not in opened):   # the selection really reached the row
             bad.append(rid)
-    wb_port('ACTIVATEWINDOW WINDOW RAM:')
+    # the shipped workbench.autoarrange row is the script UP-Term:Rexx/wb-autoarrange.rexx; Amarchy hands a rexx: row to RX
+    row = [l for l in (DIST / 'keymap').read_text(encoding='latin-1').splitlines() if l.startswith('workbench.autoarrange')]
+    script = row[0].split('rexx:')[1].strip()
+    assert script.startswith('UP-Term:Rexx/'), row
+    ami.put(str(DIST / 'rexx' / script.split('/')[1]), 'RAM:x.wb-autoarrange.rexx')
+    c.run('MakeDir RAM:Scr2')
+    c.run('Copy SYS:Prefs.info RAM:Scr2.info')           # two icons, so the fitted window differs from the unarranged one
+    wb_port('WINDOW RAM: CLOSE')
+    c.run('Delete RAM:Disk.info QUIET')                  # the row snapshots the window: a leftover Disk.info keeps an old size
     time.sleep(0.5)
-    menu_rc = wb_port('MENU WINDOW ROOT INVOKE TOOLS.AUTOARRANGEICONS')[0]
-    arc, ares = c.run('RX S:AutoArrangeIcons.rexx')
-    out.append('workbench.autoarrange: MENU INVOKE TOOLS.AUTOARRANGEICONS rc %r; RX S:AutoArrangeIcons.rexx with RAM: active rc %r %s'
-               % (menu_rc, arc, ares.strip()))
-    if arc != 0:
+    wb_port('WINDOW RAM: OPEN')
+    wb_port('MENU WINDOW RAM: INVOKE WINDOW.UPDATE')
+    wb_port('ACTIVATEWINDOW WINDOW RAM:')
+    time.sleep(1.5)
+    before = ram_window()
+    pre = c.run('List RAM:Disk.info')[0] == 0
+    arc, ares = c.run('SYS:Rexxc/rx RAM:x.wb-autoarrange.rexx')
+    time.sleep(1.5)
+    after = ram_window()
+    snap = c.run('List RAM:Disk.info')[0] == 0           # WINDOW.SNAPSHOT.ALL writes the volume window's Disk.info
+    wb_port('ACTIVATEWINDOW WINDOW ROOT')
+    time.sleep(0.5)
+    nrc, _ = c.run('SYS:Rexxc/rx RAM:x.wb-autoarrange.rexx')
+    out.append('workbench.autoarrange: %s rc %r %s; RAM: window %r -> %r; RAM:Disk.info %s -> %s; no drawer active rc %r'
+               % (script, arc, ares.strip(), before, after, pre, snap, nrc))
+    if arc != 0 or pre or not snap or nrc != 5:
         bad.append('workbench.autoarrange')
     close_extras(keep)
-    c.run('Delete RAM:Scr RAM:Scr.info RAM:.backdrop RAM:copy_of_Scr#? ALL QUIET')
+    c.run('Delete RAM:Disk.info QUIET')
+    c.run('Delete RAM:Scr RAM:Scr.info RAM:Scr2 RAM:Scr2.info RAM:x.wb-autoarrange.rexx RAM:.backdrop RAM:copy_of_Scr#? ALL QUIET')
     (OUT / 'wb_icons_selected.txt').write_text('\n'.join(out) + '\n')
     return not bad, '%d rows, refused: %s' % (len(out), bad)
 
