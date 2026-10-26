@@ -35,7 +35,6 @@ joe     up-joe    1.0      1.0         80      UP-Term:pkg/up-joe     Files/user
 mg      up-mg     1.0      1.0         80      UP-Term:pkg/up-mg      Files/userland/bin/mg  upterm-ports,ixemul-vtcon
 nano    up-nano   1.0      1.0         80      UP-Term:pkg/up-nano    Files/userland/bin/nano,Files/userland/share/nano  upterm-ports,ixemul-vtcon
 tig     up-tig    1.0      1.0         80      UP-Term:pkg/up-tig     Files/userland/bin/tig  upterm-ports,ixemul-vtcon
-htop    up-htop   1.0      1.0         80      UP-Term:pkg/up-htop    Files/userland/bin/htop  upterm-ports,ixemul-vtcon
 ncdu    up-ncdu   1.0      1.0         80      UP-Term:pkg/up-ncdu    Files/userland/bin/ncdu  upterm-ports,ixemul-vtcon
 nnn     up-nnn    1.0      1.0         80      UP-Term:pkg/up-nnn     Files/userland/bin/nnn  upterm-ports,ixemul-vtcon
 lua     up-lua    1.0      1.0         80      UP-Term:pkg/up-lua     Files/userland/bin/lua  upterm-ports,ixemul-vtcon

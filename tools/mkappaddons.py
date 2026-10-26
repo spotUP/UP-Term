@@ -21,7 +21,6 @@ APPS = {
     'mg': ('mg', 'the small Emacs-style editor', 'mg'),
     'nano': ('nano', 'the text editor', 'nano --version'),
     'tig': ('tig', 'a git browser', 'tig --version'),
-    'htop': ('htop', 'a process viewer', 'htop --version'),
     'ncdu': ('ncdu', 'the disk usage analyzer', 'ncdu --version'),
     'nnn': ('nnn', 'the file manager', 'nnn -V'),
     'lua': ('Lua', 'the scripting language', 'lua -v'),
@@ -35,7 +34,7 @@ APPS = {
 }
 LICENCE = {  # SOURCES.txt of the ports kit
     'mutt': 'GPL v2 or later', 'lynx': 'GPL v2', 'joe': 'GPL v2 or later', 'mg': 'public domain, BSD and ISC',
-    'nano': 'GPL v3 or later', 'tig': 'GPL v2 or later', 'htop': 'GPL v2 or later', 'ncdu': 'MIT',
+    'nano': 'GPL v3 or later', 'tig': 'GPL v2 or later', 'ncdu': 'MIT',
     'nnn': 'BSD 2-clause', 'lua': 'MIT', 'jq': 'MIT', 'hexedit': 'GPL v2 or later', 'picocom': 'GPL v2 or later',
     'nc': 'ISC', 'fzy': 'MIT', 'ctags': 'GPL v2 or later', 'zip': 'Info-ZIP (BSD-like)',
 }
