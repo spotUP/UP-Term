@@ -231,14 +231,14 @@ Phase C, core (host):
 - [x] C8 Makefile host test binary links amconf_core. Test: make test-host. Commit 4c48a1a2.
 
 Phase R, readers:
-- [ ] R1 Commodity style_load uses amconf_load. Test: test_amconf_style (host) plus G2. Commit 4c48a1a2. (G2 rig half open)
-- [ ] R2 amarchy-gui drawers, app icons, menu font via amconf_load; theme read stays. Test: G3. Commit 4c48a1a2. (G3 rig half open)
+- [x] R1 Commodity style_load uses amconf_load. Test: test_amconf_style (host) plus G2. Commit 4c48a1a2. Rig 2 (060), tools/rig/own_prefs_rig.py own_prefs_style, file-driven.
+- [x] R2 amarchy-gui drawers, app icons, menu font via amconf_load; theme read stays. Test: G3. Commit 4c48a1a2. Rig 2 (060), tools/rig/own_prefs_rig.py own_prefs_font (topaz:9 box 378x252 against default 368x476), file-driven.
 - [x] R3 amarchy-index skip/volumes via amconf_load. Test: test_amconf_index_keys. Commit 4c48a1a2.
-- [ ] R4 notify_paths watch ENV/ENVARC:Amarchy/prefs instead of up-term. Test: G2. Commit 4c48a1a2. (G2 rig half open)
+- [x] R4 notify_paths watch ENV/ENVARC:Amarchy/prefs instead of up-term. Test: G2. Commit 4c48a1a2. Rig 2 (060), tools/rig/own_prefs_rig.py own_prefs_style, file-driven.
 - [x] R5 Makefile links amconf into amarchy, amarchy-gui, amarchy-index (vbcc). Test: make amiga build. Commit 4c48a1a2.
 
 Phase M, migration:
-- [ ] M1 Commodity startup migration before first load. Test: G4. Commit 4c48a1a2. (G4 rig half open)
+- [x] M1 Commodity startup migration before first load. Test: G4. Commit 4c48a1a2. Rig 2 (060), tools/rig/own_prefs_rig.py own_prefs_migrate, file-driven.
 - [x] M2 Idempotence: second start no write; both-exist keeps new file. Test: test_amconf_migrate_idempotent. Commit 4c48a1a2.
 - [ ] M3 UP-Term Prefs Save strips legacy keys over `am_keys[]`. Test: test_prefs_strip_legacy_amarchy. Commit 4c48a1a2. (function amconf_strip_legacy and test done; NOT wired into prefs_stage: UP-Term Prefs would lose its Amarchy page edits until phase X moves them. Open.)
 
@@ -273,9 +273,9 @@ Phase D, docs and tools:
 
 Phase G, rig (`rig.py start --max --purpose "Amarchy session: own prefs window"`, stop the rig at the end):
 - [ ] G1 Exchange Show Interface opens the window; Hide closes it. Test: rig own_prefs_show.
-- [ ] G2 Change menu style, Save: ENVARC:Amarchy/prefs written, Super+Space opens the other menu program. Test: rig own_prefs_style.
-- [ ] G3 Change menu font, Save: amarchy-gui opens with the new font. Test: rig own_prefs_font.
-- [ ] G4 Disk with only legacy keys: first start writes ENVARC:Amarchy/prefs with them, second start no write. Test: rig own_prefs_migrate.
+- [ ] G2 Change menu style, Save: ENVARC:Amarchy/prefs written, Super+Space opens the other menu program. Test: rig own_prefs_style. Rig half of the readers proved by own_prefs_style (file-driven); the Save-in-window half stays open until phase U.
+- [ ] G3 Change menu font, Save: amarchy-gui opens with the new font. Test: rig own_prefs_font. Rig half of the readers proved by own_prefs_font (file-driven); the Save-in-window half stays open until phase U.
+- [x] G4 Disk with only legacy keys: first start writes ENVARC:Amarchy/prefs with them, second start no write. Test: rig own_prefs_migrate. Proved via own_prefs_migrate, rig 2.
 - [ ] G5 Both Settings rows open the window; Menu font row starts the requester. Test: rig own_prefs_rows.
 
 Total: 8 + 5 + 3 + 8 + 5 + 4 + 4 + 5 = 42 items (C1-C8, R1-R5, M1-M3, U1-U8, E1-E5, X1-X4, D1-D4, G1-G5).
