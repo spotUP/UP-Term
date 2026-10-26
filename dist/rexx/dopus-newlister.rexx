@@ -1,4 +1,5 @@
-/* dopus-newlister.rexx: open an empty lister
+/* dopus-newlister.rexx: open a new lister showing the device list (an empty lister
+ * shows nothing; owner, 2026-10-26)
  * No Directory Opus: exit 5, nothing is opened. Gate: the first token of `dopus version` is 5 (the A1200
  * answers `5 91`, v5.104 answers `5 99 104`). Plan 2026-10-25-amarchy-dopus-integration.md, P1. */
 OPTIONS RESULTS
@@ -7,5 +8,5 @@ ADDRESS 'DOPUS.1'
 'dopus version'
 PARSE VAR RESULT major .
 IF major ~= 5 THEN EXIT 5
-'lister new'
+'command DeviceList NEW'
 EXIT RC
