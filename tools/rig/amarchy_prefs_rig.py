@@ -490,6 +490,9 @@ def main():
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     stage_rig.report(stage_rig.stage_build(build=not a.no_build))
+    if not g.process_running('Amarchy'):      # the hotkey commodity; the rig boots without it (amarchy_gui_rig starts it the same way)
+        c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+        time.sleep(3)
     passed = total = 0
     for name, fn in ROWS:
         f = OUT / ('prefs_' + name + '.verdict')
