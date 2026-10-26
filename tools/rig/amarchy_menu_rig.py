@@ -60,7 +60,9 @@ def ensure_terminal():
 
 
 def r_start():
-    c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+    # the rig's shell path is C: only; a real Workbench has SYS:Rexxc in it, and the commodity's rexx: rows run `RX`
+    # with the path it inherits, so the rig gives it the same
+    c.run('Path SYS:Rexxc ADD\nRun >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     return True, 'commodity started'
 
 
