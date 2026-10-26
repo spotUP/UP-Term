@@ -879,8 +879,6 @@ def r_group_icons():
 
 DOPUS_SCRIPTS = ('newlister', 'listerhere', 'front', 'back', 'parent', 'refresh', 'devicelist', 'ftp', 'configure')
 DOPUS_REXX = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'rexx'
-DOPUS_COUNT = ('/* sentinel: the lister count of the running Directory Opus */\nOPTIONS RESULTS\nADDRESS DOPUS.1\n'
-               "'lister query all'\nSAY 'LISTERS' WORDS(RESULT)\n")
 
 
 def dopus_port():
@@ -890,22 +888,26 @@ def dopus_port():
 
 
 def dopus_windows():
-    """(screen title, window title) of every window open now, to see which screen a new one lands on."""
+    """(screen title, window title) of every window open now, to see which screen a new one lands on. The Directory Opus
+    screen title carries a live memory count after two spaces; only the name before it names the screen."""
     m = ami._m()
     with ami._conn() as conn:
-        return [((s or {}).get('title') if isinstance(s, dict) else s, w.get('title') or '')
+        return [(re.split(r'\s{2,}', ((s or {}).get('title') if isinstance(s, dict) else s) or '')[0], w.get('title') or '')
                 for s, w in m.ui_windows(m.read_ui(conn, every_screen=True))]
 
 
-def dopus_lister_count():
-    import tempfile
-    with tempfile.TemporaryDirectory() as d:
-        f = pathlib.Path(d) / 'count.rexx'
-        f.write_text(DOPUS_COUNT)
-        ami.put(str(f), 'RAM:x9.dopus-count.rexx')
-    rc, out = c.run(RX_CMD + ' RAM:x9.dopus-count.rexx')
-    m = re.search(r'LISTERS (\d+)', out)
-    return int(m.group(1)) if m else None
+def new_windows(before):
+    """The windows open now that were not in `before`, counted (a second lister has the title of the first)."""
+    import collections
+    return list((collections.Counter(dopus_windows()) - collections.Counter(before)).elements())
+
+
+def stage_dopus_rexx():
+    """Put the dopus-*.rexx scripts into UP-Term:Rexx, where dist/keymap names them (rexx:UP-Term:Rexx/dopus-*.rexx). A rig's
+    UP-Term: is the drawer of an older kit install that has no Rexx drawer; a current kit install creates it."""
+    c.run('MakeDir UP-Term:Rexx')
+    for n in DOPUS_SCRIPTS:
+        ami.put(str(DOPUS_REXX / ('dopus-%s.rexx' % n)), 'UP-Term:Rexx/dopus-%s.rexx' % n)
 
 
 # The rig's shell path is C: only (rig.py startup), so RX is named by its drawer; a real Workbench has SYS:Rexxc in the path.
@@ -946,27 +948,31 @@ def r_dopus_present():
     if not dopus_port():
         return False, 'BLOCKED: DOPUS.1 not on this rig (Directory Opus 5.104 not installed here)'
     res = []
+    stage_dopus_rexx()
     ensure_terminal()
     up, rows = root_menu_rows()
     res.append(bool(up) and 'Dopus' in rows)
     print('  %s root rows with a port: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS QUIET')
-    n0 = dopus_lister_count()
+    # `lister query all` answers nothing on 5.82 and 5.91, so the sentinel is the window list: one new window, a lister
+    before = dopus_windows()
     ami.key(RAW['d'], LAMIGA | LSHIFT)
     time.sleep(3)
-    n1 = dopus_lister_count()
-    res.append(n0 is not None and n1 == n0 + 1)
-    print('  %s Super+Shift+D: listers %s -> %s' % ('[OK]' if res[-1] else '[FAIL]', n0, n1), flush=True)
+    listers = new_windows(before)
+    res.append(len(listers) == 1)
+    print('  %s Super+Shift+D: new windows (screen, title) %s' % ('[OK]' if res[-1] else '[FAIL]', listers), flush=True)
+    lister_screen = listers[0][0] if listers else None
     before = dopus_windows()
     import amarchy_gui_rig as g
     s, w = g.open_menu()
-    x9_type('Open UP-Term here')
-    time.sleep(1)
-    ami.key(RAW['return'])
-    time.sleep(4)
-    new = [x for x in dopus_windows() if x not in before]
-    res.append(any(sc == 'DOPUS.1' for sc, t in new))
-    print('  %s Open UP-Term here: new windows (screen, title) %s' % ('[OK]' if res[-1] else '[FAIL]', new), flush=True)
+    for label in ('Dopus', 'Open UP-Term here'):    # the filter works on the level shown: the group, then its row
+        x9_type(label)
+        ami.key(RAW['return'])
+        time.sleep(1)
+    time.sleep(3)
+    new = [x for x in new_windows(before) if x[1] != 'Amarchy']
+    res.append(len(new) == 1 and new[0][0] == lister_screen)
+    print('  %s Open UP-Term here: new windows (screen, title) %s, Directory Opus lister on %r' % ('[OK]' if res[-1] else '[FAIL]', new, lister_screen), flush=True)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
