@@ -30,9 +30,15 @@ int asl_pick_font(struct Screen *scr, struct Window *win, const char *title,
                   char *out_name, int cap, long *out_size);
 
 /* The screen mode requester with the depth gadget (min_depth..max_depth),
- * starting at display mode id (0: the requester's own choice) and depth. */
-int asl_pick_screenmode(struct Window *win, const char *title, unsigned long id, int depth,
-                        int min_depth, int max_depth,
+ * starting at display mode id (0: the requester's own choice) and depth. Opens over win's screen, else on scr
+ * (0: the default public screen). */
+int asl_pick_screenmode(struct Screen *scr, struct Window *win, const char *title,
+                        unsigned long id, int depth, int min_depth, int max_depth,
                         unsigned long *out_id, int *out_depth);
+
+/* The display database's name of display mode id ("PAL:High Res"), into out (cap bytes, always terminated).
+ * 1 when the mode has a name, 0 and "" when it has none (or graphics.library is not there): the caller shows
+ * the hex id instead. */
+int asl_mode_name(unsigned long id, char *out, int cap);
 
 #endif

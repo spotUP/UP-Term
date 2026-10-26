@@ -572,7 +572,7 @@ static void test_lf_setting_colour_picker(void)
 
 
 /* fake requesters: a pick, or a cancel; calls counted so the test proves the fake ran */
-typedef struct fake_asl { int ok, font_calls, mode_calls, fixed; char in_name[64]; long in_size; unsigned long in_id; int in_depth; } fake_asl;
+typedef struct fake_asl { int ok, font_calls, mode_calls, fixed; char in_name[64]; long in_size; unsigned long in_id; int in_depth; int otag_calls; char otag_path[64]; } fake_asl;
 static int fake_font(void *ctx, const char *name, long size, int fixed, char *out, int cap, long *osize)
 {
     fake_asl *f = (fake_asl *)ctx;
@@ -599,6 +599,16 @@ static int fake_mode(void *ctx, unsigned long id, int depth, unsigned long *oid,
     return 1;
 }
 
+static int fake_otag(void *ctx, char *out, int cap)
+{
+    fake_asl *f = (fake_asl *)ctx;
+    f->otag_calls++;
+    if (!f->ok)
+        return 0;
+    snprintf(out, (size_t)cap, "%s", f->otag_path);
+    return 1;
+}
+
 /* LF_SETTING font and screen mode pickers (plan 2026-10-26-amarchy-prefs-inline.md, M6): a picked font or mode
  * is written to ENV: and ENVARC:, a cancelled requester leaves both files byte-identical. */
 static void test_lf_setting_asl_pickers(void)
@@ -618,6 +628,7 @@ static void test_lf_setting_asl_pickers(void)
     memset(&fk, 0, sizeof fk);
     asl.font = fake_font;
     asl.mode = fake_mode;
+    asl.otag = fake_otag;
     asl.ctx = &fk;
     mf_put(&m, UP, "[default]\nfont = topaz:8\nscreen-mode = 0x11000\nscreen-depth = 4\n");
     mf_put(&m, UA, "[default]\nfont = topaz:8\nscreen-mode = 0x11000\nscreen-depth = 4\n");
@@ -655,8 +666,22 @@ static void test_lf_setting_asl_pickers(void)
     CHECK_INT(fk.fixed, 0);
     amconf_load_with(&io, &a);
     CHECK_STR(a.val[AM_FONT], "JetBrains Mono:13");
-    /* the fallback font is an outline file, not this requester */
-    CHECK_INT(lf_setting_pick(&io, &sd_settings[SDI_FALLBACK], &asl, &failed), LF_SET_KIND);
+    /* the fallback font is an outline file (.otag), stored as its base name in both files */
+    fk.ok = 0;
+    CHECK_INT(lf_setting_pick(&io, &sd_settings[SDI_FALLBACK], &asl, &failed), LF_SET_CANCELLED);
+    CHECK_INT(fk.otag_calls, 1);                             /* the file requester ran, not the font one */
+    fk.ok = 1;
+    strcpy(fk.otag_path, "FONTS:Symbols.txt");
+    CHECK_INT(lf_setting_pick(&io, &sd_settings[SDI_FALLBACK], &asl, &failed), LF_SET_INVALID);
+    strcpy(fk.otag_path, "FONTS:SymbolsNerd.otag");
+    CHECK_INT(lf_setting_pick(&io, &sd_settings[SDI_FALLBACK], &asl, &failed), LF_SET_OK);
+    for (t = 0; t < 2; t++) {
+        got = io.read(io.fs->ctx, t ? UA : UP, buf, UC_MAX_FILE + 1);
+        buf[got < 0 ? 0 : got] = 0;
+        CHECK_INT(prefs_load(&c, buf, got, UC_MAX_FILE), PREFS_LOAD_OK);
+        prefs_from_conf(&f, &c, LF_PROFILE);
+        CHECK_STR(f.fallback, "SymbolsNerd");
+    }
 }
 
 /* M7: the profile list and the theme list ------------------------------------------------------------ */

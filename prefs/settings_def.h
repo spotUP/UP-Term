@@ -161,5 +161,10 @@ int sd_label_plain(const sd_setting *s, char *out, int n);
  * and theme name as stored ("default" when empty, "(empty)" for an empty string), the palette, theme and
  * profile rows "...". The length of the text. */
 int sd_row_label(const sd_setting *s, const void *store, char *buf, int width);
+/* The screen mode row shows the mode's name, not its 0xID: the Amiga layer registers a lookup (the display
+ * database name of mode id into out, cap bytes; 1 when there is one). Without a lookup, or when it answers 0,
+ * the row shows the stored hex id. */
+typedef int (*sd_mode_namer_fn)(unsigned long id, char *out, int cap);
+void sd_set_mode_namer(sd_mode_namer_fn fn);
 
 #endif

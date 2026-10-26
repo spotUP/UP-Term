@@ -400,16 +400,12 @@ static void mode_text(struct app *a, char *out, int cap)
 {
     unsigned long id;
     int depth = prefs_depth_parse(a->f.screendepth), j;
-    struct NameInfo ni;
     out[0] = 0;
     if (!prefs_mode_parse(a->f.screenmode, &id) || !id) {
         strcpy(out, "Workbench's");
         return;
     }
-    if (GetDisplayInfoData(0, (UBYTE *)&ni, sizeof(ni), DTAG_NAME, (ULONG)id) > 0 && ni.Name[0]) {
-        strncpy(out, (const char *)ni.Name, (size_t)(cap - 1));
-        out[cap - 1] = 0;
-    } else {
+    if (!asl_mode_name(id, out, cap)) {
         strncpy(out, a->f.screenmode, (size_t)(cap - 1));
         out[cap - 1] = 0;
     }
@@ -1611,7 +1607,7 @@ static void pick_mode(struct app *a)
     int depth = prefs_depth_parse(a->f.screendepth), ndepth;
     if (!prefs_mode_parse(a->f.screenmode, &id))
         id = 0;
-    if (!asl_pick_screenmode(a->win, "UP-Term screen mode", id, depth, PREFS_DEPTH_MIN, PREFS_DEPTH_MAX, &nid, &ndepth))
+    if (!asl_pick_screenmode(0, a->win, "UP-Term screen mode", id, depth, PREFS_DEPTH_MIN, PREFS_DEPTH_MAX, &nid, &ndepth))
         return;
     prefs_mode_format(nid, a->f.screenmode);
     prefs_depth_format(ndepth, a->f.screendepth);

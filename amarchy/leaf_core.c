@@ -454,6 +454,14 @@ int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl,
         }
         return lf_set_upterm(io, s, -1, spec, 0, 0, failed);
     }
+    if (s->kind == SD_FONT) {           /* the fallback: an outline font file, stored as its base name */
+        char path[300], name[UC_MAX_VALUE];
+        if (!asl->otag || !asl->otag(asl->ctx, path, sizeof path))
+            return LF_SET_CANCELLED;
+        if (!prefs_otag_basename(path, name, sizeof name))
+            return LF_SET_INVALID;      /* not an .otag file */
+        return lf_set_upterm(io, s, -1, name, 0, 0, failed);
+    }
     if (s->kind == SD_SCREENMODE) {
         unsigned long id = 0, nid = 0;
         int nd = 0;
