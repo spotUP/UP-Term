@@ -11,9 +11,14 @@ import os, pathlib, subprocess, tempfile, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
-def make(target, kit, state):
-    return subprocess.run(['make', '-s', '-C', str(ROOT), target, 'PORTS_KIT=%s' % kit, 'PORTS_STATE=%s' % state],
-                          capture_output=True, text=True)
+def make(target, kit, state, ports):
+    return subprocess.run(['make', '-s', '-C', str(ROOT), target, 'PORTS_KIT=%s' % kit, 'PORTS_STATE=%s' % state,
+                           'UPTERM_PORTS=%s' % ports], capture_output=True, text=True)
+
+
+def git(repo, *args):
+    return subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@t', *args],
+                          capture_output=True, text=True, check=True).stdout.strip()
 
 
 class PortsKitFresh(unittest.TestCase):
@@ -21,14 +26,24 @@ class PortsKitFresh(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         base = pathlib.Path(self.tmp.name)
         self.kit, self.state = base / 'kit', base / 'state'
+        self.ports = base / 'ports'
+        self.ports.mkdir()
+        git(self.ports, 'init', '-q', '-b', 'main')
+        git(self.ports, 'commit', '-q', '--allow-empty', '-m', 'one')
+        git(self.ports, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+        self.head = git(self.ports, 'rev-parse', 'HEAD')
         self.kit.mkdir()
         self.state.mkdir()
         (self.kit / 'SOURCES.txt').write_text('opkg 0.9.0\n')
+        self.stage(self.head)
         self.stamp = self.state / 'opkg.checked'
         self.stamp.touch()
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def stage(self, text):
+        (self.kit / 'STAGED-FROM').write_text(text + '\n')
 
     def age(self, path, seconds):
         t = path.stat().st_mtime - seconds
@@ -36,21 +51,53 @@ class PortsKitFresh(unittest.TestCase):
 
     def test_stale_kit_stops_dist(self):
         self.age(self.kit / 'SOURCES.txt', 3600)
-        r = make('dist-src', self.kit, self.state)
+        r = make('dist-src', self.kit, self.state, self.ports)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('dist-src: %s is older than these checked builds' % self.kit, r.stdout)
         self.assertIn(str(self.stamp), r.stdout)
 
     def test_fresh_kit_passes(self):
         self.age(self.stamp, 3600)
-        r = make('ports-kit-check', self.kit, self.state)
+        r = make('ports-kit-check', self.kit, self.state, self.ports)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_missing_kit_stops(self):
         (self.kit / 'SOURCES.txt').unlink()
-        r = make('ports-kit-check', self.kit, self.state)
+        r = make('ports-kit-check', self.kit, self.state, self.ports)
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('no %s/SOURCES.txt' % self.kit, r.stdout)
+
+    def test_kit_without_stamp_stops(self):
+        (self.kit / 'STAGED-FROM').unlink()
+        self.age(self.stamp, 3600)
+        r = make('ports-kit-check', self.kit, self.state, self.ports)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('staged before the stamp', r.stdout)
+
+    def test_stamp_of_another_commit_stops(self):
+        self.age(self.stamp, 3600)
+        git(self.ports, 'commit', '-q', '--allow-empty', '-m', 'two')
+        git(self.ports, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+        r = make('ports-kit-check', self.kit, self.state, self.ports)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('staged from %s but' % self.head, r.stdout)
+        self.assertIn(git(self.ports, 'rev-parse', 'HEAD'), r.stdout)
+
+    def test_dirty_stamp_stops(self):
+        self.age(self.stamp, 3600)
+        self.stage(self.head + '-dirty')
+        r = make('ports-kit-check', self.kit, self.state, self.ports)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('%s-dirty' % self.head, r.stdout)
+        self.assertIn('uncommitted', r.stdout)
+
+    def test_commit_off_origin_main_stops(self):
+        self.age(self.stamp, 3600)
+        git(self.ports, 'commit', '-q', '--allow-empty', '-m', 'branch only')
+        self.stage(git(self.ports, 'rev-parse', 'HEAD'))
+        r = make('ports-kit-check', self.kit, self.state, self.ports)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('not on the ports origin/main', r.stdout)
 
 
 if __name__ == '__main__':

@@ -1277,8 +1277,16 @@ PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
 # a package's build/state/<p>.checked newer than the staged SOURCES.txt means the ports were rebuilt after the last
 # kit-stage: the kit would ship the old programs (v1.2 feed build of 2026-10-20 carried the old upkg)
 PORTS_STATE ?= $(UPTERM_PORTS)/build/state
+# the kit's STAGED-FROM (written by upterm-ports' kit-stage) names the ports commit it came from; the kit must come from the
+# checkout UPTERM_PORTS has now, clean, and that commit must be on the ports origin/main (a kit staged on port/htop, 21 commits
+# behind main, passed the mtime check on 2026-10-26 and died later in slim.py)
 define PORTS_KIT_FRESH
 	@test -f $(PORTS_KIT)/SOURCES.txt || { echo "$(1): no $(PORTS_KIT)/SOURCES.txt: make kit-stage in upterm-ports first"; exit 1; }
+	@test -f $(PORTS_KIT)/STAGED-FROM || { echo "$(1): $(PORTS_KIT) was staged before the stamp: make kit-stage in upterm-ports"; exit 1; }
+	@stamp=$$(cat $(PORTS_KIT)/STAGED-FROM); head=$$(git -C $(UPTERM_PORTS) rev-parse HEAD) || exit 1; \
+	  case "$$stamp" in *-dirty) echo "$(1): $(PORTS_KIT) was staged from $$stamp, a checkout with uncommitted tracked changes: commit or discard them in $(UPTERM_PORTS), make kit-stage"; exit 1;; esac; \
+	  test "$$stamp" = "$$head" || { echo "$(1): $(PORTS_KIT) was staged from $$stamp but $(UPTERM_PORTS) is at $$head: make kit-stage in upterm-ports"; exit 1; }; \
+	  git -C $(UPTERM_PORTS) merge-base --is-ancestor $$head origin/main || { echo "$(1): $(PORTS_KIT) was staged from $$stamp, which is not on the ports origin/main: merge it, check out main in $(UPTERM_PORTS), make kit-stage"; exit 1; }
 	@stale=$$(find $(PORTS_STATE) -name '*.checked' -newer $(PORTS_KIT)/SOURCES.txt 2>/dev/null); \
 	  test -z "$$stale" || { echo "$(1): $(PORTS_KIT) is older than these checked builds: make kit-stage in upterm-ports first"; echo "$$stale"; exit 1; }
 endef
