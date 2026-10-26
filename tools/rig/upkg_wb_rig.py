@@ -3,7 +3,7 @@
 
 The product's entry point is the icon: upkg started from Workbench with no command line (argc 0) opens its
 window. Steps, each verdict printed as [OK] / [FAIL] and appended to <out>/report.txt as it completes:
-  1  the m68k upkg and a file: feed are put on the rig (Assign TMP: T:, Assign UP-Term: VTCX:Apps, feed in
+  1  the m68k upkg and a file: feed are put on a rig with the base installed from the kit (Assign TMP: T:, feed in
      RAM:feed, UP-Term:etc/upkg.conf with `src/gz upterm file:/RAM/feed`); `upkg update` from a Shell works.
   2  upkg is started from an icon through RAM:wbrun (build/amiga/wbrun): the sentinel line
      "window opened, N rows" with N > 0 must appear in UP-Term:log/upkg-wb.log (patches 0030/0031).
@@ -21,7 +21,7 @@ window. Steps, each verdict printed as [OK] / [FAIL] and appended to <out>/repor
 Exit status is non-zero on any FAIL.
 
 Needs the rig up with `UPTERM_RIG=<n> python3 tools/rig/rig.py start --os 32 --max` and UPTERM_RIG set (an unset
-variable means the owner's rig 1: the script refuses). Needs build/amiga/wbrun (make build/amiga/wbrun) and a feed
+variable means the owner's rig 1: the script refuses), the base installed from the kit of `make dist`. Needs build/amiga/wbrun (make build/amiga/wbrun) and a feed
 drawer (Packages, Packages.gz, .ipk files: make dist-ipk). The rig is left running.
 
   UPTERM_RIG=8 python3 tools/rig/upkg_wb_rig.py [--upkg PATH] [--feed DIR] [--icon FILE.info] [--out DIR]
@@ -48,6 +48,7 @@ DEFAULT_UPKG = '/Users/spot/Code/UP-Term/upterm-ports-wbui/build/obj/opkg/src/up
 DEFAULT_FEED = ir.ROOT / 'build/ipk'
 SENTINEL = re.compile(r'^window opened, (\d+) rows$', re.M)
 LOG = 'UP-Term:log/upkg-wb.log'
+KIT_CONF = 'RAM:upkg.conf.kit'
 WINDOW = 'UP-Term Add-ons'
 INSTALL_GADGET = '2'
 ROW_PX = (60, 60)        # first row of the list: rows start at y 58 on the 800x600 screen (y 50 is above the listview: nothing is selected)
@@ -84,11 +85,14 @@ def installed_names(status):
 
 
 def setup(upkg, feed, icon_remote):
-    """The rig ready: assigns, the feed and conf, upkg and its icon in RAM:U, wbrun in RAM:."""
-    for cmd in ('Assign TMP: T:', 'Assign UP-Term: VTCX:Apps'):
-        ir.run(cmd)
-    for d in ('UP-Term:log', 'UP-Term:etc', 'UP-Term:pkg', 'UP-Term:pkg/upkg', 'UP-Term:pkg/upkg/lists',
-              'UP-Term:pkg/upkg/info', 'UP-Term:pkg/upkg/cache', 'RAM:feed', 'RAM:U'):
+    """The rig ready: the feed and conf, upkg and its icon in RAM:U, wbrun in RAM:. The base must be installed
+    from the kit of `make dist`: an Install runs the package's preinst under the kit's GG:bin/sh against the kit's
+    UP-Term: drawers, and a faked layout (UP-Term: on VTCX:Apps) aborts in preinst_configure."""
+    if ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0 or ir.run('List >NIL: UP-Term:VERSIONS')[0] != 0:
+        raise SystemExit('upkg_wb_rig: UP-Term: is not a kit install (no UP-Term: or no UP-Term:VERSIONS): '
+                         'install the base from the kit of `make dist` first')
+    ir.run('Assign TMP: T:')
+    for d in ('UP-Term:log', 'RAM:feed', 'RAM:U'):
         ir.run('MakeDir >NIL: ' + d)
     for f in sorted(feed.iterdir()):
         if f.name in ('Packages', 'Packages.gz') or f.suffix == '.ipk':
@@ -96,9 +100,9 @@ def setup(upkg, feed, icon_remote):
             ir.run('Rename RAM:feed/t.tmp RAM:feed/' + f.name)
     conf = upkg_rig.conf_for((ir.ROOT / 'dist/upkg.conf').read_text(), 'file:/RAM/feed')
     (ir.VTC / 'wb-rig.conf').write_text(conf)
+    ir.run('Copy UP-Term:etc/upkg.conf %s' % KIT_CONF)    # the kit's own conf, put back by finish()
     ir.run('Copy VTC:wb-rig.conf UP-Term:etc/upkg.conf')
-    ir.run('Echo >UP-Term:VERSIONS "UP-Term 1.0"')
-    ir.run('Delete >NIL: UP-Term:pkg/upkg/status UP-Term:pkg/upkg/lock %s QUIET' % LOG)
+    ir.run('Delete >NIL: UP-Term:pkg/upkg/lock %s QUIET' % LOG)   # the status keeps the base's records
     ami.put(str(upkg), 'RAM:U/upkg')
     ir.run('Protect RAM:U/upkg +rwed')
     ir.run('Copy %s RAM:U/upkg.info' % icon_remote)
@@ -163,12 +167,17 @@ def main(argv):
         rc, o = shell_upkg('update')
         if not verdict(rc == 0, 'step 1: setup, `upkg update` from a Shell returns 0', 'rc %d' % rc if rc else ''):
             print(o[-500:])
-            return 1
+            return finish()
         rc, o = shell_upkg('list')
         rows = [l for l in o.split('\n') if ' - ' in l]
         if not verdict(bool(rows), 'step 1: the feed lists packages', '%d rows' % len(rows)):
-            return 1
+            return finish()
         first = rows[0].split(' - ')[0].strip()
+        if first in installed_names(read(upkg_rig.STATUS)):   # an earlier run installed it: step 3 needs a real install
+            rc, o = shell_upkg('remove ' + first)
+            if not verdict(rc == 0, 'step 1: %s from an earlier run removed from a Shell' % first, 'rc %d' % rc if rc else ''):
+                print(o[-500:])
+                return finish()
         before = installed_names(read(upkg_rig.STATUS))
 
         # step 2: start from the icon, read the sentinel
@@ -262,6 +271,9 @@ def finish_after(upkg, icon_remote, icon_note):
 
 
 def finish():
+    if upkg_rig.exists(KIT_CONF):
+        ir.run('Copy %s UP-Term:etc/upkg.conf' % KIT_CONF)
+        ir.run('Delete >NIL: %s QUIET' % KIT_CONF)
     print('Verdict: %s' % ('FAIL (%s)' % '; '.join(FAILS) if FAILS else 'PASS'))
     return 1 if FAILS else 0
 
