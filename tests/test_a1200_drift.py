@@ -22,9 +22,12 @@ def test_map():
         ("vsh", "UP-Term:bin/vsh"), ("vsh", "C:vsh"), ("up-console.device", "DEVS:up-console.device")]
 
 
-def test_real_install_dos_covers_amarchy_menu():
+def test_real_install_dos_covers_every_amarchy_program():
     text = (pathlib.Path(__file__).resolve().parent.parent / "dist/install.dos").read_text(errors="replace")
-    assert ("amarchy-menu", "UP-Term:bin/amarchy-menu") in d.install_map(text, ["Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index"])
+    names = ["Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index"]
+    got = d.install_map(text, names)
+    for n in names:
+        assert (n, "UP-Term:bin/" + n) in got
 
 
 def test_verdicts():
