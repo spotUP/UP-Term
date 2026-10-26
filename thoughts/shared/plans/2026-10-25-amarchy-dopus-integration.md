@@ -211,6 +211,7 @@ unverified until then. 25 items.
 
 ### Phase Z: finish
 - [ ] D23 Docs: tutorial and README mention, in plain words. Test: `tests/test_amarchy_docs.py`.
+  - D23 note: docs in dist/README.txt and lesson 14, test `test_directory_opus_section_in_readme_and_lesson`; commit 76421831 (not ticked).
 - [ ] D24 Ledger rows closed with commit hashes; AM-FM option (c) recorded as not started.
 - [ ] D25 Owner eye check on the A1200 (UNVERIFIED until then): the whole flow.
 
