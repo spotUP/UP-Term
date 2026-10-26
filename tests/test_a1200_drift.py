@@ -46,3 +46,22 @@ def test_real_install_dos_checks_keymap_in_envarc_and_env():
     assert ("keymap", "ENVARC:up-term/keymap") in got
     assert ("keymap", "ENV:up-term/keymap") in got
     assert (pathlib.Path(__file__).resolve().parent.parent / "dist/keymap").is_file()
+
+
+def test_program_names_from_the_amiga_and_dist_base_rules():
+    mk = "amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vsh $(BUILD)/amiga/Amarchy\n" \
+         "dist-base: amiga $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/vsh\nother: $(BUILD)/amiga/x\n"
+    assert d.program_names(mk) == ["vsh", "Amarchy", "amarchy-menu"]
+
+
+def test_unbuilt_installed_programs_are_named_not_skipped():
+    progs = ["vtcon-handler", "upprefs", "Amarchy", "amarchy-menu", "vsh", "up-console.device", "notinstalled"]
+    assert d.unchecked(DOS, progs, ["Amarchy", "vsh"]) == [
+        "amarchy-menu", "up-console.device", "upprefs", "vtcon-handler"]
+
+
+def test_real_makefile_lists_every_amarchy_program():
+    root = pathlib.Path(__file__).resolve().parent.parent
+    names = d.program_names((root / "Makefile").read_text(errors="replace"))
+    for n in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index", "vtcon-handler", "upprefs"):
+        assert n in names
