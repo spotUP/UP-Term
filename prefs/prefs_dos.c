@@ -5,11 +5,6 @@
 #include <string.h>
 #include "prefs_dos.h"
 
-const char *const prefs_conf_dir[2] = { "ENV:up-term", "ENVARC:up-term" };
-const char *const prefs_conf_path[2] = { "ENV:up-term/up-term", "ENVARC:up-term/up-term" };
-static const char *const conf_tmp[2] = { "ENV:up-term/up-term.new", "ENVARC:up-term/up-term.new" };
-static const char *const conf_orig[2] = { "ENV:up-term/up-term.orig", "ENVARC:up-term/up-term.orig" };
-
 static int dos_write(void *ctx, const char *path, const char *buf, long len)
 {
     BPTR f = Open((STRPTR)path, MODE_NEWFILE);
@@ -67,7 +62,7 @@ int prefs_dos_save(const char *buf, long len, int keep, int *failed, int hlcat)
         *failed = t;
         if (!prefs_dos_dir(t))
             return PREFS_DOS_NODIR;
-        r = prefs_install(&prefs_dos_fs, prefs_conf_path[t], conf_tmp[t], conf_orig[t], buf, len);
+        r = prefs_install_target(&prefs_dos_fs, t, buf, len);
         if (r != PREFS_INSTALL_OK)
             return r;
         {   /* the variable is a few bytes: written in place, no backup */

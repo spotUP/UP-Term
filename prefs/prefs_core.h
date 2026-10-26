@@ -282,6 +282,22 @@ enum {
 int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
                   const char *orig, const char *buf, long len);
 
+/* The two places the profile file lives: ENV: (what the windows read) and
+ * ENVARC: (what the next boot copies to ENV:). */
+enum { PREFS_T_ENV, PREFS_T_ENVARC };
+extern const char *const prefs_conf_dir[2];   /* ENV:up-term, ENVARC:up-term */
+extern const char *const prefs_conf_path[2];  /* .../up-term */
+
+/* buf into target t's file. ENVARC: by prefs_install (tmp, then the old file
+ * to orig, then tmp to the file). ENV: is written in place: OS 3.2's
+ * ram-handler (47.x, the A1200 2026-10-26) answers a lookup of a name ENV:
+ * lacks with ENVARC:'s file of that name, so the rename onto orig (ENVARC:
+ * has its own up-term.orig) or back onto the file always finds its target
+ * "already there", and Save and Use failed every time ("no backup
+ * possible"). A RAM file has no half-written state to guard against, and
+ * ENVARC: holds the copy that survives. A prefs_install result. */
+int prefs_install_target(const prefs_fs *fs, int t, const char *buf, long len);
+
 /* ---- W30: the themes drawer ------------------------------------------------
  *
  * The kit installs the themes in PREFS_THEMES_DIR (dist/install.dos) and

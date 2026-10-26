@@ -12,7 +12,7 @@
 
 /* ---- a file system in memory, with one operation made to fail ---------------- */
 
-#define FS_FILES 6
+#define FS_FILES 8
 typedef struct {
     char name[FS_FILES][48];
     char data[FS_FILES][64];
@@ -20,6 +20,7 @@ typedef struct {
     const char *fail_write;   /* writing this path fails */
     const char *fail_rename;  /* renaming onto this path fails */
     const char *fail_remove;  /* removing this path fails */
+    int envarc_fallthrough;   /* OS 3.2 ram-handler: a missing ENV: name looked up is copied from ENVARC: */
 } memfs;
 
 static int mf_find(memfs *m, const char *path)
@@ -62,9 +63,26 @@ static int mf_write(void *ctx, const char *path, const char *buf, long len)
     return 1;
 }
 
+static void mf_put(memfs *m, const char *path, const char *data);
+
+/* mf_find as a lookup through the handler: with envarc_fallthrough, a name
+ * ENV: lacks comes back as a copy of ENVARC:'s file of that name. */
+static int mf_look(memfs *m, const char *path)
+{
+    int i = mf_find(m, path), a;
+    char arc[48];
+    if (i >= 0 || !m->envarc_fallthrough || strncmp(path, "ENV:", 4))
+        return i;
+    snprintf(arc, sizeof arc, "ENVARC:%s", path + 4);
+    if ((a = mf_find(m, arc)) < 0)
+        return -1;
+    mf_put(m, path, m->data[a]);
+    return mf_find(m, path);
+}
+
 static int mf_exists(void *ctx, const char *path)
 {
-    return mf_find((memfs *)ctx, path) >= 0;
+    return mf_look((memfs *)ctx, path) >= 0;
 }
 
 static int mf_remove(void *ctx, const char *path)
@@ -82,7 +100,7 @@ static int mf_rename(void *ctx, const char *from, const char *to)
 {
     memfs *m = (memfs *)ctx;
     int i = mf_find(m, from);
-    if (i < 0 || mf_find(m, to) >= 0)
+    if (i < 0 || mf_look(m, to) >= 0)
         return 0; /* AmigaDOS: no source, or the target exists */
     if (m->fail_rename && !strcmp(m->fail_rename, to))
         return 0;
@@ -103,6 +121,34 @@ static void mf_init(memfs *m, prefs_fs *fs)
 #define P "ENV:up-term/up-term"
 #define T "ENV:up-term/up-term.new"
 #define O "ENV:up-term/up-term.orig"
+
+/* Save on the A1200 (OS 3.2, ram-handler 47.57): ENVARC: is written first
+ * and holds up-term.orig, so ENV:'s rename onto up-term.orig finds it
+ * "there" and every Save and Use ended in "no backup possible". */
+static void install_env_fallthrough(void)
+{
+    memfs m;
+    prefs_fs fs;
+    static const char AP[] = "ENVARC:up-term/up-term", AO[] = "ENVARC:up-term/up-term.orig";
+
+    mf_init(&m, &fs);
+    m.envarc_fallthrough = 1;
+    mf_put(&m, P, "old");
+    mf_put(&m, AP, "old");
+    CHECK_INT(prefs_install_target(&fs, PREFS_T_ENVARC, "new", 3), PREFS_INSTALL_OK);
+    CHECK_STR(mf_get(&m, AP), "new");
+    CHECK(mf_find(&m, AO) >= 0);
+    /* the rename dance on ENV: cannot work here: the cause */
+    CHECK_INT(prefs_install(&fs, P, T, O, "new", 3), PREFS_INSTALL_BACKUP);
+    mf_put(&m, P, "old");
+    CHECK_INT(prefs_install_target(&fs, PREFS_T_ENV, "new", 3), PREFS_INSTALL_OK);
+    CHECK_STR(mf_get(&m, P), "new");
+
+    /* a failed RAM write is reported */
+    mf_init(&m, &fs);
+    m.fail_write = P;
+    CHECK_INT(prefs_install_target(&fs, PREFS_T_ENV, "new", 3), PREFS_INSTALL_WRITE);
+}
 
 static void install_cases(void)
 {
@@ -1440,6 +1486,7 @@ void suite_prefs(void)
     theme_list_from_a_drawer();
     theme_cases();
     install_cases();
+    install_env_fallthrough();
     install_restore_case();
     load_cases();
     stage_cases();

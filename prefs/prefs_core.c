@@ -830,6 +830,18 @@ int prefs_install(const prefs_fs *fs, const char *path, const char *tmp,
     return PREFS_INSTALL_OK;
 }
 
+const char *const prefs_conf_dir[2] = { "ENV:up-term", "ENVARC:up-term" };
+const char *const prefs_conf_path[2] = { "ENV:up-term/up-term", "ENVARC:up-term/up-term" };
+
+int prefs_install_target(const prefs_fs *fs, int t, const char *buf, long len)
+{
+    if (t == PREFS_T_ENV)
+        return fs->write_file(fs->ctx, prefs_conf_path[t], buf, len) ? PREFS_INSTALL_OK
+                                                                      : PREFS_INSTALL_WRITE;
+    return prefs_install(fs, prefs_conf_path[t], "ENVARC:up-term/up-term.new",
+                         "ENVARC:up-term/up-term.orig", buf, len);
+}
+
 /* ---- W30: the themes drawer ------------------------------------------------ */
 
 static int pc_lower(int c)
