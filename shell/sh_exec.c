@@ -1,4 +1,5 @@
 /* vsh's executor (see sh_exec.h). */
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -4714,7 +4715,7 @@ static const struct {
     { ":", b_true }, { "true", b_true }, { "false", b_false }, { "echo", b_echo },
     { "printf", b_printf },
     { "cd", b_cd }, { "pwd", b_pwd }, { "export", b_export }, { "unset", b_unset },
-    { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "return", b_return },
+    { "set", b_set }, { "shift", b_shift }, { "exit", b_exit }, { "endcli", b_exit }, { "endshell", b_exit }, { "return", b_return },
     { "break", b_break }, { "continue", b_continue }, { "read", b_read }, { "alias", b_alias },
     { "unalias", b_unalias }, { "test", b_test }, { "[", b_test }, { "jobs", b_jobs },
     { "wait", b_wait }, { "disown", b_disown }, { "pushd", b_pushd }, { "popd", b_popd }, { "dirs", b_dirs }, { "fg", b_wait }, { "bg", b_bg }, { "stack", b_stack }, { "source", b_source }, { ".", b_source },
@@ -6782,12 +6783,24 @@ done:
     return n;
 }
 
+static const char *const amiga_internals[] = { "endcli", "endshell", 0 };
+
 static builtin_fn find_builtin(const char *name)
 {
     int i;
     for (i = 0; builtins[i].name; i++)
         if (!strcmp(builtins[i].name, name))
             return builtins[i].fn;
+    /* EndCLI and EndShell are AmigaDOS Shell internals, and AmigaDOS names ignore case: only these two do */
+    for (i = 0; amiga_internals[i]; i++) {
+        const char *a = amiga_internals[i], *b = name;
+        while (*a && *b && *a == tolower((unsigned char)*b)) {
+            a++;
+            b++;
+        }
+        if (!*a && !*b)
+            return find_builtin(amiga_internals[i]);
+    }
     return 0;
 }
 

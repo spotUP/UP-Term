@@ -2139,6 +2139,30 @@ static void an_interactive_shell_on_a_terminal_shows_monitor_in_dollar_dash(void
     CHECK_INT(strchr(sh.flagbuf, 'm') == 0, 1);
 }
 
+/* EndCLI and EndShell are AmigaDOS Shell internals with no file in C:, so they are builtins that end the shell like
+ * exit; AmigaDOS names ignore case, so those two (and only those) match in any case. */
+static void endcli_and_endshell_end_the_shell_like_exit(void)
+{
+    int inc = 0;
+    sh_run_text(&sh, "endcli", &inc);
+    CHECK_INT(sh.exiting, 1);
+    fresh();
+    sh_run_text(&sh, "EndCLI", &inc);
+    CHECK_INT(sh.exiting, 1);
+    fresh();
+    sh_run_text(&sh, "endshell", &inc);
+    CHECK_INT(sh.exiting, 1);
+    fresh();
+    sh_run_text(&sh, "ENDSHELL 3", &inc);
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT(sh.exit_status, 3);
+    fresh();
+    run("Echo x");
+    CHECK_INT(sh.exiting, 0);
+    CHECK_STR(slot(ERR)->data, "vsh: Echo: not found\n");
+    CHECK_INT(sh.ctx.status, 127);
+}
+
 void suite_sh_exec(void)
 {
     bind_and_inputrc_reach_the_console_line_editor();
@@ -2185,6 +2209,7 @@ void suite_sh_exec(void)
     remote_logins_send_xterm_256color();
     command_skips_functions();
     deep_recursion();
+    endcli_and_endshell_end_the_shell_like_exit();
     word_lists();
     the_console_env_is_exported_and_unset();
     uninstall_removes_every_up_term_block();

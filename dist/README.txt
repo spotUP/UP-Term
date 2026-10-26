@@ -438,6 +438,7 @@ VSH (the shell)
   AUTO_CD: ram:  or  sys:c  or  ..  or  src  alone changes directory. A
   program, builtin or function of that name wins, and a word that is
   neither says  vsh: nosuchdir:: not found.
+  EndCLI and EndShell (in any case) end vsh like  exit  does.
   Process substitution goes through a file in T: (T:vsh-ps-...; RAM: without
   T:), which native commands and ixemul programs both open: <(cmd) runs cmd
   to its end before the command starts, so the two do not run at the same

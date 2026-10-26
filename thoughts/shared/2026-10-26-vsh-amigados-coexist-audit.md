@@ -44,14 +44,15 @@ Verdicts: W = works, C = can coexist (no bash clash, not done), X = clash (bash 
 | 29 | `#?` pattern | any string | `#?` as a word: `#` starts a comment after whitespace in bash and in sh_parse.c:336, so `list #?` loses the pattern. Quoted `"#?"` passes to the program | comment start (clash) | X |
 | 30 | `%` `~` `(a|b)` patterns | AmigaDOS patterns | globs: `~` is tilde (home), `(a|b)` is a subshell syntax error unquoted, `%` plain char; extglob available in sh_expand.c:881-898 | tilde and subshell | X unquoted; quoted forms reach the native command and W |
 | 31 | `T:` and `ENV:` conventions | temp dir and env | T: used for temp (vsh.c:366-371, sh_exec.c:1388, 5502); ENV: vars imported (vsh.c:2054), ENV:vsh/vshrc sourced (vsh.c:2211) | `/tmp`, `$TMPDIR` | W |
+| 32 | `EndCLI` `EndShell` | end the Shell | AmigaDOS Shell internals with no file in C:, so vsh found neither builtin nor file and handed the word to a child Shell, which ended itself: nothing visible happened (owner: "endcli doesn't exit up-term, only exit does"). Now builtins that run b_exit (sh_exec.c builtins table), matched in any case through find_builtin | `exit` | W, measured on rig 8, 2026-10-26 (rig lines in thoughts/spot/term-findings/endcli-2026-10-26.md) |
 
-## Counts (31 rows, one verdict each; mixed rows counted by the first verdict)
+## Counts (32 rows, one verdict each; mixed rows counted by the first verdict)
 
-- Works (W): 3, 7, 11, 12, 13, 14, 15, 17, 19, 20, 23, 24, 25, 31 = 14 (rows 7, 11, 14, 19, 24, 25 carry an untested or failing sub-part; 17 moved C to W and 10 moved W to C on 2026-10-26)
+- Works (W): 3, 7, 11, 12, 13, 14, 15, 17, 19, 20, 23, 24, 25, 31, 32 = 15 (rows 7, 11, 14, 19, 24, 25 carry an untested or failing sub-part; 17 moved C to W and 10 moved W to C on 2026-10-26)
 - Queued or landed (Q): 1, 2 = 2
 - Can coexist, not done (C): 8, 9, 10, 16, 18 = 5
 - Clash, bash wins (X): 4, 5, 6, 21, 22, 26, 27, 28, 29, 30 = 10
-- Total 31. Rows are counted once; the "mixed" notes above name a second verdict inside a row.
+- Total 32. Rows are counted once; the "mixed" notes above name a second verdict inside a row.
 
 ## Ranked "can coexist" candidates, by daily-typing value
 
