@@ -989,8 +989,8 @@ def _move():
 ADDON_OPTIONS = {'claude': 'REMOTE="127.0.0.1 2399"'}
 # what each add-on's Install puts down: the files its Uninstall must take away again
 ADDON_FILES = {'claude': ('C:Claude',), 'pi': ('C:amiga-pi',), 'nvim': ('UP-Term:nvim/bin/nvim',),
-               'python': ('SYS:Python3/bin/python3',), 'uhc': ('UP-Term:uhc/C/aget',)}
-
+               'python': ('SYS:Python3/bin/python3',), 'uhc': ('UP-Term:uhc/C/aget',),
+               'dopus': ('DOpus5:DirectoryOpus',)}
 
 def addon_install_line(pkg, options=True):
     """The Shell line that installs the add-on from its unpacked archive VTC:kit-<id> (what its Installer runs part by part).
@@ -1215,6 +1215,27 @@ def addon_verify(ck, pkg, remote=True, with_base=True):
         # a cold nvim start can pass the agent's 120 s limit: run it through run_long
         rc, out = run_slow('nvimverrun', 'UP-Term:nvim/bin/nvim --version', 400)
         ck(rc == 0 and 'NVIM v0.12' in out, 'nvim: nvim runs from UP-Term:nvim', out[-300:])
+    elif pkg == 'dopus':
+        # the build upstream's Installer put down is the one for the CPU; the program answers on DOPUS.1 once started
+        ck(run('Assign >NIL: DOpus5: EXISTS')[0] == 0, 'dopus: DOpus5: is assigned')
+        rc, out = run('Version DOpus5:DirectoryOpus')
+        ck(rc == 0 and 'DirectoryOpus' in out, 'dopus: DOpus5:DirectoryOpus has a version string', out)
+        cpu = run('Version DOpus5:DirectoryOpus FULL')[1].strip()
+        print('install_rig: dopus: Version FULL: %s' % cpu)
+        run('Run >NIL: DOpus5:DirectoryOpus')
+        import ami
+        m = ami._m()
+        res = ''
+        for _ in range(20):
+            time.sleep(3)
+            try:
+                with ami._conn() as conn:
+                    res = m.arexx(conn, 'DOPUS.1', 'dopus version')[2].strip()
+                break
+            except m.WasabiError:
+                pass
+        ck(res.split()[:1] == ['5'], 'dopus: DOPUS.1 answers dopus version (first token 5)', res)
+        print('install_rig: dopus version: %s' % res)
     elif pkg == 'python':
         rc, out = run('Stack 1000000\nSYS:Python3/bin/python3 -c "print(6*7)"', 120)
         ck(rc == 0 and out.strip().splitlines()[-1:] == ['42'], 'python: python3 runs from SYS:Python3', out[-300:])
