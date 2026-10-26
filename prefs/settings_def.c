@@ -432,6 +432,13 @@ int sd_label_plain(const sd_setting *s, char *out, int n)
     return len;
 }
 
+static sd_mode_namer_fn sd_mode_namer;
+
+void sd_set_mode_namer(sd_mode_namer_fn fn)
+{
+    sd_mode_namer = fn;
+}
+
 /* the text a row shows for its value; "" for a kind that shows "..." */
 static const char *row_value(const sd_setting *s, const void *store, char *hex)
 {
@@ -453,6 +460,11 @@ static const char *row_value(const sd_setting *s, const void *store, char *hex)
         strncpy(hex + 1, t, UC_MAX_VALUE);
         hex[UC_MAX_VALUE + 1] = 0;
         return hex;
+    }
+    if (s->kind == SD_SCREENMODE && sd_mode_namer) {
+        unsigned long id;
+        if (prefs_mode_parse(t, &id) && id && sd_mode_namer(id, hex, UC_MAX_VALUE + 2))
+            return hex;
     }
     return t;
 }

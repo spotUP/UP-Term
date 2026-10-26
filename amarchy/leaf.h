@@ -90,13 +90,15 @@ int lf_setting_set_colour(const amconf_io *io, const sd_setting *s, int entry, c
  * (the swatch's own, or the palette entry `entry`) for the Custom prompt's prefill. */
 void lf_palette_hex(const amconf_io *io, int n, char *out);
 void lf_colour_current(const amconf_io *io, const sd_setting *s, int entry, char *out);
-/* The font and screen mode rows (SD_FONT except the outline fallback, SD_SCREENMODE): the requester is asked
+/* The font, fallback font (an .otag file) and screen mode rows: the requester is asked
  * through `asl` (the Amiga layer wraps asl.library; a test passes a fake), starting on the row's current value.
- * A pick is written to both files (a font as name:size, a mode as 0xID plus the depth); a requester that
+ * A pick is written to both files (a font as name:size, a mode as 0xID plus the depth, the fallback as the file's base name); a requester that
  * returns 0 is LF_SET_CANCELLED with the files untouched. fixed_only is 1 for the terminal font. */
 typedef struct lf_asl {
     int (*font)(void *ctx, const char *name, long size, int fixed_only, char *out, int cap, long *out_size);
     int (*mode)(void *ctx, unsigned long id, int depth, unsigned long *out_id, int *out_depth);
+    /* the outline font file requester for the fallback font row: the picked path (an .otag file) into out */
+    int (*otag)(void *ctx, char *out, int cap);
     void *ctx;
 } lf_asl;
 int lf_setting_pick(const amconf_io *io, const sd_setting *s, const lf_asl *asl, int *failed);

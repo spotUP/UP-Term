@@ -8,6 +8,9 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/asl.h>
+#include <graphics/gfxbase.h>
+#include <graphics/displayinfo.h>
+#include <proto/graphics.h>
 
 #include "prefs_asl.h"
 
@@ -99,17 +102,39 @@ int asl_pick_font(struct Screen *scr, struct Window *win, const char *title,
     return ok;
 }
 
-int asl_pick_screenmode(struct Window *win, const char *title, unsigned long id, int depth,
-                        int min_depth, int max_depth,
+int asl_mode_name(unsigned long id, char *out, int cap)
+{
+    struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 36);
+    struct NameInfo ni;
+    int ok = 0;
+    if (cap < 1)
+        return 0;
+    out[0] = 0;
+    if (!GfxBase)
+        return 0;
+    if (id && GetDisplayInfoData(0, (UBYTE *)&ni, sizeof(ni), DTAG_NAME, (ULONG)id) > 0 && ni.Name[0]) {
+        copy_cut(out, (const char *)ni.Name, cap);
+        ok = out[0] != 0;
+    }
+    CloseLibrary((struct Library *)GfxBase);
+    return ok;
+}
+
+int asl_pick_screenmode(struct Screen *scr, struct Window *win, const char *title,
+                        unsigned long id, int depth, int min_depth, int max_depth,
                         unsigned long *out_id, int *out_depth)
 {
     struct Library *AslBase = OpenLibrary((STRPTR)"asl.library", 38);
     struct ScreenModeRequester *sr;
-    struct TagItem t[12];
+    struct TagItem t[13];
     int n = 0, ok = 0;
     if (!AslBase)
         return 0;
-    t[n].ti_Tag = ASLSM_Window;           t[n++].ti_Data = (ULONG)win;
+    if (win) {
+        t[n].ti_Tag = ASLSM_Window;       t[n++].ti_Data = (ULONG)win;
+    } else {
+        t[n].ti_Tag = ASLSM_Screen;       t[n++].ti_Data = (ULONG)scr;
+    }
     t[n].ti_Tag = ASLSM_TitleText;        t[n++].ti_Data = (ULONG)title;
     t[n].ti_Tag = ASLSM_DoDepth;          t[n++].ti_Data = TRUE;
     t[n].ti_Tag = ASLSM_MinDepth;         t[n++].ti_Data = (ULONG)min_depth;

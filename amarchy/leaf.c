@@ -6,6 +6,8 @@
 #include <dos/dostags.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <intuition/intuition.h>
+#include <proto/intuition.h>
 #include <rexx/storage.h>
 #include <rexx/rxslib.h>
 #include <proto/rexxsyslib.h>
@@ -119,15 +121,31 @@ static int run_request(const km_menu *m, const lf_ui *ui, const char *value)
 
 static int lister_front(unsigned long handle);
 
+/* Where the requesters open: over the menu's own window when it has one (the drawn menu), else on a screen --
+ * the one in front, where the text menu's UP-Term window is (never the Workbench by default). */
+typedef struct asl_where {
+    struct Window *win;
+    struct Screen *scr;
+} asl_where;
+
 /* the real requesters behind lf_asl: asl.library over the menu's window (prefs_asl.c, shared with Prefs) */
 static int asl_font(void *ctx, const char *name, long size, int fixed, char *out, int cap, long *osize)
 {
-    return asl_pick_font(0, (struct Window *)ctx, "Choose a font", name, size, fixed, out, cap, osize);
+    const asl_where *w = (const asl_where *)ctx;
+    return asl_pick_font(w->scr, w->win, "Choose a font", name, size, fixed, out, cap, osize);
+}
+
+static int asl_otag(void *ctx, char *out, int cap)
+{
+    const asl_where *w = (const asl_where *)ctx;
+    int named = 0;
+    return asl_pick_file(w->scr, w->win, "Choose an outline font", "FONTS:", "#?.otag", 1, out, cap, &named) && named;
 }
 
 static int asl_mode(void *ctx, unsigned long id, int depth, unsigned long *oid, int *odepth)
 {
-    return asl_pick_screenmode((struct Window *)ctx, "Choose a screen mode", id, depth, PREFS_DEPTH_MIN, PREFS_DEPTH_MAX, oid, odepth);
+    const asl_where *w = (const asl_where *)ctx;
+    return asl_pick_screenmode(w->scr, w->win, "Choose a screen mode", id, depth, PREFS_DEPTH_MIN, PREFS_DEPTH_MAX, oid, odepth);
 }
 
 /* names of the Profile or Theme list, "* " marks the current profile; the row index selects from the plain names */
@@ -149,6 +167,7 @@ static int list_names(int profile, char names[][KM_LABEL], int max)
 void lf_init(void)
 {
     mn_list_hook = list_names;
+    sd_set_mode_namer(asl_mode_name);
 }
 
 static const char *list_why(long r)
@@ -224,12 +243,22 @@ int lf_setting_enter(const mn_item *it, const lf_ui *ui)
     }
     if (s->kind == SD_FONT || s->kind == SD_SCREENMODE) {
         lf_asl asl;
+        asl_where where;
         asl.font = asl_font;
         asl.mode = asl_mode;
-        asl.ctx = ui->win;
+        asl.otag = asl_otag;
+        asl.ctx = &where;
         if (!MN_IS_SETTING(it))
             return 0;
+        where.win = (struct Window *)ui->win;
+        where.scr = 0;
+        if (!where.win)
+            where.scr = lock_front_screen();
+        if (!where.win && !where.scr)
+            where.scr = LockPubScreen(0);
         r = lf_setting_pick(amconf_dos_io(), s, &asl, &failed);
+        if (where.scr)
+            UnlockPubScreen(0, where.scr);
         if (r == LF_SET_OK)
             return 1;
         if (r != LF_SET_CANCELLED && r != LF_SET_KIND)

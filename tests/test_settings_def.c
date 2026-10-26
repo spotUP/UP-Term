@@ -327,6 +327,30 @@ static void test_settings_row_label(void)
     CHECK_INT((int)strlen(buf) < 12, 1);
 }
 
+/* The screen mode row shows the display database's name, the hex id only when there is no name. */
+static int fake_mode_name(unsigned long id, char *out, int cap)
+{
+    if (id != 0x29000UL)
+        return 0;
+    snprintf(out, (size_t)cap, "%s", "PAL:High Res");
+    return 1;
+}
+
+static void test_settings_mode_name(void)
+{
+    prefs_fields f;
+    memset(&f, 0, sizeof f);
+    strcpy(f.screenmode, "0x00029000");
+    label_is(SDI_SCREEN_MODE, &f, "Screen mode: 0x00029000");      /* no lookup registered */
+    sd_set_mode_namer(fake_mode_name);
+    label_is(SDI_SCREEN_MODE, &f, "Screen mode: PAL:High Res");
+    strcpy(f.screenmode, "0x00011000");
+    label_is(SDI_SCREEN_MODE, &f, "Screen mode: 0x00011000");      /* the lookup knows no such mode: hex stays */
+    f.screenmode[0] = 0;
+    label_is(SDI_SCREEN_MODE, &f, "Screen mode: default");
+    sd_set_mode_namer(0);
+}
+
 static void test_settings_text_check(void)
 {
     const sd_setting *sb = &sd_settings[SDI_SCROLLBACK], *lk = &sd_settings[SDI_LINK];
@@ -351,6 +375,7 @@ static void test_settings_text_check(void)
 void suite_settings_def(void)
 {
     test_settings_row_label();
+    test_settings_mode_name();
     test_settings_text_check();
     test_settings_garbage_value();
     test_settings_gadgets();
