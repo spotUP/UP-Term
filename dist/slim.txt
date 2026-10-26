@@ -75,3 +75,6 @@ ctags   licenses/ctags
 zip     bin/zip
 zip     share/man/man1/zip.1
 zip     licenses/zip
+figlet  bin/figlet
+figlet  share/figlet
+figlet  licenses/figlet

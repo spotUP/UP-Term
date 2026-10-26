@@ -1,0 +1,9 @@
+up-figlet: parts, licences and where the source is
+
+Part     Licence                          Source
+-------  -------------------------------  -------------------
+figlet   BSD-3-Clause (licenses/figlet)   upterm-ports (pkgs/figlet)
+
+Notes
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha. Its row of SOURCES.txt is in UP-Term:licenses/figlet/SOURCES.txt.
