@@ -75,7 +75,12 @@ cannot name an icon.
 The shipped key file (a copy is in ENV:up-term/keymap, read first).
 Every Install replaces it; a different old file is first saved as keymap.bak.
 .It Pa ENVARC:up-term/keymap.user
-Your own rows.
+Your own rows; it survives a reboot and an upgrade.
+Amarchy watches the ENV: copies, so an edit here applies after
+.Ql Copy ENVARC:up-term/keymap.user ENV:up-term/keymap.user
+or after a reboot; the ARexx command
+.Ql RELOAD
+rereads the files at once.
 A row replaces the row for the same key;
 .Ql super+t = none
 unbinds one.

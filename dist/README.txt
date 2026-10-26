@@ -761,8 +761,12 @@ AMARCHY
   Change a key: edit ENVARC:up-term/keymap (the shipped file, written by
   every Install: an older copy that differs is first saved as keymap.bak, so
   edits there do not survive an upgrade) or put your own rows in ENVARC:up-term/keymap.user: a row there
-  replaces the row for the same key, and  super+t = none  unbinds one. Then
-  tell Amarchy and every window to read the file again:
+  replaces the row for the same key, and  super+t = none  unbinds one.
+  Amarchy watches the ENV: copies, not the ENVARC: ones, so an edit in
+  ENVARC: applies after you copy it to ENV: (Amarchy picks that up at once):
+    Copy ENVARC:up-term/keymap.user ENV:up-term/keymap.user
+  or after a reboot. To make Amarchy and every window read the files again
+  without a copy, send it the command:
     rx "address AMARCHY RELOAD"
   ARexx port AMARCHY: STATUS (hits, rows, enabled, active), RELOAD, RUN n
   (do row n of the table), SHOW (the key viewer) and QUIT.

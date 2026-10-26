@@ -402,7 +402,7 @@ Copy hl mdv UP-Term:bin CLONE
 ; in ENVARC: and ENV: (a stale copy would hide the keys a newer kit adds). A different file already
 ; in ENVARC: is first saved as keymap.bak (keymap.bak2 when keymap.bak holds another file), so
 ; nothing is lost; the user's own rows belong in ENVARC:up-term/keymap.user, which is never
-; touched. A marked block in S:User-Startup starts the commodity at every boot
+; touched (an edit there applies after a copy to ENV:up-term/keymap.user, or at the next boot). A marked block in S:User-Startup starts the commodity at every boot
 ; (Uninstall takes it out with unstartup.sh).
 Copy Amarchy amarchy-menu amarchy-gui amarchy-index UP-Term:bin CLONE
 ; the DOpus menu group's ARexx scripts (menu rows and keys run UP-Term:Rexx/dopus-*.rexx)
@@ -420,7 +420,7 @@ If EXISTS ENVARC:up-term/keymap
       EndIf
     EndIf
     Copy ENVARC:up-term/keymap ENVARC:up-term/$kmbak CLONE QUIET
-    Echo "Your old keymap is saved as ENVARC:up-term/$kmbak; put your own rows in ENVARC:up-term/keymap.user."
+    Echo "Your old keymap is saved as ENVARC:up-term/$kmbak; put your own rows in ENVARC:up-term/keymap.user (reboot to apply)."
     UnSet kmbak
   EndIf
 EndIf

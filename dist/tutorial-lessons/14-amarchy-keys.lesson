@@ -12,8 +12,8 @@ $ cd "$start"
 ! grep -c '^super' ENVARC:up-term/keymap
 > A row reads  super+t = tab:new ; New tab | window : the key, the action, the label the
 > viewer shows, and its category. Put your own rows in ENVARC:up-term/keymap.user (a row
-> there replaces the row for the same key, and  super+t = none  unbinds one), then ask
-> Amarchy to read the files again.
+> there replaces the row for the same key, and  super+t = none  unbinds one), then copy
+> the file to ENV:up-term/keymap.user (Amarchy picks it up at once) or reboot.
 ? Ask Amarchy for its state with rx "address AMARCHY STATUS" (it answers with the row count).
 = case "$LEARN_LINE" in "rx \"address AMARCHY STATUS\"") true ;; *) false ;; esac
 = grep -q 'rows=' "$LEARN_OUT"

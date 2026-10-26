@@ -5,7 +5,8 @@
 ; keymap.bak). Put your own changes in the optional keymap.user beside this
 ; file instead: a row there replaces the row for the same key, and
 ;   super+t = none
-; unbinds one.
+; unbinds one. An edit of ENVARC:up-term/keymap.user applies after a copy to
+; ENV:up-term/keymap.user (Amarchy picks it up at once) or at the next boot.
 ;
 ; Super is the Left Amiga key. Left Amiga + M and Left Amiga + N belong to
 ; Intuition, Left Amiga + mouse to Workbench, and Ctrl + both Amigas is the
