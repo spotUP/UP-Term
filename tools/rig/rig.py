@@ -16,8 +16,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
                   --serial <path>: the serial port to that path, not serial.log;
-                  --no-dopus: Workbench without Directory Opus (no DOPUS.1; Libs/workbench.library
-                  removed from the clone, the ROM's stock one runs);
+                  --no-dopus: Workbench without Directory Opus (no DOPUS.1; the clone gets the stock
+                  C/LoadWB and no Libs/workbench.library, the ROM's runs);
                   --purpose "<who: what>": the window title says which session runs the
                   rig and for what, e.g. "Amarchy session: menu terminal check")
                   --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
@@ -492,11 +492,18 @@ def sys_hdf_no_wasabid(image):
     us.unlink()
 
 def sys_hdf_no_dopus(image):
-    """--no-dopus: a rig without Directory Opus (the not-running notice, plan D5). The master image's Libs/ holds
-    Directory Opus 5's workbench.library (45.130), which is what starts DOpus when S:Startup-Sequence runs C:LoadWB;
-    the Kickstart 3.1 ROM carries its own, so removing the file from the clone gives the stock Workbench and no
+    """--no-dopus: a rig without Directory Opus (the not-running notice, plan D5). The master image replaces the
+    Workbench with Directory Opus 5 in two files: Libs/workbench.library (45.130) and C/LoadWB, which starts DOpus
+    when S:Startup-Sequence runs it; the original LoadWB is kept as C/loadwb_old. In the clone C/LoadWB becomes
+    loadwb_old again and Libs/workbench.library goes (the Kickstart 3.1 ROM carries the stock one), so there is no
     DOPUS.1 port. The master image is never touched."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    old = RIG / "loadwb_old.tmp"
+    old.unlink(missing_ok=True)
+    subprocess.run([xdf, str(image), "read", "C/loadwb_old", str(old)], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "delete", "C/LoadWB"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(old), "C/LoadWB"], check=True, capture_output=True)
+    old.unlink()
     subprocess.run([xdf, str(image), "delete", "Libs/workbench.library"], check=True, capture_output=True)
 
 SCREENMODE_NAME = RIG / "screenmode.name"   # the last `rig.py aga|aga256|rtg`: a start re-applies it to the fresh sys.hdf
