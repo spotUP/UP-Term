@@ -17,6 +17,8 @@ XDF = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
 USER_STARTUP = (b"; user lines\n"
                 b";BEGIN UP-Term wasabi\nRun >NIL: C:wasabid\n;END UP-Term wasabi\n"
                 b";BEGIN UP-Term assign\nAssign UP-Term: Work:UP-Term\n;END UP-Term assign\n")
+USER_STARTUP_DOPUS = (b"; user lines\n;BEGIN DirectoryOpus 5\nASSIGN DOpus5: \"dh0:Opus5\"\nPATH DOpus5:c Add\n;END DirectoryOpus 5\n"
+                      b";BEGIN UP-Term assign\nAssign UP-Term: Work:UP-Term\n;END UP-Term assign\n")
 
 
 @unittest.skipUnless(pathlib.Path(XDF).exists(), "needs amitools' xdftool")
@@ -46,6 +48,37 @@ class SysHdfNoWasabid(unittest.TestCase):
         body = src[src.index("def start(retries"):]
         body = body[:body.index("\ndef ")]
         self.assertIn('sys_hdf_no_wasabid(RIG / "sys.hdf")', body, "start() no longer strips the fresh clone")
+
+@unittest.skipUnless(pathlib.Path(XDF).exists(), "needs amitools' xdftool")
+class SysHdfNoDopus(unittest.TestCase):
+    def test_no_dopus_drops_the_assign_block_and_removes_opus5(self):
+        saved = rig.RIG
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            image = d / "sys.hdf"
+            x = lambda *a: subprocess.run([XDF, str(image), *a], check=True, capture_output=True, text=True)
+            x("create", "size=1M", "+", "format", "System", "ffs")
+            for n in ("S", "C", "Libs", "Opus5"):
+                x("makedir", n)
+            for n, dst in (("us", "S/User-Startup"), ("lw", "C/loadwb_old"), ("lw", "C/LoadWB"),
+                           ("lw", "Libs/workbench.library"), ("lw", "Opus5/DirectoryOpus")):
+                (d / n).write_bytes(USER_STARTUP_DOPUS if n == "us" else b"x")
+                x("write", str(d / n), dst)
+            (d / "i").write_bytes(b"i")
+            x("write", str(d / "i"), "Opus5.info")
+            try:
+                rig.RIG = d
+                rig.sys_hdf_no_dopus(image)
+            finally:
+                rig.RIG = saved
+            x("read", "S/User-Startup", str(d / "out"))
+            out = (d / "out").read_bytes()
+            top = [l.split()[0] for l in x("list").stdout.splitlines() if l.strip()]
+        self.assertNotIn(b"DOpus5:", out, "the clone still assigns DOpus5: (install.dos takes its already-installed branch)")
+        self.assertIn(b"; user lines\n", out)
+        self.assertIn(b";BEGIN UP-Term assign", out, "only the DirectoryOpus 5 block goes")
+        self.assertNotIn("Opus5", top)
+        self.assertNotIn("Opus5.info", top)
 
 
 if __name__ == "__main__":

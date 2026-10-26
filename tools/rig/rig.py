@@ -473,23 +473,27 @@ def sys_hdf_cpu_lib(image):
         paths.require_input(paths.LIB68060, "UPTERM_LIB68060", "68060.library")
         subprocess.run([xdf, str(image), "write", str(paths.LIB68060), "Libs/68060.library"], check=True, capture_output=True)
 
-def sys_hdf_no_wasabid(image):
-    """The master image's S:User-Startup carries the kit's ';BEGIN UP-Term wasabi' block (Run >NIL: C:wasabid). That
-    wasabid starts before BOOTX:go sets wasabi.key, so it serves an empty key on its default port 1234, and FS-UAE's
-    bsdsocket shares the Mac's ports: rig 1's BOOTX:wasabid (port 1234) lost the port to it and every request got
-    'auth failed: bad key' (2026-10-25). The block goes from the clone; the master is never touched."""
+def strip_user_startup_blocks(image, name):
+    """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     us = RIG / "user-startup.tmp"
     us.unlink(missing_ok=True)
     if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
         return   # no S:User-Startup: no block
     data = us.read_bytes()
-    clean = user_startup.strip_upterm_blocks(data, "UP-Term wasabi")
+    clean = user_startup.strip_upterm_blocks(data, name)
     if clean != data:
         us.write_bytes(clean)
         subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
         subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
     us.unlink()
+
+def sys_hdf_no_wasabid(image):
+    """The master image's S:User-Startup carries the kit's ';BEGIN UP-Term wasabi' block (Run >NIL: C:wasabid). That
+    wasabid starts before BOOTX:go sets wasabi.key, so it serves an empty key on its default port 1234, and FS-UAE's
+    bsdsocket shares the Mac's ports: rig 1's BOOTX:wasabid (port 1234) lost the port to it and every request got
+    'auth failed: bad key' (2026-10-25). The block goes from the clone; the master is never touched."""
+    strip_user_startup_blocks(image, "UP-Term wasabi")
 
 def sys_hdf_no_dopus(image):
     """--no-dopus: a rig without Directory Opus (the not-running notice, plan D5). The master image replaces the
@@ -505,6 +509,13 @@ def sys_hdf_no_dopus(image):
     subprocess.run([xdf, str(image), "write", str(old), "C/LoadWB"], check=True, capture_output=True)
     old.unlink()
     subprocess.run([xdf, str(image), "delete", "Libs/workbench.library"], check=True, capture_output=True)
+    # The master also has Directory Opus 5.82 at DH0:Opus5 with the DOpus5: assign and PATH lines in S:User-Startup
+    # (block ';BEGIN DirectoryOpus 5'); with them the add-on's install.dos takes its "already installed" branch
+    # (plan D9, owner 2026-10-26). The block goes and so do Opus5 and its icon
+    # (xdftool has no rename; the clone is disposable, so removing equals hiding), on the clone only.
+    strip_user_startup_blocks(image, "DirectoryOpus 5")
+    subprocess.run([xdf, str(image), "delete", "Opus5", "all"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "delete", "Opus5.info"], check=True, capture_output=True)
 
 SCREENMODE_NAME = RIG / "screenmode.name"   # the last `rig.py aga|aga256|rtg`: a start re-applies it to the fresh sys.hdf
 
