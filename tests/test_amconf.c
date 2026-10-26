@@ -293,6 +293,22 @@ static void test_amconf_migrate_idempotent(void)
     CHECK_INT(mf_find(&m, AP), -1);
 }
 
+/* the commodity watches the ENV: copies only: an ENVARC: watch makes the reload race the ENV: write (error 202) */
+static void test_amarchy_notify_env_only(void)
+{
+    int i, keymap = 0, user = 0, own = 0;
+    for (i = 0; i < PREFS_NNOTIFY_AMARCHY; i++) {
+        const char *n = prefs_notify_amarchy[i];
+        CHECK(strncmp(n, "ENVARC:", 7) != 0);
+        keymap += strcmp(n, "ENV:up-term/keymap") == 0;
+        user += strcmp(n, "ENV:up-term/keymap.user") == 0;
+        own += strcmp(n, prefs_paths_amarchy.path[PREFS_T_ENV]) == 0;
+    }
+    CHECK_INT(keymap, 1);
+    CHECK_INT(user, 1);
+    CHECK_INT(own, 1);
+}
+
 /* the install of C5: both path sets keep the OS 3.2 rule (ENV: in place, ENVARC: by the rename dance) */
 static void test_amconf_install_both_sets(void)
 {
@@ -491,6 +507,7 @@ void suite_amconf(void)
     test_amconf_load_chain();
     test_amconf_migrate_idempotent();
     test_amconf_install_both_sets();
+    test_amarchy_notify_env_only();
     test_prefs_dos_dir_amarchy();
     test_amconf_save_nodir();
     test_lf_setting_check_toggle();

@@ -300,6 +300,12 @@ typedef struct prefs_paths {
 } prefs_paths;
 extern const prefs_paths prefs_paths_upterm;  /* ENV:up-term/up-term, ENVARC:up-term/up-term */
 extern const prefs_paths prefs_paths_amarchy; /* ENV:Amarchy/prefs, ENVARC:Amarchy/prefs */
+/* What the Amarchy commodity watches for a live reload: the ENV: copies only. Every writer (prefs_save_at,
+ * the Installer) writes ENVARC: first and ENV: after it, so ENV: changes last. Watching ENVARC: too made the
+ * reload open ENV:Amarchy/prefs for reading just before the writer opened it for writing; the RAM handler
+ * refused that with error 202 and the theme save failed. */
+#define PREFS_NNOTIFY_AMARCHY 3
+extern const char *const prefs_notify_amarchy[PREFS_NNOTIFY_AMARCHY];
 #define prefs_conf_dir  (prefs_paths_upterm.dir)   /* ENV:up-term, ENVARC:up-term */
 #define prefs_conf_path (prefs_paths_upterm.path)  /* .../up-term */
 

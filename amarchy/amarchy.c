@@ -46,11 +46,7 @@ static int starts(const char *cmd, const char *word)
 long __stack = 16384;
 const char amarchy_stack_cookie[] = "$STACK: 16384";
 
-static const char *notify_paths[] = {
-    "ENV:up-term/keymap", "ENVARC:up-term/keymap", "ENV:up-term/keymap.user", "ENVARC:up-term/keymap.user",
-    0, 0 /* Amarchy's own file in ENV: and ENVARC: (prefs_paths_amarchy), set in notify_start */
-};
-#define NNOTIFY 6
+#define NNOTIFY PREFS_NNOTIFY_AMARCHY /* the ENV: copies only: prefs_core.h says why */
 static struct NotifyRequest nr[NNOTIFY];
 static int nr_on[NNOTIFY];
 static struct MsgPort *rexx_port, *notify_port;
@@ -185,9 +181,7 @@ static void notify_start(void)
 {
     int i;
     for (i = 0; i < NNOTIFY; i++) {
-        if (!notify_paths[i])
-            notify_paths[i] = prefs_paths_amarchy.path[i - 4];
-        nr[i].nr_Name = (STRPTR)notify_paths[i];
+        nr[i].nr_Name = (STRPTR)prefs_notify_amarchy[i];
         nr[i].nr_Flags = NRF_SEND_MESSAGE;
         nr[i].nr_stuff.nr_Msg.nr_Port = notify_port;
         nr_on[i] = StartNotify(&nr[i]) ? 1 : 0;

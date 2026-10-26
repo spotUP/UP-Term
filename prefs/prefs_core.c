@@ -810,6 +810,10 @@ const prefs_paths prefs_paths_amarchy = {
     "ENVARC:Amarchy/prefs.orig"
 };
 
+const char *const prefs_notify_amarchy[PREFS_NNOTIFY_AMARCHY] = {
+    "ENV:up-term/keymap", "ENV:up-term/keymap.user", "ENV:Amarchy/prefs" /* prefs_paths_amarchy.path[PREFS_T_ENV] */
+};
+
 int prefs_install_target_at(const prefs_fs *fs, const prefs_paths *p, int t, const char *buf, long len)
 {
     if (t == PREFS_T_ENV)
