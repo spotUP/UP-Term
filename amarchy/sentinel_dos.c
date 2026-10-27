@@ -13,3 +13,8 @@ void am_sentinel(const char *name, long n)
     } while (n && i > 0);
     SetVar((STRPTR)name, (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
 }
+
+void am_sentinel_str(const char *name, const char *value)
+{
+    SetVar((STRPTR)name, (STRPTR)value, -1, GVF_GLOBAL_ONLY);
+}

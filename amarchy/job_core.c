@@ -174,6 +174,13 @@ void jc_footer(const jc *j, char *out, int cap)
     out[cap - 1] = 0;
 }
 
+void jc_publish_word(const jc *j, void (*pub)(const char *name, const char *word))
+{
+    char w[JOB_FOOT_MAX];
+    jc_footer(j, w, (int)sizeof w);
+    pub("AMARCHY_JOB_WORD", w);
+}
+
 void jc_hints(const jc *j, char *out, int cap)
 {
     int d;

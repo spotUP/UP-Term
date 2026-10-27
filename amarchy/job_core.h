@@ -41,6 +41,9 @@ long jc_dropped(const jc *j);          /* lines pushed out of the ring */
 
 /* The footer word for the state ("Running...", "Done", "Nothing to do", "Failed (code 7)", "Cancelled"). */
 void jc_footer(const jc *j, char *out, int cap);
+/* Hands the footer word of an ended job to pub(name, word) as AMARCHY_JOB_WORD (the sentinel a rig reads); the word is
+ * the one jc_footer draws. */
+void jc_publish_word(const jc *j, void (*pub)(const char *name, const char *word));
 /* The key hints for the footer, from what jc_key_act does now: "Escape: Cancel" while the job runs, then the
  * text menu's "Enter: Accept  Escape: Back" (both keys close the ended job). */
 void jc_hints(const jc *j, char *out, int cap);

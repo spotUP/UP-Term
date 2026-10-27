@@ -162,6 +162,42 @@ static void test_job_footer(void)
     CHECK_INT(J.state, JC_FAILED);
 }
 
+static char pub_name[40], pub_word[JOB_FOOT_MAX];
+static int pub_calls;
+static void fake_pub(const char *name, const char *word)
+{
+    strcpy(pub_name, name);
+    strcpy(pub_word, word);
+    pub_calls++;
+}
+
+static void test_job_word_sentinel(void)
+{
+    static const char *const marks[] = { "@JOBRC 0\n", "@JOBRC 5\n", "@JOBRC 12\n", "@JOBRC 13\n", "@JOBRC 20\n", "@JOBRC 77\n" };
+    int i;
+    for (i = 0; i < 6; i++) {
+        jc_init(&J);
+        feed(marks[i]);
+        pub_calls = 0;
+        jc_publish_word(&J, fake_pub);
+        CHECK_INT(pub_calls, 1);
+        CHECK_STR(pub_name, "AMARCHY_JOB_WORD");
+        CHECK_STR(pub_word, foot());
+    }
+    jc_init(&J);
+    feed("@JOBRC 12\n");
+    jc_publish_word(&J, fake_pub);
+    CHECK_STR(pub_word, "Package not found");
+    jc_init(&J);
+    feed("@JOBRC 13\n");
+    jc_publish_word(&J, fake_pub);
+    CHECK_STR(pub_word, "Network error");
+    jc_init(&J);
+    feed("@JOBRC 77\n");
+    jc_publish_word(&J, fake_pub);
+    CHECK_STR(pub_word, "Failed (code 77)");
+}
+
 static void test_job_gone(void)
 {
     jc_init(&J); feed("working\n");
@@ -280,6 +316,7 @@ void suite_job(void)
     test_job_marker();
     test_job_marker_after_text();
     test_job_footer();
+    test_job_word_sentinel();
     test_job_gone();
     test_job_progress();
     test_job_scroll();

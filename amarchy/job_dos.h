@@ -17,7 +17,7 @@ int jb_start(jc *j, const char *cmd, const char *prog, const char *title);
 ULONG jb_sigmask(void);
 /* Take the tick (re-arm it) and feed the new output into the jc given to jb_start. Safe to call at any time. */
 void jb_poll(jc *j);
-/* jb_poll, then publish the sentinels AMARCHY_JOB_LINES (running total of lines over all jobs) and AMARCHY_JOB_DONE
+/* jb_poll, then publish the sentinels AMARCHY_JOB_LINES (running total of lines over all jobs) and AMARCHY_JOB_WORD (the footer word, with AMARCHY_JOB_DONE), AMARCHY_JOB_DONE
  * (rc + 1 once the end marker is seen): what both menu styles' job views call from their tick. */
 void jb_poll_publish(jc *j);
 /* Ask the running job to stop (Ctrl-C to the child) and mark the jc cancelled. */

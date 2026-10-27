@@ -238,6 +238,8 @@ void jb_poll_publish(jc *j)
         lines_seen += j->total - total;
         am_sentinel("AMARCHY_JOB_LINES", lines_seen);
     }
-    if (j->ended && !ended)
+    if (j->ended && !ended) {
         am_sentinel("AMARCHY_JOB_DONE", j->rc + 1);
+        jc_publish_word(j, am_sentinel_str);
+    }
 }
