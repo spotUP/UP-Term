@@ -234,6 +234,7 @@ int ix_add_clips(ix_index *x, const char *const *labels, int n)
     x->kstart[IX_NKINDS + 1] = base + add;
     x->kstart[IX_NKINDS + 2] = x->kstart[IX_NKINDS + 3] = 0;   /* the lister rows sat after the ring: gone */
     x->kstart[IX_NKINDS + 4] = x->kstart[IX_NKINDS + 5] = 0;   /* and the theme rows after them */
+    x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;   /* and the package rows after those */
     x->n = base + add;
     return 1;
 }
@@ -246,6 +247,7 @@ int ix_add_listers(ix_index *x, const ix_row *lrows, int n)
         x->n = base;
         x->kstart[IX_NKINDS + 2] = x->kstart[IX_NKINDS + 3] = 0;
         x->kstart[IX_NKINDS + 4] = x->kstart[IX_NKINDS + 5] = 0;
+        x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;
         return 1;
     }
     rows = (ix_row *)realloc(x->rows, (size_t)(base + n) * sizeof *rows);
@@ -256,6 +258,7 @@ int ix_add_listers(ix_index *x, const ix_row *lrows, int n)
     x->kstart[IX_NKINDS + 2] = base;
     x->kstart[IX_NKINDS + 3] = base + n;
     x->kstart[IX_NKINDS + 4] = x->kstart[IX_NKINDS + 5] = 0;   /* the theme rows sat after the listers: gone */
+    x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;   /* and the package rows after them */
     x->n = base + n;
     return 1;
 }
@@ -267,6 +270,7 @@ int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *na
     if (n <= 0) {
         x->n = base;
         x->kstart[IX_NKINDS + 4] = x->kstart[IX_NKINDS + 5] = 0;
+        x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;
         return 1;
     }
     rows = (ix_row *)realloc(x->rows, (size_t)(base + n) * sizeof *rows);
@@ -282,7 +286,33 @@ int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *na
     }
     x->kstart[IX_NKINDS + 4] = base;
     x->kstart[IX_NKINDS + 5] = base + n;
+    x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;   /* the package rows sat after the themes: gone */
     x->n = base + n;
+    return 1;
+}
+
+int ix_add_pkgs(ix_index *x, const char *const *labels, const char *const *launches, int n)
+{
+    int base = x->kstart[IX_NKINDS + 7] ? x->kstart[IX_NKINDS + 6] : x->n, i, add = n > 0 ? n : 1;
+    ix_row *rows = (ix_row *)realloc(x->rows, (size_t)(base + add) * sizeof *rows);
+    if (!rows)
+        return 0;
+    x->rows = rows;
+    for (i = 0; i < add; i++) {
+        ix_row *r = &rows[base + i];
+        memset(r, 0, sizeof *r);
+        r->kind = IX_KIND_PKG;
+        if (n > 0) {
+            strncpy(r->label, labels[i], IX_LABEL - 1);
+            snprintf(r->path, sizeof r->path, "pkg:%s", launches[i]);
+        } else {
+            strcpy(r->label, "No installed package has a program to start");
+            strcpy(r->path, IX_PKG_NONE);
+        }
+    }
+    x->kstart[IX_NKINDS + 6] = base;
+    x->kstart[IX_NKINDS + 7] = base + add;
+    x->n = base + add;
     return 1;
 }
 
@@ -572,7 +602,8 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
     for (kd = 0; kd < n; kd++)                      /* Trigger > Clipboard history is a group of ring rows */
         if (out[kd].row >= 0 && (!strcmp(k->menu[out[kd].row].id, IX_CLIPS_NODE) ||
                                  !strcmp(k->menu[out[kd].row].id, IX_LISTERS_NODE) ||
-                                 !strcmp(k->menu[out[kd].row].id, IX_GTHEMES_NODE))) {
+                                 !strcmp(k->menu[out[kd].row].id, IX_GTHEMES_NODE) ||
+                                 !strcmp(k->menu[out[kd].row].id, IX_PKGS_NODE))) {
             out[kd].row = MN_ROW_GROUP;
             out[kd].ix = -1;
         }
@@ -582,6 +613,8 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
         return add_index(x, x->kstart[IX_NKINDS + 2], x->kstart[IX_NKINDS + 3], out, n, max);
     if (!strcmp(node, IX_GTHEMES_NODE))
         return add_index(x, x->kstart[IX_NKINDS + 4], x->kstart[IX_NKINDS + 5], out, n, max);
+    if (!strcmp(node, IX_PKGS_NODE))
+        return add_index(x, x->kstart[IX_NKINDS + 6], x->kstart[IX_NKINDS + 7], out, n, max);
     for (kd = 0; kd < IX_NKINDS; kd++) {
         kl = (int)strlen(kind_node[kd]);
         if (!strncmp(node, kind_node[kd], kl) && (!node[kl] || node[kl] == '.'))

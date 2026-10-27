@@ -1195,6 +1195,48 @@ static void style_theme_lists_the_gui_theme_rows(void)
     CHECK_INT(lf_plan(KA_GTHEME), LF_GTHEME);
     CHECK_INT(keymap_action_scope(KA_GTHEME), KS_COMMODITY);
 }
+/* AMARCHY-LAUNCH-FIELD7 P2: Install > Packages lists the installed packages with a program to start, each path
+ * "pkg:<launch>"; an empty list shows one inert row; the rows have no icon file and launch their own path */
+static void install_packages_lists_the_package_rows(void)
+{
+    static char file[32768];
+    mn_item it[MN_MAX_ITEMS];
+    ix_index x;
+    const char *labels[2] = { "nvim", "UnZip" };
+    const char *launches[2] = { "UP-Term:bin/nvim", "UP-Term:uhc/ExtBin/UnZip" };
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int c, i, found = 0;
+    char ip[IX_PATH];
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    memset(&x, 0, sizeof x);
+    CHECK(ix_add_gthemes(&x, labels, labels, 2));
+    CHECK(ix_add_pkgs(&x, labels, launches, 2));
+    c = ix_level_t(&km, &x, IX_PKGS_NODE, "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 2);
+    CHECK_STR(it[0].label, "nvim");
+    CHECK_INT(it[0].row, MN_ROW_INDEX);
+    CHECK_STR(x.rows[it[0].ix].path, "pkg:UP-Term:bin/nvim");
+    CHECK_STR(x.rows[it[1].ix].path, "pkg:UP-Term:uhc/ExtBin/UnZip");
+    CHECK_INT(x.rows[it[1].ix].kind, IX_KIND_PKG);
+    CHECK_INT(ix_icon_path(&x, &it[0], ip, sizeof ip), 0);
+    CHECK_INT(ix_launch_path(&x, &it[1], ip, sizeof ip), 1);
+    CHECK_STR(ip, "pkg:UP-Term:uhc/ExtBin/UnZip");
+    CHECK_INT(ix_level_t(&km, &x, IX_GTHEMES_NODE, "", it, MN_MAX_ITEMS, 0), 2);   /* themes kept */
+    c = ix_level_t(&km, &x, "install", "", it, MN_MAX_ITEMS, 0);
+    for (i = 0; i < c; i++)
+        if (!strcmp(it[i].label, "Packages")) {
+            found = 1;
+            CHECK_INT(it[i].row, MN_ROW_GROUP);
+        }
+    CHECK(found);
+    CHECK(ix_add_pkgs(&x, labels, launches, 0));    /* none installed: one inert row, replacing the old ones */
+    c = ix_level_t(&km, &x, IX_PKGS_NODE, "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 1);
+    CHECK_STR(x.rows[it[0].ix].path, IX_PKG_NONE);
+    CHECK(ix_add_gthemes(&x, labels, labels, 1));    /* an earlier adder run again drops the package rows */
+    CHECK_INT(ix_level_t(&km, &x, IX_PKGS_NODE, "", it, MN_MAX_ITEMS, 0), 0);
+    ix_free(&x);
+}
 static void terminal_rows_show_only_over_a_terminal(void)
 {
     static char file[32768];
@@ -2527,6 +2569,7 @@ static void a_volume_without_a_handler_task_matches_no_device(void)
 void suite_keymap(void)
 {
     style_theme_lists_the_gui_theme_rows();
+    install_packages_lists_the_package_rows();
     the_scan_record_has_a_layout_version_and_an_older_one_is_not_read();
     a_failed_cache_write_is_its_own_stage_and_not_reported_as_died();
     a_scan_leaf_parses_to_ka_scan_and_a_detach_leaf_stays_ka_detach();

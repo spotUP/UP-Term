@@ -1,0 +1,29 @@
+---
+date: 2026-10-27
+topic: Amarchy Packages submenu from `upkg --tsv`
+status: research
+---
+
+# Packages submenu: where it plugs in
+
+## 1. Tree, dynamic rows, leaf run
+
+- Static tree: dist/keymap (`style.theme = Amarchy theme | menu:style.theme` line 153, `trigger.clipboard` line 240); parsed to km_menu rows; `mn_children_t` amarchy/menu_tree.c:152 lists children by id prefix (groups from dotted ids).
+- Dynamic rows already exist, three times, all through the INDEX layer (amarchy/index_core.c): `ix_add_clips` :214 (node `IX_CLIPS_NODE`), `ix_add_listers` :241 (`dopus.listers`, loaded by `lf_load_listers` leaf.c:457), `ix_add_gthemes` :263 (`style.theme`, path `gtheme:<name>`, loaded by `gt_dos_load_rows` gthemes_dos.c:62). Closest pattern to copy: THEMES (gthemes_core.c scan/label pure + gthemes_dos.c DOS part + ix_add_gthemes + node define in index_core.h:28).
+  - Pieces: new `IX_KIND_*` (index_core.h:22-27) and `kstart[IX_NKINDS+6]` slots (index_core.h:75; array must grow by 2); node `#define`; `ix_level_t` index_core.c:564 turns the keymap row with that id into a group (loop at ~:567-573) and fills it with `add_index(x, kstart[..], kstart[..+1])` (:575-580); each add_* clears the later kinds' kstart (:235,:258) so order matters.
+  - Callers that must load the rows at open time: menu.c:185-186 and :340-341 (text), gui.c:660-661 and :1209-1210 (drawn, READ ONLY, other agent editing). Both styles share index rows, so a new `pk_dos_load_rows(&ixs)` call beside `gt_dos_load_rows` in those 4 places gives both menus the submenu. Also needs a dist/keymap row (`packages = Packages | menu:packages`, then menu-icons entry dist/menu-icons).
+- Leaf action: index rows carry a path string; Enter => `ix_launch_path` index_core.c:632 then `lf_open_index(label, path, ui)` leaf.c:312 (menu.c:295-300, gui.c:1326). lf_open_index dispatches by path prefix: `gt_path_name` (gtheme:), `ix_lister_of` (lister:), `lf_clip_entry` (clip:), else `wbl_open(path)` (wblaunch.c:251, runs a program/icon via WB-style start). Add a `pkg:` prefix branch here (a pure `lf_pkg_launch(path,...)` in leaf_core.c, DOS part in leaf.c).
+- Keymap leaves (static): `lf_plan` leaf_core.c:8 maps kind to LF_*; `lf_run` leaf.c:514. `run:` => `run_in_uterm` leaf.c:55 (own UP-Term window, SystemTags async, NP_StackSize 65536, shell_line leaf.c:41 wraps via `lf_shell_command` leaf_core.c:145 as `"<vsh>" -c "<cmd>"`, so `UP-Term:bin/x` and bare names resolve). `detach:` => `start_detached` leaf.c:353 (NIL: in/out, 32768 stack). `act_run` act.c:52 same (no window).
+  - Launch for a package row: reuse `run_in_uterm(path)` (a game or shell tool needs a window); `<EXTBIN>` must be expanded to the UHC ExtBin drawer first (doc says upkg already prints the full path, e.g. UP-Term:uhc/ExtBin/UnZip; confirm `<EXTBIN>` never reaches Amarchy).
+- Stack cookie: `seg_stack(BPTR seg)` config/segstack.h:42 (pure `segstack_scan`), used in act.c:149-170 `srv_start_proc` (LoadSeg path, take max(262144, cookie), `NP_StackSize`). Own cookies: amarchy.c:46-47, gui.c:59-63, index.c:38. run_in_uterm/start_detached use fixed 65536/32768 and do NOT read the launched program's cookie (RULES rule 6 gap for package programs: copy the LoadSeg+seg_stack block from act.c:158-166 into a shared helper).
+
+## 2. `upkg --tsv` layout (upterm-ports-uhc, branch feat/uhc-repo)
+f30fc35 only touches the 0045 patch wrapper; the definition is pkgs/opkg/patches/0045-upkg-list-list-installed-and-list-upgradable-include.patch (`upkg_tsv_row`, line ~51) and pkgs/opkg/doc/upkg-tsv.txt. Commands: `upkg list --tsv [glob]`, `list-installed --tsv [glob]`, `list-upgradable --tsv`. NINE fields (always nine, one tab, no header; tab/CR/LF in a value become a space):
+1 name (no uhc: prefix) | 2 version | 3 installed (1/0) | 4 upgradable (1/0) | 5 size bytes (empty for UHC) | 6 section | 7 launch | 8 src (`upkg` or `uhc`) | 9 description (first line).
+Installed = field 3 equals "1" (or use `list-installed`). Field 7: installed ipk = Launch: of control file; not installed ipk = Launch: of feed entry (so an uninstalled row can have a launch path: gate on field 3); UHC row = full path of the program the script copies into ${UHC/EXTBIN} (e.g. UP-Term:uhc/ExtBin/UnZip), empty if none. A name can appear twice (src upkg and src uhc); install second as `upkg install uhc:<name>`.
+
+## 3. Running an external command and reading output
+Nothing in amarchy/ reads a child's output: no popen, no PIPE:, no Execute. ARexx results only via `rexx_send` leaf.c:400 (DOpus). Existing run helpers (SystemTags, SYS_Output = NIL:): `act_run` act.c:52, `start_detached` leaf.c:353, `run_in_uterm` leaf.c:55. For `upkg --tsv`: no reusable output-capturing helper; write one small DOS helper (SystemTags synchronous with SYS_Output = Open("T:...", MODE_NEWFILE) or ENVARC temp as index.c:348 `write_cache`/IX_TMP does, then fopen/read, delete) and keep the pure part separate. Beware: spawning upkg loads the feed hash on every menu open; consider caching to ENV:Amarchy (clipwatch.c:77 pattern) or `list-installed --tsv` only (no network).
+
+## 4. Tests
+All host tests link into one binary via the Makefile list (Makefile:55). Add to tests/test_keymap.c, which holds menu-tree/index tests: model `style_theme_lists_the_gui_theme_rows` :1163 (loads dist/keymap, `ix_add_gthemes`, `ix_level_t(&km,&x,"style.theme",...)`, registered at :2529). A pure `pk_parse_tsv`/`ix_add_packages` and its rows/labels/launch path test goes there; pure scan/label logic tests live in tests/test_gthemes.c (`test_gthemes_scan` :302 with a fake dir callback: same fake-source trick for a fake TSV text), tests/test_clips.c:172 (ix_add_listers refresh/replace/empty). Text menu: tests/test_menu_text.c. Reachability: one test through the real top-level (menu level -> Enter -> launch path) with a sentinel, per RULES.

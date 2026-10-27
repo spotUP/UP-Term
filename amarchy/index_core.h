@@ -26,6 +26,9 @@
 #define IX_LISTERS_NODE  "dopus.listers"
 #define IX_KIND_GTHEME   (IX_NKINDS + 2)   /* an Amarchy GUI theme row (ix_add_gthemes), path "gtheme:<name>"; fills IX_GTHEMES_NODE (Style > Theme) */
 #define IX_GTHEMES_NODE  "style.theme"
+#define IX_KIND_PKG      (IX_NKINDS + 3)   /* an installed package with a program to start (ix_add_pkgs), path "pkg:<launch>"; fills IX_PKGS_NODE */
+#define IX_PKGS_NODE     "install.packages"
+#define IX_PKG_NONE      "pkg-none:"      /* the single row of an empty Packages menu; Enter does nothing */
 #define IX_KIND_HIDDEN   (-1)   /* ix_row_kind result for a system-drawer app row: ix_load_text drops it */
 #define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
 #define IG_CACHE_PATH "ENVARC:Amarchy/icons"  /* the menu's scaled icons (icon_core.h file format); a rescan deletes it */
@@ -72,7 +75,7 @@ int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n);
  * rows are on the heap. An ix_index starts zeroed (static, or {0}); ix_free releases its rows. */
 typedef struct ix_index {
     int    n, napps;            /* rows[0..napps) are apps; rows[kstart[k]..kstart[k+1]) have effective kind k */
-    int    kstart[IX_NKINDS + 6];     /* [IX_NKINDS], [IX_NKINDS + 1]: the clipboard history rows; [IX_NKINDS + 2], [IX_NKINDS + 3]: the lister rows; [IX_NKINDS + 4], [IX_NKINDS + 5]: the GUI theme rows */
+    int    kstart[IX_NKINDS + 8];     /* [IX_NKINDS], [IX_NKINDS + 1]: the clipboard history rows; [IX_NKINDS + 2], [IX_NKINDS + 3]: the lister rows; [IX_NKINDS + 4], [IX_NKINDS + 5]: the GUI theme rows; [IX_NKINDS + 6], [IX_NKINDS + 7]: the package rows */
     ix_row *rows;
 } ix_index;
 
@@ -113,6 +116,10 @@ int ix_add_listers(ix_index *x, const ix_row *rows, int n);
 /* The GUI theme rows (Style > Theme) after the lister rows: row i has label labels[i] and path "gtheme:<names[i]>".
  * Replaces the ones stored before; ix_add_clips and ix_add_listers drop them (call this last). 1, or 0 on no memory. */
 int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *names, int n);
+/* The Packages menu rows (plan 2026-10-27-amarchy-packages-submenu.md) after the theme rows: row i has label labels[i]
+ * and path "pkg:<launches[i]>"; n = 0 stores one row "No installed package has a program to start" (path IX_PKG_NONE).
+ * Replaces the ones stored before; every adder above drops them (call this last). 1, or 0 on no memory. */
+int ix_add_pkgs(ix_index *x, const char *const *labels, const char *const *launches, int n);
 int ix_lister_handles(const char *answer, unsigned long *out, int max);
 /* The row of one lister from its `lister query <handle> path` answer (a trailing CR/LF and surrounding blanks
  * are dropped, spaces inside kept). kind IX_KIND_LISTER, label the last drawer ("Work:Dev/My Stuff" gives "My Stuff",

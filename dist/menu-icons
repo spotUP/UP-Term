@@ -33,6 +33,7 @@ system.own        = U+F26C    ; fa-television
 install.browse    = U+F019    ; fa-download
 install.upgrade   = U+F093    ; fa-upload
 install.update    = U+F021    ; fa-refresh
+install.packages  = U+F1B2    ; fa-cube
 trigger           = U+F0E7    ; fa-bolt
 trigger.clipboard = U+F0EA    ; fa-clipboard
 settings                     = U+F013    ; fa-cog

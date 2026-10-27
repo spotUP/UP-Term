@@ -237,4 +237,5 @@ system.own         = Own screen            | slash:/screen own
 install.browse     = Install add-ons       | run:upkg browse
 install.upgrade    = Upgrade all           | run:upkg upgrade
 install.update     = Update lists          | run:upkg update
+install.packages   = Packages              | menu:install.packages
 trigger.clipboard  = Clipboard history     | menu:trigger.clipboard

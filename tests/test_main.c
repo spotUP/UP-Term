@@ -39,6 +39,7 @@ void suite_prefs(void);
 void suite_amconf(void);
 void suite_settings_def(void);
 void suite_gthemes(void);
+void suite_pkgs(void);
 void suite_menusrv(void);
 void suite_menu_text(void);
 void suite_iconspec(void);
@@ -118,6 +119,7 @@ static const h_suite suites[] = {
     { "amconf", suite_amconf },
     { "settings_def", suite_settings_def },
     { "gthemes", suite_gthemes },
+    { "pkgs", suite_pkgs },
     { "menusrv", suite_menusrv },
     { "menu_text", suite_menu_text },
     { "iconspec", suite_iconspec },

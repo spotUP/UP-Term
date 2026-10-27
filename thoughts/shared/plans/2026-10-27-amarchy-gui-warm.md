@@ -50,10 +50,13 @@ The text menu already has a warm server (`amarchy-menu serve`, port AMARCHY.MENU
 - [x] G8 build Amarchy + amarchy-gui clean (vbcc, warnings as errors); host suites menusrv 33 checks and
   keymap 11241 checks, 0 failed. amarchy-menu needs UI_HOTKEY_RIGHT from the unmerged upterm-ports branch
   feat/ui-hotkey-right (pre-existing, c5d7bb19); builds with UPKGUI_SYS pointing at that sysroot.
-- G9 rig 7: timing script on the drawn style: three presses, each with a send mark, one amarchy-gui task,
+- [x] G9 rig 7 (commit 11d4947d, evidence research/2026-10-27-amarchy-gui-warm-timing.md): warm presses 120/140/180 ms,
+  median 140 ms, each with a send mark and one server owner; true cold (stale port, act_run fallback) median 140 ms.
+  Font (start to font) 20-40 ms, icons 0 ms in 5 of 6 runs. Original text: timing script on the drawn style: three presses, each with a send mark, one amarchy-gui task,
   ready - hotkey printed; record font / icon cost from marks (decides the cache step).
 - G10 cache font / icons if G9 shows more than 50 ms (else written exemption here).
-- G11 rig 7: kill the gui server, press: cold fallback opens the menu; next press warm again.
+- [x] G11 PASS: stale port falls back cold, restarted server serves warm (new owner), commodity quit removes
+  AMARCHY.GUISRV and ends the task. Original text: kill the gui server, press: cold fallback opens the menu; next press warm again.
 - G12 A1200 deploy (Amarchy, amarchy-gui only; do not touch UHCBIN) and timing with the drawn style.
 
 ## Results
