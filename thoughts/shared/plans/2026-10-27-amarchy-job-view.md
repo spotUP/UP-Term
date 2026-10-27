@@ -51,10 +51,10 @@ roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
   AMARCHY_DRAWS (gui.c:515).
 
 ## Checklist
-- [ ] RJ.6a pure core job_core.c + tests/test_job.c: carry across chunks, CR, CRLF, tab, empty lines, ring overflow,
-  `@JOBRC 0` / `@JOBRC 5` / marker split across two chunks, marker never shown, follow-tail vs scrolled.
-- [ ] RJ.6b footer state machine in job_core (RUNNING to DONE/FAILED/CANCELLED, cancel after end ignored), upkg code
-  table (0, 5, 11-15, 20, unknown), `[PROGRESS n/m]` capture, host tested.
+- [x] RJ.6a pure core job_core.c + tests/test_job.c: carry across chunks, CR, CRLF, tab, empty lines, ring overflow,
+  `@JOBRC 0` / `@JOBRC 5` / marker split across two chunks, marker never shown, follow-tail vs scrolled. Done 5e91f921, suite job 70 checks 0 failed.
+- [x] RJ.6b footer state machine in job_core (RUNNING to DONE/FAILED/CANCELLED, cancel after end ignored), upkg code
+  table (0, 5, 11-15, 20, unknown), `[PROGRESS n/m]` capture, host tested. Done 5e91f921.
 - [ ] RJ.1 job_dos.c: jb_start/jb_sigmask/jb_poll/jb_cancel/jb_end, timer.device tick (pty_handler pattern), stack via
   pl_stack, T: file removed at the end. `$RC` marker proven on the rig (or the fallback chosen with evidence).
 - [ ] RJ.4 theme roles MT_OK and MT_FAIL: menu_theme.h, gthemes_core (GUI themes), text-menu roles, every theme file
