@@ -7,6 +7,8 @@ repo-path claim is "unverified". Amiga API facts marked (U) are unverified: each
 ## 0. Order and dependencies
 
 Owner order: P1 theme, P2 status bar, P3 tiling, P4 capture/notify/power.
+Added 2026-10-27: Phase J (shared job view) runs after prefs-inline R2 and before AMARCHY-UHC; AMARCHY-UHC runs before P1.
+Phase L (logo, font tiers, About) runs after AMARCHY-UHC and before P1 (decision 17).
 
 - P1 builds on thoughts/shared/plans/2026-10-26-amarchy-gui-themes.md (GUI themes, sections 1-2: the 16-colour roles and
   theme files in UP-Term:Amarchy/Themes/; default tokyo-night). P1 cannot start before that plan's parser (section 2) lands.
@@ -178,6 +180,43 @@ Tests: host: layout arithmetic for 1..9 windows, min/max clamp, usable area with
 new forms and rejects bad (extends tests for win_core). Rig: through the real hotkey (send super+... via amiga_key_press) open three windows,
 assert STATUS `wins=` rose and window boxes (amiga_windows) equal the expected master-stack, and that a fixed-size window was skipped.
 
+### P3b. Automatic re-tiling mechanism (design, vtcon-a1 2026-10-26, owner decision 6)
+
+Mechanism: a window-list scan on P2's timer tick, not a patch. Rejected: SetFunction on
+OpenWindowTagList/CloseWindow/ChangeWindowBox. A patch runs inside every program's task (stack and
+register rules of the caller), cannot be removed safely while another patcher sits on top of it, and
+breaks the "quit the commodity, system is as before" property. Intuition has no system-wide
+window-open event (IDCMP_CHANGEWINDOW and friends only reach the window's owner); screennotify.library is
+third-party. So the commodity looks instead of listening.
+
+- Tick: P2's timer.device source (R2.3), 4 Hz while auto-tiling is on for any screen, no tick at all when
+  every screen is off (zero cost when unused).
+- Fingerprint per screen, taken under LockIBase (pattern win.c:56 `usable`): the set of tileable
+  Window pointers in window-list order. Boxes are NOT in the fingerprint: a window that resizes itself
+  does not trigger a re-tile, which is what prevents fights.
+- Trigger: the set changed (a window opened, closed, or moved screen: it leaves one screen's set and
+  enters another's). Debounce: re-tile when the new set has been stable for 2 ticks (0.5 s), so a
+  program opening four windows at start re-tiles once.
+- Apply: win_core master-stack (R3.4) on bar_usable() (R2.9), ChangeWindowBox under the lock (existing
+  win.c:116 path). New windows join as the last stack entry; master stays unless closed.
+- Refusal guard: after applying, the next stable tick compares each window's box with the one asked for.
+  A window that does not take its box on 2 consecutive applies becomes floating for its lifetime (keyed by
+  Window pointer, dropped when it closes). Counter in STATUS (`tilefloat=`).
+- Tileable = all of: has WFLG_SIZEGADGET, not WFLG_BACKDROP, MinWidth != MaxWidth or MinHeight != MaxHeight,
+  not an Amarchy-owned window (bar, menu, notify popup), title not matched by ENVARC:Amarchy/tile.conf
+  (one AmigaDOS pattern per line, ParsePatternNoCase). Requesters (EasyRequest, ASL) have no size gadget
+  and drop out by the first rule; probe confirms.
+- Default: auto re-tiling is off on every screen until toggled (owner decision 11).
+- Per-screen state keyed by screen title (Screen pointers are reused); `win:tile auto on|off|toggle` verb,
+  saved as `tile-auto=<title>,<title>` in ENV:/ENVARC:Amarchy/prefs (amconf, both files as D4 of the
+  prefs-inline plan).
+- Sentinels: STATUS `retiles=` (applies done) and `tilefloat=`; rig test opens three shells on Workbench
+  with auto on, asserts retiles rose by exactly 1 per open after debounce, and amiga_windows boxes equal
+  the master-stack.
+- Probe P3b.0 (rig, text output only, before code): (1) EasyRequest and ASL requester windows lack
+  WFLG_SIZEGADGET; (2) LockIBase walk at 4 Hz costs under 0.5% CPU on the 060 rig (idle counter from R2.2);
+  (3) a Workbench drawer window takes ChangeWindowBox and keeps it after the drawer refreshes.
+
 Checklist:
 - R3.1 grep and confirm existing focus-direction forms and keys (win_parse, win.c:245)
 - R3.2 win_parse: snap and tile and master forms (closed list)
@@ -186,6 +225,7 @@ Checklist:
 - R3.5 win.c: enumerate tileable windows per screen, apply
 - R3.6 skip list (fixed size, backdrop, bar, user opt-out file)
 - R3.7 keymap bindings and keymap.c arg check, dist/keymap lines
+- R3.7b P3b.0 probe, then auto re-tile scan, debounce, refusal guard, tile.conf, per-screen toggle, STATUS retiles=/tilefloat=
 - R3.8 menu rows under Window
 - R3.9 optional auto re-tile on window count change with loop guard
 - R3.10 man page
@@ -260,6 +300,43 @@ Checklist:
 
 Totals: P1 17, P2 16, P3 12, P4 17 = 62 items.
 
+## Phase J. Shared job view (before AMARCHY-UHC)
+
+Source: Omarchy gap research thoughts/shared/research/2026-10-27-omarchy-tui-gap.md (section 4). Omarchy wraps every job in
+omarchy-show-logo, the live output, then omarchy-show-done. Owner (2026-10-27): build this once, as its own item, before
+AMARCHY-UHC, so packages, Update and every later action that runs something reuse it.
+
+Amarchy gap today: act_run does not read the child's output; there is no log view; the gui loop waits only on IDCMP and
+CTRL_C, so streaming needs a pipe or timer signal in that Wait.
+- RJ.1 Job runner: start a command with its output on a PIPE: (or a temp file plus a poll tick), signal bit added to the gui Wait
+- RJ.2 Job view in the drawn menu: logo header band, scrolling live output, Done/Failed footer with the exit code
+- RJ.3 Input rows inside the job view (string, choose-one, confirm), first user: upkg interactive questions
+- RJ.4 Theme colours for header, output text and footer from the GUI-themes roles
+- RJ.5 Cancel (Esc sends CTRL_C to the child) and close after Done
+- RJ.6 Host tests (output line splitter, footer state machine)
+- RJ.7 Rig reachability test: a menu row runs a job, the view shows its output lines and the Done footer (sentinel counter)
+
+## Phase L. Omarchy look: logo, font tiers, About (owner answers 2026-10-27)
+
+- RL.1 Startup logo when the Amarchy commodity starts (themed window, about 2 s). Not in Startup-Sequence: nothing touches the boot.
+- RL.2 Logo file in UP-Term:Amarchy/ that the user can replace (branding); RJ.2 and RL.1 read the same file
+- RL.3 Three font tiers in the drawn menu: header, row title, smaller description line, all scaled from one base size the theme sets
+  (Omarchy: base 12, title/heading 16, description 11). menu_font.c opens up to three fonts per screen; render/fontpair.c pairs exist.
+- RL.4 Row description line from the keymap `|` field; row height grows, so the visible row count on 256-line screens drops
+- RL.5 Theme file tokens font-base plus ratios (extends R1.5)
+- RL.6 About row: logo, Kickstart/Workbench version, CPU, chip/fast RAM, UP-Term and Amarchy versions, uptime
+- RL.7 Host tests and one rig reachability test (menu opens with three fonts; About row draws the version text)
+
+## Phase X. Omarchy extras (owner picked all four, 2026-10-27; after P2 because RX.3 needs the R2.3 tick)
+
+- RX.1 Toggle rows that show state: keymap row `checked:` condition (ENV: variable or file exists), tick glyph drawn
+- RX.2 Add-launcher wizard: input rows (RJ.3) for name, command, window style, icon; writes an Amarchy app entry
+- RX.3 Reminders: list with times, fired by the R2.3 tick, shown through the P4 notification (R4.9)
+- RX.4 Disk speed test row: write and read a file on the chosen volume, timed with timer.device, result in the job view
+- RX.5 Host tests and one rig reachability test per row kind
+
+Later phase, after R2.3 (timer tick): screensaver with the logo and a text effect. Owner: "Later phase". No work now.
+
 ## Open decisions for the owner
 
 1. Bar placement. Recommend: bar at screen bottom, Amarchy verbs respect it, other windows may cover it. Trade-off: cannot reserve space like a Wayland strut; the alternative (top overlay on the title bar) hides the Workbench menu bar clock/menus.
@@ -273,6 +350,7 @@ Totals: P1 17, P2 16, P3 12, P4 17 = 62 items.
 9. "Safe to switch off" semantics. Recommend: flush plus fixed quiet wait, message says "best effort". Trade-off: no true guarantee on third-party file systems.
 10. Build order inside phases. Recommend: P1 R1.1 probes first (one rig session answering the (U) list for P1 and P4 in one go). Trade-off: delays code by one session, saves reworking prefs writers.
 
+
 ## Decisions (2026-10-26)
 
 Owner answers:
@@ -280,6 +358,8 @@ Owner answers:
 - 2 Theme writes: live preview with 15 s auto-revert; saved to ENVARC: only after confirm; boot-time restore of the old prefs after a crash.
 - 3 Backdrops: a solid theme-coloured backdrop per theme plus a per-theme picture drawer the user fills; Super+Ctrl+Space cycles it. No Omarchy wallpapers shipped.
 - 6 Tiling: AUTOMATIC re-tiling (owner chose this over the one-shot recommendation). Windows re-tile when one opens, closes or changes screen. The plan must now name the mechanism (resident watcher on IDCMP/Intuition events vs a patched OpenWindow/CloseWindow), an opt-out list for windows that refuse resizing (requesters, fixed-size windows, backdrop windows), a per-screen on/off toggle, and a probe for the chosen mechanism before any code.
+- 11 Auto-tile default (2026-10-26): every screen starts with auto re-tiling OFF; `win:tile auto toggle` turns it on per screen and tile-auto= remembers it. Nothing moves on first start.
+- 12 Start: the roadmap starts after the prefs-inline plan finishes R2. The P1 probe session does not share rig 7 with prefs R1.
 
 Taken at the plan's recommendation (implementation defaults, owner may veto):
 - 4 Theme fonts: only fonts already in FONTS:.
@@ -288,3 +368,10 @@ Taken at the plan's recommendation (implementation defaults, owner may veto):
 - 8 Notifications: separate AMARCHY.NOTIFY port plus an amnotify tool.
 - 9 Safe to switch off: flush plus quiet wait, best effort.
 - 10 One rig probe session first for every unverified item.
+- 13 (2026-10-27) Logo: shown at Amarchy start and as the job view header, plus an About row. No pre-Workbench splash.
+- 14 (2026-10-27) Font sizes: three tiers (header, row, description) from one theme base size.
+- 15 (2026-10-27) Shared job view: its own Phase J, before AMARCHY-UHC.
+- 16 (2026-10-27) Screensaver: a later phase after the R2.3 timer; no work now.
+- 17 (2026-10-27) Phase L runs after AMARCHY-UHC and before P1.
+- 18 (2026-10-27) Input rows: general (text, choose one, confirm), built once in RJ.3 and reused by every form.
+- 19 (2026-10-27) Extras: all four (toggle rows, add-launcher wizard, reminders, disk speed test) as Phase X.
