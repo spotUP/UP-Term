@@ -323,7 +323,7 @@ def r_lamiga_minus_sv():
 X9_DIR, X9_SKIP = 'SYS:X9Test', 'SYS:X9Skip'      # x9_begin respells X9_SKIP with the boot volume's name, see there
 X9_CONF = 'ENV:up-term/up-term'
 X9_AMCONF = 'ENV:Amarchy/prefs'     # Amarchy's own store since 5270f4ba; it is read before the up-term file
-AM_KEYS_C = pathlib.Path(__file__).resolve().parents[2] / 'amarchy' / 'amconf_keys.c'
+AM_KEYS_C = pathlib.Path(__file__).resolve().parents[2] / 'prefs' / 'settings_def.c'
 X9_CACHE = 'ENVARC:Amarchy/apps'
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -428,8 +428,9 @@ def x9_begin():
 
 
 def am_key_names():
-    """The keys Amarchy's own store owns: the names in the product table am_keys[] (amarchy/amconf_keys.c)."""
-    return set(re.findall(r'^\s*\{\s*"([a-z-]+)"\s*,', AM_KEYS_C.read_text(), re.M))
+    """The keys Amarchy's own store owns: the rows of the settings table (prefs/settings_def.c, sd_settings and
+    sd_hidden) whose store is SD_AMARCHY; amconf_keys() in amarchy/amconf_keys.c fills am_keys[] from the same rows."""
+    return set(re.findall(r'\{\s*[-\w]+,\s*"([a-z-]+)",(?:(?!\n\s*\{).)*?SD_AMARCHY', AM_KEYS_C.read_text(), re.S))
 
 
 def x9_conf(*lines):
