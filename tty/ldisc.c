@@ -152,8 +152,15 @@ static void reprint(ldisc *l)
 /* In ICANON mode the queue holds whole lines, each as <len hi><len lo>
  * <bytes>, and an EOF (VEOF on an empty line) as a line of length 0xFFFF;
  * `lines` counts them. Without ICANON it holds plain bytes. */
+#ifdef VTCON_TRACE
+unsigned long ld_trace_qdrop, ld_trace_ldrop; /* bytes lost: queue full, line full */
+#endif
 static void queue_bytes(ldisc *l, const unsigned char *b, int n)
 {
+#ifdef VTCON_TRACE
+    if (l->qlen + n > LD_QUEUE)
+        ld_trace_qdrop += (unsigned long)(l->qlen + n - LD_QUEUE);
+#endif
     if (l->qlen + n > LD_QUEUE)
         n = LD_QUEUE - l->qlen; /* full: the rest is lost, as on a Unix tty */
     if (n > 0) {
@@ -263,8 +270,12 @@ static void input_one(ldisc *l, int c)
     }
 ordinary:
     if (lf & LD_ICANON) {
-        if (l->len >= LD_LINE - 1)
+        if (l->len >= LD_LINE - 1) {
+#ifdef VTCON_TRACE
+            ld_trace_ldrop++;
+#endif
             return; /* the line is full: the byte is lost (IMAXBEL would ring) */
+        }
         l->line[l->len++] = (unsigned char)c;
     } else {
         unsigned char b = (unsigned char)c;

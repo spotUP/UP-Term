@@ -214,6 +214,15 @@ int vtwin_rebind(vtwin *w, struct Window *win);
 void vtwin_write(vtwin *w, const vt_u8 *b, long n);
 /* draw what the grid has that the screen has not */
 void vtwin_render(vtwin *w);
+#ifdef VTCON_TRACE
+/* key-to-draw trace (TRACE=1 builds only): a ring of 16-byte records stamped with ReadEClock.
+ * ev: K key, B bytes to the program, R read reply, W write packet, D frame drawn, Q wait/poll,
+ * X termios reset at tty_first. The dump is text, one `+us ev n= a= b=` line per record. */
+void vt_trace(char ev, unsigned n, unsigned a, unsigned b);
+void vt_trace_key(unsigned code, unsigned qual, unsigned long secs, unsigned long mics);
+void vt_trace_clear(void);
+long vt_trace_dump(const char *path);
+#endif
 /* the window's size changed: new grid size, redraw, raw report */
 void vtwin_resize(vtwin *w);
 /* damage to repair (IDCMP_REFRESHWINDOW) */

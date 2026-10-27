@@ -124,6 +124,10 @@ static const slash_def table[] = {
     { "term", SL_ARG, SLASH_TERM, 1, 0, "NAME | none",
       "TERM for programs vsh starts here (vtcon, xterm-256color, screen-256color)" },
     { "theme", SL_ARG, SLASH_THEME, 0, 0, "[NAME]", "a colour theme (no name: a list, Up/Down and Enter)" },
+#ifdef VTCON_TRACE
+    { "trace-clear", SL_ACTION, SLASH_TRACE_CLEAR, 0, 0, "", "empty the key trace ring" },
+    { "trace-dump", SL_ARG, SLASH_TRACE_DUMP, 1, 0, "FILE", "write the key trace ring to FILE" },
+#endif
     { "tutorial", SL_ACTION, MENU_TUTORIAL, 0, 0, "", "the shell tutorial, in a new tab" },
     { "wheel", SL_CHOICE, 0, 0, v_wheel, "scroll | ignore", "the mouse wheel moves the scrollback" }
 };

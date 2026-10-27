@@ -1169,7 +1169,7 @@ $(BUILD)/amiga/vtengine-$(CPU).o: $(ENGINE) engine/kitty.c engine/inflate.c engi
 # "UP-Term build" in $VER, tools/test_build_stamp.py): the last
 # flags are read while make parses, and a difference forces the link (a
 # stamp file's mtime could equal the binary's to the second and be ignored).
-HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) PROF=$(PROF) CPU=$(CPU) DIRECT=$(DIRECT) BUILD=$(GITREV)
+HANDLER_FLAGS := DEBUG=$(DEBUG) SERIAL=$(SERIAL) TRACE=$(TRACE) PROF=$(PROF) CPU=$(CPU) DIRECT=$(DIRECT) BUILD=$(GITREV)
 HANDLER_FLAGS_OLD := $(shell cat $(BUILD)/amiga/handler.flags 2>/dev/null)
 ifneq ($(HANDLER_FLAGS),$(HANDLER_FLAGS_OLD))
 HANDLER_FORCE := FORCE
@@ -1179,7 +1179,7 @@ FORCE:
 $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) $(HANDLER_FORCE)
 	@mkdir -p $(BUILD)/amiga/obj
 	@echo '$(HANDLER_FLAGS)' > $(BUILD)/amiga/handler.flags
-	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -I$(BUILD)/amiga -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
+	$(VC) $(if $(DEBUG),-DVTCON_DEBUG) $(if $(SERIAL),-DVTCON_SERIAL) $(if $(PROF),-DVTCON_PROF) $(if $(TRACE),-DVTCON_TRACE) -DVT_AMIGA_EXEC_ALLOC -DVTCON_BUILD=$(subst -,_,$(GITREV)) -I$(BUILD)/amiga -c -o $(BUILD)/amiga/obj/handler.o handler/vtcon_handler.c
 	$(VC) -DVT_AMIGA_EXEC_ALLOC -DVT_ASM -c -o $(BUILD)/amiga/obj/vtengine.o $(ENGINE)
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vtengine_68k.o $(ENGINE_68K)
 	$(VC) $(if $(DIRECT),-DVTCON_DIRECT) $(if $(PROF),-DVTCON_PROF) -DVR_ASM -c -o $(BUILD)/amiga/obj/amiga_render.o render/amiga_render.c
@@ -1188,7 +1188,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	$(VC) -c -o $(BUILD)/amiga/obj/pens_amiga.o render/pens_amiga.c
 	$(VC) -c -o $(BUILD)/amiga/obj/aa_ink.o render/aa_ink.c
 	vasmm68k_mot -quiet -Fhunk -m68020 -o $(BUILD)/amiga/obj/painter_68k.o render/painter_68k.s
-	$(VC) $(if $(PROF),-DVTCON_PROF) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtwin.o render/vtwin.c
+	$(VC) $(if $(PROF),-DVTCON_PROF) $(if $(TRACE),-DVTCON_TRACE) -DVT_AMIGA_EXEC_ALLOC -c -o $(BUILD)/amiga/obj/vtwin.o render/vtwin.c
 	$(VC) -c -o $(BUILD)/amiga/obj/vtinput.o render/vtinput.c
 	$(VC) -c -o $(BUILD)/amiga/obj/sbar.o render/sbar.c
 	$(VC) -c -o $(BUILD)/amiga/obj/sbar_gad.o handler/sbar_gad.c
@@ -1214,7 +1214,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	$(VC) -c -o $(BUILD)/amiga/obj/prefs_asl.o prefs/prefs_asl.c
 	$(VC) -c -o $(BUILD)/amiga/obj/brk.o handler/brk.c
 	$(VC) -c -o $(BUILD)/amiga/obj/waitset.o handler/waitset.c
-	$(VC) -c -o $(BUILD)/amiga/obj/slash.o handler/slash.c
+	$(VC) $(if $(TRACE),-DVTCON_TRACE) -c -o $(BUILD)/amiga/obj/slash.o handler/slash.c
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap_act.o handler/keymap_act.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upmru.o handler/upmru.c
 	$(VC) -c -o $(BUILD)/amiga/obj/keymap.o config/keymap.c
@@ -1223,7 +1223,7 @@ $(BUILD)/amiga/vtcon-handler: $(HANDLER_SRC) $(HANDLER_HDR) $(UPTERM_VERSION_H) 
 	$(VC) -c -o $(BUILD)/amiga/obj/upreq.o handler/upreq.c
 	$(VC) -c -o $(BUILD)/amiga/obj/frontscr.o handler/frontscr.c
 	$(VC) -c -o $(BUILD)/amiga/obj/winspec.o handler/winspec.c
-	$(VC) -c -o $(BUILD)/amiga/obj/ldisc.o tty/ldisc.c
+	$(VC) $(if $(TRACE),-DVTCON_TRACE) -c -o $(BUILD)/amiga/obj/ldisc.o tty/ldisc.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upconf.o config/upconf.c
 	$(VC) -c -o $(BUILD)/amiga/obj/upconf_rows.o config/upconf_rows.c
 	$(VC) -c -o $(BUILD)/amiga/obj/termurl.o $(TERMURL)

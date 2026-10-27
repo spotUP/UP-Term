@@ -104,6 +104,9 @@ struct Library *GadToolsBase; /* the window's menu (may be 0: no menu) */
 struct Library *DataTypesBase; /* picture.datatype, opened by the picture worker per decode */
 struct Library *LayersBase; /* LockLayer, for the renderer's planar path */
 struct Device *TimerBase; /* for ReadEClock in the debug profile */
+#ifdef VTCON_TRACE
+extern unsigned long ld_trace_qdrop, ld_trace_ldrop;
+#endif
 
 static LONG handler_main(void);
 
@@ -645,6 +648,9 @@ static void png_release(vt_u32 *argb)
 
 static void in_append(con *c, const vt_u8 *b, int n)
 {
+#ifdef VTCON_TRACE
+    vt_trace('b', n, c->in_len, c->in_len + n > IN_MAX ? (unsigned)(c->in_len + n - IN_MAX) : 0); /* cooked buffer, before tty mode */
+#endif
     if (c->in_len + n > IN_MAX)
         n = IN_MAX - c->in_len;
     if (n > 0) {
@@ -669,6 +675,9 @@ static int to_tty(con *c, const vt_u8 *b, int n)
     if (!tty_active(c))
         return 0;
     ld_input(&c->ld, b, n);
+#ifdef VTCON_TRACE
+    vt_trace('B', n, c->ld.qlen, (unsigned)(ld_trace_qdrop + ld_trace_ldrop));
+#endif
     if (c->rtimer_busy && c->ld.t.c_cc[LD_VMIN] > 0)
         rtimer_start(c, c->ld.t.c_cc[LD_VTIME]); /* VTIME is between bytes */
     service_reads(c);
@@ -3076,6 +3085,9 @@ static void output(con *c, const vt_u8 *b, long n)
     struct EClockVal e0, e1;
     ReadEClock(&e0);
 #endif
+#ifdef VTCON_TRACE
+    vt_trace('W', (unsigned)n, 0, 0);
+#endif
     if (!c->w.t)
         return;
     if (!c->le.len)
@@ -3265,6 +3277,9 @@ static void tty_first(void *u)
     ld_init(&c->ld);
     c->ld.echo = 0;
     c->ld.t.c_lflag &= ~(ld_flag)LD_ISIG;
+#ifdef VTCON_TRACE
+    vt_trace('X', c->in_len, c->ld.qlen, 0); /* termios reset at tty_first; n = typed-ahead bytes replayed */
+#endif
     ld_input(&c->ld, c->in, c->in_len);
     c->in_len = 0;
     ld_defaults(&c->ld.t);
@@ -3308,6 +3323,9 @@ static void tty_reads(con *c)
         rtimer_stop(c);
 #ifdef VTCON_DEBUG
         dbg("TTYREAD task/n", (LONG)p->dp_Port->mp_SigTask, n);
+#endif
+#ifdef VTCON_TRACE
+        vt_trace('R', n < 0 ? 0 : (unsigned)n, (unsigned)c->nreads, (unsigned)c->rtimer_fired);
 #endif
         reply(p, n < 0 ? 0 : n, 0);
         drop_read(c, k);
@@ -4348,6 +4366,19 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         c->st.outline_own = (long)vo_own(c->w.outline);
         c->st.outline_aa = (long)c->w.r.n_aa;
         return slash_state_text(&c->st, cmd.arg, ans, cap) < 0 ? 2 : 1;
+#ifdef VTCON_TRACE
+    case SLASH_TRACE_CLEAR:
+        vt_trace_clear();
+        ans[0] = 0;
+        return 1;
+    case SLASH_TRACE_DUMP:
+        if (!vt_trace_dump(cmd.arg)) {
+            cat3(ans, cap, name, ": cannot write ", cmd.arg);
+            return 2;
+        }
+        ans[0] = 0;
+        return 1;
+#endif
     case SLASH_SCREEN_TEXT: {
         /* the rows as they stand, with no selection and no clipboard (RIG-QUIET-READ): the file is
          * written whole and closed before the answer, so the sender reads it at once */
@@ -5528,6 +5559,9 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
 {
     switch (cls) {
     case IDCMP_RAWKEY:
+#ifdef VTCON_TRACE
+        vt_trace_key(code, qual, secs, mics);
+#endif
         {
             /* the wheel of a machine without IDCMP_EXTENDEDMOUSE (Kickstart 3.1, FS-UAE):
              * NewMouse's raw keys 0x7A / 0x7B, not typing */
@@ -6965,6 +6999,9 @@ static void packet(con *c, struct DosPacket *p)
          * and conbench's SYNC barrier is this packet: without the draw
          * our barrier numbers left a frame's work out) */
         vtwin_render(&c->w);
+#ifdef VTCON_TRACE
+        vt_trace('Q', (unsigned)(p->dp_Arg1 > 65535 ? 65535 : p->dp_Arg1 < 0 ? 0 : p->dp_Arg1), c->in_len || c->eof || (tty_active(c) && ld_input_pending(&c->ld)), 0); /* n = timeout, a = input already there */
+#endif
 #ifdef VTCON_DEBUG
         dbg("WAIT task/timeout", (LONG)p->dp_Port->mp_SigTask, p->dp_Arg1);
         dbg("WAIT in/eof", c->in_len, c->eof);

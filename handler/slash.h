@@ -33,7 +33,9 @@ enum {
     SLASH_COLORS,            /* arg: rgb | 256 | 16 (COLORTERM, TERM for 16), or "none" */
     SLASH_SETUP,             /* the window's settings and where each came from */
     SLASH_STATE,             /* arg: a key, or empty for all: the window's action counters */
-    SLASH_SCREEN_TEXT        /* arg: a file: the visible rows as text, one line per row, written there */
+    SLASH_SCREEN_TEXT,       /* arg: a file: the visible rows as text, one line per row, written there */
+    SLASH_TRACE_DUMP,        /* TRACE=1 builds: arg: a file: the key trace ring as text */
+    SLASH_TRACE_CLEAR        /* TRACE=1 builds: empty the key trace ring */
 };
 
 typedef struct slash_value {

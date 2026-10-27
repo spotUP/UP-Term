@@ -22,6 +22,111 @@
 #define TimerBase vtwin_timer
 struct Device *vtwin_timer; /* also read by amiga_render.c's PROF=1 counters */
 #include <proto/timer.h>
+
+#ifdef VTCON_TRACE
+#include "../tty/ldisc.h"
+extern unsigned long ld_trace_qdrop, ld_trace_ldrop;
+#define TR_N 4096
+typedef struct { ULONG t; UBYTE ev, flags; UWORD n; ULONG a, b; } tr_rec;
+static tr_rec *tr_ring;
+static ULONG tr_head, tr_count;
+
+void vt_trace(char ev, unsigned n, unsigned a, unsigned b)
+{
+    struct EClockVal e;
+    tr_rec *r;
+    if (!vtwin_timer)
+        return;
+    if (!tr_ring && !(tr_ring = (tr_rec *)AllocVec(TR_N * sizeof(tr_rec), MEMF_PUBLIC | MEMF_CLEAR)))
+        return;
+    ReadEClock(&e);
+    r = &tr_ring[tr_head % TR_N];
+    r->t = e.ev_lo; r->ev = (UBYTE)ev; r->flags = 0; r->n = (UWORD)n; r->a = a; r->b = b;
+    tr_head++;
+    if (tr_count < TR_N)
+        tr_count++;
+}
+
+/* K: a = microseconds from input.device's stamp to now, b = qualifier */
+void vt_trace_key(unsigned code, unsigned qual, unsigned long secs, unsigned long mics)
+{
+    struct timeval tv;
+    unsigned long d;
+    if (!vtwin_timer)
+        return;
+    GetSysTime(&tv);
+    d = (tv.tv_secs - secs) * 1000000UL + tv.tv_micro - mics;
+    vt_trace('K', code, (unsigned)d, qual);
+}
+
+void vt_trace_clear(void)
+{
+    tr_head = tr_count = 0;
+    ld_trace_qdrop = ld_trace_ldrop = 0;
+}
+
+static char *tr_num(char *p, ULONG v)
+{
+    char t[12];
+    int i = 0;
+    do { t[i++] = (char)('0' + v % 10); v /= 10; } while (v);
+    while (i)
+        *p++ = t[--i];
+    return p;
+}
+
+long vt_trace_dump(const char *path)
+{
+    struct EClockVal e;
+    ULONG freq, i, first, t0, khz;
+    char *buf, *p;
+    BPTR fh;
+    long ok;
+    if (!vtwin_timer)
+        return 0;
+    freq = ReadEClock(&e);
+    khz = freq / 1000;
+    buf = (char *)AllocVec(TR_N * 64 + 256, MEMF_ANY);
+    if (!buf)
+        return 0;
+    p = buf;
+    p = buf;
+    { const char *h = "eclock_hz="; while (*h) *p++ = *h++; }
+    p = tr_num(p, freq);
+    { const char *h = " ld_qdrop="; while (*h) *p++ = *h++; }
+    p = tr_num(p, ld_trace_qdrop);
+    { const char *h = " ld_linedrop="; while (*h) *p++ = *h++; }
+    p = tr_num(p, ld_trace_ldrop);
+    { const char *h = " records="; while (*h) *p++ = *h++; }
+    p = tr_num(p, tr_count);
+    *p++ = '\n';
+    first = tr_head - tr_count;
+    t0 = tr_count ? tr_ring[first % TR_N].t : 0;
+    for (i = 0; i < tr_count; i++) {
+        tr_rec *r = &tr_ring[(first + i) % TR_N];
+        ULONG d = r->t - t0, us = (d / freq) * 1000000UL + ((d % freq) * 1000UL) / khz;
+        const char *h;
+        *p++ = '+'; p = tr_num(p, us);
+        *p++ = ' '; *p++ = (char)r->ev;
+        h = " n="; while (*h) *p++ = *h++;
+        p = tr_num(p, r->n);
+        h = " a="; while (*h) *p++ = *h++;
+        p = tr_num(p, r->a);
+        h = " b="; while (*h) *p++ = *h++;
+        p = tr_num(p, r->b);
+        *p++ = '\n';
+    }
+    fh = Open((STRPTR)path, MODE_NEWFILE);
+    ok = 0;
+    if (fh) {
+        ok = Write(fh, buf, p - buf) == p - buf;
+        Close(fh);
+    }
+    FreeVec(buf);
+    return ok;
+}
+#define TRACE_D(w_) vt_trace('D', 0, (unsigned)(e1.ev_lo - e0.ev_lo), (unsigned)(w_)->prof_frames)
+#endif
 #include "pace.h"
 #include "../handler/clip.h"
 #include "../handler/clipfmt.h"
@@ -596,6 +701,9 @@ void vtwin_render(vtwin *w)
             w->frame_us = vt_pace_next(vt_pace_us(e1.ev_lo - e0.ev_lo, freq));
             w->prof_render += e1.ev_lo - e0.ev_lo;
             w->prof_frames++;
+#ifdef VTCON_TRACE
+            TRACE_D(w);
+#endif
         }
     }
     vtwin_knob_sync(w); /* once a frame: the scrollback grew, the alternate screen came */
