@@ -1234,6 +1234,7 @@ static int gui_open(int viewer, const char *node)
     }
     g->cm = g->scr->ViewPort.ColorMap;
     pick_font(g);
+    at_mark("font");
     if (!g->mt) {
         PutStr((STRPTR) "amarchy-gui: no memory for the font\n");
         rc = 20;
@@ -1247,6 +1248,7 @@ static int gui_open(int viewer, const char *node)
     pens_get(g);
     if (app_icons == UC_ICONS_AMIGA && !minimal)
         ig_open(g->scr, ixs.n);      /* no icon.library V44: the index rows keep the generic glyph */
+    at_mark("icons");
 
     /* the font's text lengths before the window exists */
     /* the minimal menu's group marker is part of the label's text: " >" after it, no gap column */

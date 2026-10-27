@@ -15,7 +15,8 @@ window spec on AMARCHY.MENUSRV: the warm path ran, the fallback has none), marks
 terminal, ready; the port owner (AMARCHY.MENUSRV) is the same task at every open; hotkey to ready under --max-ms;
 the Amarchy window gone after each open; a stale port (owner removed, port left) is taken over by the next open, which falls back cold and restarts the server;
 commodity quit removes the port.
-Usage: UPTERM_RIG=<n> python3 tools/rig/amarchy_timing_rig.py [--runs 3] [--no-build] [--max-ms 500]"""
+--drawn measures the drawn menu the same way (plan 2026-10-27-amarchy-gui-warm.md, G9/G11).
+Usage: UPTERM_RIG=<n> python3 tools/rig/amarchy_timing_rig.py [--runs 3] [--drawn] [--no-build] [--max-ms 500]"""
 import argparse, pathlib, re, statistics, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
@@ -36,6 +37,16 @@ OUT = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
 
 
 ORDER = ('hotkey', 'send', 'start', 'terminal', 'ready')
+PORT, TASK = 'AMARCHY.MENUSRV', 'amarchy-menu'
+MID = 'terminal'
+
+
+def set_drawn():
+    """--drawn: the quick menu is the drawn one (amarchy-gui on AMARCHY.GUISRV, marks hotkey, send, start, window,
+    ready). The rig's host terminal is the active window, so menu-in-terminal = graphical picks it."""
+    global ORDER, PORT, TASK, MID
+    ORDER = ('hotkey', 'send', 'start', 'window', 'ready')
+    PORT, TASK, MID = 'AMARCHY.GUISRV', 'amarchy-gui', 'window'
 
 
 def wasabi(*args):
@@ -48,7 +59,7 @@ def wasabi(*args):
 
 def server_tasks():
     """Addresses of the amarchy-menu processes (wasabi ps): the warm server and any cold menu."""
-    return sorted(l.split()[0] for l in wasabi('ps')[1].splitlines() if 'amarchy-menu' in l)
+    return sorted(l.split()[0] for l in wasabi('ps')[1].splitlines() if TASK in l)
 
 
 def port_owner():
@@ -64,11 +75,14 @@ def task_up(addr):
 
 
 def port_listed():
-    return 'AMARCHY.MENUSRV' in wasabi('arexx', '--ports')[1]
+    return PORT in wasabi('arexx', '--ports')[1]
 
 
 def window_up():
-    """An XCON window other than the host (the menu window has no title)."""
+    """The menu window: an XCON window other than the host (the text menu has no title), or the drawn menu's
+    window titled Amarchy (--drawn)."""
+    if TASK == 'amarchy-gui':
+        return any('window "Amarchy"' in l for l in wasabi('windows')[1].splitlines())
     return any('task XCON' in l and 'timinghost' not in l for l in wasabi('windows')[1].splitlines())
 
 
@@ -100,7 +114,8 @@ def press(flush, key=SPACE, leave=lambda: ami.key(ESC)):
     owner = port_owner()
     leave()                 # at the root Esc leaves the menu
     time.sleep(2.5)
-    PRESS.update(order=[t for t, _ in sorted(got, key=lambda x: (x[1], ORDER.index(x[0]) if x[0] in ORDER else 9))],
+    PRESS.update(order=[t for t, _ in sorted(got, key=lambda x: (x[1], ORDER.index(x[0]) if x[0] in ORDER else 9))
+                        if t in ORDER],   # font / icons marks (gui.c) are costs, not order
                  window=seen, closed=not window_up(), tasks=tasks, owner=owner,
                  box=None)
     d = dict(got)
@@ -135,8 +150,9 @@ def warm_checks(a):
     r, got = press(False, KEY_K)      # the key viewer: another size
     verdict(PRESS['window'] and PRESS['closed'] and PRESS['owner'] == base and 'send' in PRESS['order'],
             'viewer open (second size) works', '%s ms marks %s' % (r and r['ready'], PRESS['order']))
-    r, got = press(False, SPACE, lambda: ami.key(KEY_C, CTRL))
-    verdict(PRESS['closed'] and task_up(base), 'Ctrl-C closes the menu, the port owner stays alive', str(base))
+    # the drawn menu closes on the hotkey pressed again (it gets Ctrl-C from the commodity); the text one on the key
+    r, got = press(False, SPACE, (lambda: ami.key(SPACE, LAMIGA)) if TASK == 'amarchy-gui' else (lambda: ami.key(KEY_C, CTRL)))
+    verdict(PRESS['closed'] and task_up(base), 'Ctrl-C (drawn: the hotkey again) closes the menu, the port owner stays alive', str(base))
     r, got = press(False)
     verdict(PRESS['order'] == list(ORDER) and PRESS['owner'] == base, 'open after Ctrl-C is warm again', str(PRESS['order']))
     # a real stale port: the owner task is gone (RemTask), AMARCHY.MENUSRV is still on the list
@@ -156,7 +172,7 @@ def warm_checks(a):
     # commodity quit: MS_QUIT, the port disappears and the server ends
     wasabi('arexx', 'AMARCHY', 'QUIT')
     time.sleep(3)
-    verdict(not port_listed() and not task_up(new), 'commodity quit: AMARCHY.MENUSRV gone, server task ended',
+    verdict(not port_listed() and not task_up(new), 'commodity quit: %s gone' % PORT + ', server task ended',
             'owner %s port listed %s' % (new, port_listed()))
     # no server, no commodity port: a fresh commodity starts one again (cold fallback is the stale-port step above)
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
@@ -172,9 +188,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--runs', type=int, default=3)
     ap.add_argument('--no-build', action='store_true')
+    ap.add_argument('--drawn', action='store_true', help='the drawn menu (amarchy-gui, AMARCHY.GUISRV)')
     ap.add_argument('--max-ms', type=int, default=500, help='hotkey to ready, warm opens')
     a = ap.parse_args()
-    stage_rig.report(stage_rig.stage_build(build=not a.no_build))
+    if a.drawn:
+        set_drawn()
+        names = ('Amarchy', 'amarchy-gui')
+    else:
+        names = stage_rig.DEFAULT
+    stage_rig.report(stage_rig.stage_build(names, build=not a.no_build))
+    if a.drawn:
+        c.run('MakeDir >NIL: ENV:Amarchy')
+        c.run('Echo >ENV:Amarchy/prefs "[profile default]"')
+        c.run('Echo >>ENV:Amarchy/prefs "menu-in-terminal = graphical"')
     wasabi('arexx', 'AMARCHY', 'QUIT')     # an Amarchy of the rig's boot would keep the old code and refuse a second one
     time.sleep(3)
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
@@ -191,7 +217,7 @@ def main():
             if r:
                 vals.append(r)
         res[kind] = vals
-        for tag in ('start', 'terminal', 'ready'):
+        for tag in ('start', MID, 'font', 'icons', 'ready'):
             xs = [v[tag] for v in vals if tag in v]
             if xs:
                 lines.append('%s %s median %d ms (runs %s)' % (kind, tag, statistics.median(xs), xs))
