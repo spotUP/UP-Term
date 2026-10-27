@@ -178,7 +178,7 @@ static int menu_levels(const char *start)
 {
     int n, c, i, rc = 0;
     char node[KM_ID * 2], filter[KM_LABEL], prompt[96];
-    char keep[IXW_ROW > KM_LABEL ? IXW_ROW : KM_LABEL];   /* the entry the cursor stays on over a rebuild */
+    char keep[IXW_ROW > MN_LABEL ? IXW_ROW : MN_LABEL];   /* the entry the cursor stays on over a rebuild */
     int keep_status = 0, shift, keep_ix = -1;   /* keep_ix: a setting row the cursor stays on after a set */
 
     strncpy(node, start, sizeof node - 1);

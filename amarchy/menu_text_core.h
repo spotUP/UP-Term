@@ -57,6 +57,9 @@ int mtc_prefix(mtc *c, const char *s, int len, int maxw);
 /* s cut to fit maxw pixels into out (n bytes): s whole when it fits, else the longest head that with "..."
  * fits ("." when even that is too wide for more; "" when nothing fits). Returns the pixel width of out. */
 int mtc_fit(mtc *c, const char *s, int maxw, char *out, int n);
+/* Like mtc_fit, but s[keep..] (a row's ": Value") is never cut while it fits: the head s[0..keep) is cut to
+ * "..." instead. When the tail alone is wider than maxw it is cut as mtc_fit does. */
+int mtc_fit_tail(mtc *c, const char *s, int keep, int maxw, char *out, int n);
 
 /* ---- TrueType scaling: px pixels an em, advances rounded to whole pixels ---- */
 int mtc_scale(int units, int upem, int px);

@@ -81,6 +81,24 @@ static void test_fit(void)
     mtc_free(&c);
 }
 
+/* a settings row "Label: Value" clipped by the window keeps its value: the label is cut, not the value */
+static void test_fit_tail(void)
+{
+    static mtc c;
+    char out[64];
+    int w;
+    open_fake(&c);
+    w = mtc_fit_tail(&c, "Font: abcd", 5, 120, out, sizeof out);   /* fits */
+    CHECK_STR(out, "Font: abcd");
+    w = mtc_fit_tail(&c, "Fallback font: abcd", 13, 90, out, sizeof out);
+    CHECK(w <= 90);
+    CHECK(strstr(out, "...: abcd") != 0);        /* the value is whole, the label carries the ellipsis */
+    CHECK(strncmp(out, "Fallback font", 13) != 0);
+    w = mtc_fit_tail(&c, "Font: abcdefgh", 4, 24, out, sizeof out);   /* even the value does not fit: cut as mtc_fit */
+    CHECK(w <= 24);
+    mtc_free(&c);
+}
+
 /* the wrapped-line and prefix widths gui.c uses for the viewer and the message */
 static void test_prefix(void)
 {
@@ -115,7 +133,7 @@ static void test_gui_uses_menu_text(void)
     CHECK(strstr(src, " Text(") == 0 && strstr(src, "\tText(") == 0);
     CHECK(strstr(src, "return mt_width((menu_text *)ctx, s);") != 0);
     CHECK(strstr(src, "mt_draw(g->mt") != 0);
-    CHECK(strstr(src, "mt_fit(g->mt") != 0);
+    CHECK(strstr(src, "mt_fit_tail(g->mt") != 0);
     CHECK(strstr(src, "mt_prefix(g->mt") != 0);
     CHECK(strstr(src, "mt_aa_glyphs(g->mt)") != 0);
 }
@@ -205,6 +223,7 @@ void suite_menu_text(void)
     test_ttf_tall_pixels();
     test_width();
     test_fit();
+    test_fit_tail();
     test_cache();
     test_scale();
     test_prefix();

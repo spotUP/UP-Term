@@ -33,6 +33,8 @@ int mt_prefix(menu_text *m, const char *text, int len, int maxw);
 long mt_aa_glyphs(const menu_text *m);
 /* text cut with an ellipsis to fit maxw pixels into out (n bytes); the pixel width of out */
 int mt_fit(menu_text *m, const char *text, int maxw, char *out, int n);
+/* mt_fit that keeps text[keep..] whole (see mtc_fit_tail) */
+int mt_fit_tail(menu_text *m, const char *text, int keep, int maxw, char *out, int n);
 /* text with its line top at x, y of rp, fg over bg (0xRRGGBB). The caller has not filled the background of
  * TrueType text: it is drawn over bg. */
 void mt_draw(menu_text *m, struct RastPort *rp, int x, int y, const char *text, ULONG fg, ULONG bg);

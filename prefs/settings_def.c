@@ -476,6 +476,14 @@ int sd_row_label(const sd_setting *s, const void *store, char *buf, int width)
     int len = sd_label_plain(s, buf, width), room, vl = (int)strlen(v);
     if (len + 2 >= width)
         return len;
+    if (len + 2 + vl >= width && width - 1 - 2 - vl >= 3) {
+        /* the whole row does not fit but the value does with a shortened label: cut the label (".." marks
+         * it), keep the value, which is what the user is changing */
+        int head = width - 1 - 2 - vl;
+        buf[head - 2] = '.';
+        buf[head - 1] = '.';
+        len = head;
+    }
     buf[len++] = ':';
     buf[len++] = ' ';
     room = width - 1 - len;

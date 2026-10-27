@@ -307,6 +307,11 @@ int mt_fit(menu_text *m, const char *text, int maxw, char *out, int n)
     return mtc_fit(&m->core, text, maxw, out, n);
 }
 
+int mt_fit_tail(menu_text *m, const char *text, int keep, int maxw, char *out, int n)
+{
+    return mtc_fit_tail(&m->core, text, keep, maxw, out, n);
+}
+
 void mt_draw(menu_text *m, struct RastPort *rp, int x, int y, const char *text, ULONG fg, ULONG bg)
 {
     int n;

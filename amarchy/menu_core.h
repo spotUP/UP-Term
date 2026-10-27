@@ -20,13 +20,17 @@
 extern int (*mn_list_hook)(int profile, char names[][KM_LABEL], int max);
 #define MN_IS_CHOICE(it) ((it)->row == MN_ROW_CHOICE)
 
+/* The room of a row label. A settings row is "Label: Value" (sd_row_label), longer than the 31 characters of a
+ * keymap label (KM_LABEL), and its value must not be cut off by the buffer. */
+#define MN_LABEL 96
+
 typedef struct mn_item {
     int  row;                   /* index into keymap.menu, MN_ROW_GROUP for a group (a node with children),
                                  * MN_ROW_INDEX for an app index row (amarchy/index_core.h),
                                  * MN_ROW_SETTING for a setting row (settings_def) */
     int  ix;                    /* for MN_ROW_INDEX: the row in the ix_index; MN_ROW_SETTING: the SDI_* id; else -1 */
     char seg[KM_ID];            /* the id segment: the node path of a group is node + "." + seg */
-    char label[KM_LABEL];       /* a leaf's own label; a group's segment with a capital */
+    char label[MN_LABEL];       /* a leaf's own label; a group's segment with a capital */
 } mn_item;
 
 /* Filter match of one label: 2 when the label starts with the filter, 1 when it contains it,
@@ -82,6 +86,10 @@ enum { MN_BACK_CLEAR_FILTER, MN_BACK_DROP_CHAR, MN_BACK_UP, MN_BACK_CLOSE };
 int mn_back(int bs, const char *filter, const char *node);
 /* The node an item opens (groups only): node + "." + seg. */
 void mn_child_node(const char *node, const mn_item *it, char *out, int n);
+/* 1 when the Right arrow enters the row, as Return does: a group, a settings page, a cycle or colour or list
+ * setting (its submenu). 0 for a leaf, an index row, a choice row and a check/number/text setting: Right
+ * never runs or changes them. The one decision the drawn and the text menu share. */
+int mn_right_enters(const mn_item *it);
 
 /* Every level a menu opened at `node` can show: node itself, then each group below it, each passed
  * to fn as its entries (mn_children) and their count. The window sizes (mn_osd_size here, the drawn
