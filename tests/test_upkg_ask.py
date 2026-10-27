@@ -60,10 +60,12 @@ class Ask(unittest.TestCase):
             f.write(FAKE_UI)
         os.chmod(p, 0o755)
 
-    def run_ask(self, shell, typed=None, plain=False):
+    def run_ask(self, shell, typed=None, plain=False, state=None):
         env = {'PATH': self.bin + ':/usr/bin:/bin', 'UI_LOG': self.log, 'CLEAR_LOG': self.clear_log, 'HOME': self.tmp}
         if plain:
             env['UPKG_ASK_PLAIN'] = '1'
+        if state:
+            env['UPKG_ASK_STATE'] = state
         if typed is None:
             r = subprocess.run(shell + [ASK, self.q, self.out], stdin=subprocess.DEVNULL,
                                capture_output=True, env=env, timeout=20)
@@ -143,6 +145,26 @@ class Ask(unittest.TestCase):
                 self.assertEqual(calls[1], TITLE + '2/3 --defaultno --yesno Start at boot? 0 0')
                 self.assertEqual(calls[2], TITLE + '3/3 --no-items --default-item sonnet --menu Model 0 0 0 '
                                            'haiku  sonnet  opus ')
+
+    def test_an_upgrade_asks_only_new_questions(self):
+        """upterm-ports PR 14: upkg exports UPKG_ASK_STATE (info_dir/NAME.answered). Questions an earlier
+        install answered keep that answer without asking; only the new one is asked, and is recorded"""
+        self.fake_ui()
+        for sh in self.shells:
+            with self.subTest(sh=sh[0]):
+                if os.path.exists(self.log):
+                    os.remove(self.log)
+                state = os.path.join(self.tmp, 'up-claude.answered')
+                with open(state, 'w') as f:
+                    f.write("REMOTE='old.lan 2323'\nSTART='yes'\n")
+                self.run_ask(sh, "0 opus\n", state=state)
+                self.assertEqual(self.answers(sh), 'old.lan 2323|yes|opus')
+                with open(self.log) as f:
+                    calls = f.read().splitlines()
+                self.assertEqual(calls, [TITLE + '1/1 --no-items --default-item sonnet --menu Model 0 0 0 '
+                                                 'haiku  sonnet  opus '])
+                with open(state) as f:
+                    self.assertIn("MODEL='opus'", f.read().splitlines())
 
     def test_the_last_question_is_cleared_after_upkg_ui(self):
         """regression (owner, 2026-10-21): upkg-ui stays on the normal screen (no Shell flash between

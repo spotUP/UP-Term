@@ -17,6 +17,13 @@
 # plain prompts read from stdin; with no terminal (or output into a pipe) every question takes
 # its default.
 # UPKG_ASK_PLAIN=1 forces the plain prompts.
+#
+# UPKG_ASK_STATE (set by upkg for a postinst: info_dir/NAME.answered) is the file of question ids this package's
+# installs answered, as KEY='value' lines. A question whose key is in it is not asked again: the earlier answer is
+# kept silently (so an upgrade asks only the questions the older version never asked). Every question asked on
+# a terminal is added to it. A default taken without asking is not recorded.
+# UPKG_ASK_UNATTENDED=1 (upkg: Install All, a progress box) says the missing terminal is on purpose: a question not
+# recorded takes its default. Without it and without a terminal the default is taken too, with a note on stderr.
 
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then
     echo "usage: upkg-ask QUESTIONS ANSWERS [NAME]" >&2
@@ -35,11 +42,21 @@ ask_ui() {
     upkg-ui --title "UP-TERM ADD-ON" --backtitle "${name:+$name }$index/$total" "$@"
 }
 
+state=${UPKG_ASK_STATE:-}
+# recorded KEY: the question was answered by an earlier install of this package
+recorded() {
+    [ -n "$state" ] && [ -r "$state" ] && grep -q "^$1='" "$state"
+}
+recorded_value() {
+    ( . "$state" >/dev/null 2>&1; eval "printf '%s' \"\${$1}\"" )
+}
+
 mode=plain
 # upkg-ui and plain prompts both need the terminal on stdout too: run inside "upkg browse"'s
 # programbox, stdout is its pipe and a question would only show as escape-code text there
 if [ ! -t 0 ] || [ ! -t 1 ]; then
     mode=defaults
+    [ -n "$UPKG_ASK_UNATTENDED" ] || echo "upkg-ask: no terminal, the questions not answered before take their defaults" >&2
 elif [ -z "$UPKG_ASK_PLAIN" ] && command -v upkg-ui >/dev/null 2>&1; then
     mode=ui
 fi
@@ -48,7 +65,7 @@ tmp="$answers.tmp"
 # the questions to ask, for the "i/n" of the masthead
 total=0
 while IFS='|' read -r key rest; do
-    case $key in "" | "#"*) ;; *) total=$((total + 1)) ;; esac
+    case $key in "" | "#"*) ;; *) recorded "$key" || total=$((total + 1)) ;; esac
 done < "$questions"
 index=0
 
@@ -80,6 +97,10 @@ quote() {
 exec 3<&0
 while IFS='|' read -r key type prompt def choices; do
     case $key in "" | "#"*) continue ;; esac
+    if recorded "$key"; then
+        quote "$key" "$(recorded_value "$key")" >> "$answers"
+        continue
+    fi
     index=$((index + 1))
     def=$(default_of "$def")
     ans=$def
@@ -118,6 +139,7 @@ while IFS='|' read -r key type prompt def choices; do
         case ,$choices, in *,"$line",*) [ -n "$line" ] && ans=$line ;; esac ;;
     esac
     quote "$key" "$ans" >> "$answers"
+    [ $mode = defaults ] || { [ -z "$state" ] || quote "$key" "$ans" >> "$state"; }
 done < "$questions"
 rm -f "$tmp"
 # upkg-ui keeps its last screen on the normal screen (no Shell between two questions): clear the last
