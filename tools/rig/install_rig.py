@@ -1371,12 +1371,13 @@ def case_all(ck):
     base_uninstall(ck, before, expect_user_startup_clean=False)
     for pkg in based_ids():
         addon_gone(ck, pkg, base_stays=False)
-    for pkg in ('claude', 'pi'):
+    rest = [p for p in standalone_ids() if p != 'python']
+    for pkg in rest:
         addon_absent_not(ck, pkg, 'after the base Uninstall (stand-alone: the base leaves it)')
         ck(run('List >NIL: ENVARC:upkg/%s/MANIFEST' % archive(pkg))[0] == 0, '%s: its record survives the base Uninstall' % pkg)
     ck(run('List >NIL: C:uptelnet')[0] == 0, 'all: C:uptelnet stays while Claude\'s record is there')
     ck(run('List >NIL: UP-Term:pkg')[0] != 0, 'all: no UP-Term:pkg left')
-    for pkg in ('claude', 'pi'):
+    for pkg in rest:
         rc, out = run_long('rununinstall-' + pkg)
         ck(rc == 0, '%s: its Uninstall runs with no base' % pkg, out)
         addon_gone(ck, pkg, base_stays=False, with_base=False)
