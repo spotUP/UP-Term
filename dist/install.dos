@@ -1,4 +1,4 @@
-.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,CURL/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -10,12 +10,12 @@
 ;               and every program finds the files through UP-Term:)
 ;     [SHELLICON]   (the Shell icon starts vsh in an UP-Term window: no unless asked)
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
-;     [SSH] [BEBBOGET] [CURL]   (the network tools, each: none unless asked)
+;     [SSH] [BEBBOGET]   (the network tools, each: none unless asked)
 ;     [WASABI]  (wasabid 0.11b2, remote development and Claude Code on another computer, with a
 ;               key: no unless asked; replaces an older wasabid and amiagent of ours)
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
 ;  up-nvim, Claude and amiga-pi, each with its own Install.)
-;     [CPU040|CPU060]  (the CPU's builds of curl and libcryptossh.library)
+;     [CPU040|CPU060]  (the CPU's build of libcryptossh.library)
 ;     [STEP <part>]  (only that part: see "The parts" below)
 ; From a Shell without Installer, the same line installs (and asks itself).
 ; It asks whether UP-Term should also serve the system's CON: and RAW:
@@ -45,7 +45,6 @@ Set optshellicon "{SHELLICON}"
 Set optserial "{SERIAL}"
 Set optssh "{SSH}"
 Set optbebboget "{BEBBOGET}"
-Set optcurl "{CURL}"
 Set optwasabi "{WASABI}"
 Set optcpu040 "{CPU040}"
 Set optcpu060 "{CPU060}"
@@ -79,9 +78,6 @@ If NOT "{STEP}" EQ ""
   EndIf
   If EXISTS ENV:UPTOPTBEBBOGET
     Set optbebboget BEBBOGET
-  EndIf
-  If EXISTS ENV:UPTOPTCURL
-    Set optcurl CURL
   EndIf
   If EXISTS ENV:UPTOPTWASABI
     Set optwasabi WASABI
@@ -490,8 +486,7 @@ Copy UPTerm C:UPTerm CLONE
 ; stack), the Amiga end of Claude Code on a Mac
 Copy uptelnet C:uptelnet CLONE
 ; The network tools, beside coreutils: BebboSSH 1.46.1 (bebbossh, bebboscp,
-; bebbosshkeygen, bebbosshd) and bebboget 1.11, by Stefan Franke, GPL v3+,
-; and curl 8.22.0 (below):
+; bebbosshkeygen, bebbosshd) and bebboget 1.11, by Stefan Franke, GPL v3+:
 ; COPYING and the complete source are in the kit's net drawer. vshrc makes
 ; ssh and scp of them. Their library goes to LIBS: (replacing an older one of ours;
 ; a user's own BebboSSH keeps its library, with a note when it is older;
@@ -530,18 +525,6 @@ If "$optssh" EQ "SSH"
 EndIf
 If "$optbebboget" EQ "BEBBOGET"
   Copy net/bebboget-1.11/bebboget net/bebboget-1.11/installcerts UP-Term:bin CLONE QUIET
-EndIf
-; curl 8.22.0 (the curl licence, net/curl-8.22.0); it needs AmiSSL 5
-If "$optcurl" EQ "CURL"
-  If "$optcpu060" EQ "CPU060"
-    Copy net/curl-8.22.0/curl.060 UP-Term:bin/curl CLONE QUIET
-  Else
-    If "$optcpu040" EQ "CPU040"
-      Copy net/curl-8.22.0/curl.040 UP-Term:bin/curl CLONE QUIET
-    Else
-      Copy net/curl-8.22.0/curl.020 UP-Term:bin/curl CLONE QUIET
-    EndIf
-  EndIf
 EndIf
 ; The old amiagent (0.13.2, UP-Term:bin/amiagent, an option of earlier kits) is gone: wasabid below
 ; replaces it. Removed when its marker says it is ours -- stopped first (Ctrl-C, its own way

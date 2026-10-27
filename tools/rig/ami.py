@@ -62,8 +62,10 @@ def _m():
 
 
 @contextlib.contextmanager
-def _conn(timeout=None):
+def _conn(timeout=None, touch=True):
+    """Every connection to a rig's wasabid stamps the idle watchdog's clock (paths.touch_command), AMI_HOST runs not."""
     m = _m()
+    if touch and not os.environ.get('AMI_HOST'): paths.touch_command()
     try:
         c = m.Conn(HOST, PORT, TOKEN, timeout=timeout)
     except m.WasabiError as e:
@@ -463,7 +465,7 @@ def req(code, payload=b'', timeout=150):
     """One legacy operation, answered in the legacy shape. timeout: the connection's silence limit."""
     m = _m()
     paths.cap_fsuae_log()   # every rig script passes here: the FS-UAE log never outgrows paths.FSUAE_LOG_MAX
-    with _conn(timeout) as c:
+    with _conn(timeout, touch=code != 0x01) as c:   # a ping (rig.py status, the watchdog) is not use
         try:
             if code == 0x01: return c.banner.encode('latin-1')
             if code == 0x02: return _exec(c, payload)
@@ -719,7 +721,7 @@ def main(a):
         if not new: raise SystemExit('open: no new window appeared')
         for w in new: print('window %s task %s at %s,%s %sx%s' % (w.get('title'), w.get('task'), w['left'], w['top'], w['width'], w['height']))
     elif cmd == 'long':
-        rc = long(a[1], int(a[2]) if len(a) > 2 else 3600, a[3] if len(a) > 3 else 'ami long')
+        with paths.long_run(): rc = long(a[1], int(a[2]) if len(a) > 2 else 3600, a[3] if len(a) > 3 else 'ami long')
         if rc is None: raise SystemExit('long: %s did not finish (its window on the Amiga shows why)' % a[1])
         print('rc', rc)
     else: raise SystemExit(__doc__)

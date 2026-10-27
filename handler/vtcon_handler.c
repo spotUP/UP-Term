@@ -5385,8 +5385,12 @@ static void close_gadget(con *c)
         return;
     }
     c->closing = 1;
-    if (tty_active(c))
+    if (tty_active(c)) {
         ld_hangup(&c->ld); /* termios mode (an ixemul program, curses): a hang-up, its reads and select see the end */
+        /* an editor in a read loop ignores the end (and traps SIGINT): the foreground group gets the SIGHUP
+         * a patched ixemul turns CTRL_D into (vtcon_packets.h), as closing a terminal does */
+        send_break(c, SIGBREAKF_CTRL_D);
+    }
     if (!c->raw)
         c->eof = 1;
     else if (!vtwin_raw_report(&c->w, 11)) /* IECLASS_CLOSEWINDOW, if asked */

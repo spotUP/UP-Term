@@ -141,6 +141,8 @@
  * Unix signals for the foreground process group:
  *   VINTR ^C  -> SIGBREAKF_CTRL_C -> SIGINT
  *   VQUIT ^\  -> SIGBREAKF_CTRL_E -> SIGQUIT
- *   VSUSP ^Z  -> SIGBREAKF_CTRL_F -> SIGTSTP */
+ *   VSUSP ^Z  -> SIGBREAKF_CTRL_F -> SIGTSTP
+ * and closing the window (close gadget, menu) is a hang-up:
+ *   SIGBREAKF_CTRL_D -> SIGHUP */
 
 #endif

@@ -471,9 +471,6 @@ class AmiSSLPart(unittest.TestCase):
         self.assertIn('(set #sslnote "")', s[s.index('(procedure P_AMISSL\n'):][:300])
         self.assertIn('(set #sslrows 0)', s[s.index('(procedure P_AMISSL\n'):][:300])
 
-    def test_curl_names_the_amissl_it_uses(self):
-        self.assertIn('"curl (AmiSSL 5 is installed first)"', INSTALLER)
-
     def test_uninstall_says_it_leaves_amissl_in_place(self):
         self.assertRegex((ROOT / "dist/Uninstall").read_text(encoding="latin-1"), r'(?i);[^\n]*AmiSSL[^\n]*(stays|left|shared)')
 

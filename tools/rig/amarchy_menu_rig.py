@@ -91,18 +91,30 @@ def root_menu_rows():
 
 
 def r_rows_no_terminal():
-    # TERM-ROWS-ONLY-OVER-TERMINAL: no UP-Term window exists yet, the menu is the only one. The rows
-    # whose action needs a terminal (tab:, menuid:, slash:: the Style group) are hidden; Apps stays, and so does Window,
-    # whose win: rows (cycle, move, size ...) act on any window and are shown with no UP-Term window (9ad02f94).
+    # TERM-ROWS-ONLY-OVER-TERMINAL: no UP-Term window exists yet, the menu is the only one. Every root group keeps
+    # a row that runs without a terminal: Apps, Window (its win: rows act on any window, 9ad02f94) and Style, whose
+    # Terminal group (Theme, Font, Background) stays shown and opens a terminal first (27eda4b7, menu_tree.c
+    # mn_row_needs). Which rows inside a group hide is checked on the host (tests/test_keymap.c).
     up, rows = root_menu_rows()
-    ok = up and 'Apps' in rows and 'Style' not in rows and 'Window' in rows
+    ok = up and 'Apps' in rows and 'Style' in rows and 'Window' in rows
     return ok, 'no UP-Term window: drawn root rows %s (menu up %s)' % (rows, up)
 
 
 def r_rows_over_terminal():
-    # the same menu over an UP-Term window lists Style and Window again
+    # the same menu over an UP-Term window lists the same groups. Super+Space over a terminal opens the text menu
+    # by default (menu-in-terminal = text), so the row sets the drawn one for its read and puts both stores back.
+    import amarchy_rig
     open_terminal()
-    up, rows = root_menu_rows()
+    saved = {p: ami.read_file(p) for p in (X9_CONF, X9_AMCONF)}
+    try:
+        c.run('MakeDir >NIL: ENV:up-term ENV:Amarchy')
+        x9_drawn()
+        amarchy_rig.arexx('RELOAD')
+        up, rows = root_menu_rows()
+    finally:
+        for p, b in saved.items():
+            ami.restore_file(p, b)
+        amarchy_rig.arexx('RELOAD')
     ok = up and 'Apps' in rows and 'Style' in rows and 'Window' in rows
     return ok, 'over an UP-Term window: drawn root rows %s (menu up %s)' % (rows, up)
 
@@ -1673,6 +1685,15 @@ def ensure_os32_rig():
     return '' if is_os32(start_args()) else 'rig %d did not come up on OS 3.2' % paths.RIG_N
 
 
+def run_row(fn):
+    """One row's (ok, detail). A helper that gives up (ami.py exits when a click cannot make a window active) fails
+    this row, not the table: the rows after it still run, and --failed re-runs it."""
+    try:
+        return fn()
+    except (Exception, SystemExit) as e:
+        return False, 'aborted: %s' % (e,)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--only')
@@ -1702,7 +1723,7 @@ def main():
                 total += 1
                 passed += old.startswith('ok')
                 continue
-        ok, detail = fn()
+        ok, detail = run_row(fn)
         f.write_text('%s %s\n' % ('ok' if ok else 'FAIL', detail))
         total += 1
         passed += ok
