@@ -264,6 +264,13 @@ const char *lf_profile(void)
     return lf_active;
 }
 
+/* lf_conf and the buffers are re-read on every call; the active profile name is the one thing that outlives
+ * an open. The warm menu server calls this at the start of each open. */
+void lf_reset(void)
+{
+    strcpy(lf_active, "default");
+}
+
 /* The UP-Term file as the Prefs window reads it: ENV:, else ENVARC:. The prefs_load result. */
 static int lf_load_upterm(const amconf_io *io)
 {

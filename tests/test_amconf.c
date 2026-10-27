@@ -716,6 +716,10 @@ static void test_lf_profile_and_theme_lists(void)
     mf_put(&m, UA, file);
     CHECK_INT(lf_profile_use(&io, "default"), LF_SET_OK);
     CHECK_INT(lf_profile_names(&io, names, sizeof names), 2);
+    CHECK_INT(lf_profile_use(&io, "work"), LF_SET_OK);
+    CHECK_STR(lf_profile(), "work");
+    lf_reset();                 /* a new open of the warm server starts on "default" again */
+    CHECK_STR(lf_profile(), "default");
     CHECK_STR(names, "default");
     CHECK_STR(names + 8, "work");
 

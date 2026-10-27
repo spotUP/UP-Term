@@ -67,6 +67,8 @@ lf_how lf_plan_ta(int kind, int term, int needs_value);
 /* The profile the rows edit (D5): "default" until lf_profile_use switches it. */
 const char *lf_profile(void);
 void lf_init(void);   /* installs the Theme and Profile list rows of the menu tree (mn_list_hook) */
+/* Back to the "default" profile: the state a freshly started process has (the warm menu server, per open). */
+void lf_reset(void);
 #define LF_PROFILE lf_profile()
 enum { LF_SET_OK = 0, LF_SET_READONLY = -200, LF_SET_INVALID = -201, LF_SET_FULL = -202, LF_SET_KIND = -203, LF_SET_CANCELLED = -204,
        LF_SET_EXISTS = -205, LF_SET_MISSING = -206, LF_SET_LAST = -207 };
