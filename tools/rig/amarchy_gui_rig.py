@@ -21,10 +21,12 @@ Proves, on the rig:
   * AMB3: with a second PUBLIC screen in front the menu and the leaf it opens (Apps, UP-Term) appear on it, and
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
-are assumed (no ENV:up-term/keymap override). Run: python3 tools/rig/amarchy_gui_rig.py [--no-build]"""
-import os, re, shlex, shutil, subprocess, sys, tempfile, time
+are assumed (no ENV:up-term/keymap override). Run: python3 tools/rig/amarchy_gui_rig.py [--setup] [--no-build]
+--setup first prepares the rig by itself (kills the kit Amarchy, puts the build to VTCX:Apps/bin, assigns UP-Term:
+and starts that Amarchy); alone it runs only that. --help prints this text."""
+import hashlib, os, re, shlex, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths, ami, condev_rig as c, stage_rig
+import paths, ami, condev_rig as c, stage_rig, amarchy_window_rig
 
 LAMIGA, SPACE, ESC, RETURN, DOWN = 0x40, 0x40, 0x45, 0x44, 0x4D
 TITLE = 'Amarchy'
@@ -36,6 +38,8 @@ bad = 0
 FONTS_OPENED = {}            # screen name -> (font name, ysize) the menu's font code opened (scrprobe)
 FONT_DRAWER = 'amarchy-fonts'
 JBMONO = os.path.join(REPO, 'build/jbmono/out')
+SETUP_NAMES = ('Amarchy', 'amarchy-menu', 'amarchy-gui')
+SETUP_BIN = 'VTCX:Apps/bin'
 
 
 def check(ok, what):
@@ -537,12 +541,46 @@ def case_pkg_search():
     close_menu()
 
 
+def setup():
+    """--setup: the rig runs the build's Amarchy from VTCX:Apps/bin with UP-Term: assigned to VTCX:Apps, no hand setup."""
+    for l in c.run('Status', 20)[1].splitlines():     # the kit Amarchy (and any earlier copy) must not hold the port
+        if 'UP-Term:bin/' in l or SETUP_BIN in l:
+            c.run('Break %s' % l.split()[1].rstrip(':'), 20)
+    time.sleep(2)
+    for n in SETUP_NAMES:
+        ami.put(os.path.join(REPO, 'build/amiga', n), '%s/%s' % (SETUP_BIN, n))
+    c.run('Assign UP-Term: VTCX:Apps ADD', 20)        # always with a target: Assign UP-Term: alone deletes it
+    for n in SETUP_NAMES:                             # md5sum is on the rig once UP-Term:bin resolves; absent: unverified
+        with open(os.path.join(REPO, 'build/amiga', n), 'rb') as fh:
+            want = hashlib.md5(fh.read()).hexdigest()
+        out = c.run('%s/md5sum %s/%s' % (SETUP_BIN, SETUP_BIN, n), 30)[1]
+        got = re.search(r'[0-9a-f]{32}', out)
+        if got:
+            check(got.group(0) == want, 'setup: %s/%s matches build/amiga/%s' % (SETUP_BIN, n, n))
+        else:
+            print('setup: md5 of %s not checked (no md5sum on the rig): %s' % (n, out.strip()[:60]), flush=True)
+    c.run('Run >NIL: %s/Amarchy' % SETUP_BIN, 20)
+    for _ in range(20):
+        if amarchy_window_rig.port('STATUS', 5)[0] is not None:
+            return check(True, 'setup: Amarchy runs from %s, port AMARCHY answers' % SETUP_BIN)
+        time.sleep(1)
+    return check(False, 'setup: port AMARCHY did not appear in 20 s')
+
+
 def main():
+    if '--help' in sys.argv or '-h' in sys.argv:
+        print(__doc__)
+        return 0
+    if '--setup' in sys.argv:
+        setup()
+        if bad or len(sys.argv) == 2:
+            return 1 if bad else 0
     stage_rig.report(stage_rig.stage_build(NAMES, build='--no-build' not in sys.argv))
     geom = build_geom()
     stage_fonts()
-    c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
-    time.sleep(3)
+    if '--setup' not in sys.argv:      # --setup already started the Amarchy it set up
+        c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+        time.sleep(3)
     try:
         if '--groups' in sys.argv:      # on an OS 3.2 rig (the WORKBENCH port exists): only the group icons
             case_groups(geom)
