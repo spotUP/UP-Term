@@ -1256,8 +1256,8 @@ def tx_pick(prefix, rows=None):
             break
         rows = None
         time.sleep(0.5)
-    if rows is None:
-        return False
+    if rows is None:                     # not in the window: the level is longer than it (root: Packages sits below System)
+        return tx_scroll_pick(prefix)
     if not idx:
         return False
     first = 1 if rows and SCAN_STATUS.match(rows[0]) else 0
@@ -1267,6 +1267,35 @@ def tx_pick(prefix, rows=None):
     ami.key(RAW['return'])
     time.sleep(1.5)
     return True
+
+
+def tx_scroll_pick(prefix):
+    """The level has more rows than the window shows. Down one row at a time until a row starting with prefix is shown; the
+    window follows the cursor, so the cursor then sits on the last shown row: Up to the wanted row, Return. False when 40 Downs
+    never show it."""
+    for _ in range(40):
+        ami.key(RAW['down'])
+        time.sleep(0.4)
+        rows = tx_rows()
+        idx = [i for i, r in enumerate(rows) if r.startswith(prefix)]
+        if idx:
+            for _ in range(len(rows) - 1 - idx[0]):
+                ami.key(RAW['up'])
+                time.sleep(0.3)
+            ami.key(RAW['return'])
+            time.sleep(1.5)
+            return True
+    return False
+
+
+def ship_keymap():
+    """The rig kit's ENV:up-term/keymap can predate the Packages group (packages.* rows); put the shipped dist/keymap there and
+    let Amarchy read it (RELOAD), so the text menu root has its Packages row. Same step as amarchy_clash_rig r_setup."""
+    import amarchy_rig
+    c.run('Makedir >NIL: ENV:up-term')
+    ami.put(str(KEYMAP), 'ENV:up-term/keymap')
+    amarchy_rig.arexx('RELOAD')
+    time.sleep(2)
 
 
 def tx_open_packages(g, tag):
@@ -1315,6 +1344,7 @@ def r_pkg_text():
     fd = g.feed_dir()
     names = g.feed_names(open(os.path.join(fd, 'Packages')).read())
     g.setup()
+    ship_keymap()
     ensure_terminal()
     rel = g.local_feed(fd)
     pick = None
@@ -1444,6 +1474,148 @@ def r_pkg_text():
 
 
 ROWS.append(('pkg_text', r_pkg_text))
+
+
+def tx_fail_job(g, tag, what, want_rc, want_word):
+    """After the job row was picked: waits for AMARCHY_JOB_DONE, asserts the failing rc and AMARCHY_JOB_WORD, closes the view."""
+    rc = g.job_done()
+    g.check(rc == want_rc, '%s: %s job rc %d (rc %s)' % (tag, what, want_rc, rc))
+    g.check(g.job_word() == want_word, '%s: %s AMARCHY_JOB_WORD is %r (got %r)' % (tag, what, want_word, g.job_word()))
+    for _ in range(10):
+        time.sleep(1.5)
+        if 'Enter: Accept' not in screen_text():
+            break
+        ami.key(RAW['return'])
+    time.sleep(2)
+
+
+def tx_browse(g, tag, names):
+    """Fresh text menu > Packages > Refresh (job rc 0) > menu reopened > Browse, into the one section when the feed has no
+    Section; the Browse rows (None on a failed step)."""
+    pk = tx_open_packages(g, tag)
+    if pk is None:
+        return None
+    c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+    if not g.check(tx_pick('Refresh', pk), '%s: Refresh row' % tag):
+        return None
+    tx_job(g, tag, 'Refresh')
+    tx_leave_menu()
+    pk = tx_open_packages(g, tag)
+    if pk is None or not g.check(tx_pick('Browse', pk), '%s: Browse row' % tag):
+        return None
+    rows = tx_rows()
+    if len(rows) == 1 and not any(n in rows[0] for n in names):
+        tx_pick(rows[0], rows)
+        rows = tx_rows()
+    print('%s: browse rows: %s' % (tag, rows), flush=True)
+    return rows
+
+
+def r_pkg_text_search_tags():
+    """PG.8 in the text menu: Search lists only matches, and Browse rows carry [upkg] / [UHC] tags (feed + a staged UHC
+    catalogue entry, gui rig uhc_catalogue; tag_problems is shared with the drawn --pkg-tags)."""
+    import amarchy_gui_rig as g
+    tag, start_bad = 'pkg_text_search', g.bad
+    fd = g.feed_dir()
+    names = g.feed_names(open(os.path.join(fd, 'Packages')).read())
+    g.setup()
+    ship_keymap()
+    ensure_terminal()
+    drop = g.uhc_catalogue()
+    rel = g.local_feed(fd)
+    try:
+        rows = tx_browse(g, tag, names + [g.PKG_UHC])
+        if rows is None:
+            return False, 'no Browse'
+        bad = g.tag_problems(rows, names, g.PKG_UHC, windowed=True)   # the text menu shows 8 of the 10 rows
+        g.check(not bad, '%s: the shown Browse rows carry [upkg] for feed packages and [UHC] for %s (%d shown; problems %s)' % (tag, g.PKG_UHC, len(rows), bad))
+        tx_leave_menu()
+        for word, expect in (('bitchx', 'bitchx'), (g.PKG_UHC, g.PKG_UHC)):
+            pk = tx_open_packages(g, tag)
+            if pk is None or not g.check(tx_pick('Search', pk), '%s: Search row' % tag):
+                return False, 'no Search'
+            time.sleep(1)
+            x9_type(word)
+            ami.key(RAW['return'])
+            time.sleep(2)
+            got = tx_rows()
+            print('%s: search %r rows: %s' % (tag, word, got), flush=True)
+            g.check(0 < len(got) < len(rows) and all(expect in r.lower() for r in got),
+                    '%s: Search %r lists only matches (%d of %d rows: %s)' % (tag, word, len(got), len(rows), got))
+            tx_leave_menu()
+    finally:
+        tx_leave_menu()
+        c.run('Delete >NIL: %s QUIET' % g.PKG_CONF)
+        rel.close()
+        drop()
+    return g.bad == start_bad, '%d failed checks' % (g.bad - start_bad)
+
+
+def tx_install_row(g, tag, rows, name):
+    """Down to the Browse row of `name`, Return, Install; False on a failed step. The job view is up after it."""
+    hit = [r for r in rows if name in r]
+    if not g.check(len(hit) == 1, '%s: Browse has the row for %s (%s)' % (tag, name, hit)):
+        return False
+    tx_pick(hit[0], rows)
+    c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE ENV:AMARCHY_JOB_WORD QUIET')
+    acts = tx_rows()
+    return g.check(tx_pick('Install', acts), '%s: the row offers Install (rows: %s)' % (tag, acts))
+
+
+def r_pkg_text_fail():
+    """PG.8 failing jobs in the text job view: a ghost package whose .ipk 404s ends rc 13 "Network error"; a name the menu
+    cache lists but upkg no longer knows ends rc 12 "Package not found" (drawn cases --pkg-fail, --pkg-notfound)."""
+    import amarchy_gui_rig as g, upkg_rig
+    tag, start_bad = 'pkg_text_fail', g.bad
+    fd = g.feed_dir()
+    text = open(os.path.join(fd, 'Packages')).read()
+    g.setup()
+    ship_keymap()
+    ensure_terminal()
+    rel = None
+    try:
+        base = set(g.all_titles())
+        for what, ghost, rc, word in (('fail', g.PKG_FAIL, 13, 'Network error'), ('notfound', g.PKG_GONE, 12, 'Package not found')):
+            full = text.rstrip('\n') + '\n\n' + g.ghost_stanza(ghost)
+            names = g.feed_names(full)
+            rel = g.local_feed(fd, packages=full)
+            rows = tx_browse(g, tag, names)
+            if rows is None:
+                return False, 'no Browse'
+            if what == 'notfound':
+                tx_leave_menu()
+                rel.set(fd, packages=text)       # the feed no longer lists it; upkg update outside the menu keeps the menu cache
+                urc = upkg_rig.upkg('pg8tnf-update', 'update', 300, conf=False)[0]
+                g.check(urc == 0, '%s: upkg update against the reduced feed rc 0 (rc %s)' % (tag, urc))
+                pk = tx_open_packages(g, tag)
+                if pk is None or not g.check(tx_pick('Browse', pk), '%s: Browse row (cache)' % tag):
+                    return False, 'no Browse'
+                rows = tx_rows()
+                if len(rows) == 1 and not any(n in rows[0] for n in names):
+                    tx_pick(rows[0], rows)
+                    rows = tx_rows()
+            if not tx_install_row(g, tag, rows, ghost):
+                return False, 'no Install'
+            tx_fail_job(g, tag, what, rc, word)
+            hit = [r for r in tx_rows() if ghost in r]
+            g.check(not any('Installed' in r for r in hit), '%s: the %s row never reads Installed (%s)' % (tag, ghost, hit))
+            g.check(ghost not in g.installed_names(), '%s: upkg list-installed does not list %s' % (tag, ghost))
+            tx_leave_menu()
+            c.run('Delete >NIL: %s QUIET' % g.PKG_CONF)
+            rel.close()
+            rel = None
+        new = [t for t in g.all_titles() if t not in base and any(k in t.lower() for k in g.CONSOLE_WORDS)]
+        g.check(not new, '%s: no console or terminal window beyond the menu host (new: %s)' % (tag, new))
+    finally:
+        tx_leave_menu()
+        c.run('Delete >NIL: %s QUIET' % g.PKG_CONF)
+        if rel:
+            rel.close()
+    return g.bad == start_bad, '%d failed checks' % (g.bad - start_bad)
+
+
+ROWS.append(('pkg_text_search', r_pkg_text_search_tags))
+ROWS.append(('pkg_text_fail', r_pkg_text_fail))
 
 
 def start_args():

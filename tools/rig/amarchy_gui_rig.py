@@ -28,6 +28,8 @@ Proves, on the rig:
     failing rc (13: a 404 download; the plan said 12), the row never reads Installed, no console or terminal window opens
   * Packages > Install of a name the menu lists but upkg no longer knows (--pkg-notfound runs only this): rc 12 and
     AMARCHY_JOB_WORD "Package not found"; --pkg-fail also asserts AMARCHY_JOB_WORD "Network error"
+  * Packages > Browse rows carry [upkg] / [UHC] tags (--pkg-tags runs only this): a staged UHC catalogue entry reads [UHC],
+    every feed package [upkg]
   * AMB3: with a second PUBLIC screen in front the menu and the leaf it opens (Apps, UP-Term) appear on it, and
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
@@ -849,6 +851,58 @@ def job_word():
     return out.strip() if rc == 0 else None
 
 
+PKG_UHC = 'pg8uhc'          # the one UHC catalogue entry the rig stages (upkg reads SYS:UHC/Packages when ENV:UHC/UHCBIN is unset)
+
+
+def uhc_catalogue():
+    """Stages a UHC catalogue drawer (SYS:UHC/Packages, one script PKG_UHC and its .desc) so `upkg list --tsv` yields a
+    src uhc row; the rig has no UHC add-on. Returns the cleanup callable (removes SYS:UHC; the rig had none)."""
+    d = tempfile.mkdtemp(prefix='pg8uhc')
+    open(os.path.join(d, PKG_UHC), 'w').write('Set PKGNAME "%s"\nSet PKGVERSION "1.0"\nSet UHCRC 0\n' % PKG_UHC)
+    open(os.path.join(d, PKG_UHC + '.desc'), 'w').write('PG8 rig UHC package\n')
+    c.run('MakeDir SYS:UHC', 20)
+    c.run('MakeDir SYS:UHC/Packages', 20)
+    for f in (PKG_UHC, PKG_UHC + '.desc'):
+        ami.put(os.path.join(d, f), 'SYS:UHC/Packages/' + f)
+    return lambda: c.run('Delete >NIL: SYS:UHC ALL QUIET', 30)
+
+
+def tag_problems(rows, feed, uhc, windowed=False):
+    """Browse rows (a row reads "[upkg] name ..." or "[UHC] name ..."; pkgs_core.c pk_label): what is wrong with their tags,
+    [] when every feed package row carries [upkg] and every uhc package row [UHC]. windowed: the style shows a window of the
+    list (text menu, 8 rows), so a name that is not shown is skipped; the shown rows must still carry both tags."""
+    bad = []
+    for names, tag in ((feed, '[upkg] '), ((uhc,), '[UHC] ')):
+        for n in names:
+            hit = [r for r in rows if re.search(r'(^|\s)%s\b' % re.escape(n), r)]
+            if windowed and not hit:
+                continue
+            if len(hit) != 1 or not hit[0].lstrip().startswith(tag + n):
+                bad.append('%s: %s' % (n, hit))
+    if windowed and not (any(r.lstrip().startswith('[upkg] ') for r in rows) and any(r.lstrip().startswith('[UHC] ') for r in rows)):
+        bad.append('the shown rows lack a [upkg] row or a [UHC] row: %s' % rows)
+    return bad
+
+
+def case_pkg_tags():
+    """Packages > Browse rows carry [upkg] (an ipk of the feed) and [UHC] (a UHC catalogue entry) tags (plan PG.8)."""
+    fd = feed_dir()
+    feed = feed_names(open(os.path.join(fd, 'Packages')).read())
+    drop = uhc_catalogue()
+    rel = local_feed(fd)
+    try:
+        rows = refresh_to_browse(feed + [PKG_UHC], 'pkg_tags')
+        if rows is None:
+            return
+        bad = tag_problems(rows, feed, PKG_UHC)
+        check(not bad and len(rows) == len(feed) + 1, 'pkg_tags: %d feed rows read [upkg], %s reads [UHC] (rows %d; problems %s)' % (len(feed), PKG_UHC, len(rows), bad))
+    finally:
+        close_menu()
+        c.run('Delete >NIL: %s QUIET' % PKG_CONF)
+        rel.close()
+        drop()
+
+
 def case_pkg_fail():
     """Packages > Install of a package whose .ipk 404s (plan PG.8: a failing job shows Failed with its word).
     The footer word comes from job_core.c rc_words (a 404 on the .ipk is rc 13, "Network error"; rc 12, "Package not found", is a name missing from the index; case_pkg_notfound); the rig asserts the rc (ENV:AMARCHY_JOB_DONE = rc + 1), the word (ENV:AMARCHY_JOB_WORD), that the row never reads Installed and that no console
@@ -1006,6 +1060,8 @@ def main():
     try:
         if '--groups' in sys.argv:      # on an OS 3.2 rig (the WORKBENCH port exists): only the group icons
             case_groups(geom)
+        elif '--pkg-tags' in sys.argv:  # only the [upkg] / [UHC] tags of the Browse rows
+            case_pkg_tags()
         elif '--pkg-fail' in sys.argv:  # only Packages > Install of a package the feed cannot deliver
             case_pkg_fail()
         elif '--pkg-notfound' in sys.argv:  # only Packages > Install of a name upkg no longer knows (rc 12)
@@ -1026,6 +1082,7 @@ def main():
             case_pkg_search()
             case_pkg_install()
             case_pkg_upgrades()
+            case_pkg_tags()
             case_pkg_fail()
             case_pkg_notfound()
     finally:
