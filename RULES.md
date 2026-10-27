@@ -35,6 +35,8 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 |------|---------|
 | Host tests (CI) | `make test` |
 | One suite | `make test ONLY=<name>` (e.g. `ONLY=xterm`) |
+| New git worktree rig-ready in about a minute (build/ seeded from the main checkout, unchanged sources dated as there so make rebuilds only what the branch changed; `rig.py install` uses the main checkout's handler with a [WARN] when the worktree has none) | `make worktree-ready`, then `make <target>` and `UPTERM_RIG=<free n> python3 tools/rig/rig.py start --max --purpose "<who: what>"` |
+| One C suite fast (builds only `vttest_host`, runs under nice 19) | `make test-one SUITE=<name>` |
 | Amarchy keymap: parser, user overrides, clash refusals (Left Amiga + M/N, ctrl), matcher, menu tree, viewer rows (host) | `make test ONLY=keymap` |
 | Amarchy on a rig: the commodity's hotkeys, ARexx port (STATUS, RELOAD, RUN, SHOW, QUIT), Exchange Disable; the key table through the handler; the quick menu and key viewer (rig up, `make amiga amarchy-menu`; `UPTERM_RIG=<n>`) | `python3 tools/rig/amarchy_rig.py`, `python3 tools/rig/amarchy_clash_rig.py` (Intuition clashes, Swedish table, third-party chord, Exchange Disable), `python3 tools/rig/keymap_rig.py`, `python3 tools/rig/amarchy_menu_rig.py` |
 | Amarchy docs and release wiring (README key list generated from dist/keymap, lesson, man page, kit rows, startup block, RULES rows; run by `make dist-check`) | `python3 tests/test_amarchy_docs.py` (README list: `python3 tools/keymap_doc.py`) |

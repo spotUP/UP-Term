@@ -56,6 +56,8 @@ Machine flags (on `start`, and `setup` when the config alone changes):
 
 `dvmatrix.sh <kickstart file> <label>` boots the rig on another ROM and runs the console.device checks on it.
 
+In a fresh git worktree run `make worktree-ready` first (seeds build/ from the main checkout; `rig.py install` falls back to the main checkout's handler with a [WARN] when the worktree has none).
+
 `rig.py install` copies `build/amiga/vtcon-handler` into the VTC: drawer
 (host folder `build/rig/vtc`); a reboot is needed for DOS to load a new
 handler. `rig.py aga` and `rig.py rtg` choose the Workbench screen mode from the
