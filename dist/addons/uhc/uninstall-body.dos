@@ -29,10 +29,26 @@ Delete >NIL: ENV:UHCBIN QUIET
 ; the settings in ENVARC:UHC are yours and stay (as ENVARC:Claude does), over remove and over upgrade, which
 ; runs this part too
 Delete >NIL: ENV:UHC ALL QUIET
-; UP-Term:uhc is the drawer this archive copied (downloaded by install.dos); take it out whole
+; UP-Term:uhc holds the archive's own files and what UHC made afterwards (the packages the user installed with
+; pkg: ExtBin, ExtDoc, Packages/Installed, and db, dblocations). Like ENVARC:UHC those stay, over remove and over
+; upgrade: only the files the archive delivered are deleted (install.dos wrote them as UHC-Remove, one Delete
+; each), then the two stubs, then each drawer that is left empty. The drawer is never deleted whole.
+FailAt 21
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   If EXISTS UP-Term:uhc
-    Delete >NIL: UP-Term:uhc ALL QUIET FORCE
+    If EXISTS UP-Term:uhc/UHC-Remove
+      Execute UP-Term:uhc/UHC-Remove
+      Delete >NIL: UP-Term:uhc/UHC-Remove QUIET FORCE
+    Else
+      ; installed by up-uhc 1.2, which wrote no list: the archive's two drawers and its package scripts
+      Delete >NIL: UP-Term:uhc/C UP-Term:uhc/S ALL QUIET FORCE
+      Delete >NIL: "UP-Term:uhc/Packages/~(Installed)" QUIET FORCE
+    EndIf
+    Delete >NIL: UP-Term:uhc/S/uhcupdate UP-Term:uhc/S/uhccheck QUIET FORCE
+    Delete >NIL: UP-Term:uhc/C UP-Term:uhc/S UP-Term:uhc/Packages UP-Term:uhc QUIET
+    If EXISTS UP-Term:uhc
+      Echo "UP-Term:uhc/ExtBin, ExtDoc and Packages/Installed (your UHC packages) stay; delete UP-Term:uhc by hand to take them too."
+    EndIf
   EndIf
 EndIf

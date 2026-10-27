@@ -664,7 +664,7 @@ class DopusAddOn(unittest.TestCase):
 
 
 class UhcAddOn(unittest.TestCase):
-    """up-uhc 1.2 carries no UHC file: install.dos downloads the author's uhctools_os3.lha, checks it, unpacks it
+    """up-uhc 1.3 carries no UHC file: install.dos downloads the author's uhctools_os3.lha, checks it, unpacks it
     to UP-Term:uhc and applies our stubs. The host cannot run AmigaDOS: these tests read the assembled script
     text and its line order (rig 8 re-runs checks 1, 4, 5, 6 against the real thing, see
     thoughts/spot/term-findings/uhc-pr2-rework.md)."""
@@ -691,7 +691,7 @@ class UhcAddOn(unittest.TestCase):
         self.assertNotIn('curl', rule)
         self.assertNotIn('lha', rule)
         self.assertIn('Files/stubs', rule)
-        self.assertEqual(pkgs.get('uhc', 'version'), '1.2')
+        self.assertEqual(pkgs.get('uhc', 'version'), '1.3')
         L = self.dos()
         dl = self.at(L, 'UP-Term:bin/curl -fsSL -o T:uhctools_os3.lha https://uhc.megaburken.net/uhctools_os3.lha')
         chk = self.at(L, 'Search >NIL: T:uhc-unpack/UHCFixENV "VER: UHCFixENV 1."')
@@ -736,6 +736,29 @@ class UhcAddOn(unittest.TestCase):
                 self.assertEqual(f.read_bytes()[:4], b'\x00\x00\x03\xf3', 'C/%s is not a program' % f.name)
             self.assertIn('VER: UHCFixENV 1.', (pathlib.Path(d) / 'UHCFixENV').read_text('latin-1'))
             self.assertIn('VER: UHC-Startup 1.', (pathlib.Path(d) / 'UHC-Startup').read_text('latin-1'))
+
+    def test_uhcbin_ends_in_a_slash_because_the_uhc_scripts_append_the_name(self):
+        # rig 8 check 6: ${UHCBIN}Packages/Installed/<n> became UP-Term:uhcPackages/Installed/<n> and the record
+        # was never written. Both places that set it (now, and the S:User-Startup block) need the slash.
+        sets = [l.strip() for l in self.dos() if 'SetEnv UHCBIN' in l]
+        self.assertEqual(len(sets), 2)
+        for l in sets:
+            self.assertTrue(l.rstrip('"').endswith('UP-Term:uhc/'), l)
+
+    def test_remove_and_upgrade_keep_the_uhc_packages_the_user_installed(self):
+        # rig 8 extra: upgrade ran Delete UP-Term:uhc ALL and emptied ExtBin. Only the archive's files go.
+        u = (self.A / 'uninstall-body.dos').read_text()
+        dels = [l.strip() for l in u.splitlines() if l.strip().startswith('Delete')]
+        for l in dels:
+            args = l.split()
+            if 'ALL' in args:
+                self.assertNotIn('UP-Term:uhc', args, l)
+                self.assertTrue(all(a.startswith('UP-Term:uhc/') and a[12:] in ('C', 'S') for a in args if a.startswith('UP-Term:uhc')), l)
+            for kept in ('ExtBin', 'ExtDoc', 'Installed'):
+                self.assertFalse(kept in l and 'Packages/~(Installed)' not in l, l)
+        self.assertIn('Execute UP-Term:uhc/UHC-Remove', u)
+        self.assertIn('List #? ALL FILES', '\n'.join(self.dos()))
+        self.assertIn('>UP-Term:uhc/UHC-Remove', '\n'.join(self.dos()))
 
     def test_settings_in_envarc_uhc_survive_upgrade_and_remove(self):
         # rig 8 check 5: upkg runs uninstall-body.dos on upgrade as well as remove; deleting ENVARC:UHC there lost

@@ -95,12 +95,18 @@ Copy T:uhc-unpack UP-Term:uhc ALL CLONE QUIET
 If WARN
   Quit 20
 EndIf
+; What the archive delivered, as a script of Delete lines (one per file) that Uninstall runs: so remove and upgrade
+; take out the archive's own files and leave what UHC made afterwards (ExtBin, ExtDoc, Packages/Installed, db).
+CD T:uhc-unpack
+List #? ALL FILES LFORMAT="Delete >NIL: *"UP-Term:uhc/%P%N*" QUIET FORCE" >UP-Term:uhc/UHC-Remove
+CD "{DIR}"
 Delete >NIL: T:uhctools_os3.lha QUIET
 Delete >NIL: T:uhc-unpack ALL QUIET
+; UHCBIN ends in "/": UHC's scripts append the name straight on ($UHCBIN then Packages/Installed/<name>, or db).
 ; UHC: and UHCBIN: assigned now and at every boot, as UHC's own UHC-Startup expects (it assigns UHC: from
 ; $UHCBIN and adds UHC:C and UHC:S to the path). A block in S:User-Startup that does it only while
 ; UP-Term:uhc is there, so one left behind by an Uninstall that could not take it out does no harm.
-SetEnv UHCBIN UP-Term:uhc
+SetEnv UHCBIN UP-Term:uhc/
 ; UHC's scripts read ENV:UHC (TEMPDIR, AMINETMIRROR, READER, EXTBIN, EXTDOC), which only ENVARC:UHC fills at
 ; boot, and not always: made here, filled from ENVARC:UHC (the user's settings, kept over upgrade and remove),
 ; the missing defaults added by UHC's own UHCFixENV (TEMPDIR, AMINETMIRROR, READER; it also saves them to
@@ -112,7 +118,7 @@ If WARN
 EndIf
 Execute UP-Term:uhc/UHCFixENV
 ; EXTBIN and EXTDOC (UHC's S/pkg-envcheck makes them, but with the UHCBIN variable followed by the drawer name, which
-; is wrong for UHCBIN UP-Term:uhc): the drawers UP-Term:uhc/ExtBin and ExtDoc and the variables naming them,
+; is right only for a UHCBIN with the slash): the drawers UP-Term:uhc/ExtBin and ExtDoc and the variables naming them,
 ; only when the variable is missing or names a drawer that is not there, so a value the user set stays.
 If NOT EXISTS "${UHC/EXTBIN}"
   If NOT EXISTS UP-Term:uhc/ExtBin
@@ -179,7 +185,7 @@ If WARN
   If WARN
     Quit 20
   EndIf
-  Echo >>S:User-Startup "  SetEnv UHCBIN UP-Term:uhc"
+  Echo >>S:User-Startup "  SetEnv UHCBIN UP-Term:uhc/"
   If WARN
     Quit 20
   EndIf
