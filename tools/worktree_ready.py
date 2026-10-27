@@ -43,18 +43,24 @@ def seed(src, dst):
 
 
 def match_mtimes(main, tree):
+    """Invariant: a seeded binary is current only if every source it was built from equals main's.
+    A tracked file whose content equals main's gets main's mtime (make keeps the seeded binary). A file that
+    differs from main's, or that main lacks, is touched to now, so it is newer than any seeded binary and make
+    rebuilds it: its checkout mtime can be older than main's binary (worktree made earlier, binary built since)."""
     out = subprocess.run(["git", "-C", str(tree), "ls-files", "-z"], capture_output=True, check=True).stdout
     n = 0
     for name in out.decode().split("\0"):
         a, b = tree / name, main / name
-        if not name or not a.is_file() or not b.is_file():
+        if not name or not a.is_file():
+            continue
+        if not b.is_file() or a.stat().st_size != b.stat().st_size or a.read_bytes() != b.read_bytes():
+            os.utime(a)
             continue
         sa, sb = a.stat(), b.stat()
-        if sa.st_mtime_ns <= sb.st_mtime_ns or sa.st_size != sb.st_size:
+        if sa.st_mtime_ns <= sb.st_mtime_ns:
             continue
-        if a.read_bytes() == b.read_bytes():
-            os.utime(a, ns=(sb.st_atime_ns, sb.st_mtime_ns))
-            n += 1
+        os.utime(a, ns=(sb.st_atime_ns, sb.st_mtime_ns))
+        n += 1
     return n
 
 
