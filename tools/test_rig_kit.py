@@ -31,7 +31,7 @@ def boot(files, assigns=None):
     that is neither a device nor an assign when a line asks for it."""
     files = {k.lower(): v for k, v in files.items()}
     assigns = dict(assigns or {})
-    devices = {"VTC", "SYS", "C", "S", "L", "LIBS", "DEVS", "ENVARC", "BOOTX", "T", "ENV", "FONTS"}
+    devices = {"VTC", "SYS", "C", "S", "L", "LIBS", "DEVS", "ENVARC", "BOOTX", "T", "ENV", "FONTS", "RAM"}
     requesters, dirs = [], {"vtc:"}
 
     def resolve(path):
