@@ -858,6 +858,13 @@ def stage_amissl(vtc, m060):
     if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
         shutil.copyfile(src, dst)
 
+def ixnet_problems(path):
+    """Why an ixnet.library must not reach a rig. Before ixemul-vtcon PR 5 ixnet opened
+    "AmiTCP:libs/usergroup.library" at every open; the rig image has no AmiTCP: assign since 14d1c108, so
+    every ixemul program stopped on ramlib's "Please insert volume AmiTCP:" requester (2026-10-27, all rigs)."""
+    return ["opens AmiTCP:libs/usergroup.library"] if b"AmiTCP:libs" in pathlib.Path(path).read_bytes() else []
+
+
 def stage_ixemul(vtc, nofpu):
     """VTC:ixp6, first in LIBS: (RIG_LIBS), as the kit's patched ixemul.library and its ixnet.library, every
     start: the soft-float ixemul with --nofpu, else the FPU one. Before this only ixpty_rig and stackext_rig
@@ -867,6 +874,9 @@ def stage_ixemul(vtc, nofpu):
     ixemul = paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB
     for src, var in ((ixemul, "IXEMUL"), (paths.IXNET_LIB, "IXNET")):
         paths.require_input(src, var, src.name)
+    if ixnet_problems(paths.IXNET_LIB):
+        sys.exit("[ERROR] %s %s: build ixemul-vtcon at or after PR 5 (d1fa642), or set IXNET"
+                 % (paths.IXNET_LIB, ixnet_problems(paths.IXNET_LIB)[0]))
     (vtc / "ixp6").mkdir(parents=True, exist_ok=True)
     for src, name in ((ixemul, "ixemul.library"), (paths.IXNET_LIB, "ixnet.library")):
         dst = vtc / "ixp6" / name

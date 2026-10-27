@@ -79,5 +79,17 @@ if not staged:
 for p in staged:
     check(not curl_problems(p), "staged kit curl %s: %s" % (p, curl_problems(p)))
 
+# ixnet.library staged to VTC:ixp6 on every start: never one that opens AmiTCP:libs/usergroup.library
+# (the rig has no AmiTCP: assign, so ramlib asks for the volume and every ixemul program stops).
+with tempfile.TemporaryDirectory() as d:
+    old = pathlib.Path(d) / "ixnet.library"
+    old.write_bytes(b"\0AmiTCP:libs/usergroup.library\0")
+    check(rig.ixnet_problems(old), "the checker rejects an ixnet that opens AmiTCP:libs/usergroup.library")
+if rig.paths.IXNET_LIB.is_file():
+    check(not rig.ixnet_problems(rig.paths.IXNET_LIB),
+          "staged ixnet %s: %s" % (rig.paths.IXNET_LIB, rig.ixnet_problems(rig.paths.IXNET_LIB)))
+else:
+    print("[UNVERIFIED] no ixnet.library at %s" % rig.paths.IXNET_LIB)
+
 print("[%s] rig_libs: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)
