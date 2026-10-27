@@ -130,6 +130,10 @@ def into_style():
 
 
 def r_type_th():
+    # esc_up continues from the filtered Style level this row leaves; on a fresh rig no earlier row opened the menu
+    ensure_terminal()
+    if 'Filter' not in screen_text() and not x9_open_menu():
+        return False, 'text menu did not open'
     into_style()
     for k in 't', 'h':
         ami.key(RAW[k])
@@ -221,6 +225,7 @@ def r_drill_redraw():
     # Owner bug AM-DRILL-REDRAW (A1200): Style drawn over the root, then "th" left "   me" and a stale Font row.
     # Cause: ncurses tparm memo keyed by the %i-bumped cup values (upterm-ports 7600cda), so rows landed one
     # line off. The cells must hold exactly the submenu's rows after the drill and after the filter.
+    ensure_terminal()
     ami.key(RAW['space'], TEXT_MENU)
     time.sleep(1.5)
     into_style()
