@@ -28,6 +28,14 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
    from habit. A host test pins both: `make test ONLY=dist_stack` fails when a kit
    program has no cookie. For any crash, hang or Guru, the first probe is the
    same run under `Stack 262144`.
+7. **A rig runs only while someone uses it.** Each FS-UAE 060 rig burns about one
+   core even when idle. Whoever starts a rig (session or agent) stops it with
+   `UPTERM_RIG=<n> python3 tools/rig/rig.py stop` as soon as its last check ends
+   (after the running command and 5 s of quiet, never mid-write), and confirms with
+   `ps` that its fs-uae process is gone. Never keep a rig up "for later", for writing
+   the report, or for a step that is code work. Every brief that starts a rig ends
+   with "stop your rig, confirm by ps". A session that finds a running rig it does
+   not own reports it to the owner instead of stopping it; rig 1 is the owner's.
 
 ## Commands
 
