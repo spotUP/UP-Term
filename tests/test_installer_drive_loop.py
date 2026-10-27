@@ -57,5 +57,51 @@ class RoomLoop(unittest.TestCase):
         self.assertLess(clock.now, 600, 'drive went on to the timeout')
 
 
+class WasabidRefuses(unittest.TestCase):
+    def test_refused_connections_are_busy_not_a_crash(self):
+        """2026-10-27 rig 9: wasabid refused connections during the nested AmiSSL Install and the driver died with
+        ConnectionRefusedError in installer_running / the UITREE ask."""
+        import installer_rig as irg
+        clock, asks, runs = Clock(), [], []
+
+        def req(code, payload=b'', timeout=150):
+            asks.append(code)
+            if len(asks) <= 3:
+                raise ConnectionRefusedError(61, 'Connection refused')
+            return b'W 0 152 195 496x210 active "UP-Term"\n'
+
+        def run(cmd, timeout=60):
+            runs.append(cmd)
+            if len(runs) <= 2:
+                raise ConnectionRefusedError(61, 'Connection refused')
+            return (0 if len(runs) < 6 else 1), ''
+
+        saved_t, saved_req, saved_run = irg.time, irg.ami.req, irg.ir.run
+        irg.time, irg.ami.req, irg.ir.run = clock, req, run
+        try:
+            finished, log = irg.drive('refused-test', 'Installer', None, set(), timeout=5400, poll=1)
+        finally:
+            irg.time, irg.ami.req, irg.ir.run = saved_t, saved_req, saved_run
+        self.assertTrue(finished, log)
+        self.assertGreaterEqual(len(runs), 6)
+        self.assertGreaterEqual(len(asks), 4)   # three refused asks were retried
+
+    def test_refusing_forever_still_ends_at_the_timeout(self):
+        import installer_rig as irg
+        clock = Clock()
+        saved_t, saved_run = irg.time, irg.ir.run
+        irg.time = clock
+
+        def run(cmd, timeout=60):
+            raise ConnectionRefusedError(61, 'Connection refused')
+        irg.ir.run = run
+        try:
+            finished, log = irg.drive('refused-forever', 'Installer', None, set(), timeout=100)
+        finally:
+            irg.time, irg.ir.run = saved_t, saved_run
+        self.assertFalse(finished)
+        self.assertLess(clock.now, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

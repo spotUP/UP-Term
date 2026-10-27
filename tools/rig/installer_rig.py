@@ -178,6 +178,9 @@ def click(box):
     ami.click_px(x + w // 2, y + h // 2)
 
 
+BUSY_RETRY = 5   # s between asks while wasabid refuses connections
+
+
 def installer_running(inst):
     # Status COM matches the command as it was started (the full path when one was given)
     try:
@@ -186,6 +189,8 @@ def installer_running(inst):
         if 'still running' in str(e):   # the agent is busy with an earlier command: the Installer is not gone
             return True
         raise
+    except ConnectionError:   # wasabid refuses or resets while a nested Install (AmiSSL) hogs the machine: busy, not gone
+        return True
 
 
 def find_installer():
@@ -466,7 +471,11 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     while time.time() - t0 < timeout:
         if not installer_running(inst):
             return True, log
-        tree = ami.req(0x0D).decode('latin-1')
+        try:
+            tree = ami.req(0x0D).decode('latin-1')
+        except ConnectionError:   # wasabid not answering yet (nested Install at work): ask again; timeout still ends the run
+            time.sleep(BUSY_RETRY)
+            continue
         if any(t in ('System Request', 'Volume Request') for t, _ in windows(tree)):
             log.append('a system requester came up')
             dump(tree, 'requester')
