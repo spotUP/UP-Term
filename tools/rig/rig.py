@@ -918,9 +918,23 @@ def refresh_kit_shadows(vtc):
         shutil.copyfile(src, dst)
         print("refreshed gg/bin/sh", dst.stat().st_size, "bytes")
 
+def built_handler():
+    """build/amiga/vtcon-handler of this tree, else (a fresh worktree, `make worktree-ready` not run) the main
+    checkout's, with a [WARN] naming it: the handler is the one binary every rig run needs."""
+    mine = ROOT / "build/amiga/vtcon-handler"
+    if mine.is_file():
+        return mine
+    main = paths.MAIN_CHECKOUT / "build/amiga/vtcon-handler"
+    if not main.is_file():
+        sys.exit("[ERROR] no %s: run make amiga (make worktree-ready seeds build/ from the main checkout)" % mine)
+    print("[WARN] %s missing: installing the main checkout's %s (make worktree-ready, then make amiga, for this tree's)"
+          % (mine, main))
+    return main
+
+
 def install():
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)
-    shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
+    shutil.copyfile(built_handler(), RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
     # every other build/amiga program the drawer already holds: rig 2's VTC:
     # starts as a copy of old builds, and a script that runs VTC:<name> must

@@ -733,6 +733,16 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 # (that needs no ports build); `make amarchy-menu` after `make` in upterm-ports.
 UPKGUI_SYS ?= $(UPTERM_ROOT)/upterm-ports/build/sysroot/UP-Term
 AMARCHY_MENU_SRC := amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/prefs_dos.c config/upconf.c handler/kcmode.c handler/slash.c
+# A fresh git worktree rig-ready in about a minute: build/ seeded from the main checkout, source mtimes matched so make
+# rebuilds only what this branch changed (tools/worktree_ready.py).
+.PHONY: worktree-ready test-one
+worktree-ready:
+	python3 -I tools/worktree_ready.py
+# One suite, fast: only the host test binary, at the lowest priority (make test ONLY= rebuilds every test binary).
+# SUITE= a tests/test_main.c suite (vttest_host --has); python-only suites: make test ONLY=<name>.
+test-one: $(BUILD)/vttest_host
+	@if [ -z "$(SUITE)" ]; then echo "[ERROR] make test-one SUITE=<name>"; exit 2; fi
+	nice -n 19 ./$(BUILD)/vttest_host $(SUITE)
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
 $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) handler/frontscr.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
