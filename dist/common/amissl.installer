@@ -1,4 +1,4 @@
-; AmiSSL: LIBS:amisslmaster.library is there (curl cannot run without it), and #amissl-need is 1 when
+; AmiSSL: LIBS:amisslmaster.library is there (AmiSSL programs cannot run without it), and #amissl-need is 1 when
 ; it is missing or older than the one in the kit's own AmiSSL 5.27 drawer (Files/AmiSSL, run by
 ; P_AMISSL, which runs the check
 ; again afterwards: P_AMISSLCHECK). The versions are read, not written down here: getversion answers 0 for a missing file.

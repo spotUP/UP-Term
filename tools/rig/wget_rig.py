@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """wget_rig.py -- wget() and tldr() of dist/vshrc on the rig (unix-tool-ports 5.3 and 5.9; self-checking).
 
-The two functions are cut out of dist/vshrc and run by `VTC:vsh` with the kit's curl (dist/net/curl-8.22.0, 060
+The two functions are cut out of dist/vshrc and run by `VTC:vsh` with the kit's curl (the upterm-ports build, kit/userland/bin/curl, 060
 build) and build/amiga/mdv against a Python http.server on this Mac: FS-UAE's bsdsocket emulation connects from the
 Mac itself, so 127.0.0.1 on the Amiga is this Mac. No terminal window: each case is a vsh script writing to
 VTC:out/wget/<case>.txt, compared with what the case must print.
@@ -14,6 +14,7 @@ import ami, paths, userland_rig as u
 
 ROOT = paths.VTCON
 VTC = u.VTC
+PORTS_CURL = ROOT.parent / 'upterm-ports/build/kit/userland/bin/curl'   # make kit-stage in upterm-ports
 failed = 0
 
 
@@ -44,7 +45,7 @@ def main():
     try:
         u.amiga_delete('wget', 'out/wget')
         (VTC / 'userland/bin').mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ROOT / 'dist/net/curl-8.22.0/curl.060', VTC / 'userland/bin/curl')
+        shutil.copyfile(PORTS_CURL, VTC / 'userland/bin/curl')
         shutil.copyfile(ROOT / 'build/amiga/mdv', VTC / 'userland/bin/mdv')
         (VTC / 'out/wget').mkdir(parents=True)
         (VTC / 'wget/work').mkdir(parents=True)
