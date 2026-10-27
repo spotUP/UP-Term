@@ -138,7 +138,7 @@ SUMMARY = {
     'nvim': 'Neovim 0.12 in UP-Term:nvim',
     'python': 'Python 3.14 in SYS:Python3',
     'dopus': 'Directory Opus 5 5.104 (the 68k build for the CPU), through its own installer',
-    'uhc': 'the UHC tools (aget, UHCSearch and the get/search scripts) in UP-Term:uhc',
+    'uhc': 'the UHC tools (aget, UHCSearch and the get/search scripts) in SYS:UHC',
 }
 # Packages that never had another name (born as up-<x>, 2026-10-25 up-bitchx): they have no line in
 # dist/package-renames.txt and no old record to migrate. tests/test_dist_packages.py holds both facts.

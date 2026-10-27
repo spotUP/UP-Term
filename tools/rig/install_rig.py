@@ -989,7 +989,7 @@ def _move():
 ADDON_OPTIONS = {'claude': 'REMOTE="127.0.0.1 2399"'}
 # what each add-on's Install puts down: the files its Uninstall must take away again
 ADDON_FILES = {'claude': ('C:Claude',), 'pi': ('C:amiga-pi',), 'nvim': ('UP-Term:nvim/bin/nvim',),
-               'python': ('SYS:Python3/bin/python3',), 'uhc': ('UP-Term:uhc/C/aget',),
+               'python': ('SYS:Python3/bin/python3',), 'uhc': ('SYS:UHC/C/aget',),
                'dopus': ('DOpus5:DirectoryOpus',)}
 
 def addon_install_line(pkg, options=True):

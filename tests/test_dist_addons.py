@@ -664,8 +664,8 @@ class DopusAddOn(unittest.TestCase):
 
 
 class UhcAddOn(unittest.TestCase):
-    """up-uhc 1.3 carries no UHC file: install.dos downloads the author's uhctools_os3.lha, checks it, unpacks it
-    to UP-Term:uhc and applies our stubs. The host cannot run AmigaDOS: these tests read the assembled script
+    """up-uhc 1.4 carries no UHC file: install.dos downloads the author's uhctools_os3.lha, checks it, unpacks it
+    to SYS:UHC (or uses the install that is there) and applies our stubs. The host cannot run AmigaDOS: these tests read the assembled script
     text and its line order (rig 8 re-runs checks 1, 4, 5, 6 against the real thing, see
     thoughts/spot/term-findings/uhc-pr2-rework.md)."""
     A = ROOT / 'dist/addons/uhc'
@@ -691,12 +691,12 @@ class UhcAddOn(unittest.TestCase):
         self.assertNotIn('curl', rule)
         self.assertNotIn('lha', rule)
         self.assertIn('Files/stubs', rule)
-        self.assertEqual(pkgs.get('uhc', 'version'), '1.3')
+        self.assertEqual(pkgs.get('uhc', 'version'), '1.4')
         L = self.dos()
         dl = self.at(L, 'UP-Term:bin/curl -fsSL -o T:uhctools_os3.lha https://uhc.megaburken.net/uhctools_os3.lha')
         chk = self.at(L, 'Search >NIL: T:uhc-unpack/UHCFixENV "VER: UHCFixENV 1."')
-        cp = self.at(L, 'Copy T:uhc-unpack UP-Term:uhc ALL CLONE QUIET')
-        stub = self.at(L, 'Copy stubs/uhcupdate stubs/uhccheck UP-Term:uhc/S CLONE QUIET')
+        cp = self.at(L, 'Copy T:uhc-unpack SYS:UHC ALL CLONE QUIET')
+        stub = self.at(L, 'Copy stubs/uhcupdate stubs/uhccheck SYS:UHC/S CLONE QUIET')
         self.assertTrue(dl < chk < cp < stub, 'download, check, copy, stubs in this order')
         self.assertTrue(any('UHC-Startup "VER: UHC-Startup 1."' in l for l in L))
         # a failed download ends with rc 20 and a message, before anything is copied
@@ -711,12 +711,12 @@ class UhcAddOn(unittest.TestCase):
         self.assertTrue(prot)
         for l in prot:
             self.assertRegex(l, r'^Protect \S+ s ADD$')
-        self.assertIn('Protect UP-Term:uhc/S/#? s ADD', prot)
-        i = L.index('Protect UP-Term:uhc/S/#? s ADD')
+        self.assertIn('Protect SYS:UHC/S/#? s ADD', prot)
+        i = self.at(L, 'Protect SYS:UHC/S/#? s ADD')
         self.assertEqual(L[i + 1].strip(), 'If WARN')
         self.assertEqual(L[i + 2].strip(), 'Quit 20')
         # after the stubs are copied, so the stubs get it too
-        self.assertLess(self.at(L, 'Copy stubs/uhcupdate stubs/uhccheck UP-Term:uhc/S CLONE QUIET'), i)
+        self.assertLess(self.at(L, 'Copy stubs/uhcupdate stubs/uhccheck SYS:UHC/S CLONE QUIET'), i)
 
     def test_every_script_run_by_name_in_the_archive_lies_under_s(self):
         """Derived from the archive itself: the S drawer holds the scripts (uhcupdate, uhccheck, pkg-envcheck,
@@ -743,7 +743,7 @@ class UhcAddOn(unittest.TestCase):
         sets = [l.strip() for l in self.dos() if 'SetEnv UHCBIN' in l]
         self.assertEqual(len(sets), 2)
         for l in sets:
-            self.assertTrue(l.rstrip('"').endswith('UP-Term:uhc/'), l)
+            self.assertTrue(l.rstrip('"').endswith('SYS:UHC/'), l)
 
     def test_remove_and_upgrade_keep_the_uhc_packages_the_user_installed(self):
         # rig 8 extra: upgrade ran Delete UP-Term:uhc ALL and emptied ExtBin. Only the archive's files go.
@@ -758,7 +758,8 @@ class UhcAddOn(unittest.TestCase):
                 self.assertFalse(kept in l and 'Packages/~(Installed)' not in l, l)
         self.assertIn('Execute UP-Term:uhc/UHC-Remove', u)
         self.assertIn('List #? ALL FILES', '\n'.join(self.dos()))
-        self.assertIn('>UP-Term:uhc/UHC-Remove', '\n'.join(self.dos()))
+        self.assertIn('>SYS:UHC/UHC-Remove', '\n'.join(self.dos()))
+        self.assertIn('Execute SYS:UHC/UHC-Remove', u)
 
     def test_settings_in_envarc_uhc_survive_upgrade_and_remove(self):
         # rig 8 check 5: upkg runs uninstall-body.dos on upgrade as well as remove; deleting ENVARC:UHC there lost
@@ -772,19 +773,19 @@ class UhcAddOn(unittest.TestCase):
         L = self.dos()
         self.assertIn('Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET', [l.strip() for l in L])
         self.assertIn('Echo >>S:User-Startup "    Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET"', [l.strip() for l in L])
-        self.assertIn('Execute UP-Term:uhc/UHCFixENV', [l.strip() for l in L])
+        self.assertIn('Execute UHC:UHCFixENV', [l.strip() for l in L])
 
     def test_every_variable_the_uhc_scripts_need_is_seeded_without_overwriting(self):
         # rig 8 check 6: "Can't open ${UHC/EXTBIN} for output". UHCFixENV seeds TEMPDIR, AMINETMIRROR, READER;
         # S/pkg-envcheck seeds EXTBIN and EXTDOC (and AMINETMIRROR); install.dos seeds the last two itself.
         L = [l.strip() for l in self.dos()]
-        fix = L.index('Execute UP-Term:uhc/UHCFixENV')
+        fix = L.index('Execute UHC:UHCFixENV')
         for v, d in (('EXTBIN', 'ExtBin'), ('EXTDOC', 'ExtDoc')):
             g = L.index('If NOT EXISTS "${UHC/%s}"' % v)
             self.assertGreater(g, fix)
-            body = L[g:g + 14]
-            self.assertIn('MakeDir UP-Term:uhc/%s' % d, body)
-            self.assertIn('Echo >ENVARC:UHC/%s "UP-Term:uhc/%s/" NOLINE' % (v, d), body)
+            body = L[g:g + 22]
+            self.assertIn('MakeDir UHC:%s' % d, body)
+            self.assertIn('Echo >>ENVARC:UHC/%s "%s/" NOLINE' % (v, d), body)
             self.assertIn('Copy ENVARC:UHC/%s ENV:UHC/' % v, body)
             self.assertLess(self.at(L, 'Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET'), g)  # user's values copied first
 
@@ -793,6 +794,115 @@ class UhcAddOn(unittest.TestCase):
             t = (self.A / 'stubs' / n).read_text()
             self.assertIn('Echo "%s is disabled in UP-Term: use upkg upgrade"' % n, t)
             self.assertIn('Quit 5', t)
+
+    # ---- PR 2 rework (owner decision 2026-10-27): UHC lives in SYS:UHC, no UHC variable names UP-Term: ----
+    def guards(self, lines, i):
+        """The If conditions enclosing line i (an Else turns the condition into ('NOT', cond))."""
+        st = []
+        for l in lines[:i]:
+            s = l.strip()
+            if s.startswith('If '):
+                st.append(s[3:])
+            elif s == 'Else':
+                st[-1] = 'NOT ' + st[-1]
+            elif s == 'EndIf':
+                st.pop()
+        return st
+
+    def test_an_existing_uhc_is_used_and_no_up_term_path_reaches_envarc_or_user_startup(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        # detection first: SYS:UHC/UHC-Startup or an existing UHCBIN drawer makes the install "foreign"
+        det = S.index('If EXISTS SYS:UHC/UHC-Startup')
+        self.assertEqual(S[det + 1], 'Set uhcmode foreign')
+        self.assertIn('If EXISTS "$UHCBIN"', S)
+        # nothing is downloaded, copied over it, stubbed, protected, or recorded for Uninstall in foreign mode
+        for text in ('UP-Term:bin/curl -fsSL -o T:uhctools_os3.lha https://uhc.megaburken.net/uhctools_os3.lha',
+                     'Copy T:uhc-unpack SYS:UHC ALL CLONE QUIET',
+                     'Copy stubs/uhcupdate stubs/uhccheck SYS:UHC/S CLONE QUIET',
+                     'Protect SYS:UHC/S/#? s ADD'):
+            i = self.at(L, text)
+            self.assertIn('"$uhcmode" EQ fresh', self.guards(L, i), text)
+            self.assertGreater(i, det)
+        self.assertTrue(any('UHC-Remove' in l and l.startswith('List ') for l in L))
+        self.assertIn('"$uhcmode" EQ fresh', self.guards(L, [i for i, l in enumerate(L) if l.startswith('List #?')][0]))
+        # the User-Startup block is only written in fresh mode, and not when any ;BEGIN UHC block exists (Search ignores case)
+        i = self.at(L, 'Echo >>S:User-Startup ";BEGIN uhc"')
+        self.assertIn('"$uhcmode" EQ fresh', self.guards(L, i))
+        self.assertTrue(any(g == 'WARN' for g in self.guards(L, i)))
+        self.assertLess(self.at(L, 'Search >NIL: S:User-Startup ";BEGIN uhc"'), i)
+        # UHCBIN is never overwritten when set (only set when it does not exist) and never written to ENVARC:
+        sets = [i for i, l in enumerate(S) if l.startswith('SetEnv UHCBIN') and 'S:User-Startup' not in l]
+        self.assertTrue(sets)
+        for i in sets:
+            self.assertIn('NOT EXISTS "$UHCBIN"', self.guards(L, i))
+        # EXTBIN/EXTDOC: the user's values stay, the seed lies under UHCBIN (UHC's own pkg-envcheck default)
+        for v, d in (('EXTBIN', 'ExtBin'), ('EXTDOC', 'ExtDoc')):
+            g = S.index('If NOT EXISTS "${UHC/%s}"' % v)
+            self.assertIn('Echo >>ENVARC:UHC/%s "%s/" NOLINE' % (v, d), S[g:g + 22])
+        # no UP-Term: path is ever written into ENVARC:UHC, ENV:UHC or S:User-Startup
+        for l in S:
+            if l.startswith('Echo >') or l.startswith('SetEnv'):
+                self.assertNotIn('UP-Term:', l, l)
+
+    def test_a_fresh_install_goes_into_sys_uhc_with_the_standard_startup_block(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        self.assertIn('Set uhcmode fresh', S)
+        self.assertIn('SetEnv UHCBIN SYS:UHC/', S)
+        self.assertIn('MakeDir SYS:UHC', S)
+        self.assertIn('Copy T:uhc-unpack SYS:UHC ALL CLONE QUIET', S)
+        self.assertNotIn('Copy T:uhc-unpack UP-Term:uhc ALL CLONE QUIET', S)
+        self.assertIn('Assign UHC: "$UHCBIN"', S)
+        blk = [l for l in S if l.startswith('Echo >>S:User-Startup')]
+        text = '\n'.join(blk)
+        for want in (';BEGIN uhc', 'If EXISTS SYS:UHC/UHC-Startup', '  SetEnv UHCBIN SYS:UHC/', '  Execute SYS:UHC/UHC-Startup', ';END uhc'):
+            self.assertIn('"%s"' % want, text)
+        self.assertNotIn('UP-Term', text)
+        # fresh: ExtBin and ExtDoc are made under SYS:UHC (UHCBIN), not under UP-Term:
+        self.assertIn('MakeDir UHC:ExtBin', S)
+        self.assertNotIn('MakeDir UP-Term:uhc/ExtBin', S)
+
+    def test_uninstall_keeps_a_uhc_install_that_up_uhc_did_not_make(self):
+        u = [l.strip() for l in (self.A / 'uninstall-body.dos').read_text().splitlines()]
+        U = [l for l in (self.A / 'uninstall-body.dos').read_text().splitlines()]
+        # ownership is the UHC-Remove record install.dos wrote, or the old UP-Term:uhc tree
+        self.assertIn('If EXISTS SYS:UHC/UHC-Remove', u)
+        self.assertIn('Set uhcours 1', u)
+        # every delete of a SYS:UHC file or drawer, the assign and the variable deletions sit under that ownership
+        for i, l in enumerate(u):
+            if 'SYS:UHC' in l and l.startswith('Delete'):
+                g = self.guards(U, i)
+                self.assertIn('EXISTS SYS:UHC/UHC-Remove', g, l)
+            if l in ('Assign UHC:', 'Delete >NIL: ENV:UHCBIN QUIET', 'Delete >NIL: ENV:UHC ALL QUIET'):
+                self.assertIn('"$uhcours" EQ 1', self.guards(U, i), l)
+        self.assertNotIn('Delete >NIL: SYS:UHC ALL', '\n'.join(u))
+        for l in u:
+            if l.startswith('Delete') and 'ALL' in l.split():
+                self.assertNotIn('SYS:UHC', l)
+
+    def test_upgrade_from_1_3_rewrites_up_term_paths_and_keeps_the_other_settings(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        for v, d in (('EXTBIN', 'ExtBin'), ('EXTDOC', 'ExtDoc')):
+            s = S.index('Search >NIL: ENVARC:UHC/%s "UP-Term:"' % v)
+            self.assertEqual(S[s + 1], 'If NOT WARN')
+            self.assertEqual(S[s + 2], 'Delete >NIL: ENVARC:UHC/%s ENV:UHC/%s QUIET' % (v, v))
+            # the deleted value is then seeded under UHCBIN, after the user's ENVARC:UHC was copied in
+            g = S.index('If NOT EXISTS "${UHC/%s}"' % v)
+            self.assertLess(s, g)
+            self.assertLess(S.index('Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET'), s)
+        # nothing else of ENVARC:UHC is deleted (AMINETMIRROR, READER, TEMPDIR stay)
+        for l in S:
+            if l.startswith('Delete') and 'ENVARC:UHC' in l:
+                self.assertRegex(l, r'^Delete >NIL: ENVARC:UHC/EXT(BIN|DOC) ENV:UHC/EXT(BIN|DOC) QUIET$')
+        # a stale UHCBIN of 1.0 to 1.3 is dropped before the foreign test, the 1.3 block naming UP-Term:uhc is taken out,
+        # and the user's packages are copied over
+        self.assertIn('If "$UHCBIN" EQ "UP-Term:uhc/"', S)
+        self.assertLess(S.index('If "$UHCBIN" EQ "UP-Term:uhc/"'), S.index('If EXISTS SYS:UHC/UHC-Startup'))
+        self.assertIn('Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"', S)
+        self.assertIn('UP-Term:bin/vsh ENVARC:up-term/unstartup.sh uhc', S)
+        self.assertIn('Copy >NIL: UP-Term:uhc/ExtBin UHC:ExtBin ALL CLONE QUIET', S)
 
 
 if __name__ == '__main__':
