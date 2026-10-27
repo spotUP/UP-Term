@@ -20,6 +20,8 @@ SYMBOLS_TTF := $(BUILD)/symbolsnerd/SymbolsNerdFontMono-Regular.ttf
 # and vendor/ (gitignored) is the main checkout's when the worktree has none: both asked of tools/rig/paths.py.
 VENDOR := $(shell python3 -I $(CURDIR)/tools/rig/paths.py vendor)
 UPTERM_ROOT ?= $(abspath $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)/..)
+# the upterm-ports checkout (a worktree works too); every upterm-ports path uses it
+UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
 # The directory of the projects that are not UP-Term repos (DCTelnet/, AmiExpress/, UpRough/): CODE_ROOT, else the
 # nearest ancestor of UPTERM_ROOT holding DCTelnet/. One rule for the flat layout and the ~/Code/UP-Term umbrella;
 # it lives in tools/rig/paths.py (code_root), which the rig scripts read too.
@@ -151,6 +153,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = dist_stack ]; then python3 tests/test_dist_stack.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = pkg_rows ]; then python3 -I tests/test_pkg_rows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_fresh.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_ports_path.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_addons.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = addons ]; then python3 tests/test_dist_userdata.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ] || [ "$(ONLY)" = packages ]; then python3 tests/test_dist_packages.py; fi
@@ -732,7 +735,7 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 # amarchy-menu: the quick menu and key viewer (Phase D). A gcc/ixemul program linked with
 # libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
 # (that needs no ports build); `make amarchy-menu` after `make` in upterm-ports.
-UPKGUI_SYS ?= $(UPTERM_ROOT)/upterm-ports/build/sysroot/UP-Term
+UPKGUI_SYS ?= $(UPTERM_PORTS)/build/sysroot/UP-Term
 AMARCHY_MENU_SRC := amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c config/keymap_load.c config/upconf_rows.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/prefs_dos.c config/upconf.c handler/kcmode.c handler/slash.c
 # A fresh git worktree rig-ready in about a minute: build/ seeded from the main checkout, source mtimes matched so make
 # rebuilds only what this branch changed (tools/worktree_ready.py).
@@ -748,7 +751,7 @@ test-one: $(BUILD)/vttest_host
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
 $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) handler/frontscr.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
 	@mkdir -p $(BUILD)/amiga
-	$(UPTERM_ROOT)/upterm-ports/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
+	$(UPTERM_PORTS)/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
 
 # amarchy-gui: the drawn menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A plain vbcc
 # Intuition program, no ixemul, same command line as amarchy-menu.
@@ -1303,8 +1306,8 @@ NVIM_DIST ?= $(UPTERM_ROOT)/neovim-amiga/build/v012/dist/nvim
 IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # the Unix tool ports: staged by `make kit-stage` in upterm-ports (programs,
 # pages, licences, SOURCES.txt) with their source beside it; the source goes
-# into build/up-term-src.lha, published next to the kit (plan D2)
-UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+# into build/up-term-src.lha, published next to the kit (plan D2).
+# UPTERM_PORTS is set near the top so every upterm-ports path follows it.
 # tools/pkgs.py reads a ports package's Description from its recipe there
 export UPTERM_PORTS
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
