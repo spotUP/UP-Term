@@ -174,6 +174,16 @@ void jc_footer(const jc *j, char *out, int cap)
     out[cap - 1] = 0;
 }
 
+void jc_hints(const jc *j, char *out, int cap)
+{
+    int d;
+    const char *h = jc_key_act(j, JKEY_ENTER, 1, &d) == JA_CLOSE ? "Enter: Accept  Escape: Back"
+                  : jc_key_act(j, JKEY_ESC, 1, &d) == JA_CANCEL ? "Escape: Cancel" : "Escape: Back";
+    if (cap <= 0) return;
+    strncpy(out, h, (size_t)cap - 1);
+    out[cap - 1] = 0;
+}
+
 static int max_top(const jc *j, int h)
 {
     int m = jc_count(j) - h;

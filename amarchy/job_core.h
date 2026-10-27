@@ -41,6 +41,9 @@ long jc_dropped(const jc *j);          /* lines pushed out of the ring */
 
 /* The footer word for the state ("Running...", "Done", "Nothing to do", "Failed (code 7)", "Cancelled"). */
 void jc_footer(const jc *j, char *out, int cap);
+/* The key hints for the footer, from what jc_key_act does now: "Escape: Cancel" while the job runs, then the
+ * text menu's "Enter: Accept  Escape: Back" (both keys close the ended job). */
+void jc_hints(const jc *j, char *out, int cap);
 /* Index of the first line shown in a view of h rows; scrolling by delta rows (negative is up). Scrolling to the
  * end follows the tail again; scrolling up stops following. */
 int jc_top(const jc *j, int h);

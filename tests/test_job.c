@@ -7,6 +7,7 @@
 static jc J;
 static void feed(const char *s) { jc_feed(&J, s, (long)strlen(s)); }
 static const char *foot(void) { static char b[JOB_FOOT_MAX]; jc_footer(&J, b, (int)sizeof b); return b; }
+static const char *hints(void) { static char b[JOB_FOOT_MAX]; jc_hints(&J, b, (int)sizeof b); return b; }
 
 /* "L<i><post>" without sprintf (c89 build, deprecated warnings are errors). */
 static void mkl(char *b, int i, const char *post)
@@ -123,8 +124,10 @@ static void test_job_footer(void)
     jc_init(&J);
     CHECK_STR(foot(), "Running...");
     CHECK_INT(J.state, JC_RUNNING);
+    CHECK_STR(hints(), "Escape: Cancel");
     feed("@JOBRC 0\n");
     CHECK_STR(foot(), "Done");
+    CHECK_STR(hints(), "Enter: Accept  Escape: Back");
     jc_init(&J); feed("@JOBRC 5\n");
     CHECK_INT(J.state, JC_DONE);
     CHECK_STR(foot(), "Nothing to do");

@@ -489,11 +489,18 @@ static void draw_row(gui *g, int e)
             if (t < jc_count(&job))
                 put(g, MT_TEXT, rbg, tx, y, q->m.row_h, jc_line(&job, t), (int)strlen(jc_line(&job, t)), tw);
         } else if (e == body) {
-            char f[JOB_FOOT_MAX];
-            int tone = jc_tone(&job);
+            char f[JOB_FOOT_MAX], h[JOB_FOOT_MAX];
+            int tone = jc_tone(&job), fw, hw;
             jc_footer(&job, f, sizeof f);
+            jc_hints(&job, h, sizeof h);
             put(g, tone == JT_OK ? MT_OK : tone == JT_FAIL ? MT_FAIL : MT_DIM, rbg, tx, y, q->m.row_h, f,
                 (int)strlen(f), tw);
+            /* The key hints sit at the right, as in the text menu's footer; the status word wins when both
+             * do not fit. */
+            fw = mt_width(g->mt, f);
+            hw = mt_width(g->mt, h);
+            if (fw + 2 * g->chev_w + hw <= tw)
+                put(g, MT_DIM, rbg, tx + tw - hw, y, q->m.row_h, h, (int)strlen(h), hw);
         }
     } else if (g->mode == M_INPUT) {
         char t[EDIT_MAX + 2];
