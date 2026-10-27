@@ -532,6 +532,26 @@ def sys_hdf_cpu_lib(image):
             subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
         subprocess.run([xdf, str(image), "write", str(lib), "Libs/" + name], check=True, capture_output=True)
 
+def sys_hdf_ixnet(image):
+    """The master image's Libs/ixnet.library (7a43f99c) opens AmiTCP:libs/usergroup.library; IPrefs opens it before
+    BOOTX:go reassigns LIBS:, so every rig showed an 'insert AmiTCP:' requester (2026-10-28, RIG-SYSHDF-IXNET). The
+    clone gets the clean paths.IXNET_LIB (the master is never touched) and the start is refused when the clone's
+    ixnet.library still fails tools/libguard.py."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    paths.require_input(paths.IXNET_LIB, "IXNET", "the clean ixnet.library")
+    libguard.require_clean_ixnet(paths.IXNET_LIB)
+    have = subprocess.run([xdf, str(image), "list", "Libs"], capture_output=True, text=True).stdout
+    if "ixnet.library" in {l.split()[0] for l in have.splitlines() if l.split()}:
+        subprocess.run([xdf, str(image), "delete", "Libs/ixnet.library"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(paths.IXNET_LIB), "Libs/ixnet.library"], check=True, capture_output=True)
+    back = RIG / "ixnet-check.tmp"
+    back.unlink(missing_ok=True)
+    subprocess.run([xdf, str(image), "read", "Libs/ixnet.library", str(back)], check=True, capture_output=True)
+    try:
+        libguard.require_clean_ixnet(back)
+    finally:
+        back.unlink(missing_ok=True)
+
 def strip_user_startup_blocks(image, name):
     """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
@@ -1131,6 +1151,7 @@ def start(retries=START_RETRIES):
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if "--no-dopus" in sys.argv:
             sys_hdf_no_dopus(RIG / "sys.hdf")
+        sys_hdf_ixnet(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
