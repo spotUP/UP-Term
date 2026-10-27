@@ -25,7 +25,7 @@ ALT = 0x10                          # IEQUALIFIER_LALT
 # screen_text() open the text menu (amarchy-menu in the UP-Term window): over a terminal Super+Space opens it
 # (menu-in-terminal = text, the default)
 TEXT_MENU = LAMIGA
-RAW = {'down': 0x4D, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
+RAW = {'down': 0x4D, 'right': 0x4E, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
 KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
 TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
 
@@ -234,6 +234,24 @@ def r_drill_redraw():
     return ok, 'Style rows %s; after "th" %s' % (style, th)
 
 
+def r_right_enters():
+    # AMARCHY-TEXT-RIGHT (owner R2 step 6): in the text menu Right on a group enters it, as Return does, and
+    # Right on a leaf does nothing (the leaf does not run: km-hits stays, the level stays). Before the fix
+    # amarchy-menu did not list UI_HOTKEY_RIGHT, so Right left the cursor at the root.
+    ensure_terminal()
+    if not x9_open_menu():
+        return False, 'text menu did not open'
+    style = menu_rows(x9_level('Style', 'right'))
+    before = km_hits()
+    ami.key(RAW['right'])                      # the cursor is on Theme, a leaf
+    time.sleep(1)
+    still = menu_rows(screen_text())
+    hits = km_hits() - before
+    x9_leave()
+    ok = style == ['Theme', 'Font', 'Background'] and still == style and hits == 0
+    return ok, 'Right on Style: rows %s; Right on Theme: rows %s, km-hits %+d (0 expected)' % (style, still, hits)
+
+
 def r_enter_th():
     # Owner bug AM-ENTER-H: Enter after the filter "th" added another "h" (stale ui_hotkey, upterm-ports ebf5d1c).
     # Enter must run Theme: the requester opens and km-hits moves by 1.
@@ -336,8 +354,8 @@ def x9_type(text):
 SCAN_STATUS = re.compile(r'Scan(ning\.\.\. | done: | did not start| stopped | could not save)')
 
 
-def x9_level(label):
-    # from the root, Down to the group `label`, Enter; the screen text of that level. A root without the
+def x9_level(label, key='return'):
+    # from the root, Down to the group `label`, Enter (or `key`); the screen text of that level. A root without the
     # group (the X10 revert check takes Games away) stays at the root, so the level's checks fail, not the case
     rows = menu_rows(screen_text())
     if label not in rows:
@@ -347,7 +365,7 @@ def x9_level(label):
     for _ in range(rows.index(label) - first):
         ami.key(RAW['down'])
         time.sleep(0.3)
-    ami.key(RAW['return'])
+    ami.key(RAW[key])
     time.sleep(1)
     return screen_text()
 
@@ -1185,6 +1203,7 @@ ROWS = [
     ('viewer_rows',  r_viewer_rows),
     ('drill_redraw', r_drill_redraw),
     ('enter_th',     r_enter_th),
+    ('right_enters', r_right_enters),
     ('lamiga_minus_sv', r_lamiga_minus_sv),
     ('app_index',    r_app_index),
     ('app_icons',    r_app_icons),

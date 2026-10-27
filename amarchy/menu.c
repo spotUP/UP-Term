@@ -46,7 +46,7 @@ typedef char osd_pad_match[MN_OSD_PAD == UI_OSD_PAD ? 1 : -1];
 
 static keymap km;
 
-/* every printable key plus Backspace, Delete and the Left arrow ends the menu as a hotkey */
+/* every printable key plus Backspace, Delete and the Left and Right arrows ends the menu as a hotkey */
 static char hot[128];
 
 static void hotkeys_init(void)
@@ -57,6 +57,7 @@ static void hotkeys_init(void)
     hot[n++] = 8;
     hot[n++] = 127;
     hot[n++] = UI_HOTKEY_LEFT;
+    hot[n++] = UI_HOTKEY_RIGHT;
     hot[n] = 0;
 }
 
@@ -249,6 +250,17 @@ static int menu_levels(const char *start)
         if (rc != 0)
             return rc;
         i = ui_hotkey();
+        if (i == UI_HOTKEY_RIGHT) {            /* Right enters a group or a setting with a page, as Return does */
+            int s = ui_selected();
+            if (s >= shift && s < c + shift && mn_right_enters(&it[idx[s - shift]]))
+                i = 0;                         /* the Return path below; a leaf is not run by Right */
+            else {
+                keep_status = shift && s == 0;
+                if (!keep_status && s >= shift && s < c + shift)
+                    strcpy(keep, it[idx[s - shift]].label);
+                continue;                      /* nothing to enter: the cursor stays */
+            }
+        }
         if (i) {                               /* a typed key: grow or shorten the filter */
             int l = (int)strlen(filter);
             if (i == 8 || i == 127 || i == UI_HOTKEY_LEFT) {
