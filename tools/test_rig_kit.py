@@ -136,7 +136,31 @@ check(f5["c:updemo"] == "new-UPDemo" and f5["vtc:kit-orig/c-updemo"] == "old-upd
 check("l:vtcon-handler" not in f4 and "devs:up-console.device" not in f4 and "l:pty-handler" not in f4, "no kit: L: and DEVS: get no copy")
 # install puts every KIT_SHADOWS source in VTC:, also the ones the drawer never held
 import inspect  # noqa: E402
-check("KIT_SHADOWS" in inspect.getsource(rig.install), "install stages every KIT_SHADOWS source in VTC:")
+check("KIT_SHADOWS" in inspect.getsource(rig._install), "install stages every KIT_SHADOWS source in VTC:")
+
+# the dist's userland (UP-Term:bin/curl, ...) is what the rig runs, not the kit's older copy (rig 9,
+# AMITCP-GONE rerun, 2026-10-27: install staged no curl and the base image's, which opens
+# usergroup.library, ran). install stages the dist's file; the boot puts it over the kit's.
+UL = ROOT_DIST = rig.ROOT / "build/dist/up-term/Files/userland/bin"
+if (UL / "curl").is_file():
+    import shutil  # noqa: E402
+    row = [r for r in rig.KIT_SHADOWS if r[1] == "UP-Term:bin/curl"]
+    check(len(row) == 1, "KIT_SHADOWS shadows UP-Term:bin/curl with the dist's")
+    with tempfile.TemporaryDirectory() as t2:
+        v2 = pathlib.Path(t2)
+        rig.refresh_kit_shadows(v2)
+        staged = v2 / row[0][0] if row else v2 / "none"
+        check(staged.is_file() and staged.read_bytes() == (UL / "curl").read_bytes(),
+              "install stages the dist's curl in VTC:")
+        check(rig.build_drift(v2) == [] or all("kit-userland" not in x for x in rig.build_drift(v2)),
+              "a staged userland file equal to the dist is no drift")
+        if row:
+            (staged).write_bytes(b"old")
+            check(any(x.endswith("/curl") for x in rig.build_drift(v2)), "a stale staged curl is named by the drift check")
+    if row:
+        fb, rb = boot({"VTC:" + row[0][0]: "dist-curl", "SYS:UP-Term/bin/curl": "kit-curl"}, {"UP-TERM": "SYS:UP-Term"})
+        check(fb["sys:up-term/bin/curl"] == "dist-curl", "kit: UP-Term:bin/curl is the dist's after the boot")
+        check(fb["vtc:kit-orig/up-term-bin-curl"] == "kit-curl", "kit: the kit's curl is kept in VTC:kit-orig")
 
 # install and kit-restore (the host side)
 with tempfile.TemporaryDirectory() as tmp:

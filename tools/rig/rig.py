@@ -192,10 +192,31 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
                ("keymap", "SYS:Prefs/Env-Archive/up-term/keymap", "ENVARC-up-term-keymap"),
                ("keymap", "RAM:Env/up-term/keymap", "ENV-up-term-keymap")]
 
+# What the dist ships in UP-Term:bin (the Unix userland the kit installs) is what a rig's UP-Term:bin
+# runs: one row per file of build/dist/up-term/Files/userland/bin, staged in VTC:kit-userland/ by
+# install. Before this only the build/amiga programs were shadowed, so a rebuilt curl never reached
+# a rig and the old one, which opens usergroup.library, ran (rig 9, AMITCP-GONE rerun, 2026-10-27).
+# Rows act only where the kit holds the file (kit_guard). "[" is left out: AmigaDOS patterns.
+USERLAND_SRC = ROOT / "build/dist/up-term/Files/userland/bin"
+USERLAND_STAGE = "kit-userland"
+
+
+def userland_names():
+    if not USERLAND_SRC.is_dir():
+        return []
+    return sorted(f.name for f in USERLAND_SRC.iterdir()
+                  if f.is_file() and re.fullmatch(r"[A-Za-z0-9._+-]+", f.name))
+
+
+KIT_SHADOWS += [("%s/%s" % (USERLAND_STAGE, n), "UP-Term:bin/" + n, "UP-Term-bin-" + n)
+                for n in userland_names() if "UP-Term:bin/" + n not in {x[1] for x in KIT_SHADOWS}]
+
 
 def kit_shadow_src(name):
     """The host file the VTC: copy of a KIT_SHADOWS name comes from: dist/ for the files the kit
     copies from dist/ (a1200_drift.DIST_SOURCES), build/amiga for the programs."""
+    if name.startswith(USERLAND_STAGE + "/"):
+        return USERLAND_SRC / name.split("/", 1)[1]
     return ROOT / ("dist" if name in a1200_drift.DIST_SOURCES else "build/amiga") / name
 
 
@@ -903,6 +924,10 @@ def build_drift(vtc):
         src, dst = ROOT / "dist" / name, vtc / name
         if dst.is_file() and dst.read_bytes() != src.read_bytes():
             stale.append(name)
+    for name in userland_names():   # staged by install for the boot's UP-Term:bin shadows
+        dst = vtc / USERLAND_STAGE / name
+        if dst.is_file() and dst.read_bytes() != (USERLAND_SRC / name).read_bytes():
+            stale.append("%s/%s" % (USERLAND_STAGE, name))
     return stale
 
 def kit_restore():
@@ -919,6 +944,7 @@ def refresh_kit_shadows(vtc):
     for name in sorted({x[0] for x in KIT_SHADOWS}):
         src, dst = kit_shadow_src(name), vtc / name
         if src.is_file() and not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             print("refreshed", name, dst.stat().st_size, "bytes")
     # GG:bin/sh is vsh too: the boot assigns GG: to VTC:gg when it holds one, and ixemul programs run it
