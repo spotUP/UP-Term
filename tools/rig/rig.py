@@ -181,6 +181,9 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
                # the preferences editor: the kit's file keeps the space (install.dos), which
                # the handler's menu runs as C:UP-Term-Prefs (launcher)
                ("upprefs", "C:UP-Term-Prefs", "C-UP-Term-Prefs"),
+               # upkg is built by upterm-ports (make opkg, also from a worktree of it), not by this repo: the
+               # rig ran the kit's older upkg, without `list --tsv` one row per package (patch 0054)
+               ("upkg", "UP-Term:bin/upkg", "UP-Term-bin-upkg"),
                # the shipped keymap (dist/, not build/amiga): the master's kit wrote its own, so a new
                # keymap row was missing on every rig start (vtcon-a1 P7, 2026-10-27). The user's rows
                # live in keymap.user, which is not touched. Spelled by path, never ENVARC:/ENV:: go is Run
@@ -190,10 +193,15 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
                ("keymap", "SYS:Prefs/Env-Archive/up-term/keymap", "ENVARC-up-term-keymap"),
                ("keymap", "RAM:Env/up-term/keymap", "ENV-up-term-keymap")]
 
+PORTS_BUILT = {"upkg"}
+
 
 def kit_shadow_src(name):
     """The host file the VTC: copy of a KIT_SHADOWS name comes from: dist/ for the files the kit
-    copies from dist/ (a1200_drift.DIST_SOURCES), build/amiga for the programs."""
+    copies from dist/ (a1200_drift.DIST_SOURCES), build/amiga for the programs, the ports checkout
+    ($UPTERM_PORTS, else UPTERM_ROOT/upterm-ports) for the ones it builds (PORTS_BUILT)."""
+    if name in PORTS_BUILT:
+        return pathlib.Path(os.environ.get("UPTERM_PORTS") or paths.repo("upterm-ports")) / "build/sysroot/UP-Term/bin" / name
     return ROOT / ("dist" if name in a1200_drift.DIST_SOURCES else "build/amiga") / name
 
 
