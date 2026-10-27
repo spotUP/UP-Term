@@ -38,6 +38,7 @@ int lf_command_program(const char *line, char *out, int cap);
 int lf_rexx_command(char *out, int cap, const char *arg);
 
 typedef enum {
+    LF_JOB,      /* job: run_job of the menu style (lf_job_view) when it has one, else as LF_WINDOW */
     LF_WINDOW,   /* run: a program, in a new UP-Term window of its own (never the menu's console) */
     LF_REXX,     /* rexx: RX script or RX "string" (lf_rexx_command) */
     LF_OPEN,     /* open:uterm: a new UP-Term window */
@@ -180,7 +181,15 @@ typedef struct lf_ui {
     int self_in_mru;
     /* the menu's struct Window (or 0): the font and screen mode requesters open over it */
     void *win;
+    /* A style's job view: run `line` and show its output under `title`; returns the action's code. 0 (the
+     * default of both styles until their views exist): a job: row runs as run: (lf_job_view). */
+    int (*run_job)(void *ctx, const char *line, const char *title);
 } lf_ui;
+
+/* 1 when ui has a job view for a job: row, 0 when the row falls back to the run: path */
+int lf_job_view(const lf_ui *ui);
+/* The run: path for a command line (an UP-Term window of its own): what a job view falls back to when it cannot start. */
+int lf_run_line(const char *line, const lf_ui *ui);
 
 /* 1 when the menu opened over an UP-Term window: upactive_terminal_present (handler/upactive.h) with
  * the menu's self_in_mru. Both menus and the commodity ask it once at open and pass the answer to

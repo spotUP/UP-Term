@@ -165,6 +165,56 @@ static void test_gthemes_roles(void)
             }
         }
     }
+    /* RJ.4: every shipped file resolves MT_OK and MT_FAIL from its own green and red keys, read here from the file
+     * text (not through gt_parse), and the roles differ from the core five colours' fallbacks only by the file */
+    for (i = 0; i < NSHIPPED; i++) {
+        char path[200], buf[UC_MAX_FILE];
+        long n, v;
+        const char *k;
+        snprintf(path, sizeof path, THEME_DIR "/%s.theme", shipped[i].name);
+        n = read_file(path, buf, sizeof buf - 1);
+        CHECK(n > 0);
+        if (n <= 0)
+            continue;
+        buf[n] = 0;
+        load_shipped(shipped[i].name, &t);
+        menu_theme_roles_gui(&t, rgb);
+        k = strstr(buf, "\ngreen = \"#");
+        CHECK(k != NULL);
+        v = k ? strtol(k + 11, NULL, 16) : -1;
+        CHECK_INT(rgb[MT_OK], v);
+        k = strstr(buf, "\nred = \"#");
+        CHECK(k != NULL);
+        v = k ? strtol(k + 9, NULL, 16) : -1;
+        CHECK_INT(rgb[MT_FAIL], v);
+    }
+    /* a file without green and red falls back to accent and foreground (not the built-in's colours) */
+    gt_builtin(&t);
+    {
+        const char *nokeys = "accent = \"#112233\"\nforeground = \"#778899\"\n";
+        gt_parse(nokeys, (long)strlen(nokeys), &t);
+    }
+    menu_theme_roles_gui(&t, rgb);
+    CHECK_INT(rgb[MT_OK], 0x112233);
+    CHECK_INT(rgb[MT_FAIL], 0x778899);
+    /* few-pen screens: the two new roles fall back to the row text; the five core roles have no fallback role */
+    CHECK_INT(menu_theme_fallback_role(MT_OK), MT_TEXT);
+    CHECK_INT(menu_theme_fallback_role(MT_FAIL), MT_TEXT);
+    for (i = 0; i <= MT_SELBOX; i++)
+        CHECK_INT(menu_theme_fallback_role(i), -1);
+    /* the lister palette stays the five core colours: pen numbers 0..4 are unchanged */
+    {
+        char out[256];
+        uc_u32 r7[MT_ROLES] = { 1, 2, 3, 4, 5, 6, 7 };
+        CHECK(menu_theme_dopus_commands(r7, out, sizeof out) > 0);
+        CHECK(strstr(out, "dopus set palette 0x000001 0x000002 0x000003 0x000004 0x000005\n") == out);
+    }
+    /* minimal menu: OK and FAIL are the foreground */
+    gt_builtin(&t);
+    menu_theme_roles_gui(&t, rgb);
+    CHECK(menu_theme_minimal(rgb) == 1);
+    CHECK_INT(rgb[MT_OK], rgb[MT_TEXT]);
+    CHECK_INT(rgb[MT_FAIL], rgb[MT_TEXT]);
     /* T20 knob audit: each of the four keys moves a different role */
     gt_builtin(&t);
     menu_theme_roles_gui(&t, rgb);
@@ -188,6 +238,14 @@ static void test_gthemes_roles(void)
         u.accent ^= 0x010101;
         menu_theme_roles_gui(&u, rgb);
         CHECK(rgb[MT_SELBOX] != base[MT_SELBOX]);
+        u = t;
+        u.ok ^= 0x010101;
+        menu_theme_roles_gui(&u, rgb);
+        CHECK(rgb[MT_OK] != base[MT_OK]);
+        u = t;
+        u.fail ^= 0x010101;
+        menu_theme_roles_gui(&u, rgb);
+        CHECK(rgb[MT_FAIL] != base[MT_FAIL]);
     }
     /* H7: the minimal menu over the GUI roles: ground and text only */
     load_shipped("nord", &t);

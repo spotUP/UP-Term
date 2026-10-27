@@ -1,7 +1,7 @@
 /* gthemes_core: the Omarchy colour themes of the drawn Amarchy menu (plan 2026-10-26-amarchy-gui-themes.md). A theme is
  * one file NAME.theme holding an Omarchy colors.toml verbatim (`key = "#rrggbb"`, `mode = "dark"`), read by the upconf
- * reader (quotes and `#` are tolerated by upconf_hex). Four keys drive the menu: background, foreground,
- * dark_foreground, accent; the other keys of the file are kept and ignored, so a copied Omarchy file works. The
+ * reader (quotes and `#` are tolerated by upconf_hex). Six keys drive the menu: background, foreground,
+ * dark_foreground, accent, green, red; the other keys of the file are kept and ignored, so a copied Omarchy file works. The
  * shipped drawer is UP-Term:Amarchy/Themes, the user's ENVARC:Amarchy/themes; a user file of the same name wins.
  * No OS calls: the file read comes in as a callback (the DOS side is gthemes_dos.c). */
 #ifndef GTHEMES_CORE_H
@@ -19,6 +19,7 @@
 typedef struct gtheme {
     char name[GT_NAME];
     uc_u32 bg, fg, dim, accent; /* 0xRRGGBB: background, foreground, dark_foreground, accent */
+    uc_u32 ok, fail;            /* the job view's Done and Failed footers: green and red; no key = accent, foreground */
     int light;                  /* mode = "light" */
 } gtheme;
 

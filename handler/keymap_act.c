@@ -73,7 +73,7 @@ int kact_resolve(const km_bind *b, kact *out)
         out->line = b->arg;
         out->kind = KACT_SLASH;
         return KACT_SLASH;
-    case KA_MENU: case KA_VIEWER: case KA_RUN: case KA_DETACH: case KA_SCAN: case KA_REXX: case KA_OPEN: case KA_WIN: case KA_GTHEME: case KA_SETTINGS:
+    case KA_MENU: case KA_VIEWER: case KA_RUN: case KA_JOB: case KA_DETACH: case KA_SCAN: case KA_REXX: case KA_OPEN: case KA_WIN: case KA_GTHEME: case KA_SETTINGS:
         out->kind = KACT_DEFER;
         return KACT_DEFER;
     default:
@@ -146,7 +146,7 @@ int upreq_resolve(const upreq_body *r, kact *out, km_bind *tmp)
     else if (n == 5 && !memcmp(r->action, "slash", 5))
         tmp->kind = KA_SLASH;
     else if ((n == 4 && (!memcmp(r->action, "menu", 4) || !memcmp(r->action, "open", 4))) ||
-             (n == 3 && (!memcmp(r->action, "run", 3))) || (n == 4 && !memcmp(r->action, "rexx", 4)))
+             (n == 3 && (!memcmp(r->action, "run", 3) || !memcmp(r->action, "job", 3))) || (n == 4 && !memcmp(r->action, "rexx", 4)))
         return UPREQ_NOTMINE;
     else
         return UPREQ_UNKNOWN;

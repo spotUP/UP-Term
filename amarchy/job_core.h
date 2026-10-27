@@ -43,4 +43,15 @@ void jc_scroll(jc *j, int delta, int h);
 /* Header text such as "3 of 7 install Gamma"; empty when no progress line was seen. */
 void jc_header(const jc *j, char *out, int cap);
 
+/* Footer colour by state: running is quiet, Done is good, Failed and Cancelled are bad. */
+enum jc_tone { JT_DIM, JT_OK, JT_FAIL };
+int jc_tone(const jc *j);
+
+/* Keys the view reacts to (the style maps its own key codes to these) and what each one does. */
+enum jc_key { JKEY_OTHER, JKEY_UP, JKEY_DOWN, JKEY_PGUP, JKEY_PGDN, JKEY_ESC, JKEY_ENTER };
+enum jc_act { JA_NONE, JA_SCROLL, JA_CANCEL, JA_CLOSE };
+/* The action for a key; for JA_SCROLL *delta is the rows to move in a body of h rows (negative is up).
+ * Esc while running cancels, Esc or Enter after the end closes; Enter while running does nothing. */
+int jc_key_act(const jc *j, int key, int h, int *delta);
+
 #endif

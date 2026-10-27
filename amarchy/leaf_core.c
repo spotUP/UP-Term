@@ -10,6 +10,8 @@ lf_how lf_plan(int kind)
     switch (kind) {
     case KA_RUN:
         return LF_WINDOW;
+    case KA_JOB:
+        return LF_JOB;
     case KA_DETACH:
         return LF_DETACH;
     case KA_SCAN:
@@ -27,6 +29,11 @@ lf_how lf_plan(int kind)
     default:
         return LF_REQUEST;
     }
+}
+
+int lf_job_view(const lf_ui *ui)
+{
+    return ui && ui->run_job;
 }
 
 lf_how lf_plan_t(int kind, int term)

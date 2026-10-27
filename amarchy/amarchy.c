@@ -155,6 +155,7 @@ static int do_row(int row)
         at_mark("hotkey");   /* opt-in: AMARCHY_TIMING */
     switch (b->kind) {
     case KA_RUN:
+    case KA_JOB:        /* a hotkey has no menu to show a job view in: run: */
     case KA_DETACH:
     case KA_SCAN: ok = act_run(b->arg); break;
     case KA_REXX:  ok = act_rexx(b->arg); break;

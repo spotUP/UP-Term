@@ -343,12 +343,12 @@ static void the_shipped_keymap_loads_whole(void)
      * takes single quotes for a path with a space */
     for (i = 0; i < km.nbind; i++) {
         char line[512];
-        if (km.bind[i].kind == KA_RUN)
+        if (km.bind[i].kind == KA_RUN || km.bind[i].kind == KA_JOB)
             CHECK(lf_shell_command(line, sizeof line, "UP-Term:bin/vsh", km.bind[i].arg));
     }
     for (i = 0; i < km.nmenu; i++) {
         char line[512];
-        if (km.menu[i].kind == KA_RUN)
+        if (km.menu[i].kind == KA_RUN || km.menu[i].kind == KA_JOB)
             CHECK(lf_shell_command(line, sizeof line, "UP-Term:bin/vsh", km.menu[i].arg));
     }
     /* every shipped rexx: bind and row builds an RX line; a script path goes to RX bare, because RX
@@ -867,8 +867,8 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     check_row("system.workbench", KA_SLASH, "/screen workbench");
     check_row("system.own", KA_SLASH, "/screen own");
     check_row("install.browse", KA_RUN, "upkg browse");
-    check_row("install.upgrade", KA_RUN, "upkg upgrade");
-    check_row("install.update", KA_RUN, "upkg update");
+    check_row("install.upgrade", KA_JOB, "upkg upgrade");
+    check_row("install.update", KA_JOB, "upkg update");
     check_row("trigger.clipboard", KA_MENU, "trigger.clipboard");   /* a group of ring rows (tests/test_clips.c) */
     CHECK(root_has_group("Trigger", 1) && root_has_group("Trigger", 0));
     CHECK(shipped_row("apps.upkg") == 0);                  /* moved under Install */
@@ -1861,6 +1861,37 @@ static void the_menu_builds_the_request_of_a_leaf(void)
 /* AMB1 (owner, 2026-10-23): Apps > Editor with no UP-Term running opened nvim inside the menu's
  * own OSD window, because a run: leaf went through system() on the menu's console. A run: leaf
  * is planned as its own UP-Term window; only terminal actions go to a terminal's request port. */
+static int job_calls;
+static int fake_job(void *ctx, const char *line, const char *title)
+{
+    (void)ctx; (void)line; (void)title;
+    job_calls++;
+    return 0;
+}
+
+/* RJ.K: job:<line> parses with its line, plans as LF_JOB, and falls back to the run: path while the menu style
+ * has no run_job; run: rows stay LF_WINDOW; the shipped upgrade and update rows are job: */
+static void a_job_row_parses_and_falls_back_to_run_without_a_job_view(void)
+{
+    lf_ui ui;
+    const km_menu *m;
+    memset(&ui, 0, sizeof ui);
+    CHECK(parse("[bind]\nsuper+j = job:upkg upgrade ; Upgrade | apps\n[menu]\napps.up = Upgrade | job:upkg upgrade\napps.r = Run | run:upkg browse\n"));
+    m = &km.menu[0];
+    CHECK(m->kind == KA_JOB && !strcmp(m->arg, "upkg upgrade"));
+    CHECK(km.bind[0].kind == KA_JOB && !strcmp(km.bind[0].arg, "upkg upgrade"));
+    CHECK_INT(keymap_action_scope(KA_JOB), KS_BOTH);
+    CHECK_INT((int)lf_plan(KA_JOB), (int)LF_JOB);
+    CHECK_INT((int)lf_plan_t(KA_JOB, 0), (int)LF_JOB);
+    CHECK_INT(km.menu[1].kind, KA_RUN);
+    CHECK_INT((int)lf_plan(KA_RUN), (int)LF_WINDOW);
+    CHECK_INT(lf_job_view(&ui), 0);          /* both styles today: the run: path */
+    CHECK_INT(lf_job_view(0), 0);
+    ui.run_job = fake_job;
+    CHECK_INT(lf_job_view(&ui), 1);
+    CHECK_INT(job_calls, 0);
+}
+
 static void a_run_leaf_gets_its_own_window_not_the_menus_console(void)
 {
     CHECK_INT((int)lf_plan(KA_RUN), (int)LF_WINDOW);
@@ -2663,6 +2694,7 @@ void suite_keymap(void)
     a_request_needs_no_bind_row();
     an_unknown_request_is_an_error_code();
     the_menu_builds_the_request_of_a_leaf();
+    a_job_row_parses_and_falls_back_to_run_without_a_job_view();
     a_run_leaf_gets_its_own_window_not_the_menus_console();
     a_leaf_window_spec_names_the_front_public_screen();
     dopus_binds_parse();
@@ -2687,7 +2719,7 @@ void suite_keymap(void)
  * table's defaults are those values (hand-written below, then held to the engine) */
 static void menu_theme_roles_map_the_palette(void)
 {
-    static const uc_u32 want_default[MT_ROLES] = { 0x000000UL, 0xE5E5E5UL, 0x7F7F7FUL, 0x00FFFFUL, 0x0000EEUL };
+    static const uc_u32 want_default[MT_ROLES] = { 0x000000UL, 0xE5E5E5UL, 0x7F7F7FUL, 0x00FFFFUL, 0x0000EEUL, 0x00FF00UL, 0xFF0000UL };
     uc_u32 pal[16], rgb[MT_ROLES];
     int i;
 
@@ -2703,6 +2735,8 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT(menu_theme_index(MT_DIM), 8);
     CHECK_INT(menu_theme_index(MT_ACCENT), 14);
     CHECK_INT(menu_theme_index(MT_SELBOX), 4);
+    CHECK_INT(menu_theme_index(MT_OK), 10);
+    CHECK_INT(menu_theme_index(MT_FAIL), 9);
     /* outline and selected row box are one colour: the border role is the selection box role, not the accent */
     CHECK_INT(MT_BORDER_ROLE, MT_SELBOX);
 

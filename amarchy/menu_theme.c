@@ -11,8 +11,15 @@ static const struct {
     { 7, 0xE5E5E5UL },  /* MT_TEXT:   White */
     { 8, 0x7F7F7FUL },  /* MT_DIM:    Bright Black */
     { 14, 0x00FFFFUL }, /* MT_ACCENT: Bright Cyan */
-    { 4, 0x0000EEUL }   /* MT_SELBOX: Blue */
+    { 4, 0x0000EEUL },  /* MT_SELBOX: Blue */
+    { 10, 0x00FF00UL }, /* MT_OK:     Bright Green */
+    { 9, 0xFF0000UL }   /* MT_FAIL:   Bright Red */
 };
+
+int menu_theme_fallback_role(int role)
+{
+    return role == MT_OK || role == MT_FAIL ? MT_TEXT : -1;
+}
 
 int menu_theme_index(int role)
 {
@@ -46,13 +53,15 @@ void menu_theme_roles_gui(const gtheme *t, uc_u32 rgb[MT_ROLES])
     rgb[MT_DIM] = t->dim & 0xFFFFFFUL;
     rgb[MT_ACCENT] = t->bg & 0xFFFFFFUL;
     rgb[MT_SELBOX] = t->accent & 0xFFFFFFUL;
+    rgb[MT_OK] = t->ok & 0xFFFFFFUL;
+    rgb[MT_FAIL] = t->fail & 0xFFFFFFUL;
 }
 
 int menu_theme_minimal(uc_u32 rgb[MT_ROLES])
 {
     uc_u32 bg = rgb[MT_BG], fg = rgb[MT_TEXT];
     rgb[MT_BG] = rgb[MT_ACCENT] = bg;
-    rgb[MT_TEXT] = rgb[MT_DIM] = rgb[MT_SELBOX] = fg;
+    rgb[MT_TEXT] = rgb[MT_DIM] = rgb[MT_SELBOX] = rgb[MT_OK] = rgb[MT_FAIL] = fg;
     return bg != fg;
 }
 
@@ -67,15 +76,15 @@ unsigned menu_theme_dopus_commands(const uc_u32 rgb[MT_ROLES], char *out, unsign
         out[0] = 0;
     if (!rgb || !out)
         return 0;
-    for (i = 0; i < MT_ROLES; i++)
+    for (i = 0; i < MT_PALETTE_ROLES; i++)
         if (rgb[i] > 0xFFFFFFUL)
             return 0;
     /* head, five " 0xRRGGBB", newline, pens (its own newline), NUL */
-    if (cap < sizeof head - 1 + MT_ROLES * 9 + 1 + sizeof pens)
+    if (cap < sizeof head - 1 + MT_PALETTE_ROLES * 9 + 1 + sizeof pens)
         return 0;
     for (k = 0; head[k]; k++)
         out[n++] = head[k];
-    for (i = 0; i < MT_ROLES; i++) {
+    for (i = 0; i < MT_PALETTE_ROLES; i++) {
         int sh;
         out[n++] = ' ';
         out[n++] = '0';

@@ -54,6 +54,7 @@
 #include "../render/amiga_render.h"
 #include "../tty/qmark.h"
 #include "keymap_default.inc"
+#include "job_dos.h"
 
 /* vbcc's startup runs main on this much, and the cookie is what vsh, the Shell and Workbench read from the
  * file to start it on that much. tests/test_amarchy_stack.py reads both from the built binary. */
@@ -71,7 +72,8 @@ const char amarchy_gui_stack_cookie[] = "$STACK: " GUI_STR(GUI_STACK);
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 
-enum { M_LIST, M_INPUT, M_MSG, M_VIEW };
+enum { M_LIST, M_INPUT, M_MSG, M_VIEW, M_JOB };
+#define JOB_ROWS 18           /* rows of the job view: the body and, as the last one, the footer */
 enum { K_NONE, K_CHAR, K_ESC, K_ENTER, K_BS, K_UP, K_DOWN, K_LEFT, K_RIGHT, K_PGUP, K_PGDN };
 
 typedef struct gui {
@@ -131,6 +133,11 @@ static keymap km;
 static ix_index ixs;
 static int menu_cond;            /* decided once at open: mn_cond(terminal present, DOPUS.1 present, WORKBENCH present) */
 static gui G;
+static jc job;                   /* the running job's output (job_dos feeds it); one job at a time */
+static int job_started;          /* the last lf_run started a job view (main re-enters the list after it) */
+static int job_on;               /* a job view is up: event_loop polls it */
+static long job_lines_seen;      /* sentinel: lines appended in all jobs of this run */
+static long job_done_seen;       /* sentinel: rc + 1 when the end was seen, else 0 */
 static char view_text[KM_MAX_BIND * 100];
 static char msg_text[UPREQ_ANSWER + 140];
 static char prompt_text[UPREQ_ANSWER + 80];
@@ -378,6 +385,9 @@ static void draw_header(gui *g)
             strcat(h, g->filter);
         }
         s = h;
+    } else if (g->mode == M_JOB) {
+        jc_header(&job, h, sizeof h);
+        s = h[0] ? h : jb_title();
     }
     put(g, MT_DIM, MT_BG, q->head_x + q->m.row_pad, q->head_y, q->m.head_h, s, (int)strlen(s),
         q->head_w - 2 * q->m.row_pad);
@@ -474,6 +484,19 @@ static void draw_row(gui *g, int e)
         }
         if (MN_IS_GROUP(it) && !minimal)
             put(g, role, rbg, q->list_x + q->list_w - q->m.row_pad - g->chev_w, y, q->m.row_h, ">", 1, g->chev_w);
+    } else if (g->mode == M_JOB) {
+        int body = q->visible - 1;
+        if (e < body) {
+            int t = jc_top(&job, body) + e;
+            if (t < jc_count(&job))
+                put(g, MT_TEXT, rbg, tx, y, q->m.row_h, jc_line(&job, t), (int)strlen(jc_line(&job, t)), tw);
+        } else if (e == body) {
+            char f[JOB_FOOT_MAX];
+            int tone = jc_tone(&job);
+            jc_footer(&job, f, sizeof f);
+            put(g, tone == JT_OK ? MT_OK : tone == JT_FAIL ? MT_FAIL : MT_DIM, rbg, tx, y, q->m.row_h, f,
+                (int)strlen(f), tw);
+        }
     } else if (g->mode == M_INPUT) {
         char t[EDIT_MAX + 2];
         memcpy(t, g->edit, (size_t)g->elen);
@@ -626,6 +649,7 @@ static void go_up(gui *g)
 }
 
 static int gui_ask_value(void *ctx, const char *label, const char *usage, char *out, int n);
+static int gui_run_job(void *ctx, const char *line, const char *title);
 static void gui_refused(void *ctx, const char *label, long rc, const char *answer);
 
 /* IDCMP_INTUITICKS only while a scan is watched: the window is a launcher, ticks come while it is in use. */
@@ -720,6 +744,7 @@ static void start_scan(gui *g, const mn_item *it)
     ui.ctx = g;
     ui.self_in_mru = 0;
     ui.win = g->win;
+    ui.run_job = gui_run_job;
     if (!ix_watcher_adopt_live(&g->wt, have0, &p0, alive0)) {    /* one scanner at a time: show the live one */
         if (lf_run(&km.menu[it->row], &ui) != LF_WATCH)
             return;
@@ -742,6 +767,7 @@ static void activate_setting(gui *g, const mn_item *it, int right)
     ui.ctx = g;
     ui.self_in_mru = 0;
     ui.win = g->win;
+    ui.run_job = gui_run_job;
     if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(&sd_settings[it->ix]) || SD_HAS_LIST(&sd_settings[it->ix]))) {
         if (sd_settings[it->ix].kind == SD_CYCLE || SD_HAS_PICKER(&sd_settings[it->ix]) || SD_HAS_LIST(&sd_settings[it->ix])) {
             mn_child_node(g->node, it, g->node, sizeof g->node);
@@ -889,11 +915,68 @@ static void key_view(gui *g, int k)
     }
 }
 
+/* The job view's keys: the mapping lives in job_core (jc_key_act). */
+static void job_redraw(gui *g)
+{
+    paint_begin(g);
+    draw_header(g);
+    draw_list(g);
+    paint_end(g, 0, 0, g->g.w - 1, g->g.h - 1);
+}
+
+static void key_job(gui *g, int k)
+{
+    static const char map[] = { K_UP, K_DOWN, K_PGUP, K_PGDN, K_ESC, K_ENTER };
+    int jk = JKEY_OTHER, i, d, body = g->g.visible - 1;
+    for (i = 0; i < 6; i++)
+        if (map[i] == k)
+            jk = JKEY_UP + i;
+    switch (jc_key_act(&job, jk, body, &d)) {
+    case JA_SCROLL:
+        jc_scroll(&job, d, body);
+        draw_list(g);
+        break;
+    case JA_CANCEL:
+        jb_cancel(&job);
+        job_redraw(g);
+        break;
+    case JA_CLOSE:
+        g->stop = 1;
+        break;
+    }
+}
+
+/* The tick of the job: take the new output; redraw when lines, the state or the progress changed. */
+static void job_tick(gui *g)
+{
+    long total = job.total;
+    int state = job.state, pn = job.prog_n, pm = job.prog_m, ended = job.ended;
+    jb_poll(&job);
+    if (job.total != total) {
+        job_lines_seen += job.total - total;
+        sentinel_publish("AMARCHY_JOB_LINES", job_lines_seen);
+    }
+    if (job.ended && !ended) {
+        job_done_seen = job.rc + 1;
+        sentinel_publish("AMARCHY_JOB_DONE", job_done_seen);
+    }
+    if (g->mode == M_JOB && !g->await &&
+        (job.total != total || job.state != state || job.prog_n != pn || job.prog_m != pm || job.ended != ended))
+        job_redraw(g);
+}
+
 static void key(gui *g, int k, int ch, int wheel)
 {
     if (g->await)
         return;
     if (wheel) {
+        if (g->mode == M_JOB) {
+            int d, body = g->g.visible - 1;
+            (void)jc_key_act(&job, wheel < 0 ? JKEY_UP : JKEY_DOWN, body, &d);
+            jc_scroll(&job, d * 3, body);
+            draw_list(g);
+            return;
+        }
         if (g->mode == M_LIST)
             set_sel(g, g->sel + wheel);
         else if (g->mode == M_VIEW)
@@ -909,6 +992,9 @@ static void key(gui *g, int k, int ch, int wheel)
         break;
     case M_MSG:
         g->stop = 1;                        /* any key closes */
+        break;
+    case M_JOB:
+        key_job(g, k);
         break;
     default:
         key_view(g, k);
@@ -951,6 +1037,8 @@ static void mouse_button(gui *g, int code, int mx, int my)
             go_up(g);
         else if (g->mode == M_VIEW)
             g->quit = g->stop = 1;
+        else if (g->mode == M_JOB)
+            key_job(g, K_ESC);
         else
             g->stop = 1;
         return;
@@ -985,7 +1073,10 @@ static void event_loop(gui *g)
 {
     struct IntuiMessage *im;
     while (!g->stop && !g->quit) {
-        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C);
+        ULONG jm = job_on ? jb_sigmask() : 0;       /* every mode: a nested one must not starve the job */
+        ULONG got = Wait((1UL << g->win->UserPort->mp_SigBit) | SIGBREAKF_CTRL_C | jm);
+        if (jm && (got & jm))
+            job_tick(g);
         if (got & SIGBREAKF_CTRL_C) {          /* MENU-TOGGLE: the menu hotkey pressed again */
             g->quit = g->stop = 1;
             break;
@@ -1060,6 +1151,12 @@ static void pens_get(gui *g)
             g->pen_got[r] = p >= 0;
             g->pen[r] = p >= 0 ? p : (r == MT_BG ? 0 : 1);
         }
+    }
+    /* a role with no pen of its own (few-colour screen) draws in its fallback role's pen (menu_theme.h) */
+    for (r = 0; r < MT_ROLES; r++) {
+        int fb = menu_theme_fallback_role(r);
+        if (fb >= 0 && !g->pen_got[r])
+            g->pen[r] = g->pen[fb];
     }
     g->pens = 0;
     for (r = 0; r < MT_ROLES; r++) {
@@ -1154,6 +1251,38 @@ static int gui_ask_value(void *ctx, const char *label, const char *usage, char *
         out[l] = 0;
     }
     return ok;
+}
+
+/* A job: row: run the command and show its output; returns when the view closes. Esc/Enter after the end goes back
+ * to the menu row; a hotkey or CTRL_C while it runs cancels the job first (no orphan child). A job that cannot start
+ * runs as run: (lf_run_line). */
+static int gui_run_job(void *ctx, const char *line, const char *title)
+{
+    gui *g = (gui *)ctx;
+    lf_ui ui;
+    if (g->quit)
+        return 0;
+    if (!jb_start(&job, line, 0, title)) {
+        ui.ask_value = gui_ask_value;
+        ui.refused = gui_refused;
+        ui.ctx = g;
+        ui.self_in_mru = 0;
+        ui.win = g->win;
+        ui.run_job = 0;
+        return lf_run_line(line, &ui);
+    }
+    job_on = 1;
+    job_started = 1;
+    g->mode = M_JOB;
+    g->stop = 0;
+    g->top = 0;
+    relayout(g, JOB_ROWS);
+    event_loop(g);
+    if (job.state == JC_RUNNING)
+        jb_cancel(&job);
+    job_on = 0;
+    jb_end();
+    return 0;
 }
 
 /* A refused action says why before the window closes; any key closes. */
@@ -1331,24 +1460,42 @@ static int gui_open(int viewer, const char *node)
     draw_full(g);
     at_mark("ready");
     watch_idcmp(g);
-    event_loop(g);
-
-    if ((g->chosen >= 0 || g->ixpath[0]) && !g->quit) {
-        lf_ui ui;
-        ui.ask_value = gui_ask_value;
-        ui.refused = gui_refused;
-        ui.ctx = g;
-        ui.self_in_mru = 0;
-        ui.win = g->win;
-        g->stop = 0;
-        /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
-        if (g->ixpath[0]) {                    /* an index row may be refused: the window stays for the message */
-        } else if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST && lf_plan(km.menu[g->chosen].kind) != LF_WINDOW &&
-                   lf_plan_t(km.menu[g->chosen].kind, 0) != LF_OPEN_THEN_REQUEST) {
-            cleanup(g);
-            g->rp = 0;
+    for (;;) {
+        event_loop(g);
+        if (!((g->chosen >= 0 || g->ixpath[0]) && !g->quit))
+            break;
+        {
+            lf_ui ui;
+            char keep[MN_LABEL];
+            ui.ask_value = gui_ask_value;
+            ui.refused = gui_refused;
+            ui.ctx = g;
+            ui.self_in_mru = 0;
+            ui.win = g->win;
+            ui.run_job = gui_run_job;
+            g->stop = 0;
+            keep[0] = 0;
+            if (g->chosen >= 0)
+                strncpy(keep, km.menu[g->chosen].label, sizeof keep - 1);
+            keep[sizeof keep - 1] = 0;
+            job_started = 0;
+            /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
+            if (g->ixpath[0]) {                    /* an index row may be refused: the window stays for the message */
+            } else if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST && lf_plan(km.menu[g->chosen].kind) != LF_WINDOW &&
+                       lf_plan(km.menu[g->chosen].kind) != LF_JOB &&
+                       lf_plan_t(km.menu[g->chosen].kind, 0) != LF_OPEN_THEN_REQUEST) {
+                cleanup(g);
+                g->rp = 0;
+            }
+            rc = g->ixpath[0] ? lf_open_index(g->ixlabel, g->ixpath, &ui) : lf_run(&km.menu[g->chosen], &ui);
+            if (!job_started || g->quit)
+                break;
+            /* a job view closed: back to the menu row it came from */
+            g->chosen = -1;
+            g->mode = M_LIST;
+            g->stop = 0;
+            list_rebuild_keep(g, keep);
         }
-        rc = g->ixpath[0] ? lf_open_index(g->ixlabel, g->ixpath, &ui) : lf_run(&km.menu[g->chosen], &ui);
     }
 done:
     cleanup(g);

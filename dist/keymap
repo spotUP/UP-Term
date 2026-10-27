@@ -26,7 +26,9 @@
 ;   slash:/command   a slash command (/theme, /size 132x43 ...)
 ;   run:<command>    start a program (a vsh line: 'single quotes' round a path with a space,
 ;                    never double quotes)
-;   open:uterm       a new UP-Term window (commodity only; in a window: tab:new)
+;   job:<command>    like run:, for a long job (upkg upgrade): the menu shows its output in a job view
+                   (scroll, Esc cancels) when the menu style has one; otherwise it runs as run:
+  open:uterm       a new UP-Term window (commodity only; in a window: tab:new)
 ;   rexx:<script>    an ARexx script or string (Amarchy hotkeys and menu rows)
 ;   win:<verb> [arg] a window verb on the active or menu-targeted window: cycle, front, back,
 ;                    zip, fullwidth, fullscreen, save, restore, move, size, focus,
@@ -235,7 +237,7 @@ system.reboot      = Reboot                | detach:Reboot
 system.workbench   = Workbench screen      | slash:/screen workbench
 system.own         = Own screen            | slash:/screen own
 install.browse     = Install add-ons       | run:upkg browse
-install.upgrade    = Upgrade all           | run:upkg upgrade
-install.update     = Update lists          | run:upkg update
+install.upgrade    = Upgrade all           | job:upkg upgrade
+install.update     = Update lists          | job:upkg update
 install.packages   = Packages              | menu:install.packages
 trigger.clipboard  = Clipboard history     | menu:trigger.clipboard

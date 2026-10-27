@@ -132,6 +132,7 @@ int keymap_action_scope(int kind)
     case KA_MENU:
     case KA_VIEWER:
     case KA_RUN:
+    case KA_JOB:
     case KA_DETACH:
     case KA_SCAN:
         return KS_BOTH;
@@ -211,7 +212,7 @@ typedef struct prefix {
 
 static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
-    { "slash", KA_SLASH }, { "run", KA_RUN }, { "rexx", KA_REXX }, { "open", KA_OPEN },
+    { "slash", KA_SLASH }, { "run", KA_RUN }, { "job", KA_JOB }, { "rexx", KA_REXX }, { "open", KA_OPEN },
     { "detach", KA_DETACH }, { "scan", KA_SCAN },
     { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "settings", KA_SETTINGS }
 };

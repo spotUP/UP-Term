@@ -84,6 +84,11 @@ static int run_in_uterm(const char *cmd, const lf_ui *ui)
     return 0;
 }
 
+int lf_run_line(const char *line, const lf_ui *ui)
+{
+    return run_in_uterm(line, ui);
+}
+
 static int run_request(const km_menu *m, const lf_ui *ui, const char *value)
 {
     /* tab:, menuid: and slash: belong to a terminal window: the handler's request port
@@ -530,6 +535,10 @@ int lf_run(const km_menu *m, const lf_ui *ui)
         int rc = run_detached(m, ui);
         return rc ? rc : LF_WATCH;
     }
+    case LF_JOB:
+        if (lf_job_view(ui))
+            return ui->run_job(ui->ctx, m->arg, m->label);
+        return run_in_uterm(m->arg, ui);
     case LF_WINDOW:
         return run_in_uterm(m->arg, ui);
     case LF_VIEWER:                     /* the program super+k opens, on its own like detach: */

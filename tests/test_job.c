@@ -203,8 +203,39 @@ static void test_job_scroll(void)
     CHECK(J.follow);
 }
 
+static void test_job_keys(void)
+{
+    int d;
+    jc_init(&J);
+    CHECK_INT(jc_tone(&J), JT_DIM);
+    CHECK_INT(jc_key_act(&J, JKEY_ESC, 10, &d), JA_CANCEL);
+    CHECK_INT(jc_key_act(&J, JKEY_ENTER, 10, &d), JA_NONE);
+    CHECK_INT(jc_key_act(&J, JKEY_UP, 10, &d), JA_SCROLL);
+    CHECK_INT(d, -1);
+    CHECK_INT(jc_key_act(&J, JKEY_PGDN, 10, &d), JA_SCROLL);
+    CHECK_INT(d, 9);
+    CHECK_INT(jc_key_act(&J, JKEY_PGUP, 1, &d), JA_SCROLL);
+    CHECK_INT(d, -1);
+    CHECK_INT(jc_key_act(&J, JKEY_OTHER, 10, &d), JA_NONE);
+    feed("x\n@JOBRC 0\n");
+    CHECK_INT(jc_tone(&J), JT_OK);
+    CHECK_INT(jc_key_act(&J, JKEY_ESC, 10, &d), JA_CLOSE);
+    CHECK_INT(jc_key_act(&J, JKEY_ENTER, 10, &d), JA_CLOSE);
+    jc_init(&J);
+    feed("@JOBRC 20\n");
+    CHECK_INT(jc_tone(&J), JT_FAIL);
+    jc_init(&J);
+    feed("@JOBRC 5\n");
+    CHECK_INT(jc_tone(&J), JT_OK);          /* nothing to do counts as Done */
+    jc_init(&J);
+    jc_cancel(&J);
+    CHECK_INT(jc_tone(&J), JT_FAIL);
+    CHECK_INT(jc_key_act(&J, JKEY_ESC, 10, &d), JA_CLOSE);
+}
+
 void suite_job(void)
 {
+    test_job_keys();
     test_job_lines();
     test_job_ring();
     test_job_marker();
