@@ -283,6 +283,6 @@ int pk_action_line(const pk_row *r, int act, char *out, int cap)
     if (!verb || !pk_name_ok(r->name))
         return 0;
     n = snprintf(out, cap, "upkg %s %s%s", verb,
-                 act == PK_ACT_INSTALL && !cmp_nocase(r->src, "uhc") ? "uhc:" : "", r->name);
+                 !cmp_nocase(r->src, "uhc") ? "uhc:" : "", r->name);
     return n > 0 && n < cap;
 }

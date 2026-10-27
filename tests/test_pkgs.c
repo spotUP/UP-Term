@@ -135,6 +135,10 @@ static void test_pkgs_state_actions(void)
     CHECK_STR(line, "upkg remove Gamma");
     CHECK(pk_action_line(&l.r[0], PK_ACT_UPGRADE, line, sizeof line));
     CHECK_STR(line, "upkg upgrade Gamma");
+    CHECK(pk_action_line(&l.r[4], PK_ACT_REMOVE, line, sizeof line));
+    CHECK_STR(line, "upkg remove uhc:tiny");     /* remove and upgrade take the uhc: prefix too (patch 0046) */
+    CHECK(pk_action_line(&l.r[4], PK_ACT_UPGRADE, line, sizeof line));
+    CHECK_STR(line, "upkg upgrade uhc:tiny");
     CHECK(!pk_action_line(&l.r[0], PK_ACT_LAUNCH, line, sizeof line));   /* Launch is a pkg: path, not a job */
     CHECK(!pk_action_line(&l.r[0], 'X', line, sizeof line));
     CHECK(!pk_action_line(&l.r[0], PK_ACT_REMOVE, line, 8));             /* does not fit */
