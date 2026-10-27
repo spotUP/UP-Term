@@ -78,13 +78,14 @@ enum {
     KA_SCAN,        /* scan:<command line>  like detach:, and the menu watches the scan it started (RESCAN-FEEDBACK) */
     KA_WIN,         /* win:<verb [argument]>  a window verb on the active window, run by the commodity (win_core.h) */
     KA_GTHEME,      /* gtheme:<name>  the drawn menu's Omarchy theme (amarchy/gthemes_core.h), run by the commodity */
+    KA_JOB,         /* job:<command line>  like run:, shown in the commodity's job view when the menu style has one (amarchy/leaf.h run_job); a style without one runs it as run: */
     KA_SETTINGS     /* settings:<page>  a settings page group of the menu (general colors palette keyboard advanced amarchy): mn_children lists the page's rows from prefs/settings_def.c; no action of its own */
 };
 
 /* where an action runs (keymap_action_scope) */
 #define KS_TERMINAL  1   /* tab:, menuid:, slash: */
 #define KS_COMMODITY 2   /* open:, rexx: */
-#define KS_BOTH      3   /* run:, detach:, scan:, menu:, viewer */
+#define KS_BOTH      3   /* run:, job:, detach:, scan:, menu:, viewer */
 
 typedef struct km_bind {
     unsigned short qual;        /* KM_Q_* */

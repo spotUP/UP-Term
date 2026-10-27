@@ -720,6 +720,7 @@ static void start_scan(gui *g, const mn_item *it)
     ui.ctx = g;
     ui.self_in_mru = 0;
     ui.win = g->win;
+    ui.run_job = 0;
     if (!ix_watcher_adopt_live(&g->wt, have0, &p0, alive0)) {    /* one scanner at a time: show the live one */
         if (lf_run(&km.menu[it->row], &ui) != LF_WATCH)
             return;
@@ -742,6 +743,7 @@ static void activate_setting(gui *g, const mn_item *it, int right)
     ui.ctx = g;
     ui.self_in_mru = 0;
     ui.win = g->win;
+    ui.run_job = 0;
     if (MN_IS_SETTING(it) && (right || SD_HAS_PICKER(&sd_settings[it->ix]) || SD_HAS_LIST(&sd_settings[it->ix]))) {
         if (sd_settings[it->ix].kind == SD_CYCLE || SD_HAS_PICKER(&sd_settings[it->ix]) || SD_HAS_LIST(&sd_settings[it->ix])) {
             mn_child_node(g->node, it, g->node, sizeof g->node);
@@ -1346,10 +1348,12 @@ static int gui_open(int viewer, const char *node)
         ui.ctx = g;
         ui.self_in_mru = 0;
         ui.win = g->win;
+    ui.run_job = 0;
         g->stop = 0;
         /* a script or a new window needs no menu around it; a terminal action or a program that cannot start may refuse */
         if (g->ixpath[0]) {                    /* an index row may be refused: the window stays for the message */
         } else if (lf_plan(km.menu[g->chosen].kind) != LF_REQUEST && lf_plan(km.menu[g->chosen].kind) != LF_WINDOW &&
+                   lf_plan(km.menu[g->chosen].kind) != LF_JOB &&
                    lf_plan_t(km.menu[g->chosen].kind, 0) != LF_OPEN_THEN_REQUEST) {
             cleanup(g);
             g->rp = 0;
