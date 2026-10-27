@@ -5,6 +5,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "pkgs_dos.h"
+#include "sentinel_dos.h"
 #include "pkgs_core.h"
 #include "leaf.h"
 #include "proclaunch.h"
@@ -36,19 +37,6 @@ static long pk_dos_read(char *buf, long cap)
     return got;
 }
 
-/* Publishes n as the global variable name (a rig case reads it after the run); the same form as job_dos.c's sentinel. */
-static void pk_sentinel(const char *name, long n)
-{
-    char b[16];
-    int i = 15;
-    b[i] = 0;
-    do {
-        b[--i] = (char)('0' + n % 10);
-        n /= 10;
-    } while (n && i > 0);
-    SetVar((STRPTR)name, (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
-}
-
 int pk_dos_load_rows(ix_index *x)
 {
     pk_rows l;
@@ -60,6 +48,6 @@ int pk_dos_load_rows(ix_index *x)
         pk_parse_all(buf, len, &l);
     free(buf);
     ix_add_pkg_rows(x, &l);                  /* a failed upkg stores an empty list: the views show their one note */
-    ix_pkgs_publish(x, pk_sentinel);
+    ix_pkgs_publish(x, am_sentinel);
     return 1;
 }
