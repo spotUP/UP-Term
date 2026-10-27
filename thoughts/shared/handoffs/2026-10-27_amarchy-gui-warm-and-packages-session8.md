@@ -60,3 +60,16 @@ ledger: thoughts/spot/todos.md (main checkout) rows AMARCHY-GUI-WARM, AMARCHY-LA
   menu), PG.8 Remove No-first / Search no-match / Install / Upgrades, rerun A2 and the Search footer once vtcon-05's
   libupkgui pin (UPKGUI-FOOTER-STALE-STATUS, UPKGUI-FOOTER-ESC-DROPPED) lands. Split rig briefs small (last agent hit
   42 tool calls).
+
+## Addendum 2026-10-27 (after the update above, vtcon-a1)
+
+- GUI-SEARCH-CLOSES is fixed in c80181a7 (pushed to prefs-inline). `gui_ask_value` in `amarchy/gui.c` now restores
+  mode/head/top, clears `edone`/`stop` and relayouts, so Return or Escape at the drawn Packages > Search prompt (and at a
+  setting value prompt) no longer closes the window. Regression test: `tools/rig/amarchy_gui_rig.py --pkg-search`
+  (also in the default case list). Rig 7: unfixed build 4 FAIL, fixed build PASS except the no-match note text; the check
+  now accepts both index notes ("No packages here" / "No packages listed (is upkg installed?)") but that relaxed check
+  has NOT been rerun. A numeric setting row (Scrollback) was not tested; only the Profile row.
+- Fixed amarchy-gui md5 c2c19f3dedf6001a7d4835977cd375a7. The A1200 redeploy (A1200-PATH-UPTERM-BIN) now carries it too.
+- Rig 7 setup is manual (kill kit Amarchy, put binaries to VTCX:Apps/bin, Assign UP-Term: VTCX:Apps ADD, start). The
+  agent's helper is setup7.py in the old session scratchpad; fold it into amarchy_gui_rig.py before the next rig brief.
+- Last rig agent used 46 tool calls; split the next rig brief smaller (one case per agent, ~25 calls).
