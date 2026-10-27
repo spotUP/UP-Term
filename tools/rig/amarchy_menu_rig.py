@@ -1620,6 +1620,9 @@ def r_pkg_text_search_tags():
 def tx_install_row(g, tag, rows, name):
     """Down to the Browse row of `name`, Return, Install; False on a failed step. The job view is up after it."""
     hit = [r for r in rows if name in r]
+    if not hit:                          # the feed outgrew the 10-row window: collect every row, the pick counts Downs
+        rows = tx_all_rows()
+        hit = [r for r in rows if name in r]
     if not g.check(len(hit) == 1, '%s: Browse has the row for %s (%s)' % (tag, name, hit)):
         return False
     tx_pick(hit[0], rows)
@@ -1648,18 +1651,10 @@ def r_pkg_text_fail():
             rows = tx_browse(g, tag, names)
             if rows is None:
                 return False, 'no Browse'
-            if what == 'notfound':
-                tx_leave_menu()
-                rel.set(fd, packages=text)       # the feed no longer lists it; upkg update outside the menu keeps the menu cache
+            if what == 'notfound':           # the menu loads its list on open: it stays open on Browse while upkg update drops the ghost
+                rel.set(fd, packages=text)
                 urc = upkg_rig.upkg('pg8tnf-update', 'update', 300, conf=False)[0]
                 g.check(urc == 0, '%s: upkg update against the reduced feed rc 0 (rc %s)' % (tag, urc))
-                pk = tx_open_packages(g, tag)
-                if pk is None or not g.check(tx_pick('Browse', pk), '%s: Browse row (cache)' % tag):
-                    return False, 'no Browse'
-                rows = tx_rows()
-                if len(rows) == 1 and not any(n in rows[0] for n in names):
-                    tx_pick(rows[0], rows)
-                    rows = tx_rows()
             if not tx_install_row(g, tag, rows, ghost):
                 return False, 'no Install'
             tx_fail_job(g, tag, what, rc, word)
@@ -1682,6 +1677,69 @@ def r_pkg_text_fail():
 
 ROWS.append(('pkg_text_search', r_pkg_text_search_tags))
 ROWS.append(('pkg_text_fail', r_pkg_text_fail))
+
+
+def r_pkg_text_uhc_remove():
+    """UHC-REMOVE-PREFIX (1d10fc2d) through the text menu: a staged UHC catalogue row (gui rig uhc_catalogue) is installed
+    from Packages > Browse, then removed with Remove > Yes. The job view's line must be `upkg remove uhc:<name>` (the prefix
+    pk_action_line adds for src uhc), rc 0, and the reopened Browse row must no longer read Installed."""
+    import amarchy_gui_rig as g, upkg_rig
+    tag, start_bad, name = 'pkg_text_uhc', g.bad, g.PKG_UHC
+    fd = g.feed_dir()
+    names = g.feed_names(open(os.path.join(fd, 'Packages')).read())
+    g.setup()
+    ship_keymap()
+    ensure_terminal()
+    drop = g.uhc_catalogue()
+    rel = g.local_feed(fd)
+    try:
+        rows = tx_browse(g, tag, names + [name])
+        if rows is None:
+            return False, 'no Browse'
+        if not tx_install_row(g, tag, rows, name):
+            return False, 'no Install'
+        tx_job(g, tag, 'UHC Install')
+        rows = tx_list_after_job(name)
+        hit = tx_named(rows, name)
+        g.check(len(hit) == 1 and hit[0].lstrip().startswith('[UHC]') and 'Installed' in hit[0],
+                '%s: the [UHC] row now reads Installed (%s)' % (tag, hit))
+        if len(hit) != 1:
+            return False, 'no row'
+        tx_pick(hit[0], rows)
+        if not g.check(tx_pick('Remove', tx_rows()), '%s: the UHC row offers Remove' % tag):
+            return False, 'no Remove'
+        conf = tx_rows()
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE ENV:AMARCHY_JOB_WORD QUIET')
+        if not g.check(len(conf) == 2 and tx_pick(conf[1], conf), '%s: Return on the Yes row (rows %s)' % (tag, conf)):
+            return False, 'no Yes'
+        rc = g.job_done()
+        view = screen_text()             # the finished job view stays up until Return
+        g.check(rc == 0, '%s: UHC Remove job rc 0 (rc %s)' % (tag, rc))
+        g.check('upkg remove uhc:%s' % name in view, '%s: the job line is `upkg remove uhc:%s` (screen: %s)' % (tag, name, view.strip()[-400:]))
+        for _ in range(10):
+            time.sleep(1.5)
+            if 'Enter: Accept' not in screen_text():
+                break
+            ami.key(RAW['return'])
+        time.sleep(2)
+        tx_leave_menu()
+        rows = tx_browse(g, tag, names + [name])      # reopen: the row is read again from the menu, not from the job
+        hit = tx_named(rows or [], name)
+        if not hit:
+            hit = tx_named(tx_all_rows(), name)
+        g.check(len(hit) == 1 and 'Installed' not in hit[0], '%s: the reopened row no longer reads Installed (%s)' % (tag, hit))
+        g.check(name not in g.installed_names(), '%s: upkg list-installed no longer lists %s' % (tag, name))
+    finally:
+        tx_leave_menu()
+        if name in g.installed_names():
+            upkg_rig.upkg('pg8tu-cleanup', 'remove uhc:%s' % name, 300, conf=False)
+        c.run('Delete >NIL: %s QUIET' % g.PKG_CONF)
+        rel.close()
+        drop()
+    return g.bad == start_bad, '%d failed checks' % (g.bad - start_bad)
+
+
+ROWS.append(('pkg_text_uhc', r_pkg_text_uhc_remove))
 
 
 def start_args():

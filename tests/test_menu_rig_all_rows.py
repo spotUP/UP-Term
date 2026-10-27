@@ -56,5 +56,21 @@ class AllRows(unittest.TestCase):
         self.assertNotIn(m.RAW['esc'], st['keys'])
 
 
+class InstallRowBeyondWindow(unittest.TestCase):
+    def test_row_below_the_window_is_found_by_collecting_all_rows(self):
+        window = ['[upkg] up-a  1.0  >']
+        full = window + ['[upkg] up-zzfail  1.0  >']
+        g = mock.Mock()
+        g.check = lambda ok, msg: ok
+        picked = []
+        with mock.patch.object(m, 'tx_all_rows', return_value=full) as allr, \
+                mock.patch.object(m, 'tx_pick', side_effect=lambda p, rows=None: picked.append((p, rows)) or True), \
+                mock.patch.object(m, 'tx_rows', return_value=['Install']), mock.patch.object(m.c, 'run'):
+            ok = m.tx_install_row(g, 't', window, 'up-zzfail')
+        self.assertTrue(ok)
+        allr.assert_called_once()
+        self.assertEqual(picked[0], ('[upkg] up-zzfail  1.0  >', full))
+
+
 if __name__ == '__main__':
     unittest.main()
