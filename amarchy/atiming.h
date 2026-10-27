@@ -43,4 +43,18 @@ static void at_mark(const char *tag)
     }
 }
 
+/* Opt-in note for the rig: the global variable `name` (ENV:) holds `value` in hex, so a script can read which task
+ * owned the menu port at an open (a stale port keeps its dead owner). Same switch as at_mark. */
+static void at_note(const char *name, unsigned long value)
+{
+    char var[4], hex[12];
+    int i;
+    if (GetVar((STRPTR)"AMARCHY_TIMING", (STRPTR)var, sizeof(var), 0) < 0)
+        return;
+    for (i = 0; i < 8; i++)
+        hex[i] = "0123456789abcdef"[(value >> (28 - 4 * i)) & 15];
+    hex[8] = 0;
+    SetVar((STRPTR)name, (STRPTR)hex, 8, GVF_GLOBAL_ONLY);
+}
+
 #endif

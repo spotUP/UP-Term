@@ -84,6 +84,7 @@ static void srv_find(void *ctx, int *found, int *alive, int *outstanding)
     Forbid();
     p = FindPort((STRPTR)MS_PORT);
     *found = p != 0;
+    at_note("AMARCHY_PORT_OWNER", p ? (unsigned long)p->mp_SigTask : 0);
     *alive = p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME);
     Permit();
     *outstanding = s->out;
@@ -114,15 +115,22 @@ static void srv_send(void *ctx, const ms_req *r)
     strncpy(s->msg.node, r->node ? r->node : "", MS_NODE - 1);
     Forbid();
     p = FindPort((STRPTR)MS_PORT);
+    sent = p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME);
+    Permit();
+    if (sent)
+        at_mark("send");            /* opt-in: AMARCHY_TIMING; only the warm path marks it (the fallback does not).
+                                     * Written before the PutMsg: the server marks "start" the moment it has the
+                                     * message and two Opens of the one file at once lose a mark. */
+    sent = 0;
+    Forbid();
+    p = FindPort((STRPTR)MS_PORT);
     if (p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME)) {
         PutMsg(p, &s->msg.m);
         s->out = 1;
         sent = 1;
     }
     Permit();
-    if (sent)
-        at_mark("send");            /* opt-in: AMARCHY_TIMING; only the warm path marks it (the fallback does not) */
-    else
+    if (!sent)
         s->spawn(s->user, r);       /* the port went between find and send */
 }
 

@@ -140,7 +140,8 @@ static void srv_spawn_cold(void *user, const ms_req *r)
     act_in_window(g_open.line, g_open.cols, g_open.rows);
 }
 
-/* `amarchy-menu serve`, async, no console, named "amarchy-menu" (the liveness check reads the name), on the
+/* `amarchy-menu serve`, async, no console. System() names the process "Background CLI" whatever NP_Name says, so
+ * the liveness check (taskalive.c) knows the server by the program it runs, amarchy-menu. On the
  * stack the program's own $STACK cookie asks for (RULES.md rule 6). */
 static void srv_start_proc(void *user)
 {
