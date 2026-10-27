@@ -2687,7 +2687,7 @@ void suite_keymap(void)
  * table's defaults are those values (hand-written below, then held to the engine) */
 static void menu_theme_roles_map_the_palette(void)
 {
-    static const uc_u32 want_default[MT_ROLES] = { 0x000000UL, 0xE5E5E5UL, 0x7F7F7FUL, 0x00FFFFUL, 0x0000EEUL };
+    static const uc_u32 want_default[MT_ROLES] = { 0x000000UL, 0xE5E5E5UL, 0x7F7F7FUL, 0x00FFFFUL, 0x0000EEUL, 0x00FF00UL, 0xFF0000UL };
     uc_u32 pal[16], rgb[MT_ROLES];
     int i;
 
@@ -2703,6 +2703,8 @@ static void menu_theme_roles_map_the_palette(void)
     CHECK_INT(menu_theme_index(MT_DIM), 8);
     CHECK_INT(menu_theme_index(MT_ACCENT), 14);
     CHECK_INT(menu_theme_index(MT_SELBOX), 4);
+    CHECK_INT(menu_theme_index(MT_OK), 10);
+    CHECK_INT(menu_theme_index(MT_FAIL), 9);
     /* outline and selected row box are one colour: the border role is the selection box role, not the accent */
     CHECK_INT(MT_BORDER_ROLE, MT_SELBOX);
 

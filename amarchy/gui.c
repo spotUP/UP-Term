@@ -1061,6 +1061,12 @@ static void pens_get(gui *g)
             g->pen[r] = p >= 0 ? p : (r == MT_BG ? 0 : 1);
         }
     }
+    /* a role with no pen of its own (few-colour screen) draws in its fallback role's pen (menu_theme.h) */
+    for (r = 0; r < MT_ROLES; r++) {
+        int fb = menu_theme_fallback_role(r);
+        if (fb >= 0 && !g->pen_got[r])
+            g->pen[r] = g->pen[fb];
+    }
     g->pens = 0;
     for (r = 0; r < MT_ROLES; r++) {
         int q, dup = 0;

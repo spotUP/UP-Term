@@ -29,6 +29,8 @@ void gt_builtin(gtheme *out)
     out->fg = 0xa9b1d6UL;
     out->dim = 0x565f89UL;
     out->accent = 0x7aa2f7UL;
+    out->ok = 0x9ece6aUL;   /* green */
+    out->fail = 0xf7768eUL; /* red */
 }
 
 void gt_parse(const char *buf, long len, gtheme *out)
@@ -42,6 +44,10 @@ void gt_parse(const char *buf, long len, gtheme *out)
     out->fg = upconf_rgb(&g_conf, "default", "foreground", d.fg);
     out->dim = upconf_rgb(&g_conf, "default", "dark_foreground", d.dim);
     out->accent = upconf_rgb(&g_conf, "default", "accent", d.accent);
+    /* a file without green or red (not an Omarchy colors.toml) gives the accent and the foreground, never the
+     * built-in's colours, which would clash with another theme's ground */
+    out->ok = upconf_rgb(&g_conf, "default", "green", out->accent);
+    out->fail = upconf_rgb(&g_conf, "default", "red", out->fg);
     m = upconf_str(&g_conf, "default", "mode", "");
     while (*m == '"' || *m == ' ')
         m++;
