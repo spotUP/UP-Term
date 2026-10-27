@@ -73,3 +73,13 @@ ledger: thoughts/spot/todos.md (main checkout) rows AMARCHY-GUI-WARM, AMARCHY-LA
 - Rig 7 setup is manual (kill kit Amarchy, put binaries to VTCX:Apps/bin, Assign UP-Term: VTCX:Apps ADD, start). The
   agent's helper is setup7.py in the old session scratchpad; fold it into amarchy_gui_rig.py before the next rig brief.
 - Last rig agent used 46 tool calls; split the next rig brief smaller (one case per agent, ~25 calls).
+
+## Addendum 2 (2026-10-27, vtcon-a1, later)
+
+- The owner accepts rig (UAE) proof in place of A1200 tests.
+- Path fix 90445c05 is proven on rig 7. With a bare shell Path (C: only), Packages > Refresh ends with AMARCHY_JOB_DONE 1 (rc 0). Caveat: pl_dup_path locks UP-Term:bin, and a multi-directory assign gives only its first directory, the same as the AmigaDOS Path command. A real install has a one-directory UP-Term:. On the rig, `amarchy_gui_rig.py --setup` copies the kit bin into VTCX:Apps/bin first (e753662c).
+- Rig 7 PASS: drawn Search with no match keeps the window, and Escape at the prompt keeps the window. A numeric setting (Scrollback) keeps the window after Return and after Escape.
+- The drawn job footer key hints are done and pushed (ca45bdae). jc_hints derives the text from jc_key_act. Rig 7 shows "Escape: Cancel" while a job runs and "Enter: Accept  Escape: Back" after it ends, at the right end of the footer.
+- `--setup --no-build` now stops after setup (377eab3d).
+- AMARCHY_JOB_LINES is a running total of child output lines over all jobs since Amarchy started (see job_dos.c, jb_poll_publish). It read 3 for one Refresh job. The drawn job body has no text readout, so the body and the counter are not compared yet.
+- Still open: RJ.7 A3 cancel timing and A2 wait for the vtcon-05 upkg/curl/libupkgui pins. PG.8 Remove No-first, Install and Upgrades have not run.
