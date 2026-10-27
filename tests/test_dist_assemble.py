@@ -61,6 +61,20 @@ class Assemble(unittest.TestCase):
         self.assertNotIn('Files/ClaudeCode', v['HANDEDSEARCH'])
         self.assertEqual(mi.read_values('nvim')['ADDONUNINSTALL'], '')
 
+    def test_an_add_ons_install_dos_makes_and_copies_through_one_real_drawer(self):
+        # UP-Term: may be a multi-directory assign: MakeDir creates in its first directory only, where pkg/ may
+        # not exist. The record drawer is made and filled through the drawer ENVARC:up-term/Dir names.
+        for pid in ('git', 'nvim'):
+            text = mi.build(ROOT / 'dist' / 'install.dos', pid)
+            rec = mi.read_values(pid)['RECORD']
+            self.assertIn('Assign >NIL: UPTREAL: "`Type ENVARC:up-term/Dir`"', text, pid)
+            self.assertIn('MakeDir >NIL: $uptpkg $uptrec\n', text, pid)
+            self.assertIn('Copy VERSIONS $uptrec/VERSIONS ', text, pid)
+            self.assertIn('Set uptrec "UPTREAL:pkg/up-%s"' % pid, text, pid)
+            for line in text.splitlines():
+                if line.startswith(('MakeDir', 'Copy VERSIONS', 'Copy UPTPARENT')):
+                    self.assertNotIn(rec, line, pid)
+
     def test_a_stand_alone_package_gets_no_base_check_and_a_record_in_envarc(self):
         for pid in ('claude', 'pi', 'python'):
             v = mi.read_values(pid)

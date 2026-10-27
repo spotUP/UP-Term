@@ -120,6 +120,11 @@ def read_values(pkg_id, extra=()):
         # first lines of a package's record part and its Uninstall's data question: dist/common/ fragments
         'RECORDPRE': 'none.dos' if record.endswith(':') else 'record-addon.dos',
         'PKGDIR': record.rsplit('/', 1)[0] if '/' in record else record,
+        # where the record drawer is made: an add-on of the base resolves UP-Term: to one real drawer first
+        # (a multi-directory assign creates in its first directory only), a stand-alone one has an absolute record
+        'RECORDRESOLVE': 'resolve-addon.dos' if record.startswith('UP-Term:') else 'resolve-plain.dos',
+        'PKGDIRREAL': 'UPTREAL:' + record[len('UP-Term:'):].rsplit('/', 1)[0] if record.startswith('UP-Term:') else '',
+        'RECORDREAL': 'UPTREAL:' + record[len('UP-Term:'):] if record.startswith('UP-Term:') else '',
         'ADDONVAR': 'none.dos',
         # the base's Update reads the options back from the Amiga when the last install recorded none
         'OLDOPTS': 'oldopts.installer' if row['id'] == 'base' else 'none.dos',

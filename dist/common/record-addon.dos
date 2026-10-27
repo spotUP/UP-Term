@@ -1,8 +1,10 @@
 ; this archive's record drawer: its manifest and options (below), its VERSIONS (for an
 ; Update's two version lines) and a copy of its Uninstall, which the base's Uninstall runs
-MakeDir >NIL: @PKGDIR@ @RECORD@
-Copy VERSIONS @RECORDP@VERSIONS CLONE QUIET
+; @include dist/common/@RECORDRESOLVE@
+MakeDir >NIL: $uptpkg $uptrec
+Copy VERSIONS $uptrec/VERSIONS CLONE QUIET
 If WARN
+  Assign >NIL: UPTREAL:
   Quit 20
 EndIf
 ; the Uninstall sits beside this Files drawer. Never as /Uninstall: UnixDirs3 UNIXROOT
@@ -15,11 +17,13 @@ EndIf
 ; and Copy names UPTPARENT:Uninstall.
 Assign >NIL: UPTFILES: ""
 Assign >NIL: UPTPARENT: UPTFILES:/
-Copy UPTPARENT:Uninstall @RECORDP@Uninstall CLONE QUIET
+Copy UPTPARENT:Uninstall $uptrec/Uninstall CLONE QUIET
 If WARN
+  Assign >NIL: UPTREAL:
   Assign >NIL: UPTPARENT:
   Assign >NIL: UPTFILES:
   Quit 20
 EndIf
 Assign >NIL: UPTPARENT:
 Assign >NIL: UPTFILES:
+Assign >NIL: UPTREAL:
