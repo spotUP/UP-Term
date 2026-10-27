@@ -167,19 +167,7 @@ static void sentinel_aa(const gui *g)
 static void sentinel_rows(const gui *g)
 {
     char b[256];
-    int i, n = 0;
-    b[0] = 0;
-    for (i = g->shift; i < g->count; i++) {
-        const char *l = g->it[g->idx[i - g->shift]].label;
-        int len = (int)strlen(l);
-        if (n + len + 2 >= (int)sizeof b)
-            break;
-        if (i > g->shift)
-            b[n++] = '|';
-        memcpy(b + n, l, len);
-        n += len;
-        b[n] = 0;
-    }
+    mn_rows_join(g->it, g->idx, g->count - g->shift, b, sizeof b);
     SetVar((STRPTR) "AMARCHY_ROWS", (STRPTR)b, -1, GVF_GLOBAL_ONLY);
 }
 

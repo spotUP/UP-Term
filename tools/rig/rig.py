@@ -43,7 +43,7 @@ Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import fcntl, json, os, pathlib, re, shutil, subprocess, sys, time
+import fcntl, json, os, pathlib, re, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import a1200_drift
 import paths
@@ -202,7 +202,7 @@ def kit_shadow_src(name):
     ($UPTERM_PORTS, else UPTERM_ROOT/upterm-ports) for the ones it builds (PORTS_BUILT)."""
     if name in PORTS_BUILT:
         return pathlib.Path(os.environ.get("UPTERM_PORTS") or paths.repo("upterm-ports")) / "build/sysroot/UP-Term/bin" / name
-    return ROOT / ("dist" if name in a1200_drift.DIST_SOURCES else "build/amiga") / name
+    return (ROOT / "dist" if name in a1200_drift.DIST_SOURCES else build_amiga()) / name
 
 
 def q(path):
@@ -921,26 +921,54 @@ def refresh_kit_shadows(vtc):
     # GG:bin/sh is vsh too: the boot assigns GG: to VTC:gg when it holds one, and ixemul programs run it
     # as /gg/bin/sh (rig 3, 2026-10-24: an 8 Oct vsh there gave a pipeline's ixemul child a
     # non-interactive stdout, so upkg-ui tty:programbox found no terminal and exited 3)
-    src, dst = ROOT / "build/amiga/vsh", vtc / "gg/bin/sh"
+    src, dst = build_amiga() / "vsh", vtc / "gg/bin/sh"
     if src.is_file() and dst.is_file() and dst.read_bytes() != src.read_bytes():
         shutil.copyfile(src, dst)
         print("refreshed gg/bin/sh", dst.stat().st_size, "bytes")
 
+_MERGED_BUILD = None
+
+
+def build_amiga():
+    """The build/amiga directory `install` reads: this tree's, or after merge_build() one that also holds the main
+    checkout's files this tree has not built."""
+    return _MERGED_BUILD or ROOT / "build/amiga"
+
+
+def merge_build():
+    """A fresh worktree (`make worktree-ready` not run) has no build/amiga/*: every file it has not built is taken
+    from the main checkout's build/amiga, one [WARN] line per file, this tree's own winning. Returns the directory
+    install reads (symlinks, in a temporary directory) and sets it as build_amiga()."""
+    global _MERGED_BUILD
+    mine, main = ROOT / "build/amiga", paths.MAIN_CHECKOUT / "build/amiga"
+    own = {f.name for f in mine.iterdir() if f.is_file()} if mine.is_dir() else set()
+    theirs = [f for f in sorted(main.iterdir()) if f.is_file() and f.name not in own] \
+        if main.is_dir() and main.resolve() != mine.resolve() else []
+    if not theirs:
+        _MERGED_BUILD = None
+        return build_amiga()
+    d = pathlib.Path(tempfile.mkdtemp(prefix="rig-build-amiga-"))
+    for f in sorted(mine.iterdir()) if mine.is_dir() else []:
+        if f.is_file():
+            (d / f.name).symlink_to(f.resolve())
+    for f in theirs:
+        (d / f.name).symlink_to(f.resolve())
+        print("[WARN] %s missing: installing the main checkout's %s (make worktree-ready, then make amiga, for this tree's)"
+              % (mine / f.name, f))
+    _MERGED_BUILD = d
+    return d
+
+
 def built_handler():
-    """build/amiga/vtcon-handler of this tree, else (a fresh worktree, `make worktree-ready` not run) the main
-    checkout's, with a [WARN] naming it: the handler is the one binary every rig run needs."""
-    mine = ROOT / "build/amiga/vtcon-handler"
-    if mine.is_file():
-        return mine
-    main = paths.MAIN_CHECKOUT / "build/amiga/vtcon-handler"
-    if not main.is_file():
-        sys.exit("[ERROR] no %s: run make amiga (make worktree-ready seeds build/ from the main checkout)" % mine)
-    print("[WARN] %s missing: installing the main checkout's %s (make worktree-ready, then make amiga, for this tree's)"
-          % (mine, main))
-    return main
+    """The handler every rig run needs, from build_amiga() (this tree's, else the main checkout's)."""
+    f = build_amiga() / "vtcon-handler"
+    if not f.is_file():
+        sys.exit("[ERROR] no %s: run make amiga (make worktree-ready seeds build/ from the main checkout)" % f)
+    return f
 
 
 def install():
+    merge_build()
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)
     shutil.copyfile(built_handler(), RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
@@ -948,7 +976,7 @@ def install():
     # starts as a copy of old builds, and a script that runs VTC:<name> must
     # run the current one. The UP-Term drawer's bin too, the places build_drift checks: before, install
     # refreshed only VTC:, so the start [WARN] kept listing Apps/bin programs (vtcon-a1 P7, 2026-10-27)
-    for f in sorted((ROOT / "build/amiga").iterdir()):
+    for f in sorted(build_amiga().iterdir()):
         for dst in (RIG / "vtc" / f.name, RIG / "vtc" / paths.UPTERM_DRAWER / "bin" / f.name):
             if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
                 shutil.copyfile(f, dst)
@@ -972,7 +1000,7 @@ def install():
     for vtc in sorted(paths.RIG_HOME.glob("rig*/vtc")):   # every rig drawer, the ones that are off too
         clean_stale_icons(vtc)
         migrate_upterm_drawer(vtc)
-    stage_upterm(RIG / "vtc" / paths.UPTERM_DRAWER, ROOT / "build/amiga/vsh")
+    stage_upterm(RIG / "vtc" / paths.UPTERM_DRAWER, build_amiga() / "vsh")
     if (ROOT / "build/kit-terminfo/stamp").is_file():
         stage_terminfo(ROOT / "build/kit-terminfo", RIG / "vtc/terminfo")
     else:

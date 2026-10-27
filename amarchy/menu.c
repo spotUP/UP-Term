@@ -23,6 +23,7 @@
 #include "gthemes_dos.h"
 #include "pkgs_dos.h"
 #include "job_dos.h"
+#include "sentinel_dos.h"
 #include "menu_open.h"
 #include <signal.h>
 #include <fcntl.h>
@@ -302,6 +303,11 @@ static int menu_levels(const char *start)
         for (i = 0; i < c; i++) {
             ent[i + shift].tag = it[idx[i]].label;
             ent[i + shift].item = MN_IS_GROUP(&it[idx[i]]) ? ">" : "";
+        }
+        {   /* the rows shown (not the status row), the same value the drawn menu publishes */
+            char rows[256];
+            mn_rows_join(it, idx, c, rows, sizeof rows);
+            am_sentinel_str("AMARCHY_ROWS", rows);
         }
         ui_opt.kind = K_MENU;
         ui_opt.title = "Menu";
