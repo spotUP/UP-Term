@@ -323,6 +323,8 @@ int lf_pkg_action(const ix_index *x, const mn_item *it, const lf_ui *ui)
     char line[PK_NAME + 48], path[PK_PATH + 16], title[MN_LABEL];
     if (!x || !it || !MN_IS_PKGACT(it) || it->ix < 0 || it->ix >= x->pk.n || !it->seg[0])
         return 0;                                       /* a note row: nothing to run */
+    if (it->seg[0] == PK_ACT_NO)
+        return 0;                                       /* "No" on the Remove confirm page: nothing runs, the menu goes back */
     r = &x->pk.r[it->ix];
     if (it->seg[0] == PK_ACT_LAUNCH) {
         if (pk_row_path(r->launch, path, (int)sizeof path))

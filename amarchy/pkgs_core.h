@@ -75,6 +75,8 @@ void pk_label(const pk_row *r, char *out, int cap);
 #define PK_ACT_REMOVE  'R'
 #define PK_ACT_LAUNCH  'L'
 #define PK_ACT_UPGRADE 'U'
+#define PK_ACT_NO      'N'      /* the "No" row of the Remove confirm page: runs nothing, the menu goes back one level */
+#define PK_CONFIRM_SEG "remove" /* the node segment of the Remove confirm page, below a package's node */
 int pk_actions(const pk_row *r, char out[4]);
 const char *pk_action_label(int act);
 /* The job line of an action: "upkg install <name>" ("upkg install uhc:<name>" for src uhc), "upkg remove <name>",

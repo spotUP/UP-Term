@@ -1370,6 +1370,111 @@ static void a_failed_upkg_gives_one_inert_row(void)
     CHECK(strstr(it[0].label, "upkg") != 0);
     ix_free(&x);
 }
+/* PG.4, PG.5: Search asks through lf_ui.ask_value; Remove asks first; package jobs mark the list stale */
+static const char *pkg_ask_text;
+static int pkg_ask(void *ctx, const char *label, const char *usage, char *out, int n)
+{
+    (void)ctx; (void)usage;
+    CHECK_STR(label, "Search packages");
+    if (!pkg_ask_text)
+        return 0;                                   /* Escape */
+    strncpy(out, pkg_ask_text, (size_t)n - 1);
+    out[n - 1] = 0;
+    return 1;
+}
+static void package_search_asks_its_text_and_lists_the_matches(void)
+{
+    static char file[32768];
+    mn_item it[MN_MAX_ITEMS + 64], g;
+    ix_index x;
+    lf_ui ui;
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int c, i;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    memset(&x, 0, sizeof x);
+    memset(&ui, 0, sizeof ui);
+    pkg_fake_loads = 0;
+    pkg_enter(&x, "packages");
+    c = pkg_level(&x, "packages", it);
+    memset(&g, 0, sizeof g);
+    for (i = 0; i < c; i++)
+        if (lf_pkg_search_row("packages", &it[i]))
+            g = it[i];
+    CHECK_STR(g.seg, "search");                     /* exactly the Search group row, only at the Packages node */
+    CHECK(!lf_pkg_search_row("packages.browse", &g));
+    CHECK(!lf_pkg_search_row("packages", &it[c - 1]) || !strcmp(it[c - 1].seg, "search"));
+    CHECK(!lf_pkg_search(&x, 0));                   /* no ui, no ask_value: nothing */
+    ui.ask_value = pkg_ask;
+    pkg_ask_text = 0;                               /* Escape: no query, the Search node stays empty */
+    CHECK(!lf_pkg_search(&x, &ui));
+    CHECK_INT(pkg_level(&x, "packages.search", it), 1);       /* the one inert note row, no package */
+    CHECK_INT(it[0].ix, -1);
+    pkg_ask_text = "";                              /* an empty line is the same */
+    CHECK(!lf_pkg_search(&x, &ui));
+    CHECK_INT(pkg_level(&x, "packages.search", it), 1);
+    CHECK_INT(it[0].ix, -1);
+    pkg_ask_text = "TINY";
+    CHECK(lf_pkg_search(&x, &ui));
+    c = pkg_level(&x, "packages.search", it);
+    CHECK_INT(c, 1);
+    CHECK(strstr(it[0].label, "tiny") != 0);
+    CHECK_INT(pkg_fake_loads, 1);                   /* it filters the one loaded list */
+    ix_free(&x);
+}
+static void remove_asks_first_and_a_package_job_marks_the_list_stale(void)
+{
+    static char file[32768];
+    mn_item it[MN_MAX_ITEMS + 64], a[8];
+    char line[128];
+    ix_index x;
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int c, ca, i;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    memset(&x, 0, sizeof x);
+    pkg_enter(&x, "packages");
+    c = pkg_level(&x, "packages.upgrades", it);     /* Upgrade all is the first row, a job: line */
+    CHECK_STR(it[0].label, "Upgrade all");
+    CHECK_INT(km.menu[it[0].row].kind, KA_JOB);
+    CHECK_STR(km.menu[it[0].row].arg, "upkg upgrade");
+    ca = pkg_level(&x, "packages.installed.Gamma", a);
+    CHECK_STR(a[0].label, "Remove");
+    CHECK_INT(a[0].row, MN_ROW_GROUP);              /* Remove opens a confirm page, it does not run */
+    CHECK_STR(a[0].seg, PK_CONFIRM_SEG);
+    CHECK_INT(a[1].row, MN_ROW_PKGACT);
+    for (i = 0; i < ca; i++)
+        if (a[i].row == MN_ROW_PKGACT && a[i].seg[0] != PK_ACT_LAUNCH) {
+            CHECK(pk_action_line(&x.pk.r[a[i].ix], a[i].seg[0], line, sizeof line));
+            CHECK(!strncmp(line, "upkg ", 5));       /* Install, Upgrade: always a job line, never a window */
+        }
+    ca = pkg_level(&x, "packages.installed.Gamma.remove", a);
+    CHECK_INT(ca, 2);
+    CHECK(strstr(a[0].label, "Yes") != 0 && strstr(a[1].label, "No") != 0);
+    CHECK_INT(a[0].row, MN_ROW_PKGACT);
+    CHECK_INT(a[0].seg[0], PK_ACT_REMOVE);
+    CHECK(pk_action_line(&x.pk.r[a[0].ix], PK_ACT_REMOVE, line, sizeof line));
+    CHECK_STR(line, "upkg remove Gamma");
+    CHECK_INT(a[1].seg[0], PK_ACT_NO);              /* No: leaf.c returns before any job */
+    CHECK_INT(lf_pkg_back_levels(&a[0]), 2);
+    CHECK_INT(lf_pkg_back_levels(&a[1]), 1);
+    CHECK_INT(lf_pkg_back_levels(0), 0);
+    ca = pkg_level(&x, "packages.browse.games.notyet", a);
+    CHECK_INT(lf_pkg_back_levels(&a[0]), 1);        /* Install: back to the list */
+    CHECK(!ix_pkgs_due(&x, "packages.installed"));
+    lf_job_done(&x, "echo hi", 0);                  /* not a package job: the list stays */
+    CHECK(!ix_pkgs_due(&x, "packages.installed"));
+    lf_job_done(&x, "upkg install uhc:notyet", 0);
+    CHECK(ix_pkgs_due(&x, "packages.installed"));
+    pkg_enter(&x, "packages.installed");
+    CHECK(!ix_pkgs_due(&x, "packages.installed"));
+    lf_job_done(&x, "upkg update", 5);              /* a failed or cancelled job may still have changed packages */
+    CHECK(ix_pkgs_due(&x, "packages"));
+    pkg_enter(&x, "packages");
+    lf_job_done(&x, "upkg upgrade", 12);
+    CHECK(ix_pkgs_due(&x, "packages"));
+    lf_job_done(0, "upkg upgrade", 0);
+    (void)c;
+    ix_free(&x);
+}
 static void terminal_rows_show_only_over_a_terminal(void)
 {
     static char file[32768];
@@ -2755,6 +2860,8 @@ void suite_keymap(void)
     a_picked_package_offers_only_its_fitting_actions();
     the_package_list_loads_once_and_reloads_when_stale();
     a_failed_upkg_gives_one_inert_row();
+    package_search_asks_its_text_and_lists_the_matches();
+    remove_asks_first_and_a_package_job_marks_the_list_stale();
     a_detached_line_names_the_program_whose_stack_cookie_counts();
     the_scan_record_has_a_layout_version_and_an_older_one_is_not_read();
     a_failed_cache_write_is_its_own_stage_and_not_reported_as_died();

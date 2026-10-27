@@ -192,6 +192,20 @@ typedef struct lf_ui {
  * index or a name pk_name_ok refuses runs nothing and says so through ui->refused. The action's code. One job runs at
  * a time because run_job returns only when the job view closes. */
 int lf_pkg_action(const ix_index *x, const mn_item *it, const lf_ui *ui);
+/* Packages > Search (plan 2026-10-27-amarchy-packages-group.md PG.4). lf_pkg_search_row: 1 when `it`, picked at `node`, is the
+ * Search row (a group the menus would enter). lf_pkg_search asks "Search packages" through ui->ask_value and stores the
+ * text with ix_pkg_query: 1 when a text was typed (the caller enters the Search node, which lists the matches), 0 on
+ * Escape, an empty line or a ui with no ask_value (the menu stays where it is). No list load: Search filters the one list. */
+int lf_pkg_search_row(const char *node, const mn_item *it);
+int lf_pkg_search(ix_index *x, const lf_ui *ui);
+/* A job ended (its view closed, whatever the exit code: 0, 5, a failure or a cancel can all leave a half-done change): when
+ * `line` is an upkg command the Packages list is marked stale and the next entry into a packages node reloads it (PG.5).
+ * Both styles' run_job call this once per job. */
+void lf_job_done(ix_index *x, const char *line, int rc);
+/* How many menu levels a package action row (MN_ROW_PKGACT) leaves once it ran: No 1 (confirm page back to the package),
+ * Install and Upgrade 1 (back to the list), Remove 2 (the confirm page and the package, which may be gone from the list),
+ * Launch 0 (the menu closes), any other or inert row 0. */
+int lf_pkg_back_levels(const mn_item *it);
 /* 1 when ui has a job view for a job: row, 0 when the row falls back to the run: path */
 int lf_job_view(const lf_ui *ui);
 /* The run: path for a command line (an UP-Term window of its own): what a job view falls back to when it cannot start. */

@@ -787,6 +787,46 @@ static void activate_setting(gui *g, const mn_item *it, int right)
     }
 }
 
+/* Packages > Search asks its text, then enters the node that lists the matches; a package action row runs its job
+ * (Remove only after its confirm page), Launch closes the menu through the index-row path, No goes back. */
+static void activate_pkg(gui *g, const mn_item *it)
+{
+    lf_ui ui;
+    mn_item row = *it;                      /* the rebuilds below overwrite g->it */
+    int back = lf_pkg_back_levels(&row), k;
+    ui.ask_value = gui_ask_value;
+    ui.refused = gui_refused;
+    ui.ctx = g;
+    ui.self_in_mru = 0;
+    ui.win = g->win;
+    ui.run_job = gui_run_job;
+    if (lf_pkg_search_row(g->node, &row)) {
+        if (lf_pkg_search(&ixs, &ui)) {
+            mn_child_node(g->node, &row, g->node, sizeof g->node);
+            g->filter[0] = 0;
+            list_rebuild(g);
+        }
+        return;
+    }
+    if (row.ix >= 0 && row.seg[0] == PK_ACT_LAUNCH) {
+        char path[PK_PATH + 16];
+        if (pk_row_path(ixs.pk.r[row.ix].launch, path, (int)sizeof path)) {
+            strncpy(g->ixpath, path, sizeof g->ixpath - 1);
+            strncpy(g->ixlabel, ixs.pk.r[row.ix].name, sizeof g->ixlabel - 1);
+            g->stop = 1;                    /* lf_open_index starts it, as for an index row */
+            return;
+        }
+    } else if (row.ix >= 0 && row.seg[0] && row.seg[0] != PK_ACT_NO) {
+        lf_pkg_action(&ixs, &row, &ui);
+        if (g->quit)
+            return;
+        g->mode = M_LIST;                   /* the job view closed: the list again */
+        g->stop = 0;
+    }
+    for (k = 0; k < back; k++)
+        go_up(g);
+}
+
 static void activate(gui *g, int right)
 {
     const mn_item *it;
@@ -802,6 +842,10 @@ static void activate(gui *g, int right)
     }
     if (MN_IS_SETTING(it) || MN_IS_CHOICE(it)) {
         activate_setting(g, it, right);
+        return;
+    }
+    if (MN_IS_PKGACT(it) || lf_pkg_search_row(g->node, it)) {
+        activate_pkg(g, it);
         return;
     }
     if (MN_IS_GROUP(it)) {
@@ -1270,6 +1314,7 @@ static int gui_run_job(void *ctx, const char *line, const char *title)
     event_loop(g);
     if (job.state == JC_RUNNING)
         jb_cancel(&job);
+    lf_job_done(&ixs, line, job.state);   /* an upkg job: the Packages list reloads at the next rebuild */
     job_on = 0;
     jb_end();
     return 0;

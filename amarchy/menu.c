@@ -230,6 +230,7 @@ static int text_run_job(void *ctx, const char *line, const char *title)
     }
     if (tjob.state == JC_RUNNING)
         jb_cancel(&tjob);
+    lf_job_done(&ixs, line, tjob.state);   /* an upkg job: the Packages list reloads at the next entry */
     jb_end();
     ui_on_tick(on_tick, 0);
     job_ran = 1;
@@ -389,6 +390,32 @@ static int menu_levels(const char *start)
             if (!ix_launch_path(&ixs, &it[i], path, sizeof path))
                 continue;
             return lf_open_index(it[i].label, path, &leaf_ui);
+        }
+        if (lf_pkg_search_row(node, &it[i])) {  /* Packages > Search asks its text, then lists the matches */
+            if (lf_pkg_search(&ixs, &leaf_ui)) {
+                mn_child_node(node, &it[i], node, sizeof node);
+                filter[0] = 0;
+            }
+            continue;
+        }
+        if (MN_IS_PKGACT(&it[i])) {             /* a package action: a job, Launch, or No on the Remove confirm page */
+            mn_item row = it[i];                /* the level is rebuilt below */
+            int back = lf_pkg_back_levels(&row), k;
+            job_ran = 0;
+            if (row.ix >= 0 && row.seg[0] && row.seg[0] != PK_ACT_NO) {
+                rc = lf_pkg_action(&ixs, &row, &leaf_ui);
+                if (!job_ran)
+                    return rc;                  /* Launch, or a refusal: the menu closes as a program row does */
+                if (closing)
+                    return 255;
+            }
+            for (k = 0; k < back; k++) {
+                char up[KM_ID * 2];
+                if (mn_parent(node, up, sizeof up))
+                    strcpy(node, up);
+            }
+            filter[0] = 0;
+            continue;
         }
         if (MN_IS_GROUP(&it[i])) {
             mn_child_node(node, &it[i], node, sizeof node);

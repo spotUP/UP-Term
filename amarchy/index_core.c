@@ -652,13 +652,25 @@ static int pkg_find(const ix_index *x, const int *idx, int cnt, const char *seg)
     return -1;
 }
 
+/* tok is "<package>" or "<package>.remove": cuts the confirm segment off tok, finds the package by the rest; 1 when the
+ * confirm segment was there and the package exists (*row set, else -1). */
+static int pkg_confirm_seg(char *tok, int *row, const ix_index *x, const int *idx, int cnt)
+{
+    char *dot = strchr(tok, '.');
+    if (!dot)
+        return 0;
+    *dot = 0;
+    *row = strcmp(dot + 1, PK_CONFIRM_SEG) ? -1 : pkg_find(x, idx, cnt, tok);
+    return *row >= 0;
+}
+
 /* The levels below the Packages group: browse (sections, then a section's rows), installed, upgrades and search (filters
  * of the one loaded list), and the action rows of a picked package. Static rows (Upgrade all) are already in out[0..n). */
 static int pkg_level(const ix_index *x, const char *node, mn_item *out, int n, int max)
 {
     const char *p = node + strlen(IX_PKGS_NODE);
     char view[KM_ID], tok[KM_ID];
-    int *idx, cnt = 0, i, row = -1;
+    int *idx, cnt = 0, i, row = -1, confirm = 0;
     if (!*p)
         return n;                                   /* the group itself: the keymap rows */
     p++;
@@ -701,6 +713,7 @@ static int pkg_level(const ix_index *x, const char *node, mn_item *out, int n, i
                     strncpy(tok, q + 1, sizeof tok - 1);
                     tok[sizeof tok - 1] = 0;
                     row = pkg_find(x, idx, cnt, tok);
+                    confirm = pkg_confirm_seg(tok, &row, x, idx, cnt);
                 } else {
                     n = pkg_rows_out(x, idx, cnt, out, n, max);
                 }
@@ -716,16 +729,33 @@ static int pkg_level(const ix_index *x, const char *node, mn_item *out, int n, i
             strncpy(tok, p + 1, sizeof tok - 1);
             tok[sizeof tok - 1] = 0;
             row = pkg_find(x, idx, cnt, tok);
+            confirm = pkg_confirm_seg(tok, &row, x, idx, cnt);
         }
     }
-    if (row >= 0) {                                 /* the picked package: its fitting actions */
+    if (row >= 0 && confirm) {                      /* Remove asks first: Yes runs the job, No goes back */
+        static const char yn[2] = { PK_ACT_REMOVE, PK_ACT_NO };
+        for (i = 0; i < 2 && n < max; i++) {
+            out[n].row = MN_ROW_PKGACT;
+            out[n].ix = row;
+            out[n].seg[0] = yn[i];
+            out[n].seg[1] = 0;
+            snprintf(out[n].label, sizeof out[n].label, "Remove %.*s: %s", (int)(sizeof out[n].label - 16),
+                     x->pk.r[row].name, i ? "No" : "Yes");
+            n++;
+        }
+    } else if (row >= 0) {                          /* the picked package: its fitting actions */
         char acts[4];
         int na = pk_actions(&x->pk.r[row], acts);
         for (i = 0; i < na && n < max; i++) {
-            out[n].row = MN_ROW_PKGACT;
             out[n].ix = row;
-            out[n].seg[0] = acts[i];
             out[n].seg[1] = 0;
+            if (acts[i] == PK_ACT_REMOVE) {         /* a group: its node is the confirm page */
+                out[n].row = MN_ROW_GROUP;
+                strcpy(out[n].seg, PK_CONFIRM_SEG);
+            } else {
+                out[n].row = MN_ROW_PKGACT;
+                out[n].seg[0] = acts[i];
+            }
             snprintf(out[n].label, sizeof out[n].label, "%s", pk_action_label(acts[i]));
             n++;
         }
