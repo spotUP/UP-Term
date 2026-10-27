@@ -188,6 +188,8 @@ typedef struct lf_ui {
 
 /* 1 when ui has a job view for a job: row, 0 when the row falls back to the run: path */
 int lf_job_view(const lf_ui *ui);
+/* The run: path for a command line (an UP-Term window of its own): what a job view falls back to when it cannot start. */
+int lf_run_line(const char *line, const lf_ui *ui);
 
 /* 1 when the menu opened over an UP-Term window: upactive_terminal_present (handler/upactive.h) with
  * the menu's self_in_mru. Both menus and the commodity ask it once at open and pass the answer to

@@ -185,3 +185,23 @@ void jc_header(const jc *j, char *out, int cap)
     out[len] = 0;
     #undef PUTS
 }
+
+int jc_tone(const jc *j)
+{
+    if (j->state == JC_RUNNING) return JT_DIM;
+    return j->state == JC_DONE ? JT_OK : JT_FAIL;
+}
+
+int jc_key_act(const jc *j, int key, int h, int *delta)
+{
+    *delta = 0;
+    switch (key) {
+    case JKEY_UP: *delta = -1; return JA_SCROLL;
+    case JKEY_DOWN: *delta = 1; return JA_SCROLL;
+    case JKEY_PGUP: *delta = -(h > 1 ? h - 1 : 1); return JA_SCROLL;
+    case JKEY_PGDN: *delta = h > 1 ? h - 1 : 1; return JA_SCROLL;
+    case JKEY_ESC: return j->state == JC_RUNNING ? JA_CANCEL : JA_CLOSE;
+    case JKEY_ENTER: return j->state == JC_RUNNING ? JA_NONE : JA_CLOSE;
+    }
+    return JA_NONE;
+}

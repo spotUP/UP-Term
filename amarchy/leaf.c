@@ -84,6 +84,11 @@ static int run_in_uterm(const char *cmd, const lf_ui *ui)
     return 0;
 }
 
+int lf_run_line(const char *line, const lf_ui *ui)
+{
+    return run_in_uterm(line, ui);
+}
+
 static int run_request(const km_menu *m, const lf_ui *ui, const char *value)
 {
     /* tab:, menuid: and slash: belong to a terminal window: the handler's request port
