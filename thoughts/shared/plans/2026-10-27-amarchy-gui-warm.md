@@ -54,10 +54,13 @@ The text menu already has a warm server (`amarchy-menu serve`, port AMARCHY.MENU
   median 140 ms, each with a send mark and one server owner; true cold (stale port, act_run fallback) median 140 ms.
   Font (start to font) 20-40 ms, icons 0 ms in 5 of 6 runs. Original text: timing script on the drawn style: three presses, each with a send mark, one amarchy-gui task,
   ready - hotkey printed; record font / icon cost from marks (decides the cache step).
-- G10 cache font / icons if G9 shows more than 50 ms (else written exemption here).
+- [x] G10 exemption: no cache. G9 measured font 20-40 ms and icons 0-20 ms per open, both under the 50 ms bar
+  the owner set, so font and icons keep loading per open (no invalidation logic needed).
 - [x] G11 PASS: stale port falls back cold, restarted server serves warm (new owner), commodity quit removes
   AMARCHY.GUISRV and ends the task. Original text: kill the gui server, press: cold fallback opens the menu; next press warm again.
 - G12 A1200 deploy (Amarchy, amarchy-gui only; do not touch UHCBIN) and timing with the drawn style.
 
 ## Results
-(filled as measured)
+- Rig 7 (060): warm median 140 ms hotkey to ready; true cold fallback also median 140 ms at the 20 ms tick, so
+  the warm server's gain on a 060 is below the clock resolution. The A1200 (G12) decides whether it pays there.
+- The drawn menu closes on a second hotkey press, not on Ctrl-C typed by hand (gui.c, commodity signal).
