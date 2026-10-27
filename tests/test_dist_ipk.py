@@ -12,9 +12,9 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import pkgs
 
 TABLE = """\
-base      UP-Term       1.0  -    -   UP-Term:                  -  vtcon
-nvim      up-nvim  2.1  1.0  80  UP-Term:pkg/up-nvim  -  vtcon
-claude    Claude        1.1  -    -   ENVARC:upkg/up-claude        -  vtcon
+base      UP-Term       1.0  -    -   UP-Term:                  -  vtcon  -
+nvim      up-nvim  2.1  1.0  80  UP-Term:pkg/up-nvim  -  vtcon  UP-Term:nvim/bin/nvim
+claude    Claude        1.1  -    -   ENVARC:upkg/up-claude        -  vtcon  -
 """
 
 
@@ -69,6 +69,20 @@ class IpkTest(unittest.TestCase):
         pkgs.ipk(self.build, self.table)
         pkgs.write_feed(self.build, self.table)
         self.out = self.build / 'ipk'
+
+    def _control(self, name):
+        m = dict(split_ar((self.out / name).read_bytes()))
+        return tarfile.open(fileobj=io.BytesIO(m['control.tar.gz'])).extractfile('./control').read().decode()
+
+    def test_a_row_with_a_launch_value_carries_launch_in_control_and_packages_and_a_dash_row_does_not(self):
+        ctl = self._control('up-nvim_2.1_m68k-amigaos.ipk')
+        self.assertIn('Launch: UP-Term:nvim/bin/nvim\n', ctl)
+        self.assertNotIn('Launch', self._control('Claude_1.1_m68k-amigaos.ipk'))
+        stanzas = {s.split('\n')[0]: s for s in (self.build / 'ipk/Packages').read_text().split('\n\n')} \
+            if (self.build / 'ipk/Packages').is_file() else {}
+        self.assertTrue(stanzas, 'Packages index not written where expected')
+        self.assertIn('Launch: UP-Term:nvim/bin/nvim\n', stanzas['Package: up-nvim'])
+        self.assertNotIn('Launch', stanzas['Package: Claude'])
 
     def test_ipk_is_an_ar_archive_with_control_and_data_at_the_right_paths(self):
         f = self.out / 'up-nvim_2.1_m68k-amigaos.ipk'

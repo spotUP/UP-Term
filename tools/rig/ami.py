@@ -88,10 +88,66 @@ def _keys(c, events):
     c.expect_ok()
 
 
+# Typed text: wasabid's `key type` (KEY op 1) maps characters with MapANSI(), which answers for keymap.library's own
+# default (US) and not for the keymap the Amiga's consoles use (the rig's input.prefs names "s", Swedish). So ';'
+# went out as the US ';' key (raw 0x29), which the Swedish console reads as 'o with diaeresis' (2026-10-26, the
+# upkg-ask rig). The text is therefore turned into raw keys here, from the table of the keymap the console really
+# has (RawKeyConvert with the default map, the way UP-Term and CON: convert): the same characters whatever the layout.
+KEYMAP_TABLE = {}      # char code -> (raw key, qualifier), filled once per process
+_QUAL_PREFERENCE = (0, 0x0001, 0x0010, 0x0011, 0x0008)      # none, Shift, Alt, Shift+Alt, Ctrl: a plain key beats a shifted one
+# the numeric keypad's raw keys: an application keypad mode reads them as keypad keys, so a main-block key is preferred
+_KEYPAD = frozenset((0x0F, 0x1D, 0x1E, 0x1F, 0x2D, 0x2E, 0x2F, 0x3C, 0x3D, 0x3E, 0x3F, 0x43, 0x4A, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F))
+
+
+def parse_keymap_table(text):
+    """rkcprobe TABLE's lines ("code qual n b1 b2 ..", hex) -> {char code: (raw key, qualifier)}. Only keys that
+    give exactly one byte count; a main-block key beats a keypad key, then the plainest qualifier wins, then the lowest raw key."""
+    best = {}
+    for line in text.splitlines():
+        f = line.split()
+        if len(f) != 4 or f[2] != '1':
+            continue
+        code, qual, ch = int(f[0], 16), int(f[1], 16), int(f[3], 16)
+        if qual not in _QUAL_PREFERENCE or code & 0x80:
+            continue
+        rank = (code in _KEYPAD, _QUAL_PREFERENCE.index(qual), code)
+        if ch not in best or rank < best[ch][0]:
+            best[ch] = (rank, (code, qual))
+    return {ch: v[1] for ch, v in best.items()}
+
+
+def keys_for_text(data, table):
+    """The (raw key, qualifier) events, key down then up, that type `data` (latin-1 bytes); SystemExit for a
+    character the keymap has no key for (a dead-key letter: type it with `key press`)."""
+    events = []
+    for b in data:
+        if b not in table:
+            raise SystemExit('ERR: the console keymap has no key for character %d (0x%02x)' % (b, b))
+        code, qual = table[b]
+        events += [(code, qual), (code | 0x80, qual)]
+    return events
+
+
+def _keymap_table(c):
+    if not KEYMAP_TABLE:
+        probe = paths.MAIN_CHECKOUT / 'build' / 'amiga' / 'rkcprobe'
+        if not probe.is_file():
+            probe = paths.VTCON / 'build' / 'amiga' / 'rkcprobe'
+        if not probe.is_file():
+            raise SystemExit('ERR: typing needs the console keymap: make build/amiga/rkcprobe')
+        _m().do_put(c, str(probe), 'RAM:rkcprobe', quiet=True)
+        _exec(c, struct.pack('>H', 30) + b'Protect RAM:rkcprobe +e')
+        _exec(c, struct.pack('>H', 30) + b'RAM:rkcprobe TABLE RAM:rkc-table.txt')
+        KEYMAP_TABLE.update(parse_keymap_table(_get(c, 'RAM:rkc-table.txt').decode('latin-1')))
+        if not KEYMAP_TABLE:
+            raise SystemExit('ERR: rkcprobe TABLE gave no keymap table')
+    return KEYMAP_TABLE
+
+
 def _type(c, data):
-    for i in range(0, len(data), 2048):
-        c.send(_m().KEY, struct.pack('>H', 1) + data[i:i + 2048])
-        c.expect_ok()
+    events = keys_for_text(data, _keymap_table(c))
+    for i in range(0, len(events), 1000):
+        _keys(c, events[i:i + 1000])
 
 
 # Window titles that are always a requester: AmigaDOS's (insert volume, disk full, write protected) and ixemul's
@@ -634,4 +690,14 @@ def main(a):
         print('rc', rc)
     else: raise SystemExit(__doc__)
 
-if __name__ == '__main__': main(sys.argv[1:])
+def require_target():
+    # the command line must name its machine: with neither set it would silently drive local rig 1 (a session meaning the
+    # A1200 wrote its files there). Imports of ami keep the 127.0.0.1 / rig 1 default.
+    if not (os.environ.get('AMI_HOST') or os.environ.get('UPTERM_RIG')):
+        sys.stderr.write('ami.py: set UPTERM_RIG or AMI_HOST first, e.g. UPTERM_RIG=7 for a rig, or AMI_HOST=192.168.0.74 for the A1200\n')
+        raise SystemExit(2)
+
+
+if __name__ == '__main__':
+    require_target()
+    main(sys.argv[1:])

@@ -205,5 +205,29 @@ class NoPortsCheckout(unittest.TestCase):
             self.assertIn(empty, msg)
 
 
+@unittest.skipUnless((PORTS / 'Makefile').exists(), 'upterm-ports not found at %s (set UPTERM_PORTS)' % PORTS)
+class EveryAddonHasASummary(unittest.TestCase):
+    """make dist-ipk writes a Description for every add-on row in dist/packages.txt. Since the summaries moved to the
+    recipes (f54aec0a), a recipe with no _SUMMARY stops the whole feed build (2026-10-26: mutt and 15 more had none)."""
+
+    def test_every_addon_resolves_a_summary(self):
+        old = os.environ.get('UPTERM_PORTS')
+        os.environ['UPTERM_PORTS'] = str(PORTS)
+        missing = []
+        try:
+            for r in pkgs.addons():
+                try:
+                    if not pkgs.summary(r['id']).strip():
+                        missing.append(r['id'])
+                except SystemExit:
+                    missing.append(r['id'])
+        finally:
+            if old is None:
+                del os.environ['UPTERM_PORTS']
+            else:
+                os.environ['UPTERM_PORTS'] = old
+        self.assertEqual(missing, [])
+
+
 if __name__ == '__main__':
     unittest.main()

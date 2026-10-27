@@ -31,6 +31,13 @@ class Packages(unittest.TestCase):
         with self.assertRaises(SystemExit):
             pkgs.parse('base  UP-Term  1.0  -  -  UP-Term:\n')
 
+    def test_launch_column_is_parsed_and_every_value_is_a_dash_or_a_command_line(self):
+        r = pkgs.parse('nano  up-nano  1.0  1.0  80  UP-Term:pkg/up-nano  -  vtcon  UP-Term:bin/nano\n')[0]
+        self.assertEqual(r['launch'], 'UP-Term:bin/nano')
+        for row in pkgs.rows():
+            self.assertTrue(row['launch'] == '-' or ':' in row['launch'], row['id'])
+        self.assertEqual(pkgs.get('nvim', 'launch'), 'UP-Term:nvim/bin/nvim')
+
     def test_ids_and_archives_are_unique(self):
         for c in ('id', 'archive'):
             vals = [r[c] for r in ROWS]

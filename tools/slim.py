@@ -2,6 +2,8 @@
 """The slim base (P9): which paths of the ports' userland tree belong to a package, not to up-term.lha.
 
   python3 tools/slim.py ids                          package ids, one a line
+  python3 tools/slim.py kits                         <id>=<archive> a line: the dist drawer of each package is
+                                                     build/dist/<archive>, the packages.txt archive (not up-<id>)
   python3 tools/slim.py remove <userland>            take every package's paths (and SOURCES.txt rows) out of <userland>
   python3 tools/slim.py stage <id> <userland> <dest> copy the package's paths from <userland> into <dest>, same
                                                      relative paths; its SOURCES.txt row goes to licenses/<id>/SOURCES.txt
@@ -35,6 +37,13 @@ def ids(path=TABLE):
         if i not in seen:
             seen.append(i)
     return seen
+
+
+def kits(path=TABLE):
+    """[(id, archive)] for every package: its stage drawer is named after the packages.txt archive, which
+    mkkit.py reads, and that is not always up-<id> (sqlite ships as up-sqlite3)."""
+    import pkgs
+    return [(i, pkgs.get(i, 'archive')) for i in ids(path)]
 
 
 def patterns(pkg_id, path=TABLE):
@@ -101,6 +110,8 @@ def uninstall(pkg_id, table=TABLE):
 def main(a):
     if a[:1] == ['ids'] and len(a) == 1:
         print('\n'.join(ids()))
+    elif a[:1] == ['kits'] and len(a) == 1:
+        print('\n'.join('%s=%s' % k for k in kits()))
     elif a[:1] == ['remove'] and len(a) == 2:
         remove(a[1])
     elif a[:1] == ['stage'] and len(a) == 4:

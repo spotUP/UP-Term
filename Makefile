@@ -1273,7 +1273,9 @@ KIT_uhc := $(BUILD)/dist/up-uhc
 # drawer and one dist-<id> target each, from the table, no target per package
 SLIM_IDS := $(shell python3 tools/slim.py ids)
 SLIM_DIST := $(addprefix dist-,$(SLIM_IDS))
-$(foreach p,$(SLIM_IDS),$(eval KIT_$(p) := $(BUILD)/dist/up-$(p)))
+# the drawer is build/dist/<archive> of packages.txt (what ADDON_STAGE makes and mkkit.py reads), not up-<id>:
+# sqlite's archive is up-sqlite3, so up-$(p) staged its payload into a drawer no archive packed
+$(foreach k,$(shell python3 tools/slim.py kits),$(eval KIT_$(firstword $(subst =, ,$(k))) := $(BUILD)/dist/$(lastword $(subst =, ,$(k)))))
 # the patched ixemul (P6): built in ixemul-vtcon with sh docker/build.sh
 IXEMUL_LIB ?= $(UPTERM_ROOT)/ixemul-vtcon/build295/library/68020/68881/amigaos/ixemul.library
 # the soft-float build of the same ixemul (no FPU opcodes): the installer puts it in on a machine
@@ -1535,3 +1537,8 @@ test-rig: amiga
 
 clean:
 	rm -rf $(BUILD)
+
+# upkg browse launch rig (tools/rig/upkg_browse_launch_rig.py): writes a sentinel, reports its stack, exits 7
+$(BUILD)/amiga/launchprobe: tests/amiga/launchprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/launchprobe.c

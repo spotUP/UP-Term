@@ -90,7 +90,7 @@ def generate(pkg, ports, a):
     slim_rows = ['%s  %s' % (pkg, p) for p in paths]
     handed = ','.join('Files/userland/' + p for p in bins + data)
     cols = (pkg, fid, a.pkg_version, minbase, a.ixemul, 'UP-Term:pkg/' + fid, handed)
-    row = ''.join(c.ljust(max(w, len(c) + 2)) for c, w in zip(cols, WIDTHS)) + 'upterm-ports,ixemul-vtcon'
+    row = ''.join(c.ljust(max(w, len(c) + 2)) for c, w in zip(cols, WIDTHS)) + 'upterm-ports,ixemul-vtcon  ' + pr.get('launch', '-')
     name = pr.get('name', pkg)
     cmd = pathlib.PurePosixPath(bins[0]).name if bins else name
     about = pr.get('about', summary)

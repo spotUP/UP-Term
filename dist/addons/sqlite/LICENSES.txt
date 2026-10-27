@@ -1,0 +1,9 @@
+up-sqlite3: parts, licences and where the source is
+
+Part     Licence                           Source
+-------  --------------------------------  -------------------
+sqlite   Public domain (licenses/sqlite)   upterm-ports (pkgs/sqlite)
+
+Notes
+- The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to
+  up-term.lha. Its row of SOURCES.txt is in UP-Term:licenses/sqlite/SOURCES.txt.
