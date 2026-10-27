@@ -4,7 +4,7 @@ for every add-on of dist/packages.txt, on the host (kit-split K2-6.5). The same 
 (tests/test_dist_installer.py): Installer 43.3 language, page text within 56 characters, the Installer
 runs install.dos's parts in order, every part ends with the STEP quit. Added: the check part comes first and
 stops the install, the record part is last, each Uninstall and parts.txt hold together."""
-import pathlib, re, sys, unittest
+import os, pathlib, re, sys, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -663,35 +663,158 @@ class DopusAddOn(unittest.TestCase):
         self.assertIn('dist/addons/dopus/archives.txt', mk[mk.index('\ndist-dopus:'):])
 
 
+
 class UhcAddOn(unittest.TestCase):
-    """The UHC add-on carries the author's archive unmodified (permission to redistribute: Patrik, UHC), pinned by
-    sha256 in dist/addons/uhc/archives.txt, installed in UP-Term:uhc with the UHC: assign and the UHCBIN variable."""
+    """up-uhc 1.5 installs UHC by running the author's own installer (uhcinstall). The host cannot run AmigaDOS:
+    these tests read the assembled script text and its line order (rig 8 runs the real thing, see
+    thoughts/spot/term-findings/uhc-1.5-uhcinstall.md)."""
     A = ROOT / 'dist/addons/uhc'
 
-    def test_the_archive_is_pinned_licensed_and_installed_with_its_startup_block(self):
-        pins = [l.split() for l in (self.A / 'archives.txt').read_text().splitlines() if l.strip() and not l.startswith('#')]
-        self.assertEqual(pins, [['uhctools_os3.lha', 'b457047024a7e9a8f01373f1cda56274d8f902b5a70caf4babd78b1668742e34',
-                                 'uhc', 'https://uhc.megaburken.net/uhctools_os3.lha']])
+    def dos(self):
+        return scripts('uhc')['dos'].splitlines()
+
+    def at(self, lines, text, start=0):
+        for i in range(start, len(lines)):
+            if lines[i].strip() == text:
+                return i
+        self.fail('line not found: %r' % text)
+
+    def guards(self, lines, i):
+        """The If conditions enclosing line i (an Else turns the condition into 'NOT cond')."""
+        st = []
+        for l in lines[:i]:
+            s = l.strip()
+            if s.startswith('If '):
+                st.append(s[3:])
+            elif s == 'Else':
+                st[-1] = 'NOT ' + st[-1]
+            elif s == 'EndIf':
+                st.pop()
+        return st
+
+    def test_the_package_is_1_5_with_no_stubs_and_ships_unstartup_sh(self):
+        self.assertFalse((self.A / 'archives.txt').exists())
+        self.assertFalse((self.A / 'stubs').exists())
+        self.assertIn('fetch-uhc       Files/unstartup-uhc.sh', (self.A / 'parts.txt').read_text())
         self.assertIn('uhc', [r['id'] for r in ADDONS])
-        lic = (self.A / 'LICENSES.txt').read_text()
-        self.assertIn('uhctools_os3.lha', lic)
-        self.assertIn('permission', lic)
-        self.assertIn('copy-uhc        Files/userland', (self.A / 'parts.txt').read_text())
-        s = scripts('uhc')
-        self.assertIn('Lab copy-uhc', s['dos'])
-        self.assertIn('SetEnv UHCBIN UP-Term:uhc', s['dos'])
-        self.assertIn('Assign UHC: UP-Term:uhc', s['dos'])
-        self.assertIn(';BEGIN uhc', s['dos'])
-        self.assertIn(';END uhc', s['dos'])
-        self.assertIn('unstartup.sh uhc', (self.A / 'uninstall-body.dos').read_text())
-        self.assertIn('copy-uhc', s['installer'])
-        # the Makefile checks the pinned sha256 before it unpacks: its rule reads this table
+        self.assertIn('fetch-uhc', scripts('uhc')['installer'])
         mk = (ROOT / 'Makefile').read_text()
-        rule = mk[mk.index('\ndist-uhc:'):]
-        self.assertIn('dist/addons/uhc/archives.txt', rule)
-        self.assertIn('shasum -a 256', rule)
-        self.assertIn('dist-uhc', mk[mk.index('\ndist:'):mk.index('\ndist:') + 200])
+        rule = mk[mk.index('\ndist-uhc:'):mk.index('\ndist-uhc:') + 700]
+        self.assertIn('cp dist/unstartup.sh $(KIT_uhc)/Files/unstartup-uhc.sh', rule)
+        self.assertNotIn('stubs', rule)
+        self.assertEqual(pkgs.get('uhc', 'version'), '1.5')
+        self.assertEqual(pkgs.get('uhc', 'handed'), 'Files/unstartup-uhc.sh')
 
+    def test_a_fresh_install_runs_uhcinstall_after_its_preconditions_and_verifies_the_result(self):
+        L = self.dos()
+        S = ['' if l.strip().startswith(';') else l.strip() for l in L]
+        which_lha = self.at(L, 'Which >NIL: LhA')
+        dl = self.at(L, 'UP-Term:bin/curl -fsSL -o T:uhcinstall https://uhc.megaburken.net/uhcinstall')
+        ver = self.at(L, 'Search >NIL: T:uhcinstall "VER: uhcinstall"')
+        run = self.at(L, 'Execute T:uhcinstall ARCH=os3 DEST=SYS:UHC SILENT')
+        chk = self.at(L, 'If NOT EXISTS SYS:UHC/UHC-Startup')
+        envchk = self.at(L, 'If NOT "$uhcbin" EQ "SYS:UHC/"')
+        self.assertTrue(which_lha < dl < ver < run < chk < envchk)
+        # lha is checked before uhcinstall runs: its Ask is not guarded by SILENT and would hang
+        self.assertEqual(L[which_lha + 1].strip(), 'If WARN')
+        self.assertIn('[ERROR]', L[which_lha + 2])
+        self.assertEqual(L[which_lha + 3].strip(), 'Quit 20')
+        # aget or wget on the path, else the author's own aget.os3 is fetched before uhcinstall runs
+        aget = self.at(L, 'Which >NIL: aget')
+        self.assertIn('https://uhc.megaburken.net/aget.os3', '\n'.join(S[aget:run]))
+        self.assertTrue(aget < run)
+        # the verification failures end with rc 20
+        for i in (chk, envchk):
+            self.assertEqual(L[i + 1].strip().startswith('Echo "[ERROR]'), True)
+            self.assertEqual(L[i + 2].strip(), 'Quit 20')
+        # nothing of 1.4 is left: no own unpack, block, seeding, stubs or UHC-Remove
+        text = '\n'.join(S)
+        for gone in ('uhctools_os3.lha', 'SYS:UHC/UHC-Remove', 'UHCFixENV', 'stubs', 'EXTBIN SYS', ';BEGIN UHC',
+                     'Echo >>S:User-Startup', 'SetEnv'):
+            self.assertNotIn(gone, text, gone)
 
-if __name__ == '__main__':
-    sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
+    def test_uhcinstall_never_runs_over_an_existing_uhc(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        runs = [i for i, s in enumerate(S) if s.startswith('Execute T:uhcinstall')]
+        self.assertEqual(len(runs), 1)
+        self.assertIn('"$uhcmode" EQ fresh', self.guards(L, runs[0]))
+        # fresh is the default; both signs of an existing install turn it to foreign before that guard
+        fresh = self.at(L, 'Set uhcmode fresh')
+        g = self.at(L, 'If EXISTS SYS:UHC/UHC-Startup')
+        self.assertEqual(S[g + 1], 'Set uhcmode foreign')
+        e = self.at(L, 'If EXISTS "$uhcbin"')
+        self.assertEqual(S[e + 1], 'Set uhcmode foreign')
+        self.assertTrue(fresh < g < e < runs[0])
+
+    def test_an_empty_or_unset_uhcbin_never_reaches_exists(self):
+        """1.4 deleted UHCBIN and then tested If EXISTS "$UHCBIN": the empty expansion is the current directory,
+        so the mode became foreign and uhcinstall never ran."""
+        L = self.dos()
+        S = [l.strip() for l in L]
+        self.assertNotIn('If EXISTS "$UHCBIN"', S)
+        self.assertNotIn('If NOT EXISTS "$UHCBIN"', S)
+        self.assertIn('GetEnv >NIL: UHCBIN', S)
+        for i, s in enumerate(S):
+            if s.startswith('If EXISTS "$') or s.startswith('If NOT EXISTS "$'):
+                var = s[s.index('"$') + 2:s.rindex('"')]
+                self.assertIn('NOT "$%s" EQ ""' % var, self.guards(L, i), s)
+        # "is set" is GetEnv plus WARN, directly before the value is read
+        i = self.at(L, 'GetEnv >NIL: UHCBIN')
+        self.assertEqual(S[i + 1], 'If NOT WARN')
+
+    def test_the_legacy_block_goes_out_without_envarc_unstartup_sh(self):
+        L = self.dos()
+        S = ['' if l.strip().startswith(';') else l.strip() for l in L]
+        run = self.at(L, 'UP-Term:bin/vsh unstartup-uhc.sh uhc')
+        self.assertNotIn('EXISTS ENVARC:up-term/unstartup.sh', ' '.join(self.guards(L, run)))
+        self.assertNotIn('ENVARC:up-term/unstartup.sh', '\n'.join(S))
+        # the archive's own copy (an old ENVARC one cannot take a named block out) is read from the Files drawer,
+        # which is the current directory (CD "{DIR}"), and is built from dist/'s one copy
+        self.assertTrue((ROOT / 'dist/unstartup.sh').is_file())
+        self.assertIn('CD "', '\n'.join(S[:run]))
+        # a block that is still there afterwards is an error, not a silent pass
+        self.assertTrue(any('[ERROR] S:User-Startup still names UP-Term:uhc' in s for s in S[run:]))
+        # the legacy removal comes before uhcinstall
+        self.assertLess(run, self.at(L, 'Execute T:uhcinstall ARCH=os3 DEST=SYS:UHC SILENT'))
+
+    def test_uhc_variables_naming_up_term_are_dropped_from_env_and_envarc_before_the_mode_is_decided(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        mode = self.at(L, 'Set uhcmode fresh')
+        for var in ('UHCBIN', 'UHC/EXTBIN', 'UHC/EXTDOC'):
+            for d in ('ENV:', 'ENVARC:'):
+                f = d + var
+                s = self.at(L, 'Search >NIL: %s "UP-Term:"' % f)
+                self.assertLess(s, mode, f)
+                self.assertEqual(S[s + 2], 'Delete >NIL: %s QUIET' % f)
+                self.assertIn('EXISTS ' + f, self.guards(L, s))
+        # the upgrade copies the user's packages into the UHC tree after uhcinstall
+        run = self.at(L, 'Execute T:uhcinstall ARCH=os3 DEST=SYS:UHC SILENT')
+        for line in ('Copy >NIL: UP-Term:uhc/ExtBin UHC:ExtBin ALL CLONE QUIET',
+                     'Copy >NIL: UP-Term:uhc/ExtDoc UHC:ExtDoc ALL CLONE QUIET',
+                     'Copy >NIL: UP-Term:uhc/Packages/Installed UHC:Packages/Installed ALL CLONE QUIET'):
+            self.assertGreater(self.at(L, line), run, line)
+        # no variable is ever set by this script: uhcinstall sets UHCBIN, so none can name UP-Term:
+        for s in S:
+            self.assertFalse(s.startswith(('SetEnv', 'Setenv')), s)
+
+    def test_uninstall_leaves_uhc_alone(self):
+        body = (self.A / 'uninstall-body.dos').read_text()
+        U = body.splitlines()
+        for i, l in enumerate(U):
+            s = l.strip()
+            if s.startswith(';'):
+                continue
+            self.assertNotIn('SYS:UHC', s, s)
+            self.assertNotIn('ENVARC:UHC ', s + ' ', s)
+            self.assertNotIn('ENV:UHC ', s + ' ', s)
+            self.assertFalse(s.startswith('Assign UHC:'), s)
+            self.assertNotIn('UHC-Remove SYS', s)
+            if s.startswith('Delete') and ('UHCBIN' in s):
+                # only a variable naming UP-Term: (up-uhc 1.0 to 1.3) is ever deleted
+                prev = [x.strip() for x in U[:i] if x.strip().startswith('Search >NIL:')][-1]
+                self.assertIn('"UP-Term:"', prev)
+        self.assertNotIn('EndIf\nDelete >NIL: ENV:UHC', body)
+        # UHC's own block is upper case and unstartup.sh's name match is case-sensitive: the call names "uhc"
+        self.assertIn('unstartup.sh uhc', body)
