@@ -31,3 +31,15 @@ ledger: thoughts/spot/todos.md (main checkout) rows AMARCHY-GUI-WARM, AMARCHY-LA
 - Every new [menu] node needs a dist/menu-icons entry or test_keymap fails ("no icon for menu node").
 - Drawn menu closes on a second hotkey press, not a typed Ctrl-C.
 - Leave alone: tools/rig/rig.py modification in the main checkout, gtheme-keymap-user research, menusrv probes.
+
+## Update 2026-10-27 (late)
+- P7 first run on rig 7: PASS in both styles (sentinel `Loaded as command: UP-Term:bin/nano`, stack 262144), but a
+  detached start gives nano NIL: and no window. Owner chose: package rows start in an UP-Term window like run: rows.
+  Done in prefs-inline f44cf618 (run_in_uterm; vsh now gets its own cookie stack via pl_stack). Built:
+  amarchy-menu md5 e43ab89e..., amarchy-gui md5 42549511... (menu built with UPKGUI_SYS=<scratchpad>/sys/UP-Term,
+  the Makefile default sysroot is stale).
+- Open: P7 re-run. Rig 7 is down and build/rig7/vtc deleted (disk). Wait for vtcon-05 to report the new rig
+  master (upkg md5 + ports commit), then `rig.py setup` + `UPTERM_RIG=7 rig.py start --max --purpose
+  "Amarchy session: packages P7 reachability"`, reinstall up-nano from build/ipk-p7, deploy the two binaries,
+  check in both styles: nano opens in an UP-Term window, vsh and nano stacks 262144. Then tick P7.
+- Menu root has 9-10 groups, 8 visible (MN_OSD_MAX_ENTRIES 8); Install is off-screen: design question for owner.
