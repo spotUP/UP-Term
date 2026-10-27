@@ -38,8 +38,10 @@ def main():
     exe = str(pathlib.Path(tempfile.mkdtemp(prefix='geomterm')) / 'geom')
     subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-o', exe] + SRC, cwd=ROOT, check=True)
     wb, term = levels(exe), levels(exe, '--term')
-    ok = wb['root'] == 1 and term['root'] > wb['root']
-    print('workbench root rows %d (want 1: Apps; Games comes from the index), with terminal %d: %s' % (wb['root'], term['root'], 'ok' if ok else 'FAIL'))
+    # Over Workbench gui.c drops the tab:, menuid: and slash: rows. They now sit in the Apps and Screens levels, not
+    # the root, so the check is: no level grows over Workbench, at least one shrinks, and the root is not empty.
+    ok = wb['root'] > 0 and all(wb[k] <= term[k] for k in wb) and any(wb[k] < term[k] for k in wb)
+    print('rows over Workbench %s, with terminal %s: %s' % (sorted(wb.items()), sorted(term.items()), 'ok' if ok else 'FAIL'))
     ok2 = uninitialised_screen_ok()
     return 0 if ok and ok2 else 1
 
