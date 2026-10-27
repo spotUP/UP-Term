@@ -486,6 +486,103 @@ def r_theme_name():
             ami.restore_file(p, b)
 
 
+# ---- m3-right: Right enters only rows with children (mn_right_enters, amarchy/menu_tree.c) -----------------------
+RIGHT = 0x4E
+SHOTS = pathlib.Path.home() / 'Desktop' / 'upterm-shots'
+LONG_FONT = 'AVeryLongFontNameForTheRightCheck.font:99'
+RIGHT_SECS = 20
+
+
+def right_state():
+    from amarchy_theme_save_rig import menu_state
+    box, digest = menu_state()
+    return box, digest, tuple(drawn_rows())
+
+
+def right_stays(what):
+    """Right on the current row; the menu must be open with the same box, pixels and rows 2.5 s later."""
+    before = right_state()
+    if before[0] is None:
+        return '%s: no menu before Right' % what
+    ami.key(RIGHT)
+    time.sleep(2.5)
+    after = right_state()
+    if after != before:
+        return '%s: Right changed the menu (box %s -> %s, rows %s -> %s, pixels %s)' % (
+            what, before[0], after[0], before[2], after[2], 'same' if after[1] == before[1] else 'differ')
+    return ''
+
+
+def right_enters(what):
+    before = right_state()
+    ami.key(RIGHT)
+    try:
+        wait_stable(RIGHT_SECS, differ_from=before[:2], what='Right on ' + what)
+    except TimeoutError:
+        return None
+    return drawn_rows()
+
+
+def r_m3_right():
+    saved = {p: ami.read_file(p) for p in UPTERM_FILES + PREFS}
+    notes, fails = [], []
+    try:
+        host_window('/OWNSCREEN')
+        write_conf('off', True)
+        c.run('Echo >>ENV:up-term/up-term "font = %s"' % LONG_FONT)
+        c.run('Echo >>ENVARC:up-term/up-term "font = %s"' % LONG_FONT)
+        time.sleep(3)
+        try:
+            rows = drawn_open()
+            drawn_down(rows, 'Window', groups_under(), 'root')
+            rows = drawn_enter('Window')
+            drawn_down(rows, 'Previous window', rows, 'Window')
+            e = right_stays('leaf "Previous window"')
+            (fails if e else notes).append(e or 'leaf: Right did nothing')
+            g.close_menu()
+            notes.append('index row: not exercised (no index row identified on rig 7)')
+            rows = drawn_open()
+            drawn_down(rows, 'Settings', groups_under(), 'root')
+            rows = right_enters('group Settings')
+            if rows and 'General' in rows:
+                notes.append('group: Right entered Settings')
+            else:
+                fails.append('group: Right on Settings did not enter (rows %s)' % rows)
+                g.close_menu()
+                return False, '; '.join(fails + notes)
+            drawn_down(rows, 'General', groups_under('settings'), 'Settings')
+            rows = right_enters('group General')
+            if not rows or not any(r.startswith('Cursor: ') for r in rows):
+                fails.append('group General not entered by Right (rows %s)' % rows)
+                g.close_menu()
+                return False, '; '.join(fails + notes)
+            fix = find_row(rows, 'Font: ')
+            for _ in range(fix):
+                step(g.DOWN, 'Down to Font')
+            SHOTS.mkdir(parents=True, exist_ok=True)
+            shot = SHOTS / 'm3-right-font-row.png'
+            w, h, px = ami.grab(right_state()[0])
+            ami.png(str(shot), w, h, px)
+            notes.append('Font row photographed %s; rows file: %s' % (shot, [r for r in drawn_rows() if r.startswith('Font')]))
+            for _ in range(find_row(rows, 'Cursor: ') - fix):
+                step(g.DOWN, 'Down to Cursor')
+            ch = right_enters('cycle setting Cursor')
+            if not ch or any(r.startswith('Cursor: ') for r in ch):
+                fails.append('cycle: Right on Cursor did not enter its choices (rows %s)' % ch)
+                g.close_menu()
+                return False, '; '.join(fails + notes)
+            notes.append('cycle: Right entered Cursor choices %s' % ch)
+            e = right_stays('choice row "%s"' % ch[0].strip())
+            (fails if e else notes).append(e or 'choice: Right did nothing')
+        except (RuntimeError, TimeoutError) as e:
+            fails.append(str(e))
+        g.close_menu()
+        return (not fails), '; '.join(fails + notes)
+    finally:
+        for p, b in saved.items():
+            ami.restore_file(p, b)
+
+
 ROWS = [
     ('drawn-blink-off', r_drawn_off),
     ('drawn-blink-on',  r_drawn_on),
@@ -494,6 +591,7 @@ ROWS = [
     ('m6-font',         r_m6_font),
     ('m6-mode',         r_m6_mode),
     ('theme-name',      r_theme_name),
+    ('m3-right',        r_m3_right),
 ]
 
 
