@@ -1757,6 +1757,22 @@ def run_row(fn, query=None):
     return ok, detail
 
 
+def stale_guard(restage, drift=None):
+    """The rows' verdicts are only worth something on this build. Restages what stage_rig stages, then asks rig.py's
+    build_drift (the check behind the rig start [WARN]) what still differs in VTC:. Returns the error text, or None
+    when VTC: is current. 2026-10-28: rig 4 printed the [WARN] and the rows ran on the stale programs anyway."""
+    restage()
+    if drift is None:
+        import rig
+        drift = rig.build_drift
+    stale = drift(pathlib.Path(paths.RIG) / 'vtc')
+    if not stale:
+        return None
+    return ('[ERROR] %d file(s) in VTC: differ from the build after restaging: %s; run `UPTERM_RIG=%s python3 '
+            'tools/rig/rig.py install` (rig stopped), then start the rig again. No row ran.'
+            % (len(stale), ', '.join(stale), os.environ.get('UPTERM_RIG', '1')))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--only')
@@ -1774,7 +1790,10 @@ def main():
             print('FAIL app_icons: ' + err)
             return 1
     # the rows run VTC:Apps/bin/Amarchy and amarchy-menu: those files must be this build
-    stage_rig.report(stage_rig.stage_build(build=not a.no_build))
+    err = stale_guard(lambda: stage_rig.report(stage_rig.stage_build(build=not a.no_build)))
+    if err:
+        print(err)
+        return 2
     passed = total = 0
     for name, fn in ROWS:
         f = OUT / ('menu_' + name + '.verdict')
