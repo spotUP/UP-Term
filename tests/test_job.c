@@ -1,0 +1,189 @@
+/* The Amarchy job view core: lines, end marker, footer, scroll (amarchy/job_core.c; plan 2026-10-27-amarchy-job-view.md). */
+#include <stdio.h>
+#include <string.h>
+#include "../amarchy/job_core.h"
+#include "harness.h"
+
+static jc J;
+static void feed(const char *s) { jc_feed(&J, s, (long)strlen(s)); }
+static const char *foot(void) { static char b[JOB_FOOT_MAX]; jc_footer(&J, b, (int)sizeof b); return b; }
+
+/* "L<i><post>" without sprintf (c89 build, deprecated warnings are errors). */
+static void mkl(char *b, int i, const char *post)
+{
+    char d[12];
+    int n = 0;
+    do { d[n++] = (char)('0' + i % 10); i /= 10; } while (i);
+    *b++ = 'L';
+    while (n) *b++ = d[--n];
+    strcpy(b, post);
+}
+
+static void test_job_lines(void)
+{
+    jc_init(&J);
+    feed("one\ntw");
+    CHECK_INT(jc_count(&J), 1);
+    feed("o\nthree");                       /* partial line carried across chunks */
+    CHECK_INT(jc_count(&J), 2);
+    CHECK_STR(jc_line(&J, 1), "two");
+    feed("\n");
+    CHECK_STR(jc_line(&J, 2), "three");
+    jc_init(&J);
+    feed("a\rb\r\nc\n\nd\n\r\n");           /* bare CR ends a line, CRLF is one end, empty lines kept */
+    CHECK_INT(jc_count(&J), 6);
+    CHECK_STR(jc_line(&J, 0), "a");
+    CHECK_STR(jc_line(&J, 1), "b");
+    CHECK_STR(jc_line(&J, 2), "c");
+    CHECK_STR(jc_line(&J, 3), "");
+    CHECK_STR(jc_line(&J, 4), "d");
+    CHECK_STR(jc_line(&J, 5), "");
+    jc_init(&J);
+    jc_feed(&J, "x\r", 2);                  /* CRLF split across chunks is still one end */
+    jc_feed(&J, "\ny\n", 3);
+    CHECK_INT(jc_count(&J), 2);
+    jc_init(&J);
+    feed("a\tb\n\tc\nabcdefgh\ti\n");       /* tab expands to the next multiple of 8 */
+    CHECK_STR(jc_line(&J, 0), "a       b");
+    CHECK_STR(jc_line(&J, 1), "        c");
+    CHECK_STR(jc_line(&J, 2), "abcdefgh        i");
+}
+
+static void test_job_ring(void)
+{
+    char b[16];
+    int i;
+    jc_init(&J);
+    for (i = 0; i < JOB_MAX_LINES + 5; i++) { mkl(b, i, "\n"); feed(b); }
+    CHECK_INT(jc_count(&J), JOB_MAX_LINES);
+    CHECK_INT(jc_dropped(&J), 5);
+    CHECK_STR(jc_line(&J, 0), "L5");
+    mkl(b, JOB_MAX_LINES + 4, "");
+    CHECK_STR(jc_line(&J, JOB_MAX_LINES - 1), b);
+    CHECK_STR(jc_line(&J, JOB_MAX_LINES), "");
+    jc_init(&J);
+    for (i = 0; i < JOB_LINE_MAX + 30; i++) feed("x");
+    feed("\n");
+    CHECK_INT(strlen(jc_line(&J, 0)), JOB_LINE_MAX);   /* long line cut */
+}
+
+static void test_job_marker(void)
+{
+    jc_init(&J);
+    feed("work\n@JOBRC 0\n");
+    CHECK_INT(jc_count(&J), 1);             /* the marker is never a line */
+    CHECK(J.ended);
+    CHECK_INT(J.rc, 0);
+    CHECK_INT(J.state, JC_DONE);
+    jc_init(&J);
+    feed("a\n@JOB");
+    CHECK(!J.ended);
+    feed("RC 15");                          /* split across chunks */
+    CHECK(!J.ended);
+    feed("\n");
+    CHECK(J.ended);
+    CHECK_INT(J.rc, 15);
+    CHECK_INT(jc_count(&J), 1);
+    jc_init(&J);
+    feed("@JOBRC 5\r\n");
+    CHECK_INT(J.rc, 5);
+    jc_init(&J);
+    feed("@JOBRCX\n");                     /* not the marker */
+    CHECK(!J.ended);
+    CHECK_INT(jc_count(&J), 1);
+}
+
+static void test_job_footer(void)
+{
+    jc_init(&J);
+    CHECK_STR(foot(), "Running...");
+    CHECK_INT(J.state, JC_RUNNING);
+    feed("@JOBRC 0\n");
+    CHECK_STR(foot(), "Done");
+    jc_init(&J); feed("@JOBRC 5\n");
+    CHECK_INT(J.state, JC_DONE);
+    CHECK_STR(foot(), "Nothing to do");
+    jc_init(&J); feed("@JOBRC 15\n");
+    CHECK_INT(J.state, JC_FAILED);
+    CHECK_STR(foot(), "Needs answers: run it from a terminal");
+    jc_init(&J); feed("@JOBRC 20\n");
+    CHECK_STR(foot(), "Failed");
+    jc_init(&J); feed("@JOBRC 12\n");
+    CHECK_STR(foot(), "Package not found");
+    jc_init(&J); feed("@JOBRC 13\n");
+    CHECK_STR(foot(), "Network error");
+    jc_init(&J); feed("@JOBRC 14\n");
+    CHECK_STR(foot(), "Package script failed");
+    jc_init(&J); feed("@JOBRC 11\n");
+    CHECK_STR(foot(), "Usage error");
+    jc_init(&J); feed("@JOBRC 7\n");
+    CHECK_INT(J.state, JC_FAILED);
+    CHECK_STR(foot(), "Failed (code 7)");
+    jc_init(&J);
+    jc_cancel(&J);
+    CHECK_INT(J.state, JC_CANCELLED);
+    CHECK_STR(foot(), "Cancelled");
+    feed("@JOBRC 0\n");                    /* marker after cancel keeps cancelled, the code is recorded */
+    CHECK_INT(J.state, JC_CANCELLED);
+    CHECK(J.ended);
+    jc_init(&J); feed("@JOBRC 0\n");
+    jc_cancel(&J);                          /* cancel after the end is ignored */
+    CHECK_INT(J.state, JC_DONE);
+    jc_init(&J); feed("@JOBRC 20\n");
+    jc_cancel(&J);
+    CHECK_INT(J.state, JC_FAILED);
+}
+
+static void test_job_progress(void)
+{
+    char h[JOB_FOOT_MAX * 2];
+    jc_init(&J);
+    jc_header(&J, h, (int)sizeof h);
+    CHECK_STR(h, "");
+    feed("[PROGRESS 1/7] fetch Gamma\nnoise\n[PROGRESS 3/7] install Gamma\n[PROGRESS x/7] bad\n");
+    CHECK_INT(J.prog_n, 3);
+    CHECK_INT(J.prog_m, 7);
+    jc_header(&J, h, (int)sizeof h);
+    CHECK_STR(h, "3 of 7 install Gamma");
+    CHECK_INT(jc_count(&J), 4);             /* the progress lines stay visible */
+    CHECK_STR(jc_line(&J, 2), "[PROGRESS 3/7] install Gamma");
+}
+
+static void test_job_scroll(void)
+{
+    char b[16];
+    int i;
+    jc_init(&J);
+    for (i = 0; i < 20; i++) { mkl(b, i, "\n"); feed(b); }
+    CHECK_INT(jc_top(&J, 5), 15);           /* follows the tail */
+    feed("L20\n");
+    CHECK_INT(jc_top(&J, 5), 16);
+    jc_scroll(&J, -3, 5);
+    CHECK_INT(jc_top(&J, 5), 13);
+    CHECK(!J.follow);
+    feed("L21\nL22\n");                     /* scrolled view stays put */
+    CHECK_INT(jc_top(&J, 5), 13);
+    jc_scroll(&J, -100, 5);
+    CHECK_INT(jc_top(&J, 5), 0);
+    jc_scroll(&J, 5, 5);
+    CHECK_INT(jc_top(&J, 5), 5);
+    jc_scroll(&J, 100, 5);                  /* back at the end: following again */
+    CHECK(J.follow);
+    feed("L23\n");
+    CHECK_INT(jc_top(&J, 5), jc_count(&J) - 5);
+    jc_init(&J);
+    feed("a\nb\n");
+    CHECK_INT(jc_top(&J, 10), 0);           /* fewer lines than rows */
+    jc_scroll(&J, -1, 10);
+    CHECK(J.follow);
+}
+
+void suite_job(void)
+{
+    test_job_lines();
+    test_job_ring();
+    test_job_marker();
+    test_job_footer();
+    test_job_progress();
+    test_job_scroll();
+}
