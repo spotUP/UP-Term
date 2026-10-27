@@ -1297,13 +1297,15 @@ def tx_named(rows, name):
 
 
 def tx_list_after_job(name):
-    """The package list after an Install or Remove job. The menu returns to the level that ran the job (menu.c: job_ran,
-    same node), which is the package's action level (Install / Remove); one Escape goes up to the list that names it."""
-    rows = tx_rows()
+    """The whole package list after an Install or Remove job. The menu returns to the level that ran the job (menu.c: job_ran,
+    same node); the label changed (Installed), so the cursor is back on the first row and the 10-row window shows only the
+    top of a 28-row list (rig 4, r3: up-bitchx..up-lua, no up-pi). So every row is collected (tx_all_rows), not the window.
+    When the level shown is the package's action level (Install / Remove) the name is missing: one Escape up to the list."""
+    rows = tx_all_rows()
     if not tx_named(rows, name):
         ami.key(RAW['esc'])
         time.sleep(1.5)
-        rows = tx_rows()
+        rows = tx_all_rows()
     return rows
 
 
@@ -1474,8 +1476,11 @@ def r_pkg_text():
         g.check(pick in g.installed_names(), '%s: No keeps %s installed' % (tag, pick))
         after = tx_rows()
         print('%s: level after No: %s' % (tag, after), flush=True)
-        if after != conf:
-            if not g.check(tx_pick('Remove', after), '%s: Remove offered again after No' % tag):
+        if after != conf:                # No returns to the package list (cursor on the first row): open the row again from the whole list
+            all_rows = tx_list_after_job(pick)
+            again = tx_named(all_rows, pick)
+            if not g.check(len(again) == 1 and tx_pick(again[0], all_rows) and tx_pick('Remove', tx_rows()),
+                           '%s: Remove offered again after No' % tag):
                 return False, 'no Remove again'
             conf = tx_rows()
         c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')

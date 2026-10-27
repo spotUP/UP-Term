@@ -30,11 +30,30 @@ class AllRows(unittest.TestCase):
     def test_list_after_job_goes_up_from_the_action_level(self):
         screens = [['Remove'], ['[UHC] up-pi  Installed   >']]
         keys = []
-        with mock.patch.object(m, 'tx_rows', lambda: screens.pop(0)), mock.patch.object(m.ami, 'key', keys.append), \
+        with mock.patch.object(m, 'tx_all_rows', lambda: screens.pop(0)), mock.patch.object(m.ami, 'key', keys.append), \
                 mock.patch.object(m.time, 'sleep'):
             got = m.tx_list_after_job('up-pi')
         self.assertEqual(got, ['[UHC] up-pi  Installed   >'])
         self.assertEqual(keys, [m.RAW['esc']])
+
+    def test_list_after_job_finds_a_row_below_the_window(self):
+        """r3 on rig 4: after the Install job the list is back at its top; the 3-row window shows row0..row2 and the
+        package sits at row5. The window alone finds no row (the old IndexError); the whole list does, with no Escape."""
+        items = ['row%d' % i for i in range(5)] + ['[UHC] up-pi  Installed   >', 'row6']
+        st = {'cur': 0, 'keys': []}
+
+        def key(k):
+            st['keys'].append(k)
+            st['cur'] = min(6, st['cur'] + 1) if k == m.RAW['down'] else max(0, st['cur'] - 1)
+
+        def rows():
+            top = max(0, min(st['cur'] - 2, 4))
+            return items[top:top + 3]
+
+        with mock.patch.object(m, 'tx_rows', rows), mock.patch.object(m.ami, 'key', key), mock.patch.object(m.time, 'sleep'):
+            got = m.tx_list_after_job('up-pi')
+        self.assertEqual(len(m.tx_named(got, 'up-pi')), 1)
+        self.assertNotIn(m.RAW['esc'], st['keys'])
 
 
 if __name__ == '__main__':
