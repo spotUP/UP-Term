@@ -58,7 +58,7 @@ static int run_in_uterm(const char *cmd, const lf_ui *ui)
 {
     BPTR w;
     LONG rc;
-    char spec[128], line[512];
+    char spec[128], line[512], prog[256];
     if (!cmd || !*cmd)
         return 0;
     if (!shell_line(line, sizeof line, cmd, cmd, ui))
@@ -73,7 +73,8 @@ static int run_in_uterm(const char *cmd, const lf_ui *ui)
         return UPREQ_NOWINDOW;
     }
     rc = SystemTags((STRPTR)line, SYS_Input, w, SYS_Output, 0, SYS_Asynch, TRUE,
-                    NP_StackSize, 65536, TAG_END);
+                    NP_StackSize, pl_stack(lf_command_program(line, prog, (int)sizeof prog) ? prog : 0, 65536),
+                    TAG_END);       /* vsh's own $STACK cookie when larger (RULES.md rule 6) */
     if (rc == -1) {                 /* not started: the window is still ours */
         Close(w);
         if (ui && ui->refused)
@@ -311,21 +312,17 @@ void lf_setting_rechip(const mn_item *it, int n, long *out)
     lf_setting_chips(amconf_dos_io(), it, n, out);
 }
 
-static int start_detached(const char *line, const char *label, const lf_ui *ui);
-
 int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 {
     char err[160];
     int ci = lf_clip_entry(path);
     long lh = ix_lister_of(path);
-    char tname[GT_NAME], launch[PK_PATH], line[512];
+    char tname[GT_NAME], launch[PK_PATH];
     if (!strncmp(path, IX_PKG_NONE, sizeof IX_PKG_NONE - 1))   /* the empty Packages menu's row */
         return 0;
-    if (pk_path_launch(path, launch, sizeof launch)) {  /* an Install > Packages row: its program starts */
-        if (!shell_line(line, sizeof line, launch, label, ui))
-            return UPREQ_FAILED;
-        return start_detached(line, label, ui);
-    }
+    if (pk_path_launch(path, launch, sizeof launch))   /* an Install > Packages row: its program starts in an
+                                                         * UP-Term window, as a run: row (owner, 2026-10-27) */
+        return run_in_uterm(launch, ui);
     if (gt_path_name(path, tname, sizeof tname)) {      /* a Style > Theme row: the drawn menu's theme is saved */
         if (gt_dos_select(tname, err, (int)sizeof err))
             return 0;

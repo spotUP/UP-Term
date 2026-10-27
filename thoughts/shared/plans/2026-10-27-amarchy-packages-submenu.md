@@ -37,7 +37,8 @@ upkg browse Enter=Launch (plan 2026-10-26-upkg-browse-launch.md L4-L6) stays wit
 - [x] P6 feat/uhc-repo f30fc35 pkgs/opkg/doc/upkg-tsv.txt: `upkg list-installed --tsv [glob]`, nine fields, field 7
   launch (installed ipk: its control Launch: line; UHC: full ExtBin path), no network request.
 - P7 rig 7 reachability: feat/uhc-repo upkg on the rig, hotkey, Packages, Enter on an installed package with
-  launch, sentinel proves the program ran, both styles.
+  launch, sentinel proves the program ran, both styles. First run (both styles, sentinel PASS) showed the detached
+  start gives nano no window; re-run after the run_in_uterm change pending the new rig master (vtcon-05).
 - P8 A1200: after up-uhc 1.4 lands (vtcon-05 asked to leave UHC state alone until then).
 
 ## Results
@@ -46,4 +47,8 @@ upkg browse Enter=Launch (plan 2026-10-26-upkg-browse-launch.md L4-L6) stays wit
   Install > Packages (P4). Evidence: session scratchpad upkg-timing.md.
 - leaf.c start_detached started every detached line on 32768 bytes; vsh's cookie is 262144 (RULES.md rule 6).
   Fixed with P5: pl_start reads the program's cookie.
-- Open: run_in_uterm in leaf.c gives vsh NP_StackSize 65536, below its 262144 cookie (not part of this plan).
+- Owner decision (2026-10-27, after the first P7 run): a detached package row gets NIL: for input and output, so
+  nano had no window and exited. Package rows now start through run_in_uterm, the same path as run: rows, in an
+  UP-Term window of their own; a UHC GUI program gets an extra terminal window, accepted.
+- run_in_uterm gave vsh NP_StackSize 65536, below its 262144 cookie (rule 6). Fixed in the same change: the stack
+  is pl_stack(vsh, 65536).
