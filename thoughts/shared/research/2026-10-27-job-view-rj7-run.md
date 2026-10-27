@@ -40,3 +40,46 @@ session at 15:22, after the run; the md5 lines below are the files that were tes
   only JOB_LINES and JOB_DONE) and the brief barred a screenshot reader. job_core.c maps state and rc to the
   word (rc 13 -> "Network error", cancelled -> "Cancelled").
 - "Menu back on the Update lists row": the selected row is not published; only the level (Install rows) was read.
+
+## Part 2 (text footer and drawn style, rig 7, 060)
+
+Built from HEAD e4ed3649 (branch prefs-inline; the branch has moved on to 919a829e since, not deployed).
+Deployed to VTC:Apps/bin: Amarchy 20441c2d073ce98469db9e3cadf6b011, amarchy-gui e7f1671ad0e6483edc9f2de225608405,
+amarchy-menu ba463f85287b47a860c368ad3dceaffa; ENV:up-term/keymap 4a0acd9b2af428df643c3af343a1654e.
+Setup: `Path Rushhours:Tools/UP-Term/bin ADD` + `Path SYS:Rexxc ADD` + `Run >NIL: VTC:Apps/bin/Amarchy` in one c.run
+(path does not persist across c.run calls); no assign trick needed. Local feed only (upkg.conf pointed at 127.0.0.1).
+
+### A. Text style (menu in terminal, 35 columns), Install > Update lists
+- A1 local feed: PASS. JOB_LINES 3, JOB_DONE 1. Footer `|Enter: Accept  Escape: Back    Done|`. Body "[PROGRESS 1/1]
+  update upterm / Downloading http://127.0.0.1:52068/Packages.gz. / Updated source 'upterm'." Enter closes, T file
+  gone, menu on the Install rows; a second Enter re-ran Update lists (JOB_LINES 6), so the cursor was on that row.
+- A2 feed stopped: PASS on content, DEFECT in footer. JOB_LINES 9, JOB_DONE 14, "error: opkg_download_backend:
+  Failed to download ... curl returned 7". Footer renders `|Enter: Accept  Escape:NBackrk error|`: left hint and
+  right status ("Network error") overlap at 35 columns.
+- A3 slow feed (30 s), Esc at about 8 s: FAIL (3 of 3 runs). Footer `|Enter: Accept  Escape: Backancelled|` at once
+  (overlap again), but vsh/upkg/curl stay alive: 4 processes still at 13.9 s and 6.1 s after Esc, gone 22.4 s after
+  Esc (when the slow server answered); JOB_DONE 14 published only then. Part 1 saw the children die within 10 s.
+  T file lingers if the view is closed while the children live; removed once they end.
+
+### B. Drawn style (menu-style = graphical, menu-in-terminal = graphical)
+Sentinels: B1 Done JOB_LINES 22, JOB_DONE 1; probe after close JOB_LINES 25 (cursor on Update lists, re-run);
+B2 failure JOB_LINES 28, JOB_DONE 14; B3 cancel JOB_LINES 30, JOB_DONE '' (children still alive, as in A3).
+- Done: PASS. Footer "Enter: Accept  Escape: Back  Done" (green), title "Update lists ........ Amarchy".
+  rj7b-drawn-done.png. After Enter the Install level is back with the "Update lists" row highlighted:
+  rj7b-drawn-done-closed.png. T file gone after close.
+- Failed: PASS on content, DEFECT in footer: "Escape:NBackrk error" (red), same overlap as the text style.
+  rj7b-drawn-failed.png, rj7b-drawn-failed-closed.png.
+- Cancelled: footer "Backancelled" (red), same overlap; children not killed (see A3). rj7b-drawn-cancelled.png.
+- Other shots: rj7b-drawn-install-level.png, rj7b-drawn-running.png (all in ~/Desktop/upterm-shots/).
+  The drawn footer is wide enough for "Done" but not for "Network error" or "Cancelled".
+
+### Defects
+1. Footer: left hint and right status overlap when the status is longer than the free space ("Network error",
+   "Cancelled"), in both styles.
+2. Cancel does not stop vsh/upkg/curl within 10 s (22.4 s, only when the server replied), 3 of 3 runs here.
+3. T:amarchy-job.* lingers when the view is closed while cancelled children still run.
+
+### Restore
+UP-Term:etc/upkg.conf ac11b5a5..., ENV:up-term/up-term fbb38427..., ENV:Amarchy/prefs c7d44aee... restored by copy and
+md5 proved equal to the backups. T: has no amarchy-job files, no upkg/curl processes. Feed and slow servers killed.
+Amarchy QUIT, rig 7 stopped. The deployed copies stay in rig 7's VTC:Apps/bin until the next install.
