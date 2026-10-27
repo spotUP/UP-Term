@@ -111,14 +111,14 @@ def stage_fonts():
     c.run('Assign FONTS: VTC:%s ADD' % FONT_DRAWER)
 
 
-def expected(geom, name, wb=False):
+def expected(geom, name, wb=False, dopus=False, apps_rows=None):
     """{'icon': (w, h), 'root'|'apps': {'box': (x, y, w, h), 'cell': (ix, iy, w, h, row2 iy), 'n': n}} for the
     screen `name`: the geometry helper asks for every text it has to measure, scrprobe measures it in that
     screen's own font, and the helper runs again until it asks for nothing more."""
     w, h, ys, xs, prop, rx, ry = probe(name)
     lens = {}
     for _ in range(4):
-        r = subprocess.run([geom] + (['--wb'] if wb else []) + [str(w), str(h), str(ys), str(xs), str(rx), str(ry)] + ['%s=%d' % kv for kv in lens.items()],
+        r = subprocess.run([geom] + (['--wb'] if wb else []) + (['--dopus'] if dopus else []) + (['--apps-rows', str(apps_rows)] if apps_rows is not None else []) + [str(w), str(h), str(ys), str(xs), str(rx), str(ry)] + ['%s=%d' % kv for kv in lens.items()],
                            capture_output=True, text=True)
         if r.returncode:
             raise SystemExit('amarchy_geom failed: ' + r.stderr)
@@ -257,8 +257,16 @@ def check_geometry(level, s, w, e, what):
           (what, level, '%dx%d' % got[2:], got[0], got[1], got, want))
 
 
+def port_present(port):
+    """True when the public ARexx port exists on the rig (what upactive_dopus_present / upactive_workbench_present ask)."""
+    rc, out = c.run('SYS:Rexxc/rx "SAY SHOW(\'P\',\'%s\')"' % port)
+    return rc == 0 and out.strip().endswith('1')
+
+
 def case_default(geom):
-    e = expected(geom, '-')
+    wb, dopus = port_present('WORKBENCH'), port_present('DOPUS.1')
+    e = expected(geom, '-', wb=wb, dopus=dopus)
+    print('info rig state: WORKBENCH port %s, DOPUS.1 port %s' % (wb, dopus))
     sw, sh, ys, xs, prop, rx, ry = e['screen']
     print('info workbench screen %dx%d pixels %d:%d font %dx%d proportional %d, icon %dx%d' % (sw, sh, rx, ry, xs, ys, prop, e['icon'][0], e['icon'][1]))
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS ENV:AMARCHY_BLITS')
@@ -300,6 +308,8 @@ def case_default(geom):
     time.sleep(2)
     s, w = where(TITLE)
     if check(bool(w), 'Enter on Apps kept the window'):
+        # the apps level merges the app index (gui.c ix_level_t): its row count is the product's AMARCHY_ROWS; the width is the opening node's
+        e = expected(geom, '-', wb=wb, dopus=dopus, apps_rows=len(rows_now()))
         check_geometry('apps', s, w, e, 'Workbench')
         check(box_of(s, w)[2] == e['root']['box'][2], 'the width stayed the same while walking a level')
         check(draws() > d0, 'a level change redrew: ENV:AMARCHY_DRAWS %d -> %d' % (d0, draws()))
@@ -371,7 +381,7 @@ def case_screen(geom, public):
         break_probe()
         return
     try:
-        e = expected(geom, name) if public else None
+        e = expected(geom, name, wb=port_present('WORKBENCH'), dopus=port_present('DOPUS.1')) if public else None
         s, w = open_menu()
         if not check(bool(w), '%s screen in front: the hotkey opened the menu' % kind):
             return
