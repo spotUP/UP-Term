@@ -93,6 +93,31 @@ static void test_job_marker(void)
     CHECK_INT(jc_count(&J), 1);
 }
 
+/* Output that ends without a newline puts the marker at the end of the last text line. */
+static void test_job_marker_after_text(void)
+{
+    jc_init(&J);
+    feed("abc@JOBRC 3\n");
+    CHECK_INT(jc_count(&J), 1);
+    CHECK_STR(jc_line(&J, 0), "abc");
+    CHECK(J.ended);
+    CHECK_INT(J.rc, 3);
+    CHECK_INT(J.state, JC_FAILED);
+    jc_init(&J);
+    feed("abc@JOB");
+    feed("RC 3\n");
+    CHECK_INT(jc_count(&J), 1);
+    CHECK_STR(jc_line(&J, 0), "abc");
+    CHECK(J.ended);
+    CHECK_INT(J.rc, 3);
+    CHECK_INT(J.state, JC_FAILED);
+    jc_init(&J);
+    feed("x @JOBRC 2 y\n");               /* text after the number: not the marker */
+    CHECK(!J.ended);
+    CHECK_INT(jc_count(&J), 1);
+    CHECK_STR(jc_line(&J, 0), "x @JOBRC 2 y");
+}
+
 static void test_job_footer(void)
 {
     jc_init(&J);
@@ -183,6 +208,7 @@ void suite_job(void)
     test_job_lines();
     test_job_ring();
     test_job_marker();
+    test_job_marker_after_text();
     test_job_footer();
     test_job_progress();
     test_job_scroll();

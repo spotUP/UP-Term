@@ -69,21 +69,44 @@ static void take_progress(jc *j, const char *s)
     strcpy(j->prog_text, s);
 }
 
-static void end_line(jc *j)
+/* Position of an "@JOBRC <n>" that runs to the end of s, or -1. At the line start the number may be missing
+   (rc 0); after other text (output that ended without a newline) the number is required. */
+static int find_marker(const char *s, int *rc)
 {
-    j->cur[j->curlen] = 0;
-    if (!strncmp(j->cur, MARKER, 6) && (j->cur[6] == ' ' || j->cur[6] == 0)) {
-        const char *p = j->cur + 6;
-        int v = 0, neg = 0;
+    int k, len = (int)strlen(s);
+    for (k = 0; k + 6 <= len; k++) {
+        const char *p = s + k;
+        int v = 0, neg = 0, digits = 0;
+        if (strncmp(p, MARKER, 6)) continue;
+        p += 6;
+        if (*p && *p != ' ') continue;
         while (*p == ' ') p++;
         if (*p == '-') neg = 1, p++;
-        while (*p >= '0' && *p <= '9') v = v * 10 + *p++ - '0';
-        set_rc(j, neg ? -v : v);
-    } else {
-        take_progress(j, j->cur);
-        memcpy(j->line[j->total % JOB_MAX_LINES], j->cur, (size_t)j->curlen + 1);
-        j->total++;
+        while (*p >= '0' && *p <= '9') v = v * 10 + *p++ - '0', digits++;
+        if (*p || (k > 0 && !digits)) continue;
+        *rc = neg ? -v : v;
+        return k;
     }
+    return -1;
+}
+
+static void add_line(jc *j)
+{
+    take_progress(j, j->cur);
+    memcpy(j->line[j->total % JOB_MAX_LINES], j->cur, (size_t)j->curlen + 1);
+    j->total++;
+}
+
+static void end_line(jc *j)
+{
+    int rc = 0, k;
+    j->cur[j->curlen] = 0;
+    k = find_marker(j->cur, &rc);
+    if (k >= 0) {
+        if (k > 0) { j->cur[k] = 0; j->curlen = k; add_line(j); }
+        set_rc(j, rc);
+    } else
+        add_line(j);
     j->curlen = j->curcol = 0;
 }
 
