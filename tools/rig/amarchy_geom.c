@@ -1,7 +1,7 @@
 /* amarchy_geom -- the numbers amarchy-gui's window must have, from the same code (menu_geom.c, menu_core.c,
  * menu_icon.c, the default keymap) built for the host: tools/rig/amarchy_gui_rig.py compares the rig's window
  * with them (G7).
- *     amarchy_geom [--wb] [--term] SCREEN_W SCREEN_H FONT_YSIZE FONT_XSIZE RES_X RES_Y [label=pixels ...]
+ *     amarchy_geom [--wb] [--dopus] [--apps-rows N] [--term] SCREEN_W SCREEN_H FONT_YSIZE FONT_XSIZE RES_X RES_Y [label=pixels ...]
  * --wb: the WORKBENCH port exists (OS 3.2 rig): the workbench group shows; the levels printed are root, apps, screens, workbench.
  * --term: an UP-Term window is under the menu (all rows); default is over Workbench, where tab:, menuid: and
  * slash: rows are hidden (mn_children_t / mg_width_t, as gui.c's term_present).
@@ -59,7 +59,8 @@ int main(int argc, char **argv)
     mg_font f;
     mg_screen s;
     mg_metrics m;
-    int icon_w, icon_h, chev_w, w, i, term = 0;
+    memset(&s, 0, sizeof s);     /* s.minimal and the rest start at 0 as in the product: garbage picked the minimal-menu metrics */
+    int icon_w, icon_h, chev_w, w, i, term = 0, apps_rows = -1, root_w = 0;
     if (argc > 1 && !strcmp(argv[1], "--term")) {
         term = 1;
         argv++;
@@ -69,6 +70,16 @@ int main(int argc, char **argv)
         cond0 = MN_COND_WB;
         argv++;
         argc--;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--dopus")) {   /* DOPUS.1 exists (menu_cond: MN_COND_DOPUS) */
+        cond0 |= MN_COND_DOPUS;
+        argv++;
+        argc--;
+    }
+    if (argc > 2 && !strcmp(argv[1], "--apps-rows")) {   /* the apps level holds index rows too (gui.c ix_level_t): the rig passes the product's count */
+        apps_rows = atoi(argv[2]);
+        argv += 2;
+        argc -= 2;
     }
     if (argc < 7)
         return 2;
@@ -101,6 +112,13 @@ int main(int argc, char **argv)
                 printf("row %s %d\n", it[j].seg, j);
         }
         w = mg_width_t(&km, nodes[i], &f, icon_w, chev_w, text_len, 0, &s, term | cond0);
+        if (i == 0)
+            root_w = w;
+        else if (i == 1) {          /* a level keeps the width of the node that opened the menu (gui.c computes g->w once) */
+            w = root_w;
+            if (apps_rows >= 0)
+                n = apps_rows;
+        }
         mg_layout(&g, &f, w, n, &s);
         printf("level %s %d %d %d %d %d %d\n", nodes[i][0] ? nodes[i] : "root", g.x, g.y, g.w, g.h, g.n, g.visible);
         /* the first row's icon cell (draw_row/draw_icon): window-relative x, y, side; the second row's y */
