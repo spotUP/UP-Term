@@ -738,15 +738,15 @@ static int pkg_level(const ix_index *x, const char *node, mn_item *out, int n, i
             confirm = pkg_confirm_seg(tok, &row, x, idx, cnt);
         }
     }
-    if (row >= 0 && confirm) {                      /* Remove asks first: Yes runs the job, No goes back */
-        static const char yn[2] = { PK_ACT_REMOVE, PK_ACT_NO };
+    if (row >= 0 && confirm) {                      /* Remove asks first: No is first (an accidental Enter keeps the package), Yes runs the job */
+        static const char yn[2] = { PK_ACT_NO, PK_ACT_REMOVE };
         for (i = 0; i < 2 && n < max; i++) {
             out[n].row = MN_ROW_PKGACT;
             out[n].ix = row;
             out[n].seg[0] = yn[i];
             out[n].seg[1] = 0;
             snprintf(out[n].label, sizeof out[n].label, "Remove %.*s: %s", (int)(sizeof out[n].label - 16),
-                     x->pk.r[row].name, i ? "No" : "Yes");
+                     x->pk.r[row].name, i ? "Yes" : "No");
             n++;
         }
     } else if (row >= 0) {                          /* the picked package: its fitting actions */

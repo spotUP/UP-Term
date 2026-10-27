@@ -1469,14 +1469,14 @@ static void remove_asks_first_and_a_package_job_marks_the_list_stale(void)
         }
     ca = pkg_level(&x, "packages.installed.Gamma.remove", a);
     CHECK_INT(ca, 2);
-    CHECK(strstr(a[0].label, "Yes") != 0 && strstr(a[1].label, "No") != 0);
-    CHECK_INT(a[0].row, MN_ROW_PKGACT);
-    CHECK_INT(a[0].seg[0], PK_ACT_REMOVE);
-    CHECK(pk_action_line(&x.pk.r[a[0].ix], PK_ACT_REMOVE, line, sizeof line));
+    CHECK(strstr(a[0].label, "No") != 0 && strstr(a[1].label, "Yes") != 0);   /* owner decision 2026-10-27: No first */
+    CHECK_INT(a[1].row, MN_ROW_PKGACT);
+    CHECK_INT(a[1].seg[0], PK_ACT_REMOVE);
+    CHECK(pk_action_line(&x.pk.r[a[1].ix], PK_ACT_REMOVE, line, sizeof line));
     CHECK_STR(line, "upkg remove Gamma");
-    CHECK_INT(a[1].seg[0], PK_ACT_NO);              /* No: leaf.c returns before any job */
-    CHECK_INT(lf_pkg_back_levels(&a[0]), 2);
-    CHECK_INT(lf_pkg_back_levels(&a[1]), 1);
+    CHECK_INT(a[0].seg[0], PK_ACT_NO);              /* No: leaf.c returns before any job */
+    CHECK_INT(lf_pkg_back_levels(&a[0]), 1);
+    CHECK_INT(lf_pkg_back_levels(&a[1]), 2);
     CHECK_INT(lf_pkg_back_levels(0), 0);
     ca = pkg_level(&x, "packages.browse.games.notyet", a);
     CHECK_INT(lf_pkg_back_levels(&a[0]), 1);        /* Install: back to the list */
