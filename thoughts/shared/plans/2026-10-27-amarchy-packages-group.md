@@ -103,7 +103,7 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
 - [x] PG.6 (commits 67186f5e + e4c4a8b6: rows, Search, PKGACT and lf_job_done were already in menu.c; this run built amarchy-menu on m68k rc 0; rows identical by construction: both styles read one ix level, test_keymap pkg_level walk; keymap 12168) text menu (menu.c, libupkgui): the same group, rows, Search and actions through the shared leaf code, jobs in the
   text job view (RJ.2t, eed2cacc, through lf_ui.run_job = text_run_job). Host test: tests/test_keymap.c rows identical in both
   styles (one node walk, two ui structs).
-- [x] PG.7 (commit e4c4a8b6, keymap 12168 checks; ix_pkgs_publish in index_core called by pk_dos_load_rows, which gui.c and menu.c both call; pk_sentinel copies job_dos.c's static sentinel because job_dos.c was off limits, fold into one later) sentinels AMARCHY_PKGS_ROWS and AMARCHY_PKGS_LOADS in gui.c and menu.c next to the job sentinels; host test that the
+- [x] PG.7 (commit e4c4a8b6, keymap 12168 checks; ix_pkgs_publish in index_core called by pk_dos_load_rows, which gui.c and menu.c both call; sentinel published through the shared am_sentinel in amarchy/sentinel_dos.c) sentinels AMARCHY_PKGS_ROWS and AMARCHY_PKGS_LOADS in gui.c and menu.c next to the job sentinels; host test that the
   publish function receives rows and load counts from a fake load.
 - [ ] PG.8 rig reachability (rig 7, 060, both styles; started with `UPTERM_RIG=7 rig.py start --max --purpose "Amarchy
   session: Packages group"`; against a local feed only, never the real feed): hotkey, Packages, Browse lists the feed's packages
@@ -138,8 +138,8 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
 - PG.3 leftovers: the load call sites already worked (menu.c ix_pkgs_due plus pk_dos_load_rows per loop, gui.c load_due in
   every list_rebuild_keep). Missing were the stale trigger (lf_job_done, called from text_run_job and gui_run_job), the
   MN_ROW_PKGACT dispatch and Search; all added in 67186f5e.
-- PG.4/PG.5 design: Remove is a group row (seg "remove"); packages.<view>.<pkg>.remove lists "Remove <name>: Yes" (PKGACT R)
-  and "No" (PKGACT N). Yes then No, the plan order; No-first would make an accidental Enter safe. lf_job_done marks stale for
+- PG.4/PG.5 design: Remove is a group row (seg "remove"); packages.<view>.<pkg>.remove lists "Remove <name>: No" (PKGACT N)
+  first, then "Yes" (PKGACT R). Order No then Yes by owner decision 2026-10-27: an accidental Enter keeps the package. lf_job_done marks stale for
   any "upkg " line whatever the rc. lf_pkg_back_levels: Remove 2 levels, No/Install/Upgrade 1, Launch closes the menu.
 - m68k: amarchy-index rc 0 md5 be2dd2ab2887cca18de6df2b0d205c8d, amarchy-gui rc 0 md5 19acb581d503130011c9f54dfdfe1966.
   amarchy-menu NOT built: make has no rule for upterm-ports/build/sysroot/UP-Term/lib/libupkgui.a (sysroot absent in this
