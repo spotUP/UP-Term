@@ -1,8 +1,8 @@
 .KEY DIR/A,STEP/K
 .BRA {
 .KET }
-; up-uhc install: the UHC tools for AmigaOS 3 (aget, UHCSearch and the get/search scripts), unmodified, in
-; UP-Term:uhc, with the UHC: assign, its path, the UHCBIN environment variable and ENV:UHC
+; up-uhc install: downloads the UHC tools for AmigaOS 3 (aget, UHCSearch and the get/search scripts) from their
+; author, unmodified but for two stubs, into UP-Term:uhc, with the UHC: assign, its path, the UHCBIN environment variable and ENV:UHC
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer
@@ -16,30 +16,149 @@ If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf
 ; @include dist/common/@CHECKFRAG@
-Lab copy-uhc
-; The drawer userland/uhc (the author's archive uhctools_os3.lha, unmodified) goes to UP-Term:uhc.
-; Copy of a drawer copies what is in it.
+Lab fetch-uhc
+; The UHC tools are not in this archive: the author's own uhctools_os3.lha is downloaded here, checked, unpacked
+; into UP-Term:uhc, and only then are our two stubs put over uhcupdate and uhccheck. A failed download, extract
+; or check ends the install with rc 20 and the message says which; nothing of UHC is copied before the check.
+; FailAt 1000 for the download and extract: curl's own error codes (6, 7, 22, 28) are above 21 and would end
+; the script without a message.
+Delete >NIL: T:uhctools_os3.lha QUIET
+Delete >NIL: T:uhc-unpack ALL QUIET
+FailAt 1000
+If EXISTS UP-Term:bin/curl
+  UP-Term:bin/curl -fsSL -o T:uhctools_os3.lha https://uhc.megaburken.net/uhctools_os3.lha
+Else
+  If EXISTS UP-Term:bin/bebboget
+    UP-Term:bin/bebboget -O -o T:uhctools_os3.lha https://uhc.megaburken.net/uhctools_os3.lha
+  Else
+    FailAt 21
+    Echo "[ERROR] UHC cannot be downloaded: neither UP-Term:bin/curl nor UP-Term:bin/bebboget is installed."
+    Quit 20
+  EndIf
+EndIf
+If WARN
+  FailAt 21
+  Echo "[ERROR] UHC download from https://uhc.megaburken.net/uhctools_os3.lha failed (network or server)."
+  Quit 20
+EndIf
+If NOT EXISTS T:uhctools_os3.lha
+  FailAt 21
+  Echo "[ERROR] UHC download from https://uhc.megaburken.net/uhctools_os3.lha left no file."
+  Quit 20
+EndIf
+MakeDir T:uhc-unpack
+CD T:uhc-unpack
+Which >NIL: lha
+If NOT WARN
+  lha x T:uhctools_os3.lha
+Else
+  If EXISTS UP-Term:bin/tar
+    UP-Term:bin/tar -xf T:uhctools_os3.lha
+  Else
+    FailAt 21
+    CD "{DIR}"
+    Echo "[ERROR] UHC cannot be unpacked: neither lha nor UP-Term:bin/tar is installed."
+    Quit 20
+  EndIf
+EndIf
+If WARN
+  FailAt 21
+  CD "{DIR}"
+  Echo "[ERROR] UHC archive could not be unpacked."
+  Quit 20
+EndIf
+FailAt 21
+CD "{DIR}"
+; the expected UHC: the author's version strings in the scripts and the tool the others need
+Search >NIL: T:uhc-unpack/UHCFixENV "VER: UHCFixENV 1."
+If WARN
+  Echo "[ERROR] the downloaded archive is not the UHC tools this package expects (no UHCFixENV 1.x)."
+  Quit 20
+EndIf
+Search >NIL: T:uhc-unpack/UHC-Startup "VER: UHC-Startup 1."
+If WARN
+  Echo "[ERROR] the downloaded archive is not the UHC tools this package expects (no UHC-Startup 1.x)."
+  Quit 20
+EndIf
+If NOT EXISTS T:uhc-unpack/C/aget
+  Echo "[ERROR] the downloaded archive is not the UHC tools this package expects (no C/aget)."
+  Quit 20
+EndIf
 MakeDir >NIL: UP-Term:licenses
-Copy userland UP-Term: ALL CLONE QUIET
+If NOT EXISTS UP-Term:uhc
+  MakeDir UP-Term:uhc
+  If WARN
+    Quit 20
+  EndIf
+EndIf
+Copy T:uhc-unpack UP-Term:uhc ALL CLONE QUIET
 If WARN
   Quit 20
 EndIf
+Delete >NIL: T:uhctools_os3.lha QUIET
+Delete >NIL: T:uhc-unpack ALL QUIET
 ; UHC: and UHCBIN: assigned now and at every boot, as UHC's own UHC-Startup expects (it assigns UHC: from
 ; $UHCBIN and adds UHC:C and UHC:S to the path). A block in S:User-Startup that does it only while
 ; UP-Term:uhc is there, so one left behind by an Uninstall that could not take it out does no harm.
 SetEnv UHCBIN UP-Term:uhc
-; UHC's scripts read ENV:UHC (TEMPDIR, AMINETMIRROR, EXTBIN ...), which only ENVARC:UHC fills at boot, and
-; not always: made here, filled from ENVARC:UHC, the missing defaults added by UHC's own UHCFixENV (which also
-; saves them to ENVARC:UHC); the User-Startup block below copies ENVARC:UHC to ENV:UHC at every boot.
+; UHC's scripts read ENV:UHC (TEMPDIR, AMINETMIRROR, READER, EXTBIN, EXTDOC), which only ENVARC:UHC fills at
+; boot, and not always: made here, filled from ENVARC:UHC (the user's settings, kept over upgrade and remove),
+; the missing defaults added by UHC's own UHCFixENV (TEMPDIR, AMINETMIRROR, READER; it also saves them to
+; ENVARC:UHC); the User-Startup block below copies ENVARC:UHC to ENV:UHC at every boot.
 MakeDir >NIL: ENVARC:UHC ENV:UHC
 Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET
 If WARN
   Quit 20
 EndIf
 Execute UP-Term:uhc/UHCFixENV
+; EXTBIN and EXTDOC (UHC's S/pkg-envcheck makes them, but with the UHCBIN variable followed by the drawer name, which
+; is wrong for UHCBIN UP-Term:uhc): the drawers UP-Term:uhc/ExtBin and ExtDoc and the variables naming them,
+; only when the variable is missing or names a drawer that is not there, so a value the user set stays.
+If NOT EXISTS "${UHC/EXTBIN}"
+  If NOT EXISTS UP-Term:uhc/ExtBin
+    MakeDir UP-Term:uhc/ExtBin
+    If WARN
+      Quit 20
+    EndIf
+  EndIf
+  Echo >ENVARC:UHC/EXTBIN "UP-Term:uhc/ExtBin/" NOLINE
+  If WARN
+    Quit 20
+  EndIf
+  Copy ENVARC:UHC/EXTBIN ENV:UHC/
+  If WARN
+    Quit 20
+  EndIf
+EndIf
+If NOT EXISTS "${UHC/EXTDOC}"
+  If NOT EXISTS UP-Term:uhc/ExtDoc
+    MakeDir UP-Term:uhc/ExtDoc
+    If WARN
+      Quit 20
+    EndIf
+  EndIf
+  Echo >ENVARC:UHC/EXTDOC "UP-Term:uhc/ExtDoc/" NOLINE
+  If WARN
+    Quit 20
+  EndIf
+  Copy ENVARC:UHC/EXTDOC ENV:UHC/
+  If WARN
+    Quit 20
+  EndIf
+EndIf
 ; uhcupdate and uhccheck replace the whole UHC tools from the author's server; upkg upgrade does that here
-; (the two scripts in UP-Term:uhc/S are ours, see README.txt)
-Protect >NIL: UP-Term:uhc/S/uhcupdate UP-Term:uhc/S/uhccheck ADD s
+; (the two stubs, Files/stubs, are ours, see README.txt)
+Copy stubs/uhcupdate stubs/uhccheck UP-Term:uhc/S CLONE QUIET
+If WARN
+  Quit 20
+EndIf
+; The script bit (s) on every script of UHC's S drawer (the archive's C drawer holds only programs, the
+; other scripts are run with Execute), so they run by name: Protect <file or pattern> s ADD. The archive's
+; own scripts lost the bit on the way (tar does not carry the Amiga protection bits).
+Protect UP-Term:uhc/S/#? s ADD
+If WARN
+  Quit 20
+EndIf
 Assign UHC: UP-Term:uhc
 Path UHC:C UHC:S ADD
 Search >NIL: S:User-Startup ";BEGIN uhc"

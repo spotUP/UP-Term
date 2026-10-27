@@ -2,11 +2,10 @@ up-uhc: parts, licences and where the source is
 
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
-UHC tools (uhc/)              redistribution permitted by      https://uhc.megaburken.net/uhctools_os3.lha
-                              the author (Patrik, UHC),        (mirrors: uhc.driar.se, uhc.a1k.org,
-                              files unmodified                 uhc.no0b.de, uhc.hex9d.com)
+UHC tools (downloaded)        by the author (Patrik, UHC)      https://uhc.megaburken.net/uhctools_os3.lha
+install scripts, two stubs    UP-Term's licence                this package
 
 Notes
-- The files are the contents of the author's archive uhctools_os3.lha, unmodified: UP-Term changes,
-  patches and re-builds nothing in it. UHC's author gave permission to redistribute it.
-- The archive's SHA-256 is pinned in dist/addons/uhc/archives.txt of the UP-Term source.
+- This package contains no UHC file. Install downloads the author's archive uhctools_os3.lha from his server
+  (mirrors: uhc.driar.se, uhc.a1k.org, uhc.no0b.de, uhc.hex9d.com) and unpacks it as it is.
+- Only S/uhcupdate and S/uhccheck are replaced, on your machine, by the two stubs of this package.

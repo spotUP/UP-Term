@@ -7,8 +7,8 @@ Architecture: m68k-amigaos >= 3.0.0
 Requires:     comm/term/up-term.lha >= @NEEDSBASE@
 Distribution: Aminet
 
-The UHC tools (aget, UHCSearch and the get and search scripts), uhctools_os3.lha from uhc.megaburken.net,
-unmodified, with its author's permission to redistribute it. They install in UP-Term:uhc.
+The UHC tools (aget, UHCSearch and the get and search scripts). This package holds no UHC files: Install
+downloads uhctools_os3.lha from uhc.megaburken.net and installs it in UP-Term:uhc. Needs a network connection.
 
 Needs the base archive up-term.lha (version @NEEDSBASE@ or newer) installed first.
 

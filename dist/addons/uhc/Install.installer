@@ -6,12 +6,13 @@
 (message
     "\n\n\nU H C   T O O L S\n\n"
     "The UHC tools (aget, UHCSearch and the get and\n"
-    "search scripts), unmodified from their author.\n"
-    "They go into UP-Term:uhc; the UHC: assign and\n"
-    "path go into S:User-Startup.\n"
-    "Needs up-term.lha installed first.\n"
+    "search scripts) are downloaded from their author\n"
+    "(uhc.megaburken.net) and go into UP-Term:uhc; the\n"
+    "UHC: assign and path go into S:User-Startup.\n"
+    "Needs up-term.lha and a network connection.\n"
     (all))
-(set #kb-uhc @KBCOPYUHC@)
+; the download (about 150 KB) and its unpacked tree (about 1.2 MB) are not in the kit, so not in the part size
+(set #kb-uhc (+ @KBFETCHUHC@ 1400))
 (set #totalkb @KBTOTAL@)
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))
@@ -38,8 +39,8 @@
 
 (P_OPTIONS)
 
-(set #step "copy-uhc" #kb #kb-uhc #n 1
-     #why "Copying the UHC tools to UP-Term:uhc.")
+(set #step "fetch-uhc" #kb #kb-uhc #n 1
+     #why "Downloading the UHC tools to UP-Term:uhc.")
 (P_STEP)
 
 (set #n 6)
