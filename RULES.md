@@ -34,6 +34,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
 | Task | Command |
 |------|---------|
 | Host tests (CI) | `make test` |
+| Amarchy menu link: libupkgui sysroot built from the pinned upterm-ports commit in `tools/upkgui.rev` (`git archive` into `build/upkgui/src`); bump the rev to relink against a new libupkgui | `make upkgui` (also run by `make build/amiga/amarchy-menu`); `make upkgui-clean` |
 | One suite | `make test ONLY=<name>` (e.g. `ONLY=xterm`) |
 | Amarchy keymap: parser, user overrides, clash refusals (Left Amiga + M/N, ctrl), matcher, menu tree, viewer rows (host) | `make test ONLY=keymap` |
 | Amarchy on a rig: the commodity's hotkeys, ARexx port (STATUS, RELOAD, RUN, SHOW, QUIT), Exchange Disable; the key table through the handler; the quick menu and key viewer (rig up, `make amiga amarchy-menu`; `UPTERM_RIG=<n>`) | `python3 tools/rig/amarchy_rig.py`, `python3 tools/rig/amarchy_clash_rig.py` (Intuition clashes, Swedish table, third-party chord, Exchange Disable), `python3 tools/rig/keymap_rig.py`, `python3 tools/rig/amarchy_menu_rig.py` |

@@ -729,8 +729,27 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 
 # amarchy-menu: the quick menu and key viewer (Phase D). A gcc/ixemul program linked with
 # libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
-# (that needs no ports build); `make amarchy-menu` after `make` in upterm-ports.
-UPKGUI_SYS ?= $(UPTERM_ROOT)/upterm-ports/build/sysroot/UP-Term
+# (that needs no ports build).
+# libupkgui and its headers come from a PINNED upterm-ports commit (tools/upkgui.rev), not from the peer checkout's
+# working tree: `git archive` of that commit is unpacked into build/upkgui/src and `make upkg-ui` there builds the
+# sysroot (libupkgui.a, libncursesw.a, libixcompat.a, headers). The peer checkout is only read, never built in.
+# Bump tools/upkgui.rev to relink against a new libupkgui. Idempotent: the stamp holds the pinned commit.
+# Uninstall: make upkgui-clean.
+UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
+UPKGUI_REV := $(strip $(shell cat tools/upkgui.rev))
+UPKGUI_SYS ?= $(CURDIR)/$(BUILD)/upkgui/src/build/sysroot/UP-Term
+.PHONY: upkgui upkgui-clean
+upkgui: $(BUILD)/upkgui/.stamp-$(UPKGUI_REV)
+	@echo "[OK] libupkgui $(UPKGUI_REV) built: $(UPKGUI_SYS)/lib/libupkgui.a"
+$(BUILD)/upkgui/.stamp-$(UPKGUI_REV):
+	rm -rf $(BUILD)/upkgui
+	mkdir -p $(BUILD)/upkgui/src
+	git -C $(UPTERM_PORTS) archive $(UPKGUI_REV) | tar -x -C $(BUILD)/upkgui/src
+	$(MAKE) -C $(BUILD)/upkgui/src UPTERM_ROOT=$(UPTERM_ROOT) upkg-ui
+	touch $@
+$(UPKGUI_SYS)/lib/libupkgui.a: $(BUILD)/upkgui/.stamp-$(UPKGUI_REV)
+upkgui-clean:
+	rm -rf $(BUILD)/upkgui
 AMARCHY_MENU_SRC := amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c $(AMARCHY_LEAF_DEPS) prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
@@ -1298,7 +1317,6 @@ IXNET_LIB ?= $(dir $(IXEMUL_LIB))../../../../ixnet/68020/amigaos/ixnet.library
 # the Unix tool ports: staged by `make kit-stage` in upterm-ports (programs,
 # pages, licences, SOURCES.txt) with their source beside it; the source goes
 # into build/up-term-src.lha, published next to the kit (plan D2)
-UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
 # tools/pkgs.py reads a ports package's Description from its recipe there
 export UPTERM_PORTS
 PORTS_KIT ?= $(UPTERM_PORTS)/build/kit/userland
