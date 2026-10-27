@@ -86,6 +86,12 @@ roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
   conf and prefs restored by md5. Open: footer words on screen (no text sentinel), return to the same row (only the level was
   read), text style (RJ.2t build eed2cacc). Rig note: the commodity path lacks UP-Term:bin, so the rig needs
   `Path <kit>/bin ADD` before Amarchy starts.
+  Part 2 2026-10-27 (build e4ed3649, notes ed426c0d, same research file "Part 2"): both styles. PASS: Done rc 0
+  (text JOB_LINES 3 / JOB_DONE 1, footer `Enter: Accept  Escape: Back    Done`, Enter returns to Update lists in both
+  styles). FAIL, three defects: (1) status word longer than the free space overwrites the key hint
+  (`Escape:NBackrk error`, `Backancelled`), both styles; (2) Esc cancel leaves vsh, upkg and curl alive until the server
+  answers (22 s); (3) T:amarchy-job lingers when the view closes before the cancelled children end. Root cause in
+  progress; each fix gets a regression test, then a rig rerun of A2, A3, B2, B3.
 - [x] RJ.D docs: dist/keymap comment for `job:`, Amarchy user doc row on the job view. Done 48b9f296, dist/README.txt.
 
 ## Deferred (owner, 2026-10-27)
