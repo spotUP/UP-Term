@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy shared job view (roadmap Phase J): run a command, stream its output into the menu, Done/Failed footer
-status: approved scope (owner, 2026-10-27), in progress (7 of 11; RJ.5 half, RJ.2t blocked on libupkgui)
+status: approved scope (owner, 2026-10-27), in progress (8 of 11; RJ.5 half, RJ.2t blocked on libupkgui, RJ.7 rig run open)
 ledger: thoughts/spot/todos.md row AMARCHY-JOB-VIEW
 research: thoughts/shared/research/2026-10-27-amarchy-job-view.md
 roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
