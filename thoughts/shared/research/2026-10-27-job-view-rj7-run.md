@@ -83,3 +83,28 @@ B2 failure JOB_LINES 28, JOB_DONE 14; B3 cancel JOB_LINES 30, JOB_DONE '' (child
 UP-Term:etc/upkg.conf ac11b5a5..., ENV:up-term/up-term fbb38427..., ENV:Amarchy/prefs c7d44aee... restored by copy and
 md5 proved equal to the backups. T: has no amarchy-job files, no upkg/curl processes. Feed and slow servers killed.
 Amarchy QUIT, rig 7 stopped. The deployed copies stay in rig 7's VTC:Apps/bin until the next install.
+
+## Part 3 (rerun of A2, A3 on HEAD cdf7fb5d, rig 7, 060, text style; drawn style NOT run)
+
+Build md5s (deployed to VTC:Apps/bin by rig.py install, equal to build/amiga): amarchy-menu 87d567c930be29b859358e55e8ef8e21,
+amarchy-gui 13db2903efe8f6d4c4b1365ee8a842b3, amarchy-index 0f87cb3dea57551f41dc3797082cea86, Amarchy 20441c2d073ce98469db9e3cadf6b011,
+keymap ffeb01db8113b4d212be29502cec9fe7 (= dist/keymap). Start printed no [WARN] drift line.
+Feed: local P7 feed only (127.0.0.1). Rig menu root now has a top-level Packages group (Browse, Search, Installed, Upgrades, Refresh).
+
+- A1 Update lists, text: PASS. JOB_LINES 3, JOB_DONE 1. Footer `|Enter: Accept  Escape: Back    Done|`; T file gone after close.
+- A2 feed down, text: PASS (footer), note. JOB_LINES 6, JOB_DONE 14, body "curl returned 7". Footer `|Enter: Accept         Network error|`
+  No overlap, but the "Escape: Back" hint is dropped to make room (the status word does not overwrite a hint; the hint is absent).
+- A3 cancel, text: FAIL. Esc at 8 s of a 30 s slow feed. Footer after Esc `|Enter: Accept             Cancelled|` (no overlap).
+  Children vsh(job)/upkg/curl still alive 22.3 s after Esc (polled every 0.7 s), gone only when the slow server answered at 30 s.
+  An earlier run showed the same. T:amarchy-job.1010c3f8 stayed until the view was closed with Enter, then gone; JOB_DONE stayed empty until the children ended.
+  The Esc cancel fix does not stop the children promptly.
+- B2, B3 drawn: NOT RUN. The hotkey over the terminal gave the text menu; the drawn menu could not be opened (no Workbench-focus
+  click geometry known; AMARCHY_ROWS never published). Drawn footer is pixels and was not read.
+- PG.8 Packages group, text: PARTIAL. Before Update lists: Browse "No packages listed (is upkg insta...", AMARCHY_PKGS_ROWS 0, LOADS 1.
+  After Update lists + Refresh: PKGS_ROWS 1, LOADS 2; Browse > other > `[upkg] up-nano  1.0`. Search "nano" lists up-nano (the Search prompt
+  footer reads `|Enter: Accept  Escape: Cancel  Done|`). Search with no match, Install, Remove confirm (No first), Upgrades, failing job,
+  and the whole drawn style: NOT RUN. A mis-aimed key started tmux (killed) and typed a stray word into the terminal.
+
+### Restore (md5 live on rig vs backup)
+UP-Term:etc/upkg.conf ac11b5a5ca3404e798cb4c938c8fe852 = backup; ENV:Amarchy/prefs c7d44aeee893f340ddcb08b93a3177da = backup;
+ENV:up-term/up-term fbb384279d519334b50046b621d3535e = backup. ENVARC files never written. Feed and slow servers killed, rig 7 stopped.
