@@ -69,6 +69,9 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
   (ix_pkgs_due widens from the single IX_PKGS_NODE to the group). After a package job ends (AMARCHY_JOB_DONE seen with rc 0 or 5)
   the cache is marked stale and reloaded when the menu next returns to a packages node. A failed job (rc other than 0 or 5)
   also reloads, because a half-done install changes state. Refresh does the same.
+- The cache survives the warm server's per-open index reset (ix_free keeps it; ix_pkg_free at process exit) and reloads when
+  upkg's status file DateStamp changed (pk_dos_due). Exemption: the cold `amarchy-menu` and `amarchy-gui menu` run one process
+  per open, so they load once per process. AMARCHY_PKGS_LOADS counts loads over the server's life.
 - The list grows past PK_MAX 128: rows are heap allocated, counted, capped at a stated limit (4000) with a footer row
   "More packages than the list can show" instead of silent truncation.
 - A failing or missing upkg gives one inert row with the reason (as the Installed rows do today: IX_PKG_NONE).

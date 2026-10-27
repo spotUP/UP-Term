@@ -283,7 +283,7 @@ static int menu_levels(const char *start)
     filter[0] = 0;
     keep[0] = 0;
     for (;;) {
-        if (ix_pkgs_due(&ixs, node)) {      /* Install > Packages entered: upkg gives its rows now, not on every open */
+        if (pk_dos_due(&ixs, node)) {      /* Install > Packages entered: upkg gives its rows now, not on every open */
             free_level();
             pk_dos_load_rows(&ixs);
             if (!alloc_level()) {
@@ -476,6 +476,7 @@ static int menu_loop(const char *start)
         ui_message("%s", "amarchy-menu: out of memory");
     free_level();
     ix_free(&ixs);
+    ix_pkg_free(&ixs);   /* one open per process: the cache loads once per process */
     return rc;
 }
 

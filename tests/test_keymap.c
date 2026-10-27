@@ -1316,6 +1316,40 @@ static void a_picked_package_offers_only_its_fitting_actions(void)
     CHECK_STR(a[1].label, "Launch");
     ix_free(&x);
 }
+/* The warm menu server resets the index at every open (ix_free, then the loaders): the Packages cache must survive
+ * that, so upkg runs once per boot, again after a package job (stale) and again when upkg's status file changed. */
+static void the_package_cache_survives_the_per_open_index_reset(void)
+{
+    ix_index x;
+    int open;
+    memset(&x, 0, sizeof x);
+    pkg_fake_loads = 0;
+    for (open = 0; open < 3; open++) {              /* three opens, the per-open reset between them */
+        ix_free(&x);
+        ix_pkg_check_stamp(&x, 100);
+        pkg_enter(&x, "packages");
+    }
+    CHECK_INT(pkg_fake_loads, 1);
+    CHECK_INT(x.pk_loads, 1);
+    CHECK(x.pk.n > 0);
+    ix_free(&x);
+    ix_pkg_mark_stale(&x);                          /* a package job ended in the last open */
+    pkg_enter(&x, "packages");
+    CHECK_INT(pkg_fake_loads, 2);
+    ix_free(&x);
+    ix_pkg_check_stamp(&x, 100);                    /* status file unchanged: no load */
+    pkg_enter(&x, "packages");
+    CHECK_INT(pkg_fake_loads, 2);
+    ix_free(&x);
+    ix_pkg_check_stamp(&x, 250);                    /* upkg ran from a shell: status file changed */
+    pkg_enter(&x, "packages");
+    CHECK_INT(pkg_fake_loads, 3);
+    CHECK_INT(x.pk_loads, 3);
+    ix_pkg_check_stamp(&x, 250);
+    pkg_enter(&x, "packages");
+    CHECK_INT(pkg_fake_loads, 3);
+    ix_pkg_free(&x);
+}
 static void the_package_list_loads_once_and_reloads_when_stale(void)
 {
     static char file[32768];
@@ -1371,7 +1405,9 @@ static void the_package_list_loads_once_and_reloads_when_stale(void)
     CHECK(strstr(it[0].label, "tiny") != 0);
     CHECK_INT(pkg_fake_loads, 2);
     ix_free(&x);
-    CHECK(ix_pkgs_due(&x, "packages"));             /* a freed index loads again */
+    CHECK(!ix_pkgs_due(&x, "packages"));            /* the per-open reset keeps the cache */
+    ix_pkg_free(&x);
+    CHECK(ix_pkgs_due(&x, "packages"));             /* the process end drops it: a freed cache loads again */
 }
 static void a_failed_upkg_gives_one_inert_row(void)
 {
@@ -2880,6 +2916,7 @@ void suite_keymap(void)
     packages_group_lists_its_rows_and_drops_the_old_node();
     a_picked_package_offers_only_its_fitting_actions();
     the_package_list_loads_once_and_reloads_when_stale();
+    the_package_cache_survives_the_per_open_index_reset();
     a_failed_upkg_gives_one_inert_row();
     package_search_asks_its_text_and_lists_the_matches();
     remove_asks_first_and_a_package_job_marks_the_list_stale();

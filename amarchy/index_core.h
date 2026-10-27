@@ -79,6 +79,7 @@ typedef struct ix_index {
     ix_row *rows;
     pk_rows pk;                 /* the Packages list (ix_add_pkg_rows): outside rows[], so no row adder drops it */
     int    pk_loaded, pk_stale; /* the list was loaded; a package job ended since (ix_pkg_mark_stale) */
+    long   pk_stamp;            /* upkg's status file DateStamp at the last check (ix_pkg_check_stamp) */
     int    pk_loads;            /* how many times ix_add_pkg_rows ran: 1 after any number of opens, +1 per reload */
     char   pk_query[64];        /* the Search text the node packages.search lists (ix_pkg_query) */
 } ix_index;
@@ -123,6 +124,9 @@ int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *na
 /* The Packages list: takes the rows of l (x->pk owns them, the old ones are freed; l is emptied), sets loaded, clears
  * stale, counts a load. A failed or missing upkg passes an empty l: the views show one inert row. */
 void ix_add_pkg_rows(ix_index *x, pk_rows *l);
+void ix_pkg_check_stamp(ix_index *x, long now);
+/* The Packages cache outlives ix_free (the warm server's per-open reset); the process end frees it here. */
+void ix_pkg_free(ix_index *x);
 /* A package job ended (any rc): the list reloads when the menu next enters a packages node. */
 void ix_pkg_mark_stale(ix_index *x);
 /* Hand the Packages sentinels to pub(name, n): AMARCHY_PKGS_ROWS (rows of the cached list) and AMARCHY_PKGS_LOADS (loads

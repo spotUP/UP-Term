@@ -209,9 +209,26 @@ void ix_free(ix_index *x)
     x->rows = 0;
     x->n = x->napps = 0;
     memset(x->kstart, 0, sizeof x->kstart);
+    x->pk_query[0] = 0;   /* the Packages cache (pk, pk_loaded, pk_stale, pk_stamp, pk_loads) survives: ix_pkg_free */
+}
+
+/* The Packages cache lives as long as the process: the warm menu server (amarchy-gui serve) resets the index at
+ * every open (ix_free) but upkg runs once per boot, again after a package job (stale) or when its status file
+ * changed. The cold amarchy-menu and amarchy-gui menu run one process per open and so load once per process. */
+void ix_pkg_free(ix_index *x)
+{
     pk_rows_free(&x->pk);
     x->pk_loaded = x->pk_stale = x->pk_loads = 0;
-    x->pk_query[0] = 0;
+    x->pk_stamp = 0;
+}
+
+/* now: the DateStamp of upkg's status file (0 when unreadable), read just before the due check. A loaded list
+ * whose stamp moved is stale; the stamp is kept so one change gives one reload. */
+void ix_pkg_check_stamp(ix_index *x, long now)
+{
+    if (x->pk_loaded && now != x->pk_stamp)
+        x->pk_stale = 1;
+    x->pk_stamp = now;
 }
 
 int ix_add_clips(ix_index *x, const char *const *labels, int n)

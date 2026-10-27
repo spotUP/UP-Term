@@ -710,7 +710,7 @@ static int reload_index(gui *g)
  * (ix_pkgs_due), and the level buffers grow. 0 when memory ran out. */
 static int load_due(gui *g)
 {
-    if (!ix_pkgs_due(&ixs, g->node))
+    if (!pk_dos_due(&ixs, g->node))
         return 1;
     pk_dos_load_rows(&ixs);
     if (size_level(g))
@@ -1637,6 +1637,7 @@ int main(int argc, char **argv)
         rc = serve();
     else
         rc = gui_open(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "");
+    ix_pkg_free(&ixs);
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase)
