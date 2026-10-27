@@ -741,30 +741,36 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 # Uninstall: make upkgui-clean.
 UPTERM_PORTS ?= $(UPTERM_ROOT)/upterm-ports
 UPKGUI_REV := $(strip $(shell cat tools/upkgui.rev))
-UPKGUI_SYS ?= $(CURDIR)/$(BUILD)/upkgui/src/build/sysroot/UP-Term
-.PHONY: upkgui upkgui-clean
-upkgui: $(BUILD)/upkgui/.stamp-$(UPKGUI_REV)
+# The sysroot is built ONCE per pinned commit into the MAIN checkout's build/upkgui/<rev>, shared by every worktree (a
+# worktree used to build its own copy: minutes lost per agent, and the documented sibling path did not exist). One drawer
+# per rev, so a worktree on another rev never deletes the one a peer links against.
+MAIN_CHECKOUT := $(shell python3 -I $(CURDIR)/tools/rig/paths.py main-checkout)
+UPKGUI_HOME ?= $(MAIN_CHECKOUT)/$(BUILD)/upkgui/$(UPKGUI_REV)
+UPKGUI_SYS ?= $(UPKGUI_HOME)/src/build/sysroot/UP-Term
+.PHONY: upkgui upkgui-clean worktree-ready
+upkgui: $(UPKGUI_HOME)/.stamp
 	@echo "[OK] libupkgui $(UPKGUI_REV) built: $(UPKGUI_SYS)/lib/libupkgui.a"
-$(BUILD)/upkgui/.stamp-$(UPKGUI_REV):
-	rm -rf $(BUILD)/upkgui
-	mkdir -p $(BUILD)/upkgui/src
-	git -C $(UPTERM_PORTS) archive $(UPKGUI_REV) | tar -x -C $(BUILD)/upkgui/src
-	$(MAKE) -C $(BUILD)/upkgui/src UPTERM_ROOT=$(UPTERM_ROOT) upkg-ui
+$(UPKGUI_HOME)/.stamp:
+	rm -rf $(UPKGUI_HOME)
+	mkdir -p $(UPKGUI_HOME)/src
+	git -C $(UPTERM_PORTS) archive $(UPKGUI_REV) | tar -x -C $(UPKGUI_HOME)/src
+	$(MAKE) -C $(UPKGUI_HOME)/src UPTERM_ROOT=$(UPTERM_ROOT) upkg-ui
 	touch $@
-$(UPKGUI_SYS)/lib/libupkgui.a: $(BUILD)/upkgui/.stamp-$(UPKGUI_REV)
+$(UPKGUI_SYS)/lib/libupkgui.a: $(UPKGUI_HOME)/.stamp
 upkgui-clean:
-	rm -rf $(BUILD)/upkgui
-AMARCHY_MENU_SRC := amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c $(AMARCHY_LEAF_DEPS) prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c
+	rm -rf $(MAIN_CHECKOUT)/$(BUILD)/upkgui
 # A fresh git worktree rig-ready in about a minute: build/ seeded from the main checkout, source mtimes matched so make
-# rebuilds only what this branch changed (tools/worktree_ready.py).
-.PHONY: worktree-ready test-one
+# rebuilds only what this branch changed, the shared libupkgui present (tools/worktree_ready.py).
 worktree-ready:
 	python3 -I tools/worktree_ready.py
+	$(MAKE) upkgui
 # One suite, fast: only the host test binary, at the lowest priority (make test ONLY= rebuilds every test binary).
 # SUITE= a tests/test_main.c suite (vttest_host --has); python-only suites: make test ONLY=<name>.
+.PHONY: test-one
 test-one: $(BUILD)/vttest_host
 	@if [ -z "$(SUITE)" ]; then echo "[ERROR] make test-one SUITE=<name>"; exit 2; fi
 	nice -n 19 ./$(BUILD)/vttest_host $(SUITE)
+AMARCHY_MENU_SRC := amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c $(AMARCHY_LEAF_DEPS) prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
 $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h amarchy/termenv.h handler/frontscr.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/proclaunch.h amarchy/pkgs_core.h amarchy/pkgs_dos.h amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h
