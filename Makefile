@@ -1445,7 +1445,7 @@ dist-dopus: $(BUILD)/amiga/upupdate
 	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
 	done
 	python3 tools/mkkit.py dopus
-# up-uhc: the unmodified UHC tools archive (dist/addons/uhc/archives.txt: permission of its author to redistribute it).
+# up-uhc: the UHC tools archive, unmodified but for S/uhcupdate and S/uhccheck, replaced by dist/addons/uhc/disabled/ (D4) (dist/addons/uhc/archives.txt: permission of its author to redistribute it).
 # The archive is fetched into vendor/uhc/ when it is missing and checked against its sha256 before anything is
 # unpacked; the unpack goes into a drawer of its own and nothing in it is run. Its files land in Files/userland/uhc
 # as they are, and Install copies them to UP-Term:uhc.
@@ -1456,6 +1456,7 @@ dist-uhc: $(BUILD)/amiga/upupdate
 	  [ "$$(shasum -a 256 < $(VENDOR)/uhc/$$a | cut -d' ' -f1)" = "$$sha" ] || { echo "[ERROR] $$a: sha256 is not $$sha"; exit 1; }; \
 	  mkdir -p $(KIT_uhc)/Files/userland/$$drawer && lha -xqw=$(KIT_uhc)/Files/userland/$$drawer $(VENDOR)/uhc/$$a || exit 1; \
 	done
+	for n in uhcupdate uhccheck; do cp dist/addons/uhc/disabled/$$n $(KIT_uhc)/Files/userland/uhc/S/$$n || exit 1; done
 	python3 tools/mkkit.py uhc
 # every package of dist/slim.txt (P9): the ports' own files at the paths the base used to carry, taken from the
 # same PORTS_KIT as dist-base, which removes them

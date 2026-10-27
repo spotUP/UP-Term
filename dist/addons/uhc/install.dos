@@ -2,7 +2,7 @@
 .BRA {
 .KET }
 ; up-uhc install: the UHC tools for AmigaOS 3 (aget, UHCSearch and the get/search scripts), unmodified, in
-; UP-Term:uhc, with the UHC: assign, its path and the UHCBIN environment variable
+; UP-Term:uhc, with the UHC: assign, its path, the UHCBIN environment variable and ENV:UHC
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer
@@ -28,6 +28,18 @@ EndIf
 ; $UHCBIN and adds UHC:C and UHC:S to the path). A block in S:User-Startup that does it only while
 ; UP-Term:uhc is there, so one left behind by an Uninstall that could not take it out does no harm.
 SetEnv UHCBIN UP-Term:uhc
+; UHC's scripts read ENV:UHC (TEMPDIR, AMINETMIRROR, EXTBIN ...), which only ENVARC:UHC fills at boot, and
+; not always: made here, filled from ENVARC:UHC, the missing defaults added by UHC's own UHCFixENV (which also
+; saves them to ENVARC:UHC); the User-Startup block below copies ENVARC:UHC to ENV:UHC at every boot.
+MakeDir >NIL: ENVARC:UHC ENV:UHC
+Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET
+If WARN
+  Quit 20
+EndIf
+Execute UP-Term:uhc/UHCFixENV
+; uhcupdate and uhccheck replace the whole UHC tools from the author's server; upkg upgrade does that here
+; (the two scripts in UP-Term:uhc/S are ours, see README.txt)
+Protect >NIL: UP-Term:uhc/S/uhcupdate UP-Term:uhc/S/uhccheck ADD s
 Assign UHC: UP-Term:uhc
 Path UHC:C UHC:S ADD
 Search >NIL: S:User-Startup ";BEGIN uhc"
@@ -49,6 +61,22 @@ If WARN
     Quit 20
   EndIf
   Echo >>S:User-Startup "  SetEnv UHCBIN UP-Term:uhc"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  MakeDir >NIL: ENV:UHC"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  If EXISTS ENVARC:UHC"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "    Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET"
+  If WARN
+    Quit 20
+  EndIf
+  Echo >>S:User-Startup "  EndIf"
   If WARN
     Quit 20
   EndIf

@@ -664,7 +664,7 @@ class DopusAddOn(unittest.TestCase):
 
 
 class UhcAddOn(unittest.TestCase):
-    """The UHC add-on carries the author's archive unmodified (permission to redistribute: Patrik, UHC), pinned by
+    """The UHC add-on carries the author's archive (permission to redistribute: Patrik, UHC), pinned by
     sha256 in dist/addons/uhc/archives.txt, installed in UP-Term:uhc with the UHC: assign and the UHCBIN variable."""
     A = ROOT / 'dist/addons/uhc'
 
@@ -691,6 +691,28 @@ class UhcAddOn(unittest.TestCase):
         self.assertIn('dist/addons/uhc/archives.txt', rule)
         self.assertIn('shasum -a 256', rule)
         self.assertIn('dist-uhc', mk[mk.index('\ndist:'):mk.index('\ndist:') + 200])
+
+    def test_env_uhc_is_filled_at_install_and_boot_and_removed_by_uninstall(self):
+        # U1: UHC's scripts read ENV:UHC, which stays empty after boot unless ENVARC:UHC is copied there
+        s = scripts('uhc')
+        self.assertIn('Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET', s['dos'])
+        self.assertIn('Execute UP-Term:uhc/UHCFixENV', s['dos'])
+        self.assertIn('Echo >>S:User-Startup "    Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET"', s['dos'])
+        self.assertIn('Echo >>S:User-Startup "  MakeDir >NIL: ENV:UHC"', s['dos'])
+        self.assertIn('Delete >NIL: ENV:UHC ENVARC:UHC ALL QUIET', (self.A / 'uninstall-body.dos').read_text())
+
+    def test_uhcupdate_and_uhccheck_are_replaced_by_the_disabled_scripts(self):
+        # D4: both end with rc 5 and name upkg upgrade; the Makefile puts them over the author's two files
+        for n in ('uhcupdate', 'uhccheck'):
+            t = (self.A / 'disabled' / n).read_text()
+            self.assertIn('Echo "%s is disabled in UP-Term: use upkg upgrade"' % n, t)
+            self.assertIn('Quit 5', t)
+        mk = (ROOT / 'Makefile').read_text()
+        rule = mk[mk.index('\ndist-uhc:'):]
+        self.assertIn('dist/addons/uhc/disabled/$$n', rule)
+        self.assertIn('Files/userland/uhc/S/$$n', rule)
+        self.assertIn('Protect >NIL: UP-Term:uhc/S/uhcupdate UP-Term:uhc/S/uhccheck ADD s', scripts('uhc')['dos'])
+        self.assertEqual(pkgs.get('uhc', 'version'), '1.1')
 
 
 if __name__ == '__main__':

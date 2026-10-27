@@ -1,0 +1,3 @@
+; uhccheck is disabled in UP-Term: the UHC tools are updated as a package (README.txt)
+Echo "uhccheck is disabled in UP-Term: use upkg upgrade"
+Quit 5
