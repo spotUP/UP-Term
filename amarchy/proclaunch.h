@@ -7,7 +7,10 @@
 
 #include <dos/dos.h>
 
-/* Clone the path list of this process's CLI for a child, which owns and frees it. 0 when there is no CLI. */
+/* The UP-Term command drawer: the one place a child's command path gets it (it is not on the system path). */
+#define PL_BIN_DIR "UP-Term:bin"
+/* Clone the path list of this process's CLI for a child, which owns and frees it, with PL_BIN_DIR added last.
+ * 0 when there is no CLI. */
 BPTR pl_dup_path(void);
 /* Free a path list pl_dup_path made that no child took. */
 void pl_free_path(BPTR p);

@@ -164,8 +164,42 @@ static void test_pkgs_names_and_limit(void)
     pk_rows_free(&l);
 }
 
+/* Packages jobs failed after a reboot with "upkg: not found": the commodity starts from user-startup, whose path has
+ * no UP-Term:bin, and every child copied that path. pl_dup_path (the one path copy of act.c, job_dos.c, proclaunch.c)
+ * must add PL_BIN_DIR. DOS code cannot run on the host: this reads the function body (the rig run covers the call). */
+static void test_pl_path_has_bin(void)
+{
+    static char src[8192];
+    char *a, *b;
+    size_t n;
+    FILE *f = fopen("amarchy/proclaunch.c", "rb");
+    CHECK(f != 0);
+    if (!f)
+        return;
+    n = fread(src, 1, sizeof src - 1, f);
+    fclose(f);
+    src[n] = 0;
+    a = strstr(src, "BPTR pl_dup_path(void)");
+    b = strstr(src, "void pl_free_path");
+    CHECK(a && b && a < b);
+    if (!a || !b)
+        return;
+    *b = 0;
+    CHECK(strstr(a, "Lock((STRPTR)PL_BIN_DIR") != 0);      /* the drawer is locked into the child's path list */
+    CHECK(strstr(a, "*tail = MKBADDR(n)") != 0);
+    f = fopen("amarchy/proclaunch.h", "rb");
+    CHECK(f != 0);
+    if (f) {
+        n = fread(src, 1, sizeof src - 1, f);
+        fclose(f);
+        src[n] = 0;
+        CHECK(strstr(src, "#define PL_BIN_DIR \"UP-Term:bin\"") != 0);
+    }
+}
+
 void suite_pkgs(void)
 {
+    test_pl_path_has_bin();
     test_pkgs_parse();
     test_pkgs_path();
     test_pkgs_all_rows();

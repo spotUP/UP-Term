@@ -26,6 +26,24 @@ BPTR pl_dup_path(void)
         tail = &n[0];
         p = src[0];
     }
+    /* UP-Term:bin last, so every child can find upkg and the other kit programs: the boot process that started the
+     * commodity (user-startup) has no UP-Term:bin on its path, and it must not be on the system path (it holds
+     * date, sort, dir... that would shadow C:). Last in the child's copy only. */
+    {
+        APTR oldwin = ((struct Process *)FindTask(0))->pr_WindowPtr;
+        BPTR l;
+        ((struct Process *)FindTask(0))->pr_WindowPtr = (APTR)-1;     /* no requester when the volume is gone */
+        l = Lock((STRPTR)PL_BIN_DIR, SHARED_LOCK);
+        ((struct Process *)FindTask(0))->pr_WindowPtr = oldwin;
+        if (l) {
+            BPTR *n = (BPTR *)AllocVec(2 * sizeof(BPTR), MEMF_PUBLIC | MEMF_CLEAR);
+            if (n) {
+                n[1] = l;
+                *tail = MKBADDR(n);
+            } else
+                UnLock(l);
+        }
+    }
     return head;
 }
 
