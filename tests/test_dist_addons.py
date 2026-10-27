@@ -705,11 +705,18 @@ class UhcAddOn(unittest.TestCase):
         self.assertEqual(pkgs.get('uhc', 'version'), '1.5')
         self.assertEqual(pkgs.get('uhc', 'handed'), 'Files/unstartup-uhc.sh')
 
+    def test_the_postinst_fetches_over_plain_http_because_the_kit_curl_has_no_tls(self):
+        # UP-Term:bin/curl is built without TLS (CURL-HTTPS-TLS); an https URL ends the postinst with rc 20 and
+        # no SYS:UHC. uhc.megaburken.net serves aget.os3 and uhcinstall over http, as do uhcinstall's own mirrors.
+        L = self.dos()
+        live = [l for l in L if not l.strip().startswith(';')]
+        self.assertEqual([l.strip() for l in live if 'https://' in l], [])
+
     def test_a_fresh_install_runs_uhcinstall_after_its_preconditions_and_verifies_the_result(self):
         L = self.dos()
         S = ['' if l.strip().startswith(';') else l.strip() for l in L]
         which_lha = self.at(L, 'Which >NIL: LhA')
-        dl = self.at(L, 'UP-Term:bin/curl -fsSL -o T:uhcinstall https://uhc.megaburken.net/uhcinstall')
+        dl = self.at(L, 'UP-Term:bin/curl -fsSL -o T:uhcinstall http://uhc.megaburken.net/uhcinstall')
         ver = self.at(L, 'Search >NIL: T:uhcinstall "VER: uhcinstall"')
         run = self.at(L, 'Execute T:uhcinstall ARCH=os3 DEST=SYS:UHC SILENT')
         chk = self.at(L, 'If NOT EXISTS SYS:UHC/UHC-Startup')
@@ -721,7 +728,7 @@ class UhcAddOn(unittest.TestCase):
         self.assertEqual(L[which_lha + 3].strip(), 'Quit 20')
         # aget or wget on the path, else the author's own aget.os3 is fetched before uhcinstall runs
         aget = self.at(L, 'Which >NIL: aget')
-        self.assertIn('https://uhc.megaburken.net/aget.os3', '\n'.join(S[aget:run]))
+        self.assertIn('http://uhc.megaburken.net/aget.os3', '\n'.join(S[aget:run]))
         self.assertTrue(aget < run)
         # the verification failures end with rc 20
         for i in (chk, envchk):
