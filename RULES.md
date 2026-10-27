@@ -36,6 +36,16 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
    the report, or for a step that is code work. Every brief that starts a rig ends
    with "stop your rig, confirm by ps". A session that finds a running rig it does
    not own reports it to the owner instead of stopping it; rig 1 is the owner's.
+8. **Every subagent brief ends with a cleanup step, and the briefing session checks it.**
+   The brief says, as its last instruction before the report: "Clean up before you
+   report: stop every rig you started (`UPTERM_RIG=<n> python3 tools/rig/rig.py stop`,
+   after 5 s of quiet, never mid-write), stop every background task, Monitor and
+   local server you started (feed servers, `http.server`), restore every file you
+   changed on a rig (by md5), remove temporary files outside the scratchpad, and put
+   in the report the `ps` line that shows your fs-uae and servers are gone." The
+   brief names the rig number, so the agent stops only its own rig. When the agent
+   reports, the session that briefed it runs `ps` for that rig and those servers
+   and stops what is left, before it starts the next task.
 
 ## Commands
 
