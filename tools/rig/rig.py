@@ -18,6 +18,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --serial <path>: the serial port to that path, not serial.log;
                   --no-dopus: Workbench without Directory Opus (no DOPUS.1; the clone gets the stock
                   C/LoadWB and no Libs/workbench.library, the ROM's runs);
+                  --idle-minutes <N>: stop the rig after N minutes with no command (default 60, 0 = off, rig 1 never);
                   --purpose "<who: what>": the window title says which session runs the
                   rig and for what, e.g. "Amarchy session: menu terminal check")
                   --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
@@ -27,6 +28,9 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py rtg      Workbench back on the graphics card from next boot
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
   owner's way, 2026-09-29. aga/rtg need the rig up and reboot it.)
+  rig.py watchdog the idle watchdog `start` launches (--idle-minutes N, default 60, 0 = off): stops the rig after N
+                  minutes with no ami/typewin/wasabi command (paths.LAST_COMMAND); never while a long run holds
+                  paths.LONG_RUN (ami.py long, install) or within 5 s of a command; never rig 1
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
   rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
                   an install's writes survive. The last start's machine flags, or the ones given
@@ -930,6 +934,10 @@ def built_handler():
 
 
 def install():
+    with paths.long_run():
+        _install()
+
+def _install():
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)
     shutil.copyfile(built_handler(), RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
@@ -1075,6 +1083,7 @@ def start(retries=START_RETRIES):
             if missing:
                 sys.exit("rig: the boot lacks the assigns %s (BOOTX:go or the boot hook did not run)" % " ".join(missing))
             guard_shell_startup()
+            start_watchdog()
             if M060:
                 retry_wb_reset()
             return
@@ -1207,6 +1216,59 @@ def stop():
         subprocess.run(["pkill", "-9", "-f", str(CFG)])
     print("stopped" if not mine() else "[ERROR] still running")
 
+WATCHDOG_EVERY = 60   # seconds between two idle checks
+WATCHDOG_QUIET = 5    # the last command must be at least this old: a stop never lands on a write in flight
+WATCHDOG_IDLE_MINUTES = 60
+
+def idle_minutes():
+    """--idle-minutes N of this command line (default 60; 0 = no watchdog)."""
+    if "--idle-minutes" in sys.argv[:-1]:
+        return int(sys.argv[sys.argv.index("--idle-minutes") + 1])
+    return WATCHDOG_IDLE_MINUTES
+
+def watchdog_step(now, rig_n, idle_min, last_cmd, long_active, stop_fn):
+    """One watchdog check; calls stop_fn() and returns True when the rig has been idle long enough.
+    Never rig 1, never with idle_min 0, never while a long run holds its flag, never within WATCHDOG_QUIET s of
+    a command; a rig nothing ever talked to counts as idle from last_cmd None only when idle_min is exceeded
+    by the caller's start stamp (start touches the stamp)."""
+    if rig_n == 1 or idle_min <= 0 or long_active or last_cmd is None:
+        return False
+    quiet = now - last_cmd
+    if quiet < WATCHDOG_QUIET or quiet < idle_min * 60:
+        return False
+    stop_fn()
+    return True
+
+def start_watchdog():
+    """Launch the detached watchdog for this rig (not rig 1, not with --idle-minutes 0)."""
+    n = idle_minutes()
+    if paths.RIG_N == 1 or n <= 0:
+        return
+    paths.touch_command()   # the idle clock starts at boot
+    subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "watchdog", "--idle-minutes", str(n)],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    print("watchdog: stops rig %d after %d idle minutes (--idle-minutes 0 = off)" % (paths.RIG_N, n))
+
+def watchdog():
+    """The loop `start` detaches: every WATCHDOG_EVERY s one watchdog_step; leaves when the rig is gone (stopped by
+    other means) or after it stopped it, through stop(), the safe stop. A newer watchdog replaces this one (pid file)."""
+    pidf = RIG / "watchdog.pid"
+    pidf.write_text(str(os.getpid()))
+    log = RIG / "watchdog.log"
+    n = idle_minutes()
+    while pidf.exists() and pidf.read_text() == str(os.getpid()):
+        if not mine():
+            break
+        def do_stop():
+            with log.open("a") as f:
+                f.write("%s idle %d min: stopping rig %d\n" % (time.strftime("%F %T"), n, paths.RIG_N))
+            stop()
+        if watchdog_step(time.time(), paths.RIG_N, n, paths.last_command(), paths.long_run_active(), do_stop):
+            break
+        time.sleep(WATCHDOG_EVERY)
+    if pidf.exists() and pidf.read_text() == str(os.getpid()):
+        pidf.unlink()
+
 def status(quiet=False):
     sys.path.insert(0, str(ROOT / "tools/rig"))
     import ami
@@ -1236,7 +1298,7 @@ def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop, "reboot": reboot, "install": install, "kit-restore": kit_restore,
-            "status": status, "logwatch": logwatch, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "status": status, "logwatch": logwatch, "muforce": muforce, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg")}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):

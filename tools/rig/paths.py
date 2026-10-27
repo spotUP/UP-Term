@@ -14,6 +14,7 @@ import os
 import pathlib
 import subprocess
 import sys
+import time
 
 VTCON = pathlib.Path(__file__).resolve().parents[2]
 
@@ -152,6 +153,59 @@ def wasabi_port(rig_n=None):
 WASABI_PORT = wasabi_port()
 WASABI_KEY = "rigwasabi"   # the rig key (wasabid's ENV:wasabi.key in the rig). Not a secret.
 os.environ.setdefault("AMI_PORT", str(WASABI_PORT))   # ami.py reads it
+
+
+# Idle watchdog (RIG-IDLE-WATCHDOG): every command to a rig touches LAST_COMMAND in the rig dir; `rig.py watchdog`
+# stops a rig that nothing has talked to for N minutes. A long run (ami.py long, rig.py install) holds LONG_RUN
+# (the holder's pid) so a quiet disk write is never cut off.
+LAST_COMMAND = RIG / "last-command"
+LONG_RUN = RIG / "long-run"
+
+
+def touch_command(rig_dir=None):
+    """Record "a command just went to this rig". No rig dir (AMI_HOST, an A1200 run): nothing."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    if d.is_dir():
+        (d / "last-command").write_text("%f\n" % time.time())
+
+
+def last_command(rig_dir=None):
+    """Epoch seconds of the last command, None when none was recorded."""
+    f = (pathlib.Path(rig_dir) if rig_dir else RIG) / "last-command"
+    try:
+        return float(f.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def long_run_active(rig_dir=None):
+    """True while a process that set the long-run flag is alive (a dead holder's flag is stale)."""
+    f = (pathlib.Path(rig_dir) if rig_dir else RIG) / "long-run"
+    try:
+        pid = int(f.read_text().split()[0])
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except (OSError, ValueError, IndexError):
+        return False
+
+
+@contextlib.contextmanager
+def long_run(rig_dir=None):
+    """Hold the long-run flag for the block (the watchdog will not stop the rig meanwhile); touches the
+    command stamp on the way out, so the idle clock starts after the run."""
+    d = pathlib.Path(rig_dir) if rig_dir else RIG
+    flag = d / "long-run"
+    if not d.is_dir():
+        yield
+        return
+    flag.write_text("%d\n" % os.getpid())
+    try:
+        yield
+    finally:
+        flag.unlink(missing_ok=True)
+        touch_command(d)
 
 
 def repo(name):
