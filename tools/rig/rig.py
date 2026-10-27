@@ -183,9 +183,12 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
                ("upprefs", "C:UP-Term-Prefs", "C-UP-Term-Prefs"),
                # the shipped keymap (dist/, not build/amiga): the master's kit wrote its own, so a new
                # keymap row was missing on every rig start (vtcon-a1 P7, 2026-10-27). The user's rows
-               # live in keymap.user, which is not touched. ENV: too: go runs after ENVARC: is copied.
-               ("keymap", "ENVARC:up-term/keymap", "ENVARC-up-term-keymap"),
-               ("keymap", "ENV:up-term/keymap", "ENV-up-term-keymap")]
+               # live in keymap.user, which is not touched. Spelled by path, never ENVARC:/ENV:: go is Run
+               # before DH0:S/Startup-Sequence assigns them, and a test of an unassigned name opens a
+               # System Request that hangs the boot (rig 8, 2026-10-27). RAM:Env too: go runs beside
+               # the Startup-Sequence's copy of ENVARC: to RAM:Env, which may already have happened.
+               ("keymap", "SYS:Prefs/Env-Archive/up-term/keymap", "ENVARC-up-term-keymap"),
+               ("keymap", "RAM:Env/up-term/keymap", "ENV-up-term-keymap")]
 
 
 def kit_shadow_src(name):

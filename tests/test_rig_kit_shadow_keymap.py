@@ -13,10 +13,17 @@ import paths, rig
 class KitShadowKeymap(unittest.TestCase):
     def test_boot_puts_vtc_keymap_over_the_kits_in_envarc_and_env(self):
         go = rig.kit_shadow_lines(False)
-        for dest, bak in (("ENVARC:up-term/keymap", "ENVARC-up-term-keymap"), ("ENV:up-term/keymap", "ENV-up-term-keymap")):
+        for dest, bak in (("SYS:Prefs/Env-Archive/up-term/keymap", "ENVARC-up-term-keymap"),
+                          ("RAM:Env/up-term/keymap", "ENV-up-term-keymap")):
             self.assertIn("C:Copy >NIL: VTC:keymap %s CLONE" % dest, go)
             self.assertIn("C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, dest), go)   # kit-restore puts the kit's back
         self.assertNotIn("keymap.user", go)
+
+    def test_boot_never_names_env_or_envarc(self):
+        # go is Run before DH0:S/Startup-Sequence assigns ENV: and ENVARC:; naming either opened a
+        # System Request and hung every boot (rig 8, 2026-10-27)
+        go = rig.kit_shadow_lines(False) + rig.kit_shadow_lines(True)
+        self.assertNotRegex(go, r"\bENV(ARC)?:")
 
     def test_install_stages_dist_keymap_and_refreshes_apps_bin(self):
         tmp = pathlib.Path(tempfile.mkdtemp())
