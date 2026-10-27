@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy shared job view (roadmap Phase J): run a command, stream its output into the menu, Done/Failed footer
-status: approved scope (owner, 2026-10-27), in progress (10 of 11; RJ.7 rig run open)
+status: approved scope (owner, 2026-10-27), in progress (10 of 11; RJ.7 drawn style passed on sentinels, text style and footer text open)
 ledger: thoughts/spot/todos.md row AMARCHY-JOB-VIEW
 research: thoughts/shared/research/2026-10-27-amarchy-job-view.md
 roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
@@ -81,6 +81,11 @@ roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
 - [ ] RJ.7 rig reachability (rig 7, 060, both styles): hotkey, Install > Update lists, the view shows upkg output lines,
   footer Done with code 0, sentinels move; a failing job (`job:Failat 1 ; Fault 205`-style line, no network) shows
   Failed with its code; Esc during a long job cancels. Against the local P7 feed, never the real feed.
+  Drawn style 2026-10-27 (84ddd379, research 2026-10-27-job-view-rj7-run.md): sentinels PASS for Done rc 0
+  (JOB_LINES 3, JOB_DONE 1), feed stopped rc 13 (JOB_DONE 14), Esc cancel (vsh/upkg/curl gone, no amarchy-job, no T: file),
+  conf and prefs restored by md5. Open: footer words on screen (no text sentinel), return to the same row (only the level was
+  read), text style (RJ.2t build eed2cacc). Rig note: the commodity path lacks UP-Term:bin, so the rig needs
+  `Path <kit>/bin ADD` before Amarchy starts.
 - [x] RJ.D docs: dist/keymap comment for `job:`, Amarchy user doc row on the job view. Done 48b9f296, dist/README.txt.
 
 ## Deferred (owner, 2026-10-27)

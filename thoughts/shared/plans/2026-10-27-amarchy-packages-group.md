@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy merged Packages group (Browse, Search, Installed, Upgrades, Refresh) with Install, Remove, Upgrade and Launch through the job view
-status: plan (owner reviews before any code)
+status: approved scope (owner, 2026-10-27), 0 of 9
 ledger: thoughts/spot/todos.md row AMARCHY-UHC
 research: thoughts/shared/research/2026-10-27-amarchy-packages.md
 builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Installed rows), thoughts/shared/plans/2026-10-27-amarchy-job-view.md (job: action, gui_run_job)
@@ -20,6 +20,12 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
 - Remove and Upgrade for UHC rows are upkg's job (upkg UHC plan U5); Amarchy only runs `upkg remove` and `upkg upgrade`.
 - Interactive add-ons (their questions as input rows) belong to the later two-way job view (job-view plan, Deferred); this
   plan runs installs with upkg's recorded or default answers and shows rc 15 as "Needs answers".
+
+- Owner answers 2026-10-27 (this plan's review): Installed lives in the top-level Packages group only, the old
+  Install > Packages node is removed; Remove asks one confirm row ("Remove <name>: Yes / No") before the job; the
+  Upgrades node gets "Upgrade all" as its first row, same command as Install > Upgrade all. The text-menu question is
+  moot: libupkgui landed the job API (upterm-ports 570074b) and RJ.2t is done (eed2cacc), so both styles ship together
+  with the job view.
 
 ## Design
 ### Existing work reused (not rebuilt)
@@ -90,13 +96,13 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
   with pk_filter; empty answer or Escape returns to the group. Host test tests/test_keymap.c with a fake ui: typed text gives
   exactly the matching rows, Escape gives none, no extra list load (loader count unchanged).
 - [ ] PG.5 jobs: Install, Remove, Upgrade and Upgrade all resolve to `job:` lines and run through lf_ui.run_job (drawn:
-  gui_run_job). After the job ends the stale flag is set from the footer state (rc 0, 5, other). Host test tests/test_job.c plus
+  gui_run_job). Remove first shows one confirm row ("Remove <name>: Yes / No", No = back to the row, no job); host test that
+  the No path starts no job. Upgrades lists "Upgrade all" as its first row. After the job ends the stale flag is set from the footer state (rc 0, 5, other). Host test tests/test_job.c plus
   test_keymap.c: every package action ends in LF_JOB with the PG.1 line, never LF_WINDOW; a fake run_job returning rc 0, 5 and 12
   all mark the list stale; a style with no run_job falls back to run: (lf_job_view) and is stated in the row's refusal text.
-- [ ] PG.6 text menu (menu.c, libupkgui): the same group, rows, Search and actions through the shared leaf code. The job view for
-  this style is job-view plan RJ.2t (blocked on UPKGUI-JOB-API); until it lands, picks in the text menu run as run: in a window
-  (the lf_job_view fallback). Host test: tests/test_keymap.c rows identical in both styles (one node walk, two ui structs).
-  This item is not ticked until the text menu shows the job view, so it stays open while RJ.2t is blocked.
+- [ ] PG.6 text menu (menu.c, libupkgui): the same group, rows, Search and actions through the shared leaf code, jobs in the
+  text job view (RJ.2t, eed2cacc, through lf_ui.run_job = text_run_job). Host test: tests/test_keymap.c rows identical in both
+  styles (one node walk, two ui structs).
 - [ ] PG.7 sentinels AMARCHY_PKGS_ROWS and AMARCHY_PKGS_LOADS in gui.c and menu.c next to the job sentinels; host test that the
   publish function receives rows and load counts from a fake load.
 - [ ] PG.8 rig reachability (rig 7, 060, both styles; started with `UPTERM_RIG=7 rig.py start --max --purpose "Amarchy
@@ -124,15 +130,4 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
 (open)
 
 ## Open decisions for the owner
-1. Where does Installed live? Recommended: the new top-level Packages group only, and the old Install > Packages node is
-   removed (one place, no duplicates). Alternative: keep Install > Packages as a second entry. Trade-off: removing it changes
-   a path you may already use; keeping it duplicates the Installed list.
-2. Does Remove ask for confirmation? Recommended: yes, one confirm row ("Remove <name>: Yes / No") before the job starts,
-   because Remove deletes files. Alternative: Remove runs at once like Install. Trade-off: one extra keypress versus an
-   accidental removal from a mistyped pick.
-3. Should "Upgrade all" sit in the Upgrades node? Recommended: yes, as the first row, same command as Install > Upgrade all.
-   Alternative: only per-package Upgrade there. Trade-off: one more way to upgrade everything versus a shorter list.
-4. Text menu before RJ.2t lands: Recommended: ship the group in both styles at once and let text-menu package jobs run in a
-   window as run: until the job view exists (breaks "no terminal" for that style temporarily). Alternative: ship the group in
-   the drawn menu only and add the text menu when libupkgui has the job view. Trade-off: feature in both styles now versus
-   keeping the no-terminal rule strictly true.
+None. Answered 2026-10-27, see Owner decisions.
