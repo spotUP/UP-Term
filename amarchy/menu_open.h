@@ -35,6 +35,7 @@ typedef struct mo_srv {
     void *user;
     void (*spawn)(void *user, const ms_req *r);     /* the cold path: a menu of its own */
     void (*start)(void *user);                      /* start the server process */
+    long (*stamp)(void *user);                      /* the server program's file stamp on disk (ta_file_stamp) */
     ms_state st;
 } mo_srv;
 /* Fill ops for ms_open: find (FindPort + task_alive under Forbid, draining the reply port), take_over

@@ -13,6 +13,11 @@ int ms_route(int found, int alive, int outstanding)
     return (found && alive && !outstanding) ? MS_SEND : MS_SPAWN_RESTART;
 }
 
+int ms_binary_changed(long started_stamp, long disk_stamp)
+{
+    return started_stamp != 0 && disk_stamp != 0 && started_stamp != disk_stamp;
+}
+
 int ms_open(const ms_ops *ops, const ms_req *r)
 {
     int found = 0, alive = 0, outstanding = 0, route;
@@ -20,6 +25,19 @@ int ms_open(const ms_ops *ops, const ms_req *r)
     if (mo_verdict(found, alive) == MO_TAKE_OVER && ops->take_over)
         ops->take_over(ops->ctx);
     route = ms_route(found, alive, outstanding);
+    /* A live idle server running an older binary than the file on disk: this press opens a menu of its own
+     * (loaded from disk, so new code), the old server ends and a new one starts from the new file. When it
+     * will not end (busy) it is left, and the next press tries again. */
+    if (route == MS_SEND && ops->stamp && ops->quit && ms_binary_changed(ops->st->bin_stamp, ops->stamp(ops->ctx))) {
+        ops->spawn(ops->ctx, r);
+        if (ops->quit(ops->ctx)) {
+            ops->start_server(ops->ctx);
+            ops->st->started = 1;
+            ops->st->last_start = ops->now(ops->ctx);
+            ops->st->bin_stamp = ops->stamp(ops->ctx);
+        }
+        return MS_SPAWN_RESTART;
+    }
     if (route == MS_SEND) {
         ops->send(ops->ctx, r);
         return MS_SEND;
@@ -33,6 +51,8 @@ int ms_open(const ms_ops *ops, const ms_req *r)
             ops->start_server(ops->ctx);
             ops->st->started = 1;
             ops->st->last_start = t;
+            if (ops->stamp)
+                ops->st->bin_stamp = ops->stamp(ops->ctx);
         }
     }
     return MS_SPAWN_RESTART;

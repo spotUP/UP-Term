@@ -21,7 +21,10 @@ def screen(rows):
 class LevelCursor(unittest.TestCase):
     def downs(self, rows, label):
         keys = []
+        import amarchy_gui_rig as g
         with mock.patch.object(m, "screen_text", return_value=screen(rows)), \
+             mock.patch.object(g, "rows_now", return_value=[r for r in rows if not m.SCAN_STATUS.match(r + "x")]), \
+             mock.patch.object(m.c, "run", return_value=(0, "")), \
              mock.patch.object(m.ami, "key", side_effect=lambda k, *a: keys.append(k)), \
              mock.patch.object(m.time, "sleep"):
             m.x9_level(label)

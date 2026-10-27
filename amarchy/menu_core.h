@@ -74,6 +74,9 @@ int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max
 /* Where the entry labelled label sits among the c shown entries (items[idx[i]]); -1 when it is not shown.
  * A rebuilt level (the scan's status row changed) keeps the cursor on the same entry with it. */
 int mn_pick(const mn_item *items, const int *idx, int c, const char *label);
+/* The labels of the c rows shown (items[idx[0..c)]) joined by '|' into out (size n), whole labels only: the
+ * value of the AMARCHY_ROWS sentinel both menu styles publish, so a rig reads the rows without screen text. */
+void mn_rows_join(const mn_item *items, const int *idx, int c, char *out, int n);
 /* The position of the setting row with SDI_* id ix: its label changes with its value, so a rebuild after a
  * set keeps the cursor by id. -1 when it is not listed. */
 int mn_pick_setting(const mn_item *items, const int *idx, int c, int ix);

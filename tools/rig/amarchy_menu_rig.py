@@ -228,12 +228,14 @@ def r_drill_redraw():
     ensure_terminal()
     ami.key(RAW['space'], TEXT_MENU)
     time.sleep(1.5)
+    import amarchy_gui_rig as g
     into_style()
-    style = menu_rows(screen_text())
+    style = g.rows_now()                       # Terminal's rows, published by its rebuild
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
     for k in 't', 'h':
         ami.key(RAW[k])
         time.sleep(0.5)
-    th = menu_rows(screen_text())
+    th = g.rows_now()                          # the filter change rebuilds and publishes
     for _ in range(4):                         # filter, Terminal, Style, the menu (Style.Terminal adds one level)
         ami.key(RAW['esc'])
         time.sleep(0.5)
@@ -249,17 +251,22 @@ def r_right_enters():
     before = km_hits()                         # read with the menu closed: tabstate types into the focused window
     if not x9_open_menu():
         return False, 'text menu did not open'
-    style = menu_rows(x9_level('Style', 'right'))
+    import amarchy_gui_rig as g
+    x9_level('Style', 'right')
+    style = g.rows_now()
     ok = style[:2] == ['Amarchy theme', 'Terminal']
     if ok:                                     # dist/keymap: Theme, Font, Background sit under Style.Terminal
         ami.key(RAW['down'])
         time.sleep(0.3)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
         ami.key(RAW['right'])
         time.sleep(1)
-    term = menu_rows(screen_text())
-    ami.key(RAW['right'])                      # the cursor is on Theme, a leaf
+    term = g.rows_now()
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    ami.key(RAW['right'])                      # the cursor is on Theme, a leaf: no rebuild, so nothing is published
     time.sleep(1)
-    still = menu_rows(screen_text())
+    rc, out = c.run('GetEnv AMARCHY_ROWS')
+    still = out.strip().split('|') if rc == 0 and out.strip() else term   # unchanged level: no rows published
     x9_leave()
     ami.click_px(100, 100)                     # the vsh host takes the focus back before tabstate types into it
     time.sleep(1)
@@ -348,6 +355,7 @@ def x9_files(extra=()):
 def x9_open_menu():
     ami.click_px(100, 100)                     # the host terminal has the focus
     time.sleep(0.5)
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')   # the rows are read from the sentinel, not the screen
     ami.key(RAW['space'], LAMIGA)              # over the terminal: the text menu
     for _ in range(30):
         if 'Filter' in screen_text():
@@ -373,12 +381,14 @@ SCAN_STATUS = re.compile(r'Scan(ning\.\.\. | done: | did not start| stopped | co
 def x9_level(label, key='return'):
     # from the root, Down to the group `label`, Enter (or `key`); the screen text of that level. A root without the
     # group (the X10 revert check takes Games away) stays at the root, so the level's checks fail, not the case
-    rows = menu_rows(screen_text())
+    # rows: ENV:AMARCHY_ROWS (the shown rows, status row excluded); a level opens with the cursor on its first
+    # item, below the scan status row (menu.c default_item), so the Down count is the index in these rows
+    import amarchy_gui_rig as g
+    rows = g.rows_now()
     if label not in rows:
         return screen_text()
-    # a level opens with the cursor on its first item, below the scan status row (menu.c default_item)
-    first = 1 if rows and SCAN_STATUS.match(rows[0]) else 0
-    for _ in range(rows.index(label) - first):
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')   # the next level's rebuild publishes its rows
+    for _ in range(rows.index(label)):
         ami.key(RAW['down'])
         time.sleep(0.3)
     ami.key(RAW[key])

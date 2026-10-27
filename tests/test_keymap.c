@@ -1511,7 +1511,7 @@ static void remove_asks_first_and_a_package_job_marks_the_list_stale(void)
     CHECK(pk_action_line(&x.pk.r[a[1].ix], PK_ACT_REMOVE, line, sizeof line));
     CHECK_STR(line, "upkg remove Gamma");
     CHECK_INT(a[0].seg[0], PK_ACT_NO);              /* No: leaf.c returns before any job */
-    CHECK_INT(lf_pkg_back_levels(&a[0]), 1);
+    CHECK_INT(lf_pkg_back_levels(&a[0]), 2);        /* No: confirm page and action page, back at the package row */
     CHECK_INT(lf_pkg_back_levels(&a[1]), 2);
     CHECK_INT(lf_pkg_back_levels(0), 0);
     ca = pkg_level(&x, "packages.browse.games.notyet", a);
@@ -2876,6 +2876,25 @@ static void a_menu_opened_during_a_scan_it_did_not_start_adopts_it_and_a_quiet_r
     CHECK_INT(x.on, 0);
 }
 
+/* AMARCHY_ROWS: amarchy-menu (text) and amarchy-gui (drawn) both call mn_rows_join, so one format: the shown rows'
+ * labels in display order joined by '|', whole labels only. */
+static void both_menu_styles_publish_the_shown_rows_through_one_join(void)
+{
+    mn_item it[3];
+    int idx[3] = { 2, 0, 1 };
+    char out[16], big[64];
+    memset(it, 0, sizeof it);
+    strcpy(it[0].label, "Alpha");
+    strcpy(it[1].label, "Rescan apps");
+    strcpy(it[2].label, "Zed");
+    mn_rows_join(it, idx, 3, big, sizeof big);
+    CHECK_STR(big, "Zed|Alpha|Rescan apps");
+    mn_rows_join(it, idx, 3, out, sizeof out);   /* 16 bytes: the third label no longer fits whole */
+    CHECK_STR(out, "Zed|Alpha");
+    mn_rows_join(it, idx, 0, big, sizeof big);
+    CHECK_STR(big, "");
+}
+
 static void the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level(void)
 {
     mn_item it[3];
@@ -2937,6 +2956,7 @@ void suite_keymap(void)
     a_watching_menu_rebuilds_only_when_the_status_row_changes_and_stops_at_done();
     a_menu_opened_during_a_scan_it_did_not_start_adopts_it_and_a_quiet_record_shows_no_row();
     the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level();
+    both_menu_styles_publish_the_shown_rows_through_one_join();
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
     menu_theme_formats_the_dopus_palette_and_pens_commands();
