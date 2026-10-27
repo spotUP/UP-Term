@@ -44,13 +44,14 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py start --debugger   FS-UAE's console debugger (console_debugger = 1) on a FIFO: stdout/stderr in
                   build/rig<N>/debugger.log, input from build/rig<N>/debugger.in
   rig.py dbg "<line>"   one debugger line to that FIFO, e.g. "w 0 <addr> 4 W" (memwatch on writes), "g"
+  rig.py dbgbreak   SIGUSR1 to this rig's fs-uae: enter the console debugger (needs a debug build, UPTERM_FSUAE=<binary>)
   rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import fcntl, json, os, pathlib, re, shutil, subprocess, sys, time
+import fcntl, json, os, pathlib, re, shutil, signal, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import a1200_drift
 import paths
@@ -814,6 +815,16 @@ def dbg():
     finally:
         os.close(fd)
 
+def dbgbreak():
+    """rig.py dbgbreak: SIGUSR1 into this rig's FS-UAE. A build with debuggable() = 1 and a SIGUSR1 handler that
+    calls activate_debugger() (Emulators/fs-uae-debug, UPTERM_FSUAE) drops into the console debugger on the FIFO."""
+    pids = [int(l.split()[0]) for l in mine()]
+    if not pids:
+        sys.exit("rig: no FS-UAE running for %s" % CFG)
+    for pid in pids:
+        os.kill(pid, signal.SIGUSR1)
+    print("rig: SIGUSR1 sent to %s" % pids)
+
 def fsuae_stdio():
     """stdin, stdout, stderr for the FS-UAE process: the debugger FIFO and log with --debugger, else null."""
     if not DEBUGGER:
@@ -1367,7 +1378,7 @@ def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop, "reboot": reboot, "install": install, "kit-restore": kit_restore,
-            "status": status, "logwatch": logwatch, "muforce": muforce, "dbg": dbg, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "status": status, "logwatch": logwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg")}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):

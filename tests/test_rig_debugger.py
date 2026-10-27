@@ -29,6 +29,16 @@ class RigDebugger(unittest.TestCase):
                 fout.close()
                 self.assertTrue(log.exists())
 
+    def test_dbgbreak_sends_sigusr1_to_rig_process(self):
+        with mock.patch.object(rig, "mine", return_value=["4242 /x/fs-uae cfg"]), \
+                mock.patch.object(rig.os, "kill") as kill:
+            rig.dbgbreak()
+        kill.assert_called_once_with(4242, rig.signal.SIGUSR1)
+
+    def test_dbgbreak_without_process_exits(self):
+        with mock.patch.object(rig, "mine", return_value=[]), self.assertRaises(SystemExit):
+            rig.dbgbreak()
+
 
 if __name__ == "__main__":
     unittest.main()
