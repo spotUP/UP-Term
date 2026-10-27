@@ -129,6 +129,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_base ]; then python3 -I tools/test_rig_browse_base.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_free ]; then python3 -I tools/test_rig_browse_free.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_help ]; then python3 -I tools/test_rig_help.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_handler_fallback ]; then python3 -I tools/test_rig_handler_fallback.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ans2utf8 ]; then python3 -I tools/test_ans2utf8.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_upterm ]; then python3 -I tools/test_rig_upterm.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_kit ]; then python3 -I tools/test_rig_kit.py; fi
@@ -586,6 +587,9 @@ $(BUILD)/amiga/clistdin: tests/amiga/clistdin.c
 $(BUILD)/amiga/detach: tests/amiga/detach.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/detach.c
+$(BUILD)/amiga/deafvol: tests/amiga/deafvol.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/deafvol.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c
@@ -751,6 +755,16 @@ $(UPKGUI_SYS)/lib/libupkgui.a: $(BUILD)/upkgui/.stamp-$(UPKGUI_REV)
 upkgui-clean:
 	rm -rf $(BUILD)/upkgui
 AMARCHY_MENU_SRC := amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c $(AMARCHY_LEAF_DEPS) prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c
+# A fresh git worktree rig-ready in about a minute: build/ seeded from the main checkout, source mtimes matched so make
+# rebuilds only what this branch changed (tools/worktree_ready.py).
+.PHONY: worktree-ready test-one
+worktree-ready:
+	python3 -I tools/worktree_ready.py
+# One suite, fast: only the host test binary, at the lowest priority (make test ONLY= rebuilds every test binary).
+# SUITE= a tests/test_main.c suite (vttest_host --has); python-only suites: make test ONLY=<name>.
+test-one: $(BUILD)/vttest_host
+	@if [ -z "$(SUITE)" ]; then echo "[ERROR] make test-one SUITE=<name>"; exit 2; fi
+	nice -n 19 ./$(BUILD)/vttest_host $(SUITE)
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
 $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h amarchy/termenv.h handler/frontscr.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/proclaunch.h amarchy/pkgs_core.h amarchy/pkgs_dos.h amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h

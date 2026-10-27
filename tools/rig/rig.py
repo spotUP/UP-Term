@@ -252,6 +252,8 @@ C:Wait 15
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
+; /tmp: the kit puts "Assign TMP: T:" in S:User-Startup; a rig with no kit has it from here
+C:Assign >NIL: TMP: T:
 C:Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD
 ; UP-Term as the owner uses it on the rig: the patched ixemul first in
 ; LIBS: (Classes and MUI stay), PTY: and IXPIPE:, and GG: for /gg/bin/sh
@@ -613,6 +615,35 @@ HOST_KEYS = [
 ]
 
 
+# The ScreenMode prefs files VTC: holds (IFF PREF/PRHD/SCRM, 62 bytes): rig.py aga|aga256|rtg copy them to
+# ENVARC:Sys/screenmode.prefs and os_image_copy puts aga256 into a clean image. They had no source in the repo;
+# a rig other than rig 1 got them only by a hand copy. (name, DisplayID, width, height, depth) as rig 1 holds them.
+SCREENMODE_PREFS = [("aga16", 0x00029000, 0x280, 0x100, 4), ("aga256", 0x00029000, 0x280, 0x100, 8),
+                    ("rtg", 0x50041303, 0xffff, 0xffff, 24), ("rtg360", 0x50041303, 0x280, 0x168, 24)]
+
+
+def screenmode_prefs_bytes(display_id, width, height, depth):
+    import struct
+    scrm = struct.pack(">16xIHHHH", display_id, width, height, depth, 1)
+    return (b"FORM" + struct.pack(">I", 4 + 8 + 6 + 8 + len(scrm)) + b"PREF" + b"PRHD" + struct.pack(">I", 6)
+            + bytes(6) + b"SCRM" + struct.pack(">I", len(scrm)) + scrm)
+
+
+def stage_rig_vtc(vtc):
+    """What a rig's VTC: drawer needs to start, for build/rig and build/rigN alike (setup calls it): the ScreenMode
+    prefs, and the UP-Term drawer the boot's UP-Term: assign points at, with bin/vsh, the icons and the Prefs launcher
+    (stage_upterm, as `rig.py install` makes it). Files already there are kept."""
+    vtc.mkdir(parents=True, exist_ok=True)
+    for name, did, w, h, depth in SCREENMODE_PREFS:
+        f = vtc / ("screenmode.%s.prefs" % name)
+        if not f.exists():
+            f.write_bytes(screenmode_prefs_bytes(did, w, h, depth))
+    vsh = ROOT / "build/amiga/vsh"
+    if not (vtc / paths.UPTERM_DRAWER / "bin/vsh").is_file():
+        paths.require_input(vsh, "UPTERM_ROOT", "build/amiga/vsh (run make for the Amiga programs)")
+        stage_upterm(vtc / paths.UPTERM_DRAWER, vsh)
+
+
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
     if paths.RIG_N > 1 and not (RIG / "vtc").exists():
@@ -620,7 +651,7 @@ def setup():
         # files carry the protection bits); `install` and the scripts keep it
         print("copying rig 1's VTC: drawer ...")
         shutil.copytree(paths.RIG_HOME / "rig/vtc", RIG / "vtc", symlinks=True)
-    (RIG / "vtc").mkdir(exist_ok=True)
+    stage_rig_vtc(RIG / "vtc")
     (RIG / "shots").mkdir(exist_ok=True)
     if OS32 and not (RIG / "os32").exists():
         print("copying the 3.2 system (168 MB) ...")
@@ -740,7 +771,8 @@ def setup():
 
 def setup_config_only():
     """Rewrite just the config, so --rw on or off takes effect."""
-    if (RIG / "sys.hdf").exists():
+    # a --os / --os32 rig has no sys.hdf: its first start (a fresh build/rigN) stages the drawer here too
+    if (RIG / "sys.hdf").exists() or OS or OS32:
         setup()
 
 def stage_upterm(dest, vsh):
@@ -886,9 +918,23 @@ def refresh_kit_shadows(vtc):
         shutil.copyfile(src, dst)
         print("refreshed gg/bin/sh", dst.stat().st_size, "bytes")
 
+def built_handler():
+    """build/amiga/vtcon-handler of this tree, else (a fresh worktree, `make worktree-ready` not run) the main
+    checkout's, with a [WARN] naming it: the handler is the one binary every rig run needs."""
+    mine = ROOT / "build/amiga/vtcon-handler"
+    if mine.is_file():
+        return mine
+    main = paths.MAIN_CHECKOUT / "build/amiga/vtcon-handler"
+    if not main.is_file():
+        sys.exit("[ERROR] no %s: run make amiga (make worktree-ready seeds build/ from the main checkout)" % mine)
+    print("[WARN] %s missing: installing the main checkout's %s (make worktree-ready, then make amiga, for this tree's)"
+          % (mine, main))
+    return main
+
+
 def install():
     (RIG / "vtc/kit-restore").unlink(missing_ok=True)
-    shutil.copyfile(ROOT / "build/amiga/vtcon-handler", RIG / "vtc/vtcon-handler")
+    shutil.copyfile(built_handler(), RIG / "vtc/vtcon-handler")
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
     # every other build/amiga program the drawer already holds: rig 2's VTC:
     # starts as a copy of old builds, and a script that runs VTC:<name> must
@@ -1009,6 +1055,7 @@ def start(retries=START_RETRIES):
         if "--no-dopus" in sys.argv:
             sys_hdf_no_dopus(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
+    RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
