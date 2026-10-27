@@ -547,6 +547,9 @@ def setup():
         if 'UP-Term:bin/' in l or SETUP_BIN in l:
             c.run('Break %s' % l.split()[1].rstrip(':'), 20)
     time.sleep(2)
+    # Lock("UP-Term:bin") on a multi-directory assign returns only the first match, VTCX:Apps/bin; pl_dup_path puts
+    # that one lock on the children's path, so upkg and the rest of the kit must be in it. Kit first, build over it.
+    c.run('Copy Rushhours:Tools/UP-Term/bin %s ALL QUIET' % SETUP_BIN, 120)
     for n in SETUP_NAMES:
         ami.put(os.path.join(REPO, 'build/amiga', n), '%s/%s' % (SETUP_BIN, n))
     # VTCX:Apps first so the fresh build shadows the kit's copies in UP-Term:bin;
