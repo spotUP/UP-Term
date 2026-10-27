@@ -117,9 +117,13 @@ try:
     k = log("keys.log")
     check(k[-2] == "0000" + "00440000" + "00c40000", "key(0x44): one frame, down then up: %s" % k[-2:])
     check(k[-1] == "0000" + "00450008" + "00c50008", "key(code, qual): the qualifier rides both events: %s" % k[-1:])
-    # type
+    # type: raw KEY events from the console's keymap table (rkcprobe TABLE on a rig; the mock runs no Amiga program,
+    # so the table is the captured Swedish one tests/test_ami_type_keymap.py uses)
+    ami.KEYMAP_TABLE.update(ami.parse_keymap_table(
+        (pathlib.Path(__file__).resolve().parents[1] / "tests/data/rkc-table-swedish.txt").read_text()))
     ami.req(0x08, bytes([4]) + b"dir\r")
-    check(log("keys.log")[-1] == "0001" + b"dir\r".hex(), "type: KEY op 1 with the text")
+    want = "0000" + "".join("%04x%04x" % e for e in ami.keys_for_text(b"dir\r", ami.KEYMAP_TABLE))
+    check(log("keys.log")[-1] == want, "type: KEY op 0 with the keymap's raw events: %s" % log("keys.log")[-1:])
     # pointer_scale, click_px, script
     check(ami.pointer_scale() == (1.0, 2.0), "pointer_scale(): rows doubled on 640x256: %r" % (ami.pointer_scale(),))
     ami.click_px(10, 20)
@@ -139,7 +143,8 @@ try:
     ami.main(["ui", "menushort", "", "Q"])
     check(len(log("keys.log")[-1]) > 8, "uiact menushort: right Amiga + key as raw events")
     ami.req(0x0E, b"settext\tQuestion\tName\t42")
-    check(log("keys.log")[-1] == "0001" + b"42\r".hex(), "uiact settext: focus, clear, type text and Return")
+    check(log("keys.log")[-1] == "0000" + "".join("%04x%04x" % e for e in ami.keys_for_text(b"42\r", ami.KEYMAP_TABLE)),
+          "uiact settext: focus, clear, type text and Return")
     # rexx / screens
     b = ami.req(0x12, b"return 1")
     check(len(b) >= 4 and struct.unpack(">I", b[:4])[0] == 10, "rexx: rc u32 + result (the mock answers rc 10 to a program)")
@@ -170,12 +175,16 @@ try:
         win("System Request", "vsh", ("button", "Retry"), ("button", "Cancel")),
         win("ixemul.library message", "tmux", ("button", "Abort")),
         win("Program message", "jq", ("label", "free: start of block corrupt!"), ("button", "Continue"), ("button", "Abort")),
+        # AssignWedge (rig 7, 2026-10-27) replaces the DOS "System Request" with its own window and adds Assign/Deny
+        win("Volume Request", "<< AssignWedge >>", ("depth", ""), ("drag", ""), ("custom", "Retry"),
+            ("custom", "Assign"), ("custom", "Deny"), ("custom", "Cancel")),
         win("UP-Term Prefs", "UPTermPrefs", ("button", "Save"), ("button", "Use"), ("button", "Cancel")),
         win("Find", "ed", ("string", "Text"), ("button", "OK"), ("close", ""), ("depth", "")),
         win("Workbench", "Workbench")]}]
     got = [r["title"] for r in ami.requesters_in(screens)]
-    check(got == ["System Request", "ixemul.library message", "Program message"],
-          "requesters_in: DOS, ixemul panic and an Abort/Continue window are requesters; Prefs, a find box, a "
+    check(got == ["System Request", "ixemul.library message", "Program message", "Volume Request"],
+          "requesters_in: DOS, ixemul panic, an Abort/Continue window and AssignWedge's volume request are "
+          "requesters; Prefs, a find box, a "
           "backdrop are not: %r" % got)
     check(ami.describe_requester(ami.requesters_in(screens)[0]) ==
           '"System Request" (task vsh, screen "Workbench Screen", buttons Retry|Cancel)', "describe_requester")

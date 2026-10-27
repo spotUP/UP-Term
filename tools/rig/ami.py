@@ -153,12 +153,13 @@ def _type(c, data):
         _keys(c, events[i:i + 1000])
 
 
-# Window titles that are always a requester: AmigaDOS's (insert volume, disk full, write protected) and ixemul's
-# show_msg default (ix_panic, panic, ix_warning: library/hwck.c).
-REQUESTER_TITLES = ('system request', 'ixemul.library message')
+# Window titles that are always a requester: AmigaDOS's (insert volume, disk full, write protected), AssignWedge's
+# "Volume Request" (Retry|Assign|Deny|Cancel for an unknown volume) and ixemul's show_msg default (ix_panic, panic,
+# ix_warning: library/hwck.c).
+REQUESTER_TITLES = ('system request', 'volume request', 'ixemul.library message')
 # The answers a requester's buttons carry; a window whose every button is one of these is a requester.
 REQUESTER_ANSWERS = {'ok', 'cancel', 'retry', 'abort', 'continue', 'yes', 'no', 'quit', 'suspend', 'reboot',
-                     'ignore', 'resume', 'proceed'}
+                     'ignore', 'resume', 'proceed', 'assign', 'deny'}
 REQUESTER_POLL = float(os.environ.get('UPTERM_REQUESTER_POLL') or 10)
 REQUESTER_LOG = paths.RIG / 'requesters.log'
 
