@@ -186,6 +186,13 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
                # upkg is built by upterm-ports (make opkg, also from a worktree of it), not by this repo: the
                # rig ran the kit's older upkg, without `list --tsv` one row per package (patch 0054)
                ("upkg", "UP-Term:bin/upkg", "UP-Term-bin-upkg"),
+               # the four Amarchy programs dist/install.dos copies into UP-Term:bin (its `Copy Amarchy
+               # amarchy-menu amarchy-gui amarchy-index`). Without rows the kit's copies stayed stale
+               # and the boot's User-Startup Run line started them (RIG-KIT-SHADOWS, 2026-10-28)
+               ("Amarchy", "UP-Term:bin/Amarchy", "UP-Term-bin-Amarchy"),
+               ("amarchy-menu", "UP-Term:bin/amarchy-menu", "UP-Term-bin-amarchy-menu"),
+               ("amarchy-gui", "UP-Term:bin/amarchy-gui", "UP-Term-bin-amarchy-gui"),
+               ("amarchy-index", "UP-Term:bin/amarchy-index", "UP-Term-bin-amarchy-index"),
                # the shipped keymap (dist/, not build/amiga): the master's kit wrote its own, so a new
                # keymap row was missing on every rig start (vtcon-a1 P7, 2026-10-27). The user's rows
                # live in keymap.user, which is not touched. Spelled by path, never ENVARC:/ENV:: go is Run

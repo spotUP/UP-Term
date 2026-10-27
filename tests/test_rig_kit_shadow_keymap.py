@@ -63,6 +63,18 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertEqual((vtc / "UPTerm").read_bytes(), b"upterm-new")
         self.assertFalse((vtc / paths.UPTERM_DRAWER / "bin" / "UPTerm").exists())   # only VTC: is required
 
+    def test_boot_shadows_every_amarchy_program_the_kit_installs(self):
+        # RIG-KIT-SHADOWS: no rows for them left stale kit copies that the boot's User-Startup Run line started.
+        # The set is the one dist/install.dos copies into UP-Term:bin, read from that file.
+        dos = (ROOT / "dist/install.dos").read_text()
+        names = next(l.split()[1:-2] for l in dos.splitlines() if l.startswith("Copy Amarchy "))
+        self.assertEqual(sorted(names), ["Amarchy", "amarchy-gui", "amarchy-index", "amarchy-menu"])
+        up = rig.kit_shadow_lines(True)
+        for n in names:
+            self.assertIn("C:Copy >NIL: VTC:%s UP-Term:bin/%s CLONE" % (n, n), up)
+            self.assertIn("C:Copy >NIL: VTC:kit-orig/UP-Term-bin-%s UP-Term:bin/%s CLONE" % (n, n), up)
+            self.assertEqual(rig.kit_shadow_src(n), rig.build_amiga() / n)
+
 
 if __name__ == "__main__":
     unittest.main()
