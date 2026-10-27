@@ -67,6 +67,7 @@ EXCLUDED = {
     'ttyprobe': 'probe',
     'dsrtime': 'probe',
     'dripens': 'probe',
+    'tcpprobe': 'install probe (not a user command)',
     'wasabikey': 'test tool for the Wasabi board (not a user command)',
     'cellbench': 'benchmark',
     'wprobe': 'probe',

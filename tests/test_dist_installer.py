@@ -669,7 +669,7 @@ class EveryOptionTicked(unittest.TestCase):
     user unticks what they do not want. Each askoptions page's default is all its choices, except
     AmiSSL: the same version or a newer one is already installed, so it is ticked only when needed
     (AmiSSLPart checks that default)."""
-    PAGES = {'#net': 3, '#extra': 3, '#boot': 2, '#sys': 2}
+    PAGES = {'#net': 2, '#extra': 3, '#boot': 2, '#sys': 2}
 
     def test_each_page_defaults_to_all_its_choices(self):
         for var, n in self.PAGES.items():
@@ -678,8 +678,9 @@ class EveryOptionTicked(unittest.TestCase):
             d = page[page.index('(default') + 9:].split(')')[0]
             value = int(d) if d.isdigit() else sum(int(x) for x in d.lstrip('(+ ').split())
             self.assertEqual(value, 2 ** n - 1, var)
-        # AmiSSL's and the add-on page (FindsTheAddOns: all add-ons) are the two more
-        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 2, 'a page this test misses')
+        # AmiSSL's, the AmiNetXDuo page (AmiNetXDuoPart: ticked only with no stack found) and the add-on
+        # page (FindsTheAddOns: all add-ons) are the three more
+        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 3, 'a page this test misses')
 
 
 class UpdateWithNoRecordedOptions(unittest.TestCase):
@@ -1011,3 +1012,52 @@ class SoftFloatIxemul(unittest.TestCase):
 
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=1).result.wasSuccessful() else 1)
+
+
+class AmiNetXDuoPart(unittest.TestCase):
+    """The kit bundles AmiNetXDuo 1.0.0-rc2 and the Install offers it ONLY when no TCP/IP stack is found: the
+    detection (dist/common/tcpstack.installer) names the stack, the run (P_ANX) starts AmiNetXDuo's OWN
+    Install-AmiNetXDuo and does so only on #anxins, which a found stack forces to 0."""
+    INC = (ROOT / "dist/common/tcpstack.installer").read_text(encoding="latin-1")
+    RUN = INSTALLER[INSTALLER.index('(procedure P_ANX'):INSTALLER.index('(procedure P_ADFIND')]
+    PAGE = INSTALLER[INSTALLER.index('(set #anxins\n    (askoptions'):INSTALLER.index('(set #net')]
+
+    def test_detection_names_every_stack_in_order(self):
+        names = ["AmiNetXDuo", "Roadshow", "AmiTCP", "Miami", "Genesis", "TheWire", "emulator bsdsocket",
+                 "running bsdsocket", "bsdsocket.library in LIBS:"]
+        at = [self.INC.index('(set #tcpstack "%s")' % n) for n in names]
+        self.assertEqual(at, sorted(at))
+
+    def test_detection_evidence(self):
+        for needle in ['(getassign "AmiTCP")', '(getassign "Miami")', '(getassign "Genesis")', '(getassign "TheWire")',
+                       '"S:AmiNetXDuo-Files"', '(exists "LIBS:bsdsocket.library"', 'tackon #files "tcpprobe"', '"*UAE*"']:
+            self.assertIn(needle, self.INC)
+        # the probe (OpenLibrary) runs before the disk checks: an emulator's bsdsocket has no file
+        self.assertLess(self.INC.index('tcpprobe'), self.INC.index('(getassign "AmiTCP")'))
+        self.assertEqual(INSTALLER.count('(P_TCPCHECK)'), 1)
+
+    def test_the_page_names_the_stack_found_and_defaults_on_only_without_one(self):
+        self.assertIn('(cat "AmiNetXDuo (not installed: " #tcpstack " found)")', self.PAGE)
+        self.assertIn('(default (if (= #tcpstack "") 1 0))', self.PAGE)
+        self.assertIn('(set #anxins (if (= #tcpstack "") #anxins 0))', self.PAGE)
+
+    def test_the_run_is_gated_by_the_option_and_uses_the_kit_drawer(self):
+        run = self.RUN
+        self.assertIn('Installer SCRIPT Install-AmiNetXDuo APPNAME AmiNetXDuo', run)
+        self.assertIn('(tackon #files "AmiNetXDuo")', run)
+        self.assertTrue(run.lstrip().split("\n", 1)[0].startswith("(procedure P_ANX"))
+        self.assertRegex(run, r'\(procedure P_ANX\s+\(if #anxins\s+\(\s+\(textfile')
+        self.assertIn('TCP/IP stack found: " #tcpstack', run)
+        self.assertLess(INSTALLER.index('(P_AMISSL)\n'), INSTALLER.index('(P_ANX)\n'))
+        self.assertLess(INSTALLER.index('(P_ANX)\n'), INSTALLER.rindex('(P_ADDONS)\n'))
+
+    def test_staging_and_licence(self):
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("$(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo/. $(KIT)/Files/AmiNetXDuo/", mk)
+        self.assertIn("rm -rf $(KIT)/Files/AmiNetXDuo/Developer", mk)
+        self.assertIn("cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe", mk)
+        parts = (ROOT / "dist/parts.txt").read_text()
+        self.assertRegex(parts, r"(?m)^-\s+Files/AmiNetXDuo$")
+        self.assertRegex(parts, r"(?m)^-\s+Files/tcpprobe$")
+        self.assertIn("AmiNetXDuo 1.0.0-rc2", (ROOT / "dist/LICENSES.txt").read_text(encoding="latin-1"))
+        self.assertIn("Uninstall-AmiNetXDuo", (ROOT / "dist/Uninstall").read_text(encoding="latin-1"))

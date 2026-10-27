@@ -23,6 +23,14 @@ coreutils)                                                     up-term.lha): cor
 AmiSSL 5.27 (Files/AmiSSL,    Apache License 2.0 (AmiSSL       AmiSSL Open Source Team (Doc/AmiSSL.doc
 installed by its own          and OpenSSL; the notice is in    in the drawer); github.com/jens-maus/amissl.
 Install-AmiSSL)               Doc/AmiSSL.doc)                  The Developer SDK is not in the kit
+AmiNetXDuo 1.0.0-rc2 (Files/  MIT, with named exceptions:      aminet.net/package/comm/net/
+AmiNetXDuo, installed by its  ThreadX/NetX Duo MIT; NE2000    AmiNetXDuo-1.0.0-rc2; the licence list
+own Install-AmiNetXDuo only   core BSD-2; Dropbear MIT-style; is in its ReadMe (LICENCE) and the
+when no TCP/IP stack is       CodeMirror MIT; CA certificates drawer's Terminal/CodeMirror-LICENSE,
+found)                        MPL 2.0; xircomce2.device and   Wireless/WirelessManager-LICENSE,
+                              pccard.library GPL-2.0-or-later PCMCIA/ (with their source). The
+                              (source in PCMCIA/); anxwifipi  Developer drawer is not in the kit
+                              MPL 2.0; WirelessManager BSD-3
 Unix tool ports (Files/       per package, the licence files   up-term-src.lha (published next to
 userland, UP-Term:bin): GNU   in UP-Term:licenses/<package>;   up-term.lha): each upstream archive with
 grep, sed, findutils,         GPL v3 or later: grep, sed,      UP-Term's patches, recipes and build

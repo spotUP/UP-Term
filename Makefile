@@ -566,7 +566,7 @@ HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/screenreq.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
                handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
 
 # hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
@@ -969,6 +969,11 @@ $(BUILD)/updemo: demo/updemo.c demo/updemo_posix.c demo/updemo.h demo/tour_theme
 $(BUILD)/amiga/wasabikey: install/wasabikey.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ install/wasabikey.c
+
+# The Install's TCP/IP stack probe (OpenLibrary of bsdsocket.library; the AmiNetXDuo part)
+$(BUILD)/amiga/tcpprobe: install/tcpprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ install/tcpprobe.c
 
 # C:Reboot: flushes every volume, then ColdReboot (the Install's last page)
 $(BUILD)/amiga/Reboot: install/reboot.c
@@ -1388,6 +1393,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp $(BUILD)/amiga/upicon $(KIT)/Files/upicon
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
 	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
+	cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe
 	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index dist/keymap $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/Rexx && cp -R dist/rexx $(KIT)/Files/Rexx
@@ -1401,6 +1407,8 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp $(BUILD)/wasabi/wasabid $(BUILD)/wasabi/wasabi $(BUILD)/wasabi/wasabi_mcp.py $(BUILD)/wasabi/wasabi_client.py $(BUILD)/amiga/wasabikey $(KIT)/Files/wasabi/
 	@# AmiSSL 5.27 (Apache 2.0) as its own release drawer: the Install runs its Install-AmiSSL (the Developer SDK is for building only, so it stays out)
 	rm -rf $(KIT)/Files/AmiSSL && mkdir -p $(KIT)/Files/AmiSSL && cp -R $(VENDOR)/amissl-5.27/AmiSSL/. $(KIT)/Files/AmiSSL/ && rm -rf $(KIT)/Files/AmiSSL/Developer $(KIT)/Files/AmiSSL/Developer.info
+	@# AmiNetXDuo 1.0.0-rc2 (MIT) as its own release drawer: the Install runs its Install-AmiNetXDuo only when no TCP/IP stack is found (the Developer drawer is headers, not installed)
+	rm -rf $(KIT)/Files/AmiNetXDuo && mkdir -p $(KIT)/Files/AmiNetXDuo && cp -R $(VENDOR)/aminetxduo-1.0.0-rc2/AmiNetXDuo/. $(KIT)/Files/AmiNetXDuo/ && rm -rf $(KIT)/Files/AmiNetXDuo/Developer $(KIT)/Files/AmiNetXDuo/Developer.info
 	cp terminfo/vtcon.termcap $(KIT)/Files/termcap.vtcon
 	# the shared tail of every archive: the scripts assembled from dist/ and dist/common/, texts, icons,
 	# VERSIONS, UP-Term.version, modes, manifest, the lha archive and its Aminet readme (tools/mkkit.py)
