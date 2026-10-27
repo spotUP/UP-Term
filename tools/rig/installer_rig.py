@@ -422,6 +422,23 @@ def text_faults(tree):
     return faults, ['y%d-%d x%d-%d' % (a - y0, b - y0, c - x0, d - x0) for a, b, c, d in bands]
 
 
+SETTLE_STEP = 0.4   # drive: how often the UI tree is asked while it waits for the page to change
+
+
+def wait_change(tree, secs):
+    """Wait up to `secs` for the Installer's UI tree to differ from `tree` (a new page, new gadgets, a gadget gone,
+    a percent step), asking every SETTLE_STEP s. Returns at once when it changed; the bound is the old fixed sleep."""
+    end = time.time() + secs
+    while time.time() < end:
+        time.sleep(min(SETTLE_STEP, max(end - time.time(), 0.01)))
+        try:
+            if ami.req(0x0D).decode('latin-1') != tree:
+                return True
+        except ConnectionError:   # wasabid busy: keep waiting inside the bound
+            pass
+    return False
+
+
 def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20, expect_abort=False,
           room_dest=None, console=False, tick_all=False, askdir_probe=None):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
@@ -547,7 +564,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                 click(gads[ask][0])
                 clicked_at = time.time()
                 log.append('answered [%s] with id %d' % (title, ask))
-            time.sleep(3)
+            wait_change(tree, 3)
             continue
         if 90 not in gads:
             # copying or waiting for the next page: only Abort (or nothing) on it
@@ -558,7 +575,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             if time.time() - work_since > work_limit:
                 log.append('no Proceed page for %d s: %s' % (work_limit, last_sig))
                 return False, log
-            time.sleep(poll)
+            wait_change(tree, poll)
             continue
         work_since = None
         if clicked_at and time.time() - clicked_at > stall:
@@ -570,7 +587,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                 click(gads[90][0])
                 retried = time.time()
                 log.append('Proceed (id 90) again: page unchanged 15 s')
-            time.sleep(3)
+            wait_change(tree, 3)
             continue
         target = dest or (room_dest if room else None)
         if target and not typed and 89 in gads and 92 in gads:   # askdir page
@@ -609,7 +626,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                      if 2 <= int(m.group(1)) < 89 and 'disabled' not in (m.group(3) or '') and 'selected' not in (m.group(3) or '')]
             for gid, _ in boxes:
                 click(gads[gid][0])
-                time.sleep(1)
+                wait_change(tree, 1)
             if boxes:
                 log.append('ticked ids %s on [%s]' % (' '.join(str(g) for g, _ in boxes), title))
                 time.sleep(2)
@@ -633,7 +650,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
         click(gads[90][0])
         clicked_at = time.time()
         log.append('Proceed (id 90)')
-        time.sleep(3)
+        wait_change(tree, 3)
     log.append('the Installer did not finish in %d s' % timeout)
     return False, log
 
