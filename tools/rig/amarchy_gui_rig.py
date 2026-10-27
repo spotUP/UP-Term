@@ -23,7 +23,7 @@ Proves, on the rig:
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
 are assumed (no ENV:up-term/keymap override). Run: python3 tools/rig/amarchy_gui_rig.py [--setup] [--no-build]
 --setup first prepares the rig by itself (kills the kit Amarchy, puts the build to VTCX:Apps/bin, assigns UP-Term:
-and starts that Amarchy); alone it runs only that. --help prints this text."""
+and starts that Amarchy); alone (or with only --no-build) it runs only that. --help prints this text."""
 import hashlib, os, re, shlex, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths, ami, condev_rig as c, stage_rig, amarchy_window_rig
@@ -580,7 +580,7 @@ def main():
         return 0
     if '--setup' in sys.argv:
         setup()
-        if bad or len(sys.argv) == 2:
+        if bad or not set(sys.argv[1:]) - {'--setup', '--no-build'}:   # setup builds nothing: --no-build adds no case
             return 1 if bad else 0
     stage_rig.report(stage_rig.stage_build(NAMES, build='--no-build' not in sys.argv))
     geom = build_geom()
