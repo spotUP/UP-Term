@@ -5,6 +5,7 @@
 #include <dos/dostags.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <string.h>
 #include "act.h"
 #include "../config/keymap.h"
 #include "../claude/util.h"
@@ -13,47 +14,13 @@
 #include "termenv.h"
 #include "menu_open.h"
 #include "cxdesc.h"
-#define SEGSTACK_DOS
-#include "../config/segstack.h"
-
-/* Clone the path list of this process's CLI (a chain of {BPTR next; BPTR lock}
- * nodes) for the child, which owns and frees it. 0 when there is no CLI. */
-static BPTR dup_path(void)
-{
-    struct CommandLineInterface *cli = Cli();
-    BPTR head = 0, *tail = &head, p;
-    if (!cli)
-        return 0;
-    for (p = cli->cli_CommandDir; p; ) {
-        BPTR *src = (BPTR *)BADDR(p);
-        BPTR *n = (BPTR *)AllocVec(2 * sizeof(BPTR), MEMF_PUBLIC | MEMF_CLEAR);
-        if (!n)
-            break;
-        n[1] = DupLock(src[1]);
-        *tail = MKBADDR(n);
-        tail = &n[0];
-        p = src[0];
-    }
-    return head;
-}
-
-static void free_path(BPTR p)
-{
-    while (p) {
-        BPTR *n = (BPTR *)BADDR(p);
-        BPTR next = n[0];
-        if (n[1])
-            UnLock(n[1]);
-        FreeVec(n);
-        p = next;
-    }
-}
+#include "proclaunch.h"
 
 int act_run(const char *cmd)
 {
     BPTR in = Open((STRPTR)"NIL:", MODE_OLDFILE);
     BPTR out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-    BPTR path = dup_path();
+    BPTR path = pl_dup_path();
     LONG rc;
     if (!cmd || !*cmd)
         return 0;
@@ -64,7 +31,7 @@ int act_run(const char *cmd)
             Close(in);
         if (out)
             Close(out);
-        free_path(path);
+        pl_free_path(path);
         return 0;
     }
     return 1;
@@ -106,19 +73,19 @@ int act_in_window(const char *cmd, int cols, int rows)
     LONG rc;
     window_spec(full, sizeof full, cols, rows);
     w = Open((STRPTR)full, MODE_NEWFILE);
-    path = dup_path();
+    path = pl_dup_path();
     termenv_ensure();
     if (!cmd || !*cmd || !w) {
         if (w)
             Close(w);
-        free_path(path);
+        pl_free_path(path);
         return 0;
     }
     rc = SystemTags((STRPTR)cmd, SYS_Input, w, SYS_Output, 0, SYS_Asynch, TRUE,
                     NP_StackSize, 65536, path ? NP_Path : TAG_IGNORE, path, TAG_END);
     if (rc == -1) {
         Close(w);
-        free_path(path);
+        pl_free_path(path);
         return 0;
     }
     return 1;
@@ -151,35 +118,14 @@ static void srv_start_proc(void *user)
 {
     const mo_srv *s = (const mo_srv *)user;
     char path[160], line[176];
-    ULONG stack = 262144;
-    BPTR in, out, p, seg;
-    LONG rc;
     cl_copy(path, g_srv_dir, sizeof path);
     if (path[0] && path[strlen(path) - 1] != ':' && path[strlen(path) - 1] != '/')
         cl_cat(path, "/", sizeof path);
     cl_cat(path, s->task, sizeof path);
-    seg = LoadSeg((STRPTR)path);
-    if (seg) {
-        ULONG v = seg_stack(seg);
-        if (v > stack)
-            stack = v;
-        UnLoadSeg(seg);
-    }
     cl_copy(line, "\"", sizeof line);
     cl_cat(line, path, sizeof line);
     cl_cat(line, "\" serve", sizeof line);
-    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
-    out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-    p = dup_path();
-    rc = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
-                    NP_Name, (ULONG)s->task, NP_StackSize, stack, p ? NP_Path : TAG_IGNORE, p, TAG_END);
-    if (rc == -1) {
-        if (in)
-            Close(in);
-        if (out)
-            Close(out);
-        free_path(p);
-    }
+    pl_start(line, path, 262144, s->task);
 }
 
 /* the instance for a style, its reply port made on first use; 0 when no port can be made */

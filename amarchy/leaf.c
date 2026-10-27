@@ -15,6 +15,8 @@
 #include "../prefs/prefs_asl.h"
 #include "amconf_dos.h"
 #include "gthemes_dos.h"
+#include "pkgs_core.h"
+#include "proclaunch.h"
 #include "wblaunch.h"
 #include "clips_core.h"
 #include "../handler/clip.h"
@@ -309,12 +311,21 @@ void lf_setting_rechip(const mn_item *it, int n, long *out)
     lf_setting_chips(amconf_dos_io(), it, n, out);
 }
 
+static int start_detached(const char *line, const char *label, const lf_ui *ui);
+
 int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 {
     char err[160];
     int ci = lf_clip_entry(path);
     long lh = ix_lister_of(path);
-    char tname[GT_NAME];
+    char tname[GT_NAME], launch[PK_PATH], line[512];
+    if (!strncmp(path, IX_PKG_NONE, sizeof IX_PKG_NONE - 1))   /* the empty Packages menu's row */
+        return 0;
+    if (pk_path_launch(path, launch, sizeof launch)) {  /* an Install > Packages row: its program starts */
+        if (!shell_line(line, sizeof line, launch, label, ui))
+            return UPREQ_FAILED;
+        return start_detached(line, label, ui);
+    }
     if (gt_path_name(path, tname, sizeof tname)) {      /* a Style > Theme row: the drawn menu's theme is saved */
         if (gt_dos_select(tname, err, (int)sizeof err))
             return 0;
@@ -349,25 +360,16 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 }
 
 /* detach: the program runs on its own, with NIL: as input and output and no window anywhere. Through
- * the UP-Term shell like run:, so detach:amarchy-index finds the indexer. */
-static int start_detached(const char *line, const km_menu *m, const lf_ui *ui)
+ * the UP-Term shell like run:, so detach:amarchy-index finds the indexer. The stack is the one the line's
+ * program asks for in its $STACK cookie (vsh: 262144, RULES.md rule 6), 32768 at least. */
+static int start_detached(const char *line, const char *label, const lf_ui *ui)
 {
-    BPTR in, out;
-    LONG rc;
-    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
-    out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-    rc = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
-                         NP_StackSize, 32768, TAG_END);
-    if (rc == -1) {                 /* not started: the files are still ours */
-        if (in)
-            Close(in);
-        if (out)
-            Close(out);
-        if (ui && ui->refused)
-            ui->refused(ui->ctx, m->label, UPREQ_FAILED, "it could not be started");
-        return UPREQ_FAILED;
-    }
-    return 0;
+    char prog[256];
+    if (pl_start(line, lf_command_program(line, prog, (int)sizeof prog) ? prog : 0, 32768, 0))
+        return 0;
+    if (ui && ui->refused)
+        ui->refused(ui->ctx, label, UPREQ_FAILED, "it could not be started");
+    return UPREQ_FAILED;
 }
 
 static int run_detached(const km_menu *m, const lf_ui *ui)
@@ -375,7 +377,7 @@ static int run_detached(const km_menu *m, const lf_ui *ui)
     char line[512];
     if (!shell_line(line, sizeof line, m->arg, m->label, ui))
         return UPREQ_FAILED;
-    return start_detached(line, m, ui);
+    return start_detached(line, m->label, ui);
 }
 
 /* viewer: amarchy-gui by its full path from the directory this program was loaded from (the commodity's own
@@ -389,7 +391,7 @@ static int run_viewer(const km_menu *m, const lf_ui *ui)
             ui->refused(ui->ctx, m->label, UPREQ_FAILED, "the key viewer is not beside this program");
         return UPREQ_FAILED;
     }
-    return start_detached(line, m, ui);
+    return start_detached(line, m->label, ui);
 }
 
 struct RxsLib *RexxSysBase;   /* opened around each win: send (send_win) */

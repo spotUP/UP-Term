@@ -316,6 +316,11 @@ int ix_add_pkgs(ix_index *x, const char *const *labels, const char *const *launc
     return 1;
 }
 
+int ix_pkgs_due(const ix_index *x, const char *node)
+{
+    return x && node && !strcmp(node, IX_PKGS_NODE) && !x->kstart[IX_NKINDS + 7];
+}
+
 int ix_lister_handles(const char *answer, unsigned long *out, int max)
 {
     int n = 0;

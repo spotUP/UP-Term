@@ -168,6 +168,23 @@ int lf_shell_command(char *out, int cap, const char *vsh, const char *cmd)
     return 1;
 }
 
+int lf_command_program(const char *line, char *out, int cap)
+{
+    const char *p = line, *e;
+    int q;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    q = *p == '"';
+    p += q;
+    for (e = p; *e && (q ? *e != '"' : *e != ' ' && *e != '\t'); e++)
+        ;
+    if (e == p || (q && *e != '"') || e - p >= cap)
+        return 0;
+    memcpy(out, p, (size_t)(e - p));
+    out[e - p] = 0;
+    return 1;
+}
+
 /* the n characters at s end in suffix, any case (vbcc has no strncasecmp) */
 static int ends_ci(const char *s, int n, const char *suffix)
 {

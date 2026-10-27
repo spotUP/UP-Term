@@ -120,6 +120,9 @@ int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *na
  * and path "pkg:<launches[i]>"; n = 0 stores one row "No installed package has a program to start" (path IX_PKG_NONE).
  * Replaces the ones stored before; every adder above drops them (call this last). 1, or 0 on no memory. */
 int ix_add_pkgs(ix_index *x, const char *const *labels, const char *const *launches, int n);
+/* 1 when the menu enters node IX_PKGS_NODE and x has no package rows yet: the caller loads them (pkgs_dos.h) then,
+ * not on every open (upkg costs about 100 ms), and sizes its level buffers again (ix_level_cap grows). */
+int ix_pkgs_due(const ix_index *x, const char *node);
 int ix_lister_handles(const char *answer, unsigned long *out, int max);
 /* The row of one lister from its `lister query <handle> path` answer (a trailing CR/LF and surrounding blanks
  * are dropped, spaces inside kept). kind IX_KIND_LISTER, label the last drawer ("Work:Dev/My Stuff" gives "My Stuff",

@@ -21,6 +21,7 @@
 #include "ixwatch.h"
 #include "leaf.h"
 #include "gthemes_dos.h"
+#include "pkgs_dos.h"
 #include "menu_open.h"
 #include <signal.h>
 #include <fcntl.h>
@@ -199,6 +200,14 @@ static int menu_levels(const char *start)
     filter[0] = 0;
     keep[0] = 0;
     for (;;) {
+        if (ix_pkgs_due(&ixs, node)) {      /* Install > Packages entered: upkg gives its rows now, not on every open */
+            free_level();
+            pk_dos_load_rows(&ixs);
+            if (!alloc_level()) {
+                ui_message("%s", "amarchy-menu: out of memory");
+                return 20;
+            }
+        }
         n = ix_level_t(&km, &ixs, node, filter, it, cap, menu_cond);
         lf_setting_relabel(it, n);          /* a settings row shows its value */
         c = mn_filter(it, n, filter, idx, cap);

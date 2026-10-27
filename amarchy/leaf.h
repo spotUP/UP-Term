@@ -24,6 +24,10 @@ int lf_screen_spec(char *out, int cap, const char *spec, const char *screen);
  * SystemTags on "nvim" returned -1: AMB, Apps > Editor did nothing). Without one, cmd as it is. 0 (out "")
  * when it does not fit in cap, or cmd holds a '"' or a control character. */
 int lf_shell_command(char *out, int cap, const char *vsh, const char *cmd);
+/* The program a command line starts: its first word, quotes dropped (`"UP-Term:bin/vsh" -c "x"` gives
+ * UP-Term:bin/vsh). A launcher reads that file's $STACK cookie (proclaunch.h). 0 when empty, an open quote, or
+ * it does not fit in cap. */
+int lf_command_program(const char *line, char *out, int cap);
 
 /* The command line a rexx: row or bind runs (the commodity's act_rexx and the menus' LF_REXX share it). A
  * script, where the first word is a path (holds ':' or '/') or ends in .rexx or .rx: `RX <arg>`, the rest of

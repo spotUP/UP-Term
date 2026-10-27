@@ -1210,7 +1210,10 @@ static void install_packages_lists_the_package_rows(void)
     CHECK(n > 0 && keymap_parse(&km, file, n));
     memset(&x, 0, sizeof x);
     CHECK(ix_add_gthemes(&x, labels, labels, 2));
+    CHECK(!ix_pkgs_due(&x, "install"));             /* upkg runs only when the menu enters Packages */
+    CHECK(ix_pkgs_due(&x, IX_PKGS_NODE));
     CHECK(ix_add_pkgs(&x, labels, launches, 2));
+    CHECK(!ix_pkgs_due(&x, IX_PKGS_NODE));          /* once per index */
     c = ix_level_t(&km, &x, IX_PKGS_NODE, "", it, MN_MAX_ITEMS, 0);
     CHECK_INT(c, 2);
     CHECK_STR(it[0].label, "nvim");
@@ -1235,6 +1238,9 @@ static void install_packages_lists_the_package_rows(void)
     CHECK_STR(x.rows[it[0].ix].path, IX_PKG_NONE);
     CHECK(ix_add_gthemes(&x, labels, labels, 1));    /* an earlier adder run again drops the package rows */
     CHECK_INT(ix_level_t(&km, &x, IX_PKGS_NODE, "", it, MN_MAX_ITEMS, 0), 0);
+    CHECK(ix_pkgs_due(&x, IX_PKGS_NODE));           /* so they load again on the next entry */
+    CHECK(ix_add_pkgs(&x, labels, launches, 0));
+    CHECK(!ix_pkgs_due(&x, IX_PKGS_NODE));          /* the inert row counts as loaded: upkg is not rerun */
     ix_free(&x);
 }
 static void terminal_rows_show_only_over_a_terminal(void)
@@ -2083,6 +2089,24 @@ static void a_run_row_starts_its_command_through_the_upterm_shell(void)
     CHECK_INT(lf_shell_command(out, sizeof out, "UP-Term:bin/vsh", ""), 0);
 }
 
+/* A detached start (detach: rows, Install > Packages rows) gives the program the stack its $STACK cookie asks
+ * for (RULES.md rule 6): the launcher loads the line's first word. vsh asks 262144; it was started on 32768. */
+static void a_detached_line_names_the_program_whose_stack_cookie_counts(void)
+{
+    char o[64], small[6];
+    CHECK(lf_command_program("\"UP-Term:bin/vsh\" -c \"gamma-go\"", o, (int)sizeof o));
+    CHECK_STR(o, "UP-Term:bin/vsh");
+    CHECK(lf_command_program("  UP-Term:bin/nvim -R x", o, (int)sizeof o));
+    CHECK_STR(o, "UP-Term:bin/nvim");
+    CHECK(lf_command_program("\"Work:My Game/go\" -w", o, (int)sizeof o));
+    CHECK_STR(o, "Work:My Game/go");
+    CHECK(lf_command_program("tmux", o, (int)sizeof o));
+    CHECK_STR(o, "tmux");
+    CHECK(!lf_command_program("\"Work:open", o, (int)sizeof o));
+    CHECK(!lf_command_program("   ", o, (int)sizeof o));
+    CHECK(!lf_command_program("UP-Term:x", small, (int)sizeof small));
+}
+
 /* Owner's A1200, 2026-10-26: no DOpus hotkey or menu row did anything. RX "<arg>" runs the
  * quoted text as an inline program, so a script path was never opened; a script goes to RX bare,
  * an inline string stays quoted. */
@@ -2570,6 +2594,7 @@ void suite_keymap(void)
 {
     style_theme_lists_the_gui_theme_rows();
     install_packages_lists_the_package_rows();
+    a_detached_line_names_the_program_whose_stack_cookie_counts();
     the_scan_record_has_a_layout_version_and_an_older_one_is_not_read();
     a_failed_cache_write_is_its_own_stage_and_not_reported_as_died();
     a_scan_leaf_parses_to_ka_scan_and_a_detach_leaf_stays_ka_detach();

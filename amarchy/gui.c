@@ -33,6 +33,7 @@
 #include "menu_theme.h"
 #include "leaf.h"
 #include "gthemes_dos.h"
+#include "pkgs_dos.h"
 #include "menu_open.h"
 #include "taskalive.h"
 #include "atiming.h"
@@ -544,10 +545,14 @@ static void relayout(gui *g, int n)
  * the first real entry. */
 static int keep_setting = -1;   /* the SDI_* id of the setting row the cursor stays on after a set, else -1 */
 
+static int load_due(gui *g);
+
 static void list_rebuild_keep(gui *g, const char *keep)
 {
-    int n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
-    int pos;
+    int n, pos;
+    if (!load_due(g))
+        return;
+    n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
     lf_setting_relabel(g->it, n);       /* a settings row shows its value */
     lf_setting_rechip(g->it, n, g->chip);
     g->shift = g->wt.row[0] ? 1 : 0;
@@ -645,25 +650,41 @@ static void index_drawers(void)
     minimal = amconf_style(&ap) == UC_MENU_MINIMAL;
 }
 
-/* The scan finished: read the new index (the Apps level has new rows). 0 when memory ran out. */
-static int reload_index(gui *g)
+/* Size the level buffers for the index as it is now (ix_level_cap). 0 when memory ran out. */
+static int size_level(gui *g)
 {
     free(g->it);
     free(g->idx);
     free(g->chip);
-    g->chip = 0;
-    g->it = 0;
-    g->idx = 0;
+    g->cap = ix_level_cap(&ixs);
+    g->it = malloc(g->cap * sizeof *g->it);
+    g->chip = malloc(g->cap * sizeof *g->chip);
+    g->idx = malloc(g->cap * sizeof *g->idx);
+    return g->it && g->idx;
+}
+
+/* The scan finished: read the new index (the Apps level has new rows). 0 when memory ran out. */
+static int reload_index(gui *g)
+{
     ix_free(&ixs);
     index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
     lf_load_listers(&ixs);
     gt_dos_load_rows(&ixs);
-    g->cap = ix_level_cap(&ixs);
-    g->it = malloc(g->cap * sizeof *g->it);
-    g->chip = malloc(g->cap * sizeof *g->chip);
-    g->idx = malloc(g->cap * sizeof *g->idx);
-    if (g->it && g->idx)
+    if (size_level(g))
+        return 1;
+    g->quit = g->stop = 1;
+    return 0;
+}
+
+/* Install > Packages is entered for the first time this open: upkg gives its rows now, not on every open
+ * (ix_pkgs_due), and the level buffers grow. 0 when memory ran out. */
+static int load_due(gui *g)
+{
+    if (!ix_pkgs_due(&ixs, g->node))
+        return 1;
+    pk_dos_load_rows(&ixs);
+    if (size_level(g))
         return 1;
     g->quit = g->stop = 1;
     return 0;
@@ -1214,11 +1235,10 @@ static int gui_open(int viewer, const char *node)
         int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);
         ix_watcher_begin(&g->wt, 0, have0, have0 ? &p0 : 0, alive0);
     }
-    g->cap = ix_level_cap(&ixs);
-    g->it = malloc(g->cap * sizeof *g->it);
-    g->chip = malloc(g->cap * sizeof *g->chip);
-    g->idx = malloc(g->cap * sizeof *g->idx);
-    if (!g->it || !g->idx) {
+    g->it = 0;
+    g->idx = 0;
+    g->chip = 0;
+    if (!size_level(g)) {
         PutStr((STRPTR) "amarchy-gui: out of memory\n");
         rc = 20;
         goto done;
@@ -1285,6 +1305,11 @@ static int gui_open(int viewer, const char *node)
         g->icon_h = mi_count() > 0 && !minimal && app_icons != UC_ICONS_NONE ? mi_size(&m) : 0;
         g->icon_w = mi_count() > 0 && !minimal && app_icons != UC_ICONS_NONE ? mi_width(&m, &g->ms) : 0;
         g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond);
+        if (!load_due(g)) {
+            PutStr((STRPTR) "amarchy-gui: out of memory\n");
+            rc = 20;
+            goto done;
+        }
         n = ix_level_t(&km, &ixs, g->node, g->filter, g->it, g->cap, menu_cond);
         lf_setting_relabel(g->it, n);
         lf_setting_rechip(g->it, n, g->chip);
