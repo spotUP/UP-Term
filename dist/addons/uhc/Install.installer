@@ -5,11 +5,11 @@
 ; welcome: n = 8, lead 3
 (message
     "\n\n\nU H C   T O O L S\n\n"
-    "The UHC tools (aget, UHCSearch and the get and\n"
-    "search scripts) are downloaded from their author\n"
-    "(uhc.megaburken.net) and go into SYS:UHC (a UHC\n"
-    "already there is used as it is, nothing is replaced).\n"
-    "Needs up-term.lha and a network connection.\n"
+    "UHC's own installer (uhcinstall) is downloaded from\n"
+    "its author (uhc.megaburken.net) and run: it installs\n"
+    "the UHC tools into SYS:UHC (a UHC already there is\n"
+    "used as it is, nothing is replaced).\n"
+    "Needs up-term.lha, LhA and a network connection.\n"
     (all))
 ; the download (about 150 KB) and its unpacked tree (about 1.2 MB) are not in the kit, so not in the part size
 (set #kb-uhc (+ @KBFETCHUHC@ 1400))
@@ -40,7 +40,7 @@
 (P_OPTIONS)
 
 (set #step "fetch-uhc" #kb #kb-uhc #n 1
-     #why "Downloading the UHC tools to SYS:UHC.")
+     #why "Running the UHC installer (tools go to SYS:UHC).")
 (P_STEP)
 
 (set #n 6)

@@ -2,10 +2,10 @@ up-uhc: parts, licences and where the source is
 
 Part                          Licence                          Source
 ----------------------------  -------------------------------  --------------------------------------------
-UHC tools (downloaded)        by the author (Patrik, UHC)      https://uhc.megaburken.net/uhctools_os3.lha
-install scripts, two stubs    UP-Term's licence                this package
+UHC tools (downloaded)        by the author (Patrik, UHC)      https://uhc.megaburken.net/uhcinstall
+install scripts               UP-Term's licence                this package
 
 Notes
-- This package contains no UHC file. Install downloads the author's archive uhctools_os3.lha from his server
-  (mirrors: uhc.driar.se, uhc.a1k.org, uhc.no0b.de, uhc.hex9d.com) and unpacks it as it is.
-- Only S/uhcupdate and S/uhccheck are replaced, on your machine, by the two stubs of this package.
+- This package contains no UHC file. Install downloads the author's installer uhcinstall from his server and runs
+  it as it is; that installer downloads uhctools_os3.lha (mirrors: uhc.driar.se, uhc.a1k.org, uhc.no0b.de,
+  uhc.hex9d.com) and unpacks it. No UHC file is replaced or changed.

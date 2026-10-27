@@ -1445,11 +1445,12 @@ dist-dopus: $(BUILD)/amiga/upupdate
 	  mkdir -p $(KIT_dopus)/Files/$$drawer && lha -xqw=$(KIT_dopus)/Files/$$drawer $(VENDOR)/dopus5-5.104/$$a || exit 1; \
 	done
 	python3 tools/mkkit.py dopus
-# up-uhc: no UHC files (owner decision 2026-10-27): install.dos downloads the author's uhctools_os3.lha on the
-# user's machine. The kit holds only our two stubs for S/uhcupdate and S/uhccheck (D4), staged in Files/stubs.
+# up-uhc: no UHC files (owner decision 2026-10-27): install.dos downloads the author's installer uhcinstall on the
+# user's machine and runs it. The kit holds only unstartup-uhc.sh (dist/unstartup.sh, copied), which takes the legacy
+# ";BEGIN uhc" block of up-uhc 1.0 to 1.3 out of S:User-Startup.
 dist-uhc: $(BUILD)/amiga/upupdate
 	$(call ADDON_STAGE,uhc)
-	mkdir -p $(KIT_uhc)/Files/stubs && cp dist/addons/uhc/stubs/uhcupdate dist/addons/uhc/stubs/uhccheck $(KIT_uhc)/Files/stubs/
+	cp dist/unstartup.sh $(KIT_uhc)/Files/unstartup-uhc.sh
 	python3 tools/mkkit.py uhc
 # every package of dist/slim.txt (P9): the ports' own files at the paths the base used to carry, taken from the
 # same PORTS_KIT as dist-base, which removes them

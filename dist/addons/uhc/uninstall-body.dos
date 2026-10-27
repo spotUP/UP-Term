@@ -1,59 +1,39 @@
-; Up-uhc's UHC tree is SYS:UHC (up-uhc 1.0 to 1.3: UP-Term:uhc). Only a tree up-uhc made is ever touched: its
-; install wrote UHC-Remove (one Delete per file the archive delivered) into it, and that file is the record of
-; ownership. A UHC install that was there before (the author's own, SYS:UHC/UHC-Startup without UHC-Remove) is
-; the user's: its files, UHC: assign, variables and S:User-Startup block stay as they are.
-Set uhcours 0
-If EXISTS SYS:UHC/UHC-Remove
-  Set uhcours 1
-EndIf
-If EXISTS UP-Term:uhc
-  Set uhcours 1
-EndIf
-; this package's block in S:User-Startup (";BEGIN uhc" to ";END uhc"; the author's own block is ";BEGIN UHC"):
-; UP-Term's unstartup.sh takes out just that block, whatever else was added since. Without it the block
-; stays (it does nothing once SYS:UHC is gone) and the message says where it is.
-If "$uhcours" EQ 1
-  Assign >NIL: UHC: EXISTS
+; Up-uhc 1.5 puts nothing of its own into the UHC tree: UHC's own installer (uhcinstall) made SYS:UHC, its
+; ";BEGIN UHC" block in S:User-Startup, UHCBIN and ENVARC:UHC, so they are UHC's and stay on uninstall (SYS:UHC,
+; the UHC: assign, ENV:UHC, ENVARC:UHC, your packages). Only what up-uhc 1.0 to 1.3 left is taken out: its UHC
+; tree in UP-Term:uhc and its lowercase block ";BEGIN uhc" in S:User-Startup, which names UP-Term:uhc.
+FailAt 21
+Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"
+If NOT WARN
+  Assign >NIL: UP-Term: EXISTS
   If NOT WARN
-    Assign UHC:
-  EndIf
-  Search >NIL: S:User-Startup ";BEGIN uhc"
-  If NOT WARN
-    Assign >NIL: UP-Term: EXISTS
-    If NOT WARN
-      If EXISTS UP-Term:bin/vsh
-        If EXISTS ENVARC:up-term/unstartup.sh
+    If EXISTS UP-Term:bin/vsh
+      If EXISTS ENVARC:up-term/unstartup.sh
+        Delete >NIL: T:User-Startup.up-term QUIET
+        UP-Term:bin/vsh ENVARC:up-term/unstartup.sh uhc
+        If EXISTS T:User-Startup.up-term
+          Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
           Delete >NIL: T:User-Startup.up-term QUIET
-          UP-Term:bin/vsh ENVARC:up-term/unstartup.sh uhc
-          If EXISTS T:User-Startup.up-term
-            Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
-            Delete >NIL: T:User-Startup.up-term QUIET
-          EndIf
-        Else
-          Echo "S:User-Startup still has the lines from ;BEGIN uhc to ;END uhc (harmless; delete them by hand)."
         EndIf
       EndIf
-    Else
-      Echo "S:User-Startup still has the lines from ;BEGIN uhc to ;END uhc (harmless; delete them by hand)."
     EndIf
   EndIf
-  Delete >NIL: ENV:UHCBIN QUIET
-  ; the settings in ENVARC:UHC are yours and stay (as ENVARC:Claude does), over remove and over upgrade, which
-  ; runs this part too
-  Delete >NIL: ENV:UHC ALL QUIET
+  Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"
+  If NOT WARN
+    Echo "S:User-Startup still has the lines from ;BEGIN uhc to ;END uhc (harmless; delete them by hand)."
+  EndIf
 EndIf
-; The tree: only the files the archive delivered are deleted (install.dos wrote them as UHC-Remove, one Delete
-; each, with the full path), then the two stubs, then each drawer that is left empty. What UHC made afterwards
-; (the packages the user installed with pkg: ExtBin, ExtDoc, Packages/Installed, db, dblocations) stays, like
-; ENVARC:UHC, over remove and over upgrade. The drawer is never deleted whole.
-FailAt 21
-If EXISTS SYS:UHC/UHC-Remove
-  Execute SYS:UHC/UHC-Remove
-  Delete >NIL: SYS:UHC/UHC-Remove QUIET FORCE
-  Delete >NIL: SYS:UHC/S/uhcupdate SYS:UHC/S/uhccheck QUIET FORCE
-  Delete >NIL: SYS:UHC/C SYS:UHC/S SYS:UHC/Packages SYS:UHC QUIET
-  If EXISTS SYS:UHC
-    Echo "SYS:UHC/ExtBin, ExtDoc and Packages/Installed (your UHC packages) stay; delete SYS:UHC by hand to take them too."
+; the old UHC variables of up-uhc 1.0 to 1.3 (UHCBIN naming UP-Term:)
+If EXISTS ENV:UHCBIN
+  Search >NIL: ENV:UHCBIN "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENV:UHCBIN QUIET
+  EndIf
+EndIf
+If EXISTS ENVARC:UHCBIN
+  Search >NIL: ENVARC:UHCBIN "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENVARC:UHCBIN QUIET
   EndIf
 EndIf
 ; installed by up-uhc 1.0 to 1.3 into UP-Term:uhc

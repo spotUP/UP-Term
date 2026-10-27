@@ -1,10 +1,12 @@
 .KEY DIR/A,STEP/K
 .BRA {
 .KET }
-; up-uhc install: the UHC tools for AmigaOS 3 (aget, UHCSearch and the get/search scripts) live in SYS:UHC, one tree.
-; An existing UHC install (SYS:UHC/UHC-Startup, or UHCBIN naming a drawer) is used as it is; without one the author's
-; tools are downloaded, unmodified but for two stubs, into SYS:UHC. No UHC variable ever names UP-Term:, because the
-; UHC block in S:User-Startup runs before UP-Term: is assigned and a path there stops the boot at a volume requester.
+; up-uhc install (1.5): the UHC tools for AmigaOS 3 live in SYS:UHC, installed by the author's own installer.
+; An existing UHC install (SYS:UHC/UHC-Startup, or UHCBIN naming an existing drawer) is used as it is and never
+; touched: a second run of uhcinstall would prepend a second ;BEGIN UHC block and reset ENVARC:UHC. Without one,
+; uhcinstall is downloaded and run (ARCH=os3 DEST=SYS:UHC SILENT); it downloads, unpacks and configures UHC itself.
+; No UHC variable ever names UP-Term:, because the UHC block in S:User-Startup runs before UP-Term: is assigned
+; and a path there stops the boot at a volume requester.
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer
@@ -19,115 +21,175 @@ If NOT "{STEP}" EQ ""
 EndIf
 ; @include dist/common/@CHECKFRAG@
 Lab fetch-uhc
-; Where UHC lives (owner decision 2026-10-27): SYS:UHC. Mode "foreign": a UHC install is there already (the
-; author's own installer made it, or UHCBIN names an existing drawer): it is used as it is, nothing of it is
-; downloaded, overwritten, stubbed or recorded for Uninstall, and no second ;BEGIN UHC block is written. Mode
-; "fresh": nothing there, the author's tools are downloaded into SYS:UHC below.
-; A UHCBIN of up-uhc 1.0 to 1.3 (UP-Term:uhc) is stale: dropped here, so an upgrade does not take it for a UHC install.
-If "$UHCBIN" EQ "UP-Term:uhc/"
-  Delete >NIL: ENV:UHCBIN QUIET
+; 1. Leftovers of up-uhc 1.0 to 1.3 (UHC in UP-Term:uhc). The legacy lowercase block ";BEGIN uhc" names
+; UP-Term:uhc and stops the boot at a volume requester: it goes out of S:User-Startup with this archive's own copy of
+; unstartup.sh (Files/unstartup-uhc.sh, built from dist/unstartup.sh; the base's ENVARC:up-term/unstartup.sh may be
+; an old one that cannot take a named block out, or missing, so nothing here depends on it). The author's own block is ";BEGIN UHC" (upper case): unstartup.sh matches case-sensitively
+; and leaves it alone.
+Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"
+If NOT WARN
+  Delete >NIL: T:User-Startup.up-term QUIET
+  UP-Term:bin/vsh unstartup-uhc.sh uhc
+  If EXISTS T:User-Startup.up-term
+    Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+    If WARN
+      Quit 20
+    EndIf
+    Delete >NIL: T:User-Startup.up-term QUIET
+  EndIf
+  Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"
+  If NOT WARN
+    Echo "[ERROR] S:User-Startup still names UP-Term:uhc in the block ;BEGIN uhc (delete it by hand: it stops the boot at a volume requester)."
+    Quit 20
+  EndIf
 EndIf
-If "$UHCBIN" EQ "UP-Term:uhc"
-  Delete >NIL: ENV:UHCBIN QUIET
+; Variables that name UP-Term: (UHCBIN, UHC/EXTBIN, UHC/EXTDOC of 1.0 to 1.3) go from ENV: and ENVARC:. Each test
+; reads the file for the text "UP-Term:"; none tests a variable expansion with EXISTS, which on an empty
+; expansion means the current directory (true).
+If EXISTS ENV:UHCBIN
+  Search >NIL: ENV:UHCBIN "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENV:UHCBIN QUIET
+  EndIf
 EndIf
+If EXISTS ENVARC:UHCBIN
+  Search >NIL: ENVARC:UHCBIN "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENVARC:UHCBIN QUIET
+  EndIf
+EndIf
+If EXISTS ENV:UHC/EXTBIN
+  Search >NIL: ENV:UHC/EXTBIN "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENV:UHC/EXTBIN QUIET
+  EndIf
+EndIf
+If EXISTS ENVARC:UHC/EXTBIN
+  Search >NIL: ENVARC:UHC/EXTBIN "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENVARC:UHC/EXTBIN QUIET
+  EndIf
+EndIf
+If EXISTS ENV:UHC/EXTDOC
+  Search >NIL: ENV:UHC/EXTDOC "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENV:UHC/EXTDOC QUIET
+  EndIf
+EndIf
+If EXISTS ENVARC:UHC/EXTDOC
+  Search >NIL: ENVARC:UHC/EXTDOC "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENVARC:UHC/EXTDOC QUIET
+  EndIf
+EndIf
+; 2. Mode. "foreign": a UHC install exists (SYS:UHC/UHC-Startup, or UHCBIN set to an existing drawer): used as it
+; is. "fresh": nothing there, uhcinstall runs. "Set" is tested with GetEnv and WARN, then the value is tested
+; for being non-empty before EXISTS sees it.
 Set uhcmode fresh
+Set uhcdir SYS:UHC/
 If EXISTS SYS:UHC/UHC-Startup
   Set uhcmode foreign
 EndIf
-If EXISTS "$UHCBIN"
-  Set uhcmode foreign
-EndIf
-If NOT EXISTS "$UHCBIN"
-  SetEnv UHCBIN SYS:UHC/
+GetEnv >NIL: UHCBIN
+If NOT WARN
+  Set uhcbin "`GetEnv UHCBIN`"
+  If NOT "$uhcbin" EQ ""
+    If EXISTS "$uhcbin"
+      Set uhcmode foreign
+      Set uhcdir "$uhcbin"
+    EndIf
+  EndIf
 EndIf
 If "$uhcmode" EQ fresh
-Delete >NIL: T:uhctools_os3.lha QUIET
-Delete >NIL: T:uhc-unpack ALL QUIET
-FailAt 1000
-If EXISTS UP-Term:bin/curl
-  UP-Term:bin/curl -fsSL -o T:uhctools_os3.lha https://uhc.megaburken.net/uhctools_os3.lha
-Else
-  If EXISTS UP-Term:bin/bebboget
-    UP-Term:bin/bebboget -O -o T:uhctools_os3.lha https://uhc.megaburken.net/uhctools_os3.lha
-  Else
-    FailAt 21
-    Echo "[ERROR] UHC cannot be downloaded: neither UP-Term:bin/curl nor UP-Term:bin/bebboget is installed."
-    Quit 20
-  EndIf
-EndIf
-If WARN
-  FailAt 21
-  Echo "[ERROR] UHC download from https://uhc.megaburken.net/uhctools_os3.lha failed (network or server)."
-  Quit 20
-EndIf
-If NOT EXISTS T:uhctools_os3.lha
-  FailAt 21
-  Echo "[ERROR] UHC download from https://uhc.megaburken.net/uhctools_os3.lha left no file."
-  Quit 20
-EndIf
-MakeDir T:uhc-unpack
-CD T:uhc-unpack
-Which >NIL: lha
-If NOT WARN
-  lha x T:uhctools_os3.lha
-Else
-  If EXISTS UP-Term:bin/tar
-    UP-Term:bin/tar -xf T:uhctools_os3.lha
-  Else
-    FailAt 21
-    CD "{DIR}"
-    Echo "[ERROR] UHC cannot be unpacked: neither lha nor UP-Term:bin/tar is installed."
-    Quit 20
-  EndIf
-EndIf
-If WARN
-  FailAt 21
-  CD "{DIR}"
-  Echo "[ERROR] UHC archive could not be unpacked."
-  Quit 20
-EndIf
-FailAt 21
-CD "{DIR}"
-; the expected UHC: the author's version strings in the scripts and the tool the others need
-Search >NIL: T:uhc-unpack/UHCFixENV "VER: UHCFixENV 1."
-If WARN
-  Echo "[ERROR] the downloaded archive is not the UHC tools this package expects (no UHCFixENV 1.x)."
-  Quit 20
-EndIf
-Search >NIL: T:uhc-unpack/UHC-Startup "VER: UHC-Startup 1."
-If WARN
-  Echo "[ERROR] the downloaded archive is not the UHC tools this package expects (no UHC-Startup 1.x)."
-  Quit 20
-EndIf
-If NOT EXISTS T:uhc-unpack/C/aget
-  Echo "[ERROR] the downloaded archive is not the UHC tools this package expects (no C/aget)."
-  Quit 20
-EndIf
-MakeDir >NIL: UP-Term:licenses
-If NOT EXISTS SYS:UHC
-  MakeDir SYS:UHC
+  ; uhcinstall needs aget or wget on the path (without either it stops with "Couldn't find aget or wget"). UP-Term
+  ; ships neither: the author's own aget.os3 is fetched into a T: drawer and put on the path for this install.
+  Which >NIL: aget
   If WARN
+    Which >NIL: wget
+    If WARN
+      MakeDir >NIL: T:up-uhc-bin
+      Delete >NIL: T:up-uhc-bin/aget QUIET
+      FailAt 1000
+      If EXISTS UP-Term:bin/curl
+        UP-Term:bin/curl -fsSL -o T:up-uhc-bin/aget https://uhc.megaburken.net/aget.os3
+      Else
+        If EXISTS UP-Term:bin/bebboget
+          UP-Term:bin/bebboget -O -o T:up-uhc-bin/aget https://uhc.megaburken.net/aget.os3
+        Else
+          FailAt 21
+          Echo "[ERROR] UHC cannot be downloaded: neither UP-Term:bin/curl nor UP-Term:bin/bebboget is installed."
+          Quit 20
+        EndIf
+      EndIf
+      FailAt 21
+      If NOT EXISTS T:up-uhc-bin/aget
+        Echo "[ERROR] aget (UHC's downloader) could not be fetched from https://uhc.megaburken.net/aget.os3 (network or server)."
+        Quit 20
+      EndIf
+      Protect T:up-uhc-bin/aget +e
+      Path T:up-uhc-bin ADD
+    EndIf
+  EndIf
+  ; uhcinstall unpacks UHC with LhA and, when LhA is missing, asks a question that SILENT does not guard: stop
+  ; here instead of hanging on it.
+  Which >NIL: LhA
+  If WARN
+    Echo "[ERROR] LhA is not installed (UHC's installer needs it to unpack UHC). Install LhA (Aminet: util/arc/lha) and run Install again."
+    Quit 20
+  EndIf
+  Delete >NIL: T:uhcinstall QUIET
+  FailAt 1000
+  If EXISTS UP-Term:bin/curl
+    UP-Term:bin/curl -fsSL -o T:uhcinstall https://uhc.megaburken.net/uhcinstall
+  Else
+    If EXISTS UP-Term:bin/bebboget
+      UP-Term:bin/bebboget -O -o T:uhcinstall https://uhc.megaburken.net/uhcinstall
+    Else
+      FailAt 21
+      Echo "[ERROR] UHC cannot be downloaded: neither UP-Term:bin/curl nor UP-Term:bin/bebboget is installed."
+      Quit 20
+    EndIf
+  EndIf
+  If WARN
+    FailAt 21
+    Echo "[ERROR] UHC's installer could not be downloaded from https://uhc.megaburken.net/uhcinstall (network or server)."
+    Quit 20
+  EndIf
+  FailAt 21
+  ; the script's own version line says it is UHC's installer and not an error page
+  Search >NIL: T:uhcinstall "VER: uhcinstall"
+  If WARN
+    Echo "[ERROR] T:uhcinstall is not UHC's installer (no version line): the server sent something else."
+    Quit 20
+  EndIf
+  FailAt 1000
+  Execute T:uhcinstall ARCH=os3 DEST=SYS:UHC SILENT
+  FailAt 21
+  Delete >NIL: T:uhcinstall QUIET
+  Delete >NIL: T:up-uhc-bin ALL QUIET
+  If NOT EXISTS SYS:UHC/UHC-Startup
+    Echo "[ERROR] UHC's installer ran but SYS:UHC/UHC-Startup is not there: UHC was not installed."
+    Quit 20
+  EndIf
+  GetEnv >NIL: UHCBIN
+  If WARN
+    Echo "[ERROR] UHC's installer ran but UHCBIN is not set: UHC was not installed."
+    Quit 20
+  EndIf
+  Set uhcbin "`GetEnv UHCBIN`"
+  If NOT "$uhcbin" EQ "SYS:UHC/"
+    Echo "[ERROR] UHCBIN is $uhcbin, not SYS:UHC/: UHC was not installed where up-uhc expects it."
     Quit 20
   EndIf
 EndIf
-Copy T:uhc-unpack SYS:UHC ALL CLONE QUIET
+; the UHC: assign (UHC-Startup makes it at boot; this one is for the copy below and this session)
+Assign >NIL: UHC: EXISTS
 If WARN
-  Quit 20
+  Assign UHC: "$uhcdir"
 EndIf
-; What the archive delivered (SYS:UHC/UHC-Remove is also how Uninstall knows up-uhc made this tree), as a script of Delete lines (one per file) that Uninstall runs: so remove and upgrade
-; take out the archive's own files and leave what UHC made afterwards (ExtBin, ExtDoc, Packages/Installed, db).
-CD T:uhc-unpack
-List #? ALL FILES LFORMAT="Delete >NIL: *"SYS:UHC/%P%N*" QUIET FORCE" >SYS:UHC/UHC-Remove
-CD "{DIR}"
-Delete >NIL: T:uhctools_os3.lha QUIET
-Delete >NIL: T:uhc-unpack ALL QUIET
-EndIf
-; UHC: names the install from here on (Execute reads no brace, so paths under UHCBIN are written UHC:Name).
-Assign UHC: "$UHCBIN"
-Path UHC:C UHC:S ADD
-; Up-uhc 1.0 to 1.3 kept UHC in UP-Term:uhc: what the user installed there with UHC's pkg (ExtBin, ExtDoc, the
-; Installed records) is copied to SYS:UHC and the old archive files are taken out; the copies of the user's
-; own files stay where they were (into a UHC install of the user's too); delete UP-Term:uhc by hand once the copy is checked.
+; 3. Up-uhc 1.0 to 1.3 kept UHC in UP-Term:uhc: what the user installed there with UHC's pkg (ExtBin, ExtDoc, the
+; Installed records) is copied into the UHC tree and the old archive files are taken out; the copies of the user's
+; own files stay where they were; delete UP-Term:uhc by hand once the copy is checked.
 If EXISTS UP-Term:uhc
   If EXISTS UP-Term:uhc/UHC-Remove
     Execute UP-Term:uhc/UHC-Remove
@@ -158,164 +220,8 @@ If EXISTS UP-Term:uhc
   EndIf
   Echo "Your UHC packages were copied from UP-Term:uhc to the UHC install; UP-Term:uhc can be deleted by hand."
 EndIf
-; UHCBIN ends in "/": UHC's scripts append the name straight on ($UHCBIN then Packages/Installed/<name>, or db).
-; It is SYS:UHC/ (set above, or the user's own value) and is never written to ENVARC:. UHC: and UHCBIN are
-; assigned now and at every boot, as UHC's own UHC-Startup expects (it assigns UHC: from $UHCBIN and adds UHC:C
-; and UHC:S to the path), by a block in S:User-Startup (fresh installs only) that does it only while
-; SYS:UHC is there, so one left behind by an Uninstall that could not take it out does no harm.
-; UHC's scripts read ENV:UHC (TEMPDIR, AMINETMIRROR, READER, EXTBIN, EXTDOC), which only ENVARC:UHC fills at
-; boot, and not always: made here, filled from ENVARC:UHC (the user's settings, kept over upgrade and remove),
-; the missing defaults added by UHC's own UHCFixENV (TEMPDIR, AMINETMIRROR, READER; it also saves them to
-; ENVARC:UHC); the User-Startup block below copies ENVARC:UHC to ENV:UHC at every boot.
-MakeDir >NIL: ENVARC:UHC ENV:UHC
-Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET
-If WARN
-  Quit 20
-EndIf
-If EXISTS UHC:UHCFixENV
-  Execute UHC:UHCFixENV
-EndIf
-; EXTBIN and EXTDOC: UHC's own default, as its S/pkg-envcheck makes them: the drawers ExtBin and ExtDoc under UHCBIN.
-; A value the user set stays; a missing one, one naming a drawer that is not there, and one naming UP-Term:
-; (up-uhc 1.3 wrote those: the UHC block in S:User-Startup runs before UP-Term: is assigned, so a value naming
-; it stops the boot at a volume requester) are replaced.
-If EXISTS ENVARC:UHC/EXTBIN
-  Search >NIL: ENVARC:UHC/EXTBIN "UP-Term:"
-  If NOT WARN
-    Delete >NIL: ENVARC:UHC/EXTBIN ENV:UHC/EXTBIN QUIET
-  EndIf
-EndIf
-If EXISTS ENVARC:UHC/EXTDOC
-  Search >NIL: ENVARC:UHC/EXTDOC "UP-Term:"
-  If NOT WARN
-    Delete >NIL: ENVARC:UHC/EXTDOC ENV:UHC/EXTDOC QUIET
-  EndIf
-EndIf
-If NOT EXISTS "${UHC/EXTBIN}"
-  If NOT EXISTS UHC:ExtBin
-    MakeDir UHC:ExtBin
-    If WARN
-      Quit 20
-    EndIf
-  EndIf
-  Echo >ENVARC:UHC/EXTBIN "$UHCBIN" NOLINE
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>ENVARC:UHC/EXTBIN "ExtBin/" NOLINE
-  If WARN
-    Quit 20
-  EndIf
-  Copy ENVARC:UHC/EXTBIN ENV:UHC/
-  If WARN
-    Quit 20
-  EndIf
-EndIf
-If NOT EXISTS "${UHC/EXTDOC}"
-  If NOT EXISTS UHC:ExtDoc
-    MakeDir UHC:ExtDoc
-    If WARN
-      Quit 20
-    EndIf
-  EndIf
-  Echo >ENVARC:UHC/EXTDOC "$UHCBIN" NOLINE
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>ENVARC:UHC/EXTDOC "ExtDoc/" NOLINE
-  If WARN
-    Quit 20
-  EndIf
-  Copy ENVARC:UHC/EXTDOC ENV:UHC/
-  If WARN
-    Quit 20
-  EndIf
-EndIf
-; uhcupdate and uhccheck replace the whole UHC tools from the author's server; upkg upgrade does that here
-; (the two stubs, Files/stubs, are ours, see README.txt). Only in a tree up-uhc made: a UHC install of the user's
-; keeps its own updater.
-If "$uhcmode" EQ fresh
-  Copy stubs/uhcupdate stubs/uhccheck SYS:UHC/S CLONE QUIET
-  If WARN
-    Quit 20
-  EndIf
-; The script bit (s) on every script of UHC's S drawer (the archive's C drawer holds only programs, the
-; other scripts are run with Execute), so they run by name: Protect <file or pattern> s ADD. The archive's
-; own scripts lost the bit on the way (tar does not carry the Amiga protection bits).
-  Protect SYS:UHC/S/#? s ADD
-  If WARN
-    Quit 20
-  EndIf
-EndIf
-; Up-uhc 1.0 to 1.3 wrote a block naming UP-Term:uhc: out of S:User-Startup first (it is our lowercase block; the
-; author's own is ;BEGIN UHC). Without unstartup.sh it stays and the message says so.
-Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"
-If NOT WARN
-  If EXISTS ENVARC:up-term/unstartup.sh
-    Delete >NIL: T:User-Startup.up-term QUIET
-    UP-Term:bin/vsh ENVARC:up-term/unstartup.sh uhc
-    If EXISTS T:User-Startup.up-term
-      Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
-      If WARN
-        Quit 20
-      EndIf
-      Delete >NIL: T:User-Startup.up-term QUIET
-    EndIf
-  EndIf
-  Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"
-  If NOT WARN
-    Echo "S:User-Startup still names UP-Term:uhc in the block ;BEGIN uhc (delete it by hand: it stops the boot at a volume requester)."
-  EndIf
-EndIf
-; The block is ours only in a fresh install; a UHC block of any case (Search ignores case) is the user's own and
-; no second one is added.
-Search >NIL: S:User-Startup ";BEGIN uhc"
-If WARN
-  If "$uhcmode" EQ fresh
-  Echo >>S:User-Startup ";BEGIN uhc"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup "If EXISTS SYS:UHC/UHC-Startup"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup "  SetEnv UHCBIN SYS:UHC/"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup "  Execute SYS:UHC/UHC-Startup"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup "  MakeDir >NIL: ENV:UHC"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup "  If EXISTS ENVARC:UHC"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup "    Copy >NIL: ENVARC:UHC ENV:UHC ALL QUIET"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup "  EndIf"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup "EndIf"
-  If WARN
-    Quit 20
-  EndIf
-  Echo >>S:User-Startup ";END uhc"
-  If WARN
-    Quit 20
-  EndIf
-  EndIf
-EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
 ; @include dist/common/record.dos
-Echo "UHC ready in SYS:UHC: in an UP-Term window, for example  aget  (README.txt)."
+Echo "UHC is ready: in an UP-Term window, for example  aget  (README.txt)."
