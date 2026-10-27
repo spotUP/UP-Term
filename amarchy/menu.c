@@ -22,6 +22,7 @@
 #include "leaf.h"
 #include "gthemes_dos.h"
 #include "pkgs_dos.h"
+#include "job_dos.h"
 #include "menu_open.h"
 #include <signal.h>
 #include <fcntl.h>
@@ -120,7 +121,9 @@ static void say_refused(void *ctx, const char *label, long rc, const char *answe
     ui_message("%s", text);
 }
 
-static const lf_ui leaf_ui = { ask_value, say_refused, 0, 1 };   /* the text menu is an UP-Term window: self_in_mru */
+static int text_run_job(void *ctx, const char *line, const char *title);
+static const lf_ui leaf_ui = { ask_value, say_refused, 0, 1, 0, text_run_job };   /* the text menu is an UP-Term window: self_in_mru */
+static int job_ran;             /* a job view ran: the menu stays open on the same row */
 
 /* One level's items, sized by ix_level_cap once the index is loaded (menu_loop) */
 static ix_index ixs;
@@ -152,6 +155,85 @@ static int on_tick(void *ctx)
     if (closing)
         return 1;
     return wt.on && ixw_poll(&wt);
+}
+
+/* ---- the job view (plan 2026-10-27-amarchy-job-view.md RJ.2t, RJ.5): a textbox that follows the job's output.
+ * All logic is job_core (lines, footer, tone, keys); this is the libupkgui glue. ---- */
+static jc tjob;
+static long tjob_seen;           /* absolute index of the next line to hand to the textbox */
+
+static void job_show(void)
+{
+    static const int st[] = { UI_ST_DIM, UI_ST_OK, UI_ST_FAIL };   /* indexed by jc_tone */
+    char foot[JOB_FOOT_MAX];
+    long first = jc_first_new(&tjob, tjob_seen), n = tjob.total;
+    jc_footer(&tjob, foot, sizeof foot);
+    for (; first < n; first++)
+        ui_add_line(jc_line(&tjob, (int)(first - jc_dropped(&tjob))));
+    tjob_seen = n;
+    ui_status(foot, st[jc_tone(&tjob)]);
+}
+
+/* The tick of the job: take the new output and redraw when something arrived or the state changed. */
+static int job_tick(void *ctx)
+{
+    long total = tjob.total;
+    int state = tjob.state, ended = tjob.ended;
+    (void)ctx;
+    if (SetSignal(0, 0) & SIGBREAKF_CTRL_C) {
+        SetSignal(0, SIGBREAKF_CTRL_C);
+        closing = 1;
+    }
+    if (closing)
+        return 1;
+    jb_poll_publish(&tjob);
+    if (tjob.total != total || tjob.state != state || tjob.ended != ended) {
+        job_show();
+        ui_invalidate();
+    }
+    return 0;
+}
+
+/* A job: row: run the command and show its output; returns when the view closes. Esc while it runs cancels it, Esc
+ * or Enter after the end closes, and the menu hotkey or Ctrl-C cancels then closes. A job that cannot start runs as
+ * run: (lf_run_line). */
+static int text_run_job(void *ctx, const char *line, const char *title)
+{
+    (void)ctx;
+    if (!jb_start(&tjob, line, 0, title))
+        return lf_run_line(line, &leaf_ui);
+    ui_opt.kind = K_TEXTBOX;
+    ui_opt.title = title && title[0] ? title : "Job";
+    ui_opt.backtitle = "Amarchy";
+    ui_opt.prompt = "";
+    ui_opt.hotkeys = 0;
+    ui_opt.nentries = 0;
+    ui_prepare();
+    ui_clear_lines();
+    ui_follow(1);
+    tjob_seen = 0;
+    job_show();
+    ui_on_tick(job_tick, 0);
+    for (;;) {
+        int rc = ui_run(), act, d;
+        if (closing || rc == EXIT_NO_TERMINAL)
+            break;
+        if (rc == UI_TICK)
+            continue;
+        act = jc_key_act(&tjob, rc == 255 ? JKEY_ESC : JKEY_ENTER, 1, &d);
+        if (act == JA_CLOSE)
+            break;
+        if (act == JA_CANCEL) {
+            jb_cancel(&tjob);
+            job_show();
+        }
+    }
+    if (tjob.state == JC_RUNNING)
+        jb_cancel(&tjob);
+    jb_end();
+    ui_on_tick(on_tick, 0);
+    job_ran = 1;
+    return 0;
 }
 
 static void free_level(void)
@@ -334,7 +416,14 @@ static int menu_levels(const char *start)
             int alive0 = 0, have0 = ixw_snapshot(&p0, &alive0);   /* the run counter before the launch */
             if (lf_plan(km.menu[it[i].row].kind) == LF_SCAN && ix_watcher_adopt_live(&wt, have0, &p0, alive0))
                 continue;                               /* one scanner at a time: show the live one */
+            job_ran = 0;
             rc = lf_run(&km.menu[it[i].row], &leaf_ui);
+            if (job_ran) {                       /* the job view closed: the menu again, on the same row */
+                if (closing)
+                    return 255;
+                strcpy(keep, it[i].label);
+                continue;
+            }
             if (rc != LF_WATCH)
                 return rc;
             ix_watcher_begin(&wt, 1, have0, &p0, alive0);

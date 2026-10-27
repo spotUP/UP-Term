@@ -233,6 +233,20 @@ static void test_job_keys(void)
     CHECK_INT(jc_key_act(&J, JKEY_ESC, 10, &d), JA_CLOSE);
 }
 
+static void test_job_first_new(void)
+{
+    int i;
+    jc_init(&J);
+    feed("a\nb\nc\n");
+    CHECK_INT((int)jc_first_new(&J, 0), 0);
+    CHECK_INT((int)jc_first_new(&J, 2), 2);
+    CHECK_INT((int)jc_first_new(&J, J.total), 3);
+    for (i = 0; i < JOB_MAX_LINES + 10; i++)
+        feed("x\n");
+    CHECK_INT((int)jc_first_new(&J, 0), (int)jc_dropped(&J));     /* seen lines the ring dropped are skipped */
+    CHECK_INT((int)jc_first_new(&J, J.total - 1), (int)(J.total - 1));
+}
+
 void suite_job(void)
 {
     test_job_keys();
@@ -243,4 +257,5 @@ void suite_job(void)
     test_job_footer();
     test_job_progress();
     test_job_scroll();
+    test_job_first_new();
 }

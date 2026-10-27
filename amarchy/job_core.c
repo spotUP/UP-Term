@@ -209,6 +209,12 @@ void jc_header(const jc *j, char *out, int cap)
     #undef PUTS
 }
 
+long jc_first_new(const jc *j, long seen)
+{
+    long d = jc_dropped(j);
+    return seen < d ? d : seen;
+}
+
 int jc_tone(const jc *j)
 {
     if (j->state == JC_RUNNING) return JT_DIM;

@@ -182,3 +182,31 @@ const char *jb_title(void)
 {
     return jb.title;
 }
+
+/* Publishes n as the global variable name (a rig case reads it after the run). */
+static void sentinel(const char *name, long n)
+{
+    char b[16];
+    int i = 15;
+    b[i] = 0;
+    do {
+        b[--i] = (char)('0' + n % 10);
+        n /= 10;
+    } while (n && i > 0);
+    SetVar((STRPTR)name, (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
+}
+
+static long lines_seen;   /* sentinel AMARCHY_JOB_LINES: lines appended in all jobs of this run */
+
+void jb_poll_publish(jc *j)
+{
+    long total = j->total;
+    int ended = j->ended;
+    jb_poll(j);
+    if (j->total != total) {
+        lines_seen += j->total - total;
+        sentinel("AMARCHY_JOB_LINES", lines_seen);
+    }
+    if (j->ended && !ended)
+        sentinel("AMARCHY_JOB_DONE", j->rc + 1);
+}

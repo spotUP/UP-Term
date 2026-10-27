@@ -136,8 +136,6 @@ static gui G;
 static jc job;                   /* the running job's output (job_dos feeds it); one job at a time */
 static int job_started;          /* the last lf_run started a job view (main re-enters the list after it) */
 static int job_on;               /* a job view is up: event_loop polls it */
-static long job_lines_seen;      /* sentinel: lines appended in all jobs of this run */
-static long job_done_seen;       /* sentinel: rc + 1 when the end was seen, else 0 */
 static char view_text[KM_MAX_BIND * 100];
 static char msg_text[UPREQ_ANSWER + 140];
 static char prompt_text[UPREQ_ANSWER + 80];
@@ -951,15 +949,7 @@ static void job_tick(gui *g)
 {
     long total = job.total;
     int state = job.state, pn = job.prog_n, pm = job.prog_m, ended = job.ended;
-    jb_poll(&job);
-    if (job.total != total) {
-        job_lines_seen += job.total - total;
-        sentinel_publish("AMARCHY_JOB_LINES", job_lines_seen);
-    }
-    if (job.ended && !ended) {
-        job_done_seen = job.rc + 1;
-        sentinel_publish("AMARCHY_JOB_DONE", job_done_seen);
-    }
+    jb_poll_publish(&job);
     if (g->mode == M_JOB && !g->await &&
         (job.total != total || job.state != state || job.prog_n != pn || job.prog_m != pm || job.ended != ended))
         job_redraw(g);

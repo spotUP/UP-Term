@@ -43,6 +43,10 @@ void jc_scroll(jc *j, int delta, int h);
 /* Header text such as "3 of 7 install Gamma"; empty when no progress line was seen. */
 void jc_header(const jc *j, char *out, int cap);
 
+/* Text views that keep their own line store: the absolute index of the first line they still have to append when
+ * they already took `seen` lines (lines the ring dropped are skipped); jc_line(j, abs - jc_dropped(j)) is that line. */
+long jc_first_new(const jc *j, long seen);
+
 /* Footer colour by state: running is quiet, Done is good, Failed and Cancelled are bad. */
 enum jc_tone { JT_DIM, JT_OK, JT_FAIL };
 int jc_tone(const jc *j);

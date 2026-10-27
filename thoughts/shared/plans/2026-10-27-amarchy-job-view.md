@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy shared job view (roadmap Phase J): run a command, stream its output into the menu, Done/Failed footer
-status: approved scope (owner, 2026-10-27), in progress (8 of 11; RJ.5 half, RJ.2t blocked on libupkgui, RJ.7 rig run open)
+status: approved scope (owner, 2026-10-27), in progress (10 of 11; RJ.7 rig run open)
 ledger: thoughts/spot/todos.md row AMARCHY-JOB-VIEW
 research: thoughts/shared/research/2026-10-27-amarchy-job-view.md
 roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
@@ -67,12 +67,13 @@ roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
 - [x] RJ.2 drawn view M_JOB in gui.c: header title, body, footer, scroll keys, jb_sigmask in every event_loop Wait.
   Done 4141abf9 (merged 687ea3dc): gui_run_job is lf_ui.run_job at all 3 places; 18 fixed rows; redraw only on change.
   Host and m68k build only; the rig proof is RJ.7.
-- [ ] RJ.2t text view in menu.c through libupkgui on the ui_on_tick hook (or the libupkgui API request ledgered).
-  2026-10-27: blocked. libupkgui (upterm-ports kit-main 8b49328) lacks tick redraw, follow release on scroll-up and a
+- [x] RJ.2t text view in menu.c through libupkgui on the ui_on_tick hook (or the libupkgui API request ledgered).
+  Done commit 'Amarchy text menu job view' (libupkgui upterm-ports 570074b: ui_invalidate/ui_follow/ui_status); host and m68k build only; rig proof RJ.7 text style.
+  Was blocked 2026-10-27: libupkgui (upterm-ports kit-main 8b49328) lacks tick redraw, follow release on scroll-up and a
   caller status footer; request ui_invalidate / ui_follow / ui_status ledgered as UPKGUI-JOB-API (UP-Term session).
   Research thoughts/shared/research/2026-10-27-libupkgui-job-view.md.
-- [ ] RJ.5 cancel and close (drawn side done 4141abf9: jc_key_act, Esc = jb_cancel while running, Esc/Enter/right
-  button close after the end, hotkey cancels then closes, list_rebuild_keep returns to the row; text side waits on RJ.2t): Esc sends CTRL_C while running, Esc/Enter closes after the end, menu returns to the row.
+- [x] RJ.5 cancel and close (drawn side done 4141abf9: jc_key_act, Esc = jb_cancel while running, Esc/Enter/right
+  button close after the end, hotkey cancels then closes, list_rebuild_keep returns to the row; text side done commit 'Amarchy text menu job view' in menu.c text_run_job; host and m68k build only; rig proof RJ.7 text style): Esc sends CTRL_C while running, Esc/Enter closes after the end, menu returns to the row.
 - [x] RJ.K keymap `job:` action in leaf.c, host test in test_keymap (row action parsed, run: rows unchanged);
   dist/keymap install.upgrade and install.update move to `job:`. Done 22e507e0 (KA_JOB, LF_JOB, lf_ui.run_job, fallback
   to the run: path when 0); keymap 11420 checks 0 failed.
