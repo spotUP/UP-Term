@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Warm path for the drawn menu (amarchy-gui serve), reusing the amarchy-menu warm server machinery
-status: approved (owner decisions below), in progress
+status: done (G1-G12, 2026-10-27)
 ledger: thoughts/spot/todos.md row AMARCHY-GUI-WARM
 ---
 # Amarchy drawn menu warm path
@@ -58,9 +58,17 @@ The text menu already has a warm server (`amarchy-menu serve`, port AMARCHY.MENU
   the owner set, so font and icons keep loading per open (no invalidation logic needed).
 - [x] G11 PASS: stale port falls back cold, restarted server serves warm (new owner), commodity quit removes
   AMARCHY.GUISRV and ends the task. Original text: kill the gui server, press: cold fallback opens the menu; next press warm again.
-- G12 A1200 deploy (Amarchy, amarchy-gui only; do not touch UHCBIN) and timing with the drawn style.
+- [x] G12 A1200 deploy (Amarchy 31138cd1, amarchy-gui 42549511 to UP-Term:bin only, old ones kept as *.bak-g12;
+  UHCBIN untouched) and timing with the drawn style. Commodity restarted with `arexx AMARCHY QUIT` then
+  `Run >NIL: UP-Term:bin/Amarchy`.
 
 ## Results
 - Rig 7 (060): warm median 140 ms hotkey to ready; true cold fallback also median 140 ms at the 20 ms tick, so
   the warm server's gain on a 060 is below the clock resolution. The A1200 (G12) decides whether it pays there.
+- A1200 (G12, drawn style): warm median 880 ms (44 ticks over 7 runs: 44 44 44 45 45 44 44), cold fallback median
+  1440 ms (72 ticks over 4 runs: 72 73 72 72). The warm server saves about 560 ms per open. Warm split: font 180 ms,
+  icons ~20 ms, window 240 ms, draw to ready 420 ms. Cold adds ~380 ms of process start before the font mark.
+  Cold runs: server task killed (stale port), press fell back cold, the commodity restarted the server each time.
+- Found on the A1200: its prefs had no `menu-in-terminal` key, so the default text style opened first; the agent set
+  graphical for the run and restored the original prefs after.
 - The drawn menu closes on a second hotkey press, not on Ctrl-C typed by hand (gui.c, commodity signal).
