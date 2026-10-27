@@ -7,6 +7,7 @@ import pathlib, sys, tempfile, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import mkinstaller as mi
+import pkgs
 
 
 class Assemble(unittest.TestCase):
@@ -55,9 +56,13 @@ class Assemble(unittest.TestCase):
         # only the archive that needs the base is run from UP-Term:pkg; the stand-alone ones (ENVARC:upkg) are left alone
         self.assertEqual(v['ADDONUNINSTALL'],
                          '\n'.join('If EXISTS UP-Term:pkg/up-%s/Uninstall\n  Execute UP-Term:pkg/up-%s/Uninstall\nEndIf' % (i, i)
-                                   for i in ('nvim', 'git', 'perl', 'vim', 'bitchx', 'vbcc')))
+                                   for i in [r['archive'][3:] for r in pkgs.rows() if r['id'] != 'base' and r['record'].startswith('UP-Term:pkg/')]))
         # Files/Claude finds an old Files/ClaudeCode by substring too: one search covers both
-        self.assertEqual(v['HANDEDSEARCH'].count('Search >NIL: UP-Term:MANIFEST'), 12)
+        handed = {p for r in pkgs.rows() if r['id'] != 'base' and r['handed'] != '-' for p in r['handed'].split(',')}
+        searched = {p for p in handed if not any(q != p and p.startswith(q) for q in handed)}
+        self.assertEqual(v['HANDEDSEARCH'].count('Search >NIL: UP-Term:MANIFEST'), len(searched))
+        for p in searched:
+            self.assertIn('Search >NIL: UP-Term:MANIFEST " %s"' % p, v['HANDEDSEARCH'])
         self.assertNotIn('Files/ClaudeCode', v['HANDEDSEARCH'])
         self.assertEqual(mi.read_values('nvim')['ADDONUNINSTALL'], '')
 
