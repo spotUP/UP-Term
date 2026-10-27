@@ -907,7 +907,7 @@ class RigStart(unittest.TestCase):
         master = pathlib.Path(d) / "master.hdf"
         master.write_bytes(b"MASTER")
         saved = (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
-                 rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid)
+                 rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit)
         class NoWrite:
             def write_text(self, *_): raise RigStart.Stop()
         def run(cmd, *a, **k):
@@ -921,6 +921,7 @@ class RigStart(unittest.TestCase):
             rig.sys_hdf_screenmode = lambda image: steps.append(["screenmode", image.name])
             rig.sys_hdf_cpu_lib = lambda image: steps.append(["cpu_lib", image.name])
             rig.sys_hdf_no_wasabid = lambda image: steps.append(["no_wasabid", image.name])
+            rig.sys_hdf_kit = lambda image: steps.append(["kit", image.name])
             (rig.RIG / "sys.hdf").write_bytes(b"DIRTY from a killed run")
             try:
                 rig.start()
@@ -929,7 +930,7 @@ class RigStart(unittest.TestCase):
             return steps, rig.RIG
         finally:
             (rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.START_ARGS, rig.subprocess.run,
-             rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid) = saved
+             rig.sys_hdf_cpu_lib, rig.sys_hdf_screenmode, rig.sys_hdf_no_wasabid, rig.sys_hdf_kit) = saved
 
     def test_start_replaces_sys_hdf_from_the_master_by_clone_before_the_writes_into_it(self):
         import tempfile
@@ -941,7 +942,7 @@ class RigStart(unittest.TestCase):
             steps, rigdir = self.start_with(d, clone)
             self.assertEqual((rigdir / "sys.hdf").read_bytes(), b"MASTER", "the dirty disk was not replaced")
             self.assertFalse((rigdir / "sys.hdf.new").exists())
-            self.assertEqual([s[0] for s in steps], ["cp", "screenmode", "no_wasabid", "cpu_lib"],
+            self.assertEqual([s[0] for s in steps], ["cp", "screenmode", "no_wasabid", "kit", "cpu_lib"],
                              "the clone happens once, before every write into the image")
 
     def test_start_without_a_clone_fails_and_never_copies_the_whole_disk(self):
