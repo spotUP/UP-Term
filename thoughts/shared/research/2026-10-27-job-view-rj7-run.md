@@ -108,3 +108,43 @@ Feed: local P7 feed only (127.0.0.1). Rig menu root now has a top-level Packages
 ### Restore (md5 live on rig vs backup)
 UP-Term:etc/upkg.conf ac11b5a5ca3404e798cb4c938c8fe852 = backup; ENV:Amarchy/prefs c7d44aeee893f340ddcb08b93a3177da = backup;
 ENV:up-term/up-term fbb384279d519334b50046b621d3535e = backup. ENVARC files never written. Feed and slow servers killed, rig 7 stopped.
+
+## Part 4 (root cause of the slow Esc cancel; rig 7, 060, HEAD 567c9887, no Amarchy change)
+
+Verdict: the cause is NOT in Amarchy. Amarchy's jb_cancel signals CTRL_C to a task of the job tree (any of them would do);
+every task of the tree receives it, and both upkg and curl swallow it and go back to waiting on the network.
+
+Setup: local slow server rj7b_slow2.py (127.0.0.1:53986, sleeps 30 s, 404); UP-Term:etc/upkg.conf `src/gz upterm
+http://127.0.0.1:53986` (backup md5 ac11b5a5ca3404e798cb4c938c8fe852). The job reproduced outside Amarchy as the same line
+jb_start runs: `Run >T:a1x.out VTC:vsh -c "upkg update; echo @JOBRC $?"`. Ctrl-C sent by `wasabi kill <addr>` (Signal CTRL_C).
+
+Task tree (VTC:taskdump, 6 s in):
+- `Background CLI` cmd VTC:vsh: wait 8000d000 (port | CTRL_C|E|F); vsh os_wait forwards CTRL_C to its job (shell/vsh.c:1219-1226).
+- `vsh job` cmd upkg: wait 80001000 recvd 00000100.
+- `vfork()'d process` cmd curl: wait 40001000 recvd 10000100.
+
+Ctrl-C at 7 s, time until all three are gone:
+- to vsh: 23 s (gone when the server answered). - to upkg alone: 23 s. - to curl alone: 24 s.
+- taskdump 2 s after the Ctrl-C to curl, and again after one to upkg: both back in the same Wait (same sp, same mask),
+  CTRL_C absent from recvd: they took the signal and ignored it.
+- curl alone, native, no upkg/ixemul parent: `Run >T:a1c.out UP-Term:bin/curl -fsSL -o T:a1c.bin http://127.0.0.1:53986/x`,
+  Ctrl-C at 5 s: gone after 25 s. So curl ignores CTRL_C by itself.
+
+Root causes (two, both outside Amarchy):
+1. curl: the vendored Aminet binary dist/net/curl-8.22.0/curl.0?0 (curl 8.22.0, clib2, AmiSSL; vendored in vtcon, not built here).
+   Blocked in the socket wait, CTRL_C wakes it (clib2 sets the bsdsocket break mask, the binary has ___break_signal_mask and
+   "Interrupted system call") but the EINTR is treated as an empty wakeup and the transfer goes on. Invariant violated: an
+   AmigaDOS command ends on SIGBREAKF_CTRL_C. Fix needed: curl built from source (8.22.0, same clib2 toolchain) with lib/select.c
+   Curl_poll / the tool's transfer loop ending the transfer on an EINTR from WaitSelect (or the tool checking the break after each
+   poll wakeup and exiting 130). Exact source line unverified (binary only).
+2. upkg (opkg 0.9.0, upterm-ports): Ctrl-C to upkg while xsystem waits for curl is swallowed. libopkg/xsystem.c (kit-main build src,
+   lines ~121-123) loops `waitpid` while errno == EINTR and never passes the break to the child; `update` installs no SIGINT handler.
+   Why ixemul's default SIGINT action did not end upkg is unverified. Fix needed (upterm-ports, owner vtcon-05): in xsystem, on
+   an interrupted waitpid / read with SIGINT pending, forward it to the child (kill(pid, SIGINT), which for a native child must
+   reach it as SIGBREAKF_CTRL_C), reap it, and exit 128+SIGINT.
+With 1 alone fixed, Amarchy's jb_cancel already works when task_find_by_output picks curl; with 1 and 2 it works for whichever
+task it picks (vsh forwards to upkg, upkg to curl).
+
+Also in scope, no defect of its own: T:amarchy-job.* stays while the view is open because the view's reader keeps it until jb_end
+(close); JOB_DONE is empty during the wait because the job really still runs (the children ignore the break). Both follow from 1+2.
+No Amarchy edit, no regression test: a test in tests/test_job.c would pin no Amarchy behaviour that is wrong.
