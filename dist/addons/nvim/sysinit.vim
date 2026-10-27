@@ -13,3 +13,16 @@ if empty(getenv('SHELL'))
     set shell=/c/vsh
   endif
 endif
+
+" Startup cost: on a 68060 these bundled plugins add about 1.35 s to every start
+" (headless medians 6603 ms before, 5251 ms after; matchit 510 ms, netrw 620 ms,
+" rplugin 100 ms, gzip 99 ms). Plugins load after the user's init, so a user who wants
+" one back puts `unlet g:loaded_matchit` (or the matching name) in their own init.
+let g:loaded_netrw = 1
+let g:loaded_netrwPlugin = 1
+let g:loaded_matchit = 1
+let g:loaded_gzip = 1
+let g:loaded_tarPlugin = 1
+let g:loaded_zipPlugin = 1
+let g:loaded_remote_plugins = 1
+let g:loaded_tutor_mode_plugin = 1
