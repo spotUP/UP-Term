@@ -24,7 +24,8 @@ int lf_pkg_back_levels(const mn_item *it)
 {
     if (!it || !MN_IS_PKGACT(it) || it->ix < 0)
         return 0;
-    return it->seg[0] == PK_ACT_REMOVE ? 2 : it->seg[0] == PK_ACT_NO || it->seg[0] == PK_ACT_INSTALL ||
+    /* Remove and its confirm's No leave the confirm page and the package's action page: back at the package row */
+    return it->seg[0] == PK_ACT_REMOVE || it->seg[0] == PK_ACT_NO ? 2 : it->seg[0] == PK_ACT_INSTALL ||
            it->seg[0] == PK_ACT_UPGRADE ? 1 : 0;
 }
 

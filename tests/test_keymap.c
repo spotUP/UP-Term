@@ -1511,7 +1511,7 @@ static void remove_asks_first_and_a_package_job_marks_the_list_stale(void)
     CHECK(pk_action_line(&x.pk.r[a[1].ix], PK_ACT_REMOVE, line, sizeof line));
     CHECK_STR(line, "upkg remove Gamma");
     CHECK_INT(a[0].seg[0], PK_ACT_NO);              /* No: leaf.c returns before any job */
-    CHECK_INT(lf_pkg_back_levels(&a[0]), 1);
+    CHECK_INT(lf_pkg_back_levels(&a[0]), 2);        /* No: confirm page and action page, back at the package row */
     CHECK_INT(lf_pkg_back_levels(&a[1]), 2);
     CHECK_INT(lf_pkg_back_levels(0), 0);
     ca = pkg_level(&x, "packages.browse.games.notyet", a);
