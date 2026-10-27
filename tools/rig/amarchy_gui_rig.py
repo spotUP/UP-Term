@@ -421,20 +421,29 @@ def case_screen(geom, public):
         check(not where('UP-Term')[1] and not where(TITLE)[1], 'no menu or leaf window left behind (%s case)' % kind)
 
 
+def open_apps_row(label, tag):
+    """Menu open, root > Apps > the row named label, by the rows the menu publishes (AMARCHY_ROWS): the Apps level
+    merges index apps and the tab:/menuid:/slash: rows, so a count of Downs landed on another row. False on a failed step."""
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    s, w = open_menu()
+    if not check(bool(w), '%s: menu opens' % tag):
+        return False
+    root = rows_now()
+    if not check(walk_to('Apps', root), '%s: the root has an Apps row (rows: %s)' % (tag, root)):
+        return False
+    time.sleep(1)
+    apps = rows_now()
+    return check(walk_to(label, apps), '%s: the Apps level has a %s row (rows: %s)' % (tag, label, apps))
+
+
 def case_run_tmux():
     """Apps > Tmux (run:tmux) from a menu with no TERM in ENV: leaves a running tmux and an UP-Term window.
     The leaf program has no shell above it, so TERM is missing unless run_in_uterm sets it; tmux then exits
     at once with "open terminal failed: not a terminal". Sentinel: the tmux server answers `tmux ls`."""
     c.run('tmux kill-server', 20)
     c.run('Delete >NIL: ENV:TERM')
-    s, w = open_menu()
-    check(bool(w), 'run_tmux: menu opens')
-    ami.key(RETURN)                       # Apps
-    time.sleep(2)
-    for _ in range(2):                    # Tmux is the third Apps row
-        ami.key(0x4D)
-        time.sleep(.5)
-    ami.key(RETURN)
+    if not open_apps_row('Tmux', 'run_tmux'):
+        return
     time.sleep(6)
     rc = c.run('tmux ls', 20)[0]
     check(rc == 0, 'run_tmux: tmux server runs after Apps > Tmux (tmux ls rc %s)' % rc)
@@ -446,14 +455,8 @@ def case_run_editor():
     """Apps > Editor (run:nvim): nvim is on vsh's $PATH (UP-Term:nvim/bin), not on the AmigaDOS path, so the
     leaf started nothing. The leaf runs it through the UP-Term shell now. Sentinel: an nvim process exists
     (Status COM=nvim) and an UP-Term window is open."""
-    s, w = open_menu()
-    check(bool(w), 'run_editor: menu opens')
-    ami.key(RETURN)                       # Apps
-    time.sleep(2)
-    for _ in range(3):                    # Editor is the fourth Apps row
-        ami.key(0x4D)
-        time.sleep(.5)
-    ami.key(RETURN)
+    if not open_apps_row('Editor', 'run_editor'):
+        return
     time.sleep(8)
     out = c.run('Status', 20)[1]
     check(re.search(r'\bnvim\b', out) is not None, 'run_editor: an nvim process runs after Apps > Editor (Status: %s)' % out.replace('\n', ' | ')[:120])
