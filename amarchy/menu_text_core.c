@@ -181,10 +181,25 @@ int mtc_fit_tail(mtc *c, const char *s, int keep, int maxw, char *out, int n)
         return mtc_width(c, s);
     }
     tailw = mtc_width(c, s + keep);
-    if (tailw + 3 * mtc_advance(c, '.') > maxw || (int)strlen(s + keep) + 4 > n)
-        return mtc_fit(c, s + keep, maxw, out, n);
     memcpy(head, s, (size_t)keep);
     head[keep] = 0;
+    if (tailw + 3 * mtc_advance(c, '.') > maxw || (int)strlen(s + keep) + 4 > n) {
+        /* even the value does not fit beside an ellipsis: the label keeps its first two letters and the ellipsis
+         * ("Fo...: AVeryLong..."), so the row still names its setting, and the value is cut at its end. Only when
+         * that short label leaves no room for the value is the label dropped. */
+        int k, lead = 0, cps, tw, dotw = 3 * mtc_advance(c, '.');
+        for (cps = 0; cps < 2 && lead < keep && (mtc_next(head + lead, &k), k > 0); cps++)
+            lead += k;
+        hw = mtc_width(c, head);
+        if (mtc_width_n(c, head, lead) + dotw < hw)
+            hw = mtc_width_n(c, head, lead) + dotw;
+        if (maxw - hw < 4 * mtc_advance(c, '.') || n < 12)
+            return mtc_fit(c, s + keep, maxw, out, n);
+        hw = mtc_fit(c, head, hw, out, n / 2);
+        hl = (int)strlen(out);
+        tw = mtc_fit(c, s + keep, maxw - hw, out + hl, n - hl);
+        return hw + tw;
+    }
     hw = mtc_fit(c, head, maxw - tailw, out, n - (int)strlen(s + keep));
     hl = (int)strlen(out);
     strcpy(out + hl, s + keep);

@@ -94,8 +94,14 @@ static void test_fit_tail(void)
     CHECK(w <= 90);
     CHECK(strstr(out, "...: abcd") != 0);        /* the value is whole, the label carries the ellipsis */
     CHECK(strncmp(out, "Fallback font", 13) != 0);
-    w = mtc_fit_tail(&c, "Font: abcdefgh", 4, 24, out, sizeof out);   /* even the value does not fit: cut as mtc_fit */
+    w = mtc_fit_tail(&c, "Font: abcdefgh", 4, 24, out, sizeof out);   /* no room even for a short label: cut as mtc_fit */
     CHECK(w <= 24);
+    /* a value too long for the row on its own: the row still names its setting ("Fo...") and the value is cut at
+     * its end (the drawn Font row on rig 7 showed ": AVeryLongFontNameForTheRig..." with no label, 2026-10-27) */
+    w = mtc_fit_tail(&c, "Font: AVeryLongFontNameForTheRightCheck.font:99", 4, 160, out, sizeof out);
+    CHECK(w <= 160);
+    CHECK(strncmp(out, "Fo...: AVery", 12) == 0);
+    CHECK(strcmp(out + strlen(out) - 3, "...") == 0);
     mtc_free(&c);
 }
 
