@@ -1216,12 +1216,15 @@ static long os_wait(void *os, long id)
             break;
         }
         Permit();
-        got = Wait((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E |
-                   SIGBREAKF_CTRL_F);
-        if (got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E)) {
+        /* CTRL_D: the console window closed (vtcon_packets.h). The console signals the shell, which
+         * opened it; the job's ixemul turns the break into SIGHUP. Not passed on, nano outlived its
+         * closed window (tools/rig/hangup_rig.py nano) */
+        got = Wait((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D |
+                   SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F);
+        if (got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E)) {
             Forbid(); /* still running: its reply is not in yet */
             if (!replied(PORT(os), j))
-                job_signal(j, got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E));
+                job_signal(j, got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E));
             Permit();
             if (got & SIGBREAKF_CTRL_C)
                 broke = 1;

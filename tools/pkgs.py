@@ -6,7 +6,7 @@
   python3 tools/pkgs.py get <id> <column>  one value ("-" is printed as it is)
   python3 tools/pkgs.py prune <dir>        delete every <dir>/*.lha that dist/packages.txt does not list
   python3 tools/pkgs.py index <dir>        upkg's index of the archives in <dir>
-  python3 tools/pkgs.py ipk <build>        one .ipk per package into <build>/ipk (from build/dist/<archive>)
+  python3 tools/pkgs.py ipk <build>        one .ipk per package and variant into <build>/ipk (from build/dist/<archive> = 020, build/dist/fpu/<archive> = fpu)
   python3 tools/pkgs.py feed <build>       <build>/ipk/Packages and Packages.gz of those .ipk files
 """
 import gzip, hashlib, io, os, pathlib, re, sys, tarfile
@@ -14,7 +14,7 @@ import gzip, hashlib, io, os, pathlib, re, sys, tarfile
 import slim
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-TABLE = ROOT / 'dist/packages.txt'
+TABLE = pathlib.Path(os.environ.get('UPTERM_PACKAGES_TXT') or ROOT / 'dist/packages.txt')   # the env var: a test's fixture table for the CLI
 RENAMES = ROOT / 'dist/package-renames.txt'
 COLUMNS = ('id', 'archive', 'version', 'needs-base', 'ixemul', 'record', 'handed', 'consumes', 'launch')
 
@@ -124,6 +124,10 @@ def index(build, path=TABLE):
 # when its Architecture is "all", "noarch" or an `arch` line of the conf (the kit's upkg.conf must carry
 # `arch m68k-amigaos 10`). One string, because the binaries are 68020+ ixemul and nothing else runs them.
 ARCH = 'm68k-amigaos'
+# Two variants (thoughts/shared/plans/2026-10-27-ports-fpu-variants.md): the 020 build keeps ARCH (every installed
+# upkg.conf has that arch line, and the legacy `index` is for it alone); the FPU build (-m68060 -m68881) is the
+# arch m68k-amigaos-fpu, which upkg registers at a higher priority on a 040/060 with an FPU.
+VARIANTS = (('020', ARCH), ('fpu', ARCH + '-fpu'))
 MAINTAINER = 'UP-Term <https://github.com/spotUP/UP-Term>'
 # Where an add-on's files wait: T:upkg-stage/<archive> (RAM, owner 2026-10-19). data.tar paths are
 # relative to the dest root, and dist/upkg.conf has `dest root /`: ixemul reads /T/x as T:x, so
@@ -276,8 +280,19 @@ def _ar(members):
     return out
 
 
-def ipk_name(r):
-    return '%s_%s_%s.ipk' % (r['archive'], r['version'], ARCH)
+def variant_arch(variant):
+    return dict(VARIANTS)[variant]
+
+
+def stage_dir(build, archive, variant='020'):
+    """The staged tree of one variant: build/dist/<archive> for the 020 build (where `make dist` stages it today),
+    build/dist/<variant>/<archive> for any other variant."""
+    top = pathlib.Path(build) / 'dist'
+    return top / archive if variant == VARIANTS[0][0] else top / variant / archive
+
+
+def ipk_name(r, variant='020'):
+    return '%s_%s_%s.ipk' % (r['archive'], r['version'], variant_arch(variant))
 
 
 def question_keys(kit):
@@ -314,28 +329,28 @@ def _launch_fields(r):
     return [] if r['launch'] == '-' else ['Launch: ' + r['launch']]
 
 
-def _interactive_fields(build, r):
+def _interactive_fields(kit):
     """['UP-Term-Interactive: yes'] for an archive with install questions (its Files/questions file), else [].
     upkg browse reads it from the feed's Packages list and runs such a package in the plain window, not in
     a programbox. One source: the questions file."""
-    if (pathlib.Path(build) / 'dist' / r['archive'] / 'Files/questions').is_file():
+    if (pathlib.Path(kit) / 'Files/questions').is_file():
         return ['UP-Term-Interactive: yes']
     return []
 
 
-def build_ipk(r, build):
-    """The .ipk bytes of one row from the staged tree <build>/dist/<archive>."""
-    kit = pathlib.Path(build) / 'dist' / r['archive']
+def build_ipk(r, build, variant='020'):
+    """The .ipk bytes of one row and variant from its staged tree (stage_dir)."""
+    kit = stage_dir(build, r['archive'], variant)
     if not (kit / 'Files/install.dos').is_file():
         raise SystemExit('pkgs ipk: %s is not staged: make dist' % kit)
     data_ents, size = _data_entries(kit, r['archive'])
     keys = question_keys(kit)
     need, post, pre = _scripts(r, keys)
-    lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + ARCH,
+    lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + variant_arch(variant),
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
              'Description: ' + summary(r['id'])]
     lines[2:2] = _rename_fields(r)
-    lines += _interactive_fields(build, r) + _launch_fields(r)
+    lines += _interactive_fields(kit) + _launch_fields(r)
     ctl = ('\n'.join(lines) + '\n').encode()
     ents = [(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None), (_tinfo('./control', len(ctl)), ctl)]
     if need:
@@ -347,31 +362,41 @@ def build_ipk(r, build):
 
 
 def ipk(build, path=TABLE):
-    """Write one .ipk per row into <build>/ipk; byte-equal on a rebuild of the same staged tree."""
+    """Write one .ipk per row and staged variant into <build>/ipk; byte-equal on a rebuild of the same staged tree.
+    The 020 build is required; a package with no staged fpu tree gets the 020 ipk only, with a [WARN]."""
     out = pathlib.Path(build) / 'ipk'
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob('*.ipk'):
         old.unlink()
     names = []
     for r in addons(path):
-        (out / ipk_name(r)).write_bytes(build_ipk(r, build))
-        names.append(ipk_name(r))
+        for v, _ in VARIANTS:
+            if v != VARIANTS[0][0] and not (stage_dir(build, r['archive'], v) / 'Files/install.dos').is_file():
+                print('[WARN] pkgs ipk: %s has no %s build (%s): only the %s ipk is written'
+                      % (r['archive'], v, stage_dir(build, r['archive'], v), VARIANTS[0][0]), file=sys.stderr)
+                continue
+            (out / ipk_name(r, v)).write_bytes(build_ipk(r, build, v))
+            names.append(ipk_name(r, v))
     return names
 
 
 def feed(build, path=TABLE):
-    """Packages text (opkg format) of the .ipk files in <build>/ipk; one stanza a row."""
+    """Packages text (opkg format) of the .ipk files in <build>/ipk; one stanza a row and variant (the 020 ipk is
+    required, an fpu ipk is listed when it was written)."""
     out, blocks = pathlib.Path(build) / 'ipk', []
     for r in addons(path):
-        f = out / ipk_name(r)
-        if not f.is_file():
-            raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
-        data = f.read_bytes()
-        b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _interactive_fields(build, r) + _launch_fields(r)
-        b += ['Architecture: ' + ARCH, 'Filename: ' + f.name, 'Size: %d' % len(data),
-              'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
-              'Description: ' + summary(r['id'])]
-        blocks.append('\n'.join(b) + '\n')
+        for v, arch in VARIANTS:
+            f = out / ipk_name(r, v)
+            if not f.is_file():
+                if v != VARIANTS[0][0]:
+                    continue
+                raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
+            data = f.read_bytes()
+            b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _interactive_fields(stage_dir(build, r['archive'], v)) + _launch_fields(r)
+            b += ['Architecture: ' + arch, 'Filename: ' + f.name, 'Size: %d' % len(data),
+                  'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
+                  'Description: ' + summary(r['id'])]
+            blocks.append('\n'.join(b) + '\n')
     return '\n'.join(blocks)
 
 

@@ -197,13 +197,35 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
 
 PORTS_BUILT = {"upkg"}
 
+# What the dist ships in UP-Term:bin (the Unix userland the kit installs) is what a rig's UP-Term:bin
+# runs: one row per file of build/dist/up-term/Files/userland/bin, staged in VTC:kit-userland/ by
+# install. Before this only the build/amiga programs were shadowed, so a rebuilt curl never reached
+# a rig and the old one, which opens usergroup.library, ran (rig 9, AMITCP-GONE rerun, 2026-10-27).
+# Rows act only where the kit holds the file (kit_guard). "[" is left out: AmigaDOS patterns.
+USERLAND_SRC = ROOT / "build/dist/up-term/Files/userland/bin"
+USERLAND_STAGE = "kit-userland"
+
+
+def userland_names():
+    if not USERLAND_SRC.is_dir():
+        return []
+    return sorted(f.name for f in USERLAND_SRC.iterdir()
+                  if f.is_file() and re.fullmatch(r"[A-Za-z0-9._+-]+", f.name))
+
+
+KIT_SHADOWS += [("%s/%s" % (USERLAND_STAGE, n), "UP-Term:bin/" + n, "UP-Term-bin-" + n)
+                for n in userland_names() if "UP-Term:bin/" + n not in {x[1] for x in KIT_SHADOWS}]
+
 
 def kit_shadow_src(name):
     """The host file the VTC: copy of a KIT_SHADOWS name comes from: dist/ for the files the kit
-    copies from dist/ (a1200_drift.DIST_SOURCES), build/amiga for the programs, the ports checkout
-    ($UPTERM_PORTS, else UPTERM_ROOT/upterm-ports) for the ones it builds (PORTS_BUILT)."""
+    copies from dist/ (a1200_drift.DIST_SOURCES), build/amiga for the programs, the dist userland for the
+    kit-userland/ rows, the ports checkout ($UPTERM_PORTS, else UPTERM_ROOT/upterm-ports) for the ones it builds
+    (PORTS_BUILT)."""
     if name in PORTS_BUILT:
         return pathlib.Path(os.environ.get("UPTERM_PORTS") or paths.repo("upterm-ports")) / "build/sysroot/UP-Term/bin" / name
+    if name.startswith(USERLAND_STAGE + "/"):
+        return USERLAND_SRC / name.split("/", 1)[1]
     return (ROOT / "dist" if name in a1200_drift.DIST_SOURCES else build_amiga()) / name
 
 
@@ -866,6 +888,13 @@ def stage_amissl(vtc, m060):
     if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
         shutil.copyfile(src, dst)
 
+def ixnet_problems(path):
+    """Why an ixnet.library must not reach a rig. Before ixemul-vtcon PR 5 ixnet opened
+    "AmiTCP:libs/usergroup.library" at every open; the rig image has no AmiTCP: assign since 14d1c108, so
+    every ixemul program stopped on ramlib's "Please insert volume AmiTCP:" requester (2026-10-27, all rigs)."""
+    return ["opens AmiTCP:libs/usergroup.library"] if b"AmiTCP:libs" in pathlib.Path(path).read_bytes() else []
+
+
 def stage_ixemul(vtc, nofpu):
     """VTC:ixp6, first in LIBS: (RIG_LIBS), as the kit's patched ixemul.library and its ixnet.library, every
     start: the soft-float ixemul with --nofpu, else the FPU one. Before this only ixpty_rig and stackext_rig
@@ -875,6 +904,9 @@ def stage_ixemul(vtc, nofpu):
     ixemul = paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB
     for src, var in ((ixemul, "IXEMUL"), (paths.IXNET_LIB, "IXNET")):
         paths.require_input(src, var, src.name)
+    if ixnet_problems(paths.IXNET_LIB):
+        sys.exit("[ERROR] %s %s: build ixemul-vtcon at or after PR 5 (d1fa642), or set IXNET"
+                 % (paths.IXNET_LIB, ixnet_problems(paths.IXNET_LIB)[0]))
     (vtc / "ixp6").mkdir(parents=True, exist_ok=True)
     for src, name in ((ixemul, "ixemul.library"), (paths.IXNET_LIB, "ixnet.library")):
         dst = vtc / "ixp6" / name
@@ -901,6 +933,10 @@ def build_drift(vtc):
         src, dst = ROOT / "dist" / name, vtc / name
         if dst.is_file() and dst.read_bytes() != src.read_bytes():
             stale.append(name)
+    for name in userland_names():   # staged by install for the boot's UP-Term:bin shadows
+        dst = vtc / USERLAND_STAGE / name
+        if dst.is_file() and dst.read_bytes() != (USERLAND_SRC / name).read_bytes():
+            stale.append("%s/%s" % (USERLAND_STAGE, name))
     return stale
 
 def kit_restore():
@@ -917,6 +953,7 @@ def refresh_kit_shadows(vtc):
     for name in sorted({x[0] for x in KIT_SHADOWS}):
         src, dst = kit_shadow_src(name), vtc / name
         if src.is_file() and not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             print("refreshed", name, dst.stat().st_size, "bytes")
     # GG:bin/sh is vsh too: the boot assigns GG: to VTC:gg when it holds one, and ixemul programs run it

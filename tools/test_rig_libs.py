@@ -8,6 +8,7 @@ fresh boot `Assign LIBS: EXISTS` listed no System:AmiSSL/Libs and `Version
 amisslmaster.library` said "object not found"; with the drawer added back the same binary
 got Anthropic's HTTP 401 for a key that is not one.
 """
+import os
 import pathlib
 import sys
 
@@ -72,12 +73,24 @@ with tempfile.TemporaryDirectory() as d:
     old.write_bytes(b"\0libnet usergroup.library \0$STACK: 1\0")
     check(curl_problems(old), "the checker rejects a curl that names usergroup.library")
 check(not list((rig.ROOT / "dist/net").glob("curl*")), "dist/net holds no vendored curl")
-ports = rig.ROOT.parent / "upterm-ports/build"
+ports = pathlib.Path(os.environ.get("UPTERM_PORTS") or rig.ROOT.parent / "upterm-ports") / "build"
 staged = [p for p in (ports / "kit/userland/bin/curl", ports / "sysroot/UP-Term/bin/curl") if p.is_file()]
 if not staged:
     print("[UNVERIFIED] no ports curl built under %s: make kit-stage in upterm-ports, rerun" % ports)
 for p in staged:
     check(not curl_problems(p), "staged kit curl %s: %s" % (p, curl_problems(p)))
+
+# ixnet.library staged to VTC:ixp6 on every start: never one that opens AmiTCP:libs/usergroup.library
+# (the rig has no AmiTCP: assign, so ramlib asks for the volume and every ixemul program stops).
+with tempfile.TemporaryDirectory() as d:
+    old = pathlib.Path(d) / "ixnet.library"
+    old.write_bytes(b"\0AmiTCP:libs/usergroup.library\0")
+    check(rig.ixnet_problems(old), "the checker rejects an ixnet that opens AmiTCP:libs/usergroup.library")
+if rig.paths.IXNET_LIB.is_file():
+    check(not rig.ixnet_problems(rig.paths.IXNET_LIB),
+          "staged ixnet %s: %s" % (rig.paths.IXNET_LIB, rig.ixnet_problems(rig.paths.IXNET_LIB)))
+else:
+    print("[UNVERIFIED] no ixnet.library at %s" % rig.paths.IXNET_LIB)
 
 print("[%s] rig_libs: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)
