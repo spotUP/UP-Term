@@ -4662,6 +4662,9 @@ static int reader_waits(con *c)
 static int ahead_hold(con *c, const vt_u8 *b, int n, long key, int mods)
 {
     int r = le_ahead_key(&c->ahead, reader_waits(c), b, n, key, mods);
+#ifdef VTCON_TRACE
+    vt_trace('H', n, (unsigned)r, (unsigned)reader_waits(c)); /* ahead queue: a = LE_AHEAD_ result (NOW/HELD/FULL), b = a reader waits */
+#endif
     if (r == LE_AHEAD_FULL)
         DisplayBeep(c->w.win ? c->w.win->WScreen : 0);
     return r != LE_AHEAD_NOW;
