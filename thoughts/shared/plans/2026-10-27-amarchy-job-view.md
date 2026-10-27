@@ -80,7 +80,7 @@ roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
 - [ ] RJ.7 rig reachability (rig 7, 060, both styles): hotkey, Install > Update lists, the view shows upkg output lines,
   footer Done with code 0, sentinels move; a failing job (`job:Failat 1 ; Fault 205`-style line, no network) shows
   Failed with its code; Esc during a long job cancels. Against the local P7 feed, never the real feed.
-- [x] RJ.D docs: dist/keymap comment for `job:`, Amarchy user doc row on the job view.
+- [x] RJ.D docs: dist/keymap comment for `job:`, Amarchy user doc row on the job view. Done 48b9f296, dist/README.txt.
 
 ## Deferred (owner, 2026-10-27)
 - Two-way questions in the job view (RJ.3 full): upkg-ask tagged-line mode in upterm-ports, PTY: channel, choose-one and
