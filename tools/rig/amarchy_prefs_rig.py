@@ -493,6 +493,19 @@ LONG_FONT = 'AVeryLongFontNameForTheRightCheck.font:99'
 RIGHT_SECS = 20
 
 
+INDEX_CACHE = 'ENVARC:Amarchy/apps'
+INDEX_LABEL = 'RigApp1'
+
+
+def stage_index_row():
+    """One index entry in the app cache the drawn menu reads on open (index_load.c ix_load_file); the Apps level lists it."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        f = pathlib.Path(d) / 'apps'
+        f.write_text('app\t%s\tWork:RigAlpha/%s\n' % (INDEX_LABEL, INDEX_LABEL))
+        ami.put(str(f), INDEX_CACHE)
+
+
 def right_state():
     from amarchy_theme_save_rig import menu_state
     box, digest = menu_state()
@@ -524,11 +537,12 @@ def right_enters(what):
 
 
 def r_m3_right():
-    saved = {p: ami.read_file(p) for p in UPTERM_FILES + PREFS}
+    saved = {p: ami.read_file(p) for p in UPTERM_FILES + PREFS + (INDEX_CACHE,)}
     notes, fails = [], []
     try:
         host_window('/OWNSCREEN')
         write_conf('off', True)
+        stage_index_row()
         c.run('Echo >>ENV:up-term/up-term "font = %s"' % LONG_FONT)
         c.run('Echo >>ENVARC:up-term/up-term "font = %s"' % LONG_FONT)
         time.sleep(3)
@@ -540,7 +554,17 @@ def r_m3_right():
             e = right_stays('leaf "Previous window"')
             (fails if e else notes).append(e or 'leaf: Right did nothing')
             g.close_menu()
-            notes.append('index row: not exercised (no index row identified on rig 7)')
+            rows = drawn_open()
+            drawn_down(rows, 'Apps', groups_under(), 'root')
+            rows = drawn_enter('Apps')
+            if INDEX_LABEL not in rows:
+                fails.append('index row: no "%s" in the Apps level (rows %s)' % (INDEX_LABEL, rows))
+            else:
+                for _ in range(rows.index(INDEX_LABEL)):
+                    step(g.DOWN, 'Down to ' + INDEX_LABEL)
+                e = right_stays('index row "%s"' % INDEX_LABEL)
+                (fails if e else notes).append(e or 'index row: Right did nothing')
+            g.close_menu()
             rows = drawn_open()
             drawn_down(rows, 'Settings', groups_under(), 'root')
             rows = right_enters('group Settings')
@@ -559,11 +583,13 @@ def r_m3_right():
             fix = find_row(rows, 'Font: ')
             for _ in range(fix):
                 step(g.DOWN, 'Down to Font')
-            SHOTS.mkdir(parents=True, exist_ok=True)
-            shot = SHOTS / 'm3-right-font-row.png'
-            w, h, px = ami.grab(right_state()[0])
-            ami.png(str(shot), w, h, px)
-            notes.append('Font row photographed %s; rows file: %s' % (shot, [r for r in drawn_rows() if r.startswith('Font')]))
+            rc, fit = c.run('GetEnv AMARCHY_FIT_Font')
+            fit = fit.strip()
+            # mtc_fit_tail keeps the whole label ("Font: Aver...") when "Fo..." would not be narrower, else "Fo...: Aver..."
+            if rc == 0 and re.match(r'Fo(nt|\.\.\.): \S', fit) and fit.endswith('...'):
+                notes.append('Font row drawn as "%s"' % fit)
+            else:
+                fails.append('Font row drawn text must name its setting ("Font:" or "Fo...:") and end with "...", got "%s" (rc %s)' % (fit, rc))
             for _ in range(find_row(rows, 'Cursor: ') - fix):
                 step(g.DOWN, 'Down to Cursor')
             ch = right_enters('cycle setting Cursor')

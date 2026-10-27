@@ -211,6 +211,15 @@ static void put_keep(gui *g, int role, int bgrole, int x, int y, int boxh, const
     memcpy(buf, s, (size_t)len);
     buf[len] = 0;
     mt_fit_tail(g->mt, buf, keep, maxw, out, sizeof out);
+    if (keep > 0 && keep < 24) {      /* a settings row: AMARCHY_FIT_<label> is the text as drawn, fitted, for the rig */
+        char nm[40];
+        int k;
+        memcpy(nm, "AMARCHY_FIT_", 12);
+        for (k = 0; k < keep; k++)
+            nm[12 + k] = (buf[k] >= '0' && buf[k] <= '9') || ((buf[k] | 32) >= 'a' && (buf[k] | 32) <= 'z') ? buf[k] : '_';
+        nm[12 + keep] = 0;
+        SetVar((STRPTR)nm, (STRPTR)out, -1, GVF_GLOBAL_ONLY);
+    }
     if (!out[0])
         return;
     mt_draw(g->mt, g->rp, x, y + (boxh - mt_height(g->mt)) / 2, out, role_rgb(g, role), role_rgb(g, bgrole));
