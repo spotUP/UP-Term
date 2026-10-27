@@ -1,11 +1,9 @@
-; the UHC: assign, and this package's block in S:User-Startup (";BEGIN uhc" to ";END uhc"):
-; UP-Term's unstartup.sh takes out just that block, whatever else was added since. Without it the block
-; stays (it does nothing once UP-Term:uhc is gone) and the message says where it is.
-Assign >NIL: UHC: EXISTS
-If NOT WARN
-  Assign UHC:
-EndIf
-Search >NIL: S:User-Startup ";BEGIN uhc"
+; Up-uhc 1.5 puts nothing of its own into the UHC tree: UHC's own installer (uhcinstall) made SYS:UHC, its
+; ";BEGIN UHC" block in S:User-Startup, UHCBIN and ENVARC:UHC, so they are UHC's and stay on uninstall (SYS:UHC,
+; the UHC: assign, ENV:UHC, ENVARC:UHC, your packages). Only what up-uhc 1.0 to 1.3 left is taken out: its UHC
+; tree in UP-Term:uhc and its lowercase block ";BEGIN uhc" in S:User-Startup, which names UP-Term:uhc.
+FailAt 21
+Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"
 If NOT WARN
   Assign >NIL: UP-Term: EXISTS
   If NOT WARN
@@ -20,16 +18,40 @@ If NOT WARN
       EndIf
     EndIf
   EndIf
+  Search >NIL: S:User-Startup "If EXISTS UP-Term:uhc"
+  If NOT WARN
+    Echo "S:User-Startup still has the lines from ;BEGIN uhc to ;END uhc (harmless; delete them by hand)."
+  EndIf
 EndIf
-Search >NIL: S:User-Startup ";BEGIN uhc"
-If NOT WARN
-  Echo "S:User-Startup still has the lines from ;BEGIN uhc to ;END uhc (harmless; delete them by hand)."
+; the old UHC variables of up-uhc 1.0 to 1.3 (UHCBIN naming UP-Term:)
+If EXISTS ENV:UHCBIN
+  Search >NIL: ENV:UHCBIN "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENV:UHCBIN QUIET
+  EndIf
 EndIf
-Delete >NIL: ENV:UHCBIN QUIET
-; UP-Term:uhc is the drawer this archive copied (Files/userland/uhc); take it out whole
+If EXISTS ENVARC:UHCBIN
+  Search >NIL: ENVARC:UHCBIN "UP-Term:"
+  If NOT WARN
+    Delete >NIL: ENVARC:UHCBIN QUIET
+  EndIf
+EndIf
+; installed by up-uhc 1.0 to 1.3 into UP-Term:uhc
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   If EXISTS UP-Term:uhc
-    Delete >NIL: UP-Term:uhc ALL QUIET FORCE
+    If EXISTS UP-Term:uhc/UHC-Remove
+      Execute UP-Term:uhc/UHC-Remove
+      Delete >NIL: UP-Term:uhc/UHC-Remove QUIET FORCE
+    Else
+      ; installed by up-uhc 1.2, which wrote no list: the archive's two drawers and its package scripts
+      Delete >NIL: UP-Term:uhc/C UP-Term:uhc/S ALL QUIET FORCE
+      Delete >NIL: "UP-Term:uhc/Packages/~(Installed)" QUIET FORCE
+    EndIf
+    Delete >NIL: UP-Term:uhc/S/uhcupdate UP-Term:uhc/S/uhccheck QUIET FORCE
+    Delete >NIL: UP-Term:uhc/C UP-Term:uhc/S UP-Term:uhc/Packages UP-Term:uhc QUIET
+    If EXISTS UP-Term:uhc
+      Echo "UP-Term:uhc/ExtBin, ExtDoc and Packages/Installed (your UHC packages) stay; delete UP-Term:uhc by hand to take them too."
+    EndIf
   EndIf
 EndIf

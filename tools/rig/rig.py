@@ -28,6 +28,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   (The screen mode is the Workbench's ScreenMode prefs, not the config: the
   owner's way, 2026-09-29. aga/rtg need the rig up and reboot it.)
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
+  rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
+                  an install's writes survive. The last start's machine flags, or the ones given
   rig.py install  copy build/amiga/vtcon-handler to the VTC: drawer; the boot then puts
                   these builds over the copies a kit installed in SYS: (KIT_SHADOWS;
                   reboot the rig after install). The kit's own files are kept in
@@ -96,6 +98,8 @@ PURPOSE = " ".join(sys.argv[sys.argv.index("--purpose") + 1].split()) if "--purp
 if OS is not None and OS not in OS_NAMES:
     sys.exit("rig: --os %s: one of %s" % (OS, " ".join(OS_NAMES)))
 FRESH = "--fresh" in sys.argv
+# --keep-sys (internal, from `rig.py reboot`): this start boots the sys.hdf the last run left, no new clone
+KEEP_SYS = "--keep-sys" in sys.argv
 if OS in ("32", "321", "322"):
     KICK = OS32_KICK
 elif OS == "314":
@@ -930,6 +934,15 @@ def reboot_args(given):
     except (OSError, ValueError):
         return []
 
+def reboot():
+    """Stop safely (stop() flushes the volumes) and start again on the same sys.hdf. A start clones DH0: from the master,
+    which threw away what an install wrote: installer_rig's reboot check failed on the clone and a master build lost its
+    install (2026-10-27, RIG-REBOOT, MASTER-BUILD-NOREBOOT)."""
+    args = reboot_args(sys.argv[2:])
+    stop()
+    # a new process: the machine flags are read from sys.argv when rig.py is loaded
+    subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + args, check=True)
+
 def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
     return [l for l in out.splitlines() if str(CFG) in l and "fs-uae" in l.lower()]
@@ -965,14 +978,18 @@ def start(retries=START_RETRIES):
         return
     # the system disk is new from the master on every start: nothing a dead run wrote into DH0: survives, and a rig
     # that never had one gets it here. Only here: no emulator of this rig runs (mine() above).
-    if not OS and not OS32:
+    if KEEP_SYS and not OS and not OS32 and (RIG / "sys.hdf").exists():
+        # `rig.py reboot`: DH0: stays as the last run left it. The clone-time edits are in it already; only the
+        # wasabi block goes again (an install may have written it, and its wasabid takes port 1234, sys_hdf_no_wasabid)
+        sys_hdf_no_wasabid(RIG / "sys.hdf")
+    elif not OS and not OS32:
         fresh_sys_hdf()
         sys_hdf_screenmode(RIG / "sys.hdf")
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if "--no-dopus" in sys.argv:
             sys_hdf_no_dopus(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
-    START_ARGS.write_text(json.dumps(sys.argv[2:]))
+    START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
     setup_config_only()
     paths.cap_fsuae_log(limit=0)   # a fresh log per start (the tail of the last run stays in <name>.tail)
     log = RIG / "boot/boot.log"
@@ -1154,7 +1171,7 @@ def wasabi():
 def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
-    cmds = {"setup": setup, "start": start, "stop": stop, "install": install, "kit-restore": kit_restore,
+    cmds = {"setup": setup, "start": start, "stop": stop, "reboot": reboot, "install": install, "kit-restore": kit_restore,
             "status": status, "logwatch": logwatch, "muforce": muforce, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg")}
     helps = ("--help", "-h", "help", "?")

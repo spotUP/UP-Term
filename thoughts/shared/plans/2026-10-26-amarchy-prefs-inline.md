@@ -106,19 +106,73 @@ Phase M, menu:
 - [x] M2 sd_row_label "Label: Value" for every kind; test: each kind, long value truncation. -- DONE 72bc78cb on prefs-inline (settings_def 1433 ok; test test_settings_row_label)
 - [x] M3 LF_SETTING check toggle and cycle submenu; test: toggle writes the file, the reloaded fields show -- DONE ebf71d91 on prefs-inline (amconf 189 ok)
   the new value.
-- [ ] M4 int/string through ask_value with range check; test: out-of-range rejected, file unchanged.
-- [ ] M5 colour / palette picker level, custom hex; test: picking entry 5 writes palette slot.
-- [ ] M6 font and screen mode requesters from the menu process (both menus); rig check.
-- [ ] M7 theme list and profile list with New / Rename / Delete; test: rename keeps keys.
-- [ ] M8 drawn menu colour chips; text menu hex; rig shot.
-- [ ] M9 dist/keymap settings page groups; old settings.amarchy.preferences row stays (opens Prefs).
-- [ ] M10 amarchy-menu links the prefs/amconf modules; make amiga build.
+- [x] M4 int/string through ask_value with range check; test: out-of-range rejected, file unchanged. (43635687)
+- [x] M5 colour / palette picker level, custom hex; test: picking entry 5 writes palette slot. (DONE e1c1f8c3)
+- [x] M6 (94153060) font and screen mode requesters from the menu process (both menus); rig check.
+- [x] M7 6a2a2a52 theme list and profile list with New / Rename / Delete; test: rename keeps keys.
+- [x] M8 drawn menu colour chips; text menu hex; rig shot. (b6399cc4, merged c0d6d486; rig shot in R1)
+- [x] M9 dist/keymap settings page groups; old settings.amarchy.preferences row stays (opens Prefs). (6c0fa6f6, merged)
+- [x] M9b one Amarchy entry under Settings (owner 2026-10-26): settings.amarchy is both the settings:amarchy page node and the parent of the old Rescan, Preferences, Menu font and Edit rows; mn_children returns the page rows plus the static children; drop settings.amarchysettings from dist/keymap and dist/menu-icons; test in tests/test_keymap.c. (ff74dd7d, merged; wbrun __stack + cookie, dist_stack OK)
+- [x] M6b fallback font row (SDI_FALLBACK, .otag file requester) returns LF_SET_KIND; amarchy-menu requesters open on Workbench, not the menu screen; screen mode label shows raw 0xID, not mode name. (78b9cfe2, merged 6810e37e; requester screen and mode name checked in R1)
+- [x] M10 amarchy-menu links the prefs/amconf modules; make amiga build. Also build/amiga/wbrun (Makefile ~894): it links leaf_core.c alone and fails since at least 34299a4f on undefined _prefs_paths_upterm, _prefs_load, _prefs_stage, _prefs_save_at; give it the same prefs/amconf module list as amarchy-menu (one shared Makefile variable, not a third copy). (7069a3d3, merged; AMARCHY_LEAF_DEPS)
 
 Phase C, companion:
 - [x] C1 Prefs reloads unedited pages on file notify; test: fake fs change while open, Save keeps it. (78c5fc0f, prefs-inline)
 
 Phase R, reachability:
-- [ ] R1 One rig test through the real entry point: Super+Space, Settings > General > Cursor blinks, the
+- [x] R1 One rig test through the real entry point: Super+Space, Settings > General > Cursor blinks, the
   handler window cursor stops blinking (sentinel: the file write count and the handler reload count), in
   both the drawn and the text menu.
-- [ ] R2 A1200 deploy with backups, drift 0, owner test steps.
+  Sentinel design (2026-10-26, vtcon-a1): the handler has no reload counter (watch_worker in
+  handler/vtcon_handler.c only re-reads ENV:up-term/up-term on notify), and the serial trace exists
+  only in SERIAL=1 builds, so a counter would be test-only product code. The reload sentinel is the
+  effect itself: sample the cursor cell over ~2 s before (must toggle) and after (must stay steady),
+  then select the row again and require blinking to resume. Only a handler reload can change the
+  blink state, so the toggle-back is the call proof. File write sentinel: ENV: and ENVARC:
+  up-term/up-term both change (md5) and both hold cursor-blink with the new value; one write per select.
+  Driver also asserts the picked theme name (gap left by amarchy_theme_save_rig.py).
+  M6 rows (font, screen mode requesters) are checked in the same run.
+  Driver plan (2026-10-26, vtcon-a1 session 7): new tools/rig/amarchy_prefs_rig.py, table driven and
+  resumable like amarchy_menu_rig.py (verdicts in <RIG>/amarchy/prefs_<row>.verdict, --only, --failed).
+  Reuse, do not copy: wait_stable/step/strangers from amarchy_theme_save_rig.py (drawn menu, no fixed
+  sleeps), screen_text() and TEXT_MENU from amarchy_menu_rig.py (text menu), find_cursor/pixel from
+  menus_rig.py (blink sampler: >= 2 colours over 12 x 0.25 s = blinking, 1 colour = steady). Menu path
+  from dist/keymap order (Settings index and the Cursor blinks row computed from the file, never a
+  hardcoded Down count). Rows: drawn-blink-off, drawn-blink-on, text-blink-off, text-blink-on (each: md5
+  of ENV: and ENVARC: up-term/up-term before/after, both hold cursor-blink=<new>, cursor sampled before
+  and after), m6-font (requester opens on the menu screen, not Workbench), m6-mode (mode row shows a mode
+  name, not 0x), theme-name (picked theme named in both prefs). Also watch M8 chip pens on a low-colour
+  screen (handoff "Watch"). Rig 7 only, purpose "vtcon-a1 Amarchy session: prefs R1 reachability".
+  Order: driver written by a sonnet agent after M9b and M6b merge (menu tree moves with M9b); run agent
+  second.
+  Status 2026-10-27: 7 of 7 rows pass on rig 7 (driver fixes 6a6bbf5f, b72b34ae, 77415a6a, e20a4a2a;
+  research/2026-10-27-prefs-r1-run.md). Open: m6-font passed with the menu itself on Workbench, so the
+  menu-screen claim is unproven; re-run 3 puts the menu on another public screen. M8 chips not seen
+  (24-bit rig screen). Re-run 3 (a82bc826): host window on OWNSCREEN, drawn menu and font requester
+  both on screen "UP-Term" (amarchy/leaf.c:131 passes the menu window and screen). R1 done.
+- [x] R2-guru: owner test 2026-10-27 on the A1200 (build 564d9dc3): cursor blink passes; opening the font
+  requester from the drawn menu gurus #80000004 (illegal instruction). Hunt: stack first (same path under
+  Stack 262144), then wasabi guru/debug for the PC and module. Closed 2026-10-27 as a one-off, cause not found:
+  run 2 (HEAD 93be7dc8 debug build) and run 3 (the same stripped binary that gurued, md5 afe71a46, three tries
+  plus Cancel) opened "Choose a font" with no guru; stack free 60370 of 65536; debug stream empty. Evidence:
+  thoughts/shared/research/2026-10-27-prefs-r1-run.md, runs 2 and 3. Reopen with a PC capture if it comes back.
+  A1200 now runs the HEAD debug build (md5 4db0c012, 460116 bytes); old binary kept as amarchy-gui.bak-guru-20261027.
+- [x] R2 A1200 deploy with backups, drift 0, owner test steps. 2026-10-27, build 564d9dc3: UP-Term:bin/Amarchy,
+  amarchy-gui, amarchy-menu, amarchy-index, C:UPTerm, L:vtcon-handler, L:pty-handler, ENV: and ENVARC:
+  up-term/keymap; each backed up as <path>.bak-20261027; all 9 `same` after (a1200_drift.py). The handler
+  sources equal main's (main's 10 newer commits touch no handler, tty, engine, render or device file). Left
+  DIFF, not part of this plan: vsh (C:, UP-Term:bin vsh and sh), C:UP-Term-Prefs, sz, rz, hl, mdv, upgetty,
+  uptelnet, UPConsole, up-console.device. Owner test 2026-10-27 after a reboot (amarchy-gui = HEAD 93be7dc8 debug
+  build): steps 1-5, 7, 8 and Esc PASS. Step 6 failed only in terminal Amarchy (amarchy-menu), which has no Right yet
+  (the open Text menu Right item, AMARCHY-TEXT-RIGHT); the drawn menu passes Right on the rig (m3-right). R2 ticked.
+
+Session 7 (2026-10-27, vtcon-a1): M9b ff74dd7d and M6b 78b9cfe2 merged (6810e37e), R1 driver 557097d0 merged (1fadf0c3), all on origin/prefs-inline. R1 run agent on rig 7 (findings: thoughts/shared/research/2026-10-27-prefs-r1-run.md). Owner chose slot 2: AM-PREFS-M3-FOLLOWUP (Right key enters, "Label: Value" keeps the value visible) in worktree prefs-m3f, branch prefs-m3f; merge after R1 verdicts.
+
+### M3-followup (2026-10-27, session 7)
+- [x] Drawn menu: Right enters only rows with children (mn_right_enters in menu_tree.c); "Label: Value" rows cut the label and keep the value (sd_row_label, mt_fit_tail, MN_LABEL 96). Commit f4ef3798, merged into prefs-inline 564d9dc3 (keymap, menu_text, settings_def suites pass; make amiga amarchy-menu clean); prefs-m3f worktree and branch removed. Rig check still to do: Right on a leaf, an index row or a choice row does nothing; a long "Font: <value>" row keeps its value.
+- [x] Rig check (row m3-right, 639e4b11 + 93be7dc8): 1 of 1 on rig 7. Leaf, choice and index rows (staged RigApp1)
+  ignore Right; group and cycle rows enter. Long Font row read back by text (ENV:AMARCHY_FIT_<label>, set beside
+  AMARCHY_ROWS in gui.c): "Font: AVeryLongFontNameForTh...". The label stays whole because "Fo..." is not narrower
+  than "Font"; a longer label is cut to two letters plus "..." (02cee8b0, owner decision 2026-10-27).
+- [ ] Text menu Right (amarchy/menu.c): blocked on UI_HOTKEY_RIGHT in libupkgui (upterm-ports pkgs/upkg-ui/src/ui.c). That is the UP-Term session's repo: ledger it for them. Once the key exists, wire mn_right_enters into menu.c.
+- Rig 7 hit a reset loop on 2026-10-27 00:11 (about 2600 "CPU reset" lines; the last thing before each reset was an MMU PFLUSH from fast-RAM code on 68060-NOMMU). Rig 1 has the same config and source disk and no resets. The next boot was clean. Cause not found; the R1 agent has a reset guard.

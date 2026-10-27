@@ -50,5 +50,5 @@ fzy     up-fzy    1.0      1.0         80      UP-Term:pkg/up-fzy     Files/user
 ctags   up-ctags  1.0      1.0         80      UP-Term:pkg/up-ctags   Files/userland/bin/ctags  upterm-ports,ixemul-vtcon  -
 zip     up-zip    1.0      1.0         80      UP-Term:pkg/up-zip     Files/userland/bin/zip  upterm-ports,ixemul-vtcon  -
 dopus   up-dopus   1.0      -           -       ENVARC:upkg/up-dopus   Files/os3,Files/os3-68000                                       -  DOpus5:DirectoryOpus
-uhc     up-uhc     1.0      1.0         -       UP-Term:pkg/up-uhc     Files/userland/uhc                                                             -  -
+uhc     up-uhc     1.5      1.0         -       UP-Term:pkg/up-uhc     Files/unstartup-uhc.sh                                                              -  -
 sqlite  up-sqlite3  1.0      1.0         80      UP-Term:pkg/up-sqlite3  Files/userland/bin/sqlite3                            upterm-ports,ixemul-vtcon  UP-Term:bin/sqlite3

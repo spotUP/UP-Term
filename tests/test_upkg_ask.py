@@ -60,12 +60,14 @@ class Ask(unittest.TestCase):
             f.write(FAKE_UI)
         os.chmod(p, 0o755)
 
-    def run_ask(self, shell, typed=None, plain=False, state=None):
+    def run_ask(self, shell, typed=None, plain=False, state=None, unattended=False):
         env = {'PATH': self.bin + ':/usr/bin:/bin', 'UI_LOG': self.log, 'CLEAR_LOG': self.clear_log, 'HOME': self.tmp}
         if plain:
             env['UPKG_ASK_PLAIN'] = '1'
         if state:
             env['UPKG_ASK_STATE'] = state
+        if unattended:
+            env['UPKG_ASK_UNATTENDED'] = '1'
         if typed is None:
             r = subprocess.run(shell + [ASK, self.q, self.out], stdin=subprocess.DEVNULL,
                                capture_output=True, env=env, timeout=20)
@@ -165,6 +167,39 @@ class Ask(unittest.TestCase):
                                                  'haiku  sonnet  opus '])
                 with open(state) as f:
                     self.assertIn("MODEL='opus'", f.read().splitlines())
+
+    def test_unattended_answers_are_recorded_and_kept_by_an_upgrade(self):
+        """regression (owner rule 2026-10-27): an answer used without a terminal (--answers FILE, Install All's
+        seeded defaults, UPKG_ASK_UNATTENDED) is recorded in NAME.answered like a typed one, so a later
+        unattended upgrade keeps it silently and only a question the older version never asked is new"""
+        for sh in self.shells:
+            with self.subTest(sh=sh[0]):
+                state = os.path.join(self.tmp, 'unatt.answered')
+                if os.path.exists(state):
+                    os.remove(state)
+                # install: upkg seeds the answers it was given as the defaults of the questions file
+                with open(self.q, 'w') as f:
+                    f.write("REMOTE|string|Server host and port|given.lan 1|\n"
+                            "START|yesno|Start at boot?|yes|\n"
+                            "MODEL|choice|Model|opus|haiku,sonnet,opus\n")
+                self.run_ask(sh, state=state, unattended=True)
+                self.assertEqual(self.answers(sh), 'given.lan 1|yes|opus')
+                with open(state) as f:
+                    self.assertEqual(f.read().splitlines(), ["REMOTE='given.lan 1'", "START='yes'", "MODEL='opus'"])
+                # upgrade: other defaults and a new question; the old three keep their answers
+                with open(self.q, 'w') as f:
+                    f.write("REMOTE|string|Server host and port|other|\n"
+                            "START|yesno|Start at boot?|no|\n"
+                            "MODEL|choice|Model|haiku|haiku,sonnet,opus\n"
+                            "NEWQ|string|New question|nv|\n")
+                self.run_ask(sh, state=state, unattended=True)
+                with open(self.out) as f:
+                    got = f.read().splitlines()
+                self.assertEqual(got, ["REMOTE='given.lan 1'", "START='yes'", "MODEL='opus'", "NEWQ='nv'"])
+                with open(state) as f:
+                    self.assertEqual(f.read().splitlines()[-1], "NEWQ='nv'")
+                    f.seek(0)
+                    self.assertEqual(len(f.read().splitlines()), 4)
 
     def test_the_last_question_is_cleared_after_upkg_ui(self):
         """regression (owner, 2026-10-21): upkg-ui stays on the normal screen (no Shell flash between

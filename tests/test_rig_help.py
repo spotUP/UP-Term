@@ -7,7 +7,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
 import rig
 
-CMDS = ("setup", "start", "stop", "install", "kit_restore", "status", "logwatch", "muforce", "wasabi", "screenmode")
+CMDS = ("setup", "start", "stop", "reboot", "install", "kit_restore", "status", "logwatch", "muforce", "wasabi", "screenmode")
 
 class RigHelp(unittest.TestCase):
     def run_main(self, *args):
@@ -21,7 +21,7 @@ class RigHelp(unittest.TestCase):
         return rc, out.getvalue(), ran
 
     def test_help_forms_after_every_command_run_nothing(self):
-        for cmd in ("setup", "start", "stop", "install", "kit-restore", "status", "logwatch", "muforce", "wasabi", "aga", "aga256", "rtg"):
+        for cmd in ("setup", "start", "stop", "reboot", "install", "kit-restore", "status", "logwatch", "muforce", "wasabi", "aga", "aga256", "rtg"):
             for h in ("--help", "-h", "help", "?"):
                 rc, out, ran = self.run_main(cmd, h)
                 self.assertEqual((rc, ran), (0, []), (cmd, h))

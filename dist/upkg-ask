@@ -21,9 +21,10 @@
 # UPKG_ASK_STATE (set by upkg for a postinst: info_dir/NAME.answered) is the file of question ids this package's
 # installs answered, as KEY='value' lines. A question whose key is in it is not asked again: the earlier answer is
 # kept silently (so an upgrade asks only the questions the older version never asked). Every question asked on
-# a terminal is added to it. A default taken without asking is not recorded.
-# UPKG_ASK_UNATTENDED=1 (upkg: Install All, a progress box) says the missing terminal is on purpose: a question not
-# recorded takes its default. Without it and without a terminal the default is taken too, with a note on stderr.
+# a terminal is added to it, and so is every answer used under UPKG_ASK_UNATTENDED. A bare default taken with no
+# terminal and no UPKG_ASK_UNATTENDED is not recorded.
+# UPKG_ASK_UNATTENDED=1 (upkg: Install All, a progress box, --answers FILE) says the missing terminal is on purpose:
+# a question not recorded takes its default (upkg seeds the given answers as the defaults of QUESTIONS). Without it and without a terminal the default is taken too, with a note on stderr.
 
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then
     echo "usage: upkg-ask QUESTIONS ANSWERS [NAME]" >&2
@@ -139,7 +140,12 @@ while IFS='|' read -r key type prompt def choices; do
         case ,$choices, in *,"$line",*) [ -n "$line" ] && ans=$line ;; esac ;;
     esac
     quote "$key" "$ans" >> "$answers"
-    [ $mode = defaults ] || { [ -z "$state" ] || quote "$key" "$ans" >> "$state"; }
+    # an answer used is recorded wherever it came from: typed, or taken without a terminal on purpose
+    # (UPKG_ASK_UNATTENDED: upkg --answers FILE and Install All seed the defaults of QUESTIONS). Only a bare
+    # default taken by accident (no terminal, not unattended) is not an answer
+    if [ -n "$state" ] && { [ $mode != defaults ] || [ -n "$UPKG_ASK_UNATTENDED" ]; }; then
+        quote "$key" "$ans" >> "$state"
+    fi
 done < "$questions"
 rm -f "$tmp"
 # upkg-ui keeps its last screen on the normal screen (no Shell between two questions): clear the last

@@ -435,7 +435,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     askdirs, shots = 0, 0
     last_page_at = time.time()
     work_since, last_pct, dumped_pct = None, None, set()
-    room, after_ask, asks, ticked = None, False, 0, False
+    room, after_ask, asks, ticked, drawer = None, False, 0, False, DrawerAsks()
     cur_title, ticked_sigs = None, set()
 
     seen_faults = set()
@@ -471,7 +471,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
         title, gads = installer_page(tree)
         if title and title != cur_title:
             if cur_title:   # another Installer (a nested add-on Install) with its own drawer and room pages
-                typed, room, asks = False, None, 0
+                typed, room, drawer = False, None, DrawerAsks()
                 log.append('Installer window [%s]' % title)
             cur_title = title
         sig = (title, tuple(sorted(gads)), tuple(l for _, l in gads.values()), prompt_digest(tree, gads) if console and 90 in gads else None)   # message pages with the same ids (installed, refused, open) differ by their text
@@ -488,8 +488,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
                 click(gads[91][0])   # Abort Install: nothing was copied
                 time.sleep(5)
                 return True, log
-            if 89 in gads and 92 in gads:
-                asks += 1
+            asks = drawer.see(gads)
             if room_dest and asks >= 1 and not room and set(gads) <= {0, 90, 91}:   # a message page after the drawer page
                 room = read_room(tree, case)
                 if room:
@@ -850,14 +849,27 @@ def amarchy_window():
     return any(t == 'Amarchy' for t, _ in windows(ami.req(0x0D).decode('latin-1')))
 
 
+class DrawerAsks:
+    """How often the drawer page (ids 89 Make New Drawer and 92 the path string) came, counted when it arrives from
+    another page. A redraw of the page itself (the path typed through Make New Drawer, then the string updated) is the
+    same ask: counting every redraw stopped a typed destination with "room page repeats" (master build, 2026-10-27)."""
+    def __init__(self):
+        self.n, self.on = 0, False
+
+    def see(self, gads):
+        on = 89 in gads and 92 in gads
+        self.n += on and not self.on
+        self.on = on
+        return self.n
+
+
 def reboot_amarchy_check(ck, log):
     """F1: after the install the rig is rebooted (once the Installer's writes are quiet); the startup block must
     have started Amarchy: its ARexx port answers STATUS, and Left Amiga + Space opens its menu (an XCON: window
     titled Amarchy)."""
     import tabstate
     time.sleep(10)   # the Installer's last writes and the volume's flush, never a reset mid-write
-    rig("stop")
-    rig("start")
+    rig("reboot")    # DH0: kept: a stop + start clones it anew from the master and the install is gone
     ir._shown = None
     time.sleep(5)
     m = ami._m()
