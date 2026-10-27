@@ -11,7 +11,10 @@ RET = 0x44
 
 
 def open_host(title='kmhost'):
-    """A titled XCON: window running vsh, focused by a click."""
+    """A titled XCON: window running vsh, focused by a click. A window already carrying the title (an earlier row's
+    host) is closed first, so one row never leaves a second one; SystemExit naming it when it will not go."""
+    if ami.window(title) and not vshwin.close_vsh(title):
+        raise SystemExit('[ERROR] leftover window %r could not be closed before opening a new one' % title)
     vshwin.open_vsh(title, wait=5)
     ami.click_px(100, 100)
     time.sleep(1)
