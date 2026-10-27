@@ -620,7 +620,7 @@ def case_pkg_upgrades():
     """Packages > Upgrades (plan PG.8). Setup without the menu: `upkg install up-pi` against the normal local feed
     (the Install path is case_pkg_install's); then the feed serves up-pi at a higher version. Loads: ix_add_pkg_rows
     (index_core.c) bumps pk_loads on every load; the list loads when not loaded or stale, and a finished job marks it
-    stale, so three opens with no job give 1 and each job adds one on the next open."""
+    stale, so the count runs over the warm server's life: 1 for any number of opens, +1 per job."""
     fd = feed_dir()
     pkg, table_id, high = 'up-pi', 'pi', '1.1'
     rel = local_feed(fd)
@@ -635,15 +635,21 @@ def case_pkg_upgrades():
         check(rc == 0 and rc2 == 0 and pkg in installed_names(), 'pkg_upgrades: %s installed through upkg (rc %s/%s)' % (pkg, rc, rc2))
         # fresh Amarchy: loads count from 0
         setup()
+        # The warm menu server keeps the package cache across opens: the first open loads (1); the sentinel is
+        # published only by a load, so after deleting it two more opens (menu closed between) must not bring it back.
         for i in range(3):
-            c.run('Delete >NIL: ENV:AMARCHY_PKGS_LOADS ENV:AMARCHY_ROWS QUIET')
+            if i:
+                c.run('Delete >NIL: ENV:AMARCHY_PKGS_LOADS QUIET')
             pkgs = pkg_group()
             if pkgs is None:
                 return
             time.sleep(1)
+            loads = env_num('AMARCHY_PKGS_LOADS')
+            if i == 0:
+                check(loads == 1, 'pkg_upgrades: AMARCHY_PKGS_LOADS is 1 after the first open (got %s)' % loads)
+            else:
+                check(loads is None, 'pkg_upgrades: open %d did not reload the cache (loads sentinel absent, got %s)' % (i + 1, loads))
             close_menu()
-        loads = env_num('AMARCHY_PKGS_LOADS')
-        check(loads == 1, 'pkg_upgrades: AMARCHY_PKGS_LOADS is 1 after three opens, no job (got %s)' % loads)
         rel.set(rel.bumped_feed(table_id, high, only=True))
         pkgs = pkg_group()
         if pkgs is None:
@@ -653,11 +659,10 @@ def case_pkg_upgrades():
             return
         rc = job_done()
         check(rc == 0, 'pkg_upgrades: Refresh job rc 0 (rc %s)' % rc)
-        c.run('Delete >NIL: ENV:AMARCHY_PKGS_LOADS QUIET')
         ami.key(RETURN)                      # accept: the job marked the list stale, the level reloads in the same menu
         time.sleep(3)
         loads = env_num('AMARCHY_PKGS_LOADS')
-        check(loads == 2, 'pkg_upgrades: AMARCHY_PKGS_LOADS is 2 after one job (got %s)' % loads)
+        check(loads == 2, 'pkg_upgrades: AMARCHY_PKGS_LOADS is 2 after one job: counted over the server life (got %s)' % loads)
         close_menu()
         pkgs = pkg_group()
         if pkgs is None:
