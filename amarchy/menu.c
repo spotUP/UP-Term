@@ -15,6 +15,7 @@
 #include <intuition/intuitionbase.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
+#include "serve_sig.h"
 #include "atiming.h"
 #include "menu_core.h"
 #include "index_core.h"
@@ -631,6 +632,7 @@ static int serve(void)
     AddPort(port);
     Permit();
     signal(SIGINT, on_int);
+    serve_ignore_hangup();                     /* a closed XCON console must not print "Hangup" or end the server */
     hotkeys_init();
     while (!quit) {
         Wait(1UL << port->mp_SigBit | SIGBREAKF_CTRL_C);

@@ -2,6 +2,8 @@
  * section 5). Sentinel counters prove which path ran: a live server gets the message and nothing is spawned. */
 #include "../amarchy/menusrv_core.h"
 #include "harness.h"
+#include "../amarchy/serve_sig.h"
+#include <signal.h>
 
 typedef struct {
     int found, alive, outstanding;
@@ -154,6 +156,19 @@ static void test_server_names(void)
     CHECK_STR(task, "amarchy-gui");
 }
 
+/* The server ignores SIGHUP (an XCON console closing sent it "Hangup" and ended it). The test raises it for real:
+ * unhandled, the default action ends this process before the CHECK below. */
+static void test_serve_ignores_hangup(void)
+{
+    static volatile int survived;
+    signal(SIGHUP, SIG_DFL);    /* a background-started test run inherits SIGHUP ignored: start from the default */
+    serve_ignore_hangup();
+    raise(SIGHUP);
+    survived = 1;
+    CHECK(survived == 1);
+    signal(SIGHUP, SIG_DFL);
+}
+
 void suite_menusrv(void)
 {
     test_live_server();
@@ -164,4 +179,5 @@ void suite_menusrv(void)
     test_restart_throttle();
     test_verdicts();
     test_server_names();
+    test_serve_ignores_hangup();
 }
