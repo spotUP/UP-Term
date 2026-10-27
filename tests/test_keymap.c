@@ -1453,6 +1453,7 @@ static void package_search_asks_its_text_and_lists_the_matches(void)
     pkg_fake_loads = 0;
     pkg_enter(&x, "packages");
     c = pkg_level(&x, "packages", it);
+    CHECK_INT(c, 5);
     memset(&g, 0, sizeof g);
     for (i = 0; i < c; i++)
         if (lf_pkg_search_row("packages", &it[i]))
