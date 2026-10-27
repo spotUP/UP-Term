@@ -104,12 +104,11 @@ class KitsizeArithmetic(unittest.TestCase):
         self.assertEqual(kitsize.sizes(kit, 'base')['KBLIBS'], 2 * one)
 
     def test_only_the_files_of_a_chosen_option_count_for_it(self):
-        kit = self.kit({'net/curl-8.0/curl.020': 900000, 'net/curl-8.0/curl.040': 950000, 'net/curl-8.0/curl.060': 1000000,
-                        'net/curl-8.0/COPYING': 35000, 'net/bebbossh-1.0/bebbossh': 40000,
+        kit = self.kit({'net/bebbossh-1.0/libcryptossh.library020': 90000, 'net/bebbossh-1.0/libcryptossh.library060': 100000,
+                        'net/bebbossh-1.0/COPYING': 35000, 'net/bebbossh-1.0/bebbossh': 40000,
                         'net/bebbossh-1.0/bebbossh-1.0-src.tar.bz2': 250000, 'UPTerm': 10})
         v = kitsize.sizes(kit, 'base')
-        self.assertEqual(v['KBCURL'], -(-kitsize.file_bytes(1000000) // 1024))        # the largest build only
-        self.assertEqual(v['KBSSH'], -(-kitsize.file_bytes(40000) // 1024))           # the program, not the source
+        self.assertEqual(v['KBSSH'], -(-(kitsize.file_bytes(40000) + kitsize.file_bytes(100000)) // 1024))  # the largest library build only
         self.assertLess(v['KBTOOLS'], 100)                                            # nothing of net/ in the tools part
 
     def test_amissl_counts_its_common_files_and_one_cpus_library(self):
@@ -140,6 +139,22 @@ def manifest(kit):
         if len(f) == 4 and '#' not in f[3] and f[0] != '-':
             out[f[0]] = out.get(f[0], 0) + kitsize.file_bytes(int(f[1]))
     return out
+
+
+class NoAminetCurlInTheKit(unittest.TestCase):
+    """The product has no AmiTCP: the curl in the kit is the upterm-ports build (Files/userland). The vendored
+    Aminet curl names usergroup.library and must not come back into dist/net or the Install options."""
+
+    def test_no_curl_ships_from_dist_net_and_none_names_usergroup(self):
+        net = ROOT / 'dist/net'
+        self.assertEqual(sorted(p.name for p in net.glob('curl*')), [])
+        named = [str(p) for p in net.rglob('*') if p.is_file() and b'usergroup.library' in p.read_bytes()]
+        self.assertEqual(named, [])
+
+    def test_no_install_option_or_size_row_for_the_aminet_curl(self):
+        self.assertNotIn('KBCURL', kitsize.OPTIONS)
+        for f in ('dist/Install.installer', 'dist/install.dos', 'dist/common/oldopts.installer'):
+            self.assertNotRegex((ROOT / f).read_text(encoding='latin-1'), r'KBCURL|UPTOPTCURL|net/curl-')
 
 
 class TheBuiltKitsNumbersMatchTheirArchives(unittest.TestCase):

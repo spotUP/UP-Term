@@ -73,7 +73,7 @@
             (P_AMISSLCHECK)
             (if #amissl-need
                 (
-                    (set #sslnote (cat "\nAmiSSL was not installed, curl cannot run.\n"
+                    (set #sslnote (cat "\nAmiSSL was not installed, https programs cannot run.\n"
                                        "Run " (tackon #files "AmiSSL/Install-AmiSSL") " again."))
                     (set #sslrows 2))
                 (
@@ -218,7 +218,6 @@
 (set #serial "")
 (set #ssh "")
 (set #bget "")
-(set #curl "")
 (set #wasabi "")
 (set #unifont "")
 (set #emoji "")
@@ -231,7 +230,7 @@
 ; amisslmaster.library or an older one; AmiSSL's own Install-AmiSSL does the work (P_AMISSL, after the parts)
 (set #amisslins
     (askoptions
-        (prompt "AmiSSL 5.27 (the TLS library curl needs):")
+        (prompt "AmiSSL 5.27 (the TLS library for https):")
         (help "AmiSSL 5.27 (Apache License 2.0, the AmiSSL Open Source Team, with OpenSSL) "
               "is in the kit's Files/AmiSSL drawer. It is ticked when LIBS: has no "
               "amisslmaster.library, or an older one than the kit's; the same "
@@ -258,17 +257,12 @@
               "of UP-Term's is replaced; your own BebboSSH library is kept, "
               "with a note if it is older).\n\n"
               "bebboget: https downloads (GPL v3+), by the same author.\n\n"
-              "curl 8.22.0: downloads and transfers (the curl licence). It needs "
-              "AmiSSL 5 (Aminet util/libs/AmiSSL-v5-OS3.lha): keep AmiSSL ticked "
-              "on the page before unless AmiSSL 5 is already installed.\n\n"
               "Their licences and sources are in the kit's Files/net drawer.")
         (choices "ssh and scp (BebboSSH)"
-                 "bebboget (https downloads)"
-                 (if #amissl "curl (AmiSSL 5 found)" (if #amisslins "curl (AmiSSL 5 is installed first)" "curl (needs AmiSSL 5, not found)")))
-        (default (+ 1 2 4))))
+                 "bebboget (https downloads)")
+        (default (+ 1 2))))
 (if (in #net 0) (set #ssh "SSH"))
 (if (in #net 1) (set #bget "BEBBOGET"))
-(if (in #net 2) (set #curl "CURL"))
 
 (set #extra
     (askoptions
@@ -359,7 +353,7 @@
 (set #kb-manpages @KBUSERLAND@)
 (set #kb-unifont (if #unifont @KBCOPYUNIFONT@ 0))
 (set #kb-emoji (if #emoji @KBCOPYEMOJI@ 0))
-(set #kb-tools (+ @KBTOOLS@ (if #ssh @KBSSH@ 0) (if #bget @KBBEBBOGET@ 0) (if #curl @KBCURL@ 0)))
+(set #kb-tools (+ @KBTOOLS@ (if #ssh @KBSSH@ 0) (if #bget @KBBEBBOGET@ 0)))
 ; fonts, unix, desktop, boot (with wasabi), libs, mount, console, record: their #kb below
 (set #kb-rest (+ @KBFONTS@ 60 @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ 20))
 ; AmiSSL goes where Install-AmiSSL puts it first, not into the drawer: its own default is the
@@ -437,7 +431,6 @@
         (set #serial (getenv "UPTOPTSERIAL"))
         (set #ssh (getenv "UPTOPTSSH"))
         (set #bget (getenv "UPTOPTBEBBOGET"))
-        (set #curl (getenv "UPTOPTCURL"))
         (set #wasabi (getenv "UPTOPTWASABI"))
         (set #unifont (getenv "UPTOPTUNIFONT"))
         (set #emoji (getenv "UPTOPTEMOJI"))
@@ -462,7 +455,6 @@
     (set #name "SERIAL" #val #serial) (P_OPT)
     (set #name "SSH" #val #ssh) (P_OPT)
     (set #name "BEBBOGET" #val #bget) (P_OPT)
-    (set #name "CURL" #val #curl) (P_OPT)
     (set #name "WASABI" #val #wasabi) (P_OPT)
     (set #name "CPU040" #val #cpu040) (P_OPT)
     (set #name "CPU060" #val #cpu060) (P_OPT)

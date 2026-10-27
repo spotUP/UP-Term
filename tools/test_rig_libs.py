@@ -56,7 +56,7 @@ for m060, cpu in ((True, "68060"), (False, "68020-40")):
               "stage_amissl puts the %s library flat in VTC:amissl/AmiSSL" % cpu)
 
 # The kit's curl is the upterm-ports build on ixemul sockets: no usergroup.library, exactly one $STACK cookie.
-# The Aminet curl (dist/net/curl-8.22.0, libnet) names usergroup.library and fails this.
+# The Aminet curl (libnet, removed from the kit) named usergroup.library and fails this.
 def curl_problems(path):
     data = pathlib.Path(path).read_bytes()
     bad = []
@@ -67,8 +67,11 @@ def curl_problems(path):
     return bad
 
 
-old = rig.ROOT / "dist/net/curl-8.22.0/curl.060"
-check(curl_problems(old), "the checker rejects the Aminet curl (%s)" % old)
+with tempfile.TemporaryDirectory() as d:
+    old = pathlib.Path(d) / "curl"
+    old.write_bytes(b"\0libnet usergroup.library \0$STACK: 1\0")
+    check(curl_problems(old), "the checker rejects a curl that names usergroup.library")
+check(not list((rig.ROOT / "dist/net").glob("curl*")), "dist/net holds no vendored curl")
 ports = rig.ROOT.parent / "upterm-ports/build"
 staged = [p for p in (ports / "kit/userland/bin/curl", ports / "sysroot/UP-Term/bin/curl") if p.is_file()]
 if not staged:
