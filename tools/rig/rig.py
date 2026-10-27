@@ -41,6 +41,9 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
+  rig.py start --debugger   FS-UAE's console debugger (console_debugger = 1) on a FIFO: stdout/stderr in
+                  build/rig<N>/debugger.log, input from build/rig<N>/debugger.in
+  rig.py dbg "<line>"   one debugger line to that FIFO, e.g. "w 0 <addr> 4 W" (memwatch on writes), "g"
   rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
@@ -57,6 +60,8 @@ import wasabi as rigwasabi
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
 CFG = RIG / "vtcon-rig.fs-uae"
+DBG_IN = RIG / "debugger.in"
+DBG_LOG = RIG / "debugger.log"
 # the last start's arguments (the machine: --a1200, --060, --kick ...). A reboot from another command
 # (`rig.py aga`/`aga256`/`rtg`) boots with them, so the rig comes back as the same machine: the config is
 # rewritten from the arguments on every start, and `rig.py aga` alone once turned an --a1200 rig into the
@@ -393,6 +398,7 @@ M060 = "--060" in sys.argv or MAX
 # become the 68LC060 (FS-UAE's cpu key; the LC has no FPU and no MMU), the 020 machine drops its fpu key.
 NOFPU = "--nofpu" in sys.argv
 MMU = "--mmu" in sys.argv and M060 and not NOFPU
+DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -787,9 +793,33 @@ def setup():
         "scale = integer",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,
-        "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
+        "screenshots_output_dir = %s" % (RIG / "shots"),
+        ] + debugger_lines() + [""]))
     if "start" not in sys.argv:
         print("rig ready:", CFG)
+
+def debugger_lines():
+    """--debugger: the UAE console debugger reads the FIFO DBG_IN and writes DBG_LOG (see launch_fsuae)."""
+    return ["console_debugger = 1"] if DEBUGGER else []
+
+def dbg():
+    """rig.py dbg "<line>": one line into the running debugger's FIFO."""
+    if not DBG_IN.exists():
+        sys.exit("rig: no debugger FIFO %s (start with --debugger)" % DBG_IN)
+    fd = os.open(str(DBG_IN), os.O_RDWR | os.O_NONBLOCK)
+    try:
+        os.write(fd, (" ".join(sys.argv[2:]) + "\n").encode())
+    finally:
+        os.close(fd)
+
+def fsuae_stdio():
+    """stdin, stdout, stderr for the FS-UAE process: the debugger FIFO and log with --debugger, else null."""
+    if not DEBUGGER:
+        return subprocess.DEVNULL, subprocess.DEVNULL, subprocess.DEVNULL
+    if not DBG_IN.exists():
+        os.mkfifo(str(DBG_IN))
+    # read-write so the FIFO never reaches end of file between two dbg lines
+    return os.open(str(DBG_IN), os.O_RDWR), open(DBG_LOG, "wb"), subprocess.STDOUT
 
 def setup_config_only():
     """Rewrite just the config, so --rw on or off takes effect."""
@@ -1107,8 +1137,9 @@ def start(retries=START_RETRIES):
         subprocess.run(["open", "-g", "-n", "-a", str(paths.FSUAE), "--args", str(CFG)], check=True)
     else:  # a bare binary: detached, so the rig outlives this command; nice 19 so the
         # machine-load gates of other sessions do not block on the rig
-        subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        fin, fout, ferr = fsuae_stdio()
+        subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=fin,
+                         stdout=fout, stderr=ferr, start_new_session=True)
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for i in range(90):
@@ -1334,7 +1365,7 @@ def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop, "reboot": reboot, "install": install, "kit-restore": kit_restore,
-            "status": status, "logwatch": logwatch, "muforce": muforce, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "status": status, "logwatch": logwatch, "muforce": muforce, "dbg": dbg, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg")}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):
