@@ -111,6 +111,7 @@ static const slash_def table[] = {
     { "save", SL_ACTION, MENU_SET_SAVE, 0, 0, "", "save the settings to the profile" },
     { "screen", SL_CHOICE, 0, 0, v_screen, "workbench | own | fullscreen",
       "the window on the Workbench, a screen of its own, or full screen" },
+    { "screen-text", SL_ARG, SLASH_SCREEN_TEXT, 1, 0, "FILE", "write the visible rows as text, one line per row, to FILE (UPTerm screen FILE x)" },
     { "scrollback", SL_ARG, SLASH_SCROLLBACK, 1, 0, "LINES | none", "the lines kept" },
     { "scrollbar", SL_CHOICE, 0, 0, v_scrollbar, "show | hide", "the scroll bar in the window's border" },
     { "select-all", SL_ACTION, MENU_SELECT_ALL, 0, 0, "", "select the scrollback and the screen" },

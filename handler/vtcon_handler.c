@@ -4335,6 +4335,27 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         c->st.outline_own = (long)vo_own(c->w.outline);
         c->st.outline_aa = (long)c->w.r.n_aa;
         return slash_state_text(&c->st, cmd.arg, ans, cap) < 0 ? 2 : 1;
+    case SLASH_SCREEN_TEXT: {
+        /* the rows as they stand, with no selection and no clipboard (RIG-QUIET-READ): the file is
+         * written whole and closed before the answer, so the sender reads it at once */
+        long need = c->w.t ? vt_screen_text(c->w.t, 0, 0) : -1;
+        char *buf = need >= 0 ? (char *)AllocVec((ULONG)need + 1, MEMF_ANY) : 0;
+        BPTR fh = buf ? Open((STRPTR)cmd.arg, MODE_NEWFILE) : 0;
+        long done = 0;
+        if (fh) {
+            vt_screen_text(c->w.t, buf, need + 1);
+            done = Write(fh, buf, need) == need;
+            Close(fh);
+        }
+        if (buf)
+            FreeVec(buf);
+        if (!done) {
+            cat3(ans, cap, name, ": cannot write ", cmd.arg);
+            return 2;
+        }
+        ans[0] = 0;
+        return 1;
+    }
     case SLASH_THEME:
         if (!cmd.arg[0] && typed) {
             /* the themes under the line, chosen with the keys (W30); the

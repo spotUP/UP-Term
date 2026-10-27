@@ -7410,6 +7410,46 @@ done:
     return len;
 }
 
+long vt_screen_text(const vt_term *t, char *out, long max)
+{
+    long len = 0;
+    int y, rows = vt_rows(t);
+    if (out && max < 1)
+        return 0;
+    for (y = 0; y < rows; y++) {
+        int n, x, end;
+        const vt_cell *c = vt_row(t, y, &n);
+        end = c ? n - 1 : -1;
+        while (end >= 0 && c[end].ch == ' ')
+            end--; /* trailing blanks */
+        for (x = 0; x <= end; x++) {
+            char u[VT_CELL_UTF8_MAX];
+            int k, m;
+            if (c[x].width == 0)
+                continue;
+            m = vt_cell_utf8(t, &c[x], u);
+            if (!out) {
+                len += m;
+                continue;
+            }
+            if (len + m >= max)
+                goto done;
+            for (k = 0; k < m; k++)
+                out[len++] = u[k];
+        }
+        if (out && len + 1 >= max)
+            goto done;
+        if (out)
+            out[len++] = '\n';
+        else
+            len++;
+    }
+done:
+    if (out)
+        out[len] = 0;
+    return len;
+}
+
 /* ASCII case fold: A-Z to a-z, everything else (UTF-8 continuation bytes,
  * PETSCII) as it is. */
 static char fold(char c)

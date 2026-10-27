@@ -291,6 +291,11 @@ vt_u32   vt_raw_events(const vt_term *t);
  * length the whole text needs, without the NUL: size the buffer with it. */
 long     vt_copy_text(const vt_term *t, int ax, int ay, int bx, int by, char *out, long max);
 
+/* The visible screen as text, one line per row (a wrapped row stays its own line, unlike
+ * vt_copy_text), trailing blanks cut, every row ends with '\n' (blank rows too). UTF-8,
+ * NUL-terminated; returns the length (at most max - 1); out NULL: the length needed. */
+long     vt_screen_text(const vt_term *t, char *out, long max);
+
 /* The code points of a cell (from vt_row): its character, then the marks
  * that combine with it, at most VT_CLUSTER_CPS. Returns how many (1 for
  * every cell outside the cluster range). */
