@@ -18,6 +18,9 @@ Proves, on the rig:
     row's background, in both the selected and the unselected row
   * Esc steps one level back, then closes the window and amarchy-gui exits
   * Packages > Search keeps the menu open after Return and after Escape at the prompt (--pkg-search runs only this)
+  * Packages > Install and Remove against a local feed (--pkg-install runs only this): the Browse rows equal the feed,
+    Install runs the job view to rc 0 and the row reads Installed, Remove's confirm offers No first, No keeps the
+    package, Yes removes it, and no console or terminal window opens
   * AMB3: with a second PUBLIC screen in front the menu and the leaf it opens (Apps, UP-Term) appear on it, and
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
@@ -26,7 +29,7 @@ are assumed (no ENV:up-term/keymap override). Run: python3 tools/rig/amarchy_gui
 and starts that Amarchy); alone (or with only --no-build) it runs only that. --help prints this text."""
 import hashlib, os, re, shlex, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import paths, ami, condev_rig as c, stage_rig, amarchy_window_rig
+import paths, ami, condev_rig as c, stage_rig, amarchy_window_rig, upkg_rig
 
 LAMIGA, SPACE, ESC, RETURN, DOWN = 0x40, 0x40, 0x45, 0x44, 0x4D
 TITLE = 'Amarchy'
@@ -541,6 +544,167 @@ def case_pkg_search():
     close_menu()
 
 
+PKG_CONF = 'VTCX:Apps/etc/upkg.conf'    # shadows the kit's UP-Term:etc/upkg.conf (UP-Term: = VTCX:Apps, then the kit)
+PKG_PICK = ('up-pi', 'up-git', 'up-bitchx', 'up-perl')   # smallest first; not up-claude: it carries install questions (rc 15, job_core.c)
+CONSOLE_WORDS = ('con:', 'console', 'terminal', 'shell')
+
+
+def feed_dir():
+    """build/ipk of this checkout, else of the main checkout the worktree belongs to (`make dist-ipk` needs the ports tree)."""
+    for base in (REPO, os.path.dirname(os.path.dirname(os.path.dirname(REPO)))):
+        d = os.path.join(base, 'build/ipk')
+        if os.path.exists(os.path.join(d, 'Packages')):
+            return d
+    raise SystemExit('no build/ipk/Packages: run make dist-ipk')
+
+
+def all_titles():
+    return [w['title'] for s in screens() for w in s['windows']]
+
+
+def job_done(secs=240):
+    """Waits for ENV:AMARCHY_JOB_DONE (job_dos.c: rc + 1); returns rc, or None on timeout."""
+    end = time.time() + secs
+    while time.time() < end:
+        rc, out = c.run('GetEnv AMARCHY_JOB_DONE')
+        if rc == 0 and out.strip().isdigit():
+            return int(out.strip()) - 1
+        time.sleep(2)
+    return None
+
+
+def pkg_group():
+    """Menu open, root > Packages; the Packages level's rows (None on a failed step)."""
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    s, w = open_menu()
+    if not check(bool(w), 'pkg_install: menu opens'):
+        return None
+    root = rows_now()
+    if not check(walk_to('Packages', root), 'pkg_install: the root has a Packages row (rows: %s)' % root):
+        return None
+    return rows_now()
+
+
+def installed_names():
+    out = upkg_rig.upkg('pg8-listinst', 'list-installed', 300, conf=False)[1]
+    return set(re.findall(r'^(\S+) - ', out, re.M))
+
+
+def case_pkg_install():
+    """Packages > Install and Remove on a row of a local feed (plan 2026-10-27-amarchy-packages-group.md PG.8).
+    Feed: upkg_rig.Release serves build/ipk on 127.0.0.1; the rig's upkg reads UP-Term:etc/upkg.conf, which
+    VTCX:Apps/etc/upkg.conf (written here, deleted in the finally) shadows because --setup assigns UP-Term: to
+    VTCX:Apps first. Sentinels: ENV:AMARCHY_JOB_DONE = rc + 1 (job_dos.c) and the row text. The confirm check
+    reads rows_now()[0] of the Remove level: pkgs_core.c puts No first, so a Yes-first confirm fails it."""
+    fd = feed_dir()
+    feed = upkg_rig.parse_packages(open(os.path.join(fd, 'Packages')).read())
+    names = [p['Package'] for p in feed]
+    rel = upkg_rig.Release()
+    rel.set(fd)
+    c.run('MakeDir VTCX:Apps/etc', 20)
+    tmpconf = os.path.join(tempfile.mkdtemp(prefix='pg8conf'), 'upkg.conf')
+    open(tmpconf, 'w').write(upkg_rig.conf_for(open(os.path.join(REPO, 'dist/upkg.conf')).read(), rel.url))
+    pick = None
+    try:
+        ami.put(tmpconf, PKG_CONF)
+        have = installed_names()
+        print('pkg_install: installed before: %s' % sorted(have), flush=True)
+        pick = next((p for p in PKG_PICK if p in names and p not in have), None)
+        if not check(pick is not None, 'pkg_install: a small feed package is not installed (feed %s)' % names):
+            return
+        base_titles = set(all_titles())
+        pkgs = pkg_group()
+        if pkgs is None:
+            return
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+        if not check(walk_to('Refresh', pkgs), 'pkg_install: the Packages level has a Refresh row (rows: %s)' % pkgs):
+            return
+        rc = job_done()
+        check(rc == 0, 'pkg_install: Packages > Refresh job rc 0 (rc %s)' % rc)
+        ami.key(RETURN)                      # accept the job view
+        time.sleep(3)
+        close_menu()
+        pkgs = pkg_group()
+        if pkgs is None or not check(walk_to('Browse', pkgs), 'pkg_install: the Packages level has a Browse row (rows: %s)' % pkgs):
+            return
+        rows = rows_now()
+        print('pkg_install: browse rows: %s' % rows, flush=True)
+        if len(rows) == 1 and not any(n in rows[0] for n in names):   # pkgs_core.c sec_of: rows group by section; a feed with no Section is one "other" group
+            check(walk_to(rows[0], rows), 'pkg_install: Browse shows the one section %s; into it' % rows)
+            rows = rows_now()
+            print('pkg_install: section rows: %s' % rows, flush=True)
+        check(len(rows) == len(names), 'pkg_install: Browse has %d rows = the feed size (got %d)' % (len(names), len(rows)))
+        hit = [r for r in rows if pick in r]
+        if not check(len(hit) == 1, 'pkg_install: Browse has the row for %s (%s)' % (pick, hit)):
+            return
+        check('Installed' not in hit[0], 'pkg_install: the row does not read Installed before (%s)' % hit[0])
+        for _ in range(rows.index(hit[0])):
+            ami.key(DOWN)
+            time.sleep(.4)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE QUIET')
+        ami.key(RETURN)
+        time.sleep(2)
+        acts = rows_now()
+        print('pkg_install: action rows: %s' % acts, flush=True)
+        if not check(walk_to('Install', acts), 'pkg_install: the row offers Install (rows: %s)' % acts):
+            return
+        rc = job_done()
+        check(rc == 0, 'pkg_install: Install job ends with rc 0 (rc %s)' % rc)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(RETURN)                      # accept
+        time.sleep(3)
+        rows = rows_now()
+        hit = [r for r in rows if pick in r]
+        check(len(hit) == 1 and 'Installed' in hit[0], 'pkg_install: the row now reads Installed (%s)' % hit)
+        check(pick in installed_names(), 'pkg_install: upkg list-installed lists %s' % pick)
+        rows = rows_now()
+        hit = [r for r in rows if pick in r]
+        if not check(len(hit) == 1, 'pkg_install: the %s row is shown for Remove (%s)' % (pick, hit)):
+            return
+        for _ in range(rows.index(hit[0])):  # the reload after a job puts the bar on the first row
+            ami.key(DOWN)
+            time.sleep(.4)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(RETURN)
+        time.sleep(2)
+        acts = rows_now()
+        if not check(walk_to('Remove', acts), 'pkg_install: the row offers Remove (rows: %s)' % acts):
+            return
+        conf = rows_now()
+        print('pkg_install: confirm rows: %s' % conf, flush=True)
+        # pkgs_core.c confirm rows are "Remove <name>: No" then ": Yes"; a Yes-first order fails this check
+        check(len(conf) == 2 and conf[0].endswith(': No') and conf[1].endswith(': Yes'),
+              'pkg_install: the Remove confirm lists No first (rows: %s)' % conf)
+        walk_to(conf[0], conf)               # Return on No: no job, the package stays
+        time.sleep(3)
+        check(pick in installed_names(), 'pkg_install: No keeps %s installed' % pick)
+        after = rows_now()
+        print('pkg_install: level after No: %s' % after, flush=True)
+        if after != conf:                    # back at the row's own level: ask again
+            if not check(walk_to('Remove', after), 'pkg_install: Remove is offered again after No (rows: %s)' % after):
+                return
+            conf = rows_now()
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+        if not check(walk_to(conf[1], conf), 'pkg_install: Return on the Yes row (rows: %s)' % conf):
+            return
+        rc = job_done()
+        check(rc == 0, 'pkg_install: Remove job ends with rc 0 (rc %s)' % rc)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(RETURN)
+        time.sleep(3)
+        hit = [r for r in rows_now() if pick in r]
+        check(len(hit) == 1 and 'Installed' not in hit[0], 'pkg_install: the row no longer reads Installed (%s)' % hit)
+        check(pick not in installed_names(), 'pkg_install: upkg list-installed no longer lists %s' % pick)
+        new = [t for t in all_titles() if t not in base_titles and any(k in t.lower() for k in CONSOLE_WORDS)]
+        check(not new, 'pkg_install: no console or terminal window opened (new: %s)' % new)
+    finally:
+        close_menu()
+        if pick and pick in installed_names():
+            upkg_rig.upkg('pg8-cleanup', 'remove %s' % pick, 300, conf=False)
+        c.run('Delete >NIL: %s QUIET' % PKG_CONF)
+        rel.close()
+
+
 def setup():
     """--setup: the rig runs the build's Amarchy from VTCX:Apps/bin with UP-Term: assigned to VTCX:Apps, no hand setup."""
     for l in c.run('Status', 20)[1].splitlines():     # the kit Amarchy (and any earlier copy) must not hold the port
@@ -591,6 +755,8 @@ def main():
     try:
         if '--groups' in sys.argv:      # on an OS 3.2 rig (the WORKBENCH port exists): only the group icons
             case_groups(geom)
+        elif '--pkg-install' in sys.argv:  # only Packages > Install and Remove against a local feed
+            case_pkg_install()
         elif '--pkg-search' in sys.argv:  # only Packages > Search (needs upkg on the rig)
             case_pkg_search()
         else:
@@ -601,6 +767,7 @@ def main():
             case_run_editor()
             case_run_addons()
             case_pkg_search()
+            case_pkg_install()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')
