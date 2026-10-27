@@ -774,6 +774,30 @@ AMARCHY
   stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
   out. man amarchy has the file format.
 
+  Job view (the Install group): a keymap row can start with  job:  instead
+  of  run: , as in  install.update = Update lists | job:upkg update . A job:
+  row runs the command and shows its output inside the menu window instead
+  of opening a terminal window. Install > Update lists and Install > Upgrade
+  all are job: rows; Install add-ons (upkg browse) stays a terminal row.
+  The view has a header (the job title, or the upkg progress such as
+  "3 of 7"), the output lines (they follow the end while the job runs) and
+  a footer: "Running...", then "Done", "Nothing to do", "Failed (code n)" or
+  a named code ("Package not found", "Network error", "Package script
+  failed", "Usage error", and "Needs answers: run it from a terminal" for
+  code 15), or "Cancelled". Done and Nothing to do are green, the failures
+  and Cancelled are red (the theme keys green and red; a theme without them
+  uses its accent colour and its foreground colour).
+  Keys: Up and Down scroll one line, Page Up and Page Down a page, the mouse
+  wheel three lines. Esc while the job runs cancels it. After the end, Esc,
+  Enter or the right mouse button close the view and return to the menu
+  row. The menu hotkey while the job runs cancels it and closes the view.
+  Limits: only the graphical menu style has the view; the text menu style
+  runs a job: row like a run: row (a terminal window) until a library update
+  lands. The view asks no package questions: upkg takes the defaults or the
+  recorded answers, and a package that needs answers ends with "Needs
+  answers". A last output line that has not ended with a newline shows once
+  it ends. A job: row bound to a hotkey runs like a run: row.
+
   Directory Opus (the DOpus group of the menu): if Directory Opus 5 is
   running, Amarchy drives it. Left Amiga + Shift + D opens a lister, Left
   Amiga + Shift + O opens a lister at the current folder, and Left Amiga + D
