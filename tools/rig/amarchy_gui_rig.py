@@ -24,6 +24,8 @@ Proves, on the rig:
   * Packages > Upgrades against a local feed (--pkg-upgrades runs only this): a bumped feed makes the installed package
     upgradable, "Upgrade all" is the first row, the package row matches upkg list-upgradable, Upgrade runs to rc 0 and
     the row goes; AMARCHY_PKGS_LOADS is 1 after three opens and rises by one per job
+  * Packages > Install of a package whose .ipk the feed does not serve (--pkg-fail runs only this): the job ends with a
+    failing rc (13: a 404 download; the plan said 12), the row never reads Installed, no console or terminal window opens
   * AMB3: with a second PUBLIC screen in front the menu and the leaf it opens (Apps, UP-Term) appear on it, and
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
@@ -576,14 +578,14 @@ def job_done(secs=240):
     return None
 
 
-def pkg_group():
+def pkg_group(tag='pkg_install'):
     """Menu open, root > Packages; the Packages level's rows (None on a failed step)."""
     c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
     s, w = open_menu()
-    if not check(bool(w), 'pkg_install: menu opens'):
+    if not check(bool(w), '%s: menu opens' % tag):
         return None
     root = rows_now()
-    if not check(walk_to('Packages', root), 'pkg_install: the root has a Packages row (rows: %s)' % root):
+    if not check(walk_to('Packages', root), '%s: the root has a Packages row (rows: %s)' % (tag, root)):
         return None
     return rows_now()
 
@@ -593,15 +595,20 @@ def installed_names():
     return set(re.findall(r'^(\S+) - ', out, re.M))
 
 
-def local_feed(fd):
-    """(Release serving fd, the shadow conf written to PKG_CONF); the caller deletes PKG_CONF and closes the Release."""
+def local_feed(fd, packages=None):
+    """Release serving fd (with `packages` as its Packages text when given) and the shadow conf written to PKG_CONF;
+    the caller deletes PKG_CONF and closes the Release."""
     rel = upkg_rig.Release()
-    rel.set(fd)
+    rel.set(fd, packages=packages)
     c.run('MakeDir VTCX:Apps/etc', 20)
     tmpconf = os.path.join(tempfile.mkdtemp(prefix='pg8conf'), 'upkg.conf')
     open(tmpconf, 'w').write(upkg_rig.conf_for(open(os.path.join(REPO, 'dist/upkg.conf')).read(), rel.url))
     ami.put(tmpconf, PKG_CONF)
     return rel
+
+
+def feed_names(text):
+    return [p['Package'] for p in upkg_rig.parse_packages(text)]
 
 
 def env_num(name):
@@ -703,6 +710,32 @@ def case_pkg_upgrades():
         rel.close()
 
 
+def refresh_to_browse(names, tag):
+    """Menu open > Packages > Refresh (job rc 0, accepted), menu reopened > Packages > Browse, into the one "other"
+    section when the feed has no Section; the Browse rows (None on a failed step)."""
+    pkgs = pkg_group(tag)
+    if pkgs is None:
+        return None
+    c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+    if not check(walk_to('Refresh', pkgs), '%s: the Packages level has a Refresh row (rows: %s)' % (tag, pkgs)):
+        return None
+    rc = job_done()
+    check(rc == 0, '%s: Packages > Refresh job rc 0 (rc %s)' % (tag, rc))
+    ami.key(RETURN)                      # accept the job view
+    time.sleep(3)
+    close_menu()
+    pkgs = pkg_group(tag)
+    if pkgs is None or not check(walk_to('Browse', pkgs), '%s: the Packages level has a Browse row (rows: %s)' % (tag, pkgs)):
+        return None
+    rows = rows_now()
+    print('%s: browse rows: %s' % (tag, rows), flush=True)
+    if len(rows) == 1 and not any(n in rows[0] for n in names):   # pkgs_core.c sec_of: rows group by section; a feed with no Section is one "other" group
+        check(walk_to(rows[0], rows), '%s: Browse shows the one section %s; into it' % (tag, rows))
+        rows = rows_now()
+        print('%s: section rows: %s' % (tag, rows), flush=True)
+    return rows
+
+
 def case_pkg_install():
     """Packages > Install and Remove on a row of a local feed (plan 2026-10-27-amarchy-packages-group.md PG.8).
     Feed: upkg_rig.Release serves build/ipk on 127.0.0.1; the rig's upkg reads UP-Term:etc/upkg.conf, which
@@ -710,42 +743,19 @@ def case_pkg_install():
     VTCX:Apps first. Sentinels: ENV:AMARCHY_JOB_DONE = rc + 1 (job_dos.c) and the row text. The confirm check
     reads rows_now()[0] of the Remove level: pkgs_core.c puts No first, so a Yes-first confirm fails it."""
     fd = feed_dir()
-    feed = upkg_rig.parse_packages(open(os.path.join(fd, 'Packages')).read())
-    names = [p['Package'] for p in feed]
-    rel = upkg_rig.Release()
-    rel.set(fd)
-    c.run('MakeDir VTCX:Apps/etc', 20)
-    tmpconf = os.path.join(tempfile.mkdtemp(prefix='pg8conf'), 'upkg.conf')
-    open(tmpconf, 'w').write(upkg_rig.conf_for(open(os.path.join(REPO, 'dist/upkg.conf')).read(), rel.url))
+    names = feed_names(open(os.path.join(fd, 'Packages')).read())
+    rel = local_feed(fd)
     pick = None
     try:
-        ami.put(tmpconf, PKG_CONF)
         have = installed_names()
         print('pkg_install: installed before: %s' % sorted(have), flush=True)
         pick = next((p for p in PKG_PICK if p in names and p not in have), None)
         if not check(pick is not None, 'pkg_install: a small feed package is not installed (feed %s)' % names):
             return
         base_titles = set(all_titles())
-        pkgs = pkg_group()
-        if pkgs is None:
+        rows = refresh_to_browse(names, 'pkg_install')
+        if rows is None:
             return
-        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
-        if not check(walk_to('Refresh', pkgs), 'pkg_install: the Packages level has a Refresh row (rows: %s)' % pkgs):
-            return
-        rc = job_done()
-        check(rc == 0, 'pkg_install: Packages > Refresh job rc 0 (rc %s)' % rc)
-        ami.key(RETURN)                      # accept the job view
-        time.sleep(3)
-        close_menu()
-        pkgs = pkg_group()
-        if pkgs is None or not check(walk_to('Browse', pkgs), 'pkg_install: the Packages level has a Browse row (rows: %s)' % pkgs):
-            return
-        rows = rows_now()
-        print('pkg_install: browse rows: %s' % rows, flush=True)
-        if len(rows) == 1 and not any(n in rows[0] for n in names):   # pkgs_core.c sec_of: rows group by section; a feed with no Section is one "other" group
-            check(walk_to(rows[0], rows), 'pkg_install: Browse shows the one section %s; into it' % rows)
-            rows = rows_now()
-            print('pkg_install: section rows: %s' % rows, flush=True)
         check(len(rows) == len(names), 'pkg_install: Browse has %d rows = the feed size (got %d)' % (len(names), len(rows)))
         hit = [r for r in rows if pick in r]
         if not check(len(hit) == 1, 'pkg_install: Browse has the row for %s (%s)' % (pick, hit)):
@@ -818,6 +828,55 @@ def case_pkg_install():
         rel.close()
 
 
+PKG_FAIL = 'up-zzfail'     # a Packages stanza whose .ipk the local feed does not serve
+
+
+def case_pkg_fail():
+    """Packages > Install of a package whose .ipk 404s (plan PG.8: a failing job shows Failed with its word).
+    The footer word comes from job_core.c rc_words (a 404 on the .ipk is rc 13, "Network error"; rc 12, "Package not found", is a name missing from the index); no sentinel publishes it, so
+    the rig asserts the rc (ENV:AMARCHY_JOB_DONE = rc + 1), that the row never reads Installed and that no console
+    window opened; the rc-to-word table is tests/test_job.c."""
+    fd = feed_dir()
+    text = open(os.path.join(fd, 'Packages')).read()
+    extra = ('Package: %s\nVersion: 1.0\nArchitecture: m68k-amigaos\nFilename: %s_1.0_m68k-amigaos.ipk\n'
+             'Size: 1234\nSHA256sum: %s\nDescription: rig failing package\n' % (PKG_FAIL, PKG_FAIL, '0' * 64))
+    names = feed_names(text + '\n' + extra)
+    rel = local_feed(fd, packages=text.rstrip('\n') + '\n\n' + extra)
+    try:
+        base_titles = set(all_titles())
+        rows = refresh_to_browse(names, 'pkg_fail')
+        if rows is None:
+            return
+        hit = [r for r in rows if PKG_FAIL in r]
+        if not check(len(hit) == 1, 'pkg_fail: Browse has the row for %s (%s)' % (PKG_FAIL, hit)):
+            return
+        check('Installed' not in hit[0], 'pkg_fail: the row does not read Installed before (%s)' % hit[0])
+        for _ in range(rows.index(hit[0])):
+            ami.key(DOWN)
+            time.sleep(.4)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE QUIET')
+        ami.key(RETURN)
+        time.sleep(2)
+        acts = rows_now()
+        if not check(walk_to('Install', acts), 'pkg_fail: the row offers Install (rows: %s)' % acts):
+            return
+        rc = job_done()
+        check(rc not in (None, 0, 5), 'pkg_fail: the Install job ends with a failing rc (rc %s)' % rc)
+        check(rc == 13, 'pkg_fail: the rc is 13, Network error: the .ipk download 404s (plan said 12, which is a package missing from the index; rc %s)' % rc)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(RETURN)                      # accept
+        time.sleep(3)
+        hit = [r for r in rows_now() if PKG_FAIL in r]
+        check(len(hit) == 1 and 'Installed' not in hit[0], 'pkg_fail: the row does not read Installed after (%s)' % hit)
+        check(PKG_FAIL not in installed_names(), 'pkg_fail: upkg list-installed does not list %s' % PKG_FAIL)
+        new = [t for t in all_titles() if t not in base_titles and any(k in t.lower() for k in CONSOLE_WORDS)]
+        check(not new, 'pkg_fail: no console or terminal window opened (new: %s)' % new)
+    finally:
+        close_menu()
+        c.run('Delete >NIL: %s QUIET' % PKG_CONF)
+        rel.close()
+
+
 def setup():
     """--setup: the rig runs the build's Amarchy from VTCX:Apps/bin with UP-Term: assigned to VTCX:Apps, no hand setup."""
     for l in c.run('Status', 20)[1].splitlines():     # the kit Amarchy (and any earlier copy) must not hold the port
@@ -868,6 +927,8 @@ def main():
     try:
         if '--groups' in sys.argv:      # on an OS 3.2 rig (the WORKBENCH port exists): only the group icons
             case_groups(geom)
+        elif '--pkg-fail' in sys.argv:  # only Packages > Install of a package the feed cannot deliver
+            case_pkg_fail()
         elif '--pkg-install' in sys.argv:  # only Packages > Install and Remove against a local feed
             case_pkg_install()
         elif '--pkg-upgrades' in sys.argv:  # only Packages > Upgrades against a bumped local feed
@@ -884,6 +945,7 @@ def main():
             case_pkg_search()
             case_pkg_install()
             case_pkg_upgrades()
+            case_pkg_fail()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')
