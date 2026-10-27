@@ -40,9 +40,10 @@ check(not any("AmiSSL:" in l for l in rig.RIG_LIBS), "RIG_LIBS does not name the
 
 # Regression (2026-10-21, upkg_browse_rig step 0): the system disk's AmiSSL/ holds only the kit's
 # per-CPU subdrawers, so amisslmaster.library found no LIBS:AmiSSL/amissl_v362.library ("Couldn't open
-# AmiSSL!", curl rc 20); and curl needs usergroup.library, which only VTC:amitcp/libs has.
+# AmiSSL!", curl rc 20).
 check(any(l.endswith("LIBS: VTC:amissl ADD") for l in rig.RIG_LIBS), "RIG_LIBS carries VTC:amissl (the flat AmiSSL library)")
-check(any(l.endswith("LIBS: VTC:amitcp/libs ADD") for l in rig.RIG_LIBS), "RIG_LIBS carries VTC:amitcp/libs (usergroup.library)")
+check(not any("amitcp" in l.lower() for l in rig.RIG_LIBS + lines) and "AmiTCP" not in rig.BOOT_ASSIGNS,
+      "the rig image has no AmiTCP: no assign, no LIBS: entry, no boot assign")
 check(any(l.endswith("LIBS: VTC:amissl ADD") for l in lines), "GO adds VTC:amissl to LIBS:")
 import tempfile  # noqa: E402
 for m060, cpu in ((True, "68060"), (False, "68020-40")):
@@ -53,6 +54,27 @@ for m060, cpu in ((True, "68060"), (False, "68020-40")):
         want = rig.ROOT / "vendor/amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / cpu / "amissl_v362.library"
         check(got.is_file() and got.read_bytes() == want.read_bytes(),
               "stage_amissl puts the %s library flat in VTC:amissl/AmiSSL" % cpu)
+
+# The kit's curl is the upterm-ports build on ixemul sockets: no usergroup.library, exactly one $STACK cookie.
+# The Aminet curl (dist/net/curl-8.22.0, libnet) names usergroup.library and fails this.
+def curl_problems(path):
+    data = pathlib.Path(path).read_bytes()
+    bad = []
+    if b"usergroup.library" in data:
+        bad.append("names usergroup.library")
+    if data.count(b"$STACK") != 1:
+        bad.append("%d $STACK cookies, want 1" % data.count(b"$STACK"))
+    return bad
+
+
+old = rig.ROOT / "dist/net/curl-8.22.0/curl.060"
+check(curl_problems(old), "the checker rejects the Aminet curl (%s)" % old)
+ports = rig.ROOT.parent / "upterm-ports/build"
+staged = [p for p in (ports / "kit/userland/bin/curl", ports / "sysroot/UP-Term/bin/curl") if p.is_file()]
+if not staged:
+    print("[UNVERIFIED] no ports curl built under %s: make kit-stage in upterm-ports, rerun" % ports)
+for p in staged:
+    check(not curl_problems(p), "staged kit curl %s: %s" % (p, curl_problems(p)))
 
 print("[%s] rig_libs: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)

@@ -134,17 +134,15 @@ C:Execute DH0:S/Startup-Sequence
 # no LIBS:AmiSSL/amissl_v362.library: "Couldn't open AmiSSL!" and curl's rc 20
 # (upkg_browse_rig step 0, 2026-10-21). VTC:amissl/AmiSSL holds the one library
 # for the CPU this boot emulates, flat, as Install-AmiSSL lays it out
-# (stage_amissl). curl also needs usergroup.library, which only VTC:amitcp/libs
-# (AmiTCP:libs) has: without it curl.060 stopped at '"usergroup.library" could
-# not be opened'.
+# (stage_amissl). The rig image has no AmiTCP and no usergroup.library: the
+# kit's curl is the upterm-ports build on ixemul sockets (owner, 2026-10-27).
 RIG_LIBS = ["Assign >NIL: LIBS: VTC:ixp6",
             "Assign >NIL: LIBS: DH0:Libs ADD",
             "Assign >NIL: LIBS: DH0:Classes ADD",
             "Assign >NIL: LIBS: DH0:MUI/Libs ADD",
             "Assign >NIL: LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD",
             "Assign >NIL: LIBS: DH0:AmiSSL/Libs ADD",
-            "Assign >NIL: LIBS: VTC:amissl ADD",
-            "Assign >NIL: LIBS: VTC:amitcp/libs ADD"]
+            "Assign >NIL: LIBS: VTC:amissl ADD"]
 
 # The rig's lines in the system disk's S:Shell-Startup (go adds them once).
 # The bare "Path >NIL: VTC:gg/bin ADD" an earlier go wrote raised "Please
@@ -250,7 +248,6 @@ Echo >BOOTX:boot.log "go started"
 C:Wait 15
 %(shadows_up)s
 C:Mount XCON: FROM BOOTX:Mountlist
-C:Assign >NIL: AmiTCP: VTC:amitcp
 C:Assign >NIL: ETC: VTC:etc
 ; /tmp: the kit puts "Assign TMP: T:" in S:User-Startup; a rig with no kit has it from here
 C:Assign >NIL: TMP: T:
@@ -1100,7 +1097,7 @@ def start(retries=START_RETRIES):
 # boot that lacks one has a requester waiting ("Please insert volume VTC:"
 # three times on 2026-10-10: ENV:, UP-Term:, VTC:). Read from Assign LIST,
 # which never asks for a volume.
-BOOT_ASSIGNS = ["VTC", "ETC", "AmiTCP", "LIBS"]
+BOOT_ASSIGNS = ["VTC", "ETC", "LIBS"]
 
 def boot_assigns_missing():
     """The names of BOOT_ASSIGNS (and GG: when VTC:gg/bin/sh is on the rig) the
