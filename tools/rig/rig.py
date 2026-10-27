@@ -800,7 +800,9 @@ def setup():
 
 def debugger_lines():
     """--debugger: the UAE console debugger reads the FIFO DBG_IN and writes DBG_LOG (see launch_fsuae)."""
-    return ["console_debugger = 1"] if DEBUGGER else []
+    # use_debugger: the debugger prompt comes up at boot, before the Amiga runs; set breaks there and `g`. The
+    # F12+D hot key cannot be sent to the SDL window as a synthetic key (tried, no effect).
+    return ["console_debugger = 1", "uae_use_debugger = 1"] if DEBUGGER else []
 
 def dbg():
     """rig.py dbg "<line>": one line into the running debugger's FIFO."""

@@ -10,7 +10,7 @@ import rig
 class RigDebugger(unittest.TestCase):
     def test_config_line_only_with_flag(self):
         with mock.patch.object(rig, "DEBUGGER", True):
-            self.assertEqual(rig.debugger_lines(), ["console_debugger = 1"])
+            self.assertEqual(rig.debugger_lines(), ["console_debugger = 1", "uae_use_debugger = 1"])
         with mock.patch.object(rig, "DEBUGGER", False):
             self.assertEqual(rig.debugger_lines(), [])
             self.assertEqual(rig.fsuae_stdio()[0], rig.subprocess.DEVNULL)
