@@ -1503,13 +1503,33 @@ def ensure_os32_rig():
     return '' if is_os32(start_args()) else 'rig %d did not come up on OS 3.2' % paths.RIG_N
 
 
-def run_row(fn):
-    """One row's (ok, detail). A helper that gives up (ami.py exits when a click cannot make a window active) fails
-    this row, not the table: the rows after it still run, and --failed re-runs it."""
+def open_requesters(query=None):
+    """Text for the system requesters open now (ami.py requesters' own query and wording), '' when none or the rig
+    cannot be asked (the row's own checks then report that)."""
     try:
-        return fn()
+        found = (query or ami.requesters)()
+    except (Exception, SystemExit):
+        return ''
+    return '; '.join(ami.describe_requester(r) for r in found)
+
+
+def run_row(fn, query=None):
+    """One row's (ok, detail). A helper that gives up (ami.py exits when a click cannot make a window active) fails
+    this row, not the table: the rows after it still run, and --failed re-runs it. A system requester open before
+    the row (or when it fails) fails the row by name: a "Please insert volume" requester blocks the menu and the
+    row would only report a timeout. Before the row the check aborts it without clicking anything."""
+    bad = open_requesters(query)
+    if bad:
+        return False, 'system requester open: ' + bad
+    try:
+        ok, detail = fn()
     except (Exception, SystemExit) as e:
-        return False, 'aborted: %s' % (e,)
+        ok, detail = False, 'aborted: %s' % (e,)
+    if not ok:
+        bad = open_requesters(query)
+        if bad:
+            return False, 'system requester open: %s (row said: %s)' % (bad, detail)
+    return ok, detail
 
 
 def main():

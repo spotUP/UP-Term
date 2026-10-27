@@ -28,5 +28,33 @@ class RowAbort(unittest.TestCase):
         self.assertEqual(m.run_row(lambda: (True, "fine")), (True, "fine"))
 
 
+REQ = {"addr": 1, "title": "System Request", "task": "ramlib", "screen": "Workbench",
+       "buttons": ["Retry", "Cancel"]}
+
+
+class RequesterOpen(unittest.TestCase):
+    """A ramlib "Please insert volume AmiTCP" requester blocked amarchy-menu and the row only said "text menu did
+    not open" (rig 7, 2026-10-27)."""
+
+    def test_open_requester_aborts_row_without_running_it(self):
+        ran = []
+        ok, detail = m.run_row(lambda: ran.append(1) or (True, "fine"), query=lambda: [REQ])
+        self.assertFalse(ok)
+        self.assertFalse(ran)
+        self.assertIn("system requester open", detail)
+        self.assertIn("ramlib", detail)
+        self.assertIn("Retry|Cancel", detail)
+
+    def test_timeout_with_requester_names_it(self):
+        calls = iter([[], [REQ]])
+        ok, detail = m.run_row(lambda: (False, "text menu did not open"), query=lambda: next(calls))
+        self.assertFalse(ok)
+        self.assertIn("system requester open", detail)
+        self.assertIn("text menu did not open", detail)
+
+    def test_no_requester_leaves_verdict(self):
+        self.assertEqual(m.run_row(lambda: (False, "x"), query=lambda: []), (False, "x"))
+
+
 if __name__ == "__main__":
     unittest.main()
