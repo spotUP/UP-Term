@@ -4,6 +4,7 @@
           | shot out.png [x y w h] | rexx "program" | get path out | put local path
           | key code [qual] | type text | screens
           | gclick win gadget   (clicks a uitree gadget by its id, matched exactly: '90' is not '290')
+          | open [icon]   (opens a window the way a Workbench double-click does: default SYS:System/UP-Term; prints the new window)
           | long script [secs] [title]   (Executes an Amiga script in a window on the Amiga's screen, waits for its rc)
 
 The importers (72 files) keep the API they were written against: req(opcode, payload) with the legacy opcode
@@ -636,6 +637,35 @@ def long(script, wait=3600, title='ami long', every=5):
             return int(b.split()[0])
     return None
 
+WBRUN_REMOTE = 'RAM:wbrun'
+WBRUN_LOCAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'build', 'amiga', 'wbrun')
+
+def open_command(icon):
+    """The CLI line that starts `icon` as a Workbench double-click does. `Run UP-Term` cannot: SYS:System/UP-Term is a
+    60-byte text note, not a program; its UP-Term.info names the default tool UP-Term:bin/vsh and the tool type
+    WINDOW=XCON:...; only a Workbench-style launch (wbrun: builds the WBStartup itself, because Directory Opus
+    replaces Workbench and OpenWorkbenchObjectA / C:WBRun fail) honours them. Run >NIL: because wbrun waits for the tool."""
+    return 'Run >NIL: %s %s' % (WBRUN_REMOTE, icon)
+
+def window_keys():
+    m = _m()
+    with _conn() as c:
+        return {(w['addr'], w.get('task'), w.get('title')): w for _, w in m.ui_windows(m.read_ui(c, every_screen=True))}
+
+def open_window(icon='SYS:System/UP-Term', wait=20):
+    """Open `icon`'s window on the Amiga and return the new window entries (a window list diff, as wbrun_rig does:
+    the address alone repeats, so task and title go into the key). Empty list when none appeared in `wait` s."""
+    if read_file(WBRUN_REMOTE) is None:
+        put(WBRUN_LOCAL, WBRUN_REMOTE)
+    before = window_keys()
+    req(0x02, struct.pack('>H', 10) + open_command(icon).encode('latin-1'), timeout=15)
+    end = time.time() + wait
+    while time.time() < end:
+        new = [w for k, w in window_keys().items() if k not in before]
+        if new: return new
+        time.sleep(1)
+    return []
+
 def png(path, w, h, rows):
     _m().write_png(path, w, h, b''.join(rows))
 
@@ -684,6 +714,10 @@ def main(a):
                 click_px(cx, cy)
                 print('click at %d,%d' % (cx, cy)); return
         raise SystemExit('no matching gadget')
+    elif cmd == 'open':
+        new = open_window(a[1] if len(a) > 1 else 'SYS:System/UP-Term')
+        if not new: raise SystemExit('open: no new window appeared')
+        for w in new: print('window %s task %s at %s,%s %sx%s' % (w.get('title'), w.get('task'), w['left'], w['top'], w['width'], w['height']))
     elif cmd == 'long':
         rc = long(a[1], int(a[2]) if len(a) > 2 else 3600, a[3] if len(a) > 3 else 'ami long')
         if rc is None: raise SystemExit('long: %s did not finish (its window on the Amiga shows why)' % a[1])
