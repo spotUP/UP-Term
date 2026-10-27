@@ -124,7 +124,9 @@ def into_style():
     # Theme is the first leaf of Style. The root's order moves (Dopus and Settings come before Style), so the
     # level is found by its label, not by a fixed number of Down presses.
     # (The old stale-hotkey ordering rule is gone: upterm-ports ebf5d1c makes ui_hotkey() describe the last run only.)
+    # dist/keymap nests Theme, Font and Background under a Terminal group inside Style, beside "Amarchy theme".
     x9_level('Style')
+    x9_level('Terminal')
 
 
 def r_type_th():
@@ -227,7 +229,7 @@ def r_drill_redraw():
         ami.key(RAW[k])
         time.sleep(0.5)
     th = menu_rows(screen_text())
-    for _ in range(3):
+    for _ in range(4):                         # filter, Terminal, Style, the menu (Style.Terminal adds one level)
         ami.key(RAW['esc'])
         time.sleep(0.5)
     ok = style == ['Theme', 'Font', 'Background'] and th == ['Theme']
@@ -239,17 +241,26 @@ def r_right_enters():
     # Right on a leaf does nothing (the leaf does not run: km-hits stays, the level stays). Before the fix
     # amarchy-menu did not list UI_HOTKEY_RIGHT, so Right left the cursor at the root.
     ensure_terminal()
+    before = km_hits()                         # read with the menu closed: tabstate types into the focused window
     if not x9_open_menu():
         return False, 'text menu did not open'
     style = menu_rows(x9_level('Style', 'right'))
-    before = km_hits()
+    ok = style[:2] == ['Amarchy theme', 'Terminal']
+    if ok:                                     # dist/keymap: Theme, Font, Background sit under Style.Terminal
+        ami.key(RAW['down'])
+        time.sleep(0.3)
+        ami.key(RAW['right'])
+        time.sleep(1)
+    term = menu_rows(screen_text())
     ami.key(RAW['right'])                      # the cursor is on Theme, a leaf
     time.sleep(1)
     still = menu_rows(screen_text())
-    hits = km_hits() - before
     x9_leave()
-    ok = style == ['Theme', 'Font', 'Background'] and still == style and hits == 0
-    return ok, 'Right on Style: rows %s; Right on Theme: rows %s, km-hits %+d (0 expected)' % (style, still, hits)
+    ami.click_px(100, 100)                     # the vsh host takes the focus back before tabstate types into it
+    time.sleep(1)
+    hits = km_hits() - before
+    ok = ok and term == ['Theme', 'Font', 'Background'] and still == term and hits == 0
+    return ok, 'Right on Style: rows %s; Right on Terminal: rows %s; Right on Theme: rows %s, km-hits %+d (0 expected)' % (style, term, still, hits)
 
 
 def r_enter_th():
