@@ -26,8 +26,10 @@ If NOT WARN
   Echo "S:User-Startup still has the lines from ;BEGIN uhc to ;END uhc (harmless; delete them by hand)."
 EndIf
 Delete >NIL: ENV:UHCBIN QUIET
-Delete >NIL: ENV:UHC ENVARC:UHC ALL QUIET
-; UP-Term:uhc is the drawer this archive copied (Files/userland/uhc); take it out whole
+; the settings in ENVARC:UHC are yours and stay (as ENVARC:Claude does), over remove and over upgrade, which
+; runs this part too
+Delete >NIL: ENV:UHC ALL QUIET
+; UP-Term:uhc is the drawer this archive copied (downloaded by install.dos); take it out whole
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
   If EXISTS UP-Term:uhc
