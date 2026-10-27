@@ -51,12 +51,13 @@ Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import fcntl, json, os, pathlib, re, shutil, signal, subprocess, sys, time
+import fcntl, hashlib, json, os, pathlib, re, shutil, signal, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import a1200_drift
 import paths
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import libguard
+import kitset
 import user_startup
 import wasabi as rigwasabi
 
@@ -177,34 +178,6 @@ BARE_SHELL_PATH = "Path >NIL: VTC:gg/bin ADD"
 # copy the system already holds, and the C: commands the kit installs even where no kit put
 # one (W-R4: plain `UPDemo` must run the build on every rig), after keeping the
 # kit's own once in VTC:kit-orig. `kit-restore` makes the boot put those back.
-# (VTC: name, SYS: place, backup name)
-KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
-               ("pty-handler", "L:pty-handler", "L-pty-handler"),
-               ("ixpipe-handler", "L:ixpipe-handler", "L-ixpipe-handler"),
-               ("vsh", "C:vsh", "C-vsh"),
-               ("vsh", "UP-Term:bin/vsh", "UP-Term-bin-vsh"),
-               ("UPConsole", "C:UPConsole", "C-UPConsole"),
-               ("UPDemo", "C:UPDemo", "C-UPDemo"),
-               ("upgetty", "C:upgetty", "C-upgetty"),
-               ("ixkill", "C:ixkill", "C-ixkill"),
-               ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device"),
-               # the preferences editor: the kit's file keeps the space (install.dos), which
-               # the handler's menu runs as C:UP-Term-Prefs (launcher)
-               ("upprefs", "C:UP-Term-Prefs", "C-UP-Term-Prefs"),
-               # the shipped keymap (dist/, not build/amiga): the master's kit wrote its own, so a new
-               # keymap row was missing on every rig start (vtcon-a1 P7, 2026-10-27). The user's rows
-               # live in keymap.user, which is not touched. Spelled by path, never ENVARC:/ENV:: go is Run
-               # before DH0:S/Startup-Sequence assigns them, and a test of an unassigned name opens a
-               # System Request that hangs the boot (rig 8, 2026-10-27). RAM:Env too: go runs beside
-               # the Startup-Sequence's copy of ENVARC: to RAM:Env, which may already have happened.
-               ("keymap", "SYS:Prefs/Env-Archive/up-term/keymap", "ENVARC-up-term-keymap"),
-               ("keymap", "RAM:Env/up-term/keymap", "ENV-up-term-keymap")]
-
-# What the dist ships in UP-Term:bin (the Unix userland the kit installs) is what a rig's UP-Term:bin
-# runs: one row per file of build/dist/up-term/Files/userland/bin, staged in VTC:kit-userland/ by
-# install. Before this only the build/amiga programs were shadowed, so a rebuilt curl never reached
-# a rig and the old one, which opens usergroup.library, ran (rig 9, AMITCP-GONE rerun, 2026-10-27).
-# Rows act only where the kit holds the file (kit_guard). "[" is left out: AmigaDOS patterns.
 USERLAND_SRC = ROOT / "build/dist/up-term/Files/userland/bin"
 USERLAND_STAGE = "kit-userland"
 
@@ -216,9 +189,18 @@ def userland_names():
                   if f.is_file() and re.fullmatch(r"[A-Za-z0-9._+-]+", f.name))
 
 
-KIT_SHADOWS += [("%s/%s" % (USERLAND_STAGE, n), "UP-Term:bin/" + n, "UP-Term-bin-" + n)
-                for n in userland_names() if "UP-Term:bin/" + n not in {x[1] for x in KIT_SHADOWS}]
+def kit_entries(nofpu=False, m060=False):
+    """kitset.derive for this tree and CPU: every file the kit installs, from install.dos, the userland and the staged
+    libraries (the CPU only picks the staged ixemul and AmiSSL builds; the boot's shadow rows do not depend on it)."""
+    return kitset.derive(ROOT, USERLAND_SRC, USERLAND_STAGE, paths.VENDOR,
+                         paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB, paths.IXNET_LIB, m060,
+                         libguard.require_clean_ixnet)
 
+
+# (VTC: name, SYS: place, backup name), one row per derived file the boot shadows (kitset): nothing hand-listed,
+# so a file install.dos gains (C:Reboot, C:UPTerm, C:uptelnet, UP-Term:bin/hl mdv ps rz sz top sh) is shadowed at once.
+# The keymap rows are spelled by path, never ENVARC:/ENV: (kitset.SPELL).
+KIT_SHADOWS = [(e.vtc, e.dest, e.bak) for e in kit_entries() if e.shadow]
 
 def kit_shadow_src(name):
     """The host file the VTC: copy of a KIT_SHADOWS name comes from: dist/ for the files the kit
@@ -532,25 +514,43 @@ def sys_hdf_cpu_lib(image):
             subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
         subprocess.run([xdf, str(image), "write", str(lib), "Libs/" + name], check=True, capture_output=True)
 
-def sys_hdf_ixnet(image):
-    """The master image's Libs/ixnet.library (7a43f99c) opens AmiTCP:libs/usergroup.library; IPrefs opens it before
-    BOOTX:go reassigns LIBS:, so every rig showed an 'insert AmiTCP:' requester (2026-10-28, RIG-SYSHDF-IXNET). The
-    clone gets the clean paths.IXNET_LIB (the master is never touched) and the start is refused when the clone's
-    ixnet.library still fails tools/libguard.py."""
+def sys_hdf_kit(image):
+    """Every file the kit installs on the system disk equals what the current build would install (RIG-KIT-DERIVE;
+    supersedes sys_hdf_ixnet, RIG-SYSHDF-EARLY). The master image holds older copies of files that load before
+    BOOTX:go (ixnet.library 7a43f99c opened AmiTCP:libs: an 'insert AmiTCP:' requester on every rig; ixemul.library,
+    up-console.device, C:vsh differ; ixnet refuses an ixemul of another revision), and install.dos files it lacks.
+    kit_entries() is the set, derived (kitset.py); the clone gets each entry that has a place on the system disk, every
+    file is read back and compared by md5, and the start is refused on any mismatch or when a source fails its check
+    (ixnet: tools/libguard.py). The master image is never touched. UP-Term:bin and the spelled keymap places are not
+    on the system disk: the boot shadows them from VTC: (KIT_SHADOWS, refresh_kit_shadows)."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
-    paths.require_input(paths.IXNET_LIB, "IXNET", "the clean ixnet.library")
-    libguard.require_clean_ixnet(paths.IXNET_LIB)
-    have = subprocess.run([xdf, str(image), "list", "Libs"], capture_output=True, text=True).stdout
-    if "ixnet.library" in {l.split()[0] for l in have.splitlines() if l.split()}:
-        subprocess.run([xdf, str(image), "delete", "Libs/ixnet.library"], check=True, capture_output=True)
-    subprocess.run([xdf, str(image), "write", str(paths.IXNET_LIB), "Libs/ixnet.library"], check=True, capture_output=True)
-    back = RIG / "ixnet-check.tmp"
-    back.unlink(missing_ok=True)
-    subprocess.run([xdf, str(image), "read", "Libs/ixnet.library", str(back)], check=True, capture_output=True)
-    try:
-        libguard.require_clean_ixnet(back)
-    finally:
+    def run(*a, check=True):
+        return subprocess.run([xdf, str(image), *a], check=check, capture_output=True, text=True)
+    for e in kit_entries(NOFPU, M060):
+        if not e.clone:
+            continue
+        paths.require_input(e.src, "UPTERM_ROOT", e.src.name)
+        if e.check:
+            e.check(e.src)
+        parts = e.clone.split("/")
+        for i in range(1, len(parts)):
+            d = "/".join(parts[:i])
+            if run("list", d, check=False).returncode != 0:
+                run("makedir", d)
+        parent, leaf = e.clone.rsplit("/", 1)
+        if leaf in {l.split()[0] for l in run("list", parent).stdout.splitlines() if l.split()}:
+            run("delete", e.clone)
+        run("write", str(e.src), e.clone)
+        back = RIG / "kit-check.tmp"
         back.unlink(missing_ok=True)
+        run("read", e.clone, str(back))
+        try:
+            if e.check:
+                e.check(back)
+            if hashlib.md5(back.read_bytes()).hexdigest() != hashlib.md5(e.src.read_bytes()).hexdigest():
+                sys.exit("rig: the clone's %s differs from %s after the write (RIG-KIT-DERIVE)" % (e.clone, e.src))
+        finally:
+            back.unlink(missing_ok=True)
 
 def strip_user_startup_blocks(image, name):
     """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""
@@ -1151,7 +1151,7 @@ def start(retries=START_RETRIES):
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if "--no-dopus" in sys.argv:
             sys_hdf_no_dopus(RIG / "sys.hdf")
-        sys_hdf_ixnet(RIG / "sys.hdf")
+        sys_hdf_kit(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
