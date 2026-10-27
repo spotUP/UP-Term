@@ -11,7 +11,7 @@ code path). The chord for /theme is NOT needed: the request port works with it u
 Needs the rig up (rig.py start --max), Amarchy and amarchy-menu in UP-Term:bin (rig.py install puts them there), the handler of this branch
 installed. NOT RUN when written: the rows stay open until it has run.
 """
-import argparse, json, pathlib, re, subprocess, sys, time
+import argparse, json, os, pathlib, re, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
@@ -25,7 +25,7 @@ ALT = 0x10                          # IEQUALIFIER_LALT
 # screen_text() open the text menu (amarchy-menu in the UP-Term window): over a terminal Super+Space opens it
 # (menu-in-terminal = text, the default)
 TEXT_MENU = LAMIGA
-RAW = {'down': 0x4D, 'right': 0x4E, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
+RAW = {'up': 0x4C, 'down': 0x4D, 'right': 0x4E, 't': 0x14, 'h': 0x25, 'k': 0x27, 'space': 0x40, 'esc': 0x45, 'return': 0x44, 'o': 0x18, 'd': 0x22}
 KEYMAP = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'keymap'
 TIMING = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
 
@@ -1236,6 +1236,216 @@ ICON_ROWS = ('app_icons', 'group_icons')     # rows that need icon.library V44 (
 OS32_NAMES = ('32', '321', '322')
 
 
+def tx_rows():
+    """The shown level of the text menu, one string per list row (label and the columns after it), frame and Filter line left out."""
+    for _ in range(24):                  # a level being drawn reads empty: wait for its rows
+        rows = [l.strip(' |') for l in screen_text().splitlines() if re.match(r'\|?  \S', l) and 'Filter' not in l]
+        if rows:
+            break
+        time.sleep(0.5)
+    return rows
+
+
+def tx_pick(prefix, rows=None):
+    """Down to the first row starting with prefix and Return; False when the level has no such row. A level opens with the
+    cursor on its first item, below the scan status row (menu.c default_item)."""
+    for _ in range(20):                  # the level may still be drawing: wait for the row to show
+        rows = rows if rows is not None else tx_rows()
+        idx = [i for i, r in enumerate(rows) if r.startswith(prefix)]
+        if idx:
+            break
+        rows = None
+        time.sleep(0.5)
+    if rows is None:
+        return False
+    if not idx:
+        return False
+    first = 1 if rows and SCAN_STATUS.match(rows[0]) else 0
+    for _ in range(idx[0] - first):
+        ami.key(RAW['down'])
+        time.sleep(0.3)
+    ami.key(RAW['return'])
+    time.sleep(1.5)
+    return True
+
+
+def tx_open_packages(g, tag):
+    """A fresh text menu process (Super+Space over the terminal), root > Packages; the Packages level's rows, None on a failed step."""
+    c.run('Delete >NIL: ENV:AMARCHY_PKGS_LOADS QUIET')
+    opened = False
+    for _ in range(3):                   # Esc leaves a closing menu; the open key is a toggle, so retry only after a clean leave
+        opened = x9_open_menu()
+        if opened:
+            break
+        tx_leave_menu()
+    if not g.check(opened, '%s: the text menu opens over the terminal' % tag):
+        return None
+    if not g.check(tx_pick('Packages'), '%s: the root has a Packages row (rows: %s)' % (tag, tx_rows())):
+        return None
+    time.sleep(2)
+    return tx_rows()
+
+
+def tx_job(g, tag, what):
+    """After the job row was picked: the job view is up; waits for AMARCHY_JOB_DONE (rc + 1), closes the view with Return."""
+    rc = g.job_done()
+    g.check(rc == 0, '%s: %s job rc 0 (rc %s)' % (tag, what, rc))
+    for _ in range(10):                  # the sentinel can land before the view shows its end state: Return until the view is gone
+        time.sleep(1.5)
+        if 'Enter: Accept' not in screen_text():
+            break
+        ami.key(RAW['return'])
+    time.sleep(2)
+    return rc
+
+
+def tx_leave_menu():
+    for _ in range(5):
+        ami.key(RAW['esc'])
+        time.sleep(0.6)
+
+
+def r_pkg_text():
+    """Packages group in the TEXT menu (plan PG.8, text style; the drawn style is amarchy_gui_rig --pkg-install/-upgrades).
+    The text menu is amarchy-menu in the UP-Term window (Super+Space over a terminal); it publishes no AMARCHY_ROWS, so
+    rows are read from the screen text. Feed, shadow conf and Refresh-to-Browse steps are the gui rig's (local_feed,
+    feed_names); sentinels: ENV:AMARCHY_JOB_DONE (rc + 1), ENV:AMARCHY_PKGS_LOADS, one amarchy-menu process per open."""
+    import amarchy_gui_rig as g, upkg_rig
+    tag, start_bad = 'pkg_text', g.bad
+    fd = g.feed_dir()
+    names = g.feed_names(open(os.path.join(fd, 'Packages')).read())
+    g.setup()
+    ensure_terminal()
+    rel = g.local_feed(fd)
+    pick = None
+    try:
+        have = g.installed_names()
+        pick = next((p for p in g.PKG_PICK if p in names and p not in have), None)
+        if not g.check(pick is not None, '%s: a small feed package is not installed (feed %s)' % (tag, names)):
+            return False, 'no package to install'
+        base = set(g.all_titles())
+        # opens: one process each, one load each
+        for i in range(3):
+            pk = tx_open_packages(g, tag)
+            if pk is None:
+                return False, 'Packages level not reached'
+            loads = g.env_num('AMARCHY_PKGS_LOADS')
+            g.check(loads == 1, '%s: open %d, AMARCHY_PKGS_LOADS is 1 in a fresh process (got %s)' % (tag, i + 1, loads))
+            if i == 0:
+                print('%s: Packages rows: %s' % (tag, pk), flush=True)
+                g.check(all(any(r.startswith(w) for r in pk) for w in ('Browse', 'Search', 'Installed', 'Upgrades', 'Refresh')),
+                        '%s: the group lists Browse, Search, Installed, Upgrades, Refresh' % tag)
+            tx_leave_menu()
+        # Refresh (job), then Browse
+        pk = tx_open_packages(g, tag)
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE ENV:AMARCHY_PKGS_LOADS QUIET')
+        if not g.check(tx_pick('Refresh', pk), '%s: Refresh row' % tag):
+            return False, 'no Refresh'
+        tx_job(g, tag, 'Refresh')
+        loads = g.env_num('AMARCHY_PKGS_LOADS')
+        print('%s: AMARCHY_PKGS_LOADS after one job inside one open: %s (expect 2)' % (tag, loads), flush=True)
+        g.check(loads == 2, '%s: AMARCHY_PKGS_LOADS is 2 after one job in the same open (got %s)' % (tag, loads))
+        tx_leave_menu()
+        pk = tx_open_packages(g, tag)
+        if not g.check(tx_pick('Browse', pk), '%s: Browse row' % tag):
+            return False, 'no Browse'
+        rows = tx_rows()
+        print('%s: browse rows: %s' % (tag, rows), flush=True)
+        if len(rows) == 1 and not any(n in rows[0] for n in names):
+            tx_pick(rows[0], rows)
+            rows = tx_rows()
+            print('%s: section rows: %s' % (tag, rows), flush=True)
+        g.check(len(rows) == len(names), '%s: Browse has %d rows = the feed size (got %d)' % (tag, len(names), len(rows)))
+        hit = [r for r in rows if pick in r]
+        if not g.check(len(hit) == 1, '%s: Browse has the row for %s (%s)' % (tag, pick, hit)):
+            return False, 'no row'
+        g.check('Installed' not in hit[0], '%s: the row does not read Installed before (%s)' % (tag, hit[0]))
+        tx_pick(hit[0], rows)
+        acts = tx_rows()
+        print('%s: action rows: %s' % (tag, acts), flush=True)
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+        if not g.check(tx_pick('Install', acts), '%s: the row offers Install' % tag):
+            return False, 'no Install'
+        tx_job(g, tag, 'Install')
+        rows = tx_rows()
+        hit = [r for r in rows if pick in r]
+        g.check(len(hit) == 1 and 'Installed' in hit[0], '%s: the row now reads Installed (%s)' % (tag, hit))
+        g.check(pick in g.installed_names(), '%s: upkg list-installed lists %s' % (tag, pick))
+        # Remove: confirm lists No first
+        tx_pick(hit[0], rows)
+        if not g.check(tx_pick('Remove', tx_rows()), '%s: the row offers Remove' % tag):
+            return False, 'no Remove'
+        conf = tx_rows()
+        print('%s: confirm rows: %s' % (tag, conf), flush=True)
+        g.check(len(conf) == 2 and conf[0].endswith(': No') and conf[1].endswith(': Yes'), '%s: the Remove confirm lists No first (rows: %s)' % (tag, conf))
+        tx_pick(conf[0], conf)
+        time.sleep(2)
+        g.check(pick in g.installed_names(), '%s: No keeps %s installed' % (tag, pick))
+        after = tx_rows()
+        print('%s: level after No: %s' % (tag, after), flush=True)
+        if after != conf:
+            if not g.check(tx_pick('Remove', after), '%s: Remove offered again after No' % tag):
+                return False, 'no Remove again'
+            conf = tx_rows()
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+        if not g.check(tx_pick(conf[1], conf), '%s: Return on the Yes row' % tag):
+            return False, 'no Yes'
+        tx_job(g, tag, 'Remove')
+        hit = [r for r in tx_rows() if pick in r]
+        g.check(len(hit) == 1 and 'Installed' not in hit[0], '%s: the row no longer reads Installed (%s)' % (tag, hit))
+        g.check(pick not in g.installed_names(), '%s: upkg list-installed no longer lists %s' % (tag, pick))
+        tx_leave_menu()
+        # Upgrades: install up-pi through upkg, bump it in the feed
+        up, high = 'up-pi', '1.1'
+        if up in g.installed_names():
+            upkg_rig.upkg('pg8t-pre', 'remove %s' % up, 300, conf=False)
+        upkg_rig.upkg('pg8t-update', 'update', 300, conf=False)
+        rc = upkg_rig.upkg('pg8t-inst', 'install %s' % up, 600, conf=False)[0]
+        g.check(rc == 0 and up in g.installed_names(), '%s: %s installed through upkg (rc %s)' % (tag, up, rc))
+        rel.set(rel.bumped_feed('pi', high, only=True))
+        pk = tx_open_packages(g, tag)
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+        g.check(tx_pick('Refresh', pk), '%s: Refresh row (bumped feed)' % tag)
+        tx_job(g, tag, 'Refresh (bumped feed)')
+        for _ in range(8):               # a finished job leaves the bar on the row that ran it (Refresh): back to the top
+            ami.key(RAW['up'])
+            time.sleep(0.3)
+        if not g.check(tx_pick('Upgrades', tx_rows()), '%s: Upgrades row' % tag):
+            return False, 'no Upgrades'
+        rows = tx_rows()
+        print('%s: upgrade rows: %s' % (tag, rows), flush=True)
+        if not rows:
+            print('%s: upgrade screen:\n%s' % (tag, screen_text()), flush=True)
+        g.check(bool(rows) and rows[0].startswith('Upgrade all'), '%s: Upgrade all is the first row (rows: %s)' % (tag, rows))
+        hit = [r for r in rows if up in r and high in r.split()]
+        if not g.check(len(hit) == 1, '%s: one %s row reads the higher version %s (rows: %s)' % (tag, up, high, rows)):
+            return False, 'no upgrade row'
+        tx_pick(hit[0], rows)
+        acts = tx_rows()
+        print('%s: upgrade action rows: %s' % (tag, acts), flush=True)
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+        if not g.check(tx_pick('Upgrade', acts), '%s: the row offers Upgrade' % tag):
+            return False, 'no Upgrade'
+        tx_job(g, tag, 'Upgrade')
+        out = upkg_rig.upkg('pg8t-li', 'list-installed', 300, conf=False)[1]
+        g.check(re.search(r'^%s - %s\b' % (re.escape(up), re.escape(high)), out, re.M) is not None,
+                '%s: list-installed shows %s at %s (%s)' % (tag, up, high, [l for l in out.splitlines() if up in l]))
+        tx_leave_menu()
+        new = [t for t in g.all_titles() if t not in base and any(k in t.lower() for k in g.CONSOLE_WORDS)]
+        g.check(not new, '%s: no console or terminal window beyond the menu host (new: %s)' % (tag, new))
+    finally:
+        tx_leave_menu()
+        for p in (pick, 'up-pi'):
+            if p and p in g.installed_names():
+                upkg_rig.upkg('pg8t-cleanup', 'remove %s' % p, 300, conf=False)
+        c.run('Delete >NIL: %s QUIET' % g.PKG_CONF)
+        rel.close()
+    return g.bad == start_bad, '%d failed checks' % (g.bad - start_bad)
+
+
+ROWS.append(('pkg_text', r_pkg_text))
+
+
 def start_args():
     """The arguments the running rig was started with (rig.py writes them to <rig>/start.args); [] when unknown."""
     try:
@@ -1285,8 +1495,11 @@ def main():
     ap.add_argument('--only')
     ap.add_argument('--failed', action='store_true')
     ap.add_argument('--fresh', action='store_true')
+    ap.add_argument('--pkg-text', action='store_true', help='only the Packages group in the text menu (same as --only pkg_text)')
     ap.add_argument('--no-build', action='store_true', help='stage what build/amiga holds, do not run make')
     a = ap.parse_args()
+    if a.pkg_text:
+        a.only = 'pkg_text'
     OUT.mkdir(parents=True, exist_ok=True)
     if any(n in ICON_ROWS and (not a.only or a.only == n) for n, _ in ROWS):
         err = ensure_os32_rig()
