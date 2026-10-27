@@ -5,6 +5,7 @@
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include "pkgs_dos.h"
+#include "taskalive.h"
 #include "sentinel_dos.h"
 #include "pkgs_core.h"
 #include "leaf.h"
@@ -39,19 +40,9 @@ static long pk_dos_read(char *buf, long cap)
 
 #define PK_STATUS "UP-Term:pkg/upkg/status"   /* option status_file of dist/upkg.conf (/UP-Term/pkg/upkg/status in ixemul) */
 
-/* The status file's DateStamp as one number; 0 when the file is not there (nothing installed yet). */
 static long pk_dos_status_stamp(void)
 {
-    struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, 0);
-    BPTR lock = fib ? Lock((STRPTR)PK_STATUS, SHARED_LOCK) : 0;
-    long st = 0;
-    if (lock && Examine(lock, fib))
-        st = (fib->fib_Date.ds_Days * 1440L + fib->fib_Date.ds_Minute) * 3000L + fib->fib_Date.ds_Tick;
-    if (lock)
-        UnLock(lock);
-    if (fib)
-        FreeDosObject(DOS_FIB, fib);
-    return st;
+    return ta_file_stamp(PK_STATUS);   /* 0 when the file is not there (nothing installed yet) */
 }
 
 int pk_dos_due(ix_index *x, const char *node)

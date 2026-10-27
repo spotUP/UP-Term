@@ -13,6 +13,7 @@
 #include "leaf.h"
 #include "termenv.h"
 #include "menu_open.h"
+#include "taskalive.h"
 #include "cxdesc.h"
 #include "proclaunch.h"
 
@@ -114,14 +115,28 @@ static void srv_spawn_cold(void *user, const ms_req *r)
 /* `<program> serve`, async, no console. System() names the process "Background CLI" whatever NP_Name says, so
  * the liveness check (taskalive.c) knows the server by the program it runs (mo_srv.task). On the
  * stack the program's own $STACK cookie asks for (RULES.md rule 6). */
+static void srv_path(const mo_srv *s, char *path, int n)
+{
+    cl_copy(path, g_srv_dir, n);
+    if (path[0] && path[strlen(path) - 1] != ':' && path[strlen(path) - 1] != '/')
+        cl_cat(path, "/", n);
+    cl_cat(path, s->task, n);
+}
+
+/* The server program's DateStamp on disk: ms_open compares it with the one taken at the server's start, so a
+ * program replaced by upkg or `rig.py install` ends the old server and starts one from the new file. */
+static long srv_stamp_file(void *user)
+{
+    char path[160];
+    srv_path((const mo_srv *)user, path, sizeof path);
+    return ta_file_stamp(path);
+}
+
 static void srv_start_proc(void *user)
 {
     const mo_srv *s = (const mo_srv *)user;
     char path[160], line[176];
-    cl_copy(path, g_srv_dir, sizeof path);
-    if (path[0] && path[strlen(path) - 1] != ':' && path[strlen(path) - 1] != '/')
-        cl_cat(path, "/", sizeof path);
-    cl_cat(path, s->task, sizeof path);
+    srv_path(s, path, sizeof path);
     cl_copy(line, "\"", sizeof line);
     cl_cat(line, path, sizeof line);
     cl_cat(line, "\" serve", sizeof line);
@@ -140,6 +155,7 @@ static mo_srv *srv_get(int text)
     s->user = s;
     s->spawn = srv_spawn_cold;
     s->start = srv_start_proc;
+    s->stamp = srv_stamp_file;
     return s;
 }
 
@@ -156,6 +172,7 @@ int act_menu_server_start(const char *dir)
         }
         srv_start_proc(s);
         s->st.started = 1;
+        s->st.bin_stamp = srv_stamp_file(s);
         mo_srv_ops(&ops, s);
         s->st.last_start = ops.now(ops.ctx);
     }

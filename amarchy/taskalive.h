@@ -17,4 +17,8 @@ int task_alive(struct Task *t, const char *tname);
  * the caller gave it is the one identity that is unique to that job. */
 struct Task *task_find_by_output(BPTR out);
 
+/* A file's DateStamp as one number (ticks); 0 when the file is not there. The change test of "is the file on
+ * disk the one I loaded": the upkg status file (pkgs_dos.c) and the warm menu server's own program. */
+long ta_file_stamp(const char *path);
+
 #endif

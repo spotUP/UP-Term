@@ -154,6 +154,17 @@ static long srv_now(void *ctx)
     return ds.ds_Days * 86400L + ds.ds_Minute * 60L + ds.ds_Tick / 50;
 }
 
+static long srv_stamp(void *ctx)
+{
+    mo_srv *s = (mo_srv *)ctx;
+    return s->stamp ? s->stamp(s->user) : 0;
+}
+
+static int srv_quit(void *ctx)
+{
+    return mo_srv_quit((mo_srv *)ctx);
+}
+
 void mo_srv_ops(ms_ops *ops, mo_srv *s)
 {
     ops->ctx = s;
@@ -163,6 +174,8 @@ void mo_srv_ops(ms_ops *ops, mo_srv *s)
     ops->spawn = srv_spawn;
     ops->start_server = srv_start;
     ops->now = srv_now;
+    ops->stamp = srv_stamp;
+    ops->quit = srv_quit;
     ops->st = &s->st;
 }
 
