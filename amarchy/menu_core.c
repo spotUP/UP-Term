@@ -33,6 +33,25 @@ int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max
     return c;
 }
 
+void mn_rows_join(const mn_item *items, const int *idx, int c, char *out, int n)
+{
+    int i, used = 0;
+    if (n <= 0)
+        return;
+    out[0] = 0;
+    for (i = 0; i < c; i++) {
+        const char *l = items[idx[i]].label;
+        int len = (int)strlen(l);
+        if (used + len + 2 >= n)
+            break;
+        if (i > 0)
+            out[used++] = '|';
+        memcpy(out + used, l, len);
+        used += len;
+        out[used] = 0;
+    }
+}
+
 int mn_pick(const mn_item *items, const int *idx, int c, const char *label)
 {
     int i;
