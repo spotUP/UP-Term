@@ -23,6 +23,18 @@
 #include "gthemes_dos.h"
 #include "menu_open.h"
 #include <signal.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/time.h>
+#define timeval ndk_timeval
+#define timerequest ndk_timerequest
+#include <dos/dos.h>
+#include <dos/dosextens.h>
+#include <proto/dos.h>
+#undef timeval
+#undef timerequest
+#include "termenv.h"
+#include "taskalive.h"
 #include "../config/keymap_load.h"
 #include "../handler/upreq.h"
 #include "../handler/upactive.h"
@@ -372,31 +384,28 @@ static int viewer(void)
 /* front_screen_name (AMB3: leaves open on the screen in front) reads the front screen from it */
 struct IntuitionBase *IntuitionBase;
 
-int main(int argc, char **argv)
+/* The theme's background is palette pen 0 (libupkgui init_theme: every attribute is a pair on background 0).
+ * Painted before newterm so a console that opened in its own default pens is not shown in them. ncurses'
+ * own first clear (clearok at ui_prepare, `clear=\E[H\E[2J` with bce) still runs in the default pair; see
+ * thoughts/shared/research/2026-10-27-amarchy-warm-menu-server.md. */
+static void prepaint(void)
+{
+    fputs("\033[?25l\033[0;40m\033[H\033[2J", stdout);
+    fflush(stdout);
+}
+
+/* One ui_start to ui_stop on whatever stdio is bound to: the menu or the viewer. */
+static int run_ui(int is_viewer, const char *node)
 {
     int rc;
-    lf_init();
-    if (qmark_argv(argc, argv)) { /* `amarchy-menu ?` shows the usage and ends */
-        fputs("usage: amarchy-menu menu [node] | viewer\n", stdout);
-        return 0;
-    }
-    at_mark("start");
-    keymap_load(&km, km_default_text);
-    if (argc < 2) {
-        fputs("usage: amarchy-menu menu [node] | viewer\n", stderr);
-        return 2;
-    }
-    mo_register();
-    signal(SIGINT, on_int);
-    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
-    hotkeys_init();
-    {
-        const char *t = mn_term_default(getenv("TERM"));
-        if (t)
-            setenv("TERM", t, 1);
-    }
-    if (strcmp(argv[1], "viewer"))
+    const char *t;
+    termenv_ensure();
+    t = mn_term_default(getenv("TERM"));
+    if (t)
+        setenv("TERM", t, 1);
+    if (!is_viewer)
         ui_osd(1);                             /* the menu is a launcher: no frame, no footer */
+    prepaint();
     rc = ui_start("amarchy-menu");
     at_mark("terminal");
     if (rc) {
@@ -405,12 +414,132 @@ int main(int argc, char **argv)
         (void)getchar();
         return rc;
     }
-    if (!strcmp(argv[1], "viewer"))
-        rc = viewer();
-    else
-        rc = menu_loop(argc > 2 && strcmp(argv[2], "root") ? argv[2] : "");
+    ui_on_tick(on_tick, 0);                    /* ui_stop clears the tick: set again after each ui_start */
+    rc = is_viewer ? viewer() : menu_loop(node);
     ui_stop();
     /* Escape is a normal leave; so is end of file on the console (the window closed on
      * deactivation, CLOSEINACTIVE): ui_run reports it as EXIT_NO_TERMINAL */
     return rc == 255 || rc == EXIT_NO_TERMINAL ? 0 : rc;
+}
+
+/* ---- the warm server: `amarchy-menu serve` (menu_open.h) ---- */
+static int std_save[3] = { -1, -1, -1 };
+
+/* One open: the commodity sent the window spec; the server opens that XCON: window itself (no shell runs on
+ * it, so no prompt prints), makes it the console of this process and binds fd 0/1/2 to it (probes P1/P2,
+ * thoughts/shared/research/2026-10-27-menusrv-probes.md), runs the menu, and gives everything back. */
+static void serve_one(const struct ms_msg *q)
+{
+    BPTR w, oldin, oldout;
+    struct MsgPort *oldcon;
+    int fd, i;
+    at_mark("start");
+    SetSignal(0, SIGBREAKF_CTRL_C);
+    closing = 0;
+    keymap_free(&km);
+    keymap_load(&km, km_default_text);
+    lf_reset();
+    w = Open((STRPTR)q->spec, MODE_NEWFILE);
+    if (!w)
+        return;
+    oldcon = SetConsoleTask(((struct FileHandle *)BADDR(w))->fh_Type);
+    fd = open("/dev/tty", O_RDWR);
+    if (fd >= 0) {
+        fflush(stdout);
+        fflush(stderr);
+        dup2(fd, 0);
+        dup2(fd, 1);
+        dup2(fd, 2);
+        close(fd);
+        clearerr(stdin);
+        clearerr(stdout);
+        clearerr(stderr);
+        oldin = SelectInput(w);
+        oldout = SelectOutput(w);
+        mo_register();
+        run_ui(q->kind == MS_VIEWER, q->node[0] && strcmp(q->node, "root") ? q->node : "");
+        mo_unregister();
+        SelectInput(oldin);
+        SelectOutput(oldout);
+        fflush(stdout);
+        fflush(stderr);
+        for (i = 0; i < 3; i++)
+            if (std_save[i] >= 0)
+                dup2(std_save[i], i);
+        clearerr(stdin);
+        clearerr(stdout);
+        clearerr(stderr);
+    }
+    SetConsoleTask(oldcon);
+    Close(w);
+}
+
+static int serve(void)
+{
+    struct MsgPort *port;
+    struct ms_msg *m, q;
+    int i, quit = 0;
+    for (i = 0; i < 3; i++)
+        std_save[i] = dup(i);
+    port = CreateMsgPort();
+    if (!port)
+        return 20;
+    port->mp_Node.ln_Name = (char *)MS_PORT;
+    Forbid();
+    {
+        struct MsgPort *old = FindPort((STRPTR)MS_PORT);
+        if (old && task_alive((struct Task *)old->mp_SigTask, MS_TASK_NAME)) {
+            Permit();
+            DeleteMsgPort(port);
+            return 5;                          /* a live server exists */
+        }
+        if (old)
+            RemPort(old);                      /* a killed server's stale port */
+    }
+    AddPort(port);
+    Permit();
+    signal(SIGINT, on_int);
+    hotkeys_init();
+    while (!quit) {
+        Wait(1UL << port->mp_SigBit | SIGBREAKF_CTRL_C);
+        SetSignal(0, SIGBREAKF_CTRL_C);        /* a stray toggle after a close must not end the server */
+        while (!quit && (m = (struct ms_msg *)GetMsg(port)) != 0) {
+            q = *m;
+            if (q.kind == MS_QUIT) {
+                Forbid();
+                RemPort(port);                 /* gone before the commodity sees the reply */
+                Permit();
+                quit = 1;
+            }
+            ReplyMsg(&m->m);                   /* at once: the commodity never waits for the menu */
+            if (!quit)
+                serve_one(&q);
+        }
+    }
+    while ((m = (struct ms_msg *)GetMsg(port)) != 0)
+        ReplyMsg(&m->m);
+    DeleteMsgPort(port);
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    lf_init();
+    if (qmark_argv(argc, argv)) { /* `amarchy-menu ?` shows the usage and ends */
+        fputs("usage: amarchy-menu menu [node] | viewer | serve\n", stdout);
+        return 0;
+    }
+    if (argc < 2) {
+        fputs("usage: amarchy-menu menu [node] | viewer | serve\n", stderr);
+        return 2;
+    }
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
+    if (!strcmp(argv[1], "serve"))
+        return serve();
+    at_mark("start");
+    keymap_load(&km, km_default_text);
+    mo_register();
+    signal(SIGINT, on_int);
+    hotkeys_init();
+    return run_ui(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "");
 }

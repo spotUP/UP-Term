@@ -3,10 +3,14 @@
 #include <exec/ports.h>
 #include <dos/dos.h>
 #include <proto/exec.h>
+#include <proto/dos.h>
+#include <string.h>
+#include "taskalive.h"
 #include <stdlib.h>
 #include "menu_open.h"
 
 static struct MsgPort *mo_port;
+static int mo_atexit;
 
 void mo_unregister(void)
 {
@@ -37,19 +41,145 @@ void mo_register(void)
     AddPort(p);
     mo_port = p;
     Permit();
-    atexit(mo_unregister);
+    if (!mo_atexit) {                 /* the warm server registers once per open: one hook only */
+        mo_atexit = 1;
+        atexit(mo_unregister);
+    }
 }
 
 int mo_close_open(void)
 {
     struct MsgPort *p;
-    int found = 0;
+    int found = 0, alive = 0, v;
     Forbid();
     p = FindPort((STRPTR)MO_PORT);
-    if (p && p->mp_SigTask) {
-        Signal((struct Task *)p->mp_SigTask, SIGBREAKF_CTRL_C);
+    if (p) {
         found = 1;
+        /* no name check: the gui and the text menu started by the shell carry no fixed task name */
+        alive = p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, "");
+    }
+    v = mo_verdict(found, alive);
+    if (v == MO_SIGNAL)
+        Signal((struct Task *)p->mp_SigTask, SIGBREAKF_CTRL_C);
+    else if (v == MO_TAKE_OVER)
+        RemPort(p);                 /* the owner is gone: its port must not swallow every later hotkey */
+    Permit();
+    return v == MO_SIGNAL;
+}
+
+static void srv_drain(mo_srv *s)
+{
+    struct Message *m;
+    while (s->reply && (m = GetMsg(s->reply)) != 0)
+        if (m == &s->msg.m)
+            s->out = 0;
+}
+
+static void srv_find(void *ctx, int *found, int *alive, int *outstanding)
+{
+    mo_srv *s = (mo_srv *)ctx;
+    struct MsgPort *p;
+    srv_drain(s);
+    Forbid();
+    p = FindPort((STRPTR)MS_PORT);
+    *found = p != 0;
+    *alive = p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME);
+    Permit();
+    *outstanding = s->out;
+}
+
+static void srv_take_over(void *ctx)
+{
+    struct MsgPort *p;
+    (void)ctx;
+    Forbid();
+    p = FindPort((STRPTR)MS_PORT);
+    if (p && !(p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME)))
+        RemPort(p);
+    Permit();
+}
+
+static void srv_send(void *ctx, const ms_req *r)
+{
+    mo_srv *s = (mo_srv *)ctx;
+    struct MsgPort *p;
+    int sent = 0;
+    memset(&s->msg, 0, sizeof s->msg);
+    s->msg.m.mn_Node.ln_Type = NT_MESSAGE;
+    s->msg.m.mn_Length = sizeof s->msg;
+    s->msg.m.mn_ReplyPort = s->reply;
+    s->msg.kind = r->kind;
+    strncpy(s->msg.spec, s->spec, MS_SPEC - 1);
+    strncpy(s->msg.node, r->node ? r->node : "", MS_NODE - 1);
+    Forbid();
+    p = FindPort((STRPTR)MS_PORT);
+    if (p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME)) {
+        PutMsg(p, &s->msg.m);
+        s->out = 1;
+        sent = 1;
     }
     Permit();
-    return found;
+    if (!sent)
+        s->spawn(s->user, r);       /* the port went between find and send */
+}
+
+static void srv_spawn(void *ctx, const ms_req *r)
+{
+    mo_srv *s = (mo_srv *)ctx;
+    s->spawn(s->user, r);
+}
+
+static void srv_start(void *ctx)
+{
+    mo_srv *s = (mo_srv *)ctx;
+    s->start(s->user);
+}
+
+static long srv_now(void *ctx)
+{
+    struct DateStamp ds;
+    (void)ctx;
+    DateStamp(&ds);
+    return ds.ds_Days * 86400L + ds.ds_Minute * 60L + ds.ds_Tick / 50;
+}
+
+void mo_srv_ops(ms_ops *ops, mo_srv *s)
+{
+    ops->ctx = s;
+    ops->find = srv_find;
+    ops->take_over = srv_take_over;
+    ops->send = srv_send;
+    ops->spawn = srv_spawn;
+    ops->start_server = srv_start;
+    ops->now = srv_now;
+    ops->st = &s->st;
+}
+
+int mo_srv_quit(mo_srv *s)
+{
+    struct MsgPort *p;
+    int sent = 0, i;
+    srv_drain(s);
+    if (s->out)
+        return 0;                   /* wedged: nothing to wait for */
+    memset(&s->msg, 0, sizeof s->msg);
+    s->msg.m.mn_Node.ln_Type = NT_MESSAGE;
+    s->msg.m.mn_Length = sizeof s->msg;
+    s->msg.m.mn_ReplyPort = s->reply;
+    s->msg.kind = MS_QUIT;
+    Forbid();
+    p = FindPort((STRPTR)MS_PORT);
+    if (p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME)) {
+        PutMsg(p, &s->msg.m);
+        s->out = 1;
+        sent = 1;
+    }
+    Permit();
+    for (i = 0; sent && i < 20; i++) {
+        srv_drain(s);
+        if (!s->out)
+            return 1;
+        Delay(5);
+    }
+    return 0;
 }

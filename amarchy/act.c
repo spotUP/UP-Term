@@ -6,10 +6,15 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "act.h"
+#include "../config/keymap.h"
 #include "../claude/util.h"
 #include "../handler/frontscr.h"
 #include "leaf.h"
 #include "termenv.h"
+#include "menu_open.h"
+#include "cxdesc.h"
+#define SEGSTACK_DOS
+#include "../config/segstack.h"
 
 /* Clone the path list of this process's CLI (a chain of {BPTR next; BPTR lock}
  * nodes) for the child, which owns and frees it. 0 when there is no CLI. */
@@ -116,6 +121,114 @@ int act_in_window(const char *cmd, int cols, int rows)
         free_path(path);
         return 0;
     }
+    return 1;
+}
+
+/* ---- the warm menu server (plan 2026-10-27-amarchy-warm-menu-server.md) ---- */
+static mo_srv g_srv;
+static struct {
+    const char *dir;
+    char line[KM_ID + 160];
+    int cols, rows;
+} g_open;
+
+/* the cold path, used when the server is missing, dead or wedged: a menu process of its own */
+static void srv_spawn_cold(void *user, const ms_req *r)
+{
+    (void)user;
+    (void)r;
+    act_in_window(g_open.line, g_open.cols, g_open.rows);
+}
+
+/* `amarchy-menu serve`, async, no console, named "amarchy-menu" (the liveness check reads the name), on the
+ * stack the program's own $STACK cookie asks for (RULES.md rule 6). */
+static void srv_start_proc(void *user)
+{
+    char path[160], line[176];
+    ULONG stack = 262144;
+    BPTR in, out, p, seg;
+    LONG rc;
+    (void)user;
+    cl_copy(path, g_open.dir, sizeof path);
+    if (path[0] && path[strlen(path) - 1] != ':' && path[strlen(path) - 1] != '/')
+        cl_cat(path, "/", sizeof path);
+    cl_cat(path, MS_TASK_NAME, sizeof path);
+    seg = LoadSeg((STRPTR)path);
+    if (seg) {
+        ULONG v = seg_stack(seg);
+        if (v > stack)
+            stack = v;
+        UnLoadSeg(seg);
+    }
+    cl_copy(line, "\"", sizeof line);
+    cl_cat(line, path, sizeof line);
+    cl_cat(line, "\" serve", sizeof line);
+    in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    p = dup_path();
+    rc = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
+                    NP_Name, (ULONG)MS_TASK_NAME, NP_StackSize, stack, p ? NP_Path : TAG_IGNORE, p, TAG_END);
+    if (rc == -1) {
+        if (in)
+            Close(in);
+        if (out)
+            Close(out);
+        free_path(p);
+    }
+}
+
+int act_menu_server_start(const char *dir)
+{
+    if (!g_srv.reply)
+        g_srv.reply = CreateMsgPort();
+    if (!g_srv.reply)
+        return 0;
+    g_srv.user = 0;
+    g_srv.spawn = srv_spawn_cold;
+    g_srv.start = srv_start_proc;
+    g_open.dir = dir;
+    srv_start_proc(0);
+    g_srv.st.started = 1;
+    g_srv.st.last_start = 0;
+    {
+        ms_ops ops;
+        mo_srv_ops(&ops, &g_srv);
+        g_srv.st.last_start = ops.now(ops.ctx);
+    }
+    return 1;
+}
+
+void act_menu_server_quit(void)
+{
+    if (!g_srv.reply)
+        return;
+    mo_close_open();                /* a menu showing at quit ends first */
+    mo_srv_quit(&g_srv);
+    if (!g_srv.out)
+        DeleteMsgPort(g_srv.reply);
+    g_srv.reply = 0;
+}
+
+int act_menu_open(const char *dir, int kind, const char *node, const char *line, int cols, int rows)
+{
+    ms_ops ops;
+    ms_req r;
+    if (!g_srv.reply)
+        g_srv.reply = CreateMsgPort();
+    if (!g_srv.reply)
+        return act_in_window(line, cols, rows);
+    g_srv.user = 0;
+    g_srv.spawn = srv_spawn_cold;
+    g_srv.start = srv_start_proc;
+    g_open.dir = dir;
+    cl_copy(g_open.line, line, sizeof g_open.line);
+    g_open.cols = cols;
+    g_open.rows = rows;
+    window_spec(g_srv.spec, sizeof g_srv.spec, cols, rows);
+    r.kind = kind == KA_VIEWER ? MS_VIEWER : MS_MENU;
+    r.node = kind == KA_VIEWER || !strcmp(node, "root") ? "" : node;
+    mo_srv_ops(&ops, &g_srv);
+    ms_open(&ops, &r);
     return 1;
 }
 

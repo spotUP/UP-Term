@@ -107,7 +107,11 @@ static int act_menu_kind(int kind, const char *node)
                       mn_cond(upactive_terminal_present(0), upactive_dopus_present(), upactive_workbench_present()));
         keymap_free(&full);
     }
-    return act_in_window(line, cols, rows);
+    {
+        int r = act_menu_open(g_dir, kind, node, line, cols, rows);
+        at_mark("send");   /* opt-in: AMARCHY_TIMING */
+        return r;
+    }
 }
 
 /* A decimal number after optional blanks and sign, 0 when there is none (atoi). */
@@ -317,6 +321,7 @@ int main(void)
     if (notify_port)
         notify_start();
     cx_install(&g_km);
+    act_menu_server_start(g_dir);               /* the warm menu server; the first press before it is up opens a menu of its own */
     cxs = cx_sigmask();
     rxs = rexx_port ? 1UL << rexx_port->mp_SigBit : 0;
     nts = notify_port ? 1UL << notify_port->mp_SigBit : 0;
@@ -352,6 +357,7 @@ int main(void)
             reload();
         }
     }
+    act_menu_server_quit();
     cw_stop();
     notify_stop();
     if (notify_port)

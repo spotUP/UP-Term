@@ -2,7 +2,9 @@
  * Off unless the AmigaDOS variable AMARCHY_TIMING is set (`SetEnv AMARCHY_TIMING 1`). When set, at_mark(tag)
  * appends "<tag> <ticks>" to RAM:amarchy.timing, ticks = DateStamp in 1/50 s since midnight (the commodity and
  * the helper are two programs; DateStamp is the one clock both read cheaply). tools/rig/amarchy_timing_rig.py
- * reads the file. A header of static code so both the vbcc commodity and the gcc helper take it unchanged. */
+ * reads the file. Marks of one warm open: "hotkey" (commodity), "send" (commodity, after the PutMsg to the
+ * AMARCHY.MENUSRV port, menu_open.h), "start" (server, message taken), "terminal" (ui_start returned), "ready"
+ * (menu painted). A header of static code so both the vbcc commodity and the gcc helper take it unchanged. */
 #ifndef AMARCHY_ATIMING_H
 #define AMARCHY_ATIMING_H
 
