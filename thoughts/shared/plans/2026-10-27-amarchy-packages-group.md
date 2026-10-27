@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy merged Packages group (Browse, Search, Installed, Upgrades, Refresh) with Install, Remove, Upgrade and Launch through the job view
-status: approved scope (owner, 2026-10-27), 5 of 9 (PG.5 text menu unbuilt on m68k, see Results)
+status: approved scope (owner, 2026-10-27), 7 of 9 (PG.8 rig, PG.9 docs open)
 ledger: thoughts/spot/todos.md row AMARCHY-UHC
 research: thoughts/shared/research/2026-10-27-amarchy-packages.md
 builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Installed rows), thoughts/shared/plans/2026-10-27-amarchy-job-view.md (job: action, gui_run_job)
@@ -100,10 +100,10 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
   the No path starts no job. Upgrades lists "Upgrade all" as its first row. After the job ends the stale flag is set from the footer state (rc 0, 5, other). Host test tests/test_job.c plus
   test_keymap.c: every package action ends in LF_JOB with the PG.1 line, never LF_WINDOW; a fake run_job returning rc 0, 5 and 12
   all mark the list stale; a style with no run_job falls back to run: (lf_job_view) and is stated in the row's refusal text.
-- [ ] PG.6 text menu (menu.c, libupkgui): the same group, rows, Search and actions through the shared leaf code, jobs in the
+- [x] PG.6 (commits 67186f5e + e4c4a8b6: rows, Search, PKGACT and lf_job_done were already in menu.c; this run built amarchy-menu on m68k rc 0; rows identical by construction: both styles read one ix level, test_keymap pkg_level walk; keymap 12168) text menu (menu.c, libupkgui): the same group, rows, Search and actions through the shared leaf code, jobs in the
   text job view (RJ.2t, eed2cacc, through lf_ui.run_job = text_run_job). Host test: tests/test_keymap.c rows identical in both
   styles (one node walk, two ui structs).
-- [ ] PG.7 sentinels AMARCHY_PKGS_ROWS and AMARCHY_PKGS_LOADS in gui.c and menu.c next to the job sentinels; host test that the
+- [x] PG.7 (commit e4c4a8b6, keymap 12168 checks; ix_pkgs_publish in index_core called by pk_dos_load_rows, which gui.c and menu.c both call; pk_sentinel copies job_dos.c's static sentinel because job_dos.c was off limits, fold into one later) sentinels AMARCHY_PKGS_ROWS and AMARCHY_PKGS_LOADS in gui.c and menu.c next to the job sentinels; host test that the
   publish function receives rows and load counts from a fake load.
 - [ ] PG.8 rig reachability (rig 7, 060, both styles; started with `UPTERM_RIG=7 rig.py start --max --purpose "Amarchy
   session: Packages group"`; against a local feed only, never the real feed): hotkey, Packages, Browse lists the feed's packages
@@ -149,3 +149,5 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
 
 ## Open decisions for the owner
 None. Answered 2026-10-27, see Owner decisions.
+
+- PG.6/PG.7 m68k (sysroot present): amarchy-gui rc 0 md5 da76f812a3df9504d3478f4011213677, amarchy-menu rc 0 md5 de4c844000cd415a13a52c2cd4a96de4, amarchy-index rc 0 md5 60c9136abdc00ff1562ef5ecaf61a0a3. Suites pkgs 81, keymap 12168, menu_text 65, 0 failed. Untested: sentinel SetVar and menu.c PKGACT/Search on a rig (PG.8).
