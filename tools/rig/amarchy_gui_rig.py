@@ -28,6 +28,8 @@ Proves, on the rig:
     failing rc (13: a 404 download; the plan said 12), the row never reads Installed, no console or terminal window opens
   * Packages > Install of a name the menu lists but upkg no longer knows (--pkg-notfound runs only this): rc 12 and
     AMARCHY_JOB_WORD "Package not found"; --pkg-fail also asserts AMARCHY_JOB_WORD "Network error"
+  * --pkg-all runs every --pkg-* case above in sequence on one boot and records each verdict in build/<rig>/amarchy-pkg-all.txt
+    (--only <case>: install upgrades fail notfound search; --failed: the cases not recorded PASS)
   * AMB3: with a second PUBLIC screen in front the menu and the leaf it opens (Apps, UP-Term) appear on it, and
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
@@ -506,6 +508,18 @@ def walk_to(label, rows):
     return True
 
 
+def walk_to_packages(root):
+    """From the root level into the Packages group: a root row of that name, else Install > Packages (where the keymap
+    puts the group now). False when neither exists."""
+    if walk_to('Packages', root):
+        return True
+    if not walk_to('Install', root):
+        return False
+    inst = rows_now()
+    print('walk_to_packages: Install level rows: %s' % inst, flush=True)
+    return walk_to('Packages', inst)
+
+
 def open_pkg_search():
     """Open the menu, walk root > Packages > Search; returns the Packages level's rows, or None when a step failed."""
     c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
@@ -513,7 +527,7 @@ def open_pkg_search():
     if not check(bool(w), 'pkg_search: menu opens'):
         return None
     root = rows_now()
-    if not check(walk_to('Packages', root), 'pkg_search: the root has a Packages row (rows: %s)' % root):
+    if not check(walk_to_packages(root), 'pkg_search: the root has a Packages row (rows: %s)' % root):
         return None
     pkgs = rows_now()
     if not check(walk_to('Search', pkgs), 'pkg_search: the Packages level has a Search row (rows: %s)' % pkgs):
@@ -587,7 +601,7 @@ def pkg_group(tag='pkg_install'):
     if not check(bool(w), '%s: menu opens' % tag):
         return None
     root = rows_now()
-    if not check(walk_to('Packages', root), '%s: the root has a Packages row (rows: %s)' % (tag, root)):
+    if not check(walk_to_packages(root), '%s: the root has a Packages row (rows: %s)' % (tag, root)):
         return None
     return rows_now()
 
@@ -681,10 +695,11 @@ def case_pkg_upgrades():
         check(got == want and any(pkg in r for r in rows[1:]), 'pkg_upgrades: package rows match upkg list-upgradable %s (rows: %s)' % (sorted(want), rows))
         # upkg list --tsv (checked on the rig 2026-10-27) emits two upgradable lines for one package, the available 1.1 and
         # the installed 1.0, so Upgrades shows two up-pi rows; reported, not asserted: it is upkg's list, not the menu's
+        # upkg patch 0054 (upterm-ports 217c8c8): `list --tsv` is one row per name, so exactly one up-pi row
+        check(len([r for r in rows if pkg in r]) == 1, 'pkg_upgrades: exactly one %s row (rows: %s)' % (pkg, rows))
         hit = [r for r in rows if pkg in r and high in r.split()]
         if not check(len(hit) == 1, 'pkg_upgrades: one up-pi row reads the higher version %s (rows: %s)' % (high, rows)):
             return
-        print('pkg_upgrades: up-pi rows shown: %d (list-upgradable lists one)' % len([r for r in rows if pkg in r]), flush=True)
         for _ in range(rows.index(hit[0])):
             ami.key(DOWN)
             time.sleep(.4)
@@ -945,8 +960,19 @@ def case_pkg_notfound():
         c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
         ami.key(RETURN)                      # accept
         time.sleep(3)
-        hit = [r for r in rows_now() if PKG_GONE in r]
-        check(not any('Installed' in r for r in hit), 'pkg_notfound: the row never reads Installed (%s)' % hit)
+        close_menu()
+        rows = pkg_group('pkg_notfound')       # reopen: read the row from a fresh Browse, an empty list is no proof
+        if rows is None or not check(walk_to('Browse', rows), 'pkg_notfound: Browse row after the job (rows: %s)' % rows):
+            return
+        rows = rows_now()
+        if len(rows) == 1 and not any(n in rows[0] for n in names):
+            walk_to(rows[0], rows)
+            rows = rows_now()
+        hit = [r for r in rows if PKG_GONE in r]
+        # the failed job marks the list stale (leaf: lf_job_done) and the reopen reloads it from upkg's reduced index: the
+        # row is gone, never Installed. The other feed rows prove the list was read, so the empty hit is not an empty read.
+        check(any(n in r for n in names if n != PKG_GONE for r in rows), 'pkg_notfound: the reopened Browse lists the feed (rows: %s)' % rows)
+        check(not hit, 'pkg_notfound: the reloaded list no longer has %s and no row reads Installed (%s)' % (PKG_GONE, hit))
         check(PKG_GONE not in installed_names(), 'pkg_notfound: upkg list-installed does not list %s' % PKG_GONE)
         new = [t for t in all_titles() if t not in base_titles and any(k in t.lower() for k in CONSOLE_WORDS)]
         check(not new, 'pkg_notfound: no console or terminal window opened (new: %s)' % new)
@@ -989,6 +1015,57 @@ def setup():
     return check(False, 'setup: port AMARCHY did not appear in 20 s')
 
 
+PKG_CASES = (('install', case_pkg_install), ('upgrades', case_pkg_upgrades), ('fail', case_pkg_fail),
+             ('notfound', case_pkg_notfound), ('search', case_pkg_search))   # --pkg-text joins when it lands
+
+
+def pkg_results_file():
+    return os.path.join(paths.RIG, 'amarchy-pkg-all.txt')
+
+
+def pkg_results():
+    """case -> last recorded verdict ('PASS'/'FAIL') in the results file."""
+    got = {}
+    if os.path.exists(pkg_results_file()):
+        for l in open(pkg_results_file()):
+            f = l.split()
+            if len(f) >= 2:
+                got[f[0]] = f[1]
+    return got
+
+
+def case_pkg_all(argv):
+    """--pkg-all: every --pkg-* case in sequence on this one boot, each verdict appended to the results file as it
+    completes (case, verdict, seconds). --only <case> runs one case, --failed the cases whose last verdict is not PASS."""
+    global bad
+    names = [n for n, _ in PKG_CASES]
+    if '--only' in argv:
+        want = [argv[argv.index('--only') + 1]]
+    elif '--failed' in argv:
+        last = pkg_results()
+        want = [n for n in names if last.get(n) != 'PASS']
+    else:
+        want = names
+    unknown = [n for n in want if n not in names]
+    if unknown:
+        raise SystemExit('--pkg-all: no case %s (cases: %s)' % (unknown, names))
+    t_all = time.time()
+    for name, fn in PKG_CASES:
+        if name not in want:
+            continue
+        before, t0 = bad, time.time()
+        try:
+            fn()
+        except Exception as e:           # a crashed case is a failed case; the next one still runs
+            check(False, '%s: raised %r' % (name, e))
+        close_menu()
+        verdict = 'FAIL' if bad > before else 'PASS'
+        with open(pkg_results_file(), 'a') as fh:
+            fh.write('%s %s %ds\n' % (name, verdict, time.time() - t0))
+        print('pkg-all: %s %s (%d s)' % (name, verdict, time.time() - t0), flush=True)
+    print('pkg-all: batch %d s, results in %s' % (time.time() - t_all, pkg_results_file()), flush=True)
+
+
 def main():
     if '--help' in sys.argv or '-h' in sys.argv:
         print(__doc__)
@@ -1006,6 +1083,8 @@ def main():
     try:
         if '--groups' in sys.argv:      # on an OS 3.2 rig (the WORKBENCH port exists): only the group icons
             case_groups(geom)
+        elif '--pkg-all' in sys.argv:   # every --pkg-* case on one boot; --only <case>, --failed
+            case_pkg_all(sys.argv)
         elif '--pkg-fail' in sys.argv:  # only Packages > Install of a package the feed cannot deliver
             case_pkg_fail()
         elif '--pkg-notfound' in sys.argv:  # only Packages > Install of a name upkg no longer knows (rc 12)
