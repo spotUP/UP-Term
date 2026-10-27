@@ -40,7 +40,7 @@ import hashlib, os, re, shlex, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths, ami, condev_rig as c, stage_rig, amarchy_window_rig, upkg_rig
 
-LAMIGA, SPACE, ESC, RETURN, DOWN = 0x40, 0x40, 0x45, 0x44, 0x4D
+LAMIGA, SPACE, ESC, RETURN, DOWN, UP = 0x40, 0x40, 0x45, 0x44, 0x4D, 0x4C
 TITLE = 'Amarchy'
 PROBE_TITLE = 'G7 screen'      # tests/amiga/scrprobe.c
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -499,6 +499,11 @@ def walk_to(label, rows):
     idx = [i for i, r in enumerate(rows) if r.startswith(label)]
     if not idx:
         return False
+    # The bar is not always on row 0: a closed job view leaves it on the row the job ran from (gui.c list_rebuild_keep),
+    # so Return after a count of Downs from "the top" started the Refresh job again. Up clamps at the first row.
+    for _ in range(len(rows)):
+        ami.key(UP)
+        time.sleep(.2)
     for _ in range(idx[0]):
         ami.key(DOWN)
         time.sleep(.4)
@@ -679,10 +684,7 @@ def case_pkg_upgrades():
         time.sleep(3)
         loads = env_num('AMARCHY_PKGS_LOADS')
         check(loads == 2, 'pkg_upgrades: AMARCHY_PKGS_LOADS is 2 after one job: counted over the server life (got %s)' % loads)
-        close_menu()
-        pkgs = pkg_group()
-        if pkgs is None:
-            return
+        pkgs = rows_now()                    # the same menu open: the Packages level after the accepted job
         out = upkg_rig.upkg('pg8u-lu', 'list-upgradable', 300, conf=False)[1]
         print('pkg_upgrades: list-upgradable: %s' % out.strip()[:300], flush=True)
         want = set(re.findall(r'^(\S+) - ', out, re.M))
@@ -825,8 +827,14 @@ def case_pkg_install():
         check(pick in installed_names(), 'pkg_install: No keeps %s installed' % pick)
         after = rows_now()
         print('pkg_install: level after No: %s' % after, flush=True)
-        if after != conf:                    # back at the row's own level: ask again
-            if not check(walk_to('Remove', after), 'pkg_install: Remove is offered again after No (rows: %s)' % after):
+        check(any(pick in r for r in after) and len(after) > 1,
+              'pkg_install: No goes back to the package row (the list shows %s; got %s)' % (pick, after))
+        hit = [r for r in after if pick in r]
+        if hit:
+            if not check(walk_to(hit[0], after), 'pkg_install: the %s row is shown again after No (rows: %s)' % (pick, after)):
+                return
+            acts = rows_now()
+            if not check(walk_to('Remove', acts), 'pkg_install: Remove is offered again after No (rows: %s)' % acts):
                 return
             conf = rows_now()
         c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
