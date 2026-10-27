@@ -21,7 +21,7 @@ class RigReboot(unittest.TestCase):
         p("START_ARGS", self.tmp / "start.args")
         p("stop", lambda: self.calls.append("stop"))
         p("fresh_sys_hdf", lambda: self.calls.append("clone"))
-        for name in ("sys_hdf_screenmode", "sys_hdf_no_wasabid", "sys_hdf_no_dopus", "sys_hdf_cpu_lib"):
+        for name in ("sys_hdf_screenmode", "sys_hdf_no_wasabid", "sys_hdf_no_dopus", "sys_hdf_kit", "sys_hdf_cpu_lib"):
             p(name, lambda image, _n=name: self.calls.append(_n))
         p("mine", lambda: [])
         p("setup_config_only", lambda: None)
