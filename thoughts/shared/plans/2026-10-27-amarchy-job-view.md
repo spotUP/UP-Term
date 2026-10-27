@@ -65,6 +65,9 @@ roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
   gets keys or a documented fallback; host test that each theme resolves both roles.
 - [ ] RJ.2 drawn view M_JOB in gui.c: header title, body, footer, scroll keys, jb_sigmask in every event_loop Wait.
 - [ ] RJ.2t text view in menu.c through libupkgui on the ui_on_tick hook (or the libupkgui API request ledgered).
+  2026-10-27: blocked. libupkgui (upterm-ports kit-main 8b49328) lacks tick redraw, follow release on scroll-up and a
+  caller status footer; request ui_invalidate / ui_follow / ui_status ledgered as UPKGUI-JOB-API (UP-Term session).
+  Research thoughts/shared/research/2026-10-27-libupkgui-job-view.md.
 - [ ] RJ.5 cancel and close: Esc sends CTRL_C while running, Esc/Enter closes after the end, menu returns to the row.
 - [ ] RJ.K keymap `job:` action in leaf.c, host test in test_keymap (row action parsed, run: rows unchanged);
   dist/keymap install.upgrade and install.update move to `job:`.
