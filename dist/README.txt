@@ -791,12 +791,33 @@ AMARCHY
   wheel three lines. Esc while the job runs cancels it. After the end, Esc,
   Enter or the right mouse button close the view and return to the menu
   row. The menu hotkey while the job runs cancels it and closes the view.
-  Limits: only the graphical menu style has the view; the text menu style
-  runs a job: row like a run: row (a terminal window) until a library update
-  lands. The view asks no package questions: upkg takes the defaults or the
+  Both menu styles have the view: the drawn menu and the text menu show the
+  same header, output lines and footer. The view asks no package questions: upkg takes the defaults or the
   recorded answers, and a package that needs answers ends with "Needs
   answers". A last output line that has not ended with a newline shows once
   it ends. A job: row bound to a hotkey runs like a run: row.
+
+  Packages (a top-level group of the menu): every add-on Amarchy can install,
+  from upkg and from upkg's UHC repo together, in one list. Rows:
+    Browse        every package, one sub-group per section, sorted by name
+    Search        type a word; lists the packages whose name or description
+                  holds it (case does not matter)
+    Installed     the packages installed now
+    Upgrades      the packages with a newer version; its first row,
+                  Upgrade all, upgrades them all
+    Refresh       reads the package lists again (upkg update)
+  A package row reads  [upkg] name  version  state  or  [UHC] name ... : the
+  tag says where the package comes from, the state is Installed, Upgrade to
+  <version>, or empty. Pick a package for its action rows, only those that
+  fit: Install (not installed), and Remove, Launch (when the package has a
+  program to start) and Upgrade (when a newer version exists) for an
+  installed one. Remove asks first: "Remove <name>", No then Yes. Install,
+  Remove, Upgrade and Upgrade all run in the job view, so no terminal or
+  console window opens for package work. upkg is the only back end: a UHC
+  package installs as  upkg install uhc:<name> , and Amarchy has no UHC
+  code of its own. The list loads once per boot, on the first open of
+  Packages, then again after each install, remove, upgrade or Refresh. When
+  upkg is missing or fails, the group shows one row with the reason.
 
   Directory Opus (the DOpus group of the menu): if Directory Opus 5 is
   running, Amarchy drives it. Left Amiga + Shift + D opens a lister, Left

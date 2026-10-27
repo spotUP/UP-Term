@@ -239,6 +239,11 @@ system.own         = Own screen            | slash:/screen own
 install.browse     = Install add-ons       | run:upkg browse
 install.upgrade    = Upgrade all           | job:upkg upgrade
 install.update     = Update lists          | job:upkg update
+; Packages group: upkg and its UHC repo in one list (Browse by section,
+; Search by name or description, Installed, Upgrades, Refresh). The package
+; rows and their Install / Remove / Launch / Upgrade rows come from
+; `upkg list --tsv`, not from this file; every package job runs as a job: row
+; in the job view, so no terminal opens.
 packages.browse    = Browse                | menu:packages.browse
 packages.search    = Search                | menu:packages.search
 packages.installed = Installed             | menu:packages.installed
