@@ -26,6 +26,8 @@ Proves, on the rig:
     the row goes; AMARCHY_PKGS_LOADS is 1 after three opens and rises by one per job
   * Packages > Install of a package whose .ipk the feed does not serve (--pkg-fail runs only this): the job ends with a
     failing rc (13: a 404 download; the plan said 12), the row never reads Installed, no console or terminal window opens
+  * Packages > Install of a name the menu lists but upkg no longer knows (--pkg-notfound runs only this): rc 12 and
+    AMARCHY_JOB_WORD "Package not found"; --pkg-fail also asserts AMARCHY_JOB_WORD "Network error"
   * AMB3: with a second PUBLIC screen in front the menu and the leaf it opens (Apps, UP-Term) appear on it, and
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
@@ -217,7 +219,7 @@ def blits():
 
 
 def close_menu():
-    for _ in range(3):
+    for _ in range(6):                  # one Escape climbs one level: a section row is four levels deep
         if not where(TITLE)[1]:
             return True
         ami.key(ESC)
@@ -836,15 +838,24 @@ def case_pkg_install():
 PKG_FAIL = 'up-zzfail'     # a Packages stanza whose .ipk the local feed does not serve
 
 
+def ghost_stanza(name):
+    """A Packages stanza whose .ipk the local feed does not serve."""
+    return ('Package: %s\nVersion: 1.0\nArchitecture: m68k-amigaos\nFilename: %s_1.0_m68k-amigaos.ipk\n'
+            'Size: 1234\nSHA256sum: %s\nDescription: rig failing package\n' % (name, name, '0' * 64))
+
+
+def job_word():
+    rc, out = c.run('GetEnv AMARCHY_JOB_WORD')
+    return out.strip() if rc == 0 else None
+
+
 def case_pkg_fail():
     """Packages > Install of a package whose .ipk 404s (plan PG.8: a failing job shows Failed with its word).
-    The footer word comes from job_core.c rc_words (a 404 on the .ipk is rc 13, "Network error"; rc 12, "Package not found", is a name missing from the index); no sentinel publishes it, so
-    the rig asserts the rc (ENV:AMARCHY_JOB_DONE = rc + 1), that the row never reads Installed and that no console
+    The footer word comes from job_core.c rc_words (a 404 on the .ipk is rc 13, "Network error"; rc 12, "Package not found", is a name missing from the index; case_pkg_notfound); the rig asserts the rc (ENV:AMARCHY_JOB_DONE = rc + 1), the word (ENV:AMARCHY_JOB_WORD), that the row never reads Installed and that no console
     window opened; the rc-to-word table is tests/test_job.c."""
     fd = feed_dir()
     text = open(os.path.join(fd, 'Packages')).read()
-    extra = ('Package: %s\nVersion: 1.0\nArchitecture: m68k-amigaos\nFilename: %s_1.0_m68k-amigaos.ipk\n'
-             'Size: 1234\nSHA256sum: %s\nDescription: rig failing package\n' % (PKG_FAIL, PKG_FAIL, '0' * 64))
+    extra = ghost_stanza(PKG_FAIL)
     names = feed_names(text + '\n' + extra)
     rel = local_feed(fd, packages=text.rstrip('\n') + '\n\n' + extra)
     try:
@@ -859,7 +870,7 @@ def case_pkg_fail():
         for _ in range(rows.index(hit[0])):
             ami.key(DOWN)
             time.sleep(.4)
-        c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE QUIET')
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE ENV:AMARCHY_JOB_WORD QUIET')
         ami.key(RETURN)
         time.sleep(2)
         acts = rows_now()
@@ -867,6 +878,7 @@ def case_pkg_fail():
             return
         rc = job_done()
         check(rc not in (None, 0, 5), 'pkg_fail: the Install job ends with a failing rc (rc %s)' % rc)
+        check(job_word() == 'Network error', 'pkg_fail: AMARCHY_JOB_WORD is "Network error" (got %r)' % job_word())
         check(rc == 13, 'pkg_fail: the rc is 13, Network error: the .ipk download 404s (plan said 12, which is a package missing from the index; rc %s)' % rc)
         c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
         ami.key(RETURN)                      # accept
@@ -876,6 +888,68 @@ def case_pkg_fail():
         check(PKG_FAIL not in installed_names(), 'pkg_fail: upkg list-installed does not list %s' % PKG_FAIL)
         new = [t for t in all_titles() if t not in base_titles and any(k in t.lower() for k in CONSOLE_WORDS)]
         check(not new, 'pkg_fail: no console or terminal window opened (new: %s)' % new)
+    finally:
+        close_menu()
+        c.run('Delete >NIL: %s QUIET' % PKG_CONF)
+        rel.close()
+
+
+PKG_GONE = 'up-zzgone'     # listed by the feed at Refresh, gone from it (and from upkg's index) before the Install
+
+
+def case_pkg_notfound():
+    """Packages > Install of a package the menu lists but upkg no longer knows (plan PG.8: rc 12, "Package not found").
+    The feed lists PKG_GONE; Refresh loads it into upkg's index and the menu cache. Then the feed drops it and
+    `upkg update` (outside the menu, so the menu cache is not marked stale) refreshes upkg's index only. Install from the
+    menu row runs `upkg install` of a name upkg lacks: rc 12, and AMARCHY_JOB_WORD is the footer word."""
+    fd = feed_dir()
+    text = open(os.path.join(fd, 'Packages')).read()
+    names = feed_names(text + '\n' + ghost_stanza(PKG_GONE))
+    rel = local_feed(fd, packages=text.rstrip('\n') + '\n\n' + ghost_stanza(PKG_GONE))
+    try:
+        base_titles = set(all_titles())
+        rows = refresh_to_browse(names, 'pkg_notfound')
+        if rows is None:
+            return
+        hit = [r for r in rows if PKG_GONE in r]
+        if not check(len(hit) == 1, 'pkg_notfound: Browse has the row for %s (%s)' % (PKG_GONE, hit)):
+            return
+        close_menu()
+        rel.set(fd, packages=text)           # the feed no longer lists it
+        rc = upkg_rig.upkg('pg8nf-update', 'update', 300, conf=False)[0]
+        if not check(rc == 0, 'pkg_notfound: upkg update against the reduced feed rc 0 (rc %s)' % rc):
+            return
+        rows = pkg_group('pkg_notfound')
+        if rows is None or not check(walk_to('Browse', rows), 'pkg_notfound: Browse row (rows: %s)' % rows):
+            return
+        rows = rows_now()
+        if len(rows) == 1 and not any(n in rows[0] for n in names):
+            walk_to(rows[0], rows)
+            rows = rows_now()
+        hit = [r for r in rows if PKG_GONE in r]
+        if not check(len(hit) == 1, 'pkg_notfound: the menu cache still lists %s (rows: %s)' % (PKG_GONE, rows)):
+            return
+        for _ in range(rows.index(hit[0])):
+            ami.key(DOWN)
+            time.sleep(.4)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE ENV:AMARCHY_JOB_WORD QUIET')
+        ami.key(RETURN)
+        time.sleep(2)
+        acts = rows_now()
+        if not check(walk_to('Install', acts), 'pkg_notfound: the row offers Install (rows: %s)' % acts):
+            return
+        rc = job_done()
+        word = job_word()
+        check(rc == 12, 'pkg_notfound: the Install job ends with rc 12 (rc %s)' % rc)
+        check(word == 'Package not found', 'pkg_notfound: AMARCHY_JOB_WORD is "Package not found" (got %r)' % word)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(RETURN)                      # accept
+        time.sleep(3)
+        hit = [r for r in rows_now() if PKG_GONE in r]
+        check(not any('Installed' in r for r in hit), 'pkg_notfound: the row never reads Installed (%s)' % hit)
+        check(PKG_GONE not in installed_names(), 'pkg_notfound: upkg list-installed does not list %s' % PKG_GONE)
+        new = [t for t in all_titles() if t not in base_titles and any(k in t.lower() for k in CONSOLE_WORDS)]
+        check(not new, 'pkg_notfound: no console or terminal window opened (new: %s)' % new)
     finally:
         close_menu()
         c.run('Delete >NIL: %s QUIET' % PKG_CONF)
@@ -934,6 +1008,8 @@ def main():
             case_groups(geom)
         elif '--pkg-fail' in sys.argv:  # only Packages > Install of a package the feed cannot deliver
             case_pkg_fail()
+        elif '--pkg-notfound' in sys.argv:  # only Packages > Install of a name upkg no longer knows (rc 12)
+            case_pkg_notfound()
         elif '--pkg-install' in sys.argv:  # only Packages > Install and Remove against a local feed
             case_pkg_install()
         elif '--pkg-upgrades' in sys.argv:  # only Packages > Upgrades against a bumped local feed
@@ -951,6 +1027,7 @@ def main():
             case_pkg_install()
             case_pkg_upgrades()
             case_pkg_fail()
+            case_pkg_notfound()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')
