@@ -1269,6 +1269,44 @@ def tx_rows():
     return rows
 
 
+def tx_all_rows(limit=80):
+    """Every row of a level longer than the window: the window follows the cursor, so Down one row at a time, collecting
+    the rows shown, until as many Downs as the window has rows show nothing new (the window moves only once the cursor
+    passes its last row); then Up the same number of Downs, the cursor back where it began."""
+    seen = list(tx_rows())
+    downs = idle = 0
+    patience = len(seen) + 1
+    for _ in range(limit):
+        ami.key(RAW['down'])
+        downs += 1
+        time.sleep(0.3)
+        new = [r for r in tx_rows() if r not in seen]
+        idle = 0 if new else idle + 1
+        if idle >= patience:
+            break
+        seen.extend(new)
+    for _ in range(downs):
+        ami.key(RAW['up'])
+        time.sleep(0.2)
+    return seen
+
+
+def tx_named(rows, name):
+    """The rows for the package called name: the name as a whole word, so up-pi does not also match up-picocom."""
+    return [r for r in rows if re.search(r'(?<![\w-])%s(?![\w-])' % re.escape(name), r)]
+
+
+def tx_list_after_job(name):
+    """The package list after an Install or Remove job. The menu returns to the level that ran the job (menu.c: job_ran,
+    same node), which is the package's action level (Install / Remove); one Escape goes up to the list that names it."""
+    rows = tx_rows()
+    if not tx_named(rows, name):
+        ami.key(RAW['esc'])
+        time.sleep(1.5)
+        rows = tx_rows()
+    return rows
+
+
 def tx_pick(prefix, rows=None):
     """Down to the first row starting with prefix and Return; False when the level has no such row. A level opens with the
     cursor on its first item, below the scan status row (menu.c default_item)."""
@@ -1406,10 +1444,10 @@ def r_pkg_text():
         print('%s: browse rows: %s' % (tag, rows), flush=True)
         if len(rows) == 1 and not any(n in rows[0] for n in names):
             tx_pick(rows[0], rows)
-            rows = tx_rows()
+            rows = tx_all_rows()
             print('%s: section rows: %s' % (tag, rows), flush=True)
         g.check(len(rows) == len(names), '%s: Browse has %d rows = the feed size (got %d)' % (tag, len(names), len(rows)))
-        hit = [r for r in rows if pick in r]
+        hit = tx_named(rows, pick)
         if not g.check(len(hit) == 1, '%s: Browse has the row for %s (%s)' % (tag, pick, hit)):
             return False, 'no row'
         g.check('Installed' not in hit[0], '%s: the row does not read Installed before (%s)' % (tag, hit[0]))
@@ -1420,8 +1458,8 @@ def r_pkg_text():
         if not g.check(tx_pick('Install', acts), '%s: the row offers Install' % tag):
             return False, 'no Install'
         tx_job(g, tag, 'Install')
-        rows = tx_rows()
-        hit = [r for r in rows if pick in r]
+        rows = tx_list_after_job(pick)
+        hit = tx_named(rows, pick)
         g.check(len(hit) == 1 and 'Installed' in hit[0], '%s: the row now reads Installed (%s)' % (tag, hit))
         g.check(pick in g.installed_names(), '%s: upkg list-installed lists %s' % (tag, pick))
         # Remove: confirm lists No first
@@ -1444,7 +1482,7 @@ def r_pkg_text():
         if not g.check(tx_pick(conf[1], conf), '%s: Return on the Yes row' % tag):
             return False, 'no Yes'
         tx_job(g, tag, 'Remove')
-        hit = [r for r in tx_rows() if pick in r]
+        hit = tx_named(tx_list_after_job(pick), pick)
         g.check(len(hit) == 1 and 'Installed' not in hit[0], '%s: the row no longer reads Installed (%s)' % (tag, hit))
         g.check(pick not in g.installed_names(), '%s: upkg list-installed no longer lists %s' % (tag, pick))
         tx_leave_menu()
