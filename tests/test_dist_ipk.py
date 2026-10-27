@@ -260,5 +260,61 @@ class RealFeed(unittest.TestCase):
         check_feed(build, pkgs.TABLE)
 
 
+class FpuVariants(unittest.TestCase):
+    """PORTS-FPU-VARIANTS step 3, through the CLI (python3 tools/pkgs.py ipk / feed / index) on the real table: a
+    package staged for both variants gets two ipks (m68k-amigaos, m68k-amigaos-fpu) and two Packages entries; one
+    staged for the 020 only gets one ipk and a [WARN]; the legacy index never names the fpu build."""
+    PKGS = os.environ.get('PKGS_PY', str(ROOT / 'tools/pkgs.py'))   # the fail-before check points this at the old script
+
+    def run_pkgs(self, *args):
+        return subprocess.run([sys.executable, self.PKGS, *args], capture_output=True, text=True, check=True, cwd=ROOT,
+                              env={**os.environ, 'UPTERM_PACKAGES_TXT': str(self.table)})
+
+    def test_two_architectures_two_ipks_and_the_index_stays_020(self):
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        build = tmp / 'build'
+        self.table = tmp / 'packages.txt'
+        self.table.write_text(TABLE)
+        rows = pkgs.addons(self.table)
+        both = rows[0]
+        for r in rows:
+            stage(build, r['archive'])
+        (build / 'dist/fpu').mkdir()
+        shutil.copytree(build / 'dist' / both['archive'], build / 'dist/fpu' / both['archive'])
+        (build / 'dist/fpu' / both['archive'] / 'Files/sub/prog').write_bytes(b'\x01' * 3000)
+        done = self.run_pkgs('ipk', str(build))
+        self.run_pkgs('feed', str(build))
+        out = build / 'ipk'
+        a, b = ('%s_%s_%s.ipk' % (both['archive'], both['version'], x) for x in ('m68k-amigaos', 'm68k-amigaos-fpu'))
+        self.assertEqual(sorted(p.name for p in out.glob('*.ipk')), sorted([a, b] + [pkgs.ipk_name(r) for r in rows[1:]]))
+        self.assertEqual(len(done.stdout.split()), len(rows) + 1)
+        self.assertEqual(done.stderr.count('[WARN]'), len(rows) - 1)
+        self.assertNotEqual((out / a).read_bytes(), (out / b).read_bytes())
+        entries = [s for s in stanzas((out / 'Packages').read_text()) if s['Package'] == both['archive']]
+        self.assertEqual({s['Filename']: s['Architecture'] for s in entries}, {a: 'm68k-amigaos', b: 'm68k-amigaos-fpu'})
+        for s in entries:
+            self.assertEqual(s['SHA256sum'], hashlib.sha256((out / s['Filename']).read_bytes()).hexdigest())
+        control = lambda n: tarfile.open(fileobj=io.BytesIO(dict(split_ar((out / n).read_bytes()))['control.tar.gz'])).extractfile('./control').read().decode()
+        self.assertIn('Architecture: m68k-amigaos-fpu\n', control(b))
+        self.assertIn('Architecture: m68k-amigaos\n', control(a))
+        lhas = tmp / 'lha'
+        lhas.mkdir()
+        for r in pkgs.lha_rows(self.table):
+            (lhas / (r['archive'] + '.lha')).write_bytes(b'x')
+        index = self.run_pkgs('index', str(lhas)).stdout
+        self.assertNotIn('fpu', index)
+        self.assertEqual(index, pkgs.index(lhas, self.table))
+
+
+class VariantNames(unittest.TestCase):
+    def test_names_and_stage_dirs(self):
+        r = {'archive': 'up-nvim', 'version': '2.1'}
+        self.assertEqual(pkgs.ipk_name(r), 'up-nvim_2.1_m68k-amigaos.ipk')
+        self.assertEqual(pkgs.ipk_name(r, 'fpu'), 'up-nvim_2.1_m68k-amigaos-fpu.ipk')
+        self.assertEqual(pkgs.stage_dir('b', 'up-nvim'), pathlib.Path('b/dist/up-nvim'))
+        self.assertEqual(pkgs.stage_dir('b', 'up-nvim', 'fpu'), pathlib.Path('b/dist/fpu/up-nvim'))
+
+
 if __name__ == '__main__':
     unittest.main()
