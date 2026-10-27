@@ -109,6 +109,18 @@ static void test_verdicts(void)
     CHECK_INT(ms_route(0, 0, 0), MS_SPAWN_RESTART);
 }
 
+/* each menu style opens through its own server: the text menu's port and program, the drawn menu's */
+static void test_server_names(void)
+{
+    const char *port, *task;
+    ms_server_names(1, &port, &task);
+    CHECK_STR(port, "AMARCHY.MENUSRV");
+    CHECK_STR(task, "amarchy-menu");
+    ms_server_names(0, &port, &task);
+    CHECK_STR(port, "AMARCHY.GUISRV");
+    CHECK_STR(task, "amarchy-gui");
+}
+
 void suite_menusrv(void)
 {
     test_live_server();
@@ -117,4 +129,5 @@ void suite_menusrv(void)
     test_unreplied();
     test_restart_throttle();
     test_verdicts();
+    test_server_names();
 }

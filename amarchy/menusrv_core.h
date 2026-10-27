@@ -4,6 +4,15 @@
 #ifndef MENUSRV_CORE_H
 #define MENUSRV_CORE_H
 
+/* The two servers: the text menu (`amarchy-menu serve`) and the drawn menu (`amarchy-gui serve`, plan
+ * 2026-10-27-amarchy-gui-warm.md; it ignores the message's spec and opens its own Intuition window). */
+#define MS_PORT "AMARCHY.MENUSRV"
+#define MS_TASK_NAME "amarchy-menu"
+#define GS_PORT "AMARCHY.GUISRV"
+#define GS_TASK_NAME "amarchy-gui"
+/* The server a menu style opens through: port name and program, text 1 = the text menu. */
+void ms_server_names(int text, const char **port, const char **task);
+
 /* What mo_close_open does with the public AMARCHY.MENU port it found. */
 enum { MO_NONE, MO_SIGNAL, MO_TAKE_OVER };
 /* found: a port of that name exists; alive: its owner task is a live task of the expected name. */

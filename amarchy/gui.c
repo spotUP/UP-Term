@@ -34,6 +34,8 @@
 #include "leaf.h"
 #include "gthemes_dos.h"
 #include "menu_open.h"
+#include "taskalive.h"
+#include "atiming.h"
 #include "menu_icon.h"
 #include "menu_font.h"
 #include "menu_text.h"
@@ -60,7 +62,7 @@
 long __stack = GUI_STACK;
 const char amarchy_gui_stack_cookie[] = "$STACK: " GUI_STR(GUI_STACK);
 
-#define USAGE "usage: amarchy-gui menu [node] | viewer\n"
+#define USAGE "usage: amarchy-gui menu [node] | viewer | serve\n"
 #define MAX_LINES 200
 #define EDIT_MAX 80
 #define PUT_MAX 384          /* the longest label put() cuts */
@@ -1187,24 +1189,20 @@ static void pick_font(gui *g)
     g->mt = mt_open(g->scr, square, spec);
 }
 
-int main(int argc, char **argv)
+/* One open of the menu or the key viewer: what a fresh process did after its arguments, the previous open's
+ * state reset first, so the warm server (`serve`) and the cold `menu` / `viewer` command lines run the same
+ * code (plan 2026-10-27-amarchy-gui-warm.md). Keymap, index, screen, pens, font and icons load per open: a
+ * settings or theme change shows at the next press. The libraries stay open (main). Returns the exit code. */
+static int gui_open(int viewer, const char *node)
 {
     gui *g = &G;
-    int viewer, rc = 0;
-    const char *node;
+    int rc = 0;
 
-    lf_init();
-    if (qmark_argv(argc, argv) || (argc > 1 && !strcmp(argv[1], "help"))) {
-        PutStr((STRPTR) USAGE);
-        return 0;
-    }
-    if (argc < 2 || (strcmp(argv[1], "menu") && strcmp(argv[1], "viewer"))) {
-        PutStr((STRPTR) USAGE);
-        return 5;
-    }
-    mo_register();   /* MENU-TOGGLE: the menu hotkey again ends this menu */
-    viewer = !strcmp(argv[1], "viewer");
-    node = argc > 2 && strcmp(argv[2], "root") ? argv[2] : "";
+    at_mark("start");
+    memset(g, 0, sizeof *g);
+    keep_setting = -1;
+    lf_reset();
+    mo_register();   /* MENU-TOGGLE: the menu hotkey again ends this menu; clears a stale Ctrl-C */
     keymap_load(&km, km_default_text);
     index_drawers();
     ix_load_file(&km, &ixs, IX_CACHE_PATH);
@@ -1226,13 +1224,6 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR) "intuition.library", 39);
-    GfxBase = (struct GfxBase *)OpenLibrary((STRPTR) "graphics.library", 39);
-    if (!IntuitionBase || !GfxBase) {
-        PutStr((STRPTR) "amarchy-gui: needs AmigaOS 3.0 or newer\n");
-        rc = 20;
-        goto done;
-    }
     g->scr = lock_front_screen();
     if (!g->scr)
         g->scr = LockPubScreen(0);
@@ -1306,10 +1297,12 @@ int main(int argc, char **argv)
         rc = 20;
         goto done;
     }
+    at_mark("window");
     g->rp = g->win->RPort;
     g->frame = (GfxBase->DisplayFlags & PAL) ? 313 : 263;
     SetDrMd(g->rp, JAM1);
     draw_full(g);
+    at_mark("ready");
     watch_idcmp(g);
     event_loop(g);
 
@@ -1335,7 +1328,86 @@ done:
     free(g->it);
     free(g->idx);
     free(g->chip);
+    g->it = 0;
+    g->idx = 0;
+    g->chip = 0;
     ix_free(&ixs);
+    keymap_free(&km);
+    mo_unregister();
+    return rc;
+}
+
+/* `amarchy-gui serve`: the warm drawn menu (plan 2026-10-27-amarchy-gui-warm.md), the pattern of
+ * `amarchy-menu serve` (menu.c). The commodity sends an ms_msg to GS_PORT per press; the reply goes at once,
+ * then the menu opens (gui_open). The message's spec is the text menu's and is not read here. */
+static int serve(void)
+{
+    struct MsgPort *port;
+    struct ms_msg *m, q;
+    int quit = 0;
+    port = CreateMsgPort();
+    if (!port)
+        return 20;
+    port->mp_Node.ln_Name = (char *)GS_PORT;
+    Forbid();
+    {
+        struct MsgPort *old = FindPort((STRPTR)GS_PORT);
+        if (old && task_alive((struct Task *)old->mp_SigTask, GS_TASK_NAME)) {
+            Permit();
+            DeleteMsgPort(port);
+            return 5;                          /* a live server exists */
+        }
+        if (old)
+            RemPort(old);                      /* a killed server's stale port */
+    }
+    AddPort(port);
+    Permit();
+    while (!quit) {
+        Wait(1UL << port->mp_SigBit | SIGBREAKF_CTRL_C);
+        SetSignal(0, SIGBREAKF_CTRL_C);        /* a stray toggle after a close must not end the server */
+        while (!quit && (m = (struct ms_msg *)GetMsg(port)) != 0) {
+            q = *m;
+            if (q.kind == MS_QUIT) {
+                Forbid();
+                RemPort(port);                 /* gone before the commodity sees the reply */
+                Permit();
+                quit = 1;
+            }
+            ReplyMsg(&m->m);                   /* at once: the commodity never waits for the menu */
+            if (!quit) {
+                q.node[sizeof q.node - 1] = 0;
+                gui_open(q.kind == MS_VIEWER, q.node[0] && strcmp(q.node, "root") ? q.node : "");
+            }
+        }
+    }
+    while ((m = (struct ms_msg *)GetMsg(port)) != 0)
+        ReplyMsg(&m->m);
+    DeleteMsgPort(port);
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    int rc;
+
+    lf_init();
+    if (qmark_argv(argc, argv) || (argc > 1 && !strcmp(argv[1], "help"))) {
+        PutStr((STRPTR) USAGE);
+        return 0;
+    }
+    if (argc < 2 || (strcmp(argv[1], "menu") && strcmp(argv[1], "viewer") && strcmp(argv[1], "serve"))) {
+        PutStr((STRPTR) USAGE);
+        return 5;
+    }
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR) "intuition.library", 39);
+    GfxBase = (struct GfxBase *)OpenLibrary((STRPTR) "graphics.library", 39);
+    if (!IntuitionBase || !GfxBase) {
+        PutStr((STRPTR) "amarchy-gui: needs AmigaOS 3.0 or newer\n");
+        rc = 20;
+    } else if (!strcmp(argv[1], "serve"))
+        rc = serve();
+    else
+        rc = gui_open(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "");
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);
     if (IntuitionBase)

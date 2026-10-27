@@ -95,7 +95,7 @@ static int act_menu_kind(int kind, const char *node)
         return 0;
     win_ticket_take();   /* K5a: the menu is about to become the active window; win: rows act on this one */
     if (!text)
-        return act_run(line);
+        return act_menu_open(g_dir, 0, kind, node, line, cols, rows);   /* the drawn menu: its warm server, else cold */
     if (kind == KA_MENU) {
         keymap full;
         /* g_km is compacted (no [menu] rows, keymap_compact): the size comes from the full table,
@@ -107,7 +107,7 @@ static int act_menu_kind(int kind, const char *node)
                       mn_cond(upactive_terminal_present(0), upactive_dopus_present(), upactive_workbench_present()));
         keymap_free(&full);
     }
-    return act_menu_open(g_dir, kind, node, line, cols, rows);
+    return act_menu_open(g_dir, 1, kind, node, line, cols, rows);
 }
 
 /* A decimal number after optional blanks and sign, 0 when there is none (atoi). */

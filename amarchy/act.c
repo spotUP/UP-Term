@@ -124,36 +124,40 @@ int act_in_window(const char *cmd, int cols, int rows)
     return 1;
 }
 
-/* ---- the warm menu server (plan 2026-10-27-amarchy-warm-menu-server.md) ---- */
-static mo_srv g_srv;
+/* ---- the warm menu servers (plans 2026-10-27-amarchy-warm-menu-server.md, 2026-10-27-amarchy-gui-warm.md):
+ * [1] the text menu (`amarchy-menu serve`), [0] the drawn menu (`amarchy-gui serve`), one mechanism ---- */
+static mo_srv g_srv[2];
+static const char *g_srv_dir;
 static struct {
-    const char *dir;
     char line[KM_ID + 160];
     int cols, rows;
 } g_open;
 
-/* the cold path, used when the server is missing, dead or wedged: a menu process of its own */
+/* the cold path, used when the server is missing, dead or wedged: a menu process of its own (the text menu
+ * in a terminal window, the drawn menu opens its own) */
 static void srv_spawn_cold(void *user, const ms_req *r)
 {
-    (void)user;
     (void)r;
-    act_in_window(g_open.line, g_open.cols, g_open.rows);
+    if (user == (void *)&g_srv[1])
+        act_in_window(g_open.line, g_open.cols, g_open.rows);
+    else
+        act_run(g_open.line);
 }
 
-/* `amarchy-menu serve`, async, no console. System() names the process "Background CLI" whatever NP_Name says, so
- * the liveness check (taskalive.c) knows the server by the program it runs, amarchy-menu. On the
+/* `<program> serve`, async, no console. System() names the process "Background CLI" whatever NP_Name says, so
+ * the liveness check (taskalive.c) knows the server by the program it runs (mo_srv.task). On the
  * stack the program's own $STACK cookie asks for (RULES.md rule 6). */
 static void srv_start_proc(void *user)
 {
+    const mo_srv *s = (const mo_srv *)user;
     char path[160], line[176];
     ULONG stack = 262144;
     BPTR in, out, p, seg;
     LONG rc;
-    (void)user;
-    cl_copy(path, g_open.dir, sizeof path);
+    cl_copy(path, g_srv_dir, sizeof path);
     if (path[0] && path[strlen(path) - 1] != ':' && path[strlen(path) - 1] != '/')
         cl_cat(path, "/", sizeof path);
-    cl_cat(path, MS_TASK_NAME, sizeof path);
+    cl_cat(path, s->task, sizeof path);
     seg = LoadSeg((STRPTR)path);
     if (seg) {
         ULONG v = seg_stack(seg);
@@ -168,7 +172,7 @@ static void srv_start_proc(void *user)
     out = Open((STRPTR)"NIL:", MODE_NEWFILE);
     p = dup_path();
     rc = SystemTags((STRPTR)line, SYS_Input, in, SYS_Output, out, SYS_Asynch, TRUE,
-                    NP_Name, (ULONG)MS_TASK_NAME, NP_StackSize, stack, p ? NP_Path : TAG_IGNORE, p, TAG_END);
+                    NP_Name, (ULONG)s->task, NP_StackSize, stack, p ? NP_Path : TAG_IGNORE, p, TAG_END);
     if (rc == -1) {
         if (in)
             Close(in);
@@ -178,57 +182,71 @@ static void srv_start_proc(void *user)
     }
 }
 
+/* the instance for a style, its reply port made on first use; 0 when no port can be made */
+static mo_srv *srv_get(int text)
+{
+    mo_srv *s = &g_srv[text ? 1 : 0];
+    if (!s->reply)
+        s->reply = CreateMsgPort();
+    if (!s->reply)
+        return 0;
+    ms_server_names(text, &s->port, &s->task);
+    s->user = s;
+    s->spawn = srv_spawn_cold;
+    s->start = srv_start_proc;
+    return s;
+}
+
 int act_menu_server_start(const char *dir)
 {
-    if (!g_srv.reply)
-        g_srv.reply = CreateMsgPort();
-    if (!g_srv.reply)
-        return 0;
-    g_srv.user = 0;
-    g_srv.spawn = srv_spawn_cold;
-    g_srv.start = srv_start_proc;
-    g_open.dir = dir;
-    srv_start_proc(0);
-    g_srv.st.started = 1;
-    g_srv.st.last_start = 0;
-    {
+    int text, ok = 1;
+    g_srv_dir = dir;
+    for (text = 0; text < 2; text++) {
+        mo_srv *s = srv_get(text);
         ms_ops ops;
-        mo_srv_ops(&ops, &g_srv);
-        g_srv.st.last_start = ops.now(ops.ctx);
+        if (!s) {
+            ok = 0;
+            continue;
+        }
+        srv_start_proc(s);
+        s->st.started = 1;
+        mo_srv_ops(&ops, s);
+        s->st.last_start = ops.now(ops.ctx);
     }
-    return 1;
+    return ok;
 }
 
 void act_menu_server_quit(void)
 {
-    if (!g_srv.reply)
-        return;
+    int i;
     mo_close_open();                /* a menu showing at quit ends first */
-    mo_srv_quit(&g_srv);
-    if (!g_srv.out)
-        DeleteMsgPort(g_srv.reply);
-    g_srv.reply = 0;
+    for (i = 0; i < 2; i++) {
+        mo_srv *s = &g_srv[i];
+        if (!s->reply)
+            continue;
+        mo_srv_quit(s);
+        if (!s->out)
+            DeleteMsgPort(s->reply);
+        s->reply = 0;
+    }
 }
 
-int act_menu_open(const char *dir, int kind, const char *node, const char *line, int cols, int rows)
+int act_menu_open(const char *dir, int text, int kind, const char *node, const char *line, int cols, int rows)
 {
     ms_ops ops;
     ms_req r;
-    if (!g_srv.reply)
-        g_srv.reply = CreateMsgPort();
-    if (!g_srv.reply)
-        return act_in_window(line, cols, rows);
-    g_srv.user = 0;
-    g_srv.spawn = srv_spawn_cold;
-    g_srv.start = srv_start_proc;
-    g_open.dir = dir;
+    mo_srv *s;
+    g_srv_dir = dir;
+    s = srv_get(text);
+    if (!s)
+        return text ? act_in_window(line, cols, rows) : act_run(line);
     cl_copy(g_open.line, line, sizeof g_open.line);
     g_open.cols = cols;
     g_open.rows = rows;
-    window_spec(g_srv.spec, sizeof g_srv.spec, cols, rows);
+    window_spec(s->spec, sizeof s->spec, cols, rows);
     r.kind = kind == KA_VIEWER ? MS_VIEWER : MS_MENU;
     r.node = kind == KA_VIEWER || !strcmp(node, "root") ? "" : node;
-    mo_srv_ops(&ops, &g_srv);
+    mo_srv_ops(&ops, s);
     ms_open(&ops, &r);
     return 1;
 }

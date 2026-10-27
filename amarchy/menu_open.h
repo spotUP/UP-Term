@@ -13,8 +13,7 @@
  * and owns the public port MS_PORT; the commodity sends one ms_msg per open instead of loading the 438 KB
  * program. The server replies at once on receipt (before it opens anything), so an unreplied message at the
  * next open means the server is wedged. */
-#define MS_PORT "AMARCHY.MENUSRV"
-#define MS_TASK_NAME "amarchy-menu"
+/* MS_PORT, MS_TASK_NAME, GS_PORT, GS_TASK_NAME: menusrv_core.h */
 enum { MS_MENU = 1, MS_VIEWER, MS_QUIT };
 #define MS_SPEC 192
 #define MS_NODE 64
@@ -27,6 +26,8 @@ struct ms_msg {
 
 /* The commodity's side: one static message, one reply port, and the two things only act.c knows. */
 typedef struct mo_srv {
+    const char *port;                       /* the server's public port: MS_PORT or GS_PORT */
+    const char *task;                       /* the program it runs: MS_TASK_NAME or GS_TASK_NAME */
     struct MsgPort *reply;
     struct ms_msg msg;
     int out;                                /* msg is on the server's queue, unreplied */

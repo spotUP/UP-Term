@@ -37,3 +37,9 @@ int ms_open(const ms_ops *ops, const ms_req *r)
     }
     return MS_SPAWN_RESTART;
 }
+
+void ms_server_names(int text, const char **port, const char **task)
+{
+    *port = text ? MS_PORT : GS_PORT;
+    *task = text ? MS_TASK_NAME : GS_TASK_NAME;
+}

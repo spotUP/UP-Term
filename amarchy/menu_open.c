@@ -82,21 +82,21 @@ static void srv_find(void *ctx, int *found, int *alive, int *outstanding)
     struct MsgPort *p;
     srv_drain(s);
     Forbid();
-    p = FindPort((STRPTR)MS_PORT);
+    p = FindPort((STRPTR)s->port);
     *found = p != 0;
     at_note("AMARCHY_PORT_OWNER", p ? (unsigned long)p->mp_SigTask : 0);
-    *alive = p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME);
+    *alive = p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, s->task);
     Permit();
     *outstanding = s->out;
 }
 
 static void srv_take_over(void *ctx)
 {
+    mo_srv *s = (mo_srv *)ctx;
     struct MsgPort *p;
-    (void)ctx;
     Forbid();
-    p = FindPort((STRPTR)MS_PORT);
-    if (p && !(p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME)))
+    p = FindPort((STRPTR)s->port);
+    if (p && !(p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, s->task)))
         RemPort(p);
     Permit();
 }
@@ -114,8 +114,8 @@ static void srv_send(void *ctx, const ms_req *r)
     strncpy(s->msg.spec, s->spec, MS_SPEC - 1);
     strncpy(s->msg.node, r->node ? r->node : "", MS_NODE - 1);
     Forbid();
-    p = FindPort((STRPTR)MS_PORT);
-    sent = p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME);
+    p = FindPort((STRPTR)s->port);
+    sent = p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, s->task);
     Permit();
     if (sent)
         at_mark("send");            /* opt-in: AMARCHY_TIMING; only the warm path marks it (the fallback does not).
@@ -123,8 +123,8 @@ static void srv_send(void *ctx, const ms_req *r)
                                      * message and two Opens of the one file at once lose a mark. */
     sent = 0;
     Forbid();
-    p = FindPort((STRPTR)MS_PORT);
-    if (p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME)) {
+    p = FindPort((STRPTR)s->port);
+    if (p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, s->task)) {
         PutMsg(p, &s->msg.m);
         s->out = 1;
         sent = 1;
@@ -179,8 +179,8 @@ int mo_srv_quit(mo_srv *s)
     s->msg.m.mn_ReplyPort = s->reply;
     s->msg.kind = MS_QUIT;
     Forbid();
-    p = FindPort((STRPTR)MS_PORT);
-    if (p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, MS_TASK_NAME)) {
+    p = FindPort((STRPTR)s->port);
+    if (p && p->mp_SigTask && task_alive((struct Task *)p->mp_SigTask, s->task)) {
         PutMsg(p, &s->msg.m);
         s->out = 1;
         sent = 1;
