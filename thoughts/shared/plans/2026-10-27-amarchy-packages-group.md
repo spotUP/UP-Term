@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy merged Packages group (Browse, Search, Installed, Upgrades, Refresh) with Install, Remove, Upgrade and Launch through the job view
-status: approved scope (owner, 2026-10-27), 7 of 9 (PG.8 rig, PG.9 docs open)
+status: approved scope (owner, 2026-10-27), 8 of 9 (PG.8 rig open)
 ledger: thoughts/spot/todos.md row AMARCHY-UHC
 research: thoughts/shared/research/2026-10-27-amarchy-packages.md
 builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Installed rows), thoughts/shared/plans/2026-10-27-amarchy-job-view.md (job: action, gui_run_job)
@@ -111,9 +111,11 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
   the row now reads Installed, Remove returns it to not installed, Upgrades lists a seeded upgradable package, Refresh reloads;
   AMARCHY_PKGS_LOADS is 1 after three opens and 2 after one install; a failing job (unknown package, rc 12) shows Failed with its
   word; no console or terminal window opened (screen text check, windows list). Numbers asserted: rows == feed size, loads as stated.
-- [ ] PG.9 docs: dist/README.txt AMARCHY section (the Packages group, the five rows, the action rows, that nothing opens a
+- [x] PG.9 docs: dist/README.txt AMARCHY section (the Packages group, the five rows, the action rows, that nothing opens a
   terminal, Refresh, the [upkg]/[UHC] tag, upkg and its UHC repo as the only back end), dist/keymap comment for the group.
   Test: tests/test_keymap.c reads the shipped dist/keymap and checks the group; docs verified by grep of each row label.
+  Done (commit 'Amarchy docs: the Packages group'): README Packages section, keymap `;` comment; keymap 12168, pkgs 81
+  checks 0 failed; grep finds each row label (Browse, Search, Installed, Upgrades, Refresh, Upgrade all, [upkg], [UHC]).
 
 ## Deferred
 - Interactive add-on questions drawn as input rows (needs the two-way job view, job-view plan Deferred, and `upkg questions`
