@@ -107,11 +107,7 @@ static int act_menu_kind(int kind, const char *node)
                       mn_cond(upactive_terminal_present(0), upactive_dopus_present(), upactive_workbench_present()));
         keymap_free(&full);
     }
-    {
-        int r = act_menu_open(g_dir, kind, node, line, cols, rows);
-        at_mark("send");   /* opt-in: AMARCHY_TIMING */
-        return r;
-    }
+    return act_menu_open(g_dir, kind, node, line, cols, rows);
 }
 
 /* A decimal number after optional blanks and sign, 0 when there is none (atoi). */

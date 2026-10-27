@@ -10,16 +10,49 @@ cheap `Type` over wasabi.
   cold = `Avail FLUSH` before the press (libraries and fonts gone from memory)
   warm = the press after a previous one, nothing flushed
 Needs the rig up (rig.py start --max). Medians go to <RIG>/amarchy/menu-timing.txt.
-Usage: UPTERM_RIG=<n> python3 tools/rig/amarchy_timing_rig.py [--runs 3] [--no-build]"""
-import argparse, pathlib, statistics, sys, time
+Warm server checks (plan 2026-10-27-amarchy-warm-menu-server.md, section 5): the "send" mark (commodity put the
+window spec on AMARCHY.MENUSRV: the warm path ran, the fallback has none), marks in order hotkey, send, start,
+terminal, ready; the same amarchy-menu process serves every open (Status COM=); hotkey to ready under --max-ms;
+the Amarchy window gone after each open; a stale port (server killed) is taken over by the next open.
+Usage: UPTERM_RIG=<n> python3 tools/rig/amarchy_timing_rig.py [--runs 3] [--no-build] [--max-ms 500]"""
+import argparse, pathlib, re, statistics, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
 import stage_rig, tabstate
 
 LAMIGA, SPACE, ESC = 0x40, 0x40, 0x45
+KEY_K, KEY_C, CTRL = 0x20, 0x33, 0x08
+PRESS = {}
+RESULTS = []
+
+
+def verdict(ok, what, seen=''):
+    RESULTS.append(ok)
+    print('%s %s %s' % ('PASS' if ok else 'FAIL', what, seen), flush=True)
 FILE = 'RAM:amarchy.timing'
 OUT = pathlib.Path(paths.RIG) / 'amarchy' / 'menu-timing.txt'
+
+
+ORDER = ('hotkey', 'send', 'start', 'terminal', 'ready')
+
+
+def wasabi(*args):
+    """The wasabi client against this rig (ps, kill, windows)."""
+    import paths as P
+    r = subprocess.run([str(P.VTCON / 'build/wasabi/wasabi'), '--host', '127.0.0.1', '--port', str(P.WASABI_PORT),
+                        '--key', P.WASABI_KEY or '', *args], capture_output=True, text=True)
+    return r.returncode, (r.stdout + r.stderr)
+
+
+def server_tasks():
+    """Addresses of the amarchy-menu processes (wasabi ps): the warm server and any cold menu."""
+    return sorted(l.split()[0] for l in wasabi('ps')[1].splitlines() if 'amarchy-menu' in l)
+
+
+def window_up():
+    """An XCON window other than the host (the menu window has no title)."""
+    return any('task XCON' in l and 'timinghost' not in l for l in wasabi('windows')[1].splitlines())
 
 
 def marks():
@@ -32,12 +65,12 @@ def marks():
     return res
 
 
-def press(flush):
+def press(flush, key=SPACE, leave=lambda: ami.key(ESC)):
     c.run('Delete >NIL: %s QUIET' % FILE)
     if flush:
         c.run('Avail >NIL: FLUSH')
         time.sleep(1)
-    ami.key(SPACE, LAMIGA)
+    ami.key(key, LAMIGA)
     t0 = time.time()
     got = []
     while time.time() - t0 < 15:
@@ -45,18 +78,63 @@ def press(flush):
         if any(t == 'ready' for t, _ in got):
             break
         time.sleep(0.1)
-    ami.key(ESC)            # at the root Esc leaves the menu
+    seen = window_up()
+    tasks = server_tasks()
+    leave()                 # at the root Esc leaves the menu
     time.sleep(2.5)
+    PRESS.update(order=[t for t, _ in sorted(got, key=lambda x: (x[1], ORDER.index(x[0]) if x[0] in ORDER else 9))],
+                 window=seen, closed=not window_up(), tasks=tasks,
+                 box=None)
     d = dict(got)
     if 'hotkey' not in d or 'ready' not in d:
         return None, got
     return {t: (v - d['hotkey']) * 20 for t, v in d.items()}, got   # ticks are 1/50 s = 20 ms
 
 
+def kill_server():
+    out = [wasabi('kill', '--force', t)[1].strip() for t in server_tasks()]
+    return 0, ' '.join(out)
+
+
+def warm_checks(a):
+    """After the cold/warm medians: the server is up. Every open below must be a warm one."""
+    kill_server()           # strays of earlier runs (a killed commodity leaves its server): start from none
+    time.sleep(1)
+    press(False)            # fallback opens cold and starts the one server
+    time.sleep(3)
+    base = server_tasks()
+    verdict(len(base) == 1, 'one amarchy-menu server task before the opens', str(base))
+    for i in range(3):
+        r, got = press(False)
+        ms = r['ready'] if r else None
+        verdict(PRESS['order'] == list(ORDER), 'open %d marks in order %s' % (i + 1, '/'.join(ORDER)), str(PRESS['order']))
+        verdict(r is not None and ms <= a.max_ms, 'open %d hotkey to ready <= %d ms' % (i + 1, a.max_ms), '%s ms' % ms)
+        verdict(PRESS['tasks'] == base, 'open %d served by the same task' % (i + 1), str(PRESS['tasks']))
+        verdict(PRESS['window'] and PRESS['closed'], 'open %d window up, then gone after Escape' % (i + 1))
+    r, got = press(False, KEY_K)      # the key viewer: another size
+    verdict(PRESS['window'] and PRESS['closed'] and PRESS['tasks'] == base, 'viewer open (second size) works',
+            '%s ms marks %s' % (r and r['ready'], PRESS['order']))
+    r, got = press(False, SPACE, lambda: ami.key(KEY_C, CTRL))
+    verdict(PRESS['closed'] and server_tasks() == base, 'Ctrl-C closes the menu, server task alive', str(server_tasks()))
+    r, got = press(False)
+    verdict(PRESS['order'] == list(ORDER) and PRESS['tasks'] == base, 'open after Ctrl-C is warm again', str(PRESS['order']))
+    rc, out = kill_server()
+    time.sleep(1)
+    verdict(rc == 0 and not server_tasks(), 'server killed (stale port left)', out)
+    r, got = press(False)
+    verdict(PRESS['window'] and 'send' not in PRESS['order'] and 'ready' in PRESS['order'],
+            'stale port: the open falls back cold (menu opens, no send mark)', str(PRESS['order']))
+    time.sleep(2)
+    r, got = press(False)
+    verdict(PRESS['window'] and 'send' in PRESS['order'] and len(PRESS['tasks']) == 1 and PRESS['tasks'] != base,
+            'next open is warm on a new server', '%s tasks %s' % (PRESS['order'], PRESS['tasks']))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--runs', type=int, default=3)
     ap.add_argument('--no-build', action='store_true')
+    ap.add_argument('--max-ms', type=int, default=500, help='hotkey to ready, warm opens')
     a = ap.parse_args()
     stage_rig.report(stage_rig.stage_build(build=not a.no_build))
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
@@ -77,13 +155,14 @@ def main():
             xs = [v[tag] for v in vals if tag in v]
             if xs:
                 lines.append('%s %s median %d ms (runs %s)' % (kind, tag, statistics.median(xs), xs))
+    warm_checks(a)
     c.run('SetEnv AMARCHY_TIMING 0')
     c.run('Delete >NIL: ENV:AMARCHY_TIMING QUIET')
     c.run('Delete >NIL: %s QUIET' % FILE)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text('\n'.join(lines) + '\n')
     print('\n'.join(lines))
-    return 0 if all(len(v) == a.runs for v in res.values()) else 1
+    return 0 if all(len(v) == a.runs for v in res.values()) and all(RESULTS) else 1
 
 
 if __name__ == '__main__':

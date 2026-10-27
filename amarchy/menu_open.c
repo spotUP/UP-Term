@@ -6,6 +6,7 @@
 #include <proto/dos.h>
 #include <string.h>
 #include "taskalive.h"
+#include "atiming.h"
 #include <stdlib.h>
 #include "menu_open.h"
 
@@ -119,7 +120,9 @@ static void srv_send(void *ctx, const ms_req *r)
         sent = 1;
     }
     Permit();
-    if (!sent)
+    if (sent)
+        at_mark("send");            /* opt-in: AMARCHY_TIMING; only the warm path marks it (the fallback does not) */
+    else
         s->spawn(s->user, r);       /* the port went between find and send */
 }
 
@@ -181,5 +184,9 @@ int mo_srv_quit(mo_srv *s)
             return 1;
         Delay(5);
     }
+    /* Timed out: the server may still hold s->msg (it replies at once, but a server busy in an open has not
+     * reached its GetMsg yet). s->msg lives in the static mo_srv and is never freed, and the caller must
+     * leave s->reply allocated too (s->out stays 1): freeing either now would let the server reply into
+     * freed memory. A leaked port at process exit is harmless; a use-after-free is not. */
     return 0;
 }
