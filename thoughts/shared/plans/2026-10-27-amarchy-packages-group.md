@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy merged Packages group (Browse, Search, Installed, Upgrades, Refresh) with Install, Remove, Upgrade and Launch through the job view
-status: approved scope (owner, 2026-10-27), 3 of 9
+status: approved scope (owner, 2026-10-27), 5 of 9 (PG.5 text menu unbuilt on m68k, see Results)
 ledger: thoughts/spot/todos.md row AMARCHY-UHC
 research: thoughts/shared/research/2026-10-27-amarchy-packages.md
 builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Installed rows), thoughts/shared/plans/2026-10-27-amarchy-job-view.md (job: action, gui_run_job)
@@ -92,10 +92,10 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
   reload rule; amarchy/pkgs_dos.c loads `list --tsv` once and reloads on the stale flag. Host test tests/test_keymap.c (index
   cases): first entry loads once, second entry does not, stale flag reloads once, Installed and Upgrades are filters of one load
   (call count of the loader fake = 1).
-- [ ] PG.4 Search input in both styles through lf_ui.ask_value (leaf.c): row `packages.search` asks, builds the result node
+- [x] PG.4 (commit 67186f5e, keymap 12161 checks; host only) Search input in both styles through lf_ui.ask_value (leaf.c): row `packages.search` asks, builds the result node
   with pk_filter; empty answer or Escape returns to the group. Host test tests/test_keymap.c with a fake ui: typed text gives
   exactly the matching rows, Escape gives none, no extra list load (loader count unchanged).
-- [ ] PG.5 jobs: Install, Remove, Upgrade and Upgrade all resolve to `job:` lines and run through lf_ui.run_job (drawn:
+- [x] PG.5 (commit 67186f5e, keymap 12161 checks; the host fake run_job of the plan is not used: lf_pkg_action is DOS side, so the line and the stale rule are tested through pk_action_line and lf_job_done; amarchy-menu m68k NOT built) jobs: Install, Remove, Upgrade and Upgrade all resolve to `job:` lines and run through lf_ui.run_job (drawn:
   gui_run_job). Remove first shows one confirm row ("Remove <name>: Yes / No", No = back to the row, no job); host test that
   the No path starts no job. Upgrades lists "Upgrade all" as its first row. After the job ends the stale flag is set from the footer state (rc 0, 5, other). Host test tests/test_job.c plus
   test_keymap.c: every package action ends in LF_JOB with the PG.1 line, never LF_WINDOW; a fake run_job returning rc 0, 5 and 12
@@ -134,6 +134,18 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
 - pkgs_dos.c, leaf.c (lf_pkg_action) and the Makefile pkgs_core.c additions are not m68k built.
 - run_job is modal in both styles, so a pick during a running job cannot happen; the refusal is inherent, not coded.
 - IX_KIND_PKG, ix_add_pkgs and Install > Packages are removed.
+
+- PG.3 leftovers: the load call sites already worked (menu.c ix_pkgs_due plus pk_dos_load_rows per loop, gui.c load_due in
+  every list_rebuild_keep). Missing were the stale trigger (lf_job_done, called from text_run_job and gui_run_job), the
+  MN_ROW_PKGACT dispatch and Search; all added in 67186f5e.
+- PG.4/PG.5 design: Remove is a group row (seg "remove"); packages.<view>.<pkg>.remove lists "Remove <name>: Yes" (PKGACT R)
+  and "No" (PKGACT N). Yes then No, the plan order; No-first would make an accidental Enter safe. lf_job_done marks stale for
+  any "upkg " line whatever the rc. lf_pkg_back_levels: Remove 2 levels, No/Install/Upgrade 1, Launch closes the menu.
+- m68k: amarchy-index rc 0 md5 be2dd2ab2887cca18de6df2b0d205c8d, amarchy-gui rc 0 md5 19acb581d503130011c9f54dfdfe1966.
+  amarchy-menu NOT built: make has no rule for upterm-ports/build/sysroot/UP-Term/lib/libupkgui.a (sysroot absent in this
+  checkout). menu.c edits are unchecked by a compiler. Suites: pkgs 81, job 105, menu_text 65, keymap 12161, 0 failed.
+- Not covered by any test: lf_pkg_action itself, gui activate_pkg, menu.c PKGACT branch (DOS side; PG.7 sentinels/PG.8 rig).
+- Fallback path run_in_uterm (a style with no run_job) does not mark the list stale; both shipped styles have run_job.
 
 ## Open decisions for the owner
 None. Answered 2026-10-27, see Owner decisions.
