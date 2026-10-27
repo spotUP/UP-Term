@@ -1051,9 +1051,11 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 	  -L$(VBCC_PREFIX)/targets/m68k-amigaos/lib -lvc -lamiga
 
 # C:UPTerm: the slash commands from scripts (ledger C1)
-$(BUILD)/amiga/UPTerm: handler/upterm.c $(UPTERM_VERSION_H) handler/vtcon_packets.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
+# (UPTerm ACTIVE ... asks the focused window through its request port: upreq.c and what it needs)
+UPTERM_SRC := handler/upterm.c handler/upreq.c handler/upactive.c handler/upmru.c handler/keymap_act.c config/keymap.c config/upconf_rows.c handler/slash.c handler/kcmode.c
+$(BUILD)/amiga/UPTerm: $(UPTERM_SRC) $(UPTERM_VERSION_H) handler/vtcon_packets.h handler/upreq.h handler/upactive.h handler/keymap_act.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ handler/upterm.c $(BUILD)/amiga/obj/cpuchk-UPTerm.o
+	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ $(UPTERM_SRC) $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 
 # C:uptelnet: a telnet client for the window, no ixemul (ledger A1.1). The
 # Roadshow network headers: VTCON_NETINCLUDE, as C:Claude's.

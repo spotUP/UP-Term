@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-"""ami.screen_text on the host with a fake transport: it must reach typewin.screen_text (Select all, Copy, read the
-clipboard file through snipprobe) in the ACTIVE window (the menu's own, titled Amarchy), return the text the fake clipboard holds, and remember the window to click in."""
+"""ami.screen_text on the host with a fake transport: it must reach typewin.screen_text, which asks the focused
+UP-Term window for its rows (`VTC:UPTerm ACTIVE screen FILE`) and presses no key, touches no clipboard and clicks
+nowhere; only when no UP-Term window answers does it use the old path (Select all, Copy, read the clipboard file
+through snipprobe, a clearing click) in the ACTIVE window (the menu's own, titled Amarchy)."""
 import pathlib, sys, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools/rig"))
@@ -12,9 +14,14 @@ class ScreenText(unittest.TestCase):
         self.runs, self.keys = [], []
         self.saved = (typewin.c.run, ami.key, typewin.time.sleep, ami.window, typewin.click_in, ami.req)
         clip = {'text': '-'}
+        self.dump = {'rc': 0, 'text': 'Filter: th\nTheme\n'}
 
         def run(cmd, *a, **k):
             self.runs.append(cmd)
+            if cmd.startswith('VTC:UPTerm ACTIVE screen FILE '):
+                return self.dump['rc'], ''
+            if cmd.startswith('Type RAM:screen.txt') and self.dump['rc'] == 0:
+                return 0, self.dump['text']
             if cmd.startswith('VTC:snipprobe CLEAR'):
                 clip['text'] = '-'
             if cmd.startswith('Type '):
@@ -34,7 +41,15 @@ class ScreenText(unittest.TestCase):
         typewin.c.run, ami.key, typewin.time.sleep, ami.window, typewin.click_in, ami.req = self.saved
         typewin._last_title = None
 
-    def test_reads_the_clipboard_after_select_all_and_copy(self):
+    def test_asks_the_window_and_touches_nothing_else(self):
+        t = ami.screen_text()
+        self.assertEqual(t, 'Filter: th\nTheme\n')
+        self.assertIn('VTC:UPTerm ACTIVE screen FILE RAM:screen.txt', self.runs)
+        self.assertEqual(self.keys, [])                                  # no Select all, no Copy
+        self.assertFalse([r for r in self.runs if 'snipprobe' in r or r.startswith('click')])
+
+    def test_no_terminal_window_falls_back_to_the_clipboard(self):
+        self.dump['rc'] = 20
         t = ami.screen_text()
         self.assertIn('Filter: th', t)
         self.assertEqual(self.keys[:2], [(0x20, typewin.RAMIGA), (0x33, typewin.RAMIGA)])

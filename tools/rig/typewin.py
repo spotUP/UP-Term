@@ -3,7 +3,8 @@ the window's text read back through the clipboard: the helpers claude_rig.py and
 
   open_xcon(title)   a titled XCON: window, focused by a click, its Shell at the prompt
   typ(s), key(code, qual)  characters / one key (down, up) into the active window
-  screen_text(out)   the window's whole text: Right Amiga A (Select all), Right Amiga C (Copy), then
+  screen_text(out)   the window's text, first from the handler (`UPTerm ACTIVE screen FILE`, no selection, no
+                     clipboard, no click); with no UP-Term window to answer, the old path:  Right Amiga A (Select all), Right Amiga C (Copy), then
                      VTC:snipprobe CLIP <file> writes the clipboard's text, CLEAR sets it to "-" (make build/amiga/snipprobe),
                      then one click in the window drops the selection (render/vtwin.c VTI_SELECT_END: a
                      click clears it), so the window is left as it was
@@ -87,6 +88,17 @@ def _clip(out):
     return c.run('Type %s' % out)[1]
 
 
+def quiet_screen_text(out='RAM:screen.txt'):
+    """The focused UP-Term window's rows as text, asked of the handler through the window's request port
+    (`UPTerm ACTIVE screen FILE`, handler/upreq.h): no selection, no clipboard, no click. None when no UP-Term
+    window answers (the caller then uses the clipboard path)."""
+    c.run('Delete %s QUIET' % out)
+    rc, _ = c.run('VTC:UPTerm ACTIVE screen FILE %s' % out)
+    if rc != 0:
+        return None
+    return c.run('Type %s' % out)[1]
+
+
 def screen_text(out='RAM:screen.txt'):
     """The active window's text (the screen as the program drew it), rows joined by newlines.
 
@@ -96,6 +108,9 @@ def screen_text(out='RAM:screen.txt'):
     empty selection) or "-" (no Copy happened) means the Copy found nothing, so the clipboard cannot hold an older
     text, and the pair is repeated, up to 8 tries."""
     require_active(True)
+    quiet = quiet_screen_text(out)
+    if quiet is not None:
+        return quiet
     new = ''
     c.run('VTC:snipprobe CLEAR')
     for _ in range(8):

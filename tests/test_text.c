@@ -270,6 +270,20 @@ static void copy_text_measures_without_a_buffer(void)
     vt_free(t);
 }
 
+/* vt_screen_text: one line per visible row, trailing blanks cut, a wrapped row stays its own line,
+ * blank rows keep their line, wide cells and UTF-8 come out once. */
+static void screen_text_is_one_line_per_row(void)
+{
+    vt_term *t = h_new(5, 4, VT_XTERM);
+    char buf[64];
+    h_put(t, "ab   \r\nabcdefgh\r\n" GRIN);
+    vt_screen_text(t, buf, sizeof(buf));
+    CHECK_STR(buf, "ab\nabcde\nfgh\n" GRIN "\n");
+    CHECK_INT(vt_screen_text(t, 0, 0), (long)strlen(buf));
+    CHECK_INT(vt_screen_text(t, buf, 8), 7);   /* no room: cut before a line end, never past max */
+    vt_free(t);
+}
+
 /* Faint text in any colour is dimmed: halfway to its background, as a
  * direct colour (a palette screen draws it with the nearest pen). Before,
  * only the default and the greys were. */
@@ -315,5 +329,6 @@ void suite_text(void)
     combining_marks_stay_with_their_character();
     emoji_sequences_copy_back_whole();
     copy_text_measures_without_a_buffer();
+    screen_text_is_one_line_per_row();
     faint_dims_every_colour();
 }
