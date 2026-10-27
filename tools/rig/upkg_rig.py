@@ -118,6 +118,16 @@ def status_version(status, pkg):
     return None
 
 
+def staged_dist(row_id=None):
+    """build/dist of this checkout, else of the main checkout a worktree belongs to (staging needs the ports tree):
+    the first holding every package's install.dos, or the one of row `row_id`."""
+    rows = [r for r in pkgs.addons() if row_id in (None, r['id'])]
+    for base in (BUILD, ROOT.parent.parent.parent / 'build'):
+        if all((base / 'dist' / r['archive'] / 'Files/install.dos').is_file() for r in rows):
+            return base / 'dist'
+    return BUILD / 'dist'
+
+
 class Release:
     """A directory http.server serves: symlinks to the .ipk files of a feed drawer and its Packages(.gz)."""
 
@@ -149,14 +159,17 @@ class Release:
         (self.dir / 'Packages').write_text(text)
         (self.dir / 'Packages.gz').write_bytes(gzip.compress(text.encode(), mtime=0))
 
-    def bumped_feed(self, pkg, version):
+    def bumped_feed(self, pkg, version, only=False):
         """A temp feed drawer whose package `pkg` is `version`: its ipk rebuilt from the staged tree
         (tools/pkgs.py with a copy of the table; the real table and build/ipk are not touched)."""
         if self.bumped is None:
             tmp = pathlib.Path(tempfile.mkdtemp(prefix='upkgbump'))
-            (tmp / 'dist').symlink_to(BUILD / 'dist')
+            (tmp / 'dist').symlink_to(staged_dist(pkg if only else None))
             table = tmp / 'packages.txt'
-            table.write_text(bump_table(pkgs.TABLE.read_text(), pkg, version))
+            text = bump_table(pkgs.TABLE.read_text(), pkg, version)
+            if only:   # a checkout whose build/dist stages only some packages: the feed holds just `pkg`
+                text = '\n'.join(l for l in text.splitlines() if not l.strip() or l.lstrip().startswith('#') or re.match(r'^%s\s' % re.escape(pkg), l)) + '\n'
+            table.write_text(text)
             pkgs.ipk(tmp, table)
             pkgs.write_feed(tmp, table)
             self.bumped = tmp

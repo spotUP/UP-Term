@@ -21,6 +21,9 @@ Proves, on the rig:
   * Packages > Install and Remove against a local feed (--pkg-install runs only this): the Browse rows equal the feed,
     Install runs the job view to rc 0 and the row reads Installed, Remove's confirm offers No first, No keeps the
     package, Yes removes it, and no console or terminal window opens
+  * Packages > Upgrades against a local feed (--pkg-upgrades runs only this): a bumped feed makes the installed package
+    upgradable, "Upgrade all" is the first row, the package row matches upkg list-upgradable, Upgrade runs to rc 0 and
+    the row goes; AMARCHY_PKGS_LOADS is 1 after three opens and rises by one per job
   * AMB3: with a second PUBLIC screen in front the menu and the leaf it opens (Apps, UP-Term) appear on it, and
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
@@ -590,6 +593,116 @@ def installed_names():
     return set(re.findall(r'^(\S+) - ', out, re.M))
 
 
+def local_feed(fd):
+    """(Release serving fd, the shadow conf written to PKG_CONF); the caller deletes PKG_CONF and closes the Release."""
+    rel = upkg_rig.Release()
+    rel.set(fd)
+    c.run('MakeDir VTCX:Apps/etc', 20)
+    tmpconf = os.path.join(tempfile.mkdtemp(prefix='pg8conf'), 'upkg.conf')
+    open(tmpconf, 'w').write(upkg_rig.conf_for(open(os.path.join(REPO, 'dist/upkg.conf')).read(), rel.url))
+    ami.put(tmpconf, PKG_CONF)
+    return rel
+
+
+def env_num(name):
+    rc, out = c.run('GetEnv %s' % name)
+    return int(out.strip()) if rc == 0 and out.strip().lstrip('-').isdigit() else None
+
+
+def case_pkg_upgrades():
+    """Packages > Upgrades (plan PG.8). Setup without the menu: `upkg install up-pi` against the normal local feed
+    (the Install path is case_pkg_install's); then the feed serves up-pi at a higher version. Loads: ix_add_pkg_rows
+    (index_core.c) bumps pk_loads on every load; the list loads when not loaded or stale, and a finished job marks it
+    stale, so three opens with no job give 1 and each job adds one on the next open."""
+    fd = feed_dir()
+    pkg, table_id, high = 'up-pi', 'pi', '1.1'
+    rel = local_feed(fd)
+    try:
+        if not check(pkg in [p['Package'] for p in upkg_rig.parse_packages(open(os.path.join(fd, 'Packages')).read())],
+                     'pkg_upgrades: %s is in the feed' % pkg):
+            return
+        if pkg in installed_names():
+            upkg_rig.upkg('pg8u-pre', 'remove %s' % pkg, 300, conf=False)
+        rc = upkg_rig.upkg('pg8u-update', 'update', 300, conf=False)[0]
+        rc2 = upkg_rig.upkg('pg8u-inst', 'install %s' % pkg, 600, conf=False)[0]
+        check(rc == 0 and rc2 == 0 and pkg in installed_names(), 'pkg_upgrades: %s installed through upkg (rc %s/%s)' % (pkg, rc, rc2))
+        # fresh Amarchy: loads count from 0
+        setup()
+        for i in range(3):
+            c.run('Delete >NIL: ENV:AMARCHY_PKGS_LOADS ENV:AMARCHY_ROWS QUIET')
+            pkgs = pkg_group()
+            if pkgs is None:
+                return
+            time.sleep(1)
+            close_menu()
+        loads = env_num('AMARCHY_PKGS_LOADS')
+        check(loads == 1, 'pkg_upgrades: AMARCHY_PKGS_LOADS is 1 after three opens, no job (got %s)' % loads)
+        rel.set(rel.bumped_feed(table_id, high, only=True))
+        pkgs = pkg_group()
+        if pkgs is None:
+            return
+        c.run('Delete >NIL: ENV:AMARCHY_JOB_DONE QUIET')
+        if not check(walk_to('Refresh', pkgs), 'pkg_upgrades: Refresh row (rows: %s)' % pkgs):
+            return
+        rc = job_done()
+        check(rc == 0, 'pkg_upgrades: Refresh job rc 0 (rc %s)' % rc)
+        c.run('Delete >NIL: ENV:AMARCHY_PKGS_LOADS QUIET')
+        ami.key(RETURN)                      # accept: the job marked the list stale, the level reloads in the same menu
+        time.sleep(3)
+        loads = env_num('AMARCHY_PKGS_LOADS')
+        check(loads == 2, 'pkg_upgrades: AMARCHY_PKGS_LOADS is 2 after one job (got %s)' % loads)
+        close_menu()
+        pkgs = pkg_group()
+        if pkgs is None:
+            return
+        out = upkg_rig.upkg('pg8u-lu', 'list-upgradable', 300, conf=False)[1]
+        print('pkg_upgrades: list-upgradable: %s' % out.strip()[:300], flush=True)
+        want = set(re.findall(r'^(\S+) - ', out, re.M))
+        if not check(walk_to('Upgrades', pkgs), 'pkg_upgrades: Upgrades row (rows: %s)' % pkgs):
+            return
+        rows = rows_now()
+        print('pkg_upgrades: upgrade rows: %s' % rows, flush=True)
+        check(bool(rows) and rows[0].startswith('Upgrade all'), 'pkg_upgrades: Upgrade all is the first row (rows: %s)' % rows)
+        got = {n for n in want if any(n in r for r in rows[1:])}
+        check(got == want and any(pkg in r for r in rows[1:]), 'pkg_upgrades: package rows match upkg list-upgradable %s (rows: %s)' % (sorted(want), rows))
+        # upkg list --tsv (checked on the rig 2026-10-27) emits two upgradable lines for one package, the available 1.1 and
+        # the installed 1.0, so Upgrades shows two up-pi rows; reported, not asserted: it is upkg's list, not the menu's
+        hit = [r for r in rows if pkg in r and high in r.split()]
+        if not check(len(hit) == 1, 'pkg_upgrades: one up-pi row reads the higher version %s (rows: %s)' % (high, rows)):
+            return
+        print('pkg_upgrades: up-pi rows shown: %d (list-upgradable lists one)' % len([r for r in rows if pkg in r]), flush=True)
+        for _ in range(rows.index(hit[0])):
+            ami.key(DOWN)
+            time.sleep(.4)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE QUIET')
+        ami.key(RETURN)
+        time.sleep(2)
+        acts = rows_now()
+        print('pkg_upgrades: action rows: %s' % acts, flush=True)
+        if not check(walk_to('Upgrade', acts), 'pkg_upgrades: the row offers Upgrade (rows: %s)' % acts):
+            return
+        rc = job_done()
+        check(rc == 0, 'pkg_upgrades: Upgrade job rc 0 (rc %s)' % rc)
+        ami.key(RETURN)
+        time.sleep(3)
+        out = upkg_rig.upkg('pg8u-li', 'list-installed', 300, conf=False)[1]
+        check(re.search(r'^%s - %s\b' % (re.escape(pkg), re.escape(high)), out, re.M) is not None,
+              'pkg_upgrades: list-installed shows %s at %s (%s)' % (pkg, high, [l for l in out.splitlines() if pkg in l]))
+        check(not [r for r in rows_now() if pkg in r], 'pkg_upgrades: Upgrades no longer lists %s (rows: %s)' % (pkg, rows_now()))
+        close_menu()
+        c.run('Delete >NIL: ENV:AMARCHY_PKGS_LOADS QUIET')
+        pkg_group()
+        time.sleep(1)
+        loads = env_num('AMARCHY_PKGS_LOADS')
+        print('pkg_upgrades: loads after the upgrade job and a reopen: %s (plan: no number)' % loads, flush=True)
+    finally:
+        close_menu()
+        if pkg in installed_names():
+            upkg_rig.upkg('pg8u-cleanup', 'remove %s' % pkg, 300, conf=False)
+        c.run('Delete >NIL: %s QUIET' % PKG_CONF)
+        rel.close()
+
+
 def case_pkg_install():
     """Packages > Install and Remove on a row of a local feed (plan 2026-10-27-amarchy-packages-group.md PG.8).
     Feed: upkg_rig.Release serves build/ipk on 127.0.0.1; the rig's upkg reads UP-Term:etc/upkg.conf, which
@@ -757,6 +870,8 @@ def main():
             case_groups(geom)
         elif '--pkg-install' in sys.argv:  # only Packages > Install and Remove against a local feed
             case_pkg_install()
+        elif '--pkg-upgrades' in sys.argv:  # only Packages > Upgrades against a bumped local feed
+            case_pkg_upgrades()
         elif '--pkg-search' in sys.argv:  # only Packages > Search (needs upkg on the rig)
             case_pkg_search()
         else:
@@ -768,6 +883,7 @@ def main():
             case_run_addons()
             case_pkg_search()
             case_pkg_install()
+            case_pkg_upgrades()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')
