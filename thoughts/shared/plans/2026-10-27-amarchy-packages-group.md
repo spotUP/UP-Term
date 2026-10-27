@@ -112,8 +112,9 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
   session: Packages group"`; against a local feed only, never the real feed): hotkey, Packages, Browse lists the feed's packages
   with [upkg] and [UHC] tags, Search "<word>" lists only matches, Install on a row shows the job view with upkg lines and Done,
   the row now reads Installed, Remove returns it to not installed, Upgrades lists a seeded upgradable package, Refresh reloads;
-  AMARCHY_PKGS_LOADS is 1 after three opens and 2 after one install; a failing job (unknown package, rc 12) shows Failed with its
-  word; no console or terminal window opened (screen text check, windows list). Numbers asserted: rows == feed size, loads as stated.
+  AMARCHY_PKGS_LOADS is 1 after three opens and 2 after one install; a failing job (unknown package, rc 12) shows its status word
+  "Package not found" (job_core.c rc_words: rc 13 = "Network error" for an .ipk 404, "Failed" only for rc 20 or an
+  unmapped code; the word needs a sentinel before a rig can assert it); no console or terminal window opened (screen text check, windows list). Numbers asserted: rows == feed size, loads as stated.
 - [x] PG.9 docs: dist/README.txt AMARCHY section (the Packages group, the five rows, the action rows, that nothing opens a
   terminal, Refresh, the [upkg]/[UHC] tag, upkg and its UHC repo as the only back end), dist/keymap comment for the group.
   Test: tests/test_keymap.c reads the shipped dist/keymap and checks the group; docs verified by grep of each row label.
