@@ -300,6 +300,12 @@ void ix_add_pkg_rows(ix_index *x, pk_rows *l)
     x->pk_loads++;
 }
 
+void ix_pkgs_publish(const ix_index *x, void (*pub)(const char *name, long n))
+{
+    pub("AMARCHY_PKGS_ROWS", x->pk.n);
+    pub("AMARCHY_PKGS_LOADS", x->pk_loads);
+}
+
 void ix_pkg_mark_stale(ix_index *x)
 {
     x->pk_stale = 1;

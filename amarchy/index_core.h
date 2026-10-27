@@ -125,6 +125,9 @@ int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *na
 void ix_add_pkg_rows(ix_index *x, pk_rows *l);
 /* A package job ended (any rc): the list reloads when the menu next enters a packages node. */
 void ix_pkg_mark_stale(ix_index *x);
+/* Hand the Packages sentinels to pub(name, n): AMARCHY_PKGS_ROWS (rows of the cached list) and AMARCHY_PKGS_LOADS (loads
+ * since the index was built). pk_dos_load_rows calls it after every load, so both menu styles publish the same way. */
+void ix_pkgs_publish(const ix_index *x, void (*pub)(const char *name, long n));
 /* The Search text (copied, cut to fit); the node packages.search lists the rows pk_filter finds. */
 void ix_pkg_query(ix_index *x, const char *text);
 /* 1 when node is IX_PKGS_NODE or below it and the list is not loaded yet or is stale: the caller loads it

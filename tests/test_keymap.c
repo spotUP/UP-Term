@@ -1203,6 +1203,16 @@ static const char pkg_tsv[] =
     "perl\t5.8\t1\t0\t900000\tdevel\t\tupkg\tScripting language\n"
     "notyet\t1.0\t0\t0\t10\tGames\t\tuhc\tNot installed\n";
 static int pkg_fake_loads;
+static int pkg_pub_n;
+static char pkg_pub_name[2][24];
+static long pkg_pub_val[2];
+static void pkg_pub(const char *name, long n)
+{
+    if (pkg_pub_n < 2) {
+        strncpy(pkg_pub_name[pkg_pub_n], name, 23);
+        pkg_pub_val[pkg_pub_n++] = n;
+    }
+}
 static void pkg_fake_load(ix_index *x)
 {
     pk_rows l;
@@ -1326,6 +1336,14 @@ static void the_package_list_loads_once_and_reloads_when_stale(void)
     pkg_enter(&x, "packages.installed");
     CHECK_INT(pkg_fake_loads, 1);
     CHECK_INT(x.pk_loads, 1);
+    pkg_pub_n = 0;
+    ix_pkgs_publish(&x, pkg_pub);                   /* the sentinels carry the fake load's rows and load count */
+    CHECK_INT(pkg_pub_n, 2);
+    CHECK_STR(pkg_pub_name[0], "AMARCHY_PKGS_ROWS");
+    CHECK_INT(pkg_pub_val[0], x.pk.n);
+    CHECK(x.pk.n > 0);
+    CHECK_STR(pkg_pub_name[1], "AMARCHY_PKGS_LOADS");
+    CHECK_INT(pkg_pub_val[1], 1);
     c = pkg_level(&x, "packages.installed", it);    /* Installed and Upgrades are filters of that one load */
     CHECK_INT(c, 3);
     CHECK(pkg_has(it, c, "[upkg] perl  5.8  Installed"));
@@ -1342,6 +1360,9 @@ static void the_package_list_loads_once_and_reloads_when_stale(void)
     pkg_enter(&x, "packages.browse");
     CHECK_INT(pkg_fake_loads, 2);                   /* reloaded once, not once per node */
     CHECK_INT(x.pk_loads, 2);
+    pkg_pub_n = 0;
+    ix_pkgs_publish(&x, pkg_pub);
+    CHECK_INT(pkg_pub_val[1], 2);                   /* a reload moves the sentinel */
     ix_add_gthemes(&x, 0, 0, 0);                    /* a row adder does not drop the cache */
     CHECK(!ix_pkgs_due(&x, "packages"));
     ix_pkg_query(&x, "TINY");                       /* Search is a third filter of the same load */
