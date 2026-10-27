@@ -44,3 +44,19 @@ ledger: thoughts/spot/todos.md (main checkout) rows AMARCHY-GUI-WARM, AMARCHY-LA
   thoughts/shared/plans/2026-10-27-amarchy-job-view.md (0 of 11 at writing). RJ.6 (job_core) and RJ.4 (theme roles,
   branch job-theme-roles in worktree .claude/worktrees/jobtheme) were given to sonnet agents; check the plan ticks.
 - Menu root has 9-10 groups, 8 visible (MN_OSD_MAX_ENTRIES 8); Install is off-screen: design question for owner.
+
+## Update 2026-10-27 (end of session, vtcon-a1)
+- Pushed: 90445c05 (pl_dup_path appends UP-Term:bin last to every child's command path; ledger A1200-PATH-UPTERM-BIN),
+  c2e62fda (RJ.7 Part 4: slow Esc cancel root cause).
+- Esc cancel root cause is outside Amarchy: upkg (libopkg/xsystem.c waitpid EINTR loop) and the vendored Aminet curl
+  8.22.0 both take Ctrl-C and ignore it. Both fixes are owned by vtcon-05: UPKG-CTRLC-FORWARD and
+  UPKG-CURL-SOURCE-BUILD (owner chose a curl source rebuild). Wait for vtcon-05's pins, then rerun RJ.7 A3 on rig 7
+  with tools/probes/jobrun/slow_feed.py (127.0.0.1:53986, sleeps 30 s) as the feed; local feed only, swap and restore
+  rig 7 UP-Term:etc/upkg.conf by md5 (restored md5 ac11b5a5ca3404e798cb4c938c8fe852).
+- A1200: HOLD until vtcon-05 pings (its trace build of L:vtcon-handler is swapped in). Then: back up Amarchy,
+  amarchy-menu, amarchy-gui (CLONE), quit via `rx "ADDRESS AMARCHY; QUIT"`, put the 90445c05 build, md5 check,
+  restart WITHOUT a manual Path to prove the fix, give the owner the Packages test steps.
+- Still open: RJ.7 drawn style (B2/B3, drawn footer, drawn Packages group; the hotkey over a terminal opened the text
+  menu), PG.8 Remove No-first / Search no-match / Install / Upgrades, rerun A2 and the Search footer once vtcon-05's
+  libupkgui pin (UPKGUI-FOOTER-STALE-STATUS, UPKGUI-FOOTER-ESC-DROPPED) lands. Split rig briefs small (last agent hit
+  42 tool calls).
