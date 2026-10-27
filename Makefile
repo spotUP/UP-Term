@@ -1358,6 +1358,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp dist/tmux.conf dist/unstartup.sh dist/takecon.sh dist/reassign.sh dist/upkg.conf $(KIT)/Files/
 	cp $(IXEMUL_LIB) $(KIT)/Files/libs/ixemul.library
 	cp $(IXEMUL_LIB_SOFT) $(KIT)/Files/libs/ixemul.library.nofpu
+	python3 tools/libguard.py $(IXNET_LIB)
 	cp $(IXNET_LIB) $(KIT)/Files/libs/ixnet.library
 	python3 tools/ans2utf8.py art/up_rough_banner.ans $(KIT)/Files/banner
 	python3 tools/mkicon.py $(KIT)/Files/UP-Term.info
@@ -1456,6 +1457,7 @@ dist-python: $(BUILD)/amiga/upupdate
 	mkdir -p $(KIT_python)/Files/libs
 	cp $(IXEMUL_LIB) $(KIT_python)/Files/libs/ixemul.library
 	cp $(IXEMUL_LIB_SOFT) $(KIT_python)/Files/libs/ixemul.library.nofpu
+	python3 tools/libguard.py $(IXNET_LIB)
 	cp $(IXNET_LIB) $(KIT_python)/Files/libs/ixnet.library
 	$(call LAUNCHER,$(KIT_python),dist/addons/python/launch/Python 3,Python 3,640/400)
 	python3 tools/mkkit.py python
