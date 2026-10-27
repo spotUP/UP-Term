@@ -1005,6 +1005,13 @@ def built_handler():
     return f
 
 
+# Programs the rig scripts run as VTC:<name> that a rig's VTC: may not hold yet: install copies them even when
+# absent (the loop below refreshes only files already there). UPTerm: typewin.quiet_screen_text runs
+# `VTC:UPTerm ACTIVE screen FILE`; a rig whose VTC: predates it answered "Unknown command", and every
+# screen_text() fell back to Select all + Copy (the owner saw the text menu fully selected, 2026-10-28).
+VTC_REQUIRED = ("UPTerm",)
+
+
 def install():
     with paths.long_run():
         _install()
@@ -1020,7 +1027,8 @@ def _install():
     # refreshed only VTC:, so the start [WARN] kept listing Apps/bin programs (vtcon-a1 P7, 2026-10-27)
     for f in sorted(build_amiga().iterdir()):
         for dst in (RIG / "vtc" / f.name, RIG / "vtc" / paths.UPTERM_DRAWER / "bin" / f.name):
-            if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
+            absent = f.name in VTC_REQUIRED and dst.parent == RIG / "vtc" and not dst.is_file()
+            if f.is_file() and (absent or dst.is_file()) and (absent or dst.read_bytes() != f.read_bytes()):
                 shutil.copyfile(f, dst)
                 print("refreshed", dst.relative_to(RIG / "vtc"), dst.stat().st_size, "bytes")
     refresh_kit_shadows(RIG / "vtc")

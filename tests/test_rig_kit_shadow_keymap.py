@@ -46,6 +46,23 @@ class KitShadowKeymap(unittest.TestCase):
         self.assertEqual((vtc / "keymap").read_bytes(), (root / "dist/keymap").read_bytes())
         self.assertEqual((bindir / "md5sum").read_bytes(), b"md5sum-new")
 
+    def test_install_adds_upterm_a_rig_vtc_lacks(self):
+        # typewin.quiet_screen_text runs VTC:UPTerm; a VTC: without it made every screen_text() Select all + Copy
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        root, vtc = tmp / "root", tmp / "rig9/vtc"
+        (root / "build/amiga").mkdir(parents=True)
+        (root / "dist").mkdir()
+        (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")
+        (root / "build/amiga/UPTerm").write_bytes(b"upterm-new")
+        (vtc / paths.UPTERM_DRAWER / "bin").mkdir(parents=True)
+        with mock.patch.object(rig, "ROOT", root), mock.patch.object(rig, "RIG", tmp / "rig9"), \
+             mock.patch.object(rig.paths, "RIG_HOME", tmp), mock.patch.object(rig, "stage_upterm", lambda d, v: None), \
+             mock.patch.object(rig, "KIT_SHADOWS", [x for x in rig.KIT_SHADOWS if x[0] in ("keymap", "vtcon-handler")]), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(rig.main(["rig.py", "install"]), 0)
+        self.assertEqual((vtc / "UPTerm").read_bytes(), b"upterm-new")
+        self.assertFalse((vtc / paths.UPTERM_DRAWER / "bin" / "UPTerm").exists())   # only VTC: is required
+
 
 if __name__ == "__main__":
     unittest.main()
