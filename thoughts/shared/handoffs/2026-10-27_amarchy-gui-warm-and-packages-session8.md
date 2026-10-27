@@ -38,8 +38,9 @@ ledger: thoughts/spot/todos.md (main checkout) rows AMARCHY-GUI-WARM, AMARCHY-LA
   Done in prefs-inline f44cf618 (run_in_uterm; vsh now gets its own cookie stack via pl_stack). Built:
   amarchy-menu md5 e43ab89e..., amarchy-gui md5 42549511... (menu built with UPKGUI_SYS=<scratchpad>/sys/UP-Term,
   the Makefile default sysroot is stale).
-- Open: P7 re-run. Rig 7 is down and build/rig7/vtc deleted (disk). Wait for vtcon-05 to report the new rig
-  master (upkg md5 + ports commit), then `rig.py setup` + `UPTERM_RIG=7 rig.py start --max --purpose
-  "Amarchy session: packages P7 reachability"`, reinstall up-nano from build/ipk-p7, deploy the two binaries,
-  check in both styles: nano opens in an UP-Term window, vsh and nano stacks 262144. Then tick P7.
+- P7 DONE (run 3, rig 7, owner allowed the up-nano reinstall from the local feed): text and graphical PASS, nano
+  opens in its own UP-Term window, vsh and nano stacks 262144. Plan ticked (7 of 8, P8 waits for up-uhc 1.4).
+- Phase J job view: owner scope 2026-10-27 (output-only, MT_OK/MT_FAIL roles, both styles); plan
+  thoughts/shared/plans/2026-10-27-amarchy-job-view.md (0 of 11 at writing). RJ.6 (job_core) and RJ.4 (theme roles,
+  branch job-theme-roles in worktree .claude/worktrees/jobtheme) were given to sonnet agents; check the plan ticks.
 - Menu root has 9-10 groups, 8 visible (MN_OSD_MAX_ENTRIES 8); Install is off-screen: design question for owner.
