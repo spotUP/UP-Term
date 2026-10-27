@@ -701,8 +701,8 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h 
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
 # leaf_core.c calls the prefs and amconf modules; every program linking it links this set.
 AMARCHY_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c
-AMARCHY_SRC := amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/index_core.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c
-$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h
+AMARCHY_SRC := amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c
+$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
@@ -754,10 +754,10 @@ $(BUILD)/amiga/amarchy-gui: $(AMARCHY_GUI_SRC) amarchy/taskalive.h amarchy/menus
 
 # amarchy-index: the app index scanner (plan 2026-10-23-amarchy-app-index.md, X2). A plain vbcc DOS program,
 # no ixemul; it writes ENVARC:Amarchy/apps, which Amarchy reads (it never scans itself).
-AMARCHY_INDEX_SRC := amarchy/taskalive.c amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/ixwatch.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c handler/kcmode.c handler/slash.c
+AMARCHY_INDEX_SRC := amarchy/taskalive.c amarchy/index.c install/hardvol.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/ixwatch.c amarchy/menu_tree.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c handler/kcmode.c handler/slash.c
 .PHONY: amarchy-index
 amarchy-index: $(BUILD)/amiga/amarchy-index
-$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/index_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
+$(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_INDEX_SRC)
 

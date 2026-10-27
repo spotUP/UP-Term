@@ -1195,52 +1195,179 @@ static void style_theme_lists_the_gui_theme_rows(void)
     CHECK_INT(lf_plan(KA_GTHEME), LF_GTHEME);
     CHECK_INT(keymap_action_scope(KA_GTHEME), KS_COMMODITY);
 }
-/* AMARCHY-LAUNCH-FIELD7 P2: Install > Packages lists the installed packages with a program to start, each path
- * "pkg:<launch>"; an empty list shows one inert row; the rows have no icon file and launch their own path */
-static void install_packages_lists_the_package_rows(void)
+/* Packages group (plan 2026-10-27-amarchy-packages-group.md PG.2, PG.3). The fake loader stands for pk_dos_load_rows:
+ * it counts its runs and hands a fixed `upkg list --tsv` text to the index. */
+static const char pkg_tsv[] =
+    "tiny\t1.0\t1\t0\t\tutils\tUP-Term:uhc/ExtBin/Tiny\tuhc\tA tiny tool\n"
+    "Gamma\t2.1\t1\t1\t12345\tgames\tUP-Term:bin/gamma-go\tupkg\tGamma game\n"
+    "perl\t5.8\t1\t0\t900000\tdevel\t\tupkg\tScripting language\n"
+    "notyet\t1.0\t0\t0\t10\tGames\t\tuhc\tNot installed\n";
+static int pkg_fake_loads;
+static void pkg_fake_load(ix_index *x)
+{
+    pk_rows l;
+    memset(&l, 0, sizeof l);
+    CHECK(pk_parse_all(pkg_tsv, (long)strlen(pkg_tsv), &l) > 0);
+    ix_add_pkg_rows(x, &l);
+    pkg_fake_loads++;
+}
+/* what the menus do on every node change (gui.c load_due, menu.c): load when due */
+static void pkg_enter(ix_index *x, const char *node)
+{
+    if (ix_pkgs_due(x, node))
+        pkg_fake_load(x);
+}
+static int pkg_level(const ix_index *x, const char *node, mn_item *it)
+{
+    return ix_level_t(&km, x, node, "", it, ix_level_cap(x), 0);
+}
+static int pkg_has(const mn_item *it, int c, const char *label)
+{
+    int i;
+    for (i = 0; i < c; i++)
+        if (!strcmp(it[i].label, label))
+            return 1;
+    return 0;
+}
+static void packages_group_lists_its_rows_and_drops_the_old_node(void)
+{
+    static char file[32768], icons[16384];
+    mn_item it[MN_MAX_ITEMS];
+    long n = slurp("dist/keymap", file, sizeof(file)), ni = slurp("dist/menu-icons", icons, sizeof(icons));
+    static const char *const nodes[] = { "packages", "packages.browse", "packages.search", "packages.installed",
+                                         "packages.upgrades", "packages.upgrades.all", "packages.refresh" };
+    int c, i;
+    CHECK(n > 0 && ni > 0 && keymap_parse(&km, file, n));
+    c = ix_level_t(&km, 0, "packages", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 5);                                /* Browse, Search, Installed, Upgrades, Refresh */
+    CHECK_STR(it[0].label, "Browse");
+    CHECK_STR(it[1].label, "Search");
+    CHECK_STR(it[2].label, "Installed");
+    CHECK_STR(it[3].label, "Upgrades");
+    CHECK_STR(it[4].label, "Refresh");
+    CHECK(MN_IS_GROUP(&it[3]));
+    c = ix_level_t(&km, 0, "packages.upgrades", "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(c, 1);
+    CHECK_STR(it[0].label, "Upgrade all");
+    CHECK_INT(km.menu[it[0].row].kind, KA_JOB);
+    c = ix_level_t(&km, 0, "install", "", it, MN_MAX_ITEMS, 0);
+    CHECK(!pkg_has(it, c, "Packages"));             /* install.packages is gone (Installed lives in the group) */
+    for (i = 0; i < km.nmenu; i++)
+        CHECK(strcmp(km.menu[i].id, "install.packages"));
+    for (i = 0; i < (int)(sizeof nodes / sizeof *nodes); i++) {      /* every node has an icon line */
+        const char *p = icons;
+        int hit = 0, len = (int)strlen(nodes[i]);
+        while ((p = strstr(p, nodes[i])) != 0) {
+            if ((p == icons || p[-1] == '\n') && (p[len] == ' ' || p[len] == '='))
+                hit = 1;
+            p += len;
+        }
+        CHECK(hit);
+    }
+}
+static void a_picked_package_offers_only_its_fitting_actions(void)
 {
     static char file[32768];
-    mn_item it[MN_MAX_ITEMS];
+    mn_item it[MN_MAX_ITEMS + 64], a[8];
     ix_index x;
-    const char *labels[2] = { "nvim", "UnZip" };
-    const char *launches[2] = { "UP-Term:bin/nvim", "UP-Term:uhc/ExtBin/UnZip" };
+    char line[96];
     long n = slurp("dist/keymap", file, sizeof(file));
-    int c, i, found = 0;
-    char ip[IX_PATH];
+    int c, ca;
     CHECK(n > 0 && keymap_parse(&km, file, n));
     memset(&x, 0, sizeof x);
-    CHECK(ix_add_gthemes(&x, labels, labels, 2));
-    CHECK(!ix_pkgs_due(&x, "install"));             /* upkg runs only when the menu enters Packages */
-    CHECK(ix_pkgs_due(&x, IX_PKGS_NODE));
-    CHECK(ix_add_pkgs(&x, labels, launches, 2));
-    CHECK(!ix_pkgs_due(&x, IX_PKGS_NODE));          /* once per index */
-    c = ix_level_t(&km, &x, IX_PKGS_NODE, "", it, MN_MAX_ITEMS, 0);
+    pkg_fake_loads = 0;
+    pkg_enter(&x, "packages.browse");
+    c = pkg_level(&x, "packages.browse", it);       /* the sections, one group each, sorted without case */
+    CHECK_INT(c, 3);
+    CHECK_STR(it[0].label, "devel");
+    CHECK_STR(it[1].label, "games");
+    CHECK_STR(it[2].label, "utils");
+    c = pkg_level(&x, "packages.browse.games", it); /* "games" and "Games" are one section */
     CHECK_INT(c, 2);
-    CHECK_STR(it[0].label, "nvim");
-    CHECK_INT(it[0].row, MN_ROW_INDEX);
-    CHECK_STR(x.rows[it[0].ix].path, "pkg:UP-Term:bin/nvim");
-    CHECK_STR(x.rows[it[1].ix].path, "pkg:UP-Term:uhc/ExtBin/UnZip");
-    CHECK_INT(x.rows[it[1].ix].kind, IX_KIND_PKG);
-    CHECK_INT(ix_icon_path(&x, &it[0], ip, sizeof ip), 0);
-    CHECK_INT(ix_launch_path(&x, &it[1], ip, sizeof ip), 1);
-    CHECK_STR(ip, "pkg:UP-Term:uhc/ExtBin/UnZip");
-    CHECK_INT(ix_level_t(&km, &x, IX_GTHEMES_NODE, "", it, MN_MAX_ITEMS, 0), 2);   /* themes kept */
-    c = ix_level_t(&km, &x, "install", "", it, MN_MAX_ITEMS, 0);
-    for (i = 0; i < c; i++)
-        if (!strcmp(it[i].label, "Packages")) {
-            found = 1;
-            CHECK_INT(it[i].row, MN_ROW_GROUP);
-        }
-    CHECK(found);
-    CHECK(ix_add_pkgs(&x, labels, launches, 0));    /* none installed: one inert row, replacing the old ones */
-    c = ix_level_t(&km, &x, IX_PKGS_NODE, "", it, MN_MAX_ITEMS, 0);
+    CHECK_INT(it[0].row, MN_ROW_GROUP);
+    CHECK(strstr(it[0].label, "[upkg] Gamma  2.1  Upgrade to 2.1") != 0);
+    ca = pkg_level(&x, "packages.browse.games.notyet", a);     /* not installed: Install only */
+    CHECK_INT(ca, 1);
+    CHECK_INT(a[0].row, MN_ROW_PKGACT);
+    CHECK_STR(a[0].label, "Install");
+    CHECK_INT(a[0].seg[0], PK_ACT_INSTALL);
+    CHECK(pk_action_line(&x.pk.r[a[0].ix], a[0].seg[0], line, sizeof line));
+    CHECK_STR(line, "upkg install uhc:notyet");
+    ca = pkg_level(&x, "packages.installed.Gamma", a); /* installed, upgradable, has a launch: Remove, Launch, Upgrade */
+    CHECK_INT(ca, 3);
+    CHECK_STR(a[0].label, "Remove");
+    CHECK_STR(a[1].label, "Launch");
+    CHECK_STR(a[2].label, "Upgrade");
+    ca = pkg_level(&x, "packages.installed.perl", a);          /* installed, empty launch, not upgradable: Remove only */
+    CHECK_INT(ca, 1);
+    CHECK_STR(a[0].label, "Remove");
+    ca = pkg_level(&x, "packages.installed.tiny", a);          /* launch set, not upgradable: Remove, Launch */
+    CHECK_INT(ca, 2);
+    CHECK_STR(a[1].label, "Launch");
+    ix_free(&x);
+}
+static void the_package_list_loads_once_and_reloads_when_stale(void)
+{
+    static char file[32768];
+    mn_item it[MN_MAX_ITEMS + 64];
+    ix_index x;
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int c;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    memset(&x, 0, sizeof x);
+    pkg_fake_loads = 0;
+    CHECK(!ix_pkgs_due(&x, "install"));             /* upkg runs only when the menu enters a packages node */
+    CHECK(!ix_pkgs_due(&x, "packagesx"));
+    CHECK(ix_pkgs_due(&x, "packages"));
+    pkg_enter(&x, "packages");                      /* first entry loads */
+    CHECK_INT(pkg_fake_loads, 1);
+    pkg_enter(&x, "packages.browse");               /* later entries, any node of the group: no load */
+    pkg_enter(&x, "packages");
+    pkg_enter(&x, "packages.installed");
+    CHECK_INT(pkg_fake_loads, 1);
+    CHECK_INT(x.pk_loads, 1);
+    c = pkg_level(&x, "packages.installed", it);    /* Installed and Upgrades are filters of that one load */
+    CHECK_INT(c, 3);
+    CHECK(pkg_has(it, c, "[upkg] perl  5.8  Installed"));
+    c = pkg_level(&x, "packages.upgrades", it);
+    CHECK_INT(c, 2);                                /* Upgrade all, then the one upgradable row */
+    CHECK_STR(it[0].label, "Upgrade all");
+    CHECK(strstr(it[1].label, "Gamma") != 0);
+    pkg_enter(&x, "packages.upgrades");
+    CHECK_INT(pkg_fake_loads, 1);
+    ix_pkg_mark_stale(&x);                          /* a package job ended */
+    CHECK(ix_pkgs_due(&x, "packages.installed"));
+    CHECK(!ix_pkgs_due(&x, "install"));
+    pkg_enter(&x, "packages.installed");
+    pkg_enter(&x, "packages.browse");
+    CHECK_INT(pkg_fake_loads, 2);                   /* reloaded once, not once per node */
+    CHECK_INT(x.pk_loads, 2);
+    ix_add_gthemes(&x, 0, 0, 0);                    /* a row adder does not drop the cache */
+    CHECK(!ix_pkgs_due(&x, "packages"));
+    ix_pkg_query(&x, "TINY");                       /* Search is a third filter of the same load */
+    c = pkg_level(&x, "packages.search", it);
     CHECK_INT(c, 1);
-    CHECK_STR(x.rows[it[0].ix].path, IX_PKG_NONE);
-    CHECK(ix_add_gthemes(&x, labels, labels, 1));    /* an earlier adder run again drops the package rows */
-    CHECK_INT(ix_level_t(&km, &x, IX_PKGS_NODE, "", it, MN_MAX_ITEMS, 0), 0);
-    CHECK(ix_pkgs_due(&x, IX_PKGS_NODE));           /* so they load again on the next entry */
-    CHECK(ix_add_pkgs(&x, labels, launches, 0));
-    CHECK(!ix_pkgs_due(&x, IX_PKGS_NODE));          /* the inert row counts as loaded: upkg is not rerun */
+    CHECK(strstr(it[0].label, "tiny") != 0);
+    CHECK_INT(pkg_fake_loads, 2);
+    ix_free(&x);
+    CHECK(ix_pkgs_due(&x, "packages"));             /* a freed index loads again */
+}
+static void a_failed_upkg_gives_one_inert_row(void)
+{
+    static char file[32768];
+    mn_item it[MN_MAX_ITEMS + 8];
+    ix_index x;
+    pk_rows none;
+    long n = slurp("dist/keymap", file, sizeof(file));
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    memset(&x, 0, sizeof x);
+    memset(&none, 0, sizeof none);
+    ix_add_pkg_rows(&x, &none);                     /* the loader's answer when upkg is missing */
+    CHECK(!ix_pkgs_due(&x, "packages"));            /* loaded: upkg is not rerun on every open */
+    CHECK_INT(pkg_level(&x, "packages.browse", it), 1);
+    CHECK_INT(it[0].row, MN_ROW_PKGACT);
+    CHECK_INT(it[0].ix, -1);
+    CHECK(strstr(it[0].label, "upkg") != 0);
     ix_free(&x);
 }
 static void terminal_rows_show_only_over_a_terminal(void)
@@ -1530,7 +1657,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 11);   /* with the Trigger, Settings, Dopus, Workbench and Screens groups (all shown) */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 12);   /* with the Trigger, Settings, Dopus, Workbench, Screens and Packages groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 4);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -2624,7 +2751,10 @@ static void a_volume_without_a_handler_task_matches_no_device(void)
 void suite_keymap(void)
 {
     style_theme_lists_the_gui_theme_rows();
-    install_packages_lists_the_package_rows();
+    packages_group_lists_its_rows_and_drops_the_old_node();
+    a_picked_package_offers_only_its_fitting_actions();
+    the_package_list_loads_once_and_reloads_when_stale();
+    a_failed_upkg_gives_one_inert_row();
     a_detached_line_names_the_program_whose_stack_cookie_counts();
     the_scan_record_has_a_layout_version_and_an_older_one_is_not_read();
     a_failed_cache_write_is_its_own_stage_and_not_reported_as_died();

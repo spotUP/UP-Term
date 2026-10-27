@@ -209,6 +209,9 @@ void ix_free(ix_index *x)
     x->rows = 0;
     x->n = x->napps = 0;
     memset(x->kstart, 0, sizeof x->kstart);
+    pk_rows_free(&x->pk);
+    x->pk_loaded = x->pk_stale = x->pk_loads = 0;
+    x->pk_query[0] = 0;
 }
 
 int ix_add_clips(ix_index *x, const char *const *labels, int n)
@@ -234,7 +237,6 @@ int ix_add_clips(ix_index *x, const char *const *labels, int n)
     x->kstart[IX_NKINDS + 1] = base + add;
     x->kstart[IX_NKINDS + 2] = x->kstart[IX_NKINDS + 3] = 0;   /* the lister rows sat after the ring: gone */
     x->kstart[IX_NKINDS + 4] = x->kstart[IX_NKINDS + 5] = 0;   /* and the theme rows after them */
-    x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;   /* and the package rows after those */
     x->n = base + add;
     return 1;
 }
@@ -247,7 +249,6 @@ int ix_add_listers(ix_index *x, const ix_row *lrows, int n)
         x->n = base;
         x->kstart[IX_NKINDS + 2] = x->kstart[IX_NKINDS + 3] = 0;
         x->kstart[IX_NKINDS + 4] = x->kstart[IX_NKINDS + 5] = 0;
-        x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;
         return 1;
     }
     rows = (ix_row *)realloc(x->rows, (size_t)(base + n) * sizeof *rows);
@@ -258,7 +259,6 @@ int ix_add_listers(ix_index *x, const ix_row *lrows, int n)
     x->kstart[IX_NKINDS + 2] = base;
     x->kstart[IX_NKINDS + 3] = base + n;
     x->kstart[IX_NKINDS + 4] = x->kstart[IX_NKINDS + 5] = 0;   /* the theme rows sat after the listers: gone */
-    x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;   /* and the package rows after them */
     x->n = base + n;
     return 1;
 }
@@ -270,7 +270,6 @@ int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *na
     if (n <= 0) {
         x->n = base;
         x->kstart[IX_NKINDS + 4] = x->kstart[IX_NKINDS + 5] = 0;
-        x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;
         return 1;
     }
     rows = (ix_row *)realloc(x->rows, (size_t)(base + n) * sizeof *rows);
@@ -286,39 +285,42 @@ int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *na
     }
     x->kstart[IX_NKINDS + 4] = base;
     x->kstart[IX_NKINDS + 5] = base + n;
-    x->kstart[IX_NKINDS + 6] = x->kstart[IX_NKINDS + 7] = 0;   /* the package rows sat after the themes: gone */
     x->n = base + n;
     return 1;
 }
 
-int ix_add_pkgs(ix_index *x, const char *const *labels, const char *const *launches, int n)
+void ix_add_pkg_rows(ix_index *x, pk_rows *l)
 {
-    int base = x->kstart[IX_NKINDS + 7] ? x->kstart[IX_NKINDS + 6] : x->n, i, add = n > 0 ? n : 1;
-    ix_row *rows = (ix_row *)realloc(x->rows, (size_t)(base + add) * sizeof *rows);
-    if (!rows)
-        return 0;
-    x->rows = rows;
-    for (i = 0; i < add; i++) {
-        ix_row *r = &rows[base + i];
-        memset(r, 0, sizeof *r);
-        r->kind = IX_KIND_PKG;
-        if (n > 0) {
-            strncpy(r->label, labels[i], IX_LABEL - 1);
-            snprintf(r->path, sizeof r->path, "pkg:%s", launches[i]);
-        } else {
-            strcpy(r->label, "No installed package has a program to start");
-            strcpy(r->path, IX_PKG_NONE);
-        }
-    }
-    x->kstart[IX_NKINDS + 6] = base;
-    x->kstart[IX_NKINDS + 7] = base + add;
-    x->n = base + add;
-    return 1;
+    pk_rows_free(&x->pk);
+    x->pk = *l;
+    l->n = l->over = 0;
+    l->r = 0;
+    x->pk_loaded = 1;
+    x->pk_stale = 0;
+    x->pk_loads++;
+}
+
+void ix_pkg_mark_stale(ix_index *x)
+{
+    x->pk_stale = 1;
+}
+
+void ix_pkg_query(ix_index *x, const char *text)
+{
+    strncpy(x->pk_query, text ? text : "", sizeof x->pk_query - 1);
+    x->pk_query[sizeof x->pk_query - 1] = 0;
+}
+
+/* node is IX_PKGS_NODE or a node below it */
+static int in_pkgs(const char *node)
+{
+    size_t n = strlen(IX_PKGS_NODE);
+    return !strncmp(node, IX_PKGS_NODE, n) && (!node[n] || node[n] == '.');
 }
 
 int ix_pkgs_due(const ix_index *x, const char *node)
 {
-    return x && node && !strcmp(node, IX_PKGS_NODE) && !x->kstart[IX_NKINDS + 7];
+    return x && node && in_pkgs(node) && (!x->pk_loaded || x->pk_stale);
 }
 
 int ix_lister_handles(const char *answer, unsigned long *out, int max)
@@ -397,7 +399,7 @@ long ix_lister_of(const char *path)
 
 int ix_level_cap(const ix_index *x)
 {
-    return MN_MAX_ITEMS + (x ? x->n : 0) + 2;
+    return MN_MAX_ITEMS + (x ? x->n + x->pk.n : 0) + 4;   /* + the package rows of a Packages view, a note and a footer */
 }
 
 static char extra_music[128], extra_demo[128], extra_hidden[128];
@@ -590,6 +592,150 @@ static int one_category(const ix_index *x, int from, int to)
     return 1;
 }
 
+/* The leaf rows of the keymap that open a package view: packages.browse, .search, .installed (menu:), shown as groups. */
+static int pkg_view_id(const char *id)
+{
+    return !strcmp(id, IX_PKGS_NODE ".browse") || !strcmp(id, IX_PKGS_NODE ".search") ||
+           !strcmp(id, IX_PKGS_NODE ".installed");
+}
+
+/* the node segment of a name or section: a dot would break the node path, and the segment must fit KM_ID */
+static void pkg_seg(const char *s, char *out)
+{
+    int i;
+    for (i = 0; s[i] && i < KM_ID - 1; i++)
+        out[i] = s[i] == '.' ? '_' : s[i];
+    out[i] = 0;
+}
+
+static int pkg_note(mn_item *out, int n, int max, const char *text)
+{
+    if (n < max) {
+        out[n].row = MN_ROW_PKGACT;
+        out[n].ix = -1;
+        out[n].seg[0] = 0;
+        snprintf(out[n].label, sizeof out[n].label, "%s", text);
+        n++;
+    }
+    return n;
+}
+
+/* the rows idx[0..cnt) as package groups (their node holds the actions), then the footer when the list was cut */
+static int pkg_rows_out(const ix_index *x, const int *idx, int cnt, mn_item *out, int n, int max)
+{
+    int i;
+    for (i = 0; i < cnt && n < max; i++) {
+        const pk_row *r = &x->pk.r[idx[i]];
+        out[n].row = MN_ROW_GROUP;
+        out[n].ix = idx[i];
+        pkg_seg(r->name, out[n].seg);
+        pk_label(r, out[n].label, sizeof out[n].label);
+        n++;
+    }
+    if (!cnt)
+        n = pkg_note(out, n, max, x->pk.n ? "No packages here" : "No packages listed (is upkg installed?)");
+    if (x->pk.over)
+        n = pkg_note(out, n, max, "More packages than the list can show");
+    return n;
+}
+
+/* the row of x->pk whose node segment is seg among idx[0..cnt); -1 when none */
+static int pkg_find(const ix_index *x, const int *idx, int cnt, const char *seg)
+{
+    char s[KM_ID];
+    int i;
+    for (i = 0; i < cnt; i++) {
+        pkg_seg(x->pk.r[idx[i]].name, s);
+        if (!strcmp(s, seg))
+            return idx[i];
+    }
+    return -1;
+}
+
+/* The levels below the Packages group: browse (sections, then a section's rows), installed, upgrades and search (filters
+ * of the one loaded list), and the action rows of a picked package. Static rows (Upgrade all) are already in out[0..n). */
+static int pkg_level(const ix_index *x, const char *node, mn_item *out, int n, int max)
+{
+    const char *p = node + strlen(IX_PKGS_NODE);
+    char view[KM_ID], tok[KM_ID];
+    int *idx, cnt = 0, i, row = -1;
+    if (!*p)
+        return n;                                   /* the group itself: the keymap rows */
+    p++;
+    i = 0;
+    while (*p && *p != '.' && i < KM_ID - 1)
+        view[i++] = *p++;
+    view[i] = 0;
+    if (!x->pk.n && !x->pk.over)
+        return strcmp(view, "refresh") ? pkg_rows_out(x, 0, 0, out, n, max) : n;
+    idx = (int *)malloc((size_t)x->pk.n * sizeof *idx);
+    if (!idx)
+        return n;
+    if (!strcmp(view, "browse")) {
+        char (*sec)[PK_SEC] = (char (*)[PK_SEC])malloc((size_t)x->pk.n * PK_SEC);
+        int ns = sec ? pk_sections(&x->pk, sec, x->pk.n) : 0;
+        if (!*p) {                                  /* the sections as groups */
+            for (i = 0; i < ns && n < max; i++) {
+                out[n].row = MN_ROW_GROUP;
+                out[n].ix = -1;
+                pkg_seg(sec[i], out[n].seg);
+                snprintf(out[n].label, sizeof out[n].label, "%s", sec[i]);
+                n++;
+            }
+        } else {                                    /* one section: its rows, or one of them (a third segment) */
+            const char *q = p + 1;
+            char sseg[KM_ID];
+            i = 0;
+            while (*q && *q != '.' && i < KM_ID - 1)
+                sseg[i++] = *q++;
+            sseg[i] = 0;
+            for (i = 0; i < ns; i++) {
+                char s[KM_ID];
+                pkg_seg(sec[i], s);
+                if (!strcmp(s, sseg))
+                    break;
+            }
+            if (i < ns) {
+                cnt = pk_by_section(&x->pk, sec[i], idx, x->pk.n);
+                if (*q == '.') {
+                    strncpy(tok, q + 1, sizeof tok - 1);
+                    tok[sizeof tok - 1] = 0;
+                    row = pkg_find(x, idx, cnt, tok);
+                } else {
+                    n = pkg_rows_out(x, idx, cnt, out, n, max);
+                }
+            }
+        }
+        free(sec);
+    } else if (!strcmp(view, "installed") || !strcmp(view, "upgrades") || !strcmp(view, "search")) {
+        cnt = !strcmp(view, "search") ? (x->pk_query[0] ? pk_filter(&x->pk, x->pk_query, idx, x->pk.n) : 0)
+                                      : pk_select(&x->pk, !strcmp(view, "upgrades"), idx, x->pk.n);
+        if (!*p) {
+            n = pkg_rows_out(x, idx, cnt, out, n, max);
+        } else {
+            strncpy(tok, p + 1, sizeof tok - 1);
+            tok[sizeof tok - 1] = 0;
+            row = pkg_find(x, idx, cnt, tok);
+        }
+    }
+    if (row >= 0) {                                 /* the picked package: its fitting actions */
+        char acts[4];
+        int na = pk_actions(&x->pk.r[row], acts);
+        for (i = 0; i < na && n < max; i++) {
+            out[n].row = MN_ROW_PKGACT;
+            out[n].ix = row;
+            out[n].seg[0] = acts[i];
+            out[n].seg[1] = 0;
+            snprintf(out[n].label, sizeof out[n].label, "%s", pk_action_label(acts[i]));
+            n++;
+        }
+        if (!na)
+            n = pkg_note(out, n, max, "Nothing to do with this package");
+    }
+    free(idx);
+    return n;
+}
+
 int ix_level(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
              int max)
 {
@@ -608,7 +754,7 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
         if (out[kd].row >= 0 && (!strcmp(k->menu[out[kd].row].id, IX_CLIPS_NODE) ||
                                  !strcmp(k->menu[out[kd].row].id, IX_LISTERS_NODE) ||
                                  !strcmp(k->menu[out[kd].row].id, IX_GTHEMES_NODE) ||
-                                 !strcmp(k->menu[out[kd].row].id, IX_PKGS_NODE))) {
+                                 pkg_view_id(k->menu[out[kd].row].id))) {
             out[kd].row = MN_ROW_GROUP;
             out[kd].ix = -1;
         }
@@ -618,8 +764,8 @@ int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char 
         return add_index(x, x->kstart[IX_NKINDS + 2], x->kstart[IX_NKINDS + 3], out, n, max);
     if (!strcmp(node, IX_GTHEMES_NODE))
         return add_index(x, x->kstart[IX_NKINDS + 4], x->kstart[IX_NKINDS + 5], out, n, max);
-    if (!strcmp(node, IX_PKGS_NODE))
-        return add_index(x, x->kstart[IX_NKINDS + 6], x->kstart[IX_NKINDS + 7], out, n, max);
+    if (in_pkgs(node))
+        return pkg_level(x, node, out, n, max);
     for (kd = 0; kd < IX_NKINDS; kd++) {
         kl = (int)strlen(kind_node[kd]);
         if (!strncmp(node, kind_node[kd], kl) && (!node[kl] || node[kl] == '.'))

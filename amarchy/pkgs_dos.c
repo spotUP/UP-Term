@@ -11,8 +11,8 @@
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 
-#define PK_CMD "upkg list-installed --tsv"
-#define PK_TEXT_MAX (64L * 1024L)
+#define PK_CMD "upkg list --tsv"
+#define PK_TEXT_MAX (1536L * 1024L)   /* about 4000 rows of up to 380 bytes (PK_ROWS_MAX) */
 
 /* The upkg output in buf (cap bytes); its length, -1 when upkg could not be run. */
 static long pk_dos_read(char *buf, long cap)
@@ -38,18 +38,14 @@ static long pk_dos_read(char *buf, long cap)
 
 int pk_dos_load_rows(ix_index *x)
 {
-    static pk_list l;
-    const char *labels[PK_MAX], *launches[PK_MAX];
+    pk_rows l;
     char *buf = malloc(PK_TEXT_MAX);
     long len = buf ? pk_dos_read(buf, PK_TEXT_MAX) : -1;
-    int i;
-    l.n = 0;
+    l.n = l.over = 0;
+    l.r = 0;
     if (len > 0)
-        pk_parse(buf, len, &l);
+        pk_parse_all(buf, len, &l);
     free(buf);
-    for (i = 0; i < l.n; i++) {
-        labels[i] = l.name[i];
-        launches[i] = l.launch[i];
-    }
-    return ix_add_pkgs(x, labels, launches, l.n);
+    ix_add_pkg_rows(x, &l);                  /* a failed upkg stores an empty list: the views show their one note */
+    return 1;
 }

@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy merged Packages group (Browse, Search, Installed, Upgrades, Refresh) with Install, Remove, Upgrade and Launch through the job view
-status: approved scope (owner, 2026-10-27), 0 of 9
+status: approved scope (owner, 2026-10-27), 3 of 9
 ledger: thoughts/spot/todos.md row AMARCHY-UHC
 research: thoughts/shared/research/2026-10-27-amarchy-packages.md
 builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Installed rows), thoughts/shared/plans/2026-10-27-amarchy-job-view.md (job: action, gui_run_job)
@@ -79,16 +79,16 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
   (proves "first open only" and "reload after job"). The job sentinels (AMARCHY_JOB_LINES, AMARCHY_JOB_DONE) already exist.
 
 ## Checklist
-- [ ] PG.1 pure rows core: extend amarchy/pkgs_core.c/.h with `pk_rows` (all nine fields kept, heap, any installed state),
+- [x] PG.1 (host only, commit "Amarchy Packages group core: pk_rows parser, packages.* menu tree, lazy package index (PG.1-PG.3)") pure rows core: extend amarchy/pkgs_core.c/.h with `pk_rows` (all nine fields kept, heap, any installed state),
   `pk_parse_all`, `pk_by_section`, `pk_filter` (substring over name and description, case-insensitive, empty text = all),
   `pk_state` (installed, upgradable words), `pk_action_line` (the job line per action and src, with the name check). Host test
   tests/test_pkgs.c: mixed upkg and uhc rows, empty launch, CRLF, short lines, over-limit list, name with a metacharacter
   refused, `uhc:` prefix only for src uhc, filter case and description hits.
-- [ ] PG.2 keymap and menu tree: dist/keymap `packages.*` group, dist/menu-icons, remove `install.packages`; leaf.c action node
+- [x] PG.2 (host only, same commit) keymap and menu tree: dist/keymap `packages.*` group, dist/menu-icons, remove `install.packages`; leaf.c action node
   for a picked row (mn_list_hook), refusal while a job runs. Host test tests/test_keymap.c: group lists the five rows, a
   not-installed row offers Install only, an upgradable installed row offers Remove, Launch, Upgrade, a row with empty launch
   has no Launch, install.packages is gone and every node has an icon.
-- [ ] PG.3 index and lazy load: index_core.c/.h widen ix_pkgs_due to the group, add the section sub-nodes, stale flag and the
+- [x] PG.3 (host only, same commit; DOS glue call sites left for PG.5/PG.6) index and lazy load: index_core.c/.h widen ix_pkgs_due to the group, add the section sub-nodes, stale flag and the
   reload rule; amarchy/pkgs_dos.c loads `list --tsv` once and reloads on the stale flag. Host test tests/test_keymap.c (index
   cases): first entry loads once, second entry does not, stale flag reloads once, Installed and Upgrades are filters of one load
   (call count of the loader fake = 1).
@@ -127,7 +127,13 @@ builds on: thoughts/shared/plans/2026-10-27-amarchy-packages-submenu.md (Install
   until they land, UHC rows appear as soon as upkg emits them. m68k upkg md5 c5c38bbb7f48dd3e9765a608bad5afbc or newer.
 
 ## Results
-(open)
+- PG.1-PG.3 host only: suites pkgs 81, keymap 12112, menu_text 65, job 105 checks, 0 failed. No m68k build run.
+- Left out of PG.3: stale-flag trigger after AMARCHY_JOB_DONE, first-open and reload call sites (menu.c about 285, gui.c about
+  703-708) and the MN_ROW_PKGACT dispatch in menu.c/gui.c (calls lf_pkg_action). Belongs to PG.5/PG.6. Callers still use
+  ix_pkgs_due and pk_dos_load_rows, both kept.
+- pkgs_dos.c, leaf.c (lf_pkg_action) and the Makefile pkgs_core.c additions are not m68k built.
+- run_job is modal in both styles, so a pick during a running job cannot happen; the refusal is inherent, not coded.
+- IX_KIND_PKG, ix_add_pkgs and Install > Packages are removed.
 
 ## Open decisions for the owner
 None. Answered 2026-10-27, see Owner decisions.

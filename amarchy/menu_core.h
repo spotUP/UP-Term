@@ -13,12 +13,14 @@
 #define MN_ROW_INDEX (-2)       /* the action kind of an app or game from the index: X5 launches it */
 #define MN_ROW_SETTING (-3)     /* a setting of a settings page group: ix is its SDI_* row in prefs/settings_def.h; label is the plain label, sd_row_label adds the value */
 #define MN_ROW_CHOICE (-4)      /* one value of a cycle setting's submenu (node <page node>.<key>): ix is the SDI_* id, seg the value index in decimal, label the value text */
+#define MN_ROW_PKGACT (-5)      /* a package action row (index_core.c): ix is the row in ix_index.pk, seg[0] the PK_ACT_* verb, label its words; ix -1 or an empty seg is an inert row (a note) */
 #define MN_IS_GROUP(it) ((it)->row == MN_ROW_GROUP)
 #define MN_IS_INDEX(it) ((it)->row == MN_ROW_INDEX)
 #define MN_IS_SETTING(it) ((it)->row == MN_ROW_SETTING)
 /* set by lf_init (leaf.c): fills the names of the Profile (1) or Theme (0) list, marked "* " when current */
 extern int (*mn_list_hook)(int profile, char names[][KM_LABEL], int max);
 #define MN_IS_CHOICE(it) ((it)->row == MN_ROW_CHOICE)
+#define MN_IS_PKGACT(it) ((it)->row == MN_ROW_PKGACT)
 
 /* The room of a row label. A settings row is "Label: Value" (sd_row_label), longer than the 31 characters of a
  * keymap label (KM_LABEL), and its value must not be cut off by the buffer. */

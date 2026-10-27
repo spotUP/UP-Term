@@ -6,6 +6,7 @@
 
 #include "../config/keymap.h"
 #include "menu_core.h"
+#include "pkgs_core.h"
 
 #define IX_LABEL 48
 #define IX_PATH  256
@@ -26,8 +27,7 @@
 #define IX_LISTERS_NODE  "dopus.listers"
 #define IX_KIND_GTHEME   (IX_NKINDS + 2)   /* an Amarchy GUI theme row (ix_add_gthemes), path "gtheme:<name>"; fills IX_GTHEMES_NODE (Style > Theme) */
 #define IX_GTHEMES_NODE  "style.theme"
-#define IX_KIND_PKG      (IX_NKINDS + 3)   /* an installed package with a program to start (ix_add_pkgs), path "pkg:<launch>"; fills IX_PKGS_NODE */
-#define IX_PKGS_NODE     "install.packages"
+#define IX_PKGS_NODE     "packages"        /* the Packages group (plan 2026-10-27-amarchy-packages-group.md); ix_pkgs_due is true for it and every node below it */
 #define IX_PKG_NONE      "pkg-none:"      /* the single row of an empty Packages menu; Enter does nothing */
 #define IX_KIND_HIDDEN   (-1)   /* ix_row_kind result for a system-drawer app row: ix_load_text drops it */
 #define IX_CACHE_PATH "ENVARC:Amarchy/apps"   /* the scanner writes it, the menus read it */
@@ -75,8 +75,12 @@ int ix_drop_shadowed(const keymap *k, const char *node, ix_row *rows, int n);
  * rows are on the heap. An ix_index starts zeroed (static, or {0}); ix_free releases its rows. */
 typedef struct ix_index {
     int    n, napps;            /* rows[0..napps) are apps; rows[kstart[k]..kstart[k+1]) have effective kind k */
-    int    kstart[IX_NKINDS + 8];     /* [IX_NKINDS], [IX_NKINDS + 1]: the clipboard history rows; [IX_NKINDS + 2], [IX_NKINDS + 3]: the lister rows; [IX_NKINDS + 4], [IX_NKINDS + 5]: the GUI theme rows; [IX_NKINDS + 6], [IX_NKINDS + 7]: the package rows */
+    int    kstart[IX_NKINDS + 6];     /* [IX_NKINDS], [IX_NKINDS + 1]: the clipboard history rows; [IX_NKINDS + 2], [IX_NKINDS + 3]: the lister rows; [IX_NKINDS + 4], [IX_NKINDS + 5]: the GUI theme rows*/
     ix_row *rows;
+    pk_rows pk;                 /* the Packages list (ix_add_pkg_rows): outside rows[], so no row adder drops it */
+    int    pk_loaded, pk_stale; /* the list was loaded; a package job ended since (ix_pkg_mark_stale) */
+    int    pk_loads;            /* how many times ix_add_pkg_rows ran: 1 after any number of opens, +1 per reload */
+    char   pk_query[64];        /* the Search text the node packages.search lists (ix_pkg_query) */
 } ix_index;
 
 /* The effective kind of a stored row, from its stored kind and its first drawer under the volume
@@ -116,12 +120,15 @@ int ix_add_listers(ix_index *x, const ix_row *rows, int n);
 /* The GUI theme rows (Style > Theme) after the lister rows: row i has label labels[i] and path "gtheme:<names[i]>".
  * Replaces the ones stored before; ix_add_clips and ix_add_listers drop them (call this last). 1, or 0 on no memory. */
 int ix_add_gthemes(ix_index *x, const char *const *labels, const char *const *names, int n);
-/* The Packages menu rows (plan 2026-10-27-amarchy-packages-submenu.md) after the theme rows: row i has label labels[i]
- * and path "pkg:<launches[i]>"; n = 0 stores one row "No installed package has a program to start" (path IX_PKG_NONE).
- * Replaces the ones stored before; every adder above drops them (call this last). 1, or 0 on no memory. */
-int ix_add_pkgs(ix_index *x, const char *const *labels, const char *const *launches, int n);
-/* 1 when the menu enters node IX_PKGS_NODE and x has no package rows yet: the caller loads them (pkgs_dos.h) then,
- * not on every open (upkg costs about 100 ms), and sizes its level buffers again (ix_level_cap grows). */
+/* The Packages list: takes the rows of l (x->pk owns them, the old ones are freed; l is emptied), sets loaded, clears
+ * stale, counts a load. A failed or missing upkg passes an empty l: the views show one inert row. */
+void ix_add_pkg_rows(ix_index *x, pk_rows *l);
+/* A package job ended (any rc): the list reloads when the menu next enters a packages node. */
+void ix_pkg_mark_stale(ix_index *x);
+/* The Search text (copied, cut to fit); the node packages.search lists the rows pk_filter finds. */
+void ix_pkg_query(ix_index *x, const char *text);
+/* 1 when node is IX_PKGS_NODE or below it and the list is not loaded yet or is stale: the caller loads it
+ * (pkgs_dos.h, about 3 s) then, never on every open, and sizes its level buffers again (ix_level_cap grows). */
 int ix_pkgs_due(const ix_index *x, const char *node);
 int ix_lister_handles(const char *answer, unsigned long *out, int max);
 /* The row of one lister from its `lister query <handle> path` answer (a trailing CR/LF and surrounding blanks

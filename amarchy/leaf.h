@@ -186,6 +186,12 @@ typedef struct lf_ui {
     int (*run_job)(void *ctx, const char *line, const char *title);
 } lf_ui;
 
+/* Run the action row `it` (MN_ROW_PKGACT, index_core.c) of a picked package: Install, Remove and Upgrade are the job line
+ * pk_action_line gives, run through the style's job view (a style with none falls back to an UP-Term window, as a job:
+ * row does); Launch starts the program like a Packages row did (pk_row_path, lf_open_index). An inert row, a stale row
+ * index or a name pk_name_ok refuses runs nothing and says so through ui->refused. The action's code. One job runs at
+ * a time because run_job returns only when the job view closes. */
+int lf_pkg_action(const ix_index *x, const mn_item *it, const lf_ui *ui);
 /* 1 when ui has a job view for a job: row, 0 when the row falls back to the run: path */
 int lf_job_view(const lf_ui *ui);
 /* The run: path for a command line (an UP-Term window of its own): what a job view falls back to when it cannot start. */

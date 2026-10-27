@@ -317,6 +317,27 @@ void lf_setting_rechip(const mn_item *it, int n, long *out)
     lf_setting_chips(amconf_dos_io(), it, n, out);
 }
 
+int lf_pkg_action(const ix_index *x, const mn_item *it, const lf_ui *ui)
+{
+    const pk_row *r;
+    char line[PK_NAME + 48], path[PK_PATH + 16], title[MN_LABEL];
+    if (!x || !it || !MN_IS_PKGACT(it) || it->ix < 0 || it->ix >= x->pk.n || !it->seg[0])
+        return 0;                                       /* a note row: nothing to run */
+    r = &x->pk.r[it->ix];
+    if (it->seg[0] == PK_ACT_LAUNCH) {
+        if (pk_row_path(r->launch, path, (int)sizeof path))
+            return lf_open_index(r->name, path, ui);
+    } else if (pk_action_line(r, it->seg[0], line, (int)sizeof line)) {
+        snprintf(title, sizeof title, "%s %s", it->label, r->name);
+        if (lf_job_view(ui))
+            return ui->run_job(ui->ctx, line, title);
+        return run_in_uterm(line, ui);
+    }
+    if (ui && ui->refused)
+        ui->refused(ui->ctx, it->label, UPREQ_FAILED, "this package action is not available");
+    return UPREQ_FAILED;
+}
+
 int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 {
     char err[160];
