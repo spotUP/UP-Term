@@ -586,6 +586,9 @@ $(BUILD)/amiga/clistdin: tests/amiga/clistdin.c
 $(BUILD)/amiga/detach: tests/amiga/detach.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/detach.c
+$(BUILD)/amiga/deafvol: tests/amiga/deafvol.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/deafvol.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c
