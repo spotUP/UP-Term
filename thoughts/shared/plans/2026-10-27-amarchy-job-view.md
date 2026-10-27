@@ -55,8 +55,12 @@ roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase J (RJ.1-RJ.7)
   `@JOBRC 0` / `@JOBRC 5` / marker split across two chunks, marker never shown, follow-tail vs scrolled. Done 5e91f921, suite job 70 checks 0 failed.
 - [x] RJ.6b footer state machine in job_core (RUNNING to DONE/FAILED/CANCELLED, cancel after end ignored), upkg code
   table (0, 5, 11-15, 20, unknown), `[PROGRESS n/m]` capture, host tested. Done 5e91f921.
-- [ ] RJ.1 job_dos.c: jb_start/jb_sigmask/jb_poll/jb_cancel/jb_end, timer.device tick (pty_handler pattern), stack via
+- [x] RJ.1 job_dos.c: jb_start/jb_sigmask/jb_poll/jb_cancel/jb_end, timer.device tick (pty_handler pattern), stack via
   pl_stack, T: file removed at the end. `$RC` marker proven on the rig (or the fallback chosen with evidence).
+  Done fb3d6fae. The shell is vsh, which has `$?` (not `$RC`): the line is `vsh -c "<cmd>; echo @JOBRC $?"`, no hook needed.
+  Output file opened MODE_READWRITE (shared lock) so the reader can open it while the job writes. Rig 7, tools/probes/jobrun/jobprobe.c:
+  `Echo one` -> line [one], ended=1 state=DONE rc=0; `Search NOFILE x` -> [object not found], state=FAILED rc=20; no @JOBRC line shown.
+  jb_cancel (Ctrl-C to task name amarchy-job) built but not yet driven on the rig.
 - [ ] RJ.4 theme roles MT_OK and MT_FAIL: menu_theme.h, gthemes_core (GUI themes), text-menu roles, every theme file
   gets keys or a documented fallback; host test that each theme resolves both roles.
 - [ ] RJ.2 drawn view M_JOB in gui.c: header title, body, footer, scroll keys, jb_sigmask in every event_loop Wait.
