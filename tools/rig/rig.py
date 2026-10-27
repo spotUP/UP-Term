@@ -700,6 +700,8 @@ def setup():
         # audible output on every rig: "interrupts" is emulated with no output and
         # volume 0 muted it, so no rig made sound (owner, 2026-10-26)
         "uae_sound_output = exact", "volume = 100", "initial_input_grab = 0",
+        # floppy drive clicks and head steps off; Paula audio stays on (owner, 2026-10-27)
+        "floppy_drive_volume = 0", "floppy_drive_volume_empty = 0",
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
         # in UP-Term pastes on the Mac and back (off without it, 2026-10-12)
         "clipboard_sharing = 1",
