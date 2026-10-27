@@ -528,6 +528,42 @@ def walk_to(label, rows):
     return True
 
 
+# Amiga US keymap raw codes of the letters a Search text needs (the '-' key code was not accepted by the prompt on rig 3)
+RAW_KEYS = dict(zip('qwertyuiop', range(0x10, 0x1A)), **dict(zip('asdfghjkl', range(0x20, 0x29))), **dict(zip('zxcvbnm', range(0x31, 0x38))))
+
+
+def search_rows(name, tag):
+    """The Browse level shows a window of the list (12 rows on PAL) and AMARCHY_ROWS is only published on a full draw, so a
+    row beyond the window cannot be read by scrolling Down. Packages > Search shows the matches as a new level (a full
+    draw): menu open > Packages > Search, text typed, Return; the search node's rows (None on a failed step). A text
+    with no match shows the note "No packages here"."""
+    text = name[3:] if name.startswith('up-') else name
+    if open_pkg_search() is None:
+        return None
+    for ch in text:       # a package name is searched by what follows its "up-" prefix; a substring of the name matches
+        ami.key(RAW_KEYS[ch])
+        time.sleep(.3)
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    ami.key(RETURN)
+    time.sleep(3)
+    rows = rows_now()
+    print('%s: search "%s" rows: %s' % (tag, text, rows), flush=True)
+    return rows
+
+
+def pick_row(name, rows):
+    """The one row of rows that names the package (a name may prefix another: up-pi, up-picocom), the bar put on it with
+    Down from the first row, and its index; ([], -1) when there is none or more than one."""
+    hit = [r for r in rows if re.search(r'(^|\s)%s(\s|$)' % re.escape(name), r)]
+    return (hit, rows.index(hit[0])) if len(hit) == 1 else (hit, -1)
+
+
+def press_down_n(n):
+    for _ in range(n):
+        ami.key(DOWN)
+        time.sleep(.4)
+
+
 def walk_to_packages(root):
     """From the root level into the Packages group: a root row of that name, else Install > Packages (where the keymap
     puts the group now). False when neither exists."""
@@ -785,6 +821,7 @@ def case_pkg_install():
     names = feed_names(open(os.path.join(fd, 'Packages')).read())
     rel = local_feed(fd)
     pick = None
+    install_rc = None
     try:
         have = installed_names()
         print('pkg_install: installed before: %s' % sorted(have), flush=True)
@@ -795,14 +832,18 @@ def case_pkg_install():
         rows = refresh_to_browse(names, 'pkg_install')
         if rows is None:
             return
-        check(len(rows) == len(names), 'pkg_install: Browse has %d rows = the feed size (got %d)' % (len(names), len(rows)))
-        hit = [r for r in rows if pick in r]
-        if not check(len(hit) == 1, 'pkg_install: Browse has the row for %s (%s)' % (pick, hit)):
+        # the Browse level shows a window of the list (12 rows on PAL): the shown rows must be feed rows, never more than the feed
+        check(0 < len(rows) <= len(names) and all(any(n in r for n in names) for r in rows),
+              'pkg_install: Browse shows a window of the %d feed rows (shown %d)' % (len(names), len(rows)))
+        close_menu()
+        rows = search_rows(pick, 'pkg_install')     # the row may lie beyond the Browse window
+        if rows is None:
+            return
+        hit, at = pick_row(pick, rows)
+        if not check(at >= 0, 'pkg_install: Search has the row for %s (%s)' % (pick, hit)):
             return
         check('Installed' not in hit[0], 'pkg_install: the row does not read Installed before (%s)' % hit[0])
-        for _ in range(rows.index(hit[0])):
-            ami.key(DOWN)
-            time.sleep(.4)
+        press_down_n(at)
         c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE QUIET')
         ami.key(RETURN)
         time.sleep(2)
@@ -812,20 +853,18 @@ def case_pkg_install():
             return
         rc = job_done()
         check(rc == 0, 'pkg_install: Install job ends with rc 0 (rc %s)' % rc)
+        install_rc = rc
         c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
         ami.key(RETURN)                      # accept
         time.sleep(3)
         rows = rows_now()
-        hit = [r for r in rows if pick in r]
+        hit = pick_row(pick, rows)[0]
         check(len(hit) == 1 and 'Installed' in hit[0], 'pkg_install: the row now reads Installed (%s)' % hit)
         check(pick in installed_names(), 'pkg_install: upkg list-installed lists %s' % pick)
-        rows = rows_now()
-        hit = [r for r in rows if pick in r]
-        if not check(len(hit) == 1, 'pkg_install: the %s row is shown for Remove (%s)' % (pick, hit)):
+        hit, at = pick_row(pick, rows_now())      # the reload after a job puts the bar on the first row
+        if not check(at >= 0, 'pkg_install: the %s row is shown for Remove (%s)' % (pick, hit)):
             return
-        for _ in range(rows.index(hit[0])):  # the reload after a job puts the bar on the first row
-            ami.key(DOWN)
-            time.sleep(.4)
+        press_down_n(at)
         c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
         ami.key(RETURN)
         time.sleep(2)
@@ -844,7 +883,7 @@ def case_pkg_install():
         print('pkg_install: level after No: %s' % after, flush=True)
         check(any(pick in r for r in after) and len(after) > 1,
               'pkg_install: No goes back to the package row (the list shows %s; got %s)' % (pick, after))
-        hit = [r for r in after if pick in r]
+        hit = pick_row(pick, after)[0]
         if hit:
             if not check(walk_to(hit[0], after), 'pkg_install: the %s row is shown again after No (rows: %s)' % (pick, after)):
                 return
@@ -860,11 +899,15 @@ def case_pkg_install():
         c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
         ami.key(RETURN)
         time.sleep(3)
-        hit = [r for r in rows_now() if pick in r]
+        hit = pick_row(pick, rows_now())[0]
         check(len(hit) == 1 and 'Installed' not in hit[0], 'pkg_install: the row no longer reads Installed (%s)' % hit)
         check(pick not in installed_names(), 'pkg_install: upkg list-installed no longer lists %s' % pick)
         new = [t for t in all_titles() if t not in base_titles and any(k in t.lower() for k in CONSOLE_WORDS)]
         check(not new, 'pkg_install: no console or terminal window opened (new: %s)' % new)
+        if install_rc not in (None, 0):      # which postinst failed: the job output is not kept, so run the same install by hand
+            rc2, out2 = upkg_rig.upkg('pg8-rc-install', 'install %s' % pick, 600, conf=False)
+            print('pkg_install: job rc %s; by hand `upkg install %s` rc %s, output tail:\n%s' % (install_rc, pick, rc2, out2[-1500:]), flush=True)
+            upkg_rig.upkg('pg8-rc-remove', 'remove %s' % pick, 300, conf=False)
     finally:
         close_menu()
         if pick and pick in installed_names():
@@ -930,8 +973,8 @@ def case_pkg_tags():
         rows = refresh_to_browse(feed + [PKG_UHC], 'pkg_tags')
         if rows is None:
             return
-        bad = tag_problems(rows, feed, PKG_UHC)
-        check(not bad and len(rows) == len(feed) + 1, 'pkg_tags: %d feed rows read [upkg], %s reads [UHC] (rows %d; problems %s)' % (len(feed), PKG_UHC, len(rows), bad))
+        bad = tag_problems(rows, feed, PKG_UHC, windowed=True)   # as amarchy_menu_rig.py: the style shows a window of the list
+        check(not bad and 0 < len(rows) <= len(feed) + 1, 'pkg_tags: the shown %d of %d Browse rows carry [upkg] / [UHC] (problems %s)' % (len(rows), len(feed) + 1, bad))
     finally:
         close_menu()
         c.run('Delete >NIL: %s QUIET' % PKG_CONF)
@@ -953,13 +996,15 @@ def case_pkg_fail():
         rows = refresh_to_browse(names, 'pkg_fail')
         if rows is None:
             return
-        hit = [r for r in rows if PKG_FAIL in r]
-        if not check(len(hit) == 1, 'pkg_fail: Browse has the row for %s (%s)' % (PKG_FAIL, hit)):
+        close_menu()
+        rows = search_rows(PKG_FAIL, 'pkg_fail')     # the row lies beyond the Browse window
+        if rows is None:
+            return
+        hit, at = pick_row(PKG_FAIL, rows)
+        if not check(at >= 0, 'pkg_fail: Search has the row for %s (%s)' % (PKG_FAIL, hit)):
             return
         check('Installed' not in hit[0], 'pkg_fail: the row does not read Installed before (%s)' % hit[0])
-        for _ in range(rows.index(hit[0])):
-            ami.key(DOWN)
-            time.sleep(.4)
+        press_down_n(at)
         c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE ENV:AMARCHY_JOB_WORD QUIET')
         ami.key(RETURN)
         time.sleep(2)
@@ -1001,27 +1046,25 @@ def case_pkg_notfound():
         rows = refresh_to_browse(names, 'pkg_notfound')
         if rows is None:
             return
-        hit = [r for r in rows if PKG_GONE in r]
-        if not check(len(hit) == 1, 'pkg_notfound: Browse has the row for %s (%s)' % (PKG_GONE, hit)):
+        close_menu()
+        rows = search_rows(PKG_GONE, 'pkg_notfound')    # the row lies beyond the Browse window
+        if rows is None:
+            return
+        hit, at = pick_row(PKG_GONE, rows)
+        if not check(at >= 0, 'pkg_notfound: Search has the row for %s (%s)' % (PKG_GONE, hit)):
             return
         close_menu()
         rel.set(fd, packages=text)           # the feed no longer lists it
         rc = upkg_rig.upkg('pg8nf-update', 'update', 300, conf=False)[0]
         if not check(rc == 0, 'pkg_notfound: upkg update against the reduced feed rc 0 (rc %s)' % rc):
             return
-        rows = pkg_group('pkg_notfound')
-        if rows is None or not check(walk_to('Browse', rows), 'pkg_notfound: Browse row (rows: %s)' % rows):
+        rows = search_rows(PKG_GONE, 'pkg_notfound')
+        if rows is None:
             return
-        rows = rows_now()
-        if len(rows) == 1 and not any(n in rows[0] for n in names):
-            walk_to(rows[0], rows)
-            rows = rows_now()
-        hit = [r for r in rows if PKG_GONE in r]
-        if not check(len(hit) == 1, 'pkg_notfound: the menu cache still lists %s (rows: %s)' % (PKG_GONE, rows)):
+        hit, at = pick_row(PKG_GONE, rows)
+        if not check(at >= 0, 'pkg_notfound: the menu cache still lists %s (rows: %s)' % (PKG_GONE, rows)):
             return
-        for _ in range(rows.index(hit[0])):
-            ami.key(DOWN)
-            time.sleep(.4)
+        press_down_n(at)
         c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_JOB_DONE ENV:AMARCHY_JOB_WORD QUIET')
         ami.key(RETURN)
         time.sleep(2)
@@ -1036,18 +1079,20 @@ def case_pkg_notfound():
         ami.key(RETURN)                      # accept
         time.sleep(3)
         close_menu()
-        rows = pkg_group('pkg_notfound')       # reopen: read the row from a fresh Browse, an empty list is no proof
+        rows = pkg_group('pkg_notfound')       # reopen: read the Browse level from a fresh open, an empty list is no proof
         if rows is None or not check(walk_to('Browse', rows), 'pkg_notfound: Browse row after the job (rows: %s)' % rows):
             return
         rows = rows_now()
         if len(rows) == 1 and not any(n in rows[0] for n in names):
             walk_to(rows[0], rows)
             rows = rows_now()
-        hit = [r for r in rows if PKG_GONE in r]
         # the failed job marks the list stale (leaf: lf_job_done) and the reopen reloads it from upkg's reduced index: the
-        # row is gone, never Installed. The other feed rows prove the list was read, so the empty hit is not an empty read.
+        # row is gone, never Installed. The shown feed rows prove the list was read, a Search for the name proves the
+        # absence over the whole list (the Browse window shows 12 rows); its note "No packages here" is the empty answer.
         check(any(n in r for n in names if n != PKG_GONE for r in rows), 'pkg_notfound: the reopened Browse lists the feed (rows: %s)' % rows)
-        check(not hit, 'pkg_notfound: the reloaded list no longer has %s and no row reads Installed (%s)' % (PKG_GONE, hit))
+        close_menu()
+        got = search_rows(PKG_GONE, 'pkg_notfound')
+        check(got == ['No packages here'], 'pkg_notfound: the reloaded list no longer has %s (Search answers: %s)' % (PKG_GONE, got))
         check(PKG_GONE not in installed_names(), 'pkg_notfound: upkg list-installed does not list %s' % PKG_GONE)
         new = [t for t in all_titles() if t not in base_titles and any(k in t.lower() for k in CONSOLE_WORDS)]
         check(not new, 'pkg_notfound: no console or terminal window opened (new: %s)' % new)
