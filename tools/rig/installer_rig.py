@@ -97,6 +97,9 @@ ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page:
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs
 RAMIGA = 0x0080
+# INSTALLER_KEEP=1 with `ONLY fresh-all`: stop after the reboot check, leaving the fully ticked kit installed on the rig
+# (for timing work on a kit-installed machine); Uninstall and the fixture restore are skipped.
+KEEP_INSTALLED = bool(os.environ.get("INSTALLER_KEEP"))
 KEY_X, KEY_RETURN = 0x32, 0x44
 
 
@@ -985,6 +988,9 @@ def run_base_case(case):
     ck('kit:' in out, 'UPConsole STATUS prints the kit line (UP-Term:VERSIONS)', out)
     if case == 'fresh-all':
         reboot_amarchy_check(ck, log)
+        if KEEP_INSTALLED:
+            print('installer_rig fresh-all: INSTALLER_KEEP set, the kit stays installed (no Uninstall, no fixture restore)')
+            return not ck.failed, '; '.join(ck.failed) or 'all %d checks (kit kept)' % ck.total
     if case in ('update', 'update-noopts'):
         update_phase(ck, inst, level, base, t_install, noopts=case == 'update-noopts')
     # a running C:wasabid keeps running through Uninstall, the kit's or the
@@ -1289,7 +1295,8 @@ def main():
         try:
             return _main(fx, only, flags)
         finally:
-            fx.restore()   # a killed or failing run leaves nothing planted
+            if not KEEP_INSTALLED:
+                fx.restore()   # a killed or failing run leaves nothing planted
             ir.show_close()
 
 
