@@ -1,7 +1,7 @@
 ---
 date: 2026-10-27
 topic: Amarchy "Packages" submenu fed by `upkg --tsv`; Enter on an installed row with a launch path runs it
-status: approved scope (owner, 2026-10-27), in progress (6 of 8)
+status: approved scope (owner, 2026-10-27), in progress (7 of 8, P8 waits for up-uhc 1.4)
 ledger: thoughts/spot/todos.md row AMARCHY-LAUNCH-FIELD7
 research: thoughts/shared/research/2026-10-27-amarchy-packages-submenu.md
 ---
@@ -36,9 +36,11 @@ upkg browse Enter=Launch (plan 2026-10-26-upkg-browse-launch.md L4-L6) stays wit
   start_detached; `pkg:` branch in lf_open_index; lf_command_program host tested. e0acf363.
 - [x] P6 feat/uhc-repo f30fc35 pkgs/opkg/doc/upkg-tsv.txt: `upkg list-installed --tsv [glob]`, nine fields, field 7
   launch (installed ipk: its control Launch: line; UHC: full ExtBin path), no network request.
-- P7 rig 7 reachability: feat/uhc-repo upkg on the rig, hotkey, Packages, Enter on an installed package with
-  launch, sentinel proves the program ran, both styles. First run (both styles, sentinel PASS) showed the detached
-  start gives nano no window; re-run after the run_in_uterm change pending the new rig master (vtcon-05).
+- [x] P7 rig 7 reachability: feat/uhc-repo upkg on the rig, hotkey, Packages, Enter on an installed package with
+  launch, both styles. 2026-10-27 run 3 (rig 7, new master, up-nano really installed from the local P7 feed): text and
+  graphical PASS: Enter on up-nano opens a new "UP-Term" window, UP-Term:bin/vsh and UP-Term:bin/nano both stack
+  262144, nano alive at 10 s (text: 20 s), Ctrl-X closes it. Deployed amarchy-index 172e0db4, menu e43ab89e,
+  gui 42549511, Amarchy 31138cd1, dist/keymap 5ec0ebeb.
 - P8 A1200: after up-uhc 1.4 lands (vtcon-05 asked to leave UHC state alone until then).
 
 ## Results
@@ -52,3 +54,5 @@ upkg browse Enter=Launch (plan 2026-10-26-upkg-browse-launch.md L4-L6) stays wit
   UP-Term window of their own; a UHC GUI program gets an extra terminal window, accepted.
 - run_in_uterm gave vsh NP_StackSize 65536, below its 262144 cookie (rule 6). Fixed in the same change: the stack
   is pl_stack(vsh, 65536).
+- Rig gap found in P7: `rig.py start` puts keymap 0c1bed82 (the kit's) into ENVARC:/ENV:up-term/keymap, not
+  dist/keymap, so a rig test of a new keymap row must re-put dist/keymap after every start (ledger RIG-KEYMAP-STAGE).
