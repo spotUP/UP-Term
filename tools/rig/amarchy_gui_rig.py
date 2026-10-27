@@ -549,7 +549,11 @@ def setup():
     time.sleep(2)
     for n in SETUP_NAMES:
         ami.put(os.path.join(REPO, 'build/amiga', n), '%s/%s' % (SETUP_BIN, n))
-    c.run('Assign UP-Term: VTCX:Apps ADD', 20)        # always with a target: Assign UP-Term: alone deletes it
+    # VTCX:Apps first so the fresh build shadows the kit's copies in UP-Term:bin;
+    # the kit goes after it so upkg and the rest of the kit still resolve.
+    # Always with a target: Assign UP-Term: alone deletes the assign.
+    c.run('Assign UP-Term: VTCX:Apps', 20)
+    c.run('Assign UP-Term: Rushhours:Tools/UP-Term ADD', 20)
     for n in SETUP_NAMES:                             # md5sum is on the rig once UP-Term:bin resolves; absent: unverified
         with open(os.path.join(REPO, 'build/amiga', n), 'rb') as fh:
             want = hashlib.md5(fh.read()).hexdigest()
