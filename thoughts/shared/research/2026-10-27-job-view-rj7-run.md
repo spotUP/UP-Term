@@ -148,3 +148,48 @@ task it picks (vsh forwards to upkg, upkg to curl).
 Also in scope, no defect of its own: T:amarchy-job.* stays while the view is open because the view's reader keeps it until jb_end
 (close); JOB_DONE is empty during the wait because the job really still runs (the children ignore the break). Both follow from 1+2.
 No Amarchy edit, no regression test: a test in tests/test_job.c would pin no Amarchy behaviour that is wrong.
+
+## Part 5 (drawn style rerun, rig 7, HEAD 8ab1ed79)
+
+Build md5s, deployed by rig.py install and read back from VTC:Apps/bin (equal to build/amiga): Amarchy ea68492cb80207f7f5fa7c61b06a438c,
+amarchy-gui 63526aa017a50bfb907a1f6ce06c19d0, amarchy-menu 66da7457de424907afa4b787d809917e. Start [WARN]: 11 files in VTC: differed from the
+build (Apps/bin/Amarchy, Claude, UPTerm, amarchy-gui, amarchy-menu, engbench, pty-handler, up-console.device, upprefs, vtcon-handler, keymap);
+rig.py install fixed that. Setup: menu-style and menu-in-terminal = graphical in ENV:Amarchy/prefs, menu-in-terminal = graphical in ENV:up-term/up-term.
+Feeds local only: good feed = python http.server on build/ipk (port 53985), slow feed = tools/probes/jobrun/slow_feed.py (53986).
+Sentinels are AMARCHY_JOB_LINES / AMARCHY_JOB_DONE (not JOB_*). The shell path is C: only; no manual Path ADD anywhere.
+Rig layout: `Assign UP-Term:` listed only Rushhours:Tools/UP-Term (the kit, with bin/upkg 926016 bytes, older Amarchy binaries running at boot).
+To run HEAD I quit the kit Amarchy, set UP-Term: = VTC:Apps + kit (ADD) and started VTC:Apps/bin/Amarchy. UP-Term:bin/upkg exists (kit part).
+
+- P1 path proof: PASS. Packages > Refresh (Update lists), drawn: body "[PROGRESS 1/1] update upterm / Downloading http://127.0.0.1:53985/Pa... /
+  Updated source 'upterm'.", AMARCHY_JOB_DONE 1 (rc 0), not 128. Note JOB_LINES read 1 although 4 body lines are drawn (counts at job end;
+  Part 2 saw 3 for a text run; unverified what it counts). rj7c-drawn-refresh-running.png, rj7c-drawn-refresh-end.png.
+- B1 drawn Done: FAIL on the spec text. Footer shows only "Done" at the left, no "Escape" hint (and no Enter hint): hints are gone, no
+  overlap. Part 2 had "Enter: Accept  Escape: Back  Done". Pixel crop of the footer row held only the word "Done".
+- B2 drawn failure: PASS for overlap. Footer "Network error" (orange), AMARCHY_JOB_DONE 14, JOB_LINES 6, body "error: opkg_download_backend: Failed ...".
+  All hints dropped, as in B1. rj7c-drawn-failed.png.
+- B3 drawn cancel: PASS for the footer, FAIL for children not measured exactly. Footer "Cancelled" (orange), no overlap, hints dropped.
+  Esc at 7 s of the 30 s slow feed. Before Esc: UP-Term:bin/vsh, upkg, curl alive. My poll (every 1 s, 45 s window) never saw an empty
+  list because it also matched the terminal's own VTC:vsh; at the end only VTC:vsh remained, so the children were gone inside 45 s, the
+  second was not recorded. JOB_DONE was empty 1 s after Esc, 0 at the end of the poll. rj7c-drawn-cancelled.png.
+- G1 Packages group (drawn): PASS. AMARCHY_ROWS root: Apps|Dopus|Settings|Style|Window|Screens|Learn|System|Install|Packages|Trigger|Demos|Music;
+  Packages = Browse|Search|Installed|Upgrades|Refresh. Search opens the prompt "Search packages (text):" (typed "zzqq" shows as zzqq_).
+  Enter with no match: the menu closes and nothing is shown (no "no packages" message, no empty list), AMARCHY_ROWS stays at the Packages level
+  values. rj7c-drawn-packages-group.png, rj7c-drawn-search-typed.png, rj7c-drawn-search-nomatch.png.
+- Not run: Install > Update lists (the same job is reached as Packages > Refresh).
+
+### Restore
+UP-Term:etc/upkg.conf ac11b5a5ca3404e798cb4c938c8fe852, ENV:Amarchy/prefs c7d44aeee893f340ddcb08b93a3177da, ENV:up-term/up-term
+fbb384279d519334b50046b621d3535e restored by write-back and md5 read back equal to the backups. ENVARC never written. T: had no amarchy-job files.
+Good and slow feed servers killed, rig 7 stopped (fs-uae for rig 7 gone; rigs 2 and 8 are others').
+
+### Review of Part 5 (vtcon-a1, 2026-10-27)
+
+- B1 is not a FAIL. The job-view plan (thoughts/shared/plans/2026-10-27-amarchy-job-view.md, line 35) gives the drawn
+  footer as the status word only: "Running...", "Done", "Failed (code n)". `jc_footer` (amarchy/job_core.c) has
+  returned only that word since it was written. The "Escape: Back" hints come from libupkgui's text chrome
+  (`ch_footer_layout`); no vtcon source has that string, so the Part 2 overlap ("Escape:NBackrk error") was the text
+  style. Whether the drawn footer should also carry key hints is an open product question, not a defect.
+- G1 Search "zzqq" closing the menu is a real defect in every Search, not only no-match: `gui_ask_value` ran a nested
+  event loop whose Return/Escape set `stop` and left `mode = M_INPUT`, so the outer loop ended too. Ledger row
+  GUI-SEARCH-CLOSES; fix in amarchy/gui.c (restore mode, head, top; clear stop), regression case
+  `tools/rig/amarchy_gui_rig.py --pkg-search`.

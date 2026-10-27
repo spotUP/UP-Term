@@ -17,6 +17,7 @@ Proves, on the rig:
   * icons are drawn (G3): the pixels of the first row's icon cell, grabbed from the screen, differ from the
     row's background, in both the selected and the unselected row
   * Esc steps one level back, then closes the window and amarchy-gui exits
+  * Packages > Search keeps the menu open after Return and after Escape at the prompt (--pkg-search runs only this)
   * AMB3: with a second PUBLIC screen in front the menu and the leaf it opens (Apps, UP-Term) appear on it, and
     the menu is sized for that screen's font; with a screen that is NOT public in front they fall back to Workbench
 Self-checking. Rig up (rig.py start --max, UPTERM_RIG=<n>), handler installed. Default keymap and menu style
@@ -49,7 +50,7 @@ def check(ok, what):
 def build_geom():
     out = os.path.join(tempfile.mkdtemp(prefix='amarchy_geom'), 'geom')
     src = ['tools/rig/amarchy_geom.c', 'amarchy/menu_geom.c', 'amarchy/menu_core.c', 'amarchy/menu_tree.c',
-           'amarchy/menu_icon.c', 'config/keymap.c', 'config/upconf_rows.c', 'render/emoji.c']
+           'amarchy/menu_icon.c', 'config/keymap.c', 'config/upconf_rows.c', 'render/emoji.c', 'prefs/settings_def.c', 'prefs/prefs_core.c', 'config/upconf.c', 'handler/kcmode.c', 'handler/slash.c', 'amarchy/amconf_keys.c']
     r = subprocess.run(['cc', '-std=c99', '-I', 'build/amiga', '-o', out] + src, cwd=REPO, capture_output=True, text=True)
     if r.returncode:
         raise SystemExit('amarchy_geom did not build:\n' + r.stderr[-600:])
@@ -467,6 +468,75 @@ def case_run_addons():
           'run_addons: an upkg browse window exists')
 
 
+def rows_now(tries=40):
+    """The labels of the shown level, from ENV:AMARCHY_ROWS (gui.c sentinel_rows, published on every full draw)."""
+    for _ in range(tries):
+        rc, out = c.run('GetEnv AMARCHY_ROWS')
+        if rc == 0 and out.strip():
+            return out.strip().split('|')
+        time.sleep(.25)
+    return []
+
+
+def walk_to(label, rows):
+    """Down to the first row starting with label and Return on it; False when the level has no such row."""
+    idx = [i for i, r in enumerate(rows) if r.startswith(label)]
+    if not idx:
+        return False
+    for _ in range(idx[0]):
+        ami.key(DOWN)
+        time.sleep(.4)
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    ami.key(RETURN)
+    time.sleep(2)
+    return True
+
+
+def open_pkg_search():
+    """Open the menu, walk root > Packages > Search; returns the Packages level's rows, or None when a step failed."""
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    s, w = open_menu()
+    if not check(bool(w), 'pkg_search: menu opens'):
+        return None
+    root = rows_now()
+    if not check(walk_to('Packages', root), 'pkg_search: the root has a Packages row (rows: %s)' % root):
+        return None
+    pkgs = rows_now()
+    if not check(walk_to('Search', pkgs), 'pkg_search: the Packages level has a Search row (rows: %s)' % pkgs):
+        return None
+    return pkgs
+
+
+def case_pkg_search():
+    """Packages > Search keeps the menu open (gui_ask_value restores the list mode and clears stop). The prompt's
+    own Return or Escape set stop and left the menu in input mode, so the outer loop ended and the window closed
+    with no result shown. Return on a text with no match: the window stays and the level is the search node, whose
+    only row is the note "No packages here". Escape at the prompt: the window stays on the Packages level."""
+    if open_pkg_search() is not None:
+        for k in (0x31, 0x31, 0x10, 0x10):   # zzqq: no package matches
+            ami.key(k)
+            time.sleep(.3)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(RETURN)
+        time.sleep(3)
+        check(bool(where(TITLE)[1]), 'pkg_search: Return on "zzqq" keeps the window')
+        got = rows_now()
+        # index_core.c pkg_rows_out: "No packages here" with a loaded list, the other note on a rig with no feed;
+        # either one means the search node is shown, which is what this case proves
+        check(got in (['No packages here'], ['No packages listed (is upkg installed?)']),
+              'pkg_search: the search node shows its no-match note (rows: %s)' % got)
+    close_menu()
+    pkgs = open_pkg_search()
+    if pkgs is not None:
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(ESC)                          # Escape at the prompt
+        time.sleep(3)
+        check(bool(where(TITLE)[1]), 'pkg_search: Escape at the Search prompt keeps the window')
+        got = rows_now()
+        check(got == pkgs, 'pkg_search: Escape at the prompt shows the Packages level again (rows: %s)' % got)
+    close_menu()
+
+
 def main():
     stage_rig.report(stage_rig.stage_build(NAMES, build='--no-build' not in sys.argv))
     geom = build_geom()
@@ -476,6 +546,8 @@ def main():
     try:
         if '--groups' in sys.argv:      # on an OS 3.2 rig (the WORKBENCH port exists): only the group icons
             case_groups(geom)
+        elif '--pkg-search' in sys.argv:  # only Packages > Search (needs upkg on the rig)
+            case_pkg_search()
         else:
             case_default(geom)
             case_screen(geom, True)
@@ -483,6 +555,7 @@ def main():
             case_run_tmux()
             case_run_editor()
             case_run_addons()
+            case_pkg_search()
     finally:
         c.run('Assign FONTS: VTC:%s REMOVE' % FONT_DRAWER)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS')

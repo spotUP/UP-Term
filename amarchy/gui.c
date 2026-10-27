@@ -1259,13 +1259,20 @@ static void lines_wrap(gui *g, const char *s, int tw, int max)
 
 /* ---- leaf callbacks ---------------------------------------------------------------------------------- */
 
-/* A value for an action that needs one: the header shows the prompt, the first row is the edit line. */
+/* A value for an action that needs one: the header shows the prompt, the first row is the edit line. The prompt is
+ * a nested event loop: on return the window is back in the mode, header and scroll it had, with stop cleared, so a
+ * caller that stays in the menu (Packages > Search, a setting edit) keeps its loop running. The edit loop's Enter or
+ * Escape set stop, and left it set the outer loop ended too and the menu closed. */
 static int gui_ask_value(void *ctx, const char *label, const char *usage, char *out, int n)
 {
     gui *g = (gui *)ctx;
-    int ok;
+    int ok, mode0, top0;
+    const char *head0;
     if (g->quit)
         return 0;
+    mode0 = g->mode;
+    head0 = g->head;
+    top0 = g->top;
     strcpy(prompt_text, label);
     strcat(prompt_text, " (");
     strncat(prompt_text, usage, UPREQ_ANSWER);
@@ -1284,6 +1291,12 @@ static int gui_ask_value(void *ctx, const char *label, const char *usage, char *
         memcpy(out, g->edit, (size_t)l);
         out[l] = 0;
     }
+    g->mode = mode0;
+    g->head = head0;
+    g->top = top0;
+    g->edone = g->stop = 0;
+    if (!g->quit && g->mode == M_LIST)
+        relayout(g, g->count);
     return ok;
 }
 
