@@ -739,9 +739,9 @@ $(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/taskalive.h amarchy/men
 	$(UPTERM_ROOT)/upterm-ports/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
 
 # jobprobe: RJ.1 proof of amarchy/job_dos.c on the rig (tools/probes/jobrun/jobprobe.c)
-$(BUILD)/amiga/jobprobe: tools/probes/jobrun/jobprobe.c amarchy/job_core.c amarchy/job_dos.c amarchy/leaf_core.c amarchy/proclaunch.c $(AMARCHY_LEAF_DEPS) amarchy/job_core.h amarchy/job_dos.h amarchy/proclaunch.h
+$(BUILD)/amiga/jobprobe: tools/probes/jobrun/jobprobe.c amarchy/taskalive.c amarchy/job_core.c amarchy/job_dos.c amarchy/leaf_core.c amarchy/proclaunch.c $(AMARCHY_LEAF_DEPS) amarchy/job_core.h amarchy/job_dos.h amarchy/proclaunch.h amarchy/taskalive.h
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tools/probes/jobrun/jobprobe.c amarchy/job_core.c amarchy/job_dos.c amarchy/leaf_core.c amarchy/proclaunch.c $(AMARCHY_LEAF_DEPS)
+	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ tools/probes/jobrun/jobprobe.c amarchy/taskalive.c amarchy/job_core.c amarchy/job_dos.c amarchy/leaf_core.c amarchy/proclaunch.c $(AMARCHY_LEAF_DEPS)
 
 # amarchy-gui: the drawn menu and key viewer (plan 2026-10-23-amarchy-drawn-menu.md, G5). A plain vbcc
 # Intuition program, no ixemul, same command line as amarchy-menu.

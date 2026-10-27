@@ -29,6 +29,11 @@ void jc_feed(jc *j, const char *buf, long n);
 /* Stop at the user's request: running becomes cancelled, later calls and the end marker do not change it. */
 void jc_cancel(jc *j);
 
+/* The process of the job is gone. When no end marker was seen (a Ctrl-C can stop the rest of the vsh line, so
+ * `echo @JOBRC $?` never ran) the job ends: ended is set, rc is -1 (unknown code) and a running job becomes
+ * failed; a cancelled one stays cancelled. After the marker it changes nothing. Feed all remaining output first. */
+void jc_gone(jc *j);
+
 /* Lines held now (at most JOB_MAX_LINES), line 0 is the oldest still held. */
 int jc_count(const jc *j);
 const char *jc_line(const jc *j, int i);

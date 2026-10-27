@@ -50,3 +50,38 @@ int task_alive(struct Task *t, const char *tname)
     Permit();
     return ok;
 }
+
+/* 1 when process t writes to out (checked on its pr_COS and on its CLI's standard output). */
+static int writes_to(struct Task *t, BPTR out)
+{
+    struct Process *pr = (struct Process *)t;
+    struct CommandLineInterface *cli;
+    if (t->tc_Node.ln_Type != NT_PROCESS)
+        return 0;
+    if (pr->pr_COS == out)
+        return 1;
+    if (!pr->pr_CLI)
+        return 0;
+    cli = (struct CommandLineInterface *)((ULONG)pr->pr_CLI << 2);
+    return cli->cli_StandardOutput == out;
+}
+
+/* Walks the run, ready and wait lists under Forbid, as task_alive does. */
+struct Task *task_find_by_output(BPTR out)
+{
+    struct Node *n;
+    struct Task *found = 0;
+    if (!out)
+        return 0;
+    Forbid();
+    if (writes_to((struct Task *)SysBase->ThisTask, out))
+        found = (struct Task *)SysBase->ThisTask;
+    for (n = SysBase->TaskReady.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
+        if (writes_to((struct Task *)n, out))
+            found = (struct Task *)n;
+    for (n = SysBase->TaskWait.lh_Head; !found && n->ln_Succ; n = n->ln_Succ)
+        if (writes_to((struct Task *)n, out))
+            found = (struct Task *)n;
+    Permit();
+    return found;
+}

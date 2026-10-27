@@ -145,6 +145,12 @@ void jc_cancel(jc *j)
     if (j->state == JC_RUNNING && !j->ended) j->state = JC_CANCELLED;
 }
 
+void jc_gone(jc *j)
+{
+    if (j->ended) return;
+    set_rc(j, -1);
+}
+
 int jc_count(const jc *j) { return j->total > JOB_MAX_LINES ? JOB_MAX_LINES : (int)j->total; }
 long jc_dropped(const jc *j) { return j->total > JOB_MAX_LINES ? j->total - JOB_MAX_LINES : 0; }
 

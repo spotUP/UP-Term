@@ -159,6 +159,28 @@ static void test_job_footer(void)
     CHECK_INT(J.state, JC_FAILED);
 }
 
+static void test_job_gone(void)
+{
+    jc_init(&J); feed("working\n");
+    jc_gone(&J);                            /* process gone, no marker: the job ends as failed */
+    CHECK(J.ended);
+    CHECK_INT(J.state, JC_FAILED);
+    CHECK_INT(J.rc, -1);
+    jc_init(&J); feed("working\n");
+    jc_cancel(&J);
+    jc_gone(&J);                            /* cancel then gone: cancelled, and ended */
+    CHECK(J.ended);
+    CHECK_INT(J.state, JC_CANCELLED);
+    CHECK_STR(foot(), "Cancelled");
+    jc_init(&J); feed("@JOBRC 0\n");
+    jc_gone(&J);                            /* gone after the marker changes nothing */
+    CHECK_INT(J.state, JC_DONE);
+    CHECK_INT(J.rc, 0);
+    jc_init(&J); feed("@JOBRC 7\n");
+    jc_gone(&J);
+    CHECK_INT(J.rc, 7);
+}
+
 static void test_job_progress(void)
 {
     char h[JOB_FOOT_MAX * 2];
@@ -255,6 +277,7 @@ void suite_job(void)
     test_job_marker();
     test_job_marker_after_text();
     test_job_footer();
+    test_job_gone();
     test_job_progress();
     test_job_scroll();
     test_job_first_new();
