@@ -41,22 +41,31 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
+  rig.py start --debugger   FS-UAE's console debugger (console_debugger = 1) on a FIFO: stdout/stderr in
+                  build/rig<N>/debugger.log, input from build/rig<N>/debugger.in
+  rig.py dbg "<line>"   one debugger line to that FIFO, e.g. "w 0 <addr> 4 W" (memwatch on writes), "g"
+  rig.py dbgbreak   SIGUSR1 to this rig's fs-uae: enter the console debugger (needs a debug build, UPTERM_FSUAE=<binary>)
   rig.py wasabi on|off|snoop|debug|guru|ps   call trace, debug output, Guru, tasks (tools/rig/wasabi.py)
 
 Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import fcntl, json, os, pathlib, re, shutil, subprocess, sys, tempfile, time
+import fcntl, hashlib, json, os, pathlib, re, shutil, signal, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import a1200_drift
 import paths
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import libguard
+import kitset
 import user_startup
 import wasabi as rigwasabi
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 RIG = paths.RIG      # build/rig, or build/rig2 with UPTERM_RIG=2
 CFG = RIG / "vtcon-rig.fs-uae"
+DBG_IN = RIG / "debugger.in"
+DBG_LOG = RIG / "debugger.log"
 # the last start's arguments (the machine: --a1200, --060, --kick ...). A reboot from another command
 # (`rig.py aga`/`aga256`/`rtg`) boots with them, so the rig comes back as the same machine: the config is
 # rewritten from the arguments on every start, and `rig.py aga` alone once turned an --a1200 rig into the
@@ -169,46 +178,6 @@ BARE_SHELL_PATH = "Path >NIL: VTC:gg/bin ADD"
 # copy the system already holds, and the C: commands the kit installs even where no kit put
 # one (W-R4: plain `UPDemo` must run the build on every rig), after keeping the
 # kit's own once in VTC:kit-orig. `kit-restore` makes the boot put those back.
-# (VTC: name, SYS: place, backup name)
-KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
-               ("pty-handler", "L:pty-handler", "L-pty-handler"),
-               ("ixpipe-handler", "L:ixpipe-handler", "L-ixpipe-handler"),
-               ("vsh", "C:vsh", "C-vsh"),
-               ("vsh", "UP-Term:bin/vsh", "UP-Term-bin-vsh"),
-               ("UPConsole", "C:UPConsole", "C-UPConsole"),
-               ("UPDemo", "C:UPDemo", "C-UPDemo"),
-               ("upgetty", "C:upgetty", "C-upgetty"),
-               ("ixkill", "C:ixkill", "C-ixkill"),
-               ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device"),
-               # the preferences editor: the kit's file keeps the space (install.dos), which
-               # the handler's menu runs as C:UP-Term-Prefs (launcher)
-               ("upprefs", "C:UP-Term-Prefs", "C-UP-Term-Prefs"),
-               # upkg is built by upterm-ports (make opkg, also from a worktree of it), not by this repo: the
-               # rig ran the kit's older upkg, without `list --tsv` one row per package (patch 0054)
-               ("upkg", "UP-Term:bin/upkg", "UP-Term-bin-upkg"),
-               # the four Amarchy programs dist/install.dos copies into UP-Term:bin (its `Copy Amarchy
-               # amarchy-menu amarchy-gui amarchy-index`). Without rows the kit's copies stayed stale
-               # and the boot's User-Startup Run line started them (RIG-KIT-SHADOWS, 2026-10-28)
-               ("Amarchy", "UP-Term:bin/Amarchy", "UP-Term-bin-Amarchy"),
-               ("amarchy-menu", "UP-Term:bin/amarchy-menu", "UP-Term-bin-amarchy-menu"),
-               ("amarchy-gui", "UP-Term:bin/amarchy-gui", "UP-Term-bin-amarchy-gui"),
-               ("amarchy-index", "UP-Term:bin/amarchy-index", "UP-Term-bin-amarchy-index"),
-               # the shipped keymap (dist/, not build/amiga): the master's kit wrote its own, so a new
-               # keymap row was missing on every rig start (vtcon-a1 P7, 2026-10-27). The user's rows
-               # live in keymap.user, which is not touched. Spelled by path, never ENVARC:/ENV:: go is Run
-               # before DH0:S/Startup-Sequence assigns them, and a test of an unassigned name opens a
-               # System Request that hangs the boot (rig 8, 2026-10-27). RAM:Env too: go runs beside
-               # the Startup-Sequence's copy of ENVARC: to RAM:Env, which may already have happened.
-               ("keymap", "SYS:Prefs/Env-Archive/up-term/keymap", "ENVARC-up-term-keymap"),
-               ("keymap", "RAM:Env/up-term/keymap", "ENV-up-term-keymap")]
-
-PORTS_BUILT = {"upkg"}
-
-# What the dist ships in UP-Term:bin (the Unix userland the kit installs) is what a rig's UP-Term:bin
-# runs: one row per file of build/dist/up-term/Files/userland/bin, staged in VTC:kit-userland/ by
-# install. Before this only the build/amiga programs were shadowed, so a rebuilt curl never reached
-# a rig and the old one, which opens usergroup.library, ran (rig 9, AMITCP-GONE rerun, 2026-10-27).
-# Rows act only where the kit holds the file (kit_guard). "[" is left out: AmigaDOS patterns.
 USERLAND_SRC = ROOT / "build/dist/up-term/Files/userland/bin"
 USERLAND_STAGE = "kit-userland"
 
@@ -220,17 +189,23 @@ def userland_names():
                   if f.is_file() and re.fullmatch(r"[A-Za-z0-9._+-]+", f.name))
 
 
-KIT_SHADOWS += [("%s/%s" % (USERLAND_STAGE, n), "UP-Term:bin/" + n, "UP-Term-bin-" + n)
-                for n in userland_names() if "UP-Term:bin/" + n not in {x[1] for x in KIT_SHADOWS}]
+def kit_entries(nofpu=False, m060=False):
+    """kitset.derive for this tree and CPU: every file the kit installs, from install.dos, the userland and the staged
+    libraries (the CPU only picks the staged ixemul and AmiSSL builds; the boot's shadow rows do not depend on it)."""
+    return kitset.derive(ROOT, USERLAND_SRC, USERLAND_STAGE, paths.VENDOR,
+                         paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB, paths.IXNET_LIB, m060,
+                         libguard.require_clean_ixnet)
 
+
+# (VTC: name, SYS: place, backup name), one row per derived file the boot shadows (kitset): nothing hand-listed,
+# so a file install.dos gains (C:Reboot, C:UPTerm, C:uptelnet, UP-Term:bin/hl mdv ps rz sz top sh) is shadowed at once.
+# The keymap rows are spelled by path, never ENVARC:/ENV: (kitset.SPELL).
+KIT_SHADOWS = [(e.vtc, e.dest, e.bak) for e in kit_entries() if e.shadow]
 
 def kit_shadow_src(name):
     """The host file the VTC: copy of a KIT_SHADOWS name comes from: dist/ for the files the kit
     copies from dist/ (a1200_drift.DIST_SOURCES), build/amiga for the programs, the dist userland for the
-    kit-userland/ rows, the ports checkout ($UPTERM_PORTS, else UPTERM_ROOT/upterm-ports) for the ones it builds
-    (PORTS_BUILT)."""
-    if name in PORTS_BUILT:
-        return pathlib.Path(os.environ.get("UPTERM_PORTS") or paths.repo("upterm-ports")) / "build/sysroot/UP-Term/bin" / name
+    kit-userland/ rows (upkg among them: the dist userland is the ports build the kit packs)."""
     if name.startswith(USERLAND_STAGE + "/"):
         return USERLAND_SRC / name.split("/", 1)[1]
     return (ROOT / "dist" if name in a1200_drift.DIST_SOURCES else build_amiga()) / name
@@ -409,6 +384,7 @@ M060 = "--060" in sys.argv or MAX
 # become the 68LC060 (FS-UAE's cpu key; the LC has no FPU and no MMU), the 020 machine drops its fpu key.
 NOFPU = "--nofpu" in sys.argv
 MMU = "--mmu" in sys.argv and M060 and not NOFPU
+DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
 
 
@@ -538,6 +514,44 @@ def sys_hdf_cpu_lib(image):
         if name in names:
             subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
         subprocess.run([xdf, str(image), "write", str(lib), "Libs/" + name], check=True, capture_output=True)
+
+def sys_hdf_kit(image):
+    """Every file the kit installs on the system disk equals what the current build would install (RIG-KIT-DERIVE;
+    supersedes sys_hdf_ixnet, RIG-SYSHDF-EARLY). The master image holds older copies of files that load before
+    BOOTX:go (ixnet.library 7a43f99c opened AmiTCP:libs: an 'insert AmiTCP:' requester on every rig; ixemul.library,
+    up-console.device, C:vsh differ; ixnet refuses an ixemul of another revision), and install.dos files it lacks.
+    kit_entries() is the set, derived (kitset.py); the clone gets each entry that has a place on the system disk, every
+    file is read back and compared by md5, and the start is refused on any mismatch or when a source fails its check
+    (ixnet: tools/libguard.py). The master image is never touched. UP-Term:bin and the spelled keymap places are not
+    on the system disk: the boot shadows them from VTC: (KIT_SHADOWS, refresh_kit_shadows)."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    def run(*a, check=True):
+        return subprocess.run([xdf, str(image), *a], check=check, capture_output=True, text=True)
+    for e in kit_entries(NOFPU, M060):
+        if not e.clone:
+            continue
+        paths.require_input(e.src, "UPTERM_ROOT", e.src.name)
+        if e.check:
+            e.check(e.src)
+        parts = e.clone.split("/")
+        for i in range(1, len(parts)):
+            d = "/".join(parts[:i])
+            if run("list", d, check=False).returncode != 0:
+                run("makedir", d)
+        parent, leaf = e.clone.rsplit("/", 1)
+        if leaf in {l.split()[0] for l in run("list", parent).stdout.splitlines() if l.split()}:
+            run("delete", e.clone)
+        run("write", str(e.src), e.clone)
+        back = RIG / "kit-check.tmp"
+        back.unlink(missing_ok=True)
+        run("read", e.clone, str(back))
+        try:
+            if e.check:
+                e.check(back)
+            if hashlib.md5(back.read_bytes()).hexdigest() != hashlib.md5(e.src.read_bytes()).hexdigest():
+                sys.exit("rig: the clone's %s differs from %s after the write (RIG-KIT-DERIVE)" % (e.clone, e.src))
+        finally:
+            back.unlink(missing_ok=True)
 
 def strip_user_startup_blocks(image, name):
     """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""
@@ -803,9 +817,45 @@ def setup():
         "scale = integer",
         # the serial port into a file: kprintf traces (ixemul's DEBUG_VERSION)
         "serial_port = %s" % SERIAL,
-        "screenshots_output_dir = %s" % (RIG / "shots"), ""]))
+        "screenshots_output_dir = %s" % (RIG / "shots"),
+        ] + debugger_lines() + [""]))
     if "start" not in sys.argv:
         print("rig ready:", CFG)
+
+def debugger_lines():
+    """--debugger: the UAE console debugger reads the FIFO DBG_IN and writes DBG_LOG (see launch_fsuae)."""
+    # use_debugger: the debugger prompt comes up at boot, before the Amiga runs; set breaks there and `g`. The
+    # F12+D hot key cannot be sent to the SDL window as a synthetic key (tried, no effect).
+    return ["console_debugger = 1", "uae_use_debugger = 1"] if DEBUGGER else []
+
+def dbg():
+    """rig.py dbg "<line>": one line into the running debugger's FIFO."""
+    if not DBG_IN.exists():
+        sys.exit("rig: no debugger FIFO %s (start with --debugger)" % DBG_IN)
+    fd = os.open(str(DBG_IN), os.O_RDWR | os.O_NONBLOCK)
+    try:
+        os.write(fd, (" ".join(sys.argv[2:]) + "\n").encode())
+    finally:
+        os.close(fd)
+
+def dbgbreak():
+    """rig.py dbgbreak: SIGUSR1 into this rig's FS-UAE. A build with debuggable() = 1 and a SIGUSR1 handler that
+    calls activate_debugger() (Emulators/fs-uae-debug, UPTERM_FSUAE) drops into the console debugger on the FIFO."""
+    pids = [int(l.split()[0]) for l in mine()]
+    if not pids:
+        sys.exit("rig: no FS-UAE running for %s" % CFG)
+    for pid in pids:
+        os.kill(pid, signal.SIGUSR1)
+    print("rig: SIGUSR1 sent to %s" % pids)
+
+def fsuae_stdio():
+    """stdin, stdout, stderr for the FS-UAE process: the debugger FIFO and log with --debugger, else null."""
+    if not DEBUGGER:
+        return subprocess.DEVNULL, subprocess.DEVNULL, subprocess.DEVNULL
+    if not DBG_IN.exists():
+        os.mkfifo(str(DBG_IN))
+    # read-write so the FIFO never reaches end of file between two dbg lines
+    return os.open(str(DBG_IN), os.O_RDWR), open(DBG_LOG, "wb"), subprocess.STDOUT
 
 def setup_config_only():
     """Rewrite just the config, so --rw on or off takes effect."""
@@ -895,13 +945,6 @@ def stage_amissl(vtc, m060):
     if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
         shutil.copyfile(src, dst)
 
-def ixnet_problems(path):
-    """Why an ixnet.library must not reach a rig. Before ixemul-vtcon PR 5 ixnet opened
-    "AmiTCP:libs/usergroup.library" at every open; the rig image has no AmiTCP: assign since 14d1c108, so
-    every ixemul program stopped on ramlib's "Please insert volume AmiTCP:" requester (2026-10-27, all rigs)."""
-    return ["opens AmiTCP:libs/usergroup.library"] if b"AmiTCP:libs" in pathlib.Path(path).read_bytes() else []
-
-
 def stage_ixemul(vtc, nofpu):
     """VTC:ixp6, first in LIBS: (RIG_LIBS), as the kit's patched ixemul.library and its ixnet.library, every
     start: the soft-float ixemul with --nofpu, else the FPU one. Before this only ixpty_rig and stackext_rig
@@ -911,9 +954,7 @@ def stage_ixemul(vtc, nofpu):
     ixemul = paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB
     for src, var in ((ixemul, "IXEMUL"), (paths.IXNET_LIB, "IXNET")):
         paths.require_input(src, var, src.name)
-    if ixnet_problems(paths.IXNET_LIB):
-        sys.exit("[ERROR] %s %s: build ixemul-vtcon at or after PR 5 (d1fa642), or set IXNET"
-                 % (paths.IXNET_LIB, ixnet_problems(paths.IXNET_LIB)[0]))
+    libguard.require_clean_ixnet(paths.IXNET_LIB)
     (vtc / "ixp6").mkdir(parents=True, exist_ok=True)
     for src, name in ((ixemul, "ixemul.library"), (paths.IXNET_LIB, "ixnet.library")):
         dst = vtc / "ixp6" / name
@@ -1147,6 +1188,7 @@ def start(retries=START_RETRIES):
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if "--no-dopus" in sys.argv:
             sys_hdf_no_dopus(RIG / "sys.hdf")
+        sys_hdf_kit(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))
@@ -1159,8 +1201,9 @@ def start(retries=START_RETRIES):
         subprocess.run(["open", "-g", "-n", "-a", str(paths.FSUAE), "--args", str(CFG)], check=True)
     else:  # a bare binary: detached, so the rig outlives this command; nice 19 so the
         # machine-load gates of other sessions do not block on the rig
-        subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        fin, fout, ferr = fsuae_stdio()
+        subprocess.Popen(["nice", "-n", "19", str(paths.FSUAE), str(CFG)], stdin=fin,
+                         stdout=fout, stderr=ferr, start_new_session=True)
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for i in range(90):
@@ -1386,7 +1429,7 @@ def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop, "reboot": reboot, "install": install, "kit-restore": kit_restore,
-            "status": status, "logwatch": logwatch, "muforce": muforce, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
+            "status": status, "logwatch": logwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg")}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):

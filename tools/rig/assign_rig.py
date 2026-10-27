@@ -83,7 +83,7 @@ def rig(cmd):
     (Python3 "not enough memory", nvim past 400 s, CON: switches failed)
     and the 3.2 tree, every install check on the wrong system (2026-10-07)."""
     # UPTERM_RIG_FLAGS="--os32": the machine flags of a start (the 3.2 run of T3.6)
-    flags = os.environ.get("UPTERM_RIG_FLAGS", "").split() if cmd == "start" else []
+    flags = paths.rig_flags() if cmd == "start" else []
     subprocess.run([sys.executable, str(ROOT / "tools/rig/rig.py"), cmd] + flags, check=True, timeout=700)
 
 

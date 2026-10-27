@@ -354,3 +354,11 @@ elif __name__ == "__main__" and sys.argv[1:] == ["main-checkout"]:
     print(MAIN_CHECKOUT)
 elif __name__ == "__main__" and sys.argv[1:] == ["vendor"]:
     print(VENDOR)
+
+
+def rig_flags(default=None):
+    """UPTERM_RIG_FLAGS as an argv list, split the shell way: `--purpose "a b"` stays two words, not three.
+    Unset or empty: `default` (a copy), or []. Every rig script that passes the flags to rig.py uses this."""
+    import shlex
+    raw = os.environ.get('UPTERM_RIG_FLAGS', '')
+    return shlex.split(raw) if raw.strip() else list(default or [])

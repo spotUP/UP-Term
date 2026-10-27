@@ -1124,6 +1124,11 @@ ADD-ONS
     up-claude.lha   C:Claude and C:uptelnet (Claude, Anthropic's AI model).
                     Stands alone.
     up-pi.lha       C:amiga-pi (pi, the coding agent). Stands alone.
+    up-dopus.lha    Directory Opus 5.104 (DOpus5:), the build for your CPU, run
+                    through its own installer. Stands alone.
+    up-uhc.lha      The UHC tools (Ultimate Hunting Companion): runs UHC's own
+                    installer, which downloads the tools. Needs this one
+                    installed first, a network connection and LhA.
   Git, Perl and Vim are packages for upkg, not archives: they were in this
   archive before the slim base, and they install at the same places
   (UP-Term:bin, UP-Term:share). Type  upkg install git  (or perl, vim) in an

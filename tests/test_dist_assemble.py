@@ -7,6 +7,7 @@ import pathlib, sys, tempfile, unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import mkinstaller as mi
+import pkgs
 
 
 class Assemble(unittest.TestCase):
@@ -55,11 +56,29 @@ class Assemble(unittest.TestCase):
         # only the archive that needs the base is run from UP-Term:pkg; the stand-alone ones (ENVARC:upkg) are left alone
         self.assertEqual(v['ADDONUNINSTALL'],
                          '\n'.join('If EXISTS UP-Term:pkg/up-%s/Uninstall\n  Execute UP-Term:pkg/up-%s/Uninstall\nEndIf' % (i, i)
-                                   for i in ('nvim', 'git', 'perl', 'vim', 'bitchx', 'vbcc')))
+                                   for i in [r['archive'][3:] for r in pkgs.rows() if r['id'] != 'base' and r['record'].startswith('UP-Term:pkg/')]))
         # Files/Claude finds an old Files/ClaudeCode by substring too: one search covers both
-        self.assertEqual(v['HANDEDSEARCH'].count('Search >NIL: UP-Term:MANIFEST'), 12)
+        handed = {p for r in pkgs.rows() if r['id'] != 'base' and r['handed'] != '-' for p in r['handed'].split(',')}
+        searched = {p for p in handed if not any(q != p and p.startswith(q) for q in handed)}
+        self.assertEqual(v['HANDEDSEARCH'].count('Search >NIL: UP-Term:MANIFEST'), len(searched))
+        for p in searched:
+            self.assertIn('Search >NIL: UP-Term:MANIFEST " %s"' % p, v['HANDEDSEARCH'])
         self.assertNotIn('Files/ClaudeCode', v['HANDEDSEARCH'])
         self.assertEqual(mi.read_values('nvim')['ADDONUNINSTALL'], '')
+
+    def test_an_add_ons_install_dos_makes_and_copies_through_one_real_drawer(self):
+        # UP-Term: may be a multi-directory assign: MakeDir creates in its first directory only, where pkg/ may
+        # not exist. The record drawer is made and filled through the drawer ENVARC:up-term/Dir names.
+        for pid in ('git', 'nvim'):
+            text = mi.build(ROOT / 'dist' / 'install.dos', pid)
+            rec = mi.read_values(pid)['RECORD']
+            self.assertIn('Assign >NIL: UPTREAL: "`Type ENVARC:up-term/Dir`"', text, pid)
+            self.assertIn('MakeDir >NIL: $uptpkg $uptrec\n', text, pid)
+            self.assertIn('Copy VERSIONS $uptrec/VERSIONS ', text, pid)
+            self.assertIn('Set uptrec "UPTREAL:pkg/up-%s"' % pid, text, pid)
+            for line in text.splitlines():
+                if line.startswith(('MakeDir', 'Copy VERSIONS', 'Copy UPTPARENT')):
+                    self.assertNotIn(rec, line, pid)
 
     def test_a_stand_alone_package_gets_no_base_check_and_a_record_in_envarc(self):
         for pid in ('claude', 'pi', 'python'):

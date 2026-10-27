@@ -80,6 +80,33 @@
                     (set #sslnote "\nReboot once: then LIBS: has AmiSSL.")
                     (set #sslrows 1))))))
 
+; P_ANX: run AmiNetXDuo's own Install-AmiNetXDuo (an Installer script) from the kit's AmiNetXDuo drawer, only when
+; no TCP/IP stack was found (#anxins). It finds its files by relative names, so a script in T: does the CD. Its own
+; pages choose the network card (the SANA-II driver), DHCP or a fixed address and the boot start; it writes the
+; ";BEGIN AmiNetXDuo" block in S:User-Startup and S:AmiNetXDuo-Files, which its Uninstall-AmiNetXDuo reads.
+; The note lines join #sslnote/#sslrows: a stack found is named, an install that left no bsdsocket.library is said.
+(procedure P_ANX
+    (if #anxins
+        (
+            (textfile (dest "T:UPTANX")
+                      (append (cat "CD \"" (tackon #files "AmiNetXDuo") "\"\n"
+                                   "Installer SCRIPT Install-AmiNetXDuo APPNAME AmiNetXDuo "
+                                   "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n")))
+            (run "Execute T:UPTANX")
+            (run "Delete >NIL: T:UPTANX QUIET")
+            (if (exists "S:AmiNetXDuo-Files" (noreq))
+                (
+                    (set #sslnote (cat #sslnote "\nAmiNetXDuo is installed: reboot once to use it."))
+                    (set #sslrows (+ #sslrows 1)))
+                (
+                    (set #sslnote (cat #sslnote "\nAmiNetXDuo was not installed: no TCP/IP stack.\n"
+                                       "Run " (tackon #files "AmiNetXDuo/Install-AmiNetXDuo") " again."))
+                    (set #sslrows (+ #sslrows 2)))))
+        (if (<> #tcpstack "")
+            (
+                (set #sslnote (cat #sslnote "\nTCP/IP stack found: " #tcpstack ".\nAmiNetXDuo was not installed."))
+                (set #sslrows (+ #sslrows 2))))))
+
 ; P_ADFIND: #adarc -> #adkind ("drawer", "lha" or "") and #adsrc (its Install, or the lha)
 (procedure P_ADFIND
     (set #adkind "")
@@ -225,6 +252,7 @@
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 (set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))
 ; @include dist/common/amissl.installer
+; @include dist/common/tcpstack.installer
 
 ; AmiSSL 5.27 (Apache 2.0): the kit's own drawer, Files/AmiSSL. Ticked when LIBS: has no
 ; amisslmaster.library or an older one; AmiSSL's own Install-AmiSSL does the work (P_AMISSL, after the parts)
@@ -246,6 +274,29 @@
                      "AmiSSL 5.27 (yours is the same or newer)"))
         (default (if #amissl-need 1 0))))
 (set #amisslins (in #amisslins 0))
+
+(set #anxins
+    (askoptions
+        (prompt "TCP/IP stack (bsdsocket.library):")
+        (help "UP-Term's network programs (curl, https) need a TCP/IP stack. "
+              "The Install looks for one first: Roadshow, AmiTCP, Miami, "
+              "Genesis, TheWire, AmiNetXDuo, an emulator's own "
+              "bsdsocket.library, or any bsdsocket.library in LIBS:. "
+              "When it finds one it says which and installs nothing.\n\n"
+              "Only when none is found, AmiNetXDuo 1.0.0-rc2 (MIT licence, "
+              "the kit's Files/AmiNetXDuo drawer, AmigaOS 2.04 or newer) "
+              "is offered, ticked. Its own installer, Install-AmiNetXDuo, "
+              "runs after UP-Term's parts with its own pages: which "
+              "network card (the SANA-II driver, a .device file from your "
+              "card), DHCP or a fixed address, start at boot.\n\n"
+              "Uninstall leaves it; its own Uninstall-AmiNetXDuo removes it.")
+        (choices (if (= #tcpstack "")
+                     "AmiNetXDuo 1.0.0-rc2 (no TCP/IP stack found)"
+                     (cat "AmiNetXDuo (not installed: " #tcpstack " found)")))
+        (default (if (= #tcpstack "") 1 0))))
+(set #anxins (in #anxins 0))
+; none found is the only case that installs it; a ticked box with a stack found is ignored
+(set #anxins (if (= #tcpstack "") #anxins 0))
 
 (set #net
     (askoptions
@@ -700,6 +751,9 @@
 
 ; AmiSSL 5.27, by its own installer (its pages and record are its own)
 (P_AMISSL)
+
+; AmiNetXDuo, by its own installer, only when no TCP/IP stack was found
+(P_ANX)
 
 ; the add-ons found beside this kit (their pages and records are their own)
 (P_ADDONS)

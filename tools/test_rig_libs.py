@@ -85,10 +85,10 @@ for p in staged:
 with tempfile.TemporaryDirectory() as d:
     old = pathlib.Path(d) / "ixnet.library"
     old.write_bytes(b"\0AmiTCP:libs/usergroup.library\0")
-    check(rig.ixnet_problems(old), "the checker rejects an ixnet that opens AmiTCP:libs/usergroup.library")
+    check(rig.libguard.ixnet_problems(old), "the checker rejects an ixnet that opens AmiTCP:libs/usergroup.library")
 if rig.paths.IXNET_LIB.is_file():
-    check(not rig.ixnet_problems(rig.paths.IXNET_LIB),
-          "staged ixnet %s: %s" % (rig.paths.IXNET_LIB, rig.ixnet_problems(rig.paths.IXNET_LIB)))
+    check(not rig.libguard.ixnet_problems(rig.paths.IXNET_LIB),
+          "staged ixnet %s: %s" % (rig.paths.IXNET_LIB, rig.libguard.ixnet_problems(rig.paths.IXNET_LIB)))
 else:
     print("[UNVERIFIED] no ixnet.library at %s" % rig.paths.IXNET_LIB)
 

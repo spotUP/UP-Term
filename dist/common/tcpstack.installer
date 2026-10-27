@@ -1,0 +1,37 @@
+; TCP/IP stack: P_TCPCHECK sets #tcpstack to the name of the stack this Amiga already has, or "" when there is none.
+; AmiNetXDuo (P_ANX, dist/Install.installer) is offered only on "". Three kinds of evidence, in this order:
+;  - Files/tcpprobe (install/tcpprobe.c) opens bsdsocket.library and writes its id string to T:UPTTCPID: a running
+;    stack, or an emulator's own bsdsocket.library (FS-UAE bsdsocket_library = 1: in memory, no file in LIBS:), shows here
+;  - the stack's assign or its own files (AmiTCP:, Miami:, Genesis:, TheWire:, S:AmiNetXDuo-Files)
+;  - LIBS:bsdsocket.library on disk with no stack named
+; #tcpstack holds the name and #tcpid the library's id string ("" when it did not open).
+(procedure P_TCPCHECK
+    (set #tcpstack "")
+    (set #tcpid "")
+    (run "Delete >NIL: T:UPTTCPID ENV:UPTTCPID QUIET")
+    (if (= (run (cat "\"" (tackon #files "tcpprobe") "\" >T:UPTTCPID")) 0)
+        (
+            (run "Copy >NIL: T:UPTTCPID ENV:UPTTCPID")
+            (set #tcpid (getenv "UPTTCPID"))))
+    (run "Delete >NIL: T:UPTTCPID ENV:UPTTCPID QUIET")
+    (if (and (= #tcpstack "")
+             (or (exists "S:AmiNetXDuo-Files" (noreq)) (<> (getassign "AmiNetXDuo") "") (patmatch "*AmiNetXDuo*" #tcpid)))
+        (set #tcpstack "AmiNetXDuo"))
+    (if (and (= #tcpstack "") (patmatch "*Roadshow*" #tcpid))
+        (set #tcpstack "Roadshow"))
+    (if (and (= #tcpstack "") (or (<> (getassign "AmiTCP") "") (patmatch "*AmiTCP*" #tcpid)))
+        (set #tcpstack "AmiTCP"))
+    (if (and (= #tcpstack "") (or (<> (getassign "Miami") "") (patmatch "*Miami*" #tcpid)))
+        (set #tcpstack "Miami"))
+    (if (and (= #tcpstack "") (or (<> (getassign "Genesis") "") (exists "LIBS:genesis.library" (noreq)) (patmatch "*Genesis*" #tcpid)))
+        (set #tcpstack "Genesis"))
+    (if (and (= #tcpstack "") (or (<> (getassign "TheWire") "") (patmatch "*TheWire*" #tcpid)))
+        (set #tcpstack "TheWire"))
+    (if (and (= #tcpstack "") (patmatch "*UAE*" #tcpid))
+        (set #tcpstack "emulator bsdsocket"))
+    (if (and (= #tcpstack "") (<> #tcpid ""))
+        (set #tcpstack "running bsdsocket"))
+    (if (and (= #tcpstack "") (exists "LIBS:bsdsocket.library" (noreq)))
+        (set #tcpstack "bsdsocket.library in LIBS:")))
+(P_TCPCHECK)
+(set #anxins 0)

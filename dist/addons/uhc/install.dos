@@ -111,10 +111,10 @@ If "$uhcmode" EQ fresh
       Delete >NIL: T:up-uhc-bin/aget QUIET
       FailAt 1000
       If EXISTS UP-Term:bin/curl
-        UP-Term:bin/curl -fsSL -o T:up-uhc-bin/aget https://uhc.megaburken.net/aget.os3
+        UP-Term:bin/curl -fsSL -o T:up-uhc-bin/aget http://uhc.megaburken.net/aget.os3
       Else
         If EXISTS UP-Term:bin/bebboget
-          UP-Term:bin/bebboget -O -o T:up-uhc-bin/aget https://uhc.megaburken.net/aget.os3
+          UP-Term:bin/bebboget -O -o T:up-uhc-bin/aget http://uhc.megaburken.net/aget.os3
         Else
           FailAt 21
           Echo "[ERROR] UHC cannot be downloaded: neither UP-Term:bin/curl nor UP-Term:bin/bebboget is installed."
@@ -123,7 +123,7 @@ If "$uhcmode" EQ fresh
       EndIf
       FailAt 21
       If NOT EXISTS T:up-uhc-bin/aget
-        Echo "[ERROR] aget (UHC's downloader) could not be fetched from https://uhc.megaburken.net/aget.os3 (network or server)."
+        Echo "[ERROR] aget (UHC's downloader) could not be fetched from http://uhc.megaburken.net/aget.os3 (network or server)."
         Quit 20
       EndIf
       Protect T:up-uhc-bin/aget +e
@@ -140,10 +140,10 @@ If "$uhcmode" EQ fresh
   Delete >NIL: T:uhcinstall QUIET
   FailAt 1000
   If EXISTS UP-Term:bin/curl
-    UP-Term:bin/curl -fsSL -o T:uhcinstall https://uhc.megaburken.net/uhcinstall
+    UP-Term:bin/curl -fsSL -o T:uhcinstall http://uhc.megaburken.net/uhcinstall
   Else
     If EXISTS UP-Term:bin/bebboget
-      UP-Term:bin/bebboget -O -o T:uhcinstall https://uhc.megaburken.net/uhcinstall
+      UP-Term:bin/bebboget -O -o T:uhcinstall http://uhc.megaburken.net/uhcinstall
     Else
       FailAt 21
       Echo "[ERROR] UHC cannot be downloaded: neither UP-Term:bin/curl nor UP-Term:bin/bebboget is installed."
@@ -152,7 +152,7 @@ If "$uhcmode" EQ fresh
   EndIf
   If WARN
     FailAt 21
-    Echo "[ERROR] UHC's installer could not be downloaded from https://uhc.megaburken.net/uhcinstall (network or server)."
+    Echo "[ERROR] UHC's installer could not be downloaded from http://uhc.megaburken.net/uhcinstall (network or server)."
     Quit 20
   EndIf
   FailAt 21

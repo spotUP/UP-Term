@@ -18,7 +18,7 @@ import datetime, os, pathlib, subprocess, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
-import mkinstaller, pkgs, slim
+import libguard, mkinstaller, pkgs, slim
 
 BUILD = ROOT / 'build'
 
@@ -53,6 +53,9 @@ def main(argv):
     product = 'UP-Term' if pkg_id == 'base' else archive
     if not (kit / 'Files').is_dir():
         sys.exit('mkkit: %s is not staged (make dist-%s)' % (kit / 'Files', pkg_id))
+    ixnet = kit / 'Files/libs/ixnet.library'
+    if ixnet.is_file():
+        libguard.require_clean_ixnet(ixnet)
     inst, dos, unin, readme, lic, parts = templates(pkg_id)
     write(kit / 'Files/install.dos', mkinstaller.build(dos, pkg_id))
     write(kit / 'Install', mkinstaller.build(inst, pkg_id))
