@@ -261,6 +261,16 @@ GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
 %(shadows)s
 C:Wait 15
+; BOOTX:s/startup-sequence runs go beside DH0:S/Startup-Sequence, which makes
+; ENV: (Assign ENV: RAM:ENV) only after SetPatch and its own Wait; go's SetEnv
+; lines below would raise "Please insert volume ENV:" when it is late
+; (RIG-ENV-RACE). Assign EXISTS never asks for a volume.
+Lab envwait
+C:Assign >NIL: ENV: EXISTS
+If WARN
+  C:Wait 1
+  Skip envwait BACK
+EndIf
 %(shadows_up)s
 C:Mount XCON: FROM BOOTX:Mountlist
 C:Assign >NIL: ETC: VTC:etc
@@ -1200,7 +1210,7 @@ def start(retries=START_RETRIES):
 # boot that lacks one has a requester waiting ("Please insert volume VTC:"
 # three times on 2026-10-10: ENV:, UP-Term:, VTC:). Read from Assign LIST,
 # which never asks for a volume.
-BOOT_ASSIGNS = ["VTC", "ETC", "LIBS"]
+BOOT_ASSIGNS = ["VTC", "ETC", "LIBS", "ENV"]
 
 def boot_assigns_missing():
     """The names of BOOT_ASSIGNS (and GG: when VTC:gg/bin/sh is on the rig) the
