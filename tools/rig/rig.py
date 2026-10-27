@@ -45,6 +45,7 @@ under test), shots/.
 """
 import fcntl, json, os, pathlib, re, shutil, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import a1200_drift
 import paths
 import user_startup
 import wasabi as rigwasabi
@@ -179,7 +180,21 @@ KIT_SHADOWS = [("vtcon-handler", "L:vtcon-handler", "L-vtcon-handler"),
                ("up-console.device", "DEVS:up-console.device", "DEVS-up-console.device"),
                # the preferences editor: the kit's file keeps the space (install.dos), which
                # the handler's menu runs as C:UP-Term-Prefs (launcher)
-               ("upprefs", "C:UP-Term-Prefs", "C-UP-Term-Prefs")]
+               ("upprefs", "C:UP-Term-Prefs", "C-UP-Term-Prefs"),
+               # the shipped keymap (dist/, not build/amiga): the master's kit wrote its own, so a new
+               # keymap row was missing on every rig start (vtcon-a1 P7, 2026-10-27). The user's rows
+               # live in keymap.user, which is not touched. Spelled by path, never ENVARC:/ENV:: go is Run
+               # before DH0:S/Startup-Sequence assigns them, and a test of an unassigned name opens a
+               # System Request that hangs the boot (rig 8, 2026-10-27). RAM:Env too: go runs beside
+               # the Startup-Sequence's copy of ENVARC: to RAM:Env, which may already have happened.
+               ("keymap", "SYS:Prefs/Env-Archive/up-term/keymap", "ENVARC-up-term-keymap"),
+               ("keymap", "RAM:Env/up-term/keymap", "ENV-up-term-keymap")]
+
+
+def kit_shadow_src(name):
+    """The host file the VTC: copy of a KIT_SHADOWS name comes from: dist/ for the files the kit
+    copies from dist/ (a1200_drift.DIST_SOURCES), build/amiga for the programs."""
+    return ROOT / ("dist" if name in a1200_drift.DIST_SOURCES else "build/amiga") / name
 
 
 def q(path):
@@ -841,6 +856,10 @@ def build_drift(vtc):
     sh, vsh = vtc / "gg/bin/sh", ROOT / "build/amiga/vsh"
     if sh.is_file() and vsh.is_file() and sh.read_bytes() != vsh.read_bytes():
         stale.append("gg/bin/sh")
+    for name in a1200_drift.DIST_SOURCES:
+        src, dst = ROOT / "dist" / name, vtc / name
+        if dst.is_file() and dst.read_bytes() != src.read_bytes():
+            stale.append(name)
     return stale
 
 def kit_restore():
@@ -855,7 +874,7 @@ def refresh_kit_shadows(vtc):
     a kit check after a reboot runs the old program (rig 3, 2026-10-19: Execute install.dos wrote
     the 237268-byte C:vsh, the next boot put VTC:'s 236784-byte one of 09:54 back)."""
     for name in sorted({x[0] for x in KIT_SHADOWS}):
-        src, dst = ROOT / "build/amiga" / name, vtc / name
+        src, dst = kit_shadow_src(name), vtc / name
         if src.is_file() and not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
             shutil.copyfile(src, dst)
             print("refreshed", name, dst.stat().st_size, "bytes")
@@ -873,12 +892,13 @@ def install():
     print("installed", (RIG / "vtc/vtcon-handler").stat().st_size, "bytes")
     # every other build/amiga program the drawer already holds: rig 2's VTC:
     # starts as a copy of old builds, and a script that runs VTC:<name> must
-    # run the current one
+    # run the current one. The UP-Term drawer's bin too, the places build_drift checks: before, install
+    # refreshed only VTC:, so the start [WARN] kept listing Apps/bin programs (vtcon-a1 P7, 2026-10-27)
     for f in sorted((ROOT / "build/amiga").iterdir()):
-        dst = RIG / "vtc" / f.name
-        if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
-            shutil.copyfile(f, dst)
-            print("refreshed", f.name, dst.stat().st_size, "bytes")
+        for dst in (RIG / "vtc" / f.name, RIG / "vtc" / paths.UPTERM_DRAWER / "bin" / f.name):
+            if f.is_file() and dst.is_file() and dst.read_bytes() != f.read_bytes():
+                shutil.copyfile(f, dst)
+                print("refreshed", dst.relative_to(RIG / "vtc"), dst.stat().st_size, "bytes")
     refresh_kit_shadows(RIG / "vtc")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
