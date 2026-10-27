@@ -7,6 +7,8 @@ typedef struct {
     int found, alive, outstanding;
     long clock;
     int sent, spawned, started, took;
+    long disk;                  /* the program's stamp on disk */
+    int quits, quit_ok;
 } fake;
 
 static void f_find(void *c, int *found, int *alive, int *out)
@@ -21,6 +23,8 @@ static void f_send(void *c, const ms_req *r) { (void)r; ((fake *)c)->sent++; }
 static void f_spawn(void *c, const ms_req *r) { (void)r; ((fake *)c)->spawned++; }
 static void f_start(void *c) { ((fake *)c)->started++; }
 static long f_now(void *c) { return ((fake *)c)->clock; }
+static long f_stamp(void *c) { return ((fake *)c)->disk; }
+static int f_quit(void *c) { ((fake *)c)->quits++; return ((fake *)c)->quit_ok; }
 
 static int open_once(fake *f, ms_state *st)
 {
@@ -33,6 +37,8 @@ static int open_once(fake *f, ms_state *st)
     o.spawn = f_spawn;
     o.start_server = f_start;
     o.now = f_now;
+    o.stamp = f_stamp;
+    o.quit = f_quit;
     o.st = st;
     r.kind = 0;
     r.node = 0;
@@ -41,8 +47,8 @@ static int open_once(fake *f, ms_state *st)
 
 static void test_live_server(void)
 {
-    fake f = { 1, 1, 0, 100, 0, 0, 0, 0 };
-    ms_state st = { 0, 0 };
+    fake f = { 1, 1, 0, 100, 0, 0, 0, 0, 0, 0, 0 };
+    ms_state st = { 0, 0, 0 };
     CHECK_INT(open_once(&f, &st), MS_SEND);
     CHECK_INT(f.sent, 1);
     CHECK_INT(f.spawned, 0);
@@ -52,8 +58,8 @@ static void test_live_server(void)
 
 static void test_no_port(void)
 {
-    fake f = { 0, 0, 0, 100, 0, 0, 0, 0 };
-    ms_state st = { 0, 0 };
+    fake f = { 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0 };
+    ms_state st = { 0, 0, 0 };
     CHECK_INT(open_once(&f, &st), MS_SPAWN_RESTART);
     CHECK_INT(f.sent, 0);
     CHECK_INT(f.spawned, 1);
@@ -64,8 +70,8 @@ static void test_no_port(void)
 /* AMARCHY-MENU-STALE-PORT: a port whose owner task is gone is taken over, the menu still opens */
 static void test_stale_port(void)
 {
-    fake f = { 1, 0, 0, 100, 0, 0, 0, 0 };
-    ms_state st = { 0, 0 };
+    fake f = { 1, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0 };
+    ms_state st = { 0, 0, 0 };
     CHECK_INT(open_once(&f, &st), MS_SPAWN_RESTART);
     CHECK_INT(f.took, 1);
     CHECK_INT(f.sent, 0);
@@ -76,18 +82,45 @@ static void test_stale_port(void)
 /* a wedged server (alive, an earlier message unreplied): fall back, do not start a second server */
 static void test_unreplied(void)
 {
-    fake f = { 1, 1, 1, 100, 0, 0, 0, 0 };
-    ms_state st = { 0, 0 };
+    fake f = { 1, 1, 1, 100, 0, 0, 0, 0, 0, 0, 0 };
+    ms_state st = { 0, 0, 0 };
     CHECK_INT(open_once(&f, &st), MS_SPAWN_RESTART);
     CHECK_INT(f.sent, 0);
     CHECK_INT(f.spawned, 1);
     CHECK_INT(f.started, 0);
 }
 
+/* WARM-SERVER-NEW-BINARY: a hotkey press after the server program on disk changed does not reach the old
+ * server: it opens a menu of its own (new code), the old server is told to end and a new one starts */
+static void test_new_binary_replaces_server(void)
+{
+    fake f = { 1, 1, 0, 100, 0, 0, 0, 0, 5000, 0, 1 };
+    ms_state st = { 90, 1, 5000 };
+    CHECK_INT(open_once(&f, &st), MS_SEND);        /* same file: the warm path */
+    CHECK_INT(f.sent, 1);
+    CHECK_INT(f.quits, 0);
+    f.disk = 6000;                                  /* upkg replaced the program */
+    CHECK_INT(open_once(&f, &st), MS_SPAWN_RESTART);
+    CHECK_INT(f.sent, 1);                           /* not sent to the old server */
+    CHECK_INT(f.spawned, 1);
+    CHECK_INT(f.quits, 1);
+    CHECK_INT(f.started, 1);
+    CHECK_INT(st.bin_stamp == 6000, 1);
+    f.quit_ok = 0;                                  /* a busy server will not end: left, tried again */
+    f.disk = 7000;
+    CHECK_INT(open_once(&f, &st), MS_SPAWN_RESTART);
+    CHECK_INT(f.started, 1);
+    CHECK_INT(st.bin_stamp == 6000, 1);
+    CHECK_INT(ms_binary_changed(0, 5), 0);          /* unknown stamps never restart */
+    CHECK_INT(ms_binary_changed(5, 0), 0);
+    CHECK_INT(ms_binary_changed(5, 5), 0);
+    CHECK_INT(ms_binary_changed(5, 6), 1);
+}
+
 static void test_restart_throttle(void)
 {
-    fake f = { 0, 0, 0, 100, 0, 0, 0, 0 };
-    ms_state st = { 0, 0 };
+    fake f = { 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0 };
+    ms_state st = { 0, 0, 0 };
     open_once(&f, &st);
     f.clock = 105;
     open_once(&f, &st);
@@ -127,6 +160,7 @@ void suite_menusrv(void)
     test_no_port();
     test_stale_port();
     test_unreplied();
+    test_new_binary_replaces_server();
     test_restart_throttle();
     test_verdicts();
     test_server_names();

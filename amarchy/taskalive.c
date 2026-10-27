@@ -2,6 +2,7 @@
 #include <exec/execbase.h>
 #include <dos/dosextens.h>
 #include <proto/exec.h>
+#include <proto/dos.h>
 #include <string.h>
 #include "taskalive.h"
 
@@ -84,4 +85,18 @@ struct Task *task_find_by_output(BPTR out)
             found = (struct Task *)n;
     Permit();
     return found;
+}
+
+long ta_file_stamp(const char *path)
+{
+    struct FileInfoBlock *fib = AllocDosObject(DOS_FIB, 0);
+    BPTR lock = fib ? Lock((STRPTR)path, SHARED_LOCK) : 0;
+    long st = 0;
+    if (lock && Examine(lock, fib))
+        st = (fib->fib_Date.ds_Days * 1440L + fib->fib_Date.ds_Minute) * 3000L + fib->fib_Date.ds_Tick;
+    if (lock)
+        UnLock(lock);
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    return st;
 }

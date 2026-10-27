@@ -35,7 +35,12 @@ typedef struct {
 typedef struct {
     long last_start;            /* now() of the last server start; meaningful when started */
     int started;
+    long bin_stamp;             /* the server program's file stamp when the server was started; 0 = unknown */
 } ms_state;
+
+/* The server program on disk is not the one the running server was loaded from (upkg or rig.py install
+ * replaced it): both stamps known and different. An unknown stamp (0) never counts as a change. */
+int ms_binary_changed(long started_stamp, long disk_stamp);
 
 typedef struct {
     void *ctx;
@@ -46,6 +51,8 @@ typedef struct {
     void (*spawn)(void *ctx, const ms_req *r);      /* the fallback: a menu of its own */
     void (*start_server)(void *ctx);
     long (*now)(void *ctx);                         /* seconds, monotonic */
+    long (*stamp)(void *ctx);                       /* the server program's file stamp on disk, 0 when unknown */
+    int (*quit)(void *ctx);                         /* tell the running server to end; 1 when it replied (port gone) */
     ms_state *st;
 } ms_ops;
 
