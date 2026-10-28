@@ -41,13 +41,15 @@ def typeline(s, wait):
 
 
 def close_vsh(title, secs=15):
-    """End a window open_vsh opened: a click in it makes it active, `exit` ends its vsh and the window
+    """End a window open_vsh opened: a click in it makes it active (brought to the front first when another window
+    covers the click point), `exit` ends its vsh and the window
     closes (the script's EndCLI). Never types into a window that is not confirmed active. True once the window is gone, so a run does not leave windows behind."""
     w = ami.window(title)
     if not w:
         return True
     x, y, ww, hh = w['box']
     for _ in range(2):
+        ami.raise_window(title, x + ww // 2, y + hh // 2)
         ami.click_px(x + ww // 2, y + hh // 2)
         time.sleep(1)
         w = ami.window(title)

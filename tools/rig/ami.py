@@ -539,6 +539,26 @@ def click_px(x, y):
     sx, sy = pointer_scale()
     req(0x08, bytes([5]) + struct.pack('>HH', int(round(x * sx)), int(round(y * sy))) + bytes([0, 1]))
 
+def raise_window(title, x=None, y=None):
+    # Bring the front screen's window titled exactly `title` to the front when another window covers screen pixel
+    # (x, y) of it (default its centre), so a click there reaches it: a boot UP-Term window over menuhost took
+    # close_vsh's click. wasabi's own covered() and ui_front() (its ui_click does the same). False: no such window.
+    m = _m()
+    with _conn() as c:
+        scr = m.read_ui(c)
+        if not scr:
+            return False
+        sc = scr[0]
+        w = next((w for w in sc['windows'] if w['title'] == title), None)
+        if w is None:
+            return False
+        k = sc['row_scale']
+        gx = w['left'] + w['width'] // 2 if x is None else x
+        gy = w['top'] + w['height'] // 2 if y is None else y * k
+        if m.covered(sc, w, gx, gy):
+            m.ui_front(c, w)
+    return True
+
 def window(title):
     # The front screen's window titled exactly `title`, from the uitree:
     # {'box': (x, y, w, h), 'active': bool, 'sys:size': (x, y, w, h), ...}
