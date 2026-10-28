@@ -338,6 +338,11 @@ def own_ask_answer(gads):
     return None
 
 
+def installer_name(title):
+    """An Installer window's title without its progress: "Install-AmiSSL (100% done)" is "Install-AmiSSL"."""
+    return re.sub(r' \(\d+% done\)$', '', title or '')
+
+
 def reboot_later(gads, text):
     """The gadget that answers P_END's "Reboot now?" with Later, or None when `text` (the page's OCR) does
     not ask it. The page is matched by its words, not by a gadget list. Later is the right button: id 1 on a
@@ -483,6 +488,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
     work_since, last_pct, dumped_pct = None, None, set()
     room, after_ask, asks, ticked, drawer = None, False, 0, False, DrawerAsks()
     cur_title, ticked_sigs = None, set()
+    outer = None   # the Installer this case started; a nested add-on Install (AmiSSL) has another window name
 
     seen_faults = set()
 
@@ -520,6 +526,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
             return False, log
         title, gads = installer_page(tree)
         if title and title != cur_title:
+            outer = outer or installer_name(title)
             if cur_title:   # another Installer (a nested add-on Install) with its own drawer and room pages
                 typed, room, drawer = False, None, DrawerAsks()
                 log.append('Installer window [%s]' % title)
@@ -576,8 +583,11 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
             time.sleep(5)
             continue
         ask = own_ask_answer(gads)
-        if ask is None and '(100% done)' in (title or '') and (not clicked_at or time.time() - clicked_at > 2):
-            # the last pages: P_END's Reboot question must never be clicked through to its default
+        if (ask is None and '(100% done)' in (title or '') and installer_name(title) == outer
+                and (not clicked_at or time.time() - clicked_at > 2)):
+            # the last pages: P_END's Reboot question must never be clicked through to its default. Only the
+            # outer Installer asks it: a nested Install-AmiSSL's last page ("Please reboot for modifications to
+            # take effect", Proceed only) is a message, answered with Proceed (rig 9 2026-10-28)
             txt = window_ocr(tree, case + '-ask')
             log.append('last page text: %s' % ' '.join(txt.split()))
             later = reboot_later(gads, txt)

@@ -186,5 +186,61 @@ class LinkDropped(unittest.TestCase):
         self.assertIn('page [Last Page]', out.getvalue())
 
 
+class NestedFinishPage(unittest.TestCase):
+    """2026-10-28 rig 9: the nested Install-AmiSSL's last page ("Please reboot for modifications to take effect",
+    Proceed only) was taken for the outer Installer's Reboot question; drive stopped there with "reboot page
+    without a Later gadget". Only the Installer the case started asks Reboot now?"""
+    def run_pages(self, pages):
+        import installer_rig as irg
+        clock, state, clicks = Clock(), {'page': 0}, []
+
+        def page(i):
+            if i >= len(pages):
+                return ''
+            title, ids, _ = pages[i]
+            return ('W 0 152 195 496x210 active "%s"\nG 0 152 195 496x13 sys:drag - ""\n' % title
+                    + ''.join('G %d %d 386 238x16 custom - ""\n' % (g, 281 + 121 * n) for n, g in enumerate(ids)))
+
+        def req(code, payload=b'', timeout=150):
+            return page(state['page']).encode('latin-1')
+
+        def click(box):
+            clicks.append(pages[state['page']][0])
+            state['page'] += 1
+
+        saved = {k: getattr(irg, k) for k in ('time', 'installer_running', 'click', 'text_faults', 'window_ocr')}
+        saved_req = irg.ami.req
+        irg.time, irg.click = clock, click
+        irg.installer_running = lambda inst: state['page'] < len(pages)
+        irg.text_faults = lambda tree: ([], [])
+        irg.window_ocr = lambda tree, name: pages[min(state['page'], len(pages) - 1)][2]
+        irg.ami.req = req
+        try:
+            finished, log = irg.drive('nested-end-test', 'Installer', None, set(), timeout=5400)
+        finally:
+            for k, v in saved.items():
+                setattr(irg, k, v)
+            irg.ami.req = saved_req
+        return finished, log, clicks
+
+    def test_nested_installers_last_page_is_answered_with_proceed(self):
+        finished, log, clicks = self.run_pages([
+            ('VTC:distkit/Install (40% done)', (90, 91), 'Install AmiSSL now'),
+            ('Install-AmiSSL (100% done)', (90,), 'AmiSSL 5.27 installation finished. Please reboot for modifications'),
+        ])
+        self.assertTrue(finished, log)
+        self.assertEqual(clicks, ['VTC:distkit/Install (40% done)', 'Install-AmiSSL (100% done)'])
+
+    def test_outer_reboot_question_without_later_is_still_never_clicked(self):
+        finished, log, clicks = self.run_pages([
+            ('VTC:distkit/Install (40% done)', (90, 91), 'Install AmiSSL now'),
+            ('Install-AmiSSL (100% done)', (90,), 'Please reboot for modifications'),
+            ('VTC:distkit/Install (100% done)', (90,), 'Reboot now?'),
+        ])
+        self.assertFalse(finished, log)
+        self.assertNotIn('VTC:distkit/Install (100% done)', clicks)
+        self.assertTrue(any('without a Later gadget' in l for l in log), log)
+
+
 if __name__ == "__main__":
     unittest.main()
