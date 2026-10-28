@@ -28,9 +28,9 @@
 #include "tile_core.h"
 #include "amconf_dos.h"
 #include "win_apply.h"
+#include "../handler/frontscr.h"
 
 #define PORT_NAME      "AMTILE"
-#define SCREEN_NAME    "UP-Term"      /* the terminal screen's default public name (vtcon_handler.c, PUBSCREEN) */
 #define TILE_MAX       32             /* windows considered on the screen */
 #define TILE_POLL_MICROS 250000UL
 #define TITLE_MAX      16             /* tile_classify only compares against "Amarchy" */
@@ -57,6 +57,7 @@ static int g_gap = TILE_GAP_DEFAULT;   /* the tile-gap key of the Amarchy settin
 static int g_ratio = TILE_RATIO_DEFAULT;
 static long g_order[TILE_MAX];
 static int g_norder;
+static long g_scr_id;     /* the screen g_order was built on (tile_screen_switch) */
 static long g_retiles;
 
 /* cmd begins with word (any case) and the word ends there */
@@ -167,11 +168,11 @@ static void timer_close(void)
 
 /* ---- the screen walk and the apply ------------------------------------------------------------------------------ */
 
-/* The UP-Term public screen, 0 when there is none. Only the pointer is kept: it is checked against IBase's screen
- * list under the lock before it is used. */
-static struct Screen *term_screen(void)
+/* The front screen (any public screen, not only UP-Term), 0 when the front screen is not public. Only the pointer is
+ * kept: it is checked against IBase's screen list under the lock before it is used. */
+static struct Screen *front_scr(void)
 {
-    struct Screen *s = LockPubScreen((STRPTR)SCREEN_NAME);
+    struct Screen *s = lock_front_screen();
     if (s)
         UnlockPubScreen(0, s);
     return s;
@@ -237,7 +238,7 @@ static void gap_load(void)
 /* One look at the screen. force: retile even when the tiled set is unchanged. */
 static void tick(int force)
 {
-    struct Screen *scr = term_screen();
+    struct Screen *scr = front_scr();
     snap *sn;
     long set[TILE_MAX], old[TILE_MAX];
     tile_win in[TILE_MAX];
@@ -253,6 +254,7 @@ static void tick(int force)
     for (i = 0; i < sn->n; i++)
         if (tile_classify(&sn->w[i]) == TILE_TILE)
             set[m++] = sn->w[i].id;
+    g_norder = tile_screen_switch(&g_scr_id, (long)scr, g_norder);
     nold = g_norder;
     memcpy(old, g_order, sizeof(long) * (size_t)nold);
     g_norder = tile_order_update(g_order, g_norder, set, m);

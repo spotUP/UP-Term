@@ -37,6 +37,7 @@ KEYMAP = REPO / 'dist' / 'keymap'
 ROW_MARK = 'AmTile TOGGLE'      # the Phase 3 row "Tile windows" runs UP-Term:bin/AmTile TOGGLE
 ENV_FILE = 'ENV:Amarchy/tile'
 WATCH = 0.25                    # AmTile's poll period (tile.c); a retile is expected within 1 s
+TITLE_DEFAULT = 14             # rig evidence (rig 7); wasabi exposes no screen BarHeight
 OPT = {'gap': 4, 'ratio': 55, 'title': None, 'screen': None}
 STATE = {'wins': []}            # addrs of the windows this script opened, oldest first
 HELPER = []
@@ -78,14 +79,19 @@ def wait_for(pred, secs, step=0.2):
 # ---- the Amarchy row ----------------------------------------------------------------------------------------
 
 def row_index():
-    """index of the keymap row that runs AmTile TOGGLE, counted the way menu_rig.bind_rows counts the [bind] lines
-    ("super+1..9" is nine rows); None when dist/keymap has no such row (Phase 3 not built)"""
+    """index of the keymap row that runs AmTile TOGGLE, counted the way Amarchy indexes `RUN <n>`: amarchy.c reload()
+    loads the table with keymap_reload_compact(cx_row_installed), which DROPS the terminal-scope rows (tab:, menuid:,
+    slash: = KS_TERMINAL in keymap_action_scope), so cx_row(n) and STATUS rows= count only the installed rows;
+    "super+1..9" is nine rows. None when dist/keymap has no such row (Phase 3 not built)"""
     n, sect = 0, ''
     for l in KEYMAP.read_text(encoding='latin-1').splitlines():
         l = l.strip()
         if l.startswith('['):
             sect = l
         elif sect == '[bind]' and l and not l.startswith(';') and '=' in l:
+            action = l.split('=', 1)[1].strip()
+            if re.match(r'(tab|menuid|slash):', action):
+                continue
             if ROW_MARK in l:
                 return n
             m = re.match(r'\S*?(\d)\.\.(\d)\s*=', l)
@@ -126,10 +132,11 @@ def mine():
 def screen_geom():
     """(width, height, title bar height). Width and height from the front screen (or --screen); the title bar height is
     --title, else the master's top minus the gap measured from a live n = 1 layout is not possible without trusting the
-    product, so the default is the Workbench-style bar of the UP-Term screen: font height + 3 (topaz 8: 11)"""
+    product, so the default is 14, the value measured on rig 7 (thoughts/shared/research/2026-10-28_amarchy-tile-rig7.md;
+    wasabi's screen listing carries no BarHeight); --title overrides"""
     sc = front_screen()
     w, h = (OPT['screen'] or (sc['width'], sc['height']))
-    return w, h, OPT['title'] if OPT['title'] is not None else 11
+    return w, h, OPT['title'] if OPT['title'] is not None else TITLE_DEFAULT
 
 
 def helper():
@@ -311,7 +318,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--only', choices=[n for n, _ in STEPS], help='run one step against the state left by earlier runs')
     ap.add_argument('--screen', help='WxH of the UP-Term screen when the rig reports it wrongly')
-    ap.add_argument('--title', type=int, help='screen title bar height (win_screen.title = BarHeight + 1), default 11')
+    ap.add_argument('--title', type=int, help='screen title bar height (win_screen.title = BarHeight + 1), default %d' % TITLE_DEFAULT)
     ap.add_argument('--gap', type=int, default=4, help='tile_gap (default 4)')
     ap.add_argument('--ratio', type=int, default=55, help='master width percent (default 55)')
     ap.add_argument('--no-build', action='store_true', help='do not rebuild/stage Amarchy and AmTile')

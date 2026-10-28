@@ -818,7 +818,7 @@ $(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/i
 
 # AmTile: the autotiling commodity (plan 2026-10-28-amarchy-autotile.md, phase 2). A plain vbcc program like Amarchy;
 # tile_core.c is its pure part, win_apply.c the OS calls it shares with win.c.
-AMTILE_SRC := amarchy/tile.c amarchy/tile_core.c amarchy/win_core.c amarchy/win_apply.c amarchy/rexx_host.c $(AMARCHY_LEAF_DEPS)
+AMTILE_SRC := handler/frontscr.c amarchy/tile.c amarchy/tile_core.c amarchy/win_core.c amarchy/win_apply.c amarchy/rexx_host.c $(AMARCHY_LEAF_DEPS)
 .PHONY: AmTile
 AmTile: $(BUILD)/amiga/AmTile
 $(BUILD)/amiga/AmTile: $(AMTILE_SRC) amarchy/rexx_host.h amarchy/tile_core.h amarchy/win_core.h amarchy/win_apply.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h

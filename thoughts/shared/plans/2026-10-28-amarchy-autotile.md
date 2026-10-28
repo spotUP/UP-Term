@@ -73,7 +73,7 @@ ARexx host tests and tools/rig/amarchy_window_rig.py still pass on a rig.
 Phase 2 as built (main, 2026-10-28):
 - win.c `box_of`/`apply_box` moved to amarchy/win_apply.c as `win_box_of`/`win_apply_box`; ChangeWindowBox is
   called under LockIBase after a screen/window membership check, as win.c already did.
-- AmTile finds only the screen named "UP-Term" (not "UP-Term.2".."UP-Term.9" or a PUBSCREEN override) in v1.
+- AmTile tiles the FRONT screen (D4 revised): tile.c front_scr() = handler/frontscr.c lock_front_screen(), so any public screen (UP-Term, Workbench Screen under DOpus) works; a non-public front screen is not tiled. When the front screen changes, tile_screen_switch() drops the tracked order, so no boxes of screen A reach screen B. Rig-only: the live screen switch and the DOpus case.
 - Exchange: the broker is Active only while tiling; Disable = OFF, Enable = ON, Kill = QUIT (state unchanged).
 - Gap is TILE_GAP_DEFAULT until P3-3.
 

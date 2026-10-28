@@ -113,6 +113,17 @@ static void order_update(void)
     CHECK_INT(n, 0);
 }
 
+static void screen_switch(void)
+{
+    long cur = 0;
+    CHECK_INT(tile_screen_switch(&cur, 100, 0), 0);        /* first screen */
+    CHECK_INT(cur, 100);
+    CHECK_INT(tile_screen_switch(&cur, 100, 3), 3);        /* same screen keeps the order */
+    CHECK_INT(tile_screen_switch(&cur, 200, 3), 0);        /* front screen changed: order dropped */
+    CHECK_INT(cur, 200);
+    CHECK_INT(tile_screen_switch(&cur, 200, 2), 2);
+}
+
 static void state_file(void)
 {
     CHECK(tile_state_on("on\n", 3));
@@ -131,4 +142,5 @@ void suite_tile(void)
     min_size_beats_the_cell();
     classification();
     order_update();
+    screen_switch();
 }
