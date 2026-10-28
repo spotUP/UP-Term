@@ -157,8 +157,8 @@ static void sentinel_publish(const char *name, long n)
     SetVar((STRPTR) name, (STRPTR)(b + i), -1, GVF_GLOBAL_ONLY);
 }
 
-/* Publishes the antialiased glyphs drawn so far as AMARCHY_AA_GLYPHS: 0 for a bitmap font, so a rig reads
- * whether the TrueType path ran. */
+/* Publishes the glyphs drawn through coverage (aa_ink) so far as AMARCHY_AA_GLYPHS: TrueType always, a bitmap
+ * font on a true-colour screen too, 0 for a bitmap font on a palette screen; a rig reads whether that path ran. */
 static void sentinel_aa(const gui *g)
 {
     sentinel_publish("AMARCHY_AA_GLYPHS", mt_aa_glyphs(g->mt));

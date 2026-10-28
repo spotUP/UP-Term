@@ -48,6 +48,16 @@ int mtc_advance(mtc *c, unsigned long cp);
 /* the glyph with its coverage (cached); 0 when the source has no coverage (bitmap) */
 const mtc_glyph *mtc_glyph_of(mtc *c, unsigned long cp);
 
+/* tmp (bw x bh coverage bytes, alloc'd; freed here) cut to its inked columns into g; pad = the columns of tmp
+ * left of the pen x. 0 for a blank glyph. */
+int mtc_cov_trim(unsigned char *tmp, int bw, int bh, int pad, mtc_glyph *g, void *(*alloc)(unsigned long),
+                 void (*rel)(void *));
+/* A bitmap font's glyph as Text() drew it into one plane (bpr bytes a row, bit 7 leftmost; the pen x pad
+ * pixels in) as coverage 255 per set bit, trimmed as mtc_cov_trim: a true-colour screen then draws bitmap text
+ * in the theme's own colours through the same coverage path as TrueType, not on the nearest pens. */
+int mtc_cov_from_plane(const unsigned char *plane, int bpr, int bw, int bh, int pad, mtc_glyph *g,
+                       void *(*alloc)(unsigned long), void (*rel)(void *));
+
 /* pixels s takes */
 int mtc_width(mtc *c, const char *s);
 /* pixels the first len bytes of s take (whole code points) */

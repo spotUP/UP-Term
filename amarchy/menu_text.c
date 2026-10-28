@@ -39,6 +39,7 @@ struct menu_text {
     struct RastPort *measure_rp;
     /* TrueType drawing */
     aa_ink ink;
+    int ink_ready;  /* ink_init ran: mt_close frees it */
     struct Library *cgx;
     int truecolor;
     LONG pen[MT_PENS];
@@ -159,7 +160,50 @@ static int bm_advance(void *u, unsigned long cp)
     return (int)TextLength(m->measure_rp, &ch, 1);
 }
 
+/* On a true-colour screen: the glyph as Text() draws it into one plane, as coverage, so mt_draw paints it in the
+ * theme's own colours (aa_ink over cybergraphics) instead of on the nearest pens, which showed grey boxes behind
+ * every word on the Directory Opus 24-bit screen (owner 2026-10-28). The pad takes kerning and italic overhang. */
+static int bm_render(void *u, unsigned long cp, mtc_glyph *g)
+{
+    menu_text *m = (menu_text *)u;
+    char ch = cp < 256 ? (char)cp : '?';
+    int pad = m->bitmap->tf_YSize / 2 + 1, bw = bm_advance(u, cp) + 2 * pad, bh = m->bitmap->tf_YSize, ok;
+    struct BitMap *bm;
+    struct RastPort rp;
+    g->left = g->w = 0;
+    g->h = bh;
+    g->cov = 0;
+    if (bw > 512 || bh > 512 || !(bm = AllocBitMap((ULONG)bw, (ULONG)bh, 1, BMF_CLEAR, 0)))
+        return 0;
+    InitRastPort(&rp);
+    rp.BitMap = bm;
+    SetFont(&rp, m->bitmap);
+    SetSoftStyle(&rp, m->bitmap->tf_Style, AskSoftStyle(&rp));
+    SetABPenDrMd(&rp, 1, 0, JAM1);
+    Move(&rp, pad, m->bitmap->tf_Baseline);
+    Text(&rp, (STRPTR)&ch, 1);
+    WaitBlit();
+    ok = mtc_cov_from_plane(bm->Planes[0], bm->BytesPerRow, bw, bh, pad, g, mt_alloc, mt_free_mem);
+    FreeBitMap(bm);
+    return ok;
+}
+
 /* one candidate file spec of the font (a path without a volume is in FONTS:); 0 when it is missing or no TrueType */
+/* aa_ink draws every coverage glyph: TrueType always, a bitmap font on a true-colour screen (bm_render) */
+static void ink_init(menu_text *m)
+{
+    aa_ink_ops ops;
+    ops.u = m;
+    ops.truecolor_ink = op_truecolor_ink;
+    ops.nearest_pen = op_nearest_pen;
+    ops.pen_rgb = op_pen_rgb;
+    ops.dist = op_dist;
+    ops.set_pen = op_set_pen;
+    ops.fill = op_fill;
+    aa_ink_init(&m->ink, &ops);
+    m->ink_ready = 1;
+}
+
 static int mt_open_ttf_spec(menu_text *m, const char *spec, int px)
 {
     char full[160];
@@ -230,15 +274,7 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
     n = fontpair_menu_choices(name, (int)size, square, fontpair_square_fits(scr->Height, scr->BarHeight), ch);
     for (i = 0; i < n && !m->bitmap; i++) {
         if (ch[i].ttf_px > 0 && mt_open_ttf(m, ch[i].name, ch[i].ttf_px)) {
-            aa_ink_ops ops;
-            ops.u = m;
-            ops.truecolor_ink = op_truecolor_ink;
-            ops.nearest_pen = op_nearest_pen;
-            ops.pen_rgb = op_pen_rgb;
-            ops.dist = op_dist;
-            ops.set_pen = op_set_pen;
-            ops.fill = op_fill;
-            aa_ink_init(&m->ink, &ops);
+            ink_init(m);
             return m;
         }
         if ((m->bitmap = menu_font_open_choice(&ch[i])) != 0)
@@ -255,12 +291,14 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
     SetFont(m->measure_rp, m->bitmap);
     src.u = m;
     src.advance = bm_advance;
-    src.render = 0;
+    src.render = m->cgx ? bm_render : 0;   /* a palette screen keeps Text() on its pens (mt_draw) */
     src.alloc = mt_alloc;
     src.release = mt_free_mem;
     mtc_init(&m->core, &src);
     m->height = m->bitmap->tf_YSize;
     m->base = m->bitmap->tf_Baseline;
+    if (m->cgx)
+        ink_init(m);
     return m;
 }
 
@@ -270,10 +308,10 @@ void mt_close(menu_text *m)
     if (!m)
         return;
     mtc_free(&m->core);
-    if (m->font) {
+    if (m->ink_ready)
         aa_ink_free(&m->ink);
+    if (m->font)
         ttf_close(m->font);
-    }
     if (m->fh)
         Close(m->fh);
     for (i = 0; i < m->npens; i++)
@@ -336,7 +374,7 @@ void mt_draw(menu_text *m, struct RastPort *rp, int x, int y, const char *text, 
 {
     int n;
     unsigned long cp;
-    if (!m->font) { /* bitmap: Text() on the pens nearest fg and bg */
+    if (!m->font && !m->cgx) { /* bitmap on a palette screen: Text() on the pens nearest fg and bg */
         LONG pf = pen_of(m, fg), pb = pen_of(m, bg);
         SetFont(rp, m->bitmap);
         SetABPenDrMd(rp, pf < 0 ? 1 : (UBYTE)pf, pb < 0 ? 0 : (UBYTE)pb, JAM2);

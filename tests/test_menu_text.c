@@ -224,6 +224,49 @@ static void test_ttf_tall_pixels(void)
     ttf_close(f);
 }
 
+/* A bitmap font on a true-colour screen: the glyph Text() drew into one plane becomes coverage, so the menu draws
+ * it in the theme's RGB instead of on the nearest (grey) pens (owner 2026-10-28, rig without JetBrainsMono.ttf).
+ * An "I" two columns wide at x 5..6 in a 16-pixel row with a pad of 3: left 2, w 2, every cell 255. */
+static void test_bitmap_plane_coverage(void)
+{
+    unsigned char plane[2 * 4];
+    mtc_glyph g;
+    int y, all = 1;
+    memset(plane, 0, sizeof plane);
+    for (y = 0; y < 4; y++)
+        plane[y * 2] = 0x06;   /* bits for x 5 and 6 */
+    CHECK(mtc_cov_from_plane(plane, 2, 16, 4, 3, &g, f_alloc, f_rel) == 1);
+    CHECK_INT(g.left, 2);
+    CHECK_INT(g.w, 2);
+    CHECK_INT(g.h, 4);
+    for (y = 0; y < 8; y++)
+        all &= g.cov[y] == 255;
+    CHECK(all);
+    free(g.cov);
+    memset(plane, 0, sizeof plane);   /* a space: no ink, no coverage */
+    CHECK(mtc_cov_from_plane(plane, 2, 16, 4, 3, &g, f_alloc, f_rel) == 0);
+    CHECK(g.cov == 0 && g.w == 0);
+    CHECK(mtc_cov_from_plane(plane, 1, 16, 4, 3, &g, f_alloc, f_rel) == 0);   /* wider than the row */
+}
+
+/* amarchy/menu_text.c keeps Text() for palette screens only: a true-colour screen renders bitmap glyphs to
+ * coverage (bm_render) and draws them through aa_ink. Fails when the Text() path loses its !m->cgx gate. */
+static void test_bitmap_truecolor_wired(void)
+{
+    static char src[60000];
+    size_t n;
+    FILE *f = fopen("amarchy/menu_text.c", "rb");
+    CHECK(f != 0);
+    if (!f)
+        return;
+    n = fread(src, 1, sizeof src - 1, f);
+    fclose(f);
+    src[n] = 0;
+    CHECK(strstr(src, "if (!m->font && !m->cgx) {") != 0);
+    CHECK(strstr(src, "src.render = m->cgx ? bm_render : 0;") != 0);
+    CHECK(strstr(src, "mtc_cov_from_plane(bm->Planes[0]") != 0);
+}
+
 void suite_menu_text(void)
 {
     test_ttf_tall_pixels();
@@ -234,4 +277,6 @@ void suite_menu_text(void)
     test_scale();
     test_prefix();
     test_gui_uses_menu_text();
+    test_bitmap_plane_coverage();
+    test_bitmap_truecolor_wired();
 }

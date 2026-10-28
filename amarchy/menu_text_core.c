@@ -252,26 +252,15 @@ static int ttf_adv(void *u, unsigned long cp)
     return mtc_scale(ttf_advance(t->f, gid), t->upem, t->px);
 }
 
-/* the box is the advance plus a pad each side (overhang); the coverage is then cut to the columns with ink */
-static int ttf_rend(void *u, unsigned long cp, mtc_glyph *g)
+/* tmp (bw x bh bytes, alloc'd; this frees it) cut to the columns with ink into g: left counts from the pen x,
+ * which is pad columns into tmp. 0 for a blank glyph. */
+int mtc_cov_trim(unsigned char *tmp, int bw, int bh, int pad, mtc_glyph *g, void *(*alloc)(unsigned long),
+                 void (*rel)(void *))
 {
-    mtc_ttf *t = (mtc_ttf *)u;
-    void *(*alloc)(unsigned long) = t->alloc;
-    void (*rel)(void *) = t->release;
-    unsigned gid = ttf_glyph_index(t->f, cp);
-    int pad = t->px / 4 + 1, bw = mtc_scale(ttf_advance(t->f, gid), t->upem, t->px) + 2 * pad, bh = t->line;
     int x, y, x0 = bw, x1 = -1;
-    unsigned char *tmp;
     g->left = g->w = 0;
     g->h = bh;
     g->cov = 0;
-    if (bw > 512 || bh > 512 || !gid || !(tmp = (unsigned char *)alloc((unsigned long)bw * bh)))
-        return 0;
-    memset(tmp, 0, (size_t)bw * bh);
-    if (ttf_render(t->f, gid, t->scale, t->yscale, pad, t->base, tmp, bw, bh) != 1) {
-        rel(tmp);
-        return 0;
-    }
     for (y = 0; y < bh; y++)
         for (x = 0; x < bw; x++)
             if (tmp[y * bw + x]) {
@@ -294,6 +283,44 @@ static int ttf_rend(void *u, unsigned long cp, mtc_glyph *g)
         g->w = 0;
     rel(tmp);
     return g->w > 0;
+}
+
+int mtc_cov_from_plane(const unsigned char *plane, int bpr, int bw, int bh, int pad, mtc_glyph *g,
+                       void *(*alloc)(unsigned long), void (*rel)(void *))
+{
+    int x, y;
+    unsigned char *tmp;
+    g->left = g->w = 0;
+    g->h = bh;
+    g->cov = 0;
+    if (bw <= 0 || bh <= 0 || bw > bpr * 8 || !(tmp = (unsigned char *)alloc((unsigned long)bw * bh)))
+        return 0;
+    for (y = 0; y < bh; y++)
+        for (x = 0; x < bw; x++)
+            tmp[y * bw + x] = (plane[y * bpr + (x >> 3)] & (0x80 >> (x & 7))) ? 255 : 0;
+    return mtc_cov_trim(tmp, bw, bh, pad, g, alloc, rel);
+}
+
+/* the box is the advance plus a pad each side (overhang); the coverage is then cut to the columns with ink */
+static int ttf_rend(void *u, unsigned long cp, mtc_glyph *g)
+{
+    mtc_ttf *t = (mtc_ttf *)u;
+    void *(*alloc)(unsigned long) = t->alloc;
+    void (*rel)(void *) = t->release;
+    unsigned gid = ttf_glyph_index(t->f, cp);
+    int pad = t->px / 4 + 1, bw = mtc_scale(ttf_advance(t->f, gid), t->upem, t->px) + 2 * pad, bh = t->line;
+    unsigned char *tmp;
+    g->left = g->w = 0;
+    g->h = bh;
+    g->cov = 0;
+    if (bw > 512 || bh > 512 || !gid || !(tmp = (unsigned char *)alloc((unsigned long)bw * bh)))
+        return 0;
+    memset(tmp, 0, (size_t)bw * bh);
+    if (ttf_render(t->f, gid, t->scale, t->yscale, pad, t->base, tmp, bw, bh) != 1) {
+        rel(tmp);
+        return 0;
+    }
+    return mtc_cov_trim(tmp, bw, bh, pad, g, alloc, rel);
 }
 
 void mtc_ttf_source(mtc_src *s, mtc_ttf *t, void *(*alloc)(unsigned long), void (*release)(void *))
