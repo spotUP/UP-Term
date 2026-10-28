@@ -76,6 +76,7 @@ long rexx_send(const char *portname, const char *line, char *result, int cap)
     struct MsgPort *reply, *port;
     struct RexxMsg *rm;
     struct Library *rxs;
+    struct RxsLib *keep = RexxSysBase;   /* a host in this process keeps its own base */
     long rc = -1;
     if (result && cap > 0)
         result[0] = 0;
@@ -107,6 +108,7 @@ long rexx_send(const char *portname, const char *line, char *result, int cap)
         }
         DeleteMsgPort(reply);
     }
+    RexxSysBase = keep;
     if (rxs)
         CloseLibrary(rxs);
     return rc;
