@@ -13,7 +13,8 @@ ledger: thoughts/spot/todos.md, AMARCHY-AUTOTILE
 - D2 Standalone commodity with its own Exchange entry and ARexx port. Works without Amarchy.
   Amarchy drives it over ARexx.
 - D3 Layout math shared with amarchy/win_core.c, not duplicated.
-- D4 Tiles only the UP-Term public screen. Non-resizable windows, requesters, backdrop windows
+- D4 (revised 2026-10-28 s18, owner) Tiles the FRONT screen (Workbench/DOpus or an UP-Term screen); was "only the
+  UP-Term public screen", which tiled nothing on rig 7 / A1200 where UP-Term windows open on Workbench. Non-resizable windows, requesters, backdrop windows
   and the Amarchy menu window float.
 - D5 Layout: master-stack (only layout in v1; LAYOUT command reserved for later).
 - D6 A newly opened window becomes master; old master moves to stack top.
