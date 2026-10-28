@@ -40,6 +40,7 @@ copy-coreutils  Files/coreutils/bin     bin
 -               Files/coreutils
 copy-userland   Files/userland/bin      bin
 userland        Files/userland
+userland        Files/amarchy-themes
 copy-unifont    Files/unifont           unifont
 copy-emoji      Files/emoji             emoji
 tools           Files/UPDemo

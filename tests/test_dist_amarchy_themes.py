@@ -20,6 +20,12 @@ class AmarchyThemes(unittest.TestCase):
         recipe = recipe[:recipe.index('\n\n')]
         self.assertRegex(recipe, r'cp -R dist/amarchy-themes \$\(KIT\)/Files/%s\b' % re.escape(m.group(1)))
 
+    def test_parts_txt_claims_the_themes_drawer_so_dist_does_not_stop(self):
+        # kitsize and mkmanifest stop `make dist` on a kit file no line of dist/parts.txt claims
+        claimed = {l.split()[1] for l in (ROOT / 'dist' / 'parts.txt').read_text(encoding='latin-1').splitlines()
+                   if l.strip() and not l.startswith('#') and len(l.split()) > 1}
+        self.assertIn('Files/amarchy-themes', claimed)
+
 
 if __name__ == '__main__':
     unittest.main()
