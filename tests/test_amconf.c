@@ -35,8 +35,8 @@ static void test_amconf_parse_defaults(void)
         CHECK_STR(p.val[k], am_keys[k].def);
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
-    /* the table lists eleven keys, each named once */
-    CHECK_INT(AM_NKEYS, 11);
+    /* the table lists fourteen keys, each named once */
+    CHECK_INT(AM_NKEYS, 14);
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)
@@ -98,6 +98,55 @@ static void test_amconf_tile_gap(void)
     CHECK(amconf_serialize(&p, txt, sizeof txt) > 0);
     amconf_parse(txt, (long)strlen(txt), &p);
     CHECK_INT(amconf_tile_gap(&p), 8);
+}
+
+/* tile-layout / tile-ratio / tile-nmaster: defaults, names, limits, round trip, default not written */
+static void test_amconf_tile_layout_keys(void)
+{
+    static const struct { const char *val; int want; } r[] = {
+        { "20", 20 }, { "80", 80 }, { "65", 65 }, { "19", 55 }, { "81", 55 }, { "x", 55 }, { "", 55 }, { "-1", 55 },
+        { "99999999999999999999", 55 },
+    };
+    static const struct { const char *val; int want; } n[] = {
+        { "1", 1 }, { "8", 8 }, { "3", 3 }, { "0", 1 }, { "9", 1 }, { "x", 1 }, { "", 1 }, { "-1", 1 },
+    };
+    am_prefs p, q;
+    char txt[256];
+    unsigned i;
+    amconf_parse("", 0, &p);
+    CHECK_STR(am_keys[AM_TILELAYOUT].name, "tile-layout");
+    CHECK_STR(am_keys[AM_TILERATIO].name, "tile-ratio");
+    CHECK_STR(am_keys[AM_TILENMASTER].name, "tile-nmaster");
+    CHECK_STR(amconf_tile_layout(&p), "dwindle");
+    CHECK_INT(amconf_tile_ratio(&p), 55);
+    CHECK_INT(amconf_tile_nmaster(&p), 1);
+    for (i = 0; i < sizeof r / sizeof r[0]; i++) {
+        amconf_defaults(&p);
+        strcpy(p.val[AM_TILERATIO], r[i].val);
+        CHECK_INT(amconf_tile_ratio(&p), r[i].want);
+    }
+    for (i = 0; i < sizeof n / sizeof n[0]; i++) {
+        amconf_defaults(&p);
+        strcpy(p.val[AM_TILENMASTER], n[i].val);
+        CHECK_INT(amconf_tile_nmaster(&p), n[i].want);
+    }
+    amconf_defaults(&p);
+    p.val[AM_TILELAYOUT][0] = 0;
+    CHECK_STR(amconf_tile_layout(&p), "dwindle");
+    /* a key at its default is not written */
+    amconf_defaults(&p);
+    CHECK(amconf_serialize(&p, txt, sizeof txt) > 0);
+    CHECK(strstr(txt, "tile-") == 0);
+    /* non-default values round-trip through serialize + parse */
+    strcpy(p.val[AM_TILELAYOUT], "grid");
+    strcpy(p.val[AM_TILERATIO], "65");
+    strcpy(p.val[AM_TILENMASTER], "2");
+    CHECK(amconf_serialize(&p, txt, sizeof txt) > 0);
+    CHECK(strstr(txt, "tile-layout = grid") != 0);
+    amconf_parse(txt, (long)strlen(txt), &q);
+    CHECK_STR(amconf_tile_layout(&q), "grid");
+    CHECK_INT(amconf_tile_ratio(&q), 65);
+    CHECK_INT(amconf_tile_nmaster(&q), 2);
 }
 
 static void test_amconf_roundtrip(void)
@@ -830,6 +879,7 @@ void suite_amconf(void)
     test_amconf_parse_defaults();
     test_amconf_roundtrip();
     test_amconf_tile_gap();
+    test_amconf_tile_layout_keys();
     test_amconf_legacy();
     test_amconf_style();
     test_amconf_gtheme_fields();

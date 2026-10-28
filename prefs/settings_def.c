@@ -212,6 +212,12 @@ const sd_setting sd_hidden[SD_NHIDDEN] = {
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
     { -1, "tile-gap", 0, -1, SD_STRING, 0, 0, NOVALS, "4", SD_AMARCHY, SDF_AMSTR, AO(AM_TILEGAP),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "tile-layout", 0, -1, SD_STRING, 0, 0, NOVALS, "dwindle", SD_AMARCHY, SDF_AMSTR, AO(AM_TILELAYOUT),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "tile-ratio", 0, -1, SD_STRING, 0, 0, NOVALS, "55", SD_AMARCHY, SDF_AMSTR, AO(AM_TILERATIO),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "tile-nmaster", 0, -1, SD_STRING, 0, 0, NOVALS, "1", SD_AMARCHY, SDF_AMSTR, AO(AM_TILENMASTER),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
 };
 
 const sd_setting *sd_amarchy_key(int k)

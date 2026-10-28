@@ -1,4 +1,5 @@
 /* amconf_core (see amconf_core.h). */
+#include <stdlib.h>
 #include <string.h>
 #include "amconf_core.h"
 
@@ -107,6 +108,39 @@ int amconf_tile_gap(const am_prefs *p)
     if (v < 0 || v > AM_TILEGAP_MAX)
         return (int)(am_keys[AM_TILEGAP].def[0] - '0');
     return (int)v;
+}
+
+/* whole digits only, value in lo..hi, else the key's default (same rule as amconf_tile_gap) */
+static int digits_in(const char *s, int lo, int hi, int key)
+{
+    long v = 0;
+    const char *d = s;
+    if (!*d)
+        return atoi(am_keys[key].def);
+    for (; *d; d++) {
+        if (*d < '0' || *d > '9')
+            return atoi(am_keys[key].def);
+        v = v * 10 + (*d - '0');
+        if (v > hi)
+            return atoi(am_keys[key].def);
+    }
+    return v < lo ? atoi(am_keys[key].def) : (int)v;
+}
+
+const char *amconf_tile_layout(const am_prefs *p)
+{
+    const char *s = p->val[AM_TILELAYOUT];
+    return *s ? s : am_keys[AM_TILELAYOUT].def;
+}
+
+int amconf_tile_ratio(const am_prefs *p)
+{
+    return digits_in(p->val[AM_TILERATIO], AM_TILERATIO_MIN, AM_TILERATIO_MAX, AM_TILERATIO);
+}
+
+int amconf_tile_nmaster(const am_prefs *p)
+{
+    return digits_in(p->val[AM_TILENMASTER], 1, AM_TILENM_MAX, AM_TILENMASTER);
 }
 
 int amconf_need_migrate(int envarc_new_exists)

@@ -145,9 +145,10 @@ static void test_settings_amarchy(void)
             CHECK_STR(s->def, am_keys[k].def);
         }
     }
-    /* each am_keys entry has one row, except the three with no gadget */
+    /* each am_keys entry has one row, except the six with no gadget */
     for (k = 0; k < AM_NKEYS; k++)
-        CHECK(seen[k] == 1 || (seen[k] == 0 && (k == AM_SKIP || k == AM_VOLUMES || k == AM_TILEGAP)));
+        CHECK(seen[k] == 1 || (seen[k] == 0 && (k == AM_SKIP || k == AM_VOLUMES || k == AM_TILEGAP ||
+                                  k == AM_TILELAYOUT || k == AM_TILERATIO || k == AM_TILENMASTER)));
     CHECK(rows > 0);
 }
 

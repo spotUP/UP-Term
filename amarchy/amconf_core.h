@@ -20,6 +20,9 @@ enum {
     AM_TERMMENU, /* menu-in-terminal: text, graphical */
     AM_GTHEME,  /* amarchy-gui-theme: the drawn menu's Omarchy theme name (gthemes_core.h) */
     AM_TILEGAP, /* tile-gap: AmTile's gap between tiled windows, pixels (0..AM_TILEGAP_MAX), no Prefs gadget */
+    AM_TILELAYOUT, /* tile-layout: AmTile's layout word (dwindle, master-stack, ...); validated by tile_layout_parse, no Prefs gadget */
+    AM_TILERATIO,  /* tile-ratio: AmTile's main-window share in percent (AM_TILERATIO_MIN..MAX), no Prefs gadget */
+    AM_TILENMASTER, /* tile-nmaster: AmTile's number of master windows (1..AM_TILENM_MAX), no Prefs gadget */
     AM_NKEYS
 };
 
@@ -53,6 +56,15 @@ int amconf_term_menu(const am_prefs *p);   /* UC_TERMMENU_* */
 #define AM_TILEGAP_MAX 64
 /* tile-gap as a number: whole digits 0..AM_TILEGAP_MAX, anything else the default of the key */
 int amconf_tile_gap(const am_prefs *p);
+#define AM_TILERATIO_MIN 20
+#define AM_TILERATIO_MAX 80
+#define AM_TILENM_MAX 8
+/* tile-layout as the raw word; empty -> the default "dwindle". tile_layout_parse validates it (no tile_core dependency here) */
+const char *amconf_tile_layout(const am_prefs *p);
+/* tile-ratio: whole digits AM_TILERATIO_MIN..MAX, anything else the default of the key */
+int amconf_tile_ratio(const am_prefs *p);
+/* tile-nmaster: whole digits 1..AM_TILENM_MAX, anything else the default of the key */
+int amconf_tile_nmaster(const am_prefs *p);
 
 /* The Prefs editor's view of the file: the six keys its Amarchy page shows, to and from its field set. The
  * keys it does not show (index skip, volumes) stay as they were in the am_prefs it writes back. */
