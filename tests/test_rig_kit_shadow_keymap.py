@@ -75,6 +75,35 @@ class KitShadowKeymap(unittest.TestCase):
             self.assertIn("C:Copy >NIL: VTC:kit-orig/UP-Term-bin-%s UP-Term:bin/%s CLONE" % (n, n), up)
             self.assertEqual(rig.kit_shadow_src(n), rig.build_amiga() / n)
 
+    def test_install_stages_amarchy_themes_and_font_and_boot_places_them(self):
+        # RIG-NO-THEMES: install through rig.main stages them in VTC:, the boot script copies them to the kit places
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        root, vtc = tmp / "root", tmp / "rig9/vtc"
+        (root / "build/amiga").mkdir(parents=True)
+        (root / "build/jbmono").mkdir(parents=True)
+        (root / "dist/amarchy-themes").mkdir(parents=True)
+        (root / "build/amiga/vtcon-handler").write_bytes(b"handler-new")
+        (root / "dist/amarchy-themes/nord.theme").write_text("name=nord\n")
+        (root / "build/jbmono/JetBrainsMono-Regular.ttf").write_bytes(b"ttf")
+        vtc.mkdir(parents=True)
+        with mock.patch.object(rig, "ROOT", root), mock.patch.object(rig, "RIG", tmp / "rig9"), \
+             mock.patch.object(rig.paths, "RIG_HOME", tmp), mock.patch.object(rig, "stage_upterm", lambda d, v: None), \
+             mock.patch.object(rig, "KIT_SHADOWS", [x for x in rig.KIT_SHADOWS if x[0] == "vtcon-handler"]), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(rig.main(["rig.py", "install"]), 0)
+        self.assertEqual((vtc / "amarchy-themes/nord.theme").read_text(), "name=nord\n")
+        self.assertEqual((vtc / "fonts/JetBrainsMono.ttf").read_bytes(), b"ttf")
+        boot = rig.AMARCHY_ASSETS_BOOT
+        copy = "C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE"
+        self.assertIn(copy, boot)
+        # Every boot refreshes the themes: an older drawer from an earlier kit
+        # must not keep stale or partial themes, so the copy is never gated on
+        # the drawer being missing.
+        head = boot[:boot.index(copy)]
+        guard = head.rfind("If NOT EXISTS UP-Term:Amarchy/Themes")
+        self.assertTrue(guard < 0 or "EndIf" in head[guard:], "theme copy is gated on a missing drawer")
+        self.assertIn("C:Copy >NIL: VTC:fonts/JetBrainsMono.ttf FONTS: CLONE", rig.AMARCHY_ASSETS_BOOT)
+
 
 if __name__ == "__main__":
     unittest.main()
