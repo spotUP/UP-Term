@@ -35,8 +35,8 @@ static void test_amconf_parse_defaults(void)
         CHECK_STR(p.val[k], am_keys[k].def);
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
-    /* the table lists fourteen keys, each named once */
-    CHECK_INT(AM_NKEYS, 14);
+    /* the table lists fifteen keys, each named once */
+    CHECK_INT(AM_NKEYS, 15);
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)
@@ -98,6 +98,26 @@ static void test_amconf_tile_gap(void)
     CHECK(amconf_serialize(&p, txt, sizeof txt) > 0);
     amconf_parse(txt, (long)strlen(txt), &p);
     CHECK_INT(amconf_tile_gap(&p), 8);
+}
+
+/* ai-agent: which agent Super + L opens; default claude, unknown values read as claude, a default is not written */
+static void test_amconf_ai_agent(void)
+{
+    am_prefs p;
+    char txt[512];
+    amconf_parse("", 0, &p);
+    CHECK_STR(am_keys[AM_AGENT].name, "ai-agent");
+    CHECK_STR(amconf_agent(&p), "claude");
+    strcpy(p.val[AM_AGENT], "pi");
+    CHECK_STR(amconf_agent(&p), "pi");
+    CHECK(amconf_serialize(&p, txt, sizeof txt) > 0);
+    CHECK(strstr(txt, "ai-agent = pi") != 0);
+    amconf_parse(txt, (long)strlen(txt), &p);
+    CHECK_STR(amconf_agent(&p), "pi");
+    amconf_defaults(&p);
+    memset(txt, 0, sizeof txt); /* serialize does not terminate */
+    CHECK(amconf_serialize(&p, txt, sizeof txt) > 0);
+    CHECK(strstr(txt, "ai-agent") == 0);
 }
 
 /* tile-layout / tile-ratio / tile-nmaster: defaults, names, limits, round trip, default not written */
@@ -879,6 +899,7 @@ void suite_amconf(void)
     test_amconf_parse_defaults();
     test_amconf_roundtrip();
     test_amconf_tile_gap();
+    test_amconf_ai_agent();
     test_amconf_tile_layout_keys();
     test_amconf_legacy();
     test_amconf_style();

@@ -49,7 +49,7 @@
 #define KEYMAP_H
 
 #define KM_MAX_BIND  192
-#define KM_MAX_MENU  128
+#define KM_MAX_MENU  160
 #define KM_ARG       80
 #define KM_LABEL     32
 #define KM_CAT       12

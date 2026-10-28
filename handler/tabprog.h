@@ -14,6 +14,33 @@
 
 #include <string.h>
 
+/* The programs a tab can run. TAB_SHELL is a shell, not a program. */
+enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL, TAB_PI };
+
+/* The AI agents: the one table from the ai-agent preference's word (Amarchy's settings file) to the tab that
+ * runs it. MENU_AGENT (super+l) opens the one the preference names; MENU_CLAUDE and MENU_PI open theirs. */
+struct tabprog_agent {
+    const char *name;
+    int tab;
+};
+static const struct tabprog_agent tabprog_agents[] = { { "claude", TAB_CLAUDE }, { "pi", TAB_PI } };
+#define TABPROG_NAGENTS (sizeof(tabprog_agents) / sizeof(tabprog_agents[0]))
+
+/* The tab of the agent `name` (any case); an empty or unknown word is the default, the first row (Claude). */
+static int tabprog_agent_tab(const char *name)
+{
+    unsigned long i;
+    const char *a, *b;
+    for (i = 0; name && i < TABPROG_NAGENTS; i++) {
+        for (a = name, b = tabprog_agents[i].name; *a && *b; a++, b++)
+            if ((*a | 0x20) != *b)
+                break;
+        if (!*a && !*b)
+            return tabprog_agents[i].tab;
+    }
+    return tabprog_agents[0].tab;
+}
+
 /* Help > Shell tutorial and /tutorial: a tab running the tutorial script
  * under vsh (the kit puts both in UP-Term:bin, as upkg-ask). The file is
  * what the handler looks for first; the command is the script's one line.

@@ -19,6 +19,15 @@ static void claude_tab_keeps_its_stack_line(void)
     CHECK(strstr(s, "FailAt 2147483647\nStack 32768\nC:Claude\nIf WARN\n") == s);
 }
 
+static void agent_names_pick_their_tab(void)
+{
+    CHECK_INT(tabprog_agent_tab("claude"), TAB_CLAUDE);
+    CHECK_INT(tabprog_agent_tab("pi"), TAB_PI);
+    CHECK_INT(tabprog_agent_tab("PI"), TAB_PI);
+    CHECK_INT(tabprog_agent_tab(""), TAB_CLAUDE);
+    CHECK_INT(tabprog_agent_tab("bogus"), TAB_CLAUDE);
+}
+
 static void tutorial_tab_runs_the_tutorial_under_vsh(void)
 {
     char s[256];
@@ -62,6 +71,7 @@ void suite_tabprog(void)
 {
     a_failed_demo_keeps_its_tab_open_until_return();
     claude_tab_keeps_its_stack_line();
+    agent_names_pick_their_tab();
     tutorial_tab_runs_the_tutorial_under_vsh();
     a_script_too_long_for_the_buffer_is_refused();
     a_small_window_grows_to_the_demo_and_the_tab_bar();

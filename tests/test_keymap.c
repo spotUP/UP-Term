@@ -516,7 +516,7 @@ static void the_shipped_file_resolves_and_derives_menu_keys(void)
     /* a key with a Shift twin has none: Intuition ignores Shift in a command key */
     CHECK(comm_is("t", MENU_TAB_NEW, 0));
     CHECK(comm_is("f", MENU_FIND, 0));
-    CHECK(comm_is("l", MENU_CLAUDE, 0));
+    CHECK(comm_is("l", MENU_AGENT, 0));
     CHECK(comm_is("-", MENU_CLEAR_SCREEN, 0));
 }
 
@@ -916,6 +916,18 @@ static void the_shipped_menu_has_learn_system_and_install_groups(void)
     CHECK(root_has_group("Learn", 1) && root_has_group("System", 1) && root_has_group("Install", 1));
     CHECK(root_has_group("Learn", 0) && root_has_group("System", 0) && root_has_group("Install", 0));
     check_row("learn.keys", KA_VIEWER, "");
+    /* Super + L opens the configured AI agent (MENU_AGENT), not Claude directly; Claude and pi keep their Apps rows */
+    {
+        int i, agent = 0, claude = 0;
+        for (i = 0; i < km.nbind; i++) {
+            agent += km.bind[i].kind == KA_MENUID && !strcmp(km.bind[i].arg, "MENU_AGENT");
+            claude += km.bind[i].kind == KA_MENUID && !strcmp(km.bind[i].arg, "MENU_CLAUDE");
+        }
+        CHECK_INT(agent, 1);
+        CHECK_INT(claude, 0);
+        check_row("apps.pi", KA_MENUID, "MENU_PI");
+        check_row("apps.claude", KA_MENUID, "MENU_CLAUDE");
+    }
     check_row("learn.tutorial", KA_MENUID, "MENU_TUTORIAL");
     check_row("learn.help", KA_MENUID, "MENU_HELP_SLASH");
     check_row("learn.demo", KA_SLASH, "/demo");
@@ -1611,8 +1623,8 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK_INT(c, 32);                                /* the 32 win:/rexx:/run: rows (window.tile runs AmTile, plus the 8 window.layout* rows); window.tab and window.preferences stay hidden */
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
     CHECK(has_label(it, c, "UP-Term") && has_label(it, c, "Editor"));
-    CHECK(!has_label(it, c, "Claude"));
-    CHECK_INT(c, mn_children(&km, "apps", it, MN_MAX_ITEMS) - 1);
+    CHECK(!has_label(it, c, "Claude") && !has_label(it, c, "pi")); /* menuid rows: the handler runs them, no index entry */
+    CHECK_INT(c, mn_children(&km, "apps", it, MN_MAX_ITEMS) - 2);
     c = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, 1);
     CHECK(has_label(it, c, "Apps") && has_label(it, c, "Style") && has_label(it, c, "Window"));
     c = ix_level_t(&km, 0, "style", "", it, MN_MAX_ITEMS, 1);
@@ -1724,7 +1736,7 @@ static void osd_size_counts_the_reachable_levels(void)
         CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + MN_OSD_MAX_ENTRIES); /* Workbench has 42 rows: the window caps them, the list scrolls (owner 2026-10-26: taller than needed) */
         mn_osd_size(&km, "apps", &cols, &rows);
         CHECK_INT(cols, MN_OSD_MIN_COLS);
-        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 4);
+        CHECK_INT(rows, MN_OSD_HEAD_LINES + MN_OSD_BOTTOM_LINES + 5);
     }
 }
 
@@ -1878,7 +1890,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
     CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 12);   /* with the Trigger, Settings, Dopus, Workbench, Screens and Packages groups (all shown) */
-    CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 4);
+    CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
     /* 3 rows: chrome 2 x 2 + 2 x 11 + 20 + 4 = 50, rows 3 x 24 - 2 = 70 */
@@ -3707,9 +3719,10 @@ static void the_shipped_settings_amarchy_group_holds_rescan_preferences_font_and
     n = ix_level(&km, &x, "settings.amarchy", "", it, TEST_LEVEL_MAX);
     for (g = 0, i = 0; i < sd_nsettings; i++)
         g += sd_settings[i].page == PG_PAGE_AMARCHY;
-    CHECK_INT(n, g + 4); /* the page's table rows plus the four static rows */
+    CHECK_INT(n, g + 6); /* the page's table rows plus the six static rows (rescan, preferences, font, edit, two AI agent picks) */
     CHECK(level_has(it, n, "Rescan apps") && level_has(it, n, "Amarchy preferences") &&
-          level_has(it, n, "Menu font") && level_has(it, n, "Edit menu"));
+          level_has(it, n, "Menu font") && level_has(it, n, "Edit menu") &&
+          level_has(it, n, "AI Agent: Claude") && level_has(it, n, "AI Agent: pi"));
     for (i = 0; i < n; i++)
         CHECK(!MN_IS_GROUP(&it[i]));
 }

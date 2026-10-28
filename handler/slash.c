@@ -57,6 +57,9 @@ static const slash_value v_screen[] = {
     { "workbench", MENU_SCREEN_WB, 1 }, { "own", MENU_SCREEN_OWN, 1 },
     { "fullscreen", MENU_SCREEN_FULL, 1 }, { 0, 0, 0 }
 };
+static const slash_value v_agent[] = {
+    { "claude", MENU_SET_AGENT_CLAUDE, 1 }, { "pi", MENU_SET_AGENT_PI, 1 }, { 0, 0, 0 }
+};
 static const slash_value v_tab[] = {
     { "new", MENU_TAB_NEW, 1 }, { "next", MENU_TAB_NEXT, 1 }, { "previous", MENU_TAB_PREV, 1 },
     { "close", MENU_TAB_CLOSE, 1 }, { 0, 0, 0 }
@@ -65,6 +68,7 @@ static const slash_value v_tab[] = {
 /* Alphabetical: the help lists it in this order, completion offers it so. */
 static const slash_def table[] = {
     { "about", SL_ACTION, MENU_ABOUT, 0, 0, "", "the build" },
+    { "agent", SL_CHOICE, 0, 0, v_agent, "claude | pi", "the AI agent the Super + L key opens" },
     { "amiga-keys", SL_CHOICE, 0, 0, v_amigakeys, "on | off",
       "Shift+Left / Right send Home / End, as in the AmigaShell (off: xterm's codes)" },
     { "backspace", SL_CHOICE, 0, 0, v_backspace, "del | bs", "what the Backspace key sends (^? or ^H)" },
@@ -102,6 +106,7 @@ static const slash_def table[] = {
     { "padding-color", SL_CHOICE, 0, 0, v_padding, "background | extend",
       "the strips beside the character grid: the background, or the colour of the cell next to them" },
     { "paste", SL_ACTION, MENU_PASTE, 0, 0, "", "type the clipboard in" },
+    { "pi", SL_ACTION, MENU_PI, 0, 0, "", "pi, in a new tab" },
     { "prefs", SL_ACTION, MENU_PREFS, 0, 0, "", "open UP-Term Prefs" },
     { "profile", SL_ARG, SLASH_PROFILE, 1, 0, "NAME", "switch to a profile" },
     { "program-clipboard", SL_CHOICE, 0, 0, v_clipboard, "write | read-write | off",

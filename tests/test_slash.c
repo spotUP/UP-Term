@@ -63,6 +63,14 @@ static void settings_name_their_menu_items(void)
     CHECK_INT(parse("/claude"), SLASH_OK); /* UP-Term > Claude */
     CHECK_INT(cmd.id, MENU_CLAUDE);
     CHECK_INT(parse("/claude now"), SLASH_ERROR);
+    CHECK_INT(parse("/pi"), SLASH_OK); /* Apps > pi */
+    CHECK_INT(cmd.id, MENU_PI);
+    CHECK_INT(parse("/pi now"), SLASH_ERROR);
+    CHECK_INT(parse("/agent pi"), SLASH_OK); /* what Super + L opens */
+    CHECK_INT(cmd.id, MENU_SET_AGENT_PI);
+    CHECK_INT(parse("/agent claude"), SLASH_OK);
+    CHECK_INT(cmd.id, MENU_SET_AGENT_CLAUDE);
+    CHECK_INT(parse("/agent emacs"), SLASH_ERROR);
     CHECK_INT(parse("/tutorial"), SLASH_OK); /* Help > Shell tutorial */
     CHECK_INT(cmd.id, MENU_TUTORIAL);
     CHECK_INT(parse("/tutorial now"), SLASH_ERROR);
@@ -149,7 +157,7 @@ static void a_wrong_value_says_what_fits(void)
 
 static void the_help_lists_every_command(void)
 {
-    static char out[4096];
+    static char out[8192];
     int n, k, i;
     const slash_def *t = slash_table(&k);
     n = slash_help("", out, sizeof(out));

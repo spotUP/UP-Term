@@ -121,7 +121,7 @@ super+p           = menuid:MENU_PREFS      ; Preferences           | style
 
 ; Apps
 super+return      = run:tmux               ; Tmux                  | apps
-super+l           = menuid:MENU_CLAUDE     ; Claude                | apps
+super+l           = menuid:MENU_AGENT      ; AI Agent              | apps
 super+e           = run:nvim               ; Editor                | apps
 super+u           = run:upkg browse        ; Install and update    | apps
 super+shift+u     = run:upkg upgrade       ; Upgrade all           | apps
@@ -147,6 +147,7 @@ apps.upterm        = UP-Term               | open:uterm
 apps.tmux          = Tmux                  | run:tmux
 apps.editor        = Editor                | run:nvim
 apps.claude        = Claude                | menuid:MENU_CLAUDE
+apps.pi            = pi                    | menuid:MENU_PI
 dopus.newlister    = Open lister           | rexx:UP-Term:Rexx/dopus-newlister.rexx
 dopus.listerhere   = Open lister at current folder | rexx:UP-Term:Rexx/dopus-listerhere.rexx
 dopus.front        = Bring Directory Opus to front | rexx:UP-Term:Rexx/dopus-front.rexx
@@ -168,6 +169,8 @@ settings.amarchy.rescan      = Rescan apps          | scan:amarchy-index
 settings.amarchy.preferences = Amarchy preferences  | detach:C:UP-Term-Prefs AMARCHY
 settings.amarchy.font        = Menu font            | detach:C:UP-Term-Prefs AMARCHY
 settings.amarchy.edit        = Edit menu            | run:nvim ENV:up-term/keymap
+settings.amarchy.agentclaude = AI Agent: Claude     | slash:/agent claude
+settings.amarchy.agentpi     = AI Agent: pi         | slash:/agent pi
 style.theme        = Amarchy theme         | menu:style.theme
 style.terminal.theme      = Theme          | slash:/theme
 style.terminal.font       = Font           | slash:/font
