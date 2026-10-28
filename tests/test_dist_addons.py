@@ -806,6 +806,18 @@ class UhcAddOn(unittest.TestCase):
         for s in S:
             self.assertFalse(s.startswith(('SetEnv', 'Setenv')), s)
 
+    def test_uhc_extbin_is_made_and_put_on_the_path_by_the_install(self):
+        L = self.dos()
+        S = [l.strip() for l in L]
+        assign = self.at(L, 'Assign UHC: "$uhcdir"')
+        mk = self.at(L, 'MakeDir >NIL: UHC:ExtBin', assign)
+        live = self.at(L, 'Path UHC:ExtBin ADD', mk)
+        # live: the drawer exists before Path ADD takes its lock, at the top level (not inside the legacy copy)
+        self.assertEqual(self.guards(L, live), [])
+        self.assertEqual(self.guards(L, mk), [])
+        # the drawer is made on every run, so UHC's own boot block finds it; up-uhc writes no lines of its own
+        self.assertFalse(any('User-Startup' in x and x.startswith('Echo >>') for x in S))
+
     def test_uninstall_leaves_uhc_alone(self):
         body = (self.A / 'uninstall-body.dos').read_text()
         U = body.splitlines()

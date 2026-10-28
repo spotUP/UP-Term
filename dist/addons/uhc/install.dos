@@ -187,6 +187,13 @@ Assign >NIL: UHC: EXISTS
 If WARN
   Assign UHC: "$uhcdir"
 EndIf
+; UHC:ExtBin (where UHC's pkg and upkg put the programs of UHC packages, for example Pipe) is made now and put on
+; the command path of this Shell and what it starts. uhcinstall does not make the drawer, and UHC's own ";BEGIN UHC"
+; block (which stays UHC's: up-uhc adds no lines to S:User-Startup) can only put on the path a drawer that exists
+; at boot, so the drawer is there from the first boot on. A Shell already open keeps its own path: run
+; "Path UHC:ExtBin ADD" there once.
+MakeDir >NIL: UHC:ExtBin
+Path UHC:ExtBin ADD
 ; 3. Up-uhc 1.0 to 1.3 kept UHC in UP-Term:uhc: what the user installed there with UHC's pkg (ExtBin, ExtDoc, the
 ; Installed records) is copied into the UHC tree and the old archive files are taken out; the copies of the user's
 ; own files stay where they were; delete UP-Term:uhc by hand once the copy is checked.
