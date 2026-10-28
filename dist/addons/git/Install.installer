@@ -7,8 +7,9 @@
     "\n\n\nG I T\n\n"
     "git, the version control system, for an UP-Term window.\n"
     "It goes into UP-Term:bin and UP-Term:share/git-core.\n"
-    "git needs a volume with long file names (FFS with long names,\n"
-    "not OFS, whose names stop at 30 characters).\n"
+    "git needs a volume with long file names: FFS in long-name\n"
+    "mode (DOS\7), PFS3 or SFS. OFS and plain FFS stop at 30\n"
+    "characters, too short for git's object files.\n"
     "Needs up-term.lha installed first.\n"
     (all))
 (set #kb-git @KBCOPYGIT@)
