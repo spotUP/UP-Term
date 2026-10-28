@@ -68,7 +68,7 @@ class KitShadowKeymap(unittest.TestCase):
         # The set is the one dist/install.dos copies into UP-Term:bin, read from that file.
         dos = (ROOT / "dist/install.dos").read_text()
         names = next(l.split()[1:-2] for l in dos.splitlines() if l.startswith("Copy Amarchy "))
-        self.assertEqual(sorted(names), ["Amarchy", "amarchy-gui", "amarchy-index", "amarchy-menu"])
+        self.assertEqual(sorted(names), ["AmTile", "Amarchy", "amarchy-gui", "amarchy-index", "amarchy-menu"])
         up = rig.kit_shadow_lines(True)
         for n in names:
             self.assertIn("C:Copy >NIL: VTC:%s UP-Term:bin/%s CLONE" % (n, n), up)
