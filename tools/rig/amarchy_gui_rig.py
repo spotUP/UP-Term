@@ -933,17 +933,26 @@ def job_word():
 PKG_UHC = 'pg8uhc'          # the one UHC catalogue entry the rig stages (upkg reads SYS:UHC/Packages when ENV:UHC/UHCBIN is unset)
 
 
+# The stub script: a real UHC script Copies its binaries into UHC:C; upkg reads those `Copy ... TO <file>` lines to learn which files
+# a uhc package installed (remove deletes them), so the stub carries one.
+UHC_STUB = 'Set PKGNAME "%s"\nSet PKGVERSION "1.0"\nSet UHCRC 0\nCopy SYS:UHC/Packages/%s.desc TO UHC:C/pg8uhc.bin\nEcho "1.0" >SYS:UHC/Packages/Installed/pg8uhc\n'
+
+
 def uhc_catalogue():
     """Stages a UHC catalogue drawer (SYS:UHC/Packages, one script PKG_UHC and its .desc) so `upkg list --tsv` yields a
     src uhc row; the rig has no UHC add-on. Returns the cleanup callable (removes SYS:UHC; the rig had none)."""
     d = tempfile.mkdtemp(prefix='pg8uhc')
-    open(os.path.join(d, PKG_UHC), 'w').write('Set PKGNAME "%s"\nSet PKGVERSION "1.0"\nSet UHCRC 0\n' % PKG_UHC)
+    open(os.path.join(d, PKG_UHC), 'w').write(UHC_STUB % (PKG_UHC, PKG_UHC))
     open(os.path.join(d, PKG_UHC + '.desc'), 'w').write('PG8 rig UHC package\n')
     c.run('MakeDir SYS:UHC', 20)
     c.run('MakeDir SYS:UHC/Packages', 20)
+    c.run('MakeDir SYS:UHC/Packages/Installed', 20)      # a real UHC script ends with Echo "<version>" >UHCBIN:Packages/Installed/<name>
+    c.run('MakeDir SYS:UHC/C', 20)
+    c.run('MakeDir SYS:UHC/S', 20)      # upkg runs a uhc script after Path UHC:C UHC:S
+    c.run('Assign UHC: SYS:UHC', 20)
     for f in (PKG_UHC, PKG_UHC + '.desc'):
         ami.put(os.path.join(d, f), 'SYS:UHC/Packages/' + f)
-    return lambda: c.run('Delete >NIL: SYS:UHC ALL QUIET', 30)
+    return lambda: (c.run('Assign UHC: REMOVE', 20), c.run('Delete >NIL: SYS:UHC ALL QUIET', 30))
 
 
 def tag_problems(rows, feed, uhc, windowed=False):
