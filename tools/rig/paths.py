@@ -113,6 +113,19 @@ def fsuae_crash(log_dir=None):
     return (exc, resets) if exc and resets else None
 
 
+def fsuae_reset_count(log_dir=None):
+    """Number of "CPU reset" lines in the rig's live FS-UAE log. A healthy warm reboot writes one or two; after a Guru
+    on a 68060 rig Kickstart's ROM ColdReboot keeps the 68060.library's live CPU state, the next ROM boot dies in the
+    early alert 80000006, flashes and resets again, about 8 times a second, forever (RIG-RESET-LOOP, s18 findings
+    rig9-installer-loop.md result 8). The watchdog compares two counts a minute apart."""
+    d = pathlib.Path(log_dir or FSUAE_LOG_DIR)
+    try:
+        text = (d / "fs-uae.log.txt").read_text(encoding="latin-1")
+    except OSError:
+        return 0
+    return sum(1 for line in text.splitlines() if line.startswith("CPU reset"))
+
+
 def cap_fsuae_log(log_dir=None, limit=None, tail=None, extra=()):
     """Cut every file in the rig's FS-UAE log dir that holds more than `limit` bytes on disk: its last `tail`
     bytes go to <name>.tail, the file is truncated in place (FS-UAE keeps it open). Sized by allocated blocks:

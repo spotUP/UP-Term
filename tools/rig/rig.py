@@ -32,6 +32,8 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
   rig.py watchdog the idle watchdog `start` launches (--idle-minutes N, default 60, 0 = off): stops the rig after N
                   minutes with no ami/typewin/wasabi command (paths.LAST_COMMAND); never while a long run holds
                   paths.LONG_RUN (ami.py long, install) or within 5 s of a command; never rig 1
+                  also cold-restarts (stop + start --keep-sys) a rig whose FS-UAE log gains 10+ "CPU reset"
+                  lines in a minute: the 060 post-Guru Kickstart reset loop (RIG-RESET-LOOP)
   rig.py stop     kill THIS rig only (matched by its config path, at kill time)
   rig.py reboot   stop and start again with DH0: as the last run left it (a start clones it anew):
                   an install's writes survive. The last start's machine flags, or the ones given
@@ -1531,6 +1533,7 @@ def stop():
 WATCHDOG_EVERY = 60   # seconds between two idle checks
 WATCHDOG_QUIET = 5    # the last command must be at least this old: a stop never lands on a write in flight
 WATCHDOG_IDLE_MINUTES = 60
+WATCHDOG_RESET_LOOP = 10   # "CPU reset" lines added between two checks: a reset loop (a healthy warm reboot adds 1 or 2)
 
 def idle_minutes():
     """--idle-minutes N of this command line (default 60; 0 = no watchdog)."""
@@ -1551,6 +1554,27 @@ def watchdog_step(now, rig_n, idle_min, last_cmd, long_active, stop_fn):
     stop_fn()
     return True
 
+def reset_loop_step(prev_resets, resets, recover_fn):
+    """One reset-loop check; calls recover_fn() and returns True when the FS-UAE log grew by WATCHDOG_RESET_LOOP or
+    more "CPU reset" lines since the last check (paths.fsuae_reset_count). The first check (prev_resets None) only
+    takes the baseline. A gurued 68060 rig loops in Kickstart's early alert until something cold-starts it
+    (RIG-RESET-LOOP); the recovery is a stop and a start on the same system disk, as `rig.py reboot` does."""
+    if prev_resets is None or resets - prev_resets < WATCHDOG_RESET_LOOP:
+        return False
+    recover_fn()
+    return True
+
+def recover_reset_loop(log):
+    """stop() the looping emulator (nothing answers, nothing writes: the safe stop falls through to TERM), then a
+    detached `start --keep-sys` with the last start's arguments; its own watchdog replaces this one."""
+    with log.open("a") as f:
+        f.write("%s reset loop (%d+ CPU resets in %d s): restarting rig %d\n"
+                % (time.strftime("%F %T"), WATCHDOG_RESET_LOOP, WATCHDOG_EVERY, paths.RIG_N))
+    stop()
+    with log.open("a") as f:
+        subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + reboot_args([]),
+                         stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+
 def start_watchdog():
     """Launch the detached watchdog for this rig (not rig 1, not with --idle-minutes 0)."""
     n = idle_minutes()
@@ -1559,7 +1583,7 @@ def start_watchdog():
     paths.touch_command()   # the idle clock starts at boot
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "watchdog", "--idle-minutes", str(n)],
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    print("watchdog: stops rig %d after %d idle minutes (--idle-minutes 0 = off)" % (paths.RIG_N, n))
+    print("watchdog: stops rig %d after %d idle minutes, restarts it from a reset loop (--idle-minutes 0 = off)" % (paths.RIG_N, n))
 
 def watchdog():
     """The loop `start` detaches: every WATCHDOG_EVERY s one watchdog_step; leaves when the rig is gone (stopped by
@@ -1568,6 +1592,7 @@ def watchdog():
     pidf.write_text(str(os.getpid()))
     log = RIG / "watchdog.log"
     n = idle_minutes()
+    resets = None
     while pidf.exists() and pidf.read_text() == str(os.getpid()):
         if not mine():
             break
@@ -1577,6 +1602,10 @@ def watchdog():
             stop()
         if watchdog_step(time.time(), paths.RIG_N, n, paths.last_command(), paths.long_run_active(), do_stop):
             break
+        count = paths.fsuae_reset_count()
+        if reset_loop_step(resets, count, lambda: recover_reset_loop(log)):
+            break
+        resets = count
         time.sleep(WATCHDOG_EVERY)
     if pidf.exists() and pidf.read_text() == str(os.getpid()):
         pidf.unlink()
