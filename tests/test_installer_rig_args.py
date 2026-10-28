@@ -24,6 +24,17 @@ class ParseArgs(unittest.TestCase):
         self.assertEqual(irg.parse_args(["FAILED"]), ([], {"FAILED"}))
         self.assertEqual(irg.parse_args([]), ([], set()))
 
+    def test_max_is_a_noop_and_purpose_reaches_every_rig_start(self):
+        self.addCleanup(irg.PURPOSE.clear)
+        self.assertEqual(irg.parse_args(["ONLY", "dest", "--purpose", "vtcon-05: check", "--max"]), (["dest"], set()))
+        with mock.patch.object(irg, "rig") as rig:
+            irg.rig_start()
+        rig.assert_called_once_with("start", "--purpose", "vtcon-05: check")
+
+    def test_purpose_without_text_stops(self):
+        with self.assertRaises(SystemExit):
+            irg.parse_args(["--purpose"])
+
     def test_unknown_word_stops(self):
         with self.assertRaises(SystemExit):
             irg.parse_args(["--onyl", "bigvol"])

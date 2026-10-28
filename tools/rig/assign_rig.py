@@ -76,7 +76,7 @@ EndCLI >NIL:
 WINDOW = 'XCON:0/20/640/300/UP-Term/CLOSE'
 
 
-def rig(cmd):
+def rig(cmd, *extra):
     """The default rig, the machine install_rig.py is written for (its 3.1
     disk: ORIG_SIZE is that ixemul). conbench_rig.rig() was used here and
     booted creep's --stock --os32 machine: 2 MB chip RAM and no fast RAM
@@ -84,7 +84,7 @@ def rig(cmd):
     and the 3.2 tree, every install check on the wrong system (2026-10-07)."""
     # UPTERM_RIG_FLAGS="--os32": the machine flags of a start (the 3.2 run of T3.6)
     flags = paths.rig_flags() if cmd == "start" else []
-    subprocess.run([sys.executable, str(ROOT / "tools/rig/rig.py"), cmd] + flags, check=True, timeout=700)
+    subprocess.run([sys.executable, str(ROOT / "tools/rig/rig.py"), cmd] + flags + list(extra), check=True, timeout=700)
 
 
 def fingerprint():

@@ -36,5 +36,22 @@ class OwnAsk(unittest.TestCase):
         self.assertIsNone(self.answer(WORK))
 
 
+class RebootQuestion(unittest.TestCase):
+    """P_END's "Reboot now?" must be answered Later, matched by its words and not by a gadget list."""
+    def test_reboot_text_with_later_gadget_clicks_later(self):
+        import installer_rig as irg
+        self.assertEqual(irg.reboot_later({1: 0, 2: 0, 91: 0, 100: 0}, "Reboot now? UP-Term's handlers"), 1)
+        self.assertEqual(irg.reboot_later({1: 0, 90: 0, 91: 0}, "Reboot now?"), 1)
+
+    def test_reboot_text_without_a_later_button_is_never_clicked(self):
+        import installer_rig as irg
+        self.assertEqual(irg.reboot_later({90: 0, 91: 0}, "Reboot now?"), 0)
+        self.assertEqual(irg.reboot_later({90: 0, 91: 0}, "Reboot now? Reboot | Later"), 91)
+
+    def test_other_pages_are_not_reboot_pages(self):
+        import installer_rig as irg
+        self.assertIsNone(irg.reboot_later({90: 0, 91: 0}, "Proceed with the copy"))
+
+
 if __name__ == "__main__":
     unittest.main()

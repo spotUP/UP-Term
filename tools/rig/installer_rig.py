@@ -338,6 +338,16 @@ def own_ask_answer(gads):
     return None
 
 
+def reboot_later(gads, text):
+    """The gadget that answers P_END's "Reboot now?" with Later, or None when `text` (the page's OCR) does
+    not ask it. The page is matched by its words, not by a gadget list. Later is the right button: id 1 on a
+    page with the ask gadgets, id 91 on a Proceed/Abort-shaped page whose right button reads Later. A reboot
+    page with neither returns 0: no gadget is safe to click (the default is Reboot)."""
+    if 'reboot' not in text.lower():
+        return None
+    return 1 if 1 in gads else 91 if 91 in gads and 'later' in text.lower() else 0
+
+
 def text_faults(tree):
     """Text of the Installer's page that the user cannot read whole, from the screen's pixels (UITREE has
     no text): ([fault], [text band]). Text is the black pen with the rules taken out (a run of more than 30
@@ -555,6 +565,21 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
             time.sleep(5)
             continue
         ask = own_ask_answer(gads)
+        if ask is None and '(100% done)' in (title or '') and (not clicked_at or time.time() - clicked_at > 2):
+            # the last pages: P_END's Reboot question must never be clicked through to its default
+            txt = window_ocr(tree, case + '-ask')
+            log.append('last page text: %s' % ' '.join(txt.split()))
+            later = reboot_later(gads, txt)
+            if later == 0:
+                log.append('reboot page [%s] without a Later gadget, ids %s: not clicked' % (title, sorted(gads)))
+                dump(tree, 'reboot page')
+                return False, log
+            if later:
+                click(gads[later][0])
+                clicked_at = time.time()
+                log.append('reboot offered: answered Later (id %d)' % later)
+                wait_change(tree, 3)
+                continue
         if ask is not None:
             if not clicked_at or time.time() - clicked_at > 15:   # a click made while the page redraws is lost
                 # the last page asks to reboot (P_END): Later (id 1, the right button), or the rig's Amiga restarts
@@ -864,7 +889,7 @@ def run_kingcon():
     # CON: is the foreign handler's until the next boot: every write is done (Uninstall returned), 5 s of quiet, then reboot
     time.sleep(5)
     rig("stop")
-    rig("start")
+    rig_start()
     ir._shown = None
     ck(ir.run('VTC:UPConsole STATUS')[0] in (0, 5), 'the rig was rebooted: CON: is the ROM\'s again')
     print('installer_rig kingcon: passed %d of %d' % (ck.total - len(ck.failed), ck.total))
@@ -1294,6 +1319,17 @@ def _migrate(case, ck):
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
 
 
+PURPOSE = []   # ["--purpose", text] for every rig start (the FS-UAE window title)
+
+
+def set_purpose(text):
+    PURPOSE[:] = ["--purpose", text]
+
+
+def rig_start():
+    rig("start", *PURPOSE)
+
+
 def parse_args(argv):
     """(only, flags) from the command line. An unknown word or case stops the run before the rig is touched."""
     args = list(argv)
@@ -1306,6 +1342,12 @@ def parse_args(argv):
             only.append(args.pop(0))
         elif a in ("FAILED", "FORCE"):
             flags.add(a)
+        elif a == "--max":   # max is the rig default (rig.py): accepted so the rig.py line can be reused
+            pass
+        elif a == "--purpose":
+            if not args:
+                raise SystemExit("installer_rig: --purpose needs a text")
+            set_purpose(args.pop(0))
         else:   # an unknown word used to be ignored, and the run went on with every case
             raise SystemExit("installer_rig: unknown argument %r (ONLY <case>, FAILED, FORCE)" % a)
     unknown = [c for c in only if c not in CASES]
@@ -1340,7 +1382,7 @@ def _main(fx, only, flags):
     for case, _ in todo:
         if not booted:
             rig("stop")
-            rig("start")
+            rig_start()
             ir._shown = None   # a fresh boot: the watched window (UPTERM_RIG_SHOW) opens again
             fx.take()   # the user's files and assigns, before any case plants its own
             booted = True
