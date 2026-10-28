@@ -42,5 +42,17 @@ class Check(unittest.TestCase):
             self.assertIn('already has rows', str(rc))
 
 
+class UncoveredInstalls(unittest.TestCase):
+    def test_shell_loop_variable_path_is_not_a_missing_row(self):
+        cmd = 'cp x /sys/u/bin/git && for h in a b; do printf y > /sys/u/bin/$$h; done && cp x /sys/u/bin/other'
+        old = pkg_rows.read_field, pkg_rows.read_make
+        pkg_rows.read_field = lambda *a: cmd
+        pkg_rows.read_make = lambda p, v: {'SYSROOT': '/sys', 'PREFIX': '/u'}[v]
+        try:
+            self.assertEqual(pkg_rows.uncovered_installs('.', 'p', ['bin/git'], []), ['bin/other'])
+        finally:
+            pkg_rows.read_field, pkg_rows.read_make = old
+
+
 if __name__ == '__main__':
     unittest.main()

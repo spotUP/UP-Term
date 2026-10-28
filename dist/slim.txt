@@ -4,10 +4,14 @@
 # the base kit (make dist-base), to stage them into the package (make dist-<id>) and to write the
 # package's Uninstall lines. The package installs them at the same paths in UP-Term: the base used.
 # Columns are separated by two or more spaces. The ports' SOURCES.txt row of <package id> moves with it.
-git   bin/git
-git   bin/git-*
-git   share/git-core
-git   licenses/git
+git  bin/git
+git  bin/git-upload-pack
+git  bin/git-receive-pack
+git  bin/git-upload-archive
+git  bin/git-remote-http
+git  bin/git-remote-https
+git  share/git-core/templates
+git  licenses/git
 perl  bin/perl
 perl  licenses/perl
 vim   bin/vim

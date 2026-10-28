@@ -28,7 +28,7 @@ claude  up-claude  1.2      -           -       ENVARC:upkg/up-claude  Files/Cla
 pi      up-pi      1.0      -           -       ENVARC:upkg/up-pi      Files/amiga-pi                                        amiga-pi,vtcon  C:amiga-pi
 nvim    up-nvim    1.0      1.0         80      UP-Term:pkg/up-nvim    Files/nvim                                            neovim-amiga,ixemul-vtcon  UP-Term:nvim/bin/nvim
 python  up-python  1.0      -           47      ENVARC:upkg/up-python  Files/python3                                         cpython-amiga,ixemul-vtcon  Python3:bin/python3
-git     up-git     1.0      1.0         80      UP-Term:pkg/up-git     Files/userland/bin/git,Files/userland/share/git-core  upterm-ports,ixemul-vtcon  -
+git     up-git     1.0      1.0         80      UP-Term:pkg/up-git     Files/userland/bin/git,Files/userland/bin/git-upload-pack,Files/userland/bin/git-receive-pack,Files/userland/bin/git-upload-archive,Files/userland/bin/git-remote-http,Files/userland/bin/git-remote-https,Files/userland/share/git-core/templates  upterm-ports,ixemul-vtcon  -
 perl    up-perl    1.0      1.0         80      UP-Term:pkg/up-perl    Files/userland/bin/perl                               upterm-ports,ixemul-vtcon  -
 vim     up-vim     1.0      1.0         80      UP-Term:pkg/up-vim     Files/userland/bin/vim,Files/userland/share/vim       upterm-ports,ixemul-vtcon  UP-Term:bin/vim
 bitchx  up-bitchx  1.0      1.0         80      UP-Term:pkg/up-bitchx  Files/userland/bin/BitchX,Files/userland/lib/bx       upterm-ports,ixemul-vtcon  UP-Term:bin/BitchX
