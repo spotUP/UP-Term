@@ -80,6 +80,24 @@ class Assemble(unittest.TestCase):
                 if line.startswith(('MakeDir', 'Copy VERSIONS', 'Copy UPTPARENT')):
                     self.assertNotIn(rec, line, pid)
 
+    def test_an_add_ons_manifest_and_options_land_in_the_real_drawer_of_a_multi_directory_assign(self):
+        # rig 10, s15: with UP-Term: = TwoA + SYS:UP-Term the MANIFEST copy through UP-Term: failed rc 20 ("Can't
+        # open UP-Term:pkg/up-git/MANIFEST for output") because UPTREAL: was gone before record.dos wrote it.
+        for pid in ('git', 'nvim'):
+            lines = [l.strip() for l in mi.build(ROOT / 'dist' / 'install.dos', pid).splitlines()]
+            self.assertIn('Copy MANIFEST $uptrec/MANIFEST CLONE', lines, pid)
+            self.assertIn('Copy ENV:UPTOPT#? $uptrec/opts CLONE QUIET', lines, pid)
+            # UPTREAL: stays assigned until every record write is done, and is removed once after them
+            last_write = max(i for i, l in enumerate(lines) if '$uptrec' in l)
+            drops = [i for i, l in enumerate(lines) if l == 'Assign >NIL: UPTREAL:']
+            self.assertTrue(any(i > last_write for i in drops), pid)
+            self.assertFalse(any(l.startswith(('Copy', 'MakeDir', 'Delete')) and mi.read_values(pid)['RECORD'] in l
+                                 for l in lines[lines.index('Lab record'):]), pid)
+        # the base and a stand-alone archive keep their own record names
+        base = mi.build(ROOT / 'dist' / 'install.dos', 'base')
+        self.assertIn('Copy MANIFEST UP-Term:MANIFEST CLONE', base)
+        self.assertNotIn('Assign >NIL: UPTREAL:', base)
+
     def test_a_stand_alone_package_gets_no_base_check_and_a_record_in_envarc(self):
         for pid in ('claude', 'pi', 'python'):
             v = mi.read_values(pid)

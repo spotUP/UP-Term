@@ -119,6 +119,12 @@ def read_values(pkg_id, extra=()):
         'RECORDP': record if record.endswith((':', '/')) else record + '/',
         # first lines of a package's record part and its Uninstall's data question: dist/common/ fragments
         'RECORDPRE': 'none.dos' if record.endswith(':') else 'record-addon.dos',
+        # where record.dos writes the MANIFEST and options: an add-on through $uptrec (set by its RECORDRESOLVE,
+        # UPTREAL: on a multi-directory UP-Term:), which RECORDEND then unassigns; the base by its own names
+        'RECORDW': (record if record.endswith((':', '/')) else record + '/') if record.endswith(':') else '$uptrec/',
+        'OPTSW': ('ENVARC:up-term/opts' if row['id'] == 'base' else record.rstrip(':/') + '/opts')
+                 if record.endswith(':') else '$uptrec/opts',
+        'RECORDEND': 'none.dos' if record.endswith(':') else 'record-end-addon.dos',
         'PKGDIR': record.rsplit('/', 1)[0] if '/' in record else record,
         # where the record drawer is made: an add-on of the base resolves UP-Term: to one real drawer first
         # (a multi-directory assign creates in its first directory only), a stand-alone one has an absolute record

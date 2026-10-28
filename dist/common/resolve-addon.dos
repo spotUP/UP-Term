@@ -1,7 +1,7 @@
 ; UP-Term: can be a multi-directory assign (Assign UP-Term: A: + B:Tools/UP-Term): a lookup searches every
 ; directory but MakeDir creates in the first one only, where pkg/ may not exist. So the record drawer is made
 ; and filled through one real drawer: the one Install wrote to ENVARC:up-term/Dir, assigned to UPTREAL: (the
-; assign goes at the end of this script). Without that file UP-Term: itself is used.
+; assign goes at the end of record.dos, after its MANIFEST and options). Without that file UP-Term: itself is used.
 Set uptpkg "@PKGDIR@"
 Set uptrec "@RECORD@"
 If EXISTS ENVARC:up-term/Dir

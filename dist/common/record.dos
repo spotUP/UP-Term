@@ -5,18 +5,23 @@ Lab record
 ; ENV:UPTOPT<keyword> files as P_OPTIONS wrote them. An install from a Shell
 ; has no such files and leaves no options: the next Install asks again.
 ; @include dist/common/@RECORDPRE@
-Copy MANIFEST @RECORDP@MANIFEST CLONE
+; An add-on writes through $uptrec, the drawer resolve-addon.dos picked (UPTREAL: on a
+; multi-directory UP-Term:), and drops that assign once done (@RECORDEND@).
+Copy MANIFEST @RECORDW@MANIFEST CLONE
 If WARN
+; @include dist/common/@RECORDEND@
   Quit 20
 EndIf
 If EXISTS ENV:UPTOPTDEST
-  Delete >NIL: @OPTS@ ALL QUIET
-  MakeDir >NIL: @OPTS@
-  Copy ENV:UPTOPT#? @OPTS@ CLONE QUIET
+  Delete >NIL: @OPTSW@ ALL QUIET
+  MakeDir >NIL: @OPTSW@
+  Copy ENV:UPTOPT#? @OPTSW@ CLONE QUIET
   If WARN
+; @include dist/common/@RECORDEND@
     Quit 20
   EndIf
 EndIf
+; @include dist/common/@RECORDEND@
 If NOT "{STEP}" EQ ""
   Quit 0
 EndIf
