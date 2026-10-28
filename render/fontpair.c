@@ -41,6 +41,7 @@ void fontpair_choose(const char *name, int size, int square, int square_fits, fo
     out->name = name;
     out->size = size;
     out->changed = 0;
+    out->ttf_px = 0;
     for (i = 0; i < (int)(sizeof(pairs) / sizeof(pairs[0])); i++) {
         int is_tall = same_font(name, pairs[i].tall) && (!pairs[i].tall_size || size == pairs[i].tall_size);
         int is_square = same_font(name, pairs[i].square) && size == pairs[i].square_size;
@@ -70,6 +71,7 @@ void fontpair_face(const char *face, int square, int square_fits, fontpair_choic
     out->name = face;
     out->size = 0;
     out->changed = 0;
+    out->ttf_px = 0;
 }
 
 int fontpair_square_fits(int screen_h, int bar_h)
@@ -82,12 +84,14 @@ int fontpair_menu_choices(const char *pref_name, int pref_size, int square, int 
     int n = 0;
     if (pref_name && pref_name[0] && pref_size > 0) {
         fontpair_choose(pref_name, pref_size, square, square_fits, &out[n]);
+        out[n].ttf_px = pref_size;
         n++;
     }
     if (square && square_fits) {
         out[n].name = "JetBrainsMono.font";
         out[n].size = 16;
         out[n].changed = 1;
+        out[n].ttf_px = 12;   /* FONTS:JetBrainsMono.ttf at 12 px fills the 16-row cell of the strike (tools/gen_jbmono.py) */
         n++;
     }
     fontpair_choose("topaz.font", 8, square, square_fits, &out[n]);

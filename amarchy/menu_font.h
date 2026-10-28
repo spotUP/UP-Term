@@ -14,6 +14,10 @@ int menu_screen_aspect(struct Screen *scr, int *rx, int *ry);
  * square pixels that fit 25 rows; topaz 8 on tall ones), the first that opens from memory or FONTS:. When none
  * does: the screen's own font. *opened is
  * 1 when the caller must CloseFont the result. */
+/* One choice of fontpair_menu_choices as a bitmap font, from memory or FONTS: (no requester when missing);
+ * 0 when it does not open at its size. The caller CloseFonts it. */
+struct fontpair_choice;
+struct TextFont *menu_font_open_choice(const struct fontpair_choice *ch);
 struct TextFont *menu_font_open(struct Screen *scr, int square, const char *pref_name, int pref_size, int *opened);
 
 #endif

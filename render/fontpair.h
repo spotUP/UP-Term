@@ -11,6 +11,7 @@ typedef struct fontpair_choice {
     const char *name;   /* "topaz.font", "TopazPro.font", "IBM.font" or the input name */
     int size;
     int changed;        /* 1 when it is the other font of a pair */
+    int ttf_px;         /* the Amarchy menu tries FONTS:<name>.ttf at this pixel size first (antialiased); 0 = bitmap only */
 } fontpair_choice;
 
 /* name, size: the font asked for ("topaz", "topaz.font"; any case).
@@ -37,7 +38,9 @@ int fontpair_square_fits(int screen_h, int bar_h);
 #define FONTPAIR_MENU_MAX 3
 /* The preferred font (upconf amarchy-menu-font as a requester gives it: name with ".font", size; NULL or an
  * empty name or size < 1 = none) is tried FIRST, through fontpair_choose, and the built-in choices follow as
- * fallbacks, so a font that is not installed leaves the menu as it was. */
+ * fallbacks, so a font that is not installed leaves the menu as it was. Each choice's ttf_px is the TrueType
+ * size amarchy/menu_text.c mt_open tries before the bitmap: the preference's own size, 12 for JetBrains Mono
+ * (FONTS:JetBrainsMono.ttf, antialiased like Omarchy; the 16 strike is the fallback), 0 for topaz/TopazPro. */
 int fontpair_menu_choices(const char *pref_name, int pref_size, int square, int square_fits, fontpair_choice *out);
 
 #endif

@@ -632,6 +632,16 @@ EndIf
 If NOT EXISTS FONTS:JetBrainsMono.font
   Copy fonts/JetBrainsMono.font FONTS: CLONE QUIET
 EndIf
+; The TrueType file itself: the Amarchy menu draws it antialiased (amarchy/menu_text.c mt_open), the 16
+; strike above is the fallback. Same marker rule as SymbolsNerdFontMono.ttf.
+If NOT EXISTS FONTS:JetBrainsMono.ttf
+  Copy fonts/JetBrainsMono.ttf FONTS: CLONE QUIET
+  Echo >ENVARC:up-term/font-JetBrainsMono-ttf "installed by UP-Term"
+Else
+  If EXISTS ENVARC:up-term/font-JetBrainsMono-ttf
+    Copy fonts/JetBrainsMono.ttf FONTS: CLONE QUIET
+  EndIf
+EndIf
 MakeDir >NIL: UP-Term:fonts/JetBrainsMonoLicence
 Copy fonts/JetBrainsMonoLicence UP-Term:fonts/JetBrainsMonoLicence ALL CLONE QUIET
 If EXISTS SYS:System/FixFonts

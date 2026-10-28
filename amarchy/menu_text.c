@@ -15,6 +15,7 @@
 #include "menu_text_core.h"
 #include "menu_font.h"
 #include "../render/aa_ink.h"
+#include "../render/fontpair.h"
 #include "../render/outline.h"
 #include "../render/pens_amiga.h"
 #include "../render/pen_match.h"
@@ -215,27 +216,37 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
     char name[64];
     long size = 0;
     mtc_src src;
+    fontpair_choice ch[FONTPAIR_MENU_MAX];
+    int i, n;
     if (!m)
         return 0;
     m->scr = scr;
     menu_screen_aspect(scr, &m->rx, &m->ry);
     if (!prefs_font_parse(spec, name, sizeof name, &size))
         name[0] = 0;
-    if (name[0] && size > 0 && mt_open_ttf(m, name, (int)size)) {
-        aa_ink_ops ops;
-        ops.u = m;
-        ops.truecolor_ink = op_truecolor_ink;
-        ops.nearest_pen = op_nearest_pen;
-        ops.pen_rgb = op_pen_rgb;
-        ops.dist = op_dist;
-        ops.set_pen = op_set_pen;
-        ops.fill = op_fill;
-        aa_ink_init(&m->ink, &ops);
-        if (GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH) > 8 && (m->cgx = OpenLibrary((STRPTR)"cybergraphics.library", 41)) != 0)
-            m->truecolor = 1;
-        return m;
+    /* menu_font_open's choices, best first: each as TrueType (antialiased) before its bitmap, so the default
+     * JetBrains Mono draws from FONTS:JetBrainsMono.ttf as Omarchy's does and the 16 strike is the fallback */
+    n = fontpair_menu_choices(name, (int)size, square, fontpair_square_fits(scr->Height, scr->BarHeight), ch);
+    for (i = 0; i < n && !m->bitmap; i++) {
+        if (ch[i].ttf_px > 0 && mt_open_ttf(m, ch[i].name, ch[i].ttf_px)) {
+            aa_ink_ops ops;
+            ops.u = m;
+            ops.truecolor_ink = op_truecolor_ink;
+            ops.nearest_pen = op_nearest_pen;
+            ops.pen_rgb = op_pen_rgb;
+            ops.dist = op_dist;
+            ops.set_pen = op_set_pen;
+            ops.fill = op_fill;
+            aa_ink_init(&m->ink, &ops);
+            if (GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH) > 8 && (m->cgx = OpenLibrary((STRPTR)"cybergraphics.library", 41)) != 0)
+                m->truecolor = 1;
+            return m;
+        }
+        if ((m->bitmap = menu_font_open_choice(&ch[i])) != 0)
+            m->bitmap_opened = 1;
     }
-    m->bitmap = menu_font_open(scr, square, name, (int)size, &m->bitmap_opened);
+    if (!m->bitmap)
+        m->bitmap = scr->RastPort.Font;   /* the screen's own font, not ours to close */
     m->measure_rp = (struct RastPort *)AllocVec(sizeof(struct RastPort), MEMF_ANY | MEMF_CLEAR);
     if (!m->bitmap || !m->measure_rp) {
         mt_close(m);

@@ -100,7 +100,8 @@ def check_font(name, e, what):
 
 
 def stage_fonts():
-    """JetBrainsMono.font + JetBrainsMono/16 into <rig>/vtc/amarchy-fonts, added to FONTS: for the run."""
+    """JetBrainsMono.font + JetBrainsMono/16 + JetBrainsMono.ttf (the antialiased face the menu tries first) into
+    <rig>/vtc/amarchy-fonts, added to FONTS: for the run."""
     if not os.path.isfile(os.path.join(JBMONO, 'JetBrainsMono.font')):
         subprocess.run(['make', 'jbmono'], cwd=REPO, check=True)
     dst = os.path.join(str(paths.RIG), 'vtc', FONT_DRAWER)
@@ -108,6 +109,7 @@ def stage_fonts():
     os.makedirs(os.path.join(dst, 'JetBrainsMono'))
     shutil.copy(os.path.join(JBMONO, 'JetBrainsMono.font'), dst)
     shutil.copy(os.path.join(JBMONO, 'JetBrainsMono/16'), os.path.join(dst, 'JetBrainsMono/16'))
+    shutil.copy(os.path.join(REPO, 'build/jbmono/JetBrainsMono-Regular.ttf'), os.path.join(dst, 'JetBrainsMono.ttf'))
     c.run('Assign FONTS: VTC:%s ADD' % FONT_DRAWER)
 
 

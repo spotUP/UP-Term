@@ -18,6 +18,12 @@ FixFonts lists every size in the .font files).
                      (JetBrainsMonoLicence/SOURCE.txt: URL, SHA-256, OFL.txt).
                      Not kept in this drawer.
 
+  JetBrainsMono.ttf       The same JetBrains Mono Regular 2.304 TrueType file,
+                     copied unchanged by make dist-base and installed to
+                     FONTS:. The Amarchy menu draws it antialiased at 12 px
+                     first and falls back to the strike above when it does
+                     not open (render/fontpair.c ttf_px).
+
   SymbolsNerdFontMono.ttf   the icons-only Nerd Font, Nerd Fonts 3.5.1
                      (SymbolsNerdFont/SOURCE.txt: URL, SHA-256; MIT.txt and
                      ICON-SETS.md hold its licences). Fetched by `make`, not

@@ -26,7 +26,7 @@ int menu_screen_aspect(struct Screen *scr, int *rx, int *ry)
     return di.Resolution.x == di.Resolution.y;
 }
 
-static struct TextFont *open_one(const fontpair_choice *ch)
+struct TextFont *menu_font_open_choice(const fontpair_choice *ch)
 {
     struct TextAttr ta;
     struct TextFont *f;
@@ -64,7 +64,7 @@ struct TextFont *menu_font_open(struct Screen *scr, int square, const char *pref
     int i, n = fontpair_menu_choices(pref_name, pref_size, square, fontpair_square_fits(scr->Height, scr->BarHeight), ch);
     *opened = 0;
     for (i = 0; i < n; i++) {
-        f = open_one(&ch[i]);
+        f = menu_font_open_choice(&ch[i]);
         if (f) {
             *opened = 1;
             return f;

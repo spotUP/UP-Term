@@ -225,6 +225,9 @@ EndIf
 If EXISTS ENVARC:up-term/font-JetBrainsMono-16
   Delete >NIL: FONTS:JetBrainsMono/16 QUIET
 EndIf
+If EXISTS ENVARC:up-term/font-JetBrainsMono-ttf
+  Delete >NIL: FONTS:JetBrainsMono.ttf QUIET
+EndIf
 Delete >NIL: FONTS:TopazPro FONTS:IBM FONTS:JetBrainsMono QUIET
 If NOT EXISTS FONTS:JetBrainsMono
   Delete >NIL: FONTS:JetBrainsMono.font QUIET

@@ -102,6 +102,23 @@ static void a_preferred_menu_font_comes_first_and_the_built_in_choices_stay_as_f
     CHECK_STR(m[0].name, "topaz.font");
 }
 
+/* Owner 2026-10-28: the drawn menu's text was not antialiased, because the default JetBrains Mono only came
+ * as the 1-bit 16 strike. The default choice now names the TrueType size, so mt_open draws FONTS:JetBrainsMono.ttf
+ * antialiased first; a preferred font keeps its own size as TrueType; the topaz fallbacks stay bitmap only. */
+static void menu_jetbrains_mono_opens_antialiased_as_truetype_first(void)
+{
+    fontpair_choice m[FONTPAIR_MENU_MAX];
+    CHECK_INT(fontpair_menu_choices(0, 0, 1, 1, m), 2);
+    CHECK_STR(m[0].name, "JetBrainsMono.font");
+    CHECK_INT(m[0].ttf_px, 12);
+    CHECK_INT(m[1].ttf_px, 0);
+    CHECK_INT(fontpair_menu_choices("Hack.font", 14, 1, 1, m), 3);
+    CHECK_INT(m[0].ttf_px, 14);
+    CHECK_INT(m[1].ttf_px, 12);
+    CHECK_INT(fontpair_menu_choices(0, 0, 0, 1, m), 1);
+    CHECK_INT(m[0].ttf_px, 0);
+}
+
 static void menu_keeps_topaz_8_on_tall_pixels_and_when_25_rows_do_not_fit(void)
 {
     fontpair_choice m[FONTPAIR_MENU_MAX];
@@ -130,6 +147,7 @@ void suite_fontpair(void)
     other_fonts_are_left_alone();
     menu_uses_jetbrains_mono_on_square_screens();
     a_preferred_menu_font_comes_first_and_the_built_in_choices_stay_as_fallbacks();
+    menu_jetbrains_mono_opens_antialiased_as_truetype_first();
     menu_keeps_topaz_8_on_tall_pixels_and_when_25_rows_do_not_fit();
     the_terminal_stays_on_topaz_pro_16_on_square_screens();
 }
