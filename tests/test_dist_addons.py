@@ -810,13 +810,28 @@ class UhcAddOn(unittest.TestCase):
         L = self.dos()
         S = [l.strip() for l in L]
         assign = self.at(L, 'Assign UHC: "$uhcdir"')
-        mk = self.at(L, 'MakeDir >NIL: UHC:ExtBin', assign)
+        mk = self.at(L, 'Execute UHC:S/pkg-envcheck', assign)
         live = self.at(L, 'Path UHC:ExtBin ADD', mk)
         # live: the drawer exists before Path ADD takes its lock, at the top level (not inside the legacy copy)
         self.assertEqual(self.guards(L, live), [])
         self.assertEqual(self.guards(L, mk), [])
         # the drawer is made on every run, so UHC's own boot block finds it; up-uhc writes no lines of its own
         self.assertFalse(any('User-Startup' in x and x.startswith('Echo >>') for x in S))
+
+    def test_uhc_extbin_is_never_made_without_the_variable_pkg_envcheck_reads(self):
+        """A bare MakeDir UHC:ExtBin left UHC/EXTBIN unset; UHC's pkg-envcheck then ran MakeDir on the drawer that
+        was there, rc 10, and every UHC package script failed ("MakeDir failed returncode 10", pipe on rig 7)."""
+        L = self.dos()
+        S = [l.strip() for l in L]
+        mk = self.at(L, 'Execute UHC:S/pkg-envcheck')
+        # pkg-envcheck runs under FailAt 21, so its MakeDir on a drawer that is there sets the variables anyway
+        fail = [i for i, s in enumerate(S[:mk]) if s.startswith('FailAt')]
+        self.assertEqual(S[fail[-1]], 'FailAt 21')
+        # outside the legacy copy (which runs after pkg-envcheck) no line makes ExtBin or ExtDoc on its own
+        for i, s in enumerate(S):
+            if s.startswith('MakeDir') and ('UHC:ExtBin' in s or 'UHC:ExtDoc' in s):
+                self.assertGreater(i, mk, s)
+                self.assertIn('EXISTS UP-Term:uhc', ' '.join(self.guards(L, i)), s)
 
     def test_uninstall_leaves_uhc_alone(self):
         body = (self.A / 'uninstall-body.dos').read_text()

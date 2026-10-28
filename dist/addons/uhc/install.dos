@@ -192,7 +192,16 @@ EndIf
 ; block (which stays UHC's: up-uhc adds no lines to S:User-Startup) can only put on the path a drawer that exists
 ; at boot, so the drawer is there from the first boot on. A Shell already open keeps its own path: run
 ; "Path UHC:ExtBin ADD" there once.
-MakeDir >NIL: UHC:ExtBin
+; UHC's own S/pkg-envcheck makes the drawers, as every package script does first: it makes ExtBin and ExtDoc and
+; sets UHC/EXTBIN and UHC/EXTDOC (ENV: and ENVARC:) together. A bare MakeDir of the drawer is wrong: with the drawer
+; there and UHC/EXTBIN unset, pkg-envcheck's own MakeDir fails with rc 10 and every package script stops there
+; ("MakeDir failed returncode 10", pipe on rig 7). Under this script's FailAt 21 that MakeDir only warns, and the
+; variables are set, so an install that left the drawer without the variables is mended by running this again.
+Execute UHC:S/pkg-envcheck
+If NOT EXISTS UHC:ExtBin
+  Echo "[ERROR] UHC's S/pkg-envcheck did not make UHC:ExtBin: UHC packages have nowhere to install their programs."
+  Quit 20
+EndIf
 Path UHC:ExtBin ADD
 ; 3. Up-uhc 1.0 to 1.3 kept UHC in UP-Term:uhc: what the user installed there with UHC's pkg (ExtBin, ExtDoc, the
 ; Installed records) is copied into the UHC tree and the old archive files are taken out; the copies of the user's
