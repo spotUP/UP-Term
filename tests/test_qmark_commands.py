@@ -74,6 +74,7 @@ EXCLUDED = {
     'phaseprobe': 'probe',
     'engbench': 'benchmark',
     'ptytest': 'rig test tool',
+    'scrprobe': 'rig probe (menu font on a screen)',
 }
 
 mk = open(os.path.join(ROOT, 'Makefile')).read()
