@@ -13,6 +13,7 @@
 #define TABPROG_H
 
 #include <string.h>
+#include "../shell/vsh_quote.h"
 
 /* The programs a tab can run. TAB_SHELL is a shell, not a program. */
 enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL, TAB_PI };
@@ -39,6 +40,25 @@ static int tabprog_agent_tab(const char *name)
             return tabprog_agents[i].tab;
     }
     return tabprog_agents[0].tab;
+}
+
+/* The agent's command line with a task: `cmd` and the task as one quoted item ("C:Claude "fix the *"bug*""),
+ * the first message of an interactive session (C:Claude: claude/main_amiga.c, its PROMPT; amiga-pi: args.c,
+ * its [prompt ...]). A null or empty task is `cmd` alone. 1 when it fits in out[size], 0 when not. */
+static int tabprog_task_cmd(char *out, unsigned long size, const char *cmd, const char *task)
+{
+    unsigned long n = strlen(cmd);
+    if (n + 1 > size)
+        return 0;
+    strcpy(out, cmd);
+    if (!task || !task[0])
+        return 1;
+    if (n + 1 + 2 * strlen(task) + 3 > size) /* the worst case: every character escaped, two quotes, the NUL */
+        return 0;
+    out[n++] = ' ';
+    n = (unsigned long)(vsh_put_word(out + n, task, 1) - out);
+    out[n] = 0;
+    return 1;
 }
 
 /* Help > Shell tutorial and /tutorial: a tab running the tutorial script

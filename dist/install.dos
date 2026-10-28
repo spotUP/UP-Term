@@ -483,6 +483,8 @@ EndIf
 ; C:WBPath: puts a drawer on the Workbench process's command path live (up-uhc: UHC:ExtBin), which
 ; "Path X ADD" in an installer's Shell cannot
 Copy WBPath C:WBPath CLONE
+; C:Agent [TASK]: the ai-agent preference's agent in a new tab, started on TASK (Omarchy's ask AI)
+Copy Agent C:Agent CLONE
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
 Copy UPTerm C:UPTerm CLONE
 ; C:uptelnet: a telnet client for the window (no ixemul; needs a TCP/IP

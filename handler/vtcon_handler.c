@@ -1504,6 +1504,7 @@ static void kc_cyc_end(con *c);
 static int sb_size(const con *c);
 static void watch_take(con *c);
 static void tab_command(con *c, int what);
+static void tab_command_arg(con *c, int what, const char *arg);
 static void sbar_apply(con *c);
 static int kc_cyc_key(con *c, const vt_u8 *b, int n, long key, int mods);
 static void kc_menu(con *c, int mode);
@@ -4418,6 +4419,9 @@ static int slash_run(con *c, const char *line, int len, char *ans, int cap, int 
         }
         return 1;
     }
+    case SLASH_ASK: /* the ai-agent preference's agent in a new tab (MENU_AGENT), started on the task */
+        tab_command_arg(c, MENU_AGENT, cmd.arg);
+        return 1;
     case SLASH_FIND:
         if (!vtwin_find(&c->w, cmd.arg[0] ? cmd.arg : 0)) {
             cat3(ans, cap, name, ": not found", "\n");
@@ -5678,6 +5682,7 @@ struct tab_msg {
     slash_state st;          /* STATE: the host's counters, to a tab */
     long stat_arg;           /* STAT: a tab's action (what = STATE_*), its menu id */
     char stat_name[24];      /* STAT: the typed command's name */
+    char task[200];          /* COMMAND: the first message for MENU_AGENT's agent ("": none) */
 };
 
 static struct tab_msg *tab_msg(con *c, int type)
@@ -6032,6 +6037,7 @@ struct tab_spawn_msg {
     char cmd[200];
     char cwd[VT_URI_MAX];        /* the OSC 7 URL, "" none */
     int prog;                    /* TAB_SHELL, or the program the tab runs (tab_progs) */
+    char task[200];              /* an AI agent's first message ("" none): the agent starts on it */
 };
 
 /* A tab that runs one program instead of a shell: Help > Demo tour (UPDemo)
@@ -6069,14 +6075,15 @@ static int tab_prog_script(struct tab_spawn_msg *m)
         sizeof(struct EasyStruct), 0, (UBYTE *)"UP-Term", 0, (UBYTE *)"OK"
     };
     BPTR f, lock;
-    char script[160];
+    char script[640], line[480];
     missing.es_TextFormat = (UBYTE *)p->missing;
     if (!(lock = Lock((STRPTR)p->file, SHARED_LOCK))) {
         EasyRequestArgs(0, &missing, 0, 0);
         return 0;
     }
     UnLock(lock);
-    if (!tabprog_script(script, sizeof(script), p->pre, p->cmd) ||
+    if (!tabprog_task_cmd(line, sizeof(line), p->cmd, m->task) ||
+        !tabprog_script(script, sizeof(script), p->pre, line) ||
         !(f = Open((STRPTR)p->script, MODE_NEWFILE)))
         return 0;
     FPuts(f, (STRPTR)script);
@@ -6159,8 +6166,9 @@ static void h_open_link(void *u, const char *uri)
     start_worker(link_opener, "UP-Term link", &m->msg);
 }
 
-/* 1 when the new tab is on its way; prog: TAB_SHELL or the program it runs */
-static int tab_spawn(con *c, const char *profile, con *from, int prog)
+/* 1 when the new tab is on its way; prog: TAB_SHELL or the program it runs; task: the first message of an
+ * AI agent tab (0 or "": none) */
+static int tab_spawn(con *c, const char *profile, con *from, int prog, const char *task)
 {
     struct tab_spawn_msg *m;
     const struct tab_prog *p = &tab_progs[prog];
@@ -6194,6 +6202,8 @@ static int tab_spawn(con *c, const char *profile, con *from, int prog)
     if (!m)
         return 0;
     m->prog = prog;
+    if (task)
+        copy_str(m->task, task, sizeof(m->task));
     copy_str(m->cmd, "NewShell \"XCON:0/0/320/100/UP-Term/TAB ", sizeof(m->cmd));
     strcat(m->cmd, c->tab_name);
     strcat(m->cmd, "/PROFILE ");
@@ -6206,7 +6216,7 @@ static int tab_spawn(con *c, const char *profile, con *from, int prog)
 }
 
 /* a New / Next / Previous / Close tab from the host's own menu, or from a tab's */
-static void host_command(con *c, int what, con *from)
+static void host_command(con *c, int what, con *from, const char *task)
 {
     if (what > MENU_TAB_GOTO0 && what <= MENU_TAB_GOTO0 + 9) {
         int n = what - MENU_TAB_GOTO0 - 1; /* the tab's place: 0 is the first */
@@ -6216,26 +6226,26 @@ static void host_command(con *c, int what, con *from)
     }
     switch (what) {
     case MENU_TAB_NEW:
-        tab_spawn(c, from->profile, from, TAB_SHELL);
+        tab_spawn(c, from->profile, from, TAB_SHELL, 0);
         break;
     case MENU_DEMO:
         /* the tour in a tab of its own: what it does to its screen (the
          * main screen, a resize) leaves the user's session alone */
-        if (!tab_spawn(c, from->profile, from, TAB_DEMO))
+        if (!tab_spawn(c, from->profile, from, TAB_DEMO, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0); /* no room for a tab */
         break;
     case MENU_CLAUDE:
-        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE))
+        if (!tab_spawn(c, from->profile, from, TAB_CLAUDE, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_PI:
-        if (!tab_spawn(c, from->profile, from, TAB_PI))
+        if (!tab_spawn(c, from->profile, from, TAB_PI, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_AGENT: { /* super+l: the agent of the ai-agent preference, in a new tab */
         am_prefs ap;
         amconf_load(&ap);
-        if (!tab_spawn(c, from->profile, from, tabprog_agent_tab(amconf_agent(&ap))))
+        if (!tab_spawn(c, from->profile, from, tabprog_agent_tab(amconf_agent(&ap)), task))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     }
@@ -6249,7 +6259,7 @@ static void host_command(con *c, int what, con *from)
         break;
     }
     case MENU_TUTORIAL:
-        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL))
+        if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL, 0))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
     case MENU_TAB_NEXT:
@@ -6277,16 +6287,23 @@ static void host_command(con *c, int what, con *from)
     }
 }
 
-static void tab_command(con *c, int what)
+/* what, with ARG as its text (MENU_AGENT: the agent's first message). */
+static void tab_command_arg(con *c, int what, const char *arg)
 {
     if (c->is_tab && c->host_pub) {
         struct tab_msg *t = tab_msg(c, TM_COMMAND);
         if (t) {
             t->what = what;
+            copy_str(t->task, arg ? arg : "", sizeof(t->task));
             PutMsg(c->host_pub, &t->msg);
         }
     } else
-        host_command(c, what, c);
+        host_command(c, what, c, arg);
+}
+
+static void tab_command(con *c, int what)
+{
+    tab_command_arg(c, what, 0);
 }
 
 /* The host's IDCMP with tabs: the bar and the window's own events here,
@@ -6372,7 +6389,7 @@ static void host_msgs(con *c)
             bar_draw(c);
             break;
         case TM_COMMAND:
-            host_command(c, t->what, t->from);
+            host_command(c, t->what, t->from, t->task);
             break;
         case TM_STAT:
             stat_note(c, t->what, t->stat_arg, t->stat_name);

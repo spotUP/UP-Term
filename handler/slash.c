@@ -71,6 +71,7 @@ static const slash_def table[] = {
     { "agent", SL_CHOICE, 0, 0, v_agent, "claude | pi", "the AI agent the Super + L key opens" },
     { "amiga-keys", SL_CHOICE, 0, 0, v_amigakeys, "on | off",
       "Shift+Left / Right send Home / End, as in the AmigaShell (off: xterm's codes)" },
+    { "ask", SL_ARG, SLASH_ASK, 0, 0, "[TASK]", "the AI agent in a new tab, started on TASK" },
     { "backspace", SL_CHOICE, 0, 0, v_backspace, "del | bs", "what the Backspace key sends (^? or ^H)" },
     { "bell", SL_CHOICE, 0, 0, v_bell, "none | beep | visual", "the bell" },
     { "bg", SL_ARG, SLASH_BG, 1, 0, "RRGGBB | none", "the background colour" },

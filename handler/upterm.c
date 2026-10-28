@@ -28,6 +28,7 @@
 #include "../tty/qmark.h"
 #include "upterm_version.h"
 #include "upreq.h"
+#include "upcmd.h"
 
 /* the base version and build day (upterm_version.h, written by the Makefile) */
 static const char vers[] = "$VER: UPTerm " UPTERM_VERSION " (" UPTERM_DATE ") UP-Term";
@@ -103,10 +104,8 @@ int main(void)
     static const char tmpl[] = "COMMAND/F";
     struct RDArgs *rd;
     static char line[256], ans[4096];
-    struct FileHandle *fh;
-    BPTR out = Output();
     LONG r;
-    int i, active;
+    int active;
     const char *a, *file = 0;
     if (qmark_line((const char *)GetArgStr())) {
         PutStr((STRPTR)tmpl);
@@ -136,22 +135,7 @@ int main(void)
      * window of the input; neither ("x=$(UPTerm state tabs-opened)": vsh
      * gives a command substitution NIL: and a pipe), the console of the
      * process, "*" at pr_ConsoleTask -- the answer still goes to the output */
-    r = 0;
-    for (i = 0; i < 3 && !r; i++) {
-        BPTR h = i == 0 ? out : i == 1 ? Input() : Open((STRPTR)"*", MODE_OLDFILE);
-        fh = h ? (struct FileHandle *)BADDR(h) : 0;
-        if (fh && fh->fh_Type)
-            r = DoPkt(fh->fh_Type, ACTION_VTCON_COMMAND, fh->fh_Arg1, (LONG)line, (LONG)ans, sizeof(ans), 0);
-        else
-            SetIoErr(ERROR_ACTION_NOT_KNOWN);
-        if (i == 2 && h) {
-            LONG e = IoErr();
-            Close(h);
-            SetIoErr(e);
-        }
-        if (!r && IoErr() != ERROR_ACTION_NOT_KNOWN && IoErr() != ERROR_REQUIRED_ARG_MISSING)
-            break; /* an UP-Term window that said no: not a command */
-    }
+    r = upterm_window_command(line, ans, sizeof(ans));
     if (r == 0) {
         if (IoErr() == ERROR_ACTION_NOT_KNOWN)
             PutStr((STRPTR)"UPTerm: not an UP-Term window\n");

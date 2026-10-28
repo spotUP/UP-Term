@@ -46,6 +46,7 @@ copy-emoji      Files/emoji             emoji
 tools           Files/UPDemo
 tools           Files/Reboot
 tools           Files/WBPath
+tools           Files/Agent
 -               Files/UPBigVol
 tools           Files/UPTerm
 tools           Files/UP-Term.version

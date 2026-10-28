@@ -33,7 +33,8 @@ enum {
     SLASH_COLORS,            /* arg: rgb | 256 | 16 (COLORTERM, TERM for 16), or "none" */
     SLASH_SETUP,             /* the window's settings and where each came from */
     SLASH_STATE,             /* arg: a key, or empty for all: the window's action counters */
-    SLASH_SCREEN_TEXT        /* arg: a file: the visible rows as text, one line per row, written there */
+    SLASH_SCREEN_TEXT,       /* arg: a file: the visible rows as text, one line per row, written there */
+    SLASH_ASK                /* arg: a task, or none: the ai-agent preference's agent in a new tab, started on it */
 };
 
 typedef struct slash_value {

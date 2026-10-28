@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "vsh_cmdline.h"
+#include "vsh_quote.h"
 
 /* Length of the leading keyword of `a` when it is KEY=...: non-empty, only letters, digits, `_`, `-`
  * and `/` (AmigaDOS template names, `-D=1`, `--opt=val`); 0 when `a` has no `=` or its prefix is not one. */
@@ -49,15 +50,7 @@ char *vsh_command_line(char **argv)
             a += kl + 1;
         }
         quote = !*a || strpbrk(a, " \t\";*=\n") != 0;
-        if (quote)
-            *o++ = '"';
-        for (; *a; a++) {
-            if (quote && (*a == '"' || *a == '*' || *a == '\n'))
-                *o++ = '*';
-            *o++ = *a == '\n' ? 'N' : *a;
-        }
-        if (quote)
-            *o++ = '"';
+        o = vsh_put_word(o, a, quote);
     }
     *o = 0;
     return s;
