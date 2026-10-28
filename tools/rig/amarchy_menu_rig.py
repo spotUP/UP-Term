@@ -1681,7 +1681,7 @@ ROWS.append(('pkg_text_fail', r_pkg_text_fail))
 
 def r_pkg_text_uhc_remove():
     """UHC-REMOVE-PREFIX (1d10fc2d) through the text menu: a staged UHC catalogue row (gui rig uhc_catalogue) is installed
-    from Packages > Browse, then removed with Remove > Yes. The job view's line must be `upkg remove uhc:<name>` (the prefix
+    from Packages > Browse, then removed with Remove > Yes. The job view's line must be `remove uhc:<name>` (the prefix
     pk_action_line adds for src uhc), rc 0, and the reopened Browse row must no longer read Installed."""
     import amarchy_gui_rig as g, upkg_rig
     tag, start_bad, name = 'pkg_text_uhc', g.bad, g.PKG_UHC
@@ -1715,7 +1715,7 @@ def r_pkg_text_uhc_remove():
         rc = g.job_done()
         view = screen_text()             # the finished job view stays up until Return
         g.check(rc == 0, '%s: UHC Remove job rc 0 (rc %s)' % (tag, rc))
-        g.check('upkg remove uhc:%s' % name in view, '%s: the job line is `upkg remove uhc:%s` (screen: %s)' % (tag, name, view.strip()[-400:]))
+        g.check('remove uhc:%s' % name in view, '%s: the job view line is `remove uhc:%s` (upkg args; the view omits the program name) (screen: %s)' % (tag, name, view.strip()[-400:]))
         for _ in range(10):
             time.sleep(1.5)
             if 'Enter: Accept' not in screen_text():
@@ -1820,8 +1820,10 @@ def stale_guard(restage, drift=None):
     build_drift (the check behind the rig start [WARN]) what still differs in VTC:. Returns the error text, or None
     when VTC: is current. 2026-10-28: rig 4 printed the [WARN] and the rows ran on the stale programs anyway."""
     restage()
+    import rig
     if drift is None:
-        import rig
+        rig.refresh_programs(pathlib.Path(paths.RIG) / 'vtc', rig.ROOT / 'build/amiga')
+        rig.refresh_kit_shadows(pathlib.Path(paths.RIG) / 'vtc')
         drift = rig.build_drift
     stale = drift(pathlib.Path(paths.RIG) / 'vtc')
     if not stale:

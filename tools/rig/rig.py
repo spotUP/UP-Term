@@ -752,6 +752,8 @@ def setup():
     shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
     stage_amissl(RIG / "vtc", M060)
     stage_ixemul(RIG / "vtc", NOFPU)
+    refresh_programs(RIG / "vtc", ROOT / "build/amiga")   # the files build_drift checks, as install copies them
+    refresh_kit_shadows(RIG / "vtc")
     stale = build_drift(RIG / "vtc")
     if stale:
         print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
@@ -972,18 +974,38 @@ def stage_ixemul(vtc, nofpu):
             shutil.copyfile(src, dst)
             print("refreshed ixp6/%s" % name, dst.stat().st_size, "bytes")
 
+def program_pairs(vtc, built):
+    """The one list of (build file, VTC: copy) pairs for the build/amiga programs: each file of `built`, in VTC: and in
+    the UP-Term drawer's bin. build_drift (the start [WARN]) checks these pairs, and refresh_programs (install, the
+    start, the menu rig's stale_guard) copies them; before, install, start and restage each had their own set and
+    the start printed 16 stale programs on every boot (RIG-START-VTC-DRIFT, MENU-STALE-RESTAGE-DRIFT)."""
+    pairs = []
+    for f in sorted(built.iterdir()):
+        if f.is_file():
+            pairs += [(f, vtc / f.name), (f, vtc / paths.UPTERM_DRAWER / "bin" / f.name)]
+    return pairs
+
+def refresh_programs(vtc, built, required=()):
+    """Copies every program of program_pairs that differs (or, for the `required` names, is absent from VTC: itself).
+    The copy replaces the file whole (temp file, rename), so a running rig never reads half a program."""
+    done = []
+    for src, dst in program_pairs(vtc, built):
+        absent = src.name in required and dst.parent == vtc and not dst.is_file()
+        if (absent or dst.is_file()) and (absent or dst.read_bytes() != src.read_bytes()):
+            tmp = dst.with_name(dst.name + ".new")
+            shutil.copyfile(src, tmp)
+            os.replace(tmp, dst)
+            print("refreshed", dst.relative_to(vtc), dst.stat().st_size, "bytes")
+            done.append(str(dst.relative_to(vtc)))
+    return done
+
 def build_drift(vtc):
     """The VTC: files that differ from the host build they come from: build/amiga programs in VTC: and in the
     UP-Term drawer's bin, GG:bin/sh (vsh). install() refreshes them, but a rig not installed since the last build
     runs old ones and every check there tests old code (2026-10-25: rigs 3 and 4 held 16 and 19 stale programs,
     rigs 5 and 6 an old pty-handler, while rig 7's stale ixemul was hunted as a menu bug)."""
-    stale = []
-    for f in sorted((ROOT / "build/amiga").iterdir()):
-        if not f.is_file():
-            continue
-        for dst in (vtc / f.name, vtc / paths.UPTERM_DRAWER / "bin" / f.name):
-            if dst.is_file() and dst.read_bytes() != f.read_bytes():
-                stale.append(str(dst.relative_to(vtc)))
+    stale = [str(dst.relative_to(vtc)) for src, dst in program_pairs(vtc, ROOT / "build/amiga")
+             if dst.is_file() and dst.read_bytes() != src.read_bytes()]
     sh, vsh = vtc / "gg/bin/sh", ROOT / "build/amiga/vsh"
     if sh.is_file() and vsh.is_file() and sh.read_bytes() != vsh.read_bytes():
         stale.append("gg/bin/sh")
@@ -1083,12 +1105,7 @@ def _install():
     # starts as a copy of old builds, and a script that runs VTC:<name> must
     # run the current one. The UP-Term drawer's bin too, the places build_drift checks: before, install
     # refreshed only VTC:, so the start [WARN] kept listing Apps/bin programs (vtcon-a1 P7, 2026-10-27)
-    for f in sorted(build_amiga().iterdir()):
-        for dst in (RIG / "vtc" / f.name, RIG / "vtc" / paths.UPTERM_DRAWER / "bin" / f.name):
-            absent = f.name in VTC_REQUIRED and dst.parent == RIG / "vtc" and not dst.is_file()
-            if f.is_file() and (absent or dst.is_file()) and (absent or dst.read_bytes() != f.read_bytes()):
-                shutil.copyfile(f, dst)
-                print("refreshed", dst.relative_to(RIG / "vtc"), dst.stat().st_size, "bytes")
+    refresh_programs(RIG / "vtc", build_amiga(), VTC_REQUIRED)
     refresh_kit_shadows(RIG / "vtc")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
