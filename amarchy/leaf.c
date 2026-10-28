@@ -9,9 +9,8 @@
 #include <intuition/intuition.h>
 #include <proto/intuition.h>
 #include <rexx/storage.h>
-#include <rexx/rxslib.h>
-#include <proto/rexxsyslib.h>
 #include "leaf.h"
+#include "rexx_host.h"
 #include "../prefs/prefs_asl.h"
 #include "amconf_dos.h"
 #include "gthemes_dos.h"
@@ -417,52 +416,6 @@ static int run_viewer(const km_menu *m, const lf_ui *ui)
         return UPREQ_FAILED;
     }
     return start_detached(line, m->label, ui);
-}
-
-struct RxsLib *RexxSysBase;   /* opened around each win: send (send_win) */
-
-/* One ARexx command to a port and its reply: the command line goes to port as an RXCOMM message and this waits for
- * the reply. Returns the return code, or -1 when the port or rexxsyslib.library is absent. A result string (the
- * reply's argstring, when the receiver gives one) is copied into result[cap] when result is set, else "". */
-static long rexx_send(const char *portname, const char *line, char *result, int cap)
-{
-    struct MsgPort *reply, *port;
-    struct RexxMsg *rm;
-    struct Library *rxs;
-    long rc = -1;
-    if (result && cap > 0)
-        result[0] = 0;
-    rxs = OpenLibrary((STRPTR)"rexxsyslib.library", 0);
-    reply = rxs ? CreateMsgPort() : 0;
-    if (reply) {
-        RexxSysBase = (struct RxsLib *)rxs;
-        if ((rm = CreateRexxMsg(reply, 0, 0)) != 0) {
-            if ((rm->rm_Args[0] = (STRPTR)CreateArgstring((STRPTR)line, strlen(line))) != 0) {
-                rm->rm_Action = RXCOMM | (result ? RXFF_RESULT : 0);
-                Forbid();
-                port = FindPort((STRPTR)portname);
-                if (port)
-                    PutMsg(port, (struct Message *)rm);
-                Permit();
-                if (port) {
-                    WaitPort(reply);
-                    GetMsg(reply);
-                    rc = rm->rm_Result1;
-                    if (rc == 0 && result && rm->rm_Result2) {
-                        strncpy(result, (const char *)rm->rm_Result2, cap - 1);
-                        result[cap - 1] = 0;
-                        DeleteArgstring((STRPTR)rm->rm_Result2);
-                    }
-                }
-                DeleteArgstring((STRPTR)rm->rm_Args[0]);
-            }
-            DeleteRexxMsg(rm);
-        }
-        DeleteMsgPort(reply);
-    }
-    if (rxs)
-        CloseLibrary(rxs);
-    return rc;
 }
 
 /* win:<verb>: the commodity does it (amarchy-gui's own window is the active one, the owner's target is the
