@@ -21,6 +21,12 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <expected> vs
   off            the row (TOGGLE) turns tiling off, ENV:Amarchy/tile reads "off"
   fourth_free    a fourth window opened while off is not moved
   restart        ENV "on", Amarchy restarted: port AMTILE is there again
+Layout steps (plan 2026-10-28-amtile-layout.md, Phase 5; STATUS "<on|off> <tiled> <retiles> <layout> <nmaster> <ratio>"):
+  layout_default no tile-* prefs keys: STATUS dwindle 1 55
+  layout_row     the dist/keymap row `AmTile LAYOUT NEXT` via RUN <n> (THE reachability test: layout changes, retiles up, boxes)
+  layout_hotkey  super+alt+l through the keyboard (qualifier LAmiga+LAlt, raw 0x28)
+  lay_<name>     LAYOUT <name> with 3 windows: STATUS names it, boxes equal the host helper's
+  lay_next_prev, ratio, nmaster, promote, cycle, monocle_raise, persist, reset   see the plan's Reachability section
 Resumable like the other rigs: --only <step> reruns one step against the state the earlier steps left (the windows
 this script opened are remembered in <RIG>/amarchy-tile/state.json).
   python3 tools/rig/amarchy_tile_rig.py [--only STEP] [--screen WxH] [--title N] [--gap N] [--ratio N] [--no-build]
@@ -38,7 +44,7 @@ ROW_MARK = 'AmTile TOGGLE'      # the Phase 3 row "Tile windows" runs UP-Term:bi
 ENV_FILE = 'ENV:Amarchy/tile'
 WATCH = 0.25                    # AmTile's poll period (tile.c); a retile is expected within 1 s
 TITLE_DEFAULT = 14             # rig evidence (rig 7); wasabi exposes no screen BarHeight
-OPT = {'gap': 4, 'ratio': 55, 'title': None, 'screen': None}
+OPT = {'gap': 4, 'ratio': 55, 'layout': 'dwindle', 'nmaster': 1, 'title': None, 'screen': None}   # layout/nmaster/ratio: boot defaults (L1)
 STATE = {'wins': []}            # addrs of the windows this script opened, oldest first
 HELPER = []
 
@@ -57,12 +63,13 @@ def send(portname, cmd, timeout=15):
 
 
 def tile_status():
-    """(on?, tiled, retiles) from AMTILE STATUS, None when the port does not answer or the text is odd"""
+    """(on?, tiled, retiles, layout, nmaster, ratio) from AMTILE STATUS "<on|off> <tiled> <retiles> <layout> <nmaster>
+    <ratio>", None when the port does not answer or the text is odd"""
     rc, res = send('AMTILE', 'STATUS', timeout=5)
-    m = re.match(r'(on|off) (\d+) (\d+)$', res)
+    m = re.match(r'(on|off) (\d+) (\d+) (\S+) (\d+) (\d+)$', res)
     if rc != 0 or not m:
         return None
-    return m.group(1) == 'on', int(m.group(2)), int(m.group(3))
+    return m.group(1) == 'on', int(m.group(2)), int(m.group(3)), m.group(4), int(m.group(5)), int(m.group(6))
 
 
 def wait_for(pred, secs, step=0.2):
@@ -78,8 +85,8 @@ def wait_for(pred, secs, step=0.2):
 
 # ---- the Amarchy row ----------------------------------------------------------------------------------------
 
-def row_index():
-    """index of the keymap row that runs AmTile TOGGLE, counted the way Amarchy indexes `RUN <n>`: amarchy.c reload()
+def row_index(mark=None):
+    """index of the keymap row whose line holds `mark` (default ROW_MARK, AmTile TOGGLE), counted the way Amarchy indexes `RUN <n>`: amarchy.c reload()
     loads the table with keymap_reload_compact(cx_row_installed), which DROPS the terminal-scope rows (tab:, menuid:,
     slash: = KS_TERMINAL in keymap_action_scope), so cx_row(n) and STATUS rows= count only the installed rows;
     "super+1..9" is nine rows. None when dist/keymap has no such row (Phase 3 not built)"""
@@ -92,17 +99,17 @@ def row_index():
             action = l.split('=', 1)[1].strip()
             if re.match(r'(tab|menuid|slash):', action):
                 continue
-            if ROW_MARK in l:
+            if (mark or ROW_MARK) in l:
                 return n
             m = re.match(r'\S*?(\d)\.\.(\d)\s*=', l)
             n += int(m.group(2)) - int(m.group(1)) + 1 if m else 1
     return None
 
 
-def fire_row():
-    i = row_index()
+def fire_row(mark=None):
+    i = row_index(mark)
     if i is None:
-        return None, 'no keymap row runs "%s" (dist/keymap)' % ROW_MARK
+        return None, 'no keymap row runs "%s" (dist/keymap)' % (mark or ROW_MARK)
     return send('AMARCHY', 'RUN %d' % i)[0], 'RUN %d' % i
 
 
@@ -150,9 +157,11 @@ def helper():
     return HELPER[0]
 
 
-def expected(n):
+def expected(n, layout=None, nmaster=None, ratio=None):
+    """the boxes of the n-window layout, newest (master) first; layout/nmaster/ratio default to OPT"""
     w, h, t = screen_geom()
-    r = subprocess.run([helper(), str(w), str(h), str(t), str(OPT['gap']), str(OPT['ratio']), str(n)],
+    r = subprocess.run([helper(), str(w), str(h), str(t), str(OPT['gap']), str(ratio or OPT['ratio']), str(n),
+                        layout or OPT['layout'], str(nmaster or OPT['nmaster'])],
                        capture_output=True, text=True, check=True)
     return [tuple(int(x) for x in l.split()[2:6]) for l in r.stdout.splitlines()]
 
@@ -188,16 +197,86 @@ def close_win(addr):
     return True
 
 
-def tiled_boxes_match(n, secs=3):
+def tiled_boxes_match(n, secs=3, **kw):
     """True when the n windows of mine sit exactly on the n-window layout (any assignment of windows to cells would be a
-    different layout, so the multiset of boxes is compared); (ok, want, got)"""
-    want = sorted(expected(n))
+    different layout, so the multiset of boxes is compared); kw: layout/nmaster/ratio as for expected(); (ok, want, got)"""
+    want = sorted(expected(n, **kw))
 
     def got():
         return sorted(b[:4] for _, b in mine())
     wait_for(lambda: got() == want, secs)
     g = got()
     return g == want, want, g
+
+
+# ---- layout helpers -----------------------------------------------------------------------------------------
+
+LAYOUTS = ['dwindle', 'master-stack', 'mirrored', 'columns', 'rows', 'grid', 'monocle']
+RAW_KEY = {'t': 0x14, 'l': 0x28}   # raw codes of the letters the hotkeys use (amarchy_clash_rig.py RAW: q=0x10.., a=0x20..)
+SUPER_ALT = 0x40 | 0x10            # IEQUALIFIER_LCOMMAND | IEQUALIFIER_LALT = 0x50, as run 2 sent for super+alt+t
+
+
+def ensure_windows(n):
+    """open or close windows of mine (newest first out) until exactly n remain; AmTile (when on) retiles them"""
+    while len(STATE['wins']) > n:
+        if not close_win(STATE['wins'][-1]):
+            break
+    while len(STATE['wins']) < n:
+        if not open_win():
+            break
+    time.sleep(WATCH * 3)
+    return len(mine()) == n
+
+
+def cmd(text):
+    """one AMTILE command; the rc (None: no port)"""
+    return send('AMTILE', text)[0]
+
+
+def status_is(**want):
+    """the STATUS tuple once its named fields (on, tiled, retiles, layout, nmaster, ratio) equal `want`, else None"""
+    names = ('on', 'tiled', 'retiles', 'layout', 'nmaster', 'ratio')
+
+    def ok():
+        st = tile_status()
+        return st if st and all(st[names.index(k)] == v for k, v in want.items()) else None
+    return wait_for(ok, 3)
+
+
+def hotkey(letter):
+    """super+alt+<letter> through the keyboard path run 2 used for super+alt+t (ami.key = one KEY frame down+up)"""
+    ami.key(RAW_KEY[letter], SUPER_ALT)
+
+
+def topmost():
+    """address of the front-most window of mine: the one whose centre no other window covers (wasabi covered(), the
+    test ami.raise_window uses); None when none or several are uncovered"""
+    with ami._conn() as conn:
+        m = ami._m()
+        scr = m.read_ui(conn)
+        if not scr:
+            return None
+        sc = scr[0]
+        free = [w['addr'] for w in sc['windows'] if w['addr'] in STATE['wins']
+                and not m.covered(sc, w, w['left'] + w['width'] // 2, w['top'] + w['height'] // 2)]
+    return free[0] if len(free) == 1 else None
+
+
+def activate(addr):
+    """bring the window with this address to the front and make it active (ui_front, then a click in its middle)"""
+    with ami._conn() as conn:
+        m = ami._m()
+        for sc, w in m.ui_windows(m.read_ui(conn, every_screen=True), boxes()[addr][4]):
+            if w['addr'] == addr:
+                m.ui_front(conn, w)
+                ami._mouse(conn, 1, 0, 1, w['left'] + w['width'] // 2, w['top'] + w['height'] // 2)
+                return True
+    return False
+
+
+def layout_boxes_ok(n, layout, **kw):
+    ok, want, got = tiled_boxes_match(n, layout=layout, **kw)
+    return ok, 'boxes %r vs %r' % (want, got)
 
 
 # ---- steps --------------------------------------------------------------------------------------------------
@@ -289,6 +368,165 @@ def s_midapply():
     return closed and st is not None, 'expected AmTile answers STATUS after open+immediate close vs closed %s STATUS %r' % (closed, st)
 
 
+def s_layout_default():
+    """boot default L1: with no tile-* keys in the prefs AmTile starts dwindle 1 55"""
+    send('AMTILE', 'QUIT')
+    wait_for(lambda: tile_status() is None, 5)
+    for d in ('ENV:', 'ENVARC:'):
+        f = d + 'Amarchy/prefs'
+        raw = ami.read_file(f)
+        if raw is not None:
+            keep = [l for l in raw.decode('latin-1').splitlines()
+                    if not l.strip().startswith(('tile-layout', 'tile-ratio', 'tile-nmaster'))]
+            with tempfile.NamedTemporaryFile('w', delete=False, encoding='latin-1') as t:
+                t.write('\n'.join(keep) + '\n')
+            ami.put(t.name, f)
+    set_env('on')
+    c.run('Run >NIL: <NIL: %s/AmTile ON' % paths.UPTERM_BIN)
+    st = wait_for(tile_status, 10)
+    return bool(st) and st[3:] == ('dwindle', 1, 55), 'expected STATUS "dwindle 1 55" without tile-* keys vs %r' % (st,)
+
+
+def s_layout_row():
+    """THE reachability test: the dist/keymap row `LAYOUT NEXT` fired through port AMARCHY changes the layout"""
+    ensure_windows(2)
+    cmd('LAYOUT dwindle')
+    before = status_is(layout='dwindle', tiled=2)
+    rc, how = fire_row('AmTile LAYOUT NEXT')
+    after = status_is(layout='master-stack')
+    grew = before is not None and after is not None and after[2] > before[2]
+    ok, d = layout_boxes_ok(2, 'master-stack')
+    return rc == 0 and grew and ok, ('expected before "dwindle", row rc 0, retiles up, layout master-stack, helper boxes vs %s rc %r '
+                                     'before %r after %r %s' % (how, rc, before, after, d))
+
+
+def s_layout_hotkey():
+    """super+alt+l (LAYOUT NEXT) through the keyboard: master-stack -> mirrored, retile count up"""
+    before = status_is(layout='master-stack')
+    hotkey('l')
+    after = status_is(layout='mirrored')
+    grew = before is not None and after is not None and after[2] > before[2]
+    ok, d = layout_boxes_ok(2, 'mirrored')
+    return grew and ok, 'expected hotkey super+alt+l: master-stack -> mirrored, retiles up, helper boxes vs before %r after %r %s' % (
+        before, after, d)
+
+
+def lay_step(name):
+    def step():
+        ensure_windows(3)
+        rc = cmd('LAYOUT ' + name)
+        st = status_is(layout=name)
+        ok, d = layout_boxes_ok(3, name)
+        if name == 'monocle':
+            ok = ok and len({b[:4] for _, b in mine()}) == 1       # all three on the whole work area
+        return rc == 0 and st is not None and ok, 'expected LAYOUT %s rc 0, STATUS names it, 3 helper boxes vs rc %r STATUS %r %s' % (
+            name, rc, st, d)
+    return step
+
+
+def s_lay_next_prev():
+    cmd('LAYOUT dwindle')
+    rc1 = cmd('LAYOUT NEXT')
+    nxt = status_is(layout='master-stack')
+    rc2 = cmd('LAYOUT PREV')
+    prv = status_is(layout='dwindle')
+    return rc1 == 0 and rc2 == 0 and nxt is not None and prv is not None, 'expected NEXT -> master-stack, PREV -> dwindle vs rc %r %r STATUS %r %r' % (
+        rc1, rc2, nxt, prv)
+
+
+def s_ratio():
+    ensure_windows(3)
+    cmd('LAYOUT dwindle')
+    cmd('RATIO 55')
+    rc_a, rc_b = cmd('RATIO 65'), cmd('RATIO -5')
+    st = status_is(ratio=60)
+    ok, d = layout_boxes_ok(3, 'dwindle', ratio=60)
+    rc_bad = cmd('RATIO 90')
+    still = status_is(ratio=60)
+    return rc_a == 0 and rc_b == 0 and st is not None and ok and rc_bad == 10 and still is not None, (
+        'expected RATIO 65 then -5 -> ratio 60 and dwindle(60) boxes, RATIO 90 rc 10 vs rcs %r %r STATUS %r %s, bad rc %r' % (
+            rc_a, rc_b, st, d, rc_bad))
+
+
+def s_nmaster():
+    ensure_windows(4)
+    cmd('RATIO 55')
+    cmd('LAYOUT master-stack')
+    rc = cmd('NMASTER 2')
+    st = status_is(nmaster=2, layout='master-stack')
+    ok, d = layout_boxes_ok(4, 'master-stack', nmaster=2)
+    rc_bad = cmd('NMASTER 0')
+    ensure_windows(3)
+    return rc == 0 and st is not None and ok and rc_bad == 10, 'expected NMASTER 2 -> nmaster 2 and helper boxes, NMASTER 0 rc 10 vs rc %r STATUS %r %s bad rc %r' % (
+        rc, st, d, rc_bad)
+
+
+def s_promote():
+    ensure_windows(3)
+    cmd('NMASTER 1')
+    cmd('LAYOUT master-stack')
+    status_is(layout='master-stack', nmaster=1, tiled=3)
+    target = STATE['wins'][1]      # STATE['wins'] is oldest first: the middle window of three is the second-newest
+    old = boxes().get(target)
+    act = activate(target)
+    rc = cmd('PROMOTE')
+    want = expected(3, layout='master-stack', nmaster=1)[0]
+    got = wait_for(lambda: (lambda b: b if b and b[:4] == want else None)(boxes().get(target)), 3)
+    return act and rc == 0 and got is not None, 'expected PROMOTE rc 0 and the activated window on the master box %r vs activated %s rc %r was %r now %r' % (
+        want, act, rc, old and old[:4], got and got[:4])
+
+
+def s_cycle():
+    ensure_windows(3)
+    cmd('LAYOUT monocle')
+    status_is(layout='monocle', tiled=3)
+    start, before = topmost(), tile_status()
+    seen, rcs = [], []
+    for _ in range(3):
+        rcs.append(cmd('CYCLE NEXT'))
+        wait_for(lambda: topmost() not in ([start] + seen[-1:]), 1.5)
+        seen.append(topmost())
+    rcs.append(cmd('CYCLE PREV'))
+    back = wait_for(lambda: topmost() == seen[1] and seen[1], 1.5)
+    after = tile_status()
+    ok = (all(r == 0 for r in rcs) and None not in seen and len(set(seen)) == 3 and seen[2] == start and back == seen[1]
+          and before is not None and after is not None and before[:2] == after[:2])
+    return ok, ('expected CYCLE NEXT x3 -> three different front windows ending at the start, PREV -> the second, STATUS on/tiled '
+                'unchanged vs rcs %r start %r front %r back %r STATUS %r -> %r' % (rcs, start, seen, back, before, after))
+
+
+def s_monocle_raise():
+    ensure_windows(3)
+    cmd('LAYOUT monocle')
+    status_is(layout='monocle', tiled=3)
+    res = []
+    for w in (STATE['wins'][0], STATE['wins'][1]):       # window A, then window B
+        activate(w)
+        res.append(bool(wait_for(lambda: topmost() == w, 1.5)))
+    return all(res), 'expected the activated window front-most within 1 s each time (A then B) vs %r' % (res,)
+
+
+def s_persist():
+    ensure_windows(3)
+    rcs = [cmd('LAYOUT grid'), cmd('RATIO 60'), cmd('NMASTER 2')]
+    send('AMTILE', 'QUIT')
+    gone = wait_for(lambda: tile_status() is None, 5)
+    c.run('Run >NIL: <NIL: %s/AmTile ON' % paths.UPTERM_BIN)
+    st = wait_for(tile_status, 10)
+    txt = (ami.read_file('ENV:Amarchy/prefs') or b'').decode('latin-1')
+    keys = all(re.search(r'^%s\s*=?\s*%s\s*$' % (k, v), txt, re.M)
+               for k, v in (('tile-layout', 'grid'), ('tile-ratio', '60'), ('tile-nmaster', '2')))
+    return all(r == 0 for r in rcs) and gone and bool(st) and st[3:] == ('grid', 2, 60) and keys, (
+        'expected STATUS "grid 2 60" after QUIT + fresh AmTile ON and the three keys in ENV:Amarchy/prefs vs rcs %r gone %s STATUS %r keys %s' % (
+            rcs, bool(gone), st, keys))
+
+
+def s_reset():
+    rcs = [cmd('LAYOUT dwindle'), cmd('RATIO 55'), cmd('NMASTER 1')]
+    st = status_is(layout='dwindle', ratio=55, nmaster=1)
+    return all(r == 0 for r in rcs) and st is not None, 'expected the rig image back at dwindle 1 55 vs rcs %r STATUS %r' % (rcs, st)
+
+
 def s_off():
     rc, how = fire_row()
     st = wait_for(lambda: (lambda s: s if s and not s[0] else None)(tile_status()), 5)
@@ -322,7 +560,11 @@ def s_restart():
 
 STEPS = [('start', s_start), ('row_on', s_row_on), ('boxes2', s_boxes2), ('second_on', s_second_on),
          ('env_on', s_env_on), ('third', s_third), ('close_one', s_close_one), ('midapply', s_midapply),
-         ('off', s_off), ('fourth_free', s_fourth_free), ('restart', s_restart)]
+         ('layout_default', s_layout_default), ('layout_row', s_layout_row), ('layout_hotkey', s_layout_hotkey)]
+STEPS += [('lay_' + n.split('-')[0], lay_step(n)) for n in LAYOUTS]
+STEPS += [('lay_next_prev', s_lay_next_prev), ('ratio', s_ratio), ('nmaster', s_nmaster), ('promote', s_promote),
+          ('cycle', s_cycle), ('monocle_raise', s_monocle_raise), ('persist', s_persist), ('reset', s_reset),
+          ('off', s_off), ('fourth_free', s_fourth_free), ('restart', s_restart)]
 
 
 def main():
