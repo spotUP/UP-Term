@@ -85,7 +85,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_screenmode rig.py aga/aga256/rtg reboot with the last start's machine flags (tools/test_rig_screenmode.py)
 # ONLY=rig_claude_import importing tools/rig/claude_rig.py runs nothing (tools/test_rig_claude_import.py)
 # ONLY=rig_stdin amiga-pi in a rig window script gets <NIL: (tools/test_rig_stdin.py)
-# ONLY=pkg_rows tools/pkg_rows.py emit bitchx against the committed rows, through main(argv); needs upterm-ports (../upterm-ports, UPTERM_PORTS= to move it; skips when absent) (tests/test_pkg_rows.py)
+# ONLY=pkg_rows tools/pkg_rows.py emit bitchx against the committed rows, through main(argv); needs upterm-ports (the workspace's upterm-ports, UPTERM_PORTS= to move it; skips when absent) (tests/test_pkg_rows.py)
 # ONLY=win the win: verbs' parse and window geometry: step, clamp, size limits, full width/screen, save ring, direction search (tests/test_win.c)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
 # ONLY=rig_browse_base upkg_browse_rig step 0 installs the kit over an older base (tools/test_rig_browse_base.py)

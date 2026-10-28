@@ -7,9 +7,11 @@ import contextlib, io, os, pathlib, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
+sys.path.insert(0, str(ROOT / 'tools' / 'rig'))
+import paths
 import pkg_rows, pkgs
 
-PORTS = pathlib.Path(os.environ.get('UPTERM_PORTS', ROOT.parent / 'upterm-ports'))
+PORTS = pathlib.Path(os.environ.get('UPTERM_PORTS') or paths.repo('upterm-ports'))
 
 
 @unittest.skipUnless((PORTS / 'Makefile').exists(), 'upterm-ports not found at %s (set UPTERM_PORTS)' % PORTS)
