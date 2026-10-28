@@ -169,3 +169,25 @@ Driver gotcha: the boot "UP-Term" window (0,20 640x300) fully covers 'menuhost' 
 Fix: amarchy/menu.c main() calls `menu_ignore_hangup()` (serve_sig.h, renamed from serve_ignore_hangup; comment now covers both processes) before run_ui. Regression test: rig row `cold_launch` in tools/rig/amarchy_menu_rig.py (SetDate forces the cold path, Apps > Tmux, asserts no system requester, a new UP-Term window, and the next hotkey opens the menu). With the call removed it fails with the "Software Failure" requester naming Rushhours:Tools/UP-Term/bin/amarchy-menu; with it, it passes. Host test test_menu_ignores_hangup covers the helper.
 
 Side observation (unverified cause): after `rig.py reboot` of rig 7 the wasabid connection died within a minute of the servers coming up and never came back; a stop + start fixed it. Noted under RIG-WARM-SRV-RACE.
+
+## session 14 warm restart
+
+Build pg8-text2 6a21cd37, rig 7 fresh (`UPTERM_RIG=7 rig.py start --max --purpose "Amarchy s14: warm restart check"`), ~150 s later AMARCHY.MENUSRV and AMARCHY.GUISRV present (rx SHOW(P)), processes amarchy-menu (CLI 1) and amarchy-gui (CLI 7) running.
+Presses via ami.key(SPACE, LAMIGA), 6 s wait, window list read, Esc close (helpers of amarchy_gui_rig.py).
+- Baseline press: menu window "Amarchy" opened. The gui server was respawned by it (new task address).
+- Kill: `wasabi kill --force <task>` (RemTask, as amarchy_timing_rig.kill_server) on both amarchy-menu and amarchy-gui; ps shows both gone. The ports stay registered (stale, port_present still True).
+- Press 1 (cold path): menu opened, window list only Amarchy plus two untitled windows, no Software Failure requester. A new amarchy-gui server process was running afterwards; no amarchy-menu process remained.
+- Press 2 and 3: menu opened each time (window "Amarchy"), same amarchy-gui process, no requester, ports present.
+Verdict: PASS. Not reproduced on 6a21cd37 with a hard-killed server. Limits: killed by RemTask, not a real crash; no screenshots taken.
+
+## session 15 text menu respawn
+
+pg8-text2 6a21cd37, rig 7 (`--purpose "Amarchy s15: text menu server respawn check"`), build already staged (stage_rig: current). Style set by `ENV:Amarchy/prefs` `menu-style = text` (default graphical), Amarchy restarted, AMARCHY_TIMING 1. Helper: scratchpad s15.py (ami.key SPACE+LAMIGA, wasabi mouse move just before each press, wasabi ps / windows / arexx --ports).
+- Baseline press: untitled XCON window (text menu) opened; AMARCHY.MENUSRV owner = amarchy-menu 0x101131e0 (live). Esc.
+- Kill: wasabi kill --force 0x101131e0 -> "removed"; ps: no amarchy-menu; AMARCHY.MENUSRV still listed (stale).
+- Press 1: PASS. Text menu window opened (untitled XCON 296x224, no requester, no titled window). Two NEW amarchy-menu processes: 0x102f0858 (cold menu, gone after Esc) and 0x102ff408 (new server). Stale port was replaced; owner after next open = 0x102ff408.
+- Press 2: PASS, menu opened, only amarchy-menu 0x102ff408, owner 0x102ff408.
+- Press 3: PASS, same.
+- Press 4 after 11 s: PASS, same (0x102ff408 still the owner).
+Verdict: in TEXT style, a press after RemTask of the server respawns amarchy-menu and replaces the stale port (takeover + start_server works). The s14 "no amarchy-menu came back" was the drawn style (amarchy-gui). AMARCHY-MENUSRV-RESPAWN not reproduced. Limit: RemTask kill, not a real crash; no screenshots.
+Restore: ENV:Amarchy/prefs deleted (it held only a comment header, so menu-style is the default graphical again); Amarchy restarted.
