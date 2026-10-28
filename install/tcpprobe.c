@@ -10,6 +10,11 @@
 #include <proto/exec.h>
 #include <stdio.h>
 
+/* vbcc's startup (vc.lib) runs main on a stack of ___stack bytes, whatever the Installer's run gives it; the
+ * cookie says the same to AmigaOS 3.2 and to vsh (RULES.md rule 6). One OpenLibrary and a printf need little. */
+long __stack = 8192;
+const char tcpprobe_stack_cookie[] = "$STACK: 8192";
+
 int main(void)
 {
     struct Library *b = OpenLibrary((STRPTR)"bsdsocket.library", 0);
