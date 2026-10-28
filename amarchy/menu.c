@@ -632,7 +632,7 @@ static int serve(void)
     AddPort(port);
     Permit();
     signal(SIGINT, on_int);
-    serve_ignore_hangup();                     /* a closed XCON console must not print "Hangup" or end the server */
+    menu_ignore_hangup();                     /* a closed XCON console must not print "Hangup" or end the server */
     hotkeys_init();
     while (!quit) {
         Wait(1UL << port->mp_SigBit | SIGBREAKF_CTRL_C);
@@ -674,6 +674,7 @@ int main(int argc, char **argv)
     keymap_load(&km, km_default_text);
     mo_register();
     signal(SIGINT, on_int);
+    menu_ignore_hangup();                     /* the leaf's UP-Term window closes this console: no mid-launch kill */
     hotkeys_init();
     return run_ui(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "");
 }

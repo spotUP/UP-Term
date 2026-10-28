@@ -1742,6 +1742,40 @@ def r_pkg_text_uhc_remove():
 ROWS.append(('pkg_text_uhc', r_pkg_text_uhc_remove))
 
 
+def r_cold_launch():
+    """TMUX-MENU-SWFAIL: a leaf launched from the cold menu opens its window, no "Software Failure", and the next
+    hotkey opens the menu again. The cold menu (`amarchy-menu menu`, what ms_open runs when no warm server answers)
+    draws in a CLOSEINACTIVE console; the leaf's UP-Term window closes that console, ixemul raises SIGHUP, and with
+    the default action the process died inside the launch's DOS call: an AN_AsyncPkt requester, and the dead menu
+    kept AMARCHY.MENU, so the next hotkey only signalled it (amarchy.c mo_close_open) and no menu opened. A new
+    stamp on amarchy-menu makes ms_open take the cold path (menusrv_core.c: a new binary replaces the server)."""
+    import amarchy_gui_rig as g
+    ensure_terminal()
+    for d in ('UP-Term:bin', paths.UPTERM_BIN):
+        c.run('SetDate >NIL: %s/amarchy-menu' % d)
+    before = dopus_windows()
+    if not x9_open_menu():
+        return False, 'cold menu did not open: ' + screen_text()[-200:]
+    x9_level('Apps')
+    if 'Tmux' not in g.rows_now():
+        x9_leave()
+        return False, 'Apps level has no Tmux row: %s' % g.rows_now()
+    x9_level('Tmux')
+    time.sleep(6)
+    bad = open_requesters()
+    if bad:
+        return False, 'launch from the cold menu: ' + bad
+    opened = new_titled(before)
+    if not opened:
+        return False, 'Tmux from the cold menu opened no window'
+    again = x9_open_menu()
+    x9_leave()
+    return again, 'Tmux from the cold menu opened %s; next hotkey opens the menu: %s' % (opened, again)
+
+
+ROWS.append(('cold_launch', r_cold_launch))
+
+
 def start_args():
     """The arguments the running rig was started with (rig.py writes them to <rig>/start.args); [] when unknown."""
     try:

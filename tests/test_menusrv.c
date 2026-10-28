@@ -156,13 +156,13 @@ static void test_server_names(void)
     CHECK_STR(task, "amarchy-gui");
 }
 
-/* The server ignores SIGHUP (an XCON console closing sent it "Hangup" and ended it). The test raises it for real:
- * unhandled, the default action ends this process before the CHECK below. */
-static void test_serve_ignores_hangup(void)
+/* A menu process (warm server and cold menu) ignores SIGHUP: an XCON console closing sent it "Hangup" and ended
+ * it. The test raises it for real: unhandled, the default action ends this process before the CHECK below. */
+static void test_menu_ignores_hangup(void)
 {
     static volatile int survived;
     signal(SIGHUP, SIG_DFL);    /* a background-started test run inherits SIGHUP ignored: start from the default */
-    serve_ignore_hangup();
+    menu_ignore_hangup();
     raise(SIGHUP);
     survived = 1;
     CHECK(survived == 1);
@@ -179,5 +179,5 @@ void suite_menusrv(void)
     test_restart_throttle();
     test_verdicts();
     test_server_names();
-    test_serve_ignores_hangup();
+    test_menu_ignores_hangup();
 }
