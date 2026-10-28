@@ -2,7 +2,7 @@
 date: 2026-10-28
 topic: AMARCHY-AUTOTILE - phases 1 and 2 merged, phases 3 and 4 next
 tags: [amarchy, amtile, autotile, handoff]
-status: draft
+status: complete
 session: Amarchy s17 (peers know it as vtcon-32)
 ---
 
@@ -56,3 +56,16 @@ session: Amarchy s17 (peers know it as vtcon-32)
 - Rig 7 is stopped (owner approved, heat). Rigs 2/3 musicplayer-55, 4/8 Selecta session, 9 unknown owner.
 - The main checkout has another session's modified handoff (2026-10-27_amarchy-session10-main-merge-geom.md)
   and untracked vtcon-05 handoffs and stray files: not ours, never commit them.
+
+## Update: Amarchy s18 (2026-10-28) - 21 of 21 done
+- P3 merged 53ec8d71: menu row window.tile, hotkey super+alt+t (super+t is tab:new), hidden amconf key tile-gap
+  (default 4, 0..64; GAP n wins until the next RETILE), Amarchy runs AmTile ON at boot when ENV:Amarchy/tile is on.
+- P4-1 merged 93c93d22: tools/rig/amarchy_tile_rig.py + host box helper tools/rig/amarchy_tile_boxes.c (same tile_core code).
+- Rig run 1 failed: AmTile looked only for the "UP-Term" screen. Owner revised D4: tile the FRONT screen (DOpus listers
+  included, owner OK). Fix merged 50d4040a (lock_front_screen, tile_screen_switch drops the order on screen change).
+- RUN <n> on AMARCHY counts installed rows only (terminal tab:/menuid:/slash: rows dropped); Tile windows row = 15.
+- Rig run 2 (c48af51e): 11 of 11 steps, Exchange and hotkey pass. Evidence: thoughts/shared/research/2026-10-28_amarchy-tile-rig7.md.
+- Open, not AmTile: amarchy_window_rig.py 11 of 17 on a DOpus rig. b2_* need a WORKBENCH port (DOpus has none);
+  menu_move_left looks for MENU_TITLE "Amarchy" (amarchy_window_rig.py:29) but wasabi lists the borderless menu window
+  with an empty title; move_left KeyError box0 is probably its knock-on. Both failed in run 1 too.
+- Owner manual check: tiling looked right on rig 7.

@@ -1,7 +1,7 @@
 ---
 date: 2026-10-28
 topic: AMARCHY-AUTOTILE - standalone tiling commodity driven by Amarchy
-status: plan (owner decisions recorded)
+status: done (21 of 21, rig 7 run 2 passed 2026-10-28)
 research: thoughts/shared/research/2026-10-28_amarchy-autotile.md
 ledger: thoughts/spot/todos.md, AMARCHY-AUTOTILE
 ---
@@ -120,3 +120,6 @@ P1-1 win_fit exposed | P1-2 tile_classify | P1-3 tile_order_update | P1-4 tile_m
 P2-1 rexx_host extracted, Amarchy + leaf use it | P2-2 AmTile broker + Exchange | P2-3 ARexx commands | P2-4 timer watch | P2-5 apply | P2-6 single-instance forward | P2-7 state file | P2-8 stack cookie | P2-9 Makefile + dist + parts + install.dos + rig.py + stack test
 P3-1 menu row | P3-2 hotkey | P3-3 tile_gap config | P3-4 boot restart
 P4-1 rig script | P4-2 rig run steps 1-7 pass
+
+All 21 done (2026-10-28, Amarchy s18). P4-2 evidence: thoughts/shared/research/2026-10-28_amarchy-tile-rig7.md "Run 2":
+11 of 11 steps OK on rig 7 (800x600 Workbench/DOpus, title 14), Exchange Disable/Enable and hotkey super+alt+t pass.
