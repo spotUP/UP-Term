@@ -442,11 +442,45 @@ def env_int(name):
     return int(out.strip()) if rc == 0 and out.strip().lstrip('-').isdigit() else None
 
 
+def scroll_probe(rows, total=None, tag='list_scroll'):
+    """On the open list level `rows`: Up to the first row, then Down len+2 times; asserts the last row is selected and the
+    first drawn row (AMARCHY_TOP) moved. A level of one window or less cannot scroll: that is a failed check.
+    total is the level's row count when AMARCHY_ROWS (cut at 256 bytes) lists only a window of it (Browse: the feed's rows)."""
+    total = total or len(rows)
+    for _ in range(total):
+        ami.key(UP)
+        time.sleep(.2)
+    top0 = env_int('AMARCHY_TOP')
+    for _ in range(total + 2):
+        ami.key(DOWN)
+        time.sleep(.3)
+    top, sel = env_int('AMARCHY_TOP'), env_int('AMARCHY_SEL')
+    if not check(total > 14, '%s: the level is longer than one window (%d rows)' % (tag, total)):
+        return
+    print('%s: %d rows, top %s -> %s, selected %s' % (tag, total, top0, top, sel), flush=True)
+    check(sel is not None and sel >= total - 1, '%s: Down past the end selects the last row (selected %s of %d)' % (tag, sel, total))
+    check(top is not None and top0 is not None and top > top0, '%s: the first drawn row moved (top %s -> %s)' % (tag, top0, top))
+
+
 def case_list_scroll(level='Style'):
     """Down past the last visible row of a drawn list scrolls it (GUI-BROWSE-SCROLL). AMARCHY_ROWS lists the whole level and
     is published on a full draw, so it never moves on a scroll; AMARCHY_TOP / AMARCHY_SEL (gui.c sentinel_cursor, published on
-    every list draw) do. level names a root row whose level is longer than one window (Browse uses the same set_sel; Apps has 3 rows and Settings 6 on rig 5)."""
+    every list draw) do. level names a root row whose level is longer than one window (Apps has 3 rows and Settings 6 on rig 5),
+    or Browse: the pkg_tags feed staged as in pkg_install (refresh_to_browse), then the Packages > Browse list."""
     c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_TOP ENV:AMARCHY_SEL QUIET')
+    if level == 'Browse':
+        fd = feed_dir()
+        feed = feed_names(open(os.path.join(fd, 'Packages')).read())
+        rel = local_feed(fd)
+        try:
+            rows = refresh_to_browse(feed, 'list_scroll')
+            if rows is not None:
+                scroll_probe(rows, len(feed))
+        finally:
+            close_menu()
+            c.run('Delete >NIL: %s QUIET' % PKG_CONF)
+            rel.close()
+        return
     s, w = open_menu()
     if not check(bool(w), 'list_scroll: menu opens'):
         return
@@ -454,20 +488,7 @@ def case_list_scroll(level='Style'):
     if not check(walk_to(level, root), 'list_scroll: the root has a %s row (rows: %s)' % (level, root)):
         return
     time.sleep(1)
-    rows = rows_now()
-    for _ in range(len(rows)):
-        ami.key(UP)
-        time.sleep(.2)
-    top0 = env_int('AMARCHY_TOP')
-    for _ in range(len(rows) + 2):
-        ami.key(DOWN)
-        time.sleep(.3)
-    top, sel = env_int('AMARCHY_TOP'), env_int('AMARCHY_SEL')
-    if not check(len(rows) > 14, 'list_scroll: the level is longer than one window (%d rows)' % len(rows)):
-        return
-    print('list_scroll: %d rows, top %s -> %s, selected %s' % (len(rows), top0, top, sel), flush=True)
-    check(sel is not None and sel >= len(rows) - 1, 'list_scroll: Down past the end selects the last row (selected %s of %d)' % (sel, len(rows)))
-    check(top is not None and top0 is not None and top > top0, 'list_scroll: the first drawn row moved (top %s -> %s)' % (top0, top))
+    scroll_probe(rows_now())
 
 
 def case_run_tmux():
