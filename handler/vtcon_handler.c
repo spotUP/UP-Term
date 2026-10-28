@@ -2923,6 +2923,30 @@ have_window:
     return 1;
 }
 
+/* The "vtcon SIGWINCH" input handler (post_sizewindow) out of input.device's chain, and the
+ * request that added it closed. Every path that frees a con, or ends its session, runs this
+ * first: a node left in the chain points into freed memory and the next input event jumps
+ * through it (RIG9-INSTALLER-CRASH). Safe to call twice. */
+static void winch_remove(con *c)
+{
+    c->winch_closing = 1; /* stop naming a window before the node goes */
+    if (c->input_io) {
+        if (c->winch_added) {
+            c->input_io->io_Command = IND_REMHANDLER;
+            c->input_io->io_Data = &c->winch_irq;
+            DoIO((struct IORequest *)c->input_io);
+            c->winch_added = 0;
+        }
+        CloseDevice((struct IORequest *)c->input_io);
+        DeleteIORequest((struct IORequest *)c->input_io);
+        c->input_io = 0;
+    }
+    if (c->input_port) {
+        DeleteMsgPort(c->input_port);
+        c->input_port = 0;
+    }
+}
+
 /* What belongs to the window and not to the terminal: the Find prompt,
  * the selection window, menus, the input handler, the ROM console unit.
  * close_window, and a move to another screen, take these down first. */
@@ -2940,21 +2964,7 @@ static void window_parts_close(con *c)
     sbar_gad_close(&c->sbar); /* and the scroll bar in its border */
     kc_cyc_end(c);
     menu_remove(c, c->w.win);
-    if (c->input_io) {
-        if (c->winch_added) {
-            c->input_io->io_Command = IND_REMHANDLER;
-            c->input_io->io_Data = &c->winch_irq;
-            DoIO((struct IORequest *)c->input_io);
-            c->winch_added = 0;
-        }
-        CloseDevice((struct IORequest *)c->input_io);
-        DeleteIORequest((struct IORequest *)c->input_io);
-        c->input_io = 0;
-    }
-    if (c->input_port) {
-        DeleteMsgPort(c->input_port);
-        c->input_port = 0;
-    }
+    winch_remove(c);
     if (c->rom_io) {
         CloseDevice((struct IORequest *)c->rom_io);
         DeleteIORequest((struct IORequest *)c->rom_io);
@@ -6540,6 +6550,7 @@ static void post_sizewindow(con *c)
         c->winch_irq.is_Code = (void (*)())winch_handler;
         c->winch_irq.is_Data = (APTR)c;
         c->winch_irq.is_Node.ln_Pri = 20;
+        c->winch_irq.is_Node.ln_Type = NT_INTERRUPT;
         c->winch_irq.is_Node.ln_Name = (char *)"vtcon SIGWINCH";
         c->input_io->io_Command = IND_ADDHANDLER;
         c->input_io->io_Data = &c->winch_irq;
@@ -7245,6 +7256,7 @@ static void host_retire(con *c)
 {
     tab_remove(c, c);
     c->host_only = 1;
+    winch_remove(c); /* this session posts no more sizes, and the node must not outlive the con */
     find_close(c);
     sel_close(c);
     kc_cyc_end(c);

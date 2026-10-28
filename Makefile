@@ -601,6 +601,9 @@ $(BUILD)/amiga/deafvol: tests/amiga/deafvol.c
 $(BUILD)/amiga/intlist: tests/amiga/intlist.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/intlist.c
+$(BUILD)/amiga/inhandlers: tests/amiga/inhandlers.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/inhandlers.c
 $(BUILD)/amiga/hl: view/hl_main.c $(UPTERM_VERSION_H) $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(VIEW_HDR) view/vw_cli.h view/vw_plat.h handler/vtcon_packets.h tty/ldisc.h $(BUILD)/amiga/obj/cpuchk-hl.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ view/hl_main.c $(VIEW_HL) $(VIEW_CLI) view/vw_plat_amiga.c $(BUILD)/amiga/obj/cpuchk-hl.o
