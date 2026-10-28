@@ -1,0 +1,350 @@
+From c16dbb893e14841ff5e601cc90493b0e100b7e4f Mon Sep 17 00:00:00 2001
+From: spotUP <retroranksmail@gmail.com>
+Date: Thu, 29 Oct 2026 00:02:23 +0100
+Subject: [PATCH] WIP: C:Claude loads pi theme files from the data drawer
+ (superseded by ANSI-follow mode)
+
+---
+ claude/input.c |  39 ++++++++++-------
+ claude/repl.c  |   1 +
+ claude/theme.c |  35 +++++++++++++++
+ claude/theme.h |  11 +++++
+ claude/tui.h   |   1 +
+ claude/ui.c    | 113 ++++++++++++++++++++++++++++++++++++++++++++++++-
+ claude/ui.h    |   7 +++
+ 7 files changed, 191 insertions(+), 16 deletions(-)
+
+diff --git a/claude/input.c b/claude/input.c
+index b5d66367..e16f9006 100644
+--- a/claude/input.c
++++ b/claude/input.c
+@@ -207,47 +207,56 @@ static int memory(cl_ui *u, const char *note)
+ 
+ /* ---- /theme, /vim ---- */
+ 
++#define TH_FILES 24     /* the theme files /theme lists */
++
+ static int theme_cmd(cl_ui *u, const char *arg)
+ {
+-    const cl_theme *th = 0;
+-    char m[120];
+-    int i;
++    char names[TH_FILES][64];
++    const char *op[THEME_COUNT + TH_FILES];
++    char m[400];
++    int i, nf, c;
+     arg = skip_blanks(arg);
+     if (!u->tui) {
+         ui_line(u, "Themes are for the screen mode.");
+         return IN_DONE;
+     }
++    nf = ui_theme_files(u, names, TH_FILES);    /* F1: the files of <data>/themes beside the built-ins */
+     if (*arg) {
+-        for (i = 0; i < THEME_COUNT; i++)
+-            if (!strcmp(cl_themes[i].name, arg))
+-                th = &cl_themes[i];
+-        if (!th) {
++        if (!ui_theme(u, arg, 0)) {
+             cl_copy(m, "The themes:", sizeof(m));
+             for (i = 0; i < THEME_COUNT; i++) {
+                 cl_cat(m, " ", sizeof(m));
+                 cl_cat(m, cl_themes[i].name, sizeof(m));
+             }
++            for (i = 0; i < nf; i++) {
++                cl_cat(m, " ", sizeof(m));
++                cl_cat(m, names[i], sizeof(m));
++            }
+             ui_line(u, m);
+             return IN_DONE;
+         }
+     } else {
+-        const char *op[THEME_COUNT];
+-        int c;
++        int cur = theme_index(u->tui->th);
+         for (i = 0; i < THEME_COUNT; i++)
+             op[i] = cl_themes[i].label;
++        for (i = 0; i < nf; i++) {
++            op[THEME_COUNT + i] = names[i];
++            if (u->tui->th == &u->tui->fth.th && !strcmp(u->tui->fth.name, names[i]))
++                cur = THEME_COUNT + i;
++        }
+         u->tui->m_ctx = KC_THEME;   /* ThemePicker's bindings first */
+-        c = tui_menu(u->tui, "Theme", "Choose the text style that looks best with your terminal", op, THEME_COUNT,
+-                     theme_index(u->tui->th), -1);
++        c = tui_menu(u->tui, "Theme", "Choose the text style that looks best with your terminal", op,
++                     THEME_COUNT + nf, cur, -1);
+         if (c < 0)
+             return IN_DONE;
+-        th = &cl_themes[c];
++        if (!ui_theme(u, c < THEME_COUNT ? cl_themes[c].name : names[c - THEME_COUNT], 0))
++            return IN_DONE;
+     }
+-    u->tui->th = th;
+     u->tui->full = 1;
+     if (u->set_setting)
+-        u->set_setting(u->su, "theme", th->name);
++        u->set_setting(u->su, "theme", u->tui->th->name);
+     cl_copy(m, "Theme: ", sizeof(m));
+-    cl_cat(m, th->label, sizeof(m));
++    cl_cat(m, u->tui->th->label, sizeof(m));
+     ui_line(u, m);
+     return IN_DONE;
+ }
+diff --git a/claude/repl.c b/claude/repl.c
+index 10ec6d9f..65cc841a 100644
+--- a/claude/repl.c
++++ b/claude/repl.c
+@@ -2436,6 +2436,7 @@ int repl_screen(cl_repl *r)
+     show_render(s, &r->render);
+     if (env_on(r, "CLAUDE_CODE_SKIP_PROMPT_HISTORY"))
+         r->ui.histfile[0] = 0;      /* Claude Code: no prompt history on disk */
++    r->ui.data = r->data;
+     ui_attach(&r->ui, r->sys, r->tools.root, &r->conv);    /* A4: history, @, rewind, settings */
+     repl_keys_load(r);              /* A4 gaps 3: keybindings.json */
+     r->tools.wait = tool_wait;      /* Bash and ! lines: Esc, Ctrl+B while they run */
+diff --git a/claude/theme.c b/claude/theme.c
+index 950c7bfe..d2f25964 100644
+--- a/claude/theme.c
++++ b/claude/theme.c
+@@ -479,6 +479,41 @@ int pitheme_sgr(const cl_pitheme *t, int role, char *out)
+     return n + pitheme_color(t, t->color[role], is_bg(role), out + n);
+ }
+ 
++/* cl_theme field <- pi role. The one table of what a theme file's roles colour in C:Claude (docs in
++ * thoughts/shared/research/2026-10-28-omarchy-ai-f1-loader.md) */
++void theme_from_pi(cl_ftheme *f, const cl_pitheme *p, const char *name)
++{
++    static const int role[FTHEME_SGR] = {
++        PR_BORDER,          /* box: the input box's frame */
++        PR_ACCENT,          /* spin */
++        PR_ACCENT,          /* sel */
++        PR_ACCENT,          /* accent */
++        PR_SUCCESS,         /* accept */
++        PR_BORDER_ACCENT,   /* plan */
++        PR_BASH_MODE,       /* bash */
++        PR_MD_HEADING,      /* memory */
++        PR_SUCCESS,         /* ok */
++        PR_ERROR,           /* err */
++        PR_TOOL_DIFF_ADDED, /* add */
++        PR_TOOL_DIFF_REMOVED /* del */
++    };
++    const char **slot[FTHEME_SGR];
++    int i;
++    memset(f, 0, sizeof(*f));
++    strncpy(f->name, name, sizeof(f->name) - 1);
++    slot[0] = &f->th.box;   slot[1] = &f->th.spin;   slot[2] = &f->th.sel;  slot[3] = &f->th.accent;
++    slot[4] = &f->th.accept; slot[5] = &f->th.plan;  slot[6] = &f->th.bash; slot[7] = &f->th.memory;
++    slot[8] = &f->th.ok;    slot[9] = &f->th.err;    slot[10] = &f->th.add; slot[11] = &f->th.del;
++    for (i = 0; i < FTHEME_SGR; i++) {
++        pitheme_sgr(p, role[i], f->sgr[i]);
++        *slot[i] = f->sgr[i];
++    }
++    f->th.name = f->name;
++    f->th.label = f->name;
++    f->th.dim = "\033[2m";
++    f->th.hl = "ansi";
++}
++
+ static void hl_role(const cl_pitheme *t, struct hl_theme *h, int cls, int role, unsigned attr)
+ {
+     long c = t->color[role];
+diff --git a/claude/theme.h b/claude/theme.h
+index ef3b53c3..ae52ece7 100644
+--- a/claude/theme.h
++++ b/claude/theme.h
+@@ -98,6 +98,17 @@ int pitheme_depth(const char *term, const char *colorterm, const char *pi_true_c
+ /* a colour (HL_DEFAULT, 0..255, HL_RGB) as the SGR that sets it: the one place a colour of pi's is brought
+  * down to this screen's palette (t->depth). out holds 48 bytes. */
+ int pitheme_color(const cl_pitheme *t, long color, int bg, char *out);
++/* F1: a pi theme as C:Claude's own screen draws it. C:Claude's roles are the cl_theme SGR strings; theme_from_pi
++ * fills those from the pi roles (the table is in theme.c), so ONE theme file recolours C:Claude and amiga-pi. The
++ * strings live in the struct: it must outlive the pointer handed to the screen. */
++#define FTHEME_SGR 12
++typedef struct cl_ftheme {
++    cl_theme th;
++    char name[64];
++    char sgr[FTHEME_SGR][48];
++} cl_ftheme;
++void theme_from_pi(cl_ftheme *f, const cl_pitheme *p, const char *name);
++
+ /* the md / code classes of an hl_theme coloured by the roles (view/hl_style.h) */
+ struct hl_theme;
+ void pitheme_hl(const cl_pitheme *t, struct hl_theme *h);
+diff --git a/claude/tui.h b/claude/tui.h
+index 1d320c4f..3c69ea94 100644
+--- a/claude/tui.h
++++ b/claude/tui.h
+@@ -210,6 +210,7 @@ typedef struct cl_tui {
+     unsigned long quit_ms;
+     int quit_after;             /* TUI_LOOK_PI: Ctrl+D stopped the run; the next tui_read ends the program */
+     const cl_theme *th;         /* the colours (/theme) */
++    cl_ftheme fth;              /* F1: th points here when a theme file is loaded (ui_theme) */
+     const char *bar;            /* /color: the prompt bar's colour for the session (SGR), 0 the theme's */
+     /* A4: what the screen needs from the program (ui_attach sets them) */
+     cl_sys *sys;
+diff --git a/claude/ui.c b/claude/ui.c
+index b2c39ca9..c8d71476 100644
+--- a/claude/ui.c
++++ b/claude/ui.c
+@@ -7,6 +7,7 @@
+ #include "tui.h"
+ #include "show.h"
+ #include "util.h"
++#include "path.h"
+ 
+ static void rewind_cb(void *u)
+ {
+@@ -306,6 +307,116 @@ int ui_pick(cl_ui *u, const char *title, const char *const *opt, int n, int sel)
+     return tui_menu(u->tui, title, "", opt, n, sel, -1);
+ }
+ 
++/* ---- F1: theme files ---- */
++
++/* <data>/themes/<name>.json, -1 when there is no data drawer or the name is not a plain name */
++static int theme_path(const cl_ui *u, const char *name, char *out, long cap)
++{
++    char rel[100];
++    if (!u->data || !u->data[0] || !name[0] || strlen(name) > 60 || strpbrk(name, "/:"))
++        return -1;
++    cl_copy(rel, "themes/", sizeof(rel));
++    cl_cat(rel, name, sizeof(rel));
++    cl_cat(rel, ".json", sizeof(rel));
++    return path_join(u->data, rel, out, cap);
++}
++
++int ui_theme(cl_ui *u, const char *name, int warn_missing)
++{
++    cl_tui *t = u->tui;
++    char path[300], err[300], msg[400], term[48], ct[24], pt[8], *txt = 0;
++    long n = 0;
++    cl_pitheme *p;
++    int i;
++    if (!t || !name || !name[0])
++        return 0;
++    /* a file beats a built-in of the same name (amiga-pi's order: app.c load_theme_named) */
++    if (u->sys && theme_path(u, name, path, sizeof(path)) == 0 && u->sys->kind(u->sys->u, path) == 1) {
++        int bad;
++        if (u->sys->read(u->sys->u, path, 256L * 1024, &txt, &n) != 0) {
++            cl_copy(msg, "[WARN] Theme file unreadable: ", sizeof(msg));
++            cl_cat(msg, name, sizeof(msg));
++            ui_line(u, msg);
++            return 0;
++        }
++        p = (cl_pitheme *)malloc(sizeof(*p));
++        if (!p) {
++            free(txt);
++            return 0;
++        }
++        bad = pitheme_load(p, txt, n, 0, err, sizeof(err));
++        free(txt);
++        if (bad) {
++            cl_copy(msg, "[WARN] Theme ", sizeof(msg));
++            cl_cat(msg, name, sizeof(msg));
++            cl_cat(msg, ": ", sizeof(msg));
++            cl_cat(msg, err, sizeof(msg));
++            ui_line(u, msg);
++            free(p);
++            return 0;
++        }
++        term[0] = ct[0] = pt[0] = 0;
++        if (u->sys->getenv) {
++            u->sys->getenv(u->sys->u, "TERM", term, sizeof(term));
++            u->sys->getenv(u->sys->u, "COLORTERM", ct, sizeof(ct));
++            u->sys->getenv(u->sys->u, "PI_TRUE_COLOR", pt, sizeof(pt));
++        }
++        p->depth = pitheme_depth(term, ct, pt);
++        theme_from_pi(&t->fth, p, name);
++        free(p);
++        t->th = &t->fth.th;
++        t->full = 1;
++        return 1;
++    }
++    for (i = 0; i < THEME_COUNT; i++)
++        if (!strcmp(cl_themes[i].name, name)) {
++            t->th = &cl_themes[i];
++            t->full = 1;
++            return 1;
++        }
++    if (warn_missing) {
++        cl_copy(msg, "[WARN] Theme not found: ", sizeof(msg));
++        cl_cat(msg, name, sizeof(msg));
++        ui_line(u, msg);
++    }
++    return 0;
++}
++
++typedef struct tn_acc {
++    char (*names)[64];
++    int n, max;
++} tn_acc;
++
++static int tn_add(void *c, const cl_dirent *e)
++{
++    tn_acc *a = (tn_acc *)c;
++    size_t l = strlen(e->name);
++    int i;
++    if (e->dir || l < 6 || l - 5 >= 64 || strcmp(e->name + l - 5, ".json"))
++        return 0;
++    for (i = 0; i < THEME_COUNT; i++)
++        if (strlen(cl_themes[i].name) == l - 5 && !strncmp(cl_themes[i].name, e->name, l - 5))
++            return 0;           /* listed as the built-in already (the file still wins when it is chosen) */
++    if (a->n >= a->max)
++        return 1;
++    memcpy(a->names[a->n], e->name, l - 5);
++    a->names[a->n][l - 5] = 0;
++    a->n++;
++    return 0;
++}
++
++int ui_theme_files(cl_ui *u, char (*names)[64], int max)
++{
++    tn_acc a;
++    char dir[300];
++    a.names = names;
++    a.n = 0;
++    a.max = max;
++    if (u->sys && u->sys->list && u->data && u->data[0] && path_join(u->data, "themes", dir, sizeof(dir)) == 0)
++        u->sys->list(u->sys->u, dir, tn_add, &a);
++    return a.n;
++}
++
+ /* ---- A4 (WP1) ---- */
+ 
+ void ui_attach(cl_ui *u, cl_sys *sys, const char *root, struct cl_conv *conv)
+@@ -330,7 +441,7 @@ void ui_attach(cl_ui *u, cl_sys *sys, const char *root, struct cl_conv *conv)
+     t->ru = u;
+     v = u->setting ? u->setting(u->su, "theme") : 0;
+     if (v)
+-        t->th = theme_get(v);
++        ui_theme(u, v, 1);      /* a theme file, else a built-in, else the default and one warning line */
+     v = u->setting ? u->setting(u->su, "editorMode") : 0;
+     if (v && !strcmp(v, "vim"))
+         ed_set_vim(&t->ed, 1);
+diff --git a/claude/ui.h b/claude/ui.h
+index 6509de2e..53df9bb7 100644
+--- a/claude/ui.h
++++ b/claude/ui.h
+@@ -107,6 +107,7 @@ typedef struct cl_ui {
+     char histfile[256];         /* the history file, "" none (main sets ENVARC:Claude/history) */
+     cl_sys *sys;
+     const char *root;
++    const char *data;           /* F1: the data drawer (UP-Term:var/Claude, ENVARC:Claude): themes/<name>.json, 0 none */
+     const char *(*setting)(void *u, const char *key);
+     void (*set_setting)(void *u, const char *key, const char *value);
+     void *su;
+@@ -174,6 +175,12 @@ void ui_server(cl_ui *u, int call, const char *block, long bn, const char *input
+  * the box, @-completion, the rewind menu, the theme and vim mode from the
+  * settings. repl_screen calls it once the screen started. */
+ void ui_attach(cl_ui *u, cl_sys *sys, const char *root, struct cl_conv *conv);
++/* F1: the theme `name` on the screen: the file <data>/themes/<name>.json (pi's theme JSON, the one amiga-pi
++ * loads; it beats a built-in of that name), else a built-in. 1 when set; 0 when not (the colours stay as they were):
++ * an unreadable or invalid file is told with one [WARN] line, a missing name only when warn_missing. */
++int ui_theme(cl_ui *u, const char *name, int warn_missing);
++/* the names of the theme files that no built-in has (sorted by the directory), up to max: the count */
++int ui_theme_files(cl_ui *u, char (*names)[64], int max);
+ /* Thinking text as it streams (the transcript viewer shows it) */
+ void ui_thinking(cl_ui *u, const char *s, long n);
+ /* After a tool round: the plain prompts typed ahead meanwhile, joined by
+-- 
+2.50.1 (Apple Git-155)
+
