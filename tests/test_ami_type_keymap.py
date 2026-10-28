@@ -43,7 +43,7 @@ class TypeKeymap(unittest.TestCase):
             def __exit__(s, *a): return False
         ami._keymap_table = lambda c: self.table
         ami._keys = lambda c, events: sent.append(list(events))
-        ami._conn = lambda timeout=None: Conn()
+        ami._conn = lambda timeout=None, touch=True: Conn()
         try:
             ami.req(0x08, bytes([4]) + b'x;y')
         finally:
