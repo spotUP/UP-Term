@@ -90,6 +90,14 @@ window.focusdown            = U+F078    ; fa-chevron_down
 window.closedrawer          = U+F00D    ; fa-xmark
 window.closedrawers         = U+F057    ; fa-times_circle
 window.tile                 = U+F009    ; fa-th_large
+window.layoutnext           = U+F021    ; fa-refresh
+window.layoutdwindle        = U+F009    ; fa-th_large
+window.layoutmaster         = U+F009    ; fa-th_large
+window.layoutmirrored       = U+F009    ; fa-th_large
+window.layoutcolumns        = U+F009    ; fa-th_large
+window.layoutrows           = U+F009    ; fa-th_large
+window.layoutgrid           = U+F009    ; fa-th_large
+window.layoutmonocle        = U+F2D0    ; fa-window_maximize
 ; Screens group and Workbench group (plan 2026-10-25-amarchy-window-groups.md, 2.2 and 2.3)
 screens                     = U+F24D    ; fa-clone
 workbench                   = U+F108    ; fa-desktop

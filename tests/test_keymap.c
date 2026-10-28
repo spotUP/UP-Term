@@ -319,7 +319,7 @@ static void the_shipped_keymap_loads_whole(void)
     CHECK_INT(km.refused, 0);
     CHECK_INT(km.overflow, 0);
     CHECK_INT(km.version, KM_VERSION);
-    CHECK(km.nbind >= 30 && km.nbind <= 80);
+    CHECK(km.nbind >= 30 && km.nbind <= 100);
     CHECK(km.nmenu > 0);
     for (i = 0; i < km.nbind; i++) {
         const km_bind *b = &km.bind[i];
@@ -723,6 +723,48 @@ static void the_window_group_rows_and_hotkeys(void)
     check_row("window.closedrawer", KA_REXX, "address WORKBENCH 'WINDOW ACTIVE CLOSE'");
     check_row("window.closedrawers", KA_WIN, "closedrawers");
     check_row("window.tile", KA_RUN, "UP-Term:bin/AmTile TOGGLE");
+    check_row("window.layoutnext", KA_RUN, "UP-Term:bin/AmTile LAYOUT NEXT");
+    check_row("window.layoutdwindle", KA_RUN, "UP-Term:bin/AmTile LAYOUT dwindle");
+    check_row("window.layoutmaster", KA_RUN, "UP-Term:bin/AmTile LAYOUT master-stack");
+    check_row("window.layoutmirrored", KA_RUN, "UP-Term:bin/AmTile LAYOUT mirrored");
+    check_row("window.layoutcolumns", KA_RUN, "UP-Term:bin/AmTile LAYOUT columns");
+    check_row("window.layoutrows", KA_RUN, "UP-Term:bin/AmTile LAYOUT rows");
+    check_row("window.layoutgrid", KA_RUN, "UP-Term:bin/AmTile LAYOUT grid");
+    check_row("window.layoutmonocle", KA_RUN, "UP-Term:bin/AmTile LAYOUT monocle");
+    {   /* the 15 AmTile layout hotkeys (Super+Alt family); the plain Super+<key> bindings keep their old kinds */
+        static const struct { unsigned code; const char *arg; } at[] = {
+            { 0x28, "UP-Term:bin/AmTile LAYOUT NEXT" },
+            { 0x01, "UP-Term:bin/AmTile LAYOUT dwindle" },
+            { 0x02, "UP-Term:bin/AmTile LAYOUT master-stack" },
+            { 0x03, "UP-Term:bin/AmTile LAYOUT mirrored" },
+            { 0x04, "UP-Term:bin/AmTile LAYOUT columns" },
+            { 0x05, "UP-Term:bin/AmTile LAYOUT rows" },
+            { 0x06, "UP-Term:bin/AmTile LAYOUT grid" },
+            { 0x07, "UP-Term:bin/AmTile LAYOUT monocle" },
+            { 0x0B, "UP-Term:bin/AmTile RATIO -5" },
+            { 0x0C, "UP-Term:bin/AmTile RATIO +5" },
+            { 0x26, "UP-Term:bin/AmTile NMASTER -1" },
+            { 0x27, "UP-Term:bin/AmTile NMASTER +1" },
+            { 0x44, "UP-Term:bin/AmTile PROMOTE" },
+            { 0x38, "UP-Term:bin/AmTile CYCLE PREV" },
+            { 0x39, "UP-Term:bin/AmTile CYCLE NEXT" },
+        };
+        unsigned i;
+        for (i = 0; i < sizeof at / sizeof at[0]; i++) {
+            const km_bind *b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, at[i].code);
+            CHECK(b != 0);
+            if (b) {
+                CHECK_INT(b->kind, KA_RUN);
+                CHECK(!strcmp(b->arg, at[i].arg));
+            }
+        }
+        {   /* plain Super+minus, Super+plus, Super+L stay what they were */
+            const km_bind *m = keymap_find(&km, KM_Q_SUPER, 0x0B);
+            const km_bind *p = keymap_find(&km, KM_Q_SUPER, 0x0C);
+            CHECK(m != 0 && m->kind == KA_MENUID);
+            CHECK(p != 0 && p->kind == KA_MENUID);
+        }
+    }
     {   /* Super+Alt+T runs the same command; Super+T stays New tab (the plan's free-or-clash check) */
         const km_bind *b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, 0x14);
         const km_bind *t = keymap_find(&km, KM_Q_SUPER, 0x14);
@@ -1566,7 +1608,7 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK_INT(c, 3);                                 /* Theme, Font, Background: picking one opens a terminal first */
     CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
     c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 24);                                /* the 24 win:/rexx:/run: rows (window.tile runs AmTile); window.tab and window.preferences stay hidden */
+    CHECK_INT(c, 32);                                /* the 32 win:/rexx:/run: rows (window.tile runs AmTile, plus the 8 window.layout* rows); window.tab and window.preferences stay hidden */
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
     CHECK(has_label(it, c, "UP-Term") && has_label(it, c, "Editor"));
     CHECK(!has_label(it, c, "Claude"));
@@ -2588,7 +2630,7 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
  * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
  * parsed table, 8288 B on the host), carry no
  * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
-#define AMARCHY_KEYMAP_HEAP_MAX 2150  /* 32 rows (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys); 2099 B measured; the full parsed table is larger */
+#define AMARCHY_KEYMAP_HEAP_MAX 3400  /* 46 rows (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys + the 15 AmTile layout hotkeys); 3365 B measured; the full parsed table is larger */
 static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 {
     static char file[32768];
