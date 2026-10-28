@@ -978,6 +978,10 @@ $(BUILD)/amiga/ownermap: tests/amiga/ownermap.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/ownermap.c
 
+$(BUILD)/amiga/crashme: tests/amiga/crashme.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/crashme.c
+
 $(BUILD)/amiga/inwho: tests/amiga/inwho.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/inwho.c
