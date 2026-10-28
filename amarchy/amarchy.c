@@ -21,6 +21,7 @@
 #include "clipwatch.h"
 #include "wblaunch.h"
 #include "menu_core.h"
+#include "tile_core.h"
 #include "atiming.h"
 #include "../claude/util.h"
 #include "../config/keymap_load.h"
@@ -81,6 +82,21 @@ static void style_load(void)
     amconf_load(&p);
     g_style = amconf_style(&p);
     g_term_menu = amconf_term_menu(&p);
+}
+
+/* AmTile was on when the session ended (ENV:Amarchy/tile reads "on"): start it again, asynchronously so the boot is
+ * not held. AmTile ON then writes the state file itself. */
+static void tile_boot(void)
+{
+    char buf[8];
+    LONG n = 0;
+    BPTR fh = Open((STRPTR)"ENV:Amarchy/tile", MODE_OLDFILE);
+    if (fh) {
+        n = Read(fh, buf, sizeof buf);
+        Close(fh);
+    }
+    if (n > 0 && tile_state_on(buf, n))
+        act_run("UP-Term:bin/AmTile ON");
 }
 
 /* menu: / viewer: the program the settings name (menu-style, or menu-in-terminal over a terminal), the
@@ -303,6 +319,7 @@ int main(void)
     if (notify_port)
         notify_start();
     cx_install(&g_km);
+    tile_boot();
     act_menu_server_start(g_dir);               /* the warm menu server; the first press before it is up opens a menu of its own */
     cxs = cx_sigmask();
     rxs = rexx_host_sigmask(&rexx);

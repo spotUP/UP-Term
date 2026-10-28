@@ -96,7 +96,7 @@ extern const sd_setting sd_settings[SDI_COUNT];
 extern const int sd_nsettings;
 
 /* The Amarchy keys with no control in Prefs (index skip list, index volumes): rows of the same kind, no page. */
-#define SD_NHIDDEN 2
+#define SD_NHIDDEN 3
 extern const sd_setting sd_hidden[SD_NHIDDEN];
 /* The row, of sd_settings or sd_hidden, that stores the am_prefs value k (AM_*); every k has one. */
 const sd_setting *sd_amarchy_key(int k);
