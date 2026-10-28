@@ -52,7 +52,7 @@ for m060, cpu in ((True, "68060"), (False, "68020-40")):
         vtc = pathlib.Path(d)
         rig.stage_amissl(vtc, m060)
         got = vtc / "amissl/AmiSSL/amissl_v362.library"
-        want = rig.ROOT / "vendor/amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / cpu / "amissl_v362.library"
+        want = rig.paths.VENDOR / "amissl-5.27/AmiSSL/Libs/AmigaOS3/AmiSSL" / cpu / "amissl_v362.library"
         check(got.is_file() and got.read_bytes() == want.read_bytes(),
               "stage_amissl puts the %s library flat in VTC:amissl/AmiSSL" % cpu)
 

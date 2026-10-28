@@ -88,8 +88,16 @@ with tempfile.TemporaryDirectory() as d:
     rig.mine, rig.setup_config_only, rig.status = (lambda: []), (lambda: None), (lambda quiet=False: True)
     rig.boot_assigns_missing, rig.guard_shell_startup, rig.M060 = (lambda: []), (lambda: None), False
     rig.time.sleep = lambda s: None
+    # the system disk steps (fresh clone of the master, then the edits into it) need the master image: not here
+    sys_steps = ("fresh_sys_hdf", "sys_hdf_screenmode", "sys_hdf_no_wasabid", "sys_hdf_no_dopus", "sys_hdf_kit",
+                 "sys_hdf_cpu_lib")
+    saved_sys = {n: getattr(rig, n) for n in sys_steps}
+    for n in sys_steps:
+        setattr(rig, n, lambda *a: None)
     paths.FSUAE = pathlib.Path("/usr/bin/true")
     rig.start()
+    for n, f in saved_sys.items():
+        setattr(rig, n, f)
     check(sum(1 for c in spawned if c[-1] == "logwatch") == 1, "rig start spawns exactly one logwatch (spawned: %r)" % spawned)
     (paths.FSUAE_LOG_DIR, paths.FSUAE_LOG_MAX, paths.FSUAE, rig.SERIAL, rig.LOGWATCH_EVERY, rig.mine,
      rig.setup_config_only, rig.status, rig.boot_assigns_missing, rig.guard_shell_startup, rig.M060,

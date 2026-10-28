@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory() as d:
 # start() records its arguments before it writes the config
 src = (HERE / "rig/rig.py").read_text()
 body = src[src.index("def start("):]
-check(body.index("START_ARGS.write_text(json.dumps(sys.argv[2:]))") < body.index("setup_config_only()"),
+check(body.index("START_ARGS.write_text(json.dumps(") < body.index("setup_config_only()"),
       "start() writes start.args before the config")
 
 print("rig_screenmode: %s" % ("FAIL (%d)" % fails if fails else "ok"))

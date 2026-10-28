@@ -231,20 +231,24 @@ prep = next(f for f in ast.walk(ast.parse((HERE / "rig/install_rig.py").read_tex
 check(any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == "refresh_kit_shadows"
           for c in ast.walk(prep)), "install_rig.prepare refreshes the kit shadows in VTC:")
 
-# upkg comes from upterm-ports' build (make opkg), is a KIT_SHADOWS row for UP-Term:bin/upkg, and refresh_kit_shadows
-# copies it into VTC: (the rig ran the kit's older upkg without `list --tsv` one row per package, patch 0054)
-check(("upkg", "UP-Term:bin/upkg", "UP-Term-bin-upkg") in rig.KIT_SHADOWS, "KIT_SHADOWS shadows UP-Term:bin/upkg")
-import tempfile, os as _os  # noqa: E402
+# upkg comes from the dist userland (the ports build the kit packs, RIG-KIT-DERIVE), is a KIT_SHADOWS row for
+# UP-Term:bin/upkg, and refresh_kit_shadows copies it into VTC: (the rig ran the kit's older upkg without
+# `list --tsv` one row per package, patch 0054)
+UPKG_ROW = (rig.USERLAND_STAGE + "/upkg", "UP-Term:bin/upkg", "UP-Term-bin-upkg")
+check(UPKG_ROW in rig.KIT_SHADOWS, "KIT_SHADOWS shadows UP-Term:bin/upkg from the dist userland")
+import tempfile  # noqa: E402
 with tempfile.TemporaryDirectory() as _d:
-    _p = pathlib.Path(_d) / "build/sysroot/UP-Term/bin"
-    _p.mkdir(parents=True)
-    (_p / "upkg").write_bytes(b"ports-upkg")
-    _os.environ["UPTERM_PORTS"] = _d
-    check(rig.kit_shadow_src("upkg") == _p / "upkg", "kit_shadow_src: upkg is the ports build, not build/amiga")
+    _src = pathlib.Path(_d) / "userland"
+    _src.mkdir()
+    (_src / "upkg").write_bytes(b"ports-upkg")
+    _saved = rig.USERLAND_SRC, rig.KIT_SHADOWS
+    rig.USERLAND_SRC, rig.KIT_SHADOWS = _src, [UPKG_ROW]
+    check(rig.kit_shadow_src(UPKG_ROW[0]) == _src / "upkg", "kit_shadow_src: upkg is the dist userland's")
     _vtc = pathlib.Path(_d) / "vtc"
     _vtc.mkdir()
     rig.refresh_kit_shadows(_vtc)
-    check((_vtc / "upkg").read_bytes() == b"ports-upkg", "refresh_kit_shadows: VTC:upkg is the ports build")
+    rig.USERLAND_SRC, rig.KIT_SHADOWS = _saved
+    check((_vtc / UPKG_ROW[0]).read_bytes() == b"ports-upkg", "refresh_kit_shadows: VTC: upkg is the dist userland's")
 
 print("[%s] rig_kit: %d failed" % ("FAIL" if fails else "OK", fails))
 sys.exit(1 if fails else 0)
