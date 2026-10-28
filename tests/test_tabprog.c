@@ -28,6 +28,26 @@ static void agent_names_pick_their_tab(void)
     CHECK_INT(tabprog_agent_tab("bogus"), TAB_CLAUDE);
 }
 
+/* /ask TASK and C:Agent TASK: the agent's command line carries the task as one quoted argument; both
+ * agents read a positional prompt (claude/main_amiga.c header "Claude [options] [prompt]", amiga-pi args.c) */
+static void agent_task_is_one_quoted_argument(void)
+{
+    char l[200], s[300];
+    CHECK(tabprog_task_cmd(l, sizeof(l), "C:Claude", "fix \"the\" bug"));
+    CHECK_STR(l, "C:Claude \"fix *\"the*\" bug\"");
+    CHECK(tabprog_task_cmd(l, sizeof(l), "C:Claude", "a\nb *x*")); /* newline *N, * doubled: vsh_put_word, shared with vsh_command_line */
+    CHECK_STR(l, "C:Claude \"a*Nb **x**\"");
+    CHECK(tabprog_task_cmd(l, sizeof(l), "C:amiga-pi", "list the files"));
+    CHECK_STR(l, "C:amiga-pi \"list the files\"");
+    CHECK(tabprog_script(s, sizeof(s), "Stack 32768\n", l));
+    CHECK(strstr(s, "Stack 32768\nC:amiga-pi \"list the files\"\n") != 0);
+    CHECK(tabprog_task_cmd(l, sizeof(l), "C:Claude", 0)); /* no task: the bare agent, as Super + L */
+    CHECK_STR(l, "C:Claude");
+    CHECK(tabprog_task_cmd(l, sizeof(l), "C:Claude", ""));
+    CHECK_STR(l, "C:Claude");
+    CHECK(!tabprog_task_cmd(l, 12, "C:Claude", "too long for it")); /* refused, never cut */
+}
+
 static void tutorial_tab_runs_the_tutorial_under_vsh(void)
 {
     char s[256];
@@ -72,6 +92,7 @@ void suite_tabprog(void)
     a_failed_demo_keeps_its_tab_open_until_return();
     claude_tab_keeps_its_stack_line();
     agent_names_pick_their_tab();
+    agent_task_is_one_quoted_argument();
     tutorial_tab_runs_the_tutorial_under_vsh();
     a_script_too_long_for_the_buffer_is_refused();
     a_small_window_grows_to_the_demo_and_the_tab_bar();

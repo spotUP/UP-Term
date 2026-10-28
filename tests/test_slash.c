@@ -131,6 +131,12 @@ static void arguments_are_handed_on_trimmed(void)
     CHECK_STR(cmd.arg, "3000");
     CHECK_INT(parse("/profile vim"), SLASH_OK);
     CHECK_STR(cmd.arg, "vim");
+    CHECK_INT(parse("/ask  fix the *\" bug "), SLASH_OK); /* the agent's task, trimmed, rest of the line */
+    CHECK_INT(cmd.id, SLASH_ASK);
+    CHECK_STR(cmd.arg, "fix the *\" bug");
+    CHECK_INT(parse("/ask"), SLASH_OK); /* no task: the bare agent */
+    CHECK_INT(cmd.id, SLASH_ASK);
+    CHECK_STR(cmd.arg, "");
     CHECK_INT(parse("/find two words"), SLASH_OK);
     CHECK_STR(cmd.arg, "two words");
     CHECK_INT(parse("/link-open  Run >NIL: OpenURL %s "), SLASH_OK);
