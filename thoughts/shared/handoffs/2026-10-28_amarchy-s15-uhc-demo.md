@@ -54,3 +54,17 @@ Shot list: thoughts/spot/uhc-demo-shotlist.md (status READY).
   1. Restore the .orig file and kill 37928.
   2. Message vtcon-f6; it then moves kit-main to upterm-ports main (0059 merged, 75989e1) and checks bare `upkg remove pipe`.
 - Shot list updated: theme step back (picking one untested), scroll-cue note, feed and restore steps.
+
+## State at 2026-10-28 evening (s15, after the theme fixes)
+- main 7446f13a pushed: live theme switch (the menu recolours on the pick and stays open), header in the theme accent, and true-colour inks. On the rigs the menu opens on the Directory Opus 24-bit screen with no free pens, so every theme used to draw grey; inks now come from menu_theme_ink and fills go through FillPixelArray. Regression test test_gthemes_ink_direct; rig check tools/rig/amarchy_theme_save_rig.py (2 of 2, header 88 accent px).
+- 2cf2007f (up-uhc lets UHC's pkg-envcheck make ExtBin) is newer than the feed ipk; vtcon-05's ipk rebuild after the demo must include it.
+- Rig 7 theme restored to tokyo-night through the menu, then the recording script (s15 scratchpad record.py, log record.log) was started with a 15 s delay.
+- After the owner confirms the take: Copy UP-Term:etc/upkg.conf.orig UP-Term:etc/upkg.conf; kill 37928; stop rig 7 when no write runs; message vtcon-f6 "demo recorded".
+- Open: AM-THEME-PICK-UPTERM-DIED (unreproduced), bitmap-font menu text on a true-colour screen still takes the nearest pen (mt_draw Text() path; the rigs use the TTF path), build/dist/up-term broken by vtcon-05's agent (needs make dist-base, coordinate).
+
+## State at 2026-10-28 night (s15, demo recorded)
+- main ce3605c2 pushed: the theme list previews the theme under the cursor (Esc restores the saved one, Return saves it). Regression test T9 in tests/test_gthemes.c (proved by revert); rig check amarchy_theme_save_rig.py --preview walks Down or Up from the "(current)" row.
+- Take 0 of the shot list now opens Style > Amarchy theme on tokyo-night (current), walks Up 8 and Down 8 so the preview recolours live, and leaves with Esc.
+- The owner wanted the shell at full size with the ASCII banner on screen. A fresh SYS:System/UP-Term window opens 800x580, so the recording script focuses the desktop by clicking the backdrop strip above the terminal (400,17) instead of (400,560); over a full-width terminal the hotkey opens the terminal's text menu by design.
+- The retake ran clean (Take 0 19:59:35, END 20:03:11) and the owner confirmed it. Cleanup done: rig 7 upkg.conf restored from upkg.conf.orig, feed server 37928 killed, rig 7 stopped, vtcon-f6 told "demo recorded" and that its ipk rebuild must include 2cf2007f.
+- Still open: AM-THEME-PICK-UPTERM-DIED, bitmap-font menu text nearest pen (menu_text.c), build/dist/up-term (make dist-base, vtcon-05), the "Amarchy" title bar does not follow the theme, Package menu Browse puts everything in "other", Search matches name and description only, UHC-EXTBIN-LIVE-PATH, CURL-HTTPS-TLS (add AmiSSL), 3 EveryAddOn tests failed before s15.
