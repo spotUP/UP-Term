@@ -45,12 +45,14 @@ class Table(unittest.TestCase):
             self.assertIn(i, ARCHIVE)
             self.assertTrue(ARCHIVE[i].startswith('up-'), i)      # they need the base: UP-Term:bin
 
-    def test_git_is_selected_by_pattern_so_the_dashed_binaries_may_change(self):
-        self.assertIn('bin/git-*', slim.patterns('git'))
-        self.assertFalse([p for p in slim.patterns('git') if p.startswith('bin/git-') and '*' not in p])
+    def test_git_rows_list_each_helper_the_recipe_installs(self):
+        # 8a21a1fa: the git rows come from pkg_rows.py emit (the port/git-amissl recipe), not a bin/git-* wildcard
+        for p in ('bin/git', 'bin/git-upload-pack', 'bin/git-remote-https', 'share/git-core/templates'):
+            self.assertIn(p, slim.patterns('git'))
+        self.assertFalse([p for p in slim.patterns('git') if '*' in p])
 
     def test_uninstall_lines_come_from_the_same_list(self):
-        self.assertIn('Delete >NIL: "UP-Term:bin/git-#?" ALL QUIET', slim.uninstall('git'))
+        self.assertIn('Delete >NIL: "UP-Term:bin/git-remote-https" ALL QUIET', slim.uninstall('git'))
         self.assertIn('Delete >NIL: "UP-Term:share/vim" ALL QUIET', slim.uninstall('vim'))
 
     def test_the_ports_kit_is_found_under_upterm_root_from_a_worktree(self):
