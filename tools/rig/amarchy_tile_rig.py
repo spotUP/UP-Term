@@ -105,6 +105,7 @@ def fire_row():
 def front_screen():
     with ami._conn() as conn:
         s = ami._m().list_windows(conn)
+    s = s[0] if isinstance(s, tuple) else s       # wasabi returns (screens, raw lines)
     return s[0] if s else None
 
 
