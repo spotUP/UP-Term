@@ -21,6 +21,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --idle-minutes <N>: stop the rig after N minutes with no command (default 60, 0 = off, rig 1 never);
                   --purpose "<who: what>": the window title says which session runs the
                   rig and for what, e.g. "Amarchy session: menu terminal check")
+                  --overscan: AGA rigs show the whole overscan picture (zoom = full), not the cropped 640x512 area;
                   --os <30|31|314|32|321|322|35|39>: boot the owner's clean installed
                   Workbench of that version (paths.OS_IMAGES; own copy per rig,
                   --fresh copies it anew; the Kickstart goes with it)
@@ -386,6 +387,9 @@ A1200 = any(f in sys.argv for f in ("--a1200", "--stock", "--exact", "--fast"))
 # (OCS, the model's 512 KB chip + 512 KB slow RAM) with 8 MB Zorro II fast RAM as an A590 or a sidecar gives it,
 # no FPU, no graphics card. The default ROM is 40.63, the A500/A600/A2000 3.1, so it boots as is.
 A500 = "--a500" in sys.argv
+# --overscan: AGA rigs show the whole overscan picture (FS-UAE zoom = full) instead of the cropped 640x512 area, so a
+# program that fills the Overscan prefs area (Selecta Fill Screen, I566) can be seen edge to edge. Other rigs keep the crop.
+OVERSCAN = "--overscan" in sys.argv
 MAX = "--max" in sys.argv or not (A1200 or A500)
 M060 = "--060" in sys.argv or MAX
 # --mmu: the 68060 with its MMU emulated (FS-UAE "68060", no JIT, slower): what MuForce needs
@@ -647,8 +651,8 @@ def window_lines():
     name = SCREENMODE_NAME.read_text().strip() if SCREENMODE_NAME.exists() else "aga256" if OS else "rtg"
     w, h = SCREEN_SIZES[name]
     k = max(1, min(WINDOW_BUDGET[0] // w, WINDOW_BUDGET[1] // h))
-    return ["window_width = %d" % (w * k), "window_height = %d" % (h * k)] + (
-        [] if name == "rtg" else ["zoom = 640x512"])   # AGA: crop the overscan border, or x2 no longer fits
+    zoom = ["zoom = full"] if OVERSCAN else [] if name == "rtg" else ["zoom = 640x512"]   # --overscan: every mode, rtg included
+    return ["window_width = %d" % (w * k), "window_height = %d" % (h * k)] + zoom   # AGA: crop the overscan border, or x2 no longer fits
 
 def title_line():
     """The window title names the rig and its machine: with several rigs open the

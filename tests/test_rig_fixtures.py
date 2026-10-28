@@ -193,8 +193,8 @@ class InstallCases(unittest.TestCase):
             else:
                 self.assertIn('base' if name != 'nobase' else ir.based_ids()[0], pk, name)
             self.assertTrue(callable(fn), name)
-        self.assertEqual(ir.standalone_ids(), ['claude', 'pi', 'python'])
-        self.assertEqual(ir.based_ids(), ['nvim'])
+        self.assertEqual(ir.standalone_ids(), ['claude', 'pi', 'python', 'dopus'])
+        self.assertEqual(ir.based_ids(), ['nvim', 'uhc'])
 
     def test_a_pass_with_the_same_kit_is_skipped_and_a_changed_archive_runs_again(self):
         for pkg in ir.package_ids(): self.kit(pkg)
@@ -434,6 +434,9 @@ class ScriptedAmiga:
         if c == 'C:amiga-pi --version': return 0, 'amiga-pi 1.2.0'
         if c == 'Type ENVARC:amiga-pi/settings.json': return 0, 'userfile-keepme'
         if c.startswith('Echo >ENVARC:amiga-pi'): return 0, ''
+        if c == 'Version DOpus5:DirectoryOpus': return 0, 'DirectoryOpus 5.91'
+        if c == 'Version DOpus5:DirectoryOpus FULL': return 0, 'DirectoryOpus 5.91 (68060)'
+        if c.startswith('Assign >NIL: DOpus5: EXISTS'): return (0 if 'DOpus5:DirectoryOpus' in self.files else 5), ''
         if c.startswith('Echo >') and c.split()[1][1:].startswith(('C:ClaudeCode', 'UP-Term:ClaudeCode')):
             self.files.add(c.split()[1][1:])
             return 0, ''
@@ -471,6 +474,18 @@ class ScriptedAmiga:
         return 0, 'NVIM v0.12.0'
 
 
+class FakeWasabi:
+    """The wasabi client as ami._m() returns it, for the host: ARexx answers like Directory Opus, no connection."""
+    class WasabiError(Exception): pass
+    class Conn:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def close(self): pass
+    @staticmethod
+    def arexx(conn, port, cmd): return (0, '', '5 91')
+
+
 class AddonCases(unittest.TestCase):
     """case_addon and case_all of install_rig.py on a scripted Amiga (no rig): the case installs the base and the
     add-on through the add-on's own run script (call count), checks its record and the program answering, and
@@ -479,8 +494,10 @@ class AddonCases(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'tools'))
         import pkgs, verdicts
         sim = ScriptedAmiga(pkgs, skip)
-        saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep)
+        saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep, ami._m)
         ir.run, ir.run_long, ir.run_slow = sim.run, sim.run_long, sim.run_slow
+        ir.time.sleep = lambda s: None
+        ami._m = lambda: FakeWasabi    # the add-on checks that ask a program over ARexx (dopus) never open a socket
         ir.prepare = lambda dest, addons=(): sim.log.append('prepare %s' % ','.join(addons))
         ir.remote_banner = lambda ck: sim.log.append('banner')
         ck = verdicts.Checks()
@@ -491,7 +508,7 @@ class AddonCases(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 case(ck)
         finally:
-            ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep = saved
+            ir.run, ir.run_long, ir.run_slow, ir.prepare, ir.remote_banner, ir.time.sleep, ami._m = saved
         return ck, sim
 
     def ids(self):
@@ -511,7 +528,7 @@ class AddonCases(unittest.TestCase):
         self.assertEqual(ck.failed, [])
         self.assertEqual([l for l in sim.log if l.startswith('runinstall-')], ['runinstall-' + i for i in self.ids()])
         self.assertEqual([l for l in sim.log if l.startswith('rununinstall-')],
-                         ['rununinstall-python', 'rununinstall-claude', 'rununinstall-pi'],
+                         ['rununinstall-python', 'rununinstall-claude', 'rununinstall-pi', 'rununinstall-dopus'],
                          'Python3 while the base is there; Claude and amiga-pi after it (stand-alone); nvim goes with the base')
         self.assertEqual(sim.files - {'ENVARC:Claude/remote'}, set(), 'the base Uninstall left files (only the user\'s ENVARC:Claude stays)')
 
@@ -652,11 +669,14 @@ class InstallerCases(unittest.TestCase):
                 return True, [], 0.0
             saved = (ir.run, ir.run_long, ir.run_slow, ir.prepare, self.ir2.installer_run, self.ir2.read_installer)
             ir.run, ir.run_long, ir.run_slow, ir.prepare = sim.run, sim.run_long, sim.run_slow, lambda dest, addons=(): None
+            saved_io = (ir.time.sleep, ami._m)
+            ir.time.sleep, ami._m = (lambda s: None), (lambda: FakeWasabi)   # dopus asks its program over ARexx: no socket
             self.ir2.installer_run, self.ir2.read_installer = installer_run, lambda: ('Installer', set())
             try:
                 ok, detail = self.ir2.run_addon_case(pkg)
             finally:
                 ir.run, ir.run_long, ir.run_slow, ir.prepare, self.ir2.installer_run, self.ir2.read_installer = saved
+                ir.time.sleep, ami._m = saved_io
             self.assertTrue(ok, (pkg, detail))
             self.assertEqual(started, [('distkit', 'UP-Term'), ('kit-' + pkg, ir.archive(pkg))], 'base first, then its own icon')
 
@@ -671,7 +691,8 @@ class NoBaseCase(unittest.TestCase):
         def run(cmd, timeout=60):
             if cmd.startswith('Type S:User-Startup'): return 0, files['S:User-Startup']
             if cmd.startswith('Type ENV:UPTCHECK'): return 0, 'up-nvim needs UP-Term 1.0 or newer. Install up-term.lha first.'
-            if cmd.startswith('List >NIL: C:') or cmd.startswith('List >NIL: UP-Term:'): return (0 if ran and not refuses else 5), ''
+            if cmd.startswith('List >NIL: UP-Term:') or cmd[11:] in {f for fs in ir.ADDON_FILES.values() for f in fs}:
+                return (0 if ran and not refuses else 5), ''
             return 0, ''
         def run_long(script, timeout=1500):
             if script.startswith('runinstall-'): ran.append(script)
