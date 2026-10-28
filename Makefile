@@ -88,6 +88,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=pkg_rows tools/pkg_rows.py emit bitchx against the committed rows, through main(argv); needs upterm-ports (the workspace's upterm-ports, UPTERM_PORTS= to move it; skips when absent) (tests/test_pkg_rows.py)
 # ONLY=win the win: verbs' parse and window geometry: step, clamp, size limits, full width/screen, save ring, direction search (tests/test_win.c)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
+# ONLY=rig_helpers install_rig refuses up front, naming make rig-helpers, when a helper program is not built (tools/test_rig_helpers.py)
 # ONLY=rig_browse_base upkg_browse_rig step 0 installs the kit over an older base (tools/test_rig_browse_base.py)
 # ONLY=rig_browse_free upkg_browse_rig: the Info free-space parser, the precheck message (tools/test_rig_browse_free.py)
 # ONLY=rig_help rig.py takes --help, -h, help and ? (tools/test_rig_help.py)
@@ -132,6 +133,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_helpers ]; then python3 -I tools/test_rig_helpers.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_base ]; then python3 -I tools/test_rig_browse_base.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_free ]; then python3 -I tools/test_rig_browse_free.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_help ]; then python3 -I tools/test_rig_help.py; fi
@@ -1204,6 +1206,11 @@ $(BUILD)/amiga/lcmdprobe: tests/amiga/lcmdprobe.c
 $(BUILD)/amiga/devwho: tests/amiga/devwho.c device/upc_public.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/devwho.c
+
+# the helper programs install_rig.prepare copies into VTC: (install_rig.HELPERS);
+# dist-base does not build iconprobe, wbrun or conwho, so a fresh worktree needs this first
+.PHONY: rig-helpers
+rig-helpers: $(BUILD)/amiga/ptytest $(BUILD)/amiga/iconprobe $(BUILD)/amiga/wbrun $(BUILD)/amiga/conwho $(BUILD)/amiga/UPConsole
 
 # H5.6's probes (tools/rig/concon_rig.py)
 $(BUILD)/amiga/conwho: tests/amiga/conwho.c handler/vtcon_packets.h

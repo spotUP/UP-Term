@@ -422,15 +422,31 @@ def stage_addon(pkg):
     (VTC / ("rununinstall-" + pkg)).write_text("Set upvardelete YES\nCD VTC:kit-%s\nExecute Uninstall\n" % pkg)
 
 
+# the helper programs prepare() copies into VTC:; the Makefile's rig-helpers target builds exactly these
+HELPERS = ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole")
+
+
+def missing_helpers(root=None):
+    """The refusal for helpers not built under root/build/amiga (make dist-base builds only some), or None."""
+    root = root or ROOT
+    gone = [n for n in HELPERS if not (root / "build/amiga" / n).is_file()]
+    if not gone:
+        return None
+    return "install_rig: build/amiga/%s not built; run `make rig-helpers` first" % ", ".join(gone)
+
+
 def prepare(dest, addons=()):
     """The kit unpacked into VTC:distkit, the helper programs and the run scripts beside it, LIBS: as the rig boots it.
     Each add-on in `addons` is unpacked too, into VTC:kit-<id>, with runinstall-<id> and rununinstall-<id>."""
+    refusal = missing_helpers()
+    if refusal:  # before VTC:distkit is touched: a half-prepared VTC: mixes two kits
+        raise SystemExit(refusal)
     destarg = (" DEST=%s" % dest) if dest else ""
     shutil.rmtree(VTC / "distkit", ignore_errors=True)
     shutil.copytree(KIT, VTC / "distkit")
     for pkg in addons:
         stage_addon(pkg)
-    for name in ("ptytest", "iconprobe", "wbrun", "conwho", "UPConsole"):
+    for name in HELPERS:
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     # the boot after the install puts VTC:'s copies over the kit's (rig.KIT_SHADOWS): they must be this build
     import rig
