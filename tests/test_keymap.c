@@ -564,6 +564,7 @@ static void settings_page_group_lists_the_table_rows(void)
     keymap pk;
     int page, i, n, want, seen_pages = 0;
     char text[1024], line[128];
+    memset(&pk, 0, sizeof pk);
     strcpy(text, "[menu]\n");
     for (page = 0; page < PG_NPAGES; page++) {
         strcpy(line, "settings.");
@@ -616,6 +617,7 @@ static void settings_page_group_lists_the_table_rows(void)
         mn_levels(&pk, "settings", count_level, &levels);
         CHECK_INT(levels, 1 + PG_NPAGES);
     }
+    keymap_free(&pk);
 }
 
 /* Right enters what Return enters (a group, a cycle, colour or list setting) and nothing else: a leaf, an index
