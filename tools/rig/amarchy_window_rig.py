@@ -107,8 +107,52 @@ def s_hotkey_move_right():
     return ok, '%s: box %r -> %r, wins %d -> %d' % (how, b0, b1, n0, n1)
 
 
+PREFS = ('ENV:Amarchy/prefs', 'ENVARC:Amarchy/prefs')
+
+
+def put_text(path, lines):
+    """Rewrite a prefs file line by line with Echo (as amarchy_menu_rig.x9_conf does): ami.restore_file's rename
+    into place fails on ENV: of the OS 3.2 rig."""
+    c.run('Delete >NIL: %s QUIET' % path)
+    for i, l in enumerate(lines):
+        c.run('Echo >%s%s "%s"' % ('>' if i else '', path, l.replace('"', '*"')))
+
+
+def drawn_menu_prefs():
+    """Super+Space over a terminal (the target is a console) opens amarchy-menu in an untitled UP-Term window while
+    menu-in-terminal = text (the default); the drawn menu, titled Amarchy, needs graphical. Same store and key as
+    amarchy_prefs_rig.set_graphical. Returns the saved files for restore_prefs."""
+    saved = {p: ami.read_file(p) for p in PREFS}
+    for p, old in saved.items():
+        keep = [l for l in (old or b'').decode('latin-1').splitlines()
+                if not re.match(r'\s*menu-in-terminal\s*=', l)]
+        put_text(p, keep + ['menu-in-terminal = graphical'])
+    port('RELOAD')
+    time.sleep(1.5)
+    return saved
+
+
+def restore_prefs(saved):
+    for p, old in saved.items():
+        if old is None:
+            c.run('Delete >NIL: %s QUIET' % p)
+        else:
+            put_text(p, old.decode('latin-1').splitlines())
+    port('RELOAD')
+
+
 def s_menu_move_left():
     """drawn menu: Super+Space, Window, Move left; the ticket names the target although the menu is active"""
+    if 'box0' not in STATE:
+        return False, 'needs step open_target in the same run (STATE box0 unset); rerun with --fresh'
+    saved = drawn_menu_prefs()
+    try:
+        return menu_move_left_run()
+    finally:
+        restore_prefs(saved)
+
+
+def menu_move_left_run():
     n0, b0 = status().get('wins', -1), box()
     activate_target()
     ami.key(SPACE, LAMIGA)
@@ -136,6 +180,8 @@ def s_menu_move_left():
 
 
 def s_move_left():
+    if 'box0' not in STATE:
+        return False, 'needs step open_target in the same run (STATE box0 unset); rerun with --fresh'
     port('WIN move right')                    # the menu step already moved the window back
     time.sleep(1)
     b0, n0 = box(), status().get('wins', -1)
@@ -184,6 +230,17 @@ def wb_port(cmd, timeout=15):
             return rc, res.strip()
     except m.WasabiError as e:
         return None, 'error %s' % (e,)
+
+
+def needs_wb(fn):
+    """The b2 steps drive Workbench's own ARexx port. A rig where Directory Opus replaces Workbench has none: FAIL
+    with the reason (never a silent pass); run these steps on a rig started with --no-dopus."""
+    def run():
+        rc, res = wb_port('ACTIVATEWINDOW WINDOW ROOT')
+        if rc is None and 'no port named' in res:
+            return False, 'needs a WORKBENCH port (Workbench rig: rig.py start --no-dopus; DOpus replaces Workbench here): %s' % res
+        return fn()
+    return run
 
 
 def wb_rows():
@@ -384,10 +441,10 @@ ROWS = [
     ('k6_size',        probe('size right', 'size left')),
     ('k6_fullwidth',   probe('fullwidth', 'restore')),
     ('s2_screen_cycle', s_screen_cycle),
-    ('b2_redraw',      s_wb_redraw),
-    ('b2_patterns',    s_wb_patterns),
-    ('b2_icons_selected', s_wb_icons_selected),
-    ('b2_viewname',    s_wb_viewname),
+    ('b2_redraw',      needs_wb(s_wb_redraw)),
+    ('b2_patterns',    needs_wb(s_wb_patterns)),
+    ('b2_icons_selected', needs_wb(s_wb_icons_selected)),
+    ('b2_viewname',    needs_wb(s_wb_viewname)),
 ]
 
 
