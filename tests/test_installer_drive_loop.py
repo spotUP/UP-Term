@@ -153,5 +153,38 @@ class ClickSpeed(unittest.TestCase):
         self.assertLess(clock.now, old_total / 3, clock.now)
 
 
+class LinkDropped(unittest.TestCase):
+    """2026-10-28 rig 9: the Amiga crashed on the Installer's last page; wasabi's "connection closed by the Amiga"
+    is a SystemExit, and drive ended the run without printing the pages it had answered."""
+    def test_pages_answered_are_printed_before_the_run_ends(self):
+        import contextlib, io
+        import installer_rig as irg
+        clock, state = Clock(), {'n': 0}
+
+        def req(code, payload=b'', timeout=150):
+            state['n'] += 1
+            if state['n'] > 1:
+                raise SystemExit('ERR: connection closed by the Amiga')
+            return ('W 0 152 195 496x210 active "Last Page"\nG 0 152 195 496x13 sys:drag - ""\n'
+                    'G 90 281 386 238x16 custom - ""\nG 91 402 386 238x16 custom - ""\n').encode('latin-1')
+
+        saved = {k: getattr(irg, k) for k in ('time', 'installer_running', 'click', 'text_faults')}
+        saved_req = irg.ami.req
+        irg.time, irg.click = clock, lambda box: None
+        irg.installer_running = lambda inst: True
+        irg.text_faults = lambda tree: ([], [])
+        irg.ami.req = req
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+                irg.drive('dropped-test', 'Installer', None, set(), timeout=5400)
+        finally:
+            for k, v in saved.items():
+                setattr(irg, k, v)
+            irg.ami.req = saved_req
+        self.assertIn('the link dropped after', out.getvalue())
+        self.assertIn('page [Last Page]', out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

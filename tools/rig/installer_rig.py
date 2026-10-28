@@ -449,8 +449,20 @@ def wait_change(tree, secs):
     return False
 
 
-def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20, expect_abort=False,
-          room_dest=None, console=False, tick_all=False, askdir_probe=None):
+def drive(case, inst, dest, baseline_titles, **kw):
+    """drive_pages, but a link lost mid-run (wasabi's "connection closed by the Amiga" is a SystemExit) prints the
+    pages answered so far before it ends the run: without them a crash on the last page left no trace (rig 9,
+    2026-10-28). Returns (finished, log)."""
+    log = []
+    try:
+        return drive_pages(log, case, inst, dest, baseline_titles, **kw)
+    except SystemExit:
+        print("installer_rig: %s: the link dropped after:\n  %s" % (case, "\n  ".join(log) or "(no page)"))
+        raise
+
+
+def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20,
+                expect_abort=False, room_dest=None, console=False, tick_all=False, askdir_probe=None):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
     room_dest: the drawer to ask for when the room page ("<dest> has N KB free; the parts you chose need about
@@ -461,8 +473,7 @@ def drive(case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=
     install-mode gadget 1 is a choice, not a list of boxes. Each Installer (the nested ones too: their window
     title is their script) asks its own drawer and room pages.
     A page unchanged `stall` s after a click is a FAIL; a page without Proceed is the copy: waited out
-    (percent logged) up to work_limit s. Returns (finished, log)."""
-    log = []
+    (percent logged) up to work_limit s. log collects what happened, in order. Returns (finished, log)."""
     pages = OUT / (case + ".pages.txt")
     pages.write_text('')
     t0 = time.time()
