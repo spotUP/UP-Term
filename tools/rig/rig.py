@@ -536,8 +536,9 @@ def sys_hdf_kit(image):
     up-console.device, C:vsh differ; ixnet refuses an ixemul of another revision), and install.dos files it lacks.
     kit_entries() is the set, derived (kitset.py); the clone gets each entry that has a place on the system disk, every
     file is read back and compared by md5, and the start is refused on any mismatch or when a source fails its check
-    (ixnet: tools/libguard.py). The master image is never touched. UP-Term:bin and the spelled keymap places are not
-    on the system disk: the boot shadows them from VTC: (KIT_SHADOWS, refresh_kit_shadows)."""
+    (ixnet: tools/libguard.py). The master image is never touched. The UP-Term: places live on the partition the
+    kit's User-Startup assigns (sys_hdf_kit_upterm writes them there too); the boot still shadows them and the spelled
+    keymap places from VTC: (KIT_SHADOWS, refresh_kit_shadows)."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     def run(*a, check=True):
         return subprocess.run([xdf, str(image), *a], check=check, capture_output=True, text=True)
@@ -566,6 +567,82 @@ def sys_hdf_kit(image):
                 sys.exit("rig: the clone's %s differs from %s after the write (RIG-KIT-DERIVE)" % (e.clone, e.src))
         finally:
             back.unlink(missing_ok=True)
+    sys_hdf_kit_upterm(image)
+
+def clone_upterm_place(image):
+    """(partition, directory) of UP-Term: in the clone, or None. The kit's ';BEGIN UP-Term assign' block in
+    S:User-Startup names a volume path ("Rushhours:Tools/UP-Term"); the volume is the RDB partition with that disk
+    name (DH1 on the master image). A clone with no such block or no such partition has no UP-Term: of its own."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    us = RIG / "user-startup.tmp"
+    us.unlink(missing_ok=True)
+    if subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], capture_output=True).returncode != 0:
+        return None
+    text = us.read_text(errors="replace")
+    us.unlink()
+    m = re.search(r'^\s*Assign\s+UP-Term:\s+"?([^:"\s]+):([^"\s]*)"?', text, re.M | re.I)
+    if not m:
+        return None
+    vol, d = m.group(1).lower(), m.group(2).strip("/")
+    rdb = shutil.which("rdbtool") or str(pathlib.Path.home() / ".local/bin/rdbtool")
+    info = subprocess.run([rdb, str(image), "info"], capture_output=True, text=True).stdout
+    for part in re.findall(r"^Partition: #\d+ '([^']+)'", info, re.M):
+        show = subprocess.run([xdf, str(image), "open", "part=" + part, "+", "root", "show"], capture_output=True, text=True).stdout
+        n = re.search(r"disk name:\s*(.+)", show)
+        if n and n.group(1).strip().lower() == vol:
+            return part, d
+    return None
+
+def sys_hdf_kit_upterm(image):
+    """sys_hdf_kit for the UP-Term: places (RIG-WARM-SRV-RACE). The master image's UP-Term:bin holds older Amarchy,
+    amarchy-menu, amarchy-gui and amarchy-index (all four md5s differed from the build, 2026-10-28). On a fresh clone
+    the kit's User-Startup line `Run >NIL: UP-Term:bin/Amarchy` started those while BOOTX:go's shadow Copy wrote the
+    new ones over the same files, and the warm servers AMARCHY.MENUSRV/GUISRV never came up (3 of 3 fresh starts;
+    every `rig.py reboot`, whose clone already held the copies, had them). The clone now gets every UP-Term: file of
+    the kit before it boots, read back and compared by md5 like the system disk's; the boot's shadow then writes the
+    same bytes."""
+    place = clone_upterm_place(image)
+    if not place:
+        return
+    part, base = place
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    def run(*a, check=True):
+        return subprocess.run([xdf, str(image), "open", "part=" + part, "+", *a], check=check, capture_output=True, text=True)
+    def amiga(dest):
+        return "/".join(x for x in (base, dest[len("UP-Term:"):]) if x)
+    entries = [e for e in kit_entries(NOFPU, M060) if e.dest.startswith("UP-Term:")]
+    if not entries:
+        return
+    listed = {}
+    ops = []
+    for e in entries:
+        parent, leaf = amiga(e.dest).rsplit("/", 1)
+        if parent not in listed:
+            parts = parent.split("/")
+            for i in range(1, len(parts) + 1):
+                d = "/".join(parts[:i])
+                if d not in listed:
+                    r = run("list", d, check=False)
+                    if r.returncode != 0:
+                        run("makedir", d)
+                    listed[d] = {l.split()[0] for l in r.stdout.splitlines() if l.split()} if r.returncode == 0 else set()
+        if leaf in listed[parent]:
+            ops += ["+", "delete", amiga(e.dest)]
+        ops += ["+", "write", str(e.src), amiga(e.dest)]
+    run(*ops[1:])
+    back = RIG / "kit-upterm.tmp"
+    shutil.rmtree(back, ignore_errors=True)
+    back.mkdir()
+    try:
+        reads = []
+        for i, e in enumerate(entries):
+            reads += ["+", "read", amiga(e.dest), str(back / str(i))]
+        run(*reads[1:])
+        for i, e in enumerate(entries):
+            if hashlib.md5((back / str(i)).read_bytes()).hexdigest() != hashlib.md5(e.src.read_bytes()).hexdigest():
+                sys.exit("rig: the clone's %s differs from %s after the write (RIG-WARM-SRV-RACE)" % (e.dest, e.src))
+    finally:
+        shutil.rmtree(back, ignore_errors=True)
 
 def strip_user_startup_blocks(image, name):
     """Remove the ';BEGIN <name>' blocks from the image's S:User-Startup (none: nothing happens)."""

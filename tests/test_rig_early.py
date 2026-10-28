@@ -91,5 +91,44 @@ class SysHdfKit(unittest.TestCase):
     def test_start_calls_it(self):
         self.assertIn('sys_hdf_kit(RIG / "sys.hdf")', (ROOT / "tools/rig/rig.py").read_text())
 
+RDB = shutil.which("rdbtool")
+USER_STARTUP = (';BEGIN UP-Term assign\nIf EXISTS "Rushhours:Tools/UP-Term"\n  Assign UP-Term: "Rushhours:Tools/UP-Term"\n'
+                'EndIf\n;END UP-Term assign\n;BEGIN UP-Term Amarchy\nRun >NIL: UP-Term:bin/Amarchy\n;END UP-Term Amarchy\n')
+
+@unittest.skipUnless(XDF and RDB, "needs xdftool and rdbtool (pip install amitools)")
+class SysHdfKitUpTerm(SysHdfKit):
+    """RIG-WARM-SRV-RACE: the master image's UP-Term:bin (DH1 'Rushhours', named by the kit's User-Startup assign)
+    held older Amarchy programs; a fresh clone started them while the boot's shadow Copy wrote the new ones over
+    them, and the warm servers never came up. The clone must hold the build's UP-Term: files before it boots."""
+    def setUp(self):
+        super().setUp()
+        self.img = self.d / "t.hdf"
+        us = self.d / "us"
+        us.write_text(USER_STARTUP)
+        subprocess.run([RDB, str(self.img), "create", "size=4Mi", "+", "init", "+", "add", "size=50%", "name=DH0",
+                        "+", "add", "size=50%", "name=DH1"], check=True, capture_output=True)
+        subprocess.run([XDF, str(self.img), "open", "part=DH0", "+", "format", "Sys", "+", "makedir", "S",
+                        "+", "write", str(us), "S/User-Startup"], check=True, capture_output=True)
+        subprocess.run([XDF, str(self.img), "open", "part=DH1", "+", "format", "Rushhours", "+", "makedir", "Tools",
+                        "+", "makedir", "Tools/UP-Term", "+", "makedir", "Tools/UP-Term/bin",
+                        "+", "write", str(self.old), "Tools/UP-Term/bin/sz"], check=True, capture_output=True)
+
+    def read_part(self, part, dst):
+        out = self.d / "read"
+        out.unlink(missing_ok=True)
+        subprocess.run([XDF, str(self.img), "open", "part=" + part, "+", "read", dst, str(out)], check=True, capture_output=True)
+        return out.read_bytes()
+
+    def test_fresh_clone_boots_current_upterm_bin_not_the_masters(self):
+        self.assertEqual(rig.clone_upterm_place(self.img), ("DH1", "Tools/UP-Term"))
+        rig.sys_hdf_kit(self.img)
+        for n in ("sz", "rz"):   # sz: stale on the master, replaced; rz: missing, written
+            self.assertEqual(md5(self.read_part("DH1", "Tools/UP-Term/bin/" + n)),
+                             md5((self.d / "build/amiga" / n).read_bytes()), n)
+
+    def test_dirty_clone_ends_equal_to_the_derived_set(self):
+        pass   # the base class's ADF case; this class only adds the UP-Term: partition
+
+
 if __name__ == "__main__":
     unittest.main()
