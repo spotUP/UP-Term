@@ -19,6 +19,9 @@ ledger: thoughts/spot/todos.md, rows "AMTILE-LAYOUT" (owner decisions)
   Omarchy keys clash (super+l Claude, super+minus font, super+shift+arrows move), so they are not used.
 - L6 (owner's stated defaults, not asked) Layout is global (the front screen, as v1). Monocle shows the ACTIVE window on
   top. STATUS appends its new fields at the end. Menu rows: one per layout + "Next layout".
+- L7 (owner, 2026-10-28) `AMTILE CYCLE NEXT|PREV` is built: activate and raise the next/previous window in tile order
+  (works in every layout; the way to reach hidden windows in monocle). Keys super+alt+period (NEXT) and
+  super+alt+comma (PREV); super+alt+tab stays `win:cycle`. Hotkey rows only, no menu rows.
 
 ## Implementation choices (mine, stated)
 - Names (ARexx words, case-insensitive, exact): `dwindle`, `master-stack`, `mirrored`, `columns`, `rows`, `grid`, `monocle`.
@@ -130,6 +133,9 @@ static int num_arg(const char *cmd, int lo, int hi, int *out, int *rel);
   - `RATIO n` (absolute 20..80, rc 10 outside) | `RATIO +n` | `RATIO -n`: `g_ratio = clamp(g_ratio +/- n, 20, 80)`.
     `cfg_save()`, tick(1).
   - `NMASTER n` (1..8) | `NMASTER +1` | `NMASTER -1`: clamped; `cfg_save()`; tick(1).
+  - `CYCLE NEXT` | `CYCLE PREV`: `id = active_id()`; `next = tile_cycle(g_order, g_norder, id, +1|-1)` (pure, tile_core:
+    index of id in order, step with wrap; id not tiled -> g_order[0]); `ActivateWindow` + `win_raise` on next; in monocle
+    also g_last_raised = next. rc 5 when off or g_norder == 0; other word rc 10.
   - `PROMOTE`: `id = active_id()` (new helper: `LockIBase(0); aw = IntuitionBase->ActiveWindow; id = (long)aw; UnlockIBase`,
     same read as win.c:85 and win.c:107); `tile_promote(g_order, g_norder, id)`; rc 5 (warning, nothing done) when the
     active window is not tiled, else tick(1). Works while off? No: rc 5 "off" too (order is empty then).
@@ -171,6 +177,8 @@ super+alt+plus    = run:UP-Term:bin/AmTile RATIO +5             ; Grow master   
 super+alt+j       = run:UP-Term:bin/AmTile NMASTER -1           ; Fewer masters         | window
 super+alt+k       = run:UP-Term:bin/AmTile NMASTER +1           ; More masters          | window
 super+alt+return  = run:UP-Term:bin/AmTile PROMOTE              ; Promote to master     | window
+super+alt+period  = run:UP-Term:bin/AmTile CYCLE NEXT           ; Next tiled window     | window
+super+alt+comma   = run:UP-Term:bin/AmTile CYCLE PREV           ; Previous tiled window | window
 ```
 Menu rows (dist/keymap near `window.tile`, line 185, and dist/menu-icons beside `window.tile` line 92):
 `window.layout.next` "Next layout" + `window.layout.dwindle` ... `window.layout.monocle` (labels: "Layout: Dwindle",
@@ -212,8 +220,8 @@ clamps, rc codes (10 bad, 5 not tiled).
 
 ## Phase 4 - dist rows
 Files: dist/keymap, dist/menu-icons, tests/test_keymap.c (new rows: add `check_row` lines beside tests/test_keymap.c:725 for
-every new `window.*` row, the hotkey lookups via `keymap_find(&km, KM_Q_SUPER|KM_Q_ALT, code)` for the 13 keys with
-codes 0x28 (l), 0x01-0x07, 0x0B, 0x0C, 0x26, 0x27, 0x44, asserting each is found, action text correct, and the plain
+every new `window.*` row, the hotkey lookups via `keymap_find(&km, KM_Q_SUPER|KM_Q_ALT, code)` for the 15 keys with
+codes 0x28 (l), 0x01-0x07, 0x0B, 0x0C, 0x26, 0x27, 0x44, 0x38, 0x39, asserting each is found, action text correct, and the plain
 `super+<key>` binding still its old action; update the window-level count CHECK_INT at tests/test_keymap.c:1569 (24 today;
 the new value is MEASURED from the keymap builder `ix_level_t` output after the rows exist, then compared with a count of
 `window.*` run rows in dist/keymap, not a guess).
@@ -257,6 +265,8 @@ STATUS + `tiled_boxes_match`:
   again); `NMASTER 0` rc 10;
 - `promote`: activate the second-newest window (wasabi activate/click on its title), `PROMOTE` -> that window's box is
   now the helper's box for index 0 (master) in master-stack; PROMOTE with the AmTile menu window... n/a;
+- `cycle`: `LAYOUT monocle` with 3 windows; `CYCLE NEXT` three times: each time the front-most window is the next one
+  in tile order (STATUS unchanged, the third NEXT returns to the start); `CYCLE PREV` once goes back one;
 - `monocle_raise`: `LAYOUT monocle`, activate window A, then window B; after < 1 s the front-most window of the screen
   (wasabi window list order, helper from the existing rig `c.`/windows call) is the active one each time;
 - `persist`: `LAYOUT grid`, `RATIO 60`, `NMASTER 2`; `AMTILE QUIT`; wait port gone; start `AmTile ON` fresh; STATUS shows
@@ -275,18 +285,19 @@ Amarchy rc 0; `python3 -m py_compile tools/rig/amarchy_tile_rig.py`; helper numb
 Automated (rig 7): P6 full run, every step OK.
 Manual (owner): see the end of the plan.
 
-## Checklist (40 items; tick in the open, report the running count)
+## Checklist (43 items; tick in the open, report the running count)
 P1-1 enum, names, parse, step | P1-2 `tile_layout` dispatch, master-stack rewritten with nmaster+mirror, `tile_master_stack`
 removed, 3 callers moved | P1-3 columns, rows | P1-4 grid | P1-5 monocle | P1-6 dwindle | P1-7 `tile_promote` |
-P1-8 worked-number tests per layout (all boxes above) | P1-9 min/max test per layout | P1-10 knob + exemption test
+P1-8 worked-number tests per layout (all boxes above) | P1-9 min/max test per layout | P1-10 knob + exemption test | P1-11 `tile_cycle` + host test (wrap both ways, untiled id)
 P2-1 enum + sd_hidden rows + SD_NHIDDEN | P2-2 three readers | P2-3 test_amconf cases | P2-4 count tests updated
 P3-1 g_layout/g_nmaster + `cfg_load` (rename of gap_load) | P3-2 `num_arg` rel extension + `word_arg` | P3-3 LAYOUT/NEXT/PREV |
 P3-4 RATIO relative + NMASTER | P3-5 PROMOTE + `active_id` | P3-6 monocle raise + `win_raise` | P3-7 STATUS fields |
-P3-8 `cfg_save` write path | P3-9 tick call site on `tile_layout` | P3-10 cross build + stack test green
-P4-1 13 hotkey rows | P4-2 8 menu rows | P4-3 menu-icons rows | P4-4 test_keymap rows + count | P4-5 dist-check + kit shadow test
+P3-8 `cfg_save` write path | P3-9 tick call site on `tile_layout` | P3-10 cross build + stack test green |
+P3-11 CYCLE NEXT/PREV
+P4-1 15 hotkey rows | P4-2 8 menu rows | P4-3 menu-icons rows | P4-4 test_keymap rows + count | P4-5 dist-check + kit shadow test
 P5-1 boxes helper args | P5-2 `expected` + `tile_status` + callers | P5-3 `row_index`/`fire_row` by mark |
 P5-4 reachability step `layout_row` + hotkey | P5-5 seven layout steps + next/prev | P5-6 ratio, nmaster, promote steps |
-P5-7 monocle_raise step | P5-8 persist + reset + layout_default steps | P5-9 existing steps adapted to dwindle default
+P5-7 monocle_raise + cycle steps | P5-8 persist + reset + layout_default steps | P5-9 existing steps adapted to dwindle default
 P6-1 rig 7 full run, all steps OK | P6-2 evidence doc written, rig stopped
 
 Phases are sized for one sonnet agent each (P1, P2, P3, P4, P5, P6), run in order; P2 and P4 do not touch P1's files and may
@@ -298,11 +309,8 @@ file in the scratchpad and print only errors and the summary, one test run on th
 On rig 7 or the A1200 with AmTile on: press super+alt+1..7 and see each layout with 3 to 5 windows; super+alt+l cycles;
 super+alt+minus/plus grows and shrinks the master/first split; super+alt+j/k changes the master count in master-stack;
 super+alt+return puts the active window in the master place; monocle shows the active window on top and a click on
-another window's title... (only one is visible: see Owner question 1); restart Amarchy and see layout, ratio and master
+super+alt+period/comma cycles the tiled windows (raises each in monocle); restart Amarchy and see layout, ratio and master
 count come back. PASS = layouts look right and hotkeys respond; the A1200 is the final check only.
 
-## Owner questions (short)
-1. Monocle hides every window but one, and `win:cycle` (super+alt+tab) picks the neighbour by geometry (win_pick), which
-   cannot tell identical boxes apart. Recommended: add `AMTILE CYCLE NEXT|PREV` (activate and raise the next window in tile
-   order) and bind it as super+alt+tab/shift+tab ONLY when it is cheap; default if you do not answer: NOT built in this
-   plan, and the manual test records how monocle windows are reached (click, Workbench window list). Needs your yes.
+## Owner questions
+None open. Q1 (monocle switching) answered 2026-10-28: build CYCLE (L7).
