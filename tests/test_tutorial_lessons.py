@@ -62,11 +62,13 @@ class Lessons(unittest.TestCase):
                'UPTERM_STATE': self.fake, 'UPTERM_FAKE_DIR': d, 'TMUX_TMPDIR': sock}
         if frozen:
             env['UPTERM_FAKE_FROZEN'] = '1'
+        if HAVE_TMUX:
+            # a cleanup, not a line after the run: a timed-out lesson must not leave its
+            # tmux server running (cleanups run last-in first-out, so before the socket rmtree)
+            self.addCleanup(subprocess.run, ['tmux', 'kill-server'], env=env, capture_output=True)
         r = subprocess.run(shell + [TUTORIAL, '--selftest', os.path.join(LESSONS, f)],
                            stdin=subprocess.DEVNULL, capture_output=True, env=env,
                            cwd=self.tmp, timeout=120)
-        if HAVE_TMUX:
-            subprocess.run(['tmux', 'kill-server'], env=env, capture_output=True)
         self.state_dir = d
         return r.stdout.decode() + r.stderr.decode()
 
