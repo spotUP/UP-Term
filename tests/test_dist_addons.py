@@ -851,6 +851,10 @@ class UhcAddOn(unittest.TestCase):
         c = (ROOT / 'install/wbpath.c').read_text()
         self.assertRegex(c, r'long __stack = \d+;')
         self.assertRegex(c, r'"\$STACK: \d+"')
+        # dos.library Printf takes 32-bit arguments only as %ld: a bare %d reads 16 bits and shifts every later
+        # argument (rig 7 printed "0 node(s) for  removed" for one removed node)
+        for line in re.findall(r'Printf\([^;]*;', c):
+            self.assertNotRegex(line, r'%-?\d*d', line)
 
     def test_one_shared_command_path_copy_serves_vsh_and_amarchy(self):
         """No second copy loop: vsh's wb_path() and Amarchy's pl_dup_path()/pl_free_path() use config/cmdpath.h,

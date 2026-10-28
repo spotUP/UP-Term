@@ -99,7 +99,7 @@ int main(int argc, char **argv)
         int n = cmdpath_remove(field, lock);
         Permit();
         UnLock(lock);
-        Printf("[OK] WBPath: %d node(s) for %s removed from the Workbench path\n", n, argv[2]);
+        Printf("[OK] WBPath: %ld node(s) for %s removed from the Workbench path\n", (LONG)n, argv[2]);
     }
     return 0;
 }

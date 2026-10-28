@@ -1,7 +1,7 @@
 ---
 date: 2026-10-28
 author: spot (Amarchy s20)
-status: approved design, implementation pending
+status: done (07f71354, rig 7 PASS: thoughts/shared/research/2026-10-28-uhc-extbin-live-path-rig7.md)
 ledger: thoughts/spot/todos.md row UHC-EXTBIN-LIVE-PATH
 ---
 
@@ -44,16 +44,16 @@ after install.
 
 ## Checklist
 
-- [ ] P1 shared path-copy helper; vsh `wb_path()` and `pl_dup_path()` use it (no second copy loop left: grep `cli_CommandDir` after)
-- [ ] P2 `pl_dup_path()` copies the Workbench path, own CLI path as fallback, PL_BIN_DIR last
-- [ ] P3 `WBPath` tool: ADD (dedupe by SameLock), REMOVE (all matches), no-Workbench warn rc 5, stack cookie
-- [ ] P4 Makefile builds WBPath; kit ships it (wherever the other kit C: tools go); rig install stages it
-- [ ] P5 install.dos calls `WBPath ADD UHC:ExtBin` + open-shell hint
-- [ ] P6 uninstall-body.dos calls `WBPath REMOVE UHC:ExtBin` before deletes
-- [ ] P7 host tests: string/structure tests for install/uninstall order (existing dist/addons tests pattern), Makefile/kit listing
-- [ ] P8 reachability on rig 7 (purpose "Amarchy s20: UHC-EXTBIN-LIVE-PATH check"): fresh boot, install up-uhc, then WITHOUT reboot (a) new UP-Term window: `taskpath` shows UHC:ExtBin and `Pipe` (or another ExtBin program) runs by name; (b) an Amarchy launch runs the same program by name; (c) uninstall removes the node (taskpath on a new window lacks it) and UHC: deletes without "object in use"
-- [ ] P9 regression: each host test fails with its change reverted
-- [ ] P10 ledger row ticked with commits; handoff line
+- [x] P1 shared path-copy helper; vsh `wb_path()` and `pl_dup_path()` use it (no second copy loop left: grep `cli_CommandDir` after)
+- [x] P2 `pl_dup_path()` copies the Workbench path, own CLI path as fallback, PL_BIN_DIR last
+- [x] P3 `WBPath` tool: ADD (dedupe by SameLock), REMOVE (all matches), no-Workbench warn rc 5, stack cookie
+- [x] P4 Makefile builds WBPath; kit ships it (wherever the other kit C: tools go); rig install stages it
+- [x] P5 install.dos calls `WBPath ADD UHC:ExtBin` + open-shell hint
+- [x] P6 uninstall-body.dos calls `WBPath REMOVE UHC:ExtBin` before deletes
+- [x] P7 host tests: string/structure tests for install/uninstall order (existing dist/addons tests pattern), Makefile/kit listing
+- [x] P8 reachability on rig 7 (purpose "Amarchy s20: UHC-EXTBIN-LIVE-PATH check"): fresh boot, install up-uhc, then WITHOUT reboot (a) new UP-Term window: `taskpath` shows UHC:ExtBin and `Pipe` (or another ExtBin program) runs by name; (b) an Amarchy launch runs the same program by name; (c) uninstall removes the node (taskpath on a new window lacks it) and UHC: deletes without "object in use"
+- [x] P9 regression: each host test fails with its change reverted
+- [x] P10 ledger row ticked with commits; handoff line
 
 ## Upstream note (optional, not ours)
 
