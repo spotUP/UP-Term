@@ -22,7 +22,6 @@ import os, re, sys, time, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami, condev_rig as c
 import amarchy_gui_rig as g
-from amarchy_menu_rig import THEME_DIR
 
 STYLE_DOWNS = 3          # Style is the 4th entry of the top level: Down x3, Return
 NEED_THEMES = 6
@@ -82,17 +81,10 @@ def theme_line(path):
     return m.group(1) if m else ''
 
 
-def stage_themes():
+def shipped_themes():
+    """Themes the rig boot copied from VTC:amarchy-themes (rig.py stages them at install)."""
     rc, out = c.run('List %s LFORMAT=%%n' % SHIPPED)
-    have = [l for l in out.splitlines() if l.strip().endswith('.theme')] if rc == 0 else []
-    if len(have) >= NEED_THEMES:
-        print('[INFO] %s holds %d themes' % (SHIPPED, len(have)))
-        return
-    c.run('MakeDir >NIL: UP-Term:Amarchy %s' % SHIPPED)
-    files = sorted(THEME_DIR.glob('*.theme'))
-    for f in files:
-        ami.put(str(f), '%s/%s' % (SHIPPED, f.name))
-    print('[INFO] staged %d themes from %s into %s' % (len(files), THEME_DIR, SHIPPED))
+    return [l for l in out.splitlines() if l.strip().endswith('.theme')] if rc == 0 else []
 
 
 def strangers(allowed):
@@ -277,7 +269,12 @@ def main():
     lo, hi = 1, 5
     if '--selects' in sys.argv:
         lo, hi = map(int, sys.argv[sys.argv.index('--selects') + 1].split('-'))
-    stage_themes()
+    have = shipped_themes()
+    if len(have) < NEED_THEMES:
+        print('[FAIL] %s holds %d themes, need %d: rebuild the rig kit (rig.py stages '
+              'dist/amarchy-themes at install, the boot copies them)' % (SHIPPED, len(have), NEED_THEMES))
+        return 1
+    print('[INFO] %s holds %d themes' % (SHIPPED, len(have)))
     if not g.process_running('Amarchy'):
         print('[FAIL] the Amarchy commodity is not running')
         return 1

@@ -93,7 +93,15 @@ class KitShadowKeymap(unittest.TestCase):
             self.assertEqual(rig.main(["rig.py", "install"]), 0)
         self.assertEqual((vtc / "amarchy-themes/nord.theme").read_text(), "name=nord\n")
         self.assertEqual((vtc / "fonts/JetBrainsMono.ttf").read_bytes(), b"ttf")
-        self.assertIn("C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE", rig.AMARCHY_ASSETS_BOOT)
+        boot = rig.AMARCHY_ASSETS_BOOT
+        copy = "C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE"
+        self.assertIn(copy, boot)
+        # Every boot refreshes the themes: an older drawer from an earlier kit
+        # must not keep stale or partial themes, so the copy is never gated on
+        # the drawer being missing.
+        head = boot[:boot.index(copy)]
+        guard = head.rfind("If NOT EXISTS UP-Term:Amarchy/Themes")
+        self.assertTrue(guard < 0 or "EndIf" in head[guard:], "theme copy is gated on a missing drawer")
         self.assertIn("C:Copy >NIL: VTC:fonts/JetBrainsMono.ttf FONTS: CLONE", rig.AMARCHY_ASSETS_BOOT)
 
 

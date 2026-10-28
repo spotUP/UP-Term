@@ -264,11 +264,14 @@ EndIf""" % paths.UPTERM_DRAWER
 # the boot puts them where the kit would, only where they are missing.
 AMARCHY_ASSETS_BOOT = """C:Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  If NOT EXISTS UP-Term:Amarchy/Themes
-    If EXISTS VTC:amarchy-themes
-      C:MakeDir >NIL: UP-Term:Amarchy UP-Term:Amarchy/Themes
-      C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE
+  If EXISTS VTC:amarchy-themes
+    If NOT EXISTS UP-Term:Amarchy
+      C:MakeDir >NIL: UP-Term:Amarchy
     EndIf
+    If NOT EXISTS UP-Term:Amarchy/Themes
+      C:MakeDir >NIL: UP-Term:Amarchy/Themes
+    EndIf
+    C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE
   EndIf
 EndIf
 If NOT EXISTS FONTS:JetBrainsMono.ttf
