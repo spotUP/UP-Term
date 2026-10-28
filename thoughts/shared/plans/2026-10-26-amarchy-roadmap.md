@@ -85,6 +85,14 @@ Checklist:
 - R1.15 man/amarchy.1 and installer copies Backdrops
 - R1.16 host tests (R1.2-R1.6, revert logic)
 - R1.17 rig reachability test (hotkey, apply, auto-revert)
+- R1.18 (owner 2026-10-29) backdrop solid/tiled flat pattern in a slightly DARKER tone of the theme colour, so Amarchy windows, bar and icons stay visible; an on/off option; contrast test against the bar/menu background role
+- R1.19 (owner 2026-10-29) window colours: DrawInfo pen assignments in palette.prefs (title fill, text, shine/shadow, active window)
+- R1.20 (owner 2026-10-29) drawer window backgrounds: wbpattern.prefs drawer entry, darker theme tone or panel tone
+- R1.21 (owner 2026-10-29) pointer colours (sprite pens 17-19) plus optional normal/busy shapes: pointer.prefs
+- R1.22 (owner 2026-10-29) icon label colour/outline and Workbench screen title format: 3.2 workbench.prefs (layout unverified, add to R1.1 probe)
+- R1.23 (owner 2026-10-29) DOpus 5 Magellan II desktop: same theme applies when DOpus replaces Workbench ("we need to support both"; DOpus is more configurable). Research first: environment file format, ARexx DOPUS.1 verbs, detection, live apply
+- R1.24 (owner 2026-10-29) MUI apps through the Selecta flat MUI theme (format pending from the Selecta session)
+Out: window frame shapes and gradients (need VisualPrefs/Birdie patches); screen depth change not picked.
 
 ## Phase 2. Status bar on the Workbench screen
 
