@@ -22,8 +22,16 @@ class StartExit(unittest.TestCase):
         stops = []
 
         class Clock:
+            # a slow boot is waited for (boot_frozen): the clock must advance, or the wait never ends
+            now = 0.0
+
             @staticmethod
             def sleep(_): pass
+
+            @classmethod
+            def time(cls):
+                cls.now += rig.BOOT_POLL
+                return cls.now
 
         class Proc:
             DEVNULL = None

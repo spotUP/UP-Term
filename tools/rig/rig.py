@@ -283,7 +283,9 @@ EndIf"""
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
 %(shadows)s
+Echo >>BOOTX:boot.log "kit shadows done"
 C:Wait 15
+Echo >>BOOTX:boot.log "wait done"
 ; BOOTX:s/startup-sequence runs go beside DH0:S/Startup-Sequence, which makes
 ; ENV: (Assign ENV: RAM:ENV) only after SetPatch and its own Wait; go's SetEnv
 ; lines below would raise "Please insert volume ENV:" when it is late
@@ -294,8 +296,11 @@ If WARN
   C:Wait 1
   Skip envwait BACK
 EndIf
+Echo >>BOOTX:boot.log "env ok"
 %(shadows_up)s
+Echo >>BOOTX:boot.log "UP-Term shadows done"
 C:Mount XCON: FROM BOOTX:Mountlist
+Echo >>BOOTX:boot.log "XCON mounted"
 C:Assign >NIL: ETC: VTC:etc
 ; /tmp: the kit puts "Assign TMP: T:" in S:User-Startup; a rig with no kit has it from here
 C:Assign >NIL: TMP: T:
@@ -1315,11 +1320,28 @@ def logwatch():
             time.sleep(LOGWATCH_EVERY)
 
 START_RETRIES = 2
+BOOT_POLL = 2       # seconds between two looks at wasabid and boot.log
+BOOT_STALL = 180    # seconds boot.log may stay unchanged after "go started" before the boot counts as frozen
+BOOT_CAP = 1200     # seconds a boot may take in all, progress or not
+BOOT_NOTE = 60      # a boot older than this prints where it stands, every BOOT_NOTE s
+
+
+def boot_frozen(text, since_change, elapsed):
+    """The boot is dead: BOOTX:go started and boot.log gained nothing for BOOT_STALL s, or BOOT_CAP passed.
+    Slow is not dead (RIG-SLOW-BOOT, 2026-10-28): go's shadow copies are ~1000 UAE-filesystem round trips, and under
+    host load (two other emulators, load 22-40) the kit block ran 36 s instead of 1 s and a whole boot took ~10 minutes;
+    a fixed 120 s wait killed such boots as "frozen", `ami.py reboot` gave them up at 240 s, and the kill + retry looked
+    like a reboot loop. go's progress lines (kit shadows done, wait done, env ok, UP-Term shadows done, XCON mounted,
+    assigns done, wasabid started) show a live boot. Before "go started" nothing writes (KS boot, SetPatch, the 060
+    library's reset), so that phase only has the cap."""
+    if elapsed >= BOOT_CAP:
+        return True
+    return "go started" in text and "wasabid started" not in text and since_change >= BOOT_STALL
+
 
 def start(retries=START_RETRIES):
-    """Boot; a boot that stops right after "go started" (the emulator froze
-    before anything under test loaded: seen 3 times on 2026-09-29, cause not
-    found) is killed and retried."""
+    """Boot; a boot whose boot.log stops advancing (boot_frozen: the emulator froze before anything under test
+    loaded, seen 3 times on 2026-09-29, cause not found) is killed and retried. A slow boot is waited for."""
     # before anything is written: a start while the rig runs (or boots, when
     # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
     # and BOOTX:Mountlist, or delete BOOTX:boot.log, under the running system
@@ -1356,8 +1378,10 @@ def start(retries=START_RETRIES):
                          stdout=fout, stderr=ferr, start_new_session=True)
     subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "logwatch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    for i in range(90):
-        time.sleep(2)
+    t0 = time.time()
+    seen, changed, noted = "", t0, t0
+    while True:
+        time.sleep(BOOT_POLL)
         if status(quiet=True):
             print("up")
             missing = boot_assigns_missing()
@@ -1368,9 +1392,16 @@ def start(retries=START_RETRIES):
             if M060:
                 retry_wb_reset()
             return
+        now = time.time()
         text = log.read_text() if log.exists() else ""
-        if i >= 60 and "go started" in text and "assigns done" not in text:
-            break  # frozen early boot
+        if text != seen:
+            seen, changed = text, now
+        if now - t0 >= BOOT_NOTE and now - noted >= BOOT_NOTE:
+            noted = now
+            last = text.strip().splitlines()[-1] if text.strip() else "(go not started)"
+            print("boot %d s: %s" % (now - t0, last), flush=True)
+        if boot_frozen(text, now - changed, now - t0):
+            break
     print("[ERROR] no wasabid answer; boot.log:",
           log.read_text().strip().replace("\n", " | ") if log.exists() else "(none: go never ran)")
     if retries > 0:

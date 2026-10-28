@@ -632,27 +632,43 @@ def put(local, remote):
 
 REBOOT_MARKER = 'RAM:ami-reboot.marker'
 
+def boot_log():
+    """The rig's BOOTX:boot.log on the host, or None for the real A1200 (no UPTERM_RIG: nothing to read).
+    BOOTX:go appends a line per boot phase, so a changing file is a boot that advances (RIG-SLOW-BOOT)."""
+    if not os.environ.get('UPTERM_RIG'):
+        return None
+    return paths.RIG / 'boot' / 'boot.log'
+
 def reboot(wait=240, every=5):
     """Reboot the Amiga with C:Reboot and wait until wasabid answers again. A marker file in RAM: (RAM: does not
     survive a reboot) proves the machine really restarted, not that a ping slipped in before the reset.
-    For the real A1200; an FS-UAE rig restarts with rig.py stop/start. Returns the seconds it took."""
+    `wait` is the stall budget: on a rig, every change of BOOTX:boot.log restarts it, so a slow boot (the ~1000
+    UAE-filesystem round trips of go's shadow copies took ~10 minutes under host load, 2026-10-28) is waited
+    for and only a boot that stops writing is given up. The A1200 has no host-side boot.log: `wait` is its
+    whole deadline, as before. Returns the seconds it took."""
     def run(cmd, secs=10):
         b = req(0x02, struct.pack('>H', secs) + cmd.encode('latin-1'), timeout=secs + 5)
         return struct.unpack('>I', b[:4])[0]
     if run('Echo >%s x' % REBOOT_MARKER) != 0:
         raise SystemExit('reboot: cannot write %s' % REBOOT_MARKER)
+    log = boot_log()
     t0 = time.time()
+    seen, changed = None, t0
     try:
         run('Run >NIL: C:Reboot', 5)
     except (OSError, SystemExit):
         pass   # the reset may cut the answer
-    while time.time() - t0 < wait:
+    while time.time() - changed < wait:
         time.sleep(every)
         try:
             if run('List %s QUICK' % REBOOT_MARKER) != 0:
                 return time.time() - t0
         except (OSError, SystemExit):
             pass   # down or still booting
+        if log is not None:
+            text = log.read_text() if log.exists() else ''
+            if text != seen:
+                seen, changed = text, time.time()
     raise SystemExit('reboot: the Amiga did not come back within %d s (or RAM: kept %s)' % (wait, REBOOT_MARKER))
 
 LONG_WRAP, LONG_RC = 'RAM:ami-long.wrap', 'RAM:ami-long.rc'
