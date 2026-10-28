@@ -445,7 +445,7 @@ VSH (the shell)
   A bare directory word runs cd on it, as in the AmigaDOS Shell and zsh
   AUTO_CD: ram:  or  sys:c  or  ..  or  src  alone changes directory. A
   program, builtin or function of that name wins, and a word that is
-  neither says  vsh: nosuchdir:: not found.
+  neither says  vsh: nosuchdir:: not found (probe builtins/autocd_bare_drawer).
   EndCLI and EndShell (in any case) end vsh like  exit  does.
   Process substitution goes through a file in T: (T:vsh-ps-...; RAM: without
   T:), which native commands and ixemul programs both open: <(cmd) runs cmd

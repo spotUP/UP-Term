@@ -14,3 +14,4 @@ fd/ext_fd3	documented	descriptors 3 and up reach builtins and n>&m targets only:
 fd/ext_devfd	documented	/dev/fd/N, /dev/stdin, /dev/stdout, /dev/stderr work as redirection targets, source and test -e/-a/-r/-w (shell fd table); a native command given such a name as an argument cannot open it (no such device on AmigaOS)
 vars/ids	n/a-amiga	AmigaOS has no parent process id and no user ids: $PPID, $UID and $EUID are 0 (bash: the real ids)
 invocation/source_path	n/a-amiga	$PWD is an AmigaDOS name (vol:dir), whose colon splits PATH: PATH=$PWD/lib:$PATH needs /vol/dir (PATH=/VTC/lib:$PATH)
+builtins/autocd_bare_drawer	documented	a bare word naming a directory and no command is a cd to it (AmigaDOS implicit CD, zsh AUTO_CD); bash without shopt -s autocd: command not found, status 127
