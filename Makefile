@@ -576,7 +576,7 @@ HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/screenreq.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
                handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h
 
-amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
+amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe
 
 # hl and mdv: the portable view/ core and the AmigaDOS side (no ixemul).
 # vbcc warns (153, 65) on the (void) parameter casts, as for vsh.
@@ -665,7 +665,7 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # strcmp/strlen/strcpy at every call (another 3.5 KB). Measured 2026-10-07.
 VSH_OPT := -O=1 -size -D__NOINLINE__
 VSH_SRC := shell/vsh.c shell/vsh_cmdline.c shell/vsh_mem.c shell/sh_exec.c shell/sh_path.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
-$(BUILD)/amiga/vsh: $(VSH_SRC) $(UPTERM_VERSION_H) config/termurl.h shell/sh_exec.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
+$(BUILD)/amiga/vsh: $(VSH_SRC) $(UPTERM_VERSION_H) config/termurl.h config/cmdpath.h shell/sh_exec.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
 	$(subst -O2,$(VSH_OPT),$(VC)) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 
@@ -722,7 +722,7 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h 
 # leaf_core.c calls the prefs and amconf modules; every program linking it links this set.
 AMARCHY_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c
 AMARCHY_SRC := amarchy/rexx_host.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_apply.c amarchy/win_core.c amarchy/tile_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c
-$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_apply.h amarchy/win_core.h amarchy/tile_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h
+$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h config/cmdpath.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_apply.h amarchy/win_core.h amarchy/tile_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
@@ -789,7 +789,7 @@ test-one: $(BUILD)/vttest_host
 AMARCHY_MENU_SRC := amarchy/rexx_host.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c amarchy/menu_open.c amarchy/menu.c amarchy/leaf.c amarchy/wblaunch.c amarchy/leaf_core.c amarchy/leaf_pkg.c handler/frontscr.c amarchy/menu_core.c amarchy/menu_tree.c amarchy/index_core.c amarchy/index_load.c amarchy/ixwatch.c config/keymap.c config/keymap_load.c handler/keymap_act.c handler/upmru.c handler/upreq.c handler/upactive.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c amarchy/pkgs_core.c amarchy/pkgs_dos.c $(AMARCHY_LEAF_DEPS) prefs/prefs_asl.c amarchy/job_core.c amarchy/job_dos.c amarchy/sentinel_dos.c
 .PHONY: amarchy-menu
 amarchy-menu: $(BUILD)/amiga/amarchy-menu
-$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h amarchy/termenv.h handler/frontscr.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/proclaunch.h amarchy/pkgs_core.h amarchy/pkgs_dos.h amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h
+$(BUILD)/amiga/amarchy-menu: $(AMARCHY_MENU_SRC) amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h amarchy/termenv.h handler/frontscr.h amarchy/clips_core.h amarchy/menu_core.h amarchy/index_core.h amarchy/ixwatch.h amarchy/leaf.h amarchy/wblaunch.h config/keymap.h config/keymap_load.h config/upconf.h handler/keymap_act.h handler/upreq.h handler/upactive.h $(KEYMAP_DEFAULT_INC) $(UPKGUI_SYS)/lib/libupkgui.a amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/proclaunch.h config/cmdpath.h amarchy/pkgs_core.h amarchy/pkgs_dos.h amarchy/job_core.h amarchy/job_dos.h amarchy/sentinel_dos.h
 	@mkdir -p $(BUILD)/amiga
 	$(UPTERM_PORTS)/tools/m68k-cc -m68020 -O2 -Wall -I$(BUILD)/amiga -I$(UPKGUI_SYS)/include -I$(UPKGUI_SYS)/include/ncursesw -o $@ $(AMARCHY_MENU_SRC) $(UPKGUI_SYS)/lib/libupkgui.a $(UPKGUI_SYS)/lib/libncursesw.a $(UPKGUI_SYS)/lib/libixcompat.a
 
@@ -1037,6 +1037,11 @@ $(BUILD)/amiga/tcpprobe: install/tcpprobe.c
 $(BUILD)/amiga/Reboot: install/reboot.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ install/reboot.c
+
+# C:WBPath: puts a drawer on / takes it off the Workbench process's command path live (up-uhc: UHC:ExtBin)
+$(BUILD)/amiga/WBPath: install/wbpath.c config/cmdpath.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ install/wbpath.c
 
 # UPBigVol: the Install's helper that picks the drawer's default disk (the local one with the most room; ENV:UPTBIGVOL)
 $(BUILD)/amiga/UPBigVol: install/bigvol.c install/hardvol.c install/bigvol.h install/hardvol.h install/fssm.h tty/qmark.h
@@ -1461,7 +1466,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
 	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
 	cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/AmTile dist/keymap $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/AmTile dist/keymap $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/Rexx && cp -R dist/rexx $(KIT)/Files/Rexx
 	# BebboSSH: our build (make bebbossh) over the drawer's sources, patches and licence; SHA256SUMS and TOOLCHAIN.txt from the build

@@ -480,6 +480,9 @@ If EXISTS C:Reboot
 Else
   Copy Reboot C:Reboot CLONE
 EndIf
+; C:WBPath: puts a drawer on the Workbench process's command path live (up-uhc: UHC:ExtBin), which
+; "Path X ADD" in an installer's Shell cannot
+Copy WBPath C:WBPath CLONE
 ; C:UPTerm: the window's slash commands from scripts ("UPTerm cursor bar")
 Copy UPTerm C:UPTerm CLONE
 ; C:uptelnet: a telnet client for the window (no ixemul; needs a TCP/IP

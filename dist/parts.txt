@@ -45,6 +45,7 @@ copy-unifont    Files/unifont           unifont
 copy-emoji      Files/emoji             emoji
 tools           Files/UPDemo
 tools           Files/Reboot
+tools           Files/WBPath
 -               Files/UPBigVol
 tools           Files/UPTerm
 tools           Files/UP-Term.version

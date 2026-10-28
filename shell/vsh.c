@@ -38,6 +38,8 @@
 #include "../config/upassign.h"
 #include "../config/termurl.h"
 #define SEGSTACK_DOS
+#define CMDPATH_DOS
+#include "../config/cmdpath.h"
 #include "../config/segstack.h"
 #include "upterm_version.h"
 
@@ -2398,21 +2400,11 @@ struct Library *IconBase;
  * Workbench (NP_Path: that process frees it). 0: none. */
 static BPTR wb_path(void)
 {
-    struct Process *wbp;
-    struct CommandLineInterface *cli;
-    BPTR *src, head = 0, *tail = &head;
+    BPTR *field, head = 0;
     Forbid();
-    wbp = (struct Process *)FindTask((STRPTR)"Workbench");
-    cli = wbp && wbp->pr_Task.tc_Node.ln_Type == NT_PROCESS
-              ? (struct CommandLineInterface *)BADDR(wbp->pr_CLI) : 0;
-    for (src = cli ? (BPTR *)BADDR(cli->cli_CommandDir) : 0; src; src = (BPTR *)BADDR(src[0])) {
-        BPTR *n = (BPTR *)AllocVec(2 * sizeof(BPTR), MEMF_PUBLIC | MEMF_CLEAR);
-        if (!n)
-            break;
-        n[1] = DupLock(src[1]);
-        *tail = MKBADDR(n);
-        tail = &n[0];
-    }
+    field = cmdpath_field(cmdpath_workbench());
+    if (field)
+        head = cmdpath_copy(*field, 0);
     Permit();
     return head;
 }
