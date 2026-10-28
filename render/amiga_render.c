@@ -50,15 +50,7 @@ ULONG vr_cp[12]; /* off: Text, RectFill, pen, draw_rows; on: the same (4-7); cur
 ULONG vr_cp_pass;
 #endif
 
-#ifdef VR_HOST_TEST
-ULONG vr_cgx_fill(struct Library *, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb);
-#else
-/* cybergraphics.library V41 FillPixelArray (LVO -150): a rectangle in a
- * 0xAARRGGBB colour, no pen, through the RastPort's layer. */
-ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp, __reg("d0") UWORD x,
-                  __reg("d1") UWORD y, __reg("d2") UWORD w, __reg("d3") UWORD h,
-                  __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
-#endif
+/* vr_cgx_fill (FillPixelArray): aa_ink.h, shared with amarchy-gui's menu */
 
 
 #ifdef VR_CPROF

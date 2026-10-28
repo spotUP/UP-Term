@@ -65,6 +65,14 @@ int menu_theme_minimal(uc_u32 rgb[MT_ROLES])
     return bg != fg;
 }
 
+void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u32 pen_rgb[MT_ROLES], int direct,
+                    int themed)
+{
+    int r;
+    for (r = 0; r < MT_ROLES; r++)
+        out[r] = direct && themed ? rgb[r] : pen_rgb[r];
+}
+
 /* Directory Opus's own pen numbers for the roles are the palette colour numbers (menu_theme.h) */
 unsigned menu_theme_dopus_commands(const uc_u32 rgb[MT_ROLES], char *out, unsigned cap)
 {

@@ -35,6 +35,16 @@ LONG vr_cgx_write_lut(__reg("a6") struct Library *, __reg("a0") APTR src, __reg(
                       __reg("d5") UWORD w, __reg("d6") UWORD h, __reg("d7") UBYTE fmt) = "\tjsr\t-198(a6)";
 #endif
 
+/* cybergraphics.library V41 FillPixelArray (LVO -150): a rectangle in a 0xAARRGGBB colour, no pen, through the
+ * RastPort's layer. The terminal's fills and amarchy-gui's menu boxes on a true-colour screen. */
+#ifdef VR_HOST_TEST
+ULONG vr_cgx_fill(struct Library *, struct RastPort *rp, UWORD x, UWORD y, UWORD w, UWORD h, ULONG argb);
+#else
+ULONG vr_cgx_fill(__reg("a6") struct Library *, __reg("a1") struct RastPort *rp, __reg("d0") UWORD x,
+                  __reg("d1") UWORD y, __reg("d2") UWORD w, __reg("d3") UWORD h,
+                  __reg("d4") ULONG argb) = "\tjsr\t-150(a6)";
+#endif
+
 /* The host's pen services. Every ink is what SetAPen's caller would hand ink_pen: a pen number, or
  * VR_INK_RGB | 0xRRGGBB for a colour no pen holds. */
 typedef struct aa_ink_ops {

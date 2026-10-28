@@ -31,6 +31,11 @@ enum {
  * draw_border reads this; tests/test_keymap.c asserts it equals MT_SELBOX). */
 #define MT_BORDER_ROLE MT_SELBOX
 
+/* The role the drawn menu's header text is drawn in: the theme's accent, so the header visibly follows a theme
+ * switch (owner 2026-10-28; the dim role was a near-grey in every theme). gui.c draw_header reads this;
+ * tests/test_gthemes.c asserts it carries each shipped theme's accent. */
+#define MT_HEAD_ROLE MT_SELBOX
+
 /* Where a role's pen goes when the screen has no pen left for it (a few-colour screen): MT_OK and MT_FAIL draw in
  * the row text's pen (MT_TEXT; MT_ACCENT in the drawn menu is the background colour, invisible on the footer's
  * ground). The five core roles keep their own fallback (background pen 0, else pen 1); -1 for them. */
@@ -56,6 +61,13 @@ void menu_theme_roles_gui(const gtheme *t, uc_u32 rgb[MT_ROLES]);
  * (the selected row is the swap: foreground box, background text). Returns 0 when the two colours are equal: the
  * selection would be invisible, and the caller falls back to the screen's own pens 1 and 0. */
 int menu_theme_minimal(uc_u32 rgb[MT_ROLES]);
+
+/* The colour each role draws in (out): on a true-colour screen (direct, cybergraphics) the theme's own rgb[], since
+ * every colour is drawn as itself; otherwise, or when `themed` is 0 (minimal mode's two equal colours), the colour of
+ * the pen the role got (pen_rgb[]). A screen whose pens are all taken (Directory Opus's 24-bit screen) gives only
+ * the nearest of its few colours, and the menu drew in greys (rig 7, 2026-10-28). */
+void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u32 pen_rgb[MT_ROLES], int direct,
+                    int themed);
 
 /* The two Directory Opus ARexx commands that make its lister colours the menu's roles. Syntax read from upstream
  * dopus5 v5.104 source/Program/rexx_dopus.c: RXCMD_PALETTE (set: from line 587) takes "0xRRGGBB" words, 8 bits a

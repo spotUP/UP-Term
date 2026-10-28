@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Amarchy theme save rig: the drawn menu (Left Amiga + Space) > Style > Amarchy theme > Down n > Return must
-rewrite the theme line of BOTH ENV:Amarchy/prefs and ENVARC:Amarchy/prefs to the picked theme.
+rewrite the theme line of BOTH ENV:Amarchy/prefs and ENVARC:Amarchy/prefs to the picked theme, and switch live:
+the menu stays open, recolours in the picked theme (AMARCHY_THEME) and marks it (current) with the cursor on it.
+The header text is drawn in the picked theme's accent (menu_theme.h MT_HEAD_ROLE; owner 2026-10-28), read from the
+window's pixels: accent pixels in rows that are not mostly accent (the border and the selected row's box are).
 
 Every key waits for what it acts on: the menu window must exist and its box AND pixels must be identical on two
 reads before the first key (the drawn menu takes seconds to open and resizes while opening); after each submenu
@@ -102,8 +105,54 @@ def strangers(allowed):
     return out
 
 
+def env(name):
+    rc, out = c.run('GetEnv %s' % name)
+    return out.strip() if rc == 0 else ''
+
+
+def theme_accent(name):
+    """The accent of the shipped theme `name` as an (r, g, b) tuple, from dist/amarchy-themes."""
+    t = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'dist', 'amarchy-themes', name + '.theme')
+    with open(t, encoding='latin-1') as f:
+        m = re.search(r'^accent\s*=\s*"#([0-9a-fA-F]{6})"', f.read(), re.M)
+    v = int(m.group(1), 16)
+    return v >> 16, (v >> 8) & 255, v & 255
+
+
+def header_accent_pixels(rgb):
+    """Pixels of the header text drawn in colour `rgb`: in the open menu, outside the rows that are mostly `rgb`
+    (the top and bottom border and the selected row's box), between the side borders. The text is anti-aliased,
+    so a thin stroke seldom reaches full coverage: a pixel counts when it lies on the blend from the menu
+    background (the commonest colour) to `rgb` at half coverage or more. Grey pens nearest the theme are off
+    that line, so they do not count."""
+    s, w = g.where(g.TITLE)
+    left, top, ww, hh = g.box_of(s, w)
+    _, _, rows = ami.grab((left, top, ww, hh))
+    x0, x1 = ww * 5 // 100, ww * 95 // 100
+    seen = {}
+    for r in rows:
+        for x in range(x0, x1):
+            k = bytes(r[3 * x:3 * x + 3])
+            seen[k] = seen.get(k, 0) + 1
+    bg = max((k for k in seen if k != bytes(rgb)), key=seen.get)
+    d = [rgb[i] - bg[i] for i in range(3)]
+    dd = sum(v * v for v in d) or 1
+    n = 0
+    for r in rows:
+        px = [bytes(r[3 * x:3 * x + 3]) for x in range(x0, x1)]
+        if px.count(bytes(rgb)) * 2 >= x1 - x0:
+            continue
+        for p in px:
+            t = sum((p[i] - bg[i]) * d[i] for i in range(3)) / dd
+            if t >= 0.5 and all(abs(p[i] - bg[i] - t * d[i]) <= 12 for i in range(3)):
+                n += 1
+    return n
+
+
 def one_select(n, allowed):
-    """Returns (ok, detail, open_wait_seconds)."""
+    """Returns (ok, detail, open_wait_seconds). The pick switches live (owner, 2026-10-28): the menu stays open on
+    the theme list, AMARCHY_THEME (set where gui.c pens_get takes the colours) names the picked theme, the picked
+    row reads "(current)" and the cursor stays on it."""
     before = {p: theme_line(p) for p in PREFS}
     ami.key(g.SPACE, g.LAMIGA)
     try:
@@ -113,24 +162,26 @@ def one_select(n, allowed):
         step(g.RETURN, 'enter Style')
         step(g.RETURN, 'enter Amarchy theme')
         for _ in range(n):
-            step(g.DOWN, 'Down in theme list')
+            st, _ = step(g.DOWN, 'Down in theme list')
+        rows_before, sel_before = env('AMARCHY_ROWS').split('|'), env('AMARCHY_SEL')
         ami.key(g.RETURN)
-        end = time.time() + 30
-        while time.time() < end and g.where(g.TITLE)[1]:
-            time.sleep(POLL)
+        wait_stable(STEP_SECS, differ_from=st, what='recoloured theme list')
     except TimeoutError as e:
+        if not g.where(g.TITLE)[1]:
+            return False, 'the menu closed on the pick (it must stay open and recolour)', 0.0
         g.close_menu()
         return False, str(e), 0.0
-    if g.where(g.TITLE)[1]:
-        g.close_menu()
-        return False, 'menu still open 30 s after the final Return', open_wait
-    time.sleep(1)          # the prefs write follows the close; the read below retries
+    if not g.where(g.TITLE)[1]:
+        return False, 'the menu closed on the pick (it must stay open and recolour)', open_wait
     after = {}
     for _ in range(10):
         after = {p: theme_line(p) for p in PREFS}
         if all(after[p] != before[p] for p in PREFS):
             break
         time.sleep(1)
+    drew, rows_after, sel_after = env('AMARCHY_THEME'), env('AMARCHY_ROWS').split('|'), env('AMARCHY_SEL')
+    head = header_accent_pixels(theme_accent(drew)) if drew else 0
+    g.close_menu()
     bad = strangers(allowed)
     if bad:
         return False, 'unexpected: ' + '; '.join(bad), open_wait
@@ -140,7 +191,19 @@ def one_select(n, allowed):
     unchanged = [p for p in PREFS if after[p] == before[p]]
     if unchanged:
         return False, 'theme line unchanged in %s (before %s, after %s)' % (unchanged, before, after), open_wait
-    return True, 'theme %s -> %s (ENV and ENVARC)' % (before['ENV:Amarchy/prefs'], picked.pop()), open_wait
+    name = picked.pop()
+    if drew != name:
+        return False, 'the open menu drew theme %r after picking %r (AMARCHY_THEME)' % (drew, name), open_wait
+    want = name + ' (current)'
+    at = [i for i, r in enumerate(rows_before) if r.split(' (')[0] == name]
+    if want not in rows_after or not at or rows_after.index(want) != at[0]:
+        return False, 'rows after the pick do not mark %r: %s' % (want, rows_after), open_wait
+    if sel_after != sel_before:
+        return False, 'cursor moved from row %s to %s' % (sel_before, sel_after), open_wait
+    if head < 10:
+        return False, 'the header is not drawn in %s\'s accent (%d accent pixels outside border and selection)' % (
+            name, head), open_wait
+    return True, 'theme %s -> %s live (ENV, ENVARC, AMARCHY_THEME, rows, header accent %d px)' % (before['ENV:Amarchy/prefs'], name, head), open_wait
 
 
 def main():

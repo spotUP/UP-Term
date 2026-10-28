@@ -19,6 +19,10 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec);
 void mt_close(menu_text *m);
 
 int mt_is_ttf(const menu_text *m);
+/* 1 on a true-colour screen with cybergraphics: mt_draw and mt_fill draw each colour as itself, no pen */
+int mt_direct(const menu_text *m);
+/* the box x0..x1, y0..y1 in rgb (0xRRGGBB) with no pen; 0 (nothing drawn) when not mt_direct: fill with a pen */
+int mt_fill(menu_text *m, struct RastPort *rp, int x0, int y0, int x1, int y1, ULONG rgb);
 /* the line: the height of a row of text, and the rows from its top to the baseline */
 int mt_height(const menu_text *m);
 int mt_baseline(const menu_text *m);

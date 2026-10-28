@@ -89,6 +89,7 @@ typedef struct gui {
     int chev_w;
     int icon_w, icon_h;          /* the icon column's width and the icon's height, 0 for none */
     long pen[MT_ROLES];
+    uc_u32 ink[MT_ROLES];        /* the colour each role draws in (menu_theme_ink) */
     int pens;                    /* distinct pens obtained (2 in the minimal mode) */
     char pen_got[MT_ROLES];
     int mode;
@@ -189,17 +190,25 @@ static int text_len(const char *s, void *ctx)
     return mt_width((menu_text *)ctx, s);
 }
 
-/* the pen's colour as 0xRRGGBB: what menu_text draws a role in (a bitmap font finds this pen again) */
-static ULONG role_rgb(const gui *g, int role)
+/* the pen's colour as 0xRRGGBB */
+static ULONG pen_rgb(const gui *g, long pen)
 {
     ULONG c[3];
-    GetRGB32(g->cm, (ULONG)g->pen[role], 1, c);
+    GetRGB32(g->cm, (ULONG)pen, 1, c);
     return ((c[0] >> 24) << 16) | ((c[1] >> 24) << 8) | (c[2] >> 24);
+}
+
+/* what menu_text draws a role in (a bitmap font finds the nearest pen again) */
+static ULONG role_rgb(const gui *g, int role)
+{
+    return g->ink[role];
 }
 
 static void fill(gui *g, int role, int x0, int y0, int x1, int y1)
 {
     if (x1 < x0 || y1 < y0)
+        return;
+    if (mt_fill(g->mt, g->rp, x0, y0, x1, y1, g->ink[role]))
         return;
     SetAPen(g->rp, (ULONG)g->pen[role]);
     RectFill(g->rp, x0, y0, x1, y1);
@@ -386,7 +395,7 @@ static void draw_header(gui *g)
         jc_header(&job, h, sizeof h);
         s = h[0] ? h : jb_title();
     }
-    put(g, MT_DIM, MT_BG, q->head_x + q->m.row_pad, q->head_y, q->m.head_h, s, (int)strlen(s),
+    put(g, MT_HEAD_ROLE, MT_BG, q->head_x + q->m.row_pad, q->head_y, q->m.head_h, s, (int)strlen(s),
         q->head_w - 2 * q->m.row_pad);
 }
 
@@ -463,13 +472,18 @@ static void draw_row(gui *g, int e)
         } else {
             long rgb = g->chip[it - g->it];
             if (rgb >= 0) {                       /* a colour row: a filled chip at the right edge, label left of it */
-                int cs = q->m.row_h - 4, cx = tx + tw - cs, p = vr_pen_obtain(g->cm, (unsigned long)rgb);
-                if (p >= 0) {
-                    SetAPen(g->rp, (ULONG)g->pen[MT_TEXT]);
-                    RectFill(g->rp, cx - 1, y + 1, cx + cs, y + 2 + cs);        /* border in the text colour */
-                    SetAPen(g->rp, (ULONG)p);
-                    RectFill(g->rp, cx, y + 2, cx + cs - 1, y + 1 + cs);
-                    ReleasePen(g->cm, (ULONG)p);
+                int cs = q->m.row_h - 4, cx = tx + tw - cs;
+                if (mt_direct(g->mt)) {           /* a true-colour screen: the colour itself, no pen */
+                    fill(g, MT_TEXT, cx - 1, y + 1, cx + cs, y + 2 + cs);      /* border in the text colour */
+                    mt_fill(g->mt, g->rp, cx, y + 2, cx + cs - 1, y + 1 + cs, (ULONG)rgb);
+                } else {
+                    long p = vr_pen_obtain(g->cm, (unsigned long)rgb);
+                    if (p >= 0) {
+                        fill(g, MT_TEXT, cx - 1, y + 1, cx + cs, y + 2 + cs);
+                        SetAPen(g->rp, (ULONG)p);
+                        RectFill(g->rp, cx, y + 2, cx + cs - 1, y + 1 + cs);
+                        ReleasePen(g->cm, (ULONG)p);
+                    }
                 }
                 tw -= cs + 4 + q->m.row_pad;
             }
@@ -1170,9 +1184,9 @@ static void event_loop(gui *g)
 
 static void pens_get(gui *g)
 {
-    uc_u32 rgb[MT_ROLES];
+    uc_u32 rgb[MT_ROLES], got[MT_ROLES];
     gtheme th;
-    int r;
+    int r, themed = 1;
     /* the drawn menu's colours are the Omarchy GUI theme (Style > Theme, AM_GTHEME), not the terminal's */
     gt_dos_load_current(&th);
     menu_theme_roles_gui(&th, rgb);
@@ -1180,7 +1194,7 @@ static void pens_get(gui *g)
     if (minimal) {
         /* two colours: the theme's background and foreground; equal ones would hide the selection, so both
          * fall back to the screen's own pens (0, 1) */
-        int themed = menu_theme_minimal(rgb);
+        themed = menu_theme_minimal(rgb);
         for (r = 0; r < MT_ROLES; r++) {
             int is_bg = r == MT_BG || r == MT_ACCENT;
             long p = themed ? vr_pen_obtain(g->cm, rgb[r]) : -1;
@@ -1208,6 +1222,9 @@ static void pens_get(gui *g)
                 dup = 1;
         g->pens += !dup;
     }
+    for (r = 0; r < MT_ROLES; r++)
+        got[r] = pen_rgb(g, g->pen[r]);
+    menu_theme_ink(g->ink, rgb, got, mt_direct(g->mt), themed);
 }
 
 static void pens_release(gui *g)
@@ -1216,6 +1233,22 @@ static void pens_release(gui *g)
     for (r = 0; r < MT_ROLES; r++)
         if (g->pen_got[r])
             ReleasePen(g->cm, (ULONG)g->pen[r]);
+}
+
+/* A Style > Theme pick saved the theme (lf_open_index): the open menu takes its colours at once and stays on the
+ * theme list, which marks the picked theme (current) with the cursor on it (owner, 2026-10-28: switch live). */
+static void theme_live(gui *g, const char *name)
+{
+    char keep[MN_LABEL];
+    pens_release(g);
+    pens_get(g);
+    gt_dos_load_rows(&ixs);
+    gt_label(name, name, keep, (int)sizeof keep);
+    g->chosen = -1;
+    g->mode = M_LIST;
+    g->stop = 0;
+    g->ixpath[0] = g->ixlabel[0] = 0;
+    list_rebuild_keep(g, keep);
 }
 
 static struct Window *window_open(gui *g)
@@ -1544,6 +1577,10 @@ static int gui_open(int viewer, const char *node)
                 g->rp = 0;
             }
             rc = g->ixpath[0] ? lf_open_index(g->ixlabel, g->ixpath, &ui) : lf_run(&km.menu[g->chosen], &ui);
+            if (!rc && g->ixpath[0] && !g->quit && gt_path_name(g->ixpath, keep, (int)sizeof keep)) {
+                theme_live(g, keep);
+                continue;
+            }
             if (!job_started || g->quit)
                 break;
             /* a job view closed: back to the menu row it came from */

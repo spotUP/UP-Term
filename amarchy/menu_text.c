@@ -144,10 +144,8 @@ static void op_set_pen(void *u, ULONG ink)
 static void op_fill(void *u, WORD x0, WORD y0, WORD x1, WORD y1, ULONG ink)
 {
     menu_text *m = (menu_text *)u;
-    if (ink & MT_INK_RGB) { /* direct colour on a true-colour screen: the nearest pen, the glyph box is blitted whole */
-        LONG p = pen_of(m, ink & 0xFFFFFFUL);
-        ink = p < 0 ? 0UL : (ULONG)p;
-    }
+    if ((ink & MT_INK_RGB) && mt_fill(m, cur_rp, x0, y0, x1, y1, ink & 0xFFFFFFUL))
+        return;
     SetAPen(cur_rp, (UBYTE)ink);
     RectFill(cur_rp, x0, y0, x1, y1);
 }
@@ -221,6 +219,9 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
     if (!m)
         return 0;
     m->scr = scr;
+    /* a true-colour screen draws every colour as itself (mt_fill, mt_draw): its pens are few and taken */
+    if (GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH) > 8 && (m->cgx = OpenLibrary((STRPTR)"cybergraphics.library", 41)) != 0)
+        m->truecolor = 1;
     menu_screen_aspect(scr, &m->rx, &m->ry);
     if (!prefs_font_parse(spec, name, sizeof name, &size))
         name[0] = 0;
@@ -238,8 +239,6 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
             ops.set_pen = op_set_pen;
             ops.fill = op_fill;
             aa_ink_init(&m->ink, &ops);
-            if (GetBitMapAttr(scr->RastPort.BitMap, BMA_DEPTH) > 8 && (m->cgx = OpenLibrary((STRPTR)"cybergraphics.library", 41)) != 0)
-                m->truecolor = 1;
             return m;
         }
         if ((m->bitmap = menu_font_open_choice(&ch[i])) != 0)
@@ -289,6 +288,16 @@ void mt_close(menu_text *m)
 }
 
 int mt_is_ttf(const menu_text *m) { return m->font != 0; }
+int mt_direct(const menu_text *m) { return m->cgx != 0; }
+
+int mt_fill(menu_text *m, struct RastPort *rp, int x0, int y0, int x1, int y1, ULONG rgb)
+{
+    if (!m->cgx)
+        return 0;
+    if (x1 >= x0 && y1 >= y0)
+        vr_cgx_fill(m->cgx, rp, (UWORD)x0, (UWORD)y0, (UWORD)(x1 - x0 + 1), (UWORD)(y1 - y0 + 1), 0xFF000000UL | rgb);
+    return 1;
+}
 int mt_height(const menu_text *m) { return m->height; }
 int mt_baseline(const menu_text *m) { return m->base; }
 struct TextFont *mt_bitmap_font(const menu_text *m) { return m->font ? 0 : m->bitmap; }

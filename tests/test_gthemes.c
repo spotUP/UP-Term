@@ -128,6 +128,7 @@ static void test_gthemes_roles(void)
         CHECK_INT(rgb[MT_DIM], shipped[i].dim);
         CHECK_INT(rgb[MT_ACCENT], shipped[i].bg);
         CHECK_INT(rgb[MT_SELBOX], shipped[i].accent);
+        CHECK_INT(rgb[MT_HEAD_ROLE], shipped[i].accent); /* the header follows the theme's accent */
         /* H3: each file has exactly the table's values and mode */
         CHECK_INT(t.bg, shipped[i].bg);
         CHECK_INT(t.fg, shipped[i].fg);
@@ -433,8 +434,32 @@ static void test_gthemes_save_text(void)
     CHECK(strstr(t, "restore after a failed rename"));
 }
 
+/* The drawn menu on a true-colour screen with no free pens (Directory Opus 800x600 24-bit, rig 7 2026-10-28) got the
+ * nearest palette greys for every role: fills and text must take the theme's own colours there. */
+static void test_gthemes_ink_direct(void)
+{
+    uc_u32 rgb[MT_ROLES], grey[MT_ROLES], out[MT_ROLES];
+    gtheme t;
+    int r;
+    load_shipped("everforest", &t);
+    menu_theme_roles_gui(&t, rgb);
+    for (r = 0; r < MT_ROLES; r++)
+        grey[r] = 0x999999;
+    menu_theme_ink(out, rgb, grey, 1, 1);
+    for (r = 0; r < MT_ROLES; r++)
+        CHECK_INT(out[r], rgb[r]);
+    CHECK_INT(out[MT_HEAD_ROLE], t.accent);
+    menu_theme_ink(out, rgb, grey, 0, 1);
+    for (r = 0; r < MT_ROLES; r++)
+        CHECK_INT(out[r], grey[r]);
+    menu_theme_ink(out, rgb, grey, 1, 0);
+    for (r = 0; r < MT_ROLES; r++)
+        CHECK_INT(out[r], grey[r]);
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_ink_direct();
     test_gthemes_save_text();
     test_gthemes_select_name();
     test_gthemes_fallback();
