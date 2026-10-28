@@ -382,6 +382,22 @@ static void test_gthemes_scan(void)
     CHECK(!gt_path_name("clip:3", nm, sizeof nm));
     CHECK(!gt_path_name("gtheme:", nm, sizeof nm));
 }
+/* T9: walking Style > Theme recolours the menu in the row's theme; leaving the list restores the saved one */
+static void test_gthemes_preview(void)
+{
+    char nm[GT_NAME];
+    CHECK(gt_preview_pick("gtheme:nord", "tokyo-night", "tokyo-night", nm, sizeof nm));
+    CHECK_STR(nm, "nord");
+    CHECK(!gt_preview_pick("gtheme:nord", "tokyo-night", "nord", nm, sizeof nm));      /* already drawn */
+    CHECK(!gt_preview_pick("gtheme:NORD", "tokyo-night", "nord", nm, sizeof nm));      /* without case */
+    CHECK(gt_preview_pick("clip:3", "tokyo-night", "nord", nm, sizeof nm));            /* off the list: restore */
+    CHECK_STR(nm, "tokyo-night");
+    CHECK(gt_preview_pick(0, "tokyo-night", "nord", nm, sizeof nm));
+    CHECK_STR(nm, "tokyo-night");
+    CHECK(!gt_preview_pick(0, "tokyo-night", "tokyo-night", nm, sizeof nm));
+    CHECK(!gt_preview_pick("gtheme:", "", "nord", nm, sizeof nm));                    /* nothing to draw */
+    CHECK(!gt_preview_pick("gtheme:nord", "x", "y", nm, 4));                          /* does not fit out */
+}
 /* T8: the name the commodity saves is a plain theme name, never a path or an overlong string */
 static void test_gthemes_select_name(void)
 {
@@ -462,6 +478,7 @@ void suite_gthemes(void)
     test_gthemes_ink_direct();
     test_gthemes_save_text();
     test_gthemes_select_name();
+    test_gthemes_preview();
     test_gthemes_fallback();
     test_gthemes_parse();
     test_gthemes_roles();

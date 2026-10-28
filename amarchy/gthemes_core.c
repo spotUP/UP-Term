@@ -166,6 +166,16 @@ int gt_path_name(const char *path, char *out, int cap)
     return 1;
 }
 
+int gt_preview_pick(const char *row_path, const char *current, const char *drawn, char *out, int cap)
+{
+    char row[GT_NAME];
+    const char *want = row_path && gt_path_name(row_path, row, (int)sizeof row) ? row : current;
+    if (!want || !*want || (int)strlen(want) >= cap || (drawn && !cmp_ci(want, drawn)))
+        return 0;
+    strcpy(out, want);
+    return 1;
+}
+
 /* The path each install step touched, by the step's own words (prefs_core.h prefs_install_target_at). */
 void gt_save_text(int step, int failed, long err, char *out, int cap)
 {

@@ -15,7 +15,8 @@ other than the menu and the host terminal that appears is a failure (its text qu
 from dist/amarchy-themes when the rig has fewer than 6 themes there.
 
 Rig up (UPTERM_RIG=<n> tools/rig/rig.py start --max), handler + Amarchy commodity running with the binaries under
-test. Run: UPTERM_RIG=7 python3 tools/rig/amarchy_theme_save_rig.py [--selects 1-5] [--no-build]
+test. Run: UPTERM_RIG=7 python3 tools/rig/amarchy_theme_save_rig.py [--selects 1-5] [--preview <downs>] [--no-build]
+--preview walks the theme list without picking (one_preview) instead of the selects.
 Exit status 1 on any [FAIL]."""
 import os, re, sys, time, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -149,20 +150,37 @@ def header_accent_pixels(rgb):
     return n
 
 
+def walk_key(rows, at, steps):
+    """The list opens with the cursor on the current theme (row `at` of `rows`), which may sit near the end: walk
+    towards the side with room for every step. Returns (key, word)."""
+    return (g.DOWN, 'Down') if at + steps < len(rows) else (g.UP, 'Up')
+
+
+def open_menu():
+    """The hotkey with the desktop active: over a full-width terminal (the condev UP-Term window) the commodity
+    opens the text menu inside that terminal instead (cxdesc.c cx_menu_style), so a click on the empty desktop
+    below it comes first, as the demo recording does."""
+    ami.click_px(400, 560)
+    time.sleep(1)
+    ami.key(g.SPACE, g.LAMIGA)
+
+
 def one_select(n, allowed):
     """Returns (ok, detail, open_wait_seconds). The pick switches live (owner, 2026-10-28): the menu stays open on
     the theme list, AMARCHY_THEME (set where gui.c pens_get takes the colours) names the picked theme, the picked
     row reads "(current)" and the cursor stays on it."""
     before = {p: theme_line(p) for p in PREFS}
-    ami.key(g.SPACE, g.LAMIGA)
+    open_menu()
     try:
         st, open_wait = wait_stable(OPEN_SECS, what='open menu')
         for _ in range(STYLE_DOWNS):
             st, _ = step(g.DOWN, 'Down to Style')
         step(g.RETURN, 'enter Style')
         step(g.RETURN, 'enter Amarchy theme')
+        rows = env('AMARCHY_ROWS').split('|')
+        key, word = walk_key(rows, next((i for i, r in enumerate(rows) if r.endswith(' (current)')), 0), n)
         for _ in range(n):
-            st, _ = step(g.DOWN, 'Down in theme list')
+            st, _ = step(key, '%s in theme list' % word)
         rows_before, sel_before = env('AMARCHY_ROWS').split('|'), env('AMARCHY_SEL')
         ami.key(g.RETURN)
         wait_stable(STEP_SECS, differ_from=st, what='recoloured theme list')
@@ -206,6 +224,55 @@ def one_select(n, allowed):
     return True, 'theme %s -> %s live (ENV, ENVARC, AMARCHY_THEME, rows, header accent %d px)' % (before['ENV:Amarchy/prefs'], name, head), open_wait
 
 
+def one_preview(steps, allowed):
+    """Preview on cursor move (owner, 2026-10-28): each cursor move in Style > Amarchy theme recolours the open menu in
+    the theme under the cursor (AMARCHY_THEME names it, the header is in its accent) without saving it (both prefs
+    lines unchanged); Esc out of the list draws the saved theme again. Returns (ok, detail)."""
+    before = {p: theme_line(p) for p in PREFS}
+    open_menu()
+    seen = []
+    try:
+        st, _ = wait_stable(OPEN_SECS, what='open menu')
+        for _ in range(STYLE_DOWNS):
+            st, _ = step(g.DOWN, 'Down to Style')
+        step(g.RETURN, 'enter Style')
+        st, _ = step(g.RETURN, 'enter Amarchy theme')
+        saved = env('AMARCHY_THEME')
+        rows = env('AMARCHY_ROWS').split('|')
+        cur = [i for i, r in enumerate(rows) if r.endswith(' (current)')]
+        if not cur or rows[cur[0]].split(' (')[0] != saved:
+            g.close_menu()
+            return False, 'the theme list does not mark the drawn theme %r (current): %s' % (saved, rows)
+        shift = int(env('AMARCHY_SEL')) - cur[0]
+        key, word = walk_key(rows, cur[0], steps)
+        for _ in range(steps):
+            st, _ = step(key, '%s in theme list' % word)
+            drew, sel = env('AMARCHY_THEME'), int(env('AMARCHY_SEL'))
+            under = rows[sel - shift].split(' (')[0] if 0 <= sel - shift < len(rows) else ''
+            seen.append((under, drew, header_accent_pixels(theme_accent(drew)) if drew else 0))
+        st, _ = step(g.ESC, 'Esc out of the theme list')
+        back, back_head = env('AMARCHY_THEME'), header_accent_pixels(theme_accent(saved))
+    except TimeoutError as e:
+        g.close_menu()
+        return False, str(e)
+    g.close_menu()
+    after = {p: theme_line(p) for p in PREFS}
+    bad = strangers(allowed)
+    if bad:
+        return False, 'unexpected: ' + '; '.join(bad)
+    for under, drew, head in seen:
+        if drew != under:
+            return False, 'cursor on %r but the menu drew %r (AMARCHY_THEME); walk %s' % (under, drew, seen)
+        if head < 10:
+            return False, 'previewing %r: header has %d accent pixels' % (drew, head)
+    if after != before:
+        return False, 'the preview saved a theme: before %s, after %s' % (before, after)
+    if back != saved or back_head < 10:
+        return False, 'Esc drew %r (header %d px), want the saved %r' % (back, back_head, saved)
+    return True, 'walked %s, Esc restored %s (header %d px), prefs unchanged' % (
+        ' '.join('%s/%dpx' % (d, h) for _, d, h in seen), saved, back_head)
+
+
 def main():
     lo, hi = 1, 5
     if '--selects' in sys.argv:
@@ -216,6 +283,10 @@ def main():
         return 1
     g.close_menu()
     allowed = {w['title'] or '' for s in g.screens() for w in s['windows']}
+    if '--preview' in sys.argv:
+        ok, detail = one_preview(int(sys.argv[sys.argv.index('--preview') + 1]), allowed)
+        print('%s preview: %s' % ('[OK]' if ok else '[FAIL]', detail), flush=True)
+        return 0 if ok else 1
     results, waits = [], []
     for n in range(lo, hi + 1):
         ok, detail, wt = one_select(n, allowed)

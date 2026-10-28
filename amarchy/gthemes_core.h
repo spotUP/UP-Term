@@ -66,6 +66,12 @@ int gt_name_ok(const char *name);
 #define GT_ROW_PREFIX "gtheme:"
 int gt_path_name(const char *path, char *out, int cap);
 
+/* The theme the open menu draws while the cursor walks Style > Theme (owner, 2026-10-28: preview on cursor move):
+ * the theme of the selected row (row_path "gtheme:<name>"), else the saved one (current), so leaving the list or
+ * moving onto another row restores it. Returns 1 and writes the name to out when it differs from drawn (compared
+ * without case), 0 when the menu already draws it. row_path may be 0. */
+int gt_preview_pick(const char *row_path, const char *current, const char *drawn, char *out, int cap);
+
 
 /* Why a theme save failed, as the text the menu shows. step: GT_SAVE_NAME (the name check), or a prefs_save_at result
  * (PREFS_SAVE_NODIR, PREFS_INSTALL_WRITE / BACKUP / PLACE / STRANDED); failed: the PREFS_T_ target; err: the DOS error

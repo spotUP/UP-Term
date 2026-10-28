@@ -90,6 +90,7 @@ typedef struct gui {
     int icon_w, icon_h;          /* the icon column's width and the icon's height, 0 for none */
     long pen[MT_ROLES];
     uc_u32 ink[MT_ROLES];        /* the colour each role draws in (menu_theme_ink) */
+    char drawn[GT_NAME];         /* the theme the pens are from: the saved one, or the Style > Theme row previewed */
     int pens;                    /* distinct pens obtained (2 in the minimal mode) */
     char pen_got[MT_ROLES];
     int mode;
@@ -583,6 +584,27 @@ static void relayout(gui *g, int n)
         draw_full(g);
 }
 
+static void pens_get(gui *g, const char *name);
+static void pens_release(gui *g);
+
+/* Style > Theme previews the theme under the cursor; any other row draws the saved theme (gt_preview_pick). The
+ * pens change only when the theme does; the caller repaints (g->drawn tells it the theme changed). */
+static void preview_sync(gui *g)
+{
+    char path[IX_PATH], want[GT_NAME], cur[GT_NAME];
+    const char *row = 0;
+    if (g->sel >= g->shift && g->sel < g->count) {
+        const mn_item *it = &g->it[g->idx[g->sel - g->shift]];
+        if (MN_IS_INDEX(it) && ix_launch_path(&ixs, it, path, (int)sizeof path))
+            row = path;
+    }
+    gt_dos_current(cur, (int)sizeof cur);
+    if (!gt_preview_pick(row, cur, g->drawn, want, (int)sizeof want))
+        return;
+    pens_release(g);
+    pens_get(g, !strcmp(want, cur) ? 0 : want);
+}
+
 /* The level for the node and filter; the cursor goes to the entry labelled keep when it is still shown, else
  * the first real entry. */
 static int keep_setting = -1;   /* the SDI_* id of the setting row the cursor stays on after a set, else -1 */
@@ -591,6 +613,7 @@ static int load_due(gui *g);
 
 static void list_rebuild_keep(gui *g, const char *keep)
 {
+    char cur[GT_NAME], cur_label[MN_LABEL];
     int n, pos;
     if (!load_due(g))
         return;
@@ -599,6 +622,11 @@ static void list_rebuild_keep(gui *g, const char *keep)
     lf_setting_rechip(g->it, n, g->chip);
     g->shift = g->wt.row[0] ? 1 : 0;
     g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
+    if (!keep) {                         /* the theme list opens on the saved theme: the preview starts on it, not on row 1 */
+        gt_dos_current(cur, (int)sizeof cur);
+        gt_label(cur, cur, cur_label, (int)sizeof cur_label);
+        keep = cur_label;
+    }
     pos = keep_setting >= 0 ? mn_pick_setting(g->it, g->idx, g->count - g->shift, keep_setting)
                             : mn_pick(g->it, g->idx, g->count - g->shift, keep);
     keep_setting = -1;
@@ -608,6 +636,7 @@ static void list_rebuild_keep(gui *g, const char *keep)
         mg_layout(&g->g, &g->mf, g->w, g->count, &g->ms);
         g->top = mg_scroll(&g->g, g->sel, 0);
     }
+    preview_sync(g);
     relayout(g, g->count);
 }
 
@@ -619,6 +648,8 @@ static void list_rebuild(gui *g)
 static void set_sel(gui *g, int s)
 {
     int old = g->sel, top = g->top;
+    char drawn_was[GT_NAME];
+    strcpy(drawn_was, g->drawn);
     if (g->count <= g->shift)
         return;
     if (s < g->shift)
@@ -627,7 +658,11 @@ static void set_sel(gui *g, int s)
         s = g->count - 1;
     g->sel = s;
     g->top = mg_scroll(&g->g, s, top);
-    if (g->top != top) {
+    if (s != old && g->mode == M_LIST)
+        preview_sync(g);
+    if (strcmp(g->drawn, drawn_was)) {
+        draw_full(g);           /* a preview recoloured the menu: every row and the header */
+    } else if (g->top != top) {
         draw_list(g);
     } else if (s != old) {
         draw_row(g, s);         /* the new row first: a frame between the copies shows two selected, never none */
@@ -1182,13 +1217,19 @@ static void event_loop(gui *g)
 
 /* ---- screen, font, pens, window ---------------------------------------------------------------------- */
 
-static void pens_get(gui *g)
+/* name: the theme to draw (a Style > Theme preview), 0 for the saved one */
+static void pens_get(gui *g, const char *name)
 {
     uc_u32 rgb[MT_ROLES], got[MT_ROLES];
     gtheme th;
     int r, themed = 1;
     /* the drawn menu's colours are the Omarchy GUI theme (Style > Theme, AM_GTHEME), not the terminal's */
-    gt_dos_load_current(&th);
+    if (name)
+        gt_dos_load(name, &th);
+    else
+        gt_dos_load_current(&th);
+    strncpy(g->drawn, th.name, sizeof g->drawn - 1);
+    g->drawn[sizeof g->drawn - 1] = 0;
     menu_theme_roles_gui(&th, rgb);
     SetVar((STRPTR) "AMARCHY_THEME", (STRPTR)th.name, -1, GVF_GLOBAL_ONLY);   /* sentinel: the rig reads which theme drew */
     if (minimal) {
@@ -1241,7 +1282,7 @@ static void theme_live(gui *g, const char *name)
 {
     char keep[MN_LABEL];
     pens_release(g);
-    pens_get(g);
+    pens_get(g, 0);
     gt_dos_load_rows(&ixs);
     gt_label(name, name, keep, (int)sizeof keep);
     g->chosen = -1;
@@ -1483,7 +1524,7 @@ static int gui_open(int viewer, const char *node)
     g->ms.w = g->scr->Width;
     g->ms.h = g->scr->Height;
     g->ms.minimal = minimal;
-    pens_get(g);
+    pens_get(g, 0);
     if (app_icons == UC_ICONS_AMIGA && !minimal)
         ig_open(g->scr, ixs.n);      /* no icon.library V44: the index rows keep the generic glyph */
     at_mark("icons");
