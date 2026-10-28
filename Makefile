@@ -435,7 +435,7 @@ golden: $(BUILD)/vtdump
 # headers are upstream's own since 0.9 (include/wasabi_cgx.h); no shim. The upstream Makefile's own flags (-fbbb=-: Bebbo's
 # loop pass miscompiles small structs) are kept; only CC and the SDK are ours.
 # Idempotent: the stamp holds the pinned commit. Uninstall: make wasabi-clean.
-WASABI_REPO := https://github.com/creep-ltx/wasabi
+WASABI_REPO := https://github.com/spotUP/wasabi
 WASABI_REV  := $(strip $(shell cat tools/nas/wasabi.rev))
 wasabi: $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@echo "[OK] wasabi $(WASABI_REV) built: $(BUILD)/wasabi/wasabid and the client $(BUILD)/wasabi/wasabi."
