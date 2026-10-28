@@ -1,7 +1,7 @@
 .KEY DIR/A,STEP/K
 .BRA {
 .KET }
-; up-git install: git 2.56.0 in UP-Term:bin and UP-Term:share/git-core
+; up-git install: git 2.56.0 (clone, fetch and ls-remote over https via AmiSSL; local commands) in UP-Term:bin and UP-Term:share/git-core
 ; Run by this archive's Install (an Installer script), which asks the questions:
 ;   Execute <archive>/Files/install.dos <archive>/Files [STEP <part>]
 ; From a Shell without Installer the same line installs everything. The Installer
@@ -16,7 +16,8 @@ If NOT "{STEP}" EQ ""
 EndIf
 ; @include dist/common/@CHECKFRAG@
 Lab copy-git
-; git: git 2.56.0 in UP-Term:bin and UP-Term:share/git-core
+; git (bin/git and its helpers, share/git-core/templates): git keeps its objects as long-named files, so the
+; UP-Term volume must be FFS with long file names, not OFS (30 characters).
 ; userland holds what dist/slim.txt names; Copy of a drawer copies what is in it.
 MakeDir >NIL: UP-Term:bin
 MakeDir >NIL: UP-Term:lib

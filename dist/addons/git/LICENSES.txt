@@ -1,8 +1,8 @@
 up-git: parts, licences and where the source is
 
-Part   Licence                       Source
------  ----------------------------  ----------------
-git    GPL-2.0-only (licenses/git)   upterm-ports (pkgs/git)
+Part                            Licence                       Source
+------------------------------  ----------------------------  ----------------------------------------
+git (bin/git, share/git-core)   GPL-2.0-only (licenses/git)   upterm-ports (pkgs/git; git 2.56.0, kernel.org)
 
 Notes
 - The complete source with UP-Term's patches and build recipes is up-term-src.lha, published next to

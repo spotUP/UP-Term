@@ -1,0 +1,22 @@
+{
+ "launch": "UP-Term:bin/git",
+ "about": "git 2.56.0 (clone, fetch and ls-remote over https via AmiSSL; local commands) in UP-Term:bin and UP-Term:share/git-core",
+ "copy_comment": [
+  "; git (bin/git and its helpers, share/git-core/templates): git keeps its objects as long-named files, so the",
+  "; UP-Term volume must be FFS with long file names, not OFS (30 characters)."
+ ],
+ "welcome": [
+  "git, the version control system, for an UP-Term window.",
+  "It goes into UP-Term:bin and UP-Term:share/git-core.",
+  "git needs a volume with long file names (FFS with long names,",
+  "not OFS, whose names stop at 30 characters)."
+ ],
+ "title": "G I T",
+ "why": "Copying git to UP-Term:bin and UP-Term:share/git-core.",
+ "name": "git",
+ "readme_title": "git 2.56.0 for UP-Term",
+ "readme_contents": "git 2.56.0 in UP-Term:bin and UP-Term:share/git-core.",
+ "readme_use": "git needs a volume with long file names: install\nUP-Term on an FFS volume with long names, not OFS (file names stop at 30 characters). In an\nUP-Term window, in vsh:\n  git",
+ "part_label": "git (bin/git, share/git-core)",
+ "source": "upterm-ports (pkgs/git; git 2.56.0, kernel.org)"
+}
