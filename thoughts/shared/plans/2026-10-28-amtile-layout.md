@@ -194,6 +194,7 @@ menu-icons file already uses; else U+F009.
   0x0C) is named `plus`: bound `super+alt+plus` = RATIO +5. Listed to the owner in the report.
 - D-2 (P1) win_fit lets a window's Min beat the room the screen leaves (existing behaviour), so the window carrying minw 300 may extend past the screen edge when its cell starts far right (e.g. columns, last cell). The min/max test asserts width >= 300 for it and inside-screen only for the other windows.
 - D-3 (P1) `make test ONLY=tile` could not link the whole host binary while P2's amconf test (tests/test_amconf.c, amconf_tile_ratio/nmaster) was half-written; the tile suite was verified in an isolated build of test_tile.c + tile_core.c + win_core.c with the Makefile's flags (1551 checks, 0 failures). Re-run `make test ONLY=tile` once P2 lands.
+- D-4 (P3) `num_arg` bounds the magnitude while parsing (stops above 100000) so a long digit string cannot overflow; `win_raise` also replaces both WindowToFront calls in win.c (one copy). CYCLE raises under IBase lock (win_raise only queues) and calls ActivateWindow after unlock, as win.c does; rc 5 also when the target died between order and lock. cfg_save logs failure with PutStr (AmTile has no console log helper).
 - Others: filled in by the implementer when a row is refused or taken (nearest free key, state which).
 
 ## Phase 1 - tile_core layouts (pure) + host tests

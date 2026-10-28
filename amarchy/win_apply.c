@@ -25,3 +25,8 @@ void win_apply_box(struct Window *w, const win_box *b)
 {
     ChangeWindowBox(w, b->left, b->top, b->width, b->height);
 }
+
+void win_raise(struct Window *w)
+{
+    WindowToFront(w);
+}

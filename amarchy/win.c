@@ -223,7 +223,7 @@ static int win_exec(const char *arg, int via_port)
             win_box_of(w, &b, &scr);
             ok = 1;
             switch (c.verb) {
-            case WV_FRONT: WindowToFront(w); break;
+            case WV_FRONT: win_raise(w); break;
             case WV_BACK:  WindowToBack(w); break;
             case WV_ZIP:   ZipWindow(w); break;
             case WV_MOVE:  if (win_move(&b, c.arg, c.pixels, &scr)) win_apply_box(w, &b); break;
@@ -261,7 +261,7 @@ static int win_exec(const char *arg, int via_port)
                 else {
                     act = ws[pick];
                     if (c.verb == WV_CYCLE)
-                        WindowToFront(act);
+                        win_raise(act);
                 }
                 break;
             }

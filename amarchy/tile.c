@@ -3,9 +3,10 @@
  * tile_core and applies the boxes.
  *
  * One instance: the ARexx port AMTILE. A second start sends its command-line word to that port and exits with
- * its return code. Commands: ON OFF TOGGLE RETILE RATIO <n> GAP <n> STATUS QUIT. STATUS answers
- * "on|off <tiled windows> <retile count>"; the retile count rises each time boxes are applied (the rig's
- * sentinel that this code ran). While on, a timer.device request polls the screen every TILE_POLL_MICROS; a
+ * its return code. Commands: ON OFF TOGGLE RETILE GAP <n> STATUS QUIT, LAYOUT <name>|NEXT|PREV,
+ * RATIO <n>|+n|-n, NMASTER <n>|+n|-n, CYCLE NEXT|PREV, PROMOTE. STATUS answers
+ * "on|off <tiled windows> <retile count> <layout> <nmaster> <ratio>"; the retile count rises each time boxes are
+ * applied (the rig's sentinel that this code ran). LAYOUT, RATIO and NMASTER persist (amconf hidden keys). While on, a timer.device request polls the screen every TILE_POLL_MICROS; a
  * retile happens only when the set of tiled windows changed (or on ON, RETILE, RATIO, GAP).
  *
  * Lock discipline is win.c's: the screen walk and the membership check run with IBase locked, and
@@ -28,6 +29,7 @@
 #include "tile_core.h"
 #include "amconf_dos.h"
 #include "win_apply.h"
+#include "amconf_core.h"
 #include "../handler/frontscr.h"
 
 #define PORT_NAME      "AMTILE"
@@ -55,6 +57,8 @@ static int tm_open, tm_busy;
 static int g_on, g_quit;
 static int g_gap = TILE_GAP_DEFAULT;   /* the tile-gap key of the Amarchy settings file, read at start and on RETILE */
 static int g_ratio = TILE_RATIO_DEFAULT;
+static int g_layout = TL_DWINDLE, g_nmaster = 1;
+static long g_last_raised;   /* monocle: the window last brought to front, 0 outside monocle */
 static long g_order[TILE_MAX];
 static int g_norder;
 static long g_scr_id;     /* the screen g_order was built on (tile_screen_switch) */
@@ -70,21 +74,54 @@ static int starts(const char *cmd, const char *word)
     return *cmd == 0 || *cmd == ' ';
 }
 
-/* The number after the first word, in lo..hi. */
-static int num_arg(const char *cmd, int lo, int hi, int *out)
+/* The number after the first word, in lo..hi. rel NULL: digits only. rel non-NULL: an optional leading '+' or '-' is
+ * accepted and *rel = +1/-1 (0 without a sign); with a sign the magnitude must be 1..(hi-lo) and *out holds the
+ * magnitude, without a sign lo..hi as before. */
+static int num_arg(const char *cmd, int lo, int hi, int *out, int *rel)
 {
     long v = 0;
-    int any = 0;
+    int any = 0, sign = 0;
     while (*cmd && *cmd != ' ')
         cmd++;
     while (*cmd == ' ')
         cmd++;
-    for (; *cmd >= '0' && *cmd <= '9'; cmd++, any = 1)
+    if (rel && (*cmd == '+' || *cmd == '-'))
+        sign = *cmd++ == '+' ? 1 : -1;
+    for (; *cmd >= '0' && *cmd <= '9'; cmd++, any = 1) {
         v = v * 10 + (*cmd - '0');
-    if (!any || *cmd || v < lo || v > hi)
+        if (v > 100000L)
+            return 0;
+    }
+    if (!any || *cmd)
+        return 0;
+    if (sign ? (v < 1 || v > hi - lo) : (v < lo || v > hi))
         return 0;
     *out = (int)v;
+    if (rel)
+        *rel = sign;
     return 1;
+}
+
+/* The first word after the verb into w (cap bytes), 0 when there is none or it does not fit. */
+static int word_arg(const char *cmd, char *w, int cap)
+{
+    int n = 0;
+    while (*cmd && *cmd != ' ')
+        cmd++;
+    while (*cmd == ' ')
+        cmd++;
+    while (cmd[n] && cmd[n] != ' ')
+        n++;
+    if (n == 0 || n >= cap)
+        return 0;
+    memcpy(w, cmd, (size_t)n);
+    w[n] = 0;
+    return 1;
+}
+
+static int clamp_int(int v, int lo, int hi)
+{
+    return v < lo ? lo : v > hi ? hi : v;
 }
 
 static char *put_num(char *p, long n)
@@ -203,6 +240,7 @@ typedef struct snap {
     char title[TILE_MAX][TITLE_MAX];
     int n;
     win_screen scr;
+    long active;   /* the active window at the walk, 0 when none */
 } snap;
 
 /* IBase locked: the screen's windows copied into sn. */
@@ -210,6 +248,7 @@ static void walk(const struct Screen *scr, snap *sn)
 {
     const struct Window *x;
     sn->n = 0;
+    sn->active = (long)IntuitionBase->ActiveWindow;
     for (x = scr->FirstWindow; x && sn->n < TILE_MAX; x = x->NextWindow) {
         tile_win *t = &sn->w[sn->n];
         memset(t, 0, sizeof *t);
@@ -226,13 +265,43 @@ static void walk(const struct Screen *scr, snap *sn)
     }
 }
 
-/* The gap from the Amarchy settings file (amconf), the one reader. A GAP n command wins until the next RETILE (or
- * start), which reads the file again. */
-static void gap_load(void)
+/* Gap, ratio, nmaster and layout from the Amarchy settings file (amconf), the one reader. A GAP n command wins until
+ * the next RETILE (or start), which reads the file again; LAYOUT, RATIO and NMASTER write through (cfg_save). */
+static void cfg_load(void)
 {
     am_prefs p;
+    int k;
     amconf_load(&p);
     g_gap = amconf_tile_gap(&p);
+    g_ratio = amconf_tile_ratio(&p);
+    g_nmaster = amconf_tile_nmaster(&p);
+    g_layout = tile_layout_parse(amconf_tile_layout(&p), &k) ? k : TL_DWINDLE;
+}
+
+/* The only write path: the layout, ratio and nmaster into ENVARC: then ENV: (gthemes_dos.c's gt_dos_select pattern).
+ * A failed save is logged and does not fail the command. */
+static void cfg_save(void)
+{
+    am_prefs p;
+    int failed = 0;
+    char *e;
+    amconf_load(&p);
+    strcpy(p.val[AM_TILELAYOUT], tile_layout_name(g_layout));
+    e = put_num(p.val[AM_TILERATIO], g_ratio);
+    *e = 0;
+    e = put_num(p.val[AM_TILENMASTER], g_nmaster);
+    *e = 0;
+    if (amconf_save(&p, 1, &failed) != PREFS_INSTALL_OK)
+        PutStr((STRPTR)"AmTile: could not save the layout settings\n");
+}
+
+/* The active window's id (the same read as win.c), 0 when none. */
+static long active_id(void)
+{
+    ULONG lock = LockIBase(0);
+    long id = (long)IntuitionBase->ActiveWindow;
+    UnlockIBase(lock);
+    return id;
 }
 
 /* One look at the screen. force: retile even when the tiled set is unchanged. */
@@ -264,7 +333,7 @@ static void tick(int force)
             for (j = 0; j < sn->n; j++)
                 if (sn->w[j].id == g_order[i])
                     in[i] = sn->w[j];
-        tile_layout(TL_MASTER, &sn->scr, g_gap, g_ratio, 1, g_norder, in, out);
+        tile_layout(g_layout, &sn->scr, g_gap, g_ratio, g_nmaster, g_norder, in, out);
         lock = LockIBase(0);
         if (screen_alive(scr))
             for (i = 0; i < g_norder; i++)
@@ -272,6 +341,22 @@ static void tick(int force)
                     win_apply_box((struct Window *)g_order[i], &out[i]);
         UnlockIBase(lock);
         g_retiles++;
+    }
+    /* monocle: the active window on top, re-checked on every poll so activating another window raises it */
+    if (g_layout == TL_MONOCLE && g_norder > 0) {
+        long target = g_order[0];
+        for (i = 0; i < g_norder; i++)
+            if (g_order[i] == sn->active)
+                target = sn->active;
+        if (target != g_last_raised) {
+            lock = LockIBase(0);
+            if (screen_alive(scr) && window_alive(scr, (struct Window *)target))
+                win_raise((struct Window *)target);
+            UnlockIBase(lock);
+            g_last_raised = target;
+        }
+    } else {
+        g_last_raised = 0;
     }
     FreeVec(sn);
 }
@@ -311,17 +396,75 @@ static long command(void *ud, const char *cmd, char *out)
     } else if (starts(cmd, "TOGGLE")) {
         set_on(!g_on);
     } else if (starts(cmd, "RETILE")) {
-        gap_load();
+        cfg_load();
+        if (g_on)
+            tick(1);
+    } else if (starts(cmd, "LAYOUT")) {
+        char w[24];
+        int k;
+        if (!word_arg(cmd, w, sizeof w))
+            return 10;
+        if (starts(w, "NEXT"))
+            k = tile_layout_step(g_layout, 1);
+        else if (starts(w, "PREV"))
+            k = tile_layout_step(g_layout, -1);
+        else if (!tile_layout_parse(w, &k))
+            return 10;
+        g_layout = k;
+        cfg_save();
         if (g_on)
             tick(1);
     } else if (starts(cmd, "RATIO")) {
-        if (!num_arg(cmd, TILE_RATIO_MIN, TILE_RATIO_MAX, &v))
+        int rel = 0;
+        if (!num_arg(cmd, TILE_RATIO_MIN, TILE_RATIO_MAX, &v, &rel))
             return 10;
-        g_ratio = v;
+        g_ratio = rel ? clamp_int(g_ratio + rel * v, TILE_RATIO_MIN, TILE_RATIO_MAX) : v;
+        cfg_save();
         if (g_on)
             tick(1);
+    } else if (starts(cmd, "NMASTER")) {
+        int rel = 0;
+        if (!num_arg(cmd, 1, TILE_NMASTER_MAX, &v, &rel))
+            return 10;
+        g_nmaster = rel ? clamp_int(g_nmaster + rel * v, 1, TILE_NMASTER_MAX) : v;
+        cfg_save();
+        if (g_on)
+            tick(1);
+    } else if (starts(cmd, "CYCLE")) {
+        char w[8];
+        int dir, idx;
+        long next;
+        struct Screen *scr;
+        ULONG lock;
+        if (!word_arg(cmd, w, sizeof w))
+            return 10;
+        if (starts(w, "NEXT"))
+            dir = 1;
+        else if (starts(w, "PREV"))
+            dir = -1;
+        else
+            return 10;
+        if (!g_on || g_norder == 0)
+            return 5;
+        idx = tile_cycle(g_order, g_norder, active_id(), dir);
+        next = g_order[idx];
+        scr = front_scr();
+        lock = LockIBase(0);
+        v = scr && screen_alive(scr) && window_alive(scr, (struct Window *)next);
+        if (v)
+            win_raise((struct Window *)next);
+        UnlockIBase(lock);
+        if (!v)
+            return 5;
+        ActivateWindow((struct Window *)next);
+        if (g_layout == TL_MONOCLE)
+            g_last_raised = next;
+    } else if (starts(cmd, "PROMOTE")) {
+        if (!g_on || g_norder == 0 || !tile_promote(g_order, g_norder, active_id()))
+            return 5;
+        tick(1);
     } else if (starts(cmd, "GAP")) {
-        if (!num_arg(cmd, 0, 64, &v))
+        if (!num_arg(cmd, 0, 64, &v, 0))
             return 10;
         g_gap = v;
         if (g_on)
@@ -333,6 +476,13 @@ static long command(void *ud, const char *cmd, char *out)
         p = put_num(p, g_norder);
         *p++ = ' ';
         p = put_num(p, g_retiles);
+        *p++ = ' ';
+        strcpy(p, tile_layout_name(g_layout));
+        p += strlen(p);
+        *p++ = ' ';
+        p = put_num(p, g_nmaster);
+        *p++ = ' ';
+        p = put_num(p, g_ratio);
         *p = 0;
     } else if (starts(cmd, "QUIT")) {
         g_quit = 1;
@@ -442,7 +592,7 @@ int main(int argc, char **argv)
         shutdown();
         return 10;
     }
-    gap_load();
+    cfg_load();
     command(0, line, result);
     while (!g_quit) {
         ULONG rx = rexx_host_sigmask(&rexx), cx = 1UL << cx_port->mp_SigBit, tm = 1UL << tm_port->mp_SigBit;

@@ -14,4 +14,7 @@ void win_box_of(const struct Window *w, win_box *b, win_screen *s);
 /* IBase locked: queue the box to Intuition (ChangeWindowBox only queues; it never waits on the lock). */
 void win_apply_box(struct Window *w, const win_box *b);
 
+/* IBase locked: queue WindowToFront (win.c WV_FRONT / WV_CYCLE and AmTile's monocle and CYCLE share it). */
+void win_raise(struct Window *w);
+
 #endif
