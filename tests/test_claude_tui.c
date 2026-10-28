@@ -1800,6 +1800,68 @@ static void set_cb(void *u, const char *k, const char *v)
     set_v = v;
 }
 
+/* F1: one SGR string that names the 16 palette colours (30-37, 90-97, 40-47, 100-107) and attributes only: no 38 or 48 */
+static int sgr_palette_only(const char *s)
+{
+    long v = 0;
+    int any = 0;
+    if (strncmp(s, "\033[", 2))
+        return s[0] == 0;
+    for (s += 2;; s++) {
+        if (*s >= '0' && *s <= '9') {
+            v = v * 10 + (*s - '0');
+            any = 1;
+        } else {
+            if (any && (v == 38 || v == 48 || (v >= 10 && v < 30 && v != 22 && v != 24 && v != 27) || v > 107 ||
+                        (v > 49 && v < 90)))
+                return 0;
+            v = 0;
+            any = 0;
+            if (*s != ';')
+                return *s == 'm';
+        }
+    }
+}
+
+/* F1: every colour C:Claude draws follows the console palette: UP-Term's theme switch recolours it */
+static void palette_follow(void)
+{
+    static cl_pitheme p;
+    hl_theme h;
+    char sgr[48];
+    int i, k;
+    for (i = 0; i < THEME_COUNT; i++) {
+        const cl_theme *t = &cl_themes[i];
+        const char *field[13];
+        field[0] = t->box;
+        field[1] = t->spin;
+        field[2] = t->sel;
+        field[3] = t->accent;
+        field[4] = t->accept;
+        field[5] = t->plan;
+        field[6] = t->bash;
+        field[7] = t->memory;
+        field[8] = t->ok;
+        field[9] = t->err;
+        field[10] = t->add;
+        field[11] = t->del;
+        field[12] = t->dim;
+        for (k = 0; k < 13; k++)
+            CHECK(sgr_palette_only(field[k]));
+        CHECK(hl_theme_builtin(&h, t->hl));
+        for (k = 0; k < HL_NCLASS; k++)
+            CHECK(!HL_IS_RGB(h.s[k].fg) && !HL_IS_RGB(h.s[k].bg) && (h.s[k].fg < 16 || h.s[k].fg == HL_DEFAULT));
+    }
+    for (i = 0; i < THEME_NAMED; i++)       /* /color: orange and pink too */
+        CHECK(theme_named(theme_named_names[i]) && sgr_palette_only(theme_named(theme_named_names[i])));
+    /* pi's system theme (depth 16): every role */
+    pitheme_system(&p);
+    for (i = 0; i < PR_COUNT; i++) {
+        pitheme_sgr(&p, i, sgr);
+        CHECK(sgr_palette_only(sgr));
+    }
+}
+
 static void themes(void)
 {
     static const char *script[] = { 0 };
@@ -2594,6 +2656,7 @@ void suite_claude_tui(void)
     loop_cancel_keys();
     thinking_shown();
     themes();
+    palette_follow();
     notifications();
     pi_look_settings_reach_the_screen();
     main_editor_word_rule_follows_the_look();

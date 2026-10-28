@@ -42,9 +42,10 @@ const cl_theme *theme_get(const char *name)
 
 const char *const theme_named_names[THEME_NAMED] = { "red", "blue", "green", "yellow", "purple", "orange", "pink",
                                                     "cyan" };
-/* orange and pink have no ANSI colour of their own: the 256-colour cube's */
+/* Palette indices 0-15 only, so every named colour follows the console palette (UP-Term themes recolour it). Orange
+ * and pink have no ANSI colour of their own: bright red and bright magenta stand in, apart from red and purple. */
 static const char *const named_sgr[THEME_NAMED] = { "\033[31m", "\033[34m", "\033[32m", "\033[33m", "\033[35m",
-                                                   "\033[38;5;208m", "\033[38;5;205m", "\033[36m" };
+                                                   "\033[91m", "\033[95m", "\033[36m" };
 
 const char *theme_named(const char *name)
 {
