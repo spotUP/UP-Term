@@ -22,6 +22,9 @@ typedef struct mg_screen {
     int w, h;                   /* the screen the menu opens on, pixels */
     int rx, ry;                 /* DisplayInfo Resolution ticks of one pixel; 0, 0 = square */
     int minimal;                /* 1 = the minimal menu (menu-style = minimal): no border, no icon or chevron gap */
+    int anchored;               /* 1 = the menu hangs from (ax, ay): its right edge at ax, its bottom edge at ay, so it
+                                 * opens upward from a bottom bar (the Amarchy bar's agents panel); 0 = centred */
+    int ax, ay;
 } mg_screen;
 
 /* The columns that look as long as `lines` lines (lines when the aspect is unknown). */

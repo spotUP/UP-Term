@@ -22,6 +22,7 @@ struct ms_msg {
     LONG kind;
     char spec[MS_SPEC];   /* the full XCON: spec of the window; the server opens it itself */
     char node[MS_NODE];   /* the start node, empty for the root */
+    LONG anchored, ax, ay; /* the drawn menu hangs from (ax, ay): right edge at ax, bottom edge at ay */
 };
 
 /* The commodity's side: one static message, one reply port, and the two things only act.c knows. */

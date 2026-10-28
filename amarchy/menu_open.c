@@ -111,6 +111,9 @@ static void srv_send(void *ctx, const ms_req *r)
     s->msg.m.mn_Length = sizeof s->msg;
     s->msg.m.mn_ReplyPort = s->reply;
     s->msg.kind = r->kind;
+    s->msg.anchored = r->anchored;
+    s->msg.ax = r->ax;
+    s->msg.ay = r->ay;
     strncpy(s->msg.spec, s->spec, MS_SPEC - 1);
     strncpy(s->msg.node, r->node ? r->node : "", MS_NODE - 1);
     Forbid();

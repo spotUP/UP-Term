@@ -21,7 +21,8 @@ static void f_find(void *c, int *found, int *alive, int *out)
     *out = f->outstanding;
 }
 static void f_take(void *c) { ((fake *)c)->took++; }
-static void f_send(void *c, const ms_req *r) { (void)r; ((fake *)c)->sent++; }
+static ms_req g_sent;        /* the last request the server was sent */
+static void f_send(void *c, const ms_req *r) { g_sent = *r; ((fake *)c)->sent++; }
 static void f_spawn(void *c, const ms_req *r) { (void)r; ((fake *)c)->spawned++; }
 static void f_start(void *c) { ((fake *)c)->started++; }
 static long f_now(void *c) { return ((fake *)c)->clock; }
@@ -44,6 +45,7 @@ static int open_once(fake *f, ms_state *st)
     o.st = st;
     r.kind = 0;
     r.node = 0;
+    r.anchored = r.ax = r.ay = 0;
     return ms_open(&o, &r);
 }
 
@@ -56,6 +58,36 @@ static void test_live_server(void)
     CHECK_INT(f.spawned, 0);
     CHECK_INT(f.started, 0);
     CHECK_INT(f.took, 0);
+}
+
+/* The bar's agents panel asks for a menu hung from a point: ms_open hands the anchor on to send, which puts it in the
+ * message the drawn menu server reads (amarchy/menu_open.c srv_send; gui.c gui_open). */
+static void test_anchor_reaches_send(void)
+{
+    fake f = { 1, 1, 0, 100, 0, 0, 0, 0, 0, 0, 0 };
+    ms_state st = { 0, 0, 0 };
+    ms_ops o;
+    ms_req r;
+    o.ctx = &f;
+    o.find = f_find;
+    o.take_over = f_take;
+    o.send = f_send;
+    o.spawn = f_spawn;
+    o.start_server = f_start;
+    o.now = f_now;
+    o.stamp = f_stamp;
+    o.quit = f_quit;
+    o.st = &st;
+    r.kind = 0;
+    r.node = "agents";
+    r.anchored = 1;
+    r.ax = 640;
+    r.ay = 246;
+    CHECK_INT(ms_open(&o, &r), MS_SEND);
+    CHECK_INT(g_sent.anchored, 1);
+    CHECK_INT(g_sent.ax, 640);
+    CHECK_INT(g_sent.ay, 246);
+    CHECK_STR(g_sent.node, "agents");
 }
 
 static void test_no_port(void)
@@ -172,6 +204,7 @@ static void test_menu_ignores_hangup(void)
 void suite_menusrv(void)
 {
     test_live_server();
+    test_anchor_reaches_send();
     test_no_port();
     test_stale_port();
     test_unreplied();

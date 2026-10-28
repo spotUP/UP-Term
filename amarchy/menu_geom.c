@@ -136,8 +136,13 @@ void mg_layout(mg_geom *g, const mg_font *f, int w, int n, const mg_screen *s)
     }
     g->w = w;
     g->h = chrome + g->list_h;
-    g->x = (s->w - g->w) / 2;
-    g->y = imax(0, (s->h - g->h) / 2);
+    if (s->anchored) {
+        g->x = imax(0, imin(s->ax - g->w, s->w - g->w));
+        g->y = imax(0, imin(s->ay - g->h, s->h - g->h));
+    } else {
+        g->x = (s->w - g->w) / 2;
+        g->y = imax(0, (s->h - g->h) / 2);
+    }
     g->head_x = g->list_x = m->bx + m->hpad;
     g->head_w = g->list_w = w - 2 * (m->bx + m->hpad);
     g->head_y = m->by + m->vpad;

@@ -1473,7 +1473,7 @@ static void pick_font(gui *g)
  * state reset first, so the warm server (`serve`) and the cold `menu` / `viewer` command lines run the same
  * code (plan 2026-10-27-amarchy-gui-warm.md). Keymap, index, screen, pens, font and icons load per open: a
  * settings or theme change shows at the next press. The libraries stay open (main). Returns the exit code. */
-static int gui_open(int viewer, const char *node)
+static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
 {
     gui *g = &G;
     int rc = 0;
@@ -1524,6 +1524,9 @@ static int gui_open(int viewer, const char *node)
     g->ms.w = g->scr->Width;
     g->ms.h = g->scr->Height;
     g->ms.minimal = minimal;
+    g->ms.anchored = anchored;
+    g->ms.ax = ax;
+    g->ms.ay = ay;
     pens_get(g, 0);
     if (app_icons == UC_ICONS_AMIGA && !minimal)
         ig_open(g->scr, ixs.n);      /* no icon.library V44: the index rows keep the generic glyph */
@@ -1684,7 +1687,7 @@ static int serve(void)
             ReplyMsg(&m->m);                   /* at once: the commodity never waits for the menu */
             if (!quit) {
                 q.node[sizeof q.node - 1] = 0;
-                gui_open(q.kind == MS_VIEWER, q.node[0] && strcmp(q.node, "root") ? q.node : "");
+                gui_open(q.kind == MS_VIEWER, q.node[0] && strcmp(q.node, "root") ? q.node : "", (int)q.anchored, (int)q.ax, (int)q.ay);
             }
         }
     }
@@ -1715,7 +1718,7 @@ int main(int argc, char **argv)
     } else if (!strcmp(argv[1], "serve"))
         rc = serve();
     else
-        rc = gui_open(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "");
+        rc = gui_open(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "", 0, 0, 0);
     ix_pkg_free(&ixs);
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);

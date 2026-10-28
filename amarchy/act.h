@@ -14,6 +14,9 @@ int act_in_window(const char *cmd, int cols, int rows);
  * menu, act_run(line) for the drawn one) and a throttled server restart. dir: where the programs live;
  * kind: KA_MENU or KA_VIEWER; node: the start node ("root" or empty for the top). Always 1. */
 int act_menu_open(const char *dir, int text, int kind, const char *node, const char *line, int cols, int rows);
+/* act_menu_open with the drawn menu hung from (ax, ay) (right edge, bottom edge): the Amarchy bar's panel */
+int act_menu_open_at(const char *dir, int text, int kind, const char *node, const char *line, int cols, int rows,
+                     int ax, int ay);
 /* Start `amarchy-menu serve` and `amarchy-gui serve` (after cx_install); not waited for. 1 when both were tried. */
 int act_menu_server_start(const char *dir);
 /* Commodity quit: close a showing menu, end both servers (bounded wait each). */

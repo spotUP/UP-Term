@@ -30,6 +30,7 @@ int ms_route(int found, int alive, int outstanding);
 typedef struct {
     int kind;                   /* menu or viewer: opaque here, copied into the message by send */
     const char *node;           /* the start node, 0 for the root */
+    int anchored, ax, ay;       /* the drawn menu hangs from (ax, ay) (mg_screen.anchored) instead of the centre */
 } ms_req;
 
 typedef struct {
