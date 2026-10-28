@@ -46,6 +46,7 @@ WATCH = 0.25                    # AmTile's poll period (tile.c); a retile is exp
 TITLE_DEFAULT = 14             # rig evidence (rig 7); wasabi exposes no screen BarHeight
 OPT = {'gap': 4, 'ratio': 55, 'layout': 'dwindle', 'nmaster': 1, 'title': None, 'screen': None}   # layout/nmaster/ratio: boot defaults (L1)
 STATE = {'wins': []}            # addrs of the windows this script opened, oldest first
+WIN_TITLE = 'UP-Term'           # title of every window ami.open_window opens
 HELPER = []
 
 
@@ -166,11 +167,21 @@ def expected(n, layout=None, nmaster=None, ratio=None):
     return [tuple(int(x) for x in l.split()[2:6]) for l in r.stdout.splitlines()]
 
 
+def uterm_addrs():
+    return {a for a, b in boxes().items() if b[4] == WIN_TITLE}
+
+
 def open_win():
-    new = ami.open_window()
-    if not new:
+    """open one UP-Term window and return the address of the UP-Term window that was not there before. ami.open_window's
+    own diff keys on (addr, task, title): a window whose task name changes after it opened (or a Workbench window) looks
+    new, so its first entry can be an old window, and the real new one then leaked untracked (rig 7, run 2)"""
+    before = uterm_addrs()
+    if not ami.open_window():
         return None
-    addr = new[0]['addr']
+    new = wait_for(lambda: uterm_addrs() - before, 10)
+    if not new or len(new) != 1:
+        return None
+    addr = next(iter(new))
     STATE['wins'].append(addr)
     return addr
 
@@ -192,9 +203,27 @@ def close_win(addr):
             break
         else:
             return False
-    if addr in STATE['wins']:
+    gone = wait_for(lambda: addr not in boxes(), 3) is not None      # a click that closed nothing must not drop the window from STATE
+    if gone and addr in STATE['wins']:
         STATE['wins'].remove(addr)
-    return True
+    return gone
+
+
+def known_window_set():
+    """every step starts from the windows the script tracks and no others: addresses that are gone leave STATE['wins'],
+    and any other UP-Term window on the front screen (leaked by an earlier step or run, or opened by hand) is closed;
+    returns the number closed"""
+    STATE['wins'] = [a for a in STATE['wins'] if a in boxes()]
+    closed = 0
+    for _ in range(12):
+        stray = [a for a, b in boxes().items() if b[4] == WIN_TITLE and a not in STATE['wins']]
+        if not stray:
+            break
+        if not close_win(stray[0]):
+            break
+        closed += 1
+    time.sleep(WATCH * 3)
+    return closed
 
 
 def tiled_boxes_match(n, secs=3, **kw):
@@ -249,17 +278,22 @@ def hotkey(letter):
 
 
 def topmost():
-    """address of the front-most window of mine: the one whose centre no other window covers (wasabi covered(), the
-    test ami.raise_window uses); None when none or several are uncovered"""
+    """address of the window of mine that Intuition's layer hit test puts on top. wasabi's window list is NOT layer order
+    (the listing never moved after WindowToFront or CYCLE on rig 7; covered() on it is blind). A left click is delivered
+    to, and activates, the topmost layer under the pointer (WhichLayer) and does not change the depth order, so the
+    click at the centre of the stack followed by reading the active flag names the layer top. Needs the windows to
+    overlap at that point (monocle, or any point inside the first window's box); None when no window of mine is active"""
+    mine_now = mine()
+    if not mine_now:
+        return None
+    _, b = mine_now[0]
+    x, y = b[0] + b[2] // 2, b[1] + b[3] // 2
     with ami._conn() as conn:
-        m = ami._m()
-        scr = m.read_ui(conn)
-        if not scr:
-            return None
-        sc = scr[0]
-        free = [w['addr'] for w in sc['windows'] if w['addr'] in STATE['wins']
-                and not m.covered(sc, w, w['left'] + w['width'] // 2, w['top'] + w['height'] // 2)]
-    return free[0] if len(free) == 1 else None
+        ami._mouse(conn, 1, 0, 1, x, y)
+    time.sleep(0.3)
+    sc = front_screen()
+    act = [w['addr'] for w in sc['windows'] if w['active']] if sc else []
+    return act[0] if len(act) == 1 and act[0] in STATE['wins'] else None
 
 
 def activate(addr):
@@ -290,10 +324,25 @@ def env_text():
     return c.run('Type ' + ENV_FILE)[1].strip()
 
 
+def strip_tile_prefs():
+    """no tile-layout/ratio/nmaster keys in the prefs: AmTile starts at its boot default (an earlier run's persisted layout
+    otherwise changes the cells every later step expects)"""
+    for d in ('ENV:', 'ENVARC:'):
+        f = d + 'Amarchy/prefs'
+        raw = ami.read_file(f)
+        if raw is not None:
+            keep = [l for l in raw.decode('latin-1').splitlines()
+                    if not l.strip().startswith(('tile-layout', 'tile-ratio', 'tile-nmaster'))]
+            with tempfile.NamedTemporaryFile('w', delete=False, encoding='latin-1') as t:
+                t.write('\n'.join(keep) + '\n')
+            ami.put(t.name, f)
+
+
 def s_start():
     send('AMTILE', 'QUIT')
     send('AMARCHY', 'QUIT')
     time.sleep(1.5)
+    strip_tile_prefs()
     set_env('off')
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     ok = wait_for(lambda: send('AMARCHY', 'STATUS', timeout=5)[0] == 0, 10)
@@ -372,15 +421,7 @@ def s_layout_default():
     """boot default L1: with no tile-* keys in the prefs AmTile starts dwindle 1 55"""
     send('AMTILE', 'QUIT')
     wait_for(lambda: tile_status() is None, 5)
-    for d in ('ENV:', 'ENVARC:'):
-        f = d + 'Amarchy/prefs'
-        raw = ami.read_file(f)
-        if raw is not None:
-            keep = [l for l in raw.decode('latin-1').splitlines()
-                    if not l.strip().startswith(('tile-layout', 'tile-ratio', 'tile-nmaster'))]
-            with tempfile.NamedTemporaryFile('w', delete=False, encoding='latin-1') as t:
-                t.write('\n'.join(keep) + '\n')
-            ami.put(t.name, f)
+    strip_tile_prefs()
     set_env('on')
     c.run('Run >NIL: <NIL: %s/AmTile ON' % paths.UPTERM_BIN)
     st = wait_for(tile_status, 10)
@@ -466,6 +507,7 @@ def s_promote():
     cmd('NMASTER 1')
     cmd('LAYOUT master-stack')
     status_is(layout='master-stack', nmaster=1, tiled=3)
+    tiled_boxes_match(3, layout='master-stack', nmaster=1)      # STATUS changes before the windows move: act on the settled cells
     target = STATE['wins'][1]      # STATE['wins'] is oldest first: the middle window of three is the second-newest
     old = boxes().get(target)
     act = activate(target)
@@ -588,6 +630,7 @@ def main():
         if a.only and a.only != name:
             continue
         try:
+            known_window_set()
             ok, detail = fn()
         except Exception as e:               # a step that cannot run is a failure
             ok, detail = False, 'exception %r' % (e,)
