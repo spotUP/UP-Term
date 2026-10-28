@@ -259,6 +259,24 @@ If WARN
   C:Assign >NIL: UP-Term: VTC:%s
 EndIf""" % paths.UPTERM_DRAWER
 
+# RIG-NO-THEMES: the kit ships UP-Term:Amarchy/Themes and FONTS:JetBrainsMono.ttf; a rig whose kit is older or
+# absent has neither (empty theme list, bitmap menu font). `install` stages both in VTC: (stage_amarchy_assets),
+# the boot puts them where the kit would, only where they are missing.
+AMARCHY_ASSETS_BOOT = """C:Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  If NOT EXISTS UP-Term:Amarchy/Themes
+    If EXISTS VTC:amarchy-themes
+      C:MakeDir >NIL: UP-Term:Amarchy UP-Term:Amarchy/Themes
+      C:Copy >NIL: VTC:amarchy-themes/#? UP-Term:Amarchy/Themes CLONE
+    EndIf
+  EndIf
+EndIf
+If NOT EXISTS FONTS:JetBrainsMono.ttf
+  If EXISTS VTC:fonts/JetBrainsMono.ttf
+    C:Copy >NIL: VTC:fonts/JetBrainsMono.ttf FONTS: CLONE
+  EndIf
+EndIf"""
+
 GO = """FailAt 21
 Echo >BOOTX:boot.log "go started"
 %(shadows)s
@@ -314,6 +332,7 @@ EndIf
 ; replaces this one. ENVARC:up-term/Dir is no sign of a kit: an installer_rig
 ; run can leave it naming a drawer it deleted (rig 1, 2026-10-13).
 %(upterm_assign)s
+%(amarchy_assets)s
 ; no global TERM: a kit sets none either (vsh sets it in UP-Term windows, and a
 ; ROM CON: window with TERM=vtcon would be sent xterm sequences)
 C:SetEnv TERMINFO /VTC/terminfo
@@ -347,7 +366,7 @@ Run >NIL: SYS:System/RexxMast
 C:SetEnv wasabi.key %(key)s
 C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -978,6 +997,24 @@ def stage_upterm(dest, vsh):
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"),
                     str(dest.with_name(dest.name + ".info")), "--drawer"], check=True)
 
+def stage_amarchy_assets(vtc):
+    """RIG-NO-THEMES: dist/amarchy-themes to VTC:amarchy-themes and the kit's JetBrainsMono.ttf (the
+    Makefile's JBMONO_TTF, installed as Files/fonts/JetBrainsMono.ttf) to VTC:fonts; the boot
+    (AMARCHY_ASSETS_BOOT) puts them at UP-Term:Amarchy/Themes and FONTS:."""
+    themes = sorted((ROOT / "dist/amarchy-themes").glob("*.theme"))
+    if themes:
+        (vtc / "amarchy-themes").mkdir(parents=True, exist_ok=True)
+        for f in themes:
+            shutil.copyfile(f, vtc / "amarchy-themes" / f.name)
+    else:
+        print("no themes in %s: the rig's theme list stays empty" % (ROOT / "dist/amarchy-themes"))
+    ttf = ROOT / "build/jbmono/JetBrainsMono-Regular.ttf"
+    if ttf.is_file():
+        (vtc / "fonts").mkdir(exist_ok=True)
+        shutil.copyfile(ttf, vtc / "fonts/JetBrainsMono.ttf")
+    else:
+        print("no %s: run make jbmono, or the menu falls back to a bitmap font" % ttf)
+
 def clean_stale_icons(vtc):
     """Icons at the root of the host drawer that belong to nothing the rig or a kit has: VTC:UP-Term and
     VTC:UP-Term.info (a launcher project copied there by hand on 2026-09-29 while P8 was written; no committed
@@ -1189,6 +1226,7 @@ def _install():
     # refreshed only VTC:, so the start [WARN] kept listing Apps/bin programs (vtcon-a1 P7, 2026-10-27)
     refresh_programs(RIG / "vtc", build_amiga(), VTC_REQUIRED)
     refresh_kit_shadows(RIG / "vtc")
+    stage_amarchy_assets(RIG / "vtc")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
     # to VTC:themes (prefs_theme_drawer, W30)
