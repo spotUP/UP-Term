@@ -17,6 +17,7 @@
 #include "win.h"
 #include "gthemes_dos.h"
 #include "leaf.h"
+#include "rexx_host.h"
 #include "clipwatch.h"
 #include "wblaunch.h"
 #include "menu_core.h"
@@ -30,7 +31,6 @@
 #include "menu_open.h"
 #include "keymap_default.inc"
 
-struct RxsLib *RexxSysBase;
 
 /* cmd begins with word, any case */
 static int starts(const char *cmd, const char *word)
@@ -49,7 +49,8 @@ const char amarchy_stack_cookie[] = "$STACK: 16384";
 #define NNOTIFY PREFS_NNOTIFY_AMARCHY /* the ENV: copies only: prefs_core.h says why */
 static struct NotifyRequest nr[NNOTIFY];
 static int nr_on[NNOTIFY];
-static struct MsgPort *rexx_port, *notify_port;
+static struct rexx_host rexx;
+static struct MsgPort *notify_port;
 static keymap g_km;
 static long g_hits;
 static int g_quit;
@@ -200,34 +201,25 @@ static void notify_stop(void)
         ReplyMsg(m);
 }
 
-static void rexx_serve(void)
+static long rexx_cmd(void *ud, const char *cmd, char *out)
 {
-    struct RexxMsg *m;
-    while ((m = (struct RexxMsg *)GetMsg(rexx_port)) != 0) {
-        const char *cmd = (const char *)m->rm_Args[0];
-        char out[96];
-        long rc = 0;
-        out[0] = 0;
-        if (starts(cmd, "STATUS"))
-            status_text(out, sizeof(out));
-        else if (starts(cmd, "RELOAD"))
-            reload();
-        else if (starts(cmd, "RUN"))
-            rc = do_row(parse_int(cmd + 3)) ? 0 : 5;
-        else if (starts(cmd, "WIN") && (cmd[3] == ' ' || cmd[3] == '\t'))
-            rc = win_port(cmd + 4);
-        else if (starts(cmd, "QUIT"))
-            g_quit = 1;
-        else if (starts(cmd, "SHOW"))
-            act_menu_kind(KA_VIEWER, "");
-        else
-            rc = 10;
-        m->rm_Result1 = rc;
-        m->rm_Result2 = 0;
-        if (out[0] && (m->rm_Action & RXFF_RESULT) && RexxSysBase)
-            m->rm_Result2 = (long)CreateArgstring((STRPTR)out, strlen(out));
-        ReplyMsg((struct Message *)m);
-    }
+    long rc = 0;
+    (void)ud;
+    if (starts(cmd, "STATUS"))
+        status_text(out, REXX_HOST_OUT);
+    else if (starts(cmd, "RELOAD"))
+        reload();
+    else if (starts(cmd, "RUN"))
+        rc = do_row(parse_int(cmd + 3)) ? 0 : 5;
+    else if (starts(cmd, "WIN") && (cmd[3] == ' ' || cmd[3] == '\t'))
+        rc = win_port(cmd + 4);
+    else if (starts(cmd, "QUIT"))
+        g_quit = 1;
+    else if (starts(cmd, "SHOW"))
+        act_menu_kind(KA_VIEWER, "");
+    else
+        rc = 10;
+    return rc;
 }
 
 /* WBStartup launches of index rows (Workbench's job, which Directory Opus does not do): the launcher
@@ -298,14 +290,7 @@ int main(void)
         return 5;   /* already running (it was told), or commodities.library is missing */
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
-    RexxSysBase = (struct RxsLib *)OpenLibrary((STRPTR)"rexxsyslib.library", 0);
-    Forbid();
-    rexx_port = FindPort((STRPTR)"AMARCHY") ? 0 : CreateMsgPort();
-    if (rexx_port) {
-        rexx_port->mp_Node.ln_Name = (char *)"AMARCHY";
-        AddPort(rexx_port);
-    }
-    Permit();
+    rexx_host_open(&rexx, "AMARCHY");
     wb_reply = CreateMsgPort();
     Forbid();
     launch_port = wb_reply && !FindPort((STRPTR)LF_LAUNCH_PORT) ? CreateMsgPort() : 0;
@@ -320,7 +305,7 @@ int main(void)
     cx_install(&g_km);
     act_menu_server_start(g_dir);               /* the warm menu server; the first press before it is up opens a menu of its own */
     cxs = cx_sigmask();
-    rxs = rexx_port ? 1UL << rexx_port->mp_SigBit : 0;
+    rxs = rexx_host_sigmask(&rexx);
     nts = notify_port ? 1UL << notify_port->mp_SigBit : 0;
     lps = launch_port ? 1UL << launch_port->mp_SigBit : 0;
     wrs = wb_reply ? 1UL << wb_reply->mp_SigBit : 0;
@@ -342,7 +327,7 @@ int main(void)
         if (sigs & cws)
             cw_changed();
         if (sigs & rxs)
-            rexx_serve();
+            rexx_host_serve(&rexx, rexx_cmd, 0);
         if (sigs & lps)
             launch_serve();
         if (sigs & wrs)
@@ -359,13 +344,7 @@ int main(void)
     notify_stop();
     if (notify_port)
         DeleteMsgPort(notify_port);
-    if (rexx_port) {
-        RemPort(rexx_port);
-        rexx_serve();
-        DeleteMsgPort(rexx_port);
-    }
-    if (RexxSysBase)
-        CloseLibrary((struct Library *)RexxSysBase);
+    rexx_host_close(&rexx, rexx_cmd, 0);
     if (IntuitionBase)
         CloseLibrary((struct Library *)IntuitionBase);
     cx_close();
