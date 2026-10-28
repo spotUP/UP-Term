@@ -818,6 +818,54 @@ class UhcAddOn(unittest.TestCase):
         # the drawer is made on every run, so UHC's own boot block finds it; up-uhc writes no lines of its own
         self.assertFalse(any('User-Startup' in x and x.startswith('Echo >>') for x in S))
 
+    def test_uhc_extbin_is_put_on_the_workbench_path_right_after_the_shell_path(self):
+        """Path ADD changes only the installer's Shell: new UP-Term windows and Amarchy launches copy the Workbench
+        process's path, so WBPath puts the drawer there too, at the top level, with the open-shell hint."""
+        L = self.dos()
+        S = [l.strip() for l in L]
+        path = self.at(L, 'Path UHC:ExtBin ADD')
+        wb = self.at(L, 'WBPath ADD UHC:ExtBin', path)
+        self.assertEqual(self.guards(L, wb), [])
+        hint = [i for i, s in enumerate(S) if i > wb and s.startswith('Echo') and 'Path UHC:ExtBin ADD' in s]
+        self.assertTrue(hint, 'no hint for the Shells that are already open')
+        self.assertIn('already open', S[hint[0]])
+        self.assertNotIn('WBPath REMOVE', ' '.join(S))
+
+    def test_uhc_uninstall_takes_the_workbench_path_node_off_before_anything_is_deleted(self):
+        """The Workbench path holds a lock on UHC:ExtBin: a delete under UHC: before WBPath REMOVE is 'object in use'."""
+        U = [l.strip() for l in (self.A / 'uninstall-body.dos').read_text().splitlines()]
+        U = [x for x in U if x and not x.startswith(';')]
+        rm = U.index('WBPath REMOVE UHC:ExtBin')
+        for x in U[:rm]:
+            self.assertTrue(x.startswith('FailAt'), 'before WBPath REMOVE: ' + x)
+
+    def test_wbpath_is_built_shipped_installed_and_removed_with_the_base(self):
+        mk = (ROOT / 'Makefile').read_text()
+        self.assertRegex(mk, r'\$\(BUILD\)/amiga/WBPath: install/wbpath\.c')
+        self.assertRegex(mk, r'(?m)^amiga:.*\$\(BUILD\)/amiga/WBPath')
+        self.assertRegex(mk, r'cp [^\n]*\$\(BUILD\)/amiga/WBPath [^\n]*\$\(KIT\)/Files/')
+        self.assertIn('tools           Files/WBPath', (ROOT / 'dist/parts.txt').read_text())
+        self.assertIn('\nCopy WBPath C:WBPath CLONE\n', (ROOT / 'dist/install.dos').read_text())
+        self.assertRegex((ROOT / 'dist/Uninstall').read_text(), r'Delete >NIL: [^\n]*\bC:WBPath\b')
+        # an Amiga program with its stack: __stack and the $STACK cookie in the file
+        c = (ROOT / 'install/wbpath.c').read_text()
+        self.assertRegex(c, r'long __stack = \d+;')
+        self.assertRegex(c, r'"\$STACK: \d+"')
+
+    def test_one_shared_command_path_copy_serves_vsh_and_amarchy(self):
+        """No second copy loop: vsh's wb_path() and Amarchy's pl_dup_path()/pl_free_path() use config/cmdpath.h,
+        and Amarchy copies the Workbench process's path first (own CLI path as fallback), UP-Term:bin last."""
+        for f in ('shell/vsh.c', 'amarchy/proclaunch.c', 'amarchy/wblaunch.c'):
+            t = (ROOT / f).read_text()
+            self.assertIn('config/cmdpath.h', t, f)
+            self.assertNotIn('AllocVec(2 * sizeof(BPTR)', t, f)
+        self.assertIn('cmdpath_copy(*field, 0)', (ROOT / 'shell/vsh.c').read_text())
+        pl = (ROOT / 'amarchy/proclaunch.c').read_text()
+        dup = pl[pl.index('BPTR pl_dup_path'):pl.index('void pl_free_path')]
+        self.assertLess(dup.index('cmdpath_workbench()'), dup.index('FindTask(0)'))
+        self.assertLess(dup.index('cmdpath_copy('), dup.index('PL_BIN_DIR'))
+        self.assertIn('cmdpath_free(p)', pl)
+
     def test_uhc_extbin_is_never_made_without_the_variable_pkg_envcheck_reads(self):
         """A bare MakeDir UHC:ExtBin left UHC/EXTBIN unset; UHC's pkg-envcheck then ran MakeDir on the drawer that
         was there, rc 10, and every UHC package script failed ("MakeDir failed returncode 10", pipe on rig 7)."""

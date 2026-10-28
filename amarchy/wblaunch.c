@@ -17,6 +17,8 @@
 #include <proto/dos.h>
 #include <proto/icon.h>
 #include <proto/wb.h>
+#define CMDPATH_DOS
+#include "../config/cmdpath.h"
 #include "wblaunch.h"
 #include "leaf.h"
 
@@ -26,7 +28,6 @@
 struct Library *IconBase;
 struct Library *WorkbenchBase;
 
-struct wb_path { BPTR next, lock; }; /* a cli_CommandDir node */
 
 /* NAME as a WBArg: its drawer and its name in it. A project that is only an icon (SYS:System/Shell)
  * is found by its .info, as Workbench hands it over. */
@@ -65,12 +66,13 @@ static BPTR load_in(BPTR dir, const char *tool, BPTR *tdir, char *tname, int siz
 /* the project's default tool, found as Workbench finds it */
 static BPTR load_default_tool(BPTR pdir, const char *tool, BPTR *tdir, char *tname, int size)
 {
-    struct CommandLineInterface *cli = Cli();
+    struct Process *me = (struct Process *)FindTask(0);
+    BPTR *field = cmdpath_field(me);
     BPTR seg = load_in(pdir, tool, tdir, tname, size), p, c;
     if (seg || strchr(tool, ':') || strchr(tool, '/'))
         return seg;
-    for (p = cli ? cli->cli_CommandDir : 0; p && !seg; p = ((struct wb_path *)BADDR(p))->next)
-        seg = load_in(((struct wb_path *)BADDR(p))->lock, tool, tdir, tname, size);
+    for (p = field ? *field : 0; p && !seg; p = ((struct cmdpath_node *)BADDR(p))->next)
+        seg = load_in(((struct cmdpath_node *)BADDR(p))->lock, tool, tdir, tname, size);
     if (!seg && (c = Lock((STRPTR)"C:", SHARED_LOCK))) {
         seg = load_in(c, tool, tdir, tname, size);
         UnLock(c);

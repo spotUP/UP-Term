@@ -241,7 +241,7 @@ EndIf
 If EXISTS SYS:System/FixFonts
   SYS:System/FixFonts
 EndIf
-Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:UPDemo C:ixkill C:screen C:tmux C:UPConsole C:UP-Term-Prefs "C:UP-Term Prefs" DEVS:up-console.device QUIET
+Delete >NIL: L:vtcon-handler L:pty-handler C:vsh C:upgetty C:UPTerm C:WBPath C:UPDemo C:ixkill C:screen C:tmux C:UPConsole C:UP-Term-Prefs "C:UP-Term Prefs" DEVS:up-console.device QUIET
 ; C:Reboot only when it is ours (OS 3.2 has its own)
 If EXISTS C:Reboot
   Search >NIL: C:Reboot "(UP-Term)"

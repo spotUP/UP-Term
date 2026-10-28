@@ -203,6 +203,11 @@ If NOT EXISTS UHC:ExtBin
   Quit 20
 EndIf
 Path UHC:ExtBin ADD
+; the same drawer on the Workbench process's path (WBPath, base C:WBPath): every UP-Term window and Amarchy launch
+; copies that path, so UHC's package programs (Pipe) run by name there without a reboot. WBPath exits 5 with a
+; [WARN] line when there is no Workbench process or the base is too old to have it: the install goes on.
+WBPath ADD UHC:ExtBin
+Echo "[INFO] UHC:ExtBin is on the Workbench path: new UP-Term windows and Amarchy launches find its programs. A Shell that is already open keeps its own path: run Path UHC:ExtBin ADD there once."
 ; 3. Up-uhc 1.0 to 1.3 kept UHC in UP-Term:uhc: what the user installed there with UHC's pkg (ExtBin, ExtDoc, the
 ; Installed records) is copied into the UHC tree and the old archive files are taken out; the copies of the user's
 ; own files stay where they were; delete UP-Term:uhc by hand once the copy is checked.
