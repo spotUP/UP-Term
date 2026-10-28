@@ -1,12 +1,10 @@
-up-git: git 2.56.0, the version control system for UP-Term
+up-git: git 2.56.0 in UP-Term:bin and UP-Term:share/git-core
 
-Contents: bin/git, its dashed programs (git-upload-pack and others) and the templates in share/git-core.
-Licence: GPL v2 only; see LICENSES.txt.
+Contents: git 2.56.0 in UP-Term:bin and UP-Term:share/git-core
+Licence: GPL-2.0-only; see LICENSES.txt.
 
-Needs up-term.lha installed first (version 1.0 or newer); these files were part of it before the
-slim base. It installs them at the same paths in UP-Term: (bin, share, licenses): no new drawer, no
-change of the path. In an UP-Term window, in vsh:
-  git --version
+Needs up-term.lha installed first (version 1.0 or newer). In an UP-Term window, in vsh:
+  git
 
 Install: run Install (Installer) or, with upkg, install up-git. Uninstall takes the package out
 again; the UP-Term Uninstall runs it first.
