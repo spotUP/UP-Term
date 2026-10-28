@@ -89,9 +89,9 @@ Omarchy keeps every agent in its terminal TUI; it adds no chat window. Its
 - [x] A1 `ai-agent` pref: hidden amconf key, /agent slash, Setup > Amarchy rows (369c39a2; no Setup > Defaults menu exists)
 - [x] A2 TAB_PI + MENU_PI, /pi, Apps row + icon (369c39a2)
 - [x] A3 `super+l` = MENU_AGENT, tabprog_agent_tab table (369c39a2)
-- [ ] A4 "Ask AI" row: existing text requester, prompt passed into tab_spawn
-- [ ] F1 theme sync: theme apply writes agent colours; both agents read them. OWNER (s20, revised): agents follow the UP-Term console theme. C:Claude ANSI-follow mode maps every role to palette indices 0-15 (built-ins dark-ansi/light-ansi exist, claude/theme.c); amiga-pi gets one index-only "console" theme file. No per-theme files
-- [ ] F2 Agents panel menu: default agent, limit meters, token use, starter prompts
+- [ ] A4 "Ask AI", Omarchy way (owner s20, 2026-10-29): no text box; shell command `Agent "<task>"` opens the default agent in a new UP-Term tab started on that task (like `omarchy agent prompt`); prompt passed into tab_spawn
+- [x] F1 theme sync: theme apply writes agent colours; both agents read them. OWNER (s20, revised): agents follow the UP-Term console theme. C:Claude ANSI-follow mode maps every role to palette indices 0-15 (built-ins dark-ansi/light-ansi exist, claude/theme.c); amiga-pi gets one index-only "console" theme file. No per-theme files. DONE (2026-10-29): C:Claude was already palette-only except /color orange and pink (now bright red and magenta); amiga-pi defaults to its palette-only `system` theme, so no console file is needed. Test palette_follow in tests/test_claude_tui.c, revert-proven. Live recolour of text already on screen is unverified (F3)
+- [ ] F2 Agents panel menu: default agent, limit meters, token use, starter prompts. OWNER (2026-10-29): like Omarchy 4, the panel opens from an agents icon at the right end of the Amarchy bar and drops down under the right corner (left click = panel, right click = launch the default agent); no chat window. Later, once Amarchy has plugins: a chat sidebar like github.com/atif-1402/ai-panel (ledger AMARCHY-PLUGINS)
 - [ ] F3 rig check: theme switch recolours an open agent tab on next start; panel rows open the agent with the prompt
 - [ ] A5 host tests + reachability: key press on rig starts the agent with the prompt (taskpath/ps shows the command line)
 - [x] B1 skills search path of C:Claude and amiga-pi found (file:line): no shared dir, kit installs two copies (research 2026-10-28-omarchy-ai-b1-d1.md, c40ed131)
