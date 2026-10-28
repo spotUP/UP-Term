@@ -52,6 +52,14 @@ class RebootQuestion(unittest.TestCase):
         import installer_rig as irg
         self.assertIsNone(irg.reboot_later({90: 0, 91: 0}, "Proceed with the copy"))
 
+    def test_reboot_once_message_before_the_question_is_not_the_question(self):
+        # P_END's (message #done) page, rig 9 2026-10-28: ids 0 90 91, Proceed leads to "Reboot now?"
+        import installer_rig as irg
+        self.assertIsNone(irg.reboot_later({0: 0, 90: 0, 91: 0},
+                                           "Reboot once: then LIBS: has AmiSSL. TCP/IP stack found: emulator "
+                                           "bsdsocket. AmiNetXDuo was not installed. Proceed | Abort Install"))
+        self.assertIsNone(irg.reboot_later({90: 0, 91: 0}, "AmiNetXDuo is installed: reboot once to use it."))
+
 
 if __name__ == "__main__":
     unittest.main()

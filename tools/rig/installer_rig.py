@@ -345,10 +345,12 @@ def installer_name(title):
 
 def reboot_later(gads, text):
     """The gadget that answers P_END's "Reboot now?" with Later, or None when `text` (the page's OCR) does
-    not ask it. The page is matched by its words, not by a gadget list. Later is the right button: id 1 on a
-    page with the ask gadgets, id 91 on a Proceed/Abort-shaped page whose right button reads Later. A reboot
-    page with neither returns 0: no gadget is safe to click (the default is Reboot)."""
-    if 'reboot' not in text.lower():
+    not ask it. The page is matched by its question, not by a gadget list or the bare word: P_END's
+    (message #done) page before it says "Reboot once: then LIBS: has AmiSSL." and is answered with Proceed
+    (rig 9 2026-10-28). Later is the right button: id 1 on a page with the ask gadgets, id 91 on a
+    Proceed/Abort-shaped page whose right button reads Later. A reboot question with neither returns 0: no
+    gadget is safe to click (the default is Reboot)."""
+    if not re.search(r'reboot\s+now', text, re.I):
         return None
     return 1 if 1 in gads else 91 if 91 in gads and 'later' in text.lower() else 0
 
