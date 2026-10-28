@@ -3,7 +3,8 @@
    ami.py ping | info | reboot | exec "cmd" [secs] | menus [win] | uitree | requesters | ui verb win gadget [text]
           | shot out.png [x y w h] | rexx "program" | get path out | put local path
           | key code [qual] | type text | screens
-          | gclick win gadget   (clicks a uitree gadget by its id, matched exactly: '90' is not '290')
+          | gclick win gadget   (clicks a uitree gadget by its id, matched exactly: '90' is not '290'; 'string:2' = the 2nd
+                                 String gadget of the window, any kind works: MUI gadgets all have id 0; also ui click/settext)
           | open [icon]   (opens a window the way a Workbench double-click does: default SYS:System/UP-Term; prints the new window)
           | long script [secs] [title]   (Executes an Amiga script in a window on the Amiga's screen, waits for its rc)
 
@@ -412,8 +413,33 @@ def _input(c, p):
         raise Gap('INPUT operation %d has no wasabi command' % op)
 
 
+def ordinal_address(gadget):
+    """'string:2' -> ('string', 2): the 2nd gadget of that kind in the window, 1-based, in uitree order. MUI gadgets all
+    have id 0, so this is the only way to name the second String gadget. None for any other address ('90', 'sys:close',
+    a label): the N must be digits, which keeps 'sys:close' and friends out."""
+    kind, sep, n = gadget.rpartition(':')
+    if sep and kind and kind != 'sys' and n.isdigit() and int(n) >= 1:
+        return kind.lower(), int(n)
+    return None
+
+
+def nth_of_kind(gadgets, kind, n):
+    """The n-th (1-based) gadget of KIND in a window's gadget list, or None."""
+    hits = [g for g in gadgets if g['kind'] == kind]
+    return hits[n - 1] if n <= len(hits) else None
+
+
 def _click_gadget(c, window, gadget, double=False):
     m = _m()
+    ordinal = ordinal_address(gadget)
+    if ordinal:
+        for sc, w in m.ui_windows(m.read_ui(c, every_screen=bool(window)), window or None):
+            g = nth_of_kind(w['gadgets'], *ordinal)
+            if g:
+                x, y = g['x'] + g['width'] // 2, g['y'] + g['height'] // 2
+                _mouse(c, 1, 0, 2 if double else 1, x, y)
+                return x, y
+        raise SystemExit('no gadget %s in a window matching %r' % (gadget, window))
     if gadget.isdigit():
         for sc, w in m.ui_windows(m.read_ui(c, every_screen=bool(window)), window or None):
             for g in w['gadgets']:
@@ -704,12 +730,22 @@ def main(a):
         # the gadget with id (or role, 'sys:close') a[2] in the window whose title contains a[1], clicked at its middle
         tree = req(0x0D).decode('latin-1').splitlines()
         win = None
+        ordinal = ordinal_address(a[2])   # 'string:2': the 2nd string gadget of the window
+        seen = 0
         for line in tree:
             f = line.split()
             if line.startswith('W ') and a[1].lower() in line.lower():
                 win = f[1]
             elif win is not None and line.startswith('W '):
                 win = None
+            elif win is not None and line.startswith('G ') and ordinal:
+                if f[5].lower() != ordinal[0]: continue
+                seen += 1
+                if seen != ordinal[1]: continue
+                x, y = int(f[2]), int(f[3]); w, h = map(int, f[4].split('x'))
+                cx, cy = x + w // 2, y + h // 2
+                click_px(cx, cy)
+                print('click at %d,%d' % (cx, cy)); return
             elif win is not None and line.startswith('G ') and a[2].lower() in (f[1].lower(), f[5].lower()):
                 x, y = int(f[2]), int(f[3]); w, h = map(int, f[4].split('x'))
                 cx, cy = x + w // 2, y + h // 2
