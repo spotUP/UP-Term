@@ -100,6 +100,9 @@ RAMIGA = 0x0080
 # INSTALLER_KEEP=1 with `ONLY fresh-all`: stop after the reboot check, leaving the fully ticked kit installed on the rig
 # (for timing work on a kit-installed machine); Uninstall and the fixture restore are skipped.
 KEEP_INSTALLED = bool(os.environ.get("INSTALLER_KEEP"))
+# INSTALLER_CHAIN=1: before each Proceed log input.device's handler chain (VTC:inhandlers ADDR: name, node, is_Code,
+# is_Data), so a hang at a click names the handler the click ran (INSTALLER-END-CRASH). `make build/amiga/inhandlers` first.
+CHAIN = bool(os.environ.get("INSTALLER_CHAIN"))
 KEY_X, KEY_RETURN = 0x32, 0x44
 
 
@@ -695,6 +698,8 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
                 if not state or 'selected' not in state[0]:
                     return False, log
         after_ask = 89 in gads and 92 in gads
+        if CHAIN:
+            log.extend('chain: ' + l for l in ir.run('VTC:inhandlers ADDR')[1].splitlines())
         click(gads[90][0])
         clicked_at = time.time()
         log.append('Proceed (id 90)')
@@ -1392,6 +1397,8 @@ def main():
 
 
 def _main(fx, only, flags):
+    if CHAIN:
+        shutil.copyfile(ROOT / 'build/amiga/inhandlers', VTC / 'inhandlers')
     # space fills SYS: with a file first (K7); it is not part of the default run
     names = [c for c in CASES if only or c != 'space']
     for case in (c for c in names if not only or c in only):
