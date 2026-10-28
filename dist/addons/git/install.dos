@@ -17,7 +17,7 @@ EndIf
 ; @include dist/common/@CHECKFRAG@
 Lab copy-git
 ; git (bin/git and its helpers, share/git-core/templates): git keeps its objects as long-named files, so the
-; UP-Term volume needs long file names: FFS in long-name mode (DOS\7), PFS3 or SFS. OFS and plain FFS
+; UP-Term volume needs long file names: FFS in long-name mode (DOS7), PFS3 or SFS. OFS and plain FFS
 ; stop at 30 characters, too short for git's object files.
 ; userland holds what dist/slim.txt names; Copy of a drawer copies what is in it.
 MakeDir >NIL: UP-Term:bin
