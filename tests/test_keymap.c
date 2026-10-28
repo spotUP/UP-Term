@@ -722,6 +722,19 @@ static void the_window_group_rows_and_hotkeys(void)
     check_row("window.focusdown", KA_WIN, "focus down");
     check_row("window.closedrawer", KA_REXX, "address WORKBENCH 'WINDOW ACTIVE CLOSE'");
     check_row("window.closedrawers", KA_WIN, "closedrawers");
+    check_row("window.tile", KA_RUN, "UP-Term:bin/AmTile TOGGLE");
+    {   /* Super+Alt+T runs the same command; Super+T stays New tab (the plan's free-or-clash check) */
+        const km_bind *b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, 0x14);
+        const km_bind *t = keymap_find(&km, KM_Q_SUPER, 0x14);
+        CHECK(b != 0);
+        if (b) {
+            CHECK_INT(b->kind, KA_RUN);
+            CHECK(!strcmp(b->arg, "UP-Term:bin/AmTile TOGGLE"));
+        }
+        CHECK(t != 0);
+        if (t)
+            CHECK_INT(t->kind, KA_TAB);
+    }
     {   /* the 16 Window hotkeys: each key is a KA_WIN bind with its verb (plan 3) */
         static const struct { unsigned qual; unsigned code; const char *arg; } hk[] = {
             { KM_Q_SUPER, 0x18, "front" },
@@ -1553,7 +1566,7 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK_INT(c, 3);                                 /* Theme, Font, Background: picking one opens a terminal first */
     CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
     c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 23);                                /* the 23 win:/rexx: rows; window.tab and window.preferences stay hidden */
+    CHECK_INT(c, 24);                                /* the 24 win:/rexx:/run: rows (window.tile runs AmTile); window.tab and window.preferences stay hidden */
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
     CHECK(has_label(it, c, "UP-Term") && has_label(it, c, "Editor"));
     CHECK(!has_label(it, c, "Claude"));

@@ -26,6 +26,7 @@
 #include <string.h>
 #include "rexx_host.h"
 #include "tile_core.h"
+#include "amconf_dos.h"
 #include "win_apply.h"
 
 #define PORT_NAME      "AMTILE"
@@ -52,7 +53,7 @@ static CxObj *g_broker;
 static struct timerequest *tm_req;
 static int tm_open, tm_busy;
 static int g_on, g_quit;
-static int g_gap = TILE_GAP_DEFAULT;   /* the tile_gap config key is phase 3 (P3-3) */
+static int g_gap = TILE_GAP_DEFAULT;   /* the tile-gap key of the Amarchy settings file, read at start and on RETILE */
 static int g_ratio = TILE_RATIO_DEFAULT;
 static long g_order[TILE_MAX];
 static int g_norder;
@@ -224,6 +225,15 @@ static void walk(const struct Screen *scr, snap *sn)
     }
 }
 
+/* The gap from the Amarchy settings file (amconf), the one reader. A GAP n command wins until the next RETILE (or
+ * start), which reads the file again. */
+static void gap_load(void)
+{
+    am_prefs p;
+    amconf_load(&p);
+    g_gap = amconf_tile_gap(&p);
+}
+
 /* One look at the screen. force: retile even when the tiled set is unchanged. */
 static void tick(int force)
 {
@@ -299,6 +309,7 @@ static long command(void *ud, const char *cmd, char *out)
     } else if (starts(cmd, "TOGGLE")) {
         set_on(!g_on);
     } else if (starts(cmd, "RETILE")) {
+        gap_load();
         if (g_on)
             tick(1);
     } else if (starts(cmd, "RATIO")) {
@@ -429,6 +440,7 @@ int main(int argc, char **argv)
         shutdown();
         return 10;
     }
+    gap_load();
     command(0, line, result);
     while (!g_quit) {
         ULONG rx = rexx_host_sigmask(&rexx), cx = 1UL << cx_port->mp_SigBit, tm = 1UL << tm_port->mp_SigBit;

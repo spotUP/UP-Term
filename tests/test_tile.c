@@ -113,8 +113,20 @@ static void order_update(void)
     CHECK_INT(n, 0);
 }
 
+static void state_file(void)
+{
+    CHECK(tile_state_on("on\n", 3));
+    CHECK(tile_state_on("on", 2));
+    CHECK(tile_state_on("ON\r\n", 4));
+    CHECK(!tile_state_on("off\n", 4));
+    CHECK(!tile_state_on("", 0));
+    CHECK(!tile_state_on("o", 1));
+    CHECK(!tile_state_on("once", 4));
+}
+
 void suite_tile(void)
 {
+    state_file();
     master_stack_boxes();
     min_size_beats_the_cell();
     classification();

@@ -38,4 +38,8 @@ int tile_order_update(long *order, int n, const long *set, int m);
  * to its window's Min / Max by win_fit. */
 void tile_master_stack(const win_screen *s, int gap, int ratio_pct, int n, const tile_win *in, win_box *out);
 
+/* The state file AmTile writes (ENV:Amarchy/tile, "on" or "off" and a newline): 1 when buf[0..len) reads "on". Amarchy
+ * runs AmTile ON at its start by this. */
+int tile_state_on(const char *buf, long len);
+
 #endif

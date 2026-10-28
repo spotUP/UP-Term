@@ -19,6 +19,7 @@ enum {
     AM_VOLUMES, /* amarchy-index-volumes: volume list */
     AM_TERMMENU, /* menu-in-terminal: text, graphical */
     AM_GTHEME,  /* amarchy-gui-theme: the drawn menu's Omarchy theme name (gthemes_core.h) */
+    AM_TILEGAP, /* tile-gap: AmTile's gap between tiled windows, pixels (0..AM_TILEGAP_MAX), no Prefs gadget */
     AM_NKEYS
 };
 
@@ -49,6 +50,9 @@ long amconf_serialize(const am_prefs *p, char *buf, long cap);
 int amconf_icons(const am_prefs *p);
 int amconf_style(const am_prefs *p);
 int amconf_term_menu(const am_prefs *p);   /* UC_TERMMENU_* */
+#define AM_TILEGAP_MAX 64
+/* tile-gap as a number: whole digits 0..AM_TILEGAP_MAX, anything else the default of the key */
+int amconf_tile_gap(const am_prefs *p);
 
 /* The Prefs editor's view of the file: the six keys its Amarchy page shows, to and from its field set. The
  * keys it does not show (index skip, volumes) stay as they were in the am_prefs it writes back. */

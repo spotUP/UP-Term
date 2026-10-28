@@ -89,6 +89,26 @@ int amconf_term_menu(const am_prefs *p)
     return upconf_term_menu_value(p->val[AM_TERMMENU]);
 }
 
+int amconf_tile_gap(const am_prefs *p)
+{
+    const char *s = p->val[AM_TILEGAP];
+    long v = 0;
+    if (!*s)
+        s = am_keys[AM_TILEGAP].def;
+    for (; *s; s++) {
+        if (*s < '0' || *s > '9') {
+            v = -1;
+            break;
+        }
+        v = v * 10 + (*s - '0');
+        if (v > AM_TILEGAP_MAX)
+            break;
+    }
+    if (v < 0 || v > AM_TILEGAP_MAX)
+        return (int)(am_keys[AM_TILEGAP].def[0] - '0');
+    return (int)v;
+}
+
 int amconf_need_migrate(int envarc_new_exists)
 {
     return !envarc_new_exists;

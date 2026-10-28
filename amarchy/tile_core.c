@@ -72,3 +72,9 @@ void tile_master_stack(const win_screen *s, int gap, int ratio_pct, int n, const
     for (i = 1, y = y0; i < n; i++, y += ch + gap)
         cell(&out[i], &in[i], s, sx, y, sw, i == n - 1 ? y0 + h - y : ch);
 }
+
+int tile_state_on(const char *buf, long len)
+{
+    return len >= 2 && (buf[0] == 'o' || buf[0] == 'O') && (buf[1] == 'n' || buf[1] == 'N') &&
+           (len == 2 || buf[2] == '\n' || buf[2] == '\r' || buf[2] == ' ');
+}

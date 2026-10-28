@@ -35,8 +35,8 @@ static void test_amconf_parse_defaults(void)
         CHECK_STR(p.val[k], am_keys[k].def);
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
-    /* the table lists ten keys, each named once */
-    CHECK_INT(AM_NKEYS, 10);
+    /* the table lists eleven keys, each named once */
+    CHECK_INT(AM_NKEYS, 11);
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)
@@ -67,6 +67,37 @@ static int same_prefs(const am_prefs *a, const am_prefs *b)
         if (strcmp(a->val[i], b->val[i]) != 0)
             return 0;
     return 1;
+}
+
+/* tile-gap (AmTile's gap): default 4, parsed by its name, 0..64 accepted, anything else the default */
+static void test_amconf_tile_gap(void)
+{
+    static const struct { const char *val; int want; } c[] = {
+        { "0", 0 }, { "12", 12 }, { "64", 64 }, { "65", 4 }, { "-1", 4 }, { "x", 4 }, { "4x", 4 }, { "", 4 },
+        { "99999999999999999999", 4 },
+    };
+    static const char txt9[] = "[profile default]\ntile-gap = 9\n";
+    am_prefs p;
+    char txt[256];
+    unsigned i;
+    amconf_parse("", 0, &p);
+    CHECK_STR(am_keys[AM_TILEGAP].name, "tile-gap");
+    CHECK_STR(p.val[AM_TILEGAP], "4");
+    CHECK_INT(amconf_tile_gap(&p), 4);
+    amconf_parse(txt9, (long)strlen(txt9), &p);
+    CHECK_STR(p.val[AM_TILEGAP], "9");
+    CHECK_INT(amconf_tile_gap(&p), 9);
+    for (i = 0; i < sizeof c / sizeof c[0]; i++) {
+        amconf_defaults(&p);
+        strcpy(p.val[AM_TILEGAP], c[i].val);
+        CHECK_INT(amconf_tile_gap(&p), c[i].want);
+    }
+    /* a value other than the default round-trips through the file */
+    amconf_defaults(&p);
+    strcpy(p.val[AM_TILEGAP], "8");
+    CHECK(amconf_serialize(&p, txt, sizeof txt) > 0);
+    amconf_parse(txt, (long)strlen(txt), &p);
+    CHECK_INT(amconf_tile_gap(&p), 8);
 }
 
 static void test_amconf_roundtrip(void)
@@ -798,6 +829,7 @@ void suite_amconf(void)
 {
     test_amconf_parse_defaults();
     test_amconf_roundtrip();
+    test_amconf_tile_gap();
     test_amconf_legacy();
     test_amconf_style();
     test_amconf_gtheme_fields();

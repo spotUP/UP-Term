@@ -84,6 +84,20 @@ Phase 2 as built (main, 2026-10-28):
 - Boot: Amarchy at start runs `AmTile ON` when ENV:Amarchy/tile is "on".
 Success: host tests for the config key and menu row; dist-check passes.
 
+### Phase 3 as built
+- P3-1 menu row `window.tile` ("Tile windows", `run:UP-Term:bin/AmTile TOGGLE`, existing KA_RUN kind) in
+  dist/keymap and dist/menu-icons. The on/off label is SKIPPED: menu rows are static `Label | action`, no state label.
+- P3-2 hotkey: `super+t` (lamiga t) CLASHES with `tab:new`; `super+shift+t` is `slash:/theme`. Chosen `super+alt+t`
+  (free), bound as `run:UP-Term:bin/AmTile TOGGLE`.
+- P3-3 key is `tile-gap` (hyphen, as the other keys), a hidden key (no Prefs gadget), default 4, digits 0..64, else
+  the default (`amconf_tile_gap`). AmTile reads it with `amconf_load` in `gap_load()` at start and on RETILE.
+  Rule: RETILE re-reads config, so config wins after RETILE; `GAP n` wins until the next RETILE.
+  AmTile now links `$(AMARCHY_LEAF_DEPS)`.
+- P3-4 `tile_boot()` in amarchy.c, after `cx_install` at boot: reads ENV:Amarchy/tile, `tile_state_on` (pure, in
+  tile_core) then `act_run("UP-Term:bin/AmTile ON")` (async). Amarchy now links tile_core.c.
+- Tests: tile (79), amconf (375), keymap (12335), settings_def (1456) pass. Cross builds Amarchy, AmTile,
+  amarchy-menu, amarchy-gui rc 0. dist-check fails only in WasabiDaemonOption (wasabi pin hash note), not from this phase.
+
 ## Phase 4 - Reachability (rig 7)
 New tools/rig/amarchy_tile_rig.py (template tools/rig/amarchy_window_rig.py), rig purpose
 "Amarchy s17: autotile reachability".
