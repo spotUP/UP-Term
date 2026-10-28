@@ -90,6 +90,12 @@ int amconf_term_menu(const am_prefs *p)
     return upconf_term_menu_value(p->val[AM_TERMMENU]);
 }
 
+const char *amconf_agent(const am_prefs *p)
+{
+    const char *s = p->val[AM_AGENT];
+    return *s ? s : am_keys[AM_AGENT].def;
+}
+
 int amconf_tile_gap(const am_prefs *p)
 {
     const char *s = p->val[AM_TILEGAP];

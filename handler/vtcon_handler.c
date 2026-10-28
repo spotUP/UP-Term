@@ -73,6 +73,7 @@
 #include "slash.h"
 #include "winspec.h"
 #include "tabprog.h"
+#include "../amarchy/amconf_dos.h"
 #include "../demo/updemo.h"
 #include "brk.h"
 #include "ttyown.h"
@@ -1527,6 +1528,7 @@ static const struct NewMenu menu_def[] = {
     { NM_ITEM, (STRPTR)"Previous tab", 0, 0, 0, (APTR)MENU_TAB_PREV },
     { NM_ITEM, (STRPTR)"Close tab", 0, 0, 0, (APTR)MENU_TAB_CLOSE },
     { NM_ITEM, (STRPTR)"Claude", 0, 0, 0, (APTR)MENU_CLAUDE },
+    { NM_ITEM, (STRPTR)"pi", 0, 0, 0, (APTR)MENU_PI },
     { NM_ITEM, NM_BARLABEL, 0, 0, 0, 0 },
     { NM_ITEM, (STRPTR)"Preferences...", 0, 0, 0, (APTR)MENU_PREFS },
     { NM_ITEM, (STRPTR)"About UP-Term...", 0, 0, 0, (APTR)MENU_ABOUT },
@@ -2471,7 +2473,7 @@ static int menu_run(con *c, LONG id, int on)
     case MENU_FIND: find_open(c); return 1;
     case MENU_PREFS: prefs_launch(); return 1;
     case MENU_CLOSE: close_gadget(c); return 3; /* as the close gadget */
-    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_TUTORIAL:
+    case MENU_TAB_NEW: case MENU_TAB_NEXT: case MENU_TAB_PREV: case MENU_TAB_CLOSE: case MENU_DEMO: case MENU_CLAUDE: case MENU_PI: case MENU_AGENT: case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: case MENU_TUTORIAL:
         tab_command(c, (int)id);
         return 3;
     case MENU_TAB_GOTO0 + 1: case MENU_TAB_GOTO0 + 2: case MENU_TAB_GOTO0 + 3: case MENU_TAB_GOTO0 + 4:
@@ -6036,7 +6038,6 @@ struct tab_spawn_msg {
  * and UP-Term > Claude (C:Claude). The tab closes when the program ends.
  * `file` is looked up first: a program that is not there is said in a
  * requester, as Preferences... says it of the editor. */
-enum { TAB_SHELL = 0, TAB_DEMO, TAB_CLAUDE, TAB_TUTORIAL };
 struct tab_prog {
     const char *file;    /* C:... the program */
     const char *cmd;     /* the script's command line (the program, or vsh and its script) */
@@ -6054,7 +6055,10 @@ static const struct tab_prog tab_progs[] = {
       "Claude is not installed:\nC:Claude was not found.\n\nInstall UP-Term from its archive to get it.", 0, 0 },
     { TABPROG_TUTORIAL_FILE, TABPROG_TUTORIAL_CMD, "T:UP-Term-tutorial", "",
       "The tutorial is not installed:\nUP-Term:bin/tutorial was not found.\n\nInstall UP-Term from its archive to get it.",
-      TABPROG_TUTORIAL_COLS, TABPROG_TUTORIAL_ROWS }
+      TABPROG_TUTORIAL_COLS, TABPROG_TUTORIAL_ROWS },
+    /* amiga-pi (the up-pi package) takes the same stack cookie as Claude */
+    { "C:amiga-pi", "C:amiga-pi", "T:UP-Term-pi", "Stack 32768\n",
+      "pi is not installed:\nC:amiga-pi was not found.\n\nInstall the up-pi package to get it.", 0, 0 }
 };
 
 /* 1 when the tab is on its way; 0 when the program is not there */
@@ -6224,6 +6228,26 @@ static void host_command(con *c, int what, con *from)
         if (!tab_spawn(c, from->profile, from, TAB_CLAUDE))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
         break;
+    case MENU_PI:
+        if (!tab_spawn(c, from->profile, from, TAB_PI))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        break;
+    case MENU_AGENT: { /* super+l: the agent of the ai-agent preference, in a new tab */
+        am_prefs ap;
+        amconf_load(&ap);
+        if (!tab_spawn(c, from->profile, from, tabprog_agent_tab(amconf_agent(&ap))))
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        break;
+    }
+    case MENU_SET_AGENT_CLAUDE: case MENU_SET_AGENT_PI: { /* /agent: the preference, for the next super+l */
+        am_prefs ap;
+        int failed = 0;
+        amconf_load(&ap);
+        strcpy(ap.val[AM_AGENT], what == MENU_SET_AGENT_PI ? "pi" : "claude");
+        if (amconf_save(&ap, 1, &failed) != PREFS_INSTALL_OK)
+            DisplayBeep(c->own_win ? c->own_win->WScreen : 0);
+        break;
+    }
     case MENU_TUTORIAL:
         if (!tab_spawn(c, from->profile, from, TAB_TUTORIAL))
             DisplayBeep(c->own_win ? c->own_win->WScreen : 0);

@@ -723,7 +723,7 @@ AMARCHY
   Left Amiga + Shift + L          Demo tour
   Left Amiga + P                  Preferences
   Left Amiga + Return             Tmux
-  Left Amiga + L                  Claude
+  Left Amiga + L                  AI Agent
   Left Amiga + E                  Editor
   Left Amiga + U                  Install and update
   Left Amiga + Shift + U          Upgrade all
