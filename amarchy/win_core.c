@@ -123,7 +123,7 @@ int win_move(win_box *b, win_arg dir, int pixels, const win_screen *s)
 }
 
 /* a limit of one dimension: the window's own Min / Max, and the room the screen leaves from the window's edge */
-static int fit(int v, int min, int max, int room)
+int win_fit(int v, int min, int max, int room)
 {
     if (max > 0 && v > max)
         v = max;
@@ -144,8 +144,8 @@ int win_size(win_box *b, win_arg dir, int pixels, const win_screen *s)
     case WA_DOWN:  h += pixels; break;
     default: return 0;
     }
-    w = fit(w, b->minw, b->maxw, s->width - b->left);
-    h = fit(h, b->minh, b->maxh, s->height - b->top);
+    w = win_fit(w, b->minw, b->maxw, s->width - b->left);
+    h = win_fit(h, b->minh, b->maxh, s->height - b->top);
     if (w == b->width && h == b->height)
         return 0;
     b->width = w;
@@ -155,7 +155,7 @@ int win_size(win_box *b, win_arg dir, int pixels, const win_screen *s)
 
 int win_fullwidth(win_box *b, const win_screen *s)
 {
-    int w = fit(s->width, b->minw, b->maxw, s->width);
+    int w = win_fit(s->width, b->minw, b->maxw, s->width);
     if (b->left == 0 && b->width == w)
         return 0;
     b->left = 0;
@@ -165,8 +165,8 @@ int win_fullwidth(win_box *b, const win_screen *s)
 
 int win_fullscreen(win_box *b, const win_screen *s)
 {
-    int w = fit(s->width, b->minw, b->maxw, s->width);
-    int h = fit(s->height - s->title, b->minh, b->maxh, s->height - s->title);
+    int w = win_fit(s->width, b->minw, b->maxw, s->width);
+    int h = win_fit(s->height - s->title, b->minh, b->maxh, s->height - s->title);
     if (b->left == 0 && b->top == s->title && b->width == w && b->height == h)
         return 0;
     b->left = 0;
