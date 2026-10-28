@@ -53,6 +53,7 @@ tools           Files/Amarchy
 tools           Files/amarchy-menu
 tools           Files/amarchy-gui
 tools           Files/amarchy-index
+tools           Files/AmTile
 tools           Files/keymap
 tools           Files/Rexx
 tools           Files/hl

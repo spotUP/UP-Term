@@ -964,7 +964,7 @@ def stage_upterm(dest, vsh):
     rig scripts start them from there, as UP-Term: moves with a kit install); before this the rig had no Amarchy."""
     (dest / "bin").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(vsh, dest / "bin/vsh")
-    for name in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index"):
+    for name in ("Amarchy", "amarchy-menu", "amarchy-gui", "amarchy-index", "AmTile"):
         if (vsh.parent / name).is_file():
             shutil.copyfile(vsh.parent / name, dest / "bin" / name)
     subprocess.run([sys.executable, "-I", str(ROOT / "tools/mkicon.py"), str(dest / "UP-Term.info")], check=True)

@@ -721,8 +721,8 @@ $(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h 
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
 # leaf_core.c calls the prefs and amconf modules; every program linking it links this set.
 AMARCHY_LEAF_DEPS := handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c
-AMARCHY_SRC := amarchy/rexx_host.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c
-$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h
+AMARCHY_SRC := amarchy/rexx_host.c amarchy/taskalive.c amarchy/menusrv_core.c amarchy/termenv.c claude/util.c handler/frontscr.c amarchy/leaf_core.c amarchy/leaf_pkg.c amarchy/wblaunch.c amarchy/menu_open.c amarchy/amarchy.c amarchy/cx.c amarchy/act.c amarchy/win.c amarchy/win_apply.c amarchy/win_core.c amarchy/cxdesc.c amarchy/menu_tree.c config/keymap.c config/keymap_load.c $(AMARCHY_LEAF_DEPS) handler/upactive.c handler/upmru.c amarchy/clipwatch.c amarchy/clips_core.c handler/clip.c handler/clipfmt.c amarchy/index_core.c amarchy/pkgs_core.c amarchy/gthemes_core.c amarchy/gthemes_dos.c amarchy/gthemes_scan_dos.c amarchy/proclaunch.c
+$(BUILD)/amiga/Amarchy: $(AMARCHY_SRC) amarchy/rexx_host.h amarchy/taskalive.h amarchy/menusrv_core.h amarchy/menu_open.h config/segstack.h amarchy/clipwatch.h amarchy/clips_core.h handler/clip.h amarchy/wblaunch.h amarchy/act.h amarchy/leaf.h amarchy/win.h amarchy/win_apply.h amarchy/win_core.h handler/frontscr.h amarchy/cx.h amarchy/cxdesc.h amarchy/menu_core.h claude/util.h config/keymap.h config/keymap_load.h handler/upactive.h handler/keymap_act.h config/upconf.h config/upconf_lex.h $(KEYMAP_DEFAULT_INC) amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/gthemes_core.h amarchy/gthemes_dos.h amarchy/gthemes_scan_dos.h amarchy/proclaunch.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -I$(BUILD)/amiga -o $@ $(AMARCHY_SRC)
 
@@ -815,6 +815,15 @@ amarchy-index: $(BUILD)/amiga/amarchy-index
 $(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/index_core.h amarchy/pkgs_core.h amarchy/ixwatch.h amarchy/menu_core.h config/upconf.h tty/qmark.h install/hardvol.h install/fssm.h amarchy/amconf_core.h amarchy/amconf_dos.h prefs/prefs_dos.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ $(AMARCHY_INDEX_SRC)
+
+# AmTile: the autotiling commodity (plan 2026-10-28-amarchy-autotile.md, phase 2). A plain vbcc program like Amarchy;
+# tile_core.c is its pure part, win_apply.c the OS calls it shares with win.c.
+AMTILE_SRC := amarchy/tile.c amarchy/tile_core.c amarchy/win_core.c amarchy/win_apply.c amarchy/rexx_host.c
+.PHONY: AmTile
+AmTile: $(BUILD)/amiga/AmTile
+$(BUILD)/amiga/AmTile: $(AMTILE_SRC) amarchy/rexx_host.h amarchy/tile_core.h amarchy/win_core.h amarchy/win_apply.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ $(AMTILE_SRC)
 
 # ixemul programs: bebbo's gcc (thoughts plan: TOOLCHAIN), linked against
 # Aminet's ixemul SDK (-m68020 is safe since the driver names ixemul/lib/crt0.o by path,
@@ -1400,7 +1409,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
 	cd $(BUILD)/kit-terminfo && cp -R [a-z] [0-9]* $(CURDIR)/$(KIT)/Files/terminfo/
 	cp $(SCREEN_BIN) $(KIT)/Files/screen
@@ -1448,7 +1457,7 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	cp $(BUILD)/amiga/upupdate $(KIT)/Files/upupdate
 	cp $(BUILD)/amiga/upsame $(KIT)/Files/upsame
 	cp $(BUILD)/amiga/tcpprobe $(KIT)/Files/tcpprobe
-	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index dist/keymap $(KIT)/Files/
+	cp $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/UPDemo $(BUILD)/amiga/Reboot $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/AmTile dist/keymap $(KIT)/Files/
 	rm -rf $(KIT)/Files/net && cp -R dist/net $(KIT)/Files/net
 	rm -rf $(KIT)/Files/Rexx && cp -R dist/rexx $(KIT)/Files/Rexx
 	# BebboSSH: our build (make bebbossh) over the drawer's sources, patches and licence; SHA256SUMS and TOOLCHAIN.txt from the build
@@ -1580,6 +1589,7 @@ dist-check: $(BUILD)/amiga/keymap.o $(BUILD)/updiff_kit_drv
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-gui
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/Amarchy
 	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/amarchy-index
+	python3 tests/test_amarchy_stack.py $(BUILD)/amiga/AmTile
 	python3 tests/test_keymap_amiga_alloc.py $(BUILD)/amiga/keymap.o
 	python3 tests/test_dist_userdata.py
 	python3 tests/test_rig_fixtures.py

@@ -19,6 +19,7 @@
 #include <string.h>
 #include "win.h"
 #include "win_core.h"
+#include "win_apply.h"
 #include "../handler/upactive.h"
 
 #define WIN_MAXW 32          /* windows on one screen considered by cycle and focus */
@@ -74,23 +75,6 @@ static int ticket_valid(void)
     return win_ticket_valid(usable(t), &g_tkbox, &now);
 }
 
-/* IBase locked: w's box and screen as win_core wants them */
-static void box_of(const struct Window *w, win_box *b, win_screen *s)
-{
-    b->left = w->LeftEdge;
-    b->top = w->TopEdge;
-    b->width = w->Width;
-    b->height = w->Height;
-    b->minw = w->MinWidth;
-    b->minh = w->MinHeight;
-    b->maxw = w->MaxWidth == 0xFFFF ? 0 : w->MaxWidth;
-    b->maxh = w->MaxHeight == 0xFFFF ? 0 : w->MaxHeight;
-    b->screen = (long)w->WScreen;
-    s->width = w->WScreen->Width;
-    s->height = w->WScreen->Height;
-    s->title = w->WScreen->BarHeight + 1;
-}
-
 void win_ticket_take(void)
 {
     struct Window *aw;
@@ -131,11 +115,6 @@ void win_active_terminal(int *in_term, int *full)
                                            aw->LeftEdge, aw->TopEdge, aw->Width, aw->Height, &s);
     }
     UnlockIBase(lock);
-}
-
-static void apply_box(struct Window *w, const win_box *b)
-{
-    ChangeWindowBox(w, b->left, b->top, b->width, b->height);
 }
 
 static int close_drawers(void)
@@ -241,16 +220,16 @@ static int win_exec(const char *arg, int via_port)
             w = aw;
         g_ticket = 0;                     /* one use; a hotkey or a live target drops it too */
         if (w) {
-            box_of(w, &b, &scr);
+            win_box_of(w, &b, &scr);
             ok = 1;
             switch (c.verb) {
             case WV_FRONT: WindowToFront(w); break;
             case WV_BACK:  WindowToBack(w); break;
             case WV_ZIP:   ZipWindow(w); break;
-            case WV_MOVE:  if (win_move(&b, c.arg, c.pixels, &scr)) apply_box(w, &b); break;
-            case WV_SIZE:  if (win_size(&b, c.arg, c.pixels, &scr)) apply_box(w, &b); break;
-            case WV_FULLWIDTH:  if (win_fullwidth(&b, &scr)) apply_box(w, &b); break;
-            case WV_FULLSCREEN: if (win_fullscreen(&b, &scr)) apply_box(w, &b); break;
+            case WV_MOVE:  if (win_move(&b, c.arg, c.pixels, &scr)) win_apply_box(w, &b); break;
+            case WV_SIZE:  if (win_size(&b, c.arg, c.pixels, &scr)) win_apply_box(w, &b); break;
+            case WV_FULLWIDTH:  if (win_fullwidth(&b, &scr)) win_apply_box(w, &b); break;
+            case WV_FULLSCREEN: if (win_fullscreen(&b, &scr)) win_apply_box(w, &b); break;
             case WV_SAVE:
                 if (!g_ring_ready) { win_ring_clear(&g_ring); g_ring_ready = 1; }
                 win_save(&g_ring, (long)w, &b);
@@ -259,7 +238,7 @@ static int win_exec(const char *arg, int via_port)
                 win_box old;
                 if (g_ring_ready && win_restore(&g_ring, (long)w, &old)) {
                     old.minw = b.minw; old.minh = b.minh; old.maxw = b.maxw; old.maxh = b.maxh;
-                    apply_box(w, &old);
+                    win_apply_box(w, &old);
                 } else
                     ok = 0;
                 break;
@@ -273,7 +252,7 @@ static int win_exec(const char *arg, int via_port)
                     if (x == w)
                         me = n;
                     ws[n] = (struct Window *)x;
-                    box_of(x, &boxes[n], &scr);
+                    win_box_of(x, &boxes[n], &scr);
                     n++;
                 }
                 pick = me < 0 ? -1 : win_pick(boxes, n, me, c.arg);
