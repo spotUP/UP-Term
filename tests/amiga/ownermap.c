@@ -6,11 +6,16 @@
  * With a hex ADDR: "owner ADDR in <range line>" or "owner ADDR in no mapped range, nearest <range line>",
  * plus exec's TypeOfMem. Brokers come from commodities.library's private CopyBrokerList (LVO -186,
  * FreeBrokerList -192), the pair Exchange uses; the BrokerCopy layout is read by offset:
- * name 24 at 14, title 40 at 38, descr 40 at 78, task at 118, port at 122. */
+ * name 24 at 14, title 40 at 38, descr 40 at 78, task at 118, port at 122.
+ * Also the reset survivors (s18, the CPU reset loop that outlives a warm reset): the exec capture vectors,
+ * every KickTag Resident and KickMem entry, and the CPU exception vectors read through VBR (68010+); each
+ * one that points into RAM gets the same owner lookup as ADDR. */
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <exec/execbase.h>
+#include <exec/resident.h>
+#include <exec/memory.h>
 #include <exec/libraries.h>
 #include <dos/dosextens.h>
 #include <proto/exec.h>
@@ -55,6 +60,10 @@ static void segs(BPTR seg, const char *who)
     int guard = 0;
     while (seg && guard++ < 200) {
         ULONG *s = (ULONG *)BADDR(seg);
+        /* a handler's pr_SegList entry is not always a hunk list (DH1 gave 00fa823c-72fae240 in s18):
+         * stop at a hunk that is not in RAM or whose length is not a plausible hunk size */
+        if (!TypeOfMem((APTR)s) || s[-1] < 8 || s[-1] > 0x1000000UL)
+            break;
         add((ULONG)s, (ULONG)s - 4 + s[-1], "seg", who);
         seg = (BPTR)s[0];
     }
@@ -108,6 +117,80 @@ static void show(const struct rng *p)
     printf("range %08lx %08lx %s %s\n", p->lo, p->hi, p->kind, p->name);
 }
 
+/* "<kind> <name> lo-hi" of the range holding want, or the nearest one */
+static void owner(ULONG want)
+{
+    int i, best = -1;
+    ULONG bd = 0xffffffff;
+    for (i = 0; i < nr; i++) {
+        ULONG d = want < r[i].lo ? r[i].lo - want : want >= r[i].hi ? want - r[i].hi + 1 : 0;
+        if (d < bd) {
+            bd = d;
+            best = i;
+        }
+    }
+    printf("owner %08lx typeofmem=%lx ", want, (unsigned long)TypeOfMem((APTR)want));
+    if (best >= 0 && bd == 0)
+        printf("in %s %s %08lx-%08lx\n", r[best].kind, r[best].name, r[best].lo, r[best].hi);
+    else if (best >= 0)
+        printf("in no mapped range, nearest %s %s %08lx-%08lx (%lu bytes away)\n", r[best].kind, r[best].name,
+               r[best].lo, r[best].hi, bd);
+    else
+        printf("in no mapped range\n");
+}
+
+/* movec vbr,d0 ; rte -- run through Supervisor(), 68010+ only */
+static UWORD vbrcode[] = {0x4e7a, 0x0801, 0x4e73};
+
+/* what survives a warm reset: capture vectors, KickTag residents, KickMem lists, exception vectors */
+static void captures(struct ExecBase *eb)
+{
+    ULONG *tag = eb->KickTagPtr;
+    struct MemList *ml;
+    ULONG vbr = 0, *vec;
+    static const int want[] = {2, 3, 4, 8, 9, 10, 11, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 47, -1};
+    int i;
+
+    printf("capture cold=%08lx cool=%08lx warm=%08lx kicktag=%08lx kickmem=%08lx kickchk=%08lx\n",
+           (ULONG)eb->ColdCapture, (ULONG)eb->CoolCapture, (ULONG)eb->WarmCapture, (ULONG)eb->KickTagPtr,
+           (ULONG)eb->KickMemPtr, (ULONG)eb->KickCheckSum);
+    if (eb->ColdCapture)
+        owner((ULONG)eb->ColdCapture);
+    if (eb->CoolCapture)
+        owner((ULONG)eb->CoolCapture);
+    if (eb->WarmCapture)
+        owner((ULONG)eb->WarmCapture);
+    while (tag && *tag) {
+        if (*tag & 0x80000000UL) {
+            tag = (ULONG *)(*tag & 0x7fffffffUL);
+            continue;
+        }
+        {
+            struct Resident *rt = (struct Resident *)*tag;
+            printf("kicktag %08lx match=%04x name=\"%s\" ver=%d pri=%d init=%08lx id=\"%s\"\n", (ULONG)rt,
+                   (unsigned)rt->rt_MatchWord, rt->rt_Name ? (char *)rt->rt_Name : "", (int)rt->rt_Version,
+                   (int)rt->rt_Pri,
+                   (ULONG)rt->rt_Init, rt->rt_IdString ? (char *)rt->rt_IdString : "");
+            owner((ULONG)rt);
+        }
+        tag++;
+    }
+    for (ml = (struct MemList *)eb->KickMemPtr; ml; ml = (struct MemList *)ml->ml_Node.ln_Succ) {
+        for (i = 0; i < ml->ml_NumEntries; i++)
+            printf("kickmem %08lx len=%lu\n", (ULONG)ml->ml_ME[i].me_Addr, (ULONG)ml->ml_ME[i].me_Length);
+    }
+    if (eb->AttnFlags & AFF_68010)
+        vbr = Supervisor((ULONG (*)())vbrcode);
+    vec = (ULONG *)vbr;
+    printf("vbr %08lx\n", vbr);
+    for (i = 0; want[i] >= 0; i++) {
+        ULONG v = vec[want[i]];
+        printf("vector %d %08lx\n", want[i], v);
+        if (TypeOfMem((APTR)v))
+            owner(v);
+    }
+}
+
 int main(int argc, char **argv)
 {
     struct ExecBase *eb = SysBase;
@@ -115,8 +198,7 @@ int main(int argc, char **argv)
     struct List bl;
     struct Node *n, *t;
     ULONG want = argc > 1 ? strtoul(argv[1], 0, 16) : 0;
-    int i, best = -1;
-    ULONG bd = 0xffffffff;
+    int i;
 
     bl.lh_Head = (struct Node *)&bl.lh_Tail;
     bl.lh_Tail = 0;
@@ -147,29 +229,14 @@ int main(int argc, char **argv)
     Permit();
     if (cx)
         CloseLibrary(cx);
-    for (i = 0; i < nr; i++) {
+    for (i = 0; i < nr; i++)
         show(&r[i]);
-        if (want) {
-            ULONG d = want < r[i].lo ? r[i].lo - want : want >= r[i].hi ? want - r[i].hi + 1 : 0;
-            if (d < bd) {
-                bd = d;
-                best = i;
-            }
-        }
-    }
     for (i = 0; i < nb; i++)
         printf("broker \"%s\" \"%s\" task=%08lx alive=%d port=%08lx\n", b[i].name, b[i].title, b[i].task,
                b[i].alive, b[i].port);
-    if (want) {
-        printf("owner %08lx typeofmem=%lx ", want, (unsigned long)TypeOfMem((APTR)want));
-        if (best >= 0 && bd == 0)
-            printf("in %s %s %08lx-%08lx\n", r[best].kind, r[best].name, r[best].lo, r[best].hi);
-        else if (best >= 0)
-            printf("in no mapped range, nearest %s %s %08lx-%08lx (%lu bytes away)\n", r[best].kind, r[best].name,
-                   r[best].lo, r[best].hi, bd);
-        else
-            printf("in no mapped range\n");
-    }
+    captures(eb);
+    if (want)
+        owner(want);
     printf("ownermap: %d ranges %d brokers\n", nr, nb);
     return 0;
 }

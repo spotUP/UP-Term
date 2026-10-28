@@ -640,7 +640,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
             if time.time() - (retried or clicked_at) > 15:   # a click made while the page still redraws is lost
                 click(gads[90][0])
                 retried = time.time()
-                log.append('Proceed (id 90) again: page unchanged 15 s')
+                log.append('Proceed (id 90) again: page unchanged 15 s, at %.0f s' % (time.time() - t0))
             wait_change(tree, 3)
             continue
         target = dest or (room_dest if room else None)
@@ -702,13 +702,17 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
                     return False, log
         after_ask = 89 in gads and 92 in gads
         if CHAIN:
-            log.extend('chain: ' + l for l in ir.run('VTC:inhandlers ADDR')[1].splitlines())
+            mapped = ['chain: ' + l for l in ir.run('VTC:inhandlers ADDR')[1].splitlines()]
             if OWNERMAP:
                 addr = '' if OWNERMAP == '1' else OWNERMAP
-                log.extend('ownermap: ' + l for l in ir.run('VTC:ownermap ' + addr)[1].splitlines())
+                mapped += ['ownermap: ' + l for l in ir.run('VTC:ownermap ' + addr)[1].splitlines()]
+            log.extend(mapped)
+            # a hung guest never returns the log: keep every mapped on disk as it is taken
+            with open(OUT / 'chain-live.txt', 'a') as f:
+                f.write('---- before Proceed at %.0f s on [%s]\n' % (time.time() - t0, title) + '\n'.join(mapped) + '\n')
         click(gads[90][0])
         clicked_at = time.time()
-        log.append('Proceed (id 90)')
+        log.append('Proceed (id 90) at %.0f s' % (time.time() - t0))
         wait_change(tree, 3)
     log.append('the Installer did not finish in %d s' % timeout)
     return False, log
