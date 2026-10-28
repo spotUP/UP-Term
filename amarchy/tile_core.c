@@ -52,6 +52,14 @@ static void cell(win_box *o, const tile_win *w, const win_screen *s, int x, int 
     o->height = win_fit(ch, w->box.minh, w->box.maxh, s->height - y);
 }
 
+int tile_screen_switch(long *cur, long next, int n)
+{
+    if (*cur == next)
+        return n;
+    *cur = next;
+    return 0;
+}
+
 void tile_master_stack(const win_screen *s, int gap, int ratio_pct, int n, const tile_win *in, win_box *out)
 {
     int x0 = gap, y0 = s->title + gap;

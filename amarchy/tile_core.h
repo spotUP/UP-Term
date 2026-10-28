@@ -32,6 +32,11 @@ tile_kind tile_classify(const tile_win *w);
  * removed, the others keep their place, ids not in order go to the front. Returns the new count (order holds >= m). */
 int tile_order_update(long *order, int n, const long *set, int m);
 
+/* The tracked set belongs to one screen. *cur is the id of the screen it was built on (0 = none yet); next is the
+ * screen to tile now. When they differ, *cur becomes next and the order is dropped (returns 0 = the new count), so no
+ * box worked out for screen A is applied on screen B. Same screen: returns n unchanged. */
+int tile_screen_switch(long *cur, long next, int n);
+
 /* Master-stack: n windows in[0..n) (front = master) to out[0..n). The work area is the screen below its title bar;
  * gap sits on the outer edges and between cells. One window fills the area; else the master takes ratio_pct of it on the
  * left and the rest are split evenly in the right column, the last cell taking the remainder pixels. Each box is held
