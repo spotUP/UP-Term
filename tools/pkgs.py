@@ -173,6 +173,24 @@ def summary(pkg_id):
     return found
 
 
+def depends(pkg_id):
+    """The runtime packages one package needs, as opkg package names: the recipe's <id>_RUNTIME_DEPENDS in
+    $UPTERM_PORTS (pkg_rows.read_field, the one reader, as for summary()). Not _DEPS: those are the static
+    libraries linked at build time and are inside the program. No recipe or no value: none."""
+    ports = pathlib.Path(os.environ.get('UPTERM_PORTS') or ROOT.parent / 'upterm-ports')
+    if not (ports / 'pkgs' / pkg_id / 'recipe.mk').is_file():
+        return []
+    import pkg_rows
+    return pkg_rows.read_field(ports, pkg_id, 'RUNTIME_DEPENDS').replace(',', ' ').split()
+
+
+def _depends_fields(r):
+    """['Depends: a, b'] for a package that declares runtime dependencies, else []. opkg installs them with
+    the package and refuses to remove one while this package is installed."""
+    d = depends(r['id'])
+    return ['Depends: ' + ', '.join(d)] if d else []
+
+
 def addons(path=TABLE):
     """The rows that become packages: every row but the base. The base is not a package (owner
     2026-10-19): it installs and updates from its own Installer, and upkg runs inside it."""
@@ -354,7 +372,7 @@ def build_ipk(r, build, variant='020'):
     lines = ['Package: ' + r['archive'], 'Version: ' + r['version'], 'Architecture: ' + variant_arch(variant),
              'Maintainer: ' + MAINTAINER, 'Installed-Size: %d' % ((size + 1023) // 1024),
              'Description: ' + summary(r['id'])]
-    lines[2:2] = _rename_fields(r)
+    lines[2:2] = _rename_fields(r) + _depends_fields(r)
     lines += _interactive_fields(kit) + _launch_fields(r)
     ctl = ('\n'.join(lines) + '\n').encode()
     ents = [(_tinfo('./', mode=0o755, kind=tarfile.DIRTYPE), None), (_tinfo('./control', len(ctl)), ctl)]
@@ -397,7 +415,7 @@ def feed(build, path=TABLE):
                     continue
                 raise SystemExit('pkgs feed: %s missing: python3 tools/pkgs.py ipk %s' % (f, build))
             data = f.read_bytes()
-            b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _interactive_fields(stage_dir(build, r['archive'], v)) + _launch_fields(r)
+            b = ['Package: ' + r['archive'], 'Version: ' + r['version']] + _rename_fields(r) + _depends_fields(r) + _interactive_fields(stage_dir(build, r['archive'], v)) + _launch_fields(r)
             b += ['Architecture: ' + arch, 'Filename: ' + f.name, 'Size: %d' % len(data),
                   'SHA256sum: ' + hashlib.sha256(data).hexdigest(),
                   'Description: ' + summary(r['id'])]

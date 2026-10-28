@@ -5,9 +5,7 @@
 ; welcome: n = 8, lead 3
 (message
     "\n\n\nG I T\n\n"
-    "git 2.56.0, for an UP-Term window.\n"
-    "It goes into UP-Term:bin and UP-Term:share,\n"
-    "where the base had it.\n"
+    "git 2.56.0 in UP-Term:bin and UP-Term:share/git-core\n"
     "Needs up-term.lha installed first.\n"
     (all))
 (set #kb-git @KBCOPYGIT@)
@@ -38,13 +36,13 @@
 (P_OPTIONS)
 
 (set #step "copy-git" #kb #kb-git #n 1
-     #why "Copying git to UP-Term:bin and UP-Term:share.")
+     #why "Copying git to UP-Term.")
 (P_STEP)
 
 (set #n 6)
 (P_LEAD)
 (set #done
     (cat #lead "git is installed. In an UP-Term window, in vsh:\n"
-         "  git --version\n\n"
+         "  git\n\n"
          "Uninstall (beside Install) takes git out again."))
 ; @include dist/common/addon-tail.installer

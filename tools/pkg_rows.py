@@ -59,6 +59,8 @@ def uncovered_installs(ports, pkg, bins, data):
     out = []
     for rel in re.findall(re.escape(root) + r'/([^\s;&|"\']+)', cmd):
         rel = rel.rstrip('/')
+        if '$' in rel:  # a shell loop variable (git's `for h in $(git_HELPERS)`): its values are listed by the recipe's own _BINS
+            continue
         if any(rel == i or rel.startswith(i + '/') for i in IGNORED_INSTALLS):
             continue
         if any(rel == c or rel.startswith(c + '/') or c.startswith(rel + '/') for c in covered):

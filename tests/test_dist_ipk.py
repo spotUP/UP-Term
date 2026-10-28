@@ -84,6 +84,26 @@ class IpkTest(unittest.TestCase):
         self.assertIn('Launch: UP-Term:nvim/bin/nvim\n', stanzas['Package: up-nvim'])
         self.assertNotIn('Launch', stanzas['Package: Claude'])
 
+    def test_a_package_with_deps_gets_a_depends_line_in_control_and_feed_and_a_package_without_deps_gets_none(self):
+        import unittest.mock, pkg_rows
+        seen = []
+        def fake(ports, pkg, field):
+            seen.append((pkg, field))
+            return 'up-git up-perl' if (pkg, field) == ('nvim', 'RUNTIME_DEPENDS') else ''
+        ports = self.tmp / 'ports'
+        (ports / 'pkgs/nvim').mkdir(parents=True)
+        (ports / 'pkgs/nvim/recipe.mk').write_text('')
+        with unittest.mock.patch('pkg_rows.read_field', fake), \
+                unittest.mock.patch.dict(os.environ, {'UPTERM_PORTS': str(ports)}):
+            pkgs.ipk(self.build, self.table)
+            pkgs.write_feed(self.build, self.table)
+        self.assertIn(('nvim', 'RUNTIME_DEPENDS'), seen)   # the sentinel: the recipe field was read
+        self.assertIn('Depends: up-git, up-perl\n', self._control('up-nvim_2.1_m68k-amigaos.ipk'))
+        self.assertNotIn('Depends', self._control('Claude_1.1_m68k-amigaos.ipk'))
+        stanzas = {s.split('\n')[0]: s for s in (self.build / 'ipk/Packages').read_text().split('\n\n')}
+        self.assertIn('Depends: up-git, up-perl\n', stanzas['Package: up-nvim'])
+        self.assertNotIn('Depends', stanzas['Package: Claude'])
+
     def test_ipk_is_an_ar_archive_with_control_and_data_at_the_right_paths(self):
         f = self.out / 'up-nvim_2.1_m68k-amigaos.ipk'
         names = subprocess.run(['ar', 't', str(f)], capture_output=True, text=True, check=True).stdout.split()
