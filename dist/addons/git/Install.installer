@@ -5,7 +5,11 @@
 ; welcome: n = 8, lead 3
 (message
     "\n\n\nG I T\n\n"
-    "git 2.56.0 in UP-Term:bin and UP-Term:share/git-core\n"
+    "git, the version control system, for an UP-Term window.\n"
+    "It goes into UP-Term:bin and UP-Term:share/git-core.\n"
+    "git needs a volume with long file names: FFS in long-name\n"
+    "mode (DOS7), PFS3 or SFS. OFS and plain FFS stop at 30\n"
+    "characters, too short for git's object files.\n"
     "Needs up-term.lha installed first.\n"
     (all))
 (set #kb-git @KBCOPYGIT@)
@@ -36,7 +40,7 @@
 (P_OPTIONS)
 
 (set #step "copy-git" #kb #kb-git #n 1
-     #why "Copying git to UP-Term.")
+     #why "Copying git to UP-Term:bin and UP-Term:share/git-core.")
 (P_STEP)
 
 (set #n 6)
