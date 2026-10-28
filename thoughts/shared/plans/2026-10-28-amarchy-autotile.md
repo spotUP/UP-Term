@@ -22,7 +22,7 @@ ledger: thoughts/spot/todos.md, AMARCHY-AUTOTILE
   Amarchy restarts it at boot when it was on.
 
 ## Implementation choices (mine, stated)
-- Name: binary `AmTile` (UP-Term:Amarchy/AmTile), broker "AmTile", ARexx port `AMTILE`.
+- Name: binary `AmTile` (UP-Term:bin/AmTile, beside the other Amarchy programs; there is no UP-Term:Amarchy drawer), broker "AmTile", ARexx port `AMTILE`.
 - Master width ratio 55 % default, ARexx `RATIO <20..80>`.
 - Window watch: timer.device poll every 250 ms (pattern: handler/pty_handler.c:168-200),
   walk screen->FirstWindow under LockIBase, compare the window set to the previous one.
@@ -69,8 +69,15 @@ win.c is not linkable as is.
 Success: cross build clean; `make test` amarchy groups pass; refactor proof: existing Amarchy
 ARexx host tests and tools/rig/amarchy_window_rig.py still pass on a rig.
 
+Phase 2 as built (main, 2026-10-28):
+- win.c `box_of`/`apply_box` moved to amarchy/win_apply.c as `win_box_of`/`win_apply_box`; ChangeWindowBox is
+  called under LockIBase after a screen/window membership check, as win.c already did.
+- AmTile finds only the screen named "UP-Term" (not "UP-Term.2".."UP-Term.9" or a PUBSCREEN override) in v1.
+- Exchange: the broker is Active only while tiling; Disable = OFF, Enable = ON, Kill = QUIT (state unchanged).
+- Gap is TILE_GAP_DEFAULT until P3-3.
+
 ## Phase 3 - Amarchy wiring
-- Menu row "Tile windows" under the existing window section, runs `UP-Term:Amarchy/AmTile TOGGLE`
+- Menu row "Tile windows" under the existing window section, runs `UP-Term:bin/AmTile TOGGLE`
   (shows on/off from ENV:Amarchy/tile if the row model supports a state label).
 - Hotkey default (see choices).
 - Config key `tile_gap` (amconf_core) default 4; AmTile reads it at start and on RETILE.

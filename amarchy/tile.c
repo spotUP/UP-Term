@@ -272,6 +272,8 @@ static void set_on(int on)
         return;
     g_on = on;
     state_save();
+    if (g_broker)
+        ActivateCxObj(g_broker, g_on);   /* Exchange shows Active only while tiling */
     if (g_on) {
         tick(1);
         timer_start();
@@ -349,7 +351,7 @@ static int broker_open(void)
     g_broker = CxBroker(&nb, &err);
     if (!g_broker)
         return 0;
-    ActivateCxObj(g_broker, 1);
+    ActivateCxObj(g_broker, g_on);
     return 1;
 }
 
@@ -437,7 +439,8 @@ int main(int argc, char **argv)
             broker_serve();
         if (sigs & rx)
             rexx_host_serve(&rexx, command, 0);
-        if (tm_busy && (sigs & tm)) {
+        /* the bit can be left over from an AbortIO in timer_stop: only a finished request is a tick */
+        if (tm_busy && (sigs & tm) && CheckIO((struct IORequest *)tm_req)) {
             WaitIO((struct IORequest *)tm_req);
             tm_busy = 0;
             if (g_on) {
