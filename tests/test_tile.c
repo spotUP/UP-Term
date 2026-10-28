@@ -31,19 +31,19 @@ static void master_stack_boxes(void)
     for (i = 0; i < 4; i++)
         in[i] = mk(i + 1, "w");
 
-    tile_master_stack(&scr, 4, 55, 1, in, out);            /* work area 4,16 792x580 */
+    tile_layout(TL_MASTER, &scr, 4, 55, 1, 1, in, out);            /* work area 4,16 792x580 */
     check_box(&out[0], 4, 16, 792, 580);
 
-    tile_master_stack(&scr, 4, 55, 2, in, out);            /* master (792-4)*55/100 = 433 */
+    tile_layout(TL_MASTER, &scr, 4, 55, 1, 2, in, out);            /* master (792-4)*55/100 = 433 */
     check_box(&out[0], 4, 16, 433, 580);
     check_box(&out[1], 441, 16, 355, 580);
 
-    tile_master_stack(&scr, 4, 55, 3, in, out);
+    tile_layout(TL_MASTER, &scr, 4, 55, 1, 3, in, out);
     check_box(&out[0], 4, 16, 433, 580);
     check_box(&out[1], 441, 16, 355, 288);
     check_box(&out[2], 441, 308, 355, 288);
 
-    tile_master_stack(&scr, 4, 55, 4, in, out);            /* (580-8)/3 = 190, the last cell takes 192 */
+    tile_layout(TL_MASTER, &scr, 4, 55, 1, 4, in, out);            /* (580-8)/3 = 190, the last cell takes 192 */
     check_box(&out[0], 4, 16, 433, 580);
     check_box(&out[1], 441, 16, 355, 190);
     check_box(&out[2], 441, 210, 355, 190);
@@ -58,12 +58,12 @@ static void min_size_beats_the_cell(void)
     in[1] = mk(2, "b");
     in[1].box.minw = 400;                                  /* wider than the 355 px stack cell */
     in[1].box.maxw = 700;
-    tile_master_stack(&scr, 4, 55, 2, in, out);
+    tile_layout(TL_MASTER, &scr, 4, 55, 1, 2, in, out);
     check_box(&out[0], 4, 16, 433, 580);
     check_box(&out[1], 441, 16, 400, 580);
     in[1].box.minw = 50;
     in[1].box.maxh = 200;                                  /* a Max below the cell keeps the box small */
-    tile_master_stack(&scr, 4, 55, 2, in, out);
+    tile_layout(TL_MASTER, &scr, 4, 55, 1, 2, in, out);
     check_box(&out[1], 441, 16, 355, 200);
 }
 
@@ -135,10 +135,196 @@ static void state_file(void)
     CHECK(!tile_state_on("once", 4));
 }
 
+/* Worked numbers of the plan: 800x600, title 14, gap 4, ratio 55 -> work area 4,18 792x578. */
+static const win_screen scr14 = { 800, 600, 14 };
+
+static void lay(int kind, int ratio, int nm, int n, win_box *out)
+{
+    tile_win in[TILE_NMASTER_MAX + 4];
+    int i;
+    for (i = 0; i < n; i++)
+        in[i] = mk(i + 1, "w");
+    tile_layout(kind, &scr14, 4, ratio, nm, n, in, out);
+}
+
+static void worked_numbers(void)
+{
+    win_box o[32];
+    lay(TL_DWINDLE, 55, 1, 1, o);
+    check_box(&o[0], 4, 18, 792, 578);
+    lay(TL_DWINDLE, 55, 1, 2, o);
+    check_box(&o[1], 4, 18, 433, 578);
+    check_box(&o[0], 441, 18, 355, 578);
+    lay(TL_DWINDLE, 55, 1, 3, o);
+    check_box(&o[2], 4, 18, 433, 578);
+    check_box(&o[1], 441, 18, 355, 315);
+    check_box(&o[0], 441, 337, 355, 259);
+    lay(TL_DWINDLE, 55, 1, 4, o);
+    check_box(&o[3], 4, 18, 433, 578);
+    check_box(&o[2], 441, 18, 355, 315);
+    check_box(&o[1], 441, 337, 193, 259);
+    check_box(&o[0], 638, 337, 158, 259);
+
+    lay(TL_MASTER, 55, 1, 2, o);
+    check_box(&o[0], 4, 18, 433, 578);
+    check_box(&o[1], 441, 18, 355, 578);
+    lay(TL_MASTER, 55, 2, 4, o);
+    check_box(&o[0], 4, 18, 433, 287);
+    check_box(&o[1], 4, 309, 433, 287);
+    check_box(&o[2], 441, 18, 355, 287);
+    check_box(&o[3], 441, 309, 355, 287);
+    lay(TL_MASTER, 55, 3, 2, o);                           /* nmaster >= n: one full-width stack */
+    check_box(&o[0], 4, 18, 792, 287);
+    check_box(&o[1], 4, 309, 792, 287);
+
+    lay(TL_MIRROR, 55, 1, 2, o);
+    check_box(&o[1], 4, 18, 355, 578);
+    check_box(&o[0], 363, 18, 433, 578);
+
+    lay(TL_COLUMNS, 55, 1, 3, o);
+    check_box(&o[0], 4, 18, 261, 578);
+    check_box(&o[1], 269, 18, 261, 578);
+    check_box(&o[2], 534, 18, 262, 578);
+
+    lay(TL_ROWS, 55, 1, 4, o);
+    check_box(&o[0], 4, 18, 792, 141);
+    check_box(&o[1], 4, 163, 792, 141);
+    check_box(&o[2], 4, 308, 792, 141);
+    check_box(&o[3], 4, 453, 792, 143);
+
+    lay(TL_GRID, 55, 1, 3, o);
+    check_box(&o[0], 4, 18, 394, 287);
+    check_box(&o[1], 402, 18, 394, 287);
+    check_box(&o[2], 4, 309, 792, 287);
+    lay(TL_GRID, 55, 1, 4, o);
+    check_box(&o[0], 4, 18, 394, 287);
+    check_box(&o[1], 402, 18, 394, 287);
+    check_box(&o[2], 4, 309, 394, 287);
+    check_box(&o[3], 402, 309, 394, 287);
+
+    lay(TL_MONOCLE, 55, 1, 3, o);
+    check_box(&o[0], 4, 18, 792, 578);
+    check_box(&o[1], 4, 18, 792, 578);
+    check_box(&o[2], 4, 18, 792, 578);
+
+    lay(99, 55, 1, 2, o);                                  /* unknown kind = dwindle */
+    check_box(&o[1], 4, 18, 433, 578);
+}
+
+static void min_max_every_layout(void)
+{
+    int k, n, i, wide;
+    tile_win in[5];
+    win_box o[5];
+    for (k = 0; k < TL_COUNT; k++)
+        for (n = 2; n <= 5; n++)
+            for (wide = 0; wide < n; wide++) {
+                for (i = 0; i < n; i++)
+                    in[i] = mk(i + 1, "w");
+                in[wide].box.minw = 300;
+                tile_layout(k, &scr14, 4, 55, 2, n, in, o);
+                CHECK(o[wide].width >= 300);
+                for (i = 0; i < n; i++) {
+                    CHECK(o[i].width > 0 && o[i].height > 0);
+                    CHECK(o[i].left >= 0 && o[i].top >= 0);
+                    CHECK(i == wide || (o[i].left + o[i].width <= 800 && o[i].top + o[i].height <= 600)); /* Min beats the room (win_fit) */
+                }
+            }
+}
+
+static int same(const win_box *a, const win_box *b, int n)
+{
+    return memcmp(a, b, sizeof(win_box) * (size_t)n) == 0;
+}
+
+static void knobs(void)
+{
+    win_box a[6], b[6];
+    int k;
+    for (k = 0; k < TL_COUNT; k++) {
+        lay(k, 55, 1, 5, a);
+        lay(k, 65, 1, 5, b);
+        if (k == TL_DWINDLE || k == TL_MASTER || k == TL_MIRROR)
+            CHECK(!same(a, b, 5));
+        else
+            CHECK(same(a, b, 5));
+        lay(k, 55, 2, 5, b);
+        if (k == TL_MASTER || k == TL_MIRROR)
+            CHECK(!same(a, b, 5));
+        else
+            CHECK(same(a, b, 5));
+    }
+    for (k = 0; k < TL_COUNT; k++) {                       /* n = 1 and n = 32 must not crash */
+        win_box big[32];
+        tile_win in[32];
+        int i;
+        lay(k, 55, 2, 1, a);
+        for (i = 0; i < 32; i++)
+            in[i] = mk(i + 1, "w");
+        tile_layout(k, &scr14, 4, 55, 8, 32, in, big);
+        CHECK(big[31].width > 0);
+    }
+}
+
+static void layout_names_and_steps(void)
+{
+    int k = -1, i;
+    static const char *const names[TL_COUNT] = { "dwindle", "master-stack", "mirrored", "columns", "rows", "grid",
+                                                 "monocle" };
+    char up[32];
+    for (i = 0; i < TL_COUNT; i++) {
+        size_t j;
+        CHECK(strcmp(tile_layout_name(i), names[i]) == 0);
+        CHECK_INT(tile_layout_parse(names[i], &k), 1);
+        CHECK_INT(k, i);
+        for (j = 0; j <= strlen(names[i]); j++)
+            up[j] = names[i][j] >= 'a' && names[i][j] <= 'z' ? (char)(names[i][j] - 32) : names[i][j];
+        k = -1;
+        CHECK_INT(tile_layout_parse(up, &k), 1);
+        CHECK_INT(k, i);
+    }
+    CHECK(tile_layout_name(TL_COUNT) == NULL && tile_layout_name(-1) == NULL);
+    CHECK_INT(tile_layout_parse("grid next", &k), 1);      /* a word may end at a space */
+    CHECK_INT(k, TL_GRID);
+    CHECK_INT(tile_layout_parse("", &k), 0);
+    CHECK_INT(tile_layout_parse("x", &k), 0);
+    CHECK_INT(tile_layout_parse("master", &k), 0);
+    CHECK_INT(tile_layout_step(TL_MONOCLE, 1), TL_DWINDLE);
+    CHECK_INT(tile_layout_step(TL_DWINDLE, -1), TL_MONOCLE);
+    CHECK_INT(tile_layout_step(TL_ROWS, 1), TL_GRID);
+    CHECK_INT(tile_layout_step(TL_ROWS, -1), TL_COLUMNS);
+}
+
+static void promote_and_cycle(void)
+{
+    long o[4] = { 1, 2, 3, 4 };
+    CHECK_INT(tile_promote(o, 4, 3), 1);
+    CHECK(o[0] == 3 && o[1] == 1 && o[2] == 2 && o[3] == 4);
+    CHECK_INT(tile_promote(o, 4, 4), 1);
+    CHECK(o[0] == 4 && o[1] == 3 && o[2] == 1 && o[3] == 2);
+    CHECK_INT(tile_promote(o, 4, 4), 1);
+    CHECK(o[0] == 4 && o[1] == 3);
+    CHECK_INT(tile_promote(o, 4, 99), 0);
+    CHECK(o[0] == 4 && o[1] == 3 && o[2] == 1 && o[3] == 2);
+    CHECK_INT(tile_cycle(o, 4, 3, 1), 2);
+    CHECK_INT(tile_cycle(o, 4, 3, -1), 0);
+    CHECK_INT(tile_cycle(o, 4, 2, 1), 0);                  /* wraps forward */
+    CHECK_INT(tile_cycle(o, 4, 4, -1), 3);                 /* wraps back */
+    CHECK_INT(tile_cycle(o, 4, 99, 1), 0);                 /* untiled id: the first */
+    CHECK_INT(tile_cycle(o, 4, 99, -1), 0);
+    CHECK_INT(tile_cycle(o, 0, 4, 1), 0);
+    CHECK_INT(tile_cycle(o, 1, 4, 1), 0);
+}
+
 void suite_tile(void)
 {
     state_file();
     master_stack_boxes();
+    worked_numbers();
+    min_max_every_layout();
+    knobs();
+    layout_names_and_steps();
+    promote_and_cycle();
     min_size_beats_the_cell();
     classification();
     order_update();

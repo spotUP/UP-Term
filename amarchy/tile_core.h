@@ -1,4 +1,4 @@
-/* The pure part of AmTile: which windows tile, their order, and the master-stack boxes (amarchy/tile_core.c). No OS
+/* The pure part of AmTile: which windows tile, their order, and the layout boxes (amarchy/tile_core.c). No OS
  * headers, no Amiga types: the commodity copies each window's flags and limits into a tile_win, calls these, and
  * hands the boxes to Intuition. The clamp is win_core's win_fit. Host-tested by tests/test_tile.c. */
 #ifndef AMARCHY_TILE_CORE_H
@@ -37,11 +37,26 @@ int tile_order_update(long *order, int n, const long *set, int m);
  * box worked out for screen A is applied on screen B. Same screen: returns n unchanged. */
 int tile_screen_switch(long *cur, long next, int n);
 
-/* Master-stack: n windows in[0..n) (front = master) to out[0..n). The work area is the screen below its title bar;
- * gap sits on the outer edges and between cells. One window fills the area; else the master takes ratio_pct of it on the
- * left and the rest are split evenly in the right column, the last cell taking the remainder pixels. Each box is held
- * to its window's Min / Max by win_fit. */
-void tile_master_stack(const win_screen *s, int gap, int ratio_pct, int n, const tile_win *in, win_box *out);
+#define TILE_NMASTER_MAX    8
+
+typedef enum { TL_DWINDLE = 0, TL_MASTER, TL_MIRROR, TL_COLUMNS, TL_ROWS, TL_GRID, TL_MONOCLE, TL_COUNT } tile_layout_kind;
+
+const char *tile_layout_name(int kind);                 /* "dwindle", "master-stack", "mirrored", "columns", "rows", "grid", "monocle"; NULL out of range */
+int tile_layout_parse(const char *word, int *kind);     /* case-insensitive exact word, 1 ok / 0 unknown (word may end at ' ' or NUL) */
+int tile_layout_step(int kind, int dir);                /* next (dir>0) / previous (dir<0), wrapping over TL_COUNT */
+
+/* n windows in[0..n) (front = newest) to out[0..n) in the given layout. The work area is the screen below its title
+ * bar; gap sits on the outer edges and between cells; remainder pixels go to the last cell of a run. Each box is held
+ * to its window's Min / Max by win_fit. Knobs: ratio_pct moves dwindle, master-stack and mirrored; nmaster (clamped to
+ * 1..n) moves master-stack and mirrored only; columns, rows, grid and monocle ignore both (written exemption). An
+ * unknown kind falls back to TL_DWINDLE. Rules and worked numbers: thoughts/shared/plans/2026-10-28-amtile-layout.md. */
+void tile_layout(int kind, const win_screen *s, int gap, int ratio_pct, int nmaster, int n, const tile_win *in, win_box *out);
+
+/* Moves id to order[0], the rest keep their order. 1 when id was found (changed or already first), 0 when not tiled. */
+int tile_promote(long *order, int n, long id);
+
+/* The index in order[0..n) of the window after (dir>0) or before (dir<0) id, wrapping. id not in order: 0. n < 1: 0. */
+int tile_cycle(const long *order, int n, long id, int dir);
 
 /* The state file AmTile writes (ENV:Amarchy/tile, "on" or "off" and a newline): 1 when buf[0..len) reads "on". Amarchy
  * runs AmTile ON at its start by this. */

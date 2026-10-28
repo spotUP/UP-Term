@@ -264,7 +264,7 @@ static void tick(int force)
             for (j = 0; j < sn->n; j++)
                 if (sn->w[j].id == g_order[i])
                     in[i] = sn->w[j];
-        tile_master_stack(&sn->scr, g_gap, g_ratio, g_norder, in, out);
+        tile_layout(TL_MASTER, &sn->scr, g_gap, g_ratio, 1, g_norder, in, out);
         lock = LockIBase(0);
         if (screen_alive(scr))
             for (i = 0; i < g_norder; i++)

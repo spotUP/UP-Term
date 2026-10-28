@@ -42,7 +42,7 @@ int main(int argc, char **argv)
         in[i].box.maxw = a[2];
         in[i].box.maxh = a[3];
     }
-    tile_master_stack(&s, gap, ratio, n, in, out);
+    tile_layout(TL_MASTER, &s, gap, ratio, 1, n, in, out);
     for (i = 0; i < n; i++)
         printf("box %d %d %d %d %d\n", i, out[i].left, out[i].top, out[i].width, out[i].height);
     return 0;
