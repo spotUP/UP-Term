@@ -92,7 +92,8 @@ Checklist:
 - R1.22 (owner 2026-10-29) icon label colour/outline and Workbench screen title format: 3.2 workbench.prefs (layout unverified, add to R1.1 probe)
 - R1.23 (owner 2026-10-29) DOpus 5 Magellan II desktop: same theme applies when DOpus replaces Workbench ("we need to support both"; DOpus is more configurable). Research first: environment file format, ARexx DOPUS.1 verbs, detection, live apply
 - R1.24 (owner 2026-10-29) MUI apps through the Selecta flat MUI theme (format pending from the Selecta session)
-Out: window frame shapes and gradients (need VisualPrefs/Birdie patches); screen depth change not picked.
+- R1.25 (owner 2026-10-29) flat Amarchy look for the whole GUI through VisualPrefs (with VP-QuickFix 1.5n for 3.2) + FullPalette pen locking, and Birdie border fills; Amarchy designs its own flat theme (borderless frames, flat symbols, shine/shadow pens = fill, no 3D title bar) in the theme colours. Research: thoughts/shared/research/2026-10-29-amarchy-visualprefs-birdie.md. Open before planning: map the undocumented gui.prefs GUI chunk by diffing saves, FullPalette lock flags, headless live apply, Birdie on 3.2 and clean restart, bundle vs link (licences unclear)
+Out: screen depth change not picked.
 
 ## Phase 2. Status bar on the Workbench screen
 
