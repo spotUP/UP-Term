@@ -90,7 +90,7 @@ Omarchy keeps every agent in its terminal TUI; it adds no chat window. Its
 - [ ] A2 TAB_PI + MENU_PI beside TAB_CLAUDE (same tab_spawn path), Apps row + icon
 - [ ] A3 `super+l` opens the `ai-agent` choice (no new launch path)
 - [ ] A4 "Ask AI" row: existing text requester, prompt passed into tab_spawn
-- [ ] F1 theme sync: theme apply writes agent colours; both agents read them. OWNER (s20): enhance C:Claude to load theme files (pi-style theme JSON, same roles as pitheme_sgr, tui.c:929); Amarchy writes one file per theme, both agents read it
+- [ ] F1 theme sync: theme apply writes agent colours; both agents read them. OWNER (s20, revised): agents follow the UP-Term console theme. C:Claude ANSI-follow mode maps every role to palette indices 0-15 (built-ins dark-ansi/light-ansi exist, claude/theme.c); amiga-pi gets one index-only "console" theme file. No per-theme files
 - [ ] F2 Agents panel menu: default agent, limit meters, token use, starter prompts
 - [ ] F3 rig check: theme switch recolours an open agent tab on next start; panel rows open the agent with the prompt
 - [ ] A5 host tests + reachability: key press on rig starts the agent with the prompt (taskpath/ps shows the command line)
