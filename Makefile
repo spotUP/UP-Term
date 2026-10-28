@@ -572,7 +572,7 @@ ENGINE_68K := engine/vtengine_68k.s
 # the console's history file (handler/histfile.c) by C:Claude's rule for growing files, over its DOS calls alone
 HANDLER_DATADIR := claude/datadir.c claude/path.c claude/util.c claude/datadir_amiga.c
 HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c handler/upmru.c config/keymap.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/frontscr.c handler/winspec.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/pens_amiga.c render/aa_ink.c render/aa_ink.h render/aa_ink_rule.h render/pens_amiga.h render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c handler/clipfmt.c handler/histfile.c shell/sh_path.c $(HANDLER_DATADIR)
-HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config/keymap_load.h handler/upactive.h handler/upreq.h handler/frontscr.h engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h render/ttf.h \
+HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config/keymap_load.h handler/upactive.h handler/upcmd.h shell/vsh_quote.h handler/upreq.h handler/frontscr.h engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h render/ttf.h \
                handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/screenreq.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
                handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h amarchy/amconf_core.h amarchy/amconf_dos.h
 
@@ -665,7 +665,7 @@ $(BUILD)/amiga/reach: tests/amiga/reach.c
 # strcmp/strlen/strcpy at every call (another 3.5 KB). Measured 2026-10-07.
 VSH_OPT := -O=1 -size -D__NOINLINE__
 VSH_SRC := shell/vsh.c shell/vsh_cmdline.c shell/vsh_mem.c shell/sh_exec.c shell/sh_path.c shell/sh_expand.c shell/sh_parse.c shell/sh_float.c claude/regex.c config/termurl.c tty/bmsg.c
-$(BUILD)/amiga/vsh: $(VSH_SRC) $(UPTERM_VERSION_H) config/termurl.h config/cmdpath.h shell/sh_exec.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
+$(BUILD)/amiga/vsh: $(VSH_SRC) $(UPTERM_VERSION_H) config/termurl.h config/cmdpath.h shell/sh_exec.h shell/sh_path.h shell/sh_expand.h shell/sh_parse.h shell/vsh_quote.h handler/vtcon_packets.h tty/ldisc.h tty/bmsg.h $(BUILD)/amiga/obj/cpuchk-vsh.o
 	@mkdir -p $(BUILD)/amiga
 	$(subst -O2,$(VSH_OPT),$(VC)) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65,79 $(if $(DEBUG),-DVSH_DEBUG) -o $@ $(VSH_SRC) $(BUILD)/amiga/obj/cpuchk-vsh.o
 
@@ -1143,7 +1143,7 @@ $(BUILD)/amiga/up-console.device: device/upcon_rom.s $(DEVICE_SRC) $(DEVICE_HDR)
 # C:UPTerm: the slash commands from scripts (ledger C1)
 # (UPTerm ACTIVE ... asks the focused window through its request port: upreq.c and what it needs)
 UPTERM_SRC := handler/upterm.c handler/upreq.c handler/upactive.c handler/upmru.c handler/keymap_act.c config/keymap.c config/upconf_rows.c handler/slash.c handler/kcmode.c
-$(BUILD)/amiga/UPTerm: $(UPTERM_SRC) $(UPTERM_VERSION_H) handler/vtcon_packets.h handler/upreq.h handler/upactive.h handler/keymap_act.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
+$(BUILD)/amiga/UPTerm: $(UPTERM_SRC) $(UPTERM_VERSION_H) handler/vtcon_packets.h handler/upreq.h handler/upactive.h handler/upcmd.h handler/keymap_act.h $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -I$(BUILD)/amiga -Dmain=up_main -o $@ $(UPTERM_SRC) $(BUILD)/amiga/obj/cpuchk-UPTerm.o
 
