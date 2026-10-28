@@ -78,6 +78,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_wasabimcp tools/rig/wasabimcp.py picks the wasabid target from the environment (tools/test_rig_wasabimcp.py)
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
 # ONLY=rig_fsuae_log FS-UAE log in the rig dir, capped (tools/test_rig_fsuae_log.py)
+# ONLY=rig_clone_new a rig number that never ran gets its sys.hdf clone (tools/test_rig_clone_new.py)
 # ONLY=rig_crashed rig.py status says crashed on a Guru reset loop in the fs-uae log; userland_rig takes the rig lock (tools/test_rig_crashed.py)
 # ONLY=userland_expected userland_rig stops a package with no build/expected outputs before the rig runs it (tests/test_userland_rig_expected.py)
 # ONLY=rig_wasabi rig.py wasabi: arguments, the port per rig, the log paths, the process list parser (tools/test_rig_wasabi.py)
@@ -126,6 +127,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screenmode ]; then python3 -I tools/test_rig_screenmode.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_fsuae_log ]; then python3 -I tools/test_rig_fsuae_log.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_clone_new ]; then python3 -I tools/test_rig_clone_new.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_crashed ]; then python3 -I tools/test_rig_crashed.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = userland_expected ]; then python3 -I tests/test_userland_rig_expected.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_stamp ]; then python3 -I tests/test_amarchy_menu_stamp.py; fi

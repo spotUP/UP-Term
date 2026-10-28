@@ -501,6 +501,7 @@ def fresh_sys_hdf():
     paths.require_input(SRC_HDF, "UPTERM_SYSTEM_HDF", "the system disk image")
     dst = RIG / "sys.hdf"
     new = RIG / "sys.hdf.new"
+    RIG.mkdir(parents=True, exist_ok=True)   # a rig number that never ran has no dir yet (RIG-CLONE-NEW-NUMBER)
     new.unlink(missing_ok=True)
     r = subprocess.run(["cp", "-c", str(SRC_HDF), str(new)], capture_output=True, text=True)
     if r.returncode != 0:
