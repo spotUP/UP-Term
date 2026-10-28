@@ -53,6 +53,7 @@ void suite_winspec(void);
 void suite_screenreq(void);
 void suite_cmdline(void);
 void suite_win(void);
+void suite_tile(void);
 void suite_fontpair(void);
 void suite_updemo(void);
 void suite_tabprog(void);
@@ -134,6 +135,7 @@ static const h_suite suites[] = {
     { "screenreq", suite_screenreq },
     { "cmdline", suite_cmdline },
     { "win", suite_win },
+    { "tile", suite_tile },
     { "fontpair", suite_fontpair },
     { "updemo", suite_updemo },
     { "tabprog", suite_tabprog },

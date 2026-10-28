@@ -38,6 +38,9 @@ typedef struct win_screen {
     int title;             /* height of the screen's title bar: fullscreen starts below it */
 } win_screen;
 
+/* A limit of one dimension: v held to the window's Min / Max and to room (the screen's space from the window's edge), at least 1. */
+int win_fit(int v, int min, int max, int room);
+
 /* Each returns 1 when the box changed, 0 when it did not (a no-op is not an error). */
 int win_move(win_box *b, win_arg dir, int pixels, const win_screen *s);   /* clamped inside the screen */
 int win_size(win_box *b, win_arg dir, int pixels, const win_screen *s);   /* left/up shrink, right/down grow; min, max, screen */
