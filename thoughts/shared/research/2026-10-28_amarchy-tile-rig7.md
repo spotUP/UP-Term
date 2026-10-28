@@ -38,3 +38,33 @@ running), b2_redraw, b2_patterns, b2_icons_selected, b2_viewname (`no port named
 runs). The WORKBENCH failures look environmental (not the win_apply refactor) but I had no baseline from before the refactor.
 AmTile was running during the first run (my manual start), which can explain the move_left failure; second run used recorded verdicts.
 Verdicts: build/rig7/amarchy-window.
+
+## Run 2 (s18, main 50d4040a + script fix; rig 7 started `--max`, start output: no [WARN] drift line; stage_rig "AmTile current", "Amarchy current")
+Measured: front screen 800x600 (Workbench Screen, DOpus), title bar 14 (script default now right); master box (4,18,433,578).
+Script bug fixed: close_win() clicked the close gadget by window title; all windows are titled "UP-Term", so it closed an arbitrary one
+(first run closed the wrong window and left strays that made later steps count 5 windows). It now selects the window by address.
+Final clean run (strays closed first, state.json removed), 11 of 11:
+[OK] start: Amarchy up True, windows '0x1004f5e4' '0x1012196c', AMTILE port absent
+[OK] row_on: expected row rc 0 and STATUS "on 2 n" n>=1 vs RUN 15 rc 0 STATUS (True, 2, 1)
+[OK] boxes2: expected [(4, 18, 433, 578), (441, 18, 355, 578)] vs [(4, 18, 433, 578), (441, 18, 355, 578)]
+[OK] second_on: expected rc 0, STATUS on vs rc 0 STATUS (True, 2, 2) (Status: 12 lines)
+[OK] env_on: expected ENV:Amarchy/tile "on" vs 'on'
+[OK] third: ... on cells True in 0.6 s, new window (4, 18, 433, 578), STATUS (True, 3, 3)
+[OK] close_one: expected 2 windows on [(4, 18, 433, 578), (441, 18, 355, 578)] ... vs closed True boxes [(4, 18, 433, 578), (441, 18, 355, 578)] STATUS (True, 2, 4)
+[OK] midapply: ... vs closed True STATUS (True, 2, 4)
+[OK] off: expected row rc 0, STATUS off, ENV:Amarchy/tile "off" vs RUN 15 rc 0 STATUS (False, 2, 4) env 'off'
+[OK] fourth_free: ... (0, 20, 800, 400, 'UP-Term') -> (0, 20, 800, 400, 'UP-Term')
+[OK] restart: expected port AMTILE present, on, after Amarchy restart with ENV:Amarchy/tile "on" vs STATUS (True, 3, 1)
+
+### Extras
+Exchange (list rows Amarchy, AmTile, Directory Opus 5, Exchange): select AmTile, click Active:
+ before STATUS (True,3,1) env on; after Disable (False,3,1) env off; after Enable (True,3,2) env on.  PASS
+Hotkey Left Amiga + Left Alt + T (raw 0x14, qual 0x50): STATUS (False,3,2) env off, second press (True,3,3) env on.  PASS
+
+### Regression (AmTile OFF then QUIT, port gone), amarchy_window_rig.py --fresh: passed 11 of 17
+FAIL b2_redraw, b2_patterns (31 of 31 refused), b2_icons_selected, b2_viewname: `no port named "WORKBENCH"`. rexx_ports on rig 7:
+ AMARCHY, AMARCHY.GUISRV, AMARCHY.MENUSRV, AREXX, ConClip.rendezvous, Directory Opus, DOPUS.1, REXX, WASABI, UPTERM.req.* -- no WORKBENCH port
+ (DOpus replaces Workbench): rig environment, not the product.
+FAIL menu_move_left: no menu window titled 'Amarchy'. `AMARCHY SHOW` rc 0 opens one window with EMPTY title, 608x352; the step looks for
+ title 'Amarchy' (MENU_TITLE, window_rig.py:29), so likely a stale script title for the drawn menu. Not hunted further.
+FAIL move_left: KeyError('box0') / box unchanged (72,40,320,120) with AmTile off: follows the menu_move_left failure (not hunted; it also failed in run 1).

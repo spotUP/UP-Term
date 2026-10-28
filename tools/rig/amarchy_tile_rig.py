@@ -171,7 +171,18 @@ def close_win(addr):
     if not b:
         return False
     with ami._conn() as conn:
-        ami._click_gadget(conn, b[4], 'close')
+        m = ami._m()
+        # every window is titled "UP-Term": a click by title takes the first match, so select the window by its address
+        for sc, w in m.ui_windows(m.read_ui(conn, every_screen=True), b[4]):
+            if w['addr'] != addr:
+                continue
+            g = next((x for x in w['gadgets'] if x['kind'] == 'close'), None)
+            if not g:
+                return False
+            ami._mouse(conn, 1, 0, 1, g['x'] + g['width'] // 2, g['y'] + g['height'] // 2)
+            break
+        else:
+            return False
     if addr in STATE['wins']:
         STATE['wins'].remove(addr)
     return True
