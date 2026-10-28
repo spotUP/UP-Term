@@ -94,14 +94,14 @@ Omarchy keeps every agent in its terminal TUI; it adds no chat window. Its
 - [ ] F2 Agents panel menu: default agent, limit meters, token use, starter prompts
 - [ ] F3 rig check: theme switch recolours an open agent tab on next start; panel rows open the agent with the prompt
 - [ ] A5 host tests + reachability: key press on rig starts the agent with the prompt (taskpath/ps shows the command line)
-- [ ] B1 skills search path of C:Claude and amiga-pi found (file:line)
+- [x] B1 skills search path of C:Claude and amiga-pi found (file:line): no shared dir, kit installs two copies (research 2026-10-28-omarchy-ai-b1-d1.md, c40ed131)
 - [ ] B2 Amarchy SKILL.md, command list generated from source tables
 - [ ] B3 kit installs it where both agents load it; rig check: agent lists the skill
 - [ ] C1 research: crash traces readable after the fact (doc, owner review)
 - [ ] C2 watcher + notification row
 - [ ] C3 Diagnose launches print mode with crash text + crash-diagnosis skill
 - [ ] C4 rig reachability: forced test alert -> row -> diagnosis output
-- [ ] D1 B5 status checked; Setup row text matches
+- [ ] D1 B5 status checked (c40ed131: partial, C:Claude Anthropic only, local models = amiga-pi only; check apiKey optional at agent.c:1679); Setup row text matches
 - [ ] D2 "Local Model" Setup row writes models.json entry + sets ai-agent=pi
 - [ ] D3 rig check: amiga-pi lists the new model
 - [ ] E1 Stop hook writes ENV:Amarchy/ai-usage
