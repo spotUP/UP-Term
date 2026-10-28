@@ -2,12 +2,19 @@
 date: 2026-10-28
 session: vtcon-32 (Amarchy s19)
 topic: AMTILE-LAYOUT implementation, rig verification open
-status: in progress (41 of 43)
+status: done (43 of 43), owner manual test open
 ---
 
 # Handoff: AmTile layouts (Amarchy s19)
 
-## Where things stand
+## Update: done
+
+Run 2 (51de3a96): rig 7 full run 29/29 after rig-script fixes, no AmTile bug, rig 7 stopped.
+monocle_raise passes only through ui_front, which raises the window itself, so AmTile's raise on
+activation in monocle is not proven by the rig (wasabid has no layer-order read); the owner's manual test
+covers it. Nothing left to build; next session picks the next ledger task.
+
+## Where things stood
 
 Plan: `thoughts/shared/plans/2026-10-28-amtile-layout.md` (43 items, owner decisions L1-L7, deviations D-1..D-7).
 Ledger rows: `thoughts/spot/todos.md`, grep `AMTILE-LAYOUT`.
