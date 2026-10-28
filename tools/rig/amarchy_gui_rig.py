@@ -436,6 +436,40 @@ def open_apps_row(label, tag):
     return check(walk_to(label, apps), '%s: the Apps level has a %s row (rows: %s)' % (tag, label, apps))
 
 
+def env_int(name):
+    """ENV:<name> as an int, None when unset."""
+    rc, out = c.run('GetEnv %s' % name)
+    return int(out.strip()) if rc == 0 and out.strip().lstrip('-').isdigit() else None
+
+
+def case_list_scroll(level='Style'):
+    """Down past the last visible row of a drawn list scrolls it (GUI-BROWSE-SCROLL). AMARCHY_ROWS lists the whole level and
+    is published on a full draw, so it never moves on a scroll; AMARCHY_TOP / AMARCHY_SEL (gui.c sentinel_cursor, published on
+    every list draw) do. level names a root row whose level is longer than one window (Browse uses the same set_sel; Apps has 3 rows and Settings 6 on rig 5)."""
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS ENV:AMARCHY_TOP ENV:AMARCHY_SEL QUIET')
+    s, w = open_menu()
+    if not check(bool(w), 'list_scroll: menu opens'):
+        return
+    root = rows_now()
+    if not check(walk_to(level, root), 'list_scroll: the root has a %s row (rows: %s)' % (level, root)):
+        return
+    time.sleep(1)
+    rows = rows_now()
+    for _ in range(len(rows)):
+        ami.key(UP)
+        time.sleep(.2)
+    top0 = env_int('AMARCHY_TOP')
+    for _ in range(len(rows) + 2):
+        ami.key(DOWN)
+        time.sleep(.3)
+    top, sel = env_int('AMARCHY_TOP'), env_int('AMARCHY_SEL')
+    if not check(len(rows) > 14, 'list_scroll: the level is longer than one window (%d rows)' % len(rows)):
+        return
+    print('list_scroll: %d rows, top %s -> %s, selected %s' % (len(rows), top0, top, sel), flush=True)
+    check(sel is not None and sel >= len(rows) - 1, 'list_scroll: Down past the end selects the last row (selected %s of %d)' % (sel, len(rows)))
+    check(top is not None and top0 is not None and top > top0, 'list_scroll: the first drawn row moved (top %s -> %s)' % (top0, top))
+
+
 def case_run_tmux():
     """Apps > Tmux (run:tmux) from a menu with no TERM in ENV: leaves a running tmux and an UP-Term window.
     The leaf program has no shell above it, so TERM is missing unless run_in_uterm sets it; tmux then exits
@@ -1212,6 +1246,9 @@ def main():
     try:
         if '--groups' in sys.argv:      # on an OS 3.2 rig (the WORKBENCH port exists): only the group icons
             case_groups(geom)
+        elif '--list-scroll' in sys.argv:  # only Down past the last visible row of a drawn list
+            i = sys.argv.index('--list-scroll') + 1
+            case_list_scroll(sys.argv[i] if i < len(sys.argv) and not sys.argv[i].startswith('--') else 'Style')
         elif '--pkg-tags' in sys.argv:  # only the [upkg] / [UHC] tags of the Browse rows
             case_pkg_tags()
         elif '--pkg-all' in sys.argv:   # every --pkg-* case on one boot; --only <case>, --failed

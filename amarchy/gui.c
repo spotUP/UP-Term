@@ -171,6 +171,17 @@ static void sentinel_rows(const gui *g)
     SetVar((STRPTR) "AMARCHY_ROWS", (STRPTR)b, -1, GVF_GLOBAL_ONLY);
 }
 
+/* Publishes where the list is: AMARCHY_TOP is the index of the first drawn row and AMARCHY_SEL the selected row. AMARCHY_ROWS
+ * lists the whole level (published on a full draw), so a scroll moves these two and the rig tells a scrolled list from a
+ * stuck one by them. */
+static void sentinel_cursor(const gui *g)
+{
+    if (g->mode != M_LIST)
+        return;
+    sentinel_publish("AMARCHY_TOP", g->top);
+    sentinel_publish("AMARCHY_SEL", g->sel);
+}
+
 /* ---- text and fills ----------------------------------------------------------------------------------- */
 
 static int text_len(const char *s, void *ctx)
@@ -515,6 +526,7 @@ static void draw_list(gui *g)
     fill(g, MT_BG, q->m.bx, q->list_y + q->list_h, q->w - q->m.bx - 1, q->h - q->m.by - 1);
     draw_border(g);
     paint_end(g, 0, 0, g->g.w - 1, g->g.h - 1);
+    sentinel_cursor(g);
 }
 
 static void draw_full(gui *g)
@@ -611,6 +623,7 @@ static void set_sel(gui *g, int s)
         sentinel_publish("AMARCHY_LATE", g->late);
     sentinel_aa(g);
         sentinel_publish("AMARCHY_BLITS", g->blits);
+        sentinel_cursor(g);
     }
 }
 
