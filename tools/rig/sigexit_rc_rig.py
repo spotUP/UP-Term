@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """sigexit_rc_rig.py -- a program ended by a signal returns rc 128+signal.
 
-Installs ixemul.library (IXEMUL=, default the build295 one; IXNET= goes with
-it) as ixpty_rig does and runs tests/amiga/ixsigexit: from AmigaDOS a
+Runs on the ixemul.library the rig booted (rig.py start, IXEMUL=, default the
+build295 one; IXNET= goes with it; ixpty_rig.use_ixemul stops when VTC:ixp6
+differs) and runs tests/amiga/ixsigexit: from AmigaDOS a
 self-sent SIGTERM must give rc 143 and SIGINT rc 130, exit(3) still rc 3;
 through vsh a background sleeper killed with `kill -TERM` must give
 `wait` status 143. Regression test for ix_startup.c: sig_exit ends a
-program with W_EXITCODE(0, sig) and WEXITSTATUS of that is 0. Point IXEMUL=
-at the old library for the A/B (it must FAIL there). The rig must be up;
+program with W_EXITCODE(0, sig) and WEXITSTATUS of that is 0. Restart the rig
+with IXEMUL= the old library for the A/B (it must FAIL there). The rig must be up;
 `make build/amiga/vsh build/amiga/ixsigexit` first."""
 import sys, os, pathlib, shutil
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -97,6 +97,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=win the win: verbs' parse and window geometry: step, clamp, size limits, full width/screen, save ring, direction search (tests/test_win.c)
 # ONLY=tile AmTile's pure layout: what tiles, window order, the master-stack boxes (tests/test_tile.c)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
+# ONLY=rig_booted_ixemul a rig probe stops when the rig booted another ixemul (tools/test_rig_booted_ixemul.py)
 # ONLY=rig_helpers install_rig refuses up front, naming make rig-helpers, when a helper program is not built (tools/test_rig_helpers.py)
 # ONLY=rig_browse_base upkg_browse_rig step 0 installs the kit over an older base (tools/test_rig_browse_base.py)
 # ONLY=rig_browse_free upkg_browse_rig: the Info free-space parser, the precheck message (tools/test_rig_browse_free.py)
@@ -119,7 +120,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf
+TEST_PY_ONLY := pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -143,6 +144,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_claude_import ]; then python3 -I tools/test_rig_claude_import.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_stdin ]; then python3 -I tools/test_rig_stdin.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_booted_ixemul ]; then python3 -I tools/test_rig_booted_ixemul.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_helpers ]; then python3 -I tools/test_rig_helpers.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_base ]; then python3 -I tools/test_rig_browse_base.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_free ]; then python3 -I tools/test_rig_browse_free.py; fi

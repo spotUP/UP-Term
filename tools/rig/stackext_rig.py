@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """stackext_rig.py -- the signal mask across ixemul's stack extension.
 
-Installs ixemul.library (IXEMUL=, default the build295 one; IXNET= goes with
-it, default the ixnet.library of the same build tree) into VTC:ixp6, puts it
+Runs on the ixemul.library the rig booted (rig.py start, IXEMUL=, default the build295 one; IXNET= goes
+with it, default the ixnet.library of the same build tree; stops when VTC:ixp6 differs), puts VTC:ixp6
 first in LIBS:, runs tests/amiga/ixstackext (built with -fstack-extend; deep recursion makes
 ixemul extend the stack) and passes when the program prints [OK]. Regression test for atomic_on() in ixemul's
 library/stackextend.c: gcc 16 -O2 dropped the store of the saved mask and

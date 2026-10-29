@@ -14,7 +14,7 @@ SIGINT handler ran. A program still waiting is ended with `Break <process> C` so
 The rig must be up; `make build/amiga/ixnwait build/amiga/ixkill` first.
 
   UPTERM_RIG=<n> [IXEMUL=<ixemul.library> IXNET=<ixnet.library>] python3 -I tools/rig/nwait_rig.py"""
-import hashlib, os, pathlib, re, shutil, sys, time
+import os, pathlib, re, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths
 import ixpty_rig
@@ -32,9 +32,9 @@ def read_ram(name):
 def main():
     for p in ("ixnwait", "ixkill"):
         shutil.copyfile(ROOT / "build/amiga" / p, VTC / p)
-    md5 = lambda f: hashlib.md5(pathlib.Path(f).read_bytes()).hexdigest()
-    if md5(VTC / "ixp6/ixemul.library") != md5(ixpty_rig.IXEMUL):
-        print("nwait_rig: the rig did not boot %s; restart it with the same IXEMUL= and IXNET=" % ixpty_rig.IXEMUL)
+    why = ixpty_rig.booted_ixemul()
+    if why:
+        print("nwait_rig: " + why)
         return 2
     run("Delete RAM:ixnwait.pid RAM:ixnwait.out QUIET", 30)
     run("Run >NIL: VTC:ixnwait", 30)
