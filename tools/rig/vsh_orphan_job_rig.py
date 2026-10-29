@@ -16,6 +16,10 @@ Third test (subshell): `( ... ) &` is a "vsh subshell" process running the inter
 malloc heap (shell/vsh_mem.c) with a malloc'd shell and parse tree. It must outlive the shell too: the
 code stays loaded, and the heap is deleted by the last orphan, not by the exiting shell.
 
+Fourth test (code leak): the code kept for the orphans goes when the last of them ends (orphan_end has
+DOS unload it). Old code never unloaded it: every shell that orphaned a job lost about 240 KB of free
+memory for good. Five orphaning shells (jobs and subshells) may now cost at most 64 KB in all.
+
   UPTERM_RIG=<n> vsh_orphan_job_rig.py"""
 import os, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +44,38 @@ def sub_tasks():
     if 'KIND' not in out:
         sys.exit('[ERROR] rig %s: no task list (%s)' % (os.environ.get('UPTERM_RIG', '?'), out.strip()[:80]))
     return [l for l in out.splitlines() if 'vsh subshell' in l]
+
+
+def free_total():
+    out = ami('exec', 'Avail TOTAL', '10')
+    nums = [l.strip() for l in out.splitlines() if l.strip().isdigit()]
+    if not nums:
+        sys.exit('[ERROR] rig %s: Avail TOTAL gave no number (%s)' % (os.environ.get('UPTERM_RIG', '?'), out.strip()[:80]))
+    return int(nums[-1])
+
+
+def orphans_gone():
+    end = time.time() + 30
+    while time.time() < end and (job_tasks() or sub_tasks()):
+        time.sleep(1)
+    return not job_tasks() and not sub_tasks()
+
+
+def code_leak():
+    # one round first, so that the libraries and commands the round loads are in memory before the count
+    ami('exec', 'GG:bin/sh -c "Wait 1 secs >NIL: &"', '20')
+    orphans_gone()
+    before = free_total()
+    for i in range(3):
+        ami('exec', 'GG:bin/sh -c "Wait 1 secs >NIL: &"', '20')
+    for i in range(2):
+        ami('exec', 'GG:bin/sh -c "( Wait 1 secs >NIL: ) &"', '20')
+    gone = orphans_gone()
+    lost = before - free_total()
+    ok = gone and lost <= 64 * 1024
+    print('[%s] code of orphaning shells unloaded: 5 shells lost %d bytes (limit 65536), orphans ended=%s'
+          % ('OK' if ok else 'ERROR', lost, gone))
+    return ok
 
 
 def main():
@@ -80,7 +116,8 @@ def main():
     ok3 = not left3 and 'sub' in got3 and alive3
     print('[%s] orphaned subshell: command ran=%s, tasks left=%d, system answers=%s'
           % ('OK' if ok3 else 'ERROR', 'sub' in got3, len(left3), alive3))
-    return 0 if ok and ok2 and ok3 else 1
+    ok4 = code_leak()
+    return 0 if ok and ok2 and ok3 and ok4 else 1
 
 
 sys.exit(main())

@@ -573,6 +573,30 @@ static void job_free(job *j)
     FreeVec(j);
 }
 
+/* This program's code while orphaned runners still run in it (orphan_jobs takes it from cli_Module),
+ * and how many of them there are. Changed under Forbid. */
+static BPTR orphan_code;
+static int orphans;
+
+/* An orphaned runner ends: the last one gives this program's code to DOS to unload once the runner
+ * has returned (its own process's seglist array, entry 3, with PRF_FREESEGLIST, as for a process
+ * started with NP_Seglist and NP_FreeSeglist). Unloading it here would pull the code from under the
+ * return. The last call a runner makes. Entry 3 is not empty: for an NP_Entry process DOS puts a small
+ * jump segment there, inside the seglist array's own allocation (size word 0, freed with the array, no
+ * PRF_FREESEGLIST; Kickstart 40.68). Replacing it is safe; only a seglist DOS unloads itself is kept. */
+static void orphan_end(void)
+{
+    struct Process *me = (struct Process *)FindTask(0);
+    BPTR *segs = (BPTR *)BADDR(me->pr_SegList);
+    Forbid();
+    if (--orphans == 0 && orphan_code && segs && !(me->pr_Flags & PRF_FREESEGLIST)) {
+        segs[3] = orphan_code;
+        me->pr_Flags |= PRF_FREESEGLIST;
+        orphan_code = 0;
+    }
+    Permit();
+}
+
 static void runner(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
@@ -679,16 +703,17 @@ static void runner(void)
      * it, so the job is freed here, as os_wait frees it */
     Permit();
     job_free(j);
+    orphan_end();
 }
 
 /* The shell ends: the runners still going are no longer its to wait for. Their reply port goes
  * with the shell, so they get none (ReplyMsg of a message with no reply port only marks it), and
  * this program's code stays loaded for them: the Shell that started us unloads cli_Module when we
  * return, under a runner that is still in it (the runner then never ran the command: `sh -c
- * "cmd &"` left "vsh job" waiting for ever and froze the rig). That code is
- * never unloaded: a seglist detached from cli_Module is nobody's to free, so every shell that
- * orphans a job leaks its program's segments for good (as for cback.o programs). The job's strings
- * are AllocVec memory (job_mem): the shell's malloc pool is deleted at its exit. */
+ * "cmd &"` left "vsh job" waiting for ever and froze the rig). The last orphaned runner to end
+ * has DOS unload that code (orphan_end); before, every shell that orphaned a job leaked its
+ * program's segments (about 240 KB) for good. The job's strings are AllocVec memory (job_mem): the
+ * shell's malloc pool is deleted at its exit. */
 static void orphan_jobs(struct MsgPort *port)
 {
     job *j;
@@ -699,11 +724,14 @@ static void orphan_jobs(struct MsgPort *port)
             j->msg.mn_ReplyPort = 0;
             if (j->sub)
                 vsh_heap_hold(); /* its shell and tree are malloc blocks (subshell_proc ends it) */
+            orphans++;
             any = 1;
         }
-    Permit();
-    if (any && Cli())
+    if (any && Cli()) {
+        orphan_code = Cli()->cli_Module;
         Cli()->cli_Module = 0;
+    }
+    Permit();
 }
 
 /* The OS layer's data per process that runs the interpreter (the shell,
@@ -1901,6 +1929,7 @@ static void subshell_proc(void)
     Permit();
     job_free(j);
     vsh_heap_release();
+    orphan_end();
 }
 
 static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, int wait)
