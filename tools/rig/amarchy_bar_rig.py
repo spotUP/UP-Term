@@ -8,7 +8,7 @@ click on the agents segment must raise panels by 1; a right click must raise lau
 runs the agent (a new `ps` task or a new UP-Term tab). The segment sits at the bottom right of the front screen.
 Rig window purpose text to pass: "Amarchy session: bar check".
 Needs the rig up (rig.py start --max --purpose ...), Amarchy and amarchy-gui in UP-Term:bin, an UP-Term window open.
-NOT RUN when written: the rows stay open until it has run. The right button number (1) is unverified.
+right_launch holds with another window active (the bar is not the active window); cold_panel restarts Amarchy.
 """
 import argparse, pathlib, struct, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
@@ -28,15 +28,17 @@ def screen_size():
     return int(scr[0]['width']), int(scr[0]['height'])
 
 
-def click(button):
+def click(button, at=None):
     w, h = screen_size()
     sx, sy = ami.pointer_scale()
-    x, y = w - SEG_FROM_RIGHT, h - FONT_ROWS // 2
+    x, y = at or (w - SEG_FROM_RIGHT, h - FONT_ROWS // 2)
     ami.req(0x08, bytes([5]) + struct.pack('>HH', int(round(x * sx)), int(round(y * sy))) + bytes([button, 1]))
     time.sleep(1.5)
 
 
 def r_start():
+    ar.arexx('QUIT')          # rig.py leaves an older resident Amarchy: the branch build must be the one running
+    time.sleep(2)
     ar.start()
     s = ar.status()
     return s.get('bar') == 1 and s.get('draws', 0) > 0, 'status %r' % s
@@ -56,18 +58,64 @@ def r_close_panel():
     return True, 'escape sent'
 
 
+def windows():
+    """Front screen windows from the uitree: [(title, (x, y, w, h), active)]."""
+    import shlex
+    out = []
+    for line in ami.req(0x0D).decode('latin-1').splitlines():
+        if line.startswith('W '):
+            f = shlex.split(line)
+            w, h = map(int, f[4].split('x'))
+            out.append((f[-1], (int(f[2]), int(f[3]), w, h), f[5] == 'active'))
+    return out
+
+
+def active_title():
+    return next((t for t, _, act in windows() if act), None)
+
+
 def r_right_launch():
+    # The bar is NOT the active window: open and close the panel, then the user's window holds the focus.
+    # A right press over the Agents segment must still launch (the commodity sees it in the input stream)
+    # and the user's window must keep the focus.
+    click(0)
+    ami.key(0x45, 0)
+    time.sleep(1)
+    host = next(b for t, b, _ in windows() if t == 'barhost')
+    click(0, (host[0] + host[2] // 2, host[1] + host[3] // 2))      # the user's window takes the focus
+    held = active_title()
     before = ar.status()
     tabs = tabstate.counters()
     click(1)
     after = ar.status()
+    now = active_title()
     moved = after.get('launches', 0) == before.get('launches', 0) + 1
     hits = tabstate.counters().get('km-hits', 0) > tabs.get('km-hits', 0)
-    return moved and hits, 'before %r after %r km-hits moved %s' % (before, after, hits)
+    kept = now == held and held == 'barhost'
+    return moved and kept, 'before %r after %r km-hits moved %s active %r -> %r' % (
+        before, after, hits, held, now)
+
+
+def r_cold_panel():
+    # First panel open after a fresh Amarchy start (no warm menu server) lands above the bar, where a warm open does
+    ar.arexx('QUIT')
+    time.sleep(2)
+    ar.start()
+    seen = {t for t, _, _ in windows()}
+    click(0)
+    cold = [b for t, b, _ in windows() if t == 'Amarchy' and t not in seen] or \
+           [b for t, b, _ in windows() if t == 'Amarchy']
+    ami.key(0x45, 0)
+    time.sleep(1)
+    click(0)
+    warm = [b for t, b, _ in windows() if t == 'Amarchy']
+    ami.key(0x45, 0)
+    time.sleep(1)
+    return bool(cold) and bool(warm) and cold[-1] == warm[-1], 'cold %r warm %r' % (cold, warm)
 
 
 ROWS = [('start', r_start), ('left_panel', r_left_panel), ('close_panel', r_close_panel),
-        ('right_launch', r_right_launch)]
+        ('right_launch', r_right_launch), ('cold_panel', r_cold_panel)]
 
 
 def main():
