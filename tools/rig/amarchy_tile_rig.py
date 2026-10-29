@@ -27,6 +27,10 @@ Layout steps (plan 2026-10-28-amtile-layout.md, Phase 5; STATUS "<on|off> <tiled
   layout_hotkey  super+ctrl+l through the keyboard (qualifier LAmiga+Ctrl, raw 0x28)
   lay_<name>     LAYOUT <name> with 3 windows: STATUS names it, boxes equal the host helper's
   lay_next_prev, ratio, nmaster, promote, cycle, monocle_raise, persist, reset   see the plan's Reachability section
+P3 key step (commit 772d70fc, dist/keymap window rows; run after the layout steps, AmTile on):
+  p3_keys        real keyboard input: Super+Right changes the active window (master -> stack),
+                 Super+Ctrl+Shift+Down snaps the active window to the bottom half (box + floats +1), Super+Ctrl+Shift+T flips float (floats -1), Super+Ctrl+Shift+L
+                 raises the SWAP counter (master-stack, master active). Never a Super+Alt chord (mouse emulation).
 Resumable like the other rigs: --only <step> reruns one step against the state the earlier steps left (the windows
 this script opened are remembered in <RIG>/amarchy-tile/state.json).
   python3 tools/rig/amarchy_tile_rig.py [--only STEP] [--screen WxH] [--title N] [--gap N] [--ratio N] [--no-build]
@@ -244,6 +248,10 @@ def tiled_boxes_match(n, secs=3, **kw):
 
 LAYOUTS = ['dwindle', 'master-stack', 'mirrored', 'columns', 'rows', 'grid', 'monocle']
 RAW_KEY = {'t': 0x14, 'l': 0x28}   # raw codes of the letters the hotkeys use (amarchy_clash_rig.py RAW: q=0x10.., a=0x20..)
+SHIFT = 0x01                       # IEQUALIFIER_LSHIFT
+SUPER_CTRL_SHIFT = 0x40 | 0x08 | SHIFT
+RAW_ARROW = {'up': 0x4C, 'down': 0x4D, 'right': 0x4E, 'left': 0x4F}
+RAW_KEY.update({'h': 0x25, 'j': 0x26, 'k': 0x27})
 SUPER_CTRL = 0x40 | 0x08           # IEQUALIFIER_LCOMMAND | IEQUALIFIER_CONTROL = 0x48 (LAmiga+LAlt is Intuition's left mouse button)
 
 
@@ -277,6 +285,13 @@ def status_is(**want):
 def hotkey(letter):
     """super+ctrl+<letter> through the keyboard path (ami.key = one KEY frame down+up)"""
     ami.key(RAW_KEY[letter], SUPER_CTRL)
+
+
+def active_win():
+    """address of the one active window of mine, else None"""
+    sc = front_screen()
+    act = [w['addr'] for w in sc['windows'] if w['active']] if sc else []
+    return act[0] if len(act) == 1 and act[0] in STATE['wins'] else None
 
 
 def topmost():
@@ -736,6 +751,57 @@ def s_snap_floats():
     return ok, 'snap rc %r, floats %r -> %r, snapped box %r then %r' % (rc, f0, f1, b0, b1)
 
 
+def s_p3_keys():
+    """P3 window keys of 772d70fc through ami.key: snap left, focus right, float toggle, swap right (see the header)"""
+    if not ensure_windows(3) or not status_is(on=True):
+        return False, 'needs AmTile on with 3 windows of mine'
+    for a in STATE['wins']:
+        send('AMTILE', 'FLOAT OFF ' + hexid(a))
+    cmd('LAYOUT master-stack')
+    status_is(layout='master-stack', tiled=3)
+    # focus: Super+Right from the master (left column) moves the active window to one in the stack
+    addr = STATE['wins'][-1]
+    mbox = expected(3, layout='master-stack')[0]
+    master0 = wait_for(lambda: next((a for a, bx in mine() if bx[:4] == mbox), None), 3)
+    if master0 is None:
+        return False, 'no window on the master box'
+    addr = master0   # the master box is full height, so the snap visibly changes it
+    activate(master0)
+    a0 = active_win()
+    ami.key(RAW_ARROW['right'], 0x40)
+    changed = bool(wait_for(lambda: active_win() not in (None, a0), 3))
+    a1 = active_win()
+    # snap: Super+Ctrl+Shift+Down on a tiled window (full work-area height) -> bottom half, floated by AmTile
+    activate(addr)
+    f0 = tile_floats()
+    h0 = boxes().get(addr)
+    ami.key(RAW_ARROW['down'], SUPER_CTRL_SHIFT)
+    wait_for(lambda: tile_floats() == f0 + 1 if f0 is not None else False, 3)
+    time.sleep(0.5)
+    w, h, t = screen_geom()
+    box = boxes().get(addr)
+    snapped = box is not None and h0 is not None and box[3] < h0[3] * 0.7 and box[1] > t and box[1] + box[3] <= h
+    f1 = tile_floats()
+    # float toggle: Super+Ctrl+Shift+T on the snapped (floated) window puts it back into the tiling
+    activate(addr)
+    ami.key(RAW_KEY['t'], SUPER_CTRL_SHIFT)
+    unfloated = bool(wait_for(lambda: tile_floats() == f0, 3))
+    status_is(tiled=3)
+    # swap: Super+Ctrl+Shift+L with the master active exchanges it with the stack window on its right
+    master = wait_for(lambda: next((a for a, b in mine() if b[:4] == mbox), None), 3)
+    s0 = tile_swaps()
+    swapped = False
+    if master is not None:
+        activate(master)
+        wait_for(lambda: active_win() == master, 2)   # the key goes to the active window: wait until the activate landed
+        ami.key(RAW_KEY['l'], SUPER_CTRL_SHIFT)
+        swapped = bool(wait_for(lambda: s0 is not None and tile_swaps() == s0 + 1, 3))
+    cmd('LAYOUT dwindle')
+    ok = f0 is not None and f1 == f0 + 1 and snapped and changed and unfloated and swapped
+    return ok, 'snap key: floats %r -> %r, box %r (was %r) bottom half of %dx%d %s; focus key: active %r -> %r %s; float key back to %r %s; swap key: swaps %r -> +1 %s' % (
+        f0, f1, box, h0, w, h, snapped, a0, a1, changed, f0, unfloated, s0, swapped)
+
+
 STEPS = [('start', s_start), ('row_on', s_row_on), ('boxes2', s_boxes2), ('second_on', s_second_on),
          ('env_on', s_env_on), ('third', s_third), ('close_one', s_close_one), ('midapply', s_midapply),
          ('layout_default', s_layout_default), ('layout_row', s_layout_row), ('layout_hotkey', s_layout_hotkey)]
@@ -743,7 +809,7 @@ STEPS += [('lay_' + n.split('-')[0], lay_step(n)) for n in LAYOUTS]
 STEPS += [('lay_next_prev', s_lay_next_prev), ('ratio', s_ratio), ('nmaster', s_nmaster), ('promote', s_promote),
           ('cycle', s_cycle), ('monocle_raise', s_monocle_raise), ('persist', s_persist), ('reset', s_reset),
           ('off', s_off), ('fourth_free', s_fourth_free), ('restart', s_restart), ('snap_floats', s_snap_floats),
-          ('float_toggle', s_float_toggle), ('swap_right', s_swap_right), ('optout', s_optout), ('tile_bar', s_tile_bar)]
+          ('float_toggle', s_float_toggle), ('swap_right', s_swap_right), ('p3_keys', s_p3_keys), ('optout', s_optout), ('tile_bar', s_tile_bar)]
 
 
 def main():
