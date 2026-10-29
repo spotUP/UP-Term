@@ -44,6 +44,23 @@ class VtcRefresh(unittest.TestCase):
         rig.refresh_programs(self.vtc, self.d / "build/amiga")
         self.assertFalse((self.vtc / "sz").exists())
 
+    def test_refresh_brings_the_dist_userland_in_the_drawer_bin(self):
+        # RJ7-CURL-SHADOW: VTC:Apps/bin/curl stayed the 62b96743 one while the dist held adf34ce1; the start's
+        # refresh copied only build/amiga programs there, and the boot's shadow wrote only into what UP-Term: names
+        ul = self.d / "dist-userland"
+        ul.mkdir()
+        (ul / "curl").write_bytes(b"new curl")
+        (ul / "wget").write_bytes(b"new wget")
+        curl = self.vtc / paths.UPTERM_DRAWER / "bin/curl"
+        curl.write_bytes(b"old curl")
+        with mock.patch.object(rig, "USERLAND_SRC", ul):
+            self.assertIn("%s/bin/curl" % paths.UPTERM_DRAWER, rig.build_drift(self.vtc))
+            rig.refresh_programs(self.vtc, self.d / "build/amiga")
+            self.assertEqual(rig.build_drift(self.vtc), [])
+        self.assertEqual(curl.read_bytes(), b"new curl")
+        self.assertFalse((self.vtc / "curl").exists())   # userland goes in the drawer's bin only
+        self.assertFalse((self.vtc / paths.UPTERM_DRAWER / "bin/wget").exists())
+
     def test_stale_guard_restage_leaves_no_drift(self):
         with mock.patch.object(paths, "RIG", str(self.d / "rig")), \
              mock.patch.object(rig, "refresh_kit_shadows"):

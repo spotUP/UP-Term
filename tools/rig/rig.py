@@ -1181,13 +1181,18 @@ def stage_ixemul(vtc, nofpu):
 
 def program_pairs(vtc, built):
     """The one list of (build file, VTC: copy) pairs for the build/amiga programs: each file of `built`, in VTC: and in
-    the UP-Term drawer's bin. build_drift (the start [WARN]) checks these pairs, and refresh_programs (install, the
+    the UP-Term drawer's bin, and the dist's userland programs in that bin. build_drift (the start [WARN]) checks these pairs, and refresh_programs (install, the
     start, the menu rig's stale_guard) copies them; before, install, start and restage each had their own set and
     the start printed 16 stale programs on every boot (RIG-START-VTC-DRIFT, MENU-STALE-RESTAGE-DRIFT)."""
     pairs = []
     for f in sorted(built.iterdir()):
         if f.is_file():
             pairs += [(f, vtc / f.name), (f, vtc / paths.UPTERM_DRAWER / "bin" / f.name)]
+    # the dist's userland in the UP-Term drawer's bin too: the boot's shadow copies it only into what UP-Term:
+    # names, so VTC:Apps/bin kept a stale curl that outlived Esc by 22-27 s in the RJ.7 run (rig 7,
+    # RJ7-CURL-SHADOW, 2026-10-29)
+    for name in userland_names():
+        pairs.append((USERLAND_SRC / name, vtc / paths.UPTERM_DRAWER / "bin" / name))
     return pairs
 
 def refresh_programs(vtc, built, required=()):
