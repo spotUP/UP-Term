@@ -66,25 +66,39 @@ void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u
 /* The number of lister palette colours dopus_theme_commands sends: colour 0 = theme bg, 1 = fg, 2 = dim, 3 = accent. */
 #define DOPUS_THEME_COLOURS 4
 
-/* The two Directory Opus ARexx commands that make its lister colours the Amarchy theme's. Syntax read from upstream
+/* The Directory Opus ARexx lines that make its lister colours the Amarchy theme's. Syntax read from upstream
  * dopus5 v5.104 source/Program/rexx_dopus.c: RXCMD_PALETTE (set: from line 587) takes "0xRRGGBB" words, 8 bits a
  * channel, one per colour from colour 0 (at most 16); RXCMD_PENS (set: from line 616) takes keyword groups
  * (files, dirs, selfiles, seldirs, ...) each followed by a foreground and a background pen number, which are the
  * palette colour numbers (rexx_dopus_get_pen, line 994). The palette is the theme itself, not the menu roles (under
  * menu_theme_roles_gui the accent ROLE is the background, which drew directory names invisibly; owner 2026-10-29).
- * Pens: files fg on bg (1 0), directories accent on bg (3 0), selected files and directories bg on accent (0 3).
- * Writes two lines, "dopus set palette ..." and "dopus set pens ...", each ending in a newline, and a NUL.
+ * Pens: files fg on bg (1 0), directories accent on bg (3 0), selected files and directories bg on accent (0 3),
+ * one `set pens` line per key, then "dopus refresh lister".
+ * With palette != 0 the first line is "dopus set palette ..." (only meaningful when Opus has its own screen: on the
+ * Workbench screen the palette is Workbench's, see wb_pens_plan). Every line ends in a newline; then a NUL.
  * Returns the length written (without the NUL), or 0 when th is NULL, a colour is above 0xFFFFFF, or cap is too
  * small (out[0] is then 0 when cap is at least 1). */
-unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap);
+unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int palette);
 
 /* Directory Opus's ARexx port */
 #define DOPUS_PORT "DOPUS.1"
 
-/* Sends dopus_theme_commands' lines, one at a time, to DOPUS_PORT through send(port, line, ud) (line has no newline).
- * send returns -1 when the port is absent (Directory Opus not running: normal, not an error), and sending stops at
- * that line. Returns the number of lines handed to send (including a refused one); 0 when th is NULL, send is NULL
- * or the commands cannot be built. */
-int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, void *ud), void *ud);
+/* Asks DOPUS_PORT "dopus screen" first (send(port, line, result, cap, ud); result NULL = no reply wanted), then sends
+ * dopus_theme_commands' lines one at a time (line has no newline), the palette line only when the reply does not
+ * start with "Workbench". send returns -1 when the port is absent (Directory Opus not running: normal, not an
+ * error), and sending stops at that line. Returns the number of lines handed to send (including the screen query and
+ * a refused one); 0 when th or send is NULL. */
+int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
+                     void *ud);
+
+/* Workbench pens 0-3 take the theme's bg, fg, dim, accent (Directory Opus on the Workbench screen shares them). */
+#define WB_PENS 4
+/* The refusal threshold: WCAG 2.x contrast ratio of pen 0 against pen 1, x100. 450 = 4.5:1, the AA level for body text. */
+#define WB_CONTRAST_MIN_X100 450
+/* WCAG contrast ratio of two 0xRRGGBB colours, x100 (21:1 = 2100; 1:1 = 100). Integer maths, no libm. */
+unsigned wb_contrast_x100(uc_u32 a, uc_u32 b);
+/* Fills rgb[0..3] with the theme's pens 0-3. Returns 1 when the pens may be set, 0 when th is NULL, a colour is above
+ * 0xFFFFFF, or pen 0 / pen 1 contrast is below WB_CONTRAST_MIN_X100 (a Workbench nobody can read: rgb is still filled). */
+int wb_pens_plan(const gtheme *th, uc_u32 rgb[WB_PENS]);
 
 #endif

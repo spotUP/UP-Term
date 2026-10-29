@@ -4,6 +4,13 @@
 #include <dos/dosextens.h>
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <exec/libraries.h>
+#include <graphics/gfxbase.h>
+#include <graphics/view.h>
+#include <intuition/intuitionbase.h>
+#include <intuition/screens.h>
+#include <proto/graphics.h>
+#include <proto/intuition.h>
 #include "gthemes_dos.h"
 #include "amconf_dos.h"
 #include "../prefs/prefs_dos.h"
@@ -11,11 +18,42 @@
 #include "rexx_host.h"
 
 unsigned long gt_dos_dopus_sends;
+unsigned long gt_dos_wb_pens, gt_dos_wb_refused;
 
-static long gt_dopus_send(const char *port, const char *line, void *ud)
+static long gt_dopus_send(const char *port, const char *line, char *result, int cap, void *ud)
 {
     (void)ud;
-    return rexx_send(port, line, 0, 0);
+    return rexx_send(port, line, result, cap);
+}
+
+/* Workbench pens 0-3 become the theme's bg/fg/dim/accent on the Workbench screen's ViewPort, live (the pattern of
+ * render/amiga_render.c: SetRGB32 with the 8-bit channel replicated to 32 bits). Refused, and counted, when pen 0
+ * against pen 1 is weak (wb_pens_plan). The library bases are local: this file is linked into four programs that
+ * open them (or not) under different names. */
+static void wb_pens_apply(const gtheme *th)
+{
+    uc_u32 rgb[WB_PENS];
+    struct IntuitionBase *IntuitionBase;
+    struct GfxBase *GfxBase;
+    struct Screen *scr;
+    int i;
+    if (!wb_pens_plan(th, rgb)) {
+        gt_dos_wb_refused++;
+        return;
+    }
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
+    if (IntuitionBase && GfxBase && (scr = LockPubScreen((STRPTR)"Workbench")) != 0) {
+        for (i = 0; i < WB_PENS; i++)
+            SetRGB32(&scr->ViewPort, (ULONG)i, ((rgb[i] >> 16) & 255) * 0x01010101UL,
+                     ((rgb[i] >> 8) & 255) * 0x01010101UL, (rgb[i] & 255) * 0x01010101UL);
+        UnlockPubScreen(0, scr);
+        gt_dos_wb_pens++;
+    }
+    if (GfxBase)
+        CloseLibrary((struct Library *)GfxBase);
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
 }
 
 static long gt_read(void *ctx, const char *path, char *buf, long cap)
@@ -70,6 +108,7 @@ int gt_dos_select(const char *name, char *why, int cap)
         gt_dos_load(name, &th);
         gt_dos_dopus_sends++;
         dopus_theme_send(&th, gt_dopus_send, 0);
+        wb_pens_apply(&th);
         return 1;
     }
     if (why)

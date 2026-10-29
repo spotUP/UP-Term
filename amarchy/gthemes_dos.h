@@ -18,6 +18,9 @@ void gt_dos_load(const char *name, gtheme *out);
 int gt_dos_select(const char *name, char *why, int cap);
 /* how many times gt_dos_select handed the new theme to Directory Opus (dopus_theme_send): the reachability sentinel */
 extern unsigned long gt_dos_dopus_sends;
+/* how many times gt_dos_select set Workbench pens 0-3 to the theme (wb_pens_apply), and how many times it refused for weak
+ * pen 0 / pen 1 contrast (menu_theme.h wb_pens_plan): the reachability sentinels */
+extern unsigned long gt_dos_wb_pens, gt_dos_wb_refused;
 /* fill the Style > Theme rows (ix_add_gthemes) with the current one marked. Call after the other loaders. */
 void gt_dos_load_rows(ix_index *x);
 

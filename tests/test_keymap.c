@@ -2688,6 +2688,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 static void menu_theme_roles_map_the_palette(void);
 static void dopus_theme_commands_use_the_theme_directly(void);
 static void dopus_theme_send_goes_to_the_dopus_port(void);
+static void wb_pens_contrast_guard(void);
 static void minimal_mode_reaches_the_program(void);
 static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
 
@@ -3068,6 +3069,7 @@ void suite_keymap(void)
     menu_theme_roles_map_the_palette();
     dopus_theme_commands_use_the_theme_directly();
     dopus_theme_send_goes_to_the_dopus_port();
+    wb_pens_contrast_guard();
     minimal_mode_reaches_the_program();
     the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
@@ -3270,62 +3272,97 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
     CHECK_INT((long)rgb[MT_TEXT], 0xE5E5E5L);
 }
 
-/* DOpus ARexx syntax: dopus5 v5.104 source/Program/rexx_dopus.c:587 (palette) and :616 (pens) */
+/* DOpus ARexx syntax: dopus5 v5.104 source/Program/rexx_dopus.c:587 (palette), :616 (pens), :941 (refresh lister) */
 static void dopus_theme_commands_use_the_theme_directly(void)
 {
     gtheme th;
-    char buf[256], tight[8];
+    char buf[320], tight[8];
     unsigned n;
-    const char *want = "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7\n"
-                       "dopus set pens files 1 0 dirs 3 0 selfiles 0 3 seldirs 0 3\n";
+    const char *pens = "dopus set pens files 1 0\n"
+                       "dopus set pens dirs 3 0\n"
+                       "dopus set pens selfiles 0 3\n"
+                       "dopus set pens seldirs 0 3\n"
+                       "dopus refresh lister\n";
+    char want[320];
 
     /* D14: the Directory Opus listers take the theme's own bg/fg/dim/accent, not the menu roles */
     gt_builtin(&th);
-    n = dopus_theme_commands(&th, buf, sizeof buf);
+    snprintf(want, sizeof want, "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7\n%s", pens);
+    n = dopus_theme_commands(&th, buf, sizeof buf, 1);
     CHECK_INT((long)n, (long)strlen(want));
     CHECK_STR(buf, want);
+    /* without the palette (Opus on the Workbench screen): the pens only, one key per line */
+    n = dopus_theme_commands(&th, buf, sizeof buf, 0);
+    CHECK_INT((long)n, (long)strlen(pens));
+    CHECK_STR(buf, pens);
 
     /* a colour above 24 bits (0x01RRGGBB leaked in), a missing theme, too small a buffer: 0 and an empty string */
     th.dim = 0x01000000UL;
     strcpy(buf, "x");
-    CHECK_INT((long)dopus_theme_commands(&th, buf, sizeof buf), 0L);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, sizeof buf, 1), 0L);
     CHECK_STR(buf, "");
-    CHECK_INT((long)dopus_theme_commands(0, buf, sizeof buf), 0L);
+    CHECK_INT((long)dopus_theme_commands(0, buf, sizeof buf, 1), 0L);
     gt_builtin(&th);
-    CHECK_INT((long)dopus_theme_commands(&th, tight, sizeof tight), 0L);
-    CHECK_INT((long)dopus_theme_commands(&th, buf, n), 0L);
-    CHECK_INT((long)dopus_theme_commands(&th, buf, n + 1), (long)n);
+    CHECK_INT((long)dopus_theme_commands(&th, tight, sizeof tight, 1), 0L);
+    n = dopus_theme_commands(&th, buf, sizeof buf, 1);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, n, 1), 0L);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, n + 1, 1), (long)n);
 }
 
 typedef struct {
     int n, absent;
-    char port[4][16], line[4][128];
+    const char *screen;   /* the reply to "dopus screen" */
+    char port[8][16], line[8][128];
 } dopus_rec;
 
-static long dopus_fake_send(const char *port, const char *line, void *ud)
+static long dopus_fake_send(const char *port, const char *line, char *result, int cap, void *ud)
 {
     dopus_rec *r = (dopus_rec *)ud;
-    if (r->n < 4) {
+    if (r->n < 8) {
         strcpy(r->port[r->n], port);
         strcpy(r->line[r->n], line);
     }
     r->n++;
-    return r->absent ? -1 : 0;
+    if (r->absent)
+        return -1;
+    if (result && cap > 0) {
+        strncpy(result, r->screen ? r->screen : "", (size_t)cap - 1);
+        result[cap - 1] = 0;
+    }
+    return 0;
 }
 
 static void dopus_theme_send_goes_to_the_dopus_port(void)
 {
     gtheme th;
     dopus_rec r;
+    int i;
 
     gt_builtin(&th);
+    /* Opus on its own screen: query, palette, four pens, refresh */
     memset(&r, 0, sizeof r);
-    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 2L);
-    CHECK_INT((long)r.n, 2L);
-    CHECK_STR(r.port[0], "DOPUS.1");
-    CHECK_STR(r.port[1], "DOPUS.1");
-    CHECK_STR(r.line[0], "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7");
-    CHECK_STR(r.line[1], "dopus set pens files 1 0 dirs 3 0 selfiles 0 3 seldirs 0 3");
+    r.screen = "DOpus5 800 600 4";
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 7L);
+    CHECK_INT((long)r.n, 7L);
+    for (i = 0; i < 7; i++)
+        CHECK_STR(r.port[i], "DOPUS.1");
+    CHECK_STR(r.line[0], "dopus screen");
+    CHECK_STR(r.line[1], "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7");
+    CHECK_STR(r.line[2], "dopus set pens files 1 0");
+    CHECK_STR(r.line[3], "dopus set pens dirs 3 0");
+    CHECK_STR(r.line[4], "dopus set pens selfiles 0 3");
+    CHECK_STR(r.line[5], "dopus set pens seldirs 0 3");
+    CHECK_STR(r.line[6], "dopus refresh lister");
+
+    /* Opus on the Workbench screen: no palette line (set palette only recolours Opus's own screen) */
+    memset(&r, 0, sizeof r);
+    r.screen = "Workbench 800 600 4 0";
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 6L);
+    CHECK_STR(r.line[0], "dopus screen");
+    CHECK_STR(r.line[1], "dopus set pens files 1 0");
+    CHECK_STR(r.line[5], "dopus refresh lister");
+    for (i = 0; i < 6; i++)
+        CHECK(strstr(r.line[i], "palette") == 0);
 
     /* Directory Opus not running: one attempt, then stop */
     memset(&r, 0, sizeof r);
@@ -3336,6 +3373,31 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     memset(&r, 0, sizeof r);
     CHECK_INT((long)dopus_theme_send(0, dopus_fake_send, &r), 0L);
     CHECK_INT((long)r.n, 0L);
+}
+
+/* Workbench pens 0-3 on a theme switch (menu_theme.h wb_pens_plan): WCAG 2.x contrast of pen 0 against pen 1 */
+static void wb_pens_contrast_guard(void)
+{
+    gtheme th;
+    uc_u32 rgb[WB_PENS];
+    CHECK_INT((long)wb_contrast_x100(0x000000, 0xFFFFFF), 2100L);
+    CHECK_INT((long)wb_contrast_x100(0x777777, 0x777777), 100L);
+    CHECK_INT((long)wb_contrast_x100(0xFFFFFF, 0x000000), 2100L);
+    gt_builtin(&th);
+    CHECK_INT((long)wb_pens_plan(&th, rgb), 1L);
+    CHECK_INT((long)rgb[0], (long)th.bg);
+    CHECK_INT((long)rgb[1], (long)th.fg);
+    CHECK_INT((long)rgb[2], (long)th.dim);
+    CHECK_INT((long)rgb[3], (long)th.accent);
+    /* synthetic weak theme: grey on slightly different grey is refused, rgb still filled */
+    th.bg = 0x808080;
+    th.fg = 0x888888;
+    memset(rgb, 0, sizeof rgb);
+    CHECK_INT((long)wb_pens_plan(&th, rgb), 0L);
+    CHECK_INT((long)rgb[0], 0x808080L);
+    th.fg = 0x01000000UL;
+    CHECK_INT((long)wb_pens_plan(&th, rgb), 0L);
+    CHECK_INT((long)wb_pens_plan(0, rgb), 0L);
 }
 
 /* ---- index_core: the app index's cache rows (plan 2026-10-23-amarchy-app-index.md, X1) ---- */

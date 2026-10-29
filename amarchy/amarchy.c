@@ -141,13 +141,13 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N bar=N draws=N panels=N launches=N raises=N */
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N */
 static void status_text(char *out, long cap)
 {
     char num[12];
-    static const char *const key[10] = { "hits=", " rows=", " enabled=", " active=", " wins=", " bar=", " draws=", " panels=",
-                                        " launches=", " raises=" };
-    long val[10];
+    static const char *const key[12] = { "hits=", " rows=", " enabled=", " active=", " wins=", " bar=", " draws=", " panels=",
+                                        " launches=", " raises=", " wbpens=", " wbrefused=" };
+    long val[12];
     int i;
     val[0] = g_hits;
     val[1] = cx_nrows();
@@ -159,8 +159,10 @@ static void status_text(char *out, long cap)
     val[7] = bar_panels();
     val[8] = bar_launches();
     val[9] = bar_raises();
+    val[10] = (long)gt_dos_wb_pens;
+    val[11] = (long)gt_dos_wb_refused;
     out[0] = 0;
-    for (i = 0; i < 10; i++) {
+    for (i = 0; i < 12; i++) {
         cl_cat(out, key[i], cap);
         cl_ltoa(val[i], num);
         cl_cat(out, num, cap);

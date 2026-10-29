@@ -132,12 +132,25 @@ static void test_gthemes_roles(void)
         /* D14: the lister's directory pen (colour 3 = accent) never equals its background pen (colour 0 = bg) */
         {
             char out[256], want[64];
+            uc_u32 wb[WB_PENS];
             CHECK(t.accent != t.bg);
-            CHECK(dopus_theme_commands(&t, out, sizeof out) > 0);
+            CHECK(dopus_theme_commands(&t, out, sizeof out, 1) > 0);
             snprintf(want, sizeof want, "dopus set palette 0x%06lx 0x%06lx 0x%06lx 0x%06lx\n", (unsigned long)t.bg,
                      (unsigned long)t.fg, (unsigned long)t.dim, (unsigned long)t.accent);
             CHECK(strstr(out, want) == out);
-            CHECK(strstr(out, " dirs 3 0 ") != NULL);
+            CHECK(strstr(out, "dopus set pens dirs 3 0\n") != NULL);
+            /* Workbench pens 0-3: the guard's verdict for every shipped theme is the measured ratio against the
+             * threshold; the pens are the theme's own */
+            {
+                int ok = wb_pens_plan(&t, wb);
+                unsigned cr = wb_contrast_x100(t.bg, t.fg);
+                CHECK_INT(ok, cr >= WB_CONTRAST_MIN_X100);
+                CHECK_INT((long)wb[0], (long)t.bg);
+                CHECK_INT((long)wb[3], (long)t.accent);
+                if (!ok)
+                    printf("  [WARN] theme %s: Workbench pens refused, contrast %u.%02u\n", shipped[i].name, cr / 100,
+                           cr % 100);
+            }
         }
         /* H3: each file has exactly the table's values and mode */
         CHECK_INT(t.bg, shipped[i].bg);

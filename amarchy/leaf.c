@@ -339,6 +339,16 @@ int lf_pkg_action(const ix_index *x, const mn_item *it, const lf_ui *ui)
     return UPREQ_FAILED;
 }
 
+/* gt_dos_select, then its Workbench pen counters published as the globals AMARCHY_WBPENS / AMARCHY_WBREFUSED (a rig
+ * reads them after the menu path ran) */
+static int lf_gt_select(const char *name, char *why, int cap)
+{
+    int ok = gt_dos_select(name, why, cap);
+    am_sentinel("AMARCHY_WBPENS", (long)gt_dos_wb_pens);
+    am_sentinel("AMARCHY_WBREFUSED", (long)gt_dos_wb_refused);
+    return ok;
+}
+
 int lf_open_index(const char *label, const char *path, const lf_ui *ui)
 {
     char err[160];
@@ -351,7 +361,7 @@ int lf_open_index(const char *label, const char *path, const lf_ui *ui)
                                                          * UP-Term window, as a run: row (owner, 2026-10-27) */
         return run_in_uterm(launch, ui);
     if (gt_path_name(path, tname, sizeof tname)) {      /* a Style > Theme row: the drawn menu's theme is saved */
-        if (gt_dos_select(tname, err, (int)sizeof err))
+        if (lf_gt_select(tname, err, (int)sizeof err))
             return 0;
         if (ui && ui->refused)
             ui->refused(ui->ctx, label, UPREQ_FAILED, err);
@@ -538,7 +548,7 @@ int lf_run(const km_menu *m, const lf_ui *ui)
     case LF_GTHEME:
     {
         char why[160];
-        if (gt_dos_select(m->arg, why, (int)sizeof why))
+        if (lf_gt_select(m->arg, why, (int)sizeof why))
             return 0;
         if (ui && ui->refused)
             ui->refused(ui->ctx, m->label, UPREQ_FAILED, why);
