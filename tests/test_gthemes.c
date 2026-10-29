@@ -93,6 +93,31 @@ static void test_gthemes_term_text(void)
     CHECK_INT(gt_term_text(buf, n, "nord", out, 20), 0);
 }
 
+static char boot_name[64];
+static int boot_calls;
+static void boot_send(const char *name)
+{
+    strcpy(boot_name, name);
+    boot_calls++;
+}
+
+/* F3-THEME-BOOT: the startup write goes out once, with the configured theme, or GT_DEFAULT when unset or unusable */
+static void test_gthemes_boot_term(void)
+{
+    boot_calls = 0;
+    CHECK_INT(gt_boot_term("gruvbox", boot_send), 1);
+    CHECK_INT(boot_calls, 1);
+    CHECK_STR(boot_name, "gruvbox");
+    CHECK_INT(gt_boot_term("", boot_send), 1);
+    CHECK_INT(boot_calls, 2);
+    CHECK_STR(boot_name, GT_DEFAULT);
+    gt_boot_term("a/b", boot_send);
+    CHECK_STR(boot_name, GT_DEFAULT);
+    gt_boot_term(0, boot_send);
+    CHECK_INT(boot_calls, 4);
+    CHECK_STR(boot_name, GT_DEFAULT);
+}
+
 /* H1: the colors.toml syntax */
 static void test_gthemes_parse(void)
 {
@@ -568,6 +593,7 @@ void suite_gthemes(void)
     test_gthemes_fallback();
     test_gthemes_parse();
     test_gthemes_term_text();
+    test_gthemes_boot_term();
     test_gthemes_roles();
     test_gthemes_user();
     test_gthemes_amconf();

@@ -118,6 +118,13 @@ void gt_dos_term_send(const char *name)
     gt_dos_term_writes++;
 }
 
+void gt_dos_term_boot(void)
+{
+    am_prefs ap;
+    amconf_load(&ap);
+    gt_boot_term(ap.val[AM_GTHEME], gt_dos_term_send);
+}
+
 int gt_dos_select(const char *name, char *why, int cap)
 {
     am_prefs ap;

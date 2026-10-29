@@ -47,6 +47,14 @@ int main(int argc, char **argv)
             Printf((STRPTR)" %02lx%02lx%02lx", c[0] >> 24, c[1] >> 24, c[2] >> 24);
         }
         Printf((STRPTR)"\n");
+        /* every palette entry of the screen's colour map (the rig computes the pen nearest a colour from it) */
+        Printf((STRPTR)"pal:");
+        for (i = 0; i < (int)s->ViewPort.ColorMap->Count && i < 256; i++) {
+            ULONG c[3];
+            GetRGB32(s->ViewPort.ColorMap, i, 1, c);
+            Printf((STRPTR)" %02lx%02lx%02lx", c[0] >> 24, c[1] >> 24, c[2] >> 24);
+        }
+        Printf((STRPTR)"\n");
         FreeScreenDrawInfo(s, di);
     }
     UnlockPubScreen(0, s);

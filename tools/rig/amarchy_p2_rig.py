@@ -28,7 +28,7 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <detail>"); l
   python3 tools/rig/amarchy_p2_rig.py [--only STEP] [--no-build]
 Resumable: --only STEP reruns one step against the state the earlier steps left; verdicts are written to
 <RIG>/amarchy-p2/verdict.json as each step completes. Exit code is nonzero when any step fails."""
-import argparse, json, pathlib, re, sys, time
+import argparse, json, pathlib, re, shutil, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import condev_rig as c
@@ -462,11 +462,102 @@ def s_agenttab():
         ('%s: rc %s sentinel %s claude-bg %s shell-bg %s claude-old %s shell-old %s' % x if len(x) > 2 else 'new window dominant %s' % x[1]) for x in seen)
 
 
+def nearest_pen(rgb):
+    """The colour a 16 colour Workbench shows for rgb when no pen is free: the screen's palette entry nearest to it (the
+    renderer's and console's rule, render/pen_rule.h: exact pen while one is free, else the nearest). Palette read live."""
+    shutil.copyfile(pathlib.Path(__file__).resolve().parents[2] / 'build/amiga/dripens', paths.RIG / 'vtc' / 'dripens')
+    pal = []
+    for l in c.run('VTC:dripens Workbench')[1].splitlines():
+        if l.startswith('pal:'):
+            pal = [bytes.fromhex(x) for x in l.split()[1:]]
+    want = bytes.fromhex(rgb)
+    if want in pal:
+        return rgb
+    return min(pal, key=lambda p: sum((x - y) ** 2 for x, y in zip(p, want))).hex()
+
+
+def xcon_top(title):
+    """Open a console window with no colour in its spec, return its three most frequent pixel colours as [(hex, count)], close it"""
+    c.run('Run >NIL: NewShell "XCON:0/14/640/242/%s/CLOSE"' % title)
+    if not t.wait_for(lambda: ami.window(title) is not None, 15):
+        return None
+    time.sleep(4)
+    ami.raise_window(title)
+    time.sleep(1)
+    w, h, rows = ami.grab(ami.window(title)['box'])
+    hn = {}
+    for r in rows:
+        for i in range(0, len(r) - 2, 3):
+            k = bytes(r[i:i + 3]).hex()
+            hn[k] = hn.get(k, 0) + 1
+    gx, gy, gw, gh = ami.window(title)['sys:close']
+    ami.click_px(gx + gw // 2, gy + gh // 2)
+    t.wait_for(lambda: ami.window(title) is None, 8)
+    return sorted(hn.items(), key=lambda kv: -kv[1])[:3]
+
+
+def s_themeboot():
+    """F3-THEME-BOOT: on a fresh boot, before any theme switch, console windows start in the active Amarchy theme. The file
+    ENV:up-term/theme-active is deleted, Amarchy restarted (amarchy.c main -> gt_dos_term_boot -> gt_dos_term_send), and the file must
+    hold the theme's text (no ENVARC copy). The active theme here is the configured one, GT_DEFAULT tokyo-night when none
+    is set (prefs deleted). A window opened after that, with no colour in its spec, must be dominated by that theme's bg"""
+    import tempfile
+    prefs = 'ENV:Amarchy/prefs'
+    # tokyo-night (bg 1a1b26) cannot tell: on the 16 colour Workbench its nearest pen is 101010, which is also what a window
+    # gets with no boot file (measured: control 101010). A theme file p2boot with bg 4473ff, a pen the Workbench has exactly,
+    # gives an expected colour that differs from the control, so only a working boot file passes
+    name, bg = 'p2boot', '4473ff'
+    drawer = 'ENVARC:Amarchy/themes'
+    c.run('MakeDir >NIL: ENV:Amarchy')
+    c.run('MakeDir >NIL: ENV:up-term')
+    c.run('Delete >NIL: T:p2prefs.bak')
+    had_prefs = c.run('Copy >NIL: %s T:p2prefs.bak' % prefs)[0] == 0
+    c.run('Delete >NIL: ' + prefs)
+    c.run('MakeDir >NIL: ' + drawer)
+    c.run('Echo "background = *"#%s*"" >%s/%s.theme' % (bg, drawer, name))
+    c.run('Echo "foreground = *"#e0e0e0*"" >>%s/%s.theme' % (drawer, name))
+    # the agenttab step leaves its last theme saved in ENVARC: (gt_dos_select); "none set" needs both copies gone
+    c.run('Delete >NIL: T:p2arc.bak')
+    had_arc = c.run('Copy >NIL: ENVARC:Amarchy/prefs T:p2arc.bak')[0] == 0
+    c.run('Delete >NIL: ENVARC:Amarchy/prefs')
+    title = 'p2boot'
+    try:
+        t.send('AMTILE', 'QUIT')
+        t.send('AMARCHY', 'QUIT')
+        time.sleep(1.5)
+        c.run('Delete >NIL: ENV:up-term/theme-active')
+        gone = c.run('Type ENV:up-term/theme-active')[0] != 0
+        # control: the same window with no boot file, no prefs, Amarchy not running -> the default colour; the check
+        # means something only when that colour is not the one the boot file must produce
+        ctl = xcon_top('p2ctl')
+        if not ctl or ctl[0][0] == nearest_pen(bg):
+            return False, 'control window without the boot file already has the expected colour %s: pick another theme (%r)' % (nearest_pen(bg), ctl)
+        c.run('Echo "amarchy-gui-theme = %s" >%s' % (name, prefs))
+        c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+        t.wait_for(lambda: t.send('AMARCHY', 'STATUS', timeout=5)[0] == 0, 10)
+        made = t.wait_for(lambda: 'profile %s' % name in c.run('Type ENV:up-term/theme-active')[1], 8)
+        if not (gone and made):
+            return False, 'file deleted before start %s, holds [profile %s] after start %s' % (gone, name, bool(made))
+        top = xcon_top(title)
+        want = nearest_pen(bg)
+        if not (top and top[0][0] == want):
+            return False, 'window after boot, theme %s: want the Workbench pen nearest %s = %s, top colours %r, control (no boot file) %r' % (
+                name, bg, want, top, ctl)
+        return True, 'file written at start; window %s dominant %s = pen nearest %s (control without the file: %s)' % (title, top[0][0], bg, ctl[0][0])
+    finally:
+        c.run('Delete >NIL: %s/%s.theme' % (drawer, name))
+        c.run('Delete >NIL: ' + prefs)
+        if had_prefs:
+            c.run('Copy >NIL: T:p2prefs.bak ' + prefs)
+        if had_arc:
+            c.run('Copy >NIL: T:p2arc.bak ENVARC:Amarchy/prefs')
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
          ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system),
          ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('tray', s_tray), ('recolour', s_recolour),
-         ('agenttab', s_agenttab)]
+         ('agenttab', s_agenttab), ('themeboot', s_themeboot)]
 
 
 def main():

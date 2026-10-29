@@ -434,6 +434,7 @@ int main(void)
     if (amconf_migrate() == AMCONF_MIG_FAILED)
         PutStr((STRPTR)"Amarchy: could not write ENVARC:Amarchy/prefs; reading the UP-Term file's keys, retrying next start\n");
     style_load();
+    gt_dos_term_boot();                         /* F3-THEME-BOOT: new consoles start in the active theme before any switch */
     {   /* bar.conf: start on|off and the clock formats (the other keys are parsed, not yet used) */
         static barconf bc;
         barconf_load(&bc);

@@ -309,3 +309,9 @@ void gt_save_text(int step, int failed, long err, char *out, int cap)
     else
         snprintf(out, (size_t)cap, "the theme could not be saved: %s %s", verb, what);
 }
+
+int gt_boot_term(const char *configured, void (*send)(const char *name))
+{
+    send(configured && gt_name_ok(configured) ? configured : GT_DEFAULT);
+    return 1;
+}

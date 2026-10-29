@@ -84,6 +84,10 @@ void gt_label(const char *name, const char *current, char *out, int cap);
 /* 1 when name can be saved as the current theme: non-empty, fits GT_NAME, no path characters ('/' or ':'). */
 int gt_name_ok(const char *name);
 
+/* F3-THEME-BOOT: the startup write of GT_TERM_FILE. Calls send(name) once with the configured theme (AM_GTHEME) or GT_DEFAULT when
+ * it is empty or not a usable name; returns how many times send ran (1). */
+int gt_boot_term(const char *configured, void (*send)(const char *name));
+
 /* A theme row's path in the menu index ("gtheme:<name>"); gt_path_name gives the name back, 0 when the path is not one. */
 #define GT_ROW_PREFIX "gtheme:"
 int gt_path_name(const char *path, char *out, int cap);

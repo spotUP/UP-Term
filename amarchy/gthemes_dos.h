@@ -17,6 +17,8 @@ void gt_dos_load(const char *name, gtheme *out);
 /* make name the drawn menu's theme: AM_GTHEME is saved to ENVARC: and ENV:, then Directory Opus (if running) gets its colours (menu_theme.h). 1 saved, 0 refused or failed */
 void gt_dos_term_send(const char *name); /* the console tabs' colours: GT_TERM_FILE (gthemes_core.h) */
 extern unsigned long gt_dos_term_writes;
+/* Amarchy startup: write GT_TERM_FILE from the configured theme (GT_DEFAULT when none), so consoles opened before any switch start in it */
+void gt_dos_term_boot(void);
 
 int gt_dos_select(const char *name, char *why, int cap);
 /* how many times gt_dos_select handed the new theme to Directory Opus (dopus_theme_send): the reachability sentinel */
