@@ -132,9 +132,17 @@ int bar_cpu_pct(unsigned long dcount, unsigned long dticks, unsigned long cal);
 void bar_fmt_cpu(char *out, int cap, int pct);
 /* Network segment. BAR_NET_NONE: bsdsocket.library did not open. BAR_NET_EMULATED: the library's id string starts with
  * "UAE" (the emulator's stub; any QueryInterfaceTagList call with tags kills the rig, so it is never made).
- * BAR_NET_STACK: a real stack opened (the interface query is not built, see the plan R2.10). */
-enum { BAR_NET_NONE = 0, BAR_NET_EMULATED, BAR_NET_STACK };
+ * BAR_NET_STACK: a real stack opened but no interface answered (no interface, or the query failed): "No network".
+ * BAR_NET_DOWN / BAR_NET_UP: the first interface and its IFQ_State. The numbers are what BAR STATUS prints as net=. */
+enum { BAR_NET_NONE = 0, BAR_NET_EMULATED, BAR_NET_STACK, BAR_NET_DOWN, BAR_NET_UP };
 int bar_net_kind(const char *id_string);
-void bar_fmt_net(char *out, int cap, int kind);
+/* Roadshow's IFQ_State values (SM_Offline, SM_Online, SM_Down, SM_Up of libraries/bsdsocket.h; bar.c asserts at compile
+ * time that these equal the header's). Online and Up are "up" (the interface receives); Offline and Down are "down";
+ * anything else is BAR_NET_STACK. */
+enum { BAR_SM_OFFLINE = 0, BAR_SM_ONLINE = 1, BAR_SM_DOWN = 2, BAR_SM_UP = 3 };
+int bar_net_state_kind(long ifq_state);
+/* "eth0 up", "eth0 down" (kind DOWN / UP with a name; no name gives just "Network up" / "Network down"), "Network
+ * emulated", "No network" for NONE and STACK. `name` may be 0. */
+void bar_fmt_net(char *out, int cap, int kind, const char *name);
 
 #endif

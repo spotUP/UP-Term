@@ -434,9 +434,20 @@ static void test_fmt_misc(void)
     CHECK_INT(bar_net_kind("bsdsocket.library 4.364 (1.1.2019)"), BAR_NET_STACK);
     CHECK_INT(bar_net_kind(""), BAR_NET_STACK);
     CHECK_INT(bar_net_kind(0), BAR_NET_STACK);
-    bar_fmt_net(o, sizeof o, BAR_NET_EMULATED);  CHECK_STR(o, "Network emulated");
-    bar_fmt_net(o, sizeof o, BAR_NET_NONE);      CHECK_STR(o, "No network");
-    bar_fmt_net(o, sizeof o, BAR_NET_STACK);     CHECK_STR(o, "Network stack");
+    bar_fmt_net(o, sizeof o, BAR_NET_EMULATED, 0);  CHECK_STR(o, "Network emulated");
+    bar_fmt_net(o, sizeof o, BAR_NET_NONE, 0);      CHECK_STR(o, "No network");
+    bar_fmt_net(o, sizeof o, BAR_NET_STACK, "eth0"); CHECK_STR(o, "No network");   /* a stack with no answering interface */
+    /* R2.10: IFQ_State (SM_Offline 0, SM_Online 1, SM_Down 2, SM_Up 3) to the segment text */
+    CHECK_INT(bar_net_state_kind(3), BAR_NET_UP);
+    CHECK_INT(bar_net_state_kind(1), BAR_NET_UP);
+    CHECK_INT(bar_net_state_kind(2), BAR_NET_DOWN);
+    CHECK_INT(bar_net_state_kind(0), BAR_NET_DOWN);
+    CHECK_INT(bar_net_state_kind(-1), BAR_NET_STACK);
+    CHECK_INT(bar_net_state_kind(9), BAR_NET_STACK);
+    bar_fmt_net(o, sizeof o, bar_net_state_kind(3), "eth0");  CHECK_STR(o, "eth0 up");
+    bar_fmt_net(o, sizeof o, bar_net_state_kind(2), "eth0");  CHECK_STR(o, "eth0 down");
+    bar_fmt_net(o, sizeof o, BAR_NET_UP, 0);                  CHECK_STR(o, "Network up");
+    bar_fmt_net(o, sizeof o, BAR_NET_DOWN, "averyveryverylongInterfaceName0"); CHECK(strlen(o) < BAR_TEXT && strstr(o, " down"));
 }
 
 static int x_of(const bar *b, int id)

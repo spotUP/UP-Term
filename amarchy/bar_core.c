@@ -478,9 +478,33 @@ int bar_net_kind(const char *id_string)
     return BAR_NET_STACK;
 }
 
-void bar_fmt_net(char *out, int cap, int kind)
+int bar_net_state_kind(long ifq_state)
 {
-    out_put(out, cap, kind == BAR_NET_EMULATED ? "Network emulated" : kind == BAR_NET_STACK ? "Network stack" : "No network");
+    if (ifq_state == BAR_SM_UP || ifq_state == BAR_SM_ONLINE)
+        return BAR_NET_UP;
+    if (ifq_state == BAR_SM_DOWN || ifq_state == BAR_SM_OFFLINE)
+        return BAR_NET_DOWN;
+    return BAR_NET_STACK;
+}
+
+void bar_fmt_net(char *out, int cap, int kind, const char *name)
+{
+    char t[BAR_TEXT];
+    if (kind == BAR_NET_EMULATED) {
+        out_put(out, cap, "Network emulated");
+    } else if (kind == BAR_NET_UP || kind == BAR_NET_DOWN) {
+        t[0] = 0;
+        if (name && name[0]) {
+            strncat(t, name, 24);
+            strcat(t, " ");
+        } else {
+            strcat(t, "Network ");
+        }
+        strcat(t, kind == BAR_NET_UP ? "up" : "down");
+        out_put(out, cap, t);
+    } else {
+        out_put(out, cap, "No network");
+    }
 }
 
 static int find_seg(const bar *b, int id)

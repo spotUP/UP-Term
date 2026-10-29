@@ -32,7 +32,7 @@ import stage_rig
 import amarchy_tile_rig as t
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy-p2'
-KEYS_BAR = ['bar', 'draws', 'panels', 'launches', 'raises', 'ticks']
+KEYS_BAR = ['bar', 'draws', 'panels', 'launches', 'raises', 'ticks', 'net']
 
 
 def kv(text):
@@ -170,7 +170,8 @@ def s_network():
     a = seg_text(6)
     time.sleep(6)
     b = seg_text(6)
-    return a == b == 'Network emulated', 'network %r then %r' % (a, b)
+    net = kv(t.send('AMARCHY', 'BAR STATUS', timeout=5)[1]).get('net')
+    return a == b == 'Network emulated' and net == 1, 'network %r then %r, BAR STATUS net=%r (1 = emulated)' % (a, b, net)
 
 
 def s_screens():

@@ -24,6 +24,7 @@ static void test_fit(void)
     CHECK(strncmp(out, "bar=", 4) == 0);
     CHECK(strstr(out, " draws=") != 0 && strstr(out, " raises=") != 0);
     CHECK(strstr(out, " hits=") == 0);
+    CHECK(strstr(out, " net=2147483647") != 0);
 }
 
 static void test_keys(void)

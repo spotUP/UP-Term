@@ -19,6 +19,8 @@
 #include <proto/exec.h>
 #include <proto/graphics.h>
 #include <proto/intuition.h>
+#include <libraries/bsdsocket.h>
+#include <proto/bsdsocket.h>
 #include <string.h>
 #include "bar.h"
 #include "bar_core.h"
@@ -72,6 +74,8 @@ static ULONG g_idle_done_mask;
 static struct Process *g_idle_proc;
 static BYTE g_idle_sig = -1;
 static unsigned long g_cpu_cal, g_cpu_last_count, g_cpu_last_tick, g_net_last_tick;
+struct Library *SocketBase;              /* open only while sample_net looks */
+static char g_net_name[24];                      /* the interface the segment names */
 static int g_net_kind = -1;                      /* BAR_NET_*; -1 = not asked yet */
 
 static void idle_entry(void)
@@ -194,26 +198,69 @@ static int sample_cpu(void)
     return set_seg(BAR_SEG_CPU, t);
 }
 
+/* bar_core.h's SM numbers are the Roadshow header's: a drift fails the compile (a negative array size). */
+typedef char bar_sm_offline_matches_header[(SM_Offline == BAR_SM_OFFLINE) ? 1 : -1];
+typedef char bar_sm_online_matches_header[(SM_Online == BAR_SM_ONLINE) ? 1 : -1];
+typedef char bar_sm_down_matches_header[(SM_Down == BAR_SM_DOWN) ? 1 : -1];
+typedef char bar_sm_up_matches_header[(SM_Up == BAR_SM_UP) ? 1 : -1];
+
+/* The interface list of the open stack: the first interface that is up, else the first one (name copied into `name`).
+ * IFQ_State's ti_Data is a pointer to a LONG. Returns BAR_NET_UP / DOWN, or BAR_NET_STACK when no interface answered. */
+static int query_net(char *name, int cap)
+{
+    struct List *l = ObtainInterfaceList();
+    struct Node *nd;
+    int best = BAR_NET_STACK;
+    name[0] = 0;
+    for (nd = l ? l->lh_Head : 0; nd && nd->ln_Succ; nd = nd->ln_Succ) {
+        LONG st = -1;
+        struct TagItem tags[2];
+        int k;
+        if (!nd->ln_Name)
+            continue;
+        tags[0].ti_Tag = IFQ_State;
+        tags[0].ti_Data = (ULONG)&st;
+        tags[1].ti_Tag = TAG_DONE;
+        tags[1].ti_Data = 0;
+        if (QueryInterfaceTagList((STRPTR)nd->ln_Name, tags) != 0)
+            continue;
+        k = bar_net_state_kind((long)st);
+        if (k == BAR_NET_STACK || (best != BAR_NET_STACK && best >= k))
+            continue;
+        best = k;
+        strncpy(name, nd->ln_Name, (size_t)cap - 1);
+        name[cap - 1] = 0;
+    }
+    if (l)
+        ReleaseInterfaceList(l);
+    return best;
+}
+
 /* The network, every 5 s: the library is opened for the look and closed at once. A library whose id string starts with
  * "UAE" is the emulator's stub, and any tag in QueryInterfaceTagList kills it, so it is never called. A real stack is
- * reported as such: the Roadshow IFQ_* tag values are not in the vendored NDK 3.2 R4 netinclude (plan R2.10, open). */
+ * asked for its interfaces and their IFQ_State (plan R2.10); the segment is redrawn only when the kind or name changes. */
 static int sample_net(int force)
 {
-    char t[BAR_TEXT];
+    char t[BAR_TEXT], name[sizeof g_net_name];
     unsigned long now = ds_ticks();
-    struct Library *sb;
     int kind;
     if (!force && g_net_kind >= 0 && now - g_net_last_tick < NET_EVERY_TICKS)
         return 0;
     g_net_last_tick = now;
-    sb = OpenLibrary((STRPTR) "bsdsocket.library", 0);
-    kind = sb ? bar_net_kind(sb->lib_IdString ? (const char *)sb->lib_IdString : "") : BAR_NET_NONE;
-    if (sb)
-        CloseLibrary(sb);
-    if (kind == g_net_kind)
+    name[0] = 0;
+    SocketBase = OpenLibrary((STRPTR) "bsdsocket.library", 0);
+    kind = SocketBase ? bar_net_kind(SocketBase->lib_IdString ? (const char *)SocketBase->lib_IdString : "") : BAR_NET_NONE;
+    if (kind == BAR_NET_STACK)
+        kind = query_net(name, sizeof name);
+    if (SocketBase) {
+        CloseLibrary(SocketBase);
+        SocketBase = 0;
+    }
+    if (kind == g_net_kind && !strcmp(name, g_net_name))
         return 0;
     g_net_kind = kind;
-    bar_fmt_net(t, sizeof t, kind);
+    strcpy(g_net_name, name);
+    bar_fmt_net(t, sizeof t, kind, name);
     return set_seg(BAR_SEG_NET, t);
 }
 
@@ -516,6 +563,7 @@ void bar_set_clock_formats(const char *clock, const char *alt)
     strncpy(g_fmt_alt, alt, sizeof g_fmt_alt - 1);
 }
 
+int bar_net(void) { return g_net_kind; }
 void bar_text(char *out, int cap) { bar_dump(&g_bar, out, cap); }
 long bar_draws(void) { return g_draws; }
 long bar_panels(void) { return g_panels; }

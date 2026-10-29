@@ -177,7 +177,7 @@ static void wb_gate(long now)
 }
 
 /* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N wbpens=N wbrefused=N shots=N notes=N ticks=N,
- * the keys of status_core.c (a test holds them under REXX_HOST_OUT); BAR STATUS answers bar draws panels launches raises ticks. */
+ * the keys of status_core.c (a test holds them under REXX_HOST_OUT); BAR STATUS answers bar draws panels launches raises ticks net (BAR_NET_*: 1 emulated, 2 no interface, 3 down, 4 up). */
 static void status_text(char *out, long cap, int bar_status)
 {
     long val[STATUS_NVALS];
@@ -188,6 +188,7 @@ static void status_text(char *out, long cap, int bar_status)
         val[3] = bar_launches();
         val[4] = bar_raises();
         val[5] = tick_count();
+        val[6] = bar_net();
     } else {
         val[0] = g_hits;
         val[1] = cx_nrows();

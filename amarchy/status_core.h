@@ -4,7 +4,7 @@
 #ifndef AMARCHY_STATUS_CORE_H
 #define AMARCHY_STATUS_CORE_H
 
-enum { STATUS_NVALS = 12, BARSTATUS_NVALS = 6 };
+enum { STATUS_NVALS = 12, BARSTATUS_NVALS = 7 };
 
 /* One reply line "key=N key=N ..." from val[], STATUS_NVALS values for STATUS (bar_status 0), BARSTATUS_NVALS for BAR
  * STATUS (1). Written into out of cap bytes (cap includes the NUL); returns the length the whole line needs, so a
