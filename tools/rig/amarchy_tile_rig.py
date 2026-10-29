@@ -161,8 +161,10 @@ def helper():
 def expected(n, layout=None, nmaster=None, ratio=None):
     """the boxes of the n-window layout, newest (master) first; layout/nmaster/ratio default to OPT"""
     w, h, t = screen_geom()
+    bar = bar_box()   # the Amarchy bar, when up, reserves the bottom of the work area (P3-C1)
+    bottom = OPT.get('bottom') or (bar[3] if bar else 0)
     r = subprocess.run([helper(), str(w), str(h), str(t), str(OPT['gap']), str(ratio or OPT['ratio']), str(n),
-                        layout or OPT['layout'], str(nmaster or OPT['nmaster'])] + (['50', '30', '0', '0', str(OPT['bottom'])] if OPT.get('bottom') else []),
+                        layout or OPT['layout'], str(nmaster or OPT['nmaster'])] + (['50', '30', '0', '0', str(bottom)] if bottom else []),
                        capture_output=True, text=True, check=True)
     return [tuple(int(x) for x in l.split()[2:6]) for l in r.stdout.splitlines()]
 
@@ -623,6 +625,8 @@ def s_float_toggle():
     layout), FLOAT OFF puts it back, a bogus id answers rc 5, a bad word rc 10"""
     if not ensure_windows(3) or not status_is(on=True):
         return False, 'needs AmTile on with 3 windows of mine'
+    for a in STATE['wins']:   # an earlier step (snap_floats) may have left one floated
+        send('AMTILE', 'FLOAT OFF ' + hexid(a))
     cmd('LAYOUT dwindle')
     st0 = status_is(tiled=3)
     f0 = tile_floats()
@@ -630,8 +634,7 @@ def s_float_toggle():
     rc_on, _ = send('AMTILE', 'FLOAT ON ' + hexid(addr))
     st1 = status_is(tiled=2)
     f1 = tile_floats()
-    rest = sorted(b[:4] for a, b in mine() if a != addr)
-    ok2 = sorted(expected(2)) == rest
+    ok2 = bool(wait_for(lambda: sorted(expected(2)) == sorted(b[:4] for a, b in mine() if a != addr), 3))
     rc_off, _ = send('AMTILE', 'FLOAT OFF ' + hexid(addr))
     st2 = status_is(tiled=3)
     rc_bad, _ = send('AMTILE', 'FLOAT ON 00000001')
@@ -658,14 +661,14 @@ def s_swap_right():
     s0 = tile_swaps()
     activate(master)
     rc_r, _ = send('AMTILE', 'SWAP RIGHT')
-    wait_for(lambda: {a: b[:4] for a, b in mine()}.get(master) == s_box, 3)
+    wait_for(lambda: {a: b[:4] for a, b in mine()}.get(master) == s_box and
+             sorted(b[:4] for a, b in mine()) == sorted(owner.values()), 3)
     after = {a: b[:4] for a, b in mine()}
     swapped = after.get(master) == s_box and sorted(after.values()) == sorted(owner.values()) and after != owner
     s1 = tile_swaps()
     activate(master)
     rc_l, _ = send('AMTILE', 'SWAP LEFT')
-    wait_for(lambda: {a: b[:4] for a, b in mine()}.get(master) == m_box, 3)
-    back = {a: b[:4] for a, b in mine()} == owner
+    back = bool(wait_for(lambda: {a: b[:4] for a, b in mine()} == owner, 3))
     activate(master)
     rc_u, _ = send('AMTILE', 'SWAP UP')
     cmd('LAYOUT dwindle')
