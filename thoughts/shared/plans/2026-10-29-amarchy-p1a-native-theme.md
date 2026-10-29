@@ -113,38 +113,38 @@ Probe first (no product code before R1.1 is answered; decision 10):
 Core (host-tested, pure):
 - [x] R1.0 Extract put32/get32 from handler/clipfmt.c:70/:78 into one shared helper; clipfmt uses it. Test: test_clip (ee7b7004) (ee7b7004)
   unchanged green; desk tests link the same helper.
-- [ ] R1.5 gtheme carries the extra keys (dark/darker/lighter background, selection, muted) and backdrop/font/wbtitle;
+- [x] (2bc631f7) R1.5 gtheme carries the extra keys (dark/darker/lighter background, selection, muted) and backdrop/font/wbtitle;
   missing key = derived value (OD5). Where gthemes_core.[ch]. Test: test_gthemes new cases, every shipped theme parses
   them; FB/PA: parser change reverted -> fails.
-- [ ] R1.2 desk_core PALT bytes: theme -> pap_Colors 0-3 (4-colour) and 0-7 (8-colour) per mapping OD13. Test: byte-exact
+- [x] (a2c7cd2e) R1.2 desk_core PALT bytes: theme -> pap_Colors 0-3 (4-colour) and 0-7 (8-colour) per mapping OD13. Test: byte-exact
   vs R1.1a golden for a fixture theme made of the probe's colours.
-- [ ] R1.19 DrawInfo pens in pap_4ColorPens / pap_8ColorPens: title fill (FILLPEN), FILLTEXTPEN, SHINEPEN/SHADOWPEN,
+- [x] (a2c7cd2e) R1.19 DrawInfo pens in pap_4ColorPens / pap_8ColorPens: title fill (FILLPEN), FILLTEXTPEN, SHINEPEN/SHADOWPEN,
   BARBLOCKPEN/BARDETAILPEN, TEXTPEN, HIGHLIGHTTEXTPEN mapped to pen indices (OD13). Test: golden bytes; each of the
   mapped pen slots asserted moved by changing its role colour (knob).
-- [ ] R1.18a Darker tone: pure `desk_darker(theme)` per OD5, no hardcoded colour. Test: per shipped theme, darker luma <
+- [x] (a2c7cd2e) R1.18a Darker tone: pure `desk_darker(theme)` per OD5, no hardcoded colour. Test: per shipped theme, darker luma <
   background luma, and contrast vs the bar/menu background role (MT_BG) and vs foreground above a threshold (OD5 states it).
-- [ ] R1.3 desk_core PTRN root bytes, solid and tiled flat pattern (OD6), WBPF_PATTERN, depth <= screen depth. Test:
+- [x] (a2c7cd2e) R1.3 desk_core PTRN root bytes, solid and tiled flat pattern (OD6), WBPF_PATTERN, depth <= screen depth. Test:
   golden vs R1.1c.
-- [ ] R1.20 PTRN drawer entry (WBP_DRAWER) in the tone of OD7. Test: golden; drawer colour index differs from root when
+- [x] (a2c7cd2e) R1.20 PTRN drawer entry (WBP_DRAWER) in the tone of OD7. Test: golden; drawer colour index differs from root when
   OD7 says panel tone.
-- [ ] R1.21a Pointer colours: read-modify-write of every PNTR chunk's RGBTable (count from R1.1d), bitmaps byte-identical.
+- [x] (a2c7cd2e) R1.21a Pointer colours: read-modify-write of every PNTR chunk's RGBTable (count from R1.1d), bitmaps byte-identical.
   Test: on the shipped os-322 Pointer.prefs fixture, only colour bytes differ (diff count = chunks x 9 bytes max).
 - [ ] R1.21b Optional pointer shapes (normal/busy) per OD8, off by default. Test: shape on -> PNTR Which 0/1 bitmap bytes
   replaced, others kept; off -> byte-identical to R1.21a output.
-- [ ] R1.4 FontPrefs: theme `font=` names an existing font only (decision 4); unknown font -> key ignored, file untouched.
+- [x] (a2c7cd2e) R1.4 FontPrefs: theme `font=` names an existing font only (decision 4); unknown font -> key ignored, file untouched.
   Test: golden; missing font -> no FONT chunk change.
-- [ ] R1.22a Icon label colour and outline (OD10: JAM1, special mode 1) in FP_WBFONT pens, or workbench.prefs if the probe says so
+- [x] (a2c7cd2e) R1.22a Icon label colour and outline (OD10: JAM1, special mode 1) in FP_WBFONT pens, or workbench.prefs if the probe says so
   (OD10). Test: golden; label pen != backdrop pen (contrast guard).
 - [x] R1.22b (closed by OD11, owner 2026-10-29: title stays stock) Screen title WBTF (3.2 / workbench.library >= 47 only, OD11); older OS: target skipped and reported. Test:
   golden; v40 mode produces no WBNC write.
-- [ ] R1.6 Contrast guard over all shipped themes: pen 0 vs pen 1, text vs fill, label vs backdrop, darker vs MT_BG; a theme
+- [x] (a2c7cd2e) R1.6 Contrast guard over all shipped themes: pen 0 vs pen 1, text vs fill, label vs backdrop, darker vs MT_BG; a theme
   failing the guard is refused with a message, nothing written. Test: all 23 shipped themes pass; FB/PA with a fixture
   theme fg == bg -> refused.
-- [ ] D-TGT Target table in desk_core: rows palette, wbpattern, pointer, font, workbench (each its own amconf key, OD2);
+- [x] (a2c7cd2e) D-TGT Target table in desk_core: rows palette, wbpattern, pointer, font, workbench (each its own amconf key, OD2);
   R1.23-R1.25 add rows later. Test: a target switched off writes nothing and is absent from the snapshot list.
 - [ ] R1.11 Backdrop set per theme: solid generated first entry, then UP-Term:Amarchy/Backdrops/<theme>/*, user dir
   ENVARC:Amarchy/backdrops/<theme>/ wins on same name; cycle index wraps. Test: host list/override/wrap cases.
-- [ ] R1.16a Revert logic (pure): snapshot list = exactly the files the enabled targets write; restore order; pending
+- [x] (a2c7cd2e) R1.16a Revert logic (pure): snapshot list = exactly the files the enabled targets write; restore order; pending
   marker content. Test: host cases incl. a crashed-marker restore choosing the right files.
 
 OS side (commodity):
@@ -170,7 +170,7 @@ OS side (commodity):
 Docs, install, tests, cleanup:
 - [ ] R1.15 man/amarchy.1 section "Desktop theme"; installer copies UP-Term:Amarchy/Backdrops (empty per-theme drawers,
   decision 3: no images shipped). Test: install script dry-run lists the drawer.
-- [ ] R1.16 Host suite `desk` (make host test ONLY=desk), R1.2-R1.6, R1.11, R1.16a, R1.18a, R1.19-R1.22.
+- [x] (a2c7cd2e) R1.16 Host suite `desk` (make host test ONLY=desk), R1.2-R1.6, R1.11, R1.16a, R1.18a, R1.19-R1.22.
 - [ ] R1.16k Knob audit: every option key and every theme key used moves its output (byte diff on host, pixel or file
   diff on the rig); unused keys carry the written exemption (update GUI-themes plan section 1).
 - [ ] R1.17 Rig reachability test RX1 (below), tools/rig/amarchy_desk_rig.py, verdict files, --only/--failed.
