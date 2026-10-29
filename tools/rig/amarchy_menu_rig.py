@@ -1016,6 +1016,18 @@ def new_titled(before):
     return list((keep(dopus_windows()) - keep(before)).elements())
 
 
+def window_addrs():
+    """{window address: title} of every window on every screen. A window keeps its address while its title changes: a
+    Directory Opus disk lister retitles itself with live free/in-use figures ("Ram Disk,  1G free, 532K in use" becomes
+    "1,022.8M free, 538K in use" on the first DOpus activity), so a title diff reports that lister as new."""
+    return {w['addr']: w['title'] for s in __import__('amarchy_gui_rig').screens() for w in s['windows']}
+
+
+def new_by_addr(before):
+    """Titles of the real windows (not DOpus's untitled helpers or the 'menuhost' terminal) whose address is not in `before`."""
+    return [t for a, t in window_addrs().items() if a not in before and t not in ('', 'menuhost')]
+
+
 def stage_dopus_rexx():
     """Put the dopus-*.rexx scripts into UP-Term:Rexx, where dist/keymap names them (rexx:UP-Term:Rexx/dopus-*.rexx). A rig's
     UP-Term: is the drawer of an older kit install that has no Rexx drawer; a current kit install creates it."""
@@ -1064,18 +1076,34 @@ def r_dopus_present():
     res = []
     stage_dopus_rexx()
     ensure_terminal()
+    # over an UP-Term window Super+Space opens the text menu (menu-in-terminal = text, the default); the drawn one
+    # ("Amarchy" window, sentinel rows, Open UP-Term here below) needs menu-in-terminal = graphical, as in rows_over_terminal
+    import amarchy_rig
+    saved = {p: ami.read_file(p) for p in (X9_CONF, X9_AMCONF)}
+    try:
+        c.run('MakeDir >NIL: ENV:up-term ENV:Amarchy')
+        x9_drawn()
+        amarchy_rig.arexx('RELOAD')
+        return _dopus_present_checks(res)
+    finally:
+        for p, b in saved.items():
+            ami.restore_file(p, b)
+        amarchy_rig.arexx('RELOAD')
+
+
+def _dopus_present_checks(res):
     up, rows = root_menu_rows()
     res.append(bool(up) and 'Dopus' in rows)
     print('  %s root rows with a port: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS QUIET')
     # `lister query all` answers nothing on 5.82 and 5.91, so the sentinel is the window list: one new window, a lister
-    before = dopus_windows()
+    before = window_addrs()
     ami.key(RAW['d'], LAMIGA | LSHIFT)
     time.sleep(3)
-    listers = new_titled(before)
+    listers = new_by_addr(before)
     res.append(len(listers) == 1)
     print('  %s Super+Shift+D: new windows (title) %s' % ('[OK]' if res[-1] else '[FAIL]', listers), flush=True)
-    before = dopus_windows()
+    before = window_addrs()
     import amarchy_gui_rig as g
     s, w = g.open_menu()
     # the filter works on the level shown: the group at the root, then its row inside the group (a contiguous
@@ -1085,7 +1113,7 @@ def r_dopus_present():
         ami.key(RAW['return'])
         time.sleep(1)
     time.sleep(3)
-    new = [t for t in new_titled(before) if t != 'Amarchy']
+    new = [t for t in new_by_addr(before) if t != 'Amarchy']
     # screen titles follow the active window, so they name no screen; the window title UP-Term is the proof
     res.append(new == ['UP-Term'])
     print('  %s Open UP-Term here: new windows (title) %s' % ('[OK]' if res[-1] else '[FAIL]', new), flush=True)
