@@ -14,7 +14,7 @@ import ami, paths, userland_rig as u
 
 ROOT = paths.VTCON
 VTC = u.VTC
-PORTS_CURL = ROOT.parent / 'upterm-ports/build/kit/userland/bin/curl'   # make kit-stage in upterm-ports
+PORTS_CURL = paths.ports() / 'build/kit/userland/bin/curl'   # make kit-stage in upterm-ports
 failed = 0
 
 

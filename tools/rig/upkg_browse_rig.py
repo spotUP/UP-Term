@@ -42,7 +42,7 @@ import vshwin
 import upkg_rig
 import colour_check
 
-SYSROOT_BIN = paths.repo("upterm-ports") / "build/sysroot/UP-Term/bin"
+SYSROOT_BIN = paths.ports() / "build/sysroot/UP-Term/bin"
 UPKG = SYSROOT_BIN / "upkg"
 PKG = 'up-vim'
 IPK = ir.ROOT / ('build/ipk/%s_1.0_m68k-amigaos.ipk' % PKG)

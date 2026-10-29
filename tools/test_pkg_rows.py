@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CP2: pkg_rows.py check names the drifted file and row; --write refuses an id that already has rows.
 Run: python3 -I tools/test_pkg_rows.py   (UPTERM_PORTS=<dir>; skips when upterm-ports is absent)"""
-import contextlib, io, os, pathlib, shutil, sys, tempfile, unittest
+import contextlib, io, pathlib, shutil, sys, tempfile, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT / 'tools' / 'rig'))
 import paths
 import pkg_rows
 
-PORTS = pathlib.Path(os.environ.get('UPTERM_PORTS') or paths.repo('upterm-ports'))
+PORTS = paths.ports()
 
 
 def run(argv):

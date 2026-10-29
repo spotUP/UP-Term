@@ -36,7 +36,7 @@ import vshwin
 import upkg_rig
 import upkg_browse_rig as B
 
-sys.path.insert(0, str(paths.repo('upterm-ports') / 'pkgs/opkg/check'))
+sys.path.insert(0, str(paths.ports() / 'pkgs/opkg/check'))
 import ipk as ipklib   # the host checks' .ipk writer
 
 ASK = 'up-claude'

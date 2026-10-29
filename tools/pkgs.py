@@ -162,7 +162,7 @@ def summary(pkg_id):
     (tools/pkg_rows.py read_field, the one reader). No recipe or no _SUMMARY is an error, never a stand-in text."""
     if pkg_id in SUMMARY:
         return SUMMARY[pkg_id]
-    ports = pathlib.Path(os.environ.get('UPTERM_PORTS') or paths.repo('upterm-ports'))
+    ports = paths.ports()
     if not (ports / 'pkgs' / pkg_id / 'recipe.mk').is_file():
         raise SystemExit('pkgs: no Description for %s: not in SUMMARY and no recipe at %s (set UPTERM_PORTS to the '
                          'upterm-ports checkout)' % (pkg_id, ports / 'pkgs' / pkg_id / 'recipe.mk'))
@@ -177,7 +177,7 @@ def depends(pkg_id):
     """The runtime packages one package needs, as opkg package names: the recipe's <id>_RUNTIME_DEPENDS in
     $UPTERM_PORTS (pkg_rows.read_field, the one reader, as for summary()). Not _DEPS: those are the static
     libraries linked at build time and are inside the program. No recipe or no value: none."""
-    ports = pathlib.Path(os.environ.get('UPTERM_PORTS') or ROOT.parent / 'upterm-ports')
+    ports = paths.ports()
     if not (ports / 'pkgs' / pkg_id / 'recipe.mk').is_file():
         return []
     import pkg_rows

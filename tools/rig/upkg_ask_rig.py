@@ -29,7 +29,7 @@ import typewin
 import vshwin
 import upkg_rig
 
-UPKG_UI = paths.repo("upterm-ports") / "build/sysroot/UP-Term/bin/upkg-ui"
+UPKG_UI = paths.ports() / "build/sysroot/UP-Term/bin/upkg-ui"
 REMOTE = 'ENVARC:Claude/remote'
 CONF = upkg_rig.CONF
 TITLE = 'upkg-ask'

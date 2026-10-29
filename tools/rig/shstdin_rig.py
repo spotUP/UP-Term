@@ -20,7 +20,7 @@ import ami, ixpty_rig, paths, screen_rig, vshwin
 import install_rig as ir
 
 # the kit's sed and the userland's cat (ixemul programs), first on vsh's PATH
-SED = paths.repo("upterm-ports") / "build/kit/userland/bin/sed"
+SED = paths.ports() / "build/kit/userland/bin/sed"
 BIN = paths.RIG / "vtc/shstdin"
 
 CTRL = 0x0008
@@ -56,7 +56,7 @@ PTY_CASES = (
     ("pty-vsh-inwho", "VTC:vsh -c VTC:shstdin/inwho", "in=PTY "),
     ("pty-binsh-inwho", "/bin/sh -c VTC:shstdin/inwho", "in=PTY "),
 )
-PTYRUN = paths.repo("upterm-ports") / "build/tools/ptyrun.amiga"
+PTYRUN = paths.ports() / "build/tools/ptyrun.amiga"
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 

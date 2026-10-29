@@ -8,7 +8,6 @@ fresh boot `Assign LIBS: EXISTS` listed no System:AmiSSL/Libs and `Version
 amisslmaster.library` said "object not found"; with the drawer added back the same binary
 got Anthropic's HTTP 401 for a key that is not one.
 """
-import os
 import pathlib
 import sys
 
@@ -73,7 +72,7 @@ with tempfile.TemporaryDirectory() as d:
     old.write_bytes(b"\0libnet usergroup.library \0$STACK: 1\0")
     check(curl_problems(old), "the checker rejects a curl that names usergroup.library")
 check(not list((rig.ROOT / "dist/net").glob("curl*")), "dist/net holds no vendored curl")
-ports = pathlib.Path(os.environ.get("UPTERM_PORTS") or rig.ROOT.parent / "upterm-ports") / "build"
+ports = rig.paths.ports() / "build"
 staged = [p for p in (ports / "kit/userland/bin/curl", ports / "sysroot/UP-Term/bin/curl") if p.is_file()]
 if not staged:
     print("[UNVERIFIED] no ports curl built under %s: make kit-stage in upterm-ports, rerun" % ports)

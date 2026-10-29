@@ -226,6 +226,13 @@ def repo(name):
     return UPTERM_ROOT / name
 
 
+def ports():
+    """The upterm-ports checkout the rig tools take kit binaries from: UPTERM_PORTS (a worktree such
+    as .claude/worktrees/kit-main) or the workspace's upterm-ports. Every tool asks here, so one
+    UPTERM_PORTS moves all of them (2026-10-29: upkg_browse_rig still read the shared checkout)."""
+    return pathlib.Path(os.environ.get("UPTERM_PORTS") or repo("upterm-ports"))
+
+
 # The default Kickstart 3.1 (40.68, A1200) ROM; UPTERM_ROM names another file. It lives in the
 # workspace, outside every repository (the repositories are public; a ROM is not ours to
 # publish): a copy of the owner's Dropbox ROM, header 40.68,

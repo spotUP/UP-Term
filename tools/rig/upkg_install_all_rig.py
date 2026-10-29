@@ -30,7 +30,7 @@ import upkg_rig
 import upkg_browse_rig as ubr
 import pkgs
 
-PORTS = pathlib.Path(os.environ.get('UPTERM_PORTS') or paths.repo('upterm-ports'))
+PORTS = paths.ports()
 BIN = PORTS / 'build/sysroot/UP-Term/bin'
 TITLE = 'upkg-install-all'
 LOG = 'T:ia-log'
