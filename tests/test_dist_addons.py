@@ -53,8 +53,9 @@ class EveryAddOn(unittest.TestCase):
                     continue
                 writes += 1
                 ind = line[:len(line) - len(line.lstrip())]
-                # a failed Copy may first drop the assigns it was handed (Assign >NIL: NAME:), then quits
-                after = [l for l in lines[i + 1:i + 6] if not re.match(re.escape(ind) + r'  Assign >NIL: \w+:$', l)]
+                # a failed Copy may first drop the assigns it was handed (Assign >NIL: NAME:, some spliced in
+                # unindented by an @include with its comment line), then quits
+                after = [l for l in lines[i + 1:i + 9] if not re.match(r'\s*(Assign >NIL: \w+:|;.*)$', l)]
                 self.assertEqual(after[:3], [ind + 'If WARN', ind + '  Quit 20', ind + 'EndIf'], '%s: %s' % (pid, line))
             self.assertGreater(writes, 0, pid)
 
@@ -111,7 +112,8 @@ class EveryAddOn(unittest.TestCase):
                     stack.append(toks[i + 1][1] if i + 1 < len(toks) and toks[i + 1][0] == 'word' else '')
                 elif kind == 'close':
                     stack.pop()
-                elif kind == 'str' and 'help' not in stack and 'abort' not in stack:
+                elif kind == 'str' and 'help' not in stack and 'abort' not in stack and stack[-1:] not in (['='], ['<>']):
+                    # an operand of = or <> (a file list compared with "-") is never shown
                     long += [p for p in text.split('\\n') if len(p) > 56 and not p.startswith(' ONLY=')]   # ONLY= is upupdate's argument, not page text
             self.assertEqual(long, [], pid)
 
@@ -188,11 +190,14 @@ class EveryAddOn(unittest.TestCase):
         for pid, s in self.each():
             row = {r['id']: r for r in ADDONS}[pid]
             rec = dict(parts_of(s['dos']))['record']
-            self.assertIn('MakeDir >NIL: %s %s\n' % (row['record'].rsplit('/', 1)[0], row['record']), rec)
-            self.assertIn('Copy MANIFEST %s/MANIFEST CLONE' % row['record'], rec)
-            self.assertIn('Copy UPTPARENT:Uninstall %s/Uninstall CLONE QUIET' % row['record'], rec)
-            self.assertIn('Copy VERSIONS %s/VERSIONS CLONE QUIET' % row['record'], rec)
-            self.assertIn('Delete >NIL: %s/opts ALL QUIET' % row['record'], rec)
+            # 8c76c96d: the drawers are named through $uptpkg/$uptrec (resolve-addon.dos may point them at UPTREAL:)
+            self.assertIn('Set uptpkg "%s"\n' % row['record'].rsplit('/', 1)[0], rec)
+            self.assertIn('Set uptrec "%s"\n' % row['record'], rec)
+            self.assertIn('MakeDir >NIL: $uptpkg $uptrec\n', rec)
+            self.assertIn('Copy MANIFEST $uptrec/MANIFEST CLONE', rec)
+            self.assertIn('Copy UPTPARENT:Uninstall $uptrec/Uninstall CLONE QUIET', rec)
+            self.assertIn('Copy VERSIONS $uptrec/VERSIONS CLONE QUIET', rec)
+            self.assertIn('Delete >NIL: $uptrec/opts ALL QUIET', rec)
 
     def test_no_amigados_line_names_a_path_with_a_leading_slash(self):
         """A1200 2026-10-20: upkg's configure of up-nvim hung on "Please insert volume Uninstall". That

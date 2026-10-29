@@ -20,7 +20,7 @@ What the recipe cannot say (prose of the Installer, README, the man page row) co
 (or --prose FILE; key man lists the man page rows) and falls back to text built from _SUMMARY; --man PATH adds a slim row,
 --pkg-version, --base-version, --ixemul set the packages.txt columns (defaults 1.0, 1.0, 80).
 """
-import argparse, json, os, pathlib, re, subprocess, sys, tempfile
+import argparse, json, os, pathlib, re, subprocess, sys, tempfile, textwrap
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import pkgs, slim
@@ -97,7 +97,8 @@ def generate(pkg, ports, a):
     cmd = pathlib.PurePosixPath(bins[0]).name if bins else name
     about = pr.get('about', summary)
     cc = pr.get('copy_comment', ['; %s: %s' % (name, summary)])
-    welcome = pr.get('welcome', [summary])
+    # the welcome page is 56 characters wide (tests/test_dist_addons.py): a _SUMMARY is one long line
+    welcome = [w for l in pr.get('welcome', [summary]) for w in textwrap.wrap(l, 56, break_on_hyphens=False)]
     sub = {'ID': fid, 'PKG': pkg, 'PKGUP': pkg.upper(), 'NAME': name, 'CMD': cmd, 'ABOUT': about,
            'COPY_COMMENT': '\n'.join(cc) + '\n', 'TITLE': pr.get('title', ' '.join(name.upper())),
            'WELCOME': ''.join('    "%s\\n"\n' % l for l in welcome),

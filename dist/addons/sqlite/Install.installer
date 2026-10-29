@@ -5,7 +5,8 @@
 ; welcome: n = 8, lead 3
 (message
     "\n\n\nS Q L I T E\n\n"
-    "SQLite 3.54.1 command line shell (sqlite3) in UP-Term:bin\n"
+    "SQLite 3.54.1 command line shell (sqlite3) in\n"
+    "UP-Term:bin\n"
     "Needs up-term.lha installed first.\n"
     (all))
 (set #kb-sqlite @KBCOPYSQLITE@)

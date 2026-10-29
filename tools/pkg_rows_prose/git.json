@@ -9,9 +9,9 @@
  "welcome": [
   "git, the version control system, for an UP-Term window.",
   "It goes into UP-Term:bin and UP-Term:share/git-core.",
-  "git needs a volume with long file names: FFS in long-name",
-  "mode (DOS7), PFS3 or SFS. OFS and plain FFS stop at 30",
-  "characters, too short for git's object files."
+  "git needs a volume with long file names: FFS in",
+  "long-name mode (DOS7), PFS3 or SFS. OFS and plain FFS",
+  "stop at 30 characters, too short for git's object files."
  ],
  "title": "G I T",
  "why": "Copying git to UP-Term:bin and UP-Term:share/git-core.",
