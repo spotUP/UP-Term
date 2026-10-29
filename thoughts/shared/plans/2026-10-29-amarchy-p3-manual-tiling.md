@@ -176,17 +176,17 @@ C. AmTile
 - [x] P3-C5 (AmTile and Amarchy cross-build rc 0, stack cookie tests green) cross build AmTile and Amarchy rc 0; stack cookie test still green (memory: every Amiga program keeps __stack).
 
 D. dist and docs
-- [ ] P3-D1 hotkeys per owner D1/D2 (recommended set below), format `key = action ; label | window`.
-- [ ] P3-D2 menu rows (flat `window.<id>`, as window.tile): snapleft, snapright, snaptop, snapbottom, snaptopleft,
+- [x] P3-D1 (772d70fc) hotkeys per owner D1/D2 (recommended set below), format `key = action ; label | window`.
+- [x] P3-D2 (772d70fc) menu rows (flat `window.<id>`, as window.tile): snapleft, snapright, snaptop, snapbottom, snaptopleft,
   snaptopright, snapbottomleft, snapbottomright, snapcenter, float, swapleft, swapright, swapup, swapdown; dist/menu-icons
   line each (glyph checked in the icon table, fallback U+F009). Labels in full words ("Snap to left half", "Float or tile window").
-- [ ] P3-D3 test_keymap rows, kinds, clash-free; measured nbind, heap and file size written in the ledger, ceilings raised
+- [x] P3-D3 (772d70fc) test_keymap rows, kinds, clash-free; measured nbind, heap and file size written in the ledger, ceilings raised
   only to the measured value plus the margin the earlier rows used.
-- [ ] P3-D4 man/amarchy.1, dist/README.txt AMARCHY section, AmTile usage line (tile.c:6), tests/test_amarchy_docs.py.
+- [x] P3-D4 (773ad57d) man/amarchy.1, dist/README.txt AMARCHY section, AmTile usage line (tile.c:6), tests/test_amarchy_docs.py.
 
 E. Host tests (`make test ONLY=win|tile|keymap|amconf`, nice 19, max 2 workers, log to scratchpad)
-- [ ] P3-E1 test_win: A1, A2, A3 cases and worked numbers. P3-E2 test_tile: A1 bottom, A5, C4 splitter.
-- [ ] P3-E3 test_keymap: A4 agreement, D1-D3. P3-E4 knob test: each knob below moves the host output.
+- [x] P3-E1 (a5f47d3a) test_win: A1, A2, A3 cases and worked numbers. P3-E2 test_tile: A1 bottom, A5, C4 splitter. DONE E2 (e521437e). Measured: Super+Left/Right no longer switch tabs.
+- [x] P3-E3 (772d70fc) test_keymap: A4 agreement, D1-D3. P3-E4 knob test: each knob below moves the host output. DONE E4 (97aac2b4: snap zone, gap, bottom move the box; float/swap/optout in test_tile). nbind 106, heap 4996 B, keymap 25245 B.
 
 F. Rig (one script per existing area; reuse, no new rig framework)
 - [ ] P3-F1 extend tools/rig/amarchy_window_rig.py with snap steps; extend tools/rig/amarchy_tile_rig.py with float, swap,
