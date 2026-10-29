@@ -1061,3 +1061,91 @@ class AmiNetXDuoPart(unittest.TestCase):
         self.assertRegex(parts, r"(?m)^-\s+Files/tcpprobe$")
         self.assertIn("AmiNetXDuo 1.0.0-rc2", (ROOT / "dist/LICENSES.txt").read_text(encoding="latin-1"))
         self.assertIn("Uninstall-AmiNetXDuo", (ROOT / "dist/Uninstall").read_text(encoding="latin-1"))
+
+
+def tree(toks):
+    """The script as nested lists: a form is a list, a string ('str', text), a word ('word', text)."""
+    stack = [[]]
+    for kind, text in toks:
+        if kind == 'open':
+            stack.append([])
+        elif kind == 'close':
+            done = stack.pop()
+            stack[-1].append(done)
+        else:
+            stack[-1].append((kind, text))
+    return stack[0]
+
+
+class LastPageLineCount(unittest.TestCase):
+    """INSTALLER-END-CRASH (2026-10-29): with wasabi ticked and an add-on or AmiSSL note, the note moved to a
+    page of its own but #adrows still counted it, so the last page asked P_LEAD to centre 16 lines. Its substr
+    then got the length (14 - 16) / 2 = -1, the Installer zero-filled memory from the result buffer upward
+    (strncpy with n = -1, rig 9 memory watch), and the next vertical blank jumped into the wiped vblank server
+    of rtg.library. This evaluates the script from (P_ADDONS) to (P_END) for every combination and records the
+    #n of each P_LEAD call."""
+
+    def leads(self, wasabi, sslrows, adnote):
+        forms = tree(tokens(INSTALLER))
+        start = next(k for k, f in enumerate(forms) if f == [('word', 'P_ADDONS')])
+        env = {'#wasabi': wasabi, '#sslrows': sslrows, '#sslnote': '\\nx' * sslrows, '#adnote': adnote}
+        seen = []
+
+        def ev(x):
+            if isinstance(x, tuple):
+                kind, text = x
+                if kind == 'str':
+                    return text
+                if re.fullmatch(r'-?\d+', text):
+                    return int(text)
+                return env[text]
+            head, args = x[0][1], x[1:]
+            if head == 'set':
+                env[args[0][1]] = ev(args[1]); return env[args[0][1]]
+            if head == 'if':
+                c = ev(args[0])
+                return ev(args[1]) if c not in (0, '', False) else (ev(args[2]) if len(args) > 2 else 0)
+            if head == 'and':
+                return all(ev(a) not in (0, '', False) for a in args)
+            if head in ('=', '<>', '>', '<'):
+                a, b = ev(args[0]), ev(args[1])
+                return {'=': a == b, '<>': a != b, '>': a > b, '<': a < b}[head]
+            if head == '+':
+                return sum(ev(a) for a in args)
+            if head == 'cat':
+                return ''.join(str(ev(a)) for a in args)
+            if head == 'strlen':
+                return len(ev(args[0]))
+            if head == 'substr':
+                return ev(args[0])[ev(args[1]):][:ev(args[2])]
+            if head == 'getenv':
+                return 'key'
+            if head == 'P_LEAD':
+                seen.append(env['#n']); env['#lead'] = ''; return 0
+            if head in ('message', 'all'):
+                return 0
+            if isinstance(x[0], list):   # a block of forms
+                for f in x:
+                    ev(f)
+                return 0
+            raise AssertionError('form not modelled: %s' % head)
+
+        for f in forms[start + 1:]:
+            if f == [('word', 'P_END')]:
+                break
+            ev(f)
+        return seen
+
+    def test_no_page_asks_for_more_than_14_lines(self):
+        for wasabi in ('WASABI', ''):
+            for sslrows in (0, 1, 2):
+                for adnote in ('', '\\nAdd-ons: see their pages.'):
+                    with self.subTest(wasabi=wasabi, sslrows=sslrows, adnote=bool(adnote)):
+                        leads = self.leads(wasabi, sslrows, adnote)
+                        self.assertTrue(leads)
+                        self.assertLessEqual(max(leads), 14, leads)
+
+    def test_p_lead_gives_no_newlines_to_a_block_over_14_lines(self):
+        procs = (ROOT / "dist/common/procs.installer").read_text(encoding="latin-1")
+        body = procs[procs.index('(procedure P_LEAD'):][:200]
+        self.assertIn('(if (> #n 14) ""', body)

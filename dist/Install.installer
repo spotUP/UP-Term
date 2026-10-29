@@ -767,7 +767,8 @@
         (set #n 3)
         (P_LEAD)
         (message (cat #lead (substr #adnote 1 (strlen #adnote))) (all))
-        (set #adnote "")))
+        (set #adnote "")
+        (set #adrows 0)))
 (set #n (+ (if (= #wasabi "WASABI") 14 9) #adrows))
 (P_LEAD)
 (set #done
