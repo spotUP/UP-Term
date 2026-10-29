@@ -2,7 +2,7 @@
 date: 2026-10-29
 session: vtcon-05 session 19
 topic: FRESH-ALL-AFTER-END (rig 9 fresh-all fails 3, 32, 38, 39, 40) and owner-question round
-status: 38/39/40 committed, 3 fixed uncommitted, 32 open
+status: fresh-all passes 40 of 40 on rig 9 (rerun 4); all fixes committed
 ---
 
 # Handoff: vtcon-05 session 19
@@ -14,17 +14,22 @@ Repro: `UPTERM_RIG=9 nice -n 19 python3 -u tools/rig/installer_rig.py ONLY fresh
 - 9cfa774b: dist/Uninstall waits (Status COM UP-Term:bin/Amarchy, at most 10 s) before Delete ALL (fail 38).
   Test: tests/test_dist_installer.py WasabiDaemonOption.test_uninstall_waits_for_amarchy_to_end_before_the_drawer_goes.
 - e67ad678: install_rig.stock_libs(); prepare() uses it (fails 39/40). Test tests/test_installer_rig_reboot_libs.py.
-  NOTE: the call `ir.stock_libs()` at the end of installer_rig.reboot_amarchy_check is still UNCOMMITTED
-  in tools/rig/installer_rig.py; commit it with the items below.
 
-## Uncommitted in tools/rig/installer_rig.py
+## Committed with the fail 32 fix (tools/rig/installer_rig.py)
 - reboot_amarchy_check: end calls ir.stock_libs() (belongs to e67ad678).
 - reboot_amarchy_check: when no Amarchy window, logs `screen [<title>]: <windows>` for every screen (fail 32 diagnostic).
 - layout_judged(tree, why): a window without Proceed 90 / Abort 91 (half-drawn page) is not layout-judged (fail 3,
   "text in the bottom border strip (y 204..205) on [None]"). Test tests/test_installer_rig_layout_judged.py (untracked;
   fails with the fix reverted).
 
-## Open: fail 32 "no window titled Amarchy in 20 s"
+## Fail 32 fix (committed; rerun 4 passed 40 of 40)
+- Rerun 3: 39 of 40 (fail 3 gone, 32 still failing). The diagnostic was lost: fresh-all.log.txt is written before
+  reboot_amarchy_check runs, so its lines now print to stdout.
+- Fix: reboot_amarchy_check wraps the keypress in amw.drawn_menu_prefs()/restore_prefs() (amarchy_window_rig).
+  Test test_left_amiga_space_over_the_terminal_opens_the_drawn_menu (fails with the fix taken out).
+- Rerun 4 log: /private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/fc13214b-1e0f-4893-b597-80b8915bda65/scratchpad/fa-s19d.log
+
+## Background: fail 32 "no window titled Amarchy in 20 s"
 - Rerun 3 log: /private/tmp/claude-501/-Users-spot-Code-UP-Term-vtcon/fc13214b-1e0f-4893-b597-80b8915bda65/scratchpad/fa-s19c.log
   (grep "screen \[" for the diagnostic).
 - Hypothesis: tabstate.open_host('f1host') leaves a terminal in front; menu-in-terminal defaults to text, so
