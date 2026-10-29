@@ -76,12 +76,12 @@ Shared pieces (P4 waits on these)
       source for the strut rule). Returns the full screen minus title bar when the bar is off or on another screen.
 
 Bar core
-- [ ] R2.4a bar_core: add BAR_CENTRE group; layout = left group from the left edge, right group from the right edge,
+- [x] R2.4a (8bccda94) bar_core: add BAR_CENTRE group; layout = left group from the left edge, right group from the right edge,
       centre group centred on the screen and pushed aside when it would overlap. Host tests at widths 640, 800, 1280.
-- [ ] R2.4b bar_core: cut rule. When the groups do not fit, the screens list loses entries from its right end and shows
+- [x] R2.4b (8bccda94) bar_core: cut rule. When the groups do not fit, the screens list loses entries from its right end and shows
       a "+N" marker; the centre and right groups never cut. Host test at 640 with 6 screens.
 - [x] R2.4 Segments, hit-test, Agents segment. PARTIAL DONE 4086d352; the rows above finish it.
-- [ ] R2.4c bar_core formatters (pure, host-tested): bytes to "1.2M"/"61M"/"512K" (unsigned long, safe to 4 GB),
+- [x] R2.4c (8bccda94) bar_core formatters (pure, host-tested): bytes to "1.2M"/"61M"/"512K" (unsigned long, safe to 4 GB),
       percent from idle counts, clock strftime subset %H %M %a %d %b %Y, screen short name (first word, max 8 chars).
 
 Segments
