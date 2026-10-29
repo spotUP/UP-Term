@@ -123,14 +123,13 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
     am_prefs ap;
     unsigned mask;
-    int depth, ok = 1;
+    int depth, plan, ok = 1;
     long len, plen;
     amconf_load(&ap);
-    mask = amconf_desk_mask(&ap);
-    if (!mask)
-        return 0;
-    if (!desk_check(th, why, cap))
-        return -1;
+    plan = desk_plan(amconf_desk_mask(&ap), th, why, cap);
+    if (plan <= 0)
+        return plan;
+    mask = (unsigned)plan;
     UnLock(CreateDir((STRPTR)DK_WORK));
     dk_snapshot(mask);
     depth = dk_screen_depth();

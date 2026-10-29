@@ -327,6 +327,23 @@ static void test_desk_guard(void)
     CHECK_INT(desk_check(&t, why, 0), 1);
 }
 
+/* R1.6: desk_plan is the apply decision of desk_dos_apply (a passing theme must not be refused) */
+static void test_desk_plan(void)
+{
+    gtheme all[SHIPPED_MAX], t;
+    char why[120];
+    int n = load_all(all, SHIPPED_MAX);
+    CHECK(n > 0);
+    CHECK_INT(desk_plan(15, &all[0], why, sizeof why), 15);
+    CHECK_INT(desk_plan(5, &all[0], why, sizeof why), 5);
+    CHECK_INT(desk_plan(0, &all[0], why, sizeof why), 0);
+    t = all[0];
+    t.fg = t.bg;
+    CHECK_INT(desk_plan(15, &t, why, sizeof why), -1);
+    CHECK(why[0] != 0);
+    CHECK_INT(desk_plan(0, &t, why, sizeof why), 0);
+}
+
 static void test_desk_targets(void)
 {
     const char *list[16], *marker;
@@ -378,5 +395,6 @@ void suite_desk(void)
     test_desk_font();
     test_desk_font_default();
     test_desk_guard();
+    test_desk_plan();
     test_desk_targets();
 }

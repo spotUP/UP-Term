@@ -47,7 +47,7 @@ int main(int argc, char **argv)
         if (tl < 0)
             return 2;
         gt_parse(text, tl, &th);
-        if (desk_check(&th, why, (int)sizeof why) < 0) {
+        if (desk_check(&th, why, (int)sizeof why) != 0) {
             printf("%s\n", why);
             return 1;
         }

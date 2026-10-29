@@ -62,6 +62,10 @@ long desk_font_default(unsigned char *out, long cap);
 /* R1.6: 0 when the theme passes the contrast guard, else 1 and a refusal text in why (cap bytes) */
 int desk_check(const gtheme *t, char *why, int cap);
 
+/* R1.6: the apply decision for the amconf desktop mask (bit t = target t): 0 when every switch is off (nothing is read
+ * or written), -1 when the theme is refused (why gets the text), else the mask to apply */
+int desk_plan(unsigned mask, const gtheme *t, char *why, int cap);
+
 /* D-TGT: the targets; each has its own amconf switch (OD2) and the files it writes */
 enum { DT_PALETTE, DT_WBPATTERN, DT_POINTER, DT_FONT, DT_COUNT };
 typedef struct {

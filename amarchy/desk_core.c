@@ -353,6 +353,15 @@ int desk_check(const gtheme *t, char *why, int cap)
     return 0;
 }
 
+int desk_plan(unsigned mask, const gtheme *t, char *why, int cap)
+{
+    if (!mask)
+        return 0;
+    if (desk_check(t, why, cap))
+        return -1;
+    return (int)mask;
+}
+
 /* R1.22a base: the font.prefs of a machine that has none (a fresh Workbench writes it only on the first Font save):
  * three FONT chunks (WBFONT, SYSFONT, SCREENFONT), topaz.font 8, pens 1/0, JAM2, the layout of the probe note */
 long desk_font_default(unsigned char *out, long cap)
