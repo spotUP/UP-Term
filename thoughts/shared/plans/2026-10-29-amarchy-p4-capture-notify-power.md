@@ -2,7 +2,7 @@
 date: 2026-10-29
 author: spot (Amarchy planning agent)
 topic: AMARCHY-P4
-status: draft
+status: decided
 ledger: thoughts/spot/todos.md (no AMARCHY-P4 / notify / screenshot / power rows exist yet; add row AMARCHY-P4 when approved)
 roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md, Phase 4 (R4.1-R4.17), decisions 7, 8, 9
 depends: Phase 2 (R2.3 timer tick, themed borderless-window helper, theme pens in the commodity), being built on a branch now
@@ -144,8 +144,11 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   row with the commit hash.
 - [ ] R4.18 (new, protocol section 2) knob table: every knob below moves output or carries a written exemption; host or rig case
   per knob.
+- [ ] R4.19 (new, owner D9) cosmetic lock: super+ctrl+l opens a full-screen theme-coloured window on the front public screen
+  with the clock and "Locked"; any key or click closes it. No password, no input handler, no claim of security (man page says so).
+  Proof: rig row r4_lock: press the real key -> STATUS locks=1 and a window covering the screen in amiga_windows; one key -> gone.
 
-Total 22 checklist rows (17 roadmap IDs; R4.4, R4.9 split; R4.18 added).
+Total 23 checklist rows (17 roadmap IDs; R4.4, R4.9 split; R4.18 added; R4.19 from owner D9).
 
 ### Knobs and the case that proves each moves output
 
@@ -208,6 +211,21 @@ Never presses Reboot. Stops its rig at the end.
 - Hotkey clashes: Help is used by applications (AmigaGuide, MultiView); bare Help would steal it (D2).
 - Port name AMARCHY.NOTIFY taken by an old instance: rexx_host_open returns 0, commodity runs without notices and says so once.
 - P2 interface drift: helper and tick names unknown until P2 lands; plan names behaviour, not symbols.
+
+## Owner answers (2026-10-29)
+
+- D1: (b) RAM:Shots only. No disk writes; shots are lost on reboot. The shot-dir amconf key stays as the knob (default RAM:Shots),
+  R4.6 PNG is dropped (IFF ILBM only, man page line).
+- D2: (a) super+help region, super+shift+help screen, super+alt+help window.
+- D3: (a) every capture goes to file and clipboard unit 0.
+- D4: (a) top-right inside the usable area, accent border.
+- D5: (a) 5 s default, per-notice SECONDS, 0 = until clicked, max 3 shown, oldest dropped.
+- D6: (a) reuse `Reboot DRYRUN` + `Wait 2` + notice; no power.c. The roadmap's power.c line is superseded.
+- D7: (a) super+escape opens menu:system (Safe to switch off, Reboot, Workbench screen, Own screen); no suspend or shutdown.
+- D8: (a) a confirm row before Reboot (RJ.3 if landed; if not, R4.14 waits for it).
+- D9: (b) cosmetic lock now, any key unlocks, no password (the owner chose it knowing it protects nothing). New row R4.19.
+  A password variant was not asked; do not add one without the owner.
+- D10: (a) AMARCHY.NOTIFY port + amnotify CLI command; no NOTIFY ARexx verb.
 
 ## Owner decisions (none taken silently; recommended first)
 
