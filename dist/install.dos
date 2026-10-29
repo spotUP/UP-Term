@@ -974,6 +974,26 @@ Else
   Echo >ENVARC:up-term-orig/ixnet.none ""
 EndIf
 Delete >NIL: ENV:upixemul ENV:upixnet QUIET
+; AmiSSL: UP-Term:bin/curl is linked against it and cannot start without LIBS:amisslmaster.library version 5. The kit's
+; Install (STEP set) offers it as its own page (P_AMISSL); a Shell install without Installer has no page, so this
+; part runs the same Install-AmiSSL through Installer, from the kit's AmiSSL drawer (it reads Libs/ and Certs/ by
+; relative names, so the CD comes first), the way P_AMISSL does. A failed AmiSSL install does not stop the base install.
+If "{STEP}" EQ ""
+  Version >NIL: LIBS:amisslmaster.library 5
+  If WARN
+    Echo "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running Install-AmiSSL."
+    CD "{DIR}/AmiSSL"
+    Installer SCRIPT Install-AmiSSL APPNAME AmiSSL MINUSER AVERAGE DEFUSER AVERAGE NOLOG
+    CD "{DIR}"
+    Version >NIL: LIBS:amisslmaster.library 5
+    If WARN
+      Echo "[ERROR] AmiSSL was not installed, https programs (curl) cannot run."
+      Echo "[ERROR] Run Install-AmiSSL from the kit's Files/AmiSSL drawer again."
+    Else
+      Echo "[INFO] AmiSSL installed: reboot once, then LIBS: has it."
+    EndIf
+  EndIf
+EndIf
 Avail >NIL: FLUSH
 If NOT "{STEP}" EQ ""
   Quit 0
