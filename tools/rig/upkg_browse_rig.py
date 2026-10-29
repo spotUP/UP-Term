@@ -227,9 +227,9 @@ def setup(rel, st, must=must):
                 raise SystemExit('[ERROR] the old base %s could not be deleted (rc %d): %s' % (old, rc, o.strip()[-300:]))
         free_check(DEST.split(':')[0], tree_bytes(ir.KIT) + 2 * tree_bytes(IPK), 'the base install')
         st.based = not had_base
-        # upkg's download backend runs curl by name: only Install's CURL option puts it in UP-Term:bin
+        # upkg's download backend runs curl by name: the kit's userland puts upterm-ports' curl in UP-Term:bin (the CURL option went in 970905e0)
         (ir.VTC / 'runinstallbrowse').write_text('Execute VTC:distkit/Files/install.dos VTC:distkit/Files DEST=' + DEST + ' '
-                                                 'NOCONSOLE NODEVICE SSH BEBBOGET CURL WASABI CPU060 UNIFONT EMOJI\n')
+                                                 'NOCONSOLE NODEVICE SSH BEBBOGET WASABI CPU060 UNIFONT EMOJI\n')
         ir.base_install(must, 'runinstallbrowse')
         # prepare() assigned LIBS: as Install sees it, without the rig's AmiSSL drawer: curl needs
         # amisslmaster.library even for the http feed
