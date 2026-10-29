@@ -101,7 +101,7 @@ Segments
       UnlockPubScreenList at once).
 - [x] R2.12a System icon (right end): left click opens menu:system (same node as super+esc), panel anchored to the (done 7f8d531d, rig 6)
       segment with bar_panel_anchor.
-- [x] R2.12 Tray DONE (edcbf029): RUN <row> segments from bar.conf (label + command line, click runs it through proclaunch). barconf_plan orders/hides segments; host tests test_plan + test_tray_click revert-proven; rig step tray (real click makes a sentinel file) on rig 6, full amarchy_p2_rig 16 of 16.
+- [x] R2.12 Tray DONE (5e9fce25): RUN <row> segments from bar.conf (label + command line, click runs it through proclaunch). barconf_plan orders/hides segments; host tests test_plan + test_tray_click revert-proven; rig step tray (real click makes a sentinel file) on rig 6, full amarchy_p2_rig 16 of 16.
 
 Config, control, docs
 - [x] R2.13a (done 8a99c34f, rig 6; start/clock/clockalt wired, segment order + on/off + run rows parsed and host-tested, consumed by the later layout/tray rows) bar.conf at ENVARC:Amarchy/bar.conf (ENV: copy read first): `start on|off`, `clock <fmt>`, `clockalt <fmt>`,
