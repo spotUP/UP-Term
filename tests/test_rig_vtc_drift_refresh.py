@@ -39,6 +39,15 @@ class VtcRefresh(unittest.TestCase):
         self.assertEqual(rig.build_drift(self.vtc), [])
         self.assertEqual((self.vtc / "hl").read_bytes(), b"new hl")
 
+    def test_refresh_removes_the_retired_stale_vtc_bin_sh(self):
+        # STALE-VTC-SH: build/rig*/vtc/bin/sh was a 30 Sep program no code writes; a rig kept it forever
+        (self.vtc / "bin").mkdir()
+        (self.vtc / "bin/sh").write_bytes(b"x" * 63032)
+        done = rig.refresh_programs(self.vtc, self.d / "build/amiga")
+        self.assertFalse((self.vtc / "bin/sh").exists())
+        self.assertIn("bin/sh", done)
+        self.assertTrue((self.vtc / "vsh").is_file())
+
     def test_refresh_keeps_absent_files_absent(self):
         (self.vtc / "sz").unlink()
         rig.refresh_programs(self.vtc, self.d / "build/amiga")

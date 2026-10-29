@@ -1231,10 +1231,20 @@ def program_pairs(vtc, built):
             pairs.append((USERLAND_SRC / name, vtc / paths.UPTERM_DRAWER / "bin" / name))
     return pairs
 
+# VTC: files no current code writes. vtc/bin/sh is the 63032-byte program of 30 Sep, left in every build/rig*/vtc by
+# the staging before 695288d5; vsh goes to VTC:vsh and VTC:gg/bin/sh, and a stale VTC:bin/sh was run for vsh in the
+# VSH-JOB-SIGNALS hunt (STALE-VTC-SH, 2026-10-29). refresh_programs removes them.
+RETIRED_VTC_FILES = ("bin/sh",)
+
 def refresh_programs(vtc, built, required=()):
     """Copies every program of program_pairs that differs (or, for the `required` names, is absent from VTC: itself).
     The copy replaces the file whole (temp file, rename), so a running rig never reads half a program."""
     done = []
+    for name in RETIRED_VTC_FILES:
+        if (vtc / name).is_file():
+            (vtc / name).unlink()
+            print("removed retired", name)
+            done.append(name)
     for src, dst in program_pairs(vtc, built):
         absent = src.name in required and dst.parent == vtc and not dst.is_file()
         if (absent or dst.is_file()) and (absent or dst.read_bytes() != src.read_bytes()):
