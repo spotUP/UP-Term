@@ -1120,6 +1120,98 @@ def _dopus_present_checks(res):
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
+def dopus_rexx(cmd):
+    """Send `cmd` to the DOPUS.1 port through wasabi's ARexx call (the rig has no RX in the path); the result string."""
+    m = ami._m()
+    with ami._conn() as conn:
+        return m.arexx(conn, 'DOPUS.1', cmd)[2].strip()
+
+
+def window_state():
+    """[(window address, active flag)] of every window on every screen, front screen first and the front window of each
+    screen first (wasabi list_windows order): the front lister is the first lister address in this list."""
+    return [(w['addr'], w['active']) for s in __import__('amarchy_gui_rig').screens() for w in s['windows']]
+
+
+def r_dopus_listers():
+    """DOPUS-LISTERS (D21, plan 2026-10-25-amarchy-dopus-integration.md; amarchy/index_core.c ix_lister_row, leaf.c
+    lf_load_listers, leaf_core.c lf_lister_front_command): the Dopus > Open listers group has one row per open DOpus
+    lister, and Enter on a row brings that lister to the front (`dopus front`, `lister set <h> visible off`, `... on`).
+    Two listers are opened through DOPUS.1 (`lister new`, `lister read <h> SYS:Fonts` / `SYS:Devs`; the boot Ram Disk lister and a RAM: or VTCX: path would give ambiguous or resolved-volume labels); their handles come from
+    `lister query all`. SENTINELS that prove the code ran: ENV:AMARCHY_ROWS (gui.c sentinel_rows) must list the rows
+    "Fonts" and "Devs" (built only by lf_load_listers -> ix_add_listers, the label from ix_lister_row), and the window
+    order of the DOpus screen (wasabi list_windows, front first) flips: the lister NOT in front, picked from the group,
+    must become the first lister window. (The `active` flag is not asserted: DOpus's own untitled helper window holds it after `visible on`, also when the commands are sent by hand.) The pick is made twice (older lister, then the other) so a
+    row that happened to hit the front one cannot pass. Blocked when DOPUS.1 is absent."""
+    if not dopus_port():
+        return False, 'BLOCKED: DOPUS.1 not on this rig (Directory Opus 5.104 not installed here)'
+    res = []
+    ensure_terminal()
+    import amarchy_rig
+    import amarchy_gui_rig as g
+    saved = {p: ami.read_file(p) for p in (X9_CONF, X9_AMCONF)}
+    made = []
+    try:
+        c.run('MakeDir >NIL: ENV:up-term ENV:Amarchy')
+        x9_drawn()
+        amarchy_rig.arexx('RELOAD')
+        before_h = set(dopus_rexx('lister query all').split())
+        before = window_addrs()
+        addrs = []
+        for path in ('SYS:Fonts', 'SYS:Devs'):
+            h = dopus_rexx('lister new')
+            dopus_rexx('lister read %s %s' % (h, path))
+            time.sleep(3)
+            now = [a for a in window_addrs() if a not in before and a not in addrs]
+            addrs.append(now[-1] if now else None)
+            made.append(h)
+        handles = [h for h in dopus_rexx('lister query all').split() if h not in before_h]
+        res.append(len(handles) == 2 and None not in addrs)
+        print('  %s two new listers: handles %s, window addresses %s' % ('[OK]' if res[-1] else '[FAIL]', handles, addrs), flush=True)
+        if not res[-1]:
+            return False, '%d of %d checks passed (listers did not open)' % (sum(res), len(res))
+        # open the group
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        s, w = g.open_menu()
+        for label in ('Dopus', 'Open listers'):
+            c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+            x9_type(label)
+            ami.key(RAW['return'])
+            time.sleep(1)
+        rows = g.rows_now()
+        res.append(bool(w) and 'Fonts' in rows and 'Devs' in rows)
+        print('  %s Open listers rows: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
+        # the lister created last is in front; pick the older one's row (in this same menu session, the group still
+        # open), then reopen and pick the newer one's row
+        for n, (label, want) in enumerate((('Fonts', addrs[0]), ('Devs', addrs[1]))):
+            if n:
+                s, w = g.open_menu()
+                for lab in ('Dopus', 'Open listers'):
+                    x9_type(lab)
+                    ami.key(RAW['return'])
+                    time.sleep(1)
+            else:
+                print('  [INFO] before the picks the lister order is %s (front first)' %
+                      [a for a, _ in window_state() if a in addrs], flush=True)
+            x9_type(label)
+            ami.key(RAW['return'])
+            time.sleep(3)
+            order = [a for a, _ in window_state() if a in addrs]
+            res.append(order[:1] == [want])
+            print('  %s pick %s: lister order %s (front first), want %s first' %
+                  ('[OK]' if res[-1] else '[FAIL]', label, order, want), flush=True)
+        return all(res), '%d of %d checks passed' % (sum(res), len(res))
+    finally:
+        for h in made:
+            try:
+                dopus_rexx('lister close %s' % h)
+            except Exception:
+                pass
+        for p, b in saved.items():
+            ami.restore_file(p, b)
+        amarchy_rig.arexx('RELOAD')
+
+
 THEME_DIR = pathlib.Path(__file__).resolve().parents[2] / 'dist' / 'amarchy-themes'
 GT_FIXTURES = {'kbg': ('background', '#103020'), 'kfg': ('foreground', '#e0a0a0'),
                'kdf': ('dark_foreground', '#20e0e0'), 'kac': ('accent', '#e02080')}
@@ -1278,6 +1370,7 @@ ROWS = [
     ('group_icons', r_group_icons),
     ('dopus_absent', r_dopus_absent),
     ('dopus_present', r_dopus_present),
+    ('dopus_listers', r_dopus_listers),
     ('minimal',     r_minimal),
     ('gtheme',      r_gtheme),
 ]
