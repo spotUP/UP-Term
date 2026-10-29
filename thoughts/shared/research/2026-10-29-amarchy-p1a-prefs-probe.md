@@ -1,6 +1,6 @@
 # P1a prefs probe (rig 7, OS 3.2.2, Kickstart 47.115, Workbench 47.4)
 
-Status: R1.1a, R1.1b, R1.1c, R1.1d, R1.1f done; R1.1e partial (font.prefs/workbench.prefs NOT probed, see Part 2). Rig prefs restored (md5 below).
+Status: R1.1a, R1.1b, R1.1c, R1.1d, R1.1f done; R1.1e done except WBTF format codes and wbe_Flags bits (see Part 2). Rig prefs restored (md5 below).
 
 ## Rig facts
 - Workbench screen 640x256, depth 8 (256 colours), title "Workbench Screen".
@@ -81,16 +81,50 @@ Real struct (differs from the plan table, NDK wbpattern.h): PTRN body = wbp_Rese
 - OD11 evidence: pointer colours are themeable only via pointer.prefs (all 41 chunks) + `Pointer USE`, live at once, no reset needed.
   Bitmaps stay untouched by a colour-only rewrite.
 
-### R1.1e font.prefs / workbench.prefs (NOT done)
-- `SYS:Prefs/Font FROM <hand-built font.prefs> USE` wrote no ENV:Sys/font.prefs (error 205 on read). Cause not found; the editor
-  may not take FROM like the others, or the hand-built FONT chunk (156 bytes: 12 reserved, UWORD reserved2, UWORD type,
-  4 pens/modes, TextAttr 8, name 128) was rejected. Font Preferences GUI has buttons "Select Workbench Icon Text...",
-  "Select System Default Text...", "Select Screen Text..." (ASL font requesters; the pen/draw-mode fields are there).
-- Remaining: drive the ASL requester for the WB icon text (front/back pen, draw mode, any outline/shadow choice) then Use
-  and diff ENV:Sys/font.prefs; Workbench prefs editor toggles and WBTF format codes. OD10 has no probe evidence yet.
-- Hazard: a failed `Pointer FROM <bad path>` leaves a "Program Error" requester that makes later ami.py exec calls hang or
-  return nothing; clear it before the next command.
+### R1.1e font.prefs / workbench.prefs (done, session s23 part 3, rig 7 --os 322 --fresh)
+Fresh 3.2.2 rig: ENV:Sys has no font/workbench prefs (ENV:Sys: pointer, screenmode, wbconfig).
+**Why the earlier `Font FROM <file> USE` "wrote nothing":** it does write. Findings: (1) the file is `ENV:Sys/Font.prefs` and
+`Workbench.prefs`, `WBPattern.prefs` (capitalised by the editors; AmigaDOS is case-insensitive, readback with `ami.py get` works with
+either spelling); (2) the editor rewrites the file a moment after the exec returns, so an immediate read raced it; (3) a run whose
+`FROM` file is missing (a failed `ami.py put`, e.g. relative local path) leaves a "Program Error" requester (task SYS:Prefs/Font,
+button OK) and the EXEC slot hangs: `ami.py gclick "Program Error" custom` clears it. Written bytes equal the input byte for byte
+(md5 363389573eff30032c3b60ffda44ac30 in and out), so no GUI Save-As diff was needed. USE writes ENV: only; ENVARC: untouched.
+No IPrefs "close windows" requester appeared for Font, WBPattern or Workbench USE on this rig, with the Workbench window open.
+
+font.prefs = FORM PREF, PRHD(6), then 3 FONT chunks of 156 bytes (order type 0 WBFONT, 1 SYSFONT, 2 SCREENFONT; 518 bytes).
+FONT body offsets: 0-13 reserved (14 bytes: LONG[3] + UWORD), 14 UWORD fp_Type, 16 fp_FrontPen, 17 fp_BackPen, 18 fp_DrawMode,
+19 fp_SpecialDrawMode, 20 ta_Name pointer (4, zero in file), 24 ta_YSize (UWORD), 26 ta_Style, 27 ta_Flags, 28 name[128].
+Sample defaults seen on a DOpus-era rig: WBFONT helvetica.font 11 flags 0x62, pens 1/0, drawmode 1 (JAM2), special 0.
+
+Live apply (text/pixel check on the 640x256 Workbench screen, only icon label pixels changed, bbox 16,61-343,147):
+- `Font FROM x USE` changes WBFONT icon labels IMMEDIATELY: no reset, no requester, windows left open.
+- fp_FrontPen = pen of the label text (pen 6 gave exactly the 496 text pixels in cyan 00ffff). fp_BackPen is used as the
+  fill (JAM2) and as the outline/shadow colour. fp_DrawMode: 0 JAM1 (text only), 1 JAM2 (back pen box: pen 4 gave 2377 blue
+  pixels around the text), 2 COMPLEMENT (text drawn XOR, orange ee9900 here), 4 INVERSVID (glyph gaps in the front pen).
+- fp_SpecialDrawMode (OD10): 0 plain; 1 = OUTLINE in BackPen (+1224 px around the glyphs, every side); 2 = SHADOW in BackPen
+  (+410 px, one pixel down-right); 3 and 4 behave exactly like 2. With JAM2 (drawmode 1) the special mode has NO visible effect
+  (identical pixels for special 0 and 2). So outline/shadow exist only with JAM1 and a BackPen that differs from the backdrop.
+- TextAttr name and size: not varied here (kept topaz/helvetica); only the label pens and modes moved. Size/name is the user's font.
+- OD10 evidence: (a) is workable. Default pens 1/0 JAM2 draw black text on a pen 0 box; for a dark backdrop use JAM1 + front
+  pen light + special 1 (outline in a dark BackPen) so labels stay readable on any pattern. A pattern backdrop (WBPattern
+  wbp-a) did not alter the label pens; whether JAM2 pen 0 boxes show over a pattern was not looked at (no image viewed). Not decided.
+
+workbench.prefs (Workbench editor `FROM x USE`, then `SAVE` wrote ENVARC too):
+- WBNC is 50 bytes (BOOL is a 16-bit WORD in the NDK ABI): 0 ULONG DefaultStackSize (input 4096 survived), 4 TypeRestartTime,
+  8 IconPrecision, 12 Rectangle 8 bytes, 20 BOOL Borderless, 22 LONG MaxNameLength, 26 BOOL NewIcons, 28 BOOL ColorIcons,
+  30 ULONG IconMemoryType, 34 BOOL LockPens, 36 BOOL DisableTitleBar, 38 BOOL DisableVolumeGauge, 40 UWORD TitleUpdateDelay,
+  42 ULONG CopyBufferSize, 46 ULONG Flags. My 64-byte hand-built chunk was accepted and normalised to 50 bytes.
+- WBTF = the NUL-terminated format string, chunk padded to even; written back verbatim ("Amarchy P1a title %v", 21 bytes).
+- Live: after USE the screen title did NOT show my format (it showed the default 3.2 "Copyright ... Hyperion" text); WBTF is
+  therefore not live-applied on this rig in the 3 s window (Workbench restart or title redraw probably needed; UNVERIFIED).
+  Format codes and wbe_Flags bits were NOT probed (needs the Workbench GUI toggles, not done this session).
+- Golden files: tests/data/desk/font-wbfont-outline.prefs (WBFONT pens 6/7 JAM1 special 1), workbench-wbtf-sample.prefs.
 
 ### Rig restore
 Rig 7 ENV:Sys/pointer.prefs restored byte-identical (md5 4da47600949a47055d5c699404da3683). palette/wbpattern/font prefs
 files deleted from ENV:Sys; live palette and sprite colours on rig 7 were NOT reset (private OS copy; use --fresh next time).
+
+### Rig restore (part 3)
+Rig 7 (--fresh, 3.2.2): deleted ENV:Sys Font.prefs, WBPattern.prefs, Workbench.prefs and ENVARC:Sys/Workbench.prefs; pre-existing
+prefs (pointer, screenmode, wbconfig) untouched. Live font/pattern state is on the private fresh OS copy (use --fresh next time).
+Remaining: WBTF format codes, wbe_Flags bits, whether WBTF applies after a Workbench restart; does JAM2 pen-0 box show over a pattern.

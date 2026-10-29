@@ -36,8 +36,8 @@ build/rig/os-322/Prefs/Env-Archive/Sys/Pointer.prefs. All files are IFF FORM PRE
 | ENV:Sys/palette.prefs | PALT, struct PalettePrefs (prefs/palette.h:22-28): pap_Reserved[4], pap_4ColorPens[32], pap_8ColorPens[32] (DrawInfo pen index lists, ~0 terminated), pap_Colors[32] ColorSpec (ColorIndex -1 terminated, 16-bit RGB) | DrawInfo pen indices TEXTPEN.. BARBLOCKPEN, NUMDRIPENS 13 (intuition/screens.h:101-115) | whether 3.2 Palette writes more than PALT (OS 3.2 Palette editor may add a chunk for >8 colours); whether ColorIndex 17-19 (sprite colours) in pap_Colors reach the pointer or pointer.prefs wins; which change IPrefs applies live and which needs a Workbench screen reset |
 | ENV:Sys/wbpattern.prefs | PTRN, struct WBPatternPrefs (prefs/wbpattern.h:10-19): wbp_Which WBP_ROOT/DRAWER/SCREEN, wbp_Flags (WBPF_PATTERN 0x1, WBPF_NOREMAP, placement TILE/CENTER/SCALE), wbp_Depth, wbp_DataLength, data follows; PAT_WIDTH/HEIGHT 16, MAXDEPTH 3 | pattern = 16x16 planes, depth <= 3 | data layout when WBPF_PATTERN is clear (picture file name?), whether IPrefs re-reads on file change (notify) or `SYS:Prefs/WBPattern USE` must run, 3.2 extra fields |
 | ENV:Sys/pointer.prefs | PNTR, struct PointerPrefs (prefs/pointer.h:11-23): Which, Size, Width, Height, Depth, YSize, hotspot X,Y; colour table of (1<<Depth)-1 RGBTable entries; bitmap data follows | Shipped 3.2 file: 41 PNTR chunks (pp_Which 0x00-0x28, not only NORMAL/BUSY), each 137 bytes, 16x24, depth 2 = 3 colours per chunk | meaning of the 39 extra Which values (3.2 pointer types), whether colour change needs all 41 chunks, live apply path |
-| ENV:Sys/font.prefs | FONT, struct FontPrefs (prefs/font.h): fp_Type FP_WBFONT 0 / FP_SYSFONT 1 / FP_SCREENFONT 2, fp_FrontPen, fp_BackPen, fp_DrawMode, fp_SpecialDrawMode, TextAttr, fp_Name[128] | icon label text colour lives HERE (FP_WBFONT FrontPen/BackPen/DrawMode), not in workbench.prefs | fp_SpecialDrawMode values (no defines in the NDK font.h): is that the 3.2 label outline/shadow? |
-| ENV:Sys/workbench.prefs | WBNC struct WorkbenchPrefs + WorkbenchExtendedPrefs (wbe_LockPens locks pens 4..7, wbe_DisableTitleBar, wbe_TitleUpdateDelay, wbe_Flags "assorted options", no defines), WBHD hidden devices, WBTF V47 title format string (prefs/workbench.h:37-47) | screen title = WBTF wtfp_Format | the format codes of WBTF, the wbe_Flags bits, any label-outline bit; how Workbench picks up a change |
+| ENV:Sys/font.prefs | FONT, struct FontPrefs (prefs/font.h): fp_Type FP_WBFONT 0 / FP_SYSFONT 1 / FP_SCREENFONT 2, fp_FrontPen, fp_BackPen, fp_DrawMode, fp_SpecialDrawMode, TextAttr, fp_Name[128] | icon label text colour lives HERE (FP_WBFONT FrontPen/BackPen/DrawMode), not in workbench.prefs | VERIFIED: apply live at once via `Font FROM x USE`; FrontPen = text, BackPen = fill/outline/shadow colour, DrawMode 0 JAM1/1 JAM2/2 COMPLEMENT/4 INVERSVID, fp_SpecialDrawMode 1 = outline, >=2 = shadow, both only with JAM1; FONT chunks 156 bytes x3 (types 0,1,2), TextAttr at body 20, name at 28; file ENV:Sys/Font.prefs |
+| ENV:Sys/workbench.prefs | WBNC struct WorkbenchPrefs + WorkbenchExtendedPrefs (wbe_LockPens locks pens 4..7, wbe_DisableTitleBar, wbe_TitleUpdateDelay, wbe_Flags "assorted options", no defines), WBHD hidden devices, WBTF V47 title format string (prefs/workbench.h:37-47) | screen title = WBTF wtfp_Format | VERIFIED: WBNC is 50 bytes (BOOL = 16 bit), WBTF = NUL string, no label bit in WBNC (outline is font.prefs special mode); WBTF NOT live (title unchanged after USE). OPEN: format codes, wbe_Flags bits |
 
 Consequence for R1.22: the roadmap row says "3.2 workbench.prefs" for icon labels; the NDK puts label pens in font.prefs
 (FP_WBFONT) and only the title format in workbench.prefs. The probe settles it; see owner decision OD10.
@@ -89,7 +89,7 @@ IPrefs nudge, snapshot/revert code (git grep over amarchy/ config/ handler/ tool
 - New theme keys read: dark_background / darker_background / lighter_background / selection / muted (already in every
   shipped .theme file, GUI plan section 1), plus optional `backdrop=`, `font=`, `wbtitle=` (roadmap R1.5).
 
-## Checklist (6 of 40 done; R1.1e and R1.1g open)
+## Checklist (8 of 40 done; R1.1e, R1.1g done in 3 parts, WBTF codes / wbe_Flags left open)
 
 Each item: what / where / test that proves it. "FB/PA" = fail-before / pass-after demo required (fixes, guards).
 
@@ -103,11 +103,11 @@ Probe first (no product code before R1.1 is answered; decision 10):
   alone redraw the backdrop?
 - [x] R1.1d Probe pointer.prefs: change only colours in Pointer prefs, diff vs shipped file (which of the 41 chunks
   change); does pap_Colors 17-19 in palette.prefs move the pointer at all on 3.2? Live apply path.
-- [ ] R1.1e Probe font.prefs FP_WBFONT pens and fp_SpecialDrawMode (label outline/shadow values) and workbench.prefs WBTF
+- [x] R1.1e (HASH) Probe font.prefs FP_WBFONT pens and fp_SpecialDrawMode (label outline/shadow values) and workbench.prefs WBTF
   format codes + wbe_Flags (save from SYS:Prefs/Workbench with each option toggled, diff).
 - [x] R1.1f Probe pen readback for the rig test: does wasabi expose the WB ViewPort colours; else a tiny tests/amiga/
   penprobe (GetRGB32 of pens 0-7 and 17-19, DrawInfo dri_Pens) printing text. Test: prints known default values.
-- [ ] R1.1g Write findings to thoughts/shared/research/2026-10-29-amarchy-p1a-prefs-probe.md; update this plan's format
+- [x] R1.1g (HASH) Write findings to thoughts/shared/research/2026-10-29-amarchy-p1a-prefs-probe.md; update this plan's format
   table (unverified -> verified or changed). Owner decisions OD3, OD10, OD11 are asked again with the probe facts.
 
 Core (host-tested, pure):
