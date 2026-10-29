@@ -278,3 +278,114 @@ void tile_float_prune(tile_floats *f, const long *live, int m)
             f->id[k++] = f->id[i];
     f->n = k;
 }
+
+/* ---- FLOAT, SWAP and the opt-out list --------------------------------------------------------------------------- */
+
+int tile_float_parse(const char *cmd, int *mode, long *id)
+{
+    const char *p = cmd;
+    char w[12];
+    int n = 0, digits = 0;
+    unsigned long v = 0;
+    while (*p && *p != ' ')
+        p++;
+    while (*p == ' ')
+        p++;
+    while (p[n] && p[n] != ' ' && n < (int)sizeof w - 1) {
+        w[n] = (char)(p[n] >= 'a' && p[n] <= 'z' ? p[n] - 32 : p[n]);
+        n++;
+    }
+    w[n] = 0;
+    if (p[n] && p[n] != ' ')
+        return 0;
+    if (!strcmp(w, "ON"))
+        *mode = TF_ON;
+    else if (!strcmp(w, "OFF"))
+        *mode = TF_OFF;
+    else if (!strcmp(w, "TOGGLE"))
+        *mode = TF_TOGGLE;
+    else
+        return 0;
+    p += n;
+    while (*p == ' ')
+        p++;
+    *id = 0;
+    if (!*p)
+        return 1;
+    if (*p == '$')
+        p++;
+    else if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
+        p += 2;
+    for (; *p && *p != ' '; p++, digits++) {
+        int d = *p >= '0' && *p <= '9' ? *p - '0' : *p >= 'a' && *p <= 'f' ? *p - 'a' + 10 :
+                *p >= 'A' && *p <= 'F' ? *p - 'A' + 10 : -1;
+        if (d < 0 || digits >= 8)
+            return 0;
+        v = v * 16 + (unsigned long)d;
+    }
+    if (!digits)
+        return 0;
+    while (*p == ' ')
+        p++;
+    if (*p)
+        return 0;
+    *id = (long)v;
+    return 1;
+}
+
+int tile_swap_dir(long *order, int n, const win_box *boxes, long active, win_arg dir)
+{
+    int i, j;
+    for (i = 0; i < n && order[i] != active; i++)
+        ;
+    if (i == n)
+        return 0;
+    j = win_pick(boxes, n, i, dir);
+    if (j < 0)
+        return 0;
+    return tile_swap(order, n, order[i], order[j]);
+}
+
+int tile_conf_split(const char *buf, long len, tile_conf *c)
+{
+    long i = 0;
+    c->n = 0;
+    while (i < len && c->n < TILE_CONF_LINES) {
+        char *d = c->pat[c->n];
+        int k = 0;
+        while (i < len && buf[i] != '\n' && buf[i] != '\r') {
+            if (k < TILE_CONF_LEN - 1)
+                d[k++] = buf[i];
+            i++;
+        }
+        while (i < len && (buf[i] == '\n' || buf[i] == '\r'))
+            i++;
+        while (k > 0 && (d[k - 1] == ' ' || d[k - 1] == '\t'))
+            k--;
+        d[k] = 0;
+        if (k > 0 && d[0] != ';')
+            c->n++;
+    }
+    return c->n;
+}
+
+int tile_optout(const tile_conf *c, const char *title, tile_match_fn match)
+{
+    int i;
+    if (!c || !title || !match)
+        return 0;
+    for (i = 0; i < c->n; i++)
+        if (match(c->pat[i], title))
+            return 1;
+    return 0;
+}
+
+int tile_set(const tile_win *in, int n, const tile_floats *f, const tile_conf *c, tile_match_fn match, long *set)
+{
+    int i, m = 0;
+    for (i = 0; i < n; i++)
+        if (tile_classify(&in[i]) == TILE_TILE && !(f && tile_float_has(f, in[i].id)) &&
+            !tile_optout(c, in[i].title, match))
+            set[m++] = in[i].id;
+    return m;
+}

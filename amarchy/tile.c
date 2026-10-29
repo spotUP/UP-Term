@@ -4,8 +4,9 @@
  *
  * One instance: the ARexx port AMTILE. A second start sends its command-line word to that port and exits with
  * its return code. Commands: ON OFF TOGGLE RETILE GAP <n> STATUS QUIT, LAYOUT <name>|NEXT|PREV,
- * RATIO <n>|+n|-n, NMASTER <n>|+n|-n, CYCLE NEXT|PREV, PROMOTE. STATUS answers
- * "on|off <tiled windows> <retile count> <layout> <nmaster> <ratio>"; the retile count rises each time boxes are
+ * RATIO <n>|+n|-n, NMASTER <n>|+n|-n, CYCLE NEXT|PREV, PROMOTE, FLOAT ON|OFF|TOGGLE [<hex id>] (no id: the active
+ * window), SWAP LEFT|RIGHT|UP|DOWN (rc 5 when none). STATUS answers
+ * "on|off <tiled windows> <retile count> <layout> <nmaster> <ratio> <floats> <swaps>"; the retile count rises each time boxes are
  * applied (the rig's sentinel that this code ran). LAYOUT, RATIO and NMASTER persist (amconf hidden keys). While on, a timer.device request polls the screen every TILE_POLL_MICROS; a
  * retile happens only when the set of tiled windows changed (or on ON, RETILE, RATIO, GAP).
  *
@@ -35,7 +36,9 @@
 
 #define PORT_NAME      "AMTILE"
 #define TILE_POLL_MICROS 250000UL
-#define TITLE_MAX      16             /* tile_classify only compares against "Amarchy" */
+#define TITLE_MAX      64             /* the opt-out patterns are matched on the title (TILE_CONF_LEN) */
+#define CONF_ENV       "ENV:Amarchy/tile.conf"
+#define CONF_ENVARC    "ENVARC:Amarchy/tile.conf"
 #define STATE_DIR_ENV    "ENV:Amarchy"
 #define STATE_DIR_ENVARC "ENVARC:Amarchy"
 #define STATE_ENV        "ENV:Amarchy/tile"
@@ -62,6 +65,9 @@ static long g_order[TILE_MAX];
 static int g_norder;
 static long g_scr_id;     /* the screen g_order was built on (tile_screen_switch) */
 static long g_retiles;
+static long g_swaps;
+static tile_floats g_floats;   /* windows floated by FLOAT; pruned against the live windows at each tick */
+static tile_conf g_conf;       /* the opt-out patterns of ENV:Amarchy/tile.conf, read at start and RETILE */
 
 /* cmd begins with word (any case) and the word ends there */
 static int starts(const char *cmd, const char *word)
@@ -217,6 +223,36 @@ static void walk(const struct Screen *scr, snap *sn)
     }
 }
 
+/* dos.library matching, case-insensitive: the tile_match_fn the opt-out list uses. */
+static int dos_match(const char *pattern, const char *title)
+{
+    char parsed[TILE_CONF_LEN * 2 + 2];
+    if (ParsePatternNoCase((STRPTR)pattern, (STRPTR)parsed, (LONG)sizeof parsed) < 0)
+        return 0;
+    return MatchPatternNoCase((STRPTR)parsed, (STRPTR)title) ? 1 : 0;
+}
+
+/* The opt-out list: ENV:Amarchy/tile.conf, else ENVARC:Amarchy/tile.conf; none means an empty list. */
+static void conf_load(void)
+{
+    static char buf[TILE_CONF_LINES * (TILE_CONF_LEN + 2)];
+    const char *paths[2];
+    int i;
+    paths[0] = CONF_ENV;
+    paths[1] = CONF_ENVARC;
+    g_conf.n = 0;
+    for (i = 0; i < 2; i++) {
+        BPTR fh = Open((STRPTR)paths[i], MODE_OLDFILE);
+        if (fh) {
+            LONG got = Read(fh, buf, (LONG)sizeof buf);
+            Close(fh);
+            if (got > 0)
+                tile_conf_split(buf, got, &g_conf);
+            return;
+        }
+    }
+}
+
 /* Gap, ratio, nmaster and layout from the Amarchy settings file (amconf), the one reader. A GAP n command wins until
  * the next RETILE (or start), which reads the file again; LAYOUT, RATIO and NMASTER write through (cfg_save). */
 static void cfg_load(void)
@@ -228,6 +264,7 @@ static void cfg_load(void)
     g_ratio = amconf_tile_ratio(&p);
     g_nmaster = amconf_tile_nmaster(&p);
     g_layout = tile_layout_parse(amconf_tile_layout(&p), &k) ? k : TL_DWINDLE;
+    conf_load();
 }
 
 /* The only write path: the layout, ratio and nmaster into ENVARC: then ENV: (gthemes_dos.c's gt_dos_select pattern).
@@ -265,16 +302,20 @@ static void tick(int force)
     tile_win in[TILE_MAX];
     win_box out[TILE_MAX];
     ULONG lock;
-    int i, j, m = 0, nold, changed;
+    int i, j, m, nold, changed;
     if (!scr || !IntuitionBase || !(sn = AllocVec(sizeof *sn, MEMF_PUBLIC | MEMF_CLEAR)))
         return;
     lock = LockIBase(0);
     if (screen_alive(scr))
         walk(scr, sn);
     UnlockIBase(lock);
-    for (i = 0; i < sn->n; i++)
-        if (tile_classify(&sn->w[i]) == TILE_TILE)
-            set[m++] = sn->w[i].id;
+    {
+        long live[TILE_MAX];
+        for (i = 0; i < sn->n; i++)
+            live[i] = sn->w[i].id;
+        tile_float_prune(&g_floats, live, sn->n);
+    }
+    m = tile_set(sn->w, sn->n, &g_floats, &g_conf, dos_match, set);
     g_norder = tile_screen_switch(&g_scr_id, (long)scr, g_norder);
     nold = g_norder;
     memcpy(old, g_order, sizeof(long) * (size_t)nold);
@@ -329,6 +370,32 @@ static void set_on(int on)
     } else {
         pt_stop(&g_poll);
     }
+}
+
+/* SWAP: the active tiled window trades places with its neighbour in dir. The boxes are the windows' current ones, read
+ * under the lock; 1 when the order changed. */
+static int swap_dir(win_arg dir)
+{
+    struct Screen *scr = front_scr();
+    snap *sn;
+    win_box bx[TILE_MAX];
+    ULONG lock;
+    int i, j, ok = 0;
+    if (!scr || !(sn = AllocVec(sizeof *sn, MEMF_PUBLIC | MEMF_CLEAR)))
+        return 0;
+    lock = LockIBase(0);
+    if (screen_alive(scr))
+        walk(scr, sn);
+    UnlockIBase(lock);
+    for (i = 0; i < g_norder; i++) {
+        memset(&bx[i], 0, sizeof bx[i]);
+        for (j = 0; j < sn->n; j++)
+            if (sn->w[j].id == g_order[i])
+                bx[i] = sn->w[j].box;
+    }
+    ok = tile_swap_dir(g_order, g_norder, bx, sn->active, dir);
+    FreeVec(sn);
+    return ok;
 }
 
 static long command(void *ud, const char *cmd, char *out)
@@ -411,6 +478,49 @@ static long command(void *ud, const char *cmd, char *out)
         ActivateWindow((struct Window *)next);
         if (g_layout == TL_MONOCLE)
             g_last_raised = next;
+    } else if (starts(cmd, "FLOAT")) {
+        int mode, was;
+        long id;
+        struct Screen *scr;
+        ULONG lock;
+        if (!tile_float_parse(cmd, &mode, &id))
+            return 10;
+        if (!id)
+            id = active_id();
+        scr = front_scr();
+        lock = LockIBase(0);
+        v = id && scr && screen_alive(scr) && window_alive(scr, (struct Window *)id);
+        UnlockIBase(lock);
+        if (!v)
+            return 5;
+        was = tile_float_has(&g_floats, id);
+        if (mode == TF_TOGGLE)
+            mode = was ? TF_OFF : TF_ON;
+        if (mode == TF_ON)
+            tile_float_set(&g_floats, id);
+        else
+            tile_float_clear(&g_floats, id);
+        if (g_on)
+            tick(1);
+    } else if (starts(cmd, "SWAP")) {
+        char w[8];
+        win_arg dir;
+        if (!word_arg(cmd, w, sizeof w))
+            return 10;
+        if (starts(w, "LEFT"))
+            dir = WA_LEFT;
+        else if (starts(w, "RIGHT"))
+            dir = WA_RIGHT;
+        else if (starts(w, "UP"))
+            dir = WA_UP;
+        else if (starts(w, "DOWN"))
+            dir = WA_DOWN;
+        else
+            return 10;
+        if (!g_on || g_norder == 0 || !swap_dir(dir))
+            return 5;
+        g_swaps++;
+        tick(1);
     } else if (starts(cmd, "PROMOTE")) {
         if (!g_on || g_norder == 0 || !tile_promote(g_order, g_norder, active_id()))
             return 5;
@@ -435,6 +545,10 @@ static long command(void *ud, const char *cmd, char *out)
         p = put_num(p, g_nmaster);
         *p++ = ' ';
         p = put_num(p, g_ratio);
+        *p++ = ' ';
+        p = put_num(p, g_floats.n);
+        *p++ = ' ';
+        p = put_num(p, g_swaps);
         *p = 0;
     } else if (starts(cmd, "QUIT")) {
         g_quit = 1;

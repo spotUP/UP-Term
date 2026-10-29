@@ -369,6 +369,90 @@ static void swap_and_floats(void)
     }
 }
 
+
+/* A stand-in for dos.library's MatchPatternNoCase: "#?" is any run, case-insensitive. */
+static int fake_match(const char *p, const char *t)
+{
+    if (!*p)
+        return !*t;
+    if (p[0] == '#' && p[1] == '?') {
+        const char *q;
+        for (q = t; ; q++) {
+            if (fake_match(p + 2, q))
+                return 1;
+            if (!*q)
+                return 0;
+        }
+    }
+    return *t && (*p | 0x20) == (*t | 0x20) && fake_match(p + 1, t + 1);
+}
+
+static void float_set_and_optout(void)
+{
+    tile_win in[3];
+    tile_floats f;
+    tile_conf c;
+    long set[3];
+    int mode;
+    long id;
+    in[0] = mk(1, "Shell"); in[1] = mk(2, "Clock"); in[2] = mk(3, "Shell 2");
+    memset(&f, 0, sizeof f);
+    CHECK_INT(tile_set(in, 3, &f, 0, 0, set), 3);
+    tile_float_set(&f, 2);                               /* P3-C2: a floated window leaves the tiled set */
+    CHECK_INT(tile_set(in, 3, &f, 0, 0, set), 2);
+    CHECK_INT(set[0], 1); CHECK_INT(set[1], 3);
+    tile_float_clear(&f, 2);
+    CHECK_INT(tile_set(in, 3, &f, 0, 0, set), 3);
+    /* P3-C4: the splitter */
+    CHECK_INT(tile_conf_split("; comment\n\nclo#?  \r\nSHELL 2\n", 28, &c), 2);
+    CHECK_INT(strcmp(c.pat[0], "clo#?"), 0);
+    CHECK_INT(strcmp(c.pat[1], "SHELL 2"), 0);
+    {
+        char big[TILE_CONF_LEN * 3], many[TILE_CONF_LINES * 4 + 40];
+        int i;
+        memset(big, 'a', sizeof big);
+        big[sizeof big - 1] = '\n';
+        CHECK_INT(tile_conf_split(big, (long)sizeof big, &c), 1);
+        CHECK_INT((int)strlen(c.pat[0]), TILE_CONF_LEN - 1);       /* long line cut */
+        for (i = 0; i < TILE_CONF_LINES + 5; i++)
+            memcpy(many + i * 4, "abc\n", 4);
+        CHECK_INT(tile_conf_split(many, (long)(TILE_CONF_LINES + 5) * 4, &c), TILE_CONF_LINES);   /* 64 lines max */
+    }
+    tile_conf_split("clo#?\nshell 2\n", 14, &c);
+    CHECK_INT(tile_optout(&c, "CLOCK", fake_match), 1);        /* case-insensitive match through the function */
+    CHECK_INT(tile_optout(&c, "Shell", fake_match), 0);
+    CHECK_INT(tile_optout(&c, 0, fake_match), 0);
+    CHECK_INT(tile_set(in, 3, &f, &c, fake_match, set), 1);    /* Clock and Shell 2 opted out */
+    CHECK_INT(set[0], 1);
+    /* FLOAT argument */
+    CHECK_INT(tile_float_parse("FLOAT toggle", &mode, &id), 1);
+    CHECK_INT(mode, TF_TOGGLE); CHECK_INT((int)id, 0);
+    CHECK_INT(tile_float_parse("float ON 0001ABcd", &mode, &id), 1);
+    CHECK_INT(mode, TF_ON); CHECK_INT((int)id, 0x1abcd);
+    CHECK_INT(tile_float_parse("FLOAT OFF $10", &mode, &id), 1);
+    CHECK_INT(mode, TF_OFF); CHECK_INT((int)id, 16);
+    CHECK_INT(tile_float_parse("FLOAT", &mode, &id), 0);
+    CHECK_INT(tile_float_parse("FLOAT MAYBE", &mode, &id), 0);
+    CHECK_INT(tile_float_parse("FLOAT ON zz", &mode, &id), 0);
+    CHECK_INT(tile_float_parse("FLOAT ON 123456789", &mode, &id), 0);
+    CHECK_INT(tile_float_parse("FLOAT ON 1 2", &mode, &id), 0);
+}
+
+static void swap_by_direction(void)
+{
+    long o[3] = { 10, 20, 30 };                          /* master left, stack top right, stack bottom right */
+    win_box b[3];
+    memset(b, 0, sizeof b);
+    b[0].left = 0;   b[0].top = 0;   b[0].width = 400; b[0].height = 400;
+    b[1].left = 400; b[1].top = 0;   b[1].width = 400; b[1].height = 200;
+    b[2].left = 400; b[2].top = 200; b[2].width = 400; b[2].height = 200;
+    CHECK_INT(tile_swap_dir(o, 3, b, 10, WA_RIGHT), 1);        /* master swaps with the nearest on the right */
+    CHECK_INT((int)o[0], 20); CHECK_INT((int)o[1], 10);
+    CHECK_INT(tile_swap_dir(o, 3, b, 20, WA_LEFT), 0);         /* nothing left of index 0 */
+    CHECK_INT(tile_swap_dir(o, 3, b, 99, WA_RIGHT), 0);        /* active not tiled */
+    CHECK_INT((int)o[0], 20); CHECK_INT((int)o[2], 30);
+}
+
 void suite_tile(void)
 {
     state_file();
@@ -384,4 +468,6 @@ void suite_tile(void)
     screen_switch();
     bottom_reserve_and_bar();
     swap_and_floats();
+    float_set_and_optout();
+    swap_by_direction();
 }
