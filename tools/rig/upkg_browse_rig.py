@@ -169,6 +169,31 @@ def listed(cmd):
     return [l.split(' - ')[0].strip() for l in out.split('\n') if ' - ' in l]
 
 
+def base_processes(status):
+    """Process numbers in `Status` output whose program is loaded from a UP-Term drawer's bin (the image's User-Startup runs
+    UP-Term:bin/Amarchy, which starts amarchy-gui and amarchy-menu). A running program holds a lock on the bin drawer:
+    "bin Not Deleted: object is in use" on the base's Delete (2026-10-29)."""
+    found = []
+    for l in status.splitlines():
+        m = re.match(r'\s*Process\s+(\d+):\s+Loaded as command:\s+(\S+)', l)
+        if m and re.search(r'(UP-Term:|/UP-Term/)bin/', m.group(2), re.I):
+            found.append(int(m.group(1)))
+    return found
+
+
+def stop_base_programs(rounds=10):
+    """Break the programs running from the old base's bin, re-listing Status each round (Amarchy restarts its children),
+    until none is left; the Delete of the drawer needs no lock on bin."""
+    for _ in range(rounds):
+        procs = base_processes(ir.run('Status')[1])
+        if not procs:
+            return
+        for n in procs:
+            ir.run('Break %d ALL' % n)
+        time.sleep(2)
+    raise SystemExit('[ERROR] programs from the old base bin still run after %d rounds: %s' % (rounds, base_processes(ir.run('Status')[1])))
+
+
 class State:
     """What setup() changed on the rig, for teardown()."""
     saved = based = False
@@ -194,6 +219,7 @@ def setup(rel, st, must=must):
         # the image's assigns lock the old drawers ("Python3 Not Deleted: object is in use"); the install makes new ones
         for a in ('Python3:', 'UP-Term:'):
             ir.run('Assign %s REMOVE' % a)
+        stop_base_programs()
         for old in (DEST, 'System:UP-Term'):
             # a drawer this size takes over 60 s on the 68020: past the agent's limit, so run_slow
             rc, o = ir.run_slow('browse-del', 'Delete %s ALL QUIET FORCE' % old, 900)
