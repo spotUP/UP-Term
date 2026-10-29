@@ -2,7 +2,7 @@
 date: 2026-10-29
 author: spot (Amarchy plan agent)
 topic: AMARCHY-P1A
-status: draft
+status: decided
 ledger: thoughts/spot/todos.md rows AM-ROADMAP, AMARCHY-WB-BACKDROP (:3312), AMARCHY-DESK-EXTRAS (:3314)
 builds on: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md Phase 1 (R1.1-R1.22); thoughts/shared/plans/2026-10-26-amarchy-gui-themes.md (landed, 29 of 30, only T19 owner eye check open)
 source read at: origin/main 98998de6 (local main lags in 10 files under amarchy/ handler/ config/: line numbers below are origin/main)
@@ -224,6 +224,33 @@ Read every on-screen dialog text before any "silent" verdict. Stop the rig at th
 - Chip RAM: picture backdrops on 2 MB chip limited by depth <= screen depth; solid/tiled patterns cost 16x16xdepth.
 - Two processes: the menu process must not apply the desktop itself (it exits; the timer would die with it). Glue sends
   `DESK THEME`; a missing commodity means the menu theme saves and the desktop part reports "Amarchy not running".
+
+## Owner answers (2026-10-29)
+
+- OD1: (a) Style > Theme restyles the menu and the desktop when the desktop option is on.
+- OD2: (a) off by default; one master switch plus one switch per part (palette, backdrop, pointer, labels, title), all on
+  under the master.
+- OD3: (a) colours apply live with the 15 s confirm; pen and font parts go to ENV: and the requester says they apply after a
+  Workbench reset. Re-ask only if the R1.1b probe changes what is live.
+- OD4: (b) a themed gui.c window with a countdown, not EasyRequest. Constraint for the build: the window must stay usable
+  when the theme under test is unreadable, so Escape and the timeout both revert, and the window draws its text and
+  buttons with a contrast check (fall back to stock pens 1/2 when the pair fails the floor). The OD12 key is the last way
+  out.
+- OD5: (a) the theme's darker_background, else dark_background, else background at 80 % luma; the contrast floor in the
+  test falls back to computed.
+- OD6: the backdrop is a Workbench pattern tile in wbpattern.prefs (PTRN), repeated by Workbench, never a picture. Owner
+  reason: it uses less memory. The tile is on by default, drawn in the darker tones; a solid choice stays available.
+- OD7: (a) drawer windows use the theme background (MT_BG).
+- OD8: (b) ship flat normal and busy pointer shapes now; the other 39 3.2 pointer types keep their shapes and get the
+  theme colours. Two pointer designs are a new asset row.
+- OD9: (a) pointer pen 1 = foreground (body), 2 = background (outline), 3 = accent (highlight).
+- OD10: (a) icon label pens go to font.prefs FP_WBFONT; the user's font name is kept.
+- OD11: (a) the screen title stays stock until the Phase 2 bar.
+- OD12: (a) a desk:revert binding (proposed super+ctrl+shift+backspace) restores the last kept set with no requester.
+- OD13: (a) flat dark mapping: 0 background, 1 darker tone, 2 foreground, 3 accent; 4-7 selection, muted, green, red.
+- OD14: (a) off restores the prefs files from before the first apply, kept in ENVARC:Amarchy/desk-original/.
+- OD15: (a) 3.1 and 3.2 for palette, backdrop and label pens; the 41-chunk pointer file and the title on 3.2 only, chosen
+  by version. Tests need a 3.1 rig as well.
 
 ## Owner decisions (to ask; nothing below is decided in this plan)
 
