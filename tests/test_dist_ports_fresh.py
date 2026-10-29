@@ -102,3 +102,15 @@ class PortsKitFresh(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class GuardBeforeWipe(unittest.TestCase):
+    """dist-base checked the ports kit only after rm -rf $(KIT): a plain make dist without the kit
+    stopped at the guard with build/dist/up-term already deleted (2026-10-28)."""
+
+    def test_guard_runs_before_the_kit_is_wiped(self):
+        mk = (ROOT / 'Makefile').read_text()
+        recipe = mk[mk.index('\ndist-base:'):]
+        recipe = recipe[:recipe.index('\n\n')]
+        guard = recipe.index('$(call PORTS_KIT_FRESH,dist)')
+        self.assertLess(guard, recipe.index('rm -rf $(KIT)'))
