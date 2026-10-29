@@ -1246,7 +1246,7 @@ def run_addon_case(pkg):
         ir.run_long("rununinstall")
     else:
         # DOpus stays after Uninstall (owner rule): its own ;BEGIN DOpus5 block stays in S:User-Startup
-        ir.base_uninstall(ck, before, leaves=("DOpus5",) if pkg == "dopus" else ())
+        ir.base_uninstall(ck, before, leaves=ir.startup_leaves([pkg]))
     print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
 

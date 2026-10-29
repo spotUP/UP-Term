@@ -409,6 +409,8 @@ class ScriptedAmiga:
             self.files |= {'ENVARC:Claude/remote', 'C:uptelnet'}
             if 'oldclaude' not in self.skip:   # install.dos deletes the 1.0 leftovers (NL4)
                 self.files -= set(ir.OLD_CLAUDECODE)
+        if pkg == 'dopus':   # install.dos makes DOpus5: live at every boot (7b952ae4)
+            self.startup += ';BEGIN DOpus5\nAssign DOpus5: SYS:DOpus5\n;END DOpus5\n'
         if pkg == 'python':
             self.files.add('ENVARC:upkg/ixemul/needs/Python3')
             self.startup += ';BEGIN Python3\nIf EXISTS SYS:Python3\n  Assign Python3: SYS:Python3\nEndIf\n;END Python3\n'
@@ -418,7 +420,9 @@ class ScriptedAmiga:
         if 'uninstall' in self.skip and pkg == 'python':
             self.files -= set(ir.ADDON_FILES[pkg]) | {f for f in self.files if f.startswith(rec)}
             return
-        self.files -= set(ir.ADDON_FILES[pkg]) | {f for f in self.files if f.startswith(rec)}
+        # Directory Opus and its DOpus5 block stay after its Uninstall (owner rule, uninstall-body.dos)
+        keep = set(ir.ADDON_FILES[pkg]) if pkg == 'dopus' else set()
+        self.files -= (set(ir.ADDON_FILES[pkg]) - keep) | {f for f in self.files if f.startswith(rec)}
         if pkg == 'claude' and not self.base:
             self.files.discard('C:uptelnet')
         if pkg == 'python':
@@ -543,7 +547,9 @@ class AddonCases(unittest.TestCase):
         self.assertEqual([l for l in sim.log if l.startswith('rununinstall-')],
                          ['rununinstall-python', 'rununinstall-claude', 'rununinstall-pi', 'rununinstall-dopus'],
                          'Python3 while the base is there; Claude and amiga-pi after it (stand-alone); nvim goes with the base')
-        self.assertEqual(sim.files - {'ENVARC:Claude/remote'}, set(), 'the base Uninstall left files (only the user\'s ENVARC:Claude stays)')
+        self.assertEqual(sim.files - {'ENVARC:Claude/remote', 'DOpus5:DirectoryOpus'}, set(),
+                         'the base Uninstall left files (only the user\'s ENVARC:Claude and Directory Opus stay)')
+        self.assertIn('DOpus5:DirectoryOpus', sim.files, 'Directory Opus stays after Uninstall (owner rule)')
 
     def test_every_stand_alone_archive_installs_and_uninstalls_with_no_base(self):
         for pkg in ir.standalone_ids():
@@ -553,7 +559,8 @@ class AddonCases(unittest.TestCase):
             self.assertIn('runinstall-' + pkg, sim.log)
             self.assertIn('rununinstall-' + pkg, sim.log)
             self.assertNotIn('runinstall', sim.log, 'the base is not installed')
-            self.assertEqual(sim.files, {'ENVARC:Claude/remote'} if pkg == 'claude' else set())
+            stays = {'claude': {'ENVARC:Claude/remote'}, 'dopus': {'DOpus5:DirectoryOpus'}}.get(pkg, set())
+            self.assertEqual(sim.files, stays, pkg)
 
     def test_python_ixemul_case_leaves_a_library_that_is_new_enough(self):
         ck, sim = self.play(ir.case_python_ixemul)

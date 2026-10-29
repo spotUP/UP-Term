@@ -1156,19 +1156,25 @@ def strip_block(text, name):
     return '\n'.join(out)
 
 
-def check_startup_after_uninstall(ck, before_text, now_text, leaves=()):
+def startup_leaves(pkgs):
+    """The S:User-Startup blocks the Uninstall of these add-ons leaves in place on purpose: DOpus stays (owner rule),
+    and so does its ;BEGIN DOpus5 block."""
+    return ('DOpus5',) if 'dopus' in pkgs else ()
+
+
+def check_startup_after_uninstall(ck, before_text, now_text, leaves=(), what='after base Uninstall'):
     """S:User-Startup after the base Uninstall is as it was, byte for byte. leaves: names of blocks another
     installer wrote that Uninstall leaves in place on purpose (DOpus5: DOpus stays, owner rule); they are
     taken out of both sides for the comparison and must still be there when the run installed them."""
     a, b = before_text, now_text
     for name in leaves:
         a, b = strip_block(a, name), strip_block(b, name)
-    ck(b == a, 'after base Uninstall: S:User-Startup as it was, byte for byte',
+    ck(b == a, '%s: S:User-Startup as it was, byte for byte' % what,
        'differs: %r vs %r' % (b[-80:], a[-80:]))
     for name in leaves:
         if (';BEGIN ' + name) not in before_text:
             ck((';BEGIN ' + name) in now_text and (';END ' + name) in now_text,
-               'after base Uninstall: the %s block is still in S:User-Startup (it still boots)' % name)
+               '%s: the %s block is still in S:User-Startup (it still boots)' % (what, name))
 
 
 def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=()):
@@ -1361,7 +1367,7 @@ def case_addon(ck, pkg):
     ck(rc == 0, '%s: its Uninstall runs' % pkg, out)
     addon_gone(ck, pkg)
     base_whole(ck, 'after %s\'s Uninstall' % pkg)
-    base_uninstall(ck, before)
+    base_uninstall(ck, before, leaves=startup_leaves([pkg]))
 
 
 def case_bare(ck, pkg):
@@ -1381,7 +1387,8 @@ def case_bare(ck, pkg):
     rc, out = run_long('rununinstall-' + pkg)
     ck(rc == 0, '%s: its Uninstall runs' % pkg, out)
     addon_gone(ck, pkg, with_base=False)
-    ck(run('Type S:User-Startup')[1] == before.startup, '%s-bare: S:User-Startup as it was, byte for byte' % pkg)
+    check_startup_after_uninstall(ck, before.startup, run('Type S:User-Startup')[1], startup_leaves([pkg]),
+                                  '%s-bare' % pkg)
     ck(run('List >NIL: ENVARC:upkg/%s' % archive(pkg))[0] != 0, '%s-bare: its record is gone' % pkg)
     ck(run('List >NIL: ENVARC:upkg')[0] != 0, '%s-bare: ENVARC:upkg is gone with its last record' % pkg)
 
@@ -1439,7 +1446,7 @@ def case_all(ck):
         ck(rc == 0, '%s: its Uninstall runs with no base' % pkg, out)
         addon_gone(ck, pkg, base_stays=False, with_base=False)
     ck(run('List >NIL: C:uptelnet')[0] != 0, 'all: C:uptelnet goes with the last of Claude and the base')
-    ck(run('Type S:User-Startup')[1] == before.startup, 'all: S:User-Startup as it was, byte for byte')
+    check_startup_after_uninstall(ck, before.startup, run('Type S:User-Startup')[1], startup_leaves(ids), 'all')
     ck(run('List >NIL: ENVARC:upkg')[0] != 0, 'all: ENVARC:upkg is gone with the last record')
 
 
