@@ -138,6 +138,8 @@ def read_values(pkg_id, extra=()):
         # updated with no UP-Term: assign, and DESTTEXT is what its pages call the place it installs to
         'STANDALONE': 'YES' if row['id'] != 'base' and row['needs-base'] == '-' else 'NO',
         'DESTTEXT': '',
+        # YES: the package ships a 68000 build and chooses it itself, so requirements.installer lets a 68000 pass
+        'CPU68000': 'NO',
         # may an Update take over the files the single kit installed (UP-Term:pkg/legacy, kit-split D7)
         'LEGACY': 'YES',
         'CHECKFRAG': 'check-standalone.dos' if row['id'] != 'base' and row['needs-base'] == '-' else 'check.dos',

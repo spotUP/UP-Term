@@ -667,6 +667,18 @@ class DopusAddOn(unittest.TestCase):
         mk = (ROOT / 'Makefile').read_text()
         self.assertIn('dist/addons/dopus/archives.txt', mk[mk.index('\ndist-dopus:'):])
 
+    def test_the_68000_build_is_not_refused_by_the_68020_check(self):
+        # D10 on the 68000 rig (2026-10-29): the shared requirements part aborted "up-dopus needs a 68020 or
+        # better" before the add-on's own CPU choice ran; the base and the other add-ons still refuse a 68000
+        abort = 'needs a 68020 or better'
+        guard = '(if (and (= "NO" "NO") (or (= (database "cpu") "68000")'
+        self.assertIn(abort, scripts('dopus')['installer'])
+        self.assertNotIn(guard, scripts('dopus')['installer'])
+        for pkg_id in [r['id'] for r in ADDONS if r['id'] != 'dopus']:
+            self.assertIn(guard, scripts(pkg_id)['installer'], pkg_id)
+        base = mi.build(ROOT / 'dist/Install.installer', 'base')
+        self.assertIn(guard, base)
+
 
 
 class UhcAddOn(unittest.TestCase):
