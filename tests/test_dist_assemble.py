@@ -72,13 +72,57 @@ class Assemble(unittest.TestCase):
         for pid in ('git', 'nvim'):
             text = mi.build(ROOT / 'dist' / 'install.dos', pid)
             rec = mi.read_values(pid)['RECORD']
-            self.assertIn('Assign >NIL: UPTREAL: "`Type ENVARC:up-term/Dir`"', text, pid)
+            self.assertIn('Assign >NIL: UPTREAL: "$uptdir"', text, pid)
             self.assertIn('MakeDir >NIL: $uptpkg $uptrec\n', text, pid)
             self.assertIn('Copy VERSIONS $uptrec/VERSIONS ', text, pid)
             self.assertIn('Set uptrec "UPTREAL:pkg/up-%s"' % pid, text, pid)
             for line in text.splitlines():
                 if line.startswith(('MakeDir', 'Copy VERSIONS', 'Copy UPTPARENT')):
                     self.assertNotIn(rec, line, pid)
+
+    def test_a_missing_or_empty_dir_file_target_never_reaches_the_assign_or_exists(self):
+        # s25: Assign of a drawer that is gone returns rc 20, which stops a script under FailAt 10 before the
+        # If NOT WARN fallback; and EXISTS "" asks for a volume. Both are looked at first.
+        for pid in ('git', 'nvim'):
+            text = mi.build(ROOT / 'dist' / 'install.dos', pid)
+            i = text.index('Set uptdir "`Type ENVARC:up-term/Dir`"')
+            tail = text[i:]
+            self.assertLess(tail.index('If NOT "$uptdir" EQ ""'), tail.index('If EXISTS "$uptdir"'), pid)
+            self.assertLess(tail.index('If EXISTS "$uptdir"'), tail.index('Assign >NIL: UPTREAL: "$uptdir"'), pid)
+            self.assertIn('[WARN] ENVARC:up-term/Dir names $uptdir, which does not exist', tail, pid)
+            self.assertNotIn('Assign >NIL: UPTREAL: "`Type', text, pid)
+
+    def test_no_add_on_payload_write_goes_through_up_term_and_every_part_resolves_first(self):
+        # s25 (rig 10, UP-Term: = RAM:emptyupt + Rushhours:Tools/UP-Term): up-git's Files landed in the first
+        # directory. Every write (MakeDir, Copy into UP-Term:) names UPTREAL:, and the resolve runs before any STEP Skip.
+        for pid in [r['id'] for r in pkgs.rows() if r['id'] not in ('base', 'uhc') and r['record'].startswith('UP-Term:')]:
+            src = (ROOT / 'dist/addons' / pid / 'install.dos').read_text()
+            for st in (l.strip() for l in src.splitlines()):
+                self.assertNotRegex(st, r'^MakeDir (>NIL: )?"?UP-Term:', (pid, st))
+                self.assertNotRegex(st, r'^Copy .* "?UP-Term:\S* ', (pid, st))
+            self.assertIn('@include dist/common/@RECORDRESOLVE@', src, pid)
+            self.assertLess(src.index('@include dist/common/@RECORDRESOLVE@'), src.index('Skip {STEP}'), pid)
+
+    def test_an_add_on_uninstall_deletes_through_the_real_drawer(self):
+        # s25: Delete "UP-Term:bin/git" finds nothing when the first directory of the assign has no bin/
+        un = mi.build(ROOT / 'dist/common/uninstall-addon.dos', 'git')
+        self.assertIn('Delete >NIL: "UPTREAL:bin/git" ALL QUIET', un)
+        self.assertNotIn('Delete >NIL: "UP-Term:', un)
+        self.assertLess(un.index('Assign >NIL: UPTREAL: "$uptdir"'), un.index('Delete >NIL: "UPTREAL:bin/git"'))
+        self.assertIn('Delete >NIL: "$uptrec" ALL QUIET', un)
+        self.assertLess(un.index('Delete >NIL: "$uptrec" ALL QUIET'), un.index('Assign >NIL: UPTREAL:\nEcho'))
+
+    def test_the_postinst_and_prerm_of_an_add_on_use_no_rm_and_read_the_real_drawer(self):
+        # s25: vsh has no rm ("vsh: rm: not found"); the prerm Copy of UP-Term:pkg/.. failed on a multi-directory assign
+        for r in pkgs.addons():
+            if r['record'].startswith('UP-Term:'):
+                for keys in ((), ('K',)):
+                    need, post, pre = pkgs._scripts(r, keys)
+                    self.assertNotRegex(post, r'(?m)^rm\b')
+                    self.assertIn('Delete >NIL: ', post)
+                    self.assertIn('Assign >NIL: UPTREAL: "$d"', pre)
+                    self.assertIn('Copy UPTREAL:pkg/%s/Uninstall T:' % r['archive'], pre)
+                    self.assertNotIn('Copy UP-Term:', pre)
 
     def test_an_add_ons_manifest_and_options_land_in_the_real_drawer_of_a_multi_directory_assign(self):
         # rig 10, s15: with UP-Term: = TwoA + SYS:UP-Term the MANIFEST copy through UP-Term: failed rc 20 ("Can't

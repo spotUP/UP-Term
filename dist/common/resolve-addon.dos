@@ -1,13 +1,29 @@
 ; UP-Term: can be a multi-directory assign (Assign UP-Term: A: + B:Tools/UP-Term): a lookup searches every
-; directory but MakeDir creates in the first one only, where pkg/ may not exist. So the record drawer is made
-; and filled through one real drawer: the one Install wrote to ENVARC:up-term/Dir, assigned to UPTREAL: (the
-; assign goes at the end of record.dos, after its MANIFEST and options). Without that file UP-Term: itself is used.
+; directory but MakeDir and Copy write into the first one only, where pkg/ (and the add-on's own
+; files) may not belong. So an add-on writes through one real drawer: the one Install wrote to
+; ENVARC:up-term/Dir, assigned to UPTREAL: (payload, record drawer, MANIFEST). The assign is dropped at
+; the end of record.dos. Without that file, or when it names a drawer that is gone, UPTREAL: is UP-Term:'s
+; own first directory, which is what the writes used before. Run first in every part of install.dos, so each
+; STEP finds UPTREAL: assigned.
 Set uptpkg "@PKGDIR@"
 Set uptrec "@RECORD@"
-If EXISTS ENVARC:up-term/Dir
-  Assign >NIL: UPTREAL: "`Type ENVARC:up-term/Dir`"
-  If NOT WARN
-    Set uptpkg "@PKGDIRREAL@"
-    Set uptrec "@RECORDREAL@"
+Assign >NIL: UP-Term: EXISTS
+If NOT WARN
+  Assign >NIL: UPTREAL: UP-Term:
+  If EXISTS ENVARC:up-term/Dir
+    Set uptdir "`Type ENVARC:up-term/Dir`"
+    ; Assign of a missing drawer returns 20, which stops a script whose FailAt is lower: look first.
+    ; An empty Dir file leaves $uptdir empty, and EXISTS "" asks for a volume: skip it then
+    If NOT "$uptdir" EQ ""
+      If EXISTS "$uptdir"
+        Assign >NIL: UPTREAL: "$uptdir"
+        If NOT WARN
+          Set uptpkg "@PKGDIRREAL@"
+          Set uptrec "@RECORDREAL@"
+        EndIf
+      Else
+        Echo "[WARN] ENVARC:up-term/Dir names $uptdir, which does not exist: installing into UP-Term: itself."
+      EndIf
+    EndIf
   EndIf
 EndIf

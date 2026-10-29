@@ -135,8 +135,8 @@ class EveryAddOn(unittest.TestCase):
             for name, body in parts_of(s['dos']):
                 if name == 'check':
                     continue            # check.installer runs it, before any page
-                if name.startswith('copy-') and re.search(r'(?m)^\s*Copy \S+ UP-Term:\S', body):
-                    m = re.findall(r'(?m)^\s*Copy (\S+) UP-Term:(\S+) ALL CLONE QUIET$', body)
+                if name.startswith('copy-') and re.search(r'(?m)^\s*Copy \S+ (?:UP-Term|UPTREAL):\S', body):
+                    m = re.findall(r'(?m)^\s*Copy (\S+) (?:UP-Term|UPTREAL):(\S+) ALL CLONE QUIET$', body)
                     self.assertEqual(len(m), 1, name)
                     want.append(('copy', m[0][0], m[0][1]))
                 else:
@@ -252,11 +252,11 @@ class EveryAddOn(unittest.TestCase):
         for pid, s in self.each():
             row = {r['id']: r for r in ADDONS}[pid]
             un = s['uninstall']
-            self.assertLess(un.index('FailAt 21'), un.index('Delete >NIL: "%s" ALL QUIET' % row['record']))
+            self.assertLess(un.index('FailAt 21'), un.index('Delete >NIL: "$uptrec" ALL QUIET'))
             lines = [l for l in un.splitlines() if l.strip() and not l.startswith(';')]
             self.assertTrue(lines[-1].startswith('Echo "%s removed' % row['archive']))
-            self.assertEqual(lines[-3], 'Delete >NIL: "%s" ALL QUIET' % row['record'])
-            self.assertEqual(lines[-2], 'Delete >NIL: "%s" QUIET' % row['record'].rsplit('/', 1)[0])   # an empty drawer only
+            self.assertEqual(lines[-4], 'Delete >NIL: "$uptrec" ALL QUIET')
+            self.assertEqual(lines[-3], 'Delete >NIL: "$uptpkg" QUIET')   # an empty drawer only
 
     def test_the_base_runs_the_uninstall_of_the_add_ons_that_need_it_and_leaves_the_others(self):
         base = mi.build(ROOT / 'dist/Uninstall', 'base')
@@ -332,7 +332,9 @@ class QuickLaunchIcons(unittest.TestCase):
             parts = [n for n, _ in parts_of(s['dos'])]
             self.assertEqual(parts[-2:], ['launch', 'record'], pid)
             body = dict(parts_of(s['dos']))['launch']
-            want = 'Copy %s UP-Term: CLONE QUIET' % ' '.join('"launch/%s" "launch/%s.info"' % (n, n) for n in names)
+            # s25: an add-on of the base writes the one real drawer UPTREAL:; a stand-alone one has no resolve
+            dest = 'UP-Term:' if {r['id']: r for r in ADDONS}[pid]['needs-base'] == '-' else 'UPTREAL:'
+            want = 'Copy %s %s CLONE QUIET' % (' '.join('"launch/%s" "launch/%s.info"' % (n, n) for n in names), dest)
             self.assertIn(want, body, pid)
             self.assertIn('(set #step "launch"', s['installer'], pid)
 
@@ -351,7 +353,8 @@ class QuickLaunchIcons(unittest.TestCase):
         for pid, (names, _, _) in LAUNCHERS.items():
             body = (ROOT / 'dist/addons' / pid / 'uninstall-body.dos').read_text()
             for n in names:
-                q = '"UP-Term:%s" "UP-Term:%s.info"' % (n, n) if ' ' in n else 'UP-Term:%s UP-Term:%s.info' % (n, n)
+                d = 'UP-Term:' if rows[pid]['needs-base'] == '-' else 'UPTREAL:'
+                q = '"%s%s" "%s%s.info"' % (d, n, d, n) if ' ' in n else '%s%s %s%s.info' % (d, n, d, n)
                 self.assertIn(q, body, pid)
             if rows[pid]['needs-base'] == '-':
                 self.assertLess(body.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN'), body.index('UP-Term:' + names[0]), pid)
@@ -533,7 +536,7 @@ class ClaudeInstall(unittest.TestCase):
         un = self.S['uninstall']
         self.assertIn('If EXISTS ENVARC:upkg/up-claude/wasabid\n  Search >NIL: S:User-Startup "C:wasabid"\n  If WARN\n'
                       '    Delete >NIL: C:wasabid QUIET\n  EndIf\n  Delete >NIL: ENVARC:upkg/up-claude/wasabid QUIET', un)
-        self.assertLess(un.index('ENVARC:upkg/up-claude/wasabid'), un.index('Delete >NIL: "ENVARC:upkg/up-claude" ALL QUIET'))
+        self.assertLess(un.index('ENVARC:upkg/up-claude/wasabid'), un.index('Delete >NIL: "$uptrec" ALL QUIET'))
 
     def test_the_base_installer_help_mentions_the_session_daemon(self):
         base = (ROOT / 'dist/Install.installer').read_text()
@@ -560,7 +563,8 @@ class PiInstall(unittest.TestCase):
         self.assertLess(dos.index('MakeDir >NIL: ENVARC:upkg ENVARC:upkg/up-pi'), dos.index('Copy CHANGELOG.md'))
         self.assertIn('pi              Files/CHANGELOG.md', (ROOT / 'dist/addons/pi/parts.txt').read_text())
         self.assertIn('cp $(AMIGA_PI)/CHANGELOG.md $(KIT_pi)/Files/CHANGELOG.md', (ROOT / 'Makefile').read_text())
-        self.assertIn('Delete >NIL: "ENVARC:upkg/up-pi" ALL QUIET', self.S['uninstall'])
+        self.assertIn('Set uptrec "ENVARC:upkg/up-pi"', self.S['uninstall'])
+        self.assertIn('Delete >NIL: "$uptrec" ALL QUIET', self.S['uninstall'])
 
     def test_uninstall_removes_the_binary_not_the_settings_drawer(self):
         un = self.S['uninstall']
@@ -934,3 +938,7 @@ class UhcAddOn(unittest.TestCase):
         self.assertNotIn('EndIf\nDelete >NIL: ENV:UHC', body)
         # UHC's own block is upper case and unstartup.sh's name match is case-sensitive: the call names "uhc"
         self.assertIn('unstartup.sh uhc', body)
+
+
+if __name__ == '__main__':
+    unittest.main()

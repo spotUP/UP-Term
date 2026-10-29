@@ -11,6 +11,8 @@
 FailAt 21
 ; the archive's Files drawer: every name below is relative to it
 CD "{DIR}"
+; every write into UP-Term: goes through UPTREAL: (UP-Term: may be a multi-directory assign: it writes to the first one)
+; @include dist/common/@RECORDRESOLVE@
 If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf
@@ -20,10 +22,10 @@ Lab copy-git
 ; UP-Term volume needs long file names: FFS in long-name mode (DOS7), PFS3 or SFS. OFS and plain FFS
 ; stop at 30 characters, too short for git's object files.
 ; userland holds what dist/slim.txt names; Copy of a drawer copies what is in it.
-MakeDir >NIL: UP-Term:bin
-MakeDir >NIL: UP-Term:lib
-MakeDir >NIL: UP-Term:licenses
-Copy userland UP-Term: ALL CLONE QUIET
+MakeDir >NIL: UPTREAL:bin
+MakeDir >NIL: UPTREAL:lib
+MakeDir >NIL: UPTREAL:licenses
+Copy userland UPTREAL: ALL CLONE QUIET
 If WARN
   Quit 20
 EndIf

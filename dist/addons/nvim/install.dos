@@ -11,6 +11,8 @@
 FailAt 21
 ; the archive's Files drawer: every name below is relative to it
 CD "{DIR}"
+; every write into UP-Term: goes through UPTREAL: (UP-Term: may be a multi-directory assign: it writes to the first one)
+; @include dist/common/@RECORDRESOLVE@
 If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf
@@ -18,8 +20,8 @@ EndIf
 Lab copy-nvim
 ; Neovim 0.12 (README): UP-Term:nvim (its runtime beside the binary); nvim from
 ; vsh (vshrc's path). Run by the Installer's copyfiles; a Shell install copies here.
-MakeDir >NIL: UP-Term:nvim
-Copy nvim UP-Term:nvim ALL CLONE QUIET
+MakeDir >NIL: UPTREAL:nvim
+Copy nvim UPTREAL:nvim ALL CLONE QUIET
 If WARN
   Quit 20
 EndIf
@@ -29,7 +31,7 @@ EndIf
 Lab launch
 ; Quick-launch icons: double-click one in UP-Term: to open an UP-Term window running the app
 ; (IconX opens the XCON: window; it closes when the app ends).
-Copy "launch/Neovim" "launch/Neovim.info" UP-Term: CLONE QUIET
+Copy "launch/Neovim" "launch/Neovim.info" UPTREAL: CLONE QUIET
 If WARN
   Quit 20
 EndIf

@@ -11,6 +11,8 @@
 FailAt 21
 ; the archive's Files drawer: every name below is relative to it
 CD "{DIR}"
+; every write into UP-Term: goes through UPTREAL: (UP-Term: may be a multi-directory assign: it writes to the first one)
+; @include dist/common/@RECORDRESOLVE@
 If NOT "{STEP}" EQ ""
   Skip {STEP}
 EndIf
@@ -19,10 +21,10 @@ Lab copy-ncdu
 ; ncdu, the disk usage analyzer (dist/slim.txt names the files): the same paths in UP-Term: the base put them at
 ; (vsh finds the program on its path).
 ; userland holds what dist/slim.txt names; Copy of a drawer copies what is in it.
-MakeDir >NIL: UP-Term:bin
-MakeDir >NIL: UP-Term:share
-MakeDir >NIL: UP-Term:licenses
-Copy userland UP-Term: ALL CLONE QUIET
+MakeDir >NIL: UPTREAL:bin
+MakeDir >NIL: UPTREAL:share
+MakeDir >NIL: UPTREAL:licenses
+Copy userland UPTREAL: ALL CLONE QUIET
 If WARN
   Quit 20
 EndIf
