@@ -81,5 +81,77 @@ class SysHdfNoDopus(unittest.TestCase):
         self.assertNotIn("Opus5.info", top)
 
 
+@unittest.skipUnless(pathlib.Path(XDF).exists(), "needs amitools' xdftool")
+class SysHdfDopus(unittest.TestCase):
+    """The clone edit that gives the rig Directory Opus 5.104 (recorded by `rig.py dopus`) in place of the master's 5.82."""
+    BLOCK = b";BEGIN DOpus5\nAssign DOpus5: \"VTCX:DOpus5\"\nPath DOpus5:C ADD\nResident LoadWB DOpus5:C/LoadDB PURE\n;END DOpus5\n"
+
+    def run_edit(self, record):
+        saved = rig.RIG
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            image = d / "sys.hdf"
+            x = lambda *a: subprocess.run([XDF, str(image), *a], check=True, capture_output=True, text=True)
+            x("create", "size=1M", "+", "format", "System", "ffs")
+            for n in ("S", "C", "Libs", "Opus5", "Prefs", "Prefs/Env-Archive"):
+                x("makedir", n)
+            files = (("us", "S/User-Startup", USER_STARTUP_DOPUS), ("old", "C/loadwb_old", b"stock LoadWB"),
+                     ("new", "C/LoadWB", b"LoadDB 62.0"), ("wb", "Libs/workbench.library", b"wb45"),
+                     ("op", "Opus5/DirectoryOpus", b"5.82"), ("i", "Opus5.info", b"i"))
+            for n, dst, data in files:
+                (d / n).write_bytes(data)
+                x("write", str(d / n), dst)
+            vtc = d / "vtc"
+            (vtc / "DOpus5").mkdir(parents=True)
+            if record:
+                (vtc / "DOpus5/DirectoryOpus").write_bytes(b"5.104")
+                (vtc / "DOpus5/C").mkdir()
+                (vtc / "DOpus5/C/LoadDB").write_bytes(b"LoadDB 5.104")
+                (vtc / rig.DOPUS_BLOCK).write_bytes(self.BLOCK)
+                (vtc / rig.DOPUS_STAMP).write_text(rig.dopus_archive_md5() + "\n")
+                (vtc / rig.DOPUS_ENVARC).mkdir()
+                (vtc / rig.DOPUS_ENVARC / "DOpus5Startup").write_bytes(b"workbench")
+            try:
+                rig.RIG = d
+                rig.sys_hdf_dopus(image)
+            finally:
+                rig.RIG = saved
+            out = {}
+            for src in ("S/User-Startup", "C/LoadWB", "Libs/workbench.library", "Prefs/Env-Archive/DOpus5Startup"):
+                r = subprocess.run([XDF, str(image), "read", src, str(d / "o")], capture_output=True)
+                out[src] = (d / "o").read_bytes() if r.returncode == 0 else None
+                (d / "o").unlink(missing_ok=True)
+            out["top"] = [l.split()[0] for l in x("list").stdout.splitlines() if l.strip()]
+            return out
+
+    def test_the_recorded_5104_block_replaces_5_82(self):
+        out = self.run_edit(True)
+        us = out["S/User-Startup"]
+        self.assertNotIn(b"dh0:Opus5", us, "the 5.82 block is still in the clone")
+        self.assertNotIn(b"BEGIN DirectoryOpus 5", us)
+        self.assertIn(self.BLOCK, us, "the recorded 5.104 block is missing")
+        self.assertIn(b";BEGIN UP-Term assign", us, "only the 5.82 block goes")
+        self.assertEqual(out["C/LoadWB"], b"LoadDB 5.104", "C/LoadWB is not 5.104's LoadDB (Startup-Sequence calls C:LoadWB by path)")
+        self.assertEqual(out["Libs/workbench.library"], b"wb45", "Libs/workbench.library stays")
+        self.assertEqual(out["Prefs/Env-Archive/DOpus5Startup"], b"workbench", "the recorded ENVARC file is not back")
+        self.assertNotIn("Opus5", out["top"])
+        self.assertNotIn("Opus5.info", out["top"])
+
+    def test_no_stamp_keeps_5_82_and_warns(self):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            out = self.run_edit(False)
+        self.assertIn("[WARN]", buf.getvalue())
+        self.assertIn("rig.py dopus", buf.getvalue())
+        self.assertEqual(out["S/User-Startup"], USER_STARTUP_DOPUS)
+        self.assertEqual(out["C/LoadWB"], b"LoadDB 62.0")
+        self.assertIn("Opus5", out["top"])
+
+    def test_start_calls_the_edit_unless_no_dopus(self):
+        body = (ROOT / "tools/rig/rig.py").read_text()
+        self.assertIn('else:\n            sys_hdf_dopus(RIG / "sys.hdf")', body)
+
+
 if __name__ == "__main__":
     unittest.main()

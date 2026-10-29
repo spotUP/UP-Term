@@ -41,6 +41,9 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   these builds over the copies a kit installed in SYS: (KIT_SHADOWS;
                   reboot the rig after install). The kit's own files are kept in
                   VTC:kit-orig and come back with `rig.py kit-restore` + a reboot.
+  rig.py dopus    install Directory Opus 5.104 once into this rig's host VTC: drawer (the archive's own Installer,
+                  "Instead of Workbench") and record its S:User-Startup block + stamp there; every later
+                  clone start then boots 5.104 as the Workbench (default; --no-dopus skips it, no stamp: [WARN], 5.82)
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
@@ -696,12 +699,10 @@ def sys_hdf_no_wasabid(image):
     'auth failed: bad key' (2026-10-25). The block goes from the clone; the master is never touched."""
     strip_user_startup_blocks(image, "UP-Term wasabi")
 
-def sys_hdf_no_dopus(image):
-    """--no-dopus: a rig without Directory Opus (the not-running notice, plan D5). The master image replaces the
-    Workbench with Directory Opus 5 in two files: Libs/workbench.library (45.130) and C/LoadWB, which starts DOpus
-    when S:Startup-Sequence runs it; the original LoadWB is kept as C/loadwb_old. In the clone C/LoadWB becomes
-    loadwb_old again and Libs/workbench.library goes (the Kickstart 3.1 ROM carries the stock one), so there is no
-    DOPUS.1 port. The master image is never touched."""
+def restore_loadwb(image):
+    """C/LoadWB becomes the master's kept original (C/loadwb_old) again: the master image replaces the Workbench
+    with Directory Opus 5.82 by a LoadWB that starts it. Used by --no-dopus; the 5.104 clone edit writes
+    5.104's LoadDB over C/LoadWB instead."""
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     old = RIG / "loadwb_old.tmp"
     old.unlink(missing_ok=True)
@@ -709,14 +710,76 @@ def sys_hdf_no_dopus(image):
     subprocess.run([xdf, str(image), "delete", "C/LoadWB"], check=True, capture_output=True)
     subprocess.run([xdf, str(image), "write", str(old), "C/LoadWB"], check=True, capture_output=True)
     old.unlink()
-    subprocess.run([xdf, str(image), "delete", "Libs/workbench.library"], check=True, capture_output=True)
-    # The master also has Directory Opus 5.82 at DH0:Opus5 with the DOpus5: assign and PATH lines in S:User-Startup
-    # (block ';BEGIN DirectoryOpus 5'); with them the add-on's install.dos takes its "already installed" branch
-    # (plan D9, owner 2026-10-26). The block goes and so do Opus5 and its icon
-    # (xdftool has no rename; the clone is disposable, so removing equals hiding), on the clone only.
+
+def remove_opus5(image):
+    """The master also has Directory Opus 5.82 at DH0:Opus5 with the DOpus5: assign and PATH lines in S:User-Startup
+    (block ';BEGIN DirectoryOpus 5'); with them the add-on's install.dos takes its "already installed" branch
+    (plan D9, owner 2026-10-26). The block goes and so do Opus5 and its icon
+    (xdftool has no rename; the clone is disposable, so removing equals hiding), on the clone only."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     strip_user_startup_blocks(image, "DirectoryOpus 5")
     subprocess.run([xdf, str(image), "delete", "Opus5", "all"], check=True, capture_output=True)
     subprocess.run([xdf, str(image), "delete", "Opus5.info"], check=True, capture_output=True)
+
+def sys_hdf_no_dopus(image):
+    """--no-dopus: a rig without Directory Opus (the not-running notice, plan D5). The master image replaces the
+    Workbench with Directory Opus 5 in two files: Libs/workbench.library (45.130) and C/LoadWB, which starts DOpus
+    when S:Startup-Sequence runs it; the original LoadWB is kept as C/loadwb_old. In the clone C/LoadWB becomes
+    loadwb_old again and Libs/workbench.library goes (the Kickstart 3.1 ROM carries the stock one), so there is no
+    DOPUS.1 port. The master image is never touched."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    restore_loadwb(image)
+    subprocess.run([xdf, str(image), "delete", "Libs/workbench.library"], check=True, capture_output=True)
+    remove_opus5(image)
+
+DOPUS_ARCHIVE = "DOpus5_104_os3.lha"
+DOPUS_BLOCK = "dopus5-user-startup.txt"   # the Installer's ';BEGIN DOpus5' block, recorded by `rig.py dopus`
+DOPUS_STAMP = "dopus5.stamp"              # the archive's md5 the install used
+DOPUS_ENVARC = "dopus5-envarc"            # the Installer's ENVARC:DOpus5* files, copied beside the block
+
+def dopus_archive_md5():
+    """The md5 dist/addons/dopus/archives.txt records for the 5.104 archive."""
+    for line in (ROOT / "dist/addons/dopus/archives.txt").read_text().splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[0] == DOPUS_ARCHIVE:
+            return f[1]
+    sys.exit("rig: %s is not in dist/addons/dopus/archives.txt" % DOPUS_ARCHIVE)
+
+def sys_hdf_dopus(image):
+    """The master image carries Directory Opus 5.82 as the Workbench (block ';BEGIN DirectoryOpus 5' assigning
+    DOpus5: dh0:Opus5, C/LoadWB = LoadDB 62.0). The clone gets 5.104 instead, from the install `rig.py dopus` made
+    once in the rig's host VTC: drawer (VTCX:DOpus5, it survives every clone): the 5.82 block is replaced by the
+    block the 5.104 Installer wrote ("Instead of Workbench"), its ENVARC:DOpus5* files go back, C/LoadWB becomes
+    5.104's LoadDB (S:Startup-Sequence calls C:LoadWB by path) and Opus5 + Opus5.info go.
+    Libs/workbench.library stays. No stamp for the current archive: a [WARN] and 5.82 stays. The master is never touched."""
+    vtc = RIG / "vtc"
+    block, stamp = vtc / DOPUS_BLOCK, vtc / DOPUS_STAMP
+    if not (block.exists() and stamp.exists() and stamp.read_text().strip() == dopus_archive_md5()
+            and (vtc / "DOpus5/DirectoryOpus").exists()):
+        print("[WARN] Directory Opus 5.104 is not installed in this rig's VTC: drawer (no current %s): the Workbench "
+              "stays Directory Opus 5.82; run `UPTERM_RIG=%d python3 tools/rig/rig.py dopus` once" % (DOPUS_STAMP, paths.RIG_N))
+        return
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    remove_opus5(image)   # strips the 5.82 block, deletes Opus5 and Opus5.info
+    # S:Startup-Sequence ends in `C:LoadWB` by path, which skips the Resident name of the block: C/LoadWB itself is
+    # 5.104's LoadDB (as on rig 8), so the boot starts Directory Opus 5.104 as the Workbench
+    subprocess.run([xdf, str(image), "delete", "C/LoadWB"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(vtc / "DOpus5/C/LoadDB"), "C/LoadWB"], check=True, capture_output=True)
+    us = RIG / "user-startup.tmp"
+    us.unlink(missing_ok=True)
+    subprocess.run([xdf, str(image), "read", "S/User-Startup", str(us)], check=True, capture_output=True)
+    data = us.read_bytes()
+    if data and not data.endswith(b"\n"):
+        data += b"\n"
+    us.write_bytes(data + block.read_bytes())
+    subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
+    us.unlink()
+    envarc = vtc / DOPUS_ENVARC
+    for f in sorted(envarc.glob("DOpus5*")) if envarc.is_dir() else []:
+        dst = "Prefs/Env-Archive/" + f.name
+        subprocess.run([xdf, str(image), "delete", dst], capture_output=True)   # absent in the master: nothing to delete
+        subprocess.run([xdf, str(image), "write", str(f), dst], check=True, capture_output=True)
 
 SCREENMODE_NAME = RIG / "screenmode.name"   # the last `rig.py aga|aga256|rtg`: a start re-applies it to the fresh sys.hdf
 
@@ -1362,6 +1425,8 @@ def start(retries=START_RETRIES):
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if "--no-dopus" in sys.argv:
             sys_hdf_no_dopus(RIG / "sys.hdf")
+        else:
+            sys_hdf_dopus(RIG / "sys.hdf")
         sys_hdf_kit(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
@@ -1635,12 +1700,17 @@ def wasabi():
     import wasabi as wb
     wb.main(sys.argv[2:])
 
+def dopus():
+    """`rig.py dopus [--force]`: install Directory Opus 5.104 into this rig's VTC: drawer once (tools/rig/dopus_rig.py)."""
+    import dopus_rig
+    dopus_rig.main()
+
 def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
     cmds = {"setup": setup, "start": start, "stop": stop, "reboot": reboot, "install": install, "kit-restore": kit_restore,
             "status": status, "logwatch": logwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
-            "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg")}
+            "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
     helps = ("--help", "-h", "help", "?")
     if len(argv) > 1 and (argv[1] in helps or (argv[1] in cmds and any(a in helps for a in argv[2:]))):
         print(__doc__)   # also `rig.py stop --help`: usage, never the command's side effect
