@@ -19,6 +19,7 @@ void win_box_of(const struct Window *w, win_box *b, win_screen *s)
     s->width = w->WScreen->Width;
     s->height = w->WScreen->Height;
     s->title = w->WScreen->BarHeight + 1;
+    s->bottom = 0;                                 /* the bar strut is filled by the caller (win_strut) */
 }
 
 void win_apply_box(struct Window *w, const win_box *b)

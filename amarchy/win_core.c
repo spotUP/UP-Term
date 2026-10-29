@@ -36,7 +36,7 @@ int win_parse(const char *text, win_cmd *c)
     };
     static const struct { const char *name; win_verb v; } withArg[] = {
         { "cycle", WV_CYCLE }, { "move", WV_MOVE }, { "size", WV_SIZE }, { "focus", WV_FOCUS },
-        { "screen", WV_SCREEN }, { "title", WV_TITLE }
+        { "screen", WV_SCREEN }, { "title", WV_TITLE }, { "snap", WV_SNAP }
     };
     static const char *const d4[] = { "left", "right", "up", "down", 0 };
     static const win_arg v4[] = { WA_LEFT, WA_RIGHT, WA_UP, WA_DOWN };
@@ -48,6 +48,8 @@ int win_parse(const char *text, win_cmd *c)
     static const win_arg vsc[] = { WA_NEXT, WA_PREV, WA_WORKBENCH, WA_BACK };
     static const char *const ti[] = { "toggle", "show", "hide", 0 };
     static const win_arg vti[] = { WA_TOGGLE, WA_SHOW, WA_HIDE };
+    static const char *const sn[] = { "left", "right", "up", "down", "tl", "tr", "bl", "br", "center", 0 };
+    static const win_arg vsn[] = { WA_LEFT, WA_RIGHT, WA_UP, WA_DOWN, WA_TL, WA_TR, WA_BL, WA_BR, WA_CENTER };
     const char *sp, *arg, *end;
     int i, vn;
     memset(c, 0, sizeof *c);
@@ -87,7 +89,8 @@ int win_parse(const char *text, win_cmd *c)
     if ((c->verb == WV_CYCLE && word(arg, (int)strlen(arg), cy, vcy, &c->arg)) ||
         (c->verb == WV_FOCUS && word(arg, (int)strlen(arg), d6, v6, &c->arg)) ||
         (c->verb == WV_SCREEN && word(arg, (int)strlen(arg), sc, vsc, &c->arg)) ||
-        (c->verb == WV_TITLE && word(arg, (int)strlen(arg), ti, vti, &c->arg)))
+        (c->verb == WV_TITLE && word(arg, (int)strlen(arg), ti, vti, &c->arg)) ||
+        (c->verb == WV_SNAP && word(arg, (int)strlen(arg), sn, vsn, &c->arg)))
         return 1;
 bad:
     memset(c, 0, sizeof *c);
@@ -163,10 +166,71 @@ int win_fullwidth(win_box *b, const win_screen *s)
     return 1;
 }
 
+void win_work_area(const win_screen *s, int gap, int *x0, int *y0, int *w, int *h)
+{
+    *x0 = gap;
+    *y0 = s->title + gap;
+    *w = s->width - 2 * gap;
+    *h = s->height - s->title - s->bottom - 2 * gap;
+}
+
+int win_strut(const win_box *b, const win_screen *s)
+{
+    if (b->left == 0 && b->width == s->width && b->top > 0 && b->top + b->height == s->height)
+        return b->height;
+    return 0;
+}
+
+int win_is_amarchy(const char *title)
+{
+    return title && (!strcmp(title, "Amarchy") || !strcmp(title, "Amarchy bar"));
+}
+
+int win_snap(win_box *b, win_arg arg, int gap, const win_screen *s)
+{
+    int x0, y0, w, h, cw, ch, x, y, nw, nh;
+    int col = 0, row = 0, ncol = 1, nrow = 1;      /* the zone: first cell, cell counts */
+    win_work_area(s, gap, &x0, &y0, &w, &h);
+    cw = (w - gap) / 2;
+    ch = (h - gap) / 2;
+    switch (arg) {
+    case WA_LEFT:   ncol = 2; break;
+    case WA_RIGHT:  ncol = 2; col = 1; break;
+    case WA_UP:     nrow = 2; break;
+    case WA_DOWN:   nrow = 2; row = 1; break;
+    case WA_TL:     ncol = nrow = 2; break;
+    case WA_TR:     ncol = nrow = 2; col = 1; break;
+    case WA_BL:     ncol = nrow = 2; row = 1; break;
+    case WA_BR:     ncol = nrow = 2; col = row = 1; break;
+    case WA_CENTER: break;
+    default: return 0;
+    }
+    if (arg == WA_CENTER) {
+        nw = win_fit(b->width, b->minw, b->maxw, w);
+        nh = win_fit(b->height, b->minh, b->maxh, h);
+        x = x0 + (w - nw) / 2;
+        y = y0 + (h - nh) / 2;
+    } else {
+        x = ncol == 2 && col ? x0 + cw + gap : x0;
+        y = nrow == 2 && row ? y0 + ch + gap : y0;
+        nw = ncol == 2 ? (col ? w - gap - cw : cw) : w;
+        nh = nrow == 2 ? (row ? h - gap - ch : ch) : h;
+        nw = win_fit(nw, b->minw, b->maxw, s->width - x);
+        nh = win_fit(nh, b->minh, b->maxh, s->height - s->bottom - y);
+    }
+    if (b->left == x && b->top == y && b->width == nw && b->height == nh)
+        return 0;
+    b->left = x;
+    b->top = y;
+    b->width = nw;
+    b->height = nh;
+    return 1;
+}
+
 int win_fullscreen(win_box *b, const win_screen *s)
 {
     int w = win_fit(s->width, b->minw, b->maxw, s->width);
-    int h = win_fit(s->height - s->title, b->minh, b->maxh, s->height - s->title);
+    int h = win_fit(s->height - s->title - s->bottom, b->minh, b->maxh, s->height - s->title - s->bottom);
     if (b->left == 0 && b->top == s->title && b->width == w && b->height == h)
         return 0;
     b->left = 0;

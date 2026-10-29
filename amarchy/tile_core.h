@@ -38,6 +38,7 @@ int tile_order_update(long *order, int n, const long *set, int m);
 int tile_screen_switch(long *cur, long next, int n);
 
 #define TILE_NMASTER_MAX    8
+#define TILE_MAX            32                          /* windows considered on the screen; capacity of a tile_floats */
 
 typedef enum { TL_DWINDLE = 0, TL_MASTER, TL_MIRROR, TL_COLUMNS, TL_ROWS, TL_GRID, TL_MONOCLE, TL_COUNT } tile_layout_kind;
 
@@ -61,5 +62,15 @@ int tile_cycle(const long *order, int n, long id, int dir);
 /* The state file AmTile writes (ENV:Amarchy/tile, "on" or "off" and a newline): 1 when buf[0..len) reads "on". Amarchy
  * runs AmTile ON at its start by this. */
 int tile_state_on(const char *buf, long len);
+
+/* Swaps the places of ids a and b in order[0..n). 1 when done, 0 when either is not in order (nothing changes). */
+int tile_swap(long *order, int n, long a, long b);
+
+/* The windows the owner floated by hand: kept out of the tiled set until they are cleared. */
+typedef struct { long id[TILE_MAX]; int n; } tile_floats;
+int  tile_float_has(const tile_floats *f, long id);
+int  tile_float_set(tile_floats *f, long id);           /* 1 added, 0 already in or full */
+int  tile_float_clear(tile_floats *f, long id);         /* 1 removed, 0 not in */
+void tile_float_prune(tile_floats *f, const long *live, int m);   /* drops the ids not in live[0..m): closed windows */
 
 #endif

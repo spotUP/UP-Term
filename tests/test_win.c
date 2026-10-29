@@ -2,7 +2,7 @@
 #include "harness.h"
 #include "../amarchy/win_core.h"
 
-static const win_screen scr = { 640, 256, 11 };
+static const win_screen scr = { 640, 256, 11, 0 };
 
 static win_box box(int l, int t, int w, int h)
 {
@@ -165,6 +165,118 @@ static void ticket_needs_unchanged_box(void)
     CHECK_INT(win_ticket_valid(0, &taken, &now), 0);   /* window gone or ours: refused whatever the box */
 }
 
+/* P3-A1..A3: work area, bottom reserve, strut, snap. 800x600, title 14. */
+static const win_screen s0 = { 800, 600, 14, 0 };
+static const win_screen s16 = { 800, 600, 14, 16 };
+
+static win_box free_box(int w, int h)
+{
+    win_box b;
+    memset(&b, 0, sizeof b);
+    b.width = w; b.height = h; b.minw = 1; b.minh = 1; b.screen = 1;
+    return b;
+}
+
+static void snap_is(win_arg a, int gap, const win_screen *s, int l, int t, int w, int h)
+{
+    win_box b = free_box(300, 200);
+    win_snap(&b, a, gap, s);
+    CHECK_INT(b.left, l);
+    CHECK_INT(b.top, t);
+    CHECK_INT(b.width, w);
+    CHECK_INT(b.height, h);
+}
+
+static void work_area_and_fullscreen(void)
+{
+    int x, y, w, h;
+    win_box b = free_box(10, 10);
+    win_work_area(&s0, 4, &x, &y, &w, &h);
+    CHECK_INT(x, 4); CHECK_INT(y, 18); CHECK_INT(w, 792); CHECK_INT(h, 578);
+    win_work_area(&s16, 4, &x, &y, &w, &h);
+    CHECK_INT(h, 562);
+    CHECK_INT(y, 18);
+    win_fullscreen(&b, &s0);
+    CHECK_INT(b.height, 586);
+    b = free_box(10, 10);
+    win_fullscreen(&b, &s16);
+    CHECK_INT(b.top, 14);
+    CHECK_INT(b.height, 570);
+}
+
+static void strut_and_ours(void)
+{
+    win_box bar = free_box(800, 16), part = free_box(400, 16), mid = free_box(800, 16);
+    bar.top = 584; part.top = 584; mid.top = 300;
+    CHECK_INT(win_strut(&bar, &s0), 16);
+    CHECK_INT(win_strut(&part, &s0), 0);               /* not full width */
+    CHECK_INT(win_strut(&mid, &s0), 0);                /* not at the bottom */
+    bar.top = 0; bar.height = 600;
+    CHECK_INT(win_strut(&bar, &s0), 0);                /* fills the screen from the top: not a bar */
+    CHECK(win_is_amarchy("Amarchy"));
+    CHECK(win_is_amarchy("Amarchy bar"));
+    CHECK(!win_is_amarchy("Amarchy bar2"));
+    CHECK(!win_is_amarchy("Shell"));
+    CHECK(!win_is_amarchy(0));
+}
+
+static void snap_parse(void)
+{
+    win_cmd c;
+    static const char *const ok[] = { "snap left", "snap right", "snap up", "snap down", "snap tl", "snap tr", "snap bl",
+                                      "snap br", "snap center", 0 };
+    int i;
+    for (i = 0; ok[i]; i++)
+        CHECK(win_parse(ok[i], &c) && c.verb == WV_SNAP);
+    CHECK(win_parse("snap tl", &c) && c.arg == WA_TL);
+    CHECK(win_parse("snap center", &c) && c.arg == WA_CENTER);
+    CHECK(!win_parse("snap", &c));
+    CHECK(!win_parse("snap middle", &c));
+    CHECK(!win_parse("snap left 5", &c));
+}
+
+static void snap_boxes(void)
+{
+    win_box b;
+    snap_is(WA_LEFT, 0, &s0, 0, 14, 400, 586);
+    snap_is(WA_RIGHT, 0, &s0, 400, 14, 400, 586);
+    snap_is(WA_UP, 0, &s0, 0, 14, 800, 293);
+    snap_is(WA_DOWN, 0, &s0, 0, 307, 800, 293);
+    snap_is(WA_TL, 0, &s0, 0, 14, 400, 293);
+    snap_is(WA_TR, 0, &s0, 400, 14, 400, 293);
+    snap_is(WA_BL, 0, &s0, 0, 307, 400, 293);
+    snap_is(WA_BR, 0, &s0, 400, 307, 400, 293);
+    snap_is(WA_CENTER, 0, &s0, 250, 207, 300, 200);
+    snap_is(WA_LEFT, 4, &s0, 4, 18, 394, 578);
+    snap_is(WA_RIGHT, 4, &s0, 402, 18, 394, 578);
+    snap_is(WA_UP, 4, &s0, 4, 18, 792, 287);
+    snap_is(WA_DOWN, 4, &s0, 4, 309, 792, 287);
+    snap_is(WA_BR, 4, &s0, 402, 309, 394, 287);
+    snap_is(WA_UP, 0, &s16, 0, 14, 800, 285);          /* bottom 16: the work area ends at 584 */
+    snap_is(WA_DOWN, 0, &s16, 0, 299, 800, 285);
+    snap_is(WA_UP, 4, &s16, 4, 18, 792, 279);
+    snap_is(WA_DOWN, 4, &s16, 4, 301, 792, 279);
+    snap_is(WA_CENTER, 0, &s16, 250, 207 - 8, 300, 200);
+    {
+        static const win_screen odd = { 801, 601, 14, 0 };
+        snap_is(WA_RIGHT, 0, &odd, 400, 14, 401, 587);  /* the remainder pixel goes right and down */
+        snap_is(WA_DOWN, 0, &odd, 0, 307, 801, 294);
+    }
+    b = free_box(300, 200);
+    b.maxw = 300;
+    win_snap(&b, WA_LEFT, 0, &s0);                     /* Max wins over the half */
+    CHECK_INT(b.width, 300);
+    CHECK_INT(b.height, 586);
+    b = free_box(300, 200);
+    b.minw = 500;
+    win_snap(&b, WA_TL, 0, &s0);                       /* Min wins over the quarter */
+    CHECK_INT(b.width, 500);
+    b = free_box(300, 200);
+    CHECK_INT(win_snap(&b, WA_LEFT, 0, &s0), 1);
+    CHECK_INT(win_snap(&b, WA_LEFT, 0, &s0), 0);       /* already there: no change */
+    CHECK_INT(win_snap(&b, WA_NEXT, 0, &s0), 0);       /* not a zone */
+}
+
 void suite_win(void)
 {
     parse_verbs();
@@ -175,4 +287,8 @@ void suite_win(void)
     save_restore_ring();
     direction_search();
     ticket_needs_unchanged_box();
+    work_area_and_fullscreen();
+    strut_and_ours();
+    snap_parse();
+    snap_boxes();
 }

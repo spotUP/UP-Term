@@ -2,7 +2,7 @@
 #include "harness.h"
 #include "../amarchy/tile_core.h"
 
-static const win_screen scr = { 800, 600, 12 };
+static const win_screen scr = { 800, 600, 12, 0 };
 
 static tile_win mk(long id, const char *title)
 {
@@ -136,7 +136,7 @@ static void state_file(void)
 }
 
 /* Worked numbers of the plan: 800x600, title 14, gap 4, ratio 55 -> work area 4,18 792x578. */
-static const win_screen scr14 = { 800, 600, 14 };
+static const win_screen scr14 = { 800, 600, 14, 0 };
 
 static void lay(int kind, int ratio, int nm, int n, win_box *out)
 {
@@ -316,6 +316,59 @@ static void promote_and_cycle(void)
     CHECK_INT(tile_cycle(o, 1, 4, 1), 0);
 }
 
+static void bottom_reserve_and_bar(void)
+{
+    static const win_screen b16 = { 800, 600, 14, 16 };
+    tile_win in[3];
+    win_box o[3];
+    int i;
+    for (i = 0; i < 3; i++)
+        in[i] = mk(i + 1, "w");
+    tile_layout(TL_DWINDLE, &b16, 4, 55, 1, 1, in, o);
+    check_box(&o[0], 4, 18, 792, 562);                 /* work area h 562 at gap 4 */
+    tile_layout(TL_MONOCLE, &b16, 0, 55, 1, 1, in, o);
+    check_box(&o[0], 0, 14, 800, 570);
+    tile_layout(TL_ROWS, &b16, 0, 55, 1, 2, in, o);
+    CHECK_INT(o[1].top + o[1].height, 584);            /* the last row ends on the reserve */
+    in[0].title = "Amarchy bar";
+    CHECK_INT(tile_classify(&in[0]), TILE_FLOAT);
+    in[0].title = "Amarchy";
+    CHECK_INT(tile_classify(&in[0]), TILE_FLOAT);
+}
+
+static void swap_and_floats(void)
+{
+    long o[4] = { 1, 2, 3, 4 };
+    long live[3] = { 1, 3, 9 };
+    tile_floats f;
+    memset(&f, 0, sizeof f);
+    CHECK_INT(tile_swap(o, 4, 1, 3), 1);
+    CHECK_INT(o[0], 3); CHECK_INT(o[2], 1);
+    CHECK_INT(tile_swap(o, 4, 3, 1), 1);               /* back the other way */
+    CHECK_INT(o[0], 1); CHECK_INT(o[2], 3);
+    CHECK_INT(tile_swap(o, 4, 1, 77), 0);              /* absent id: nothing moves */
+    CHECK_INT(tile_swap(o, 4, 77, 1), 0);
+    CHECK_INT(o[0], 1); CHECK_INT(o[1], 2);
+    CHECK_INT(tile_float_set(&f, 2), 1);
+    CHECK_INT(tile_float_set(&f, 3), 1);
+    CHECK_INT(tile_float_set(&f, 3), 0);               /* twice: one entry */
+    CHECK_INT(f.n, 2);
+    CHECK_INT(tile_order_update(o, 4, live, 3), 3);    /* a retile leaves the float set alone */
+    CHECK(tile_float_has(&f, 2) && tile_float_has(&f, 3));
+    tile_float_prune(&f, live, 3);                     /* 2 closed */
+    CHECK(!tile_float_has(&f, 2));
+    CHECK(tile_float_has(&f, 3));
+    CHECK_INT(tile_float_clear(&f, 3), 1);
+    CHECK_INT(tile_float_clear(&f, 3), 0);
+    CHECK_INT(f.n, 0);
+    {
+        int i, added = 0;
+        for (i = 1; i <= TILE_MAX + 5; i++)
+            added += tile_float_set(&f, i);
+        CHECK_INT(added, TILE_MAX);                    /* full: the extras are refused */
+    }
+}
+
 void suite_tile(void)
 {
     state_file();
@@ -329,4 +382,6 @@ void suite_tile(void)
     classification();
     order_update();
     screen_switch();
+    bottom_reserve_and_bar();
+    swap_and_floats();
 }

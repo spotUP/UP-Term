@@ -23,7 +23,6 @@
 #include "../handler/upactive.h"
 
 #define WIN_MAXW 32          /* windows on one screen considered by cycle and focus */
-#define MENU_TITLE "Amarchy" /* the drawn menu, the viewer and the text menu all carry it (gui.c, act.c) */
 
 /* WorkbenchBase is wblaunch.c's global; opened and closed around each use there too. */
 extern struct Library *WorkbenchBase;
@@ -38,7 +37,7 @@ long win_count(void) { return g_wins; }
 
 static int is_ours(const struct Window *w)
 {
-    return w->Title && strcmp((const char *)w->Title, MENU_TITLE) == 0;
+    return win_is_amarchy((const char *)w->Title);
 }
 
 /* IBase locked: w is a member of some screen's window list. */
@@ -132,6 +131,7 @@ void win_active_terminal(int *in_term, int *full)
         s.width = aw->WScreen->Width;
         s.height = aw->WScreen->Height;
         s.title = 0;
+        s.bottom = 0;
         *full = win_is_fullscreen_terminal((aw->Flags & (WFLG_BACKDROP | WFLG_BORDERLESS)) == (WFLG_BACKDROP | WFLG_BORDERLESS),
                                            aw->LeftEdge, aw->TopEdge, aw->Width, aw->Height, &s);
     }

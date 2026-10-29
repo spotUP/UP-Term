@@ -9,12 +9,12 @@
 
 typedef enum {
     WV_NONE = 0, WV_CYCLE, WV_FRONT, WV_BACK, WV_ZIP, WV_FULLWIDTH, WV_FULLSCREEN, WV_SAVE, WV_RESTORE,
-    WV_MOVE, WV_SIZE, WV_FOCUS, WV_CLOSEDRAWERS, WV_SCREEN, WV_TITLE
+    WV_MOVE, WV_SIZE, WV_FOCUS, WV_CLOSEDRAWERS, WV_SCREEN, WV_TITLE, WV_SNAP
 } win_verb;
 
 typedef enum {
     WA_NONE = 0, WA_LEFT, WA_RIGHT, WA_UP, WA_DOWN, WA_NEXT, WA_PREV, WA_WORKBENCH, WA_BACK,
-    WA_TOGGLE, WA_SHOW, WA_HIDE
+    WA_TOGGLE, WA_SHOW, WA_HIDE, WA_TL, WA_TR, WA_BL, WA_BR, WA_CENTER
 } win_arg;
 
 typedef struct win_cmd {
@@ -36,7 +36,25 @@ typedef struct win_box {
 typedef struct win_screen {
     int width, height;
     int title;             /* height of the screen's title bar: fullscreen starts below it */
+    int bottom;            /* height reserved at the screen's bottom edge (the Amarchy bar, win_strut); 0 when none */
 } win_screen;
+
+/* The work area every layout, snap and fullscreen uses: the screen below its title bar and above its bottom reserve,
+ * inset by gap on every side. */
+void win_work_area(const win_screen *s, int gap, int *x0, int *y0, int *w, int *h);
+
+/* The bottom reserve a window makes: its height when the box spans the screen's width, sits below the top edge and ends
+ * on the screen's bottom edge (the Amarchy bar), else 0. */
+int win_strut(const win_box *b, const win_screen *s);
+
+/* 1 when the title is one of Amarchy's own windows ("Amarchy": menu, viewer, panel; "Amarchy bar": the bar): never a
+ * target of the win verbs, never tiled. */
+int win_is_amarchy(const char *title);
+
+/* win:snap: the box of one zone of the work area. WA_LEFT / WA_RIGHT / WA_UP / WA_DOWN halves, WA_TL / WA_TR / WA_BL /
+ * WA_BR quarters (cells split at (size - gap) / 2, the remainder pixel to the right / bottom cell), WA_CENTER keeps the
+ * window's size and centres it. Every size goes through win_fit. 1 when the box changed, 0 when not or arg is no zone. */
+int win_snap(win_box *b, win_arg arg, int gap, const win_screen *s);
 
 /* A limit of one dimension: v held to the window's Min / Max and to room (the screen's space from the window's edge), at least 1. */
 int win_fit(int v, int min, int max, int room);
@@ -45,7 +63,7 @@ int win_fit(int v, int min, int max, int room);
 int win_move(win_box *b, win_arg dir, int pixels, const win_screen *s);   /* clamped inside the screen */
 int win_size(win_box *b, win_arg dir, int pixels, const win_screen *s);   /* left/up shrink, right/down grow; min, max, screen */
 int win_fullwidth(win_box *b, const win_screen *s);                       /* left 0, the screen's width */
-int win_fullscreen(win_box *b, const win_screen *s);                      /* the area below the title bar */
+int win_fullscreen(win_box *b, const win_screen *s);                      /* the area between the title bar and the bottom reserve */
 
 /* 1 when a window is a full-screen terminal's: backdrop and borderless (the handler's FULLSCREEN window,
  * create_window in handler/vtcon_handler.c) and exactly the screen's size at 0,0. */

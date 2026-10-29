@@ -34,7 +34,6 @@
 #include "../handler/frontscr.h"
 
 #define PORT_NAME      "AMTILE"
-#define TILE_MAX       32             /* windows considered on the screen */
 #define TILE_POLL_MICROS 250000UL
 #define TITLE_MAX      16             /* tile_classify only compares against "Amarchy" */
 #define STATE_DIR_ENV    "ENV:Amarchy"
