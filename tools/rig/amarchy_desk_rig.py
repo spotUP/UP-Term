@@ -103,7 +103,11 @@ def pick(up=None):
             break
     print('[INFO] picking row %d (%s)' % (sel, rows[sel]))
     ami.key(g.RETURN)
-    t.wait_stable(t.STEP_SECS, differ_from=st, what='recoloured theme list')
+    try:
+        t.wait_stable(t.STEP_SECS, differ_from=st, what='recoloured theme list')
+    except TimeoutError:
+        if t.menu_state()[0] is not None:  # the pick may also close the menu; only a menu still showing the old state is a failure
+            raise
     g.close_menu()
     time.sleep(3)
     return rows[sel].split(' (')[0], up
@@ -181,7 +185,8 @@ def main():
     say(c.run('List T:amarchy-revert')[0] != 0, 'off: T:amarchy-revert does not exist')
 
     # step 3: master on
-    saved = prefs.rstrip('\n') + '\n'
+    # the file as the first pick left it (it holds the picked theme), not the step-1 copy: the cursor then starts on that theme
+    saved = (ami.read_file(PREFS) or b'').decode('latin-1').rstrip('\n') + '\n'
     if re.search(r'^\s*desktop-theme\s*=', saved, re.M):
         new = re.sub(r'^(\s*desktop-theme\s*=).*$', r'\1 on', saved, flags=re.M)
     else:
@@ -193,7 +198,7 @@ def main():
     os.unlink(f.name)
     base_on = snapshot()
     cols_on = wb_colours()
-    name2, _ = pick(up=not up1)
+    name2, _ = pick(up=False)  # the list cursor starts on row 0 again; a current row is stepped over
     say(bool(name2) and name2 != name1, 'on: picked a second theme', '%s then %s' % (name1, name2))
     say(n_env('AMARCHY_DESKS') == desks0 + 1, 'on: AMARCHY_DESKS +1', 'was %r now %r' % (desks0, t.env('AMARCHY_DESKS')))
     say(t.env('AMARCHY_DESKMASK') == '15', 'on: AMARCHY_DESKMASK 15', t.env('AMARCHY_DESKMASK'))
