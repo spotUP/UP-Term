@@ -36,6 +36,7 @@ typedef struct note_q {
     long dropped;                   /* pushed out by a newer one while shown */
     long expired;                   /* gone by timeout */
     long next_id;
+    char last[NOTE_TITLE];          /* title of the newest notice ever accepted (NOTES last=), kept after it goes */
 } note_q;
 
 typedef struct note_box {           /* the area notices may use (bar_usable(), or the whole screen), inclusive */
@@ -70,5 +71,22 @@ int note_slot(int corner, const note_box *box, int w, int h, int slot, int *x, i
 
 /* Which shown notice (queue index) a point hits, -1 for none. The newest has slot 0. */
 int note_hit(const note_q *q, int corner, const note_box *box, int w, int h, int px, int py);
+
+/* The AMARCHY.NOTIFY port's verbs, one place for the port and any menu row (R4.9a): `NOTIFY title|body|secs` posts,
+ * `CLEAR` empties, `COUNT` answers the notices accepted since the start, `NOTES` answers
+ * `notes=N shown=N last=<title>`. Case does not matter. out gets the answer (cap bytes, "" for none). Returns the
+ * ARexx rc: 0, or 10 for an unknown verb, an empty title or bad seconds. now is the caller's seconds. */
+long note_verb(note_q *q, const char *cmd, long now, char *out, int cap);
+
+/* One request line "title|body|secs" from the three fields, | and \ escaped (secs < 0 leaves the field out), for
+ * the sender (amnotify). Returns the length, or -1 when cap is too small. */
+int note_line(const char *title, const char *body, long secs, char *line, int cap);
+
+enum { NOTE_ARG_BODYFILE = 256 };
+/* amnotify's command line, both forms: `Done "build ok" SECONDS 3 BODYFILE f` and `-t 3 -f f Done "build ok"`
+ * (also SECONDS=3, BODYFILE=f, -t3). A quoted word is never a keyword. title, body and bodyfile are filled (""
+ * when absent), secs is -1 when absent. Returns NOTE_OK, NOTE_ERR_EMPTY (no title or an option without its value)
+ * or NOTE_ERR_SECS. */
+int note_cli_parse(const char *args, char *title, char *body, long *secs, char *bodyfile);
 
 #endif

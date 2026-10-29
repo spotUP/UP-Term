@@ -141,8 +141,79 @@ static void test_hit(void)
     CHECK_STR(q.item[0].title, "new");
 }
 
+static void test_verbs(void)
+{
+    note_q q;
+    char out[160];
+    note_init(&q);
+    CHECK_INT(note_verb(&q, "COUNT", 10, out, sizeof out), 0);
+    CHECK_STR(out, "0");
+    CHECK_INT(note_verb(&q, "NOTIFY Saved|shot-1.iff|7", 10, out, sizeof out), 0);
+    CHECK_INT(q.n, 1);
+    CHECK_INT(q.item[0].expires, 17);                   /* the clock the caller gave */
+    CHECK_INT(note_verb(&q, "notify  Second", 11, out, sizeof out), 0);   /* case and spaces do not matter */
+    CHECK_INT(note_verb(&q, "COUNT", 12, out, sizeof out), 0);
+    CHECK_STR(out, "2");
+    CHECK_INT(note_verb(&q, "NOTES", 12, out, sizeof out), 0);
+    CHECK_STR(out, "notes=2 shown=2 last=Second");
+    CHECK_INT(note_verb(&q, "NOTIFY |no title", 12, out, sizeof out), 10);
+    CHECK_INT(note_verb(&q, "NOTIFY T|B|x", 12, out, sizeof out), 10);
+    CHECK_INT(note_verb(&q, "NOTIFY", 12, out, sizeof out), 10);
+    CHECK_INT(note_verb(&q, "BOGUS", 12, out, sizeof out), 10);
+    CHECK_INT(q.posted, 2);                             /* refused ones are not counted */
+    CHECK_INT(note_verb(&q, "CLEAR", 13, out, sizeof out), 0);
+    CHECK_INT(note_verb(&q, "NOTES", 13, out, sizeof out), 0);
+    CHECK_STR(out, "notes=2 shown=0 last=Second");      /* the count and last outlive the window */
+}
+
+static void test_cli(void)
+{
+    char t[NOTE_TITLE], b[NOTE_BODY], f[NOTE_ARG_BODYFILE], line[300];
+    long s;
+    CHECK_INT(note_cli_parse("Done \"build ok\" SECONDS 3", t, b, &s, f), NOTE_OK);
+    CHECK_STR(t, "Done");
+    CHECK_STR(b, "build ok");
+    CHECK_INT(s, 3);
+    CHECK_INT(note_cli_parse("-t 4 Done \"build ok\"", t, b, &s, f), NOTE_OK);   /* the Unix form */
+    CHECK_INT(s, 4);
+    CHECK_STR(b, "build ok");
+    CHECK_INT(note_cli_parse("-t0 X", t, b, &s, f), NOTE_OK);
+    CHECK_INT(s, 0);
+    CHECK_INT(note_cli_parse("X seconds=9 BODYFILE=T:safeoff.txt", t, b, &s, f), NOTE_OK);
+    CHECK_INT(s, 9);
+    CHECK_STR(f, "T:safeoff.txt");
+    CHECK_INT(note_cli_parse("X -f T:a.txt", t, b, &s, f), NOTE_OK);
+    CHECK_STR(f, "T:a.txt");
+    CHECK_INT(note_cli_parse("\"SECONDS\" \"-t\"", t, b, &s, f), NOTE_OK);      /* quoted words are text */
+    CHECK_STR(t, "SECONDS");
+    CHECK_STR(b, "-t");
+    CHECK_INT(s, -1);
+    CHECK_INT(note_cli_parse("", t, b, &s, f), NOTE_ERR_EMPTY);
+    CHECK_INT(note_cli_parse("X Y Z", t, b, &s, f), NOTE_ERR_EMPTY);
+    CHECK_INT(note_cli_parse("X -t", t, b, &s, f), NOTE_ERR_EMPTY);
+    CHECK_INT(note_cli_parse("X -t abc", t, b, &s, f), NOTE_ERR_SECS);
+    CHECK_INT(note_cli_parse("X -t 3601", t, b, &s, f), NOTE_ERR_SECS);
+    CHECK_INT(note_line("a|b", "c\\d", 3, line, sizeof line), 11);
+    CHECK_STR(line, "a\\|b|c\\\\d|3");
+    CHECK_INT(note_line("T", "", -1, line, sizeof line), 2);
+    CHECK_STR(line, "T|");
+    CHECK_INT(note_line("T", "longbody", 5, line, 6), -1);
+    {                                                   /* the sender's line is the port's input */
+        note_q q;
+        char out[160];
+        note_init(&q);
+        note_line("a|b", "c\\d", 0, line, sizeof line);
+        CHECK_INT(note_verb(&q, "NOTIFY a\\|b|c\\\\d|0", 1, out, sizeof out), 0);
+        CHECK_STR(q.item[0].title, "a|b");
+        CHECK_STR(q.item[0].body, "c\\d");
+        CHECK_INT(q.item[0].sticky, 1);
+    }
+}
+
 void suite_note_core(void)
 {
+    test_verbs();
+    test_cli();
     test_parse();
     test_expiry();
     test_sticky();

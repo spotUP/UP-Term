@@ -405,7 +405,10 @@ Copy hl mdv UP-Term:bin CLONE
 ; nothing is lost; the user's own rows belong in ENVARC:up-term/keymap.user, which is never
 ; touched (an edit there applies after a copy to ENV:up-term/keymap.user, or at the next boot). A marked block in S:User-Startup starts the commodity at every boot
 ; (Uninstall takes it out with unstartup.sh).
-Copy Amarchy amarchy-menu amarchy-gui amarchy-index AmTile UP-Term:bin CLONE
+Copy Amarchy amarchy-menu amarchy-gui amarchy-index amnotify AmTile UP-Term:bin CLONE
+; UP-Term:S scripts a menu row runs (safe-off: Reboot DRYRUN, then a notice)
+MakeDir >NIL: UP-Term:S
+Copy S UP-Term:S ALL CLONE
 ; the DOpus menu group's ARexx scripts (menu rows and keys run UP-Term:Rexx/dopus-*.rexx)
 MakeDir >NIL: UP-Term:Rexx
 Copy Rexx UP-Term:Rexx ALL CLONE

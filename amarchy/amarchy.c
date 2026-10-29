@@ -18,6 +18,7 @@
 #include "gthemes_dos.h"
 #include "leaf.h"
 #include "rexx_host.h"
+#include "note.h"
 #include "clipwatch.h"
 #include "wblaunch.h"
 #include "menu_core.h"
@@ -142,13 +143,13 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N shots=N (about 114 bytes; REXX_HOST_OUT is 160) */
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N shots=N notes=N (about 123 bytes; REXX_HOST_OUT is 160) */
 static void status_text(char *out, long cap)
 {
     char num[12];
-    static const char *const key[14] = { "hits=", " rows=", " enabled=", " active=", " wins=", " snaps=", " bar=", " draws=", " panels=",
-                                        " launches=", " raises=", " wbpens=", " wbrefused=", " shots=" };
-    long val[14];
+    static const char *const key[15] = { "hits=", " rows=", " enabled=", " active=", " wins=", " snaps=", " bar=", " draws=", " panels=",
+                                        " launches=", " raises=", " wbpens=", " wbrefused=", " shots=", " notes=" };
+    long val[15];
     int i;
     val[0] = g_hits;
     val[1] = cx_nrows();
@@ -164,8 +165,9 @@ static void status_text(char *out, long cap)
     val[11] = (long)gt_dos_wb_pens;
     val[12] = (long)gt_dos_wb_refused;
     val[13] = shot_count();
+    val[14] = note_posted();
     out[0] = 0;
-    for (i = 0; i < 14; i++) {
+    for (i = 0; i < 15; i++) {
         cl_cat(out, key[i], cap);
         cl_ltoa(val[i], num);
         cl_cat(out, num, cap);
@@ -268,6 +270,9 @@ static long rexx_cmd(void *ud, const char *cmd, char *out)
         char num[12];
         cl_ltoa(shot_count(), num);
         cl_cat(out, num, REXX_HOST_OUT);
+    } else if (starts(cmd, "NOTES")) {
+        /* the notice counters (note.c answers the same verb on AMARCHY.NOTIFY): notes=N shown=N last=<title> */
+        rc = note_run(cmd, out);
     } else if (starts(cmd, "QUIT"))
         g_quit = 1;
     else if (starts(cmd, "SHOW"))
@@ -321,7 +326,7 @@ struct IntuitionBase *IntuitionBase;
 
 int main(void)
 {
-    ULONG sigs, cxs, rxs, nts, lps, wrs, cws, bs, bts;
+    ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, bs, bts;
     int row, ev;
     struct RDArgs *rda;
     LONG args[1] = { 0 };
@@ -346,6 +351,7 @@ int main(void)
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     rexx_host_open(&rexx, "AMARCHY");
+    note_open();
     wb_reply = CreateMsgPort();
     Forbid();
     launch_port = wb_reply && !FindPort((STRPTR)LF_LAUNCH_PORT) ? CreateMsgPort() : 0;
@@ -362,6 +368,7 @@ int main(void)
     act_menu_server_start(g_dir);               /* the warm menu server; the first press before it is up opens a menu of its own */
     cxs = cx_sigmask();
     rxs = rexx_host_sigmask(&rexx);
+    nos = note_sigmask();
     nts = notify_port ? 1UL << notify_port->mp_SigBit : 0;
     lps = launch_port ? 1UL << launch_port->mp_SigBit : 0;
     wrs = wb_reply ? 1UL << wb_reply->mp_SigBit : 0;
@@ -371,7 +378,7 @@ int main(void)
     bs = bar_sigmask();
     bts = bar_timer_sigmask();
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nts | lps | wrs | cws | bs | bts | shot_region_sigmask() | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | bs | bts | shot_region_sigmask() | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cxs)
@@ -395,6 +402,8 @@ int main(void)
             cw_changed();
         if (sigs & rxs)
             rexx_host_serve(&rexx, rexx_cmd, 0);
+        if (sigs & nos)
+            note_serve();
         if (sigs & lps)
             launch_serve();
         if (sigs & wrs)
@@ -412,6 +421,7 @@ int main(void)
     notify_stop();
     if (notify_port)
         DeleteMsgPort(notify_port);
+    note_close();
     rexx_host_close(&rexx, rexx_cmd, 0);
     if (IntuitionBase)
         CloseLibrary((struct Library *)IntuitionBase);
