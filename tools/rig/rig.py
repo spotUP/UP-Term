@@ -57,7 +57,7 @@ Layout under build/rig/ (gitignored): sys.hdf (DH0:), boot/ (BOOTX:, boots
 first: assigns, mounts XCON:, starts wasabid), vtc/ (VTC:, the binaries
 under test), shots/.
 """
-import fcntl, hashlib, json, os, pathlib, re, shutil, signal, subprocess, sys, tempfile, time
+import contextlib, fcntl, hashlib, io, json, os, pathlib, re, shutil, signal, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import a1200_drift
 import paths
@@ -1275,6 +1275,61 @@ def build_drift(vtc):
             stale.append("%s/%s" % (USERLAND_STAGE, name))
     return stale
 
+# A refreshed file the running Amiga holds in memory (a library, device or handler) is not replaced by the copy: the rig
+# runs the old one until it boots again.
+HELD_SUFFIXES = (".library", ".device", ".handler")
+HELD_DRAWERS = ("libs/", "devs/", "l/", "ixp6/")
+GATE_STATE = {"busy": False, "sig": None}
+
+def held_in_memory(name):
+    return name.endswith(HELD_SUFFIXES) or name.startswith(HELD_DRAWERS)
+
+def gate_signature(vtc):
+    """(path, size, mtime) of every program_pairs file: unchanged since the last clean check = nothing to hash again."""
+    sig = []
+    for src, dst in program_pairs(vtc, ROOT / "build/amiga"):
+        for f in (src, dst):
+            try:
+                st = f.stat()
+                sig.append((str(f), st.st_size, st.st_mtime_ns))
+            except OSError:
+                sig.append((str(f), None, None))
+    return tuple(sig)
+
+def ensure_current(vtc=None):
+    """The one gate before every command to a rig: VTC: is hashed against the build (build_drift) and a drifted file is
+    refreshed (refresh_programs) before the command runs, so no check tests a stale binary (owner 2026-10-29: "we have lost a
+    lot of time testing with stale binaries"). Prints `[REFRESH] rig N: <count> file(s): <names>` on drift, nothing without.
+    A held-in-memory file (held_in_memory) needs a boot: a quiet running rig is rebooted (reboot(): stop flushes the
+    volumes), one with a command in flight (paths.long_run_active, or a command within WATCHDOG_QUIET s: the watchdog's own
+    guard) only gets a [WARN]. Returns the refreshed names."""
+    vtc = pathlib.Path(vtc) if vtc else RIG / "vtc"
+    if GATE_STATE["busy"] or not vtc.is_dir() or not (ROOT / "build/amiga").is_dir():
+        return []
+    GATE_STATE["busy"] = True
+    try:
+        sig = gate_signature(vtc)
+        if sig == GATE_STATE["sig"]:
+            return []
+        done = []
+        if build_drift(vtc):
+            with contextlib.redirect_stdout(io.StringIO()):
+                done = refresh_programs(vtc, ROOT / "build/amiga")
+            names = ", ".join(done[:4]) + (", ..." if len(done) > 4 else "")
+            print("[REFRESH] rig %d: %d file(s): %s" % (paths.RIG_N, len(done), names))
+        GATE_STATE["sig"] = gate_signature(vtc)
+        if any(held_in_memory(n) for n in done) and mine():
+            last = paths.last_command()
+            if paths.long_run_active() or (last is not None and time.time() - last < WATCHDOG_QUIET):
+                print("[WARN] rig %d: a library, device or handler changed and a command is running; `rig.py reboot` "
+                      "when it is done" % paths.RIG_N)
+            else:
+                print("[REFRESH] rig %d: LIBS: changed, rebooting" % paths.RIG_N)
+                reboot([])
+        return done
+    finally:
+        GATE_STATE["busy"] = False
+
 def kit_restore():
     """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
     (RIG / "vtc/kit-restore").write_text("")
@@ -1420,11 +1475,12 @@ def reboot_args(given):
     except (OSError, ValueError):
         return []
 
-def reboot():
+def reboot(given=None):
     """Stop safely (stop() flushes the volumes) and start again on the same sys.hdf. A start clones DH0: from the master,
     which threw away what an install wrote: installer_rig's reboot check failed on the clone and a master build lost its
-    install (2026-10-27, RIG-REBOOT, MASTER-BUILD-NOREBOOT)."""
-    args = reboot_args(sys.argv[2:])
+    install (2026-10-27, RIG-REBOOT, MASTER-BUILD-NOREBOOT). `given` replaces this command line's arguments (ensure_current
+    passes [], as its caller's argv is not rig.py's)."""
+    args = reboot_args(sys.argv[2:] if given is None else given)
     stop()
     # a new process: the machine flags are read from sys.argv when rig.py is loaded
     subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + args, check=True)
@@ -1775,6 +1831,10 @@ def dopus():
     import dopus_rig
     dopus_rig.main()
 
+# the commands that talk to a running rig; start, setup and install bring VTC: to the build themselves, stop, status,
+# reboot, kit-restore, logwatch and watchdog send it nothing. Every other path to a rig (ami.py, the scripts) passes ami.req.
+GATED = ("dbg", "dbgbreak", "wasabi", "muforce", "aga", "aga256", "rtg", "dopus")
+
 def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
@@ -1789,6 +1849,8 @@ def main(argv):
         print(__doc__, file=sys.stderr)
         print("rig.py: %s" % ("no command" if len(argv) < 2 else "unknown command %r" % argv[1]), file=sys.stderr)
         return 2
+    if argv[1] in GATED:
+        ensure_current()
     cmds[argv[1]]()
     return 0
 

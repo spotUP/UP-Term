@@ -489,10 +489,22 @@ def _pointer(c):
     return struct.pack('>HH', x & 0xFFFF, (y // scr[0]['row_scale']) & 0xFFFF)
 
 
+def gate():
+    """rig.ensure_current before a command goes to a local rig: VTC: hashed against the build, a drifted file refreshed
+    (a stale binary has cost many test runs). Not for a ping, an A1200 (AMI_HOST) or a tree without a build."""
+    if os.environ.get('AMI_HOST'): return
+    main_mod = sys.modules.get('__main__')
+    rigmod = sys.modules.get('rig') or (main_mod if hasattr(main_mod, 'ensure_current') else None)
+    if rigmod is None:
+        import rig as rigmod
+    rigmod.ensure_current()
+
+
 def req(code, payload=b'', timeout=150):
     """One legacy operation, answered in the legacy shape. timeout: the connection's silence limit."""
     m = _m()
     paths.cap_fsuae_log()   # every rig script passes here: the FS-UAE log never outgrows paths.FSUAE_LOG_MAX
+    if code != 0x01: gate()   # every command to a rig passes here too: VTC: is current before it runs
     with _conn(timeout, touch=code != 0x01) as c:   # a ping (rig.py status, the watchdog) is not use
         try:
             if code == 0x01: return c.banner.encode('latin-1')

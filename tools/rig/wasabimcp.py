@@ -44,6 +44,9 @@ def main():
     if srv is None:
         sys.stderr.write("[ERROR] wasabi is not built: run `make wasabi` in %s\n" % paths.VTCON)
         return 1
+    if not (ENV.get("WASABI_HOST") or ENV.get("AMI_HOST")):   # a local rig: VTC: current before the session starts
+        import rig
+        rig.ensure_current()
     os.environ.update(WASABI_HOST=host, WASABI_PORT=str(port), WASABI_KEY=key)
     os.execv(sys.executable, [sys.executable, str(srv)])
 
