@@ -757,6 +757,19 @@ class UhcAddOn(unittest.TestCase):
                      'Echo >>S:User-Startup', 'SetEnv'):
             self.assertNotIn(gone, text, gone)
 
+    def test_a_missing_amissl_is_named_before_curl_runs(self):
+        """Regression (2026-10-29, rig 9): without LIBS:amisslmaster.library the AmiSSL-linked curl cannot start, and the
+        script blamed 'network or server'. The check comes before every curl call and ends with rc 20."""
+        L = self.dos()
+        chk = self.at(L, 'Version >NIL: LIBS:amisslmaster.library 5')
+        self.assertEqual(L[chk + 1].strip(), 'If WARN')
+        self.assertIn('[ERROR]', L[chk + 2])
+        self.assertIn('AmiSSL', L[chk + 2])
+        self.assertIn('Install-AmiSSL', L[chk + 3])
+        self.assertEqual(L[chk + 4].strip(), 'Quit 20')
+        first_curl = min(i for i, l in enumerate(L) if l.strip().startswith('UP-Term:bin/curl '))
+        self.assertTrue(chk < first_curl)
+
     def test_uhcinstall_never_runs_over_an_existing_uhc(self):
         L = self.dos()
         S = [l.strip() for l in L]

@@ -101,6 +101,16 @@ If NOT WARN
   EndIf
 EndIf
 If "$uhcmode" EQ fresh
+  ; UP-Term:bin/curl is linked against AmiSSL and cannot start without LIBS:amisslmaster.library: say so here, not as a
+  ; failed download further down.
+  If EXISTS UP-Term:bin/curl
+    Version >NIL: LIBS:amisslmaster.library 5
+    If WARN
+      Echo "[ERROR] UHC cannot be downloaded: UP-Term:bin/curl needs AmiSSL, and LIBS:amisslmaster.library version 5 or newer is not installed."
+      Echo "[ERROR] Run UP-Term:AmiSSL/Install-AmiSSL from the kit, then reboot and install again."
+      Quit 20
+    EndIf
+  EndIf
   ; uhcinstall needs aget or wget on the path (without either it stops with "Couldn't find aget or wget"). UP-Term
   ; ships neither: the author's own aget.os3 is fetched into a T: drawer and put on the path for this install.
   Which >NIL: aget
