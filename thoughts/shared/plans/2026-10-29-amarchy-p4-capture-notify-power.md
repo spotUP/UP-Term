@@ -107,7 +107,7 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   clipboard); `cap_arg_ok` beside `win_arg_ok` (config/keymap.c:246), KS_COMMODITY scope (keymap.c:120-135), prefix entry
   (keymap.c:217), `case KA_CAP` in do_row (amarchy.c:163). Bindings per D2, menu group `capture.*` rows, key viewer rows.
   Proof: `make test ONLY=keymap` cases: valid forms parse, `cap:foo` and `cap:` refused, viewer lists the rows.
-- [ ] R4.8 note_core.c/.h (portable): bounded queue (max shown per D5), slot positions for a corner and a usable box, expiry
+- [x] R4.8 (fa35244b - tests/test_note_core.c 79 checks; ONLY=note_core; stub proof: expiry off by one fails 5 checks) note_core.c/.h (portable): bounded queue (max shown per D5), slot positions for a corner and a usable box, expiry
   by seconds, oldest dropped when full, dismiss by hit-test, `title|body|seconds` parse with escaping of `|`, length limits.
   Host tests tests/test_note_core.c: stacking y positions for 1..N, expiry at exactly t0+timeout, 0 = sticky until click,
   overflow drops oldest, hit-test, malformed lines refused with rc.
@@ -136,7 +136,7 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   NOTES last= "Safe to switch off".
 - [ ] R4.14 Reboot row: already `detach:Reboot` (dist/keymap:264). Check only: row present in the system menu, confirm per D8.
   Never pressed on the rig except one deliberate row (memory: never reset a rig mid-write: command done + 5 s quiet first).
-- [~] R4.15 (shots=N done: REXX_HOST_OUT 96 -> 160, rig asserts STATUS > 95 bytes ending shots=N; notes=N waits for R4.8; the AMARCHY_SHOTS sentinel is not added: sentinel_dos.c is not linked into Amarchy and STATUS shots= is the observable) STATUS adds ` shots=N notes=N` (amarchy.c:143-161), and the bar/tick keys P2 adds stay; also `am_sentinel("AMARCHY_SHOTS")`.
+- [~] R4.15 (shots=N done: REXX_HOST_OUT 96 -> 160, rig asserts STATUS > 95 bytes ending shots=N; notes=N waits for R4.9a: note_core has the count (note_q.posted) but the queue instance and a poster live in note.c, so a STATUS notes= now would be a dead key; the AMARCHY_SHOTS sentinel is not added: sentinel_dos.c is not linked into Amarchy and STATUS shots= is the observable) STATUS adds ` shots=N notes=N` (amarchy.c:143-161), and the bar/tick keys P2 adds stay; also `am_sentinel("AMARCHY_SHOTS")`.
   Proof: rig r4_status: both keys present and 0 at start (known-dead baseline, protocol section 3), non-zero after r4_screen.
 - [ ] R4.16 man page (man/amarchy.1: cap: kind, AMARCHY.NOTIFY verbs, amnotify, safe-off), installer copies amnotify +
   safe-off script, README key list (generated from dist/keymap), `make dist-check` rows.
