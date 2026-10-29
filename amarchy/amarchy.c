@@ -19,6 +19,7 @@
 #include "leaf.h"
 #include "rexx_host.h"
 #include "note.h"
+#include "tick.h"
 #include "clipwatch.h"
 #include "wblaunch.h"
 #include "menu_core.h"
@@ -143,13 +144,13 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N shots=N notes=N (about 123 bytes; REXX_HOST_OUT is 160) */
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N shots=N notes=N ticks=N (about 135 bytes; REXX_HOST_OUT is 160) */
 static void status_text(char *out, long cap)
 {
     char num[12];
-    static const char *const key[15] = { "hits=", " rows=", " enabled=", " active=", " wins=", " snaps=", " bar=", " draws=", " panels=",
-                                        " launches=", " raises=", " wbpens=", " wbrefused=", " shots=", " notes=" };
-    long val[15];
+    static const char *const key[16] = { "hits=", " rows=", " enabled=", " active=", " wins=", " snaps=", " bar=", " draws=", " panels=",
+                                        " launches=", " raises=", " wbpens=", " wbrefused=", " shots=", " notes=", " ticks=" };
+    long val[16];
     int i;
     val[0] = g_hits;
     val[1] = cx_nrows();
@@ -166,8 +167,9 @@ static void status_text(char *out, long cap)
     val[12] = (long)gt_dos_wb_refused;
     val[13] = shot_count();
     val[14] = note_posted();
+    val[15] = tick_count();
     out[0] = 0;
-    for (i = 0; i < 15; i++) {
+    for (i = 0; i < 16; i++) {
         cl_cat(out, key[i], cap);
         cl_ltoa(val[i], num);
         cl_cat(out, num, cap);
@@ -326,7 +328,7 @@ struct IntuitionBase *IntuitionBase;
 
 int main(void)
 {
-    ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, bs, bts;
+    ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, bs, bts, tks;
     int row, ev;
     struct RDArgs *rda;
     LONG args[1] = { 0 };
@@ -374,11 +376,14 @@ int main(void)
     wrs = wb_reply ? 1UL << wb_reply->mp_SigBit : 0;
     cw_start();                                 /* the clipboard history (Trigger > Clipboard history) */
     cws = cw_sigmask();
+    tick_hook(note_expire);
+    tick_open();                                /* the 1 s tick, before the bar and running without it */
+    tks = tick_sigmask();
     bar_open(g_dir);                            /* the status bar; 0 = no screen, the commodity runs without it */
     bs = bar_sigmask();
     bts = bar_timer_sigmask();
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | bs | bts | shot_region_sigmask() | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | bs | bts | tks | shot_region_sigmask() | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cxs)
@@ -398,6 +403,8 @@ int main(void)
             bar_serve();
         if (sigs & bts)
             bar_timer_serve(sigs);
+        if (sigs & tks)
+            tick_serve(sigs);
         if (sigs & cws)
             cw_changed();
         if (sigs & rxs)
@@ -416,6 +423,7 @@ int main(void)
         }
     }
     bar_close();
+    tick_close();
     act_menu_server_quit();
     cw_stop();
     notify_stop();

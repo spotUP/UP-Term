@@ -20,6 +20,8 @@ enum { BAR_BTN_LEFT = 1, BAR_BTN_RIGHT };
 /* The terminal action a right click on the agents segment fires: the hotkey super+l's (dist/keymap), so the bar and
  * the key start the agent the same way. */
 #define BAR_LAUNCH_MENUID "MENU_AGENT"
+/* The bar window's title: win_apply.c finds the bar on a screen by it (bar_usable), win_is_amarchy skips it. */
+#define BAR_TITLE "Amarchy bar"
 /* The node bar.c opens for the agents panel. */
 #define BAR_AGENT_NODE "agents"
 

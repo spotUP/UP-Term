@@ -226,6 +226,17 @@ static void strut_and_ours(void)
     CHECK_INT(win_strut(&mid, &s0), 0);                /* not at the bottom */
     bar.top = 0; bar.height = 600;
     CHECK_INT(win_strut(&bar, &s0), 0);                /* fills the screen from the top: not a bar */
+    {                                                  /* usable area: with the bar's strut and without (bar_usable) */
+        win_screen with = s0;
+        win_box u;
+        win_usable(&s0, &u);
+        CHECK_INT(u.top, s0.title);
+        CHECK_INT(u.height, s0.height - s0.title);
+        with.bottom = 16;
+        win_usable(&with, &u);
+        CHECK_INT(u.height, s0.height - s0.title - 16);
+        CHECK_INT(u.width, s0.width);
+    }
     CHECK(win_is_amarchy("Amarchy"));
     CHECK(win_is_amarchy("Amarchy bar"));
     CHECK(!win_is_amarchy("Amarchy bar2"));

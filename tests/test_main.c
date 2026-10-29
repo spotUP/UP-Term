@@ -44,6 +44,7 @@ void suite_desk(void);
 void suite_pkgs(void);
 void suite_job(void);
 void suite_bar(void);
+void suite_tick(void);
 void suite_note_core(void);
 void suite_menusrv(void);
 void suite_menu_text(void);
@@ -130,6 +131,7 @@ static const h_suite suites[] = {
     { "pkgs", suite_pkgs },
     { "job", suite_job },
     { "bar", suite_bar },
+    { "tick", suite_tick },
     { "note_core", suite_note_core },
     { "menusrv", suite_menusrv },
     { "menu_text", suite_menu_text },

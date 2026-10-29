@@ -47,6 +47,10 @@ void win_work_area(const win_screen *s, int gap, int *x0, int *y0, int *w, int *
  * on the screen's bottom edge (the Amarchy bar), else 0. */
 int win_strut(const win_box *b, const win_screen *s);
 
+/* The usable area of a screen: from below its title bar to above its bottom reserve, full width (what a notice or a
+ * window may use without covering the title bar or the Amarchy bar). Fills b's left, top, width and height only. */
+void win_usable(const win_screen *s, win_box *b);
+
 /* 1 when the title is one of Amarchy's own windows ("Amarchy": menu, viewer, panel; "Amarchy bar": the bar): never a
  * target of the win verbs, never tiled. */
 int win_is_amarchy(const char *title);

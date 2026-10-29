@@ -181,6 +181,14 @@ int win_strut(const win_box *b, const win_screen *s)
     return 0;
 }
 
+void win_usable(const win_screen *s, win_box *b)
+{
+    b->left = 0;
+    b->top = s->title;
+    b->width = s->width;
+    b->height = s->height - s->title - s->bottom;
+}
+
 int win_is_amarchy(const char *title)
 {
     return title && (!strcmp(title, "Amarchy") || !strcmp(title, "Amarchy bar"));

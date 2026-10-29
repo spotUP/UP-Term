@@ -18,17 +18,16 @@
 #include "bar_core.h"
 #include "act.h"
 #include "cxdesc.h"
-#include "gthemes_dos.h"
 #include "poll_timer.h"
+#include "themewin.h"
 #include "menu_theme.h"
 #include "../config/keymap.h"
 #include "../config/upconf.h"
 #include "../handler/frontscr.h"
 #include "../handler/upreq.h"
-#include "../render/pens_amiga.h"
 
 extern struct IntuitionBase *IntuitionBase;
-struct GfxBase *GfxBase;
+extern struct GfxBase *GfxBase;      /* themewin.c opens and owns it */
 struct Library *LayersBase;
 
 #define BAR_PAD 4
@@ -40,11 +39,7 @@ struct Library *LayersBase;
 
 static struct Window *g_win;
 static struct Screen *g_scr;
-static struct ColorMap *g_cm;
 static bar g_bar;
-static long g_pen[MT_ROLES];
-static int g_pen_got[MT_ROLES];
-static int g_have_gfx;
 static char g_dir[128];
 static long g_draws, g_panels, g_launches, g_raises;
 static poll_timer g_poll;
@@ -54,46 +49,10 @@ static int g_have_layers;
  * is borderless and never moves, so the box taken at open stays right. */
 static volatile int g_live, g_top, g_h;
 
-static void pens_get(void)
-{
-    uc_u32 rgb[MT_ROLES];
-    gtheme th;
-    int r;
-    gt_dos_load_current(&th);
-    menu_theme_roles_gui(&th, rgb);
-    for (r = 0; r < MT_ROLES; r++) {
-        long p = vr_pen_obtain(g_cm, rgb[r]);
-        g_pen_got[r] = p >= 0;
-        g_pen[r] = p >= 0 ? p : (r == MT_BG ? 0 : 1);
-    }
-}
-
-static void pens_release(void)
-{
-    int r;
-    for (r = 0; r < MT_ROLES; r++)
-        if (g_pen_got[r]) {
-            ReleasePen(g_cm, (ULONG)g_pen[r]);
-            g_pen_got[r] = 0;
-        }
-}
-
-static int text_px(struct RastPort *rp, const char *s)
-{
-    return TextLength(rp, (STRPTR)s, (ULONG)strlen(s));
-}
-
 static void draw_seg(const bar_seg *s)
 {
-    struct RastPort *rp = g_win->RPort;
-    int h = g_win->Height;
-    int base = rp->TxBaseline + 1;
-    SetAPen(rp, (ULONG)g_pen[MT_BG]);
-    RectFill(rp, s->x, 0, s->x + s->w - 1, h - 1);
-    SetAPen(rp, (ULONG)g_pen[MT_TEXT]);
-    SetBPen(rp, (ULONG)g_pen[MT_BG]);
-    Move(rp, s->x + g_bar.pad, base);
-    Text(rp, (STRPTR)s->text, (ULONG)strlen(s->text));
+    tw_fill(g_win, s->x, 0, s->x + s->w - 1, g_win->Height - 1, MT_BG);
+    tw_text(g_win, s->x + g_bar.pad, s->text, MT_TEXT, MT_BG);
     g_draws++;
 }
 
@@ -107,10 +66,8 @@ static void paint_dirty(void)
 /* every segment and the gaps between them: first paint and a refresh */
 static void paint_all(void)
 {
-    struct RastPort *rp = g_win->RPort;
     int i;
-    SetAPen(rp, (ULONG)g_pen[MT_BG]);
-    RectFill(rp, 0, 0, g_win->Width - 1, g_win->Height - 1);
+    tw_fill(g_win, 0, 0, g_win->Width - 1, g_win->Height - 1, MT_BG);
     for (i = 0; i < g_bar.n; i++)
         g_bar.seg[i].dirty = 1;
     paint_dirty();
@@ -124,11 +81,7 @@ int bar_open(const char *dir)
         return 1;
     if (!IntuitionBase)
         return 0;
-    if (!GfxBase) {
-        GfxBase = (struct GfxBase *)OpenLibrary((STRPTR) "graphics.library", 39);
-        g_have_gfx = GfxBase != 0;
-    }
-    if (!GfxBase)
+    if (!tw_libs_open())
         return 0;
     if (!LayersBase) {
         LayersBase = OpenLibrary((STRPTR) "layers.library", 36);
@@ -139,22 +92,20 @@ int bar_open(const char *dir)
     g_scr = LockPubScreen((STRPTR) "Workbench");
     if (!g_scr)
         g_scr = LockPubScreen(0);
-    if (!g_scr)
+    if (!g_scr) {
+        tw_libs_close();
         return 0;
-    g_cm = g_scr->ViewPort.ColorMap;
+    }
     font = g_scr->RastPort.Font;
     h = (font ? font->tf_YSize : 8) + 2;
-    pens_get();
     bar_init(&g_bar, g_scr->Width, BAR_PAD, BAR_GAP);
-    bar_add(&g_bar, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", text_px(&g_scr->RastPort, "Agents"));
+    bar_add(&g_bar, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", TextLength(&g_scr->RastPort, (STRPTR) "Agents", 6));
     bar_layout(&g_bar, g_scr->Width);
-    g_win = OpenWindowTags(0, WA_Left, 0, WA_Top, g_scr->Height - h, WA_Width, g_scr->Width, WA_Height, h,
-                           WA_Title, (ULONG)"Amarchy bar", WA_Borderless, TRUE, WA_Activate, FALSE, WA_SimpleRefresh, TRUE, WA_RMBTrap, TRUE,
-                           WA_PubScreen, g_scr, WA_IDCMP, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW, TAG_DONE);
+    g_win = tw_open(g_scr, 0, g_scr->Height - h, g_scr->Width, h, BAR_TITLE, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW);
     if (!g_win) {
-        pens_release();
         UnlockPubScreen(0, g_scr);
         g_scr = 0;
+        tw_libs_close();
         return 0;
     }
     paint_all();
@@ -172,11 +123,10 @@ void bar_close(void)
     g_live = 0;
     pt_close(&g_poll);
     if (g_win) {
-        CloseWindow(g_win);
+        tw_close(g_win);
         g_win = 0;
     }
     if (g_scr) {
-        pens_release();
         UnlockPubScreen(0, g_scr);
         g_scr = 0;
     }
@@ -185,16 +135,12 @@ void bar_close(void)
         LayersBase = 0;
         g_have_layers = 0;
     }
-    if (g_have_gfx) {
-        CloseLibrary((struct Library *)GfxBase);
-        GfxBase = 0;
-        g_have_gfx = 0;
-    }
+    tw_libs_close();
 }
 
 unsigned long bar_sigmask(void)
 {
-    return g_win ? 1UL << g_win->UserPort->mp_SigBit : 0;
+    return g_win ? tw_sigmask() : 0;
 }
 
 unsigned long bar_timer_sigmask(void)
@@ -262,14 +208,15 @@ static void act_launch(void)
 
 void bar_serve(void)
 {
-    struct IntuiMessage *m;
+    struct Window *w;
+    unsigned long cls;
+    unsigned code;
+    int x, y;
     if (!g_win)
         return;
-    while ((m = (struct IntuiMessage *)GetMsg(g_win->UserPort)) != 0) {
-        ULONG cls = m->Class;
-        UWORD code = m->Code;
-        WORD x = m->MouseX;
-        ReplyMsg((struct Message *)m);
+    while (tw_next(&w, &cls, &code, &x, &y)) {
+        if (w != g_win)
+            continue;
         if (cls == IDCMP_REFRESHWINDOW) {
             BeginRefresh(g_win);
             paint_all();

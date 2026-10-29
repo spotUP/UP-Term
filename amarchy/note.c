@@ -1,21 +1,26 @@
 /* note: the AMARCHY.NOTIFY port and the one queue instance (note.h). Every verb goes through note_verb, whether
  * the sender is the port, the NOTES verb on AMARCHY or later a menu row. */
-#include <dos/dos.h>
-#include <proto/dos.h>
 #include "note.h"
 #include "note_core.h"
+#include "tick.h"
 #include "rexx_host.h"
 
 static struct rexx_host host;
 static note_q queue;
 static int inited;
 
-/* Seconds since the Amiga epoch, the clock note_core is given. */
+/* Seconds since the Amiga epoch, the clock note_core is given (the commodity tick's clock). */
 static long now_secs(void)
 {
-    struct DateStamp ds;
-    DateStamp(&ds);
-    return ds.ds_Days * 86400L + ds.ds_Minute * 60L + ds.ds_Tick / TICKS_PER_SECOND;
+    return tick_epoch();
+}
+
+/* The commodity tick hook (tick_hook): notices whose time is up go. */
+void note_expire(long tick_secs)
+{
+    (void)tick_secs;
+    if (inited)
+        note_tick(&queue, now_secs());
 }
 
 long note_run(const char *cmd, char *out)
