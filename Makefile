@@ -667,6 +667,16 @@ $(BUILD)/amiga/Claude: $(CLAUDE_PORTABLE) $(UPTERM_VERSION_H) claude/net_amiga.c
 	$(VC) -dontwarn=153,65 $(CLAUDE_TLS_INC) -c -o $(BUILD)/amiga/obj/claude/tls.o $(CLAUDE_TLS)
 	$(VC) -I$(BUILD)/amiga -Dmain=up_main -dontwarn=153,65 -o $@ $(CLAUDE_PORTABLE) $(BUILD)/amiga/obj/claude/net_amiga.o $(BUILD)/amiga/obj/claude/tls.o $(BUILD)/amiga/obj/cpuchk-Claude.o
 
+# P2 probes (R2.1 network query, R2.2 idle counter), plans/2026-10-29-amarchy-p2-status-bar.md
+$(BUILD)/amiga/netprobe: tools/probes/p2/netprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -o $@ tools/probes/p2/netprobe.c
+
+# P2 probes (R2.1 network query, R2.2 idle counter), plans/2026-10-29-amarchy-p2-status-bar.md
+$(BUILD)/amiga/idleprobe: tools/probes/p2/idleprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -I$(VTCON_NETINCLUDE) -o $@ tools/probes/p2/idleprobe.c
+
 # The reachability probe (ledger V3), an ordinary program with vbcc's startup.
 $(BUILD)/amiga/reach: tests/amiga/reach.c
 	@mkdir -p $(BUILD)/amiga
