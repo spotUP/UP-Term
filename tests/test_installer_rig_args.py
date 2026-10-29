@@ -43,6 +43,15 @@ class ParseArgs(unittest.TestCase):
                 irg.rig_start()
             rig.assert_called_once_with("start", "--purpose", "vtcon-05: d9", "--no-dopus")
 
+    def test_a500_reaches_the_rig_start(self):
+        # D10: the 68000 half of the dopus case needs a 68000 rig; --a500 used to stop as an unknown argument
+        self.addCleanup(irg.PURPOSE.clear)
+        self.addCleanup(irg.RIG_FLAGS.clear)
+        irg.parse_args(["ONLY", "addon-dopus", "--no-dopus", "--a500", "--purpose", "vtcon-05: d10"])
+        with mock.patch.object(irg, "rig") as rig:
+            irg.rig_start()
+        rig.assert_called_once_with("start", "--purpose", "vtcon-05: d10", "--no-dopus", "--a500")
+
     def test_purpose_without_text_stops(self):
         with self.assertRaises(SystemExit):
             irg.parse_args(["--purpose"])

@@ -1393,7 +1393,7 @@ def _migrate(case, ck):
 
 
 PURPOSE = []   # ["--purpose", text] for every rig start (the FS-UAE window title)
-RIG_FLAGS = []   # other rig.py start options from the command line (--no-dopus), kept apart from PURPOSE
+RIG_FLAGS = []   # other rig.py start options from the command line (--no-dopus, --a500), kept apart from PURPOSE
 
 
 def set_purpose(text):
@@ -1418,7 +1418,7 @@ def parse_args(argv):
             flags.add(a)
         elif a == "--max":   # max is the rig default (rig.py): accepted so the rig.py line can be reused
             pass
-        elif a == "--no-dopus":   # the rig is started without Directory Opus (the dopus add-on installs it)
+        elif a in ("--no-dopus", "--a500"):   # without Directory Opus (the dopus add-on installs it); a 68000 A500
             if a not in RIG_FLAGS:
                 RIG_FLAGS.append(a)
         elif a == "--purpose":
