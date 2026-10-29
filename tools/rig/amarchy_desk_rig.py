@@ -7,10 +7,12 @@ gt_dos_select (there is no `desk` ARexx verb or hotkey action yet: R1.12). The s
   2. Master switch off (the default): pick a theme. AMARCHY_DESKS must not rise, no desktop prefs file may change,
      T:amarchy-revert must not appear.
   3. Master switch on (desktop-theme = on in ENV:Amarchy/prefs): pick another theme. AMARCHY_DESKS +1, AMARCHY_DESKMASK 15;
-     ENV:Sys palette, wbpattern, pointer, font equal the bytes desk_core makes for that theme (tools/rig/desk_expect.c,
-     built on the host from the same sources); Workbench colours 0-3 changed; T:amarchy-revert holds the step-1 bytes of every
+     the THEMED FIELDS of ENV:Sys palette, wbpattern, pointer, font equal those of the bytes desk_core makes for that theme
+     (tools/rig/desk_expect.c, built on the host from the same sources, prints the fields of both files); Workbench colours 0-3 changed; T:amarchy-revert holds the step-1 bytes of every
      file that existed; ENVARC:Sys unchanged (persist is R1.10).
-The stock editors rewrite ENV:Sys files after USE, so the byte compare settles first and names every differing offset.
+The stock editors rewrite ENV:Sys files after USE in their own layout (the plan: USE writes ROOT, DRAWER and SCREEN always),
+so the files settle first and only the themed fields are compared; byte exactness of desk_core stays with tests/test_desk.c.
+A differing field prints its name, the expected value and the got value.
 
 Rig up (UPTERM_RIG=<n> tools/rig/rig.py start --max --fresh), Amarchy running with this branch's binaries.
 Run: UPTERM_RIG=3 python3 tools/rig/amarchy_desk_rig.py
@@ -53,6 +55,14 @@ def wb_colours():
         if m and int(m.group(1)) < 4:
             cols[int(m.group(1))] = ''.join(x.zfill(2) for x in m.groups()[1:])
     return cols
+
+
+def wb_depth():
+    for l in c.run('T:wbpens')[1].splitlines():
+        m = re.match(r'DEPTH (\d+)', l.strip())
+        if m:
+            return int(m.group(1))
+    return 2
 
 
 def settle(names):
@@ -99,19 +109,44 @@ def pick(up=None):
     return rows[sel].split(' (')[0], up
 
 
-def expect(theme, part, extra):
+def desk_expect_exe():
     exe = os.path.join(tempfile.gettempdir(), 'desk_expect_rig')
-    if not os.path.exists(exe):
-        srcs = ['tools/rig/desk_expect.c', 'amarchy/desk_core.c', 'amarchy/gthemes_core.c', 'handler/be32.c',
-                'config/upconf.c', 'config/upconf_rows.c']
-        subprocess.check_call(['cc', '-std=c89', '-o', exe] + [os.path.join(ROOT, s) for s in srcs])
+    srcs = ['tools/rig/desk_expect.c', 'amarchy/desk_core.c', 'amarchy/gthemes_core.c', 'handler/be32.c',
+            'config/upconf.c', 'config/upconf_rows.c']
+    paths = [os.path.join(ROOT, s) for s in srcs]
+    if not os.path.exists(exe) or os.path.getmtime(exe) < max(os.path.getmtime(p) for p in paths):
+        subprocess.check_call(['cc', '-std=c89', '-o', exe] + paths)
+    return exe
+
+
+def expect(theme, part, extra):
+    exe = desk_expect_exe()
     return subprocess.check_output([exe, os.path.join(THEMES, theme + '.theme'), part] + extra)
 
 
-def diff_offsets(a, b):
-    n = min(len(a), len(b))
-    d = [i for i in range(n) if a[i] != b[i]]
-    return '%d bytes differ (len %d vs %d), first at %s' % (len(d), len(a), len(b), d[:8])
+def fields(part, data, ncol=8):
+    """{field: value} of the themed fields of a prefs file, parsed by desk_expect (the same parser for expected and got)."""
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(data)
+    try:
+        out = subprocess.run([desk_expect_exe(), '-', 'fields', part, f.name, str(ncol)], capture_output=True)
+    finally:
+        os.unlink(f.name)
+    if out.returncode:
+        return None
+    return dict(l.split(' ', 1) for l in out.stdout.decode('latin-1').splitlines())
+
+
+def compare(part, got, want, what, ncol=8):
+    """One [OK]/[FAIL] for a part: every themed field of `want` against `got`; each difference names field, expected, got."""
+    if got is None:
+        return say(False, what, 'file missing')
+    g, w = fields(part, got, ncol), fields(part, want, ncol)
+    if g is None or w is None:
+        return say(False, what, 'cannot parse the %s file (%s)' % (part, 'got' if g is None else 'expected'))
+    diffs = ['%s: expected %s got %s' % (k, w[k], g.get(k, '<absent>')) for k in w if g.get(k) != w[k]]
+    print('[INFO] %s: %d themed fields compared' % (part, len(w)))
+    return say(not diffs, what, '; '.join(diffs[:12]))
 
 
 def main():
@@ -120,7 +155,10 @@ def main():
         return 1
     g.close_menu()
     ami.put(os.path.join(ROOT, 'build', 'amiga', 'wbpens'), 'T:wbpens')
-    # a font the theme can name must exist for the font part; the expectation helper checks a local FONTS: stand-in
+    # the rig image has no pointer.prefs: seed ENV:Sys with the OS 3.2.2 file (tests/data/desk, the host golden) as the baseline
+    if sysfile('ENV', 'pointer') is None and sysfile('ENVARC', 'pointer') is None:
+        ami.put(os.path.join(ROOT, 'tests', 'data', 'desk', 'pointer-os322.prefs'), 'ENV:Sys/pointer.prefs')
+        print('[INFO] seeded ENV:Sys/pointer.prefs from tests/data/desk/pointer-os322.prefs')
     base = snapshot()
     cols0 = wb_colours()
     print('[INFO] baseline Workbench colours %s; ENV:Sys %s' % (cols0, {n: (len(base[('ENV', n)]) if base[('ENV', n)] else None) for n in SYS_FILES}))
@@ -147,7 +185,8 @@ def main():
     if re.search(r'^\s*desktop-theme\s*=', saved, re.M):
         new = re.sub(r'^(\s*desktop-theme\s*=).*$', r'\1 on', saved, flags=re.M)
     else:
-        new = saved + 'desktop-theme = on\n'
+        # the keys belong to "[profile default]" (amconf_core.h); a key before the header is ignored
+        new = saved + ('' if re.search(r'^\[profile default\]', saved, re.M) else '[profile default]\n') + 'desktop-theme = on\n'
     with tempfile.NamedTemporaryFile(delete=False) as f:
         f.write(new.encode('latin-1'))
     ami.put(f.name, PREFS)
@@ -159,20 +198,30 @@ def main():
     say(n_env('AMARCHY_DESKS') == desks0 + 1, 'on: AMARCHY_DESKS +1', 'was %r now %r' % (desks0, t.env('AMARCHY_DESKS')))
     say(t.env('AMARCHY_DESKMASK') == '15', 'on: AMARCHY_DESKMASK 15', t.env('AMARCHY_DESKMASK'))
     got = settle(SYS_FILES)
-    ncol = 8
-    want = {'palette': expect(name2, 'palette', [str(ncol)]),
-            'wbpattern': expect(name2, 'wbpattern', ['3'])}
+    depth = wb_depth()
+    ncol = 8 if depth >= 3 else 4
+    print('[INFO] Workbench depth %d: palette compared at %d colours' % (depth, ncol))
+    compare('palette', got['palette'], expect(name2, 'palette', [str(ncol)]),
+            'on: ENV:Sys/palette.prefs themed fields equal desk_core output', ncol)
+    compare('wbpattern', got['wbpattern'], expect(name2, 'wbpattern', [str(min(depth, 3))]),
+            'on: ENV:Sys/wbpattern.prefs ROOT and DRAWER fields equal desk_core output')
     ptr = base_on[('ENV', 'pointer')] or base_on[('ENVARC', 'pointer')]
-    for n, w in want.items():
-        say(got[n] == w, 'on: ENV:Sys/%s.prefs equals desk_core output' % n,
-            'missing' if got[n] is None else diff_offsets(got[n], w))
-    if ptr:
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(ptr)
+    w = expect(name2, 'pointer', [f.name])
+    os.unlink(f.name)
+    compare('pointer', got['pointer'], w, 'on: ENV:Sys/pointer.prefs RGB tables equal desk_core output')
+    fbase = base_on[('ENV', 'font')] or base_on[('ENVARC', 'font')]
+    fdir = tempfile.mkdtemp()  # no theme names a font here; an empty FONTS: stand-in keeps the user's name and size
+    if fbase:
         with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(ptr)
-        w = expect(name2, 'pointer', [f.name])
+            f.write(fbase)
+        w = expect(name2, 'font', [f.name, fdir])
         os.unlink(f.name)
-        say(got['pointer'] == w, 'on: ENV:Sys/pointer.prefs equals desk_core output',
-            'missing' if got['pointer'] is None else diff_offsets(got['pointer'], w))
+    else:
+        w = expect(name2, 'font', ['-', fdir])
+    os.rmdir(fdir)
+    compare('font', got['font'], w, 'on: ENV:Sys/font.prefs WBFONT pens, modes, name and size equal desk_core output')
     cols = wb_colours()
     print('[INFO] Workbench colours before %s after %s' % (cols_on, cols))
     say(cols != cols_on, 'on: Workbench colours 0-3 changed live')
