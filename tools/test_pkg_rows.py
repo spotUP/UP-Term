@@ -22,7 +22,14 @@ def run(argv):
     return rc, out.getvalue()
 
 
+# bitchx is the feed package these cases drive; a ports checkout on a branch older than its feed fields
+# (b832339) makes pkg_rows answer "no _FEED_ID" with rc 0, which is no drift check at all
+RECIPE = PORTS / 'pkgs/bitchx/recipe.mk'
+HAS_FEED = RECIPE.exists() and 'bitchx_FEED_ID' in RECIPE.read_text(errors='replace')
+
+
 @unittest.skipUnless((PORTS / 'Makefile').exists(), 'upterm-ports not found (set UPTERM_PORTS)')
+@unittest.skipUnless(HAS_FEED, 'upterm-ports at %s has no bitchx_FEED_ID (a branch before b832339): set UPTERM_PORTS to a current checkout' % PORTS)
 class Check(unittest.TestCase):
     def copy(self, d):
         for n in ('dist', 'Makefile'):
