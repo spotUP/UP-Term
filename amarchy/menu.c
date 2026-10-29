@@ -377,6 +377,7 @@ static int menu_levels(const char *start)
         if (i) {                               /* a typed key: grow or shorten the filter */
             int l = (int)strlen(filter);
             if (i == 8 || i == 127 || i == UI_HOTKEY_LEFT) {
+                /* libupkgui ui_hotkey reports no auto-repeat flag, so this path keeps the time guard */
                 int act = mn_back_rep(&bsg, at_ticks(), filter, node);
                 char up[KM_ID * 2];
                 if (act == MN_BACK_NONE)

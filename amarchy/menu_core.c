@@ -82,14 +82,17 @@ void mn_bsguard_init(mn_bsguard *g)
     g->last = -1000000L;
 }
 
+int mn_back_held(int repeat, const char *filter, const char *node)
+{
+    int act = mn_back(1, filter, node);
+    return (repeat && act != MN_BACK_DROP_CHAR) ? MN_BACK_NONE : act;
+}
+
 int mn_back_rep(mn_bsguard *g, long now, const char *filter, const char *node)
 {
     long d = now - g->last;
-    int act = mn_back(1, filter, node);
     g->last = now;                         /* a held key keeps refreshing: it stays a repeat until released */
-    if (act != MN_BACK_DROP_CHAR && d >= 0 && d < MN_BS_REPEAT_TICKS)
-        return MN_BACK_NONE;
-    return act;
+    return mn_back_held(d >= 0 && d < MN_BS_REPEAT_TICKS, filter, node);
 }
 
 int mn_parent(const char *node, char *out, int n)

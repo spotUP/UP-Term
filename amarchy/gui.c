@@ -112,7 +112,7 @@ typedef struct gui {
     long late;                   /* blits that took longer than estimated */
     /* list */
     char node[KM_ID * 2], filter[KM_LABEL];
-    mn_bsguard bsg;                      /* MENU-BS-REPEAT */
+    int key_repeat;                      /* MENU-BS-REPEAT: the key being handled is an auto-repeat (IEQUALIFIER_REPEAT) */
     mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
     int *idx, cap, count;
     long *chip;                  /* per item of it: the 0xRRGGBB colour chip of a colour row, else -1 (lf_setting_rechip) */
@@ -955,7 +955,7 @@ static void key_list(gui *g, int k, int ch)
         set_sel(g, g->sel + g->g.visible);
         break;
     case K_BS:
-        act = mn_back_rep(&g->bsg, at_ticks(), g->filter, g->node);
+        act = mn_back_held(g->key_repeat, g->filter, g->node);
         if (act == MN_BACK_DROP_CHAR) {
             g->filter[l - 1] = 0;
             list_rebuild(g);
@@ -1111,8 +1111,9 @@ static void raw_key(gui *g, int code)
     }
 }
 
-static void vanilla_key(gui *g, int c)
+static void vanilla_key(gui *g, int c, int repeat)
 {
+    g->key_repeat = repeat;
     if (c == 27)
         key(g, K_ESC, 0, 0);
     else if (c == 13 || c == 10)
@@ -1179,12 +1180,12 @@ static void event_loop(gui *g)
         }
         while (!g->stop && (im = (struct IntuiMessage *)GetMsg(g->win->UserPort)) != 0) {
             ULONG cls = im->Class;
-            UWORD code = im->Code;
+            UWORD code = im->Code, qual = im->Qualifier;
             WORD mx = im->MouseX, my = im->MouseY;
             ReplyMsg((struct Message *)im);
             switch (cls) {
             case IDCMP_VANILLAKEY:
-                vanilla_key(g, code);
+                vanilla_key(g, code, (qual & IEQUALIFIER_REPEAT) != 0);
                 break;
             case IDCMP_RAWKEY:
                 if (!(code & IECODE_UP_PREFIX))
@@ -1531,7 +1532,6 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
 
     at_mark("start");
     memset(g, 0, sizeof *g);
-    mn_bsguard_init(&g->bsg);
     keep_setting = -1;
     lf_reset();
     mo_register();   /* MENU-TOGGLE: the menu hotkey again ends this menu; clears a stale Ctrl-C */

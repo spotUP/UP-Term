@@ -1897,6 +1897,12 @@ static void menu_levels_follow_the_ids_and_escape_goes_up(void)
         CHECK_INT(mn_back_rep(&bg, 1100, "", ""), MN_BACK_CLOSE);     /* released, a fresh press: closes */
         mn_bsguard_init(&bg);
         CHECK_INT(mn_back_rep(&bg, 5, "", "apps.tools"), MN_BACK_UP); /* a fresh press on empty goes up at once */
+        /* the drawn menu's exact signal: no time window, no double-tap penalty */
+        CHECK_INT(mn_back_held(1, "", ""), MN_BACK_NONE);
+        CHECK_INT(mn_back_held(1, "", "apps"), MN_BACK_NONE);
+        CHECK_INT(mn_back_held(1, "ab", ""), MN_BACK_DROP_CHAR);
+        CHECK_INT(mn_back_held(0, "", ""), MN_BACK_CLOSE);             /* fresh press 1 tick after the last: still closes */
+        CHECK_INT(mn_back_held(0, "", "apps"), MN_BACK_UP);
     }
 }
 

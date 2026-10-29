@@ -92,6 +92,9 @@ int mn_back(int bs, const char *filter, const char *node);
 /* MENU-BS-REPEAT: a held Backspace repeats. The repeat that empties the query must not be followed by one
  * that goes up or closes: only a fresh press (no Backspace handled within MN_BS_REPEAT_TICKS) may. now is
  * in 1/50 s ticks (any steady clock). mn_back_rep answers as mn_back(1, ...) or MN_BACK_NONE (ignore the key). */
+/* mn_back_held is the core: repeat is 1 when the key is an auto-repeat (the drawn menu reads it from
+ * IEQUALIFIER_REPEAT, exact). mn_back_rep derives repeat from timing for callers with no such signal. */
+int mn_back_held(int repeat, const char *filter, const char *node);
 #define MN_BS_REPEAT_TICKS 20
 #define MN_BACK_NONE 4
 typedef struct { long last; } mn_bsguard;
