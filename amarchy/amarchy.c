@@ -20,6 +20,7 @@
 #include "rexx_host.h"
 #include "note.h"
 #include "tick.h"
+#include "wbmode.h"
 #include "clipwatch.h"
 #include "wblaunch.h"
 #include "menu_core.h"
@@ -147,6 +148,30 @@ static int parse_int(const char *s)
 
 /* Signals of the bar's window and timer, read again whenever BAR ON or OFF changes them (0 while the bar is closed). */
 static ULONG g_bs, g_bts;
+static int g_wb_hold;   /* 1 while the windows wait for the Workbench's final mode (W43) */
+
+/* every window Amarchy opens at start: the status bar (the menu servers and AmTile open theirs on use) */
+static void start_windows(void)
+{
+    bar_open(g_dir);                            /* the status bar; 0 = no screen, the commodity runs without it */
+    g_bs = bar_sigmask();
+    g_bts = bar_timer_sigmask();
+}
+
+/* the 1 s tick while held: opens the windows once the Workbench runs the saved mode, or after the timeout */
+static void wb_gate(long now)
+{
+    int r;
+    if (!g_wb_hold)
+        return;
+    r = wbm_check(now);
+    if (r == WBM_WAIT)
+        return;
+    if (r == WBM_TIMEOUT)
+        PutStr((STRPTR)"Amarchy: the Workbench never reached the saved screen mode; opening the windows anyway\n");
+    g_wb_hold = 0;
+    start_windows();
+}
 
 /* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N wbpens=N wbrefused=N shots=N notes=N ticks=N,
  * the keys of status_core.c (a test holds them under REXX_HOST_OUT); BAR STATUS answers bar draws panels launches raises ticks. */
@@ -357,6 +382,7 @@ struct IntuitionBase *IntuitionBase;
 int main(void)
 {
     ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, tks;
+    int tick_open_ok;
     int row, ev;
     struct RDArgs *rda;
     LONG args[1] = { 0 };
@@ -406,11 +432,16 @@ int main(void)
     cws = cw_sigmask();
     tick_hook(note_expire);
     tick_hook(bar_tick);
-    tick_open();                                /* the 1 s tick, before the bar and running without it */
+    tick_open_ok = tick_open();                 /* the 1 s tick, before the bar and running without it */
     tks = tick_sigmask();
-    bar_open(g_dir);                            /* the status bar; 0 = no screen, the commodity runs without it */
-    g_bs = bar_sigmask();
-    g_bts = bar_timer_sigmask();
+    /* W43: no window before the Workbench is in its final mode (IPrefs resets it late; the reset cannot run while a
+     * foreign window is open). Ready now, or no tick to wait on: open at once; else the tick hook opens them. */
+    wbm_begin();
+    g_wb_hold = tick_open_ok && wbm_check(0) == WBM_WAIT;
+    if (!g_wb_hold)
+        start_windows();
+    else
+        tick_hook(wb_gate);
     while (!g_quit) {
         sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
