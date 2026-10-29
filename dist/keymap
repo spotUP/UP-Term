@@ -146,6 +146,7 @@ super+d           = rexx:UP-Term:Rexx/dopus-front.rexx       ; Bring Directory O
 ; super+z         = run:SYS:Prefs/Internet ; Internet preferences  | prefs
 super+help        = cap:region              ; Screenshot of a region | capture
 super+shift+help  = cap:screen              ; Screenshot of the screen | capture
+super+escape      = menu:system            ; Power and screen      | system
 super+ctrl+help   = cap:window              ; Screenshot of the window | capture
 ; super+shift+q   = run:Reboot             ; Reboot                | system
 ; Previous and next prompt (super+up, super+down) wait for an action id.
@@ -281,6 +282,7 @@ learn.keys         = Key bindings          | viewer
 learn.tutorial     = Tutorial              | menuid:MENU_TUTORIAL
 learn.help         = Slash command help    | menuid:MENU_HELP_SLASH
 learn.demo         = Demo tour             | slash:/demo
+system.safeoff     = Safe to switch off    | detach:Execute UP-Term:S/safe-off
 system.reboot      = Reboot                | detach:Reboot
 system.workbench   = Workbench screen      | slash:/screen workbench
 system.own         = Own screen            | slash:/screen own

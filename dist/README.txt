@@ -667,6 +667,11 @@ AMARCHY
   are taken; every other Left Amiga key reaches the program as before, and
   Left Amiga + M, Left Amiga + N, Left Amiga + the mouse and the two-Amiga
   reset keys are never touched.
+  Notices: amnotify TITLE [BODY] [SECONDS n] [BODYFILE file] (also amnotify
+  -t 3 Done "build ok") shows a short message from Amarchy, SECONDS 0 keeps it
+  until dismissed. Left Amiga + Esc opens the System menu; Safe to switch off
+  there runs UP-Term:S/safe-off, which flushes every disk (Reboot DRYRUN) and
+  then says "Safe to switch off" or "Not all disks answered".
   The keys it ships (generated from dist/keymap):
   [keys]
   Left Amiga + Space               Menu
@@ -749,6 +754,7 @@ AMARCHY
   Left Amiga + D                   Bring Directory Opus to front
   Left Amiga + Help                Screenshot of a region
   Left Amiga + Shift + Help        Screenshot of the screen
+  Left Amiga + ESCAPE              Power and screen
   Left Amiga + Ctrl + Help         Screenshot of the window
   [end keys]
   The quick menu (Left Amiga + Space) is a short list you filter by typing;

@@ -32,6 +32,7 @@ learn.keys        = U+F11C    ; fa-keyboard_o
 learn.tutorial    = U+F19D    ; fa-graduation_cap
 learn.help        = U+F059    ; fa-question_circle
 learn.demo        = U+F04B    ; fa-play
+system.safeoff    = U+F011    ; fa-power-off
 system.reboot     = U+F021    ; fa-refresh
 system.workbench  = U+F108    ; fa-desktop
 system.own        = U+F26C    ; fa-television

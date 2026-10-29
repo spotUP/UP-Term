@@ -1,8 +1,9 @@
 ; safe-off: tell the user whether every disk is written out (plan 2026-10-29-amarchy-p4-capture-notify-power.md R4.12).
-; Reboot DRYRUN flushes every volume and names each answer without restarting: rc 0 all answered, 5 one did not.
+; amnotify is called by full path: Install puts it in UP-Term:bin, which an Execute from the menu does not have on its path
+; (Reboot is in C:). Reboot DRYRUN flushes every volume and names each answer without restarting: rc 0 all answered, 5 one did not.
 Reboot DRYRUN >T:safeoff.txt
 If WARN
-  amnotify "Not all disks answered" BODYFILE T:safeoff.txt SECONDS 0
+  UP-Term:bin/amnotify "Not all disks answered" BODYFILE T:safeoff.txt SECONDS 0
 Else
-  amnotify "Safe to switch off" SECONDS 0
+  UP-Term:bin/amnotify "Safe to switch off" SECONDS 0
 EndIf
