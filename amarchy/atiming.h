@@ -13,6 +13,14 @@
 #include <dos/datetime.h>
 #include <proto/dos.h>
 
+/* DateStamp ticks (1/50 s) since midnight: the steady clock of the menu's Backspace repeat guard. */
+static long at_ticks(void)
+{
+    struct DateStamp ds;
+    DateStamp(&ds);
+    return ds.ds_Minute * 3000L + ds.ds_Tick;
+}
+
 static void at_mark(const char *tag)
 {
     char var[4], line[48];

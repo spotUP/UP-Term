@@ -117,6 +117,14 @@ def env(name):
     return out.strip() if rc == 0 else ''
 
 
+def term_profile():
+    """The theme the console tabs were last told to wear: the `[profile NAME]` of ENV:up-term/theme-active, written only
+    by gt_dos_term_send (the bridge the tabs' watch_worker reads; THEME-PREVIEW-SHELL)."""
+    rc, out = c.run('Type ENV:up-term/theme-active')
+    m = re.search(r'^\[profile ([^\]]+)\]', out, re.M) if rc == 0 else None
+    return m.group(1) if m else ''
+
+
 def theme_accent(name):
     """The accent of the shipped theme `name` as an (r, g, b) tuple, from dist/amarchy-themes."""
     t = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'dist', 'amarchy-themes', name + '.theme')
@@ -294,7 +302,7 @@ def one_preview(steps, allowed):
     lines unchanged); Esc out of the list draws the saved theme again. Returns (ok, detail)."""
     before = {p: theme_line(p) for p in PREFS}
     open_menu()
-    seen = []
+    seen, tabs = [], []
     try:
         st, _ = wait_stable(OPEN_SECS, what='open menu')
         for _ in range(style_downs()):
@@ -314,7 +322,9 @@ def one_preview(steps, allowed):
             drew, sel = env('AMARCHY_THEME'), int(env('AMARCHY_SEL'))
             under = rows[sel - shift].split(' (')[0] if 0 <= sel - shift < len(rows) else ''
             seen.append((under, drew, header_accent_pixels(theme_accent(drew)) if drew else 0))
+            tabs.append(term_profile())
         st, _ = step(g.ESC, 'Esc out of the theme list')
+        tabs_back = term_profile()
         back, back_head = env('AMARCHY_THEME'), header_accent_pixels(theme_accent(saved))
     except TimeoutError as e:
         g.close_menu()
@@ -324,6 +334,11 @@ def one_preview(steps, allowed):
     bad = strangers(allowed)
     if bad:
         return False, 'unexpected: ' + '; '.join(bad)
+    for (under, _, _), tab in zip(seen, tabs):
+        if tab.lower() != under.lower():
+            return False, 'cursor on %r but the console tabs were told %r (ENV:up-term/theme-active); walk %s' % (under, tab, tabs)
+    if tabs_back.lower() != saved.lower():
+        return False, 'Esc left the console tabs on %r, want the saved %r' % (tabs_back, saved)
     for under, drew, head in seen:
         if drew != under:
             return False, 'cursor on %r but the menu drew %r (AMARCHY_THEME); walk %s' % (under, drew, seen)
@@ -333,8 +348,8 @@ def one_preview(steps, allowed):
         return False, 'the preview saved a theme: before %s, after %s' % (before, after)
     if back != saved or back_head < 10:
         return False, 'Esc drew %r (header %d px), want the saved %r' % (back, back_head, saved)
-    return True, 'walked %s, Esc restored %s (header %d px), prefs unchanged' % (
-        ' '.join('%s/%dpx' % (d, h) for _, d, h in seen), saved, back_head)
+    return True, 'walked %s, Esc restored %s (header %d px), console tabs followed every move %s and Esc, prefs unchanged' % (
+        ' '.join('%s/%dpx' % (d, h) for _, d, h in seen), saved, back_head, tabs)
 
 
 def main():

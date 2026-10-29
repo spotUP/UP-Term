@@ -452,6 +452,31 @@ static void test_gthemes_scan(void)
     CHECK(!gt_path_name("gtheme:", nm, sizeof nm));
 }
 /* T9: walking Style > Theme recolours the menu in the row's theme; leaving the list restores the saved one */
+static char tp_sent[8][GT_NAME];
+static int tp_n;
+static void tp_send(const char *name)
+{
+    if (tp_n < 8)
+        strcpy(tp_sent[tp_n], name);
+    tp_n++;
+}
+
+/* THEME-PREVIEW-SHELL: every highlight move sends the row's theme to the console bridge; leaving the list restores the saved one */
+static void test_gthemes_preview_term(void)
+{
+    char nm[GT_NAME], drawn[GT_NAME] = "tokyo-night";
+    tp_n = 0;
+    CHECK(gt_preview_term("gtheme:nord", "tokyo-night", drawn, nm, sizeof nm, tp_send));
+    strcpy(drawn, nm);
+    CHECK(gt_preview_term("gtheme:ethereal", "tokyo-night", drawn, nm, sizeof nm, tp_send));
+    strcpy(drawn, nm);
+    CHECK(gt_preview_term("clip:3", "tokyo-night", drawn, nm, sizeof nm, tp_send));    /* cancel: back to the saved theme */
+    strcpy(drawn, nm);
+    CHECK(!gt_preview_term("clip:3", "tokyo-night", drawn, nm, sizeof nm, tp_send));   /* nothing changed: no write */
+    CHECK(tp_n == 3);
+    CHECK(!strcmp(tp_sent[0], "nord") && !strcmp(tp_sent[1], "ethereal") && !strcmp(tp_sent[2], "tokyo-night"));
+}
+
 static void test_gthemes_preview(void)
 {
     char nm[GT_NAME];
@@ -671,6 +696,7 @@ void suite_gthemes(void)
     test_gthemes_save_text();
     test_gthemes_select_name();
     test_gthemes_preview();
+    test_gthemes_preview_term();
     test_gthemes_fallback();
     test_gthemes_parse();
     test_gthemes_term_text();

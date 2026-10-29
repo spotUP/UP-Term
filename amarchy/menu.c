@@ -278,11 +278,13 @@ static int menu_levels(const char *start)
     int n, c, i, rc = 0;
     char node[KM_ID * 2], filter[KM_LABEL], prompt[96];
     char keep[IXW_ROW > MN_LABEL ? IXW_ROW : MN_LABEL];   /* the entry the cursor stays on over a rebuild */
+    mn_bsguard bsg;
     int keep_status = 0, shift, keep_ix = -1;   /* keep_ix: a setting row the cursor stays on after a set */
 
     strncpy(node, start, sizeof node - 1);
     node[sizeof node - 1] = 0;
     filter[0] = 0;
+    mn_bsguard_init(&bsg);
     keep[0] = 0;
     for (;;) {
         if (pk_dos_due(&ixs, node)) {      /* Install > Packages entered: upkg gives its rows now, not on every open */
@@ -375,8 +377,10 @@ static int menu_levels(const char *start)
         if (i) {                               /* a typed key: grow or shorten the filter */
             int l = (int)strlen(filter);
             if (i == 8 || i == 127 || i == UI_HOTKEY_LEFT) {
-                int act = mn_back(1, filter, node);
+                int act = mn_back_rep(&bsg, at_ticks(), filter, node);
                 char up[KM_ID * 2];
+                if (act == MN_BACK_NONE)
+                    continue;               /* a held Backspace repeating past the empty query */
                 if (act == MN_BACK_DROP_CHAR)
                     filter[l - 1] = 0;
                 else if (act == MN_BACK_UP && mn_parent(node, up, sizeof up))
