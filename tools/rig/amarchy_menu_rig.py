@@ -1190,7 +1190,14 @@ def r_dopus_listers():
         print('  %s Open listers rows: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
         # the lister created last is in front; pick the older one's row (in this same menu session, the group still
         # open), then reopen and pick the newer one's row
-        for n, (label, want) in enumerate((('Fonts', addrs[0]), ('Devs', addrs[1]))):
+        # `visible off` / `visible on` closes the lister window and opens a NEW one (a new address, measured on rig 11: the
+        # Devs window 0x102efd04 came back as 0x102efce4, the Fonts window sometimes kept its address by allocator luck),
+        # so the pick is checked by the lister's title, never by the window address taken before the pick.
+        titles = [window_addrs()[a] for a in addrs]
+
+        def lister_order():
+            return [w['title'] for sc in g.screens() for w in sc['windows'] if w['title'] in titles]
+        for n, (label, want) in enumerate((('Fonts', titles[0]), ('Devs', titles[1]))):
             if n:
                 s, w = g.open_menu()
                 for lab in ('Dopus', 'Open listers'):
@@ -1198,14 +1205,13 @@ def r_dopus_listers():
                     ami.key(RAW['return'])
                     time.sleep(1)
             else:
-                print('  [INFO] before the picks the lister order is %s (front first)' %
-                      [a for a, _ in window_state() if a in addrs], flush=True)
+                print('  [INFO] before the picks the lister order is %s (front first)' % lister_order(), flush=True)
             x9_type(label)
             ami.key(RAW['return'])
             # `visible on` re-shows the lister late on an emulated rig (more than 3 s measured): poll for the window
             for _ in range(10):
                 time.sleep(3)
-                order = [a for a, _ in window_state() if a in addrs]
+                order = lister_order()
                 if order[:1] == [want]:
                     break
             res.append(order[:1] == [want])
