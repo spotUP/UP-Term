@@ -102,6 +102,26 @@ const char *amconf_shot_dir(const am_prefs *p)
     return *s ? s : am_keys[AM_SHOTDIR].def;
 }
 
+static int amconf_on(const am_prefs *p, int k)
+{
+    const char *s = p->val[k];
+    if (!*s)
+        s = am_keys[k].def;
+    return !strcmp(s, "on");
+}
+
+unsigned amconf_desk_mask(const am_prefs *p)
+{
+    unsigned m = 0;
+    int t;
+    if (!amconf_on(p, AM_DESK))
+        return 0;
+    for (t = 0; t < AM_DESKLBL - AM_DESKPAL + 1; t++)
+        if (amconf_on(p, AM_DESKPAL + t))
+            m |= 1u << t;
+    return m;
+}
+
 int amconf_tile_gap(const am_prefs *p)
 {
     const char *s = p->val[AM_TILEGAP];

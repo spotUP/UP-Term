@@ -353,16 +353,41 @@ int desk_check(const gtheme *t, char *why, int cap)
     return 0;
 }
 
+/* R1.22a base: the font.prefs of a machine that has none (a fresh Workbench writes it only on the first Font save):
+ * three FONT chunks (WBFONT, SYSFONT, SCREENFONT), topaz.font 8, pens 1/0, JAM2, the layout of the probe note */
+long desk_font_default(unsigned char *out, long cap)
+{
+    long n = 518;
+    int k;
+    if (cap < n)
+        return 0;
+    memset(out, 0, (size_t)n);
+    memcpy(out, "FORM", 4);
+    out[7] = 0xfe, out[6] = 0x01;
+    memcpy(out + 8, "PREFPRHD", 8);
+    out[19] = 6;
+    for (k = 0; k < 3; k++) {
+        unsigned char *c = out + 26 + k * 164;
+        memcpy(c, "FONT", 4);
+        c[7] = 156;
+        c[8 + 15] = (unsigned char)k;
+        c[8 + 16] = 1;
+        c[8 + 18] = 1;
+        c[8 + 25] = 8;
+        c[8 + 27] = 1;
+        memcpy(c + 8 + 28, "topaz.font", 11);
+    }
+    return n;
+}
+
 /* ---- D-TGT, R1.16a ---- */
 
 /* write order: the table order. Files: the ENV: copy is what the OS reads, the ENVARC: copy survives a reboot. */
 static const desk_target targets[DT_COUNT] = {
-    { "palette", "desk_palette", { "ENVARC:Sys/palette.prefs", "ENV:Sys/palette.prefs" } },
-    { "wbpattern", "desk_backdrop", { "ENVARC:Sys/wbpattern.prefs", "ENV:Sys/wbpattern.prefs" } },
-    { "pointer", "desk_pointer", { "ENVARC:Sys/pointer.prefs", "ENV:Sys/pointer.prefs" } },
-    { "font", "desk_labels", { "ENVARC:Sys/font.prefs", "ENV:Sys/font.prefs" } },
-    /* the title stays stock (OD11): the row exists for its switch and writes nothing */
-    { "workbench", "desk_title", { 0, 0 } },
+    { "palette", "desktop-palette", { "ENVARC:Sys/palette.prefs", "ENV:Sys/palette.prefs" } },
+    { "wbpattern", "desktop-backdrop", { "ENVARC:Sys/wbpattern.prefs", "ENV:Sys/wbpattern.prefs" } },
+    { "pointer", "desktop-pointer", { "ENVARC:Sys/pointer.prefs", "ENV:Sys/pointer.prefs" } },
+    { "font", "desktop-labels", { "ENVARC:Sys/font.prefs", "ENV:Sys/font.prefs" } },
 };
 
 const desk_target *desk_target_get(int target)

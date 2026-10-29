@@ -251,6 +251,18 @@ static int font_known(void *ctx, const char *name)
     return !strcmp(name, (const char *)ctx);
 }
 
+static void test_desk_font_default(void)
+{
+    static unsigned char d[BUF_MAX];
+    CHECK_INT(desk_font_default(d, sizeof d), 518);
+    CHECK_INT(desk_font_default(d, 100), 0);
+    CHECK_INT(desk_font_pens(d, 518), 1); /* a valid font.prefs with one WBFONT chunk */
+    CHECK_STR((const char *)d + 26 + 8 + 28, "topaz.font");
+    CHECK_INT(d[26 + 8 + 15], 0);
+    CHECK_INT(d[26 + 164 + 8 + 15], 1);
+    CHECK_INT(d[26 + 328 + 8 + 15], 2);
+}
+
 static void test_desk_font(void)
 {
     static unsigned char gold[BUF_MAX], out[BUF_MAX];
@@ -322,7 +334,7 @@ static void test_desk_targets(void)
     unsigned mask;
     int n, i;
     long ml;
-    CHECK_INT(DT_COUNT, 5);
+    CHECK_INT(DT_COUNT, 4);
     for (i = 0; i < DT_COUNT; i++)
         CHECK_INT(desk_target_by_name(desk_target_get(i)->name), i);
     CHECK_INT(desk_target_by_name("nothing"), -1);
@@ -336,7 +348,6 @@ static void test_desk_targets(void)
     CHECK_INT(n, 4);
     for (i = 0; i < n; i++)
         CHECK(strstr(list[i], "pointer") == 0 && strstr(list[i], "wbpattern") == 0);
-    CHECK_INT(desk_snapshot(1u << DT_WORKBENCH, list, 16), 0);
     CHECK_INT(desk_snapshot((1u << DT_COUNT) - 1, list, 16), 8);
     CHECK(strstr(list[0], "palette") != 0);
     CHECK_INT(desk_snapshot((1u << DT_COUNT) - 1, list, 3), 3);
@@ -365,6 +376,7 @@ void suite_desk(void)
     test_desk_wbpattern();
     test_desk_pointer();
     test_desk_font();
+    test_desk_font_default();
     test_desk_guard();
     test_desk_targets();
 }

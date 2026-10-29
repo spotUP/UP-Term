@@ -56,13 +56,16 @@ long desk_font_pens(unsigned char *buf, long len);
 typedef int (*desk_font_exists_fn)(void *ctx, const char *name);
 long desk_font_name(const gtheme *t, unsigned char *buf, long len, desk_font_exists_fn exists, void *ctx);
 
+/* the font.prefs of a machine that has none (518 bytes); 0 when cap is too small */
+long desk_font_default(unsigned char *out, long cap);
+
 /* R1.6: 0 when the theme passes the contrast guard, else 1 and a refusal text in why (cap bytes) */
 int desk_check(const gtheme *t, char *why, int cap);
 
 /* D-TGT: the targets; each has its own amconf switch (OD2) and the files it writes */
-enum { DT_PALETTE, DT_WBPATTERN, DT_POINTER, DT_FONT, DT_WORKBENCH, DT_COUNT };
+enum { DT_PALETTE, DT_WBPATTERN, DT_POINTER, DT_FONT, DT_COUNT };
 typedef struct {
-    const char *name;    /* palette, wbpattern, pointer, font, workbench */
+    const char *name;    /* palette, wbpattern, pointer, font (the screen title stays stock, OD11: no target) */
     const char *key;     /* the amconf key of its switch */
     const char *files[2]; /* the files it writes, 0 = none */
 } desk_target;

@@ -25,6 +25,11 @@ enum {
     AM_TILENMASTER, /* tile-nmaster: AmTile's number of master windows (1..AM_TILENM_MAX), no Prefs gadget */
     AM_AGENT,   /* ai-agent: the AI agent super+l opens (claude, pi); the word-to-tab table is handler/tabprog.h, no Prefs gadget */
     AM_SHOTDIR, /* shot-dir: the drawer the screenshots (CAP screen|window|region) land in; empty = RAM:Shots, no Prefs gadget */
+    AM_DESK,    /* desktop-theme: master switch of the native desktop theme (off/on, default off); no Prefs gadget */
+    AM_DESKPAL, /* desktop-palette: part switch (default on under the master); these four are in desk_core target order */
+    AM_DESKBACK, /* desktop-backdrop */
+    AM_DESKPTR, /* desktop-pointer */
+    AM_DESKLBL, /* desktop-labels */
     AM_NKEYS
 };
 
@@ -59,6 +64,8 @@ int amconf_term_menu(const am_prefs *p);   /* UC_TERMMENU_* */
 const char *amconf_agent(const am_prefs *p);
 /* shot-dir as the raw path; empty -> the default "RAM:Shots" */
 const char *amconf_shot_dir(const am_prefs *p);
+/* the desktop targets to write: 0 when desktop-theme is off, else bit t (desk_core target t) for each part switched on */
+unsigned amconf_desk_mask(const am_prefs *p);
 #define AM_TILEGAP_MAX 64
 /* tile-gap as a number: whole digits 0..AM_TILEGAP_MAX, anything else the default of the key */
 int amconf_tile_gap(const am_prefs *p);

@@ -222,6 +222,16 @@ const sd_setting sd_hidden[SD_NHIDDEN] = {
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
     { -1, "shot-dir", 0, -1, SD_STRING, 0, 0, NOVALS, "RAM:Shots", SD_AMARCHY, SDF_AMSTR, AO(AM_SHOTDIR),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "desktop-theme", 0, -1, SD_STRING, 0, 0, NOVALS, "off", SD_AMARCHY, SDF_AMSTR, AO(AM_DESK),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "desktop-palette", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESKPAL),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "desktop-backdrop", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESKBACK),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "desktop-pointer", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESKPTR),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "desktop-labels", 0, -1, SD_STRING, 0, 0, NOVALS, "on", SD_AMARCHY, SDF_AMSTR, AO(AM_DESKLBL),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
 };
 
 const sd_setting *sd_amarchy_key(int k)

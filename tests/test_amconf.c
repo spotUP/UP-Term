@@ -35,8 +35,8 @@ static void test_amconf_parse_defaults(void)
         CHECK_STR(p.val[k], am_keys[k].def);
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
-    /* the table lists sixteen keys, each named once */
-    CHECK_INT(AM_NKEYS, 16);
+    /* the table lists twenty-one keys, each named once */
+    CHECK_INT(AM_NKEYS, 21);
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)
@@ -86,6 +86,26 @@ static void test_amconf_shot_dir(void)
     CHECK_STR(amconf_shot_dir(&p), "Work:Pics");
     p.val[AM_SHOTDIR][0] = 0;
     CHECK_STR(amconf_shot_dir(&p), "RAM:Shots");
+}
+
+/* the desktop theme switches: master off by default, the parts on under it, the mask follows desk_core's target order */
+static void test_amconf_desk(void)
+{
+    static const char on[] = "[profile default]\ndesktop-theme = on\ndesktop-pointer = off\n";
+    am_prefs p;
+    char out[512];
+    amconf_parse("", 0, &p);
+    CHECK_STR(am_keys[AM_DESK].name, "desktop-theme");
+    CHECK_STR(am_keys[AM_DESKLBL].name, "desktop-labels");
+    CHECK_INT(amconf_desk_mask(&p), 0u);
+    amconf_parse(on, (long)strlen(on), &p);
+    CHECK_INT(amconf_desk_mask(&p), 0xbu); /* palette, wbpattern, font; pointer off */
+    CHECK(amconf_serialize(&p, out, sizeof out) > 0);
+    amconf_defaults(&p);
+    amconf_parse(out, (long)strlen(out), &p);
+    CHECK_INT(amconf_desk_mask(&p), 0xbu);
+    strcpy(p.val[AM_DESK], "off");
+    CHECK_INT(amconf_desk_mask(&p), 0u);
 }
 
 /* tile-gap (AmTile's gap): default 4, parsed by its name, 0..64 accepted, anything else the default */
@@ -919,6 +939,7 @@ void suite_amconf(void)
     test_amconf_roundtrip();
     test_amconf_tile_gap();
     test_amconf_shot_dir();
+    test_amconf_desk();
     test_amconf_ai_agent();
     test_amconf_tile_layout_keys();
     test_amconf_legacy();
