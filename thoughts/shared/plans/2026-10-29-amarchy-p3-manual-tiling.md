@@ -160,20 +160,20 @@ B. Amarchy commodity
   key table to 6). Test: host status_text test if one exists, else rig `snap_status`.
 - [x] P3-B3 (a5f47d3a, rig snap_gap ok: gap 0 box (0,14), gap 8 box (8,22)) snap gap source per owner D3 (recommended: `tile-gap` read with `amconf_tile_gap`, the existing reader; read at each
   snap, the file is small). Test: rig step with tile-gap 0 vs 8 gives different boxes.
-- [ ] P3-B4 (code in a5f47d3a; rig snap_floats needs AmTile FLOAT, P3-C2, not built: not run, unticked) snap of a window AmTile tiles, per owner D5 (recommended: before applying, Amarchy sends `FLOAT ON <id>` over
+- [x] P3-B4 (code a5f47d3a, FLOAT dc00a08b; rig snap_floats PASS on rig 4, 7bdfeb5d) snap of a window AmTile tiles, per owner D5 (recommended: before applying, Amarchy sends `FLOAT ON <id>` over
   rexx_send when port AMTILE exists; no port, no message). Test: rig `snap_floats` (AmTile on, 3 windows, snap one: AmTile
   floats +1, the other two re-tile, the snapped box stays after 1 s).
 
 C. AmTile
-- [ ] P3-C1 work area honours `bottom` (comes free through A1 + B1). Test: rig `tile_bar` boxes equal helper boxes with bottom.
-- [ ] P3-C2 `FLOAT ON|OFF|TOGGLE [<id>]` (no id = active window via active_id): floated windows are skipped by the walk's
+- [x] P3-C1 (7bdfeb5d rig tile_bar PASS on rig 4) work area honours `bottom` (comes free through A1 + B1). Test: rig `tile_bar` boxes equal helper boxes with bottom.
+- [x] P3-C2 (dc00a08b, rig float_toggle PASS) `FLOAT ON|OFF|TOGGLE [<id>]` (no id = active window via active_id): floated windows are skipped by the walk's
   classify; tick(1). rc 5 when the window is not on the tiled screen. STATUS field 7 floats. Test: rig `float_toggle`.
-- [ ] P3-C3 `SWAP LEFT|RIGHT|UP|DOWN`: neighbour of the active tiled window by `win_pick` over the tiled boxes, `tile_swap`,
+- [x] P3-C3 (dc00a08b, rig swap_right PASS) `SWAP LEFT|RIGHT|UP|DOWN`: neighbour of the active tiled window by `win_pick` over the tiled boxes, `tile_swap`,
   tick(1); rc 5 when none. STATUS field 8 swaps. Test: rig `swap_right` in master-stack (master and stack top exchange boxes).
-- [ ] P3-C4 opt-out list per owner D7 (recommended: ENV:Amarchy/tile.conf, one AmigaDOS pattern per line, matched
+- [x] P3-C4 (dc00a08b, host splitter + rig optout PASS) opt-out list per owner D7 (recommended: ENV:Amarchy/tile.conf, one AmigaDOS pattern per line, matched
   case-insensitively on the window title with ParsePatternNoCase/MatchPatternNoCase; read at start and RETILE; pure line
   splitter in tile_core). Test: host splitter (comments `;`, blank lines, 64 lines max, long line cut); rig `optout`.
-- [ ] P3-C5 cross build AmTile and Amarchy rc 0; stack cookie test still green (memory: every Amiga program keeps __stack).
+- [x] P3-C5 (AmTile and Amarchy cross-build rc 0, stack cookie tests green) cross build AmTile and Amarchy rc 0; stack cookie test still green (memory: every Amiga program keeps __stack).
 
 D. dist and docs
 - [ ] P3-D1 hotkeys per owner D1/D2 (recommended set below), format `key = action ; label | window`.
