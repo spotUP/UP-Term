@@ -2686,7 +2686,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 }
 
 static void menu_theme_roles_map_the_palette(void);
-static void menu_theme_formats_the_dopus_palette_and_pens_commands(void);
+static void dopus_theme_commands_use_the_theme_directly(void);
 static void minimal_mode_reaches_the_program(void);
 static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
 
@@ -3065,7 +3065,7 @@ void suite_keymap(void)
     both_menu_styles_publish_the_shown_rows_through_one_join();
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
-    menu_theme_formats_the_dopus_palette_and_pens_commands();
+    dopus_theme_commands_use_the_theme_directly();
     minimal_mode_reaches_the_program();
     the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
@@ -3269,32 +3269,30 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
 }
 
 /* DOpus ARexx syntax: dopus5 v5.104 source/Program/rexx_dopus.c:587 (palette) and :616 (pens) */
-static void menu_theme_formats_the_dopus_palette_and_pens_commands(void)
+static void dopus_theme_commands_use_the_theme_directly(void)
 {
-    uc_u32 rgb[MT_ROLES];
     gtheme th;
     char buf[256], tight[8];
     unsigned n;
-    const char *want = "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x1a1b26 0x7aa2f7\n"
-                       "dopus set pens files 1 0 dirs 3 0 selfiles 1 4 seldirs 3 4\n";
+    const char *want = "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7\n"
+                       "dopus set pens files 1 0 dirs 3 0 selfiles 0 3 seldirs 0 3\n";
 
-    /* T11 (D6): the Directory Opus listers take the GUI theme's roles, the same five the drawn menu uses */
+    /* D14: the Directory Opus listers take the theme's own bg/fg/dim/accent, not the menu roles */
     gt_builtin(&th);
-    menu_theme_roles_gui(&th, rgb);
-    n = menu_theme_dopus_commands(rgb, buf, sizeof buf);
+    n = dopus_theme_commands(&th, buf, sizeof buf);
     CHECK_INT((long)n, (long)strlen(want));
     CHECK_STR(buf, want);
 
-    /* a colour above 24 bits (0x01RRGGBB leaked in), a missing array, too small a buffer: 0 and an empty string */
-    rgb[MT_DIM] = 0x01000000UL;
+    /* a colour above 24 bits (0x01RRGGBB leaked in), a missing theme, too small a buffer: 0 and an empty string */
+    th.dim = 0x01000000UL;
     strcpy(buf, "x");
-    CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, sizeof buf), 0L);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, sizeof buf), 0L);
     CHECK_STR(buf, "");
-    CHECK_INT((long)menu_theme_dopus_commands(0, buf, sizeof buf), 0L);
-    menu_theme_roles_gui(&th, rgb);
-    CHECK_INT((long)menu_theme_dopus_commands(rgb, tight, sizeof tight), 0L);
-    CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, n), 0L);
-    CHECK_INT((long)menu_theme_dopus_commands(rgb, buf, n + 1), (long)n);
+    CHECK_INT((long)dopus_theme_commands(0, buf, sizeof buf), 0L);
+    gt_builtin(&th);
+    CHECK_INT((long)dopus_theme_commands(&th, tight, sizeof tight), 0L);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, n), 0L);
+    CHECK_INT((long)dopus_theme_commands(&th, buf, n + 1), (long)n);
 }
 
 /* ---- index_core: the app index's cache rows (plan 2026-10-23-amarchy-app-index.md, X1) ---- */

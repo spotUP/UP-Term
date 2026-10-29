@@ -129,6 +129,16 @@ static void test_gthemes_roles(void)
         CHECK_INT(rgb[MT_ACCENT], shipped[i].bg);
         CHECK_INT(rgb[MT_SELBOX], shipped[i].accent);
         CHECK_INT(rgb[MT_HEAD_ROLE], shipped[i].accent); /* the header follows the theme's accent */
+        /* D14: the lister's directory pen (colour 3 = accent) never equals its background pen (colour 0 = bg) */
+        {
+            char out[256], want[64];
+            CHECK(t.accent != t.bg);
+            CHECK(dopus_theme_commands(&t, out, sizeof out) > 0);
+            snprintf(want, sizeof want, "dopus set palette 0x%06lx 0x%06lx 0x%06lx 0x%06lx\n", (unsigned long)t.bg,
+                     (unsigned long)t.fg, (unsigned long)t.dim, (unsigned long)t.accent);
+            CHECK(strstr(out, want) == out);
+            CHECK(strstr(out, " dirs 3 0 ") != NULL);
+        }
         /* H3: each file has exactly the table's values and mode */
         CHECK_INT(t.bg, shipped[i].bg);
         CHECK_INT(t.fg, shipped[i].fg);
@@ -203,13 +213,6 @@ static void test_gthemes_roles(void)
     CHECK_INT(menu_theme_fallback_role(MT_FAIL), MT_TEXT);
     for (i = 0; i <= MT_SELBOX; i++)
         CHECK_INT(menu_theme_fallback_role(i), -1);
-    /* the lister palette stays the five core colours: pen numbers 0..4 are unchanged */
-    {
-        char out[256];
-        uc_u32 r7[MT_ROLES] = { 1, 2, 3, 4, 5, 6, 7 };
-        CHECK(menu_theme_dopus_commands(r7, out, sizeof out) > 0);
-        CHECK(strstr(out, "dopus set palette 0x000001 0x000002 0x000003 0x000004 0x000005\n") == out);
-    }
     /* minimal menu: OK and FAIL are the foreground */
     gt_builtin(&t);
     menu_theme_roles_gui(&t, rgb);

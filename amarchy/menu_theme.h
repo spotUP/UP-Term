@@ -21,12 +21,6 @@ enum {
     MT_ROLES
 };
 
-/* The roles that are palette colours of the Directory Opus lister (colour n is role n): the first five. MT_OK and
- * MT_FAIL come after them, so no existing pen number moves, and they are never sent to Directory Opus. */
-enum {
-    MT_PALETTE_ROLES = MT_SELBOX + 1
-};
-
 /* The role the border is drawn in: the selected row's box role, so outline and selection are one colour (gui.c
  * draw_border reads this; tests/test_keymap.c asserts it equals MT_SELBOX). */
 #define MT_BORDER_ROLE MT_SELBOX
@@ -69,15 +63,19 @@ int menu_theme_minimal(uc_u32 rgb[MT_ROLES]);
 void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u32 pen_rgb[MT_ROLES], int direct,
                     int themed);
 
-/* The two Directory Opus ARexx commands that make its lister colours the menu's roles. Syntax read from upstream
+/* The number of lister palette colours dopus_theme_commands sends: colour 0 = theme bg, 1 = fg, 2 = dim, 3 = accent. */
+#define DOPUS_THEME_COLOURS 4
+
+/* The two Directory Opus ARexx commands that make its lister colours the Amarchy theme's. Syntax read from upstream
  * dopus5 v5.104 source/Program/rexx_dopus.c: RXCMD_PALETTE (set: from line 587) takes "0xRRGGBB" words, 8 bits a
- * channel, one per colour from colour 0 (at most 16; the first MT_PALETTE_ROLES); RXCMD_PENS (set: from line 616) takes keyword groups
+ * channel, one per colour from colour 0 (at most 16); RXCMD_PENS (set: from line 616) takes keyword groups
  * (files, dirs, selfiles, seldirs, ...) each followed by a foreground and a background pen number, which are the
- * palette colour numbers (rexx_dopus_get_pen, line 994). Colour n is role n (MT_BG is colour 0 ... MT_SELBOX 4; MT_OK and MT_FAIL are not sent), so
- * the pens read: files text on ground, directories accent on ground, the selected two on the selection box.
+ * palette colour numbers (rexx_dopus_get_pen, line 994). The palette is the theme itself, not the menu roles (under
+ * menu_theme_roles_gui the accent ROLE is the background, which drew directory names invisibly; owner 2026-10-29).
+ * Pens: files fg on bg (1 0), directories accent on bg (3 0), selected files and directories bg on accent (0 3).
  * Writes two lines, "dopus set palette ..." and "dopus set pens ...", each ending in a newline, and a NUL.
- * Returns the length written (without the NUL), or 0 when rgb is NULL, a colour is above 0xFFFFFF, or cap is too
+ * Returns the length written (without the NUL), or 0 when th is NULL, a colour is above 0xFFFFFF, or cap is too
  * small (out[0] is then 0 when cap is at least 1). */
-unsigned menu_theme_dopus_commands(const uc_u32 rgb[MT_ROLES], char *out, unsigned cap);
+unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap);
 
 #endif

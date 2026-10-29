@@ -73,32 +73,37 @@ void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u
         out[r] = direct && themed ? rgb[r] : pen_rgb[r];
 }
 
-/* Directory Opus's own pen numbers for the roles are the palette colour numbers (menu_theme.h) */
-unsigned menu_theme_dopus_commands(const uc_u32 rgb[MT_ROLES], char *out, unsigned cap)
+/* Directory Opus's lister palette comes from the theme directly, not from the menu roles (menu_theme.h) */
+unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap)
 {
     static const char head[] = "dopus set palette";
-    static const char pens[] = "dopus set pens files 1 0 dirs 3 0 selfiles 1 4 seldirs 3 4\n";
+    static const char pens[] = "dopus set pens files 1 0 dirs 3 0 selfiles 0 3 seldirs 0 3\n";
     static const char hex[] = "0123456789abcdef";
     unsigned n = 0, i, k;
+    uc_u32 col[DOPUS_THEME_COLOURS];
     if (cap)
         out[0] = 0;
-    if (!rgb || !out)
+    if (!th || !out)
         return 0;
-    for (i = 0; i < MT_PALETTE_ROLES; i++)
-        if (rgb[i] > 0xFFFFFFUL)
+    col[0] = th->bg;
+    col[1] = th->fg;
+    col[2] = th->dim;
+    col[3] = th->accent;
+    for (i = 0; i < DOPUS_THEME_COLOURS; i++)
+        if (col[i] > 0xFFFFFFUL)
             return 0;
-    /* head, five " 0xRRGGBB", newline, pens (its own newline), NUL */
-    if (cap < sizeof head - 1 + MT_PALETTE_ROLES * 9 + 1 + sizeof pens)
+    /* head, four " 0xRRGGBB", newline, pens (its own newline), NUL */
+    if (cap < sizeof head - 1 + DOPUS_THEME_COLOURS * 9 + 1 + sizeof pens)
         return 0;
     for (k = 0; head[k]; k++)
         out[n++] = head[k];
-    for (i = 0; i < MT_PALETTE_ROLES; i++) {
+    for (i = 0; i < DOPUS_THEME_COLOURS; i++) {
         int sh;
         out[n++] = ' ';
         out[n++] = '0';
         out[n++] = 'x';
         for (sh = 20; sh >= 0; sh -= 4)
-            out[n++] = hex[(rgb[i] >> sh) & 15];
+            out[n++] = hex[(col[i] >> sh) & 15];
     }
     out[n++] = '\n';
     for (k = 0; pens[k]; k++)
