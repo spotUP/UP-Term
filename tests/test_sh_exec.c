@@ -550,6 +550,41 @@ static void kill_names_a_missing_signal_sender(void)
     CHECK_STR(slot(ERR)->data, "vsh: kill: ixkill not found: looked here\nvsh: 77: No such process\n");
 }
 
+/* $! is the background process's pid as the process sees it (the OS layer's job_pid: ixemul's getpid, the
+ * Task address on the Amiga), not the shell's job id; wait and kill take that pid and reach the job. */
+static int sig_hits, sig_target, sig_job;
+static long f_job_pid(void *os, long job)
+{
+    (void)os;
+    return 5000 + job * 16;
+}
+static int f_signal_record(void *os, long target, int sig, int is_job)
+{
+    (void)os;
+    (void)sig;
+    sig_hits++;
+    sig_target = (int)target;
+    sig_job = is_job;
+    return 0;
+}
+
+static void bang_is_the_process_pid(void)
+{
+    fresh();
+    sh.os.job_pid = f_job_pid;
+    sh.os.signal = f_signal_record;
+    sig_hits = 0;
+    {
+        int inc = 0;
+        sh_run_text(&sh, "cat & echo $!; kill $!; wait $!; echo st=$?", &inc);
+    }
+    CHECK_STR(slot(OUT)->data, "5016\nst=0\n"); /* job id 1 -> pid 5016 */
+    CHECK_INT(sig_hits, 1);                      /* the kill went through os.signal ... */
+    CHECK_INT(sig_target, 1);                    /* ... as the job (id 1), not the pid */
+    CHECK_INT(sig_job, 1);
+    CHECK_STR(slot(ERR)->data, "");
+}
+
 /* A bare directory word is a cd (AmigaDOS implicit cd, zsh AUTO_CD); a program or builtin of that name wins */
 static void autocd(void)
 {
@@ -2302,6 +2337,7 @@ void suite_sh_exec(void)
     basics();
     autocd();
     kill_names_a_missing_signal_sender();
+    bang_is_the_process_pid();
     a_shell_made_on_dirty_memory_is_a_fresh_shell();
     a_login_shell_reads_its_profiles_and_a_posix_shell_reads_ENV();
     dollar_name_reads_the_system_variables();

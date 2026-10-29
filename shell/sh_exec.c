@@ -501,6 +501,7 @@ sh_shell *sh_shell_clone(const sh_shell *sh, int share)
             c->jobs[i] = sh->jobs[i];
             c->job_text[i] = sh->job_text[i] ? sdup(sh->job_text[i]) : 0;
             c->job_seq[i] = sh->job_seq[i];
+            c->job_pid[i] = sh->job_pid[i];
             c->job_stopped[i] = sh->job_stopped[i];
             c->job_foreign[i] = 1;
         }
@@ -2997,6 +2998,28 @@ static void job_cur_prev(const sh_shell *sh, int *cur, int *prev)
 
 /* A job's line in jobs and notices: "[n]+  <state>  <command>"; bash pads the state to 27 columns,
  * -l puts the process id after the marker, an ended job's state is "Done" or "Exit n" */
+/* The pid the OS layer gives a job id (0: it knows none, the job id stands for it). */
+static long os_job_pid(sh_shell *sh, long job)
+{
+    return sh->os.job_pid ? sh->os.job_pid(sh->os.data, job) : 0;
+}
+
+/* The pid of job slot i: the process address $! gave (bash: the pid), else the job id. */
+static long jpid(sh_shell *sh, int i)
+{
+    return sh->job_pid[i] ? sh->job_pid[i] : sh->jobs[i];
+}
+
+/* The slot of a job given by pid (a job id matches too); -1: none. */
+static int job_by_pid(sh_shell *sh, long pid)
+{
+    int i;
+    for (i = 0; i < 32; i++)
+        if (sh->jobs[i] && (jpid(sh, i) == pid || sh->jobs[i] == pid))
+            return i;
+    return -1;
+}
+
 static void job_line_l(sh_shell *sh, sh_fh fh, int i, const char *state, long st, int longfmt)
 {
     char n[16], pad[32];
@@ -3005,7 +3028,7 @@ static void job_line_l(sh_shell *sh, sh_fh fh, int i, const char *state, long st
     num(n, i + 1);
     sayl(sh, fh, "[", n, "]", i == cur ? "+" : i == prev ? "-" : " ", " ", NULL);
     if (longfmt) {
-        num(n, sh->jobs[i]);
+        num(n, jpid(sh, i));
         for (k = (int)strlen(n); k < 5; k++) /* bash prints the pid as %5ld */
             say(sh, fh, " ");
         sayl(sh, fh, n, " ", NULL);
@@ -3048,6 +3071,7 @@ static void job_forget(sh_shell *sh, int i)
     sh->job_stopped[i] = 0;
     sh->job_nohup[i] = 0;
     sh->job_foreign[i] = 0;
+    sh->job_pid[i] = 0;
     free(sh->job_text[i]);
     sh->job_text[i] = 0;
 }
@@ -3159,7 +3183,7 @@ static long b_jobs(sh_shell *sh, int argc, char **argv, const sh_io *io)
         for (k = a; k < argc; k++) {
             int j = argv[k][0] == '%' && k > a ? job_spec(sh, argv[k]) : -1;
             if (j >= 0) {
-                num(nb, sh->jobs[j]);
+                num(nb, jpid(sh, j));
                 nv[n++] = sdup(nb);
             } else
                 nv[n++] = argv[k];
@@ -3188,7 +3212,7 @@ static long b_jobs(sh_shell *sh, int argc, char **argv, const sh_io *io)
             continue;
         if (pids) {
             char nb[16];
-            num(nb, sh->jobs[i]);
+            num(nb, jpid(sh, i));
             sayl(sh, io->out, nb, "\n", NULL);
         } else
             job_line_l(sh, io->out, i, sh->job_stopped[i] ? "Stopped" : "Running", 0, longfmt);
@@ -3221,6 +3245,7 @@ static long fg_status(sh_shell *sh, long st, int slot, char *text, const sh_io *
         free(text);
     }
     sh->jobs[i] = sh->os.stopped;
+    sh->job_pid[i] = os_job_pid(sh, sh->os.stopped);
     sh->job_stopped[i] = 1;
     sh->job_seq[i] = ++sh->job_seqno;
     sh->warned_stopped = 0;
@@ -3354,7 +3379,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
                     if (!sh->jobs[i] || sh->job_stopped[i] || sh->job_foreign[i])
                         continue;
                     for (j = k; j < argc; j++)
-                        if (argv[j][0] == '%' ? job_spec(sh, argv[j]) == i : atol(argv[j]) == sh->jobs[i])
+                        if (argv[j][0] == '%' ? job_spec(sh, argv[j]) == i : job_by_pid(sh, atol(argv[j])) == i)
                             want = 1;
                     if (!want)
                         continue;
@@ -3370,7 +3395,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
                             found = i;
                 if (pvar) {
                     char nb[16];
-                    num(nb, sh->jobs[found]);
+                    num(nb, jpid(sh, found));
                     sh_set(&sh->ctx, pvar, nb);
                 }
                 st = job_wait(sh, sh->jobs[found]);
@@ -3390,9 +3415,8 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
                     }
                 } else {
                     long pid = atol(argv[k]);
-                    for (i = 0; i < 32 && !(sh->jobs[i] && sh->jobs[i] == pid); i++)
-                        ;
-                    if (i == 32) {
+                    i = job_by_pid(sh, pid);
+                    if (i < 0) {
                         sayl(sh, io->err, "vsh: wait: pid ", argv[k], " is not a child of this shell\n", NULL);
                         last = 127;
                         continue;
@@ -3400,7 +3424,7 @@ static long b_wait(sh_shell *sh, int argc, char **argv, const sh_io *io)
                 }
                 if (pvar) {
                     char nb[16];
-                    num(nb, sh->jobs[i]);
+                    num(nb, jpid(sh, i));
                     sh_set(&sh->ctx, pvar, nb);
                 }
                 last = job_wait(sh, sh->jobs[i]);
@@ -3470,8 +3494,7 @@ static long b_disown(sh_shell *sh, int argc, char **argv, const sh_io *io)
     for (; k < argc; k++) {
         i = job_spec(sh, argv[k][0] == '%' ? argv[k] : "%?");
         if (argv[k][0] != '%' && argv[k][0] >= '0' && argv[k][0] <= '9')
-            for (i = 0; i < 32 && !(sh->jobs[i] && sh->jobs[i] == atol(argv[k])); i++)
-                ;
+            i = job_by_pid(sh, atol(argv[k]));
         if (i < 0 || i >= 32) {
             sayl(sh, io->err, "vsh: disown: ", argv[k], ": no such job\n", NULL);
             st = 1;
@@ -4503,12 +4526,16 @@ static long b_kill(sh_shell *sh, int argc, char **argv, const sh_io *io)
     }
     for (; i < argc; i++) {
         long target = atol(argv[i]);
-        int job = argv[i][0] == '%';
+        int job = argv[i][0] == '%', isjob = 0, k;
         if (job)
             target = atol(argv[i] + 1) > 0 && atol(argv[i] + 1) <= 32 ? sh->jobs[atol(argv[i] + 1) - 1] : 0;
+        else if ((k = job_by_pid(sh, target)) >= 0 && sh->job_pid[k] && sh->os.signal) { /* the pid the OS layer gave a job of this shell is the job */
+            target = sh->jobs[k];
+            isjob = 1;
+        }
         if (!job && target == sh->ctx.pid && sig > 0 && sh_trap_signal(sh, sig))
             continue;
-        r = target && sh->os.signal ? sh->os.signal(sh->os.data, target, sig, job) : -1;
+        r = target && sh->os.signal ? sh->os.signal(sh->os.data, target, sig, job || isjob) : -1;
         if (r == SH_SIG_NOSENDER && sh->os.signal_why) {
             err2(sh, io, "kill", sh->os.signal_why);
             st = 1;
@@ -8268,27 +8295,30 @@ static char *node_text(const sh_node *n)
 }
 
 /* A background job into the table, announced as "[n] id". */
-static void add_job(sh_shell *sh, long job, char *text, const sh_io *io)
+static long add_job(sh_shell *sh, long job, char *text, const sh_io *io)
 {
     int i;
     char nb[16];
+    long pid = os_job_pid(sh, job);
     for (i = 0; i < 32 && sh->jobs[i]; i++)
         ;
     if (i == 32) {
         free(text);
-        return;
+        return pid ? pid : job;
     }
     sh->jobs[i] = job;
+    sh->job_pid[i] = pid;
     sh->job_foreign[i] = 0;
     sh->job_seq[i] = ++sh->job_seqno;
     free(sh->job_text[i]);
     sh->job_text[i] = text;
     if (!(sh->opts & SO_INTERACTIVE)) /* bash: only an interactive shell announces a job */
-        return;
+        return pid ? pid : job;
     num(nb, i + 1);
     sayl(sh, io->err, "[", nb, "] ", NULL);
-    num(nb, job);
+    num(nb, pid ? pid : job);
     sayl(sh, io->err, nb, "\n", NULL);
+    return pid ? pid : job;
 }
 
 static long subshell(sh_shell *sh, const sh_node *n, const sh_io *io, int wait, long *job)
@@ -8445,12 +8475,10 @@ static long exec_coproc(sh_shell *sh, const sh_node *n, const sh_io *io)
     sh_assign(&sh->ctx, name, "1", d, 0);
     strcpy(vn, name);
     strcat(vn, "_PID");
-    sh_ltoa(job, d);
+    if (job)
+        sh->ctx.last_bg = add_job(sh, job, node_text(n->a), io);
+    sh_ltoa(job ? sh->ctx.last_bg : 0, d);
     sh_set(&sh->ctx, vn, d);
-    if (job) {
-        add_job(sh, job, node_text(n->a), io);
-        sh->ctx.last_bg = job;
-    }
     return 0;
 }
 
@@ -9099,8 +9127,7 @@ static long exec_node1(sh_shell *sh, const sh_node *n, const sh_io *io)
             sh->debug_done = 0;
         }
         if (job) {
-            add_job(sh, job, node_text(n->a), io);
-            sh->ctx.last_bg = job;
+            sh->ctx.last_bg = add_job(sh, job, node_text(n->a), io);
         }
         st = 0;
         sh->ctx.status = st;

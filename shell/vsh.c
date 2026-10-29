@@ -1290,6 +1290,16 @@ static int task_alive(struct Task *t)
     return found;
 }
 
+/* The pid of a job as ixemul numbers it (getpid, what kill and ps -p take): the job's process, or its
+ * runner while the Shell process of a Resident command or script has not started yet. 0: it has ended. */
+static long os_job_pid(void *os, long id)
+{
+    job *j = (job *)id;
+    struct Task *t = job_process(j);
+    (void)os;
+    return (long)(t ? t : j->task);
+}
+
 /* kill: sig (0: only test) to a job of this shell, a pid, or the shell. Ctrl-C and ^\ go
  * the way the console's go: the break bits, which a native command honours too. Any other
  * signal goes through ixkill, so only an ixemul process gets it; HUP and TERM fall back to
@@ -2161,6 +2171,7 @@ static int vsh_main(int argc, char **argv)
     sh.os.echo = os_echo;
     sh.os.interrupted = os_interrupted;
     sh.os.signal = os_signal;
+    sh.os.job_pid = os_job_pid;
     sh.os.write = os_write;
     sh.os.read_line = os_read_line;
     sh.os.hist = os_hist;

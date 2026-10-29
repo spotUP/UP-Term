@@ -132,6 +132,9 @@ typedef struct sh_os {
      * the signal is missing, and signal_why says what (vsh: no ixkill); 0 in the table: kill reports
      * it cannot */
     int   (*signal)(void *os, long target, int sig, int is_job);
+    /* the pid of a job id as the process sees it (ixemul getpid: the Task address); 0: none known (the job id is its pid);
+     * 0 in the table: the job id is the pid */
+    long  (*job_pid)(void *os, long job);
     const char *signal_why;
     /* read -t: 1 when input is waiting (or at its end) within ms milliseconds, 0 on timeout;
      * 0 in the table: always ready */
@@ -273,6 +276,7 @@ typedef struct sh_shell {
     long jobs[32];         /* background job ids, 0 = free */
     char *job_text[32];
     char job_stopped[32];  /* suspended (^Z), until fg or bg */
+    long job_pid[32];      /* the process address of the job (what $! and kill/wait/jobs -p show, as ixemul's getpid), 0: the job id itself */
     long job_seq[32];      /* when the job was added or last stopped: the newest is the current job (%+) */
     long job_seqno;
     char job_foreign[32];  /* a clone's copy of its parent's job: listed by jobs, never waited for */
