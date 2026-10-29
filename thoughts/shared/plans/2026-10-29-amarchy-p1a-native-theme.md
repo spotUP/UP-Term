@@ -133,9 +133,9 @@ Core (host-tested, pure):
   replaced, others kept; off -> byte-identical to R1.21a output.
 - [ ] R1.4 FontPrefs: theme `font=` names an existing font only (decision 4); unknown font -> key ignored, file untouched.
   Test: golden; missing font -> no FONT chunk change.
-- [ ] R1.22a Icon label colour (and outline if R1.1e finds it) in FP_WBFONT pens, or workbench.prefs if the probe says so
+- [ ] R1.22a Icon label colour and outline (OD10: JAM1, special mode 1) in FP_WBFONT pens, or workbench.prefs if the probe says so
   (OD10). Test: golden; label pen != backdrop pen (contrast guard).
-- [ ] R1.22b Screen title WBTF (3.2 / workbench.library >= 47 only, OD11); older OS: target skipped and reported. Test:
+- [x] R1.22b (closed by OD11, owner 2026-10-29: title stays stock) Screen title WBTF (3.2 / workbench.library >= 47 only, OD11); older OS: target skipped and reported. Test:
   golden; v40 mode produces no WBNC write.
 - [ ] R1.6 Contrast guard over all shipped themes: pen 0 vs pen 1, text vs fill, label vs backdrop, darker vs MT_BG; a theme
   failing the guard is refused with a message, nothing written. Test: all 23 shipped themes pass; FB/PA with a fixture
@@ -236,8 +236,10 @@ Read every on-screen dialog text before any "silent" verdict. Stop the rig at th
 - OD1: (a) Style > Theme restyles the menu and the desktop when the desktop option is on.
 - OD2: (a) off by default; one master switch plus one switch per part (palette, backdrop, pointer, labels, title), all on
   under the master.
-- OD3: (a) colours apply live with the 15 s confirm; pen and font parts go to ENV: and the requester says they apply after a
-  Workbench reset. Re-ask only if the R1.1b probe changes what is live.
+- OD3: (a), re-confirmed 2026-10-29 with the R1.1b facts: apply every live part at once under the 15 s confirm (colours
+  0-3, pens 2-12, icon labels, pointer colours, backdrop pattern). Amarchy never closes Workbench windows; when drawers are
+  open, the stock IPrefs "close windows, then Retry" requester handles the pens. The confirm window says colours 4-7 apply
+  after a reboot.
 - OD4: (b) a themed gui.c window with a countdown, not EasyRequest. Constraint for the build: the window must stay usable
   when the theme under test is unreadable, so Escape and the timeout both revert, and the window draws its text and
   buttons with a contrast check (fall back to stock pens 1/2 when the pair fails the floor). The OD12 key is the last way
@@ -250,8 +252,10 @@ Read every on-screen dialog text before any "silent" verdict. Stop the rig at th
 - OD8: (b) ship flat normal and busy pointer shapes now; the other 39 3.2 pointer types keep their shapes and get the
   theme colours. Two pointer designs are a new asset row.
 - OD9: (a) pointer pen 1 = foreground (body), 2 = background (outline), 3 = accent (highlight).
-- OD10: (a) icon label pens go to font.prefs FP_WBFONT; the user's font name is kept.
-- OD11: (a) the screen title stays stock until the Phase 2 bar.
+- OD10: (a), re-confirmed 2026-10-29: FP_WBFONT in font.prefs, FrontPen = theme foreground, BackPen = a darker tone,
+  DrawMode JAM1, fp_SpecialDrawMode 1 (outline, proven live by R1.1e). The user's font name and size are kept.
+- OD11: (a), re-confirmed 2026-10-29 (WBTF is not applied live, format codes unproven): the screen title stays stock
+  until the Phase 2 bar. R1.22b is closed by this decision.
 - OD12: (a) a desk:revert binding (proposed super+ctrl+shift+backspace) restores the last kept set with no requester.
 - OD13: (a) flat dark mapping: 0 background, 1 darker tone, 2 foreground, 3 accent; 4-7 selection, muted, green, red.
 - OD14: (a) off restores the prefs files from before the first apply, kept in ENVARC:Amarchy/desk-original/.
