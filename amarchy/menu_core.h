@@ -67,6 +67,12 @@ int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int 
  * page's settings as MN_ROW_SETTING rows in settings_def table order. */
 int mn_children(const keymap *k, const char *node, mn_item *out, int max);
 
+/* MENU-DEEP-SEARCH: appends to out (n entries, at most max) one row per visible [menu] leaf that sits in a group, labelled
+ * with its path ("System/Reboot"), row = its keymap row, so running it is the same as from its own level. A
+ * settings page is left out (it is a group). The root level with a filter lists these, so typing finds
+ * a leaf at any depth; a level below the root keeps its own entries. Count. */
+int mn_deep_rows(const keymap *k, mn_item *out, int n, int max, int cond);
+
 /* The entries that match filter, prefix matches first, each group in its order. Writes the
  * indices into items to idx; the count. */
 int mn_filter(const mn_item *items, int n, const char *filter, int *idx, int max);

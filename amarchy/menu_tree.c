@@ -213,6 +213,39 @@ int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int 
     return n;
 }
 
+int mn_deep_rows(const keymap *k, mn_item *out, int n, int max, int cond)
+{
+    int i;
+    for (i = 0; i < k->nmenu && n < max; i++) {
+        const char *id = k->menu[i].id, *seg;
+        char *w = out[n].label, *end = out[n].label + MN_LABEL - 1;
+        int j, depth = 0;
+        if (!strchr(id, '.') || k->menu[i].kind == KA_SETTINGS || !row_shown(&k->menu[i], cond))
+            continue;
+        for (seg = id; *seg; seg++)
+            if (*seg == '.')
+                depth++;
+        for (seg = id; depth >= 0 && w < end; depth--) {   /* "system.reboot" -> "System/" then the leaf's own label */
+            const char *dot = strchr(seg, '.');
+            if (!dot)
+                break;
+            *w++ = (char)((*seg >= 'a' && *seg <= 'z') ? *seg - 32 : *seg);
+            for (j = 1; seg + j < dot && w < end; j++)
+                *w++ = seg[j];
+            if (w < end)
+                *w++ = '/';
+            seg = dot + 1;
+        }
+        *w = 0;
+        cpy(w, k->menu[i].label, (int)(end - w) + 1);
+        out[n].row = i;
+        out[n].ix = -1;
+        cpy(out[n].seg, strrchr(id, '.') + 1, KM_ID);
+        n++;
+    }
+    return n;
+}
+
 int mn_right_enters(const mn_item *it)
 {
     if (MN_IS_GROUP(it))

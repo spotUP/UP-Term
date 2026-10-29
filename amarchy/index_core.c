@@ -795,8 +795,20 @@ int ix_level(const keymap *k, const ix_index *x, const char *node, const char *f
     return ix_level_t(k, x, node, filter, out, max, MN_COND_ALL);
 }
 
+static int ix_level_base(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
+                         int max, int cond);
+
 int ix_level_t(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
                int max, int cond)
+{
+    int n = ix_level_base(k, x, node, filter, out, max, cond);
+    if (!*node && filter && *filter)                /* MENU-DEEP-SEARCH: typing at the root finds every leaf, with its path */
+        n = mn_deep_rows(k, out, n, max, cond);
+    return n;
+}
+
+static int ix_level_base(const keymap *k, const ix_index *x, const char *node, const char *filter, mn_item *out,
+                         int max, int cond)
 {
     int from = 0, to = 0, kd, kl = 0;
     const char *cat;

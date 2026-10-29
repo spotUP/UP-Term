@@ -1382,6 +1382,26 @@ static void ua_count_released_before_own_window_closes(void)
     CHECK(seen >= 2);
 }
 
+/* MENU-DEEP-SEARCH: typing "reboot" at the root finds System > Reboot, shown with its path; Enter runs that leaf */
+static void typing_at_root_finds_deep_leaf_with_path(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int idx[MN_MAX_ITEMS], n, c;
+    CHECK(parse("[menu]\nsystem.reboot = Reboot | slash:/reboot\nsystem.halt = Halt | slash:/halt\n"
+                "top = Top | slash:/top\nstyle.theme = Theme | slash:/theme\n"));
+    n = ix_level_t(&km, 0, "", "reboot", it, MN_MAX_ITEMS, MN_COND_ALL);
+    c = mn_filter(it, n, "reboot", idx, MN_MAX_ITEMS);
+    CHECK_INT(c, 1);
+    CHECK_STR(it[idx[0]].label, "System/Reboot");
+    CHECK_STR(km.menu[it[idx[0]].row].id, "system.reboot");   /* Enter runs this row */
+    CHECK(!MN_IS_GROUP(&it[idx[0]]));
+    n = ix_level_t(&km, 0, "system", "reboot", it, MN_MAX_ITEMS, MN_COND_ALL);   /* inside a submenu: its own entries only */
+    CHECK_INT(n, 2);
+    CHECK_STR(it[0].label, "Reboot");
+    n = ix_level_t(&km, 0, "", "", it, MN_MAX_ITEMS, MN_COND_ALL);   /* no query: just the root */
+    CHECK_INT(n, 3);
+}
+
 /* Phase D: typing "th" at the menu's top level leaves Theme (prefix) before any substring hit */
 static void typing_th_leaves_theme_first(void)
 {
@@ -3311,6 +3331,7 @@ void suite_keymap(void)
     cx_installs_only_the_commodity_rows();
     ua_count_released_before_own_window_closes();
     typing_th_leaves_theme_first();
+    typing_at_root_finds_deep_leaf_with_path();
     menu_levels_follow_the_ids_and_escape_goes_up();
     terminal_rows_show_only_over_a_terminal();
     menu_size_follows_the_filtered_rows();
@@ -4169,7 +4190,9 @@ static void a_missing_or_empty_cache_adds_no_index_rows(void)
     ix_load_text(&km, &x, "");
     CHECK_INT(ix_level(&km, &x, "apps", "", it, TEST_LEVEL_MAX), mn_children(&km, "apps", base, TEST_LEVEL_MAX));
     CHECK_INT(ix_level(&km, &x, "games", "", it, TEST_LEVEL_MAX), 0);
-    CHECK_INT(ix_level(&km, &x, "", "tur", it, TEST_LEVEL_MAX), mn_children(&km, "", base, TEST_LEVEL_MAX));
+    /* a root filter adds the [menu] leaves with their paths (MENU-DEEP-SEARCH, here Apps/Tmux) and no index row */
+    CHECK_INT(ix_level(&km, &x, "", "tur", it, TEST_LEVEL_MAX),
+              mn_deep_rows(&km, base, mn_children(&km, "", base, TEST_LEVEL_MAX), TEST_LEVEL_MAX, MN_COND_ALL));
     ix_load_file(&km, &x, "/nonexistent/amarchy/apps");
     CHECK_INT(x.n, 1);                                  /* no cache rows; only the clipboard history placeholder */
     CHECK_INT(x.rows[0].kind, IX_KIND_CLIP);
