@@ -29,6 +29,10 @@ void bar_right_click(void);
 void bar_tick(long now);
 /* The clock formats from bar.conf (clock, clockalt); an empty string keeps BAR_CLOCK_FMT / BAR_DATE_FMT. */
 void bar_set_clock_formats(const char *clock, const char *alt);
+/* The rest of bar.conf (segment order and on/off, run rows), copied; call before bar_open. */
+struct barconf;
+void bar_set_conf(const struct barconf *c);
+long bar_runs(void);
 /* BAR TEXT: every segment as bar_dump writes it. */
 void bar_text(char *out, int cap);
 

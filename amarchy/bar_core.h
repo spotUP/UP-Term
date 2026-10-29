@@ -7,14 +7,16 @@
 #ifndef AMARCHY_BAR_CORE_H
 #define AMARCHY_BAR_CORE_H
 
-#define BAR_MAX_SEGS 24                 /* screens list (up to 10), marker, clock, CPU, RAM, network, Agents, system, tray */
+#define BAR_MAX_SEGS 32                 /* screens list (up to 10), marker, clock, CPU, RAM, network, Agents, system, tray */
 #define BAR_TEXT 32
 
 enum { BAR_LEFT = 0, BAR_RIGHT, BAR_CENTRE };
 enum { BAR_SEG_AGENTS = 1, BAR_SEG_CLOCK = 2, BAR_SEG_RAM = 3, BAR_SEG_SYSTEM = 4, BAR_SEG_CPU = 5, BAR_SEG_NET = 6 };
 /* The screens list (left group): one segment per public screen, ids BAR_SEG_SCREEN0 .. +BAR_MAX_SEGS-1 in list order,
  * then BAR_SEG_MORE, the "+N" marker bar_layout fills in when it cuts entries from the list's right end. */
-enum { BAR_SEG_MORE = 199, BAR_SEG_SCREEN0 = 200 };
+enum { BAR_SEG_MORE = 199, BAR_SEG_SCREEN0 = 200, BAR_SEG_TRAY0 = 300 };
+/* The tray: one segment per `run` row of bar.conf, ids BAR_SEG_TRAY0 + row (BAR_ACT_RUN, the row in *id). */
+#define BAR_IS_TRAY(id) ((id) >= BAR_SEG_TRAY0 && (id) < BAR_SEG_TRAY0 + 100)
 #define BAR_IS_SCREEN(id) ((id) >= BAR_SEG_SCREEN0 && (id) < BAR_SEG_SCREEN0 + 100)
 #define BAR_MAX_SCREENS 10              /* screens shown in the list; the rest of the pubscreen list is not offered */
 enum { BAR_BTN_LEFT = 1, BAR_BTN_RIGHT };
@@ -34,7 +36,7 @@ enum { BAR_BTN_LEFT = 1, BAR_BTN_RIGHT };
 
 /* What a click on a segment does; bar.c carries it out. */
 /* BAR_ACT_SYSTEM: the system menu; BAR_ACT_CLOCK: flip clock and date; BAR_ACT_SCREEN: bring that screen to the front (id). */
-enum { BAR_ACT_NONE = 0, BAR_ACT_PANEL, BAR_ACT_LAUNCH_AGENT, BAR_ACT_SYSTEM, BAR_ACT_CLOCK, BAR_ACT_SCREEN };
+enum { BAR_ACT_NONE = 0, BAR_ACT_PANEL, BAR_ACT_LAUNCH_AGENT, BAR_ACT_SYSTEM, BAR_ACT_CLOCK, BAR_ACT_SCREEN, BAR_ACT_RUN };
 
 typedef struct bar_seg {
     int id;

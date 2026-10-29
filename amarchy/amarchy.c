@@ -418,6 +418,7 @@ int main(void)
         barconf_load(&bc);
         g_bar_want = bc.start;
         bar_set_clock_formats(bc.clock, bc.clockalt);
+        bar_set_conf(&bc);
     }
     keymap_load_compact(&g_km, km_default_text, cx_row_installed);
     if (!cx_open(pri)) {

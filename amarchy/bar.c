@@ -27,6 +27,8 @@
 #include "act.h"
 #include "tick.h"
 #include "cxdesc.h"
+#include "barconf_core.h"
+#include "proclaunch.h"
 #include "poll_timer.h"
 #include "themewin.h"
 #include "menu_theme.h"
@@ -55,6 +57,9 @@ static poll_timer g_poll;
 static int g_have_layers;
 static long g_ticks;
 static char g_fmt_clock[32], g_fmt_alt[32];     /* bar.conf clock / clockalt, empty = built in */
+static barconf g_conf;                          /* bar.conf: segment order, on/off, tray rows (set by bar_set_conf) */
+static int g_conf_set;
+static long g_runs;                             /* tray clicks that started a command */
 static int g_clock_alt;                         /* the clock segment shows the date until the next click */
 static char g_scrname[BAR_MAX_SCREENS][32];     /* full public screen names of the list on the bar, by entry */
 /* What the input handler reads (bar_takes_right_press runs in input.device's task, not ours): the bar's box as plain
@@ -266,7 +271,15 @@ static int sample_net(int force)
 
 /* The public screens, short names; the front one in the accent pen. The list is copied under the lock and released at
  * once, nothing is drawn while it is held. */
+static int sample_screens_on(void);
 static int sample_screens(void)
+{
+    if (!g_conf.seg_on[BC_SEG_SCREENS])
+        return 0;
+    return sample_screens_on();
+}
+
+static int sample_screens_on(void)
 {
     char shortn[BAR_MAX_SCREENS][BAR_TEXT];
     const char *names[BAR_MAX_SCREENS];
@@ -342,6 +355,31 @@ static void bar_recolour(struct Window *w)
     paint_all();
 }
 
+/* The segments in the order and groups bar.conf asks for (barconf_plan); the tray is one segment per run row. */
+static void add_planned(void)
+{
+    static const int side[BC_NGROUPS] = { BAR_LEFT, BAR_CENTRE, BAR_RIGHT };
+    bc_place p[BC_NSEGS];
+    int n = barconf_plan(&g_conf, p), i, r;
+    for (i = 0; i < n; i++) {
+        int sd = side[p[i].group];
+        switch (p[i].seg) {
+        case BC_SEG_SCREENS: bar_add(&g_bar, BAR_SEG_MORE, sd, "", 0); break;
+        case BC_SEG_CLOCK: bar_add(&g_bar, BAR_SEG_CLOCK, sd, "", 0); break;
+        case BC_SEG_CPU: bar_add(&g_bar, BAR_SEG_CPU, sd, "", 0); break;
+        case BC_SEG_NETWORK: bar_add(&g_bar, BAR_SEG_NET, sd, "", 0); break;
+        case BC_SEG_RAM: bar_add(&g_bar, BAR_SEG_RAM, sd, "", 0); break;
+        case BC_SEG_AGENTS: bar_add(&g_bar, BAR_SEG_AGENTS, sd, "Agents", text_w("Agents")); break;
+        case BC_SEG_SYSTEM: bar_add(&g_bar, BAR_SEG_SYSTEM, sd, "System", text_w("System")); break;
+        case BC_SEG_TRAY:
+            for (r = 0; r < g_conf.nrun; r++)
+                bar_add(&g_bar, BAR_SEG_TRAY0 + r, sd, g_conf.run[r].label, text_w(g_conf.run[r].label));
+            break;
+        default: break;
+        }
+    }
+}
+
 int bar_open(const char *dir)
 {
     struct TextFont *font;
@@ -368,13 +406,9 @@ int bar_open(const char *dir)
     font = g_scr->RastPort.Font;
     h = (font ? font->tf_YSize : 8) + 2;
     bar_init(&g_bar, g_scr->Width, BAR_PAD, BAR_GAP);
-    bar_add(&g_bar, BAR_SEG_MORE, BAR_LEFT, "", 0);
-    bar_add(&g_bar, BAR_SEG_CLOCK, BAR_CENTRE, "", 0);
-    bar_add(&g_bar, BAR_SEG_CPU, BAR_RIGHT, "", 0);
-    bar_add(&g_bar, BAR_SEG_NET, BAR_RIGHT, "", 0);
-    bar_add(&g_bar, BAR_SEG_RAM, BAR_RIGHT, "", 0);
-    bar_add(&g_bar, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", TextLength(&g_scr->RastPort, (STRPTR) "Agents", 6));
-    bar_add(&g_bar, BAR_SEG_SYSTEM, BAR_RIGHT, "System", TextLength(&g_scr->RastPort, (STRPTR) "System", 6));
+    if (!g_conf_set)
+        barconf_defaults(&g_conf);
+    add_planned();
     g_clock_alt = 0;
     g_net_kind = -1;
     g_cpu_cal = 0;
@@ -504,6 +538,24 @@ static void act_screen_front(int i)
     UnlockPubScreen(0, sc);
 }
 
+/* A tray click: the run row's command line through proclaunch, the program (first word) giving the stack cookie. */
+static void tray_run(int row)
+{
+    char prog[BC_CMD];
+    int i = 0;
+    const char *c;
+    if (row < 0 || row >= g_conf.nrun)
+        return;
+    c = g_conf.run[row].cmd;
+    while (c[i] && c[i] != ' ' && c[i] != '\t' && i < (int)sizeof prog - 1) {
+        prog[i] = c[i];
+        i++;
+    }
+    prog[i] = 0;
+    g_runs++;
+    pl_start(c, prog, 262144, "Amarchy tray");
+}
+
 /* the same request super+l's MENU_AGENT makes: the handler opens a tab running the preferred agent */
 static void act_launch(void)
 {
@@ -542,6 +594,7 @@ void bar_serve(void)
                 break;
             case BAR_ACT_SCREEN: act_screen_front(id - BAR_SEG_SCREEN0); break;
             case BAR_ACT_LAUNCH_AGENT: act_launch(); break;
+            case BAR_ACT_RUN: tray_run(id - BAR_SEG_TRAY0); break;
             default: break;
             }
         }
@@ -564,6 +617,12 @@ int bar_takes_right_press(void)
 
 void bar_right_click(void) { act_launch(); }
 
+void bar_set_conf(const barconf *c)
+{
+    g_conf = *c;
+    g_conf_set = 1;
+}
+
 void bar_set_clock_formats(const char *clock, const char *alt)
 {
     strncpy(g_fmt_clock, clock, sizeof g_fmt_clock - 1);
@@ -574,6 +633,7 @@ int bar_net(void) { return g_net_kind; }
 void bar_text(char *out, int cap) { bar_dump(&g_bar, out, cap); }
 long bar_draws(void) { return g_draws; }
 long bar_panels(void) { return g_panels; }
+long bar_runs(void) { return g_runs; }
 long bar_launches(void) { return g_launches; }
 long bar_raises(void) { return g_raises; }
 int bar_is_open(void) { return g_win != 0; }

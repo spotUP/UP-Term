@@ -21,6 +21,8 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <detail>"); l
   bar_hold     W43: BAR OFF then BAR ON during the 30 s Workbench-mode hold open no window; the bar opens when the hold ends
   bar_conf     R2.13a/R2.13c: ENV:Amarchy/bar.conf with "start off" and Amarchy restarted gives BAR STATUS bar=0 and no window;
                a real Super+B (ami.key, LAmiga + B) makes bar=1 and opens the window; the test file is removed and Amarchy restarted
+  tray         R2.12: bar.conf `segment ram off`, `right system tray cpu` and `run Mark <cmd>`: segment 3 gone, x order 4 < 300 < 5,
+               segment 300 reads Mark, a real left click on it runs the command (sentinel file made only after the click)
   recolour     R2.5b (OMARCHY-AI F3): saving theme A then B in ENV:Amarchy/prefs makes BAR PENS answer that theme with its bg/text
                colours and recolours=+1 each, and BAR STATUS draws= rises (the bar was drawn again); test files and prefs restored
   python3 tools/rig/amarchy_p2_rig.py [--only STEP] [--no-build]
@@ -305,10 +307,46 @@ def s_recolour():
     return True, 'start %r; ' % r0 + '; '.join('%s: theme seen %s bg %s (want %s) text %s (want %s) recolours %s draws %s' % x for x in seen)
 
 
+def s_tray():
+    """R2.12: bar.conf rows reach the live bar. `segment ram off` hides segment 3, `right system tray cpu` orders them (BAR TEXT x of 4 < 300 < 5),
+    `run Mark ...` makes tray segment 300 labelled Mark, and a real left click on it runs the row's command line through proclaunch (the
+    command copies bar.conf to RAM:p2tray.flag: the sentinel exists only after the click)"""
+    t.send('AMTILE', 'QUIT')
+    t.send('AMARCHY', 'QUIT')
+    time.sleep(1.5)
+    c.run('MakeDir >NIL: ENV:Amarchy')
+    c.run('Delete >NIL: RAM:p2tray.flag')
+    c.run('Echo "segment ram off" >ENV:Amarchy/bar.conf')
+    c.run('Echo "right system tray cpu" >>ENV:Amarchy/bar.conf')
+    c.run('Echo "run Mark C:Copy ENV:Amarchy/bar.conf RAM:p2tray.flag" >>ENV:Amarchy/bar.conf')
+    try:
+        c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+        t.wait_for(lambda: t.send('AMARCHY', 'STATUS', timeout=5)[0] == 0, 10)
+        t.wait_for(lambda: 4 in segs(), 8)
+        sg = segs()
+        before = c.run('Type RAM:p2tray.flag')[0] == 0
+        order = all(k in sg for k in (4, 300, 5)) and sg[4][0] < sg[300][0] < sg[5][0]
+        hidden = 3 not in sg
+        label = sg.get(300, (0, 0, 0, ''))[3]
+        if 300 in sg:
+            click_seg(300)
+        made = t.wait_for(lambda: c.run('Type RAM:p2tray.flag')[0] == 0, 8)
+    finally:
+        c.run('Delete >NIL: ENV:Amarchy/bar.conf')
+        c.run('Delete >NIL: RAM:p2tray.flag')
+        t.send('AMARCHY', 'QUIT')
+        time.sleep(1.5)
+        c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+        t.wait_for(lambda: t.send('AMARCHY', 'STATUS', timeout=5)[0] == 0, 10)
+    ok = order and hidden and label == 'Mark' and not before and bool(made)
+    return ok, 'x4<x300<x5 %s (%r); ram segment gone %s; label %r; sentinel before click %s, after click %s' % (
+        order, {k: v[0] for k, v in sg.items() if k in (4, 300, 5)}, hidden, label, before, bool(made))
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
          ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system),
-         ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('recolour', s_recolour)]
+         ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('tray', s_tray), ('recolour', s_recolour)]
 
 
 def main():

@@ -286,6 +286,8 @@ int bar_click(const bar *b, int x, int button, int *id)
     default:
         if (BAR_IS_SCREEN(b->seg[i].id) && button == BAR_BTN_LEFT)
             return BAR_ACT_SCREEN;
+        if (BAR_IS_TRAY(b->seg[i].id) && button == BAR_BTN_LEFT)
+            return BAR_ACT_RUN;
         break;
     }
     return BAR_ACT_NONE;

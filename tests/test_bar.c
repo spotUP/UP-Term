@@ -459,6 +459,22 @@ static int x_of(const bar *b, int id)
     return -1;
 }
 
+static void test_tray_click(void)
+{
+    bar b;
+    int id;
+    bar_init(&b, 400, 4, 4);
+    bar_add(&b, BAR_SEG_SYSTEM, BAR_RIGHT, "System", 48);
+    bar_add(&b, BAR_SEG_TRAY0, BAR_RIGHT, "Files", 40);
+    bar_add(&b, BAR_SEG_TRAY0 + 1, BAR_RIGHT, "Edit", 32);
+    bar_layout(&b, 400);
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_TRAY0 + 1), BAR_BTN_LEFT, &id), BAR_ACT_RUN);
+    CHECK_INT(id, BAR_SEG_TRAY0 + 1);
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_TRAY0), BAR_BTN_RIGHT, &id), BAR_ACT_NONE);
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_TRAY0), BAR_BTN_LEFT, &id), BAR_ACT_RUN);
+    CHECK_INT(id, BAR_SEG_TRAY0);
+}
+
 static void test_clock_system_screens(void)
 {
     bar b;
@@ -519,4 +535,5 @@ void suite_bar(void)
     test_fmt_time();
     test_fmt_misc();
     test_clock_system_screens();
+    test_tray_click();
 }

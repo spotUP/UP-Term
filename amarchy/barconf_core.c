@@ -137,3 +137,34 @@ int barconf_parse(const char *buf, long len, barconf *c)
     }
     return 1;
 }
+
+static const struct { int seg, group; } builtin[BC_NSEGS] = {
+    { BC_SEG_SCREENS, BC_G_LEFT }, { BC_SEG_CLOCK, BC_G_CENTRE }, { BC_SEG_TRAY, BC_G_RIGHT }, { BC_SEG_CPU, BC_G_RIGHT },
+    { BC_SEG_NETWORK, BC_G_RIGHT }, { BC_SEG_RAM, BC_G_RIGHT }, { BC_SEG_AGENTS, BC_G_RIGHT }, { BC_SEG_SYSTEM, BC_G_RIGHT }
+};
+
+int barconf_plan(const barconf *c, bc_place *out)
+{
+    int named[BC_NSEGS] = { 0 }, n = 0, g, k, i;
+    for (g = 0; g < BC_NGROUPS; g++)
+        for (k = 0; k < c->norder[g]; k++) {
+            int s = c->order[g][k];
+            if (s < 0 || s >= BC_NSEGS || named[s])
+                continue;
+            named[s] = 1;
+            if (!c->seg_on[s])
+                continue;
+            out[n].seg = s;
+            out[n].group = s == BC_SEG_SCREENS ? BC_G_LEFT : g;
+            n++;
+        }
+    for (i = 0; i < BC_NSEGS; i++) {
+        int s = builtin[i].seg;
+        if (named[s] || !c->seg_on[s])
+            continue;
+        out[n].seg = s;
+        out[n].group = builtin[i].group;
+        n++;
+    }
+    return n;
+}

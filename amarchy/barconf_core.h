@@ -39,6 +39,15 @@ typedef struct barconf {
 void barconf_defaults(barconf *c);
 /* Parses len bytes of buf over the defaults. Always 1; c->bad counts the rows ignored. */
 int barconf_parse(const char *buf, long len, barconf *c);
+/* The bar's segments in the order they are added, from the order and on/off rows: a group row names its segments in
+ * order (a segment named there moves into that group; the first row to name one wins); segments no row names keep their
+ * built-in group (screens left, clock centre, the rest right as tray cpu network ram agents system) after the named ones.
+ * A segment switched off is left out. screens is always left. Returns the count (at most BC_NSEGS). */
+typedef struct bc_place {
+    int seg;                            /* BC_SEG_* */
+    int group;                          /* BC_G_* */
+} bc_place;
+int barconf_plan(const barconf *c, bc_place *out);
 /* BC_SEG_* of a segment name, -1 when unknown. */
 int barconf_seg(const char *name);
 

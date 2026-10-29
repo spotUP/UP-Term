@@ -60,8 +60,41 @@ static void test_bad(void)
     CHECK_INT(barconf_seg("Tray"), -1);
 }
 
+static int plan_pos(const bc_place *p, int n, int seg)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (p[i].seg == seg)
+            return i;
+    return -1;
+}
+
+static void test_plan(void)
+{
+    barconf c;
+    bc_place p[BC_NSEGS];
+    int n;
+    barconf_defaults(&c);
+    n = barconf_plan(&c, p);
+    CHECK_INT(n, BC_NSEGS);                              /* defaults: every segment, built-in groups */
+    CHECK_INT(p[plan_pos(p, n, BC_SEG_CLOCK)].group, BC_G_CENTRE);
+    CHECK_INT(p[plan_pos(p, n, BC_SEG_SCREENS)].group, BC_G_LEFT);
+    CHECK(plan_pos(p, n, BC_SEG_CPU) < plan_pos(p, n, BC_SEG_NETWORK));
+    CHECK(plan_pos(p, n, BC_SEG_AGENTS) < plan_pos(p, n, BC_SEG_SYSTEM));
+    /* a group row orders its segments first; off leaves one out; a named segment moves group; screens stays left */
+    parse("right system ram\nsegment cpu off\nleft clock screens\ncentre screens\n", &c);
+    n = barconf_plan(&c, p);
+    CHECK_INT(n, BC_NSEGS - 1);
+    CHECK_INT(plan_pos(p, n, BC_SEG_CPU), -1);
+    CHECK(plan_pos(p, n, BC_SEG_RAM) == plan_pos(p, n, BC_SEG_SYSTEM) + 1);
+    CHECK_INT(p[plan_pos(p, n, BC_SEG_CLOCK)].group, BC_G_LEFT);
+    CHECK_INT(p[plan_pos(p, n, BC_SEG_SCREENS)].group, BC_G_LEFT);
+    CHECK(plan_pos(p, n, BC_SEG_SYSTEM) < plan_pos(p, n, BC_SEG_NETWORK));  /* unnamed ones follow the named */
+}
+
 void suite_barconf(void)
 {
+    test_plan();
     test_defaults();
     test_keys();
     test_bad();
