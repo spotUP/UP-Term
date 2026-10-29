@@ -224,6 +224,8 @@ Phase X:
 
 ## Owner decisions (none taken silently; recommended first)
 
+Owner answers 2026-10-29 (AskUserQuestion, s21): every decision took the recommended option (a). OD-L1 text cell-art logo in the accent pen; OD-L2 2 s or any key/click; OD-L3 amconf logo-at-start, on by default, Prefs row; OD-L4 nearest designed bitmap size per tier; OD-L5 default public screen when DOpus has its own screen; OD-L6 `Label | action || Description`, split on the last ` || `; OD-L7 taller rows only on levels with descriptions, hidden under 400 lines; OD-L8 user Prefs size wins when set, theme ratios still apply; OD-L9 About as the last root row; OD-X1 env:, file:, port: conditions; OD-X2 text row plus ASL file button; OD-X3 missed reminders fire once at next start, marked missed; OD-X4 1 MB disk test clamped to half the free space; OD-X5 ENVARC:Amarchy/reminders. OD-B2 dependency closed (P1b OD-B2 decided 2026-10-29). Status: decided.
+
 - OD-L1 Logo format. (a) Text logo file, each non-space character drawn as a filled cell in the theme accent (Recommended): any text
   editor makes one, no chip RAM picture, scales with the font tier, follows every theme, works on RTG and AGA; trade-off: blocky,
   no real picture. (b) IFF ILBM through picture.datatype, remapped to the screen: a real picture; trade-off: chip RAM, colours fight
