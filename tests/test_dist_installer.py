@@ -445,7 +445,7 @@ class AmiSSLPart(unittest.TestCase):
         self.assertEqual(inc.count('(getversion "LIBS:amisslmaster.library"'), 1)
         self.assertNotIn('getversion', (ROOT / "dist/Install.installer").read_text(encoding="latin-1"))
         self.assertEqual(INSTALLER.count('(P_AMISSLCHECK)'), 2)  # the include's call for the page's default, and the one after the run
-        self.assertLess(self.RUN.index('(run "Execute T:UPTAMISSL")'), self.RUN.index('(P_AMISSLCHECK)'))
+        self.assertLess(self.RUN.index('(execute "T:UPTAMISSL")'), self.RUN.index('(P_AMISSLCHECK)'))
 
     def test_the_last_page_says_when_ticked_amissl_did_not_get_installed(self):
         run = self.RUN
