@@ -1,6 +1,6 @@
 /* The Amarchy bar, the Amiga half (bar.h; the layout, hit-test and click map are bar_core.c, host-tested).
- * Colours are the drawn menu's roles (menu_theme.h) in the current Omarchy GUI theme, taken once as pens when
- * the bar opens. A tick allocates nothing: bar_set_text compares, and only a changed segment is drawn again. */
+ * Colours are the drawn menu's roles (menu_theme.h) in the current Omarchy GUI theme, taken as pens when
+ * the bar opens and again on a theme switch (themewin.c tw_tick). A tick allocates nothing: bar_set_text compares, and only a changed segment is drawn again. */
 #include <exec/types.h>
 #include <graphics/gfx.h>
 #include <graphics/rastport.h>
@@ -335,6 +335,13 @@ static void paint_all(void)
     paint_dirty();
 }
 
+/* tw_tick retook the pens after a theme switch: the whole bar again, in them */
+static void bar_recolour(struct Window *w)
+{
+    (void)w;
+    paint_all();
+}
+
 int bar_open(const char *dir)
 {
     struct TextFont *font;
@@ -386,7 +393,7 @@ int bar_open(const char *dir)
     }
     sample(2, 1);
     bar_layout(&g_bar, g_scr->Width);
-    g_win = tw_open(g_scr, 0, g_scr->Height - h, g_scr->Width, h, BAR_TITLE, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW);
+    g_win = tw_open(g_scr, 0, g_scr->Height - h, g_scr->Width, h, BAR_TITLE, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW, bar_recolour);
     if (!g_win) {
         idle_stop();
         UnlockPubScreen(0, g_scr);

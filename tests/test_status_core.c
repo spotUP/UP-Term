@@ -43,6 +43,11 @@ static void test_verb(void)
     CHECK_INT(bar_verb("\ton"), BARV_ON);
     CHECK_INT(bar_verb(" TOGGLE"), BARV_TOGGLE);
     CHECK_INT(bar_verb(" text"), BARV_TEXT);
+    CHECK_INT(bar_verb(" Pens"), BARV_PENS);
+    CHECK_INT(bar_verb(" pensx"), BARV_BAD);
+    /* R2.5b: the theme-change signal is a different saved theme name */
+    CHECK_INT(tw_theme_changed("tokyo-night", "tokyo-night"), 0);
+    CHECK_INT(tw_theme_changed("tokyo-night", "catppuccin-latte"), 1);
     CHECK_INT(bar_verb(""), BARV_BAD);
     CHECK_INT(bar_verb(" onx"), BARV_BAD);
     CHECK_INT(bar_verb(" off now"), BARV_BAD);

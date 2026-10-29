@@ -21,6 +21,8 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <detail>"); l
   bar_hold     W43: BAR OFF then BAR ON during the 30 s Workbench-mode hold open no window; the bar opens when the hold ends
   bar_conf     R2.13a/R2.13c: ENV:Amarchy/bar.conf with "start off" and Amarchy restarted gives BAR STATUS bar=0 and no window;
                a real Super+B (ami.key, LAmiga + B) makes bar=1 and opens the window; the test file is removed and Amarchy restarted
+  recolour     R2.5b (OMARCHY-AI F3): saving theme A then B in ENV:Amarchy/prefs makes BAR PENS answer that theme with its bg/text
+               colours and recolours=+1 each, and BAR STATUS draws= rises (the bar was drawn again); test files and prefs restored
   python3 tools/rig/amarchy_p2_rig.py [--only STEP] [--no-build]
 Resumable: --only STEP reruns one step against the state the earlier steps left; verdicts are written to
 <RIG>/amarchy-p2/verdict.json as each step completes. Exit code is nonzero when any step fails."""
@@ -259,10 +261,54 @@ def s_bar_conf():
         d0.get('bar'), none0, bool(on), bool(win), bool(off))
 
 
+def pens():
+    rc, res = t.send('AMARCHY', 'BAR PENS', timeout=5)
+    d = dict(re.findall(r'(\w+)=(\S+)', res))
+    return rc, res, d
+
+
+def s_recolour():
+    """R2.5b (closes OMARCHY-AI F3): saving another theme recolours the bar. BAR PENS reports the theme the helper's pens
+    belong to, how often they were retaken and the role colours; BAR STATUS draws= shows the bar was drawn again"""
+    prefs, drawer = 'ENV:Amarchy/prefs', 'ENVARC:Amarchy/themes'
+    names = [('p2rea', '102030', 'E0E0E0'), ('p2reb', 'C0D0E0', '101010')]
+    c.run('MakeDir >NIL: ENVARC:Amarchy')
+    c.run('MakeDir >NIL: ' + drawer)
+    c.run('Delete >NIL: T:p2prefs.bak')
+    had = c.run('Copy >NIL: %s T:p2prefs.bak' % prefs)[0] == 0
+    seen = []
+    try:
+        for n, bg, fg in names:
+            c.run('Echo "background = *"#%s*"" >%s/%s.theme' % (bg, drawer, n))
+            c.run('Echo "foreground = *"#%s*"" >>%s/%s.theme' % (fg, drawer, n))
+        if t.bar_box() is None:
+            t.send('AMARCHY', 'BAR ON', timeout=5)
+        rc0, r0, d0 = pens()
+        draws0 = kv(t.send('AMARCHY', 'BAR STATUS', timeout=5)[1]).get('draws', 0)
+        n0 = int(d0.get('recolours', -1))
+        for i, (n, bg, fg) in enumerate(names):
+            c.run('MakeDir >NIL: ENV:Amarchy')
+            c.run('Echo "amarchy-gui-theme = %s" >%s' % (n, prefs))
+            got = t.wait_for(lambda: pens()[2].get('theme') == n, 6)
+            rc, r, d = pens()
+            draws = kv(t.send('AMARCHY', 'BAR STATUS', timeout=5)[1]).get('draws', 0)
+            seen.append((n, bool(got), d.get('bg'), bg, d.get('text'), fg, d.get('recolours'), draws))
+            if not (got and d.get('bg') == bg and d.get('text') == fg and int(d.get('recolours', -1)) == n0 + i + 1 and draws > draws0):
+                return False, 'switch to %s: %r (before %r, draws0 %r)' % (n, r, r0, draws0)
+            draws0 = draws
+    finally:
+        for n, _, _ in names:
+            c.run('Delete >NIL: %s/%s.theme' % (drawer, n))
+        c.run('Delete >NIL: ' + prefs)
+        if had:
+            c.run('Copy >NIL: T:p2prefs.bak ' + prefs)
+    return True, 'start %r; ' % r0 + '; '.join('%s: theme seen %s bg %s (want %s) text %s (want %s) recolours %s draws %s' % x for x in seen)
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
          ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system),
-         ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf)]
+         ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('recolour', s_recolour)]
 
 
 def main():

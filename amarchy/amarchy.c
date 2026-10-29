@@ -34,6 +34,7 @@
 #include "../tty/qmark.h"
 #include "menu_open.h"
 #include "bar.h"
+#include "themewin.h"
 #include "barconf_dos.h"
 #include "status_core.h"
 #include "shot.h"
@@ -206,13 +207,17 @@ static void status_text(char *out, long cap, int bar_status)
     status_line(bar_status, val, out, cap);
 }
 
-/* BAR STATUS | ON | OFF | TOGGLE | TEXT (the segments, bar_dump). OFF closes the window and its raise timer (the tick keeps running), ON opens it again;
+/* BAR STATUS | ON | OFF | TOGGLE | TEXT (the segments, bar_dump) | PENS (tw_describe). OFF closes the window and its raise timer (the tick keeps running), ON opens it again;
  * rc 10 for another word, 5 when ON finds no screen. */
 static long bar_port(const char *args, char *out)
 {
     int v = bar_verb(args), act;
     if (v == BARV_BAD)
         return 10;
+    if (v == BARV_PENS) {
+        tw_describe(out, REXX_HOST_OUT);
+        return 0;
+    }
     if (v == BARV_TEXT) {
         bar_text(out, REXX_HOST_OUT);
         return 0;
@@ -446,6 +451,7 @@ int main(void)
     cws = cw_sigmask();
     tick_hook(note_expire);
     tick_hook(bar_tick);
+    tick_hook(tw_tick);                         /* R2.5b: a theme switch retakes the helper windows' pens */
     tick_open_ok = tick_open();                 /* the 1 s tick, before the bar and running without it */
     tks = tick_sigmask();
     /* W43: no window before the Workbench is in its final mode (IPrefs resets it late; the reset cannot run while a

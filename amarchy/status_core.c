@@ -67,5 +67,12 @@ int bar_verb(const char *args)
         return BARV_TOGGLE;
     if (word(args, "text"))
         return BARV_TEXT;
+    if (word(args, "pens"))
+        return BARV_PENS;
     return BARV_BAD;
+}
+
+int tw_theme_changed(const char *have, const char *cur)
+{
+    return strcmp(have, cur) != 0;
 }

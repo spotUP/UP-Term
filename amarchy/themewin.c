@@ -11,6 +11,8 @@
 #include <proto/graphics.h>
 #include <proto/intuition.h>
 #include <string.h>
+#include <stdio.h>
+#include "status_core.h"
 #include "themewin.h"
 #include "gthemes_dos.h"
 #include "../render/pens_amiga.h"
@@ -23,6 +25,11 @@ static int g_wins;                       /* open helper windows */
 static struct ColorMap *g_cm;
 static long g_pen[MT_ROLES];
 static int g_pen_got[MT_ROLES];
+static uc_u32 g_rgb[MT_ROLES];           /* the theme's colour of each role the pens were taken for */
+static char g_theme[GT_NAME];            /* the theme those pens belong to */
+static long g_recolours;
+#define TW_MAX 4
+static struct { struct Window *win; tw_redraw_fn fn; } g_slot[TW_MAX];
 
 int tw_libs_open(void)
 {
@@ -47,14 +54,14 @@ void tw_libs_close(void)
 
 static void pens_get(struct ColorMap *cm)
 {
-    uc_u32 rgb[MT_ROLES];
     gtheme th;
     int r;
     g_cm = cm;
-    gt_dos_load_current(&th);
-    menu_theme_roles_gui(&th, rgb);
+    gt_dos_current(g_theme, (int)sizeof g_theme);
+    gt_dos_load(g_theme, &th);
+    menu_theme_roles_gui(&th, g_rgb);
     for (r = 0; r < MT_ROLES; r++) {
-        long p = vr_pen_obtain(g_cm, rgb[r]);
+        long p = vr_pen_obtain(g_cm, g_rgb[r]);
         g_pen_got[r] = p >= 0;
         g_pen[r] = p >= 0 ? p : (r == MT_BG ? 0 : 1);
     }
@@ -75,10 +82,11 @@ long tw_pen(int role)
     return role >= 0 && role < MT_ROLES ? g_pen[role] : 1;
 }
 
-struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const char *title, unsigned long idcmp)
+struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const char *title, unsigned long idcmp,
+                       tw_redraw_fn redraw)
 {
     struct Window *win;
-    int made_port = 0;
+    int made_port = 0, i;
     if (!GfxBase || !scr)
         return 0;
     if (!g_port) {
@@ -104,6 +112,12 @@ struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const cha
     win->UserPort = g_port;
     ModifyIDCMP(win, idcmp);
     g_wins++;
+    for (i = 0; i < TW_MAX; i++)
+        if (!g_slot[i].win) {
+            g_slot[i].win = win;
+            g_slot[i].fn = redraw;
+            break;
+        }
     return win;
 }
 
@@ -111,8 +125,12 @@ void tw_close(struct Window *win)
 {
     struct IntuiMessage *m;
     struct Node *next;
+    int i;
     if (!win)
         return;
+    for (i = 0; i < TW_MAX; i++)
+        if (g_slot[i].win == win)
+            g_slot[i].win = 0;
     /* Take this window's pending messages off the shared port, detach the port, then close: the usual safe close
      * of a window that shares its UserPort. */
     Forbid();
@@ -165,6 +183,33 @@ void tw_frame(struct Window *win, int x0, int y0, int x1, int y1, int role)
     Draw(rp, x1, y1);
     Draw(rp, x0, y1);
     Draw(rp, x0, y0);
+}
+
+/* The theme-change signal is the saved theme name (AM_GTHEME in the Amarchy prefs): every writer (hotkey, drawn menu,
+ * Style > Theme) goes through gt_dos_select, which saves it. When it differs from the one the pens were taken for, the pens
+ * are taken again and every helper window redraws in them. */
+void tw_tick(long now)
+{
+    char cur[GT_NAME];
+    int i;
+    (void)now;
+    if (g_wins == 0)
+        return;
+    gt_dos_current(cur, (int)sizeof cur);
+    if (!tw_theme_changed(g_theme, cur))
+        return;
+    pens_release();
+    pens_get(g_cm);
+    g_recolours++;
+    for (i = 0; i < TW_MAX; i++)
+        if (g_slot[i].win && g_slot[i].fn)
+            g_slot[i].fn(g_slot[i].win);
+}
+
+void tw_describe(char *out, int cap)
+{
+    snprintf(out, (size_t)cap, "theme=%s recolours=%ld bg=%06lX text=%06lX bgpen=%ld", g_wins ? g_theme : "-", g_recolours,
+             g_wins ? (unsigned long)g_rgb[MT_BG] : 0UL, g_wins ? (unsigned long)g_rgb[MT_TEXT] : 0UL, g_wins ? tw_pen(MT_BG) : -1L);
 }
 
 unsigned long tw_sigmask(void)
