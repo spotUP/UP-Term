@@ -422,6 +422,31 @@ def s_agenttab():
             if not (rc == 0 and made and row[3] > 50000 and row[4] > 50000 and row[5] == 0 and row[6] == 0):
                 return False, 'switch to %s: (name, rc, sentinel, claude bg px, shell bg px, claude old px, shell old px) %r' % (n, seen)
             old = bg.lower()
+        # owner 2026-10-29: a window opened AFTER the switch, with no colour in its spec, starts in the active Amarchy theme,
+        # not the up-term profile's (apply_profile via upconf_colour_source). Its watcher only fires on a change, so these
+        # pixels are the startup path. Measured on ITS box with it in front; closed by its own close gadget.
+        n, bg, fg = themes[-1]
+        title = 'p2new'
+        c.run('Run >NIL: NewShell "XCON:0/14/640/242/%s/CLOSE"' % title)
+        if not t.wait_for(lambda: ami.window(title) is not None, 15):
+            return False, 'no new window opened after the switch, rows %r' % (seen,)
+        time.sleep(4)
+        ami.raise_window(title)
+        time.sleep(1)
+        box = ami.window(title)['box']
+        w, h, rows = ami.grab(box)
+        hn = {}
+        for r in rows:
+            for i in range(0, len(r) - 2, 3):
+                k = bytes(r[i:i + 3]).hex()
+                hn[k] = hn.get(k, 0) + 1
+        top = sorted(hn.items(), key=lambda kv: -kv[1])[:3]
+        gx, gy, gw, gh = ami.window(title)['sys:close']
+        ami.click_px(gx + gw // 2, gy + gh // 2)
+        t.wait_for(lambda: ami.window(title) is None, 8)
+        seen.append(('newwin', top[0][0] if top else ''))
+        if not (top and top[0][0] == bg.lower()):
+            return False, 'new window after the switch to %s: box %r, top colours %r' % (n, box, top)
     finally:
         for n, _, _ in themes:
             c.run('Delete >NIL: %s/%s.theme' % (drawer, n))
@@ -434,7 +459,7 @@ def s_agenttab():
             c.run('Copy >NIL: T:p2user.bak ENV:up-term/keymap.user')
         t.send('AMARCHY', 'RELOAD', timeout=5)
     return True, 'rows %d->%d; ' % (rows0, rows1) + '; '.join(
-        '%s: rc %s sentinel %s claude-bg %s shell-bg %s claude-old %s shell-old %s' % x for x in seen)
+        ('%s: rc %s sentinel %s claude-bg %s shell-bg %s claude-old %s shell-old %s' % x if len(x) > 2 else 'new window dominant %s' % x[1]) for x in seen)
 
 
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),

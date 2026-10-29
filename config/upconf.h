@@ -100,6 +100,10 @@ int  upconf_parse(upconf *c, const char *buf, long len);
  * and key case aside; a profile absent from both is equal)? A window's
  * live update: only a window whose own profile changed is redrawn. */
 int  upconf_profile_equal(const upconf *a, const upconf *b, const char *profile);
+/* Where a window's colours come from: the Amarchy theme table THEME (one profile section holding fg, ENV:up-term/theme-active)
+ * when it is one, else the profile P of PROF. Sets *sec to the section; *is_theme is 1 for the theme (a theme replaces every
+ * colour, a profile only the ones it sets). Owner 2026-10-29: the active Amarchy theme beats the up-term profile's. */
+const upconf *upconf_colour_source(const upconf *prof, const char *p, const upconf *theme, const char **sec, int *is_theme);
 /* The rows of one section, in file order, duplicate keys included: upconf's
  * table keeps one value per key, a keymap needs every line. Reads the raw
  * text through the same line rules as upconf_parse (comments, CRLF, the

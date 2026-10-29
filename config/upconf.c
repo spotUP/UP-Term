@@ -536,6 +536,18 @@ int upconf_profile_equal(const upconf *a, const upconf *b, const char *profile)
     return keys_in(a, b, profile) && keys_in(b, a, profile);
 }
 
+const upconf *upconf_colour_source(const upconf *prof, const char *p, const upconf *theme, const char **sec, int *is_theme)
+{
+    if (theme && theme->nprof > 0 && upconf_has(theme, theme->prof[0], "fg")) {
+        *sec = theme->prof[0];
+        *is_theme = 1;
+        return theme;
+    }
+    *sec = p;
+    *is_theme = 0;
+    return prof;
+}
+
 int upconf_profiles(const upconf *c, const char **names)
 {
     int i;

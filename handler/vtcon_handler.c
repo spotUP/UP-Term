@@ -214,6 +214,8 @@ typedef struct con {
     char term[32];               /* W46: TERM told to vsh's programs ("": vsh's own, vtcon) */
     char colors[8];              /* W46: rgb | 256 ("": not told) */
     char link_open[UC_MAX_VALUE]; /* the profile's link-open, or /link-open's ("": OpenURL %s) */
+    char *theme_text;            /* ENV:up-term/theme-active as read (Amarchy theme), 0 none: beats the profile's colours */
+    long theme_len;
     int colours_spec;            /* the spec chose colours (DARK/FG/BG/LIGHT): it beats the profile */
     ULONG spec_fg, spec_bg;      /* the colours before any profile (a profile switch starts there) */
     upconf *save_work;           /* Save settings to profile: the table once the file is written
@@ -886,7 +888,11 @@ struct config_msg {
     struct Message msg;
     upconf *conf;
     keymap *km; /* the shared keymap to fill, or 0 when it is already loaded */
+    char *theme; /* the active Amarchy theme's text, read with the profile (0 none) */
+    long theme_len;
 };
+
+static char *read_active_theme(long *len);
 
 /* The keymap (Left Amiga keys, plan 2026-10-22-amarchy-commodity): one table
  * for the whole handler, not one per window. The first window to open
@@ -943,6 +949,7 @@ static void config_worker(void)
     m = (struct config_msg *)GetMsg(&me->pr_MsgPort);
     me->pr_WindowPtr = (APTR)-1; /* no requesters from a file that may be absent */
     read_conf(m->conf);
+    m->theme = read_active_theme(&m->theme_len);
     if (m->km)
         read_keymap(m->km);
     Forbid(); /* the opener frees m: end before it can run on */
@@ -1117,6 +1124,8 @@ static void config_load(con *c)
     PutMsg(&w->pr_MsgPort, (struct Message *)m);
     WaitPort(port);
     GetMsg(port);
+    c->theme_text = m->theme; /* a new tab starts in the active Amarchy theme (apply_profile) */
+    c->theme_len = m->theme_len;
     FreeVec(m);
     DeleteMsgPort(port);
 }
@@ -1225,6 +1234,28 @@ static void apply_colours(con *c, const upconf *cf, const char *p, int theme)
     apply_colours_rest(c, cf, p, theme);
 }
 
+/* The colours: the active Amarchy theme beats the profile's (upconf_colour_source); the window spec beats both.
+ * p is the profile section, 0 when the file has none: the theme still applies then. */
+static void apply_profile_colours(con *c, const char *p)
+{
+    upconf *t = c->theme_text ? (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR) : 0;
+    const upconf *src = c->conf;
+    const char *sec = p;
+    int is_theme = 0;
+    if (t) {
+        upconf_parse(t, c->theme_text, c->theme_len);
+        src = upconf_colour_source(c->conf, p, t, &sec, &is_theme);
+    }
+    if (sec) {
+        if (!c->colours_spec)
+            apply_colours(c, src, sec, is_theme);
+        else
+            apply_colours_rest(c, src, sec, is_theme);
+    }
+    if (t)
+        FreeVec(t);
+}
+
 /* The profile's values for every knob the spec did not set (precedence:
  * built-in defaults < profile < window spec; plan 2026-10-01). A profile
  * the file does not know falls back to "default". */
@@ -1239,8 +1270,10 @@ static void apply_profile(con *c)
     p = c->profile;
     if (!profile_exists(c->conf, p))
         p = profile_exists(c->conf, "default") ? "default" : 0;
-    if (!p)
+    if (!p) {
+        apply_profile_colours(c, 0); /* no profile in the file: the active theme still colours the window */
         return;
+    }
     /* OSC 8: the command a Ctrl + clicked link runs, %s the URL */
     copy_str(c->link_open, upconf_str(c->conf, p, "link-open", ""), sizeof(c->link_open));
     v = upconf_str(c->conf, p, "term", "");
@@ -1290,10 +1323,7 @@ static void apply_profile(con *c)
     /* glyphs the bitmap font lacks: an outline font's (F1); "" none */
     v = upconf_str(c->conf, p, "font-fallback", 0);
     copy_str(c->w.fallback, v ? v : "", sizeof(c->w.fallback));
-    if (!c->colours_spec)
-        apply_colours(c, c->conf, p, 0);
-    else
-        apply_colours_rest(c, c->conf, p, 0);
+    apply_profile_colours(c, p);
     /* no key: the built-in 500 (sb_lines 0); "scrollback = 0": none (-1),
      * as Settings > Scrollback > None saves it */
     if (upconf_get(c->conf, p, "scrollback")) {
@@ -2387,7 +2417,10 @@ static void watch_take(con *c)
         if (m->theme) {
             if (c->w.t && c->w.win)
                 theme_apply(c, m->theme, m->theme_len);
-            FreeVec(m->theme);
+            if (c->theme_text)
+                FreeVec(c->theme_text);
+            c->theme_text = m->theme; /* kept: a profile switch or a later tab-profile reload stays in the theme */
+            c->theme_len = m->theme_len;
             m->theme = 0;
         }
         c->watch_held = 0;
@@ -7647,6 +7680,8 @@ static LONG handler_main(void)
     CloseLibrary((struct Library *)DOSBase);
     if (c->conf)
         FreeVec(c->conf);
+    if (c->theme_text)
+        FreeVec(c->theme_text);
     req_drop(c);
     if (c->km_user) {
         keymap *gone = 0;

@@ -380,6 +380,30 @@ static void rows_in_file_order(void)
     CHECK_INT(r.line[0], 3);
 }
 
+/* A tab opened after an Amarchy theme switch starts in that theme: the active theme's colours beat the up-term profile's
+ * (owner 2026-10-29); no theme file, or text that is not a theme, leaves the profile's. */
+static void theme_beats_profile(void)
+{
+    static upconf prof, theme, junk;
+    static const char pt[] = "[profile default]\nfg = C0C0C0\nbg = 000000\n";
+    static const char tt[] = "[profile amarchy]\nfg = AABBCC\nbg = 112233\n";
+    static const char nt[] = "[profile amarchy]\nbell = none\n";
+    const char *sec = 0;
+    int is_theme = -1;
+    const upconf *src;
+    upconf_parse(&prof, pt, (long)strlen(pt));
+    upconf_parse(&theme, tt, (long)strlen(tt));
+    upconf_parse(&junk, nt, (long)strlen(nt));
+    src = upconf_colour_source(&prof, "default", &theme, &sec, &is_theme);
+    CHECK(src == &theme && is_theme == 1);
+    CHECK_STR(sec, "amarchy");
+    src = upconf_colour_source(&prof, "default", 0, &sec, &is_theme);
+    CHECK(src == &prof && is_theme == 0);
+    CHECK_STR(sec, "default");
+    src = upconf_colour_source(&prof, "default", &junk, &sec, &is_theme);
+    CHECK(src == &prof && is_theme == 0);
+}
+
 void suite_upconf(void)
 {
     upconf c;
@@ -699,6 +723,7 @@ void suite_upconf(void)
         CHECK_STR(out + 150, "15,111111");             /* the last entry whole, nothing after */
     }
     profile_equal();
+    theme_beats_profile();
     comments_kept();
     packed_table();
     rows_in_file_order();
