@@ -6,7 +6,7 @@ Table driven and resumable. Rows run in table order; later rows depend on the st
 the rig is in. A verdict is written to <RIG>/amarchy/<row>.verdict as each row completes; a row with a
 verdict is skipped on the next run. One row: --only <row>; the failures again: --failed; all: --fresh.
 
-Sentinel: the user keymap gets the row  super+alt+j = run:C:Echo >T:amarchy.sentinel hit  so the key
+Sentinel: the user keymap gets the row  super+ctrl+j = run:C:Echo >T:amarchy.sentinel hit  so the key
 creates T:amarchy.sentinel. The commodity's ARexx STATUS hit counter and `UPTerm state` km-hits are the
 two counters that prove WHICH side ran the action (R3: exactly one of them moves).
 Needs the rig up (rig.py start --max) and the handler of this branch installed. The script builds Amarchy and amarchy-menu and stages them
@@ -20,11 +20,11 @@ import ami, condev_rig as c
 import stage_rig, tabstate
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
-LAMIGA, LALT = 0x40, 0x10          # IEQUALIFIER_LCOMMAND, IEQUALIFIER_LALT
+LAMIGA, CTRL = 0x40, 0x08          # IEQUALIFIER_LCOMMAND, IEQUALIFIER_CONTROL
 RAW_J = 0x26
 SENT = 'T:amarchy.sentinel'
 USERMAP = 'ENV:up-term/keymap.user'
-ROW_LINE = 'super+alt+j = run:C:Echo >%s hit' % SENT
+ROW_LINE = 'super+ctrl+j = run:C:Echo >%s hit' % SENT
 
 
 def arexx(cmd):
@@ -62,7 +62,7 @@ def start():
 
 def chord():
     c.run('Delete %s QUIET' % SENT)
-    ami.key(RAW_J, LAMIGA | LALT)
+    ami.key(RAW_J, LAMIGA | CTRL)
     time.sleep(1.5)
     out = c.run('List %s' % SENT)[1]
     return 'amarchy.sentinel' in out and 'not found' not in out.lower()

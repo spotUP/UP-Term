@@ -24,7 +24,7 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <expected> vs
 Layout steps (plan 2026-10-28-amtile-layout.md, Phase 5; STATUS "<on|off> <tiled> <retiles> <layout> <nmaster> <ratio>"):
   layout_default no tile-* prefs keys: STATUS dwindle 1 55
   layout_row     the dist/keymap row `AmTile LAYOUT NEXT` via RUN <n> (THE reachability test: layout changes, retiles up, boxes)
-  layout_hotkey  super+alt+l through the keyboard (qualifier LAmiga+LAlt, raw 0x28)
+  layout_hotkey  super+ctrl+l through the keyboard (qualifier LAmiga+Ctrl, raw 0x28)
   lay_<name>     LAYOUT <name> with 3 windows: STATUS names it, boxes equal the host helper's
   lay_next_prev, ratio, nmaster, promote, cycle, monocle_raise, persist, reset   see the plan's Reachability section
 Resumable like the other rigs: --only <step> reruns one step against the state the earlier steps left (the windows
@@ -242,7 +242,7 @@ def tiled_boxes_match(n, secs=3, **kw):
 
 LAYOUTS = ['dwindle', 'master-stack', 'mirrored', 'columns', 'rows', 'grid', 'monocle']
 RAW_KEY = {'t': 0x14, 'l': 0x28}   # raw codes of the letters the hotkeys use (amarchy_clash_rig.py RAW: q=0x10.., a=0x20..)
-SUPER_ALT = 0x40 | 0x10            # IEQUALIFIER_LCOMMAND | IEQUALIFIER_LALT = 0x50, as run 2 sent for super+alt+t
+SUPER_CTRL = 0x40 | 0x08           # IEQUALIFIER_LCOMMAND | IEQUALIFIER_CONTROL = 0x48 (LAmiga+LAlt is Intuition's left mouse button)
 
 
 def ensure_windows(n):
@@ -273,8 +273,8 @@ def status_is(**want):
 
 
 def hotkey(letter):
-    """super+alt+<letter> through the keyboard path run 2 used for super+alt+t (ami.key = one KEY frame down+up)"""
-    ami.key(RAW_KEY[letter], SUPER_ALT)
+    """super+ctrl+<letter> through the keyboard path (ami.key = one KEY frame down+up)"""
+    ami.key(RAW_KEY[letter], SUPER_CTRL)
 
 
 def topmost():
@@ -442,13 +442,13 @@ def s_layout_row():
 
 
 def s_layout_hotkey():
-    """super+alt+l (LAYOUT NEXT) through the keyboard: master-stack -> mirrored, retile count up"""
+    """super+ctrl+l (LAYOUT NEXT) through the keyboard: master-stack -> mirrored, retile count up"""
     before = status_is(layout='master-stack')
     hotkey('l')
     after = status_is(layout='mirrored')
     grew = before is not None and after is not None and after[2] > before[2]
     ok, d = layout_boxes_ok(2, 'mirrored')
-    return grew and ok, 'expected hotkey super+alt+l: master-stack -> mirrored, retiles up, helper boxes vs before %r after %r %s' % (
+    return grew and ok, 'expected hotkey super+ctrl+l: master-stack -> mirrored, retiles up, helper boxes vs before %r after %r %s' % (
         before, after, d)
 
 

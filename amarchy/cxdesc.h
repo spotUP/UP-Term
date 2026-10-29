@@ -20,7 +20,7 @@ void cx_ixspec(const km_bind *b, cx_ixspec_t *x);
 
 /* The KM_Q_* mask of an InputEvent qualifier word, built exactly as the
  * handler's keymap_key builds it (so both sides agree on what a press is).
- * 0 when Left Amiga is not down or Control / Right Amiga / repeat is. */
+ * 0 when Left Amiga is not down or Right Amiga / repeat is. */
 unsigned cx_qual_mask(unsigned ie_qual);
 
 /* 1 when the row (its raw code, its KM_Q_* mask) takes this key event: the exact code, key

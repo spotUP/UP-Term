@@ -588,10 +588,9 @@ static int spec_parse(const char *spec, unsigned *qual, int *lo, int *hi, int *r
             *qual |= KM_Q_SUPER;
         else if (!strcmp(tok, "shift"))
             *qual |= KM_Q_SHIFT;
-        else if (!strcmp(tok, "ctrl")) {
+        else if (!strcmp(tok, "ctrl"))
             *qual |= KM_Q_CTRL;
-            refused = 1;
-        } else if (!strcmp(tok, "alt"))
+        else if (!strcmp(tok, "alt"))
             *qual |= KM_Q_ALT;
         else if (!strcmp(tok, "rshift"))
             *qual |= KM_Q_RSHIFT;

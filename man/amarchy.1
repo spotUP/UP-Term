@@ -27,7 +27,9 @@ Install starts it at every boot from a block in S:User-Startup.
 Only the keys of the key file are taken; every other Left Amiga key goes to
 the program as before.
 Left Amiga + M, Left Amiga + N, Left Amiga + the
-mouse and any row with Ctrl are never bound, so the reset keys stay safe.
+mouse are never bound, and a press with Right Amiga down is never taken, so the
+reset keys (Ctrl and both Amigas) stay safe.
+Left Amiga + Alt is not used: Intuition makes it the left mouse button.
 While an UP-Term window is active it matches the keys itself and
 .Nm
 leaves them alone.
@@ -98,7 +100,7 @@ The terminal's own colours (Terminal theme, super+shift+t) are separate.
 .El
 .Pp
 Each row reads
-.Dl super[+shift][+alt][+rshift]+KEY = action ; label | category
+.Dl super[+shift][+ctrl][+rshift]+KEY = action ; label | category
 Actions are menu:id, viewer, tab:new, tab:close, tab:next, tab:prev,
 tab:goto N, menuid:NAME, slash:/command, run:command, open:uterm,
 rexx:script and win:verb [argument]. The verbs are cycle, front, back, zip,

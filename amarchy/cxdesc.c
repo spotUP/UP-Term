@@ -82,8 +82,10 @@ int cx_menu_cmd(char *out, int cap, const char *dir, int kind, const char *node,
 unsigned cx_qual_mask(unsigned q)
 {
     unsigned m = KM_Q_SUPER;
-    if (!(q & IEQ_LCOMMAND) || (q & (IEQ_CONTROL | IEQ_RCOMMAND | IEQ_REPEAT)))
-        return 0;
+    if (!(q & IEQ_LCOMMAND) || (q & (IEQ_RCOMMAND | IEQ_REPEAT)))
+        return 0;                       /* Right Amiga: Ctrl + both Amigas is the reset */
+    if (q & IEQ_CONTROL)
+        m |= KM_Q_CTRL;
     if (q & (IEQ_LALT | IEQ_RALT))
         m |= KM_Q_ALT;
     if ((q & IEQ_RSHIFT) && !(q & IEQ_LSHIFT))

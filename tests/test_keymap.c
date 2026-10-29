@@ -121,14 +121,37 @@ static void the_safety_refusals(void)
                 "super+shift+m = viewer\n"
                 "super+mouse = viewer\n"              /* Workbench's */
                 "super+lmb = viewer\n"
-                "super+ctrl+t = viewer\n"             /* both Amigas and Ctrl: reset */
-                "super+shift+ctrl+k = viewer\n"
                 "super+k = viewer\n"));
     CHECK_INT(km.nbind, 1);
-    CHECK_INT(km.skipped, 7);
-    CHECK_INT(km.refused, 7);
+    CHECK_INT(km.skipped, 5);
+    CHECK_INT(km.refused, 5);
     CHECK(keymap_find(&km, KM_Q_SUPER, 0x37) == 0);    /* m */
-    CHECK(keymap_find(&km, KM_Q_SUPER | KM_Q_CTRL, RAW_T) == 0);
+    /* Left Amiga + Ctrl is a plain chord (Left Amiga + Alt is Intuition's mouse button); the reset
+     * needs Right Amiga too, which no row can name and the matchers refuse */
+    CHECK(parse("[bind]\nsuper+ctrl+t = viewer\nsuper+shift+ctrl+k = viewer\n"));
+    CHECK_INT(km.nbind, 2);
+    CHECK(keymap_find(&km, KM_Q_SUPER | KM_Q_CTRL, RAW_T) != 0);
+    CHECK(keymap_find(&km, KM_Q_SUPER | KM_Q_SHIFT | KM_Q_CTRL, RAW_K) != 0);
+}
+
+/* Regression: Left Amiga + Alt is Intuition's left mouse button, so a chord with it clicks whatever
+ * is under the pointer (it left a close gadget selected and blocked AmTile's ChangeWindowBox).
+ * Parse the shipped file; no binding may combine Super with either Alt. */
+static long slurp(const char *path, char *buf, long cap);
+
+static void the_shipped_keymap_has_no_super_alt_chord(void)
+{
+    static char file[32768];
+    long n = slurp("dist/keymap", file, sizeof(file));
+    int i, ctrl = 0;
+    CHECK(n > 0);
+    CHECK(keymap_parse(&km, file, n));
+    for (i = 0; i < km.nbind; i++) {
+        CHECK(!(km.bind[i].qual & KM_Q_ALT));
+        if (km.bind[i].qual & KM_Q_CTRL)
+            ctrl++;
+    }
+    CHECK_INT(ctrl, 28);                /* the 28 former Super+Alt chords, now Super+Ctrl */
 }
 
 static void a_newer_major_is_rejected_whole(void)
@@ -326,7 +349,7 @@ static void the_shipped_keymap_loads_whole(void)
     for (i = 0; i < km.nbind; i++) {
         const km_bind *b = &km.bind[i];
         CHECK(b->qual & KM_Q_SUPER);
-        CHECK(!(b->qual & KM_Q_CTRL));
+        CHECK(!(b->qual & KM_Q_ALT));      /* Left Amiga + Alt is Intuition's left mouse button: it clicks under the pointer */
         CHECK(!(b->code == 0x37 || b->code == 0x36));   /* never m or n */
         CHECK(b->label[0] != 0);
         if (b->kind == KA_MENUID) {
@@ -733,7 +756,7 @@ static void the_window_group_rows_and_hotkeys(void)
     check_row("window.layoutrows", KA_RUN, "UP-Term:bin/AmTile LAYOUT rows");
     check_row("window.layoutgrid", KA_RUN, "UP-Term:bin/AmTile LAYOUT grid");
     check_row("window.layoutmonocle", KA_RUN, "UP-Term:bin/AmTile LAYOUT monocle");
-    {   /* the 15 AmTile layout hotkeys (Super+Alt family); the plain Super+<key> bindings keep their old kinds */
+    {   /* the 15 AmTile layout hotkeys (Super+Ctrl family); the plain Super+<key> bindings keep their old kinds */
         static const struct { unsigned code; const char *arg; } at[] = {
             { 0x28, "UP-Term:bin/AmTile LAYOUT NEXT" },
             { 0x01, "UP-Term:bin/AmTile LAYOUT dwindle" },
@@ -753,7 +776,7 @@ static void the_window_group_rows_and_hotkeys(void)
         };
         unsigned i;
         for (i = 0; i < sizeof at / sizeof at[0]; i++) {
-            const km_bind *b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, at[i].code);
+            const km_bind *b = keymap_find(&km, KM_Q_SUPER | KM_Q_CTRL, at[i].code);
             CHECK(b != 0);
             if (b) {
                 CHECK_INT(b->kind, KA_RUN);
@@ -768,7 +791,7 @@ static void the_window_group_rows_and_hotkeys(void)
         }
     }
     {   /* Super+Alt+T runs the same command; Super+T stays New tab (the plan's free-or-clash check) */
-        const km_bind *b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, 0x14);
+        const km_bind *b = keymap_find(&km, KM_Q_SUPER | KM_Q_CTRL, 0x14);
         const km_bind *t = keymap_find(&km, KM_Q_SUPER, 0x14);
         CHECK(b != 0);
         if (b) {
@@ -782,21 +805,21 @@ static void the_window_group_rows_and_hotkeys(void)
     {   /* the 16 Window hotkeys: each key is a KA_WIN bind with its verb (plan 3) */
         static const struct { unsigned qual; unsigned code; const char *arg; } hk[] = {
             { KM_Q_SUPER, 0x18, "front" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x18, "back" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x18, "back" },
             { KM_Q_SUPER, 0x31, "zip" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x23, "fullwidth" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x21, "save" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x13, "restore" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x42, "cycle next" },
-            { KM_Q_SUPER|KM_Q_ALT|KM_Q_SHIFT, 0x42, "cycle prev" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x23, "fullwidth" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x21, "save" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x13, "restore" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x42, "cycle next" },
+            { KM_Q_SUPER|KM_Q_CTRL|KM_Q_SHIFT, 0x42, "cycle prev" },
             { KM_Q_SUPER|KM_Q_SHIFT, 0x4F, "move left" },
             { KM_Q_SUPER|KM_Q_SHIFT, 0x4E, "move right" },
             { KM_Q_SUPER|KM_Q_SHIFT, 0x4C, "move up" },
             { KM_Q_SUPER|KM_Q_SHIFT, 0x4D, "move down" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x4F, "size left" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x4E, "size right" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x4C, "size up" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x4D, "size down" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x4F, "size left" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x4E, "size right" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x4C, "size up" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x4D, "size down" },
         };
         unsigned i;
         for (i = 0; i < sizeof hk / sizeof hk[0]; i++) {
@@ -822,7 +845,7 @@ static void the_screens_group_rows_and_hotkeys(void)
         static const struct { unsigned qual; unsigned code; const char *arg; } hk[] = {
             { KM_Q_SUPER, 0x42, "screen next" },
             { KM_Q_SUPER|KM_Q_SHIFT, 0x42, "screen prev" },
-            { KM_Q_SUPER|KM_Q_ALT, 0x35, "title toggle" },
+            { KM_Q_SUPER|KM_Q_CTRL, 0x35, "title toggle" },
         };
         unsigned i;
         for (i = 0; i < sizeof hk / sizeof hk[0]; i++) {
@@ -989,14 +1012,14 @@ static void cx_filter_models_matchix(void)
 {
     cx_ixspec_t x;
     const km_bind *b;
-    CHECK(parse("[bind]\nsuper+alt+j = viewer\n"));
-    b = keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, 0x26);
+    CHECK(parse("[bind]\nsuper+ctrl+j = viewer\n"));
+    b = keymap_find(&km, KM_Q_SUPER | KM_Q_CTRL, 0x26);
     CHECK(b != 0);
     cx_ixspec(b, &x);
-    CHECK(matchix(&x, 0x26, 0x0040 | 0x0010 | 0x8000));  /* Lamiga+Alt+J, relative-mouse bit set */
-    CHECK(!matchix(&x, 0x26 | 0x80, 0x0040 | 0x0010 | 0x8000)); /* the key-up */
-    CHECK(!matchix(&x, 0x27, 0x0040 | 0x0010));           /* another key */
-    CHECK(!matchix(&x, 0x26, 0x0010));                    /* Left Amiga up */
+    CHECK(matchix(&x, 0x26, 0x0040 | 0x0008 | 0x8000));  /* Lamiga+Ctrl+J, relative-mouse bit set */
+    CHECK(!matchix(&x, 0x26 | 0x80, 0x0040 | 0x0008 | 0x8000)); /* the key-up */
+    CHECK(!matchix(&x, 0x27, 0x0040 | 0x0008));           /* another key */
+    CHECK(!matchix(&x, 0x26, 0x0008));                    /* Left Amiga up */
 }
 
 static void cx_gate_takes_only_its_own_row(void)
@@ -1115,7 +1138,7 @@ static void cx_descriptions_and_qualifier_mask(void)
     long n;
     int i;
     CHECK(parse("[bind]\nsuper+k = viewer\nsuper+shift+space = menu:apps\n"
-                "super+alt+t = run:C:Echo hi\n"));
+                "super+ctrl+t = run:C:Echo hi\n"));
     /* the filter description is a string ParseIX accepts: class and Left Amiga, never a number
      * (the rig: "rawkey lcommand 0x27" was refused, rows=0) */
     CHECK_STR(CX_FILTER_DESC, "rawkey lcommand");
@@ -1132,7 +1155,7 @@ static void cx_descriptions_and_qualifier_mask(void)
     menu_style_commands();
     menu_style_parse();
     menu_in_terminal_setting();
-    /* the mask is the handler's: Left Amiga needed; Ctrl, Right Amiga, repeat refuse */
+    /* the mask is the handler's: Left Amiga needed; Right Amiga (the reset with Ctrl), repeat refuse */
     CHECK_INT((int)cx_qual_mask(0x0040), KM_Q_SUPER);
     CHECK_INT((int)cx_qual_mask(0x0041), KM_Q_SUPER | KM_Q_SHIFT);
     CHECK_INT((int)cx_qual_mask(0x0042), KM_Q_SUPER | KM_Q_RSHIFT);
@@ -1140,7 +1163,9 @@ static void cx_descriptions_and_qualifier_mask(void)
     CHECK_INT((int)cx_qual_mask(0x0050), KM_Q_SUPER | KM_Q_ALT);
     CHECK_INT((int)cx_qual_mask(0x0060), KM_Q_SUPER | KM_Q_ALT);
     CHECK_INT((int)cx_qual_mask(0x0001), 0);
-    CHECK_INT((int)cx_qual_mask(0x0048), 0);
+    CHECK_INT((int)cx_qual_mask(0x0048), KM_Q_SUPER | KM_Q_CTRL);
+    CHECK_INT((int)cx_qual_mask(0x0049), KM_Q_SUPER | KM_Q_SHIFT | KM_Q_CTRL);
+    CHECK_INT((int)cx_qual_mask(0x00c8), 0);                      /* Ctrl + both Amigas: reset */
     CHECK_INT((int)cx_qual_mask(0x00c0), 0);
     CHECK_INT((int)cx_qual_mask(0x0240), 0);
     /* every row of the shipped file carries its own raw code into the filter */
@@ -3079,6 +3104,7 @@ void suite_keymap(void)
     junk_file_keeps_the_old_keymap();
     bad_rows_are_skipped_and_counted();
     the_safety_refusals();
+    the_shipped_keymap_has_no_super_alt_chord();
     a_newer_major_is_rejected_whole();
     a_later_row_replaces_and_none_unbinds();
     the_user_file_overrides_the_shipped_one();

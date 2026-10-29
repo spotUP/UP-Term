@@ -10,10 +10,13 @@
 ;
 ; Super is the Left Amiga key. Left Amiga + M and Left Amiga + N belong to
 ; Intuition, Left Amiga + mouse to Workbench, and Ctrl + both Amigas is the
-; hardware reset: the parser refuses all of them (a row with ctrl is refused).
+; hardware reset: the parser refuses M, N and the mouse words, and the handler and
+; the commodity never take a press with Right Amiga down.
+; Alt is not used with Left Amiga: Left Amiga + Alt is Intuition's left mouse button
+; (it clicks the gadget under the pointer), so the window chords use Left Amiga + Ctrl.
 ;
 ; Format (one row a line, ; starts a comment):
-;   super[+shift][+alt][+rshift]+KEY = action ; label | category
+;   super[+shift][+ctrl][+rshift]+KEY = action ; label | category
 ; KEY is a lower-case word: space return tab esc help del backspace up down
 ; left right f1..f10 comma period minus plus, or a letter or digit. Letters
 ; and digits are the key's place on the board, not its character, so the
@@ -63,41 +66,41 @@ super+left        = tab:prev               ; Previous tab          | workspace
 
 ; Window (super+m and super+n are refused by the parser: Left Amiga M and N belong to Intuition's screen cycling)
 super+o           = win:front                ; Bring to front         | window
-super+alt+o       = win:back                 ; Send to back           | window
+super+ctrl+o       = win:back                 ; Send to back           | window
 super+z           = win:zip                  ; Zoom or restore        | window
-super+alt+f       = win:fullwidth            ; Full width             | window
-super+alt+s       = win:save                 ; Save position and size | window
-super+alt+r       = win:restore              ; Restore position and size | window
-super+alt+tab     = win:cycle next           ; Next window            | window
-super+alt+shift+tab = win:cycle prev           ; Previous window        | window
+super+ctrl+f       = win:fullwidth            ; Full width             | window
+super+ctrl+s       = win:save                 ; Save position and size | window
+super+ctrl+r       = win:restore              ; Restore position and size | window
+super+ctrl+tab     = win:cycle next           ; Next window            | window
+super+ctrl+shift+tab = win:cycle prev           ; Previous window        | window
 super+shift+left  = win:move left            ; Move window left       | window
 super+shift+right = win:move right           ; Move window right      | window
 super+shift+up    = win:move up              ; Move window up         | window
 super+shift+down  = win:move down            ; Move window down       | window
-super+alt+t       = run:UP-Term:bin/AmTile TOGGLE ; Tile windows         | window
-super+alt+l       = run:UP-Term:bin/AmTile LAYOUT NEXT          ; Next layout           | window
-super+alt+1       = run:UP-Term:bin/AmTile LAYOUT dwindle       ; Layout dwindle        | window
-super+alt+2       = run:UP-Term:bin/AmTile LAYOUT master-stack  ; Layout master-stack   | window
-super+alt+3       = run:UP-Term:bin/AmTile LAYOUT mirrored      ; Layout mirrored master-stack | window
-super+alt+4       = run:UP-Term:bin/AmTile LAYOUT columns       ; Layout columns        | window
-super+alt+5       = run:UP-Term:bin/AmTile LAYOUT rows          ; Layout rows           | window
-super+alt+6       = run:UP-Term:bin/AmTile LAYOUT grid          ; Layout grid           | window
-super+alt+7       = run:UP-Term:bin/AmTile LAYOUT monocle       ; Layout monocle        | window
-super+alt+minus   = run:UP-Term:bin/AmTile RATIO -5             ; Shrink master         | window
-super+alt+plus    = run:UP-Term:bin/AmTile RATIO +5             ; Grow master           | window
-super+alt+j       = run:UP-Term:bin/AmTile NMASTER -1           ; Fewer masters         | window
-super+alt+k       = run:UP-Term:bin/AmTile NMASTER +1           ; More masters          | window
-super+alt+return  = run:UP-Term:bin/AmTile PROMOTE              ; Promote to master     | window
-super+alt+period  = run:UP-Term:bin/AmTile CYCLE NEXT           ; Next tiled window     | window
-super+alt+comma   = run:UP-Term:bin/AmTile CYCLE PREV           ; Previous tiled window | window
-super+alt+left    = win:size left           ; Make window narrower   | window
-super+alt+right   = win:size right           ; Make window wider      | window
-super+alt+up      = win:size up              ; Make window shorter    | window
-super+alt+down    = win:size down            ; Make window taller     | window
+super+ctrl+t       = run:UP-Term:bin/AmTile TOGGLE ; Tile windows         | window
+super+ctrl+l       = run:UP-Term:bin/AmTile LAYOUT NEXT          ; Next layout           | window
+super+ctrl+1       = run:UP-Term:bin/AmTile LAYOUT dwindle       ; Layout dwindle        | window
+super+ctrl+2       = run:UP-Term:bin/AmTile LAYOUT master-stack  ; Layout master-stack   | window
+super+ctrl+3       = run:UP-Term:bin/AmTile LAYOUT mirrored      ; Layout mirrored master-stack | window
+super+ctrl+4       = run:UP-Term:bin/AmTile LAYOUT columns       ; Layout columns        | window
+super+ctrl+5       = run:UP-Term:bin/AmTile LAYOUT rows          ; Layout rows           | window
+super+ctrl+6       = run:UP-Term:bin/AmTile LAYOUT grid          ; Layout grid           | window
+super+ctrl+7       = run:UP-Term:bin/AmTile LAYOUT monocle       ; Layout monocle        | window
+super+ctrl+minus   = run:UP-Term:bin/AmTile RATIO -5             ; Shrink master         | window
+super+ctrl+plus    = run:UP-Term:bin/AmTile RATIO +5             ; Grow master           | window
+super+ctrl+j       = run:UP-Term:bin/AmTile NMASTER -1           ; Fewer masters         | window
+super+ctrl+k       = run:UP-Term:bin/AmTile NMASTER +1           ; More masters          | window
+super+ctrl+return  = run:UP-Term:bin/AmTile PROMOTE              ; Promote to master     | window
+super+ctrl+period  = run:UP-Term:bin/AmTile CYCLE NEXT           ; Next tiled window     | window
+super+ctrl+comma   = run:UP-Term:bin/AmTile CYCLE PREV           ; Previous tiled window | window
+super+ctrl+left    = win:size left           ; Make window narrower   | window
+super+ctrl+right   = win:size right           ; Make window wider      | window
+super+ctrl+up      = win:size up              ; Make window shorter    | window
+super+ctrl+down    = win:size down            ; Make window taller     | window
 ; Screens
 super+tab         = win:screen next          ; Next screen            | workspace
 super+shift+tab   = win:screen prev          ; Previous screen        | workspace
-super+alt+b       = win:title toggle         ; Toggle title bar       | workspace
+super+ctrl+b       = win:title toggle         ; Toggle title bar       | workspace
 
 ; Clipboard and search
 super+c           = menuid:MENU_COPY       ; Copy                  | edit
@@ -114,7 +117,7 @@ super+shift+b     = slash:/bg              ; Background            | style
 super+shift+f     = slash:/font            ; Font                  | style
 super+shift+s     = slash:/screen own      ; Own screen            | style
 super+shift+w     = slash:/screen workbench       ; Workbench screen      | style
-super+alt+d       = slash:/size 132x43     ; Wide window           | style
+super+ctrl+d       = slash:/size 132x43     ; Wide window           | style
 super+shift+r     = slash:/size 80x24      ; Standard window       | style
 super+shift+l     = slash:/demo            ; Demo tour             | style
 super+p           = menuid:MENU_PREFS      ; Preferences           | style

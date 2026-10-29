@@ -5474,9 +5474,9 @@ static int keymap_key(con *c, UWORD code, UWORD qual)
     unsigned base;
     kact a;
     if (!g_km || !g_km_ready || !(qual & IEQUALIFIER_LCOMMAND) || (code & 0x80) ||
-        (qual & (IEQUALIFIER_CONTROL | IEQUALIFIER_RCOMMAND | IEQUALIFIER_REPEAT)))
+        (qual & (IEQUALIFIER_RCOMMAND | IEQUALIFIER_REPEAT)))
         return 0;
-    base = KM_Q_SUPER | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? KM_Q_ALT : 0);
+    base = KM_Q_SUPER | ((qual & IEQUALIFIER_CONTROL) ? KM_Q_CTRL : 0) | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? KM_Q_ALT : 0);
     if ((qual & IEQUALIFIER_RSHIFT) && !(qual & IEQUALIFIER_LSHIFT))
         b = keymap_find(g_km, base | KM_Q_RSHIFT, code);
     if (!b)

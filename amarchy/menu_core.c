@@ -107,6 +107,8 @@ int mn_spec(const km_bind *b, char *out, int n)
     app(out, n, "Super");
     if (b->qual & KM_Q_SHIFT)
         app(out, n, "+Shift");
+    if (b->qual & KM_Q_CTRL)
+        app(out, n, "+Ctrl");
     if (b->qual & KM_Q_ALT)
         app(out, n, "+Alt");
     if (b->qual & KM_Q_RSHIFT)

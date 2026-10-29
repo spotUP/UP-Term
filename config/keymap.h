@@ -59,7 +59,7 @@
 /* qualifier mask of a binding (the key spec's words) */
 #define KM_Q_SUPER   1   /* Left Amiga */
 #define KM_Q_SHIFT   2
-#define KM_Q_CTRL    4   /* never present in a parsed table: refused */
+#define KM_Q_CTRL    4   /* Control; Control + both Amigas is the reset, but Right Amiga is no spec word */
 #define KM_Q_ALT     8
 #define KM_Q_RSHIFT  16
 
