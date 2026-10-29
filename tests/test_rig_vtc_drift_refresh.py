@@ -61,6 +61,19 @@ class VtcRefresh(unittest.TestCase):
         self.assertFalse((self.vtc / "curl").exists())   # userland goes in the drawer's bin only
         self.assertFalse((self.vtc / paths.UPTERM_DRAWER / "bin/wget").exists())
 
+    def test_a_name_both_built_and_in_the_userland_has_one_source(self):
+        # build_drift listed Apps/bin/md5sum twice when build/amiga and the dist's userland both held md5sum, and
+        # refresh_programs copied the build, then the userland copy over it, so the drift never cleared
+        ul = self.d / "dist-userland"
+        ul.mkdir()
+        (ul / "hl").write_bytes(b"userland hl")
+        with mock.patch.object(rig, "USERLAND_SRC", ul):
+            drift = rig.build_drift(self.vtc)
+            self.assertEqual(drift.count("%s/bin/hl" % paths.UPTERM_DRAWER), 1)
+            rig.refresh_programs(self.vtc, self.d / "build/amiga")
+            self.assertEqual(rig.build_drift(self.vtc), [])
+        self.assertEqual((self.vtc / paths.UPTERM_DRAWER / "bin/hl").read_bytes(), b"new hl")
+
     def test_stale_guard_restage_leaves_no_drift(self):
         with mock.patch.object(paths, "RIG", str(self.d / "rig")), \
              mock.patch.object(rig, "refresh_kit_shadows"):

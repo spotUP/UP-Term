@@ -1223,8 +1223,12 @@ def program_pairs(vtc, built):
     # the dist's userland in the UP-Term drawer's bin too: the boot's shadow copies it only into what UP-Term:
     # names, so VTC:Apps/bin kept a stale curl that outlived Esc by 22-27 s in the RJ.7 run (rig 7,
     # RJ7-CURL-SHADOW, 2026-10-29)
+    # one source per VTC: file: a name this tree builds keeps the build's copy, else build_drift listed it twice and
+    # refresh_programs copied the build, then the dist's older userland copy over it
+    built_names = {src.name for src, dst in pairs}
     for name in userland_names():
-        pairs.append((USERLAND_SRC / name, vtc / paths.UPTERM_DRAWER / "bin" / name))
+        if name not in built_names:
+            pairs.append((USERLAND_SRC / name, vtc / paths.UPTERM_DRAWER / "bin" / name))
     return pairs
 
 def refresh_programs(vtc, built, required=()):
