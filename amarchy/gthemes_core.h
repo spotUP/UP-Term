@@ -98,6 +98,12 @@ int gt_path_name(const char *path, char *out, int cap);
  * without case), 0 when the menu already draws it. row_path may be 0. */
 int gt_preview_pick(const char *row_path, const char *current, const char *drawn, char *out, int cap);
 
+/* THEME-PREVIEW-SHELL (owner, 2026-10-29): the picker's preview also recolours the open consoles and agent tabs. gt_preview_pick, and
+ * when it picks a theme send(name) runs (the bridge that Apply uses: gt_dos_term_send, GT_TERM_FILE) on every highlight move, no
+ * throttle; leaving the list or cancelling picks the saved theme, so send restores it. Returns what gt_preview_pick returned. */
+int gt_preview_term(const char *row_path, const char *current, const char *drawn, char *out, int cap,
+                    void (*send)(const char *name));
+
 
 /* Why a theme save failed, as the text the menu shows. step: GT_SAVE_NAME (the name check), or a prefs_save_at result
  * (PREFS_SAVE_NODIR, PREFS_INSTALL_WRITE / BACKUP / PLACE / STRANDED); failed: the PREFS_T_ target; err: the DOS error

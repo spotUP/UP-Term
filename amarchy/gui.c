@@ -601,7 +601,7 @@ static void preview_sync(gui *g)
             row = path;
     }
     gt_dos_current(cur, (int)sizeof cur);
-    if (!gt_preview_pick(row, cur, g->drawn, want, (int)sizeof want))
+    if (!gt_preview_term(row, cur, g->drawn, want, (int)sizeof want, gt_dos_term_send))  /* menu pens and every console tab */
         return;
     pens_release(g);
     pens_get(g, !strcmp(want, cur) ? 0 : want);
@@ -1491,8 +1491,12 @@ static void cleanup(gui *g)
     if (g->win)
         CloseWindow(g->win);
     g->win = 0;
-    if (g->cm)
+    if (g->cm) {
+        char cur[GT_NAME], want[GT_NAME];
+        gt_dos_current(cur, (int)sizeof cur);
+        gt_preview_term(0, cur, g->drawn, want, (int)sizeof want, gt_dos_term_send);   /* closed on a previewed row: the tabs get the saved theme back */
         pens_release(g);
+    }
     g->cm = 0;
     if (g->scr)
         UnlockPubScreen(0, g->scr);
