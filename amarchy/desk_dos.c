@@ -118,6 +118,14 @@ static int dk_put(const char *envfile, const char *editor, const char *work, con
     return 1;
 }
 
+/* may SYS:Prefs/Pointer be fed the 3.2 pointer prefs: version 47+ (desk_pointer_editor_ok) */
+static int dk_pointer_editor_ok(void)
+{
+    static unsigned char img[65536];
+    long len = dk_read("SYS:Prefs/Pointer", img, sizeof img);
+    return len > 0 && desk_pointer_editor_ok(img, len);
+}
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
@@ -144,7 +152,9 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
         len = desk_wbpattern(th, depth > 3 ? 3 : depth, 1, plen > 0 ? prev : 0, plen > 0 ? plen : 0, buf, sizeof buf);
         ok &= dk_put("ENV:Sys/wbpattern.prefs", "WBPattern", DK_WORK "/wbpattern.prefs", buf, len);
     }
-    if (mask & (1u << DT_POINTER)) {
+    if ((mask & (1u << DT_POINTER)) && !dk_pointer_editor_ok()) {
+        /* R1.17: the 3.1 editor reset-loops on the 3.2 pointer prefs; leave the pointer alone there */
+    } else if (mask & (1u << DT_POINTER)) {
         len = dk_read("ENV:Sys/pointer.prefs", big, sizeof big);
         if (len < 0)
             len = dk_read("ENVARC:Sys/Pointer.prefs", big, sizeof big);

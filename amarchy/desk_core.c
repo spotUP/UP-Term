@@ -486,3 +486,29 @@ unsigned desk_marker_parse(const char *buf, long len)
     }
     return mask;
 }
+
+int desk_ver_major(const unsigned char *bin, long len)
+{
+    long i, j;
+    for (i = 0; bin && i + 6 < len; i++) {
+        if (memcmp(bin + i, "$VER: ", 6))
+            continue;
+        j = i + 6;
+        while (j < len && bin[j] > ' ') /* the program name */
+            j++;
+        while (j < len && bin[j] == ' ')
+            j++;
+        if (j < len && bin[j] >= '0' && bin[j] <= '9') {
+            int v = 0;
+            while (j < len && bin[j] >= '0' && bin[j] <= '9' && v < 10000)
+                v = v * 10 + (bin[j++] - '0');
+            return v;
+        }
+    }
+    return -1;
+}
+
+int desk_pointer_editor_ok(const unsigned char *bin, long len)
+{
+    return desk_ver_major(bin, len) >= 47;
+}

@@ -386,12 +386,28 @@ static void test_desk_targets(void)
     CHECK_INT(desk_marker_make(mask, buf, 10), 0);
 }
 
+/* R1.17: the 3.1 Pointer editor (40.x) reset-loops on the 3.2 prefs; only 47+ is fed them */
+static void test_desk_pointer_gate(void)
+{
+    static const char v31[] = "xx\0\0$VER: Pointer 40.2 (4.11.93)\0yy";
+    static const char v32[] = "$VER: pointer 47.26 (24.3.2021)";
+    static const char none[] = "no version string here";
+    CHECK_INT(desk_ver_major((const unsigned char *)v31, sizeof v31), 40);
+    CHECK_INT(desk_ver_major((const unsigned char *)v32, sizeof v32 - 1), 47);
+    CHECK_INT(desk_pointer_editor_ok((const unsigned char *)v31, sizeof v31), 0);
+    CHECK_INT(desk_pointer_editor_ok((const unsigned char *)v32, sizeof v32 - 1), 1);
+    CHECK_INT(desk_pointer_editor_ok((const unsigned char *)none, sizeof none), 0);
+    CHECK_INT(desk_pointer_editor_ok((const unsigned char *)"$VER: P 47", 10), 1);
+    CHECK_INT(desk_pointer_editor_ok(0, 0), 0);
+}
+
 void suite_desk(void)
 {
     test_desk_palette();
     test_desk_darker();
     test_desk_wbpattern();
     test_desk_pointer();
+    test_desk_pointer_gate();
     test_desk_font();
     test_desk_font_default();
     test_desk_guard();
