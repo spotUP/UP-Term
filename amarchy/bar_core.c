@@ -211,6 +211,14 @@ int bar_click(const bar *b, int x, int button, int *id)
         if (button == BAR_BTN_RIGHT)
             return BAR_ACT_LAUNCH_AGENT;
         break;
+    case BAR_SEG_SYSTEM:
+        return button == BAR_BTN_LEFT ? BAR_ACT_SYSTEM : BAR_ACT_NONE;
+    case BAR_SEG_CLOCK:
+        return button == BAR_BTN_LEFT ? BAR_ACT_CLOCK : BAR_ACT_NONE;
+    default:
+        if (BAR_IS_SCREEN(b->seg[i].id) && button == BAR_BTN_LEFT)
+            return BAR_ACT_SCREEN;
+        break;
     }
     return BAR_ACT_NONE;
 }
@@ -353,4 +361,105 @@ void bar_fmt_screen(char *out, int cap, const char *title)
     }
     t[n] = 0;
     out_put(out, cap, t);
+}
+
+static int find_seg(const bar *b, int id)
+{
+    int i;
+    for (i = 0; i < b->n; i++)
+        if (b->seg[i].id == id)
+            return i;
+    return -1;
+}
+
+static void remove_at(bar *b, int i)
+{
+    memmove(&b->seg[i], &b->seg[i + 1], (size_t)(b->n - i - 1) * sizeof b->seg[0]);
+    b->n--;
+}
+
+int bar_set_accent(bar *b, int id, int on)
+{
+    int i = find_seg(b, id);
+    if (i < 0 || b->seg[i].accent == (on != 0))
+        return 0;
+    b->seg[i].accent = on != 0;
+    b->seg[i].dirty = 1;
+    return 1;
+}
+
+int bar_set_screens(bar *b, int n, const char *const *names, const int *tw, int front)
+{
+    int i, ch = 0, m;
+    if (n > BAR_MAX_SCREENS)
+        n = BAR_MAX_SCREENS;
+    for (i = 0; i < n; i++) {
+        int id = BAR_SEG_SCREEN0 + i;
+        if (find_seg(b, id) < 0) {
+            if (bar_add(b, id, BAR_LEFT, names[i], tw[i]) < 0)
+                break;
+            ch = 1;
+        } else {
+            ch |= bar_set_text(b, id, names[i], tw[i]);
+        }
+        ch |= bar_set_accent(b, id, i == front);
+    }
+    for (i = n; i < BAR_MAX_SCREENS; i++) {
+        int k = find_seg(b, BAR_SEG_SCREEN0 + i);
+        if (k >= 0) {
+            remove_at(b, k);
+            ch = 1;
+        }
+    }
+    m = find_seg(b, BAR_SEG_MORE);
+    if (m >= 0 && m != b->n - 1) {      /* the marker follows the last entry in the array order place_left walks */
+        bar_seg tmp = b->seg[m];
+        remove_at(b, m);
+        b->seg[b->n++] = tmp;
+        ch = 1;
+    }
+    return ch;
+}
+
+void bar_dump(const bar *b, char *out, int cap)
+{
+    char t[BAR_TEXT * 2 + 40];
+    int i, o = 0, n = 0;
+    out[0] = 0;
+    for (i = 0; i < b->n; i++) {
+        const bar_seg *s = &b->seg[i];
+        int k = 0;
+        if (n)
+            t[k++] = '|';
+        k = put_u(t, k, (unsigned long)s->id, 1);
+        t[k++] = '@';
+        k = put_u(t, k, (unsigned long)s->x, 1);
+        t[k++] = '+';
+        k = put_u(t, k, (unsigned long)s->w, 1);
+        if (s->accent)
+            t[k++] = '*';
+        t[k++] = '=';
+        k = put_s(t, k, s->text);
+        t[k] = 0;
+        if (o + k >= cap)
+            break;
+        memcpy(out + o, t, (size_t)k + 1);
+        o += k;
+        n++;
+    }
+}
+
+void bar_days_to_date(long days, int *wday, int *day, int *mon, int *year)
+{
+    long z = days + 2922L + 719468L;     /* 1978-01-01 is 2922 days after 1970-01-01 (civil-from-days, 400 year eras) */
+    long era = z / 146097L, doe = z - era * 146097L;
+    long yoe = (doe - doe / 1460L + doe / 36524L - doe / 146096L) / 365L;
+    long doy = doe - (365L * yoe + yoe / 4L - yoe / 100L);
+    long mp = (5L * doy + 2L) / 153L;
+    long d = doy - (153L * mp + 2L) / 5L + 1L;
+    long m = mp < 10 ? mp + 3 : mp - 9;
+    *wday = (int)((days % 7L + 7L) % 7L);
+    *day = (int)d;
+    *mon = (int)(m - 1);
+    *year = (int)(yoe + era * 400L + (m <= 2 ? 1 : 0));
 }

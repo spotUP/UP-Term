@@ -177,13 +177,17 @@ static void status_text(char *out, long cap, int bar_status)
     status_line(bar_status, val, out, cap);
 }
 
-/* BAR STATUS | ON | OFF | TOGGLE. OFF closes the window and its raise timer (the tick keeps running), ON opens it again;
+/* BAR STATUS | ON | OFF | TOGGLE | TEXT (the segments, bar_dump). OFF closes the window and its raise timer (the tick keeps running), ON opens it again;
  * rc 10 for another word, 5 when ON finds no screen. */
 static long bar_port(const char *args, char *out)
 {
     int v = bar_verb(args);
     if (v == BARV_BAD)
         return 10;
+    if (v == BARV_TEXT) {
+        bar_text(out, REXX_HOST_OUT);
+        return 0;
+    }
     if (v == BARV_TOGGLE)
         v = bar_is_open() ? BARV_OFF : BARV_ON;
     if (v == BARV_OFF)
@@ -401,6 +405,7 @@ int main(void)
     cw_start();                                 /* the clipboard history (Trigger > Clipboard history) */
     cws = cw_sigmask();
     tick_hook(note_expire);
+    tick_hook(bar_tick);
     tick_open();                                /* the 1 s tick, before the bar and running without it */
     tks = tick_sigmask();
     bar_open(g_dir);                            /* the status bar; 0 = no screen, the commodity runs without it */

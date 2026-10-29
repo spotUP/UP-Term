@@ -48,5 +48,7 @@ int bar_verb(const char *args)
         return BARV_OFF;
     if (word(args, "toggle"))
         return BARV_TOGGLE;
+    if (word(args, "text"))
+        return BARV_TEXT;
     return BARV_BAD;
 }

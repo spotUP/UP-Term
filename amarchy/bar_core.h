@@ -11,11 +11,12 @@
 #define BAR_TEXT 32
 
 enum { BAR_LEFT = 0, BAR_RIGHT, BAR_CENTRE };
-enum { BAR_SEG_AGENTS = 1 };
+enum { BAR_SEG_AGENTS = 1, BAR_SEG_CLOCK = 2, BAR_SEG_RAM = 3, BAR_SEG_SYSTEM = 4 };   /* 5 and 6 are left for CPU and network */
 /* The screens list (left group): one segment per public screen, ids BAR_SEG_SCREEN0 .. +BAR_MAX_SEGS-1 in list order,
  * then BAR_SEG_MORE, the "+N" marker bar_layout fills in when it cuts entries from the list's right end. */
 enum { BAR_SEG_MORE = 199, BAR_SEG_SCREEN0 = 200 };
-#define BAR_IS_SCREEN(id) ((id) >= BAR_SEG_SCREEN0 && (id) < BAR_SEG_SCREEN0 + 100)                   /* later: BAR_SEG_CLOCK, BAR_SEG_RAM, BAR_SEG_CPU, ... */
+#define BAR_IS_SCREEN(id) ((id) >= BAR_SEG_SCREEN0 && (id) < BAR_SEG_SCREEN0 + 100)
+#define BAR_MAX_SCREENS 10              /* screens shown in the list; the rest of the pubscreen list is not offered */
 enum { BAR_BTN_LEFT = 1, BAR_BTN_RIGHT };
 
 /* The keymap row of the agents panel that shows limit meters and token use (OMARCHY-AI part E). Part E is not
@@ -28,9 +29,12 @@ enum { BAR_BTN_LEFT = 1, BAR_BTN_RIGHT };
 #define BAR_TITLE "Amarchy bar"
 /* The node bar.c opens for the agents panel. */
 #define BAR_AGENT_NODE "agents"
+/* The node the System segment opens: the same node as the keymap row super+esc = menu:system. */
+#define BAR_SYSTEM_NODE "system"
 
 /* What a click on a segment does; bar.c carries it out. */
-enum { BAR_ACT_NONE = 0, BAR_ACT_PANEL, BAR_ACT_LAUNCH_AGENT };
+/* BAR_ACT_SYSTEM: the system menu; BAR_ACT_CLOCK: flip clock and date; BAR_ACT_SCREEN: bring that screen to the front (id). */
+enum { BAR_ACT_NONE = 0, BAR_ACT_PANEL, BAR_ACT_LAUNCH_AGENT, BAR_ACT_SYSTEM, BAR_ACT_CLOCK, BAR_ACT_SCREEN };
 
 typedef struct bar_seg {
     int id;
@@ -40,6 +44,7 @@ typedef struct bar_seg {
     int x, w;                   /* placed by bar_layout: left edge and width incl. padding */
     int dirty;                  /* text or place changed since the last bar_take_dirty */
     int hidden;                 /* cut by bar_layout (w = 0, never hit) */
+    int accent;                 /* drawn in the accent pen (the front screen's entry) */
 } bar_seg;
 
 typedef struct bar {
@@ -63,6 +68,16 @@ int bar_set_text(bar *b, int id, const char *text, int tw);
  * right end (at least one stays) and the BAR_SEG_MORE marker shows "+N"; the centre and right never cut.
  * A segment whose place changed is dirty. */
 void bar_layout(bar *b, int width);
+/* The screens list: entries 0..n-1 get names[i] (already short, bar_fmt_screen) and widths tw[i], entry `front` (-1 = none)
+ * the accent; entries that are gone are removed, new ones appended; the marker stays last. 1 when anything changed
+ * (the bar must be laid out and repainted). n is cut to BAR_MAX_SCREENS. */
+int bar_set_screens(bar *b, int n, const char *const *names, const int *tw, int front);
+/* Segment `id` drawn in the accent pen or not; 1 when that changed. */
+int bar_set_accent(bar *b, int id, int on);
+/* Every segment as "id@x+w[*]=text", joined by '|' (BAR TEXT, the rig's view of the bar); '*' marks the accent pen. */
+void bar_dump(const bar *b, char *out, int cap);
+/* Days since 1978-01-01 (the AmigaDOS DateStamp day, a Sunday) to weekday (0 = Sunday), day, month (0 = January), year. */
+void bar_days_to_date(long days, int *wday, int *day, int *mon, int *year);
 /* The index of the segment under x, or -1. */
 int bar_hit(const bar *b, int x);
 /* What a click at x does: BAR_ACT_*, with the segment's id in *id (0 when none). */

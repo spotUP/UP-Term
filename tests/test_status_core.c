@@ -41,6 +41,7 @@ static void test_verb(void)
     CHECK_INT(bar_verb(" Off "), BARV_OFF);
     CHECK_INT(bar_verb("\ton"), BARV_ON);
     CHECK_INT(bar_verb(" TOGGLE"), BARV_TOGGLE);
+    CHECK_INT(bar_verb(" text"), BARV_TEXT);
     CHECK_INT(bar_verb(""), BARV_BAD);
     CHECK_INT(bar_verb(" onx"), BARV_BAD);
     CHECK_INT(bar_verb(" off now"), BARV_BAD);

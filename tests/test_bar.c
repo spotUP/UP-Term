@@ -319,6 +319,57 @@ static void test_fmt_misc(void)
     bar_fmt_screen(o, sizeof o, "");                     CHECK_STR(o, "");
 }
 
+static int x_of(const bar *b, int id)
+{
+    int i;
+    for (i = 0; i < b->n; i++)
+        if (b->seg[i].id == id)
+            return b->seg[i].x + 1;
+    return -1;
+}
+
+static void test_clock_system_screens(void)
+{
+    bar b;
+    char o[160];
+    int wd, d, m, y, id, tw3[3] = {40, 24, 48}, tw1[1] = {40};
+    const char *n3[3] = {"Workbenc", "UP-Term", "Ambient"}, *n1[1] = {"Workbenc"};
+    bar_days_to_date(17833L, &wd, &d, &m, &y);
+    CHECK_INT(wd, 4); CHECK_INT(d, 29); CHECK_INT(m, 9); CHECK_INT(y, 2026);          /* Thu 29 Oct 2026 */
+    bar_days_to_date(16860L, &wd, &d, &m, &y);
+    CHECK_INT(d, 29); CHECK_INT(m, 1); CHECK_INT(y, 2024);                             /* leap day */
+    bar_days_to_date(0L, &wd, &d, &m, &y);
+    CHECK_INT(wd, 0); CHECK_INT(d, 1); CHECK_INT(m, 0); CHECK_INT(y, 1978);
+    bar_init(&b, 800, 4, 2);
+    bar_add(&b, BAR_SEG_MORE, BAR_LEFT, "", 0);
+    bar_add(&b, BAR_SEG_CLOCK, BAR_CENTRE, "Mon 14:05", 72);
+    bar_add(&b, BAR_SEG_RAM, BAR_RIGHT, "C 1.2M F 61M", 96);
+    bar_add(&b, BAR_SEG_SYSTEM, BAR_RIGHT, "System", 48);
+    CHECK_INT(bar_set_screens(&b, 3, n3, tw3, 1), 1);
+    CHECK_INT(bar_set_screens(&b, 3, n3, tw3, 1), 0);                                  /* same list: nothing to redraw */
+    CHECK_INT(b.seg[b.n - 1].id, BAR_SEG_MORE);                                         /* marker last */
+    bar_layout(&b, 800);
+    bar_dump(&b, o, sizeof o);
+    CHECK(strstr(o, "201@") && strstr(o, "*=UP-Term"));                                 /* accent on the front screen only */
+    CHECK_INT(bar_set_screens(&b, 3, n3, tw3, 2), 1);                                   /* front moves */
+    bar_dump(&b, o, sizeof o);
+    CHECK(strstr(o, "*=Ambient") && !strstr(o, "*=UP-Term"));
+    CHECK_INT(bar_set_screens(&b, 1, n1, tw1, 0), 1);                                   /* two screens closed */
+    CHECK_INT(b.n, 5);
+    bar_dump(&b, o, sizeof o);
+    CHECK(!strstr(o, "UP-Term") && strstr(o, "Workbenc"));
+    bar_layout(&b, 800);
+    /* clicks: system opens the menu, clock flips, a screen entry fronts that screen, right buttons do nothing */
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_SYSTEM), BAR_BTN_LEFT, &id), BAR_ACT_SYSTEM);
+    CHECK_INT(id, BAR_SEG_SYSTEM);
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_SYSTEM), BAR_BTN_RIGHT, &id), BAR_ACT_NONE);
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_CLOCK), BAR_BTN_LEFT, &id), BAR_ACT_CLOCK);
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_CLOCK), BAR_BTN_RIGHT, &id), BAR_ACT_NONE);
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_SCREEN0), BAR_BTN_LEFT, &id), BAR_ACT_SCREEN);
+    CHECK_INT(id, BAR_SEG_SCREEN0);
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_RAM), BAR_BTN_LEFT, &id), BAR_ACT_NONE);         /* RAM has no action */
+}
+
 void suite_bar(void)
 {
     test_layout_groups();
@@ -334,4 +385,5 @@ void suite_bar(void)
     test_fmt_bytes();
     test_fmt_time();
     test_fmt_misc();
+    test_clock_system_screens();
 }

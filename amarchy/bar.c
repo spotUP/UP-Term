@@ -7,6 +7,10 @@
 #include <graphics/text.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
+#include <intuition/intuitionbase.h>
+#include <exec/memory.h>
+#include <dos/dos.h>
+#include <proto/dos.h>
 #include <graphics/layers.h>
 #include <proto/layers.h>
 #include <devices/inputevent.h>
@@ -17,6 +21,7 @@
 #include "bar.h"
 #include "bar_core.h"
 #include "act.h"
+#include "tick.h"
 #include "cxdesc.h"
 #include "poll_timer.h"
 #include "themewin.h"
@@ -44,6 +49,9 @@ static char g_dir[128];
 static long g_draws, g_panels, g_launches, g_raises;
 static poll_timer g_poll;
 static int g_have_layers;
+static long g_ticks;
+static int g_clock_alt;                         /* the clock segment shows the date until the next click */
+static char g_scrname[BAR_MAX_SCREENS][32];     /* full public screen names of the list on the bar, by entry */
 /* What the input handler reads (bar_takes_right_press runs in input.device's task, not ours): the bar's box as plain
  * numbers and a live flag that drops before CloseWindow, so the handler never touches a window being closed. The bar
  * is borderless and never moves, so the box taken at open stays right. */
@@ -51,9 +59,94 @@ static volatile int g_live, g_top, g_h;
 
 static void draw_seg(const bar_seg *s)
 {
+    if (s->hidden || s->w <= 0)
+        return;
     tw_fill(g_win, s->x, 0, s->x + s->w - 1, g_win->Height - 1, MT_BG);
-    tw_text(g_win, s->x + g_bar.pad, s->text, MT_TEXT, MT_BG);
+    tw_text(g_win, s->x + g_bar.pad, s->text, s->accent ? MT_SELBOX : MT_TEXT, MT_BG);
     g_draws++;
+}
+
+static void paint_all(void);
+
+static int text_w(const char *t)
+{
+    return TextLength(&g_scr->RastPort, (STRPTR)t, (ULONG)strlen(t));
+}
+
+static int set_seg(int id, const char *t)
+{
+    return bar_set_text(&g_bar, id, t, text_w(t));
+}
+
+/* The wall clock, as the clock segment shows it (the mode is the click's flip). 1 when the text changed. */
+static int sample_clock(void)
+{
+    struct DateStamp ds;
+    char t[BAR_TEXT];
+    int wd, d, m, y;
+    DateStamp(&ds);
+    bar_days_to_date(ds.ds_Days, &wd, &d, &m, &y);
+    bar_fmt_time(t, sizeof t, g_clock_alt ? BAR_DATE_FMT : BAR_CLOCK_FMT, wd, d, m, y, ds.ds_Minute / 60, ds.ds_Minute % 60);
+    return set_seg(BAR_SEG_CLOCK, t);
+}
+
+static int sample_ram(void)
+{
+    char t[BAR_TEXT];
+    bar_fmt_ram(t, sizeof t, AvailMem(MEMF_CHIP), AvailMem(MEMF_FAST));
+    return set_seg(BAR_SEG_RAM, t);
+}
+
+/* The public screens, short names; the front one in the accent pen. The list is copied under the lock and released at
+ * once, nothing is drawn while it is held. */
+static int sample_screens(void)
+{
+    char shortn[BAR_MAX_SCREENS][BAR_TEXT];
+    const char *names[BAR_MAX_SCREENS];
+    int tw[BAR_MAX_SCREENS], n = 0, front = -1, i;
+    struct List *l = LockPubScreenList();
+    struct Node *nd;
+    struct Screen *fs = IntuitionBase->FirstScreen;
+    for (nd = l ? l->lh_Head : 0; nd && nd->ln_Succ && n < BAR_MAX_SCREENS; nd = nd->ln_Succ) {
+        struct PubScreenNode *psn = (struct PubScreenNode *)nd;
+        strncpy(g_scrname[n], nd->ln_Name ? nd->ln_Name : "", sizeof g_scrname[n] - 1);
+        g_scrname[n][sizeof g_scrname[n] - 1] = 0;
+        if (psn->psn_Screen == fs)
+            front = n;
+        n++;
+    }
+    UnlockPubScreenList();
+    for (i = 0; i < n; i++) {
+        bar_fmt_screen(shortn[i], sizeof shortn[i], g_scrname[i]);
+        names[i] = shortn[i];
+        tw[i] = text_w(shortn[i]);
+    }
+    return bar_set_screens(&g_bar, n, names, tw, front);
+}
+
+/* One sampling pass: the clock every tick, the RAM every second tick (`ram`), the screens every tick. The bar is laid
+ * out and repainted whole when anything changed (a segment that grew or shrank moves its neighbours). */
+static int sample(int ram_every, int force)
+{
+    int ch = 0;
+    ch |= sample_clock();
+    ch |= sample_screens();
+    if (force || ram_every <= 1 || !(g_ticks % ram_every))
+        ch |= sample_ram();
+    g_ticks++;
+    if (ch)
+        bar_layout(&g_bar, g_bar.width);
+    return ch;
+}
+
+/* The commodity tick (tick_hook): sampling only while the bar is up. */
+void bar_tick(long now)
+{
+    (void)now;
+    if (!g_win)
+        return;
+    if (sample(2, 0))
+        paint_all();
 }
 
 static void paint_dirty(void)
@@ -99,7 +192,13 @@ int bar_open(const char *dir)
     font = g_scr->RastPort.Font;
     h = (font ? font->tf_YSize : 8) + 2;
     bar_init(&g_bar, g_scr->Width, BAR_PAD, BAR_GAP);
+    bar_add(&g_bar, BAR_SEG_MORE, BAR_LEFT, "", 0);
+    bar_add(&g_bar, BAR_SEG_CLOCK, BAR_CENTRE, "", 0);
+    bar_add(&g_bar, BAR_SEG_RAM, BAR_RIGHT, "", 0);
     bar_add(&g_bar, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", TextLength(&g_scr->RastPort, (STRPTR) "Agents", 6));
+    bar_add(&g_bar, BAR_SEG_SYSTEM, BAR_RIGHT, "System", TextLength(&g_scr->RastPort, (STRPTR) "System", 6));
+    g_clock_alt = 0;
+    sample(2, 1);
     bar_layout(&g_bar, g_scr->Width);
     g_win = tw_open(g_scr, 0, g_scr->Height - h, g_scr->Width, h, BAR_TITLE, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW);
     if (!g_win) {
@@ -185,16 +284,29 @@ void bar_timer_serve(unsigned long sigs)
     pt_start(&g_poll, BAR_RAISE_POLL_MICROS);
 }
 
-static void act_panel(void)
+static void act_panel(const char *node)
 {
     char line[KM_ID + 160];
     int text = 0, ax, ay;
     bar_panel_anchor(g_scr->Width, g_win->TopEdge, &ax, &ay);
     g_panels++;
     /* the cold path runs this line, so it names the program (an empty line started nothing) */
-    if (!cx_menu_cmd(line, sizeof line, g_dir, KA_MENU, BAR_AGENT_NODE, UC_MENU_GRAPHICAL, &text))
+    if (!cx_menu_cmd(line, sizeof line, g_dir, KA_MENU, node, UC_MENU_GRAPHICAL, &text))
         line[0] = 0;
-    act_menu_open_at(g_dir, 0, KA_MENU, BAR_AGENT_NODE, line, BAR_PANEL_COLS, BAR_PANEL_ROWS, ax, ay);
+    act_menu_open_at(g_dir, 0, KA_MENU, node, line, BAR_PANEL_COLS, BAR_PANEL_ROWS, ax, ay);
+}
+
+/* Brings the public screen of list entry `i` to the front: looked up by name at click time, never by a kept pointer. */
+static void act_screen_front(int i)
+{
+    struct Screen *sc;
+    if (i < 0 || i >= BAR_MAX_SCREENS || !g_scrname[i][0])
+        return;
+    sc = LockPubScreen((STRPTR)g_scrname[i]);
+    if (!sc)
+        return;
+    ScreenToFront(sc);
+    UnlockPubScreen(0, sc);
 }
 
 /* the same request super+l's MENU_AGENT makes: the handler opens a tab running the preferred agent */
@@ -224,7 +336,16 @@ void bar_serve(void)
         } else if (cls == IDCMP_MOUSEBUTTONS && (code == SELECTDOWN || code == MENUDOWN)) {
             int id;
             switch (bar_click(&g_bar, x, code == SELECTDOWN ? BAR_BTN_LEFT : BAR_BTN_RIGHT, &id)) {
-            case BAR_ACT_PANEL: act_panel(); break;
+            case BAR_ACT_PANEL: act_panel(BAR_AGENT_NODE); break;
+            case BAR_ACT_SYSTEM: act_panel(BAR_SYSTEM_NODE); break;
+            case BAR_ACT_CLOCK:
+                g_clock_alt = !g_clock_alt;
+                if (sample_clock()) {
+                    bar_layout(&g_bar, g_bar.width);
+                    paint_all();
+                }
+                break;
+            case BAR_ACT_SCREEN: act_screen_front(id - BAR_SEG_SCREEN0); break;
             case BAR_ACT_LAUNCH_AGENT: act_launch(); break;
             default: break;
             }
@@ -248,6 +369,7 @@ int bar_takes_right_press(void)
 
 void bar_right_click(void) { act_launch(); }
 
+void bar_text(char *out, int cap) { bar_dump(&g_bar, out, cap); }
 long bar_draws(void) { return g_draws; }
 long bar_panels(void) { return g_panels; }
 long bar_launches(void) { return g_launches; }

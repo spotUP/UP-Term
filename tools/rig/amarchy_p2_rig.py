@@ -11,6 +11,11 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <detail>"); l
   bar_off      BAR OFF: bar=0, no window "Amarchy bar", ticks still rising (the tick outlives the bar)
   bar_on       BAR ON: bar=1, the window is back, ticks still rising
   status_keys  STATUS no longer carries draws= panels= launches= raises= (they moved to BAR STATUS)
+  clock        R2.6: BAR TEXT segment 2 reads like "Wed 15:25"; a real left click flips it to "Wed 29 Oct 2026", another back
+  ram          R2.7: segment 3 reads "C <n> F <n>" and the numbers move or stay valid across 5 s of ticks
+  screens      R2.11: a public screen entry (id 200 and up) exists, exactly one carries the front-screen mark (*); a real
+               left click on it keeps the bar alive and the entry listed
+  system       R2.12a: a real left click on segment 4 raises BAR STATUS panels= by 1; Escape closes the menu
   python3 tools/rig/amarchy_p2_rig.py [--only STEP] [--no-build]
 Resumable: --only STEP reruns one step against the state the earlier steps left; verdicts are written to
 <RIG>/amarchy-p2/verdict.json as each step completes. Exit code is nonzero when any step fails."""
@@ -94,8 +99,67 @@ def s_status_keys():
         'moved keys still in STATUS: %r; %r' % (gone, res)
 
 
+def segs():
+    """BAR TEXT -> {id: (x, w, accent, text)}."""
+    rc, res = t.send('AMARCHY', 'BAR TEXT', timeout=5)
+    out = {}
+    for m in re.finditer(r'(\d+)@(\d+)\+(\d+)(\*?)=([^|]*)', res if rc == 0 else ''):
+        out[int(m.group(1))] = (int(m.group(2)), int(m.group(3)), bool(m.group(4)), m.group(5))
+    return out
+
+
+def click_seg(sid):
+    import amarchy_bar_rig as b
+    x, w, _, _ = segs()[sid]
+    _, h = b.screen_size()
+    b.click(0, at=(x + w // 2, h - 4))
+
+
+CLOCK = r'[A-Z][a-z]{2} \d\d:\d\d'
+DATE = r'[A-Z][a-z]{2} \d\d [A-Z][a-z]{2} \d{4}'
+
+
+def s_clock():
+    a = segs().get(2, (0, 0, 0, ''))[3]
+    click_seg(2)
+    b = segs().get(2, (0, 0, 0, ''))[3]
+    click_seg(2)
+    c2 = segs().get(2, (0, 0, 0, ''))[3]
+    ok = re.fullmatch(CLOCK, a) and re.fullmatch(DATE, b) and re.fullmatch(CLOCK, c2)
+    return bool(ok), 'text %r -> click -> %r -> click -> %r' % (a, b, c2)
+
+
+def s_ram():
+    a = segs().get(3, (0, 0, 0, ''))[3]
+    time.sleep(5)
+    b = segs().get(3, (0, 0, 0, ''))[3]
+    pat = r'C \S+ F \S+'
+    return bool(re.fullmatch(pat, a) and re.fullmatch(pat, b)), 'ram %r then %r' % (a, b)
+
+
+def s_screens():
+    sc = {i: v for i, v in segs().items() if 200 <= i < 210}
+    marks = [i for i, v in sc.items() if v[2]]
+    ok = bool(sc) and len(marks) == 1
+    if ok:
+        click_seg(min(sc))
+        ok = bool(t.send('AMARCHY', 'BAR STATUS', timeout=5)[0] == 0) and any(200 <= i < 210 for i in segs())
+    return ok, 'entries %r, marked %r' % ({i: v[3] for i, v in sc.items()}, marks)
+
+
+def s_system():
+    before = kv(t.send('AMARCHY', 'BAR STATUS', timeout=5)[1]).get('panels', 0)
+    click_seg(4)
+    after = kv(t.send('AMARCHY', 'BAR STATUS', timeout=5)[1]).get('panels', 0)
+    import ami
+    ami.key(0x45, 0)
+    time.sleep(1)
+    return after == before + 1, 'panels %r -> %r' % (before, after)
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
-         ('bar_on', s_bar_on), ('status_keys', s_status_keys)]
+         ('bar_on', s_bar_on), ('status_keys', s_status_keys),
+         ('clock', s_clock), ('ram', s_ram), ('screens', s_screens), ('system', s_system)]
 
 
 def main():

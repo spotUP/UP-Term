@@ -24,6 +24,12 @@ void bar_serve(void);
 int bar_takes_right_press(void);
 void bar_right_click(void);
 
+/* The commodity tick hook (tick_hook): samples the clock, the RAM and the public screens while the bar is up, and
+ * repaints when a text changed. */
+void bar_tick(long now);
+/* BAR TEXT: every segment as bar_dump writes it. */
+void bar_text(char *out, int cap);
+
 /* Counters for the STATUS reply: segments drawn, panels opened, agents launched, re-raises; bar_is_open is 1 or 0. */
 long bar_draws(void);
 long bar_panels(void);
