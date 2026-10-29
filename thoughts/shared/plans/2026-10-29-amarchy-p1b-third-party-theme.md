@@ -110,6 +110,8 @@ Owner rule 2026-10-29: the Selecta session (MusicPlayer repo) does the MUI work 
 
 ### R1.25 flat GUI skin patches
 
+SUPERSEDED 2026-10-29 by thoughts/shared/plans/2026-10-29-amarchy-flat-ui-patch.md (Amarchy's own flat-UI patch); the items below are not built.
+
 Each of VisualPrefs, FullPalette, Birdie: its own amconf key (AM_DESK_VP, AM_DESK_FPAL, AM_DESK_BIRDIE), default off, its own PG_PAGE_AMARCHY row. Off = Amarchy restores the stock look it snapshotted, removes only its own startup block, and from then on never writes that patch's files nor touches its Startup lines.
 
 - [ ] **P1B-V0 licence check (OD-V1).** For VisualPrefs 1.5k with VP-QuickFix 1.5n, FullPalette 40.22 and Birdie 2000: record the licence text or the author's written OK in thoughts/shared/research/. A patch without one is not bundled; its row then only detects a user install.
