@@ -88,9 +88,9 @@ Segments
 - [x] R2.6 Clock (centre): "Mon 14:05" from `%a %H:%M`; left click flips to "Mon 29 Oct 2026" (`%a %d %b %Y`) until the (done 7f8d531d, rig 6)
       next click. Text set every tick, redraw only when the minute or the mode changes.
 - [x] R2.7 RAM (right): "C 1.2M F 61M", AvailMem(MEMF_CHIP) and AvailMem(MEMF_FAST), sampled every 2 s. (done 7f8d531d, rig 6)
-- [ ] R2.8 CPU (right): "CPU 12%" from an idle counter task at priority -128, started by bar_open, stopped by bar_close
+- [x] R2.8 (0432be4a, rig 6) CPU (right): "CPU 12%" from an idle counter task at priority -128, started by bar_open, stopped by bar_close
       (Signal + wait for exit, no Forbid loop). Sampled every tick.
-- [ ] R2.10 Network (right): interface name and up/down from bsdsocket QueryInterfaceTags ("eth0 up"), "no network" when
+- [~] R2.10 (0432be4a, rig 6; PARTIAL: UAE and no-stack paths done, the real up/down query is OPEN: Roadshow IFQ_* tags are not in NDK 3.2 R4 netinclude, the real stack shows "Network stack") Network (right): interface name and up/down from bsdsocket QueryInterfaceTags ("eth0 up"), "no network" when
       no stack or the query fails. Library opened at sample time and closed after; sampled every 5 s; redraw only on
       change. No traffic numbers.
 - [x] R2.11 Screens (left): every public screen as its short name, the front screen in the accent pen, left click = (done 7f8d531d, rig 6)
