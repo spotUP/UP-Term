@@ -8,6 +8,7 @@ void bar_init(bar *b, int width, int pad, int gap)
     b->width = width;
     b->pad = pad;
     b->gap = gap;
+    b->cw = 8;
 }
 
 static void put_text(bar_seg *s, const char *text, int tw)
@@ -55,25 +56,133 @@ static void place(bar_seg *s, int x, int w)
     s->w = w;
 }
 
-void bar_layout(bar *b, int width)
+/* Appends decimal n, zero padded to `min` digits, at t + o; returns the new offset (no stdio: m68k libc and
+ * -Werror hosts both stay clear of sprintf). */
+static int put_u(char *t, int o, unsigned long n, int min)
 {
-    int i, x, r;
-    b->width = width;
-    x = 0;
+    char d[12];
+    int k = 0;
+    do {
+        d[k++] = (char)('0' + n % 10UL);
+        n /= 10UL;
+    } while (n);
+    while (k < min)
+        d[k++] = '0';
+    while (k)
+        t[o++] = d[--k];
+    return o;
+}
+
+static int put_s(char *t, int o, const char *s)
+{
+    while (*s)
+        t[o++] = *s++;
+    return o;
+}
+
+static int segw(const bar_seg *s, int pad)
+{
+    return s->tw + 2 * pad;
+}
+
+/* The left group with `k` screen entries shown (-1 = all): placed when `commit`, else measured. Returns its end x
+ * (0 when empty). The marker follows the last shown entry. */
+static int place_left(bar *b, int k, int commit)
+{
+    int i, x = 0, j = 0, end = 0;
     for (i = 0; i < b->n; i++) {
         bar_seg *s = &b->seg[i];
+        int show = 1, w;
         if (s->side != BAR_LEFT)
             continue;
-        place(s, x, s->tw + 2 * b->pad);
-        x += s->w + b->gap;
+        if (BAR_IS_SCREEN(s->id)) {
+            show = k < 0 || j < k;
+            j++;
+        } else if (s->id == BAR_SEG_MORE) {
+            show = k >= 0;
+        }
+        if (!show) {
+            if (commit) {
+                place(s, 0, 0);
+                s->hidden = 1;
+            }
+            continue;
+        }
+        w = segw(s, b->pad);
+        if (commit) {
+            place(s, x, w);
+            s->hidden = 0;
+        }
+        x += w + b->gap;
+        end = x - b->gap;
     }
+    return end;
+}
+
+static int marker_text(bar *b, int hidden_n)
+{
+    char t[BAR_TEXT];
+    int i, o = put_s(t, 0, "+");
+    o = put_u(t, o, (unsigned long)hidden_n, 1);
+    t[o] = 0;
+    for (i = 0; i < b->n; i++)
+        if (b->seg[i].id == BAR_SEG_MORE)
+            return bar_set_text(b, BAR_SEG_MORE, t, (int)strlen(t) * b->cw);
+    return 0;
+}
+
+void bar_layout(bar *b, int width)
+{
+    int i, x, r, nscr = 0, k = -1, c_w = 0, c_n = 0, left_end, cx;
+    b->width = width;
     r = width;
     for (i = b->n - 1; i >= 0; i--) {
         bar_seg *s = &b->seg[i];
         if (s->side != BAR_RIGHT)
             continue;
-        place(s, r - (s->tw + 2 * b->pad), s->tw + 2 * b->pad);
+        place(s, r - segw(s, b->pad), segw(s, b->pad));
         r = s->x - b->gap;
+    }
+    for (i = 0; i < b->n; i++) {
+        if (b->seg[i].side == BAR_CENTRE) {
+            c_w += segw(&b->seg[i], b->pad) + (c_n ? b->gap : 0);
+            c_n++;
+        } else if (b->seg[i].side == BAR_LEFT && BAR_IS_SCREEN(b->seg[i].id)) {
+            nscr++;
+        }
+    }
+    /* the room the left group may use: up to the centre group's latest place, or the right group */
+    {
+        int limit = c_n ? r - c_w - b->gap : r;
+        left_end = place_left(b, -1, 0);
+        if (left_end > limit && nscr > 1) {
+            for (k = nscr - 1; k >= 1; k--) {
+                marker_text(b, nscr - k);
+                left_end = place_left(b, k, 0);
+                if (left_end <= limit)
+                    break;
+            }
+            if (k < 1)
+                k = 1;
+        }
+    }
+    if (k >= 0)
+        marker_text(b, nscr - k);
+    left_end = place_left(b, k, 1);
+    if (c_n) {
+        cx = (width - c_w) / 2;
+        if (left_end && cx < left_end + b->gap)
+            cx = left_end + b->gap;
+        if (cx + c_w > r)
+            cx = r - c_w;
+        x = cx;
+        for (i = 0; i < b->n; i++) {
+            bar_seg *s = &b->seg[i];
+            if (s->side != BAR_CENTRE)
+                continue;
+            place(s, x, segw(s, b->pad));
+            x += s->w + b->gap;
+        }
     }
 }
 
@@ -81,7 +190,7 @@ int bar_hit(const bar *b, int x)
 {
     int i;
     for (i = 0; i < b->n; i++)
-        if (x >= b->seg[i].x && x < b->seg[i].x + b->seg[i].w)
+        if (!b->seg[i].hidden && x >= b->seg[i].x && x < b->seg[i].x + b->seg[i].w)
             return i;
     return -1;
 }
@@ -141,4 +250,107 @@ int bar_covered(int l, int t, int r, int b, const bar_lyr *front, int n)
             return 1;
     }
     return 0;
+}
+
+/* Formatters */
+
+static void out_put(char *out, int cap, const char *s)
+{
+    int n = (int)strlen(s);
+    if (cap <= 0)
+        return;
+    if (n > cap - 1)
+        n = cap - 1;
+    memcpy(out, s, n);
+    out[n] = 0;
+}
+
+void bar_fmt_bytes(char *out, int cap, unsigned long n)
+{
+    char t[16];
+    int o = 0;
+    unsigned long k = n > 0xFFFFFFFFUL - 512UL ? n >> 10 : (n + 512UL) >> 10;     /* rounded KB, no wrap at 4 GB */
+    if (k < 1024UL) {
+        o = put_u(t, o, k, 1);
+        t[o++] = 'K';
+    } else {
+        unsigned long whole = n >> 20, rem = n & 0xFFFFFUL, tenths = (rem * 10UL + 524288UL) >> 20;
+        if (whole >= 10UL) {
+            if (rem >= 524288UL)
+                whole++;
+            tenths = 10UL;                                   /* no decimal */
+        } else if (tenths >= 10UL) {
+            whole++;
+            tenths = 0;
+        }
+        o = put_u(t, o, whole, 1);
+        if (whole < 10UL && tenths < 10UL) {
+            t[o++] = '.';
+            o = put_u(t, o, tenths, 1);
+        }
+        t[o++] = 'M';
+    }
+    t[o] = 0;
+    out_put(out, cap, t);
+}
+
+void bar_fmt_ram(char *out, int cap, unsigned long chip, unsigned long fast)
+{
+    char c[16], f[16], t[BAR_TEXT];
+    int o = put_s(t, 0, "C ");
+    bar_fmt_bytes(c, sizeof c, chip);
+    bar_fmt_bytes(f, sizeof f, fast);
+    o = put_s(t, o, c);
+    o = put_s(t, o, " F ");
+    o = put_s(t, o, f);
+    t[o] = 0;
+    out_put(out, cap, t);
+}
+
+void bar_fmt_time(char *out, int cap, const char *fmt, int wday, int day, int mon, int year, int hour, int min)
+{
+    static const char wd[7][4] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    static const char mn[12][4] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    char t[BAR_TEXT * 2];
+    int o = 0;
+    for (; *fmt && o < (int)sizeof t - 8; fmt++) {
+        if (*fmt != '%' || !fmt[1]) {
+            t[o++] = *fmt;
+            continue;
+        }
+        fmt++;
+        switch (*fmt) {
+        case 'H': o = put_u(t, o, (unsigned long)hour, 2); break;
+        case 'M': o = put_u(t, o, (unsigned long)min, 2); break;
+        case 'a': o = put_s(t, o, wd[(wday % 7 + 7) % 7]); break;
+        case 'd': o = put_u(t, o, (unsigned long)day, 2); break;
+        case 'b': o = put_s(t, o, mn[(mon % 12 + 12) % 12]); break;
+        case 'Y': o = put_u(t, o, (unsigned long)year, 4); break;
+        case '%': t[o++] = '%'; break;
+        default: t[o++] = '%'; t[o++] = *fmt; break;
+        }
+    }
+    t[o] = 0;
+    out_put(out, cap, t);
+}
+
+int bar_fmt_percent(unsigned long idle, unsigned long total)
+{
+    if (!total || idle >= total)
+        return 0;
+    return (int)(((total - idle) * 100UL + total / 2) / total);
+}
+
+void bar_fmt_screen(char *out, int cap, const char *title)
+{
+    char t[9];
+    int n = 0;
+    while (title && *title == ' ')
+        title++;
+    while (title && title[n] && title[n] != ' ' && n < 8) {
+        t[n] = title[n];
+        n++;
+    }
+    t[n] = 0;
+    out_put(out, cap, t);
 }

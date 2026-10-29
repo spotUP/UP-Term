@@ -168,6 +168,157 @@ static void test_covered(void)
     CHECK_INT(bar_covered(0, 246, 639, 255, list, 2), 0);
 }
 
+/* The full bar of the plan (R2.4): screens left (tw 60 each), clock centre, CPU/RAM/network/Agents right. */
+static int full_bar(bar *b, int nscr, int width, int clock_tw)
+{
+    int i;
+    bar_init(b, width, 4, 2);
+    for (i = 0; i < nscr; i++)
+        bar_add(b, BAR_SEG_SCREEN0 + i, BAR_LEFT, "Scr", 60);
+    bar_add(b, BAR_SEG_MORE, BAR_LEFT, "", 0);
+    bar_add(b, 300, BAR_CENTRE, "Mon 14:05", clock_tw);
+    bar_add(b, 301, BAR_RIGHT, "CPU", 40);
+    bar_add(b, 302, BAR_RIGHT, "RAM", 100);
+    bar_add(b, 303, BAR_RIGHT, "Net", 60);
+    bar_add(b, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", 48);
+    bar_layout(b, width);
+    return nscr;
+}
+
+static int shown(const bar *b)
+{
+    int i, n = 0;
+    for (i = 0; i < b->n; i++)
+        if (BAR_IS_SCREEN(b->seg[i].id) && !b->seg[i].hidden)
+            n++;
+    return n;
+}
+
+static const bar_seg *seg_id(const bar *b, int id)
+{
+    int i;
+    for (i = 0; i < b->n; i++)
+        if (b->seg[i].id == id)
+            return &b->seg[i];
+    return 0;
+}
+
+static void test_centre(void)
+{
+    bar b;
+    const bar_seg *c;
+    int w;
+    for (w = 640; w <= 1280; w += (w == 640 ? 160 : 480)) {         /* 640, 800, 1280 */
+        full_bar(&b, 2, w, 72);
+        c = seg_id(&b, 300);
+        CHECK_INT(shown(&b), 2);
+        CHECK_INT(seg_id(&b, BAR_SEG_MORE)->w, 0);
+        if (w == 1280)
+            CHECK_INT(c->x, (1280 - c->w) / 2);                      /* centred when nothing touches it */
+        CHECK(c->x >= seg_id(&b, BAR_SEG_SCREEN0 + 1)->x + seg_id(&b, BAR_SEG_SCREEN0 + 1)->w);
+        CHECK(c->x + c->w <= seg_id(&b, 301)->x);
+    }
+    /* pushed right: 7 screens at 800 with a narrow clock cut to 6 + marker, which end past the ideal centre */
+    full_bar(&b, 7, 800, 20);
+    c = seg_id(&b, 300);
+    CHECK_INT(shown(&b), 6);
+    CHECK(c->x > (800 - c->w) / 2);
+    CHECK_INT(c->x, seg_id(&b, BAR_SEG_MORE)->x + seg_id(&b, BAR_SEG_MORE)->w + 2);
+}
+
+static void test_cut(void)
+{
+    bar b;
+    int n;
+    /* 640, 6 screens: the room is right group start (346) - centre (80) - gap = 264 */
+    full_bar(&b, 6, 640, 72);
+    n = shown(&b);
+    CHECK_INT(n, 3);
+    CHECK_STR(seg_id(&b, BAR_SEG_MORE)->text, "+3");
+    CHECK_INT(seg_id(&b, BAR_SEG_MORE)->w, 2 * 8 + 8);               /* "+3" at cw 8 plus padding */
+    CHECK(seg_id(&b, BAR_SEG_MORE)->x == seg_id(&b, BAR_SEG_SCREEN0 + 2)->x + 68 + 2);
+    CHECK_INT(bar_hit(&b, 3 * 70 + 30), -1);                         /* hidden entries are never hit */
+    CHECK(seg_id(&b, BAR_SEG_SCREEN0 + 5)->hidden);
+    CHECK_INT(seg_id(&b, 300)->w, 80);                               /* centre and right never cut */
+    CHECK_INT(seg_id(&b, BAR_SEG_AGENTS)->x + seg_id(&b, BAR_SEG_AGENTS)->w, 640);
+    /* everything fits: no cut, no marker */
+    full_bar(&b, 3, 800, 72);
+    CHECK_INT(shown(&b), 3);
+    CHECK(seg_id(&b, BAR_SEG_MORE)->hidden);
+    /* cut by exactly one entry: 5 screens at 640 do not fit (350), 4 do not (276 + marker), so test with a narrower clock */
+    full_bar(&b, 5, 640, 20);
+    CHECK_INT(shown(&b), 4);
+    CHECK_STR(seg_id(&b, BAR_SEG_MORE)->text, "+1");
+    /* all but one: a tiny width keeps the first entry and counts the rest */
+    full_bar(&b, 6, 300, 72);
+    CHECK_INT(shown(&b), 1);
+    CHECK_STR(seg_id(&b, BAR_SEG_MORE)->text, "+5");
+    CHECK(!seg_id(&b, BAR_SEG_SCREEN0)->hidden);
+    /* knob: the character width moves the marker */
+    b.cw = 10;
+    bar_layout(&b, 300);
+    CHECK_INT(seg_id(&b, BAR_SEG_MORE)->w, 2 * 10 + 8);
+    /* growing the bar again brings the entries back */
+    bar_layout(&b, 1280);
+    CHECK_INT(shown(&b), 6);
+    CHECK(seg_id(&b, BAR_SEG_MORE)->hidden);
+}
+
+static void test_fmt_bytes(void)
+{
+    char o[16];
+    bar_fmt_bytes(o, sizeof o, 0UL);               CHECK_STR(o, "0K");
+    bar_fmt_bytes(o, sizeof o, 1023UL);            CHECK_STR(o, "1K");
+    bar_fmt_bytes(o, sizeof o, 1024UL);            CHECK_STR(o, "1K");
+    bar_fmt_bytes(o, sizeof o, 512UL * 1024UL);    CHECK_STR(o, "512K");
+    bar_fmt_bytes(o, sizeof o, 1048575UL);         CHECK_STR(o, "1.0M");           /* rounds up into megabytes */
+    bar_fmt_bytes(o, sizeof o, 1101004UL);         CHECK_STR(o, "1.0M");           /* 1.05 MB */
+    bar_fmt_bytes(o, sizeof o, 1258291UL);         CHECK_STR(o, "1.2M");
+    bar_fmt_bytes(o, sizeof o, 61UL * 1048576UL);  CHECK_STR(o, "61M");
+    bar_fmt_bytes(o, sizeof o, 10UL * 1048576UL - 1UL); CHECK_STR(o, "10M");
+    bar_fmt_bytes(o, sizeof o, 4294967295UL);      CHECK_STR(o, "4096M");          /* 4 GB - 1, no overflow */
+    bar_fmt_bytes(o, 4, 61UL * 1048576UL);         CHECK_STR(o, "61M");
+    bar_fmt_bytes(o, 3, 61UL * 1048576UL);         CHECK_STR(o, "61");             /* cap respected */
+}
+
+static void test_fmt_time(void)
+{
+    static const char *const day[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    char o[BAR_TEXT], want[BAR_TEXT];
+    int d;
+    for (d = 0; d < 7; d++) {
+        bar_fmt_time(o, sizeof o, BAR_CLOCK_FMT, d, 29, 9, 2026, 14, 5);
+        strcpy(want, day[d]);
+        strcat(want, " 14:05");
+        CHECK_STR(o, want);
+    }
+    bar_fmt_time(o, sizeof o, BAR_CLOCK_FMT, 1, 29, 9, 2026, 0, 0);           CHECK_STR(o, "Mon 00:00");   /* midnight */
+    bar_fmt_time(o, sizeof o, BAR_CLOCK_FMT, 1, 29, 9, 2026, 23, 59);         CHECK_STR(o, "Mon 23:59");
+    bar_fmt_time(o, sizeof o, BAR_DATE_FMT, 1, 29, 9, 2026, 14, 5);           CHECK_STR(o, "Mon 29 Oct 2026");
+    bar_fmt_time(o, sizeof o, BAR_DATE_FMT, 4, 1, 0, 2027, 0, 0);             CHECK_STR(o, "Thu 01 Jan 2027");
+    bar_fmt_time(o, sizeof o, "%H:%M", 1, 29, 9, 2026, 14, 5);                CHECK_STR(o, "14:05");        /* bar.conf clock knob */
+    bar_fmt_time(o, sizeof o, "100%% %q %", 1, 29, 9, 2026, 14, 5);           CHECK_STR(o, "100% %q %");
+    bar_fmt_time(o, 6, BAR_DATE_FMT, 1, 29, 9, 2026, 14, 5);                  CHECK_STR(o, "Mon 2");        /* cap */
+}
+
+static void test_fmt_misc(void)
+{
+    char o[BAR_TEXT];
+    bar_fmt_ram(o, sizeof o, 1258291UL, 61UL * 1048576UL);
+    CHECK_STR(o, "C 1.2M F 61M");
+    bar_fmt_ram(o, sizeof o, 0UL, 4294967295UL);
+    CHECK_STR(o, "C 0K F 4096M");
+    CHECK_INT(bar_fmt_percent(100, 100), 0);
+    CHECK_INT(bar_fmt_percent(0, 100), 100);
+    CHECK_INT(bar_fmt_percent(75, 100), 25);
+    CHECK_INT(bar_fmt_percent(0, 0), 0);
+    CHECK_INT(bar_fmt_percent(5, 3), 0);
+    bar_fmt_screen(o, sizeof o, "Workbench Screen");     CHECK_STR(o, "Workbenc");           /* max 8 */
+    bar_fmt_screen(o, sizeof o, "UP-Term");              CHECK_STR(o, "UP-Term");
+    bar_fmt_screen(o, sizeof o, "  Mui screen");         CHECK_STR(o, "Mui");
+    bar_fmt_screen(o, sizeof o, "");                     CHECK_STR(o, "");
+}
+
 void suite_bar(void)
 {
     test_layout_groups();
@@ -178,4 +329,9 @@ void suite_bar(void)
     test_panel_anchor_clamped();
     test_press_over_agents_launches();
     test_covered();
+    test_centre();
+    test_cut();
+    test_fmt_bytes();
+    test_fmt_time();
+    test_fmt_misc();
 }
