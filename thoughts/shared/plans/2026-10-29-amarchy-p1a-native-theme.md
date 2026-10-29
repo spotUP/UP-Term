@@ -148,12 +148,12 @@ Core (host-tested, pure):
   marker content. Test: host cases incl. a crashed-marker restore choosing the right files.
 
 OS side (commodity):
-- [ ] R1.7 desk.c: snapshot to T:amarchy-revert/, write ENV:Sys/*.prefs, LoadRGB32 live palette, IPrefs nudge per R1.1b-d.
+- [ ] R1.7 (code in desk_dos.c, commit 863752b6; OPEN: rig 3 run of tools/rig/amarchy_desk_rig.py shows AMARCHY_DESKS 0 / DESKMASK 0 after a Style > Theme pick with desktop-theme = on in ENV:Amarchy/prefs, so desk_dos_apply returns before writing; cause not yet found, surface its return value) desk.c: snapshot to T:amarchy-revert/, write ENV:Sys/*.prefs, LoadRGB32 live palette, IPrefs nudge per R1.1b-d.
 - [ ] R1.8 Confirm requester (EasyRequest from the commodity, or gui.c window) + 15 s timer in the Wait loop amarchy.c:332
   (job_dos.c:80 timer pattern); timeout -> restore snapshot + re-apply. Rig: RX1 step 4.
 - [ ] R1.9 Boot-time restore: pending-revert marker in ENVARC:Amarchy/ read at Amarchy start. Rig: RX1 step 6.
 - [ ] R1.10 ENVARC: persist only after confirm. Rig: RX1 step 5 (ENVARC unchanged before confirm, equal after).
-- [ ] R1.18b Option on/off: amconf key (e.g. `desk-theme`, plus per-target keys D-TGT) and a PG_PAGE_AMARCHY row in
+- [ ] R1.18b (keys desktop-theme/-palette/-backdrop/-pointer/-labels as hidden settings rows, commit f7234895; no PG_PAGE_AMARCHY gadget yet; restore-on-off open) Option on/off: amconf key (e.g. `desk-theme`, plus per-target keys D-TGT) and a PG_PAGE_AMARCHY row in
   prefs/settings_def.c; turning it off restores the snapshot taken before the first desktop apply (OD2, OD14). Test: host
   amconf key round-trip; rig: off -> ENV: files equal the pre-Amarchy originals.
 - [ ] R1.12 KA_DESK `desk:<theme NAME|backdrop next|revert|confirm>` in config/keymap.h after KA_GTHEME (:80), arg check

@@ -41,6 +41,18 @@ int main(int argc, char **argv)
     static char text[8192];
     gtheme th;
     long n = 0, tl;
+    if (argc >= 3 && !strcmp(argv[2], "check")) {
+        char why[96];
+        tl = slurp(argv[1], (unsigned char *)text, sizeof text - 1);
+        if (tl < 0)
+            return 2;
+        gt_parse(text, tl, &th);
+        if (desk_check(&th, why, (int)sizeof why) < 0) {
+            printf("%s\n", why);
+            return 1;
+        }
+        return 0;
+    }
     if (argc < 4)
         return 2;
     tl = slurp(argv[1], (unsigned char *)text, sizeof text - 1);
