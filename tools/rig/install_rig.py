@@ -1140,14 +1140,41 @@ def base_whole(ck, what):
     ck(run('List >NIL: UP-Term:VERSIONS')[0] == 0, 'the base is whole %s: UP-Term:VERSIONS' % what)
 
 
-def base_uninstall(ck, before, expect_user_startup_clean=True):
+def strip_block(text, name):
+    """text without the lines from ';BEGIN <name>' to ';END <name>' (a block another installer wrote)."""
+    out, skip = [], False
+    for line in text.split('\n'):
+        if line.strip() == ';BEGIN ' + name:
+            skip = True
+        if not skip:
+            out.append(line)
+        if skip and line.strip() == ';END ' + name:
+            skip = False
+    return '\n'.join(out)
+
+
+def check_startup_after_uninstall(ck, before_text, now_text, leaves=()):
+    """S:User-Startup after the base Uninstall is as it was, byte for byte. leaves: names of blocks another
+    installer wrote that Uninstall leaves in place on purpose (DOpus5: DOpus stays, owner rule); they are
+    taken out of both sides for the comparison and must still be there when the run installed them."""
+    a, b = before_text, now_text
+    for name in leaves:
+        a, b = strip_block(a, name), strip_block(b, name)
+    ck(b == a, 'after base Uninstall: S:User-Startup as it was, byte for byte',
+       'differs: %r vs %r' % (b[-80:], a[-80:]))
+    for name in leaves:
+        if (';BEGIN ' + name) not in before_text:
+            ck((';BEGIN ' + name) in now_text and (';END ' + name) in now_text,
+               'after base Uninstall: the %s block is still in S:User-Startup (it still boots)' % name)
+
+
+def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=()):
     """Uninstall of the base (which runs the Uninstall of the add-ons that need it) gives the rig back byte for byte
     (not when a stand-alone archive's block is still there: it is not the base's to take out)."""
     rc, out = run_long('rununinstall')
     ck(rc == 0, 'base Uninstall runs', out)
     if expect_user_startup_clean:
-        ck(run('Type S:User-Startup')[1] == before.startup, 'after base Uninstall: S:User-Startup as it was, byte for byte',
-           'differs: %r vs %r' % (run('Type S:User-Startup')[1][-80:], before.startup[-80:]))
+        check_startup_after_uninstall(ck, before.startup, run('Type S:User-Startup')[1], leaves)
     ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'after base Uninstall: S:Startup-Sequence as it was')
     ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after base Uninstall: no UP-Term: assign')
     ck(run('List >NIL: SYS:UP-Term')[0] != 0, 'after base Uninstall: SYS:UP-Term is gone', run('List SYS:UP-Term ALL')[1][:400])
@@ -1284,7 +1311,11 @@ def addon_gone(ck, pkg, base_stays=True, remote=True, with_base=True):
     sys.path.insert(0, str(ROOT / 'tools'))
     import pkgs
     rec = pkgs.get(pkg, 'record')
-    addon_absent(ck, pkg, 'after its Uninstall')
+    if pkg == 'dopus':   # Directory Opus is left in place by its Uninstall (owner rule, dist/addons/dopus/uninstall-body.dos)
+        for f in ADDON_FILES[pkg]:
+            ck(run('List >NIL: %s' % f)[0] == 0, '%s: %s is still there after its Uninstall (Directory Opus stays)' % (pkg, f))
+    else:
+        addon_absent(ck, pkg, 'after its Uninstall')
     if base_stays:
         ck(run('List >NIL: %s' % rec)[0] != 0, '%s: its record %s is gone' % (pkg, rec))
     if pkg == 'python':

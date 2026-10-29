@@ -51,6 +51,7 @@ Resumable:
   installer_rig.py ONLY dest      one case (re-run even when it passed; --only dest is the same)
   installer_rig.py FAILED         only the cases that failed last time
   installer_rig.py FORCE          all, from zero
+  installer_rig.py ONLY addon-dopus FORCE --no-dopus --purpose "<who: what>"   the case on a rig started without Directory Opus
 Needs `make dist` and the default rig (tools/rig/rig.py, the 3.1 machine
 install_rig.py is written for; it is started fresh here). Not run by `make
 test`: it needs the emulator.
@@ -1196,7 +1197,7 @@ def installer_run(tag, inst, kitdir, appname, level, base, dest=None):
     t = time.time()
     ir.run('Run >NIL: "%s" VTC:%s/Install APPNAME %s MINUSER %s DEFUSER %s NOLOG' % (inst, kitdir, appname, level, level), 30)
     time.sleep(5)
-    finished, log = drive(tag, inst, dest, base, tick_all=(tag == "fullsuite"))
+    finished, log = drive(tag, inst, dest, base, tick_all=(tag == "fullsuite" or (tag.startswith("addon-") and not tag.endswith("-base"))))
     (OUT / (tag + ".log.txt")).write_text("\n".join(log) + "\n")
     return finished, log, time.time() - t
 
@@ -1244,7 +1245,8 @@ def run_addon_case(pkg):
     if not ok:
         ir.run_long("rununinstall")
     else:
-        ir.base_uninstall(ck, before)
+        # DOpus stays after Uninstall (owner rule): its own ;BEGIN DOpus5 block stays in S:User-Startup
+        ir.base_uninstall(ck, before, leaves=("DOpus5",) if pkg == "dopus" else ())
     print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
 
@@ -1391,6 +1393,7 @@ def _migrate(case, ck):
 
 
 PURPOSE = []   # ["--purpose", text] for every rig start (the FS-UAE window title)
+RIG_FLAGS = []   # other rig.py start options from the command line (--no-dopus), kept apart from PURPOSE
 
 
 def set_purpose(text):
@@ -1398,7 +1401,7 @@ def set_purpose(text):
 
 
 def rig_start():
-    rig("start", *PURPOSE)
+    rig("start", *(PURPOSE + RIG_FLAGS))
 
 
 def parse_args(argv):
@@ -1415,6 +1418,9 @@ def parse_args(argv):
             flags.add(a)
         elif a == "--max":   # max is the rig default (rig.py): accepted so the rig.py line can be reused
             pass
+        elif a == "--no-dopus":   # the rig is started without Directory Opus (the dopus add-on installs it)
+            if a not in RIG_FLAGS:
+                RIG_FLAGS.append(a)
         elif a == "--purpose":
             if not args:
                 raise SystemExit("installer_rig: --purpose needs a text")

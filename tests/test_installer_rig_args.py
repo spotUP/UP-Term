@@ -31,6 +31,18 @@ class ParseArgs(unittest.TestCase):
             irg.rig_start()
         rig.assert_called_once_with("start", "--purpose", "vtcon-05: check")
 
+    def test_no_dopus_reaches_the_rig_start_before_or_after_purpose(self):
+        # --no-dopus before --purpose was wiped when set_purpose replaced the list it shared
+        for argv in (["--no-dopus", "--purpose", "vtcon-05: d9"], ["--purpose", "vtcon-05: d9", "--no-dopus"]):
+            self.addCleanup(irg.PURPOSE.clear)
+            self.addCleanup(irg.RIG_FLAGS.clear)
+            irg.PURPOSE.clear()
+            irg.RIG_FLAGS.clear()
+            irg.parse_args(argv)
+            with mock.patch.object(irg, "rig") as rig:
+                irg.rig_start()
+            rig.assert_called_once_with("start", "--purpose", "vtcon-05: d9", "--no-dopus")
+
     def test_purpose_without_text_stops(self):
         with self.assertRaises(SystemExit):
             irg.parse_args(["--purpose"])

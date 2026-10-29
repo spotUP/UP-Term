@@ -24,12 +24,25 @@ Else
     Set dopusbuild os3-68000
   EndIf
   ; upstream's own Installer script, from the build that fits the CPU
-  Installer SCRIPT "$dopusbuild/Install DOpus5" APPNAME "Directory Opus 5" MINUSER Novice DEFUSER Novice NOLOG
+  ; the script finds its own files relative to the current directory: it runs from its own drawer
+  CD "$dopusbuild"
+  Installer SCRIPT "Install DOpus5" APPNAME "Directory Opus 5" MINUSER Novice DEFUSER Novice NOLOG
   If WARN
+    CD "{DIR}"
     UnSet dopusbuild
     Quit 20
   EndIf
+  CD "{DIR}"
   UnSet dopusbuild
+  ; upstream writes the DOpus5: assign and the DOpus5:C path into its ;BEGIN DOpus5 block of
+  ; S:User-Startup and has them take effect at the next boot. Run those two lines now (whatever drawer
+  ; the Installer chose is in them), so DOpus5: and the path are live without a reboot.
+  Search >T:updopus-live FROM S:User-Startup SEARCH "Assign DOpus5:" NONUM
+  Search >>T:updopus-live FROM S:User-Startup SEARCH "Path DOpus5:" NONUM
+  If EXISTS T:updopus-live
+    Execute T:updopus-live
+    Delete >NIL: T:updopus-live QUIET
+  EndIf
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0
