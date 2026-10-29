@@ -20,6 +20,9 @@
 #include "win.h"
 #include "win_core.h"
 #include "win_apply.h"
+#include "amconf_core.h"
+#include "amconf_dos.h"
+#include "rexx_host.h"
 #include "../handler/upactive.h"
 
 #define WIN_MAXW 32          /* windows on one screen considered by cycle and focus */
@@ -28,16 +31,27 @@
 extern struct Library *WorkbenchBase;
 
 static long g_wins;
+static long g_snaps;                      /* snap verbs applied (the STATUS `snaps=` sentinel) */
 static struct Window *g_ticket;
 static win_box g_tkbox;                   /* the ticket window's box at take time (K5a) */
 static win_ring g_ring;
 static int g_ring_ready;
 
 long win_count(void) { return g_wins; }
+long win_snap_count(void) { return g_snaps; }
 
 static int is_ours(const struct Window *w)
 {
     return win_is_amarchy((const char *)w->Title);
+}
+
+/* v as eight hex digits plus NUL at out: the window id AmTile's FLOAT command takes. */
+static void hex8(char *out, unsigned long v)
+{
+    int i;
+    for (i = 0; i < 8; i++)
+        out[i] = "0123456789abcdef"[(v >> (28 - 4 * i)) & 15];
+    out[8] = 0;
 }
 
 /* IBase locked: w is a member of some screen's window list. */
@@ -221,7 +235,9 @@ static int win_exec(const char *arg, int via_port)
     win_screen scr;
     struct Window *w = 0, *ws[WIN_MAXW], *act = 0, *aw;
     ULONG lock;
-    int ok = 0, n, me, pick;
+    int ok = 0, n, me, pick, snapped = 0;
+    win_box sb;
+    struct Window *sw = 0;
     if (!win_parse(arg, &c))
         return -1;
     if (!IntuitionBase)
@@ -251,6 +267,16 @@ static int win_exec(const char *arg, int via_port)
             case WV_SIZE:  if (win_size(&b, c.arg, c.pixels, &scr)) win_apply_box(w, &b); break;
             case WV_FULLWIDTH:  if (win_fullwidth(&b, &scr)) win_apply_box(w, &b); break;
             case WV_FULLSCREEN: if (win_fullscreen(&b, &scr)) win_apply_box(w, &b); break;
+            case WV_SNAP: {
+                am_prefs p;
+                amconf_load(&p);                       /* the tile-gap, read at each snap: snapped and tiled windows line up (D3) */
+                if (win_snap(&b, c.arg, amconf_tile_gap(&p), &scr)) {
+                    sb = b;
+                    sw = w;
+                    snapped = 1;
+                }
+                break;
+            }
             case WV_SAVE:
                 if (!g_ring_ready) { win_ring_clear(&g_ring); g_ring_ready = 1; }
                 win_save(&g_ring, (long)w, &b);
@@ -290,6 +316,21 @@ static int win_exec(const char *arg, int via_port)
             }
         }
         UnlockIBase(lock);
+        if (snapped) {
+            /* a window AmTile tiles floats first, so the retile leaves the snapped box alone (D5); no port, no message.
+             * rexx_send waits for the reply, so it runs outside the IBase lock. */
+            char id[32];
+            if (FindPort((STRPTR)"AMTILE")) {
+                strcpy(id, "FLOAT ON ");
+                hex8(id + 9, (unsigned long)sw);
+                rexx_send("AMTILE", id, 0, 0);
+            }
+            lock = LockIBase(0);
+            if (member(sw))                           /* the window may have closed meanwhile */
+                win_apply_box(sw, &sb);
+            UnlockIBase(lock);
+            g_snaps++;
+        }
         if (act) {
             ActivateWindow(act);
             /* act was a member under the lock a moment ago; ActivateWindow validates itself */

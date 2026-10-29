@@ -142,29 +142,30 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N shots=N (about 105 bytes; REXX_HOST_OUT is 160) */
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N shots=N (about 114 bytes; REXX_HOST_OUT is 160) */
 static void status_text(char *out, long cap)
 {
     char num[12];
-    static const char *const key[13] = { "hits=", " rows=", " enabled=", " active=", " wins=", " bar=", " draws=", " panels=",
+    static const char *const key[14] = { "hits=", " rows=", " enabled=", " active=", " wins=", " snaps=", " bar=", " draws=", " panels=",
                                         " launches=", " raises=", " wbpens=", " wbrefused=", " shots=" };
-    long val[13];
+    long val[14];
     int i;
     val[0] = g_hits;
     val[1] = cx_nrows();
     val[2] = cx_enabled();
     val[3] = upactive_count();
     val[4] = win_count();
-    val[5] = bar_is_open();
-    val[6] = bar_draws();
-    val[7] = bar_panels();
-    val[8] = bar_launches();
-    val[9] = bar_raises();
-    val[10] = (long)gt_dos_wb_pens;
-    val[11] = (long)gt_dos_wb_refused;
-    val[12] = shot_count();
+    val[5] = win_snap_count();
+    val[6] = bar_is_open();
+    val[7] = bar_draws();
+    val[8] = bar_panels();
+    val[9] = bar_launches();
+    val[10] = bar_raises();
+    val[11] = (long)gt_dos_wb_pens;
+    val[12] = (long)gt_dos_wb_refused;
+    val[13] = shot_count();
     out[0] = 0;
-    for (i = 0; i < 13; i++) {
+    for (i = 0; i < 14; i++) {
         cl_cat(out, key[i], cap);
         cl_ltoa(val[i], num);
         cl_cat(out, num, cap);

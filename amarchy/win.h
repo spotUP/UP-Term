@@ -30,4 +30,7 @@ void win_active_terminal(int *in_term, int *full);
 /* Verbs executed so far (the STATUS `wins=` sentinel). */
 long win_count(void);
 
+/* Snaps applied so far (the STATUS `snaps=` sentinel). */
+long win_snap_count(void);
+
 #endif
