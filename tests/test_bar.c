@@ -145,6 +145,29 @@ static void test_press_over_agents_launches(void)
     CHECK_INT(bar_press_act(&b, 640, 250, 246, 10, BAR_BTN_RIGHT), BAR_ACT_NONE);   /* outside the width */
 }
 
+/* The re-raise decision: a foreign layer in front that touches the bar's rectangle; our own windows, layers clear of
+ * the bar (above it) and an empty list do not. */
+static void test_covered(void)
+{
+    const bar_lyr dopus_over = { 100, 200, 400, 255, 0 };
+    const bar_lyr dopus_above = { 100, 50, 400, 245, 0 };
+    const bar_lyr dopus_edge = { 100, 50, 400, 246, 0 };   /* row 246 is the bar's top row */
+    const bar_lyr panel = { 300, 100, 639, 245, 1 };
+    const bar_lyr menu_on_bar = { 0, 240, 639, 255, 1 };
+    bar_lyr list[3];
+    CHECK_INT(bar_covered(0, 246, 639, 255, 0, 0), 0);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &dopus_over, 1), 1);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &dopus_above, 1), 0);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &dopus_edge, 1), 1);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &panel, 1), 0);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &menu_on_bar, 1), 0);
+    list[0] = panel;
+    list[1] = dopus_above;
+    list[2] = dopus_over;       /* behind the panel and still over the bar: raise */
+    CHECK_INT(bar_covered(0, 246, 639, 255, list, 3), 1);
+    CHECK_INT(bar_covered(0, 246, 639, 255, list, 2), 0);
+}
+
 void suite_bar(void)
 {
     test_layout_groups();
@@ -154,4 +177,5 @@ void suite_bar(void)
     test_panel_anchor();
     test_panel_anchor_clamped();
     test_press_over_agents_launches();
+    test_covered();
 }

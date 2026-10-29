@@ -7,6 +7,8 @@
 #include <graphics/text.h>
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
+#include <graphics/layers.h>
+#include <proto/layers.h>
 #include <devices/inputevent.h>
 #include <proto/exec.h>
 #include <proto/graphics.h>
@@ -17,6 +19,7 @@
 #include "act.h"
 #include "cxdesc.h"
 #include "gthemes_dos.h"
+#include "poll_timer.h"
 #include "menu_theme.h"
 #include "../config/keymap.h"
 #include "../config/upconf.h"
@@ -26,11 +29,14 @@
 
 extern struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
+struct Library *LayersBase;
 
 #define BAR_PAD 4
 #define BAR_GAP 2
 #define BAR_PANEL_COLS 40
 #define BAR_PANEL_ROWS 10
+#define BAR_LAYERS_MAX 32      /* layers in front of the bar that one tick looks at */
+#define MENU_TITLE "Amarchy"   /* the drawn menu, the viewer and the agents panel (gui.c, win.c) */
 
 static struct Window *g_win;
 static struct Screen *g_scr;
@@ -40,7 +46,9 @@ static long g_pen[MT_ROLES];
 static int g_pen_got[MT_ROLES];
 static int g_have_gfx;
 static char g_dir[128];
-static long g_draws, g_panels, g_launches;
+static long g_draws, g_panels, g_launches, g_raises;
+static poll_timer g_poll;
+static int g_have_layers;
 /* What the input handler reads (bar_takes_right_press runs in input.device's task, not ours): the bar's box as plain
  * numbers and a live flag that drops before CloseWindow, so the handler never touches a window being closed. The bar
  * is borderless and never moves, so the box taken at open stays right. */
@@ -122,6 +130,10 @@ int bar_open(const char *dir)
     }
     if (!GfxBase)
         return 0;
+    if (!LayersBase) {
+        LayersBase = OpenLibrary((STRPTR) "layers.library", 36);
+        g_have_layers = LayersBase != 0;
+    }
     strncpy(g_dir, dir ? dir : "", sizeof g_dir - 1);
     g_dir[sizeof g_dir - 1] = 0;
     g_scr = LockPubScreen((STRPTR) "Workbench");
@@ -149,12 +161,16 @@ int bar_open(const char *dir)
     g_top = g_win->TopEdge;
     g_h = g_win->Height;
     g_live = 1;
+    /* no layers.library or timer: the bar still works, it just is not re-raised */
+    if (LayersBase && pt_open(&g_poll))
+        pt_start(&g_poll, BAR_RAISE_POLL_MICROS);
     return 1;
 }
 
 void bar_close(void)
 {
     g_live = 0;
+    pt_close(&g_poll);
     if (g_win) {
         CloseWindow(g_win);
         g_win = 0;
@@ -163,6 +179,11 @@ void bar_close(void)
         pens_release();
         UnlockPubScreen(0, g_scr);
         g_scr = 0;
+    }
+    if (g_have_layers) {
+        CloseLibrary(LayersBase);
+        LayersBase = 0;
+        g_have_layers = 0;
     }
     if (g_have_gfx) {
         CloseLibrary((struct Library *)GfxBase);
@@ -174,6 +195,48 @@ void bar_close(void)
 unsigned long bar_sigmask(void)
 {
     return g_win ? 1UL << g_win->UserPort->mp_SigBit : 0;
+}
+
+unsigned long bar_timer_sigmask(void)
+{
+    return g_win ? pt_sigmask(&g_poll) : 0;
+}
+
+/* The layers in front of the bar's, front first, under the screen's LayerInfo lock, as plain rectangles for
+ * bar_covered. Only reads: the raise itself runs after the unlock (Intuition queues WindowToFront and takes the
+ * layer locks itself, so it must not be called with LockLayerInfo held). */
+static int front_layers(bar_lyr *out, int max)
+{
+    struct Layer *l;
+    int n = 0;
+    LockLayerInfo(&g_scr->LayerInfo);
+    for (l = g_scr->LayerInfo.top_layer; l && l != g_win->WLayer && n < max; l = l->back) {
+        struct Window *w = (struct Window *)l->Window;
+        out[n].l = l->bounds.MinX;
+        out[n].t = l->bounds.MinY;
+        out[n].r = l->bounds.MaxX;
+        out[n].b = l->bounds.MaxY;
+        out[n].ours = w && w->Title && !strcmp((const char *)w->Title, MENU_TITLE);
+        n++;
+    }
+    UnlockLayerInfo(&g_scr->LayerInfo);
+    return n;
+}
+
+/* A tick of the poll timer: raise the bar when a foreign window sits over it. */
+void bar_timer_serve(unsigned long sigs)
+{
+    bar_lyr lyr[BAR_LAYERS_MAX];
+    int n;
+    if (!g_win || !g_scr || !pt_fired(&g_poll, sigs))
+        return;
+    n = front_layers(lyr, BAR_LAYERS_MAX);
+    if (bar_covered(g_win->LeftEdge, g_win->TopEdge, g_win->LeftEdge + g_win->Width - 1,
+                    g_win->TopEdge + g_win->Height - 1, lyr, n)) {
+        WindowToFront(g_win);
+        g_raises++;
+    }
+    pt_start(&g_poll, BAR_RAISE_POLL_MICROS);
 }
 
 static void act_panel(void)
@@ -241,4 +304,5 @@ void bar_right_click(void) { act_launch(); }
 long bar_draws(void) { return g_draws; }
 long bar_panels(void) { return g_panels; }
 long bar_launches(void) { return g_launches; }
+long bar_raises(void) { return g_raises; }
 int bar_is_open(void) { return g_win != 0; }

@@ -29,6 +29,7 @@
 #include "tile_core.h"
 #include "amconf_dos.h"
 #include "win_apply.h"
+#include "poll_timer.h"
 #include "amconf_core.h"
 #include "../handler/frontscr.h"
 
@@ -50,10 +51,9 @@ struct Library *CxBase;
 struct IntuitionBase *IntuitionBase;
 
 static struct rexx_host rexx;
-static struct MsgPort *cx_port, *tm_port;
+static struct MsgPort *cx_port;
 static CxObj *g_broker;
-static struct timerequest *tm_req;
-static int tm_open, tm_busy;
+static poll_timer g_poll;
 static int g_on, g_quit;
 static int g_gap = TILE_GAP_DEFAULT;   /* the tile-gap key of the Amarchy settings file, read at start and on RETILE */
 static int g_ratio = TILE_RATIO_DEFAULT;
@@ -155,53 +155,6 @@ static void state_save(void)
 }
 
 /* ---- the poll timer -------------------------------------------------------------------------------------------- */
-
-static int timer_open(void)
-{
-    if (!(tm_port = CreateMsgPort()))
-        return 0;
-    if (!(tm_req = (struct timerequest *)CreateIORequest(tm_port, sizeof(struct timerequest))))
-        return 0;
-    if (OpenDevice((STRPTR)"timer.device", UNIT_VBLANK, (struct IORequest *)tm_req, 0))
-        return 0;
-    tm_open = 1;
-    return 1;
-}
-
-static void timer_stop(void)
-{
-    if (tm_busy) {
-        AbortIO((struct IORequest *)tm_req);
-        WaitIO((struct IORequest *)tm_req);
-        tm_busy = 0;
-    }
-}
-
-static void timer_start(void)
-{
-    timer_stop();
-    if (!tm_open)
-        return;
-    tm_req->tr_node.io_Command = TR_ADDREQUEST;
-    tm_req->tr_time.tv_secs = TILE_POLL_MICROS / 1000000;
-    tm_req->tr_time.tv_micro = TILE_POLL_MICROS % 1000000;
-    SendIO((struct IORequest *)tm_req);
-    tm_busy = 1;
-}
-
-static void timer_close(void)
-{
-    timer_stop();
-    if (tm_open)
-        CloseDevice((struct IORequest *)tm_req);
-    tm_open = 0;
-    if (tm_req)
-        DeleteIORequest((struct IORequest *)tm_req);
-    tm_req = 0;
-    if (tm_port)
-        DeleteMsgPort(tm_port);
-    tm_port = 0;
-}
 
 /* ---- the screen walk and the apply ------------------------------------------------------------------------------ */
 
@@ -373,9 +326,9 @@ static void set_on(int on)
         ActivateCxObj(g_broker, g_on);   /* Exchange shows Active only while tiling */
     if (g_on) {
         tick(1);
-        timer_start();
+        pt_start(&g_poll, TILE_POLL_MICROS);
     } else {
-        timer_stop();
+        pt_stop(&g_poll);
     }
 }
 
@@ -558,7 +511,7 @@ static void broker_serve(void)
 
 static void shutdown(void)
 {
-    timer_close();
+    pt_close(&g_poll);
     broker_close();
     rexx_host_close(&rexx, command, 0);
     if (IntuitionBase)
@@ -588,14 +541,14 @@ int main(int argc, char **argv)
         return rc < 0 ? 10 : (int)rc;
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
-    if (!IntuitionBase || !rexx_host_open(&rexx, PORT_NAME) || !broker_open() || !timer_open()) {
+    if (!IntuitionBase || !rexx_host_open(&rexx, PORT_NAME) || !broker_open() || !pt_open(&g_poll)) {
         shutdown();
         return 10;
     }
     cfg_load();
     command(0, line, result);
     while (!g_quit) {
-        ULONG rx = rexx_host_sigmask(&rexx), cx = 1UL << cx_port->mp_SigBit, tm = 1UL << tm_port->mp_SigBit;
+        ULONG rx = rexx_host_sigmask(&rexx), cx = 1UL << cx_port->mp_SigBit, tm = pt_sigmask(&g_poll);
         ULONG sigs = Wait(rx | cx | tm | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
@@ -603,14 +556,9 @@ int main(int argc, char **argv)
             broker_serve();
         if (sigs & rx)
             rexx_host_serve(&rexx, command, 0);
-        /* the bit can be left over from an AbortIO in timer_stop: only a finished request is a tick */
-        if (tm_busy && (sigs & tm) && CheckIO((struct IORequest *)tm_req)) {
-            WaitIO((struct IORequest *)tm_req);
-            tm_busy = 0;
-            if (g_on) {
-                tick(0);
-                timer_start();
-            }
+        if (pt_fired(&g_poll, sigs) && g_on) {
+            tick(0);
+            pt_start(&g_poll, TILE_POLL_MICROS);
         }
     }
     shutdown();

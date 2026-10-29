@@ -129,3 +129,16 @@ void bar_panel_anchor(int screen_w, int bar_top, int *ax, int *ay)
     *ax = screen_w;
     *ay = bar_top;
 }
+
+int bar_covered(int l, int t, int r, int b, const bar_lyr *front, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        const bar_lyr *f = &front[i];
+        if (f->ours)
+            continue;
+        if (f->l <= r && f->r >= l && f->t <= b && f->b >= t)
+            return 1;
+    }
+    return 0;
+}

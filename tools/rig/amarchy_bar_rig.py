@@ -3,11 +3,13 @@
 OMARCHY-AI F2). Table driven and resumable like amarchy_rig.py: a verdict per row in <RIG>/amarchy/bar_<row>.verdict,
 --only <row>, --failed, --fresh.
 
-Sentinels: the commodity's STATUS reply carries bar (1 when the window is up), draws, panels and launches. A left
+Sentinels: the commodity's STATUS reply carries bar (1 when the window is up), draws, panels and launches (raises counts the re-raises over foreign windows). A left
 click on the agents segment must raise panels by 1; a right click must raise launches by 1 and open a tab that
 runs the agent (a new `ps` task or a new UP-Term tab). The segment sits at the bottom right of the front screen.
 Rig window purpose text to pass: "Amarchy session: bar check".
 Needs the rig up (rig.py start --max --purpose ...), Amarchy and amarchy-gui in UP-Term:bin, an UP-Term window open.
+reraise opens a Directory Opus lister over the bottom row: the bar must come back to the front (STATUS raises +1, and
+a left click on the agents segment, which the lister covers, opens the panel: hit testing goes to the front layer).
 right_launch holds with another window active (the bar is not the active window); cold_panel restarts Amarchy.
 """
 import argparse, pathlib, struct, sys, time
@@ -114,8 +116,48 @@ def r_cold_panel():
     return bool(cold) and bool(warm) and cold[-1] == warm[-1], 'cold %r warm %r' % (cold, warm)
 
 
+def dopus(cmd):
+    """One command to Directory Opus' ARexx port; (None, '') while the port is not there."""
+    m = ami._m()
+    try:
+        with ami._conn() as conn:
+            rc, _, res = m.arexx(conn, 'DOPUS.1', cmd)
+        return rc, res.strip()
+    except m.WasabiError:
+        return None, ''
+
+
+def r_reraise():
+    # Directory Opus is the program that covers the bar. Start it when it is not up (about 20 s), open a lister over
+    # the bottom row, and expect the bar's poll timer to raise the bar: raises +1, then stable, and the click on the
+    # agents segment (under the lister) reaches the bar.
+    if dopus('dopus screen')[0] is None:
+        c.run('Run >NIL: DOpus5:DirectoryOpus')
+        for _ in range(40):
+            time.sleep(1)
+            if dopus('dopus screen')[0] == 0:
+                break
+    before = ar.status()
+    rc, handle = dopus('lister new 0/180/640/76')
+    time.sleep(2.5)
+    after = ar.status()
+    time.sleep(2)
+    later = ar.status()
+    raised = after.get('raises', 0) > before.get('raises', 0)
+    stable = later.get('raises') == after.get('raises')
+    panels = later.get('panels', 0)
+    click(0)
+    opened = ar.status().get('panels', 0) == panels + 1
+    pan = [b for t, b, _ in windows() if t == 'Amarchy']
+    ami.key(0x45, 0)
+    time.sleep(1)
+    dopus('lister close %s force' % handle)
+    return raised and stable and opened and bool(pan), 'raises %r -> %r -> %r panel opened %s panel %r' % (
+        before.get('raises'), after.get('raises'), later.get('raises'), opened, pan)
+
+
 ROWS = [('start', r_start), ('left_panel', r_left_panel), ('close_panel', r_close_panel),
-        ('right_launch', r_right_launch), ('cold_panel', r_cold_panel)]
+        ('right_launch', r_right_launch), ('cold_panel', r_cold_panel), ('reraise', r_reraise)]
 
 
 def main():

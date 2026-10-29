@@ -141,13 +141,13 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N bar=N draws=N panels=N launches=N */
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N bar=N draws=N panels=N launches=N raises=N */
 static void status_text(char *out, long cap)
 {
     char num[12];
-    static const char *const key[9] = { "hits=", " rows=", " enabled=", " active=", " wins=", " bar=", " draws=", " panels=",
-                                        " launches=" };
-    long val[9];
+    static const char *const key[10] = { "hits=", " rows=", " enabled=", " active=", " wins=", " bar=", " draws=", " panels=",
+                                        " launches=", " raises=" };
+    long val[10];
     int i;
     val[0] = g_hits;
     val[1] = cx_nrows();
@@ -158,8 +158,9 @@ static void status_text(char *out, long cap)
     val[6] = bar_draws();
     val[7] = bar_panels();
     val[8] = bar_launches();
+    val[9] = bar_raises();
     out[0] = 0;
-    for (i = 0; i < 9; i++) {
+    for (i = 0; i < 10; i++) {
         cl_cat(out, key[i], cap);
         cl_ltoa(val[i], num);
         cl_cat(out, num, cap);
@@ -288,7 +289,7 @@ struct IntuitionBase *IntuitionBase;
 
 int main(void)
 {
-    ULONG sigs, cxs, rxs, nts, lps, wrs, cws, bs;
+    ULONG sigs, cxs, rxs, nts, lps, wrs, cws, bs, bts;
     int row, ev;
     struct RDArgs *rda;
     LONG args[1] = { 0 };
@@ -336,8 +337,9 @@ int main(void)
     cws = cw_sigmask();
     bar_open(g_dir);                            /* the status bar; 0 = no screen, the commodity runs without it */
     bs = bar_sigmask();
+    bts = bar_timer_sigmask();
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nts | lps | wrs | cws | bs | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nts | lps | wrs | cws | bs | bts | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cxs)
@@ -353,6 +355,8 @@ int main(void)
             }
         if (sigs & bs)
             bar_serve();
+        if (sigs & bts)
+            bar_timer_serve(sigs);
         if (sigs & cws)
             cw_changed();
         if (sigs & rxs)

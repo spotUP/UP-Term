@@ -63,6 +63,19 @@ int bar_press_act(const bar *b, int px, int py, int top, int h, int button);
 /* Index of the next dirty segment at or after `from`, clearing its flag; -1 when none. */
 int bar_take_dirty(bar *b, int from);
 
+/* Re-raise (Intuition 3.x has no stay-on-top flag): the layers in front of the bar's, front first, as plain
+ * rectangles (inclusive edges, screen pixels). `ours` marks Amarchy's own windows (the menu, the agents panel), which
+ * stay above the bar and never trigger a raise. */
+#define BAR_RAISE_POLL_MICROS 500000UL
+typedef struct bar_lyr {
+    int l, t, r, b;
+    int ours;
+} bar_lyr;
+
+/* 1 when a layer that is not ours, in front of the bar, overlaps the bar's rectangle (l, t, r, b inclusive): the
+ * bar must come to the front. */
+int bar_covered(int l, int t, int r, int b, const bar_lyr *front, int n);
+
 /* The point the agents panel hangs from: its right edge at the screen's right edge, its bottom edge on the
  * bar's top (mg_screen.anchored; mg_layout clamps it on screen). */
 void bar_panel_anchor(int screen_w, int bar_top, int *ax, int *ay);

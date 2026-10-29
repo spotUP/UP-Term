@@ -11,6 +11,11 @@ int bar_open(const char *dir);
 void bar_close(void);
 /* The signal bit mask of the bar's window port, 0 when the bar is not open. */
 unsigned long bar_sigmask(void);
+/* The signal mask of the re-raise poll timer (0 when the bar is not open) and its handler: every
+ * BAR_RAISE_POLL_MICROS (bar_core.h) a window of another program in front of the bar and over it brings the bar
+ * back to the front; Amarchy's own windows (title "Amarchy") are left above it. */
+unsigned long bar_timer_sigmask(void);
+void bar_timer_serve(unsigned long sigs);
 /* Handles the window's messages: clicks, a refresh. */
 void bar_serve(void);
 
@@ -19,10 +24,11 @@ void bar_serve(void);
 int bar_takes_right_press(void);
 void bar_right_click(void);
 
-/* Counters for the STATUS reply: segments drawn, panels opened, agents launched; bar_is_open is 1 or 0. */
+/* Counters for the STATUS reply: segments drawn, panels opened, agents launched, re-raises; bar_is_open is 1 or 0. */
 long bar_draws(void);
 long bar_panels(void);
 long bar_launches(void);
+long bar_raises(void);
 int bar_is_open(void);
 
 #endif
