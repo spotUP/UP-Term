@@ -1,0 +1,207 @@
+---
+date: 2026-10-29
+author: spot (Amarchy session s24)
+topic: AMARCHY-P2
+status: decided
+ledger: thoughts/spot/todos.md (add row AMARCHY-P2; rows tagged s24)
+roadmap: thoughts/shared/plans/2026-10-26-amarchy-roadmap.md, Phase 2 (R2.1-R2.16)
+depends: P1 theme roles (menu_theme.c, pens_amiga.c, in AMARCHY_SRC), OMARCHY-AI F2 bar (4086d352), P3-B1 strut (e521437e)
+---
+
+# Amarchy Phase 2: status bar on the Workbench screen (AMARCHY-P2)
+
+## Goal
+
+The Amarchy bar at the bottom of the Workbench screen grows from one segment (Agents) into the Omarchy-style status bar:
+screens on the left, clock in the centre, CPU, RAM, network, Agents and a system icon on the right. It costs nothing when
+nothing changes: one timer tick per second in the commodity's Wait loop, redraws only for segments whose text changed,
+the CPU idle counter stops when the bar is off.
+
+P2 also delivers three shared pieces that P4 is waiting for (P4 plan section "Interfaces assumed from Phase 2"):
+
+- T: the commodity tick (`tick_now()`, per-tick hooks, STATUS `ticks=`), running whether the bar is on or off.
+- B: one themed borderless window helper (open on a pubscreen at x/y/w/h, never activated, theme pens, draw a text line,
+  click input on a port the commodity Waits on, close). The bar is its first user, P4 notices the second.
+- U: `bar_usable(screen, box)`, the usable area of a screen once the bar strut is taken off.
+
+## Facts found (origin/main 75562887) and what to reuse
+
+| Need | Reuse | Where |
+|---|---|---|
+| Bar window | "Amarchy bar", borderless, bottom of Workbench pubscreen, height font+2, WA_Activate FALSE, SimpleRefresh, RMBTrap | amarchy/bar.c (4086d352) |
+| Segment layout, hit-test, dirty flag | bar_core: BAR_MAX_SEGS 12, BAR_TEXT 32, BAR_LEFT/BAR_RIGHT, bar_set_text dirty only on change, bar_hit, bar_click, bar_take_dirty | amarchy/bar_core.c/.h, tests/test_bar.c |
+| Theme pens | pens_get() via gt_dos_load_current + menu_theme_roles_gui + vr_pen_obtain; pens_release() | amarchy/bar.c, render/pens_amiga.h, amarchy/menu_theme.c |
+| Timer | poll_timer: pt_open/close/start/stop/sigmask/fired, timer.device UNIT_VBLANK, one request re-armed | amarchy/poll_timer.c/.h (shared with AmTile tile.c) |
+| Re-raise over foreign windows | bar_covered + BAR_RAISE_POLL_MICROS 500000 | amarchy/bar_core.c, bar.c g_poll |
+| Strut | window titled "Amarchy bar" on the window's own screen gives s->bottom = win_strut() | amarchy/win_apply.c:20-35 (e521437e) |
+| Panel anchored to a segment | bar_panel_anchor, menu node "agents" | amarchy/bar.c |
+| Right click launch | bar_takes_right_press in the input handler + bar_right_click | amarchy/bar.c, amarchy.c |
+| Notice tick | note_tick(now) in note_core (fa35244b), port AMARCHY.NOTIFY (7b806183) | amarchy/note_core.c, note.c |
+| Wait loop | Wait(cxs|rxs|nos|nts|lps|wrs|cws|bs|bts|shot|CTRL_C); bar_open at ~377, bar_close ~418 | amarchy/amarchy.c |
+| STATUS | 15 key=value pairs, result capped at REXX_HOST_OUT 160 | amarchy/amarchy.c:147-175, amarchy/rexx_host.h:7 |
+| System menu | super+esc opens menu:system | dist/keymap |
+| Keymap | super+b is free; super+ctrl+b = win:title toggle; super+shift+b = /bg; super+alt chords refused by the parser | dist/keymap, config/keymap.c |
+| Network on rigs | rig config sets `bsdsocket_library = 1` (UAE emulated bsdsocket, not Roadshow) | tools/rig/rig.py:984 |
+| Build | AMARCHY_SRC already links menu_theme.c, pens_amiga.c, poll_timer.c, bar.c, bar_core.c | Makefile:737 |
+
+Searched for an existing tick module, window helper and usable-area function: none. The bar's `g_poll` runs only while
+the bar is open, so it cannot be the commodity tick. win_apply.c holds the only copy of the strut rule.
+
+## Checklist
+
+IDs from the roadmap; splits get a letter. DONE rows name the commit.
+
+Probes (before code that depends on them)
+- [ ] R2.1 Probe network query on rig 4 and on the A1200: QueryInterfaceTags (Roadshow) for interface name and up/down;
+      what UAE's emulated bsdsocket answers; behaviour with no stack (OpenLibrary fails, never blocks). Result to
+      thoughts/shared/research/. Decides the fallback in R2.10.
+- [ ] R2.2 Probe the idle counter on rig 4 (060) and A1200: counts per second idle, calibration over 1 s, overhead of a
+      -128 task on a fixed benchmark (before/after under 2 percent).
+
+Shared pieces (P4 waits on these)
+- [ ] R2.3a tick.c/.h: owns one poll_timer at 1 s, `tick_open/close/sigmask/serve`, `tick_now()` (seconds since start),
+      hook list `tick_hook(fn)` (fixed array, no allocation in the tick). Opened by amarchy.c before bar_open, runs with
+      the bar off. STATUS `ticks=`.
+- [ ] R2.3b Register note_tick as a hook (notice expiry) and the bar sampler as a hook.
+- [ ] R2.3c Bar raise check: keep the bar's own 0.5 s g_poll only while open (unchanged), or ride the tick if 1 s raise
+      latency is fine on the rig. Default: keep g_poll; measure raises in the rig test.
+- [ ] R2.5a Extract the themed window helper from bar.c to themewin.c/.h: `tw_open(screen, x, y, w, h, title, idcmp)`,
+      `tw_pens()` (bg, text, accent, border, MT_OK, MT_FAIL), `tw_text(x, y, s, pen)`, `tw_fill`, `tw_frame`, `tw_close`,
+      user port shared by the commodity (one signal bit for all helper windows). bar.c becomes its first user, no
+      behaviour change (bar host tests and the rig Agents check stay green).
+- [ ] R2.5b Recolour on theme switch: helper re-reads pens on the theme-change signal and redraws every helper window.
+      Closes OMARCHY-AI F3 (thoughts/shared/plans/2026-10-28-omarchy-ai.md:95).
+- [x] R2.5 Bar window on the Workbench screen, themed from P1 roles. DONE 4086d352.
+- [ ] R2.9 `bar_usable(screen, box)` exported from bar.c; win_apply.c calls it instead of its own title lookup (one
+      source for the strut rule). Returns the full screen minus title bar when the bar is off or on another screen.
+
+Bar core
+- [ ] R2.4a bar_core: add BAR_CENTRE group; layout = left group from the left edge, right group from the right edge,
+      centre group centred on the screen and pushed aside when it would overlap. Host tests at widths 640, 800, 1280.
+- [ ] R2.4b bar_core: cut rule. When the groups do not fit, the screens list loses entries from its right end and shows
+      a "+N" marker; the centre and right groups never cut. Host test at 640 with 6 screens.
+- [x] R2.4 Segments, hit-test, Agents segment. PARTIAL DONE 4086d352; the rows above finish it.
+- [ ] R2.4c bar_core formatters (pure, host-tested): bytes to "1.2M"/"61M"/"512K" (unsigned long, safe to 4 GB),
+      percent from idle counts, clock strftime subset %H %M %a %d %b %Y, screen short name (first word, max 8 chars).
+
+Segments
+- [ ] R2.6 Clock (centre): "Mon 14:05" from `%a %H:%M`; left click flips to "Mon 29 Oct 2026" (`%a %d %b %Y`) until the
+      next click. Text set every tick, redraw only when the minute or the mode changes.
+- [ ] R2.7 RAM (right): "C 1.2M F 61M", AvailMem(MEMF_CHIP) and AvailMem(MEMF_FAST), sampled every 2 s.
+- [ ] R2.8 CPU (right): "CPU 12%" from an idle counter task at priority -128, started by bar_open, stopped by bar_close
+      (Signal + wait for exit, no Forbid loop). Sampled every tick.
+- [ ] R2.10 Network (right): interface name and up/down from bsdsocket QueryInterfaceTags ("eth0 up"), "no network" when
+      no stack or the query fails. Library opened at sample time and closed after; sampled every 5 s; redraw only on
+      change. No traffic numbers.
+- [ ] R2.11 Screens (left): every public screen as its short name, the front screen in the accent pen, left click =
+      ScreenToFront of that screen. List rebuilt each tick from the pubscreen list (LockPubScreenList, copy names,
+      UnlockPubScreenList at once).
+- [ ] R2.12a System icon (right end): left click opens menu:system (same node as super+esc), panel anchored to the
+      segment with bar_panel_anchor.
+- [ ] R2.12 Tray: RUN <row> segments from bar.conf (label + command line, click runs it through proclaunch).
+
+Config, control, docs
+- [ ] R2.13a bar.conf at ENVARC:Amarchy/bar.conf (ENV: copy read first): `start on|off`, `clock <fmt>`, `clockalt <fmt>`,
+      segment order per group, segment on/off, `run <label> <command>` rows. Parsed by a pure core (host tests), missing
+      file = defaults.
+- [ ] R2.13b ARexx `BAR ON|OFF|TOGGLE` and `BAR STATUS` (bar=, ticks=, draws=, segs=, cpu=, net=), so the STATUS string
+      stays inside REXX_HOST_OUT 160.
+- [ ] R2.13c Key super+b = bar toggle (new commodity action, dist/keymap and keymap_default), bar on at start unless
+      bar.conf says `start off`.
+- [ ] R2.14 STATUS adds `ticks=` (bar=, draws= exist). Check the full STATUS string length on the rig stays under 160.
+- [ ] R2.15 Man page (bar segments, bar.conf keys, BAR command, super+b) and installer copies a default bar.conf.
+
+Proof
+- [ ] R2.16 Rig reachability test tools/rig/amarchy_p2_rig.py on rig 4 (060), see below, plus idle overhead measurement.
+- [ ] R2.17 A1200 last check: bar visible, clock, RAM, network row from the real stack (Roadshow), super+b.
+
+### Knobs and the case that proves each moves output
+
+| Knob | Case |
+|---|---|
+| bar.conf `start off` | rig: commodity starts, STATUS bar=0, no window titled "Amarchy bar" |
+| bar.conf `clock %H:%M` | host: formatter gives "14:05"; rig: segment text read through BAR STATUS segs= |
+| bar.conf `clockalt` | host: second format after a click |
+| bar.conf segment order/off | host: layout without the RAM segment moves Agents right edge; rig: BAR STATUS segs= lists the order |
+| bar.conf `run` row | rig: click on the tray segment starts the command (sentinel file written) |
+| BAR ON/OFF/TOGGLE | rig: STATUS bar= flips; idle task gone (amiga_ps) when off |
+| super+b | rig: key press flips bar= (real input path) |
+| tick hooks | host: hook list calls each hook once per tick; rig: ticks= rises by about 3 in 3 s with bar off |
+
+## Host tests (all `make test ONLY=<suite>`, nice 19, max 2 workers)
+
+- test_bar (extend): centre group, cut rule with "+N", widths 640/800/1280, formatters, screen short names, hit-test of
+  every segment kind.
+- test_tick (new): hook list, tick_now, no hook runs twice per tick.
+- test_barconf (new): bar.conf parse, defaults on missing keys, bad lines ignored with a count.
+- test_win (existing): strut via bar_usable gives the same boxes as before (regression for R2.9).
+
+## Rig reachability test (one script, rows share state)
+
+tools/rig/amarchy_p2_rig.py, rig 4, `UPTERM_RIG=4 rig.py start --max --purpose "Amarchy <session>: P2 bar rig proof"`.
+Drives the real commodity binary through its ARexx port and real input.
+
+1. Start Amarchy; STATUS has `bar=1 ticks=`; window "Amarchy bar" exists at the screen bottom (amiga_windows).
+2. Wait 3 s: ticks rose by 2 to 4; draws rose by fewer than ticks + 2 (proves no full redraw per tick).
+3. BAR STATUS segs= lists screens, clock, CPU, RAM, network, Agents, system in the bar.conf order.
+4. Open a second public screen (UP-Term): screens segment gains its name; mouse click on it brings it to front
+   (amiga_screens front changes).
+5. Click the clock: segs= clock text changes to the long form; click again: back.
+6. Click the system icon: menu:system panel opens (amiga_windows title), Escape closes it.
+7. super+b: bar=0, no bar window, idle task gone (amiga_ps); a window maximised with the Amarchy verb now reaches the
+   screen bottom; super+b again: bar=1, maximised window stops above the bar (bar_usable wired).
+8. Theme switch: bar redraws (draws rose) with the new pens (pen numbers read through BAR STATUS).
+9. Overhead: fixed benchmark with the bar off and on; difference under 2 percent.
+10. Stop rig 4.
+
+Revert proof: revert R2.9 wiring in win_apply.c and step 7 fails; revert the tick hook registration and step 2 fails.
+
+## Dependencies
+
+- P4 rows R4.9b, R4.9c, R4.11, R4.12 (window), R4.13 (notice) wait for R2.3a, R2.5a and R2.9.
+- P3 G*/R* rows that use the usable area take R2.9 when it lands; until then win_apply.c keeps its title lookup.
+- OMARCHY-AI F3 closes with R2.5b.
+
+## Risks
+
+- UAE's emulated bsdsocket may not answer QueryInterfaceTags; R2.1 decides whether the rig proves "no network" only and
+  the A1200 proves the up/down row.
+- An idle task at -128 on 68020 machines without fast RAM may count too few loops for a stable percent; R2.2 measures.
+- LockPubScreenList held too long blocks screen opens; copy names and unlock at once, never draw while locked.
+- STATUS is near its 160-character cap; new counters go to BAR STATUS.
+- Merge points with P4 and P3: status_text arrays, the Wait mask, Makefile AMARCHY_SRC (line 737). Land R2.3a and R2.5a
+  first and alone so P4 can rebase on them.
+- Theme switch while a panel is open: helper must redraw both windows, not only the bar.
+
+## Owner answers (2026-10-29)
+
+- Layout: Omarchy split. Left: screens. Centre: clock. Right: CPU, RAM, network, Agents, system icon. On 640-wide screens
+  the screens list is cut first.
+- Toggle: super+b, bar on at start; bar.conf can turn it off at start.
+- Network: interface name and up/down from bsdsocket QueryInterfaceTags, "no network" without a stack, redraw only on
+  change; no traffic numbers.
+- Screens: each public screen as a short name (first word, max 8 characters), front screen in the accent pen, click =
+  ScreenToFront; cut from the right with a "+N" marker.
+- Clock: "Mon 14:05" (%a %H:%M); click flips to "Mon 29 Oct 2026" until the next click; bar.conf takes the strftime
+  subset %H %M %a %d %b %Y.
+- RAM: "C 1.2M F 61M", free chip and fast memory, every 2 s.
+
+## Owner decisions (none taken silently)
+
+Taken earlier (roadmap, 2026-10-26): bar at the bottom of the Workbench screen; Amarchy verbs keep clear of it via
+bar_usable(); CPU load from a -128 idle counter task that stops when the bar is off.
+
+Implementation defaults chosen in this plan (not product behaviour; change by editing this file):
+- The tick lives in its own module and runs with the bar off, because notices need expiry.
+- One window helper for bar and notices (single source), with click input.
+- The system icon opens the same menu node as super+esc.
+- Bar counters beyond `ticks=` go to a new `BAR STATUS` command, because STATUS is near its 160-character cap.
+
+## Order
+
+1. R2.3a, R2.3b (tick) and R2.5a (helper extract, no behaviour change), R2.9 (bar_usable). Land alone; P4 unblocks.
+2. R2.1, R2.2 probes on rig 4 (one agent, can run beside step 1).
+3. R2.4a-c bar_core with host tests.
+4. R2.6, R2.7, R2.11, R2.12a, then R2.8 and R2.10 (probe results).
+5. R2.13a-c, R2.14, R2.5b, R2.12.
+6. R2.16 rig test with revert proofs, R2.15 docs, R2.17 A1200.
