@@ -427,7 +427,8 @@ int bar_open(const char *dir)
     }
     sample(2, 1);
     bar_layout(&g_bar, g_scr->Width);
-    g_win = tw_open(g_scr, 0, g_scr->Height - h, g_scr->Width, h, BAR_TITLE, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW, bar_recolour);
+    g_win = tw_open(g_scr, 0, g_scr->Height - h, g_scr->Width, h, BAR_TITLE, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW, bar_recolour,
+                  TW_OPEN_BACKDROP);
     if (!g_win) {
         idle_stop();
         UnlockPubScreen(0, g_scr);
@@ -490,6 +491,7 @@ static int front_layers(bar_lyr *out, int max)
         out[n].t = l->bounds.MinY;
         out[n].r = l->bounds.MaxX;
         out[n].b = l->bounds.MaxY;
+        out[n].backdrop = w && (w->Flags & WFLG_BACKDROP) != 0;
         out[n].ours = w && w->Title && !strcmp((const char *)w->Title, MENU_TITLE);
         n++;
     }
@@ -497,7 +499,8 @@ static int front_layers(bar_lyr *out, int max)
     return n;
 }
 
-/* A tick of the poll timer: raise the bar when a foreign window sits over it. */
+/* A tick of the poll timer: raise the bar when a foreign backdrop window (Workbench's own) sits over it; normal
+ * windows stay in front of the bar. */
 void bar_timer_serve(unsigned long sigs)
 {
     bar_lyr lyr[BAR_LAYERS_MAX];

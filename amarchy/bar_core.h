@@ -98,9 +98,10 @@ int bar_take_dirty(bar *b, int from);
 typedef struct bar_lyr {
     int l, t, r, b;
     int ours;
+    int backdrop;   /* WFLG_BACKDROP: only these can hide the bar, normal windows belong in front of it */
 } bar_lyr;
 
-/* 1 when a layer that is not ours, in front of the bar, overlaps the bar's rectangle (l, t, r, b inclusive): the
+/* 1 when a backdrop layer that is not ours, in front of the bar, overlaps the bar's rectangle (l, t, r, b inclusive): the
  * bar must come to the front. */
 int bar_covered(int l, int t, int r, int b, const bar_lyr *front, int n);
 

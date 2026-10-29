@@ -83,7 +83,7 @@ long tw_pen(int role)
 }
 
 struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const char *title, unsigned long idcmp,
-                       tw_redraw_fn redraw)
+                       tw_redraw_fn redraw, unsigned long flags)
 {
     struct Window *win;
     int made_port = 0, i;
@@ -98,7 +98,7 @@ struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const cha
     if (g_wins == 0)
         pens_get(scr->ViewPort.ColorMap);
     /* no IDCMP at open: the window gets the shared port below, then its classes */
-    win = OpenWindowTags(0, WA_Left, x, WA_Top, y, WA_Width, w, WA_Height, h, WA_Title, (ULONG)title, WA_Borderless, TRUE,
+    win = OpenWindowTags(0, WA_Left, x, WA_Top, y, WA_Width, w, WA_Height, h, WA_Borderless, TRUE, WA_Backdrop, (flags & TW_OPEN_BACKDROP) != 0,
                          WA_Activate, FALSE, WA_SimpleRefresh, TRUE, WA_RMBTrap, TRUE, WA_PubScreen, scr, TAG_DONE);
     if (!win) {
         if (g_wins == 0)
@@ -109,6 +109,10 @@ struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const cha
         }
         return 0;
     }
+    /* No WA_Title: a borderless window given a title still gets its title bar drawn (RKRM; the 14 row band on the
+     * A1200 bar). The title stays the window's identity for the others (bar_usable, win_is_amarchy), so it is set
+     * on the structure, which draws nothing. The caller's string must outlive the window. */
+    win->Title = (UBYTE *)title;
     win->UserPort = g_port;
     ModifyIDCMP(win, idcmp);
     g_wins++;

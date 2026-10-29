@@ -8,8 +8,7 @@ click on the agents segment must raise panels by 1; a right click must raise lau
 runs the agent (a new `ps` task or a new UP-Term tab). The segment sits at the bottom right of the front screen.
 Rig window purpose text to pass: "Amarchy session: bar check".
 Needs the rig up (rig.py start --max --purpose ...), Amarchy and amarchy-gui in UP-Term:bin, an UP-Term window open.
-reraise opens a Directory Opus lister over the bottom row: the bar must come back to the front (STATUS raises +1, and
-a left click on the agents segment, which the lister covers, opens the panel: hit testing goes to the front layer).
+behind opens a CON: window over the bottom row: the bar stays behind it (BAR STATUS raises unchanged, the window's layer in front). two_rows: the bar window has no border.
 right_launch holds with another window active (the bar is not the active window); cold_panel restarts Amarchy.
 """
 import argparse, pathlib, struct, sys, time
@@ -127,37 +126,57 @@ def dopus(cmd):
         return None, ''
 
 
-def r_reraise():
-    # Directory Opus is the program that covers the bar. Start it when it is not up (about 20 s), open a lister over
-    # the bottom row, and expect the bar's poll timer to raise the bar: raises +1, then stable, and the click on the
-    # agents segment (under the lister) reaches the bar.
-    if dopus('dopus screen')[0] is None:
-        c.run('Run >NIL: DOpus5:DirectoryOpus')
-        for _ in range(40):
-            time.sleep(1)
-            if dopus('dopus screen')[0] == 0:
-                break
-    before = ar.status()
-    rc, handle = dopus('lister new 0/180/640/76')
-    time.sleep(2.5)
-    after = ar.status()
-    time.sleep(2)
-    later = ar.status()
-    raised = after.get('raises', 0) > before.get('raises', 0)
-    stable = later.get('raises') == after.get('raises')
-    panels = later.get('panels', 0)
-    click(0)
-    opened = ar.status().get('panels', 0) == panels + 1
-    pan = [b for t, b, _ in windows() if t == 'Amarchy']
-    ami.key(0x45, 0)
-    time.sleep(1)
-    dopus('lister close %s force' % handle)
-    return raised and stable and opened and bool(pan), 'raises %r -> %r -> %r panel opened %s panel %r' % (
-        before.get('raises'), after.get('raises'), later.get('raises'), opened, pan)
+def bar_status():
+    """BAR STATUS counters (raises, panels ...) as ints."""
+    d = {}
+    for w in ar.arexx('BAR STATUS').replace('\n', ' ').split():
+        if '=' in w:
+            k, v = w.split('=', 1)
+            if v.lstrip('-').isdigit():
+                d[k] = int(v)
+    return d
+
+
+def front_order():
+    """Titles of the front screen's windows, front layer first."""
+    with ami._conn() as conn:
+        scr = ami._m().list_windows(conn)[0][0]
+    return [(w['title'], w['task']) for w in scr['windows']]
+
+
+def r_behind():
+    # BAR-BEHIND: a normal window (a CON: window over the bottom rows) opened over the bar stays in FRONT of it. After
+    # the poll (500 ms) ran several times the window's layer is in front of the bar's, and BAR STATUS raises did not
+    # move. With the old raise-over-everything code the bar is raised over it.
+    before = bar_status()
+    c.run('Run >NIL: Type CON:0/180/640/76/barcover/CLOSE')
+    time.sleep(5)
+    after = bar_status()
+    order = front_order()
+    bar_i = [i for i, (t, _) in enumerate(order) if t == 'Amarchy bar']
+    win_i = [i for i, (t, _) in enumerate(order) if t == 'barcover' and i < (bar_i[0] if bar_i else 0)]
+    ok = bool(bar_i) and bool(win_i) and before.get('raises') == after.get('raises')
+    return ok, 'raises %r -> %r, bar at %r, window in front of it at %r of %r' % (
+        before.get('raises'), after.get('raises'), bar_i, win_i, order)
+
+
+def r_two_rows():
+    # BAR-TWO-ROWS: the bar window has no Intuition chrome: border top 0 (a borderless window given WA_Title got a
+    # title bar, a second row above the one painted), and its height is the screen font height + 2.
+    with ami._conn() as conn:
+        scr = ami._m().list_windows(conn)[0][0]
+    bar = [w for w in scr['windows'] if w['title'] == 'Amarchy bar']
+    if not bar:
+        return False, 'no bar window'
+    w = bar[0]
+    scale = scr.get('row_scale', 1)
+    ok = w['border'][1] == 0 and w['border'][3] == 0 and w['height'] // scale <= 20
+    return ok, 'bar height %d top %d border %r row_scale %d' % (w['height'], w['top'], w['border'], scale)
 
 
 ROWS = [('start', r_start), ('left_panel', r_left_panel), ('close_panel', r_close_panel),
-        ('right_launch', r_right_launch), ('cold_panel', r_cold_panel), ('reraise', r_reraise)]
+        ('right_launch', r_right_launch), ('cold_panel', r_cold_panel), ('behind', r_behind),
+        ('two_rows', r_two_rows)]
 
 
 def main():

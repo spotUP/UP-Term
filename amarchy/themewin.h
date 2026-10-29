@@ -21,8 +21,9 @@ void tw_libs_close(void);
  * closes. 0 on failure (nothing is left open). */
 typedef void (*tw_redraw_fn)(struct Window *win);
 /* redraw (may be 0) repaints the whole window; tw_tick calls it after a theme switch retook the pens. */
+#define TW_OPEN_BACKDROP 1UL /* flags: a backdrop window, behind every normal window */
 struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const char *title, unsigned long idcmp,
-                       tw_redraw_fn redraw);
+                       tw_redraw_fn redraw, unsigned long flags);
 void tw_close(struct Window *win);
 
 /* The commodity tick (tick_hook): when the saved theme is no longer the one the pens were taken for (tw_theme_changed),

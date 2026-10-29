@@ -323,7 +323,7 @@ int bar_covered(int l, int t, int r, int b, const bar_lyr *front, int n)
     int i;
     for (i = 0; i < n; i++) {
         const bar_lyr *f = &front[i];
-        if (f->ours)
+        if (f->ours || !f->backdrop)
             continue;
         if (f->l <= r && f->r >= l && f->t <= b && f->b >= t)
             return 1;

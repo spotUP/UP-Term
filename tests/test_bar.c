@@ -274,25 +274,30 @@ static void test_press_over_agents_launches(void)
     CHECK_INT(bar_press_act(&b, 640, 250, 246, 10, BAR_BTN_RIGHT), BAR_ACT_NONE);   /* outside the width */
 }
 
-/* The re-raise decision: a foreign layer in front that touches the bar's rectangle; our own windows, layers clear of
- * the bar (above it) and an empty list do not. */
+/* The re-raise decision: only a foreign BACKDROP layer in front that touches the bar's rectangle raises the bar.
+ * A normal window over the bar (Directory Opus' lister, a full-size window with its size gadget) stays in front of
+ * it (BAR-BEHIND); our own windows, layers clear of the bar and an empty list do not raise either. */
 static void test_covered(void)
 {
-    const bar_lyr dopus_over = { 100, 200, 400, 255, 0 };
-    const bar_lyr dopus_above = { 100, 50, 400, 245, 0 };
-    const bar_lyr dopus_edge = { 100, 50, 400, 246, 0 };   /* row 246 is the bar's top row */
-    const bar_lyr panel = { 300, 100, 639, 245, 1 };
-    const bar_lyr menu_on_bar = { 0, 240, 639, 255, 1 };
+    const bar_lyr wb_over = { 0, 16, 639, 255, 0, 1 };         /* Workbench's backdrop window over the bar */
+    const bar_lyr wb_above = { 0, 16, 639, 245, 0, 1 };
+    const bar_lyr wb_edge = { 0, 16, 639, 246, 0, 1 };         /* row 246 is the bar's top row */
+    const bar_lyr win_over = { 100, 200, 400, 255, 0, 0 };     /* a normal window on the bar: no raise */
+    const bar_lyr win_full = { 0, 16, 639, 255, 0, 0 };        /* full size, size gadget in the bar's rows */
+    const bar_lyr panel = { 300, 100, 639, 245, 1, 0 };
+    const bar_lyr menu_on_bar = { 0, 240, 639, 255, 1, 1 };
     bar_lyr list[3];
     CHECK_INT(bar_covered(0, 246, 639, 255, 0, 0), 0);
-    CHECK_INT(bar_covered(0, 246, 639, 255, &dopus_over, 1), 1);
-    CHECK_INT(bar_covered(0, 246, 639, 255, &dopus_above, 1), 0);
-    CHECK_INT(bar_covered(0, 246, 639, 255, &dopus_edge, 1), 1);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &wb_over, 1), 1);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &wb_above, 1), 0);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &wb_edge, 1), 1);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &win_over, 1), 0);
+    CHECK_INT(bar_covered(0, 246, 639, 255, &win_full, 1), 0);
     CHECK_INT(bar_covered(0, 246, 639, 255, &panel, 1), 0);
     CHECK_INT(bar_covered(0, 246, 639, 255, &menu_on_bar, 1), 0);
     list[0] = panel;
-    list[1] = dopus_above;
-    list[2] = dopus_over;       /* behind the panel and still over the bar: raise */
+    list[1] = win_over;
+    list[2] = wb_over;          /* behind a normal window and still over the bar: raise (the poll runs on layers) */
     CHECK_INT(bar_covered(0, 246, 639, 255, list, 3), 1);
     CHECK_INT(bar_covered(0, 246, 639, 255, list, 2), 0);
 }
