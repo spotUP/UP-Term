@@ -1469,6 +1469,8 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	@# the Directory Opus filetype's launchers (plan 2026-10-25-amarchy-dopus-integration.md D13): uterm-edit and uterm-view open an UP-Term window
 	@# on the front screen (AmigaDOS scripts; uterm-start and uterm-open run in that window)
 	cp dist/uterm-edit dist/uterm-view dist/uterm-start dist/uterm-open dist/uterm-shell dist/uterm-shellstart $(KIT)/Files/userland/bin/
+	@# the filetype file itself (the base Install's DOPUS option copies it to DOpus5:Filetypes/UP-Term)
+	python3 tools/gen_dopus_filetype.py $(KIT)/Files/dopus-filetype
 	mkdir -p $(KIT)/Files/userland/share/tutorial && cp dist/tutorial-lessons/*.lesson $(KIT)/Files/userland/share/tutorial/
 	mkdir -p $(KIT)/Files/userland/share/man/man1 && cp man/*.1 $(KIT)/Files/userland/share/man/man1/
 	cp man/sz.1 $(KIT)/Files/userland/share/man/man1/rz.1

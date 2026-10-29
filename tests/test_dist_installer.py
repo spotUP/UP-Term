@@ -624,6 +624,49 @@ class OneClaudeApp(unittest.TestCase):
         self.assertNotIn('ClaudeCode', page.replace('(an old C:ClaudeCode is removed)', '').replace('(the old ClaudeCode icon goes)', ''))
 
 
+class DopusFiletypeOption(unittest.TestCase):
+    """The base Install's own option "Directory Opus filetype": asked only when DOpus5: exists, ticked, recorded
+    (ENV:UPTOPTDOPUS, then ENVARC: opts for Update), copied by install.dos's desktop part from the generated
+    kit file, and removed by Uninstall through its marker. The rig half: tools/rig/dopus_ft_rig.py."""
+
+    def page(self):
+        i = INSTALLER.index('(if (exists "DOpus5:Filetypes" (noreq))')
+        return INSTALLER[i:INSTALLER.index('(set #dopus "DOPUS")', i) + 25]
+
+    def test_the_page_is_asked_only_under_a_dopus5_check_and_is_ticked(self):
+        page = self.page()
+        self.assertIn('(askoptions', page)
+        self.assertIn('(default 1)', page)
+        self.assertIn('(noreq)', page)
+        self.assertEqual(INSTALLER.count('(askoptions\n                (prompt "Directory Opus 5 found'), 1)
+        self.assertIn('(set #dopus "")', INSTALLER)  # nothing without DOpus5:
+
+    def test_the_option_is_recorded_and_restored_by_update(self):
+        self.assertIn('(set #name "DOPUS" #val #dopus) (P_OPT)', INSTALLER)
+        self.assertIn('(set #dopus (getenv "UPTOPTDOPUS"))', INSTALLER)
+        self.assertIn('(set #name "DOPUS" #on (exists "ENVARC:up-term/dopus-filetype")) (P_OLDOPT)',
+                      (ROOT / "dist/common/oldopts.installer").read_text())
+
+    def test_install_dos_copies_the_kit_file_only_with_the_option_and_dopus5_and_writes_the_marker(self):
+        # the Assign check comes before EXISTS: EXISTS on an unassigned DOpus5: asks for the volume
+        self.assertRegex(DOS, r'(?s)If "\$optdopus" EQ "DOPUS"\n  Assign >NIL: DOpus5: EXISTS\n  If NOT WARN\n'
+                              r'    If EXISTS DOpus5:Filetypes\n'
+                              r'      Copy dopus-filetype DOpus5:Filetypes/UP-Term CLONE\n'
+                              r'      Echo "DOPUS" >ENVARC:up-term/dopus-filetype\n')
+        desktop = dict(dos_parts())["desktop"]
+        self.assertIn("optdopus", desktop)
+
+    def test_the_file_is_generated_into_the_kit_and_belongs_to_the_desktop_part(self):
+        mk = (ROOT / "Makefile").read_text()
+        self.assertIn("python3 tools/gen_dopus_filetype.py $(KIT)/Files/dopus-filetype", mk)
+        self.assertRegex((ROOT / "dist/parts.txt").read_text(), r'(?m)^desktop\s+Files/dopus-filetype$')
+
+    def test_uninstall_removes_the_file_only_by_its_marker(self):
+        u = (ROOT / "dist/Uninstall").read_text()
+        self.assertRegex(u, r'(?s)If EXISTS ENVARC:up-term/dopus-filetype\n  Assign >NIL: DOpus5: EXISTS\n'
+                            r'  If NOT WARN\n    Delete >NIL: DOpus5:Filetypes/UP-Term QUIET')
+
+
 def step_command_line(files, dest, installer=INSTALLER):
     """The AmigaDOS line P_STEP's (execute ...) makes, worst case: every option on.
     Each argument of the form is evaluated: strings, (cat ...) and #variables."""
@@ -693,8 +736,9 @@ class EveryOptionTicked(unittest.TestCase):
             value = int(d) if d.isdigit() else sum(int(x) for x in d.lstrip('(+ ').split())
             self.assertEqual(value, 2 ** n - 1, var)
         # AmiSSL's, the AmiNetXDuo page (AmiNetXDuoPart: ticked only with no stack found) and the add-on
-        # page (FindsTheAddOns: all add-ons) are the three more
-        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 3, 'a page this test misses')
+        # page (FindsTheAddOns: all add-ons) are the three more, the DOpus5: page (DopusFiletypeOption: ticked)
+        # the fourth
+        self.assertEqual(INSTALLER.count('(askoptions'), len(self.PAGES) + 4, 'a page this test misses')
 
 
 class UpdateWithNoRecordedOptions(unittest.TestCase):

@@ -222,6 +222,13 @@ EndIf
 If EXISTS ENVARC:up-term/cryptossh
   Delete >NIL: LIBS:libcryptossh.library QUIET
 EndIf
+; the Directory Opus filetype, only when Install put it there (its marker) and DOpus5: is assigned
+If EXISTS ENVARC:up-term/dopus-filetype
+  Assign >NIL: DOpus5: EXISTS
+  If NOT WARN
+    Delete >NIL: DOpus5:Filetypes/UP-Term QUIET
+  EndIf
+EndIf
 ; the font sizes Install added (their markers); a drawer left empty goes,
 ; and FixFonts drops its .font
 If EXISTS ENVARC:up-term/font-TopazPro-16

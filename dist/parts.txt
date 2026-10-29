@@ -73,6 +73,7 @@ desktop         Files/UP-Term.info
 desktop         Files/UP-Term-Prefs
 desktop         Files/UP-Term-Prefs.info
 desktop         Files/upicon
+desktop         Files/dopus-filetype
 boot            Files/banner
 boot            Files/vshrc
 boot            Files/wasabi

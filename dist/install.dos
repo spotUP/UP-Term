@@ -1,4 +1,4 @@
-.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S
+.KEY DIR/A,STEP/K,DEST/K,CONSOLE/S,NOCONSOLE/S,DEVICE/S,NODEVICE/S,SHELLICON/S,SERIAL/S,SSH/S,BEBBOGET/S,WASABI/S,CPU040/S,CPU060/S,NOFPU/S,UNIFONT/S,EMOJI/S,DOPUS/S
 .BRA {
 .KET }
 ; UP-Term install: the XCON: console, PTY:, vsh, the terminal entries and
@@ -11,6 +11,7 @@
 ;     [SHELLICON]   (the Shell icon starts vsh in an UP-Term window: no unless asked)
 ;     [SERIAL]   (a serial login at every boot: no unless asked)
 ;     [SSH] [BEBBOGET]   (the network tools, each: none unless asked)
+;     [DOPUS]   (the Directory Opus 5 filetype in DOpus5:Filetypes, when DOpus5: is assigned)
 ;     [WASABI]  (wasabid 0.11b2, remote development and Claude Code on another computer, with a
 ;               key: no unless asked; replaces an older wasabid and amiagent of ours)
 ; (Python, Neovim, Claude and amiga-pi are archives of their own: Python3,
@@ -51,6 +52,7 @@ Set optcpu060 "{CPU060}"
 Set optnofpu "{NOFPU}"
 Set optunifont "{UNIFONT}"
 Set optemoji "{EMOJI}"
+Set optdopus "{DOPUS}"
 If NOT "{STEP}" EQ ""
   If EXISTS ENV:UPTOPTDEST
     Set optdest "$UPTOPTDEST"
@@ -96,6 +98,9 @@ If NOT "{STEP}" EQ ""
   EndIf
   If EXISTS ENV:UPTOPTEMOJI
     Set optemoji EMOJI
+  EndIf
+  If EXISTS ENV:UPTOPTDOPUS
+    Set optdopus DOPUS
   EndIf
 EndIf
 ; The parts, each from its Lab line to the next. With no STEP every part runs,
@@ -780,6 +785,21 @@ If "$optshellicon" EQ "SHELLICON"
       Copy SYS:System/Shell.info ENVARC:up-term-orig/Shell.info CLONE
     EndIf
     upicon SYS:System/Shell WINDOWDEV=XCON TOOL=UP-Term:bin/vsh
+  EndIf
+EndIf
+; DOPUS: UP-Term's Directory Opus 5 filetype (a double-click on a text file opens it in an
+; UP-Term window through UP-Term:bin/uterm-edit), copied to DOpus5:Filetypes when DOpus5: is
+; assigned. ENVARC:up-term/dopus-filetype is Install's marker: Uninstall removes the file only then.
+; Without the option, or without DOpus5:, nothing is touched (a filetype of that name that the
+; user made is overwritten only with the option ticked).
+; The Assign check comes first: EXISTS on an unassigned DOpus5: would ask for the volume.
+If "$optdopus" EQ "DOPUS"
+  Assign >NIL: DOpus5: EXISTS
+  If NOT WARN
+    If EXISTS DOpus5:Filetypes
+      Copy dopus-filetype DOpus5:Filetypes/UP-Term CLONE
+      Echo "DOPUS" >ENVARC:up-term/dopus-filetype
+    EndIf
   EndIf
 EndIf
 If NOT "{STEP}" EQ ""

@@ -248,6 +248,7 @@
 (set #wasabi "")
 (set #unifont "")
 (set #emoji "")
+(set #dopus "")
 (set #cpu060 (if (= (database "cpu") "68060") "CPU060" ""))
 (set #cpu040 (if (= (database "cpu") "68040") "CPU040" ""))
 (set #nofpu (if (= (database "fpu") "NOFPU") "NOFPU" ""))
@@ -338,6 +339,24 @@
 (if (in #extra 0) (set #unifont "UNIFONT"))
 (if (in #extra 1) (set #emoji "EMOJI"))
 (if (and (in #extra 2) (exists "SYS:System/Shell.info")) (set #shellicon "SHELLICON"))
+
+; Directory Opus 5: asked only when DOpus5: is assigned (its own installer made the assign);
+; ticked, since the filetype is the way in from DOpus to an UP-Term window
+(if (exists "DOpus5:Filetypes" (noreq))
+    (if (in (askoptions
+                (prompt "Directory Opus 5 found (DOpus5:):")
+                (help "Directory Opus filetype: double-clicking a text file "
+                      "(.c, .h, .txt, .md, .rexx) in a Directory Opus lister "
+                      "opens it in an UP-Term window, in your editor, through "
+                      "UP-Term:bin/uterm-edit. The file is "
+                      "DOpus5:Filetypes/UP-Term, below your own filetypes in "
+                      "priority; nothing else of Directory Opus is changed. "
+                      "Directory Opus reads it at its next start.\n\n"
+                      "Uninstall removes that file again.")
+                (choices "Directory Opus filetype: open text files in UP-Term")
+                (default 1))
+            0)
+        (set #dopus "DOPUS")))
 
 (set #boot
     (askoptions
@@ -485,6 +504,7 @@
         (set #wasabi (getenv "UPTOPTWASABI"))
         (set #unifont (getenv "UPTOPTUNIFONT"))
         (set #emoji (getenv "UPTOPTEMOJI"))
+        (set #dopus (getenv "UPTOPTDOPUS"))
         (set #cpu040 (getenv "UPTOPTCPU040"))
         (set #cpu060 (getenv "UPTOPTCPU060"))
         (set #nofpu (getenv "UPTOPTNOFPU"))
@@ -511,7 +531,8 @@
     (set #name "CPU060" #val #cpu060) (P_OPT)
     (set #name "NOFPU" #val #nofpu) (P_OPT)
     (set #name "UNIFONT" #val #unifont) (P_OPT)
-    (set #name "EMOJI" #val #emoji) (P_OPT))
+    (set #name "EMOJI" #val #emoji) (P_OPT)
+    (set #name "DOPUS" #val #dopus) (P_OPT))
 
 ; P_END: the last page. #done says what went where; then the
 ; Install offers to reboot, since the handlers, XCON: and the

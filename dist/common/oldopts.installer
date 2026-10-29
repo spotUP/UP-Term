@@ -43,6 +43,7 @@
         (set #name "BEBBOGET" #on (exists "UP-Term:bin/bebboget")) (P_OLDOPT)
         (set #name "UNIFONT" #on (exists "UP-Term:unifont")) (P_OLDOPT)
         (set #name "EMOJI" #on (exists "UP-Term:emoji")) (P_OLDOPT)
+        (set #name "DOPUS" #on (exists "ENVARC:up-term/dopus-filetype")) (P_OLDOPT)
         (set #name "CPU040" #on (= (database "cpu") "68040")) (P_OLDOPT)
         (set #name "CPU060" #on (= (database "cpu") "68060")) (P_OLDOPT)
         (set #name "NOFPU" #on (= (database "fpu") "NOFPU")) (P_OLDOPT)
