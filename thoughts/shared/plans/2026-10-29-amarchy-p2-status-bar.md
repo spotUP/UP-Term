@@ -69,7 +69,7 @@ Shared pieces (P4 waits on these)
       `tw_pens()` (bg, text, accent, border, MT_OK, MT_FAIL), `tw_text(x, y, s, pen)`, `tw_fill`, `tw_frame`, `tw_close`,
       user port shared by the commodity (one signal bit for all helper windows). bar.c becomes its first user, no
       behaviour change (bar host tests and the rig Agents check stay green).
-- [ ] R2.5b Recolour on theme switch: helper re-reads pens on the theme-change signal and redraws every helper window.
+- [x] R2.5b (0622dde7; host status_core 35 checks + revert proof; rig 6 step recolour green, 15 of 15 steps, and FAIL with tick_hook(tw_tick) removed) Recolour on theme switch: helper re-reads pens on the theme-change signal and redraws every helper window.
       Closes OMARCHY-AI F3 (thoughts/shared/plans/2026-10-28-omarchy-ai.md:95).
 - [x] R2.5 Bar window on the Workbench screen, themed from P1 roles. DONE 4086d352.
 - [x] R2.5c (c5ee09b1) BAR ON/OFF/TOGGLE during the W43 hold is remembered (status_core bar_plan, g_bar_want) and applied when the hold ends; host test in test_status_core.c. Rig proof (rig 6, 2026-10-29, step bar_hold in amarchy_p2_rig.py): during the W43 hold (prefs rtg vs AGA mode) BAR OFF and BAR ON leave no bar window (bar=0, draws=0); the window opens 31 s after start, after the hold. Revert proof: with bar_plan neutered, test_status_core fails 2 of 30 (lines 55, 60); restored 0 of 30.
@@ -163,7 +163,7 @@ Revert proof: revert R2.9 wiring in win_apply.c and step 7 fails; revert the tic
 
 - P4 rows R4.9b, R4.9c, R4.11, R4.12 (window), R4.13 (notice) wait for R2.3a, R2.5a and R2.9.
 - P3 G*/R* rows that use the usable area take R2.9 when it lands; until then win_apply.c keeps its title lookup.
-- OMARCHY-AI F3 closes with R2.5b.
+- OMARCHY-AI F3 closed by R2.5b (0622dde7): bar recolours live; agent-tab text colour itself not run.
 
 ## Risks
 
