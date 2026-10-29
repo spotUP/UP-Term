@@ -1098,6 +1098,7 @@ def _dopus_present_checks(res):
     c.run('Delete >NIL: ENV:AMARCHY_DRAWS QUIET')
     # `lister query all` answers nothing on 5.82 and 5.91, so the sentinel is the window list: one new window, a lister
     before = window_addrs()
+    handles_before = set(dopus_rexx('lister query all').split())
     ami.key(RAW['d'], LAMIGA | LSHIFT)
     time.sleep(3)
     listers = new_by_addr(before)
@@ -1117,6 +1118,9 @@ def _dopus_present_checks(res):
     # screen titles follow the active window, so they name no screen; the window title UP-Term is the proof
     res.append(new == ['UP-Term'])
     print('  %s Open UP-Term here: new windows (title) %s' % ('[OK]' if res[-1] else '[FAIL]', new), flush=True)
+    # close the Device List lister Super+Shift+D opened: it would otherwise stay for the next row (dopus_listers lists it)
+    for h in set(dopus_rexx('lister query all').split()) - handles_before:
+        dopus_rexx('lister close %s' % h)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
 
 
@@ -1162,7 +1166,10 @@ def r_dopus_listers():
             h = dopus_rexx('lister new')
             dopus_rexx('lister read %s %s' % (h, path))
             time.sleep(3)
-            now = [a for a in window_addrs() if a not in before and a not in addrs]
+            # the lister window is the new one titled after its path (the window list is in z-order, not creation order,
+            # so the last new address is not necessarily this lister)
+            now = [a for a, t in window_addrs().items() if a not in before and a not in addrs
+                   and t.lower().endswith(path.split(':')[-1].lower())]
             addrs.append(now[-1] if now else None)
             made.append(h)
         handles = [h for h in dopus_rexx('lister query all').split() if h not in before_h]
@@ -1195,8 +1202,12 @@ def r_dopus_listers():
                       [a for a, _ in window_state() if a in addrs], flush=True)
             x9_type(label)
             ami.key(RAW['return'])
-            time.sleep(3)
-            order = [a for a, _ in window_state() if a in addrs]
+            # `visible on` re-shows the lister late on an emulated rig (more than 3 s measured): poll for the window
+            for _ in range(10):
+                time.sleep(3)
+                order = [a for a, _ in window_state() if a in addrs]
+                if order[:1] == [want]:
+                    break
             res.append(order[:1] == [want])
             print('  %s pick %s: lister order %s (front first), want %s first' %
                   ('[OK]' if res[-1] else '[FAIL]', label, order, want), flush=True)
