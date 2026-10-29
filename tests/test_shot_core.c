@@ -199,9 +199,39 @@ static void round_trip(long wd, long ht, int depth)
     free(m.b);
 }
 
+/* make amiga must compile shot_core.c: it is in the Amarchy sources (it used to build only through shotprobe) */
+static void built_by_make_amiga(void)
+{
+    char line[8192];
+    FILE *f = fopen("Makefile", "r");
+    int seen = 0;
+    CHECK(f != NULL);
+    while (f && fgets(line, sizeof line, f))
+        if (strncmp(line, "AMARCHY_SRC :=", 14) == 0 && strstr(line, "amarchy/shot_core.c") && strstr(line, "amarchy/shot.c"))
+            seen = 1;
+    if (f)
+        fclose(f);
+    CHECK(seen);
+}
+
+static void stamp_names(void)
+{
+    char n[32];
+    shot_stamp_name(0, 0, 0, n);
+    CHECK(strcmp(n, "shot-19780101-000000.iff") == 0);
+    shot_stamp_name(18262L, 13 * 60 + 5, 50 * 7 + 3, n);
+    CHECK(strcmp(n, "shot-20280101-130507.iff") == 0);
+    shot_stamp_name(789L, 23 * 60 + 59, 50 * 59, n);               /* 1980 is a leap year */
+    CHECK(strcmp(n, "shot-19800229-235959.iff") == 0);
+    shot_stamp_name(790L, 0, 0, n);
+    CHECK(strcmp(n, "shot-19800301-000000.iff") == 0);
+}
+
 void suite_shot_core(void)
 {
     packer_edges();
+    stamp_names();
+    built_by_make_amiga();
     planes_and_padding();
     golden_bytes();
     refusals();

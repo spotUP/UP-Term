@@ -21,6 +21,10 @@ void win_ticket_take(void);
 
 /* Whether the active window is an UP-Term terminal (*in_term: the "UPTERM.active" focus count is above 0 and an
  * Intuition window is active) and a full-screen one (*full: backdrop, borderless, the screen's size). */
+/* The window a capture targets: the menu ticket's window when still valid, else the live active one (never our own
+ * menu): its screen and box in screen pixels. 0 when there is none. */
+struct Screen;
+int win_target_rect(struct Screen **sc, long *x, long *y, long *w, long *h);
 void win_active_terminal(int *in_term, int *full);
 
 /* Verbs executed so far (the STATUS `wins=` sentinel). */

@@ -8,6 +8,8 @@
 #include <exec/memory.h>
 #include <devices/clipboard.h>
 #include <proto/exec.h>
+#include <proto/dos.h>
+#include <string.h>
 #include "clip.h"
 #include "clipfmt.h"
 
@@ -73,6 +75,50 @@ int clip_write(const char *utf8, long len)
     return ok;
 }
 
+int clip_write_form(const char *path)
+{
+    struct MsgPort *port;
+    struct IOClipReq *io;
+    unsigned char head[12];
+    static unsigned char buf[4096];
+    struct FileInfoBlock *fib;
+    BPTR fh;
+    long total = -1, left, n;
+    int ok = 0;
+    fh = Open((STRPTR)path, MODE_OLDFILE);
+    if (!fh)
+        return 0;
+    fib = (struct FileInfoBlock *)AllocDosObject(DOS_FIB, 0);
+    if (fib && ExamineFH(fh, fib) && Read(fh, head, 12) == 12)
+        total = cf_form_total(head, (long)fib->fib_Size);
+    if (fib)
+        FreeDosObject(DOS_FIB, fib);
+    if (total < 0 || Seek(fh, 0, OFFSET_BEGINNING) < 0) {
+        Close(fh);
+        return 0;
+    }
+    io = clip_open(&port);
+    if (!io) {
+        Close(fh);
+        return 0;
+    }
+    io->io_Offset = 0;
+    io->io_Error = 0;
+    io->io_ClipID = 0;
+    ok = 1;
+    for (left = total; ok && left > 0; left -= n) {
+        n = Read(fh, buf, left < (long)sizeof buf ? left : (long)sizeof buf);
+        ok = n > 0 && put(io, buf, (ULONG)n);
+        if (n <= 0)
+            break;
+    }
+    io->io_Command = CMD_UPDATE;
+    DoIO((struct IORequest *)io);
+    clip_close(io, port);
+    Close(fh);
+    return ok && left <= 0;
+}
+
 static LONG get(struct IOClipReq *io, void *buf, ULONG len)
 {
     io->io_Command = CMD_READ;
@@ -114,4 +160,40 @@ char *clip_read(long *len)
         ;
     clip_close(io, port);
     return text;
+}
+
+/* The clipboard's whole content as raw IFF bytes (FORM ILBM from clip_write_form, FORM FTXT from clip_write); the
+ * rig's reader for the capture proof. FreeVec the result; 0 when the clipboard is empty or unreachable. */
+char *clip_read_raw(long *len)
+{
+    struct MsgPort *port;
+    struct IOClipReq *io = clip_open(&port);
+    char *buf = 0;
+    long cap = 0, n = 0, k;
+    *len = 0;
+    if (!io)
+        return 0;
+    io->io_Offset = 0;
+    io->io_Error = 0;
+    io->io_ClipID = 0;
+    for (;;) {
+        if (n == cap) {
+            char *nb = (char *)alloc(cap ? cap * 2 : 8192);
+            if (!nb)
+                break;
+            if (buf) {
+                memcpy(nb, buf, n);
+                release(buf);
+            }
+            buf = nb;
+            cap = cap ? cap * 2 : 8192;
+        }
+        k = get(io, buf + n, cap - n);
+        if (k <= 0)
+            break;
+        n += k;
+    }
+    clip_close(io, port);
+    *len = n;
+    return buf;
 }

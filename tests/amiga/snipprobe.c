@@ -39,6 +39,20 @@ int main(int argc, char **argv)
         clip_write("-", 1);
         return 0;
     }
+    if (argc > 2 && !strcmp(argv[1], "CLIPRAW")) {
+        /* the clipboard's raw IFF bytes into a file (the capture rig reads a FORM ILBM here) */
+        long k;
+        char *t = clip_read_raw(&k);
+        BPTR o = Open((STRPTR)argv[2], MODE_NEWFILE);
+        if (o) {
+            if (t && k > 0)
+                Write(o, t, k);
+            Close(o);
+        }
+        if (t)
+            FreeVec(t);
+        return 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "CLIP")) {
         /* just the clipboard's text, for a window someone else drew */
         static char l[300];

@@ -31,6 +31,7 @@
 #include "../tty/qmark.h"
 #include "menu_open.h"
 #include "bar.h"
+#include "shot.h"
 #include "keymap_default.inc"
 
 
@@ -238,7 +239,27 @@ static long rexx_cmd(void *ud, const char *cmd, char *out)
         rc = do_row(parse_int(cmd + 3)) ? 0 : 5;
     else if (starts(cmd, "WIN") && (cmd[3] == ' ' || cmd[3] == '\t'))
         rc = win_port(cmd + 4);
-    else if (starts(cmd, "QUIT"))
+    else if (starts(cmd, "CAP") && (cmd[3] == ' ' || cmd[3] == '\t')) {
+        /* the capture entry the keymap kind cap: (R4.7) will call: screen | window | region; the reply is the file */
+        const char *a = cmd + 4;
+        while (*a == ' ' || *a == '\t')
+            a++;
+        if (starts(a, "screen"))
+            rc = shot_screen(shot_default_dir());
+        else if (starts(a, "window"))
+            rc = shot_window(shot_default_dir());
+        else if (starts(a, "region"))
+            rc = shot_region(shot_default_dir());
+        else
+            rc = 10;
+        if (rc == 0)
+            cl_cat(out, shot_last(), REXX_HOST_OUT);
+    } else if (starts(cmd, "SHOTS")) {
+        /* the capture counter: files written by shot.c since the start (STATUS is full at REXX_HOST_OUT) */
+        char num[12];
+        cl_ltoa(shot_count(), num);
+        cl_cat(out, num, REXX_HOST_OUT);
+    } else if (starts(cmd, "QUIT"))
         g_quit = 1;
     else if (starts(cmd, "SHOW"))
         act_menu_kind(KA_VIEWER, "");
@@ -341,7 +362,7 @@ int main(void)
     bs = bar_sigmask();
     bts = bar_timer_sigmask();
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nts | lps | wrs | cws | bs | bts | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nts | lps | wrs | cws | bs | bts | shot_region_sigmask() | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cxs)
@@ -355,6 +376,8 @@ int main(void)
                 else if (ev == CXE_KILL)
                     g_quit = 1;
             }
+        if (sigs & shot_region_sigmask())
+            shot_region_serve();
         if (sigs & bs)
             bar_serve();
         if (sigs & bts)

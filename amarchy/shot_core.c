@@ -177,3 +177,29 @@ int shot_end(shot_writer *w)
         return -1;
     return 0;
 }
+
+void shot_stamp_name(long days, long minute, long tick, char *out)
+{
+    long z = days + 2922L + 719468L;          /* days since 0000-03-01; 1978-01-01 is 2922 days after 1970-01-01 */
+    long era = z / 146097L, doe = z - era * 146097L;
+    long yoe = (doe - doe / 1460L + doe / 36524L - doe / 146096L) / 365L;
+    long y = yoe + era * 400L, doy = doe - (365L * yoe + yoe / 4L - yoe / 100L);
+    long mp = (5L * doy + 2L) / 153L, d = doy - (153L * mp + 2L) / 5L + 1L, m = mp < 10 ? mp + 3 : mp - 9;
+    long sec = tick / 50L, v[6];
+    int i, k = 0;
+    static const char pre[] = "shot-";
+    if (m <= 2)
+        y++;
+    v[0] = y; v[1] = m; v[2] = d; v[3] = minute / 60L; v[4] = minute % 60L; v[5] = sec;
+    for (i = 0; pre[i]; i++)
+        out[k++] = pre[i];
+    for (i = 0; i < 6; i++) {
+        long n = v[i], dig = i == 0 ? 1000L : 10L;
+        for (; dig > 0; dig /= 10) {
+            out[k++] = (char)('0' + (n / dig) % 10);
+        }
+        if (i == 2)
+            out[k++] = '-';
+    }
+    out[k++] = '.'; out[k++] = 'i'; out[k++] = 'f'; out[k++] = 'f'; out[k] = 0;
+}

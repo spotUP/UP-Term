@@ -45,4 +45,8 @@ int shot_row(shot_writer *w, const unsigned char *pix);
  * written and no sink call failed. */
 int shot_end(shot_writer *w);
 
+/* The file name for a DateStamp (days since 1978-01-01, minutes, ticks of 1/50 s): "shot-YYYYMMDD-HHMMSS.iff"
+ * into out (at least 24 bytes). */
+void shot_stamp_name(long days, long minute, long tick, char *out);
+
 #endif

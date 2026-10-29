@@ -1,4 +1,5 @@
 /* clipfmt -- see clipfmt.h. Portable C89, no OS calls. */
+#include <string.h>
 #include "clipfmt.h"
 #include "be32.h"
 
@@ -159,4 +160,15 @@ char *cf_read_ftxt(cf_read_fn rd, void *u, void *(*alloc)(unsigned long), void (
         }
     }
     return text;
+}
+
+long cf_form_total(const unsigned char *head, long filelen)
+{
+    unsigned long size;
+    if (filelen < 12 || memcmp(head, "FORM", 4) != 0)
+        return -1;
+    size = be32_get(head + 4);
+    if (size < 4 || (long)(size + 8 + (size & 1)) != filelen)
+        return -1;
+    return filelen;
 }

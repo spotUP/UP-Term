@@ -96,6 +96,27 @@ void win_ticket_take(void)
     UnlockIBase(lock);
 }
 
+int win_target_rect(struct Screen **sc, long *x, long *y, long *w, long *h)
+{
+    struct Window *t;
+    ULONG lock;
+    int ok = 0;
+    if (!IntuitionBase)
+        return 0;
+    lock = LockIBase(0);
+    t = ticket_valid() ? g_ticket : IntuitionBase->ActiveWindow;
+    if (usable(t)) {
+        *sc = t->WScreen;
+        *x = t->LeftEdge;
+        *y = t->TopEdge;
+        *w = t->Width;
+        *h = t->Height;
+        ok = 1;
+    }
+    UnlockIBase(lock);
+    return ok;
+}
+
 void win_active_terminal(int *in_term, int *full)
 {
     struct Window *aw;

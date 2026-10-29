@@ -181,6 +181,20 @@ static void paste_decodes_and_drops_controls(void)
     CHECK(!cf_paste_keeps(0x7F));
 }
 
+/* clip_write_form's length bookkeeping: only one whole FORM of its stated length (padded even) is a clip */
+static void form_total_checks(void)
+{
+    unsigned char h[12] = { 'F', 'O', 'R', 'M', 0, 0, 0, 10, 'I', 'L', 'B', 'M' };
+    CHECK(cf_form_total(h, 18) == 18);          /* size 10 + 8 */
+    h[7] = 11;
+    CHECK(cf_form_total(h, 20) == 20);          /* odd size: one pad byte */
+    CHECK(cf_form_total(h, 19) == -1);
+    CHECK(cf_form_total(h, 30) == -1);          /* trailing bytes */
+    h[0] = 'X';
+    CHECK(cf_form_total(h, 20) == -1);
+    CHECK(cf_form_total(h, 11) == -1);
+}
+
 void suite_clip(void)
 {
     copy_and_paste_round_trip_utf8();
@@ -188,4 +202,5 @@ void suite_clip(void)
     utf8_chunk_wins_in_any_order();
     large_clips_are_not_cut();
     paste_decodes_and_drops_controls();
+    form_total_checks();
 }
