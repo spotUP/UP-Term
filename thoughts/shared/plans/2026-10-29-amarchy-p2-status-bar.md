@@ -103,12 +103,12 @@ Segments
 - [ ] R2.12 Tray: RUN <row> segments from bar.conf (label + command line, click runs it through proclaunch).
 
 Config, control, docs
-- [ ] R2.13a bar.conf at ENVARC:Amarchy/bar.conf (ENV: copy read first): `start on|off`, `clock <fmt>`, `clockalt <fmt>`,
+- [x] R2.13a (done 1c409275, rig 6; start/clock/clockalt wired, segment order + on/off + run rows parsed and host-tested, consumed by the later layout/tray rows) bar.conf at ENVARC:Amarchy/bar.conf (ENV: copy read first): `start on|off`, `clock <fmt>`, `clockalt <fmt>`,
       segment order per group, segment on/off, `run <label> <command>` rows. Parsed by a pure core (host tests), missing
       file = defaults.
 - [x] R2.13b (part, 04125970) ARexx `BAR ON|OFF|TOGGLE` and `BAR STATUS` (bar= draws= panels= launches= raises= ticks= done, rig 6 green; segs=, cpu=, net= open until those segments exist), so the STATUS string
       stays inside REXX_HOST_OUT 160.
-- [ ] R2.13c Key super+b = bar toggle (new commodity action, dist/keymap and keymap_default), bar on at start unless
+- [x] R2.13c (done 1c409275, rig 6 bar_conf step; revert proof: start-off read and bar_port dispatch each made it FAIL) Key super+b = bar toggle (new commodity action, dist/keymap and keymap_default), bar on at start unless
       bar.conf says `start off`.
 - [x] R2.14 (04125970; STATUS 99 bytes at zeros on rig 6, 147 at 5-digit counters, tests/test_status_core.c) STATUS adds `ticks=` (bar=, draws= exist). Check the full STATUS string length on the rig stays under 160.
 - [ ] R2.15 Man page (bar segments, bar.conf keys, BAR command, super+b) and installer copies a default bar.conf.
