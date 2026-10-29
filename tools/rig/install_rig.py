@@ -461,8 +461,13 @@ def prepare(dest, addons=()):
     # leaves the drawer behind for the next pass (K3). var_check() covers the
     # default No with its own scripts.
     (VTC / "rununinstall").write_text("Set upvardelete YES\nCD VTC:distkit\nExecute Uninstall\n")
-    # LIBS: as the rig boots it (ixpty_rig.use_ixemul puts VTC:ixp6 first,
-    # and Install would then replace and keep the copy there)
+    stock_libs()
+
+def stock_libs():
+    """LIBS: as a machine without the rig's VTC:ixp6 has it: the rig's boot puts VTC:ixp6 first (and
+    ixpty_rig.use_ixemul does), and Install would then replace and keep the copy there. prepare() sets it, and
+    a case that reboots sets it again: the boot assigned VTC:ixp6 first once more, and fresh-all's Uninstall
+    checks then listed VTC:ixp6's stale 7 Oct .orig files as the system's (FRESH-ALL-AFTER-END, 2026-10-29)."""
     run('Assign LIBS: %sLibs' % SYSVOL)
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
 
