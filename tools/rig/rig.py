@@ -201,7 +201,7 @@ def kit_entries(nofpu=False, m060=False):
     libraries (the CPU only picks the staged ixemul and AmiSSL builds; the boot's shadow rows do not depend on it)."""
     return kitset.derive(ROOT, USERLAND_SRC, USERLAND_STAGE, paths.VENDOR,
                          paths.IXEMUL_LIB_SOFT if nofpu else paths.IXEMUL_LIB, paths.IXNET_LIB, m060,
-                         libguard.require_clean_ixnet)
+                         libguard.require_clean_ixnet, paths.UPTERM_ROOT)
 
 
 # (VTC: name, SYS: place, backup name), one row per derived file the boot shadows (kitset): nothing hand-listed,
@@ -215,6 +215,8 @@ def kit_shadow_src(name):
     kit-userland/ rows (upkg among them: the dist userland is the ports build the kit packs)."""
     if name.startswith(USERLAND_STAGE + "/"):
         return USERLAND_SRC / name.split("/", 1)[1]
+    if kitset.addon_src(ROOT, name, paths.UPTERM_ROOT):    # C:Claude, C:amiga-pi come from their own build (kitset.ADDONS)
+        return kitset.addon_src(ROOT, name, paths.UPTERM_ROOT)
     return (ROOT / "dist" if name in a1200_drift.DIST_SOURCES else build_amiga()) / name
 
 

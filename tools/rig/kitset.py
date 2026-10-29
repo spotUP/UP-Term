@@ -29,7 +29,19 @@ def clone_path(dest):
         return "Prefs/Env-Archive/up-term/keymap"
     return None
 
-def derive(root, userland_src, userland_stage, vendor, ixemul, ixnet, m060, ixnet_check):
+# Add-on programs the kit ships in archives of their own (up-claude, up-pi), not through install.dos: (VTC: name, C: place,
+# source relative to the workspace/checkout). A rig's C:Claude stayed a stale 11 Oct build and C:amiga-pi was missing
+# (RIG-AGENT-STAGE, 2026-10-29). amiga-pi is its own repo beside vtcon (Makefile AMIGA_PI).
+ADDONS = [("Claude", "C:Claude", ("root", "build/amiga/Claude")),
+          ("amiga-pi", "C:amiga-pi", ("workspace", "amiga-pi/build/amiga/amiga-pi"))]
+
+def addon_src(root, name, workspace=None):
+    """The host build of an ADDONS program, or None."""
+    for n, _, (base, rel) in ADDONS:
+        if n == name:
+            return pathlib.Path(root if base == "root" else workspace or pathlib.Path(root).parent) / rel
+
+def derive(root, userland_src, userland_stage, vendor, ixemul, ixnet, m060, ixnet_check, workspace=None):
     root = pathlib.Path(root)
     built = root / "build/amiga"
     names = [f.name for f in built.iterdir() if f.is_file()] + list(a1200_drift.DIST_SOURCES)
@@ -45,6 +57,8 @@ def derive(root, userland_src, userland_stage, vendor, ixemul, ixnet, m060, ixne
         for vol, sp in SPELL.items():     # the boot also shadows the spelled places (the old rows' ENV/ENVARC pair)
             if dest.startswith(vol):
                 add(Entry(sp + dest[len(vol):], src, None, vtc=name, bak=re.sub(r"[:/]", "-", dest)))
+    for name, dest, _ in ADDONS:
+        add(Entry(dest, addon_src(root, name, workspace), None, vtc=name))
     if pathlib.Path(userland_src).is_dir():
         for f in sorted(pathlib.Path(userland_src).iterdir()):
             if f.is_file() and re.fullmatch(r"[A-Za-z0-9._+-]+", f.name):   # "[" is an AmigaDOS pattern
