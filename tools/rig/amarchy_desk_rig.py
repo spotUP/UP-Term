@@ -14,7 +14,11 @@ The stock editors rewrite ENV:Sys files after USE in their own layout (the plan:
 so the files settle first and only the themed fields are compared; byte exactness of desk_core stays with tests/test_desk.c.
 A differing field prints its name, the expected value and the got value.
 
-Rig up (UPTERM_RIG=<n> tools/rig/rig.py start --max --fresh), Amarchy running with this branch's binaries.
+Rig up on AmigaOS 3.2 (owner decision 2026-10-29; 3.1 has no stock Pointer/Wbpattern editors the steps need):
+  UPTERM_RIG=<n> tools/rig/rig.py start --max --os 32 --purpose "<session>: desk theme"   (tree build/rig/os-322)
+then stage and start this branch's Amarchy (the 3.2 kit does not auto-start it):
+  python3 -c 'import stage_rig,...' stage_build, then `Run >NIL: UP-Term:bin/Amarchy` (as amarchy_gui_rig.py --setup does).
+Delete ENV:Sys/{palette,wbpattern,font,pointer}.prefs and ENV:Amarchy/prefs between runs for a clean baseline.
 Run: UPTERM_RIG=3 python3 tools/rig/amarchy_desk_rig.py
 Exit status 1 on any [FAIL]."""
 import os, re, subprocess, sys, tempfile, time
@@ -81,11 +85,20 @@ def n_env(name):
     return int(t.env(name) or 0)
 
 
+def put_prefs(local):
+    """Put the prefs file. wasabid's rename into place fails on ENV:Amarchy/prefs once Amarchy has saved it (Delete
+    works), so the old file is deleted first."""
+    c.run('Delete >NIL: %s QUIET' % PREFS)
+    ami.put(local, PREFS)
+
+
 def pick(up=None):
     """Style > Amarchy theme > a row next to the cursor that is not the current theme > Return. The menu stays open on the pick: close it."""
     t.open_menu()
     st, _ = t.wait_stable(t.OPEN_SECS, what='open menu')
-    for _ in range(t.STYLE_DOWNS):
+    # the top level differs per rig (3.1: Style is the 4th entry; the 3.2 rig lists Apps, Settings, Style): read where it is
+    top = t.env('AMARCHY_ROWS').split('|')
+    for _ in range(top.index('Style') - int(t.env('AMARCHY_SEL') or 0) if 'Style' in top else t.STYLE_DOWNS):
         st, _ = t.step(g.DOWN, 'Down to Style')
     t.step(g.RETURN, 'enter Style')
     t.step(g.RETURN, 'enter Amarchy theme')
@@ -148,6 +161,12 @@ def compare(part, got, want, what, ncol=8):
     g, w = fields(part, got, ncol), fields(part, want, ncol)
     if g is None or w is None:
         return say(False, what, 'cannot parse the %s file (%s)' % (part, 'got' if g is None else 'expected'))
+    if part == 'wbpattern':
+        # an all-zero pattern is pen 0 on every plane at any depth: the stock 3.2 Wbpattern editor rewrites the flat
+        # DRAWER chunk (pen 0) with depth 0 after USE (observed rig 4, 2026-10-29); the pixels are what is compared
+        for k in list(w):
+            if k.endswith('.depth') and w.get(k[:-6] + '.data', 'x').strip('0 ') == '' and g.get(k[:-6] + '.data') == w[k[:-6] + '.data']:
+                g[k] = w[k]
     diffs = ['%s: expected %s got %s' % (k, w[k], g.get(k, '<absent>')) for k in w if g.get(k) != w[k]]
     print('[INFO] %s: %d themed fields compared' % (part, len(w)))
     return say(not diffs, what, '; '.join(diffs[:12]))
@@ -169,7 +188,8 @@ def main():
     hdr = '; Amarchy preferences. Written by the Amarchy preferences window (Exchange: Show Interface).\n'
     with tempfile.NamedTemporaryFile(delete=False) as f:
         f.write(hdr.encode('latin-1'))
-    ami.put(f.name, PREFS)
+    c.run('MakeDir >NIL: ENV:Amarchy')    # a fresh rig has no ENV:Amarchy yet; the put cannot create it
+    put_prefs(f.name)
     os.unlink(f.name)
     prefs = (ami.read_file(PREFS) or b'').decode('latin-1')
     print('[INFO] %s before:\n%s' % (PREFS, prefs))
@@ -194,7 +214,7 @@ def main():
         new = saved + ('' if re.search(r'^\[profile default\]', saved, re.M) else '[profile default]\n') + 'desktop-theme = on\n'
     with tempfile.NamedTemporaryFile(delete=False) as f:
         f.write(new.encode('latin-1'))
-    ami.put(f.name, PREFS)
+    put_prefs(f.name)
     os.unlink(f.name)
     base_on = snapshot()
     cols_on = wb_colours()
