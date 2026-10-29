@@ -868,7 +868,8 @@ def screenmode_prefs_bytes(display_id, width, height, depth):
 def stage_rig_vtc(vtc):
     """What a rig's VTC: drawer needs to start, for build/rig and build/rigN alike (setup calls it): the ScreenMode
     prefs, and the UP-Term drawer the boot's UP-Term: assign points at, with bin/vsh, the icons and the Prefs launcher
-    (stage_upterm, as `rig.py install` makes it). Files already there are kept."""
+    (stage_upterm, as `rig.py install` makes it), and the Amarchy themes and font (stage_amarchy_assets: a rig that
+    never ran `install` listed no themes). Files already there are kept."""
     vtc.mkdir(parents=True, exist_ok=True)
     for name, did, w, h, depth in SCREENMODE_PREFS:
         f = vtc / ("screenmode.%s.prefs" % name)
@@ -878,6 +879,7 @@ def stage_rig_vtc(vtc):
     if not (vtc / paths.UPTERM_DRAWER / "bin/vsh").is_file():
         paths.require_input(vsh, "UPTERM_ROOT", "build/amiga/vsh (run make for the Amiga programs)")
         stage_upterm(vtc / paths.UPTERM_DRAWER, vsh)
+    stage_amarchy_assets(vtc)
 
 
 def seed_rig_vtc(src, dst):
