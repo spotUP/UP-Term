@@ -47,9 +47,31 @@ static void test_verb(void)
     CHECK_INT(bar_verb(" off now"), BARV_BAD);
 }
 
+static void test_bar_on_during_hold_is_remembered(void)
+{
+    int want = 1, a;
+    /* held: BAR ON never opens the window, it is remembered for the end of the hold */
+    want = 0;
+    CHECK_INT(bar_plan(BARV_ON, 1, 0, &want), BARA_NONE);
+    CHECK_INT(want, 1);
+    CHECK_INT(bar_plan(BARV_OFF, 1, 0, &want), BARA_NONE);
+    CHECK_INT(want, 0);
+    a = bar_plan(BARV_TOGGLE, 1, 0, &want);             /* the wish was off, so toggle wishes it on */
+    CHECK_INT(a, BARA_NONE);
+    CHECK_INT(want, 1);
+    /* not held: the verbs act at once, as before */
+    CHECK_INT(bar_plan(BARV_ON, 0, 0, &want), BARA_OPEN);
+    CHECK_INT(bar_plan(BARV_ON, 0, 1, &want), BARA_NONE);
+    CHECK_INT(bar_plan(BARV_OFF, 0, 1, &want), BARA_CLOSE);
+    CHECK_INT(want, 0);
+    CHECK_INT(bar_plan(BARV_TOGGLE, 0, 0, &want), BARA_OPEN);
+    CHECK_INT(bar_plan(BARV_STATUS, 0, 0, &want), BARA_NONE);
+}
+
 void suite_status_core(void)
 {
     test_fit();
     test_keys();
     test_verb();
+    test_bar_on_during_hold_is_remembered();
 }

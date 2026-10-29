@@ -28,6 +28,74 @@ static void test_layout_groups(void)
     CHECK_INT(b.seg[r2].x + b.seg[r2].w, 320);
 }
 
+/* Shown segments in order of x: none overlaps another and none starts left of 0 (the 640 px rig bar showed the clock
+ * on top of "Workbench" and a negative x broke the rig's struct pack). */
+static int bar_clean(const bar *b)
+{
+    int i, j;
+    for (i = 0; i < b->n; i++) {
+        if (b->seg[i].hidden)
+            continue;
+        if (b->seg[i].x < 0)
+            return 0;
+        for (j = i + 1; j < b->n; j++)
+            if (!b->seg[j].hidden && b->seg[i].x < b->seg[j].x + b->seg[j].w && b->seg[j].x < b->seg[i].x + b->seg[i].w)
+                return 0;
+    }
+    return 1;
+}
+
+static void test_narrow_bar_drops_right_segments_by_priority(void)
+{
+    bar b;
+    int wide, i;
+    int net, cpu, ram, ag, sys, clk, scr;
+    static const int widths[] = { 640, 560, 480, 400 };
+    bar_init(&b, 640, 4, 2);
+    scr = bar_add(&b, BAR_SEG_SCREEN0, BAR_LEFT, "Workbench", 90);
+    bar_add(&b, BAR_SEG_MORE, BAR_LEFT, "", 0);
+    clk = bar_add(&b, BAR_SEG_CLOCK, BAR_CENTRE, "Thu 14:05", 90);
+    cpu = bar_add(&b, BAR_SEG_CPU, BAR_RIGHT, "CPU 12%", 56);
+    net = bar_add(&b, BAR_SEG_NET, BAR_RIGHT, "Net emu", 64);
+    ram = bar_add(&b, BAR_SEG_RAM, BAR_RIGHT, "C 1.2M F 61M", 120);
+    ag = bar_add(&b, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", 48);
+    sys = bar_add(&b, BAR_SEG_SYSTEM, BAR_RIGHT, "System", 48);
+    /* plenty of room: nothing drops */
+    bar_layout(&b, 900);
+    CHECK_INT(b.seg[net].hidden, 0);
+    CHECK_INT(bar_clean(&b), 1);
+    /* 560 px: Network goes first, the rest stays */
+    bar_layout(&b, 560);
+    CHECK_INT(b.seg[net].hidden, 1);
+    CHECK_INT(b.seg[net].w, 0);
+    CHECK_INT(b.seg[cpu].hidden, 0);
+    CHECK_INT(b.seg[ram].hidden, 0);
+    CHECK_INT(bar_clean(&b), 1);
+    CHECK_INT(bar_hit(&b, 0), scr);
+    /* then CPU, then RAM; Clock, System and the screen never drop, nothing overlaps at any width */
+    bar_layout(&b, 480);
+    CHECK_INT(b.seg[net].hidden, 1);
+    CHECK_INT(b.seg[cpu].hidden, 1);
+    CHECK_INT(b.seg[ram].hidden, 0);
+    CHECK_INT(bar_clean(&b), 1);
+    bar_layout(&b, 400);
+    CHECK_INT(b.seg[ram].hidden, 1);
+    CHECK_INT(b.seg[clk].hidden, 0);
+    CHECK_INT(b.seg[sys].hidden, 0);
+    CHECK_INT(b.seg[scr].hidden, 0);
+    for (i = 0; i < 4; i++) {
+        bar_layout(&b, widths[i]);
+        CHECK_INT(bar_clean(&b), 1);
+    }
+    /* the room comes back: everything is shown again */
+    wide = 900;
+    bar_layout(&b, wide);
+    CHECK_INT(b.seg[net].hidden, 0);
+    CHECK_INT(b.seg[ram].hidden, 0);
+    CHECK_INT(b.seg[ag].hidden, 0);
+    CHECK_INT(bar_clean(&b), 1);
+}
+
 static void test_hit(void)
 {
     bar b;
@@ -399,6 +467,7 @@ static void test_clock_system_screens(void)
 void suite_bar(void)
 {
     test_layout_groups();
+    test_narrow_bar_drops_right_segments_by_priority();
     test_hit();
     test_click_dispatch();
     test_dirty_only_changed();

@@ -16,4 +16,11 @@ enum { BARV_BAD = 0, BARV_STATUS, BARV_ON, BARV_OFF, BARV_TOGGLE, BARV_TEXT };
 /* The word after BAR in a command ("BAR OFF"; cmd points at the text after "BAR"), any case, blanks around it. */
 int bar_verb(const char *args);
 
+/* What BAR ON / OFF / TOGGLE does at the bar window: BARA_OPEN, BARA_CLOSE or BARA_NONE. `held` is 1 while Amarchy waits
+ * for the Workbench's final mode (W43): then nothing opens or closes, the wish is remembered in *want (1 = the bar is to
+ * be open once the hold ends; starts as 1) and start_windows opens the bar only when it is set. `open` is the window's
+ * state now; TOGGLE flips the effective state (the wish while held). */
+enum { BARA_NONE = 0, BARA_OPEN, BARA_CLOSE };
+int bar_plan(int verb, int held, int open, int *want);
+
 #endif

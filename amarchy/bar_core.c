@@ -131,18 +131,51 @@ static int marker_text(bar *b, int hidden_n)
     return 0;
 }
 
-void bar_layout(bar *b, int width)
+/* Drop order of the right group when the bar is too narrow: rank 0 goes first. Every other id (System, the clock,
+ * the screens) never drops. */
+static int drop_rank(int id)
 {
-    int i, x, r, nscr = 0, k = -1, c_w = 0, c_n = 0, left_end, cx;
-    b->width = width;
-    r = width;
+    switch (id) {
+    case BAR_SEG_NET: return 0;
+    case BAR_SEG_CPU: return 1;
+    case BAR_SEG_RAM: return 2;
+    case BAR_SEG_AGENTS: return 3;
+    default: return -1;
+    }
+}
+#define BAR_DROP_RANKS 4
+
+/* The right group from the right edge with the first `ndrop` ranks dropped (placed when `commit`, else measured);
+ * returns the x its leftmost shown segment starts at, minus the gap. */
+static int place_right(bar *b, int ndrop, int commit)
+{
+    int i, r = b->width;
     for (i = b->n - 1; i >= 0; i--) {
         bar_seg *s = &b->seg[i];
+        int rk;
         if (s->side != BAR_RIGHT)
             continue;
-        place(s, r - segw(s, b->pad), segw(s, b->pad));
-        r = s->x - b->gap;
+        rk = drop_rank(s->id);
+        if (rk >= 0 && rk < ndrop) {
+            if (commit) {
+                place(s, 0, 0);
+                s->hidden = 1;
+            }
+            continue;
+        }
+        if (commit) {
+            place(s, r - segw(s, b->pad), segw(s, b->pad));
+            s->hidden = 0;
+        }
+        r -= segw(s, b->pad) + b->gap;
     }
+    return r;
+}
+
+void bar_layout(bar *b, int width)
+{
+    int i, x, r, nscr = 0, k = -1, c_w = 0, c_n = 0, left_end, cx, nd;
+    b->width = width;
     for (i = 0; i < b->n; i++) {
         if (b->seg[i].side == BAR_CENTRE) {
             c_w += segw(&b->seg[i], b->pad) + (c_n ? b->gap : 0);
@@ -151,6 +184,19 @@ void bar_layout(bar *b, int width)
             nscr++;
         }
     }
+    /* too narrow even with one screen entry: drop right segments by rank until the smallest left group and the
+     * centre fit (the screens list cut below only trims the list, it never frees room for the right group) */
+    if (nscr > 1)
+        marker_text(b, nscr - 1);
+    for (nd = 0; nd <= BAR_DROP_RANKS; nd++) {
+        int rr = place_right(b, nd, 0);
+        int lim = c_n ? rr - c_w - b->gap : rr;
+        if (place_left(b, nscr > 1 ? 1 : -1, 0) <= lim)
+            break;
+    }
+    if (nd > BAR_DROP_RANKS)
+        nd = BAR_DROP_RANKS;
+    r = place_right(b, nd, 1);
     /* the room the left group may use: up to the centre group's latest place, or the right group */
     {
         int limit = c_n ? r - c_w - b->gap : r;

@@ -148,12 +148,14 @@ static int parse_int(const char *s)
 
 /* Signals of the bar's window and timer, read again whenever BAR ON or OFF changes them (0 while the bar is closed). */
 static ULONG g_bs, g_bts;
+static int g_bar_want = 1;  /* BAR ON (1) or OFF (0) said during the hold: applied when the hold ends (bar_plan) */
 static int g_wb_hold;   /* 1 while the windows wait for the Workbench's final mode (W43) */
 
 /* every window Amarchy opens at start: the status bar (the menu servers and AmTile open theirs on use) */
 static void start_windows(void)
 {
-    bar_open(g_dir);                            /* the status bar; 0 = no screen, the commodity runs without it */
+    if (g_bar_want)
+        bar_open(g_dir);                        /* the status bar; 0 = no screen, the commodity runs without it */
     g_bs = bar_sigmask();
     g_bts = bar_timer_sigmask();
 }
@@ -206,22 +208,21 @@ static void status_text(char *out, long cap, int bar_status)
  * rc 10 for another word, 5 when ON finds no screen. */
 static long bar_port(const char *args, char *out)
 {
-    int v = bar_verb(args);
+    int v = bar_verb(args), act;
     if (v == BARV_BAD)
         return 10;
     if (v == BARV_TEXT) {
         bar_text(out, REXX_HOST_OUT);
         return 0;
     }
-    if (v == BARV_TOGGLE)
-        v = bar_is_open() ? BARV_OFF : BARV_ON;
-    if (v == BARV_OFF)
+    act = bar_plan(v, g_wb_hold, bar_is_open(), &g_bar_want);
+    if (act == BARA_CLOSE)
         bar_close();
-    else if (v == BARV_ON)
+    else if (act == BARA_OPEN)
         bar_open(g_dir);
     g_bs = bar_sigmask();
     g_bts = bar_timer_sigmask();
-    if (v == BARV_ON && !bar_is_open())
+    if (act == BARA_OPEN && !bar_is_open())
         return 5;
     status_text(out, REXX_HOST_OUT, 1);
     return 0;

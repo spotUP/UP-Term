@@ -36,6 +36,23 @@ static int word(const char *s, const char *w)
     return *s == 0;
 }
 
+int bar_plan(int verb, int held, int open, int *want)
+{
+    int now = held ? *want : open;
+    if (verb == BARV_TOGGLE)
+        verb = now ? BARV_OFF : BARV_ON;
+    if (verb != BARV_ON && verb != BARV_OFF)
+        return BARA_NONE;
+    if (held) {
+        *want = verb == BARV_ON;
+        return BARA_NONE;
+    }
+    *want = verb == BARV_ON;
+    if (verb == BARV_ON)
+        return open ? BARA_NONE : BARA_OPEN;
+    return open ? BARA_CLOSE : BARA_NONE;
+}
+
 int bar_verb(const char *args)
 {
     while (*args == ' ' || *args == '\t')
