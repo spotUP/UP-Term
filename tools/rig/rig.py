@@ -443,9 +443,12 @@ if A500 and "--kick" not in sys.argv:
 OVERSCAN = "--overscan" in sys.argv
 MAX = "--max" in sys.argv or not (A1200 or A500)
 M060 = "--060" in sys.argv or MAX
-# --ram N: the 060 machines with N MB of fast RAM in total (8 MB Zorro II + N-8 MB Zorro III) instead of the 1 GB
+# --ram N: the 060 machines with about N MB of fast RAM (8 MB Zorro II + a Zorro III board) instead of the 1 GB
 # --max gives, so a rig can stand in for a real accelerator card (owner 2026-10-29 for the Selecta rig 2: 256).
+# A Zorro III board comes only in power-of-two sizes: 248 MB (N-8) left AmigaOS with no Zorro III RAM at all
+# (Selecta rig 2, 2026-10-29), so the board is N-8 rounded up to the next power of two (256 -> 256 MB, 264 in total).
 RAM_MB = int(sys.argv[sys.argv.index("--ram") + 1]) if "--ram" in sys.argv else 0
+Z3_MB = 1 << (RAM_MB - 9).bit_length() if RAM_MB > 8 else 0
 # --mmu: the 68060 with its MMU emulated (FS-UAE "68060", no JIT, slower): what MuForce needs
 # (`rig.py muforce`). Only on the 060 machines; the next start without it is back on 68060-NOMMU.
 # --nofpu: a machine with no FPU (the soft-float ixemul.library, (database "fpu") NOFPU). The 060 machines
@@ -995,7 +998,7 @@ def setup():
         "fast_memory = 8192",
         # 64 MB more, as an accelerator's: GNU screen with four panes (tcsh in
         # each) left 663 KB of the 8 MB (owner 2026-09-30: "you can add more ram")
-        "zorro_iii_memory = %d" % ((RAM_MB - 8) * 1024 if RAM_MB > 8 and M060 else 1048576 if MAX else 131072 if M060 else 65536),
+        "zorro_iii_memory = %d" % (Z3_MB * 1024 if Z3_MB and M060 else 1048576 if MAX else 131072 if M060 else 65536),
         "bsdsocket_library = 1", "graphics_card = uaegfx",
         # the RTG card's pointer as a sprite: Picasso96's software pointer is
         # hidden and drawn again around every blit, so it flickered with the
