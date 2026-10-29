@@ -11,6 +11,7 @@
 
 #define GT_NAME 40
 #define GT_MAX 64
+#define GT_TITLE 64
 #define GT_SHIPPED_DIR "UP-Term:Amarchy/Themes"
 #define GT_USER_DIR "ENVARC:Amarchy/themes"
 #define GT_EXT ".theme"
@@ -21,6 +22,13 @@ typedef struct gtheme {
     uc_u32 bg, fg, dim, accent; /* 0xRRGGBB: background, foreground, dark_foreground, accent */
     uc_u32 ok, fail;            /* the job view's Done and Failed footers: green and red; no key = accent, foreground */
     int light;                  /* mode = "light" */
+    /* desktop theme (plan 2026-10-29-amarchy-p1a-native-theme.md, R1.5): the keys of the file that tint the Workbench.
+     * A missing key is derived (OD5): dark = bg; darker = dark_background, else bg at 80 % brightness; lighter = bg
+     * moved a tenth toward fg; selection = lighter; muted = dim. */
+    uc_u32 dark_bg, darker_bg, lighter_bg, selection, muted;
+    char backdrop[GT_NAME]; /* backdrop= : the drawer name of the theme's backdrops, "" = the theme name */
+    char font[GT_NAME];     /* font= : a font file name such as helvetica.font, "" = keep the user's font */
+    char wbtitle[GT_TITLE]; /* wbtitle= : a Workbench title format; carried, the title stays stock (OD11) */
 } gtheme;
 
 /* The compiled-in theme (tokyo-night, the default): a bare install without the data drawer still draws. */
@@ -28,6 +36,9 @@ void gt_builtin(gtheme *out);
 
 /* Parse the text of a colors.toml (len bytes) into out; a missing or unreadable key keeps the built-in value. */
 void gt_parse(const char *buf, long len, gtheme *out);
+
+/* Every channel of an 0xRRGGBB scaled to pct percent (0..100); the one brightness scaler of the desktop theme. */
+uc_u32 gt_scale(uc_u32 rgb, int pct);
 
 /* name -> the file path in a drawer ("dir/name.theme"; a dir ending in ':' or '/' gets no extra slash). 0 when too long. */
 int gt_path(const char *dir, const char *name, char *out, int cap);

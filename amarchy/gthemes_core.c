@@ -20,6 +20,38 @@ static int cmp_ci(const char *a, const char *b)
     return lower((unsigned char)*a) - lower((unsigned char)*b);
 }
 
+uc_u32 gt_scale(uc_u32 rgb, int pct)
+{
+    uc_u32 r = ((rgb >> 16) & 0xff) * (uc_u32)pct / 100, g = ((rgb >> 8) & 0xff) * (uc_u32)pct / 100,
+           b = (rgb & 0xff) * (uc_u32)pct / 100;
+    return (r << 16) | (g << 8) | b;
+}
+
+/* a moved a tenth of the way toward b, per channel */
+static uc_u32 mix_tenth(uc_u32 a, uc_u32 b)
+{
+    uc_u32 out = 0;
+    int sh;
+    for (sh = 16; sh >= 0; sh -= 8) {
+        long x = (long)((a >> sh) & 0xff), y = (long)((b >> sh) & 0xff);
+        out |= (uc_u32)(x + (y - x) / 10) << sh;
+    }
+    return out;
+}
+
+/* a quoted or bare text value of the file into dst (cap bytes), "" when the key is absent */
+static void str_key(char *dst, int cap, const char *key)
+{
+    const char *v = upconf_str(&g_conf, "default", key, "");
+    int n = 0;
+    while (*v == '"' || *v == ' ')
+        v++;
+    while (v[n] && v[n] != '"' && v[n] != '\r' && v[n] != '\n' && n < cap - 1)
+        n++;
+    memcpy(dst, v, (size_t)n);
+    dst[n] = 0;
+}
+
 /* tokyo-night: background #1a1b26, foreground #a9b1d6, dark_foreground #565f89, accent #7aa2f7 (its colors.toml) */
 void gt_builtin(gtheme *out)
 {
@@ -31,6 +63,11 @@ void gt_builtin(gtheme *out)
     out->accent = 0x7aa2f7UL;
     out->ok = 0x9ece6aUL;   /* green */
     out->fail = 0xf7768eUL; /* red */
+    out->dark_bg = 0x13141cUL;
+    out->darker_bg = 0x0e0e14UL;
+    out->lighter_bg = 0x24283bUL;
+    out->selection = 0x292e42UL;
+    out->muted = 0x414868UL;
 }
 
 void gt_parse(const char *buf, long len, gtheme *out)
@@ -52,6 +89,16 @@ void gt_parse(const char *buf, long len, gtheme *out)
     while (*m == '"' || *m == ' ')
         m++;
     out->light = !strncmp(m, "light", 5);
+    out->dark_bg = upconf_rgb(&g_conf, "default", "dark_background", out->bg);
+    /* darker: its own key, else dark_background when the file has one, else the background at 80 % */
+    out->darker_bg = upconf_rgb(&g_conf, "default", "darker_background",
+                                upconf_str(&g_conf, "default", "dark_background", 0) ? out->dark_bg : gt_scale(out->bg, 80));
+    out->lighter_bg = upconf_rgb(&g_conf, "default", "lighter_background", mix_tenth(out->bg, out->fg));
+    out->selection = upconf_rgb(&g_conf, "default", "selection", out->lighter_bg);
+    out->muted = upconf_rgb(&g_conf, "default", "muted", out->dim);
+    str_key(out->backdrop, GT_NAME, "backdrop");
+    str_key(out->font, GT_NAME, "font");
+    str_key(out->wbtitle, GT_TITLE, "wbtitle");
 }
 
 int gt_path(const char *dir, const char *name, char *out, int cap)

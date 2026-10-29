@@ -489,8 +489,51 @@ static void test_gthemes_ink_direct(void)
         CHECK_INT(out[r], grey[r]);
 }
 
+/* R1.5: the desktop keys parse, and a missing key is derived (OD5) */
+static void test_gthemes_desk_keys(void)
+{
+    static const char full[] = "background = \"#101010\"\nforeground = \"#e0e0e0\"\ndark_background = \"#0c0c0c\"\n"
+                               "darker_background = \"#080808\"\nlighter_background = \"#202020\"\n"
+                               "selection = \"#303030\"\nmuted = \"#404040\"\nbackdrop = \"Forest\"\n"
+                               "font = \"helvetica.font\"\nwbtitle = \"%n free\"\n";
+    static const char bare[] = "background = \"#100000\"\nforeground = \"#f0f0f0\"\ndark_foreground = \"#808080\"\n";
+    gtheme t;
+    int i;
+    gt_builtin(&t);
+    gt_parse(full, (long)sizeof full - 1, &t);
+    CHECK_INT(t.dark_bg, 0x0c0c0c);
+    CHECK_INT(t.darker_bg, 0x080808);
+    CHECK_INT(t.lighter_bg, 0x202020);
+    CHECK_INT(t.selection, 0x303030);
+    CHECK_INT(t.muted, 0x404040);
+    CHECK_STR(t.backdrop, "Forest");
+    CHECK_STR(t.font, "helvetica.font");
+    CHECK_STR(t.wbtitle, "%n free");
+    /* derived: darker = bg at 80 %, lighter = a tenth toward fg, selection = lighter, muted = dim */
+    gt_parse(bare, (long)sizeof bare - 1, &t);
+    CHECK_INT(t.darker_bg, 0x0c0000);
+    CHECK_INT(t.dark_bg, 0x100000);
+    CHECK_INT(t.lighter_bg, 0x261818);
+    CHECK_INT(t.selection, t.lighter_bg);
+    CHECK_INT(t.muted, 0x808080);
+    CHECK_STR(t.backdrop, "");
+    CHECK_STR(t.font, "");
+    load_shipped("nord", &t);
+    CHECK_INT(t.selection, 0x434c5e);
+    CHECK_INT(t.muted, 0x4c566a);
+    CHECK_INT(t.darker_bg, 0x191c23);
+    /* every shipped theme carries the keys; none is left at zero by the parser */
+    for (i = 0; i < (int)(sizeof shipped / sizeof shipped[0]); i++) {
+        load_shipped(shipped[i].name, &t);
+        CHECK(t.darker_bg != t.lighter_bg);
+        CHECK(t.selection != 0 || t.bg == 0);
+        CHECK(t.muted != 0 || t.dim == 0);
+    }
+}
+
 void suite_gthemes(void)
 {
+    test_gthemes_desk_keys();
     test_gthemes_ink_direct();
     test_gthemes_save_text();
     test_gthemes_select_name();
