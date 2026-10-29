@@ -129,6 +129,13 @@ the key files again), RUN
 (do row n of the table), SHOW (the key viewer) and QUIT.
 .Dl rx \(dqaddress AMARCHY RELOAD\(dq
 .Pp
+The command BAR takes STATUS, ON, OFF and TOGGLE and answers
+.Ql bar=N draws=N panels=N launches=N raises=N ticks=N ;
+OFF closes the status bar and its timer (the one second tick keeps running), ON opens it again.
+STATUS answers the counters of the rest
+.Ql ( ticks=N
+ends it).
+.Pp
 The action
 .Cm cap:screen ,
 .Cm cap:window

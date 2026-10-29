@@ -33,6 +33,7 @@
 #include "../tty/qmark.h"
 #include "menu_open.h"
 #include "bar.h"
+#include "status_core.h"
 #include "shot.h"
 #include "keymap_default.inc"
 
@@ -144,36 +145,57 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N shots=N notes=N ticks=N (about 135 bytes; REXX_HOST_OUT is 160) */
-static void status_text(char *out, long cap)
+/* Signals of the bar's window and timer, read again whenever BAR ON or OFF changes them (0 while the bar is closed). */
+static ULONG g_bs, g_bts;
+
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N snaps=N bar=N wbpens=N wbrefused=N shots=N notes=N ticks=N,
+ * the keys of status_core.c (a test holds them under REXX_HOST_OUT); BAR STATUS answers bar draws panels launches raises ticks. */
+static void status_text(char *out, long cap, int bar_status)
 {
-    char num[12];
-    static const char *const key[16] = { "hits=", " rows=", " enabled=", " active=", " wins=", " snaps=", " bar=", " draws=", " panels=",
-                                        " launches=", " raises=", " wbpens=", " wbrefused=", " shots=", " notes=", " ticks=" };
-    long val[16];
-    int i;
-    val[0] = g_hits;
-    val[1] = cx_nrows();
-    val[2] = cx_enabled();
-    val[3] = upactive_count();
-    val[4] = win_count();
-    val[5] = win_snap_count();
-    val[6] = bar_is_open();
-    val[7] = bar_draws();
-    val[8] = bar_panels();
-    val[9] = bar_launches();
-    val[10] = bar_raises();
-    val[11] = (long)gt_dos_wb_pens;
-    val[12] = (long)gt_dos_wb_refused;
-    val[13] = shot_count();
-    val[14] = note_posted();
-    val[15] = tick_count();
-    out[0] = 0;
-    for (i = 0; i < 16; i++) {
-        cl_cat(out, key[i], cap);
-        cl_ltoa(val[i], num);
-        cl_cat(out, num, cap);
+    long val[STATUS_NVALS];
+    if (bar_status) {
+        val[0] = bar_is_open();
+        val[1] = bar_draws();
+        val[2] = bar_panels();
+        val[3] = bar_launches();
+        val[4] = bar_raises();
+        val[5] = tick_count();
+    } else {
+        val[0] = g_hits;
+        val[1] = cx_nrows();
+        val[2] = cx_enabled();
+        val[3] = upactive_count();
+        val[4] = win_count();
+        val[5] = win_snap_count();
+        val[6] = bar_is_open();
+        val[7] = (long)gt_dos_wb_pens;
+        val[8] = (long)gt_dos_wb_refused;
+        val[9] = shot_count();
+        val[10] = note_posted();
+        val[11] = tick_count();
     }
+    status_line(bar_status, val, out, cap);
+}
+
+/* BAR STATUS | ON | OFF | TOGGLE. OFF closes the window and its raise timer (the tick keeps running), ON opens it again;
+ * rc 10 for another word, 5 when ON finds no screen. */
+static long bar_port(const char *args, char *out)
+{
+    int v = bar_verb(args);
+    if (v == BARV_BAD)
+        return 10;
+    if (v == BARV_TOGGLE)
+        v = bar_is_open() ? BARV_OFF : BARV_ON;
+    if (v == BARV_OFF)
+        bar_close();
+    else if (v == BARV_ON)
+        bar_open(g_dir);
+    g_bs = bar_sigmask();
+    g_bts = bar_timer_sigmask();
+    if (v == BARV_ON && !bar_is_open())
+        return 5;
+    status_text(out, REXX_HOST_OUT, 1);
+    return 0;
 }
 
 /* The one capture entry: the ARexx CAP verb and the cap: hotkey rows both come here. screen | window | region; 0 done,
@@ -252,7 +274,9 @@ static long rexx_cmd(void *ud, const char *cmd, char *out)
     long rc = 0;
     (void)ud;
     if (starts(cmd, "STATUS"))
-        status_text(out, REXX_HOST_OUT);
+        status_text(out, REXX_HOST_OUT, 0);
+    else if (starts(cmd, "BAR") && (cmd[3] == ' ' || cmd[3] == '\t'))
+        rc = bar_port(cmd + 3, out);
     else if (starts(cmd, "RELOAD"))
         reload();
     else if (starts(cmd, "RUN"))
@@ -328,7 +352,7 @@ struct IntuitionBase *IntuitionBase;
 
 int main(void)
 {
-    ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, bs, bts, tks;
+    ULONG sigs, cxs, rxs, nos, nts, lps, wrs, cws, tks;
     int row, ev;
     struct RDArgs *rda;
     LONG args[1] = { 0 };
@@ -380,10 +404,10 @@ int main(void)
     tick_open();                                /* the 1 s tick, before the bar and running without it */
     tks = tick_sigmask();
     bar_open(g_dir);                            /* the status bar; 0 = no screen, the commodity runs without it */
-    bs = bar_sigmask();
-    bts = bar_timer_sigmask();
+    g_bs = bar_sigmask();
+    g_bts = bar_timer_sigmask();
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | bs | bts | tks | shot_region_sigmask() | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nos | nts | lps | wrs | cws | g_bs | g_bts | tks | shot_region_sigmask() | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cxs)
@@ -399,9 +423,9 @@ int main(void)
             }
         if (sigs & shot_region_sigmask())
             shot_region_serve();
-        if (sigs & bs)
+        if (sigs & g_bs)
             bar_serve();
-        if (sigs & bts)
+        if (sigs & g_bts)
             bar_timer_serve(sigs);
         if (sigs & tks)
             tick_serve(sigs);
