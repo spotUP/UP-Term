@@ -63,3 +63,66 @@ void ms_server_names(int text, const char **port, const char **task)
     *port = text ? MS_PORT : GS_PORT;
     *task = text ? MS_TASK_NAME : GS_TASK_NAME;
 }
+
+static int put_num(char *out, int cap, int pos, int v)
+{
+    char t[12];
+    int n = 0, neg = v < 0;
+    unsigned u = neg ? 0u - (unsigned)v : (unsigned)v;
+    do {
+        t[n++] = (char)('0' + u % 10);
+        u /= 10;
+    } while (u && n < 11);
+    if (neg && pos < cap - 1)
+        out[pos++] = '-';
+    while (n && pos < cap - 1)
+        out[pos++] = t[--n];
+    return pos;
+}
+
+int ms_cold_line(char *out, int cap, const char *line, const ms_req *r)
+{
+    int pos = 0;
+    const char *at = " at ";
+    if (cap < 1)
+        return 0;
+    while (*line && pos < cap - 1)
+        out[pos++] = *line++;
+    if (r && r->anchored) {
+        while (*at && pos < cap - 1)
+            out[pos++] = *at++;
+        pos = put_num(out, cap, pos, r->ax);
+        if (pos < cap - 1)
+            out[pos++] = ' ';
+        pos = put_num(out, cap, pos, r->ay);
+    }
+    out[pos] = 0;
+    return !*line;
+}
+
+static int parse_num(const char *s, int *v)
+{
+    int neg = 0, n = 0, x = 0;
+    if (*s == '-') {
+        neg = 1;
+        s++;
+    }
+    for (; *s >= '0' && *s <= '9'; s++, n++)
+        x = x * 10 + (*s - '0');
+    if (!n || *s)
+        return 0;
+    *v = neg ? -x : x;
+    return 1;
+}
+
+int ms_anchor_args(int argc, char **argv, int from, int *ax, int *ay)
+{
+    int x, y;
+    if (from + 2 >= argc || argv[from][0] != 'a' || argv[from][1] != 't' || argv[from][2])
+        return 0;
+    if (!parse_num(argv[from + 1], &x) || !parse_num(argv[from + 2], &y))
+        return 0;
+    *ax = x;
+    *ay = y;
+    return 1;
+}

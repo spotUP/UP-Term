@@ -105,11 +105,13 @@ static struct {
  * in a terminal window, the drawn menu opens its own) */
 static void srv_spawn_cold(void *user, const ms_req *r)
 {
-    (void)r;
     if (user == (void *)&g_srv[1])
         act_in_window(g_open.line, g_open.cols, g_open.rows);
-    else
-        act_run(g_open.line);
+    else {
+        char line[sizeof g_open.line + 32];     /* the anchor reaches the cold drawn menu as " at AX AY" */
+        ms_cold_line(line, sizeof line, g_open.line, r);
+        act_run(line);
+    }
 }
 
 /* `<program> serve`, async, no console. System() names the process "Background CLI" whatever NP_Name says, so

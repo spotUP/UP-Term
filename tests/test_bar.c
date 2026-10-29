@@ -129,6 +129,22 @@ static void test_panel_anchor_clamped(void)
     CHECK_INT(g.x + g.w, 640);
 }
 
+/* A right click on the Agents segment launches whatever window is active: the press is read from the input stream with
+ * the pointer's screen position, so only the rectangle and the segment decide (bar_press_act). */
+static void test_press_over_agents_launches(void)
+{
+    bar b;
+    bar_init(&b, 640, 4, 2);
+    bar_add(&b, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", 48);
+    bar_layout(&b, 640);
+    CHECK_INT(bar_press_act(&b, 630, 250, 246, 10, BAR_BTN_RIGHT), BAR_ACT_LAUNCH_AGENT);
+    CHECK_INT(bar_press_act(&b, 630, 250, 246, 10, BAR_BTN_LEFT), BAR_ACT_PANEL);
+    CHECK_INT(bar_press_act(&b, 630, 245, 246, 10, BAR_BTN_RIGHT), BAR_ACT_NONE);   /* above the bar: the window under it */
+    CHECK_INT(bar_press_act(&b, 630, 256, 246, 10, BAR_BTN_RIGHT), BAR_ACT_NONE);   /* below it */
+    CHECK_INT(bar_press_act(&b, 100, 250, 246, 10, BAR_BTN_RIGHT), BAR_ACT_NONE);   /* in the bar, off the segment */
+    CHECK_INT(bar_press_act(&b, 640, 250, 246, 10, BAR_BTN_RIGHT), BAR_ACT_NONE);   /* outside the width */
+}
+
 void suite_bar(void)
 {
     test_layout_groups();
@@ -137,4 +153,5 @@ void suite_bar(void)
     test_dirty_only_changed();
     test_panel_anchor();
     test_panel_anchor_clamped();
+    test_press_over_agents_launches();
 }

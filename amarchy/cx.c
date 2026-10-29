@@ -8,6 +8,7 @@
 #include "cx.h"
 #include "cxdesc.h"
 #include "../handler/upactive.h"
+#include "bar.h"
 
 struct Library *CxBase;
 
@@ -49,6 +50,25 @@ static void gate(__reg("a0") CxMsg *msg, __reg("a1") CxObj *co)
     DivertCxMsg(msg, g_pass, g_pass);
 }
 
+/* The bar's right click. A window hears a press only when it is the active one, so the bar's click was lost after a
+ * panel, Escape or a launch. The press is an input event: this second filter (right button down) takes it when the
+ * pointer is over the bar's agents segment (bar_takes_right_press), queues the marker CXQ_BAR for the sender and the
+ * swallow behind it, and lets every other press go on to the active window. The active window keeps the focus. */
+#define CXQ_BAR 255
+static void rgate(__reg("a0") CxMsg *msg, __reg("a1") CxObj *co)
+{
+    (void)co;
+    if (bar_takes_right_press()) {
+        unsigned char nt = (unsigned char)((g_qt + 1) % CXQ);
+        if (nt != g_qh) {
+            g_q[g_qt] = CXQ_BAR;
+            g_qt = nt;
+            return;
+        }
+    }
+    DivertCxMsg(msg, g_pass, g_pass);
+}
+
 static void nop(__reg("a0") CxMsg *msg, __reg("a1") CxObj *co) { (void)msg; (void)co; }
 
 int cx_open(int priority)
@@ -56,7 +76,7 @@ int cx_open(int priority)
     struct NewBroker nb;
     LONG err = 0;
     IX ix;
-    CxObj *f, *c, *s;
+    CxObj *f, *c, *s, *rf, *rc, *rs;
     if (!(CxBase = OpenLibrary((STRPTR)"commodities.library", 37)))
         return 0;
     if (!(g_port = CreateMsgPort()))
@@ -94,6 +114,26 @@ int cx_open(int priority)
     AttachCxObj(f, s);
     AttachCxObj(f, CxTranslate(0));
     AttachCxObj(g_broker, f);
+    rf = CxFilter((STRPTR) "rawmouse");
+    rc = CxCustom((APTR)rgate, 0);
+    rs = CxSender(g_port, 0);
+    if (!rf || !rc || !rs || CxObjError(rf)) {
+        DeleteCxObj(rc); DeleteCxObj(rs); DeleteCxObj(rf);
+    } else {
+        IX rx;
+        rx.ix_Version = IX_VERSION;
+        rx.ix_Class = IECLASS_RAWMOUSE;
+        rx.ix_Code = IECODE_RBUTTON;
+        rx.ix_CodeMask = 0xFFFF;
+        rx.ix_Qualifier = 0;
+        rx.ix_QualMask = 0;
+        rx.ix_QualSame = 0;
+        SetFilterIX(rf, &rx);
+        AttachCxObj(rf, rc);
+        AttachCxObj(rf, rs);
+        AttachCxObj(rf, CxTranslate(0));
+        AttachCxObj(g_broker, rf);
+    }
     ActivateCxObj(g_broker, 1);
     return 1;
 }
@@ -153,6 +193,8 @@ int cx_next(int *row)
                 continue;
             *row = g_q[g_qh];
             g_qh = (unsigned char)((g_qh + 1) % CXQ);
+            if (*row == CXQ_BAR)
+                return CXE_BAR_RIGHT;
             return CXE_KEY;
         }
         if (type == CXM_COMMAND) {

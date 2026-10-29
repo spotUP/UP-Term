@@ -344,6 +344,8 @@ int main(void)
             while ((ev = cx_next(&row)) != CXE_NONE) {
                 if (ev == CXE_KEY)
                     do_row(row);
+                else if (ev == CXE_BAR_RIGHT)
+                    bar_right_click();
                 else if (ev == CXE_UNIQUE)
                     reload();
                 else if (ev == CXE_KILL)

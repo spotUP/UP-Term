@@ -90,6 +90,32 @@ static void test_anchor_reaches_send(void)
     CHECK_STR(g_sent.node, "agents");
 }
 
+/* The first open of the bar's panel (no server yet) runs the drawn menu's own process: its command line carries the
+ * anchor, so the panel hangs above the bar instead of opening centred; amarchy-gui parses it back. */
+static void test_cold_line_carries_anchor(void)
+{
+    char out[96], *av[] = { "amarchy-gui", "menu", "agents", "at", "640", "246" };
+    ms_req r;
+    int ax = 0, ay = 0;
+    r.kind = 0;
+    r.node = "agents";
+    r.anchored = 1;
+    r.ax = 640;
+    r.ay = 246;
+    CHECK_INT(ms_cold_line(out, sizeof out, "\"VTC:amarchy-gui\" menu agents", &r), 1);
+    CHECK_STR(out, "\"VTC:amarchy-gui\" menu agents at 640 246");
+    r.anchored = 0;
+    ms_cold_line(out, sizeof out, "\"VTC:amarchy-gui\" menu root", &r);
+    CHECK_STR(out, "\"VTC:amarchy-gui\" menu root");
+    CHECK_INT(ms_cold_line(out, 8, "\"VTC:amarchy-gui\" menu root", &r), 0);   /* too small: cut, reported */
+    CHECK_INT(ms_anchor_args(6, av, 3, &ax, &ay), 1);
+    CHECK_INT(ax, 640);
+    CHECK_INT(ay, 246);
+    CHECK_INT(ms_anchor_args(3, av, 3, &ax, &ay), 0);
+    av[4] = "x6";
+    CHECK_INT(ms_anchor_args(6, av, 3, &ax, &ay), 0);
+}
+
 static void test_no_port(void)
 {
     fake f = { 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0 };
@@ -205,6 +231,7 @@ void suite_menusrv(void)
 {
     test_live_server();
     test_anchor_reaches_send();
+    test_cold_line_carries_anchor();
     test_no_port();
     test_stale_port();
     test_unreplied();

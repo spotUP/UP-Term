@@ -64,7 +64,7 @@
 long __stack = GUI_STACK;
 const char amarchy_gui_stack_cookie[] = "$STACK: " GUI_STR(GUI_STACK);
 
-#define USAGE "usage: amarchy-gui menu [node] | viewer | serve\n"
+#define USAGE "usage: amarchy-gui menu [node [at AX AY]] | viewer | serve\n"
 #define MAX_LINES 200
 #define EDIT_MAX 80
 #define PUT_MAX 384          /* the longest label put() cuts */
@@ -1717,8 +1717,12 @@ int main(int argc, char **argv)
         rc = 20;
     } else if (!strcmp(argv[1], "serve"))
         rc = serve();
-    else
-        rc = gui_open(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "", 0, 0, 0);
+    else {
+        int ax = 0, ay = 0, anchored;
+        /* `menu <node> at AX AY`: the cold path of an anchored open (the bar's panel) */
+        anchored = ms_anchor_args(argc, argv, 3, &ax, &ay);
+        rc = gui_open(!strcmp(argv[1], "viewer"), argc > 2 && strcmp(argv[2], "root") ? argv[2] : "", anchored, ax, ay);
+    }
     ix_pkg_free(&ixs);
     if (GfxBase)
         CloseLibrary((struct Library *)GfxBase);

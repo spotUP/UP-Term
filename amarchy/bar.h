@@ -14,6 +14,11 @@ unsigned long bar_sigmask(void);
 /* Handles the window's messages: clicks, a refresh. */
 void bar_serve(void);
 
+/* The commodity's input filter calls this (the input task) for a right button press: 1 when the pointer is over a
+ * segment the right button acts on, whatever window is active. bar_right_click then (the main task) does it. */
+int bar_takes_right_press(void);
+void bar_right_click(void);
+
 /* Counters for the STATUS reply: segments drawn, panels opened, agents launched; bar_is_open is 1 or 0. */
 long bar_draws(void);
 long bar_panels(void);

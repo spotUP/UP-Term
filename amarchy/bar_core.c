@@ -106,6 +106,13 @@ int bar_click(const bar *b, int x, int button, int *id)
     return BAR_ACT_NONE;
 }
 
+int bar_press_act(const bar *b, int px, int py, int top, int h, int button)
+{
+    if (py < top || py >= top + h || px < 0 || px >= b->width)
+        return BAR_ACT_NONE;
+    return bar_click(b, px, button, 0);
+}
+
 int bar_take_dirty(bar *b, int from)
 {
     int i;

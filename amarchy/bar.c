@@ -15,9 +15,11 @@
 #include "bar.h"
 #include "bar_core.h"
 #include "act.h"
+#include "cxdesc.h"
 #include "gthemes_dos.h"
 #include "menu_theme.h"
 #include "../config/keymap.h"
+#include "../config/upconf.h"
 #include "../handler/frontscr.h"
 #include "../handler/upreq.h"
 #include "../render/pens_amiga.h"
@@ -168,10 +170,14 @@ unsigned long bar_sigmask(void)
 
 static void act_panel(void)
 {
-    int ax, ay;
+    char line[KM_ID + 160];
+    int text = 0, ax, ay;
     bar_panel_anchor(g_scr->Width, g_win->TopEdge, &ax, &ay);
     g_panels++;
-    act_menu_open_at(g_dir, 0, KA_MENU, BAR_AGENT_NODE, "", BAR_PANEL_COLS, BAR_PANEL_ROWS, ax, ay);
+    /* the cold path runs this line, so it names the program (an empty line started nothing) */
+    if (!cx_menu_cmd(line, sizeof line, g_dir, KA_MENU, BAR_AGENT_NODE, UC_MENU_GRAPHICAL, &text))
+        line[0] = 0;
+    act_menu_open_at(g_dir, 0, KA_MENU, BAR_AGENT_NODE, line, BAR_PANEL_COLS, BAR_PANEL_ROWS, ax, ay);
 }
 
 /* the same request super+l's MENU_AGENT makes: the handler opens a tab running the preferred agent */
@@ -208,6 +214,21 @@ void bar_serve(void)
     }
     paint_dirty();
 }
+
+/* Runs in the input task: reads the front screen and the pointer, no calls into Intuition. */
+int bar_takes_right_press(void)
+{
+    struct Screen *front;
+    if (!g_win || !g_scr || !IntuitionBase)
+        return 0;
+    front = IntuitionBase->FirstScreen;
+    if (front != g_scr)
+        return 0;
+    return bar_press_act(&g_bar, g_scr->MouseX, g_scr->MouseY, g_win->TopEdge, g_win->Height, BAR_BTN_RIGHT) ==
+           BAR_ACT_LAUNCH_AGENT;
+}
+
+void bar_right_click(void) { act_launch(); }
 
 long bar_draws(void) { return g_draws; }
 long bar_panels(void) { return g_panels; }

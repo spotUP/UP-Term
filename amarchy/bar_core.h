@@ -56,6 +56,10 @@ void bar_layout(bar *b, int width);
 int bar_hit(const bar *b, int x);
 /* What a click at x does: BAR_ACT_*, with the segment's id in *id (0 when none). */
 int bar_click(const bar *b, int x, int button, int *id);
+/* A button press seen on the input stream, not through the window (the window only hears the active window's presses):
+ * the pointer at (px, py) in screen pixels, the bar's rectangle at y = top, height h, x from 0 over the bar's width.
+ * BAR_ACT_* of the segment under the pointer when the pointer is inside the rectangle, else BAR_ACT_NONE. */
+int bar_press_act(const bar *b, int px, int py, int top, int h, int button);
 /* Index of the next dirty segment at or after `from`, clearing its flag; -1 when none. */
 int bar_take_dirty(bar *b, int from);
 
