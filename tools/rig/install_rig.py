@@ -1121,6 +1121,9 @@ class Before:
         self.startup = run('Type S:User-Startup')[1]
         self.sseq = run('Type S:Startup-Sequence')[1]
         self.libs = lib_state()
+        # the master image (nyhd2.hdf) has an empty DH0:UP-Term from 2026-10-11 that no Install made: Uninstall must
+        # give back what was there, not take that drawer away too
+        self.sys_upterm = run('List SYS:UP-Term ALL')
         run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')
         if run('Assign >NIL: GG: EXISTS')[0] == 0:
             run('Assign GG:')   # Install's own GG: set-up is what gets tested; Fixtures puts the rig's back
@@ -1177,7 +1180,9 @@ def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=()):
         check_startup_after_uninstall(ck, before.startup, run('Type S:User-Startup')[1], leaves)
     ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'after base Uninstall: S:Startup-Sequence as it was')
     ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after base Uninstall: no UP-Term: assign')
-    ck(run('List >NIL: SYS:UP-Term')[0] != 0, 'after base Uninstall: SYS:UP-Term is gone', run('List SYS:UP-Term ALL')[1][:400])
+    now = run('List SYS:UP-Term ALL')
+    ck(now == before.sys_upterm, 'after base Uninstall: SYS:UP-Term as it was before Install',
+       'now rc %s %s, before rc %s %s' % (now[0], now[1][:300], before.sys_upterm[0], before.sys_upterm[1][:300]))
     st = lib_state()
     ck(st.get('ixemul.library') == before.libs.get('ixemul.library') and 'ixemul.library.orig' not in st,
        'after base Uninstall: the original ixemul back, no .orig', 'now %s, before %s' % (st, before.libs))
