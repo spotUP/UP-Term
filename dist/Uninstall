@@ -187,6 +187,23 @@ If NOT WARN
 EndIf
 UnSet >NIL: upw
 Delete >NIL: ENV:upw QUIET
+; Ctrl-C is only a signal: Amarchy ends a moment later, and until then its process holds UP-Term:bin (its
+; home drawer), so the Delete ALL below left an empty UP-Term/bin behind (rig 9 fresh-all, 2026-10-29).
+; Wait until it is gone, at most 10 s (one dot per second: no Eval needed).
+Set upwait ""
+Lab amarchygone
+Status >NIL: COM UP-Term:bin/Amarchy
+If WARN
+  Status >NIL: COM Amarchy
+EndIf
+If NOT WARN
+  If NOT "$upwait" EQ ".........."
+    Wait 1
+    Set upwait "$upwait."
+    Skip amarchygone BACK
+  EndIf
+EndIf
+UnSet upwait
 ; Your data lives in UP-Term:var (asked above): on No everything else goes
 ; and var stays where it is.
 If "$upkeepvar" EQ "YES"

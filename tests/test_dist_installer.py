@@ -577,6 +577,20 @@ class WasabiDaemonOption(unittest.TestCase):
         self.assertLess(stop, un.index("Delete >NIL: ENVARC:up-term ALL QUIET"))
         self.assertIn("Delete >NIL: C:wasabid QUIET", un[un.index("If EXISTS ENVARC:up-term/wasabid"):][:300])
 
+    def test_uninstall_waits_for_amarchy_to_end_before_the_drawer_goes(self):
+        # Break C only signals Amarchy; its process held UP-Term:bin while Delete ALL ran, and an
+        # empty UP-Term/bin stayed behind (rig 9 fresh-all check 38, 2026-10-29)
+        un = mi.build(ROOT / "dist/Uninstall", "base")
+        brk = un.index("Status >ENV:upw COM Amarchy")
+        lab = un.index("Lab amarchygone", brk)
+        loop = un[lab:un.index("UnSet upwait", lab)]
+        self.assertIn("Status >NIL: COM UP-Term:bin/Amarchy", loop)
+        self.assertIn("Wait 1", loop)
+        self.assertIn("Skip amarchygone BACK", loop)
+        self.assertIn('If NOT "$upwait" EQ ".........."', loop)   # bounded: 10 s at most
+        self.assertLess(lab, un.index('Delete >NIL: "$updest" ALL QUIET'))
+        self.assertLess(lab, un.index('Delete >NIL: "$updest/~(var|var.info)" ALL QUIET'))
+
 
 class AmigaDosVariableNames(unittest.TestCase):
     """AmigaDOS ends a $name at the first character that is not a letter or a
