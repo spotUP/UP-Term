@@ -132,7 +132,7 @@ static int marker_text(bar *b, int hidden_n)
 }
 
 /* Drop order of the right group when the bar is too narrow: rank 0 goes first. Every other id (System, the clock,
- * the screens) never drops. */
+ * the screens) never drops; the first screen is hidden only when nothing else is left to drop (bar_layout). */
 static int drop_rank(int id)
 {
     switch (id) {
@@ -140,10 +140,10 @@ static int drop_rank(int id)
     case BAR_SEG_CPU: return 1;
     case BAR_SEG_RAM: return 2;
     case BAR_SEG_AGENTS: return 3;
-    default: return -1;
+    default: return BAR_IS_TRAY(id) ? 4 : -1;     /* the bar.conf tray segments go after Agents, all at once */
     }
 }
-#define BAR_DROP_RANKS 4
+#define BAR_DROP_RANKS 5
 
 /* The right group from the right edge with the first `ndrop` ranks dropped (placed when `commit`, else measured);
  * returns the x its leftmost shown segment starts at, minus the gap. */
@@ -217,10 +217,11 @@ void bar_layout(bar *b, int width)
     left_end = place_left(b, k, 1);
     /* still too wide with a single screen entry (Clock + System + that entry do not fit): clip the left group to
      * the room the centre and right groups leave, never into them. No room at all (limit <= 0: the centre and the
-     * undroppable right segments alone fill the bar) is not a layout this can fix; the group stays as placed. */
+     * undroppable right segments alone fill the bar): the last to give way is the first screen entry, hidden, so no
+     * two shown segments ever intersect (the plan's "first screen never drops" holds at every width with room). */
     {
         int limit = c_n ? r - c_w - b->gap : r;
-        if (left_end > limit && limit > 0) {
+        if (left_end > limit) {
             for (i = 0; i < b->n; i++) {
                 bar_seg *s = &b->seg[i];
                 if (s->side != BAR_LEFT || s->hidden || s->x + s->w <= limit)
@@ -232,7 +233,7 @@ void bar_layout(bar *b, int width)
                     s->hidden = 1;
                 }
             }
-            left_end = limit;
+            left_end = limit > 0 ? limit : 0;
         }
     }
     if (c_n) {

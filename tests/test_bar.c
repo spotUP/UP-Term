@@ -122,6 +122,41 @@ static void test_very_narrow_bar_clips_first_screen_without_overlap(void)
     CHECK_INT(b.seg[scr].w > 0, 1);
 }
 
+/* Invariant: no two shown segment rects intersect at any width at which the centre group and the undroppable right
+ * segments (System) fit side by side. Giving way, in order: right segments by rank (Network, CPU, RAM, Agents, then
+ * the bar.conf tray segments), the
+ * screens list down to one entry (+N), that entry clipped to the room left, and last that entry hidden when the
+ * centre and right groups leave no room at all (the plan says the first screen never drops, but an overlap is worse;
+ * the first screen stays at every width that leaves it any room). Sweep: every width from 320 to the minimum. */
+static void test_bar_never_overlaps_across_width_sweep(void)
+{
+    bar b;
+    int scr, clk, sys, w, minw, room_seen = 0, hidden_seen = 0;
+    bar_init(&b, 320, 4, 2);
+    scr = bar_add(&b, BAR_SEG_SCREEN0, BAR_LEFT, "Workbench with a very long screen title", 200);
+    bar_add(&b, BAR_SEG_MORE, BAR_LEFT, "", 0);
+    clk = bar_add(&b, BAR_SEG_CLOCK, BAR_CENTRE, "Thu 14:05", 90);
+    bar_add(&b, BAR_SEG_CPU, BAR_RIGHT, "CPU 12%", 56);
+    sys = bar_add(&b, BAR_SEG_SYSTEM, BAR_RIGHT, "System", 48);
+    bar_add(&b, 310, BAR_RIGHT, "Tray one", 80);          /* a tray segment from a bar.conf run row */
+    bar_layout(&b, 1000);
+    minw = b.seg[clk].w + b.seg[sys].w + b.gap;                             /* clock + System side by side */
+    for (w = 320; w >= minw; w--) {
+        bar_layout(&b, w);
+        CHECK_INT(bar_clean(&b), 1);
+        CHECK_INT(b.seg[clk].hidden, 0);
+        CHECK_INT(b.seg[sys].hidden, 0);
+        if (b.seg[scr].hidden)
+            hidden_seen++;
+        else {
+            room_seen++;
+            CHECK_INT(b.seg[scr].x + b.seg[scr].w <= b.seg[clk].x, 1);
+        }
+    }
+    CHECK(room_seen > 0);
+    CHECK(hidden_seen > 0);                               /* the sweep reaches the no-room case */
+}
+
 static void test_hit(void)
 {
     bar b;
@@ -343,14 +378,14 @@ static void test_cut(void)
     full_bar(&b, 5, 640, 20);
     CHECK_INT(shown(&b), 4);
     CHECK_STR(seg_id(&b, BAR_SEG_MORE)->text, "+1");
-    /* all but one: a tiny width keeps the first entry and counts the rest */
-    full_bar(&b, 6, 300, 72);
+    /* all but one: a tiny width keeps the first entry and counts the rest (the tray segments 301..303 drop first) */
+    full_bar(&b, 6, 200, 72);
     CHECK_INT(shown(&b), 1);
     CHECK_STR(seg_id(&b, BAR_SEG_MORE)->text, "+5");
     CHECK(!seg_id(&b, BAR_SEG_SCREEN0)->hidden);
     /* knob: the character width moves the marker */
     b.cw = 10;
-    bar_layout(&b, 300);
+    bar_layout(&b, 200);
     CHECK_INT(seg_id(&b, BAR_SEG_MORE)->w, 2 * 10 + 8);
     /* growing the bar again brings the entries back */
     bar_layout(&b, 1280);
@@ -522,6 +557,7 @@ void suite_bar(void)
     test_layout_groups();
     test_narrow_bar_drops_right_segments_by_priority();
     test_very_narrow_bar_clips_first_screen_without_overlap();
+    test_bar_never_overlaps_across_width_sweep();
     test_hit();
     test_click_dispatch();
     test_dirty_only_changed();
