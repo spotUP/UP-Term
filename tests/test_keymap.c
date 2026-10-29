@@ -450,13 +450,15 @@ static void win_actions_parse(void)
         "size left", "size right", "size up", "size down", "size right 64", "size down 1234",
         "focus left", "focus right", "focus up", "focus down", "focus next", "focus prev",
         "closedrawers", "screen next", "screen prev", "screen workbench", "screen back",
-        "title toggle", "title show", "title hide", 0 };
+        "title toggle", "title show", "title hide",
+        "snap left", "snap right", "snap up", "snap down", "snap tl", "snap tr", "snap bl", "snap br", "snap center", 0 };
     static const char *const bad[] = {
         "bogus", "cycle", "cycle left", "cycle next now", "front now", "zip 1", "save x", "restore 3", "closedrawers all",
         "move", "move sideways", "move left 0", "move left 00000", "move left 12345", "move left -5", "move left 3x",
         "move left 32 64", "size", "size next", "size up 0", "size up 10000", "size up -1",
         "focus", "focus left 5", "focus sideways", "screen", "screen left", "screen next 1",
-        "title", "title flip", "title hide now", "Front", " front", 0 };
+        "title", "title flip", "title hide now", "Front", " front",
+        "snap", "snap middle", "snap left 5", "snap next", "snap Left", 0 };
     int i;
     for (i = 0; good[i]; i++) {
         if (!win_row_ok(good[i]))
