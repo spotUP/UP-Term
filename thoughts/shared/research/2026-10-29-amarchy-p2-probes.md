@@ -2,7 +2,7 @@
 date: 2026-10-29
 author: spot
 topic: Amarchy P2 status bar probes R2.1 (network query) and R2.2 (idle counter)
-status: complete for the rig (rig 8, 060); A1200 half open
+status: complete (rig 8, 060; A1200 2026-10-29, Emu68 PiStorm, AmigaOS 3.2); the A1200 interface-down half open
 ---
 
 # P2 probes R2.1 and R2.2, rig 8 (68060, --max), 2026-10-29
@@ -47,3 +47,23 @@ OpenLibrary + UAE-detect paths; the up/down row is proved on the A1200 (matches 
   numbers above are the raw tick lines.)
 - Open: the same on the A1200 (68020 real speed, `--a1200` for a timing run) to see whether the count is stable
   enough there (plan Risk 2).
+
+## A1200 halves, 2026-10-29 (192.168.0.74, Kickstart 47.111, Workbench 47.5, Roadshow 1.15)
+
+R2.1 (network):
+- bsdsocket.library 4.364 "Roadshow 1.15 68020+ version"; OpenLibrary OK after 0 ticks. The no-stack case is not
+  reachable on the A1200 (the stack always runs; wasabi itself rides it).
+- The interface is named `replayeth` (ShowNetStatus: "Local host address = 192.168.0.74 (on interface 'replayeth')",
+  gateway 192.168.0.1), not `eth0`. netprobe guesses fixed names (eth0, ether0, en0, ppp0, lo0, uae0), so its scan
+  printed ret=-1 for every tag: expected, none of those exist. The real proof is Amarchy's own query (R2.10 below):
+  ObtainInterfaceList + QueryInterfaceTagList(IFQ_State) answers and the bar shows "replayeth up", net=4.
+  Roadshow has no `ifconfig` in C:; the tools are ConfigureNetInterface, RemoveNetInterface, NetShutdown, ShowNetStatus.
+- Taking `replayeth` down is not possible here: it is the only interface and wasabi's connection rides on it.
+
+R2.2 (idle counter, A1200 = Emu68 on a Pi, not a real 68020):
+- Idle counts per second (3 samples): 11.88M, 11.91M, 11.94M (spread 0.5 percent): stable enough for calibration.
+- Main task busy 1 s: 0 counts. 50 percent duty over 2 s: 13.75M (a fully idle 2 s is about 23.8M, so about 58
+  percent idle for a nominal 50: same +bias as the rig).
+- Overhead on the fixed benchmark (10M iterations, ticks): without idle 83 83 83 (249), with idle 82 82 82 (246);
+  difference -1.2 percent (none measurable), under the 2 percent target.
+- In use: the live bar showed "CPU 3%" on the idle desktop.
