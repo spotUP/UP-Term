@@ -6,6 +6,12 @@ that code, and the exit deleted the job's reply port, while the runner had not s
 command never ran and the task "vsh job (...)" waited for ever (rig 9 froze after it; s21, probe 1).
 Self-checking: the command must run (RAM:orphan.out has its output) and no "vsh job" task is left.
 
+Second test (memory): vsh's library (vbcc vclib) frees every malloc block at exit (__EXIT_1_malloc ->
+LibDeletePool). A job that outlives its shell must not read or free the shell's malloc memory: its
+strings are AllocVec. `Wait 4` is the orphan; while it sleeps, other shells run and reuse the freed
+memory; when it ends it frees its job. Old code freed into the deleted pool: a Guru or a hang, the
+task never left, or a following command failed.
+
   UPTERM_RIG=<n> vsh_orphan_job_rig.py"""
 import os, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -34,7 +40,20 @@ def main():
     got = ami('exec', 'Type RAM:orphan.out', '10')
     ok = not left and 'ok' in got
     print('[%s] orphaned job: command ran=%s, tasks left=%d' % ('OK' if ok else 'ERROR', 'ok' in got, len(left)))
-    return 0 if ok else 1
+    # memory: the orphan sleeps past the shell's exit, others reuse the freed memory, then it ends
+    ami('exec', 'GG:bin/sh -c "Wait 4 secs >NIL: &"', '20')
+    for i in range(6):
+        ami('exec', 'GG:bin/sh -c "Echo churn%d >RAM:orphan2.out ; Type RAM:orphan2.out >NIL:"' % i, '20')
+    end = time.time() + 30
+    while time.time() < end and job_tasks():
+        time.sleep(1)
+    left2 = job_tasks()
+    ami('exec', 'GG:bin/sh -c "Echo alive >RAM:orphan2.out"', '20')
+    got2 = ami('exec', 'Type RAM:orphan2.out', '10')
+    ok2 = not left2 and 'alive' in got2
+    print('[%s] orphan freed its job after the shell exited: tasks left=%d, system answers=%s'
+          % ('OK' if ok2 else 'ERROR', len(left2), 'alive' in got2))
+    return 0 if ok and ok2 else 1
 
 
 sys.exit(main())

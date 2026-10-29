@@ -524,6 +524,32 @@ static void input_restore(BPTR in, long mark)
         Seek(in, mark, OFFSET_BEGINNING);
 }
 
+/* The strings a runner reads (cmd, name, args, env, ixvar) are AllocVec memory, never malloc: vbcc's
+ * library keeps every malloc block in one pool and deletes the pool at exit (vc.lib __EXIT_1_malloc ->
+ * LibDeletePool), and an orphaned runner (orphan_jobs) reads them, and frees them, after the shell
+ * has exited. Reading freed pool memory, then free() into a deleted pool, was the fault. */
+static char *job_mem(long n)
+{
+    return (char *)AllocVec((ULONG)n, MEMF_ANY);
+}
+
+static char *job_dup(const char *s)
+{
+    char *d = s ? job_mem((long)strlen(s) + 1) : 0;
+    if (d)
+        strcpy(d, s);
+    return d;
+}
+
+static void job_strings_free(job *j)
+{
+    FreeVec(j->name);
+    FreeVec(j->args);
+    FreeVec(j->cmd);
+    FreeVec(j->env);
+    FreeVec(j->ixvar);
+}
+
 /* A job's resources, once it has ended and its result is read (or nobody will read it). */
 static void job_free(job *j)
 {
@@ -539,11 +565,7 @@ static void job_free(job *j)
         UnLoadSeg(j->seg);
     if (j->home)
         UnLock(j->home);
-    free(j->name);
-    free(j->args);
-    free(j->cmd);
-    free(j->env);
-    free(j->ixvar);
+    job_strings_free(j);
     FreeVec(j);
 }
 
@@ -659,8 +681,10 @@ static void runner(void)
  * with the shell, so they get none (ReplyMsg of a message with no reply port only marks it), and
  * this program's code stays loaded for them: the Shell that started us unloads cli_Module when we
  * return, under a runner that is still in it (the runner then never ran the command: `sh -c
- * "cmd &"` left "vsh job" waiting for ever and froze the rig). The code is freed with the
- * system's next flush, not by anybody here; a leak per such shell, as for cback.o programs. */
+ * "cmd &"` left "vsh job" waiting for ever and froze the rig). That code is
+ * never unloaded: a seglist detached from cli_Module is nobody's to free, so every shell that
+ * orphans a job leaks its program's segments for good (as for cback.o programs). The job's strings
+ * are AllocVec memory (job_mem): the shell's malloc pool is deleted at its exit. */
 static void orphan_jobs(struct MsgPort *port)
 {
     job *j;
@@ -1011,7 +1035,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
             if ((v->attr & SH_ATTR_EXPORT) && !v->arr)
                 need += (long)strlen(v->name) + (long)strlen(sh_var_str(v) ? sh_var_str(v) : "") + 2;
-        j->env = e = (char *)malloc(need);
+        j->env = e = job_mem(need);
         if (e) {
             for (v = sh_var_first(&sh->ctx, &it); v; v = sh_var_next(&sh->ctx, &it))
                 if ((v->attr & SH_ATTR_EXPORT) && !v->arr) {
@@ -1023,13 +1047,10 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             *e = 0;
         }
     }
-    j->cmd = cmd;
     j->seg = seg;
     j->home = home;
     j->stack = command_stack(seg);
-    j->name = (char *)malloc(strlen(argv[0]) + 1);
-    if (j->name)
-        strcpy(j->name, argv[0]);
+    j->name = job_dup(argv[0]);
     /* the argument string: the line after the name, ending in a newline */
     sp = cmd;
     if (*sp == '"') {
@@ -1047,11 +1068,11 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     if (seg && seg_is_ixemul(seg)) {
         /* an ixemul program: after the line, its argv byte for byte (sh_ixargv.h). It is
          * this RunCommand's argument alone: no other process, and no native program, sees it */
-        j->args = (char *)malloc(ixa_len(sp, argv + 1) + 1);
+        j->args = job_mem(ixa_len(sp, argv + 1) + 1);
         if (j->args)
             ixa_put(j->args, sp, argv + 1);
     } else {
-        j->args = (char *)malloc(strlen(sp) + 2);
+        j->args = job_mem((long)strlen(sp) + 2);
         if (j->args) {
             strcpy(j->args, sp);
             strcat(j->args, "\n");
@@ -1070,7 +1091,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         if (targ) {
             char *line = vsh_command_line(targ + 1);
             long n = line ? ixa_len(line, targ + 1) : 0;
-            char *all = line ? (char *)malloc(n + 1) : 0;
+            char *all = line ? job_mem(n + 1) : 0;
             if (all) {
                 long skip = (long)strlen(line) + 1; /* the variable is the argv alone */
                 ixa_put(all, line, targ + 1);
@@ -1149,7 +1170,11 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     /* NP_CopyVars FALSE: the command's environment is the shell's exported variables (runner sets
      * them) and nothing else; a copy of this process's local variables brought back the ones the
      * shell had unset (`unset SHLVL` in a vsh run by vsh: the child still saw the outer SHLVL) */
-    p = (j->name && j->args)
+    /* cmd: the runner's own copy (the original is the shell's malloc memory) */
+    j->cmd = job_dup(cmd);
+    free(cmd);
+    cmd = 0;
+    p = (j->name && j->args && j->cmd)
         ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"vsh job", NP_StackSize, 8000,
                             NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
         : 0;
@@ -1164,11 +1189,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
             UnLoadSeg(seg);
         if (home)
             UnLock(home);
-        free(j->name);
-        free(j->args);
-        free(cmd);
-        free(j->env);
-        free(j->ixvar);
+        job_strings_free(j);
         FreeVec(j);
         return -1;
     }
