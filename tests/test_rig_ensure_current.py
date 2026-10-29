@@ -53,6 +53,15 @@ class Gate(Base):
         self.assertEqual(out, "[REFRESH] rig %d: 1 file(s): hl\n" % paths.RIG_N)
         self.assertEqual(rig.build_drift(self.vtc), [])
 
+    def test_stale_gg_sh_is_refreshed_with_vsh(self):
+        # GG:bin/sh is vsh: the gate saw it drift but copied only VTC:vsh and Apps/bin/vsh (rig 10, s22)
+        (self.vtc / "gg/bin").mkdir(parents=True)
+        (self.vtc / "gg/bin/sh").write_bytes(b"old")
+        done, out = self.gate()
+        self.assertEqual(done, ["gg/bin/sh"])
+        self.assertEqual((self.vtc / "gg/bin/sh").read_bytes(), b"new vsh")
+        self.assertEqual(rig.build_drift(self.vtc), [])
+
     def test_no_drift_means_no_refresh_and_no_output(self):
         with mock.patch.object(rig, "refresh_programs") as refresh:
             done, out = self.gate()

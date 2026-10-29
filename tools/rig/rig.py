@@ -1226,6 +1226,11 @@ def program_pairs(vtc, built):
     # one source per VTC: file: a name this tree builds keeps the build's copy, else build_drift listed it twice and
     # refresh_programs copied the build, then the dist's older userland copy over it
     built_names = {src.name for src, dst in pairs}
+    # GG:bin/sh is vsh too: the boot assigns GG: to VTC:gg when it holds one, and ixemul programs and the rig tests
+    # run it as /gg/bin/sh. Not in this list before, so the gate saw it drift and refreshed only VTC:vsh and
+    # Apps/bin/vsh: rig 10 ran the old vsh (s22, 2026-10-29)
+    if (built / "vsh").is_file():
+        pairs.append((built / "vsh", vtc / "gg/bin/sh"))
     for name in userland_names():
         if name not in built_names:
             pairs.append((USERLAND_SRC / name, vtc / paths.UPTERM_DRAWER / "bin" / name))
@@ -1257,14 +1262,11 @@ def refresh_programs(vtc, built, required=()):
 
 def build_drift(vtc):
     """The VTC: files that differ from the host build they come from: build/amiga programs in VTC: and in the
-    UP-Term drawer's bin, GG:bin/sh (vsh). install() refreshes them, but a rig not installed since the last build
+    UP-Term drawer's bin, GG:bin/sh (vsh), all from program_pairs. install() refreshes them, but a rig not installed since the last build
     runs old ones and every check there tests old code (2026-10-25: rigs 3 and 4 held 16 and 19 stale programs,
     rigs 5 and 6 an old pty-handler, while rig 7's stale ixemul was hunted as a menu bug)."""
     stale = [str(dst.relative_to(vtc)) for src, dst in program_pairs(vtc, ROOT / "build/amiga")
              if dst.is_file() and dst.read_bytes() != src.read_bytes()]
-    sh, vsh = vtc / "gg/bin/sh", ROOT / "build/amiga/vsh"
-    if sh.is_file() and vsh.is_file() and sh.read_bytes() != vsh.read_bytes():
-        stale.append("gg/bin/sh")
     for name in a1200_drift.DIST_SOURCES:
         src, dst = ROOT / "dist" / name, vtc / name
         if dst.is_file() and dst.read_bytes() != src.read_bytes():
@@ -1348,13 +1350,6 @@ def refresh_kit_shadows(vtc):
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             print("refreshed", name, dst.stat().st_size, "bytes")
-    # GG:bin/sh is vsh too: the boot assigns GG: to VTC:gg when it holds one, and ixemul programs run it
-    # as /gg/bin/sh (rig 3, 2026-10-24: an 8 Oct vsh there gave a pipeline's ixemul child a
-    # non-interactive stdout, so upkg-ui tty:programbox found no terminal and exited 3)
-    src, dst = build_amiga() / "vsh", vtc / "gg/bin/sh"
-    if src.is_file() and dst.is_file() and dst.read_bytes() != src.read_bytes():
-        shutil.copyfile(src, dst)
-        print("refreshed gg/bin/sh", dst.stat().st_size, "bytes")
 
 _MERGED_BUILD = None
 
