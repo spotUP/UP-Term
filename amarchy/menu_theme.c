@@ -111,3 +111,24 @@ unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap)
     out[n] = 0;
     return n;
 }
+
+int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, void *ud), void *ud)
+{
+    char cmds[256], line[192];
+    unsigned n, i = 0, k;
+    int sent = 0;
+    if (!send)
+        return 0;
+    n = dopus_theme_commands(th, cmds, sizeof cmds);
+    while (i < n) {
+        for (k = 0; i < n && cmds[i] != '\n'; i++)
+            if (k < sizeof line - 1)
+                line[k++] = cmds[i];
+        i++;
+        line[k] = 0;
+        sent++;
+        if (send(DOPUS_PORT, line, ud) == -1)
+            break;
+    }
+    return sent;
+}

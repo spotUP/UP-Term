@@ -78,4 +78,13 @@ void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u
  * small (out[0] is then 0 when cap is at least 1). */
 unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap);
 
+/* Directory Opus's ARexx port */
+#define DOPUS_PORT "DOPUS.1"
+
+/* Sends dopus_theme_commands' lines, one at a time, to DOPUS_PORT through send(port, line, ud) (line has no newline).
+ * send returns -1 when the port is absent (Directory Opus not running: normal, not an error), and sending stops at
+ * that line. Returns the number of lines handed to send (including a refused one); 0 when th is NULL, send is NULL
+ * or the commands cannot be built. */
+int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, void *ud), void *ud);
+
 #endif

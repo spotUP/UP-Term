@@ -2687,6 +2687,7 @@ static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 
 static void menu_theme_roles_map_the_palette(void);
 static void dopus_theme_commands_use_the_theme_directly(void);
+static void dopus_theme_send_goes_to_the_dopus_port(void);
 static void minimal_mode_reaches_the_program(void);
 static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void);
 
@@ -3066,6 +3067,7 @@ void suite_keymap(void)
     a_volume_without_a_handler_task_matches_no_device();
     menu_theme_roles_map_the_palette();
     dopus_theme_commands_use_the_theme_directly();
+    dopus_theme_send_goes_to_the_dopus_port();
     minimal_mode_reaches_the_program();
     the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg();
     the_commodity_keymap_of_dist_keymap_is_exact_and_small();
@@ -3293,6 +3295,47 @@ static void dopus_theme_commands_use_the_theme_directly(void)
     CHECK_INT((long)dopus_theme_commands(&th, tight, sizeof tight), 0L);
     CHECK_INT((long)dopus_theme_commands(&th, buf, n), 0L);
     CHECK_INT((long)dopus_theme_commands(&th, buf, n + 1), (long)n);
+}
+
+typedef struct {
+    int n, absent;
+    char port[4][16], line[4][128];
+} dopus_rec;
+
+static long dopus_fake_send(const char *port, const char *line, void *ud)
+{
+    dopus_rec *r = (dopus_rec *)ud;
+    if (r->n < 4) {
+        strcpy(r->port[r->n], port);
+        strcpy(r->line[r->n], line);
+    }
+    r->n++;
+    return r->absent ? -1 : 0;
+}
+
+static void dopus_theme_send_goes_to_the_dopus_port(void)
+{
+    gtheme th;
+    dopus_rec r;
+
+    gt_builtin(&th);
+    memset(&r, 0, sizeof r);
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 2L);
+    CHECK_INT((long)r.n, 2L);
+    CHECK_STR(r.port[0], "DOPUS.1");
+    CHECK_STR(r.port[1], "DOPUS.1");
+    CHECK_STR(r.line[0], "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7");
+    CHECK_STR(r.line[1], "dopus set pens files 1 0 dirs 3 0 selfiles 0 3 seldirs 0 3");
+
+    /* Directory Opus not running: one attempt, then stop */
+    memset(&r, 0, sizeof r);
+    r.absent = 1;
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 1L);
+    CHECK_INT((long)r.n, 1L);
+
+    memset(&r, 0, sizeof r);
+    CHECK_INT((long)dopus_theme_send(0, dopus_fake_send, &r), 0L);
+    CHECK_INT((long)r.n, 0L);
 }
 
 /* ---- index_core: the app index's cache rows (plan 2026-10-23-amarchy-app-index.md, X1) ---- */

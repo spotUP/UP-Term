@@ -14,8 +14,10 @@ void gt_dos_current(char *out, int cap);
 void gt_dos_load_current(gtheme *out);
 /* load a theme by name */
 void gt_dos_load(const char *name, gtheme *out);
-/* make name the drawn menu's theme: AM_GTHEME is saved to ENVARC: and ENV:. 1 saved, 0 refused or failed */
+/* make name the drawn menu's theme: AM_GTHEME is saved to ENVARC: and ENV:, then Directory Opus (if running) gets its colours (menu_theme.h). 1 saved, 0 refused or failed */
 int gt_dos_select(const char *name, char *why, int cap);
+/* how many times gt_dos_select handed the new theme to Directory Opus (dopus_theme_send): the reachability sentinel */
+extern unsigned long gt_dos_dopus_sends;
 /* fill the Style > Theme rows (ix_add_gthemes) with the current one marked. Call after the other loaders. */
 void gt_dos_load_rows(ix_index *x);
 

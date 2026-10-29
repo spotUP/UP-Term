@@ -7,6 +7,16 @@
 #include "gthemes_dos.h"
 #include "amconf_dos.h"
 #include "../prefs/prefs_dos.h"
+#include "menu_theme.h"
+#include "rexx_host.h"
+
+unsigned long gt_dos_dopus_sends;
+
+static long gt_dopus_send(const char *port, const char *line, void *ud)
+{
+    (void)ud;
+    return rexx_send(port, line, 0, 0);
+}
 
 static long gt_read(void *ctx, const char *path, char *buf, long cap)
 {
@@ -55,8 +65,13 @@ int gt_dos_select(const char *name, char *why, int cap)
     amconf_load(&ap);
     strcpy(ap.val[AM_GTHEME], name);
     r = amconf_save(&ap, 1, &failed);
-    if (r == PREFS_INSTALL_OK)
+    if (r == PREFS_INSTALL_OK) {
+        gtheme th;
+        gt_dos_load(name, &th);
+        gt_dos_dopus_sends++;
+        dopus_theme_send(&th, gt_dopus_send, 0);
         return 1;
+    }
     if (why)
         gt_save_text(r, failed, prefs_dos_last_error(), why, cap);
     return 0;
