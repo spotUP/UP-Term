@@ -3,10 +3,12 @@
 #include <intuition/intuition.h>
 #include <intuition/screens.h>
 #include <proto/intuition.h>
+#include <string.h>
 #include "win_apply.h"
 
 void win_box_of(const struct Window *w, win_box *b, win_screen *s)
 {
+    const struct Window *x;
     b->left = w->LeftEdge;
     b->top = w->TopEdge;
     b->width = w->Width;
@@ -19,7 +21,17 @@ void win_box_of(const struct Window *w, win_box *b, win_screen *s)
     s->width = w->WScreen->Width;
     s->height = w->WScreen->Height;
     s->title = w->WScreen->BarHeight + 1;
-    s->bottom = 0;                                 /* the bar strut is filled by the caller (win_strut) */
+    s->bottom = 0;                                 /* the bar's strut, only from a bar on this window's own screen (D8) */
+    for (x = w->WScreen->FirstWindow; x; x = x->NextWindow)
+        if (x->Title && !strcmp((const char *)x->Title, "Amarchy bar")) {
+            win_box bar;
+            bar.left = x->LeftEdge;
+            bar.top = x->TopEdge;
+            bar.width = x->Width;
+            bar.height = x->Height;
+            s->bottom = win_strut(&bar, s);
+            break;
+        }
 }
 
 void win_apply_box(struct Window *w, const win_box *b)

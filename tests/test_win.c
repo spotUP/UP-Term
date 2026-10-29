@@ -204,6 +204,19 @@ static void work_area_and_fullscreen(void)
     CHECK_INT(b.height, 570);
 }
 
+/* P3-B1: win_move stops at the bar (bottom 16 on the 800x600 screen), as fullscreen does */
+static void move_stops_at_bar(void)
+{
+    win_box b = box(100, 100, 200, 100);
+    win_screen s16 = s0;
+    s16.bottom = 16;
+    win_move(&b, WA_DOWN, 5000, &s16);
+    CHECK_INT(b.top, 484);                             /* 600 - 16 - 100 */
+    CHECK_INT(win_move(&b, WA_DOWN, 5, &s16), 0);
+    win_move(&b, WA_DOWN, 5000, &s0);
+    CHECK_INT(b.top, 500);                             /* no bar: the bottom pixel row */
+}
+
 static void strut_and_ours(void)
 {
     win_box bar = free_box(800, 16), part = free_box(400, 16), mid = free_box(800, 16);
@@ -289,6 +302,7 @@ void suite_win(void)
     ticket_needs_unchanged_box();
     work_area_and_fullscreen();
     strut_and_ours();
+    move_stops_at_bar();
     snap_parse();
     snap_boxes();
 }

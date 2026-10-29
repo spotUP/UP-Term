@@ -149,7 +149,7 @@ int bar_open(const char *dir)
     bar_add(&g_bar, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", text_px(&g_scr->RastPort, "Agents"));
     bar_layout(&g_bar, g_scr->Width);
     g_win = OpenWindowTags(0, WA_Left, 0, WA_Top, g_scr->Height - h, WA_Width, g_scr->Width, WA_Height, h,
-                           WA_Borderless, TRUE, WA_Activate, FALSE, WA_SimpleRefresh, TRUE, WA_RMBTrap, TRUE,
+                           WA_Title, (ULONG)"Amarchy bar", WA_Borderless, TRUE, WA_Activate, FALSE, WA_SimpleRefresh, TRUE, WA_RMBTrap, TRUE,
                            WA_PubScreen, g_scr, WA_IDCMP, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW, TAG_DONE);
     if (!g_win) {
         pens_release();

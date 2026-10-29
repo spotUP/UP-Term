@@ -117,7 +117,7 @@ int win_move(win_box *b, win_arg dir, int pixels, const win_screen *s)
     default: return 0;
     }
     l = clamp(l, 0, s->width - b->width);
-    t = clamp(t, 0, s->height - b->height);
+    t = clamp(t, 0, s->height - s->bottom - b->height);   /* stops at the bar */
     if (l == b->left && t == b->top)
         return 0;
     b->left = l;
