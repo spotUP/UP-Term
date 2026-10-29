@@ -88,7 +88,7 @@ IPrefs nudge, snapshot/revert code (git grep over amarchy/ config/ handler/ tool
 Each item: what / where / test that proves it. "FB/PA" = fail-before / pass-after demo required (fixes, guards).
 
 Probe first (no product code before R1.1 is answered; decision 10):
-- [ ] R1.1a Probe palette.prefs: save from SYS:Prefs/Palette on the 3.2 rig with 4 and 8 colours, dump chunks (text only,
+- [x] R1.1a Probe palette.prefs: save from SYS:Prefs/Palette on the 3.2 rig with 4 and 8 colours, dump chunks (text only,
   python IFF walker like keymap_rig.py:36), record exact PALT bytes as golden files tests/data/desk/palette-*.prefs. Test:
   golden files committed, chunk list in the research note.
 - [ ] R1.1b Probe what applies live: write a changed ENV:Sys/palette.prefs and check GetRGB32 of pen 0 and DrawInfo pens
@@ -99,13 +99,13 @@ Probe first (no product code before R1.1 is answered; decision 10):
   change); does pap_Colors 17-19 in palette.prefs move the pointer at all on 3.2? Live apply path.
 - [ ] R1.1e Probe font.prefs FP_WBFONT pens and fp_SpecialDrawMode (label outline/shadow values) and workbench.prefs WBTF
   format codes + wbe_Flags (save from SYS:Prefs/Workbench with each option toggled, diff).
-- [ ] R1.1f Probe pen readback for the rig test: does wasabi expose the WB ViewPort colours; else a tiny tests/amiga/
+- [x] R1.1f Probe pen readback for the rig test: does wasabi expose the WB ViewPort colours; else a tiny tests/amiga/
   penprobe (GetRGB32 of pens 0-7 and 17-19, DrawInfo dri_Pens) printing text. Test: prints known default values.
 - [ ] R1.1g Write findings to thoughts/shared/research/2026-10-29-amarchy-p1a-prefs-probe.md; update this plan's format
   table (unverified -> verified or changed). Owner decisions OD3, OD10, OD11 are asked again with the probe facts.
 
 Core (host-tested, pure):
-- [ ] R1.0 Extract put32/get32 from handler/clipfmt.c:70/:78 into one shared helper; clipfmt uses it. Test: test_clip
+- [x] R1.0 Extract put32/get32 from handler/clipfmt.c:70/:78 into one shared helper; clipfmt uses it. Test: test_clip (ee7b7004)
   unchanged green; desk tests link the same helper.
 - [ ] R1.5 gtheme carries the extra keys (dark/darker/lighter background, selection, muted) and backdrop/font/wbtitle;
   missing key = derived value (OD5). Where gthemes_core.[ch]. Test: test_gthemes new cases, every shipped theme parses

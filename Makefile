@@ -1208,6 +1208,11 @@ $(BUILD)/amiga/snipprobe: tests/amiga/snipprobe.c handler/clip.c handler/clip.h 
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/snipprobe.c handler/clip.c handler/clipfmt.c handler/be32.c
 
+# P1A R1.1f: the Workbench screen's live colours and DrawInfo pens as text (tests/amiga/wbpens.c)
+$(BUILD)/amiga/wbpens: tests/amiga/wbpens.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/wbpens.c
+
 # leafprobe <variant> <command>: leaf.c's run: start in one-variable forms (tests/amiga/leafprobe.c)
 $(BUILD)/amiga/leafprobe: tests/amiga/leafprobe.c
 	@mkdir -p $(BUILD)/amiga
