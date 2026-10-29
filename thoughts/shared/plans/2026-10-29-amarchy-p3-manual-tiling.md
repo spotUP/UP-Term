@@ -134,33 +134,33 @@ Build rows (after R1-R4):
 ## Checklist (IDs P3-xx; red first, Gate 2; [BAR] waits for the bar branch merge)
 
 A. Pure core (host-testable)
-- [x] P3-A1 (91ff131d) `win_screen.bottom` (default 0) and `win_work_area(s, gap, &x0, &y0, &w, &h)` in win_core; the five tile_core copies
+- [x] P3-A1 (c160a555) `win_screen.bottom` (default 0) and `win_work_area(s, gap, &x0, &y0, &w, &h)` in win_core; the five tile_core copies
   and win_fullscreen use it. Test: every existing test_win and test_tile assertion unchanged with bottom 0; new cases bottom 16
   (800x600 title 14 -> fullscreen height 570, dwindle work area h 562 at gap 4).
-- [x] P3-A2 (91ff131d) `win_strut` and `win_is_amarchy`; is_ours (win.c:39) and tile_classify (tile_core.c:11) call it. Test: strut 0 for a
+- [x] P3-A2 (c160a555) `win_strut` and `win_is_amarchy`; is_ours (win.c:39) and tile_classify (tile_core.c:11) call it. Test: strut 0 for a
   non-full-width box, a box not at the bottom; 16 for the bar box; "Amarchy bar" floats in tile_classify.
-- [x] P3-A3 (91ff131d) `WV_SNAP` with args left, right, up, down (halves), tl, tr, bl, br (quarters), center; `win_snap(b, arg, gap, mode, s)`
+- [x] P3-A3 (c160a555) `WV_SNAP` with args left, right, up, down (halves), tl, tr, bl, br (quarters), center; `win_snap(b, arg, gap, mode, s)`
   on the work area. Halves split at (w - gap) / 2, the remainder pixel to the right/bottom cell (same rule as tile_layout).
   Center per owner D4. Every box through win_fit; a fixed-size window per owner D6. win_parse accepts the nine forms,
   refuses `snap`, `snap middle`, `snap left 5`. Test: worked numbers below for all nine at gap 0 and 4, bottom 0 and 16;
   odd screen 801x601; min/max clamp; no-op returns 0.
-- [x] P3-A4 (87b96d8e) config/keymap.c `win_arg_ok` delegates to `win_parse` (one closed list); handler/commodity link win_core.o (check
+- [x] P3-A4 (42b3af05) config/keymap.c `win_arg_ok` delegates to `win_parse` (one closed list); handler/commodity link win_core.o (check
   Makefile targets that link config/keymap.c; the cross build size of the handler before and after goes in the ledger).
   Test: test_keymap accepts every existing win: form and the nine snap forms, refuses the same bad forms as before.
-- [x] P3-A5 (91ff131d) tile_core pure helpers: `tile_swap(order, n, a, b)` (swap two ids, 0 when either is absent) and a float set
+- [x] P3-A5 (c160a555) tile_core pure helpers: `tile_swap(order, n, a, b)` (swap two ids, 0 when either is absent) and a float set
   (`tile_float_set/clear/has`, pruned with the order on close, TILE_MAX entries). Test: swap both ways, absent id, float
   survives a retile, pruned id gone.
   Build notes (part 1): win_snap shipped as `win_snap(b, arg, gap, s)` (mode parameter dropped, only the D4 centre-keeps-size
   mode exists); tile_core had six inline work-area copies, all replaced; gap-4 up/down half height is 287 (not 291); with
-  bottom 16 and gap 4 it is 279, down top 301. Handler size: 433432 bytes after (no clean baseline build; main tree older build 423440).
+  bottom 16 and gap 4 it is 279, down top 301. Handler size: 433432 bytes after A1-A3,A5 (435972 after A4 and B1-B3, rebuilt on origin/main b56302d3 in a worktree; Amarchy 202556) (no clean baseline build; main tree older build 423440).
 B. Amarchy commodity
-- [ ] P3-B1 [BAR] bar window title `Amarchy bar` (branch bar.c:133 WA_Title); `win_box_of` fills `bottom` via win_strut under
+- [x] P3-B1 (7c35ce09, rig bar_strut ok: fullscreen bottom 587 = bar top; host test win move_stops_at_bar) [BAR] bar window title `Amarchy bar` (branch bar.c:133 WA_Title); `win_box_of` fills `bottom` via win_strut under
   the caller's lock. Test: rig step `bar_strut` (P3-F1) reads fullscreen height = screen - title - bar height.
-- [ ] P3-B2 win.c `WV_SNAP` case beside win.c:231: win_snap then win_apply_box; `g_snaps++`; STATUS ` snaps=` (amarchy.c:147
+- [x] P3-B2 (41b0a44b, rig snap_status ok: snaps 0->1, wins +1) win.c `WV_SNAP` case beside win.c:231: win_snap then win_apply_box; `g_snaps++`; STATUS ` snaps=` (amarchy.c:147
   key table to 6). Test: host status_text test if one exists, else rig `snap_status`.
-- [ ] P3-B3 snap gap source per owner D3 (recommended: `tile-gap` read with `amconf_tile_gap`, the existing reader; read at each
+- [x] P3-B3 (41b0a44b, rig snap_gap ok: gap 0 box (0,14), gap 8 box (8,22)) snap gap source per owner D3 (recommended: `tile-gap` read with `amconf_tile_gap`, the existing reader; read at each
   snap, the file is small). Test: rig step with tile-gap 0 vs 8 gives different boxes.
-- [ ] P3-B4 snap of a window AmTile tiles, per owner D5 (recommended: before applying, Amarchy sends `FLOAT ON <id>` over
+- [ ] P3-B4 (code in 41b0a44b; rig snap_floats needs AmTile FLOAT, P3-C2, not built: not run, unticked) snap of a window AmTile tiles, per owner D5 (recommended: before applying, Amarchy sends `FLOAT ON <id>` over
   rexx_send when port AMTILE exists; no port, no message). Test: rig `snap_floats` (AmTile on, 3 windows, snap one: AmTile
   floats +1, the other two re-tile, the snapped box stays after 1 s).
 
