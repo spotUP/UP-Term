@@ -833,6 +833,9 @@ AMARCHY
   window opens. The commands uterm-edit and uterm-view open a file in an
   UP-Term window (the editor, or the pager) for Directory Opus to call; uterm-shell
   opens an UP-Term window with vsh in the current directory.
+  uterm-edit runs the editor named by the variable EDITOR, or joe when it
+  is not set. To pick another editor for good, type for example
+    SetEnv SAVE EDITOR nvim
 
   Window, Screens and Workbench groups: rows of the form  win:<verb>  act on
   windows of any program. Verbs: cycle, front, back, zip, fullwidth,
