@@ -40,6 +40,22 @@ class InstallDosAmiSSL(unittest.TestCase):
         self.assertIn('Install-AmiSSL', p[p.index('[ERROR] AmiSSL was not installed'):][:300])
         self.assertNotIn('Quit 20', p[p.index(ARGS):])
 
+    def test_libs_assign_added_between_installer_and_recheck(self):
+        p = libs_part()
+        add = 'Assign >NIL: LIBS: AmiSSL:Libs ADD'
+        self.assertIn('Assign >NIL: AmiSSL: EXISTS', p)
+        self.assertLess(p.index(ARGS), p.index(add))
+        self.assertLess(p.index(add), p.rindex('Version >NIL: LIBS:amisslmaster.library 5'))
+        self.assertNotRegex(p, r'Assign\s+\S+:\s*\n')
+
+    def test_installer_p_amissl_adds_assign_before_check(self):
+        run = INSTALLER[INSTALLER.index('(procedure P_AMISSL'):INSTALLER.index('(P_AMISSLCHECK)\n', INSTALLER.index('(procedure P_AMISSL'))]
+        self.assertIn('Assign >NIL: AmiSSL: EXISTS', run)
+        self.assertLess(run.index('Install-AmiSSL'), run.index('Assign >NIL: LIBS: AmiSSL:Libs ADD'))
+        self.assertLess(run.index('Assign >NIL: LIBS: AmiSSL:Libs ADD'), run.index('(execute "T:UPTAMISSL")'))
+        # AMISSL-SHELL-WINDOW: (run "Execute ...") opens a Shell window, (execute) does not
+        self.assertNotIn('(run "Execute T:UPTAMISSL")', run)
+
 
 if __name__ == '__main__':
     unittest.main()

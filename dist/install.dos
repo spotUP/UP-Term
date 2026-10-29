@@ -985,12 +985,18 @@ If "{STEP}" EQ ""
     CD "{DIR}/AmiSSL"
     Installer SCRIPT Install-AmiSSL APPNAME AmiSSL MINUSER AVERAGE DEFUSER AVERAGE NOLOG
     CD "{DIR}"
+    ; Install-AmiSSL only writes "Assign LIBS: AmiSSL:Libs ADD" into S:User-Startup (live after a reboot): add it to this
+    ; session so the re-check and curl see the library at once. Only when the AmiSSL: assign exists.
+    Assign >NIL: AmiSSL: EXISTS
+    If NOT WARN
+      Assign >NIL: LIBS: AmiSSL:Libs ADD
+    EndIf
     Version >NIL: LIBS:amisslmaster.library 5
     If WARN
       Echo "[ERROR] AmiSSL was not installed, https programs (curl) cannot run."
       Echo "[ERROR] Run Install-AmiSSL from the kit's Files/AmiSSL drawer again."
     Else
-      Echo "[INFO] AmiSSL installed: reboot once, then LIBS: has it."
+      Echo "[INFO] AmiSSL installed: LIBS: has it now, usable at once."
     EndIf
   EndIf
 EndIf

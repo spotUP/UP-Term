@@ -56,8 +56,8 @@
 
 ; P_AMISSL: run AmiSSL's own Install-AmiSSL (an Installer script) from the kit's AmiSSL drawer.
 ; It reads Libs/, Certs/ and the rest by relative names, so it starts with that drawer as the current one
-; (a script in T: does the CD); then the same version check runs again (P_AMISSLCHECK, dist/common/amissl.installer):
-; still missing or older means it did not install (cancelled or failed), else LIBS: needs a reboot.
+; (a script in T: does the CD; started with (execute), because (run "Execute ...") without a >NIL: redirect opens a Shell window); then the same version check runs again (P_AMISSLCHECK, dist/common/amissl.installer):
+; still missing or older means it did not install (cancelled or failed), else LIBS: got AmiSSL:Libs added for this session (the User-Startup line serves later boots).
 ; #sslnote is the last page's line(s) for it and #sslrows how many (n + rows)
 (procedure P_AMISSL
     (set #sslnote "")
@@ -67,8 +67,13 @@
             (textfile (dest "T:UPTAMISSL")
                       (append (cat "CD \"" (tackon #files "AmiSSL") "\"\n"
                                    "Installer SCRIPT Install-AmiSSL APPNAME AmiSSL "
-                                   "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n")))
-            (run "Execute T:UPTAMISSL")
+                                   "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n"
+                                   ; Install-AmiSSL only writes the LIBS: assign into S:User-Startup: add it to this session
+                                   "Assign >NIL: AmiSSL: EXISTS\n"
+                                   "If NOT WARN\n"
+                                   "  Assign >NIL: LIBS: AmiSSL:Libs ADD\n"
+                                   "EndIf\n")))
+            (execute "T:UPTAMISSL")
             (run "Delete >NIL: T:UPTAMISSL QUIET")
             (P_AMISSLCHECK)
             (if #amissl-need
