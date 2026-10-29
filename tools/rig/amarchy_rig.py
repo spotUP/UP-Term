@@ -58,6 +58,10 @@ def port_up():
 def start():
     c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
     time.sleep(2)
+    for _ in range(30):      # a loaded host boots Amarchy slowly: wait for the ARexx port, not a fixed 2 s
+        if port_up():
+            break
+        time.sleep(1)
 
 
 def chord():

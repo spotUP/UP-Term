@@ -37,6 +37,30 @@ def click(button, at=None):
     time.sleep(1.5)
 
 
+def agents_x():
+    """x of the Agents segment. The segments sit right to left (clock, System, CPU ... ), so the screen's right edge is
+    not Agents: a right press launches only on Agents, so sweep leftward over the bar until BAR STATUS launches moves."""
+    w, h = screen_size()
+    for x in range(w - 12, 0, -16):
+        before = bar_status().get('launches', 0)
+        click(1, (x, h - FONT_ROWS // 2))
+        if bar_status().get('launches', 0) > before:
+            return x
+    return None
+
+
+def wb_front():
+    """Rows are order independent: each starts with the Workbench screen in front (a row or the boot can leave another
+    screen there). LAmiga+M cycles the screens."""
+    for _ in range(4):
+        with ami._conn() as conn:
+            scr = ami._m().list_windows(conn)[0]
+        if 'Workbench' in str(scr[0].get('title', '')):
+            return
+        ami.key(0x37, 0x80)
+        time.sleep(1)
+
+
 def r_start():
     ar.arexx('QUIT')          # rig.py leaves an older resident Amarchy: the branch build must be the one running
     time.sleep(2)
@@ -79,7 +103,11 @@ def r_right_launch():
     # The bar is NOT the active window: open and close the panel, then the user's window holds the focus.
     # A right press over the Agents segment must still launch (the commodity sees it in the input stream)
     # and the user's window must keep the focus.
-    click(0)
+    ax = agents_x()
+    if ax is None:
+        return False, 'no x on the bar launches the agent'
+    w, h = screen_size()
+    click(0, (ax, h - FONT_ROWS // 2))
     ami.key(0x45, 0)
     time.sleep(1)
     host = next(b for t, b, _ in windows() if t == 'barhost')
@@ -87,7 +115,7 @@ def r_right_launch():
     held = active_title()
     before = bar_status()
     tabs = tabstate.counters()
-    click(1)
+    click(1, (ax, h - FONT_ROWS // 2))
     after = bar_status()
     now = active_title()
     moved = after.get('launches', 0) == before.get('launches', 0) + 1
@@ -200,6 +228,7 @@ def main():
                 total += 1
                 passed += old.startswith('ok')
                 continue
+        wb_front()
         ok, detail = fn()
         f.write_text('%s %s\n' % ('ok' if ok else 'FAIL', detail))
         total += 1
