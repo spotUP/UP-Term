@@ -116,6 +116,10 @@ typedef struct job {
  * under it: orphan_jobs hands them over. Changed under Forbid. */
 static job *live_jobs;
 
+/* shell/vsh_mem.c: the heap outlives the shell while an orphaned subshell still uses it */
+void vsh_heap_hold(void);
+void vsh_heap_release(void);
+
 /* The pipes vsh made. AmigaOS has no SIGPIPE: a PIPE: writer whose reader
  * has gone blocks for ever (rig: List | less, q, and the shell never came
  * back; a PTY: pipe drops what it writes, and it writes on). So closing a read end reads the pipe dry, which lets a blocked
@@ -693,6 +697,8 @@ static void orphan_jobs(struct MsgPort *port)
     for (j = live_jobs; j; j = j->next)
         if (j->msg.mn_ReplyPort == port && !j->done) {
             j->msg.mn_ReplyPort = 0;
+            if (j->sub)
+                vsh_heap_hold(); /* its shell and tree are malloc blocks (subshell_proc ends it) */
             any = 1;
         }
     Permit();
@@ -1887,7 +1893,14 @@ static void subshell_proc(void)
     HW_REPORT("sub");
     Forbid(); /* the reply and our end, before the shell can free anything */
     j->done = 1;
-    ReplyMsg(&j->msg);
+    if (j->msg.mn_ReplyPort) {
+        ReplyMsg(&j->msg);
+        return;
+    }
+    /* orphaned (orphan_jobs): nobody waits for it; the heap it ran on is held for it */
+    Permit();
+    job_free(j);
+    vsh_heap_release();
 }
 
 static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io, int wait)
@@ -1943,6 +1956,10 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
         return -1;  /* child and tree stay the caller's */
     }
     j->task = &p->pr_Task;
+    Forbid();
+    j->next = live_jobs;
+    live_jobs = j;
+    Permit();
     if (j->io.owned & SH_OWN_OUT) {
         int i;
         Forbid();

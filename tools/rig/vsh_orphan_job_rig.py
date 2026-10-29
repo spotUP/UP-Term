@@ -12,6 +12,10 @@ strings are AllocVec. `Wait 4` is the orphan; while it sleeps, other shells run 
 memory; when it ends it frees its job. Old code freed into the deleted pool: a Guru or a hang, the
 task never left, or a following command failed.
 
+Third test (subshell): `( ... ) &` is a "vsh subshell" process running the interpreter on vsh's own
+malloc heap (shell/vsh_mem.c) with a malloc'd shell and parse tree. It must outlive the shell too: the
+code stays loaded, and the heap is deleted by the last orphan, not by the exiting shell.
+
   UPTERM_RIG=<n> vsh_orphan_job_rig.py"""
 import os, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +32,14 @@ def job_tasks():
     if 'KIND' not in out:
         sys.exit('[ERROR] rig %s: no task list (%s)' % (os.environ.get('UPTERM_RIG', '?'), out.strip()[:80]))
     return [l for l in out.splitlines() if 'vsh job' in l]
+
+
+def sub_tasks():
+    out = subprocess.run([sys.executable, os.path.join(HERE, 'rig.py'), 'wasabi', 'ps', 'vsh subshell*'],
+                         capture_output=True, text=True).stdout
+    if 'KIND' not in out:
+        sys.exit('[ERROR] rig %s: no task list (%s)' % (os.environ.get('UPTERM_RIG', '?'), out.strip()[:80]))
+    return [l for l in out.splitlines() if 'vsh subshell' in l]
 
 
 def main():
@@ -53,7 +65,22 @@ def main():
     ok2 = not left2 and 'alive' in got2
     print('[%s] orphan freed its job after the shell exited: tasks left=%d, system answers=%s'
           % ('OK' if ok2 else 'ERROR', len(left2), 'alive' in got2))
-    return 0 if ok and ok2 else 1
+    # subshell: the orphan sleeps past the shell's exit, others reuse the memory, then it runs on
+    ami('exec', 'Delete RAM:sub.out QUIET', '10')
+    ami('exec', 'GG:bin/sh -c "( Wait 3 secs >NIL: ; Echo sub >RAM:sub.out ) &"', '20')
+    for i in range(4):
+        ami('exec', 'GG:bin/sh -c "Echo churn%d >RAM:orphan3.out ; Type RAM:orphan3.out >NIL:"' % i, '20')
+    end = time.time() + 30
+    while time.time() < end and (sub_tasks() or 'sub' not in ami('exec', 'Type RAM:sub.out', '10')):
+        time.sleep(1)
+    left3 = sub_tasks()
+    got3 = ami('exec', 'Type RAM:sub.out', '10')
+    ami('exec', 'GG:bin/sh -c "Echo alive3 >RAM:orphan3.out"', '20')
+    alive3 = 'alive3' in ami('exec', 'Type RAM:orphan3.out', '10')
+    ok3 = not left3 and 'sub' in got3 and alive3
+    print('[%s] orphaned subshell: command ran=%s, tasks left=%d, system answers=%s'
+          % ('OK' if ok3 else 'ERROR', 'sub' in got3, len(left3), alive3))
+    return 0 if ok and ok2 and ok3 else 1
 
 
 sys.exit(main())
