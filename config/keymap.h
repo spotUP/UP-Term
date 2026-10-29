@@ -113,6 +113,7 @@ typedef struct keymap {
     int refused;                /* the safety refusals among them */
     int overflow;               /* a table was full or a line too long */
     int first_bad;              /* line number of the first skipped row, 0 when none */
+    char err[64];               /* one-line reason for the first super+alt row refused, empty when none */
     km_bind *bind;              /* heap: bcap slots, nbind used */
     km_menu *menu;              /* heap: mcap slots, nmenu used */
     int bcap, mcap;

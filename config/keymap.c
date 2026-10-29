@@ -429,6 +429,7 @@ int keymap_compact(keymap *k, int (*keep)(const km_bind *))
     t.refused = k->refused;
     t.overflow = k->overflow;
     t.first_bad = k->first_bad;
+    memcpy(t.err, k->err, sizeof t.err);
     if (n) {
         t.bind = (km_bind *)KM_MALLOC(sizeof(km_bind) * (size_t)n);
         c = (km_chunk *)KM_MALLOC(sizeof(km_chunk) + chars);
@@ -564,7 +565,7 @@ static int menu_apply(keymap *k, const char *id, const action *a, const char *la
 /* ---- rows ---- */
 
 /* The key spec "super+shift+k" / "super+1..9". 1 ok (qual, lo..hi set),
- * 0 bad, 2 refused. */
+ * 0 bad, 2 refused, 3 refused because super+alt is the mouse-click emulation. */
 static int spec_parse(const char *spec, unsigned *qual, int *lo, int *hi, int *range)
 {
     char buf[64];
@@ -611,6 +612,8 @@ static int spec_parse(const char *spec, unsigned *qual, int *lo, int *hi, int *r
         return 2;
     if (!(*qual & KM_Q_SUPER))
         return 0;
+    if (*qual & KM_Q_ALT)
+        return 3;           /* Left Amiga + Alt is Intuition's left mouse button */
     if (strlen(key) == 4 && key[1] == '.' && key[2] == '.' && key[0] >= '0' && key[0] <= '9'
         && key[3] >= '0' && key[3] <= '9' && key[0] <= key[3]) {
         *lo = key[0] - '0';
@@ -658,7 +661,16 @@ static int row_bind(void *ud, int lineno, const char *key, const char *value)
 
     r = spec_parse(key, &qual, &lo, &hi, &range);
     if (r != 1) {
-        bad_row(k, lineno, r == 2, 0);
+        bad_row(k, lineno, r >= 2, 0);
+        if (r == 3 && !k->err[0]) {
+            char num[12];
+            int nn = 0, v = lineno;
+            do num[nn++] = (char)('0' + v % 10); while ((v /= 10) > 0);
+            strcpy(k->err, "line ");
+            for (v = 0; nn > 0; )
+                k->err[5 + v++] = num[--nn];
+            strcpy(k->err + 5 + v, ": super+alt is the mouse-click emulation");
+        }
         return 0;
     }
     if (!km_copy(text, KM_LINE, value)) {

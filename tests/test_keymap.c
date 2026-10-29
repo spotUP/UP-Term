@@ -134,6 +134,20 @@ static void the_safety_refusals(void)
     CHECK(keymap_find(&km, KM_Q_SUPER | KM_Q_SHIFT | KM_Q_CTRL, RAW_K) != 0);
 }
 
+/* A super+alt row is refused with a one-line error naming the line; other rows still load. */
+static void a_super_alt_row_is_refused_and_super_ctrl_loads(void)
+{
+    CHECK(parse("[bind]\nsuper+ctrl+t = viewer\nsuper+alt+k = viewer\nsuper+shift+alt+j = viewer\nsuper+ctrl+shift+k = viewer\n"));
+    CHECK_INT(km.nbind, 2);
+    CHECK_INT(km.skipped, 2);
+    CHECK_INT(km.refused, 2);
+    CHECK_INT(km.first_bad, 3);
+    CHECK(strcmp(km.err, "line 3: super+alt is the mouse-click emulation") == 0);
+    CHECK(keymap_find(&km, KM_Q_SUPER | KM_Q_CTRL, RAW_T) != 0);
+    CHECK(keymap_find(&km, KM_Q_SUPER | KM_Q_ALT, RAW_K) == 0);
+    CHECK(keymap_find(&km, KM_Q_SUPER | KM_Q_SHIFT | KM_Q_CTRL, RAW_K) != 0);
+}
+
 /* Regression: Left Amiga + Alt is Intuition's left mouse button, so a chord with it clicks whatever
  * is under the pointer (it left a close gadget selected and blocked AmTile's ChangeWindowBox).
  * Parse the shipped file; no binding may combine Super with either Alt. */
@@ -222,9 +236,9 @@ static void the_tables_have_caps(void)
     strcpy(o, "[bind]\n");
     o += strlen(o);
     for (i = 0; i < KM_MAX_BIND + 8; i++) {
-        static const char *const q[] = { "super", "super+shift", "super+alt", "super+rshift",
-                                         "super+shift+alt", "super+alt+rshift", "super+shift+rshift",
-                                         "super+shift+alt+rshift" };
+        static const char *const q[] = { "super", "super+shift", "super+ctrl", "super+rshift",
+                                         "super+shift+ctrl", "super+ctrl+rshift", "super+shift+rshift",
+                                         "super+shift+ctrl+rshift" };
         static const char *const key[] = { "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
                                            "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
                                            "1", "2", "3", "4", "5", "6", "7", "8", "9" };
@@ -3104,6 +3118,7 @@ void suite_keymap(void)
     junk_file_keeps_the_old_keymap();
     bad_rows_are_skipped_and_counted();
     the_safety_refusals();
+    a_super_alt_row_is_refused_and_super_ctrl_loads();
     the_shipped_keymap_has_no_super_alt_chord();
     a_newer_major_is_rejected_whole();
     a_later_row_replaces_and_none_unbinds();
