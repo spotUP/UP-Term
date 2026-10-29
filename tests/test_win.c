@@ -290,6 +290,29 @@ static void snap_boxes(void)
     CHECK_INT(win_snap(&b, WA_NEXT, 0, &s0), 0);       /* not a zone */
 }
 
+/* P3-E4: every knob of snap moves the host output: the nine zones give nine distinct boxes, the gap changes every zone's
+ * box, and the bar reserve (bottom) changes every zone's box. */
+static void snap_knobs_each_move_the_box(void)
+{
+    static const win_arg zone[] = { WA_LEFT, WA_RIGHT, WA_UP, WA_DOWN, WA_TL, WA_TR, WA_BL, WA_BR, WA_CENTER };
+    static const win_screen bar = { 800, 600, 14, 16 };
+    win_box b[9];
+    int i, j;
+    for (i = 0; i < 9; i++) {
+        win_box g4 = free_box(300, 200), bb = free_box(300, 200);
+        b[i] = free_box(300, 200);
+        win_snap(&b[i], zone[i], 0, &s0);
+        win_snap(&g4, zone[i], 4, &s0);
+        win_snap(&bb, zone[i], 0, &bar);
+        if (zone[i] != WA_CENTER)                           /* centre keeps the size: no gap */
+            CHECK(memcmp(&b[i], &g4, sizeof b[i]) != 0);   /* gap 0 vs 4 */
+        CHECK(memcmp(&b[i], &bb, sizeof b[i]) != 0);       /* bottom 0 vs 16 */
+    }
+    for (i = 0; i < 9; i++)
+        for (j = i + 1; j < 9; j++)
+            CHECK(memcmp(&b[i], &b[j], sizeof b[i]) != 0);  /* zone */
+}
+
 void suite_win(void)
 {
     parse_verbs();
@@ -305,4 +328,5 @@ void suite_win(void)
     move_stops_at_bar();
     snap_parse();
     snap_boxes();
+    snap_knobs_each_move_the_box();
 }
