@@ -39,6 +39,7 @@ requester is the finding. The EXEC ends within wasabi's RUN_CHECK (10 s) of that
 watch off for a run that opens requesters on purpose. `ami.py requesters` lists the open ones."""
 import contextlib, os, socket, struct, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kitstamp
 import paths   # the one reader of UPTERM_RIG: rig 2's wasabid is on 1235
 import wasabi as rigwasabi
 
@@ -652,6 +653,9 @@ def reboot(wait=240, every=5):
     if run('Echo >%s x' % REBOOT_MARKER) != 0:
         raise SystemExit('reboot: cannot write %s' % REBOOT_MARKER)
     log = boot_log()
+    if log is not None:
+        # RIG-SLOW-BOOT: go skips its kit shadow pass only while VTC: holds the kit that pass put on DH0:
+        kitstamp.check(paths.RIG / 'boot', paths.RIG / 'vtc')
     t0 = time.time()
     seen, changed = None, t0
     try:

@@ -64,6 +64,7 @@ import paths
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import libguard
 import kitset
+import kitstamp
 import user_startup
 import wasabi as rigwasabi
 
@@ -240,7 +241,10 @@ def kit_shadow_lines(upterm):
            "If EXISTS VTC:kit-restore"]
     for _, dest, bak in shadows:
         out += kit_guard(dest, ["If EXISTS VTC:kit-orig/%s" % bak, "  C:Copy >NIL: VTC:kit-orig/%s %s CLONE" % (bak, q(dest)), "EndIf"])
+    # the kit's own files are back: the next shadowing boot runs the full pass (kitstamp)
+    out.append("  C:Delete >NIL: VTC:%s QUIET" % kitstamp.STAMP)
     out.append("Else")
+    body = []
     for src, dest, bak in shadows:
         copy = ["If EXISTS VTC:%s" % src]
         if dest.startswith("C:"):
@@ -248,14 +252,26 @@ def kit_shadow_lines(upterm):
             copy += ["  If EXISTS %s" % q(dest), "    If NOT EXISTS VTC:kit-orig/%s" % bak,
                      "      C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak), "    EndIf", "  EndIf"]
             copy += ["  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"]
-            out += copy
+            body += copy
             continue
-        out += kit_guard(dest, copy[:1] + ["  If NOT EXISTS VTC:kit-orig/%s" % bak,
+        body += kit_guard(dest, copy[:1] + ["  If NOT EXISTS VTC:kit-orig/%s" % bak,
                                 "    C:Copy >NIL: %s VTC:kit-orig/%s CLONE" % (q(dest), bak),
                                 "  EndIf",
                                 "  C:Copy >NIL: VTC:%s %s CLONE" % (src, q(dest)), "EndIf"])
-    out.append("EndIf")
+    # RIG-SLOW-BOOT: a full pass already put this kit on this DH0: (kitstamp; the host drops the stamp when either changed)
+    out += ["  If EXISTS VTC:%s" % kitstamp.STAMP, '    Echo >>BOOTX:boot.log "kit shadows skipped"', "  Else"]
+    out += ["    " + l for l in body]
+    out += ["  EndIf", "EndIf"]
     return "\n".join(out)
+
+
+# after both shadow passes: the stamp that lets the next boot skip them (kitstamp). No VTC:kit-hash (a host that
+# never ran kitstamp.check): the Copy fails quietly and every boot shadows, as before.
+KIT_STAMP_BOOT = """If NOT EXISTS VTC:kit-restore
+  If NOT EXISTS VTC:%(stamp)s
+    C:Copy >NIL: VTC:%(hash)s VTC:%(stamp)s
+  EndIf
+EndIf""" % {"stamp": kitstamp.STAMP, "hash": kitstamp.HASH}
 
 
 # the boot's own UP-Term: assign (a kit's wins); install_rig.py runs it again when it has put the owner's add-ons back
@@ -303,6 +319,7 @@ If WARN
 EndIf
 Echo >>BOOTX:boot.log "env ok"
 %(shadows_up)s
+%(kit_stamp)s
 Echo >>BOOTX:boot.log "UP-Term shadows done"
 C:Mount XCON: FROM BOOTX:Mountlist
 Echo >>BOOTX:boot.log "XCON mounted"
@@ -379,7 +396,7 @@ Run >NIL: SYS:System/RexxMast
 C:SetEnv wasabi.key %(key)s
 C:Run >NIL: <NIL: BOOTX:wasabid %(port)d name rig%(rign)d
 Echo >>BOOTX:boot.log "wasabid started"
-""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "libs": "\n".join("  C:" + l for l in RIG_LIBS),
+""" % {"port": paths.WASABI_PORT, "key": paths.WASABI_KEY, "rign": paths.RIG_N, "upterm_assign": UPTERM_ASSIGN, "amarchy_assets": AMARCHY_ASSETS_BOOT, "shadows": kit_shadow_lines(False), "shadows_up": kit_shadow_lines(True), "kit_stamp": KIT_STAMP_BOOT, "libs": "\n".join("  C:" + l for l in RIG_LIBS),
        "shellpath": "\n".join('    Echo >>S:Shell-Startup "%s"' % l for l in SHELL_STARTUP_PATH)}
 # boot.log in the host drawer BOOTX: tells from the Mac how far a boot got
 # (the rig's screen is not visible from here).
@@ -505,6 +522,7 @@ def os_image_copy():
         src = paths.OS_IMAGES / ("Workbench_%s.hdf" % OS_NAMES[OS])
         paths.require_input(src, "UPTERM_OS_IMAGES", "the clean Workbench %s image" % OS_NAMES[OS])
         label.write_text(unpack_volume(src, dst))
+        kitstamp.drop(RIG / "vtc")   # a new DH0: holds none of the shadows
         us = dst / "S/User-Startup"
         prior = us.read_text(errors="replace") if us.exists() else ""
         us.write_text(prior + ("" if prior.endswith("\n") or not prior else "\n") + OS_HOOKS)   # 3.2.2 ends its comment box without a newline: the first hook line was part of it (VTC: never as
@@ -543,6 +561,7 @@ def fresh_sys_hdf():
         sys.exit("rig: cannot clone the system disk %s to %s (cp -c: %s). The rig needs an APFS clone: a full 1.5 GB "
                  "copy would fill the host disk." % (SRC_HDF, dst, r.stderr.strip() or r.returncode))
     os.replace(new, dst)
+    kitstamp.drop(RIG / "vtc")   # a new DH0: holds none of the shadows
 
 def sys_hdf_cpu_lib(image):
     """The rig's own sys.hdf copy follows the machine: no Libs/68060.library on the FPU-less 68LC060 (SetPatch loads it
@@ -916,6 +935,7 @@ def setup():
         print("copying the 3.2 system (168 MB) ...")
         paths.require_input(OS32_SRC, "UPTERM_OS32_TREE", "the AmigaOS 3.2 tree")
         shutil.copytree(OS32_SRC, RIG / "os32", symlinks=True)
+        kitstamp.drop(RIG / "vtc")   # a new DH0: holds none of the shadows
     if OS32:
         os32_hd_layout()
     if OS:
@@ -956,6 +976,8 @@ def setup():
         print("[WARN] %d file(s) in VTC: differ from the build: %s; `rig.py install` puts the build there"
               % (len(stale), ", ".join(stale)))
     (RIG / "boot/go").write_text(GO)
+    (RIG / "boot" / kitstamp.LIST).write_text("".join(n + "\n" for n in sorted({x[0] for x in KIT_SHADOWS})))
+    kitstamp.check(RIG / "boot", RIG / "vtc")
     (RIG / "boot/Mountlist").write_text(MOUNTLIST)
     machine = [
         "[fs-uae]", "amiga_model = A1200", "accuracy = 1", "chip_memory = 2048",
@@ -1242,6 +1264,7 @@ def build_drift(vtc):
 def kit_restore():
     """The next boot puts the kit's own files back (KIT_SHADOWS); `install` turns shadowing on again."""
     (RIG / "vtc/kit-restore").write_text("")
+    kitstamp.drop(RIG / "vtc")
     print("kit-restore: reboot the rig (stop, start); the kit's files come back from VTC:kit-orig")
 
 def refresh_kit_shadows(vtc):
@@ -1327,6 +1350,7 @@ def _install():
     # refreshed only VTC:, so the start [WARN] kept listing Apps/bin programs (vtcon-a1 P7, 2026-10-27)
     refresh_programs(RIG / "vtc", build_amiga(), VTC_REQUIRED)
     refresh_kit_shadows(RIG / "vtc")
+    kitstamp.check(RIG / "boot", RIG / "vtc")   # a changed kit file: the next boot shadows it
     stage_amarchy_assets(RIG / "vtc")
     # the themes beside the handler: the rig has no kit, so no
     # ENVARC:up-term/themes, and the theme requesters and /theme fall back
