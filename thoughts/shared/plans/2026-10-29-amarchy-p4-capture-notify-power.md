@@ -127,18 +127,18 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   Proof: host test of its argument parse (portable part); rig row r4_amnotify: notes= +1.
 - [ ] R4.11 [P2-B] capture posts a notice "Screenshot saved" + file name (or the error), clipboard noted. Proof: part of r4_screen:
   notes= +1 after the hotkey.
-- [~] R4.12 (script+port+CLI done 7b806183; menu row and window part open) power: "Safe to switch off" reuses `Reboot DRYRUN` (install/reboot.c) instead of a new power.c (roadmap had power.c;
+- [~] R4.12 (script+port+CLI done 7b806183; menu row ebe99aa2, calls amnotify by full path; window part open) power: "Safe to switch off" reuses `Reboot DRYRUN` (install/reboot.c) instead of a new power.c (roadmap had power.c;
   D6 confirms). A script UP-Term:S/safe-off: `Reboot DRYRUN >T:safeoff.txt`, then `amnotify` with the result (rc 0:
   "Safe to switch off"; rc 5: "Not all disks answered" with BODYFILE T:safeoff.txt). Proof: rig row r4_safeoff: NOTES
   last= the expected title; host: dist-check that the script names only installed commands.
-- [ ] R4.13 [P2-B] menu row `system.safeoff = Safe to switch off | detach:Execute UP-Term:S/safe-off` and the system menu key
+- [~] R4.13 (ebe99aa2 row, key, icon, host tests; rig: binary embeds both rows; real key press and visible notice wait for the P2 helper window) [P2-B] menu row `system.safeoff = Safe to switch off | detach:Execute UP-Term:S/safe-off` and the system menu key
   per D7 (`super+escape = menu:system`). Proof: rig row r4_power_menu: press the real key, RUN of the row via the menu,
   NOTES last= "Safe to switch off".
 - [ ] R4.14 Reboot row: already `detach:Reboot` (dist/keymap:264). Check only: row present in the system menu, confirm per D8.
   Never pressed on the rig except one deliberate row (memory: never reset a rig mid-write: command done + 5 s quiet first).
 - [x] R4.15 (7b806183; STATUS 128 bytes with notes=N) (shots=N done: REXX_HOST_OUT 96 -> 160, rig asserts STATUS > 95 bytes ending shots=N; notes=N waits for R4.9a: note_core has the count (note_q.posted) but the queue instance and a poster live in note.c, so a STATUS notes= now would be a dead key; the AMARCHY_SHOTS sentinel is not added: sentinel_dos.c is not linked into Amarchy and STATUS shots= is the observable) STATUS adds ` shots=N notes=N` (amarchy.c:143-161), and the bar/tick keys P2 adds stay; also `am_sentinel("AMARCHY_SHOTS")`.
   Proof: rig r4_status: both keys present and 0 at start (known-dead baseline, protocol section 3), non-zero after r4_screen.
-- [ ] R4.16 man page (man/amarchy.1: cap: kind, AMARCHY.NOTIFY verbs, amnotify, safe-off), installer copies amnotify +
+- [x] R4.16 (16ff8179; installer already copied amnotify and S, 7b806183) man page (man/amarchy.1: cap: kind, AMARCHY.NOTIFY verbs, amnotify, safe-off), installer copies amnotify +
   safe-off script, README key list (generated from dist/keymap), `make dist-check` rows.
 - [ ] R4.17 rig reachability test tools/rig/amarchy_p4_rig.py (below) PASS on rig 060, verdict files committed in the ledger
   row with the commit hash.
