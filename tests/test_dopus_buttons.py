@@ -52,7 +52,7 @@ class Buttons(unittest.TestCase):
         _, _, _, _, buttons = parse_bank(g.generate())
         got = [(b["label"], b["marker"], b["count"], len(b["funcs"]), b["funcs"][0]["kind"],
                 b["funcs"][0]["cmd"]) for b in buttons]
-        shell = b'Run >NIL: NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT"'
+        shell = b"Run >NIL: Execute UP-Term:bin/uterm-shell"
         self.assertEqual(got, [
             (b"UP-Term here", b"\1", 1, 1, g.INST_AMIGADOS, shell),
             (b"Edit", b"\1", 1, 1, g.INST_AMIGADOS, b"Run >NIL: Execute UP-Term:bin/uterm-edit {f}"),
@@ -66,7 +66,7 @@ class Buttons(unittest.TestCase):
         self.assertTrue(all(b["funcs"][0]["flags"] & g.FUNCF_RUN_ASYNC for b in buttons))
 
     def test_launchers_named_exist_in_dist(self):
-        for name in ("uterm-edit", "uterm-view"):
+        for name in ("uterm-edit", "uterm-view", "uterm-shell"):
             self.assertTrue((ROOT / "dist" / name).is_file(), name)
 
     def test_the_reader_parses_the_stock_hotkeys_bank(self):

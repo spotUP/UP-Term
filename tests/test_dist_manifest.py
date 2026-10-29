@@ -82,7 +82,7 @@ class Manifest(unittest.TestCase):
         import gen_dopus_filetype as g
         mk = (ROOT / "Makefile").read_text()
         data = g.generate()
-        for n in ("uterm-edit", "uterm-view", "uterm-start", "uterm-open"):
+        for n in ("uterm-edit", "uterm-view", "uterm-start", "uterm-open", "uterm-shell", "uterm-shellstart"):
             self.assertTrue((ROOT / "dist" / n).is_file(), n)
             self.assertRegex(mk, r"(?m)^\tcp (?:\S+ )*dist/%s (?:\S+ )*\$\(KIT\)/Files/userland/bin/$" % n)
         self.assertLess(mk.index("python3 tools/slim.py remove $(KIT)/Files/userland"), mk.index("cp dist/uterm-edit"))
@@ -99,13 +99,21 @@ class Manifest(unittest.TestCase):
             self.assertIn('\nSet UPTLAUNCHFILE "{FILE}"\n', s)
             self.assertNotIn("SetEnv UPTLAUNCH", s)
             self.assertIn('NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-start', s)
+        sh = (ROOT / "dist/uterm-shell").read_text()
+        self.assertIn('NewShell "XCON:0/20/640/300/UP-Term/CLOSE/FRONT" FROM UP-Term:bin/uterm-shellstart', sh)
+        self.assertNotIn("UPTLAUNCH", sh)
+        ss = (ROOT / "dist/uterm-shellstart").read_text()
+        self.assertRegex(ss, r"(?m)^UP-Term:bin/vsh$")
+        self.assertRegex(ss, r"(?m)^Stack [1-9][0-9]*$")
+        self.assertTrue(ss.rstrip().endswith("EndCLI"))
         start = (ROOT / "dist/uterm-start").read_text()
         self.assertIn("UP-Term:bin/vsh UP-Term:bin/uterm-open", start)
         self.assertTrue(start.rstrip().endswith("EndCLI"))
         self.assertRegex(start, r"(?m)^Stack [1-9][0-9]*$")
         op = (ROOT / "dist/uterm-open").read_text()
         self.assertIn('exec less "$f"', op)
-        self.assertIn('exec ${EDITOR:-nvim} "$f"', op)
+        self.assertIn('exec ${EDITOR:-joe} "$f"', op)
+        self.assertNotIn("nvim", op)
 
     def test_upkg_browse_is_inside_upkg_not_a_script_in_the_kit(self):
         """`upkg browse` runs in the upkg binary (opkg patch 0025): the kit carries no bin/upkg-browse script"""

@@ -110,7 +110,7 @@ Why M: two shipped binary files from a generator and a text-mode viewer path to 
 - Filetype file: `UP-Term:Dopus/Filetypes/UP-Term` (binary `FORM OPUS`), generated at build by a small script modelled
   on upstream `archive/tools/filetype_tool.py` (its encoder is the reference; the file is verified by the tool's
   `check` round trip and `lint`). Entries: text files (`MATCHNAME` `#?.(c|h|txt|md|rexx)`) with "Double-click" = AmigaDOS
-  instruction `Run >NIL: UP-Term:bin/uterm-edit "%s"` and "User1" = viewer; the launcher opens `nvim`/`less` in an UP-Term
+  instruction `Run >NIL: UP-Term:bin/uterm-edit "%s"` and "User1" = viewer; the launcher opens `$EDITOR` (joe when unset)/`less` in an UP-Term
   window with the console spec `XCON:0/20/640/300/UP-Term/CLOSE/SCREEN <screen>` (spec from `LF_UTERM_SPEC`,
   `amarchy/leaf.h:10`; the screen from `dopus screen`, F4).
 - Button bank: `UP-Term:Dopus/Buttons/UP-Term` (binary `FORM OPUS`, bank), buttons "UP-Term here", "Edit", "Page", "Shell";

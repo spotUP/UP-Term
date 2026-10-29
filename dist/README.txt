@@ -831,7 +831,8 @@ AMARCHY
   CPU, installed by its own installer; an existing DOpus5: drawer is never
   touched). Without Directory Opus running, these keys do nothing and no
   window opens. The commands uterm-edit and uterm-view open a file in an
-  UP-Term window (the editor, or the pager) for Directory Opus to call.
+  UP-Term window (the editor, or the pager) for Directory Opus to call; uterm-shell
+  opens an UP-Term window with vsh in the current directory.
 
   Window, Screens and Workbench groups: rows of the form  win:<verb>  act on
   windows of any program. Verbs: cycle, front, back, zip, fullwidth,

@@ -20,13 +20,12 @@ BTNWF_HORIZ = 1 << 6
 FTYPE_LEFT_BUTTON = 0
 FPEN, BPEN = 0, 0                        # default pens
 
-WINDOW = b"XCON:0/20/640/300/UP-Term/CLOSE/FRONT"
 # (label, command, flags): {f} is the selected file, DOpus's own substitution (stock Dopus4Samples: `Ed {f}`)
 BUTTONS = [
-    (b"UP-Term here", b'Run >NIL: NewShell "' + WINDOW + b'"', FUNCF_RUN_ASYNC | FUNCF_CD_SOURCE),
+    (b"UP-Term here", b"Run >NIL: Execute UP-Term:bin/uterm-shell", FUNCF_RUN_ASYNC | FUNCF_CD_SOURCE),
     (b"Edit", b"Run >NIL: Execute UP-Term:bin/uterm-edit {f}", FUNCF_RUN_ASYNC | FUNCF_CD_SOURCE),
     (b"Page", b"Run >NIL: Execute UP-Term:bin/uterm-view {f}", FUNCF_RUN_ASYNC | FUNCF_CD_SOURCE),
-    (b"Shell", b'Run >NIL: NewShell "' + WINDOW + b'"', FUNCF_RUN_ASYNC),
+    (b"Shell", b"Run >NIL: Execute UP-Term:bin/uterm-shell", FUNCF_RUN_ASYNC),
 ]
 
 
