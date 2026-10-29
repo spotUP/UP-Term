@@ -89,6 +89,14 @@ int mn_parent(const char *node, char *out, int n);
  * (node empty) both close the menu. bs is 1 for Backspace, 0 for Escape. */
 enum { MN_BACK_CLEAR_FILTER, MN_BACK_DROP_CHAR, MN_BACK_UP, MN_BACK_CLOSE };
 int mn_back(int bs, const char *filter, const char *node);
+/* MENU-BS-REPEAT: a held Backspace repeats. The repeat that empties the query must not be followed by one
+ * that goes up or closes: only a fresh press (no Backspace handled within MN_BS_REPEAT_TICKS) may. now is
+ * in 1/50 s ticks (any steady clock). mn_back_rep answers as mn_back(1, ...) or MN_BACK_NONE (ignore the key). */
+#define MN_BS_REPEAT_TICKS 20
+#define MN_BACK_NONE 4
+typedef struct { long last; } mn_bsguard;
+void mn_bsguard_init(mn_bsguard *g);
+int mn_back_rep(mn_bsguard *g, long now, const char *filter, const char *node);
 /* The node an item opens (groups only): node + "." + seg. */
 void mn_child_node(const char *node, const mn_item *it, char *out, int n);
 /* 1 when the Right arrow enters the row, as Return does: a group, a settings page, a cycle or colour or list

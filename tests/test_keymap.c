@@ -1886,6 +1886,18 @@ static void menu_levels_follow_the_ids_and_escape_goes_up(void)
     CHECK_INT(mn_back(0, "ab", "apps"), MN_BACK_CLEAR_FILTER);
     CHECK_INT(mn_back(0, "", "apps"), MN_BACK_UP);
     CHECK_INT(mn_back(0, "", ""), MN_BACK_CLOSE);
+    /* MENU-BS-REPEAT: a held Backspace that empties the query must not carry on up a level or close */
+    {
+        mn_bsguard bg;
+        mn_bsguard_init(&bg);
+        CHECK_INT(mn_back_rep(&bg, 1000, "ab", ""), MN_BACK_DROP_CHAR);
+        CHECK_INT(mn_back_rep(&bg, 1003, "a", ""), MN_BACK_DROP_CHAR);
+        CHECK_INT(mn_back_rep(&bg, 1006, "", ""), MN_BACK_NONE);      /* the repeat past empty: the menu stays */
+        CHECK_INT(mn_back_rep(&bg, 1009, "", "apps"), MN_BACK_NONE);  /* still held: no level up either */
+        CHECK_INT(mn_back_rep(&bg, 1100, "", ""), MN_BACK_CLOSE);     /* released, a fresh press: closes */
+        mn_bsguard_init(&bg);
+        CHECK_INT(mn_back_rep(&bg, 5, "", "apps.tools"), MN_BACK_UP); /* a fresh press on empty goes up at once */
+    }
 }
 
 /* AM-OSD O5: the commodity sizes the menu window from the keymap it holds, walking every level

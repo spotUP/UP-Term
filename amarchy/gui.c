@@ -112,6 +112,7 @@ typedef struct gui {
     long late;                   /* blits that took longer than estimated */
     /* list */
     char node[KM_ID * 2], filter[KM_LABEL];
+    mn_bsguard bsg;                      /* MENU-BS-REPEAT */
     mn_item *it;                 /* one level's items, ix_level_cap(&ixs) of them */
     int *idx, cap, count;
     long *chip;                  /* per item of it: the 0xRRGGBB colour chip of a colour row, else -1 (lf_setting_rechip) */
@@ -922,6 +923,7 @@ static void activate(gui *g, int right)
 static void key_list(gui *g, int k, int ch)
 {
     int l = (int)strlen(g->filter);
+    int act;
     switch (k) {
     case K_ESC:
         if (mn_back(0, g->filter, g->node) == MN_BACK_CLEAR_FILTER) {
@@ -953,11 +955,12 @@ static void key_list(gui *g, int k, int ch)
         set_sel(g, g->sel + g->g.visible);
         break;
     case K_BS:
-        if (mn_back(1, g->filter, g->node) == MN_BACK_DROP_CHAR) {
+        act = mn_back_rep(&g->bsg, at_ticks(), g->filter, g->node);
+        if (act == MN_BACK_DROP_CHAR) {
             g->filter[l - 1] = 0;
             list_rebuild(g);
-        } else
-            go_up(g);                       /* no filter: back, as Escape */
+        } else if (act != MN_BACK_NONE)
+            go_up(g);                       /* no filter, fresh press: back, as Escape */
         break;
     case K_CHAR:
         if (l < (int)sizeof g->filter - 1) {
@@ -1528,6 +1531,7 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
 
     at_mark("start");
     memset(g, 0, sizeof *g);
+    mn_bsguard_init(&g->bsg);
     keep_setting = -1;
     lf_reset();
     mo_register();   /* MENU-TOGGLE: the menu hotkey again ends this menu; clears a stale Ctrl-C */
