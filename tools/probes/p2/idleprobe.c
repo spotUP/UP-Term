@@ -1,6 +1,7 @@
 /* idleprobe: P2 R2.2. A process at priority -128 counts loops. Reports: counts per second idle (3 samples),
  * counts while the main task is busy, counts at a 50 percent duty cycle, and the time of a fixed busy
- * benchmark without and with the idle task (3 runs each). Usage: idleprobe [bench_iterations]. Not a user command. */
+ * benchmark without and with the idle task (3 runs each). Usage: idleprobe [bench_iterations] | idleprobe busy <ticks>
+ * (burns the CPU for that many 1/50 s ticks and exits: the rig's busy load for the bar's CPU segment). Not a user command. */
 #include <exec/types.h>
 #include <dos/dos.h>
 #include <dos/dostags.h>
@@ -65,9 +66,13 @@ static void busy_ticks(unsigned long tk)
 
 int main(int argc, char **argv)
 {
-    unsigned long n = argc > 1 ? strtoul(argv[1], 0, 10) : 10000000UL;
+    unsigned long n = argc > 1 && argv[1][0] != 'b' ? strtoul(argv[1], 0, 10) : 10000000UL;
     unsigned long c0, c1, tb[3], ti[3], sb = 0, si = 0;
     int k;
+    if (argc > 2 && argv[1][0] == 'b') {
+        busy_ticks(strtoul(argv[2], 0, 10));
+        return 0;
+    }
     idle_start();
     Delay(25);
     for (k = 0; k < 3; k++) {

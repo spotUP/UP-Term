@@ -13,6 +13,8 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <detail>"); l
   status_keys  STATUS no longer carries draws= panels= launches= raises= (they moved to BAR STATUS)
   clock        R2.6: BAR TEXT segment 2 reads like "Wed 15:25"; a real left click flips it to "Wed 29 Oct 2026", another back
   ram          R2.7: segment 3 reads "C <n> F <n>" and the numbers move or stay valid across 5 s of ticks
+  cpu          R2.8: segment 5 reads "CPU <n>%"; idle it stays under 50, while idleprobe busy burns the CPU it reaches 50 or more
+  network      R2.10: segment 6 reads "Network emulated" on the rig (UAE bsdsocket, no interface query is made)
   screens      R2.11: a public screen entry (id 200 and up) exists, exactly one carries the front-screen mark (*); a real
                left click on it keeps the bar alive and the entry listed
   system       R2.12a: a real left click on segment 4 raises BAR STATUS panels= by 1; Escape closes the menu
@@ -137,6 +139,37 @@ def s_ram():
     return bool(re.fullmatch(pat, a) and re.fullmatch(pat, b)), 'ram %r then %r' % (a, b)
 
 
+def seg_text(sid):
+    return segs().get(sid, (0, 0, 0, ''))[3]
+
+
+def cpu_pct(text):
+    m = re.fullmatch(r'CPU (\d+)%', text)
+    return int(m.group(1)) if m else None
+
+
+def s_cpu():
+    import ami
+    time.sleep(3)
+    idle = cpu_pct(seg_text(5))
+    ami.put(str(stage_rig.BUILD / 'idleprobe'), 'RAM:idleprobe')
+    c.run('Run >NIL: RAM:idleprobe busy 600')
+    peak = 0
+    for _ in range(8):
+        time.sleep(1.1)
+        p = cpu_pct(seg_text(5))
+        peak = max(peak, p if p is not None else 0)
+    ok = idle is not None and idle < 50 and peak >= 50
+    return ok, 'idle %r, peak under busy loop %d, text %r' % (idle, peak, seg_text(5))
+
+
+def s_network():
+    a = seg_text(6)
+    time.sleep(6)
+    b = seg_text(6)
+    return a == b == 'Network emulated', 'network %r then %r' % (a, b)
+
+
 def s_screens():
     sc = {i: v for i, v in segs().items() if 200 <= i < 210}
     marks = [i for i, v in sc.items() if v[2]]
@@ -159,7 +192,7 @@ def s_system():
 
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
-         ('clock', s_clock), ('ram', s_ram), ('screens', s_screens), ('system', s_system)]
+         ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system)]
 
 
 def main():

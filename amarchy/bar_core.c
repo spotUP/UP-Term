@@ -351,16 +351,68 @@ int bar_fmt_percent(unsigned long idle, unsigned long total)
 
 void bar_fmt_screen(char *out, int cap, const char *title)
 {
-    char t[9];
     int n = 0;
+    if (cap <= 0)
+        return;
     while (title && *title == ' ')
         title++;
-    while (title && title[n] && title[n] != ' ' && n < 8) {
-        t[n] = title[n];
+    while (title && title[n] && title[n] != ' ' && n < cap - 1) {
+        out[n] = title[n];
         n++;
     }
+    out[n] = 0;
+}
+
+unsigned long bar_cpu_cal(unsigned long cal, unsigned long dcount, unsigned long dticks)
+{
+    unsigned long rate;
+    if (!dticks)
+        return cal;
+    rate = dcount / dticks;
+    return rate > cal ? rate : cal;
+}
+
+int bar_cpu_pct(unsigned long dcount, unsigned long dticks, unsigned long cal)
+{
+    unsigned long expect;
+    if (!cal || !dticks)
+        return 0;
+    if (dticks > BAR_CPU_MAX_TICKS)
+        dticks = BAR_CPU_MAX_TICKS;
+    expect = (cal >> 8) * dticks;           /* counts / 256: the percent maths stays inside 32 bits */
+    return bar_fmt_percent(dcount >> 8, expect);
+}
+
+void bar_fmt_cpu(char *out, int cap, int pct)
+{
+    char t[BAR_TEXT];
+    int n = 0;
+    if (pct < 0)
+        pct = 0;
+    if (pct > 100)
+        pct = 100;
+    memcpy(t, "CPU ", 4);
+    n = 4;
+    if (pct >= 100)
+        t[n++] = '1';
+    if (pct >= 10)
+        t[n++] = (char)('0' + (pct / 10) % 10);
+    t[n++] = (char)('0' + pct % 10);
+    t[n++] = '%';
     t[n] = 0;
     out_put(out, cap, t);
+}
+
+int bar_net_kind(const char *id_string)
+{
+    if (id_string && id_string[0] == 'U' && id_string[1] == 'A' && id_string[2] == 'E')
+        return BAR_NET_EMULATED;
+    return BAR_NET_STACK;
+}
+
+void bar_fmt_net(char *out, int cap, int kind)
+{
+    out_put(out, cap, kind == BAR_NET_EMULATED ? "Network emulated" : kind == BAR_NET_STACK ? "Network stack" : "No network");
 }
 
 static int find_seg(const bar *b, int id)

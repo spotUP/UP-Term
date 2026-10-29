@@ -11,7 +11,7 @@
 #define BAR_TEXT 32
 
 enum { BAR_LEFT = 0, BAR_RIGHT, BAR_CENTRE };
-enum { BAR_SEG_AGENTS = 1, BAR_SEG_CLOCK = 2, BAR_SEG_RAM = 3, BAR_SEG_SYSTEM = 4 };   /* 5 and 6 are left for CPU and network */
+enum { BAR_SEG_AGENTS = 1, BAR_SEG_CLOCK = 2, BAR_SEG_RAM = 3, BAR_SEG_SYSTEM = 4, BAR_SEG_CPU = 5, BAR_SEG_NET = 6 };
 /* The screens list (left group): one segment per public screen, ids BAR_SEG_SCREEN0 .. +BAR_MAX_SEGS-1 in list order,
  * then BAR_SEG_MORE, the "+N" marker bar_layout fills in when it cuts entries from the list's right end. */
 enum { BAR_SEG_MORE = 199, BAR_SEG_SCREEN0 = 200 };
@@ -117,7 +117,24 @@ void bar_fmt_time(char *out, int cap, const char *fmt, int wday, int day, int mo
 #define BAR_DATE_FMT "%a %d %b %Y"          /* "Mon 29 Oct 2026" */
 /* Busy percent 0..100 from idle and total counts (total 0 gives 0). */
 int bar_fmt_percent(unsigned long idle, unsigned long total);
-/* Screen short name: the title's first word, at most 8 characters. */
+/* Screen short name: the title's first word, whole (cut only at the first space; leading spaces skipped). The bar's
+ * "+N" cut rule handles width. */
 void bar_fmt_screen(char *out, int cap, const char *title);
+
+/* CPU load from the idle counter (a process at priority -128 that counts). `cal` is the counts per DateStamp tick
+ * of a fully idle machine; bar_cpu_cal raises it to the best rate seen (a sample taken while the machine was busy
+ * can only be low), bar_cpu_pct is the busy percent of `dcount` counted over `dticks` ticks (the wrap of an
+ * unsigned counter is harmless: pass the unsigned difference). dticks is clamped to BAR_CPU_MAX_TICKS. */
+#define BAR_CPU_MAX_TICKS 3000UL
+unsigned long bar_cpu_cal(unsigned long cal, unsigned long dcount, unsigned long dticks);
+int bar_cpu_pct(unsigned long dcount, unsigned long dticks, unsigned long cal);
+/* "CPU 12%" (pct clamped to 0..100). */
+void bar_fmt_cpu(char *out, int cap, int pct);
+/* Network segment. BAR_NET_NONE: bsdsocket.library did not open. BAR_NET_EMULATED: the library's id string starts with
+ * "UAE" (the emulator's stub; any QueryInterfaceTagList call with tags kills the rig, so it is never made).
+ * BAR_NET_STACK: a real stack opened (the interface query is not built, see the plan R2.10). */
+enum { BAR_NET_NONE = 0, BAR_NET_EMULATED, BAR_NET_STACK };
+int bar_net_kind(const char *id_string);
+void bar_fmt_net(char *out, int cap, int kind);
 
 #endif

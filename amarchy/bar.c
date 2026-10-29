@@ -10,6 +10,8 @@
 #include <intuition/intuitionbase.h>
 #include <exec/memory.h>
 #include <dos/dos.h>
+#include <dos/dostags.h>
+#include <exec/libraries.h>
 #include <proto/dos.h>
 #include <graphics/layers.h>
 #include <proto/layers.h>
@@ -57,6 +59,71 @@ static char g_scrname[BAR_MAX_SCREENS][32];     /* full public screen names of t
  * is borderless and never moves, so the box taken at open stays right. */
 static volatile int g_live, g_top, g_h;
 
+/* The CPU idle counter (R2.8): a process at priority -128 that only counts, so it runs when nothing else is ready. It
+ * stops on SIGBREAKF_CTRL_C and tells the opener it is gone with Signal under Forbid, so the opener never reads memory
+ * of a process that is still running its tail. Probe numbers: thoughts/shared/research/2026-10-29-amarchy-p2-probes.md. */
+#define IDLE_STACK 4096
+#define IDLE_CAL_TICKS 25                        /* start-up calibration: half a second of DateStamp ticks */
+#define NET_EVERY_TICKS 250UL                    /* the network is asked every 5 s (50 DateStamp ticks per second) */
+static volatile unsigned long g_idle_count;
+static struct Task *g_idle_parent;
+static ULONG g_idle_done_mask;
+static struct Process *g_idle_proc;
+static BYTE g_idle_sig = -1;
+static unsigned long g_cpu_cal, g_cpu_last_count, g_cpu_last_tick, g_net_last_tick;
+static int g_net_kind = -1;                      /* BAR_NET_*; -1 = not asked yet */
+
+static void idle_entry(void)
+{
+    int i;
+    for (;;) {
+        for (i = 0; i < 256; i++)
+            g_idle_count++;
+        if (SetSignal(0, 0) & SIGBREAKF_CTRL_C)
+            break;
+    }
+    Forbid();
+    Signal(g_idle_parent, g_idle_done_mask);
+}
+
+static unsigned long ds_ticks(void)
+{
+    struct DateStamp d;
+    DateStamp(&d);   /* days * 1440 * 3000 wraps mod 2^32: the difference of two readings stays right */
+    return ((unsigned long)d.ds_Days * 1440UL + (unsigned long)d.ds_Minute) * 3000UL + (unsigned long)d.ds_Tick;
+}
+
+static void idle_start(void)
+{
+    g_idle_sig = AllocSignal(-1);
+    if (g_idle_sig < 0)
+        return;
+    g_idle_done_mask = 1UL << g_idle_sig;
+    g_idle_parent = FindTask(0);
+    SetSignal(0, g_idle_done_mask);              /* clear a stale done flag */
+    g_idle_count = 0;
+    g_idle_proc = CreateNewProcTags(NP_Entry, (ULONG)idle_entry, NP_Priority, -128, NP_StackSize, IDLE_STACK,
+                                    NP_Name, (ULONG) "Amarchy bar idle", TAG_DONE);
+    if (!g_idle_proc) {
+        FreeSignal(g_idle_sig);
+        g_idle_sig = -1;
+    }
+}
+
+static void idle_stop(void)
+{
+    if (g_idle_proc) {
+        SetSignal(0, g_idle_done_mask);              /* clear a stale done flag */
+        Signal(&g_idle_proc->pr_Task, SIGBREAKF_CTRL_C);
+        Wait(g_idle_done_mask);
+        g_idle_proc = 0;
+    }
+    if (g_idle_sig >= 0) {
+        FreeSignal(g_idle_sig);
+        g_idle_sig = -1;
+    }
+}
+
 static void draw_seg(const bar_seg *s)
 {
     if (s->hidden || s->w <= 0)
@@ -97,6 +164,49 @@ static int sample_ram(void)
     return set_seg(BAR_SEG_RAM, t);
 }
 
+/* CPU load since the last sample, from the idle counter against the best rate seen. 1 when the text changed. */
+static int sample_cpu(void)
+{
+    char t[BAR_TEXT];
+    unsigned long now_t, now_c, dc, dt;
+    if (!g_idle_proc)
+        return 0;
+    now_t = ds_ticks();
+    now_c = g_idle_count;
+    dc = now_c - g_cpu_last_count;
+    dt = now_t - g_cpu_last_tick;
+    g_cpu_last_count = now_c;
+    g_cpu_last_tick = now_t;
+    if (!dt || dt > BAR_CPU_MAX_TICKS)
+        return 0;
+    g_cpu_cal = bar_cpu_cal(g_cpu_cal, dc, dt);
+    bar_fmt_cpu(t, sizeof t, bar_cpu_pct(dc, dt, g_cpu_cal));
+    return set_seg(BAR_SEG_CPU, t);
+}
+
+/* The network, every 5 s: the library is opened for the look and closed at once. A library whose id string starts with
+ * "UAE" is the emulator's stub, and any tag in QueryInterfaceTagList kills it, so it is never called. A real stack is
+ * reported as such: the Roadshow IFQ_* tag values are not in the vendored NDK 3.2 R4 netinclude (plan R2.10, open). */
+static int sample_net(int force)
+{
+    char t[BAR_TEXT];
+    unsigned long now = ds_ticks();
+    struct Library *sb;
+    int kind;
+    if (!force && g_net_kind >= 0 && now - g_net_last_tick < NET_EVERY_TICKS)
+        return 0;
+    g_net_last_tick = now;
+    sb = OpenLibrary((STRPTR) "bsdsocket.library", 0);
+    kind = sb ? bar_net_kind(sb->lib_IdString ? (const char *)sb->lib_IdString : "") : BAR_NET_NONE;
+    if (sb)
+        CloseLibrary(sb);
+    if (kind == g_net_kind)
+        return 0;
+    g_net_kind = kind;
+    bar_fmt_net(t, sizeof t, kind);
+    return set_seg(BAR_SEG_NET, t);
+}
+
 /* The public screens, short names; the front one in the accent pen. The list is copied under the lock and released at
  * once, nothing is drawn while it is held. */
 static int sample_screens(void)
@@ -131,6 +241,8 @@ static int sample(int ram_every, int force)
     int ch = 0;
     ch |= sample_clock();
     ch |= sample_screens();
+    ch |= sample_cpu();
+    ch |= sample_net(force);
     if (force || ram_every <= 1 || !(g_ticks % ram_every))
         ch |= sample_ram();
     g_ticks++;
@@ -194,14 +306,32 @@ int bar_open(const char *dir)
     bar_init(&g_bar, g_scr->Width, BAR_PAD, BAR_GAP);
     bar_add(&g_bar, BAR_SEG_MORE, BAR_LEFT, "", 0);
     bar_add(&g_bar, BAR_SEG_CLOCK, BAR_CENTRE, "", 0);
+    bar_add(&g_bar, BAR_SEG_CPU, BAR_RIGHT, "", 0);
+    bar_add(&g_bar, BAR_SEG_NET, BAR_RIGHT, "", 0);
     bar_add(&g_bar, BAR_SEG_RAM, BAR_RIGHT, "", 0);
     bar_add(&g_bar, BAR_SEG_AGENTS, BAR_RIGHT, "Agents", TextLength(&g_scr->RastPort, (STRPTR) "Agents", 6));
     bar_add(&g_bar, BAR_SEG_SYSTEM, BAR_RIGHT, "System", TextLength(&g_scr->RastPort, (STRPTR) "System", 6));
     g_clock_alt = 0;
+    g_net_kind = -1;
+    g_cpu_cal = 0;
+    idle_start();
+    if (g_idle_proc) {
+        /* calibrate: half a second of a mostly idle machine; later samples only ever raise the rate */
+        g_cpu_last_tick = ds_ticks();
+        g_cpu_last_count = g_idle_count;
+        Delay(IDLE_CAL_TICKS);
+        {
+            unsigned long dt = ds_ticks() - g_cpu_last_tick;
+            g_cpu_cal = bar_cpu_cal(0, g_idle_count - g_cpu_last_count, dt);
+        }
+        g_cpu_last_tick = ds_ticks();
+        g_cpu_last_count = g_idle_count;
+    }
     sample(2, 1);
     bar_layout(&g_bar, g_scr->Width);
     g_win = tw_open(g_scr, 0, g_scr->Height - h, g_scr->Width, h, BAR_TITLE, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW);
     if (!g_win) {
+        idle_stop();
         UnlockPubScreen(0, g_scr);
         g_scr = 0;
         tw_libs_close();
@@ -220,6 +350,7 @@ int bar_open(const char *dir)
 void bar_close(void)
 {
     g_live = 0;
+    idle_stop();
     pt_close(&g_poll);
     if (g_win) {
         tw_close(g_win);

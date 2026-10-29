@@ -313,10 +313,36 @@ static void test_fmt_misc(void)
     CHECK_INT(bar_fmt_percent(75, 100), 25);
     CHECK_INT(bar_fmt_percent(0, 0), 0);
     CHECK_INT(bar_fmt_percent(5, 3), 0);
-    bar_fmt_screen(o, sizeof o, "Workbench Screen");     CHECK_STR(o, "Workbenc");           /* max 8 */
+    bar_fmt_screen(o, sizeof o, "Workbench Screen");     CHECK_STR(o, "Workbench");          /* first word whole */
     bar_fmt_screen(o, sizeof o, "UP-Term");              CHECK_STR(o, "UP-Term");
     bar_fmt_screen(o, sizeof o, "  Mui screen");         CHECK_STR(o, "Mui");
     bar_fmt_screen(o, sizeof o, "");                     CHECK_STR(o, "");
+    bar_fmt_screen(o, sizeof o, "Amarchy-Workspace-2");  CHECK_STR(o, "Amarchy-Workspace-2");   /* no 8 character cut */
+    bar_fmt_screen(o, 6, "Workbench");                   CHECK_STR(o, "Workb");                 /* cap */
+    CHECK_INT(bar_cpu_pct(0, 50, 1000000UL), 100);
+    CHECK_INT(bar_cpu_pct(50000000UL, 50, 1000000UL), 0);
+    CHECK_INT(bar_cpu_pct(25000000UL, 50, 1000000UL), 50);
+    CHECK_INT(bar_cpu_pct(4000000000UL, 50, 1000000UL), 0);           /* more than calibrated: idle */
+    CHECK_INT(bar_cpu_pct(37500000UL, 50, 1000000UL), 25);
+    CHECK_INT(bar_cpu_pct(100, 0, 1000000UL), 0);
+    CHECK_INT(bar_cpu_pct(100, 50, 0), 0);
+    CHECK_INT(bar_cpu_pct(0, 99999UL, 2000000UL), 100);               /* clamped, no overflow */
+    CHECK_INT((int)bar_cpu_cal(0, 50000000UL, 50), 1000000);
+    CHECK_INT((int)bar_cpu_cal(1000000UL, 20000000UL, 50), 1000000);  /* a busy sample never lowers it */
+    CHECK_INT((int)bar_cpu_cal(1000000UL, 60000000UL, 50), 1200000);
+    CHECK_INT((int)bar_cpu_cal(7UL, 5, 0), 7);
+    bar_fmt_cpu(o, sizeof o, 12);   CHECK_STR(o, "CPU 12%");
+    bar_fmt_cpu(o, sizeof o, 0);    CHECK_STR(o, "CPU 0%");
+    bar_fmt_cpu(o, sizeof o, 100);  CHECK_STR(o, "CPU 100%");
+    bar_fmt_cpu(o, sizeof o, 250);  CHECK_STR(o, "CPU 100%");
+    bar_fmt_cpu(o, sizeof o, -3);   CHECK_STR(o, "CPU 0%");
+    CHECK_INT(bar_net_kind("UAE bsdsocket.library 4.1"), BAR_NET_EMULATED);
+    CHECK_INT(bar_net_kind("bsdsocket.library 4.364 (1.1.2019)"), BAR_NET_STACK);
+    CHECK_INT(bar_net_kind(""), BAR_NET_STACK);
+    CHECK_INT(bar_net_kind(0), BAR_NET_STACK);
+    bar_fmt_net(o, sizeof o, BAR_NET_EMULATED);  CHECK_STR(o, "Network emulated");
+    bar_fmt_net(o, sizeof o, BAR_NET_NONE);      CHECK_STR(o, "No network");
+    bar_fmt_net(o, sizeof o, BAR_NET_STACK);     CHECK_STR(o, "Network stack");
 }
 
 static int x_of(const bar *b, int id)
