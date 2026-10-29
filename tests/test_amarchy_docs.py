@@ -26,6 +26,14 @@ class AmarchyDocs(unittest.TestCase):
         self.assertLess(quit_at, un.index('Delete >NIL: "$updest" ALL QUIET'))
         self.assertIn('Run >NIL: UP-Term:bin/Amarchy', read('dist/install.dos'))  # the startup block unstartup.sh strips
 
+    def test_man_page_and_readme_cover_notices_and_safe_off(self):
+        man = read('man/amarchy.1')
+        for w in ('amnotify', 'AMARCHY.NOTIFY', 'NOTIFY', 'COUNT', 'CLEAR', 'cap:screen', 'safe-off', 'Reboot DRYRUN'):
+            self.assertIn(w, man)
+        r = read('dist/README.txt')
+        for w in ('amnotify', 'S/safe-off', 'Safe to switch off'):
+            self.assertIn(w, r)
+
     def test_readme_key_list_is_the_generated_one(self):
         m = re.search(r'\n  \[keys\]\n(.*?)  \[end keys\]\n', read('dist/README.txt'), re.S)
         self.assertIsNotNone(m, 'README.txt has no AMARCHY key list')
@@ -54,7 +62,7 @@ class AmarchyDocs(unittest.TestCase):
         for f in ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'keymap'):
             self.assertRegex(parts, r'(?m)^tools\s+Files/%s$' % f)
         d = read('dist/install.dos')
-        self.assertIn('Copy Amarchy amarchy-menu amarchy-gui amarchy-index AmTile UP-Term:bin CLONE', d)
+        self.assertIn('Copy Amarchy amarchy-menu amarchy-gui amarchy-index amnotify AmTile UP-Term:bin CLONE', d)
         self.assertIn('Run >NIL: UP-Term:bin/Amarchy', d)
         self.assertIn(';BEGIN UP-Term Amarchy', d)
         self.assertIn(';BEGIN UP-Term Amarchy index', d)  # its own block: an Update adds it once

@@ -4,7 +4,8 @@
 .Sh NAME
 .Nm Amarchy ,
 .Nm amarchy-menu ,
-.Nm amarchy-gui
+.Nm amarchy-gui ,
+.Nm amnotify
 .Nd Super-key shortcuts for the whole Amiga
 .Sh SYNOPSIS
 .Nm Amarchy
@@ -17,6 +18,11 @@
 .Cm menu Ar node
 .Nm amarchy-gui
 .Cm viewer
+.Nm amnotify
+.Op Fl t Ar seconds
+.Op Fl f Ar file
+.Ar title
+.Op Ar body
 .Sh DESCRIPTION
 .Nm
 is a commodity, listed in Exchange as AMARCHY, that binds the Left Amiga key
@@ -106,7 +112,7 @@ Each row reads
 .Dl super[+shift][+ctrl][+rshift]+KEY = action ; label | category
 Actions are menu:id, viewer, tab:new, tab:close, tab:next, tab:prev,
 tab:goto N, menuid:NAME, slash:/command, run:command, open:uterm,
-rexx:script and win:verb [argument]. The verbs are cycle, front, back, zip,
+rexx:script, cap:kind and win:verb [argument]. The verbs are cycle, front, back, zip,
 fullwidth, fullscreen, save, restore, move, size, focus, closedrawers, screen
 and title.
 Lines starting with a semicolon are comments.
@@ -116,5 +122,42 @@ the key files again), RUN
 .Ar n
 (do row n of the table), SHOW (the key viewer) and QUIT.
 .Dl rx \(dqaddress AMARCHY RELOAD\(dq
+.Pp
+The action
+.Cm cap:screen ,
+.Cm cap:window
+and
+.Cm cap:region
+save a screenshot of the front screen, the active window or a dragged region as an IFF ILBM file in RAM:Shots
+and put it on the clipboard.
+.Sh NOTICES
+A notice is a short message from Amarchy.
+The port AMARCHY.NOTIFY takes
+.Cm NOTIFY Ar title|body|seconds
+(body and seconds may be left out; a literal | is written \\|; seconds 0 stays until dismissed),
+.Cm COUNT
+(notices shown now) and
+.Cm CLEAR
+(remove them all).
+The command NOTES on the port AMARCHY answers the counts and the title of the last notice; STATUS ends with
+.Ql shots=N notes=N .
+.Pp
+.Nm amnotify
+sends one from a script.
+The title is required;
+.Ar seconds
+is 0 to 3600.
+Return code 0 means sent, 5 Amarchy is not running, 10 bad arguments.
+.Dl amnotify -t 3 Done \(dqbuild ok\(dq
+.Pp
+.Pa UP-Term:S/safe-off
+is the script behind System > Safe to switch off (Left Amiga + Esc opens that menu).
+It runs
+.Ql Reboot DRYRUN ,
+which writes every volume out and restarts nothing, then posts the notice
+.Dq Safe to switch off ,
+or
+.Dq Not all disks answered
+with the output of Reboot as its body.
 .Sh SEE ALSO
 .Xr UPTerm 1
