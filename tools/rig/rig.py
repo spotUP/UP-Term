@@ -880,13 +880,24 @@ def stage_rig_vtc(vtc):
         stage_upterm(vtc / paths.UPTERM_DRAWER, vsh)
 
 
+def seed_rig_vtc(src, dst):
+    """Rig N>1's VTC: starts as a copy of rig 1's (only read there; .uaem files carry the protection bits);
+    `install` and the scripts keep it. A drawer that already exists but was made by something else first
+    (a kit install or a stage into a fresh rig) still gets every file of rig 1's it lacks, e.g. VTC:etc that
+    the boot's ETC: assign needs; files already there are never replaced."""
+    if not dst.exists():
+        print("copying rig 1's VTC: drawer ...")
+        shutil.copytree(src, dst, symlinks=True)
+        return
+    def keep(s, d, **kw):
+        if not os.path.lexists(d):
+            shutil.copy2(s, d, follow_symlinks=False)
+    shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True, copy_function=keep)
+
 def setup():
     (RIG / "boot").mkdir(parents=True, exist_ok=True)
-    if paths.RIG_N > 1 and not (RIG / "vtc").exists():
-        # rig 2's VTC: starts as a copy of rig 1's (only read there; .uaem
-        # files carry the protection bits); `install` and the scripts keep it
-        print("copying rig 1's VTC: drawer ...")
-        shutil.copytree(paths.RIG_HOME / "rig/vtc", RIG / "vtc", symlinks=True)
+    if paths.RIG_N > 1:
+        seed_rig_vtc(paths.RIG_HOME / "rig/vtc", RIG / "vtc")
     stage_rig_vtc(RIG / "vtc")
     (RIG / "shots").mkdir(exist_ok=True)
     if OS32 and not (RIG / "os32").exists():
