@@ -248,6 +248,8 @@ Every other behaviour is tested where it lives: snap zones via `WIN snap <zone>`
 
 ## Owner decisions (none taken silently; recommended first)
 
+Owner answers 2026-10-29 (AskUserQuestion, s21): every decision D1-D14 took the recommended option (a). D1 arrow family snap keys; D2 focus on super+arrows (super+left/right stop switching UP-Term tabs, super+comma/period stay), swap super+alt+shift+h/j/k/l, float super+alt+shift+t; D3 gap = tile-gap; D4 centre keeps the window size; D5 a snapped tiled window floats; D6 fit within Min/Max; D7 build tile.conf; D8 win_move also stops at the bar; D9 refusal guard on, front-screen kept; D10 no cycling; D11 DOpus detection by `dopus screen` reply (same as P1b OD-B2); D12 listers tile, other DOpus windows float; D13 lister snap allowed when probe R3 shows it keeps its box, else beep; D14 bar reserve 0 on the DOpus screen until Phase 2 decides. Status: decided.
+
 - D1 Snap keys.
   (a) halves super+alt+shift+arrows, quarters super+alt+shift+1/2/3/4 (tl, tr, bl, br), center super+alt+shift+c
   (Recommended): one arrow family (shift move, alt size, alt+shift snap), all free today; trade-off: four-key chords.
