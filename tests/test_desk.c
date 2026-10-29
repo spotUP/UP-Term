@@ -139,6 +139,28 @@ static void test_desk_palette(void)
     CHECK_INT(desk_palette(&t, 8, out4, 100), 0);
 }
 
+/* R1.17: IPrefs resets the Workbench screen only when the live DrawInfo pens differ from the ones the Palette USE brings */
+static void test_desk_pens_reset(void)
+{
+    unsigned char want[DK_SLOTS];
+    unsigned short cur[DK_SLOTS + 2];
+    int i;
+    desk_pens(want);
+    for (i = 0; i < DK_SLOTS; i++)
+        cur[i] = want[i];
+    CHECK_INT(desk_pens_reset(cur, DK_SLOTS), 0);   /* same pens: colours load live, no reset */
+    CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2), 0);
+    for (i = 0; i < DK_SLOTS; i++) {                /* knob: every slot moves the verdict */
+        cur[i] ^= 1;
+        CHECK_INT(desk_pens_reset(cur, DK_SLOTS), 1);
+        if (i > 0)
+            CHECK_INT(desk_pens_reset(cur, i), 0);  /* slots beyond dri_NumPens are not compared */
+        cur[i] ^= 1;
+    }
+    CHECK_INT(desk_pens_reset(cur, 0), 1);          /* no DrawInfo: unknown, assume a reset */
+    CHECK_INT(desk_pens_reset(0, DK_SLOTS), 1);
+}
+
 static void test_desk_darker(void)
 {
     gtheme all[SHIPPED_MAX], t;
@@ -404,6 +426,7 @@ static void test_desk_pointer_gate(void)
 void suite_desk(void)
 {
     test_desk_palette();
+    test_desk_pens_reset();
     test_desk_darker();
     test_desk_wbpattern();
     test_desk_pointer();

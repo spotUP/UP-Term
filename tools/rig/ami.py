@@ -188,6 +188,20 @@ def requesters():
         return requesters_in(_m().read_ui(c, every_screen=True))
 
 
+def dismiss_requesters():
+    """Click Cancel on every open requester; returns the descriptions of those found. A cancelled IPrefs reset leaves the screen
+    half-applied: the caller stops the rig afterwards instead of reusing it."""
+    done = []
+    for r in requesters():
+        with _conn(30) as c:
+            try:
+                _m().ui_click(c, 'Cancel', r['title'] or None, nth=1)
+                done.append(describe_requester(r))
+            except (SystemExit, Exception) as e:
+                done.append('%s NOT dismissed: %s' % (describe_requester(r), e))
+    return done
+
+
 def describe_requester(r):
     return '"%s" (task %s, screen "%s", buttons %s)' % (r['title'], r['task'] or '-', r['screen'],
                                                         '|'.join(r['buttons']) or '-')

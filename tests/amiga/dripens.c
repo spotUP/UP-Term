@@ -27,6 +27,7 @@ int main(int argc, char **argv)
         return 20;
     di = GetScreenDrawInfo(s);
     if (di) {
+        Printf((STRPTR)"scr: %08lx\n", (LONG)s);   /* the screen's address: a reset opens a new one */
         n = di->dri_NumPens < 12 ? di->dri_NumPens : 12;
         Printf((STRPTR)"pens:");
         for (i = 0; i < n; i++)

@@ -16,6 +16,7 @@
 #include "act.h"
 #include "win.h"
 #include "gthemes_dos.h"
+#include "desk_dos.h"
 #include "leaf.h"
 #include "rexx_host.h"
 #include "note.h"
@@ -152,6 +153,26 @@ static int parse_int(const char *s)
 static ULONG g_bs, g_bts;
 static int g_bar_want = 1;  /* BAR ON (1) or OFF (0) said during the hold: applied when the hold ends (bar_plan) */
 static int g_wb_hold;   /* 1 while the windows wait for the Workbench's final mode (W43) */
+
+/* desk_dos_apply (R1.17) closes and reopens the bar around the Workbench reset IPrefs runs after a prefs USE: direct, the BAR verb cannot reach this process while it applies */
+static int desk_wb_close(void)
+{
+    int was = bar_is_open();
+    if (was)
+        bar_close();
+    g_bs = bar_sigmask();
+    g_bts = bar_timer_sigmask();
+    return was;
+}
+
+/* g_bar_want is not touched: the state before the apply comes back */
+static void desk_wb_open(int was)
+{
+    if (was && !g_wb_hold && !bar_is_open())
+        bar_open(g_dir);
+    g_bs = bar_sigmask();
+    g_bts = bar_timer_sigmask();
+}
 
 /* every window Amarchy opens at start: the status bar (the menu servers and AmTile open theirs on use) */
 static void start_windows(void)
@@ -457,6 +478,8 @@ int main(void)
     tks = tick_sigmask();
     /* W43: no window before the Workbench is in its final mode (IPrefs resets it late; the reset cannot run while a
      * foreign window is open). Ready now, or no tick to wait on: open at once; else the tick hook opens them. */
+    desk_dos_wb_close = desk_wb_close;
+    desk_dos_wb_open = desk_wb_open;
     wbm_begin();
     g_wb_hold = tick_open_ok && wbm_check(0) == WBM_WAIT;
     if (!g_wb_hold)

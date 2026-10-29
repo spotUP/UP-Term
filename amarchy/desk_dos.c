@@ -7,6 +7,7 @@
 #include <proto/exec.h>
 #include <proto/intuition.h>
 #include "desk_dos.h"
+#include "rexx_host.h"
 #include "desk_core.h"
 #include "amconf_dos.h"
 
@@ -109,10 +110,12 @@ static int dk_screen_depth(void)
     return d;
 }
 
-/* publish one part: the ENV: file, a work copy for the editor, then the editor */
-static int dk_put(const char *envfile, const char *editor, const char *work, const unsigned char *buf, long len)
+/* publish one part: a work copy for the editor, then the editor (its USE writes the ENV: file). Writing the ENV: file
+ * here as well made IPrefs open it on the change notice while the editor wrote it: "Error accessing file
+ * ENV:Sys/Pointer.prefs, object is in use" (Program Error of SYS:Prefs/Pointer). */
+static int dk_put(const char *editor, const char *work, const unsigned char *buf, long len)
 {
-    if (len <= 0 || !dk_write(envfile, buf, len) || !dk_write(work, buf, len))
+    if (len <= 0 || !dk_write(work, buf, len))
         return 0;
     dk_editor(editor, work);
     return 1;
@@ -126,6 +129,82 @@ static int dk_pointer_editor_ok(void)
     return len > 0 && desk_pointer_editor_ok(img, len);
 }
 
+int (*desk_dos_wb_close)(void);
+void (*desk_dos_wb_open)(int was);
+unsigned long desk_dos_wb_closes;
+int (*desk_dos_own_close)(void);
+void (*desk_dos_own_open)(void);
+
+/* the Workbench screen's address (0 = none): a new one means IPrefs finished the reset. pens (when not 0) gets the live
+ * DrawInfo pen array, at most DK_SLOTS entries, and *npens dri_NumPens. */
+static struct Screen *dk_wb_screen(unsigned short *pens, int *npens)
+{
+    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    struct Screen *scr = 0, *s;
+    if (npens)
+        *npens = 0;
+    if (IntuitionBase && (s = LockPubScreen((STRPTR)"Workbench")) != 0) {
+        struct DrawInfo *dri = pens ? GetScreenDrawInfo(s) : 0;
+        scr = s;
+        if (dri) {
+            int i;
+            *npens = dri->dri_NumPens;
+            for (i = 0; i < DK_SLOTS && i < dri->dri_NumPens; i++)
+                pens[i] = dri->dri_Pens[i];
+            FreeScreenDrawInfo(s, dri);
+        }
+        UnlockPubScreen(0, s);
+    }
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
+    return scr;
+}
+
+/* Close our Workbench windows; returns 1 when the bar was open (the state to restore: the want flag is never touched).
+ * Another process sends BAR STATUS / BAR OFF; the main process installs direct hooks. */
+static int dk_windows_close(void)
+{
+    char res[32];
+    if (desk_dos_own_close)
+        desk_dos_own_close();
+    if (desk_dos_wb_close)
+        return desk_dos_wb_close();
+    if (rexx_send("AMARCHY", "BAR STATUS", res, sizeof res) != 0 || strncmp(res, "bar=1", 5) != 0)
+        return 0;
+    rexx_send("AMARCHY", "BAR OFF", res, sizeof res);
+    return 1;
+}
+
+static void dk_windows_open(int was)
+{
+    char res[32];
+    if (desk_dos_own_open)
+        desk_dos_own_open();
+    if (!was)
+        return;
+    if (desk_dos_wb_open)
+        desk_dos_wb_open(was);
+    else
+        rexx_send("AMARCHY", "BAR ON", res, sizeof res);
+}
+
+/* Windows of ours back once IPrefs applied the palette: the live pens equal the desk pens (3.2 resets in place, the screen
+ * address stays) or the screen is a new one (at most DK_RESET_SECS: a part that changes nothing resets nothing). */
+#define DK_RESET_SECS 6
+static void dk_wait_reset(struct Screen *before)
+{
+    int i;
+    for (i = 0; i < DK_RESET_SECS * 4; i++) {
+        unsigned short live[DK_SLOTS];
+        int n;
+        struct Screen *now = dk_wb_screen(live, &n);
+        if (now != before || !desk_pens_reset(live, n))
+            break;
+        Delay(12);
+    }
+}
+
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
@@ -133,6 +212,9 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     unsigned mask;
     int depth, plan, ok = 1;
     long len, plen;
+    struct Screen *wb_before = 0;
+    unsigned short live[DK_SLOTS];
+    int nlive = 0, was = 0, reset = 0;
     amconf_load(&ap);
     plan = desk_plan(amconf_desk_mask(&ap), th, why, cap);
     if (plan <= 0)
@@ -141,16 +223,28 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     UnLock(CreateDir((STRPTR)DK_WORK));
     dk_snapshot(mask);
     depth = dk_screen_depth();
+    if (mask & (1u << DT_PALETTE)) {
+        wb_before = dk_wb_screen(live, &nlive);
+        reset = desk_pens_reset(live, nlive);
+    }
+    if (reset) {
+        desk_dos_wb_closes++;
+        was = dk_windows_close();
+    }
     desk_dos_applies++;
     desk_dos_last_mask = mask;
     if (mask & (1u << DT_PALETTE)) {
         len = desk_palette(th, depth >= 3 ? 8 : 4, buf, sizeof buf);
-        ok &= dk_put("ENV:Sys/palette.prefs", "Palette", DK_WORK "/palette.prefs", buf, len);
+        ok &= dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
+        /* IPrefs resets Workbench for the palette: the other editors run only after it finished (SYS:Prefs/Pointer
+         * raised a Program Error requester when started under the running reset) */
+        if (reset)
+            dk_wait_reset(wb_before);
     }
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
         len = desk_wbpattern(th, depth > 3 ? 3 : depth, 1, plen > 0 ? prev : 0, plen > 0 ? plen : 0, buf, sizeof buf);
-        ok &= dk_put("ENV:Sys/wbpattern.prefs", "WBPattern", DK_WORK "/wbpattern.prefs", buf, len);
+        ok &= dk_put("WBPattern", DK_WORK "/wbpattern.prefs", buf, len);
     }
     if ((mask & (1u << DT_POINTER)) && !dk_pointer_editor_ok()) {
         /* R1.17: the 3.1 editor reset-loops on the 3.2 pointer prefs; leave the pointer alone there */
@@ -159,7 +253,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
         if (len < 0)
             len = dk_read("ENVARC:Sys/Pointer.prefs", big, sizeof big);
         if (len > 0 && desk_pointer(th, big, len) > 0)
-            ok &= dk_put("ENV:Sys/pointer.prefs", "Pointer", DK_WORK "/pointer.prefs", big, len);
+            ok &= dk_put("Pointer", DK_WORK "/pointer.prefs", big, len);
         else
             ok = 0;
     }
@@ -170,9 +264,11 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
         if (len <= 0)
             len = desk_font_default(buf, sizeof buf);
         if (len > 0 && desk_font_pens(buf, len) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0)
-            ok &= dk_put("ENV:Sys/font.prefs", "Font", DK_WORK "/font.prefs", buf, len);
+            ok &= dk_put("Font", DK_WORK "/font.prefs", buf, len);
         else
             ok = 0;
     }
+    if (reset)
+        dk_windows_open(was);
     return ok ? (int)mask : -1;
 }

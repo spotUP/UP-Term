@@ -4,6 +4,7 @@
  *   desk_expect <theme> wbpattern <depth>              (tiled, no previous file)
  *   desk_expect <theme> pointer <basefile>
  *   desk_expect <theme> font <basefile|-> <fontsdir>   (- = desk_font_default; a font counts as present when <fontsdir>/<name> exists)
+ *   desk_expect - pens                                 (desk_pens slots 0..11, "pens: n n ..." like dripens; slot 11 as 2, R1.17 pen 11)
  *   desk_expect - fields <palette|wbpattern|pointer|font> <file> [ncolors]
  *       the THEMED FIELDS of a prefs file as "name value" lines (the stock editors rewrite ENV:Sys files in their own layout
  *       after USE, so the rig compares these fields of the expected bytes against those of the settled file) */
@@ -125,6 +126,16 @@ int main(int argc, char **argv)
     static char text[8192];
     gtheme th;
     long n = 0, tl;
+    if (argc >= 3 && !strcmp(argv[2], "pens")) {
+        unsigned char want[DK_SLOTS];
+        int i;
+        desk_pens(want);
+        printf("pens:");
+        for (i = 0; i < 12; i++)
+            printf(" %d", i == 11 ? 2 : want[i]);
+        printf("\n");
+        return 0;
+    }
     if (argc >= 5 && !strcmp(argv[2], "fields")) {
         n = slurp(argv[4], buf, sizeof buf);
         if (n < 0)

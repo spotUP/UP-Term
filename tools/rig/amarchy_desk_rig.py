@@ -28,6 +28,7 @@ sys.path.insert(0, HERE)
 import ami, condev_rig as c
 import amarchy_gui_rig as g
 import amarchy_theme_save_rig as t
+import amarchy_tile_rig as tile
 
 SYS_FILES = ['palette', 'wbpattern', 'pointer', 'font']
 PREFS = 'ENV:Amarchy/prefs'
@@ -96,6 +97,88 @@ def put_prefs(local):
     works), so the old file is deleted first."""
     c.run('Delete >NIL: %s QUIET' % PREFS)
     ami.put(local, PREFS)
+
+
+STOCK_PALETTE = os.path.join(ROOT, 'tests', 'data', 'desk', 'palette-gui-save.prefs')   # DrawInfo pens 0 1 1 2 1 3 1 0 2 1 2 1 2: not the desk pens
+
+
+def requester_text(r):
+    """Every label of the requester window (the windows IPrefs names: "Please close the following windows: ..."), '' when unreadable."""
+    try:
+        with ami._conn(30) as conn:
+            for sc in ami._m().read_ui(conn, every_screen=True):
+                for w in sc['windows']:
+                    if w['addr'] == r['addr']:
+                        return ' / '.join(g['label'] for g in w['gadgets'] if g['kind'] == 'label' and g['label'])
+    except Exception as e:   # the text is evidence, never the verdict
+        return 'unreadable: %s' % e
+    return ''
+
+
+def ifaces_blocked():
+    return [r for r in ami.requesters() if r['task'].strip(' \xab\xbb').lower() == 'iprefs' or r['title'].lower() == 'system request']
+
+
+def wb_pens():
+    """(pens of the Workbench screen's DrawInfo slots 0..11, screen address) from build/amiga/dripens, ('', '') when unreadable."""
+    out = c.run('T:dripens Workbench')[1]
+    pens = scr = ''
+    for l in out.splitlines():
+        if l.startswith('pens:'):
+            pens = l[5:].strip()
+        elif l.startswith('scr:'):
+            scr = l[4:].strip()
+    return pens, scr
+
+
+def desk_pen_line():
+    return subprocess.check_output([desk_expect_exe(), '-', 'pens']).decode().split(':', 1)[1].strip()
+
+
+def probe_state(tag):
+    import hashlib
+    env = ami.read_file('ENV:Sys/palette.prefs') or b''
+    work = ami.read_file('T:amarchy-desk/palette.prefs') or b''
+    wins = []
+    try:
+        with ami._conn(30) as cc:
+            for sc in ami._m().read_ui(cc, every_screen=True):
+                for w in sc['windows']:
+                    wins.append('%s/%s' % (sc['title'][:20], w['title'][:24]))
+    except Exception as e:
+        wins = ['err %s' % e]
+    print('[PROBE] %s env md5 %s len %d work md5 %s; windows %s' % (tag, hashlib.md5(env).hexdigest()[:8], len(env), hashlib.md5(work).hexdigest()[:8], wins))
+
+
+def watch_reset(scr0, secs=20):
+    """R1.17: poll the Workbench DrawInfo pens every 2 s up to secs; true once they equal the desk pens (IPrefs applied the palette; the
+    screen address is not asserted: 3.2 resets in place, the address never changes). Slot 11 is not compared: IPrefs leaves it at the
+    live value (1 on the stock palette) while the desk pens say 2; slots 0..10 are the ones desk_palette sets in palette.prefs."""
+    want, t0, last = desk_pen_line(), time.time(), ('', '')
+    probe_state('+0')
+    while time.time() - t0 < secs:
+        last = wb_pens()
+        print('[INFO] +%d s: pens %s screen %s requesters %s' % (time.time() - t0, last[0], last[1], [ami.describe_requester(r) for r in ifaces_blocked()]))
+        if last[0].split()[:11] == want.split()[:11]:
+            return True, last, want
+        time.sleep(2)
+    probe_state('+end')
+    return False, last, want
+
+
+def live_pens_differ():
+    """R1.17 trigger: with the bar closed, make the live Workbench pens differ from the desk pens (the stock Palette editor USEs a
+    palette whose DrawInfo pens are not the desk ones), so the next desk apply must reset the screen. The bar comes back after."""
+    rc, _ = tile.send('AMARCHY', 'BAR OFF')
+    say(rc == 0 and tile.bar_box() is None, 'trigger: bar closed before the stock palette USE', str(rc))
+    ami.put(STOCK_PALETTE, 'T:stockpal.prefs')
+    c.run('SYS:Prefs/Palette FROM T:stockpal.prefs USE')
+    time.sleep(10)   # IPrefs resets the screen (nothing of ours is on it now)
+    c.run('Delete >NIL: ENV:Sys/palette.prefs ENVARC:Sys/palette.prefs QUIET')   # only the live pens matter: keep the baseline clean
+    for r in ifaces_blocked():
+        print('[INFO] trigger: requester with the bar closed: %s | %s' % (ami.describe_requester(r), requester_text(r)))
+    rc, _ = tile.send('AMARCHY', 'BAR ON')
+    say(rc == 0 and tile.bar_box() is not None, 'trigger: bar open again before the desk apply', str(rc))
 
 
 def pick(up=None):
@@ -223,10 +306,37 @@ def main():
     os.unlink(f.name)
     base_on = snapshot()
     cols_on = wb_colours()
+    live_pens_differ()
+    ami.put(os.path.join(ROOT, 'build', 'amiga', 'dripens'), 'T:dripens')
+    c.run('Protect T:dripens +e')
+    scr0 = wb_pens()[1]
+    import threading
+    tl, stop = [], []
+    def poll():
+        t1 = time.time()
+        while not stop:
+            try:
+                tl.append(('%.1f' % (time.time() - t1), tile.bar_box() is not None, (ami.read_file('ENV:Sys/palette.prefs') or b'')[:0] == b'' and len(ami.read_file('ENV:Sys/palette.prefs') or b'')))
+            except Exception as e:
+                tl.append(('err', str(e)[:30]))
+    th = threading.Thread(target=poll); th.start()
     name2, _ = pick(up=False)  # the list cursor starts on row 0 again; a current row is stepped over
+    stop.append(1); th.join(); print('[PROBE] timeline', tl)
     say(bool(name2) and name2 != name1, 'on: picked a second theme', '%s then %s' % (name1, name2))
     say(n_env('AMARCHY_DESKS') == desks0 + 1, 'on: AMARCHY_DESKS +1', 'was %r now %r' % (desks0, t.env('AMARCHY_DESKS')))
     say(t.env('AMARCHY_DESKMASK') == '15', 'on: AMARCHY_DESKMASK 15', t.env('AMARCHY_DESKMASK'))
+    # R1.17: IPrefs resets the Workbench screen after the USE and cannot while the bar is on it ("Please close the following windows: Amarchy bar")
+    reset_ok, got_pens, want_pens = watch_reset(scr0)
+    say(reset_ok, 'on: IPrefs applied the palette (DrawInfo pens 0..10 == desk pens)',
+        'screen %s -> %s, pens %r want %r' % (scr0, got_pens[1], got_pens[0], want_pens))
+    blocked = ['%s | %s' % (ami.describe_requester(r), requester_text(r)) for r in ifaces_blocked()]
+    say(not blocked, 'on: no System Request from IPrefs after the desk apply', '; '.join(blocked))
+    if blocked:
+        print('[INFO] dismissed: %s (rig is dirty: stop it, do not reuse)' % ami.dismiss_requesters())
+        tile.send('AMARCHY', 'BAR ON')
+    say(n_env('AMARCHY_WBCLOSES') == 1, 'on: the apply closed the windows around the reset (AMARCHY_WBCLOSES)', t.env('AMARCHY_WBCLOSES'))
+    rc, st = tile.send('AMARCHY', 'BAR STATUS')
+    say(rc == 0 and st.startswith('bar=1') and tile.bar_box() is not None, 'on: the bar is open again after the desk apply', '%r %r' % (rc, st))
     got = settle(SYS_FILES)
     depth = wb_depth()
     ncol = 8 if depth >= 3 else 4

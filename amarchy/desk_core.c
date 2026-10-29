@@ -113,6 +113,19 @@ void desk_pens(unsigned char pens[DK_SLOTS])
     pens[DK_EXTRA] = DK_FG;
 }
 
+int desk_pens_reset(const unsigned short *cur, int ncur)
+{
+    unsigned char want[DK_SLOTS];
+    int i;
+    if (!cur || ncur <= 0)
+        return 1;
+    desk_pens(want);
+    for (i = 0; i < DK_SLOTS && i < ncur; i++)
+        if (cur[i] != want[i])
+            return 1;
+    return 0;
+}
+
 /* ---- R1.2: palette.prefs ---- */
 
 #define PAL_BODY 400L

@@ -34,6 +34,11 @@ uc_u32 desk_darker(const gtheme *t);
 /* R1.19: the pen index of every DrawInfo slot (OD13) into pens[DK_SLOTS] */
 void desk_pens(unsigned char pens[DK_SLOTS]);
 
+/* R1.17: 1 when a Palette USE of the pens desk_pens gives makes IPrefs reset the Workbench screen. DrawInfo dri_Pens are fixed
+ * at screen open, so only a pen array that differs from the live screen's (cur, ncur = dri_NumPens, the first ncur slots are
+ * compared) reopens it; colour values alone load live. ncur <= 0 (no DrawInfo): unknown, 1. */
+int desk_pens_reset(const unsigned short *cur, int ncur);
+
 /* R1.2: the palette.prefs of the theme with ncolors (4 or 8) colours; returns DK_PALETTE_SIZE, 0 on a bad argument */
 long desk_palette(const gtheme *t, int ncolors, unsigned char *out, long cap);
 

@@ -33,6 +33,7 @@
 #include "menu_theme.h"
 #include "leaf.h"
 #include "gthemes_dos.h"
+#include "desk_dos.h"
 #include "pkgs_dos.h"
 #include "menu_open.h"
 #include "taskalive.h"
@@ -135,6 +136,7 @@ static keymap km;
 static ix_index ixs;
 static int menu_cond;            /* decided once at open: mn_cond(terminal present, DOPUS.1 present, WORKBENCH present) */
 static gui G;
+static int hidden;   /* the menu window is closed for a Workbench reset (desk_dos_own_close) */
 static jc job;                   /* the running job's output (job_dos feeds it); one job at a time */
 static int job_started;          /* the last lf_run started a job view (main re-enters the list after it) */
 static int job_on;               /* a job view is up: event_loop polls it */
@@ -1438,6 +1440,47 @@ static void gui_refused(void *ctx, const char *label, long rc, const char *answe
     event_loop(g);
 }
 
+/* desk_dos_apply: the menu window, its pens and its screen lock go before the palette is written (IPrefs defers the reset while a
+ * window of ours is on the Workbench screen) and come back once it applied */
+static int gui_hide(void)
+{
+    gui *g = &G;
+    if (!g->win || hidden)
+        return 0;
+    CloseWindow(g->win);
+    g->win = 0;
+    g->rp = 0;
+    pens_release(g);
+    memset(g->pen_got, 0, sizeof g->pen_got);
+    UnlockPubScreen(0, g->scr);
+    g->scr = 0;
+    hidden = 1;
+    return 1;
+}
+
+static void gui_show(void)
+{
+    gui *g = &G;
+    if (!hidden)
+        return;
+    hidden = 0;
+    g->scr = lock_front_screen();
+    if (!g->scr)
+        g->scr = LockPubScreen(0);
+    if (!g->scr)
+        return;
+    g->cm = g->scr->ViewPort.ColorMap;
+    pens_get(g, 0);
+    g->win = window_open(g);
+    if (!g->win)
+        return;
+    g->rp = g->win->RPort;
+    SetDrMd(g->rp, JAM1);
+    g->ticking = 0;
+    watch_idcmp(g);
+    draw_full(g);
+}
+
 /* ---- main -------------------------------------------------------------------------------------------- */
 
 static void cleanup(gui *g)
@@ -1587,6 +1630,9 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
         goto done;
     }
     at_mark("window");
+    hidden = 0;
+    desk_dos_own_close = gui_hide;
+    desk_dos_own_open = gui_show;
     g->rp = g->win->RPort;
     g->frame = (GfxBase->DisplayFlags & PAL) ? 313 : 263;
     SetDrMd(g->rp, JAM1);
@@ -1635,6 +1681,8 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
         }
     }
 done:
+    desk_dos_own_close = 0;
+    desk_dos_own_open = 0;
     cleanup(g);
     free(g->it);
     free(g->idx);
