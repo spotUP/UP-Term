@@ -41,6 +41,10 @@ static int g_pen_got[MT_ROLES];
 static int g_have_gfx;
 static char g_dir[128];
 static long g_draws, g_panels, g_launches;
+/* What the input handler reads (bar_takes_right_press runs in input.device's task, not ours): the bar's box as plain
+ * numbers and a live flag that drops before CloseWindow, so the handler never touches a window being closed. The bar
+ * is borderless and never moves, so the box taken at open stays right. */
+static volatile int g_live, g_top, g_h;
 
 static void pens_get(void)
 {
@@ -142,11 +146,15 @@ int bar_open(const char *dir)
         return 0;
     }
     paint_all();
+    g_top = g_win->TopEdge;
+    g_h = g_win->Height;
+    g_live = 1;
     return 1;
 }
 
 void bar_close(void)
 {
+    g_live = 0;
     if (g_win) {
         CloseWindow(g_win);
         g_win = 0;
@@ -219,12 +227,12 @@ void bar_serve(void)
 int bar_takes_right_press(void)
 {
     struct Screen *front;
-    if (!g_win || !g_scr || !IntuitionBase)
+    if (!g_live || !g_scr || !IntuitionBase)
         return 0;
     front = IntuitionBase->FirstScreen;
     if (front != g_scr)
         return 0;
-    return bar_press_act(&g_bar, g_scr->MouseX, g_scr->MouseY, g_win->TopEdge, g_win->Height, BAR_BTN_RIGHT) ==
+    return bar_press_act(&g_bar, g_scr->MouseX, g_scr->MouseY, g_top, g_h, BAR_BTN_RIGHT) ==
            BAR_ACT_LAUNCH_AGENT;
 }
 
