@@ -17,6 +17,8 @@ typedef struct menu_text menu_text;
  * (square: the screen's pixels are square). 0 when there is no memory. */
 menu_text *mt_open(struct Screen *scr, int square, const char *spec);
 void mt_close(menu_text *m);
+/* the drawn theme changes: release the pens held for the old colours (palette screens) */
+void mt_theme_changed(menu_text *m);
 
 int mt_is_ttf(const menu_text *m);
 /* 1 on a true-colour screen with cybergraphics: mt_draw and mt_fill draw each colour as itself, no pen */

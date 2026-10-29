@@ -7,6 +7,7 @@
 #include "../amarchy/amconf_core.h"
 #include "../amarchy/gthemes_core.h"
 #include "../amarchy/menu_theme.h"
+#include "../amarchy/pen_cache.h"
 #include "harness.h"
 
 #define THEME_DIR "dist/amarchy-themes"
@@ -583,6 +584,86 @@ static void test_gthemes_desk_keys(void)
     }
 }
 
+/* ---- the Style > Theme preview on a palette screen: every shipped theme, one after the other ------------------
+ * A model of a 16-entry colour map with 4 entries taken (the Workbench pens) and menu_text's pen cache over it. The
+ * list previews a theme per cursor move: each time the cache is told the theme changed (mt_theme_changed ->
+ * pc_theme_changed) and the rows draw: normal = theme fg on bg, selected = bg on the selection bar (accent). */
+#define PM_N 16
+static unsigned long pm_col[PM_N];
+static int pm_used[PM_N];
+
+static long pm_dist(unsigned long a, unsigned long b)
+{
+    long dr = (long)((a >> 16) & 255) - (long)((b >> 16) & 255), dg = (long)((a >> 8) & 255) - (long)((b >> 8) & 255),
+         db = (long)(a & 255) - (long)(b & 255);
+    return dr * dr + dg * dg + db * db;
+}
+
+static long pm_best(void *u, unsigned long rgb, int exact)
+{
+    int i, k = -1;
+    (void)u;
+    for (i = 0; i < PM_N; i++)
+        if (pm_used[i] && pm_col[i] == rgb)
+            return i;
+    if (exact) {
+        for (i = 4; i < PM_N; i++)
+            if (!pm_used[i]) {
+                pm_used[i] = 1;
+                pm_col[i] = rgb;
+                return i;
+            }
+        return -1;
+    }
+    for (i = 0; i < PM_N; i++)
+        if (pm_used[i] && (k < 0 || pm_dist(pm_col[i], rgb) < pm_dist(pm_col[k], rgb)))
+            k = i;
+    return k;
+}
+
+static void pm_release(void *u, long pen)
+{
+    (void)u;
+    pm_used[pen] = 0;
+}
+
+static void test_gthemes_picker_pens(void)
+{
+    static pen_cache pc;
+    int i, shown = 0;
+    memset(pm_used, 0, sizeof pm_used);
+    memset(&pc, 0, sizeof pc);
+    pm_used[0] = pm_used[1] = pm_used[2] = pm_used[3] = 1;   /* black, white, blue, grey of the Workbench */
+    pm_col[0] = 0x555555UL; pm_col[1] = 0x000000UL; pm_col[2] = 0xFFFFFFUL; pm_col[3] = 0x6688BBUL;
+    for (i = 0; i < NSHIPPED; i++) {
+        gtheme t;
+        uc_u32 rgb[MT_ROLES];
+        long fg, bg, sel;
+        int pass;
+        load_shipped(shipped[i].name, &t);
+        menu_theme_roles_gui(&t, rgb);
+        pc_theme_changed(&pc, pm_release, 0);
+        /* the draw asks for each colour once per row, in the order of the rows, twice over: a repaint */
+        for (pass = 0; pass < 2; pass++) {
+            fg = pc_of(&pc, pm_best, 0, rgb[MT_TEXT]);
+            bg = pc_of(&pc, pm_best, 0, rgb[MT_BG]);
+            sel = pc_of(&pc, pm_best, 0, rgb[MT_SELBOX]);
+            CHECK(fg >= 0 && bg >= 0 && sel >= 0);   /* a colour with no pen drew as pen 1 on pen 0 */
+            if (fg < 0 || bg < 0 || sel < 0)
+                break;
+            /* the pens are the theme's own colours, so the rows read as the theme says */
+            CHECK_INT(pm_col[fg], rgb[MT_TEXT]);
+            CHECK_INT(pm_col[bg], rgb[MT_BG]);
+            CHECK_INT(pm_col[sel], rgb[MT_SELBOX]);
+            /* normal row: text over the window ground; selected row: the label (MT_ACCENT = bg) over the bar */
+            CHECK(wb_contrast_x100(pm_col[fg], pm_col[bg]) >= 300);
+            CHECK(wb_contrast_x100(pm_col[bg], pm_col[sel]) >= 300);
+        }
+        shown++;
+    }
+    CHECK_INT(shown, NSHIPPED);
+}
+
 void suite_gthemes(void)
 {
     test_gthemes_desk_keys();
@@ -598,4 +679,5 @@ void suite_gthemes(void)
     test_gthemes_user();
     test_gthemes_amconf();
     test_gthemes_scan();
+    test_gthemes_picker_pens();
 }

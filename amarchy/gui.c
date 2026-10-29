@@ -1273,6 +1273,7 @@ static void pens_get(gui *g, const char *name)
 static void pens_release(gui *g)
 {
     int r;
+    mt_theme_changed(g->mt);
     for (r = 0; r < MT_ROLES; r++)
         if (g->pen_got[r])
             ReleasePen(g->cm, (ULONG)g->pen[r]);

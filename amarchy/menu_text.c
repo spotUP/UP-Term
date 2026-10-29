@@ -19,10 +19,10 @@
 #include "../render/outline.h"
 #include "../render/pens_amiga.h"
 #include "../render/pen_match.h"
+#include "pen_cache.h"
 #include "../prefs/prefs_core.h"
 
 #define MT_INK_RGB 0x80000000UL /* aa_ink's direct-colour ink (render/amiga_render.c VR_INK_RGB) */
-#define MT_PENS 24
 
 struct Library *CyberGfxBase;
 
@@ -42,9 +42,7 @@ struct menu_text {
     int ink_ready;  /* ink_init ran: mt_close frees it */
     struct Library *cgx;
     int truecolor;
-    LONG pen[MT_PENS];
-    ULONG pen_rgb_[MT_PENS];
-    int npens;
+    pen_cache pens;
     int height, base;
     long aa_drawn;
 };
@@ -86,21 +84,25 @@ static void ft_free(void *ctx, void *p)
 
 /* ---- the pens aa_ink asks for: held until mt_close ---- */
 
+static void pen_release_fn(void *u, long pen)
+{
+    ReleasePen(((menu_text *)u)->scr->ViewPort.ColorMap, (ULONG)pen);
+}
+
+static long pen_best_fn(void *u, unsigned long rgb, int exact)
+{
+    return vr_pen_best(((menu_text *)u)->scr->ViewPort.ColorMap, rgb, exact);
+}
+
 static LONG pen_of(menu_text *m, ULONG rgb)
 {
-    int i;
-    LONG p;
-    for (i = 0; i < m->npens; i++)
-        if (m->pen_rgb_[i] == rgb)
-            return m->pen[i];
-    if (m->npens >= MT_PENS)
-        return -1;
-    p = vr_pen_obtain(m->scr->ViewPort.ColorMap, rgb);
-    if (p < 0)
-        return -1;
-    m->pen[m->npens] = p;
-    m->pen_rgb_[m->npens++] = rgb;
-    return p;
+    return pc_of(&m->pens, pen_best_fn, m, rgb);
+}
+
+void mt_theme_changed(menu_text *m)
+{
+    if (m)
+        pc_theme_changed(&m->pens, pen_release_fn, m);
 }
 
 static ULONG op_truecolor_ink(void *u, ULONG rgb)
@@ -304,7 +306,6 @@ menu_text *mt_open(struct Screen *scr, int square, const char *spec)
 
 void mt_close(menu_text *m)
 {
-    int i;
     if (!m)
         return;
     mtc_free(&m->core);
@@ -314,8 +315,7 @@ void mt_close(menu_text *m)
         ttf_close(m->font);
     if (m->fh)
         Close(m->fh);
-    for (i = 0; i < m->npens; i++)
-        ReleasePen(m->scr->ViewPort.ColorMap, (ULONG)m->pen[i]);
+    mt_theme_changed(m);
     if (m->cgx)
         CloseLibrary(m->cgx);
     if (m->bitmap_opened && m->bitmap)
