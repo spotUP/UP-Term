@@ -1,5 +1,6 @@
 /* clipfmt -- see clipfmt.h. Portable C89, no OS calls. */
 #include "clipfmt.h"
+#include "be32.h"
 
 unsigned long cf_next(const char *s, long n, long *i)
 {
@@ -67,27 +68,14 @@ int cf_paste_keeps(unsigned long cp)
     return !(cp < 0x20 || cp == 0x7F || (cp >= 0x80 && cp <= 0x9F));
 }
 
-static void put32(unsigned char *p, unsigned long v)
-{
-    p[0] = (unsigned char)(v >> 24);
-    p[1] = (unsigned char)(v >> 16);
-    p[2] = (unsigned char)(v >> 8);
-    p[3] = (unsigned char)v;
-}
-
-static unsigned long get32(const unsigned char *p)
-{
-    return ((unsigned long)p[0] << 24) | ((unsigned long)p[1] << 16) | ((unsigned long)p[2] << 8) | p[3];
-}
-
 void cf_ftxt_head(unsigned char *head, long chrs, long utf8)
 {
     unsigned long form = 4 + 8 + (unsigned long)chrs + (chrs & 1) + 8 + (unsigned long)utf8 + (utf8 & 1);
     head[0] = 'F'; head[1] = 'O'; head[2] = 'R'; head[3] = 'M';
-    put32(head + 4, form);
+    be32_put(head + 4, form);
     head[8] = 'F'; head[9] = 'T'; head[10] = 'X'; head[11] = 'T';
     head[12] = 'C'; head[13] = 'H'; head[14] = 'R'; head[15] = 'S';
-    put32(head + 16, (unsigned long)chrs);
+    be32_put(head + 16, (unsigned long)chrs);
 }
 
 int cf_ftxt_mid(unsigned char *mid, long chrs, long utf8)
@@ -96,7 +84,7 @@ int cf_ftxt_mid(unsigned char *mid, long chrs, long utf8)
     if (chrs & 1)
         mid[k++] = 0;
     mid[k++] = 'U'; mid[k++] = 'T'; mid[k++] = 'F'; mid[k++] = '8';
-    put32(mid + k, (unsigned long)utf8);
+    be32_put(mid + k, (unsigned long)utf8);
     return k + 4;
 }
 
@@ -120,9 +108,9 @@ char *cf_read_ftxt(cf_read_fn rd, void *u, void *(*alloc)(unsigned long), void (
     unsigned long left;
     char *text = 0;
     *len = 0;
-    if (rd(u, h, 12) != 12 || get32(h) != 0x464F524DUL /* FORM */ || get32(h + 8) != 0x46545854UL /* FTXT */)
+    if (rd(u, h, 12) != 12 || be32_get(h) != 0x464F524DUL /* FORM */ || be32_get(h + 8) != 0x46545854UL /* FTXT */)
         return 0;
-    left = get32(h + 4) - 4;
+    left = be32_get(h + 4) - 4;
     while (left >= 8) {
         unsigned long id, size, pad;
         int utf8, chrs;
@@ -130,8 +118,8 @@ char *cf_read_ftxt(cf_read_fn rd, void *u, void *(*alloc)(unsigned long), void (
         if (rd(u, h, 8) != 8)
             break;
         left -= 8;
-        id = get32(h);
-        size = get32(h + 4);
+        id = be32_get(h);
+        size = be32_get(h + 4);
         pad = size & 1;
         if (size + pad > left) {
             size = left; /* a FORM that claims less than its chunk: as far as it goes */

@@ -2,6 +2,7 @@
 #include <string.h>
 #include "complete_core.h"
 #include "vtcon_packets.h"
+#include "be32.h"
 
 int cc_is_command(long entry_type, unsigned long protection)
 {
@@ -182,17 +183,12 @@ static void cc_emit(const char *buf, long size, cc_name_fn emit, void *x)
 
 static void cc_put32(char *p, long v)
 {
-    unsigned long w = (unsigned long)v;
-    p[0] = (char)((w >> 24) & 0xFF);
-    p[1] = (char)((w >> 16) & 0xFF);
-    p[2] = (char)((w >> 8) & 0xFF);
-    p[3] = (char)(w & 0xFF);
+    be32_put((unsigned char *)p, (unsigned long)v);
 }
 
 static unsigned long cc_get32u(const char *p)
 {
-    const unsigned char *q = (const unsigned char *)p;
-    return ((unsigned long)q[0] << 24) | ((unsigned long)q[1] << 16) | ((unsigned long)q[2] << 8) | q[3];
+    return be32_get((const unsigned char *)p);
 }
 
 static long cc_get32(const char *p)
