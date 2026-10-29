@@ -142,13 +142,13 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N */
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N bar=N draws=N panels=N launches=N raises=N wbpens=N wbrefused=N shots=N (about 105 bytes; REXX_HOST_OUT is 160) */
 static void status_text(char *out, long cap)
 {
     char num[12];
-    static const char *const key[12] = { "hits=", " rows=", " enabled=", " active=", " wins=", " bar=", " draws=", " panels=",
-                                        " launches=", " raises=", " wbpens=", " wbrefused=" };
-    long val[12];
+    static const char *const key[13] = { "hits=", " rows=", " enabled=", " active=", " wins=", " bar=", " draws=", " panels=",
+                                        " launches=", " raises=", " wbpens=", " wbrefused=", " shots=" };
+    long val[13];
     int i;
     val[0] = g_hits;
     val[1] = cx_nrows();
@@ -162,8 +162,9 @@ static void status_text(char *out, long cap)
     val[9] = bar_raises();
     val[10] = (long)gt_dos_wb_pens;
     val[11] = (long)gt_dos_wb_refused;
+    val[12] = shot_count();
     out[0] = 0;
-    for (i = 0; i < 12; i++) {
+    for (i = 0; i < 13; i++) {
         cl_cat(out, key[i], cap);
         cl_ltoa(val[i], num);
         cl_cat(out, num, cap);

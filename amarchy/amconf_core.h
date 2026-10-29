@@ -24,6 +24,7 @@ enum {
     AM_TILERATIO,  /* tile-ratio: AmTile's main-window share in percent (AM_TILERATIO_MIN..MAX), no Prefs gadget */
     AM_TILENMASTER, /* tile-nmaster: AmTile's number of master windows (1..AM_TILENM_MAX), no Prefs gadget */
     AM_AGENT,   /* ai-agent: the AI agent super+l opens (claude, pi); the word-to-tab table is handler/tabprog.h, no Prefs gadget */
+    AM_SHOTDIR, /* shot-dir: the drawer the screenshots (CAP screen|window|region) land in; empty = RAM:Shots, no Prefs gadget */
     AM_NKEYS
 };
 
@@ -56,6 +57,8 @@ int amconf_style(const am_prefs *p);
 int amconf_term_menu(const am_prefs *p);   /* UC_TERMMENU_* */
 /* ai-agent as the raw word; empty -> the default "claude". handler/tabprog.h (tabprog_agent_tab) maps it to a tab */
 const char *amconf_agent(const am_prefs *p);
+/* shot-dir as the raw path; empty -> the default "RAM:Shots" */
+const char *amconf_shot_dir(const am_prefs *p);
 #define AM_TILEGAP_MAX 64
 /* tile-gap as a number: whole digits 0..AM_TILEGAP_MAX, anything else the default of the key */
 int amconf_tile_gap(const am_prefs *p);

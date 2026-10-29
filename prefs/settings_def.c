@@ -220,6 +220,8 @@ const sd_setting sd_hidden[SD_NHIDDEN] = {
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
     { -1, "ai-agent", 0, -1, SD_STRING, 0, 0, NOVALS, "claude", SD_AMARCHY, SDF_AMSTR, AO(AM_AGENT),
       UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
+    { -1, "shot-dir", 0, -1, SD_STRING, 0, 0, NOVALS, "RAM:Shots", SD_AMARCHY, SDF_AMSTR, AO(AM_SHOTDIR),
+      UC_MAX_VALUE, NORANGE, 0, 0, 0, 1, 0 },
 };
 
 const sd_setting *sd_amarchy_key(int k)

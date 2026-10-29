@@ -96,7 +96,7 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   rubber-band frame in COMPLEMENT draw mode (no pens needed, so no P2 dependency), Esc cancels, release captures (window
   closed first so the frame is not in the shot). Proof: rig row r4_region via amiga_drag from (40,40) to (240,140):
   BMHD 201x101 (inclusive); Esc row leaves no new file and `shots=` unchanged.
-- [~] R4.5 (89086bb7; - rig proof: unit 0 bytes equal the file; OPEN: clipwatch-does-not-add-ILBM assertion not run) clipboard ILBM: export a FORM writer from handler/clip.c next to clip_write (same clip_open/put/CMD_UPDATE,
+- [~] R4.5 (89086bb7; - rig proof: unit 0 bytes equal the file; clipwatch-does-not-add-ILBM asserted: host test_clip.c and rig ENV:Amarchy/clips check) clipboard ILBM: export a FORM writer from handler/clip.c next to clip_write (same clip_open/put/CMD_UPDATE,
   `clip_write_form(const void *head, ...)` streaming from the finished file, length known from the file), no second
   clipboard opener. Proof: host test of the length bookkeeping; rig row r4_clip reads unit 0 (`clip_read` path or a
   CMD_READ probe) and asserts FORM/ILBM and the same BMHD as the file; clipwatch does not add an ILBM clip as a text entry
@@ -136,7 +136,7 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   NOTES last= "Safe to switch off".
 - [ ] R4.14 Reboot row: already `detach:Reboot` (dist/keymap:264). Check only: row present in the system menu, confirm per D8.
   Never pressed on the rig except one deliberate row (memory: never reset a rig mid-write: command done + 5 s quiet first).
-- [ ] R4.15 STATUS adds ` shots=N notes=N` (amarchy.c:143-161), and the bar/tick keys P2 adds stay; also `am_sentinel("AMARCHY_SHOTS")`.
+- [~] R4.15 (shots=N done: REXX_HOST_OUT 96 -> 160, rig asserts STATUS > 95 bytes ending shots=N; notes=N waits for R4.8; the AMARCHY_SHOTS sentinel is not added: sentinel_dos.c is not linked into Amarchy and STATUS shots= is the observable) STATUS adds ` shots=N notes=N` (amarchy.c:143-161), and the bar/tick keys P2 adds stay; also `am_sentinel("AMARCHY_SHOTS")`.
   Proof: rig r4_status: both keys present and 0 at start (known-dead baseline, protocol section 3), non-zero after r4_screen.
 - [ ] R4.16 man page (man/amarchy.1: cap: kind, AMARCHY.NOTIFY verbs, amnotify, safe-off), installer copies amnotify +
   safe-off script, README key list (generated from dist/keymap), `make dist-check` rows.
@@ -225,6 +225,7 @@ Never presses Reboot. Stops its rig at the end.
 - D8: (a) a confirm row before Reboot (RJ.3 if landed; if not, R4.14 waits for it).
 - D9: (b) cosmetic lock now, any key unlocks, no password (the owner chose it knowing it protects nothing). New row R4.19.
   A password variant was not asked; do not add one without the owner.
+- D-RTG: (owner) truecolour screens are saved as 24-bit deep ILBM (BMHD nPlanes 24, no CMAP, planes R0-7 G0-7 B0-7, ByteRun1), pixels from cgx ReadPixelArray (LVO -120) in RECTFMT_ARGB; no quantiser. Closes research Q1.
 - D10: (a) AMARCHY.NOTIFY port + amnotify CLI command; no NOTIFY ARexx verb.
 
 ## Owner decisions (none taken silently; recommended first)

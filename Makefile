@@ -595,6 +595,9 @@ $(BUILD)/amiga/shotprobe: tests/amiga/shotprobe.c amarchy/shot_core.c amarchy/sh
 $(BUILD)/amiga/shotscreen: tests/amiga/shotscreen.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotscreen.c
+$(BUILD)/amiga/shotfill: tests/amiga/shotfill.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotfill.c
 $(BUILD)/amiga/busyloop: tests/amiga/busyloop.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/busyloop.c

@@ -139,6 +139,13 @@ static void utf8_chunk_wins_in_any_order(void)
     memcpy(clip, "FORM\0\0\0\4ILBM", 12);
     clip_n = 12;
     CHECK(read_clip(&len) == 0);
+    /* a whole screenshot FORM (BMHD + BODY with text-looking bytes) is not text either: clipwatch must not add it */
+    form_begin();
+    memcpy(clip + 8, "ILBM", 4);
+    chunk("BMHD", "\0\4\0\1\0\0\0\0\30\0\1\0\0\0\12\13\0\4\0\1", 20);
+    chunk("BODY", "hello world, plain text bytes", 29);
+    form_end();
+    CHECK(read_clip(&len) == 0);
 }
 
 /* No size limit: 150 KB of text in, 150 KB out (the window cut copies at

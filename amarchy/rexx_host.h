@@ -4,7 +4,7 @@
 #ifndef REXX_HOST_H
 #define REXX_HOST_H
 
-#define REXX_HOST_OUT 96   /* longest result string a callback may write (including the NUL) */
+#define REXX_HOST_OUT 160  /* longest result string a callback may write (including the NUL) */
 
 struct MsgPort;
 struct Library;

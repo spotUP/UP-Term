@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Independent IFF ILBM decoder (no code shared with amarchy/shot_core.c), used by tests/test_shot_core.c and the
 rig rows. Prints "W H DEPTH CAMG" then one line per pixel row of space-separated colour register numbers.
-Handles uncompressed and ByteRun1 BODYs, 1..8 planes, no mask plane."""
+Handles uncompressed and ByteRun1 BODYs, 1..8 planes, or 24 planes (R, G, B, no CMAP; a pixel prints as 0xRRGGBB in decimal), no mask plane."""
 import struct
 import sys
 
@@ -46,6 +46,8 @@ def decode(buf):
             for p in range(depth):
                 if planes[p][x >> 3] & (0x80 >> (x & 7)):
                     v |= 1 << p
+            if depth == 24:             # planes R0-7, G0-7, B0-7 -> 0xRRGGBB
+                v = ((v & 0xFF) << 16) | (v & 0xFF00) | (v >> 16)
             px.append(v)
         rows.append(px)
     if at != len(body):

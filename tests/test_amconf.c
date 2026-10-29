@@ -35,8 +35,8 @@ static void test_amconf_parse_defaults(void)
         CHECK_STR(p.val[k], am_keys[k].def);
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
-    /* the table lists fifteen keys, each named once */
-    CHECK_INT(AM_NKEYS, 15);
+    /* the table lists sixteen keys, each named once */
+    CHECK_INT(AM_NKEYS, 16);
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)
@@ -67,6 +67,25 @@ static int same_prefs(const am_prefs *a, const am_prefs *b)
         if (strcmp(a->val[i], b->val[i]) != 0)
             return 0;
     return 1;
+}
+
+/* shot-dir (CAP's drawer): default RAM:Shots, the file's value wins, empty -> default, survives the file round trip */
+static void test_amconf_shot_dir(void)
+{
+    static const char txt[] = "[profile default]\nshot-dir = Work:Pics\n";
+    am_prefs p;
+    char out[256];
+    amconf_parse("", 0, &p);
+    CHECK_STR(am_keys[AM_SHOTDIR].name, "shot-dir");
+    CHECK_STR(amconf_shot_dir(&p), "RAM:Shots");
+    amconf_parse(txt, (long)strlen(txt), &p);
+    CHECK_STR(amconf_shot_dir(&p), "Work:Pics");
+    CHECK(amconf_serialize(&p, out, sizeof out) > 0);
+    amconf_defaults(&p);
+    amconf_parse(out, (long)strlen(out), &p);
+    CHECK_STR(amconf_shot_dir(&p), "Work:Pics");
+    p.val[AM_SHOTDIR][0] = 0;
+    CHECK_STR(amconf_shot_dir(&p), "RAM:Shots");
 }
 
 /* tile-gap (AmTile's gap): default 4, parsed by its name, 0..64 accepted, anything else the default */
@@ -899,6 +918,7 @@ void suite_amconf(void)
     test_amconf_parse_defaults();
     test_amconf_roundtrip();
     test_amconf_tile_gap();
+    test_amconf_shot_dir();
     test_amconf_ai_agent();
     test_amconf_tile_layout_keys();
     test_amconf_legacy();

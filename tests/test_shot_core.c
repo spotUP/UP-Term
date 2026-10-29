@@ -199,6 +199,88 @@ static void round_trip(long wd, long ht, int depth)
     free(m.b);
 }
 
+/* Deep (24 bit) ILBM: no CMAP, 24 planes R0-7 G0-7 B0-7; hand-checked plane bytes, then the independent decoder */
+static void deep_ilbm(long wd, long ht)
+{
+    unsigned char *img, *row;
+    msink m;
+    shot_sink s;
+    shot_writer w;
+    char line[16384], *p;
+    FILE *f, *pp;
+    long x, y;
+    unsigned seed = 777;
+    int ok = 1;
+
+    img = (unsigned char *)malloc((size_t)(wd * ht * 4));
+    for (y = 0; y < ht; y++)
+        for (x = 0; x < wd; x++) {
+            unsigned char *q = img + (y * wd + x) * 4;
+            seed = seed * 1103515245u + 12345u;
+            q[0] = (unsigned char)(seed >> 8);                    /* alpha: must be ignored */
+            q[1] = (unsigned char)(y % 2 ? 0x12 : (seed >> 16));
+            q[2] = (unsigned char)(x < wd / 2 ? 0x80 : (seed >> 20));
+            q[3] = (unsigned char)(x & 1 ? 0xFF : 0x01);
+        }
+    memset(&m, 0, sizeof m);
+    s.ud = &m; s.write = m_write; s.patch32 = m_patch;
+    CHECK_INT(shot_begin_deep(&w, &s, wd, ht, 0), 0);
+    for (y = 0; y < ht; y++)
+        CHECK_INT(shot_row_argb(&w, img + y * wd * 4), 0);
+    CHECK_INT(shot_row_argb(&w, img), -1);                        /* one row too many */
+    CHECK_INT(shot_end(&w), 0);
+    CHECK_INT(m.b[28], 24);                                        /* BMHD nPlanes */
+    CHECK(memcmp(m.b + 12, "BMHD", 4) == 0 && memcmp(m.b + 40, "BODY", 4) == 0);   /* no CMAP, no CAMG */
+    f = fopen("/tmp/shot_core_deep.ilbm", "wb");
+    CHECK(f != NULL);
+    if (!f) { free(img); free(m.b); return; }
+    fwrite(m.b, 1, (size_t)m.n, f);
+    fclose(f);
+    pp = popen("python3 -I tools/ilbm_decode.py /tmp/shot_core_deep.ilbm 2>&1", "r");
+    CHECK(pp != NULL);
+    if (pp) {
+        long hw = 0, hh = 0, hd = 0, hc = 9;
+        CHECK(fgets(line, sizeof line, pp) != NULL && sscanf(line, "%ld %ld %ld %ld", &hw, &hh, &hd, &hc) == 4);
+        CHECK_INT(hw, wd); CHECK_INT(hh, ht); CHECK_INT(hd, 24); CHECK_INT(hc, 0);
+        for (y = 0; y < ht && ok; y++) {
+            if (!fgets(line, sizeof line, pp)) { ok = 0; break; }
+            p = line;
+            for (x = 0; x < wd; x++) {
+                unsigned char *q = img + (y * wd + x) * 4;
+                long v = strtol(p, &p, 10);
+                if (v != (((long)q[1] << 16) | ((long)q[2] << 8) | q[3])) ok = 0;
+            }
+        }
+        CHECK(ok);
+        pclose(pp);
+    }
+    remove("/tmp/shot_core_deep.ilbm");
+    free(img);
+    free(m.b);
+    (void)row;
+}
+
+static void deep_golden(void)
+{
+    /* 2x1: pixel 0 = R 01 G 80 B FF, pixel 1 = R 00 G 80 B 00 */
+    static const unsigned char px[8] = { 0, 0x01, 0x80, 0xFF, 0, 0x00, 0x80, 0x00 };
+    msink m;
+    shot_sink s;
+    shot_writer w;
+    memset(&m, 0, sizeof m);
+    s.ud = &m; s.write = m_write; s.patch32 = m_patch;
+    CHECK_INT(shot_begin_deep(&w, &s, 2, 1, 0), 0);
+    CHECK_INT(shot_row_argb(&w, px), 0);
+    CHECK_INT(shot_end(&w), 0);
+    CHECK_INT(m.n, 48 + 24 * 3);
+    CHECK(memcmp(m.b + 48, "\x01\x80\x00", 3) == 0);               /* plane 0: R bit 0, pixel 0 only */
+    CHECK(memcmp(m.b + 48 + 3, "\x01\x00\x00", 3) == 0);      /* plane 1: R bit 1, none */
+    CHECK(memcmp(m.b + 48 + 15 * 3, "\x01\xC0\x00", 3) == 0);      /* plane 15: G bit 7, both pixels */
+    CHECK(memcmp(m.b + 48 + 16 * 3, "\x01\x80\x00", 3) == 0);      /* plane 16: B bit 0, pixel 0 */
+    CHECK(memcmp(m.b + 48 + 23 * 3, "\x01\x80\x00", 3) == 0);      /* plane 23: B bit 7, pixel 0 */
+    free(m.b);
+}
+
 /* make amiga must compile shot_core.c: it is in the Amarchy sources (it used to build only through shotprobe) */
 static void built_by_make_amiga(void)
 {
@@ -239,4 +321,7 @@ void suite_shot_core(void)
     round_trip(320, 4, 8);
     round_trip(16, 3, 1);
     round_trip(129, 5, 3);
+    deep_golden();
+    deep_ilbm(33, 6);
+    deep_ilbm(320, 2);
 }

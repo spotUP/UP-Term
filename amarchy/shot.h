@@ -25,7 +25,7 @@ int shot_region(const char *dir);           /* opens the rubber-band window; the
 long shot_count(void);
 const char *shot_last(void);
 int shot_last_rc(void);
-const char *shot_default_dir(void);         /* RAM:Shots (decision D1) */
+const char *shot_default_dir(void);         /* RAM:Shots, or the shot-dir key (decision D1) */
 
 /* The region window's signal bit mask (0 when none is open) and its IDCMP handler: release captures, Esc cancels. */
 unsigned long shot_region_sigmask(void);

@@ -47,6 +47,22 @@ void shot_planes(const unsigned char *pix, long width, int depth, unsigned char 
     }
 }
 
+/* One ARGB row (4 bytes per pixel: A, R, G, B) to 24 planes: R bits 0..7 are planes 0..7, G 8..15, B 16..23. */
+void shot_planes_argb(const unsigned char *argb, long width, unsigned char *out)
+{
+    long rb = ((width + 15) / 16) * 2, x;
+    int c, b;
+
+    memset(out, 0, (size_t)(rb * 24));
+    for (x = 0; x < width; x++)
+        for (c = 0; c < 3; c++) {
+            unsigned char v = argb[4 * x + 1 + c];
+            for (b = 0; b < 8; b++)
+                if ((v >> b) & 1)
+                    out[(c * 8 + b) * rb + (x >> 3)] |= (unsigned char)(0x80 >> (x & 7));
+        }
+}
+
 static void put16(unsigned char *p, unsigned long v)
 {
     p[0] = (unsigned char)(v >> 8);
@@ -78,16 +94,17 @@ static void release(shot_writer *w)
     w->planes = w->packed = NULL;
 }
 
-int shot_begin(shot_writer *w, const shot_sink *sink, long width, long height, int depth,
-               const unsigned char *cmap, unsigned long camg)
+static int begin(shot_writer *w, const shot_sink *sink, long width, long height, int depth,
+                 const unsigned char *cmap, unsigned long camg)
 {
     unsigned char h[12 + 8 + 20], c[8], g[12], b[8];
     long ncol = 1L << (depth > 0 && depth <= 8 ? depth : 1);
 
     memset(w, 0, sizeof *w);
     w->sink = sink;
-    if (width < 1 || width > 65535 || height < 1 || height > 65535 || depth < 1 || depth > 8
-        || cmap == NULL)
+    w->deep = depth == 24;
+    if (width < 1 || width > 65535 || height < 1 || height > 65535 || !(depth == 24 || (depth >= 1 && depth <= 8))
+        || (depth != 24 && cmap == NULL))
         return -1;
     w->width = width;
     w->height = height;
@@ -119,10 +136,12 @@ int shot_begin(shot_writer *w, const shot_sink *sink, long width, long height, i
     put16(h + 38, (unsigned long)height);
     if (emit(w, h, 12 + 8 + 20) != 0)
         goto fail;
-    memcpy(c, "CMAP", 4);
-    put32(c + 4, (unsigned long)(3 * ncol));
-    if (emit(w, c, 8) != 0 || emit(w, cmap, 3 * ncol) != 0)
-        goto fail;
+    if (depth != 24) {                                  /* a deep picture has no CMAP */
+        memcpy(c, "CMAP", 4);
+        put32(c + 4, (unsigned long)(3 * ncol));
+        if (emit(w, c, 8) != 0 || emit(w, cmap, 3 * ncol) != 0)
+            goto fail;
+    }
     if (camg != 0) {
         memcpy(g, "CAMG", 4);
         put32(g + 4, 4);
@@ -141,14 +160,26 @@ fail:
     return -1;
 }
 
-int shot_row(shot_writer *w, const unsigned char *pix)
+int shot_begin(shot_writer *w, const shot_sink *sink, long width, long height, int depth,
+               const unsigned char *cmap, unsigned long camg)
+{
+    if (depth < 1 || depth > 8) {
+        memset(w, 0, sizeof *w);
+        return -1;
+    }
+    return begin(w, sink, width, height, depth, cmap, camg);
+}
+
+int shot_begin_deep(shot_writer *w, const shot_sink *sink, long width, long height, unsigned long camg)
+{
+    return begin(w, sink, width, height, 24, NULL, camg);
+}
+
+static int put_row(shot_writer *w)
 {
     long rb = w->rowbytes, n;
     int p;
 
-    if (w->failed || w->rows_done >= w->height)
-        return -1;
-    shot_planes(pix, w->width, w->depth, w->planes);
     for (p = 0; p < w->depth; p++) {
         n = shot_pack(w->planes + p * rb, rb, w->packed);
         if (emit(w, w->packed, n) != 0)
@@ -157,6 +188,22 @@ int shot_row(shot_writer *w, const unsigned char *pix)
     }
     w->rows_done++;
     return 0;
+}
+
+int shot_row(shot_writer *w, const unsigned char *pix)
+{
+    if (w->failed || w->deep || w->rows_done >= w->height)
+        return -1;
+    shot_planes(pix, w->width, w->depth, w->planes);
+    return put_row(w);
+}
+
+int shot_row_argb(shot_writer *w, const unsigned char *argb)
+{
+    if (w->failed || !w->deep || w->rows_done >= w->height)
+        return -1;
+    shot_planes_argb(argb, w->width, w->planes);
+    return put_row(w);
 }
 
 int shot_end(shot_writer *w)

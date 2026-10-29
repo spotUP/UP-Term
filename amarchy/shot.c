@@ -16,9 +16,19 @@
 #include "shot.h"
 #include "shot_core.h"
 #include "win.h"
+#include "amconf_core.h"
+#include "amconf_dos.h"
 #include "../handler/clip.h"
 
 extern struct IntuitionBase *IntuitionBase;
+
+/* cybergraphics.library V41 ReadPixelArray (LVO -120, NOT -126 which is WritePixelArray), as tests/amiga/shotprobe.c
+ * proved on rig 4; RECTFMT_ARGB is 2 */
+#define SHOT_RECTFMT_ARGB 2
+static ULONG cgx_read(__reg("a6") struct Library *, __reg("a0") APTR dest, __reg("d0") UWORD dx, __reg("d1") UWORD dy,
+                      __reg("d2") UWORD dmod, __reg("a1") struct RastPort *rp, __reg("d3") UWORD sx,
+                      __reg("d4") UWORD sy, __reg("d5") UWORD w, __reg("d6") UWORD h,
+                      __reg("d7") UBYTE fmt) = "\tjsr\t-120(a6)";
 
 static long g_count;
 static int g_rc;
@@ -47,7 +57,16 @@ static int sink_patch32(void *ud, long off, unsigned long v)
     return Seek((BPTR)ud, here, OFFSET_BEGINNING) < 0;
 }
 
-const char *shot_default_dir(void) { return "RAM:Shots"; }
+/* the shot-dir key of the Amarchy settings file (amconf), read at every capture so a Prefs edit applies at once */
+const char *shot_default_dir(void)
+{
+    static char dir[UC_MAX_VALUE];
+    am_prefs p;
+    amconf_load(&p);
+    strncpy(dir, amconf_shot_dir(&p), sizeof dir - 1);
+    dir[sizeof dir - 1] = 0;
+    return dir;
+}
 long shot_count(void) { return g_count; }
 const char *shot_last(void) { return g_last; }
 int shot_last_rc(void) { return g_rc; }
@@ -92,6 +111,43 @@ static BPTR open_new(const char *dir, char *path, long cap)
     return 0;
 }
 
+/* Truecolour screen (D-RTG): 24-bit deep ILBM, rows read with cgx ReadPixelArray as ARGB, streamed like the 8-bit path */
+static int shot_take_deep(struct Screen *sc, struct Library *cgx, long x, long y, long w, long h, const char *dir,
+                          int clip, char *path, long cap)
+{
+    shot_writer sw;
+    shot_sink sk;
+    unsigned char *row;
+    BPTR fh;
+    int rc = SHOT_OK;
+    long r;
+    row = (unsigned char *)AllocVec((ULONG)w * 4 + 32, MEMF_ANY);
+    if (!row)
+        return SHOT_IO;
+    fh = open_new(dir, path, cap);
+    if (!fh) {
+        FreeVec(row);
+        return SHOT_IO;
+    }
+    sk.ud = (void *)fh;
+    sk.write = sink_write;
+    sk.patch32 = sink_patch32;
+    if (shot_begin_deep(&sw, &sk, w, h, GetVPModeID(&sc->ViewPort)) != 0)
+        rc = SHOT_IO;
+    for (r = 0; rc == SHOT_OK && r < h; r++) {
+        cgx_read(cgx, row, 0, 0, (UWORD)(w * 4), &sc->RastPort, (UWORD)x, (UWORD)(y + r), (UWORD)w, 1, SHOT_RECTFMT_ARGB);
+        if (shot_row_argb(&sw, row) != 0)
+            rc = SHOT_IO;
+    }
+    if (rc == SHOT_OK && shot_end(&sw) != 0)
+        rc = SHOT_IO;
+    Close(fh);
+    if (rc == SHOT_OK && clip && !clip_write_form(path))
+        rc = SHOT_IO;
+    FreeVec(row);
+    return rc;
+}
+
 int shot_take(struct Screen *sc, long x, long y, long w, long h, const char *dir, int clip, char *path, long cap)
 {
     shot_writer sw;
@@ -112,8 +168,14 @@ int shot_take(struct Screen *sc, long x, long y, long w, long h, const char *dir
     if (w <= 0 || h <= 0)
         return SHOT_BAD;
     depth = (int)GetBitMapAttr(sc->RastPort.BitMap, BMA_DEPTH);
-    if (depth > 8)
-        return SHOT_DEEP;
+    if (depth > 8) {
+        struct Library *cgx = OpenLibrary((STRPTR)"cybergraphics.library", 41);
+        if (!cgx)
+            return SHOT_DEEP;
+        rc = shot_take_deep(sc, cgx, x, y, w, h, dir, clip, path, cap);
+        CloseLibrary(cgx);
+        return rc;
+    }
     ncol = 1 << depth;
     GetRGB32(sc->ViewPort.ColorMap, 0, (ULONG)ncol, rgb);
     for (i = 0; i < ncol * 3; i++)

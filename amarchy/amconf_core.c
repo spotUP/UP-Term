@@ -96,6 +96,12 @@ const char *amconf_agent(const am_prefs *p)
     return *s ? s : am_keys[AM_AGENT].def;
 }
 
+const char *amconf_shot_dir(const am_prefs *p)
+{
+    const char *s = p->val[AM_SHOTDIR];
+    return *s ? s : am_keys[AM_SHOTDIR].def;
+}
+
 int amconf_tile_gap(const am_prefs *p)
 {
     const char *s = p->val[AM_TILEGAP];
