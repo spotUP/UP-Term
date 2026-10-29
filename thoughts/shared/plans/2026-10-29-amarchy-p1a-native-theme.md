@@ -83,7 +83,7 @@ IPrefs nudge, snapshot/revert code (git grep over amarchy/ config/ handler/ tool
 - New theme keys read: dark_background / darker_background / lighter_background / selection / muted (already in every
   shipped .theme file, GUI plan section 1), plus optional `backdrop=`, `font=`, `wbtitle=` (roadmap R1.5).
 
-## Checklist (0 of 40 done)
+## Checklist (3 of 40 done)
 
 Each item: what / where / test that proves it. "FB/PA" = fail-before / pass-after demo required (fixes, guards).
 
@@ -105,7 +105,7 @@ Probe first (no product code before R1.1 is answered; decision 10):
   table (unverified -> verified or changed). Owner decisions OD3, OD10, OD11 are asked again with the probe facts.
 
 Core (host-tested, pure):
-- [x] R1.0 Extract put32/get32 from handler/clipfmt.c:70/:78 into one shared helper; clipfmt uses it. Test: test_clip (ee7b7004)
+- [x] R1.0 Extract put32/get32 from handler/clipfmt.c:70/:78 into one shared helper; clipfmt uses it. Test: test_clip (ee7b7004) (ee7b7004)
   unchanged green; desk tests link the same helper.
 - [ ] R1.5 gtheme carries the extra keys (dark/darker/lighter background, selection, muted) and backdrop/font/wbtitle;
   missing key = derived value (OD5). Where gthemes_core.[ch]. Test: test_gthemes new cases, every shipped theme parses
