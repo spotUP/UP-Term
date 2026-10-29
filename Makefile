@@ -892,6 +892,11 @@ $(BUILD)/amiga/ixwinch: tests/amiga/ixwinch.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwinch.c
 
+# The AmigaDOS rc of a program ended by a signal: 128+sig (tools/rig/sigexit_rc_rig.py).
+$(BUILD)/amiga/ixsigexit: tests/amiga/ixsigexit.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixsigexit.c
+
 # The characters typed after a Ctrl-C that ended a read (tools/rig/intr_rig.py).
 $(BUILD)/amiga/ixintr: tests/amiga/ixintr.c
 	@mkdir -p $(BUILD)/amiga
