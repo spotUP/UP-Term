@@ -104,15 +104,15 @@ Config, control, docs
 - [ ] R2.13a bar.conf at ENVARC:Amarchy/bar.conf (ENV: copy read first): `start on|off`, `clock <fmt>`, `clockalt <fmt>`,
       segment order per group, segment on/off, `run <label> <command>` rows. Parsed by a pure core (host tests), missing
       file = defaults.
-- [ ] R2.13b ARexx `BAR ON|OFF|TOGGLE` and `BAR STATUS` (bar=, ticks=, draws=, segs=, cpu=, net=), so the STATUS string
+- [x] R2.13b (part, 04125970) ARexx `BAR ON|OFF|TOGGLE` and `BAR STATUS` (bar= draws= panels= launches= raises= ticks= done, rig 6 green; segs=, cpu=, net= open until those segments exist), so the STATUS string
       stays inside REXX_HOST_OUT 160.
 - [ ] R2.13c Key super+b = bar toggle (new commodity action, dist/keymap and keymap_default), bar on at start unless
       bar.conf says `start off`.
-- [ ] R2.14 STATUS adds `ticks=` (bar=, draws= exist). Check the full STATUS string length on the rig stays under 160.
+- [x] R2.14 (04125970; STATUS 99 bytes at zeros on rig 6, 147 at 5-digit counters, tests/test_status_core.c) STATUS adds `ticks=` (bar=, draws= exist). Check the full STATUS string length on the rig stays under 160.
 - [ ] R2.15 Man page (bar segments, bar.conf keys, BAR command, super+b) and installer copies a default bar.conf.
 
 Proof
-- [ ] R2.16 Rig reachability test tools/rig/amarchy_p2_rig.py on rig 4 (060), see below, plus idle overhead measurement.
+- [ ] R2.16 (partial: tools/rig/amarchy_p2_rig.py steps start, tick_rises, bar_status, bar_off, bar_on, status_keys pass on rig 6; later rows add steps) Rig reachability test tools/rig/amarchy_p2_rig.py on rig 4 (060), see below, plus idle overhead measurement.
 - [ ] R2.17 A1200 last check: bar visible, clock, RAM, network row from the real stack (Roadshow), super+b.
 
 ### Knobs and the case that proves each moves output
