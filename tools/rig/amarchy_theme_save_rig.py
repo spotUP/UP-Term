@@ -18,7 +18,7 @@ Rig up (UPTERM_RIG=<n> tools/rig/rig.py start --max), handler + Amarchy commodit
 test. Run: UPTERM_RIG=7 python3 tools/rig/amarchy_theme_save_rig.py [--selects 1-5] [--preview <downs>] [--no-build]
 --preview walks the theme list without picking (one_preview) instead of the selects.
 Exit status 1 on any [FAIL]."""
-import os, re, sys, time, hashlib
+import os, re, struct, sys, time, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami, condev_rig as c
 import amarchy_gui_rig as g
@@ -87,13 +87,19 @@ def shipped_themes():
     return [l for l in out.splitlines() if l.strip().endswith('.theme')] if rc == 0 else []
 
 
+def stem(title):
+    """A window title without its live numbers: a Directory Opus lister retitles itself with free memory
+    ("Ram Disk,  1,023.3M free, ..."), so only the part before the first comma names the window."""
+    return title.split(',')[0].strip()
+
+
 def strangers(allowed):
     """Requesters and windows on any screen that are neither the menu nor in `allowed` (titles) -> list of text."""
     out = [ami.describe_requester(r) for r in ami.requesters()]
     for s in g.screens():
         for w in s['windows']:
             t = w['title'] or ''
-            if t != g.TITLE and t not in allowed:
+            if t != g.TITLE and stem(t) not in {stem(a) for a in allowed}:
                 out.append('window "%s" on screen "%s"' % (t, s['title']))
     return out
 
@@ -110,6 +116,60 @@ def theme_accent(name):
         m = re.search(r'^accent\s*=\s*"#([0-9a-fA-F]{6})"', f.read(), re.M)
     v = int(m.group(1), 16)
     return v >> 16, (v >> 8) & 255, v & 255
+
+
+FILE_KEY = {'bg': 'background', 'fg': 'foreground', 'dim': 'dark_foreground', 'accent': 'accent'}
+
+
+def theme_hex(name, key):
+    """The colour `key` (bg, fg, dim, accent) of the shipped theme `name` as 'rrggbb'."""
+    t = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'dist', 'amarchy-themes', name + '.theme')
+    with open(t, encoding='latin-1') as f:
+        m = re.search(r'^%s\s*=\s*"#([0-9a-fA-F]{6})"' % FILE_KEY[key], f.read(), re.M)
+    # gthemes_core.c: a file without dark_foreground gets the built-in dim
+    return m.group(1).lower() if m else '565f89'
+
+
+def workbench_cols():
+    """Palette entries 0-3 of the Workbench screen (VTCX:Apps/bin/dripens 'cols:' line, put there by hand), as 'rrggbb' strings."""
+    for l in c.run('VTCX:Apps/bin/dripens Workbench')[1].splitlines():
+        if l.startswith('cols:'):
+            return [x.lower() for x in l.split()[1:]]
+    return []
+
+
+def dopus_reply(cmd):
+    """The ARexx reply of one Directory Opus command, or None when the port is absent."""
+    b = ami.req(0x12, ("OPTIONS RESULTS; ADDRESS DOPUS.1 '%s'; RETURN result" % cmd).encode('latin-1'))
+    res = b[4:].decode('latin-1').strip()
+    return res if struct.unpack('>I', b[:4])[0] == 0 and res != 'RESULT' else None
+
+
+def dopus_pens_reset():
+    """Set every lister pen to a value no theme sends, so a later read-back proves the theme switch wrote them."""
+    for key in ('files', 'dirs', 'selfiles', 'seldirs'):
+        dopus_reply('dopus set pens %s 2 2' % key)
+
+
+def wb_pens_check(name):
+    """The pen apply after the pick (D14 + Workbench pens, owner 2026-10-29): the sentinel counted it, Workbench
+    colours 0-3 are the theme's bg/fg/dim/accent, and the Directory Opus listers read back the theme pens.
+    Returns a failure text or None."""
+    got, refused = env('AMARCHY_WBPENS'), env('AMARCHY_WBREFUSED')
+    print('  [INFO] %s: AMARCHY_WBPENS=%s AMARCHY_WBREFUSED=%s' % (name, got or '-', refused or '-'))
+    if not got or int(got) < 1:
+        return 'AMARCHY_WBPENS did not rise after picking %s (refused=%s)' % (name, refused or '-')
+    want = [theme_hex(name, k) for k in ('bg', 'fg', 'dim', 'accent')]
+    cols = workbench_cols()
+    print('  [INFO] %s: Workbench colours 0-3 %s, theme %s' % (name, cols, want))
+    if cols != want:
+        return 'Workbench colours 0-3 %s are not the theme\'s %s' % (cols, want)
+    for key, pens in (('files', '1 0'), ('dirs', '3 0'), ('selfiles', '0 3'), ('seldirs', '0 3')):
+        r = dopus_reply('dopus query pens %s' % key)
+        print('  [INFO] %s: dopus query pens %s = %r' % (name, key, r))
+        if r is None or r.split() != pens.split():
+            return 'dopus query pens %s reads %r, want %r' % (key, r, pens)
+    return None
 
 
 def header_accent_pixels(rgb):
@@ -162,6 +222,7 @@ def one_select(n, allowed):
     the theme list, AMARCHY_THEME (set where gui.c pens_get takes the colours) names the picked theme, the picked
     row reads "(current)" and the cursor stays on it."""
     before = {p: theme_line(p) for p in PREFS}
+    dopus_pens_reset()
     open_menu()
     try:
         st, open_wait = wait_stable(OPEN_SECS, what='open menu')
@@ -213,6 +274,9 @@ def one_select(n, allowed):
     if head < 10:
         return False, 'the header is not drawn in %s\'s accent (%d accent pixels outside border and selection)' % (
             name, head), open_wait
+    bad = wb_pens_check(name)
+    if bad:
+        return False, bad, open_wait
     return True, 'theme %s -> %s live (ENV, ENVARC, AMARCHY_THEME, rows, header accent %d px)' % (before['ENV:Amarchy/prefs'], name, head), open_wait
 
 

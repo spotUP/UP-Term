@@ -14,6 +14,7 @@
 #include "../prefs/prefs_asl.h"
 #include "amconf_dos.h"
 #include "gthemes_dos.h"
+#include "sentinel_dos.h"
 #include "pkgs_core.h"
 #include "proclaunch.h"
 #include "wblaunch.h"

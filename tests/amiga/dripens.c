@@ -38,6 +38,14 @@ int main(int argc, char **argv)
             Printf((STRPTR)" %02lx%02lx%02lx", c[0] >> 24, c[1] >> 24, c[2] >> 24);
         }
         Printf((STRPTR)"\n");
+        /* the screen's palette entries 0-3, the ones Amarchy sets on a theme switch (gthemes_dos.c wb_pens_apply) */
+        Printf((STRPTR)"cols:");
+        for (i = 0; i < 4; i++) {
+            ULONG c[3];
+            GetRGB32(s->ViewPort.ColorMap, i, 1, c);
+            Printf((STRPTR)" %02lx%02lx%02lx", c[0] >> 24, c[1] >> 24, c[2] >> 24);
+        }
+        Printf((STRPTR)"\n");
         FreeScreenDrawInfo(s, di);
     }
     UnlockPubScreen(0, s);
