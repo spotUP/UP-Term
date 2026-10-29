@@ -57,7 +57,18 @@ def status_notes():
 def main():
     for n in ('Amarchy', 'amnotify', 'Reboot'):
         ami.put(os.path.join(BUILD, n), 'RAM:' + n)
-    ami.put(SAFEOFF, 'RAM:safe-off')
+    # the script names UP-Term:bin/amnotify in full (a menu Execute has no bin on its path); the rig keeps it in RAM:
+    src = open(SAFEOFF).read()
+    check('UP-Term:bin/amnotify' in src, 'safe-off calls amnotify by full path')
+    import tempfile
+    with tempfile.NamedTemporaryFile('w', suffix='.so', delete=False) as t:
+        t.write(src.replace('UP-Term:bin/amnotify', 'RAM:amnotify'))
+    ami.put(t.name, 'RAM:safe-off')
+    os.unlink(t.name)
+    # R4.13: the built commodity carries the menu row and the System menu key in its compiled-in keymap
+    blob = open(os.path.join(BUILD, 'Amarchy'), 'rb').read()
+    check(b'Safe to switch off' in blob and b'Execute UP-Term:S/safe-off' in blob, 'Amarchy binary embeds the safeoff row')
+    check(b'menu:system' in blob, 'Amarchy binary embeds the super+escape menu:system row')
     c.run('Protect RAM:Amarchy RWED')
     if ar.port_up():
         ar.arexx('QUIT')
