@@ -111,7 +111,7 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   by seconds, oldest dropped when full, dismiss by hit-test, `title|body|seconds` parse with escaping of `|`, length limits.
   Host tests tests/test_note_core.c: stacking y positions for 1..N, expiry at exactly t0+timeout, 0 = sticky until click,
   overflow drops oldest, hit-test, malformed lines refused with rc.
-- [ ] R4.9a note.c port side (no P2): second `struct rexx_host` named AMARCHY.NOTIFY (rexx_host.h:26), mask in the Wait loop,
+- [x] R4.9a (7b806183) note.c port side (no P2): second `struct rexx_host` named AMARCHY.NOTIFY (rexx_host.h:26), mask in the Wait loop,
   verbs `NOTIFY <title>|<body>[|<seconds>]`, `CLEAR`, `COUNT`; queue in note_core; also `NOTES` verb on AMARCHY returning
   `notes=N shown=N last=<title>` (REXX_HOST_OUT is 96 bytes: STATUS gets only the counters). Proof: rig `rx` to the port,
   COUNT rises; port gone after QUIT.
@@ -121,13 +121,13 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   (focus not stolen: assert the UP-Term window still active).
 - [ ] R4.9c [P2-T] expiry on the tick: `note_tick(now)` closes expired notices, re-stacks the rest. Proof: rig row
   r4_note_expire: post with 3 s, window present at +1 s, gone by +5 s, `ticks=` rose (the tick ran it).
-- [ ] R4.10 amnotify CLI (amarchy/amnotify.c, Makefile target, kit install): ReadArgs `TITLE/A,BODY,SECONDS/N/K,BODYFILE/K`,
+- [x] R4.10 (7b806183) amnotify CLI (amarchy/amnotify.c, Makefile target, kit install): ReadArgs `TITLE/A,BODY,SECONDS/N/K,BODYFILE/K`,
   sends via `rexx_send` (rexx_host.c:77); rc 0 shown, 5 commodity not running (message, not a hang), 10 bad args; `?` help
   (tty/qmark.h as in reboot.c). Unix and Amiga forms both (`amnotify -t 3 Done "build ok"`, memory: unix-and-amiga-forms).
   Proof: host test of its argument parse (portable part); rig row r4_amnotify: notes= +1.
 - [ ] R4.11 [P2-B] capture posts a notice "Screenshot saved" + file name (or the error), clipboard noted. Proof: part of r4_screen:
   notes= +1 after the hotkey.
-- [ ] R4.12 power: "Safe to switch off" reuses `Reboot DRYRUN` (install/reboot.c) instead of a new power.c (roadmap had power.c;
+- [~] R4.12 (script+port+CLI done 7b806183; menu row and window part open) power: "Safe to switch off" reuses `Reboot DRYRUN` (install/reboot.c) instead of a new power.c (roadmap had power.c;
   D6 confirms). A script UP-Term:S/safe-off: `Reboot DRYRUN >T:safeoff.txt`, then `amnotify` with the result (rc 0:
   "Safe to switch off"; rc 5: "Not all disks answered" with BODYFILE T:safeoff.txt). Proof: rig row r4_safeoff: NOTES
   last= the expected title; host: dist-check that the script names only installed commands.
@@ -136,7 +136,7 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   NOTES last= "Safe to switch off".
 - [ ] R4.14 Reboot row: already `detach:Reboot` (dist/keymap:264). Check only: row present in the system menu, confirm per D8.
   Never pressed on the rig except one deliberate row (memory: never reset a rig mid-write: command done + 5 s quiet first).
-- [~] R4.15 (shots=N done: REXX_HOST_OUT 96 -> 160, rig asserts STATUS > 95 bytes ending shots=N; notes=N waits for R4.9a: note_core has the count (note_q.posted) but the queue instance and a poster live in note.c, so a STATUS notes= now would be a dead key; the AMARCHY_SHOTS sentinel is not added: sentinel_dos.c is not linked into Amarchy and STATUS shots= is the observable) STATUS adds ` shots=N notes=N` (amarchy.c:143-161), and the bar/tick keys P2 adds stay; also `am_sentinel("AMARCHY_SHOTS")`.
+- [x] R4.15 (7b806183; STATUS 128 bytes with notes=N) (shots=N done: REXX_HOST_OUT 96 -> 160, rig asserts STATUS > 95 bytes ending shots=N; notes=N waits for R4.9a: note_core has the count (note_q.posted) but the queue instance and a poster live in note.c, so a STATUS notes= now would be a dead key; the AMARCHY_SHOTS sentinel is not added: sentinel_dos.c is not linked into Amarchy and STATUS shots= is the observable) STATUS adds ` shots=N notes=N` (amarchy.c:143-161), and the bar/tick keys P2 adds stay; also `am_sentinel("AMARCHY_SHOTS")`.
   Proof: rig r4_status: both keys present and 0 at start (known-dead baseline, protocol section 3), non-zero after r4_screen.
 - [ ] R4.16 man page (man/amarchy.1: cap: kind, AMARCHY.NOTIFY verbs, amnotify, safe-off), installer copies amnotify +
   safe-off script, README key list (generated from dist/keymap), `make dist-check` rows.
