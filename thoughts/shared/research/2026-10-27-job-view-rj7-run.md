@@ -193,3 +193,18 @@ Good and slow feed servers killed, rig 7 stopped (fs-uae for rig 7 gone; rigs 2 
   event loop whose Return/Escape set `stop` and left `mode = M_INPUT`, so the outer loop ended too. Ledger row
   GUI-SEARCH-CLOSES; fix in amarchy/gui.c (restore mode, head, top; clear stop), regression case
   `tools/rig/amarchy_gui_rig.py --pkg-search`.
+
+## Part 7 2026-10-29 (A3/B3 Esc cancel rerun 3, rig 7, origin/main fa104c44)
+Setup: ixemul.library 882811dc086ca77b233aaa0d3e4e8448 on VTCX:ixp6, LIBS:, SYS:Libs; curl adf34ce1ec4bcf5137767eef3d2c4ce2 on Rushhours:Tools/UP-Term/bin, VTCX:kit-userland, VTCX:Apps/bin, UP-Term:bin. IXEMUL/IXNET unset. Start [WARN]: only DOpus 5.104 not installed (and "Workbench stayed PAL"). No Assign command run (EXISTS only).
+Feed: slow_feed.py (30 s per request) on 127.0.0.1:53986; Rushhours:Tools/UP-Term/etc/upkg.conf overwritten with scratchpad slow.conf for the runs (the original md5 ac11b5a5... restored afterwards; rig started --fresh each time).
+Method: Menu > Packages > Refresh, Esc at t=8 s while vsh(job), upkg, curl are alive (wasabi Status polled in a loop). Clean-screen check (windows + requesters via wasabi) before every run. Three starts hit an IPrefs "System Request" (Retry|Cancel) at boot; each was restarted, the runs are on clean screens only.
+| case | style | run | vsh(job) gone | upkg gone | curl gone | JOB_LINES | JOB_DONE | JOB_WORD | T:amarchy-job after close |
+| A3 | text  | 1 | <=0.7 s | <=0.7 s | <=0.7 s | 6 | 0 | Cancelled | gone |
+| A3 | text  | 2 | <=0.7 s | <=0.7 s | <=0.7 s | 2 | unset | unset | gone |
+| B3 | drawn | 1 | <=0.2 s | <=0.2 s | <=0.1 s | 5 | 0 | Cancelled | gone |
+| B3 | drawn | 2 | <=0.2 s | <=0.2 s | <=0.1 s | 2 | unset | Cancelled | gone |
+Time = first poll (Esc + poll latency) at which the process was no longer listed; the text polls are about 0.7 s apart, so those are upper bounds. In text run 1 the first sample after Esc already showed no upkg/curl.
+Text footer after Esc (screen text): window "Downloading http://127.0.0.1:53986/Packages.gz" was still on the screen at 0.5 s in both text runs; footer text itself was not read in these runs (not needed for the question).
+Verdict: PASS in all 4 runs (text and drawn): curl, upkg and the job vsh end well inside upkg's 3 s grace (under 1 s). Part 6 (old ixemul): upkg 3 s, curl ~27 s (FAIL). The ixemul 627d6ce build fixes the curl wait.
+Notes: JOB_DONE/JOB_WORD were unset in text run 2 and JOB_DONE in drawn run 2 at the read (sentinel published late or not yet); JOB_LINES varies 2 to 6. Not related to process exit; not investigated.
+Run script rj7r2-run.py, logs rj7r2-{text,drawn}-*.log and rj7r2-all.log in the scratchpad (text 1 log: rj7r2-text-1.log).
