@@ -163,7 +163,7 @@ What needs a DOpus-side change (upstream PR, item FLAT-D1):
 - Optional, owner's call: an `environment` flag `flat` written by the theme module, so a DOpus theme can switch it without the pen heuristic.
 
 Our side (modules, ARexx, config), items FLAT-D2 / D3:
-- [ ] **FLAT-D1 upstream PR to BlitterStudio/dopus5.** Flat-signal drawing in gui.c, buttons_draw.c, image_class.c as above; test on the rig with the stock DOpus theme (no pixel change) and with P1 flat pens. Status: not started, waits for owner go (OD-F10).
+- [ ] **FLAT-D1 upstream PR to BlitterStudio/dopus5.** A DOpus setting (default off) turns on flat drawing (owner 2026-10-30: flat must be optional inside DOpus); flat drawing in gui.c, buttons_draw.c, image_class.c as above; test on the rig with the stock DOpus theme (no pixel change) and with P1 flat pens. Status: not started, waits for owner go (OD-F10).
 - [ ] **FLAT-D2 Amarchy DOpus theme hook.** `desk_dos_apply` sends `dopus set pens <key> ...` for the 11 keys from the theme colours when a DOpus ARexx port exists (ports named by `GUI->rexx_port_name`, DOPUS.1 by default, V display.c:1167) and `dopus set pens` is already known to work on Workbench (owner note). Pure mapping theme -> 11 pen strings in desk_core, host golden; rig: DOpus lister colours equal the theme after `DESK THEME <A>`.
 - [ ] **FLAT-D3 button banks borderless.** Document in the theme README how to set the BORDERLESS flag per bank (config, not code) and ship it in the Amarchy DOpus button bank files the kit installs, if any (U whether the kit installs banks; grep dist/ when implementing).
 
@@ -227,6 +227,19 @@ Fronts where ours does not yet win: DOpus glyphs and string boxes (needs FLAT-D1
 ## Owner decisions
 
 DECIDED 2026-10-29: pens first; patches only for the measured residue; no caller-filtered graphics patches. Open ones below, recommended option first.
+
+ANSWERED 2026-10-30 (owner, through the question tool). These override the recommendations listed per item below.
+
+- OD-F1: (b) flat pens on, glyph patch off after install.
+- OD-F3: (b) everything on both 3.1 and 3.2: pens, IControl geometry and the glyph patch. The owner did not take the recommendation. Every rig check runs on `--os 31` and `--os 32`. Where R1 / R3 show 3.1 has no route (ic_GUIGeometry is a V2 field, the 3.1 sysiclass Hook layout), that finding goes back to the owner as a new question; it is not dropped silently.
+- OD-F4: (a) shine = background pen, (a) stock border and title size, (a) thin line glyphs in the text pen.
+- OD-F5: (a) refuse next to VisualPrefs / Birdie; P1 pens still apply.
+- OD-F6: (c) no rounded corners. FLAT-C6 closes.
+- OD-F7: (a) both mouse buttons held at boot.
+- OD-F8: (a) separate resident `amarchy-flat`.
+- OD-F9: (b) patch the residue. The owner did not take the recommendation. For DOpus this means a runtime patch of DOpus's own drawing (glyphs in image_class.c, string double bevel) from `amarchy-flat`, not a DOpus fork build (the owner chose the runtime patch over the fork when asked to pick one). Constraints carried over: no caller-filtered graphics patches; the patch identifies the DOpus code it hooks by version and checksum and stays inert on any DOpus build it does not know, so a DOpus update turns the patch off instead of crashing. Risk recorded: breaks (goes inert) on every DOpus update; crash surface inside DOpus.
+- OD-F10: (a) pens now (FLAT-D2) plus the upstream PR (FLAT-D1), and the runtime patch from OD-F9 until upstream ships. The owner adds: in the PR the flat DOpus look is OPTIONAL inside DOpus, a DOpus setting (default off, stock look unchanged), not only the implicit SHINEPEN == BACKGROUNDPEN signal. Amarchy turns that setting on through ARexx / `dopus set` when it is present, and the runtime patch stands down when a DOpus build with the setting is detected.
+- New item FLAT-D4 (from OD-F9 / OD-F10): runtime DOpus glyph and string-bevel patch in `amarchy-flat`. Version-gated, inert on unknown DOpus builds, stands down when DOpus has the FLAT-D1 setting. Host test: version gate table; rig: DOpus lister arrows and string fields flat with the patch, stock with it off, stock on a DOpus build with an unknown checksum. Status: not started, waits for owner go.
 
 - **OD-F1 Default after install.** (Recommended) (b) Flat pens on, glyph patch off. Trade-off: the flat colours are the product and cost zero patch risk; the price is that every bevel on the screen changes at first install, which the 15 s confirm / revert already guards. (a) Off; Amarchy prefs turns it on. Trade-off: nothing changes for users who never asked, but the flat look is never seen out of the box. (c) All on. Trade-off: the class hook runs on a machine nobody has watched yet.
 - **OD-F3 AmigaOS 3.1.** (Recommended) (a) Pens on 3.1 and 3.2; geometry and glyph patch on 3.2 only. Trade-off: one OS to verify for the patch; 3.1 keeps stock border size and glyphs; 3.1 GadTools bevel residue is U (no frameiclass route there). (b) Everything on both. Trade-off: every rig check twice; R1 / R3 may show 3.1 needs other paths. (c) 3.2 only. Trade-off: the 3.1 pen path is free and already works (palette.prefs pens identical, V), dropping it buys nothing.
