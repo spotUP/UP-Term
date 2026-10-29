@@ -165,7 +165,7 @@ static void the_shipped_keymap_has_no_super_alt_chord(void)
         if (km.bind[i].qual & KM_Q_CTRL)
             ctrl++;
     }
-    CHECK_INT(ctrl, 28);                /* the 28 former Super+Alt chords, now Super+Ctrl */
+    CHECK_INT(ctrl, 29);                /* the 28 former Super+Alt chords, now Super+Ctrl, and super+ctrl+help (window shot) */
 }
 
 static void a_newer_major_is_rejected_whole(void)
@@ -440,6 +440,48 @@ static int win_row_bad(const char *action)
     snprintf(buf, sizeof buf, "[bind]\nsuper+d = win:%s\n", action);
     parse(buf);
     return km.nbind == 0 && km.skipped == 1;
+}
+
+/* R4.7: cap:<screen|window|region> is a closed list; a bad word or an empty one is refused, the kind runs in the
+ * commodity (one entry with the ARexx CAP verb), and the shipped keymap binds the three captures. */
+static int cap_row(const char *arg, int *kind)
+{
+    char buf[200];
+    snprintf(buf, sizeof buf, "[bind]\nsuper+d = cap:%s\n", arg);
+    parse(buf);
+    if (km.nbind == 1 && km.skipped == 0) {
+        *kind = km.bind[0].kind;
+        return !strcmp(km.bind[0].arg, arg);
+    }
+    return 0;
+}
+
+static void cap_actions_parse(void)
+{
+    static const char *const good[] = { "screen", "window", "region" };
+    static const char *const bad[] = { "foo", "", "screen clip", "Screen", "screen;x", "regionx" };
+    size_t i;
+    int kind = 0;
+    for (i = 0; i < sizeof good / sizeof good[0]; i++) {
+        CHECK(cap_row(good[i], &kind));
+        CHECK_INT(kind, KA_CAP);
+    }
+    for (i = 0; i < sizeof bad / sizeof bad[0]; i++)
+        CHECK(!cap_row(bad[i], &kind));
+    CHECK_INT(keymap_action_scope(KA_CAP), KS_COMMODITY);
+    CHECK_INT((int)lf_plan(KA_CAP), (int)LF_CAP);
+    {   /* the shipped keymap: three cap: rows (region, screen, window) on the Help key, none skipped */
+        static char file[32768];
+        long n = slurp("dist/keymap", file, sizeof(file));
+        int caps = 0;
+        CHECK(n > 0);
+        CHECK(keymap_parse(&km, file, n));
+        CHECK_INT(km.skipped, 0);
+        for (i = 0; i < (size_t)km.nbind; i++)
+            if (km.bind[i].kind == KA_CAP)
+                caps++;
+        CHECK_INT(caps, 3);
+    }
 }
 
 static void win_actions_parse(void)
@@ -1932,7 +1974,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 13);   /* with the Trigger, Settings, Dopus, Workbench, Screens, Packages and Agents groups (all shown) */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 14);   /* with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages and Agents groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -2685,7 +2727,7 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
  * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
  * parsed table, 8288 B on the host), carry no
  * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
-#define AMARCHY_KEYMAP_HEAP_MAX 3400  /* 46 rows (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys + the 15 AmTile layout hotkeys); 3365 B measured; the full parsed table is larger */
+#define AMARCHY_KEYMAP_HEAP_MAX 3600  /* 49 rows (the three cap: hotkeys, R4.7; was 3400 for 46) (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys + the 15 AmTile layout hotkeys); 3365 B measured; the full parsed table is larger */
 static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 {
     static char file[32768];
@@ -3131,6 +3173,7 @@ void suite_keymap(void)
     the_shipped_keymap_loads_whole();
     actions_resolve_to_menu_ids();
     win_actions_parse();
+    cap_actions_parse();
     win_scope_is_commodity();
     win_defers_in_the_handler();
     the_shipped_file_resolves_and_derives_menu_keys();

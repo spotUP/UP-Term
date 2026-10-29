@@ -171,6 +171,19 @@ static void status_text(char *out, long cap)
     }
 }
 
+/* The one capture entry: the ARexx CAP verb and the cap: hotkey rows both come here. screen | window | region; 0 done,
+ * 10 for any other word, else the shot code's own rc. */
+static long cap_run(const char *kind)
+{
+    if (starts(kind, "screen"))
+        return shot_screen(shot_default_dir());
+    if (starts(kind, "window"))
+        return shot_window(shot_default_dir());
+    if (starts(kind, "region"))
+        return shot_region(shot_default_dir());
+    return 10;
+}
+
 /* Run the action of row `row` (hotkey or ARexx RUN): one place, one counter. */
 static int do_row(int row)
 {
@@ -189,6 +202,7 @@ static int do_row(int row)
     case KA_REXX:  ok = act_rexx(b->arg); break;
     case KA_WIN:   ok = act_win(b->arg); break;
     case KA_GTHEME: ok = gt_dos_select(b->arg, 0, 0); break;
+    case KA_CAP:   ok = cap_run(b->arg) == 0; break;
     case KA_OPEN:  ok = act_open_uterm(); break;
     case KA_MENU: case KA_VIEWER:
         ok = act_menu_kind(b->kind, b->arg);
@@ -241,18 +255,11 @@ static long rexx_cmd(void *ud, const char *cmd, char *out)
     else if (starts(cmd, "WIN") && (cmd[3] == ' ' || cmd[3] == '\t'))
         rc = win_port(cmd + 4);
     else if (starts(cmd, "CAP") && (cmd[3] == ' ' || cmd[3] == '\t')) {
-        /* the capture entry the keymap kind cap: (R4.7) will call: screen | window | region; the reply is the file */
+        /* the capture entry the keymap kind cap: (R4.7) also calls (cap_run): screen | window | region; the reply is the file */
         const char *a = cmd + 4;
         while (*a == ' ' || *a == '\t')
             a++;
-        if (starts(a, "screen"))
-            rc = shot_screen(shot_default_dir());
-        else if (starts(a, "window"))
-            rc = shot_window(shot_default_dir());
-        else if (starts(a, "region"))
-            rc = shot_region(shot_default_dir());
-        else
-            rc = 10;
+        rc = cap_run(a);
         if (rc == 0)
             cl_cat(out, shot_last(), REXX_HOST_OUT);
     } else if (starts(cmd, "SHOTS")) {

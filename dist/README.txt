@@ -747,6 +747,9 @@ AMARCHY
   Left Amiga + Shift + D           Open lister
   Left Amiga + Shift + O           Open lister at current folder
   Left Amiga + D                   Bring Directory Opus to front
+  Left Amiga + Help                Screenshot of a region
+  Left Amiga + Shift + Help        Screenshot of the screen
+  Left Amiga + Ctrl + Help         Screenshot of the window
   [end keys]
   The quick menu (Left Amiga + Space) is a short list you filter by typing;
   Left Amiga + K is the key viewer. Two programs draw them. amarchy-gui is

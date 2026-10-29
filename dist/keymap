@@ -36,6 +36,9 @@
 ;   win:<verb> [arg] a window verb on the active or menu-targeted window: cycle, front, back,
 ;                    zip, fullwidth, fullscreen, save, restore, move, size, focus,
 ;                    closedrawers, screen, title
+;   cap:<screen|window|region>  a screenshot of the front screen, the active window, or a dragged
+;                    region: an IFF ILBM file in RAM:Shots and the clipboard (Left Amiga + Alt is the
+;                    left mouse button, so the window shot uses Left Amiga + Ctrl)
 
 [keymap]
 version = 1
@@ -141,6 +144,9 @@ super+d           = rexx:UP-Term:Rexx/dopus-front.rexx       ; Bring Directory O
 ; super+shift+x   = run:SYS:Prefs/Screenmode ; Screen mode preferences | prefs
 ; super+y         = run:SYS:Prefs/Palette  ; Palette preferences   | prefs
 ; super+z         = run:SYS:Prefs/Internet ; Internet preferences  | prefs
+super+help        = cap:region              ; Screenshot of a region | capture
+super+shift+help  = cap:screen              ; Screenshot of the screen | capture
+super+ctrl+help   = cap:window              ; Screenshot of the window | capture
 ; super+shift+q   = run:Reboot             ; Reboot                | system
 ; Previous and next prompt (super+up, super+down) wait for an action id.
 
@@ -186,6 +192,9 @@ style.theme        = Amarchy theme         | menu:style.theme
 style.terminal.theme      = Theme          | slash:/theme
 style.terminal.font       = Font           | slash:/font
 style.terminal.background = Background     | slash:/bg
+capture.region      = Screenshot of a region   | cap:region
+capture.screen      = Screenshot of the screen | cap:screen
+capture.window      = Screenshot of the window | cap:window
 window.tab         = New tab               | tab:new
 window.preferences = Preferences           | menuid:MENU_PREFS
 window.next         = Next window              | win:cycle next

@@ -103,7 +103,7 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   (cw_changed ignores non-FTXT: assert clips count unchanged).
 - [ ] R4.6 PNG: only if R4.1c finds a writer and the owner picks it (D1); else man page line "IFF ILBM only" and a written
   knob exemption. Proof: R4.1c log line quoted in the commit.
-- [ ] R4.7 keymap kind `cap:` with closed arguments `screen | window | region` (+ ` clip` suffix if D3 picks per-key
+- [x] R4.7 (done, commit "Keymap kind cap: (R4.7)"; chords: super+help region, super+shift+help screen, super+ctrl+help window because the parser refuses super+alt, D2 names super+alt+help; `make test ONLY=keymap` 15667 checks; rig amarchy_cap_rig hotkey step ok on rig 4, 3 RTG rows fail on a PAL-only rig) keymap kind `cap:` with closed arguments `screen | window | region` (+ ` clip` suffix if D3 picks per-key
   clipboard); `cap_arg_ok` beside `win_arg_ok` (config/keymap.c:246), KS_COMMODITY scope (keymap.c:120-135), prefix entry
   (keymap.c:217), `case KA_CAP` in do_row (amarchy.c:163). Bindings per D2, menu group `capture.*` rows, key viewer rows.
   Proof: `make test ONLY=keymap` cases: valid forms parse, `cap:foo` and `cap:` refused, viewer lists the rows.

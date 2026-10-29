@@ -128,6 +128,7 @@ int keymap_action_scope(int kind)
     case KA_REXX:
     case KA_WIN:
     case KA_GTHEME:
+    case KA_CAP:
     case KA_SETTINGS:
         return KS_COMMODITY;
     case KA_MENU:
@@ -215,7 +216,7 @@ static const prefix prefixes[] = {
     { "menu", KA_MENU }, { "menuid", KA_MENUID }, { "tab", KA_TAB },
     { "slash", KA_SLASH }, { "run", KA_RUN }, { "job", KA_JOB }, { "rexx", KA_REXX }, { "open", KA_OPEN },
     { "detach", KA_DETACH }, { "scan", KA_SCAN },
-    { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "settings", KA_SETTINGS }
+    { "win", KA_WIN }, { "gtheme", KA_GTHEME }, { "cap", KA_CAP }, { "settings", KA_SETTINGS }
 };
 
 static int tab_arg_ok(const char *a)
@@ -240,6 +241,13 @@ static int win_arg_ok(const char *a)
 {
     win_cmd c;
     return win_parse(a, &c);
+}
+
+/* cap:<kind>: the closed list of the commodity's CAP verb (amarchy.c cap_run); no clip suffix, every capture also
+ * goes to the clipboard (decision D3 a). */
+static int cap_arg_ok(const char *a)
+{
+    return !strcmp(a, "screen") || !strcmp(a, "window") || !strcmp(a, "region");
 }
 
 /* 1 parsed; 0 bad; -1 bad because the argument does not fit. */
@@ -277,6 +285,8 @@ static int action_parse(const char *text, action *a)
     if (a->kind == KA_TAB && !tab_arg_ok(text))
         return 0;
     if (a->kind == KA_WIN && !win_arg_ok(text))
+        return 0;
+    if (a->kind == KA_CAP && !cap_arg_ok(text))
         return 0;
     if (a->kind == KA_GTHEME && (!*text || strchr(text, '/') || strchr(text, ':')))
         return 0;   /* a theme name, never a path */

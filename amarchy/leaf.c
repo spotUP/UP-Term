@@ -444,6 +444,19 @@ static int send_win(const km_menu *m, const lf_ui *ui)
     return rc == 0 ? 0 : -1;
 }
 
+/* cap: sends "CAP <kind>" to the commodity, the same entry the hotkey reaches (amarchy.c cap_run). */
+static int send_cap(const km_menu *m, const lf_ui *ui)
+{
+    char line[KM_ID + 16];
+    long rc;
+    snprintf(line, sizeof line, "CAP %s", m->arg);
+    rc = rexx_send("AMARCHY", line, 0, 0);
+    if (rc != 0 && ui && ui->refused)
+        ui->refused(ui->ctx, m->label, UPREQ_FAILED,
+                    rc < 0 ? "the Amarchy commodity is not running" : "the capture was refused");
+    return rc == 0 ? 0 : -1;
+}
+
 #define LISTER_MAX 16
 void lf_load_listers(ix_index *x)
 {
@@ -546,6 +559,8 @@ int lf_run(const km_menu *m, const lf_ui *ui)
         return open_uterm();
     case LF_WIN:
         return send_win(m, ui);
+    case LF_CAP:
+        return send_cap(m, ui);
     case LF_GTHEME:
     {
         char why[160];

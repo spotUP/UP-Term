@@ -47,6 +47,7 @@ typedef enum {
     LF_VIEWER,   /* viewer: the key viewer, the program super+k opens, in its own window */
     LF_WIN,      /* win: a window verb, sent to the commodity (K8 wires the port) */
     LF_SETTING,  /* a settings row of the menu (MN_ROW_SETTING): lf_setting_* below, no [menu] row behind it */
+    LF_CAP,      /* cap: a screenshot, sent to the commodity as CAP <kind> */
     LF_GTHEME,   /* gtheme: the drawn menu's theme is saved (gthemes_dos.h gt_dos_select) */
     LF_OPEN_THEN_REQUEST, /* slash: with no terminal window open: open one (as LF_OPEN), then send the request to it */
     LF_ASK_THEN_OPEN_REQUEST, /* like LF_OPEN_THEN_REQUEST, for a row that needs a value (slash:/bg): ask for the value FIRST, while the

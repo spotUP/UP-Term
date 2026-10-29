@@ -140,6 +140,19 @@ def main():
     rc, _ = cap('bogus')
     check(rc == 10, 'CAP with a bad argument answers rc 10', rc)
 
+    # hotkey (R4.7): the keymap kind cap: reaches the same capture code, super+shift+help = screen (D2; the default row
+    # of dist/keymap, so `make amiga` and `rig.py install` carry it). A new shot file and a higher shots=N in STATUS.
+    n0 = shots()
+    listing0 = c.run('List RAM:Shots')[1]
+    ami.key(0x5F, 0x40 | 0x01)                     # Help with Left Amiga + Left Shift
+    end = time.time() + 15
+    while shots() == n0 and time.time() < end:
+        time.sleep(0.5)
+    listing1 = c.run('List RAM:Shots')[1]
+    check(shots() == n0 + 1, 'hotkey super+shift+help: shots=%d' % (n0 + 1), shots())
+    check((ar.arexx('STATUS') or '').endswith(' shots=%d' % (n0 + 1)), 'STATUS shows the hotkey capture')
+    check(listing1 != listing0 and len(listing1.splitlines()) > len(listing0.splitlines()), 'hotkey wrote a new file in RAM:Shots')
+
     # Workbench (RTG truecolour): refused, not a corrupt file
     # Workbench (RTG truecolour) refusal: closing shotscreen puts the RTG Workbench in front
     end = time.time() + 120
