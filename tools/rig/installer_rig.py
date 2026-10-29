@@ -65,6 +65,7 @@ import paths
 import ami
 import verdicts
 import install_rig as ir
+import amarchy_window_rig as amw
 from assign_rig import rig
 
 ROOT = ir.ROOT
@@ -344,6 +345,20 @@ def own_ask_answer(gads):
     return None
 
 
+def layout_judged(tree, why):
+    """Whether a page dump's text is judged for layout faults. The Make New Drawer dialog is the Installer's
+    own, drawn over the askdir page (its frames read as a panel, the drawer list under it as stray text: 3.1
+    dest, 2026-10-08). Two Installer windows (a nested add-on Install over the base) overlap while one closes.
+    A window with neither Proceed (90) nor Abort Install (91) is a page half drawn: the last page's buttons
+    stood in the bottom strip before their gadgets were added, "text in the bottom border strip (y 204..205)
+    on [None]" (fresh-all, rig 9 2026-10-29). Only our whole pages are judged."""
+    if why in ('dialog', 'no dialog', 'after Make New Drawer'):
+        return False
+    if sum(1 for t in gadgets(tree) if 'Install' in t) > 1:
+        return False
+    return installer_page(tree)[0] is not None
+
+
 def installer_name(title):
     """An Installer window's title without its progress: "Install-AmiSSL (100% done)" is "Install-AmiSSL"."""
     return re.sub(r' \(\d+% done\)$', '', title or '')
@@ -505,12 +520,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
         return tuple(re.findall(r'^G [2-9]\d? (\d+ \d+) \d+x\d+ (?:button|toggle)', tree, re.M))
 
     def dump(tree, why):
-        # the Make New Drawer dialog is the Installer's own, drawn over the askdir page (its frames read as a
-        # panel, the drawer list under it as stray text: 3.1 dest, 2026-10-08): only our pages' text is judged
-        own = why in ('dialog', 'no dialog', 'after Make New Drawer')
-        # two Installer windows (a nested add-on Install over the base) overlap while one closes: not a layout fault
-        nested = sum(1 for t in gadgets(tree) if 'Install' in t) > 1
-        faults, bands = ([], []) if own or nested else text_faults(tree)
+        faults, bands = text_faults(tree) if layout_judged(tree, why) else ([], [])
         with pages.open('a') as f:
             f.write('---- %.0f s %s\n%s\ntext: %s\n' % (time.time() - t0, why, tree, ' '.join(bands)))
             for x in faults:
@@ -971,17 +981,28 @@ def reboot_amarchy_check(ck, log):
     except m.WasabiError:
         st = ''
     ck(bool(st), 'after the reboot: the AMARCHY ARexx port answers STATUS', st or 'no port')
-    log.append('amarchy STATUS after reboot: %s' % st)
+    print('amarchy STATUS after reboot: %s' % st)
     tabstate.open_host('f1host')
-    ami.key(0x40, 0x40)   # Left Amiga + Space
-    t0 = time.time()
-    while time.time() - t0 < 20 and not amarchy_window():
-        time.sleep(0.5)
-    up = amarchy_window()
-    ck(up, 'after the reboot: Left Amiga + Space opens the Amarchy menu window', 'no window titled Amarchy in 20 s')
-    log.append('menu window after reboot: %s' % up)
-    ami.key(0x45)         # Esc at the root leaves the menu
-    time.sleep(3)
+    # over the f1host terminal Left Amiga + Space opens amarchy-menu in the terminal while menu-in-terminal = text
+    # (the default); the drawn menu, titled Amarchy, needs graphical (FRESH-ALL-AFTER-END 32, as amarchy_window_rig)
+    saved = amw.drawn_menu_prefs()
+    try:
+        ami.key(0x40, 0x40)   # Left Amiga + Space
+        t0 = time.time()
+        while time.time() - t0 < 20 and not amarchy_window():
+            time.sleep(0.5)
+        up = amarchy_window()
+        ck(up, 'after the reboot: Left Amiga + Space opens the Amarchy menu window', 'no window titled Amarchy in 20 s')
+        print('menu window after reboot: %s' % up)
+        if not up:   # amarchy_window reads the front screen only: say where every window is
+            with ami._conn() as conn:
+                for s in ami._m().list_windows(conn)[0]:
+                    print('screen [%s]: %s' % (s.get('title'), ' | '.join(w['title'] for w in s['windows'])))
+        ami.key(0x45)         # Esc at the root leaves the menu
+        time.sleep(3)
+    finally:
+        amw.restore_prefs(saved)
+    ir.stock_libs()       # the boot put VTC:ixp6 first in LIBS: again; the Uninstall checks read the system's
 
 
 def run_base_case(case):
