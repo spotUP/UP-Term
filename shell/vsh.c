@@ -108,7 +108,13 @@ typedef struct job {
     vt_termios tios;        /* the console's termios when it was suspended ... */
     int tios_saved;         /* ... if the job had set one (S8) */
     int tios_restored;      /* fg put it back: the prompt takes the Amiga mode again */
+    struct job *next;       /* the runners not yet reaped (live_jobs) */
 } job;
+
+/* The runners the shell has started and not reaped. A runner is a process running this program's
+ * own code, so a shell that ends first (`vsh -c "cmd &"`) must not let its code or its reply port go
+ * under it: orphan_jobs hands them over. Changed under Forbid. */
+static job *live_jobs;
 
 /* The pipes vsh made. AmigaOS has no SIGPIPE: a PIPE: writer whose reader
  * has gone blocks for ever (rig: List | less, q, and the shell never came
@@ -518,6 +524,29 @@ static void input_restore(BPTR in, long mark)
         Seek(in, mark, OFFSET_BEGINNING);
 }
 
+/* A job's resources, once it has ended and its result is read (or nobody will read it). */
+static void job_free(job *j)
+{
+    job **pp;
+    Forbid();
+    for (pp = &live_jobs; *pp; pp = &(*pp)->next)
+        if (*pp == j) {
+            *pp = j->next;
+            break;
+        }
+    Permit();
+    if (j->seg)
+        UnLoadSeg(j->seg);
+    if (j->home)
+        UnLock(j->home);
+    free(j->name);
+    free(j->args);
+    free(j->cmd);
+    free(j->env);
+    free(j->ixvar);
+    FreeVec(j);
+}
+
 static void runner(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
@@ -616,7 +645,35 @@ static void runner(void)
     TR("runner end", j, j->rc);
     Forbid(); /* the reply and our end, before the shell can free anything */
     j->done = 1;
-    ReplyMsg(&j->msg);
+    if (j->msg.mn_ReplyPort) {
+        ReplyMsg(&j->msg);
+        return;
+    }
+    /* orphaned: the shell that started this job has ended (orphan_jobs) and nobody will wait for
+     * it, so the job is freed here, as os_wait frees it */
+    Permit();
+    job_free(j);
+}
+
+/* The shell ends: the runners still going are no longer its to wait for. Their reply port goes
+ * with the shell, so they get none (ReplyMsg of a message with no reply port only marks it), and
+ * this program's code stays loaded for them: the Shell that started us unloads cli_Module when we
+ * return, under a runner that is still in it (the runner then never ran the command: `sh -c
+ * "cmd &"` left "vsh job" waiting for ever and froze the rig). The code is freed with the
+ * system's next flush, not by anybody here; a leak per such shell, as for cback.o programs. */
+static void orphan_jobs(struct MsgPort *port)
+{
+    job *j;
+    int any = 0;
+    Forbid();
+    for (j = live_jobs; j; j = j->next)
+        if (j->msg.mn_ReplyPort == port && !j->done) {
+            j->msg.mn_ReplyPort = 0;
+            any = 1;
+        }
+    Permit();
+    if (any && Cli())
+        Cli()->cli_Module = 0;
 }
 
 /* The OS layer's data per process that runs the interpreter (the shell,
@@ -1134,6 +1191,10 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         Permit();
     }
     SetSignal(0, SIGBREAKF_CTRL_C); /* an old Ctrl-C is not for this command */
+    Forbid();
+    j->next = live_jobs;
+    live_jobs = j;
+    Permit();
     PutMsg(&p->pr_MsgPort, &j->msg);
     if (wait)
         return os_wait(os, (long)j);
@@ -1253,16 +1314,7 @@ static long os_wait(void *os, long id)
                 pipe_tab[i].writer = 0;
         Permit();
     }
-    if (j->seg)
-        UnLoadSeg(j->seg);
-    if (j->home)
-        UnLock(j->home);
-    free(j->name);
-    free(j->args);
-    free(j->cmd);
-    free(j->env);
-    free(j->ixvar);
-    FreeVec(j);
+    job_free(j);
     return rc;
 }
 
@@ -2373,6 +2425,7 @@ static int vsh_main(int argc, char **argv)
         TR("exit free", st, 0);
         sh_shell_free(&sh);
         TR("exit port", 0, 0);
+        orphan_jobs(vp.port);
         DeleteMsgPort(vp.port);
         TR("exit return", 0, 0);
         HW_REPORT("main");
