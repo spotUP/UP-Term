@@ -277,6 +277,16 @@ static void test_press_over_agents_launches(void)
 /* The re-raise decision: only a foreign BACKDROP layer in front that touches the bar's rectangle raises the bar.
  * A normal window over the bar (Directory Opus' lister, a full-size window with its size gadget) stays in front of
  * it (BAR-BEHIND); our own windows, layers clear of the bar and an empty list do not raise either. */
+/* BAR-CLICK: the stock Workbench root window (WFLG_WBENCHWINDOW, plain layer, full width) sits in front of the bar's
+ * backdrop layer; it must count as the desktop or the poll never raises the bar and Workbench takes every click. */
+static void test_desktop(void)
+{
+    CHECK_INT(bar_is_desktop(0x2220327fUL, 0, 799, 800), 1);          /* rig: stock Workbench root window */
+    CHECK_INT(bar_is_desktop(0x00000100UL, 0, 799, 800), 1);          /* WFLG_BACKDROP (Directory Opus) */
+    CHECK_INT(bar_is_desktop(0x02000000UL, 40, 300, 800), 0);         /* a drawer window */
+    CHECK_INT(bar_is_desktop(0x0000327fUL, 0, 799, 800), 0);          /* a normal full-width window */
+}
+
 static void test_covered(void)
 {
     const bar_lyr wb_over = { 0, 16, 639, 255, 0, 1 };         /* Workbench's backdrop window over the bar */
@@ -569,6 +579,7 @@ void suite_bar(void)
     test_panel_anchor();
     test_panel_anchor_clamped();
     test_press_over_agents_launches();
+    test_desktop();
     test_covered();
     test_centre();
     test_cut();

@@ -428,7 +428,7 @@ int bar_open(const char *dir)
     sample(2, 1);
     bar_layout(&g_bar, g_scr->Width);
     g_win = tw_open(g_scr, 0, g_scr->Height - h, g_scr->Width, h, BAR_TITLE, IDCMP_MOUSEBUTTONS | IDCMP_REFRESHWINDOW, bar_recolour,
-                  TW_OPEN_BACKDROP);
+                  0);   /* a plain window, not a backdrop one: a backdrop layer stays behind Workbench's plain root layer and gets no clicks (BAR-CLICK) */
     if (!g_win) {
         idle_stop();
         UnlockPubScreen(0, g_scr);
@@ -491,7 +491,7 @@ static int front_layers(bar_lyr *out, int max)
         out[n].t = l->bounds.MinY;
         out[n].r = l->bounds.MaxX;
         out[n].b = l->bounds.MaxY;
-        out[n].backdrop = w && (w->Flags & WFLG_BACKDROP) != 0;
+        out[n].backdrop = w && bar_is_desktop((unsigned long)w->Flags, l->bounds.MinX, l->bounds.MaxX, g_scr->Width);
         out[n].ours = w && w->Title && !strcmp((const char *)w->Title, MENU_TITLE);
         n++;
     }

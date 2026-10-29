@@ -318,6 +318,13 @@ void bar_panel_anchor(int screen_w, int bar_top, int *ax, int *ay)
     *ay = bar_top;
 }
 
+int bar_is_desktop(unsigned long wflags, int l, int r, int screen_w)
+{
+    if (wflags & BAR_WFLG_BACKDROP)
+        return 1;
+    return (wflags & BAR_WFLG_WBENCHWINDOW) != 0 && l <= 0 && r >= screen_w - 1;
+}
+
 int bar_covered(int l, int t, int r, int b, const bar_lyr *front, int n)
 {
     int i;

@@ -41,14 +41,14 @@ def r_start():
     ar.arexx('QUIT')          # rig.py leaves an older resident Amarchy: the branch build must be the one running
     time.sleep(2)
     ar.start()
-    s = ar.status()
+    s = bar_status()      # BAR STATUS holds the bar's counters; plain STATUS has none of them
     return s.get('bar') == 1 and s.get('draws', 0) > 0, 'status %r' % s
 
 
 def r_left_panel():
-    before = ar.status()
+    before = bar_status()
     click(0)
-    after = ar.status()
+    after = bar_status()
     return after.get('panels', 0) == before.get('panels', 0) + 1, 'before %r after %r' % (before, after)
 
 
@@ -85,10 +85,10 @@ def r_right_launch():
     host = next(b for t, b, _ in windows() if t == 'barhost')
     click(0, (host[0] + host[2] // 2, host[1] + host[3] // 2))      # the user's window takes the focus
     held = active_title()
-    before = ar.status()
+    before = bar_status()
     tabs = tabstate.counters()
     click(1)
-    after = ar.status()
+    after = bar_status()
     now = active_title()
     moved = after.get('launches', 0) == before.get('launches', 0) + 1
     hits = tabstate.counters().get('km-hits', 0) > tabs.get('km-hits', 0)

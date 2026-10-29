@@ -101,6 +101,14 @@ typedef struct bar_lyr {
     int backdrop;   /* WFLG_BACKDROP: only these can hide the bar, normal windows belong in front of it */
 } bar_lyr;
 
+/* Whether a window is the desktop (counts as bar_lyr.backdrop): WFLG_BACKDROP (Directory Opus), or the stock Workbench
+ * root window. The latter is a plain layer, not a backdrop one (rig: layer flags 1, window flags 0x2220327f =
+ * WFLG_WBENCHWINDOW without WFLG_BACKDROP), sits IN FRONT of the bar's backdrop layer and took every click (BAR-CLICK).
+ * A Workbench-owned window counts only when it spans the screen width (layer l..r), so a drawer stays a normal window. */
+#define BAR_WFLG_BACKDROP 0x00000100UL
+#define BAR_WFLG_WBENCHWINDOW 0x02000000UL
+int bar_is_desktop(unsigned long wflags, int l, int r, int screen_w);
+
 /* 1 when a backdrop layer that is not ours, in front of the bar, overlaps the bar's rectangle (l, t, r, b inclusive): the
  * bar must come to the front. */
 int bar_covered(int l, int t, int r, int b, const bar_lyr *front, int n);
