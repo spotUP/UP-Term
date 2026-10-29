@@ -1007,6 +1007,33 @@ class RigStart(unittest.TestCase):
         finally:
             rig.RIG, rig.OS, rig.OS32, rig.mine, rig.SRC_HDF, rig.subprocess.Popen, rig.subprocess.run = saved
 
+class RomCheck(unittest.TestCase):
+    """The --a500 default was Amiberry's kick40063.A500.rom, a relocated image whose reset jumps to $2000D2:
+    the 68000 rig stayed black, never ran a line of its startup-sequence, and start waited 550 s (2026-10-29)."""
+    def rom(self, head):
+        import tempfile
+        d = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(__import__('shutil').rmtree, d)
+        f = d / 'kick.rom'
+        f.write_bytes(head + bytes(512 * 1024 - len(head)))
+        return f
+
+    def test_relocated_rom_stops_the_start(self):
+        import paths
+        with self.assertRaises(SystemExit) as e:
+            paths.require_rom(self.rom(bytes.fromhex('11164ef9002000d2')))
+        self.assertIn('$2000D2', str(e.exception))
+
+    def test_stock_rom_passes(self):
+        import paths
+        paths.require_rom(self.rom(bytes.fromhex('11144ef900f800d2')))
+        paths.require_rom(self.rom(b'AMIROMTYPE1' + bytes(5)))   # Cloanto image: FS-UAE decodes it
+
+    def test_the_a500_default_is_a_stock_rom(self):
+        import paths
+        if paths.ROM_A500.is_file():
+            paths.require_rom(paths.ROM_A500)
+
 def shutil_copy(a, b):
     import shutil
     shutil.copyfile(a, b)

@@ -281,9 +281,11 @@ MMULIB = pathlib.Path(os.environ.get("UPTERM_MMULIB") or
 OS_IMAGES = pathlib.Path(os.environ.get("UPTERM_OS_IMAGES") or
     pathlib.Path.home() / "Downloads/clean-wb/Clean Workbench Installs")
 # UPTERM_ROM_A500  the A500/A600/A2000 Kickstart 3.1 (40.63), for --a500: the default ROM is the A1200 40.68,
-#                   which FS-UAE refuses on a 68000 (NUMSG_KS68EC020, 2026-10-29)
-ROM_A500 = pathlib.Path(os.environ.get("UPTERM_ROM_A500") or
-    pathlib.Path.home() / "Documents/Amiberry/ROMs/kick40063.A500.rom")
+#                   which FS-UAE refuses on a 68000 (NUMSG_KS68EC020, 2026-10-29). The default is a workspace
+#                   copy of the stock ROM, CRC32 FC24AE0D (vAmiga's fc24ae0d.rom). Amiberry's kick40063.A500.rom
+#                   (CRC32 88136CA9, magic 0x1116) is a relocated image whose reset jumps to $2000D2: the 68000
+#                   rig stayed black and never ran a line of BOOTX:s/startup-sequence (2026-10-29).
+ROM_A500 = pathlib.Path(os.environ.get("UPTERM_ROM_A500") or UPTERM_ROOT / "roms/kick40063-a500.rom")
 ROM314 = pathlib.Path(os.environ.get("UPTERM_ROM314") or
     pathlib.Path.home() / "Downloads/kickstart 3.1.4/kick.a1200.46.143")
 
@@ -332,11 +334,26 @@ def require_input(path, var, what):
                  "where it comes from)" % (what, path, var))
 
 
+def rom_reset_pc(path):
+    """The initial PC a Kickstart ROM image's reset vector holds (the long at offset 4), or None for a file
+    the emulator decodes first (a Cloanto AMIROMTYPE1 image) or one too short to hold the vector."""
+    head = pathlib.Path(path).read_bytes()[:16]
+    if head.startswith(b"AMIROMTYPE1") or len(head) < 8:
+        return None
+    return int.from_bytes(head[4:8], "big")
+
+
 def require_rom(path):
-    """Exit with one clear message when the Kickstart ROM file is missing."""
+    """Exit with one clear message when the Kickstart ROM file is missing, or when its reset vector points
+    outside the ROM area ($E00000-$FFFFFF): such an image (relocated for a MapROM board, e.g. a jump to
+    $2000D2) leaves the machine black with no log line, and the rig waited 550 s for a boot (2026-10-29)."""
     if not pathlib.Path(path).is_file():
         sys.exit("rig: Kickstart ROM not found: %s (set UPTERM_ROM=<file> or "
                  "pass --kick <file>)" % path)
+    pc = rom_reset_pc(path)
+    if pc is not None and not 0xE00000 <= pc <= 0xFFFFFF:
+        sys.exit("rig: Kickstart ROM %s resets to $%06X, outside the ROM area: not a ROM to boot "
+                 "(a relocated MapROM image?)" % (path, pc))
 
 
 @contextlib.contextmanager
