@@ -2,7 +2,7 @@
 date: 2026-10-29
 author: spot
 topic: Amarchy P2 status bar probes R2.1 (network query) and R2.2 (idle counter)
-status: complete (rig 8, 060; A1200 2026-10-29, Emu68 PiStorm, AmigaOS 3.2); the A1200 interface-down half open
+status: complete (rig 8, 060; A1200 2026-10-29, FPGA Replay with a real 68060, AmigaOS 3.2); the A1200 interface-down half open
 ---
 
 # P2 probes R2.1 and R2.2, rig 8 (68060, --max), 2026-10-29
@@ -60,7 +60,7 @@ R2.1 (network):
   Roadshow has no `ifconfig` in C:; the tools are ConfigureNetInterface, RemoveNetInterface, NetShutdown, ShowNetStatus.
 - Taking `replayeth` down is not possible here: it is the only interface and wasabi's connection rides on it.
 
-R2.2 (idle counter, A1200 = Emu68 on a Pi, not a real 68020):
+R2.2 (idle counter, A1200 = FPGA Replay with a real 68060 (owner correction 2026-10-29; an earlier note said Emu68 PiStorm, which was wrong)):
 - Idle counts per second (3 samples): 11.88M, 11.91M, 11.94M (spread 0.5 percent): stable enough for calibration.
 - Main task busy 1 s: 0 counts. 50 percent duty over 2 s: 13.75M (a fully idle 2 s is about 23.8M, so about 58
   percent idle for a nominal 50: same +bias as the rig).
