@@ -102,8 +102,9 @@ def stage(pkg_id, userland, dest, table=TABLE):
 
 
 def uninstall(pkg_id, table=TABLE):
-    """Delete lines for the package's paths: UP-Term:<path>, * written as the AmigaDOS #?."""
-    lines = ['Delete >NIL: "UP-Term:%s" ALL QUIET' % p.replace('*', '#?') for p in patterns(pkg_id, table)]
+    """Delete lines for the package's paths: UPTREAL:<path> (the one real drawer of a multi-directory UP-Term:, assigned by the
+    Uninstall's resolve-addon.dos), * written as the AmigaDOS #?."""
+    lines = ['Delete >NIL: "UPTREAL:%s" ALL QUIET' % p.replace('*', '#?') for p in patterns(pkg_id, table)]
     return '\n'.join(lines)
 
 

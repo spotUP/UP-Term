@@ -52,8 +52,8 @@ class Table(unittest.TestCase):
         self.assertFalse([p for p in slim.patterns('git') if '*' in p])
 
     def test_uninstall_lines_come_from_the_same_list(self):
-        self.assertIn('Delete >NIL: "UP-Term:bin/git-remote-https" ALL QUIET', slim.uninstall('git'))
-        self.assertIn('Delete >NIL: "UP-Term:share/vim" ALL QUIET', slim.uninstall('vim'))
+        self.assertIn('Delete >NIL: "UPTREAL:bin/git-remote-https" ALL QUIET', slim.uninstall('git'))
+        self.assertIn('Delete >NIL: "UPTREAL:share/vim" ALL QUIET', slim.uninstall('vim'))
 
     def test_the_ports_kit_is_found_under_upterm_root_from_a_worktree(self):
         """2026-10-22: make dist-check in a vtcon worktree (UPTERM_ROOT=~/Code/UP-Term) failed with

@@ -3,11 +3,15 @@
 ; removes the base; a stand-alone archive is left alone by the base.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
+; UP-Term: can be a multi-directory assign, where Delete finds a path below the first directory only: the
+; Delete lines name the one real drawer (UPTREAL:) the Install wrote to, as resolve-addon.dos assigns it
+; @include dist/common/@RECORDRESOLVE@
 ; @include dist/addons/@ID@/uninstall-body.dos
 ; @include dist/common/@ADDONVAR@
 ; the record: its copy of this script is the one a base Uninstall is running, which
 ; AmigaDOS cannot delete while it is read (the base removes it with its own drawer)
-Delete >NIL: "@RECORD@" ALL QUIET
+Delete >NIL: "$uptrec" ALL QUIET
 ; the drawer of records goes too when this was the last (Delete without ALL: only an empty drawer)
-Delete >NIL: "@PKGDIR@" QUIET
+Delete >NIL: "$uptpkg" QUIET
+Assign >NIL: UPTREAL:
 Echo "@ARCHIVE@ removed."

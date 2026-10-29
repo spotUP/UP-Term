@@ -1,3 +1,3 @@
-Delete >NIL: UP-Term:nvim ALL QUIET
+Delete >NIL: UPTREAL:nvim ALL QUIET
 ; the quick-launch icon beside the UP-Term icon
-Delete >NIL: UP-Term:Neovim UP-Term:Neovim.info QUIET
+Delete >NIL: UPTREAL:Neovim UPTREAL:Neovim.info QUIET
