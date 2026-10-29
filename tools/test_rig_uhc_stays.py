@@ -29,4 +29,12 @@ res = []
 ir.check_startup_after_uninstall(lambda c, w, d='': res.append(c),
                                  'a\n;BEGIN UHC\nx\n;END UHC\n', 'a\n;BEGIN UHC\nx\n;END UHC\nb\n', ('UHC',))
 check(res and res[0] is False, 'a real difference outside the left block still fails')
+# uhcinstall prepends the block AND one empty line before the file's own first line (rig 9 --only all FAIL 94,
+# s25 2026-10-29): the left block goes with that separator, and the block is still demanded in the file.
+orig = ';run >nil: c:copper-demon patchopenwb bordblnk\n;run >nil: c:minimigwheeldriver\n\n'
+after = ';BEGIN UHC\n  If EXISTS "${UHCBIN}UHC-Startup"\n;END UHC\n\n' + orig
+res = []
+ir.check_startup_after_uninstall(lambda c, w, d='': res.append((c, w)), orig, after, ('UHC',))
+check(res and all(c for c, _ in res), 'uhcinstall block plus its blank line is not a difference: %r' % res)
+check(ir.strip_block(after, 'UHC') == orig, 'strip_block takes the separator blank too')
 sys.exit(1 if fails else 0)

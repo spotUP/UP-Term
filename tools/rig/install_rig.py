@@ -1157,15 +1157,22 @@ def base_whole(ck, what):
 
 
 def strip_block(text, name):
-    """text without the lines from ';BEGIN <name>' to ';END <name>' (a block another installer wrote)."""
-    out, skip = [], False
+    """text without the lines from ';BEGIN <name>' to ';END <name>' (a block another installer wrote) and the one
+    empty line that installer puts after ';END <name>' (UHC's uhcinstall writes the block and a blank before the
+    file's own first line)."""
+    out, skip, after_end = [], False, False
     for line in text.split('\n'):
+        if after_end and line == '':
+            after_end = False
+            continue
+        after_end = False
         if line.strip() == ';BEGIN ' + name:
             skip = True
         if not skip:
             out.append(line)
         if skip and line.strip() == ';END ' + name:
             skip = False
+            after_end = True
     return '\n'.join(out)
 
 
