@@ -59,20 +59,20 @@ Probes (before code that depends on them)
       -128 task on a fixed benchmark (before/after under 2 percent).
 
 Shared pieces (P4 waits on these)
-- [ ] R2.3a tick.c/.h: owns one poll_timer at 1 s, `tick_open/close/sigmask/serve`, `tick_now()` (seconds since start),
+- [x] R2.3a (05e11fa6; rig proof open under R2.16) tick.c/.h: owns one poll_timer at 1 s, `tick_open/close/sigmask/serve`, `tick_now()` (seconds since start),
       hook list `tick_hook(fn)` (fixed array, no allocation in the tick). Opened by amarchy.c before bar_open, runs with
       the bar off. STATUS `ticks=`.
-- [ ] R2.3b Register note_tick as a hook (notice expiry) and the bar sampler as a hook.
+- [x] R2.3b (05e11fa6; rig proof open under R2.16) Register note_tick as a hook (notice expiry) and the bar sampler as a hook.
 - [ ] R2.3c Bar raise check: keep the bar's own 0.5 s g_poll only while open (unchanged), or ride the tick if 1 s raise
       latency is fine on the rig. Default: keep g_poll; measure raises in the rig test.
-- [ ] R2.5a Extract the themed window helper from bar.c to themewin.c/.h: `tw_open(screen, x, y, w, h, title, idcmp)`,
+- [x] R2.5a (05e11fa6; rig proof open under R2.16) Extract the themed window helper from bar.c to themewin.c/.h: `tw_open(screen, x, y, w, h, title, idcmp)`,
       `tw_pens()` (bg, text, accent, border, MT_OK, MT_FAIL), `tw_text(x, y, s, pen)`, `tw_fill`, `tw_frame`, `tw_close`,
       user port shared by the commodity (one signal bit for all helper windows). bar.c becomes its first user, no
       behaviour change (bar host tests and the rig Agents check stay green).
 - [ ] R2.5b Recolour on theme switch: helper re-reads pens on the theme-change signal and redraws every helper window.
       Closes OMARCHY-AI F3 (thoughts/shared/plans/2026-10-28-omarchy-ai.md:95).
 - [x] R2.5 Bar window on the Workbench screen, themed from P1 roles. DONE 4086d352.
-- [ ] R2.9 `bar_usable(screen, box)` exported from bar.c; win_apply.c calls it instead of its own title lookup (one
+- [x] R2.9 (05e11fa6; rig proof open under R2.16) `bar_usable(screen, box)` exported from bar.c; win_apply.c calls it instead of its own title lookup (one
       source for the strut rule). Returns the full screen minus title bar when the bar is off or on another screen.
 
 Bar core
