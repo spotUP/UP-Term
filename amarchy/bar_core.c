@@ -215,12 +215,34 @@ void bar_layout(bar *b, int width)
     if (k >= 0)
         marker_text(b, nscr - k);
     left_end = place_left(b, k, 1);
+    /* still too wide with a single screen entry (Clock + System + that entry do not fit): clip the left group to
+     * the room the centre and right groups leave, never into them. No room at all (limit <= 0: the centre and the
+     * undroppable right segments alone fill the bar) is not a layout this can fix; the group stays as placed. */
+    {
+        int limit = c_n ? r - c_w - b->gap : r;
+        if (left_end > limit && limit > 0) {
+            for (i = 0; i < b->n; i++) {
+                bar_seg *s = &b->seg[i];
+                if (s->side != BAR_LEFT || s->hidden || s->x + s->w <= limit)
+                    continue;
+                if (limit - s->x > 0) {
+                    place(s, s->x, limit - s->x);
+                } else {
+                    place(s, 0, 0);
+                    s->hidden = 1;
+                }
+            }
+            left_end = limit;
+        }
+    }
     if (c_n) {
         cx = (width - c_w) / 2;
         if (left_end && cx < left_end + b->gap)
             cx = left_end + b->gap;
         if (cx + c_w > r)
             cx = r - c_w;
+        if (cx < 0)
+            cx = 0;
         x = cx;
         for (i = 0; i < b->n; i++) {
             bar_seg *s = &b->seg[i];

@@ -96,6 +96,32 @@ static void test_narrow_bar_drops_right_segments_by_priority(void)
     CHECK_INT(bar_clean(&b), 1);
 }
 
+/* Clock + System + the first screen entry do not fit (a long screen title on a narrow bar): the entry is clipped to
+ * the room left, never drawn into the clock or System, and no segment starts left of 0. */
+static void test_very_narrow_bar_clips_first_screen_without_overlap(void)
+{
+    bar b;
+    int scr, clk, sys, w;
+    bar_init(&b, 300, 4, 2);
+    scr = bar_add(&b, BAR_SEG_SCREEN0, BAR_LEFT, "Workbench with a very long screen title", 200);
+    bar_add(&b, BAR_SEG_MORE, BAR_LEFT, "", 0);
+    clk = bar_add(&b, BAR_SEG_CLOCK, BAR_CENTRE, "Thu 14:05", 90);
+    bar_add(&b, BAR_SEG_CPU, BAR_RIGHT, "CPU 12%", 56);
+    bar_add(&b, BAR_SEG_RAM, BAR_RIGHT, "C 1.2M F 61M", 120);
+    sys = bar_add(&b, BAR_SEG_SYSTEM, BAR_RIGHT, "System", 48);
+    for (w = 300; w >= 220; w -= 20) {
+        bar_layout(&b, w);
+        CHECK_INT(bar_clean(&b), 1);
+        CHECK_INT(b.seg[clk].hidden, 0);
+        CHECK_INT(b.seg[sys].hidden, 0);
+        CHECK_INT(b.seg[scr].hidden, 0);
+        CHECK_INT(b.seg[scr].x + b.seg[scr].w <= b.seg[clk].x, 1);
+    }
+    bar_layout(&b, 300);
+    CHECK_INT(b.seg[scr].w < 208, 1);                    /* clipped, not drawn at its full width */
+    CHECK_INT(b.seg[scr].w > 0, 1);
+}
+
 static void test_hit(void)
 {
     bar b;
@@ -468,6 +494,7 @@ void suite_bar(void)
 {
     test_layout_groups();
     test_narrow_bar_drops_right_segments_by_priority();
+    test_very_narrow_bar_clips_first_screen_without_overlap();
     test_hit();
     test_click_dispatch();
     test_dirty_only_changed();

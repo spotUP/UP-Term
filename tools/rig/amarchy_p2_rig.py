@@ -18,6 +18,7 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <detail>"); l
   screens      R2.11: a public screen entry (id 200 and up) exists, exactly one carries the front-screen mark (*); a real
                left click on it keeps the bar alive and the entry listed
   system       R2.12a: a real left click on segment 4 raises BAR STATUS panels= by 1; Escape closes the menu
+  bar_hold     W43: BAR OFF then BAR ON during the 30 s Workbench-mode hold open no window; the bar opens when the hold ends
   python3 tools/rig/amarchy_p2_rig.py [--only STEP] [--no-build]
 Resumable: --only STEP reruns one step against the state the earlier steps left; verdicts are written to
 <RIG>/amarchy-p2/verdict.json as each step completes. Exit code is nonzero when any step fails."""
@@ -190,9 +191,41 @@ def s_system():
     return after == before + 1, 'panels %r -> %r' % (before, after)
 
 
+def s_bar_hold():
+    """W43 hold: ENV:Sys/screenmode.prefs names a mode other than the Workbench's, so Amarchy waits (up to
+    WBM_TIMEOUT_TICKS = 30 s) before opening any window. BAR OFF then BAR ON said during the wait are only recorded
+    (bar_plan); the window must not open during the hold and must open when the hold ends."""
+    import amarchy_bar_rig as b
+    w, _ = b.screen_size()
+    other = 'rtg' if w <= 640 else 'aga16'
+    t.send('AMTILE', 'QUIT')
+    t.send('AMARCHY', 'QUIT')
+    time.sleep(1.5)
+    c.run('Copy ENV:Sys/screenmode.prefs RAM:smsave.prefs')
+    c.run('Copy VTC:screenmode.%s.prefs ENV:Sys/screenmode.prefs' % other)
+    try:
+        c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+        up = t.wait_for(lambda: t.send('AMARCHY', 'STATUS', timeout=5)[0] == 0, 10)
+        t0 = time.time()
+    finally:
+        c.run('Copy RAM:smsave.prefs ENV:Sys/screenmode.prefs')
+    rc1, r1 = t.send('AMARCHY', 'BAR OFF', timeout=5)
+    time.sleep(3)
+    held1 = t.bar_box() is None
+    rc2, r2 = t.send('AMARCHY', 'BAR ON', timeout=5)
+    time.sleep(3)
+    held2 = t.bar_box() is None
+    opened = t.wait_for(lambda: t.bar_box() is not None, 40)
+    el = time.time() - t0
+    ok = bool(up) and rc1 == 0 and rc2 == 0 and held1 and held2 and bool(opened) and 20 <= el <= 40
+    return ok, 'prefs %s (hold), BAR OFF rc %r %r no window %s; BAR ON rc %r %r no window %s; window opened %s after %.0f s' % (
+        other, rc1, r1, held1, rc2, r2, held2, bool(opened), el)
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
-         ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system)]
+         ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system),
+         ('bar_hold', s_bar_hold)]
 
 
 def main():

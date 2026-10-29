@@ -124,12 +124,21 @@ static void idle_stop(void)
     }
 }
 
+static int text_w(const char *t);
+
 static void draw_seg(const bar_seg *s)
 {
+    char t[BAR_TEXT];
+    size_t n;
     if (s->hidden || s->w <= 0)
         return;
+    n = strlen(s->text);
+    memcpy(t, s->text, n + 1);
+    /* bar_layout clips a segment to the room left (a long screen title on a narrow bar): cut the text to it too */
+    while (n > 0 && text_w(t) > s->w - 2 * g_bar.pad)
+        t[--n] = 0;
     tw_fill(g_win, s->x, 0, s->x + s->w - 1, g_win->Height - 1, MT_BG);
-    tw_text(g_win, s->x + g_bar.pad, s->text, s->accent ? MT_SELBOX : MT_TEXT, MT_BG);
+    tw_text(g_win, s->x + g_bar.pad, t, s->accent ? MT_SELBOX : MT_TEXT, MT_BG);
     g_draws++;
 }
 

@@ -72,7 +72,7 @@ Shared pieces (P4 waits on these)
 - [ ] R2.5b Recolour on theme switch: helper re-reads pens on the theme-change signal and redraws every helper window.
       Closes OMARCHY-AI F3 (thoughts/shared/plans/2026-10-28-omarchy-ai.md:95).
 - [x] R2.5 Bar window on the Workbench screen, themed from P1 roles. DONE 4086d352.
-- [x] R2.5c (c5ee09b1) BAR ON/OFF/TOGGLE during the W43 hold is remembered (status_core bar_plan, g_bar_want) and applied when the hold ends; host test in test_status_core.c. Rig proof of the hold path not done.
+- [x] R2.5c (c5ee09b1) BAR ON/OFF/TOGGLE during the W43 hold is remembered (status_core bar_plan, g_bar_want) and applied when the hold ends; host test in test_status_core.c. Rig proof (rig 6, 2026-10-29, step bar_hold in amarchy_p2_rig.py): during the W43 hold (prefs rtg vs AGA mode) BAR OFF and BAR ON leave no bar window (bar=0, draws=0); the window opens 31 s after start, after the hold. Revert proof: with bar_plan neutered, test_status_core fails 2 of 30 (lines 55, 60); restored 0 of 30.
 - [x] R2.9 (05e11fa6; rig proof open under R2.16) `bar_usable(screen, box)` exported from bar.c; win_apply.c calls it instead of its own title lookup (one
       source for the strut rule). Returns the full screen minus title bar when the bar is off or on another screen.
 
@@ -80,7 +80,7 @@ Bar core
 - [x] R2.4a (8bccda94) bar_core: add BAR_CENTRE group; layout = left group from the left edge, right group from the right edge,
       centre group centred on the screen and pushed aside when it would overlap. Host tests at widths 640, 800, 1280.
 - [x] R2.4b (8bccda94) bar_core: cut rule. When the groups do not fit, the screens list loses entries from its right end and shows
-- [x] R2.4d (c5ee09b1) Narrow bar drops right segments by rank: Network, CPU, RAM, Agents; Clock, System, first screen never (bar_core place_right). Host test overlap case fails before (11 checks), passes after. Rig screen is 800 px, 640 px overlap not reproduced on the rig; BAR TEXT at 800 px shows no overlap. Open: bar_clean at widths where even the kept segments do not fit.
+- [x] R2.4d (c5ee09b1) Narrow bar drops right segments by rank: Network, CPU, RAM, Agents; Clock, System, first screen never (bar_core place_right). Host test overlap case fails before (11 checks), passes after. Drop test revert proof: drop logic reverted, test_bar fails 10 checks (lines 69-88). Rig 6 at 640 px (AGA PAL hires), all 14 rig steps OK: BAR TEXT 2@265+54|5@321+49|6@372+91|3@465+88|1@555+41|4@598+42|200@0+60*, no overlap, no negative x, ends at 640. Very narrow bar (R2.4e): bar_core clips the first screen to the room left of the centre group; test_very_narrow_bar_clips_first_screen_without_overlap fails 11 checks without the fix, passes with it (234 checks). Open: when centre plus undroppable right segments alone fill the bar, the left group still overlaps.
       a "+N" marker; the centre and right groups never cut. Host test at 640 with 6 screens.
 - [x] R2.4 Segments, hit-test, Agents segment. PARTIAL DONE 4086d352; the rows above finish it.
 - [x] R2.4c (8bccda94) bar_core formatters (pure, host-tested): bytes to "1.2M"/"61M"/"512K" (unsigned long, safe to 4 GB),
