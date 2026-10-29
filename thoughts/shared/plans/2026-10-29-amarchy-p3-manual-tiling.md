@@ -111,14 +111,14 @@ Facts (with source) and gaps:
   address is UNVERIFIED).
 
 Probe rows (rig, DOpus kit 5.104 and rig 4's 5.82; text only, amiga_windows flags, no screenshots):
-- [ ] P3-R1 For DW and DS: list every DOpus window (title, flags BACKDROP / BORDERLESS / SIZEGADGET, min/max, screen,
+- [x] P3-R1 (DW answered on rig 8, DOpus 5.104, thoughts/shared/research/2026-10-29-amarchy-dopus-desktop-probe.md: desktop BACKDROP|BORDERLESS 0,11 640x245 so it floats today; lister task dopus_lister flags 0x2420003f min 131x77 so it tiles; button bank dopus_buttons BORDERLESS fixed 84x256 floats; Environment window normal. DS window list not taken.) For DW and DS: list every DOpus window (title, flags BACKDROP / BORDERLESS / SIZEGADGET, min/max, screen,
   owning task name). Desktop window, one lister, a button bank, a requester. Result decides which tile_classify rule already
   covers each, written into this plan.
-- [ ] P3-R2 Is the owning task name of a lister stable (`dopus_lister` or similar, per version 5.82 / 5.91 / 5.104)? Can
+- [ ] P3-R2 (5.104 only: task dopus_lister; `lister query <h> proc` equals the dopus_lister task address in ps, and `lister query <h> position` equals the window box, so handle to window maps. 5.82 and 5.91 not checked.) Is the owning task name of a lister stable (`dopus_lister` or similar, per version 5.82 / 5.91 / 5.104)? Can
   `lister query <h> window` or similar give a Window address? Result picks the lister identification for P3-G2.
-- [ ] P3-R3 Does a lister accept ChangeWindowBox from outside and keep it (or does DOpus re-lay it out / snap it back)?
+- [x] P3-R3 (yes on 5.104: an outside ChangeWindowBox sticks through refresh, set path, dopus refresh and lister new. `lister set <h> mode icon` then `mode name` re-applies DOpus's stored box, so lister snap is allowed per D13.) Does a lister accept ChangeWindowBox from outside and keep it (or does DOpus re-lay it out / snap it back)?
   Snap a lister with `WIN snap left` and read its box after 1 s and after a `lister refresh`.
-- [ ] P3-R4 In DS: does `win_box_of` see the DOpus screen's BarHeight correctly (screen title bar shown or hidden)?
+- [ ] P3-R4 (open: DS screen is DOPUS.1 640x512 depth 8; BarHeight not read.) In DS: does `win_box_of` see the DOpus screen's BarHeight correctly (screen title bar shown or hidden)?
 
 Build rows (after R1-R4):
 - [ ] P3-G1 `win_screen` / tile walk know the desktop mode via `desk_dopus_mode()` (P1B-D1). If P1b is not merged when P3

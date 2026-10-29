@@ -142,8 +142,8 @@ Checklist:
 - R2.1 probe bsdsocket interface query on rig (up/down, bytes)
 - R2.2 probe idle-counter calibration and overhead on 060
 - R2.3 timer.device tick in the commodity Wait loop
-- R2.4 bar_core: segments, formatting, hit-test (host tests)
-- R2.5 bar window on Workbench screen, themed from P1 roles
+- R2.4 bar_core: segments, formatting, hit-test (host tests). PARTIAL at 4086d352: core, hit-test and the Agents segment with host tests; clock, RAM, CPU, network and workspace segments still open
+- R2.5 bar window on Workbench screen, themed from P1 roles. DONE at 4086d352 (bottom of the screen); the theme-switch recolour is unproven (F3)
 - R2.6 clock segment
 - R2.7 chip/fast RAM segment
 - R2.8 CPU load segment (idle counter task, stops when bar off)
@@ -152,7 +152,7 @@ Checklist:
 - R2.11 workspace segment (screens, click to front)
 - R2.12 tray action segment (RUN <row>)
 - R2.13 bar.conf parse and ARexx BAR verbs; keymap binding
-- R2.14 STATUS bar= ticks= draws= sentinels
+- R2.14 STATUS bar= ticks= draws= sentinels. DONE at 4086d352
 - R2.15 man page and installer
 - R2.16 rig reachability + overhead check
 

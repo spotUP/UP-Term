@@ -310,3 +310,5 @@ optional; R1.19 pens in palette.prefs; R1.20 drawer backdrops in wbpattern.prefs
 - OD15 3.1 support. (a) Recommended: palette, backdrop, font pens on 3.1 too; 41-chunk pointer and WBTF on 3.2 only,
   detected by version. (b) 3.2 only for the whole desktop theme. Trade-off: (a) more test rows (two rigs); (b) simpler,
   excludes 3.1 users.
+
+DOpus desktop probe 2026-10-29 (rig 8, 5.104): thoughts/shared/research/2026-10-29-amarchy-dopus-desktop-probe.md. Desktop is a BACKDROP|BORDERLESS window on the Workbench screen; `dopus screen` first word tells Workbench desktop from own screen DOPUS.1.

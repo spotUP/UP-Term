@@ -275,3 +275,5 @@ Never presses Reboot. Stops its rig at the end.
 R4.1 probe (one rig session) -> R4.2, R4.8 host cores (parallel-safe, host only) -> R4.3, R4.4a/b, R4.5, R4.7 capture end to end
 -> R4.9a, R4.10, R4.12 port + CLI + safe-off -> [P2 lands] -> R4.9b, R4.9c, R4.11, R4.13 -> R4.14-R4.16 -> R4.17 rig run -> R4.18 knob check.
 RX.3 (reminders) consumes R4.9a/b: it posts through note_core directly from the tick, not through the port.
+
+DOpus desktop probe 2026-10-29 (rig 8, 5.104): thoughts/shared/research/2026-10-29-amarchy-dopus-desktop-probe.md. Desktop is a BACKDROP|BORDERLESS window on the Workbench screen; `dopus screen` first word tells Workbench desktop from own screen DOPUS.1.

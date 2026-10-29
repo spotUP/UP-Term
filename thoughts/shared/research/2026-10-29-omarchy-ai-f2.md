@@ -36,3 +36,7 @@ Open:
 - Theme pens are taken once at open; the bar does not follow a live theme switch.
 - The right-click launch uses `upreq_send`, which blocks the commodity loop until the handler answers, and gives NOPORT (no tab) when no UP-Term window exists.
 - No plan items are ticked.
+
+## DOpus desktop probe (2026-10-29, rig 8, DOpus 5.104)
+
+Full notes: thoughts/shared/research/2026-10-29-amarchy-dopus-desktop-probe.md. For the bar: on the Workbench screen DOpus adds one BACKDROP|BORDERLESS desktop window (0,11 640x245); the bar must stay in front of it. The button bank `dopus_buttons` (556,0 84x256) is a normal window and overlaps the bar's right end, where the Agents segment sits. UNVERIFIED: whether the DOpus desktop covers the bar and whether a desktop click brings it to front (Q5), and true replacement mode via LoadDB (Q6). A CON window has a minimum height of 50, so the bar keeps its own window.
