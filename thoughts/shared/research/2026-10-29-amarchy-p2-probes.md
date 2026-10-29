@@ -67,3 +67,15 @@ R2.2 (idle counter, A1200 = FPGA Replay with a real 68060 (owner correction 2026
 - Overhead on the fixed benchmark (10M iterations, ticks): without idle 83 83 83 (249), with idle 82 82 82 (246);
   difference -1.2 percent (none measurable), under the 2 percent target.
 - In use: the live bar showed "CPU 3%" on the idle desktop.
+
+R2.10 down half (A1200, 2026-10-29 19:17, owner approved the network toggle):
+- Roadshow template (from the ConfigureNetInterface binary): INTERFACE/A,QUIET/S,...,ONLINE/S,OFFLINE/S,UP/S,DOWN/S,...
+  Used `ConfigureNetInterface replayeth DOWN QUIET` and `... UP QUIET`; NetShutdown not used. replayeth is configured
+  by DEVS:NetInterfaces/replayeth (device=replayeth.device, configure=dhcp); the saved S:Restore_Network_and_USB
+  restores with `AddNetInterface DEVS:NetInterfaces/~(#?.info) Quiet` (fallback only, not needed).
+- Script RAM:r210.script (rx RAM:r210.rexx appends BAR STATUS + BAR TEXT to RAM: and UP-Term:r210-down.log), with a
+  dead-man switch (Run Execute: Wait 40, then UP + ONLINE), run via `ami.py long`. wasabid stayed reachable throughout.
+- before (19:17:30): net=4, `6@404+78=replayeth up`
+- down   (19:17:35, 5 s after DOWN): net=3, `6@388+94=replayeth down` (segment widens, the right-hand panel shifts left)
+- after  (19:17:40, 5 s after UP): net=4, `6@404+78=replayeth up`. No Guru, no requester.
+- Result: PASS. Not checked: a reading sooner than 5 s after UP (the script waited the full 5 s before reading).
