@@ -12,6 +12,8 @@
 #include <proto/graphics.h>
 #include <proto/intuition.h>
 #include "gthemes_dos.h"
+#include "desk_dos.h"
+#include "desk_core.h"
 #include "amconf_dos.h"
 #include "../prefs/prefs_dos.h"
 #include "menu_theme.h"
@@ -105,10 +107,14 @@ int gt_dos_select(const char *name, char *why, int cap)
     r = amconf_save(&ap, 1, &failed);
     if (r == PREFS_INSTALL_OK) {
         gtheme th;
+        int d;
         gt_dos_load(name, &th);
         gt_dos_dopus_sends++;
         dopus_theme_send(&th, gt_dopus_send, 0);
-        wb_pens_apply(&th);
+        /* the native desktop theme (desk_dos.h) sets pens 0-3 through the Palette editor; the SetRGB32 mapping is the fallback when it is off or refused */
+        d = desk_dos_apply(&th, 0, 0);
+        if (d <= 0 || !(d & (1 << DT_PALETTE)))
+            wb_pens_apply(&th);
         return 1;
     }
     if (why)

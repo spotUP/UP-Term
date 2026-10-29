@@ -14,6 +14,7 @@
 #include "../prefs/prefs_asl.h"
 #include "amconf_dos.h"
 #include "gthemes_dos.h"
+#include "desk_dos.h"
 #include "sentinel_dos.h"
 #include "pkgs_core.h"
 #include "proclaunch.h"
@@ -347,6 +348,8 @@ static int lf_gt_select(const char *name, char *why, int cap)
     int ok = gt_dos_select(name, why, cap);
     am_sentinel("AMARCHY_WBPENS", (long)gt_dos_wb_pens);
     am_sentinel("AMARCHY_WBREFUSED", (long)gt_dos_wb_refused);
+    am_sentinel("AMARCHY_DESKS", (long)desk_dos_applies);
+    am_sentinel("AMARCHY_DESKMASK", (long)desk_dos_last_mask);
     return ok;
 }
 
