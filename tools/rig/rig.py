@@ -701,6 +701,14 @@ def sys_hdf_no_wasabid(image):
     'auth failed: bad key' (2026-10-25). The block goes from the clone; the master is never touched."""
     strip_user_startup_blocks(image, "UP-Term wasabi")
 
+def sys_hdf_a500(image):
+    """--a500: the clone's S:User-Startup loses every UP-Term block (assign, console, device, Amarchy, Amarchy index ...)
+    before it boots. The master image carries the kit's blocks, and the kit is built for the 68020 (Makefile CPU ?= 68020):
+    on the 68000 the block's `Run >NIL: UP-Term:bin/Amarchy` and amarchy-index put up two Software Failure requesters at
+    boot and installer_rig's D10 case failed on them (RIG-A500-KIT-BOOT, 2026-10-29). install_rig strips the same blocks
+    only after the boot. A real 68000 never has them: the base Installer refuses the 68000. The master is never touched."""
+    strip_user_startup_blocks(image, "UP-Term")
+
 def restore_loadwb(image):
     """C/LoadWB becomes the master's kept original (C/loadwb_old) again: the master image replaces the Workbench
     with Directory Opus 5.82 by a LoadWB that starts it. Used by --no-dopus; the 5.104 clone edit writes
@@ -1439,6 +1447,8 @@ def start(retries=START_RETRIES):
         # `rig.py reboot`: DH0: stays as the last run left it. The clone-time edits are in it already; only the
         # wasabi block goes again (an install may have written it, and its wasabid takes port 1234, sys_hdf_no_wasabid)
         sys_hdf_no_wasabid(RIG / "sys.hdf")
+        if A500:
+            sys_hdf_a500(RIG / "sys.hdf")
     elif not OS and not OS32:
         fresh_sys_hdf()
         sys_hdf_screenmode(RIG / "sys.hdf")
@@ -1448,6 +1458,8 @@ def start(retries=START_RETRIES):
         else:
             sys_hdf_dopus(RIG / "sys.hdf")
         sys_hdf_kit(RIG / "sys.hdf")
+        if A500:
+            sys_hdf_a500(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
     RIG.mkdir(parents=True, exist_ok=True)
     START_ARGS.write_text(json.dumps([a for a in sys.argv[2:] if a != "--keep-sys"]))

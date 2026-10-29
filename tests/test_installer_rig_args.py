@@ -85,5 +85,32 @@ class BigvolPrecondition(unittest.TestCase):
         self.assertLess(calls.index("Assign >NIL: UP-Term:"), calls.index("find_installer"))
 
 
+class Addon68000(unittest.TestCase):
+    """D10 (RIG-A500-KIT-BOOT, 2026-10-29): on the 68000 rig the dopus case ran the base Installer first; the base
+    refuses the 68000 by design, so the case failed on "a system requester came up" before the add-on ran."""
+
+    def run_case(self, flags):
+        self.addCleanup(irg.RIG_FLAGS.clear)
+        irg.RIG_FLAGS[:] = flags
+        kits = []
+        def installer_run(case, inst, kitdir, *a, **k):
+            kits.append(kitdir)
+            return False, "", None   # stop the case after its first Installer
+        with mock.patch.object(irg, "ir") as ir, mock.patch.object(irg, "read_installer", return_value=(None, None)), \
+                mock.patch.object(irg, "installer_run", installer_run), \
+                mock.patch.object(irg, "installer_done", return_value=False):
+            ir.standalone_ids.return_value = ["dopus"]
+            ir.run.return_value = (5, "")
+            ir.run_long.return_value = (0, "")
+            irg.run_addon_case("dopus")
+        return kits
+
+    def test_68000_rig_runs_the_dopus_install_without_the_base(self):
+        self.assertEqual(self.run_case(["--a500"]), ["kit-dopus"])
+
+    def test_68020_rig_still_runs_the_base_first(self):
+        self.assertEqual(self.run_case([]), ["distkit"])
+
+
 if __name__ == "__main__":
     unittest.main()

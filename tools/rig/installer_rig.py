@@ -189,6 +189,15 @@ def click(box):
 BUSY_RETRY = 5   # s between asks while wasabid refuses connections
 
 
+def requester_detail():
+    """Title, task and buttons of every requester open, as `ami.py requesters` gives them: the D10 log said only "a
+    system requester came up", and the two Software Failure requesters of the boot had to be read by hand."""
+    try:
+        return "; ".join(ami.describe_requester(r) for r in ami.requesters()) or "none left to read"
+    except Exception as e:   # a log line only: a wasabi error here must not hide the failure it describes
+        return "not read (%s)" % e
+
+
 def installer_running(inst):
     # Status COM matches the command as it was started (the full path when one was given)
     try:
@@ -553,7 +562,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
             time.sleep(BUSY_RETRY)
             continue
         if any(t in ('System Request', 'Volume Request') for t, _ in windows(tree)):
-            log.append('a system requester came up')
+            log.append('a system requester came up: %s' % requester_detail())
             dump(tree, 'requester')
             return False, log
         title, gads = installer_page(tree)
@@ -1222,7 +1231,10 @@ def read_installer():
 
 
 def run_addon_case(pkg):
-    """The base by its Installer, then the add-on's own Install icon, both with every page answered by its default."""
+    """The base by its Installer, then the add-on's own Install icon, both with every page answered by its default.
+    On a 68000 rig a stand-alone add-on runs alone (run_addon_68000)."""
+    if "--a500" in RIG_FLAGS and pkg in ir.standalone_ids():
+        return run_addon_68000(pkg)
     case, ck = "addon-" + pkg, Checks()
     ir.prepare(None, [pkg])
     before = ir.Before()
@@ -1249,6 +1261,46 @@ def run_addon_case(pkg):
         ir.base_uninstall(ck, before, leaves=ir.startup_leaves([pkg]))
     print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
     return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
+
+
+def run_addon_68000(pkg):
+    """A stand-alone add-on (needs-base "-") on the 68000 rig (--a500, plan D10): the base Installer refuses the 68000
+    by design (distkit Install: "UP-Term needs a 68020 or better"), so the add-on's own Install icon runs alone, on a
+    Workbench with no UP-Term: assign, as on a real 68000. Its Install picks the 68000 build (ENV:UPTOPTCPU68000);
+    for dopus the installed DOpus5:DirectoryOpus must be the os3-68000 one by md5. Then its Uninstall, and
+    S:User-Startup as before apart from the blocks the package leaves (DOpus stays, owner rule). Before: the base ran
+    first, aborted, and the case failed on "a system requester came up" (RIG-A500-KIT-BOOT, 2026-10-29)."""
+    case, ck = "addon-" + pkg, Checks()
+    ir.prepare(None, [pkg])
+    before = ir.Before()
+    ir.plant(pkg)
+    ir.run("Assign UP-Term:")
+    ck(ir.run("Assign >NIL: UP-Term: EXISTS")[0] != 0, "%s: there is no UP-Term: assign" % case)
+    ir.addon_absent(ck, pkg, "before its Install")
+    inst, base = read_installer()
+    ok = installer_done(ck, inst, case, *installer_run(case, inst, "kit-" + pkg, ir.archive(pkg), "AVERAGE", base)[:2])
+    if ok:
+        ir.addon_verify(ck, pkg, remote=False, with_base=False)
+        if pkg == "dopus":
+            dopus_build_check(ck, "os3-68000")
+        rc, out = ir.run_long("rununinstall-" + pkg)
+        ck(rc == 0, "%s: its Uninstall runs" % pkg, out)
+        ir.addon_gone(ck, pkg, remote=False, with_base=False)
+        ir.check_startup_after_uninstall(ck, before.startup, ir.run("Type S:User-Startup")[1], ir.startup_leaves([pkg]), case)
+    print("installer_rig %s: passed %d of %d" % (case, ck.passed, ck.total))
+    return not ck.failed, "; ".join(ck.failed) or "all %d checks" % ck.total
+
+
+def dopus_build_check(ck, build):
+    """DOpus5:DirectoryOpus equals the kit's Files/<build>/DOpus5/DirectoryOpus by md5 (read back through VTC:)."""
+    import hashlib
+    want = hashlib.md5((ir.kit_dir("dopus") / "Files" / build / "DOpus5/DirectoryOpus").read_bytes()).hexdigest()
+    back = ir.VTC / "dopus-build-check.tmp"
+    back.unlink(missing_ok=True)
+    ir.run("Copy DOpus5:DirectoryOpus VTC:dopus-build-check.tmp CLONE")
+    got = hashlib.md5(back.read_bytes()).hexdigest() if back.exists() else "missing"
+    back.unlink(missing_ok=True)
+    ck(got == want, "dopus: DOpus5:DirectoryOpus is the %s build (md5 %s)" % (build, want), "md5 " + got)
 
 
 def run_fullsuite():
