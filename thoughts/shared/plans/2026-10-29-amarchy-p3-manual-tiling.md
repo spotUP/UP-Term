@@ -154,13 +154,13 @@ A. Pure core (host-testable)
   mode exists); tile_core had six inline work-area copies, all replaced; gap-4 up/down half height is 287 (not 291); with
   bottom 16 and gap 4 it is 279, down top 301. Handler size: 433432 bytes after A1-A3,A5 (435972 after A4 and B1-B3, rebuilt on origin/main b56302d3 in a worktree; Amarchy 202556) (no clean baseline build; main tree older build 423440).
 B. Amarchy commodity
-- [x] P3-B1 (7c35ce09, rig bar_strut ok: fullscreen bottom 587 = bar top; host test win move_stops_at_bar) [BAR] bar window title `Amarchy bar` (branch bar.c:133 WA_Title); `win_box_of` fills `bottom` via win_strut under
+- [x] P3-B1 (e521437e, rig bar_strut ok: fullscreen bottom 587 = bar top; host test win move_stops_at_bar) [BAR] bar window title `Amarchy bar` (branch bar.c:133 WA_Title); `win_box_of` fills `bottom` via win_strut under
   the caller's lock. Test: rig step `bar_strut` (P3-F1) reads fullscreen height = screen - title - bar height.
-- [x] P3-B2 (41b0a44b, rig snap_status ok: snaps 0->1, wins +1) win.c `WV_SNAP` case beside win.c:231: win_snap then win_apply_box; `g_snaps++`; STATUS ` snaps=` (amarchy.c:147
+- [x] P3-B2 (a5f47d3a, rig snap_status ok: snaps 0->1, wins +1) win.c `WV_SNAP` case beside win.c:231: win_snap then win_apply_box; `g_snaps++`; STATUS ` snaps=` (amarchy.c:147
   key table to 6). Test: host status_text test if one exists, else rig `snap_status`.
-- [x] P3-B3 (41b0a44b, rig snap_gap ok: gap 0 box (0,14), gap 8 box (8,22)) snap gap source per owner D3 (recommended: `tile-gap` read with `amconf_tile_gap`, the existing reader; read at each
+- [x] P3-B3 (a5f47d3a, rig snap_gap ok: gap 0 box (0,14), gap 8 box (8,22)) snap gap source per owner D3 (recommended: `tile-gap` read with `amconf_tile_gap`, the existing reader; read at each
   snap, the file is small). Test: rig step with tile-gap 0 vs 8 gives different boxes.
-- [ ] P3-B4 (code in 41b0a44b; rig snap_floats needs AmTile FLOAT, P3-C2, not built: not run, unticked) snap of a window AmTile tiles, per owner D5 (recommended: before applying, Amarchy sends `FLOAT ON <id>` over
+- [ ] P3-B4 (code in a5f47d3a; rig snap_floats needs AmTile FLOAT, P3-C2, not built: not run, unticked) snap of a window AmTile tiles, per owner D5 (recommended: before applying, Amarchy sends `FLOAT ON <id>` over
   rexx_send when port AMTILE exists; no port, no message). Test: rig `snap_floats` (AmTile on, 3 windows, snap one: AmTile
   floats +1, the other two re-tile, the snapped box stays after 1 s).
 
