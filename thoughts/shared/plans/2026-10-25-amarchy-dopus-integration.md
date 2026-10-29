@@ -187,7 +187,7 @@ unverified until then. 25 items.
 
 ### Phase P2: add-on
 - [x] D8 `dist/packages.txt` row, `dist/addons/dopus/` drawer, pinned archive and md5, `COPYING`, `SOURCE.txt`, `LICENSES.txt` paragraph. Test: host `tests/test_dist_addons.py` (names and licence files present). (37895055, test DopusAddOn.test_both_68k_archives_are_pinned_licensed_and_chosen_by_cpu in tests/test_dist_addons.py; md5 pins are in dist/addons/dopus/archives.txt, not the packages.txt row, whose columns are fixed. `make dist-dopus` NOT built: archives must be placed in vendor/dopus5-5.104/; install.dos Installer call NOT rig-tested, see D9)
-- [ ] D9 Installer page tick and run. Test: rig install of the add-on with every option ticked (rig rule), then `dopus version`.
+- [x] D9 Installer page tick and run. Test: rig install of the add-on with every option ticked (rig rule), then `dopus version`. Done 2026-10-29: rig 11 installer_rig addon-dopus 27 of 27 (install fix 7b952ae4, Uninstall check 1304261e).
 - [ ] D10 CPU choice: both 68k archives present and the Installer script picks by `database "cpu"`. Test: host test that both archive names and md5s are in the row, and that the script text names both with the CPU branch; rig: a 68000 rig (`rig.py start` without `--max`, if the rig supports it) gets the 68000 archive, an 060 rig the os3 one (`Version DOpus5:DOpus5` and the archive's md5). (host half done in 37895055, same test; rig half OPEN: 68000 vs 060 rig run not done, so box stays unticked)
 
 ### Phase P3: shell and viewer
