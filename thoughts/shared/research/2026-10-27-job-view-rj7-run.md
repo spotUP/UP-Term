@@ -194,6 +194,18 @@ Good and slow feed servers killed, rig 7 stopped (fs-uae for rig 7 gone; rigs 2 
   GUI-SEARCH-CLOSES; fix in amarchy/gui.c (restore mode, head, top; clear stop), regression case
   `tools/rig/amarchy_gui_rig.py --pkg-search`.
 
+## Part 6 2026-10-29 (A3 rerun, new curl adf34ce1, rig 7, drawn and text)
+Curl on rig: Rushhours:Tools/UP-Term/bin/curl and VTCX:kit-userland/curl md5 adf34ce1ec4bcf5137767eef3d2c4ce2 (= build/dist). VTCX:Apps/bin/curl was
+62b96743aaea8354ed1078b1ce4f4c1f (stale), overwritten with the new one for the run (adf34..., verified) so UP-Term: = VTCX:Apps + kit used it.
+Amarchy binaries on rig = build/amiga (md5 equal). Start [WARN]: only DOpus 5.104 not installed.
+Drawn: Esc at 8 s of the job. vsh and upkg gone 2.8-3.3 s after Esc; curl alive until the server answered (about 27 s after Esc). FAIL (curl).
+Text:  same: upkg gone about 3.5 s, curl alive until ~22+ s (gone before next poll). FAIL (curl).
+Sentinels both: AMARCHY_JOB_LINES 4, AMARCHY_JOB_DONE 0 (published at Esc, not at server answer), AMARCHY_JOB_WORD Cancelled; text footer `|Enter: Accept             Cancelled|`.
+T:amarchy-job.<id>: present while the cancelled view is open, gone after the closing Esc (both styles); no amarchy-job process at any poll.
+Net: defect (2) improved (vsh+upkg stop in ~3 s, was 22 s) but curl still ignores CTRL_C with adf34... ; defect (3) unchanged (file lives until close, by design).
+Restore: slow server killed, UP-Term: = Rushhours:Tools/UP-Term, shadow VTCX:Apps/etc/upkg.conf deleted; upkg.conf ac11b5a5..., prefs c7d44aee..., up-term fbb38427... equal to before.
+Full note: scratchpad rj7-a3-rerun.md; driver a3.py.
+
 ## Part 7 2026-10-29 (A3/B3 Esc cancel rerun 3, rig 7, origin/main fa104c44)
 Setup: ixemul.library 882811dc086ca77b233aaa0d3e4e8448 on VTCX:ixp6, LIBS:, SYS:Libs; curl adf34ce1ec4bcf5137767eef3d2c4ce2 on Rushhours:Tools/UP-Term/bin, VTCX:kit-userland, VTCX:Apps/bin, UP-Term:bin. IXEMUL/IXNET unset. Start [WARN]: only DOpus 5.104 not installed (and "Workbench stayed PAL"). No Assign command run (EXISTS only).
 Feed: slow_feed.py (30 s per request) on 127.0.0.1:53986; Rushhours:Tools/UP-Term/etc/upkg.conf overwritten with scratchpad slow.conf for the runs (the original md5 ac11b5a5... restored afterwards; rig started --fresh each time).

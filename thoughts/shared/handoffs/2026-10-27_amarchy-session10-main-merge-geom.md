@@ -94,3 +94,18 @@ ledger: thoughts/spot/todos.md row AGENTS-S10 and its "S10 progress" / "S10 guir
 - tests/test_menu_rig_*.py are not wired into make test; run them by hand.
 - Rig start can warn "N file(s) in VTC: differ from the build": run amarchy_gui_rig.py --setup (or stage) first.
 - Verdicts live in the main checkout's build/rig<N>/amarchy/.
+
+## Session 10 close (2026-10-28 00:30)
+- Pushed on pg8-text2: f07564ea (rig install adds VTC:UPTerm, VTC_REQUIRED), 7c4a8e6d (KIT_SHADOWS rows for the 4
+  Amarchy programs), 1d10fc2d (pk_action_line prefixes uhc: for every verb), f921f205 (menu rig stale_guard).
+- Root cause of "old files all the time": rig state = master image's old installed kit + hand lists (KIT_SHADOWS,
+  VTC_REQUIRED, sys_hdf_*). install.dos maps 25 build files, 10 had no shadow row. Ledger RIG-KIT-DERIVE.
+  OWNED BY vtcon-05: set derived from install.dos (a1200_drift.install_map) + kit MANIFEST, written into each fresh
+  clone, start refused on md5 drift. Do NOT edit tools/rig/rig.py until their commit lands on main.
+- On their commit: merge main into pg8-text2, rig.py install, fresh-clone rig, then TMUX-RESET-RERUN (Apps > Tmux).
+  Lead: old C:vsh in the clone's early boot vs VTC:vsh by hand. The r9 agent was stopped over budget, no r9 section.
+- No rig of this session is running (rig 7 stopped).
+- Then UHC-FULL order: UHC-TEXT-CASES (incl r_pkg_text UHC Remove), UHC-HTTPS (waits vtcon-05 kit curl, keep
+  http-only curl), UHC-A1200 last, tick PG.8, merge pg8-text2 into prefs-inline, push.
+- Dirty files in pg8-text2 that are not ours: research/2026-10-27-s10-geom-r2.md, tools/rig/amarchy_gui_rig.py,
+  untracked tests/test_gui_rig_windowed_browse.py. Leave them.
