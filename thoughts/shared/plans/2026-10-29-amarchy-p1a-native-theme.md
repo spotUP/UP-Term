@@ -148,7 +148,7 @@ Core (host-tested, pure):
   marker content. Test: host cases incl. a crashed-marker restore choosing the right files.
 
 OS side (commodity):
-- [ ] R1.7 (code in desk_dos.c, commit 863752b6; OPEN: rig 3 run of tools/rig/amarchy_desk_rig.py shows AMARCHY_DESKS 0 / DESKMASK 0 after a Style > Theme pick with desktop-theme = on in ENV:Amarchy/prefs, so desk_dos_apply returns before writing; cause not yet found, surface its return value) desk.c: snapshot to T:amarchy-revert/, write ENV:Sys/*.prefs, LoadRGB32 live palette, IPrefs nudge per R1.1b-d.
+- [x] R1.7 (rig 3 PASS for apply, snapshot and revert copies, ENVARC unchanged, master off writes nothing: fix 9265f711; code in desk_dos.c, commit 863752b6; OPEN: rig 3 run of tools/rig/amarchy_desk_rig.py shows AMARCHY_DESKS 0 / DESKMASK 0 after a Style > Theme pick with desktop-theme = on in ENV:Amarchy/prefs, so desk_dos_apply returns before writing; cause not yet found, surface its return value) desk.c: snapshot to T:amarchy-revert/, write ENV:Sys/*.prefs, LoadRGB32 live palette, IPrefs nudge per R1.1b-d.
 - [ ] R1.8 Confirm requester (EasyRequest from the commodity, or gui.c window) + 15 s timer in the Wait loop amarchy.c:332
   (job_dos.c:80 timer pattern); timeout -> restore snapshot + re-apply. Rig: RX1 step 4.
 - [ ] R1.9 Boot-time restore: pending-revert marker in ENVARC:Amarchy/ read at Amarchy start. Rig: RX1 step 6.
@@ -173,7 +173,7 @@ Docs, install, tests, cleanup:
 - [x] (a2c7cd2e) R1.16 Host suite `desk` (make host test ONLY=desk), R1.2-R1.6, R1.11, R1.16a, R1.18a, R1.19-R1.22.
 - [ ] R1.16k Knob audit: every option key and every theme key used moves its output (byte diff on host, pixel or file
   diff on the rig); unused keys carry the written exemption (update GUI-themes plan section 1).
-- [ ] R1.17 Rig reachability test RX1 (below), tools/rig/amarchy_desk_rig.py, verdict files, --only/--failed.
+- [ ] R1.17 Rig reachability test RX1 (below), tools/rig/amarchy_desk_rig.py, verdict files, --only/--failed. [OPEN after 9265f711: rig 3 steps off and on pass except ENV:Sys palette.prefs and wbpattern.prefs bytes differ from desk_expect (stock editors rewrite them?); pointer and font are not compared by the script yet]
 - [ ] R1.17b Type/host/amiga build: make host test, make amiga; desk_core.c and desk.c in the amiga source lists.
 - [ ] R1.17c Cleanup: no stray branches, worktrees, rigs; rig stopped; ledger rows AMARCHY-WB-BACKDROP and
   AMARCHY-DESK-EXTRAS updated with commits.
