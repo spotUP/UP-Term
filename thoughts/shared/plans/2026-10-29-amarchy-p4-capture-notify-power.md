@@ -85,18 +85,18 @@ Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = wait
   runs (1, 2, 127, 128, 129 equal bytes; 128 literals; alternating), odd widths (row padding to 16 bits), depth 1..8, golden file
   tests/data/shot_4x3_d2.ilbm byte-equal, and round-trip through an independent decoder tools/ilbm_decode.py (python, no
   shared code) equal to the input pixels.
-- [x] R4.3 (0d5678e1 - rig proof tools/rig/amarchy_cap_rig.py (screen BMHD 320x200 on a chipset screen); RTG Workbench answers SHOT_DEEP, see research note Q1; `shot-dir` amconf knob not wired yet (shot_default_dir RAM:Shots)) shot.c (Amiga): capture a screen rectangle: LockPubScreen/front screen via LockIBase (win.c:143 pattern),
+- [x] R4.3 (89086bb7 - rig proof tools/rig/amarchy_cap_rig.py (screen BMHD 320x200 on a chipset screen); RTG Workbench answers SHOT_DEEP, see research note Q1; `shot-dir` amconf knob not wired yet (shot_default_dir RAM:Shots)) shot.c (Amiga): capture a screen rectangle: LockPubScreen/front screen via LockIBase (win.c:143 pattern),
   ReadPixelArray8 one row at a time into a temp RastPort (icon_gfx.c:167 pattern), ColorMap -> CMAP (GetRGB32), CAMG from
   the screen's ModeID, file sink with Seek patch. File name `<dir>/shot-YYYYMMDD-HHMMSS.iff` (dir: owner decision D1).
   Proof: rig row r4_screen: file exists, FORM/ILBM, BMHD w/h equal the screen, decodes with tools/ilbm_decode.py.
-- [x] R4.4a (0d5678e1 - rig proof: BMHD 160x90 = window) capture the active window: rectangle from `win_ticket_take` (win.c:78) so the window active before the hotkey
+- [x] R4.4a (89086bb7 - rig proof: BMHD 160x90 = window) capture the active window: rectangle from `win_ticket_take` (win.c:78) so the window active before the hotkey
   is the one captured; reads the screen rectangle under the window (overlapping windows included, Omarchy-like).
   Proof: rig row r4_window: BMHD w/h equal the window's Width/Height from amiga_windows.
-- [x] R4.4b (0d5678e1 - rig proof: drag gives BMHD (inclusive), Esc leaves shots unchanged; pointer units are twice lores pixels, so 101x51 on the 320x200 test screen) region: full-screen borderless, transparent (no backfill, no drawing but the frame) window on the front screen,
+- [x] R4.4b (89086bb7 - rig proof: drag gives BMHD (inclusive), Esc leaves shots unchanged; pointer units are twice lores pixels, so 101x51 on the 320x200 test screen) region: full-screen borderless, transparent (no backfill, no drawing but the frame) window on the front screen,
   rubber-band frame in COMPLEMENT draw mode (no pens needed, so no P2 dependency), Esc cancels, release captures (window
   closed first so the frame is not in the shot). Proof: rig row r4_region via amiga_drag from (40,40) to (240,140):
   BMHD 201x101 (inclusive); Esc row leaves no new file and `shots=` unchanged.
-- [~] R4.5 (0d5678e1; - rig proof: unit 0 bytes equal the file; OPEN: clipwatch-does-not-add-ILBM assertion not run) clipboard ILBM: export a FORM writer from handler/clip.c next to clip_write (same clip_open/put/CMD_UPDATE,
+- [~] R4.5 (89086bb7; - rig proof: unit 0 bytes equal the file; OPEN: clipwatch-does-not-add-ILBM assertion not run) clipboard ILBM: export a FORM writer from handler/clip.c next to clip_write (same clip_open/put/CMD_UPDATE,
   `clip_write_form(const void *head, ...)` streaming from the finished file, length known from the file), no second
   clipboard opener. Proof: host test of the length bookkeeping; rig row r4_clip reads unit 0 (`clip_read` path or a
   CMD_READ probe) and asserts FORM/ILBM and the same BMHD as the file; clipwatch does not add an ILBM clip as a text entry
