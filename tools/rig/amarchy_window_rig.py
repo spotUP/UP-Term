@@ -427,6 +427,69 @@ def s_wb_icons_selected():
     return not bad, '%d rows, refused: %s' % (len(out), bad)
 
 
+def target_box():
+    """the target must exist and be the active window, else (None, reason)"""
+    if 'box0' not in STATE:
+        return None
+    activate_target()
+    return box()
+
+
+def s_bar_strut():
+    """P3-B1: with the bar open (title 'Amarchy bar') fullscreen ends where the bar begins"""
+    bar = ami.window('Amarchy bar')
+    if not bar or target_box() is None:
+        return False, 'no Amarchy bar window or no target (run open_target in the same run): bar %r' % (bar,)
+    rc, _ = port('WIN fullscreen')
+    time.sleep(1)
+    b = box()
+    port('WIN restore')
+    time.sleep(0.5)
+    ok = rc == 0 and b is not None and b[1] + b[3] == bar['box'][1]
+    return ok, 'fullscreen box %r, bar box %r (bottom must equal bar top)' % (b, bar['box'])
+
+
+def s_snap_status():
+    """P3-B2: WIN snap left moves the target and STATUS snaps= and wins= rise by one"""
+    if target_box() is None:
+        return False, 'needs step open_target in the same run'
+    s0 = status()
+    rc, _ = port('WIN snap left')
+    time.sleep(1)
+    s1, b = status(), box()
+    ok = rc == 0 and s1.get('snaps', -1) == s0.get('snaps', -2) + 1 and s1.get('wins', -1) == s0.get('wins', -2) + 1 \
+        and b is not None and b[0] < 40
+    return ok, 'rc %r snaps %r -> %r wins %r -> %r box %r' % (rc, s0.get('snaps'), s1.get('snaps'), s0.get('wins'), s1.get('wins'), b)
+
+
+def with_gap(gap):
+    """tile-gap = gap in both prefs files; returns the saved files for restore_prefs"""
+    saved = {p: ami.read_file(p) for p in PREFS}
+    for p, old in saved.items():
+        keep = [l for l in (old or b'').decode('latin-1').splitlines() if not re.match(r'\s*tile-gap\s*=', l)]
+        put_text(p, keep + ['tile-gap = %d' % gap])
+    port('RELOAD')
+    time.sleep(1.5)
+    return saved
+
+
+def s_snap_gap():
+    """P3-B3: tile-gap 0 and 8 give different snap boxes; the file is read at each snap"""
+    if target_box() is None:
+        return False, 'needs step open_target in the same run'
+    got = {}
+    for gap in (0, 8):
+        saved = with_gap(gap)
+        try:
+            port('WIN snap left')
+            time.sleep(1)
+            got[gap] = box()
+        finally:
+            restore_prefs(saved)
+    ok = all(got.values()) and got[8][0] - got[0][0] == 8 and got[8][1] - got[0][1] == 8
+    return ok, 'snap left at gap 0 %r, at gap 8 %r (left and top must differ by 8)' % (got.get(0), got.get(8))
+
+
 ROWS = [
     ('start',          s_start),
     ('open_target',    s_open_target),
@@ -441,6 +504,9 @@ ROWS = [
     ('k6_size',        probe('size right', 'size left')),
     ('k6_fullwidth',   probe('fullwidth', 'restore')),
     ('s2_screen_cycle', s_screen_cycle),
+    ('bar_strut',      s_bar_strut),
+    ('snap_status',    s_snap_status),
+    ('snap_gap',       s_snap_gap),
     ('b2_redraw',      needs_wb(s_wb_redraw)),
     ('b2_patterns',    needs_wb(s_wb_patterns)),
     ('b2_icons_selected', needs_wb(s_wb_icons_selected)),

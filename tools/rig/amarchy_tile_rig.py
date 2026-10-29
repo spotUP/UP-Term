@@ -600,13 +600,37 @@ def s_restart():
         ENV_FILE, st)
 
 
+def tile_floats():
+    """field 7 of AMTILE STATUS (windows floated by FLOAT, P3-C2), None when absent"""
+    rc, res = send('AMTILE', 'STATUS', timeout=5)
+    f = res.split()
+    return int(f[6]) if rc == 0 and len(f) > 6 and f[6].isdigit() else None
+
+
+def s_snap_floats():
+    """P3-B4: three tiled windows, AMARCHY WIN snap left on one: AmTile floats +1 (the other two re-tile) and the
+    snapped box stays after 1 s. Needs AmTile's FLOAT command (P3-C2); without it the floats field is absent: FAIL."""
+    if not ensure_windows(3) or not status_is(on=True)[:1]:
+        return False, 'needs AmTile on with 3 windows of mine'
+    f0 = tile_floats()
+    addr = STATE['wins'][-1]
+    activate(addr)
+    rc, _ = send('AMARCHY', 'WIN snap left')
+    time.sleep(1)
+    b0 = boxes().get(addr)
+    time.sleep(1)
+    b1, f1 = boxes().get(addr), tile_floats()
+    ok = rc == 0 and f0 is not None and f1 == f0 + 1 and b0 is not None and b0 == b1
+    return ok, 'snap rc %r, floats %r -> %r, snapped box %r then %r' % (rc, f0, f1, b0, b1)
+
+
 STEPS = [('start', s_start), ('row_on', s_row_on), ('boxes2', s_boxes2), ('second_on', s_second_on),
          ('env_on', s_env_on), ('third', s_third), ('close_one', s_close_one), ('midapply', s_midapply),
          ('layout_default', s_layout_default), ('layout_row', s_layout_row), ('layout_hotkey', s_layout_hotkey)]
 STEPS += [('lay_' + n.split('-')[0], lay_step(n)) for n in LAYOUTS]
 STEPS += [('lay_next_prev', s_lay_next_prev), ('ratio', s_ratio), ('nmaster', s_nmaster), ('promote', s_promote),
           ('cycle', s_cycle), ('monocle_raise', s_monocle_raise), ('persist', s_persist), ('reset', s_reset),
-          ('off', s_off), ('fourth_free', s_fourth_free), ('restart', s_restart)]
+          ('off', s_off), ('fourth_free', s_fourth_free), ('restart', s_restart), ('snap_floats', s_snap_floats)]
 
 
 def main():
