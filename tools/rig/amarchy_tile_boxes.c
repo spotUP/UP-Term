@@ -1,7 +1,7 @@
 /* amarchy_tile_boxes -- the boxes AmTile must produce for a layout, from the product's own code (amarchy/tile_core.c,
  * win_core.c) built for the host: tools/rig/amarchy_tile_rig.py compares the rig's windows with them (plan
  * 2026-10-28-amarchy-autotile.md, Phase 4; layouts: 2026-10-28-amtile-layout.md, Phase 5).
- *     amarchy_tile_boxes SCREEN_W SCREEN_H TITLE GAP RATIO N LAYOUT NMASTER [MINW MINH [MAXW MAXH]]
+ *     amarchy_tile_boxes SCREEN_W SCREEN_H TITLE GAP RATIO N LAYOUT NMASTER [MINW MINH [MAXW MAXH [BOTTOM]]]
  * LAYOUT is a name (dwindle, master-stack, mirrored, columns, rows, grid, monocle).
  * prints "box <i> <left> <top> <width> <height>" for i = 0..N-1, master first. Window limits default to the
  * ones tests/test_tile.c uses (50 x 30, no maximum). */
@@ -34,6 +34,7 @@ int main(int argc, char **argv)
         return 2;
     }
     nmaster = atoi(argv[8]);
+    s.bottom = argc > 13 ? atoi(argv[13]) : 0;
     for (i = 0; i < 4 && 9 + i < argc; i++)
         a[i] = atoi(argv[9 + i]);
     if (n < 1 || n > MAXN)

@@ -67,7 +67,7 @@ def tile_status():
     """(on?, tiled, retiles, layout, nmaster, ratio) from AMTILE STATUS "<on|off> <tiled> <retiles> <layout> <nmaster>
     <ratio>", None when the port does not answer or the text is odd"""
     rc, res = send('AMTILE', 'STATUS', timeout=5)
-    m = re.match(r'(on|off) (\d+) (\d+) (\S+) (\d+) (\d+)$', res)
+    m = re.match(r'(on|off) (\d+) (\d+) (\S+) (\d+) (\d+)(?: \d+ \d+)?$', res)
     if rc != 0 or not m:
         return None
     return m.group(1) == 'on', int(m.group(2)), int(m.group(3)), m.group(4), int(m.group(5)), int(m.group(6))
@@ -162,7 +162,7 @@ def expected(n, layout=None, nmaster=None, ratio=None):
     """the boxes of the n-window layout, newest (master) first; layout/nmaster/ratio default to OPT"""
     w, h, t = screen_geom()
     r = subprocess.run([helper(), str(w), str(h), str(t), str(OPT['gap']), str(ratio or OPT['ratio']), str(n),
-                        layout or OPT['layout'], str(nmaster or OPT['nmaster'])],
+                        layout or OPT['layout'], str(nmaster or OPT['nmaster'])] + (['50', '30', '0', '0', str(OPT['bottom'])] if OPT.get('bottom') else []),
                        capture_output=True, text=True, check=True)
     return [tuple(int(x) for x in l.split()[2:6]) for l in r.stdout.splitlines()]
 
@@ -607,6 +607,115 @@ def tile_floats():
     return int(f[6]) if rc == 0 and len(f) > 6 and f[6].isdigit() else None
 
 
+def tile_swaps():
+    """field 8 of AMTILE STATUS (SWAP count, P3-C3), None when absent"""
+    rc, res = send('AMTILE', 'STATUS', timeout=5)
+    f = res.split()
+    return int(f[7]) if rc == 0 and len(f) > 7 and f[7].isdigit() else None
+
+
+def hexid(addr):
+    return '%08x' % int(str(addr), 0) if not isinstance(addr, int) else '%08x' % addr
+
+
+def s_float_toggle():
+    """P3-C2: FLOAT ON <id> takes one of 3 tiled windows out (tiled 3 -> 2, floats +1, the other two on the 2-window
+    layout), FLOAT OFF puts it back, a bogus id answers rc 5, a bad word rc 10"""
+    if not ensure_windows(3) or not status_is(on=True):
+        return False, 'needs AmTile on with 3 windows of mine'
+    cmd('LAYOUT dwindle')
+    st0 = status_is(tiled=3)
+    f0 = tile_floats()
+    addr = STATE['wins'][0]
+    rc_on, _ = send('AMTILE', 'FLOAT ON ' + hexid(addr))
+    st1 = status_is(tiled=2)
+    f1 = tile_floats()
+    rest = sorted(b[:4] for a, b in mine() if a != addr)
+    ok2 = sorted(expected(2)) == rest
+    rc_off, _ = send('AMTILE', 'FLOAT OFF ' + hexid(addr))
+    st2 = status_is(tiled=3)
+    rc_bad, _ = send('AMTILE', 'FLOAT ON 00000001')
+    rc_word, _ = send('AMTILE', 'FLOAT MAYBE')
+    ok = (st0 and rc_on == 0 and st1 and f0 is not None and f1 == f0 + 1 and ok2 and rc_off == 0 and st2 and
+          tile_floats() == f0 and rc_bad == 5 and rc_word == 10)
+    return bool(ok), 'rc on %r tiled3 %r tiled2 %r floats %r -> %r, rest on 2-layout %s, rc off %r back to 3 %r, bogus id rc %r (5), bad word rc %r (10)' % (
+        rc_on, bool(st0), bool(st1), f0, f1, ok2, rc_off, bool(st2), rc_bad, rc_word)
+
+
+def s_swap_right():
+    """P3-C3: master-stack, 2 windows: the active master and the stack window exchange boxes after SWAP RIGHT; SWAP LEFT
+    back; the swap counter rises; SWAP UP on the master answers rc 5 (nothing above)"""
+    if not ensure_windows(2) or not status_is(on=True):
+        return False, 'needs AmTile on with 2 windows of mine'
+    cmd('LAYOUT master-stack')
+    status_is(layout='master-stack', tiled=2)
+    want = expected(2, layout='master-stack')
+    m_box, s_box = want[0], want[1]
+    owner = {a: b[:4] for a, b in mine()}
+    master = next((a for a, b in owner.items() if b == m_box), None)
+    if master is None:
+        return False, 'no window on the master box %r in %r' % (m_box, owner)
+    s0 = tile_swaps()
+    activate(master)
+    rc_r, _ = send('AMTILE', 'SWAP RIGHT')
+    wait_for(lambda: {a: b[:4] for a, b in mine()}.get(master) == s_box, 3)
+    after = {a: b[:4] for a, b in mine()}
+    swapped = after.get(master) == s_box and sorted(after.values()) == sorted(owner.values()) and after != owner
+    s1 = tile_swaps()
+    activate(master)
+    rc_l, _ = send('AMTILE', 'SWAP LEFT')
+    wait_for(lambda: {a: b[:4] for a, b in mine()}.get(master) == m_box, 3)
+    back = {a: b[:4] for a, b in mine()} == owner
+    activate(master)
+    rc_u, _ = send('AMTILE', 'SWAP UP')
+    cmd('LAYOUT dwindle')
+    ok = rc_r == 0 and swapped and s0 is not None and s1 == s0 + 1 and rc_l == 0 and back and rc_u == 5
+    return ok, 'SWAP RIGHT rc %r swapped %s swaps %r -> %r, LEFT rc %r back %s, UP rc %r (5)' % (rc_r, swapped, s0, s1, rc_l, back, rc_u)
+
+
+CONF = 'ENV:Amarchy/tile.conf'
+
+
+def s_optout():
+    """P3-C4: tile.conf with a pattern that matches no window title leaves 3 tiled; "up-t#?" (case-insensitive) matches the
+    rig windows' title "UP-Term" so none tile after RETILE; removing the file and RETILE tiles them again"""
+    if not ensure_windows(3) or not status_is(on=True):
+        return False, 'needs AmTile on with 3 windows of mine'
+    c.run('MakeDir ENV:Amarchy')
+    c.run('Echo "; rig\nNoSuchWindow#?" >' + CONF)
+    rc1 = cmd('RETILE')
+    keep = status_is(tiled=3)
+    c.run('Echo "up-t#?" >' + CONF)
+    rc2 = cmd('RETILE')
+    gone = status_is(tiled=0)
+    c.run('Delete %s QUIET' % CONF)
+    rc3 = cmd('RETILE')
+    back = status_is(tiled=3)
+    return all(r == 0 for r in (rc1, rc2, rc3)) and bool(keep and gone and back), (
+        'expected tiled 3 with a non-matching pattern, 0 with "up-t#?", 3 with no file vs %s %s %s (rcs %r)' % (
+            bool(keep), bool(gone), bool(back), (rc1, rc2, rc3)))
+
+
+def bar_box():
+    return next((b for b in boxes().values() if b[4] == 'Amarchy bar'), None)
+
+
+def s_tile_bar():
+    """P3-C1: with the Amarchy bar on the screen the tiled boxes equal the helper's boxes with the bottom reserve (the
+    bar's height). FAILs when no window titled "Amarchy bar" is on the front screen"""
+    bar = bar_box()
+    if bar is None:
+        return False, 'needs the Amarchy bar window on the front screen (none listed)'
+    if not ensure_windows(3) or not status_is(on=True):
+        return False, 'needs AmTile on with 3 windows of mine'
+    OPT['bottom'] = bar[3]
+    try:
+        ok, want, got = tiled_boxes_match(3)
+    finally:
+        OPT.pop('bottom', None)
+    return ok, 'bar height %d, boxes %r vs %r' % (bar[3], want, got)
+
+
 def s_snap_floats():
     """P3-B4: three tiled windows, AMARCHY WIN snap left on one: AmTile floats +1 (the other two re-tile) and the
     snapped box stays after 1 s. Needs AmTile's FLOAT command (P3-C2); without it the floats field is absent: FAIL."""
@@ -630,7 +739,8 @@ STEPS = [('start', s_start), ('row_on', s_row_on), ('boxes2', s_boxes2), ('secon
 STEPS += [('lay_' + n.split('-')[0], lay_step(n)) for n in LAYOUTS]
 STEPS += [('lay_next_prev', s_lay_next_prev), ('ratio', s_ratio), ('nmaster', s_nmaster), ('promote', s_promote),
           ('cycle', s_cycle), ('monocle_raise', s_monocle_raise), ('persist', s_persist), ('reset', s_reset),
-          ('off', s_off), ('fourth_free', s_fourth_free), ('restart', s_restart), ('snap_floats', s_snap_floats)]
+          ('off', s_off), ('fourth_free', s_fourth_free), ('restart', s_restart), ('snap_floats', s_snap_floats),
+          ('float_toggle', s_float_toggle), ('swap_right', s_swap_right), ('optout', s_optout), ('tile_bar', s_tile_bar)]
 
 
 def main():
