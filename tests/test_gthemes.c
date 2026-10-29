@@ -66,6 +66,33 @@ static void load_shipped(const char *name, gtheme *t)
         gt_parse(buf, n, t);
 }
 
+/* F3: an Amarchy theme switch recolours every console tab, so the theme becomes the text theme_apply reads: one profile with
+ * fg, bg and the 16-colour palette, all from the theme's colors.toml */
+static void test_gthemes_term_text(void)
+{
+    static char buf[4096], out[1024];
+    long n = read_file(THEME_DIR "/gruvbox.theme", buf, (long)sizeof buf);
+    static upconf u;
+    const char *names[UC_MAX_PROFILES + 1];
+    int len;
+    CHECK(n > 0);
+    len = gt_term_text(buf, n, "gruvbox", out, (int)sizeof out);
+    CHECK(len > 0);
+    upconf_clear(&u);
+    upconf_parse(&u, out, len);
+    CHECK_INT(upconf_profiles(&u, names), 1);
+    CHECK(upconf_has(&u, "gruvbox", "fg"));
+    CHECK(!strcmp(upconf_get(&u, "gruvbox", "bg"), "282828"));
+    CHECK(!strcmp(upconf_get(&u, "gruvbox", "fg"), "D4BE98"));
+    CHECK(strstr(upconf_get(&u, "gruvbox", "palette"), "1,EA6962,2,A9B665,3,D8A657,4,7DAEA3") != 0);
+    CHECK(strstr(upconf_get(&u, "gruvbox", "palette"), "15,D4BE98") != 0);
+    /* two themes differ in bg (a switch changes the tab), a too-small buffer is refused */
+    n = read_file(THEME_DIR "/nord.theme", buf, (long)sizeof buf);
+    CHECK(gt_term_text(buf, n, "nord", out, (int)sizeof out) > 0);
+    CHECK(strstr(out, "282828") == 0);
+    CHECK_INT(gt_term_text(buf, n, "nord", out, 20), 0);
+}
+
 /* H1: the colors.toml syntax */
 static void test_gthemes_parse(void)
 {
@@ -540,6 +567,7 @@ void suite_gthemes(void)
     test_gthemes_preview();
     test_gthemes_fallback();
     test_gthemes_parse();
+    test_gthemes_term_text();
     test_gthemes_roles();
     test_gthemes_user();
     test_gthemes_amconf();

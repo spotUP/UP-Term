@@ -34,6 +34,8 @@ import paths
 import condev_rig as c
 import stage_rig
 import amarchy_tile_rig as t
+import ami
+import typewin as tw
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy-p2'
 KEYS_BAR = ['bar', 'draws', 'panels', 'launches', 'raises', 'ticks', 'net']
@@ -343,10 +345,103 @@ def s_tray():
         order, {k: v[0] for k, v in sg.items() if k in (4, 300, 5)}, hidden, label, before, bool(made))
 
 
+def tabpix():
+    """pixel histogram {rrggbb: count} of the front window's text area"""
+    w, h, rows = ami.grab((0, 14, 640, 242))
+    n = {}
+    for r in rows:
+        for i in range(0, len(r) - 2, 3):
+            k = bytes(r[i:i + 3]).hex()
+            n[k] = n.get(k, 0) + 1
+    return n
+
+
+def s_agenttab():
+    """OMARCHY-AI F3 (owner decision 2026-10-29: an Amarchy theme switch recolours ALL open tabs): a Claude agent tab
+    (dummy ENVARC:Claude/key) and a plain shell tab both take the terminal colours of the Amarchy theme picked through the
+    real entry point, a keymap row `gtheme:NAME` fired by `AMARCHY RUN n` (amarchy.c do_row -> gt_dos_select -> gt_dos_term_send
+    -> ENV:up-term/theme-active -> each tab's watch_worker -> theme_apply). Sentinel: the file ENV:up-term/theme-active is
+    deleted before each switch and holds `[profile NAME]` after it, so only gt_dos_term_send can have made it. Per tab the new
+    background must fill the text area (over 50000 pixels) and, from the second switch on, the old one must be gone"""
+    import tempfile
+    drawer, prefs = 'ENVARC:Amarchy/themes', 'ENV:Amarchy/prefs'
+    themes = [('p2tha', '102030', 'E0E0E0'), ('p2thb', 'C0D0E0', '101010')]
+    c.run('MakeDir >NIL: ' + 'ENVARC:Amarchy')
+    c.run('MakeDir >NIL: ' + drawer)
+    c.run('MakeDir >NIL: ENV:Amarchy')
+    c.run('MakeDir >NIL: ENV:up-term')
+    c.run('MakeDir >NIL: ENVARC:Claude')
+    c.run('Delete >NIL: T:p2prefs.bak T:p2user.bak')
+    had_prefs = c.run('Copy >NIL: %s T:p2prefs.bak' % prefs)[0] == 0
+    had_user = c.run('Copy >NIL: ENV:up-term/keymap.user T:p2user.bak')[0] == 0
+    seen = []
+    try:
+        c.run('Echo "rig-dummy-key" >ENVARC:Claude/key')
+        for n, bg, fg in themes:
+            with tempfile.NamedTemporaryFile('w', suffix='.theme', delete=False) as f:
+                f.write('background = "#%s"\nforeground = "#%s"\naccent = "#FF8000"\nred = "#FF0000"\ngreen = "#00FF00"\n'
+                        'yellow = "#FFFF00"\nblue = "#0000FF"\nmagenta = "#FF00FF"\ncyan = "#00FFFF"\n' % (bg, fg))
+            ami.put(f.name, '%s/%s.theme' % (drawer, n))
+        c.run('Echo "[bind]" >ENV:up-term/keymap.user')
+        for k, (n, _, _) in zip(('f9', 'f10'), themes):
+            c.run('Echo "super+shift+%s = gtheme:%s" >>ENV:up-term/keymap.user' % (k, n))
+        t.send('AMARCHY', 'RELOAD', timeout=5)
+        rows1 = kv(t.send('AMARCHY', 'STATUS', timeout=5)[1]).get('rows', 0)
+        rows0 = rows1 - 2     # the two overlay rows are the last two installed rows
+        c.run('Delete >NIL: ENV:up-term/keymap.user')
+        t.send('AMARCHY', 'RELOAD', timeout=5)
+        base = kv(t.send('AMARCHY', 'STATUS', timeout=5)[1]).get('rows', 0)
+        if base != rows0:
+            return False, 'keymap.user rows not loaded: rows with overlay %r, without %r' % (rows1, base)
+        c.run('Echo "[bind]" >ENV:up-term/keymap.user')
+        for k, (n, _, _) in zip(('f9', 'f10'), themes):
+            c.run('Echo "super+shift+%s = gtheme:%s" >>ENV:up-term/keymap.user' % (k, n))
+        t.send('AMARCHY', 'RELOAD', timeout=5)
+        win = t.open_win()
+        if not win:
+            return False, 'no UP-Term window opened'
+        time.sleep(3)
+        tw.typ('/claude')
+        tw.key(tw.RET, wait=1)
+        if not t.wait_for(lambda: ami.window('Claude') is not None, 15):
+            return False, 'no tab titled Claude'
+        time.sleep(5)
+        old = None
+        for i, (n, bg, fg) in enumerate(themes):
+            c.run('Delete >NIL: ENV:up-term/theme-active')
+            rc = t.send('AMARCHY', 'RUN %d' % (rows0 + i), timeout=10)[0]
+            made = t.wait_for(lambda: 'profile %s' % n in c.run('Type ENV:up-term/theme-active')[1], 8)
+            time.sleep(4)
+            hc = tabpix()
+            tw.key(0x38, 0x40, wait=2)     # LAmiga+comma: previous tab = the plain shell
+            hs = tabpix()
+            tw.key(0x39, 0x40, wait=2)     # LAmiga+period: back to the Claude tab
+            row = (n, rc, bool(made), hc.get(bg.lower(), 0), hs.get(bg.lower(), 0),
+                   hc.get(old, 0) if old else 0, hs.get(old, 0) if old else 0)
+            seen.append(row)
+            if not (rc == 0 and made and row[3] > 50000 and row[4] > 50000 and row[5] == 0 and row[6] == 0):
+                return False, 'switch to %s: (name, rc, sentinel, claude bg px, shell bg px, claude old px, shell old px) %r' % (n, seen)
+            old = bg.lower()
+    finally:
+        for n, _, _ in themes:
+            c.run('Delete >NIL: %s/%s.theme' % (drawer, n))
+        c.run('Delete >NIL: ENV:up-term/theme-active ENVARC:Claude/key')
+        c.run('Delete >NIL: ' + prefs)
+        if had_prefs:
+            c.run('Copy >NIL: T:p2prefs.bak ' + prefs)
+        c.run('Delete >NIL: ENV:up-term/keymap.user')
+        if had_user:
+            c.run('Copy >NIL: T:p2user.bak ENV:up-term/keymap.user')
+        t.send('AMARCHY', 'RELOAD', timeout=5)
+    return True, 'rows %d->%d; ' % (rows0, rows1) + '; '.join(
+        '%s: rc %s sentinel %s claude-bg %s shell-bg %s claude-old %s shell-old %s' % x for x in seen)
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
          ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system),
-         ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('tray', s_tray), ('recolour', s_recolour)]
+         ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('tray', s_tray), ('recolour', s_recolour),
+         ('agenttab', s_agenttab)]
 
 
 def main():

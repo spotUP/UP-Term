@@ -101,6 +101,37 @@ void gt_parse(const char *buf, long len, gtheme *out)
     str_key(out->wbtitle, GT_TITLE, "wbtitle");
 }
 
+int gt_term_text(const char *buf, long len, const char *name, char *out, int cap)
+{
+    /* ANSI order: black, red, green, yellow, blue, magenta, cyan, white; then the bright row. A key the file lacks takes the
+     * foreground (never a colour of another theme), black is the darkest ground of the file. */
+    static const char *const col[6] = { "red", "green", "yellow", "blue", "magenta", "cyan" };
+    gtheme t;
+    uc_u32 p[16], fg;
+    char key[24];
+    int i, n;
+    if (!out || cap < 1)
+        return 0;
+    gt_parse(buf, len, &t);
+    fg = t.fg;
+    p[0] = t.darker_bg;
+    for (i = 0; i < 6; i++) {
+        p[1 + i] = upconf_rgb(&g_conf, "default", col[i], fg);
+        snprintf(key, sizeof key, "bright_%s", col[i]);
+        p[9 + i] = upconf_rgb(&g_conf, "default", key, p[1 + i]);
+    }
+    p[7] = upconf_rgb(&g_conf, "default", "light_foreground", fg);
+    p[8] = t.muted;
+    p[15] = upconf_rgb(&g_conf, "default", "bright_foreground", fg);
+    n = snprintf(out, (size_t)cap, "[profile %s]\nfg = %06lX\nbg = %06lX\ncursor-color = %06lX\npalette = ",
+                 name && *name ? name : "amarchy", (unsigned long)t.fg, (unsigned long)t.bg, (unsigned long)t.accent);
+    for (i = 0; i < 16 && n > 0 && n < cap; i++)
+        n += snprintf(out + n, (size_t)(cap - n), "%s%d,%06lX", i ? "," : "", i, (unsigned long)p[i]);
+    if (n > 0 && n < cap - 1)
+        n += snprintf(out + n, (size_t)(cap - n), "\n");
+    return n > 0 && n < cap ? n : 0;
+}
+
 int gt_path(const char *dir, const char *name, char *out, int cap)
 {
     size_t dl = strlen(dir);
@@ -168,6 +199,22 @@ void gt_load(gt_read_fn rd, void *ctx, const char *name, gtheme *out)
             return;
         }
     }
+}
+
+int gt_load_term(gt_read_fn rd, void *ctx, const char *name, char *out, int cap)
+{
+    static const char *const dirs[2] = { GT_USER_DIR, GT_SHIPPED_DIR };
+    char path[160];
+    int d;
+    for (d = 0; d < 2; d++) {
+        long n;
+        if (!gt_path(dirs[d], name, path, sizeof path))
+            return 0;
+        n = rd(ctx, path, g_text, (long)sizeof g_text);
+        if (n >= 0)
+            return gt_term_text(g_text, n, name, out, cap);
+    }
+    return 0; /* an unknown name: the tabs keep their colours */
 }
 
 int gt_name_ok(const char *name)

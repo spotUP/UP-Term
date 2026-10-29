@@ -93,6 +93,31 @@ void gt_dos_load_current(gtheme *out)
     gt_dos_load(name, out);
 }
 
+/* The theme's terminal colours into GT_TERM_FILE: every open console tab watches it and recolours (vtcon_handler.c). The
+ * drawer ENV:up-term exists on any install that has run the console; made here when it does not. */
+unsigned long gt_dos_term_writes;
+
+void gt_dos_term_send(const char *name)
+{
+    static char text[1024];
+    BPTR f;
+    int n = gt_load_term(gt_read, 0, name, text, (int)sizeof text);
+    if (n <= 0)
+        return;
+    f = Open((STRPTR)GT_TERM_FILE, MODE_NEWFILE);
+    if (!f) {
+        BPTR l = CreateDir((STRPTR) "ENV:up-term");
+        if (l)
+            UnLock(l);
+        f = Open((STRPTR)GT_TERM_FILE, MODE_NEWFILE);
+    }
+    if (!f)
+        return;
+    Write(f, text, n);
+    Close(f);
+    gt_dos_term_writes++;
+}
+
 int gt_dos_select(const char *name, char *why, int cap)
 {
     am_prefs ap;
@@ -109,6 +134,7 @@ int gt_dos_select(const char *name, char *why, int cap)
         gtheme th;
         int d;
         gt_dos_load(name, &th);
+        gt_dos_term_send(name);
         gt_dos_dopus_sends++;
         dopus_theme_send(&th, gt_dopus_send, 0);
         /* the native desktop theme (desk_dos.h) sets pens 0-3 through the Palette editor; the SetRGB32 mapping is the fallback when it is off or refused */

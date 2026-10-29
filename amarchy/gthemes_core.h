@@ -37,6 +37,14 @@ void gt_builtin(gtheme *out);
 /* Parse the text of a colors.toml (len bytes) into out; a missing or unreadable key keeps the built-in value. */
 void gt_parse(const char *buf, long len, gtheme *out);
 
+/* The terminal colours of a theme (Omarchy recolours every terminal with the theme): the text of one UP-Term profile section
+ * (fg, bg, cursor-color, the 16 palette entries) made from the colors.toml text, ready for the console's theme_apply. Returns
+ * the length, 0 when it does not fit cap. */
+int gt_term_text(const char *buf, long len, const char *name, char *out, int cap);
+
+/* The file the console handler's tabs watch: a written theme recolours every open tab (vtcon_handler.c watch_worker). */
+#define GT_TERM_FILE "ENV:up-term/theme-active"
+
 /* Every channel of an 0xRRGGBB scaled to pct percent (0..100); the one brightness scaler of the desktop theme. */
 uc_u32 gt_scale(uc_u32 rgb, int pct);
 
@@ -59,6 +67,9 @@ typedef long (*gt_read_fn)(void *ctx, const char *path, char *buf, long cap); /*
 
 /* Load a theme by name: the user's file, else the shipped one, else (unknown or unreadable name) the built-in default. */
 void gt_load(gt_read_fn rd, void *ctx, const char *name, gtheme *out);
+
+/* gt_term_text of the theme NAME as gt_load finds it (the user's file, else the shipped one); 0 when there is no such theme. */
+int gt_load_term(gt_read_fn rd, void *ctx, const char *name, char *out, int cap);
 
 /* One drawer's file names, given one by one to emit (the DOS side walks the drawer; a host test fakes it). */
 typedef void (*gt_emit_fn)(void *ectx, const char *file);

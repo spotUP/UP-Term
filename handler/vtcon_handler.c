@@ -965,16 +965,44 @@ static void config_worker(void)
 struct watch_msg {
     struct Message msg;
     upconf *conf;
+    char *theme;      /* the text of the theme file (GT_TERM_FILE) when it changed, else 0: the window frees it */
+    long theme_len;
     int quit, done;
 };
+
+/* The file the Amarchy theme switch writes (amarchy/gthemes_core.h GT_TERM_FILE): one profile section holding the new
+ * theme's colours. The watcher is told about it as it is about the profile file; the window applies it (theme_apply), so a
+ * switch recolours every open tab, a tab's hand-set theme included (owner 2026-10-29). */
+#define ACTIVE_THEME_FILE "ENV:up-term/theme-active"
+
+static char *read_active_theme(long *len)
+{
+    BPTR f = Open((STRPTR)ACTIVE_THEME_FILE, MODE_OLDFILE);
+    char *buf;
+    LONG got;
+    *len = 0;
+    if (!f)
+        return 0;
+    buf = (char *)AllocVec(UC_MAX_FILE + 1, MEMF_ANY);
+    got = buf ? Read(f, buf, UC_MAX_FILE) : -1;
+    Close(f);
+    if (got <= 0) {
+        if (buf)
+            FreeVec(buf);
+        return 0;
+    }
+    buf[got] = 0;
+    *len = got;
+    return buf;
+}
 
 static void watch_worker(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
     struct watch_msg *m;
-    struct NotifyRequest nr;
-    LONG sig;
-    int have = 1, quitting = 0, watching;
+    struct NotifyRequest nr, nt;
+    LONG sig, sigt;
+    int have = 1, quitting = 0, watching, watching_t, theme_pend = 0;
     WaitPort(&me->pr_MsgPort);
     m = (struct watch_msg *)GetMsg(&me->pr_MsgPort);
     me->pr_WindowPtr = (APTR)-1;
@@ -985,8 +1013,15 @@ static void watch_worker(void)
     nr.nr_stuff.nr_Signal.nr_Task = &me->pr_Task;
     nr.nr_stuff.nr_Signal.nr_SignalNum = (UBYTE)sig;
     watching = sig >= 0 && StartNotify(&nr);
+    sigt = AllocSignal(-1);
+    memset(&nt, 0, sizeof(nt));
+    nt.nr_Name = (STRPTR)ACTIVE_THEME_FILE;
+    nt.nr_Flags = NRF_SEND_SIGNAL;
+    nt.nr_stuff.nr_Signal.nr_Task = &me->pr_Task;
+    nt.nr_stuff.nr_Signal.nr_SignalNum = (UBYTE)sigt;
+    watching_t = sigt >= 0 && StartNotify(&nt);
     for (;;) {
-        ULONG got = Wait((watching ? 1UL << sig : 0) | SIGBREAKF_CTRL_C |
+        ULONG got = Wait((watching ? 1UL << sig : 0) | (watching_t ? 1UL << sigt : 0) | SIGBREAKF_CTRL_C |
                          (1UL << me->pr_MsgPort.mp_SigBit));
         struct Message *back;
         while ((back = GetMsg(&me->pr_MsgPort)) != 0) {
@@ -998,8 +1033,18 @@ static void watch_worker(void)
             quitting = 1;
         if (quitting && have)
             break;
-        if (have && watching && (got & (1UL << sig))) {
+        if (watching_t && (got & (1UL << sigt)))
+            theme_pend = 1;
+        if (have && ((watching && (got & (1UL << sig))) || theme_pend)) {
             Delay(5); /* a writer that renames its new file in: let it finish */
+            if (m->theme) {
+                FreeVec(m->theme);
+                m->theme = 0;
+            }
+            if (theme_pend) {
+                m->theme = read_active_theme(&m->theme_len);
+                theme_pend = 0;
+            }
             if (m->conf)
                 FreeVec(m->conf); /* not taken (the window always takes it) */
             m->conf = (upconf *)AllocVec(sizeof(upconf), MEMF_ANY | MEMF_CLEAR);
@@ -1012,8 +1057,12 @@ static void watch_worker(void)
     }
     if (watching)
         EndNotify(&nr);
+    if (watching_t)
+        EndNotify(&nt);
     if (sig >= 0)
         FreeSignal(sig);
+    if (sigt >= 0)
+        FreeSignal(sigt);
     m->done = 1;
     Forbid(); /* the window frees m: end before it can run on */
     ReplyMsg(&m->msg);
@@ -1124,6 +1173,8 @@ static void watch_stop(con *c)
     c->watch_task = 0;
     if (c->watch->conf)
         FreeVec(c->watch->conf); /* a table on its way when we quit */
+    if (c->watch->theme)
+        FreeVec(c->watch->theme);
     FreeVec(c->watch);
     c->watch = 0;
     DeleteMsgPort(c->watch_port);
@@ -2332,6 +2383,12 @@ static void watch_take(con *c)
             }
             menu_remove(c, c->w.win);
             menu_add(c, c->w.win);
+        }
+        if (m->theme) {
+            if (c->w.t && c->w.win)
+                theme_apply(c, m->theme, m->theme_len);
+            FreeVec(m->theme);
+            m->theme = 0;
         }
         c->watch_held = 0;
         PutMsg(&c->watch_task->pr_MsgPort, &m->msg); /* back: the next change */
