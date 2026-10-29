@@ -869,6 +869,11 @@ $(BUILD)/amiga/ixintr: tests/amiga/ixintr.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixintr.c
 
+# An ixemul program in a native Wait() that kill SIGINT must end (tools/rig/nwait_rig.py).
+$(BUILD)/amiga/ixnwait: tests/amiga/ixnwait.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixnwait.c
+
 $(BUILD)/amiga/ixwait: tests/amiga/ixwait.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixwait.c
