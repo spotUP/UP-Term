@@ -57,7 +57,7 @@ def open_terminal():
 
 
 def ensure_terminal():
-    # the cases that open the menu with Left Amiga + Alt + Space type into the UP-Term window under it; --only
+    # the cases that open the menu with a chord type into the UP-Term window under it; --only
     # on a fresh rig skips rows_over_terminal, which opened it, so these cases open it themselves (once)
     import wbrun_rig
     if not any('menuhost' in (w.get('title') or '') for w in wbrun_rig.windows()):
@@ -336,7 +336,7 @@ def r_lamiga_minus_sv():
 # ---- AM-IDX X9: the app index through the real entry points (plan 2026-10-23-amarchy-app-index.md) ----
 # Fake apps in drawers on the rig hard disk (the boot volume, named System: on OS 3.1 rigs and by its label on 3.2 ones, so SYS:; the labels start A0 so the filter "a0" narrows the
 # Apps level to them: a rig holds many apps and the 24x7 menu shows a level's first rows only), tests/amiga/wbfake (writes RAM:x9.<file>.started, waits 2 s, writes
-# .ended), icons made by tools/mkicon.py. amarchy-index scans, the text menu (Left Amiga + Alt + Space) lists them,
+# .ended), icons made by tools/mkicon.py. amarchy-index scans, the text menu (othermenu:root, no shipped chord) lists them,
 # Enter launches through lf_open_index. On a rig Directory Opus replaces Workbench, so OpenWorkbenchObject fails
 # and every launch here takes the AMARCHY.launch port fallback; the OpenWorkbenchObject path needs the A1200.
 X9_DIR, X9_SKIP = 'SYS:X9Test', 'SYS:X9Skip'      # x9_begin respells X9_SKIP with the boot volume's name, see there
