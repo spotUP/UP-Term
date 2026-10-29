@@ -212,20 +212,28 @@ def _scripts(r, keys=()):
                 '# with the answers, then drops the staged tree\n'
                 'set --\nif [ -f UP-Term:bin/upkg-ask ] && vsh UP-Term:bin/upkg-ask %s/Files/questions %s/answers %s; then\n'
                 '    . %s/answers\n    set -- %s\nfi\n'
-                'Execute %s/Files/install.dos %s/Files "$@"\nrc=$?\nrm -rf %s\nexit $rc\n'
+                'Execute %s/Files/install.dos %s/Files "$@"\nrc=$?\nDelete >NIL: %s ALL QUIET\nexit $rc\n'
                 % (st, st, r['archive'], st, ' '.join('%s "$%s"' % (k, k) for k in keys), st, st, st))
     else:
         post = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs the archive\'s own install script, then drops the staged tree\n'
-                'Execute %s/Files/install.dos %s/Files\nrc=$?\nrm -rf %s\nexit $rc\n' % (st, st, st))
+                'Execute %s/Files/install.dos %s/Files\nrc=$?\nDelete >NIL: %s ALL QUIET\nexit $rc\n' % (st, st, st))
     sep = '' if rec.endswith(':') else '/'
     # a record without its Uninstall (an install from before the copy was fixed) must not block an upgrade
     # or a removal: warn and go on, so opkg still replaces the package
     # the Uninstall deletes its own record drawer, and AmigaDOS cannot delete a file a running script holds
     # open: it runs from a copy in T:, so the record drawer holds no open file when the Delete reaches it
+    # UP-Term: can be a multi-directory assign: a test finds the record in any directory, but Copy opens
+    # a path below the first directory only. So the record is read through the one real drawer that
+    # install.dos wrote to (ENVARC:up-term/Dir), assigned to UPTREAL: like resolve-addon.dos does
+    ur = rec.replace('UP-Term:', 'UPTREAL:', 1)
     pre = ('#!/bin/sh\n# written by tools/pkgs.py ipk: runs a copy of the Uninstall the install left in its record\n'
+           'Assign >NIL: UPTREAL: UP-Term:\n'
+           'if [ -f ENVARC:up-term/Dir ]; then\n    d=$(cat ENVARC:up-term/Dir)\n'
+           '    if [ -d "$d" ]; then Assign >NIL: UPTREAL: "$d"; fi\nfi\n'
            'if [ -f %(u)s ]; then\n    Copy %(u)s %(c)s CLONE QUIET\n    Execute %(c)s\n    Delete >NIL: %(c)s QUIET\nelse\n'
-           '    echo "warning: %(u)s does not exist, nothing to uninstall; continuing" >&2\nfi\nexit 0\n'
-           % {'u': '%s%sUninstall' % (rec, sep), 'c': 'T:%s.Uninstall' % r['archive']})
+           '    echo "warning: %(u)s does not exist, nothing to uninstall; continuing" >&2\nfi\n'
+           'Assign >NIL: UPTREAL:\nexit 0\n'
+           % {'u': '%s%sUninstall' % (ur, sep), 'c': 'T:%s.Uninstall' % r['archive']})
     need = None
     if r['needs-base'] != '-':
         # the refusal the retired vsh-script upkg made (same VERSIONS line, same older()): opkg aborts the
