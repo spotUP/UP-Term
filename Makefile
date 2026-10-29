@@ -1143,6 +1143,11 @@ $(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c amarchy/menu_font.c amarchy/menu
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/scrprobe.c amarchy/menu_font.c render/fontpair.c
 
+# The front-to-back windows of the Workbench screen with Flags and borders (BAR-ZOOMED-DRAWER)
+$(BUILD)/amiga/winprobe: tests/amiga/winprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/winprobe.c
+
 # Picasso96's 24-bit pens (RPTAG_PenMode/FgColor/BgColor) on the Workbench screen (W-T13)
 $(BUILD)/amiga/rgbprobe: tests/amiga/rgbprobe.c
 	@mkdir -p $(BUILD)/amiga
