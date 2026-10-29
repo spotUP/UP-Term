@@ -165,7 +165,7 @@ static void the_shipped_keymap_has_no_super_alt_chord(void)
         if (km.bind[i].qual & KM_Q_CTRL)
             ctrl++;
     }
-    CHECK_INT(ctrl, 29);                /* the 28 former Super+Alt chords, now Super+Ctrl, and super+ctrl+help (window shot) */
+    CHECK_INT(ctrl, 43);                /* the 28 former Super+Alt chords, now Super+Ctrl, super+ctrl+help (window shot), and the 14 super+ctrl+shift snap, float and swap keys (P3-D1) */
 }
 
 static void a_newer_major_is_rejected_whole(void)
@@ -358,7 +358,7 @@ static void the_shipped_keymap_loads_whole(void)
     CHECK_INT(km.refused, 0);
     CHECK_INT(km.overflow, 0);
     CHECK_INT(km.version, KM_VERSION);
-    CHECK(km.nbind >= 30 && km.nbind <= 100);
+    CHECK(km.nbind >= 30 && km.nbind <= 120);   /* 106 measured (P3-D3); was <= 100 for 90 */
     CHECK(km.nmenu > 0);
     for (i = 0; i < km.nbind; i++) {
         const km_bind *b = &km.bind[i];
@@ -513,6 +513,80 @@ static void win_actions_parse(void)
         CHECK(win_row_bad(bad[i]));
     }
     CHECK(win_row_bad(""));                              /* empty */
+}
+
+static const km_menu *shipped_row(const char *id);
+
+static int range9(const char *p, long len)
+{
+    long i;
+    for (i = 0; i + 4 <= len; i++)
+        if (!memcmp(p + i, "1..9", 4))
+            return 1;
+    return 0;
+}
+
+/* P3-D1/D3/E3: the shipped snap, focus, float and swap hotkeys. Each key finds its row, runs the action the owner decision
+ * names (D1: super+ctrl+shift arrows, 1-4, c; D2: focus on super+arrows, float t, swap h/j/k/l), no chord is bound twice
+ * (a later duplicate would replace the earlier row, so the bind lines of the file equal nbind), none uses Alt (Left Amiga
+ * + Alt is the mouse click), and super+esc (menu:system) and the tab keys super+comma and super+period stay. */
+static void the_shipped_snap_focus_float_and_swap_keys_are_bound_and_clash_free(void)
+{
+    static char file[32768];
+    static const struct { unsigned qual; unsigned code; int kind; const char *arg; } want[] = {
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x4F, KA_WIN, "snap left" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x4E, KA_WIN, "snap right" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x4C, KA_WIN, "snap up" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x4D, KA_WIN, "snap down" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x01, KA_WIN, "snap tl" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x02, KA_WIN, "snap tr" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x03, KA_WIN, "snap bl" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x04, KA_WIN, "snap br" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x33, KA_WIN, "snap center" },
+        { KM_Q_SUPER, 0x4F, KA_WIN, "focus left" },
+        { KM_Q_SUPER, 0x4E, KA_WIN, "focus right" },
+        { KM_Q_SUPER, 0x4C, KA_WIN, "focus up" },
+        { KM_Q_SUPER, 0x4D, KA_WIN, "focus down" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x14, KA_RUN, "UP-Term:bin/AmTile FLOAT TOGGLE" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x25, KA_RUN, "UP-Term:bin/AmTile SWAP LEFT" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x26, KA_RUN, "UP-Term:bin/AmTile SWAP DOWN" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x27, KA_RUN, "UP-Term:bin/AmTile SWAP UP" },
+        { KM_Q_SUPER | KM_Q_CTRL | KM_Q_SHIFT, 0x28, KA_RUN, "UP-Term:bin/AmTile SWAP RIGHT" },
+    };
+    static const char *const menu[] = { "window.snapleft", "window.snapright", "window.snaptop", "window.snapbottom",
+        "window.snaptopleft", "window.snaptopright", "window.snapbottomleft", "window.snapbottomright", "window.snapcenter",
+        "window.float", "window.swapleft", "window.swapright", "window.swapup", "window.swapdown", 0 };
+    long n = slurp("dist/keymap", file, sizeof(file));
+    unsigned i;
+    int lines = 0, in_bind = 0;
+    const char *p;
+    CHECK(n > 0 && keymap_parse(&km, file, n));
+    CHECK_INT(km.skipped, 0);
+    for (i = 0; i < sizeof want / sizeof want[0]; i++) {
+        const km_bind *b = keymap_find(&km, want[i].qual, want[i].code);
+        CHECK(b != 0);
+        if (b) {
+            CHECK_INT(b->kind, want[i].kind);
+            CHECK_STR(b->arg, want[i].arg);
+        }
+    }
+    for (i = 0; menu[i]; i++)
+        CHECK(shipped_row(menu[i]) != 0);
+    CHECK(keymap_find(&km, KM_Q_SUPER, 0x45) != 0 && keymap_find(&km, KM_Q_SUPER, 0x45)->kind == KA_MENU);   /* super+esc */
+    CHECK(keymap_find(&km, KM_Q_SUPER, 0x38) != 0 && keymap_find(&km, KM_Q_SUPER, 0x38)->kind == KA_TAB);    /* super+comma */
+    CHECK(keymap_find(&km, KM_Q_SUPER, 0x39) != 0 && keymap_find(&km, KM_Q_SUPER, 0x39)->kind == KA_TAB);    /* super+period */
+    for (p = file; p < file + n;) {
+        const char *e = memchr(p, '\n', (size_t)(file + n - p));
+        long len = e ? e - p : file + n - p;
+        if (len > 0 && p[0] == '[')
+            in_bind = !strncmp(p, "[bind]", 6);
+        else if (in_bind && len > 0 && p[0] != ';' && p[0] != '\r' && memchr(p, '=', (size_t)len))
+            lines += range9(p, len) ? 9 : 1;        /* a "1..9" row binds nine keys */
+        p += len + 1;
+    }
+    CHECK_INT(lines, km.nbind);                 /* one row per chord: nothing replaced an earlier row */
+    for (i = 0; i < (unsigned)km.nbind; i++)
+        CHECK(!(km.bind[i].qual & KM_Q_ALT));
 }
 
 static void win_scope_is_commodity(void)
@@ -1705,7 +1779,7 @@ static void terminal_rows_show_only_over_a_terminal(void)
     CHECK_INT(c, 3);                                 /* Theme, Font, Background: picking one opens a terminal first */
     CHECK(has_label(it, c, "Theme") && has_label(it, c, "Font") && has_label(it, c, "Background"));
     c = ix_level_t(&km, 0, "window", "", it, MN_MAX_ITEMS, 0);
-    CHECK_INT(c, 32);                                /* the 32 win:/rexx:/run: rows (window.tile runs AmTile, plus the 8 window.layout* rows); window.tab and window.preferences stay hidden */
+    CHECK_INT(c, 46);                                /* the 46 win: (P3-D2: 14 snap, float and swap rows added to the 32 before); the 32 win:/rexx:/run: rows (window.tile runs AmTile, plus the 8 window.layout* rows); window.tab and window.preferences stay hidden */
     c = ix_level_t(&km, 0, "apps", "", it, MN_MAX_ITEMS, 0);
     CHECK(has_label(it, c, "UP-Term") && has_label(it, c, "Editor"));
     CHECK(!has_label(it, c, "Claude") && !has_label(it, c, "pi")); /* menuid rows: the handler runs them, no index entry */
@@ -2727,7 +2801,7 @@ static void a_reload_swaps_whole_keeps_the_old_map_on_a_bad_edit_and_leaks_nothi
  * after keymap_compact(cx_row_installed) stay under a ceiling (the rig measured 17944 B for the
  * parsed table, 8288 B on the host), carry no
  * [menu] rows, no slack beyond the block headers, and every kept row is found unchanged. */
-#define AMARCHY_KEYMAP_HEAP_MAX 3600  /* 49 rows (the three cap: hotkeys, R4.7; was 3400 for 46) (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys + the 15 AmTile layout hotkeys); 3365 B measured; the full parsed table is larger */
+#define AMARCHY_KEYMAP_HEAP_MAX 5400 /* P3-D1: 68 rows, 4996 B measured (was 3600 for 49 rows) */  /* 49 rows (the three cap: hotkeys, R4.7; was 3400 for 46) (8 + the 18 window hotkeys + the three Directory Opus hotkeys + the three Screens hotkeys + the 15 AmTile layout hotkeys); 3365 B measured; the full parsed table is larger */
 static void the_commodity_keymap_of_dist_keymap_is_exact_and_small(void)
 {
     static char file[32768];
@@ -3175,6 +3249,7 @@ void suite_keymap(void)
     win_actions_parse();
     cap_actions_parse();
     win_scope_is_commodity();
+    the_shipped_snap_focus_float_and_swap_keys_are_bound_and_clash_free();
     win_defers_in_the_handler();
     the_shipped_file_resolves_and_derives_menu_keys();
     the_shipped_menu_has_learn_system_and_install_groups();

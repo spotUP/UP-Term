@@ -64,8 +64,6 @@ super+f3          = tab:goto 3             ; Switch to tab 3       | workspace
 super+f4          = tab:goto 4             ; Switch to tab 4       | workspace
 super+period      = tab:next               ; Next tab              | workspace
 super+comma       = tab:prev               ; Previous tab          | workspace
-super+right       = tab:next               ; Next tab              | workspace
-super+left        = tab:prev               ; Previous tab          | workspace
 
 ; Window (super+m and super+n are refused by the parser: Left Amiga M and N belong to Intuition's screen cycling)
 super+o           = win:front                ; Bring to front         | window
@@ -96,6 +94,24 @@ super+ctrl+k       = run:UP-Term:bin/AmTile NMASTER +1           ; More masters 
 super+ctrl+return  = run:UP-Term:bin/AmTile PROMOTE              ; Promote to master     | window
 super+ctrl+period  = run:UP-Term:bin/AmTile CYCLE NEXT           ; Next tiled window     | window
 super+ctrl+comma   = run:UP-Term:bin/AmTile CYCLE PREV           ; Previous tiled window | window
+super+left        = win:focus left         ; Focus window to the left  | window
+super+right       = win:focus right        ; Focus window to the right | window
+super+up          = win:focus up           ; Focus window above        | window
+super+down        = win:focus down         ; Focus window below        | window
+super+ctrl+shift+left  = win:snap left     ; Snap to left half      | window
+super+ctrl+shift+right = win:snap right    ; Snap to right half     | window
+super+ctrl+shift+up    = win:snap up       ; Snap to top half       | window
+super+ctrl+shift+down  = win:snap down     ; Snap to bottom half    | window
+super+ctrl+shift+1 = win:snap tl           ; Snap to top left       | window
+super+ctrl+shift+2 = win:snap tr           ; Snap to top right      | window
+super+ctrl+shift+3 = win:snap bl           ; Snap to bottom left    | window
+super+ctrl+shift+4 = win:snap br           ; Snap to bottom right   | window
+super+ctrl+shift+c = win:snap center       ; Centre window          | window
+super+ctrl+shift+t = run:UP-Term:bin/AmTile FLOAT TOGGLE ; Float or tile window | window
+super+ctrl+shift+h = run:UP-Term:bin/AmTile SWAP LEFT    ; Swap with window on the left  | window
+super+ctrl+shift+j = run:UP-Term:bin/AmTile SWAP DOWN    ; Swap with window below        | window
+super+ctrl+shift+k = run:UP-Term:bin/AmTile SWAP UP      ; Swap with window above        | window
+super+ctrl+shift+l = run:UP-Term:bin/AmTile SWAP RIGHT   ; Swap with window on the right | window
 super+ctrl+left    = win:size left           ; Make window narrower   | window
 super+ctrl+right   = win:size right           ; Make window wider      | window
 super+ctrl+up      = win:size up              ; Make window shorter    | window
@@ -146,10 +162,10 @@ super+d           = rexx:UP-Term:Rexx/dopus-front.rexx       ; Bring Directory O
 ; super+z         = run:SYS:Prefs/Internet ; Internet preferences  | prefs
 super+help        = cap:region              ; Screenshot of a region | capture
 super+shift+help  = cap:screen              ; Screenshot of the screen | capture
-super+escape      = menu:system            ; Power and screen      | system
+super+esc         = menu:system            ; Power and screen      | system
 super+ctrl+help   = cap:window              ; Screenshot of the window | capture
 ; super+shift+q   = run:Reboot             ; Reboot                | system
-; Previous and next prompt (super+up, super+down) wait for an action id.
+; Previous and next prompt wait for an action id (super+up and super+down now focus windows).
 
 [menu]
 ; dotted id        = label                 | action
@@ -222,6 +238,20 @@ window.focusdown    = Focus window below       | win:focus down
 window.closedrawer  = Close drawer window      | rexx:address WORKBENCH 'WINDOW ACTIVE CLOSE'
 window.closedrawers = Close all drawer windows | win:closedrawers
 window.tile         = Tile windows             | run:UP-Term:bin/AmTile TOGGLE
+window.snapleft         = Snap to left half        | win:snap left
+window.snapright        = Snap to right half       | win:snap right
+window.snaptop          = Snap to top half         | win:snap up
+window.snapbottom       = Snap to bottom half      | win:snap down
+window.snaptopleft      = Snap to top left         | win:snap tl
+window.snaptopright     = Snap to top right        | win:snap tr
+window.snapbottomleft   = Snap to bottom left      | win:snap bl
+window.snapbottomright  = Snap to bottom right     | win:snap br
+window.snapcenter       = Centre window            | win:snap center
+window.float            = Float or tile window     | run:UP-Term:bin/AmTile FLOAT TOGGLE
+window.swapleft        = Swap with window on the left  | run:UP-Term:bin/AmTile SWAP LEFT
+window.swapright       = Swap with window on the right | run:UP-Term:bin/AmTile SWAP RIGHT
+window.swapup          = Swap with window above        | run:UP-Term:bin/AmTile SWAP UP
+window.swapdown        = Swap with window below        | run:UP-Term:bin/AmTile SWAP DOWN
 window.layoutnext       = Next layout                      | run:UP-Term:bin/AmTile LAYOUT NEXT
 window.layoutdwindle    = Layout: Dwindle                  | run:UP-Term:bin/AmTile LAYOUT dwindle
 window.layoutmaster     = Layout: Master and stack         | run:UP-Term:bin/AmTile LAYOUT master-stack

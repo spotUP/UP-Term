@@ -40,7 +40,7 @@ class SafeOff(unittest.TestCase):
     def test_menu_row_and_key(self):
         km = (ROOT / "dist/keymap").read_text()
         self.assertRegex(km, r"(?m)^system\.safeoff\s*=\s*Safe to switch off\s*\|\s*detach:Execute UP-Term:S/safe-off$")
-        self.assertRegex(km, r"(?m)^super\+escape\s*=\s*menu:system\b")
+        self.assertRegex(km, r"(?m)^super\+esc\s*=\s*menu:system\b")
         self.assertRegex((ROOT / "dist/menu-icons").read_text(), r"(?m)^system\.safeoff\s*=")
 
     def test_uninstall_takes_amnotify_and_the_s_drawer_with_the_kit_drawer(self):
