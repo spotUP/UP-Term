@@ -77,6 +77,19 @@ class AmarchyDocs(unittest.TestCase):
         self.assertIn(';BEGIN UP-Term Amarchy index', d)  # its own block: an Update adds it once
         self.assertEqual(d.count('Run >NIL: UP-Term:bin/amarchy-index'), 2)  # the Search for the guarded line, and the Echo that writes it
 
+    def test_bar_conf_documented_and_installed_only_when_missing(self):
+        man = read('man/amarchy.1')
+        for w in ('super+b', 'ENVARC:Amarchy/bar.conf', 'clockalt', 'segment', 'Network emulated', 'No network',
+                  'TOGGLE', 'PENS', '+N'):
+            self.assertIn(w, man)
+        self.assertRegex(read('dist/parts.txt'), r'(?m)^tools\s+Files/bar\.conf$')
+        d = read('dist/install.dos')
+        i = d.index('If NOT EXISTS ENVARC:Amarchy/bar.conf')
+        self.assertIn('Copy bar.conf ENVARC:Amarchy/bar.conf CLONE', d[i:i + 120])
+        self.assertIn('ENVARC:Amarchy/bar.conf', read('dist/README.txt'))
+        self.assertIn('ENVARC:Amarchy/bar.conf', read('dist/Uninstall'))
+        self.assertNotRegex(read('dist/Uninstall'), r'(?m)^\s*Delete.*Amarchy/bar\.conf')
+
     def test_rules_commands_rows(self):
         r = read('RULES.md')
         for w in ('ONLY=keymap', 'amarchy_rig.py', 'keymap_rig.py', 'amarchy_menu_rig.py'):

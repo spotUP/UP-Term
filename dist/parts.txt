@@ -58,6 +58,7 @@ tools           Files/amarchy-index
 tools           Files/amnotify
 tools           Files/AmTile
 tools           Files/keymap
+tools           Files/bar.conf
 tools           Files/Rexx
 tools           Files/S
 tools           Files/hl

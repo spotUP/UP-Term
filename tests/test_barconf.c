@@ -1,6 +1,7 @@
 /* bar.conf: parse, defaults on a missing file or missing keys, bad rows ignored with a count (amarchy/barconf_core.c). */
 #include "../amarchy/barconf_core.h"
 #include "harness.h"
+#include <stdio.h>
 #include <string.h>
 
 static int parse(const char *text, barconf *c)
@@ -92,8 +93,32 @@ static void test_plan(void)
     CHECK(plan_pos(p, n, BC_SEG_SYSTEM) < plan_pos(p, n, BC_SEG_NETWORK));  /* unnamed ones follow the named */
 }
 
+/* the file the release installs (dist/bar.conf): it loads with no bad row and says what the parser defaults say, so
+ * a fresh install behaves like no file at all */
+static void test_shipped_file(void)
+{
+    static char file[4096];
+    FILE *f = fopen("dist/bar.conf", "rb");
+    long n = f ? (long)fread(file, 1, sizeof file - 1, f) : -1;
+    barconf c, d;
+    if (f)
+        fclose(f);
+    CHECK(n > 0);
+    if (n <= 0)
+        return;
+    barconf_parse(file, n, &c);
+    barconf_defaults(&d);
+    CHECK_INT(c.bad, 0);
+    CHECK_INT(c.start, d.start);
+    CHECK_INT(c.nrun, 0);
+    CHECK_INT(c.norder[BC_G_LEFT] + c.norder[BC_G_CENTRE] + c.norder[BC_G_RIGHT], 0);
+    CHECK(!strcmp(c.clock, "%a %H:%M"));
+    CHECK(!strcmp(c.clockalt, "%a %d %b %Y"));
+}
+
 void suite_barconf(void)
 {
+    test_shipped_file();
     test_plan();
     test_defaults();
     test_keys();

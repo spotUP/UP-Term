@@ -4,6 +4,7 @@
 ; AmiSSL (LIBS:amisslmaster.library, the AmiSSL: assign and its drawer) stays: other programs use it, and Install-AmiSSL put it there.
 ; AmiNetXDuo (the TCP/IP stack, installed only when none was found) stays too: its own Uninstall-AmiNetXDuo, in its drawer, removes it.
 ; The add-on archive up-nvim and the upkg packages up-git, up-perl and up-vim are removed first, by its own Uninstall; Claude, amiga-pi and Python3 stand alone and stay.
+; Amarchy's own settings (ENVARC:Amarchy/bar.conf, your GUI themes in ENVARC:Amarchy/themes, ENVARC:up-term/keymap.user) are yours and stay.
 ; Run from anywhere:  Execute Uninstall
 FailAt 21
 ; CON:/RAW: back to the system's (new windows; open ones keep UP-Term)

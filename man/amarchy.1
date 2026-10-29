@@ -122,6 +122,79 @@ rexx:script, cap:kind and win:verb [argument]. The verbs are cycle, front, back,
 fullwidth, fullscreen, save, restore, move, size, focus, closedrawers, screen
 and title.
 Lines starting with a semicolon are comments.
+.Sh STATUS BAR
+Amarchy draws a status bar along the top of the front screen.
+Left Amiga + B
+.Pq Ql super+b
+switches it on and off, the same as the ARexx command BAR TOGGLE.
+Its segments, in the built-in order, are:
+.Bl -tag -width Ds
+.It Cm screens
+(left) one entry per public screen; a left click brings that screen to the front.
+.It Cm clock
+(centre) the time; a left click flips it to the date and back.
+.It Cm tray
+(right) one entry per
+.Ql run
+row of bar.conf; a left click starts its command through the program's own stack cookie.
+.It Cm cpu
+.Ql CPU N% .
+.It Cm network
+.Dq Network emulated
+on an emulated stack,
+.Dq No network
+when no interface is found, and
+.Dq <if> up
+or
+.Dq <if> down
+(for example
+.Dq ppp0 up )
+for the first interface.
+.It Cm ram
+.Ql C <chip> F <fast>
+free memory.
+.It Cm agents
+the Agents panel: a left click opens it, a right click starts an agent.
+.It Cm system
+a left click opens the System panel.
+.El
+.Pp
+On a bar too narrow for everything the right group gives way from the left edge in this order:
+network, CPU, RAM, Agents, then all tray entries at once.
+System and the clock never drop.
+The screens then shrink to the first one plus a
+.Ql +N
+marker (N screens hidden); only when the clock and System alone fill the bar is the first screen hidden too,
+so no two segments overlap at any width.
+.Pp
+The settings file is
+.Pa ENVARC:Amarchy/bar.conf
+(a copy in
+.Pa ENV:Amarchy/bar.conf
+is read first).
+Install lays down a commented default only when ENVARC:Amarchy/bar.conf does not exist, and Uninstall leaves yours.
+A missing file means the defaults; a row that is not understood is ignored.
+One row a line; a line starting with ; or # is a comment.
+.Bl -tag -width Ds
+.It Cm start Ar on|off
+the bar at start (default on).
+.It Cm clock Ar format
+the clock text (default
+.Ql %a %H:%M ,
+at most 31 characters). Codes: %a day name, %d day, %b month, %Y year, %H hour, %M minute, %% a percent sign.
+.It Cm clockalt Ar format
+the text after a click (default
+.Ql %a %d %b %Y ) .
+.It Cm left | centre | right Ar segment ...
+the order of that group, naming up to 8 of screens, clock, cpu, ram, network, agents, system, tray.
+Named segments come first; the rest follow in their built-in groups.
+screens always stays in the left group.
+.It Cm segment Ar name Cm on|off
+show or hide one segment.
+.It Cm run Ar label command line
+a tray entry (label one word up to 15 characters, command up to 95; at most 8 rows).
+.El
+.Pp
 .Sh ARexx
 The port AMARCHY takes STATUS (hits, rows, enabled and active), RELOAD (read
 the key files again), RUN
@@ -129,9 +202,10 @@ the key files again), RUN
 (do row n of the table), SHOW (the key viewer) and QUIT.
 .Dl rx \(dqaddress AMARCHY RELOAD\(dq
 .Pp
-The command BAR takes STATUS, ON, OFF and TOGGLE and answers
+The command BAR takes STATUS, ON, OFF, TOGGLE, TEXT and PENS (any other word returns 10) and answers
 .Ql bar=N draws=N panels=N launches=N raises=N ticks=N ;
-OFF closes the status bar and its timer (the one second tick keeps running), ON opens it again.
+OFF closes the status bar and its timer (the one second tick keeps running), ON opens it again (return code 5 when there is no screen),
+TEXT lists the segments with their text and PENS the pens the bar uses.
 STATUS answers the counters of the rest
 .Ql ( ticks=N
 ends it).

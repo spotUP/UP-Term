@@ -112,7 +112,7 @@ Config, control, docs
 - [x] R2.13c (done 8a99c34f, rig 6 bar_conf step; revert proof: start-off read and bar_port dispatch each made it FAIL) Key super+b = bar toggle (new commodity action, dist/keymap and keymap_default), bar on at start unless
       bar.conf says `start off`.
 - [x] R2.14 (04125970; STATUS 99 bytes at zeros on rig 6, 147 at 5-digit counters, tests/test_status_core.c) STATUS adds `ticks=` (bar=, draws= exist). Check the full STATUS string length on the rig stays under 160.
-- [ ] R2.15 Man page (bar segments, bar.conf keys, BAR command, super+b) and installer copies a default bar.conf.
+- [x] R2.15 (HASH_R215; man STATUS BAR section + BAR verbs, README, Uninstall keeps bar.conf, parts.txt row for the kit, install.dos copy-if-missing existed; tests/test_amarchy_docs.py + barconf shipped-file test; revert proof: parts row removed and a bad row in dist/bar.conf each made them FAIL) Man page (bar segments, bar.conf keys, BAR command, super+b) and installer copies a default bar.conf.
 
 Proof
 - [ ] R2.16 (partial: tools/rig/amarchy_p2_rig.py steps start, tick_rises, bar_status, bar_off, bar_on, status_keys pass on rig 6; later rows add steps) Rig reachability test tools/rig/amarchy_p2_rig.py on rig 4 (060), see below, plus idle overhead measurement.

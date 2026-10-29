@@ -772,6 +772,7 @@ AMARCHY
   Left Amiga + Shift + Help          Screenshot of the screen
   Left Amiga + Esc                   Power and screen
   Left Amiga + Ctrl + Help           Screenshot of the window
+  Left Amiga + B                     Status bar
   [end keys]
   The quick menu (Left Amiga + Space) is a short list you filter by typing;
   Left Amiga + K is the key viewer. Two programs draw them. amarchy-gui is
@@ -814,6 +815,16 @@ AMARCHY
   Switch it off for a while in Exchange (the commodity AMARCHY, Disable), or
   stop it with  rx "address AMARCHY QUIT" . Uninstall takes the startup block
   out. man amarchy has the file format.
+
+  Status bar: a thin bar along the top of the front screen (Left Amiga + B
+  switches it on and off; ARexx  address AMARCHY BAR ON|OFF|TOGGLE|STATUS ).
+  It shows the screens, the clock, CPU, RAM, the network, Agents, System
+  and your own tray entries. Its settings are in ENVARC:Amarchy/bar.conf
+  (ENV:Amarchy/bar.conf is read first): start on|off, clock, clockalt, the
+  order of each group, segment NAME on|off and run LABEL COMMAND rows. Install
+  lays down a commented default only when you have no bar.conf, and Uninstall
+  keeps yours. man amarchy lists every key and what the bar drops on a narrow
+  screen.
 
   Job view (the Install group): a keymap row can start with  job:  instead
   of  run: , as in  install.update = Update lists | job:upkg update . A job:
