@@ -66,6 +66,12 @@ Consequence for R1.22: the roadmap row says "3.2 workbench.prefs" for icon label
 Searched for and NOT found (build new): any palette.prefs / wbpattern / pointer.prefs / font.prefs writer, LoadRGB32 caller,
 IPrefs nudge, snapshot/revert code (git grep over amarchy/ config/ handler/ tools/rig/: only GetRGB32 reads).
 
+## Probe corrections to the format table (R1.1b-d, see research note Part 2)
+- wbpattern.prefs PTRN struct: 16 reserved bytes, Which, Flags, Revision, Depth, DataLength, data; USE writes ROOT, DRAWER,
+  SCREEN always; pattern = depth 3, 96 bytes planar; picture = NUL-terminated path (flags without 0x1, NOREMAP 0x10 kept).
+- pointer.prefs: colour table (3 RGB byte triples) at chunk offset 32; all 41 chunks share one table; live via `Pointer USE`.
+- palette: pens 2..12 and colours 0-3 apply live after windows are closed; colours 4-7, 17-19 and pens 0/1 do not.
+
 ## Design
 
 - amarchy/desk_core.[ch] (pure, host-tested, no OS calls): `desk_plan(const gtheme *, const desk_opts *, desk_out *)`
@@ -83,7 +89,7 @@ IPrefs nudge, snapshot/revert code (git grep over amarchy/ config/ handler/ tool
 - New theme keys read: dark_background / darker_background / lighter_background / selection / muted (already in every
   shipped .theme file, GUI plan section 1), plus optional `backdrop=`, `font=`, `wbtitle=` (roadmap R1.5).
 
-## Checklist (3 of 40 done)
+## Checklist (6 of 40 done; R1.1e and R1.1g open)
 
 Each item: what / where / test that proves it. "FB/PA" = fail-before / pass-after demo required (fixes, guards).
 
@@ -91,11 +97,11 @@ Probe first (no product code before R1.1 is answered; decision 10):
 - [x] R1.1a Probe palette.prefs: save from SYS:Prefs/Palette on the 3.2 rig with 4 and 8 colours, dump chunks (text only,
   python IFF walker like keymap_rig.py:36), record exact PALT bytes as golden files tests/data/desk/palette-*.prefs. Test:
   golden files committed, chunk list in the research note.
-- [ ] R1.1b Probe what applies live: write a changed ENV:Sys/palette.prefs and check GetRGB32 of pen 0 and DrawInfo pens
+- [x] R1.1b Probe what applies live: write a changed ENV:Sys/palette.prefs and check GetRGB32 of pen 0 and DrawInfo pens
   (wasabi read) without and with `C:IPrefs`; same for pap_4ColorPens. Record: colours live? pens need screen reset?
-- [ ] R1.1c Probe wbpattern.prefs: WBPattern USE with solid root, tiled root, drawer entry; golden files; does a file write
+- [x] R1.1c Probe wbpattern.prefs: WBPattern USE with solid root, tiled root, drawer entry; golden files; does a file write
   alone redraw the backdrop?
-- [ ] R1.1d Probe pointer.prefs: change only colours in Pointer prefs, diff vs shipped file (which of the 41 chunks
+- [x] R1.1d Probe pointer.prefs: change only colours in Pointer prefs, diff vs shipped file (which of the 41 chunks
   change); does pap_Colors 17-19 in palette.prefs move the pointer at all on 3.2? Live apply path.
 - [ ] R1.1e Probe font.prefs FP_WBFONT pens and fp_SpecialDrawMode (label outline/shadow values) and workbench.prefs WBTF
   format codes + wbe_Flags (save from SYS:Prefs/Workbench with each option toggled, diff).
