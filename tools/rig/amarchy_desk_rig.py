@@ -338,6 +338,20 @@ def main():
     rc, st = tile.send('AMARCHY', 'BAR STATUS')
     say(rc == 0 and st.startswith('bar=1') and tile.bar_box() is not None, 'on: the bar is open again after the desk apply', '%r %r' % (rc, st))
     got = settle(SYS_FILES)
+    # 38923fcf: dk_put wrote ENV:Sys/<x>.prefs itself and the stock editor's USE wrote it again: SYS:Prefs/Pointer raised
+    # "Error accessing file ENV:Sys/Pointer.prefs, object is in use" (requester "Program Error", task SYS:Prefs/Pointer).
+    # The Pointer editor runs after the palette reset and the other editors: the requester comes late, so watch for it.
+    errs = []
+    for _ in range(10):
+        errs = ['%s | %s' % (ami.describe_requester(r), requester_text(r)) for r in ami.requesters()
+                if 'program error' in r['title'].lower() or 'prefs/' in r['task'].lower() or 'in use' in requester_text(r).lower()]
+        if errs:
+            break
+        time.sleep(1)
+    say(not errs, 'on: no Program Error requester from a stock prefs editor after the desk apply', '; '.join(errs))
+    if errs:
+        print('[INFO] dismissed: %s (rig is dirty: stop it, do not reuse)' % ami.dismiss_requesters())
+    say(sysfile('ENV', 'font') is not None, 'on: ENV:Sys/font.prefs present after the desk apply')
     depth = wb_depth()
     ncol = 8 if depth >= 3 else 4
     print('[INFO] Workbench depth %d: palette compared at %d colours' % (depth, ncol))
