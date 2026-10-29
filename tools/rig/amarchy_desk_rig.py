@@ -16,8 +16,8 @@ A differing field prints its name, the expected value and the got value.
 
 Rig up on AmigaOS 3.2 (owner decision 2026-10-29; 3.1 has no stock Pointer/Wbpattern editors the steps need):
   UPTERM_RIG=<n> tools/rig/rig.py start --max --os 32 --purpose "<session>: desk theme"   (tree build/rig/os-322)
-then stage and start this branch's Amarchy (the 3.2 kit does not auto-start it):
-  python3 -c 'import stage_rig,...' stage_build, then `Run >NIL: UP-Term:bin/Amarchy` (as amarchy_gui_rig.py --setup does).
+then stage and start this branch's Amarchy (the 3.2 kit does not auto-start it; on 3.1 too):
+  python3 tools/rig/amarchy_gui_rig.py --setup
 Delete ENV:Sys/{palette,wbpattern,font,pointer}.prefs and ENV:Amarchy/prefs between runs for a clean baseline.
 Run: UPTERM_RIG=3 python3 tools/rig/amarchy_desk_rig.py
 Exit status 1 on any [FAIL]."""
@@ -81,6 +81,12 @@ def settle(names):
     return last
 
 
+def pointer_editor_version():
+    """Version number of SYS:Prefs/Pointer on the rig (0 when absent): the Pointer write needs 47+."""
+    m = re.search(r'(\d+)\.\d+', c.run('Version SYS:Prefs/Pointer')[1])
+    return int(m.group(1)) if m else 0
+
+
 def n_env(name):
     return int(t.env(name) or 0)
 
@@ -97,8 +103,7 @@ def pick(up=None):
     t.open_menu()
     st, _ = t.wait_stable(t.OPEN_SECS, what='open menu')
     # the top level differs per rig (3.1: Style is the 4th entry; the 3.2 rig lists Apps, Settings, Style): read where it is
-    top = t.env('AMARCHY_ROWS').split('|')
-    for _ in range(top.index('Style') - int(t.env('AMARCHY_SEL') or 0) if 'Style' in top else t.STYLE_DOWNS):
+    for _ in range(t.style_downs()):
         st, _ = t.step(g.DOWN, 'Down to Style')
     t.step(g.RETURN, 'enter Style')
     t.step(g.RETURN, 'enter Amarchy theme')
@@ -231,11 +236,14 @@ def main():
     compare('wbpattern', got['wbpattern'], expect(name2, 'wbpattern', [str(min(depth, 3))]),
             'on: ENV:Sys/wbpattern.prefs ROOT and DRAWER fields equal desk_core output')
     ptr = base_on[('ENV', 'pointer')] or base_on[('ENVARC', 'pointer')]
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        f.write(ptr)
-    w = expect(name2, 'pointer', [f.name])
-    os.unlink(f.name)
-    compare('pointer', got['pointer'], w, 'on: ENV:Sys/pointer.prefs RGB tables equal desk_core output')
+    if pointer_editor_version() < 47:       # desk_pointer_editor_ok (b375c835): below 47 the Pointer write is skipped
+        say(got['pointer'] == ptr, 'on: SYS:Prefs/Pointer < 47, ENV:Sys/pointer.prefs not written (equals its baseline)')
+    else:
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(ptr)
+        w = expect(name2, 'pointer', [f.name])
+        os.unlink(f.name)
+        compare('pointer', got['pointer'], w, 'on: ENV:Sys/pointer.prefs RGB tables equal desk_core output')
     fbase = base_on[('ENV', 'font')] or base_on[('ENVARC', 'font')]
     fdir = tempfile.mkdtemp()  # no theme names a font here; an empty FONTS: stand-in keeps the user's name and size
     if fbase:

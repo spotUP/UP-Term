@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ami, condev_rig as c
 import amarchy_gui_rig as g
 
-STYLE_DOWNS = 3          # Style is the 4th entry of the top level: Down x3, Return
+STYLE_DOWNS = 3          # fallback only: Style is the 4th entry of the 3.1 top level; style_downs() reads the live menu env
 NEED_THEMES = 6
 STABLE_READS = 2
 POLL = 0.5
@@ -102,6 +102,14 @@ def strangers(allowed):
             if t != g.TITLE and stem(t) not in {stem(a) for a in allowed}:
                 out.append('window "%s" on screen "%s"' % (t, s['title']))
     return out
+
+
+def style_downs():
+    """Downs from the cursor to the Style row, read from the menu env (the top level differs per rig); STYLE_DOWNS if unreadable."""
+    top = env('AMARCHY_ROWS').split('|')
+    if 'Style' not in top:
+        return STYLE_DOWNS
+    return top.index('Style') - int(env('AMARCHY_SEL') or 0)
 
 
 def env(name):
@@ -226,7 +234,7 @@ def one_select(n, allowed):
     open_menu()
     try:
         st, open_wait = wait_stable(OPEN_SECS, what='open menu')
-        for _ in range(STYLE_DOWNS):
+        for _ in range(style_downs()):
             st, _ = step(g.DOWN, 'Down to Style')
         step(g.RETURN, 'enter Style')
         step(g.RETURN, 'enter Amarchy theme')
@@ -289,7 +297,7 @@ def one_preview(steps, allowed):
     seen = []
     try:
         st, _ = wait_stable(OPEN_SECS, what='open menu')
-        for _ in range(STYLE_DOWNS):
+        for _ in range(style_downs()):
             st, _ = step(g.DOWN, 'Down to Style')
         step(g.RETURN, 'enter Style')
         st, _ = step(g.RETURN, 'enter Amarchy theme')
