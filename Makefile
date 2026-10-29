@@ -98,6 +98,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=tile AmTile's pure layout: what tiles, window order, the master-stack boxes (tests/test_tile.c)
 # ONLY=rig_libs the rig's boot keeps AmiSSL's drawer in LIBS: (tools/test_rig_libs.py)
 # ONLY=rig_booted_ixemul a rig probe stops when the rig booted another ixemul (tools/test_rig_booted_ixemul.py)
+# ONLY=rig_all_case install_rig's `all` case installs on DH1 and stock_libs keeps AmiSSL on LIBS: (tools/test_rig_all_case.py)
 # ONLY=rig_helpers install_rig refuses up front, naming make rig-helpers, when a helper program is not built (tools/test_rig_helpers.py)
 # ONLY=rig_browse_base upkg_browse_rig step 0 installs the kit over an older base (tools/test_rig_browse_base.py)
 # ONLY=rig_browse_free upkg_browse_rig: the Info free-space parser, the precheck message (tools/test_rig_browse_free.py)
@@ -146,6 +147,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_libs ]; then python3 -I tools/test_rig_libs.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_booted_ixemul ]; then python3 -I tools/test_rig_booted_ixemul.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_helpers ]; then python3 -I tools/test_rig_helpers.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_all_case ]; then python3 -I tools/test_rig_all_case.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_base ]; then python3 -I tools/test_rig_browse_base.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_browse_free ]; then python3 -I tools/test_rig_browse_free.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_help ]; then python3 -I tools/test_rig_help.py; fi

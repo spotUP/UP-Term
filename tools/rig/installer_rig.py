@@ -94,7 +94,7 @@ CASES["fresh-all"] = ("AVERAGE", None)
 # is VTCX: or BOOTX: (host directories, 2 GB), not SYS:. The `space` case asks for SYS:UP-Term itself (it needs a small disk).
 # BIGVOL: the drawer page's default is UP-Term on the local disk with the most free room (UPBigVol), not SYS:
 CASES["bigvol"] = ("AVERAGE", None)
-# the rig: DH0 System 64 MB (SYS:), DH1 Rushhours 519 MB, VTCX and BOOTX (uaefs directories) 2 GB
+# the rig: DH0 System 106 MB (SYS:, 217222 blocks), DH1 Rushhours 519 MB, VTCX and BOOTX (uaefs directories) 2 GB
 ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page: Rushhours, about 1 GB free
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
 KITWINDOW = re.compile(r'VTC:(distkit|kit-\w+|legacykit)/Install')   # the Installer window's title: the kit it runs

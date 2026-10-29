@@ -123,12 +123,20 @@ def kit_fingerprint(*pkgs_):
 # a clean image (rig.py --os) has no DH0:: its system volume is SYS:
 CLEAN = '--os' in os.environ.get('UPTERM_RIG_FLAGS', '')
 SYSVOL = 'SYS:' if CLEAN else 'DH0:'
+# The base plus every add-on is 67 MB + up-nvim 33 MB + Python3 on SYS:, and DH0 is 106 MB (217222 blocks): the
+# `all` case puts the base's drawer on DH1 (Rushhours, 519 MB), as installer_rig's ROOMDEST does for the default case.
+ALLDEST = "DH1:KitTest-all"
 
 def rig_libs():
     """rig.RIG_LIBS with the system volume the rig really has (DH0: asks for a
     volume that a clean image does not have)."""
     import rig
     return [l.replace('DH0:', SYSVOL) for l in rig.RIG_LIBS]
+
+def amissl_libs():
+    """The rig's own LIBS: lines that put AmiSSL on LIBS: (rig.RIG_LIBS: the system disk's AmiSSL/Libs and the flat
+    VTC:amissl): a machine with AmiSSL installed has it on LIBS:, and the kit's curl cannot start without it."""
+    return [l for l in rig_libs() if 'amissl' in l.lower()]
 
 def put_vsh():
     """build/amiga/vsh as VTC:vsh and as GG:bin/sh, the shell ixemul programs run (/gg/bin/sh: system(),
@@ -470,6 +478,8 @@ def stock_libs():
     checks then listed VTC:ixp6's stale 7 Oct .orig files as the system's (FRESH-ALL-AFTER-END, 2026-10-29)."""
     run('Assign LIBS: %sLibs' % SYSVOL)
     run('Assign LIBS: VTC:pkgs/ncurses-5.5-1-p-bin-m68k/ixlibrary/sys/libs ADD')
+    for line in amissl_libs():   # the AmiSSL of a machine that has it: UP-Term:bin/curl opens amisslmaster.library
+        run(line.replace('Assign >NIL: ', 'Assign ', 1))
 
 # What a run plants or removes on the Amiga that a user may own: each is saved
 # before the run and put back in a finally, so a failing or killed run (the
@@ -1421,7 +1431,7 @@ def case_all(ck):
     (stand-alone: record in ENVARC:upkg); their own Uninstall, with no base, ends it. The archives' own scripts
     run; the sentinel is each add-on's program answering before the base is removed."""
     ids = addon_ids()
-    prepare(None, ids)
+    prepare(ALLDEST, ids)
     before = Before()
     for pkg in ids:
         plant(pkg)
