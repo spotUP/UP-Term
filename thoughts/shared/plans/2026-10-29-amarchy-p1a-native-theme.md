@@ -89,7 +89,7 @@ IPrefs nudge, snapshot/revert code (git grep over amarchy/ config/ handler/ tool
 - New theme keys read: dark_background / darker_background / lighter_background / selection / muted (already in every
   shipped .theme file, GUI plan section 1), plus optional `backdrop=`, `font=`, `wbtitle=` (roadmap R1.5).
 
-## Checklist (8 of 40 done; R1.1e, R1.1g done in 3 parts, WBTF codes / wbe_Flags left open)
+## Checklist (7 of 40 done; R1.1e font part done, WBTF format codes + wbe_Flags bits still open)
 
 Each item: what / where / test that proves it. "FB/PA" = fail-before / pass-after demo required (fixes, guards).
 
@@ -103,11 +103,11 @@ Probe first (no product code before R1.1 is answered; decision 10):
   alone redraw the backdrop?
 - [x] R1.1d Probe pointer.prefs: change only colours in Pointer prefs, diff vs shipped file (which of the 41 chunks
   change); does pap_Colors 17-19 in palette.prefs move the pointer at all on 3.2? Live apply path.
-- [x] R1.1e (HASH) Probe font.prefs FP_WBFONT pens and fp_SpecialDrawMode (label outline/shadow values) and workbench.prefs WBTF
+- [ ] R1.1e (font.prefs part done in 2e67b155, see research note; WBTF codes and wbe_Flags open) Probe font.prefs FP_WBFONT pens and fp_SpecialDrawMode (label outline/shadow values) and workbench.prefs WBTF
   format codes + wbe_Flags (save from SYS:Prefs/Workbench with each option toggled, diff).
 - [x] R1.1f Probe pen readback for the rig test: does wasabi expose the WB ViewPort colours; else a tiny tests/amiga/
   penprobe (GetRGB32 of pens 0-7 and 17-19, DrawInfo dri_Pens) printing text. Test: prints known default values.
-- [x] R1.1g (HASH) Write findings to thoughts/shared/research/2026-10-29-amarchy-p1a-prefs-probe.md; update this plan's format
+- [x] R1.1g (2e67b155) Write findings to thoughts/shared/research/2026-10-29-amarchy-p1a-prefs-probe.md; update this plan's format
   table (unverified -> verified or changed). Owner decisions OD3, OD10, OD11 are asked again with the probe facts.
 
 Core (host-tested, pure):
