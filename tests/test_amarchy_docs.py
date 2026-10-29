@@ -54,7 +54,7 @@ class AmarchyDocs(unittest.TestCase):
         for f in ('Amarchy', 'amarchy-menu', 'amarchy-gui', 'keymap'):
             self.assertRegex(parts, r'(?m)^tools\s+Files/%s$' % f)
         d = read('dist/install.dos')
-        self.assertIn('Copy Amarchy amarchy-menu amarchy-gui amarchy-index UP-Term:bin CLONE', d)
+        self.assertIn('Copy Amarchy amarchy-menu amarchy-gui amarchy-index AmTile UP-Term:bin CLONE', d)
         self.assertIn('Run >NIL: UP-Term:bin/Amarchy', d)
         self.assertIn(';BEGIN UP-Term Amarchy', d)
         self.assertIn(';BEGIN UP-Term Amarchy index', d)  # its own block: an Update adds it once
