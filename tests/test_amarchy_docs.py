@@ -39,6 +39,15 @@ class AmarchyDocs(unittest.TestCase):
         self.assertIsNotNone(m, 'README.txt has no AMARCHY key list')
         self.assertEqual(m.group(1), keymap_doc.text(), 'README key list is stale: python3 tools/keymap_doc.py')
 
+    def test_man_page_names_snap_focus_float_and_swap_keys(self):
+        man = read('man/amarchy.1')
+        for w in ('snaps the focused window', 'quarter', 'moves focus', 'swaps the focused tile', 'FLOAT TOGGLE'):
+            self.assertIn(w, man)
+        r = read('dist/README.txt')
+        self.assertIn('Left Amiga + Ctrl + Shift + Left', r)
+        self.assertIn('Left Amiga + Ctrl + Shift + C', r)
+        self.assertNotIn('Left Amiga + Right               Next tab', r)
+
     def test_readme_names_the_arexx_commands(self):
         r = read('dist/README.txt')
         for w in ('AMARCHY', 'STATUS', 'RELOAD', 'RUN n', 'SHOW', 'QUIT', 'Exchange', 'keymap.user'):

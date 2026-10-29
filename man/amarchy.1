@@ -80,6 +80,12 @@ The icons come from a table made when the kit is built (dist/menu-icons in
 the source), so a row of
 .Pa keymap.user
 cannot name an icon.
+Window placement keys: Super plus Ctrl plus Shift plus an arrow key snaps the focused window to a half
+of the screen, Super plus Ctrl plus Shift plus 1, 2, 3 or 4 to a quarter (top left, top right, bottom left,
+bottom right) and Super plus Ctrl plus Shift plus C to the centre. Super plus an arrow key moves focus to the
+neighbouring window. Super plus Ctrl plus Shift plus H, J, K or L swaps the focused tile with its neighbour,
+and Super plus Ctrl plus Shift plus T floats or tiles the focused window (AmTile FLOAT TOGGLE).
+Super plus Left and Right no longer switch tabs; Super plus comma and period still do.
 .Sh FILES
 .Bl -tag -width Ds
 .It Pa ENVARC:up-term/keymap

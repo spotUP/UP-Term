@@ -674,88 +674,104 @@ AMARCHY
   then says "Safe to switch off" or "Not all disks answered".
   The keys it ships (generated from dist/keymap):
   [keys]
-  Left Amiga + Space               Menu
-  Left Amiga + Shift + Space       Apps
-  Left Amiga + K                   Key bindings
-  Left Amiga + H                   Help
-  Left Amiga + Shift + H           Tutorial
-  Left Amiga + T                   New tab
-  Left Amiga + W                   Close tab
-  Left Amiga + Backspace           Close tab
-  Left Amiga + Q                   Close window
-  Left Amiga + 1 to 9              Switch to tab N
-  Left Amiga + F1                  Switch to tab 1
-  Left Amiga + F2                  Switch to tab 2
-  Left Amiga + F3                  Switch to tab 3
-  Left Amiga + F4                  Switch to tab 4
-  Left Amiga + .                   Next tab
-  Left Amiga + ,                   Previous tab
-  Left Amiga + Right               Next tab
-  Left Amiga + Left                Previous tab
-  Left Amiga + O                   Bring to front
-  Left Amiga + Ctrl + O            Send to back
-  Left Amiga + Z                   Zoom or restore
-  Left Amiga + Ctrl + F            Full width
-  Left Amiga + Ctrl + S            Save position and size
-  Left Amiga + Ctrl + R            Restore position and size
-  Left Amiga + Ctrl + Tab          Next window
-  Left Amiga + Ctrl + Shift + Tab  Previous window
-  Left Amiga + Shift + Left        Move window left
-  Left Amiga + Shift + Right       Move window right
-  Left Amiga + Shift + Up          Move window up
-  Left Amiga + Shift + Down        Move window down
-  Left Amiga + Ctrl + T            Tile windows
-  Left Amiga + Ctrl + L            Next layout
-  Left Amiga + Ctrl + 1            Layout dwindle
-  Left Amiga + Ctrl + 2            Layout master-stack
-  Left Amiga + Ctrl + 3            Layout mirrored master-stack
-  Left Amiga + Ctrl + 4            Layout columns
-  Left Amiga + Ctrl + 5            Layout rows
-  Left Amiga + Ctrl + 6            Layout grid
-  Left Amiga + Ctrl + 7            Layout monocle
-  Left Amiga + Ctrl + -            Shrink master
-  Left Amiga + Ctrl + +            Grow master
-  Left Amiga + Ctrl + J            Fewer masters
-  Left Amiga + Ctrl + K            More masters
-  Left Amiga + Ctrl + Return       Promote to master
-  Left Amiga + Ctrl + .            Next tiled window
-  Left Amiga + Ctrl + ,            Previous tiled window
-  Left Amiga + Ctrl + Left         Make window narrower
-  Left Amiga + Ctrl + Right        Make window wider
-  Left Amiga + Ctrl + Up           Make window shorter
-  Left Amiga + Ctrl + Down         Make window taller
-  Left Amiga + Tab                 Next screen
-  Left Amiga + Shift + Tab         Previous screen
-  Left Amiga + Ctrl + B            Toggle title bar
-  Left Amiga + C                   Copy
-  Left Amiga + V                   Paste
-  Left Amiga + A                   Select all
-  Left Amiga + F                   Find
-  Left Amiga + G                   Find next
-  Left Amiga + +                   Bigger font
-  Left Amiga + -                   Smaller font
-  Left Amiga + Shift + T           Terminal theme
-  Left Amiga + Shift + B           Background
-  Left Amiga + Shift + F           Font
-  Left Amiga + Shift + S           Own screen
-  Left Amiga + Shift + W           Workbench screen
-  Left Amiga + Ctrl + D            Wide window
-  Left Amiga + Shift + R           Standard window
-  Left Amiga + Shift + L           Demo tour
-  Left Amiga + P                   Preferences
-  Left Amiga + Return              Tmux
-  Left Amiga + L                   AI Agent
-  Left Amiga + E                   Editor
-  Left Amiga + U                   Install and update
-  Left Amiga + Shift + U           Upgrade all
-  Left Amiga + I                   Install add-ons
-  Left Amiga + Shift + D           Open lister
-  Left Amiga + Shift + O           Open lister at current folder
-  Left Amiga + D                   Bring Directory Opus to front
-  Left Amiga + Help                Screenshot of a region
-  Left Amiga + Shift + Help        Screenshot of the screen
-  Left Amiga + ESCAPE              Power and screen
-  Left Amiga + Ctrl + Help         Screenshot of the window
+  Left Amiga + Space                 Menu
+  Left Amiga + Shift + Space         Apps
+  Left Amiga + K                     Key bindings
+  Left Amiga + H                     Help
+  Left Amiga + Shift + H             Tutorial
+  Left Amiga + T                     New tab
+  Left Amiga + W                     Close tab
+  Left Amiga + Backspace             Close tab
+  Left Amiga + Q                     Close window
+  Left Amiga + 1 to 9                Switch to tab N
+  Left Amiga + F1                    Switch to tab 1
+  Left Amiga + F2                    Switch to tab 2
+  Left Amiga + F3                    Switch to tab 3
+  Left Amiga + F4                    Switch to tab 4
+  Left Amiga + .                     Next tab
+  Left Amiga + ,                     Previous tab
+  Left Amiga + O                     Bring to front
+  Left Amiga + Ctrl + O              Send to back
+  Left Amiga + Z                     Zoom or restore
+  Left Amiga + Ctrl + F              Full width
+  Left Amiga + Ctrl + S              Save position and size
+  Left Amiga + Ctrl + R              Restore position and size
+  Left Amiga + Ctrl + Tab            Next window
+  Left Amiga + Ctrl + Shift + Tab    Previous window
+  Left Amiga + Shift + Left          Move window left
+  Left Amiga + Shift + Right         Move window right
+  Left Amiga + Shift + Up            Move window up
+  Left Amiga + Shift + Down          Move window down
+  Left Amiga + Ctrl + T              Tile windows
+  Left Amiga + Ctrl + L              Next layout
+  Left Amiga + Ctrl + 1              Layout dwindle
+  Left Amiga + Ctrl + 2              Layout master-stack
+  Left Amiga + Ctrl + 3              Layout mirrored master-stack
+  Left Amiga + Ctrl + 4              Layout columns
+  Left Amiga + Ctrl + 5              Layout rows
+  Left Amiga + Ctrl + 6              Layout grid
+  Left Amiga + Ctrl + 7              Layout monocle
+  Left Amiga + Ctrl + -              Shrink master
+  Left Amiga + Ctrl + +              Grow master
+  Left Amiga + Ctrl + J              Fewer masters
+  Left Amiga + Ctrl + K              More masters
+  Left Amiga + Ctrl + Return         Promote to master
+  Left Amiga + Ctrl + .              Next tiled window
+  Left Amiga + Ctrl + ,              Previous tiled window
+  Left Amiga + Left                  Focus window to the left
+  Left Amiga + Right                 Focus window to the right
+  Left Amiga + Up                    Focus window above
+  Left Amiga + Down                  Focus window below
+  Left Amiga + Ctrl + Shift + Left   Snap to left half
+  Left Amiga + Ctrl + Shift + Right  Snap to right half
+  Left Amiga + Ctrl + Shift + Up     Snap to top half
+  Left Amiga + Ctrl + Shift + Down   Snap to bottom half
+  Left Amiga + Ctrl + Shift + 1      Snap to top left
+  Left Amiga + Ctrl + Shift + 2      Snap to top right
+  Left Amiga + Ctrl + Shift + 3      Snap to bottom left
+  Left Amiga + Ctrl + Shift + 4      Snap to bottom right
+  Left Amiga + Ctrl + Shift + C      Centre window
+  Left Amiga + Ctrl + Shift + T      Float or tile window
+  Left Amiga + Ctrl + Shift + H      Swap with window on the left
+  Left Amiga + Ctrl + Shift + J      Swap with window below
+  Left Amiga + Ctrl + Shift + K      Swap with window above
+  Left Amiga + Ctrl + Shift + L      Swap with window on the right
+  Left Amiga + Ctrl + Left           Make window narrower
+  Left Amiga + Ctrl + Right          Make window wider
+  Left Amiga + Ctrl + Up             Make window shorter
+  Left Amiga + Ctrl + Down           Make window taller
+  Left Amiga + Tab                   Next screen
+  Left Amiga + Shift + Tab           Previous screen
+  Left Amiga + Ctrl + B              Toggle title bar
+  Left Amiga + C                     Copy
+  Left Amiga + V                     Paste
+  Left Amiga + A                     Select all
+  Left Amiga + F                     Find
+  Left Amiga + G                     Find next
+  Left Amiga + +                     Bigger font
+  Left Amiga + -                     Smaller font
+  Left Amiga + Shift + T             Terminal theme
+  Left Amiga + Shift + B             Background
+  Left Amiga + Shift + F             Font
+  Left Amiga + Shift + S             Own screen
+  Left Amiga + Shift + W             Workbench screen
+  Left Amiga + Ctrl + D              Wide window
+  Left Amiga + Shift + R             Standard window
+  Left Amiga + Shift + L             Demo tour
+  Left Amiga + P                     Preferences
+  Left Amiga + Return                Tmux
+  Left Amiga + L                     AI Agent
+  Left Amiga + E                     Editor
+  Left Amiga + U                     Install and update
+  Left Amiga + Shift + U             Upgrade all
+  Left Amiga + I                     Install add-ons
+  Left Amiga + Shift + D             Open lister
+  Left Amiga + Shift + O             Open lister at current folder
+  Left Amiga + D                     Bring Directory Opus to front
+  Left Amiga + Help                  Screenshot of a region
+  Left Amiga + Shift + Help          Screenshot of the screen
+  Left Amiga + Esc                   Power and screen
+  Left Amiga + Ctrl + Help           Screenshot of the window
   [end keys]
   The quick menu (Left Amiga + Space) is a short list you filter by typing;
   Left Amiga + K is the key viewer. Two programs draw them. amarchy-gui is
