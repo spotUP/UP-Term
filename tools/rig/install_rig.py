@@ -1183,7 +1183,8 @@ def first_difference(now, before):
         x = n[i] if i < len(n) else '<end of text>'
         y = b[i] if i < len(b) else '<end of text>'
         if x != y:
-            return 'first difference at line %d: now %r, before %r' % (i + 1, x, y)
+            return 'first difference at line %d: now %r, before %r; now starts %r, before starts %r' % (
+                i + 1, x, y, n[:4], b[:4])
     return 'identical'
 
 
