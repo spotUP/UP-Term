@@ -35,9 +35,17 @@ void rexx_host_serve(struct rexx_host *h, rexx_host_fn fn, void *ud);
 /* Remove the port, answer what was still queued (through fn), delete the port, close the library. */
 void rexx_host_close(struct rexx_host *h, rexx_host_fn fn, void *ud);
 
-/* Client: send `line` to the port `portname` as an RXCOMM message and wait for the reply. Returns the return code,
- * or -1 when the port or rexxsyslib.library is absent. When result is set, the reply's argstring is copied into
+/* Client: send `line` to the port `portname` as an RXCOMM message and wait for the reply, at most REXX_SEND_SECS
+ * seconds. Returns the return code, or -1 when the port or rexxsyslib.library is absent or no reply came in time
+ * (the message is then parked until it comes back: rexx_send_reap). When result is set, the reply's argstring is copied into
  * result[cap] (else ""). */
+#define REXX_SEND_SECS 10
 long rexx_send(const char *portname, const char *line, char *result, int cap);
+
+/* Free the parked messages whose late reply has come in (rexx_send and rexx_host_close call it). */
+void rexx_send_reap(void);
+
+/* How many sends gave up waiting (the sentinel of the bound). */
+extern unsigned long rexx_send_timeouts;
 
 #endif
