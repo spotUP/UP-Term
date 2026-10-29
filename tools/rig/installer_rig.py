@@ -334,6 +334,19 @@ def installer_page(tree):
     return None, {}
 
 
+def unticked_boxes(gads):
+    """[(id, box)] of the Installer page's checkboxes still to tick: its enabled, unselected buttons and
+    toggles 2..88. Only `gads`, the Installer window's own gadgets: on a --no-dopus rig the plain Workbench
+    window behind it has its own buttons 3..6, and reading those from the whole UITREE clicked ids the
+    page does not have (KeyError: 5, 2026-10-29)."""
+    out = []
+    for gid, (box, rest) in gads.items():
+        m = re.match(r'(?:button|toggle)( \w+)?', rest)
+        if m and 2 <= gid < 89 and not any(w in (m.group(1) or '') for w in ('disabled', 'selected')):
+            out.append((gid, box))
+    return out
+
+
 def own_ask_answer(gads):
     """The gadget to click on a page of the Installer's own ask/confirm kind, or None. Install-AmiSSL's
     pages (the AmiSSL: assign upgrade question, the CPU choice, 2026-10-18) have no Proceed 90: 1 and 2 are
@@ -686,8 +699,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
             continue
         if tick_all and 90 in gads and (sig, geom(tree), tree.count('selected')) not in ticked_sigs and 89 not in gads and not re.search(r'^G 1 \d+ \d+ \d+x\d+ button', tree, re.M):
             ticked_sigs.add((sig, geom(tree), tree.count('selected')))
-            boxes = [(int(m.group(1)), m.group(2)) for m in re.finditer(r'^G (\d+) (\d+ \d+ \d+x\d+) (?:button|toggle)( \w+)?', tree, re.M)
-                     if 2 <= int(m.group(1)) < 89 and 'disabled' not in (m.group(3) or '') and 'selected' not in (m.group(3) or '')]
+            boxes = unticked_boxes(gads)
             for gid, _ in boxes:
                 click(gads[gid][0])
                 wait_change(tree, 1)
