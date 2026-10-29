@@ -1023,6 +1023,9 @@ ADDON_FILES = {'claude': ('C:Claude',), 'pi': ('C:amiga-pi',), 'nvim': ('UP-Term
                'python': ('SYS:Python3/bin/python3',), 'uhc': ('SYS:UHC/C/aget',),
                'dopus': ('DOpus5:DirectoryOpus',)}
 
+# add-ons whose Uninstall leaves their files on purpose
+LEFT_BY_UNINSTALL = {'dopus': 'Directory Opus', 'uhc': 'UHC'}
+
 def addon_install_line(pkg, options=True):
     """The Shell line that installs the add-on from its unpacked archive VTC:kit-<id> (what its Installer runs part by part).
     options=False leaves ADDON_OPTIONS out (the put-back of an owner's add-on writes no test REMOTE)."""
@@ -1168,8 +1171,20 @@ def strip_block(text, name):
 
 def startup_leaves(pkgs):
     """The S:User-Startup blocks the Uninstall of these add-ons leaves in place on purpose: DOpus stays (owner rule),
-    and so does its ;BEGIN DOpus5 block."""
-    return ('DOpus5',) if 'dopus' in pkgs else ()
+    and so does its ;BEGIN DOpus5 block. UHC stays too (it is UHC's own install in SYS:UHC, owner decision
+    2026-10-27, dist/addons/uhc/uninstall-body.dos), with its ;BEGIN UHC block."""
+    return tuple(b for p, b in (('dopus', 'DOpus5'), ('uhc', 'UHC')) if p in pkgs)
+
+
+def first_difference(now, before):
+    """The first line where two texts differ, with its number, for a failed byte-for-byte check."""
+    n, b = now.split('\n'), before.split('\n')
+    for i in range(max(len(n), len(b))):
+        x = n[i] if i < len(n) else '<end of text>'
+        y = b[i] if i < len(b) else '<end of text>'
+        if x != y:
+            return 'first difference at line %d: now %r, before %r' % (i + 1, x, y)
+    return 'identical'
 
 
 def check_startup_after_uninstall(ck, before_text, now_text, leaves=(), what='after base Uninstall'):
@@ -1179,8 +1194,7 @@ def check_startup_after_uninstall(ck, before_text, now_text, leaves=(), what='af
     a, b = before_text, now_text
     for name in leaves:
         a, b = strip_block(a, name), strip_block(b, name)
-    ck(b == a, '%s: S:User-Startup as it was, byte for byte' % what,
-       'differs: %r vs %r' % (b[-80:], a[-80:]))
+    ck(b == a, '%s: S:User-Startup as it was, byte for byte' % what, first_difference(b, a))
     for name in leaves:
         if (';BEGIN ' + name) not in before_text:
             ck((';BEGIN ' + name) in now_text and (';END ' + name) in now_text,
@@ -1332,9 +1346,9 @@ def addon_gone(ck, pkg, base_stays=True, remote=True, with_base=True):
     sys.path.insert(0, str(ROOT / 'tools'))
     import pkgs
     rec = pkgs.get(pkg, 'record')
-    if pkg == 'dopus':   # Directory Opus is left in place by its Uninstall (owner rule, dist/addons/dopus/uninstall-body.dos)
+    if pkg in LEFT_BY_UNINSTALL:   # left in place by its Uninstall (owner rules, dist/addons/<pkg>/uninstall-body.dos)
         for f in ADDON_FILES[pkg]:
-            ck(run('List >NIL: %s' % f)[0] == 0, '%s: %s is still there after its Uninstall (Directory Opus stays)' % (pkg, f))
+            ck(run('List >NIL: %s' % f)[0] == 0, '%s: %s is still there after its Uninstall (%s stays)' % (pkg, f, LEFT_BY_UNINSTALL[pkg]))
     else:
         addon_absent(ck, pkg, 'after its Uninstall')
     if base_stays:
