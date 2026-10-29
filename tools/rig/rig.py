@@ -83,8 +83,8 @@ START_ARGS = RIG / "start.args"
 SRC_HDF = paths.SYSTEM_HDF        # UPTERM_SYSTEM_HDF
 # wasabid: the pinned build in build/wasabi (`make wasabi`), copied to boot/wasabid on every start; the port per
 # rig and the rig key come from paths.py (wasabi_port, WASABI_KEY)
-# The default ROM's header says 40.63 (the A500/A600/A2000 3.1), whatever
-# its file name says (measured 2026-09-30). --kick <file> boots another ROM
+# The default ROM is the A1200 3.1, rev 40.68 (FS-UAE log: "KS ROM v3.1 (A1200) rev 40.68", 2026-10-29); --a500
+# boots paths.ROM_A500 instead, as the A1200 ROM needs a 68020. --kick <file> boots another ROM
 # (DP6 of the console.device plan); the config is rewritten on every start,
 # so the next start without --kick is back on this one.
 KICK = paths.KICKSTART
@@ -417,8 +417,10 @@ STOCK = "--stock" in sys.argv
 A1200 = any(f in sys.argv for f in ("--a1200", "--stock", "--exact", "--fast"))
 # --a500: a 68000 at 7 MHz, cycle-exact, for the 68000 speed (vtcon plan W7, T1 pre-check 2): amiga_model A500
 # (OCS, the model's 512 KB chip + 512 KB slow RAM) with 8 MB Zorro II fast RAM as an A590 or a sidecar gives it,
-# no FPU, no graphics card. The default ROM is 40.63, the A500/A600/A2000 3.1, so it boots as is.
+# no FPU, no graphics card, on paths.ROM_A500 (the A500/A600/A2000 3.1, 40.63) unless --kick names another ROM.
 A500 = "--a500" in sys.argv
+if A500 and "--kick" not in sys.argv:
+    KICK = paths.ROM_A500   # the A1200 ROM needs a 68020; FS-UAE stops at once on a 68000
 # --overscan: AGA rigs show the whole overscan picture (FS-UAE zoom = full) instead of the cropped 640x512 area, so a
 # program that fills the Overscan prefs area (Selecta Fill Screen, I566) can be seen edge to edge. Other rigs keep the crop.
 OVERSCAN = "--overscan" in sys.argv

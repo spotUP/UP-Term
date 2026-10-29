@@ -280,6 +280,10 @@ MMULIB = pathlib.Path(os.environ.get("UPTERM_MMULIB") or
 # UPTERM_ROM314     the A1200 Kickstart 3.1.4 (46.143), for --os 314
 OS_IMAGES = pathlib.Path(os.environ.get("UPTERM_OS_IMAGES") or
     pathlib.Path.home() / "Downloads/clean-wb/Clean Workbench Installs")
+# UPTERM_ROM_A500  the A500/A600/A2000 Kickstart 3.1 (40.63), for --a500: the default ROM is the A1200 40.68,
+#                   which FS-UAE refuses on a 68000 (NUMSG_KS68EC020, 2026-10-29)
+ROM_A500 = pathlib.Path(os.environ.get("UPTERM_ROM_A500") or
+    pathlib.Path.home() / "Documents/Amiberry/ROMs/kick40063.A500.rom")
 ROM314 = pathlib.Path(os.environ.get("UPTERM_ROM314") or
     pathlib.Path.home() / "Downloads/kickstart 3.1.4/kick.a1200.46.143")
 

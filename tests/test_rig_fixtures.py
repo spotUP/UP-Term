@@ -351,6 +351,19 @@ class RigMachine(unittest.TestCase):
         env = dict(os.environ, UPTERM_RIG=str(rig))
         return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True, env=env).stdout.strip()
 
+    def kick(self, *flags):
+        import subprocess, sys
+        code = ("import sys; sys.argv = ['rig.py'] + %r; sys.path.insert(0, %r); import rig, paths; "
+                "print(rig.KICK == paths.ROM_A500, rig.KICK.name)"
+                % (['start'] + list(flags), str(pathlib.Path(ir.__file__).parent)))
+        return subprocess.run([sys.executable, '-I', '-c', code], capture_output=True, text=True).stdout.split()
+
+    def test_a500_boots_the_a500_rom(self):
+        """--a500 booted the A1200 3.1 (40.68); FS-UAE refused it on a 68000 and exited at once (2026-10-29)."""
+        self.assertEqual(self.kick('--a500')[0], 'True')
+        self.assertEqual(self.kick()[0], 'False')
+        self.assertEqual(self.kick('--a500', '--kick', '/x/other.rom'), ['False', 'other.rom'])
+
     def test_each_rig_window_names_its_rig(self):
         """With several rigs open the owner saw only identical FS-UAE windows (2026-10-24)."""
         self.assertEqual(self.title(6), 'title = vtcon rig 6 (060 max) - purpose not given (rig.py start --purpose)')
