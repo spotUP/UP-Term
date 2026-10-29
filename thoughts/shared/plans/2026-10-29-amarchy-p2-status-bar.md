@@ -52,10 +52,10 @@ the bar is open, so it cannot be the commodity tick. win_apply.c holds the only 
 IDs from the roadmap; splits get a letter. DONE rows name the commit.
 
 Probes (before code that depends on them)
-- [x] R2.1 (rig half dd33b8af; A1200 half open) Probe network query on rig 4 and on the A1200: QueryInterfaceTags (Roadshow) for interface name and up/down;
+- [x] R2.1 (rig half 816bb673; A1200 half open) Probe network query on rig 4 and on the A1200: QueryInterfaceTags (Roadshow) for interface name and up/down;
       what UAE's emulated bsdsocket answers; behaviour with no stack (OpenLibrary fails, never blocks). Result to
       thoughts/shared/research/. Decides the fallback in R2.10.
-- [x] R2.2 (rig half dd33b8af; A1200 half open) Probe the idle counter on rig 4 (060) and A1200: counts per second idle, calibration over 1 s, overhead of a
+- [x] R2.2 (rig half 816bb673; A1200 half open) Probe the idle counter on rig 4 (060) and A1200: counts per second idle, calibration over 1 s, overhead of a
       -128 task on a fixed benchmark (before/after under 2 percent).
 
 Shared pieces (P4 waits on these)
