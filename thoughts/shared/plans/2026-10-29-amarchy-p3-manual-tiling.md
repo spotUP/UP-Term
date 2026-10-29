@@ -19,7 +19,7 @@ direction with a hotkey, floats or un-floats a window out of AmTile's tiling, sw
 every Amarchy geometry verb and every AmTile layout keeps clear of the Phase 2 bar (decision 1). Automatic re-tiling (P3b)
 is NOT re-planned: AmTile already does it; this plan extends AmTile and win_core, it does not add a second layout core.
 
-Finish line: every checklist row ticked, host suites green, one rig run where the real hotkey super+alt+shift+left (D1)
+Finish line: every checklist row ticked, host suites green, one rig run where the real hotkey super+ctrl+shift+left (D1)
 moves a UP-Term window to the left half of the usable area (bar excluded) and STATUS `snaps=` rises by exactly 1.
 
 ## What is already done elsewhere (roadmap Phase 3 rows)
@@ -62,9 +62,9 @@ moves a UP-Term window to the left half of the usable area (bar excluded) and ST
 - Bar (branch worktree-agent-a2768f656aa0a7b7f, amarchy/bar.c:121-135): opens on the Workbench public screen only,
   borderless, untitled, `WA_Top = scr->Height - h`, `h = font YSize + 2`, full width. `bar_usable` is NOT built (F2 research
   doc line 35). It floats in AmTile already (borderless rule) but nothing subtracts its height.
-- Free key chords (dist/keymap:43-133 read, spec_parse config/keymap.c:575-615: super required, shift/alt allowed, ctrl
-  refused, no keypad names in knames :31-47): every `super+alt+shift+<key>` except tab; super+up, super+down;
-  super+alt+8/9/0. super+left/right are `tab:prev/next` (dist/keymap:61-62), duplicates of super+comma/period (:59-60).
+- Free key chords (dist/keymap:43-133 read, spec_parse config/keymap.c:575-615: super required, shift/ctrl allowed, alt
+  refused with super (LAmiga+LAlt is Intuition's left mouse button; e523b089 moved the shipped chords to ctrl), no keypad names in knames :31-47): every `super+ctrl+shift+<key>` except tab; super+up, super+down;
+  super+ctrl+8/9/0. super+left/right are `tab:prev/next` (dist/keymap:61-62), duplicates of super+comma/period (:59-60).
 - Keymap ceilings near the limit: amtile-layout D-6 measured km.nbind 86 (ceiling 100) and heap 3365 (AMARCHY_KEYMAP_HEAP_MAX
   3400); KM_FILE_MAX 32768. This plan adds about 19 hotkeys and 15 menu rows: the ceilings move (P3-D3).
 - Rig: tools/rig/amarchy_window_rig.py (win verbs, table of steps), tools/rig/amarchy_tile_rig.py (AmTile, hotkey()
@@ -221,8 +221,8 @@ drops by 16 in every case. Center (D4 a): a 300x200 window -> left 250, top 14 +
 
 ONE wiring step through the real entry point: `snap_hotkey` in amarchy_window_rig.py.
 1. Baseline: AMARCHY STATUS read, `snaps=0` (proves the instrument reads 0 when nothing ran); bar open (branch merged).
-2. A UP-Term window active on Workbench; press super+alt+shift+left through `ami.key` (rawkey 0x4F, qualifier
-   LCOMMAND|LALT|LSHIFT 0x51), the same keyboard path amarchy_tile_rig.py:275 uses.
+2. A UP-Term window active on Workbench; press super+ctrl+shift+left through `ami.key` (rawkey 0x4F, qualifier
+   LCOMMAND|LCTRL|LSHIFT 0x49), the same keyboard path amarchy_tile_rig.py:275 uses.
 3. PASS = STATUS `snaps=1` AND `wins=` +1 AND the window box from amiga_windows equals the host helper's `snap left` box for
    the rig screen with bottom = bar height. FAIL looks like snaps unchanged (key not bound or verb not run), or the box of
    the full screen height (bar ignored).
@@ -248,18 +248,18 @@ Every other behaviour is tested where it lives: snap zones via `WIN snap <zone>`
 
 ## Owner decisions (none taken silently; recommended first)
 
-Owner answers 2026-10-29 (AskUserQuestion, s21): every decision D1-D14 took the recommended option (a). D1 arrow family snap keys; D2 focus on super+arrows (super+left/right stop switching UP-Term tabs, super+comma/period stay), swap super+alt+shift+h/j/k/l, float super+alt+shift+t; D3 gap = tile-gap; D4 centre keeps the window size; D5 a snapped tiled window floats; D6 fit within Min/Max; D7 build tile.conf; D8 win_move also stops at the bar; D9 refusal guard on, front-screen kept; D10 no cycling; D11 DOpus detection by `dopus screen` reply (same as P1b OD-B2); D12 listers tile, other DOpus windows float; D13 lister snap allowed when probe R3 shows it keeps its box, else beep; D14 bar reserve 0 on the DOpus screen until Phase 2 decides. Status: decided.
+Owner answers 2026-10-29 (AskUserQuestion, s21): every decision D1-D14 took the recommended option (a). D1 arrow family snap keys (revised 2026-10-29: super+ctrl+shift, not super+alt+shift, because super+alt is the mouse-click emulation and the parser now refuses it); D2 focus on super+arrows (super+left/right stop switching UP-Term tabs, super+comma/period stay), swap super+ctrl+shift+h/j/k/l, float super+ctrl+shift+t; D3 gap = tile-gap; D4 centre keeps the window size; D5 a snapped tiled window floats; D6 fit within Min/Max; D7 build tile.conf; D8 win_move also stops at the bar; D9 refusal guard on, front-screen kept; D10 no cycling; D11 DOpus detection by `dopus screen` reply (same as P1b OD-B2); D12 listers tile, other DOpus windows float; D13 lister snap allowed when probe R3 shows it keeps its box, else beep; D14 bar reserve 0 on the DOpus screen until Phase 2 decides. Status: decided.
 
 - D1 Snap keys.
-  (a) halves super+alt+shift+arrows, quarters super+alt+shift+1/2/3/4 (tl, tr, bl, br), center super+alt+shift+c
-  (Recommended): one arrow family (shift move, alt size, alt+shift snap), all free today; trade-off: four-key chords.
-  (b) quarters on super+alt+shift+u/i/j/k (a 2x2 key square): spatial; trade-off: clashes with swap in (D2 a).
+  (a) halves super+ctrl+shift+arrows, quarters super+ctrl+shift+1/2/3/4 (tl, tr, bl, br), center super+ctrl+shift+c
+  (Recommended): one arrow family (shift move, ctrl size, ctrl+shift snap), all free today; trade-off: four-key chords.
+  (b) quarters on super+ctrl+shift+u/i/j/k (a 2x2 key square): spatial; trade-off: clashes with swap in (D2 a).
   (c) menu rows only for quarters and center: fewer keys and keymap ceiling room; trade-off: slower.
 - D2 Focus by direction and swap keys.
   (a) focus on super+left/right/up/down (Omarchy's super+arrows), tab prev/next keeps super+comma/period; swap on
-  super+alt+shift+h/j/k/l; float toggle super+alt+shift+t (Recommended): Omarchy parity for focus; trade-off: super+left/right
+  super+ctrl+shift+h/j/k/l; float toggle super+ctrl+shift+t (Recommended): Omarchy parity for focus; trade-off: super+left/right
   stop switching tabs inside UP-Term (the comma/period pair remains).
-  (b) focus on super+alt+shift+h/j/k/l, swap menu-only, super+left/right unchanged: no habit broken; trade-off: no Omarchy keys.
+  (b) focus on super+ctrl+shift+h/j/k/l, swap menu-only, super+left/right unchanged: no habit broken; trade-off: no Omarchy keys.
   (c) leave focus menu-only (today): nothing changes; trade-off: the roadmap's focus-by-direction stays unreachable by key.
 - D3 Gap around snapped windows.
   (a) the AmTile `tile-gap` (default 4) (Recommended): snapped and tiled windows line up; trade-off: 4 px less space.
