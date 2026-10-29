@@ -105,11 +105,13 @@ static struct {
  * in a terminal window, the drawn menu opens its own) */
 static void srv_spawn_cold(void *user, const ms_req *r)
 {
-    (void)r;
     if (user == (void *)&g_srv[1])
         act_in_window(g_open.line, g_open.cols, g_open.rows);
-    else
-        act_run(g_open.line);
+    else {
+        char line[sizeof g_open.line + 32];     /* the anchor reaches the cold drawn menu as " at AX AY" */
+        ms_cold_line(line, sizeof line, g_open.line, r);
+        act_run(line);
+    }
 }
 
 /* `<program> serve`, async, no console. System() names the process "Background CLI" whatever NP_Name says, so
@@ -194,7 +196,8 @@ void act_menu_server_quit(void)
     }
 }
 
-int act_menu_open(const char *dir, int text, int kind, const char *node, const char *line, int cols, int rows)
+static int menu_open_req(const char *dir, int text, int kind, const char *node, const char *line, int cols, int rows,
+                         int anchored, int ax, int ay)
 {
     ms_ops ops;
     ms_req r;
@@ -209,9 +212,23 @@ int act_menu_open(const char *dir, int text, int kind, const char *node, const c
     window_spec(s->spec, sizeof s->spec, cols, rows);
     r.kind = kind == KA_VIEWER ? MS_VIEWER : MS_MENU;
     r.node = kind == KA_VIEWER || !strcmp(node, "root") ? "" : node;
+    r.anchored = anchored;
+    r.ax = ax;
+    r.ay = ay;
     mo_srv_ops(&ops, s);
     ms_open(&ops, &r);
     return 1;
+}
+
+int act_menu_open(const char *dir, int text, int kind, const char *node, const char *line, int cols, int rows)
+{
+    return menu_open_req(dir, text, kind, node, line, cols, rows, 0, 0, 0);
+}
+
+int act_menu_open_at(const char *dir, int text, int kind, const char *node, const char *line, int cols, int rows,
+                     int ax, int ay)
+{
+    return menu_open_req(dir, text, kind, node, line, cols, rows, 1, ax, ay);
 }
 
 int act_rexx(const char *arg)

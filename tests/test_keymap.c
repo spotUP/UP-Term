@@ -8,6 +8,8 @@
 #include "../handler/keymap_act.h"
 #include "../handler/menu_ids.h"
 #include "../amarchy/cxdesc.h"
+#include "../amarchy/bar_core.h"
+#include "../handler/slash.h"
 #include "../amarchy/menu_core.h"
 #include "../prefs/settings_def.h"
 #include "../amarchy/menu_geom.h"
@@ -1646,7 +1648,7 @@ static void menu_size_follows_the_filtered_rows(void)
 {
     int cols, rows, cols1, rows1, px = 16, w0, w1;
     mg_font topaz = { 8, 8 };
-    mg_screen pal = { 640, 256, 22, 44, 0 };
+    mg_screen pal = { 640, 256, 22, 44, 0, 0, 0, 0 };
     CHECK(parse("[menu]\napps.a = Short | run:a\napps.b = Other | run:b\n"
                 "apps.long = A very much longer slash label that is wider than the minimum window | slash:/theme\n"
                 "apps.t1 = Tab one | tab:new\napps.t2 = Tab two | tab:next\ntop = Top | run:x\n"));
@@ -1835,7 +1837,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
 {
     static char file[32768];
     mg_font topaz = { 8, 8 }, pro = { 16, 8 };
-    mg_screen pal = { 640, 256, 22, 44, 0 }, narrow = { 320, 256, 22, 44, 0 }, sq = { 640, 512, 22, 22, 0 };
+    mg_screen pal = { 640, 256, 22, 44, 0, 0, 0, 0 }, narrow = { 320, 256, 22, 44, 0, 0, 0, 0 }, sq = { 640, 512, 22, 22, 0, 0, 0, 0 };
     int px8 = 8, px16 = 16, w;
     char head[KM_ID];
     mn_item items[MN_MAX_ITEMS];
@@ -1889,7 +1891,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 12);   /* with the Trigger, Settings, Dopus, Workbench, Screens and Packages groups (all shown) */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 13);   /* with the Trigger, Settings, Dopus, Workbench, Screens, Packages and Agents groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -1969,7 +1971,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
 static void drawn_menu_icons_look_square_on_tall_pixels(void)
 {
     mg_font topaz = { 8, 8 }, pro = { 16, 8 };
-    mg_screen pal = { 640, 256, 22, 44, 0 }, sq = { 640, 512, 22, 22, 0 }, unknown = { 640, 256, 0, 0, 0 };
+    mg_screen pal = { 640, 256, 22, 44, 0, 0, 0, 0 }, sq = { 640, 512, 22, 22, 0, 0, 0, 0 }, unknown = { 640, 256, 0, 0, 0, 0, 0, 0 };
     mg_metrics m;
     mg_metrics_for(&m, &topaz, &pal);
     CHECK_INT(mi_size(&m), 16);                    /* 30 * 8 / 15 */
@@ -2999,6 +3001,40 @@ static void a_volume_without_a_handler_task_matches_no_device(void)
     CHECK_INT(ix_same_handler_task(0, &b), 0);
 }
 
+
+/* OMARCHY-AI F2: the agents panel the bar's agents segment opens (node BAR_AGENT_NODE of the shipped keymap). The
+ * agent rows go through /agent (the ai-agent key), the launch row through the action the bar's right click and
+ * super+l share, and a prompt row parses to /ask with its task, the A4 path (Agent "<task>"). */
+static void the_agents_panel_rows_reach_the_agent_paths(void)
+{
+    mn_item it[MN_MAX_ITEMS];
+    int i, n, asks = 0, agents = 0, launch = 0, limits = 0;
+    n = mn_children(&km, BAR_AGENT_NODE, it, MN_MAX_ITEMS);
+    CHECK(n >= 5);
+    for (i = 0; i < n; i++) {
+        const km_menu *r = &km.menu[it[i].row];
+        slash_cmd cmd;
+        char err[80];
+        if (!strcmp(it[i].seg, "limits"))
+            limits++;
+        if (r->kind == KA_MENUID && !strcmp(r->arg, BAR_LAUNCH_MENUID))
+            launch++;
+        if (r->kind != KA_SLASH)
+            continue;
+        CHECK(slash_parse(r->arg, (int)strlen(r->arg), &cmd, err, sizeof err) == SLASH_OK);
+        if (cmd.id == SLASH_ASK) {
+            CHECK(cmd.arg[0] != 0);
+            asks++;
+        } else if (!strcmp(cmd.arg, "claude") || !strcmp(cmd.arg, "pi")) {
+            agents++;
+        }
+    }
+    CHECK_INT(agents, 2);
+    CHECK_INT(launch, 1);
+    CHECK(asks >= 3);
+    CHECK_INT(limits, 0);       /* part E is not built: no meter row, no invented number */
+}
+
 void suite_keymap(void)
 {
     style_theme_lists_the_gui_theme_rows();
@@ -3056,6 +3092,7 @@ void suite_keymap(void)
     settings_page_group_lists_the_table_rows();
     right_enters_only_rows_with_children();
     shipped_settings_has_the_six_page_groups();
+    the_agents_panel_rows_reach_the_agent_paths();
     the_screens_group_rows_and_hotkeys();
     the_workbench_group_rows();
     cx_descriptions_and_qualifier_mask();
@@ -3148,7 +3185,7 @@ static void minimal_mode_reaches_the_program(void)
 {
     static const char conf[] = "menu-style = minimal\n";
     mg_font topaz = { 8, 8 };
-    mg_screen drawn = { 640, 256, 22, 44, 0 }, mini = { 640, 256, 22, 44, 1 };
+    mg_screen drawn = { 640, 256, 22, 44, 0, 0, 0, 0 }, mini = { 640, 256, 22, 44, 1, 0, 0, 0 };
     mg_metrics md, mm;
     uc_u32 rgb[MT_ROLES];
     char out[96];

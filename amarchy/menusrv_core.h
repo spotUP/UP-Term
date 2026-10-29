@@ -30,7 +30,14 @@ int ms_route(int found, int alive, int outstanding);
 typedef struct {
     int kind;                   /* menu or viewer: opaque here, copied into the message by send */
     const char *node;           /* the start node, 0 for the root */
+    int anchored, ax, ay;       /* the drawn menu hangs from (ax, ay) (mg_screen.anchored) instead of the centre */
 } ms_req;
+
+/* The cold path (no live server): the drawn menu's command line, with the anchor as " at AX AY" when r is anchored,
+ * so the first open hangs from the bar like the warm ones. 1 when it fits in cap. */
+int ms_cold_line(char *out, int cap, const char *line, const ms_req *r);
+/* The anchor in argv[from..]: "at AX AY"; 1 and *ax, *ay set when present and numeric, else 0 and untouched. */
+int ms_anchor_args(int argc, char **argv, int from, int *ax, int *ay);
 
 typedef struct {
     long last_start;            /* now() of the last server start; meaningful when started */
