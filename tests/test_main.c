@@ -47,6 +47,7 @@ void suite_bar(void);
 void suite_tick(void);
 void suite_wbmode(void);
 void suite_status_core(void);
+void suite_barconf(void);
 void suite_note_core(void);
 void suite_menusrv(void);
 void suite_menu_text(void);
@@ -136,6 +137,7 @@ static const h_suite suites[] = {
     { "tick", suite_tick },
     { "wbmode", suite_wbmode },
     { "status_core", suite_status_core },
+    { "barconf", suite_barconf },
     { "note_core", suite_note_core },
     { "menusrv", suite_menusrv },
     { "menu_text", suite_menu_text },

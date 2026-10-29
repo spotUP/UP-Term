@@ -484,6 +484,34 @@ static void cap_actions_parse(void)
     }
 }
 
+static void bar_actions_parse(void)
+{
+    static const char *const good[] = { "on", "off", "toggle" };
+    static const char *const bad[] = { "", "status", "Toggle", "toggle x" };
+    char row[64];
+    size_t i;
+    for (i = 0; i < sizeof good / sizeof good[0]; i++) {
+        snprintf(row, sizeof row, "[bind]\nsuper+b = bar:%s\n", good[i]);
+        CHECK(parse(row) && km.nbind == 1 && km.bind[0].kind == KA_BAR && !strcmp(km.bind[0].arg, good[i]));
+    }
+    for (i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+        snprintf(row, sizeof row, "[bind]\nsuper+b = bar:%s\n", bad[i]);
+        parse(row);
+        CHECK_INT(km.nbind, 0);
+    }
+    CHECK_INT(keymap_action_scope(KA_BAR), KS_COMMODITY);
+    {   /* the shipped keymap binds super+b to bar:toggle */
+        static char file[32768];
+        long n = slurp("dist/keymap", file, sizeof(file));
+        int found = 0;
+        CHECK(n > 0 && keymap_parse(&km, file, n));
+        for (i = 0; i < (size_t)km.nbind; i++)
+            if (km.bind[i].kind == KA_BAR && !strcmp(km.bind[i].arg, "toggle"))
+                found++;
+        CHECK_INT(found, 1);
+    }
+}
+
 static void win_actions_parse(void)
 {
     static const char *const good[] = {
@@ -3248,6 +3276,7 @@ void suite_keymap(void)
     actions_resolve_to_menu_ids();
     win_actions_parse();
     cap_actions_parse();
+    bar_actions_parse();
     win_scope_is_commodity();
     the_shipped_snap_focus_float_and_swap_keys_are_bound_and_clash_free();
     win_defers_in_the_handler();

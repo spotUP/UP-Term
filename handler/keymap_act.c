@@ -73,7 +73,7 @@ int kact_resolve(const km_bind *b, kact *out)
         out->line = b->arg;
         out->kind = KACT_SLASH;
         return KACT_SLASH;
-    case KA_MENU: case KA_VIEWER: case KA_RUN: case KA_JOB: case KA_DETACH: case KA_SCAN: case KA_REXX: case KA_OPEN: case KA_WIN: case KA_GTHEME: case KA_CAP: case KA_SETTINGS:
+    case KA_MENU: case KA_VIEWER: case KA_RUN: case KA_JOB: case KA_DETACH: case KA_SCAN: case KA_REXX: case KA_OPEN: case KA_WIN: case KA_GTHEME: case KA_CAP: case KA_SETTINGS: case KA_BAR:
         out->kind = KACT_DEFER;
         return KACT_DEFER;
     default:

@@ -80,7 +80,8 @@ enum {
     KA_GTHEME,      /* gtheme:<name>  the drawn menu's Omarchy theme (amarchy/gthemes_core.h), run by the commodity */
     KA_JOB,         /* job:<command line>  like run:, shown in the commodity's job view when the menu style has one (amarchy/leaf.h run_job); a style without one runs it as run: */
     KA_CAP,         /* cap:<screen|window|region>  a screenshot (amarchy/shot.h), run by the commodity; the file also goes to clipboard unit 0 (D3 a) */
-    KA_SETTINGS     /* settings:<page>  a settings page group of the menu (general colors palette keyboard advanced amarchy): mn_children lists the page's rows from prefs/settings_def.c; no action of its own */
+    KA_SETTINGS,    /* settings:<page>  a settings page group of the menu (general colors palette keyboard advanced amarchy): mn_children lists the page's rows from prefs/settings_def.c; no action of its own */
+    KA_BAR          /* bar:<on|off|toggle>  the status bar (amarchy/bar.h), run by the commodity as the ARexx BAR verb */
 };
 
 /* where an action runs (keymap_action_scope) */

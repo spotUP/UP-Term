@@ -19,6 +19,8 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <detail>"); l
                left click on it keeps the bar alive and the entry listed
   system       R2.12a: a real left click on segment 4 raises BAR STATUS panels= by 1; Escape closes the menu
   bar_hold     W43: BAR OFF then BAR ON during the 30 s Workbench-mode hold open no window; the bar opens when the hold ends
+  bar_conf     R2.13a/R2.13c: ENV:Amarchy/bar.conf with "start off" and Amarchy restarted gives BAR STATUS bar=0 and no window;
+               a real Super+B (ami.key, LAmiga + B) makes bar=1 and opens the window; the test file is removed and Amarchy restarted
   python3 tools/rig/amarchy_p2_rig.py [--only STEP] [--no-build]
 Resumable: --only STEP reruns one step against the state the earlier steps left; verdicts are written to
 <RIG>/amarchy-p2/verdict.json as each step completes. Exit code is nonzero when any step fails."""
@@ -222,10 +224,44 @@ def s_bar_hold():
         other, rc1, r1, held1, rc2, r2, held2, bool(opened), el)
 
 
+RAW_B = 0x35
+SUPER = 0x40
+
+
+def s_bar_conf():
+    """bar.conf `start off` is read at start (R2.13a); Super+B (keymap row bar:toggle, R2.13c) flips the bar through the real keyboard path"""
+    import ami
+    t.send('AMTILE', 'QUIT')
+    t.send('AMARCHY', 'QUIT')
+    time.sleep(1.5)
+    c.run('MakeDir >NIL: ENV:Amarchy')
+    c.run('Echo "start off" >ENV:Amarchy/bar.conf')
+    try:
+        c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+        up = t.wait_for(lambda: t.send('AMARCHY', 'STATUS', timeout=5)[0] == 0, 10)
+        time.sleep(3)
+        d0 = kv(t.send('AMARCHY', 'BAR STATUS', timeout=5)[1])
+        none0 = t.bar_box() is None
+        ami.key(RAW_B, SUPER)
+        on = t.wait_for(lambda: kv(t.send('AMARCHY', 'BAR STATUS', timeout=5)[1]).get('bar') == 1, 5)
+        win = t.wait_for(lambda: t.bar_box() is not None, 5)
+        ami.key(RAW_B, SUPER)
+        off = t.wait_for(lambda: kv(t.send('AMARCHY', 'BAR STATUS', timeout=5)[1]).get('bar') == 0, 5)
+    finally:
+        c.run('Delete >NIL: ENV:Amarchy/bar.conf')
+        t.send('AMARCHY', 'QUIT')
+        time.sleep(1.5)
+        c.run('Run >NIL: %s/Amarchy' % paths.UPTERM_BIN)
+        t.wait_for(lambda: t.send('AMARCHY', 'STATUS', timeout=5)[0] == 0, 10)
+    ok = bool(up) and d0.get('bar') == 0 and none0 and bool(on) and bool(win) and bool(off)
+    return ok, 'start off: bar=%r no window %s; Super+B -> bar=1 %s window %s; Super+B -> bar=0 %s' % (
+        d0.get('bar'), none0, bool(on), bool(win), bool(off))
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
          ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system),
-         ('bar_hold', s_bar_hold)]
+         ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf)]
 
 
 def main():

@@ -27,6 +27,8 @@ void bar_right_click(void);
 /* The commodity tick hook (tick_hook): samples the clock, the RAM and the public screens while the bar is up, and
  * repaints when a text changed. */
 void bar_tick(long now);
+/* The clock formats from bar.conf (clock, clockalt); an empty string keeps BAR_CLOCK_FMT / BAR_DATE_FMT. */
+void bar_set_clock_formats(const char *clock, const char *alt);
 /* BAR TEXT: every segment as bar_dump writes it. */
 void bar_text(char *out, int cap);
 

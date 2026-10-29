@@ -52,6 +52,7 @@ static long g_draws, g_panels, g_launches, g_raises;
 static poll_timer g_poll;
 static int g_have_layers;
 static long g_ticks;
+static char g_fmt_clock[32], g_fmt_alt[32];     /* bar.conf clock / clockalt, empty = built in */
 static int g_clock_alt;                         /* the clock segment shows the date until the next click */
 static char g_scrname[BAR_MAX_SCREENS][32];     /* full public screen names of the list on the bar, by entry */
 /* What the input handler reads (bar_takes_right_press runs in input.device's task, not ours): the bar's box as plain
@@ -162,7 +163,7 @@ static int sample_clock(void)
     int wd, d, m, y;
     DateStamp(&ds);
     bar_days_to_date(ds.ds_Days, &wd, &d, &m, &y);
-    bar_fmt_time(t, sizeof t, g_clock_alt ? BAR_DATE_FMT : BAR_CLOCK_FMT, wd, d, m, y, ds.ds_Minute / 60, ds.ds_Minute % 60);
+    bar_fmt_time(t, sizeof t, g_clock_alt ? (g_fmt_alt[0] ? g_fmt_alt : BAR_DATE_FMT) : (g_fmt_clock[0] ? g_fmt_clock : BAR_CLOCK_FMT), wd, d, m, y, ds.ds_Minute / 60, ds.ds_Minute % 60);
     return set_seg(BAR_SEG_CLOCK, t);
 }
 
@@ -508,6 +509,12 @@ int bar_takes_right_press(void)
 }
 
 void bar_right_click(void) { act_launch(); }
+
+void bar_set_clock_formats(const char *clock, const char *alt)
+{
+    strncpy(g_fmt_clock, clock, sizeof g_fmt_clock - 1);
+    strncpy(g_fmt_alt, alt, sizeof g_fmt_alt - 1);
+}
 
 void bar_text(char *out, int cap) { bar_dump(&g_bar, out, cap); }
 long bar_draws(void) { return g_draws; }

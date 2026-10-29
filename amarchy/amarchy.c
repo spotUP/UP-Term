@@ -34,6 +34,7 @@
 #include "../tty/qmark.h"
 #include "menu_open.h"
 #include "bar.h"
+#include "barconf_dos.h"
 #include "status_core.h"
 #include "shot.h"
 #include "keymap_default.inc"
@@ -261,6 +262,11 @@ static int do_row(int row)
     case KA_GTHEME: ok = gt_dos_select(b->arg, 0, 0); break;
     case KA_CAP:   ok = cap_run(b->arg) == 0; break;
     case KA_OPEN:  ok = act_open_uterm(); break;
+    case KA_BAR: {
+        char scratch[REXX_HOST_OUT];
+        ok = bar_port(b->arg, scratch) == 0;
+        break;
+    }
     case KA_MENU: case KA_VIEWER:
         ok = act_menu_kind(b->kind, b->arg);
         break;
@@ -401,6 +407,12 @@ int main(void)
     if (amconf_migrate() == AMCONF_MIG_FAILED)
         PutStr((STRPTR)"Amarchy: could not write ENVARC:Amarchy/prefs; reading the UP-Term file's keys, retrying next start\n");
     style_load();
+    {   /* bar.conf: start on|off and the clock formats (the other keys are parsed, not yet used) */
+        static barconf bc;
+        barconf_load(&bc);
+        g_bar_want = bc.start;
+        bar_set_clock_formats(bc.clock, bc.clockalt);
+    }
     keymap_load_compact(&g_km, km_default_text, cx_row_installed);
     if (!cx_open(pri)) {
         cx_close();

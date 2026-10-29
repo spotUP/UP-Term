@@ -406,6 +406,14 @@ Copy hl mdv UP-Term:bin CLONE
 ; touched (an edit there applies after a copy to ENV:up-term/keymap.user, or at the next boot). A marked block in S:User-Startup starts the commodity at every boot
 ; (Uninstall takes it out with unstartup.sh).
 Copy Amarchy amarchy-menu amarchy-gui amarchy-index amnotify AmTile UP-Term:bin CLONE
+; the status bar's settings: laid down only when none exists (the user owns bar.conf), and copied to ENV:
+MakeDir >NIL: ENVARC:Amarchy ENV:Amarchy
+If NOT EXISTS ENVARC:Amarchy/bar.conf
+  Copy bar.conf ENVARC:Amarchy/bar.conf CLONE
+EndIf
+If NOT EXISTS ENV:Amarchy/bar.conf
+  Copy ENVARC:Amarchy/bar.conf ENV:Amarchy/bar.conf CLONE
+EndIf
 ; UP-Term:S scripts a menu row runs (safe-off: Reboot DRYRUN, then a notice)
 MakeDir >NIL: UP-Term:S
 Copy S UP-Term:S ALL CLONE

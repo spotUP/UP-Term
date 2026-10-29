@@ -39,6 +39,7 @@
 ;   cap:<screen|window|region>  a screenshot of the front screen, the active window, or a dragged
 ;                    region: an IFF ILBM file in RAM:Shots and the clipboard (Left Amiga + Alt is the
 ;                    left mouse button, so the window shot uses Left Amiga + Ctrl)
+;   bar:<on|off|toggle>  the status bar at the bottom of the Workbench screen (ARexx BAR)
 
 [keymap]
 version = 1
@@ -164,6 +165,7 @@ super+help        = cap:region              ; Screenshot of a region | capture
 super+shift+help  = cap:screen              ; Screenshot of the screen | capture
 super+esc         = menu:system            ; Power and screen      | system
 super+ctrl+help   = cap:window              ; Screenshot of the window | capture
+super+b           = bar:toggle             ; Status bar            | system
 ; super+shift+q   = run:Reboot             ; Reboot                | system
 ; Previous and next prompt wait for an action id (super+up and super+down now focus windows).
 
