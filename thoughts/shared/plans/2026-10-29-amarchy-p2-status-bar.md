@@ -85,18 +85,18 @@ Bar core
       percent from idle counts, clock strftime subset %H %M %a %d %b %Y, screen short name (first word, max 8 chars).
 
 Segments
-- [ ] R2.6 Clock (centre): "Mon 14:05" from `%a %H:%M`; left click flips to "Mon 29 Oct 2026" (`%a %d %b %Y`) until the
+- [x] R2.6 Clock (centre): "Mon 14:05" from `%a %H:%M`; left click flips to "Mon 29 Oct 2026" (`%a %d %b %Y`) until the (done 42d70c0e, rig 6)
       next click. Text set every tick, redraw only when the minute or the mode changes.
-- [ ] R2.7 RAM (right): "C 1.2M F 61M", AvailMem(MEMF_CHIP) and AvailMem(MEMF_FAST), sampled every 2 s.
+- [x] R2.7 RAM (right): "C 1.2M F 61M", AvailMem(MEMF_CHIP) and AvailMem(MEMF_FAST), sampled every 2 s. (done 42d70c0e, rig 6)
 - [ ] R2.8 CPU (right): "CPU 12%" from an idle counter task at priority -128, started by bar_open, stopped by bar_close
       (Signal + wait for exit, no Forbid loop). Sampled every tick.
 - [ ] R2.10 Network (right): interface name and up/down from bsdsocket QueryInterfaceTags ("eth0 up"), "no network" when
       no stack or the query fails. Library opened at sample time and closed after; sampled every 5 s; redraw only on
       change. No traffic numbers.
-- [ ] R2.11 Screens (left): every public screen as its short name, the front screen in the accent pen, left click =
+- [x] R2.11 Screens (left): every public screen as its short name, the front screen in the accent pen, left click = (done 42d70c0e, rig 6)
       ScreenToFront of that screen. List rebuilt each tick from the pubscreen list (LockPubScreenList, copy names,
       UnlockPubScreenList at once).
-- [ ] R2.12a System icon (right end): left click opens menu:system (same node as super+esc), panel anchored to the
+- [x] R2.12a System icon (right end): left click opens menu:system (same node as super+esc), panel anchored to the (done 42d70c0e, rig 6)
       segment with bar_panel_anchor.
 - [ ] R2.12 Tray: RUN <row> segments from bar.conf (label + command line, click runs it through proclaunch).
 
