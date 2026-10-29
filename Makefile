@@ -589,6 +589,9 @@ $(BUILD)/amiga/top: proc/top_amiga.c proc/tasks_amiga.c proc/tasks_amiga.h proc/
 	@mkdir -p $(BUILD)/amiga/obj
 	vasmm68k_mot -quiet -Fhunk -o $(BUILD)/amiga/obj/vbsample.o proc/vbsample.s
 	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ proc/top_amiga.c proc/tasks_amiga.c $(PROC_CORE) $(BUILD)/amiga/obj/vbsample.o $(BUILD)/amiga/obj/cpuchk-top.o
+$(BUILD)/amiga/shotprobe: tests/amiga/shotprobe.c amarchy/shot_core.c amarchy/shot_core.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -dontwarn=153,65 -o $@ tests/amiga/shotprobe.c amarchy/shot_core.c
 $(BUILD)/amiga/busyloop: tests/amiga/busyloop.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/busyloop.c

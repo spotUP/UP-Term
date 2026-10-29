@@ -74,12 +74,12 @@ Commodity link fact: AMARCHY_SRC (Makefile:724) has no menu_theme.c / render/pen
 
 Each item: what, where, the test that proves it. Red first (Gate 2). [P2] = waits for Phase 2 landing.
 
-- [ ] R4.1 Probe on rig 060 (one session, text output only): (a) ReadPixelArray8 of a Workbench chipset screen row matches
+- [x] R4.1 (probe log thoughts/shared/research/2026-10-29-p4-probe.md) Probe on rig 060 (one session, text output only): (a) ReadPixelArray8 of a Workbench chipset screen row matches
   WritePixelArray8 input; (b) on an RTG screen deeper than 8 bit, ReadPixelArray8 result (expected wrong/unsupported) and
   cybergraphics.library `ReadPixelArray` RECTFMT_RGB presence; (c) png.datatype DTM_WRITE with a PNG subclass: rc and file;
   (d) clipboard.device accepts a 300 KB CMD_WRITE FORM ILBM; (e) `Reboot DRYRUN` rc and lines on the rig's volumes.
   Where: tests/amiga/shotprobe.c (probe tool, not shipped). Proof: probe log in thoughts/shared/research/2026-10-xx-p4-probe.md.
-- [ ] R4.2 shot_core.c/.h (portable C89): chunky row -> planes, ByteRun1 packer, BMHD/CMAP/CAMG/BODY writer through a sink
+- [x] R4.2 (32ea0b58) shot_core.c/.h (portable C89): chunky row -> planes, ByteRun1 packer, BMHD/CMAP/CAMG/BODY writer through a sink
   with `write(buf,n)` and `patch32(offset,value)` (FORM and BODY sizes patched at the end; rows streamed, no whole-image
   buffer); also deep (24-bit) ILBM if R4.1b says RTG truecolour is in scope. Host tests tests/test_shot_core.c: ByteRun1 edge
   runs (1, 2, 127, 128, 129 equal bytes; 128 literals; alternating), odd widths (row padding to 16 bits), depth 1..8, golden file
