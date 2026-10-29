@@ -16,3 +16,23 @@ Proposed split once the bar lands (or if the owner wants the bar first):
    bar's right corner, click dispatch (left = panel, right = launch default, prompt row = task string).
 2. bar segment "agents" calling it; reachability test through the bar's click entry with a sentinel.
 No code written; nothing to revert.
+
+## Implementation findings (2026-10-29, bar and agents panel)
+
+Built: the Amarchy bar (roadmap phase 2, R2.4) with one segment, "Agents", at the right end, and the agents panel it opens.
+
+- The panel rows live in `dist/keymap` as the `agents.*` group (`agents.claude`, `agents.pi`, `agents.launch`, `agents.review`, `agents.tests`, `agents.explain`), with icons in `dist/menu-icons`. The root menu now shows an "Agents" group, so the root has 13 groups (tests/test_keymap.c updated from 12).
+- The geometry is not in a separate `agents_panel_core.c` as first proposed. The anchored layout is in `amarchy/menu_geom.c` (`mg_screen.anchored`, `ax`, `ay`; the menu hangs upward from the bar and is clamped on screen) and the segment list, hit-test and click map are in `amarchy/bar_core.c`. The anchor travels through `act_menu_open_at`, `ms_open`, the `menu_open.c` message and `gui_open`.
+- Left click on the segment opens the panel (`BAR_ACT_PANEL`). Right click fires the `MENU_AGENT` request through `upreq_send`, the same action as super+l (`BAR_ACT_LAUNCH_AGENT`).
+- Part E (limit meters and token use) is a named slot only: `BAR_AGENT_LIMITS_ROW` = `agents.limits`. No row and no numbers exist.
+- STATUS reply gained `bar`, `draws`, `panels`, `launches`.
+
+Tests: `make test ONLY=bar` (44 checks), `ONLY=keymap` (14995), `ONLY=menusrv` (55). Revert proof: `bar_click` panel branch returning NONE and the anchored layout branch disabled make `bar` fail (6 checks); removing the `agents.*` rows makes `keymap` fail (5 checks); sending a copy of the request with `anchored = 0` in `ms_open` makes `menusrv` fail (`g_sent.anchored = 0, want 1`).
+
+Open:
+- `tools/rig/amarchy_bar_rig.py` is written and NOT RUN (rig 7 was held by another agent). The Amiga-side `amarchy/bar.c` has only been cross-compiled, never executed. The right-button number (1) in the rig script is unverified.
+- The cold-spawn menu path (`srv_spawn_cold` to `act_run`) ignores the anchor and opens the panel centred.
+- Segments for clock, RAM, CPU, network and workspace, `bar.conf`, and an on/off switch (`bar_usable`) are not built. The bar is on by default.
+- Theme pens are taken once at open; the bar does not follow a live theme switch.
+- The right-click launch uses `upreq_send`, which blocks the commodity loop until the handler answers, and gives NOPORT (no tab) when no UP-Term window exists.
+- No plan items are ticked.

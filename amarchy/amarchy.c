@@ -30,6 +30,7 @@
 #include "../handler/upactive.h"
 #include "../tty/qmark.h"
 #include "menu_open.h"
+#include "bar.h"
 #include "keymap_default.inc"
 
 
@@ -140,20 +141,25 @@ static int parse_int(const char *s)
     return neg ? -v : v;
 }
 
-/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N */
+/* The STATUS reply: hits=N rows=N enabled=N active=N wins=N bar=N draws=N panels=N launches=N */
 static void status_text(char *out, long cap)
 {
     char num[12];
-    static const char *const key[5] = { "hits=", " rows=", " enabled=", " active=", " wins=" };
-    long val[5];
+    static const char *const key[9] = { "hits=", " rows=", " enabled=", " active=", " wins=", " bar=", " draws=", " panels=",
+                                        " launches=" };
+    long val[9];
     int i;
     val[0] = g_hits;
     val[1] = cx_nrows();
     val[2] = cx_enabled();
     val[3] = upactive_count();
     val[4] = win_count();
+    val[5] = bar_is_open();
+    val[6] = bar_draws();
+    val[7] = bar_panels();
+    val[8] = bar_launches();
     out[0] = 0;
-    for (i = 0; i < 5; i++) {
+    for (i = 0; i < 9; i++) {
         cl_cat(out, key[i], cap);
         cl_ltoa(val[i], num);
         cl_cat(out, num, cap);
@@ -282,7 +288,7 @@ struct IntuitionBase *IntuitionBase;
 
 int main(void)
 {
-    ULONG sigs, cxs, rxs, nts, lps, wrs, cws;
+    ULONG sigs, cxs, rxs, nts, lps, wrs, cws, bs;
     int row, ev;
     struct RDArgs *rda;
     LONG args[1] = { 0 };
@@ -328,8 +334,10 @@ int main(void)
     wrs = wb_reply ? 1UL << wb_reply->mp_SigBit : 0;
     cw_start();                                 /* the clipboard history (Trigger > Clipboard history) */
     cws = cw_sigmask();
+    bar_open(g_dir);                            /* the status bar; 0 = no screen, the commodity runs without it */
+    bs = bar_sigmask();
     while (!g_quit) {
-        sigs = Wait(cxs | rxs | nts | lps | wrs | cws | SIGBREAKF_CTRL_C);
+        sigs = Wait(cxs | rxs | nts | lps | wrs | cws | bs | SIGBREAKF_CTRL_C);
         if (sigs & SIGBREAKF_CTRL_C)
             break;
         if (sigs & cxs)
@@ -341,6 +349,8 @@ int main(void)
                 else if (ev == CXE_KILL)
                     g_quit = 1;
             }
+        if (sigs & bs)
+            bar_serve();
         if (sigs & cws)
             cw_changed();
         if (sigs & rxs)
@@ -356,6 +366,7 @@ int main(void)
             reload();
         }
     }
+    bar_close();
     act_menu_server_quit();
     cw_stop();
     notify_stop();
