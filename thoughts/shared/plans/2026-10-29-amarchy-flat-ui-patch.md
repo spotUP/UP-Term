@@ -9,203 +9,158 @@ research: thoughts/shared/research/2026-10-29-amarchy-flat-ui-patch.md (sections
 supersedes: R1.25 (P1B-V0..V4, F1-F2, B1-B2) in thoughts/shared/plans/2026-10-29-amarchy-p1b-third-party-theme.md
 ---
 
-# Amarchy flat-UI system patch (own code, replaces VisualPrefs / FullPalette / Birdie)
+# Amarchy flat-UI look (own code, replaces VisualPrefs / FullPalette / Birdie)
+
+Owner decision (2026-10-29): pens first; patches only for the measured residue; no caller-filtered graphics patches.
 
 ## Goal
 
-Amarchy draws the system GUI flat with its own code, driven by the current Amarchy theme colours, switchable live, and with "off" giving the stock Workbench look. No third-party patch (VisualPrefs + VP-QuickFix, FullPalette, Birdie 2000) and no code copied from them; the research note records mechanisms only.
+Amarchy makes the system GUI look flat with its own means, driven by the current Amarchy theme colours, switchable from the theme menu, and "off" gives the stock Workbench look. No third-party patch (VisualPrefs + VP-QuickFix, FullPalette, Birdie 2000) and no code copied from them; the research note records mechanisms only.
 
-Owner: "this would give us full control over how it looks".
+Order of means, cheapest first:
+1. P1: preferences only (palette.prefs DrawInfo pens, IControl GUI geometry). No patch.
+2. P2: measure on the rig what still looks beveled under P1.
+3. P3: patch only that measured residue, behind one inert flag. Expected: one sysiclass dispatcher replacement for the close / depth / size glyphs.
 
-Done (reachability protocol, gate 3) = one rig test (FLAT-X1) drives Amarchy's top-level theme entry point (ARexx `DESK THEME <name>` on the Amarchy port, the same verb the theme menu uses), proves the patch code ran (sentinel counters in the shared state block, see FLAT-A3), and asserts the pixel colours / pen numbers the theme defines for each element in scope, for two themes and for off.
+Dropped by the owner decision: SetFunction patches of RectFill / SetAPen / Move / Text / PrintIText / DrawImageState filtered by caller address, and the self-calibration of caller sites they needed. Residue that P1 and a class hook cannot fix becomes an owner decision (OD-F9), not a graphics patch.
 
-Status: draft. Nothing below is built. Owner decisions at the end are open.
+Done (reachability protocol, gate 3) = one rig test (FLAT-X1) drives Amarchy's top-level theme entry point (ARexx `DESK THEME <name>`, the verb the theme menu uses), proves the new code ran (sentinel from am_sentinel for P1; per-call counter in the shared state block for P3), and asserts the pen numbers / pixel colours the theme defines for each element in scope, for two themes and for off.
 
-## Architecture
+Status: draft. Nothing below is built. Owner rule (2026-10-29): plans only, no flat UI code, probes or rig tests yet; every probe (FLAT-R1, FLAT-R3) and the P2 residue measurement (FLAT-M1, FLAT-M2) is not started and waits for owner go. The earlier probe IDs FLAT-R2 (now FLAT-M1) and FLAT-R4 (RTG, now a note under Stacking) are folded in.
+
+## P1 mechanism: preferences only
+
+### Flat DrawInfo pens (palette.prefs)
+
+- palette.prefs carries the DrawInfo pen arrays (pen4 for 4-colour screens, pen8 for 8+), which `desk_palette` (amarchy/desk_core.h:43) already writes from `desk_pens` (desk_core.c:99, R1.19 map: SHINE=DK_FG, SHADOW=DK_DARKER, FILL=DK_ACCENT, BACKGROUND=DK_BG, BAR pens).
+- Flat map `desk_pens_flat`: SHINEPEN = the surface it sits on (BACKGROUND pen, or FILL pen for selected / active surfaces; which one is OD-F4), SHADOWPEN = a thin line colour (theme border tone from `desk_darker`), so every 3D bevel reads as a 1-pixel outline on one side or both depending on how each class draws (measured in P2). Text, fill, bar pens keep the R1.19 roles.
+- Live switch: the existing path. `desk_pens_reset` says the pen array changed, `desk_dos_apply` writes the prefs, IPrefs resets the Workbench screen (close / reopen, hooks desk_dos_wb_close / _open), 15 s confirm requester, revert from T:amarchy-revert. There is no instant repaint; windows of programs that keep their own screen are untouched until they reopen.
+
+### Border and title bar size (IControl prefs)
+
+- `struct IControlPrefs` in NDK 3.2R4 prefs/icontrol.h:52 has `UBYTE ic_GUIGeometry[4]; /* Titlebar and border geometry */`, valid when `ic_Flags` has ICB_VERSIONED (bit 31) and `ic_Version` >= IC_CURRENTVERSION (2) (V, header read 2026-10-29).
+- The meaning of each of the 4 bytes is not in the header (U). Probe FLAT-R1 measures it by writing each byte and reading the window borders on the rig.
+- Apply goes through IPrefs like palette.prefs (Workbench reset path; U whether IPrefs applies IControl live or needs reboot: R1 measures, and the result sets the D-TGT apply_kind).
+- No IControl writer exists in the tree yet (searched amarchy/, prefs/, tools/, tests/ for icontrol / ICTL: none). New IFF chunk writer goes next to desk_palette in desk_core and reuses its IFF FORM / PRHD writing; the other IControl fields are read from the current ENV:Sys/icontrol.prefs and written back unchanged.
+
+## P3 mechanism: residue patch (expected: sysiclass only)
 
 ### Where the patch code lives: separate resident `amarchy-flat` (recommended) vs inside Amarchy
 
 | | Separate resident program `amarchy-flat` | In-process in the Amarchy commodity |
 |---|---|---|
-| Lifetime of patch code | Own process that never unloads while any vector or class hook is still chained (Wait forever, inert) | Tied to Amarchy: Amarchy quits, restarts on RELOAD, is replaced by upkg / `rig.py install` (warm-server swap, plan 2026-10-27-amarchy-gui-warm). Patch code inside an unloaded seglist = crash in every caller |
-| Crash isolation | A bug in the commodity (menus, tiling, ARexx) cannot unload drawing code | Any commodity exit path must first unpatch, and unpatch can fail (patched on top) |
-| Size in callers' context | Small, audited, no libc beyond what the draw code needs | Whole commodity linked in |
-| Cost | One more program, one startup block, an interface (public semaphore + state block) | No IPC |
-| Upgrade | Replacing the binary needs reboot (code chained) or a clean unpatch first | Same problem, worse: Amarchy is upgraded often |
+| Lifetime of patch code | Own process that never unloads while the class hook is still chained (Wait forever, inert) | Tied to Amarchy: Amarchy quits, restarts on RELOAD, is replaced by upkg / `rig.py install`. Hook code inside an unloaded seglist = crash in every window open |
+| Cost | One more program, one startup block, a small state block | No IPC |
 
-Recommendation: the separate resident program. Decisive trade-off: one extra program and a small shared-state interface, against Amarchy's frequent restarts and replacements, each of which would otherwise be a system crash once any other patcher sits on top of our vectors.
+Recommendation: the separate resident program (OD-F8). Decisive trade-off: one extra program against a crash on every Amarchy restart once anything is chained on top of the hook.
 
-### Interface Amarchy <-> amarchy-flat (FLAT-A3)
+### Class hook swap
 
-- Public semaphore `Amarchy.Flat` (AddSemaphore) embedding a versioned state block in MEMF_PUBLIC: `version`, `size`, `enabled` (the global inert flag, one word, read without locking by patch code), `elements` bit mask (border, title, glyphs, frames, props, screenbar, menus, bevelbox, corners), the flat pen table (per element: fill, line, text, active/inactive), look options (title alignment etc., see Owner decisions), sentinel counters (calls handled per element, calls passed through, calibration result), `still_chained` bits.
-- Amarchy writes the block under ObtainSemaphore, then refreshes open windows (FLAT-A4). Patch code only reads; counters are incremented with single `addq.l` (no lock).
-- `amarchy-flat` absent: Amarchy's theme apply skips the step silently and the STATUS reply says `flat=absent`.
+- sysiclass is a RAM IClass struct whose `cl_Dispatcher.h_Entry` points into ROM; on 3.2.3 the measured classes share the trampoline 0xFE1118 (research 8.1a, V for frameiclass / propgclass / buttongclass, U for sysiclass: it needs SYSIA_DrawInfo + SYSIA_Which to instantiate).
+- Get the IClass by NewObjectA(NULL, "sysiclass", SYSIA_DrawInfo from GetScreenDrawInfo, SYSIA_Which CLOSEIMAGE) + OCLASS, dispose the object. Save the whole Hook, swap the field the trampoline dispatches through (h_Entry or h_SubEntry: FLAT-R3 decides) under Forbid, CacheClearU (68060).
+- Our dispatcher: `if (!state->enabled) goto old`; only IM_DRAW for SYSIA_Which CLOSEIMAGE, DEPTHIMAGE, SIZEIMAGE (and ZOOMIMAGE / ICONIFYIMAGE if P2 lists them) is drawn by us; every other method and every other SYSIA_Which goes to the saved hook. IM_HITTEST / IM_FRAMEBOX / OM_NEW untouched, so gadget sizes never change.
+- Interface: public semaphore `Amarchy.Flat` with a versioned MEMF_PUBLIC block: `enabled` word, glyph pens, glyph style (OD-F4), call counter (sentinel), `still_chained`. Amarchy writes it, then refreshes window frames (RefreshWindowFrame over a LockIBase walk, reusing amarchy/tile.c:290 / :308).
+- Uninstall: restore the Hook only if it still holds our entry; else stay resident and inert, set `still_chained`, exit only when restored.
 
-### Hook mechanisms, ranked (from research section 2 and 8)
+### Failure safety
 
-1. Pens only (P1): no patch.
-2. BOOPSI class hook swap (P2): `cl_Dispatcher` of the RAM IClass structs (V, research 8.1a: frameiclass, propgclass, buttongclass share ROM trampoline 0xFE1118; swap the class's Hook, never the trampoline).
-3. SetFunction on graphics / intuition LVOs filtered to Intuition's own callers (P3): verified non-inlined on 3.2.3 (research 8.2).
-4. SetFunction on gadtools `DrawBevelBoxA` (LVO -120, V from ndk/lib/fd/gadtools_lib.fd) (P4).
-Rejected: owning the frame by borderless windows + own gadgets (changes BorderTop/Left, research 2.4).
+- Prefs key `amarchy-flat` gates the startup block (default OD-F1).
+- Crash marker `ENVARC:Amarchy/flat-starting` written before the swap, deleted 60 s after; present at start = start inert, STATUS `flat=held`. Reuses desk_marker_make / desk_marker_parse (amarchy/desk_core.h).
+- Boot gesture per OD-F7.
+- `amarchy-flat` has `__stack` + `$STACK` cookie. The dispatcher runs on the caller's stack: no libc, no recursion, frame <= 64 bytes (host-checked, FLAT-C3).
 
-### Caller selection without hard-coded addresses (FLAT-A5)
+### Stacking, RTG, 3.1
 
-The 3.2.3 return addresses in research 8 are evidence, not constants. `amarchy-flat` self-calibrates at start:
-1. Code range: intuition's ROM span `[FindResident("intuition.library"), rt_EndSkip)`, the same test device/upconsole.c:302 `patched_vector` uses for console.device (reuse: move it into a shared helper, do not copy).
-2. Calibration run: with the patches installed but in "record" mode, open a hidden 1-window probe on a private screen (OpenWindow, SetWindowTitles, RefreshWindowFrame, a menu strip laid out with LayoutMenus... no user input), and record the return-address set per phase. Each RectFill / SetAPen / Move / Text / PrintIText / DrawImageState call site seen in the "frame" phase becomes a border site, "title" phase a title site, and so on. Pure classifier `flat_calib_classify` (host-tested).
-3. Steady state: a call is ours only when its return address is in the recorded site set for that element AND the RastPort's layer belongs to a window border / the screen bar layer. Anything else: jump to the old vector at once.
-Calibration that fails (no sites, sites outside the intuition span, a site set that differs between two runs) leaves that element inert and records why in the state block. Note: BltTemplate's caller 0xF9ACA8 (research 8.2) is outside the expected intuition span and is most likely graphics' own Text calling BltTemplate: it is never a selection site.
-
-### Live switch, off and uninstall (FLAT-A2)
-
-- Every patch entry first tests `enabled && (elements & bit)`; false = tail-jump to the saved old vector / old hook. Off is therefore instant and needs no unpatch (research 3).
-- Uninstall (Ctrl-C to `amarchy-flat`, or `amarchy-flat QUIT`): for each vector, SetFunction(old) and compare the returned value with our entry; on mismatch (patched on top) put it back, stay chained and inert, set `still_chained` (mechanism described in research 0, written from scratch). Class hooks: restore only if `h_Entry` is still ours. The process exits only when nothing is chained, else it stays resident and inert until reboot and says so.
-- 68060: CacheClearU after each SetFunction and each hook write, under Forbid.
-
-### Refresh of open windows (FLAT-A4)
-
-After a state change Amarchy walks screens/windows under LockIBase (reuse the walk in amarchy/tile.c:290 / :308, extract a shared iterator if it is not one already) and calls RefreshWindowFrame per window, and for the screen bar ShowTitle off/on or the IPrefs-free equivalent measured in FLAT-R2. Gadget imagery: RefreshGList on the window's gadget list. Apps that draw their own frames refresh at their next own redraw (documented limit).
-
-### Failure safety (patch crash = system crash)
-
-- Kill switch 1, prefs: amconf key `amarchy-flat` (default per OD-F1) gates the startup block; off = the program is not started.
-- Kill switch 2, boot hold: holding both mouse buttons (or the left button, per OD-F7) during boot makes `amarchy-flat` print one line and exit before patching.
-- Kill switch 3, crash marker: before patching, write `ENVARC:Amarchy/flat-starting`; delete it after calibration plus 60 s up. If the marker exists at start, start inert (patches not installed), set STATUS `flat=held (last start did not finish)` and show it in prefs. Pattern reused from the desk pending-revert marker (amarchy/desk_core.h desk_marker_make / desk_marker_parse, desk_dos.c revert path); no new marker format.
-- Every patch entry is guarded by `enabled` and the per-element bit, so Amarchy can turn a misbehaving element off live without reboot.
-- Stack: `amarchy-flat` gets `__stack` + `$STACK` cookie (memory rule). Patch code itself runs on the caller's stack: it uses no recursion, no libc, at most ~64 bytes of locals (checked by a host size test on the compiled object, FLAT-A6).
-
-### Install / uninstall and stacking with other patchers (FLAT-A7)
-
-- Startup block `;BEGIN Amarchy-Flat` ... `;END Amarchy-Flat` in S:User-Startup, after IPrefs and after any RTG / MCP / PatchControl lines (User-Startup runs after Startup-sequence, so after SetPatch and P96 init). Reuse P1B-C1 `desk_startup_block_set` / `_remove` (P1b plan; still needed for the DOpus rows) and the Installer block pattern (dist/Install.installer:86, dist/Uninstall:101). Kit row in dist/packages.txt as part of the Amarchy add-on.
-- Detection of other patchers at start (reuse `patched_vector` span test): for each LVO we patch, record whether its vector already points outside the ROM module, and whose task (VisualPrefs, Birdie by task name; MCP, PatchControl generic). Policy when VisualPrefs or Birdie is present: Owner decision OD-F5. MCP / PatchControl / SetPatch: we chain normally (call old). A patcher installed above us that calls us with `jsr` instead of a tail jump changes the return address we see: our filter then matches nothing and that element simply stays stock (safe failure, recorded in counters as `passed through`).
-- PatchControl / SnoopDOS-style listers see our patches under the task name `amarchy-flat`.
-
-### RTG vs AGA
-
-- All drawing goes through the pen-index API (SetAPen + RectFill, Move/Text) of the RastPort we were handed: depth-agnostic on AGA planar and on P96/CGX. No direct bitmap writes, no BltBitMap, no 24-bit colour; colours come from the theme palette loaded by P1a (desk_palette), pens obtained by the screen's existing pen allocation.
-- RTG libraries SetFunction graphics LVOs at boot (U, known behaviour). We start later, so we sit above them and call down; nothing to special-case. Rig check on an RTG rig only if one exists (FLAT-R4); otherwise A1200 check covers AGA only and RTG stays U.
-- 8-bit AGA: the flat look needs at most 8 theme pens (DK_ROLES), within P1a's palette.
-
-### 3.1 notes
-
-- P1 pens: identical mechanism on 3.1 (P1a already handles 3.1 pointer editor separately).
-- P2: classes on 3.1 are ROM classes too (U); ICONIFYIMAGE and IM_DRAWFRAME knobs are V47, so on 3.1 those paths fall to the old dispatcher (research 5).
-- P3: calibration makes the code Kickstart-independent in design; whether 3.1 Intuition reaches graphics through the LVOs is U and measured by FLAT-R1 on `--os 31`.
-- Scope of 3.1 support is OD-F3.
+- Other patchers: detect VisualPrefs / Birdie by task name and by a sysiclass Hook that already points outside the intuition ROM span (the span test of device/upconsole.c:302 `patched_vector`, extracted to a shared helper, not copied). Policy OD-F5. MCP / PatchControl do not hook classes in the same way (U) and are left alone.
+- RTG vs AGA: P1 is pen indices only, depth-agnostic. The glyph code draws with SetAPen + RectFill / Move / Draw into the RastPort it is handed: works on planar and P96 / CGX alike. Rig check on RTG only if an RTG rig exists, else RTG stays U.
+- 3.1: palette.prefs pens identical. ic_GUIGeometry is a V2 IControl field (3.2): on 3.1 no border / title size control (U whether 3.1 IPrefs ignores or rejects it; R1 checks on `--os 31`). sysiclass on 3.1: R3 dumps the Hook on `--os 31`. Scope OD-F3.
 
 ## Reuse map
 
 | Need | Reuse | Where |
 |---|---|---|
-| Theme roles, flat pen mapping | `desk_pens`, DK_* roles and DrawInfo slots, `desk_role`, `desk_darker`, `desk_contrast` | amarchy/desk_core.h:11-40, desk_core.c:99 |
-| Pen change resets WB screen | `desk_pens_reset` + `desk_dos_apply` close/reopen path, `desk_dos_wb_close/open` hooks | amarchy/desk_core.h:40, desk_dos.c:132-231 |
-| Snapshot / revert / confirm requester / boot restore | desk_dos_apply flow, T:amarchy-revert, marker | amarchy/desk_dos.c:15-231, desk_core.h:85-99 |
-| Theme load and live switch entry | `gt_dos_load_current`, `gt_dos_select`, ARexx `DESK THEME` | amarchy/gthemes_dos.h:14-23, amarchy/amarchy.c (DESK verbs) |
-| ROM-module span / "is this vector patched" | `patched_vector` | device/upconsole.c:302 (extract to a shared header, both use it) |
-| SetFunction + restore skeleton | patchcon | tests/amiga/patchcon.c:27-31 |
-| Host draw tests against a fake RastPort | gfx_fake (logs every graphics call, draws RectFill/Text into a pixel buffer) | tests/render_host/gfx_fake.[ch] |
-| Window walk under LockIBase | tiling walk | amarchy/tile.c:290, :308 |
+| Theme roles, pen map, contrast guard | `desk_pens`, DK_* roles, DrawInfo slots, `desk_darker`, `desk_contrast` | amarchy/desk_core.h:11-40, desk_core.c:99 |
+| palette.prefs writer (pen4 / pen8) | `desk_palette` | amarchy/desk_core.h:43 |
+| Workbench reset, confirm, revert, boot restore | `desk_pens_reset`, `desk_dos_apply`, desk_dos_wb_close / _open, T:amarchy-revert, desk marker | amarchy/desk_core.h:40, :85-99, desk_dos.c:15-231 |
+| Theme load and switch entry | `gt_dos_load_current`, `gt_dos_select`, ARexx `DESK THEME` | amarchy/gthemes_dos.h:14-23, amarchy/amarchy.c |
+| Target table and apply kind | D-TGT `desk_target`, apply_kind table | amarchy/desk_core.h, P1b plan Interface |
+| ROM span / patched test | `patched_vector` | device/upconsole.c:302 |
+| Hook save / restore skeleton | patchcon | tests/amiga/patchcon.c:27-31 |
+| Host draw tests | gfx_fake | tests/render_host/gfx_fake.[ch] |
+| Window walk | tiling walk | amarchy/tile.c:290, :308 |
 | Sentinels | `am_sentinel`, `am_sentinel_str` | amarchy/sentinel_dos.c:5, :17 |
-| Startup block edit | P1B-C1 `desk_startup_block_set/_remove`; Installer blocks | P1b plan; dist/Install.installer:86, dist/Uninstall:101 |
-| Option storage / prefs rows | amconf AM_* keys, PG_PAGE_AMARCHY | amarchy/amconf_core.h:12-26, prefs/settings_def.c |
-| Rig test skeleton | RX1 desk rig, `ami.read_file` | tools/rig/amarchy_desk_rig.py (P1a), tools/rig/ami.py:518 |
+| Startup block | P1B-C1 `desk_startup_block_set/_remove`; Installer blocks | P1b plan; dist/Install.installer:86, dist/Uninstall:101 |
+| Prefs rows | amconf AM_* keys, PG_PAGE_AMARCHY | amarchy/amconf_core.h:12-26, prefs/settings_def.c |
+| Rig test skeleton | RX1 desk rig | tools/rig/amarchy_desk_rig.py |
 
-Searched and not found (new code justified): no BOOPSI class hook swap in our own code (`git grep cl_Dispatcher` outside thoughts/ finds only reference/kingcon/KingCON-handler.asm:17566, a third-party class setup, not reusable C); no caller-address filter; no shared state block between Amarchy and a resident helper. SetFunction appears only in tests/amiga/patchcon.c and device/upconsole.c (detection only).
+Searched, not found (new code justified): no IControl prefs writer; no BOOPSI class hook swap in our code (`git grep cl_Dispatcher` outside thoughts/ finds only reference/kingcon/KingCON-handler.asm:17566, third-party asm, not reusable).
 
 ## Checklist
 
-Columns per item: files; hook; reuse; host test; rig check (`--os 32`, plus a 3.1 note); revert proof; A1200 check. Rigs run as 060 (`UPTERM_RIG=<n> rig.py start --max --os 32 --purpose "Amarchy flat: <item>"`), and stop at the end of the item.
+Rigs run as 060: `UPTERM_RIG=<n> rig.py start --max --os 32 --purpose "Amarchy flat: <item>"`; stop the rig at the end of the item. A1200 last, once per phase.
 
-### Probes (rig, before any patch code)
+### P1 flat pens and geometry (no patch)
 
-- [ ] **FLAT-R1 caller sites on 3.1.** Rerun the research-8 probe on `--os 31`: does Intuition reach RectFill/SetAPen/Move/Text/PrintIText/DrawImageState through the LVOs, and do all frame/title/menu sites lie in `[intuition rt, rt_EndSkip)`. Also on `--os 32`: confirm every site from research 8.2 lies in that span (except BltTemplate). Output: thoughts/shared/research/ note, section per OS. Answers OD-F3 input.
-- [ ] **FLAT-R2 flat pens screenshot (research 8.5, open).** With the P1 flat pen map on 3.2: screenshot border, title bar, gadgets, menus, screen bar, a GadTools requester. Haiku reads the picture. Decides how much P2-P4 changes visibly beyond P1.
-- [ ] **FLAT-R3 class hook layout.** For frameiclass, propgclass, buttongclass and sysiclass (created with SYSIA_DrawInfo from GetScreenDrawInfo, SYSIA_Which CLOSEIMAGE): print `h_Entry`, `h_SubEntry`, `h_Data`; confirm the trampoline at 0xFE1118 dispatches through `h_SubEntry` (disassemble 32 bytes). Decides FLAT-C0 (swap h_Entry vs h_SubEntry). 3.1 note: same dump on `--os 31`.
-- [ ] **FLAT-R4 RTG.** If a rig with P96 exists: whether RectFill / Text are already SetFunction'd at User-Startup time (span test). Else record RTG as U.
+- [ ] **FLAT-R1 IControl geometry probe.** Status: not started, waits for owner go. Rig `--os 32`: write ic_GUIGeometry bytes one at a time (ICB_VERSIONED set, ic_Version 2), apply through IPrefs, read BorderTop / BorderLeft / BorderRight / BorderBottom and title bar height of a new window. Output: meaning, range and default of each byte; whether IPrefs applies it live (Workbench reset) or needs reboot. `--os 31`: does IPrefs accept the versioned struct. Writes a section into the research note.
+- [ ] **FLAT-P1-1 flat pen map.** files: amarchy/desk_core.[ch] `desk_pens_flat(theme, pens[DK_SLOTS])` next to `desk_pens`; `desk_palette` takes the map as an argument. host test: golden palette.prefs (pen4 and pen8) for flat on / off in tests/data/desk/; every slot of the flat map moves the PALT pen bytes; desk_contrast still refuses an unreadable theme. rig `--os 32`: dri_Pens of a new window equal the flat map. 3.1: same on `--os 31`. revert: flat off -> palette.prefs bytes equal the P1a golden. A1200: owner looks at one window.
+- [ ] **FLAT-P1-2 IControl writer.** files: desk_core `desk_icontrol(cur, geometry[4], out, cap)` (pure: reads current icontrol.prefs bytes, sets ICB_VERSIONED, ic_Version, ic_GUIGeometry, keeps every other field), desk_dos writes ENV: / ENVARC:. host test: round trip of a captured 3.2 icontrol.prefs, only the 4 geometry bytes and version fields change; a pre-V2 file is upgraded without losing fields. rig: border / title size of a new window equal the values chosen (OD-F4). 3.1: per R1 result (skip or no-op). revert: off -> icontrol.prefs md5 equal to the snapshot.
+- [ ] **FLAT-P1-3 flat as a desk target.** Palette-row option `amarchy-flat-pens` and an IControl target row in D-TGT with the apply_kind R1 measured; both go through desk_dos_apply (snapshot, Workbench reset, confirm, revert). host test: desk_plan with the key on / off selects the maps and lists icontrol.prefs in the snapshot. rig: covered by X1. revert: confirm timeout restores both prefs files byte-equal.
 
-### Common (host first)
+### P2 measure the residue
 
-- [ ] **FLAT-A1 program skeleton.** files: new amarchy/flat.c (OS half), amarchy/flat_core.[ch] (pure), Makefile rule `build/amiga/amarchy-flat`. hook: none yet; Wait on CTRL_C / CTRL_F; `__stack` + `$STACK` cookie. host test: none (OS shell). rig: starts, prints version, exits on Ctrl-C. revert: n/a. A1200: start/stop once.
-- [ ] **FLAT-A2 install / chain / inert / remove (pure model + OS).** flat_core: `flat_vec_install`, `flat_vec_remove` over an abstract vector table (host fakes SetFunction), returning installed / restored / still_chained. host test: install, remove clean; install, other patch on top, remove -> still_chained + inert + old target rewritten never; double install refused; class-hook variant with a fake Hook. rig: patch a harmless LVO, patchcon-style second patch on top, remove: system keeps running, STATUS says still_chained. revert proof: after a clean remove, vectors byte-equal the boot snapshot (span test passes again). A1200: same, once.
-- [ ] **FLAT-A3 shared state block.** `Amarchy.Flat` semaphore, versioned struct in flat_core.h (one header both programs include). host test: version / size mismatch refused by Amarchy's writer; field offsets pinned. rig: Amarchy STATUS shows `flat=on|off|absent|held`. revert: n/a.
-- [ ] **FLAT-A4 refresh walk.** Amarchy side `flat_refresh_all` reusing the tile.c LockIBase walk (extract a shared iterator). host test: walk order over a fake screen/window list, each window refreshed once. rig: two windows open, theme switch, both frames repaint (pixel read via the rig). A1200: visual owner check.
-- [ ] **FLAT-A5 calibration.** `flat_calib_classify(phase, ret_addr[], n, span, out_sites)` pure; OS half opens the private probe screen. host test: a recorded 3.2.3 trace (research probe.out, copied into tests/data/flat/) classifies into the research-8 site sets; a trace with one site outside the span drops that element; two disagreeing runs drop it. rig `--os 32`: sites printed to the state block equal research 8.2 values; `--os 31` per FLAT-R1. revert: calibration leaves no window or screen open (screen count before == after).
-- [ ] **FLAT-A6 caller-context budget.** host test: objdump of the patch entry objects, stack frame <= 64 bytes, no `jsr` into libc. rig: run under `Stack 4096` shell, open 20 windows, no crash.
-- [ ] **FLAT-A7 install / stacking.** startup block via P1B-C1, kit row, Uninstall row; detection of VP / Birdie / foreign patches at start (shared `patched_vector`). host test: block text, detection table from fake vectors. rig: (a) stock, (b) with a patchcon-style foreign patch on RectFill below us, (c) VP installed (P1b rig image) -> behaviour per OD-F5. revert: Uninstall removes block and binary, User-Startup md5 equals pre-install. A1200: install + uninstall once.
-- [ ] **FLAT-A8 kill switches.** prefs key, boot hold, crash marker (reuse desk marker make/parse). host test: marker present -> inert decision; marker removed after the 60 s mark (injected clock, no real sleep). rig: kill the rig mid-start (after marker write, before delete; never mid disk write: wait 5 s quiet), reboot: `flat=held`; boot with both buttons held (rig input) -> not started. A1200: boot hold once.
-- [ ] **FLAT-A9 prefs rows.** PG_PAGE_AMARCHY: Flat system look (on/off), one row per v1 element (OD-F2), look options (OD-F4), status line (on / held / absent / VisualPrefs present). Full English labels. host test: rows present, each writes its key. rig: covered by X1.
+- [ ] **FLAT-M1 residue screenshots.** Status: not started, waits for owner go. Rig `--os 32` with P1 applied (theme A, then theme B): screenshot (a) active and inactive window frames, (b) close / depth / size / zoom / iconify glyphs, (c) a pull-down menu with checkmark, submenu arrow and separator, (d) the screen title bar, (e) a GadTools window (tests/amiga/ test window: button, string, cycle, checkbox, listview, bevel box) and a 3.2 Prefs editor, (f) a Workbench drawer window's scrollers. A haiku subagent reads each picture with one question per element: "is there a two-tone bevel or a light highlight edge left?". Copy screenshots to ~/Desktop/upterm-shots, delete inbox files after the read.
+- [ ] **FLAT-M2 residue list.** Status: not started, waits for owner go. Write the list into this plan (a table: element, what still looks beveled, which class or code draws it from research 8, fix route: none needed / sysiclass hook / owner decision). Elements drawn by a class we can swap (sysiclass, and frameiclass / propgclass only if listed) go to P3; anything drawn by Intuition or GadTools code directly goes to OD-F9.
 
-### P1 flat pens + live switch (no patch)
+### P3 patch the measured residue (expected: sysiclass glyphs)
 
-- [ ] **FLAT-P1-1 flat pen map.** files: amarchy/desk_core.[ch]: `desk_pens_flat(pens[DK_SLOTS])` (shine = shadow = the border tone, fill = accent, bar pens per theme) next to `desk_pens`; desk_palette / palette.prefs writer takes the map as an argument instead of calling desk_pens directly. hook: none (palette.prefs pens, IPrefs). reuse: desk_pens, desk_palette, desk_pens_reset. host test: golden palette.prefs for flat on/off (tests/data/desk/), every slot in the flat map moves the PALT pen bytes, contrast guard (desk_contrast) still refuses an unreadable theme. rig `--os 32`: DrawInfo of a freshly opened window equals the flat map (dri_Pens dump). 3.1: same on `--os 31`. revert: flat off -> palette.prefs bytes equal the P1a non-flat golden. A1200: owner looks at one window.
-- [ ] **FLAT-P1-2 flat as a desk target.** D-TGT row (or an option of the palette row, decided in implementation by whether it has its own files: it does not, so it is a palette-row option, amconf key `amarchy-flat-pens`). Live switch: `DESK THEME` with the key on goes through desk_dos_apply (WB close/reopen when desk_pens_reset says so, 15 s confirm, revert). host test: desk_plan with the key on/off selects the map. rig: covered by X1 step 1. revert: confirm timeout restores the previous palette.prefs bytes.
-
-### P2 class dispatchers behind the global inert flag
-
-Each item: hook = swap of that IClass's Hook (h_Entry or h_SubEntry per FLAT-R3), old Hook saved, `enabled && bit` test first, unknown methods / attributes and OM_NEW / OM_SET / IM_FRAMEBOX / IM_HITTEST always to the old hook. Drawing code is pure C against the RastPort API so it runs on the host under gfx_fake.
-
-- [ ] **FLAT-C0 class hook swap primitive.** `flat_class_hook(name, which, entry)` finds the IClass by NewObjectA(NULL, name) + OCLASS (the research probe method), swaps under Forbid + CacheClearU. host test: fake IClass / Hook model in flat_core (same model as A2). rig: swap and restore frameiclass with a pass-through hook, 1000 window open/close cycles, no change in pixels (rig pixel read).
-- [ ] **FLAT-C1 sysiclass glyphs.** files: amarchy/flat_glyph.[ch] (pure geometry: rect lists per SYSIA_Which and box size for CLOSE, DEPTH, ZOOM, SIZE, ICONIFY on 3.2; menu checkmark and submenu arrow per OD-F2), flat.c hook. host test: gfx_fake renders each glyph at 3 sizes into pixels, compared to goldens; selected / inactive states use the state's pen; unknown SYSIA_Which goes to old hook (call-count). rig `--os 32`: the 4 window gadgets' pixels equal the golden after open and after RefreshWindowFrame; off -> pixels equal the stock capture. 3.1: ICONIFY absent, the rest same. revert: flag off + RefreshWindowFrame -> stock pixels. A1200: owner looks.
-- [ ] **FLAT-C2 frameiclass frames.** IM_DRAW / IM_DRAWFRAME draw a flat 1-pixel line (or none, per OD-F4) + fill; IM_FRAMEBOX passes to the old hook so layout metrics never move. host test: gfx_fake per frame type (DEFAULT, BUTTON, RIDGE, ICONDROPBOX), recessed / selected; IM_FRAMEBOX result equals the old hook's on a recorded table. rig: a ReAction-free BOOPSI button window (small test program in tests/amiga/) pixels and IM_FRAMEBOX numbers unchanged layout. revert: same as C1.
-- [ ] **FLAT-C3 propgclass knob and container.** GM_RENDER: flat container fill + flat knob for PROPNEWLOOK; anything else to the old hook. host test: gfx_fake, horizontal / vertical, knob at 0 %, 50 %, 100 %. rig: window border scrollers (a Workbench drawer window) pixels flat, knob position equals stock (same rectangle). Classic non-BOOPSI props stay stock (U, research 1): recorded, not hooked. revert: as C1.
-- [ ] **FLAT-C4 buttongclass.** First check on the rig whether buttongclass GM_RENDER only draws its GadgetRender image (then the images in C1/C2 cover it and this item closes with a written exemption, protocol section 2) or draws a highlight itself (complement / bevel): then hook GM_RENDER for the highlight only. host / rig per outcome.
-
-### P3 border, title, screen bar, menus via drawing-call patches filtered to Intuition's callers
-
-Hooks: SetFunction graphics RectFill (-306), SetAPen (-342), Move (-240), Text (-60), intuition PrintIText (-216), DrawImageState (-618). LVOs to be rechecked against ndk/lib/fd at implementation. Each entry: flag test, then site test (FLAT-A5), then layer test, else tail-jump old.
-
-- [ ] **FLAT-B1 window border.** At border sites: substitute the pen in SetAPen by the element's flat pen (border line / fill, active vs inactive from the window's WFLG_WINDOWACTIVE), RectFill unchanged geometry. Border thickness stays Intuition's (research 8 verdict). host test: replay a recorded border call sequence (tests/data/flat/border-32.trace) through the patch logic on gfx_fake, assert the pixel colours of every border column. rig: border pixels of active and inactive window equal theme pens for theme A and B; off -> stock. 3.1 per FLAT-R1. revert: off + RefreshWindowFrame -> stock pixels. A1200: owner looks.
-- [ ] **FLAT-B2 window title.** Text pen and background at title sites; title alignment (OD-F4) by shifting the Move x at the title site within the drag bar (TextLength of the title, bounded by the gadgets' left edges). host test: replay trace, left / centre positions, a title longer than the bar is left as stock. rig: title text pixels and x position for both alignments.
-- [ ] **FLAT-B3 screen title bar.** RectFill / SetAPen / Move / Text at the screen-bar sites (research 8.2: RectFill 0xFF26AC, SetAPen 0xFF2558, Move 0xFF283A, Text 0xFF2952 on 3.2.3; never BltTemplate). host test: replay trace. rig: bar pixels after SetWindowTitles with a new screen title, both themes.
-- [ ] **FLAT-B4 menus.** Pull-down box fill and outline (RectFill sites research 8.4), item text pen at PrintIText / Text sites, separator bars. Checkmark / submenu arrow via C1 if they are sysiclass images (U, research 8 verdict). host test: replay a menu trace. rig: hold the right button 3 s, read box pixels, both themes; menu stays usable (select an item, Amarchy STATUS shows the menu action ran).
-- [ ] **FLAT-B5 rounded window corners (only if OD-F6 picks a or b).** See OD-F6 for the facts. (a) fake corners: after the last border RectFill of a window refresh (B1 site), paint the 2..3 corner pixels per corner in the screen's background pen. files: flat_glyph (corner masks, pure), B1 hook. host test: gfx_fake corner masks at radius 2 and 3. rig: corner pixels equal the backdrop pen over the plain Workbench backdrop; a window over another window shows the notch (recorded as expected, screenshot for the owner). revert: off -> square corners.
-
-### P4 GadTools
-
-- [ ] **FLAT-G1 DrawBevelBoxA.** SetFunction gadtools -120 (V: 16th entry after bias 30 in gadtools_lib.fd). Not caller-filtered: every bevel box (apps and GadTools itself) goes flat; GTBB_Recessed and GTBB_FrameType (BBFT_BUTTON, RIDGE, ICONDROPBOX) map to C2's frame drawing (shared code, one function). host test: gfx_fake per frame type and recessed flag. rig: a GadTools test window (tests/amiga/, button, string, cycle, checkbox, listview) and the 3.2 Prefs editors' bevel boxes flat.
-- [ ] **FLAT-G2 GadTools internal frames.** Measure on the rig whether GadTools gadget frames call DrawBevelBoxA through the LVO, use frameiclass images (then C2 covers them) or draw internally. Only an LVO or class path is hooked; an internal path is recorded as a known limit with a screenshot, written exemption.
+- [ ] **FLAT-R3 sysiclass Hook layout.** Status: not started, waits for owner go. Rig `--os 32` and `--os 31`: dump `h_Entry`, `h_SubEntry`, `h_Data` of sysiclass (instance created with SYSIA_DrawInfo + SYSIA_Which CLOSEIMAGE), disassemble 32 bytes at the trampoline. Decides which field C1 swaps.
+- [ ] **FLAT-C0 program skeleton and state.** files: amarchy/flat.c (OS), amarchy/flat_core.[ch] (pure, state block struct shared with Amarchy), Makefile rule `build/amiga/amarchy-flat`; `__stack` + `$STACK` cookie; `Amarchy.Flat` semaphore. host test: state struct offsets pinned, version / size mismatch refused. rig: starts, STATUS shows `flat=on|off|absent|held`, Ctrl-C exits when nothing is chained.
+- [ ] **FLAT-C1 sysiclass hook swap and remove.** `flat_class_hook` (save, swap, restore-if-ours, still_chained), pure model over a fake IClass / Hook. host test: install / clean remove; foreign hook on top -> still_chained + inert, our saved hook never written over theirs; double install refused. rig: swap with a pass-through dispatcher, 1000 window open / close cycles, glyph pixels unchanged; remove restores the Hook byte-equal.
+- [ ] **FLAT-C2 flat glyphs.** files: amarchy/flat_glyph.[ch] (pure geometry: rect / line list per SYSIA_Which and box size; states normal / selected / inactive; style per OD-F4). Only the SYSIA_Which values M2 lists; others to the old hook. host test: gfx_fake renders each glyph at 3 box sizes into pixel goldens; unknown SYSIA_Which and non-IM_DRAW methods reach the old hook (call count). rig `--os 32`: glyph pixels equal the golden after open and after RefreshWindowFrame, for theme A and B; flag off + RefreshWindowFrame -> stock pixels. 3.1: per R3 and OD-F3. A1200: owner looks.
+- [ ] **FLAT-C3 caller-context budget.** host test: the dispatcher object's stack frame <= 64 bytes, no libc calls (objdump check). rig: 20 windows opened from a `Stack 4096` shell, no crash.
+- [ ] **FLAT-C4 kill switches and install.** Crash marker (desk marker reuse), boot gesture (OD-F7), prefs key, startup block `;BEGIN Amarchy-Flat` via P1B-C1, kit row, Uninstall row, VisualPrefs / Birdie detection (OD-F5). host test: marker -> inert decision with injected clock; startup block text; detection table from fake hooks. rig: kill the rig after the marker write (5 s quiet first, never mid disk write), reboot -> `flat=held`; install + Uninstall -> User-Startup md5 equals pre-install. A1200: install, boot gesture, uninstall once.
+- [ ] **FLAT-C5 prefs rows.** PG_PAGE_AMARCHY: Flat system look (on / off), Flat window gadgets (on / off), border and title size, glyph style, status line (on / held / absent / VisualPrefs present). Full English labels. host test: each row writes its key. rig: covered by X1.
+- [ ] **FLAT-C6 rounded window corners (only if OD-F6 picks painted corners).** After the frame draw, paint 2-3 pixels per corner in the screen background pen. Hook point: U; the sysiclass hook does not draw the frame, so this needs a frame-draw hook the owner decision excluded unless M2 finds a class-level route. If none: the item closes and OD-F6 records it. host test: corner masks at radius 2 and 3 on gfx_fake. rig: corner pixels equal the backdrop pen over the plain backdrop.
 
 ### Reachability (one rig test)
 
-- [ ] **FLAT-X1 `test_flat_theme_reaches_system_gui`** in tools/rig/amarchy_desk_rig.py (extends RX1). Rig `--os 32 --max`, purpose "Amarchy flat UI: theme drives the system look". Setup: kit with amarchy-flat installed, prefs key per OD-F1. Steps:
-  1. Flat off: `DESK THEME <A>`; flat counters in STATUS do not move; border / title / gadget / bar / menu / bevel-box pixels equal the stock capture.
-  2. Flat on (all v1 elements): `DESK THEME <A>`; per-element counters > 0 (sentinel: the patch ran); pixels equal theme A pens for each element; IM_FRAMEBOX numbers and window BorderTop / BorderLeft unchanged.
-  3. `DESK THEME <B>`: every element's pixels move to theme B (every knob moves output), plus each look option of OD-F4 toggled once moves its pixels.
-  4. Element bits one by one off: only that element returns to stock.
-  5. Flat off live: all stock again without reboot; counters stop moving.
-  6. Uninstall: User-Startup md5 equals pre-install, after reboot no `Amarchy.Flat` semaphore.
+- [ ] **FLAT-X1 `test_flat_theme_reaches_system_gui`** in tools/rig/amarchy_desk_rig.py (extends RX1). Rig `--os 32 --max`, purpose "Amarchy flat UI: theme drives the system look". Steps:
+  1. Flat off: `DESK THEME <A>`; dri_Pens equal the P1a map; glyph counter does not move; frame / glyph pixels equal the stock capture.
+  2. Flat on: `DESK THEME <A>` (Workbench reset, confirm); P1 sentinel set; dri_Pens equal the flat map; border / title size equal the chosen geometry; glyph counter > 0; glyph pixels equal theme A.
+  3. `DESK THEME <B>`: pens, geometry and glyph pixels move to theme B; each look option toggled once moves its output.
+  4. Flat window gadgets off live: glyphs stock after RefreshWindowFrame, pens stay flat.
+  5. Flat off: stock pens, stock geometry, stock glyphs after the Workbench reset.
+  6. Uninstall: User-Startup md5 equals pre-install; after reboot no `Amarchy.Flat` semaphore.
   3.1 run of steps 1-5 if OD-F3 includes 3.1.
 
 ## Host tests (summary)
 
-New suite `make test ONLY=flat`: A2 chain model, A3 struct, A4 walk, A5 classifier on recorded traces, A6 budget, A8 marker, C0 hook model, C1-C3 / G1 glyph and frame goldens on gfx_fake, B1-B4 trace replays, P1-1 palette goldens.
+`make test ONLY=desk` gains P1-1 / P1-2 / P1-3; new suite `make test ONLY=flat`: C0 struct, C1 hook model, C2 glyph goldens on gfx_fake, C3 budget, C4 marker and detection.
 
 ## Risks
 
-- A patch bug crashes every program that draws: mitigated by the kill switches, the per-element live bits, minimal code in caller context, and A6.
-- Third-party patchers above us with `jsr` defeat the caller filter: safe (stock look) but silent; STATUS shows `passed through` counts.
-- Kickstart variants (3.2.x updates, 3.1, 3.9 / 3.1.4 ROMs) change sites: calibration handles relocation; a changed call pattern drops the element to stock.
-- Classic Gadget-struct props and apps that draw their own frames stay stock.
-- Pens-only P1 changes every 3D bevel on the screen (shine = shadow): R2 decides whether P1 alone is acceptable as the default.
+- P1 alone changes every 3D bevel on the screen at once (shine and shadow); some apps rely on the bevel to show edges. M1 shows how bad that is before any patch.
+- ic_GUIGeometry byte meaning is unmeasured; R1 may find it limited (for example title bar only).
+- A sysiclass hook bug crashes every window open: kill switches, live inert flag, small code (C3).
+- Residue drawn directly by Intuition or GadTools (no class, no prefs) stays beveled unless the owner chooses otherwise (OD-F9).
 
 ## Order
 
-1. FLAT-R1..R4 in one probe session (rig 3.2, then 3.1).
-2. Owner decisions answered.
-3. P1 (P1-1, P1-2) can land before any patch exists.
-4. A1-A3, A5, A2, A8, A6, then P2 (C0, C1, C2, C3, C4), then P3 (B1-B4, B5 if chosen), then P4 (G1, G2), A7, A9 alongside.
-5. FLAT-X1 last; A1200 checks once per phase.
+1. FLAT-R1, then P1 (P1-1, P1-2, P1-3) lands on its own.
+2. FLAT-M1, M2: residue list into this plan.
+3. Owner answers OD-F9 for residue P3 cannot fix.
+4. R3, C0, C1, C2, C3, C4, C5 (C6 only if chosen and routable).
+5. FLAT-X1 last; A1200 check once per phase.
 
 ## Owner decisions
 
-All open. Recommended option first.
+DECIDED 2026-10-29: pens first; patches only for the measured residue; no caller-filtered graphics patches. Open ones below, recommended option first.
 
-- **OD-F1 Default on or off after install.** (a) Off; Amarchy prefs turns it on. Trade-off: no risk to users who never asked, but the flat look is not seen out of the box. (b) On for P1 pens only, patches off. Trade-off: flat colours by default with zero patching risk, but every bevel on the screen changes on first install. (c) On for everything. Trade-off: full look at once, a patch bug hits every new user at first boot.
-- **OD-F2 Elements in v1.** (a) P1 pens + P2 glyphs and frames (C1, C2) + P3 border and title (B1, B2). Trade-off: the visible window look with the measured paths; screen bar, menus, props and GadTools follow later. (b) Everything in P1-P4. Trade-off: complete look, longest time to first release and largest crash surface. (c) P1 pens only. Trade-off: zero patch risk, bevels stay 3D-shaped.
-- **OD-F3 AmigaOS 3.1 support.** (a) 3.2 only for patches; P1 pens on 3.1 too. Trade-off: one OS to verify, 3.1 users get colours only. (b) 3.1 and 3.2 for all phases. Trade-off: every rig check twice and FLAT-R1 may show 3.1 needs a different path. (c) 3.2 only for everything.
-- **OD-F4 Look options.** Border width: (a) Intuition's width, not changeable (only option the measured path supports). Title alignment: (a) left as stock, (b) centred as an option. Trade-off: centring needs the Move shift in B2 and a fallback for long titles. Frame line: (a) 1-pixel line in the theme's border tone, (b) no line, fill only. Trade-off: (b) is flatter but buttons on same-colour backgrounds lose their edge. Glyph style: (a) thin line glyphs in the text pen, (b) filled blocks.
-- **OD-F5 VisualPrefs or Birdie present.** (a) amarchy-flat refuses to start and the prefs page says which patch to remove. Trade-off: no stacking unknowns, user must choose. (b) Start and patch on top. Trade-off: two patchers redraw the same pixels, untested order. (c) Start with only the elements VP/Birdie do not touch. Trade-off: partial look, per-element detection needed.
-- **OD-F6 Rounded window corners.** Facts: AmigaOS 3.x layers are rectangles clipped through ClipRect lists (VERIFIED: NDK 3.2 clib/layers_protos.h 47.1 lists no shape call; its only clip / hook calls are InstallClipRegion, InstallLayerHook, InstallLayerInfoHook, DoHookClipRects, Create*HookLayer, all rectangular; no LAYA_Shape / ChangeLayerShape anywhere in the NDK 3.2 include tree). A clip region limits drawing inside a layer, it does not make the layer's damaged area or the windows behind show through (UNVERIFIED that no undocumented 3.2 mechanism exists; headers cannot prove absence). (c) Recommended: no rounding in v1. Trade-off: square corners, no notch artefacts; Amarchy's tiling places windows edge to edge, where fake corners would show a notch against the neighbour most of the time. (a) Fake corners: paint the 2-3 corner pixels per corner in the screen's background pen (B5). Trade-off: right over the plain desktop, a visible notch over every other window and over the backdrop pattern; cheap and safe. (b) True corners: the corner pixels must show what lies behind, which needs layer shape support (absent) or a patch of layers.library to backfill from the windows behind (simple-refresh layers keep no off-screen copy). Trade-off: correct look, but a layers.library patch is the highest-risk hook in the system and is weeks of work; not recommended.
-- **OD-F7 Boot kill-switch gesture.** (a) Both mouse buttons held at boot. Trade-off: rarely pressed by accident, needs a two-button mouse (all targets have one). (b) Left button. Trade-off: easier, collides with other tools that use the left button at boot. (c) No gesture, crash marker only.
-- **OD-F8 Process model.** (a) Separate resident `amarchy-flat` (recommended above). Trade-off: one more program and an interface vs crashes on every Amarchy restart once chained. (b) Inside Amarchy.
+- **OD-F1 Default after install.** (a) Off; Amarchy prefs turns it on. Trade-off: no change for users who never asked, flat look not seen out of the box. (b) Flat pens on, glyph patch off. Trade-off: flat colours by default with zero patch risk, but every bevel on the screen changes at first install. (c) All on.
+- **OD-F3 AmigaOS 3.1.** (a) Pens on 3.1 and 3.2; geometry and glyph patch on 3.2 only. Trade-off: one OS to verify for the patch; 3.1 keeps stock border size and glyphs. (b) Everything on both. Trade-off: every rig check twice, R1 / R3 may show 3.1 needs other paths. (c) 3.2 only.
+- **OD-F4 Look options.** Shine pen: (a) background pen, (b) fill pen. Trade-off: (a) flattest, (b) keeps a faint edge on selected surfaces. Border and title size: (a) one Amarchy default from R1, (b) a size option in prefs. Trade-off: (b) is one more row and more rig states. Glyph style: (a) thin line glyphs in the text pen, (b) filled blocks.
+- **OD-F5 VisualPrefs or Birdie present.** (a) amarchy-flat refuses to start and the prefs page names the patch to remove. Trade-off: no stacking unknowns, the user must choose. (b) Start and hook on top. Trade-off: two patchers drawing the same glyphs, untested order. (c) Pens only, no glyph patch.
+- **OD-F6 Rounded window corners.** Facts: NDK 3.2R4 has no shaped-layer or window-decoration API (clib/layers_protos.h 47.1: layers are rectangles of ClipRects; only InstallLayerHook / InstallLayerInfoHook backfill hooks, no LAYA_Shape / ChangeLayerShape in the include tree). Only painted corners are possible. (c) No rounding. Trade-off: square corners, no artefacts; Amarchy tiles windows edge to edge, where painted corners show a notch against the neighbour most of the time. (a) Painted corners: 2-3 pixels per corner in the background pen. Trade-off: right over the plain desktop, a visible notch over other windows and over a backdrop pattern; needs a frame-draw hook point (C6), which the no-caller-filter decision may leave without a route.
+- **OD-F7 Boot kill-switch gesture.** (a) Both mouse buttons held at boot. Trade-off: rarely pressed by accident. (b) Left button. Trade-off: collides with other boot-time tools. (c) None, crash marker only.
+- **OD-F8 Process model for the patch.** (a) Separate resident `amarchy-flat`. Trade-off: one more program and an interface, against a crash on every Amarchy restart once chained. (b) Inside Amarchy.
+- **OD-F9 Residue that pens and the sysiclass hook cannot fix** (filled from M2). Per element: (a) accept it beveled. Trade-off: no new patch surface. (b) A targeted patch for that element only (class hook or library LVO such as gadtools DrawBevelBoxA, never a caller-filtered graphics patch). Trade-off: more look, more crash surface per element.
