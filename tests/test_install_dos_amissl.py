@@ -56,6 +56,13 @@ class InstallDosAmiSSL(unittest.TestCase):
         # AMISSL-SHELL-WINDOW: (run "Execute ...") opens a Shell window, (execute) does not
         self.assertNotIn('(run "Execute T:UPTAMISSL")', run)
 
+    def test_installer_p_anx_starts_script_with_execute_not_run(self):
+        # P-ANX-RUN-EXECUTE: same fix as AMISSL-SHELL-WINDOW
+        anx = INSTALLER[INSTALLER.index('(procedure P_ANX'):]
+        anx = anx[:anx.index('\n(procedure ', 1)] if '\n(procedure ' in anx[1:] else anx
+        self.assertIn('(execute "T:UPTANX")', anx)
+        self.assertNotIn('(run "Execute T:UPTANX")', anx)
+
 
 if __name__ == '__main__':
     unittest.main()

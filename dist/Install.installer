@@ -97,7 +97,7 @@
                       (append (cat "CD \"" (tackon #files "AmiNetXDuo") "\"\n"
                                    "Installer SCRIPT Install-AmiNetXDuo APPNAME AmiNetXDuo "
                                    "MINUSER AVERAGE DEFUSER AVERAGE NOLOG\n")))
-            (run "Execute T:UPTANX")
+            (execute "T:UPTANX")
             (run "Delete >NIL: T:UPTANX QUIET")
             (if (exists "S:AmiNetXDuo-Files" (noreq))
                 (
