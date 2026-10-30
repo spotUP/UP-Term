@@ -42,10 +42,14 @@ Done, on origin/main:
 - 6157fbe2 DOPUS5-BLOCK-GONE-ALLCASE: the check was wrong, not the uninstall. A rig that boots the master's DOpus 5.82 never gets a ;BEGIN DOpus5 block. The check now demands the block only when S:User-Startup after the Installs holds it. Regression test added.
 
 Open, in order:
-1. The rig 8 `--only all` rerun at 6157fbe2 (scratchpad all8b.log). Tick DOPUS5-BLOCK-GONE-ALLCASE when 97 of 97 pass.
-2. BASEDEST-EMPTY-SYSUPTERM: base-dest FAIL 7 on a fresh rig 3 found an empty SYS:UP-Term. List it before the case to tell whether it comes from the image or the install.
+1. DONE: the rig 8 `--only all` rerun at 6157fbe2 passed 96 of 96; DOPUS5-BLOCK-GONE-ALLCASE is ticked.
+2. DONE e6ad0d1f BASEDEST-EMPTY-SYSUPTERM: check 7 compares `List SYS:UP-Term ALL` before and after. Rig 3 base-dest 93 of 95; the two FAILs (55 nano, 66 zip) are PORTS-BUILD-GONE.
+5. INSTALLER-ROOM-SPLIT, host done fa5da1c9: Install.installer runs UPBigVol ROOM with install.dos's DEST/SYS split; UPBigVol writes ENV:UPTROOM and ENV:UPTROOMAT. Still open: a rig run of the GUI room page (installer_rig room case). The kit on the rigs must carry the new UPBigVol and Install.installer first (hand refresh, see item 3).
+4. DCTelnet modern ANSI (owner question): research in thoughts/shared/research/2026-10-30_dctelnet-modern-ansi.md recommends the embedded engine route (dctelnet-vtcon) over up-console.device. No code yet; the work items are listed there.
 3. PORTS-BUILD-GONE: upterm-ports/build is gone, so `make dist` is blocked until a `make kit-stage` (a full ports build in the other repo) runs. The owner decides. Until then, refresh the kit by hand: copy the changed Files into build/dist/up-term/Files, then run `python3 tools/mkkit.py base`.
 
 Gotchas:
 - Rigs without `rig.py dopus` boot DOpus 5.82, and DOpus add-on checks then see the old program.
-- Install.installer's GUI room check counts the SYS parts against the drawer's volume. It overestimates when DEST is not on SYS:. install.dos splits the parts per volume. Ledger row INSTALLER-ROOM-SPLIT.
+- test_dist_ipk fails while ../upterm-ports sits on branch port/htop (no recipe has _SUMMARY there). Ledger TEST-IPK-PORTS-BRANCH.
+- test_doc_setenv_save (dist/README.txt:890, from fc56d6b7) and test_stage_rig (super+help rows) fail without the session 27 changes. Ledger TEST-FAILS-NOT-MINE.
+- Disk: about 5.7 GiB free on /. Check `df -h /` before any build or rig run.
