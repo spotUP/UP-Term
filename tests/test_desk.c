@@ -495,7 +495,7 @@ static void test_desk_plan(void)
     CHECK_INT(desk_plan(0, &t, why, sizeof why), 0);
 }
 
-/* FLAT-P1-2: the icontrol.prefs writer on a hand-built 3.2 layout file (tests/data/desk/icontrol-os32.prefs, R1 layout; not a rig capture) */
+/* FLAT-P1-2: the icontrol.prefs writer on a real capture (tests/data/desk/icontrol-os32.prefs: ENVARC:Sys/icontrol.prefs saved once by SYS:Prefs/IControl 47.x on a stock --os 32 rig, 72 bytes; stock 3.2 already writes ICB_VERSIONED and version 2, geometry all zero) */
 static void test_desk_icontrol(void)
 {
     static unsigned char gold[BUF_MAX], out[BUF_MAX], out2[BUF_MAX], old[BUF_MAX], iexc[BUF_MAX];
@@ -509,7 +509,7 @@ static void test_desk_icontrol(void)
         if (!memcmp(gold + p, "ICTL", 4))
             ictl = p + 8;
     CHECK(ictl > 0);
-    /* the captured file is the baseline: thin changes the version fields, the versioned flag and the 4 geometry bytes only */
+    /* the captured file is the baseline: thin changes the 4 geometry bytes (the real file has the version fields already; the pre-V2 case below covers the upgrade) */
     n = desk_icontrol(gold, gn, thin, out, sizeof out);
     CHECK_INT(n, gn);
     for (i = 0; i < n; i++)
