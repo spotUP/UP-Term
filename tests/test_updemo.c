@@ -9,6 +9,7 @@
 
 static vt_term *t;
 static long now, keys_left, bytes;
+static long shrink_at, regrow_at;     /* the user drags the size gadget: 60 x 20 at shrink_at, 80 x 24 at regrow_at (0: never) */
 static int next_key;
 static const char *inject;            /* typed in at keys_left == 0, instead of next_key */
 static char back[256];                /* the terminal's replies, read back as input */
@@ -85,6 +86,13 @@ static int key(void *user, int wait_ms)
     if (back_pos < back_len)
         return (unsigned char)back[back_pos++];
     now += wait_ms / 20 + 1;
+    if (shrink_at && now >= shrink_at) {
+        shrink_at = 0;
+        vt_resize(t, 60, 20);
+    } else if (regrow_at && now >= regrow_at && !shrink_at) {
+        regrow_at = 0;
+        vt_resize(t, 80, 24);
+    }
     if (inject) {
         int c;
         if (keys_left-- > 0)
@@ -133,6 +141,7 @@ static void start(int cols, int rows)
     now = bytes = 0;
     next_key = -1;
     inject = 0;
+    shrink_at = regrow_at = 0;
     needle = 0;
     back_len = back_pos = 0;
     n_layout = 0;
@@ -420,8 +429,8 @@ static void the_resize_scene_leaves_the_width_as_it_was(void)
     vt_free(t);
 }
 
-/* the tour asks the size before each scene: a window made too small ends it */
-static void a_window_made_too_small_ends_the_demo(void)
+/* a window made too small waits for a bigger one; Q ends the demo from there */
+static void a_window_made_too_small_waits_and_q_ends_it(void)
 {
     long all;
     start(80, 24);
@@ -430,9 +439,28 @@ static void a_window_made_too_small_ends_the_demo(void)
     vt_free(t);
     start(80, 24);
     vt_resize(t, 60, 20); /* before the first scene's question */
+    inject = "q";
+    keys_left = 30;
     CHECK_INT(updemo_run(&io, 80, 24, 0, 12), 0);
     CHECK(bytes < all / 10);
     CHECK(!(vt_modes(t) & VT_MODE_ALT_SCREEN));
+    vt_free(t);
+}
+
+/* the reflow scene asks the user to resize the window: made smaller than the demo needs and then
+ * bigger again, the demo waits and goes on with the next scene (UPDEMO-REFLOW-RESIZE) */
+static void a_resize_in_the_reflow_scene_does_not_end_the_demo(void)
+{
+    int s = scene_index("reflow");
+    long frames, ticks;
+    CHECK(s >= 0);
+    start(80, 24);
+    shrink_at = 6;
+    regrow_at = 400;
+    updemo_run(&io, 80, 24, s, 12);
+    updemo_stats(s + 1, &frames, &ticks);
+    CHECK(frames > 0); /* the scene after the reflow one ran */
+    CHECK(vt_cols(t) == 80);
     vt_free(t);
 }
 
@@ -928,7 +956,8 @@ void suite_updemo(void)
     an_arrow_key_sequence_is_not_taken_as_esc_and_a_mouse_report_is_no_key();
     the_mouse_scene_shows_a_click();
     the_resize_scene_leaves_the_width_as_it_was();
-    a_window_made_too_small_ends_the_demo();
+    a_window_made_too_small_waits_and_q_ends_it();
+    a_resize_in_the_reflow_scene_does_not_end_the_demo();
     a_frame_the_terminal_draws_in_20_ms_still_comes_25_times_a_second();
     palette_cycling_tells_the_renderer_once_a_frame();
     ansi_mode_sends_only_the_16_colours_in_every_scene();
