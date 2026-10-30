@@ -44,10 +44,13 @@ void desk_pens(unsigned char pens[DK_SLOTS]);
  * indices (no Workbench reset); every index stays below 4, so the same map serves a 4-colour screen without aliasing. */
 void desk_pens_flat(unsigned char pens[DK_SLOTS]);
 
-/* R1.17: 1 when a Palette USE of the pens desk_pens gives makes IPrefs reset the Workbench screen. DrawInfo dri_Pens are fixed
+/* FLAT-P1-3: the pen map the palette write carries: desk_pens_flat when the amarchy-flat-pens key is on (flat), else desk_pens */
+void desk_pens_for(int flat, unsigned char pens[DK_SLOTS]);
+
+/* R1.17: 1 when a Palette USE of the pens desk_pens_for(flat) gives makes IPrefs reset the Workbench screen. DrawInfo dri_Pens are fixed
  * at screen open, so only a pen array that differs from the live screen's (cur, ncur = dri_NumPens, the first ncur slots are
  * compared) reopens it; colour values alone load live. ncur <= 0 (no DrawInfo): unknown, 1. */
-int desk_pens_reset(const unsigned short *cur, int ncur);
+int desk_pens_reset(const unsigned short *cur, int ncur, int flat);
 
 /* DESK-31: 1 once the Workbench reset after a Palette USE finished. before = screen address before the write, now = the address
  * the lock gives now (0 while the screen is closed in the middle of the reset), live/nlive = its DrawInfo pens. Done = the screen
@@ -59,7 +62,7 @@ int desk_pens_reset(const unsigned short *cur, int ncur);
  * other signals, a pending notification shows in recvd. No IPrefs task (have = 0): nothing to wait for. */
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask);
 #define DESK_IPREFS_POLL_TICKS 1
-int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive);
+int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat);
 
 /* R1.2: the palette.prefs of the theme with ncolors (4 or 8) colours and the pen map pens (desk_pens or desk_pens_flat);
  * returns DK_PALETTE_SIZE, 0 on a bad argument */

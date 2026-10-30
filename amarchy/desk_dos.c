@@ -248,14 +248,14 @@ static void dk_windows_open(int was)
 /* Windows of ours back once IPrefs applied the palette: the live pens equal the desk pens (3.2 resets in place, the screen
  * address stays) or the screen is a new one (at most DK_RESET_SECS: a part that changes nothing resets nothing). */
 #define DK_RESET_SECS 6
-static void dk_wait_reset(struct Screen *before)
+static void dk_wait_reset(struct Screen *before, int flat)
 {
     int i;
     for (i = 0; i < DK_RESET_SECS * 4; i++) {
         unsigned short live[DK_SLOTS];
         int n;
         struct Screen *now = dk_wb_screen(live, &n);
-        if (desk_reset_done(before, now, live, n))
+        if (desk_reset_done(before, now, live, n, flat))
             break;
         Delay(12);
     }
@@ -332,7 +332,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
     am_prefs ap;
     unsigned mask;
-    int depth, plan, ok = 1, old_ws = 0;
+    int depth, plan, ok = 1, old_ws = 0, flat_pens;
     long len, plen;
     struct Screen *wb_before = 0;
     unsigned long idle = 0;
@@ -341,6 +341,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     static unsigned char ic_cur[DK_BUF];
     long ic_len;
     amconf_load(&ap);
+    flat_pens = amconf_desk_flat_pens(&ap);
     /* FLAT-P1-2: the border size acts on its own (thin once, stock restores the snapshot), whatever else the switches enable */
     ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
     if (ic_len < 0)
@@ -360,7 +361,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     depth = dk_screen_depth();
     if (mask & (1u << DT_PALETTE)) {
         wb_before = dk_wb_screen(live, &nlive);
-        reset = desk_pens_reset(live, nlive);
+        reset = desk_pens_reset(live, nlive, flat_pens);
     }
     if (reset || old_ws) {
         desk_dos_wb_closes++;
@@ -369,14 +370,14 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     desk_dos_applies++;
     desk_dos_last_mask = mask;
     if (mask & (1u << DT_PALETTE)) {
-        unsigned char stock_pens[DK_SLOTS];
-        desk_pens(stock_pens); /* the flat map (desk_pens_flat) is wired in by FLAT-P1-2 */
-        len = desk_palette(th, depth >= 3 ? 8 : 4, stock_pens, buf, sizeof buf);
+        unsigned char pens[DK_SLOTS];
+        desk_pens_for(flat_pens, pens);
+        len = desk_palette(th, depth >= 3 ? 8 : 4, pens, buf, sizeof buf);
         ok &= dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
         /* IPrefs resets Workbench for the palette: the other editors run only after it finished (SYS:Prefs/Pointer
          * raised a Program Error requester when started under the running reset) */
         if (reset)
-            dk_wait_reset(wb_before);
+            dk_wait_reset(wb_before, flat_pens);
         desk_dos_dopus_sends++;
         dopus_theme_send(th, dk_dopus_send, 0);
     }

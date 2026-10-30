@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../amarchy/amconf_core.h"
 #include "../amarchy/desk_core.h"
 #include "../handler/be32.h"
 #include "harness.h"
@@ -181,6 +182,57 @@ static void test_desk_palette_flat(void)
 }
 
 
+/* FLAT-P1-3: the palette.prefs the desk apply writes follows amarchy-flat-pens. desk_dos_apply builds it as
+ * desk_pens_for(amconf_desk_flat_pens(prefs)) -> desk_palette (the same two calls here); the flat key moves only the
+ * shine slot, the pen-reset verdict follows the chosen map, and the key alone writes nothing without the palette target. */
+static void test_desk_flat_pens_key(void)
+{
+    static unsigned char gold[BUF_MAX], out[BUF_MAX];
+    static const char flat_on[] = "[profile default]\ndesktop-theme = on\namarchy-flat-pens = on\n";
+    static const char flat_off[] = "[profile default]\ndesktop-theme = on\n";
+    static const char flat_nopal[] = "[profile default]\ndesktop-theme = on\ndesktop-palette = off\namarchy-flat-pens = on\n";
+    static const char flat_nodesk[] = "[profile default]\namarchy-flat-pens = on\n";
+    static const char *const names[] = {"palette-flat-pen8.prefs", "palette-p1a-pen8.prefs"};
+    const char *const txt[] = {flat_on, flat_off};
+    gtheme t;
+    int k;
+    probe_theme(&t);
+    for (k = 0; k < 2; k++) {
+        am_prefs p;
+        unsigned char pens[DK_SLOTS], want[DK_SLOTS];
+        unsigned short live[DK_SLOTS];
+        char path[256];
+        int s;
+        amconf_parse(txt[k], (long)strlen(txt[k]), &p);
+        CHECK_INT(amconf_desk_flat_pens(&p), k == 0);
+        CHECK(amconf_desk_mask(&p) & (1u << DT_PALETTE));
+        desk_pens_for(amconf_desk_flat_pens(&p), pens);
+        snprintf(path, sizeof path, DESK_DATA "%s", names[k]);
+        CHECK_INT(slurp(path, gold, sizeof gold), DK_PALETTE_SIZE);
+        CHECK_INT(desk_palette(&t, 8, pens, out, sizeof out), DK_PALETTE_SIZE);
+        CHECK(!memcmp(out, gold, DK_PALETTE_SIZE));
+        if (k == 0)
+            desk_pens_flat(want);
+        else
+            desk_pens(want);
+        CHECK(!memcmp(pens, want, DK_SLOTS));
+        /* the reset verdict: a live screen holding this map needs no reset, the other map does */
+        for (s = 0; s < DK_SLOTS; s++)
+            live[s] = want[s];
+        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k == 0), 0);
+        CHECK_INT(desk_pens_reset(live, DK_SLOTS, k != 0), 1);
+    }
+    {
+        am_prefs p;
+        amconf_parse(flat_nopal, (long)strlen(flat_nopal), &p);
+        CHECK_INT(amconf_desk_flat_pens(&p), 0);              /* palette target off: no palette write, no flat map */
+        CHECK(!(amconf_desk_mask(&p) & (1u << DT_PALETTE)));
+        amconf_parse(flat_nodesk, (long)strlen(flat_nodesk), &p);
+        CHECK_INT(amconf_desk_flat_pens(&p), 0);              /* master switch off: nothing is written */
+        CHECK_INT(amconf_desk_mask(&p), 0u);
+    }
+}
+
 /* R1.17: IPrefs resets the Workbench screen only when the live DrawInfo pens differ from the ones the Palette USE brings */
 /* DESK-31: the 3.2 reset closes the screen for ~200 ms (rig 7 probe); a screen of 0 there made the apply reopen its windows mid-reset */
 /* DESK-31 (3.1, rig 7 Run 10): the windows came back on the first poll whose screen title matched the idle one, which was the
@@ -219,11 +271,11 @@ static void test_desk_reset_done(void)
         same[i] = want[i];
         other[i] = (unsigned short)(want[i] + 1);
     }
-    CHECK_INT(desk_reset_done(&a, 0, 0, 0), 0);             /* screen closed mid-reset */
-    CHECK_INT(desk_reset_done(&a, 0, other, DK_SLOTS), 0);
-    CHECK_INT(desk_reset_done(&a, &a, other, DK_SLOTS), 0); /* same screen, old pens: not yet */
-    CHECK_INT(desk_reset_done(&a, &a, same, DK_SLOTS), 1);  /* in place, desk pens */
-    CHECK_INT(desk_reset_done(&a, &b, other, DK_SLOTS), 1); /* a new screen (3.1) */
+    CHECK_INT(desk_reset_done(&a, 0, 0, 0, 0), 0);             /* screen closed mid-reset */
+    CHECK_INT(desk_reset_done(&a, 0, other, DK_SLOTS, 0), 0);
+    CHECK_INT(desk_reset_done(&a, &a, other, DK_SLOTS, 0), 0); /* same screen, old pens: not yet */
+    CHECK_INT(desk_reset_done(&a, &a, same, DK_SLOTS, 0), 1);  /* in place, desk pens */
+    CHECK_INT(desk_reset_done(&a, &b, other, DK_SLOTS, 0), 1); /* a new screen (3.1) */
 }
 
 static void test_desk_pens_reset(void)
@@ -234,17 +286,17 @@ static void test_desk_pens_reset(void)
     desk_pens(want);
     for (i = 0; i < DK_SLOTS; i++)
         cur[i] = want[i];
-    CHECK_INT(desk_pens_reset(cur, DK_SLOTS), 0);   /* same pens: colours load live, no reset */
-    CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2), 0);
+    CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0), 0);   /* same pens: colours load live, no reset */
+    CHECK_INT(desk_pens_reset(cur, DK_SLOTS + 2, 0), 0);
     for (i = 0; i < DK_SLOTS; i++) {                /* knob: every slot moves the verdict */
         cur[i] ^= 1;
-        CHECK_INT(desk_pens_reset(cur, DK_SLOTS), 1);
+        CHECK_INT(desk_pens_reset(cur, DK_SLOTS, 0), 1);
         if (i > 0)
-            CHECK_INT(desk_pens_reset(cur, i), 0);  /* slots beyond dri_NumPens are not compared */
+            CHECK_INT(desk_pens_reset(cur, i, 0), 0);  /* slots beyond dri_NumPens are not compared */
         cur[i] ^= 1;
     }
-    CHECK_INT(desk_pens_reset(cur, 0), 1);          /* no DrawInfo: unknown, assume a reset */
-    CHECK_INT(desk_pens_reset(0, DK_SLOTS), 1);
+    CHECK_INT(desk_pens_reset(cur, 0, 0), 1);          /* no DrawInfo: unknown, assume a reset */
+    CHECK_INT(desk_pens_reset(0, DK_SLOTS, 0), 1);
 }
 
 static void test_desk_darker(void)
@@ -748,6 +800,7 @@ void suite_desk(void)
 {
     test_desk_palette();
     test_desk_palette_flat();
+    test_desk_flat_pens_key();
     test_desk_pens_reset();
     test_desk_reset_done();
     test_desk_iprefs_idle();

@@ -143,24 +143,32 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS])
     pens[DK_SHINE] = DK_BG;
 }
 
-int desk_pens_reset(const unsigned short *cur, int ncur)
+void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
+{
+    if (flat)
+        desk_pens_flat(pens);
+    else
+        desk_pens(pens);
+}
+
+int desk_pens_reset(const unsigned short *cur, int ncur, int flat)
 {
     unsigned char want[DK_SLOTS];
     int i;
     if (!cur || ncur <= 0)
         return 1;
-    desk_pens(want);
+    desk_pens_for(flat, want);
     for (i = 0; i < DK_SLOTS && i < ncur; i++)
         if (cur[i] != want[i])
             return 1;
     return 0;
 }
 
-int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive)
+int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive, int flat)
 {
     if (!now || nlive <= 0) /* the screen is closed for about 200 ms in the middle of the reset (rig 7, 3.2): not done, not "a new screen" */
         return 0;
-    return now != before || !desk_pens_reset(live, nlive);
+    return now != before || !desk_pens_reset(live, nlive, flat);
 }
 
 int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask)

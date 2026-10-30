@@ -11,7 +11,7 @@
  * theme is refused (desk_check; why gets the text) or a write failed. ENVARC: is never written (persist is R1.10). */
 int desk_dos_apply(const gtheme *th, char *why, int cap);
 /* R1.17: IPrefs resets the Workbench screen after a Palette/WBPattern/Pointer/Font USE and cannot while any window of ours is on it
- * ("Please close the following windows: Amarchy bar"). A Palette USE resets it only when the live DrawInfo pens differ from desk_pens (desk_pens_reset); then the apply closes the windows first and reopens them when the new screen is up.
+ * ("Please close the following windows: Amarchy bar"). A Palette USE resets it only when the live DrawInfo pens differ from the chosen pen map (desk_pens_for, desk_pens_reset); then the apply closes the windows first and reopens them when the new screen is up.
  * The main process installs direct hooks (it cannot send ARexx to itself); every other process leaves them 0 and the apply sends BAR STATUS, and BAR OFF / BAR ON when the bar was open. */
 extern int (*desk_dos_wb_close)(void);   /* returns 1 when the bar was open */
 extern void (*desk_dos_wb_open)(int was); /* reopens it when was */
