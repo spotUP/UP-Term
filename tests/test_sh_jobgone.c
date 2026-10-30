@@ -32,8 +32,17 @@ static void a_new_task_at_a_dead_runners_address_is_not_the_runner(void)
     CHECK(sh_runner_is(0, 0x1000, 0x1000) == 0); /* a task that is no process */
 }
 
+static void the_shell_process_systemtags_made_carries_the_job_and_nothing_else_is_it(void)
+{
+    CHECK(sh_child_is(1, 0x1000, 0x1000) == 1);
+    CHECK(sh_child_is(1, 0x2000, 0x1000) == 0); /* another job's process */
+    CHECK(sh_child_is(1, 0, 0x1000) == 0);      /* a process with no exit data */
+    CHECK(sh_child_is(0, 0x1000, 0x1000) == 0); /* a task that is no process */
+}
+
 void suite_sh_jobgone(void)
 {
+    the_shell_process_systemtags_made_carries_the_job_and_nothing_else_is_it();
     a_new_task_at_a_dead_runners_address_is_not_the_runner();
     a_removed_runner_is_gone();
     a_removed_shell_process_of_a_resident_command_or_script_is_gone();

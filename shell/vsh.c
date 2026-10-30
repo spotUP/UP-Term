@@ -96,7 +96,7 @@ typedef struct job {
     BPTR term_in, term_out; /* the shell's own input and output: its terminal, the runner's CLI streams */
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
-    char child[24];         /* the name of the Shell process SystemTags makes */
+    int has_child;          /* the command goes through SystemTags: a Shell process of its own (job_child) */
     int child_seen;         /* that process has been seen to exist (job_gone) */
     char *env;              /* exported variables: name\0value\0 ... \0 */
     char *ixvar;            /* the argv of the ixemul program a Shell starts for it (sh_ixargv.h) ... */
@@ -141,17 +141,37 @@ static struct {
 } rl_kind[8];
 static int rl_next;
 
+/* The Shell process SystemTags made for a Resident command or a script: SystemTags ignores NP_Name but
+ * passes NP_ExitData = the job on to CreateNewProc, so it is the process carrying the job that is not
+ * the runner (sh_child_is). 0 when there is none now. Call under Forbid. */
+static struct Task *job_child(job *j)
+{
+    struct Node *n;
+    struct List *l[2];
+    int i;
+    l[0] = &SysBase->TaskReady;
+    l[1] = &SysBase->TaskWait;
+    if (!j->has_child)
+        return 0;
+    for (i = 0; i < 2; i++)
+        for (n = l[i]->lh_Head; n->ln_Succ; n = n->ln_Succ)
+            if (n != (struct Node *)j->task &&
+                sh_child_is(n->ln_Type == NT_PROCESS, ((struct Process *)n)->pr_ExitData, (unsigned long)j))
+                return (struct Task *)n;
+    return 0;
+}
+
 /* A break (Ctrl-C, or ^\ as CTRL_E) to a running job: its runner, which
  * is the command's process for a loaded command, and the Shell process
- * SystemTags spawned for a Resident command or a script (found by the
- * name vsh gave it). Call under Forbid. */
+ * SystemTags spawned for a Resident command or a script (job_child).
+ * Call under Forbid. */
 static void job_signal(job *j, ULONG sig)
 {
     struct Task *t;
     if (j->done)
         return;
     Signal(j->task, sig);
-    if (j->child[0] && (t = FindTask((STRPTR)j->child)) != 0)
+    if ((t = job_child(j)) != 0)
         Signal(t, sig);
 }
 
@@ -169,7 +189,7 @@ static struct Task *job_process(job *j)
 {
     struct Task *t;
     Forbid();
-    t = j->done ? 0 : (j->child[0] ? FindTask((STRPTR)j->child) : j->task);
+    t = j->done ? 0 : (j->has_child ? job_child(j) : j->task);
     Permit();
     return t;
 }
@@ -679,7 +699,7 @@ static void runner(void)
         /* a Shell process of its own: named, so Ctrl-C can find it, and
          * given the error stream (CreateNewProc takes NP_Error from V39) */
         j->rc = SystemTags((STRPTR)j->cmd, SYS_Input, j->in, SYS_Output, j->out,
-                           SYS_UserShell, TRUE, NP_Name, (ULONG)j->child,
+                           SYS_UserShell, TRUE, NP_ExitData, (ULONG)j,
                            j->err ? NP_Error : TAG_IGNORE, j->err, TAG_END);
     }
     /* the program ran: its return code is an exit status, which a POSIX shell reads as 0-255
@@ -773,10 +793,10 @@ static int runner_alive(job *j)
  * Forbid. */
 static int job_gone(job *j)
 {
-    struct Task *c = j->child[0] ? FindTask((STRPTR)j->child) : 0;
+    struct Task *c = job_child(j);
     if (c)
         j->child_seen = 1;
-    return sh_job_gone(runner_alive(j), j->child[0] != 0, c != 0, j->child_seen);
+    return sh_job_gone(runner_alive(j), j->has_child, c != 0, j->child_seen);
 }
 
 /* Is a loaded command an ixemul program? The first longs of its first hunk (sh_ixargv.h). */
@@ -1253,15 +1273,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
         return -1;
     }
     j->task = &p->pr_Task;
-    if (!seg) {
-        static const char hex[] = "0123456789abcdef";
-        unsigned long a = (unsigned long)j;
-        int i;
-        strcpy(j->child, "vsh command ");
-        for (i = 0; i < 8; i++)
-            j->child[12 + i] = hex[(a >> (28 - 4 * i)) & 15];
-        j->child[20] = 0;
-    }
+    j->has_child = !seg;
     if (j->close_out) {
         int i;
         Forbid();
@@ -1387,7 +1399,10 @@ static long os_wait(void *os, long id)
         }
         if (job_gone(j)) {
             /* removed from outside: nothing will reply. A runner left alive (its Shell child removed)
-             * stays blocked and never touches the job again, so the job is the shell's to end here */
+             * is blocked in SystemTags for ever (the child it waits for is gone): it is removed the way
+             * the child was, so it neither leaks nor touches the job again, and the job is the shell's to end here */
+            if (runner_alive(j))
+                RemTask(j->task);
             j->done = 1;
             j->rc = 20;
             j->ioerr = 0;

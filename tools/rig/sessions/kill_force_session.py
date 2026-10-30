@@ -2,7 +2,11 @@
 Run (UPTERM_RIG=<n>) with the rig up and the kit installed. A titled XCON window, UP-Term > New tab (vsh),
 `Wait 60`, then `wasabi kill --force` (RemTask: no exit code, no reply) on the job's runner, "vsh job".
 PASS = within 8 s the tab runs `Echo prompt-is-back` typed after the kill, and the kill took the job
-(Wait is gone from ps). Exit status 1 on FAIL."""
+(Wait is gone from ps).
+Case 2 (VSH-KILL-CHILD-LEAK): a script (RAM:ks.script, `Wait 60`) runs in a Shell process SystemTags makes
+(ps "Background CLI", SystemTags ignores NP_Name; found by NP_ExitData = the job); only that child is removed.
+PASS = the prompt is back and the runner "vsh job" is gone too (it stayed blocked in SystemTags before).
+Exit status 1 on FAIL."""
 import os, subprocess, sys, time
 RIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, RIG)
@@ -46,6 +50,31 @@ typewin.key(typewin.RET, wait=3)
 text = c.run('Type RAM:kf.txt')[1]
 print('tab text (tail): %r' % text.strip()[-240:])
 check('prompt-is-back' in text, 'the prompt came back after the kill and ran Echo', text[-240:])
+ps0 = wasabi('ps')
+c.run('Echo "Wait 60" >RAM:ks.script')
+c.run('Protect RAM:ks.script +s')
+typewin.typ('RAM:ks.script')
+typewin.key(typewin.RET, wait=4)
+ps = wasabi('ps')
+jobs = [l for l in ps.splitlines() if 'vsh job' in l]
+kids = [l for l in ps.splitlines() if 'Background CLI' in l and l not in ps0.splitlines()]
+print('ps new child lines: %r  runner lines: %r' % (kids, jobs))
+check(len(kids) == 1 and len(jobs) == 1, 'a script runs as one new "Background CLI" child under one "vsh job" runner', ps[-300:])
+if kids:
+    print('kill child: %r' % wasabi('kill', '--force', kids[0].split()[0]).strip())
+time.sleep(5)
+typewin.typ('Echo child-prompt-is-back')
+typewin.key(typewin.RET, wait=3)
+typewin.typ('UPTerm screen FILE RAM:kf.txt')
+typewin.key(typewin.RET, wait=3)
+text = c.run('Type RAM:kf.txt')[1]
+print('tab text (tail): %r' % text.strip()[-240:])
+check('child-prompt-is-back' in text, 'the prompt came back after only the child was removed', text[-240:])
+ps = wasabi('ps')
+left = [l for l in ps.splitlines() if 'vsh job' in l or l in kids]
+print('ps after: %r' % left)
+check(not left, 'the runner "vsh job" and the child are gone (no leaked task)', ps[-300:])
+c.run('Delete >NIL: RAM:ks.script QUIET')
 typewin.typ('exit')
 typewin.key(typewin.RET, wait=2)
 typewin.typ('EndCLI')
