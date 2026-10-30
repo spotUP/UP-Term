@@ -171,6 +171,14 @@ def read_values(pkg_id, extra=()):
         if line.strip() and not line.startswith('#'):
             k, _, v = line.partition('=')
             values[k.strip()] = v
+    # the data drawer an add-on's Uninstall deletes, spelled through the one real drawer (UPTREAL:)
+    if values.get('VARDIR', '').startswith('UP-Term:'):
+        values['VARDIRREAL'] = 'UPTREAL:' + values['VARDIR'][len('UP-Term:'):]
+    # the check part's rename of a record drawer left under an old name: through UPTREAL:, resolved first
+    pairs = [(o.replace('UP-Term:', 'UPTREAL:', 1), n.replace('UP-Term:', 'UPTREAL:', 1))
+             for o, n in pkgs.old_record(row) if n.startswith('UP-Term:')]
+    values['RENAMERECORDREAL'] = ('; @include dist/common/resolve-uptreal.dos\n' + pkgs.rename_lines(pairs)
+                                  + '\nAssign >NIL: UPTREAL:') if pairs else ''
     return values
 
 

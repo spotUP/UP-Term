@@ -1,10 +1,21 @@
-; the one real UP-Term drawer as UPTREAL: (a multi-directory UP-Term: writes to its first directory only); the caller drops it
+; The one real UP-Term drawer as UPTREAL: (a multi-directory UP-Term: writes to its first directory only):
+; the drawer ENVARC:up-term/Dir names when it exists, else UP-Term:'s own first directory. The single source of
+; this lookup: resolve-addon.dos includes it, and an add-on's launch icons, skills and data deletes include it
+; alone. Sets $uptmoved to YES when UPTREAL: was pointed at the Dir drawer. The caller drops the assign.
 Assign >NIL: UPTREAL: UP-Term:
+Unset uptmoved
 If EXISTS ENVARC:up-term/Dir
   Set uptdir "`Type ENVARC:up-term/Dir`"
+  ; Assign of a missing drawer returns 20, which stops a script whose FailAt is lower: look first.
+  ; An empty Dir file leaves $uptdir empty, and EXISTS "" asks for a volume: skip it then
   If NOT "$uptdir" EQ ""
     If EXISTS "$uptdir"
       Assign >NIL: UPTREAL: "$uptdir"
+      If NOT WARN
+        Set uptmoved YES
+      EndIf
+    Else
+      Echo "[WARN] ENVARC:up-term/Dir names $uptdir, which does not exist: installing into UP-Term: itself."
     EndIf
   EndIf
 EndIf

@@ -173,13 +173,6 @@ class EveryAddOn(unittest.TestCase):
                     args = [a for a in re.findall(r'"[^"]*"|\S+', m.group(2)) if not a.startswith('>')]
                     # Copy writes its last argument (a source on UP-Term: is a read)
                     targets = args[-1:] if m.group(1) == 'Copy' else args
-                    # the optional "delete your data" question removes the drawer the APP made through UP-Term: at run
-                    # time (its first directory), so it names the same path the app uses
-                    # (also open, ledger ADDON-RECORD-RENAME-UPTERM: the check part's rename of an old-name record drawer
-                    # UP-Term:pkg/<old> runs before UPTREAL: exists)
-                    if m.group(1) == 'Rename' and all(a.startswith('UP-Term:pkg/') for a in targets):
-                        continue
-                    targets = [a for a in targets if not re.fullmatch(r'"?UP-Term:var/(Claude|amiga-pi)"?', a)]
                     self.assertFalse([a for a in targets if 'UP-Term:' in a], (pid, kind, line))
                     uses += 'UPTREAL:' in ' '.join(targets)
                 text = s[kind]
@@ -326,8 +319,23 @@ class RecordMigration(unittest.TestCase):
         for r in RENAMED:
             (old, new), = pkgs.old_record(r)
             check = mi.build(ROOT / ('dist/common/%s' % mi.read_values(r['id'])['CHECKFRAG']), r['id'])
-            block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf' % (old, new, old, new)
+            if old.startswith('UP-Term:'):
+                # a record under UP-Term:: renamed through the one real drawer, resolved first (a multi-directory
+                # UP-Term: renames in its first directory only), and the assign dropped after
+                old, new = (x.replace('UP-Term:', 'UPTREAL:', 1) for x in (old, new))
+                block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf\nAssign >NIL: UPTREAL:\n' % (old, new, old, new)
+                self.assertLess(check.index('Assign >NIL: UPTREAL: UP-Term:\n'), check.index('If EXISTS %s' % old), r['id'])
+            else:
+                block = 'If EXISTS %s\n  If NOT EXISTS %s\n    Rename >NIL: %s %s\n  EndIf\nEndIf' % (old, new, old, new)
             self.assertIn(block, check, r['id'])
+
+    def test_the_uptreal_lookup_has_one_source_resolve_addon_includes_it(self):
+        src = (ROOT / 'dist/common/resolve-addon.dos').read_text(encoding='latin-1')
+        self.assertNotIn('ENVARC:up-term/Dir', '\n'.join(l for l in src.splitlines() if not l.startswith(';')))
+        self.assertIn('; @include dist/common/resolve-uptreal.dos\n', src)
+        out = mi.build(ROOT / 'dist/common/resolve-addon.dos', 'nvim')
+        self.assertEqual(out.count('If EXISTS ENVARC:up-term/Dir'), 1)
+        self.assertEqual(out.count('Assign >NIL: UPTREAL: "$uptdir"'), 1)
 
     def test_each_add_on_installer_probe_renames_it_too(self):
         for r in RENAMED:

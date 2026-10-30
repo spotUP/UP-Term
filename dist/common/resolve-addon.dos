@@ -9,21 +9,10 @@ Set uptpkg "@PKGDIR@"
 Set uptrec "@RECORD@"
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  Assign >NIL: UPTREAL: UP-Term:
-  If EXISTS ENVARC:up-term/Dir
-    Set uptdir "`Type ENVARC:up-term/Dir`"
-    ; Assign of a missing drawer returns 20, which stops a script whose FailAt is lower: look first.
-    ; An empty Dir file leaves $uptdir empty, and EXISTS "" asks for a volume: skip it then
-    If NOT "$uptdir" EQ ""
-      If EXISTS "$uptdir"
-        Assign >NIL: UPTREAL: "$uptdir"
-        If NOT WARN
-          Set uptpkg "@PKGDIRREAL@"
-          Set uptrec "@RECORDREAL@"
-        EndIf
-      Else
-        Echo "[WARN] ENVARC:up-term/Dir names $uptdir, which does not exist: installing into UP-Term: itself."
-      EndIf
-    EndIf
+; @include dist/common/resolve-uptreal.dos
+  If "$uptmoved" EQ YES
+    Set uptpkg "@PKGDIRREAL@"
+    Set uptrec "@RECORDREAL@"
   EndIf
+  Unset uptmoved
 EndIf
