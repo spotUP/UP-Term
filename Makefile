@@ -1168,7 +1168,7 @@ $(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c amarchy/flat_core.h
 	$(VC) -o $@ tests/amiga/dopusprobe.c
 
 # Windows with sysiclass gadgets opened in a loop, and a hash of their frame pixels (FLAT-C1 rig, tools/rig/amarchy_flat_rig.py)
-$(BUILD)/amiga/flatwin: tests/amiga/flatwin.c
+$(BUILD)/amiga/flatwin: tests/amiga/flatwin.c amarchy/flat_core.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/flatwin.c
 

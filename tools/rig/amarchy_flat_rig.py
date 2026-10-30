@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""amarchy_flat_rig.py -- FLAT-C1 rig step (plan 2026-10-29-amarchy-flat-ui-patch.md): the sysiclass h_SubEntry swap of
+"""amarchy_flat_rig.py -- FLAT-C1 and FLAT-C2 rig steps (C2: gadget glyph pixels, c2_after; flatwin SET writes the switch)
+
+FLAT-C1 rig step (plan 2026-10-29-amarchy-flat-ui-patch.md): the sysiclass h_SubEntry swap of
 amarchy-flat running on a 68k (the pass-through trampoline of amarchy/flat_core.c).
 
 Checks, on whatever OS the rig booted (--os 32, --os 31):
@@ -183,6 +185,59 @@ def d4(a):
     print('flat-d4 rig: %s %d failed' % ('PASS' if not failed else 'FAIL', failed))
 
 
+def gads(args='', n=1):
+    """flatwin's per-gadget lines: {name: (SYSIA_Which, hash after open, hash after RefreshWindowFrame)}."""
+    rc, out = c.run('RAM:flatwin %d %s' % (n, args), 120)
+    opens = re.findall(r'gad (\w+) w=(-?\d+) open=([0-9a-f]{8})', out)
+    refr = re.findall(r'refresh=([0-9a-f]{8})', out)       # flatwin prints the refresh pass after all open lines
+    d = {o[0]: (int(o[1]), o[2], r) for o, r in zip(opens, refr)} if len(opens) == len(refr) else {}
+    return d, out
+
+
+WHICH = {'close': 3, 'depth': 0, 'zoom': 1, 'size': 2}
+
+
+def c2_before():
+    """Stock gadget pixels before the patch exists."""
+    st, out = gads()
+    check(sorted(st) == sorted(WHICH), 'FLAT-C2 stock gadgets found %s' % sorted(st), out)
+    check(all(v[1] == v[2] for v in st.values()), 'stock pixels stable across RefreshWindowFrame', st)
+    return st
+
+
+def c2_after(stock):
+    """FLAT-C2 glyph pixels with the dispatcher installed: flat off = stock, flat on = other pixels, identical after
+    open and RefreshWindowFrame, GetAttr(SYSIA_Which) answers, flat off again = stock."""
+    off, out = gads('SET 0 0 1 2 0')
+    check(off.keys() == stock.keys() and all(off[k][1:] == stock[k][1:] for k in stock),
+          'flat off: gadget pixels equal the stock ones', (off, stock, out))
+    line = {}
+    for style, name in ((0, 'line style'), (1, 'block style')):
+        n0, _ = calls()
+        on, out = gads('SET 1 %d 1 2 0' % style)
+        n1, _ = calls()
+        check(on.keys() == stock.keys(), 'flat on (%s): four gadgets' % name, out)
+        which_ok = all(on[k][0] == WHICH[k] for k in on if k in WHICH)
+        if which_ok:
+            print('info: GetAttr(SYSIA_Which) works on sysiclass: %s' % {k: v[0] for k, v in on.items()})
+            check(all(on[k][1] != stock[k][1] for k in on if k in stock),
+                  'flat on (%s): glyph pixels differ from stock in every gadget (drawn, not fallback)' % name, (on, stock))
+        else:
+            # Kickstart 3.1 sysiclass does not answer OM_GET for SYSIA_Which: the dispatcher falls back to the old hook.
+            print('info: GetAttr(SYSIA_Which) FAILS on sysiclass %s: dispatcher falls back to stock' % {k: v[0] for k, v in on.items()})
+            check(all(on[k][1] == stock[k][1] for k in on if k in stock),
+                  'flat on (%s): GetAttr unavailable, fallback draws the stock pixels' % name, (on, stock))
+        check(all(v[1] == v[2] for v in on.values()), 'flat on (%s): same pixels after open and RefreshWindowFrame' % name, on)
+        check(n0 is not None and n1 is not None and n1 > n0, 'flat on (%s): calls rose %s -> %s' % (name, n0, n1))
+        if style == 0:
+            line = on
+        elif which_ok:
+            check(any(on[k][1] != line[k][1] for k in on if k in line), 'block style draws other pixels than line style', on)
+    off2, out = gads('SET 0 0 1 2 0')
+    check(off2.keys() == stock.keys() and all(off2[k][1:] == stock[k][1:] for k in stock),
+          'flat off + RefreshWindowFrame: stock pixels back', (off2, stock, out))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cycles', type=int, default=1000)
@@ -200,6 +255,7 @@ def main():
     check(sub0 is not None, 'sysiprobe reads the original h_SubEntry (%s)' % sub0, out)
     hash_off, out = flatwin(1)
     check(hash_off is not None, 'frame hash without the patch %s' % hash_off, out)
+    stock = c2_before()
     c.run('Run >NIL: RAM:amarchy-flat')
     time.sleep(3)
     n0, st = calls()
@@ -214,6 +270,7 @@ def main():
     n2, _ = calls()
     check(n2 is not None and n2 - n1 >= a.cycles, '%d open/close cycles: calls %s -> %s' % (a.cycles, n1, n2))
     check(h2 == hash_off, 'hash after %d cycles unchanged (%s)' % (a.cycles, h2))
+    c2_after(stock)
     st = c.run('Status')[1]
     m = re.search(r'Process\s+(\d+):.*amarchy-flat', st)
     check(bool(m), 'amarchy-flat is a CLI process', st)
@@ -227,7 +284,7 @@ def main():
     check(hash_after == hash_off, 'frame hash after removal unchanged (%s)' % hash_after)
     check(not ami.requesters(), 'no requester / Guru on screen', ami.requesters())
     check(c.run('Version')[0] == 0, 'rig still answers (no hang)')
-    print('flat-c1 rig: %s %d failed' % ('PASS' if not failed else 'FAIL', failed))
+    print('flat-c1+c2 rig: %s %d failed' % ('PASS' if not failed else 'FAIL', failed))
     return 1 if failed else 0
 
 
