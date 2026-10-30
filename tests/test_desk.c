@@ -158,11 +158,21 @@ static void test_desk_palette_flat(void)
     desk_pens_flat(flat);
     for (s = 0; s < DK_SLOTS; s++) {
         CHECK(flat[s] < 4);
-        if (s == DK_SHINE) {
+        if (s == DK_SHINE || s == DK_SHADOW || s == DK_FILL) {  /* FLAT-SOLID-FILL: one surface pen for highlight, shadow, fill */
             CHECK_INT(flat[s], DK_BG);
             CHECK(stock[s] != flat[s]);
         } else
             CHECK_INT(flat[s], stock[s]);
+    }
+    {   /* FLAT-SOLID-FILL: under the flat map the inactive glyph pen is visible (!= surface pen) and dim (!= active glyph pen) */
+        unsigned char gt, gl, gb;
+        desk_flat_glyph_pens(&gt, &gl, &gb);
+        CHECK_INT(gb, flat[DK_BACKGROUND]);
+        CHECK(gt != flat[DK_BACKGROUND]);
+        CHECK(gl != flat[DK_BACKGROUND]);
+        CHECK(gl != gt);
+        CHECK(gl != flat[DK_SHINE] && gl != flat[DK_SHADOW] && gl != flat[DK_FILL]);
+        CHECK(gt != flat[DK_FILL]);
     }
     for (k = 0; k < 4; k++) {
         char path[256];

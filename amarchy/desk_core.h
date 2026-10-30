@@ -43,6 +43,8 @@ void desk_pens(unsigned char pens[DK_SLOTS]);
  * SHADOWPEN outline. Differs from desk_pens in that slot only, so a theme switch while flat stays on or off keeps the pen
  * indices (no Workbench reset); every index stays below 4, so the same map serves a 4-colour screen without aliasing. */
 void desk_pens_flat(unsigned char pens[DK_SLOTS]);
+/* FLAT-SOLID-FILL: pen_text (active glyph), pen_line (inactive glyph), pen_back of the flat_state block under the flat map */
+void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned char *back);
 
 /* FLAT-P1-3: the pen map the palette write carries: desk_pens_flat when the amarchy-flat-pens key is on (flat), else desk_pens */
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS]);

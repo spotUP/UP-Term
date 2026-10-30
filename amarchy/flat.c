@@ -123,13 +123,12 @@ static int c2_draw(Object *obj, Msg msg)
     }
     which = flat_which_alias(which);
     /* FLAT-GADGET-BG: the pen of the frame the gadget sits on, so the box shows only the glyph lines. A window gadget
-     * sits on the border (the background pen while the window is inactive, else the fill pen); a screen bar gadget on
+     * sits on the border (the background pen in both states: FLAT-SOLID-FILL); a screen bar gadget on
      * the bar block (V39+ DrawInfo has it). */
     if (d->imp_DrInfo) {
         struct Layer *fl = d->imp_RPort->Layer;
         if (fl && fl->Window) {
-            frame_pen = (d->imp_State == IDS_INACTIVENORMAL || d->imp_State == IDS_INACTIVESELECTED)
-                            ? d->imp_DrInfo->dri_Pens[BACKGROUNDPEN] : d->imp_DrInfo->dri_Pens[FILLPEN];
+            frame_pen = d->imp_DrInfo->dri_Pens[BACKGROUNDPEN];     /* FLAT-SOLID-FILL: both states, the frame is the background */
         } else if (fl && d->imp_DrInfo->dri_Version >= 2)
             frame_pen = d->imp_DrInfo->dri_Pens[BARBLOCKPEN];
     }

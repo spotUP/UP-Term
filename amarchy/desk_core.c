@@ -140,7 +140,19 @@ void desk_pens(unsigned char pens[DK_SLOTS])
 void desk_pens_flat(unsigned char pens[DK_SLOTS])
 {
     desk_pens(pens);
-    pens[DK_SHINE] = DK_BG;
+    pens[DK_SHINE] = DK_BG;     /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
+    pens[DK_SHADOW] = DK_BG;    /* so every window is one solid rectangle and only title and glyph colour show focus */
+    pens[DK_FILL] = DK_BG;
+}
+
+/* FLAT-SOLID-FILL: the glyph pens of the flat_state block under the flat map: active glyph bright (foreground), inactive
+ * glyph dim (accent, a mid grey: the darker slot is too close to the surface to read), box background = surface pen.
+ * None may equal the surface pen the frame now takes (shine == shadow == fill == DK_BG), except back. */
+void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned char *back)
+{
+    *text = DK_FG;
+    *line = DK_ACCENT;
+    *back = DK_BG;
 }
 
 void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
