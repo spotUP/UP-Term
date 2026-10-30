@@ -25,6 +25,25 @@ static int sh_flush_pending(unsigned long pend, int child_found)
     return pend != 0 && child_found;
 }
 
+/* The wait of a kill that needs a helper process (ixkill): the verdict of one look. The shell must not
+ * become uninterruptible or wait without limit on a helper that is itself starved or stuck (kill -s TERM
+ * of a priority-1 busy loop kept the sender over 90 s, deaf to Ctrl-C: s33 VSH-KILL-TERM-NATIVE-HANG).
+ * The helper's reply wins over a break and a break over the limit. */
+#define SH_KW_WAIT 0    /* keep waiting */
+#define SH_KW_DONE 1    /* the helper replied: its return code says whether the signal went out */
+#define SH_KW_INTR 2    /* Ctrl-C to the sender: stop waiting, the signal counts as not sent */
+#define SH_KW_TIMEOUT 3 /* the limit is over: not sent */
+#define SH_KILL_LIMIT_MS 5000L
+
+static int sh_killwait(int replied, int ctrl_c, long elapsed_ms, long limit_ms)
+{
+    if (replied)
+        return SH_KW_DONE;
+    if (ctrl_c)
+        return SH_KW_INTR;
+    return elapsed_ms >= limit_ms ? SH_KW_TIMEOUT : SH_KW_WAIT;
+}
+
 /* A process vsh makes must leave pr_ExitData at 0: AmiTCP netlib programs (ixnet's init_inet_daemon
  * among them) read it as the DaemonMessage of an inetd start, fail to obtain the socket and exit(161)
  * (VSH-EXT-RC161). So a job is told apart by what programs only display or what vsh owns: the runner by

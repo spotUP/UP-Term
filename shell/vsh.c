@@ -279,17 +279,39 @@ static const char *ixkill_name(const char *path)
 static const char ixkill_missing[] = "ixkill not found: looked beside vsh, in $PATH, the Shell's path and C: "
                                      "(without it only INT, QUIT, HUP and TERM reach a command)";
 
+static long os_now(void *os, long *usec);
+static void runner(void);
+static char *job_dup(const char *s);
+static void job_close_streams(job *j);
+static void job_strings_free(job *j);
+static void job_free(job *j);
+static ULONG command_stack(BPTR seg);
+static ULONG wait_or_tick(ULONG mask);
+static int replied(struct MsgPort *port, job *j);
+static int orphans;
+
 /* 0 when the signal went out, -1 when it did not (the task ended, or ixkill found no ixemul process
- * there), SH_SIG_NOSENDER when there is no ixkill to send it. */
-static int task_unix_signal(struct Task *t, const char *sig, const char *path)
+ * there, or ixkill did not answer in time or the sender was interrupted), SH_SIG_NOSENDER when there is
+ * no ixkill to send it.
+ *
+ * ixkill runs as a hidden job (a runner with SystemTags, as a Resident command does), not in a
+ * synchronous SystemTags of the shell's own: ixkill is an ixemul program and its start needs lower
+ * priority tasks (ramlib), which a target busy at the sender's priority starves. A synchronous call then
+ * kept the sender, deaf to Ctrl-C, for as long as the target ran (s33 VSH-KILL-TERM-NATIVE-HANG). Here
+ * the shell waits for the runner's reply, Ctrl-C or SH_KILL_LIMIT_MS (sh_killwait). On a break or the
+ * limit the job is abandoned the way orphan_jobs abandons one: its reply port is cleared, the runner
+ * ends when ixkill ends and frees the job (and its NIL: streams) itself, the program's code stays
+ * loaded for it (orphans). The Ctrl-C is raised again for the interpreter, as os_wait does. */
+static int task_unix_signal(struct MsgPort *port, struct Task *t, const char *sig, const char *path)
 {
     char cmd[256];
     static const char hex[] = "0123456789abcdef";
     const char *ixkill;
     unsigned long a;
-    int i, k;
-    BPTR nil_in, nil_out;
-    LONG rc;
+    int i, k, verdict, broke = 0;
+    long usec, t0, rc;
+    job *j;
+    struct Process *p;
     if (!t)
         return -1;
     if (!(ixkill = ixkill_name(path)))
@@ -303,19 +325,80 @@ static int task_unix_signal(struct Task *t, const char *sig, const char *path)
     for (i = 0; i < 8; i++)
         cmd[k++] = hex[(a >> (28 - 4 * i)) & 15];
     cmd[k] = 0;
-    nil_in = Open((STRPTR)"NIL:", MODE_OLDFILE);
-    nil_out = Open((STRPTR)"NIL:", MODE_NEWFILE);
-    rc = SystemTags((STRPTR)cmd, SYS_Input, nil_in, SYS_Output, nil_out, SYS_UserShell, TRUE, TAG_END);
-    if (rc == -1) { /* not started: the streams are still ours */
-        Close(nil_in);
-        Close(nil_out);
+    j = (job *)AllocVec(sizeof(job), MEMF_PUBLIC | MEMF_CLEAR);
+    if (!j)
+        return -1;
+    j->cmd = job_dup(cmd);
+    j->in = Open((STRPTR)"NIL:", MODE_OLDFILE);
+    j->out = Open((STRPTR)"NIL:", MODE_NEWFILE);
+    j->close_in = j->in != 0;
+    j->close_out = j->out != 0;
+    j->stack = command_stack(0);
+    j->has_child = 1;
+    j->msg.mn_ReplyPort = port;
+    j->msg.mn_Length = sizeof(job);
+    p = j->cmd ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)job_tname(j, "vsh job"), NP_StackSize,
+                                   8000, NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
+               : 0;
+    if (!p) {
+        job_close_streams(j);
+        job_strings_free(j);
+        FreeVec(j);
+        return -1;
     }
+    j->task = &p->pr_Task;
+    Forbid();
+    j->next = live_jobs;
+    live_jobs = j;
+    Permit();
+    PutMsg(&p->pr_MsgPort, &j->msg);
+    t0 = os_now(0, &usec);
+    for (;;) {
+        ULONG got;
+        long el;
+        int isr;
+        Forbid();
+        isr = replied(port, j);
+        Permit();
+        el = (os_now(0, &usec) - t0) * 1000L;
+        verdict = sh_killwait(isr, broke, el, SH_KILL_LIMIT_MS);
+        if (verdict != SH_KW_WAIT)
+            break;
+        got = wait_or_tick((1UL << port->mp_SigBit) | SIGBREAKF_CTRL_C);
+        if (got & SIGBREAKF_CTRL_C)
+            broke = 1;
+    }
+    if (verdict == SH_KW_DONE) {
+        Forbid();
+        Remove(&j->msg.mn_Node);
+        Permit();
+        rc = j->rc;
+        job_free(j);
+        if (broke)
+            SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
+        return rc == 0 ? 0 : -1;
+    }
+    /* abandoned: decided under Forbid against the runner's own reply, which also runs under Forbid */
+    Forbid();
+    if (replied(port, j)) {
+        Remove(&j->msg.mn_Node);
+        Permit();
+        rc = j->rc;
+        job_free(j);
+    } else {
+        j->msg.mn_ReplyPort = 0;
+        orphans++;
+        Permit();
+        rc = -1;
+    }
+    if (broke)
+        SetSignal(SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_C);
     return rc == 0 ? 0 : -1;
 }
 
-static int job_unix_signal(job *j, const char *sig, const char *path)
+static int job_unix_signal(struct MsgPort *port, job *j, const char *sig, const char *path)
 {
-    return task_unix_signal(job_process(j), sig, path);
+    return task_unix_signal(port, job_process(j), sig, path);
 }
 
 /* The console's termios, if a program set one (TCGETA's Res2, see
@@ -638,7 +721,6 @@ static void job_free(job *j)
 /* This program's code while orphaned runners still run in it (orphan_jobs takes it from cli_Module),
  * and how many of them there are. Changed under Forbid. */
 static BPTR orphan_code;
-static int orphans;
 
 /* An orphaned runner ends: the last one gives this program's code to DOS to unload once the runner
  * has returned (its own process's seglist array, entry 3, with PRF_FREESEGLIST, as for a process
@@ -803,7 +885,9 @@ static void orphan_jobs(struct MsgPort *port)
             orphans++;
             any = 1;
         }
-    if (any && Cli()) {
+    /* a kill's abandoned ixkill runner (task_unix_signal) is orphaned without the shell ending: it counts
+     * (orphans) and its code is handed over now, if no orphaning did before */
+    if (Cli() && (any || (orphans && !orphan_code && Cli()->cli_Module))) {
         orphan_code = Cli()->cli_Module;
         Cli()->cli_Module = 0;
     }
@@ -1350,7 +1434,7 @@ static int suspend_job(void *os, job *j)
     sh_shell *sh = ((vproc *)os)->sh;
     int rc;
     TR("suspend", j, j->task);
-    if ((rc = job_unix_signal(j, "TSTP", sh_get(&sh->ctx, "PATH"))) != 0) {
+    if ((rc = job_unix_signal(PORT(os), j, "TSTP", sh_get(&sh->ctx, "PATH"))) != 0) {
         const char *m = rc == SH_SIG_NOSENDER ? ixkill_missing : "only ixemul programs can be suspended";
         Write((BPTR)sh->io.err, (APTR)"\nvsh: ", 6);
         Write((BPTR)sh->io.err, (APTR)m, (LONG)strlen(m));
@@ -1369,7 +1453,7 @@ static int suspend_job(void *os, job *j)
 static int os_cont(void *os, long id)
 {
     TR("cont", id, 0);
-    return job_unix_signal((job *)id, "CONT", sh_get(&((vproc *)os)->sh->ctx, "PATH")) ? -1 : 0;
+    return job_unix_signal(PORT(os), (job *)id, "CONT", sh_get(&((vproc *)os)->sh->ctx, "PATH")) ? -1 : 0;
 }
 
 /* The secondary result of the last command this process waited for, once (why) */
@@ -1583,7 +1667,7 @@ static int os_signal(void *os, long target, int sig, int is_job)
         return 0;
     }
     sh_ltoa(sig, num);
-    rc = j ? job_unix_signal(j, num, sh_get(&sh->ctx, "PATH")) : task_unix_signal(t, num, sh_get(&sh->ctx, "PATH"));
+    rc = j ? job_unix_signal(PORT(os), j, num, sh_get(&sh->ctx, "PATH")) : task_unix_signal(PORT(os), t, num, sh_get(&sh->ctx, "PATH"));
     ok = rc == 0;
     if (!ok && (sig == 1 || sig == 15)) {
         Forbid();

@@ -74,8 +74,19 @@ static void a_job_name_is_the_prefix_and_its_number(void)
     CHECK(strcmp(b, "vsh job 0") == 0);
 }
 
+static void a_kill_helper_is_waited_for_until_it_replies_a_break_or_the_limit(void)
+{
+    CHECK(sh_killwait(0, 0, 0, SH_KILL_LIMIT_MS) == SH_KW_WAIT);
+    CHECK(sh_killwait(0, 0, SH_KILL_LIMIT_MS - 1, SH_KILL_LIMIT_MS) == SH_KW_WAIT);
+    CHECK(sh_killwait(0, 1, 100, SH_KILL_LIMIT_MS) == SH_KW_INTR);
+    CHECK(sh_killwait(0, 0, SH_KILL_LIMIT_MS, SH_KILL_LIMIT_MS) == SH_KW_TIMEOUT);
+    CHECK(sh_killwait(1, 1, 99999, SH_KILL_LIMIT_MS) == SH_KW_DONE); /* the reply wins */
+    CHECK(sh_killwait(0, 1, 99999, SH_KILL_LIMIT_MS) == SH_KW_INTR); /* a break wins over the limit */
+}
+
 void suite_sh_jobgone(void)
 {
+    a_kill_helper_is_waited_for_until_it_replies_a_break_or_the_limit();
     a_job_name_is_the_prefix_and_its_number();
     the_shell_process_systemtags_made_carries_the_job_input_and_nothing_else_is_it();
     a_shell_sharing_the_input_is_not_the_child();

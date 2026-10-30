@@ -14,6 +14,11 @@ to a native task, F maps to no signal (dist/README.txt, tests/bash/divergences.t
 
   UPTERM_RIG=2 python3 tools/rig/trapsig_rig.py
 
+`trapsig_rig.py kill` runs only the two kill -s TERM checks of a native busy loop (VSH-KILL-TERM-NATIVE-HANG):
+A) the target runs at priority 1 (wasabid's, which starves the priority-0 tasks ixkill's start needs): the sender
+   must come back within 5 s of a Ctrl-C sent to it 3 s in (before the fix it stayed over 90 s, deaf to it);
+B) the target runs at priority 0: the sender must come back within 10 s, and the target must end with status 130 (TERM reaches a native vsh as the Ctrl-C fallback, 128+SIGINT; the brief expected 143, the rig shows 130 on old and new).
+
 The rig must be up."""
 import os, re, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +32,18 @@ for s in HUP INT QUIT TERM USR1 USR2 WINCH TSTP; do trap "echo $s >>RAM:trapsig.
 trap 'echo EXIT >>RAM:trapsig.log' EXIT
 while [ $SECONDS -lt 120 ]; do [ -e RAM:trapsig.stop ] && exit 0; done
 """
+KILL_SCRIPT = """\
+echo $$ >RAM:kt.pid
+while [ $SECONDS -lt 100 ]; do [ -e RAM:kt.stop ] && exit 0; done
+"""
+# B runs the target from an AmigaDOS script: ChangeTaskPri there sets the priority of the process that runs the
+# target (in a vsh script the command runs in another process), and its status is kept in RAM:kt.rc
+KILL_RUN = """\
+FailAt 9999
+ChangeTaskPri 0
+VTC:trapsig/vsh VTC:trapsig/kt.sh
+Echo "$RC" >RAM:kt.rc
+"""
 MUST = {"INT": "INT", "QUIT": "QUIT", "break-D": "TERM"}
 
 
@@ -35,7 +52,70 @@ def log_lines():
     return [l.strip() for l in out.splitlines() if l.strip()]
 
 
+def kill_check(name, pri0):
+    """One of the kill checks; (ok, text). The sender runs in a thread so that A can break it from here."""
+    import threading
+    U.run("Delete RAM:kt.stop RAM:kt.pid RAM:kt.rc QUIET", 30)
+    if pri0:
+        U.run("Run >NIL: Execute VTC:trapsig/kt.run", 30)
+    else:
+        U.run("Run >NIL: VTC:trapsig/vsh VTC:trapsig/kt.sh", 30)
+    time.sleep(3)
+    pid = U.run("Type RAM:kt.pid", 30)[1].strip()
+    res = {}
+
+    def sender():
+        t = time.time()
+        try:
+            res["r"] = U.run('VTC:trapsig/vsh -c "kill -s TERM %s"' % pid, 100)
+        except BaseException as e:
+            res["r"] = ("EXC", repr(e)[:100])
+        res["secs"] = time.time() - t
+    th = threading.Thread(target=sender)
+    th.start()
+    brk = None
+    if not pri0:
+        th.join(3)
+        if th.is_alive():
+            brk = time.time()
+            import ami
+            ami.req(0x09)
+    th.join(110)
+    secs = res.get("secs", 999.0)
+    after = (time.time() - brk) if brk else None
+    if pri0:
+        good = secs < 10
+        U.run("Echo x >RAM:kt.stop", 30)   # a target that survived
+        time.sleep(3)
+        rc = U.run("Type RAM:kt.rc", 30)[1].strip()
+        good = good and rc == "130"
+        text = "sender %.1f s, target status %s" % (secs, rc or "none")
+    else:
+        good = brk is not None and after is not None and secs < 3 + 5 + 1
+        text = "sender %.1f s in all, Ctrl-C at 3 s" % secs
+        U.run("Echo x >RAM:kt.stop", 30)
+        time.sleep(3)
+    print("%s %s -> %s %s" % ("ok  " if good else "FAIL", name, text, res.get("r", "")[:1]), flush=True)
+    time.sleep(5)
+    return good
+
+
+def kill_main():
+    vsh = os.environ.get("VSH") or str(U.ROOT / "build/amiga/vsh")
+    d = U.VTC / "trapsig"
+    d.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(vsh, d / "vsh")
+    (d / "kt.sh").write_text(KILL_SCRIPT, encoding="latin-1")
+    (d / "kt.run").write_text(KILL_RUN, encoding="latin-1")
+    ok = kill_check("A kill -s TERM, target priority 1, Ctrl-C to the sender", False)
+    ok = kill_check("B kill -s TERM, target priority 0", True) and ok
+    print("trapsig_rig kill: %s" % ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
 def main():
+    if sys.argv[1:] == ["kill"]:
+        return kill_main()
     vsh = os.environ.get("VSH") or str(U.ROOT / "build/amiga/vsh")
     d = U.VTC / "trapsig"
     d.mkdir(parents=True, exist_ok=True)
