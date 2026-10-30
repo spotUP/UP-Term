@@ -455,9 +455,9 @@ class AmiSSLPart(unittest.TestCase):
 
     def test_the_last_page_asks_for_a_reboot_when_amissl_was_installed(self):
         run = self.RUN
-        self.assertRegex(run, r'\(set #sslnote "\\nReboot once: then LIBS: has AmiSSL\."\)')
+        self.assertRegex(run, r'\(set #sslnote "\\nAmiSSL installed: LIBS: has it now, usable at once\."\)')
         self.assertIn('(set #sslrows 1)', run)
-        self.assertLess(run.index('AmiSSL was not installed'), run.index('Reboot once'))
+        self.assertLess(run.index('AmiSSL was not installed'), run.index('AmiSSL installed: LIBS'))
 
     def test_the_notes_reach_the_last_page_and_its_line_count(self):
         s = INSTALLER

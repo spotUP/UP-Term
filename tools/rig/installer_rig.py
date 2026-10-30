@@ -390,7 +390,7 @@ def installer_name(title):
 def reboot_later(gads, text):
     """The gadget that answers P_END's "Reboot now?" with Later, or None when `text` (the page's OCR) does
     not ask it. The page is matched by its question, not by a gadget list or the bare word: P_END's
-    (message #done) page before it says "Reboot once: then LIBS: has AmiSSL." and is answered with Proceed
+    (message #done) page before it says "AmiSSL installed: LIBS: has it now, usable at once." and is answered with Proceed
     (rig 9 2026-10-28). Later is the right button: id 1 on a page with the ask gadgets, id 91 on a
     Proceed/Abort-shaped page whose right button reads Later. A reboot question with neither returns 0: no
     gadget is safe to click (the default is Reboot)."""

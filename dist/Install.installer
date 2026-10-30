@@ -82,7 +82,7 @@
                                        "Run " (tackon #files "AmiSSL/Install-AmiSSL") " again."))
                     (set #sslrows 2))
                 (
-                    (set #sslnote "\nReboot once: then LIBS: has AmiSSL.")
+                    (set #sslnote "\nAmiSSL installed: LIBS: has it now, usable at once.")
                     (set #sslrows 1))))))
 
 ; P_ANX: run AmiNetXDuo's own Install-AmiNetXDuo (an Installer script) from the kit's AmiNetXDuo drawer, only when

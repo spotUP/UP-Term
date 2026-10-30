@@ -246,7 +246,7 @@ class NestedFinishPage(unittest.TestCase):
         finished, log, clicks = self.run_pages([
             ('VTC:distkit/Install (40% done)', (90, 91), 'Install AmiSSL now'),
             ('Install-AmiSSL (100% done)', (90,), 'Please reboot for modifications'),
-            ('VTC:distkit/Install (100% done)', (90, 91), 'Reboot once: then LIBS: has AmiSSL. Proceed | Abort Install'),
+            ('VTC:distkit/Install (100% done)', (90, 91), 'AmiSSL installed: LIBS: has it now, usable at once. Proceed | Abort Install'),
             ('VTC:distkit/Install (100% done)', (1, 2, 91, 100), "Reboot now? UP-Term's handlers"),
         ])
         self.assertTrue(finished, log)
