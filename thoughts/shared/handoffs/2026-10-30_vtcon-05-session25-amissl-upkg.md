@@ -34,3 +34,18 @@ status: partial
 - build/rig9 deleted (2.4 GB) with vtcon-32 and dctelnet-17 agreeing.
 - Open, first item next session: RIG10-DISTKIT-MIXED in todos.md. build/dist/up-term/Files lacks Agent, amnotify, bar.conf, S although dist/parts.txt lists them; run make dist at HEAD (df -h / first, ~3.5 GiB free) and check whether they appear. If not, fix the Makefile rule with a test.
 - Install-AmiSSL clicks: on 2-row pages Proceed/Yes is (279,377); (279,394) is About; the last Proceed at (400,394) can need two clicks.
+
+## Session 27 update (2026-10-30)
+
+Done, on origin/main:
+- cee4fe42 SHELL-INSTALL-DISK-FULL: install.dos runs `UPBigVol ROOM` before any Copy, MakeDir or Assign. It refuses with rc 20 and names the free and needed KB. Rig 3 proof: DEST=RAM:UP-Term gives "RAM:UP-Term has 0 KB free; the parts you chose need about 38307 KB." and nothing is copied. base-dest installs with no room message. Ledger row ticked.
+- 6157fbe2 DOPUS5-BLOCK-GONE-ALLCASE: the check was wrong, not the uninstall. A rig that boots the master's DOpus 5.82 never gets a ;BEGIN DOpus5 block. The check now demands the block only when S:User-Startup after the Installs holds it. Regression test added.
+
+Open, in order:
+1. The rig 8 `--only all` rerun at 6157fbe2 (scratchpad all8b.log). Tick DOPUS5-BLOCK-GONE-ALLCASE when 97 of 97 pass.
+2. BASEDEST-EMPTY-SYSUPTERM: base-dest FAIL 7 on a fresh rig 3 found an empty SYS:UP-Term. List it before the case to tell whether it comes from the image or the install.
+3. PORTS-BUILD-GONE: upterm-ports/build is gone, so `make dist` is blocked until a `make kit-stage` (a full ports build in the other repo) runs. The owner decides. Until then, refresh the kit by hand: copy the changed Files into build/dist/up-term/Files, then run `python3 tools/mkkit.py base`.
+
+Gotchas:
+- Rigs without `rig.py dopus` boot DOpus 5.82, and DOpus add-on checks then see the old program.
+- Install.installer's GUI room check counts the SYS parts against the drawer's volume. It overestimates when DEST is not on SYS:. install.dos splits the parts per volume. Ledger row INSTALLER-ROOM-SPLIT.
