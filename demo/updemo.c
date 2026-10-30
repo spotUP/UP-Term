@@ -1986,6 +1986,36 @@ static void status(int s)
     cfg = cbg = -1;
 }
 
+/* The window's size for the next scene. A window made smaller than the demo
+ * needs (the reflow scene asks the user to do exactly that) does not end the
+ * demo: it says so and waits until the window is big enough again, or Q.
+ * 0 when the demo is to end. */
+static int follow_size(void)
+{
+    int shown = 0;
+    for (;;) {
+        int got = ask_size();
+        if (quit_req)
+            return 0;
+        if (!got || set_size(ev_cols, ev_rows))
+            return 1;
+        if (!shown) {
+            shown = 1;
+            ps("\033[?25l\033[0m\033[r\033[2J\033[H");
+            ps("UP-Term demo: make the window bigger\r\n");
+            pn(UPDEMO_MIN_COLS);
+            ps(" x ");
+            pn(UPDEMO_MIN_ROWS);
+            ps(" needed. Q quits.");
+            flush();
+        }
+        /* a look for a key (Q ends it) before the next question, so a window
+         * that stays small is asked about five times a second, not flooded */
+        if (read_event(200) == EV_KEY && ev_act == ACT_QUIT)
+            return 0;
+    }
+}
+
 /* the reflow scene's title: the window's size */
 static void size_title(void)
 {
@@ -2032,9 +2062,7 @@ static int play(int first, long scene_ticks)
             alt = !alt;
         }
         /* the window may have changed: the demo follows it */
-        if (ask_size() && !set_size(ev_cols, ev_rows))
-            break;
-        if (quit_req)
+        if (!follow_size())
             break;
         if (pend_act) { /* a key came with the size's answer */
             nav = pend_act == ACT_BACK ? -1 : 1;
