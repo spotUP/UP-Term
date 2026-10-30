@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "amconf_core.h"
+#include "desk_core.h"
 
 
 /* one parse table: the whole file is never held twice */
@@ -133,6 +134,9 @@ unsigned amconf_desk_mask(const am_prefs *p)
     for (t = 0; t < AM_DESKLBL - AM_DESKPAL + 1; t++)
         if (amconf_on(p, AM_DESKPAL + t))
             m |= 1u << t;
+    /* FLAT-P1-2: the thin border and title size is the IControl geometry; stock writes nothing (an off switch restores the snapshot) */
+    if (amconf_flat_index(p, AM_FLATSIZE))
+        m |= 1u << DT_ICONTROL;
     return m;
 }
 

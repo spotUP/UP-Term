@@ -123,6 +123,22 @@ static int dk_put(const char *editor, const char *work, const unsigned char *buf
 }
 
 /* may SYS:Prefs/Pointer be fed the 3.2 pointer prefs: version 47+ (desk_pointer_editor_ok) */
+/* FLAT-P1-2: icontrol.prefs with the geometry of the border size, both copies; a file that does not fit the buffer is left alone */
+#define DK_IC_BUF 8192
+static int dk_icontrol(int thin)
+{
+    static unsigned char cur[DK_IC_BUF], out[DK_IC_BUF];
+    unsigned char geom[4];
+    long len = dk_read("ENV:Sys/icontrol.prefs", cur, sizeof cur), n;
+    if (len < 0)
+        len = dk_read("ENVARC:Sys/icontrol.prefs", cur, sizeof cur);
+    if (len >= DK_IC_BUF - 64)
+        return 0;
+    desk_geometry(thin, geom);
+    n = desk_icontrol(len > 0 ? cur : 0, len > 0 ? len : 0, geom, out, sizeof out);
+    return n > 0 && dk_write("ENVARC:Sys/icontrol.prefs", out, n) && dk_write("ENV:Sys/icontrol.prefs", out, n);
+}
+
 static int dk_pointer_editor_ok(void)
 {
     static unsigned char img[65536];
@@ -290,7 +306,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (!mask)
         return 0;
     UnLock(CreateDir((STRPTR)DK_WORK));
-    if (old_ws || (mask & (1u << DT_FONT)))
+    if (old_ws || (mask & ((1u << DT_FONT) | (1u << DT_ICONTROL))))
         idle = dk_iprefs_idle_mask(); /* before any editor: the Wait() IPrefs returns to when done */
     dk_snapshot(mask);
     depth = dk_screen_depth();
@@ -344,6 +360,12 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
                 dk_wait_iprefs(idle); /* the Font editor resets the Workbench screen too (3.1: twice): the windows return after it */
         } else
             ok = 0;
+    }
+    if (mask & (1u << DT_ICONTROL)) {
+        /* FLAT-P1-2: the file IPrefs watches is written in place, both copies, other fields and IEXC chunks kept (no editor is fed it:
+         * SYS:Prefs/IControl would rewrite the exception list); then the same idle wait as the other prefs */
+        ok &= dk_icontrol(amconf_flat_index(&ap, AM_FLATSIZE));
+        dk_wait_iprefs(idle);
     }
     if (reset || old_ws)
         dk_windows_open(was);

@@ -476,6 +476,14 @@ static void test_glyph_route(void)
 }
 
 /* 3.1 sysiclass answers no OM_GET: the gadget type of the drawn window gadget gives SYSIA_Which */
+
+struct frame_rec_t { int n, r[8][5]; };
+static void frame_rec(void *ctx, int x0, int y0, int x1, int y1, int pen)
+{
+    struct frame_rec_t *f = (struct frame_rec_t *)ctx;
+    if (f->n < 8) { f->r[f->n][0] = x0; f->r[f->n][1] = y0; f->r[f->n][2] = x1; f->r[f->n][3] = y1; f->r[f->n][4] = pen; f->n++; }
+}
+
 static void test_which_from_gtype(void)
 {
     CHECK_INT(flat_which_from_gtype(0x8000u | 0x40), FLAT_W_DEPTH);
@@ -484,6 +492,62 @@ static void test_which_from_gtype(void)
     CHECK_INT(flat_which_from_gtype(0x8000u | 0x80 | 1), FLAT_W_CLOSE);
     CHECK_INT(flat_which_from_gtype(0x8000u | 0x20), -1);      /* GTYP_WDRAGGING is not a glyph */
     CHECK_INT(flat_which_from_gtype(0x0001u), -1);
+    /* FLAT-C7: the screen title bar's depth gadget is type 0xc055 (SYSGADGET|SCRGADGET|GTYP_SDEPTH|BOOLGADGET) */
+    CHECK_INT(flat_which_from_gtype(0xc055u), FLAT_W_DEPTH);
+    {
+        int img, other;
+        CHECK_INT(flat_gadget_which(0xc055u, &img, 0, &img), FLAT_W_DEPTH);
+        CHECK_INT(flat_gadget_which(0xc055u, &other, &img, &img), FLAT_W_DEPTH);
+        CHECK_INT(flat_gadget_which(0xc055u, &other, 0, &img), -1);         /* another gadget's image */
+        CHECK_INT(flat_gadget_which(0x4055u, &img, 0, &img), -1);           /* not a system gadget */
+        CHECK_INT(flat_gadget_which(0xc035u, &img, 0, &img), -1);           /* screen drag bar: no glyph */
+    }
+    /* FLAT-C8: the frameiclass decision. Skip only for IM_DRAW / IM_DRAWFRAME, switch on, not held, flat pens. */
+    {
+        flat_state fs;
+        memset(&fs, 0, sizeof fs);
+        fs.enabled = 1;
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0), FLAT_DRAW_SKIP);
+        CHECK_INT(flat_frame_decide(&fs, FLAT_IM_DRAWFRAME, 2, 2), FLAT_DRAW_SKIP);
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 2, 0), FLAT_DRAW_STOCK);        /* stock pens keep stock bevels */
+        CHECK_INT(flat_frame_decide(&fs, 0x203UL, 0, 0), FLAT_DRAW_STOCK);        /* IM_ERASE */
+        CHECK_INT(flat_frame_decide(&fs, 0x204UL, 0, 0), FLAT_DRAW_STOCK);        /* IM_HITTEST: never skipped */
+        CHECK_INT(flat_frame_decide(&fs, 0x0UL, 0, 0), FLAT_DRAW_STOCK);
+        fs.held = 1;
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0), FLAT_DRAW_STOCK);
+        fs.held = 0;
+        fs.enabled = 0;
+        CHECK_INT(flat_frame_decide(&fs, 0x202UL, 0, 0), FLAT_DRAW_STOCK);
+        CHECK_INT(flat_frame_decide(0, 0x202UL, 0, 0), FLAT_DRAW_STOCK);
+    }
+    {
+        char fl[64];
+        CHECK_INT(flat_frame_status_line(0, 0, 0, fl, sizeof fl) > 0 && !strcmp(fl, "frame=absent"), 1);
+        CHECK_INT(flat_frame_status_line(1, 7, 3, fl, sizeof fl) > 0 && !strcmp(fl, "frame=hooked calls=7 flat=3"), 1);
+        CHECK_INT(flat_frame_status_line(1, 7, 3, fl, 40), 0);
+    }
+    {   /* FLAT-C8: the flat frame geometry: fill, then four 1 px sides; edges-only has no fill; selected fills pen_line */
+        struct frame_rec_t f;
+        flat_state fs;
+        memset(&fs, 0, sizeof fs);
+        fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0;
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, frame_rec, &f), 1);
+        CHECK_INT(f.n, 5);
+        CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 25 && f.r[0][4] == 0, 1);
+        CHECK_INT(f.r[1][0] == 10 && f.r[1][1] == 20 && f.r[1][2] == 17 && f.r[1][3] == 20 && f.r[1][4] == 1, 1);
+        CHECK_INT(f.r[2][1] == 25 && f.r[2][3] == 25 && f.r[3][2] == 10 && f.r[4][0] == 17 && f.r[4][4] == 1, 1);
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 0, frame_rec, &f), 1);
+        CHECK_INT(f.n, 4);
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, frame_rec, &f), 1);
+        CHECK_INT(f.r[0][4], 1);                                               /* selected: pen_line fill */
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, frame_rec, &f), 0);   /* too small: stock */
+        CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, frame_rec, &f), 0);
+    }
+    CHECK_INT((int)flat_which_alias(5), FLAT_W_DEPTH);
+    CHECK_INT((int)flat_which_alias(3), FLAT_W_CLOSE);
 }
 
 void suite_flat_core(void)

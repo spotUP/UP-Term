@@ -19,6 +19,10 @@ typedef struct flatshared {
     flat_state st;
     flat_swap sw;
     uintptr_t *slot;            /* &sysiclass->cl_Dispatcher.h_SubEntry while installed */
+    /* FLAT-C8: the frameiclass hook (second slot) and its sentinels */
+    flat_swap fsw;
+    uintptr_t *fslot;
+    ULONG fcalls, fflat;        /* every frameiclass dispatch / every IM_DRAW(FRAME) that drew flat */
     /* FLAT-D4 */
     struct Library *dlib;       /* dopus5.library, opened while patched so it cannot expunge under the patch */
     flat_swap dsw[FLAT_EL_COUNT];

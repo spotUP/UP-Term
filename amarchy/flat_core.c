@@ -196,6 +196,15 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
     return pen_shine == pen_back ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
 }
 
+int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back)
+{
+    if (!s || !s->enabled || s->held)
+        return FLAT_DRAW_STOCK;
+    if (method != 0x202UL && method != FLAT_IM_DRAWFRAME)
+        return FLAT_DRAW_STOCK;
+    return pen_shine == pen_back ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
+}
+
 int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
                            unsigned long calls, unsigned long flat, const uint32_t sums[FLAT_EL_COUNT], char *out, size_t cap)
 {
@@ -216,13 +225,38 @@ int flat_dopus_status_line(int found, unsigned version, unsigned revision, int r
     return n > 0 && (size_t)n < cap ? n : 0;
 }
 
+int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, char *out, size_t cap)
+{
+    int n;
+    if (cap < 48)
+        return 0;
+    if (!installed)
+        n = snprintf(out, cap, "frame=absent");
+    else
+        n = snprintf(out, cap, "frame=hooked calls=%lu flat=%lu", calls, flat);
+    return n > 0 && (size_t)n < cap ? n : 0;
+}
+
 int flat_which_from_gtype(unsigned gadget_type)
 {
     switch (gadget_type & 0xF0u) {
     case 0x40: return 0;        /* GTYP_WDEPTH */
+    case 0x50: return 0;        /* GTYP_SDEPTH: the screen title bar's depth gadget (type 0xc055), FLAT-C7 */
     case 0x60: return 1;        /* GTYP_WZOOM */
     case 0x10: return 2;        /* GTYP_SIZING */
     case 0x80: return 3;        /* GTYP_CLOSE */
     default: return -1;
     }
+}
+
+int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const void *select_render, const void *image)
+{
+    if (!(gadget_type & 0x8000u) || !image || (gadget_render != image && select_render != image))   /* GTYP_SYSGADGET */
+        return -1;
+    return flat_which_from_gtype(gadget_type);
+}
+
+unsigned long flat_which_alias(unsigned long which)
+{
+    return which == 0x05 ? 0x00 : which;    /* SYSIA_Which SDEPTHIMAGE draws the depth glyph */
 }

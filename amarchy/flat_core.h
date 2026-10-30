@@ -141,6 +141,15 @@ int flat_dopus_gate(const flat_dopus_build *tab, int n, unsigned version, unsign
 enum { FLAT_DRAW_STOCK = 0, FLAT_DRAW_SKIP = 1 };
 int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back);
 
+/* FLAT-C8: frameiclass (every GadTools bevel and ridge: buttons, strings, checkboxes, cycles, listviews, DrawBevelBox).
+ * The same decision for one method call of the class: SKIP only for IM_DRAW (0x202) and IM_DRAWFRAME (0x206), when the
+ * switch is on, not held, and the screen pens are flat (shine == background). Any other method (OM_GET, IM_ERASE,
+ * IM_HITFRAME, ...) is STOCK. A missing state is STOCK. */
+#define FLAT_IM_DRAWFRAME 0x206UL
+int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back);
+/* STATUS line of the frameiclass hook: "frame=absent" or "frame=hooked calls=N flat=N" (flat = draws skipped). */
+int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, char *out, size_t cap);
+
 /* STATUS extra line for the DOpus patch: "dopus=absent", "dopus=73.8 inert unknown|unmeasured|sum" or
  * "dopus=73.8 patched=<mask> calls=N flat=N". Appends " sums=<hex>,<hex>" (the measured routine sums, NULL = none) when found. Returns the length, 0 when cap < 96. */
 int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
@@ -149,5 +158,13 @@ int flat_dopus_status_line(int found, unsigned version, unsigned revision, int r
 /* SYSIA_Which of a system gadget from its GadgetType & GTYP_SYSTYPEMASK (0xF0): WDEPTH 0x40 -> 0, WZOOM 0x60 -> 1,
  * SIZING 0x10 -> 2, CLOSE 0x80 -> 3. -1 for every other type. Used where GetAttr(SYSIA_Which) fails (Kickstart 3.1). */
 int flat_which_from_gtype(unsigned gadget_type);
+
+/* FLAT-C7: the SYSIA_Which of a system gadget (window or screen: GTYP_SYSGADGET set) when one of its two render
+ * pointers is `image`, else -1. Screen gadgets (Screen->FirstGadget, type 0xc055 for the depth gadget) have no window,
+ * so flat.c walks the screen's list with this too. */
+int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const void *select_render, const void *image);
+
+/* SYSIA_Which values that draw the glyph of another one (SDEPTHIMAGE 5 -> DEPTHIMAGE 0). */
+unsigned long flat_which_alias(unsigned long which);
 
 #endif
