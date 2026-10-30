@@ -84,6 +84,17 @@ def close_vsh():
     typewin.key(typewin.RET, wait=2)
 
 
+def amarchy_port():
+    """True when the AMARCHY ARexx port is open on the rig"""
+    m = ami._m()
+    try:
+        with ami._conn() as conn:
+            m.arexx(conn, 'AMARCHY', 'STATUS')
+        return True
+    except m.WasabiError:
+        return False
+
+
 def case_selftest(n):
     """the lesson's own answers on Amiga vsh. The answers of the window lesson act on the window
     (UPTERM_STATE act ...), which --selftest cannot do: the host test's fake state stands in, as
@@ -92,7 +103,13 @@ def case_selftest(n):
     ami.put(os.path.join(ROOT, "tests", "fake-upterm-state"), "RAM:fake-upterm-state")
     c.run("Delete RAM:fakestate ALL QUIET >NIL:", 30)
     c.run("MakeDir RAM:fakestate", 30)
-    rc, out = c.run("UP-Term:bin/vsh -c \"UPTERM_STATE='UP-Term:bin/vsh RAM:fake-upterm-state' "
+    # lesson 14 asks Amarchy for its state through rx: the rig's shell path is C: only (a real Workbench has
+    # SYS:Rexxc in it) and the commodity is not started by the boot, so the rig gives both
+    pre = "Path SYS:Rexxc ADD\n" if n == "14" else ""
+    if n == "14" and amarchy_port() is False:
+        c.run("Run >NIL: UP-Term:bin/Amarchy", 30)
+        time.sleep(4)
+    rc, out = c.run(pre + "UP-Term:bin/vsh -c \"UPTERM_STATE='UP-Term:bin/vsh RAM:fake-upterm-state' "
                     "UPTERM_FAKE_DIR=RAM:fakestate %s --selftest UP-Term:share/tutorial/%s\""
                     % (TUT, name), 180)
     steps = [l for l in out.splitlines() if l.startswith(("ok ", "FAIL"))]

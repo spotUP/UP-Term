@@ -14,11 +14,11 @@ $ cd "$start"
 > viewer shows, and its category. Put your own rows in ENVARC:up-term/keymap.user (a row
 > there replaces the row for the same key, and  super+t = none  unbinds one), then copy
 > the file to ENV:up-term/keymap.user (Amarchy picks it up at once) or reboot.
-? Ask Amarchy for its state with rx "address AMARCHY STATUS" (it answers with the row count).
-= case "$LEARN_LINE" in "rx \"address AMARCHY STATUS\"") true ;; *) false ;; esac
+? Ask Amarchy for its state with rx "options results; address AMARCHY STATUS; say result" (it answers with the row count).
+= case "$LEARN_LINE" in "rx \"options results; address AMARCHY STATUS; say result\"") true ;; *) false ;; esac
 = grep -q 'rows=' "$LEARN_OUT"
-~ Type rx "address AMARCHY STATUS"; the answer holds rows= and enabled=.
-! rx "address AMARCHY STATUS"
+~ Type rx "options results; address AMARCHY STATUS; say result"; the answer holds rows= and enabled=.
+! rx "options results; address AMARCHY STATUS; say result"
 > Rows named win:<verb> (cycle, front, back, zip, fullwidth, fullscreen and more) act on
 > windows of any program. There is no verb that closes another program's window.
 > To switch it off for a while, open Exchange and Disable AMARCHY: every Left Amiga key
