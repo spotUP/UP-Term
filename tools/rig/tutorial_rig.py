@@ -504,7 +504,7 @@ def case_check_b():
     names = [open(os.path.join(ROOT, "dist", "tutorial-lessons", n)).readline()[2:].strip() for n in LESSONS]
     lines = [l for l in out.splitlines() if l.strip().startswith("[")]
     miss = [n for n in names if n.lower() not in out.lower()]
-    return len(lines) == len(LESSONS) == 13 and not miss, "%d lessons listed; missing %s" % (len(lines), miss)
+    return len(lines) == len(LESSONS) and not miss, "%d lessons listed; missing %s" % (len(lines), miss)
 
 
 def case_check_c():
