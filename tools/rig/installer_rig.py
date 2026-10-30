@@ -825,6 +825,7 @@ def check_room_text(ck, log, path, free_kb):
         ck(0 <= free_kb - n_kb <= 8, '%s has %d KB free on the room page (Info before the drawer was made: %d KB, at most 8 KB more)' % (path, n_kb, free_kb))
         ck(m_kb > n_kb, 'the room page\'s need (%d KB) is above the free room (%d KB)' % (m_kb, n_kb))
     flat = ' '.join(txt[0].split()) if txt else ''
+    flat = re.sub('[-\u2013\u2014]+', '-', flat)   # OCR reads the hyphen of UP-Term as an em dash plus hyphen at times
     ck(path.split(':', 1)[1].lower() in flat.lower() and 'KB free' in flat and 'the parts you chose need about' in flat, 'the room page text is "%s has N KB free; the parts you chose need about M KB"' % path, flat)
 
 
@@ -904,8 +905,7 @@ def run_bigvol():
 def run_case(case):
     if case in ("space", "space-sys"):
         try:
-            fill_sys(SPACE_LEFT_SYS if case == 'space-sys' else SPACE_LEFT)
-            return run_base_case(case)
+            return run_base_case(case)   # fills SYS: itself, after its cleanup
         finally:
             ir.run_slow('unfillsys', 'Delete >NIL: %s QUIET' % FILLER, 300)
             ir.run_slow('deletedest', drawer_delete(CASES[case][1]))   # the empty drawer Make New Drawer made on the way to the room message
@@ -1064,6 +1064,10 @@ def run_base_case(case):
         ir.run_slow('deletedest', drawer_delete(dest))
     if case in ROOM_CASES:
         ir.run_slow('deleteroom', drawer_delete(ROOMDEST))
+    if case in ("space", "space-sys"):
+        # filled after prepare and the Uninstall above: what they delete (a stopped run's SYS: parts) would free room
+        # again, and space-sys then had 11 MB on SYS:, enough for its SYS: parts (no refusal, the install ran)
+        fill_sys(SPACE_LEFT_SYS if case == 'space-sys' else SPACE_LEFT)
     sys_kb = sys_free_bytes() // 1024   # what the room page must say SYS: has
     startup_before = ir.run('Type S:User-Startup')[1]
     before = ir.lib_state()

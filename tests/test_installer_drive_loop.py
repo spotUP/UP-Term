@@ -279,6 +279,9 @@ class RoomText(unittest.TestCase):
         irg.check_room_text(ck, ['room page: 12288 KB free, 60600 KB needed', 'room page text: S\u00a5S:UP-Term has 12288 KB free; the parts you chose need about 60600 KB.'], 'SYS:UP-Term', 12288)   # OCR misreads the S: the drive letter is not matched
         self.assertEqual(ck.failed, [])
         ck = irg.Checks()
+        irg.check_room_text(ck, ['room page: 11505 KB free, 48552 KB needed', 'room page text: o¥S:UP—-Term has 11505 KB free; the parts you chose need about 48552 KB.'], 'SYS:UP-Term', 11507)   # rig 3 s29: OCR read the hyphen as an em dash plus hyphen
+        self.assertEqual(ck.failed, [])
+        ck = irg.Checks()
         irg.check_room_text(ck, ['page []'], 'SYS:UP-Term', 12288)   # the page was never read
         self.assertTrue(ck.failed)
 
