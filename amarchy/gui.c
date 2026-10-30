@@ -589,6 +589,8 @@ static void relayout(gui *g, int n)
 
 static void pens_get(gui *g, const char *name);
 static void pens_release(gui *g);
+static const char *screen_bind(gui *g);
+static void screen_unbind(gui *g);
 
 /* Style > Theme previews the theme under the cursor; any other row draws the saved theme (gt_preview_pick). The
  * pens change only when the theme does; the caller repaints (g->drawn tells it the theme changed). */
@@ -1459,10 +1461,7 @@ static int gui_hide(void)
     CloseWindow(g->win);
     g->win = 0;
     g->rp = 0;
-    pens_release(g);
-    memset(g->pen_got, 0, sizeof g->pen_got);
-    UnlockPubScreen(0, g->scr);
-    g->scr = 0;
+    screen_unbind(g);
     hidden = 1;
     return 1;
 }
@@ -1473,13 +1472,11 @@ static void gui_show(void)
     if (!hidden)
         return;
     hidden = 0;
-    g->scr = lock_front_screen();
-    if (!g->scr)
-        g->scr = LockPubScreen(0);
-    if (!g->scr)
+    if (screen_bind(g))
         return;
-    g->cm = g->scr->ViewPort.ColorMap;
-    pens_get(g, 0);
+    if (g->mode == M_LIST)
+        g->w = mg_width_t(&km, g->node, &g->mf, g->icon_w, g->chev_w, text_len, g->mt, &g->ms, menu_cond);
+    mg_layout(&g->g, &g->mf, g->w, g->mode == M_LIST ? g->count : g->nlines, &g->ms);
     g->win = window_open(g);
     if (!g->win)
         return;
@@ -1494,7 +1491,6 @@ static void gui_show(void)
 
 static void cleanup(gui *g)
 {
-    ig_close();
     buffer_free(g);
     if (g->win)
         CloseWindow(g->win);
@@ -1503,14 +1499,8 @@ static void cleanup(gui *g)
         char cur[GT_NAME], want[GT_NAME];
         gt_dos_current(cur, (int)sizeof cur);
         gt_preview_term(0, cur, g->drawn, want, (int)sizeof want, gt_dos_preview_send);   /* closed on a previewed row: the tabs get the saved theme back */
-        pens_release(g);
     }
-    g->cm = 0;
-    if (g->scr)
-        UnlockPubScreen(0, g->scr);
-    g->scr = 0;
-    mt_close(g->mt);
-    g->mt = 0;
+    screen_unbind(g);
 }
 
 /* The screen's pixel shape: DisplayInfo Resolution into ms.rx, ms.ry (0, 0 when unknown), and 1 when the
@@ -1523,6 +1513,53 @@ static void pick_font(gui *g)
     amconf_load(&ap);
     spec = ap.val[AM_FONT];   /* "name:size", as the terminal's font key */
     g->mt = mt_open(g->scr, square, spec);
+}
+
+/* Everything drawn from the front screen: its lock, colour map, pens, menu font, icon bitmaps and the font's text
+ * lengths. They come and go together, so a Workbench reset between gui_hide and gui_show (desk_dos_apply: IPrefs
+ * closes the old screen and opens a new one) leaves nothing pointing into the freed screen. Returns 0, or why the
+ * bind failed (the screen stays unlocked). */
+static const char *screen_bind(gui *g)
+{
+    g->scr = lock_front_screen();
+    if (!g->scr)
+        g->scr = LockPubScreen(0);
+    if (!g->scr)
+        return "amarchy-gui: no screen\n";
+    g->cm = g->scr->ViewPort.ColorMap;
+    pick_font(g);
+    at_mark("font");
+    if (!g->mt) {
+        screen_unbind(g);
+        return "amarchy-gui: no memory for the font\n";
+    }
+    g->mf.ysize = mt_height(g->mt);
+    g->mf.cw = mt_bitmap_font(g->mt) ? mt_bitmap_font(g->mt)->tf_XSize : mt_width(g->mt, "n");
+    g->ms.w = g->scr->Width;
+    g->ms.h = g->scr->Height;
+    pens_get(g, 0);
+    if (app_icons == UC_ICONS_AMIGA && !minimal)
+        ig_open(g->scr, ixs.n);      /* no icon.library V44: the index rows keep the generic glyph */
+    at_mark("icons");
+    /* the font's text lengths before the window exists */
+    /* the minimal menu's group marker is part of the label's text: " >" after it, no gap column */
+    g->chev_w = text_len(minimal ? " >" : ">", g->mt);
+    return 0;
+}
+
+/* screen_bind's undo, the window already closed: pens before the font (pens_release tells the font), the screen last. */
+static void screen_unbind(gui *g)
+{
+    ig_close();
+    if (g->cm)
+        pens_release(g);
+    memset(g->pen_got, 0, sizeof g->pen_got);
+    g->cm = 0;
+    mt_close(g->mt);
+    g->mt = 0;
+    if (g->scr)
+        UnlockPubScreen(0, g->scr);
+    g->scr = 0;
 }
 
 /* One open of the menu or the key viewer: what a fresh process did after its arguments, the previous open's
@@ -1559,38 +1596,18 @@ static int gui_open(int viewer, const char *node, int anchored, int ax, int ay)
         goto done;
     }
 
-    g->scr = lock_front_screen();
-    if (!g->scr)
-        g->scr = LockPubScreen(0);
-    if (!g->scr) {
-        PutStr((STRPTR) "amarchy-gui: no screen\n");
-        rc = 20;
-        goto done;
-    }
-    g->cm = g->scr->ViewPort.ColorMap;
-    pick_font(g);
-    at_mark("font");
-    if (!g->mt) {
-        PutStr((STRPTR) "amarchy-gui: no memory for the font\n");
-        rc = 20;
-        goto done;
-    }
-    g->mf.ysize = mt_height(g->mt);
-    g->mf.cw = mt_bitmap_font(g->mt) ? mt_bitmap_font(g->mt)->tf_XSize : mt_width(g->mt, "n");
-    g->ms.w = g->scr->Width;
-    g->ms.h = g->scr->Height;
     g->ms.minimal = minimal;
     g->ms.anchored = anchored;
     g->ms.ax = ax;
     g->ms.ay = ay;
-    pens_get(g, 0);
-    if (app_icons == UC_ICONS_AMIGA && !minimal)
-        ig_open(g->scr, ixs.n);      /* no icon.library V44: the index rows keep the generic glyph */
-    at_mark("icons");
-
-    /* the font's text lengths before the window exists */
-    /* the minimal menu's group marker is part of the label's text: " >" after it, no gap column */
-    g->chev_w = text_len(minimal ? " >" : ">", g->mt);
+    {
+        const char *why = screen_bind(g);
+        if (why) {
+            PutStr((STRPTR) why);
+            rc = 20;
+            goto done;
+        }
+    }
     g->chosen = -1;
     g->ixpath[0] = g->ixlabel[0] = 0;
     strcpy(g->node, node);
