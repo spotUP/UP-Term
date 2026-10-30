@@ -345,7 +345,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     }
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
-        len = desk_wbpattern(th, depth > 3 ? 3 : depth, 1, plen > 0 ? prev : 0, plen > 0 ? plen : 0, buf, sizeof buf);
+        len = desk_wbpattern(th, depth > 3 ? 3 : depth, plen > 0 ? prev : 0, plen > 0 ? plen : 0, buf, sizeof buf);
         ok &= dk_put("WBPattern", DK_WORK "/wbpattern.prefs", buf, len);
         if (old_ws)
             dk_wait_iprefs(idle);

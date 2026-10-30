@@ -326,7 +326,7 @@ static void test_desk_wbpattern(void)
     long n;
     int w;
     probe_theme(&t);
-    n = desk_wbpattern(&t, 3, 0, 0, 0, out, sizeof out);
+    n = desk_wbpattern(&t, 3, 0, 0, out, sizeof out);
     CHECK_INT(n, 410);
     CHECK(!memcmp(out, "FORM", 4) && !memcmp(out + 8, "PREF", 4) && !memcmp(out + 12, "PRHD", 4));
     CHECK_INT(out[7], 402 & 0xff);
@@ -348,15 +348,8 @@ static void test_desk_wbpattern(void)
     /* SCREEN: the empty chunk Wbpattern writes for none */
     CHECK_INT(ptrn(out, 2)[8 + 21], 0);
     CHECK_INT(ptrn(out, 2)[8 + 24], 0);
-    /* tiled: the dot grid of pen 0 on the root, pen 1 elsewhere */
-    n = desk_wbpattern(&t, 3, 1, 0, 0, again, sizeof again);
-    CHECK_INT(n, 410);
-    CHECK_INT(ptrn(again, 0)[8 + 24], 0x7f);       /* row 0: pixel 0 is pen 0 */
-    CHECK_INT(ptrn(again, 0)[8 + 24 + 1], 0x7f);   /* pixel 8 */
-    CHECK_INT(ptrn(again, 0)[8 + 24 + 2], 0xff);   /* row 1 solid */
-    CHECK(!memcmp(ptrn(again, 1), ptrn(out, 1), 128));
     /* a 4-colour screen: depth 2 in the chunk, no pixel of a third plane */
-    n = desk_wbpattern(&t, 2, 1, 0, 0, again, sizeof again);
+    n = desk_wbpattern(&t, 2, 0, 0, again, sizeof again);
     CHECK_INT(n, 410);
     CHECK(ptrn(again, 0)[8 + 21] <= 2);
     CHECK_INT(ptrn(again, 0)[8 + 24 + 64], 0);
@@ -364,10 +357,32 @@ static void test_desk_wbpattern(void)
     memcpy(prev, out, 410);
     prev[26 + 256 + 8 + 21] = 3;
     prev[26 + 256 + 8 + 24 + 5] = 0xa5;
-    desk_wbpattern(&t, 3, 0, prev, 410, again, sizeof again);
+    desk_wbpattern(&t, 3, prev, 410, again, sizeof again);
     CHECK_INT(ptrn(again, 2)[8 + 24 + 5], 0xa5);
     CHECK_INT(ptrn(again, 2)[8 + 21], 3);
-    CHECK_INT(desk_wbpattern(&t, 3, 0, 0, 0, again, 100), 0);
+    CHECK_INT(desk_wbpattern(&t, 3, 0, 0, again, 100), 0);
+}
+
+static void test_desk_wbpattern_no_dots(void)
+{
+    /* the Workbench backdrop has no dots: every ROOT pattern pixel is DK_DARKER at every depth */
+    static unsigned char out[BUF_MAX];
+    gtheme t;
+    int depth, p, y, x;
+    probe_theme(&t);
+    for (depth = 1; depth <= 3; depth++) {
+        const unsigned char *data;
+        CHECK_INT(desk_wbpattern(&t, depth, 0, 0, out, sizeof out), 410);
+        data = ptrn(out, 0) + 8 + 24;
+        for (y = 0; y < 16; y++)
+            for (x = 0; x < 16; x++) {
+                int pen = 0;
+                for (p = 0; p < depth; p++)
+                    if (data[p * 32 + y * 2 + x / 8] & (0x80 >> (x % 8)))
+                        pen |= 1 << p;
+                CHECK_INT(pen, DK_DARKER);
+            }
+    }
 }
 
 static void test_desk_pointer(void)
@@ -724,6 +739,7 @@ void suite_desk(void)
     test_desk_darker();
     test_desk_backdrop();
     test_desk_wbpattern();
+    test_desk_wbpattern_no_dots();
     test_desk_pointer();
     test_desk_pointer_gate();
     test_desk_palette_gate();

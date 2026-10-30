@@ -221,16 +221,15 @@ long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOT
 #define PT_BODY (24 + PT_DATA)
 #define PT_CHUNK (8 + PT_BODY)
 
-/* one flat 16x16 pattern into data[PT_DATA]: pen for every pixel, dot (when >= 0) on every 8th pixel of every 8th row */
-static void pattern_fill(unsigned char *data, int depth, int pen, int dot)
+/* one flat 16x16 pattern into data[PT_DATA]: pen for every pixel */
+static void pattern_fill(unsigned char *data, int depth, int pen)
 {
     int p, y, x;
     memset(data, 0, PT_DATA);
     for (p = 0; p < depth; p++)
         for (y = 0; y < 16; y++)
             for (x = 0; x < 16; x++) {
-                int c = (dot >= 0 && x % 8 == 0 && y % 8 == 0) ? dot : pen;
-                if ((c >> p) & 1)
+                if ((pen >> p) & 1)
                     data[p * PT_PLANE + y * 2 + x / 8] |= (unsigned char)(0x80 >> (x % 8));
             }
 }
@@ -260,7 +259,7 @@ static const unsigned char *prev_screen(const unsigned char *prev, long prevlen)
     return 0;
 }
 
-long desk_wbpattern(const gtheme *t, int depth, int tiled, const unsigned char *prev, long prevlen,
+long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long prevlen,
                     unsigned char *out, long cap)
 {
     unsigned char data[PT_DATA], *at;
@@ -273,11 +272,11 @@ long desk_wbpattern(const gtheme *t, int depth, int tiled, const unsigned char *
     if (depth < 1)
         depth = 1;
     at = iff_header(out, DK_WBPATTERN_SIZE);
-    /* ROOT: the darker tone, tiled with a sparse grid of the ground (dark_background is no pen under OD13) */
-    pattern_fill(data, depth, DK_DARKER, tiled ? DK_BG : -1);
+    /* ROOT: one solid darker tone, no dots (dark_background is no pen under OD13) */
+    pattern_fill(data, depth, DK_DARKER);
     pattern_chunk(at, 0, depth, data);
     /* DRAWER: the panel tone MT_BG, which is pen 0 (OD7) */
-    pattern_fill(data, depth, DK_BG, -1);
+    pattern_fill(data, depth, DK_BG);
     pattern_chunk(at + PT_CHUNK, 1, depth, data);
     /* SCREEN: the chunk Wbpattern writes for "none" (flags 1, depth 0, 96 zero bytes), or the user's own */
     keep = prev_screen(prev, prevlen);

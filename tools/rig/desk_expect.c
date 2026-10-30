@@ -1,7 +1,7 @@
 /* desk_expect: host helper of the P1a desktop rig. Prints to stdout the bytes desk_core makes for a theme file, so the
  * rig compares the Amiga's ENV:Sys files against the pure writers instead of re-implementing them in Python.
  *   desk_expect <theme> palette <ncolors>
- *   desk_expect <theme> wbpattern <depth>              (tiled, no previous file)
+ *   desk_expect <theme> wbpattern <depth>              (no previous file)
  *   desk_expect <theme> pointer <basefile>
  *   desk_expect <theme> font <basefile|-> <fontsdir>   (- = desk_font_default; a font counts as present when <fontsdir>/<name> exists)
  *   desk_expect - pens                                 (desk_pens slots 0..11, "pens: n n ..." like dripens; slot 11 as 2, R1.17 pen 11)
@@ -169,7 +169,7 @@ int main(int argc, char **argv)
         n = desk_palette(&th, atoi(argv[3]), pens, buf, sizeof buf);
     }
     else if (!strcmp(argv[2], "wbpattern"))
-        n = desk_wbpattern(&th, atoi(argv[3]), 1, 0, 0, buf, sizeof buf);
+        n = desk_wbpattern(&th, atoi(argv[3]), 0, 0, buf, sizeof buf);
     else if (!strcmp(argv[2], "pointer")) {
         n = slurp(argv[3], buf, sizeof buf);
         if (n < 0 || desk_pointer(&th, buf, n) < 0)

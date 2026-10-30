@@ -65,10 +65,10 @@ int desk_reset_done(const void *before, const void *now, const unsigned short *l
  * returns DK_PALETTE_SIZE, 0 on a bad argument */
 long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
 
-/* R1.3, R1.20: the wbpattern.prefs (ROOT, DRAWER, SCREEN chunks). depth = the screen depth (capped at 3), tiled = 1
- * puts the sparse dot grid on the root. prev/prevlen = the file now on disk (or 0): its SCREEN chunk is kept.
+/* R1.3, R1.20: the wbpattern.prefs (ROOT, DRAWER, SCREEN chunks). depth = the screen depth (capped at 3); the root is
+ * one solid darker tone, no dots. prev/prevlen = the file now on disk (or 0): its SCREEN chunk is kept.
  * Returns the size, 0 when cap is too small. */
-long desk_wbpattern(const gtheme *t, int depth, int tiled, const unsigned char *prev, long prevlen,
+long desk_wbpattern(const gtheme *t, int depth, const unsigned char *prev, long prevlen,
                     unsigned char *out, long cap);
 
 /* R1.21a: write the theme's colours into the RGB table of every PNTR chunk of buf in place (triple 1 foreground,
