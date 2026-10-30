@@ -780,7 +780,8 @@ $(BUILD)/amiga/keymap.o: config/keymap.c config/keymap.h config/upconf.h config/
 
 # amarchy-menu: the quick menu and key viewer (Phase D). A gcc/ixemul program linked with
 # libupkgui.a straight from upterm-ports' sysroot (decision D4), so it is NOT part of `make amiga`
-# (that needs no ports build).
+# (that needs no ports build). `make dist-check` builds it (a link error such as GfxBase in
+# pv_get landed unnoticed once, 9e04c45d fixed by 2e900ae1), so the build check covers it.
 # libupkgui and its headers come from a PINNED upterm-ports commit (tools/upkgui.rev), not from the peer checkout's
 # working tree: `git archive` of that commit is unpacked into build/upkgui/src and `make upkg-ui` there builds the
 # sysroot (libupkgui.a, libncursesw.a, libixcompat.a, headers). The peer checkout is only read, never built in.
@@ -1673,7 +1674,7 @@ dist-src:
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check: $(BUILD)/amiga/keymap.o $(BUILD)/updiff_kit_drv
+dist-check: $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py
