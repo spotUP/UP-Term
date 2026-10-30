@@ -130,3 +130,34 @@ Baseline `--os 32` (Kickstart 47.115, Workbench 47.2, intuition 47.53): screen b
 - No reboot needed on 3.2: IPrefs applied each write to new windows inside the 4 s wait. The file is deleted afterwards and the baseline returns.
 - The IntuitionControlA layout hook: the NDK says "No public tags defined so far" and the NDK3.2R4 files carry no documentation of a hook tag. Not probed. Unverified.
 - 3.1 (`--os 31`, intuition 40.85): the same file is accepted without error but every window and screen metric stayed at the baseline for geometry bytes 4/0/0/0, 0/4/0/0, 0/254/0/0 and 0/0/0/100. 3.1 has no route for the geometry. Per OD-F3 this goes back to the owner as a question.
+
+## 10. FLAT-R3 sysiclass Hook layout (rig 5, 2026-10-30)
+
+Probe: `tests/amiga/sysiprobe.c` (NewObjectA sysiclass with SYSIA_DrawInfo, OCLASS, dump Hook; sweep SYSIA_Which 0..24).
+
+| | 3.2 (intuition 47.53) | 3.1 (intuition 40.85) |
+|---|---|---|
+| sysiclass h_Entry | 0x00FE1118 | 0x00FDE028 |
+| sysiclass h_SubEntry | 0x00FF02F0 | 0x00FD9938 |
+| h_Data | 0x1000bdc4 | 0x1000b04c |
+| h_Entry shared with imageclass, frameiclass, gadgetclass, propgclass | yes | yes |
+| h_Entry code | `jmp 0xFF4BE2` (shared ROM dispatcher) | `move.l a6,-(sp); move.l a1,-(sp); move.l a2,-(sp); move.l a0,-(sp); movea.l 16(a0),a6; movea.l 12(a0),a0; jsr (a0); lea 12(sp),sp; movem.l (sp)+,a6; rts`-style thunk: calls h_SubEntry with C stack args (hook, obj, msg) and a6 = h_Data |
+| h_SubEntry | per class; sysiclass starts `suba.w #228,sp; movem.l ...; movem.l a0-a2,104(sp)` (register arguments) | per class; sysiclass starts `link a5,#-120` (C stack arguments) |
+
+Answer for FLAT-C1: swap `h_SubEntry`, never `h_Entry`, on both versions (h_Entry is one routine for five classes). The replacement must match the calling convention of the version: stack (hook, obj, msg) on 3.1 via the thunk; on 3.2 the original sub takes a0-a2 (the 0xFF4BE2 dispatcher body was not disassembled, so the convention is unverified: C1 must call the saved original with the same registers it receives, i.e. a register-preserving trampoline, and test both OS).
+
+SYSIA_Which sweep (class pointer equal to sysiclass for every created object): 3.2 creates 1,2,3,5,8,10..17,22; 3.1 creates 1,2,3,5,10..17. NOOBJ in the sweep: 3.2 0,4,6,7,9,18..21,23,24; 3.1 0,4,6..9,18..24. Value 0 (DEPTHIMAGE) shows NOOBJ because of a probe bug (`which ? t : t+2` treats 0 as no tags): not re-tested. Values 0x1B (menu MX) and 0x2A (shift key) are outside the 0..24 sweep: not tested. Both close/depth/zoom/size and the checkmark, MX, Amiga-key and arrow images are therefore drawn by sysiclass and covered by one hook.
+
+3.1 flat palette: `SYS:Prefs/Palette FROM file USE` hung the rig (3.1 Palette is not the 3.2 command line tool), so the 3.1 pixel dump with flat pens was not taken; only the 3.1 stock dump exists. The 3.1 route to apply a palette (no ic_GUIGeometry either, see section 9) goes back to the owner (OD-F3).
+
+## 11. FLAT-M1 residue pixel dump (rig 5, `--os 32`, 2026-10-30)
+
+Method: `tests/amiga/flatprobe.c` opens an active and an inactive window (220x120) with close/depth/zoom/size/drag gadgets plus GadTools button, string, checkbox, cycle, listview and a DrawBevelBox, then dumps the screen pixels as pen characters (ReadPixel; no picture read). Run once on the stock pens (`0 1 1 2 1 3 1 0 2 1 2 1`) and once on the flat pen8 palette (`tests/data/desk/palette-flat-pen8.prefs`, pens `0 1 2 0 1 3 0 0 2 2 0 1`, shine == background).
+
+Findings with flat pens (theme A, active window):
+- Window frame: stock uses pen 2 (shine) for the top and left outer edge and pen 1 (shadow) for the inner edge. With flat pens shine equals background, so the outer edge disappears and one 1-pixel dark line remains between title bar and body. Pens alone are enough here.
+- Close, depth, zoom, size glyphs (sysiclass): the shine fill becomes background; close is an outlined square, depth and zoom are outlines of overlapping rectangles, size an outlined staircase. Readable, but the old shapes stay. The gadget divider changes from a 2/1 two-tone pair to one line. Needs the sysiclass hook (P3) for a redrawn flat glyph.
+- GadTools button, string, bevel box, listview (frameiclass / GadTools bevel code): the light top and left edge becomes background, but the dark right (2 px) and bottom shadow stay. Result is a one-sided L-shaped shadow, no full outline. Pens cannot give a full outline. Fix route: frameiclass hook or owner decision OD-F9.
+- Screen title bar: bottom row is a pen 1 line, top rows pen 2 (stock edge) over a 0 background; the bar is flat enough with pens.
+
+Not measured (unverified): pull-down menu (checkmark, submenu arrow, separator), theme B, inactive window rows (dumped, not analysed), Workbench drawer scrollers, 3.2 Prefs editor, DOpus Magellan II, 4-colour screen mode, and the whole set on `--os 31`. Raw dumps are in the session scratchpad, not committed.

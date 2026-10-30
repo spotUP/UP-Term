@@ -1139,6 +1139,16 @@ $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dripens.c
 
+# A pen dump of an active and an inactive window with GadTools gadgets (FLAT-M1)
+$(BUILD)/amiga/flatprobe: tests/amiga/flatprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/flatprobe.c
+
+# The Hook layout of intuition's sysiclass (FLAT-R3)
+$(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/sysiprobe.c
+
 # A public or a private screen to hold in front, and the font numbers of a public screen (amarchy_gui_rig, G7)
 $(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h
 	@mkdir -p $(BUILD)/amiga
