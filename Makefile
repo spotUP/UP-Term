@@ -1166,6 +1166,16 @@ $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dripens.c
 
+# DESK-31: samples the Workbench screen while IPrefs resets it after a WBPattern USE
+$(BUILD)/amiga/resetprobe: tests/amiga/resetprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/resetprobe.c
+
+# DESK-31: Workbench window list + owner task changes as failing Locks a wasabi snoop puts in the DOS timeline
+$(BUILD)/amiga/winwatch: tests/amiga/winwatch.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/winwatch.c
+
 # A pen dump of an active and an inactive window with GadTools gadgets (FLAT-M1)
 $(BUILD)/amiga/flatprobe: tests/amiga/flatprobe.c
 	@mkdir -p $(BUILD)/amiga

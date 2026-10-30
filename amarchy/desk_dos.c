@@ -1,5 +1,6 @@
 /* desk_dos: see desk_dos.h. */
 #include <string.h>
+#include <exec/execbase.h>
 #include <dos/dos.h>
 #include <dos/dostags.h>
 #include <intuition/screens.h>
@@ -129,6 +130,15 @@ static int dk_pointer_editor_ok(void)
     return len > 0 && desk_pointer_editor_ok(img, len);
 }
 
+/* may SYS:Prefs/Palette write ENV:Sys/palette.prefs: version 47+ (desk_palette_editor_ok). On 3.1 (Palette 40.2, IPrefs 40.7)
+ * the write freezes the guest (DESK-31-CRASH) */
+static int dk_palette_editor_ok(void)
+{
+    static unsigned char img[65536];
+    long len = dk_read("SYS:Prefs/Palette", img, sizeof img);
+    return len > 0 && desk_palette_editor_ok(img, len);
+}
+
 int (*desk_dos_wb_close)(void);
 void (*desk_dos_wb_open)(int was);
 unsigned long desk_dos_wb_closes;
@@ -198,21 +208,77 @@ static void dk_wait_reset(struct Screen *before)
         unsigned short live[DK_SLOTS];
         int n;
         struct Screen *now = dk_wb_screen(live, &n);
-        if (now != before || !desk_pens_reset(live, n))
+        if (desk_reset_done(before, now, live, n))
             break;
         Delay(12);
     }
 }
 
 
+/* IPrefs' scheduling state (DESK-31): *have 0 when no task named "IPrefs" runs, else *waiting (TS_WAIT), its wait mask and
+ * the signals it has received but not yet taken. Read under Disable(): a notification sets tc_SigRecvd from another task. */
+static void dk_iprefs(int *have, int *waiting, unsigned long *sigwait, unsigned long *recvd)
+{
+    extern struct ExecBase *SysBase;
+    struct List *lists[2];
+    struct Node *n;
+    int i;
+    *have = *waiting = 0;
+    *sigwait = *recvd = 0;
+    Disable();
+    lists[0] = &SysBase->TaskWait;
+    lists[1] = &SysBase->TaskReady;
+    for (i = 0; i < 2 && !*have; i++)
+        for (n = lists[i]->lh_Head; n->ln_Succ; n = n->ln_Succ)
+            if (n->ln_Name && strstr(n->ln_Name, "IPrefs")) {
+                struct Task *t = (struct Task *)n;
+                *have = 1;
+                *waiting = t->tc_State == TS_WAIT;
+                *sigwait = t->tc_SigWait;
+                *recvd = t->tc_SigRecvd;
+                break;
+            }
+    Enable();
+}
+
+/* The wait mask of IPrefs while it waits for a notification, taken before any editor runs (0: no IPrefs or never seen waiting) */
+static unsigned long dk_iprefs_idle_mask(void)
+{
+    int i, have, waiting;
+    unsigned long w, r;
+    for (i = 0; i < DK_RESET_SECS * 50 / DESK_IPREFS_POLL_TICKS; i++) {
+        dk_iprefs(&have, &waiting, &w, &r);
+        if (!have || waiting)
+            return have ? w : 0;
+        Delay(DESK_IPREFS_POLL_TICKS);
+    }
+    return 0;
+}
+
+/* Windows of ours back only once IPrefs has processed every file the editors wrote: a window opened inside its Workbench reset
+ * gets the "close all windows" System Request (DESK-31, rig 7 Run 10: 3.1 Font USE, two resets 0.3-0.8 s after the editor).
+ * The positive event is IPrefs back in its idle Wait() with nothing pending; DK_RESET_SECS only bounds a wedged IPrefs. */
+static void dk_wait_iprefs(unsigned long idle_mask)
+{
+    int i, have, waiting;
+    unsigned long w, r;
+    for (i = 0; i < DK_RESET_SECS * 50 / DESK_IPREFS_POLL_TICKS; i++) {
+        dk_iprefs(&have, &waiting, &w, &r);
+        if (desk_iprefs_idle(have, waiting, w, r, idle_mask))
+            break;
+        Delay(DESK_IPREFS_POLL_TICKS);
+    }
+}
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
     am_prefs ap;
     unsigned mask;
-    int depth, plan, ok = 1;
+    int depth, plan, ok = 1, old_ws = 0;
     long len, plen;
     struct Screen *wb_before = 0;
+    unsigned long idle = 0;
     unsigned short live[DK_SLOTS];
     int nlive = 0, was = 0, reset = 0;
     amconf_load(&ap);
@@ -220,14 +286,19 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (plan <= 0)
         return plan;
     mask = (unsigned)plan;
+    mask = desk_gate_mask(mask, dk_palette_editor_ok(), &old_ws); /* the caller sets the colours live when the palette bit goes */
+    if (!mask)
+        return 0;
     UnLock(CreateDir((STRPTR)DK_WORK));
+    if (old_ws || (mask & (1u << DT_FONT)))
+        idle = dk_iprefs_idle_mask(); /* before any editor: the Wait() IPrefs returns to when done */
     dk_snapshot(mask);
     depth = dk_screen_depth();
     if (mask & (1u << DT_PALETTE)) {
         wb_before = dk_wb_screen(live, &nlive);
         reset = desk_pens_reset(live, nlive);
     }
-    if (reset) {
+    if (reset || old_ws) {
         desk_dos_wb_closes++;
         was = dk_windows_close();
     }
@@ -247,6 +318,8 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
         len = desk_wbpattern(th, depth > 3 ? 3 : depth, 1, plen > 0 ? prev : 0, plen > 0 ? plen : 0, buf, sizeof buf);
         ok &= dk_put("WBPattern", DK_WORK "/wbpattern.prefs", buf, len);
+        if (old_ws)
+            dk_wait_iprefs(idle);
     }
     if ((mask & (1u << DT_POINTER)) && !dk_pointer_editor_ok()) {
         /* R1.17: the 3.1 editor reset-loops on the 3.2 pointer prefs; leave the pointer alone there */
@@ -265,12 +338,14 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
             len = dk_read("ENVARC:Sys/font.prefs", buf, sizeof buf);
         if (len <= 0)
             len = desk_font_default(buf, sizeof buf);
-        if (len > 0 && desk_font_pens(buf, len) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0)
+        if (len > 0 && desk_font_pens(buf, len) >= 0 && desk_font_name(th, buf, len, dk_font_exists, 0) >= 0) {
             ok &= dk_put("Font", DK_WORK "/font.prefs", buf, len);
-        else
+            if (reset || old_ws)
+                dk_wait_iprefs(idle); /* the Font editor resets the Workbench screen too (3.1: twice): the windows return after it */
+        } else
             ok = 0;
     }
-    if (reset)
+    if (reset || old_ws)
         dk_windows_open(was);
     return ok ? (int)mask : -1;
 }

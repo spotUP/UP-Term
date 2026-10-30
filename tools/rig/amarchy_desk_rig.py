@@ -82,10 +82,15 @@ def settle(names):
     return last
 
 
-def pointer_editor_version():
-    """Version number of SYS:Prefs/Pointer on the rig (0 when absent): the Pointer write needs 47+."""
-    m = re.search(r'(\d+)\.\d+', c.run('Version SYS:Prefs/Pointer')[1])
+def editor_version(name):
+    """Version number of SYS:Prefs/<name> on the rig (0 when absent)."""
+    m = re.search(r'(\d+)\.\d+', c.run('Version SYS:Prefs/%s' % name)[1])
     return int(m.group(1)) if m else 0
+
+
+def pointer_editor_version():
+    """The Pointer write needs 47+."""
+    return editor_version('Pointer')
 
 
 def n_env(name):
@@ -169,6 +174,11 @@ def watch_reset(scr0, secs=20):
 def live_pens_differ():
     """R1.17 trigger: with the bar closed, make the live Workbench pens differ from the desk pens (the stock Palette editor USEs a
     palette whose DrawInfo pens are not the desk ones), so the next desk apply must reset the screen. The bar comes back after."""
+    if editor_version('Palette') < 47:
+        # DESK-31-CRASH: on 3.1 (Palette 40.2, IPrefs 40.7) any palette.prefs write freezes the guest, this trigger's too; the desk
+        # apply skips the palette there, so no screen reset follows and none is provoked
+        print('[INFO] trigger: SYS:Prefs/Palette < 47, no stock Palette USE (it freezes IPrefs 40.7)')
+        return
     rc, _ = tile.send('AMARCHY', 'BAR OFF')
     say(rc == 0 and tile.bar_box() is None, 'trigger: bar closed before the stock palette USE', str(rc))
     ami.put(STOCK_PALETTE, 'T:stockpal.prefs')
@@ -285,6 +295,7 @@ def main():
 
     # step 2: master off
     desks0 = n_env('AMARCHY_DESKS')
+    closes0 = n_env('AMARCHY_WBCLOSES') # the counters live as long as Amarchy: compare the change of this run
     name1, up1 = pick()
     after = snapshot()
     say(n_env('AMARCHY_DESKS') == desks0, 'off: AMARCHY_DESKS did not rise', 'was %r now %r' % (desks0, t.env('AMARCHY_DESKS')))
@@ -324,17 +335,18 @@ def main():
     stop.append(1); th.join(); print('[PROBE] timeline', tl)
     say(bool(name2) and name2 != name1, 'on: picked a second theme', '%s then %s' % (name1, name2))
     say(n_env('AMARCHY_DESKS') == desks0 + 1, 'on: AMARCHY_DESKS +1', 'was %r now %r' % (desks0, t.env('AMARCHY_DESKS')))
-    say(t.env('AMARCHY_DESKMASK') == '15', 'on: AMARCHY_DESKMASK 15', t.env('AMARCHY_DESKMASK'))
+    old_ws = editor_version('Palette') < 47     # desk_gate_mask: no palette part there, the backdrop write asks Intuition for a reset
+    say(t.env('AMARCHY_DESKMASK') == ('14' if old_ws else '15'), 'on: AMARCHY_DESKMASK %s' % ('14' if old_ws else '15'), t.env('AMARCHY_DESKMASK'))
     # R1.17: IPrefs resets the Workbench screen after the USE and cannot while the bar is on it ("Please close the following windows: Amarchy bar")
     reset_ok, got_pens, want_pens = watch_reset(scr0)
-    say(reset_ok, 'on: IPrefs applied the palette (DrawInfo pens 0..10 == desk pens)',
+    say(reset_ok or old_ws, 'on: IPrefs applied the palette (DrawInfo pens 0..10 == desk pens)',
         'screen %s -> %s, pens %r want %r' % (scr0, got_pens[1], got_pens[0], want_pens))
     blocked = ['%s | %s' % (ami.describe_requester(r), requester_text(r)) for r in ifaces_blocked()]
     say(not blocked, 'on: no System Request from IPrefs after the desk apply', '; '.join(blocked))
     if blocked:
         print('[INFO] dismissed: %s (rig is dirty: stop it, do not reuse)' % ami.dismiss_requesters())
         tile.send('AMARCHY', 'BAR ON')
-    say(n_env('AMARCHY_WBCLOSES') == 1, 'on: the apply closed the windows around the reset (AMARCHY_WBCLOSES)', t.env('AMARCHY_WBCLOSES'))
+    say(n_env('AMARCHY_WBCLOSES') == closes0 + 1, 'on: the apply closed the windows around the reset (AMARCHY_WBCLOSES +1)', 'was %r now %r' % (closes0, t.env('AMARCHY_WBCLOSES')))
     rc, st = tile.send('AMARCHY', 'BAR STATUS')
     say(rc == 0 and st.startswith('bar=1') and tile.bar_box() is not None, 'on: the bar is open again after the desk apply', '%r %r' % (rc, st))
     got = settle(SYS_FILES)
@@ -355,8 +367,12 @@ def main():
     depth = wb_depth()
     ncol = 8 if depth >= 3 else 4
     print('[INFO] Workbench depth %d: palette compared at %d colours' % (depth, ncol))
-    compare('palette', got['palette'], expect(name2, 'palette', [str(ncol)]),
-            'on: ENV:Sys/palette.prefs themed fields equal desk_core output', ncol)
+    if editor_version('Palette') < 47:      # desk_palette_editor_ok (DESK-31-CRASH): IPrefs 40.7 freezes on a palette.prefs write
+        pal = base_on[('ENV', 'palette')] or base_on[('ENVARC', 'palette')]
+        say(got['palette'] == pal, 'on: SYS:Prefs/Palette < 47, ENV:Sys/palette.prefs not written (equals its baseline)')
+    else:
+        compare('palette', got['palette'], expect(name2, 'palette', [str(ncol)]),
+                'on: ENV:Sys/palette.prefs themed fields equal desk_core output', ncol)
     compare('wbpattern', got['wbpattern'], expect(name2, 'wbpattern', [str(min(depth, 3))]),
             'on: ENV:Sys/wbpattern.prefs ROOT and DRAWER fields equal desk_core output')
     ptr = base_on[('ENV', 'pointer')] or base_on[('ENVARC', 'pointer')]

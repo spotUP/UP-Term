@@ -49,6 +49,18 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS]);
  * compared) reopens it; colour values alone load live. ncur <= 0 (no DrawInfo): unknown, 1. */
 int desk_pens_reset(const unsigned short *cur, int ncur);
 
+/* DESK-31: 1 once the Workbench reset after a Palette USE finished. before = screen address before the write, now = the address
+ * the lock gives now (0 while the screen is closed in the middle of the reset), live/nlive = its DrawInfo pens. Done = the screen
+ * is open and (it is a new address, 3.1, or its pens equal the desk pens, 3.2 resets in place with the same address). */
+/* Has IPrefs finished with every prefs file written so far (DESK-31)? A stock editor's USE closes ENV:Sys/<x>.prefs, the
+ * file notification signals IPrefs at once, and IPrefs resets the Workbench screen from it (3.1 Font: two resets, 0.3-0.8 s
+ * after the editor exits). It is done when it is back in the Wait() it sat in before the apply (state TS_WAIT, wait mask
+ * idle_mask, idle_mask != 0) with none of those signals pending. A Delay, DOS packet or requester inside the reset waits on
+ * other signals, a pending notification shows in recvd. No IPrefs task (have = 0): nothing to wait for. */
+int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask);
+#define DESK_IPREFS_POLL_TICKS 1
+int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive);
+
 /* R1.2: the palette.prefs of the theme with ncolors (4 or 8) colours and the pen map pens (desk_pens or desk_pens_flat);
  * returns DK_PALETTE_SIZE, 0 on a bad argument */
 long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
@@ -106,6 +118,15 @@ long desk_marker_make(unsigned mask, char *out, long cap);
 int desk_ver_major(const unsigned char *bin, long len);
 /* 1 when the editor with this file image may be fed the pointer prefs (major >= 47); 0 below 47 or unknown */
 int desk_pointer_editor_ok(const unsigned char *bin, long len);
+/* Palette editor gate (DESK-31-CRASH): on Kickstart 40.68 (Palette 40.2, IPrefs 40.7) any write of ENV:Sys/palette.prefs
+ * freezes the guest a few seconds later (stock file too); the 47.x editor applies it. 1 when the editor with this file image
+ * may be run on a palette.prefs (major >= 47); 0 below 47 or unknown. The caller then leaves the file alone and sets the
+ * colours live (wb_pens_apply). */
+int desk_palette_editor_ok(const unsigned char *bin, long len);
+/* the targets to write on a Workbench whose Palette editor is (palette_ok) or is not usable: without it the palette bit goes. When a
+ * wbpattern write remains (either way), *ws_reset is 1 -- IPrefs (40.7 and 47.x) makes Intuition ask for a Workbench reset on it ("Please close all
+ * windows, except drawers"), so the caller closes its windows around that write and waits for the new screen */
+unsigned desk_gate_mask(unsigned mask, int palette_ok, int *ws_reset);
 /* the mask a marker names; 0 when buf is no marker */
 unsigned desk_marker_parse(const char *buf, long len);
 
