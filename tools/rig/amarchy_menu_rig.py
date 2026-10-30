@@ -2007,8 +2007,8 @@ ROWS.append(('bar_agents_no_terminal', r_bar_agents_no_terminal))
 
 def _theme_list_open():
     """Text menu open on Style > Amarchy theme with the highlight settled; False when the menu did not open.
-    The text list opens with the cursor on its FIRST row, which previews at once (the consoles show that theme, not the saved
-    one), so rows compare the colours after Esc with the SAVED theme (saved_restored), never with the colours at open."""
+    The list opens with the cursor on the SAVED theme (THEME-LIST-OPENS-ROW0), so the consoles keep the saved colours at open;
+    rows still compare the colours after Esc with the SAVED theme (saved_restored)."""
     if not x9_open_menu():
         return False
     x9_level('Style')
@@ -2033,6 +2033,30 @@ def saved_theme_name():
     txt = (ami.read_file('ENV:Amarchy/prefs') or b'').decode('latin-1')
     m = re.search(r'^amarchy-gui-theme\s*=\s*(\S+)', txt, re.M)
     return m.group(1) if m else ''
+
+
+def r_theme_list_opens_current():
+    """THEME-LIST-OPENS-ROW0: the text theme list (hotkey > Style > Amarchy theme) opens with the cursor on the SAVED theme,
+    so the live preview shows nothing else: the console background at open is the saved theme's background (tokyo-night
+    1a1b26 when nothing is saved; the terminal file after Esc names the saved theme and its bg), the same as after Esc. The old build opened on row 0 and recoloured to the first theme."""
+    ensure_terminal()
+    if not _theme_list_open():
+        return False, 'text menu did not open'
+    try:
+        saved = saved_theme_name() or 'tokyo-night'
+        first = host_bg()
+        ami.key(RAW['esc'])
+        time.sleep(2.5)
+        back = host_bg()
+        restored = saved_restored(back[0])
+    finally:
+        x9_leave()
+    ok = restored[0] and first[0] == back[0]
+    return ok, 'saved %s; console background at open %s x%d (must equal the saved theme bg after Esc), after Esc %s x%d; %s' % (
+        saved, first[0], first[1], back[0], back[1], restored[1])
+
+
+ROWS.append(('theme_list_opens_current', r_theme_list_opens_current))
 
 
 def r_theme_enter_back():

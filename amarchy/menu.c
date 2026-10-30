@@ -356,10 +356,13 @@ static int menu_levels(const char *start)
         ui_opt.default_item = c + shift ? ent[c ? shift : 0].tag : 0;
         if (shift && keep_status)
             ui_opt.default_item = ent[0].tag;
-        else if (keep_ix >= 0 && (i = mn_pick_setting(it, idx, c, keep_ix)) >= 0)
-            ui_opt.default_item = ent[i + shift].tag;
-        else if (keep[0] && (i = mn_pick(it, idx, c, keep)) >= 0)
-            ui_opt.default_item = ent[i + shift].tag;
+        else {
+            char cur[GT_NAME], cur_label[MN_LABEL];
+            gt_dos_current(cur, (int)sizeof cur);
+            gt_label(cur, cur, cur_label, (int)sizeof cur_label);
+            if ((i = mn_open_pos(it, idx, c, keep_ix, keep, cur_label)) >= 0)
+                ui_opt.default_item = ent[i + shift].tag;
+        }
         keep_ix = -1;
         keep_status = 0;
         keep[0] = 0;

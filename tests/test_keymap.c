@@ -3203,6 +3203,20 @@ static void both_menu_styles_publish_the_shown_rows_through_one_join(void)
     CHECK_STR(big, "");
 }
 
+static void the_theme_list_opens_with_the_cursor_on_the_saved_theme_not_row_0(void)
+{
+    mn_item it[3];
+    int idx[3] = { 0, 1, 2 }, c = 3;
+    memset(it, 0, sizeof it);
+    strcpy(it[0].label, "catppuccin");
+    strcpy(it[1].label, "nord");
+    strcpy(it[2].label, "tokyo-night (current)");
+    CHECK_INT(mn_open_pos(it, idx, c, -1, "", "tokyo-night (current)"), 2);   /* opens on the saved theme */
+    CHECK_INT(mn_open_pos(it, idx, c, -1, 0, "tokyo-night (current)"), 2);
+    CHECK_INT(mn_open_pos(it, idx, c, -1, "nord", "tokyo-night (current)"), 1);   /* a kept row still wins */
+    CHECK_INT(mn_open_pos(it, idx, c, -1, "", "gone (current)"), -1);             /* not listed: the first-row default */
+}
+
 static void the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level(void)
 {
     mn_item it[3];
@@ -3297,6 +3311,7 @@ void suite_keymap(void)
     stopped_and_write_failed_each_name_the_failure();
     a_watching_menu_rebuilds_only_when_the_status_row_changes_and_stops_at_done();
     a_menu_opened_during_a_scan_it_did_not_start_adopts_it_and_a_quiet_record_shows_no_row();
+    the_theme_list_opens_with_the_cursor_on_the_saved_theme_not_row_0();
     the_cursor_stays_on_the_same_entry_when_the_status_row_shifts_the_level();
     both_menu_styles_publish_the_shown_rows_through_one_join();
     a_volume_without_a_handler_task_matches_no_device();

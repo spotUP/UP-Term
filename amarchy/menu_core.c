@@ -71,6 +71,13 @@ int mn_pick_setting(const mn_item *items, const int *idx, int c, int ix)
     return -1;
 }
 
+int mn_open_pos(const mn_item *items, const int *idx, int c, int ix, const char *keep, const char *current_label)
+{
+    if (ix >= 0)
+        return mn_pick_setting(items, idx, c, ix);
+    return mn_pick(items, idx, c, keep && keep[0] ? keep : current_label);
+}
+
 int mn_back(int bs, const char *filter, const char *node)
 {
     if (filter[0])

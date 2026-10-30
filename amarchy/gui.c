@@ -625,13 +625,9 @@ static void list_rebuild_keep(gui *g, const char *keep)
     lf_setting_rechip(g->it, n, g->chip);
     g->shift = g->wt.row[0] ? 1 : 0;
     g->count = mn_filter(g->it, n, g->filter, g->idx, g->cap) + g->shift;
-    if (!keep) {                         /* the theme list opens on the saved theme: the preview starts on it, not on row 1 */
-        gt_dos_current(cur, (int)sizeof cur);
-        gt_label(cur, cur, cur_label, (int)sizeof cur_label);
-        keep = cur_label;
-    }
-    pos = keep_setting >= 0 ? mn_pick_setting(g->it, g->idx, g->count - g->shift, keep_setting)
-                            : mn_pick(g->it, g->idx, g->count - g->shift, keep);
+    gt_dos_current(cur, (int)sizeof cur);
+    gt_label(cur, cur, cur_label, (int)sizeof cur_label);
+    pos = mn_open_pos(g->it, g->idx, g->count - g->shift, keep_setting, keep, cur_label);
     keep_setting = -1;
     g->sel = g->shift + (pos > 0 ? pos : 0);
     g->top = 0;

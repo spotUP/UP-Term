@@ -86,6 +86,11 @@ void mn_rows_join(const mn_item *items, const int *idx, int c, char *out, int n)
 /* The position of the setting row with SDI_* id ix: its label changes with its value, so a rebuild after a
  * set keeps the cursor by id. -1 when it is not listed. */
 int mn_pick_setting(const mn_item *items, const int *idx, int c, int ix);
+/* THEME-LIST-OPENS-ROW0: where the cursor lands when a level opens or is rebuilt (both menu styles call this one).
+ * The setting row ix (>= 0) wins, then the entry labelled keep, else the entry labelled current_label (the saved theme
+ * as the theme list shows it, "<name> (current)"), so the list opens on the saved theme and the live preview starts
+ * on it instead of on row 0. -1 when none is shown: the caller keeps its first-row default. */
+int mn_open_pos(const mn_item *items, const int *idx, int c, int ix, const char *keep, const char *current_label);
 
 /* The node one level up ("apps.tools" -> "apps", "apps" -> ""). 0 at the root: Esc there leaves
  * the menu; otherwise 1 and out holds the parent. */
