@@ -759,6 +759,15 @@ static int replied(struct MsgPort *port, job *j)
 
 static int task_alive(struct Task *t);
 
+/* Is job j's runner alive: a task at its address (task_alive) that still is the runner and not a later
+ * task given the address of a dead one (sh_runner_is). Call under Forbid. */
+static int runner_alive(job *j)
+{
+    struct Process *p = (struct Process *)j->task;
+    return task_alive(j->task) &&
+           sh_runner_is(j->task->tc_Node.ln_Type == NT_PROCESS, p->pr_ExitData, (unsigned long)j);
+}
+
 /* Was job j's process removed from outside (wasabi kill --force is a RemTask: no exit code runs, no
  * reply comes)? Then it never replies and the shell must not wait for one (sh_jobgone.h). Call under
  * Forbid. */
@@ -767,7 +776,7 @@ static int job_gone(job *j)
     struct Task *c = j->child[0] ? FindTask((STRPTR)j->child) : 0;
     if (c)
         j->child_seen = 1;
-    return sh_job_gone(task_alive(j->task), j->child[0] != 0, c != 0, j->child_seen);
+    return sh_job_gone(runner_alive(j), j->child[0] != 0, c != 0, j->child_seen);
 }
 
 /* Is a loaded command an ixemul program? The first longs of its first hunk (sh_ixargv.h). */
@@ -1226,7 +1235,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     cmd = 0;
     p = (j->name && j->args && j->cmd)
         ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"vsh job", NP_StackSize, 8000,
-                            NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
+                            NP_ExitData, (ULONG)j, NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
         : 0;
     if (!p) {
         if (j->close_in)
@@ -2022,7 +2031,7 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
             }
         }
         p = CreateNewProcTags(NP_Entry, (ULONG)subshell_proc, NP_Name, (ULONG)"vsh subshell",
-                              NP_StackSize, VSH_STACK_SUB, NP_Cli, TRUE, TAG_END);
+                              NP_StackSize, VSH_STACK_SUB, NP_ExitData, (ULONG)j, NP_Cli, TRUE, TAG_END);
     }
     if (!p) {
         sh_io *o = j ? &j->io : 0;

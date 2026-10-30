@@ -15,4 +15,13 @@ static int sh_job_gone(int runner_alive, int child_named, int child_alive, int c
     return child_named && child_seen && !child_alive;
 }
 
+/* Is the task at the runner's remembered address still the runner? A task that ended and a new one given
+ * its address look the same to a search of the task lists. The runner is made with NP_ExitData = its job,
+ * so the task there is the runner when it is a Process (ln_Type NT_PROCESS: only then is pr_ExitData
+ * there to read) carrying that job. */
+static int sh_runner_is(int is_process, unsigned long exit_data, unsigned long job)
+{
+    return is_process && exit_data == job;
+}
+
 #endif
