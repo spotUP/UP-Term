@@ -60,6 +60,11 @@ def ensure_terminal():
     # the cases that open the menu with a chord type into the UP-Term window under it; --only
     # on a fresh rig skips rows_over_terminal, which opened it, so these cases open it themselves (once)
     import wbrun_rig
+    # the Super+Space hotkey belongs to the Amarchy commodity, which only the r_start row launches: --only on a
+    # fresh rig never ran it, so the chord opened nothing and every text-menu row said "text menu did not open"
+    if not any(l.rstrip().endswith('/Amarchy') for l in c.run('Status')[1].splitlines()):
+        r_start()
+        time.sleep(3)
     if not any('menuhost' in (w.get('title') or '') for w in wbrun_rig.windows()):
         open_terminal()
 
@@ -369,6 +374,10 @@ def x9_open_menu():
     time.sleep(0.5)
     c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')   # the rows are read from the sentinel, not the screen
     ami.key(RAW['space'], LAMIGA)              # over the terminal: the text menu
+    # screen_text() sends `UPTerm ACTIVE screen` to the handler; sent in the first moments after the chord it races
+    # the commodity's own query of the terminal and the menu never opens (measured on rig 7: read at 0 s, no menu in
+    # 15 s; read at 0.3 s or later, menu up). One quiet second before the first read.
+    time.sleep(1)
     for _ in range(30):
         if 'Filter' in screen_text():
             return True
@@ -1932,12 +1941,9 @@ def r_theme_preview_live():
     out of the theme list puts the saved colours back. Pixels of the console: Down once, 2.5 s, the dominant colour must
     differ from the one at level open; Esc, 2.5 s, it must equal it again. Through the real entry point (the hotkey)"""
     ensure_terminal()
-    if not x9_open_menu():
+    if not _theme_list_open():
         return False, 'text menu did not open'
     try:
-        x9_level('Style')
-        x9_level('Amarchy theme')
-        time.sleep(2.5)
         first = host_bg()
         ami.key(RAW['down'])
         time.sleep(2.5)
@@ -1945,11 +1951,12 @@ def r_theme_preview_live():
         ami.key(RAW['esc'])
         time.sleep(2.5)
         back = host_bg()
+        restored = saved_restored(back[0])
     finally:
         x9_leave()
-    ok = moved[0] != first[0] and back[0] == first[0]
-    return ok, 'console background at theme list open %s x%d, after Down %s x%d (must differ), after Esc %s x%d (must equal the first)' % (
-        first + moved + back)
+    ok = moved[0] != first[0] and restored[0]
+    return ok, 'console background at theme list open %s x%d, after Down %s x%d (must differ), after Esc %s x%d; %s (must be the saved theme)' % (
+        first + moved + back + (restored[1],))
 
 
 ROWS.append(('theme_preview_live', r_theme_preview_live))
@@ -1999,7 +2006,9 @@ ROWS.append(('bar_agents_no_terminal', r_bar_agents_no_terminal))
 
 
 def _theme_list_open():
-    """Text menu open on Style > Amarchy theme with the highlight settled; False when the menu did not open."""
+    """Text menu open on Style > Amarchy theme with the highlight settled; False when the menu did not open.
+    The text list opens with the cursor on its FIRST row, which previews at once (the consoles show that theme, not the saved
+    one), so rows compare the colours after Esc with the SAVED theme (saved_restored), never with the colours at open."""
     if not x9_open_menu():
         return False
     x9_level('Style')
@@ -2008,19 +2017,34 @@ def _theme_list_open():
     return True
 
 
+def saved_restored(back_bg):
+    """(ok, text): after Esc the terminal colour file holds the SAVED theme (ENV:Amarchy/prefs amarchy-gui-theme, default
+    tokyo-night) and the console shows that file's background."""
+    saved = saved_theme_name() or 'tokyo-night'
+    active = (ami.read_file('ENV:up-term/theme-active') or b'').decode('latin-1')
+    m = re.search(r'^bg = (\w+)', active, re.M)
+    bg = m.group(1).lower() if m else ''
+    ok = active.startswith('[profile %s]' % saved) and bool(bg) and back_bg == bg
+    return ok, 'saved theme %s, terminal file %s bg %s' % (saved, active[:24].replace('\n', ' '), bg)
+
+
+def saved_theme_name():
+    """The saved Amarchy GUI theme (amconf: amarchy-gui-theme in ENV:Amarchy/prefs), '' when none is saved."""
+    txt = (ami.read_file('ENV:Amarchy/prefs') or b'').decode('latin-1')
+    m = re.search(r'^amarchy-gui-theme\s*=\s*(\S+)', txt, re.M)
+    return m.group(1) if m else ''
+
+
 def r_theme_enter_back():
     """THEME-ENTER-BACK-ONE (text menu): Enter on a theme row applies it and backs out ONE level. The Style level is listed
     (ENV:AMARCHY_ROWS has the Amarchy theme row, the theme list does not), ENV:up-term/theme-active holds the other
     theme, and the console keeps the previewed colour (the close restore puts back the new theme, not the old one)."""
     import amarchy_gui_rig as g
     ensure_terminal()
-    if not x9_open_menu():
+    if not _theme_list_open():
         return False, 'text menu did not open'
     try:
         before = (ami.read_file('ENV:up-term/theme-active') or b'').decode('latin-1').strip()
-        x9_level('Style')
-        x9_level('Amarchy theme')
-        time.sleep(2.5)
         first = host_bg()
         ami.key(RAW['down'])
         time.sleep(2.5)
@@ -2056,10 +2080,11 @@ def r_theme_preview_per_key():
         ami.key(RAW['esc'])
         time.sleep(2.5)
         back = host_bg()
+        restored = saved_restored(back[0])
     finally:
         x9_leave()
-    ok = moved[0] != first[0] and back[0] == first[0]
-    return ok, 'console %s at open, %s 0.5 s after Down (must differ), %s after Esc (must equal the first)' % (first[0], moved[0], back[0])
+    ok = moved[0] != first[0] and restored[0]
+    return ok, 'console %s at open, %s 0.5 s after Down (must differ), %s after Esc; %s (must be the saved theme)' % (first[0], moved[0], back[0], restored[1])
 
 
 ROWS.append(('theme_preview_per_key', r_theme_preview_per_key))
@@ -2070,12 +2095,12 @@ def r_deskpreview_text():
     Workbench palette, Esc puts them back. Closes the gap the graphical-only deskpreview step documents."""
     import amarchy_p2_rig as p2
     ensure_terminal()
+    base = p2.wb_pal()                 # the Workbench's own pens, before the menu previews anything
+    if not base:
+        return False, 'no palette read'
     try:
         if not _theme_list_open():
             return False, 'text menu did not open'
-        base = p2.wb_pal()
-        if not base:
-            return False, 'no palette read'
         moved = base
         for _ in range(3):
             ami.key(RAW['down'])
