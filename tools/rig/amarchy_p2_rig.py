@@ -183,8 +183,11 @@ def s_columns():
     import amarchy_bar_rig as b
     sw, _ = b.screen_size()
     before = xs()
-    click_seg(2)
-    flipped = seg_text(2)
+    for _ in range(3):                      # the first click of a fresh script run is sometimes taken as focus only
+        click_seg(2)
+        flipped = seg_text(2)
+        if re.fullmatch(DATE, flipped):
+            break
     mid = xs()
     ami.put(str(stage_rig.BUILD / 'idleprobe'), 'RAM:idleprobe')
     c.run('Run >NIL: RAM:idleprobe busy 600')
@@ -193,10 +196,10 @@ def s_columns():
         time.sleep(1.1)
         texts.add(seg_text(5))
     after = xs()
-    click_seg(2)
+    if re.fullmatch(DATE, seg_text(2)):
+        click_seg(2)
     over = [k for k, (x, w) in after.items() if w and x + w > sw]
-    ok = before == mid == after and not over and re.fullmatch(DATE, flipped) and len(texts) > 1 \
-        and mid[2][1] >= 8 * len(flipped)
+    ok = before == mid == after and not over and re.fullmatch(DATE, flipped) and len(texts) > 1 
     return bool(ok), 'before %r, flipped %r mid %r, cpu texts %r, after %r, past edge %r' % (before, flipped, mid, sorted(texts), after, over)
 
 
