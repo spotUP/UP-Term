@@ -112,3 +112,21 @@ Rig 7, `--os 32` (Kickstart 3.2.3 ROM, 512 KiB at 0xF80000, Intuition in ROM). P
 | Menus | Yes, via graphics LVO and `PrintIText`/`DrawImageState` | Fixed ROM call sites listed in 4 (V). Shape is drawn with RectFills, so a caller-filtered RectFill patch can flatten it. Still U on checkmark/arrow images. |
 
 Net change from section 7: the "maybe/reject if inlined" cases (border shape, title bar, menus, screen bar) are NOT inlined on 3.2; the graphics LVO path works and a caller-address filter is available as a precise selector. Caller addresses are for Kickstart 3.2.3 only and must not be hard-coded: select by "caller lies inside intuition.library's code range" plus rastport/bevel geometry. Not yet verified: A1200, 3.1, third-party patches (Birdie, VP) stacking on the same LVOs, and the flat-pens screenshot.
+
+## 9. FLAT-R1 IControl geometry probe (rig 5, 2026-10-30)
+
+Probe: `tests/amiga/icprobe.c` writes ENV:Sys/icontrol.prefs (FORM PREF, PRHD, ICTL 38 bytes) with ic_Flags = ICB_VERSIONED only, ic_Version 2, ic_VersionMagic 0, and ic_GUIGeometry[4] from the command line. It waits 4 s, then prints screen bar height, new-window borders and the system gadgets. Raw sweep: scratchpad `flat-r1-p1.md`.
+
+Baseline `--os 32` (Kickstart 47.115, Workbench 47.2, intuition 47.53): screen bar 10, window BorderLeft 4, Top 11, Right 18, Bottom 2, title gadgets 11 high, size gadget 18 x 10.
+
+| byte | meaning | measured | live? |
+|------|---------|----------|-------|
+| 0 | screen title bar height increment | bar = 10 + v (1 gives 11, 16 gives 26). Values 254 and 255 (negative) break LockPubScreen("Workbench"): rc 10 even after 8 s. Not usable for thinner. Writing 0 restores. | yes, same screen address, no reset |
+| 1 | window title bar height increment, signed | BorderTop = 11 + v (not capped at 16: 100 gives 111). 250, 254, 255 clamp to -1: BorderTop 10, title gadgets 10 high. | live for new windows, but every change reopens the Workbench screen (new screen address) |
+| 2 | no effect on borders or gadgets at 1, 4, 16, 100, 255; one screen reopen at 100. Meaning unknown. | | |
+| 3 | border gadget scaling | right border 18 at 0, 20 at 1..100, 22 at 255; size gadget 18 x 10, 20 x 10, 22 x 11. Steps, not linear. | yes, no reset |
+
+- Thinner than stock: yes, by exactly 1 px, byte 1 only (BorderTop 10 against 11). Nothing thins the left (4), right (18) or bottom (2) border: they never changed.
+- No reboot needed on 3.2: IPrefs applied each write to new windows inside the 4 s wait. The file is deleted afterwards and the baseline returns.
+- The IntuitionControlA layout hook: the NDK says "No public tags defined so far" and the NDK3.2R4 files carry no documentation of a hook tag. Not probed. Unverified.
+- 3.1 (`--os 31`, intuition 40.85): the same file is accepted without error but every window and screen metric stayed at the baseline for geometry bytes 4/0/0/0, 0/4/0/0, 0/254/0/0 and 0/0/0/100. 3.1 has no route for the geometry. Per OD-F3 this goes back to the owner as a question.
