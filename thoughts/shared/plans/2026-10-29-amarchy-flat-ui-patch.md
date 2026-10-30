@@ -181,8 +181,8 @@ What needs a DOpus-side change (upstream PR, item FLAT-D1):
 
 Our side (modules, ARexx, config), items FLAT-D2 / D3:
 - [x] **FLAT-D1 upstream PR to BlitterStudio/dopus5. DROPPED by the owner 2026-10-30 (runtime patch FLAT-D4 instead).** A DOpus setting (default off) turns on flat drawing (owner 2026-10-30: flat must be optional inside DOpus); flat drawing in gui.c, buttons_draw.c, image_class.c as above; test on the rig with the stock DOpus theme (no pixel change) and with P1 flat pens. Status: not started, waits for owner go (OD-F10).
-- [ ] **FLAT-D2 Amarchy DOpus theme hook.** `desk_dos_apply` sends `dopus set pens <key> ...` for the 11 keys from the theme colours when a DOpus ARexx port exists (ports named by `GUI->rexx_port_name`, DOPUS.1 by default, V display.c:1167) and `dopus set pens` is already known to work on Workbench (owner note). Pure mapping theme -> 11 pen strings in desk_core, host golden; rig: DOpus lister colours equal the theme after `DESK THEME <A>`.
-- [ ] **FLAT-D3 button banks borderless.** Document in the theme README how to set the BORDERLESS flag per bank (config, not code) and ship it in the Amarchy DOpus button bank files the kit installs, if any (U whether the kit installs banks; grep dist/ when implementing).
+- [x] **FLAT-D2 Amarchy DOpus theme hook.** `desk_dos_apply` sends `dopus set pens <key> ...` for the 11 keys from the theme colours when a DOpus ARexx port exists (ports named by `GUI->rexx_port_name`, DOPUS.1 by default, V display.c:1167) and `dopus set pens` is already known to work on Workbench (owner note). Pure mapping theme -> 11 pen strings in desk_core, host golden; rig: DOpus lister colours equal the theme after `DESK THEME <A>`.
+- [x] **FLAT-D3 button banks borderless.** Document in the theme README how to set the BORDERLESS flag per bank (config, not code) and ship it in the Amarchy DOpus button bank files the kit installs, if any (U whether the kit installs banks; grep dist/ when implementing).
 
 ## Fable review 2026-10-29
 
