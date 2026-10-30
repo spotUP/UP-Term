@@ -143,6 +143,7 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS])
     pens[DK_SHINE] = DK_BG;     /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
     pens[DK_SHADOW] = DK_BG;    /* so every window is one solid rectangle and only title and glyph colour show focus */
     pens[DK_FILL] = DK_BG;
+    pens[DK_FILLTEXT] = DK_FG;  /* the active title text is drawn in FILLTEXTPEN on FILLPEN (= DK_BG now): keep it bright */
 }
 
 /* FLAT-SOLID-FILL: the glyph pens of the flat_state block under the flat map: active glyph bright (foreground), inactive

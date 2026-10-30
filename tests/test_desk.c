@@ -158,7 +158,10 @@ static void test_desk_palette_flat(void)
     desk_pens_flat(flat);
     for (s = 0; s < DK_SLOTS; s++) {
         CHECK(flat[s] < 4);
-        if (s == DK_SHINE || s == DK_SHADOW || s == DK_FILL) {  /* FLAT-SOLID-FILL: one surface pen for highlight, shadow, fill */
+        if (s == DK_FILLTEXT) {  /* FLAT-SOLID-FILL: the active title text is bright under the flat map */
+            CHECK_INT(flat[s], DK_FG);
+            CHECK(stock[s] != flat[s]);
+        } else if (s == DK_SHINE || s == DK_SHADOW || s == DK_FILL) {  /* FLAT-SOLID-FILL: one surface pen for highlight, shadow, fill */
             CHECK_INT(flat[s], DK_BG);
             CHECK(stock[s] != flat[s]);
         } else
@@ -173,6 +176,8 @@ static void test_desk_palette_flat(void)
         CHECK(gl != gt);
         CHECK(gl != flat[DK_SHINE] && gl != flat[DK_SHADOW] && gl != flat[DK_FILL]);
         CHECK(gt != flat[DK_FILL]);
+        CHECK(flat[DK_FILLTEXT] != flat[DK_FILL]);  /* FLAT-SOLID-FILL: the active title text is readable on its fill */
+        CHECK_INT(flat[DK_FILLTEXT], DK_FG);
     }
     for (k = 0; k < 4; k++) {
         char path[256];
