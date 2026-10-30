@@ -220,9 +220,22 @@ int flat_which_from_gtype(unsigned gadget_type)
 {
     switch (gadget_type & 0xF0u) {
     case 0x40: return 0;        /* GTYP_WDEPTH */
+    case 0x50: return 0;        /* GTYP_SDEPTH: the screen title bar's depth gadget (type 0xc055), FLAT-C7 */
     case 0x60: return 1;        /* GTYP_WZOOM */
     case 0x10: return 2;        /* GTYP_SIZING */
     case 0x80: return 3;        /* GTYP_CLOSE */
     default: return -1;
     }
+}
+
+int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const void *select_render, const void *image)
+{
+    if (!(gadget_type & 0x8000u) || !image || (gadget_render != image && select_render != image))   /* GTYP_SYSGADGET */
+        return -1;
+    return flat_which_from_gtype(gadget_type);
+}
+
+unsigned long flat_which_alias(unsigned long which)
+{
+    return which == 0x05 ? 0x00 : which;    /* SYSIA_Which SDEPTHIMAGE draws the depth glyph */
 }

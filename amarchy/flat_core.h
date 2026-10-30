@@ -150,4 +150,12 @@ int flat_dopus_status_line(int found, unsigned version, unsigned revision, int r
  * SIZING 0x10 -> 2, CLOSE 0x80 -> 3. -1 for every other type. Used where GetAttr(SYSIA_Which) fails (Kickstart 3.1). */
 int flat_which_from_gtype(unsigned gadget_type);
 
+/* FLAT-C7: the SYSIA_Which of a system gadget (window or screen: GTYP_SYSGADGET set) when one of its two render
+ * pointers is `image`, else -1. Screen gadgets (Screen->FirstGadget, type 0xc055 for the depth gadget) have no window,
+ * so flat.c walks the screen's list with this too. */
+int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const void *select_render, const void *image);
+
+/* SYSIA_Which values that draw the glyph of another one (SDEPTHIMAGE 5 -> DEPTHIMAGE 0). */
+unsigned long flat_which_alias(unsigned long which);
+
 #endif

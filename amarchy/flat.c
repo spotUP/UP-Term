@@ -69,6 +69,22 @@ static void c2_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
     RectFill(rp, x0, y0, x1, y1);
 }
 
+/* FLAT-C7: a layer without a window is a screen's title bar: find the screen whose BarLayer it is and look through
+ * Screen->FirstGadget (the depth gadget, type 0xc055) for the gadget that renders this image. */
+static int c7_screen_which(struct Layer *lay, Object *obj)
+{
+    ULONG lock = LockIBase(0);
+    struct Screen *sc;
+    struct Gadget *g;
+    int n, wh = -1;
+    for (sc = IntuitionBase->FirstScreen; sc && wh < 0; sc = sc->NextScreen)
+        if (sc->BarLayer == lay)
+            for (g = sc->FirstGadget, n = 0; g && n < 64 && wh < 0; g = g->NextGadget, n++)
+                wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
+    UnlockIBase(lock);
+    return wh;
+}
+
 static int c2_draw(Object *obj, Msg msg)
 {
     flatshared *r = g_r;
@@ -87,12 +103,14 @@ static int c2_draw(Object *obj, Msg msg)
         struct Gadget *g;
         int n = 0, wh = -1;
         for (g = w ? w->FirstGadget : NULL; g && n < 64 && wh < 0; g = g->NextGadget, n++)
-            if ((g->GadgetRender == (APTR)obj || g->SelectRender == (APTR)obj) && (g->GadgetType & GTYP_SYSGADGET))
-                wh = flat_which_from_gtype(g->GadgetType);
+            wh = flat_gadget_which(g->GadgetType, g->GadgetRender, g->SelectRender, obj);
+        if (wh < 0 && lay && !w)
+            wh = c7_screen_which(lay, obj);
         if (wh < 0)
             return 0;
         which = (ULONG)wh;
     }
+    which = flat_which_alias(which);
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, c2_fill, d->imp_RPort);
 }

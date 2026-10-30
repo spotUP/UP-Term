@@ -484,6 +484,18 @@ static void test_which_from_gtype(void)
     CHECK_INT(flat_which_from_gtype(0x8000u | 0x80 | 1), FLAT_W_CLOSE);
     CHECK_INT(flat_which_from_gtype(0x8000u | 0x20), -1);      /* GTYP_WDRAGGING is not a glyph */
     CHECK_INT(flat_which_from_gtype(0x0001u), -1);
+    /* FLAT-C7: the screen title bar's depth gadget is type 0xc055 (SYSGADGET|SCRGADGET|GTYP_SDEPTH|BOOLGADGET) */
+    CHECK_INT(flat_which_from_gtype(0xc055u), FLAT_W_DEPTH);
+    {
+        int img, other;
+        CHECK_INT(flat_gadget_which(0xc055u, &img, 0, &img), FLAT_W_DEPTH);
+        CHECK_INT(flat_gadget_which(0xc055u, &other, &img, &img), FLAT_W_DEPTH);
+        CHECK_INT(flat_gadget_which(0xc055u, &other, 0, &img), -1);         /* another gadget's image */
+        CHECK_INT(flat_gadget_which(0x4055u, &img, 0, &img), -1);           /* not a system gadget */
+        CHECK_INT(flat_gadget_which(0xc035u, &img, 0, &img), -1);           /* screen drag bar: no glyph */
+    }
+    CHECK_INT((int)flat_which_alias(5), FLAT_W_DEPTH);
+    CHECK_INT((int)flat_which_alias(3), FLAT_W_CLOSE);
 }
 
 void suite_flat_core(void)
