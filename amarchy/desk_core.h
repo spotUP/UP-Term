@@ -28,8 +28,13 @@ int desk_contrast(uc_u32 a, uc_u32 b);
 uc_u32 desk_role(const gtheme *t, int role);
 
 /* R1.18a: the darker tone (OD5): the theme's darker_background when it is darker than the background and keeps
- * its distance, else the background at 80 %. Pure black stays black (nothing is darker). */
+ * its distance, else the background at 80 % or less, in every case strictly darker after the 12-bit nibble cut so the
+ * backdrop pen never equals the ground pen (DESK-BACKDROP-DARKER). A ground that is black on the screen (desk_ground_black)
+ * keeps its colour and the backdrop is dark grey, lighter than black. */
 uc_u32 desk_darker(const gtheme *t);
+
+/* 1 when the ground is black on a 12-bit screen: all channels below 16 */
+int desk_ground_black(const gtheme *t);
 
 /* R1.19: the pen index of every DrawInfo slot (OD13) into pens[DK_SLOTS] */
 void desk_pens(unsigned char pens[DK_SLOTS]);

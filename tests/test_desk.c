@@ -209,8 +209,8 @@ static void test_desk_darker(void)
     CHECK_INT(n, 23);
     for (i = 0; i < n; i++) {
         uc_u32 d = desk_darker(&all[i]);
-        if (desk_luma(all[i].bg) == 0) {
-            CHECK_INT(d, all[i].bg); /* black has nothing darker: exempt from the strict rule */
+        if (desk_ground_black(&all[i])) {
+            CHECK(desk_luma(d) > desk_luma(all[i].bg)); /* black has nothing darker: the backdrop lifts to grey */
             continue;
         }
         CHECK(desk_luma(d) < desk_luma(all[i].bg));
@@ -224,6 +224,49 @@ static void test_desk_darker(void)
     CHECK_INT(desk_darker(&t), gt_scale(0x202020UL, 80));
     t.darker_bg = 0x101010UL;
     CHECK_INT(desk_darker(&t), 0x101010UL);
+}
+
+/* DESK-BACKDROP-DARKER: the backdrop pen (DK_DARKER) never equals the shell background pen (DK_BG) on the palette the
+ * Workbench screen really holds: read back from desk_palette at 4 and 8 colours, at 24 bit (AGA) and at 12 bit (OCS, a
+ * nibble per channel). Darker for every bg, except a bg that is black on the screen: the shell keeps it, the backdrop is a
+ * dark grey that is lighter. */
+static uc_u32 pal_pen(const unsigned char *f, int pen, int bits)
+{
+    const unsigned char *e = f + 26 + 8 + 144 + 8 * pen;
+    uc_u32 c = 0;
+    int i;
+    for (i = 0; i < 3; i++) {
+        unsigned v = e[2 + 2 * i]; /* high byte of the 16-bit channel */
+        if (bits == 4)
+            v = (v >> 4) * 17u;
+        c = (c << 8) | v;
+    }
+    return c;
+}
+
+static void test_desk_backdrop(void)
+{
+    gtheme all[SHIPPED_MAX];
+    int n = load_all(all, SHIPPED_MAX), i, nc, bits;
+    for (i = 0; i < n; i++)
+        for (nc = 4; nc <= 8; nc += 4)
+            for (bits = 4; bits <= 8; bits += 4) {
+                unsigned char f[DK_PALETTE_SIZE], pens[DK_SLOTS];
+                uc_u32 bg, dk;
+                int blk = (((all[i].bg >> 20) & 15) | ((all[i].bg >> 12) & 15) | ((all[i].bg >> 4) & 15)) == 0;
+                desk_pens(pens);
+                CHECK_INT(desk_palette(&all[i], nc, pens, f, sizeof f), DK_PALETTE_SIZE);
+                bg = pal_pen(f, DK_BG, bits);
+                dk = pal_pen(f, DK_DARKER, bits);
+                if (dk == bg || (!blk && desk_luma(dk) >= desk_luma(bg)) || (blk && desk_luma(dk) <= desk_luma(bg)))
+                    printf("backdrop theme %s colours %d bits %d: bg %06lx backdrop %06lx\n", all[i].name, nc,
+                           bits * 3, (unsigned long)bg, (unsigned long)dk);
+                CHECK(dk != bg);
+                if (!blk)
+                    CHECK(desk_luma(dk) < desk_luma(bg));
+                else
+                    CHECK(desk_luma(dk) > desk_luma(bg));
+            }
 }
 
 static const unsigned char *ptrn(const unsigned char *f, int which)
@@ -528,6 +571,7 @@ void suite_desk(void)
     test_desk_palette_flat();
     test_desk_pens_reset();
     test_desk_darker();
+    test_desk_backdrop();
     test_desk_wbpattern();
     test_desk_pointer();
     test_desk_pointer_gate();

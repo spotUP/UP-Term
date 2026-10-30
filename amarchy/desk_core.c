@@ -22,14 +22,38 @@ int desk_contrast(uc_u32 a, uc_u32 b)
 #define DK_FLOOR_FILL 150 /* the title text on the fill, and the fill on the ground */
 #define DK_STEP_DARK 108  /* the darker tone against the background */
 
+#define DK_BLACK_LIFT 0x222222UL /* the backdrop over a black ground: dark grey, lighter than black */
+
+/* the colour as a 12-bit (OCS) screen holds it: a nibble per channel, replicated. The weakest depth Amarchy runs on. */
+static uc_u32 nib(uc_u32 c)
+{
+    return (((c >> 20) & 0xf) * 0x110000UL) | (((c >> 12) & 0xf) * 0x1100UL) | (((c >> 4) & 0xf) * 0x11UL);
+}
+
+static int qluma(uc_u32 c)
+{
+    return desk_luma(nib(c));
+}
+
+int desk_ground_black(const gtheme *t)
+{
+    return qluma(t->bg) == 0;
+}
+
+/* DESK-BACKDROP-DARKER: never the ground's own colour, on a 24-bit or a 12-bit palette. A ground that is black on the
+ * screen keeps it and the backdrop lifts to dark grey; any other ground gets a tone strictly darker after the nibble cut. */
 uc_u32 desk_darker(const gtheme *t)
 {
-    if (desk_luma(t->bg) == 0)
-        return t->bg;
-    if (desk_luma(t->darker_bg) < desk_luma(t->bg) && desk_contrast(t->darker_bg, t->bg) >= DK_STEP_DARK &&
-        desk_contrast(t->darker_bg, t->fg) >= DK_FLOOR_TEXT)
+    int pct;
+    if (desk_ground_black(t))
+        return DK_BLACK_LIFT;
+    if (desk_luma(t->darker_bg) < desk_luma(t->bg) && qluma(t->darker_bg) < qluma(t->bg) &&
+        desk_contrast(t->darker_bg, t->bg) >= DK_STEP_DARK && desk_contrast(t->darker_bg, t->fg) >= DK_FLOOR_TEXT)
         return t->darker_bg;
-    return gt_scale(t->bg, 80);
+    for (pct = 80; pct > 0; pct -= 10)
+        if (qluma(gt_scale(t->bg, pct)) < qluma(t->bg))
+            return gt_scale(t->bg, pct);
+    return 0x000000UL;
 }
 
 uc_u32 desk_role(const gtheme *t, int role)
