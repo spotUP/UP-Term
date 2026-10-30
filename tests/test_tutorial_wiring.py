@@ -38,7 +38,7 @@ class TutorialWiring(unittest.TestCase):
 class WindowStateWiring(unittest.TestCase):
     """The /state counters (plan 2026-10-19-tutorial-window-lesson P1-P4). The formatter and the bump
     rules are host-tested in tests/test_slash.c; this pins that each hook point in the Amiga-only
-    handler calls them. That the hooks RUN (a real Right Amiga T, menu pick, /help, mouse copy, paste)
+    handler calls them. That the hooks RUN (a real Left Amiga T, menu pick, /help, mouse copy, paste)
     only the rig can show."""
 
     def test_p1_each_action_has_its_bump_point(self):

@@ -55,7 +55,7 @@ def record(name, ok, detail):
     d[name] = {"verdict": "pass" if ok else "fail", "fp": FP, "detail": detail[-600:], "time": time.time()}
     VERDICTS.parent.mkdir(parents=True, exist_ok=True)
     VERDICTS.write_text(json.dumps(d, indent=1))
-    print("[%s] %s %s" % ("PASS" if ok else "FAIL", name, "" if ok else detail[-300:].replace("\n", " | ")), flush=True)
+    print("[%s] %s %s" % ("PASS" if ok else "FAIL", name, "" if ok else detail[:600].replace("\n", " | ")), flush=True)
 
 
 def until(cond, secs):
@@ -133,6 +133,7 @@ def vsh_pids():
 
 
 RCMD = 0x0080
+LCMD = 0x0040
 SANDBOX = "T:tutorial"
 
 
@@ -388,7 +389,7 @@ def case_lesson12():
             retries.append("%s gave up" % name)
             return False
 
-        ami.key(0x14, RCMD)                      # 1. Right Amiga T
+        ami.key(0x14, LCMD)                      # 1. Left Amiga T (the keymap's super+t; Right Amiga T is no menu key: dist/keymap super+shift+t takes it)
         time.sleep(4)
         ami.key(0x02, RCMD)                      # back to the tutorial tab (tab 2)
         until(lambda: active_title() == tut, 8)
@@ -404,9 +405,9 @@ def case_lesson12():
         ret("step4")                             # Return even when /help output sits above the prompt
         log.append(("slash", True))
         sc = settled()                           # 5. drag over the word at the end of the task line
-        clip = None
+        clip, clips = None, []
         for skip in range(4):                    # a try again on a settled screen when the clipboard is not "up<pid>"
-            w = sc.word_span(0)
+            w = sc.word_span(skip)
             if not w:
                 break
             y, px0, px1 = w
@@ -414,6 +415,7 @@ def case_lesson12():
             ami.key(0x33, RCMD)                  # copy-on-select is off by default: Right Amiga C copies the selection
             time.sleep(1)
             clip = typewin._clip("RAM:rig.clip").strip()
+            clips.append((skip, w, clip, sc.cols, sc.task_rows()[:4]))
             if re.fullmatch(r"up\d+", clip):
                 break
             kx, ky = ami.pointer_scale()         # one click clears the selection
@@ -442,7 +444,9 @@ def case_lesson12():
         # per-step proof is the progress file: "12" is written only after all seven checks passed (dist/tutorial),
         # and every counter grew. The pixel test of ret() can miss an advance, so it is detail, not a verdict.
         ok = done and grew and dict(log)["paste"]
-        detail = "progress %s; steps %s; counters %s; retries %s; echo said %r" % (prog, log, moved, retries or "none", said)
+        # counters first: the runner keeps the last 300 characters of a failure, and the counters name the step that
+        # never counted (a pixel-tested step in `log` can read advanced falsely)
+        detail = "counters %s; progress %s; steps %s; retries %s; clips %s; echo said %r" % (moved, prog, log, retries or "none", clips, said)
         if not (base or after):
             detail += "; state output %r" % out1[:80]
     finally:

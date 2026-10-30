@@ -5,10 +5,10 @@
 > action, then press Return at the tutorial prompt with nothing typed.
 $ cd "$start"
 $ tabs0=$(${UPTERM_STATE:-UPTerm} state tabs-opened)
-? Open a new tab with Right Amiga T, then press Return here (in this tab).
+? Open a new tab with Left Amiga T, then press Return here (in this tab).
 = [ "$(${UPTERM_STATE:-UPTerm} state tabs-opened)" -gt "$tabs0" ]
-~ Hold Right Amiga and press T; the new tab opens. Come back to this tab and press Return.
-! echo "Press Right Amiga T, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act tabs-opened}
+~ Hold Left Amiga and press T; the new tab opens. Come back to this tab and press Return.
+! echo "Press Left Amiga T, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act tabs-opened}
 > Tabs are shells side by side. The tab bar shows them; click one, or press Right Amiga
 > with its number (1 is the first tab), to switch.
 $ sw0=$(${UPTERM_STATE:-UPTerm} state tab-switches)

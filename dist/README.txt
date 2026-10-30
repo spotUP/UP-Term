@@ -352,7 +352,7 @@ KEYS
                         link-open = OpenURL %s  runs (%s the URL), so the
                         OpenURL package must be installed, or name your
                         browser's command there
-  Right Amiga T         new tab (a shell of its own, the same profile,
+  Left Amiga T          new tab (a shell of its own, the same profile,
                         in the directory the shell of this tab is in)
   Right Amiga 1-9       that tab; Right Amiga . and , the next / previous
                         (or click the tab bar); the close gadget closes
