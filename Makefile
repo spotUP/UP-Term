@@ -940,6 +940,11 @@ $(BUILD)/amiga/ixsigexit: tests/amiga/ixsigexit.c
 	@mkdir -p $(BUILD)/amiga
 	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixsigexit.c
 
+# ixemul's kill() pid lookup (pfind): native task, self, live ixemul process (tools/rig/pfind_rig.py).
+$(BUILD)/amiga/ixpfind: tests/amiga/ixpfind.c
+	@mkdir -p $(BUILD)/amiga
+	$(AGCC) -mcrt=ixemul -O2 -Wall -o $@ tests/amiga/ixpfind.c
+
 # The characters typed after a Ctrl-C that ended a read (tools/rig/intr_rig.py).
 $(BUILD)/amiga/ixintr: tests/amiga/ixintr.c
 	@mkdir -p $(BUILD)/amiga
