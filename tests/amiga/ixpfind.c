@@ -4,6 +4,7 @@
  * ixpfind addr NAME   print the exec address of the task NAME (FindTask), decimal
  * ixpfind self        kill(getpid(), 0): must give 0
  * ixpfind wait       write getpid() to RAM:pfind.pid, sleep 60 (a live ixemul process)
+ * ixpfind fake       kill() of a Task-shaped block in no exec list: must give ESRCH
  * ixpfind list       every other task: "address name" (the rig kill-tests each)
  * ixpfind native NAME kill(<address of the native task NAME>, 0) inside this
  *                     process: must give -1/ESRCH at once (a native task is no
@@ -34,6 +35,18 @@ int main(int argc, char **argv)
         if (f) { fprintf(f, "%lu\n", (unsigned long)getpid()); fclose(f); }
         sleep(60);
         return 0;
+    }
+    if (!strcmp(m, "fake")) { /* a Task-shaped block in no exec list, carrying this process's ixemul user struct:
+                               * the old pfind counted it as found (the bug); kill must give ESRCH */
+        static struct Task fake;
+        struct Task *me = FindTask(0);
+        int r;
+        fake.tc_Node.ln_Type = NT_TASK;
+        fake.tc_TrapData = me->tc_TrapData;
+        fake.tc_UserData = me->tc_UserData;
+        r = kill((pid_t)&fake, 0);
+        printf("fake: kill rc %d errno %d (ESRCH %d)\n", r, r ? errno : 0, ESRCH);
+        return (r == -1 && errno == ESRCH) ? 0 : 1;
     }
     if (!strcmp(m, "list")) { /* every task in TaskWait and TaskReady except this one: "address name" */
         struct Node *n;

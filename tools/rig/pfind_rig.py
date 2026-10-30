@@ -6,6 +6,7 @@ walk ends on the tail node, never NULL, so TaskReady was never searched and EVER
 kill() then read tc_TrapData of any address; `ixkill -0 <live native task>` hung for more than 40 s and
 ignored Ctrl-C. Must hold, each inside 5 s:
   ixkill -0 <every other task in TaskWait/TaskReady>  -> rc 0 for the ixemul process, rc 1 (ESRCH) for the rest
+  kill(<Task-shaped block in no list>, 0)             -> ESRCH (fails on the old lib: counted as found)
   kill(getpid(), 0)                                   -> 0 (the running task is in neither exec list)
   ixkill -0 <live ixemul process>                     -> rc 0 (ixpfind wait, started with Run)
 A request that gets no answer in 5 s is the hang: FAIL on the old library.
@@ -33,11 +34,22 @@ def check(label, cmd, want_rc, want_text=None):
     return good
 
 
+def check_any(label, cmd):
+    try:
+        rc, out = ixpty_rig.run(cmd, 5)
+    except Exception as e:
+        print('%s: no answer in 5 s (%s) FAIL' % (label, e))
+        return False
+    print('%s: rc %d (0 ixemul process or 1 native) %s' % (label, rc, 'ok' if rc in (0, 1) else 'FAIL'))
+    return rc in (0, 1)
+
+
 def main():
     for name in ("ixkill", "ixpfind"):
         shutil.copyfile(ROOT / "build/amiga" / name, VTC / name)
     ixpty_rig.use_ixemul()
     ok = check("self: kill(getpid(), 0)", 'VTC:ixpfind self', 0, 'kill rc 0')
+    ok = check("fake task in no exec list: kill(addr, 0) is ESRCH", 'VTC:ixpfind fake', 0, 'errno 3') and ok
     ixpty_rig.run('Delete RAM:pfind.pid QUIET')
     ixpty_rig.run('Run >NIL: VTC:ixpfind wait')
     ixpty_rig.run('Wait 3')
@@ -50,7 +62,11 @@ def main():
     tasks = [l.split(None, 1) for l in out.splitlines() if l.strip()]
     print('%d other tasks in the exec lists' % len(tasks))
     for addr, name in tasks:
+        # a Background CLI may be a real ixemul program (Amarchy, upgetty): rc 0 or 1, never a hang
         want = 0 if addr == peer else 1
+        if name.startswith('Background CLI') and addr != peer:
+            ok = check_any("task %s %s: ixkill -0" % (addr, name), 'VTC:ixkill -0 %s' % addr) and ok
+            continue
         ok = check("task %s %s: ixkill -0" % (addr, name), 'VTC:ixkill -0 %s' % addr, want) and ok
     ixpty_rig.run('VTC:ixkill -KILL %s' % peer, 5)
     print('pfind_rig: %s (ixemul %s)' % ('OK' if ok else 'FAIL', ixpty_rig.IXEMUL))
