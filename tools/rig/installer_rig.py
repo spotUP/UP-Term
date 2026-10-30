@@ -94,6 +94,10 @@ CASES["fresh-all"] = ("AVERAGE", None)
 # is VTCX: or BOOTX: (host directories, 2 GB), not SYS:. The `space` case asks for SYS:UP-Term itself (it needs a small disk).
 # BIGVOL: the drawer page's default is UP-Term on the local disk with the most free room (UPBigVol), not SYS:
 CASES["bigvol"] = ("AVERAGE", None)
+# P-ANX-RUN-EXECUTE: the rig always has FS-UAE's bsdsocket.library, so the Installer finds a stack and never offers
+# AmiNetXDuo. The case swaps Files/tcpprobe of VTC:distkit for C:Wait (rc 0, no output: no id string), which makes
+# P_TCPCHECK find no stack; the ANX step then runs, and the window list is logged around it (no Shell may open).
+CASES["anx"] = ("AVERAGE", None)
 # the rig: DH0 System 106 MB (SYS:, 217222 blocks), DH1 Rushhours 519 MB, VTCX and BOOTX (uaefs directories) 2 GB
 ROOMDEST = "DH1:KitTest-default"   # the default case's answer to the room page: Rushhours, about 1 GB free
 UPDATED = "Files/unifont/SOURCE.txt"   # the update case changes this file of a copy part (copy-unifont)
@@ -539,6 +543,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
     room, after_ask, asks, ticked, drawer = None, False, 0, False, DrawerAsks()
     cur_title, ticked_sigs = None, set()
     outer = None   # the Installer this case started; a nested add-on Install (AmiSSL) has another window name
+    last_wins = None
 
     seen_faults = set()
 
@@ -569,6 +574,14 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
             log.append('a system requester came up: %s' % requester_detail())
             dump(tree, 'requester')
             return False, log
+        try:   # every window of every screen, logged when the set changes (a Shell the Installer opened shows here)
+            with ami._conn() as conn:
+                wins = ' || '.join('%s: %s' % (sc.get('title'), ' | '.join(w['title'] for w in sc['windows'])) for sc in ami._m().list_windows(conn)[0])
+        except Exception:
+            wins = last_wins
+        if wins != last_wins:
+            log.append('windows [%.0f s]: %s' % (time.time() - t0, wins))
+            last_wins = wins
         title, gads = installer_page(tree)
         if title and title != cur_title:
             outer = outer or installer_name(title)
@@ -1055,6 +1068,9 @@ def run_base_case(case):
     ck = Checks()
     ir.prepare(dest)
     drawer = dest or big_drawer()   # the Installer's own default (UPBigVol), not SYS:
+    if case == "anx":
+        ir.run('Copy >NIL: C:Wait VTC:distkit/Files/tcpprobe')   # no stack found: AmiNetXDuo is offered, ticked
+        ir.run('Copy >NIL: S:User-Startup T:UPTANX-startup')
     sys_had = ir.run('List >NIL: SYS:UP-Term')[0] == 0   # the rig's baseline assign UP-Term: may name an empty SYS:UP-Term: leave it, and test only what this run adds
     ir.run_long('rununinstall')  # a run that stopped half-way left things behind
     ir.run('Delete >NIL: ENVARC:UP-Term.prefs ENVARC:Claude/remote QUIET')
@@ -1182,6 +1198,15 @@ def run_base_case(case):
     # Uninstall gives it all back
     rc, out = ir.run_long('rununinstall')
     ck(rc == 0, 'Uninstall runs', out)
+    if case == "anx":
+        # Uninstall leaves AmiNetXDuo (its own Uninstall removes it): prove it ran, then do its record's work by hand
+        ck(ir.run('List >NIL: S:AmiNetXDuo-Files')[0] == 0, 'the ANX step ran Install-AmiNetXDuo (S:AmiNetXDuo-Files written)')
+        ck(';BEGIN AmiNetXDuo' in ir.run('Type S:User-Startup')[1], 'S:User-Startup has the ;BEGIN AmiNetXDuo block')
+        ir.run('Execute S:AmiNetXDuo-Files', 120)
+        ir.run('Copy >NIL: T:UPTANX-startup S:User-Startup')
+        ir.run('Delete >NIL: S:AmiNetXDuo-Files S:Network-Startup T:UPTANX-startup QUIET')
+        ck(not any('Shell' in l or 'CLI' in l for l in log if l.startswith('windows [')), 'no Shell or CLI window at any time during the install (window list logged on every change)',
+           ' '.join(l for l in log if l.startswith('windows [') and ('Shell' in l or 'CLI' in l))[:300])
     ck(ir.run('Status >NIL: COM C:wasabid')[0] == 0, 'after Uninstall: the running C:wasabid still runs')
     if kit_wasabid:
         ck(ir.run('List >NIL: C:wasabid')[0] != 0, "after Uninstall: the kit's C:wasabid file is gone")
