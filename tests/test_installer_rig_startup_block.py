@@ -17,10 +17,12 @@ class Checks:
 
 
 class StartupBlock(unittest.TestCase):
-    def run_check(self, before, now, leaves=("DOpus5",)):
+    def run_check(self, before, now, leaves=("DOpus5",), installed=None):
         import install_rig as ir
         ck = Checks()
-        ir.check_startup_after_uninstall(ck, before, now, leaves)
+        if installed is None:
+            installed = BEFORE + BLOCK
+        ir.check_startup_after_uninstall(ck, before, installed, now, leaves)
         return ck.results
 
     def test_block_left_and_rest_as_before_passes(self):
@@ -44,6 +46,13 @@ class StartupBlock(unittest.TestCase):
         res = self.run_check(BEFORE + BLOCK, BEFORE + BLOCK)
         self.assertEqual(len(res), 1)
         self.assertTrue(res[0][0])
+
+    def test_block_the_run_never_wrote_is_not_demanded(self):
+        # rig 8, case all: DOpus5: was already assigned (the master's Directory Opus 5.82, block ;BEGIN
+        # DirectoryOpus 5), so the add-on left it as it was and wrote no ;BEGIN DOpus5 block
+        master = BEFORE + ';BEGIN DirectoryOpus 5\nASSIGN DOpus5: "dh0:Opus5"\n;END DirectoryOpus 5\n'
+        res = self.run_check(master, master, installed=master)
+        self.assertEqual(res, [(True, "after base Uninstall: S:User-Startup as it was, byte for byte")])
 
 
 if __name__ == "__main__":

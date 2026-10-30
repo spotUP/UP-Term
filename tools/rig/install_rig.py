@@ -1230,27 +1230,30 @@ def first_difference(now, before):
     return 'identical'
 
 
-def check_startup_after_uninstall(ck, before_text, now_text, leaves=(), what='after base Uninstall'):
+def check_startup_after_uninstall(ck, before_text, installed_text, now_text, leaves=(), what='after base Uninstall'):
     """S:User-Startup after the base Uninstall is as it was, byte for byte. leaves: names of blocks another
     installer wrote that Uninstall leaves in place on purpose (DOpus5: DOpus stays, owner rule); they are
-    taken out of both sides for the comparison and must still be there when the run installed them."""
+    taken out of both sides for the comparison and must still be there when the run installed them, that is when
+    the block is in installed_text (S:User-Startup after the Installs) and was not in before_text. An add-on that
+    found its program already there (DOpus5: assigned on a rig that boots its master's Directory Opus 5.82, whose
+    block is ;BEGIN DirectoryOpus 5) writes no block, and none is demanded."""
     a, b = before_text, now_text
     for name in leaves:
         a, b = strip_block(a, name), strip_block(b, name)
     ck(b == a, '%s: S:User-Startup as it was, byte for byte' % what, first_difference(b, a))
     for name in leaves:
-        if (';BEGIN ' + name) not in before_text:
+        if (';BEGIN ' + name) in installed_text and (';BEGIN ' + name) not in before_text:
             ck((';BEGIN ' + name) in now_text and (';END ' + name) in now_text,
                '%s: the %s block is still in S:User-Startup (it still boots)' % (what, name))
 
 
-def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=()):
+def base_uninstall(ck, before, expect_user_startup_clean=True, leaves=(), installed_text=''):
     """Uninstall of the base (which runs the Uninstall of the add-ons that need it) gives the rig back byte for byte
     (not when a stand-alone archive's block is still there: it is not the base's to take out)."""
     rc, out = run_long('rununinstall')
     ck(rc == 0, 'base Uninstall runs', out)
     if expect_user_startup_clean:
-        check_startup_after_uninstall(ck, before.startup, run('Type S:User-Startup')[1], leaves)
+        check_startup_after_uninstall(ck, before.startup, installed_text, run('Type S:User-Startup')[1], leaves)
     ck(run('Type S:Startup-Sequence')[1] == before.sseq, 'after base Uninstall: S:Startup-Sequence as it was')
     ck(run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'after base Uninstall: no UP-Term: assign')
     now = run('List SYS:UP-Term ALL')
@@ -1429,12 +1432,13 @@ def case_addon(ck, pkg):
     if pkg == 'claude':
         plant_old_claude()
     addon_install(ck, pkg)
+    installed = run('Type S:User-Startup')[1]
     base_whole(ck, 'with %s installed' % pkg)
     rc, out = run_long('rununinstall-' + pkg)
     ck(rc == 0, '%s: its Uninstall runs' % pkg, out)
     addon_gone(ck, pkg)
     base_whole(ck, 'after %s\'s Uninstall' % pkg)
-    base_uninstall(ck, before, leaves=startup_leaves([pkg]))
+    base_uninstall(ck, before, leaves=startup_leaves([pkg]), installed_text=installed)
 
 
 def case_bare(ck, pkg):
@@ -1451,10 +1455,11 @@ def case_bare(ck, pkg):
     if pkg == 'claude':
         plant_old_claude(with_base=False)
     addon_install(ck, pkg, with_base=False)
+    installed = run('Type S:User-Startup')[1]
     rc, out = run_long('rununinstall-' + pkg)
     ck(rc == 0, '%s: its Uninstall runs' % pkg, out)
     addon_gone(ck, pkg, with_base=False)
-    check_startup_after_uninstall(ck, before.startup, run('Type S:User-Startup')[1], startup_leaves([pkg]),
+    check_startup_after_uninstall(ck, before.startup, installed, run('Type S:User-Startup')[1], startup_leaves([pkg]),
                                   '%s-bare' % pkg)
     ck(run('List >NIL: ENVARC:upkg/%s' % archive(pkg))[0] != 0, '%s-bare: its record is gone' % pkg)
     ck(run('List >NIL: ENVARC:upkg')[0] != 0, '%s-bare: ENVARC:upkg is gone with its last record' % pkg)
@@ -1495,6 +1500,7 @@ def case_all(ck):
     base_install(ck)
     for pkg in ids:
         addon_install(ck, pkg)
+    installed = run('Type S:User-Startup')[1]
     base_whole(ck, 'with every add-on installed')
     rc, out = run_long('rununinstall-python')
     ck(rc == 0, 'python: its Uninstall runs with the base there', out)
@@ -1513,7 +1519,8 @@ def case_all(ck):
         ck(rc == 0, '%s: its Uninstall runs with no base' % pkg, out)
         addon_gone(ck, pkg, base_stays=False, with_base=False)
     ck(run('List >NIL: C:uptelnet')[0] != 0, 'all: C:uptelnet goes with the last of Claude and the base')
-    check_startup_after_uninstall(ck, before.startup, run('Type S:User-Startup')[1], startup_leaves(ids), 'all')
+    check_startup_after_uninstall(ck, before.startup, installed, run('Type S:User-Startup')[1], startup_leaves(ids),
+                                  'all')
     ck(run('List >NIL: ENVARC:upkg')[0] != 0, 'all: ENVARC:upkg is gone with the last record')
 
 
