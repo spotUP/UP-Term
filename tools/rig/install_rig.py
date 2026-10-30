@@ -443,10 +443,22 @@ def missing_helpers(root=None):
     return "install_rig: build/amiga/%s not built; run `make rig-helpers` first" % ", ".join(gone)
 
 
+def stale_kit(kit=None):
+    """The refusal for a kit that lacks a path dist/parts.txt names, or None. A make dist that stops before it
+    restages leaves the old kit in place; installing it fails on the rig with "Can't open Agent" (RIG10-DISTKIT-MIXED)."""
+    kit = kit or KIT
+    sys.path.insert(0, str(ROOT / 'tools'))
+    import mkmanifest
+    gone = mkmanifest.absent(kit, mkmanifest.read_parts((ROOT / 'dist/parts.txt').read_text()))
+    if not gone:
+        return None
+    return "install_rig: %s lacks %s from dist/parts.txt; rebuild it with make dist-base" % (kit, ", ".join(gone[:8]))
+
+
 def prepare(dest, addons=()):
     """The kit unpacked into VTC:distkit, the helper programs and the run scripts beside it, LIBS: as the rig boots it.
     Each add-on in `addons` is unpacked too, into VTC:kit-<id>, with runinstall-<id> and rununinstall-<id>."""
-    refusal = missing_helpers()
+    refusal = missing_helpers() or stale_kit()
     if refusal:  # before VTC:distkit is touched: a half-prepared VTC: mixes two kits
         raise SystemExit(refusal)
     destarg = (" DEST=%s" % dest) if dest else ""
@@ -490,6 +502,18 @@ FIXTURE_ASSIGNS = ('GG', 'UP-Term')
 # the add-ons that write a ;BEGIN block to S:User-Startup, and the block's name
 STARTUP_BLOCK = {'python': 'Python3'}
 
+# what an add-on's Uninstall leaves on purpose although the run installed it (UHC stays: owner decision 2026-10-27,
+# dist/addons/uhc/uninstall-body.dos): the file that shows it is there, and the lines that take it out. restore()
+# puts S:User-Startup back without the ;BEGIN UHC block, so a SYS:UHC the run made must go with it: a rig that kept
+# SYS:UHC but lost its block made the next run's up-uhc reuse UHC and write no block (ALL-CASE-RERUN-STALE).
+# The Workbench path holds a lock on UHC:ExtBin (WBPath ADD at install), so it goes first.
+LEFT_INSTALLS = {'UHC': ('SYS:UHC/UHC-Startup', (
+    'WBPath REMOVE UHC:ExtBin',
+    'Delete >NIL: SYS:UHC ALL QUIET FORCE',
+    'Delete >NIL: ENVARC:UHC ENV:UHC ALL QUIET FORCE',
+    'Delete >NIL: ENVARC:UHCBIN ENV:UHCBIN QUIET FORCE',
+    'Assign >NIL: UHC:'))}
+
 
 class Fixtures:
     """take() once the rig is up, restore() in a finally. restore() without take() does nothing.
@@ -500,6 +524,7 @@ class Fixtures:
     def __init__(self, files=()):
         self.paths = FIXTURE_FILES + tuple(files)
         self.files = self.assigns = None
+        self.absent = ()
 
     def take(self):
         if self.files is not None: return
@@ -507,6 +532,7 @@ class Fixtures:
         # THIS boot's cases see a restored disk (the next boot is fresh from the master anyway)
         signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
         self.files = {p: ami.read_file(p) for p in self.paths}
+        self.absent = tuple(n for n, (probe, _) in LEFT_INSTALLS.items() if run('List >NIL: %s' % probe)[0] != 0)
         # the "as it was" of every check is a startup without UP-Term blocks;
         # restore() puts the file back whole (K3: the rig image carried the
         # blocks of an install whose drawer is gone, so Uninstall could not
@@ -532,6 +558,13 @@ class Fixtures:
         for p, saved in self.files.items():
             try: ami.restore_file(p, saved)
             except BaseException as e: print('[WARN] fixture %s not restored: %s' % (p, e))
+        for name in self.absent:
+            probe, lines = LEFT_INSTALLS[name]
+            try:
+                if run('List >NIL: %s' % probe)[0] == 0:
+                    for line in lines: run(line)
+                    print('install_rig: %s was not there before the run; taken out with its block' % name)
+            except BaseException as e: print('[WARN] %s not taken out: %s' % (name, e))
         for name in FIXTURE_ASSIGNS:
             try:
                 if name.upper() in self.assigns: run('Assign %s: "%s"' % (name, self.assigns[name.upper()]))

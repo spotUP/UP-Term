@@ -68,6 +68,12 @@ def handed_paths(pkg_id, rows=None):
     return out
 
 
+def absent(kit, parts):
+    """The kit paths parts.txt names that the kit lacks (a kit left over from an older build, or a copy the
+    Makefile lost), in parts.txt order."""
+    return [p[1] for p in parts if p[1] not in SKIP and not (kit / p[1]).exists()]
+
+
 def manifest(kit, parts, dos, handed=()):
     lines, missing = [], []
     for f in sorted(kit.rglob('*')):
@@ -106,6 +112,9 @@ def main(a):
     kit = pathlib.Path(a[0])
     parts = read_parts(pathlib.Path(a[1] if len(a) > 1 else ROOT / 'dist/parts.txt').read_text())
     dos = pathlib.Path(a[2] if len(a) > 2 else kit / 'Files/install.dos').read_text(encoding='latin-1')
+    gone = absent(kit, parts)
+    if gone:
+        raise SystemExit('mkmanifest: the kit lacks what dist/parts.txt names: %s' % ', '.join(gone[:8]))
     (kit / 'Files/MANIFEST').write_text(manifest(kit, parts, dos, handed_paths(pkg_id)), encoding='latin-1')
 
 

@@ -120,6 +120,32 @@ class Rig(unittest.TestCase):
         self.assertIn('Assign UP-Term: "Rushhours:UpkgRig/UP-Term"', self.fake.cmds)
         self.assertNotIn('Assign >NIL: UP-Term:', self.fake.cmds)
 
+    def test_restore_takes_out_a_uhc_the_run_installed_with_its_block(self):
+        # ALL-CASE-RERUN-STALE (s25): restore() put S:User-Startup back without the ;BEGIN UHC block but kept the
+        # SYS:UHC the run made, so the next run's up-uhc found UHC there and wrote no block
+        there = set()
+        def run(cmd, timeout=60):
+            self.fake.cmds.append(cmd)
+            if cmd.startswith('List >NIL: '): return (0 if cmd[11:] in there else 205), ''
+            if cmd.startswith('Delete >NIL: SYS:UHC '): there.discard('SYS:UHC/UHC-Startup')
+            return 0, ''
+        ir.run = run
+        fx = ir.Fixtures(); fx.take()
+        there.add('SYS:UHC/UHC-Startup')          # the run installs UHC
+        fx.restore()
+        self.assertIn('Delete >NIL: SYS:UHC ALL QUIET FORCE', self.fake.cmds)
+        self.assertLess(self.fake.cmds.index('WBPath REMOVE UHC:ExtBin'),
+                        self.fake.cmds.index('Delete >NIL: SYS:UHC ALL QUIET FORCE'), 'the Workbench path lock goes first')
+        self.assertNotIn('SYS:UHC/UHC-Startup', there)
+
+    def test_restore_keeps_a_uhc_that_was_there_before_the_run(self):
+        def run(cmd, timeout=60):
+            self.fake.cmds.append(cmd)
+            return 0, ''
+        ir.run = run
+        fx = ir.Fixtures(); fx.take(); fx.restore()
+        self.assertFalse([c for c in self.fake.cmds if 'UHC' in c and not c.startswith('List')], self.fake.cmds)
+
     def test_main_restores_when_the_body_raises(self):
         orig = ir._main
         def boom(dest=None):
@@ -266,9 +292,10 @@ class InstallCases(unittest.TestCase):
 
     def test_prepare_unpacks_each_add_on_with_its_run_scripts(self):
         calls = []
-        saved = (ir.VTC, ir.KIT, ir.run, ir.SYSVOL)
+        saved = (ir.VTC, ir.KIT, ir.run, ir.SYSVOL, ir.stale_kit)
         try:
             ir.VTC = self.tmp / 'vtc'; ir.VTC.mkdir()
+            ir.stale_kit = lambda kit=None: None  # a two-file kit; stale_kit has its own tests
             (self.tmp / 'basekit').mkdir(); (self.tmp / 'basekit/Install').write_text('x')
             ir.KIT = self.tmp / 'basekit'
             for pkg in ir.package_ids(): self.kit(pkg)
@@ -289,7 +316,19 @@ class InstallCases(unittest.TestCase):
             self.assertIn('Set upvardelete YES', un); self.assertIn('CD VTC:kit-nvim', un); self.assertIn('Execute Uninstall', un)
             self.assertFalse((ir.VTC / 'kit-pi').exists(), 'only the add-ons asked for are unpacked')
         finally:
-            ir.VTC, ir.KIT, ir.run, ir.SYSVOL = saved
+            ir.VTC, ir.KIT, ir.run, ir.SYSVOL, ir.stale_kit = saved
+
+    def test_prepare_refuses_a_kit_that_lacks_a_part_before_vtc_is_touched(self):
+        saved = (ir.VTC, ir.KIT)
+        try:
+            ir.VTC = self.tmp / 'vtc3'; (ir.VTC / 'distkit').mkdir(parents=True)
+            ir.KIT = self.tmp / 'oldkit'; (ir.KIT / 'Files').mkdir(parents=True)
+            with self.assertRaises(SystemExit) as e:
+                ir.prepare(None)
+            self.assertIn('lacks Install, Install.info', str(e.exception))
+            self.assertTrue((ir.VTC / 'distkit').exists(), 'the refusal comes before VTC:distkit is replaced')
+        finally:
+            ir.VTC, ir.KIT = saved
 
     def test_run_long_keeps_its_wrapper_alive_when_the_script_returns_20(self):
         written = {}

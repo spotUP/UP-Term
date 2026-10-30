@@ -166,6 +166,22 @@ class Manifest(unittest.TestCase):
             mm.manifest(k, mm.read_parts("system  Files/vsh\n"), "")
         self.assertIn("Files/newtool", str(e.exception))
 
+    def test_a_part_the_kit_lacks_stops_the_build(self):
+        # RIG10-DISTKIT-MIXED: a kit without Files/Agent passed, install.dos then failed on the rig
+        k = kit({"Files/vsh": b"v", "Files/install.dos": b"; head\n"})
+        with tempfile.TemporaryDirectory() as d:
+            parts = pathlib.Path(d) / "parts.txt"
+            parts.write_text("system  Files/vsh\ntools  Files/Agent\ntools  Files/S\n")
+            with self.assertRaises(SystemExit) as e:
+                mm.main([str(k), str(parts)])
+        self.assertIn("Files/Agent, Files/S", str(e.exception))
+        self.assertFalse((k / "Files/MANIFEST").exists())
+
+    def test_absent_names_only_the_missing_parts_and_never_the_manifest(self):
+        k = kit({"Files/vsh": b"v", "Files/S/x": b"s"})
+        parts = mm.read_parts("system  Files/vsh\ntools  Files/S\ntools  Files/Agent\n-  Files/MANIFEST\n")
+        self.assertEqual(mm.absent(k, parts), ["Files/Agent"])
+
     def test_the_manifest_itself_is_not_in_it(self):
         k = kit({"Files/vsh": b"v", "Files/MANIFEST": b"old"})
         self.assertNotIn("MANIFEST", mm.manifest(k, mm.read_parts("system  Files/vsh\n"), ""))
