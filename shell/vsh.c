@@ -1619,6 +1619,52 @@ static long os_job_pid(void *os, long id)
     return (long)(t ? t : j->task);
 }
 
+/* Is t a vsh: a process whose CLI command is a program named like this one (the command's last path
+ * component, "vsh" when this process has no CLI)? A vsh polls Ctrl-D as TERM (os_interrupted); another
+ * program takes Ctrl-D as nothing or as an end of file. Call under Forbid. */
+static int cmd_base_eq(const UBYTE *a, const UBYTE *b)
+{
+    int la = a[0], lb = b[0], i;
+    while (la && a[la] != '/' && a[la] != ':')
+        la--;
+    while (lb && b[lb] != '/' && b[lb] != ':')
+        lb--;
+    la = a[0] - la;
+    lb = b[0] - lb;
+    if (la != lb)
+        return 0;
+    for (i = 0; i < la; i++)
+        if ((a[a[0] - la + 1 + i] | 32) != (b[b[0] - la + 1 + i] | 32))
+            return 0;
+    return 1;
+}
+
+static int task_is_vsh(struct Task *t)
+{
+    static const UBYTE vsh_bstr[] = {3, 'v', 's', 'h'};
+    struct Process *p = (struct Process *)t;
+    struct CommandLineInterface *cli, *mine = Cli();
+    const UBYTE *own = vsh_bstr;
+    if (t->tc_Node.ln_Type != NT_PROCESS || !p->pr_CLI)
+        return 0;
+    cli = (struct CommandLineInterface *)BADDR(p->pr_CLI);
+    if (!cli->cli_CommandName)
+        return 0;
+    if (mine && mine->cli_CommandName)
+        own = (const UBYTE *)BADDR(mine->cli_CommandName);
+    return cmd_base_eq((const UBYTE *)BADDR(cli->cli_CommandName), own);
+}
+
+/* Is job j's work a vsh: a subshell's process (named "vsh subshell <n>"), or the Shell process SystemTags
+ * made for a script that is a vsh. Call under Forbid. */
+static int job_is_vsh(job *j)
+{
+    struct Task *c = job_child(j);
+    if (c)
+        return task_is_vsh(c);
+    return j->task && j->task->tc_Node.ln_Name && strncmp(j->task->tc_Node.ln_Name, "vsh subshell ", 13) == 0;
+}
+
 /* kill: sig (0: only test) to a job of this shell, a pid, or the shell. Ctrl-C and ^\ go
  * the way the console's go: the break bits, which a native command honours too. Any other
  * signal goes through ixkill, so only an ixemul process gets it; HUP and TERM fall back to
@@ -1670,11 +1716,23 @@ static int os_signal(void *os, long target, int sig, int is_job)
     rc = j ? job_unix_signal(PORT(os), j, num, sh_get(&sh->ctx, "PATH")) : task_unix_signal(PORT(os), t, num, sh_get(&sh->ctx, "PATH"));
     ok = rc == 0;
     if (!ok && (sig == 1 || sig == 15)) {
+        /* ixkill gave no answer (SH_KILL_LIMIT_MS): the break stands in for the signal. TERM to a vsh is
+         * Ctrl-D (os_interrupted runs its TERM trap, an untrapped script exits 143); to any other program
+         * it is Ctrl-C, the one break a native program honours. HUP stays Ctrl-C: vsh polls no break bit
+         * for it, so a Ctrl-D would be TERM, not HUP. */
+        ULONG bit = SIGBREAKF_CTRL_C;
         Forbid();
-        if (j)
-            job_signal(j, SIGBREAKF_CTRL_C);
-        else
-            Signal(t, SIGBREAKF_CTRL_C);
+        if (sig == 15 && (j ? job_is_vsh(j) : task_is_vsh(t)))
+            bit = SIGBREAKF_CTRL_D;
+        if (j) {
+            if (bit == SIGBREAKF_CTRL_C)
+                job_signal(j, bit);
+            else {
+                struct Task *c = job_child(j);
+                Signal(c && task_is_vsh(c) ? c : j->task, bit);
+            }
+        } else
+            Signal(t, bit);
         Permit();
         ok = 1;
     }

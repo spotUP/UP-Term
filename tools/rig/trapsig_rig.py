@@ -17,7 +17,7 @@ to a native task, F maps to no signal (dist/README.txt, tests/bash/divergences.t
 `trapsig_rig.py kill` runs only the two kill -s TERM checks of a native busy loop (VSH-KILL-TERM-NATIVE-HANG):
 A) the target runs at priority 1 (wasabid's, which starves the priority-0 tasks ixkill's start needs): the sender
    must come back within 5 s of a Ctrl-C sent to it 3 s in (before the fix it stayed over 90 s, deaf to it);
-B) the target runs at priority 0: the sender must come back within 10 s, and the target must end with status 130 (TERM reaches a native vsh as the Ctrl-C fallback, 128+SIGINT; the brief expected 143, the rig shows 130 on old and new).
+B) the target runs at priority 0: the sender must come back within 10 s, and the target must end with status 143 (TERM reaches a native vsh as Ctrl-D, the fallback of os_signal; before s34 it was Ctrl-C and 130).
 
 The rig must be up."""
 import os, re, shutil, sys, time
@@ -43,6 +43,28 @@ FailAt 9999
 ChangeTaskPri 0
 VTC:trapsig/vsh VTC:trapsig/kt.sh
 Echo "$RC" >RAM:kt.rc
+"""
+# C/D: TERM to a target priority 1 (ixkill starved, os_signal falls back to a break). C is a vsh script with a
+# TERM trap: Ctrl-D, so the trap runs (C); a script without a trap exits 143 (C2).
+TERM_SCRIPT = """\
+echo $$ >RAM:kt.pid
+trap 'echo TERM >>RAM:kt.log' TERM
+while [ $SECONDS -lt 100 ]; do [ -e RAM:kt.stop ] && exit 0; done
+"""
+TERM_PLAIN = """\
+echo $$ >RAM:kt.pid
+while [ $SECONDS -lt 100 ]; do [ -e RAM:kt.stop ] && exit 0; done
+"""
+TERM_RUN = """\
+FailAt 9999
+VTC:trapsig/vsh VTC:trapsig/%s
+Echo "$RC" >RAM:kt.rc
+"""
+# D: a non-vsh native program (C:Wait) started by a vsh script as a job; the pid is the job's
+WAIT_SCRIPT = """\
+C:Wait 100 SEC &
+echo $! >RAM:kt.pid
+wait
 """
 MUST = {"INT": "INT", "QUIT": "QUIT", "break-D": "TERM"}
 
@@ -88,7 +110,7 @@ def kill_check(name, pri0):
         U.run("Echo x >RAM:kt.stop", 30)   # a target that survived
         time.sleep(3)
         rc = U.run("Type RAM:kt.rc", 30)[1].strip()
-        good = good and rc == "130"
+        good = good and rc == "143"
         text = "sender %.1f s, target status %s" % (secs, rc or "none")
     else:
         good = brk is not None and after is not None and secs < 3 + 5 + 1
@@ -96,6 +118,38 @@ def kill_check(name, pri0):
         U.run("Echo x >RAM:kt.stop", 30)
         time.sleep(3)
     print("%s %s -> %s %s" % ("ok  " if good else "FAIL", name, text, res.get("r", "")[:1]), flush=True)
+    time.sleep(5)
+    return good
+
+
+def term_check(name, script, want_log, want_rc):
+    """TERM at priority 1 with the Ctrl-C at 3 s to the sender (the fallback path); the target must end by itself."""
+    import threading, ami
+    U.run("Delete RAM:kt.stop RAM:kt.pid RAM:kt.rc RAM:kt.log QUIET", 30)
+    U.run("Run >NIL: Execute VTC:trapsig/%s" % script, 30)
+    time.sleep(3)
+    pid = U.run("Type RAM:kt.pid", 30)[1].strip()
+    res = {}
+
+    def sender():
+        t = time.time()
+        res["r"] = U.run('VTC:trapsig/vsh -c "kill -s TERM %s"' % pid, 100)
+        res["secs"] = time.time() - t
+    th = threading.Thread(target=sender)
+    th.start()
+    th.join(3)
+    if th.is_alive():
+        ami.req(0x09)
+    th.join(110)
+    time.sleep(4)
+    r = U.run("Type RAM:kt.log", 30)
+    log = r[1].split() if r[0] == 0 else []
+    r = U.run("Type RAM:kt.rc", 30)
+    rc = r[1].strip() if r[0] == 0 else ""
+    U.run("Echo x >RAM:kt.stop", 30)
+    good = res.get("secs", 999) < 12 and (("TERM" in log) == want_log) and rc == want_rc
+    print("%s %s -> sender %.1f s, trap log %s, target status %s (want log %s, status %s)" % (
+        "ok  " if good else "FAIL", name, res.get("secs", 999), log, rc or "none", want_log, want_rc), flush=True)
     time.sleep(5)
     return good
 
@@ -109,6 +163,14 @@ def kill_main():
     (d / "kt.run").write_text(KILL_RUN, encoding="latin-1")
     ok = kill_check("A kill -s TERM, target priority 1, Ctrl-C to the sender", False)
     ok = kill_check("B kill -s TERM, target priority 0", True) and ok
+    for f, c in (("kt_trap", TERM_SCRIPT), ("kt_plain", TERM_PLAIN)):
+        (d / (f + ".sh")).write_text(c, encoding="latin-1")
+        (d / (f + ".run")).write_text(TERM_RUN % (f + ".sh"), encoding="latin-1")
+    (d / "kt_wait.sh").write_text(WAIT_SCRIPT, encoding="latin-1")
+    (d / "kt_wait.run").write_text(TERM_RUN % "kt_wait.sh", encoding="latin-1")
+    ok = term_check("C kill -s TERM, vsh script with a TERM trap, priority 1: trap runs (Ctrl-D)", "kt_trap.run", True, "") and ok
+    ok = term_check("C2 kill -s TERM, vsh script without a trap, priority 1: exit 143 (Ctrl-D)", "kt_plain.run", False, "143") and ok
+    ok = term_check("D kill -s TERM, native non-vsh program (C:Wait), priority 1: stops on Ctrl-C", "kt_wait.run", False, "0") and ok
     print("trapsig_rig kill: %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 
