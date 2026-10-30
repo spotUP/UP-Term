@@ -3,7 +3,10 @@ Run (UPTERM_RIG=<n>) with the rig up and the kit installed (UP-Term:bin/vsh, L:v
 A titled XCON window, UP-Term > New tab (vsh, the tab's shell), `Copy C: TO RAM:ccx`, Ctrl-C 0.2 s after
 Return (the whole of C: copies in under a second at rig speed; `#` typed through ami.req comes out as the
 keymap's pound sign, so the pattern form is not typed). PASS = the tab shows "***Break" and RAM:ccx holds far fewer files than C: (a stock
-Shell's Copy checks CTRL_C between files). RAM:ccx is deleted afterwards. Exit status 1 on FAIL."""
+Shell's Copy checks CTRL_C between files). RAM:ccx is deleted afterwards. Exit status 1 on FAIL.
+CTRLC_RAW=1 (CTRLC-RAW): first leave the tab in raw mode the way a program that ends without SetMode(0) does --
+VTC:rawleave (tests/amiga/rawleave.c, `make build/amiga/rawleave`, copied to the rig's VTC:). Then the same
+Copy, Return and Ctrl-C: vsh's prompt must have put the console back in cooked mode."""
 import os, subprocess, sys, time
 RIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, RIG)
@@ -38,8 +41,11 @@ typewin.open_xcon(TITLE)
 menu('UP-Term/New tab')
 time.sleep(5)
 typewin._last_title = None          # the tab retitles the window; it stays the active one
+if os.environ.get('CTRLC_RAW') == '1':
+    typewin.typ('VTC:rawleave')          # SetMode(1), then ends without SetMode(0)
+    typewin.key(typewin.RET, wait=3)
 typewin.typ('Copy C: TO RAM:ccx')
-typewin.key(typewin.RET, wait=0)
+typewin.key(typewin.RET, wait=0)     # before the fix a raw prompt took Return as CR and the line never ended
 time.sleep(0.2)
 typewin.key(0x33, typewin.CTRL, wait=0)      # Ctrl-C
 time.sleep(8)

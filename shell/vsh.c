@@ -2431,6 +2431,7 @@ static int vsh_main(int argc, char **argv)
             sh_prompt_command(&sh); /* vsh -i reading a pipe: PROMPT_COMMAND still runs, as in bash */
         if (IsInteractive(Input())) {
             char *got;
+            sh_prompt_mode(&sh, (sh_fh)Input()); /* cooked again, whatever the last command left (sh_exec.h) */
             if (!text)
                 comp_arm(&sh);
             while ((got = (char *)FGets(Input(), (STRPTR)line, sizeof(line))) != 0 && comp_answer(&sh, line))

@@ -1376,6 +1376,35 @@ static void assignment_status_and_scope(void)
 
 /* read: IFS decides the splitting (IFS= keeps the line whole), -r keeps
  * backslashes; without -r a backslash quotes the next character. */
+/* CTRLC-RAW: a program that ended in raw mode (SetMode(1), no SetMode(0)) left the tab raw, and the prompt read
+ * there: CR did not end the line and Ctrl-C was typed as data, so the Copy run next could not be broken (rig
+ * 2026-10-30: 244 of 244 files copied). Before each prompt the shell puts its own line mode back. */
+static int prompt_echo_calls, prompt_echo_on;
+static sh_fh prompt_echo_fh;
+
+static void f_prompt_echo(void *os, sh_fh fh, int on)
+{
+    (void)os;
+    prompt_echo_calls++;
+    prompt_echo_on = on;
+    prompt_echo_fh = fh;
+}
+
+static void a_prompt_takes_the_line_mode_back_after_a_program_left_the_console_raw(void)
+{
+    fresh();
+    sh.os.echo = f_prompt_echo;
+    prompt_echo_calls = prompt_echo_on = 0;
+    prompt_echo_fh = 0;
+    sh_prompt_mode(&sh, IN);
+    CHECK(prompt_echo_calls == 1);
+    CHECK(prompt_echo_on == 1); /* echo on: the console's cooked mode (vsh os_echo: SetMode(fh, 0)) */
+    CHECK(prompt_echo_fh == IN);
+    sh.os.echo = 0;
+    sh_prompt_mode(&sh, IN); /* an OS layer with no terminal modes: nothing to put back */
+    CHECK(prompt_echo_calls == 1);
+}
+
 static void read_builtin(void)
 {
     CHECK_STR(run("echo '  lead  tail  ' | { IFS= read -r l; echo \"[$l]\"; }"), "[  lead  tail  ]\n");
@@ -2355,6 +2384,7 @@ void suite_sh_exec(void)
     fd_handles_are_counted();
     assignment_status_and_scope();
     read_builtin();
+    a_prompt_takes_the_line_mode_back_after_a_program_left_the_console_raw();
     path_entries_are_amigados_dirs();
     vshrc_unix_names();
     remote_logins_send_xterm_256color();

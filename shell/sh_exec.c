@@ -9743,6 +9743,12 @@ done:
     return 1;
 }
 
+void sh_prompt_mode(sh_shell *sh, sh_fh in)
+{
+    if (sh->os.echo)
+        sh->os.echo(sh->os.data, in, 1);
+}
+
 void sh_prompt_command(sh_shell *sh)
 {
     long n, i, st = sh->ctx.status;

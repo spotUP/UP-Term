@@ -619,6 +619,9 @@ $(BUILD)/amiga/shotfill: tests/amiga/shotfill.c
 $(BUILD)/amiga/busyloop: tests/amiga/busyloop.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/busyloop.c
+$(BUILD)/amiga/rawleave: tests/amiga/rawleave.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/rawleave.c
 $(BUILD)/amiga/rcneg: tests/amiga/rcneg.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/rcneg.c

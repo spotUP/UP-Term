@@ -433,6 +433,12 @@ int  sh_hist_expand(sh_shell *sh, const char *line, char **out, int *print_only)
  * expanded as a prompt, is what is shown after a command line is read and before it runs (malloc'ed, 0 if
  * PS0 is unset or empty). */
 void sh_prompt_command(sh_shell *sh);
+/* Before an interactive prompt reads its line from `in`: the terminal back in the shell's own line mode (echo
+ * on, cooked: os.echo(in, 1)), whatever mode the last command left it in -- as readline puts its own mode in
+ * at every prompt and the 3.2 Shell sets its mode per prompt. A program that ended raw (SetMode(1) without
+ * SetMode(0): an error path, a crash) left the prompt with no line editing, CR not ending the line and Ctrl-C
+ * typed as data, so the next Copy could not be broken (CTRLC-COPY / CTRLC-RAW, 2026-10-30) */
+void sh_prompt_mode(sh_shell *sh, sh_fh in);
 /* Before a prompt of an interactive shell: COLUMNS and LINES from the terminal's size (shopt checkwinsize,
  * on by default as in bash 5; V42) */
 void sh_check_winsize(sh_shell *sh);
