@@ -37,4 +37,8 @@ res = []
 ir.check_startup_after_uninstall(lambda c, w, d='': res.append((c, w)), orig, after, ('UHC',))
 check(res and all(c for c, _ in res), 'uhcinstall block plus its blank line is not a difference: %r' % res)
 check(ir.strip_block(after, 'UHC') == orig, 'strip_block takes the separator blank too')
+# A block appended at the very end (the DOpus5 and Python3 fixtures): the file's last newline is not a separator
+# blank, so it stays (tests/test_rig_fixtures.py AddonCases lost it after the separator fix, s27 2026-10-30).
+check(ir.strip_block('; user line\n;BEGIN DOpus5\nx\n;END DOpus5\n', 'DOpus5') == '; user line\n',
+      'strip_block keeps the last newline when the block ends the file')
 sys.exit(1 if fails else 0)

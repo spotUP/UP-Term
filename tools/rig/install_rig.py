@@ -1192,10 +1192,12 @@ def base_whole(ck, what):
 def strip_block(text, name):
     """text without the lines from ';BEGIN <name>' to ';END <name>' (a block another installer wrote) and the one
     empty line that installer puts after ';END <name>' (UHC's uhcinstall writes the block and a blank before the
-    file's own first line)."""
+    file's own first line). A block at the very end keeps the file's last newline: the empty string split() gives
+    after that newline is no line of the file."""
     out, skip, after_end = [], False, False
-    for line in text.split('\n'):
-        if after_end and line == '':
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        if after_end and line == '' and i < len(lines) - 1:
             after_end = False
             continue
         after_end = False
