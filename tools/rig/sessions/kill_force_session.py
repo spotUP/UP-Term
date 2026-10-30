@@ -1,10 +1,10 @@
 """vsh gets its prompt back when a job's task is removed from outside (VSH-KILL-FORCE-HANG, 2026-10-30).
 Run (UPTERM_RIG=<n>) with the rig up and the kit installed. A titled XCON window, UP-Term > New tab (vsh),
-`Wait 60`, then `wasabi kill --force` (RemTask: no exit code, no reply) on the job's runner, "vsh job".
+`Wait 60`, then `wasabi kill --force` (RemTask: no exit code, no reply) on the job's runner, "vsh job <n>" (by its address: kill takes an exact name).
 PASS = within 8 s the tab runs `Echo prompt-is-back` typed after the kill, and the kill took the job
 (Wait is gone from ps).
 Case 2 (VSH-KILL-CHILD-LEAK): a script (RAM:ks.script, `Wait 60`) runs in a Shell process SystemTags makes
-(ps "Background CLI", SystemTags ignores NP_Name; found by NP_ExitData = the job); only that child is removed.
+(ps "Background CLI", SystemTags ignores NP_Name; found by its input handle = the job's; vsh sets no NP_ExitData); only that child is removed.
 PASS = the prompt is back and the runner "vsh job" is gone too (it stayed blocked in SystemTags before).
 Case 3 (VSH-RUNNER-REMTASK-STREAMS): the same script with >RAM:kl.txt; PASS = Delete RAM:kl.txt works after
 the child is removed (the removed runner never closed the file; it stayed locked: List says "object is in use", Delete "No file to delete").
@@ -42,7 +42,8 @@ ps = wasabi('ps')
 jobs = [l for l in ps.splitlines() if 'vsh job' in l]
 print('ps vsh job lines: %r' % jobs)
 check(len(jobs) == 1, 'one "vsh job" runner is running', ps[-300:])
-out = wasabi('kill', '--force', 'vsh job')
+# wasabi kill matches a task name EXACTLY (case-insensitive), and the runner is "vsh job <n>": kill by the 0x address from ps
+out = wasabi('kill', '--force', jobs[0].split()[0]) if jobs else 'no runner'
 print('kill: %r' % out.strip())
 time.sleep(4)
 typewin.typ('Echo prompt-is-back')
