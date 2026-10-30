@@ -374,10 +374,7 @@ def x9_open_menu():
     time.sleep(0.5)
     c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')   # the rows are read from the sentinel, not the screen
     ami.key(RAW['space'], LAMIGA)              # over the terminal: the text menu
-    # screen_text() sends `UPTerm ACTIVE screen` to the handler; sent in the first moments after the chord it races
-    # the commodity's own query of the terminal and the menu never opens (measured on rig 7: read at 0 s, no menu in
-    # 15 s; read at 0.3 s or later, menu up). One quiet second before the first read.
-    time.sleep(1)
+    # read at once: screen_text() clicks nothing before its quiet read (MENU-ACTIVE-RACE, typewin.screen_text)
     for _ in range(30):
         if 'Filter' in screen_text():
             return True

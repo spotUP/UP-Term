@@ -107,11 +107,16 @@ def screen_text(out='RAM:screen.txt'):
     spinner) the Copy right after Select all can find nothing. The call first writes the sentinel "-" to the
     clipboard (VTC:snipprobe CLEAR), then sends Select all + Copy back to back: a read that is empty (a Copy of an
     empty selection) or "-" (no Copy happened) means the Copy found nothing, so the clipboard cannot hold an older
-    text, and the pair is repeated, up to 8 tries."""
-    require_active(True)
+    text, and the pair is repeated, up to 8 tries.
+
+    The quiet read changes nothing on the Amiga, so it runs first and needs no focus: the window that is
+    focused NOW answers. Only the keys of the clipboard path need the window active. A focus check before the
+    quiet read clicked a window named moments earlier when a new window had taken the focus since (the quick
+    menu right after Super+Space, XCON CLOSEINACTIVE): the click closed the menu (MENU-ACTIVE-RACE)."""
     quiet = quiet_screen_text(out)
     if quiet is not None:
         return quiet
+    require_active(True)
     new = ''
     c.run('VTC:snipprobe CLEAR')
     for _ in range(8):

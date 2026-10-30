@@ -48,6 +48,17 @@ class ScreenText(unittest.TestCase):
         self.assertEqual(self.keys, [])                                  # no Select all, no Copy
         self.assertFalse([r for r in self.runs if 'snipprobe' in r or r.startswith('click')])
 
+    def test_menu_opening_during_the_read_is_not_clicked_away(self):
+        # MENU-ACTIVE-RACE: Super+Space, then a read at once. The uitree still names the terminal ("menuhost")
+        # active; a moment later the quick menu (XCON CLOSEINACTIVE) has the focus. A click on the terminal there
+        # deactivates the menu and it closes: the menu never opened. The quiet read needs no focus: no click.
+        tree = 'S 0 640x256 depth=4 "Workbench Screen"\nW 0 0 0 640x256 active "menuhost"\n'
+        ami.req = lambda code, payload=b'', timeout=150: tree.encode() if code == 0x0D else b''
+        ami.window = lambda t: {'box': (0, 0, 640, 256), 'active': False}   # the menu took the focus since
+        t = ami.screen_text()
+        self.assertEqual(t, 'Filter: th\nTheme\n')
+        self.assertFalse([r for r in self.runs if r.startswith('click')])
+
     def test_no_terminal_window_falls_back_to_the_clipboard(self):
         self.dump['rc'] = 20
         t = ami.screen_text()

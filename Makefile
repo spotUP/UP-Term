@@ -78,6 +78,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
 # ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
 # ONLY=dist_stack every kit program sets its stack ($STACK: cookie), no launcher gives a loaded program a fixed stack (tests/test_dist_stack.py)
+# ONLY=ami_screen_text the rig's screen reader asks the focused window and clicks nothing first: a menu opening during the read stays (tests/test_ami_screen_text.py)
 # ONLY=rig_keys a rig's Right Option is Left Amiga (Amarchy), the Cmd keys stay Right Amiga (tests/test_rig_keys.py)
 # ONLY=keymap_rig_font_keys keymap_rig.py reads the rig keymap from input.prefs and presses the font keys by that keymap (tests/test_keymap_rig_font_keys.py)
 # ONLY=installer_drive installer_rig.drive FAILs when the room page keeps coming back (tests/test_installer_drive_loop.py)
@@ -195,6 +196,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_stage_rig.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_cube_check.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_keys ]; then python3 tests/test_rig_keys.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = ami_screen_text ]; then python3 tests/test_ami_screen_text.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = keymap_rig_font_keys ]; then python3 tests/test_keymap_rig_font_keys.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer_drive ]; then python3 tests/test_installer_drive_loop.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_tty_mask ]; then python3 -I tools/test_rig_tty_mask.py; fi
