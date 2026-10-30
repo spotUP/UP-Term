@@ -43,7 +43,7 @@ NAMES = ('Amarchy', 'amarchy-menu', 'lcmdprobe')
 # Swedish map "+" is raw 0x0B (bigger font) and "-" is raw 0x3A (smaller font); 0x0B is no longer minus).
 RAW = {'1': 0x01, '2': 0x02, '3': 0x03, '4': 0x04, '5': 0x05, '6': 0x06, '7': 0x07, '8': 0x08, '9': 0x09,
        '0': 0x0A, 'minus': 0x3A, 'plus': 0x0B, 'period': 0x39, 'comma': 0x38, 'space': 0x40, 'return': 0x44,
-       'backspace': 0x41, 'tab': 0x42, 'esc': 0x45, 'up': 0x4C, 'down': 0x4D, 'right': 0x4E, 'left': 0x4F}
+       'backspace': 0x41, 'tab': 0x42, 'esc': 0x45, 'up': 0x4C, 'down': 0x4D, 'right': 0x4E, 'left': 0x4F, 'help': 0x5F}
 RAW.update({'f%d' % n: 0x4F + n for n in range(1, 11)})
 RAW.update({ch: code for ch, code in zip('qwertyuiop', range(0x10, 0x1A))})
 RAW.update({ch: code for ch, code in zip('asdfghjkl', range(0x20, 0x29))})

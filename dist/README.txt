@@ -887,7 +887,8 @@ AMARCHY
   opens an UP-Term window with vsh in the current directory.
   uterm-edit runs the editor named by the variable EDITOR, or joe when it
   is not set. To pick another editor for good, type for example
-    SetEnv SAVE EDITOR nvim
+    SetEnv EDITOR nvim
+    Copy ENV:EDITOR ENVARC:
 
   Window, Screens and Workbench groups: rows of the form  win:<verb>  act on
   windows of any program. Verbs: cycle, front, back, zip, fullwidth,
