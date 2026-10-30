@@ -817,6 +817,41 @@ def dopus_archive_md5():
             return f[1]
     sys.exit("rig: %s is not in dist/addons/dopus/archives.txt" % DOPUS_ARCHIVE)
 
+def dopus_install():
+    """The rig's VTC: drawer when it holds the current 5.104 install of `rig.py dopus` (block, stamp = the archive's md5,
+    DOpus5/DirectoryOpus), else None after a [WARN]: the one check both the sys.hdf clone (sys_hdf_dopus) and the
+    host-directory systems (--os <name>, --os32: os_tree_dopus) use."""
+    vtc = RIG / "vtc"
+    block, stamp = vtc / DOPUS_BLOCK, vtc / DOPUS_STAMP
+    if not (block.exists() and stamp.exists() and stamp.read_text().strip() == dopus_archive_md5()
+            and (vtc / "DOpus5/DirectoryOpus").exists()):
+        print("[WARN] Directory Opus 5.104 is not installed in this rig's VTC: drawer (no current %s): the Workbench "
+              "stays as the system has it; run `UPTERM_RIG=%d python3 tools/rig/rig.py dopus` once" % (DOPUS_STAMP, paths.RIG_N))
+        return None
+    return vtc
+
+def os_tree_dopus(tree):
+    """Directory Opus 5.104 on a host-directory system (--os <name>, --os32): the Installer's ';BEGIN DOpus5' block
+    replaces any earlier one in <tree>/S/User-Startup (the tree keeps what an earlier run wrote, so the block is
+    stripped first) and its ENVARC:DOpus5* files go into Prefs/Env-Archive. The block's `Resident LoadWB
+    DOpus5:C/LoadDB` makes the Startup-Sequence's by-name `LoadWB` (after User-Startup) start DOpus as the Workbench,
+    so C/LoadWB stays the system's own. Libs/workbench.library stays."""
+    vtc = dopus_install()
+    if vtc is None:
+        return
+    tree = pathlib.Path(tree)
+    os_tree_no_dopus(tree)
+    us = tree / "S/User-Startup"
+    data = us.read_bytes() if us.is_file() else b""
+    if data and not data.endswith(b"\n"):
+        data += b"\n"
+    us.write_bytes(data + (vtc / DOPUS_BLOCK).read_bytes())
+    envarc = vtc / DOPUS_ENVARC
+    dst = tree / "Prefs/Env-Archive"
+    dst.mkdir(parents=True, exist_ok=True)
+    for f in sorted(envarc.glob("DOpus5*")) if envarc.is_dir() else []:
+        shutil.copyfile(f, dst / f.name)
+
 def sys_hdf_dopus(image):
     """The master image carries Directory Opus 5.82 as the Workbench (block ';BEGIN DirectoryOpus 5' assigning
     DOpus5: dh0:Opus5, C/LoadWB = LoadDB 62.0). The clone gets 5.104 instead, from the install `rig.py dopus` made
@@ -824,12 +859,8 @@ def sys_hdf_dopus(image):
     block the 5.104 Installer wrote ("Instead of Workbench"), its ENVARC:DOpus5* files go back, C/LoadWB becomes
     5.104's LoadDB (S:Startup-Sequence calls C:LoadWB by path) and Opus5 + Opus5.info go.
     Libs/workbench.library stays. No stamp for the current archive: a [WARN] and 5.82 stays. The master is never touched."""
-    vtc = RIG / "vtc"
-    block, stamp = vtc / DOPUS_BLOCK, vtc / DOPUS_STAMP
-    if not (block.exists() and stamp.exists() and stamp.read_text().strip() == dopus_archive_md5()
-            and (vtc / "DOpus5/DirectoryOpus").exists()):
-        print("[WARN] Directory Opus 5.104 is not installed in this rig's VTC: drawer (no current %s): the Workbench "
-              "stays Directory Opus 5.82; run `UPTERM_RIG=%d python3 tools/rig/rig.py dopus` once" % (DOPUS_STAMP, paths.RIG_N))
+    vtc = dopus_install()
+    if vtc is None:
         return
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     remove_opus5(image)   # strips the 5.82 block, deletes Opus5 and Opus5.info
@@ -843,7 +874,7 @@ def sys_hdf_dopus(image):
     data = us.read_bytes()
     if data and not data.endswith(b"\n"):
         data += b"\n"
-    us.write_bytes(data + block.read_bytes())
+    us.write_bytes(data + (vtc / DOPUS_BLOCK).read_bytes())
     subprocess.run([xdf, str(image), "delete", "S/User-Startup"], check=True, capture_output=True)
     subprocess.run([xdf, str(image), "write", str(us), "S/User-Startup"], check=True, capture_output=True)
     us.unlink()
@@ -988,8 +1019,10 @@ def setup():
         os_image_copy()
     elif not OS32 and not (RIG / "sys.hdf").exists():
         fresh_sys_hdf()
-    if (OS or OS32) and "--no-dopus" in sys.argv:
-        os_tree_no_dopus(RIG / ("os-%s" % OS if OS else "os32"))
+    if OS or OS32:
+        tree = RIG / ("os-%s" % OS if OS else "os32")
+        # --no-dopus strips the blocks; otherwise the tree gets 5.104 as the clone does (`rig.py dopus` installed it)
+        os_tree_no_dopus(tree) if "--no-dopus" in sys.argv else os_tree_dopus(tree)
     (RIG / "boot/s").mkdir(exist_ok=True)
     # --060: at host speed the boot shell's window is open (something prints
     # into it) when IPrefs switches the Workbench to the saved RTG mode, and

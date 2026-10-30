@@ -19,10 +19,16 @@ import installer_rig as inst
 import rig
 
 inst.KITWINDOW = re.compile(r'Install DOpus5')   # the Installer window's title is the script's name
-ARCHIVE = rig.ROOT / "vendor/dopus5-5.104" / rig.DOPUS_ARCHIVE
+ARCHIVE = paths.VENDOR / "dopus5-5.104" / rig.DOPUS_ARCHIVE   # vendor/ is gitignored: a worktree reads the main checkout's
 TREE = "dopus_install"
 SCRIPT = "dopus_run.script"
 PURPOSE = "vtcon-05: DOpus 5.104 install into the rig's VTC:"
+
+
+def system_args():
+    """The system the install boots on: the same --os <name> / --os32 the dopus command was given (none: the sys.hdf
+    clone), so an --os 32 rig's tree is the one the Installer ran in."""
+    return (["--os", rig.OS] if rig.OS else []) + (["--os32"] if rig.OS32 else [])
 
 
 def page():
@@ -114,7 +120,7 @@ def main():
     subprocess.run(["lha", "xq", str(ARCHIVE)], cwd=vtc / TREE, check=True)
     (vtc / SCRIPT).write_text('CD VTCX:%s\nInstaller "Install DOpus5" NOLOG\n' % TREE)
     try:
-        subprocess.run([sys.executable, str(pathlib.Path(rig.__file__)), "start", "--max", "--no-dopus", "--purpose", PURPOSE], check=True)
+        subprocess.run([sys.executable, str(pathlib.Path(rig.__file__)), "start", "--max", "--no-dopus", "--purpose", PURPOSE] + system_args(), check=True)
         if ir.run('Assign >NIL: DOpus5: EXISTS')[0] == 0:
             sys.exit("dopus: DOpus5: is assigned on the boot; the Installer would offer an upgrade of it")
         ir.run('Run >NIL: Execute VTCX:%s' % SCRIPT)
