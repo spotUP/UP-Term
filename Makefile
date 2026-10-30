@@ -863,6 +863,15 @@ $(BUILD)/amiga/amarchy-flat: amarchy/flat.c amarchy/flat_glyph.c amarchy/flat_gl
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c amarchy/flat_glyph.c amarchy/flat_core.c amarchy/taskalive.c
 
+# FLAT-C3: vbcc's assembly of the dispatcher objects, checked by tests/test_flat_budget.py (entry frames <= 64 bytes, no libc call)
+FLAT_ASM_DIR := $(BUILD)/amiga/flat_asm
+.PHONY: flat-budget
+flat-budget: $(BUILD)/amiga/flat_asm/flat.s $(BUILD)/amiga/flat_asm/flat_glyph.s $(BUILD)/amiga/flat_asm/flat_core.s
+	python3 tests/test_flat_budget.py $(FLAT_ASM_DIR)/flat.s $(FLAT_ASM_DIR)/flat_glyph.s $(FLAT_ASM_DIR)/flat_core.s
+$(FLAT_ASM_DIR)/%.s: amarchy/%.c amarchy/flat_core.h amarchy/flat_glyph.h
+	@mkdir -p $(FLAT_ASM_DIR)
+	$(VC) -dontwarn=153,65 -S -o $@ $<
+
 # amnotify: the notice CLI (plan 2026-10-29-amarchy-p4-capture-notify-power.md R4.10). A plain vbcc DOS program; it sends
 # NOTIFY lines to AMARCHY.NOTIFY and shares note_core.c (its argument parse) with Amarchy.
 .PHONY: amnotify
@@ -1709,7 +1718,7 @@ dist-src:
 
 # The kit says what it was built from: Files/VERSIONS has a line per part, and
 # it is in the lha archive.
-dist-check: $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv
+dist-check: flat-budget $(BUILD)/amiga/keymap.o $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/amarchy-menu $(BUILD)/updiff_kit_drv
 	python3 tests/test_dist_installer.py
 	KITSIZE_REQUIRE=1 python3 tests/test_dist_kitsize.py
 	python3 tests/test_dist_addons.py

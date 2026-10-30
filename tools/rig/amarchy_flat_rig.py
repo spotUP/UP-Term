@@ -231,6 +231,20 @@ def c2_after(stock):
           'flat off + RefreshWindowFrame: stock pixels back', (off2, stock, out))
 
 
+def c3(on_state):
+    """FLAT-C3: 20 windows open at once with the dispatcher on, from a `Stack 4096` shell, the drawing code itself on a
+    4096 byte StackSwap stack (flatwin W): no crash, the glyph pixels still go through the dispatcher."""
+    c.run('Stack 4096')
+    n0, _ = calls()
+    rc, out = c.run('RAM:flatwin 20 W', 120)
+    c.run('Stack 262144')
+    n1, _ = calls()
+    check(rc == 0 and 'stack4k windows=20 opened=20' in out, 'FLAT-C3 20 windows under Stack 4096: rc %s' % rc, out)
+    check(n0 is not None and n1 is not None and n1 - n0 >= 20, 'FLAT-C3 dispatcher ran for them: calls %s -> %s' % (n0, n1))
+    check(not ami.requesters(), 'FLAT-C3 no requester / Guru on screen', ami.requesters())
+    check(c.run('Version')[0] == 0, 'FLAT-C3 rig still answers (no hang)')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cycles', type=int, default=1000)
@@ -252,7 +266,7 @@ def main():
     c.run('Run >NIL: RAM:amarchy-flat')
     time.sleep(3)
     n0, st = calls()
-    check(n0 is not None and 'flat=' in st, 'amarchy-flat STATUS: ' + st, st)
+    check(n0 is not None and re.search(r'flat=(on|off|absent|held) calls=\d+ chained=[01]', st), 'FLAT-C0 amarchy-flat STATUS: ' + st, st)
     sub1, out = sub_entry()
     check(sub1 is not None and sub1 != sub0, 'h_SubEntry swapped %s -> %s' % (sub0, sub1), out)
     hash_on, out = flatwin(1)
@@ -264,6 +278,8 @@ def main():
     check(n2 is not None and n2 - n1 >= a.cycles, '%d open/close cycles: calls %s -> %s' % (a.cycles, n1, n2))
     check(h2 == hash_off, 'hash after %d cycles unchanged (%s)' % (a.cycles, h2))
     c2_after(stock)
+    c.run('RAM:flatwin 1 SET 1 0 1 2 0')
+    c3(True)
     st = c.run('Status')[1]
     m = re.search(r'Process\s+(\d+):.*amarchy-flat', st)
     check(bool(m), 'amarchy-flat is a CLI process', st)
@@ -272,7 +288,8 @@ def main():
         time.sleep(3)
     sub2, out = sub_entry()
     check(sub2 == sub0, 'Ctrl-C restores h_SubEntry byte-equal (%s vs %s)' % (sub0, sub2), out)
-    check('absent' in calls()[1], 'STATUS after removal: ' + calls()[1], calls()[1])
+    check('absent' in calls()[1], 'FLAT-C0 STATUS after removal: ' + calls()[1], calls()[1])
+    check('amarchy-flat' not in c.run('Status')[1], 'FLAT-C0 Ctrl-C ended the process (not listed by Status)', c.run('Status')[1])
     hash_after, out = flatwin(1)
     check(hash_after == hash_off, 'frame hash after removal unchanged (%s)' % hash_after)
     check(not ami.requesters(), 'no requester / Guru on screen', ami.requesters())

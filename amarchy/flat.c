@@ -113,14 +113,14 @@ static int c2_draw(Object *obj, Msg msg)
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, c2_fill, d->imp_RPort);
 }
 
-static ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
+ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
 {
     if (c2_draw(obj, msg))
         return TRUE;
     return ((oldfn_reg)g_r->sw.saved)(h, obj, msg);
 }
 
-static ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
+ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
 {
     if (c2_draw(obj, msg))
         return TRUE;

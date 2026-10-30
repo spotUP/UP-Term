@@ -2,7 +2,11 @@
 #include "flat_glyph.h"
 
 typedef struct plan {
-    flat_prim *p;
+    flat_prim *p;               /* store the rectangles here (flat_glyph_plan), or NULL to stream them to fill */
+    flat_fill_fn fill;          /* flat_glyph_draw: each rectangle goes straight out, no array in the caller's frame */
+    void *ctx;
+    const flat_state *st;
+    int ox, oy;
     int n, cap;
     int w, h, fg, bg, thin;
     int ix0, iy0, ix1, iy1;     /* the inner box the glyph lives in */
@@ -12,6 +16,11 @@ static void put(plan *g, int x0, int y0, int x1, int y1, int role)
 {
     if (g->n >= g->cap || x1 < x0 || y1 < y0)
         return;
+    if (!g->p) {                /* streamed in draw order, so the painter's order of the stored plan is kept */
+        g->fill(g->ctx, g->ox + x0, g->oy + y0, g->ox + x1, g->oy + y1, flat_glyph_pen(g->st, role));
+        g->n++;
+        return;
+    }
     g->p[g->n].x0 = (int16_t)x0;
     g->p[g->n].y0 = (int16_t)y0;
     g->p[g->n].x1 = (int16_t)x1;
@@ -129,30 +138,37 @@ int flat_glyph_state(unsigned long ids)
     }
 }
 
+/* Both entry points run the same generator; g carries either the array or the fill callback. */
+static int plan_run(plan *g, unsigned long which, int w, int h, int state, int style)
+{
+    int i;
+    g->n = 0; g->w = w; g->h = h;
+    g->thin = style != FLAT_STYLE_BLOCK;
+    g->fg = state == FLAT_G_SELECTED ? FLAT_ROLE_BACK : state == FLAT_G_INACTIVE ? FLAT_ROLE_LINE : FLAT_ROLE_TEXT;
+    g->bg = state == FLAT_G_SELECTED ? FLAT_ROLE_TEXT : FLAT_ROLE_BACK;
+    i = imax(1, imin(w, h) / 4);
+    g->ix0 = i; g->iy0 = i; g->ix1 = w - 1 - i; g->iy1 = h - 1 - i;
+    put(g, 0, 0, w - 1, h - 1, g->bg);
+    switch (which) {
+    case FLAT_W_CLOSE: g_close(g); break;
+    case FLAT_W_DEPTH: g_depth(g); break;
+    case FLAT_W_ZOOM: g_zoom(g); break;
+    case FLAT_W_SIZE: g_size(g); break;
+    case FLAT_W_ICONIFY: g_iconify(g); break;
+    case FLAT_W_MENUCHECK: g_check(g); break;
+    case FLAT_W_AMIGAKEY: g_amigakey(g); break;
+    case FLAT_W_MENUSUB: g_menusub(g); break;
+    }
+    return g->n;
+}
+
 int flat_glyph_plan(unsigned long which, int w, int h, int state, int style, flat_prim *out, int cap)
 {
     plan g;
-    int i;
     if (!out || cap < FLAT_GLYPH_MAX_PRIMS || !flat_glyph_known(which) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
-    g.p = out; g.n = 0; g.cap = cap; g.w = w; g.h = h;
-    g.thin = style != FLAT_STYLE_BLOCK;
-    g.fg = state == FLAT_G_SELECTED ? FLAT_ROLE_BACK : state == FLAT_G_INACTIVE ? FLAT_ROLE_LINE : FLAT_ROLE_TEXT;
-    g.bg = state == FLAT_G_SELECTED ? FLAT_ROLE_TEXT : FLAT_ROLE_BACK;
-    i = imax(1, imin(w, h) / 4);
-    g.ix0 = i; g.iy0 = i; g.ix1 = w - 1 - i; g.iy1 = h - 1 - i;
-    put(&g, 0, 0, w - 1, h - 1, g.bg);
-    switch (which) {
-    case FLAT_W_CLOSE: g_close(&g); break;
-    case FLAT_W_DEPTH: g_depth(&g); break;
-    case FLAT_W_ZOOM: g_zoom(&g); break;
-    case FLAT_W_SIZE: g_size(&g); break;
-    case FLAT_W_ICONIFY: g_iconify(&g); break;
-    case FLAT_W_MENUCHECK: g_check(&g); break;
-    case FLAT_W_AMIGAKEY: g_amigakey(&g); break;
-    case FLAT_W_MENUSUB: g_menusub(&g); break;
-    }
-    return g.n;
+    g.p = out; g.cap = cap; g.fill = 0; g.ctx = 0; g.st = 0; g.ox = g.oy = 0;
+    return plan_run(&g, which, w, h, state, style);
 }
 
 int flat_glyph_pen(const flat_state *s, int role)
@@ -168,12 +184,9 @@ int flat_glyph_route(const flat_state *s, unsigned long which, unsigned long met
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, flat_fill_fn fill, void *ctx)
 {
-    flat_prim p[FLAT_GLYPH_MAX_PRIMS];
-    int n, i;
-    if (!fill || !flat_glyph_route(s, which, method))
+    plan g;
+    if (!fill || !flat_glyph_route(s, which, method) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
         return 0;
-    n = flat_glyph_plan(which, w, h, flat_glyph_state(ids), s->style, p, FLAT_GLYPH_MAX_PRIMS);
-    for (i = 0; i < n; i++)
-        fill(ctx, ox + p[i].x0, oy + p[i].y0, ox + p[i].x1, oy + p[i].y1, flat_glyph_pen(s, p[i].role));
-    return n > 0;
+    g.p = 0; g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.st = s; g.ox = ox; g.oy = oy;
+    return plan_run(&g, which, w, h, flat_glyph_state(ids), s->style) > 0;
 }

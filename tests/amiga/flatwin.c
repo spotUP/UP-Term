@@ -105,6 +105,52 @@ static void gadreport(struct Window *w, unsigned long *oh, int pass)
     }
 }
 
+/* FLAT-C3: N windows open at once, every one drawn, activated, refreshed, on a 4096 byte stack (StackSwap), the budget a
+ * program started under `Stack 4096` gives the sysiclass dispatcher. Nothing in here may need more than about 1.5 KB. */
+#define C3_STACK 4096
+static long c3_n, c3_opened;
+
+static void c3_body(void)
+{
+    struct Window *ws[64];
+    long i;
+    for (i = 0; i < c3_n && i < 64; i++) {
+        ws[i] = mkwin();
+        if (!ws[i])
+            break;
+        c3_opened++;
+        ActivateWindow(ws[i]);
+        if (i == 0)
+            Delay(10);
+    }
+    Delay(25);
+    for (i = 0; i < c3_opened; i++) {
+        RefreshWindowFrame(ws[i]);
+        WindowToFront(ws[i]);
+    }
+    Delay(25);
+    for (i = 0; i < c3_opened; i++)
+        CloseWindow(ws[i]);
+}
+
+static int c3_run(long n)
+{
+    struct StackSwapStruct sw;
+    UBYTE *mem = (UBYTE *)AllocMem(C3_STACK, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!mem)
+        return 10;
+    c3_n = n;
+    sw.stk_Lower = mem;
+    sw.stk_Upper = (ULONG)(mem + C3_STACK);
+    sw.stk_Pointer = (APTR)(mem + C3_STACK);
+    StackSwap(&sw);
+    c3_body();
+    StackSwap(&sw);
+    FreeMem(mem, C3_STACK);
+    printf("flatwin stack4k windows=%ld opened=%ld\n", n, c3_opened);
+    return c3_opened == n ? 0 : 5;
+}
+
 int main(int argc, char **argv)
 {
     long cycles = argc > 1 ? atol(argv[1]) : 1, i, x, y;
@@ -113,6 +159,12 @@ int main(int argc, char **argv)
         return 10;
     if (!(GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 36)))
         return 10;
+    if (argc > 2 && argv[2][0] == 'W') {
+        int rc = c3_run(cycles);
+        CloseLibrary((struct Library *)GfxBase);
+        CloseLibrary((struct Library *)IntuitionBase);
+        return rc;
+    }
     if (argc > 7 && argv[2][0] == 'S') {
         flatrec *r;
         Forbid();
