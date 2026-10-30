@@ -98,4 +98,19 @@ int desk_pointer_editor_ok(const unsigned char *bin, long len);
 /* the mask a marker names; 0 when buf is no marker */
 unsigned desk_marker_parse(const char *buf, long len);
 
+/* DESK-PREVIEW-PALETTE (owner 2026-10-30): while the theme picker's highlight moves, the Workbench COLOURS (pens 0..npens-1 of the
+ * Workbench screen's ViewPort, the pens desk_palette writes) show the highlighted theme; nothing else of the desktop changes until Enter.
+ * ops.get/set read and write one pen (0xRRGGBB); npens is 4 or 8 (the screen's colours, capped). The first preview saves the pens
+ * it overwrites; desk_preview(p, 0) (Esc, leaving the list, cleanup) puts them back. A theme the contrast guard refuses (desk_check)
+ * changes nothing. Returns 1 when pens were written, 0 otherwise. */
+typedef struct desk_pv {
+    void *ctx;
+    int npens;
+    void (*get)(void *ctx, int pen, uc_u32 *rgb);
+    void (*set)(void *ctx, int pen, uc_u32 rgb);
+    uc_u32 saved[DK_ROLES];
+    int have;
+} desk_pv;
+int desk_preview(desk_pv *p, const gtheme *t);
+
 #endif

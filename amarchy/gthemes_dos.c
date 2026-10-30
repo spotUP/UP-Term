@@ -118,6 +118,72 @@ void gt_dos_term_send(const char *name)
     gt_dos_term_writes++;
 }
 
+/* DESK-PREVIEW-PALETTE: the picker's highlight previews the Workbench colours (desk_preview, desk_core.h) straight on the Workbench
+ * screen's ViewPort with SetRGB32, the pens desk_palette writes. The pens it overwrote are kept until the picker restores them. */
+unsigned long gt_dos_desk_previews, gt_dos_desk_restores;
+static desk_pv gt_pv;
+
+static void pv_get(void *ctx, int pen, uc_u32 *rgb)
+{
+    ULONG t[3] = {0, 0, 0};
+    struct Screen *scr = (struct Screen *)ctx;
+    GetRGB32(scr->ViewPort.ColorMap, (ULONG)pen, 1, t);
+    *rgb = ((t[0] >> 24) << 16) | ((t[1] >> 24) << 8) | (t[2] >> 24);
+}
+
+static void pv_set(void *ctx, int pen, uc_u32 rgb)
+{
+    struct Screen *scr = (struct Screen *)ctx;
+    SetRGB32(&scr->ViewPort, (ULONG)pen, ((rgb >> 16) & 255) * 0x01010101UL, ((rgb >> 8) & 255) * 0x01010101UL,
+             (rgb & 255) * 0x01010101UL);
+}
+
+/* th = 0 restores the saved pens */
+static void desk_preview_theme(const gtheme *th)
+{
+    struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
+    struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
+    struct Screen *scr;
+    if (IntuitionBase && GfxBase && (scr = LockPubScreen((STRPTR)"Workbench")) != 0) {
+        int depth = scr->RastPort.BitMap->Depth;
+        gt_pv.ctx = scr;
+        gt_pv.get = pv_get;
+        gt_pv.set = pv_set;
+        gt_pv.npens = depth >= 3 ? 8 : 1 << depth;
+        if (desk_preview(&gt_pv, th)) {
+            if (th)
+                gt_dos_desk_previews++;
+            else
+                gt_dos_desk_restores++;
+        }
+        UnlockPubScreen(0, scr);
+    }
+    if (GfxBase)
+        CloseLibrary((struct Library *)GfxBase);
+    if (IntuitionBase)
+        CloseLibrary((struct Library *)IntuitionBase);
+}
+
+void gt_dos_desk_restore(void)
+{
+    if (gt_pv.have)
+        desk_preview_theme(0);
+}
+
+void gt_dos_preview_send(const char *name)
+{
+    char cur[GT_NAME];
+    gt_dos_term_send(name);
+    gt_dos_current(cur, (int)sizeof cur);
+    if (!strcmp(name, cur)) {           /* the saved theme again: the Workbench keeps (gets back) its own colours */
+        gt_dos_desk_restore();
+    } else {
+        gtheme th;
+        gt_dos_load(name, &th);
+        desk_preview_theme(&th);
+    }
+}
+
 void gt_dos_term_boot(void)
 {
     am_prefs ap;
@@ -140,6 +206,7 @@ int gt_dos_select(const char *name, char *why, int cap)
     if (r == PREFS_INSTALL_OK) {
         gtheme th;
         int d;
+        gt_dos_desk_restore();      /* the preview's colours go before the real apply */
         gt_dos_load(name, &th);
         gt_dos_term_send(name);
         gt_dos_dopus_sends++;

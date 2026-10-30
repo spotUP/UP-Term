@@ -423,6 +423,64 @@ static void test_desk_pointer_gate(void)
     CHECK_INT(desk_pointer_editor_ok(0, 0), 0);
 }
 
+/* DESK-PREVIEW-PALETTE: the picker's hook (gt_preview_step) drives the Workbench pens: every highlighted theme writes its desk_role
+ * colours, Esc puts back the colours saved when the picker opened. dp_stub = 1 stubs the desk step out (the old behaviour). */
+static uc_u32 dp_pen[8];
+static int dp_stub, dp_writes;
+static desk_pv dp_pv;
+static gtheme dp_theme[SHIPPED_MAX];
+static int dp_n;
+static void dp_get(void *c, int pen, uc_u32 *rgb) { (void)c; *rgb = dp_pen[pen]; }
+static void dp_set(void *c, int pen, uc_u32 rgb) { (void)c; dp_pen[pen] = rgb; dp_writes++; }
+static const char *dp_cur;
+static void dp_send(const char *name)
+{
+    int i;
+    if (dp_stub)
+        return;
+    for (i = 0; i < dp_n; i++)
+        if (!strcmp(dp_theme[i].name, name))
+            desk_preview(&dp_pv, strcmp(name, dp_cur) ? &dp_theme[i] : 0);
+}
+static void test_desk_preview(void)
+{
+    char drawn[GT_NAME], row[GT_NAME + 8];
+    int pass, i, k, shown = 0;
+    dp_n = load_all(dp_theme, SHIPPED_MAX);
+    CHECK(dp_n > 3);
+    dp_cur = "tokyo-night";
+    for (pass = 0; pass < 2; pass++) {
+        dp_stub = pass;                       /* pass 0 real; pass 1 proves the checks fail without the desk step */
+        for (i = 0; i < 8; i++)
+            dp_pen[i] = 0x101010UL * (unsigned)(i + 1);   /* the Workbench's own colours when the picker opens */
+        memset(&dp_pv, 0, sizeof dp_pv);
+        dp_pv.npens = 8;
+        dp_pv.get = dp_get;
+        dp_pv.set = dp_set;
+        strcpy(drawn, dp_cur);
+        dp_writes = 0;
+        for (k = 0; k < dp_n; k++) {          /* Down through every theme */
+            int ok = 1;
+            if (!strcmp(dp_theme[k].name, dp_cur) || desk_check(&dp_theme[k], 0, 0))
+                continue;
+            snprintf(row, sizeof row, "gtheme:%s", dp_theme[k].name);
+            gt_preview_step(row, dp_cur, drawn, sizeof drawn, dp_send);
+            for (i = 0; i < 8; i++)
+                ok &= dp_pen[i] == desk_role(&dp_theme[k], i);
+            if (!pass) {
+                CHECK(ok);                    /* pens 0..7 are the highlighted theme's roles */
+                shown++;
+            } else
+                CHECK(!ok);
+        }
+        gt_preview_step(0, dp_cur, drawn, sizeof drawn, dp_send);   /* Esc */
+        for (i = 0; i < 8; i++)
+            CHECK(dp_pen[i] == 0x101010UL * (unsigned)(i + 1) || pass);
+        CHECK(pass ? dp_writes == 0 : dp_writes > 0);
+    }
+    CHECK(shown > 3);
+}
+
 void suite_desk(void)
 {
     test_desk_palette();
@@ -436,4 +494,5 @@ void suite_desk(void)
     test_desk_guard();
     test_desk_plan();
     test_desk_targets();
+    test_desk_preview();
 }

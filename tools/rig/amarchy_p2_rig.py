@@ -584,11 +584,59 @@ def s_themeboot():
             c.run('Copy >NIL: T:p2arc.bak ENVARC:Amarchy/prefs')
 
 
+def wb_pal():
+    """The live Workbench palette as a list of hex colours, one per pen (tests/amiga/dripens.c, the same read nearest_pen uses)."""
+    shutil.copyfile(pathlib.Path(__file__).resolve().parents[2] / 'build/amiga/dripens', paths.RIG / 'vtc' / 'dripens')
+    for l in c.run('VTC:dripens Workbench')[1].splitlines():
+        if l.startswith('pal:'):
+            return l.split()[1:]
+    return []
+
+
+def s_deskpreview():
+    """DESK-PREVIEW-PALETTE: moving the highlight in the graphical theme picker previews the Workbench COLOURS on the Workbench
+    screen (gt_dos_preview_send -> desk_preview); Esc puts the saved colours back. Pen 0 is read live before, after Down and after Esc.
+    Covers the graphical picker only; the text picker (amarchy-menu) shares gt_dos_preview_send but is not driven here."""
+    import amarchy_gui_rig as g
+    if not g.open_menu():
+        return False, 'Amarchy menu did not open'
+    try:
+        rows = g.rows_now()
+        if not g.walk_to('Style', rows):
+            return False, 'no Style row in %r' % rows
+        rows = g.rows_now()
+        if not g.walk_to('Amarchy theme', rows):
+            return False, 'no Amarchy theme row in %r' % rows
+        rows = g.rows_now()
+        base = wb_pal()
+        if not base:
+            return False, 'no palette read'
+        moved = []
+        for _ in range(3):
+            ami.key(g.DOWN)
+            time.sleep(1.5)
+            moved = wb_pal()
+            if moved and moved[:8] != base[:8]:
+                break
+        changed = bool(moved) and moved[:8] != base[:8]
+        for _ in range(3):
+            ami.key(g.ESC)
+            time.sleep(1)
+        back = wb_pal()
+        ok = changed and back[:8] == base[:8]
+        return ok, 'rows %d, pens 0-7 before %s, after Down %s (changed %s), after Esc %s (restored %s)' % (
+            len(rows), base[:8], moved[:8], changed, back[:8], back[:8] == base[:8])
+    finally:
+        for _ in range(4):
+            ami.key(0x45)
+            time.sleep(.5)
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
          ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('columns', s_columns), ('network', s_network), ('screens', s_screens), ('system', s_system),
          ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('tray', s_tray), ('recolour', s_recolour),
-         ('agenttab', s_agenttab), ('themeboot', s_themeboot)]
+         ('agenttab', s_agenttab), ('themeboot', s_themeboot), ('deskpreview', s_deskpreview)]
 
 
 def main():
@@ -599,7 +647,7 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     verdict = OUT / 'verdict.json'
     done = json.loads(verdict.read_text()) if a.only and verdict.exists() else {}
-    stage_rig.report(stage_rig.stage_build(names=('Amarchy',), build=not a.no_build))
+    stage_rig.report(stage_rig.stage_build(names=('Amarchy', 'amarchy-gui'), build=not a.no_build))
     fails = 0
     for name, fn in STEPS:
         if a.only and a.only != name:

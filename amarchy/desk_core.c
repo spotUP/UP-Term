@@ -525,3 +525,30 @@ int desk_pointer_editor_ok(const unsigned char *bin, long len)
 {
     return desk_ver_major(bin, len) >= 47;
 }
+
+/* ---- DESK-PREVIEW-PALETTE: the picker's highlight previews the Workbench colours ---- */
+
+int desk_preview(desk_pv *p, const gtheme *t)
+{
+    int i;
+    if (!p || !p->get || !p->set || p->npens < 1 || p->npens > DK_ROLES)
+        return 0;
+    if (!t) {                       /* restore */
+        if (!p->have)
+            return 0;
+        for (i = 0; i < p->npens; i++)
+            p->set(p->ctx, i, p->saved[i]);
+        p->have = 0;
+        return 1;
+    }
+    if (desk_check(t, 0, 0))
+        return 0;
+    if (!p->have) {
+        for (i = 0; i < p->npens; i++)
+            p->get(p->ctx, i, &p->saved[i]);
+        p->have = 1;
+    }
+    for (i = 0; i < p->npens; i++)
+        p->set(p->ctx, i, desk_role(t, i));
+    return 1;
+}

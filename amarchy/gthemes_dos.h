@@ -15,6 +15,12 @@ void gt_dos_load_current(gtheme *out);
 /* load a theme by name */
 void gt_dos_load(const char *name, gtheme *out);
 /* make name the drawn menu's theme: AM_GTHEME is saved to ENVARC: and ENV:, then Directory Opus (if running) gets its colours (menu_theme.h). 1 saved, 0 refused or failed */
+/* DESK-PREVIEW-PALETTE: gt_dos_term_send plus the Workbench colours of the theme on the Workbench screen (the saved theme's name
+ * puts the colours back). The pickers' preview hook. gt_dos_desk_restore puts back what the preview overwrote (no-op when none);
+ * counters: previews written / restores done (reachability sentinels). */
+void gt_dos_preview_send(const char *name);
+void gt_dos_desk_restore(void);
+extern unsigned long gt_dos_desk_previews, gt_dos_desk_restores;
 void gt_dos_term_send(const char *name); /* the console tabs' colours: GT_TERM_FILE (gthemes_core.h) */
 extern unsigned long gt_dos_term_writes;
 /* Amarchy startup: write GT_TERM_FILE from the configured theme (GT_DEFAULT when none), so consoles opened before any switch start in it */

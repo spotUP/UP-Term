@@ -168,7 +168,7 @@ static void preview_sync(int restore)
     gt_dos_current(cur, (int)sizeof cur);
     if (!pv_drawn[0])
         strcpy(pv_drawn, cur);       /* the menu opened: the consoles show the saved theme */
-    gt_preview_step(row, cur, pv_drawn, (int)sizeof pv_drawn, gt_dos_term_send);
+    gt_preview_step(row, cur, pv_drawn, (int)sizeof pv_drawn, gt_dos_preview_send);
 }
 
 static int on_tick(void *ctx)
