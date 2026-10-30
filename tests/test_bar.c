@@ -157,6 +157,48 @@ static void test_bar_never_overlaps_across_width_sweep(void)
     CHECK(hidden_seen > 0);                               /* the sweep reaches the no-room case */
 }
 
+/* AM-BAR-COLUMNS: every dynamic segment owns a fixed slot (its widest text). Whatever length one segment's text takes,
+ * the other slots keep their x, nothing overlaps and nothing reaches past the screen width, at every width. The clock
+ * slot holds the wider of the short and the long format (BAR-CLOCK-ALT-CLIP): the flipped text is never cut. */
+static void test_bar_slots_keep_x_when_text_length_changes(void)
+{
+    static const char *txt[] = { "", "5%", "CPU 5%", "CPU 100%", "C 1.2M F 61M", "C 4096M F 4096M", "eth0 up", "Fri 30 Oct 2026", "Fri 00:00" };
+    const int ids[] = { BAR_SEG_CLOCK, BAR_SEG_CPU, BAR_SEG_RAM, BAR_SEG_NET };
+    const int slot[] = { 15 * 8, 8 * 8, 15 * 8, 10 * 8 };
+    int w, a, v, i, j, ntxt = (int)(sizeof txt / sizeof txt[0]);
+    for (w = 1000; w >= 760; w -= 40) {
+        bar b;
+        int base_x[4], idx[4];
+        bar_init(&b, w, 4, 12);
+        bar_add(&b, BAR_SEG_SCREEN0, BAR_LEFT, "Workbench", 72);
+        bar_add(&b, BAR_SEG_MORE, BAR_LEFT, "", 0);
+        idx[0] = bar_add(&b, BAR_SEG_CLOCK, BAR_CENTRE, "", 0);
+        idx[1] = bar_add(&b, BAR_SEG_CPU, BAR_RIGHT, "", 0);
+        idx[2] = bar_add(&b, BAR_SEG_RAM, BAR_RIGHT, "", 0);
+        idx[3] = bar_add(&b, BAR_SEG_NET, BAR_RIGHT, "", 0);
+        bar_add(&b, BAR_SEG_SYSTEM, BAR_RIGHT, "System", 48);
+        for (i = 0; i < 4; i++)
+            bar_set_slot(&b, ids[i], slot[i]);
+        bar_layout(&b, w);
+        for (i = 0; i < 4; i++)
+            base_x[i] = b.seg[idx[i]].x;
+        for (a = 0; a < 4; a++)
+            for (v = 0; v < ntxt; v++) {
+                int tw = (int)strlen(txt[v]) * 8;
+                if (tw > slot[a])
+                    continue;
+                bar_set_text(&b, ids[a], txt[v], tw);
+                bar_layout(&b, w);
+                CHECK_INT(bar_clean(&b), 1);
+                for (j = 0; j < b.n; j++)
+                    CHECK_INT(b.seg[j].hidden || b.seg[j].x + b.seg[j].w <= w, 1);
+                for (i = 0; i < 4; i++)
+                    CHECK_INT(b.seg[idx[i]].x, base_x[i]);
+            }
+        CHECK_INT(b.seg[idx[0]].w, slot[0] + 8);        /* the clock slot is the long form's width plus padding */
+    }
+}
+
 static void test_hit(void)
 {
     bar b;
@@ -573,6 +615,7 @@ void suite_bar(void)
     test_narrow_bar_drops_right_segments_by_priority();
     test_very_narrow_bar_clips_first_screen_without_overlap();
     test_bar_never_overlaps_across_width_sweep();
+    test_bar_slots_keep_x_when_text_length_changes();
     test_hit();
     test_click_dispatch();
     test_dirty_only_changed();

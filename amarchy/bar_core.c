@@ -48,6 +48,18 @@ int bar_set_text(bar *b, int id, const char *text, int tw)
     return 0;
 }
 
+int bar_set_slot(bar *b, int id, int slot)
+{
+    int i;
+    for (i = 0; i < b->n; i++)
+        if (b->seg[i].id == id && b->seg[i].slot != slot) {
+            b->seg[i].slot = slot;
+            b->seg[i].dirty = 1;
+            return 1;
+        }
+    return 0;
+}
+
 static void place(bar_seg *s, int x, int w)
 {
     if (s->x != x || s->w != w)
@@ -82,7 +94,7 @@ static int put_s(char *t, int o, const char *s)
 
 static int segw(const bar_seg *s, int pad)
 {
-    return s->tw + 2 * pad;
+    return (s->tw > s->slot ? s->tw : s->slot) + 2 * pad;
 }
 
 /* The left group with `k` screen entries shown (-1 = all): placed when `commit`, else measured. Returns its end x

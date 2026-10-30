@@ -14,6 +14,7 @@ Steps, in order (each prints "[OK] <step>: ..." or "[FAIL] <step>: <detail>"); l
   clock        R2.6: BAR TEXT segment 2 reads like "Wed 15:25"; a real left click flips it to "Wed 29 Oct 2026", another back
   ram          R2.7: segment 3 reads "C <n> F <n>" and the numbers move or stay valid across 5 s of ticks
   cpu          R2.8: segment 5 reads "CPU <n>%"; idle it stays under 50, while idleprobe busy burns the CPU it reaches 50 or more
+  columns      AM-BAR-COLUMNS: segment x and width unchanged across a clock flip to the long form and CPU text changes; none past the screen edge
   network      R2.10: segment 6 reads "Network emulated" on the rig (UAE bsdsocket, no interface query is made)
   screens      R2.11: a public screen entry (id 200 and up) exists, exactly one carries the front-screen mark (*); a real
                left click on it keeps the bar alive and the entry listed
@@ -170,6 +171,33 @@ def s_cpu():
         peak = max(peak, p if p is not None else 0)
     ok = idle is not None and idle < 50 and peak >= 50
     return ok, 'idle %r, peak under busy loop %d, text %r' % (idle, peak, seg_text(5))
+
+
+def xs():
+    return {k: (v[0], v[1]) for k, v in segs().items()}
+
+
+def s_columns():
+    """AM-BAR-COLUMNS / BAR-CLOCK-ALT-CLIP: every segment keeps its x and width while the clock flips to the long form and
+    the CPU text changes under a busy loop; nothing reaches past the screen width; the clock slot holds the long form."""
+    import amarchy_bar_rig as b
+    sw, _ = b.screen_size()
+    before = xs()
+    click_seg(2)
+    flipped = seg_text(2)
+    mid = xs()
+    ami.put(str(stage_rig.BUILD / 'idleprobe'), 'RAM:idleprobe')
+    c.run('Run >NIL: RAM:idleprobe busy 600')
+    texts = {seg_text(5)}
+    for _ in range(8):
+        time.sleep(1.1)
+        texts.add(seg_text(5))
+    after = xs()
+    click_seg(2)
+    over = [k for k, (x, w) in after.items() if w and x + w > sw]
+    ok = before == mid == after and not over and re.fullmatch(DATE, flipped) and len(texts) > 1 \
+        and mid[2][1] >= 8 * len(flipped)
+    return bool(ok), 'before %r, flipped %r mid %r, cpu texts %r, after %r, past edge %r' % (before, flipped, mid, sorted(texts), after, over)
 
 
 def s_network():
@@ -555,7 +583,7 @@ def s_themeboot():
 
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
-         ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('network', s_network), ('screens', s_screens), ('system', s_system),
+         ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('columns', s_columns), ('network', s_network), ('screens', s_screens), ('system', s_system),
          ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('tray', s_tray), ('recolour', s_recolour),
          ('agenttab', s_agenttab), ('themeboot', s_themeboot)]
 

@@ -43,6 +43,7 @@ typedef struct bar_seg {
     int side;
     char text[BAR_TEXT];
     int tw;                     /* pixel width of text (TextLength) */
+    int slot;                   /* fixed text width of the segment's slot (0 = the text's own width): its widest possible text */
     int x, w;                   /* placed by bar_layout: left edge and width incl. padding */
     int dirty;                  /* text or place changed since the last bar_take_dirty */
     int hidden;                 /* cut by bar_layout (w = 0, never hit) */
@@ -64,6 +65,10 @@ int bar_add(bar *b, int id, int side, const char *text, int tw);
 /* New text for segment `id`; 1 when it changed (the segment is marked dirty and the bar must be laid out
  * again), else 0 and nothing is touched: a tick that sampled the same value costs no redraw. */
 int bar_set_text(bar *b, int id, const char *text, int tw);
+/* Fixes segment `id`'s slot at `slot` pixels of text (padding added): the segment keeps that width whatever its text is,
+ * so a text of another length never moves its neighbours (AM-BAR-COLUMNS). The slot grows to the text when the text is
+ * wider. 1 when the slot changed (the bar must be laid out again). */
+int bar_set_slot(bar *b, int id, int slot);
 /* Places every segment: the left group from x = 0 in order, the right group ending at the width, in order, the
  * centre group centred on the width and pushed right of the left group when they would touch. When the left group
  * and the centre do not fit between the left edge and the right group, the screens list loses entries from its

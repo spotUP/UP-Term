@@ -42,7 +42,7 @@ extern struct GfxBase *GfxBase;      /* themewin.c opens and owns it */
 struct Library *LayersBase;
 
 #define BAR_PAD 4
-#define BAR_GAP 2
+#define BAR_GAP 12                /* the least room between two slots (AM-BAR-COLUMNS) */
 #define BAR_PANEL_COLS 40
 #define BAR_PANEL_ROWS 10
 #define BAR_LAYERS_MAX 32      /* layers in front of the bar that one tick looks at */
@@ -159,6 +159,67 @@ static int text_w(const char *t)
     return TextLength(&g_scr->RastPort, (STRPTR)t, (ULONG)strlen(t));
 }
 
+/* AM-BAR-COLUMNS: the widest text a segment can show, measured in the bar font, becomes its fixed slot. The widest
+ * digit of the font stands in for every digit (a proportional font has digits of different widths). */
+static int widest_digit(void)
+{
+    char c[2] = { '0', 0 };
+    int d, w, best = '0', bw = 0;
+    for (d = '0'; d <= '9'; d++) {
+        c[0] = (char)d;
+        w = text_w(c);
+        if (w > bw) {
+            bw = w;
+            best = d;
+        }
+    }
+    return best;
+}
+
+static int widest_clock(const char *fmt, int dg)
+{
+    int wd, mo, best = 0, w, n = dg - '0';
+    char t[BAR_TEXT];
+    for (wd = 0; wd < 7; wd++)
+        for (mo = 0; mo < 12; mo++) {
+            bar_fmt_time(t, sizeof t, fmt, wd, n * 11, mo, n * 1111, n * 11, n * 11);
+            w = text_w(t);
+            if (w > best)
+                best = w;
+        }
+    return best;
+}
+
+/* The net segment's slot for the interface name now known: the widest of its four texts. */
+static int net_slot(void)
+{
+    static const int kinds[4] = { BAR_NET_EMULATED, BAR_NET_STACK, BAR_NET_DOWN, BAR_NET_UP };
+    char t[BAR_TEXT];
+    int i, w, best = 0;
+    for (i = 0; i < 4; i++) {
+        bar_fmt_net(t, sizeof t, kinds[i], g_net_name);
+        w = text_w(t);
+        if (w > best)
+            best = w;
+    }
+    return best;
+}
+
+/* CPU, RAM, clock (both formats, bar.conf overrides included) and Network: slots from the formats themselves. */
+static void set_slots(void)
+{
+    int dg = widest_digit(), a, b;
+    char t[BAR_TEXT];
+    bar_fmt_cpu(t, sizeof t, 100);
+    bar_set_slot(&g_bar, BAR_SEG_CPU, text_w(t));
+    bar_fmt_ram(t, sizeof t, 4294967295UL, 4294967295UL);
+    bar_set_slot(&g_bar, BAR_SEG_RAM, text_w(t));
+    a = widest_clock(g_fmt_clock[0] ? g_fmt_clock : BAR_CLOCK_FMT, dg);
+    b = widest_clock(g_fmt_alt[0] ? g_fmt_alt : BAR_DATE_FMT, dg);
+    bar_set_slot(&g_bar, BAR_SEG_CLOCK, a > b ? a : b);
+    bar_set_slot(&g_bar, BAR_SEG_NET, net_slot());
+}
+
 static int set_seg(int id, const char *t)
 {
     return bar_set_text(&g_bar, id, t, text_w(t));
@@ -266,7 +327,8 @@ static int sample_net(int force)
     g_net_kind = kind;
     strcpy(g_net_name, name);
     bar_fmt_net(t, sizeof t, kind, name);
-    return set_seg(BAR_SEG_NET, t);
+    bar_set_slot(&g_bar, BAR_SEG_NET, net_slot());
+    return set_seg(BAR_SEG_NET, t) | 1;
 }
 
 /* The public screens, short names; the front one in the accent pen. The list is copied under the lock and released at
@@ -409,6 +471,7 @@ int bar_open(const char *dir)
     if (!g_conf_set)
         barconf_defaults(&g_conf);
     add_planned();
+    set_slots();
     g_clock_alt = 0;
     g_net_kind = -1;
     g_cpu_cal = 0;
