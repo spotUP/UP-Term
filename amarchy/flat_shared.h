@@ -1,0 +1,32 @@
+/* The public record of amarchy-flat ("Amarchy.Flat" semaphore), shared by the resident program (flat.c) and
+ * whoever reads it (UP-Term Prefs: the status row of the Amarchy page). Only st is a stable, versioned layout
+ * (flat_core.h); the rest is the program's own. */
+#ifndef AMARCHY_FLAT_SHARED_H
+#define AMARCHY_FLAT_SHARED_H
+
+#include <exec/semaphores.h>
+#include <exec/tasks.h>
+#include <exec/libraries.h>
+#include <stdint.h>
+#include "flat_core.h"
+
+/* The public record. ss is first so AddSemaphore's node is the allocation's start (as ixshared, ixwatch.h). */
+typedef struct flatshared {
+    struct SignalSemaphore ss;
+    char name[16];
+    struct Task *task;          /* the resident program; only compared, never dereferenced alone */
+    char tname[32];
+    flat_state st;
+    flat_swap sw;
+    uintptr_t *slot;            /* &sysiclass->cl_Dispatcher.h_SubEntry while installed */
+    /* FLAT-D4 */
+    struct Library *dlib;       /* dopus5.library, opened while patched so it cannot expunge under the patch */
+    flat_swap dsw[FLAT_EL_COUNT];
+    uintptr_t *dslot[FLAT_EL_COUNT];
+    unsigned dver, drev;
+    int dreason, dmask, dfound;
+    uint32_t dsum[FLAT_EL_COUNT]; /* flat_sum of each routine at the last scan (printed by STATUS) */
+    ULONG dcalls, dflat;        /* every patched call / every call that drew flat (the sentinels) */
+} flatshared;
+
+#endif

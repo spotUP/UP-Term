@@ -30,6 +30,10 @@ enum {
     AM_DESKBACK, /* desktop-backdrop */
     AM_DESKPTR, /* desktop-pointer */
     AM_DESKLBL, /* desktop-labels */
+    AM_FLAT,    /* flat-system-look: the flat window frame glyphs (amarchy-flat, off/on, default off) */
+    AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default off) */
+    AM_FLATSIZE, /* flat-border-size: stock, thin (the window border and title size) */
+    AM_FLATSTYLE, /* flat-glyph-style: line, block (FLAT_STYLE_*, flat_core.h) */
     AM_NKEYS
 };
 
@@ -60,6 +64,8 @@ long amconf_serialize(const am_prefs *p, char *buf, long cap);
 int amconf_icons(const am_prefs *p);
 int amconf_style(const am_prefs *p);
 int amconf_term_menu(const am_prefs *p);   /* UC_TERMMENU_* */
+/* the flat rows as their index into the value list (0 off / stock / line, 1 on / thin / block) */
+int amconf_flat_index(const am_prefs *p, int key);
 /* ai-agent as the raw word; empty -> the default "claude". handler/tabprog.h (tabprog_agent_tab) maps it to a tab */
 const char *amconf_agent(const am_prefs *p);
 /* shot-dir as the raw path; empty -> the default "RAM:Shots" */

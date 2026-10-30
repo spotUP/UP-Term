@@ -61,6 +61,10 @@ void amconf_to_fields(const am_prefs *p, prefs_fields *f)
     f->am_icons = amconf_icons(p);
     f->am_mode = amconf_style(p);
     f->am_termmenu = amconf_term_menu(p);
+    f->am_flat = amconf_flat_index(p, AM_FLAT);
+    f->am_flatgad = amconf_flat_index(p, AM_FLATGAD);
+    f->am_flatsize = amconf_flat_index(p, AM_FLATSIZE);
+    f->am_flatstyle = amconf_flat_index(p, AM_FLATSTYLE);
 }
 
 void amconf_from_fields(am_prefs *p, const prefs_fields *f)
@@ -73,6 +77,10 @@ void amconf_from_fields(am_prefs *p, const prefs_fields *f)
     strcpy(p->val[AM_ICONS], f->am_icons == UC_ICONS_AMIGA ? "amiga" : f->am_icons == UC_ICONS_NONE ? "none" : "generic");
     strcpy(p->val[AM_STYLE], f->am_mode == UC_MENU_TEXT ? "text" : f->am_mode == UC_MENU_MINIMAL ? "minimal" : "graphical");
     strcpy(p->val[AM_TERMMENU], f->am_termmenu == UC_TERMMENU_GRAPHICAL ? "graphical" : "text");
+    strcpy(p->val[AM_FLAT], f->am_flat ? "on" : "off");
+    strcpy(p->val[AM_FLATGAD], f->am_flatgad ? "on" : "off");
+    strcpy(p->val[AM_FLATSIZE], f->am_flatsize ? "thin" : "stock");
+    strcpy(p->val[AM_FLATSTYLE], f->am_flatstyle ? "block" : "line");
 }
 
 int amconf_icons(const am_prefs *p)
@@ -83,6 +91,12 @@ int amconf_icons(const am_prefs *p)
 int amconf_style(const am_prefs *p)
 {
     return upconf_menu_style_value(p->val[AM_STYLE]);
+}
+
+int amconf_flat_index(const am_prefs *p, int key)
+{
+    const char *v = p->val[key];
+    return !strcmp(v, "on") || !strcmp(v, "thin") || !strcmp(v, "block");
 }
 
 int amconf_term_menu(const am_prefs *p)

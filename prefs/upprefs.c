@@ -66,6 +66,7 @@
 #include "prefs_core.h"
 #include "prefs_ui.h"
 #include "settings_def.h"
+#include "../amarchy/flat_shared.h"
 #include "prefs_asl.h"
 #include "../amarchy/gthemes_scan_dos.h"
 #include "../tty/qmark.h"
@@ -149,7 +150,7 @@ struct app {
 static struct TextAttr topaz8 = { (STRPTR)"topaz.font", 8, FS_NORMAL, FPF_ROMFONT };
 
 static STRPTR page_labels[] = { (STRPTR)"General", (STRPTR)"Colors", (STRPTR)"Palette",
-                                (STRPTR)"Keyboard", (STRPTR)"Advanced", (STRPTR)"Amarchy", 0 };
+                                (STRPTR)"Keyboard", (STRPTR)"Advanced", (STRPTR)"Amarchy", (STRPTR)"Flat Look", 0 };
 /* A taglist from (tag, data) pairs, ended by TAG_DONE: t has room for them.
  * (A compound literal: vbcc warns about va_start, and the values are not
  * constants.) */
@@ -301,6 +302,10 @@ static int *int_of(struct app *a, int id)
     case PG_AM_ICONS: return &a->f.am_icons;
     case PG_AM_MODE: return &a->f.am_mode;
     case PG_AM_TERMMENU: return &a->f.am_termmenu;
+    case PG_AM_FLAT: return &a->f.am_flat;
+    case PG_AM_FLATGAD: return &a->f.am_flatgad;
+    case PG_AM_FLATSIZE: return &a->f.am_flatsize;
+    case PG_AM_FLATSTYLE: return &a->f.am_flatstyle;
     case PG_BELL: return &a->f.bell;
     case PG_BOLD: return &a->f.bold;
     case PG_WHEEL: return &a->f.wheel;
@@ -418,12 +423,31 @@ static void mode_text(struct app *a, char *out, int cap)
         strcpy(out + j, ", default depth");
 }
 
+/* The word amarchy-flat reports (the STATUS path: flat_status_word over the state block of the "Amarchy.Flat"
+ * semaphore): on, off, held, absent. */
+static const char *flat_status_text(void)
+{
+    flat_state copy;
+    flatshared *r;
+    int found = 0;
+    memset(&copy, 0, sizeof copy);
+    Forbid();
+    r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
+    if (r) {
+        found = 1;
+        copy = r->st;
+    }
+    Permit();
+    return flat_status_word(&copy, found);
+}
+
 static void show_texts(struct app *a)
 {
     char t[UC_MAX_VALUE];
     set_attr(a, PG_FONT, GTTX_Text, (ULONG)(a->f.font[0] ? a->f.font : "Screen's font"));
     set_attr(a, PG_AM_FONT, GTTX_Text, (ULONG)(a->f.am_font[0] ? a->f.am_font : "Built-in"));
     set_attr(a, PG_AM_GTHEME, GTTX_Text, (ULONG)a->f.am_gtheme);
+    set_attr(a, PG_AM_FLATSTATUS, GTTX_Text, (ULONG)flat_status_text());
     set_attr(a, PG_FALLBACK, GTTX_Text, (ULONG)(a->f.fallback[0] ? a->f.fallback : "None"));
     mode_text(a, t, sizeof(t));
     set_attr(a, PG_SCREEN_MODE, GTTX_Text, (ULONG)t);

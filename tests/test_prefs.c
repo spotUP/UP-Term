@@ -461,7 +461,7 @@ static void prefs_stage_leaves_no_amarchy_keys_in_the_upterm_profile(void)
 
 static void the_amarchy_keyword_picks_the_start_page(void)
 {
-    CHECK_INT(PG_NPAGES, 6);
+    CHECK_INT(PG_NPAGES, 7);
     CHECK_INT(pg_page_for_args("AMARCHY"), PG_PAGE_AMARCHY);
     CHECK_INT(pg_page_for_args("amarchy"), PG_PAGE_AMARCHY);
     CHECK_INT(pg_page_for_args("  Amarchy \n"), PG_PAGE_AMARCHY);
