@@ -2552,7 +2552,7 @@ static void exec_c0(vt_term *t, vt_u32 c)
         if (t->pers == VT_PCANSI)
             break; /* not a motion for ANSI.SYS art (DOS prints it as a
                       glyph; DCTelnet's term-engine ignores it) */
-        /* fall through: VT is LF elsewhere */
+        /* fall through - VT is LF elsewhere */
     case 0x0A:
         t->wrap_pending = 0;
         index_down(t);
