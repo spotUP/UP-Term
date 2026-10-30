@@ -99,6 +99,7 @@ typedef struct job {
     char tname[32];         /* the runner's task name, unique per job (runner_alive); CreateNewProc copies it */
     int has_child;          /* the command goes through SystemTags: a Shell process of its own (job_child) */
     int child_seen;         /* that process has been seen to exist (job_gone) */
+    ULONG pend_sig;         /* a break job_signal could not deliver to the child, it not existing yet (job_flush_sig) */
     char *env;              /* exported variables: name\0value\0 ... \0 */
     char *ixvar;            /* the argv of the ixemul program a Shell starts for it (sh_ixargv.h) ... */
     long ixvarlen;          /* ... its bytes, the local variable __ixargv of the runner */
@@ -191,6 +192,26 @@ static void job_signal(job *j, ULONG sig)
     Signal(j->task, sig);
     if ((t = job_child(j)) != 0)
         Signal(t, sig);
+    else if (j->has_child)
+        j->pend_sig |= sig; /* `script & kill %1`: SystemTags has not made the child yet (job_flush_sig) */
+}
+
+/* Send the break kept by job_signal to the SystemTags child once it exists, and forget it (also when the
+ * job ended). Called from job_gone, which the wait loop and the done check run under Forbid. */
+static void job_flush_sig(job *j)
+{
+    struct Task *t;
+    if (j->done) {
+        j->pend_sig = 0;
+        return;
+    }
+    if (!j->pend_sig)
+        return;
+    t = job_child(j);
+    if (!sh_flush_pending(j->pend_sig, t != 0))
+        return;
+    Signal(t, j->pend_sig);
+    j->pend_sig = 0;
 }
 
 static void job_break(job *j)
@@ -827,6 +848,7 @@ static int job_gone(job *j)
     struct Task *c = job_child(j);
     if (c)
         j->child_seen = 1;
+    job_flush_sig(j);
     return sh_job_gone(runner_alive(j), j->has_child, c != 0, j->child_seen);
 }
 

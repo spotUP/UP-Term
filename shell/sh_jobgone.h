@@ -17,6 +17,14 @@ static int sh_job_gone(int runner_alive, int child_named, int child_alive, int c
     return child_named && child_seen && !child_alive;
 }
 
+/* Should a break job_signal kept (pend) go out now: some is pending and the SystemTags child exists
+ * (child_found). The job's runner got the break at once; it is blocked in SystemTags, so only the child
+ * can act on it (`script & kill %1` signals before SystemTags has made the child). */
+static int sh_flush_pending(unsigned long pend, int child_found)
+{
+    return pend != 0 && child_found;
+}
+
 /* A process vsh makes must leave pr_ExitData at 0: AmiTCP netlib programs (ixnet's init_inet_daemon
  * among them) read it as the DaemonMessage of an inetd start, fail to obtain the socket and exit(161)
  * (VSH-EXT-RC161). So a job is told apart by what programs only display or what vsh owns: the runner by

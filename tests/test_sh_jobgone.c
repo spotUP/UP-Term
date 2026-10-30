@@ -25,6 +25,13 @@ static void a_shell_process_not_started_yet_is_not_gone(void)
     CHECK(sh_job_gone(1, 1, 0, 0) == 0);
 }
 
+static void a_kept_break_goes_out_once_the_child_exists(void)
+{
+    CHECK(sh_flush_pending(0x1000, 0) == 0); /* the child is not made yet: keep it */
+    CHECK(sh_flush_pending(0x1000, 1) == 1);
+    CHECK(sh_flush_pending(0, 1) == 0); /* nothing kept */
+}
+
 static void a_new_task_at_a_dead_runners_address_is_not_the_runner(void)
 {
     CHECK(sh_runner_is(1, "vsh job 7", "vsh job 7") == 1);
@@ -78,4 +85,5 @@ void suite_sh_jobgone(void)
     a_removed_shell_process_of_a_resident_command_or_script_is_gone();
     a_running_job_is_not_gone();
     a_shell_process_not_started_yet_is_not_gone();
+    a_kept_break_goes_out_once_the_child_exists();
 }

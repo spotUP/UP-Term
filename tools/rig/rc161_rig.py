@@ -32,6 +32,8 @@ CASES = (
     # the SystemTags branch: setup commands run before, teardown after (AmigaDOS lines)
     ("resident_true", 'rtrue; echo st=$?', "st=0\n", 20, "Resident rtrue UP-Term:bin/true PURE", "Resident rtrue REMOVE"),
     ("script_kill", SCRIPT + ' & sleep 2; kill %1; wait; echo ended', "ended\n", 12),
+    # no delay: the SystemTags child does not exist yet, the break is kept and sent once it does (VSH-BG-KILL-EARLY)
+    ("script_kill_early", SCRIPT + ' & kill %1; wait; echo ended', "ended\n", 8),
 )
 
 
