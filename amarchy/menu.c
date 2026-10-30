@@ -148,7 +148,7 @@ static void on_int(int sig)
 }
 
 /* THEME-PREVIEW-LIVE-A1200: Style > Amarchy theme recolours the open consoles and agent tabs (this menu draws in one of
- * them, so it recolours too) through the F3 bridge on every highlight move; any other row, Esc and closing give the
+ * them, so it recolours too) through the F3 bridge on every highlight move (ui_on_move, per key); any other row, Esc and closing give the
  * consoles the saved theme back (gt_preview_step). libupkgui moves the cursor itself: the move is read from ui_selected
  * after ui_prepare and on each tick. pv_drawn is what the consoles show; pv_sel the row last synced. */
 static char pv_drawn[GT_NAME];
@@ -169,6 +169,14 @@ static void preview_sync(int restore)
     if (!pv_drawn[0])
         strcpy(pv_drawn, cur);       /* the menu opened: the consoles show the saved theme */
     gt_preview_step(row, cur, pv_drawn, (int)sizeof pv_drawn, gt_dos_preview_send);
+}
+
+/* THEME-PREVIEW-PER-KEY: libupkgui calls this right after a key moved the cursor, so the consoles recolour on every
+ * arrow key, not on the next tick. The tick still syncs the moves no key made (a rebuilt level). */
+static void on_move(void *ctx)
+{
+    (void)ctx;
+    preview_sync(0);
 }
 
 static int on_tick(void *ctx)
@@ -261,6 +269,7 @@ static int text_run_job(void *ctx, const char *line, const char *title)
     lf_job_done(&ixs, line, tjob.state);   /* an upkg job: the Packages list reloads at the next entry */
     jb_end();
     ui_on_tick(on_tick, 0);
+    ui_on_move(on_move, 0);
     job_ran = 1;
     return 0;
 }
@@ -430,7 +439,16 @@ static int menu_levels(const char *start)
             char path[IX_PATH];
             if (!ix_launch_path(&ixs, &it[i], path, sizeof path))
                 continue;
-            return lf_open_index(it[i].label, path, &leaf_ui);
+            rc = lf_open_index(it[i].label, path, &leaf_ui);
+            {   /* a theme pick saved the theme: back out ONE level (the saved theme is the one the closing restore keeps) */
+                char up[KM_ID * 2];
+                if (!rc && mn_pick_back(path, node, up, sizeof up)) {
+                    strcpy(node, up);
+                    filter[0] = 0;
+                    continue;
+                }
+            }
+            return rc;
         }
         if (lf_pkg_search_row(node, &it[i])) {  /* Packages > Search asks its text, then lists the matches */
             if (lf_pkg_search(&ixs, &leaf_ui)) {
@@ -586,6 +604,7 @@ static int run_ui(int is_viewer, const char *node)
         return rc;
     }
     ui_on_tick(on_tick, 0);                    /* ui_stop clears the tick: set again after each ui_start */
+    ui_on_move(on_move, 0);
     rc = is_viewer ? viewer() : menu_loop(node);
     ui_stop();
     /* Escape is a normal leave; so is end of file on the console (the window closed on

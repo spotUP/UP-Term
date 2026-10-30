@@ -596,7 +596,7 @@ def wb_pal():
 def s_deskpreview():
     """DESK-PREVIEW-PALETTE: moving the highlight in the graphical theme picker previews the Workbench COLOURS on the Workbench
     screen (gt_dos_preview_send -> desk_preview); Esc puts the saved colours back. Pen 0 is read live before, after Down and after Esc.
-    Covers the graphical picker only; the text picker (amarchy-menu) shares gt_dos_preview_send but is not driven here."""
+    The graphical picker only; the text picker (amarchy-menu) is driven by the deskpreview_text row of amarchy_menu_rig.py."""
     import amarchy_gui_rig as g
     if not g.open_menu():
         return False, 'Amarchy menu did not open'
@@ -632,11 +632,41 @@ def s_deskpreview():
             time.sleep(.5)
 
 
+def s_themeenter():
+    """THEME-ENTER-BACK-ONE (drawn menu): Enter on a theme row applies it and backs out ONE level. The rows shown after Enter
+    are Style's (they include the Amarchy theme row, the theme list does not) and ENV:up-term/theme-active changed."""
+    import amarchy_gui_rig as g
+    if not g.open_menu():
+        return False, 'Amarchy menu did not open'
+    try:
+        rows = g.rows_now()
+        if not g.walk_to('Style', rows):
+            return False, 'no Style row in %r' % rows
+        rows = g.rows_now()
+        if not g.walk_to('Amarchy theme', rows):
+            return False, 'no Amarchy theme row in %r' % rows
+        g.rows_now()
+        before = (ami.read_file('ENV:up-term/theme-active') or b'').decode('latin-1').strip()
+        ami.key(g.DOWN)
+        time.sleep(1.5)
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(g.RETURN)
+        time.sleep(2.5)
+        after_rows = g.rows_now(tries=12)
+        after = (ami.read_file('ENV:up-term/theme-active') or b'').decode('latin-1').strip()
+        ok = 'Amarchy theme' in after_rows and bool(after) and after != before
+        return ok, 'rows after Enter %r (must be the Style level), theme-active %r -> %r (must change)' % (after_rows[:6], before, after)
+    finally:
+        for _ in range(4):
+            ami.key(0x45)
+            time.sleep(.5)
+
+
 STEPS = [('start', s_start), ('tick_rises', s_tick_rises), ('bar_status', s_bar_status), ('bar_off', s_bar_off),
          ('bar_on', s_bar_on), ('status_keys', s_status_keys),
          ('clock', s_clock), ('ram', s_ram), ('cpu', s_cpu), ('columns', s_columns), ('network', s_network), ('screens', s_screens), ('system', s_system),
          ('bar_hold', s_bar_hold), ('bar_conf', s_bar_conf), ('tray', s_tray), ('recolour', s_recolour),
-         ('agenttab', s_agenttab), ('themeboot', s_themeboot), ('deskpreview', s_deskpreview)]
+         ('agenttab', s_agenttab), ('themeboot', s_themeboot), ('deskpreview', s_deskpreview), ('themeenter', s_themeenter)]
 
 
 def main():

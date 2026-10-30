@@ -6,6 +6,7 @@
 #include <string.h>
 #include "../amarchy/amconf_core.h"
 #include "../amarchy/gthemes_core.h"
+#include "../amarchy/menu_core.h"
 #include "../amarchy/menu_theme.h"
 #include "../amarchy/pen_cache.h"
 #include "harness.h"
@@ -495,6 +496,23 @@ static void test_gthemes_text_menu_preview_recolours_consoles(void)
     CHECK(!strcmp(tp_sent[0], "nord") && !strcmp(tp_sent[1], "ethereal") && !strcmp(tp_sent[2], "tokyo-night"));
 }
 
+/* THEME-ENTER-BACK-ONE: Enter on a theme row saves the theme and backs out ONE level (Style), the menu stays open. The
+ * closing restore then compares against the NEW saved theme, so it writes nothing and the consoles keep the new colours. */
+static void test_gthemes_enter_backs_one_level(void)
+{
+    char up[64], drawn[GT_NAME] = "tokyo-night";
+    tp_n = 0;
+    CHECK(mn_pick_back("gtheme:nord", "style.theme", up, sizeof up));
+    CHECK_STR(up, "style");                                   /* one level, not the root and not a closed menu */
+    CHECK(!mn_pick_back("clip:3", "style.theme", up, sizeof up));   /* any other row keeps its own rules */
+    CHECK(!mn_pick_back("gtheme:nord", "", up, sizeof up));          /* no parent: nothing to back to */
+    CHECK(gt_preview_step("gtheme:nord", "tokyo-night", drawn, sizeof drawn, tp_send));   /* highlight: nord previewed */
+    /* Enter: gt_dos_select saves nord, so the saved theme is now nord; the level change and the later close restore: */
+    CHECK(!gt_preview_step("menu:style", "nord", drawn, sizeof drawn, tp_send));
+    CHECK(!gt_preview_step(0, "nord", drawn, sizeof drawn, tp_send));
+    CHECK(tp_n == 1 && !strcmp(tp_sent[0], "nord"));          /* never "tokyo-night" again */
+}
+
 static void test_gthemes_preview(void)
 {
     char nm[GT_NAME];
@@ -716,6 +734,7 @@ void suite_gthemes(void)
     test_gthemes_preview();
     test_gthemes_preview_term();
     test_gthemes_text_menu_preview_recolours_consoles();
+    test_gthemes_enter_backs_one_level();
     test_gthemes_fallback();
     test_gthemes_parse();
     test_gthemes_term_text();

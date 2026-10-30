@@ -1,5 +1,6 @@
 #include <string.h>
 #include "menu_core.h"
+#include "gthemes_core.h"
 
 static char lower(char c)
 {
@@ -107,6 +108,13 @@ int mn_parent(const char *node, char *out, int n)
     memcpy(out, node, len);
     out[len] = 0;
     return 1;
+}
+
+int mn_pick_back(const char *path, const char *node, char *out, int n)
+{
+    if (strncmp(path, GT_ROW_PREFIX, sizeof GT_ROW_PREFIX - 1))
+        return 0;
+    return mn_parent(node, out, n);
 }
 
 static void app(char *out, int n, const char *s)

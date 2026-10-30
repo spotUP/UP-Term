@@ -90,6 +90,10 @@ int mn_pick_setting(const mn_item *items, const int *idx, int c, int ix);
 /* The node one level up ("apps.tools" -> "apps", "apps" -> ""). 0 at the root: Esc there leaves
  * the menu; otherwise 1 and out holds the parent. */
 int mn_parent(const char *node, char *out, int n);
+/* THEME-ENTER-BACK-ONE: a picked theme row (path "gtheme:<name>") saved the theme; Enter then backs out ONE level (the
+ * list's parent, Style) and the menu stays open. 1 and out = the parent node; 0 when path is not a theme row or node is
+ * the root. Both menus (menu.c, gui.c) take their next node from here. */
+int mn_pick_back(const char *path, const char *node, char *out, int n);
 /* What Escape and Backspace do in both Amarchy menus (gui.c and menu.c). Escape with a filter clears it,
  * Backspace with a filter drops its last character; with no filter both go up one level, and at the root
  * (node empty) both close the menu. bs is 1 for Backspace, 0 for Escape. */

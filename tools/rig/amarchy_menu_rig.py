@@ -1998,6 +1998,103 @@ def r_bar_agents_no_terminal():
 ROWS.append(('bar_agents_no_terminal', r_bar_agents_no_terminal))
 
 
+def _theme_list_open():
+    """Text menu open on Style > Amarchy theme with the highlight settled; False when the menu did not open."""
+    if not x9_open_menu():
+        return False
+    x9_level('Style')
+    x9_level('Amarchy theme')
+    time.sleep(2.5)
+    return True
+
+
+def r_theme_enter_back():
+    """THEME-ENTER-BACK-ONE (text menu): Enter on a theme row applies it and backs out ONE level. The Style level is listed
+    (ENV:AMARCHY_ROWS has the Amarchy theme row, the theme list does not), ENV:up-term/theme-active holds the other
+    theme, and the console keeps the previewed colour (the close restore puts back the new theme, not the old one)."""
+    import amarchy_gui_rig as g
+    ensure_terminal()
+    if not x9_open_menu():
+        return False, 'text menu did not open'
+    try:
+        before = (ami.read_file('ENV:up-term/theme-active') or b'').decode('latin-1').strip()
+        x9_level('Style')
+        x9_level('Amarchy theme')
+        time.sleep(2.5)
+        first = host_bg()
+        ami.key(RAW['down'])
+        time.sleep(2.5)
+        moved = host_bg()
+        c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+        ami.key(RAW['return'])
+        time.sleep(2.5)
+        rows = g.rows_now(tries=8)
+        after = (ami.read_file('ENV:up-term/theme-active') or b'').decode('latin-1').strip()
+        kept = host_bg()
+    finally:
+        x9_leave()
+    ok = ('Amarchy theme' in rows and bool(after) and after != before
+          and moved[0] != first[0] and kept[0] == moved[0])
+    return ok, 'rows after Enter %r (must be the Style level), theme-active %r -> %r (must change), console %s -> %s -> %s (must stay at the second)' % (
+        rows[:6], before, after, first[0], moved[0], kept[0])
+
+
+ROWS.append(('theme_enter_back', r_theme_enter_back))
+
+
+def r_theme_preview_per_key():
+    """THEME-PREVIEW-PER-KEY: one Down in the text theme list recolours the console within 0.5 s (the ui_on_move hook runs
+    preview_sync after the key), not on the 1 s tick."""
+    ensure_terminal()
+    try:
+        if not _theme_list_open():
+            return False, 'text menu did not open'
+        first = host_bg()
+        ami.key(RAW['down'])
+        time.sleep(0.5)
+        moved = host_bg()
+        ami.key(RAW['esc'])
+        time.sleep(2.5)
+        back = host_bg()
+    finally:
+        x9_leave()
+    ok = moved[0] != first[0] and back[0] == first[0]
+    return ok, 'console %s at open, %s 0.5 s after Down (must differ), %s after Esc (must equal the first)' % (first[0], moved[0], back[0])
+
+
+ROWS.append(('theme_preview_per_key', r_theme_preview_per_key))
+
+
+def r_deskpreview_text():
+    """The TEXT picker's Workbench colour preview (gt_dos_preview_send from amarchy-menu): Down changes pens 0-7 of the
+    Workbench palette, Esc puts them back. Closes the gap the graphical-only deskpreview step documents."""
+    import amarchy_p2_rig as p2
+    ensure_terminal()
+    try:
+        if not _theme_list_open():
+            return False, 'text menu did not open'
+        base = p2.wb_pal()
+        if not base:
+            return False, 'no palette read'
+        moved = base
+        for _ in range(3):
+            ami.key(RAW['down'])
+            time.sleep(1.5)
+            moved = p2.wb_pal()
+            if moved and moved[:8] != base[:8]:
+                break
+        ami.key(RAW['esc'])
+        time.sleep(2)
+        back = p2.wb_pal()
+    finally:
+        x9_leave()
+    ok = moved[:8] != base[:8] and back[:8] == base[:8]
+    return ok, 'pens 0-7 before %s, after Down %s (must differ), after Esc %s (must equal before)' % (base[:8], moved[:8], back[:8])
+
+
+ROWS.append(('deskpreview_text', r_deskpreview_text))
+
+
 def start_args():
     """The arguments the running rig was started with (rig.py writes them to <rig>/start.args); [] when unknown."""
     try:

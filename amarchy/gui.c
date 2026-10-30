@@ -1284,10 +1284,12 @@ static void pens_release(gui *g)
 }
 
 /* A Style > Theme pick saved the theme (lf_open_index): the open menu takes its colours at once and stays on the
- * theme list, which marks the picked theme (current) with the cursor on it (owner, 2026-10-28: switch live). */
+ * level above the theme list (Style; owner 2026-10-30: Enter backs out one level). The saved theme is already the one the
+ * closing restore (gt_preview_term) compares against, so the restore writes nothing. */
 static void theme_live(gui *g, const char *name)
 {
-    char keep[MN_LABEL];
+    char keep[MN_LABEL], up[KM_ID * 2];
+    int back;
     pens_release(g);
     pens_get(g, 0);
     gt_dos_load_rows(&ixs);
@@ -1295,7 +1297,13 @@ static void theme_live(gui *g, const char *name)
     g->chosen = -1;
     g->mode = M_LIST;
     g->stop = 0;
+    back = mn_pick_back(g->ixpath, g->node, up, sizeof up);
     g->ixpath[0] = g->ixlabel[0] = 0;
+    if (back) {                                    /* THEME-ENTER-BACK-ONE: Enter backs out ONE level, the menu stays open */
+        strcpy(g->node, up);
+        g->filter[0] = 0;
+        keep[0] = 0;
+    }
     list_rebuild_keep(g, keep);
 }
 
