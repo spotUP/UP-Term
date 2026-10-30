@@ -1531,7 +1531,17 @@ def boot_frozen(text, since_change, elapsed):
 
 def start(retries=START_RETRIES):
     """Boot; a boot whose boot.log stops advancing (boot_frozen: the emulator froze before anything under test
-    loaded, seen 3 times on 2026-09-29, cause not found) is killed and retried. A slow boot is waited for."""
+    loaded, seen 3 times on 2026-09-29, cause not found) is killed and retried. A slow boot is waited for.
+    One start per rig at a time: the mine() check below and the FS-UAE launch are seconds apart (the system disk
+    clone), so two starts begun together both saw no emulator and both launched one on the same sys.hdf, and the
+    Amiga showed a disk checksum error (rig 3, 2026-10-30). A second start waits on start.lock for the first, then
+    finds its emulator in mine() and says "already running"."""
+    RIG.mkdir(parents=True, exist_ok=True)
+    with open(RIG / "start.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)   # released when the block ends or the process dies
+        return _start(retries)
+
+def _start(retries):
     # before anything is written: a start while the rig runs (or boots, when
     # status still says down) must not rewrite BOOTX:go, BOOTX:s/startup-sequence
     # and BOOTX:Mountlist, or delete BOOTX:boot.log, under the running system
@@ -1603,7 +1613,7 @@ def start(retries=START_RETRIES):
     if retries > 0:
         print("retrying the boot")
         stop()
-        return start(retries - 1)
+        return _start(retries - 1)
     # out of retries: stop the last boot's emulator and fail the command. Falling off the end returned rc 0, so
     # getty_rig (check=True) went on against a rig that never came up and died in wasabi Conn with
     # ConnectionRefusedError, and the third boot's FS-UAE (with its logwatch) kept running unattended (rig 1, 2026-10-25).
