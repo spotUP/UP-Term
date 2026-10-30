@@ -123,17 +123,25 @@ void gt_dos_term_send(const char *name)
 unsigned long gt_dos_desk_previews, gt_dos_desk_restores;
 static desk_pv gt_pv;
 
+/* The callbacks get the graphics base through ctx: the bases in this file are local (see wb_pens_apply). */
+typedef struct {
+    struct Screen *scr;
+    struct GfxBase *gfx;
+} pv_ctx;
+
 static void pv_get(void *ctx, int pen, uc_u32 *rgb)
 {
     ULONG t[3] = {0, 0, 0};
-    struct Screen *scr = (struct Screen *)ctx;
+    struct Screen *scr = ((pv_ctx *)ctx)->scr;
+    struct GfxBase *GfxBase = ((pv_ctx *)ctx)->gfx;
     GetRGB32(scr->ViewPort.ColorMap, (ULONG)pen, 1, t);
     *rgb = ((t[0] >> 24) << 16) | ((t[1] >> 24) << 8) | (t[2] >> 24);
 }
 
 static void pv_set(void *ctx, int pen, uc_u32 rgb)
 {
-    struct Screen *scr = (struct Screen *)ctx;
+    struct Screen *scr = ((pv_ctx *)ctx)->scr;
+    struct GfxBase *GfxBase = ((pv_ctx *)ctx)->gfx;
     SetRGB32(&scr->ViewPort, (ULONG)pen, ((rgb >> 16) & 255) * 0x01010101UL, ((rgb >> 8) & 255) * 0x01010101UL,
              (rgb & 255) * 0x01010101UL);
 }
@@ -144,9 +152,12 @@ static void desk_preview_theme(const gtheme *th)
     struct IntuitionBase *IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 39);
     struct GfxBase *GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 39);
     struct Screen *scr;
+    pv_ctx c;
     if (IntuitionBase && GfxBase && (scr = LockPubScreen((STRPTR)"Workbench")) != 0) {
         int depth = scr->RastPort.BitMap->Depth;
-        gt_pv.ctx = scr;
+        c.scr = scr;
+        c.gfx = GfxBase;
+        gt_pv.ctx = &c;
         gt_pv.get = pv_get;
         gt_pv.set = pv_set;
         gt_pv.npens = depth >= 3 ? 8 : 1 << depth;
