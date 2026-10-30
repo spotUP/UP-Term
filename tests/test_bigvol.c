@@ -66,6 +66,16 @@ static void suite_bigvol_room(void)
     CHECK(bv_parse(bad1, 2, g, 4) == -1 && bv_parse(bad2, 5, g, 4) == -1 && bv_parse(bad2, 0, g, 4) == 0);
     /* KB held at 0xFFFFFFFF, never wrapped to a small number that passes */
     CHECK(bv_parse(big, 3, g, 4) == 1 && g[0].kb == 0xFFFFFFFFUL && bv_short(0xFFFFFFFEUL, g[0].kb));
+    /* the refusal text, the same for the Shell install's print and the Installer's ENV:UPTROOM */
+    {
+        char t[160], s[12];
+        bv_room_text(t, sizeof t, "SYS:UP-Term", 51200, 60600);
+        CHECK(!strcmp(t, "SYS:UP-Term has 51200 KB free;\nthe parts you chose need about 60600 KB."));
+        bv_room_text(t, sizeof t, "Work:", 0, 4294967295UL);
+        CHECK(!strcmp(t, "Work: has 0 KB free;\nthe parts you chose need about 4294967295 KB."));
+        bv_room_text(s, sizeof s, "SYS:UP-Term", 1, 2);
+        CHECK(!strcmp(s, "SYS:UP-Term")); /* 11 characters and the terminator: the " has" is cut */
+    }
 }
 
 void suite_bigvol(void);

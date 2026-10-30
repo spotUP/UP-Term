@@ -159,4 +159,43 @@ static int bv_short(unsigned long free_kb, unsigned long need_kb)
     return need_kb > free_kb;
 }
 
+/* Appends s to out (length *len, room size), cut at size - 1. */
+static void bv_cat(char *out, int *len, int size, const char *s)
+{
+    for (; *s && *len < size - 1; s++)
+        out[(*len)++] = *s;
+    out[*len] = 0;
+}
+
+/* The refusal both installs show: "<path> has N KB free;" and on a second line "the parts you chose need about M KB." The Shell install
+ * prints it, the Installer reads it from ENV:UPTROOM. Cut to fit `size`, always terminated. */
+static void bv_room_text(char *out, int size, const char *path, unsigned long free_kb, unsigned long need_kb)
+{
+    char num[2][12];
+    unsigned long v[2];
+    int len = 0, k, i;
+    v[0] = free_kb;
+    v[1] = need_kb;
+    for (k = 0; k < 2; k++) {
+        char rev[12];
+        int n = 0;
+        do {
+            rev[n++] = (char)('0' + v[k] % 10UL);
+            v[k] /= 10UL;
+        } while (v[k]);
+        for (i = 0; i < n; i++)
+            num[k][i] = rev[n - 1 - i];
+        num[k][n] = 0;
+    }
+    if (size <= 0)
+        return;
+    out[0] = 0;
+    bv_cat(out, &len, size, path);
+    bv_cat(out, &len, size, " has ");
+    bv_cat(out, &len, size, num[0]);
+    bv_cat(out, &len, size, " KB free;\nthe parts you chose need about ");
+    bv_cat(out, &len, size, num[1]);
+    bv_cat(out, &len, size, " KB.");
+}
+
 #endif

@@ -255,5 +255,13 @@ class NestedFinishPage(unittest.TestCase):
         self.assertTrue(any('answered Later (id 1)' in l for l in log), log)
 
 
+class RoomText(unittest.TestCase):
+    def test_the_two_line_refusal_text_is_read(self):
+        # INSTALLER-ROOM-SPLIT: bv_room_text breaks the line after "free;" (the Installer's message does not wrap)
+        import installer_rig as irg
+        m = irg.ROOM_RE.search("SYS:UP-Term has 51200 KB free;\nthe parts you chose need about 60600 KB.")
+        self.assertEqual(m.groups(), ('51200', '60600'))
+
+
 if __name__ == "__main__":
     unittest.main()

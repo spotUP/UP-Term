@@ -313,6 +313,10 @@ def prompt_digest(tree, gads):
     return hashlib.md5(b''.join(bytes(rows[y][(x0 + 5) * 3:(x0 + w - 5) * 3]) for y in range(y0 + 14, min(H, y1)))).hexdigest()
 
 
+# bv_room_text's refusal (install/bigvol.h): the needed figure is on the line after the free one
+ROOM_RE = re.compile(r'has\s+(\S+)\s*KB\s+\w+.*?need\s+about\s+(\S+)\s*KB', re.S)
+
+
 def read_room(tree, case):
     """(KB free, KB needed, text) of the Installer's room page ("<dest> has N KB free; the parts you chose
     need about M KB"), read from the screen; None when the page is no room page. The digits are voted: the
@@ -324,7 +328,7 @@ def read_room(tree, case):
         txts = window_ocr(tree, case + '-room', scales=(3, 4, 5, 6, 8), resamplers=(Image.LANCZOS, Image.BICUBIC), thresholds=(100, 140))
         free, need = Counter(), Counter()
         for t in txts:
-            m = re.search(r'has\s+(\S+)\s*KB\s+\w+.*?need\s+about\s+(\S+)\s*KB', t)
+            m = ROOM_RE.search(t)
             if m and m.group(1).isdigit() and m.group(2).isdigit():   # a misread digit ($) is no vote
                 free[m.group(1)] += 1
                 need[m.group(2)] += 1

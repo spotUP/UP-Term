@@ -9,8 +9,9 @@
  * it does.
  * `UPBigVol ROOM <path> <KB>... [<path> <KB>...]` is the room check of a Shell install (dist/install.dos, no STEP):
  * each path's volume is locked, groups on one volume (SameLock) count together (bv_parse, bv_merge), and a volume
- * with less free room than its parts need prints "<path> has N KB free; the parts you chose need about M KB." and
- * returns 5 (WARN). A volume it cannot lock or Info, or words it cannot read, cannot tell: it returns 0 and the
+ * with less free room than its parts need prints bv_room_text ("<path> has N KB free;", newline, "the parts you chose need about M KB.") and
+ * returns 5 (WARN); it also sets ENV:UPTROOM to that text and ENV:UPTROOMAT to the path, which the Installer
+ * (dist/Install.installer) reads, and deletes both first on every run. A volume it cannot lock or Info, or words it cannot read, cannot tell: it returns 0 and the
  * install goes on, as the Installer's own check does when getdiskspace answers -1. */
 #include <exec/memory.h>
 #include <dos/dos.h>
@@ -32,6 +33,8 @@ const char bigvol_stack_cookie[] = "$STACK: 8192";
 #define MAXVOL 16
 #define MAXGROUP 8
 #define VAR "UPTBIGVOL"
+/* ROOM's refusal text, and in ROOMVAR "AT" the path of the disk it names: the Installer reads both */
+#define ROOMVAR "UPTROOM"
 
 /* bv_merge's test: ctx is the groups' volume locks */
 static int same_volume(int i, int j, void *ctx)
@@ -50,6 +53,9 @@ static int room(char **words, int n, struct InfoData *id)
     struct bv_group g[MAXGROUP];
     BPTR glock[MAXGROUP];
     int ng = bv_parse(words, n, g, MAXGROUP), i, rc = 0;
+    /* a refusal of an earlier run must not answer for this one */
+    DeleteVar((STRPTR)ROOMVAR, GVF_GLOBAL_ONLY);
+    DeleteVar((STRPTR)ROOMVAR "AT", GVF_GLOBAL_ONLY);
     if (ng < 0) {
         PutStr((STRPTR) "UPBigVol: ROOM takes <path> <KB>... groups; room not checked\n");
         return 0;
@@ -65,7 +71,11 @@ static int room(char **words, int n, struct InfoData *id)
             continue;
         free_kb = bv_free_kb((unsigned long)id->id_NumBlocks, (unsigned long)id->id_NumBlocksUsed, (unsigned long)id->id_BytesPerBlock);
         if (bv_short(free_kb, g[i].kb)) {
-            Printf((STRPTR) "%s has %lu KB free; the parts you chose need about %lu KB.\n", g[i].path, free_kb, g[i].kb);
+            char text[160];
+            bv_room_text(text, sizeof text, g[i].path, free_kb, g[i].kb);
+            Printf((STRPTR) "%s\n", text);
+            SetVar((STRPTR)ROOMVAR, (STRPTR)text, -1, GVF_GLOBAL_ONLY);
+            SetVar((STRPTR)ROOMVAR "AT", (STRPTR)g[i].path, -1, GVF_GLOBAL_ONLY);
             rc = 5;
         }
     }

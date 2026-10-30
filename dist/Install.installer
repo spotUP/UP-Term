@@ -207,18 +207,6 @@
         (if (= #big 0) (set #big ""))))
 (set #dest (if #old #old (if (= #big "") "SYS:UP-Term" #big)))
 ; asked again, with the last answer as its default, when the disk of the drawer is too small (room on the disk)
-; #vol: the volume of the path in #volpath, up to and with its first colon ("Work:" of
-; "Work:UP-Term"); the room checks add up what goes on one volume
-(procedure P_VOLUME
-    (set #vol #volpath)
-    (set #vi 0)
-    (while (< #vi (strlen #volpath))
-        (
-            (if (= (substr #volpath #vi 1) ":")
-                (
-                    (set #vol (substr #volpath 0 (+ #vi 1)))
-                    (set #vi (strlen #volpath))))
-            (set #vi (+ #vi 1)))))
 (procedure P_ASKDEST
     (set #dest
         (askdir
@@ -429,63 +417,51 @@
 (set #kb-unifont (if #unifont @KBCOPYUNIFONT@ 0))
 (set #kb-emoji (if #emoji @KBCOPYEMOJI@ 0))
 (set #kb-tools (+ @KBTOOLS@ (if #ssh @KBSSH@ 0) (if #bget @KBBEBBOGET@ 0)))
-; fonts, unix, desktop, boot (with wasabi), libs, mount, console, record: their #kb below
-(set #kb-rest (+ @KBFONTS@ @KBUNIX@ @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ @KBRECORD@))
+; the parts of the drawer's disk (unix and the record go into the drawer) and of SYS: (fonts, desktop, boot with
+; wasabi, libs, mount, console), as dist/install.dos splits them for its room check
+(set #kb-destrest (+ @KBUNIX@ @KBRECORD@))
+(set #kb-sysrest (+ @KBFONTS@ @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@))
 ; AmiSSL goes where Install-AmiSSL puts it first, not into the drawer: its own default is the
-; AmiSSL: assign, else Work:, else SYS:. Its KB count on that volume's check below.
+; AmiSSL: assign, else Work:, else SYS:. Its KB count on that disk in the room check below.
 (set #kb-amissl (if #amisslins @KBAMISSL@ 0))
 (set #amissldisk (getassign "AmiSSL"))
 (if (= #amissldisk "") (set #amissldisk (if (exists "Work:" (noreq)) "Work:" "SYS:")))
-(set #volpath #amissldisk)
-(P_VOLUME)
-(set #amisslvol #vol)
 (set #totalkb (+ #kb-drawer #kb-system #kb-coreutils #kb-userland #kb-manpages #kb-unifont #kb-emoji
-                 #kb-tools #kb-rest))
+                 #kb-tools #kb-destrest #kb-sysrest))
 (set #donekb 0)
 
 ; ---- room on the disk --------------------------------------------------------
-; getdiskspace answers -1 when it cannot tell (and Installer 43.3 can
-; overflow on a volume past 2 GB): only a positive answer that is too small
-; asks. The drawer's disk too small: say how much there is and how much the
-; chosen parts need, and ask for another drawer (Abort Install ends it).
+; UPBigVol ROOM (install/bigvol.c, the Shell install's check too) gets the
+; drawer, SYS: and AmiSSL's disk, each followed by the KB of the parts that
+; write there. Paths on one volume (SYS:UP-Term and SYS:, DH0: and SYS:) count
+; together, and it counts in KB, so a disk past 2 GB answers right
+; (getdiskspace overflows there). A disk too small sets ENV:UPTROOM to what it
+; has free and what the parts need, and ENV:UPTROOMAT to its path: the
+; drawer's disk asks for another drawer (Abort Install ends it), SYS: or
+; AmiSSL's disk ends the install. A disk it cannot tell about passes.
 
 (set #roomok 0)
 (while (not #roomok)
     (
-        (set #free (getdiskspace (pathonly #dest)))
-        (set #volpath #dest)
-        (P_VOLUME)
-        (set #needkb (+ #totalkb (if (= #vol #amisslvol) #kb-amissl 0)))
-        (if (and (> #free 0) (< (/ #free 1024) #needkb))
-            (
-                (message
-                    (cat "\n\n\n" #dest " has " (/ #free 1024) " KB free;\n"
-                         "the parts you chose need about " #needkb " KB.\n\n"
-                         "Nothing has been copied. Proceed asks for\n"
-                         "another drawer, on a drive with room;\n"
-                         "Abort Install leaves everything as it was."))
-                (P_ASKDEST)
-            )
-            (set #roomok 1))
-    ))
-; what goes on SYS: whatever the drawer's volume is (C:, L:, LIBS:, DEVS:, fonts,
-; the S:User-Startup block)
-(set #sysfree (getdiskspace "SYS:"))
-(set #syskb (+ #kb-system #kb-rest (if (= #amisslvol "SYS:") #kb-amissl 0)))
-(if (and (> #sysfree 0) (< (/ #sysfree 1024) #syskb))
-    (abort "Nothing was installed. SYS: has " (/ #sysfree 1024) " KB free;\n"
-           "UP-Term puts about " #syskb " KB there.\n"
-           "Free room on SYS: and run Install again."))
-; AmiSSL on a volume of its own: neither the drawer's nor SYS:, so not counted above
-(set #volpath #dest)
-(P_VOLUME)
-(if (and #amisslins (<> #amisslvol #vol) (<> #amisslvol "SYS:"))
-    (
-        (set #amisslfree (getdiskspace #amissldisk))
-        (if (and (> #amisslfree 0) (< (/ #amisslfree 1024) #kb-amissl))
-            (abort "Nothing was installed. " #amissldisk " has " (/ #amisslfree 1024) " KB free;\n"
-                   "AmiSSL 5.27 needs about " #kb-amissl " KB there.\n"
-                   "Free room there or untick AmiSSL, then install again."))))
+        (run (cat "\"" (tackon #files "UPBigVol") "\" >NIL: ROOM \"" #dest "\" "
+                  (+ #kb-drawer #kb-coreutils #kb-userland #kb-manpages #kb-unifont #kb-emoji #kb-tools #kb-destrest)
+                  " SYS: " (+ #kb-system #kb-sysrest)
+                  (if #amisslins (cat " \"" #amissldisk "\" " #kb-amissl) ""))
+             (safe))
+        (set #room (getenv "UPTROOM"))
+        (if (or (= #room "") (= #room 0))
+            (set #roomok 1)
+            (if (= (getenv "UPTROOMAT") #dest)
+                (
+                    (message
+                        (cat "\n\n\n" #room "\n\n"
+                             "Nothing has been copied. Proceed asks for\n"
+                             "another drawer, on a drive with room;\n"
+                             "Abort Install leaves everything as it was."))
+                    (P_ASKDEST))
+                (abort "Nothing was installed. " #room "\n"
+                       "Free room there, or untick parts, then run Install again.")))))
+(run "Delete >NIL: ENV:UPTROOM ENV:UPTROOMAT QUIET")
 
 ;  ready: n = 9, lead 3
 (message

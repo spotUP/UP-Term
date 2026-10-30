@@ -413,15 +413,17 @@ class AmiSSLPart(unittest.TestCase):
         self.assertRegex(s, r'\(set #kb-amissl \(if #amisslins [1-9][0-9]+ 0\)\)')
         # Install-AmiSSL's own default: the AmiSSL: assign, else Work:, else SYS:
         self.assertIn('(getassign "AmiSSL")', s)
-        self.assertIn('(getdiskspace #amissldisk)', s)
-        self.assertLess(s.index('(getdiskspace #amissldisk)'), s.index('(P_AMISSL)\n'))
+        room = s.index('>NIL: ROOM')
+        self.assertIn('(if #amisslins (cat " \\"" #amissldisk "\\" " #kb-amissl) "")', s[room:room + 600])
+        self.assertLess(room, s.index('(P_AMISSL)\n'))
         self.assertNotIn('not counted in the room check', s)
 
     def test_amissl_on_the_drawers_volume_or_on_sys_is_added_to_that_volumes_need(self):
-        # Work: holds both the drawer and AmiSSL by default: two checks that pass alone could overfill it
+        # Work: holds both the drawer and AmiSSL by default: two checks that pass alone could overfill it.
+        # UPBigVol ROOM merges paths of one volume (SameLock, install/bigvol.c), so AmiSSL goes in as its own path.
         s = INSTALLER
-        self.assertIn('(set #needkb (+ #totalkb (if (= #vol #amisslvol) #kb-amissl 0)))', s)
-        self.assertIn('(+ #kb-system #kb-rest (if (= #amisslvol "SYS:") #kb-amissl 0))', s)
+        self.assertNotIn('#needkb', s)
+        self.assertNotIn('(getdiskspace', s[s.index('(set #roomok 0)'):s.index('ENV:UPTROOM ENV:UPTROOMAT')])
 
     def test_the_part_exists_and_starts_install_amissl_from_the_kit_drawer(self):
         self.assertIn('AmiSSL 5.27', self.PAGE)
@@ -1066,6 +1068,54 @@ class SoftFloatIxemul(unittest.TestCase):
         self.assertLess(ix.index('Set ixlib libs/ixemul.library.nofpu'), ix.index('Copy $ixlib LIBS:ixemul.library'))
         head = (ROOT / 'dist/common/addon-head.installer').read_text()
         self.assertIn('(set #name "NOFPU" #val #nofpu) (P_OPT)', head)
+
+
+class RoomCheckSplit(unittest.TestCase):
+    """INSTALLER-ROOM-SPLIT: the GUI Install checks room with the Shell install's own UPBigVol ROOM and splits the
+    parts between the drawer's disk and SYS: exactly as dist/install.dos does (tests/test_install_dos_room.py)."""
+    TEMPLATE = (ROOT / 'dist/Install.installer').read_text(encoding='latin-1')
+
+    def loop(self):
+        s = self.TEMPLATE
+        return s[s.index('(set #roomok 0)'):s.index('(run "Delete >NIL: ENV:UPTROOM ENV:UPTROOMAT QUIET")')]
+
+    def group_values(self, names):
+        # each #kb- name of a group back to the @KB...@ values its (set ...) line names
+        s = self.TEMPLATE
+        out = []
+        for n in names:
+            line = s[s.index('(set %s ' % n):]
+            line = line[:line.index('\n(set') if '\n(set' in line else len(line)]
+            out += re.findall(r'@(KB[A-Z0-9]+)@', line)
+        return out
+
+    def test_every_part_is_counted_once_on_the_disk_install_dos_counts_it_on(self):
+        call = self.loop()[self.loop().index('>NIL: ROOM'):self.loop().index('(safe)')]
+        dest = call[:call.index('" SYS: "')]
+        sys_ = call[call.index('" SYS: "'):call.index('#amissldisk')]
+        dest_kb = self.group_values(re.findall(r'#kb-[a-z]+', dest))
+        sys_kb = self.group_values(re.findall(r'#kb-[a-z]+', sys_))
+        sys.path.insert(0, str(ROOT / 'tests'))
+        import test_install_dos_room as dr
+        want_dest = sorted([dr.kb(p) for p in dr.DEST] + ['KBSSH', 'KBBEBBOGET'])
+        want_sys = sorted([dr.kb(p) for p in dr.SYS] + ['KBWASABI'])
+        self.assertEqual(sorted(dest_kb), want_dest)
+        self.assertEqual(sorted(sys_kb), want_sys)
+        self.assertIn('#kb-amissl', call)
+
+    def test_a_short_drawer_disk_asks_again_and_a_short_other_disk_ends_the_install(self):
+        loop = self.loop()
+        self.assertIn('(set #room (getenv "UPTROOM"))', loop)
+        ask = loop.index('(if (= (getenv "UPTROOMAT") #dest)')
+        self.assertLess(ask, loop.index('(P_ASKDEST)'))
+        self.assertLess(loop.index('(P_ASKDEST)'), loop.index('(abort "Nothing was installed. " #room'))
+        self.assertIn('Nothing has been copied.', loop)
+        # the refusal text is install/bigvol.h's bv_room_text, never built again here
+        self.assertNotIn('KB free', loop)
+
+    def test_the_helper_is_the_kits_upbigvol(self):
+        self.assertIn('(tackon #files "UPBigVol") "\\" >NIL: ROOM \\"" #dest', self.loop())
+        self.assertIn('SetVar((STRPTR)ROOMVAR, (STRPTR)text', (ROOT / 'install/bigvol.c').read_text())
 
 
 if __name__ == '__main__':

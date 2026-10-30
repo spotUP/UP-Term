@@ -50,13 +50,14 @@ class ABaseTooSmallForTheChoicesAsksForAnotherDrawer(unittest.TestCase):
         s = self.s
         self.assertIn('(procedure P_ASKDEST', s)
         loop = s[s.index('(while (not #roomok)'):]
-        loop = loop[:loop.index('; what goes on SYS:')]
-        self.assertIn('(getdiskspace (pathonly #dest))', loop)
-        self.assertIn('(P_ASKDEST)', loop)
-        self.assertIn('(message', loop)
-        self.assertNotIn('(abort', loop)        # nothing was copied: the user may choose, Abort Install is a button
-        self.assertIn('" KB free;', loop)       # how much there is ...
-        self.assertIn('#totalkb', loop)         # ... and how much is needed
+        loop = loop[:loop.index('(run "Delete >NIL: ENV:UPTROOM')]
+        # UPBigVol ROOM (install/bigvol.c) counts the drawer's disk; its text says what is free and what is needed
+        self.assertIn('>NIL: ROOM', loop)
+        self.assertIn('(set #room (getenv "UPTROOM"))', loop)
+        ask = loop[loop.index('(if (= (getenv "UPTROOMAT") #dest)'):loop.index('(P_ASKDEST)')]
+        self.assertIn('(message', ask)
+        self.assertNotIn('(abort', ask)         # nothing was copied: the user may choose, Abort Install is a button
+        self.assertIn('#room', ask)
 
     def test_the_check_comes_after_the_choices_and_before_any_copying(self):
         s = self.s
