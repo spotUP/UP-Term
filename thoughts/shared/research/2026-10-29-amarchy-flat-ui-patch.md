@@ -161,3 +161,15 @@ Findings with flat pens (theme A, active window):
 - Screen title bar: bottom row is a pen 1 line, top rows pen 2 (stock edge) over a 0 background; the bar is flat enough with pens.
 
 Not measured (unverified): pull-down menu (checkmark, submenu arrow, separator), theme B, inactive window rows (dumped, not analysed), Workbench drawer scrollers, 3.2 Prefs editor, DOpus Magellan II, 4-colour screen mode, and the whole set on `--os 31`. Raw dumps are in the session scratchpad, not committed.
+
+## 12. FLAT-M1 remaining elements (rig 5, 2026-10-30)
+
+Pixel dumps with flat pens `0 1 2 0 1 3 0 0 2 2 0 1` (Workbench screen via Palette prefs, or own screen via SA_Pens). Probe: tests/amiga/flatprobe.c (modes BASIC, MENU, SCROLL, SCAN, OWN FLAT depth) and tests/amiga/sysiprobe.c. Evidence files: scratchpad flat-m1r-*.txt.
+
+- sysiclass SYSIA_Which sweep 0..0x2C (3.2): objects are created for 0 (DEPTHIMAGE), 1, 2, 3, 5, 8, 10..17, 22, 0x1B (27, menu MX) and 0x2A (42), all with the same class pointer 0x1000d618, so the R3 hook covers them. The earlier "0 NOOBJ" was a probe bug (tags were not passed).
+- Menus (3.2, depth 8): the menu box edge is a 2 px pen-2 line on the left, pen-1 and pen-0 lines at the bottom, with no shine/shadow pair; checkmark, submenu arrow and the stippled separator are single-pen glyphs (pen 0 on pen 1). Nothing beveled remains.
+- Drawer-style scroller window (3.2 and own 4-colour screen): the prop knob is a 1 px pen-1 outline with a dither fill in a pen-0 container; no two-tone edges. Arrow gadgets lie below the dumped 120 rows, so their pixels are not measured (they are sysiclass images, covered by the R3 hook).
+- Prefs editor (SYS:Prefs/Input, 3.2): sliders, checkboxes, cycle gadgets and listview boxes show the same one-sided L shadow as the GadTools gadgets (pen-1 lines on top/left or bottom/right only). Same fix route as GadTools bevel boxes.
+- 4-colour screen (own screen, depth 2) and 8-colour (depth 3): BASIC, MENU, SCROLL dumps equal the depth-8 shapes; the flat pens map to pens 0..3 so no extra residue.
+- Theme B (same pen map, other colours): window pixel rows identical to theme A; only the screen-bar clock/text rows differ. Pen indices, not colours, decide the residue.
+- NOT measured: DOpus (no DOpus5: assign on this rig), everything on `--os 31` (rig start was cut off by the disk-space stop; the known `Palette ... USE` hang also blocks the Workbench-screen route there), arrow gadget pixels of the scroller, a real drawer window.

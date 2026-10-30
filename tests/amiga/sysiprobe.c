@@ -25,7 +25,7 @@ static Object *mk(const char *cls, struct DrawInfo *di, ULONG which)
     t[0].ti_Tag = SYSIA_DrawInfo; t[0].ti_Data = (ULONG)di;
     t[1].ti_Tag = SYSIA_Which; t[1].ti_Data = which;
     t[2].ti_Tag = TAG_DONE; t[2].ti_Data = 0;
-    return NewObjectA(NULL, (UBYTE *)cls, which ? t : t + 2);
+    return NewObjectA(NULL, (UBYTE *)cls, t);
 }
 
 static void hook_line(const char *tag, struct IClass *c)
@@ -82,7 +82,7 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && !strcmp(argv[1], "ALL")) {
         struct IClass *first = NULL;
-        for (w = 0; w <= 24; w++) {
+        for (w = 0; w <= 0x2C; w++) {
             o = mk("sysiclass", di, w);
             if (o) {
                 if (!first)
