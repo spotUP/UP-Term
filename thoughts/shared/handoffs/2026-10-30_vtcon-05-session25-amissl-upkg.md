@@ -71,3 +71,19 @@ Gotchas:
 - Local main may still hold d44a14df, 8b1e662a and 93ddfac7; origin has them as a40249ad, ad6bdfd3 and 6d95e04f. Rebase main onto origin/main before new work (the patches drop out).
 - build/up-term.lha (33 MB) is the hand-built kit from `mkkit.py base`.
 - Disk: 16 GiB free on /, under the 20 GiB line. Clean before big builds.
+
+## Session 29 update (2026-10-30)
+
+Done, on origin/main:
+- 2766de0d INSTALLER-ROOM-SPLIT (b) closed: space-sys PASS 10/10 on rig 3 (refusal on SYS: while the drawer is on DH1:). The first s29 run installed instead of refusing because run_case filled SYS: before run_base_case's cleanup (prepare + Uninstall) freed about 8.8 MB of a stopped run's leftovers; fill_sys now runs after the cleanup. The s28 stall was host load only. Also: check_room_text collapses OCR dash runs ("UP<em dash>-Term"); space PASS 12/12. Tests: test_installer_rig_fill_order, test_installer_drive_loop RoomText (both fail with their fix reverted).
+- Ledger row INSTALLER-ROOM-SPLIT ticked.
+
+Open, in order:
+1. RIG10-DISTKIT-MIXED stays open (see its row).
+2. PORTS-BUILD-GONE and TEST-IPK-PORTS-BRANCH: owned by the upterm-ports session.
+3. ADDON-UNINSTALL-TRAILING-BLANK (AddonCases x3 + InstallerCases add_on fail at HEAD).
+
+Gotchas:
+- Rig 3 stopped at session end.
+- Untracked files `-` and `scratchpad_info` in the repo root are not this session's; left alone.
+- Disk: 15 GiB free on /, under the 20 GiB line.
