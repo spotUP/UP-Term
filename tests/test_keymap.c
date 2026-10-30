@@ -152,6 +152,7 @@ static void a_super_alt_row_is_refused_and_super_ctrl_loads(void)
  * is under the pointer (it left a close gadget selected and blocked AmTile's ChangeWindowBox).
  * Parse the shipped file; no binding may combine Super with either Alt. */
 static long slurp(const char *path, char *buf, long cap);
+static void typing_reboot_at_root_finds_system_reboot_with_the_shipped_keymap(void);
 
 static void the_shipped_keymap_has_no_super_alt_chord(void)
 {
@@ -3332,6 +3333,7 @@ void suite_keymap(void)
     ua_count_released_before_own_window_closes();
     typing_th_leaves_theme_first();
     typing_at_root_finds_deep_leaf_with_path();
+    typing_reboot_at_root_finds_system_reboot_with_the_shipped_keymap();
     menu_levels_follow_the_ids_and_escape_goes_up();
     terminal_rows_show_only_over_a_terminal();
     menu_size_follows_the_filtered_rows();
@@ -3786,6 +3788,41 @@ static void every_cache_row_reaches_the_apps_level_past_256(void)
     free(it);
     ix_free(&x);
     CHECK_INT(x.n, 0);
+}
+
+/* MENU-SEARCH-DEEP (owner A1200 2026-10-30): with the shipped keymap and an app index, typing "reboot" at the
+ * root of amarchy-gui showed an empty list. The level buffer (ix_level_cap) had no room for the deep rows,
+ * so leaves late in [menu] were cut off. The GUI's own buffer size and level call, here. */
+static void typing_reboot_at_root_finds_system_reboot_with_the_shipped_keymap(void)
+{
+    static ix_index x;
+    static char file[32768], text[60 * 40];
+    mn_item *it;
+    int *idx, i, n, c, len = 0;
+    long fn = slurp("dist/keymap", file, sizeof(file));
+    CHECK(fn > 0 && parse(file));
+    for (i = 0; i < 60; i++)
+        len += snprintf(text + len, sizeof text - len, "app\tApp%03d\tWork:App%03d\n", i, i);
+    ix_load_text(&km, &x, text);
+    it = malloc(ix_level_cap(&x) * sizeof *it);
+    idx = malloc(ix_level_cap(&x) * sizeof *idx);
+    n = ix_level_t(&km, &x, "", "reboot", it, ix_level_cap(&x), mn_cond(0, 0, 0));
+    c = mn_filter(it, n, "reboot", idx, ix_level_cap(&x));
+    CHECK(c >= 1);
+    CHECK(c >= 1 && !strcmp(it[idx[0]].label, "System/Reboot"));
+    CHECK(c >= 1 && !strcmp(km.menu[it[idx[0]].row].id, "system.reboot"));   /* Enter runs this row */
+    for (i = 0; i < km.nmenu; i++)                  /* every shown leaf of [menu] is reachable from the root search */
+        if (strchr(km.menu[i].id, '.') && km.menu[i].kind != KA_SETTINGS && !mn_row_needs(km.menu[i].kind, km.menu[i].id)) {
+            int j, hit = 0;
+            for (j = 0; j < n; j++)
+                hit |= it[j].row == i;
+            if (!hit)
+                printf("  not reachable: %s\n", km.menu[i].id);
+            CHECK(hit);
+        }
+    free(idx);
+    free(it);
+    ix_free(&x);
 }
 
 /* GROUP-DRAWER-ICON: every item of the levels amarchy-gui draws resolves to an id with a glyph; the kind

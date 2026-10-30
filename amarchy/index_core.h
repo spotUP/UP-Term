@@ -146,7 +146,7 @@ int ix_lister_row(unsigned long handle, const char *path_answer, ix_row *out);
 /* The handle of a "lister:<handle>" row path, or -1 for any other path. */
 long ix_lister_of(const char *path);
 
-/* The most items one level can hold with x loaded: the [menu] rows, every index row, and the Apps and
+/* The most items one level can hold with x loaded: the [menu] rows, every index row, every [menu] leaf a root query adds, and the Apps and
  * Games groups the root may get. The size of the item and filter arrays given to ix_level. */
 int ix_level_cap(const ix_index *x);
 

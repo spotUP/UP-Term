@@ -422,7 +422,9 @@ long ix_lister_of(const char *path)
 
 int ix_level_cap(const ix_index *x)
 {
-    return MN_MAX_ITEMS + (x ? x->n + x->pk.n : 0) + 4;   /* + the package rows of a Packages view, a note and a footer */
+    /* + the package rows of a Packages view, a note and a footer, and room for every [menu] leaf a query at the
+     * root adds after the index rows (mn_deep_rows, MENU-SEARCH-DEEP: without it leaves late in [menu] were cut) */
+    return MN_MAX_ITEMS + KM_MAX_MENU + (x ? x->n + x->pk.n : 0) + 4;
 }
 
 static char extra_music[128], extra_demo[128], extra_hidden[128];
