@@ -1,17 +1,27 @@
-/* amarchy-flat: the resident flat-UI program (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0, OD-F8).
+/* amarchy-flat: the resident flat-UI program (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C0 / C1, OD-F8).
  *
  *   amarchy-flat            start: make the public state block "Amarchy.Flat", print its STATUS, wait for Ctrl-C
  *   amarchy-flat STATUS     print the STATUS line of the running program and return (flat=on|off|absent|held)
  *
- * C0 is the skeleton: the state block and the semaphore only. No class hook is installed yet (FLAT-C1), so nothing
- * is ever chained and Ctrl-C always unloads. The block layout and the STATUS text are flat_core.c (host-tested).
+ * C1 swaps the h_SubEntry of sysiclass's dispatcher Hook (never h_Entry: one routine serves five classes) for a
+ * pass-through trampoline that counts the call and tail-jumps to the saved routine, so every register and the
+ * stack arrive unchanged (3.2 takes a0 / a2 / a1, 3.1 the C stack: one code path for both). No glyph is drawn yet
+ * (C2). Ctrl-C removes the swap only if the slot is still ours; otherwise it reports still_chained and stays
+ * inert. The swap model and the STATUS text are flat_core.c (host-tested).
  * Return code: 0 done, 5 another copy is running, 10 no memory. */
 #include <string.h>
 #include <exec/memory.h>
 #include <exec/semaphores.h>
+#include <intuition/intuition.h>
+#include <intuition/classes.h>
+#include <intuition/classusr.h>
+#include <intuition/imageclass.h>
+#include <intuition/screens.h>
+#include <utility/hooks.h>
 #include <dos/dos.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
+#include <proto/intuition.h>
 #include "../tty/qmark.h"
 #include "flat_core.h"
 #include "taskalive.h"
@@ -29,7 +39,12 @@ typedef struct flatshared {
     struct Task *task;          /* the resident program; only compared, never dereferenced alone */
     char tname[32];
     flat_state st;
+    flat_swap sw;
+    uintptr_t *slot;            /* &sysiclass->cl_Dispatcher.h_SubEntry while installed */
+    UWORD *tramp;               /* the 24-byte pass-through, MEMF_PUBLIC */
 } flatshared;
+
+struct IntuitionBase *IntuitionBase;
 
 static flatshared *find_record(void)
 {
@@ -75,6 +90,77 @@ static int is_help(const char *a)
     while (*a == ' ' || *a == '\t')
         a++;
     return qmark_line(a) || (a[0] == '-' && ((a[1] == 'h' && (a[2] == 0 || a[2] == ' ' || a[2] == '\n')) || (a[1] == '-' && a[2] == 'h')));
+}
+
+/* The slot to swap: h_SubEntry of the class that every system image (SYSIA_Which 0..0x2C) shares. The class is found
+ * through a throw-away sysiclass object. 0 when it cannot be made. */
+static uintptr_t *sysiclass_slot(void)
+{
+    struct TagItem t[3];
+    struct Screen *scr = LockPubScreen(NULL);
+    struct DrawInfo *di = scr ? GetScreenDrawInfo(scr) : NULL;
+    uintptr_t *slot = 0;
+    if (di) {
+        Object *o;
+        t[0].ti_Tag = SYSIA_DrawInfo; t[0].ti_Data = (ULONG)di;
+        t[1].ti_Tag = SYSIA_Which;    t[1].ti_Data = CLOSEIMAGE;
+        t[2].ti_Tag = TAG_DONE;       t[2].ti_Data = 0;
+        o = NewObjectA(NULL, (UBYTE *)"sysiclass", t);
+        if (o) {
+            struct IClass *cl = OCLASS(o);
+            slot = (uintptr_t *)&cl->cl_Dispatcher.h_SubEntry;     /* the class outlives the object: it is a public class */
+            DisposeObject(o);
+        }
+    }
+    if (di)
+        FreeScreenDrawInfo(scr, di);
+    if (scr)
+        UnlockPubScreen(NULL, scr);
+    return slot;
+}
+
+/* Install the pass-through under Forbid. Returns FLAT_OK or a negative flat_swap code / -100 (no class) / -101 (memory). */
+static int hook_install(flatshared *r)
+{
+    uintptr_t *slot = sysiclass_slot();
+    int rc;
+    if (!slot)
+        return -100;
+    r->tramp = (UWORD *)AllocVec(FLAT_TRAMP_SIZE, MEMF_PUBLIC | MEMF_CLEAR);
+    if (!r->tramp)
+        return -101;
+    Forbid();
+    /* the saved routine is read inside the same Forbid that writes the slot, so no change falls between the two */
+    flat_tramp_build((unsigned char *)r->tramp, (ULONG)&r->st.calls, (ULONG)*slot);
+    CacheClearU();
+    rc = flat_swap_install(&r->sw, slot, (uintptr_t)r->tramp);
+    Permit();
+    if (rc != FLAT_OK) {
+        FreeVec(r->tramp);
+        r->tramp = 0;
+        return rc;
+    }
+    r->slot = slot;
+    return FLAT_OK;
+}
+
+/* Remove the swap if the slot is still ours (Forbid). The trampoline is freed only after a clean remove: while a
+ * foreign hook is chained on top of it, its code is still reachable and must stay. */
+static int hook_remove(flatshared *r)
+{
+    int rc = FLAT_NOT_INSTALLED;
+    if (!r->sw.installed)
+        return rc;
+    Forbid();
+    rc = flat_swap_remove(&r->sw, r->slot, &r->st);
+    Permit();
+    if (rc == FLAT_REMOVED) {
+        Delay(2);                       /* a caller that already entered the trampoline finishes its tail jump */
+        FreeVec(r->tramp);
+        r->tramp = 0;
+        r->slot = 0;
+    }
+    return rc;
 }
 
 /* Take the record out of the list and free it; 0 when someone holds it (never pull it from under a user). */
@@ -143,12 +229,22 @@ int main(void)
         PutStr((STRPTR)"amarchy-flat: out of memory\n");
         return 10;
     }
+    IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
+    if (IntuitionBase) {
+        int rc = hook_install(r);
+        if (rc != FLAT_OK)
+            PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
+    }
     print_status();
     for (;;) {
         Wait(SIGBREAKF_CTRL_C);
-        if (!flat_can_exit(&r->st)) {
+        if (r->sw.installed && hook_remove(r) == FLAT_STILL_CHAINED) {
             PutStr((STRPTR)"amarchy-flat: a hook is still chained on top of ours, not unloading\n");
             continue;
+        }
+        if (IntuitionBase) {
+            CloseLibrary((struct Library *)IntuitionBase);
+            IntuitionBase = 0;
         }
         if (drop_record(r))
             return 0;

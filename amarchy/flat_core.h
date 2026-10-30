@@ -56,4 +56,45 @@ int flat_status_line(const void *p, size_t avail, int found, char *out, size_t c
 /* Can the program unload on Ctrl-C? 1 when nothing is chained on top of it. */
 int flat_can_exit(const flat_state *s);
 
+/* ---- FLAT-C1: the sysiclass hook swap, as a pure model -------------------------------------------------------
+ * The OS part (flat.c) swaps the h_SubEntry slot of sysiclass's cl_Dispatcher (never h_Entry: one routine serves
+ * five classes, research section 10). The model sees only the slot's value (an address as uintptr_t), so a fake
+ * Hook in a test drives the same code the program runs. */
+typedef struct flat_swap {
+    uintptr_t saved;            /* the h_SubEntry we found and must hand back */
+    uintptr_t ours;             /* the trampoline we put there */
+    int installed;
+    int inert;                  /* 1 after a refused remove: the program does nothing more to the hook */
+} flat_swap;
+
+/* flat_swap_remove results */
+enum { FLAT_REMOVED = 0, FLAT_STILL_CHAINED = 1, FLAT_NOT_INSTALLED = -1 };
+/* flat_swap_install results besides FLAT_OK */
+enum { FLAT_ERR_DOUBLE = -3, FLAT_ERR_ARG = -4 };
+
+void flat_swap_init(flat_swap *w);
+
+/* Save *slot and put ours there. A second install (while installed, or a slot that already holds ours, or ours == 0
+ * or ours == the saved value) is refused and changes nothing. The caller holds Forbid() around it. */
+int flat_swap_install(flat_swap *w, uintptr_t *slot, uintptr_t ours);
+
+/* Put the saved value back ONLY when *slot is still ours. Anything else on top (a foreign patcher chained on our
+ * trampoline) is FLAT_STILL_CHAINED: *slot is left untouched (our saved value is never written over a foreign one),
+ * st->still_chained = 1 and the swap goes inert. FLAT_REMOVED clears still_chained. st may be NULL. */
+int flat_swap_remove(flat_swap *w, uintptr_t *slot, flat_state *st);
+
+/* The trampoline: 24 bytes of 68000 code + two longs, position independent.
+ *   move.l a0,-(sp) / movea.l cnt(pc),a0 / addq.l #1,(a0) / movea.l (sp)+,a0 / move.l saved(pc),-(sp) / rts
+ * It bumps the call counter and tail-jumps to the saved routine with every register and the whole stack as the
+ * caller left them (a0..a2 and a6 on 3.2, C stack arguments on 3.1: the same code serves both conventions, so a
+ * pass-through needs no per-OS case). Big-endian bytes, as the Amiga reads them. out must hold FLAT_TRAMP_SIZE. */
+#define FLAT_TRAMP_SIZE 24
+void flat_tramp_build(unsigned char *out, uint32_t counter_addr, uint32_t saved_addr);
+
+/* The calling convention of the saved routine by intuition.library version: 3.1 (40) passes hook / object / message
+ * on the C stack, 3.2 (47) in a0 / a2 / a1. FLAT_CONV_STACK below 44, else FLAT_CONV_REG. C2's glyph code picks its
+ * entry by this; the C1 trampoline is valid for both. */
+enum { FLAT_CONV_STACK = 0, FLAT_CONV_REG = 1 };
+int flat_conv(unsigned intuition_version);
+
 #endif

@@ -97,10 +97,81 @@ static void test_exit(void)
     CHECK_INT(flat_can_exit(&s), 0);                                     /* never unload while a foreign hook sits on top */
 }
 
+
+/* FLAT-C1: the hook swap over a fake IClass dispatcher Hook (entry / sub entry / data, as struct Hook lays them out). */
+typedef struct { uintptr_t entry, sub, data; } fake_hook;
+
+static void test_swap(void)
+{
+    fake_hook hk = {0x1118, 0x2F02, 0xBDC4}, snap;
+    flat_swap w;
+    flat_state st;
+    uintptr_t foreign_saved;
+    flat_init(&st);
+    flat_swap_init(&w);
+    snap = hk;
+    /* install: sub entry swapped, entry and data untouched */
+    CHECK_INT(flat_swap_install(&w, &hk.sub, 0x9000), FLAT_OK);
+    CHECK_INT(hk.sub, 0x9000);
+    CHECK_INT(hk.entry, 0x1118);
+    CHECK_INT(hk.data, 0xBDC4);
+    CHECK_INT(w.saved, 0x2F02);
+    /* double install refused, nothing changes (saved stays the ROM routine, not our own trampoline) */
+    CHECK_INT(flat_swap_install(&w, &hk.sub, 0x9100), FLAT_ERR_DOUBLE);
+    CHECK_INT(hk.sub, 0x9000);
+    CHECK_INT(w.saved, 0x2F02);
+    /* clean remove: byte-equal restore */
+    CHECK_INT(flat_swap_remove(&w, &hk.sub, &st), FLAT_REMOVED);
+    CHECK_INT(memcmp(&hk, &snap, sizeof hk), 0);
+    CHECK_INT(st.still_chained, 0);
+    CHECK_INT(flat_swap_remove(&w, &hk.sub, &st), FLAT_NOT_INSTALLED);
+    CHECK_INT(flat_swap_install(&w, &hk.sub, 0), FLAT_ERR_ARG);
+    CHECK_INT(flat_swap_install(&w, &hk.sub, 0x2F02), FLAT_ERR_DOUBLE);  /* a slot that already holds ours */
+    /* a foreign patcher chains on top: still_chained, inert, its hook is never overwritten */
+    CHECK_INT(flat_swap_install(&w, &hk.sub, 0x9000), FLAT_OK);
+    foreign_saved = hk.sub;
+    hk.sub = 0xA000;
+    CHECK_INT(flat_swap_remove(&w, &hk.sub, &st), FLAT_STILL_CHAINED);
+    CHECK_INT(hk.sub, 0xA000);
+    CHECK_INT(foreign_saved, 0x9000);
+    CHECK_INT(st.still_chained, 1);
+    CHECK_INT(w.inert, 1);
+    CHECK_INT(flat_can_exit(&st), 0);
+    CHECK_INT(flat_swap_install(&w, &hk.sub, 0x9200), FLAT_ERR_DOUBLE);  /* still installed: no second swap either */
+    CHECK_INT(hk.sub, 0xA000);
+    /* the foreign patcher removes itself: the next remove is clean again */
+    hk.sub = foreign_saved;
+    CHECK_INT(flat_swap_remove(&w, &hk.sub, &st), FLAT_REMOVED);
+    CHECK_INT(memcmp(&hk, &snap, sizeof hk), 0);
+    CHECK_INT(st.still_chained, 0);
+    CHECK_INT(flat_can_exit(&st), 1);
+    CHECK_INT(flat_swap_remove(&w, &hk.sub, 0), FLAT_NOT_INSTALLED);     /* st may be NULL */
+}
+
+static void test_tramp(void)
+{
+    unsigned char c[FLAT_TRAMP_SIZE];
+    flat_tramp_build(c, 0x01020304u, 0xAABBCCDDu);
+    CHECK_INT(c[0] << 8 | c[1], 0x2F08);        /* move.l a0,-(sp) */
+    CHECK_INT(c[2] << 8 | c[3], 0x207A);        /* movea.l d16(pc),a0 */
+    CHECK_INT(c[4] << 8 | c[5], 12);            /* ext word at 4 + 12 = 16: the counter address */
+    CHECK_INT(c[6] << 8 | c[7], 0x5290);        /* addq.l #1,(a0) */
+    CHECK_INT(c[8] << 8 | c[9], 0x205F);        /* movea.l (sp)+,a0 */
+    CHECK_INT(c[10] << 8 | c[11], 0x2F3A);      /* move.l d16(pc),-(sp) */
+    CHECK_INT(c[12] << 8 | c[13], 8);           /* ext word at 12 + 8 = 20: the saved routine */
+    CHECK_INT(c[14] << 8 | c[15], 0x4E75);      /* rts: tail jump, registers and stack as the caller left them */
+    CHECK_INT(c[16] == 1 && c[17] == 2 && c[18] == 3 && c[19] == 4, 1);
+    CHECK_INT(c[20] == 0xAA && c[21] == 0xBB && c[22] == 0xCC && c[23] == 0xDD, 1);
+    CHECK_INT(flat_conv(40), FLAT_CONV_STACK);  /* 3.1: hook / object / message on the C stack */
+    CHECK_INT(flat_conv(47), FLAT_CONV_REG);    /* 3.2: a0 / a2 / a1 */
+}
+
 void suite_flat_core(void)
 {
     test_layout();
     test_init_check();
     test_status();
     test_exit();
+    test_swap();
+    test_tramp();
 }
