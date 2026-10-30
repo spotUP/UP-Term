@@ -6,6 +6,8 @@ PASS = within 8 s the tab runs `Echo prompt-is-back` typed after the kill, and t
 Case 2 (VSH-KILL-CHILD-LEAK): a script (RAM:ks.script, `Wait 60`) runs in a Shell process SystemTags makes
 (ps "Background CLI", SystemTags ignores NP_Name; found by NP_ExitData = the job); only that child is removed.
 PASS = the prompt is back and the runner "vsh job" is gone too (it stayed blocked in SystemTags before).
+Case 3 (VSH-RUNNER-REMTASK-STREAMS): the same script with >RAM:kl.txt; PASS = Delete RAM:kl.txt works after
+the child is removed (the removed runner never closed the file; it stayed locked: List says "object is in use", Delete "No file to delete").
 Exit status 1 on FAIL."""
 import os, subprocess, sys, time
 RIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -74,6 +76,21 @@ ps = wasabi('ps')
 left = [l for l in ps.splitlines() if 'vsh job' in l or l in kids]
 print('ps after: %r' % left)
 check(not left, 'the runner "vsh job" and the child are gone (no leaked task)', ps[-300:])
+# case 3 (VSH-RUNNER-REMTASK-STREAMS): the job's output is a file vsh opened; with its child removed the
+# shell removes the runner, which never reached its close: the shell closes the file itself
+ps0 = wasabi('ps')
+c.run('Delete >NIL: RAM:kl.txt QUIET')
+typewin.typ('RAM:ks.script >RAM:kl.txt')
+typewin.key(typewin.RET, wait=4)
+ps = wasabi('ps')
+kids = [l for l in ps.splitlines() if 'Background CLI' in l and l not in ps0.splitlines()]
+print('ps new child lines (redirected): %r' % kids)
+check(len(kids) == 1, 'the redirected script runs as one new "Background CLI" child', ps[-300:])
+if kids:
+    print('kill child: %r' % wasabi('kill', '--force', kids[0].split()[0]).strip())
+time.sleep(5)
+rc, out = c.run('Delete RAM:kl.txt')
+check(rc == 0, 'the redirected file is closed after the child was removed (Delete works; a locked file says "No file to delete")', out)
 c.run('Delete >NIL: RAM:ks.script QUIET')
 typewin.typ('exit')
 typewin.key(typewin.RET, wait=2)

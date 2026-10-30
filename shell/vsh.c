@@ -620,6 +620,25 @@ static void orphan_end(void)
     Permit();
 }
 
+/* Close the streams job j owns, once: each flag is cleared before its close, so a runner removed from
+ * outside part way through leaves the rest to the shell (os_wait) and nothing is closed twice. */
+static void job_close_streams(job *j)
+{
+    if (j->close_in) {
+        j->close_in = 0;
+        close_stream(j->in);
+    }
+    if (j->close_out) {
+        j->close_out = 0;
+        close_stream(j->out);
+    }
+    if (j->close_err) {
+        j->close_err = 0;
+        if (j->err != j->out)
+            close_stream(j->err);
+    }
+}
+
 static void runner(void)
 {
     struct Process *me = (struct Process *)FindTask(0);
@@ -709,12 +728,7 @@ static void runner(void)
         j->rc &= 255;
     j->ioerr = IoErr(); /* the runner's own, read before any call below sets it */
     input_restore(j->in, mark);
-    if (j->close_in)
-        close_stream(j->in);
-    if (j->close_out)
-        close_stream(j->out);
-    if (j->close_err && j->err != j->out)
-        close_stream(j->err);
+    job_close_streams(j);
     TR("runner end", j, j->rc);
     Forbid(); /* the reply and our end, before the shell can free anything */
     j->done = 1;
@@ -1258,12 +1272,7 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
                             NP_ExitData, (ULONG)j, NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
         : 0;
     if (!p) {
-        if (j->close_in)
-            close_stream(j->in);
-        if (j->close_out)
-            close_stream(j->out);
-        if (j->close_err && j->err != j->out)
-            close_stream(j->err);
+        job_close_streams(j);
         if (seg)
             UnLoadSeg(seg);
         if (home)
@@ -1407,6 +1416,9 @@ static long os_wait(void *os, long id)
             j->rc = 20;
             j->ioerr = 0;
             Permit();
+            /* the streams the runner would have closed at its end are the shell's now: left open, a
+             * redirected file stayed locked ("object in use") and a pipe's reader never saw its end */
+            job_close_streams(j);
             break;
         }
         Permit();
