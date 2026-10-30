@@ -143,6 +143,55 @@ void desk_pens_flat(unsigned char pens[DK_SLOTS])
     pens[DK_SHINE] = DK_BG;
 }
 
+int desk_dopus_pens(const gtheme *t, char lines[DK_DOPUS_KEYS][DK_DOPUS_LINE])
+{
+    static const char *const key[DK_DOPUS_KEYS] = { "icons", "files", "dirs", "selfiles", "seldirs", "devices", "assigns",
+                                                    "source", "dest", "gauge", "user" };
+    int weak = desk_contrast(desk_role(t, DK_ACCENT), desk_role(t, DK_BG)) < 300;
+    int accent = weak ? DK_FG : DK_ACCENT;
+    int selfg = weak ? DK_FG : DK_BG, selbg = weak ? DK_DARKER : DK_ACCENT;
+    int fg[DK_DOPUS_KEYS], bg[DK_DOPUS_KEYS], i;
+    fg[0] = fg[1] = fg[5] = fg[6] = DK_FG;
+    bg[0] = bg[1] = bg[5] = bg[6] = DK_BG;
+    fg[2] = fg[9] = accent;
+    bg[2] = bg[9] = DK_BG;
+    fg[3] = fg[4] = fg[7] = selfg;
+    bg[3] = bg[4] = bg[7] = selbg;
+    fg[8] = DK_FG;
+    bg[8] = DK_DARKER;
+    fg[10] = bg[10] = 0;
+    for (i = 0; i < DK_DOPUS_KEYS; i++) {
+        char *o = lines[i];
+        const char *k;
+        for (k = "dopus set pens "; *k; k++)
+            *o++ = *k;
+        for (k = key[i]; *k; k++)
+            *o++ = *k;
+        if (i == 10) {
+            *o++ = ' ';
+            *o++ = '0';
+        } else {
+            *o++ = ' ';
+            *o++ = (char)('0' + fg[i]);
+            *o++ = ' ';
+            *o++ = (char)('0' + bg[i]);
+            if (i == 0) { /* icons: lister and window pens, each with a style of 0 */
+                *o++ = ' ';
+                *o++ = '0';
+                *o++ = ' ';
+                *o++ = (char)('0' + fg[i]);
+                *o++ = ' ';
+                *o++ = (char)('0' + bg[i]);
+                *o++ = ' ';
+                *o++ = '0';
+            }
+        }
+        *o++ = '\n';
+        *o = 0;
+    }
+    return DK_DOPUS_KEYS;
+}
+
 int desk_pens_reset(const unsigned short *cur, int ncur)
 {
     unsigned char want[DK_SLOTS];
