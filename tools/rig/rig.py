@@ -8,6 +8,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   with 1 GB Zorro III RAM (what --max was); --a1200: the stock 68020 at real speed
                   (timing runs only; --stock, --exact and --fast also keep the 020);
                   --060: a 68060 + FPU at the host's speed, 128 MB Z3 (W41);
+                  --sound: Paula at volume 100; without it the rig is silent (a rig-mute flag file wins);
                   --nofpu: the same machine without an FPU: the default 060 becomes a 68LC060, --a1200 a
                   68020 with no fpu key (what the soft-float ixemul.library is for; --mmu is ignored);
                   --a500: a 68000 A500 at 7 MHz, cycle-exact, 8 MB Zorro II fast (68000 speed, W7);
@@ -491,9 +492,15 @@ OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
 RIG_MUTE_FLAG = pathlib.Path.home() / ".config" / "upterm" / "rig-mute"
 
 
+# Rigs start silent (owner 2026-10-30: a rig played a song into a meeting,
+# twice). start --sound gives Paula volume 100; the rig-mute flag file still
+# wins over --sound, so the owner can silence every session's rigs at once.
+SOUND = "--sound" in sys.argv
+
+
 def rig_volume():
-    """Paula volume for a new rig: 0 while the rig-mute flag file exists, else 100."""
-    return 0 if RIG_MUTE_FLAG.exists() else 100
+    """Paula volume for a new rig: 100 only with --sound and no rig-mute flag file, else 0."""
+    return 100 if SOUND and not RIG_MUTE_FLAG.exists() else 0
 
 
 def unpack_volume(image, dst):
