@@ -53,3 +53,21 @@ Gotchas:
 - test_dist_ipk fails while ../upterm-ports sits on branch port/htop (no recipe has _SUMMARY there). Ledger TEST-IPK-PORTS-BRANCH.
 - test_doc_setenv_save (dist/README.txt:890, from fc56d6b7) and test_stage_rig (super+help rows) fail without the session 27 changes. Ledger TEST-FAILS-NOT-MINE.
 - Disk: about 5.7 GiB free on /. Check `df -h /` before any build or rig run.
+
+## Session 28 update (2026-10-30)
+
+Done, on origin/main:
+- a40249ad TEST-FAILS-NOT-MINE: dist/README.txt shows the OS 3.1 SetEnv form; amarchy_clash_rig knows the Help key.
+- ad6bdfd3 RIG-START-RACE: two `rig.py start` begun together launched two FS-UAE on one sys.hdf (disk checksum error on rig 3). start() now holds <rig dir>/start.lock for the whole boot. Test tests/test_rig_start_race.py.
+- 6d95e04f INSTALLER-ROOM-SPLIT (a): installer_rig case `space` reads the GUI room page and asserts both UPTROOM lines and the KB numbers (rig 3 PASS 12/12). The earlier "smear" was the drawer page redrawing after Make New Drawer; the drive loop now counts DrawerAsks.
+- DCTelnet MA0 handed to the DCTelnet session (dctelnet-17); its commits wait for the owner to push. upterm bc99e23 + 6914a94 (bootstrap is_checkout, repos.lock pin; the pin must be redone after the DCTelnet rebase).
+
+Open, in order:
+1. INSTALLER-ROOM-SPLIT (b): case `space-sys` (refusal on a disk that is not the drawer disk) is added but not green. The second run stalled at the Network tools page under host load 195. Rerun once load is low: `UPTERM_RIG=3 python3 tools/rig/installer_rig.py --only space-sys`. If it stalls again with a quiet host, look at the 60 s stall limit.
+2. PORTS-BUILD-GONE and TEST-IPK-PORTS-BRANCH: owned by the upterm-ports session (owner 2026-10-30). Keep refreshing the kit by hand.
+3. RIG10-DISTKIT-MIXED stays open.
+
+Gotchas:
+- Local main may still hold d44a14df, 8b1e662a and 93ddfac7; origin has them as a40249ad, ad6bdfd3 and 6d95e04f. Rebase main onto origin/main before new work (the patches drop out).
+- build/up-term.lha (33 MB) is the hand-built kit from `mkkit.py base`.
+- Disk: 16 GiB free on /, under the 20 GiB line. Clean before big builds.
