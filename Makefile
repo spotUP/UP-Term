@@ -1162,6 +1162,11 @@ $(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/sysiprobe.c
 
+# Windows with sysiclass gadgets opened in a loop, and a hash of their frame pixels (FLAT-C1 rig, tools/rig/amarchy_flat_rig.py)
+$(BUILD)/amiga/flatwin: tests/amiga/flatwin.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/flatwin.c
+
 # A public or a private screen to hold in front, and the font numbers of a public screen (amarchy_gui_rig, G7)
 $(BUILD)/amiga/scrprobe: tests/amiga/scrprobe.c amarchy/menu_font.c amarchy/menu_font.h render/fontpair.c render/fontpair.h
 	@mkdir -p $(BUILD)/amiga
