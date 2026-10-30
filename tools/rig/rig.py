@@ -773,6 +773,26 @@ def remove_opus5(image):
     subprocess.run([xdf, str(image), "delete", "Opus5", "all"], check=True, capture_output=True)
     subprocess.run([xdf, str(image), "delete", "Opus5.info"], check=True, capture_output=True)
 
+RIG_NO_BOARD_MONITORS = ("REPLAY",)   # the master image's DEVS:Monitors drivers for boards FS-UAE does not have
+
+def rig_monitor_drops(names):
+    """The DEVS:Monitors entries (driver and its .info) the clone drops: those for a board the rig has not got."""
+    return [n for n in names if n.split(".")[0] in RIG_NO_BOARD_MONITORS]
+
+def sys_hdf_monitors(image):
+    """RIG-IPREFS-SYSREQ: the master image is the A1200's and its DEVS:Monitors carries REPLAY, the P96 driver of
+    the FPGA Replay board. FS-UAE has no Replay board, so when S:Startup-Sequence runs the monitors REPLAY prints
+    "Picasso96: Could not create graphics board context for 'REPLAY'" to the boot console. That output opens the
+    initial CLI window ('AmigaDOS', 640x256) on the PAL Workbench screen before C:IPrefs; IPrefs then has a window
+    open when it resets the screen to the RTG mode in ENVARC:Sys/screenmode.prefs and raises "Intuition is attempting
+    to reset the Workbench screen", and DOpus' backdrop and the Amarchy bar keep Retry failing. The clone drops the
+    driver; the master is never touched."""
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    have = subprocess.run([xdf, str(image), "list", "Devs/Monitors"], capture_output=True, text=True).stdout
+    names = [l.split()[0] for l in have.splitlines() if l.split()]
+    for n in rig_monitor_drops(names):
+        subprocess.run([xdf, str(image), "delete", "Devs/Monitors/" + n], check=True, capture_output=True)
+
 def sys_hdf_no_dopus(image):
     """--no-dopus: a rig without Directory Opus (the not-running notice, plan D5). The master image replaces the
     Workbench with Directory Opus 5 in two files: Libs/workbench.library (45.130) and C/LoadWB, which starts DOpus
@@ -796,38 +816,6 @@ def dopus_archive_md5():
         if len(f) >= 2 and f[0] == DOPUS_ARCHIVE:
             return f[1]
     sys.exit("rig: %s is not in dist/addons/dopus/archives.txt" % DOPUS_ARCHIVE)
-
-def iprefs_gate_startup(text):
-    """RIG-IPREFS-SYSREQ: S:Startup-Sequence text with C:IPrefsWait after every C:IPrefs line. IPrefs applies ScreenMode
-    prefs in a task of its own and C:IPrefs returns at once; on a rig BOOTX:go starves it, and User-Startup (the
-    Amarchy bar) and the final C:LoadWB (the Workbench backdrop) opened windows before the reset, so Intuition asked
-    to close them and Retry never succeeded. IPrefsWait (Amarchy's DESK-31 idle test) returns once IPrefs sits idle.
-    No C:IPrefs line: refused, the boot would be ungated."""
-    lines, out, n = text.split("\n"), [], 0
-    for l in lines:
-        out.append(l)
-        if l.strip().lower() == "c:iprefs":
-            out.append(l[:len(l) - len(l.lstrip())] + "C:IPrefsWait")
-            n += 1
-    if not n:
-        raise ValueError("S:Startup-Sequence has no C:IPrefs line to gate")
-    return "\n".join(out)
-
-def sys_hdf_iprefs_wait(image):
-    """The clone's C:IPrefsWait (build/amiga/IPrefsWait) and its S:Startup-Sequence call after C:IPrefs."""
-    tool = ROOT / "build/amiga/IPrefsWait"
-    if not tool.exists():
-        sys.exit("rig: %s is not built (make build/amiga/IPrefsWait); the boot would race IPrefs (RIG-IPREFS-SYSREQ)" % tool)
-    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
-    ss = RIG / "startup-sequence.tmp"
-    ss.unlink(missing_ok=True)
-    subprocess.run([xdf, str(image), "read", "S/Startup-Sequence", str(ss)], check=True, capture_output=True)
-    ss.write_bytes(iprefs_gate_startup(ss.read_bytes().decode("latin-1")).encode("latin-1"))
-    subprocess.run([xdf, str(image), "delete", "S/Startup-Sequence"], check=True, capture_output=True)
-    subprocess.run([xdf, str(image), "write", str(ss), "S/Startup-Sequence"], check=True, capture_output=True)
-    ss.unlink()
-    subprocess.run([xdf, str(image), "delete", "C/IPrefsWait"], capture_output=True)
-    subprocess.run([xdf, str(image), "write", str(tool), "C/IPrefsWait"], check=True, capture_output=True)
 
 def sys_hdf_dopus(image):
     """The master image carries Directory Opus 5.82 as the Workbench (block ';BEGIN DirectoryOpus 5' assigning
@@ -1639,13 +1627,13 @@ def _start(retries):
     elif not OS and not OS32:
         fresh_sys_hdf()
         sys_hdf_screenmode(RIG / "sys.hdf")
+        sys_hdf_monitors(RIG / "sys.hdf")
         sys_hdf_no_wasabid(RIG / "sys.hdf")
         if "--no-dopus" in sys.argv:
             sys_hdf_no_dopus(RIG / "sys.hdf")
         else:
             sys_hdf_dopus(RIG / "sys.hdf")
         sys_hdf_kit(RIG / "sys.hdf")
-        sys_hdf_iprefs_wait(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
