@@ -20,6 +20,7 @@ void suite_brk(void);
 void suite_sh_pipe(void);
 void suite_sh_ixargv(void);
 void suite_sh_own(void);
+void suite_sh_jobgone(void);
 void suite_histfile(void);
 void suite_pens(void);
 void suite_proc(void);
@@ -112,6 +113,7 @@ static const h_suite suites[] = {
     { "sh_pipe", suite_sh_pipe },
     { "sh_ixargv", suite_sh_ixargv },
     { "sh_own", suite_sh_own },
+    { "sh_jobgone", suite_sh_jobgone },
     { "histfile", suite_histfile },
     { "pens", suite_pens },
     { "proc", suite_proc },

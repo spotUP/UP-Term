@@ -17,6 +17,7 @@
 #include <dos/var.h>
 #include <ctype.h>
 #include <proto/exec.h>
+#include <devices/timer.h>
 #include <proto/dos.h>
 #include <proto/icon.h>
 #include <proto/intuition.h>
@@ -28,6 +29,7 @@
 #include "sh_exec.h"
 #include "sh_pipe.h"
 #include "sh_ixargv.h"
+#include "sh_jobgone.h"
 #include "sh_own.h"
 #include "vsh_cmdline.h"
 #include "../handler/vtcon_packets.h"
@@ -95,6 +97,7 @@ typedef struct job {
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
     char child[24];         /* the name of the Shell process SystemTags makes */
+    int child_seen;         /* that process has been seen to exist (job_gone) */
     char *env;              /* exported variables: name\0value\0 ... \0 */
     char *ixvar;            /* the argv of the ixemul program a Shell starts for it (sh_ixargv.h) ... */
     long ixvarlen;          /* ... its bytes, the local variable __ixargv of the runner */
@@ -754,6 +757,19 @@ static int replied(struct MsgPort *port, job *j)
     return 0;
 }
 
+static int task_alive(struct Task *t);
+
+/* Was job j's process removed from outside (wasabi kill --force is a RemTask: no exit code runs, no
+ * reply comes)? Then it never replies and the shell must not wait for one (sh_jobgone.h). Call under
+ * Forbid. */
+static int job_gone(job *j)
+{
+    struct Task *c = j->child[0] ? FindTask((STRPTR)j->child) : 0;
+    if (c)
+        j->child_seen = 1;
+    return sh_job_gone(task_alive(j->task), j->child[0] != 0, c != 0, j->child_seen);
+}
+
 /* Is a loaded command an ixemul program? The first longs of its first hunk (sh_ixargv.h). */
 static int seg_is_ixemul(BPTR seg)
 {
@@ -1303,6 +1319,33 @@ static int os_fault(void *os, long code, char *buf, long max)
     return Fault(code, 0, (STRPTR)buf, max) > 0;
 }
 
+/* Wait(mask), but at most one second: timer.device's UNIT_VBLANK, opened for the call. If the
+ * timer cannot be had, a plain Wait (the old behaviour). */
+static ULONG wait_or_tick(ULONG mask)
+{
+    struct MsgPort *mp = CreateMsgPort();
+    struct timerequest *tr = mp ? (struct timerequest *)CreateIORequest(mp, sizeof(*tr)) : 0;
+    ULONG got;
+    if (!tr || OpenDevice((STRPTR)"timer.device", UNIT_VBLANK, (struct IORequest *)tr, 0)) {
+        if (tr)
+            DeleteIORequest((struct IORequest *)tr);
+        if (mp)
+            DeleteMsgPort(mp);
+        return Wait(mask);
+    }
+    tr->tr_node.io_Command = TR_ADDREQUEST;
+    tr->tr_time.tv_secs = 1;
+    tr->tr_time.tv_micro = 0;
+    SendIO((struct IORequest *)tr);
+    got = Wait(mask | (1UL << mp->mp_SigBit));
+    AbortIO((struct IORequest *)tr);
+    WaitIO((struct IORequest *)tr);
+    CloseDevice((struct IORequest *)tr);
+    DeleteIORequest((struct IORequest *)tr);
+    DeleteMsgPort(mp);
+    return got & mask;
+}
+
 /* Wait for a job. Ctrl-C (and ^\) while waiting goes on to the job's
  * runner, the command's process, as long as it runs (the console signals
  * the shell); ^Z suspends it when the shell allows (SH_STOPPED). */
@@ -1333,12 +1376,22 @@ static long os_wait(void *os, long id)
             Permit();
             break;
         }
+        if (job_gone(j)) {
+            /* removed from outside: nothing will reply. A runner left alive (its Shell child removed)
+             * stays blocked and never touches the job again, so the job is the shell's to end here */
+            j->done = 1;
+            j->rc = 20;
+            j->ioerr = 0;
+            Permit();
+            break;
+        }
         Permit();
         /* CTRL_D: the console window closed (vtcon_packets.h). The console signals the shell, which
          * opened it; the job's ixemul turns the break into SIGHUP. Not passed on, nano outlived its
          * closed window (tools/rig/hangup_rig.py nano) */
-        got = Wait((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D |
-                   SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F);
+        /* a removed process sends nothing, so the wait wakes every second to look (job_gone) */
+        got = wait_or_tick((1UL << PORT(os)->mp_SigBit) | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D |
+                           SIGBREAKF_CTRL_E | SIGBREAKF_CTRL_F);
         if (got & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E)) {
             Forbid(); /* still running: its reply is not in yet */
             if (!replied(PORT(os), j))
@@ -1378,7 +1431,7 @@ static int os_done(void *os, long id)
 {
     int r;
     Forbid();
-    r = replied(PORT(os), (job *)id);
+    r = replied(PORT(os), (job *)id) || job_gone((job *)id);
     Permit();
     return r;
 }
