@@ -173,9 +173,31 @@ static int list_names(int profile, char names[][KM_LABEL], int max)
     return i;
 }
 
+/* the bar's network info rows: "BAR NET" answers them joined by '|' */
+static int net_names(char names[][KM_LABEL], int max)
+{
+    char ans[256], *p = ans;
+    int n = 0;
+    if (rexx_send("AMARCHY", "BAR NET", ans, sizeof ans) != 0)
+        return 0;
+    while (*p && n < max) {
+        char *e = strchr(p, '|');
+        int l = e ? (int)(e - p) : (int)strlen(p);
+        if (l >= KM_LABEL)
+            l = KM_LABEL - 1;
+        memcpy(names[n], p, (size_t)l);
+        names[n++][l] = 0;
+        if (!e)
+            break;
+        p = e + 1;
+    }
+    return n;
+}
+
 void lf_init(void)
 {
     mn_list_hook = list_names;
+    mn_net_hook = net_names;
     sd_set_mode_namer(asl_mode_name);
 }
 

@@ -3,6 +3,7 @@
  * with menu_core.c. */
 #include <string.h>
 #include "menu_core.h"
+#include "bar_core.h"
 #include "../prefs/settings_def.h"
 
 static void cpy(char *d, const char *s, int n)
@@ -105,6 +106,21 @@ static const sd_setting *choice_setting(const keymap *k, const char *node)
 }
 
 int (*mn_list_hook)(int profile, char names[][KM_LABEL], int max);
+int (*mn_net_hook)(char names[][KM_LABEL], int max);
+
+/* the network panel's info rows (interface, address, state) as inert note rows, ahead of its Up and Down rows */
+static int net_rows(mn_item *out, int n, int max)
+{
+    static char nm[BAR_NET_ROWS][KM_LABEL];
+    int i, c = mn_net_hook ? mn_net_hook(nm, BAR_NET_ROWS) : 0;
+    for (i = 0; i < c && n < max; i++, n++) {
+        out[n].row = MN_ROW_PKGACT;
+        out[n].ix = -1;
+        out[n].seg[0] = 0;
+        cpy(out[n].label, nm[i], KM_LABEL);
+    }
+    return n;
+}
 
 /* the names of the Theme or Profile list, one MN_ROW_CHOICE row each (seg the index), then the action rows */
 static int list_rows(const sd_setting *s, mn_item *out, int max)
@@ -159,6 +175,8 @@ int mn_children_t(const keymap *k, const char *node, mn_item *out, int max, int 
      * same id (settings.amarchy: the page and the Rescan, Preferences, Menu font and Edit rows) */
     if (nl && (i = settings_row(k, node)) >= 0)
         n = setting_rows(k, i, out, max);
+    if (!strcmp(node, BAR_NET_NODE))
+        n = net_rows(out, n, max);
     for (i = 0; i < k->nmenu && n < max; i++) {
         const char *id = k->menu[i].id, *rest, *dot;
         int seglen, dup = 0;

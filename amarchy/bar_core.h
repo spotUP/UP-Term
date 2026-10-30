@@ -33,10 +33,13 @@ enum { BAR_BTN_LEFT = 1, BAR_BTN_RIGHT };
 #define BAR_AGENT_NODE "agents"
 /* The node the System segment opens: the same node as the keymap row super+esc = menu:system. */
 #define BAR_SYSTEM_NODE "system"
+/* The node a left click on the network segment opens (BAR-NET-CLICK): dist/keymap hangs the Up and Down rows under it, the
+ * menu adds the interface, address and state rows from the bar's BAR NET answer. */
+#define BAR_NET_NODE "network"
 
 /* What a click on a segment does; bar.c carries it out. */
-/* BAR_ACT_SYSTEM: the system menu; BAR_ACT_CLOCK: flip clock and date; BAR_ACT_SCREEN: bring that screen to the front (id). */
-enum { BAR_ACT_NONE = 0, BAR_ACT_PANEL, BAR_ACT_LAUNCH_AGENT, BAR_ACT_SYSTEM, BAR_ACT_CLOCK, BAR_ACT_SCREEN, BAR_ACT_RUN };
+/* BAR_ACT_NET: the network panel (BAR_NET_NODE); BAR_ACT_SYSTEM: the system menu; BAR_ACT_CLOCK: flip clock and date; BAR_ACT_SCREEN: bring that screen to the front (id). */
+enum { BAR_ACT_NONE = 0, BAR_ACT_PANEL, BAR_ACT_LAUNCH_AGENT, BAR_ACT_SYSTEM, BAR_ACT_CLOCK, BAR_ACT_SCREEN, BAR_ACT_RUN, BAR_ACT_NET };
 
 typedef struct bar_seg {
     int id;
@@ -160,5 +163,18 @@ int bar_net_state_kind(long ifq_state);
 /* "eth0 up", "eth0 down" (kind DOWN / UP with a name; no name gives just "Network up" / "Network down"), "Network
  * emulated", "No network" for NONE and STACK. `name` may be 0. */
 void bar_fmt_net(char *out, int cap, int kind, const char *name);
+
+/* The network panel's info rows (BAR-NET-CLICK): "Interface: eth0", "Address: 192.168.0.74", "State: up" (down / up for the
+ * kinds DOWN / UP, "no network" for STACK, "emulated" for EMULATED, "no stack" for NONE). Without a name the interface and address rows say
+ * "none". addr is the IPv4 address in host order (0 = none). Count of rows written (3), at most max. */
+#define BAR_NET_ROWS 3
+int bar_net_rows(char rows[][BAR_TEXT], int max, int kind, const char *name, unsigned long addr);
+/* The AmigaDOS command the Up and Down rows run for interface `name`: "ConfigureNetInterface eth0 UP" / "DOWN" (the toggle the
+ * A1200 probe proved, plan R2.10). 1 when written; 0 for an empty name, an unsafe character in it, or no room. */
+int bar_net_cmd(char *out, int cap, const char *name, int up);
+
+/* The menu node the panel action `act` opens (BAR_ACT_PANEL agents, BAR_ACT_SYSTEM system, BAR_ACT_NET network), 0 for any
+ * other action: bar.c opens exactly this node, so a segment hit reaches a panel through this one table. */
+const char *bar_act_node(int act);
 
 #endif

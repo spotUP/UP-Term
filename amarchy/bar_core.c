@@ -296,6 +296,8 @@ int bar_click(const bar *b, int x, int button, int *id)
         return button == BAR_BTN_LEFT ? BAR_ACT_SYSTEM : BAR_ACT_NONE;
     case BAR_SEG_CLOCK:
         return button == BAR_BTN_LEFT ? BAR_ACT_CLOCK : BAR_ACT_NONE;
+    case BAR_SEG_NET:
+        return button == BAR_BTN_LEFT ? BAR_ACT_NET : BAR_ACT_NONE;
     default:
         if (BAR_IS_SCREEN(b->seg[i].id) && button == BAR_BTN_LEFT)
             return BAR_ACT_SCREEN;
@@ -628,4 +630,62 @@ void bar_days_to_date(long days, int *wday, int *day, int *mon, int *year)
     *day = (int)d;
     *mon = (int)(m - 1);
     *year = (int)(yoe + era * 400L + (m <= 2 ? 1 : 0));
+}
+
+int bar_net_rows(char rows[][BAR_TEXT], int max, int kind, const char *name, unsigned long addr)
+{
+    const char *state = kind == BAR_NET_UP ? "up" : kind == BAR_NET_DOWN ? "down" : kind == BAR_NET_EMULATED ? "emulated"
+                      : kind == BAR_NET_STACK ? "no network" : "no stack";
+    const char *nm = name && *name ? name : "none";
+    char t[BAR_TEXT];
+    int o, k;
+    if (max < BAR_NET_ROWS)
+        return 0;
+    o = put_s(t, 0, "Interface: ");
+    for (k = 0; nm[k] && o < BAR_TEXT - 1; k++)
+        t[o++] = nm[k];
+    t[o] = 0;
+    strcpy(rows[0], t);
+    o = put_s(t, 0, "Address: ");
+    if (addr) {
+        for (k = 24; k >= 0; k -= 8) {
+            o = put_u(t, o, (addr >> k) & 255UL, 0);
+            if (k)
+                t[o++] = '.';
+        }
+    } else
+        o = put_s(t, o, "none");
+    t[o] = 0;
+    strcpy(rows[1], t);
+    o = put_s(t, 0, "State: ");
+    o = put_s(t, o, state);
+    t[o] = 0;
+    strcpy(rows[2], t);
+    return BAR_NET_ROWS;
+}
+
+int bar_net_cmd(char *out, int cap, const char *name, int up)
+{
+    const char *p;
+    int o;
+    if (!name || !*name || (int)strlen(name) + 40 > cap)
+        return 0;
+    for (p = name; *p; p++)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '_' || *p == '-'))
+            return 0;
+    o = put_s(out, 0, "ConfigureNetInterface ");
+    o = put_s(out, o, name);
+    o = put_s(out, o, up ? " UP" : " DOWN");
+    out[o] = 0;
+    return 1;
+}
+
+const char *bar_act_node(int act)
+{
+    switch (act) {
+    case BAR_ACT_PANEL: return BAR_AGENT_NODE;
+    case BAR_ACT_SYSTEM: return BAR_SYSTEM_NODE;
+    case BAR_ACT_NET: return BAR_NET_NODE;
+    default: return 0;
+    }
 }

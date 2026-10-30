@@ -208,6 +208,10 @@ agents.launch      = Launch the agent      | menuid:MENU_AGENT
 agents.review      = Review my changes     | slash:/ask Review my uncommitted changes and list the problems
 agents.tests       = Fix the failing tests | slash:/ask Run the tests, find why they fail and fix the cause
 agents.explain   = Explain this project  | slash:/ask Explain what this project does and how it is laid out
+# The bar's network segment (left click) opens node "network": its info rows come from BAR NET (menu_tree.c net_rows),
+# then these two rows switch the shown interface through BAR NETUP / BAR NETDOWN (ConfigureNetInterface).
+network.up          = Up | rexx:address AMARCHY BAR NETUP
+network.down        = Down | rexx:address AMARCHY BAR NETDOWN
 style.theme        = Amarchy theme         | menu:style.theme
 style.terminal.theme      = Theme          | slash:/theme
 style.terminal.font       = Font           | slash:/font

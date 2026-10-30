@@ -243,6 +243,12 @@ static long bar_port(const char *args, char *out)
         bar_text(out, REXX_HOST_OUT);
         return 0;
     }
+    if (v == BARV_NET) {
+        bar_net_info(out, REXX_HOST_OUT);
+        return 0;
+    }
+    if (v == BARV_NETUP || v == BARV_NETDOWN)
+        return bar_net_set(v == BARV_NETUP);
     act = bar_plan(v, g_wb_hold, bar_is_open(), &g_bar_want);
     if (act == BARA_CLOSE)
         bar_close();

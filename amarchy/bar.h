@@ -44,5 +44,7 @@ long bar_raises(void);
 int bar_is_open(void);
 /* The network segment's last kind (BAR_NET_*; -1 before the first sample). */
 int bar_net(void);
+void bar_net_info(char *out, int cap);
+int bar_net_set(int up);
 
 #endif

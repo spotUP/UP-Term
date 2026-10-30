@@ -81,6 +81,7 @@ static BYTE g_idle_sig = -1;
 static unsigned long g_cpu_cal, g_cpu_last_count, g_cpu_last_tick, g_net_last_tick;
 struct Library *SocketBase;              /* open only while sample_net looks */
 static char g_net_name[24];                      /* the interface the segment names */
+static unsigned long g_net_addr;                 /* the shown interface's IPv4 address, host order; 0 = none */
 static int g_net_kind = -1;                      /* BAR_NET_*; -1 = not asked yet */
 
 static void idle_entry(void)
@@ -272,12 +273,13 @@ typedef char bar_sm_up_matches_header[(SM_Up == BAR_SM_UP) ? 1 : -1];
 
 /* The interface list of the open stack: the first interface that is up, else the first one (name copied into `name`).
  * IFQ_State's ti_Data is a pointer to a LONG. Returns BAR_NET_UP / DOWN, or BAR_NET_STACK when no interface answered. */
-static int query_net(char *name, int cap)
+static int query_net(char *name, int cap, unsigned long *addr)
 {
     struct List *l = ObtainInterfaceList();
     struct Node *nd;
     int best = BAR_NET_STACK;
     name[0] = 0;
+    *addr = 0;
     for (nd = l ? l->lh_Head : 0; nd && nd->ln_Succ; nd = nd->ln_Succ) {
         LONG st = -1;
         struct TagItem tags[2];
@@ -296,6 +298,12 @@ static int query_net(char *name, int cap)
         best = k;
         strncpy(name, nd->ln_Name, (size_t)cap - 1);
         name[cap - 1] = 0;
+        {   /* IFQ_Address: the interface's IPv4 address, 4 bytes in network order at ti_Data (unverified on a real stack) */
+            ULONG a = 0;
+            tags[0].ti_Tag = IFQ_Address;
+            tags[0].ti_Data = (ULONG)&a;
+            *addr = QueryInterfaceTagList((STRPTR)nd->ln_Name, tags) == 0 ? (unsigned long)a : 0UL;
+        }
     }
     if (l)
         ReleaseInterfaceList(l);
@@ -310,6 +318,7 @@ static int sample_net(int force)
     char t[BAR_TEXT], name[sizeof g_net_name];
     unsigned long now = ds_ticks();
     int kind;
+    unsigned long addr = 0;
     if (!force && g_net_kind >= 0 && now - g_net_last_tick < NET_EVERY_TICKS)
         return 0;
     g_net_last_tick = now;
@@ -317,11 +326,12 @@ static int sample_net(int force)
     SocketBase = OpenLibrary((STRPTR) "bsdsocket.library", 0);
     kind = SocketBase ? bar_net_kind(SocketBase->lib_IdString ? (const char *)SocketBase->lib_IdString : "") : BAR_NET_NONE;
     if (kind == BAR_NET_STACK)
-        kind = query_net(name, sizeof name);
+        kind = query_net(name, sizeof name, &addr);
     if (SocketBase) {
         CloseLibrary(SocketBase);
         SocketBase = 0;
     }
+    g_net_addr = addr;
     if (kind == g_net_kind && !strcmp(name, g_net_name))
         return 0;
     g_net_kind = kind;
@@ -647,10 +657,13 @@ void bar_serve(void)
             paint_all();
             EndRefresh(g_win, TRUE);
         } else if (cls == IDCMP_MOUSEBUTTONS && (code == SELECTDOWN || code == MENUDOWN)) {
-            int id;
-            switch (bar_click(&g_bar, x, code == SELECTDOWN ? BAR_BTN_LEFT : BAR_BTN_RIGHT, &id)) {
-            case BAR_ACT_PANEL: act_panel(BAR_AGENT_NODE); break;
-            case BAR_ACT_SYSTEM: act_panel(BAR_SYSTEM_NODE); break;
+            int id, act = bar_click(&g_bar, x, code == SELECTDOWN ? BAR_BTN_LEFT : BAR_BTN_RIGHT, &id);
+            const char *node = bar_act_node(act);
+            if (node) {
+                act_panel(node);
+                continue;
+            }
+            switch (act) {
             case BAR_ACT_CLOCK:
                 g_clock_alt = !g_clock_alt;
                 if (sample_clock()) {
@@ -696,6 +709,33 @@ void bar_set_clock_formats(const char *clock, const char *alt)
 }
 
 int bar_net(void) { return g_net_kind; }
+
+/* BAR NET: the panel's info rows joined by '|' (bar_net_rows). */
+void bar_net_info(char *out, int cap)
+{
+    char rows[BAR_NET_ROWS][BAR_TEXT];
+    int i, n = bar_net_rows(rows, BAR_NET_ROWS, g_net_kind, g_net_name, g_net_addr), o = 0;
+    out[0] = 0;
+    for (i = 0; i < n; i++) {
+        int l = (int)strlen(rows[i]);
+        if (o + l + 2 > cap)
+            break;
+        if (i)
+            out[o++] = '|';
+        strcpy(out + o, rows[i]);
+        o += l;
+    }
+}
+
+/* BAR NETUP / BAR NETDOWN: ConfigureNetInterface on the shown interface (the toggle of plan R2.10); the next 5 s sample
+ * redraws the segment. 0 started, 5 when there is no interface to switch. */
+int bar_net_set(int up)
+{
+    char cmd[64];
+    if (!bar_net_cmd(cmd, sizeof cmd, g_net_name, up))
+        return 5;
+    return SystemTags((STRPTR)cmd, SYS_Input, 0, SYS_Output, 0, TAG_DONE) == -1 ? 5 : 0;
+}
 void bar_text(char *out, int cap) { bar_dump(&g_bar, out, cap); }
 long bar_draws(void) { return g_draws; }
 long bar_panels(void) { return g_panels; }

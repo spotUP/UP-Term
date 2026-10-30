@@ -19,6 +19,7 @@
 #define MN_IS_SETTING(it) ((it)->row == MN_ROW_SETTING)
 /* set by lf_init (leaf.c): fills the names of the Profile (1) or Theme (0) list, marked "* " when current */
 extern int (*mn_list_hook)(int profile, char names[][KM_LABEL], int max);
+extern int (*mn_net_hook)(char names[][KM_LABEL], int max);   /* the network panel's info rows (BAR_NET_NODE), 0 when unset */
 #define MN_IS_CHOICE(it) ((it)->row == MN_ROW_CHOICE)
 #define MN_IS_PKGACT(it) ((it)->row == MN_ROW_PKGACT)
 

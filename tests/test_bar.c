@@ -609,6 +609,53 @@ static void test_clock_system_screens(void)
     CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_RAM), BAR_BTN_LEFT, &id), BAR_ACT_NONE);         /* RAM has no action */
 }
 
+/* A left click on the network segment opens the "network" panel: bar_click gives BAR_ACT_NET, bar_act_node names the node, and
+ * the opener (bar.c act_panel) is reached with it. The counter proves the panel path ran; the right button does nothing. */
+static int panels_opened;
+static char panel_node[24];
+static void open_panel(const char *node) { panels_opened++; strcpy(panel_node, node); }
+
+static void test_bar_net_click_opens_panel(void)
+{
+    bar b;
+    char rows[BAR_NET_ROWS][BAR_TEXT], cmd[64];
+    int id = -1, act;
+    const char *node;
+    bar_init(&b, 800, 4, 2);
+    bar_add(&b, BAR_SEG_NET, BAR_RIGHT, "replayeth up", 96);
+    bar_layout(&b, 800);
+    panels_opened = 0;
+    act = bar_click(&b, x_of(&b, BAR_SEG_NET), BAR_BTN_LEFT, &id);
+    CHECK_INT(act, BAR_ACT_NET);
+    CHECK_INT(id, BAR_SEG_NET);
+    if ((node = bar_act_node(act)) != 0)               /* the same two lines as bar.c's click switch */
+        open_panel(node);
+    CHECK_INT(panels_opened, 1);
+    CHECK_STR(panel_node, "network");
+    CHECK_INT(bar_click(&b, x_of(&b, BAR_SEG_NET), BAR_BTN_RIGHT, &id), BAR_ACT_NONE);
+    CHECK(bar_act_node(BAR_ACT_NONE) == 0 && bar_act_node(BAR_ACT_CLOCK) == 0);
+    CHECK_STR(bar_act_node(BAR_ACT_PANEL), "agents");
+    CHECK_STR(bar_act_node(BAR_ACT_SYSTEM), "system");
+    /* the panel's rows */
+    CHECK_INT(bar_net_rows(rows, BAR_NET_ROWS, BAR_NET_UP, "replayeth", 0xC0A8004AUL), 3);
+    CHECK_STR(rows[0], "Interface: replayeth");
+    CHECK_STR(rows[1], "Address: 192.168.0.74");
+    CHECK_STR(rows[2], "State: up");
+    bar_net_rows(rows, BAR_NET_ROWS, BAR_NET_DOWN, "replayeth", 0);
+    CHECK_STR(rows[1], "Address: none");
+    CHECK_STR(rows[2], "State: down");
+    bar_net_rows(rows, BAR_NET_ROWS, BAR_NET_STACK, "", 0);
+    CHECK_STR(rows[2], "State: no network");
+    /* the Up and Down command */
+    CHECK_INT(bar_net_cmd(cmd, sizeof cmd, "replayeth", 0), 1);
+    CHECK_STR(cmd, "ConfigureNetInterface replayeth DOWN");
+    CHECK_INT(bar_net_cmd(cmd, sizeof cmd, "replayeth", 1), 1);
+    CHECK_STR(cmd, "ConfigureNetInterface replayeth UP");
+    CHECK_INT(bar_net_cmd(cmd, sizeof cmd, "", 1), 0);
+    CHECK_INT(bar_net_cmd(cmd, sizeof cmd, "a;b", 1), 0);
+    CHECK_INT(bar_net_cmd(cmd, 10, "replayeth", 1), 0);
+}
+
 void suite_bar(void)
 {
     test_layout_groups();
@@ -631,4 +678,5 @@ void suite_bar(void)
     test_fmt_misc();
     test_clock_system_screens();
     test_tray_click();
+    test_bar_net_click_opens_panel();
 }

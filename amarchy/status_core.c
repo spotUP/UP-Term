@@ -69,6 +69,12 @@ int bar_verb(const char *args)
         return BARV_TEXT;
     if (word(args, "pens"))
         return BARV_PENS;
+    if (word(args, "net"))
+        return BARV_NET;
+    if (word(args, "netup"))
+        return BARV_NETUP;
+    if (word(args, "netdown"))
+        return BARV_NETDOWN;
     return BARV_BAD;
 }
 

@@ -2115,7 +2115,7 @@ static void drawn_menu_geometry_follows_the_font_and_screen(void)
     /* the shipped keymap at topaz 8 on 640x256: root 3 groups, apps 6 rows; the widest label of all
      * levels is "Install add-ons" (15 x 8 px): 2 x 4 + 2 x 22 + 2 x 14 + 120 = 200, under min_w 360 */
     CHECK(n > 0 && keymap_parse(&km, file, n));
-    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 14);   /* with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages and Agents groups (all shown) */
+    CHECK_INT(mn_children(&km, "", items, MN_MAX_ITEMS), 15);   /* with the Capture group (R4.7), the Trigger, Settings, Dopus, Workbench, Screens, Packages, Agents and Network groups (all shown) */
     CHECK_INT(mn_children(&km, "apps", items, MN_MAX_ITEMS), 5);
     w = mg_width(&km, "", &topaz, 0, 8, fixed_width, &px8, &pal);
     CHECK_INT(w, 360);
@@ -3285,6 +3285,39 @@ static void the_agents_panel_rows_reach_the_agent_paths(void)
     CHECK_INT(limits, 0);       /* part E is not built: no meter row, no invented number */
 }
 
+/* The bar's network panel (node "network"): the hook's info rows come first as inert notes, then Up and Down as rexx rows. */
+static int net_hook_calls;
+static int net_hook(char names[][KM_LABEL], int max)
+{
+    net_hook_calls++;
+    strcpy(names[0], "Interface: replayeth");
+    strcpy(names[1], "Address: 192.168.0.74");
+    strcpy(names[2], "State: up");
+    return max < 3 ? max : 3;
+}
+
+static void the_network_panel_lists_info_rows_then_up_and_down(void)
+{
+    static char buf[32768];
+    mn_item it[MN_MAX_ITEMS];
+    long n = slurp("dist/keymap", buf, sizeof(buf));
+    int c;
+    CHECK(n > 0 && keymap_parse(&km, buf, n));
+    mn_net_hook = net_hook;
+    net_hook_calls = 0;
+    c = mn_children_t(&km, "network", it, MN_MAX_ITEMS, 1);
+    CHECK_INT(net_hook_calls, 1);                                   /* the panel path asked the bar */
+    CHECK_INT(c, 5);
+    CHECK_STR(it[0].label, "Interface: replayeth");
+    CHECK(MN_IS_PKGACT(&it[0]) && it[0].ix == -1 && !it[0].seg[0]);  /* inert note */
+    CHECK_STR(it[2].label, "State: up");
+    CHECK_STR(it[3].label, "Up");
+    CHECK_STR(it[4].label, "Down");
+    mn_net_hook = 0;
+    CHECK_INT(mn_children_t(&km, "network", it, MN_MAX_ITEMS, 1), 2);   /* no bar: only Up and Down */
+    CHECK_INT(mn_children_t(&km, "agents", it, MN_MAX_ITEMS, 1) > 0 && net_hook_calls == 1, 1);
+}
+
 void suite_keymap(void)
 {
     style_theme_lists_the_gui_theme_rows();
@@ -3346,6 +3379,7 @@ void suite_keymap(void)
     win_defers_in_the_handler();
     the_shipped_file_resolves_and_derives_menu_keys();
     the_shipped_menu_has_learn_system_and_install_groups();
+    the_network_panel_lists_info_rows_then_up_and_down();
     the_window_group_rows_and_hotkeys();
     settings_page_group_lists_the_table_rows();
     right_enters_only_rows_with_children();
