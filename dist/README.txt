@@ -897,7 +897,7 @@ AMARCHY
   files (the DOpus add-on is upstream's archive, unmodified), so the flag is
   set per bank inside Directory Opus. Open the bank, choose
     Settings > Buttons > Edit
-  (the lister toolbar: Lister > Edit Toolbar), and in the Settings box of
+  (the lister toolbar: Lister > Edit Toolbar), and in the Appearance section of
   the Button Bank Editor tick  Borderless Buttons . Then save the bank with
   Settings > Buttons > Save. Repeat for each bank. Upstream's MagicWB image
   set already ships its Toolbar and FTP banks borderless.
