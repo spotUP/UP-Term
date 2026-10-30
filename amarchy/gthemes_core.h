@@ -104,6 +104,12 @@ int gt_preview_pick(const char *row_path, const char *current, const char *drawn
 int gt_preview_term(const char *row_path, const char *current, const char *drawn, char *out, int cap,
                     void (*send)(const char *name));
 
+/* THEME-PREVIEW-LIVE-A1200: a picker that keeps no pens of its own (the text menu amarchy-menu, drawn in the console it
+ * recolours) holds only drawn, the theme the consoles show now. gt_preview_term with drawn as both the compare and the
+ * output: the highlight's theme, or current on any other row / at close (Esc restores the theme active before the picker
+ * opened). Start drawn as current when the menu opens, so opening it writes nothing. Returns what gt_preview_term did. */
+int gt_preview_step(const char *row_path, const char *current, char *drawn, int cap, void (*send)(const char *name));
+
 
 /* Why a theme save failed, as the text the menu shows. step: GT_SAVE_NAME (the name check), or a prefs_save_at result
  * (PREFS_SAVE_NODIR, PREFS_INSTALL_WRITE / BACKUP / PLACE / STRANDED); failed: the PREFS_T_ target; err: the DOS error

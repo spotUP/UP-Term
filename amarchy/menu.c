@@ -147,9 +147,35 @@ static void on_int(int sig)
     closing = 1;
 }
 
+/* THEME-PREVIEW-LIVE-A1200: Style > Amarchy theme recolours the open consoles and agent tabs (this menu draws in one of
+ * them, so it recolours too) through the F3 bridge on every highlight move; any other row, Esc and closing give the
+ * consoles the saved theme back (gt_preview_step). libupkgui moves the cursor itself: the move is read from ui_selected
+ * after ui_prepare and on each tick. pv_drawn is what the consoles show; pv_sel the row last synced. */
+static char pv_drawn[GT_NAME];
+static int pv_sel = -1, pv_shift, pv_count;
+
+static void preview_sync(int restore)
+{
+    char path[IX_PATH], cur[GT_NAME];
+    const char *row = 0;
+    int s = ui_selected();
+    pv_sel = s;
+    if (!restore && it && s >= pv_shift && s - pv_shift < pv_count) {
+        const mn_item *m = &it[idx[s - pv_shift]];
+        if (MN_IS_INDEX(m) && ix_launch_path(&ixs, m, path, (int)sizeof path))
+            row = path;
+    }
+    gt_dos_current(cur, (int)sizeof cur);
+    if (!pv_drawn[0])
+        strcpy(pv_drawn, cur);       /* the menu opened: the consoles show the saved theme */
+    gt_preview_step(row, cur, pv_drawn, (int)sizeof pv_drawn, gt_dos_term_send);
+}
+
 static int on_tick(void *ctx)
 {
     (void)ctx;
+    if (ui_selected() != pv_sel)
+        preview_sync(0);             /* the highlight moved */
     if (SetSignal(0, 0) & SIGBREAKF_CTRL_C) {
         SetSignal(0, SIGBREAKF_CTRL_C);
         closing = 1;
@@ -331,6 +357,9 @@ static int menu_levels(const char *start)
         snprintf(prompt, sizeof prompt, "Filter: %s", filter);
         ui_opt.prompt = prompt;
         ui_prepare();
+        pv_shift = shift;
+        pv_count = c;
+        preview_sync(0);                   /* the level opens on its row: (current) in the theme list, so no write */
         at_mark("ready");
         ui_on_tick(on_tick, 0);
         rc = ui_run();
@@ -486,6 +515,10 @@ static int menu_loop(const char *start)
         rc = menu_levels(start);
     else
         ui_message("%s", "amarchy-menu: out of memory");
+    if (pv_drawn[0])
+        preview_sync(1);   /* closed on a previewed row (Esc, toggle): the consoles get the saved theme back */
+    pv_drawn[0] = 0;       /* a warm server's next open starts from the saved theme again */
+    pv_sel = -1;
     free_level();
     ix_free(&ixs);
     ix_pkg_free(&ixs);   /* one open per process: the cache loads once per process */

@@ -280,6 +280,15 @@ int gt_preview_term(const char *row_path, const char *current, const char *drawn
     return 1;
 }
 
+int gt_preview_step(const char *row_path, const char *current, char *drawn, int cap, void (*send)(const char *name))
+{
+    char want[GT_NAME];
+    if (!gt_preview_term(row_path, current, drawn, want, (int)sizeof want, send) || (int)strlen(want) >= cap)
+        return 0;
+    strcpy(drawn, want);
+    return 1;
+}
+
 /* The path each install step touched, by the step's own words (prefs_core.h prefs_install_target_at). */
 void gt_save_text(int step, int failed, long err, char *out, int cap)
 {

@@ -477,6 +477,24 @@ static void test_gthemes_preview_term(void)
     CHECK(!strcmp(tp_sent[0], "nord") && !strcmp(tp_sent[1], "ethereal") && !strcmp(tp_sent[2], "tokyo-night"));
 }
 
+/* THEME-PREVIEW-LIVE-A1200: the text menu's picker recolours the consoles on each highlight move and Esc restores the
+ * theme active before it opened; opening the menu on a non-theme row writes nothing (drawn starts as current) */
+static void test_gthemes_text_menu_preview_recolours_consoles(void)
+{
+    char drawn[GT_NAME] = "tokyo-night";
+    tp_n = 0;
+    CHECK(!gt_preview_step("menu:style", "tokyo-night", drawn, sizeof drawn, tp_send));   /* menu opened: no write */
+    CHECK(!gt_preview_step("gtheme:tokyo-night", "tokyo-night", drawn, sizeof drawn, tp_send)); /* list opens on (current) */
+    CHECK(gt_preview_step("gtheme:nord", "tokyo-night", drawn, sizeof drawn, tp_send));   /* Down */
+    CHECK_STR(drawn, "nord");
+    CHECK(gt_preview_step("gtheme:ethereal", "tokyo-night", drawn, sizeof drawn, tp_send)); /* Down */
+    CHECK(gt_preview_step(0, "tokyo-night", drawn, sizeof drawn, tp_send));               /* Esc: restored */
+    CHECK_STR(drawn, "tokyo-night");
+    CHECK(!gt_preview_step(0, "tokyo-night", drawn, sizeof drawn, tp_send));              /* menu closed: no second write */
+    CHECK(tp_n == 3);
+    CHECK(!strcmp(tp_sent[0], "nord") && !strcmp(tp_sent[1], "ethereal") && !strcmp(tp_sent[2], "tokyo-night"));
+}
+
 static void test_gthemes_preview(void)
 {
     char nm[GT_NAME];
@@ -697,6 +715,7 @@ void suite_gthemes(void)
     test_gthemes_select_name();
     test_gthemes_preview();
     test_gthemes_preview_term();
+    test_gthemes_text_menu_preview_recolours_consoles();
     test_gthemes_fallback();
     test_gthemes_parse();
     test_gthemes_term_text();
