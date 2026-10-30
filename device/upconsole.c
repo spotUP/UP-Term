@@ -52,6 +52,8 @@ extern struct DosLibrary *DOSBase;
 #define UPASSIGN_DOS
 #include "../config/upassign.h"
 #include "../tty/qmark.h"
+#define ROMSPAN_VEC
+#include "romspan.h"
 
 /* the base version and build day (upterm_version.h, written by the Makefile) */
 #include "upterm_version.h"
@@ -307,15 +309,9 @@ static int patched_vector(struct Library *rom)
     int lvo;
     if (!rt)
         return 0; /* not a ROM module (a loaded one): nothing to compare with */
-    for (lvo = 6; lvo <= 72; lvo += 6) {
-        UBYTE *v = (UBYTE *)rom - lvo;
-        ULONG target;
-        if (v[0] != 0x4E || v[1] != 0xF9)
-            return lvo; /* not a jmp: someone rewrote it */
-        target = *(ULONG *)(v + 2);
-        if (target < (ULONG)rt || target >= (ULONG)rt->rt_EndSkip)
+    for (lvo = 6; lvo <= 72; lvo += 6)
+        if (rom_vec_patched((UBYTE *)rom - lvo, (ULONG)rt, (ULONG)rt->rt_EndSkip))
             return lvo;
-    }
     return 0;
 }
 

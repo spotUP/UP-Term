@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "flat_core.h"
+#include "../device/romspan.h"
 
 void flat_init(flat_state *s)
 {
@@ -40,7 +41,8 @@ int flat_status_line(const void *p, size_t avail, int found, char *out, size_t c
     if (!found || rc != FLAT_OK)
         n = snprintf(out, cap, "flat=absent%s", !found ? "" : rc == FLAT_ERR_VERSION ? " bad=version" : " bad=size");
     else
-        n = snprintf(out, cap, "flat=%s calls=%lu chained=%d", flat_status_word(s, 1), (unsigned long)s->calls, s->still_chained ? 1 : 0);
+        n = snprintf(out, cap, "flat=%s calls=%lu chained=%d%s%s", flat_status_word(s, 1), (unsigned long)s->calls,
+                     s->still_chained ? 1 : 0, s->held ? " why=" : "", s->held ? flat_held_name(s->held) : "");
     return n > 0 && (size_t)n < cap ? n : 0;
 }
 
@@ -259,4 +261,83 @@ int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const voi
 unsigned long flat_which_alias(unsigned long which)
 {
     return which == 0x05 ? 0x00 : which;    /* SYSIA_Which SDEPTHIMAGE draws the depth glyph */
+}
+
+/* ---- FLAT-C4: kill switches (see flat_core.h) ---- */
+static int ci_prefix(const char *name, const char *pre)
+{
+    for (; *pre; name++, pre++) {
+        char c = *name;
+        if (!c)
+            return 0;
+        if (c >= 'A' && c <= 'Z')
+            c = (char)(c + 32);
+        if (c != *pre)
+            return 0;
+    }
+    return 1;
+}
+
+int flat_other_task(const char *name)
+{
+    if (!name)
+        return FLAT_HELD_NONE;
+    if (ci_prefix(name, "visualprefs"))
+        return FLAT_HELD_VISUALPREFS;
+    if (ci_prefix(name, "birdie"))
+        return FLAT_HELD_BIRDIE;
+    return FLAT_HELD_NONE;
+}
+
+int flat_other_hook(unsigned long entry, unsigned long lo, unsigned long hi)
+{
+    return rom_addr_outside(entry, lo, hi) ? FLAT_HELD_HOOK : FLAT_HELD_NONE;
+}
+
+int flat_start_decide(int marker, int lmb, int rmb, int other)
+{
+    if (marker)
+        return FLAT_HELD_MARKER;
+    if (lmb && rmb)
+        return FLAT_HELD_GESTURE;
+    return other;
+}
+
+unsigned flat_marker_remaining(unsigned long written, unsigned long now)
+{
+    unsigned long age = (now - written) & 0xFFFFFFFFul;
+    if (age >= FLAT_MARKER_SECS)
+        return 0;
+    return (unsigned)(FLAT_MARKER_SECS - age);
+}
+
+const char *flat_held_name(unsigned reason)
+{
+    switch (reason) {
+    case FLAT_HELD_MARKER: return "marker";
+    case FLAT_HELD_GESTURE: return "gesture";
+    case FLAT_HELD_VISUALPREFS: return "VisualPrefs";
+    case FLAT_HELD_BIRDIE: return "Birdie";
+    case FLAT_HELD_HOOK: return "hook";
+    default: return "";
+    }
+}
+
+int flat_status_text(const flat_state *s, int found, char *out, size_t cap)
+{
+    const char *w = flat_status_word(s, found), *by = "";
+    int n;
+    if (cap < 40)
+        return 0;
+    if (found && s && s->held) {
+        switch (s->held) {
+        case FLAT_HELD_MARKER: by = " by crash marker"; break;
+        case FLAT_HELD_GESTURE: by = " by both mouse buttons"; break;
+        case FLAT_HELD_VISUALPREFS: by = " by VisualPrefs"; break;
+        case FLAT_HELD_BIRDIE: by = " by Birdie"; break;
+        default: by = " by another hook on the gadget class"; break;
+        }
+    }
+    n = snprintf(out, cap, "%s%s", w, by);
+    return n > 0 && (size_t)n < cap ? n : 0;
 }

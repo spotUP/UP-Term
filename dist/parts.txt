@@ -55,6 +55,7 @@ tools           Files/Amarchy
 tools           Files/amarchy-menu
 tools           Files/amarchy-gui
 tools           Files/amarchy-index
+tools           Files/amarchy-flat
 tools           Files/amnotify
 tools           Files/AmTile
 tools           Files/keymap

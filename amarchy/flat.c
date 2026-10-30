@@ -2,6 +2,8 @@
  *
  *   amarchy-flat            start: make the public state block "Amarchy.Flat", print its STATUS, wait for Ctrl-C
  *   amarchy-flat STATUS     print the STATUS line of the running program and return (flat=on|off|absent|held)
+ *   amarchy-flat BOOT       the startup-sequence form (FLAT-C4): return at once, nothing resident, when neither
+ *                           flat-system-look nor flat-window-gadgets is on in the Amarchy prefs; else start as above
  *
  * C1 swaps the h_SubEntry of sysiclass's dispatcher Hook (never h_Entry: one routine serves five classes) for a
  * pass-through trampoline that counts the call and tail-jumps to the saved routine, so every register and the
@@ -16,6 +18,11 @@
  * LVO, so not patched: path field (button_class.c:900 calls draw_field_box inside the library), scroller knob and
  * arrows (dopusiclass IM_BBOX / arrows, image_class.c:261, :109), sort arrow (lister_title.c:972-987, inline in the
  * DirectoryOpus program). `amarchy-flat DOPUS` makes the running program look for DOpus again (Ctrl-D signal).
+ *
+ * FLAT-C4 kill switches (OD-F5, OD-F7; flat_core.h): the program starts INERT (no hook, no DOpus patch, STATUS
+ * flat=held why=...) when ENVARC:Amarchy/flat-starting exists (written before the swap, deleted 60 s later by a
+ * timer; a start that crashed the machine leaves it, the next start consumes it and stays inert), when both mouse
+ * buttons are down at start, or when VisualPrefs / Birdie runs or a foreign hook already sits on the sysiclass slot.
  * Return code: 0 done, 5 another copy is running, 10 no memory. */
 #include <string.h>
 #include <exec/memory.h>
@@ -40,6 +47,9 @@
 #include "flat_shared.h"
 #include "flat_glyph.h"
 #include "taskalive.h"
+#include "poll_timer.h"
+#include "amconf_core.h"
+#include "amconf_dos.h"
 
 static const char ver[] = "$VER: amarchy-flat 0.1 (30.10.2026) (UP-Term)";
 
@@ -445,10 +455,96 @@ static int drop_record(flatshared *r)
     return ok;
 }
 
+/* ---- FLAT-C4: the kill switches' inputs. The decision is flat_core.c (host-tested); here only the reads. ---- */
+static int marker_exists(void)
+{
+    BPTR l = Lock((STRPTR)FLAT_MARKER_PATH, ACCESS_READ);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
+/* Write the marker and make the handler flush it to the disk: the swap must not start before it is safe. */
+static void marker_write(void)
+{
+    BPTR l = Lock((STRPTR)"ENVARC:Amarchy", ACCESS_READ), f;
+    if (!l)
+        l = CreateDir((STRPTR)"ENVARC:Amarchy");
+    if (l)
+        UnLock(l);
+    f = Open((STRPTR)FLAT_MARKER_PATH, MODE_NEWFILE);
+    if (f) {
+        Write(f, (APTR)FLAT_MARKER_HEAD, (LONG)strlen(FLAT_MARKER_HEAD));
+        Close(f);
+    }
+    l = Lock((STRPTR)"ENVARC:", ACCESS_READ);
+    if (l) {
+        DoPkt(((struct FileLock *)BADDR(l))->fl_Task, ACTION_FLUSH, 0, 0, 0, 0, 0);
+        UnLock(l);
+    }
+}
+
+static void marker_delete(void)
+{
+    DeleteFile((STRPTR)FLAT_MARKER_PATH);
+}
+
+/* A task or process named VisualPrefs / Birdie, as FLAT_HELD_*. */
+static int scan_list(struct List *list)
+{
+    struct Node *n;
+    int why = FLAT_HELD_NONE;
+    for (n = list->lh_Head; !why && n->ln_Succ; n = n->ln_Succ)
+        why = flat_other_task(n->ln_Name);
+    return why;
+}
+
+static int other_patcher(uintptr_t *slot)
+{
+    struct Resident *rt;
+    int why;
+    Forbid();
+    why = flat_other_task(SysBase->ThisTask->tc_Node.ln_Name);
+    if (!why)
+        why = scan_list(&SysBase->TaskReady);
+    if (!why)
+        why = scan_list(&SysBase->TaskWait);
+    Permit();
+    if (!why && slot && (rt = FindResident((STRPTR)"intuition.library")) != 0)
+        why = flat_other_hook((unsigned long)*slot, (unsigned long)rt->rt_MatchTag, (unsigned long)rt->rt_EndSkip);
+    return why;
+}
+
+/* Left button: CIA-A PRA bit 6, right button: POTGOR bit 10, both low while down. */
+static int buttons(int *lmb, int *rmb)
+{
+    *lmb = !(*(volatile UBYTE *)0xBFE001 & 0x40);
+    *rmb = !(*(volatile UWORD *)0xDFF016 & 0x0400);
+    return 0;
+}
+
+static int is_boot(const char *a)
+{
+    while (*a == ' ' || *a == '\t')
+        a++;
+    return (a[0] == 'B' || a[0] == 'b') && (a[1] == 'O' || a[1] == 'o') && (a[2] == 'O' || a[2] == 'o') &&
+           (a[3] == 'T' || a[3] == 't') && (a[4] == 0 || a[4] == ' ' || a[4] == '\t' || a[4] == '\n');
+}
+
+/* BOOT: is any flat feature switched on in the Amarchy prefs? */
+static int boot_wanted(void)
+{
+    am_prefs p;
+    amconf_load(&p);
+    return amconf_flat_index(&p, AM_FLAT) || amconf_flat_index(&p, AM_FLATGAD);
+}
+
 int main(void)
 {
     const char *args = (const char *)GetArgStr();
     flatshared *r;
+    poll_timer tm;
+    int marker_live = 0;
     (void)ver;
     if (is_help(args)) {
         PutStr((STRPTR)"amarchy-flat [STATUS]: the flat-UI resident program; prints flat=on|off|absent|held. Ctrl-C unloads it\n");
@@ -466,6 +562,8 @@ int main(void)
             PutStr((STRPTR)"amarchy-flat: not running\n");
         return q ? 0 : 5;
     }
+    if (is_boot(args) && !boot_wanted())
+        return 0;
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r && task_alive(r->task, r->tname)) {
@@ -505,17 +603,41 @@ int main(void)
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 36);
+    memset(&tm, 0, sizeof tm);   /* pt_stop reads busy: garbage there AbortIOs a random address (hung the rig) */
+    pt_open(&tm);
     if (IntuitionBase && GfxBase) {
-        int rc = hook_install(r);
-        if (rc != FLAT_OK)
-            PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
+        int lmb, rmb, why;
+        buttons(&lmb, &rmb);
+        why = flat_start_decide(marker_exists(), lmb, rmb, other_patcher(sysiclass_slot()));
+        if (why) {                                      /* a kill switch is set: stay resident, inert, say why */
+            r->st.held = (uint16_t)why;
+            if (why == FLAT_HELD_MARKER)
+                marker_delete();                        /* one inert start per crash, not for ever */
+        } else {
+            int rc;
+            marker_write();                             /* on disk before the swap, so a crash leaves it */
+            marker_live = 1;
+            rc = hook_install(r);
+            if (rc != FLAT_OK) {
+                PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
+                marker_delete();
+                marker_live = 0;
+            } else {
+                pt_start(&tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
+            }
+        }
     }
     g_r = r;
-    dopus_scan(r);
+    if (!r->st.held)
+        dopus_scan(r);
     print_status();
     for (;;) {
-        ULONG got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D);
-        if (got & SIGBREAKF_CTRL_D) {
+        ULONG got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | pt_sigmask(&tm));
+        if (marker_live && pt_fired(&tm, got)) {        /* 60 s without a crash: the start is safe */
+            marker_delete();
+            marker_live = 0;
+        }
+        if ((got & SIGBREAKF_CTRL_D) && !r->st.held) {
             dopus_scan(r);
             print_status();
         }
@@ -538,8 +660,12 @@ int main(void)
             CloseLibrary((struct Library *)GfxBase);
             GfxBase = 0;
         }
-        if (drop_record(r))
+        if (drop_record(r)) {
+            if (marker_live)
+                marker_delete();
+            pt_close(&tm);
             return 0;
+        }
         PutStr((STRPTR)"amarchy-flat: the state block is in use, not unloading\n");
     }
 }

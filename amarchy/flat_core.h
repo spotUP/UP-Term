@@ -23,7 +23,7 @@ typedef struct flat_state {
     uint16_t size;              /*  2 sizeof(flat_state) of the writer */
     uint16_t enabled;           /*  4 1 = glyph hook draws flat (written by Amarchy) */
     uint16_t style;             /*  6 FLAT_STYLE_* */
-    uint16_t held;              /*  8 1 = kept inert by a kill switch (crash marker, boot gesture, other patcher) */
+    uint16_t held;              /*  8 0 = running; else the FLAT_HELD_* reason a kill switch kept it inert (FLAT-C4) */
     uint16_t still_chained;     /* 10 1 = a foreign hook sits on top of ours, so we cannot unload (FLAT-C1) */
     uint32_t calls;             /* 12 hook calls so far: the sentinel */
     uint8_t pen_text;           /* 16 glyph line pen */
@@ -166,5 +166,45 @@ int flat_gadget_which(unsigned gadget_type, const void *gadget_render, const voi
 
 /* SYSIA_Which values that draw the glyph of another one (SDEPTHIMAGE 5 -> DEPTHIMAGE 0). */
 unsigned long flat_which_alias(unsigned long which);
+
+/* ---- FLAT-C4: kill switches ------------------------------------------------------------------------------------
+ * Plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C4 (OD-F5, OD-F7). The program starts INERT (no hook swapped, held
+ * = the reason, STATUS flat=held why=...) when any switch is set. Priority, first match wins:
+ *   1 crash marker ENVARC:Amarchy/flat-starting present (written before the swap, deleted FLAT_MARKER_SECS later:
+ *     a start that crashed the machine leaves it, so the next boot starts inert),
+ *   2 both mouse buttons held at boot (OD-F7),
+ *   3 VisualPrefs or Birdie running, by task name, or a foreign hook already on the sysiclass slot (OD-F5; P1 pens
+ *     still apply because they are not part of this program). */
+#define FLAT_MARKER_PATH "ENVARC:Amarchy/flat-starting"
+#define FLAT_MARKER_HEAD "flat-starting 1\n"
+#define FLAT_MARKER_SECS 60
+
+enum { FLAT_HELD_NONE = 0, FLAT_HELD_MARKER = 1, FLAT_HELD_GESTURE = 2, FLAT_HELD_VISUALPREFS = 3,
+       FLAT_HELD_BIRDIE = 4, FLAT_HELD_HOOK = 5 };
+
+/* Which foreign patcher a task name belongs to: FLAT_HELD_VISUALPREFS, FLAT_HELD_BIRDIE or FLAT_HELD_NONE.
+ * Case-insensitive prefix match ("VisualPrefs", "VisualPrefs Handler", "Birdie", "BirdieD"). */
+int flat_other_task(const char *name);
+
+/* A hook entry address already on the sysiclass slot: outside the intuition.library ROM span [lo, hi) is
+ * FLAT_HELD_HOOK, inside is FLAT_HELD_NONE. */
+int flat_other_hook(unsigned long entry, unsigned long lo, unsigned long hi);
+
+/* The start decision. marker: the marker file exists. lmb / rmb: that button is down. other: a FLAT_HELD_* from
+ * flat_other_task / flat_other_hook (a task name wins over the hook; the caller passes the first nonzero).
+ * Returns FLAT_HELD_NONE (start) or the reason held. */
+int flat_start_decide(int marker, int lmb, int rmb, int other);
+
+/* Seconds the marker still has to live: FLAT_MARKER_SECS minus the age (now and written are seconds on any clock,
+ * unsigned arithmetic so a wrapped clock still works), 0 when expired. */
+unsigned flat_marker_remaining(unsigned long written, unsigned long now);
+
+/* The held reason as one word ("marker", "gesture", "VisualPrefs", "Birdie", "hook"; "" for NONE). */
+const char *flat_held_name(unsigned reason);
+
+/* The prefs status text (shows in Amarchy's settings page): flat_status_word, plus for a held block the cause
+ * by name, "held by VisualPrefs" / "held by crash marker" / "held by both mouse buttons" / "held by another
+ * hook on the gadget class". Returns the length, 0 when cap is too small (cap >= 40 needed). */
+int flat_status_text(const flat_state *s, int found, char *out, size_t cap);
 
 #endif
