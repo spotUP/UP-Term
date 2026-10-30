@@ -70,7 +70,8 @@ int amconf_flat_index(const am_prefs *p, int key);
 const char *amconf_agent(const am_prefs *p);
 /* shot-dir as the raw path; empty -> the default "RAM:Shots" */
 const char *amconf_shot_dir(const am_prefs *p);
-/* the desktop targets to write: 0 when desktop-theme is off, else bit t (desk_core target t) for each part switched on */
+/* the desktop targets to write: 0 when desktop-theme is off, else bit t (desk_core target t) for each part switched on; the icontrol
+ * bit (4) when flat-border-size is thin */
 unsigned amconf_desk_mask(const am_prefs *p);
 #define AM_TILEGAP_MAX 64
 /* tile-gap as a number: whole digits 0..AM_TILEGAP_MAX, anything else the default of the key */

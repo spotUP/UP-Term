@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../amarchy/desk_core.h"
+#include "../handler/be32.h"
 #include "harness.h"
 
 #define DESK_DATA "tests/data/desk/"
@@ -494,6 +495,82 @@ static void test_desk_plan(void)
     CHECK_INT(desk_plan(0, &t, why, sizeof why), 0);
 }
 
+/* FLAT-P1-2: the icontrol.prefs writer on a hand-built 3.2 layout file (tests/data/desk/icontrol-os32.prefs, R1 layout; not a rig capture) */
+static void test_desk_icontrol(void)
+{
+    static unsigned char gold[BUF_MAX], out[BUF_MAX], out2[BUF_MAX], old[BUF_MAX], iexc[BUF_MAX];
+    unsigned char geom[4], thin[4], stock[4];
+    long gn = slurp(DESK_DATA "icontrol-os32.prefs", gold, sizeof gold), n, n2, i, diff = 0, ictl = 0, p;
+    desk_geometry(0, stock);
+    desk_geometry(1, thin);
+    CHECK(gn >= 26 + 8 + 38);
+    CHECK(memcmp(stock, thin, 4) != 0);
+    for (p = 12; p + 8 <= gn; p += 8 + (long)be32_get(gold + p + 4) + (long)(be32_get(gold + p + 4) & 1))
+        if (!memcmp(gold + p, "ICTL", 4))
+            ictl = p + 8;
+    CHECK(ictl > 0);
+    /* the captured file is the baseline: thin changes the version fields, the versioned flag and the 4 geometry bytes only */
+    n = desk_icontrol(gold, gn, thin, out, sizeof out);
+    CHECK_INT(n, gn);
+    for (i = 0; i < n; i++)
+        if (out[i] != gold[i]) {
+            diff++;
+            CHECK(i >= ictl + 20 && i < ictl + 38);
+        }
+    CHECK(diff > 0);
+    CHECK_INT(out[ictl + 20] & 0x80, 0x80);
+    CHECK_INT(out[ictl + 29], 2);
+    CHECK_INT(out[ictl + 30] | out[ictl + 31], 0);
+    CHECK(!memcmp(out + ictl + 34, thin, 4));
+    CHECK_INT(be32_get(out + 4) + 8, (unsigned long)n);
+    /* writing it again, or stock over it, changes only the geometry bytes; stock over the baseline is the baseline plus the version fields */
+    n2 = desk_icontrol(out, n, thin, out2, sizeof out2);
+    CHECK(n2 == n && !memcmp(out, out2, (size_t)n));
+    n2 = desk_icontrol(out, n, stock, out2, sizeof out2);
+    CHECK_INT(n2, n);
+    for (i = 0; i < n; i++)
+        if (out[i] != out2[i])
+            CHECK(i >= ictl + 34 && i < ictl + 38);
+    /* a pre-V2 file (ICTL of 28 bytes, no versioned tail) is upgraded and keeps every field it had */
+    memcpy(old, gold, 26);
+    memcpy(old + 26, "ICTL", 4);
+    old[30] = old[31] = old[32] = 0;
+    old[33] = 28;
+    memcpy(old + 34, gold + ictl, 28);
+    old[34 + 20] &= 0x7f;
+    be32_put(old + 4, 4 + 14 + 8 + 28);
+    n = desk_icontrol(old, 34 + 28, thin, out, sizeof out);
+    CHECK_INT(n, 34 + 38);
+    CHECK_INT(be32_get(out + 30), 38);
+    CHECK(!memcmp(out + 34, old + 34, 20));
+    CHECK_INT(be32_get(out + 34 + 20), be32_get(old + 34 + 20) | 0x80000000UL);
+    CHECK_INT(out[34 + 29], 2);
+    CHECK(!memcmp(out + 34 + 24, old + 34 + 24, 4));
+    CHECK(!memcmp(out + 34 + 34, thin, 4));
+    CHECK_INT(be32_get(out + 4) + 8, (unsigned long)n);
+    /* an IEXC chunk (odd size, so a pad byte) before and after the ICTL chunk goes through byte for byte */
+    memset(iexc, 0, sizeof iexc);
+    p = 0;
+    memcpy(iexc, gold, 26);
+    p = 26;
+    memcpy(iexc + p, "IEXC", 4); be32_put(iexc + p + 4, 5); memcpy(iexc + p + 8, "Dopus", 5); iexc[p + 13] = 0; p += 14;
+    memcpy(iexc + p, gold + 26, (size_t)(gn - 26)); p += gn - 26;
+    memcpy(iexc + p, "IEXC", 4); be32_put(iexc + p + 4, 3); memcpy(iexc + p + 8, "*ab", 3); iexc[p + 11] = 0; p += 12;
+    be32_put(iexc + 4, (unsigned long)(p - 8));
+    n = desk_icontrol(iexc, p, thin, out, sizeof out);
+    CHECK_INT(n, p);
+    CHECK(!memcmp(out + 26, iexc + 26, 14));
+    CHECK(!memcmp(out + n - 12, iexc + p - 12, 12));
+    /* no file: a new one with defaults and the geometry */
+    n = desk_icontrol(0, 0, thin, out, sizeof out);
+    CHECK_INT(n, 26 + 8 + 38);
+    CHECK(!memcmp(out + 26, "ICTL", 4) && !memcmp(out + 26 + 8 + 34, thin, 4));
+    geom[0] = 0;
+    CHECK_INT(desk_icontrol(0, 0, thin, out, 20), 0);
+    CHECK_INT(desk_icontrol((const unsigned char *)"not a prefs file at all, no", 27, thin, out, sizeof out), 0);
+    (void)geom;
+}
+
 static void test_desk_targets(void)
 {
     const char *list[16], *marker;
@@ -501,7 +578,7 @@ static void test_desk_targets(void)
     unsigned mask;
     int n, i;
     long ml;
-    CHECK_INT(DT_COUNT, 4);
+    CHECK_INT(DT_COUNT, 5);
     for (i = 0; i < DT_COUNT; i++)
         CHECK_INT(desk_target_by_name(desk_target_get(i)->name), i);
     CHECK_INT(desk_target_by_name("nothing"), -1);
@@ -515,7 +592,7 @@ static void test_desk_targets(void)
     CHECK_INT(n, 4);
     for (i = 0; i < n; i++)
         CHECK(strstr(list[i], "pointer") == 0 && strstr(list[i], "wbpattern") == 0);
-    CHECK_INT(desk_snapshot((1u << DT_COUNT) - 1, list, 16), 8);
+    CHECK_INT(desk_snapshot((1u << DT_COUNT) - 1, list, 16), 10);
     CHECK(strstr(list[0], "palette") != 0);
     CHECK_INT(desk_snapshot((1u << DT_COUNT) - 1, list, 3), 3);
     /* restore: the reverse order */
@@ -562,6 +639,11 @@ static void test_desk_palette_gate(void)
     CHECK_INT(desk_palette_editor_ok(0, 0), 0);
     {
         int ws = 9;
+        /* FLAT-P1-2: the geometry is read on 3.2 only, and writing it reopens the Workbench screen */
+        CHECK_INT(desk_gate_mask(1u << DT_ICONTROL, 0, &ws), 0);
+        CHECK_INT(ws, 0);
+        CHECK_INT(desk_gate_mask(1u << DT_ICONTROL, 1, &ws), 1u << DT_ICONTROL);
+        CHECK_INT(ws, 1);
         /* 3.1: no palette write; the wbpattern write that remains makes Intuition ask for a Workbench reset (second cause) */
         CHECK_INT(desk_gate_mask(15, 0, &ws), 14);
         CHECK_INT(ws, 1);
@@ -649,6 +731,7 @@ void suite_desk(void)
     test_desk_font_default();
     test_desk_guard();
     test_desk_plan();
+    test_desk_icontrol();
     test_desk_targets();
     test_desk_preview();
 }

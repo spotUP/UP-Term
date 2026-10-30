@@ -79,6 +79,16 @@ long desk_pointer(const gtheme *t, unsigned char *buf, long len);
  * the number of chunks changed (0 or 1), -1 when buf is no font.prefs. */
 long desk_font_pens(unsigned char *buf, long len);
 
+/* FLAT-P1-2: the icontrol.prefs for the window border and title size. cur/curlen = the file now on disk (or 0): every chunk and
+ * every ICTL field is kept (IEXC exception chunks byte for byte); ICB_VERSIONED, ic_Version 2, ic_VersionMagic 0 and
+ * ic_GUIGeometry[4] are set, a pre-V2 ICTL grows to DK_ICTL_SIZE with zero fields. No file: a new one with defaults.
+ * Returns the size, 0 when cap is too small or cur is no prefs file. */
+#define DK_ICTL_SIZE 38L
+long desk_icontrol(const unsigned char *cur, long curlen, const unsigned char geometry[4], unsigned char *out, long cap);
+/* the geometry bytes of the border and title size: thin = 0 stock (all zero), 1 thin (byte 1 = -1: title bar one pixel
+ * lower than stock; measured FLAT-R1, research note section 9; nothing thins the other borders) */
+void desk_geometry(int thin, unsigned char geometry[4]);
+
 /* R1.4: the theme's font= names the WBFONT of font.prefs, only when exists(ctx, name) says the font is there. Returns
  * 1 when the file changed, 0 when the key is empty or unknown (file untouched), -1 when buf is no font.prefs. */
 typedef int (*desk_font_exists_fn)(void *ctx, const char *name);
@@ -95,9 +105,9 @@ int desk_check(const gtheme *t, char *why, int cap);
 int desk_plan(unsigned mask, const gtheme *t, char *why, int cap);
 
 /* D-TGT: the targets; each has its own amconf switch (OD2) and the files it writes */
-enum { DT_PALETTE, DT_WBPATTERN, DT_POINTER, DT_FONT, DT_COUNT };
+enum { DT_PALETTE, DT_WBPATTERN, DT_POINTER, DT_FONT, DT_ICONTROL, DT_COUNT };
 typedef struct {
-    const char *name;    /* palette, wbpattern, pointer, font (the screen title stays stock, OD11: no target) */
+    const char *name;    /* palette, wbpattern, pointer, font, icontrol (the screen title stays stock, OD11: no target) */
     const char *key;     /* the amconf key of its switch */
     const char *files[2]; /* the files it writes, 0 = none */
 } desk_target;
@@ -125,7 +135,8 @@ int desk_pointer_editor_ok(const unsigned char *bin, long len);
 int desk_palette_editor_ok(const unsigned char *bin, long len);
 /* the targets to write on a Workbench whose Palette editor is (palette_ok) or is not usable: without it the palette bit goes. When a
  * wbpattern write remains (either way), *ws_reset is 1 -- IPrefs (40.7 and 47.x) makes Intuition ask for a Workbench reset on it ("Please close all
- * windows, except drawers"), so the caller closes its windows around that write and waits for the new screen */
+ * windows, except drawers"), so the caller closes its windows around that write and waits for the new screen. The icontrol bit stays only with palette_ok (3.2 reads the
+ * geometry, 3.1 ignores it) and sets *ws_reset too: a geometry change reopens the Workbench screen */
 unsigned desk_gate_mask(unsigned mask, int palette_ok, int *ws_reset);
 /* the mask a marker names; 0 when buf is no marker */
 unsigned desk_marker_parse(const char *buf, long len);

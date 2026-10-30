@@ -445,6 +445,79 @@ long desk_font_default(unsigned char *out, long cap)
     return n;
 }
 
+/* ---- FLAT-P1-2: icontrol.prefs ---- */
+
+#define IC_FLAGS 20L   /* ic_Flags (ULONG) in the ICTL body */
+#define IC_VERSION 28L /* ic_Version (UWORD), ic_VersionMagic (UWORD) at 30 */
+#define IC_GEOM 34L    /* ic_GUIGeometry[4] */
+#define IC_VERSIONED 0x80000000UL /* ICB_VERSIONED */
+
+void desk_geometry(int thin, unsigned char geometry[4])
+{
+    memset(geometry, 0, 4);
+    if (thin)
+        geometry[1] = 0xFF;
+}
+
+long desk_icontrol(const unsigned char *cur, long curlen, const unsigned char geometry[4], unsigned char *out, long cap)
+{
+    long pos = DK_HDR, o = 0, n, body, size, ictl_at = -1;
+    char id[4];
+    unsigned char *ic;
+    if (cur && curlen > 0 && !is_prefs(cur, curlen))
+        return 0;
+    if (!cur || curlen <= 0) {
+        if (cap < DK_HDR + 8 + DK_ICTL_SIZE)
+            return 0;
+        iff_header(out, DK_HDR + 8 + DK_ICTL_SIZE);
+        memcpy(out + DK_HDR, "ICTL", 4);
+        be32_put(out + DK_HDR + 4, (unsigned long)DK_ICTL_SIZE);
+        memset(out + DK_HDR + 8, 0, (size_t)DK_ICTL_SIZE);
+        n = DK_HDR + 8 + DK_ICTL_SIZE;
+    } else {
+        /* copy the file, the ICTL chunk grown to the versioned size; every other chunk goes through unchanged */
+        long end = curlen;
+        if (cap < curlen + DK_ICTL_SIZE)
+            return 0;
+        memcpy(out, cur, (size_t)DK_HDR);
+        o = DK_HDR;
+        while (next_chunk(cur, end, &pos, id, &body, &size)) {
+            long start = body - 8, chunk_end = body + size + (size & 1);
+            if (chunk_end > end)
+                chunk_end = end;
+            if (!memcmp(id, "ICTL", 4) && ictl_at < 0) {
+                long grown = size < DK_ICTL_SIZE ? DK_ICTL_SIZE : size;
+                memcpy(out + o, "ICTL", 4);
+                be32_put(out + o + 4, (unsigned long)grown);
+                memset(out + o + 8, 0, (size_t)(grown + (grown & 1)));
+                memcpy(out + o + 8, cur + body, (size_t)size);
+                ictl_at = o + 8;
+                o += 8 + grown + (grown & 1);
+            } else {
+                memcpy(out + o, cur + start, (size_t)(chunk_end - start));
+                o += chunk_end - start;
+            }
+        }
+        if (ictl_at < 0) {
+            memcpy(out + o, "ICTL", 4);
+            be32_put(out + o + 4, (unsigned long)DK_ICTL_SIZE);
+            memset(out + o + 8, 0, (size_t)DK_ICTL_SIZE);
+            ictl_at = o + 8;
+            o += 8 + DK_ICTL_SIZE;
+        }
+        be32_put(out + 4, (unsigned long)(o - 8));
+        n = o;
+    }
+    if (ictl_at < 0)
+        ictl_at = DK_HDR + 8;
+    ic = out + ictl_at;
+    be32_put(ic + IC_FLAGS, be32_get(ic + IC_FLAGS) | IC_VERSIONED);
+    put16(ic + IC_VERSION, 2);
+    put16(ic + IC_VERSION + 2, 0);
+    memcpy(ic + IC_GEOM, geometry, 4);
+    return n;
+}
+
 /* ---- D-TGT, R1.16a ---- */
 
 /* write order: the table order. Files: the ENV: copy is what the OS reads, the ENVARC: copy survives a reboot. */
@@ -453,6 +526,7 @@ static const desk_target targets[DT_COUNT] = {
     { "wbpattern", "desktop-backdrop", { "ENVARC:Sys/wbpattern.prefs", "ENV:Sys/wbpattern.prefs" } },
     { "pointer", "desktop-pointer", { "ENVARC:Sys/pointer.prefs", "ENV:Sys/pointer.prefs" } },
     { "font", "desktop-labels", { "ENVARC:Sys/font.prefs", "ENV:Sys/font.prefs" } },
+    { "icontrol", "flat-border-size", { "ENVARC:Sys/icontrol.prefs", "ENV:Sys/icontrol.prefs" } },
 };
 
 const desk_target *desk_target_get(int target)
@@ -578,8 +652,12 @@ unsigned desk_gate_mask(unsigned mask, int palette_ok, int *ws_reset)
 {
     if (!palette_ok)
         mask &= ~(1u << DT_PALETTE);
+    /* IControl's ic_GUIGeometry is read on 3.2 only (FLAT-R1: 3.1 accepts the file and changes nothing), so it follows the palette gate; every
+     * change reopens the Workbench screen, so the caller closes its windows around it (the same reset as a wbpattern write on 3.1) */
+    if (!palette_ok)
+        mask &= ~(1u << DT_ICONTROL);
     /* only below 47 does a wbpattern write ask Intuition for a Workbench reset (3.2 measured: a WBPattern USE with a window open posts no requester) */
-    *ws_reset = !palette_ok && (mask & (1u << DT_WBPATTERN)) != 0;
+    *ws_reset = (!palette_ok && (mask & (1u << DT_WBPATTERN)) != 0) || (mask & (1u << DT_ICONTROL)) != 0;
     return mask;
 }
 
