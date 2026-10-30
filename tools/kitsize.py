@@ -44,6 +44,11 @@ OPTIONS = {
 }
 # kit files no Install copies, whatever the options: the network tools' licences and sources
 NOT_COPIED = ['net/*/*-src.tar.bz2', 'net/*/COPYING', 'net/*/SOURCE.txt']
+# the parts that copy no kit file and write a few small ones, by package: the base's /gg/bin/sh and TMP: drawer
+# (unix) and the record of the files and the choices (record); python's Python3: block in S:User-Startup (python);
+# uhc's download (about 150 KB) and its unpacked tree (about 1.2 MB), fetched from the net (uhctree).
+# Both the Installer and install.dos's own room check count them.
+NO_KIT_FILES = {'base': {'KBUNIX': 60, 'KBRECORD': 20}, 'python': {'KBPYTHON': 20}, 'uhc': {'KBUHCTREE': 1400}}
 
 
 def file_bytes(size):
@@ -109,6 +114,7 @@ def sizes(kit, pkg_id):
     values = {}
     for part in {p[0] for p in parts if p[0] != '-'}:
         values['KB' + part.upper().replace('-', '')] = max(FLOOR_KB, kb(bytes_of.get(part, 0)) * BACKED_UP.get(part, 1))
+    values.update(NO_KIT_FILES.get(pkg_id, {}))
     for name, fs in options.items():
         n = sum(file_bytes(s) for _, s in fs)
         if name == 'KBWASABI':

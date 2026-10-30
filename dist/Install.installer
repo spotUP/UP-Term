@@ -430,7 +430,7 @@
 (set #kb-emoji (if #emoji @KBCOPYEMOJI@ 0))
 (set #kb-tools (+ @KBTOOLS@ (if #ssh @KBSSH@ 0) (if #bget @KBBEBBOGET@ 0)))
 ; fonts, unix, desktop, boot (with wasabi), libs, mount, console, record: their #kb below
-(set #kb-rest (+ @KBFONTS@ 60 @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ 20))
+(set #kb-rest (+ @KBFONTS@ @KBUNIX@ @KBDESKTOP@ @KBBOOT@ (if #wasabi @KBWASABI@ 0) @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ @KBRECORD@))
 ; AmiSSL goes where Install-AmiSSL puts it first, not into the drawer: its own default is the
 ; AmiSSL: assign, else Work:, else SYS:. Its KB count on that volume's check below.
 (set #kb-amissl (if #amisslins @KBAMISSL@ 0))
@@ -623,7 +623,7 @@
                "FixFonts."))
 (P_STEP)
 
-(set #step "unix" #kb 60 #n 2
+(set #step "unix" #kb @KBUNIX@ #n 2
      #why (cat "Setting up /gg/bin/sh and /tmp for Unix programs:\n"
                "GG: and TMP: are assigned only when you have none."))
 (P_STEP)
@@ -659,7 +659,7 @@
 
 (complete 100)
 
-(set #step "record" #kb 20 #n 2
+(set #step "record" #kb @KBRECORD@ #n 2
      #why (cat "Writing down this kit's list of files and your\n"
                "choices, for a later Update."))
 (P_STEP)

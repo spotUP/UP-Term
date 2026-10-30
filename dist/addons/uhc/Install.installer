@@ -11,8 +11,8 @@
     "used as it is, nothing is replaced).\n"
     "Needs up-term.lha, LhA and a network connection.\n"
     (all))
-; the download (about 150 KB) and its unpacked tree (about 1.2 MB) are not in the kit, so not in the part size
-(set #kb-uhc (+ @KBFETCHUHC@ 1400))
+; the download and its unpacked tree are not in the kit: tools/kitsize.py NO_KIT_FILES holds their size
+(set #kb-uhc (+ @KBFETCHUHC@ @KBUHCTREE@))
 (set #totalkb @KBTOTAL@)
 (set #free (getdiskspace (pathonly #dest)))
 (if (and (> #free 0) (< (/ #free 1024) #totalkb))

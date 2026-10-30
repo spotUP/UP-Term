@@ -45,7 +45,7 @@
      #why "Copying Python 3.14 to SYS:Python3.")
 (P_STEP)
 
-(set #step "python" #kb 20 #n 2
+(set #step "python" #kb @KBPYTHON@ #n 2
      #why (cat "Assigning Python3: now and at every boot\n"
                "(a block in S:User-Startup)."))
 (P_STEP)

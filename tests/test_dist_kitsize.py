@@ -32,9 +32,10 @@ class NoSizeTypedByHand(unittest.TestCase):
             s = raw(i)
             for m in re.finditer(r'\(set #(kb-[a-z]+|totalkb) \(?\+? ?[1-9]\d\d+', s):
                 self.fail('%s: %s' % (i, m.group(0)))
-            for m in re.finditer(r'\(set #step "[a-z-]+" #kb [1-9]\d\d+', s):
-                if '"unix"' not in m.group(0) and '"record"' not in m.group(0):
-                    self.fail('%s: %s' % (i, m.group(0)))
+            for m in re.finditer(r'\(set #step "[a-z-]+" #kb [1-9]\d*', s):
+                self.fail('%s: %s' % (i, m.group(0)))
+            for m in re.finditer(r'\(set #kb-[a-z]+ \(\+[^)]* [1-9]\d*[ )]', s):
+                self.fail('%s: %s' % (i, m.group(0)))
 
     def test_the_assembled_scripts_hold_the_kit_sizes(self):
         for i in ROWS:
