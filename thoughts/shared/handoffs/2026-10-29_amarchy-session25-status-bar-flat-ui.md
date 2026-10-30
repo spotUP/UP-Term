@@ -87,12 +87,39 @@ Correction to the s24 handoff: it asks the owner for a Pointer editor hand test.
 - dopus5 reference clone ~/Code/Reference/dopus5 (96ede09).
 - A1200 redeploy from 7f2edbcf (Amarchy, amarchy-gui, amarchy-menu, backups .bak-20261029c): see ledger row.
 
+## FLAT-C2 rig step (5883b3b0)
+- 3.2 rig 6: 0 failed (swap, Ctrl-C restore byte-equal, 200 cycles stable, glyphs differ from stock, flat off == stock, no Guru).
+- 3.1: GetAttr(SYSIA_Which) fails on 3.1 sysiclass, dispatcher falls back, nothing drawn. Step was bent to accept fallback; not acceptable (OD-F3 covers 3.1).
+- Follow-up agent running: record Which at OM_NEW per object, restore 3.1 assertion, rerun 3.1 + 3.2 (3.2 branch never re-run after edit).
+- Not rig-covered: MENUCHECK, AMIGAKEY, ICONIFY, MENUSUB.
+- 71fcbf62 FLAT-C2 on 3.1: Which from window gadget walk (Layer->Window->FirstGadget, GadgetRender/SelectRender == image, GTYP_* map in flat_core). Rig 6 3.1 + 3.2 PASS 0 failed, cycles 200. C2 ticked in plan. Menu glyphs stay stock on 3.1 (no gadget); 4 menu glyphs not rig-covered on either OS. OM_NEW table approach failed (3.1 builds most gadget images without our hook).
+- 4e3df7b6 (fall-through comment) landed via another session as 46d7e052.
+- DESK-31 3.2: desk_reset_done (in-place reset gap ~200 ms at +0.4 s) gives 3.2 x2 0 failed on fresh rigs. WBCLOSES=2 was harness artefact (amarchy_desk_rig.py:348 absolute compare). 3.1 now 1 fail: IPrefs System Request open, ENV:Sys/palette.prefs zero length, pens unchanged (34c39285 passed 3.1 earlier: regression or flake). Not pushed; owner chose push only after full rig pass. Agent on 3.1 palette write cause.
+
+## Late s25 additions
+- FLAT-C4 pushed 47240428, row ticked (rig 5, 3.2). Uninitialised poll_timer fixed in flat.c. Both-buttons boot gesture host-only (A1200 check owner). install_rig.py amarchy-flat entry maybe later (peer edits pending there).
+- FLAT-D2: 011ab65e duplicated dopus_theme_commands with conflicting pens + `user 0`; reworked in 8bed5f34 (one mapping, 10 keys, no user; desk_dos_apply reuses dopus_theme_send; gt_dos_select sends only as fallback). Rig proof pending (DOpus archive is in main vendor/).
+- FLAT-P1-2: aca43a12 (local, worktree p12c) = stock restores snapshot, thin writes once; desk 950/0. Bar-close already existed; wedge cause unconfirmed (REPLAY driver in non-fresh rigs, peer fix 2471778a). Rig proof pending on rig 7 --fresh.
+- Owner disk decision: no peer rig deletes; reuse own rig folders.
+- Peer vtcon-05 took rig 5 at 14:46.
+- Budget lesson: agents ran out of budget waiting on make test under load; brief to run tests in background.
+- Earlier s25 commits not listed above: 85224de4, 85a4514e (mute), DESK-31 19da2833, C5 e524b091 + 36eb31a2, C7 a22ea52e, C8 69621727 + 077c8684, plan rows 2e5a3ca2 + OD-F9, P1-2 host part 6b6733ed + c886de9b. Over-budget agents: C8 93 calls, P1-2 76.
+- FLAT-ON-SWITCH: nothing on main turns flat on from the C5 keys. BUILD-FRESH-WT-NERDFONT: a fresh worktree build/amiga is near empty; agents run `make build/amiga/amarchy-menu build/amiga/winprobe wasabi` first.
+
+## FLAT-P1-2 rig result (rig 7, 3.2, --fresh) - FAILED, not pushed
+- Code: branch flat-p12c-wip, worktree .claude/worktrees/p12c, local commits f8e7f111 (fix, rebased on 8bed5f34, desk 950/0) and 3fdbb97d (tools/rig/amarchy_icontrol_rig.py). Evidence: scratchpad flat-p12-d2-rig.md (session 11e17e88).
+- Thin through the real Amarchy theme pick WORKS: stock ENVARC icontrol md5 7ac42f5d7567f9654d9ba02bd37690c8 (geometry 00000000) -> ENV + ENVARC geometry 00ff0000, BorderTop 11 -> 10.
+- BUG: after the thin apply the bar stays closed (BAR STATUS bar=0 for minutes; manual BAR ON brings it back). The "Amarchy" menu popup (134,25 372x206) stays open; the next theme-menu open fails "Down to Style: no stable state". So stock-through-Amarchy and the md5 round trip never ran.
+- No System Request from the Amarchy apply. The one seen (run 2) came from a hand copy into ENV:Sys while windows were open.
+- Leads (amarchy/desk_dos.c in the worktree): dk_windows_close/open run only when `reset || old_ws` (palette change or pre-47 WB) - an ICONTROL-only apply never closes or reopens; but the bar did close, so something else closes it (bar reacting to the IPrefs screen reset?). desk_wb_open (amarchy/amarchy.c:169) skips reopen while g_wb_hold is set; the menu process uses rexx BAR OFF/BAR ON instead of the hooks. Owner decision 2 (close bar + own windows, let IPrefs reset, reopen) must hold for the ICONTROL bit itself.
+- D2 rig proof NOT started (budget). Run it from the main checkout (`rig.py dopus` reads the archive via rig.ROOT: vendor/dopus5-5.104/DOpus5_104_os3.lha).
+
 ## Next session, in order
 
-1. Owner hand tests on the A1200 (needs Amarchy restart or reboot to load the 7f2edbcf build): bar clicks open panels; hold Backspace to empty the query, menu stays open; theme list highlight recolours shells and tabs, Esc restores; selected label readable on catppuccin-latte, ethereal, everforest, flexoki-light; super+shift+t and menu "Theme..." work; desk theme changes WB colours; tray click runs its program; new console opens in the theme; root search "reboot" finds System/Reboot; bar stays over a zoomed drawer. Ask for results; ledger each.
-2. make wasabi in the main checkout once musicplayer-55 says its I716 rig 2 run ended; tell musicplayer-55 when built.
-3. AM-BAR-COLUMNS fix (ledger row).
-4. Add amarchy-menu to deploy.list.
-5. Rest of the open list above: R2.16, R2.17, DESK-31-CRASH, DESK-IPREFS-FLAKE, AM-FLAT-WB, Selecta P1B-M1, W43, p3_keys, RIG3-BOOT-GURU, RIG-PORT-CLASH, RIG-OS32-NODOPUS, wasabid rename, mkmanifest, A1200 drift on vtcon-handler/pty-handler/ixkill.
+1. FLAT-P1-2 bar-stays-closed: root cause first (skill fixing-bugs). Measure on a --fresh 3.2 rig which code closes the bar during an ICONTROL apply and why nothing reopens it; fix in desk_dos.c / amarchy.c on branch flat-p12c-wip; host regression test; rerun tools/rig/amarchy_icontrol_rig.py (thin, bar back, stock md5 equal). Pass: push, tick P1-2, remove worktree p12c + branch.
+2. FLAT-D2 rig proof from the main checkout (DESK THEME, `dopus query pens` per key vs the 8bed5f34 values, `user` untouched). Pass: tick D2.
+3. Owner A1200 hand tests after a redeploy carrying 4b14804f 69d5e08e 3d9a6d06 acd91dc6 71fcbf62 85224de4 19da2833 e524b091 6b6733ed c886de9b a22ea52e 69621727 47240428 011ab65e 8bed5f34 (+ P1-2): theme arrows recolour + Esc restores, list opens on current theme, search "reboot", backdrop darker than shell, both-buttons boot skip.
+4. Unticked flat rows: P1-3, M1/M2 residue, C6 (OD-F6), D3, D4 rest, X1 (3.1 for all rows), FLAT-31-GEOMETRY, AM-FLAT-WB row to add.
+5. Open list: R2.16, R2.17, BAR-NET-CLICK, Selecta P1B-M1, W43, p3_keys, RIG3-BOOT-GURU, RIG6-SLOW-BOOT, dist-check on push, wasabid rename, mkmanifest, A1200 drift, D14-WIRE, REXX-DEAD-AFTER-THEME, BAR-AGENTS-PANEL-EMPTY.
 
-Gotcha: the wasabi client said "bad key" with AMI_TOKEN in the env; pass --host 192.168.0.74 --port 1234 --key <key> explicitly. The A1200 has no Md5 command: verify by wasabi get plus a local md5.
+Owner decisions holding: rig check per flat row on 3.2 only (3.1 once at X1); no deletes of peer rig folders, reuse own (rig 7).
