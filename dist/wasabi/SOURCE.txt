@@ -3,8 +3,8 @@ wasabi -- drive an Amiga from a Linux / macOS / BSD machine over the network
 UP-Term builds from its fork https://github.com/spotUP/wasabi.
 
   wasabid        the daemon, for the Amiga: wasabid 0.11b2 (17.10.2026) plus the
-                 fork's unreleased MUI group-button listing, commit
-                 562672a8a24b2d874301da15277e15bd824dd5c6, built by UP-Term from that
+                 fork's unreleased MUI group-button, AAList row and AAText label
+                 listing, commit 83acd194db643cc88981a5fc41ab3c0ebf861fa9, built by UP-Term from that
                  source (make wasabi, Bebbo's m68k-amigaos-gcc, the 68000 build; the
                  pin is tools/nas/wasabi.rev). Install puts it in C: when asked,
                  with a key of its own, started at every boot. It replaces the
