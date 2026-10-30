@@ -39,9 +39,10 @@ int desk_ground_black(const gtheme *t);
 /* R1.19: the pen index of every DrawInfo slot (OD13) into pens[DK_SLOTS] */
 void desk_pens(unsigned char pens[DK_SLOTS]);
 
-/* FLAT-P1-1 (OD-F4 a): the flat map. The stock map with SHINEPEN = the surface pen (DK_BG), so a two-tone bevel reads as one
- * SHADOWPEN outline. Differs from desk_pens in that slot only, so a theme switch while flat stays on or off keeps the pen
- * indices (no Workbench reset); every index stays below 4, so the same map serves a 4-colour screen without aliasing. */
+/* FLAT-P1-1 (OD-F4 a), FLAT-SOLID-FILL: the flat map. The stock map with SHINEPEN, SHADOWPEN and FILLPEN = the surface pen
+ * (DK_BG) and FILLTEXTPEN = DK_FG, so bevels vanish and every window is one solid rectangle. A theme switch while flat stays
+ * on or off keeps the pen indices (no Workbench reset); switching flat itself changes them, which desk_pens_reset detects.
+ * Every index stays below 4, so the same map serves a 4-colour screen without aliasing. */
 void desk_pens_flat(unsigned char pens[DK_SLOTS]);
 /* FLAT-SOLID-FILL: pen_text (active glyph), pen_line (inactive glyph), pen_back of the flat_state block under the flat map */
 void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned char *back);
