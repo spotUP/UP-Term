@@ -116,7 +116,7 @@ int flat_conv(unsigned intuition_version)
 
 /* ---- FLAT-D4 ---- */
 static const flat_dopus_build dopus_table[] = {
-    { 73, 8, { 0, 0 } },                    /* DOpus 5.104 (Include/dopus/version.h LIB_VERSION 73, LIB_REVISION 8): sums measured at the rig step */
+    { 73, 8, { 0x780fd46bu, 0xba2cf172u } },   /* DOpus 5.104 (LIB_VERSION 73, LIB_REVISION 8), measured on rig 5 (OS 3.2) by STATUS "sums=" (flat_sum_reloc, same at two load addresses) */
 };
 
 const flat_dopus_build *flat_dopus_table(int *n)
@@ -133,6 +133,24 @@ uint32_t flat_sum(const void *p, size_t len)
     size_t i;
     for (i = 0; i + 4 <= len; i += 4)
         sum += ((uint32_t)b[i] << 24) | ((uint32_t)b[i + 1] << 16) | ((uint32_t)b[i + 2] << 8) | b[i + 3];
+    return sum ? sum : 1;
+}
+
+/* A routine's bytes carry absolute addresses (relocations) that differ with every load address, so a plain sum of the
+ * first bytes changes from boot to boot. Skip the long that follows an opcode word with an absolute-long operand
+ * (source EA 7/1, or the destination EA of a MOVE), and fingerprint the rest. */
+uint32_t flat_sum_reloc(const void *p, size_t len)
+{
+    const unsigned char *b = (const unsigned char *)p;
+    uint32_t sum = 0;
+    size_t i = 0;
+    while (i + 2 <= len) {
+        unsigned op = ((unsigned)b[i] << 8) | b[i + 1];
+        sum = (sum << 5 | sum >> 27) ^ op;
+        i += 2;
+        if ((op & 0x3f) == 0x39 || (op < 0x4000 && ((op >> 6) & 7) == 7 && ((op >> 9) & 7) == 1))
+            i += 4;                     /* absolute-long operand: relocated, not part of the fingerprint */
+    }
     return sum ? sum : 1;
 }
 
@@ -179,10 +197,10 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
 }
 
 int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
-                           unsigned long calls, unsigned long flat, char *out, size_t cap)
+                           unsigned long calls, unsigned long flat, const uint32_t sums[FLAT_EL_COUNT], char *out, size_t cap)
 {
-    int n;
-    if (cap < 64)
+    int n, k;
+    if (cap < 96)
         return 0;
     if (!found)
         n = snprintf(out, cap, "dopus=absent");
@@ -191,5 +209,9 @@ int flat_dopus_status_line(int found, unsigned version, unsigned revision, int r
                      reason == FLAT_GATE_UNKNOWN ? "unknown" : reason == FLAT_GATE_UNMEASURED ? "unmeasured" : "sum");
     else
         n = snprintf(out, cap, "dopus=%u.%u patched=%d calls=%lu flat=%lu", version, revision, mask, calls, flat);
+    if (found && sums && n > 0 && (size_t)n < cap) {        /* the measured routine sums: how the table is filled */
+        k = snprintf(out + n, cap - (size_t)n, " sums=%08lx,%08lx", (unsigned long)sums[0], (unsigned long)sums[1]);
+        n = k > 0 ? n + k : -1;
+    }
     return n > 0 && (size_t)n < cap ? n : 0;
 }

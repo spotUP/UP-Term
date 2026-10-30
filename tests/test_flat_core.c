@@ -193,14 +193,25 @@ static void test_dopus_gate(void)
     CHECK_INT(flat_dopus_gate(tab, 2, 73, 8, 0, &why), 0);
     CHECK_INT(flat_dopus_gate(0, 0, 73, 8, sums, &why), 0);
     CHECK_INT(why, FLAT_GATE_UNKNOWN);
-    /* the built-in table knows 73.8 but has no measured sum yet: a real library stays inert */
+    /* the built-in table: 73.8 with the sums measured on the rig (STATUS sums=); a wrong sum stays inert */
     CHECK(flat_dopus_table(&n) != 0 && n >= 1);
     sums[0] = sums[1] = 1;
     CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 73, 8, sums, &why), 0);
-    CHECK_INT(why, FLAT_GATE_UNMEASURED);
+    CHECK_INT(why, FLAT_GATE_SUM);
+    sums[0] = 0x780fd46bu; sums[1] = 0xba2cf172u;
+    CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 73, 8, sums, &why), 3);
+    CHECK_INT(why, FLAT_GATE_OK);
     /* sum and jump parsing */
     CHECK_INT(flat_sum(fn, 8), 3);
     CHECK_INT(flat_sum(fn, 3), 1);                                      /* never 0 */
+    {   /* DrawFieldBox prologue, as measured on dopus5.library 73.8: MOVE.L abs.l,-(A7) with a relocated operand */
+        const unsigned char r1[16] = {0x2f,0x0a,0x2f,0x39,0x10,0x09,0xad,0x38,0x2f,0x0a,0x2f,0x09,0x2f,0x08,0x4e,0xba};
+        unsigned char r2[16], r3[16];
+        memcpy(r2, r1, 16); r2[4] = 0x20; r2[7] = 0x00;                 /* loaded elsewhere: operand differs */
+        memcpy(r3, r1, 16); r3[11] = 0x08;                              /* a real opcode change */
+        CHECK_INT(flat_sum_reloc(r1, 16) == flat_sum_reloc(r2, 16), 1);
+        CHECK_INT(flat_sum_reloc(r1, 16) != flat_sum_reloc(r3, 16), 1);
+    }
     CHECK_INT(flat_jmp_target(e), 0x123456);
     e[1] = 0xF8;
     CHECK_INT(flat_jmp_target(e), 0);                                   /* not a JMP abs.l: foreign code, no patch */
@@ -236,6 +247,7 @@ static void test_dopus_decide(void)
 {
     flat_state s;
     char line[96];
+    const uint32_t sm[FLAT_EL_COUNT] = { 0x0001abcdu, 0xdeadbeefu };
     flat_init(&s);
     CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 0, 0), FLAT_DRAW_STOCK);       /* flat off: stock */
     s.enabled = 1;
@@ -248,13 +260,13 @@ static void test_dopus_decide(void)
     s.held = 0;
     CHECK_INT(flat_dopus_decide(&s, 5, 0, 0, 0), FLAT_DRAW_STOCK);
     CHECK_INT(flat_dopus_decide(0, FLAT_EL_DRAWBOX, 0, 0, 0), FLAT_DRAW_STOCK);
-    flat_dopus_status_line(0, 0, 0, 0, 0, 0, 0, 0, line, sizeof line);
+    flat_dopus_status_line(0, 0, 0, 0, 0, 0, 0, 0, 0, line, sizeof line);
     CHECK_STR(line, "dopus=absent");
-    flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNKNOWN, 0, 0, 0, 0, line, sizeof line);
+    flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNKNOWN, 0, 0, 0, 0, 0, line, sizeof line);
     CHECK_STR(line, "dopus=73.8 inert=unknown");
-    flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNMEASURED, 0, 0, 0, 0, line, sizeof line);
-    CHECK_STR(line, "dopus=73.8 inert=unmeasured");
-    flat_dopus_status_line(1, 73, 8, FLAT_GATE_OK, 3, 1, 12, 9, line, sizeof line);
+    flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNMEASURED, 0, 0, 0, 0, sm, line, sizeof line);
+    CHECK_STR(line, "dopus=73.8 inert=unmeasured sums=0001abcd,deadbeef");
+    flat_dopus_status_line(1, 73, 8, FLAT_GATE_OK, 3, 1, 12, 9, 0, line, sizeof line);
     CHECK_STR(line, "dopus=73.8 patched=3 calls=12 flat=9");
 }
 

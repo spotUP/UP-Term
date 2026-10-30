@@ -61,6 +61,7 @@ typedef struct flatshared {
     uintptr_t *dslot[FLAT_EL_COUNT];
     unsigned dver, drev;
     int dreason, dmask, dfound;
+    uint32_t dsum[FLAT_EL_COUNT]; /* flat_sum of each routine at the last scan (printed by STATUS) */
     ULONG dcalls, dflat;        /* every patched call / every call that drew flat (the sentinels) */
 } flatshared;
 
@@ -162,6 +163,7 @@ static void print_status(void)
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0;
+    uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
@@ -170,13 +172,14 @@ static void print_status(void)
         copy = r->st;
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
         dinst = r->dsw[0].installed || r->dsw[1].installed; dcalls = r->dcalls; dflat = r->dflat;
+        dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
-    if (found && flat_dopus_status_line(dfound, dver, drev, dreason, dmask, dinst, dcalls, dflat, line, sizeof line)) {
+    if (found && flat_dopus_status_line(dfound, dver, drev, dreason, dmask, dinst, dcalls, dflat, dsum, line, sizeof line)) {
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
@@ -309,7 +312,8 @@ static void dopus_scan(flatshared *r)
     r->drev = lib->lib_Revision;
     for (el = 0; el < FLAT_EL_COUNT; el++) {
         uint32_t t = flat_jmp_target((const unsigned char *)lib + d4_lvo[el]);
-        sums[el] = t ? flat_sum((const void *)t, FLAT_FUNC_BYTES) : 0;
+        sums[el] = t ? flat_sum_reloc((const void *)t, FLAT_FUNC_BYTES) : 0;
+        r->dsum[el] = sums[el];
     }
     mask = flat_dopus_gate(tab, n, r->dver, r->drev, sums, &r->dreason);
     if (!mask) {
@@ -321,7 +325,7 @@ static void dopus_scan(flatshared *r)
     for (el = 0; el < FLAT_EL_COUNT; el++) {
         unsigned char *entry = (unsigned char *)lib + d4_lvo[el];
         uint32_t t = flat_jmp_target(entry);
-        if (!(mask & (1 << el)) || !t || flat_sum((const void *)t, FLAT_FUNC_BYTES) != sums[el]) {
+        if (!(mask & (1 << el)) || !t || flat_sum_reloc((const void *)t, FLAT_FUNC_BYTES) != sums[el]) {
             mask &= ~(1 << el);         /* changed since the gate (a foreign patch landed): leave it alone */
             continue;
         }

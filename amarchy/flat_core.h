@@ -126,6 +126,8 @@ uint32_t flat_sum(const void *p, size_t len);
 
 /* The address a JMP abs.l entry (4E F9 + long) jumps to; 0 when the entry is anything else (already a foreign patch,
  * an unexpected build). */
+/* flat_sum over opcode words only: absolute-long operands (relocations) are skipped, so the value is the same at every load address. */
+uint32_t flat_sum_reloc(const void *p, size_t len);
 uint32_t flat_jmp_target(const unsigned char *entry);
 
 /* Which elements may be patched for this library. Bit (1 << FLAT_EL_*) per element; *reason says why a bit is missing. */
@@ -140,8 +142,8 @@ enum { FLAT_DRAW_STOCK = 0, FLAT_DRAW_SKIP = 1 };
 int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back);
 
 /* STATUS extra line for the DOpus patch: "dopus=absent", "dopus=73.8 inert unknown|unmeasured|sum" or
- * "dopus=73.8 patched=<mask> calls=N flat=N". Returns the length, 0 when cap < 64. */
+ * "dopus=73.8 patched=<mask> calls=N flat=N". Appends " sums=<hex>,<hex>" (the measured routine sums, NULL = none) when found. Returns the length, 0 when cap < 96. */
 int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
-                           unsigned long calls, unsigned long flat, char *out, size_t cap);
+                           unsigned long calls, unsigned long flat, const uint32_t sums[FLAT_EL_COUNT], char *out, size_t cap);
 
 #endif

@@ -1162,6 +1162,11 @@ $(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/sysiprobe.c
 
+# dopus5.library jump-table entries and the flat enable switch (FLAT-D4 rig)
+$(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c amarchy/flat_core.h
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/dopusprobe.c
+
 # Windows with sysiclass gadgets opened in a loop, and a hash of their frame pixels (FLAT-C1 rig, tools/rig/amarchy_flat_rig.py)
 $(BUILD)/amiga/flatwin: tests/amiga/flatwin.c
 	@mkdir -p $(BUILD)/amiga
