@@ -140,15 +140,16 @@ void desk_pens(unsigned char pens[DK_SLOTS])
 void desk_pens_flat(unsigned char pens[DK_SLOTS])
 {
     desk_pens(pens);
-    pens[DK_SHINE] = DK_BG;     /* FLAT-SOLID-FILL: highlight, shadow and the active frame fill all take the surface pen, */
-    pens[DK_SHADOW] = DK_BG;    /* so every window is one solid rectangle and only title and glyph colour show focus */
-    pens[DK_FILL] = DK_BG;
+    pens[DK_SHINE] = DK_ACCENT;  /* FLAT-OUTLINE: highlight and shadow take one pen, the theme accent (the Amarchy menu */
+    pens[DK_SHADOW] = DK_ACCENT; /* border colour), so every edge is a single-colour outline with no light source */
+    pens[DK_FILL] = DK_BG;       /* FLAT-SOLID-FILL: the active frame fill is the surface: windows stay solid rectangles */
     pens[DK_FILLTEXT] = DK_FG;  /* the active title text is drawn in FILLTEXTPEN on FILLPEN (= DK_BG now): keep it bright */
 }
 
 /* FLAT-SOLID-FILL: the glyph pens of the flat_state block under the flat map: active glyph bright (foreground), inactive
  * glyph dim (accent, a mid grey: the darker slot is too close to the surface to read), box background = surface pen.
- * None may equal the surface pen the frame now takes (shine == shadow == fill == DK_BG), except back. */
+ * None may equal the surface pen the frame fill takes (fill == DK_BG), except back. The inactive glyph shares the
+ * outline pen (shine == shadow == DK_ACCENT). */
 void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned char *back)
 {
     *text = DK_FG;
