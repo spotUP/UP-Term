@@ -1914,6 +1914,47 @@ def r_cold_launch():
 ROWS.append(('cold_launch', r_cold_launch))
 
 
+def host_bg():
+    """(dominant colour rrggbb, its pixel count) of the menuhost console window's pixels"""
+    w = ami.window('menuhost')
+    _, _, rows = ami.grab(w['box'])
+    n = {}
+    for r in rows:
+        for i in range(0, len(r) - 2, 3):
+            k = bytes(r[i:i + 3]).hex()
+            n[k] = n.get(k, 0) + 1
+    return max(n.items(), key=lambda kv: kv[1])
+
+
+def r_theme_preview_live():
+    """THEME-PREVIEW-LIVE-A1200 (fdb71b63): the TEXT menu (Super+Space over a console) > Style > Amarchy theme recolours the
+    console when the highlight moves (preview_sync on level open and on the 1 s tick; ~1 s after the last key), and Esc
+    out of the theme list puts the saved colours back. Pixels of the console: Down once, 2.5 s, the dominant colour must
+    differ from the one at level open; Esc, 2.5 s, it must equal it again. Through the real entry point (the hotkey)"""
+    ensure_terminal()
+    if not x9_open_menu():
+        return False, 'text menu did not open'
+    try:
+        x9_level('Style')
+        x9_level('Amarchy theme')
+        time.sleep(2.5)
+        first = host_bg()
+        ami.key(RAW['down'])
+        time.sleep(2.5)
+        moved = host_bg()
+        ami.key(RAW['esc'])
+        time.sleep(2.5)
+        back = host_bg()
+    finally:
+        x9_leave()
+    ok = moved[0] != first[0] and back[0] == first[0]
+    return ok, 'console background at theme list open %s x%d, after Down %s x%d (must differ), after Esc %s x%d (must equal the first)' % (
+        first + moved + back)
+
+
+ROWS.append(('theme_preview_live', r_theme_preview_live))
+
+
 def start_args():
     """The arguments the running rig was started with (rig.py writes them to <rig>/start.args); [] when unknown."""
     try:
