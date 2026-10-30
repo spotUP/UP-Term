@@ -10,9 +10,9 @@ import pathlib, re, struct, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MIN = 262144
-NO_SYMBOLS = ('amarchy-gui', 'Amarchy', 'amarchy-index', 'AmTile', 'amnotify')
+NO_SYMBOLS = ('amarchy-gui', 'Amarchy', 'amarchy-index', 'AmTile', 'amnotify', 'amarchy-flat')
 MIN_BY_NAME = {'amarchy-gui': 65536,       # the vbcc programs have no curses: set by `long __stack` and their cookie
-               'Amarchy': 16384, 'amarchy-index': 16384, 'AmTile': 16384, 'amnotify': 8192}
+               'Amarchy': 16384, 'amarchy-index': 16384, 'AmTile': 16384, 'amnotify': 8192, 'amarchy-flat': 16384}
 
 
 def stack_symbol(d):
