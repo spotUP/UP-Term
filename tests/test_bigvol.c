@@ -18,6 +18,56 @@ static void vol(struct bv_vol *v, const char *name, unsigned long type, int rw, 
 #define PFS 0x50465303UL
 #define FAT 0x4D534400UL /* CrossDOS MSD\0 */
 
+/* the fake SameLock: groups whose volume names (the part before the colon, case folded) match */
+static int same_name(int i, int j, void *ctx)
+{
+    const struct bv_group *g = (const struct bv_group *)ctx;
+    char a[32], b[32];
+    int k;
+    if (!bv_volume(g[i].path, a, sizeof a) || !bv_volume(g[j].path, b, sizeof b))
+        return 0;
+    for (k = 0; a[k] && b[k]; k++)
+        if ((a[k] | 32) != (b[k] | 32))
+            return 0;
+    return a[k] == b[k];
+}
+
+/* UPBigVol ROOM: the words install.dos passes, grouped, merged per volume, against the free room */
+static void suite_bigvol_room(void)
+{
+    char out[16];
+    struct bv_group g[4];
+    char *w1[] = {"SYS:UP-Term", "17000", "0", "40000", "SYS:", "3000", "600", "Work:", "2500"};
+    char *w2[] = {"VTC:KitTest/UP-Term", "57000", "SYS:", "3600"};
+    char *bad1[] = {"12", "SYS:"};
+    char *bad2[] = {"A:", "B:", "C:", "D:", "E:"};
+    char *big[] = {"SYS:", "4294967295", "1"};
+    CHECK(bv_is_kb("0") && bv_is_kb("40213") && !bv_is_kb("") && !bv_is_kb("SYS:") && !bv_is_kb("12k") && !bv_is_kb(0));
+    CHECK(bv_kb("40213") == 40213UL && bv_kb("99999999999") == 0xFFFFFFFFUL);
+    CHECK(bv_add(1, 2) == 3 && bv_add(0xFFFFFFF0UL, 0x20) == 0xFFFFFFFFUL);
+    /* the volume part: the drawer does not exist yet, its disk does */
+    CHECK(bv_volume("SYS:UP-Term", out, sizeof out) && !strcmp(out, "SYS:"));
+    CHECK(bv_volume("DH1:KitTest-all/UP-Term", out, sizeof out) && !strcmp(out, "DH1:"));
+    CHECK(bv_volume("UP-Term", out, sizeof out) && !strcmp(out, ""));
+    CHECK(!bv_volume("AVolumeNameLongerThanSixteen:x", out, sizeof out));
+    /* the default drawer on SYS:: one volume, every part counted against it */
+    CHECK(bv_parse(w1, 9, g, 4) == 3);
+    CHECK(g[0].kb == 57000 && g[1].kb == 3600 && g[2].kb == 2500 && !strcmp(g[2].path, "Work:"));
+    bv_merge(g, 3, same_name, g);
+    CHECK(g[0].same_as == -1 && g[1].same_as == 0 && g[2].same_as == -1);
+    CHECK(g[0].kb == 60600 && g[2].kb == 2500);
+    /* the 106 MB rig System disk with 50 MB free refuses; 70 MB free takes it */
+    CHECK(bv_short(51200, g[0].kb) && !bv_short(71680, g[0].kb) && !bv_short(60600, 60600));
+    /* another drawer: two volumes, no merge */
+    CHECK(bv_parse(w2, 4, g, 4) == 2);
+    bv_merge(g, 2, same_name, g);
+    CHECK(g[0].same_as == -1 && g[1].same_as == -1 && g[0].kb == 57000 && g[1].kb == 3600);
+    /* a KB word before any path, or more groups than room: -1 (the helper cannot tell, says so, the install goes on) */
+    CHECK(bv_parse(bad1, 2, g, 4) == -1 && bv_parse(bad2, 5, g, 4) == -1 && bv_parse(bad2, 0, g, 4) == 0);
+    /* KB held at 0xFFFFFFFF, never wrapped to a small number that passes */
+    CHECK(bv_parse(big, 3, g, 4) == 1 && g[0].kb == 0xFFFFFFFFUL && bv_short(0xFFFFFFFEUL, g[0].kb));
+}
+
 void suite_bigvol(void);
 void suite_bigvol(void)
 {
@@ -59,4 +109,5 @@ void suite_bigvol(void)
     /* no candidate: -1 (the Install offers SYS:UP-Term) */
     vol(&v[0], "Locked", FFS, 0, 1, 100);
     CHECK(bv_choose(v, 1) == -1 && bv_choose(v, 0) == -1);
+    suite_bigvol_room();
 }

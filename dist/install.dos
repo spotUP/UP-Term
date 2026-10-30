@@ -124,6 +124,69 @@ Set updest "$optdest"
 If "$updest" EQ ""
   Set updest SYS:UP-Term
 EndIf
+; Room first, before anything is copied (SHELL-INSTALL-DISK-FULL: the default SYS:UP-Term overflowed a 106 MB
+; System disk half way through). Only a Shell install of a new drawer: the kit's Install (STEP set) checks room on
+; its own page, and a drawer that already holds VERSIONS is an update whose files replace the ones there. UPBigVol
+; ROOM takes each disk the install writes to with the KB (tools/kitsize.py, substituted by tools/mkinstaller.py) of
+; the parts the owner chose for it, counts the disks that are one volume together (SYS:UP-Term and SYS:), and
+; returns WARN when one has too little free. It returns 0 when it cannot tell, and the install goes on.
+If "{STEP}" EQ ""
+  If NOT EXISTS "$updest/VERSIONS"
+    Set upkbuni 0
+    If "$optunifont" EQ "UNIFONT"
+      Set upkbuni @KBCOPYUNIFONT@
+    EndIf
+    Set upkbemo 0
+    If "$optemoji" EQ "EMOJI"
+      Set upkbemo @KBCOPYEMOJI@
+    EndIf
+    Set upkbssh 0
+    If "$optssh" EQ "SSH"
+      Set upkbssh @KBSSH@
+    EndIf
+    Set upkbbg 0
+    If "$optbebboget" EQ "BEBBOGET"
+      Set upkbbg @KBBEBBOGET@
+    EndIf
+    Set upkbwas 0
+    If "$optwasabi" EQ "WASABI"
+      Set upkbwas @KBWASABI@
+    EndIf
+    ; AmiSSL only when the AmiSSL part below will install it, on the disk Install-AmiSSL picks: the AmiSSL: assign,
+    ; else Work:, else SYS: (the same order as Install.installer's room check).
+    Set upssl ""
+    Version >NIL: LIBS:amisslmaster.library 5
+    If WARN
+      Set upssl "SYS: @KBAMISSL@"
+      Assign >NIL: Work: EXISTS
+      If NOT WARN
+        Set upssl "Work: @KBAMISSL@"
+      EndIf
+      Assign >NIL: AmiSSL: EXISTS
+      If NOT WARN
+        Set upssl "AmiSSL: @KBAMISSL@"
+      EndIf
+    EndIf
+    "{DIR}/UPBigVol" ROOM "$updest" @KBDRAWER@ @KBCOPYCOREUTILS@ @KBCOPYUSERLAND@ @KBUSERLAND@ $upkbuni $upkbemo @KBTOOLS@ $upkbssh $upkbbg @KBUNIX@ @KBRECORD@ SYS: @KBSYSTEM@ @KBFONTS@ @KBDESKTOP@ @KBBOOT@ $upkbwas @KBLIBS@ @KBMOUNT@ @KBCONSOLE@ $upssl
+    If WARN
+      Echo "UP-Term: nothing has been copied. Free some room, or give DEST a drawer on a bigger disk."
+      UnSet upkbuni
+      UnSet upkbemo
+      UnSet upkbssh
+      UnSet upkbbg
+      UnSet upkbwas
+      UnSet upssl
+      UnSet updest
+      Quit 20
+    EndIf
+    UnSet upkbuni
+    UnSet upkbemo
+    UnSet upkbssh
+    UnSet upkbbg
+    UnSet upkbwas
+    UnSet upssl
+  EndIf
+EndIf
 MakeDir >NIL: "$updest"
 If NOT EXISTS "$updest"
   Echo "UP-Term: cannot make the drawer $updest (its parent must exist)"
