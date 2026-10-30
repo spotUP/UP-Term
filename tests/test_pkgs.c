@@ -190,7 +190,7 @@ static void test_pl_path_has_bin(void)
         return;
     *b = 0;
     CHECK(strstr(a, "Lock((STRPTR)PL_BIN_DIR") != 0);      /* the drawer is locked into the child's path list */
-    CHECK(strstr(a, "*tail = MKBADDR(n)") != 0);
+    CHECK(strstr(a, "cmdpath_append(&tail, l)") != 0);   /* ... and appended through config/cmdpath.h's one link step */
     f = fopen("amarchy/proclaunch.h", "rb");
     CHECK(f != 0);
     if (f) {
