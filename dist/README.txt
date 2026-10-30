@@ -514,12 +514,14 @@ VSH (the shell)
     DEBUG text of a command with a here-document leaves the document out.
     A signal from another process reaches vsh's traps only as a break bit:
     INT is Ctrl-C (break C), QUIT is break E (kill -s QUIT sends it, as
-    does ^\). TERM and HUP sent by vsh's kill arrive as INT (vsh is no
-    ixemul program, so kill falls back to Ctrl-C); USR1, USR2, TSTP and the
-    other signals cannot be sent to vsh, break D and F stand for no signal,
-    and vsh sees no window size change (WINCH) and no closed console (HUP:
-    the input ends). kill -s SIG $$ inside the shell runs any trap
-    (tools/rig/trapsig_rig.py).
+    does ^\), TERM is break D (Break <process> D sends it; the console
+    sends it too when its window closes). Untrapped, QUIT and TERM end a
+    script with status 128 + the signal number and are ignored by an
+    interactive vsh. TERM and HUP sent by vsh's kill arrive as INT (vsh is
+    no ixemul program, so kill falls back to Ctrl-C); USR1, USR2, TSTP and
+    the other signals cannot be sent to vsh, break F stands for no signal,
+    and vsh sees no window size change (WINCH). kill -s SIG $$ inside the
+    shell runs any trap (tools/rig/trapsig_rig.py).
     shopt knows all of bash 5.3's names. extglob, globstar, nullglob,
     failglob, dotglob, nocaseglob, nocasematch, lastpipe, expand_aliases,
     inherit_errexit, xpg_echo and sourcepath act; the others are remembered

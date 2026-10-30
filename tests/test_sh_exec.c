@@ -2141,6 +2141,24 @@ static void trap_builtin(void)
     CHECK_INT((int)sh.exit_status, 131);
     sh.exiting = 0;
     sh.exit_status = 0;
+    /* TERM (the Amiga's Ctrl-D break, owner 2026-10-29) runs its trap; without one a script ends with
+     * 143. Before, vsh never polled break bit D: no sender reached a native vsh's TERM trap */
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_sig = 15;
+    intr_after = 20;
+    sh_run_text(&sh, "trap 'echo term' TERM; i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "term\ndone 40\n");
+    fresh();
+    sh.os.interrupted = f_interrupted;
+    intr_after = 20;
+    sh.exiting = 0;
+    sh_run_text(&sh, "i=0; while [ $i -lt 40 ]; do i=$((i+1)); done; echo done $i", &inc);
+    CHECK_STR(slot(OUT)->data, "");
+    CHECK_INT(sh.exiting, 1);
+    CHECK_INT((int)sh.exit_status, 143);
+    sh.exiting = 0;
+    sh.exit_status = 0;
     intr_sig = 2;
     intr_after = 0;
     /* TERM arrives from the OS layer */

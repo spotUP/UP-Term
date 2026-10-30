@@ -7,9 +7,10 @@ loops for up to 120 s. The rig then sends, one at a time, `kill -s SIG <pid>` fr
 QUIT, TERM, HUP, USR1, and the AmigaDOS `Break <process> D` and `F`, and records which trap ran.
 
 Must hold: INT runs the INT trap (Ctrl-C) and QUIT the QUIT trap (break bit E, which vsh's kill sends for
-QUIT: before 2026-10-08 vsh polled Ctrl-C only and QUIT never arrived). The rest is printed as found:
-TERM and HUP reach a native task as Ctrl-C (os_signal's fallback when ixkill cannot signal it), USR1 cannot
-be sent to a native task, D and F map to no signal (dist/README.txt, tests/bash/divergences.txt).
+QUIT: before 2026-10-08 vsh polled Ctrl-C only and QUIT never arrived), and `Break <process> D` the TERM
+trap (owner 2026-10-29: the AmigaDOS Ctrl-D break is TERM for vsh). The rest is printed as found: TERM and
+HUP reach a native task as Ctrl-C (os_signal's fallback when ixkill cannot signal it), USR1 cannot be sent
+to a native task, F maps to no signal (dist/README.txt, tests/bash/divergences.txt).
 
   UPTERM_RIG=2 python3 tools/rig/trapsig_rig.py
 
@@ -26,7 +27,7 @@ for s in HUP INT QUIT TERM USR1 USR2 WINCH TSTP; do trap "echo $s >>RAM:trapsig.
 trap 'echo EXIT >>RAM:trapsig.log' EXIT
 while [ $SECONDS -lt 120 ]; do [ -e RAM:trapsig.stop ] && exit 0; done
 """
-MUST = {"INT": "INT", "QUIT": "QUIT"}
+MUST = {"INT": "INT", "QUIT": "QUIT", "break-D": "TERM"}
 
 
 def log_lines():
@@ -48,8 +49,10 @@ def main():
     m = re.search(r"Process\s+(\d+): Loaded as command: VTC:trapsig/vsh", status)
     proc = m.group(1) if m else None
     seen, ok = len(log_lines()), True
-    sends = [(s, 'VTC:trapsig/vsh -c "kill -s %s %s"' % (s, pid)) for s in ("INT", "QUIT", "TERM", "HUP", "USR1")]
-    sends += [("break-" + b, "Break %s %s" % (proc, b)) for b in ("D", "F")] if proc else []
+    # The Break sends go before kill -s TERM/HUP/USR1: those go through ixkill and can hang the sender.
+    kill = lambda s: (s, 'VTC:trapsig/vsh -c "kill -s %s %s"' % (s, pid))
+    sends = [kill("INT"), kill("QUIT")] + ([("break-" + b, "Break %s %s" % (proc, b)) for b in ("D", "F")] if proc else [])
+    sends += [kill(s) for s in ("TERM", "HUP", "USR1")]
     for name, cmd in sends:
         rc, out = U.run(cmd, 60)
         time.sleep(2)

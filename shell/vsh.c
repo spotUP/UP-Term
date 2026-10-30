@@ -1908,18 +1908,19 @@ static long os_read(void *os, sh_fh fh, char *buf, long max)
 
 /* Ctrl-C since the last look (the console signals the interpreter's
  * process; os_wait raises it again after passing it on). */
-/* Ctrl-C is INT; break bit E is QUIT, the bit vsh's kill sends for it (os_signal) and the console for ^\.
- * One at a time: a QUIT that came with an INT stays for the next poll. */
+/* Ctrl-C is INT; break bit E is QUIT, the bit vsh's kill sends for it (os_signal) and the console for ^\;
+ * break bit D is TERM (owner 2026-10-29: the AmigaDOS Ctrl-D break, e.g. `Break <n> D`, runs the TERM
+ * trap; the console also sends it when the window closes). One at a time: the others stay for the next
+ * poll, INT first, then QUIT, then TERM. */
 static int os_interrupted(void *os)
 {
-    ULONG got = SetSignal(0, SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E);
+    const ULONG bits = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D | SIGBREAKF_CTRL_E;
+    ULONG got = SetSignal(0, bits), one;
     (void)os;
-    if (got & SIGBREAKF_CTRL_C) {
-        if (got & SIGBREAKF_CTRL_E)
-            SetSignal(SIGBREAKF_CTRL_E, SIGBREAKF_CTRL_E);
-        return 2;
-    }
-    return (got & SIGBREAKF_CTRL_E) ? 3 : 0;
+    one = (got & SIGBREAKF_CTRL_C) ? SIGBREAKF_CTRL_C : (got & SIGBREAKF_CTRL_E) ? SIGBREAKF_CTRL_E : got & SIGBREAKF_CTRL_D;
+    if (got & ~one & bits)
+        SetSignal(got & ~one & bits, got & ~one & bits);
+    return one == SIGBREAKF_CTRL_C ? 2 : one == SIGBREAKF_CTRL_E ? 3 : one ? 15 : 0;
 }
 
 #define VSH_STACK_SUB 131072
