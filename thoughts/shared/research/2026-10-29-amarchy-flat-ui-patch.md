@@ -173,3 +173,18 @@ Pixel dumps with flat pens `0 1 2 0 1 3 0 0 2 2 0 1` (Workbench screen via Palet
 - 4-colour screen (own screen, depth 2) and 8-colour (depth 3): BASIC, MENU, SCROLL dumps equal the depth-8 shapes; the flat pens map to pens 0..3 so no extra residue.
 - Theme B (same pen map, other colours): window pixel rows identical to theme A; only the screen-bar clock/text rows differ. Pen indices, not colours, decide the residue.
 - NOT measured: DOpus (no DOpus5: assign on this rig), everything on `--os 31` (rig start was cut off by the disk-space stop; the known `Palette ... USE` hang also blocks the Workbench-screen route there), arrow gadget pixels of the scroller, a real drawer window.
+
+## 13 FLAT-M1/M2 on 3.1 and scroller arrows (rig 5, 2026-10-30)
+
+Method: tests/amiga/flatprobe on a probe-opened own screen (640x256, SA_Pens flat `0 1 2 0 1 3 0 0 2 2 0 1`, stock `0 1 1 2 1 3 1 0 2 1 2 1`). The `Palette ... USE` route was not used on 3.1 (hang FLAT-31-PALETTE-HANG). Rig `--os 31`: Kickstart 40.68, Workbench 40.42, Intuition 40.85.
+
+Probe fix: the four scroller arrow gadgets now carry RELRIGHT and RELBOTTOM, so they land inside the dumped rows (the earlier "below the 120 rows" finding was a probe bug). New mode `DRAWER [path]` opens a drawer through OpenWorkbenchObjectA and dumps all windows.
+
+3.1 verdicts (pens only unless noted):
+- Window frame, screen bar, close/depth/zoom/size glyphs, menus (fill, checkmark, submenu arrow, separator), scroller knob and arrows: pens only. Glyph shapes stay as outlines (sysiclass hook only if a shape change is wanted).
+- Scroller arrows: stock pen-2 shine and pen-1/2 frame lines vanish; only the pen-1 glyph and one pen-1 divider remain. 3.2 flat dump is pixel-identical to 3.1 (only gadget list order differs).
+- GadTools button, checkbox, cycle, listview, bevel box, string: same one-sided L shadow as 3.2 (dark right 2 px and bottom row stay, light edge gone). Needs OD-F9 (b) / frameiclass hook.
+- 4-colour and 8-colour own screens: dumps equal depth 8 except the DEPTH line.
+- sysiclass exists on 3.1 (class 1000c758, super imageclass 1000c488), so the R3 hook route applies; hook layout equality with 3.2 unverified.
+
+Not measured: Prefs editor under flat pens on 3.1 (only stock pens on the Workbench screen; GadTools residue by inference). Real drawer window: 3.1 has no OpenWorkbenchObjectA (V44); on 3.2 the drawer opens, but the `Palette FROM palette-flat-pen8.prefs USE` run left the Workbench on stock pens, so only a stock drawer dump exists (files flat-31-os32-drawer-*.txt in the scratchpad). Menu dumps on 3.1 contain '?' rows (unreadable ReadPixel) in the lower part of menu 1. Theme B on 3.1 not run. DOpus: `Assign DOpus5: EXISTS` and `DOPUS5:` return rc 5 on 3.1 and 3.2, so the lister is not measurable on this rig; DOpus was not installed.

@@ -19,11 +19,14 @@
 #include <proto/intuition.h>
 #include <proto/graphics.h>
 #include <proto/gadtools.h>
+#include <workbench/workbench.h>
+#include <proto/wb.h>
 #include <exec/lists.h>
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *GadToolsBase;
+struct Library *WorkbenchBase;
 long __stack = 16384;
 const char flatprobe_stack_cookie[] = "$STACK: 16384";
 
@@ -175,7 +178,7 @@ static struct Window *mkscroll(int left)
     for (i = 0; i < 4; i++) {
         arr[i].GadgetType = GTYP_REQGADGET; /* replaced below by border flags */
         arr[i].GadgetType = GTYP_BOOLGADGET;
-        arr[i].Flags = GFLG_GADGIMAGE | GFLG_GADGHCOMP | (i < 2 ? GFLG_RELRIGHT : GFLG_RELBOTTOM);
+        arr[i].Flags = GFLG_GADGIMAGE | GFLG_GADGHCOMP | GFLG_RELRIGHT | GFLG_RELBOTTOM;
         arr[i].Activation = GACT_RELVERIFY | (i < 2 ? GACT_RIGHTBORDER : GACT_BOTTOMBORDER);
         arr[i].GadgetRender = arrow[i];
         arr[i].Width = arrow[i] ? arrow[i]->Width : 16;
@@ -259,6 +262,19 @@ int main(int argc, char **argv)
         printf("PENS"); for (i = 0; i < 12 && i < di->dri_NumPens; i++) printf(" %ld", (long)di->dri_Pens[i]);
         printf("\nDEPTH %ld\n", (long)scr->RastPort.BitMap->Depth);
         for (w = scr->FirstWindow; w; w = w->NextWindow)
+            dumpwin(w, w->Title ? (const char *)w->Title : "(untitled)");
+        FreeVisualInfo(vi); FreeScreenDrawInfo(scr, di); UnlockPubScreen(NULL, scr);
+        return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "DRAWER")) {   /* open a real Workbench drawer window (SYS:), then dump it; DRAWER [path] */
+        struct Window *w;
+        int tries;
+        WorkbenchBase = OpenLibrary((STRPTR)"workbench.library", 36);
+        OpenWorkbenchObjectA((STRPTR)(argc > 2 ? argv[2] : "SYS:Prefs"), NULL);
+        Delay(50 * 6);
+        printf("PENS"); for (i = 0; i < 12 && i < di->dri_NumPens; i++) printf(" %ld", (long)di->dri_Pens[i]);
+        printf("\nDEPTH %ld\n", (long)scr->RastPort.BitMap->Depth);
+        for (tries = 0, w = scr->FirstWindow; w; w = w->NextWindow, tries++)
             dumpwin(w, w->Title ? (const char *)w->Title : "(untitled)");
         FreeVisualInfo(vi); FreeScreenDrawInfo(scr, di); UnlockPubScreen(NULL, scr);
         return 0;
