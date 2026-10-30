@@ -1289,7 +1289,19 @@ def run_addon_case(pkg):
         ir.addon_absent(ck, pkg, "before its Install")
         if pkg == "claude":
             ir.plant_old_claude()
+        decoy = os.environ.get("UPTERM_ADDON_DECOY") == "1"
+        if decoy:
+            # ADDON-OPTIONAL-UPTERM-WRITES: UP-Term: becomes a two-directory assign whose FIRST directory is a decoy
+            real = ir.run("Type ENVARC:up-term/Dir")[1].strip()
+            ir.run("MakeDir RAM:decoy")
+            ir.run("Assign UP-Term: RAM:decoy")
+            ir.run('Assign UP-Term: "%s" ADD' % real)
+            ck(ir.run("Assign >NIL: UP-Term: EXISTS")[0] == 0, "the decoy assign is in place, real drawer " + real)
         ok = installer_done(ck, inst, case, *installer_run(case, inst, "kit-" + pkg, ir.archive(pkg), "AVERAGE", base)[:2])
+        if ok and decoy:
+            ck("amiga-pi" not in ir.run("List RAM:decoy ALL")[1], "nothing of %s landed in the decoy first directory" % pkg, ir.run("List RAM:decoy ALL")[1])
+            ck(ir.run('List >NIL: "%s/var/amiga-pi/skills" ALL' % real)[0] == 0, "the skills landed in the real drawer " + real)
+            ck(ir.run('List >NIL: "%s/amiga-pi.info"' % real)[0] == 0, "the launch icon landed in the real drawer " + real)
     if ok:
         ir.addon_verify(ck, pkg, remote=False)
         ir.base_whole(ck, "with %s installed" % pkg)
