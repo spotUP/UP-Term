@@ -797,6 +797,38 @@ def dopus_archive_md5():
             return f[1]
     sys.exit("rig: %s is not in dist/addons/dopus/archives.txt" % DOPUS_ARCHIVE)
 
+def iprefs_gate_startup(text):
+    """RIG-IPREFS-SYSREQ: S:Startup-Sequence text with C:IPrefsWait after every C:IPrefs line. IPrefs applies ScreenMode
+    prefs in a task of its own and C:IPrefs returns at once; on a rig BOOTX:go starves it, and User-Startup (the
+    Amarchy bar) and the final C:LoadWB (the Workbench backdrop) opened windows before the reset, so Intuition asked
+    to close them and Retry never succeeded. IPrefsWait (Amarchy's DESK-31 idle test) returns once IPrefs sits idle.
+    No C:IPrefs line: refused, the boot would be ungated."""
+    lines, out, n = text.split("\n"), [], 0
+    for l in lines:
+        out.append(l)
+        if l.strip().lower() == "c:iprefs":
+            out.append(l[:len(l) - len(l.lstrip())] + "C:IPrefsWait")
+            n += 1
+    if not n:
+        raise ValueError("S:Startup-Sequence has no C:IPrefs line to gate")
+    return "\n".join(out)
+
+def sys_hdf_iprefs_wait(image):
+    """The clone's C:IPrefsWait (build/amiga/IPrefsWait) and its S:Startup-Sequence call after C:IPrefs."""
+    tool = ROOT / "build/amiga/IPrefsWait"
+    if not tool.exists():
+        sys.exit("rig: %s is not built (make build/amiga/IPrefsWait); the boot would race IPrefs (RIG-IPREFS-SYSREQ)" % tool)
+    xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
+    ss = RIG / "startup-sequence.tmp"
+    ss.unlink(missing_ok=True)
+    subprocess.run([xdf, str(image), "read", "S/Startup-Sequence", str(ss)], check=True, capture_output=True)
+    ss.write_bytes(iprefs_gate_startup(ss.read_bytes().decode("latin-1")).encode("latin-1"))
+    subprocess.run([xdf, str(image), "delete", "S/Startup-Sequence"], check=True, capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(ss), "S/Startup-Sequence"], check=True, capture_output=True)
+    ss.unlink()
+    subprocess.run([xdf, str(image), "delete", "C/IPrefsWait"], capture_output=True)
+    subprocess.run([xdf, str(image), "write", str(tool), "C/IPrefsWait"], check=True, capture_output=True)
+
 def sys_hdf_dopus(image):
     """The master image carries Directory Opus 5.82 as the Workbench (block ';BEGIN DirectoryOpus 5' assigning
     DOpus5: dh0:Opus5, C/LoadWB = LoadDB 62.0). The clone gets 5.104 instead, from the install `rig.py dopus` made
@@ -1613,6 +1645,7 @@ def _start(retries):
         else:
             sys_hdf_dopus(RIG / "sys.hdf")
         sys_hdf_kit(RIG / "sys.hdf")
+        sys_hdf_iprefs_wait(RIG / "sys.hdf")
         if A500:
             sys_hdf_a500(RIG / "sys.hdf")
         sys_hdf_cpu_lib(RIG / "sys.hdf")   # the master image is never touched; this and any other write into DH0: runs after the clone
@@ -1706,6 +1739,8 @@ def guard_shell_startup():
     tmp.unlink()
     print("S:Shell-Startup: the VTC:gg/bin path line is guarded now")
 
+WB_RESET_RETRIES = 3   # Retry clicks before the start fails: Retry never succeeds while windows stay open
+
 def retry_wb_reset():
     """--060: the boot comes up on a PAL Workbench with Intuition's "attempting
     to reset the Workbench screen ... close all windows" requester (IPrefs'
@@ -1718,6 +1753,7 @@ def retry_wb_reset():
     import ami
     log = open(RIG / "retry.log", "a")
     t0 = time.time()
+    clicks = 0
     while time.time() - t0 < 120:
         b = ami.req(0x0A)
         width = int.from_bytes(b[2:4], "big")
@@ -1740,6 +1776,13 @@ def retry_wb_reset():
                 w, h = map(int, f[4].split("x"))
                 gads.append((win[0] + int(f[2]), win[1] + int(f[3]), w, h))
         if gads:
+            if clicks >= WB_RESET_RETRIES:
+                shown = " | ".join(l.strip() for l in tree if l.startswith(("S ", "W ", "G ")) and ("Request" in l or "Retry" in l or "Cancel" in l or l.startswith("S ")))
+                log.write("gave up after %d Retry clicks: %s\n" % (clicks, shown))
+                log.flush()
+                sys.exit("rig: IPrefs' System Request (Workbench screen reset) stayed after %d Retry clicks; windows were open "
+                         "while IPrefs reset the screen (RIG-IPREFS-SYSREQ). Saw: %s" % (clicks, shown))
+            clicks += 1
             x, y, w, h = min(gads)
             kx, ky = ami.pointer_scale()
             cx, cy = x + w // 2, y + h // 2

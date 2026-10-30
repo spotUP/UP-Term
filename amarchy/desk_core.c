@@ -163,13 +163,6 @@ int desk_reset_done(const void *before, const void *now, const unsigned short *l
     return now != before || !desk_pens_reset(live, nlive);
 }
 
-int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask)
-{
-    if (!have)
-        return 1;
-    return waiting && idle_mask != 0 && sigwait == idle_mask && (recvd & idle_mask) == 0;
-}
-
 /* ---- R1.2: palette.prefs ---- */
 
 #define PAL_BODY 400L
