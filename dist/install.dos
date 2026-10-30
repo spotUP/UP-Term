@@ -468,7 +468,7 @@ Copy hl mdv UP-Term:bin CLONE
 ; nothing is lost; the user's own rows belong in ENVARC:up-term/keymap.user, which is never
 ; touched (an edit there applies after a copy to ENV:up-term/keymap.user, or at the next boot). A marked block in S:User-Startup starts the commodity at every boot
 ; (Uninstall takes it out with unstartup.sh).
-Copy Amarchy amarchy-menu amarchy-gui amarchy-index amnotify AmTile UP-Term:bin CLONE
+Copy Amarchy amarchy-menu amarchy-gui amarchy-index amarchy-flat amnotify AmTile UP-Term:bin CLONE
 ; the status bar's settings: laid down only when none exists (the user owns bar.conf), and copied to ENV:
 MakeDir >NIL: ENVARC:Amarchy ENV:Amarchy
 If NOT EXISTS ENVARC:Amarchy/bar.conf
@@ -543,6 +543,23 @@ If WARN
   Echo >>S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-index"
   Echo >>S:User-Startup "EndIf"
   Echo >>S:User-Startup ";END UP-Term Amarchy index"
+EndIf
+; the flat UI patch (amarchy-flat): a stand-alone block, ";BEGIN Amarchy-Flat", so an Update adds it to an older
+; S:User-Startup and "unstartup.sh Amarchy-Flat" strips it alone. BOOT starts it only when Amarchy's flat key is on.
+Search >NIL: S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-flat BOOT"
+If WARN
+  Delete >NIL: T:User-Startup.up-term QUIET
+  vsh unstartup.sh "Amarchy-Flat"
+  If EXISTS T:User-Startup.up-term
+    Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+    Delete >NIL: T:User-Startup.up-term QUIET
+  EndIf
+  Echo >>S:User-Startup ";BEGIN Amarchy-Flat"
+  Echo >>S:User-Startup "Assign >NIL: UP-Term: EXISTS"
+  Echo >>S:User-Startup "If NOT WARN"
+  Echo >>S:User-Startup "  Run >NIL: UP-Term:bin/amarchy-flat BOOT"
+  Echo >>S:User-Startup "EndIf"
+  Echo >>S:User-Startup ";END Amarchy-Flat"
 EndIf
 ; ps and top: the tasks, and the tasks by CPU use (sampled at the vertical blank)
 Copy ps top UP-Term:bin CLONE

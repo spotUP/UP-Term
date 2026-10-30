@@ -116,6 +116,13 @@ If NOT "$unst" EQ ""
         Echo >>S:User-Startup "Run >NIL: C:wasabid"
       EndIf
     EndIf
+    ; the flat UI patch block carries no UP-Term in its name: the plain call above leaves it, so it goes by name
+    Delete >NIL: T:User-Startup.up-term QUIET
+    $unvsh "$unst" Amarchy-Flat
+    If EXISTS T:User-Startup.up-term
+      Copy T:User-Startup.up-term S:User-Startup CLONE QUIET
+      Delete >NIL: T:User-Startup.up-term QUIET
+    EndIf
   EndIf
   ; the upkg Alias block of S:Shell-Startup (its own output file, so an older
   ; unstartup.sh that ignores the second argument cannot overwrite it)

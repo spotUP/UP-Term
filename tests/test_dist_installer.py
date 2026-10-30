@@ -900,8 +900,8 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
                 self.assertTrue(g, (name, lines))
                 self.assertIn('If NOT WARN', [x.strip() for x in lines[g[-1] + 1:i]], (name, lines))
                 self.assertEqual(lines[-1], 'EndIf', (name, lines))
-        # the assign line, Amarchy, Amarchy index, GG
-        self.assertEqual(seen, 4)
+        # the assign line, Amarchy, Amarchy index, Amarchy-Flat, GG
+        self.assertEqual(seen, 5)
 
     def test_old_unguarded_block_is_replaced_on_update(self):
         for key in ('  Run >NIL: UP-Term:bin/Amarchy', '  Run >NIL: UP-Term:bin/amarchy-index',
@@ -942,6 +942,8 @@ class UserStartupBlocksAreGuarded(unittest.TestCase):
         import tempfile
         text = '; user\n'
         for name, lines in self.blocks().items():
+            if not name.startswith(';BEGIN UP-Term'):
+                continue  # Amarchy-Flat goes by its own name (tests/test_flat_startup_block.py)
             text += '\n'.join([name] + lines + [name.replace('BEGIN', 'END')]) + '\n'
         text += 'Echo keep\n'
         self.assertIn('  Run >NIL: UP-Term:bin/Amarchy', text)

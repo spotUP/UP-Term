@@ -4,6 +4,8 @@
 #include <string.h>
 #include "../amarchy/flat_core.h"
 #include "../amarchy/flat_glyph.h"
+#define ROMSPAN_VEC
+#include "../device/romspan.h"
 #include "harness.h"
 
 static void test_layout(void)
@@ -550,8 +552,91 @@ static void test_which_from_gtype(void)
     CHECK_INT((int)flat_which_alias(3), FLAT_W_CLOSE);
 }
 
+/* FLAT-C4: the kill switches. A table of fake hooks / task names / buttons / marker ages drives the same
+ * functions flat.c runs at start. */
+static void test_kill_switches(void)
+{
+    static const struct { const char *name; int want; } tasks[] = {
+        { "VisualPrefs", FLAT_HELD_VISUALPREFS }, { "visualprefs handler", FLAT_HELD_VISUALPREFS },
+        { "Birdie", FLAT_HELD_BIRDIE }, { "BirdieD", FLAT_HELD_BIRDIE }, { "BIRDIE", FLAT_HELD_BIRDIE },
+        { "Workbench", FLAT_HELD_NONE }, { "Visual", FLAT_HELD_NONE }, { "", FLAT_HELD_NONE },
+        { "Amarchy", FLAT_HELD_NONE }, { "bird", FLAT_HELD_NONE },
+    };
+    size_t i;
+    flat_state s;
+    char line[96], txt[64];
+    unsigned char vec[6] = { 0x4E, 0xF9, 0x00, 0xF8, 0x12, 0x34 };
+
+    for (i = 0; i < sizeof tasks / sizeof tasks[0]; i++)
+        CHECK_INT(flat_other_task(tasks[i].name), tasks[i].want);
+    CHECK_INT(flat_other_task(0), FLAT_HELD_NONE);
+
+    /* the hook on the sysiclass slot: inside the ROM span is stock, outside is a foreign patcher */
+    CHECK_INT(flat_other_hook(0x00F80000ul, 0x00F80000ul, 0x00FC0000ul), FLAT_HELD_NONE);       /* first byte */
+    CHECK_INT(flat_other_hook(0x00FBFFFFul, 0x00F80000ul, 0x00FC0000ul), FLAT_HELD_NONE);       /* last byte */
+    CHECK_INT(flat_other_hook(0x00FC0000ul, 0x00F80000ul, 0x00FC0000ul), FLAT_HELD_HOOK);       /* end is outside */
+    CHECK_INT(flat_other_hook(0x00F7FFFFul, 0x00F80000ul, 0x00FC0000ul), FLAT_HELD_HOOK);
+    CHECK_INT(flat_other_hook(0x07A00000ul, 0x00F80000ul, 0x00FC0000ul), FLAT_HELD_HOOK);       /* RAM: VisualPrefs/Birdie */
+
+    /* the shared ROM-span helper that up-console.device also uses */
+    CHECK_INT(rom_vec_patched(vec, 0x00F80000ul, 0x00FC0000ul), 0);
+    vec[2] = 0x07;
+    CHECK_INT(rom_vec_patched(vec, 0x00F80000ul, 0x00FC0000ul), 1);                          /* target in RAM */
+    vec[2] = 0x00;
+    vec[1] = 0xF8;
+    CHECK_INT(rom_vec_patched(vec, 0x00F80000ul, 0x00FC0000ul), 1);                          /* not a jmp abs.l */
+
+    /* the start decision: marker beats gesture beats other patcher */
+    CHECK_INT(flat_start_decide(0, 0, 0, 0), FLAT_HELD_NONE);
+    CHECK_INT(flat_start_decide(1, 0, 0, 0), FLAT_HELD_MARKER);
+    CHECK_INT(flat_start_decide(1, 1, 1, FLAT_HELD_BIRDIE), FLAT_HELD_MARKER);
+    CHECK_INT(flat_start_decide(0, 1, 1, 0), FLAT_HELD_GESTURE);
+    CHECK_INT(flat_start_decide(0, 1, 0, 0), FLAT_HELD_NONE);                                /* one button is not the gesture */
+    CHECK_INT(flat_start_decide(0, 0, 1, 0), FLAT_HELD_NONE);
+    CHECK_INT(flat_start_decide(0, 1, 1, FLAT_HELD_HOOK), FLAT_HELD_GESTURE);
+    CHECK_INT(flat_start_decide(0, 0, 0, FLAT_HELD_VISUALPREFS), FLAT_HELD_VISUALPREFS);
+
+    /* marker -> inert with an injected clock: written at t, alive for FLAT_MARKER_SECS, then gone */
+    CHECK_INT(flat_marker_remaining(1000, 1000), FLAT_MARKER_SECS);
+    CHECK_INT(flat_marker_remaining(1000, 1059), 1);
+    CHECK_INT(flat_marker_remaining(1000, 1060), 0);
+    CHECK_INT(flat_marker_remaining(1000, 5000), 0);
+    CHECK_INT(flat_marker_remaining(0xFFFFFFF0ul, 5), 60 - 21);                              /* the clock wrapped */
+
+    /* a held block is inert: kill switch beats the switch, and STATUS names the patch */
+    flat_init(&s);
+    s.enabled = 1;
+    s.held = (uint16_t)flat_start_decide(1, 0, 0, 0);
+    flat_status_line(&s, sizeof s, 1, line, sizeof line);
+    CHECK_STR(line, "flat=held calls=0 chained=0 why=marker");
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 1, 1), FLAT_DRAW_STOCK);
+    s.held = FLAT_HELD_VISUALPREFS;
+    flat_status_text(&s, 1, txt, sizeof txt);
+    CHECK_STR(txt, "held by VisualPrefs");
+    s.held = FLAT_HELD_BIRDIE;
+    flat_status_text(&s, 1, txt, sizeof txt);
+    CHECK_STR(txt, "held by Birdie");
+    s.held = FLAT_HELD_MARKER;
+    flat_status_text(&s, 1, txt, sizeof txt);
+    CHECK_STR(txt, "held by crash marker");
+    s.held = FLAT_HELD_GESTURE;
+    flat_status_text(&s, 1, txt, sizeof txt);
+    CHECK_STR(txt, "held by both mouse buttons");
+    s.held = FLAT_HELD_HOOK;
+    flat_status_text(&s, 1, txt, sizeof txt);
+    CHECK_STR(txt, "held by another hook on the gadget class");
+    s.held = 0;
+    flat_status_text(&s, 1, txt, sizeof txt);
+    CHECK_STR(txt, "on");
+    flat_status_text(0, 0, txt, sizeof txt);
+    CHECK_STR(txt, "absent");
+    CHECK_INT(flat_status_text(&s, 1, txt, 39), 0);
+    CHECK_STR(FLAT_MARKER_PATH, "ENVARC:Amarchy/flat-starting");
+}
+
 void suite_flat_core(void)
 {
+    test_kill_switches();
     test_which_from_gtype();
     test_layout();
     test_init_check();

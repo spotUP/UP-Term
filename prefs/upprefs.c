@@ -423,10 +423,11 @@ static void mode_text(struct app *a, char *out, int cap)
         strcpy(out + j, ", default depth");
 }
 
-/* The word amarchy-flat reports (the STATUS path: flat_status_word over the state block of the "Amarchy.Flat"
- * semaphore): on, off, held, absent. */
-static const char *flat_status_text(void)
+/* The text amarchy-flat reports (the STATUS path: flat_status_text over the state block of the "Amarchy.Flat"
+ * semaphore): on, off, absent, or "held by <patch>" naming the kill switch (FLAT-C4). */
+static const char *flat_prefs_status(void)
 {
+    static char text[48];
     flat_state copy;
     flatshared *r;
     int found = 0;
@@ -438,7 +439,9 @@ static const char *flat_status_text(void)
         copy = r->st;
     }
     Permit();
-    return flat_status_word(&copy, found);
+    if (!flat_status_text(&copy, found, text, sizeof text))
+        return flat_status_word(&copy, found);
+    return text;
 }
 
 static void show_texts(struct app *a)
@@ -447,7 +450,7 @@ static void show_texts(struct app *a)
     set_attr(a, PG_FONT, GTTX_Text, (ULONG)(a->f.font[0] ? a->f.font : "Screen's font"));
     set_attr(a, PG_AM_FONT, GTTX_Text, (ULONG)(a->f.am_font[0] ? a->f.am_font : "Built-in"));
     set_attr(a, PG_AM_GTHEME, GTTX_Text, (ULONG)a->f.am_gtheme);
-    set_attr(a, PG_AM_FLATSTATUS, GTTX_Text, (ULONG)flat_status_text());
+    set_attr(a, PG_AM_FLATSTATUS, GTTX_Text, (ULONG)flat_prefs_status());
     set_attr(a, PG_FALLBACK, GTTX_Text, (ULONG)(a->f.fallback[0] ? a->f.fallback : "None"));
     mode_text(a, t, sizeof(t));
     set_attr(a, PG_SCREEN_MODE, GTTX_Text, (ULONG)t);
