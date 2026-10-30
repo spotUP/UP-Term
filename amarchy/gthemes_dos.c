@@ -220,12 +220,14 @@ int gt_dos_select(const char *name, char *why, int cap)
         gt_dos_desk_restore();      /* the preview's colours go before the real apply */
         gt_dos_load(name, &th);
         gt_dos_term_send(name);
-        gt_dos_dopus_sends++;
-        dopus_theme_send(&th, gt_dopus_send, 0);
         /* the native desktop theme (desk_dos.h) sets pens 0-3 through the Palette editor; the SetRGB32 mapping is the fallback when it is off or refused */
         d = desk_dos_apply(&th, 0, 0);
-        if (d <= 0 || !(d & (1 << DT_PALETTE)))
+        if (d <= 0 || !(d & (1 << DT_PALETTE))) {
+            /* desk_dos_apply hands the theme to DOpus itself after its Palette write (FLAT-D2); otherwise it goes here */
+            gt_dos_dopus_sends++;
+            dopus_theme_send(&th, gt_dopus_send, 0);
             wb_pens_apply(&th);
+        }
         return 1;
     }
     if (why)

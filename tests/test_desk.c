@@ -675,35 +675,6 @@ static void dp_send(const char *name)
         if (!strcmp(dp_theme[i].name, name))
             desk_preview(&dp_pv, strcmp(name, dp_cur) ? &dp_theme[i] : 0);
 }
-/* FLAT-D2: the 11 Directory Opus pen lines. Golden strings; the weak-accent branch uses a theme whose accent equals its ground. */
-static void test_desk_dopus_pens(void)
-{
-    static const char *const want[DK_DOPUS_KEYS] = {
-        "dopus set pens icons 2 0 0 2 0 0\n", "dopus set pens files 2 0\n", "dopus set pens dirs 3 0\n",
-        "dopus set pens selfiles 0 3\n", "dopus set pens seldirs 0 3\n", "dopus set pens devices 2 0\n",
-        "dopus set pens assigns 2 0\n", "dopus set pens source 0 3\n", "dopus set pens dest 2 1\n",
-        "dopus set pens gauge 3 0\n", "dopus set pens user 0\n" };
-    static const char *const weak[DK_DOPUS_KEYS] = {
-        "dopus set pens icons 2 0 0 2 0 0\n", "dopus set pens files 2 0\n", "dopus set pens dirs 2 0\n",
-        "dopus set pens selfiles 2 1\n", "dopus set pens seldirs 2 1\n", "dopus set pens devices 2 0\n",
-        "dopus set pens assigns 2 0\n", "dopus set pens source 2 1\n", "dopus set pens dest 2 1\n",
-        "dopus set pens gauge 2 0\n", "dopus set pens user 0\n" };
-    char lines[DK_DOPUS_KEYS][DK_DOPUS_LINE];
-    gtheme t;
-    int i;
-    memset(&t, 0, sizeof t);
-    t.bg = 0x101010;
-    t.fg = 0xf0f0f0;
-    t.accent = 0xff8800;
-    CHECK_INT(desk_dopus_pens(&t, lines), DK_DOPUS_KEYS);
-    for (i = 0; i < DK_DOPUS_KEYS; i++)
-        CHECK_STR(lines[i], want[i]);
-    t.accent = 0x181818;
-    desk_dopus_pens(&t, lines);
-    for (i = 0; i < DK_DOPUS_KEYS; i++)
-        CHECK_STR(lines[i], weak[i]);
-}
-
 static void test_desk_preview(void)
 {
     char drawn[GT_NAME], row[GT_NAME + 8];
@@ -763,5 +734,4 @@ void suite_desk(void)
     test_desk_icontrol();
     test_desk_targets();
     test_desk_preview();
-    test_desk_dopus_pens();
 }

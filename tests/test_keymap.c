@@ -3532,14 +3532,21 @@ static void the_menu_takes_its_ground_and_text_from_the_upconf_fg_and_bg(void)
 static void dopus_theme_commands_use_the_theme_directly(void)
 {
     gtheme th;
-    char buf[320], tight[8];
+    char buf[512], tight[8];
     unsigned n;
-    const char *pens = "dopus set pens files 1 0\n"
+    /* FLAT-D2 golden: the one mapping, 10 keys in DOpus palette indices (0 bg, 1 fg, 2 dim, 3 accent), never `user` */
+    const char *pens = "dopus set pens icons 1 0 0 1 0 0\n"
+                       "dopus set pens files 1 0\n"
                        "dopus set pens dirs 3 0\n"
                        "dopus set pens selfiles 0 3\n"
                        "dopus set pens seldirs 0 3\n"
+                       "dopus set pens devices 1 0\n"
+                       "dopus set pens assigns 1 0\n"
+                       "dopus set pens source 0 3\n"
+                       "dopus set pens dest 1 2\n"
+                       "dopus set pens gauge 3 0\n"
                        "dopus refresh lister\n";
-    char want[320];
+    char want[512];
 
     /* D14: the Directory Opus listers take the theme's own bg/fg/dim/accent, not the menu roles */
     gt_builtin(&th);
@@ -3568,13 +3575,13 @@ static void dopus_theme_commands_use_the_theme_directly(void)
 typedef struct {
     int n, absent;
     const char *screen;   /* the reply to "dopus screen" */
-    char port[8][16], line[8][128];
+    char port[16][16], line[16][128];
 } dopus_rec;
 
 static long dopus_fake_send(const char *port, const char *line, char *result, int cap, void *ud)
 {
     dopus_rec *r = (dopus_rec *)ud;
-    if (r->n < 8) {
+    if (r->n < 16) {
         strcpy(r->port[r->n], port);
         strcpy(r->line[r->n], line);
     }
@@ -3598,26 +3605,27 @@ static void dopus_theme_send_goes_to_the_dopus_port(void)
     /* Opus on its own screen: query, palette, four pens, refresh */
     memset(&r, 0, sizeof r);
     r.screen = "DOpus5 800 600 4";
-    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 7L);
-    CHECK_INT((long)r.n, 7L);
-    for (i = 0; i < 7; i++)
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 13L);
+    CHECK_INT((long)r.n, 13L);
+    for (i = 0; i < 13; i++)
         CHECK_STR(r.port[i], "DOPUS.1");
     CHECK_STR(r.line[0], "dopus screen");
     CHECK_STR(r.line[1], "dopus set palette 0x1a1b26 0xa9b1d6 0x565f89 0x7aa2f7");
-    CHECK_STR(r.line[2], "dopus set pens files 1 0");
-    CHECK_STR(r.line[3], "dopus set pens dirs 3 0");
-    CHECK_STR(r.line[4], "dopus set pens selfiles 0 3");
-    CHECK_STR(r.line[5], "dopus set pens seldirs 0 3");
-    CHECK_STR(r.line[6], "dopus refresh lister");
+    CHECK_STR(r.line[2], "dopus set pens icons 1 0 0 1 0 0");
+    CHECK_STR(r.line[3], "dopus set pens files 1 0");
+    CHECK_STR(r.line[4], "dopus set pens dirs 3 0");
+    CHECK_STR(r.line[5], "dopus set pens selfiles 0 3");
+    CHECK_STR(r.line[6], "dopus set pens seldirs 0 3");
+    CHECK_STR(r.line[7], "dopus set pens devices 1 0");
 
     /* Opus on the Workbench screen: no palette line (set palette only recolours Opus's own screen) */
     memset(&r, 0, sizeof r);
     r.screen = "Workbench 800 600 4 0";
-    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 6L);
+    CHECK_INT((long)dopus_theme_send(&th, dopus_fake_send, &r), 12L);
     CHECK_STR(r.line[0], "dopus screen");
-    CHECK_STR(r.line[1], "dopus set pens files 1 0");
-    CHECK_STR(r.line[5], "dopus refresh lister");
-    for (i = 0; i < 6; i++)
+    CHECK_STR(r.line[1], "dopus set pens icons 1 0 0 1 0 0");
+    CHECK_STR(r.line[11], "dopus refresh lister");
+    for (i = 0; i < 12; i++)
         CHECK(strstr(r.line[i], "palette") == 0);
 
     /* Directory Opus not running: one attempt, then stop */

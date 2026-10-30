@@ -185,7 +185,7 @@ static void test_gthemes_roles(void)
         CHECK_INT(rgb[MT_HEAD_ROLE], shipped[i].accent); /* the header follows the theme's accent */
         /* D14: the lister's directory pen (colour 3 = accent) never equals its background pen (colour 0 = bg) */
         {
-            char out[256], want[64];
+            char out[512], want[64];
             uc_u32 wb[WB_PENS];
             CHECK(t.accent != t.bg);
             CHECK(dopus_theme_commands(&t, out, sizeof out, 1) > 0);

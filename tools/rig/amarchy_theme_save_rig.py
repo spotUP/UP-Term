@@ -161,10 +161,16 @@ def dopus_reply(cmd):
     return res if struct.unpack('>I', b[:4])[0] == 0 and res != 'RESULT' else None
 
 
+# The one DOpus mapping (menu_theme.c dopus_theme_commands, FLAT-D2): palette 0 bg, 1 fg, 2 dim, 3 accent. icons reads back more numbers.
+DOPUS_PENS = ('icons', 'files', 'dirs', 'selfiles', 'seldirs', 'devices', 'assigns', 'source', 'dest', 'gauge')
+DOPUS_WANT = {'files': '1 0', 'dirs': '3 0', 'selfiles': '0 3', 'seldirs': '0 3', 'devices': '1 0', 'assigns': '1 0',
+              'source': '0 3', 'dest': '1 2', 'gauge': '3 0'}
+
+
 def dopus_pens_reset():
     """Set every lister pen to a value no theme sends, so a later read-back proves the theme switch wrote them."""
-    for key in ('files', 'dirs', 'selfiles', 'seldirs'):
-        dopus_reply('dopus set pens %s 2 2' % key)
+    for key in DOPUS_PENS:
+        dopus_reply('dopus set pens %s %s' % (key, '2 2 2 2 2 2' if key == 'icons' else '2 2'))
 
 
 def wb_pens_check(name):
@@ -180,11 +186,12 @@ def wb_pens_check(name):
     print('  [INFO] %s: Workbench colours 0-3 %s, theme %s' % (name, cols, want))
     if cols != want:
         return 'Workbench colours 0-3 %s are not the theme\'s %s' % (cols, want)
-    for key, pens in (('files', '1 0'), ('dirs', '3 0'), ('selfiles', '0 3'), ('seldirs', '0 3')):
+    for key in DOPUS_PENS:
         r = dopus_reply('dopus query pens %s' % key)
         print('  [INFO] %s: dopus query pens %s = %r' % (name, key, r))
-        if r is None or r.split() != pens.split():
-            return 'dopus query pens %s reads %r, want %r' % (key, r, pens)
+        pens = DOPUS_WANT.get(key)
+        if r is None or (pens is not None and r.split() != pens.split()) or (pens is None and not r.split()[:2] == ['1', '0']):
+            return 'dopus query pens %s reads %r, want %r' % (key, r, pens or '1 0 ...')
     return None
 
 

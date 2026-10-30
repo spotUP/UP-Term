@@ -287,21 +287,14 @@ static void dk_wait_iprefs(unsigned long idle_mask)
     }
 }
 
-/* FLAT-D2: Directory Opus's lister pens are palette pens, so they follow the Palette write. No DOpus port: rexx_send gives -1, which
- * stops the sending and is no error. */
-unsigned long desk_dos_dopus_pens;
+/* FLAT-D2: Directory Opus's lister pens are palette pens, so they follow the Palette write, through the one mapping dopus_theme_send
+ * (menu_theme.c). No DOpus port: rexx_send gives -1, which stops the sending and is no error. */
+unsigned long desk_dos_dopus_sends;
 
-static void dk_dopus_pens(const gtheme *th)
+static long dk_dopus_send(const char *port, const char *line, char *result, int cap, void *ud)
 {
-    char lines[DK_DOPUS_KEYS][DK_DOPUS_LINE], res[64];
-    int i;
-    for (i = 0, desk_dopus_pens(th, lines); i < DK_DOPUS_KEYS; i++) {
-        lines[i][strlen(lines[i]) - 1] = 0; /* the port takes the line without its newline */
-        if (rexx_send(DOPUS_PORT, lines[i], res, sizeof res) < 0)
-            return;
-        desk_dos_dopus_pens++;
-    }
-    rexx_send(DOPUS_PORT, "dopus refresh lister", res, sizeof res);
+    (void)ud;
+    return rexx_send(port, line, result, cap);
 }
 
 int desk_dos_apply(const gtheme *th, char *why, int cap)
@@ -347,7 +340,8 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
          * raised a Program Error requester when started under the running reset) */
         if (reset)
             dk_wait_reset(wb_before);
-        dk_dopus_pens(th);
+        desk_dos_dopus_sends++;
+        dopus_theme_send(th, dk_dopus_send, 0);
     }
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);

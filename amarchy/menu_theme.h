@@ -72,8 +72,10 @@ void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u
  * (files, dirs, selfiles, seldirs, ...) each followed by a foreground and a background pen number, which are the
  * palette colour numbers (rexx_dopus_get_pen, line 994). The palette is the theme itself, not the menu roles (under
  * menu_theme_roles_gui the accent ROLE is the background, which drew directory names invisibly; owner 2026-10-29).
- * Pens: files fg on bg (1 0), directories accent on bg (3 0), selected files and directories bg on accent (0 3),
- * one `set pens` line per key, then "dopus refresh lister".
+ * Pens (FLAT-D2, the one mapping; DOpus palette 0 bg, 1 fg, 2 dim, 3 accent): icons, files, devices, assigns fg on bg (1 0),
+ * directories and the gauge accent on bg (3 0), selected files and directories and the source lister bg on accent (0 3), the
+ * destination lister fg on dim (1 2); the 10 keys icons files dirs selfiles seldirs devices assigns source dest gauge, one
+ * `set pens` line per key (never `user`: that is DOpus's own user-pen count), then "dopus refresh lister".
  * With palette != 0 the first line is "dopus set palette ..." (only meaningful when Opus has its own screen: on the
  * Workbench screen the palette is Workbench's, see wb_pens_plan). Every line ends in a newline; then a NUL.
  * Returns the length written (without the NUL), or 0 when th is NULL, a colour is above 0xFFFFFF, or cap is too

@@ -78,8 +78,11 @@ void menu_theme_ink(uc_u32 out[MT_ROLES], const uc_u32 rgb[MT_ROLES], const uc_u
  * `set pens` line per key: a line with several keys read the later keys back wrong on the rig (2026-10-29). */
 unsigned dopus_theme_commands(const gtheme *th, char *out, unsigned cap, int palette)
 {
-    static const char *const pens[] = { "dopus set pens files 1 0\n", "dopus set pens dirs 3 0\n",
-                                       "dopus set pens selfiles 0 3\n", "dopus set pens seldirs 0 3\n",
+    static const char *const pens[] = { "dopus set pens icons 1 0 0 1 0 0\n", "dopus set pens files 1 0\n",
+                                       "dopus set pens dirs 3 0\n", "dopus set pens selfiles 0 3\n",
+                                       "dopus set pens seldirs 0 3\n", "dopus set pens devices 1 0\n",
+                                       "dopus set pens assigns 1 0\n", "dopus set pens source 0 3\n",
+                                       "dopus set pens dest 1 2\n", "dopus set pens gauge 3 0\n",
                                        "dopus refresh lister\n" };
     static const char head[] = "dopus set palette";
     static const char hex[] = "0123456789abcdef";
@@ -140,7 +143,7 @@ static int dopus_on_workbench(const char *reply)
 int dopus_theme_send(const gtheme *th, long (*send)(const char *port, const char *line, char *result, int cap, void *ud),
                      void *ud)
 {
-    char cmds[320], line[192], reply[160];
+    char cmds[512], line[192], reply[160];
     unsigned n, i = 0, k;
     int sent = 1, on_wb;
     if (!send || !th)
