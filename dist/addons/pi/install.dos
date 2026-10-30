@@ -45,27 +45,33 @@ Lab skills
 ; user's own NDK (assign NDK:).
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  MakeDir >NIL: UP-Term:var UP-Term:var/amiga-pi UP-Term:var/amiga-pi/skills
-  Delete >NIL: UP-Term:var/amiga-pi/skills/amigados ALL QUIET
-  Copy skills/amigados UP-Term:var/amiga-pi/skills/amigados ALL CLONE QUIET
+; @include dist/common/resolve-uptreal.dos
+  MakeDir >NIL: UPTREAL:var UPTREAL:var/amiga-pi UPTREAL:var/amiga-pi/skills
+  Delete >NIL: UPTREAL:var/amiga-pi/skills/amigados ALL QUIET
+  Copy skills/amigados UPTREAL:var/amiga-pi/skills/amigados ALL CLONE QUIET
   If WARN
+    Assign >NIL: UPTREAL:
     Quit 20
   EndIf
-  Delete >NIL: UP-Term:var/amiga-pi/skills/arexx ALL QUIET
-  Copy skills/arexx UP-Term:var/amiga-pi/skills/arexx ALL CLONE QUIET
+  Delete >NIL: UPTREAL:var/amiga-pi/skills/arexx ALL QUIET
+  Copy skills/arexx UPTREAL:var/amiga-pi/skills/arexx ALL CLONE QUIET
   If WARN
+    Assign >NIL: UPTREAL:
     Quit 20
   EndIf
-  Delete >NIL: UP-Term:var/amiga-pi/skills/amiga-c-build ALL QUIET
-  Copy skills/amiga-c-build UP-Term:var/amiga-pi/skills/amiga-c-build ALL CLONE QUIET
+  Delete >NIL: UPTREAL:var/amiga-pi/skills/amiga-c-build ALL QUIET
+  Copy skills/amiga-c-build UPTREAL:var/amiga-pi/skills/amiga-c-build ALL CLONE QUIET
   If WARN
+    Assign >NIL: UPTREAL:
     Quit 20
   EndIf
-  Delete >NIL: UP-Term:var/amiga-pi/skills/amiga-autodocs ALL QUIET
-  Copy skills/amiga-autodocs UP-Term:var/amiga-pi/skills/amiga-autodocs ALL CLONE QUIET
+  Delete >NIL: UPTREAL:var/amiga-pi/skills/amiga-autodocs ALL QUIET
+  Copy skills/amiga-autodocs UPTREAL:var/amiga-pi/skills/amiga-autodocs ALL CLONE QUIET
   If WARN
+    Assign >NIL: UPTREAL:
     Quit 20
   EndIf
+  Assign >NIL: UPTREAL:
 Else
   MakeDir >NIL: ENVARC:amiga-pi ENVARC:amiga-pi/skills
   Delete >NIL: ENVARC:amiga-pi/skills/amigados ALL QUIET
@@ -99,10 +105,13 @@ Lab launch
 ; put them in (XCON: is the UP-Term handler), so nothing is installed and nothing named UP-Term: is touched.
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  Copy "launch/amiga-pi" "launch/amiga-pi.info" UP-Term: CLONE QUIET
+; @include dist/common/resolve-uptreal.dos
+  Copy "launch/amiga-pi" "launch/amiga-pi.info" UPTREAL: CLONE QUIET
   If WARN
+    Assign >NIL: UPTREAL:
     Quit 20
   EndIf
+  Assign >NIL: UPTREAL:
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0

@@ -10,7 +10,9 @@ EndIf
 ; the quick-launch icons in UP-Term: (only when there is an UP-Term: to look in)
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  Delete >NIL: UP-Term:Claude UP-Term:Claude.info UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET
+; @include dist/common/resolve-uptreal.dos
+  Delete >NIL: UPTREAL:Claude UPTREAL:Claude.info UPTREAL:ClaudeCode UPTREAL:ClaudeCode.info QUIET
+  Assign >NIL: UPTREAL:
 EndIf
 ; C:wasabid: ours only (the marker Claude's install wrote), and not while the base kit's block in
 ; S:User-Startup starts it at boot (that kit's Install took it over). The session daemon of a

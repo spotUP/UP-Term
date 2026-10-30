@@ -1,0 +1,10 @@
+; the one real UP-Term drawer as UPTREAL: (a multi-directory UP-Term: writes to its first directory only); the caller drops it
+Assign >NIL: UPTREAL: UP-Term:
+If EXISTS ENVARC:up-term/Dir
+  Set uptdir "`Type ENVARC:up-term/Dir`"
+  If NOT "$uptdir" EQ ""
+    If EXISTS "$uptdir"
+      Assign >NIL: UPTREAL: "$uptdir"
+    EndIf
+  EndIf
+EndIf

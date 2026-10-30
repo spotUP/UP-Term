@@ -99,12 +99,15 @@ Lab launch
 ; put them in (XCON: is the UP-Term handler), so nothing is installed and nothing named UP-Term: is touched.
 Assign >NIL: UP-Term: EXISTS
 If NOT WARN
-  Copy "launch/Claude" "launch/Claude.info" UP-Term: CLONE QUIET
+; @include dist/common/resolve-uptreal.dos
+  Copy "launch/Claude" "launch/Claude.info" UPTREAL: CLONE QUIET
   If WARN
+    Assign >NIL: UPTREAL:
     Quit 20
   EndIf
   ; the old second icon of Claude.lha 1.0
-  Delete >NIL: UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET
+  Delete >NIL: UPTREAL:ClaudeCode UPTREAL:ClaudeCode.info QUIET
+  Assign >NIL: UPTREAL:
 EndIf
 If NOT "{STEP}" EQ ""
   Quit 0

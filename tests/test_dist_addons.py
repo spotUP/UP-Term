@@ -150,6 +150,44 @@ class EveryAddOn(unittest.TestCase):
             self.assertLess(s['installer'].index('"STEP=check"'), s['installer'].index('(P_OPTIONS)\n'))
             self.assertLess(s['installer'].index('"STEP=check"'), s['installer'].index('(askstring') if '(askstring' in s['installer'] else 10 ** 9)
 
+    # uhc: step 3 and its Uninstall clean up the files up-uhc 1.0 to 1.3 wrote through UP-Term: (its first
+    # directory, which is where they are); a delete through UPTREAL: would miss them
+    LEGACY_UP_TERM_DELETES = {'uhc'}
+
+    def test_no_add_on_writes_into_up_term_directly_every_write_goes_through_uptreal(self):
+        """s30: UP-Term: may be a multi-directory assign, where MakeDir/Copy/Delete act on its first directory
+        only. Every add-on (all rows of ADDONS, install.dos and Uninstall, whatever block: launch icons,
+        optional skills) names the real drawer UPTREAL: for anything it writes or removes, and a stand-alone
+        one assigns UPTREAL: before the first use."""
+        write = re.compile(r'^\s*(MakeDir|Delete|Rename|Protect|Copy)\b(.*)$')
+        rows = {r['id']: r for r in ADDONS}
+        for pid, s in self.each():
+            if pid in self.LEGACY_UP_TERM_DELETES:
+                continue
+            for kind in ('dos', 'uninstall'):
+                uses = 0
+                for line in s[kind].splitlines():
+                    m = write.match(line.split(';', 1)[0])
+                    if not m:
+                        continue
+                    args = [a for a in re.findall(r'"[^"]*"|\S+', m.group(2)) if not a.startswith('>')]
+                    # Copy writes its last argument (a source on UP-Term: is a read)
+                    targets = args[-1:] if m.group(1) == 'Copy' else args
+                    # the optional "delete your data" question removes the drawer the APP made through UP-Term: at run
+                    # time (its first directory), so it names the same path the app uses
+                    # (also open, ledger ADDON-RECORD-RENAME-UPTERM: the check part's rename of an old-name record drawer
+                    # UP-Term:pkg/<old> runs before UPTREAL: exists)
+                    if m.group(1) == 'Rename' and all(a.startswith('UP-Term:pkg/') for a in targets):
+                        continue
+                    targets = [a for a in targets if not re.fullmatch(r'"?UP-Term:var/(Claude|amiga-pi)"?', a)]
+                    self.assertFalse([a for a in targets if 'UP-Term:' in a], (pid, kind, line))
+                    uses += 'UPTREAL:' in ' '.join(targets)
+                text = s[kind]
+                if uses and rows[pid]['needs-base'] == '-':
+                    first = text.index('Assign >NIL: UPTREAL: "$uptdir"')
+                    self.assertLess(text.index('Assign >NIL: UPTREAL: UP-Term:\n'), first, (pid, kind))
+                    self.assertIn('Assign >NIL: UPTREAL:\n', text[first:], (pid, kind))
+
     def test_each_part_ends_with_the_step_quit_and_if_endif_pair(self):
         end = 'If NOT "{STEP}" EQ ""\n  Quit 0\nEndIf\n'
         for _, s in self.each():
@@ -332,8 +370,9 @@ class QuickLaunchIcons(unittest.TestCase):
             parts = [n for n, _ in parts_of(s['dos'])]
             self.assertEqual(parts[-2:], ['launch', 'record'], pid)
             body = dict(parts_of(s['dos']))['launch']
-            # s25: an add-on of the base writes the one real drawer UPTREAL:; a stand-alone one has no resolve
-            dest = 'UP-Term:' if {r['id']: r for r in ADDONS}[pid]['needs-base'] == '-' else 'UPTREAL:'
+            # s25/s30: every launch icon is written to the one real drawer UPTREAL: (a stand-alone add-on
+            # resolves it itself, inside its Assign UP-Term: EXISTS gate)
+            dest = 'UPTREAL:'
             want = 'Copy %s %s CLONE QUIET' % (' '.join('"launch/%s" "launch/%s.info"' % (n, n) for n in names), dest)
             self.assertIn(want, body, pid)
             self.assertIn('(set #step "launch"', s['installer'], pid)
@@ -342,22 +381,24 @@ class QuickLaunchIcons(unittest.TestCase):
         rows = {r['id']: r for r in ADDONS}
         for pid in LAUNCHERS:
             body = dict(parts_of(scripts(pid)['dos']))['launch']
-            guard = 'Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  Copy '
+            guard = 'Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\nAssign >NIL: UPTREAL: UP-Term:\n'
             if rows[pid]['needs-base'] == '-':
-                self.assertIn(guard, body, pid)
+                self.assertIn(guard, re.sub(r'(?m)^ *;.*\n|^ +', '', body), pid)
+                self.assertIn('Assign >NIL: UPTREAL: "$uptdir"', body, pid)
             else:
                 self.assertNotIn('Assign >NIL', body, pid)       # the check part already stopped without the base
 
     def test_uninstall_deletes_each_script_and_its_info_from_up_term_and_guards_it_when_stand_alone(self):
         rows = {r['id']: r for r in ADDONS}
         for pid, (names, _, _) in LAUNCHERS.items():
-            body = (ROOT / 'dist/addons' / pid / 'uninstall-body.dos').read_text()
+            body = scripts(pid)['uninstall']
             for n in names:
-                d = 'UP-Term:' if rows[pid]['needs-base'] == '-' else 'UPTREAL:'
+                d = 'UPTREAL:'
                 q = '"%s%s" "%s%s.info"' % (d, n, d, n) if ' ' in n else '%s%s %s%s.info' % (d, n, d, n)
                 self.assertIn(q, body, pid)
             if rows[pid]['needs-base'] == '-':
-                self.assertLess(body.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN'), body.index('UP-Term:' + names[0]), pid)
+                self.assertLess(body.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN'), body.index('Assign >NIL: UPTREAL: "$uptdir"'), pid)
+                self.assertLess(body.index('Assign >NIL: UPTREAL: "$uptdir"'), body.index('UPTREAL:' + names[0]), pid)
 
     def test_an_icon_with_its_own_window_tooltype_has_that_one_window_tooltype_only(self):
         """Two WINDOW= tooltypes (the default and the launcher's) opened the default 640x400 "UP-Term" window
@@ -502,7 +543,7 @@ class ClaudeInstall(unittest.TestCase):
         self.assertNotIn('Copy ClaudeCode', dos)
         self.assertNotIn('Protect C:ClaudeCode', dos)
         self.assertIn('Delete >NIL: C:ClaudeCode QUIET', dos)
-        self.assertIn('Delete >NIL: UP-Term:ClaudeCode UP-Term:ClaudeCode.info QUIET', dos)
+        self.assertIn('Delete >NIL: UPTREAL:ClaudeCode UPTREAL:ClaudeCode.info QUIET', dos)
         self.assertNotIn('launch/ClaudeCode', dos)
         self.assertIn(' C:Claude C:ClaudeCode ', self.S['uninstall'])
         parts = (ROOT / 'dist/addons/claude/parts.txt').read_text()
@@ -577,8 +618,10 @@ class PiInstall(unittest.TestCase):
         whole, so an update leaves no stale file) and never the skills drawer; Uninstall removes the same four by name."""
         dos = self.S['dos']
         part = dos.split('Lab skills\n')[1].split('Lab launch\n')[0]
-        self.assertIn('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  MakeDir >NIL: UP-Term:var UP-Term:var/amiga-pi UP-Term:var/amiga-pi/skills', part)
-        for where in ('UP-Term:var/amiga-pi/skills', 'ENVARC:amiga-pi/skills'):
+        self.assertIn('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n', part)
+        self.assertIn('Assign >NIL: UPTREAL: "$uptdir"', part)     # s30: the real drawer, not the first of a multi-directory assign
+        self.assertIn('  MakeDir >NIL: UPTREAL:var UPTREAL:var/amiga-pi UPTREAL:var/amiga-pi/skills', part)
+        for where in ('UPTREAL:var/amiga-pi/skills', 'ENVARC:amiga-pi/skills'):
             copied = re.findall(r'Copy skills/(\S+) %s/(\S+) ALL CLONE QUIET' % re.escape(where), part)
             self.assertEqual(sorted(copied), sorted((n, n) for n in SKILLS), where)
             dels = re.findall(r'Delete >NIL: %s/(\S+) ALL QUIET' % re.escape(where), part)
@@ -588,9 +631,9 @@ class PiInstall(unittest.TestCase):
         self.assertIn('Quit 0', part.split('Lab launch')[0])                 # a step (STEP) ends here
         un = self.S['uninstall']
         self.assertEqual(sorted(re.findall(r'ENVARC:amiga-pi/skills/(\S+)', un)), sorted(SKILLS))
-        self.assertEqual(sorted(re.findall(r'UP-Term:var/amiga-pi/skills/(\S+)', un)), sorted(SKILLS))
-        self.assertLess(un.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n  Delete >NIL: UP-Term:var/amiga-pi/skills/'),
-                        un.index('/skills/amigados UP-Term:var'))   # the UP-Term: drawers are looked at only when the assign exists
+        self.assertEqual(sorted(re.findall(r'UPTREAL:var/amiga-pi/skills/(\S+)', un)), sorted(SKILLS))
+        self.assertLess(un.index('Assign >NIL: UP-Term: EXISTS\nIf NOT WARN\n', un.index('ENVARC:amiga-pi/skills/amigados')),
+                        un.index('/skills/amigados UPTREAL:var'))   # the UP-Term: drawers are looked at only when the assign exists
 
     def test_the_kit_stages_the_skills_and_lists_them_as_the_skills_part(self):
         parts = mm.read_parts((ROOT / 'dist/addons/pi/parts.txt').read_text())
