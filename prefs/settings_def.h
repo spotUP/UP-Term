@@ -32,7 +32,7 @@ enum {
     SDI_SCREEN, SDI_SCREEN_MODE, SDI_ASPECT, SDI_CLIPBOARD, SDI_HLCAT, SDI_REFLOW, SDI_LINK,
     /* Amarchy */
     SDI_AM_MUSIC, SDI_AM_DEMO, SDI_AM_HIDE, SDI_AM_ICONS, SDI_AM_MODE, SDI_AM_TERMMENU, SDI_AM_GTHEME,
-    SDI_AM_FONT,
+    SDI_AM_FONT, SDI_AM_FLAT, SDI_AM_FLATGAD, SDI_AM_FLATSIZE, SDI_AM_FLATSTYLE, SDI_AM_FLATSTATUS,
     SDI_COUNT
 };
 
@@ -48,7 +48,8 @@ enum {
     SD_PALETTE,     /* the 16 colour entries (count rows of size bytes each) */
     SD_DYNLIST,     /* one of a list read at run time (the GUI themes, gt_scan); the file text is the chosen name */
     SD_THEME,       /* takes the colours of a theme file; holds no value */
-    SD_PROFILE      /* the profile being edited; holds no value */
+    SD_PROFILE,     /* the profile being edited; holds no value */
+    SD_INFO         /* a read-only text the program fills in at run time; holds no value */
 };
 
 /* which file holds it */
@@ -56,7 +57,7 @@ enum { SD_UPTERM, SD_AMARCHY };
 
 /* where the value sits, in the store the row names (prefs_fields for SD_UPTERM, am_prefs for SD_AMARCHY) */
 enum {
-    SDF_NONE,       /* no value (profile, theme) */
+    SDF_NONE,       /* no value (profile, theme, info) */
     SDF_INT,        /* an int at off: the index into values[] */
     SDF_STR,        /* a char array of size bytes at off in prefs_fields */
     SDF_AMSTR,      /* a char array of size bytes at off in am_prefs */

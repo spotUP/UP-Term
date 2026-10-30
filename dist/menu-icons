@@ -73,6 +73,7 @@ settings.amarchy.font        = U+F031    ; fa-font
 settings.amarchy.edit        = U+F044    ; fa-pencil_square_o
 settings.amarchy.agentclaude = U+F0E7    ; fa-flash
 settings.amarchy.agentpi     = U+F121    ; fa-code
+settings.flat                = U+F0C8    ; fa-square
 ; Window group rows (plan 2026-10-25-amarchy-window-groups.md, 2.1)
 window.next                 = U+F061    ; fa-arrow_right
 window.previous             = U+F060    ; fa-arrow_left

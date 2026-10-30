@@ -156,6 +156,20 @@ int desk_pens_reset(const unsigned short *cur, int ncur)
     return 0;
 }
 
+int desk_reset_done(const void *before, const void *now, const unsigned short *live, int nlive)
+{
+    if (!now || nlive <= 0) /* the screen is closed for about 200 ms in the middle of the reset (rig 7, 3.2): not done, not "a new screen" */
+        return 0;
+    return now != before || !desk_pens_reset(live, nlive);
+}
+
+int desk_iprefs_idle(int have, int waiting, unsigned long sigwait, unsigned long recvd, unsigned long idle_mask)
+{
+    if (!have)
+        return 1;
+    return waiting && idle_mask != 0 && sigwait == idle_mask && (recvd & idle_mask) == 0;
+}
+
 /* ---- R1.2: palette.prefs ---- */
 
 #define PAL_BODY 400L
@@ -553,6 +567,20 @@ int desk_ver_major(const unsigned char *bin, long len)
 int desk_pointer_editor_ok(const unsigned char *bin, long len)
 {
     return desk_ver_major(bin, len) >= 47;
+}
+
+int desk_palette_editor_ok(const unsigned char *bin, long len)
+{
+    return desk_ver_major(bin, len) >= 47;
+}
+
+unsigned desk_gate_mask(unsigned mask, int palette_ok, int *ws_reset)
+{
+    if (!palette_ok)
+        mask &= ~(1u << DT_PALETTE);
+    /* only below 47 does a wbpattern write ask Intuition for a Workbench reset (3.2 measured: a WBPattern USE with a window open posts no requester) */
+    *ws_reset = !palette_ok && (mask & (1u << DT_WBPATTERN)) != 0;
+    return mask;
 }
 
 /* ---- DESK-PREVIEW-PALETTE: the picker's highlight previews the Workbench colours ---- */

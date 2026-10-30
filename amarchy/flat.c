@@ -37,6 +37,7 @@
 #include <proto/graphics.h>
 #include "../tty/qmark.h"
 #include "flat_core.h"
+#include "flat_shared.h"
 #include "flat_glyph.h"
 #include "taskalive.h"
 
@@ -46,24 +47,7 @@ static const char ver[] = "$VER: amarchy-flat 0.1 (30.10.2026) (UP-Term)";
 long __stack = 16384;
 const char amarchy_flat_stack_cookie[] = "$STACK: 16384";
 
-/* The public record. ss is first so AddSemaphore's node is the allocation's start (as ixshared, ixwatch.h). */
-typedef struct flatshared {
-    struct SignalSemaphore ss;
-    char name[16];
-    struct Task *task;          /* the resident program; only compared, never dereferenced alone */
-    char tname[32];
-    flat_state st;
-    flat_swap sw;
-    uintptr_t *slot;            /* &sysiclass->cl_Dispatcher.h_SubEntry while installed */
-    /* FLAT-D4 */
-    struct Library *dlib;       /* dopus5.library, opened while patched so it cannot expunge under the patch */
-    flat_swap dsw[FLAT_EL_COUNT];
-    uintptr_t *dslot[FLAT_EL_COUNT];
-    unsigned dver, drev;
-    int dreason, dmask, dfound;
-    uint32_t dsum[FLAT_EL_COUNT]; /* flat_sum of each routine at the last scan (printed by STATUS) */
-    ULONG dcalls, dflat;        /* every patched call / every call that drew flat (the sentinels) */
-} flatshared;
+
 
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;

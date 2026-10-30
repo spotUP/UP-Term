@@ -4,6 +4,8 @@
 #include <string.h>
 #include "../amarchy/amconf_core.h"
 #include "../amarchy/leaf.h"
+#include "../prefs/settings_def.h"
+#include "../prefs/prefs_ui.h"
 #include "harness.h"
 #include "memfs.h"
 
@@ -35,8 +37,8 @@ static void test_amconf_parse_defaults(void)
         CHECK_STR(p.val[k], am_keys[k].def);
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
-    /* the table lists twenty-one keys, each named once */
-    CHECK_INT(AM_NKEYS, 21);
+    /* the table lists twenty-five keys, each named once */
+    CHECK_INT(AM_NKEYS, 25);
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)
@@ -536,6 +538,49 @@ static void test_amconf_save_nodir(void)
 
 /* LF_SETTING (plan 2026-10-26-amarchy-prefs-inline.md, M3): Enter on a check row writes UP-Term's file and the
  * reloaded fields show the new value; the profile's other keys and the highlight-cat variable go with it. */
+/* FLAT-C5: each row of the Flat Look page writes its key (flat-system-look, flat-window-gadgets,
+ * flat-border-size, flat-glyph-style) through the editor's fields, and reads it back. */
+static void test_amconf_flat_rows_write_their_keys(void)
+{
+    static const struct { int key, gadget; const char *name, *on; } row[4] = {
+        { AM_FLAT, PG_AM_FLAT, "flat-system-look", "on" },
+        { AM_FLATGAD, PG_AM_FLATGAD, "flat-window-gadgets", "on" },
+        { AM_FLATSIZE, PG_AM_FLATSIZE, "flat-border-size", "thin" },
+        { AM_FLATSTYLE, PG_AM_FLATSTYLE, "flat-glyph-style", "block" } };
+    int i;
+    for (i = 0; i < 4; i++) {
+        am_prefs p, q;
+        prefs_fields f;
+        static char txt[UC_MAX_FILE + 1];
+        char want[64];
+        const sd_setting *sd = sd_find_gadget(row[i].gadget);
+        CHECK(sd != 0 && pg_find(row[i].gadget) != 0);
+        if (sd) {
+            CHECK_STR(sd->key, row[i].name);
+            CHECK_INT(sd->page, PG_PAGE_FLAT);
+        }
+        CHECK_STR(am_keys[row[i].key].name, row[i].name);
+        memset(&f, 0, sizeof f);
+        amconf_defaults(&p);
+        amconf_to_fields(&p, &f);
+        amconf_from_fields(&p, &f);
+        CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
+        CHECK(strstr(txt, row[i].name) == 0);
+        (&f.am_flat)[i] = 1;
+        amconf_from_fields(&p, &f);
+        CHECK_STR(p.val[row[i].key], row[i].on);
+        CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
+        strcpy(want, row[i].name);
+        strcat(want, " = ");
+        strcat(want, row[i].on);
+        CHECK(strstr(txt, want) != 0);
+        amconf_parse(txt, (long)strlen(txt), &q);
+        memset(&f, 0, sizeof f);
+        amconf_to_fields(&q, &f);
+        CHECK_INT((&f.am_flat)[i], 1);
+    }
+}
+
 static void test_lf_setting_check_toggle(void)
 {
     memfs m;
@@ -956,6 +1001,7 @@ void suite_amconf(void)
     test_amarchy_notify_env_only();
     test_prefs_dos_dir_amarchy();
     test_amconf_save_nodir();
+    test_amconf_flat_rows_write_their_keys();
     test_lf_setting_check_toggle();
     test_lf_setting_cycle_next_and_choices();
     test_lf_setting_text();

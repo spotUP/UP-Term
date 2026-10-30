@@ -754,9 +754,9 @@ $(BUILD)/amiga/breakport: tests/amiga/breakport.c
 # program (its own window), so vc links it. vbcc warns (153, 65) on the
 # (void) parameter casts of the file callbacks, as for vsh.
 # The kit ships it as Files/upprefs; Install copies it to C:UP-Term-Prefs.
-$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h prefs/prefs_core.c prefs/settings_def.c prefs/settings_def.h prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h prefs/pick_list.c prefs/pick_list.h prefs/pick_list_gt.c handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h amarchy/amconf_core.c amarchy/amconf_core.h amarchy/amconf_dos.c amarchy/amconf_dos.h amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/gthemes_scan_dos.c amarchy/gthemes_scan_dos.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
+$(BUILD)/amiga/upprefs: prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_merge.h prefs/prefs_core.c prefs/settings_def.c prefs/settings_def.h prefs/prefs_core.h prefs/prefs_dos.c prefs/prefs_dos.h prefs/prefs_asl.c prefs/prefs_asl.h prefs/prefs_ui.c prefs/prefs_ui.h prefs/pick_list.c prefs/pick_list.h prefs/pick_list_gt.c handler/kcmode.c handler/kcmode.h handler/slash.c handler/slash.h config/upconf.c config/upconf_rows.c config/upconf.h amarchy/amconf_core.c amarchy/amconf_core.h amarchy/amconf_dos.c amarchy/amconf_dos.h amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_core.h amarchy/gthemes_scan_dos.c amarchy/gthemes_scan_dos.h amarchy/flat_core.c amarchy/flat_core.h amarchy/flat_shared.h $(BUILD)/amiga/obj/cpuchk-upprefs.o
 	@mkdir -p $(BUILD)/amiga
-	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c prefs/pick_list.c prefs/pick_list_gt.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_dos.c amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_scan_dos.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
+	$(VC) -Dmain=up_main -dontwarn=153,65 -o $@ prefs/upprefs.c prefs/prefs_merge.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c prefs/prefs_asl.c prefs/prefs_ui.c prefs/pick_list.c prefs/pick_list_gt.c handler/kcmode.c handler/slash.c config/upconf.c config/upconf_rows.c amarchy/amconf_core.c amarchy/amconf_dos.c amarchy/amconf_keys.c amarchy/gthemes_core.c amarchy/gthemes_scan_dos.c amarchy/flat_core.c $(BUILD)/amiga/obj/cpuchk-upprefs.o
 
 # Amarchy: the Super-key commodity (plan 2026-10-22-amarchy-commodity.md, Phase C). A plain
 # vbcc CLI/WBStartup program, no ixemul. Parser, loader and semaphore reader are the handler's.
@@ -862,7 +862,7 @@ $(BUILD)/amiga/amarchy-index: $(AMARCHY_INDEX_SRC) amarchy/taskalive.h amarchy/i
 # no ixemul; it keeps the public state block "Amarchy.Flat" that Amarchy writes. flat_core.c is host-tested.
 .PHONY: amarchy-flat
 amarchy-flat: $(BUILD)/amiga/amarchy-flat
-$(BUILD)/amiga/amarchy-flat: amarchy/flat.c amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/flat_core.c amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h
+$(BUILD)/amiga/amarchy-flat: amarchy/flat_shared.h amarchy/flat.c amarchy/flat_glyph.c amarchy/flat_glyph.h amarchy/flat_core.c amarchy/taskalive.c amarchy/flat_core.h amarchy/taskalive.h tty/qmark.h
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -dontwarn=153,65 -o $@ amarchy/flat.c amarchy/flat_glyph.c amarchy/flat_core.c amarchy/taskalive.c
 
@@ -1165,6 +1165,16 @@ $(BUILD)/amiga/cellbench: tests/amiga/cellbench.c
 $(BUILD)/amiga/dripens: tests/amiga/dripens.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/dripens.c
+
+# DESK-31: samples the Workbench screen while IPrefs resets it after a WBPattern USE
+$(BUILD)/amiga/resetprobe: tests/amiga/resetprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/resetprobe.c
+
+# DESK-31: Workbench window list + owner task changes as failing Locks a wasabi snoop puts in the DOS timeline
+$(BUILD)/amiga/winwatch: tests/amiga/winwatch.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/winwatch.c
 
 # A pen dump of an active and an inactive window with GadTools gadgets (FLAT-M1)
 $(BUILD)/amiga/flatprobe: tests/amiga/flatprobe.c

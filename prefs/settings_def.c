@@ -38,6 +38,8 @@ static const sd_value v_clipboard[] = { { "write", "Set the clipboard" }, { "rea
 static const sd_value v_colors[] = { { "", "Not told" }, { "rgb", "Full colour (RGB)" }, { "256", "256 colours" },
                                      { "16", "16 colours" } };
 static const sd_value v_icons[] = { { "generic", "Generic" }, { "amiga", "Amiga" }, { "none", "None" } };
+static const sd_value v_flatsize[] = { { "stock", "Stock" }, { "thin", "Thin" } };
+static const sd_value v_flatstyle[] = { { "line", "Line" }, { "block", "Block" } };
 static const sd_value v_termmenu[] = { { "text", "Text" }, { "graphical", "Graphical" } };
 static const sd_value v_mode[] = { { "graphical", "Drawn" }, { "text", "Text" }, { "minimal", "Minimal" } };
 
@@ -200,6 +202,23 @@ const sd_setting sd_settings[SDI_COUNT] = {
     { SDI_AM_FONT, "amarchy-menu-font", 0, PG_PAGE_AMARCHY, SD_FONT, "Menu _font",
       "The Amarchy menu font; empty: the built-in choice. Click to choose.",
       NOVALS, "", SD_AMARCHY, SDF_AMSTR, AO(AM_FONT), UC_MAX_VALUE, NORANGE, PG_AM_FONT, 0, 0, 1, 0 },
+    { SDI_AM_FLAT, "flat-system-look", 0, PG_PAGE_FLAT, SD_CHECK, "Flat system _look",
+      "Draw the Workbench window frames and requesters flat (needs amarchy-flat).",
+      VALS(v_off_on), "off", SD_AMARCHY, SDF_AMSTR, AO(AM_FLAT), UC_MAX_VALUE, NORANGE, PG_AM_FLAT, 0, 0, 1, 0 },
+    { SDI_AM_FLATGAD, "flat-window-gadgets", 0, PG_PAGE_FLAT, SD_CHECK, "Flat _window gadgets",
+      "Draw the close, depth and zoom gadgets of windows as flat glyphs.",
+      VALS(v_off_on), "off", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATGAD), UC_MAX_VALUE, NORANGE, PG_AM_FLATGAD, 0, 0, 1, 0 },
+    { SDI_AM_FLATSIZE, "flat-border-size", 0, PG_PAGE_FLAT, SD_CYCLE, "_Border and title size",
+      "Stock: the size of the system. Thin: slimmer window borders and title bars.",
+      VALS(v_flatsize), "stock", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATSIZE), UC_MAX_VALUE, NORANGE,
+      PG_AM_FLATSIZE, 0, 0, 1, 0 },
+    { SDI_AM_FLATSTYLE, "flat-glyph-style", 0, PG_PAGE_FLAT, SD_CYCLE, "Glyph st_yle",
+      "Line: thin line glyphs in the text colour. Block: filled blocks.",
+      VALS(v_flatstyle), "line", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATSTYLE), UC_MAX_VALUE, NORANGE,
+      PG_AM_FLATSTYLE, 0, 0, 1, 0 },
+    { SDI_AM_FLATSTATUS, 0, 0, PG_PAGE_FLAT, SD_INFO, "Flat st_atus",
+      "What amarchy-flat reports: on, off, held, absent. Read only.",
+      NOVALS, "", SD_UPTERM, SDF_NONE, 0, 0, NORANGE, PG_AM_FLATSTATUS, 0, 0, 1, 0 },
 };
 const int sd_nsettings = SDI_COUNT;
 
@@ -424,7 +443,7 @@ const char *sd_text_reason(int check)
 /* ---- menu rows ---- */
 
 static const char *const sd_page_names[PG_NPAGES] = {
-    "general", "colors", "palette", "keyboard", "advanced", "amarchy"
+    "general", "colors", "palette", "keyboard", "advanced", "amarchy", "flat"
 };
 
 int sd_page_by_name(const char *name)

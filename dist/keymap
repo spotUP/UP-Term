@@ -199,6 +199,7 @@ settings.amarchy.font        = Menu font            | detach:C:UP-Term-Prefs AMA
 settings.amarchy.edit        = Edit menu            | run:nvim ENV:up-term/keymap
 settings.amarchy.agentclaude = AI Agent: Claude     | slash:/agent claude
 settings.amarchy.agentpi     = AI Agent: pi         | slash:/agent pi
+settings.flat = Flat Look | settings:flat
 # The agents panel the Amarchy bar's agents segment opens (amarchy/bar.c opens node "agents" hung from the bar).
 # The limit meters and token use (OMARCHY-AI part E) get a row here when part E exists (BAR_AGENT_LIMITS_ROW).
 agents.claude      = Default agent: Claude | slash:/agent claude

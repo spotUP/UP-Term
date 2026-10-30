@@ -181,6 +181,50 @@ static void test_desk_palette_flat(void)
 
 
 /* R1.17: IPrefs resets the Workbench screen only when the live DrawInfo pens differ from the ones the Palette USE brings */
+/* DESK-31: the 3.2 reset closes the screen for ~200 ms (rig 7 probe); a screen of 0 there made the apply reopen its windows mid-reset */
+/* DESK-31 (3.1, rig 7 Run 10): the windows came back on the first poll whose screen title matched the idle one, which was the
+ * fresh screen of IPrefs' first Font reset; its second reset then raised "System Request" (Retry|Cancel). The signal is IPrefs
+ * itself: back in its idle Wait() with no notification pending. */
+static void test_desk_iprefs_idle(void)
+{
+    unsigned long idle = 0x00010000UL | 0x1000UL; /* notify port signal | SIGBREAKF_CTRL_C */
+    CHECK_INT(desk_iprefs_idle(0, 0, 0, 0, 0), 1);                 /* no IPrefs: nothing to wait for */
+    CHECK_INT(desk_iprefs_idle(1, 1, idle, 0, idle), 1);           /* idle Wait, nothing pending */
+    CHECK_INT(desk_iprefs_idle(1, 1, idle, 0x00010000UL, idle), 0); /* the editor's notification is pending: not begun yet */
+    CHECK_INT(desk_iprefs_idle(1, 0, idle, 0, idle), 0);           /* running (ready): mid-reset */
+    CHECK_INT(desk_iprefs_idle(1, 1, 0x100UL, 0, idle), 0);         /* waiting on SIGF_DOS (Delay, packet) inside the reset */
+    CHECK_INT(desk_iprefs_idle(1, 1, 0x80000000UL, 0, idle), 0);    /* waiting on its requester's IDCMP port */
+    CHECK_INT(desk_iprefs_idle(1, 1, 0, 0, 0), 0);                 /* no idle mask captured: never call it idle */
+    /* Run 10 timeline, one sample per phase: editor exited (signal pending), reset 1 (running), between resets (DOS wait),
+     * reset 2 (running), done. The windows may return only at the last sample. */
+    {
+        unsigned long w[5] = {0, 0, 0x100UL, 0, 0}, r[5] = {0x00010000UL, 0, 0, 0, 0};
+        int run[5] = {0, 1, 0, 1, 0}, i, first = -1;
+        for (i = 0; i < 5 && first < 0; i++)
+            if (desk_iprefs_idle(1, !run[i], run[i] ? 0 : (w[i] ? w[i] : idle), r[i], idle))
+                first = i;
+        CHECK_INT(first, 4);
+    }
+}
+
+static void test_desk_reset_done(void)
+{
+    unsigned char want[DK_SLOTS];
+    unsigned short same[DK_SLOTS], other[DK_SLOTS];
+    int i;
+    char a, b;
+    desk_pens(want);
+    for (i = 0; i < DK_SLOTS; i++) {
+        same[i] = want[i];
+        other[i] = (unsigned short)(want[i] + 1);
+    }
+    CHECK_INT(desk_reset_done(&a, 0, 0, 0), 0);             /* screen closed mid-reset */
+    CHECK_INT(desk_reset_done(&a, 0, other, DK_SLOTS), 0);
+    CHECK_INT(desk_reset_done(&a, &a, other, DK_SLOTS), 0); /* same screen, old pens: not yet */
+    CHECK_INT(desk_reset_done(&a, &a, same, DK_SLOTS), 1);  /* in place, desk pens */
+    CHECK_INT(desk_reset_done(&a, &b, other, DK_SLOTS), 1); /* a new screen (3.1) */
+}
+
 static void test_desk_pens_reset(void)
 {
     unsigned char want[DK_SLOTS];
@@ -507,6 +551,29 @@ static void test_desk_pointer_gate(void)
     CHECK_INT(desk_pointer_editor_ok(0, 0), 0);
 }
 
+/* DESK-31-CRASH: the 3.1 Palette editor (40.2) behind IPrefs 40.7 freezes the guest on any palette.prefs write; only 47+ runs */
+static void test_desk_palette_gate(void)
+{
+    static const char v31[] = "xx\0\0$VER: Palette 40.2 (4.11.93)\0yy";
+    static const char v32[] = "$VER: Palette 47.21 (24.3.2021)";
+    CHECK_INT(desk_palette_editor_ok((const unsigned char *)v31, sizeof v31), 0);
+    CHECK_INT(desk_palette_editor_ok((const unsigned char *)v32, sizeof v32 - 1), 1);
+    CHECK_INT(desk_palette_editor_ok((const unsigned char *)"no version", 10), 0);
+    CHECK_INT(desk_palette_editor_ok(0, 0), 0);
+    {
+        int ws = 9;
+        /* 3.1: no palette write; the wbpattern write that remains makes Intuition ask for a Workbench reset (second cause) */
+        CHECK_INT(desk_gate_mask(15, 0, &ws), 14);
+        CHECK_INT(ws, 1);
+        CHECK_INT(desk_gate_mask(1, 0, &ws), 0);
+        CHECK_INT(ws, 0);
+        CHECK_INT(desk_gate_mask(15, 1, &ws), 15);
+        CHECK_INT(ws, 0); /* 3.2 measured: a WBPattern USE with a window open posts no reset requester */
+        CHECK_INT(desk_gate_mask(1u << DT_PALETTE, 1, &ws), 1u << DT_PALETTE);
+        CHECK_INT(ws, 0);
+    }
+}
+
 /* DESK-PREVIEW-PALETTE: the picker's hook (gt_preview_step) drives the Workbench pens: every highlighted theme writes its desk_role
  * colours, Esc puts back the colours saved when the picker opened. dp_stub = 1 stubs the desk step out (the old behaviour). */
 static uc_u32 dp_pen[8];
@@ -570,11 +637,14 @@ void suite_desk(void)
     test_desk_palette();
     test_desk_palette_flat();
     test_desk_pens_reset();
+    test_desk_reset_done();
+    test_desk_iprefs_idle();
     test_desk_darker();
     test_desk_backdrop();
     test_desk_wbpattern();
     test_desk_pointer();
     test_desk_pointer_gate();
+    test_desk_palette_gate();
     test_desk_font();
     test_desk_font_default();
     test_desk_guard();

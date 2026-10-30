@@ -49,11 +49,12 @@ enum {
     PC_WHEEL = 150, PC_BRIGHTNESS = 151, PC_RED = 152, PC_GREEN = 153, PC_BLUE = 154,
     PC_HEX = 155, PC_SWATCH = 156, PC_OK = 157, PC_CANCEL = 158,
     PG_AM_GTHEME_CHOOSE = 159,
+    PG_AM_FLAT = 160, PG_AM_FLATGAD = 161, PG_AM_FLATSIZE = 162, PG_AM_FLATSTYLE = 163, PG_AM_FLATSTATUS = 164,
     PN_NAME = 170, PN_OK = 171, PN_CANCEL = 172
 };
 
 enum { PG_PAGE_GENERAL, PG_PAGE_COLORS, PG_PAGE_PALETTE, PG_PAGE_KEYBOARD, PG_PAGE_ADVANCED,
-       PG_PAGE_AMARCHY, PG_NPAGES };
+       PG_PAGE_AMARCHY, PG_PAGE_FLAT, PG_NPAGES };
 #define PG_COMMON (-1)   /* in every page */
 
 /* the controls; a swatch is a gadget the program draws */
@@ -133,7 +134,7 @@ typedef struct pl_font {
     void *ctx;
 } pl_font;
 
-#define PL_MAX_IDS 160
+#define PL_MAX_IDS 180
 typedef struct pl_result {
     pl_box box[PL_MAX_IDS];  /* by gadget id (the control; the label lies left of it) */
     int label_w[PL_MAX_IDS]; /* the label's width reserved left of the control */
