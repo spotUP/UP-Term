@@ -1954,6 +1954,49 @@ def r_theme_preview_live():
 
 ROWS.append(('theme_preview_live', r_theme_preview_live))
 
+def r_bar_agents_no_terminal():
+    """BAR-AGENTS-PANEL-EMPTY: with no UP-Term window open, a left click on the bar's Agents segment opens the panel with its
+    rows (the agents.* rows are not terminal-only, menu_tree.c mn_row_needs), and picking one opens a terminal first and
+    then runs the row (lf_plan_t). Real path: the segment click -> act_panel -> amarchy-gui at node `agents`. Sentinel for
+    the rows: ENV:AMARCHY_ROWS (gui.c). Run on a rig with no terminal window (--only on a fresh rig)."""
+    import wbrun_rig
+    import amarchy_p2_rig as p2
+    def titles():
+        return set((w.get('title') or '') for w in wbrun_rig.windows())
+    if any('menuhost' in t for t in titles()):
+        return False, 'a terminal window is open: run this row on a fresh rig'
+    before = titles()
+    seg = 'Agents'
+    ids = [i for i, v in p2.segs().items() if v[3].startswith(seg)]
+    if not ids:
+        return False, 'no Agents segment in BAR TEXT %r' % (p2.segs(),)
+    c.run('Delete >NIL: ENV:AMARCHY_ROWS QUIET')
+    p2.click_seg(ids[0])
+    rows = ''
+    for _ in range(40):
+        rc, out = c.run('GetEnv AMARCHY_ROWS')
+        rows = out.strip() if rc == 0 else ''
+        if rows:
+            break
+        time.sleep(0.25)
+    listed = rows.split('|') if rows else []
+    pick = [i for i, r in enumerate(listed) if 'pi' in r.split()[-1:]]
+    for _ in range(pick[0] if pick else 0):
+        ami.key(RAW['down'])
+        time.sleep(0.2)
+    ami.key(RAW['return'])
+    opened = False
+    for _ in range(40):
+        time.sleep(0.5)
+        if any(t not in before and t != 'Amarchy' and 'Agents' not in t for t in titles() - before):
+            opened = True
+            break
+    ok = len(listed) >= 5 and bool(pick) and opened
+    return ok, 'no terminal; Agents panel rows %s; picked %s; new windows %s' % (listed, [listed[i] for i in pick], sorted(titles() - before))
+
+
+ROWS.append(('bar_agents_no_terminal', r_bar_agents_no_terminal))
+
 
 def start_args():
     """The arguments the running rig was started with (rig.py writes them to <rig>/start.args); [] when unknown."""

@@ -40,7 +40,7 @@ int lf_job_view(const lf_ui *ui)
 
 lf_how lf_plan_t(int kind, int term)
 {
-    return kind == KA_SLASH && !term ? LF_OPEN_THEN_REQUEST : lf_plan(kind);
+    return (kind == KA_SLASH || kind == KA_MENUID) && !term ? LF_OPEN_THEN_REQUEST : lf_plan(kind);
 }
 
 lf_how lf_plan_ta(int kind, int term, int needs_value)

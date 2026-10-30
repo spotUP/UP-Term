@@ -2605,6 +2605,16 @@ static void the_dopus_group_needs_a_port(void)
     CHECK_INT(mn_row_needs(KA_REXX, "apps.claude"), 0);
     CHECK_INT(mn_row_needs(KA_SLASH, "style.terminal.font"), 0);   /* the Terminal group opens a terminal when none is open */
     CHECK_INT(mn_row_needs(KA_SLASH, "style.other"), MN_COND_TERM);
+    /* BAR-AGENTS-PANEL-EMPTY: the Agents rows (slash and menuid) show with no terminal open and open one when picked */
+    CHECK_INT(mn_row_needs(KA_SLASH, "agents.review"), 0);
+    CHECK_INT(mn_row_needs(KA_MENUID, "agents.launch"), 0);
+    CHECK_INT((int)lf_plan_t(KA_MENUID, 0), (int)LF_OPEN_THEN_REQUEST);
+    CHECK_INT((int)lf_plan_t(KA_MENUID, 1), (int)LF_REQUEST);
+    {
+        mn_item it[MN_MAX_ITEMS];
+        int c = mn_children_t(&km, BAR_AGENT_NODE, it, MN_MAX_ITEMS, mn_cond(0, 0, 0));
+        CHECK(c >= 5);                                               /* the panel the bar opens is not empty with no terminal */
+    }
     CHECK(!node_has("", "Dopus", mn_cond(1, 0, 1)));            /* no port: the group is gone, terminal or not */
     CHECK(!node_has("", "Dopus", mn_cond(0, 0, 1)));
     CHECK(node_has("", "Dopus", mn_cond(1, 1, 1)));              /* port present: the group shows */
