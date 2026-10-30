@@ -1190,11 +1190,26 @@ def base_install(ck, line='runinstall'):
        'the base wrote UP-Term:UP-Term.version (the add-ons\' base check reads it)')
 
 
+def lock_script(path):
+    """The Amiga script text that prints YES when path exists, else NO. EXISTS asks DOS for a Lock, which searches every
+    directory of a multi-directory assign (UP-Term: = decoy + real drawer); List, Type and Copy open the file or scan
+    the first directory only and say 'object not found' for a file in the second. NEVER ask a multi-directory assign
+    with `Assign X: LIST`: with a name it is no listing, it REMOVES the assign (read it with `Assign X: EXISTS`)."""
+    return 'If EXISTS %s*NEcho YES*NElse*NEcho NO*NEndIf' % path
+
+
+def lock_exists(path):
+    run('Echo >T:rig-exists.dos "%s"' % lock_script(path))
+    rc, out = run('Execute T:rig-exists.dos')
+    return rc == 0 and out.split()[-1:] == ['YES']
+
+
 def base_whole(ck, what):
     """The base still answers: vsh's ls is coreutils, and its VERSIONS is there."""
     rc, out = run('C:vsh -c "ls --version"')
     ck(rc == 0 and 'coreutils' in out, 'the base is whole %s: vsh runs GNU ls' % what, out)
-    ck(run('List >NIL: UP-Term:VERSIONS')[0] == 0, 'the base is whole %s: UP-Term:VERSIONS' % what)
+    ck(lock_exists('UP-Term:VERSIONS'), 'the base is whole %s: UP-Term:VERSIONS' % what,
+       '' if lock_exists('UP-Term:VERSIONS') else 'assign: %s; Dir: %s' % (run('Assign >NIL: UP-Term: EXISTS')[0], run('Type ENVARC:up-term/Dir')[1].strip()))
 
 
 def strip_block(text, name):

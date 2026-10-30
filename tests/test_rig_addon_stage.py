@@ -28,5 +28,20 @@ class AddonStage(unittest.TestCase):
                 self.assertEqual((vtc / n).read_bytes(), src.read_bytes())
 
 
+class BaseWholeMultiAssign(unittest.TestCase):
+    """ADDON-UPTREAL-FOLLOWUP (vtcon-05 s30): with UP-Term: = RAM:decoy + the real drawer, check 18 ran
+    `List >NIL: UP-Term:VERSIONS` (rc 20: List scans the first directory only) and its diagnostic
+    `Assign UP-Term: LIST` REMOVED the assign. base_whole looks through a Lock (EXISTS), never List and never
+    Assign with a name and LIST. Source text, not an import: install_rig talks to a rig on import."""
+    def test_base_whole_probes_with_exists_not_list_or_assign_list(self):
+        text = (ROOT / "tools/rig/install_rig.py").read_text()
+        start = text.index("def base_whole")
+        src = text[start:text.index("\ndef ", start + 1)]
+        self.assertNotIn("List >NIL: UP-Term:", src)
+        self.assertNotIn("Assign UP-Term: LIST", src)
+        self.assertIn("lock_exists('UP-Term:VERSIONS')", src)
+        self.assertIn("If EXISTS %s*NEcho YES*NElse*NEcho NO*NEndIf", text)
+
+
 if __name__ == "__main__":
     unittest.main()
