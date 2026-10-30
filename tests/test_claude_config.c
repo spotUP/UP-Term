@@ -1303,6 +1303,22 @@ static void test_datadir(void)
     CHECK_STR(out, "UP-Term:var/Claude");
     CHECK_INT(dd_dir(&vs, "Claude", out, 18), -1);
 
+    /* UP-Term: a multi-directory assign: a drawer made through it lands in its FIRST directory, but Uninstall deletes
+     * through the one real drawer ENVARC:up-term/Dir names (UPTREAL:): the data drawer is spelled through that one */
+    mk("vol/envarc/up-term");
+    put("vol/envarc/up-term/Dir", "ENVARC:real\n");
+    CHECK_INT(dd_dir(&vs, "Claude", out, sizeof(out)), 1);
+    CHECK_STR(out, "UP-Term:var/Claude");               /* the Dir drawer is not there: UP-Term: itself */
+    mk("vol/envarc/real");
+    CHECK_INT(dd_dir(&vs, "Claude", out, sizeof(out)), 1);
+    CHECK_STR(out, "ENVARC:real/var/Claude");
+    CHECK_INT(dd_dir(&vs, "amiga-pi", out, sizeof(out)), 1);
+    CHECK_STR(out, "ENVARC:real/var/amiga-pi");
+    CHECK_INT(dd_dir(&vs, "Claude", out, 20), -1);
+    put("vol/envarc/up-term/Dir", "");                  /* an empty Dir file: UP-Term: itself */
+    CHECK_INT(dd_dir(&vs, "Claude", out, sizeof(out)), 1);
+    CHECK_STR(out, "UP-Term:var/Claude");
+
     /* old file only: moved (var/ and var/Claude/ made on the way) */
     CHECK_INT(dd_migrate(&vs, "ENVARC:Claude/history", "UP-Term:var/Claude/history"), 1);
     CHECK_INT(vs.kind(vs.u, "ENVARC:Claude/history"), 0);
