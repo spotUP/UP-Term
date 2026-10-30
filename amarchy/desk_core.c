@@ -113,6 +113,12 @@ void desk_pens(unsigned char pens[DK_SLOTS])
     pens[DK_EXTRA] = DK_FG;
 }
 
+void desk_pens_flat(unsigned char pens[DK_SLOTS])
+{
+    desk_pens(pens);
+    pens[DK_SHINE] = DK_BG;
+}
+
 int desk_pens_reset(const unsigned short *cur, int ncur)
 {
     unsigned char want[DK_SLOTS];
@@ -140,9 +146,9 @@ static unsigned wide(uc_u32 c, int shift)
     return (b << 8) | b;
 }
 
-long desk_palette(const gtheme *t, int ncolors, unsigned char *out, long cap)
+long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap)
 {
-    unsigned char pens[DK_SLOTS], *body;
+    unsigned char *body;
     int i;
     if ((ncolors != 4 && ncolors != 8) || cap < DK_PALETTE_SIZE)
         return 0;
@@ -151,7 +157,6 @@ long desk_palette(const gtheme *t, int ncolors, unsigned char *out, long cap)
     be32_put(body + 4, (unsigned long)PAL_BODY);
     body += 8;
     memset(body, 0, (size_t)PAL_BODY);
-    desk_pens(pens);
     for (i = 0; i < DK_SLOTS; i++) {
         put16(body + PAL_4PENS + 2 * i, pens[i]);
         put16(body + PAL_8PENS + 2 * i, pens[i]);

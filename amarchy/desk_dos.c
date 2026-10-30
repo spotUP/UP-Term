@@ -234,7 +234,9 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     desk_dos_applies++;
     desk_dos_last_mask = mask;
     if (mask & (1u << DT_PALETTE)) {
-        len = desk_palette(th, depth >= 3 ? 8 : 4, buf, sizeof buf);
+        unsigned char stock_pens[DK_SLOTS];
+        desk_pens(stock_pens); /* the flat map (desk_pens_flat) is wired in by FLAT-P1-2 */
+        len = desk_palette(th, depth >= 3 ? 8 : 4, stock_pens, buf, sizeof buf);
         ok &= dk_put("Palette", DK_WORK "/palette.prefs", buf, len);
         /* IPrefs resets Workbench for the palette: the other editors run only after it finished (SYS:Prefs/Pointer
          * raised a Program Error requester when started under the running reset) */

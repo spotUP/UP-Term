@@ -76,8 +76,9 @@ static void test_desk_palette(void)
     long gn = slurp(DESK_DATA "palette-gui-save.prefs", gold, sizeof gold), n, i;
     int s, r, diff;
     probe_theme(&t);
+    desk_pens(pens);
     CHECK_INT(gn, DK_PALETTE_SIZE);
-    n = desk_palette(&t, 8, out, sizeof out);
+    n = desk_palette(&t, 8, pens, out, sizeof out);
     CHECK_INT(n, DK_PALETTE_SIZE);
     /* byte-exact to the golden outside the pen lists (the mapping differs from the stock pens) and entry 0 */
     diff = 0;
@@ -91,7 +92,6 @@ static void test_desk_palette(void)
     }
     CHECK_INT(diff, 0);
     /* the pen lists: R1.19 mapping in both, terminated */
-    desk_pens(pens);
     for (s = 0; s < DK_SLOTS; s++) {
         CHECK_INT((out[PAL_BODY + 16 + 2 * s] << 8) | out[PAL_BODY + 17 + 2 * s], pens[s]);
         CHECK_INT((out[PAL_BODY + 80 + 2 * s] << 8) | out[PAL_BODY + 81 + 2 * s], pens[s]);
@@ -119,7 +119,7 @@ static void test_desk_palette(void)
         case DK_GREEN: k.ok ^= 0x101010UL; break;
         default: k.fail ^= 0x101010UL; break;
         }
-        desk_palette(&k, 8, out4, sizeof out4);
+        desk_palette(&k, 8, pens, out4, sizeof out4);
         diff = 0;
         for (i = 0; i < DK_PALETTE_SIZE; i++)
             if (out4[i] != out[i]) {
@@ -129,15 +129,56 @@ static void test_desk_palette(void)
         CHECK(diff > 0);
     }
     /* 4 colours: the same four entries, the terminator after them, nothing behind */
-    n = desk_palette(&t, 4, out4, sizeof out4);
+    n = desk_palette(&t, 4, pens, out4, sizeof out4);
     CHECK_INT(n, DK_PALETTE_SIZE);
     CHECK(!memcmp(out4 + PAL_ENTRY(0), out + PAL_ENTRY(0), 32));
     CHECK_INT(out4[PAL_ENTRY(4)], 0xff);
     CHECK_INT(out4[PAL_ENTRY(4) + 1], 0xff);
     CHECK_INT(out4[PAL_ENTRY(5)], 0);
-    CHECK_INT(desk_palette(&t, 5, out4, sizeof out4), 0);
-    CHECK_INT(desk_palette(&t, 8, out4, 100), 0);
+    CHECK_INT(desk_palette(&t, 5, pens, out4, sizeof out4), 0);
+    CHECK_INT(desk_palette(&t, 8, pens, out4, 100), 0);
 }
+
+/* FLAT-P1-1: the flat pen map differs from the stock one in the shine slot only (shine = background),
+ * every slot reaches the PALT pen bytes, and the output equals the goldens made from the two maps */
+static void test_desk_palette_flat(void)
+{
+    static unsigned char gold[BUF_MAX], out[BUF_MAX];
+    unsigned char stock[DK_SLOTS], flat[DK_SLOTS];
+    gtheme t;
+    long n;
+    int s, pen;
+    static const char *const names[] = {"palette-p1a-pen8.prefs", "palette-p1a-pen4.prefs",
+                                        "palette-flat-pen8.prefs", "palette-flat-pen4.prefs"};
+    int k;
+    probe_theme(&t);
+    desk_pens(stock);
+    desk_pens_flat(flat);
+    for (s = 0; s < DK_SLOTS; s++) {
+        CHECK(flat[s] < 4);
+        if (s == DK_SHINE) {
+            CHECK_INT(flat[s], DK_BG);
+            CHECK(stock[s] != flat[s]);
+        } else
+            CHECK_INT(flat[s], stock[s]);
+    }
+    for (k = 0; k < 4; k++) {
+        char path[256];
+        const unsigned char *pm = k < 2 ? stock : flat;
+        snprintf(path, sizeof path, DESK_DATA "%s", names[k]);
+        CHECK_INT(slurp(path, gold, sizeof gold), DK_PALETTE_SIZE);
+        n = desk_palette(&t, k % 2 ? 4 : 8, pm, out, sizeof out);
+        CHECK_INT(n, DK_PALETTE_SIZE);
+        CHECK(!memcmp(out, gold, DK_PALETTE_SIZE));
+        for (s = 0; s < DK_SLOTS; s++) {
+            pen = (out[PAL_BODY + 16 + 2 * s] << 8) | out[PAL_BODY + 17 + 2 * s];
+            CHECK_INT(pen, pm[s]);
+            pen = (out[PAL_BODY + 80 + 2 * s] << 8) | out[PAL_BODY + 81 + 2 * s];
+            CHECK_INT(pen, pm[s]);
+        }
+    }
+}
+
 
 /* R1.17: IPrefs resets the Workbench screen only when the live DrawInfo pens differ from the ones the Palette USE brings */
 static void test_desk_pens_reset(void)
@@ -484,6 +525,7 @@ static void test_desk_preview(void)
 void suite_desk(void)
 {
     test_desk_palette();
+    test_desk_palette_flat();
     test_desk_pens_reset();
     test_desk_darker();
     test_desk_wbpattern();

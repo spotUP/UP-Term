@@ -160,8 +160,14 @@ int main(int argc, char **argv)
     if (tl < 0)
         return 2;
     gt_parse(text, tl, &th);
-    if (!strcmp(argv[2], "palette"))
-        n = desk_palette(&th, atoi(argv[3]), buf, sizeof buf);
+    if (!strcmp(argv[2], "palette")) {
+        unsigned char pens[DK_SLOTS];
+        if (argc > 4 && !strcmp(argv[4], "flat"))
+            desk_pens_flat(pens);
+        else
+            desk_pens(pens);
+        n = desk_palette(&th, atoi(argv[3]), pens, buf, sizeof buf);
+    }
     else if (!strcmp(argv[2], "wbpattern"))
         n = desk_wbpattern(&th, atoi(argv[3]), 1, 0, 0, buf, sizeof buf);
     else if (!strcmp(argv[2], "pointer")) {

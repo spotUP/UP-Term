@@ -34,13 +34,19 @@ uc_u32 desk_darker(const gtheme *t);
 /* R1.19: the pen index of every DrawInfo slot (OD13) into pens[DK_SLOTS] */
 void desk_pens(unsigned char pens[DK_SLOTS]);
 
+/* FLAT-P1-1 (OD-F4 a): the flat map. The stock map with SHINEPEN = the surface pen (DK_BG), so a two-tone bevel reads as one
+ * SHADOWPEN outline. Differs from desk_pens in that slot only, so a theme switch while flat stays on or off keeps the pen
+ * indices (no Workbench reset); every index stays below 4, so the same map serves a 4-colour screen without aliasing. */
+void desk_pens_flat(unsigned char pens[DK_SLOTS]);
+
 /* R1.17: 1 when a Palette USE of the pens desk_pens gives makes IPrefs reset the Workbench screen. DrawInfo dri_Pens are fixed
  * at screen open, so only a pen array that differs from the live screen's (cur, ncur = dri_NumPens, the first ncur slots are
  * compared) reopens it; colour values alone load live. ncur <= 0 (no DrawInfo): unknown, 1. */
 int desk_pens_reset(const unsigned short *cur, int ncur);
 
-/* R1.2: the palette.prefs of the theme with ncolors (4 or 8) colours; returns DK_PALETTE_SIZE, 0 on a bad argument */
-long desk_palette(const gtheme *t, int ncolors, unsigned char *out, long cap);
+/* R1.2: the palette.prefs of the theme with ncolors (4 or 8) colours and the pen map pens (desk_pens or desk_pens_flat);
+ * returns DK_PALETTE_SIZE, 0 on a bad argument */
+long desk_palette(const gtheme *t, int ncolors, const unsigned char pens[DK_SLOTS], unsigned char *out, long cap);
 
 /* R1.3, R1.20: the wbpattern.prefs (ROOT, DRAWER, SCREEN chunks). depth = the screen depth (capped at 3), tiled = 1
  * puts the sparse dot grid on the root. prev/prevlen = the file now on disk (or 0): its SCREEN chunk is kept.
