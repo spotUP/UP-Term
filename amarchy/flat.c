@@ -94,8 +94,21 @@ static int c2_draw(Object *obj, Msg msg)
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
-    if (GetAttr(SYSIA_Which, obj, &which) == 0)
-        return 0;
+    if (GetAttr(SYSIA_Which, obj, &which) == 0) {
+        /* Kickstart 3.1 sysiclass does not answer OM_GET: find the window gadget that renders this image. The layer
+         * of the rastport belongs to the window being drawn; reading its gadget list from Intuition's own drawing
+         * context needs no Forbid (the list only changes through Add/RemoveGList by the window's owner). */
+        struct Layer *lay = d->imp_RPort->Layer;
+        struct Window *w = lay ? (struct Window *)lay->Window : NULL;
+        struct Gadget *g;
+        int n = 0, wh = -1;
+        for (g = w ? w->FirstGadget : NULL; g && n < 64 && wh < 0; g = g->NextGadget, n++)
+            if ((g->GadgetRender == (APTR)obj || g->SelectRender == (APTR)obj) && (g->GadgetType & GTYP_SYSGADGET))
+                wh = flat_which_from_gtype(g->GadgetType);
+        if (wh < 0)
+            return 0;
+        which = (ULONG)wh;
+    }
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
                            im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, c2_fill, d->imp_RPort);
 }

@@ -217,21 +217,14 @@ def c2_after(stock):
         on, out = gads('SET 1 %d 1 2 0' % style)
         n1, _ = calls()
         check(on.keys() == stock.keys(), 'flat on (%s): four gadgets' % name, out)
-        which_ok = all(on[k][0] == WHICH[k] for k in on if k in WHICH)
-        if which_ok:
-            print('info: GetAttr(SYSIA_Which) works on sysiclass: %s' % {k: v[0] for k, v in on.items()})
-            check(all(on[k][1] != stock[k][1] for k in on if k in stock),
-                  'flat on (%s): glyph pixels differ from stock in every gadget (drawn, not fallback)' % name, (on, stock))
-        else:
-            # Kickstart 3.1 sysiclass does not answer OM_GET for SYSIA_Which: the dispatcher falls back to the old hook.
-            print('info: GetAttr(SYSIA_Which) FAILS on sysiclass %s: dispatcher falls back to stock' % {k: v[0] for k, v in on.items()})
-            check(all(on[k][1] == stock[k][1] for k in on if k in stock),
-                  'flat on (%s): GetAttr unavailable, fallback draws the stock pixels' % name, (on, stock))
+        print('info: GetAttr(SYSIA_Which) per gadget: %s (3.1 answers no OM_GET; the dispatcher maps the window gadget type)' % {k: v[0] for k, v in on.items()})
+        check(all(on[k][1] != stock[k][1] for k in on if k in stock),
+              'flat on (%s): glyph pixels differ from stock in every gadget (drawn, not fallback)' % name, (on, stock))
         check(all(v[1] == v[2] for v in on.values()), 'flat on (%s): same pixels after open and RefreshWindowFrame' % name, on)
         check(n0 is not None and n1 is not None and n1 > n0, 'flat on (%s): calls rose %s -> %s' % (name, n0, n1))
         if style == 0:
             line = on
-        elif which_ok:
+        else:
             check(any(on[k][1] != line[k][1] for k in on if k in line), 'block style draws other pixels than line style', on)
     off2, out = gads('SET 0 0 1 2 0')
     check(off2.keys() == stock.keys() and all(off2[k][1:] == stock[k][1:] for k in stock),

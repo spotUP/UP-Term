@@ -475,8 +475,20 @@ static void test_glyph_route(void)
     CHECK_INT(cv[0][0], '.');
 }
 
+/* 3.1 sysiclass answers no OM_GET: the gadget type of the drawn window gadget gives SYSIA_Which */
+static void test_which_from_gtype(void)
+{
+    CHECK_INT(flat_which_from_gtype(0x8000u | 0x40), FLAT_W_DEPTH);
+    CHECK_INT(flat_which_from_gtype(0x8000u | 0x60 | 1), FLAT_W_ZOOM);
+    CHECK_INT(flat_which_from_gtype(0x8000u | 0x10), FLAT_W_SIZE);
+    CHECK_INT(flat_which_from_gtype(0x8000u | 0x80 | 1), FLAT_W_CLOSE);
+    CHECK_INT(flat_which_from_gtype(0x8000u | 0x20), -1);      /* GTYP_WDRAGGING is not a glyph */
+    CHECK_INT(flat_which_from_gtype(0x0001u), -1);
+}
+
 void suite_flat_core(void)
 {
+    test_which_from_gtype();
     test_layout();
     test_init_check();
     test_status();

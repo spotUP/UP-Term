@@ -146,4 +146,8 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
 int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
                            unsigned long calls, unsigned long flat, const uint32_t sums[FLAT_EL_COUNT], char *out, size_t cap);
 
+/* SYSIA_Which of a system gadget from its GadgetType & GTYP_SYSTYPEMASK (0xF0): WDEPTH 0x40 -> 0, WZOOM 0x60 -> 1,
+ * SIZING 0x10 -> 2, CLOSE 0x80 -> 3. -1 for every other type. Used where GetAttr(SYSIA_Which) fails (Kickstart 3.1). */
+int flat_which_from_gtype(unsigned gadget_type);
+
 #endif

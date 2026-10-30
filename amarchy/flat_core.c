@@ -215,3 +215,14 @@ int flat_dopus_status_line(int found, unsigned version, unsigned revision, int r
     }
     return n > 0 && (size_t)n < cap ? n : 0;
 }
+
+int flat_which_from_gtype(unsigned gadget_type)
+{
+    switch (gadget_type & 0xF0u) {
+    case 0x40: return 0;        /* GTYP_WDEPTH */
+    case 0x60: return 1;        /* GTYP_WZOOM */
+    case 0x10: return 2;        /* GTYP_SIZING */
+    case 0x80: return 3;        /* GTYP_CLOSE */
+    default: return -1;
+    }
+}
