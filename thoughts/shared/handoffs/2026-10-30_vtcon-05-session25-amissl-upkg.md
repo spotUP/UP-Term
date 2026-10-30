@@ -24,3 +24,13 @@ status: partial
 - Restart the rig before each `--only all` rerun (SYS:UHC stays after Uninstall by design).
 - `make dist-base` needs upterm-ports `make kit-stage` first (SOURCES.txt).
 - Rig 1 (build/rig) belongs to the owner; never stop it. Rigs 9 and 10 are stopped.
+
+## Session 26 update (2026-10-30)
+
+- INSTALL-DOS-NO-AMISSL and AMISSL-RECHECK-FALSE-ERROR closed: rig 10 run C3 with AmiSSL removed from LIBS: (Version rc 20 before) printed "[INFO] AmiSSL: LIBS:amisslmaster.library version 5 is missing or older, running Install-AmiSSL." and "[INFO] AmiSSL installed: LIBS: has it now, usable at once.", no [ERROR], Version 5.27 rc 0 before reboot. Text read by OCR (Execute >log and the ami.py long window lost it). Evidence thoughts/spot/s26-amissl-shell-window.md.
+- AMISSL-SHELL-WINDOW closed, not reproduced (owner watched run A2).
+- ae1989d3: Install.installer's AmiSSL note says "AmiSSL installed: LIBS: has it now, usable at once." instead of asking for a reboot.
+- 7de8acf1: dist/wasabi/SOURCE.txt names wasabi 83acd194 (the repins had left 562672a8); the drawer test guards it, so every repin must update SOURCE.txt.
+- build/rig9 deleted (2.4 GB) with vtcon-32 and dctelnet-17 agreeing.
+- Open, first item next session: RIG10-DISTKIT-MIXED in todos.md. build/dist/up-term/Files lacks Agent, amnotify, bar.conf, S although dist/parts.txt lists them; run make dist at HEAD (df -h / first, ~3.5 GiB free) and check whether they appear. If not, fix the Makefile rule with a test.
+- Install-AmiSSL clicks: on 2-row pages Proceed/Yes is (279,377); (279,394) is About; the last Proceed at (400,394) can need two clicks.
