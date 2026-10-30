@@ -953,6 +953,8 @@ def setup():
         os_image_copy()
     elif not OS32 and not (RIG / "sys.hdf").exists():
         fresh_sys_hdf()
+    if (OS or OS32) and "--no-dopus" in sys.argv:
+        os_tree_no_dopus(RIG / ("os-%s" % OS if OS else "os32"))
     (RIG / "boot/s").mkdir(exist_ok=True)
     # --060: at host speed the boot shell's window is open (something prints
     # into it) when IPrefs switches the Workbench to the saved RTG mode, and
@@ -1488,6 +1490,34 @@ def reboot(given=None):
     # a new process: the machine flags are read from sys.argv when rig.py is loaded
     subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + args, check=True)
 
+def port_listeners(port):
+    """PIDs listening on TCP `port` on this machine (lsof; none: [])."""
+    out = subprocess.run(["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"], capture_output=True, text=True).stdout
+    return sorted(set(out.split()))
+
+def refuse_port_clash(port=None):
+    """RIG-PORT-CLASH: this rig's wasabid port (paths.wasabi_port) is held by another process (another rig's
+    emulator, 2026-10-30 rig 2 on 1241 = rig 8's): the two rigs would share one Amiga. Exit non-zero, nothing written."""
+    port = paths.WASABI_PORT if port is None else port
+    pids = port_listeners(port)
+    if pids:
+        sys.exit("[ERROR] rig %d: wasabi port %d is already listened on by pid %s (another rig's emulator or a stale one); "
+                 "not starting. Check UPTERM_RIG, or stop that process." % (paths.RIG_N, port, " ".join(pids)))
+
+def os_tree_no_dopus(tree):
+    """--no-dopus on a host-directory system (--os <name>, --os32): the tree is copied once and keeps what an earlier
+    run installed, so the Directory Opus S:User-Startup blocks (assign, PATH) go from the rig's copy. A clean tree has
+    none (nothing happens). RIG-OS32-NODOPUS: the flag was only read for the sys.hdf clone."""
+    for sub in ("S", "s"):
+        us = pathlib.Path(tree) / sub / "User-Startup"
+        if us.is_file():
+            data = us.read_bytes()
+            clean = data
+            for name in ("DirectoryOpus 5", "DOpus5"):
+                clean = user_startup.strip_upterm_blocks(clean, name)
+            if clean != data:
+                us.write_bytes(clean)
+
 def mine():
     out = subprocess.run(["ps", "-eo", "pid,command"], capture_output=True, text=True).stdout
     return [l for l in out.splitlines() if str(CFG) in l and "fs-uae" in l.lower()]
@@ -1548,6 +1578,7 @@ def _start(retries):
     if mine():
         print("already running")
         return
+    refuse_port_clash()
     # the system disk is new from the master on every start: nothing a dead run wrote into DH0: survives, and a rig
     # that never had one gets it here. Only here: no emulator of this rig runs (mine() above).
     if KEEP_SYS and not OS and not OS32 and (RIG / "sys.hdf").exists():
