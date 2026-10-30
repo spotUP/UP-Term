@@ -612,16 +612,16 @@ def raise_window(title, x=None, y=None):
             m.ui_front(c, w)
     return True
 
-def window(title):
+def window(title, prefix=False):
     # The front screen's window titled exactly `title`, from the uitree:
-    # {'box': (x, y, w, h), 'active': bool, 'sys:size': (x, y, w, h), ...}
+    # {'box': (x, y, w, h), 'active': bool, 'sys:size': (x, y, w, h), ...}; prefix=True matches a title that starts with `title`
     import shlex
     found = None
     for line in req(0x0D).decode('latin-1').splitlines():
         if line.startswith('W '):
             if found is not None: break
             f = shlex.split(line)
-            if f[-1] == title:
+            if f[-1] == title or (prefix and f[-1].startswith(title)):
                 w, h = map(int, f[4].split('x'))
                 found = {'box': (int(f[2]), int(f[3]), w, h), 'active': f[5] == 'active'}
         elif found is not None and line.startswith('G '):

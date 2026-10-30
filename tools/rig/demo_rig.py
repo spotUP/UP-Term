@@ -18,7 +18,7 @@ import condev_rig as c
 from hlmd_rig import colours
 
 TITLE = 'demotab'
-DEMO_TITLE = 'UP-Term demo'
+DEMO_TITLE = 'UP-Term demo'   # the demo sets the window title (OSC 2) as soon as it runs, and per scene: resize looks it up by prefix
 failed = 0
 TOUR_SECS = int(os.environ.get('TOUR_SECS', '300'))
 
@@ -45,6 +45,11 @@ def until(cond, secs):
 
 def frame(title):
     x, y, ww, hh = ami.window(title)['box']
+    return b''.join(ami.grab((x + 4, y + 14, ww - 8, hh - 18))[2])
+
+
+def frame_of(prefix):
+    x, y, ww, hh = ami.window(prefix, prefix=True)['box']
     return b''.join(ami.grab((x + 4, y + 14, ww - 8, hh - 18))[2])
 
 
@@ -103,21 +108,24 @@ def resize_then_continue():
     typewin.key(typewin.RET, wait=2)
     check(until(running, 30), 'resize: C:UPDemo starts at the reflow scene')
     time.sleep(6)
-    gx, gy, gw, gh = ami.window(title)['sys:size']
+    print('resize: window at the reflow scene', ami.window(DEMO_TITLE, prefix=True)['box'])
+    gx, gy, gw, gh = ami.window(DEMO_TITLE, prefix=True)['sys:size']
     pos = (gx + gw // 2, gy + gh // 2)
     winch_rig.drag(pos, -200, -120)
     time.sleep(4)
     check(running(), 'resize: the demo still runs after the window was made smaller')
-    w = ami.window(title)['box']
-    gx, gy, gw, gh = ami.window(title)['sys:size']
+    w = ami.window(DEMO_TITLE, prefix=True)['box']
+    print('resize: window after the shrink', w)
+    gx, gy, gw, gh = ami.window(DEMO_TITLE, prefix=True)['sys:size']
     winch_rig.drag((gx + gw // 2, gy + gh // 2), 200, 120)
     time.sleep(4)
-    check(ami.window(title)['box'][2] > w[2], 'resize: the window could be made bigger again', w)
+    print('resize: window after the grow', ami.window(DEMO_TITLE, prefix=True)['box'])
+    check(ami.window(DEMO_TITLE, prefix=True)['box'][2] > w[2], 'resize: the window could be made bigger again', w)
     check(running(), 'resize: the demo still runs after the window was made bigger')
     time.sleep(20)  # the reflow scene is 15 s: the next scene is on screen now
-    f1 = frame(title)
+    f1 = frame_of(DEMO_TITLE)
     time.sleep(3)
-    f2 = frame(title)
+    f2 = frame_of(DEMO_TITLE)
     check(running() and f1 != f2, 'resize: the scene after the reflow one animates (two frames differ)')
     typewin.key(0x45, wait=3)
     check(until(lambda: not running(), 30), 'resize: Esc ends the demo')
