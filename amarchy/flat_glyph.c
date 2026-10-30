@@ -190,3 +190,19 @@ int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long meth
     g.p = 0; g.cap = FLAT_GLYPH_MAX_PRIMS; g.fill = fill; g.ctx = ctx; g.st = s; g.ox = ox; g.oy = oy;
     return plan_run(&g, which, w, h, flat_glyph_state(ids), s->style) > 0;
 }
+
+int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, flat_fill_fn fn, void *ctx)
+{
+    int x1, y1;
+    if (!s || !fn || w < 3 || h < 3)
+        return 0;
+    x1 = ox + w - 1;
+    y1 = oy + h - 1;
+    if (fill)
+        fn(ctx, ox, oy, x1, y1, ids == 1 ? s->pen_line : s->pen_back);
+    fn(ctx, ox, oy, x1, oy, s->pen_line);            /* top */
+    fn(ctx, ox, y1, x1, y1, s->pen_line);            /* bottom */
+    fn(ctx, ox, oy, ox, y1, s->pen_line);            /* left */
+    fn(ctx, x1, oy, x1, y1, s->pen_line);            /* right */
+    return 1;
+}

@@ -196,6 +196,15 @@ int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_sh
     return pen_shine == pen_back ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
 }
 
+int flat_frame_decide(const flat_state *s, unsigned long method, int pen_shine, int pen_back)
+{
+    if (!s || !s->enabled || s->held)
+        return FLAT_DRAW_STOCK;
+    if (method != 0x202UL && method != FLAT_IM_DRAWFRAME)
+        return FLAT_DRAW_STOCK;
+    return pen_shine == pen_back ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
+}
+
 int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
                            unsigned long calls, unsigned long flat, const uint32_t sums[FLAT_EL_COUNT], char *out, size_t cap)
 {
@@ -213,6 +222,18 @@ int flat_dopus_status_line(int found, unsigned version, unsigned revision, int r
         k = snprintf(out + n, cap - (size_t)n, " sums=%08lx,%08lx", (unsigned long)sums[0], (unsigned long)sums[1]);
         n = k > 0 ? n + k : -1;
     }
+    return n > 0 && (size_t)n < cap ? n : 0;
+}
+
+int flat_frame_status_line(int installed, unsigned long calls, unsigned long flat, char *out, size_t cap)
+{
+    int n;
+    if (cap < 48)
+        return 0;
+    if (!installed)
+        n = snprintf(out, cap, "frame=absent");
+    else
+        n = snprintf(out, cap, "frame=hooked calls=%lu flat=%lu", calls, flat);
     return n > 0 && (size_t)n < cap ? n : 0;
 }
 

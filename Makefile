@@ -1186,6 +1186,11 @@ $(BUILD)/amiga/sysiprobe: tests/amiga/sysiprobe.c
 	@mkdir -p $(BUILD)/amiga
 	$(VC) -o $@ tests/amiga/sysiprobe.c
 
+# Counts frameiclass dispatcher calls while a GadTools window opens (FLAT-C8 Q2)
+$(BUILD)/amiga/frameprobe: tests/amiga/frameprobe.c
+	@mkdir -p $(BUILD)/amiga
+	$(VC) -o $@ tests/amiga/frameprobe.c
+
 # dopus5.library jump-table entries and the flat enable switch (FLAT-D4 rig)
 $(BUILD)/amiga/dopusprobe: tests/amiga/dopusprobe.c amarchy/flat_core.h
 	@mkdir -p $(BUILD)/amiga

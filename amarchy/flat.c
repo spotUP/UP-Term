@@ -129,6 +129,48 @@ ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
     return ((oldfn_stk)g_r->sw.saved)(h, obj, msg);
 }
 
+/* ---- FLAT-C8: the frameiclass dispatcher. Under flat pens (shine == background) the stock bevel leaves its shadow half
+ * as a one-sided right/bottom L; flat_frame_decide says draw flat, flat_frame_draw paints the box fill and a full 1 px outline instead. Every other
+ * call goes to the saved routine with the arguments as received. */
+static int c8_skip(Object *obj, Msg msg)
+{
+    flatshared *r = g_r;
+    struct impDraw *d = (struct impDraw *)msg;
+    r->fcalls++;
+    if (msg->MethodID != FLAT_IM_DRAW && msg->MethodID != FLAT_IM_DRAWFRAME)
+        return 0;
+    if (!d->imp_RPort || !d->imp_DrInfo)
+        return 0;
+    if (flat_frame_decide(&r->st, msg->MethodID, d->imp_DrInfo->dri_Pens[SHINEPEN], d->imp_DrInfo->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
+        return 0;
+    {
+        struct Image *im = (struct Image *)obj;
+        ULONG eo = 1;
+        /* Fill only when the frame says it is not edges-only (an unanswered OM_GET counts as edges-only: never erase content). */
+        int fill = GetAttr(IA_EdgesOnly, obj, &eo) != 0 && eo == 0;
+        if (!flat_frame_draw(&r->st, (int)d->imp_State, im->LeftEdge + d->imp_Offset.X, im->TopEdge + d->imp_Offset.Y,
+                             d->imp_Dimensions.Width ? d->imp_Dimensions.Width : im->Width,
+                             d->imp_Dimensions.Height ? d->imp_Dimensions.Height : im->Height, fill, c2_fill, d->imp_RPort))
+            return 0;
+    }
+    r->fflat++;
+    return 1;
+}
+
+ULONG c8_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
+{
+    if (c8_skip(obj, msg))
+        return TRUE;
+    return ((oldfn_reg)g_r->fsw.saved)(h, obj, msg);
+}
+
+ULONG c8_disp_stk(struct Hook *h, Object *obj, Msg msg)
+{
+    if (c8_skip(obj, msg))
+        return TRUE;
+    return ((oldfn_stk)g_r->fsw.saved)(h, obj, msg);
+}
+
 /* ---- FLAT-D4: the replacement routines. They run on the caller's task with the caller's registers (a0 rp, a1 rect,
  * a2 info, d0 recessed). Flat on and flat pens: draw nothing. Otherwise the saved routine, same arguments. */
 typedef void (*boxfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *,
@@ -177,7 +219,8 @@ static void print_status(void)
     flatshared *r;
     int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
     unsigned dver = 0, drev = 0;
-    unsigned long dcalls = 0, dflat = 0;
+    unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0;
+    int finst = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -188,6 +231,7 @@ static void print_status(void)
         dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
         dinst = r->dsw[0].installed || r->dsw[1].installed; dcalls = r->dcalls; dflat = r->dflat;
         dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
+        finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -195,6 +239,10 @@ static void print_status(void)
         PutStr((STRPTR)"\n");
     }
     if (found && flat_dopus_status_line(dfound, dver, drev, dreason, dmask, dinst, dcalls, dflat, dsum, line, sizeof line)) {
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found && flat_frame_status_line(finst, fcalls, fflat, line, sizeof line)) {
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
@@ -226,18 +274,18 @@ static int is_help(const char *a)
 
 /* The slot to swap: h_SubEntry of the class that every system image (SYSIA_Which 0..0x2C) shares. The class is found
  * through a throw-away sysiclass object. 0 when it cannot be made. */
-static uintptr_t *sysiclass_slot(void)
+static uintptr_t *class_slot(int frame)
 {
-    struct TagItem t[3];
+    struct TagItem t[4];
     struct Screen *scr = LockPubScreen(NULL);
     struct DrawInfo *di = scr ? GetScreenDrawInfo(scr) : NULL;
     uintptr_t *slot = 0;
     if (di) {
         Object *o;
         t[0].ti_Tag = SYSIA_DrawInfo; t[0].ti_Data = (ULONG)di;
-        t[1].ti_Tag = SYSIA_Which;    t[1].ti_Data = CLOSEIMAGE;
+        t[1].ti_Tag = frame ? IA_FrameType : SYSIA_Which;  t[1].ti_Data = frame ? FRAME_BUTTON : CLOSEIMAGE;
         t[2].ti_Tag = TAG_DONE;       t[2].ti_Data = 0;
-        o = NewObjectA(NULL, (UBYTE *)"sysiclass", t);
+        o = NewObjectA(NULL, (UBYTE *)(frame ? "frameiclass" : "sysiclass"), t);
         if (o) {
             struct IClass *cl = OCLASS(o);
             slot = (uintptr_t *)&cl->cl_Dispatcher.h_SubEntry;     /* the class outlives the object: it is a public class */
@@ -250,6 +298,9 @@ static uintptr_t *sysiclass_slot(void)
         UnlockPubScreen(NULL, scr);
     return slot;
 }
+
+static uintptr_t *sysiclass_slot(void) { return class_slot(0); }
+static uintptr_t *frameiclass_slot(void) { return class_slot(1); }
 
 /* Install the pass-through under Forbid. Returns FLAT_OK or a negative flat_swap code / -100 (no class) / -101 (memory). */
 static int hook_install(flatshared *r)
@@ -266,6 +317,17 @@ static int hook_install(flatshared *r)
     if (rc != FLAT_OK)
         return rc;
     r->slot = slot;
+    {   /* FLAT-C8: the second class. Its absence leaves the sysiclass hook working: report it, do not undo C2. */
+        uintptr_t *fs = frameiclass_slot();
+        uintptr_t fours = flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG ? (uintptr_t)c8_disp_reg : (uintptr_t)c8_disp_stk;
+        if (!fs)
+            return FLAT_OK;
+        Forbid();
+        rc = flat_swap_install(&r->fsw, fs, fours);
+        Permit();
+        if (rc == FLAT_OK)
+            r->fslot = fs;
+    }
     return FLAT_OK;
 }
 
@@ -276,6 +338,14 @@ static int hook_remove(flatshared *r)
     int rc = FLAT_NOT_INSTALLED;
     if (!r->sw.installed)
         return rc;
+    if (r->fsw.installed) {             /* FLAT-C8: the frameiclass hook first; chained on top = keep both */
+        Forbid();
+        rc = flat_swap_remove(&r->fsw, r->fslot, &r->st);
+        Permit();
+        if (rc == FLAT_STILL_CHAINED)
+            return rc;
+        r->fslot = 0;
+    }
     Forbid();
     rc = flat_swap_remove(&r->sw, r->slot, &r->st);
     Permit();
