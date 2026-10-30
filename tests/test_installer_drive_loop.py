@@ -262,6 +262,30 @@ class RoomText(unittest.TestCase):
         m = irg.ROOM_RE.search("SYS:UP-Term has 51200 KB free;\nthe parts you chose need about 60600 KB.")
         self.assertEqual(m.groups(), ('51200', '60600'))
 
+    def test_check_room_text_asserts_numbers_and_both_lines(self):
+        import installer_rig as irg
+        text = "SYS:UP-Term has 12288 KB free; the parts you chose need about 60600 KB."
+        good = ['room page: 12288 KB free, 60600 KB needed', 'room page text: ' + text]
+        ck = irg.Checks()
+        irg.check_room_text(ck, good, 'SYS:UP-Term', 12288)
+        self.assertEqual(ck.failed, [])
+        ck = irg.Checks()
+        irg.check_room_text(ck, good, 'SYS:UP-Term', 99999)   # the rig's Info says otherwise
+        self.assertEqual(len(ck.failed), 1, ck.failed)
+        ck = irg.Checks()
+        irg.check_room_text(ck, good, 'SYS:UP-Term', 12290)   # the drawer made after Info: a few KB less is right
+        self.assertEqual(ck.failed, [])
+        ck = irg.Checks()
+        irg.check_room_text(ck, ['room page: 12288 KB free, 60600 KB needed', 'room page text: S\u00a5S:UP-Term has 12288 KB free; the parts you chose need about 60600 KB.'], 'SYS:UP-Term', 12288)   # OCR misreads the S: the drive letter is not matched
+        self.assertEqual(ck.failed, [])
+        ck = irg.Checks()
+        irg.check_room_text(ck, ['page []'], 'SYS:UP-Term', 12288)   # the page was never read
+        self.assertTrue(ck.failed)
+
+    def test_the_non_drawer_refusal_case_is_registered_with_a_drawer_off_sys(self):
+        import installer_rig as irg
+        self.assertFalse(irg.CASES['space-sys'][1].upper().startswith('SYS:'))
+
 
 if __name__ == "__main__":
     unittest.main()

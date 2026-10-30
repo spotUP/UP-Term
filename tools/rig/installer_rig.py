@@ -79,7 +79,7 @@ CLEAN = "--os" in os.environ.get("UPTERM_RIG_FLAGS", "")
 WORKDEST = "Work:Apps/UP-Term"
 CASES = {"default": ("AVERAGE", None), "dest": ("AVERAGE", WORKDEST if CLEAN else "VTC:KitTest/UP-Term"),
          "novice": ("NOVICE", None), "update": ("AVERAGE", WORKDEST if CLEAN else None), "space": ("AVERAGE", "SYS:UP-Term"),
-         "kingcon": ("AVERAGE", None)}
+         "space-sys": ("AVERAGE", "DH1:KitTest/spacesys"), "kingcon": ("AVERAGE", None)}
 # UPDATE-DETECT: the update case over an install that left no ENVARC:up-term/opts (a Shell install.dos run)
 CASES["update-noopts"] = CASES["update"]
 for _pkg in ir.addon_ids():
@@ -517,7 +517,7 @@ def drive(case, inst, dest, baseline_titles, **kw):
 
 
 def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, work_limit=2700, poll=20,
-                expect_abort=False, room_dest=None, console=False, tick_all=False, askdir_probe=None):
+                expect_abort=False, room_dest=None, room_abort=False, console=False, tick_all=False, askdir_probe=None):
     """Answer the Installer's pages by gadget id (its custom gadgets have no labels): 90 Proceed, 91 Abort
     (never), 89 Make New Drawer (never), 1 on the install-mode page Install for Real, 92 the askdir string.
     room_dest: the drawer to ask for when the room page ("<dest> has N KB free; the parts you chose need about
@@ -533,7 +533,7 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
     pages.write_text('')
     t0 = time.time()
     last_sig, clicked_at, retried, typed, chose = None, None, None, False, set()
-    askdirs, shots = 0, 0
+    shots = 0
     last_page_at = time.time()
     work_since, last_pct, dumped_pct = None, None, set()
     room, after_ask, asks, ticked, drawer = None, False, 0, False, DrawerAsks()
@@ -591,7 +591,10 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
                 time.sleep(5)
                 return True, log
             asks = drawer.see(gads)
-            if room_dest and asks >= 1 and not room and set(gads) <= {0, 90, 91}:   # a message page after the drawer page
+            if room_abort and asks >= 1 and set(gads) <= {0, 90, 91}:   # the first page after the drawer page: the room check's abort page, or Ready to install
+                time.sleep(1)
+                log.append('abort page text: %s' % ' '.join(window_ocr(tree, case + '-abort').split()))
+            if (room_dest or expect_abort) and asks >= 1 and not room and set(gads) <= {0, 90, 91}:   # a message page after the drawer page
                 room = read_room(tree, case)
                 if room:
                     log.append('room page: %d KB free, %d KB needed' % room[:2])
@@ -615,13 +618,11 @@ def drive_pages(log, case, inst, dest, baseline_titles, timeout=5400, stall=60, 
                 shots += 1
                 w, h, rows = ami.grab()
                 ami.png(str(OUT / ('%s-%02d.png' % (case, shots))), w, h, rows)
-                if 89 in gads and 92 in gads:
-                    askdirs += 1
         m = re.findall(r'(\d+)% done', tree)
         if m and m[-1] != last_pct:
             last_pct = m[-1]
             log.append('%s%% done at %.0f s' % (last_pct, time.time() - t0))
-        if expect_abort and askdirs >= 2 and 91 in gads:
+        if expect_abort and asks >= 2 and 91 in gads:   # DrawerAsks counts a drawer page that arrives from another page: the string redrawn after Make New Drawer is no second ask (askdirs counted it, and Abort came before the room page)
             # the room message was answered with Proceed and the drawer page came back: Abort Install ends it
             log.append('room message seen: the drawer page came a second time (page %d); Abort Install (id 91)' % shots)
             click(gads[91][0])
@@ -812,6 +813,21 @@ def update_phase(ck, inst, level, base, t_install, noopts=False):
     ck(pct and max(pct) <= 100, 'the bar counts only the Update\'s parts (at most 100%%: %s)' % (max(pct) if pct else '-'))
 
 
+def check_room_text(ck, log, path, free_kb):
+    """The room page's two-line text (bv_room_text: "<path> has N KB free;" / "the parts you chose need about M KB.")
+    read from the screen by drive (`room page text:`), N against the rig's free KB on SYS: (sys_free_bytes), M above N."""
+    room = [l for l in log if l.startswith('room page: ')]
+    txt = [l for l in log if l.startswith('room page text: ')]
+    ck(bool(room), 'the room page was read from the screen', '; '.join(log[-3:]))
+    if room:
+        n_kb, m_kb = map(int, re.findall(r'\d+', room[0]))
+        # Info was read before the Installer's Make New Drawer wrote the empty drawer (and its icon): a few blocks less since
+        ck(0 <= free_kb - n_kb <= 8, '%s has %d KB free on the room page (Info before the drawer was made: %d KB, at most 8 KB more)' % (path, n_kb, free_kb))
+        ck(m_kb > n_kb, 'the room page\'s need (%d KB) is above the free room (%d KB)' % (m_kb, n_kb))
+    flat = ' '.join(txt[0].split()) if txt else ''
+    ck(path.split(':', 1)[1].lower() in flat.lower() and 'KB free' in flat and 'the parts you chose need about' in flat, 'the room page text is "%s has N KB free; the parts you chose need about M KB"' % path, flat)
+
+
 SPACE_LEFT = 12 * 1024 * 1024    # what the space case leaves free on SYS:
 FILLER = 'SYS:space-filler'
 
@@ -826,11 +842,14 @@ def sys_free_bytes():
     raise SystemExit('installer_rig: cannot read the free space of SYS: from Info: %r' % out)
 
 
-def fill_sys():
+SPACE_LEFT_SYS = 3 * 1024 * 1024    # space-sys: less than the SYS: parts need (about 7 MB), the drawer disk DH1: has room
+
+
+def fill_sys(left=SPACE_LEFT):
     """A file on SYS: that leaves SPACE_LEFT free (the kit's default choices need more): written on the host in VTC: and
     copied, then the host copy removed."""
     ir.run('Delete >NIL: %s QUIET' % FILLER)
-    n = sys_free_bytes() - SPACE_LEFT
+    n = sys_free_bytes() - left
     if n <= 0:
         return
     host = VTC / 'space-filler'
@@ -883,9 +902,9 @@ def run_bigvol():
 
 
 def run_case(case):
-    if case == "space":
+    if case in ("space", "space-sys"):
         try:
-            fill_sys()
+            fill_sys(SPACE_LEFT_SYS if case == 'space-sys' else SPACE_LEFT)
             return run_base_case(case)
         finally:
             ir.run_slow('unfillsys', 'Delete >NIL: %s QUIET' % FILLER, 300)
@@ -1059,14 +1078,14 @@ def run_base_case(case):
     t_install = time.time()
     ir.run('Run >NIL: "%s" VTC:distkit/Install APPNAME UP-Term MINUSER %s DEFUSER %s NOLOG' % (inst, level, level), 30)
     time.sleep(5)
-    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'), room_dest=ROOMDEST if case in ROOM_CASES else None, tick_all=(case == 'fresh-all'))
+    finished, log = drive(case, inst, dest, base, expect_abort=(case == 'space'), room_abort=(case == 'space-sys'), room_dest=ROOMDEST if case in ROOM_CASES else None, tick_all=(case == 'fresh-all'))
     t_install = time.time() - t_install
     (OUT / (case + ".log.txt")).write_text('\n'.join(log) + '\n')
     ck(finished, 'the Installer ran to its end (%s)' % level, log[-1] if log else '')
-    if case != 'space':
+    if case not in ('space', 'space-sys'):
         ck(any(l.startswith('reboot offered') for l in log), 'the last page offered a reboot (answered Later)')
     room = [l for l in log if l.startswith('room page: ')]
-    if room:
+    if room and case != 'space':
         # SYS: has too little room for the default parts: the user takes another drive (ROOMDEST) and the install goes there
         n_kb, m_kb = map(int, re.findall(r'\d+', room[0]))
         ck(n_kb == sys_kb, 'the room page says SYS: has %d KB free (Info: %d KB)' % (n_kb, sys_kb))
@@ -1075,15 +1094,31 @@ def run_base_case(case):
         ck(any(l.startswith('made %s through Make New Drawer' % ROOMDEST) for l in log), 'the drawer on the other drive was asked for')
     lay = [l for l in log if l.startswith('LAYOUT')]
     # the room message is the Installer's own abort dialog drawn over the page, not one of our pages
-    ck(not lay or case == 'space', 'every page\'s text readable: no line cut by the border, under the buttons or beside the copy panel',
+    ck(not lay or case in ('space', 'space-sys'), 'every page\'s text readable: no line cut by the border, under the buttons or beside the copy panel',
        '; '.join(lay[:4]))
     if not finished:
         if installer_running(inst):
             ir.run('Break >NIL: `Status COM "%s"` C' % inst)
         return False, '; '.join(ck.failed + log[-3:])
+    if case == 'space-sys':
+        # a refusal on a disk that is not the drawer's (the drawer is on DH1:, SYS: is full): the Installer ends with its abort text
+        txt = ' '.join(l for l in log if l.startswith('abort page text: '))
+        ck('Nothing was installed.' in txt, 'the abort page says "Nothing was installed."', txt)
+        ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase', '; '.join(log[-3:]))
+        ck(ir.run('List >NIL: "%s/VERSIONS"' % dest)[0] != 0, 'nothing was copied into the drawer', '')
+        ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0, 'nothing was copied into SYS:UP-Term', '')
+        ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
+        ck(ir.run('Type S:User-Startup')[1] == startup_before, 'S:User-Startup as it was, byte for byte', '')
+        st = ir.lib_state()
+        ck(st == before, 'LIBS: as it was', 'now %s, before %s' % (st, before))
+        m = re.search(r'S\S?S:\s*has\s+(\d+)\s*KB', txt)
+        ck(m and 0 <= sys_kb - int(m.group(1)) <= 8, 'the abort text names SYS: with its free KB (%d, Info)' % sys_kb, txt)
+        print('installer_rig %s: passed %d of %d' % (case, ck.total - len(ck.failed), ck.total))
+        return not ck.failed, '; '.join(ck.failed) or 'all %d checks' % ck.total
     if case == 'space':
         # the room check: Install on a volume with too little room says so and changes nothing
         ck(any(l.startswith('room message seen') for l in log), 'the room message came up and led back to the drawer page', '; '.join(log[-3:]))
+        check_room_text(ck, log, 'SYS:UP-Term', sys_kb)
         ck(not any('% done' in l for l in log), 'the Installer ended without a copy phase', '; '.join(log[-3:]))
         ck(ir.run('List >NIL: SYS:UP-Term/VERSIONS')[0] != 0, 'nothing was copied into the drawer', '')
         ck(ir.run('Assign >NIL: UP-Term: EXISTS')[0] != 0, 'no UP-Term: assign', '')
