@@ -64,7 +64,9 @@ class InstallScript(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         s = (ROOT / 'dist/install.dos').read_text()
-        cls.block = s[s.index('If "$optssh" EQ "SSH"'):s.index('If "$optbebboget" EQ "BEBBOGET"')]
+        # the part's own block starts at column 0; the room check before it tests the same options indented
+        start = s.index('\nIf "$optssh" EQ "SSH"')
+        cls.block = s[start:s.index('\nIf "$optbebboget" EQ "BEBBOGET"', start)]
 
     def test_an_upgrade_over_an_earlier_install_replaces_the_library(self):
         # the old guard "If NOT EXISTS LIBS:libcryptossh.library" around the Copy kept the 1.45 library on an upgrade

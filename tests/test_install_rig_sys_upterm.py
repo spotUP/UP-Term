@@ -54,5 +54,28 @@ class SysUpTerm(unittest.TestCase):
         self.assertFalse(uninstall(ABSENT, EMPTY))
 
 
+def dest_check(before_sys, after_sys):
+    """base-dest: an Install given DEST=VTC:KitTest/UP-Term, then SYS:UP-Term listed again."""
+    ck = Checks()
+    with mock.patch.object(ir, "run", lambda line: after_sys if line == 'List SYS:UP-Term ALL' else (5, "")):
+        ir.check_dest_leaves_sys_upterm(ck, before_sys)
+    return ck.results['a non-default DEST leaves SYS:UP-Term as it was']
+
+
+class DestLeavesSysUpTerm(unittest.TestCase):
+    """BASEDEST-EMPTY-SYSUPTERM (2026-10-30): base-dest FAIL 7 on a fresh rig 3 was the image's empty drawer."""
+    def test_empty_drawer_from_the_image_left_as_it_was_passes(self):
+        self.assertTrue(dest_check(EMPTY, EMPTY))
+
+    def test_absent_before_and_after_passes(self):
+        self.assertTrue(dest_check(ABSENT, ABSENT))
+
+    def test_install_made_the_drawer_fails(self):
+        self.assertFalse(dest_check(ABSENT, EMPTY))
+
+    def test_install_copied_into_the_drawer_fails(self):
+        self.assertFalse(dest_check(EMPTY, KIT))
+
+
 if __name__ == "__main__":
     unittest.main()

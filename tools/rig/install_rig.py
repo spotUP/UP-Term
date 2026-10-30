@@ -585,6 +585,13 @@ def main(dest=None):
     finally:
         fx.restore()
 
+def check_dest_leaves_sys_upterm(check, before):
+    """An Install given another DEST writes nothing into SYS:UP-Term: the drawer is as it was before, not absent
+    (the master image has an empty one, BASEDEST-EMPTY-SYSUPTERM)."""
+    now = run('List SYS:UP-Term ALL')
+    check(now == before, 'a non-default DEST leaves SYS:UP-Term as it was', 'before %r, now %r' % (before, now))
+
+
 def _main(dest=None):
     """One pass: dest None = the default drawer, else Install is given DEST=<dest>."""
     global passed, total
@@ -596,6 +603,7 @@ def _main(dest=None):
     run_long('rununinstall')  # a run that stopped half-way left things behind
     startup_before = run('Type S:User-Startup')[1]
     sseq_before = run('Type S:Startup-Sequence')[1]  # no part of UP-Term edits it (UPTERM-VOLUME-REQUESTER)
+    sys_upterm_before = run('List SYS:UP-Term ALL')  # the master image's empty drawer, see Before
     run('Delete >NIL: ENVARC:UP-Term.prefs QUIET')  # an earlier run's kept preferences
     ls_before = run('List >NIL: C:ls')[0] == 0  # Install puts no Unix command in C:
     shell_before = run('VTC:iconprobe SYS:System/Shell')[1]  # SHELLICON must give it back
@@ -629,7 +637,7 @@ def _main(dest=None):
           run('List >NIL: UP-Term:bin/sh')[0] == 0,
           'the files are in %s and UP-Term: reaches them' % drawer, '')
     if dest:
-        check(run('List >NIL: SYS:UP-Term')[0] != 0, 'a non-default DEST leaves SYS:UP-Term unmade', '')
+        check_dest_leaves_sys_upterm(check, sys_upterm_before)
     check(run('Search >NIL: S:User-Startup ";BEGIN UP-Term assign"')[0] == 0 and
           run('Search >NIL: S:User-Startup ";END UP-Term assign"')[0] == 0, 'the UP-Term: block is marked', '')
     rc, out = run('Search S:User-Startup "Assign UP-Term:"')

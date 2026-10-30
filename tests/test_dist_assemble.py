@@ -70,7 +70,7 @@ class Assemble(unittest.TestCase):
         # UP-Term: may be a multi-directory assign: MakeDir creates in its first directory only, where pkg/ may
         # not exist. The record drawer is made and filled through the drawer ENVARC:up-term/Dir names.
         for pid in ('git', 'nvim'):
-            text = mi.build(ROOT / 'dist' / 'install.dos', pid)
+            text = mi.build(ROOT / 'dist/addons' / pid / 'install.dos', pid)
             rec = mi.read_values(pid)['RECORD']
             self.assertIn('Assign >NIL: UPTREAL: "$uptdir"', text, pid)
             self.assertIn('MakeDir >NIL: $uptpkg $uptrec\n', text, pid)
@@ -84,7 +84,7 @@ class Assemble(unittest.TestCase):
         # s25: Assign of a drawer that is gone returns rc 20, which stops a script under FailAt 10 before the
         # If NOT WARN fallback; and EXISTS "" asks for a volume. Both are looked at first.
         for pid in ('git', 'nvim'):
-            text = mi.build(ROOT / 'dist' / 'install.dos', pid)
+            text = mi.build(ROOT / 'dist/addons' / pid / 'install.dos', pid)
             i = text.index('Set uptdir "`Type ENVARC:up-term/Dir`"')
             tail = text[i:]
             self.assertLess(tail.index('If NOT "$uptdir" EQ ""'), tail.index('If EXISTS "$uptdir"'), pid)
@@ -128,7 +128,7 @@ class Assemble(unittest.TestCase):
         # rig 10, s15: with UP-Term: = TwoA + SYS:UP-Term the MANIFEST copy through UP-Term: failed rc 20 ("Can't
         # open UP-Term:pkg/up-git/MANIFEST for output") because UPTREAL: was gone before record.dos wrote it.
         for pid in ('git', 'nvim'):
-            lines = [l.strip() for l in mi.build(ROOT / 'dist' / 'install.dos', pid).splitlines()]
+            lines = [l.strip() for l in mi.build(ROOT / 'dist/addons' / pid / 'install.dos', pid).splitlines()]
             self.assertIn('Copy MANIFEST $uptrec/MANIFEST CLONE', lines, pid)
             self.assertIn('Copy ENV:UPTOPT#? $uptrec/opts CLONE QUIET', lines, pid)
             # UPTREAL: stays assigned until every record write is done, and is removed once after them
