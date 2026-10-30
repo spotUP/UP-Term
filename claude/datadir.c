@@ -7,10 +7,48 @@
 
 #define DD_MAXFILE (32L * 1024 * 1024)   /* one file copied across volumes is read whole */
 
+/* the one real UP-Term drawer: the drawer ENVARC:up-term/Dir names when it exists (dist/common/resolve-uptreal.dos does
+ * the same for the installers). UP-Term: may be a multi-directory assign, and a drawer made under it lands in its
+ * FIRST directory, which is not where Uninstall looks (UPTREAL:). 1 and out set, or 0 */
+static int dd_real_drawer(cl_sys *sys, char *out, long cap)
+{
+    char *b = 0;
+    long n = 0, i;
+    int ok = 0;
+    out[0] = 0;
+    if (!sys->read || sys->read(sys->u, DD_DIRFILE, 1024, &b, &n) || !b)
+        return 0;
+    for (i = 0; i < n && b[i] != '\n' && b[i] != '\r'; i++)
+        ;
+    while (i > 0 && (b[i - 1] == ' ' || b[i - 1] == '\t'))
+        i--;
+    if (i > 0 && i < cap) {
+        memcpy(out, b, (size_t)i);
+        out[i] = 0;
+        ok = (sys->quiet_kind ? sys->quiet_kind(sys->u, out) : sys->kind(sys->u, out)) == 2;
+    }
+    CL_FREE(b);
+    if (!ok)
+        out[0] = 0;
+    return ok;
+}
+
 int dd_dir(cl_sys *sys, const char *prog, char *out, long cap)
 {
     int disk = sys && (sys->quiet_kind ? sys->quiet_kind(sys->u, DD_KIT) : sys->kind(sys->u, DD_KIT)) == 2;
+    char real[300];
     const char *base = disk ? DD_DISK "/" : DD_CONF;
+    if (disk && dd_real_drawer(sys, real, sizeof(real))) {
+        long n = (long)strlen(real);
+        if (n + 5 + (long)strlen(prog) >= cap)
+            return -1;
+        strcpy(out, real);
+        if (real[n - 1] != ':' && real[n - 1] != '/')
+            strcat(out, "/");
+        strcat(out, "var/");
+        strcat(out, prog);
+        return 1;
+    }
     if ((long)(strlen(base) + strlen(prog)) >= cap)
         return -1;
     strcpy(out, base);
