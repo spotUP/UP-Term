@@ -140,6 +140,36 @@ static int dk_icontrol(int thin)
     return n > 0 && dk_write("ENVARC:Sys/icontrol.prefs", out, n) && dk_write("ENV:Sys/icontrol.prefs", out, n);
 }
 
+/* FLAT-P1-2 off: the snapshot dk_snapshot took before the thin write goes back over both copies (a copy that did not exist then is deleted) */
+static int dk_icontrol_restore(void)
+{
+    static unsigned char buf[DK_IC_BUF];
+    static const char *const files[2] = { "ENVARC:Sys/icontrol.prefs", "ENV:Sys/icontrol.prefs" };
+    char name[96];
+    int i, ok = 1;
+    for (i = 0; i < 2; i++) {
+        long len;
+        dk_copy_name(files[i], name);
+        len = dk_read(name, buf, sizeof buf);
+        if (len < 0)
+            DeleteFile((STRPTR)files[i]);
+        else
+            ok &= dk_write(files[i], buf, len);
+    }
+    return ok;
+}
+
+static int dk_have_icontrol_snapshot(void)
+{
+    char name[96];
+    BPTR l;
+    dk_copy_name("ENVARC:Sys/icontrol.prefs", name);
+    l = Lock((STRPTR)name, ACCESS_READ);
+    if (l)
+        UnLock(l);
+    return l != 0;
+}
+
 static int dk_pointer_editor_ok(void)
 {
     static unsigned char img[65536];
@@ -307,19 +337,26 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     struct Screen *wb_before = 0;
     unsigned long idle = 0;
     unsigned short live[DK_SLOTS];
-    int nlive = 0, was = 0, reset = 0;
+    int nlive = 0, was = 0, reset = 0, ic_act, ic_snap = 0;
+    static unsigned char ic_cur[DK_BUF];
+    long ic_len;
     amconf_load(&ap);
-    plan = desk_plan(amconf_desk_mask(&ap), th, why, cap);
-    if (plan <= 0)
+    /* FLAT-P1-2: the border size acts on its own (thin once, stock restores the snapshot), whatever else the switches enable */
+    ic_len = dk_read("ENV:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
+    if (ic_len < 0)
+        ic_len = dk_read("ENVARC:Sys/icontrol.prefs", ic_cur, sizeof ic_cur);
+    ic_act = desk_icontrol_decide((amconf_desk_mask(&ap) >> DT_ICONTROL) & 1, ic_cur, ic_len, dk_have_icontrol_snapshot(), &ic_snap);
+    plan = desk_plan(amconf_desk_mask(&ap) & ~(1u << DT_ICONTROL), th, why, cap);
+    if (plan < 0 || (plan == 0 && ic_act == DK_IC_NONE))
         return plan;
-    mask = (unsigned)plan;
+    mask = (unsigned)plan | (ic_act != DK_IC_NONE ? 1u << DT_ICONTROL : 0u);
     mask = desk_gate_mask(mask, dk_palette_editor_ok(), &old_ws); /* the caller sets the colours live when the palette bit goes */
     if (!mask)
         return 0;
     UnLock(CreateDir((STRPTR)DK_WORK));
     if (old_ws || (mask & ((1u << DT_FONT) | (1u << DT_ICONTROL))))
         idle = dk_iprefs_idle_mask(); /* before any editor: the Wait() IPrefs returns to when done */
-    dk_snapshot(mask);
+    dk_snapshot(ic_snap ? mask : (mask & ~(1u << DT_ICONTROL)));
     depth = dk_screen_depth();
     if (mask & (1u << DT_PALETTE)) {
         wb_before = dk_wb_screen(live, &nlive);
@@ -377,7 +414,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
     if (mask & (1u << DT_ICONTROL)) {
         /* FLAT-P1-2: the file IPrefs watches is written in place, both copies, other fields and IEXC chunks kept (no editor is fed it:
          * SYS:Prefs/IControl would rewrite the exception list); then the same idle wait as the other prefs */
-        ok &= dk_icontrol(amconf_flat_index(&ap, AM_FLATSIZE));
+        ok &= ic_act == DK_IC_RESTORE ? dk_icontrol_restore() : dk_icontrol(1);
         dk_wait_iprefs(idle);
     }
     if (reset || old_ws)

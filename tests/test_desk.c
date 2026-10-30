@@ -584,6 +584,21 @@ static void test_desk_icontrol(void)
     CHECK_INT(desk_icontrol(0, 0, thin, out, 20), 0);
     CHECK_INT(desk_icontrol((const unsigned char *)"not a prefs file at all, no", 27, thin, out, sizeof out), 0);
     (void)geom;
+    /* decisions: thin writes once (snapshot first), stock after thin restores the snapshot, stock on a stock file does nothing */
+    {
+        int snap = -1;
+        n = desk_icontrol(gold, gn, thin, out, sizeof out);
+        CHECK_INT(desk_icontrol_decide(1, gold, gn, 0, &snap), DK_IC_WRITE);
+        CHECK_INT(snap, 1);
+        CHECK_INT(desk_icontrol_decide(1, 0, 0, 0, &snap), DK_IC_WRITE);
+        CHECK_INT(desk_icontrol_decide(1, out, n, 1, &snap), DK_IC_NONE);
+        CHECK_INT(snap, 0);
+        CHECK_INT(desk_icontrol_decide(0, out, n, 1, &snap), DK_IC_RESTORE);
+        CHECK_INT(snap, 0);
+        CHECK_INT(desk_icontrol_decide(0, out, n, 0, &snap), DK_IC_NONE);
+        CHECK_INT(desk_icontrol_decide(0, gold, gn, 1, &snap), DK_IC_NONE);
+        CHECK_INT(desk_icontrol_decide(0, 0, 0, 1, &snap), DK_IC_NONE);
+    }
 }
 
 static void test_desk_targets(void)

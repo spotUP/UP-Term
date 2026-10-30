@@ -138,6 +138,11 @@ int desk_palette_editor_ok(const unsigned char *bin, long len);
  * windows, except drawers"), so the caller closes its windows around that write and waits for the new screen. The icontrol bit stays only with palette_ok (3.2 reads the
  * geometry, 3.1 ignores it) and sets *ws_reset too: a geometry change reopens the Workbench screen */
 unsigned desk_gate_mask(unsigned mask, int palette_ok, int *ws_reset);
+/* FLAT-P1-2 icontrol action. thin = the border size switch is thin (and the desktop theme on); cur = the current icontrol.prefs bytes (curlen <= 0: none);
+ * have_snap = T:amarchy-revert holds a copy. Thin and not yet written: DK_IC_WRITE and *snapshot = 1 (copy the file first). Thin already written: DK_IC_NONE
+ * (no second Workbench reset; the snapshot is not overwritten by our own file). Stock after a thin write with a snapshot: DK_IC_RESTORE (copy the snapshot back, ENVARC: and ENV:). Else DK_IC_NONE. */
+enum { DK_IC_NONE, DK_IC_WRITE, DK_IC_RESTORE };
+int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
 /* the mask a marker names; 0 when buf is no marker */
 unsigned desk_marker_parse(const char *buf, long len);
 

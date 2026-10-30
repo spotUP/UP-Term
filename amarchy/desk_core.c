@@ -517,6 +517,32 @@ long desk_icontrol(const unsigned char *cur, long curlen, const unsigned char ge
     return n;
 }
 
+/* 1 when cur is an icontrol.prefs whose GUI geometry is not stock (an earlier thin apply of ours wrote it) */
+static int icontrol_ours(const unsigned char *cur, long len)
+{
+    long pos = DK_HDR, body, size;
+    char id[4];
+    if (!cur || len <= 0 || !is_prefs(cur, len))
+        return 0;
+    while (next_chunk(cur, len, &pos, id, &body, &size))
+        if (!memcmp(id, "ICTL", 4) && size >= IC_GEOM + 4 && body + IC_GEOM + 4 <= len)
+            return (cur[body + IC_GEOM] | cur[body + IC_GEOM + 1] | cur[body + IC_GEOM + 2] | cur[body + IC_GEOM + 3]) != 0;
+    return 0;
+}
+
+int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int have_snap, int *snapshot)
+{
+    int ours = icontrol_ours(cur, curlen);
+    *snapshot = 0;
+    if (thin) {
+        if (ours)
+            return DK_IC_NONE; /* already written: no second Workbench reset, and the snapshot keeps the pre-thin file */
+        *snapshot = 1;
+        return DK_IC_WRITE;
+    }
+    return ours && have_snap ? DK_IC_RESTORE : DK_IC_NONE;
+}
+
 /* ---- D-TGT, R1.16a ---- */
 
 /* write order: the table order. Files: the ENV: copy is what the OS reads, the ENVARC: copy survives a reboot. */
