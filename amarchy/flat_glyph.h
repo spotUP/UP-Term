@@ -1,0 +1,59 @@
+/* amarchy-flat, flat window and menu glyphs: pure geometry (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C2, style
+ * per OD-F4: a thin line glyphs in the text pen, b filled blocks). For one SYSIA_Which value, a box size and a state
+ * the plan is a list of filled rectangles with a pen role. Rectangles only (1 pixel wide ones included), so the host
+ * canvas and graphics.library RectFill give identical pixels; no diagonal Draw. No OS calls. */
+#ifndef AMARCHY_FLAT_GLYPH_H
+#define AMARCHY_FLAT_GLYPH_H
+
+#include <stdint.h>
+#include "flat_core.h"
+
+/* SYSIA_Which values (intuition/imageclass.h) that C2 draws; every other value goes to the old hook. */
+#define FLAT_W_DEPTH 0x00
+#define FLAT_W_ZOOM 0x01
+#define FLAT_W_SIZE 0x02
+#define FLAT_W_CLOSE 0x03
+#define FLAT_W_MENUCHECK 0x10
+#define FLAT_W_AMIGAKEY 0x11
+#define FLAT_W_ICONIFY 0x16
+#define FLAT_W_MENUSUB 0x1C
+
+#define FLAT_IM_DRAW 0x202UL    /* the only method C2 draws; IM_DRAWFRAME and the rest go to the old hook */
+
+enum { FLAT_G_NORMAL = 0, FLAT_G_SELECTED = 1, FLAT_G_INACTIVE = 2 };
+enum { FLAT_ROLE_BACK = 0, FLAT_ROLE_TEXT = 1, FLAT_ROLE_LINE = 2 };
+
+typedef struct flat_prim {
+    int16_t x0, y0, x1, y1;     /* inclusive, relative to the box's top left */
+    uint8_t role;               /* FLAT_ROLE_* */
+} flat_prim;
+
+#define FLAT_GLYPH_MAX_PRIMS 40
+#define FLAT_GLYPH_MIN_SIZE 7   /* a box smaller than this in either direction is left to the old hook */
+
+/* 1 when C2 draws this SYSIA_Which. */
+int flat_glyph_known(unsigned long which);
+
+/* intuition IDS_* image state -> FLAT_G_*: IDS_SELECTED and IDS_INACTIVESELECTED(6) read as selected / inactive. */
+int flat_glyph_state(unsigned long ids);
+
+/* The rectangles of one glyph: the first is always the whole box in the state's background role. Returns the count,
+ * 0 for an unknown which or a box below FLAT_GLYPH_MIN_SIZE (cap must be >= FLAT_GLYPH_MAX_PRIMS). */
+int flat_glyph_plan(unsigned long which, int w, int h, int state, int style, flat_prim *out, int cap);
+
+/* The pen index of a role from the shared state block. */
+int flat_glyph_pen(const flat_state *s, int role);
+
+/* Does the dispatcher draw this call itself? Needs the switch on, not held, IM_DRAW and a known which. */
+int flat_glyph_route(const flat_state *s, unsigned long which, unsigned long method);
+
+/* fill(ctx, x0, y0, x1, y1, pen): the OS side's SetAPen + RectFill, a canvas in the host test. */
+typedef void (*flat_fill_fn)(void *ctx, int x0, int y0, int x1, int y1, int pen);
+
+/* The whole dispatcher decision and draw. Returns 1 when the glyph was drawn (the caller returns TRUE and does not
+ * call the old hook), 0 when the call must go to the old hook unchanged (route refused, box too small). The box is
+ * at (ox, oy); w, h are the image's Width and Height. */
+int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
+                    int w, int h, flat_fill_fn fill, void *ctx);
+
+#endif

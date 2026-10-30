@@ -34,8 +34,10 @@
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
+#include <proto/graphics.h>
 #include "../tty/qmark.h"
 #include "flat_core.h"
+#include "flat_glyph.h"
 #include "taskalive.h"
 
 static const char ver[] = "$VER: amarchy-flat 0.1 (30.10.2026) (UP-Term)";
@@ -53,7 +55,6 @@ typedef struct flatshared {
     flat_state st;
     flat_swap sw;
     uintptr_t *slot;            /* &sysiclass->cl_Dispatcher.h_SubEntry while installed */
-    UWORD *tramp;               /* the 24-byte pass-through, MEMF_PUBLIC */
     /* FLAT-D4 */
     struct Library *dlib;       /* dopus5.library, opened while patched so it cannot expunge under the patch */
     flat_swap dsw[FLAT_EL_COUNT];
@@ -64,7 +65,53 @@ typedef struct flatshared {
 } flatshared;
 
 struct IntuitionBase *IntuitionBase;
+struct GfxBase *GfxBase;
 static flatshared *g_r;
+
+/* ---- FLAT-C2: the sysiclass dispatcher. It replaces the C1 pass-through: count the call, and for IM_DRAW of a
+ * SYSIA_Which that flat_glyph.c knows, draw the flat glyph when the switch is on; every other call (other method,
+ * other Which, switch off, held, box too small, OM_GET failing) goes to the saved routine with the arguments as
+ * received. 3.2 passes hook / object / message in a0 / a2 / a1, 3.1 on the C stack (flat_conv), so there are two
+ * entries over one body. The image is the object itself (struct Image: Width, Height); Which is read with GetAttr, never
+ * from the instance. GetAttr(OM_GET) comes back through this dispatcher with a non-draw method: no recursion. */
+typedef ULONG (*oldfn_reg)(__reg("a0") struct Hook *, __reg("a2") Object *, __reg("a1") Msg);
+typedef ULONG (*oldfn_stk)(struct Hook *, Object *, Msg);
+
+static void c2_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
+{
+    struct RastPort *rp = (struct RastPort *)ctx;
+    SetAPen(rp, pen);
+    RectFill(rp, x0, y0, x1, y1);
+}
+
+static int c2_draw(Object *obj, Msg msg)
+{
+    flatshared *r = g_r;
+    struct impDraw *d = (struct impDraw *)msg;
+    struct Image *im = (struct Image *)obj;
+    ULONG which = 0xFFFF;
+    r->st.calls++;
+    if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
+        return 0;
+    if (GetAttr(SYSIA_Which, obj, &which) == 0)
+        return 0;
+    return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
+                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, c2_fill, d->imp_RPort);
+}
+
+static ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)
+{
+    if (c2_draw(obj, msg))
+        return TRUE;
+    return ((oldfn_reg)g_r->sw.saved)(h, obj, msg);
+}
+
+static ULONG c2_disp_stk(struct Hook *h, Object *obj, Msg msg)
+{
+    if (c2_draw(obj, msg))
+        return TRUE;
+    return ((oldfn_stk)g_r->sw.saved)(h, obj, msg);
+}
 
 /* ---- FLAT-D4: the replacement routines. They run on the caller's task with the caller's registers (a0 rp, a1 rect,
  * a2 info, d0 recessed). Flat on and flat pens: draw nothing. Otherwise the saved routine, same arguments. */
@@ -190,28 +237,21 @@ static uintptr_t *sysiclass_slot(void)
 static int hook_install(flatshared *r)
 {
     uintptr_t *slot = sysiclass_slot();
+    uintptr_t ours = flat_conv(IntuitionBase->LibNode.lib_Version) == FLAT_CONV_REG ? (uintptr_t)c2_disp_reg : (uintptr_t)c2_disp_stk;
     int rc;
     if (!slot)
         return -100;
-    r->tramp = (UWORD *)AllocVec(FLAT_TRAMP_SIZE, MEMF_PUBLIC | MEMF_CLEAR);
-    if (!r->tramp)
-        return -101;
+    g_r = r;                            /* the dispatcher reads it from its first call on */
     Forbid();
-    /* the saved routine is read inside the same Forbid that writes the slot, so no change falls between the two */
-    flat_tramp_build((unsigned char *)r->tramp, (ULONG)&r->st.calls, (ULONG)*slot);
-    CacheClearU();
-    rc = flat_swap_install(&r->sw, slot, (uintptr_t)r->tramp);
+    rc = flat_swap_install(&r->sw, slot, ours);     /* r->sw.saved is the old routine before the first dispatcher call */
     Permit();
-    if (rc != FLAT_OK) {
-        FreeVec(r->tramp);
-        r->tramp = 0;
+    if (rc != FLAT_OK)
         return rc;
-    }
     r->slot = slot;
     return FLAT_OK;
 }
 
-/* Remove the swap if the slot is still ours (Forbid). The trampoline is freed only after a clean remove: while a
+/* Remove the swap if the slot is still ours (Forbid). The dispatcher stays reachable while a
  * foreign hook is chained on top of it, its code is still reachable and must stay. */
 static int hook_remove(flatshared *r)
 {
@@ -222,9 +262,7 @@ static int hook_remove(flatshared *r)
     rc = flat_swap_remove(&r->sw, r->slot, &r->st);
     Permit();
     if (rc == FLAT_REMOVED) {
-        Delay(2);                       /* a caller that already entered the trampoline finishes its tail jump */
-        FreeVec(r->tramp);
-        r->tramp = 0;
+        Delay(5);                       /* a caller that already entered the dispatcher finishes its draw */
         r->slot = 0;
     }
     return rc;
@@ -377,7 +415,8 @@ int main(void)
         return 10;
     }
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
-    if (IntuitionBase) {
+    GfxBase = (struct GfxBase *)OpenLibrary((STRPTR)"graphics.library", 36);
+    if (IntuitionBase && GfxBase) {
         int rc = hook_install(r);
         if (rc != FLAT_OK)
             PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
@@ -405,6 +444,10 @@ int main(void)
         if (IntuitionBase) {
             CloseLibrary((struct Library *)IntuitionBase);
             IntuitionBase = 0;
+        }
+        if (GfxBase) {
+            CloseLibrary((struct Library *)GfxBase);
+            GfxBase = 0;
         }
         if (drop_record(r))
             return 0;

@@ -1,0 +1,179 @@
+/* amarchy-flat glyph geometry: see flat_glyph.h. */
+#include "flat_glyph.h"
+
+typedef struct plan {
+    flat_prim *p;
+    int n, cap;
+    int w, h, fg, bg, thin;
+    int ix0, iy0, ix1, iy1;     /* the inner box the glyph lives in */
+} plan;
+
+static void put(plan *g, int x0, int y0, int x1, int y1, int role)
+{
+    if (g->n >= g->cap || x1 < x0 || y1 < y0)
+        return;
+    g->p[g->n].x0 = (int16_t)x0;
+    g->p[g->n].y0 = (int16_t)y0;
+    g->p[g->n].x1 = (int16_t)x1;
+    g->p[g->n].y1 = (int16_t)y1;
+    g->p[g->n].role = (uint8_t)role;
+    g->n++;
+}
+
+/* a square or rectangle: four 1 pixel edges in thin style, one block otherwise */
+static void box(plan *g, int x0, int y0, int x1, int y1, int role)
+{
+    if (!g->thin || x1 - x0 < 2 || y1 - y0 < 2) {
+        put(g, x0, y0, x1, y1, role);
+        return;
+    }
+    put(g, x0, y0, x1, y0, role);
+    put(g, x0, y1, x1, y1, role);
+    put(g, x0, y0 + 1, x0, y1 - 1, role);
+    put(g, x1, y0 + 1, x1, y1 - 1, role);
+}
+
+static int imin(int a, int b) { return a < b ? a : b; }
+static int imax(int a, int b) { return a > b ? a : b; }
+
+static void g_close(plan *g)
+{
+    int s = imax(3, imin(g->ix1 - g->ix0 + 1, g->iy1 - g->iy0 + 1) / 2 + 1);
+    int cx = g->w / 2, cy = g->h / 2;
+    int x0 = cx - s / 2, y0 = cy - s / 2;
+    box(g, x0, y0, x0 + s - 1, y0 + s - 1, g->fg);
+}
+
+static void g_depth(plan *g)
+{
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
+    int q = imax(3, imin(iw, ih) * 2 / 3);
+    box(g, g->ix0, g->iy0, g->ix0 + q - 1, g->iy0 + q - 1, g->fg);
+    put(g, g->ix1 - q + 1, g->iy1 - q + 1, g->ix1, g->iy1, g->bg);      /* the front square hides the back one */
+    box(g, g->ix1 - q + 1, g->iy1 - q + 1, g->ix1, g->iy1, g->fg);
+}
+
+static void g_zoom(plan *g)
+{
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
+    int q = imax(3, imin(iw, ih) / 2);
+    box(g, g->ix0, g->iy0, g->ix1, g->iy1, g->fg);
+    if (g->thin)
+        box(g, g->ix0, g->iy0, g->ix0 + q - 1, g->iy0 + q - 1, g->fg);
+    else
+        put(g, g->ix0 + 1, g->iy0 + 1, g->ix0 + q - 1, g->iy0 + q - 1, g->bg);
+}
+
+static void g_size(plan *g)
+{
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1;
+    if (g->thin) {                                      /* a corner bracket in the lower right */
+        put(g, g->ix0 + iw / 3, g->iy1, g->ix1, g->iy1, g->fg);
+        put(g, g->ix1, g->iy0 + ih / 3, g->ix1, g->iy1 - 1, g->fg);
+    } else {
+        put(g, g->ix0 + iw / 2, g->iy0 + ih / 2, g->ix1, g->iy1, g->fg);
+    }
+}
+
+static void g_iconify(plan *g)
+{
+    put(g, g->ix0, g->iy1 - (g->thin ? 0 : 1), g->ix1, g->iy1, g->fg);
+}
+
+static void g_check(plan *g)
+{
+    int ih = g->iy1 - g->iy0 + 1;
+    int a = imax(2, ih / 3);
+    int x = g->ix0, y = g->iy0 + ih / 2, k;
+    for (k = 0; k < a; k++) {                           /* the short leg, down to the right */
+        put(g, x + k, y + k, x + k, y + k + (g->thin ? 0 : 1), g->fg);
+    }
+    for (k = 1; y + a - 1 - k >= g->iy0 && x + a - 1 + k <= g->ix1; k++) {     /* the long leg, up to the right */
+        put(g, x + a - 1 + k, y + a - 1 - k, x + a - 1 + k, y + a - 1 - k + (g->thin ? 0 : 1), g->fg);
+    }
+}
+
+static void g_amigakey(plan *g)
+{
+    int cy = (g->iy0 + g->iy1) / 2;
+    box(g, g->ix0, g->iy0, g->ix1, g->iy1, g->fg);
+    put(g, g->ix0 + 1, cy, g->ix1 - 1, cy, g->thin ? g->fg : g->bg);
+}
+
+static void g_menusub(plan *g)
+{
+    int iw = g->ix1 - g->ix0 + 1, ih = g->iy1 - g->iy0 + 1, k;
+    for (k = 0; k < ih; k++) {                          /* a right-pointing triangle, widest on the middle rows */
+        int len = imin(imin(k, ih - 1 - k) + 1, iw);
+        put(g, g->ix0, g->iy0 + k, g->ix0 + len - 1, g->iy0 + k, g->fg);
+    }
+}
+
+int flat_glyph_known(unsigned long which)
+{
+    switch (which) {
+    case FLAT_W_DEPTH: case FLAT_W_ZOOM: case FLAT_W_SIZE: case FLAT_W_CLOSE: case FLAT_W_MENUCHECK:
+    case FLAT_W_AMIGAKEY: case FLAT_W_ICONIFY: case FLAT_W_MENUSUB:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+int flat_glyph_state(unsigned long ids)
+{
+    switch (ids) {
+    case 1: return FLAT_G_SELECTED;                     /* IDS_SELECTED */
+    case 2: case 5: case 6: case 7: return FLAT_G_INACTIVE;     /* IDS_DISABLED, IDS_INACTIVE* */
+    default: return FLAT_G_NORMAL;
+    }
+}
+
+int flat_glyph_plan(unsigned long which, int w, int h, int state, int style, flat_prim *out, int cap)
+{
+    plan g;
+    int i;
+    if (!out || cap < FLAT_GLYPH_MAX_PRIMS || !flat_glyph_known(which) || w < FLAT_GLYPH_MIN_SIZE || h < FLAT_GLYPH_MIN_SIZE)
+        return 0;
+    g.p = out; g.n = 0; g.cap = cap; g.w = w; g.h = h;
+    g.thin = style != FLAT_STYLE_BLOCK;
+    g.fg = state == FLAT_G_SELECTED ? FLAT_ROLE_BACK : state == FLAT_G_INACTIVE ? FLAT_ROLE_LINE : FLAT_ROLE_TEXT;
+    g.bg = state == FLAT_G_SELECTED ? FLAT_ROLE_TEXT : FLAT_ROLE_BACK;
+    i = imax(1, imin(w, h) / 4);
+    g.ix0 = i; g.iy0 = i; g.ix1 = w - 1 - i; g.iy1 = h - 1 - i;
+    put(&g, 0, 0, w - 1, h - 1, g.bg);
+    switch (which) {
+    case FLAT_W_CLOSE: g_close(&g); break;
+    case FLAT_W_DEPTH: g_depth(&g); break;
+    case FLAT_W_ZOOM: g_zoom(&g); break;
+    case FLAT_W_SIZE: g_size(&g); break;
+    case FLAT_W_ICONIFY: g_iconify(&g); break;
+    case FLAT_W_MENUCHECK: g_check(&g); break;
+    case FLAT_W_AMIGAKEY: g_amigakey(&g); break;
+    case FLAT_W_MENUSUB: g_menusub(&g); break;
+    }
+    return g.n;
+}
+
+int flat_glyph_pen(const flat_state *s, int role)
+{
+    return role == FLAT_ROLE_TEXT ? s->pen_text : role == FLAT_ROLE_LINE ? s->pen_line : s->pen_back;
+}
+
+int flat_glyph_route(const flat_state *s, unsigned long which, unsigned long method)
+{
+    return s && s->enabled && !s->held && method == FLAT_IM_DRAW && flat_glyph_known(which);
+}
+
+int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
+                    int w, int h, flat_fill_fn fill, void *ctx)
+{
+    flat_prim p[FLAT_GLYPH_MAX_PRIMS];
+    int n, i;
+    if (!fill || !flat_glyph_route(s, which, method))
+        return 0;
+    n = flat_glyph_plan(which, w, h, flat_glyph_state(ids), s->style, p, FLAT_GLYPH_MAX_PRIMS);
+    for (i = 0; i < n; i++)
+        fill(ctx, ox + p[i].x0, oy + p[i].y0, ox + p[i].x1, oy + p[i].y1, flat_glyph_pen(s, p[i].role));
+    return n > 0;
+}

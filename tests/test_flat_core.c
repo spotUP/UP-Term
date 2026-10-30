@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <string.h>
 #include "../amarchy/flat_core.h"
+#include "../amarchy/flat_glyph.h"
 #include "harness.h"
 
 static void test_layout(void)
@@ -301,6 +302,167 @@ static void test_dopus_path(void)
     CHECK_INT(mask & 1, 0);
 }
 
+/* ---- FLAT-C2: glyph geometry against pixel goldens, and the dispatcher decision (what flat.c's sysiclass dispatcher
+ * runs: count, flat_glyph_draw, else the old hook). The canvas is a char grid; a pen value is its character. */
+#define CV 40
+static char cv[CV][CV + 1];
+static int g_old_calls, g_disp_calls;
+
+static void cv_clear(void)
+{
+    int y;
+    for (y = 0; y < CV; y++) {
+        memset(cv[y], '?', CV);
+        cv[y][CV] = 0;
+    }
+}
+
+static void cv_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
+{
+    int x, y;
+    (void)ctx;
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++)
+            if (x >= 0 && x < CV && y >= 0 && y < CV)
+                cv[y][x] = (char)pen;
+}
+
+/* the fake dispatcher: the same three steps as flat.c c2_disp_reg / c2_disp_stk */
+static int fake_dispatch(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy, int w, int h)
+{
+    g_disp_calls++;
+    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, cv_fill, 0))
+        return 1;
+    g_old_calls++;                                      /* the saved routine */
+    return 0;
+}
+
+static void glyph_state(flat_state *st)
+{
+    flat_init(st);
+    st->enabled = 1;
+    st->pen_text = '#';
+    st->pen_line = '+';
+    st->pen_back = '.';
+}
+
+static void test_glyph_goldens(void)
+{
+    static const struct { const char *name; unsigned long which; int w, h; const char *rows; } gold[] = {
+#include "data/flat_glyph_golden.inc"
+    };
+    flat_state st;
+    unsigned i;
+    glyph_state(&st);
+    CHECK_INT(sizeof gold / sizeof gold[0], 24);                    /* 8 glyphs x 3 box sizes */
+    for (i = 0; i < sizeof gold / sizeof gold[0]; i++) {
+        char got[CV * (CV + 1) + 1], *o = got;
+        const char *r = gold[i].rows;
+        int y, x, ok = 1;
+        cv_clear();
+        CHECK_INT(fake_dispatch(&st, gold[i].which, FLAT_IM_DRAW, 0, 3, 2, gold[i].w, gold[i].h), 1);
+        for (y = 0; y < gold[i].h && ok; y++) {                      /* the box sits at (3, 2); the golden row is w chars and '|' */
+            for (x = 0; x < gold[i].w; x++)
+                *o++ = cv[2 + y][3 + x];
+            *o++ = '|';
+            *o = 0;
+            if (strncmp(o - gold[i].w - 1, r, gold[i].w + 1)) {
+                ok = 0;
+                printf("  glyph %s %dx%d row %d: got [%.*s] want [%.*s]\n", gold[i].name, gold[i].w, gold[i].h, y,
+                       gold[i].w, o - gold[i].w - 1, gold[i].w, r);
+            }
+            r += gold[i].w + 1;
+        }
+        CHECK(ok);
+        CHECK(cv[1][3] == '?' && cv[2 + gold[i].h][3] == '?' && cv[2][2] == '?' && cv[2][3 + gold[i].w] == '?');   /* nothing outside the box */
+    }
+}
+
+static void test_glyph_states(void)
+{
+    flat_state st;
+    flat_prim n[FLAT_GLYPH_MAX_PRIMS], s[FLAT_GLYPH_MAX_PRIMS], d[FLAT_GLYPH_MAX_PRIMS];
+    int cn, cs, cd, i;
+    glyph_state(&st);
+    cn = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_NORMAL, FLAT_STYLE_LINE, n, FLAT_GLYPH_MAX_PRIMS);
+    cs = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_SELECTED, FLAT_STYLE_LINE, s, FLAT_GLYPH_MAX_PRIMS);
+    cd = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_INACTIVE, FLAT_STYLE_LINE, d, FLAT_GLYPH_MAX_PRIMS);
+    CHECK_INT(cn, 5);
+    CHECK_INT(cs, cn);
+    CHECK_INT(cd, cn);
+    CHECK_INT(n[0].role, FLAT_ROLE_BACK);                           /* first rect = the box in the background role */
+    CHECK_INT(s[0].role, FLAT_ROLE_TEXT);                           /* selected inverts */
+    CHECK_INT(d[0].role, FLAT_ROLE_BACK);
+    for (i = 1; i < cn; i++) {
+        CHECK_INT(n[i].role, FLAT_ROLE_TEXT);
+        CHECK_INT(s[i].role, FLAT_ROLE_BACK);
+        CHECK_INT(d[i].role, FLAT_ROLE_LINE);                       /* inactive: the thin outline pen */
+        CHECK(n[i].x0 == s[i].x0 && n[i].y1 == d[i].y1);            /* same geometry in every state */
+    }
+    CHECK_INT(flat_glyph_state(0), FLAT_G_NORMAL);
+    CHECK_INT(flat_glyph_state(1), FLAT_G_SELECTED);
+    CHECK_INT(flat_glyph_state(5), FLAT_G_INACTIVE);
+    CHECK_INT(flat_glyph_state(7), FLAT_G_INACTIVE);
+    /* drawn through the dispatcher: the selected box is the text pen with background-pen lines */
+    cv_clear();
+    fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 1, 0, 0, 14, 12);
+    CHECK_INT(cv[0][0], '#');
+    CHECK_INT(cv[5][5], '.');
+    cv_clear();
+    fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 5, 0, 0, 14, 12);
+    CHECK_INT(cv[0][0], '.');
+    CHECK_INT(cv[5][5], '+');
+    /* the block style (OD-F4 b) fills where the line style leaves the inside empty */
+    cv_clear();
+    st.style = FLAT_STYLE_BLOCK;
+    fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12);
+    CHECK_INT(cv[5][6], '#');
+    CHECK_INT(cv[0][0], '.');
+}
+
+static void test_glyph_route(void)
+{
+    flat_state st;
+    static const unsigned long unknown[] = { 0x04, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x05, 0x1B, 0x2A, 0xFFFF };
+    static const unsigned long other[] = { 0x101UL /* OM_NEW */, 0x103UL /* OM_GET */, 0x203UL /* IM_HITTEST */,
+                                           0x204UL /* IM_ERASE */, 0x206UL /* IM_DRAWFRAME */, 0x207UL /* IM_FRAMEBOX */, 0 };
+    unsigned i;
+    glyph_state(&st);
+    g_old_calls = g_disp_calls = 0;
+    for (i = 0; i < sizeof unknown / sizeof unknown[0]; i++) {
+        cv_clear();
+        CHECK_INT(fake_dispatch(&st, unknown[i], FLAT_IM_DRAW, 0, 0, 0, 14, 12), 0);
+        CHECK_INT(cv[0][0], '?');                                    /* nothing drawn */
+    }
+    CHECK_INT(g_old_calls, (int)(sizeof unknown / sizeof unknown[0]));      /* every unknown Which reached the old hook */
+    g_old_calls = 0;
+    for (i = 0; i < sizeof other / sizeof other[0]; i++) {
+        cv_clear();
+        CHECK_INT(fake_dispatch(&st, FLAT_W_CLOSE, other[i], 0, 0, 0, 14, 12), 0);
+        CHECK_INT(cv[0][0], '?');
+    }
+    CHECK_INT(g_old_calls, (int)(sizeof other / sizeof other[0]));          /* every other method too */
+    /* switch off, held, box too small: the old hook, nothing drawn */
+    g_old_calls = 0;
+    cv_clear();
+    st.enabled = 0;
+    CHECK_INT(fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12), 0);
+    st.enabled = 1;
+    st.held = 1;
+    CHECK_INT(fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12), 0);
+    st.held = 0;
+    CHECK_INT(fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, FLAT_GLYPH_MIN_SIZE - 1, 12), 0);
+    CHECK_INT(fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, FLAT_GLYPH_MIN_SIZE - 1), 0);
+    CHECK_INT(g_old_calls, 4);
+    CHECK_INT(cv[0][0], '?');
+    CHECK_INT(flat_glyph_route(0, FLAT_W_CLOSE, FLAT_IM_DRAW), 0);
+    /* and the draw path does not reach the old hook */
+    g_old_calls = 0;
+    CHECK_INT(fake_dispatch(&st, FLAT_W_ZOOM, FLAT_IM_DRAW, 0, 0, 0, 14, 12), 1);
+    CHECK_INT(g_old_calls, 0);
+    CHECK_INT(cv[0][0], '.');
+}
+
 void suite_flat_core(void)
 {
     test_layout();
@@ -313,4 +475,7 @@ void suite_flat_core(void)
     test_dopus_swap();
     test_dopus_decide();
     test_dopus_path();
+    test_glyph_goldens();
+    test_glyph_states();
+    test_glyph_route();
 }
