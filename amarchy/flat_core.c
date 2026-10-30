@@ -113,3 +113,83 @@ int flat_conv(unsigned intuition_version)
 {
     return intuition_version < 44 ? FLAT_CONV_STACK : FLAT_CONV_REG;
 }
+
+/* ---- FLAT-D4 ---- */
+static const flat_dopus_build dopus_table[] = {
+    { 73, 8, { 0, 0 } },                    /* DOpus 5.104 (Include/dopus/version.h LIB_VERSION 73, LIB_REVISION 8): sums measured at the rig step */
+};
+
+const flat_dopus_build *flat_dopus_table(int *n)
+{
+    if (n)
+        *n = (int)(sizeof dopus_table / sizeof dopus_table[0]);
+    return dopus_table;
+}
+
+uint32_t flat_sum(const void *p, size_t len)
+{
+    const unsigned char *b = (const unsigned char *)p;
+    uint32_t sum = 0;
+    size_t i;
+    for (i = 0; i + 4 <= len; i += 4)
+        sum += ((uint32_t)b[i] << 24) | ((uint32_t)b[i + 1] << 16) | ((uint32_t)b[i + 2] << 8) | b[i + 3];
+    return sum ? sum : 1;
+}
+
+uint32_t flat_jmp_target(const unsigned char *e)
+{
+    if (!e || e[0] != 0x4E || e[1] != 0xF9)
+        return 0;
+    return ((uint32_t)e[2] << 24) | ((uint32_t)e[3] << 16) | ((uint32_t)e[4] << 8) | e[5];
+}
+
+int flat_dopus_gate(const flat_dopus_build *tab, int n, unsigned version, unsigned revision,
+                    const uint32_t sums[FLAT_EL_COUNT], int *reason)
+{
+    int i, el, mask = 0, measured = 0;
+    int why = FLAT_GATE_UNKNOWN;
+    for (i = 0; tab && i < n; i++) {
+        if (tab[i].version != version || tab[i].revision != revision)
+            continue;
+        why = FLAT_GATE_UNMEASURED;
+        for (el = 0; el < FLAT_EL_COUNT; el++) {
+            if (!tab[i].sum[el])
+                continue;
+            measured = 1;
+            if (sums && sums[el] == tab[i].sum[el])
+                mask |= 1 << el;
+        }
+        if (measured)
+            why = mask ? FLAT_GATE_OK : FLAT_GATE_SUM;
+        break;
+    }
+    if (reason)
+        *reason = why;
+    return mask;
+}
+
+int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back)
+{
+    (void)recessed;                         /* a recessed box swaps the two halves; the shadow half is the L either way */
+    if (!s || element < 0 || element >= FLAT_EL_COUNT)
+        return FLAT_DRAW_STOCK;
+    if (!s->enabled || s->held)
+        return FLAT_DRAW_STOCK;
+    return pen_shine == pen_back ? FLAT_DRAW_SKIP : FLAT_DRAW_STOCK;
+}
+
+int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
+                           unsigned long calls, unsigned long flat, char *out, size_t cap)
+{
+    int n;
+    if (cap < 64)
+        return 0;
+    if (!found)
+        n = snprintf(out, cap, "dopus=absent");
+    else if (!installed)
+        n = snprintf(out, cap, "dopus=%u.%u inert=%s", version, revision,
+                     reason == FLAT_GATE_UNKNOWN ? "unknown" : reason == FLAT_GATE_UNMEASURED ? "unmeasured" : "sum");
+    else
+        n = snprintf(out, cap, "dopus=%u.%u patched=%d calls=%lu flat=%lu", version, revision, mask, calls, flat);
+    return n > 0 && (size_t)n < cap ? n : 0;
+}

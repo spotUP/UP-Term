@@ -8,10 +8,22 @@
  * stack arrive unchanged (3.2 takes a0 / a2 / a1, 3.1 the C stack: one code path for both). No glyph is drawn yet
  * (C2). Ctrl-C removes the swap only if the slot is still ours; otherwise it reports still_chained and stays
  * inert. The swap model and the STATUS text are flat_core.c (host-tested).
+ *
+ * FLAT-D4 (runtime DOpus patch): when dopus5.library is resident and its version, revision and routine checksums are in
+ * the table, the JMP operand of the DrawBox (LVO -696) and DrawFieldBox (-702) jump table entries is swapped with the
+ * same flat_swap model for a routine that draws nothing while flat is on and the pens are flat (no shadow L), and
+ * calls the saved routine otherwise. Any other build is inert (STATUS "dopus=<v.r> inert=..."). Not reachable by an
+ * LVO, so not patched: path field (button_class.c:900 calls draw_field_box inside the library), scroller knob and
+ * arrows (dopusiclass IM_BBOX / arrows, image_class.c:261, :109), sort arrow (lister_title.c:972-987, inline in the
+ * DirectoryOpus program). `amarchy-flat DOPUS` makes the running program look for DOpus again (Ctrl-D signal).
  * Return code: 0 done, 5 another copy is running, 10 no memory. */
 #include <string.h>
 #include <exec/memory.h>
 #include <exec/semaphores.h>
+#include <exec/execbase.h>
+#include <exec/libraries.h>
+#include <graphics/rastport.h>
+#include <graphics/gfxbase.h>
 #include <intuition/intuition.h>
 #include <intuition/classes.h>
 #include <intuition/classusr.h>
@@ -42,9 +54,48 @@ typedef struct flatshared {
     flat_swap sw;
     uintptr_t *slot;            /* &sysiclass->cl_Dispatcher.h_SubEntry while installed */
     UWORD *tramp;               /* the 24-byte pass-through, MEMF_PUBLIC */
+    /* FLAT-D4 */
+    struct Library *dlib;       /* dopus5.library, opened while patched so it cannot expunge under the patch */
+    flat_swap dsw[FLAT_EL_COUNT];
+    uintptr_t *dslot[FLAT_EL_COUNT];
+    unsigned dver, drev;
+    int dreason, dmask, dfound;
+    ULONG dcalls, dflat;        /* every patched call / every call that drew flat (the sentinels) */
 } flatshared;
 
 struct IntuitionBase *IntuitionBase;
+static flatshared *g_r;
+
+/* ---- FLAT-D4: the replacement routines. They run on the caller's task with the caller's registers (a0 rp, a1 rect,
+ * a2 info, d0 recessed). Flat on and flat pens: draw nothing. Otherwise the saved routine, same arguments. */
+typedef void (*boxfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *,
+                      __reg("d0") LONG);
+typedef void (*fieldfn)(__reg("a0") struct RastPort *, __reg("a1") struct Rectangle *, __reg("a2") struct DrawInfo *);
+
+static int d4_flat(int el, struct DrawInfo *info, LONG recessed)
+{
+    flatshared *r = g_r;
+    r->dcalls++;
+    if (flat_dopus_decide(&r->st, el, recessed ? 1 : 0, info->dri_Pens[SHINEPEN], info->dri_Pens[BACKGROUNDPEN]) != FLAT_DRAW_SKIP)
+        return 0;
+    r->dflat++;
+    return 1;
+}
+
+static void d4_drawbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info,
+                       __reg("d0") LONG recessed)
+{
+    if (!d4_flat(FLAT_EL_DRAWBOX, info, recessed))
+        ((boxfn)g_r->dsw[FLAT_EL_DRAWBOX].saved)(rp, rect, info, recessed);
+}
+
+static void d4_fieldbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rectangle *rect, __reg("a2") struct DrawInfo *info)
+{
+    if (!d4_flat(FLAT_EL_FIELDBOX, info, 0))
+        ((fieldfn)g_r->dsw[FLAT_EL_FIELDBOX].saved)(rp, rect, info);
+}
+
+static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX };
 
 static flatshared *find_record(void)
 {
@@ -61,16 +112,24 @@ static void print_status(void)
     flat_state copy;
     char line[96];
     flatshared *r;
-    int found = 0;
+    int found = 0, dfound = 0, dreason = 0, dmask = 0, dinst = 0;
+    unsigned dver = 0, drev = 0;
+    unsigned long dcalls = 0, dflat = 0;
     memset(&copy, 0, sizeof copy);
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
     if (r) {
         found = 1;
         copy = r->st;
+        dfound = r->dfound; dver = r->dver; drev = r->drev; dreason = r->dreason; dmask = r->dmask;
+        dinst = r->dsw[0].installed || r->dsw[1].installed; dcalls = r->dcalls; dflat = r->dflat;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found && flat_dopus_status_line(dfound, dver, drev, dreason, dmask, dinst, dcalls, dflat, line, sizeof line)) {
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
     }
@@ -83,6 +142,14 @@ static int is_status(const char *a)
     return (a[0] == 'S' || a[0] == 's') && (a[1] == 'T' || a[1] == 't') && (a[2] == 'A' || a[2] == 'a') &&
            (a[3] == 'T' || a[3] == 't') && (a[4] == 'U' || a[4] == 'u') && (a[5] == 'S' || a[5] == 's') &&
            (a[6] == 0 || a[6] == ' ' || a[6] == '\t' || a[6] == '\n');
+}
+
+static int is_dopus(const char *a)
+{
+    while (*a == ' ' || *a == '\t')
+        a++;
+    return (a[0] == 'D' || a[0] == 'd') && (a[1] == 'O' || a[1] == 'o') && (a[2] == 'P' || a[2] == 'p') &&
+           (a[3] == 'U' || a[3] == 'u') && (a[4] == 'S' || a[4] == 's') && (a[5] == 0 || a[5] == ' ' || a[5] == '\t' || a[5] == '\n');
 }
 
 static int is_help(const char *a)
@@ -163,6 +230,78 @@ static int hook_remove(flatshared *r)
     return rc;
 }
 
+/* ---- FLAT-D4: find dopus5.library among the resident libraries (never load it), gate it, swap the two entries ---- */
+static void dopus_unpatch(flatshared *r)
+{
+    int el;
+    Forbid();
+    for (el = 0; el < FLAT_EL_COUNT; el++)
+        if (r->dsw[el].installed)
+            flat_swap_remove(&r->dsw[el], r->dslot[el], &r->st);
+    if (r->dlib)
+        SumLibrary(r->dlib);
+    CacheClearU();
+    Permit();
+    if (!r->dsw[0].installed && !r->dsw[1].installed && r->dlib) {
+        Delay(2);                       /* a caller that already entered the replacement leaves it */
+        CloseLibrary(r->dlib);
+        r->dlib = 0;
+        r->dmask = 0;
+    }
+}
+
+static void dopus_scan(flatshared *r)
+{
+    struct ExecBase *eb = *(struct ExecBase **)4;
+    struct Library *lib;
+    uint32_t sums[FLAT_EL_COUNT];
+    int n, el, mask;
+    const flat_dopus_build *tab = flat_dopus_table(&n);
+    if (r->dsw[0].installed || r->dsw[1].installed)
+        return;                         /* already patched */
+    Forbid();
+    lib = (struct Library *)FindName(&eb->LibList, (STRPTR)"dopus5.library");
+    if (lib)
+        lib = OpenLibrary((STRPTR)"dopus5.library", 0);     /* resident: no disk load; keeps it from expunging */
+    Permit();
+    r->dfound = lib != 0;
+    if (!lib)
+        return;
+    r->dver = lib->lib_Version;
+    r->drev = lib->lib_Revision;
+    for (el = 0; el < FLAT_EL_COUNT; el++) {
+        uint32_t t = flat_jmp_target((const unsigned char *)lib + d4_lvo[el]);
+        sums[el] = t ? flat_sum((const void *)t, FLAT_FUNC_BYTES) : 0;
+    }
+    mask = flat_dopus_gate(tab, n, r->dver, r->drev, sums, &r->dreason);
+    if (!mask) {
+        CloseLibrary(lib);
+        return;
+    }
+    g_r = r;
+    Forbid();
+    for (el = 0; el < FLAT_EL_COUNT; el++) {
+        unsigned char *entry = (unsigned char *)lib + d4_lvo[el];
+        uint32_t t = flat_jmp_target(entry);
+        if (!(mask & (1 << el)) || !t || flat_sum((const void *)t, FLAT_FUNC_BYTES) != sums[el]) {
+            mask &= ~(1 << el);         /* changed since the gate (a foreign patch landed): leave it alone */
+            continue;
+        }
+        flat_swap_init(&r->dsw[el]);
+        r->dslot[el] = (uintptr_t *)(entry + 2);
+        if (flat_swap_install(&r->dsw[el], r->dslot[el], (uintptr_t)(el == FLAT_EL_DRAWBOX ? (void *)d4_drawbox : (void *)d4_fieldbox)) != FLAT_OK)
+            mask &= ~(1 << el);
+    }
+    SumLibrary(lib);
+    CacheClearU();
+    Permit();
+    r->dmask = mask;
+    if (mask)
+        r->dlib = lib;
+    else
+        CloseLibrary(lib);
+}
+
 /* Take the record out of the list and free it; 0 when someone holds it (never pull it from under a user). */
 static int drop_record(flatshared *r)
 {
@@ -191,6 +330,14 @@ int main(void)
     if (is_status(args)) {
         print_status();
         return 0;
+    }
+    if (is_dopus(args)) {                               /* ask the running program to look for DOpus again */
+        flatshared *q = find_record();
+        if (q && q->task)
+            Signal(q->task, SIGBREAKF_CTRL_D);
+        else
+            PutStr((STRPTR)"amarchy-flat: not running\n");
+        return q ? 0 : 5;
     }
     Forbid();
     r = (flatshared *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
@@ -235,9 +382,22 @@ int main(void)
         if (rc != FLAT_OK)
             PutStr((STRPTR)"amarchy-flat: sysiclass hook not installed\n");
     }
+    g_r = r;
+    dopus_scan(r);
     print_status();
     for (;;) {
-        Wait(SIGBREAKF_CTRL_C);
+        ULONG got = Wait(SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D);
+        if (got & SIGBREAKF_CTRL_D) {
+            dopus_scan(r);
+            print_status();
+        }
+        if (!(got & SIGBREAKF_CTRL_C))
+            continue;
+        dopus_unpatch(r);
+        if (r->dsw[0].installed || r->dsw[1].installed) {
+            PutStr((STRPTR)"amarchy-flat: a patch is still chained on a DOpus entry, not unloading\n");
+            continue;
+        }
         if (r->sw.installed && hook_remove(r) == FLAT_STILL_CHAINED) {
             PutStr((STRPTR)"amarchy-flat: a hook is still chained on top of ours, not unloading\n");
             continue;

@@ -97,4 +97,51 @@ void flat_tramp_build(unsigned char *out, uint32_t counter_addr, uint32_t saved_
 enum { FLAT_CONV_STACK = 0, FLAT_CONV_REG = 1 };
 int flat_conv(unsigned intuition_version);
 
+/* ---- FLAT-D4: the runtime DOpus flat patch, as a pure model ---------------------------------------------------
+ * Plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-D4 (OD-F9 / OD-F10), research section 14. Only the dopus5.library
+ * entries that DOpus calls through the jump table can be patched this way: DrawBox (LVO -696, Library/gui.c:27: toolbar
+ * buttons, column header boxes, file-list border) and DrawFieldBox (LVO -702, gui.c:60). The patched slot is the long
+ * operand of the entry's JMP abs.l, swapped with the C1 model (flat_swap): same restore-if-ours, same still_chained.
+ * A build is patched only when its version, revision and the checksum of the first FLAT_FUNC_BYTES bytes of each
+ * routine match the table; any other build is inert and STATUS says why. */
+enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_COUNT = 2 };
+#define FLAT_LVO_DRAWBOX (-696)
+#define FLAT_LVO_FIELDBOX (-702)
+#define FLAT_FUNC_BYTES 64
+
+typedef struct flat_dopus_build {
+    uint16_t version, revision;             /* lib_Version / lib_Revision of dopus5.library */
+    uint32_t sum[FLAT_EL_COUNT];            /* flat_sum of the routine's first FLAT_FUNC_BYTES; 0 = not measured yet: never matches */
+} flat_dopus_build;
+
+/* gate reasons */
+enum { FLAT_GATE_OK = 0, FLAT_GATE_UNKNOWN = 1, FLAT_GATE_UNMEASURED = 2, FLAT_GATE_SUM = 3 };
+
+/* The built-in table (DOpus 5.104 = library 73.8, sums still to be measured on the rig) and its length. */
+const flat_dopus_build *flat_dopus_table(int *n);
+
+/* Sum of the big-endian 32-bit words of len bytes (len a multiple of 4; a trailing remainder is ignored). Never 0:
+ * a computed 0 reads as 1, so 0 stays free for "not measured". */
+uint32_t flat_sum(const void *p, size_t len);
+
+/* The address a JMP abs.l entry (4E F9 + long) jumps to; 0 when the entry is anything else (already a foreign patch,
+ * an unexpected build). */
+uint32_t flat_jmp_target(const unsigned char *entry);
+
+/* Which elements may be patched for this library. Bit (1 << FLAT_EL_*) per element; *reason says why a bit is missing. */
+int flat_dopus_gate(const flat_dopus_build *tab, int n, unsigned version, unsigned revision,
+                    const uint32_t sums[FLAT_EL_COUNT], int *reason);
+
+/* The flat-draw decision for one call of a patched element. FLAT_DRAW_SKIP: draw nothing (under flat pens the shine
+ * half equals the background and the shadow half would remain as a right/bottom L; owner 2026-10-30: draw flat, no
+ * shadow L). FLAT_DRAW_STOCK: call the saved routine. Skip only when the switch is on, not held, and the screen pens
+ * really are flat (SHINEPEN == BACKGROUNDPEN, the flat signal of OD-F4); otherwise stock pens keep stock bevels. */
+enum { FLAT_DRAW_STOCK = 0, FLAT_DRAW_SKIP = 1 };
+int flat_dopus_decide(const flat_state *s, int element, int recessed, int pen_shine, int pen_back);
+
+/* STATUS extra line for the DOpus patch: "dopus=absent", "dopus=73.8 inert unknown|unmeasured|sum" or
+ * "dopus=73.8 patched=<mask> calls=N flat=N". Returns the length, 0 when cap < 64. */
+int flat_dopus_status_line(int found, unsigned version, unsigned revision, int reason, int mask, int installed,
+                           unsigned long calls, unsigned long flat, char *out, size_t cap);
+
 #endif

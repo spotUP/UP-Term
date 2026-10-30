@@ -166,6 +166,141 @@ static void test_tramp(void)
     CHECK_INT(flat_conv(47), FLAT_CONV_REG);    /* 3.2: a0 / a2 / a1 */
 }
 
+/* FLAT-D4: version / checksum gate, install and remove of the two LVO slots, the flat-draw decision per element. */
+typedef struct { unsigned char jmp[6]; } fake_entry;
+
+static void test_dopus_gate(void)
+{
+    flat_dopus_build tab[2] = { { 73, 8, { 0x1111, 0x2222 } }, { 73, 9, { 0, 0 } } };
+    uint32_t sums[2] = { 0x1111, 0x2222 };
+    unsigned char fn[8] = { 0, 0, 0, 1, 0, 0, 0, 2 };
+    unsigned char e[6] = { 0x4E, 0xF9, 0x00, 0x12, 0x34, 0x56 };
+    int why = -1, n;
+    CHECK_INT(flat_dopus_gate(tab, 2, 73, 8, sums, &why), 3);           /* known build, both sums match: both elements */
+    CHECK_INT(why, FLAT_GATE_OK);
+    sums[1] = 0x9999;
+    CHECK_INT(flat_dopus_gate(tab, 2, 73, 8, sums, &why), 1);           /* one routine differs: only the other is patched */
+    sums[0] = 0x8888;
+    CHECK_INT(flat_dopus_gate(tab, 2, 73, 8, sums, &why), 0);           /* no sum matches: inert */
+    CHECK_INT(why, FLAT_GATE_SUM);
+    CHECK_INT(flat_dopus_gate(tab, 2, 74, 0, sums, &why), 0);           /* unknown version: inert */
+    CHECK_INT(why, FLAT_GATE_UNKNOWN);
+    CHECK_INT(flat_dopus_gate(tab, 2, 73, 9, sums, &why), 0);           /* row without measured sums never matches */
+    CHECK_INT(why, FLAT_GATE_UNMEASURED);
+    sums[0] = sums[1] = 0;
+    CHECK_INT(flat_dopus_gate(tab, 2, 73, 9, sums, &why), 0);           /* a zero sum must not match an unmeasured row */
+    CHECK_INT(flat_dopus_gate(tab, 2, 73, 8, 0, &why), 0);
+    CHECK_INT(flat_dopus_gate(0, 0, 73, 8, sums, &why), 0);
+    CHECK_INT(why, FLAT_GATE_UNKNOWN);
+    /* the built-in table knows 73.8 but has no measured sum yet: a real library stays inert */
+    CHECK(flat_dopus_table(&n) != 0 && n >= 1);
+    sums[0] = sums[1] = 1;
+    CHECK_INT(flat_dopus_gate(flat_dopus_table(&n), n, 73, 8, sums, &why), 0);
+    CHECK_INT(why, FLAT_GATE_UNMEASURED);
+    /* sum and jump parsing */
+    CHECK_INT(flat_sum(fn, 8), 3);
+    CHECK_INT(flat_sum(fn, 3), 1);                                      /* never 0 */
+    CHECK_INT(flat_jmp_target(e), 0x123456);
+    e[1] = 0xF8;
+    CHECK_INT(flat_jmp_target(e), 0);                                   /* not a JMP abs.l: foreign code, no patch */
+    CHECK_INT(flat_jmp_target(0), 0);
+}
+
+static void test_dopus_swap(void)
+{
+    uintptr_t slot[FLAT_EL_COUNT] = { 0x5000, 0x6000 }, snap[FLAT_EL_COUNT];
+    flat_swap w[FLAT_EL_COUNT];
+    flat_state st;
+    int el;
+    flat_init(&st);
+    memcpy(snap, slot, sizeof slot);
+    for (el = 0; el < FLAT_EL_COUNT; el++) {
+        flat_swap_init(&w[el]);
+        CHECK_INT(flat_swap_install(&w[el], &slot[el], 0x7000 + el), FLAT_OK);
+        CHECK_INT(slot[el], 0x7000 + el);
+        CHECK_INT(flat_swap_install(&w[el], &slot[el], 0x7100), FLAT_ERR_DOUBLE);
+    }
+    CHECK_INT(flat_swap_remove(&w[0], &slot[0], &st), FLAT_REMOVED);
+    CHECK_INT(slot[0], snap[0]);
+    slot[1] = 0xA000;                                                   /* a foreign patcher on the second entry */
+    CHECK_INT(flat_swap_remove(&w[1], &slot[1], &st), FLAT_STILL_CHAINED);
+    CHECK_INT(slot[1], 0xA000);
+    CHECK_INT(st.still_chained, 1);
+    slot[1] = 0x7001;
+    CHECK_INT(flat_swap_remove(&w[1], &slot[1], &st), FLAT_REMOVED);
+    CHECK_INT(memcmp(slot, snap, sizeof slot), 0);
+}
+
+static void test_dopus_decide(void)
+{
+    flat_state s;
+    char line[96];
+    flat_init(&s);
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 0, 0), FLAT_DRAW_STOCK);       /* flat off: stock */
+    s.enabled = 1;
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 0, 0), FLAT_DRAW_SKIP);        /* flat on, flat pens: no shadow L */
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 1, 0, 0), FLAT_DRAW_SKIP);        /* recessed too */
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_FIELDBOX, 0, 0, 0), FLAT_DRAW_SKIP);
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 2, 0), FLAT_DRAW_STOCK);       /* stock pens (shine != back): stock bevel */
+    s.held = 1;
+    CHECK_INT(flat_dopus_decide(&s, FLAT_EL_DRAWBOX, 0, 0, 0), FLAT_DRAW_STOCK);       /* kill switch */
+    s.held = 0;
+    CHECK_INT(flat_dopus_decide(&s, 5, 0, 0, 0), FLAT_DRAW_STOCK);
+    CHECK_INT(flat_dopus_decide(0, FLAT_EL_DRAWBOX, 0, 0, 0), FLAT_DRAW_STOCK);
+    flat_dopus_status_line(0, 0, 0, 0, 0, 0, 0, 0, line, sizeof line);
+    CHECK_STR(line, "dopus=absent");
+    flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNKNOWN, 0, 0, 0, 0, line, sizeof line);
+    CHECK_STR(line, "dopus=73.8 inert=unknown");
+    flat_dopus_status_line(1, 73, 8, FLAT_GATE_UNMEASURED, 0, 0, 0, 0, line, sizeof line);
+    CHECK_STR(line, "dopus=73.8 inert=unmeasured");
+    flat_dopus_status_line(1, 73, 8, FLAT_GATE_OK, 3, 1, 12, 9, line, sizeof line);
+    CHECK_STR(line, "dopus=73.8 patched=3 calls=12 flat=9");
+}
+
+/* The whole path as flat.c runs it: gate -> install over a fake jump table -> a patched call decides per call -> remove. */
+static unsigned long g_skipped, g_stock;
+static void patched_call(const flat_state *s, int el, int shine, int back)
+{
+    if (flat_dopus_decide(s, el, 0, shine, back) == FLAT_DRAW_SKIP)
+        g_skipped++;
+    else
+        g_stock++;
+}
+
+static void test_dopus_path(void)
+{
+    flat_dopus_build tab[1] = { { 73, 8, { 0xAB, 0xCD } } };
+    uint32_t sums[2] = { 0xAB, 0xCD };
+    uintptr_t slot[2] = { 0x5000, 0x6000 };
+    flat_swap w[2];
+    flat_state st;
+    int why, mask, el;
+    flat_init(&st);
+    st.enabled = 1;
+    mask = flat_dopus_gate(tab, 1, 73, 8, sums, &why);
+    for (el = 0; el < FLAT_EL_COUNT; el++) {
+        flat_swap_init(&w[el]);
+        if (mask & (1 << el))
+            flat_swap_install(&w[el], &slot[el], 0x7000 + el);
+    }
+    CHECK_INT(slot[0], 0x7000);
+    CHECK_INT(slot[1], 0x7001);
+    patched_call(&st, FLAT_EL_DRAWBOX, 0, 0);
+    patched_call(&st, FLAT_EL_FIELDBOX, 0, 0);
+    st.enabled = 0;
+    patched_call(&st, FLAT_EL_DRAWBOX, 0, 0);
+    CHECK_INT(g_skipped, 2);
+    CHECK_INT(g_stock, 1);
+    for (el = 0; el < FLAT_EL_COUNT; el++)
+        flat_swap_remove(&w[el], &slot[el], &st);
+    CHECK_INT(slot[0], 0x5000);
+    CHECK_INT(slot[1], 0x6000);
+    /* an unknown build: nothing is installed, slots stay stock */
+    sums[0] = 0x1;
+    mask = flat_dopus_gate(tab, 1, 73, 8, sums, &why);
+    CHECK_INT(mask & 1, 0);
+}
+
 void suite_flat_core(void)
 {
     test_layout();
@@ -174,4 +309,8 @@ void suite_flat_core(void)
     test_exit();
     test_swap();
     test_tramp();
+    test_dopus_gate();
+    test_dopus_swap();
+    test_dopus_decide();
+    test_dopus_path();
 }
