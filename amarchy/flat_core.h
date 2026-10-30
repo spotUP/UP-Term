@@ -15,14 +15,11 @@
 #define FLAT_SEM_NAME "Amarchy.Flat"
 #define FLAT_VERSION 1
 
-/* style (OD-F4: a thin line glyphs in the text pen; b filled blocks) */
-enum { FLAT_STYLE_LINE = 0, FLAT_STYLE_BLOCK = 1 };
-
 typedef struct flat_state {
     uint16_t version;           /*  0 FLAT_VERSION; first, so a reader of another layout can refuse before the rest */
     uint16_t size;              /*  2 sizeof(flat_state) of the writer */
     uint16_t enabled;           /*  4 1 = glyph hook draws flat (written by Amarchy) */
-    uint16_t style;             /*  6 FLAT_STYLE_* */
+    uint16_t style;             /*  6 reserved, ignored: glyphs are always solid blocks (FLAT-SOLID-FILL); the slot keeps the offsets */
     uint16_t held;              /*  8 0 = running; else the FLAT_HELD_* reason a kill switch kept it inert (FLAT-C4) */
     uint16_t still_chained;     /* 10 1 = a foreign hook sits on top of ours, so we cannot unload (FLAT-C1) */
     uint32_t calls;             /* 12 hook calls so far: the sentinel */

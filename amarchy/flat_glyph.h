@@ -1,5 +1,5 @@
-/* amarchy-flat, flat window and menu glyphs: pure geometry (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C2, style
- * per OD-F4: a thin line glyphs in the text pen, b filled blocks). For one SYSIA_Which value, a box size and a state
+/* amarchy-flat, flat window and menu glyphs: pure geometry (plan 2026-10-29-amarchy-flat-ui-patch.md FLAT-C2; the glyphs
+ * are solid filled blocks only, FLAT-SOLID-FILL). For one SYSIA_Which value, a box size and a state
  * the plan is a list of filled rectangles with a pen role. Rectangles only (1 pixel wide ones included), so the host
  * canvas and graphics.library RectFill give identical pixels; no diagonal Draw. No OS calls. */
 #ifndef AMARCHY_FLAT_GLYPH_H
@@ -41,7 +41,7 @@ int flat_glyph_state(unsigned long ids);
 
 /* The rectangles of one glyph: the first is always the whole box in the state's background role. Returns the count,
  * 0 for an unknown which or a box below FLAT_GLYPH_MIN_SIZE (cap must be >= FLAT_GLYPH_MAX_PRIMS). */
-int flat_glyph_plan(unsigned long which, int w, int h, int state, int style, flat_prim *out, int cap);
+int flat_glyph_plan(unsigned long which, int w, int h, int state, flat_prim *out, int cap);
 
 /* The pen index of a role from the shared state block. */
 int flat_glyph_pen(const flat_state *s, int role);

@@ -424,10 +424,10 @@ static void test_glyph_states(void)
     flat_prim n[FLAT_GLYPH_MAX_PRIMS], s[FLAT_GLYPH_MAX_PRIMS], d[FLAT_GLYPH_MAX_PRIMS];
     int cn, cs, cd, i;
     glyph_state(&st);
-    cn = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_NORMAL, FLAT_STYLE_LINE, n, FLAT_GLYPH_MAX_PRIMS);
-    cs = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_SELECTED, FLAT_STYLE_LINE, s, FLAT_GLYPH_MAX_PRIMS);
-    cd = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_INACTIVE, FLAT_STYLE_LINE, d, FLAT_GLYPH_MAX_PRIMS);
-    CHECK_INT(cn, 5);
+    cn = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_NORMAL, n, FLAT_GLYPH_MAX_PRIMS);
+    cs = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_SELECTED, s, FLAT_GLYPH_MAX_PRIMS);
+    cd = flat_glyph_plan(FLAT_W_CLOSE, 14, 12, FLAT_G_INACTIVE, d, FLAT_GLYPH_MAX_PRIMS);
+    CHECK_INT(cn, 2);                                               /* the box and one solid block */
     CHECK_INT(cs, cn);
     CHECK_INT(cd, cn);
     CHECK_INT(n[0].role, FLAT_ROLE_FRAME);                          /* first rect = the box in the frame's colour */
@@ -436,7 +436,7 @@ static void test_glyph_states(void)
     for (i = 1; i < cn; i++) {
         CHECK_INT(n[i].role, FLAT_ROLE_TEXT);
         CHECK_INT(s[i].role, FLAT_ROLE_BACK);
-        CHECK_INT(d[i].role, FLAT_ROLE_LINE);                       /* inactive: the thin outline pen */
+        CHECK_INT(d[i].role, FLAT_ROLE_LINE);                       /* inactive: only the pen differs */
         CHECK(n[i].x0 == s[i].x0 && n[i].y1 == d[i].y1);            /* same geometry in every state */
     }
     CHECK_INT(flat_glyph_state(0), FLAT_G_NORMAL);
@@ -452,12 +452,46 @@ static void test_glyph_states(void)
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 5, 0, 0, 14, 12);
     CHECK_INT(cv[0][0], '.');
     CHECK_INT(cv[5][5], '+');
-    /* the block style (OD-F4 b) fills where the line style leaves the inside empty */
+    /* solid blocks: the inside of the close square is filled (FLAT-SOLID-FILL) */
     cv_clear();
-    st.style = FLAT_STYLE_BLOCK;
     fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12);
     CHECK_INT(cv[5][6], '#');
     CHECK_INT(cv[0][0], '.');
+}
+
+/* FLAT-SOLID-FILL: every window glyph is drawn as filled blocks in every state, and an inactive window differs
+ * from an active one in colour only (same rectangles, only the role of the glyph pen changes). */
+static void test_glyph_solid_and_state_equal(void)
+{
+    static const unsigned long win[] = { FLAT_W_CLOSE, FLAT_W_DEPTH, FLAT_W_ZOOM, FLAT_W_SIZE, FLAT_W_ICONIFY };
+    static const int dim[2][2] = { { 14, 12 }, { 24, 20 } };
+    static const int states[2] = { FLAT_G_NORMAL, FLAT_G_INACTIVE };
+    unsigned i;
+    int k, z, j;
+    for (i = 0; i < sizeof win / sizeof win[0]; i++) {
+        for (z = 0; z < 2; z++) {
+            flat_prim p[2][FLAT_GLYPH_MAX_PRIMS];
+            int c[2];
+            for (k = 0; k < 2; k++)
+                c[k] = flat_glyph_plan(win[i], dim[z][0], dim[z][1], states[k], p[k], FLAT_GLYPH_MAX_PRIMS);
+            CHECK(c[0] > 1);
+            CHECK_INT(c[1], c[0]);                                  /* same number of rectangles */
+            for (k = 0; k < 2; k++) {
+                int solid = 0;                                      /* a glyph-pen rectangle at least 2 x 2: a block, not a line */
+                for (j = 1; j < c[k]; j++)
+                    if (p[k][j].role != FLAT_ROLE_FRAME && p[k][j].role != FLAT_ROLE_BACK &&
+                        p[k][j].x1 - p[k][j].x0 >= 1 && p[k][j].y1 - p[k][j].y0 >= 1)
+                        solid = 1;
+                CHECK(solid);
+            }
+            for (j = 0; j < c[0]; j++) {                            /* identical geometry; only the glyph pen role moves */
+                CHECK(p[0][j].x0 == p[1][j].x0 && p[0][j].y0 == p[1][j].y0 &&
+                      p[0][j].x1 == p[1][j].x1 && p[0][j].y1 == p[1][j].y1);
+                if (p[0][j].role != p[1][j].role)
+                    CHECK(p[0][j].role == FLAT_ROLE_TEXT && p[1][j].role == FLAT_ROLE_LINE);
+            }
+        }
+    }
 }
 
 static void test_glyph_route(void)
@@ -675,6 +709,7 @@ void suite_flat_core(void)
     test_dopus_decide();
     test_dopus_path();
     test_glyph_goldens();
+    test_glyph_solid_and_state_equal();
     test_glyph_states();
     test_glyph_frame_bg();
     test_glyph_route();

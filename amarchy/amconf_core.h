@@ -33,7 +33,6 @@ enum {
     AM_FLAT,    /* flat-system-look: the flat window frame glyphs (amarchy-flat, off/on, default off) */
     AM_FLATGAD, /* flat-window-gadgets: the flat window gadgets (off/on, default off) */
     AM_FLATSIZE, /* flat-border-size: stock, thin (the window border and title size) */
-    AM_FLATSTYLE, /* flat-glyph-style: line, block (FLAT_STYLE_*, flat_core.h) */
     AM_FLATPENS, /* amarchy-flat-pens: the desktop palette write carries the flat pen map (desk_pens_flat; off/on, default off) */
     AM_NKEYS
 };

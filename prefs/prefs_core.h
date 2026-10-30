@@ -58,7 +58,6 @@ typedef struct prefs_fields {
     int am_flat;                    /* flat-system-look: index of off, on */
     int am_flatgad;                 /* flat-window-gadgets: index of off, on */
     int am_flatsize;                /* flat-border-size: index of stock, thin */
-    int am_flatstyle;               /* flat-glyph-style: index of line, block */
     int am_flatpens;                /* amarchy-flat-pens: index of off, on */
     int am_mode;                    /* menu-style: UC_MENU_* (graphical = drawn, text, minimal) */
     char kcmode[UC_MAX_VALUE]; /* KingCON's FNCMODE letters (W L B C S); blank: W */

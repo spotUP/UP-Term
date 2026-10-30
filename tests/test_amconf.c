@@ -37,8 +37,8 @@ static void test_amconf_parse_defaults(void)
         CHECK_STR(p.val[k], am_keys[k].def);
     CHECK_INT(amconf_icons(&p), UC_ICONS_GENERIC);
     CHECK_INT(amconf_style(&p), UC_MENU_GRAPHICAL);
-    /* the table lists twenty-six keys, each named once */
-    CHECK_INT(AM_NKEYS, 26);
+    /* the table lists twenty-five keys, each named once */
+    CHECK_INT(AM_NKEYS, 25);
     for (k = 0; k < AM_NKEYS; k++) {
         int j;
         for (j = k + 1; j < AM_NKEYS; j++)
@@ -539,17 +539,16 @@ static void test_amconf_save_nodir(void)
 /* LF_SETTING (plan 2026-10-26-amarchy-prefs-inline.md, M3): Enter on a check row writes UP-Term's file and the
  * reloaded fields show the new value; the profile's other keys and the highlight-cat variable go with it. */
 /* FLAT-C5: each row of the Flat Look page writes its key (flat-system-look, flat-window-gadgets,
- * flat-border-size, flat-glyph-style, amarchy-flat-pens) through the editor's fields, and reads it back. */
+ * flat-border-size, amarchy-flat-pens) through the editor's fields, and reads it back. */
 static void test_amconf_flat_rows_write_their_keys(void)
 {
-    static const struct { int key, gadget; const char *name, *on; } row[5] = {
+    static const struct { int key, gadget; const char *name, *on; } row[4] = {
         { AM_FLAT, PG_AM_FLAT, "flat-system-look", "on" },
         { AM_FLATGAD, PG_AM_FLATGAD, "flat-window-gadgets", "on" },
         { AM_FLATSIZE, PG_AM_FLATSIZE, "flat-border-size", "thin" },
-        { AM_FLATSTYLE, PG_AM_FLATSTYLE, "flat-glyph-style", "block" },
         { AM_FLATPENS, PG_AM_FLATPENS, "amarchy-flat-pens", "on" } };
     int i;
-    for (i = 0; i < 5; i++) {
+    for (i = 0; i < 4; i++) {
         am_prefs p, q;
         prefs_fields f;
         static char txt[UC_MAX_FILE + 1];
@@ -580,6 +579,25 @@ static void test_amconf_flat_rows_write_their_keys(void)
         amconf_to_fields(&q, &f);
         CHECK_INT((&f.am_flat)[i], 1);
     }
+}
+
+/* FLAT-SOLID-FILL: a prefs file saved before the key went away still holds "flat-glyph-style = line"; it is ignored
+ * (no error, no effect on the other keys) and the next save drops it. */
+static void test_amconf_old_flat_glyph_style_ignored(void)
+{
+    am_prefs p;
+    prefs_fields f;
+    static char txt[UC_MAX_FILE + 1];
+    static const char old[] = "[profile default]\nflat-window-gadgets = on\nflat-glyph-style = line\nflat-border-size = thin\n";
+    amconf_parse(old, (long)strlen(old), &p);
+    CHECK_STR(p.val[AM_FLATGAD], "on");
+    CHECK_STR(p.val[AM_FLATSIZE], "thin");
+    memset(&f, 0, sizeof f);
+    amconf_to_fields(&p, &f);
+    amconf_from_fields(&p, &f);
+    CHECK(amconf_serialize(&p, txt, UC_MAX_FILE) > 0);
+    CHECK(strstr(txt, "flat-glyph-style") == 0);
+    CHECK(strstr(txt, "flat-window-gadgets = on") != 0);
 }
 
 static void test_lf_setting_check_toggle(void)
@@ -1003,6 +1021,7 @@ void suite_amconf(void)
     test_prefs_dos_dir_amarchy();
     test_amconf_save_nodir();
     test_amconf_flat_rows_write_their_keys();
+    test_amconf_old_flat_glyph_style_ignored();
     test_lf_setting_check_toggle();
     test_lf_setting_cycle_next_and_choices();
     test_lf_setting_text();

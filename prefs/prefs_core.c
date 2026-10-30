@@ -576,7 +576,7 @@ int prefs_equal(const prefs_fields *a, const prefs_fields *b)
         strcmp(a->am_hide, b->am_hide) || strcmp(a->am_font, b->am_font) || strcmp(a->am_gtheme, b->am_gtheme) || a->am_icons != b->am_icons ||
         a->am_mode != b->am_mode || a->am_termmenu != b->am_termmenu ||
         a->am_flat != b->am_flat || a->am_flatgad != b->am_flatgad || a->am_flatsize != b->am_flatsize ||
-        a->am_flatstyle != b->am_flatstyle || a->am_flatpens != b->am_flatpens ||
+        a->am_flatpens != b->am_flatpens ||
         strcmp(a->linkopen, b->linkopen) || strcmp(a->kcmode, b->kcmode))
         return 0;
     for (i = 0; i < 16; i++)

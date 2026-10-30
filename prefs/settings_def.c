@@ -39,7 +39,6 @@ static const sd_value v_colors[] = { { "", "Not told" }, { "rgb", "Full colour (
                                      { "16", "16 colours" } };
 static const sd_value v_icons[] = { { "generic", "Generic" }, { "amiga", "Amiga" }, { "none", "None" } };
 static const sd_value v_flatsize[] = { { "stock", "Stock" }, { "thin", "Thin" } };
-static const sd_value v_flatstyle[] = { { "line", "Line" }, { "block", "Block" } };
 static const sd_value v_termmenu[] = { { "text", "Text" }, { "graphical", "Graphical" } };
 static const sd_value v_mode[] = { { "graphical", "Drawn" }, { "text", "Text" }, { "minimal", "Minimal" } };
 
@@ -212,10 +211,6 @@ const sd_setting sd_settings[SDI_COUNT] = {
       "Stock: the size of the system. Thin: slimmer window borders and title bars.",
       VALS(v_flatsize), "stock", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATSIZE), UC_MAX_VALUE, NORANGE,
       PG_AM_FLATSIZE, 0, 0, 1, 0 },
-    { SDI_AM_FLATSTYLE, "flat-glyph-style", 0, PG_PAGE_FLAT, SD_CYCLE, "Glyph st_yle",
-      "Line: thin line glyphs in the text colour. Block: filled blocks.",
-      VALS(v_flatstyle), "line", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATSTYLE), UC_MAX_VALUE, NORANGE,
-      PG_AM_FLATSTYLE, 0, 0, 1, 0 },
     { SDI_AM_FLATPENS, "amarchy-flat-pens", 0, PG_PAGE_FLAT, SD_CHECK, "Flat window _pens",
       "Write the flat pen map with the desktop palette: bevels lose their light edge. Needs desktop-theme and desktop-palette.",
       VALS(v_off_on), "off", SD_AMARCHY, SDF_AMSTR, AO(AM_FLATPENS), UC_MAX_VALUE, NORANGE, PG_AM_FLATPENS, 0, 0, 1, 0 },

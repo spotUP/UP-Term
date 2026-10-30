@@ -5,8 +5,8 @@
  *               bottom border (ReadPixel). The windows are opened inactive at a fixed place, so the hash depends only
  *               on what sysiclass drew: the same with and without amarchy-flat's pass-through.
  * FLAT-C2 additions (the rig's c2 step):
- *   flatwin N SET <enabled> <style> <pen_text> <pen_line> <pen_back>
- *               write the switch, style and glyph pens into the running amarchy-flat's state block first (what
+ *   flatwin N SET <enabled> <reserved, was style> <pen_text> <pen_line> <pen_back>
+ *               write the switch and glyph pens into the running amarchy-flat's state block first (what
  *               Amarchy does); a close/depth/zoom/size window is then opened, hashed, RefreshWindowFrame'd, hashed.
  *   Every run prints, per system gadget, "gad <name> w=<which> open=<hash> refresh=<hash>": FNV-1a over the pixels
  *   of that gadget's box after the open and after RefreshWindowFrame; <which> is GetAttr(SYSIA_Which) on the
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
         r = (flatrec *)FindSemaphore((STRPTR)FLAT_SEM_NAME);
         if (r) {
             r->st.enabled = (UWORD)atol(argv[3]);
-            r->st.style = (UWORD)atol(argv[4]);
+            r->st.style = 0;                /* reserved slot; argv[4] kept so old scripts still run */
             r->st.pen_text = (UBYTE)atol(argv[5]);
             r->st.pen_line = (UBYTE)atol(argv[6]);
             r->st.pen_back = (UBYTE)atol(argv[7]);

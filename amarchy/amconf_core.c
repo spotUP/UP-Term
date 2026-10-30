@@ -65,7 +65,6 @@ void amconf_to_fields(const am_prefs *p, prefs_fields *f)
     f->am_flat = amconf_flat_index(p, AM_FLAT);
     f->am_flatgad = amconf_flat_index(p, AM_FLATGAD);
     f->am_flatsize = amconf_flat_index(p, AM_FLATSIZE);
-    f->am_flatstyle = amconf_flat_index(p, AM_FLATSTYLE);
     f->am_flatpens = amconf_flat_index(p, AM_FLATPENS);
 }
 
@@ -82,7 +81,6 @@ void amconf_from_fields(am_prefs *p, const prefs_fields *f)
     strcpy(p->val[AM_FLAT], f->am_flat ? "on" : "off");
     strcpy(p->val[AM_FLATGAD], f->am_flatgad ? "on" : "off");
     strcpy(p->val[AM_FLATSIZE], f->am_flatsize ? "thin" : "stock");
-    strcpy(p->val[AM_FLATSTYLE], f->am_flatstyle ? "block" : "line");
     strcpy(p->val[AM_FLATPENS], f->am_flatpens ? "on" : "off");
 }
 
