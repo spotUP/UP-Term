@@ -488,6 +488,14 @@ def os32_hd_layout():
 
 OS_HOOKS = "Assign >NIL: VTC: VTCX:\nRun >NIL: C:Execute BOOTX:go\n"
 
+RIG_MUTE_FLAG = pathlib.Path.home() / ".config" / "upterm" / "rig-mute"
+
+
+def rig_volume():
+    """Paula volume for a new rig: 0 while the rig-mute flag file exists, else 100."""
+    return 0 if RIG_MUTE_FLAG.exists() else 100
+
+
 def unpack_volume(image, dst):
     """The whole file tree of an ADF/HDF volume as a host directory FS-UAE
     mounts (its free space is the Mac's): xdftool unpack, then the protection
@@ -1041,8 +1049,10 @@ def setup():
         "kickstart_file = %s" % KICK,
     ] + (["hard_drive_3 = %s" % (RIG / "work"), "hard_drive_3_label = Work", "hard_drive_3_priority = -128"] if OS else []) + [
         # audible output on every rig: "interrupts" is emulated with no output and
-        # volume 0 muted it, so no rig made sound (owner, 2026-10-26)
-        "uae_sound_output = exact", "volume = 100", "initial_input_grab = 0",
+        # volume 0 muted it, so no rig made sound (owner, 2026-10-26). The flag file
+        # ~/.config/upterm/rig-mute mutes every rig started while it exists (owner in
+        # a meeting, 2026-10-30); delete it to get sound back
+        "uae_sound_output = exact", "volume = %d" % rig_volume(), "initial_input_grab = 0",
         # floppy drive clicks and head steps off; Paula audio stays on (owner, 2026-10-27)
         "floppy_drive_volume = 0", "floppy_drive_volume_empty = 0",
         # the Amiga's clipboard.device unit 0 and the Mac's clipboard are one: a copy
