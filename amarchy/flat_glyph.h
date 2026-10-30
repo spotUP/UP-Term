@@ -21,7 +21,9 @@
 #define FLAT_IM_DRAW 0x202UL    /* the only method C2 draws; IM_DRAWFRAME and the rest go to the old hook */
 
 enum { FLAT_G_NORMAL = 0, FLAT_G_SELECTED = 1, FLAT_G_INACTIVE = 2 };
-enum { FLAT_ROLE_BACK = 0, FLAT_ROLE_TEXT = 1, FLAT_ROLE_LINE = 2 };
+enum { FLAT_ROLE_BACK = 0, FLAT_ROLE_TEXT = 1, FLAT_ROLE_LINE = 2, FLAT_ROLE_FRAME = 3 };
+/* FLAT_ROLE_FRAME: the pen of the frame the gadget sits on (window border, inactive border, screen bar block); drawn
+ * as pen_back when flat_glyph_draw gets frame_pen < 0. Only the window gadgets use it as their box background. */
 
 typedef struct flat_prim {
     int16_t x0, y0, x1, y1;     /* inclusive, relative to the box's top left */
@@ -54,7 +56,7 @@ typedef void (*flat_fill_fn)(void *ctx, int x0, int y0, int x1, int y1, int pen)
  * call the old hook), 0 when the call must go to the old hook unchanged (route refused, box too small). The box is
  * at (ox, oy); w, h are the image's Width and Height. */
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
-                    int w, int h, flat_fill_fn fill, void *ctx);
+                    int w, int h, int frame_pen, flat_fill_fn fill, void *ctx);
 
 /* FLAT-C8: the flat frame of one frameiclass IM_DRAW / IM_DRAWFRAME call: with fill != 0 the box is filled with
  * pen_back (pen_line when ids == IDS_SELECTED, 1), then a full 1 px outline in pen_line. Returns 1 when drawn, 0

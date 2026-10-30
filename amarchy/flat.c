@@ -101,6 +101,7 @@ static int c2_draw(Object *obj, Msg msg)
     struct impDraw *d = (struct impDraw *)msg;
     struct Image *im = (struct Image *)obj;
     ULONG which = 0xFFFF;
+    int frame_pen = -1;
     r->st.calls++;
     if (msg->MethodID != FLAT_IM_DRAW || !r->st.enabled || r->st.held || !d->imp_RPort)
         return 0;
@@ -121,8 +122,19 @@ static int c2_draw(Object *obj, Msg msg)
         which = (ULONG)wh;
     }
     which = flat_which_alias(which);
+    /* FLAT-GADGET-BG: the pen of the frame the gadget sits on, so the box shows only the glyph lines. A window gadget
+     * sits on the border (the background pen while the window is inactive, else the fill pen); a screen bar gadget on
+     * the bar block (V39+ DrawInfo has it). */
+    if (d->imp_DrInfo) {
+        struct Layer *fl = d->imp_RPort->Layer;
+        if (fl && fl->Window) {
+            frame_pen = (d->imp_State == IDS_INACTIVENORMAL || d->imp_State == IDS_INACTIVESELECTED)
+                            ? d->imp_DrInfo->dri_Pens[BACKGROUNDPEN] : d->imp_DrInfo->dri_Pens[FILLPEN];
+        } else if (fl && d->imp_DrInfo->dri_Version >= 2)
+            frame_pen = d->imp_DrInfo->dri_Pens[BARBLOCKPEN];
+    }
     return flat_glyph_draw(&r->st, which, msg->MethodID, d->imp_State, im->LeftEdge + d->imp_Offset.X,
-                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, c2_fill, d->imp_RPort);
+                           im->TopEdge + d->imp_Offset.Y, im->Width, im->Height, frame_pen, c2_fill, d->imp_RPort);
 }
 
 ULONG c2_disp_reg(__reg("a0") struct Hook *h, __reg("a2") Object *obj, __reg("a1") Msg msg)

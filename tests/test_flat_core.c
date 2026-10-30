@@ -321,6 +321,7 @@ static void test_dopus_path(void)
 #define CV 40
 static char cv[CV][CV + 1];
 static int g_old_calls, g_disp_calls;
+static int g_frame_pen = -1;                            /* the frame pen the fake dispatcher passes (-1: none known) */
 
 static void cv_clear(void)
 {
@@ -345,7 +346,7 @@ static void cv_fill(void *ctx, int x0, int y0, int x1, int y1, int pen)
 static int fake_dispatch(const flat_state *st, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy, int w, int h)
 {
     g_disp_calls++;
-    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, cv_fill, 0))
+    if (flat_glyph_draw(st, which, method, ids, ox, oy, w, h, g_frame_pen, cv_fill, 0))
         return 1;
     g_old_calls++;                                      /* the saved routine */
     return 0;
@@ -392,6 +393,31 @@ static void test_glyph_goldens(void)
     }
 }
 
+/* FLAT-GADGET-BG: the window gadgets' box takes the frame pen; selected and menu glyphs keep their own background */
+static void test_glyph_frame_bg(void)
+{
+    flat_state st;
+    glyph_state(&st);
+    g_frame_pen = '7';
+    cv_clear();
+    fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12);              /* normal */
+    CHECK_INT(cv[0][0], '7');
+    CHECK_INT(cv[11][13], '7');
+    cv_clear();
+    fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 5, 0, 0, 14, 12);              /* inactive */
+    CHECK_INT(cv[0][0], '7');
+    cv_clear();
+    fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 1, 0, 0, 14, 12);              /* selected: inverted, not the frame */
+    CHECK_INT(cv[0][0], '#');
+    cv_clear();
+    fake_dispatch(&st, FLAT_W_MENUCHECK, FLAT_IM_DRAW, 0, 0, 0, 14, 12);          /* menu glyph: the back pen */
+    CHECK_INT(cv[0][0], '.');
+    g_frame_pen = -1;
+    cv_clear();
+    fake_dispatch(&st, FLAT_W_CLOSE, FLAT_IM_DRAW, 0, 0, 0, 14, 12);              /* no frame pen known: the back pen */
+    CHECK_INT(cv[0][0], '.');
+}
+
 static void test_glyph_states(void)
 {
     flat_state st;
@@ -404,9 +430,9 @@ static void test_glyph_states(void)
     CHECK_INT(cn, 5);
     CHECK_INT(cs, cn);
     CHECK_INT(cd, cn);
-    CHECK_INT(n[0].role, FLAT_ROLE_BACK);                           /* first rect = the box in the background role */
+    CHECK_INT(n[0].role, FLAT_ROLE_FRAME);                          /* first rect = the box in the frame's colour */
     CHECK_INT(s[0].role, FLAT_ROLE_TEXT);                           /* selected inverts */
-    CHECK_INT(d[0].role, FLAT_ROLE_BACK);
+    CHECK_INT(d[0].role, FLAT_ROLE_FRAME);
     for (i = 1; i < cn; i++) {
         CHECK_INT(n[i].role, FLAT_ROLE_TEXT);
         CHECK_INT(s[i].role, FLAT_ROLE_BACK);
@@ -650,5 +676,6 @@ void suite_flat_core(void)
     test_dopus_path();
     test_glyph_goldens();
     test_glyph_states();
+    test_glyph_frame_bg();
     test_glyph_route();
 }
