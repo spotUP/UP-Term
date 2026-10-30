@@ -96,6 +96,7 @@ typedef struct job {
     BPTR term_in, term_out; /* the shell's own input and output: its terminal, the runner's CLI streams */
     int close_in, close_out, close_err;
     struct Task *task;      /* the runner, while it runs */
+    char tname[32];         /* the runner's task name, unique per job (runner_alive); CreateNewProc copies it */
     int has_child;          /* the command goes through SystemTags: a Shell process of its own (job_child) */
     int child_seen;         /* that process has been seen to exist (job_gone) */
     char *env;              /* exported variables: name\0value\0 ... \0 */
@@ -141,9 +142,19 @@ static struct {
 } rl_kind[8];
 static int rl_next;
 
-/* The Shell process SystemTags made for a Resident command or a script: SystemTags ignores NP_Name but
- * passes NP_ExitData = the job on to CreateNewProc, so it is the process carrying the job that is not
- * the runner (sh_child_is). 0 when there is none now. Call under Forbid. */
+/* Name j's task "<prefix> <n>", <n> counting up for the shell's whole life: never a repeat, as a freed
+ * job's address is (runner_alive tells the runner from a later task at its address by this name). */
+static const char *job_tname(job *j, const char *prefix)
+{
+    static unsigned long serial;
+    sh_job_tname(j->tname, prefix, ++serial);
+    return j->tname;
+}
+
+/* The Shell process SystemTags made for a Resident command or a script: SystemTags ignores NP_Name, so it is found as
+ * a CLI process on the job's input handle that is neither the runner nor the shell nor another vsh
+ * runner (sh_child_is; NP_ExitData cannot carry the job: AmiTCP programs read it, VSH-EXT-RC161).
+ * 0 when there is none now. Call under Forbid. */
 static struct Task *job_child(job *j)
 {
     struct Node *n;
@@ -151,13 +162,20 @@ static struct Task *job_child(job *j)
     int i;
     l[0] = &SysBase->TaskReady;
     l[1] = &SysBase->TaskWait;
+    struct Task *self = FindTask(0);
     if (!j->has_child)
         return 0;
     for (i = 0; i < 2; i++)
-        for (n = l[i]->lh_Head; n->ln_Succ; n = n->ln_Succ)
-            if (n != (struct Node *)j->task &&
-                sh_child_is(n->ln_Type == NT_PROCESS, ((struct Process *)n)->pr_ExitData, (unsigned long)j))
+        for (n = l[i]->lh_Head; n->ln_Succ; n = n->ln_Succ) {
+            struct Process *p = (struct Process *)n;
+            struct CommandLineInterface *cli;
+            int isp = n->ln_Type == NT_PROCESS;
+            cli = (isp && p->pr_CLI) ? (struct CommandLineInterface *)BADDR(p->pr_CLI) : 0;
+            if (sh_child_is(isp, cli != 0, cli ? (unsigned long)cli->cli_StandardInput : 0,
+                            (unsigned long)j->in, n == (struct Node *)j->task, n == (struct Node *)self,
+                            n->ln_Name))
                 return (struct Task *)n;
+        }
     return 0;
 }
 
@@ -718,7 +736,7 @@ static void runner(void)
         /* a Shell process of its own: named, so Ctrl-C can find it, and
          * given the error stream (CreateNewProc takes NP_Error from V39) */
         j->rc = SystemTags((STRPTR)j->cmd, SYS_Input, j->in, SYS_Output, j->out,
-                           SYS_UserShell, TRUE, NP_ExitData, (ULONG)j,
+                           SYS_UserShell, TRUE,
                            j->err ? NP_Error : TAG_IGNORE, j->err, TAG_END);
     }
     /* the program ran: its return code is an exit status, which a POSIX shell reads as 0-255
@@ -797,9 +815,8 @@ static int task_alive(struct Task *t);
  * task given the address of a dead one (sh_runner_is). Call under Forbid. */
 static int runner_alive(job *j)
 {
-    struct Process *p = (struct Process *)j->task;
     return task_alive(j->task) &&
-           sh_runner_is(j->task->tc_Node.ln_Type == NT_PROCESS, p->pr_ExitData, (unsigned long)j);
+           sh_runner_is(j->task->tc_Node.ln_Type == NT_PROCESS, j->task->tc_Node.ln_Name, j->tname);
 }
 
 /* Was job j's process removed from outside (wasabi kill --force is a RemTask: no exit code runs, no
@@ -1268,8 +1285,8 @@ static long os_start(void *os, char **argv, const sh_io *io, int wait, int inter
     free(cmd);
     cmd = 0;
     p = (j->name && j->args && j->cmd)
-        ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)"vsh job", NP_StackSize, 8000,
-                            NP_ExitData, (ULONG)j, NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
+        ? CreateNewProcTags(NP_Entry, (ULONG)runner, NP_Name, (ULONG)job_tname(j, "vsh job"), NP_StackSize, 8000,
+                            NP_Cli, TRUE, NP_CopyVars, FALSE, TAG_END)
         : 0;
     if (!p) {
         job_close_streams(j);
@@ -2058,8 +2075,8 @@ static long os_spawn(void *os, sh_shell *child, sh_parse *tree, const sh_io *io,
                     j->io.owned |= SH_OWN_ERR;
             }
         }
-        p = CreateNewProcTags(NP_Entry, (ULONG)subshell_proc, NP_Name, (ULONG)"vsh subshell",
-                              NP_StackSize, VSH_STACK_SUB, NP_ExitData, (ULONG)j, NP_Cli, TRUE, TAG_END);
+        p = CreateNewProcTags(NP_Entry, (ULONG)subshell_proc, NP_Name, (ULONG)job_tname(j, "vsh subshell"),
+                              NP_StackSize, VSH_STACK_SUB, NP_Cli, TRUE, TAG_END);
     }
     if (!p) {
         sh_io *o = j ? &j->io : 0;
