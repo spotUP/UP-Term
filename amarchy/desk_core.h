@@ -44,6 +44,17 @@ void desk_pens(unsigned char pens[DK_SLOTS]);
  * indices (no Workbench reset); every index stays below 4, so the same map serves a 4-colour screen without aliasing. */
 void desk_pens_flat(unsigned char pens[DK_SLOTS]);
 
+/* FLAT-D2: the Directory Opus pen lines of a theme, one `set pens` line per key (a line with several keys read the later keys back
+ * wrong on the rig), for the 11 keys icons, files, dirs, selfiles, seldirs, devices, assigns, source, dest, gauge, user (rexx_data.c
+ * pens_key). The numbers are the palette pens the Palette editor writes (DK_* role = pen index, every one below 4), not the menu
+ * roles. Files, devices, assigns: text on ground. Directories and the gauge: accent on ground, text on ground when the accent is weak
+ * against the ground (contrast below 3.00). Selected entries and the source lister: ground on accent, text on darker when weak. Dest:
+ * text on darker. User: 0 pens (DOpus's own user colours are not part of the theme). lines[i] is NUL-terminated and ends in a newline.
+ * Returns DK_DOPUS_KEYS. */
+#define DK_DOPUS_KEYS 11
+#define DK_DOPUS_LINE 48
+int desk_dopus_pens(const gtheme *t, char lines[DK_DOPUS_KEYS][DK_DOPUS_LINE]);
+
 /* R1.17: 1 when a Palette USE of the pens desk_pens gives makes IPrefs reset the Workbench screen. DrawInfo dri_Pens are fixed
  * at screen open, so only a pen array that differs from the live screen's (cur, ncur = dri_NumPens, the first ncur slots are
  * compared) reopens it; colour values alone load live. ncur <= 0 (no DrawInfo): unknown, 1. */

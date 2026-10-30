@@ -21,6 +21,7 @@ extern unsigned long desk_dos_wb_closes;
 extern int (*desk_dos_own_close)(void);
 extern void (*desk_dos_own_open)(void);
 /* how many times desk_dos_apply ran its writes (the reachability sentinel) and the mask of the last run */
+extern unsigned long desk_dos_dopus_pens; /* FLAT-D2: pen lines the DOpus port accepted */
 extern unsigned long desk_dos_applies, desk_dos_last_mask;
 
 #endif

@@ -10,6 +10,7 @@
 #include "desk_dos.h"
 #include "rexx_host.h"
 #include "desk_core.h"
+#include "menu_theme.h"
 #include "amconf_dos.h"
 
 #define DK_BUF 1024
@@ -286,6 +287,23 @@ static void dk_wait_iprefs(unsigned long idle_mask)
     }
 }
 
+/* FLAT-D2: Directory Opus's lister pens are palette pens, so they follow the Palette write. No DOpus port: rexx_send gives -1, which
+ * stops the sending and is no error. */
+unsigned long desk_dos_dopus_pens;
+
+static void dk_dopus_pens(const gtheme *th)
+{
+    char lines[DK_DOPUS_KEYS][DK_DOPUS_LINE], res[64];
+    int i;
+    for (i = 0, desk_dopus_pens(th, lines); i < DK_DOPUS_KEYS; i++) {
+        lines[i][strlen(lines[i]) - 1] = 0; /* the port takes the line without its newline */
+        if (rexx_send(DOPUS_PORT, lines[i], res, sizeof res) < 0)
+            return;
+        desk_dos_dopus_pens++;
+    }
+    rexx_send(DOPUS_PORT, "dopus refresh lister", res, sizeof res);
+}
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     static unsigned char buf[DK_BUF], prev[DK_BUF], big[8192];
@@ -329,6 +347,7 @@ int desk_dos_apply(const gtheme *th, char *why, int cap)
          * raised a Program Error requester when started under the running reset) */
         if (reset)
             dk_wait_reset(wb_before);
+        dk_dopus_pens(th);
     }
     if (mask & (1u << DT_WBPATTERN)) {
         plen = dk_read("ENV:Sys/wbpattern.prefs", prev, sizeof prev);
