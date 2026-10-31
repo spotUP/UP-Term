@@ -1145,8 +1145,9 @@ def quit_dopus():
 
 def r_dopus_quit():
     """DOPUS-QUIT (D22, plan 2026-10-25-amarchy-dopus-integration.md): with Directory Opus running the root menu lists
-    Dopus; after Directory Opus is quit (DOPUS.1 gone) a re-read of the root menu lists no Dopus group. Leaves the rig
-    with no Directory Opus (reboot or restart the rig for the next DOpus row). BLOCKED where DOpus is not running."""
+    Dopus; after Directory Opus is quit (DOPUS.1 gone) a re-read of the root menu lists no Dopus group. The row ends by
+    starting DOpus again (restore_dopus: C:LoadWB is the rig's LoadDB, the boot's own start) so later rows find it.
+    BLOCKED where DOpus is not running."""
     if not dopus_port():
         return False, 'BLOCKED: DOPUS.1 not on this rig (Directory Opus not running here)'
     res = []
@@ -1161,7 +1162,23 @@ def r_dopus_quit():
         res.append(bool(up) and 'Apps' in rows and 'Dopus' not in rows)
         print('  %s root rows after the quit: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
         return all(res), '%d of %d checks passed' % (sum(res), len(res))
-    return with_drawn_menu(checks)
+    try:
+        return with_drawn_menu(checks)
+    finally:
+        restore_dopus()
+
+
+def restore_dopus():
+    """Start Directory Opus again after a quit: the Startup-Sequence's own `C:LoadWB` (LoadDB of the installed DOpus).
+    True when DOPUS.1 is back within 40 s."""
+    if dopus_port():
+        return True
+    c.run('C:LoadWB')
+    for _ in range(40):
+        if dopus_port():
+            return True
+        time.sleep(1)
+    return False
 
 
 def _dopus_present_checks(res):

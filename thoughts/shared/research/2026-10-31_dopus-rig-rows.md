@@ -15,3 +15,13 @@ Rig 5 started with current deps (start refreshed handler, keymap, Apps/bin progr
 - Gotchas: the Opus menu belongs to the active window, so the row first clicks empty backdrop (720,450) to make the DOpus backdrop window active; the terminal window of the earlier rows would otherwise own the menu. The requester's buttons have no labels (dopusbuttongclass), the left one is clicked by position.
 - The row leaves the rig without DOpus; `Run >NIL: <NIL: LoadWB` on the rig brings 5.82 back (DOPUS.1 returned after ~8 s) without a rig restart. Harness: `with_drawn_menu(fn)` now holds the drawn-menu setup that dopus_present used inline.
 - Not verified: 5.104 (rig has 5.82 only); the Quit... confirm button position on 5.104.
+
+## 5.104 rows (s39)
+
+Rig 5, `rig.py dopus` installed 5.104 (Installer ran to 100%), restart booted it: `Version DOpus5:DirectoryOpus` = "DirectoryOpus 5.104 [OS3]", dopus5.library 73.8, process DOpus5:DirectoryOpus, rexx port DOPUS.1 answers. The rig-start [WARN] is gone after the install. Rows run with `--only <row>` (one name per run; a comma list runs 0 rows).
+
+- dopus_present (D6, D7): PASS, "ok dopus_present: 3 of 3 checks passed" on 5.104. D7 is still title-only.
+- dopus_listers (D21): PASS, "ok dopus_listers: 4 of 4": `lister new` + `lister read` give two handles, Open listers rows ['RAM:', 'Fonts', 'Devs'], picking Fonts / Devs flips the front lister. `lister query all` over ARexx returns handles on 5.104 (it answered nothing on 5.82/5.91).
+- dopus_quit (D22): PASS, "ok dopus_quit: 3 of 3": Opus > Quit... removes DOPUS.1 and the Dopus root row. Harness fix: the row used to leave the rig without DOpus; it now ends with restore_dopus (`C:LoadWB`, the boot's LoadDB) in a finally; after it dopus_present 3 of 3 and dopus_listers 4 of 4 pass again on the same rig. Test: tests/test_menu_rig_dopus_quit_restore.py (make ONLY=menu_rig_dopus_quit), fails 2 of 2 with the fix reverted.
+- dopus_absent (D5): NOT RUN here, as designed it FAILs on a rig with DOpus ("DOPUS.1 exists on this rig"); it needs a `--no-dopus` rig (PASS 11 of 11 earlier, section above).
+- Not tested: a separate DOPUS.1 screen for D7 (5.104 runs as the Workbench here, one screen).
