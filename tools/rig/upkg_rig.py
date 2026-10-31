@@ -26,6 +26,8 @@ The package is named as the feed names it (up-nvim, up-claude), the way `upkg li
   appaddon    an app add-on of tools/mkappaddons.py (up-nano): `upkg install up-nano` lands UP-Term:bin/nano and
               its record, nano runs (sentinel: "GNU nano" from `nano --version`); `upkg remove up-nano` takes the
               binary, UP-Term:share/nano, the record drawer and the status record away again
+  zipaddon    the same for up-zip (zip left the base for an add-on): UP-Term:bin/zip lands, `zip -h` prints
+              "Zip 3.0" (sentinel), remove takes it away again
 
 Resumable (RULES section 6a): the verdict of each case goes to build/<rig>/upkg/<case>.json with a
 fingerprint of dist/upkg.conf, build/ipk/Packages and this script.
@@ -53,7 +55,7 @@ CONF = 'T:upkg-rig.conf'
 STATUS = 'UP-Term:pkg/upkg/status'
 STAGE = 'T:upkg-stage'
 ADDONS = ['up-claude', 'up-pi', 'up-nvim', 'up-python']
-CASES = ['version', 'updatelist', 'install', 'upgrade', 'migrate', 'remove', 'needsbase', 'badsum', 'listnew', 'appaddon']
+CASES = ['version', 'updatelist', 'install', 'upgrade', 'migrate', 'remove', 'needsbase', 'badsum', 'listnew', 'appaddon', 'zipaddon']
 OLD_NVIM = 'UP-Term-nvim'
 
 
@@ -399,31 +401,42 @@ def case_listnew(ck, rel):
     upkg('lnupd3', 'update')
 
 
-def case_appaddon(ck, rel):
-    pkg = 'up-nano'
+def app_addon(ck, rel, case, pkg, files, sentinel, want):
+    """An app add-on of tools/mkappaddons.py: install lands `files` and the record, `sentinel` prints `want`,
+    remove takes the files, the record drawer and the status record away again."""
+    tag = case[:4]
     rel.set()
-    upkg('upkgupd', 'update')
+    upkg(tag + 'upd', 'update')
     if installed_version(pkg):
-        upkg('nanorm0', 'remove %s' % pkg)
-    rc, out = upkg('nanoinst', 'install %s' % pkg)
-    ck(rc == 0, 'appaddon: install exit 0', out[-400:])
-    ck(exists('UP-Term:bin/nano'), 'appaddon: UP-Term:bin/nano landed (Files/install.dos ran)')
-    ck(exists('UP-Term:pkg/%s/VERSIONS' % pkg), 'appaddon: the record UP-Term:pkg/%s/VERSIONS is there' % pkg)
-    ck(installed_version(pkg) == '1.0', 'appaddon: %s names %s 1.0' % (STATUS, pkg), installed_version(pkg))
-    ck(not exists('%s/%s' % (STAGE, pkg)), 'appaddon: %s/%s left behind' % (STAGE, pkg))
-    rc, out = ir.run_slow('nanoverrun', 'UP-Term:bin/nano --version', 200)
-    ck(rc == 0 and 'GNU nano' in out, 'appaddon: nano runs from UP-Term:bin (sentinel)', out[-300:])
-    rc, out = upkg('nanorm', 'remove %s' % pkg)
-    ck(rc == 0, 'appaddon: remove exit 0', out[-400:])
-    ck(not exists('UP-Term:bin/nano'), 'appaddon: remove took UP-Term:bin/nano away')
-    ck(not exists('UP-Term:share/nano'), 'appaddon: remove took UP-Term:share/nano away')
-    ck(not exists('UP-Term:pkg/%s' % pkg), 'appaddon: remove took the record drawer away')
-    ck(installed_version(pkg) is None, 'appaddon: no status record for %s after remove' % pkg, installed_version(pkg))
+        upkg(tag + 'rm0', 'remove %s' % pkg)
+    rc, out = upkg(tag + 'inst', 'install %s' % pkg)
+    ck(rc == 0, '%s: install exit 0' % case, out[-400:])
+    ck(exists(files[0]), '%s: %s landed (Files/install.dos ran)' % (case, files[0]))
+    ck(exists('UP-Term:pkg/%s/VERSIONS' % pkg), '%s: the record UP-Term:pkg/%s/VERSIONS is there' % (case, pkg))
+    ck(installed_version(pkg) == '1.0', '%s: %s names %s 1.0' % (case, STATUS, pkg), installed_version(pkg))
+    ck(not exists('%s/%s' % (STAGE, pkg)), '%s: %s/%s left behind' % (case, STAGE, pkg))
+    rc, out = ir.run_slow(tag + 'run', sentinel, 200)
+    ck(rc == 0 and want in out, '%s: %s runs from UP-Term:bin (sentinel)' % (case, files[0]), out[-300:])
+    rc, out = upkg(tag + 'rm', 'remove %s' % pkg)
+    ck(rc == 0, '%s: remove exit 0' % case, out[-400:])
+    for f in files:
+        ck(not exists(f), '%s: remove took %s away' % (case, f))
+    ck(not exists('UP-Term:pkg/%s' % pkg), '%s: remove took the record drawer away' % case)
+    ck(installed_version(pkg) is None, '%s: no status record for %s after remove' % (case, pkg), installed_version(pkg))
+
+
+def case_appaddon(ck, rel):
+    app_addon(ck, rel, 'appaddon', 'up-nano', ['UP-Term:bin/nano', 'UP-Term:share/nano'],
+              'UP-Term:bin/nano --version', 'GNU nano')
+
+
+def case_zipaddon(ck, rel):
+    app_addon(ck, rel, 'zipaddon', 'up-zip', ['UP-Term:bin/zip'], 'UP-Term:bin/zip -h', 'Zip 3.0')
 
 
 TABLE = {'version': case_version, 'updatelist': case_updatelist, 'install': case_install, 'upgrade': case_upgrade, 'migrate': case_migrate,
          'remove': case_remove, 'needsbase': case_needsbase, 'badsum': case_badsum, 'listnew': case_listnew,
-         'appaddon': case_appaddon}
+         'appaddon': case_appaddon, 'zipaddon': case_zipaddon}
 
 
 def fingerprint(case=None):
