@@ -313,11 +313,14 @@ long desk_palette_pens(const unsigned char *cur, long curlen, const unsigned cha
     return 0;
 }
 
-/* FLAT-BACKDROP-SAME-AS-WINDOW: the pen the ROOT tile is drawn in. Never BACKGROUNDPEN (DK_BG): with no pattern the Workbench root fills with
- * BACKGROUNDPEN, the window interior pen, so the backdrop could not differ from the windows. Its colour is the theme's darker tone. */
+/* FLAT-BACKDROP-SAME-AS-WINDOW: the pen the ROOT tile is drawn in, a dedicated pen of its own. Chosen by measurement: a WBPattern tile has
+ * PT_DEPTH_MAX (3) bitplanes, so it can only name pens 0-7. Pens 0-3 are the stock icon pens (and DK_DARKER = 1 is BLOCKPEN/BARTRIMPEN
+ * in the live DrawInfo array, black in stock icons), pen 4 is the flat button fill (DK_SELECTION), and the flat DrawInfo map only ever
+ * uses pens 0, 1 and 2. Pen 5 (DK_MUTED) is inside the tile range, outside 0-4 and in no DrawInfo slot, so recolouring it to the theme dark
+ * changes nothing but the backdrop. Never BACKGROUNDPEN: with no pattern the root fills with it, the window interior pen. */
 int desk_backdrop_pen(void)
 {
-    return DK_DARKER;
+    return DK_MUTED;
 }
 
 /* the palette entry of a pen in a palette.prefs: its offset in cur, -1 when none */

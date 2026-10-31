@@ -467,7 +467,7 @@ static void test_desk_wbpattern(void)
 
 static void test_desk_wbpattern_no_dots(void)
 {
-    /* the Workbench backdrop has no dots: every ROOT pattern pixel is DK_DARKER at every depth */
+    /* the Workbench backdrop has no dots: every ROOT pattern pixel is the backdrop pen (its low bits on a shallower screen, which has no such pen) */
     static unsigned char out[BUF_MAX];
     gtheme t;
     int depth, p, y, x;
@@ -482,7 +482,7 @@ static void test_desk_wbpattern_no_dots(void)
                 for (p = 0; p < depth; p++)
                     if (data[p * 32 + y * 2 + x / 8] & (0x80 >> (x % 8)))
                         pen |= 1 << p;
-                CHECK_INT(pen, DK_DARKER);
+                CHECK_INT(pen, desk_backdrop_pen() & ((1 << depth) - 1));
             }
     }
 }
@@ -503,14 +503,23 @@ static void test_flat_on_keeps_backdrop_pen_distinct_from_window_background(void
     b.darker_bg = 0x336699UL;
     desk_pens_flat(pens);
     CHECK(desk_backdrop_pen() != pens[DK_BACKGROUND]);
+    /* the backdrop pen is its own: not a stock icon pen (0-3), not in the DrawInfo array flat writes, inside the 3-plane tile range */
+    CHECK(desk_backdrop_pen() > 3 && desk_backdrop_pen() < (1 << depth));
+    for (p = 0; p < DK_SLOTS; p++)
+        CHECK(pens[p] != desk_backdrop_pen());
     n = desk_palette(&a, 8, pens, pal, sizeof pal);
     CHECK(n > 0);
+    CHECK_INT(desk_palette_rgb(pal, n, 1) >= 0, 1);
     m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), desk_darker(&a), out, sizeof out);
     CHECK(m > 0);
     CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen()), desk_darker(&a));
     CHECK(desk_palette_rgb(out, m, desk_backdrop_pen()) != desk_palette_rgb(out, m, pens[DK_BACKGROUND]));
     m = desk_palette_set_rgb(pal, n, desk_backdrop_pen(), desk_darker(&b), out, sizeof out);
     CHECK_INT(desk_palette_rgb(out, m, desk_backdrop_pen()), desk_darker(&b));
+    /* pen 1 (BLOCKPEN, stock icon black) keeps its colour; so do all other pens */
+    for (p = 0; p < 8; p++)
+        if (p != desk_backdrop_pen())
+            CHECK_INT(desk_palette_rgb(out, m, p), desk_palette_rgb(pal, n, p));
     CHECK(desk_darker(&a) != desk_darker(&b));
     CHECK_INT(desk_palette_rgb(pal, 0, desk_backdrop_pen()), -1);
     CHECK_INT(desk_wbpattern(&a, depth, 0, 0, pat, sizeof pat), 410);
