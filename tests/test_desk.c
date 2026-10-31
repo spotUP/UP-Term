@@ -161,12 +161,9 @@ static void test_desk_palette_flat(void)
         if (s == DK_FILLTEXT) {  /* FLAT-SOLID-FILL: the active title text is bright under the flat map */
             CHECK_INT(flat[s], DK_FG);
             CHECK(stock[s] != flat[s]);
-        } else if (s == DK_FILL) {  /* FLAT-SOLID-FILL: the active frame fill is the surface pen */
+        } else if (s == DK_SHINE || s == DK_SHADOW || s == DK_FILL) {  /* FLAT-SOLID-FILL: one surface pen for highlight, shadow, fill */
             CHECK_INT(flat[s], DK_BG);
             CHECK(stock[s] != flat[s]);
-        } else if (s == DK_SHINE || s == DK_SHADOW) {  /* FLAT-OUTLINE: highlight and shadow are one outline pen, the theme accent */
-            CHECK_INT(flat[s], DK_ACCENT);
-            CHECK(flat[s] != flat[DK_BACKGROUND]);
         } else
             CHECK_INT(flat[s], stock[s]);
     }
@@ -177,8 +174,7 @@ static void test_desk_palette_flat(void)
         CHECK(gt != flat[DK_BACKGROUND]);
         CHECK(gl != flat[DK_BACKGROUND]);
         CHECK(gl != gt);
-        CHECK(gl != flat[DK_FILL]);
-        CHECK_INT(flat[DK_SHINE], flat[DK_SHADOW]);  /* FLAT-OUTLINE: one outline colour, no light source */
+        CHECK(gl != flat[DK_SHINE] && gl != flat[DK_SHADOW] && gl != flat[DK_FILL]);
         CHECK(gt != flat[DK_FILL]);
         CHECK(flat[DK_FILLTEXT] != flat[DK_FILL]);  /* FLAT-SOLID-FILL: the active title text is readable on its fill */
         CHECK_INT(flat[DK_FILLTEXT], DK_FG);
