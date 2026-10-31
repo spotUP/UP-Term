@@ -18,3 +18,16 @@ Rig 5, `trapsig_rig.py kill` (new checks C, C2, D; B now wants 143):
 - new vsh: A ok; B ok status 143; C ok trap log [TERM]; C2 ok status 143; D ok (C:Wait stops); PASS
 D caveat: ixkill answered in 0.3 s there, so D does not prove the Ctrl-C fallback for a non-vsh; the code path for
 non-vsh is unchanged Ctrl-C. Host tests: none cover os_signal (Amiga-only layer), none run.
+
+## s35 Ctrl-C fallback
+
+Verdict: the Ctrl-C branch of the os_signal fallback works for a non-vsh target. Rig 5, vsh from 91e0e355,
+`trapsig_rig.py kill` (new checks E and F), PASS:
+- E kill -s TERM at C:Wait (job of a vsh script, not an ixemul program): sender back in 0.3 s, `kill-rc=0`, Wait
+  ended (job script wrote RAM:kt.rc) well before its 100 s. Only the fallback can end it: nothing else signals it.
+- F control, kill -s USR1 at the same target: no fallback for USR1, `kill-rc=1`, Wait still running after 6 s.
+  Same target, same sender; only the signal differs, so the end in E is the fallback's Ctrl-C.
+Correction to the D caveat: the fallback is entered when ixkill FAILS (-1: no ixemul process there, here after
+0.3 s), not only on a timeout. A 0.3 s answer for C:Wait is that failure, so D already ran the Ctrl-C branch; E/F
+add the negative control that D lacked. A genuine ixkill timeout (SH_KILL_LIMIT_MS) reaches the same line and is
+covered by A (sender broken at 3 s).

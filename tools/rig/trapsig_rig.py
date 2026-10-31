@@ -154,6 +154,27 @@ def term_check(name, script, want_log, want_rc):
     return good
 
 
+def wait_check(name, sig, want_ended):
+    """kill -s SIG at C:Wait (not an ixemul program: ixkill fails, os_signal falls back or does not). Proves the
+    Ctrl-C branch: the same target ends after TERM (fallback) and survives USR1 (no fallback); RAM:kt.rc holds the
+    job script's status only once the Wait ended, and the sender's status and output are printed."""
+    U.run("Delete RAM:kt.stop RAM:kt.pid RAM:kt.rc RAM:kt.log QUIET", 30)
+    U.run("Run >NIL: Execute VTC:trapsig/kt_wait.run", 30)
+    time.sleep(3)
+    pid = U.run("Type RAM:kt.pid", 30)[1].strip()
+    t = time.time()
+    r = U.run('VTC:trapsig/vsh -c "kill -s %s %s; echo kill-rc=$?"' % (sig, pid), 100)
+    secs = time.time() - t
+    time.sleep(6)
+    rc = U.run("Type RAM:kt.rc", 30)
+    ended = rc[0] == 0 and rc[1].strip() != ""
+    U.run("Echo x >RAM:kt.stop", 30)
+    good = ended == want_ended
+    print("%s %s -> sender %.1f s, kill said %r, Wait ended %s (want %s)" % (
+        "ok  " if good else "FAIL", name, secs, str(r[1]).strip()[:80], ended, want_ended), flush=True)
+    return good
+
+
 def kill_main():
     vsh = os.environ.get("VSH") or str(U.ROOT / "build/amiga/vsh")
     d = U.VTC / "trapsig"
@@ -171,6 +192,8 @@ def kill_main():
     ok = term_check("C kill -s TERM, vsh script with a TERM trap, priority 1: trap runs (Ctrl-D)", "kt_trap.run", True, "") and ok
     ok = term_check("C2 kill -s TERM, vsh script without a trap, priority 1: exit 143 (Ctrl-D)", "kt_plain.run", False, "143") and ok
     ok = term_check("D kill -s TERM, native non-vsh program (C:Wait), priority 1: stops on Ctrl-C", "kt_wait.run", False, "0") and ok
+    ok = wait_check("E kill -s TERM, C:Wait: the Ctrl-C fallback ends it", "TERM", True) and ok
+    ok = wait_check("F kill -s USR1, C:Wait (control, no fallback): Wait survives", "USR1", False) and ok
     print("trapsig_rig kill: %s" % ("PASS" if ok else "FAIL"))
     return 0 if ok else 1
 
