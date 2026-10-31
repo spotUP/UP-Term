@@ -18,6 +18,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   --ro: DH0: read-only, stalls on writes;
                   --kick <file>: another Kickstart ROM for this boot;
                   --serial <path>: the serial port to that path, not serial.log;
+                  --no-060lib: the 060 machine without 68060.library, mmu.library, 680x0.library in Libs: (reset-loop hunt, s40);
                   --no-dopus: Workbench without Directory Opus (no DOPUS.1; the clone gets the stock
                   C/LoadWB and no Libs/workbench.library, the ROM's runs);
                   --idle-minutes <N>: stop the rig after N minutes with no command (default 60, 0 = off, rig 1 never);
@@ -460,6 +461,9 @@ Z3_MB = 1 << (RAM_MB - 9).bit_length() if RAM_MB > 8 else 0
 # --nofpu: a machine with no FPU (the soft-float ixemul.library, (database "fpu") NOFPU). The 060 machines
 # become the 68LC060 (FS-UAE's cpu key; the LC has no FPU and no MMU), the 020 machine drops its fpu key.
 NOFPU = "--nofpu" in sys.argv
+# --no-060lib: the 060 machine (FPU kept) booted with none of paths.libs060() in Libs: (RIG31-RESET-LOOP, s40: is the
+# `crashme illegal` reset loop of the 3.1 060 rig the CPU or 68060.library?). The 68040.library stub stays.
+NO060LIB = "--no-060lib" in sys.argv
 MMU = "--mmu" in sys.argv and M060 and not NOFPU
 DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
@@ -555,6 +559,12 @@ def os_tree_rtg(dst):
         out.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run([xdf, str(SRC_HDF), "read", rel, str(out)], check=True, capture_output=True)
 
+def drop_060_libs(libs_dir):
+    """--no-060lib on a host-directory system: delete the libs060() names from <tree>/Libs (the tree keeps earlier runs
+    and the clean image may ship its own 68060.library)."""
+    for _lib, name, _var in paths.libs060():
+        (pathlib.Path(libs_dir) / name).unlink(missing_ok=True)
+
 def os_image_copy():
     """<rig>/os-<name>/ (a host directory, FS-UAE's hard drive) from the owner's
     clean image (once, or anew with --fresh), the two hooks appended to its
@@ -584,7 +594,9 @@ def os_image_copy():
         paths.require_input(paths.INSTALLER, "UPTERM_INSTALLER", "an Installer program")
         shutil.copyfile(paths.INSTALLER, dst / "C/Installer")
     if M060:
-        if not NOFPU:   # on the FPU-less 68LC060 SetPatch's Phase5 68060.library Gurus 80000006 before ENV: (rig 4, 2026-10-23)
+        if NO060LIB:
+            drop_060_libs(dst / "Libs")
+        elif not NOFPU:   # on the FPU-less 68LC060 SetPatch's Phase5 68060.library Gurus 80000006 before ENV: (rig 4, 2026-10-23)
             for lib, name, var in paths.libs060():
                 paths.require_input(lib, var, name)
                 shutil.copyfile(lib, dst / "Libs" / name)
@@ -619,9 +631,10 @@ def sys_hdf_cpu_lib(image):
     xdf = shutil.which("xdftool") or str(pathlib.Path.home() / ".local/bin/xdftool")
     have = subprocess.run([xdf, str(image), "list", "Libs"], capture_output=True, text=True).stdout
     names = {l.split()[0] for l in have.splitlines() if l.split()}
-    if NOFPU:
-        if "68060.library" in names:
-            subprocess.run([xdf, str(image), "delete", "Libs/68060.library"], check=True, capture_output=True)
+    if NOFPU or NO060LIB:
+        for _lib, name, _var in paths.libs060():
+            if name in names and (NO060LIB or name == "68060.library"):
+                subprocess.run([xdf, str(image), "delete", "Libs/" + name], check=True, capture_output=True)
         return
     for lib, name, var in paths.libs060():
         paths.require_input(lib, var, name)
