@@ -1197,6 +1197,7 @@ def _dopus_present_checks(res):
     before = window_addrs()
     import amarchy_gui_rig as g
     s, w = g.open_menu()
+    menu_screen = s
     # the filter works on the level shown: the group at the root, then its row inside the group (a contiguous
     # case-insensitive substring, amarchy/menu_core.c mn_match)
     for label in ('Dopus', 'Open UP-Term here'):
@@ -1208,10 +1209,27 @@ def _dopus_present_checks(res):
     # screen titles follow the active window, so they name no screen; the window title UP-Term is the proof
     res.append(new == ['UP-Term'])
     print('  %s Open UP-Term here: new windows (title) %s' % ('[OK]' if res[-1] else '[FAIL]', new), flush=True)
+    # D7: with DOpus on its own screen (`dopus screen` names it DOPUS.n) the window must open ON that screen, not behind it
+    # on the Workbench screen; a rig where DOpus is the Workbench has one screen and adds no check
+    if dopus_rexx('dopus screen').split()[:1] and dopus_rexx('dopus screen').split()[0].startswith('DOPUS.'):
+        res.append(on_dopus_screen(__import__('amarchy_gui_rig').screens(), 'UP-Term'))
+        print('  %s Open UP-Term here: the window is on the DOpus screen' % ('[OK]' if res[-1] else '[FAIL]'), flush=True)
+        res.append(on_dopus_screen([menu_screen], 'Amarchy'))
+        print('  %s the drawn Amarchy menu opened on the DOpus screen' % ('[OK]' if res[-1] else '[FAIL]'), flush=True)
     # close the Device List lister Super+Shift+D opened: it would otherwise stay for the next row (dopus_listers lists it)
     for h in set(dopus_rexx('lister query all').split()) - handles_before:
         dopus_rexx('lister close %s' % h)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
+
+
+def on_dopus_screen(screens, title):
+    """True when the window titled `title` is on the screen that also holds a DOpus window (task dopus_* or the DOpus5
+    process): the screens list of amarchy_gui_rig.screens(). False when the window is missing or on another screen."""
+    for s in screens:
+        tasks = [w.get('task') or '' for w in s['windows']]
+        if any(w['title'] == title for w in s['windows']):
+            return any(t.startswith('dopus') or t.startswith('DOpus5') for t in tasks)
+    return False
 
 
 def dopus_rexx(cmd):

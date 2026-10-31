@@ -77,6 +77,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=menu_rig_dopus_absent the amarchy_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
 # ONLY=menu_rig_dopus_quit the dopus_quit row starts DOpus again with C:LoadWB at its end, also on a raise (tests/test_menu_rig_dopus_quit_restore.py)
 # ONLY=rig_only_list `--only a,b` in the amarchy rig scripts runs those rows; an unknown row exits naming it (tests/test_rig_only_list.py)
+# ONLY=menu_rig_dopus_screen dopus_present checks that Open UP-Term here and the drawn menu open on DOpus's own screen (tests/test_menu_rig_dopus_screen.py)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
 # ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
@@ -182,6 +183,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_absent ]; then python3 tests/test_menu_rig_dopus_absent_commodity.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_quit ]; then python3 tests/test_menu_rig_dopus_quit_restore.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_only_list ]; then python3 tests/test_rig_only_list.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_screen ]; then python3 tests/test_menu_rig_dopus_screen.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_safeoff.py; fi
