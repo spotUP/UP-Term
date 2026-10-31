@@ -43,9 +43,10 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   these builds over the copies a kit installed in SYS: (KIT_SHADOWS;
                   reboot the rig after install). The kit's own files are kept in
                   VTC:kit-orig and come back with `rig.py kit-restore` + a reboot.
-  rig.py dopus    install Directory Opus 5.104 once into this rig's host VTC: drawer (the archive's own Installer,
+  rig.py dopus [--own-screen]   install Directory Opus 5.104 once into this rig's host VTC: drawer (the archive's own Installer,
                   "Instead of Workbench") and record its S:User-Startup block + stamp there; every later
-                  clone start then boots 5.104 as the Workbench (default; --no-dopus skips it, no stamp: [WARN], 5.82)
+                  clone start then boots 5.104 as the Workbench (default; --no-dopus skips it, no stamp: [WARN], 5.82);
+                  --own-screen also writes the saved environment that puts DOpus on its own 1344x1080 screen (DOPUS.1)
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
@@ -2005,7 +2006,8 @@ def wasabi():
     wb.main(sys.argv[2:])
 
 def dopus():
-    """`rig.py dopus [--force]`: install Directory Opus 5.104 into this rig's VTC: drawer once (tools/rig/dopus_rig.py)."""
+    """`rig.py dopus [--force] [--own-screen]`: install Directory Opus 5.104 into this rig's VTC: drawer once (tools/rig/dopus_rig.py);
+    --own-screen also saves the environment that puts DOpus on its own screen (DOPUS.1, 1344x1080)."""
     import dopus_rig
     dopus_rig.main()
 

@@ -101,9 +101,37 @@ def block_of(data):
     return m.group(0)
 
 
+# D7 own screen (s39): Settings > Environment > Display Mode > a fixed mode > Use, then Settings > Save Environment, changes
+# 24 bytes of DOpus5:Environment/workbench (the file 5.104 loads on a Workbench start; shipped identical to 'default'): the
+# ModeID at 20..23, width/height 1344x1080 at 28..31, a 12-byte block (0xBB) at 904..915, 1036, 2147, 2176/2177. Offsets with
+# the shipped byte and the saved one, recorded from the GUI save on rig 5.
+OWN_SCREEN = {20: (0, 80), 21: (0, 249), 22: (0, 19), 23: (1, 3), 28: (2, 5), 29: (128, 64), 30: (1, 4), 31: (0, 56),
+              **{i: (0, 187) for i in range(904, 916)}, 1036: (0, 4), 2147: (16, 18), 2176: (0, 1), 2177: (0, 2)}
+ENVFILE = "DOpus5/Environment/workbench"
+
+
+def own_screen(vtc):
+    """`rig.py dopus --own-screen`: DOpus 5.104 opens its own 1344x1080 screen (DOPUS.1 on it, the lister and button bank
+    there, the Amarchy bar stays on the Workbench screen). Edits the saved environment file in the rig's VTC: drawer, so the
+    next boot (and every clone) has it. Idempotent; refuses a file that is neither the shipped nor the saved bytes."""
+    f = vtc / ENVFILE
+    if not f.exists():
+        sys.exit("dopus: %s is missing; run `rig.py dopus` first" % f)
+    data = bytearray(f.read_bytes())
+    for off, (old, new) in OWN_SCREEN.items():
+        if data[off] not in (old, new):
+            sys.exit("dopus: %s byte %d is %d, expected %d (shipped) or %d (own screen)" % (f, off, data[off], old, new))
+        data[off] = new
+    f.write_bytes(bytes(data))
+    print("dopus: %s now opens DOpus on its own screen" % f)
+
+
 def main():
     vtc = rig.RIG / "vtc"
     md5 = rig.dopus_archive_md5()
+    if "--own-screen" in sys.argv and "--force" not in sys.argv and (vtc / rig.DOPUS_STAMP).exists() \
+            and (vtc / rig.DOPUS_STAMP).read_text().strip() == md5:
+        return own_screen(vtc)   # the install stands: only the environment file changes (no rig boot)
     got = hashlib.md5(ARCHIVE.read_bytes()).hexdigest()
     if got != md5:
         sys.exit("dopus: %s md5 %s, archives.txt says %s" % (ARCHIVE, got, md5))
@@ -147,6 +175,8 @@ def main():
         (vtc / SCRIPT).unlink(missing_ok=True)
         time.sleep(5)   # the command's last writes land before the stop
         rig.stop()
+    if "--own-screen" in sys.argv:
+        own_screen(vtc)
 
 
 if __name__ == "__main__":
