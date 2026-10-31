@@ -56,10 +56,52 @@ static void failed_reopen_retries(void)
     CHECK_INT(wbpark_note(&p, 1, 1), WBPARK_NONE);
 }
 
+static char hbuf[600000];
+
+static const char *handler_src(void)
+{
+    FILE *f = fopen("handler/vtcon_handler.c", "rb");
+    size_t n = f ? fread(hbuf, 1, sizeof hbuf - 1, f) : 0;
+    if (f) fclose(f);
+    hbuf[n] = 0;
+    return hbuf;
+}
+
+/* A tabbed console parks like a plain one; DISK_INFO has no window while parked. */
+static void tabs_park(void)
+{
+    const char *src = handler_src();
+    char *e, *m, *d;
+    int i;
+    CHECK_INT(wbpark_eligible(1, 1, 0, 0, 0, 1), 1);
+    CHECK_INT(wbpark_eligible(1, 1, 1, 0, 0, 1), 0); /* a tab: its host parks it */
+    CHECK_INT(wbpark_eligible(1, 1, 0, 1, 0, 1), 0);
+    CHECK_INT(wbpark_eligible(1, 1, 0, 0, 1, 1), 0);
+    CHECK_INT(wbpark_eligible(1, 1, 0, 0, 0, 0), 0);
+    CHECK_INT(wbpark_disk_window(1, (void *)src) == 0, 1);
+    CHECK_INT(wbpark_disk_window(0, (void *)src) == (void *)src, 1);
+    /* wired: the eligibility has no tab count, wb_msgs parks and unparks the tabs, DISK_INFO asks the helper */
+    e = strstr(src, "static int wb_eligible(con *c)");
+    CHECK_INT(e != 0, 1);
+    CHECK_INT(e && strstr(e, "wbpark_eligible(") && strstr(e, "wbpark_eligible(") - e < 120, 1);
+    CHECK_INT(e && strstr(e, "ntabs") && strstr(e, "ntabs") - e > 400, 1);
+    m = strstr(src, "static void wb_msgs(con *c)");
+    CHECK_INT(m && strstr(m, "wb_tabs_park(c)") && strstr(m, "wb_tabs_park(c)") < strstr(m, "window_unbind(c)"), 1);
+    CHECK_INT(m && strstr(m, "wb_tabs_unpark(c)") && strstr(m, "wb_tabs_unpark(c)") > strstr(m, "window_rebind(c, scr, win)"), 1);
+    d = strstr(src, "case ACTION_DISK_INFO:");
+    CHECK_INT(d && strstr(d, "wbpark_disk_window(wb_is_parked(c)") && strstr(d, "wbpark_disk_window(") - d < 900, 1);
+    for (i = 0; i < 2; i++) { /* the tab side answers both messages */
+        const char *k = i ? "case TM_UNPARK:" : "case TM_PARK:";
+        char *t = strstr(src, "static void tab_msgs(con *c)");
+        CHECK_INT(t && strstr(t, k) != 0, 1);
+    }
+}
+
 void suite_wbpark(void)
 {
     close_then_open();
     flag_decision();
     not_eligible();
     failed_reopen_retries();
+    tabs_park();
 }

@@ -22,10 +22,26 @@ typedef struct {
     int parked; /* the window was closed for a Workbench close */
 } wbpark;
 
+/* The host console of a window (with tabs or without) may close and reopen it: its own window on the
+ * Workbench screen, not a tab (the host parks the tabs), not a foreign window, not a screen of its own.
+ * Tabs make no difference: every tab lets go of the window first and takes the new one (TM_PARK,
+ * TM_UNPARK in vtcon_handler.c). */
+static int wbpark_eligible(int own_win, int has_term, int is_tab, int foreign, int own_screen, int on_wb_screen)
+{
+    return own_win && has_term && !is_tab && !foreign && !own_screen && on_wb_screen;
+}
+
+/* ACTION_DISK_INFO's id_VolumeNode is the console's Window pointer. While parked there is none: NULL.
+ * Callers (DOS requesters, Info, programs reading ConUnit) take NULL as "no window" and fall back to the
+ * Workbench screen; blocking until the reopen would stall the caller inside the very Workbench close that
+ * waits for every client, and opening a window would make CloseWorkBench fail. */
+static void *wbpark_disk_window(int parked, void *win)
+{
+    return parked ? 0 : win;
+}
+
 /* One Workbench message: `opened` is its value (0 = about to close, else
- * opened or the close failed); `eligible` says the console has a window it
- * may close and reopen on its own (a plain Workbench window: no tabs, no own
- * screen, not a foreign window). */
+ * opened or the close failed); `eligible` is wbpark_eligible. */
 static int wbpark_note(wbpark *p, int opened, int eligible)
 {
     if (!opened) {

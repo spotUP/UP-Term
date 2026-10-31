@@ -27,3 +27,19 @@
 - Tabbed consoles (ntabs >= 2) and tab hosts are not parked and not flagged on a later tab; a window opened plain then
   tabbed keeps the flag but is not parked: CloseWorkBench then fails and screennotify re-sends "opened".
 - XCON:/foreign windows (WINDOW 0xaddr) are not ours to flag.
+
+## s40 tabbed consoles (vtcon-05, 2026-11-01)
+- Violated invariant: every window that carries WFLG_WBENCHWINDOW must close on a Workbench-close message, or CloseWorkBench
+  fails and screennotify re-sends "opened". A tabbed host kept the flag (opened plain-flagged, later tabbed) but
+  wb_eligible refused ntabs >= 2, so it never parked.
+- Level of the root cause: the park decision (wb_eligible), one level above the window: the tabs share the host's
+  window (tab_rp copies its RastPort layer), so parking had to let the tabs go too, not just exempt them.
+- Fix (reuses the acd33353 path): wbpark_eligible has no tab count. wb_msgs HIDE calls wb_tabs_park (each tab, one at a time,
+  TM_PARK answered before the window closes: tab closes its window parts, vtwin_unbind, unlocks the screen) then
+  window_unbind as before. SHOW: window_rebind, then wb_tabs_unpark (TM_UNPARK with the new window: tab copies
+  the RastPort, vtwin_rebind, menus, scroll bar), bar_draw, tab_show_active. Tabs themselves ignore the screennotify
+  message (is_tab). Choice: parked, not "unflagged" (a tab opened flagged would need to lose a flag after open, impossible).
+- DISK_INFO while parked: id_VolumeNode = NULL (wbpark_disk_window), no window opened (wb_is_parked covers the host and
+  its tabs). Blocking until reopen would stall the caller inside the Workbench close, which waits for every client.
+
+Rig result (s40, 2026-11-01): rig 2, `--os 31` then `--os 32`, UP-Term with a second tab (Left Amiga T), `SYS:Prefs/ScreenMode FROM VTC:screenmode.aga16.prefs USE`. Both: no System Request (requesters empty over 5 polls), screen reopens at depth 4, UP-Term window back at 0,0 640x256 on the new screen. On 3.1 the tab bar is drawn after the reopen (pixel check). Not verified: tab count after reopen (no text channel for the bar on the rig).

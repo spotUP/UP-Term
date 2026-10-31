@@ -208,6 +208,7 @@ typedef struct con {
     struct Screen *myscreen;     /* the screen opened for this window */
     screenreq screen_want;       /* a move to another screen kind asked for: done after the IDCMP loop */
     wbpark wb;                   /* the window is closed while the Workbench closes (screennotify) */
+    int tab_parked;              /* a tab: the host's window is closed for a Workbench close (TM_PARK) */
     struct MsgPort *sn_port;     /* screennotify.library's Workbench messages */
     APTR sn_handle;              /* our Workbench client; 0 = none */
     WORD wb_box[4];              /* the parked window's left, top, width, height */
@@ -3197,8 +3198,17 @@ static void screen_pending(con *c)
  * with the terminal kept (not tabs, not our own screen, not a foreign window). */
 static int wb_eligible(con *c)
 {
-    return c->own_win && c->w.t && !c->is_tab && !c->foreign && c->ntabs < 2 && !c->own_screen &&
-           c->locked && (c->locked->Flags & SCREENTYPE) == WBENCHSCREEN;
+    return wbpark_eligible(c->own_win != 0, c->w.t != 0, c->is_tab, c->foreign != 0, c->own_screen,
+                           c->locked && (c->locked->Flags & SCREENTYPE) == WBENCHSCREEN);
+}
+
+static void wb_tabs_park(con *c);
+static void wb_tabs_unpark(con *c);
+
+/* No window now: a parked console (the host, or a tab of a parked host) must not open one. */
+static int wb_is_parked(const con *c)
+{
+    return c->wb.parked || c->tab_parked;
 }
 
 /* Become a Workbench client when the library is there; without it the
@@ -3256,6 +3266,7 @@ static void wb_msgs(con *c)
             c->wb_box[2] = win->Width;
             c->wb_box[3] = win->Height;
             c->wb_box_on = 1;
+            wb_tabs_park(c); /* the tabs let go of the window first: it closes under them */
             window_unbind(c);
         }
         ReplyMsg(&m->snm_Message);
@@ -3265,6 +3276,7 @@ static void wb_msgs(con *c)
             c->wb_box_on = 0;
             if (win) {
                 window_rebind(c, scr, win);
+                wb_tabs_unpark(c);
             } else {
                 if (scr)
                     UnlockPubScreen(0, scr);
@@ -5873,7 +5885,7 @@ static void idcmp(con *c)
  * it when it comes back (tab_replies), REGISTER and UNREGISTER are waited
  * for. */
 enum { TM_REGISTER = 1, TM_UNREGISTER, TM_TITLE, TM_COMMAND, TM_EVENT, TM_SHOW, TM_HIDE, TM_INSET,
-       TM_KNOB, TM_STAT, TM_STATE };
+       TM_KNOB, TM_STAT, TM_STATE, TM_PARK, TM_UNPARK };
 
 struct tab_msg {
     struct Message msg;
@@ -6640,9 +6652,85 @@ static void tab_msgs(con *c)
         case TM_STATE:
             c->st = t->st;
             break;
+        case TM_PARK: /* the host's window closes for a Workbench close: the terminal stays */
+            if (c->w.win) {
+                window_parts_close(c);
+                ua_set(c, 0);
+                vtwin_unbind(&c->w);
+                if (c->locked) {
+                    UnlockPubScreen(0, c->locked);
+                    c->locked = 0;
+                }
+                c->shown = 0;
+                c->tab_parked = 1;
+            }
+            break;
+        case TM_UNPARK: /* the host's new window (t->win): the same terminal on it */
+            if (c->tab_parked && t->win) {
+                struct Screen *scr = lock_screen(c);
+                if (scr) {
+                    c->locked = scr;
+                    c->tab_rp = *t->win->RPort;
+                    c->w.own_rp = &c->tab_rp;
+                    vtwin_set_screen(&c->w, scr);
+                    vtwin_rebind(&c->w, t->win);
+                    pens_tell(c);
+                    menu_add(c, t->win);
+                    sbar_apply(c);
+                    c->tab_parked = 0;
+                }
+            }
+            break;
         }
         ReplyMsg(&t->msg);
     }
+}
+
+/* host -> a tab, answered before this returns: the tab has done it (the window may close right after) */
+static void tab_sync(con *c, con *to, int type, struct Window *win)
+{
+    struct tab_msg *t = to->tab_port ? tab_msg(c, type) : 0;
+    struct Message *m;
+    if (!t)
+        return;
+    t->win = win;
+    PutMsg(to->tab_port, &t->msg);
+    for (;;) {
+        while ((m = GetMsg(c->tab_reply)) != 0) {
+            int mine = m == &t->msg;
+            if (m == c->hiding)
+                c->hiding = 0; /* the window is going or new: tab_show_active runs after the unpark */
+            FreeVec(m);
+            if (mine)
+                return;
+        }
+        Wait(1UL << c->tab_reply->mp_SigBit);
+    }
+}
+
+/* The Workbench closes (wb_msgs): every tab lets go of the host's window before it closes, and takes
+ * the new one when it opens again; the bar and the active tab are drawn again. */
+static void wb_tabs_park(con *c)
+{
+    int i;
+    if (c->ntabs < 2)
+        return;
+    ClearMenuStrip(c->own_win);
+    for (i = 0; i < c->ntabs; i++)
+        if (c->tab_list[i] != c)
+            tab_sync(c, c->tab_list[i], TM_PARK, 0);
+}
+
+static void wb_tabs_unpark(con *c)
+{
+    int i;
+    if (c->ntabs < 2)
+        return;
+    for (i = 0; i < c->ntabs; i++)
+        if (c->tab_list[i] != c)
+            tab_sync(c, c->tab_list[i], TM_UNPARK, c->own_win);
+    bar_draw(c);
+    tab_show_active(c);
 }
 
 /* A tab's Open: the host's window, joined. 0 when there is no such host
@@ -7092,7 +7180,7 @@ static void packet(con *c, struct DosPacket *p)
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
-        if (!c->w.win && !c->wb.parked && !open_window(c)) { /* parked: the grid takes it (wb_msgs) */
+        if (!c->w.win && !wb_is_parked(c) && !open_window(c)) { /* parked: the grid takes it (wb_msgs) */
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
@@ -7122,7 +7210,7 @@ static void packet(con *c, struct DosPacket *p)
                                        (LONG)(k + 3 < p->dp_Arg3 ? wb[k + 3] : 0));
         }
 #endif
-        if (!c->w.win && !c->wb.parked && !open_window(c)) { /* parked: the grid takes it (wb_msgs) */
+        if (!c->w.win && !wb_is_parked(c) && !open_window(c)) { /* parked: the grid takes it (wb_msgs) */
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
@@ -7468,13 +7556,13 @@ static void packet(con *c, struct DosPacket *p)
     case ACTION_DISK_INFO: {
         struct InfoData *id = (struct InfoData *)BADDR(p->dp_Arg1);
         LONG i;
-        if (!c->w.win && !c->wb.parked)
+        if (!c->w.win && !wb_is_parked(c))
             open_window(c); /* as V47's con-handler does: the caller wants the window */
         c->auto_held = 1;   /* the caller has the window: AUTO no longer shuts it */
         for (i = 0; i < (LONG)sizeof(*id); i++)
             ((UBYTE *)id)[i] = 0;
         id->id_DiskType = 0x434F4E00L; /* 'CON\0' (no NDK name; value unverified against the ROM) */
-        id->id_VolumeNode = (BPTR)c->w.win;
+        id->id_VolumeNode = (BPTR)wbpark_disk_window(wb_is_parked(c), c->w.win);
         id->id_InUse = (LONG)rom_console(c);
         reply(p, DOSTRUE, 0);
         return;
