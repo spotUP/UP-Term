@@ -1,6 +1,8 @@
 /* wincensus: list every window on the Workbench screen under LockIBase: address, title, Flags, WFLG_WBENCHWINDOW,
  * owner task of the UserPort. Writes T:wincensus.txt and stdout. Census for the IPrefs 40.7 reset check
- * (it counts windows lacking WFLG_WBENCHWINDOW, 0x02000000). */
+ * (it counts windows lacking WFLG_WBENCHWINDOW, 0x02000000). Also prints the public screen list (name, screen,
+ * psn_VisitorCount, psn_Flags), each screen's Flags, and the jump target of intuition CloseWorkBench (LVO -78), which
+ * IPrefs 40.7 SetFunctions to its window check (hunk 3 offset 0x2082). */
 #include <exec/types.h>
 #include <exec/execbase.h>
 #include <intuition/intuitionbase.h>
@@ -24,12 +26,43 @@ int main(void)
     IntuitionBase = (struct IntuitionBase *)OpenLibrary((STRPTR)"intuition.library", 36);
     if (!IntuitionBase)
         return 20;
+    {
+        struct List *pl = LockPubScreenList();
+        struct PubScreenNode *n;
+        unsigned short *v = (unsigned short *)((char *)IntuitionBase - 78);
+        unsigned long tgt = v[0] == 0x4ef9 ? ((unsigned long)v[1] << 16 | v[2]) : 0;
+        printf("CWB vector %08lx op=%04x target=%08lx\n", (unsigned long)v, v[0], tgt);
+        if (f)
+            fprintf(f, "CWB vector %08lx op=%04x target=%08lx\n", (unsigned long)v, v[0], tgt);
+        if (tgt) { /* first 12 words of the patch: IPrefs 40.7's stub starts 6100 e406 (bsr to its window check) */
+            unsigned short *c = (unsigned short *)tgt;
+            int i;
+            printf("CWB code");
+            for (i = 0; i < 12; i++)
+                printf(" %04x", c[i]);
+            printf("\n");
+            if (f) {
+                fprintf(f, "CWB code");
+                for (i = 0; i < 12; i++)
+                    fprintf(f, " %04x", c[i]);
+                fprintf(f, "\n");
+            }
+        }
+        for (n = (struct PubScreenNode *)pl->lh_Head; n->psn_Node.ln_Succ; n = (struct PubScreenNode *)n->psn_Node.ln_Succ) {
+            printf("PUB name=%s screen=%08lx visitors=%d psnflags=%04x\n", n->psn_Node.ln_Name ? n->psn_Node.ln_Name : "-",
+                   (unsigned long)n->psn_Screen, (int)n->psn_VisitorCount, (unsigned)n->psn_Flags);
+            if (f)
+                fprintf(f, "PUB name=%s screen=%08lx visitors=%d psnflags=%04x\n", n->psn_Node.ln_Name ? n->psn_Node.ln_Name : "-",
+                        (unsigned long)n->psn_Screen, (int)n->psn_VisitorCount, (unsigned)n->psn_Flags);
+        }
+        UnlockPubScreenList();
+    }
     lk = LockIBase(0);
     for (s = IntuitionBase->FirstScreen; s; s = s->NextScreen) {
         int wb = (s->Flags & SCREENTYPE) == WBENCHSCREEN;
-        printf("SCREEN %08lx %s title=%s\n", (unsigned long)s, wb ? "WB" : "other", s->Title ? (char *)s->Title : "-");
+        printf("SCREEN %08lx %s flags=%04x title=%s\n", (unsigned long)s, wb ? "WB" : "other", (unsigned)s->Flags, s->Title ? (char *)s->Title : "-");
         if (f)
-            fprintf(f, "SCREEN %08lx %s title=%s\n", (unsigned long)s, wb ? "WB" : "other", s->Title ? (char *)s->Title : "-");
+            fprintf(f, "SCREEN %08lx %s flags=%04x title=%s\n", (unsigned long)s, wb ? "WB" : "other", (unsigned)s->Flags, s->Title ? (char *)s->Title : "-");
         for (w = s->FirstWindow; w; w = w->NextWindow) {
             struct Task *t = w->UserPort ? (struct Task *)w->UserPort->mp_SigTask : 0;
             const char *tn = t && t->tc_Node.ln_Name ? t->tc_Node.ln_Name : "none";

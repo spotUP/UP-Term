@@ -192,3 +192,53 @@ DOpus windows, yet the reset went through earlier with Amarchy stopped. So eithe
 (is the DOpus screen the public screen named "Workbench"? not checked) or the result is used inverted/combined with another check
 (callers at 0x1168 and 0x2c82, not yet read). Next: read the callers, print screen Flags + public screen names in wincensus.
 Rig note: after the first rig start RAM: reported 109% used and every command failed ("could not start the command"); a rig reboot cured it.
+
+## Reset condition (s28 opus read)
+
+IPrefs 40.7 (build/rig/os-31/C/IPrefs, m68k-amigaos-objdump). Offsets are hunk 3 (code, file offset 0xc00); the earlier
+"0x108a / 0x1168 / 0x2c82" were file offsets = hunk 3 0x48a / 0x568 / 0x2082.
+
+**The requester is not the window check.** Reset routine 0x58e (called from 0x158):
+
+```
+cnt = 0;                                   /* a4@(424) */
+again:
+if (CloseWorkBench()) { OpenWorkBench(); return 1; }        /* 0x59c, through the whole -78 patch chain */
+if (!wbscreen()) return 1;                 /* 0x418: LockPubScreenList, FindName(list,"Workbench")->psn_Screen */
+if (ask()) goto again;                     /* 0x4dc: BuildEasyRequest "Intuition is attempting to reset..." */
+return 0;
+ask(): loop { Delay(5); r = SysReqHandler(req,0,FALSE);      /* 0x53e..0x56e */
+              if (r >= 0) break;                             /* Retry=1 / Cancel=0 */
+              if (cnt < 3 && nonwb_free(req)) { cnt++; r = 1; break; } }   /* 0x568: auto-retry, at most 3 times */
+nonwb_free(skip) /* 0x48a */: LockIBase; s = wbscreen(); for (w = s->FirstWindow; w; w = w->NextWindow)
+              if (!(w->Flags & WFLG_WBENCHWINDOW) && w != skip) return 0;   /* btst #1,24(a2) */ return 1;
+```
+
+So the requester appears exactly when **CloseWorkBench() returns FALSE and a public screen named "Workbench" exists**.
+The window flag walk only decides (a) whether the open requester retries by itself, and (b) IPrefs' own patch of
+CloseWorkBench: hunk 0 0x440 `SetFunction(IntuitionBase, -78, 0x2082)`, old vector saved at data 0x616. Stub 0x2082:
+`if (!nonwb_free(a0)) return FALSE; 0x2462 (ObtainSemaphore 0x5c8 ...); d0 = old(); Signal(IPrefs, 0x4000); return d0`.
+IPrefs also patches -612 (OpenScreenTagList, stub 0x201e) and -96 (DisplayBeep, 0x1bb4). There is no visitor-count,
+backdrop, task or IDCMP test in IPrefs; any such condition lives in the inner CloseWorkBench (intuition 40.85 / DOpus).
+
+**Rig 8 census (wincensus prints the -78 jump target, its first 12 words, pubscreen list, screen Flags):**
+
+| state | -78 target | Workbench visitors | windows (WBENCHWINDOW) | after pen USE |
+|---|---|---|---|---|
+| Amarchy stopped | 104cdb50 `594f 48e7 301e 49ee 0030 ...` (not IPrefs' stub, which starts `6100 e406`) | 2 | dopus_start_menu NO, dopus NO | reset OK: screen re-made (10002450 -> 10002458), DOpus windows new addresses, no requester |
+| Amarchy.s28 (md5 455179624de9..., bar flagged) | 100606b0 = Amarchy gate (`2f3a 000c 6606 ... 4e75`, saved 102eeb00 hook / 104cdb50) | 4 | bar yes, DOpus NO x2 | requester; screen NOT re-made (10002458 stays), but bar AND both DOpus windows closed and reopened (new addresses) |
+
+Reading: with Amarchy stopped two unflagged DOpus windows do not block, so the inner patch at 104cdb50 closes DOpus'
+windows before IPrefs' window check runs (or does not chain to it); unverified which program owns 104cdb50. With the
+flagged bar the Amarchy gate works (bar closes and reopens), DOpus closes its windows too, yet the inner
+CloseWorkBench still returns FALSE. The flag is therefore irrelevant to this failure. Amarchy's only extra visitors are
+the bar window and the bar's LockPubScreen("Workbench") (bar.c:471, released in bar_close), both gone after
+desk_wb_close if the close finished in time.
+
+Open, needs one more rig run: (1) did the gate's 3 s wait time out (WBR_WAIT_TICKS, wbreset_patch.c:51; the record's
+timed_out counter) so the original ran with the bar still open, or (2) does a visitor stay (print psn_VisitorCount and
+the window list from inside close_hook just before the saved vector is called). (3) Identify 104cdb50's owner (segment
+walk of dopus / IPrefs seglists).
+
+Accident: the first census run went to rig 1 (UPTERM_RIG unset): it Broke Amarchy there, USEd both palettes, restarted
+Amarchy (rig 1's build, bar unflagged, Flags 08010840) and left an IPrefs System Request open on rig 1. Not dismissed.
