@@ -22,6 +22,7 @@ extern int (*desk_dos_own_close)(void);
 extern void (*desk_dos_own_open)(void);
 /* how many times desk_dos_apply ran its writes (the reachability sentinel) and the mask of the last run */
 extern unsigned long desk_dos_flat_pens_writes; /* FLAT-PENS-LIVE: palette pen writes made by flat-system-look itself */
+extern unsigned long desk_dos_wbborder_writes; /* AM-ICON-NOBORDER: Workbench editor writes of the icon border */
 extern unsigned long desk_dos_flat_writes; /* FLAT-C9: times desk_dos_apply wrote the flat_state block of a running amarchy-flat */
 extern unsigned long desk_dos_dopus_sends; /* FLAT-D2: times desk_dos_apply handed the theme to dopus_theme_send */
 extern unsigned long desk_dos_applies, desk_dos_last_mask;

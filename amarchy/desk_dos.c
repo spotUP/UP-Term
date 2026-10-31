@@ -601,11 +601,61 @@ static void dk_flat_pens(const gtheme *th)
     }
 }
 
+/* AM-ICON-NOBORDER: flat-system-look sets the Workbench icon border to "No Border" (WBNC wbp_Borderless in ENV:Sys/Workbench.prefs) through the
+ * 3.2 SYS:Prefs/Workbench editor (USE, like every other part: it tells workbench.library); off puts the value back that was there before. The value
+ * kept lives in T:amarchy-revert/wbborder.prev (one byte, '0' or '1'). 3.1 has no Workbench editor with a WBNC chunk: skipped, no error. */
+unsigned long desk_dos_wbborder_writes;
+#define DK_WBB_PREV DK_REVERT "/wbborder.prev"
+
+static int dk_wbborder_editor_ok(void)
+{
+    static unsigned char img[65536];
+    long len = dk_read("SYS:Prefs/Workbench", img, sizeof img), i;
+    for (i = 0; i + 4 <= len; i++)
+        if (!memcmp(img + i, "WBNC", 4))
+            return 1;
+    return 0;
+}
+
+static void dk_wbborder(void)
+{
+    static unsigned char cur[DK_BUF], out[DK_BUF];
+    am_prefs ap;
+    unsigned char sv[2];
+    int flat, saved = -1, keep;
+    long len, n;
+    amconf_load(&ap);
+    flat = amconf_desk_flat_pens(&ap);
+    if (!dk_wbborder_editor_ok())
+        return;
+    if (dk_read(DK_WBB_PREV, sv, 2) == 1)
+        saved = sv[0] == '1';
+    len = dk_read("ENV:Sys/Workbench.prefs", cur, sizeof cur);
+    if (len < 0)
+        len = dk_read("ENVARC:Sys/Workbench.prefs", cur, sizeof cur);
+    if (len >= DK_BUF)
+        return;
+    n = desk_wbborder(flat, cur, len > 0 ? len : 0, saved, &keep, out, sizeof out);
+    if (n > 0) {
+        UnLock(CreateDir((STRPTR)DK_WORK));
+        desk_dos_wbborder_writes++;
+        if (!dk_put("Workbench", DK_WORK "/workbench.prefs", out, n))
+            return;
+    }
+    if (keep >= 0) {
+        UnLock(CreateDir((STRPTR)DK_REVERT));
+        sv[0] = (unsigned char)(keep ? '1' : '0');
+        dk_write(DK_WBB_PREV, sv, 1);
+    } else if (keep == -2)
+        DeleteFile((STRPTR)DK_WBB_PREV);
+}
+
 int desk_dos_apply(const gtheme *th, char *why, int cap)
 {
     int r = dk_apply(th, why, cap);
     if (!(r > 0 && (r & (1 << DT_PALETTE))))
         dk_flat_pens(th);
+    dk_wbborder();
     dk_flat_sync();          /* also when no desk target changed: flipping a flat switch alone must reach the block */
     return r;
 }

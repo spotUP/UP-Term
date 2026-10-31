@@ -181,6 +181,12 @@ unsigned desk_gate_mask(unsigned mask, int palette_ok, int *ws_reset);
  * (no second Workbench reset; the snapshot is not overwritten by our own file). Stock after a thin write with a snapshot: DK_IC_RESTORE (copy the snapshot back, ENVARC: and ENV:). Else DK_IC_NONE. */
 enum { DK_IC_NONE, DK_IC_WRITE, DK_IC_RESTORE };
 int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int have_snap, int *snapshot);
+/* AM-ICON-NOBORDER: the Workbench icon border is the BOOL wbp_Borderless of the WBNC chunk in ENV:Sys/Workbench.prefs (NDK 3.2
+ * prefs/workbench.h:27-37; the 3.2 Prefs/Workbench editor "Border Size" cycle, "No Border"). desk_wbborder_value: 1 no border, 0 border, -1 no WBNC chunk
+ * (3.1 has none). desk_wbborder: the file flat-system-look wants (flat 1 = no border, 0 = the saved value back). saved = the value kept when we changed it
+ * (-1 none). Returns the size written to out (== curlen), 0 when nothing changes. *save_out: the value to keep (0/1), -2 forget the saved one, -1 as is. */
+int desk_wbborder_value(const unsigned char *cur, long curlen);
+long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap);
 /* the mask a marker names; 0 when buf is no marker */
 unsigned desk_marker_parse(const char *buf, long len);
 

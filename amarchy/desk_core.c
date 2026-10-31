@@ -703,6 +703,56 @@ int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int ha
     return ours && have_snap ? DK_IC_RESTORE : DK_IC_NONE;
 }
 
+
+/* ---- AM-ICON-NOBORDER: the Workbench icon border (Prefs/Workbench "Border Size", WBNC chunk, struct WorkbenchPrefs.wbp_Borderless) ---- */
+#define WBNC_BORDERLESS 20L /* 3 ULONG + struct Rectangle (4 WORD) = 20, then BOOL (a WORD, NDK 3.2 exec/types.h:167) */
+#define WBNC_MIN 22L
+
+static long wbnc_find(const unsigned char *cur, long curlen, long *size)
+{
+    long pos = DK_HDR, body;
+    char id[4];
+    if (!cur || curlen <= 0 || !is_prefs(cur, curlen))
+        return -1;
+    while (next_chunk(cur, curlen, &pos, id, &body, size))
+        if (!memcmp(id, "WBNC", 4))
+            return *size >= WBNC_MIN ? body : -1;
+    return -1;
+}
+
+int desk_wbborder_value(const unsigned char *cur, long curlen)
+{
+    long size, body = wbnc_find(cur, curlen, &size);
+    return body < 0 ? -1 : (int)(get16(cur + body + WBNC_BORDERLESS) != 0);
+}
+
+long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap)
+{
+    long size, body = wbnc_find(cur, curlen, &size);
+    int now, want;
+    *save_out = -1;
+    if (body < 0 || curlen > cap)
+        return 0;
+    now = get16(cur + body + WBNC_BORDERLESS) != 0;
+    if (flat) {
+        if (now)
+            return 0;                       /* already no border: nothing to remember, no second reset */
+        *save_out = now;
+        want = 1;
+    } else {
+        if (saved < 0)
+            return 0;                       /* we never changed it */
+        *save_out = -2;                     /* forget the saved value */
+        if (now == saved)
+            return 0;
+        want = saved;
+    }
+    memcpy(out, cur, (size_t)curlen);
+    out[body + WBNC_BORDERLESS] = 0;
+    out[body + WBNC_BORDERLESS + 1] = (unsigned char)want;
+    return curlen;
+}
+
 /* ---- D-TGT, R1.16a ---- */
 
 /* write order: the table order. Files: the ENV: copy is what the OS reads, the ENVARC: copy survives a reboot. */

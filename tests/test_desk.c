@@ -235,6 +235,49 @@ static void test_desk_flat_pens_live(void)
     CHECK_INT(desk_pens_sync(1, 0, 0, pens), 0);
 }
 
+/* AM-ICON-NOBORDER: flat-system-look sets the WBNC wbp_Borderless of Workbench.prefs to 1 and off puts the saved value back. The reachability twin
+ * is the rig (Workbench.prefs after the toggle; desk_dos_wbborder_writes rises). */
+static long wbnc_file(unsigned char *f, int borderless)
+{
+    memset(f, 0, 26 + 8 + 30);
+    memcpy(f, "FORM", 4);
+    f[7] = 26 + 8 + 30 - 8;
+    memcpy(f + 8, "PREF", 4);
+    memcpy(f + 12, "PRHD", 4);
+    f[19] = 6;
+    memcpy(f + 26, "WBNC", 4);
+    f[26 + 7] = 30;
+    f[34 + 2] = 0x10;                           /* stack size 4096 */
+    f[34 + 7] = 4;                              /* restart time */
+    f[34 + 28] = 1;                             /* colour icons */
+    f[34 + 21] = (unsigned char)borderless;     /* wbp_Borderless, a WORD at body offset 20 */
+    return 64;
+}
+
+static void test_desk_wbborder(void)
+{
+    static unsigned char cur[128], out[128], back[128];
+    int keep;
+    long n = wbnc_file(cur, 0);
+    CHECK_INT(desk_wbborder_value(cur, n), 0);
+    CHECK_INT(desk_wbborder(1, cur, n, -1, &keep, out, sizeof out), n);   /* on: border -> no border, 0 saved */
+    CHECK_INT(keep, 0);
+    CHECK_INT(desk_wbborder_value(out, n), 1);
+    CHECK(!memcmp(cur, out, 34 + 20) && !memcmp(cur + 34 + 22, out + 34 + 22, 8));   /* every other byte kept */
+    CHECK_INT(desk_wbborder(1, out, n, 0, &keep, back, sizeof back), 0);  /* already none: no second write */
+    CHECK_INT(keep, -1);
+    CHECK_INT(desk_wbborder(0, out, n, 0, &keep, back, sizeof back), n);  /* off: the saved 0 returns */
+    CHECK_INT(keep, -2);
+    CHECK(!memcmp(back, cur, (size_t)n));
+    CHECK_INT(desk_wbborder(0, out, n, -1, &keep, back, sizeof back), 0); /* never changed by us: left alone */
+    n = wbnc_file(cur, 1);
+    CHECK_INT(desk_wbborder(1, cur, n, -1, &keep, out, sizeof out), 0);   /* the user already had none: not saved, not restored */
+    CHECK_INT(keep, -1);
+    CHECK_INT(desk_wbborder(0, cur, n, -1, &keep, out, sizeof out), 0);
+    CHECK_INT(desk_wbborder(1, cur, 10, -1, &keep, out, sizeof out), 0);  /* no WBNC chunk (3.1): skipped */
+    CHECK_INT(desk_wbborder_value(cur, 10), -1);
+}
+
 static void test_desk_flat_pens_key(void)
 {
     static unsigned char gold[BUF_MAX], out[BUF_MAX];
@@ -896,6 +939,7 @@ void suite_desk(void)
     test_desk_palette_flat();
     test_desk_flat_pens_key();
     test_desk_flat_pens_live();
+    test_desk_wbborder();
     test_desk_pens_reset();
     test_desk_reset_done();
     test_desk_iprefs_idle();
