@@ -278,6 +278,28 @@ static void test_desk_wbborder(void)
     CHECK_INT(desk_wbborder_value(cur, 10), -1);
 }
 
+/* AM-ICON-NOBORDER: flat on with no Workbench.prefs creates the editor's stock file with the border off; off removes it again */
+static void test_desk_wbborder_absent(void)
+{
+    static unsigned char made[128], back[128], user[128];
+    int keep;
+    long n = desk_wbborder(1, 0, 0, -1, &keep, made, sizeof made);
+    CHECK_INT(n, 84);                                                      /* the 3.2 editor's file measured on a fresh rig */
+    CHECK_INT(keep, DESK_WB_CREATED);
+    CHECK_INT(desk_wbborder_value(made, n), 1);
+    CHECK(!memcmp(made, "FORM", 4) && !memcmp(made + 8, "PREF", 4) && !memcmp(made + 26, "WBNC", 4));
+    CHECK_INT(desk_wbborder(0, 0, 0, -1, &keep, back, sizeof back), 0);    /* off with no file and nothing made: nothing */
+    CHECK_INT(keep, -1);
+    CHECK_INT(desk_wbborder(1, made, n, DESK_WB_CREATED, &keep, back, sizeof back), 0);   /* second apply: no second write */
+    CHECK_INT(desk_wbborder(0, made, n, DESK_WB_CREATED, &keep, back, sizeof back), n);   /* off: stock border written, file then deleted */
+    CHECK_INT(keep, DESK_WB_DELETE);
+    CHECK_INT(desk_wbborder_value(back, n), 0);
+    memcpy(user, made, (size_t)n);
+    user[26 + 8 + 29] = 0;                                                 /* the user edited it meanwhile: left alone, mark forgotten */
+    CHECK_INT(desk_wbborder(0, user, n, DESK_WB_CREATED, &keep, back, sizeof back), 0);
+    CHECK_INT(keep, -2);
+}
+
 static void test_desk_flat_pens_key(void)
 {
     static unsigned char gold[BUF_MAX], out[BUF_MAX];
@@ -940,6 +962,7 @@ void suite_desk(void)
     test_desk_flat_pens_key();
     test_desk_flat_pens_live();
     test_desk_wbborder();
+    test_desk_wbborder_absent();
     test_desk_pens_reset();
     test_desk_reset_done();
     test_desk_iprefs_idle();

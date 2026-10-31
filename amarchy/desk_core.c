@@ -707,6 +707,7 @@ int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int ha
 /* ---- AM-ICON-NOBORDER: the Workbench icon border (Prefs/Workbench "Border Size", WBNC chunk, struct WorkbenchPrefs.wbp_Borderless) ---- */
 #define WBNC_BORDERLESS 20L /* 3 ULONG + struct Rectangle (4 WORD) = 20, then BOOL (a WORD, NDK 3.2 exec/types.h:167) */
 #define WBNC_MIN 22L
+#define WBNC_STOCK_BODY 50L
 
 static long wbnc_find(const unsigned char *cur, long curlen, long *size)
 {
@@ -726,11 +727,50 @@ int desk_wbborder_value(const unsigned char *cur, long curlen)
     return body < 0 ? -1 : (int)(get16(cur + body + WBNC_BORDERLESS) != 0);
 }
 
+/* The 3.2 Prefs/Workbench editor's own file for stock settings, measured on a fresh 3.2 rig: Use with nothing changed writes ENV:Sys/Workbench.prefs,
+ * 84 bytes (the stock install has no such file). Body: stack 4096, restart 3 s, precision 16, emboss rect -3 -3 3 3, border word, name length 25,
+ * NewIcons, colour icons, then the V45/V47 extension words. */
+static const unsigned char wbnc_stock[WBNC_STOCK_BODY] = {
+    0, 0, 0x10, 0, 0, 0, 0, 3, 0, 0, 0, 0x10, 0xff, 0xfd, 0xff, 0xfd, 0, 3, 0, 3, 0, 0, 0, 0, 0, 0x19, 0, 1, 0, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0x32, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static long wbnc_stock_file(int borderless, unsigned char *out, long cap)
+{
+    unsigned char *body;
+    long total = DK_HDR + 8 + WBNC_STOCK_BODY;
+    if (cap < total)
+        return 0;
+    body = iff_header(out, total);
+    memcpy(body, "WBNC", 4);
+    be32_put(body + 4, (unsigned long)WBNC_STOCK_BODY);
+    memcpy(body + 8, wbnc_stock, WBNC_STOCK_BODY);
+    put16(body + 8 + WBNC_BORDERLESS, borderless != 0);
+    return total;
+}
+
 long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap)
 {
-    long size, body = wbnc_find(cur, curlen, &size);
+    long size, body = wbnc_find(cur, curlen, &size), n;
     int now, want;
     *save_out = -1;
+    if (saved == DESK_WB_CREATED) {         /* we made the file: off writes the stock one back and the caller deletes it, unless the user changed it since */
+        *save_out = -2;
+        if (flat)
+            return 0;
+        n = wbnc_stock_file(1, out, cap);
+        if (n > 0 && n == curlen && !memcmp(out, cur, (size_t)n)) {
+            *save_out = DESK_WB_DELETE;
+            return wbnc_stock_file(0, out, cap);
+        }
+        return 0;
+    }
+    if (curlen <= 0) {                      /* no Workbench.prefs: the editor's stock file, border off */
+        if (!flat)
+            return 0;
+        *save_out = DESK_WB_CREATED;
+        return wbnc_stock_file(1, out, cap);
+    }
     if (body < 0 || curlen > cap)
         return 0;
     now = get16(cur + body + WBNC_BORDERLESS) != 0;

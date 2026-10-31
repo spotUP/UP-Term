@@ -629,7 +629,7 @@ static void dk_wbborder(void)
     if (!dk_wbborder_editor_ok())
         return;
     if (dk_read(DK_WBB_PREV, sv, 2) == 1)
-        saved = sv[0] == '1';
+        saved = sv[0] - '0';
     len = dk_read("ENV:Sys/Workbench.prefs", cur, sizeof cur);
     if (len < 0)
         len = dk_read("ENVARC:Sys/Workbench.prefs", cur, sizeof cur);
@@ -642,9 +642,12 @@ static void dk_wbborder(void)
         if (!dk_put("Workbench", DK_WORK "/workbench.prefs", out, n))
             return;
     }
-    if (keep >= 0) {
+    if (keep == DESK_WB_DELETE) {
+        DeleteFile((STRPTR)"ENV:Sys/Workbench.prefs");
+        DeleteFile((STRPTR)DK_WBB_PREV);
+    } else if (keep >= 0) {
         UnLock(CreateDir((STRPTR)DK_REVERT));
-        sv[0] = (unsigned char)(keep ? '1' : '0');
+        sv[0] = (unsigned char)('0' + keep);
         dk_write(DK_WBB_PREV, sv, 1);
     } else if (keep == -2)
         DeleteFile((STRPTR)DK_WBB_PREV);

@@ -184,7 +184,11 @@ int desk_icontrol_decide(int thin, const unsigned char *cur, long curlen, int ha
 /* AM-ICON-NOBORDER: the Workbench icon border is the BOOL wbp_Borderless of the WBNC chunk in ENV:Sys/Workbench.prefs (NDK 3.2
  * prefs/workbench.h:27-37; the 3.2 Prefs/Workbench editor "Border Size" cycle, "No Border"). desk_wbborder_value: 1 no border, 0 border, -1 no WBNC chunk
  * (3.1 has none). desk_wbborder: the file flat-system-look wants (flat 1 = no border, 0 = the saved value back). saved = the value kept when we changed it
- * (-1 none). Returns the size written to out (== curlen), 0 when nothing changes. *save_out: the value to keep (0/1), -2 forget the saved one, -1 as is. */
+ * (-1 none). Returns the size written to out, 0 when nothing changes. *save_out: the value to keep (0/1, or DESK_WB_CREATED), -2 forget the saved one, -1 as is,
+ * DESK_WB_DELETE = USE the returned stock file, then delete ENV:Sys/Workbench.prefs and forget. No file at all: flat writes the editor's 84-byte stock file with the
+ * border off and keeps DESK_WB_CREATED; off removes it again, only while it is still byte-identical to what we wrote. */
+#define DESK_WB_CREATED 2
+#define DESK_WB_DELETE 3
 int desk_wbborder_value(const unsigned char *cur, long curlen);
 long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap);
 /* the mask a marker names; 0 when buf is no marker */
