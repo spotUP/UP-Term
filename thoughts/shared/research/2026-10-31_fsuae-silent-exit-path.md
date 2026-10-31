@@ -48,3 +48,11 @@ stdio, so a cut log also rules out every exit() path below.
   site (bsdsocket trap vs abort). lldb catches the signal before the kernel corpse step, so the corpse limit is irrelevant.
 - Alternative: clear the corpse backlog (let ReportCrash drain, close crashed test_* processes) and rerun once; an .ips then appears.
 - Add `log_flush = 1` to a test rig config to get the log up to the crash line (cheap, one config key).
+
+## lldb (s39)
+Rig 4 (060 max, fresh start), nvim a3aa3137 + uhome staged into build/rig4/vtc, `SetEnv HOME /VTCX/uhome`, `VTC:nvimd/bin/nvim --headless +q`. lldb attached to FS-UAE pid before the run (python loop: stop on SIGSEGV/SIGBUS/SIGILL/SIGABRT, pass, print bt 15, continue; tested by attach/detach first). FS-UAE has symbols but no debug info (no dSYM; line numbers only for some libfsemu frames), so `frame variable` is unavailable.
+- Result of run 1: NO crash. ami.py reported "Amiga stopped answering" (25 s); under lldb for ~100 s no signal at all reached lldb, FS-UAE stayed alive (50-57% CPU, later 9%), wasabi dead. This is the known HANG outcome, not the exit outcome.
+- Log: fs-uae log cut mid-line at "[AUDIO] fs_e" after `uae_start_tread "bsdsocket"` (stdout buffered, so last lines are unreliable). Three bsdsocket threads exist (nvim opened sockets).
+- `sample` of the hung process: bsdsocket threads idle in bsdlib_threadfunc -> SDL_SemWait; emulation thread in m68k_run_2 -> do_specialties -> haltloop (newcpu.cpp:3598) ~100% of samples, i.e. the guest CPU is halted/stopped (usleep + do_cycles_slow), not spinning in guest code. Not yet determined if it is regs.halted (cpu_halt, newcpu.cpp:4630, writes "CPU halted: reason" to the unflushed log) or a plain STOP; reading `regs` via lldb failed (duplicate symbol, no type info).
+- Not obtained: a fatal host backtrace. Exit outcome (process vanishes) did not occur this run; 1 of 3 allowed runs used (rig start took ~15 min wall: start restarted FS-UAE once).
+- Next: run again with lldb attached on a fresh rig until the vanish outcome occurs, plus `breakpoint set -n cpu_halt` and `-n exit -n _exit -n abort` to catch a host exit path; flush the log (fs-uae log is block-buffered) or read `gui_data.cpu_halted`.
