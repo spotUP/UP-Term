@@ -15,6 +15,7 @@ import argparse, json, os, pathlib, re, subprocess, sys, time
 sys.path.insert(0, __file__.rsplit('/', 1)[0])
 import paths
 import ami, condev_rig as c
+import wasabi as rigwasabi
 import stage_rig, tabstate
 
 OUT = pathlib.Path(paths.RIG) / 'amarchy'
@@ -1094,20 +1095,73 @@ def r_dopus_present():
         return False, 'BLOCKED: DOPUS.1 not on this rig (Directory Opus 5.104 not installed here)'
     res = []
     stage_dopus_rexx()
+    return with_drawn_menu(lambda: _dopus_present_checks(res))
+
+
+def with_drawn_menu(fn):
+    """fn() with the drawn Amarchy menu forced: over an UP-Term window Super+Space opens the text menu
+    (menu-in-terminal = text, the default); the drawn one ("Amarchy" window, sentinel rows) needs graphical. The conf
+    files are restored and the commodity reloaded afterwards."""
     ensure_terminal()
-    # over an UP-Term window Super+Space opens the text menu (menu-in-terminal = text, the default); the drawn one
-    # ("Amarchy" window, sentinel rows, Open UP-Term here below) needs menu-in-terminal = graphical, as in rows_over_terminal
     import amarchy_rig
     saved = {p: ami.read_file(p) for p in (X9_CONF, X9_AMCONF)}
     try:
         c.run('MakeDir >NIL: ENV:up-term ENV:Amarchy')
         x9_drawn()
         amarchy_rig.arexx('RELOAD')
-        return _dopus_present_checks(res)
+        return fn()
     finally:
         for p, b in saved.items():
             ami.restore_file(p, b)
         amarchy_rig.arexx('RELOAD')
+
+
+def quit_dopus():
+    """End Directory Opus 5.82 through its own Opus menu: `dopus quit` over ARexx and Ctrl-C to the process are both
+    ignored by 5.82. Opus > Quit... opens "Directory Opus Request" (task dopus_quit); its left button (the first
+    gadget, id 1) confirms. Clicked by position: the button class (dopusbuttongclass) exposes no label."""
+    cmd = rigwasabi.client_cmd
+    # the Opus menu belongs to the DOpus backdrop window, which must be the active window: a click on empty backdrop
+    # (the lower right, where DOpus puts no icon) activates it; the terminal window of the earlier rows is active else
+    subprocess.run(cmd('mouse', 'click', '720', '450'), check=True, capture_output=True, timeout=60)
+    time.sleep(1)
+    subprocess.run(cmd('ui', 'menu', 'Opus/Quit...'), check=True, capture_output=True, timeout=60)
+    for _ in range(20):
+        out = subprocess.run(cmd('ui', 'list', '--window', 'Directory Opus Request'), capture_output=True, text=True, timeout=60).stdout
+        btns = re.findall(r'custom\s+-\s+id 1\s+at (\d+),(\d+) (\d+)x(\d+)', out)
+        if btns:
+            break
+        time.sleep(0.5)
+    else:
+        return False
+    x, y, w, h = map(int, btns[0])
+    subprocess.run(cmd('mouse', 'click', str(x + w // 2), str(y + h // 2)), check=True, capture_output=True, timeout=60)
+    for _ in range(20):
+        if not dopus_port():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def r_dopus_quit():
+    """DOPUS-QUIT (D22, plan 2026-10-25-amarchy-dopus-integration.md): with Directory Opus running the root menu lists
+    Dopus; after Directory Opus is quit (DOPUS.1 gone) a re-read of the root menu lists no Dopus group. Leaves the rig
+    with no Directory Opus (reboot or restart the rig for the next DOpus row). BLOCKED where DOpus is not running."""
+    if not dopus_port():
+        return False, 'BLOCKED: DOPUS.1 not on this rig (Directory Opus not running here)'
+    res = []
+
+    def checks():
+        up, rows = root_menu_rows()
+        res.append(bool(up) and 'Dopus' in rows)
+        print('  %s root rows with DOpus running: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
+        res.append(quit_dopus())
+        print('  %s DOPUS.1 gone after Opus > Quit...' % ('[OK]' if res[-1] else '[FAIL]'), flush=True)
+        up, rows = root_menu_rows()
+        res.append(bool(up) and 'Apps' in rows and 'Dopus' not in rows)
+        print('  %s root rows after the quit: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
+        return all(res), '%d of %d checks passed' % (sum(res), len(res))
+    return with_drawn_menu(checks)
 
 
 def _dopus_present_checks(res):
@@ -1406,6 +1460,7 @@ ROWS = [
     ('group_icons', r_group_icons),
     ('dopus_absent', r_dopus_absent),
     ('dopus_present', r_dopus_present),
+    ('dopus_quit', r_dopus_quit),
     ('dopus_listers', r_dopus_listers),
     ('minimal',     r_minimal),
     ('gtheme',      r_gtheme),
