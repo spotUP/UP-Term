@@ -36,3 +36,17 @@ How the NTSC mode was reached: `rig.py rtg` copies the 800x600 file, not rtg360,
 | Switch to 640x360 with UP-Term (vsh) windows open, then close | 3 | no reset, but the switch never completes | IPrefs raises the System Request (Retry/Cancel, "close all windows") on the 800x600 screen; UP-Term windows stay; 0 CPU reset |
 
 The third row is the W43 requester. Once it is up, clicks at the UP-Term close gadget, Retry and Cancel (pointer script at the uitree coordinates, gclick, and `Break 1 C/D` on the vsh process) did not dismiss it in the budget; the rig stayed alive (ping ok, 0 resets). Not tried: the real ScreenMode editor USE (list rows not clickable), the "right after a forced crash/reboot cycle" variant (68060.library state surviving ColdReboot), and the 29 Oct sequence of closing the UP-Term-owned screen after the switch completed. The 29 Oct loops are therefore still unexplained; a stuck System Request with windows open is the nearest state reached.
+
+## Remaining triggers (s39)
+
+Rig 6, 3.1 (--os 31 --fresh), 060, uaegfx from the master disk, 800x600 RTG via a run-time ENV:Sys copy of VTC:screenmode.rtg.prefs (`rig.py rtg` left the boot on the PAL prefs here: ENVARC:Sys/screenmode.prefs held the 0x29000 PAL mode; the copy made the screen 800x600x24).
+
+| Trigger | Cycles | Reset | "CPU reset" lines |
+|---|---|---|---|
+| 1. Real SYS:Prefs/ScreenMode: list scrolled with the arrow gadgets, row clicked, Width/Height read from the uitree (640x360), Use (gadget id 8) | 1 Use, then 3 UP-Term open + close-gadget cycles on 640x360, all pings answered | NO | 0 |
+| 2. Same trigger after a forced crash/reboot cycle | (a) `crashme illegal` (Illegal instruction 1050 at 1009E1E0): LOOP, see below. (b) After a restart: `ami.py reboot` (ColdReboot, back after 25 s), ScreenMode Use to 640x360 (depth came up 16), 3 close-gadget cycles, 2 own-screen cycles, pings answered | (a) YES (b) NO | (a) 478 when stopped (192 then 452 within about 30 s) (b) 2, both from the ColdReboot itself (PC=100254d2 then f800d0), none after the trigger |
+| 3. UP-Term-owned screen (`NewShell "XCON:0/20/400/100/own/CLOSE/OWNSCREEN"`) closed by its close gadget after the switch to 640x360 had finished, no windows open during the switch | 3 on rig-6 boot A, 2 more after the reboot | NO | 0 |
+
+Finding: the loop reproduces with a plain guru and no RTG at all. `crashme illegal` (tests/amiga/crashme.c) on the 3.1 060 rig: "Illegal instruction: 1050 at 1009E1E0 -> 00F80AD2" at log line 1290, then "CPU reset PC=f80dc8 (Kickstart ROM)" / f800d0 repeating, wasabid refused connections, ~8 resets a second. That matches the 29 Oct state (crash first, loop after) and rig9-installer-loop.md result 8. So the 29 Oct loops need the crash, not the NTSC switch or the screen close; the RTG switch is at most where the earlier crash came from. A fresh fs-uae process (rig.py stop, start without --fresh) cleared the loop; a ColdReboot after a clean run did not loop. Not separated: whether a crash on 3.2/3.1 without 060 libs loops (the 68060.library state in the emulated CPU is the suspect); the RTG switch itself never crashed in 4 runs (rig 6 s39 total: 9 switches).
+
+Evidence cut from build/rig6/logs/fs-uae.log.txt (rig deleted per rule 7). Next step: run `crashme illegal` on a 3.1 `--a1200` (68020) rig; no loop there means the 060 path is the cause.
