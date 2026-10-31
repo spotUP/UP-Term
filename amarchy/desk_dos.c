@@ -642,10 +642,7 @@ static void dk_wbborder(void)
         if (!dk_put("Workbench", DK_WORK "/workbench.prefs", out, n))
             return;
     }
-    if (keep == DESK_WB_DELETE) {
-        DeleteFile((STRPTR)"ENV:Sys/Workbench.prefs");
-        DeleteFile((STRPTR)DK_WBB_PREV);
-    } else if (keep >= 0) {
+    if (keep >= 0) {
         UnLock(CreateDir((STRPTR)DK_REVERT));
         sv[0] = (unsigned char)('0' + keep);
         dk_write(DK_WBB_PREV, sv, 1);

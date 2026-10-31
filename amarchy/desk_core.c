@@ -751,19 +751,16 @@ static long wbnc_stock_file(int borderless, unsigned char *out, long cap)
 
 long desk_wbborder(int flat, const unsigned char *cur, long curlen, int saved, int *save_out, unsigned char *out, long cap)
 {
-    long size, body = wbnc_find(cur, curlen, &size), n;
+    long size, body = wbnc_find(cur, curlen, &size);
     int now, want;
     *save_out = -1;
-    if (saved == DESK_WB_CREATED) {         /* we made the file: off writes the stock one back and the caller deletes it, unless the user changed it since */
+    if (saved == DESK_WB_CREATED) {         /* we made the file: off puts the stock border back in the CURRENT file (the user's other tweaks stay) and never deletes it */
         *save_out = -2;
-        if (flat)
+        if (flat || body < 0 || curlen > cap)
             return 0;
-        n = wbnc_stock_file(1, out, cap);
-        if (n > 0 && n == curlen && !memcmp(out, cur, (size_t)n)) {
-            *save_out = DESK_WB_DELETE;
-            return wbnc_stock_file(0, out, cap);
-        }
-        return 0;
+        memcpy(out, cur, (size_t)curlen);
+        put16(out + body + WBNC_BORDERLESS, 0);
+        return curlen;
     }
     if (curlen <= 0) {                      /* no Workbench.prefs: the editor's stock file, border off */
         if (!flat)

@@ -279,6 +279,15 @@ static void test_desk_wbborder(void)
 }
 
 /* AM-ICON-NOBORDER: flat on with no Workbench.prefs creates the editor's stock file with the border off; off removes it again */
+static unsigned char *user_stock(unsigned char *buf, long n)
+{
+    int keep;
+    desk_wbborder(1, 0, 0, -1, &keep, buf, 128);
+    buf[26 + 8 + 21] = 0;                                                  /* wbp_Borderless word low byte */
+    (void)n;
+    return buf;
+}
+
 static void test_desk_wbborder_absent(void)
 {
     static unsigned char made[128], back[128], user[128];
@@ -291,12 +300,25 @@ static void test_desk_wbborder_absent(void)
     CHECK_INT(desk_wbborder(0, 0, 0, -1, &keep, back, sizeof back), 0);    /* off with no file and nothing made: nothing */
     CHECK_INT(keep, -1);
     CHECK_INT(desk_wbborder(1, made, n, DESK_WB_CREATED, &keep, back, sizeof back), 0);   /* second apply: no second write */
-    CHECK_INT(desk_wbborder(0, made, n, DESK_WB_CREATED, &keep, back, sizeof back), n);   /* off: stock border written, file then deleted */
-    CHECK_INT(keep, DESK_WB_DELETE);
+    CHECK_INT(desk_wbborder(0, made, n, DESK_WB_CREATED, &keep, back, sizeof back), n);   /* off: stock border word written, the file stays */
+    CHECK_INT(keep, -2);
     CHECK_INT(desk_wbborder_value(back, n), 0);
-    memcpy(user, made, (size_t)n);
-    user[26 + 8 + 29] = 0;                                                 /* the user edited it meanwhile: left alone, mark forgotten */
-    CHECK_INT(desk_wbborder(0, user, n, DESK_WB_CREATED, &keep, back, sizeof back), 0);
+    CHECK(!memcmp(back, user_stock(user, n), (size_t)n));                  /* identical to the stock file with border 0 */
+    CHECK_INT(desk_wbborder(0, 0, 0, DESK_WB_CREATED, &keep, back, sizeof back), 0);      /* the user deleted it meanwhile: nothing written, mark forgotten */
+    CHECK_INT(keep, -2);
+}
+
+/* flat off keeps the user's other Workbench tweaks */
+static void test_desk_wbborder_keeps_tweaks(void)
+{
+    static unsigned char made[128], tweaked[128], back[128];
+    int keep;
+    long n = desk_wbborder(1, 0, 0, -1, &keep, made, sizeof made);
+    memcpy(tweaked, made, (size_t)n);
+    tweaked[26 + 8 + 3] = 9;                                               /* WBNC stack size low byte: a setting the user changed while flat was on */
+    CHECK_INT(desk_wbborder(0, tweaked, n, DESK_WB_CREATED, &keep, back, sizeof back), n);
+    CHECK_INT(back[26 + 8 + 3], 9);                                        /* the tweak survives */
+    CHECK_INT(desk_wbborder_value(back, n), 0);                            /* the border word is back */
     CHECK_INT(keep, -2);
 }
 
@@ -963,6 +985,7 @@ void suite_desk(void)
     test_desk_flat_pens_live();
     test_desk_wbborder();
     test_desk_wbborder_absent();
+    test_desk_wbborder_keeps_tweaks();
     test_desk_pens_reset();
     test_desk_reset_done();
     test_desk_iprefs_idle();
