@@ -230,7 +230,7 @@ Each row: done criterion. First visible slice is L8 (Workbench defaults on 3.2).
 - L1 Pin lucide-static font in Makefile with SHA-256, licence file, README credit, manifest entry. Done: `make dist-check` passes.
 - L2 `dist/lucide-icons` table for defaults, System, Utilities, Prefs, Tools, Amarchy, type fallbacks. Done: generator accepts it.
 - L3 `tools/gen_lucide_icons.py` + host test. Done: `lucide.dat` built by `make`, test green.
-- L4 `li_parse` / `li_splice` + host suite with os-31/os-322 round trip. Done: suite green on all 267 fixture files.
+- [x] L4 `li_parse` / `li_splice` + host suite with os-31/os-322 round trip. Done: suite green on all 267 fixture files. DONE slice B: amarchy/iconfile_core.c, tests/test_iconfile.c (ONLY=iconfile); corpus run on the 267 rig files.
 - L5 `ip_colours` + fold table + host test (pens 4..7 roles checked). Done: suite green.
 - L6 `desk_pen_plan` shared with backdrop + no-overlap test. Done: suite green, backdrop code uses it.
 - L7 Pen holder in amarchy-flat: obtain at boot, re-obtain on screennotify, release on flat off. Done: STATUS shows `pens-held 16` on 3.2 rig.
@@ -239,7 +239,7 @@ Each row: done criterion. First visible slice is L8 (Workbench defaults on 3.2).
 - L10 Table paths: SYS:System, SYS:Utilities, SYS:Prefs, SYS:Tools. Done: rig listing of written counts per drawer.
 - L11 Amarchy program icons. Done: written count and screen check.
 - L12 All-volume walk, type fallback, read-only / locked / `.uaem` skips. Done: STATUS counters on a rig with one write-protected volume.
-- L13 FORM ICON and NewIcon strip plus restore. Done: host suite + rig file with a NewIcon restored byte for byte.
+- L13 FORM ICON and NewIcon strip plus restore. Done: host suite + rig file with a NewIcon restored byte for byte. HOST PART DONE slice B (NewIcon and FORM ICON strip + restore in iconfile_core, host suite); rig file test open.
 - L14 Live theme update in `gt_dos_select` and preview `pv_set`. Done: pen RGB changes, file dates unchanged.
 - L15 Over-8-bit redraw (per Q6). Done: 3.2 RTG rig icons recolour after switch.
 - L16 3.1 path: fold rules, pen-0 box handling per Q5. Done: 3.1 rig screen check.
