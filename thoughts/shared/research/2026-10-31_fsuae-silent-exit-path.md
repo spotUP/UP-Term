@@ -93,3 +93,21 @@ Rig 4, 060 `--max`, normal nvim config (`HOME` = staged `userconf/home`), `VTC:n
 Clipboard sharing does not cause the exit: FS-UAE disappears every time with sharing off as well. The clipboard path (`amiga_clipboard_want_data`) drops off the candidate list. bsdsocket stays the top candidate. It cannot be switched off on a rig, because wasabid needs it.
 
 Caveats: the first attempt ran the condev calls without `UPTERM_RIG=4` and talked to rig 1. Those runs and their logs were discarded. Staging the nvim tree into `vtc/` after the rig booted gave "Unknown command": a filesystem the guest has already mounted does not show new host folders. The staging now happens before the boot.
+
+## SysBase watchpoint (s39)
+
+Question: which guest PC writes first to nvim's `_SysBase` slot. Result: NOT answered. The debugger route works up to the first hit, but the watch must be aimed at the slot of the run being watched. Rig 4, `UPTERM_FSUAE=~/Code/Emulators/fs-uae-debug/fs-uae rig.py start --max --debugger` (option already in rig.py: console_debugger on a FIFO; `rig.py dbg`, `rig.py dbgbreak` = SIGUSR1 into the debug build, both work), nvim a3aa3137 + uhome staged before boot.
+
+Facts established
+- Symbol: the dist binary (a3aa3137) is stripped; the unstripped `neovim-amiga/build/v012/m68k/nvim/bin/nvim` (c4afdda0) has the same hunk layout (CODE 0x6477a8, DATA 0x15ed0, BSS 0x1fbb4). `m68k-amigaos-nm`: `_SysBase` = BSS hunk + 0x1fb88 (`__bss_start` = 0).
+- Runtime: `RAM:ownermap` (tests/amiga/ownermap.c) lists the hunks of a running nvim (`range START END seg ...`; START is the next-pointer, data starts at START+4; the three sizes match). Boot A: bss data start 0x11111ea0, slot 0x11131a28; `m 11131a28` showed 10000810, equal to the word at address 4 (SysBase), so the formula is right. The base is NOT stable between boots or runs: boot B had bss at 0x11112228 (+0x388), slot 0x11131db0.
+- Watch syntax that works: `w 0 <addr> 4 W`; hit line `Memwatch 0: break at 11131A28.L  W  00000000 PC=00FA6EF4 CPUDW`, then registers; `g` continues.
+- First write seen (boot B, watch still on boot A's address, which lies inside boot B's bss): PC=00FA6EF4, Kickstart ROM `DBF D2,*-2` clear loop, value 0, A2/D3=11112228 (bss start), D4=0001FBB4 (bss size). That is exec zeroing the freshly loaded bss, not a corrupting write. The legitimate startup store and any later bad write were not reached: no further hit before the guest stopped answering wasabi (HANG outcome), because the watch was on the old slot.
+- `nvim -u NONE "+sleep 60"` never exits by itself; ending it with `Break` made FS-UAE vanish (boot A, no hit logged). Boot C, wide watch `w 0 11130000 8192 W` then `g`: FS-UAE vanished at once, before any hit (the wide watch on the debug build may be the cause; untested). A debugger boot needs `g` sent twice.
+
+Not obtained: PC, module and value of the first bad write. 3 rig boots, about 45 tool calls.
+
+Exact next step
+1. One boot. After `rig.py start --debugger` + `g` (twice if "go not started"): load a hold-nvim, `dbgbreak`, read the bss range with `RAM:ownermap` (slot = bss data start + 0x1fb88), `w 0 <slot> 4 W`, `g`. Let that nvim end WITHOUT `Break` (give it a `+q` script after a delay), then start the normal-config nvim. If the new load lands at the same address the first startup hit has value 10000810 (proves the address); log every hit (PC, value) and `g`.
+2. If the base moves per run, retarget on the exec clear loop: hit PC 00FA6EF4 with D4=0001FBB4, slot = A2 + 0x1fb88, `w 0` then `w 1 <slot> 4 W`. The scratch driver doing this (parse hits, retarget, `g`) is scratchpad/drv2.py of session 0fbfe951; move it to rig.py as a subcommand if it works.
+3. Resolve a hit PC to a module: nvim code base = bss data start - 0x15ed8 - 0x6477b0 (ranges are contiguous in both boots); outside it, `ownermap <PC>` before `g`.
