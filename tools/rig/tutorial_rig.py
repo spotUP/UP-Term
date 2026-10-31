@@ -233,7 +233,7 @@ def counters():
     return d, out
 
 
-LINE = 16                                # pixel rows per text line: the tab is drawn at twice topaz 8's height
+LINE = 16                                # pixel rows per text line while the tab is drawn at twice topaz 8's height (Screen.line says which)
 
 
 class Screen:
@@ -252,6 +252,23 @@ class Screen:
         self.cols = (self.w - 24) // 8          # text columns; the last one is always background
         self.y0 = self.y + 22
         self.bg = self.px(self.x0 + (self.cols - 1) * 8 + 3, self.y + self.h // 2)
+        self.line, self.gh = LINE, LINE - 4     # pixel rows per text line and per glyph box; set_pitch() re-reads them
+        self.set_pitch()
+
+    def row_bytes(self, y):
+        o = 8 + (y * self.sw + self.x0) * 3
+        return bytes(self.b[o:o + self.cols * 8 * 3])
+
+    def set_pitch(self):
+        """The tab is not always drawn at twice topaz 8's height: at lesson 12 step 5 the text sits at the plain 8 pixel
+        pitch (s35 probe, stable over 4 s, so not a redraw). Twice-height text draws every glyph row twice, so almost
+        every ink row equals a neighbouring row over the whole width; plain topaz rows seldom do."""
+        ys = [y for y in range(self.y0, self.y + self.h - 12) if self.ink(y, 1, self.cols)]
+        if len(ys) < 8:
+            return
+        rows = {y: self.row_bytes(y) for y in range(ys[0] - 1, ys[-1] + 2)}
+        paired = sum(1 for y in ys if rows[y] == rows.get(y - 1) or rows[y] == rows.get(y + 1))
+        self.line, self.gh = (LINE, LINE - 4) if paired * 10 >= len(ys) * 9 else (LINE // 2, LINE // 2 - 1)
 
     def px(self, x, y):
         o = 8 + (y * self.sw + x) * 3
@@ -266,33 +283,40 @@ class Screen:
         return [y for y in range(self.y0, self.y + self.h - 12) if self.ink(y, c0, c1)]
 
     def line_sig(self, bottom, k, c0, c1):
-        """The pixels of text line k above the bottom (prompt) line, columns c0..c1: the 12 pixel rows (6 glyph rows, each drawn
-        twice) above the baseline (descenders of the line above never leak in). bottom = the prompt's last ink row."""
+        """The pixels of text line k above the bottom (prompt) line, columns c0..c1: the gh pixel rows (12 at twice height:
+        6 glyph rows, each drawn twice; 7 at plain height, the descender row of the line above stays out) above the baseline (descenders of the line above never leak in).
+        bottom = the prompt's last ink row."""
         out = b""
-        for y in range(bottom - LINE * k - 11, bottom - LINE * k + 1):
+        for y in range(bottom - self.line * k - self.gh + 1, bottom - self.line * k + 1):
             o = 8 + (y * self.sw + self.x0 + (c0 - 1) * 8) * 3
             out += bytes(self.b[o:o + (c1 - c0 + 1) * 8 * 3])
         return out
+
+    def bottom(self):
+        """The prompt's baseline: the last ink row of its first 9 columns ("tutorial>" has no descender). The cursor
+        block sits past column 9 and blinks, one pixel row below the baseline, so the last ink row of the whole line
+        moved by a pixel between snapshots and shifted every line grid read from it. None when the screen is blank."""
+        last = self.rows(1, 9) or self.rows(1, self.cols)
+        return last[-1] if last else None
 
     def task_rows(self):
         """[(y_center, last_col)] of the text lines above the last prompt group, nearest first: lines whose
         first 9 columns equal the bottom prompt ("tutorial> ", also with a typed command after it) and blank
         lines are skipped; every other line is a candidate for the task line's end."""
-        last = self.rows(1, self.cols)
-        if not last:
+        bottom = self.bottom()
+        if bottom is None:
             return []
-        bottom = last[-1]
         prompt = self.line_sig(bottom, 0, 1, 9)
         out = []
-        for k in range(1, (bottom - self.y0) // LINE):
+        for k in range(1, (bottom - self.y0) // self.line):
             if self.line_sig(bottom, k, 1, 9) == prompt:
                 continue
             sig = self.line_sig(bottom, k, 1, self.cols)
             if sig == self.bg * (len(sig) // 3):
                 continue
             cols = [cc for cc in range(self.cols, 0, -1)
-                    if self.line_sig(bottom, k, cc, cc) != self.bg * (12 * 8)]
-            out.append((bottom - LINE * k - 6, cols[0]))
+                    if self.line_sig(bottom, k, cc, cc) != self.bg * (self.gh * 8)]
+            out.append((bottom - self.line * k - self.gh // 2, cols[0]))
         return out
 
     def task_row(self, skip=0):
@@ -305,14 +329,13 @@ class Screen:
         """True when the bottom row (the "tutorial> " prompt) is pixel-identical, over the prompt's 9 columns, to
         the row above it: an empty line only re-prompted and the step did not advance. After a pass the row above
         the prompt is the next task (or its wrapped tail), never a prompt."""
-        last = self.rows(1, self.cols)
-        if not last:
+        y = self.bottom()
+        if y is None:
             return True
-        y = last[-1]
         # the prompt's glyph rows: compare the 8 pixel rows ending at the bottom ink row with the 8 above
         return all(self.b[8 + ((y - d) * self.sw + self.x0) * 3:8 + ((y - d) * self.sw + self.x0 + 72) * 3] ==
-                   self.b[8 + ((y - d - LINE) * self.sw + self.x0) * 3:8 + ((y - d - LINE) * self.sw + self.x0 + 72) * 3]
-                   for d in range(12))
+                   self.b[8 + ((y - d - self.line) * self.sw + self.x0) * 3:8 + ((y - d - self.line) * self.sw + self.x0 + 72) * 3]
+                   for d in range(self.gh))
 
     def word_span(self, skip=0):
         """(y_center, first_px, last_px) of the word at the end of the task row right above the prompt: the last
@@ -321,7 +344,7 @@ class Screen:
         if not t:
             return None
         y, last = t
-        rows = [yy for yy in range(y - 4, y + 5)]
+        rows = [yy for yy in range(y - self.gh // 3, y + self.gh // 3 + 1)]
         first = last
         while first > 1 and any(self.ink(yy, first - 1, first - 1) for yy in rows):
             first -= 1

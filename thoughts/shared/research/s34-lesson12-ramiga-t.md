@@ -60,3 +60,21 @@ dist/README.txt (line 355) and lesson 12 still said Right Amiga T: stale text, t
   wrong pixel rows. Suspected cause (unproven): the bottom ink row is the last of several 8-pitch rows; the step-4 /help output or the settle
   caught a screen that is not yet the tab's 2x text. Next: dump sc.rows() twice 1.5 s apart and a Screen at step 3 (known good, 2x) to compare line pitch.
 - Not done: no fix, no host test. Probe removed from the branch; rig 4 stopped.
+
+## s35 step 5 fix (fourth agent; Screen finder fixed, rig still FAIL on a settle race)
+- Probe (rig 4): at step 5 the tab text is at the plain 8 pixel pitch (7 glyph rows + descender row), stable over 4.5 s (3 dumps 1.5 s apart + settled()),
+  so it is not a redraw. The `up<pid>` word is on its own 11-column row two above the bottom prompt, with a second "tutorial>" row between.
+- Three root causes in Screen (all fixed in tools/rig/tutorial_rig.py): (1) LINE = 16 assumed; Screen.set_pitch() now reads the pitch from the
+  pixels (twice-height text draws every glyph row twice, so >= 90% of ink rows equal a neighbour over the full width; else pitch 8, glyph box 7);
+  (2) `bottom` was the last ink row of the whole prompt line, which includes the blinking cursor block one row below the baseline: Screen.bottom()
+  now uses the last ink row of columns 1-9 ("tutorial>"); (3) at pitch 8 the line window must hold only the 7 glyph rows, else the descender of the
+  line above (the p of up<pid>) breaks the prompt-equality skip and the second prompt row became a task candidate.
+- Host test tests/test_tutorial_screen_pitch.py (4 tests, synthetic framebuffer at pitch 8 and 16, with and without cursor, with descenders):
+  fails before (test_plain_pitch, test_reprompted_at_both_pitches), passes after; the cursor test fails when bottom() is reverted.
+- Rig verdict (rig 4, tutorial_rig.py --only lesson12): STILL FAIL. After the fix task_rows lists the (216, 11) up-word row first, but the first drag of a run
+  used a screen settled() returned too early (candidates at y 88, bottom far higher: the mirror was still printing the lesson), then the skip loop moves
+  to skip=1 on the NEXT screen and picks "Return:" instead of re-reading skip 0. Counters: tabs-opened (1,2) tab-switches (1,6) menu-picks (1,7) slash (0,1) copies (0,4).
+- Next: (a) settled() should also wait until the bottom prompt row is at its final place (bottom() equal over 3 snapshots and the task row ending in an
+  `up<digits>` 11-column candidate exists), (b) the retry loop should re-read candidate 0 after a failed copy, not advance skip on a changed screen
+  (only skip past rows that were tried on the same screen). Also steps 3 and 4 report "gave up" from ret(): reprompted() compares against the line
+  above, which at step 3/4 is a prompt after the menu/slash echo; check after the pitch fix that those are only the detail, not a verdict (progress 12 was not written).
