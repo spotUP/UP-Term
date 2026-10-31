@@ -69,6 +69,48 @@ class RecoverResetLoop(unittest.TestCase):
             self.assertEqual(events, [("stop",), ("start", ["start", "--keep-sys", "--max", "--mmu"])])
             self.assertIn("reset loop", log.read_text())
 
+    def test_recovery_keeps_the_first_fault_of_the_looping_run_before_the_restart(self):
+        """RIG31-RESET-LOOP (2026-10-31): the restart's start truncated the live FS-UAE log, so the guest crash that
+        began the loop was never readable afterwards. The recovery saves the log before stop() and names the fault."""
+        names = ("stop", "subprocess", "reboot_args")
+        saved = {n: getattr(rig, n) for n in names}
+        saved_dir = paths.FSUAE_LOG_DIR
+        seen_at_stop = []
+
+        class Proc:
+            DEVNULL = None
+            STDOUT = -2
+
+            @staticmethod
+            def Popen(argv, **k):
+                pass
+
+        with tempfile.TemporaryDirectory() as d:
+            rigdir = pathlib.Path(d)
+            logs = rigdir / "logs"
+            logs.mkdir()
+            (logs / "fs-uae.log.txt").write_text(
+                "SetSwitch() - amiga\nIllegal instruction: 000c at 10000A14 -> 00F80AD2\n"
+                + "CPU reset PC=f80dc8 (Kickstart ROM)..\nCPU reset PC=f800d0 (Kickstart ROM)..\n" * 12)
+            for i in range(4):   # older copies beyond the kept count go
+                (rigdir / ("reset-loop-2026010%d-000000.fs-uae.log" % i)).write_text("old")
+            log = rigdir / "watchdog.log"
+            try:
+                paths.FSUAE_LOG_DIR = logs
+                rig.stop = lambda: seen_at_stop.append(sorted(p.name for p in rigdir.glob("reset-loop-*")))
+                rig.subprocess = Proc
+                rig.reboot_args = lambda given: ["--max"]
+                rig.recover_reset_loop(log)
+            finally:
+                paths.FSUAE_LOG_DIR = saved_dir
+                for n, v in saved.items():
+                    setattr(rig, n, v)
+            copies = sorted(rigdir.glob("reset-loop-*.fs-uae.log"))
+            self.assertEqual(len(copies), rig.RESET_LOOP_LOGS_KEPT)
+            self.assertIn("Illegal instruction: 000c at 10000A14", copies[-1].read_text())
+            self.assertEqual(seen_at_stop, [[p.name for p in copies]])   # saved before the emulator stops
+            self.assertIn("first fault: Illegal instruction: 000c at 10000A14 -> 00F80AD2", log.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

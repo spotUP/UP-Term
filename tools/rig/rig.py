@@ -1880,12 +1880,35 @@ def reset_loop_step(prev_resets, resets, recover_fn):
     recover_fn()
     return True
 
+RESET_LOOP_LOGS_KEPT = 3   # reset-loop-*.fs-uae.log copies kept next to watchdog.log
+
+def save_reset_loop_log(log):
+    """Copy the looping run's FS-UAE log next to `log` (watchdog.log) as reset-loop-<stamp>.fs-uae.log and return the
+    first-fault text for the watchdog line. The restart's `start` truncates the live log and keeps only its last
+    1 MB as .tail, which a loop at ~8 resets/s fills with reset lines, and the next start overwrites even that: the
+    guest crash that started the loop was lost every time (RIG31-RESET-LOOP, 2026-10-31). Keeps the newest
+    RESET_LOOP_LOGS_KEPT copies."""
+    src = paths.FSUAE_LOG_DIR / "fs-uae.log.txt"
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dest = log.parent / ("reset-loop-%s.fs-uae.log" % stamp)
+    try:
+        shutil.copyfile(src, dest)
+    except OSError as e:
+        return "fs-uae log not saved (%s)" % e
+    for old in sorted(log.parent.glob("reset-loop-*.fs-uae.log"))[:-RESET_LOOP_LOGS_KEPT]:
+        old.unlink()
+    crash = paths.fsuae_crash()
+    first = crash[0] if crash else "no CPU exception logged (ROM reset)"
+    return "first fault: %s; log saved as %s" % (first, dest)
+
 def recover_reset_loop(log):
-    """stop() the looping emulator (nothing answers, nothing writes: the safe stop falls through to TERM), then a
-    detached `start --keep-sys` with the last start's arguments; its own watchdog replaces this one."""
+    """Save the looping run's FS-UAE log (save_reset_loop_log), stop() the looping emulator (nothing answers,
+    nothing writes: the safe stop falls through to TERM), then a detached `start --keep-sys` with the last start's
+    arguments; its own watchdog replaces this one."""
+    saved = save_reset_loop_log(log)
     with log.open("a") as f:
-        f.write("%s reset loop (%d+ CPU resets in %d s): restarting rig %d\n"
-                % (time.strftime("%F %T"), WATCHDOG_RESET_LOOP, WATCHDOG_EVERY, paths.RIG_N))
+        f.write("%s reset loop (%d+ CPU resets in %d s): restarting rig %d; %s\n"
+                % (time.strftime("%F %T"), WATCHDOG_RESET_LOOP, WATCHDOG_EVERY, paths.RIG_N, saved))
     stop()
     with log.open("a") as f:
         subprocess.Popen([sys.executable, str(pathlib.Path(__file__).resolve()), "start", "--keep-sys"] + reboot_args([]),
