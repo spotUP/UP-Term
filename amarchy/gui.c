@@ -1313,6 +1313,7 @@ static struct Window *window_open(gui *g)
         { WA_Left, g->g.x }, { WA_Top, g->g.y }, { WA_Width, g->g.w }, { WA_Height, g->g.h },
         { WA_PubScreen, (ULONG)g->scr }, { WA_Title, (ULONG) "Amarchy" },
         { WA_Borderless, TRUE }, { WA_Activate, TRUE }, { WA_RMBTrap, TRUE },
+        { WA_WBenchWindow, TRUE },                 /* WBRESET-EXT: IPrefs counts windows lacking this flag and refuses to reset */
         { WA_SmartRefresh, TRUE }, { WA_ReportMouse, TRUE },
         { WA_BackFill, (ULONG)LAYERS_NOBACKFILL },
         { WA_IDCMP, IDCMP_VANILLAKEY | IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS | IDCMP_MOUSEMOVE |

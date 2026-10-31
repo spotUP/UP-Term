@@ -157,3 +157,12 @@ Open risks: (1) WFLG_WBENCHWINDOW windows may be treated as Workbench's own by w
 ENV:Sys/{palette,font,screenmode,overscan,wbpattern}.prefs, which races IPrefs. (3) wasabi's last guru on this boot:
 RECOVERABLE ALERT #01000003 (exec: library checksum failure) in task UP-Term:bin/Amarchy: the vector swap likely
 writes the jump table without LIBF_CHANGED before SumLibrary; check flat_swap_install / wbr_patch_install.
+
+## Result of the WA_WBenchWindow flag on rig 8 (subagent run, 2026-10-31)
+
+Change: gui.c window_open and themewin.c tw_open (the bar) open with WA_WBenchWindow. Host lint test test_wb_window_flag guards it.
+
+- 3.1 without DOpus: three Palette USE pen changes with the bar open gave no System Request. Bar stayed alive (draws and ticks kept rising). No Guru recorded. Evidence for the reset is indirect: the Workbench window address changed on some runs; no CloseWorkBench counter was read.
+- 3.1 with DOpus: FAIL. After every pen-change USE a System Request from task IPrefs (Retry, Cancel) stays open at 0x10050d24 on the Directory Opus screen. The bar (0x10090884) stays open, so the reset is blocked. BAR OFF did not clear it. Some other non-WBENCHWINDOW window is on that screen, or the flag is not honoured there. Unnamed windows seen at 0x101200e4 and 0x100fc454. Contradicts the earlier claim that DOpus windows carry the flag. Not resolved; no further mechanism tried.
+- 3.2 rig (--os 32): not run (budget).
+- Remaining: XCON: menu window is opened by the handler and is not flagged.

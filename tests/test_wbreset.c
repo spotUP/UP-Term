@@ -160,6 +160,22 @@ static void test_hand_patch_finish(void)
     }
 }
 
+/* IPrefs 40.7 counts the windows on the Workbench screen that lack WFLG_WBENCHWINDOW and shows "Please close all
+ * windows, except drawers" without ever calling CloseWorkBench, so the gate never runs. Every window Amarchy opens
+ * on the Workbench screen (the status bar via tw_open, the drawn menu via gui window_open) carries WA_WBenchWindow.
+ * shot.c's full-screen overlay is on the front screen for one drag and is exempt. */
+static void test_wb_window_flag(void)
+{
+    static const char *const files[] = { "amarchy/gui.c", "amarchy/themewin.c" };
+    unsigned i;
+    for (i = 0; i < sizeof files / sizeof *files; i++) {
+        int opens = count_in(files[i], "OpenWindowTag");
+        CHECK_INT(opens >= 1, 1);
+        CHECK_INT(count_in(files[i], "WA_WBenchWindow"), opens);
+    }
+    CHECK_INT(count_in("amarchy/bar.c", "OpenWindow"), 0);      /* the bar opens only through tw_open */
+}
+
 void suite_wbreset(void)
 {
     test_external_reset();
@@ -168,4 +184,5 @@ void suite_wbreset(void)
     test_table();
     test_gate();
     test_hand_patch_finish();
+    test_wb_window_flag();
 }

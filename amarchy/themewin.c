@@ -99,7 +99,8 @@ struct Window *tw_open(struct Screen *scr, int x, int y, int w, int h, const cha
         pens_get(scr->ViewPort.ColorMap);
     /* no IDCMP at open: the window gets the shared port below, then its classes */
     win = OpenWindowTags(0, WA_Left, x, WA_Top, y, WA_Width, w, WA_Height, h, WA_Borderless, TRUE, WA_Backdrop, (flags & TW_OPEN_BACKDROP) != 0,
-                         WA_Activate, FALSE, WA_SimpleRefresh, TRUE, WA_RMBTrap, TRUE, WA_PubScreen, scr, TAG_DONE);
+                         WA_Activate, FALSE, WA_SimpleRefresh, TRUE, WA_RMBTrap, TRUE, WA_PubScreen, scr,
+                         WA_WBenchWindow, TRUE /* WBRESET-EXT: IPrefs refuses a reset while a window lacks this flag */, TAG_DONE);
     if (!win) {
         if (g_wins == 0)
             pens_release();
