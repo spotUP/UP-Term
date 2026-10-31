@@ -86,6 +86,8 @@
 #include "../prefs/settings_def.h"
 #include "upterm_version.h"
 #include "screenreq.h"
+#include "wbpark.h"
+#include "screennotify.h"
 
 /* rexx/rexxio.h: ARexx PUSH and QUEUE */
 #ifndef ACTION_FORCE
@@ -105,6 +107,7 @@ struct Library *DiskfontBase;
 struct Library *GadToolsBase; /* the window's menu (may be 0: no menu) */
 struct Library *DataTypesBase; /* picture.datatype, opened by the picture worker per decode */
 struct Library *LayersBase; /* LockLayer, for the renderer's planar path */
+struct Library *ScreenNotifyBase; /* optional: the window leaves a closing Workbench (wb_msgs) */
 struct Device *TimerBase; /* for ReadEClock in the debug profile */
 
 static LONG handler_main(void);
@@ -204,6 +207,11 @@ typedef struct con {
     int depth;                   /* DEPTH n; 0 = 4 on a native screen, 8 on a card */
     struct Screen *myscreen;     /* the screen opened for this window */
     screenreq screen_want;       /* a move to another screen kind asked for: done after the IDCMP loop */
+    wbpark wb;                   /* the window is closed while the Workbench closes (screennotify) */
+    struct MsgPort *sn_port;     /* screennotify.library's Workbench messages */
+    APTR sn_handle;              /* our Workbench client; 0 = none */
+    WORD wb_box[4];              /* the parked window's left, top, width, height */
+    int wb_box_on;               /* create_window reopens at wb_box */
     struct Screen *screen_closing; /* ours, its close refused (a visitor still on it): tried again */
     int inactive;
     int auto_open;               /* AUTO: no window until the first read or write */
@@ -2939,6 +2947,14 @@ static struct Window *create_window(con *c, struct Screen *scr)
             winspec_box(&c->wopt, c->w.font->tf_XSize, c->w.font->tf_YSize, bl, bt, br, bb,
                         scr->Width, scr->Height, &bx, &by, &bw, &bh);
         }
+        if (c->wb_box_on) {
+            /* back from a Workbench close (wb_msgs): where the user left it;
+             * WA_AutoAdjust fits it to a smaller new Workbench */
+            bx = c->wb_box[0];
+            by = c->wb_box[1];
+            bw = c->wb_box[2];
+            bh = c->wb_box[3];
+        }
         tags[n].ti_Tag = WA_Left;    tags[n++].ti_Data = bx;
         tags[n].ti_Tag = WA_Top;     tags[n++].ti_Data = by;
         tags[n].ti_Tag = WA_Width;   tags[n++].ti_Data = bw;
@@ -3095,6 +3111,34 @@ static void close_window(con *c)
     own_screen_close(c); /* its screen goes with it */
 }
 
+/* The terminal leaves its window, which closes; the grid, scrollback and
+ * the line being edited stay (screen_switch, wb_msgs). Only our own window. */
+static void window_unbind(con *c)
+{
+    window_parts_close(c);
+    ua_set(c, 0);
+    vtwin_unbind(&c->w);
+    CloseWindow(c->own_win);
+    c->own_win = 0;
+    if (c->locked) {
+        UnlockPubScreen(0, c->locked);
+        c->locked = 0;
+    }
+}
+
+/* The terminal into a new window on `scr` (locked by the caller) and redrawn. */
+static void window_rebind(con *c, struct Screen *scr, struct Window *win)
+{
+    c->locked = scr;
+    c->own_win = win;
+    vtwin_set_screen(&c->w, scr);
+    vtwin_rebind(&c->w, win);
+    pens_tell(c);
+    vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
+    menu_add(c, win);
+    sbar_apply(c); /* none on the borderless full-screen window: it has no border */
+}
+
 /* The window to another screen, its terminal with it (Settings > Screen,
  * /screen; P1.3): 0 the Workbench (or the SCREEN the spec named), 1 a
  * screen of its own, 2 full screen. The terminal is unbound from the old
@@ -3109,15 +3153,7 @@ static int screen_switch(con *c, int mode)
         return 0;
     if (mode == c->own_screen)
         return 1;
-    window_parts_close(c);
-    ua_set(c, 0);
-    vtwin_unbind(&c->w);
-    CloseWindow(c->own_win);
-    c->own_win = 0;
-    if (c->locked) {
-        UnlockPubScreen(0, c->locked);
-        c->locked = 0;
-    }
+    window_unbind(c);
     own_screen_close(c); /* own -> full opens a fresh one: borderless, no title bar */
     c->own_screen = mode;
     scr = lock_screen(c);
@@ -3138,14 +3174,7 @@ static int screen_switch(con *c, int mode)
         c->eof = 1; /* nowhere to show the terminal: the reader sees the end */
         return 0;
     }
-    c->locked = scr;
-    c->own_win = win;
-    vtwin_set_screen(&c->w, scr);
-    vtwin_rebind(&c->w, win);
-    pens_tell(c);
-    vtwin_fit_aspect(&c->w); /* topaz <-> Topaz Pro for the new screen's pixels */
-    menu_add(c, win);
-    sbar_apply(c); /* none on the borderless full-screen window: it has no border */
+    window_rebind(c, scr, win);
     return c->own_screen == mode;
 }
 
@@ -3155,6 +3184,90 @@ static void screen_pending(con *c)
     if (m != SCREENREQ_NONE) {
         if (!screen_switch(c, m))
             DisplayBeep(c->w.win ? c->w.win->WScreen : 0); /* tabs, or no such screen */
+    }
+}
+
+/* ---- the Workbench closes (screennotify.library) ---------------------------- */
+
+/* Our own plain window on the Workbench screen: one we may close and reopen
+ * with the terminal kept (not tabs, not our own screen, not a foreign window). */
+static int wb_eligible(con *c)
+{
+    return c->own_win && c->w.t && !c->is_tab && !c->foreign && c->ntabs < 2 && !c->own_screen &&
+           c->locked && (c->locked->Flags & SCREENTYPE) == WBENCHSCREEN;
+}
+
+/* Become a Workbench client when the library is there; without it the
+ * handler works as before (the reset of the Workbench fails while our
+ * window is open and Intuition asks Retry/Cancel). */
+static void wb_client_add(con *c)
+{
+    if (!ScreenNotifyBase)
+        return;
+    c->sn_port = CreateMsgPort();
+    if (c->sn_port)
+        c->sn_handle = AddWorkbenchClient(c->sn_port, 0);
+}
+
+static void wb_client_remove(con *c)
+{
+    struct Message *m;
+    if (c->sn_handle) {
+        /* FALSE while the library is sending to its clients: it waits for
+         * our reply, so answer what came in and try again */
+        while (!RemWorkbenchClient(c->sn_handle)) {
+            while ((m = GetMsg(c->sn_port)) != 0)
+                ReplyMsg(m);
+            Delay(10);
+        }
+        c->sn_handle = 0;
+    }
+    if (c->sn_port) {
+        while ((m = GetMsg(c->sn_port)) != 0)
+            ReplyMsg(m);
+        DeleteMsgPort(c->sn_port);
+        c->sn_port = 0;
+    }
+}
+
+/* The library's messages: before CloseWorkBench (value FALSE) the window
+ * closes, the terminal kept, and the reply follows; after OpenWorkBench or
+ * a failed close (TRUE) the reply goes first -- the library holds its
+ * semaphore until every client replied, and our LockPubScreen/OpenWindow
+ * may call OpenWorkBench, which waits for that semaphore -- then the
+ * window reopens where it was. */
+static void wb_msgs(con *c)
+{
+    struct ScreenNotifyMessage *m;
+    if (!c->sn_port)
+        return;
+    while ((m = (struct ScreenNotifyMessage *)GetMsg(c->sn_port)) != 0) {
+        int act = WBPARK_NONE;
+        if (m->snm_Type == SCREENNOTIFY_TYPE_WORKBENCH)
+            act = wbpark_note(&c->wb, m->snm_Value != 0, wb_eligible(c));
+        if (act == WBPARK_HIDE) {
+            struct Window *win = c->own_win;
+            c->wb_box[0] = win->LeftEdge;
+            c->wb_box[1] = win->TopEdge;
+            c->wb_box[2] = win->Width;
+            c->wb_box[3] = win->Height;
+            c->wb_box_on = 1;
+            window_unbind(c);
+        }
+        ReplyMsg(&m->snm_Message);
+        if (act == WBPARK_SHOW) {
+            struct Screen *scr = lock_screen(c);
+            struct Window *win = scr ? create_window(c, scr) : 0;
+            c->wb_box_on = 0;
+            if (win) {
+                window_rebind(c, scr, win);
+            } else {
+                if (scr)
+                    UnlockPubScreen(0, scr);
+                wbpark_failed(&c->wb); /* the next "opened" tries again */
+                c->wb_box_on = 1;
+            }
+        }
     }
 }
 
@@ -6975,7 +7088,7 @@ static void packet(con *c, struct DosPacket *p)
         reply(p, DOSTRUE, 0);
         return;
     case ACTION_READ:
-        if (!c->w.win && !open_window(c)) {
+        if (!c->w.win && !c->wb.parked && !open_window(c)) { /* parked: the grid takes it (wb_msgs) */
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
@@ -7005,7 +7118,7 @@ static void packet(con *c, struct DosPacket *p)
                                        (LONG)(k + 3 < p->dp_Arg3 ? wb[k + 3] : 0));
         }
 #endif
-        if (!c->w.win && !open_window(c)) {
+        if (!c->w.win && !c->wb.parked && !open_window(c)) { /* parked: the grid takes it (wb_msgs) */
             reply(p, -1, ERROR_NO_FREE_STORE);
             return;
         }
@@ -7351,7 +7464,7 @@ static void packet(con *c, struct DosPacket *p)
     case ACTION_DISK_INFO: {
         struct InfoData *id = (struct InfoData *)BADDR(p->dp_Arg1);
         LONG i;
-        if (!c->w.win)
+        if (!c->w.win && !c->wb.parked)
             open_window(c); /* as V47's con-handler does: the caller wants the window */
         c->auto_held = 1;   /* the caller has the window: AUTO no longer shuts it */
         for (i = 0; i < (LONG)sizeof(*id); i++)
@@ -7423,6 +7536,9 @@ static LONG handler_main(void)
     /* diskfont.library: opened by the worker that loads a font from disk (render/vtwin.c disk_font) */
     GadToolsBase = OpenLibrary((STRPTR)"gadtools.library", 39);
     LayersBase = OpenLibrary((STRPTR)"layers.library", 39);
+    /* optional: without it a Workbench reset waits on our window (wb_msgs) */
+    ScreenNotifyBase = OpenLibrary((STRPTR)SCREENNOTIFY_NAME, SCREENNOTIFY_VERSION);
+    wb_client_add(c);
     c->timer_port = CreateMsgPort();
     if (c->timer_port) {
         c->timer = (struct timerequest *)CreateIORequest(c->timer_port, sizeof(struct timerequest));
@@ -7492,6 +7608,8 @@ static LONG handler_main(void)
             wait |= 1UL << c->sel_port->mp_SigBit;
         if (c->req_port)
             wait |= 1UL << c->req_port->mp_SigBit;
+        if (c->sn_port)
+            wait |= 1UL << c->sn_port->mp_SigBit;
         own_screen_retry(c); /* an AUTO window's screen a visitor kept open */
         screen_pending(c);   /* a /screen from C:UPTerm (a packet, not a key) */
         /* No trace lines in the loop itself: each log Write's reply re-arms
@@ -7523,6 +7641,7 @@ static LONG handler_main(void)
 #else
             packet(c, (struct DosPacket *)m->mn_Node.ln_Name);
 #endif
+        wb_msgs(c); /* first: the library waits for our reply before the Workbench closes */
         req_service(c);
         if (!(wait & ~(1UL << c->port->mp_SigBit)) && c->w.frame_open && !c->w.dragging) {
             /* only a DOS packet woke us: no other port has a message, no
@@ -7676,6 +7795,9 @@ static LONG handler_main(void)
         CloseDevice((struct IORequest *)&c->lib_io); /* CONU_LIBRARY must be closed too (matrix 6.2) */
     if (GadToolsBase)
         CloseLibrary(GadToolsBase);
+    wb_client_remove(c);
+    if (ScreenNotifyBase)
+        CloseLibrary(ScreenNotifyBase);
     CloseLibrary(LayersBase);
     CloseLibrary((struct Library *)GfxBase);
     CloseLibrary((struct Library *)IntuitionBase);

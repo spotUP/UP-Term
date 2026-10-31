@@ -54,11 +54,11 @@ HOST_HDR := engine/kitty.c engine/inflate.c engine/png.c $(wildcard engine/*.h e
 TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.c \
            tests/test_amiga.c tests/test_reflow.c tests/test_sixel.c tests/test_kitty.c tests/test_pcansi.c tests/test_glyph.c tests/test_mirror.c tests/test_lineedit.c \
            tests/test_sh_parse.c tests/test_sh_expand.c tests/test_sh_exec.c tests/test_ldisc.c \
-           tests/test_desk.c tests/test_upcon.c tests/test_upconf.c tests/test_keymap.c tests/test_prefs.c tests/test_amconf.c tests/test_settings_def.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_ttf.c tests/test_slash.c tests/test_winspec.c tests/test_screenreq.c tests/test_cmdline.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c tests/test_menusrv.c tests/test_gthemes.c tests/test_pkgs.c tests/test_job.c tests/test_bar.c tests/test_tick.c tests/test_wbmode.c tests/test_status_core.c tests/test_barconf.c tests/test_note_core.c tests/test_flat_core.c tests/test_wbreset.c tests/test_menu_text.c \
+           tests/test_desk.c tests/test_upcon.c tests/test_upconf.c tests/test_keymap.c tests/test_prefs.c tests/test_amconf.c tests/test_settings_def.c tests/test_iconspec.c tests/test_updiff.c tests/test_zmodem.c tests/test_otag.c tests/test_ttf.c tests/test_slash.c tests/test_winspec.c tests/test_screenreq.c tests/test_wbpark.c tests/test_cmdline.c tests/test_fontpair.c tests/test_updemo.c tests/test_tabprog.c tests/test_pace.c tests/test_painter.c tests/test_text.c tests/test_clip.c tests/test_menusrv.c tests/test_gthemes.c tests/test_pkgs.c tests/test_job.c tests/test_bar.c tests/test_tick.c tests/test_wbmode.c tests/test_status_core.c tests/test_barconf.c tests/test_note_core.c tests/test_flat_core.c tests/test_wbreset.c tests/test_menu_text.c \
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
 
-.PHONY: symbolsnerd jbmono wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: symbolsnerd screennotify jbmono wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
 # ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
@@ -72,6 +72,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=shot_core the screenshot ILBM writer: ByteRun1 edges, planes, golden bytes, round trip through tools/ilbm_decode.py (tests/test_shot_core.c)
 # ONLY=winspec the XCON: spec's size fields and the default ground (a CON:/RAW: window looks like an XCON: one) (tests/test_winspec.c)
 # ONLY=screenreq a zeroed screen move request asks for no move, so a new XCON: process does not flash the screen (tests/test_screenreq.c)
+# ONLY=wbpark   a closing Workbench parks a plain Workbench window once and its reopen brings it back; a failed reopen retries (tests/test_wbpark.c)
 # ONLY=cmdline vsh's argv as an AmigaDOS command line: KEY=value keeps KEY= unquoted so ReadArgs sees the keyword (tests/test_cmdline.c)
 # ONLY=dopus_filetype the Directory Opus filetype file's golden bytes; upstream filetype_tool check/lint when $(DOPUS5_SRC) is set (tests/test_dopus_filetype.py)
 # ONLY=menu_rig_dopus_absent the amarchy_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
@@ -96,6 +97,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=rig_ami tools/rig/ami.py over wasabid, every function against wasabi's mock daemon (tools/test_rig_ami.py; needs `make wasabi`)
 # ONLY=rig_fsuae_log FS-UAE log in the rig dir, capped (tools/test_rig_fsuae_log.py)
 # ONLY=rig_iprefs_sysreq the rig clone drops the Replay monitor driver whose boot output made IPrefs ask to close windows; Retry is bounded (tests/test_rig_iprefs_sysreq.py)
+# ONLY=rig_screennotify every rig start stages the pinned screennotify.library in VTC:ixp6 (tests/test_rig_screennotify.py)
 # ONLY=rig_clone_new a rig number that never ran gets its sys.hdf clone (tools/test_rig_clone_new.py)
 # ONLY=rig_crashed rig.py status says crashed on a Guru reset loop in the fs-uae log; userland_rig takes the rig lock (tools/test_rig_crashed.py)
 # ONLY=userland_expected userland_rig stops a package with no build/expected outputs before the rig runs it (tests/test_userland_rig_expected.py)
@@ -149,6 +151,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_wasabi ]; then python3 -I tools/test_rig_wasabi.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_fsuae_log ]; then python3 -I tools/test_rig_fsuae_log.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_iprefs_sysreq ]; then python3 tests/test_rig_iprefs_sysreq.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_screennotify ]; then python3 tests/test_rig_screennotify.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_clone_new ]; then python3 -I tools/test_rig_clone_new.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_crashed ]; then python3 -I tools/test_rig_crashed.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = userland_expected ]; then python3 -I tests/test_userland_rig_expected.py; fi
@@ -382,6 +385,26 @@ $(SYMBOLS_TTF): $(SYMBOLS_ARCHIVE)
 	echo "$(SYMBOLS_TTF_SHA256)  $@" | shasum -a 256 -c -
 symbolsnerd: $(SYMBOLS_TTF)
 
+# screennotify.library 1.0 (Stefan Becker, Aminet util/libs/ScreenNotify10.lha): the archive fetched
+# once into build/screennotify/, both SHA-256 checked, the library extracted. Its licence forbids
+# shipping it in other packages, so it is never committed or put in the kit: only the rigs carry it
+# (tools/rig/rig.py stage_screennotify, every start), so the handler parks its Workbench window
+# when IPrefs resets the screen (handler/wbpark.h, WB-RESET-SCREENNOTIFY).
+SCREENNOTIFY_SHA256 ?= 7128e0defe25522043c29469cfaf2b8df4e2e31babda82db494f45ce4d80d3f9
+SCREENNOTIFY_LIB_SHA256 ?= 506e1a0870e6c900ab0603608a33ae95fbef516994aeaf65ab8570609806be46
+SCREENNOTIFY_ARCHIVE := $(BUILD)/screennotify/ScreenNotify10.lha
+SCREENNOTIFY_LIB := $(BUILD)/screennotify/ScreenNotify/libs/screennotify.library
+$(SCREENNOTIFY_ARCHIVE):
+	@mkdir -p $(BUILD)/screennotify
+	curl -sSfL -o $@.tmp https://aminet.net/util/libs/ScreenNotify10.lha
+	echo "$(SCREENNOTIFY_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(SCREENNOTIFY_LIB): $(SCREENNOTIFY_ARCHIVE)
+	cd $(BUILD)/screennotify && lha xqf ScreenNotify10.lha ScreenNotify/libs/screennotify.library
+	echo "$(SCREENNOTIFY_LIB_SHA256)  $@" | shasum -a 256 -c -
+	touch $@
+screennotify: $(SCREENNOTIFY_LIB)
+
 # JetBrains Mono (OFL 1.1; Omarchy's font): the release archive fetched once into build/jbmono/, SHA-256
 # checked, JetBrainsMono-Regular.ttf extracted, then drawn as the Amiga strike font JetBrainsMono.font 16
 # (tools/gen_jbmono.py: build/jbmono/out/JetBrainsMono.font and JetBrainsMono/16) for the Amarchy menu on
@@ -611,7 +634,7 @@ ENGINE_68K := engine/vtengine_68k.s
 HANDLER_DATADIR := claude/datadir.c claude/path.c claude/util.c claude/datadir_amiga.c
 HANDLER_SRC := handler/handler_start.s $(ENGINE_68K) render/amiga_render_68k.s render/painter.c render/painter_68k.s render/painter.h handler/vtcon_handler.c handler/clip.c handler/lineedit.c handler/kcmode.c handler/complete.c handler/complete_core.c prefs/prefs_asl.c handler/brk.c handler/waitset.c handler/slash.c handler/keymap_act.c handler/upmru.c config/keymap.c amarchy/win_core.c config/keymap_load.c handler/upactive.c handler/upreq.c handler/frontscr.c handler/winspec.c handler/sbar_gad.c $(ENGINE) render/amiga_render.c render/pens_amiga.c render/aa_ink.c render/aa_ink.h render/aa_ink_rule.h render/pens_amiga.h render/vtwin.c render/vtinput.c render/sbar.c render/glyphmap.c render/unifont.c render/emoji.c render/fontpair.c render/outline.c render/otag.c render/ttf.c tty/ldisc.c config/upconf.c config/upconf_rows.c config/termurl.c prefs/prefs_core.c prefs/settings_def.c prefs/prefs_dos.c amarchy/amconf_core.c amarchy/amconf_keys.c amarchy/amconf_dos.c handler/clipfmt.c handler/be32.c handler/histfile.c shell/sh_path.c $(HANDLER_DATADIR)
 HANDLER_HDR := $(KEYMAP_DEFAULT_INC) handler/keymap_act.h config/keymap.h config/keymap_load.h handler/upactive.h handler/upcmd.h shell/vsh_quote.h handler/upreq.h handler/frontscr.h engine/vtengine.h engine/vtcaps.inc engine/vtwidth.h render/amiga_render.h render/vtwin.h render/synchold.h render/vtinput.h render/sbar.h handler/sbar_gad.h render/glyphmap.h render/unifont.h render/emoji.h render/glyph_tables.inc render/outline.h render/otag.h render/ttf.h \
-               handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/screenreq.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
+               handler/clip.h handler/clipfmt.h handler/lineedit.h handler/le_fns.h handler/complete.h handler/complete_core.h handler/histfile.h claude/datadir.h claude/sys.h claude/datadir_amiga.h handler/brk.h handler/ttyown.h handler/slash.h handler/winspec.h handler/screenreq.h handler/wbpark.h handler/screennotify.h handler/menu_ids.h handler/vtcon_packets.h tty/ldisc.h device/upc_public.h config/upconf.h config/termurl.h config/upassign.h \
                handler/tabprog.h handler/waitset.h demo/updemo.h prefs/prefs_core.h shell/sh_path.h amarchy/amconf_core.h amarchy/amconf_dos.h
 
 amiga: $(BUILD)/amiga/vtengine-$(CPU).o $(BUILD)/amiga/vtcon-handler $(BUILD)/amiga/up-console.device $(BUILD)/amiga/UPConsole $(BUILD)/amiga/pty-handler $(BUILD)/amiga/reach $(BUILD)/amiga/vtshow $(BUILD)/amiga/winbox $(BUILD)/amiga/sizewatch $(BUILD)/amiga/breakport $(BUILD)/amiga/ttyprobe $(BUILD)/amiga/dsrtime $(BUILD)/amiga/dripens $(BUILD)/amiga/wasabikey $(BUILD)/amiga/tcpprobe $(BUILD)/amiga/Reboot $(BUILD)/amiga/WBPath $(BUILD)/amiga/UPBigVol $(BUILD)/amiga/UPDemo $(BUILD)/amiga/cellbench $(BUILD)/amiga/wprobe $(BUILD)/amiga/phaseprobe $(BUILD)/amiga/engbench $(BUILD)/amiga/ptytest $(BUILD)/amiga/ixkill $(BUILD)/amiga/vsh $(BUILD)/amiga/ixpipe-handler $(BUILD)/amiga/upprefs $(BUILD)/amiga/Amarchy $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amnotify $(BUILD)/amiga/AmTile $(BUILD)/amiga/upicon $(BUILD)/amiga/upupdate $(BUILD)/amiga/upsame $(BUILD)/amiga/sz $(BUILD)/amiga/rz $(BUILD)/amiga/upgetty $(BUILD)/amiga/UPTerm $(BUILD)/amiga/Agent $(BUILD)/amiga/uptelnet $(BUILD)/amiga/hl $(BUILD)/amiga/mdv $(BUILD)/amiga/ps $(BUILD)/amiga/top $(BUILD)/amiga/Claude $(BUILD)/amiga/scrprobe

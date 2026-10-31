@@ -1070,6 +1070,7 @@ def setup():
     shutil.copyfile(rigwasabi.build_dir() / "wasabid", RIG / "boot/wasabid")
     stage_amissl(RIG / "vtc", M060)
     stage_ixemul(RIG / "vtc", NOFPU)
+    stage_screennotify(RIG / "vtc")
     refresh_programs(RIG / "vtc", ROOT / "build/amiga")   # the files build_drift checks, as install copies them
     refresh_kit_shadows(RIG / "vtc")
     stale = build_drift(RIG / "vtc")
@@ -1321,6 +1322,19 @@ def stage_ixemul(vtc, nofpu):
         if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
             shutil.copyfile(src, dst)
             print("refreshed ixp6/%s" % name, dst.stat().st_size, "bytes")
+
+def stage_screennotify(vtc):
+    """VTC:ixp6/screennotify.library (first in LIBS:, RIG_LIBS), every start: the pinned Aminet 1.0 (`make
+    screennotify`, both SHA-256 checked), so the handler's Workbench window leaves the screen while IPrefs resets it
+    and no "Intuition is attempting to reset the Workbench screen" System Request waits on it (WB-RESET-SCREENNOTIFY,
+    handler/wbpark.h). Its licence keeps it out of the repository and the kit: only the rigs carry it."""
+    subprocess.run(["make", "-s", "screennotify"], cwd=ROOT, check=True)
+    src = ROOT / "build/screennotify/ScreenNotify/libs/screennotify.library"
+    dst = vtc / "ixp6/screennotify.library"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if not (dst.is_file() and dst.read_bytes() == src.read_bytes()):
+        shutil.copyfile(src, dst)
+        print("refreshed ixp6/screennotify.library", dst.stat().st_size, "bytes")
 
 def program_pairs(vtc, built):
     """The one list of (build file, VTC: copy) pairs for the build/amiga programs: each file of `built`, in VTC: and in

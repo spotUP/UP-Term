@@ -62,6 +62,7 @@ void suite_ttf(void);
 void suite_slash(void);
 void suite_winspec(void);
 void suite_screenreq(void);
+void suite_wbpark(void);
 void suite_cmdline(void);
 void suite_win(void);
 void suite_tile(void);
@@ -155,6 +156,7 @@ static const h_suite suites[] = {
     { "slash", suite_slash },
     { "winspec", suite_winspec },
     { "screenreq", suite_screenreq },
+    { "wbpark", suite_wbpark },
     { "cmdline", suite_cmdline },
     { "win", suite_win },
     { "tile", suite_tile },

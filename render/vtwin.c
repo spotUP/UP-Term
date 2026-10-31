@@ -517,7 +517,7 @@ static void frame_start(vtwin *w)
 #define SETTLE_QUIET_US 250000UL
 static void settle(vtwin *w)
 {
-    if (!w->t || !w->r.jump)
+    if (!w->t || !w->win || !w->r.jump)
         return;
     vr_mask_begin(&w->r);
     vr_cursor_off(&w->r);
@@ -529,8 +529,8 @@ static void settle(vtwin *w)
 
 void vtwin_render(vtwin *w)
 {
-    if (!w->render_pending || !w->t)
-        return;
+    if (!w->render_pending || !w->t || !w->win)
+        return; /* (no window -- the handler hid it while the Workbench reopens: the grid waits, bind redraws it) */
     if (w->frame_open && (vt_modes(w->t) & VT_MODE_SYNC) && VTWIN_SYNC_HOLD(w->sync_held)) {
         /* synchronized output (?2026): the program is in the middle of a
          * frame. Nothing is drawn until it says the frame is whole -- or
