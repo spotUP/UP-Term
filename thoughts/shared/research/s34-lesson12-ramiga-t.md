@@ -29,3 +29,21 @@ dist/README.txt (line 355) and lesson 12 still said Right Amiga T: stale text, t
 ## Open
 - case lesson12 does not PASS yet: the drag/copy word finder (Screen.task_rows/word_span) must find the `up<pid>` word.
 - host tests: pytest tests/test_tutorial*.py 33 passed.
+
+## s34 step 5 (second agent; NOT resolved, rig 4 went down under host load 70-100)
+- Screenshot of the tab right after settled() at step 5 (rig 4, run before the crash): the lesson DOES print the task as
+  "Task: Drag the mouse over this word, press Right Amiga C, then press Return:" and wraps the word `up273825984` onto its own
+  short line (11 columns) directly above TWO "tutorial>" prompt lines (the empty Return of step 4 re-prompted once).
+  So the lesson prints something a user can drag over; the word is on the row two above the bottom prompt.
+- Same run, clips: task_rows() = [(214,76),(198,44),(182,76),(166,77)] and later [(221,76),(205,76),(189,29),(173,77)]:
+  every candidate is a 76/77-column row ("Task:... Return:" , "Amiga C puts the selection ...", "Copy takes two moves ...").
+  The short `up<pid>` row never appears in task_rows, so word_span picks "Return:" (ends the 76-col Task row), "close" etc.
+  Counters in that run: tabs-opened (1,2) tab-switches (1,6) menu-picks (1,7) slash-count (0,1) copies (0,4);
+  progress 1-11, paste False. Counters were NOT None this time (the earlier None came from the rig tab left bad after a killed run).
+- Suspect (unproven): Screen.task_rows measures `bottom` from the last ink row of the whole window; the up-row is skipped or
+  mis-aligned because line_sig(bottom,k) assumes LINE=16 rows from that baseline and the bottom prompt's cursor block shifts
+  the baseline, or the second prompt row is not pixel-equal to the bottom prompt (cursor in the bottom one only
+  compares cols 1-9, so that is fine). A debug print of (sc.rows()[-1], per-k prompt-equal flag, last col) at step 5 would decide;
+  the run that was to print it (DBG line) died: rig 4 emulator exited, wasabi connection refused.
+- Rig lesson: a worktree needs `ln -s <main>/build build` before any rig tool runs (kitset reads build/amiga); not committed.
+- Not done: no code fix committed, host tests not rerun, `case lesson12` still FAIL.
