@@ -71,10 +71,9 @@ typedef struct li_edit {
     uint32_t gad_render, gad_select;
     int      strip_newicon;     /* drop the NewIcon tooltypes of the source */
     int      drop_form;         /* drop the FORM ICON tail of the source */
-    /* RESTORE: put ins_src's NewIcon tooltypes (in order) back at index ins_at of the result (clamped), and
+    /* RESTORE: put ins_src's NewIcon tooltypes back, each at the index it had in ins_src, and
      * append form_src's FORM tail (when form_src is set) */
     const li_file *ins_src;
-    int      ins_at;
     const li_file *form_src;
     uint32_t tt_raw;            /* do_ToolTypes to write when the source had none and the result has some */
 } li_edit;

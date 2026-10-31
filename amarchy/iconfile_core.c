@@ -163,7 +163,6 @@ void li_edit_apply(li_edit *e, const li_file *src, const li_image *normal, const
 
 void li_edit_restore(li_edit *e, const li_file *cur, const li_file *backup)
 {
-    int first;
     (void)cur;
     memset(e, 0, sizeof *e);
     e->nimg = backup->nimg;
@@ -174,10 +173,7 @@ void li_edit_restore(li_edit *e, const li_file *cur, const li_file *backup)
     e->gad_flags = backup->gad_flags;
     e->gad_render = backup->gad_render;
     e->gad_select = backup->gad_select;
-    if (li_newicon_count(backup, &first) > 0) {
-        e->ins_src = backup;
-        e->ins_at = first;
-    }
+    if (li_newicon_count(backup, NULL) > 0) e->ins_src = backup;
     if (backup->form_len) e->form_src = backup;
     e->tt_raw = backup->tt_raw;
 }
@@ -224,15 +220,17 @@ size_t li_splice(const li_file *src, const li_edit *e, uint8_t *out, size_t cap)
     for (i = 0; i < src->ntt; i++)
         if (!(e->strip_newicon && is_newicon(src, i))) { list[n].f = src; list[n].i = i; n++; }
     if (e->ins_src) {
-        ent add[LI_MAXTT];
-        int na = 0;
+        /* each NewIcon line goes back to the index it had in ins_src (ascending, so earlier insertions
+         * already shifted the list the way the original had it) */
         for (i = 0; i < e->ins_src->ntt; i++)
-            if (is_newicon(e->ins_src, i)) { add[na].f = e->ins_src; add[na].i = i; na++; }
-        ins = e->ins_at < 0 ? 0 : e->ins_at > n ? n : e->ins_at;
-        if (n + na > 2 * LI_MAXTT) return 0;
-        for (k = n - 1; k >= ins; k--) list[k + na] = list[k];
-        for (k = 0; k < na; k++) list[ins + k] = add[k];
-        n += na;
+            if (is_newicon(e->ins_src, i)) {
+                if (n + 1 > 2 * LI_MAXTT) return 0;
+                ins = i > n ? n : i;
+                for (k = n - 1; k >= ins; k--) list[k + 1] = list[k];
+                list[ins].f = e->ins_src;
+                list[ins].i = i;
+                n++;
+            }
     }
     ttraw = src->ntt >= 0 ? src->tt_raw : e->tt_raw;
     if (n == 0 && src->ntt != 0) ttraw = 0;   /* an empty array the source already had is kept as it was */

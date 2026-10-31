@@ -237,6 +237,34 @@ static void test_newicon_form(void)
     CHECK_INT(li_parse(g_a, len, &wr), LI_E_MAGIC);
 }
 
+static void test_interleaved_newicon_lines_restore_to_their_original_positions(void)
+{
+    /* NewIcon lines split by normal tooltypes before, between and after */
+    static const char *tt[] = { "A=1", "*** DON'T EDIT THE FOLLOWING LINES!! ***", "IM1=BAAAA", "MIDDLE=x", "IM2=CCCC", "IM2=DDDD", "Z=9", "IM1=EEEE" };
+    static uint8_t dat[8192];
+    li_dat d;
+    li_file src, wr;
+    li_edit e;
+    li_image nrm, sel;
+    size_t len, n;
+
+    len = make_dat(dat);
+    CHECK_INT(li_dat_open(dat, len, &d), 0);
+    len = make_tool(g_a, 1, tt, 8, 1);
+    CHECK_INT(li_parse(g_a, len, &src), 0);
+    CHECK_INT(li_newicon_count(&src, NULL), 5);
+    CHECK_INT(li_dat_find(&d, "folder", 0, &nrm, &sel), 0);
+    li_edit_apply(&e, &src, &nrm, &sel);
+    n = li_splice(&src, &e, g_c, BUF);
+    CHECK(n > 0);
+    CHECK_INT(li_parse(g_c, n, &wr), 0);
+    CHECK_INT(wr.ntt, 3);
+    li_edit_restore(&e, &wr, &src);
+    n = li_splice(&wr, &e, g_d, BUF);
+    CHECK_INT(n, len);
+    CHECK(memcmp(g_d, g_a, len) == 0);
+}
+
 static void test_pick_backup(void)
 {
     char out[128];
@@ -338,6 +366,7 @@ void suite_iconfile(void)
 {
     test_fixtures();
     test_newicon_form();
+    test_interleaved_newicon_lines_restore_to_their_original_positions();
     test_pick_backup();
     test_dat();
     test_corpus();
