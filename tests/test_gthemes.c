@@ -40,7 +40,7 @@ static const struct {
     { "solitude", 0, 0x101315, 0xcacccc, 0x4b4e55, 0x798186 },
     { "starship", 0, 0x1c1c1e, 0xf5f5f7, 0x98989d, 0xff9f0a },
     { "tokyo-night", 0, 0x1a1b26, 0xa9b1d6, 0x565f89, 0x7aa2f7 },
-    { "vantablack", 0, 0x000000, 0xffffff, 0x505050, 0x8d8d8d },
+    { "vantablack", 0, 0x000000, 0xBEBEBE, 0x505050, 0x8d8d8d },
     { "white", 1, 0xffffff, 0x000000, 0xc0c0c0, 0x6e6e6e },
 };
 #define NSHIPPED ((int)(sizeof shipped / sizeof shipped[0]))
@@ -152,6 +152,31 @@ static void test_gthemes_parse(void)
     gt_parse("background = #010203\nforeground = 0x040506\n", 42, &t);
     CHECK_INT(t.bg, 0x010203);
     CHECK_INT(t.fg, 0x040506);
+}
+
+/* THEME-TEXT-GREY (owner rule 2026-10-31): a dark theme with a #ffffff foreground gets #BEBEBE, derived colours follow */
+static void test_gthemes_text_grey(void)
+{
+    gtheme t, g;
+    const char *dark = "mode = \"dark\"\nbackground = \"#000000\"\nforeground = \"#ffffff\"\n";
+    const char *nomode = "background = \"#000000\"\nforeground = \"#ffffff\"\n";
+    const char *light = "mode = \"light\"\nbackground = \"#ffffff\"\nforeground = \"#000000\"\n";
+    const char *lightw = "mode = \"light\"\nbackground = \"#808080\"\nforeground = \"#ffffff\"\n";
+    const char *off = "mode = \"dark\"\nbackground = \"#101010\"\nforeground = \"#fffffe\"\n";
+    gt_parse(dark, (long)strlen(dark), &t);
+    CHECK_INT(t.fg, 0xBEBEBEUL);
+    /* derived: lighter_bg is a tenth of the way from the background to the ADJUSTED foreground, fail falls back to it */
+    CHECK_INT(t.lighter_bg, 0x131313UL);
+    CHECK_INT(t.fail, 0xBEBEBEUL);
+    gt_parse(nomode, (long)strlen(nomode), &g); /* no mode key is dark */
+    CHECK_INT(g.fg, 0xBEBEBEUL);
+    gt_parse(light, (long)strlen(light), &t);
+    CHECK_INT(t.fg, 0x000000UL);
+    CHECK_INT(t.bg, 0xffffffUL);
+    gt_parse(lightw, (long)strlen(lightw), &t); /* a light theme keeps even a white foreground */
+    CHECK_INT(t.fg, 0xffffffUL);
+    gt_parse(off, (long)strlen(off), &t);
+    CHECK_INT(t.fg, 0xfffffeUL);
 }
 
 static void test_gthemes_roles(void)
@@ -739,6 +764,7 @@ void suite_gthemes(void)
     test_gthemes_parse();
     test_gthemes_term_text();
     test_gthemes_boot_term();
+    test_gthemes_text_grey();
     test_gthemes_roles();
     test_gthemes_user();
     test_gthemes_amconf();

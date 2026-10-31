@@ -52,6 +52,10 @@ static void str_key(char *dst, int cap, const char *key)
     dst[n] = 0;
 }
 
+/* Owner rule (2026-10-31): plain white text on a dark theme is never wanted; a dark theme whose foreground is exactly
+ * #ffffff takes this grey instead (only vantablack today). Light themes are untouched. */
+#define GT_DARK_WHITE_FG 0xBEBEBEUL
+
 /* tokyo-night: background #1a1b26, foreground #a9b1d6, dark_foreground #565f89, accent #7aa2f7 (its colors.toml) */
 void gt_builtin(gtheme *out)
 {
@@ -77,18 +81,22 @@ void gt_parse(const char *buf, long len, gtheme *out)
     gt_builtin(&d);
     upconf_clear(&g_conf);
     upconf_parse(&g_conf, buf, len);
+    /* the mode first: the foreground rule below depends on it, and every colour derived from the foreground (the
+     * fail fallback, lighter_bg and so the selection, the terminal palette) must see the adjusted value */
+    m = upconf_str(&g_conf, "default", "mode", "");
+    while (*m == '"' || *m == ' ')
+        m++;
+    out->light = !strncmp(m, "light", 5);
     out->bg = upconf_rgb(&g_conf, "default", "background", d.bg);
     out->fg = upconf_rgb(&g_conf, "default", "foreground", d.fg);
+    if (!out->light && out->fg == 0xFFFFFFUL)
+        out->fg = GT_DARK_WHITE_FG;
     out->dim = upconf_rgb(&g_conf, "default", "dark_foreground", d.dim);
     out->accent = upconf_rgb(&g_conf, "default", "accent", d.accent);
     /* a file without green or red (not an Omarchy colors.toml) gives the accent and the foreground, never the
      * built-in's colours, which would clash with another theme's ground */
     out->ok = upconf_rgb(&g_conf, "default", "green", out->accent);
     out->fail = upconf_rgb(&g_conf, "default", "red", out->fg);
-    m = upconf_str(&g_conf, "default", "mode", "");
-    while (*m == '"' || *m == ' ')
-        m++;
-    out->light = !strncmp(m, "light", 5);
     out->dark_bg = upconf_rgb(&g_conf, "default", "dark_background", out->bg);
     /* darker: its own key, else dark_background when the file has one, else the background at 80 % */
     out->darker_bg = upconf_rgb(&g_conf, "default", "darker_background",
