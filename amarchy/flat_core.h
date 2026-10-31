@@ -255,4 +255,13 @@ enum { FLAT_ROLE_PRIMARY = 0, FLAT_ROLE_SECONDARY = 1 };
  * the window, the box itself included (skipped by equal box). */
 int flat_button_role(const flat_box *self, const flat_box *sib, int n);
 
+/* FLAT-SCROLLER: a window scroller (prop gadget). The pen for one fill inside the gadget's container (cx,cy,cw,ch in the
+ * rastport's coordinates): a fill inside the knob rectangle takes the pen one shade lighter than the frame (flat_button_pen); the
+ * rest of the container is track and takes the frame pen (pen_back: the flat map sets FILLPEN and BACKGROUNDPEN to it). The knob
+ * is laid out as Intuition does: size = body * container / 0xFFFF (at least 1 px), position = pot * (container - size) / 0xFFFF.
+ * Returns -1 when flat is off or held, or the fill is not inside the container (the caller leaves the call alone).
+ * horiz / vert: the PropInfo FREEHORIZ / FREEVERT flags; depth: the screen depth. */
+int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
+                      unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1);
+
 #endif

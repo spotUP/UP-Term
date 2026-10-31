@@ -895,8 +895,45 @@ static void test_desk_flat_state(void)
         }
 }
 
+/* FLAT-SCROLLER: knob = the lighter pen (pen_button), track = the frame pen (pen_back), nothing outside the container, nothing
+ * when flat is off or held. Same rule for every state: the function takes no active flag. */
+static void test_scroller(void)
+{
+    flat_state s;
+    int kn, tr;
+    flat_init(&s);
+    desk_flat_state(1, 1, &s);
+    kn = DK_SELECTION;
+    tr = s.pen_back;
+    CHECK(kn != tr);
+    /* vertical 16 x 100 container at (10,20), body half: knob height 50 */
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), kn);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 70, 25, 119), tr);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 70, 25, 119), kn);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0xFFFF, 0, 0x8000, 10, 20, 25, 69), tr);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 60, 25, 80), tr);   /* straddles the knob edge */
+    /* a tiny body still gives a 1 px knob */
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 20, 25, 20), kn);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 1, 10, 21, 25, 21), tr);
+    /* horizontal 100 x 10, body a quarter (knob width 25), pot at the end: knob x 75..99 */
+    CHECK_INT(flat_scroller_pen(&s, 3, 0, 0, 100, 10, 1, 0, 0xFFFF, 0, 0x4000, 0, 75, 0, 99, 9), kn);
+    CHECK_INT(flat_scroller_pen(&s, 3, 0, 0, 100, 10, 1, 0, 0xFFFF, 0, 0x4000, 0, 0, 0, 74, 9), tr);
+    /* outside the container, flat held, flat off: -1, the call stays alone */
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 9, 20, 25, 69), -1);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 26, 69), -1);
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 120), -1);
+    s.held = 1;
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
+    s.held = 0;
+    /* under 8 colours the knob takes the accent pen_line (flat_button_pen), never a missing pen */
+    CHECK_INT(flat_scroller_pen(&s, 2, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), s.pen_line);
+    s.enabled = 0;
+    CHECK_INT(flat_scroller_pen(&s, 3, 10, 20, 16, 100, 0, 1, 0, 0, 0, 0x8000, 10, 20, 25, 69), -1);
+}
+
 void suite_flat_core(void)
 {
+    test_scroller();
     test_desk_flat_state();
     test_kill_switches();
     test_which_from_gtype();

@@ -411,3 +411,24 @@ int flat_button_gadget(const void *gadget_render, const void *select_render, con
 {
     return image && gadget_render == image && select_render == image;
 }
+
+int flat_scroller_pen(const flat_state *s, int depth, int cx, int cy, int cw, int ch, int horiz, int vert,
+                      unsigned hpot, unsigned vpot, unsigned hbody, unsigned vbody, int x0, int y0, int x1, int y1)
+{
+    int kx = cx, ky = cy, kw = cw, kh = ch;
+    if (!s->enabled || s->held || cw < 1 || ch < 1 || x0 < cx || y0 < cy || x1 >= cx + cw || y1 >= cy + ch || x1 < x0 || y1 < y0)
+        return -1;
+    if (horiz) {
+        kw = (int)(((unsigned long)hbody * (unsigned long)cw) / 0xFFFFUL);
+        if (kw < 1) kw = 1;
+        kx = cx + (int)(((unsigned long)hpot * (unsigned long)(cw - kw)) / 0xFFFFUL);
+    }
+    if (vert) {
+        kh = (int)(((unsigned long)vbody * (unsigned long)ch) / 0xFFFFUL);
+        if (kh < 1) kh = 1;
+        ky = cy + (int)(((unsigned long)vpot * (unsigned long)(ch - kh)) / 0xFFFFUL);
+    }
+    if (x0 >= kx && x1 < kx + kw && y0 >= ky && y1 < ky + kh)
+        return flat_button_pen(s, depth);
+    return s->pen_back;
+}

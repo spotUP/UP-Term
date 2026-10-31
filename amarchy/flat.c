@@ -335,11 +335,53 @@ static int tx_remove(flatshared *r)
 typedef void (*rectfn)(__reg("a1") struct RastPort *, __reg("d0") LONG, __reg("d1") LONG, __reg("d2") LONG, __reg("d3") LONG);
 extern void flat_rf_entry(void);
 
+/* FLAT-SCROLLER: the pen for one Intuition fill inside a window scroller, or -1. Walks the window's prop gadgets (no
+ * Intuition call: this runs inside graphics.library, GetScreenDrawInfo here could deadlock) and asks flat_scroller_pen. */
+static int scroller_pen(flatshared *r, struct RastPort *rp, struct Window *w, LONG x0, LONG y0, LONG x1, LONG y1)
+{
+    struct Gadget *g;
+    for (g = w->FirstGadget; g; g = g->NextGadget) {
+        struct PropInfo *pi;
+        int gx, gy, gw, gh, cx, cy, cw, ch, pen;
+        if ((g->GadgetType & GTYP_GADGETTYPE) != GTYP_PROPGADGET || !(pi = (struct PropInfo *)g->SpecialInfo))
+            continue;
+        gx = g->LeftEdge + ((g->Flags & GFLG_RELRIGHT) ? w->Width - 1 : 0);
+        gy = g->TopEdge + ((g->Flags & GFLG_RELBOTTOM) ? w->Height - 1 : 0);
+        gw = g->Width + ((g->Flags & GFLG_RELWIDTH) ? w->Width : 0);
+        gh = g->Height + ((g->Flags & GFLG_RELHEIGHT) ? w->Height : 0);
+        if (x0 < gx || y0 < gy || x1 >= gx + gw || y1 >= gy + gh)
+            continue;
+        cx = gx + pi->LeftBorder; cy = gy + pi->TopBorder; cw = pi->CWidth; ch = pi->CHeight;
+        pen = flat_scroller_pen(&r->st, (rp->BitMap ? rp->BitMap->Depth : 0), cx, cy, cw, ch, (pi->Flags & FREEHORIZ) != 0, (pi->Flags & FREEVERT) != 0,
+                                pi->HorizPot, pi->VertPot, pi->HorizBody, pi->VertBody, (int)x0, (int)y0, (int)x1, (int)y1);
+        if (pen >= 0)
+            return pen;
+    }
+    return -1;
+}
+
 void flat_rf_c(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, ULONG ret)
 {
     flatshared *r = g_r;
     struct Window *w;
     r->rcalls++;
+    if (r->st.enabled && !r->st.held && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 && ret >= r->irom_lo &&
+        ret < r->irom_hi) {
+        int sp = scroller_pen(r, rp, w, x0, y0, x1, y1);
+        if (sp >= 0) {
+            UBYTE fg = rp->FgPen, dm = rp->DrawMode, pt = rp->AreaPtSz;
+            UWORD *pa = (UWORD *)rp->AreaPtrn;
+            r->shits++;
+            rp->AreaPtrn = 0; rp->AreaPtSz = 0;               /* a solid fill: the stock track is a dither */
+            SetDrMd(rp, JAM2);
+            SetAPen(rp, sp);
+            ((rectfn)r->rsw.saved)(rp, x0, y0, x1, y1);
+            SetAPen(rp, fg);
+            SetDrMd(rp, dm);
+            rp->AreaPtrn = pa; rp->AreaPtSz = pt;
+            return;
+        }
+    }
     if (r->st.enabled && !r->st.held && r->st.pen_outline && rp && rp->Layer && (w = (struct Window *)rp->Layer->Window) != 0 &&
         !(w->Flags & WFLG_BORDERLESS) && ret >= r->irom_lo && ret < r->irom_hi &&
         flat_outer_edge_match(w->Width, w->Height, (int)x0, (int)y0, (int)x1, (int)y1)) {
