@@ -50,7 +50,7 @@ void desk_flat_glyph_pens(unsigned char *text, unsigned char *line, unsigned cha
 
 /* FLAT-C9: the one mapping from the prefs (flat = amarchy flat-system-look, gadgets = flat-window-gadgets, both 0/1) and the theme's
  * pen map to the flat_state block of "Amarchy.Flat": enabled = either switch, pen_text/pen_line/pen_back = desk_flat_glyph_pens,
- * pen_outline = the theme accent pen (DK_ACCENT). Only these fields are written; version, size, held, still_chained and calls
+ * pen_outline = the theme accent pen (DK_ACCENT), pen_button = DK_SELECTION, pen_ptext = DK_BG. Only these fields are written; version, size, held, still_chained and calls
  * belong to the resident program and are left alone. desk_flat_state_calls counts calls (the reachability sentinel). */
 void desk_flat_state(int flat, int gadgets, flat_state *s);
 extern unsigned long desk_flat_state_calls;

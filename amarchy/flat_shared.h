@@ -36,6 +36,11 @@ typedef struct flatshared {
     uintptr_t *rslot;
     uintptr_t irom_lo, irom_hi; /* Intuition's ROM code range (FindResident rt_MatchTag .. rt_EndSkip): the caller gate */
     ULONG rcalls, rhits;        /* every patched RectFill call / every outer-edge fill recoloured (the sentinels) */
+    /* FLAT-BUTTON-FILL: the graphics.library Text patch (LVO -60) that draws a pressed button's label in pen_ptext */
+    flat_swap tsw;
+    uintptr_t *tslot;
+    flat_tx tx;                 /* the armed pressed frame (flat_core.h) */
+    ULONG tcalls, thits;        /* every patched Text call / every pressed label recoloured (the sentinels) */
 } flatshared;
 
 #endif

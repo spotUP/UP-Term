@@ -23,8 +23,12 @@ static void test_layout(void)
     CHECK_INT(offsetof(flat_state, pen_line), 17);
     CHECK_INT(offsetof(flat_state, pen_back), 18);
     CHECK_INT(offsetof(flat_state, pen_outline), 19);
+    CHECK_INT(offsetof(flat_state, pen_button), 20);
+    CHECK_INT(offsetof(flat_state, pen_ptext), 21);
+    CHECK_INT(offsetof(flat_state, reserved), 22);
+    CHECK_INT(FLAT_STATE_SIZE, 24);
     CHECK_STR(FLAT_SEM_NAME, "Amarchy.Flat");
-    CHECK_INT(FLAT_VERSION, 1);
+    CHECK_INT(FLAT_VERSION, 2);
 }
 
 static void test_init_check(void)
@@ -35,12 +39,19 @@ static void test_init_check(void)
     flat_init(&s);
     CHECK_INT(s.version, FLAT_VERSION);
     CHECK_INT(s.size, FLAT_STATE_SIZE);
-    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline, 0);
+    CHECK_INT(s.enabled | s.style | s.held | s.still_chained | s.calls | s.pen_text | s.pen_line | s.pen_back | s.pen_outline | s.pen_button | s.pen_ptext | s.reserved[0] | s.reserved[1], 0);
     CHECK_INT(flat_check(&s, sizeof s), FLAT_OK);
     CHECK_INT(flat_check(&s, sizeof s + 20), FLAT_OK);
     CHECK_INT(flat_check(&s, FLAT_STATE_SIZE - 1), FLAT_ERR_SIZE);      /* fewer readable bytes than the layout */
     CHECK_INT(flat_check(&s, 3), FLAT_ERR_SIZE);                         /* not even the header */
     CHECK_INT(flat_check(0, 40), FLAT_ERR_SIZE);
+    {   flat_state old;                                                  /* a v1 block (20 bytes) is refused by version, then by size */
+        memset(&old, 0, sizeof old);
+        old.version = 1; old.size = 20;
+        CHECK_INT(flat_check(&old, 20), FLAT_ERR_VERSION);
+        old.version = FLAT_VERSION;
+        CHECK_INT(flat_check(&old, 20), FLAT_ERR_SIZE);
+    }
     s.version = FLAT_VERSION + 1;
     CHECK_INT(flat_check(&s, sizeof s), FLAT_ERR_VERSION);               /* another version: refused */
     s.version = 0;
@@ -606,21 +617,72 @@ static void test_which_from_gtype(void)
         struct frame_rec_t f;
         flat_state fs;
         memset(&fs, 0, sizeof fs);
-        fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0;
+        fs.enabled = 1; fs.pen_line = 1; fs.pen_back = 0; fs.pen_button = 4;
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, frame_rec, &f), 1);
-        CHECK_INT(f.n, 5);
-        CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 25 && f.r[0][4] == 0, 1);
-        CHECK_INT(f.r[1][0] == 10 && f.r[1][1] == 20 && f.r[1][2] == 17 && f.r[1][3] == 20 && f.r[1][4] == 1, 1);
-        CHECK_INT(f.r[2][1] == 25 && f.r[2][3] == 25 && f.r[3][2] == 10 && f.r[4][0] == 17 && f.r[4][4] == 1, 1);
+        CHECK_INT(f.n, 1);                                                     /* FLAT-BUTTON-FILL: one fill, NO outline */
+        CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 25 && f.r[0][4] == 4, 1);   /* pen_button */
+        fs.pen_button = 0;
+        memset(&f, 0, sizeof f);
+        CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 1, frame_rec, &f), 1);
+        CHECK_INT(f.n == 1 && f.r[0][4] == 0, 1);                              /* pen_button 0: pen_back */
+        fs.pen_button = 4;
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 8, 6, 0, frame_rec, &f), 1);
-        CHECK_INT(f.n, 4);
+        CHECK_INT(f.n, 4);                                                     /* not fill: the outline only, unchanged */
+        CHECK_INT(f.r[0][4] == 1 && f.r[1][4] == 1 && f.r[2][4] == 1 && f.r[3][4] == 1, 1);
+        CHECK_INT(f.r[0][0] == 10 && f.r[0][1] == 20 && f.r[0][2] == 17 && f.r[0][3] == 20, 1);
         memset(&f, 0, sizeof f);
         CHECK_INT(flat_frame_draw(&fs, 1, 10, 20, 8, 6, 1, frame_rec, &f), 1);
-        CHECK_INT(f.r[0][4], 1);                                               /* selected: pen_line fill */
+        CHECK_INT(f.n == 1 && f.r[0][4] == 1, 1);                              /* pressed: accent (pen_line) fill, no outline */
         CHECK_INT(flat_frame_draw(&fs, 0, 10, 20, 2, 6, 1, frame_rec, &f), 0);   /* too small: stock */
         CHECK_INT(flat_frame_draw(0, 0, 10, 20, 8, 6, 1, frame_rec, &f), 0);
+    }
+    {   /* FLAT-BUTTON-FILL: the pressed-label arm and the depth-checked fill pen */
+        flat_tx t; flat_state bs; int a, b, c1, c2;
+        memset(&t, 0, sizeof t);
+        a = 1; b = 2; c1 = 3; c2 = 4;
+        CHECK_INT(flat_tx_text(&t, &a, &c1, 12, 22), 0);                      /* not armed */
+        flat_tx_frame(&t, &a, &c1, 0, 1, 10, 20, 17, 25);                     /* normal frame: no arm */
+        CHECK_INT(t.armed, 0);
+        flat_tx_frame(&t, &a, &c1, 1, 0, 10, 20, 17, 25);                     /* pressed but edges-only: no arm */
+        CHECK_INT(t.armed, 0);
+        flat_tx_frame(&t, &a, &c1, 1, 1, 10, 20, 17, 25);
+        CHECK_INT(t.armed, 1);
+        CHECK_INT(flat_tx_text(&t, &a, &c1, 12, 22), 1);                      /* match */
+        CHECK_INT(flat_tx_text(&t, &a, &c1, 10, 25) && flat_tx_text(&t, &a, &c1, 17, 20), 1);   /* box corners are inside */
+        CHECK_INT(flat_tx_text(&t, &b, &c1, 12, 22), 0);                      /* other rastport: untouched */
+        CHECK_INT(t.armed, 1);
+        CHECK_INT(flat_tx_text(&t, &a, &c2, 12, 22), 0);                      /* other task: untouched */
+        CHECK_INT(t.armed, 1);
+        CHECK_INT(flat_tx_text(&t, &a, &c1, 9, 22), 0);                       /* outside the box: disarms */
+        CHECK_INT(t.armed, 0);
+        CHECK_INT(flat_tx_text(&t, &a, &c1, 12, 22), 0);
+        flat_tx_frame(&t, &a, &c1, 1, 1, 10, 20, 17, 25);
+        flat_tx_frame(&t, &a, &c1, 0, 1, 30, 20, 37, 25);                     /* another frame draw on the rastport: disarms */
+        CHECK_INT(t.armed, 0);
+        flat_tx_frame(&t, &a, &c1, 1, 1, 10, 20, 17, 25);
+        flat_tx_frame(&t, &b, &c1, 0, 1, 30, 20, 37, 25);                     /* a draw on another rastport keeps it */
+        CHECK_INT(t.armed, 1);
+        {   int w, h, img = 0, other = 0;
+            flat_frame_size(0, 4096, -17232, 30, 12, &w, &h);                 /* IM_DRAW: the Dimensions words are junk */
+            CHECK_INT(w == 30 && h == 12, 1);
+            flat_frame_size(1, 50, 20, 30, 12, &w, &h);                       /* IM_DRAWFRAME: Dimensions win */
+            CHECK_INT(w == 50 && h == 20, 1);
+            flat_frame_size(1, 0, 0, 30, 12, &w, &h);
+            CHECK_INT(w == 30 && h == 12, 1);
+            CHECK_INT(flat_button_gadget(&img, &img, &img), 1);               /* button / cycle: render == select == frame */
+            CHECK_INT(flat_button_gadget(&img, 0, &img), 0);                  /* slider / string: no select image */
+            CHECK_INT(flat_button_gadget(&img, &other, &img), 0);
+            CHECK_INT(flat_button_gadget(&other, &other, &img), 0);           /* another gadget's image */
+            CHECK_INT(flat_button_gadget(0, 0, 0), 0);
+        }
+        memset(&bs, 0, sizeof bs);
+        bs.pen_back = 0; bs.pen_button = 4;
+        CHECK_INT(flat_button_pen(&bs, 3), 4);                                /* 8 colours: the button pen */
+        CHECK_INT(flat_button_pen(&bs, 2), 0);                                /* 4 colours have no pen 4: pen_back */
+        bs.pen_button = 0;
+        CHECK_INT(flat_button_pen(&bs, 3), 0);                                /* unset: pen_back */
     }
     {   /* FLAT-OUTER-EDGE: flat_outline_rects paints exactly the outer 1 px ring of a w x h window, each pixel once, nothing inside */
         static const int sz[][2] = { { 2, 2 }, { 3, 3 }, { 7, 5 }, { 64, 40 }, { 640, 256 } };
@@ -778,6 +840,8 @@ static void test_desk_flat_state(void)
             CHECK_INT(s.pen_text, t);
             CHECK_INT(s.pen_line, l);
             CHECK_INT(s.pen_back, b);
+            CHECK_INT(s.pen_button, DK_SELECTION);                            /* FLAT-BUTTON-FILL */
+            CHECK_INT(s.pen_ptext, DK_BG);
             CHECK_INT(s.pen_outline, DK_ACCENT);                              /* the theme accent pen, never 0 */
             CHECK(s.pen_outline != 0);
             CHECK_INT(s.version, FLAT_VERSION);

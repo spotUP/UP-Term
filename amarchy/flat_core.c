@@ -341,3 +341,43 @@ int flat_status_text(const flat_state *s, int found, char *out, size_t cap)
     n = snprintf(out, cap, "%s%s", w, by);
     return n > 0 && (size_t)n < cap ? n : 0;
 }
+
+void flat_tx_frame(flat_tx *t, const void *rp, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1)
+{
+    if (t->armed && t->rp == rp)
+        t->armed = 0;
+    if (pressed && fill) {
+        t->rp = rp; t->task = task;
+        t->x0 = x0; t->y0 = y0; t->x1 = x1; t->y1 = y1;
+        t->armed = 1;
+    }
+}
+
+int flat_tx_text(flat_tx *t, const void *rp, const void *task, int cx, int cy)
+{
+    if (!t->armed || t->rp != rp || t->task != task)
+        return 0;
+    if (cx < t->x0 || cx > t->x1 || cy < t->y0 || cy > t->y1) {
+        t->armed = 0;
+        return 0;
+    }
+    return 1;
+}
+
+int flat_button_pen(const flat_state *s, int depth)
+{
+    if (!s->pen_button || depth < 1 || depth > 8 || s->pen_button >= (1 << depth))
+        return s->pen_back;
+    return s->pen_button;
+}
+
+void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h, int *w, int *h)
+{
+    *w = draw_frame && dim_w ? dim_w : img_w;
+    *h = draw_frame && dim_h ? dim_h : img_h;
+}
+
+int flat_button_gadget(const void *gadget_render, const void *select_render, const void *image)
+{
+    return image && gadget_render == image && select_render == image;
+}

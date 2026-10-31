@@ -172,11 +172,29 @@ static int c8_skip(Object *obj, Msg msg)
         struct Image *im = (struct Image *)obj;
         ULONG eo = 1;
         /* Fill only when the frame says it is not edges-only (an unanswered OM_GET counts as edges-only: never erase content). */
-        int fill = GetAttr(IA_EdgesOnly, obj, &eo) != 0 && eo == 0;
-        if (!flat_frame_draw(&r->st, (int)d->imp_State, im->LeftEdge + d->imp_Offset.X, im->TopEdge + d->imp_Offset.Y,
-                             d->imp_Dimensions.Width ? d->imp_Dimensions.Width : im->Width,
-                             d->imp_Dimensions.Height ? d->imp_Dimensions.Height : im->Height, fill, c2_fill, d->imp_RPort))
+        int fill;
+        if (GetAttr(IA_EdgesOnly, obj, &eo) != 0)
+            fill = eo == 0;
+        else {      /* 3.1 frameiclass V40 does not answer OM_GET: a button or cycle gadget renders this image as render and select */
+            struct Layer *lay = d->imp_RPort->Layer;
+            struct Window *win = lay ? (struct Window *)lay->Window : NULL;
+            struct Gadget *g;
+            int n;
+            fill = 0;
+            for (g = win ? win->FirstGadget : NULL, n = 0; g && n < 64 && !fill; g = g->NextGadget, n++)
+                fill = flat_button_gadget(g->GadgetRender, g->SelectRender, obj);
+        }
+        flat_state st = r->st;
+        int ox = im->LeftEdge + d->imp_Offset.X, oy = im->TopEdge + d->imp_Offset.Y;
+        int w, h;
+        flat_frame_size(msg->MethodID == FLAT_IM_DRAWFRAME, d->imp_Dimensions.Width, d->imp_Dimensions.Height, im->Width, im->Height, &w, &h);
+        /* FLAT-BUTTON-FILL: the fill pen must exist on this screen (a 4 colour screen has no pen 4) */
+        st.pen_button = (UBYTE)flat_button_pen(&r->st, d->imp_RPort->BitMap ? d->imp_RPort->BitMap->Depth : 0);
+        if (!flat_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, c2_fill, d->imp_RPort))
             return 0;
+        /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
+        flat_tx_frame(&r->tx, d->imp_RPort, FindTask(NULL),
+                      d->imp_State == 1, fill, ox, oy, ox + w - 1, oy + h - 1);
     }
     r->fflat++;
     return 1;
@@ -226,6 +244,68 @@ static void d4_fieldbox(__reg("a0") struct RastPort *rp, __reg("a1") struct Rect
 }
 
 static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX };
+
+/* ---- FLAT-BUTTON-FILL: graphics.library Text (LVO -60, Text(rp a1, string a0, count d0)). The frame is drawn first, then the
+ * label in pen 1 with JAM1, also when pressed, so the dark pressed label needs this patch: while c8_skip has armed
+ * {rastport, task, box} for a pressed filled frame, a Text call on that rastport from that task with the pen position
+ * inside the box runs with pen_ptext (flat_tx_text decides; the stub is flat_tx.s). Everything else: stock Text. ---- */
+typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, __reg("d0") ULONG);
+extern void flat_tx_entry(void);
+
+void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
+{
+    flatshared *r = g_r;
+    r->tcalls++;
+    if (r->tx.armed && r->tx.rp == rp && r->st.enabled && !r->st.held && r->st.pen_ptext &&
+        flat_tx_text(&r->tx, rp, FindTask(NULL), rp->cp_x, rp->cp_y)) {
+        UBYTE fg = rp->FgPen;
+        r->thits++;
+        SetAPen(rp, r->st.pen_ptext);
+        ((textfn)r->tsw.saved)(rp, str, count);
+        SetAPen(rp, fg);
+        return;
+    }
+    ((textfn)r->tsw.saved)(rp, str, count);
+}
+
+static int tx_install(flatshared *r)
+{
+    unsigned char *entry = (unsigned char *)GfxBase + FLAT_LVO_TEXT;
+    int rc;
+    if (!flat_jmp_target(entry))
+        return -100;
+    flat_swap_init(&r->tsw);
+    g_r = r;
+    Forbid();
+    rc = flat_swap_install(&r->tsw, (uintptr_t *)(entry + 2), (uintptr_t)flat_tx_entry);
+    if (rc == FLAT_OK) {
+        r->tslot = (uintptr_t *)(entry + 2);
+        SumLibrary((struct Library *)GfxBase);
+        CacheClearU();
+    }
+    Permit();
+    return rc;
+}
+
+static int tx_remove(flatshared *r)
+{
+    int rc = FLAT_NOT_INSTALLED;
+    if (!r->tsw.installed)
+        return rc;
+    Forbid();
+    rc = flat_swap_remove(&r->tsw, r->tslot, &r->st);
+    if (rc == FLAT_REMOVED) {
+        SumLibrary((struct Library *)GfxBase);
+        CacheClearU();
+    }
+    Permit();
+    if (rc == FLAT_REMOVED) {
+        Delay(5);
+        r->tslot = 0;
+        r->tx.armed = 0;
+    }
+    return rc;
+}
 
 /* ---- FLAT-OUTER-EDGE: graphics.library RectFill (LVO -306, RectFill(rp a1, xMin d0, yMin d1, xMax d2, yMax d3)).
  * Intuition fills each of a window's four outer border edges with one 1 px RectFill, last in every frame redraw (3.1 and
@@ -339,7 +419,8 @@ static void print_status(void)
     unsigned dver = 0, drev = 0;
     unsigned long dcalls = 0, dflat = 0, fcalls = 0, fflat = 0;
     int finst = 0, rinst = 0;
-    unsigned long rcalls = 0, rhits = 0;
+    unsigned long rcalls = 0, rhits = 0, tcalls = 0, thits = 0;
+    int tinst = 0;
     uint32_t dsum[FLAT_EL_COUNT] = { 0, 0 };
     memset(&copy, 0, sizeof copy);
     Forbid();
@@ -352,6 +433,7 @@ static void print_status(void)
         dsum[0] = r->dsum[0]; dsum[1] = r->dsum[1];
         finst = r->fsw.installed; fcalls = r->fcalls; fflat = r->fflat;
         rinst = r->rsw.installed; rcalls = r->rcalls; rhits = r->rhits;
+        tinst = r->tsw.installed; tcalls = r->tcalls; thits = r->thits;
     }
     Permit();
     if (flat_status_line(&copy, sizeof copy, found, line, sizeof line)) {
@@ -364,6 +446,8 @@ static void print_status(void)
         put_word(line, &n, " line=");       put_pen(line, &n, copy.pen_line);
         put_word(line, &n, " back=");       put_pen(line, &n, copy.pen_back);
         put_word(line, &n, " outline=");    put_pen(line, &n, copy.pen_outline);
+        put_word(line, &n, " button=");     put_pen(line, &n, copy.pen_button);
+        put_word(line, &n, " ptext=");      put_pen(line, &n, copy.pen_ptext);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -377,6 +461,15 @@ static void print_status(void)
         put_word(line, &n, "rectfill installed=");  put_word(line, &n, rinst ? "yes" : "no");
         put_word(line, &n, " calls=");              put_num(line, &n, rcalls);
         put_word(line, &n, " hits=");               put_num(line, &n, rhits);
+        line[n] = 0;
+        PutStr((STRPTR)line);
+        PutStr((STRPTR)"\n");
+    }
+    if (found) {                                    /* FLAT-BUTTON-FILL sentinels: calls rising = the stub runs, hits rising = pressed label recoloured */
+        int n = 0;
+        put_word(line, &n, "text installed=");      put_word(line, &n, tinst ? "yes" : "no");
+        put_word(line, &n, " calls=");              put_num(line, &n, tcalls);
+        put_word(line, &n, " hits=");               put_num(line, &n, thits);
         line[n] = 0;
         PutStr((STRPTR)line);
         PutStr((STRPTR)"\n");
@@ -759,6 +852,8 @@ int main(void)
             } else {
                 if (rf_install(r) != FLAT_OK)
                     PutStr((STRPTR)"amarchy-flat: RectFill patch not installed\n");
+                if (tx_install(r) != FLAT_OK)
+                    PutStr((STRPTR)"amarchy-flat: Text patch not installed\n");
                 pt_start(&tm, (unsigned long)FLAT_MARKER_SECS * 1000000UL);
             }
         }
@@ -782,6 +877,10 @@ int main(void)
         dopus_unpatch(r);
         if (r->dsw[0].installed || r->dsw[1].installed) {
             PutStr((STRPTR)"amarchy-flat: a patch is still chained on a DOpus entry, not unloading\n");
+            continue;
+        }
+        if (tx_remove(r) == FLAT_STILL_CHAINED) {
+            PutStr((STRPTR)"amarchy-flat: a patch is still chained on Text, not unloading\n");
             continue;
         }
         if (rf_remove(r) == FLAT_STILL_CHAINED) {

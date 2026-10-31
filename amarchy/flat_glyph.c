@@ -186,8 +186,10 @@ int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, 
         return 0;
     x1 = ox + w - 1;
     y1 = oy + h - 1;
-    if (fill)
-        fn(ctx, ox, oy, x1, y1, ids == 1 ? s->pen_line : s->pen_back);
+    if (fill) {                                      /* FLAT-BUTTON-FILL: raised fill, accent when pressed, no outline */
+        fn(ctx, ox, oy, x1, y1, ids == 1 ? s->pen_line : (s->pen_button ? s->pen_button : s->pen_back));
+        return 1;
+    }
     fn(ctx, ox, oy, x1, oy, s->pen_line);            /* top */
     fn(ctx, ox, y1, x1, y1, s->pen_line);            /* bottom */
     fn(ctx, ox, oy, ox, y1, s->pen_line);            /* left */

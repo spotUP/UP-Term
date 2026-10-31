@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 #define FLAT_SEM_NAME "Amarchy.Flat"
-#define FLAT_VERSION 1
+#define FLAT_VERSION 2
 
 typedef struct flat_state {
     uint16_t version;           /*  0 FLAT_VERSION; first, so a reader of another layout can refuse before the rest */
@@ -27,9 +27,12 @@ typedef struct flat_state {
     uint8_t pen_line;           /* 17 thin outline pen */
     uint8_t pen_back;           /* 18 background pen */
     uint8_t pen_outline;        /* 19 theme accent pen of the 1 px window outer edge (FLAT-OUTER-EDGE); 0 = none (pen 0 is the background, never an edge) */
-} flat_state;                   /* 20 bytes */
+    uint8_t pen_button;         /* 20 raised fill of a GadTools button, cycle and scroller arrow (FLAT-BUTTON-FILL): the theme lighter_background (DK_SELECTION); 0 or a pen the screen lacks = pen_back */
+    uint8_t pen_ptext;          /* 21 label pen of a pressed button, dark on the accent fill (DK_BG) */
+    uint8_t reserved[2];        /* 22 zero */
+} flat_state;                   /* 24 bytes */
 
-#define FLAT_STATE_SIZE 20
+#define FLAT_STATE_SIZE 24
 
 /* flat_check results */
 enum { FLAT_OK = 0, FLAT_ERR_VERSION = -1, FLAT_ERR_SIZE = -2 };
@@ -102,6 +105,7 @@ int flat_conv(unsigned intuition_version);
  * A build is patched only when its version, revision and the checksum of the first FLAT_FUNC_BYTES bytes of each
  * routine match the table; any other build is inert and STATUS says why. */
 enum { FLAT_EL_DRAWBOX = 0, FLAT_EL_FIELDBOX = 1, FLAT_EL_COUNT = 2 };
+#define FLAT_LVO_TEXT (-60)         /* graphics.library Text (the pressed-button label patch, FLAT-BUTTON-FILL) */
 #define FLAT_LVO_RECTFILL (-306)    /* graphics.library RectFill (the outer-edge patch) */
 #define FLAT_LVO_DRAWBOX (-696)
 #define FLAT_LVO_FIELDBOX (-702)
@@ -204,5 +208,32 @@ const char *flat_held_name(unsigned reason);
  * by name, "held by VisualPrefs" / "held by crash marker" / "held by both mouse buttons" / "held by another
  * hook on the gadget class". Returns the length, 0 when cap is too small (cap >= 40 needed). */
 int flat_status_text(const flat_state *s, int found, char *out, size_t cap);
+
+/* ---- FLAT-BUTTON-FILL: the pressed-label arm, as a pure model ------------------------------------------------
+ * A pressed filled frame arms {rastport, task, box}; the graphics Text patch recolours the label pen only for a Text
+ * call on that rastport, from that task, whose current pen position lies inside the box. Any other frame draw on the
+ * rastport, and any Text call on it outside the box, disarms. */
+typedef struct flat_tx {
+    const void *rp, *task;
+    int armed, x0, y0, x1, y1;
+} flat_tx;
+
+/* A frame was drawn on rp by task: disarm when rp is the armed one; with pressed && fill, arm for box (x0,y0)-(x1,y1). */
+void flat_tx_frame(flat_tx *t, const void *rp, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1);
+
+/* Does a Text call at pen position (cx, cy) on rp from task get the pressed-label pen? 1 yes; a call on the armed rp
+ * outside the box disarms (0). Another rastport or task: 0, state untouched. */
+int flat_tx_text(flat_tx *t, const void *rp, const void *task, int cx, int cy);
+
+/* FLAT-BUTTON-FILL: the size of a frame draw. Only IM_DRAWFRAME carries Dimensions (a 0 side falls back to the image's);
+ * IM_DRAW has no such field, its message words past the state are junk (3.1: 4096 x -17232). */
+void flat_frame_size(int draw_frame, int dim_w, int dim_h, int img_w, int img_h, int *w, int *h);
+
+/* FLAT-BUTTON-FILL, 3.1 (frameiclass does not answer OM_GET): is this window gadget a button or cycle drawn by image? GadTools
+ * BUTTON and CYCLE have GadgetRender == SelectRender == the frame; STRING, LISTVIEW, SLIDER have no select image. */
+int flat_button_gadget(const void *gadget_render, const void *select_render, const void *image);
+
+/* The button fill pen for a screen of the given depth: pen_button, or pen_back when it is 0 or not a pen of that depth. */
+int flat_button_pen(const flat_state *s, int depth);
 
 #endif

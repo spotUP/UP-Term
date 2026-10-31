@@ -58,8 +58,9 @@ typedef void (*flat_fill_fn)(void *ctx, int x0, int y0, int x1, int y1, int pen)
 int flat_glyph_draw(const flat_state *s, unsigned long which, unsigned long method, unsigned long ids, int ox, int oy,
                     int w, int h, int frame_pen, flat_fill_fn fill, void *ctx);
 
-/* FLAT-C8: the flat frame of one frameiclass IM_DRAW / IM_DRAWFRAME call: with fill != 0 the box is filled with
- * pen_back (pen_line when ids == IDS_SELECTED, 1), then a full 1 px outline in pen_line. Returns 1 when drawn, 0
+/* FLAT-C8: the flat frame of one frameiclass IM_DRAW / IM_DRAWFRAME call: with fill != 0 the box is one solid fill,
+ * NO outline: pen_button (pen_back when 0), pen_line when ids == IDS_SELECTED (1) (FLAT-BUTTON-FILL); with fill == 0 only a
+ * full 1 px outline in pen_line. Returns 1 when drawn, 0
  * when the box is under 3x3 or fill_fn is null (the caller then runs the stock routine). */
 int flat_frame_draw(const flat_state *s, int ids, int ox, int oy, int w, int h, int fill, flat_fill_fn fn, void *ctx);
 
