@@ -464,6 +464,9 @@ NOFPU = "--nofpu" in sys.argv
 # --no-060lib: the 060 machine (FPU kept) booted with none of paths.libs060() in Libs: (RIG31-RESET-LOOP, s40: is the
 # `crashme illegal` reset loop of the 3.1 060 rig the CPU or 68060.library?). The 68040.library stub stays.
 NO060LIB = "--no-060lib" in sys.argv
+# --keep-060lib=68060.library,mmu.library: with --no-060lib, these Libs: names are put back (which lib loops, s40)
+KEEP060LIB = tuple(sys.argv[[a.startswith("--keep-060lib=") for a in sys.argv].index(True)].split("=", 1)[1].split(",")) \
+    if any(a.startswith("--keep-060lib=") for a in sys.argv) else ()
 MMU = "--mmu" in sys.argv and M060 and not NOFPU
 DEBUGGER = "--debugger" in sys.argv   # FS-UAE's console debugger on a FIFO (debugger_lines, dbg)
 EXACT = "--exact" in sys.argv  # read-only DH0: makes "write protected" requesters that stall the rig
@@ -559,11 +562,15 @@ def os_tree_rtg(dst):
         out.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run([xdf, str(SRC_HDF), "read", rel, str(out)], check=True, capture_output=True)
 
-def drop_060_libs(libs_dir):
+def drop_060_libs(libs_dir, keep=()):
     """--no-060lib on a host-directory system: delete the libs060() names from <tree>/Libs (the tree keeps earlier runs
     and the clean image may ship its own 68060.library)."""
-    for _lib, name, _var in paths.libs060():
-        (pathlib.Path(libs_dir) / name).unlink(missing_ok=True)
+    for lib, name, var in paths.libs060():
+        if name in keep:
+            paths.require_input(lib, var, name)
+            shutil.copyfile(lib, pathlib.Path(libs_dir) / name)
+        else:
+            (pathlib.Path(libs_dir) / name).unlink(missing_ok=True)
 
 def os_image_copy():
     """<rig>/os-<name>/ (a host directory, FS-UAE's hard drive) from the owner's
@@ -595,7 +602,7 @@ def os_image_copy():
         shutil.copyfile(paths.INSTALLER, dst / "C/Installer")
     if M060:
         if NO060LIB:
-            drop_060_libs(dst / "Libs")
+            drop_060_libs(dst / "Libs", KEEP060LIB)
         elif not NOFPU:   # on the FPU-less 68LC060 SetPatch's Phase5 68060.library Gurus 80000006 before ENV: (rig 4, 2026-10-23)
             for lib, name, var in paths.libs060():
                 paths.require_input(lib, var, name)

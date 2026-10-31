@@ -73,3 +73,22 @@ Tool: `rig.py start --max --os 31 --no-060lib` (commit f03ee5eb; test tests/test
 | `--max --os 31` (control, same tree, libs copied back) | 68060, mmu, 680x0 present | "Illegal instruction: 1050 at 100A4418 -> 00F80AD2" (line 1162) | 334 at 45 s, no wasabid | connection refused |
 
 Conclusion: the loop needs 68060.library (or mmu.library / 680x0.library); the 060 CPU alone gives one reset pair, like the 68020 rig. The boot without the libs works (wasabid up, no Guru). Not separated: which of the three libs loops (68060.library is the suspect: SetPatch loads it; its trap/reset handling survives the guru reset). Next: boot with only 68060.library added back, then only mmu/680x0, to pin one file.
+
+## Which 060 library loops (s40, rig 3)
+
+Tool: `rig.py start --max --os 31 --no-060lib --keep-060lib=<names>` (new option; drop_060_libs(libs_dir, keep) puts only the named libs back from paths.libs060(); tests in tests/test_rig_no_060lib.py). Each run: `crashme illegal` via ami.py exec, CPU reset lines in build/rig3/logs/fs-uae.log.txt at about 45 s, wasabid ping.
+
+| Libs: held | CPU reset lines at 45 s | wasabid after | Loop |
+|---|---|---|---|
+| 68060.library only | 2 | answers | no |
+| mmu.library only | 2 | answers | no |
+| 68060.library + 680x0.library | 2 | answers | no |
+| 68060.library + mmu.library | 358 | refused | YES |
+| all three (earlier control) | 334 | refused | YES |
+| none | 2 | answers | no |
+
+Result: the loop needs BOTH 68060.library and mmu.library; 680x0.library is not needed. Neither alone loops. 680x0 not tried alone or with mmu without 68060 (mmu alone is already no-loop).
+
+Versions: 68060.library 47.2 (6.7.2022), mmu.library 47.11 (24.11.2025), 680x0.library 47.3 (THOR / MMU.lib development group). Source: the owner's copies in build/rig-inputs/mmulib/ (paths.LIB68060 / LIBMMU / LIB680X0, UPTERM_LIB* override), copied into the rig's os-31/Libs by os_image_copy; not staged from an OS tree. The 3.1 image ships none of them.
+
+Mechanism: HYPOTHESIS, not measured (no ExecBase ColdCapture/KickTagPtr read before the reset). mmu.library 47.x is the part that builds MMU tables and installs itself reset-proof; 68060.library on its own only installs the 060 exception handlers and the FPSP. The pair is needed, so the likely chain is: the illegal-instruction guru ends in ColdReboot; mmu.library's reset-surviving state (KickTag / ColdCapture, MMU table pointers) runs in the ROM boot with the 060 libs' traps expecting a state the emulated NOMMU CPU does not give, faults again before wasabid starts, and the guru reset repeats. To confirm: after the crash and before the reset, `wasabi` read of ExecBase ColdCapture (offset 0x2A), CoolCapture (0x2E) and KickTagPtr (0x226) with and without mmu.library, and a Guru alert code from the loop (first Alert number in the log).
