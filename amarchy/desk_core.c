@@ -181,6 +181,19 @@ void desk_pens_for(int flat, unsigned char pens[DK_SLOTS])
         desk_pens(pens);
 }
 
+void desk_pen_plan_for(int depth, desk_pen_plan *p)
+{
+    p->button = DK_SELECTION;
+    p->backdrop = DK_MUTED;
+    if (depth >= 6) {
+        p->icon_first = 32; p->icon_count = 16; p->icon_slot = 0;
+    } else if (depth >= 4) {
+        p->icon_first = 8; p->icon_count = 8; p->icon_slot = 8;
+    } else {
+        p->icon_first = 0; p->icon_count = 0; p->icon_slot = 0;
+    }
+}
+
 int desk_pens_reset(const unsigned short *cur, int ncur, int flat)
 {
     unsigned char want[DK_SLOTS];

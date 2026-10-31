@@ -52,6 +52,7 @@ void suite_barconf(void);
 void suite_note_core(void);
 void suite_flat_core(void);
 void suite_iconfile(void);
+void suite_iconpen(void);
 void suite_wbreset(void);
 void suite_menusrv(void);
 void suite_menu_text(void);
@@ -147,6 +148,7 @@ static const h_suite suites[] = {
     { "note_core", suite_note_core },
     { "flat_core", suite_flat_core },
     { "iconfile", suite_iconfile },
+    { "iconpen", suite_iconpen },
     { "wbreset", suite_wbreset },
     { "menusrv", suite_menusrv },
     { "menu_text", suite_menu_text },
