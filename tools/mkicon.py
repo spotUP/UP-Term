@@ -70,13 +70,14 @@ DRAWER_ART = [
 PEN = {'.': 0, '#': 1, 'o': 2, 'b': 3}
 
 
-def planes(art, depth=2):
+def planes(art, depth=2, pens=PEN):
+    """art rows of pen characters (`pens` maps a character to its pen number), as planar bytes, plane after plane."""
     h, w = len(art), len(art[0])
     words = (w + 15) // 16
     out = b''
     for p in range(depth):
         for row in art:
-            bits = [(PEN[c] >> p) & 1 for c in row] + [0] * (words * 16 - w)
+            bits = [(pens[c] >> p) & 1 for c in row] + [0] * (words * 16 - w)
             for i in range(words):
                 v = 0
                 for b in bits[i * 16:(i + 1) * 16]:

@@ -58,7 +58,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
            tests/test_input.c tests/test_protocol.c tests/test_sbar.c tests/test_telnet.c tests/test_upagent.c tests/test_complete.c tests/test_winmem.c tests/test_sbpack.c tests/test_hl.c tests/test_md.c \
            tests/claude_load.c tests/claude_vol.c tests/claude_screen.c tests/pi_stub.c tests/test_claude_http.c tests/test_claude_json.c tests/test_claude_stream.c tests/test_claude_tools.c tests/test_claude_match.c tests/test_claude_config.c tests/test_pi_llm.c tests/test_claude_repl.c tests/test_claude_cli.c tests/test_claude_tui.c tests/test_unifont.c tests/test_emoji.c tests/test_waitset.c tests/test_brk.c tests/test_sh_pipe.c tests/test_sh_ixargv.c tests/test_sh_own.c tests/test_sh_jobgone.c tests/test_histfile.c tests/test_pens.c tests/test_proc.c tests/test_pty_name.c tests/test_bmsg.c tests/test_qmark.c tests/test_ttyown.c tests/test_upassign.c tests/test_bigvol.c tests/test_fssm.c tests/test_clips.c tests/test_shot_core.c tests/test_win.c tests/test_tile.c
 
-.PHONY: symbolsnerd screennotify jbmono wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
+.PHONY: symbolsnerd lucide lucide-dat screennotify jbmono wasabi wasabi-clean bebbossh bebbossh-clean bashdiff ratchet-sort unifont emoji claude-tls-check widths demo-host view-host test test-ref te-diff test-terminfo test-rig dist dist-check golden vttest venv capture quirks amiga clean
 
 # ONLY=desk the native desktop theme core: palette/pointer/font/wbpattern prefs bytes, darker tone, readability guard, targets and marker (tests/test_desk.c)
 # ONLY=fssm a device node's startup is read as a FileSysStartupMsg only when it is one (tests/test_fssm.c)
@@ -134,7 +134,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 TEST_ONLY_NAMES := $(shell grep -o '"$$(ONLY)" = [a-z_0-9]*' $(firstword $(MAKEFILE_LIST)) | sed 's/.* //' | sort -u)
 # ONLY= rows that run python3 on files alone: no C binary below is built or run for them (a worktree without the vendor NDK
 # cannot build render_host, and pkg_rows needs none). Add a name only after checking its script starts no $(BUILD) binary.
-TEST_PY_ONLY := pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_iprefs_sysreq gui_rig_open_menu rig_install_no_vsh
+TEST_PY_ONLY := gen_lucide_icons pkg_rows worktree_ready rig_handler_fallback rig_amarchy_conf rig_booted_ixemul rig_iprefs_sysreq gui_rig_open_menu rig_install_no_vsh
 TEST_BINS := $(BUILD)/vttest_host $(BUILD)/vtdump $(BUILD)/tn_host $(BUILD)/vsh_host $(BUILD)/vsh_host_leak $(BUILD)/hl $(BUILD)/mdv $(BUILD)/unorm_drv $(BUILD)/pi_search_drv $(BUILD)/updiff_stack_drv $(BUILD)/render_host $(BUILD)/upgetty_host
 test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -n "$(ONLY)" ] && [ -z "$(filter $(ONLY),$(TEST_ONLY_NAMES))" ] && ! ./$(BUILD)/vttest_host --has $(ONLY); then echo "[ERROR] make test: no suite named $(ONLY)"; exit 2; fi
@@ -224,6 +224,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = rig_tty_mask ]; then python3 -I tools/test_rig_tty_mask.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = terminfo_amiga ]; then python3 tests/test_terminfo_amiga.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = emoji ]; then python3 tests/test_gen_emoji.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = gen_lucide_icons ]; then python3 -I tests/test_gen_lucide_icons.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_delete_on_error.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_make_only.py; python3 -I tests/test_handler_deps.py; python3 -I tests/test_handler_rows.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = make_hygiene ]; then python3 -I tests/test_netinclude_in_tree.py; fi
@@ -384,6 +385,32 @@ $(SYMBOLS_TTF): $(SYMBOLS_ARCHIVE)
 	tar -xJmf $(SYMBOLS_ARCHIVE) -C $(BUILD)/symbolsnerd SymbolsNerdFontMono-Regular.ttf
 	echo "$(SYMBOLS_TTF_SHA256)  $@" | shasum -a 256 -c -
 symbolsnerd: $(SYMBOLS_TTF)
+
+# Lucide icons (lucide-static 1.66.0 from the npm registry, ISC; the Flat Workbench icon set, plan
+# 2026-10-31-amarchy-lucide-icons.md): the package tarball fetched once into build/lucide/, all SHA-256 checked,
+# lucide.ttf + codepoints.json extracted. tools/gen_lucide_icons.py renders dist/lucide-icons to the planar images of
+# dist/Amarchy/Icons/lucide.dat (built into the kit by dist-base). LUCIDE_VER= another release (with LUCIDE_SHA256,
+# LUCIDE_TTF_SHA256, LUCIDE_CODEPOINTS_SHA256).
+LUCIDE_VER ?= 1.66.0
+LUCIDE_SHA256 ?= 6a1debc19076123ece73f6729a9643ac90aab9c9db15f7c16debf72a9a02a82a
+LUCIDE_TTF_SHA256 ?= c6355db6e4f0834f62193f9effde900dab785c5c18877cf95cd1a44fa62fa8d5
+LUCIDE_CODEPOINTS_SHA256 ?= 7d6401da27c94468f2b5a2672b2826d6a041a3432b7d9ca6ca609ab5541b77b7
+LUCIDE_TGZ := $(BUILD)/lucide/lucide-static-$(LUCIDE_VER).tgz
+LUCIDE_TTF := $(BUILD)/lucide/lucide.ttf
+LUCIDE_DAT := dist/Amarchy/Icons/lucide.dat
+$(LUCIDE_TGZ):
+	@mkdir -p $(BUILD)/lucide
+	curl -sSfL -o $@.tmp https://registry.npmjs.org/lucide-static/-/lucide-static-$(LUCIDE_VER).tgz
+	echo "$(LUCIDE_SHA256)  $@.tmp" | shasum -a 256 -c -
+	mv $@.tmp $@
+$(LUCIDE_TTF): $(LUCIDE_TGZ)
+	tar -xzmf $(LUCIDE_TGZ) -C $(BUILD)/lucide --strip-components=2 package/font/lucide.ttf package/font/codepoints.json
+	echo "$(LUCIDE_TTF_SHA256)  $@" | shasum -a 256 -c -
+	echo "$(LUCIDE_CODEPOINTS_SHA256)  $(BUILD)/lucide/codepoints.json" | shasum -a 256 -c -
+lucide: $(LUCIDE_TTF)
+$(LUCIDE_DAT): tools/gen_lucide_icons.py tools/gen_menu_icons.py tools/gen_emoji.py tools/mkicon.py dist/lucide-icons $(LUCIDE_TTF)
+	python3 tools/gen_lucide_icons.py dist/lucide-icons $(LUCIDE_TTF) $@
+lucide-dat: $(LUCIDE_DAT)
 
 # screennotify.library 1.0 (Stefan Becker, Aminet util/libs/ScreenNotify10.lha): the archive fetched
 # once into build/screennotify/, both SHA-256 checked, the library extracted. Its licence forbids
@@ -1622,7 +1649,7 @@ dist: dist-base dist-claude dist-pi dist-nvim dist-python dist-dopus dist-uhc $(
 # every archive of dist/packages.txt, and the source archive
 # the base archive build/up-term.lha: the terminal, vsh, the Unix userland, the network tools. Neovim,
 # Python, Claude and amiga-pi are archives of their own (dist/packages.txt, kit-split plan)
-dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
+dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $(BUILD)/amiga/amarchy-index $(BUILD)/amiga/amarchy-flat $(BUILD)/amiga/AmTile bebbossh $(BUILD)/amiga/UPConsole $(BUILD)/amiga/up-console.device $(BUILD)/terminfo/76/vtcon $(BUILD)/kit-terminfo/stamp $(UNIFONT_PAGES)/stamp $(SYMBOLS_TTF) $(LUCIDE_DAT) $(EMOJI_PAGES)/stamp $(BUILD)/wasabi/.stamp-$(WASABI_REV)
 	@# the ports kit is checked before the kit drawer is wiped: a missing kit left no build/dist/up-term
 	$(call PORTS_KIT_FRESH,dist)
 	rm -rf $(KIT) && mkdir -p $(KIT)/Files/terminfo $(KIT)/Files/libs
@@ -1645,6 +1672,8 @@ dist-base: amiga jbmono $(BUILD)/amiga/amarchy-menu $(BUILD)/amiga/amarchy-gui $
 	mkdir -p $(KIT)/Files/themes && cp themes/*.conf themes/ATTRIBUTION.md $(KIT)/Files/themes/
 	@# the Omarchy colour themes of the drawn Amarchy menu: install.dos copies this drawer to UP-Term:Amarchy/Themes
 	rm -rf $(KIT)/Files/amarchy-themes && cp -R dist/amarchy-themes $(KIT)/Files/amarchy-themes
+	@# the Lucide icon images of the flat Workbench (Amarchy/Icons/lucide.dat) with the Lucide licence and source note
+	rm -rf $(KIT)/Files/lucide && mkdir -p $(KIT)/Files/lucide && cp $(LUCIDE_DAT) dist/lucide/LICENSE dist/lucide/SOURCE.txt $(KIT)/Files/lucide/
 	rm -rf $(KIT)/Files/coreutils && mkdir -p $(KIT)/Files/coreutils
 	cp -R dist/gg/coreutils-5.2.1/bin dist/gg/coreutils-5.2.1/COPYING dist/gg/coreutils-5.2.1/SOURCE.txt $(KIT)/Files/coreutils/
 	@# the ports (copy-userland: bin; userland: share, etc, licenses) and

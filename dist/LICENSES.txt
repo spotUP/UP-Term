@@ -67,6 +67,9 @@ Amarchy menu icons            Glyphs of Symbols Nerd Font      Built into amarch
 (built into amarchy-gui)      Mono (row above): Font Awesome   Glyph sources: ICON-SETS.md (same drawer)
                               and Codicons CC BY 4.0, Material
                               Design Icons Apache 2.0
+Lucide icons 1.66.0           ISC (Files/lucide/LICENSE),      https://lucide.dev; Files/lucide/SOURCE.txt. Flat
+(Files/lucide/lucide.dat,     with Feather icons MIT (same     Workbench icons rendered from the Lucide font
+UP-Term:Amarchy/Icons)        file)
 JetBrains Mono 2.304          SIL OFL 1.1 (Files/fonts/        https://github.com/JetBrains/JetBrainsMono;
 (Files/fonts/JetBrainsMono/,  JetBrainsMonoLicence/OFL.txt)    Files/fonts/JetBrainsMonoLicence/SOURCE.txt. Drawn at
                                                                build time as a 7 x 16 bitmap strike font
