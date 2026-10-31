@@ -50,3 +50,13 @@ Rig 6, 3.1 (--os 31 --fresh), 060, uaegfx from the master disk, 800x600 RTG via 
 Finding: the loop reproduces with a plain guru and no RTG at all. `crashme illegal` (tests/amiga/crashme.c) on the 3.1 060 rig: "Illegal instruction: 1050 at 1009E1E0 -> 00F80AD2" at log line 1290, then "CPU reset PC=f80dc8 (Kickstart ROM)" / f800d0 repeating, wasabid refused connections, ~8 resets a second. That matches the 29 Oct state (crash first, loop after) and rig9-installer-loop.md result 8. So the 29 Oct loops need the crash, not the NTSC switch or the screen close; the RTG switch is at most where the earlier crash came from. A fresh fs-uae process (rig.py stop, start without --fresh) cleared the loop; a ColdReboot after a clean run did not loop. Not separated: whether a crash on 3.2/3.1 without 060 libs loops (the 68060.library state in the emulated CPU is the suspect); the RTG switch itself never crashed in 4 runs (rig 6 s39 total: 9 switches).
 
 Evidence cut from build/rig6/logs/fs-uae.log.txt (rig deleted per rule 7). Next step: run `crashme illegal` on a 3.1 `--a1200` (68020) rig; no loop there means the 060 path is the cause.
+
+## 68020 crash check (s39)
+
+Question: does a plain guru loop a 3.1 rig running as a 68020, as it loops the 3.1 060 rig?
+
+Run: rig 3, `rig.py start --a1200 --os 31 --fresh`, then `ami.py put build/amiga/crashme RAM:crashme`, `ami.py exec "RAM:crashme illegal"`.
+
+Result: NO LOOP on the 68020. First fault line (log line 1189): "Illegal instruction: 1050 at 40083A40 -> 00F80AD2". Reset counts (`grep -c "CPU reset"`): 0 before the crash, 2 after (line 1192 PC=f80dc8, line 1281 PC=f800d0, one reset pair), still 2 at 60 s and at 90 s after the guru. wasabid answered `ami.py ping` after the guru (the machine had rebooted itself and was up). The 060 rig gave 478 reset lines within about 30 s for the same program and fault.
+
+Conclusion: the same guru (illegal instruction 0x1050 in RAM) loops the 3.1 060 rig and does not loop the 3.1 68020 rig, so the loop depends on the 060 configuration (68060.library or emulated 060 CPU state surviving the reset), not on the guru itself. Consistent with rig9-installer-loop.md result 8. Not separated: 68060.library versus the emulated 060 core itself; the 3.1 060 run without 68060.library was not done (rig.py has no flag for it, none added).
