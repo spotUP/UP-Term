@@ -78,3 +78,16 @@ dist/README.txt (line 355) and lesson 12 still said Right Amiga T: stale text, t
   `up<digits>` 11-column candidate exists), (b) the retry loop should re-read candidate 0 after a failed copy, not advance skip on a changed screen
   (only skip past rows that were tried on the same screen). Also steps 3 and 4 report "gave up" from ret(): reprompted() compares against the line
   above, which at step 3/4 is a prompt after the menu/slash echo; check after the pitch fix that those are only the detail, not a verdict (progress 12 was not written).
+
+## s35b step 5 settle and retry (fifth agent; rig 4 PASS)
+- Cause 1: settled() returned after two equal task_rows snapshots while the lesson still printed. Fix: three equal (task_rows, bottom) snapshots and an
+  optional want(screen) predicate; step 5 passes up_word_ready (a candidate row ending at column 11, the `up<pid>` word).
+- Cause 2: after a failed copy the loop advanced skip on a changed screen. Fix: next_row(rows, prev_rows, tried) re-reads candidate 0 when the rows changed,
+  skips only rows tried on the same screen.
+- Cause 3 (step 7, progress 12 never written): Right Amiga K was pressed before step 7 printed its menu-picks baseline, so the pick was not counted
+  (rig: progress stayed 11 with counters grown). Fix: settled() before the K, and a bounded K + Return repeat keyed on the progress file.
+  "step3/step4 gave up" is only ret() pixel detail (after the menu/slash echo the prompt row equals the row above); not a verdict.
+- Host tests: tests/test_tutorial_settle.py (4) and tests/test_tutorial_screen_pitch.py (4) pass; the settle/retry tests fail before (functions absent).
+- Rig 4 verdicts: run 1 FAIL (copy now "up274044384" on retry, progress 11); run 2 FAIL (same, Return again only); run 3 (extra K) [PASS] lesson12;
+  run 4 (settled() before K) [PASS] lesson12, "tutorial_rig: 1 case(s) run, 0 failed". Counters in the failing runs: tabs-opened (1,2) tab-switches (1,6)
+  menu-picks (1,5) slash (0,1) copies (0,2).

@@ -351,18 +351,38 @@ class Screen:
         return y, self.x0 + (first - 1) * 8, self.x0 + last * 8
 
 
-def settled(secs=20):
-    """The Screen once two snapshots 1.5 s apart find the same text rows: the mirror is still drawing the last
-    Return's prompt and scroll before that (a snapshot taken then put the task line 2 rows too high and the drag
-    selected nothing: rig M, 2026-10-19, 3 of 4 runs)."""
-    prev, end = None, time.time() + secs
+def up_word_ready(sc):
+    """Step 5's expected word is there: a text row ending in 11 columns, `up` and a 9 digit pid."""
+    return any(last == 11 for _, last in sc.task_rows())
+
+
+def settled(secs=20, want=None, snap=None, pause=1.5):
+    """The Screen once three snapshots 1.5 s apart find the same text rows and the same prompt baseline, and want(screen)
+    (when given) holds: the mirror is still drawing the lesson text, the last Return's prompt and the scroll before
+    that (a snapshot taken then put the task line 2 rows too high and the drag selected nothing: rig M 2026-10-19,
+    3 of 4 runs; rig 4 s35: the lesson still printing when two snapshots matched). Returns the last Screen on timeout."""
+    snap = snap or Screen
+    seen, end = [], time.time() + secs
     while True:
-        sc = Screen()
-        rows = sc.task_rows()
-        if rows and rows == prev or time.time() > end:
+        sc = snap()
+        seen = (seen + [(sc.task_rows(), sc.bottom())])[-3:]
+        stable = len(seen) == 3 and all(x == seen[0] for x in seen)
+        if (stable and (want is None or want(sc))) or time.time() > end:
             return sc
-        prev = rows
-        time.sleep(1.5)
+        time.sleep(pause)
+
+
+def next_row(rows, prev_rows, tried):
+    """Index of the candidate task row to drag next. After a failed copy the screen is re-read: when its rows differ
+    from the screen the last try ran on, the screen changed and candidate 0 is read again; only on the same screen are
+    the rows already tried skipped. None when every row of this screen was tried."""
+    if rows != prev_rows:
+        tried.clear()
+    for i, r in enumerate(rows):
+        if r not in tried:
+            tried.add(r)
+            return i
+    return None
 
 
 def drag(x0, x1, y):
@@ -427,10 +447,13 @@ def case_lesson12():
         tab_type("/help", 2)                     # 4. a slash command; the shell sees an empty line
         ret("step4")                             # Return even when /help output sits above the prompt
         log.append(("slash", True))
-        sc = settled()                           # 5. drag over the word at the end of the task line
-        clip, clips = None, []
-        for skip in range(4):                    # a try again on a settled screen when the clipboard is not "up<pid>"
-            w = sc.word_span(skip)
+        sc = settled(want=up_word_ready)         # 5. drag over the word at the end of the task line
+        clip, clips, tried, prev_rows = None, [], set(), None
+        for _ in range(4):                       # a try again on a settled screen when the clipboard is not "up<pid>"
+            rows = sc.task_rows()
+            skip = next_row(rows, prev_rows, tried)
+            prev_rows = rows
+            w = sc.word_span(skip) if skip is not None else None
             if not w:
                 break
             y, px0, px1 = w
@@ -438,12 +461,12 @@ def case_lesson12():
             ami.key(0x33, RCMD)                  # copy-on-select is off by default: Right Amiga C copies the selection
             time.sleep(1)
             clip = typewin._clip("RAM:rig.clip").strip()
-            clips.append((skip, w, clip, sc.cols, sc.task_rows()[:4]))
+            clips.append((skip, w, clip, sc.cols, rows[:4]))
             if re.fullmatch(r"up\d+", clip):
                 break
             kx, ky = ami.pointer_scale()         # one click clears the selection
             ami.script(("move", int(px0 * kx), int(y * ky)), ("wait", 2), ("button", 0, 1), ("wait", 2), ("button", 0, 0), ("wait", 3))
-            sc = settled()
+            sc = settled(want=up_word_ready)
         log.append(("copies", ret("step5")))
         ami.req(0x08, bytes([4]) + b"echo ")     # 6. echo + paste
         time.sleep(0.5)
@@ -453,11 +476,21 @@ def case_lesson12():
         time.sleep(3)
         said = c.run("Type %s.out" % SANDBOX)[1].strip()
         log.append(("paste", bool(re.fullmatch(r"up\d+", said))))
+        settled()                                # step 7's text and baseline must be printed before the K counts
         ami.key(0x27, RCMD)                      # 7. Right Amiga K
         time.sleep(1)
         log.append(("clear", ret("step7")))
         time.sleep(3)
         prog = c.run("Type %s" % PROGRESS)[1].split()
+        for n in range(2):                       # K clears the screen: ret() sees a prompt on a blank screen as advanced. The progress file is the proof, so press Return until "12" is in it
+            if "12" in prog:
+                break
+            retries.append("step7 progress %s, Return again" % prog[-1:])
+            ami.key(0x27, RCMD)                  # the K may have come before the step printed its baseline
+            time.sleep(2)
+            ami.key(typewin.RET)
+            time.sleep(3)
+            prog = c.run("Type %s" % PROGRESS)[1].split()
         done = "12" in prog
         ami.key(0x01, RCMD)
         until(lambda: active_title() == host_title, 8)
