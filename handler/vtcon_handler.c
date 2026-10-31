@@ -5642,9 +5642,11 @@ static void dispatch(con *c, ULONG cls, UWORD code, UWORD qual, ULONG prev, ULON
         }
         /* Right Amiga Shift K: Clear screen (B4; Super K is the keymap's key viewer, and
          * Intuition ignores Shift in a menu's command key, so the menu has no K). Raw
-         * code 0x27 is the K key on every keymap. */
+         * code 0x27 is the K key on every keymap. This is the Clear screen item's shortcut, so
+         * it counts as that menu pick (the tutorial's menu-picks check reads the count). */
         if ((qual & IEQUALIFIER_RCOMMAND) && (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) &&
             !(qual & IEQUALIFIER_CONTROL) && !(code & 0x80) && code == 0x27) {
+            stat_note(c, STATE_MENU, MENU_CLEAR_SCREEN, 0);
             clear_screen(c);
             break;
         }

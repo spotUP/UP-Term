@@ -91,3 +91,23 @@ dist/README.txt (line 355) and lesson 12 still said Right Amiga T: stale text, t
 - Rig 4 verdicts: run 1 FAIL (copy now "up274044384" on retry, progress 11); run 2 FAIL (same, Return again only); run 3 (extra K) [PASS] lesson12;
   run 4 (settled() before K) [PASS] lesson12, "tutorial_rig: 1 case(s) run, 0 failed". Counters in the failing runs: tabs-opened (1,2) tab-switches (1,6)
   menu-picks (1,5) slash (0,1) copies (0,2).
+
+## s35d probe
+Rig 4 run of lesson12 with a screenshot after each ret() (~/Desktop/upterm-shots/l12-step{1,2,3,4,5,7}.png, tutorial tab active in all).
+Per step (screen after Return): 
+- step1 Return: "Tabs are shells side by side..." task 2 shown. Advanced.
+- step2: "The menus hold the same actions..." task 3 shown. Advanced.
+- step3: Help>Slash commands output printed, then "A line that starts with a slash..." task 4 "Type /help". Advanced (rig says "step3 gave up" = false positive: two "tutorial>" rows after the lesson text).
+- step4: "Copy takes two moves..." task 5 with word up272196664. Advanced (also false "gave up").
+- step5: copy of up<pid> ok (second try; first clip 'Task: Drag'); step 6 task "Type echo and a space, paste..." shown. Advanced.
+- step6: echo up272196664 printed. Advanced.
+- step7: task "Press Right Amiga K to clear the screen, then press Return." Right Amiga K typed a literal "k" (prompt shows "tutorial> k", "vsh: k: not found"), screen NOT cleared, lesson prints "Not quite. Hint: Hold Right Amiga and press K, then Return." NOT ADVANCED. Progress stays 1..11.
+Result: counters tabs 1->2, switches 1->6, menu-picks 1->5, slash 0->1, copies 0->2; progress 1..11.
+Hypothesis: stuck at step 7, not step 3. The step3/4 "gave up" retries are reprompted() false positives. At step 7 Right Amiga K does not act as the Clear screen menu key (arrives as text 'k'), so menu-picks does not exceed key0: rig key injection of RCMD+K (0x27) or key binding/focus problem, not lesson text timing. Needs follow-up: why RAmiga K is typed (menu strip shortcut vs keymap, like the super+shift+t clash fixed for T).
+Also: kit lesson text on rig says "Right Amiga T" in step 1 (rig dist lesson stale vs worktree file saying Left Amiga T).
+
+## s35e Shift K fix
+Root cause: 51f68616 moved Clear screen to Right Amiga Shift K; that branch called clear_screen() directly and counted no menu pick, so lesson 12 step 7 (`menu-picks -gt key0`) never passed.
+Fix: the Shift K branch now calls stat_note(c, STATE_MENU, MENU_CLEAR_SCREEN, 0); lesson 12 step 7 text, hint and `!` line name Right Amiga Shift K; tutorial_rig presses 0x27 with RCMD|LSHIFT.
+Regression: tests/test_tutorial_wiring.py Lesson12ClearShortcut fails on 3ece82d8's handler (stat_note not found in the branch), passes now.
+Rig 4 (handler built from this tree, lesson 12 put into UP-Term:share/tutorial since the kit copy was stale): run 1 [PASS] lesson12; run 2 [PASS] lesson12, progress 1..12, counters tabs-opened (1,2) tab-switches (1,6) menu-picks (1,6) slash-count (0,1) copies (0,2).

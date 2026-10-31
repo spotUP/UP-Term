@@ -35,6 +35,20 @@ class TutorialWiring(unittest.TestCase):
         self.assertIn("tabprog_script(script, sizeof(script), p->pre, line)", H)
 
 
+class Lesson12ClearShortcut(unittest.TestCase):
+    def test_shift_k_counts_a_menu_pick_and_the_lesson_names_it(self):
+        # Right Amiga Shift K is Clear screen's shortcut; lesson 12 step 7 checks menu-picks, so the branch must count it
+        m = re.search(r"code == 0x27\) \{\n(.*?)\n\s*break;", H, re.S)
+        self.assertIsNotNone(m)
+        body = m.group(1)
+        self.assertIn("stat_note(c, STATE_MENU, MENU_CLEAR_SCREEN, 0);", body)
+        self.assertLess(body.index("stat_note"), body.index("clear_screen(c)"))
+        les = (ROOT / "dist/tutorial-lessons/12-the-up-term-window.lesson").read_text()
+        self.assertIn("Right Amiga Shift K", les)
+        self.assertNotRegex(les, r"Right Amiga K\b")
+        self.assertNotIn("Clear screen is K", les)
+
+
 class WindowStateWiring(unittest.TestCase):
     """The /state counters (plan 2026-10-19-tutorial-window-lesson P1-P4). The formatter and the bump
     rules are host-tested in tests/test_slash.c; this pins that each hook point in the Amiga-only

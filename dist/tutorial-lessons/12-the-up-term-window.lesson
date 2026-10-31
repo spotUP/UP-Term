@@ -42,9 +42,9 @@ $ copies0=$(${UPTERM_STATE:-UPTerm} state copies)
 = grep -qx "$LEARN_WORD" "$LEARN_OUT"
 ~ Type echo and a space, press Right Amiga V, then Return. echo prints the word you copied.
 ! echo $LEARN_WORD
-> Right Amiga with a menu item's letter picks the item without the menu. Clear screen is K.
+> Right Amiga with a menu item's letter picks the item without the menu. Clear screen's shortcut is Right Amiga Shift K.
 $ key0=$(${UPTERM_STATE:-UPTerm} state menu-picks)
-? Press Right Amiga K to clear the screen, then press Return.
+? Press Right Amiga Shift K to clear the screen, then press Return.
 = [ "$(${UPTERM_STATE:-UPTerm} state menu-picks)" -gt "$key0" ]
-~ Hold Right Amiga and press K, then Return.
-! echo "Press Right Amiga K, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act menu-picks}
+~ Hold Right Amiga and Shift, press K, then Return.
+! echo "Press Right Amiga Shift K, then Return."; ${UPTERM_STATE:+$UPTERM_STATE act menu-picks}

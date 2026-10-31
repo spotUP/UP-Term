@@ -134,6 +134,7 @@ def vsh_pids():
 
 RCMD = 0x0080
 LCMD = 0x0040
+LSHIFT = 0x0001
 SANDBOX = "T:tutorial"
 
 
@@ -492,7 +493,7 @@ def case_lesson12():
         said = c.run("Type %s.out" % SANDBOX)[1].strip()
         log.append(("paste", bool(re.fullmatch(r"up\d+", said))))
         settled(want=prompt_back(pre_sig, pre_rows))  # step 7's text and baseline (`$ key0=...` is an external command) must be printed before the K counts
-        ami.key(0x27, RCMD)                      # 7. Right Amiga K
+        ami.key(0x27, RCMD | LSHIFT)             # 7. Right Amiga Shift K
         time.sleep(1)
         log.append(("clear", ret("step7")))
         time.sleep(3)
