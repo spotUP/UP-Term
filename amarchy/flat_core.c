@@ -342,20 +342,25 @@ int flat_status_text(const flat_state *s, int found, char *out, size_t cap)
     return n > 0 && (size_t)n < cap ? n : 0;
 }
 
-void flat_tx_frame(flat_tx *t, const void *rp, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1)
+const void *flat_tx_surface(const void *layer, const void *bitmap)
 {
-    if (t->armed && t->rp == rp)
+    return layer ? layer : bitmap;
+}
+
+void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1)
+{
+    if (t->armed && t->surf == surf)
         t->armed = 0;
     if (pressed && fill) {
-        t->rp = rp; t->task = task;
+        t->surf = surf; t->task = task;
         t->x0 = x0; t->y0 = y0; t->x1 = x1; t->y1 = y1;
         t->armed = 1;
     }
 }
 
-int flat_tx_text(flat_tx *t, const void *rp, const void *task, int cx, int cy)
+int flat_tx_text(flat_tx *t, const void *surf, const void *task, int cx, int cy)
 {
-    if (!t->armed || t->rp != rp || t->task != task)
+    if (!t->armed || t->surf != surf || t->task != task)
         return 0;
     if (cx < t->x0 || cx > t->x1 || cy < t->y0 || cy > t->y1) {
         t->armed = 0;
@@ -364,9 +369,9 @@ int flat_tx_text(flat_tx *t, const void *rp, const void *task, int cx, int cy)
     return 1;
 }
 
-int flat_tx_pen(const flat_state *s, flat_tx *t, const void *rp, const void *task, int cx, int cy)
+int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *task, int cx, int cy)
 {
-    if (!s->enabled || s->held || !flat_tx_text(t, rp, task, cx, cy))
+    if (!s->enabled || s->held || !flat_tx_text(t, surf, task, cx, cy))
         return -1;
     return s->pen_ptext;
 }

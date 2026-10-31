@@ -193,7 +193,7 @@ static int c8_skip(Object *obj, Msg msg)
         if (!flat_frame_draw(&st, (int)d->imp_State, ox, oy, w, h, fill, c2_fill, d->imp_RPort))
             return 0;
         /* a pressed filled frame arms the Text patch for its label; any other frame draw on this rastport disarms */
-        flat_tx_frame(&r->tx, d->imp_RPort, FindTask(NULL),
+        flat_tx_frame(&r->tx, flat_tx_surface(d->imp_RPort->Layer, d->imp_RPort->BitMap), FindTask(NULL),
                       d->imp_State == 1, fill, ox, oy, ox + w - 1, oy + h - 1);
     }
     r->fflat++;
@@ -247,7 +247,7 @@ static const LONG d4_lvo[FLAT_EL_COUNT] = { FLAT_LVO_DRAWBOX, FLAT_LVO_FIELDBOX 
 
 /* ---- FLAT-BUTTON-FILL: graphics.library Text (LVO -60, Text(rp a1, string a0, count d0)). The frame is drawn first, then the
  * label in pen 1 with JAM1, also when pressed, so the dark pressed label needs this patch: while c8_skip has armed
- * {rastport, task, box} for a pressed filled frame, a Text call on that rastport from that task with the pen position
+ * {surface (layer, else bitmap: the label comes through another RastPort than the frame), task, box} for a pressed filled frame, a Text call on that rastport from that task with the pen position
  * inside the box runs with pen_ptext (flat_tx_text decides; the stub is flat_tx.s). Everything else: stock Text. ---- */
 typedef void (*textfn)(__reg("a1") struct RastPort *, __reg("a0") CONST_STRPTR, __reg("d0") ULONG);
 extern void flat_tx_entry(void);
@@ -257,7 +257,8 @@ void flat_tx_c(struct RastPort *rp, CONST_STRPTR str, ULONG count)
     flatshared *r = g_r;
     r->tcalls++;
     int pen;
-    if (r->tx.armed && r->tx.rp == rp && (pen = flat_tx_pen(&r->st, &r->tx, rp, FindTask(NULL), rp->cp_x, rp->cp_y)) >= 0) {
+    if (r->tx.armed && (pen = flat_tx_pen(&r->st, &r->tx, flat_tx_surface(rp->Layer, rp->BitMap), FindTask(NULL),
+                                           rp->cp_x, rp->cp_y)) >= 0) {
         UBYTE fg = rp->FgPen;
         r->thits++;
         SetAPen(rp, (UBYTE)pen);

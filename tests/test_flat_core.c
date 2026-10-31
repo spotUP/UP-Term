@@ -673,6 +673,15 @@ static void test_which_from_gtype(void)
         flat_tx_frame(&t, &a, &c1, 1, 1, 10, 20, 17, 25);
         flat_tx_frame(&t, &b, &c1, 0, 1, 30, 20, 37, 25);                     /* a draw on another rastport keeps it */
         CHECK_INT(t.armed, 1);
+        {   /* pressed label drawn through a second RastPort of the same window layer (3.2 intuition) still matches */
+            int layer, bm1, bm2;
+            memset(&t, 0, sizeof t);
+            flat_tx_frame(&t, flat_tx_surface(&layer, &bm1), &c1, 1, 1, 10, 44, 109, 59);
+            bs.enabled = 1;
+            CHECK_INT(flat_tx_pen(&bs, &t, flat_tx_surface(&layer, &bm2), &c1, 40, 53), 0);
+            CHECK_INT(flat_tx_surface(0, &bm1) == (const void *)&bm1, 1);       /* no layer: the bitmap */
+            CHECK_INT(flat_tx_surface(0, &bm1) != flat_tx_surface(0, &bm2), 1);
+        }
         {   int w, h, img = 0, other = 0;
             flat_frame_size(0, 4096, -17232, 30, 12, &w, &h);                 /* IM_DRAW: the Dimensions words are junk */
             CHECK_INT(w == 30 && h == 12, 1);

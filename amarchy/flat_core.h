@@ -214,20 +214,26 @@ int flat_status_text(const flat_state *s, int found, char *out, size_t cap);
  * call on that rastport, from that task, whose current pen position lies inside the box. Any other frame draw on the
  * rastport, and any Text call on it outside the box, disarms. */
 typedef struct flat_tx {
-    const void *rp, *task;
+    const void *surf, *task;    /* surf: flat_tx_surface of the frame's rastport */
     int armed, x0, y0, x1, y1;
 } flat_tx;
 
-/* A frame was drawn on rp by task: disarm when rp is the armed one; with pressed && fill, arm for box (x0,y0)-(x1,y1). */
-void flat_tx_frame(flat_tx *t, const void *rp, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1);
+/* The drawing surface a rastport draws on: its layer, else its bitmap. Not the RastPort pointer: on 3.2 intuition draws
+ * the pressed frame through one RastPort and the label Text through another RastPort of the same window layer
+ * (rig 8 diag 2026-10-31: arms=1, Text on another rastport of the same layer=1, hits=0). */
+const void *flat_tx_surface(const void *layer, const void *bitmap);
 
-/* Does a Text call at pen position (cx, cy) on rp from task get the pressed-label pen? 1 yes; a call on the armed rp
- * outside the box disarms (0). Another rastport or task: 0, state untouched. */
-int flat_tx_text(flat_tx *t, const void *rp, const void *task, int cx, int cy);
+/* A frame was drawn on surface surf by task: disarm when surf is the armed one; with pressed && fill, arm for box
+ * (x0,y0)-(x1,y1). */
+void flat_tx_frame(flat_tx *t, const void *surf, const void *task, int pressed, int fill, int x0, int y0, int x1, int y1);
+
+/* Does a Text call at pen position (cx, cy) on surface surf from task get the pressed-label pen? 1 yes; a call on the
+ * armed surface outside the box disarms (0). Another surface or task: 0, state untouched. */
+int flat_tx_text(flat_tx *t, const void *surf, const void *task, int cx, int cy);
 
 /* The pen a patched Text call draws with: pen_ptext when flat is on and not held and flat_tx_text matches, else -1 (stock
  * pen). pen_ptext is DK_BG = pen 0, a real pen: 0 never means "unset" here. */
-int flat_tx_pen(const flat_state *s, flat_tx *t, const void *rp, const void *task, int cx, int cy);
+int flat_tx_pen(const flat_state *s, flat_tx *t, const void *surf, const void *task, int cx, int cy);
 
 /* FLAT-BUTTON-FILL: the size of a frame draw. Only IM_DRAWFRAME carries Dimensions (a 0 side falls back to the image's);
  * IM_DRAW has no such field, its message words past the state are junk (3.1: 4096 x -17232). */
