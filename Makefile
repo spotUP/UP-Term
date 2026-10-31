@@ -74,6 +74,7 @@ TESTS   := tests/harness.c tests/test_main.c tests/test_xterm.c tests/test_keys.
 # ONLY=screenreq a zeroed screen move request asks for no move, so a new XCON: process does not flash the screen (tests/test_screenreq.c)
 # ONLY=cmdline vsh's argv as an AmigaDOS command line: KEY=value keeps KEY= unquoted so ReadArgs sees the keyword (tests/test_cmdline.c)
 # ONLY=dopus_filetype the Directory Opus filetype file's golden bytes; upstream filetype_tool check/lint when $(DOPUS5_SRC) is set (tests/test_dopus_filetype.py)
+# ONLY=menu_rig_dopus_absent the amarchy_menu_rig dopus_absent row starts the commodity before the root menu (tests/test_menu_rig_dopus_absent_commodity.py)
 # ONLY=claude_fixture the fake Messages API's routes (tools/test_claude_fixture.py)
 # ONLY=worktree_ready make worktree-ready dates a source that differs from main newer than the seeded binaries (tools/test_worktree_ready.py)
 # ONLY=menu_stamp the Amarchy hotkey press path reaches ms_binary_changed (act_menu_open -> ms_open, stamp and quit hooks set) (tests/test_amarchy_menu_stamp.py)
@@ -174,6 +175,7 @@ test: $(if $(filter $(ONLY),$(TEST_PY_ONLY)),,$(TEST_BINS))
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = upgetty ]; then ./$(BUILD)/upgetty_host; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = fonts ]; then $(MAKE) --no-print-directory jbmono && python3 tests/test_dist_fonts.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = dopus_filetype ]; then python3 tests/test_dopus_filetype.py; fi
+	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = menu_rig_dopus_absent ]; then python3 tests/test_menu_rig_dopus_absent_commodity.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_installer.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_manifest.py; fi
 	@if [ -z "$(ONLY)" ] || [ "$(ONLY)" = installer ]; then python3 tests/test_dist_safeoff.py; fi

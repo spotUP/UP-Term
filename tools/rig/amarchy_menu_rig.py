@@ -1065,8 +1065,21 @@ def r_dopus_absent():
     res.append(sorted(after) == sorted(before))
     print('  %s windows before %d, after %d' % ('[OK]' if res[-1] else '[FAIL]', len(before), len(after)), flush=True)
     c.run('Delete >NIL: RAM:x9.dopus-#? QUIET')
-    open_terminal()
-    up, rows = root_menu_rows()
+    # ensure_terminal, not open_terminal: --only on a fresh rig never ran r_start, so without the Amarchy commodity
+    # Super+Space opened nothing. The drawn menu is forced as dopus_present does: over the UP-Term window the default
+    # menu-in-terminal = text opens amarchy-menu, so no "Amarchy" window came and the check failed (rig 5, 2026-10-31)
+    ensure_terminal()
+    import amarchy_rig
+    saved = {p: ami.read_file(p) for p in (X9_CONF, X9_AMCONF)}
+    try:
+        c.run('MakeDir >NIL: ENV:up-term ENV:Amarchy')
+        x9_drawn()
+        amarchy_rig.arexx('RELOAD')
+        up, rows = root_menu_rows()
+    finally:
+        for p, b in saved.items():
+            ami.restore_file(p, b)
+        amarchy_rig.arexx('RELOAD')
     res.append(bool(up) and 'Apps' in rows and 'Dopus' not in rows)
     print('  %s root rows without a port: %s' % ('[OK]' if res[-1] else '[FAIL]', rows), flush=True)
     return all(res), '%d of %d checks passed' % (sum(res), len(res))
