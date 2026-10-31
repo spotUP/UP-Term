@@ -47,6 +47,7 @@ independent rig: build/rig2, wasabid on 1235 (tools/rig/README.md).
                   "Instead of Workbench") and record its S:User-Startup block + stamp there; every later
                   clone start then boots 5.104 as the Workbench (default; --no-dopus skips it, no stamp: [WARN], 5.82);
                   --own-screen also writes the saved environment that puts DOpus on its own 1344x1080 screen (DOPUS.1)
+  rig.py clear    remove this rig's build/rig<N> folder; refused while its fs-uae runs (stop it first)
   rig.py status   is it up (wasabid ping)
   rig.py start --mmu   the 68060 with an MMU (slower, no JIT), for MuForce
   rig.py muforce on|off|log   MuForce crash reports on the rig (tools/rig/muforce.py)
@@ -2019,10 +2020,25 @@ def dopus():
 # reboot, kit-restore, logwatch and watchdog send it nothing. Every other path to a rig (ami.py, the scripts) passes ami.req.
 GATED = ("dbg", "dbgbreak", "wasabi", "muforce", "aga", "aga256", "rtg", "dopus")
 
+def clear():
+    """Free this rig's folder (RULES.md rule 7). Refused while this rig's fs-uae runs: rig 9 ran with build/rig9
+    deleted under it and build/rig4 vanished the same way (RIG-FOLDER-VANISHED), because the documented
+    `mv build/rig<n> build/rig<n>.del && rm -rf` ran with no check. Stop the rig first (`rig.py stop`)."""
+    if mine():
+        sys.exit("rig: %s is running (fs-uae on %s); `rig.py stop` it first, folder not removed" % (paths.RIG_NAME, CFG))
+    if not RIG.exists():
+        print("rig: %s already gone" % RIG)
+        return
+    gone = RIG.with_name(RIG.name + ".del")   # renamed first: a slow rmtree must not race the next start of this number
+    shutil.rmtree(gone, ignore_errors=True)
+    RIG.rename(gone)
+    shutil.rmtree(gone)
+    print("rig: removed", RIG)
+
 def main(argv):
     """Run the command argv[1]. --help, -h, help and ? (alone or after a command) print this file's usage (rc 0), the command not run; no command or an
     unknown one prints it to stderr (rc 2)."""
-    cmds = {"setup": setup, "start": start, "stop": stop, "reboot": reboot, "install": install, "kit-restore": kit_restore,
+    cmds = {"setup": setup, "start": start, "stop": stop, "clear": clear, "reboot": reboot, "install": install, "kit-restore": kit_restore,
             "status": status, "logwatch": logwatch, "muforce": muforce, "dbg": dbg, "dbgbreak": dbgbreak, "watchdog": watchdog, "wasabi": wasabi, "aga": lambda: screenmode("aga"),
             "aga256": lambda: screenmode("aga256"), "rtg": lambda: screenmode("rtg"), "dopus": dopus}
     helps = ("--help", "-h", "help", "?")

@@ -35,7 +35,7 @@ The global rules (`~/.claude/CLAUDE.md`) apply; this file adds the project's.
    `ps` that its fs-uae process is gone. Never keep a rig up "for later", for writing
    the report, or for a step that is code work. Done with a rig means cleared, so
    no other agent waits on its number: stop it, then free its folder with
-   `mv build/rig<n> build/rig<n>.del && rm -rf build/rig<n>.del`. A rig that crashed
+   `UPTERM_RIG=<n> python3 tools/rig/rig.py clear` (it refuses while that rig's fs-uae runs; never `rm -rf build/rig<n>` by hand). A rig that crashed
    or hangs counts as done; clear it the same way. Every brief that starts a rig ends
    with "stop your rig, confirm by ps". A session that finds a running rig it does
    not own reports it to the owner instead of stopping it; rig 1 is the owner's.
